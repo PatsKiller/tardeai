@@ -610,6 +610,100 @@ def call_gemma(prompt, model="gemma3-overnight", timeout=300):
         return None, elapsed
 
 
+#: Reasons the consumption gate, a budget ceiling or the lane layer refuses a call BEFORE any model runs
+#: (scripts/lib/llm_consumption.py should_call / check_cost_cap / reserve_projected_cost, scripts/llm_lane.py).
+#: A refusal is not a model failure: the job goes back to pending without spending an attempt and the run
+#: stops. Until 2026-11-01 a refusal took the "no text" branch, so an unregistered process_id or a hit cap
+#: walked every selected job to attempt 3 and status 'failed'.
+GATE_REFUSAL_CODES = (
+    "PROCESS_NOT_REGISTERED",
+    "POLICY_NOT_ALLOWED",
+    "COST_CAP_EXCEEDED",
+    "BUDGET_UNAVAILABLE",
+    "COST_CONFIGURATION_INVALID",
+    "COST_PERSISTENCE_UNAVAILABLE",
+    "CREDIT_EXHAUSTED",
+    "CREDIT_CONFIGURATION_INVALID",
+    "RESERVATION_BINDING_INVALID",
+    "AMBIGUOUS_LEGACY_LANE",
+    "BRIDGE_ROUTE_REFUSED",
+    "manual_mode",
+    "ManualRequired",
+    "OAuth lane unavailable",
+)
+
+
+class CloudRefused(Exception):
+    """No lane ran a model: the gate, a cap or lane availability refused every lane in the chain."""
+
+
+def _is_refusal(text):
+    return any(code in (text or "") for code in GATE_REFUSAL_CODES)
+
+
+def classify_cloud_failure(exc):
+    """A refusal reason when no lane actually ran a model, else None (a real model failure that counts).
+
+    llm_fallback wraps per-lane errors in AllLanesFailed(attempts). A lane that ran and timed out or returned
+    nothing is a model failure; a lane the gate refused, or one reported unavailable, is not.
+    """
+    attempts = getattr(exc, "attempts", None)
+    if attempts is None:
+        msg = f"{type(exc).__name__}: {exc}"
+        return msg[:300] if _is_refusal(msg) else None
+    reasons = []
+    for a in attempts:
+        err = str(a.get("error") or "")
+        if a.get("ok"):
+            return None
+        if not err and a.get("skipped_reason"):
+            continue  # availability probe errored; the lane was still tried and has its own attempt
+        if err == "unavailable" or _is_refusal(err):
+            reasons.append(f"{a.get('lane')}: {err}")
+            continue
+        return None
+    return ("; ".join(reasons) or "no lane available")[:300]
+
+
+def call_cloud(prompt, policy, *, fallback=None, now=None):
+    """One job through the drain chain (anthropic -> grok -> chatgpt -> deepseek off-peak only).
+
+    Returns (text, runtime_sec, lane_that_answered), or (None, runtime, "cloud:none") when a lane ran and
+    failed. Raises CloudRefused when no lane ran at all (gate, cap or availability refusal). Every attempt
+    runs under the consumption gate (process_id), so the per-process and global budget ceilings bind.
+    """
+    from lib.llm_queue_drain_policy import provider_chain
+    chain = provider_chain(now, policy)
+    if not chain:
+        raise CloudRefused("no lane in the drain chain")
+    if fallback is None:
+        try:
+            from lib.llm_fallback import generate_with_fallback as fallback
+        except ImportError:  # pragma: no cover
+            from scripts.lib.llm_fallback import generate_with_fallback as fallback
+    ds = set(policy.get("deepseek_lanes") or [])
+    t0 = time.monotonic()
+    try:
+        res = fallback(
+            prompt,
+            lane=chain[0],
+            extra_lanes=chain[1:],
+            allow_paid=any(l in ds for l in chain),
+            oauth_first=False,
+            process_id=policy["process_id"],
+            timeout=int(policy.get("per_call_timeout_s") or 120),
+        )
+    except Exception as e:  # noqa: BLE001 - every lane failed or the budget gate refused
+        refusal = classify_cloud_failure(e)
+        if refusal:
+            raise CloudRefused(refusal) from e
+        log(f"  cloud chain {chain} failed: {e}")
+        return None, round(time.monotonic() - t0, 1), "cloud:none"
+    runtime = round(time.monotonic() - t0, 1)
+    log(f"  cloud: {res.provenance_line()} ({runtime}s)")
+    return (res.text or None), runtime, f"cloud:{res.lane}"
+
+
 def _apply_curation_verdict(cur, job, parsed):
     """Write curation verdict back to source content table."""
     source_table = job.get("source_table")
@@ -736,9 +830,11 @@ DEFAULT_QUOTAS = {
 }
 
 
-def _build_balanced_queue(cur, job_types, limit, quotas):
+def _build_balanced_queue(cur, job_types, limit, quotas, triage_sql="", triage_params=()):
     """Build a balanced job list using per-type soft quotas.
+    ``triage_sql`` (``AND <predicate>``) and its params narrow every selection, as in the simple query.
     Returns (jobs, columns, selection_log)."""
+    triage_params = list(triage_params or [])
     columns_sql = """id, job_type, symbol, trade_id, journal_id, account,
                priority_tier, priority_score, reason_codes,
                last_qwen_summary, last_qwen_confidence, metadata_json,
@@ -756,9 +852,10 @@ def _build_balanced_queue(cur, job_types, limit, quotas):
             SELECT {columns_sql}
             FROM deep_overnight_llm_queue
             WHERE status = 'pending' AND job_type = %s
+            {triage_sql}
             ORDER BY priority_score DESC, queued_at ASC
             LIMIT %s
-        """, (jtype, quota))
+        """, [jtype] + triage_params + [quota])
         rows = cur.fetchall()
         if not cur.description:
             continue
@@ -771,7 +868,8 @@ def _build_balanced_queue(cur, job_types, limit, quotas):
                 seen_ids.add(job["id"])
                 taken += 1
         avail_count_sql = cur.execute(
-            "SELECT COUNT(*) FROM deep_overnight_llm_queue WHERE status='pending' AND job_type=%s", (jtype,))
+            f"SELECT COUNT(*) FROM deep_overnight_llm_queue WHERE status='pending' AND job_type=%s {triage_sql}",
+            [jtype] + triage_params)
         avail = cur.fetchone()[0]
         selection_log.append(f"  {jtype}: quota={quota}, available={avail}, selected={taken}")
 
@@ -785,11 +883,12 @@ def _build_balanced_queue(cur, job_types, limit, quotas):
             SELECT {columns_sql}
             FROM deep_overnight_llm_queue
             WHERE status = 'pending' AND id NOT IN ({placeholders})
+            {triage_sql}
             ORDER BY
                 CASE WHEN job_type = 'strategy_classification' THEN 1 ELSE 0 END DESC,
                 priority_score DESC, queued_at ASC
             LIMIT %s
-        """, list(id_exclude) + [remaining])
+        """, list(id_exclude) + triage_params + [remaining])
         rows = cur.fetchall()
         fill_count = 0
         for row in rows:
@@ -835,6 +934,14 @@ def main():
                         help="[PILOT] Log hybrid RAG metrics per job")
     parser.add_argument("--hybrid-rag-cache", type=str, default=None,
                         help="[PILOT] Path to prefetched hybrid RAG context JSON cache (Stage A output)")
+    parser.add_argument("--route", choices=["local", "cloud"], default="local",
+                        help="local = gemma3-overnight via Ollama (default, unchanged); cloud = the lanes in "
+                             "config/llm_queue_drain.json via llm_fallback (budget-gated by process_id)")
+    parser.add_argument("--drain-window", action="store_true",
+                        help="refuse to start outside the drain window (weekends/holidays all day, trading days "
+                             "21:00-04:00 ET) and stop when it closes; replaces --hard-stop")
+    parser.add_argument("--triaged", action="store_true",
+                        help="select only jobs config/llm_queue_drain.json triage marks worth running")
     args = parser.parse_args()
 
     # Handle --force-job-types overriding --job-types
@@ -857,16 +964,40 @@ def main():
         f"{', force_types=' + args.force_job_types if args.force_job_types else ''}"
         f"{', quota_policy=balanced' if use_balanced else ''}")
 
+    drain_policy = None
+    if args.route == "cloud" or args.drain_window or args.triaged:
+        from lib.llm_queue_drain_policy import load_policy, provider_chain, triage_filter_sql, window_state
+        drain_policy = load_policy()
+        ws = window_state(policy=drain_policy)
+        log(f"Drain window: unrestricted={ws['unrestricted']} ({ws['reason']}); "
+            f"chain now={provider_chain(policy=drain_policy) if args.route == 'cloud' else ['local']}")
+        if args.drain_window and not ws["unrestricted"]:
+            log("Outside the drain window — nothing started.")
+            return
+        if args.route == "cloud":
+            cap = int(drain_policy.get("per_run_job_limit") or 0)
+            if cap and args.limit > cap:
+                log(f"--limit {args.limit} capped to per_run_job_limit={cap} (config/llm_queue_drain.json)")
+                args.limit = cap
+
     conn = get_db_connection()
     cur = conn.cursor()
 
-    # Recover stale running jobs
-    recovered = recover_stale_running(cur)
-    conn.commit()
+    # Recover stale running jobs. Never in a dry run: until 2026-10-31 --dry-run ran this UPDATE and committed.
+    recovered = 0
+    if not args.dry_run:
+        recovered = recover_stale_running(cur)
+        conn.commit()
+
+    triage_sql, triage_params = ("", [])
+    if args.triaged:
+        _pred, triage_params = triage_filter_sql(drain_policy)
+        triage_sql = f"AND {_pred}"
 
     # Build job list — balanced or simple
     if use_balanced and args.job_types:
-        jobs, columns, selection_log = _build_balanced_queue(cur, args.job_types, args.limit, quotas)
+        jobs, columns, selection_log = _build_balanced_queue(
+            cur, args.job_types, args.limit, quotas, triage_sql, triage_params)
         log(f"Balanced queue selection (limit={args.limit}):")
         for line in selection_log:
             log(line)
@@ -890,9 +1021,10 @@ def main():
             FROM deep_overnight_llm_queue
             WHERE status = 'pending'
             {type_filter}
+            {triage_sql}
             ORDER BY priority_score DESC, queued_at ASC
             LIMIT %s
-        """, type_params + [args.limit])
+        """, type_params + triage_params + [args.limit])
 
         jobs = cur.fetchall()
         columns = [desc[0] for desc in cur.description]
@@ -923,6 +1055,7 @@ def main():
     processed = 0
     succeeded = 0
     failed = 0
+    refused = 0
 
     for row in jobs:
         job = dict(zip(columns, row))
@@ -934,8 +1067,12 @@ def main():
             log(f"Time budget exhausted ({args.time_budget_min}m). Stopping.")
             break
 
-        # Hard stop check
-        if past_hard_stop(args.hard_stop):
+        # Hard stop check (the drain window replaces the fixed 03:00 stop)
+        if args.drain_window:
+            if not window_state(policy=drain_policy)["unrestricted"]:
+                log("Drain window closed. Stopping.")
+                break
+        elif past_hard_stop(args.hard_stop):
             log(f"Hard stop {args.hard_stop} reached. Stopping.")
             break
 
@@ -1036,7 +1173,24 @@ def main():
                 except Exception as e:
                     log(f"  [hybrid-rag] Non-fatal error: {e}")
 
-        text, runtime = call_gemma(prompt, model=model)
+        if args.route == "cloud":
+            try:
+                text, runtime, model = call_cloud(prompt, drain_policy)
+            except CloudRefused as refusal:
+                # Not a model failure: undo the attempt counted when the job was marked running, put it back
+                # to pending, and stop -- the next job would meet the same gate.
+                cur.execute("""
+                    UPDATE deep_overnight_llm_queue
+                    SET status = 'pending', attempt_count = GREATEST(attempt_count - 1, 0),
+                        last_error = %s, updated_at = NOW()
+                    WHERE id = %s
+                """, (f"refused before any model ran (no attempt counted): {refusal}"[:500], job_id))
+                conn.commit()
+                refused += 1
+                log(f"  REFUSED #{job_id} — {refusal}; back to pending, attempt not counted. Stopping the run.")
+                break
+        else:
+            text, runtime = call_gemma(prompt, model=model)
 
         if text:
             # Parse JSON from response if present
@@ -1126,6 +1280,7 @@ def main():
     log(f"  Processed:   {processed}")
     log(f"  Succeeded:   {succeeded}")
     log(f"  Failed:      {failed}")
+    log(f"  Refused:     {refused}")
     log(f"  Recovered:   {recovered}")
     log(f"  Total time:  {total_elapsed} min")
     log(f"  Model:       {model}")
