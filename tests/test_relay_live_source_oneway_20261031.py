@@ -359,7 +359,7 @@ def _poller(monkeypatch, tmp_path: Path, *, log: str, rc: int = 1, ack=None):
     monkeypatch.setattr(DM, "write_receipt", lambda **kw: receipts.append(kw))
     monkeypatch.setattr(DM, "track_outcome", lambda *a, **k: None)
     monkeypatch.setattr(DM, "run_post_release_tester", lambda repo, dry_run=False: (0, "ok"))
-    monkeypatch.setattr(DM, "hold_acknowledged", lambda did: ack)
+    monkeypatch.setattr(DM, "hold_acknowledged", lambda did, since=None: ack)
 
     def deploy(repo, sha, dry_run=False, extra_env=None):
         calls.append(sha)
@@ -388,6 +388,15 @@ def test_poller_latches_a_held_promote_and_does_not_prepare_again(monkeypatch, t
         assert again["outcome"] == "held_relay_live_set"
     assert calls == ["a" * 40]
     assert receipts[-1]["detail"]["prepare_skipped"] is True
+
+
+def test_poller_records_the_held_release_for_recompute(monkeypatch, tmp_path: Path) -> None:
+    sd = tmp_path / "rw"
+    log = HELD_LOG + (" (relay live set would change and the operator has not acknowledged this diff_id — promote held "
+                      f"({tmp_path}/rel-a/N8N_RELAY_LIVE_SET_DIFF.json))")
+    DM, calls, _ = _poller(monkeypatch, tmp_path, log=log)
+    _tick(DM, sd, "a" * 40)
+    assert DM.load_hold(sd)["release"] == f"{tmp_path}/rel-a"
 
 
 def test_poller_resumes_when_the_operator_acknowledges(monkeypatch, tmp_path: Path) -> None:

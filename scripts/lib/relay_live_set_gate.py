@@ -39,8 +39,12 @@ except ImportError:  # pragma: no cover - imported as scripts.lib
 
 SCHEMA = "RelayLiveSetDiff@v1"
 DIFF_NAME = "N8N_RELAY_LIVE_SET_DIFF.json"
-#: Durable "this diff_id was paged" markers (host state, one file per diff_id, created O_EXCL).
+#: Durable page markers (host state). Per diff_id and event: ``<id>-<event>.sending`` (an O_EXCL claim held while one
+#: caller sends), ``<id>-<event>.json`` (paged: the send was accepted; blocks any further page), and
+#: ``<id>-<event>.send_failed-<utc>.json`` (a record of a send that was not accepted; never blocks a retry).
 PAGED_REL = "data/governance/relay_live_set_paged"
+#: A ``.sending`` claim older than this belongs to a caller that died mid-send; the next caller takes it over.
+SENDING_STALE_S = 600
 #: The guard tier and reason token that acknowledge a live-set change (operator-issued only).
 ACK_TIER = "release-write"
 ACK_TOKEN = "relay-live-set:"
@@ -226,26 +230,46 @@ def _guard_rows() -> dict[str, dict[str, Any]]:
         return {}
 
 
-def acknowledgement(report: Mapping[str, Any], rows: Optional[Mapping[str, Mapping[str, Any]]] = None
-                    ) -> Optional[dict[str, Any]]:
+def acknowledgement(report: Mapping[str, Any], rows: Optional[Mapping[str, Mapping[str, Any]]] = None,
+                    *, since: Optional[int] = None) -> Optional[dict[str, Any]]:
     """The operator guard grant that acknowledges exactly this change, or None.
 
-    A ``release-write`` ledger row whose reason contains ``relay-live-set:<diff_id>`` and that was not revoked. The
-    diff_id already binds the build and the lane delta, so a grant for one delta never acknowledges another.
+    A ``release-write`` ledger row whose reason contains ``relay-live-set:<diff_id>``, that was NOT revoked, and that
+    was valid at some point at or after ``since`` (epoch seconds; the time the hold was recorded, when known):
+    ``expires >= since``. The diff_id already binds the build and the lane delta, so a grant for one delta never
+    acknowledges another.
+
+    Decision (2026-11-01, round-3 review), on purpose:
+      * EXPIRED counts, when its validity window reached the hold. An acknowledgement is a fact the operator recorded
+        about one exact change, not a standing authority. The diff_id is a content hash that exists only once the
+        change was computed and shown, so a grant naming it was necessarily issued for that change. Requiring a grant
+        that is still live would make the operator keep a release-write grant open (or --replace an active one,
+        superseding it) just to keep a promote acknowledged.
+      * REPLACED counts on the same terms. ``--replace`` closes a grant's release-write authority in favour of a
+        newer grant; it does not withdraw what the operator acknowledged.
+      * REVOKED never counts: revoking is the operator withdrawing the grant, acknowledgement included.
+      * A grant whose window ended BEFORE the hold was recorded does not count for that hold.
     """
     token = ACK_TOKEN + str(report["diff_id"])
     rows = _guard_rows() if rows is None else rows
     for key, row in sorted(rows.items()):
         if not isinstance(row, Mapping) or row.get("tier") != ACK_TIER or row.get("status") == "revoked":
             continue
+        if since is not None:
+            try:
+                if int(row.get("expires") or 0) < int(since):
+                    continue
+            except (TypeError, ValueError):
+                continue
         reason = str(row.get("reason") or "")
         if token in reason.replace(" ", ""):
             return {"grant_id": row.get("grant_id") or key.split("@", 1)[-1], "status": row.get("status")}
     return None
 
 
-def is_acked(report: Mapping[str, Any], rows: Optional[Mapping[str, Mapping[str, Any]]] = None) -> bool:
-    return acknowledgement(report, rows) is not None
+def is_acked(report: Mapping[str, Any], rows: Optional[Mapping[str, Mapping[str, Any]]] = None,
+             *, since: Optional[int] = None) -> bool:
+    return acknowledgement(report, rows, since=since) is not None
 
 
 def gate(report: Mapping[str, Any], rows: Optional[Mapping[str, Mapping[str, Any]]] = None) -> tuple[bool, str]:
@@ -270,25 +294,68 @@ def _paged_marker(state: Path, did: str) -> Path:
     return Path(state) / PAGED_REL / f"{did}.json"
 
 
+def _utc_stamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+
+
 def notify(report: Mapping[str, Any], state: Path, *, event: str = "promote",
            sender: Optional[Callable[..., Any]] = None) -> dict:
-    """At most one page per diff_id, ever: the marker is created O_EXCL BEFORE sending, so concurrent or repeated
-    prepares cannot page twice. Fail-soft; the result goes in the report."""
-    marker = _paged_marker(state, f"{report['diff_id']}-{event}")
+    """At most one ACCEPTED page per diff_id and event; a send that is not accepted leaves it pageable again.
+
+    Two phases, nothing deleted (AGENTS.md section 0 rule 6):
+      1. ``<id>-<event>.json`` exists -> already paged, skip.
+      2. Claim ``<id>-<event>.sending`` with O_EXCL, so concurrent or repeated prepares cannot both send. A claim older
+         than SENDING_STALE_S belongs to a caller that died mid-send and is rewritten (taken over), not removed.
+      3. Send. Accepted -> the claim is renamed to ``<id>-<event>.json`` (paged). Not accepted, or the sender raised
+         -> the claim is renamed to ``<id>-<event>.send_failed-<utc>.json``, a record that blocks nothing, so the next
+         prepare pages again. Until 2026-11-01 the paged marker was written BEFORE sending, so one failed send
+         suppressed that diff_id's page forever.
+    Fail-soft; the result goes in the report.
+    """
+    base = Path(state) / PAGED_REL
+    did = f"{report['diff_id']}-{event}"
+    paged = _paged_marker(state, did)
+    sending = base / f"{did}.sending"
+    body = {"diff_id": report["diff_id"], "build": report.get("new_build"), "event": event,
+            "at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(), "pid": os.getpid()}
+    if paged.exists():
+        return {"accepted": False, "skipped": "already_paged", "marker": str(paged)}
     try:
-        marker.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(str(marker), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        base.mkdir(parents=True, exist_ok=True)
+        fd = os.open(str(sending), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(body) + "\n")
     except FileExistsError:
-        return {"accepted": False, "skipped": "already_paged", "marker": str(marker)}
+        try:
+            age = datetime.now(timezone.utc).timestamp() - sending.stat().st_mtime
+        except OSError:
+            age = 0.0
+        if age < SENDING_STALE_S:
+            return {"accepted": False, "skipped": "send_in_progress", "marker": str(sending)}
+        tmp = base / f".{did}.sending.{os.getpid()}.tmp"
+        tmp.write_text(json.dumps({**body, "took_over_stale_claim": True}) + "\n", encoding="utf-8")
+        os.replace(tmp, sending)
     except OSError as exc:
         return {"accepted": False, "error": f"marker: {type(exc).__name__}"}
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        fh.write(json.dumps({"diff_id": report["diff_id"], "build": report.get("new_build"), "event": event,
-                             "at": datetime.now(timezone.utc).replace(microsecond=0).isoformat()}) + "\n")
+
+    def _settle(ok: bool, error: str = "") -> dict:
+        if ok:
+            os.replace(sending, paged)
+            return {"accepted": True, "marker": str(paged)}
+        failed = base / f"{did}.send_failed-{_utc_stamp()}.json"
+        try:
+            os.replace(sending, failed)
+        except OSError:
+            pass
+        out = {"accepted": False, "marker": str(failed), "retry": "next_prepare"}
+        if error:
+            out["error"] = error
+        return out
+
     try:
         if sender is None:
             from telegram_alert import send_telegram as sender  # type: ignore[no-redef]
         ok = sender(message(report, event=event), priority="P1", dedupe_minutes=60, producer="relay_live_set_gate")
-        return {"accepted": bool(ok), "marker": str(marker)}
     except Exception as exc:  # noqa: BLE001 - recorded, never fatal
-        return {"accepted": False, "error": f"{type(exc).__name__}: {str(exc)[:160]}", "marker": str(marker)}
+        return _settle(False, f"{type(exc).__name__}: {str(exc)[:160]}")
+    return _settle(bool(ok))
