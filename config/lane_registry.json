@@ -18849,21 +18849,21 @@
       "scheduler": {
         "kind": "cron",
         "expression": "*/15 4-19 * * 1-5 + 0 * * * 0,6 + 0 20-23 * * 1-5 + 0 0-3 * * 1-5",
-        "match": "scripts/market_risk_evaluate.py --scheduled --shadow",
+        "match": "scripts/market_risk_evaluate.py --scheduled --apply",
         "schedules": [
           "*/15 4-19 * * 1-5",
           "0 * * * 0,6",
           "0 20-23 * * 1-5",
           "0 0-3 * * 1-5"
         ],
-        "command_text": "cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_risk_evaluate.lock $PY scripts/market_risk_evaluate.py --scheduled --shadow >> logs/market_risk_evaluate.log 2>&1"
+        "command_text": "cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_risk_evaluate.lock $PY scripts/market_risk_evaluate.py --scheduled --apply >> logs/market_risk_evaluate.log 2>&1"
       },
       "expected_cadence_hours": 1.0,
       "state": "ACTIVE",
       "state_since": "2026-11-01",
-      "state_reason": "Operator, in session 2026-11-01 ~09:10 ET: \"run it now\". The coordinator installed four host crontab lines (crontab -l L1083-L1086; backup in persistent-state/archive/crontab/) running the Market Risk Engine evaluator in shadow (scripts/market_risk_evaluate.py --scheduled --shadow; release 855d5c356, #2383, #2408, #2415) for 24/5-plus coverage: after-hours, overnight, and the weekend into the Sunday 18:00 ET futures and Asia open. Schedule approved earlier as design §11 item 2 (2026-10-31). Shadow writes the assessment, shadow_latest.json (what Home/API serve), a -shadow receipt and run_last.json; no outbox, episode or send. Shadow lasts until the operator promotes it to --apply.",
+      "state_reason": "Operator, in session 2026-11-01 ~11:10 ET (verbatim): \"I approve the after-hour and I also approve turning on real alerts. We can always tune it later.\" The coordinator switched the four host crontab lines (crontab -l L1083-L1086; backup in persistent-state/archive/crontab/) from --scheduled --shadow to --scheduled --apply, so the Market Risk Engine evaluator (scripts/market_risk_evaluate.py) now runs live: it writes the assessment (latest.json and a dated receipt), the snapshot every consumer reads, run_last.json, and raises real alerts through the episode ledger and sent-key ledger. Before that, from 2026-11-01 ~09:10 ET (operator: \"run it now\"; schedule approved as design §11 item 2 on 2026-10-31) the same four lines ran in shadow. Coverage is 24/5-plus: after-hours, overnight, and the weekend into the Sunday 18:00 ET futures and Asia open.",
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "crontab -l L1083 '*/15 4-19 * * 1-5 ... bash scripts/market_day_gate.sh $PY scripts/market_risk_evaluate.py --scheduled --shadow', L1084 '0 * * * 0,6', L1085 '0 20-23 * * 1-5', L1086 '0 0-3 * * 1-5' (L1084-L1086 ungated). Host timezone: timedatectl reports America/New_York and the crontab sets no CRON_TZ, so the fields are ET and follow DST. Output signal: run_last.json is written by every scheduler-launched run including --shadow (scripts/market_risk_evaluate.py _shadow(scheduled_started=...), fixed in #2409; before it main() returned from _shadow() ahead of the --scheduled receipt write, so the lane would have read stale); tests tests/test_market_risk_scheduled_shadow_receipt_20261101.py, including a mutant of the old early return.",
+      "reason_evidence": "crontab -l L1083 '*/15 4-19 * * 1-5 ... bash scripts/market_day_gate.sh $PY scripts/market_risk_evaluate.py --scheduled --apply', L1084 '0 * * * 0,6', L1085 '0 20-23 * * 1-5', L1086 '0 0-3 * * 1-5' (L1084-L1086 ungated). Host timezone: timedatectl reports America/New_York and the crontab sets no CRON_TZ, so the fields are ET and follow DST. Output signal: run_last.json is written by every scheduler-launched run including --shadow (scripts/market_risk_evaluate.py _shadow(scheduled_started=...), fixed in #2409; before it main() returned from _shadow() ahead of the --scheduled receipt write, so the lane would have read stale); tests tests/test_market_risk_scheduled_shadow_receipt_20261101.py, including a mutant of the old early return.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/market_risk/run_last.json"
@@ -18901,7 +18901,7 @@
         "kind": "none"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "No crontab line or timer runs scripts/market_quotes_extended.py and the table is created by migrations/2026_10_31_market_quotes_extended.sql (not applied). Measured 2026-10-31: feed=sip with end=now-16min returns 04:00-20:00 ET coverage on the current credentials.",
+      "reason_evidence": "No crontab line or timer runs scripts/market_quotes_extended.py. The table exists: migrations/2026_10_31_market_quotes_extended.sql was applied to the prod DB on 2026-11-01 11:07 ET (to_regclass('public.market_quotes_extended') not null; indexes market_quotes_extended_pkey, market_quotes_extended_uniq, idx_market_quotes_extended_symbol_inserted; 0 rows). A live --apply run on 2026-11-01 refused: \"refusing --apply: §7A domain quote_extended_session is still in proposed_domains (config/data_source_authority.json); promote it in the activation PR first\". Remaining activation: promote that domain (re-renders the AGENTS.md §7A table, a held-class PATCH), then install the crontab lines in note and flip this row to ACTIVE. Measured 2026-10-31: feed=sip with end=now-16min returns 04:00-20:00 ET coverage on the current credentials.",
       "note": "Proposed host crontab lines: '*/15 4-9 * * 1-5' and '*/15 16-20 * * 1-5', each 'cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_extended.lock bash scripts/market_day_gate.sh $PY scripts/market_quotes_extended.py --apply >> logs/market_quotes_extended.log 2>&1'."
     },
     {
