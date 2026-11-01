@@ -16,6 +16,7 @@ Does NOT touch broker, holdings, execution, or trading behavior.
 import argparse
 import json
 import os
+import random
 import re
 from collections import deque
 import sys
@@ -975,6 +976,25 @@ def _job_meta(job):
     return meta if isinstance(meta, dict) else {}
 
 
+def release_rng(run_id):
+    """Round 16: where struck chunks are released is drawn from a generator seeded by the run id -- reproducible for
+    one run (tests, logs), different from run to run, so a blip at a fixed call position cannot meet the same
+    struck jobs every run."""
+    return random.Random(f"drain-release:{run_id}")
+
+
+def release_offset(rng, queue_len, bound):
+    """Index in the untried queue at which a struck chunk is released: drawn from 1..min(queue_len - 1, 2*bound).
+    Never 0 while the queue allows it: at least one ordinary job runs between the answer and the chunk, so a blip
+    that starts right after an answer always takes an ordinary job too, and the mixed-stretch rule leaves the
+    struck jobs uncharged. Never the very end: at least one job follows the chunk, so a really bad struck prompt
+    can still be confirmed (and charged) by a later answer. A queue of 0 or 1 jobs releases at the front."""
+    hi = min(int(queue_len) - 1, 2 * max(1, int(bound)))
+    if hi < 1:
+        return 0
+    return rng.randint(1, hi)
+
+
 def systemic_rejection_limit(fetch_size):
     """Ratio guard limit: max(2, 10% of the run's FETCH). Follow-up to round 14: sized by the fetch (the rows the run
     selected, at most --limit), never by jobs processed -- a time budget that cuts a run to ~25 calls must not shrink
@@ -1504,6 +1524,10 @@ def main():
             jobs = list(jobs[:cap])
     struck_deferred = []
     deferred_ids = set()  # struck jobs released behind this run's first answer (exempt from the bound)
+    released_pending = set()  # the released chunk's jobs not yet tried: the next chunk waits for them
+    all_struck = False  # every fetched job carries a live strike (see below)
+    real_answer_seen = False  # a lane returned real text in this run
+    release_at = release_rng(run_id)
     if cloud:
         # Round 15: a job that already carries a live strike runs only after this run's FIRST real answer (right
         # behind the answered job). Struck jobs stay at the head of the queue, so without this a blip at the start
@@ -1517,7 +1541,15 @@ def main():
             live_ids = {id(r) for r in live}
             jobs = [r for r in jobs if id(r) not in live_ids]
             struck_deferred = live
-            log(f"{len(live)} struck job(s) wait for this run's first answer (then run in chunks behind answers).")
+            log(f"{len(live)} struck job(s) wait for this run's first answer (then run in chunks at drawn points).")
+        elif live and len(jobs) > 1:
+            # Round 16: every fetched job is struck (the tail of the drain). Nothing can answer first, so the order
+            # starts at a point drawn for this run, and rejections confirmed by the run's FIRST real answer are not
+            # charged (a start-of-run blip). A really bad prompt still lands after an answer on some run.
+            all_struck = True
+            k = release_at.randrange(len(jobs))
+            jobs = list(jobs[k:]) + list(jobs[:k])
+            log(f"Every fetched job is struck: starting at #{k}; rejections before the first answer are not charged.")
     if outage_probe and len(jobs) > 1:
         # Probe a job OTHER than the head, rotating with the trip count (jobs[1], then jobs[2], ...): two adjacent
         # bad prompts at the head can no longer wedge the breaker (pre-activation review). The head still runs
@@ -1538,6 +1570,7 @@ def main():
             row = queue_rows.popleft()
         job = dict(zip(columns, row))
         job_id = job["id"]
+        released_pending.discard(job_id)
         elapsed = time.monotonic() - start_time
 
         # Time budget check
@@ -1753,18 +1786,35 @@ def main():
             probe_targets = []
             current_probe_pos = None
             if text:
+                if suspects and all_struck and not real_answer_seen:
+                    log(f"  {len(suspects)} rejection(s) before this all-struck run's first answer: not charged.")
+                    suspects = []
+                real_answer_seen = True
                 if suspects:
                     confirm_segments += 1
+                    if (any(sid in deferred_ids for sid, _, _ in suspects)
+                            and any(sid not in deferred_ids for sid, _, _ in suspects)):
+                        # Round 16 mixed-stretch rule: a run of rejections that took released struck jobs AND
+                        # ordinary jobs is a blip passing over the chunk, not those prompts. The struck jobs keep
+                        # their strike uncharged; the ordinary jobs are struck as usual.
+                        kept = [x for x in suspects if x[0] not in deferred_ids]
+                        log(f"  {len(suspects) - len(kept)} released struck job(s) rejected inside a mixed stretch: "
+                            "not charged.")
+                        suspects = kept
                 confirmed.extend(suspects)
                 suspects = []
-                if struck_deferred:
+                if struck_deferred and not released_pending:
                     # Released in chunks of at most the bound, the next chunk after the next real answer: a chunk is
                     # then confirmed by the answer that follows it before a time budget can end the run (releasing
                     # every struck block at once could spend the whole budget with no later answer, so nothing is
                     # ever confirmed and the same blocks return every run).
+                    # Round 16: at a point drawn fresh in every run (release_offset), not right behind the answer.
                     chunk, struck_deferred = struck_deferred[:max_rejections], struck_deferred[max_rejections:]
-                    deferred_ids |= {dict(zip(columns, r))["id"] for r in chunk}
-                    queue_rows.extendleft(reversed(chunk))
+                    released_pending = {dict(zip(columns, r))["id"] for r in chunk}
+                    deferred_ids |= released_pending
+                    at = release_offset(release_at, len(queue_rows), max_rejections)
+                    for k, r in enumerate(chunk):
+                        queue_rows.insert(at + k, r)
             if cloud and (outage_probe or breaker["outage"]["trips"]):
                 close_breaker(breaker, "outage")
                 save_breaker(bpath, breaker)

@@ -8,6 +8,7 @@ recover_stale_running (an UPDATE) and committed before reaching the dry-run bran
 from __future__ import annotations
 
 import json
+import random
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -1712,6 +1713,10 @@ def _timed_runs(monkeypatch, q, is_bad, runs, budget_min=25, per_call=60.0, limi
     monkeypatch.setattr(w, "build_prompt", lambda job, *a, **k: f"JOB{job['id']}")
     monkeypatch.setattr(w, "_extract_and_register_gaps", lambda *a, **k: None, raising=False)
     monkeypatch.setattr(w.time, "monotonic", lambda: clock["t"])
+    # Reproducible release draws: run k uses seed k (real runs seed from the run id, a timestamp). Different runs
+    # still draw different points; the reviewer's adversarial files exercise the timestamp seeds.
+    seeds = iter(range(10 ** 6))
+    monkeypatch.setattr(w, "release_rng", lambda run_id: random.Random(f"drain-release:test-{next(seeds)}"))
 
     def gen(prompt, **kw):
         clock["t"] += per_call
@@ -1875,14 +1880,31 @@ def test_a_start_of_run_blip_on_every_run_never_charges_a_good_job(monkeypatch):
     assert counted == []
 
 
-def test_struck_jobs_run_right_after_the_runs_first_answer(monkeypatch):
+def _release_at(monkeypatch, offset):
+    """Pin the drawn release point (round 16) so a test can check another property of the release in isolation."""
+    monkeypatch.setattr(w, "release_offset", lambda rng, queue_len, bound: offset)
+
+
+class _FixedDraws:
+    def __init__(self, start=0):
+        self.start = start
+
+    def randrange(self, n):
+        return self.start % n
+
+    def randint(self, a, b):
+        return a
+
+
+def test_struck_jobs_are_released_at_the_drawn_point_after_the_first_answer(monkeypatch):
     import lib.llm_fallback as lf
 
+    _release_at(monkeypatch, 2)
     stamp = datetime.now(timezone.utc).isoformat()
     store = {1: {w.STRIKE_KEY: stamp}, 2: {w.STRIKE_KEY: stamp}}
     monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator(set()))
-    log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(i) for i in range(1, 6)], store=store)
-    assert _running(log) == [3, 1, 2, 4, 5]
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "8"], rows=[_row(i) for i in range(1, 9)], store=store)
+    assert _running(log) == [3, 4, 5, 1, 2, 6, 7, 8]
 
 
 def test_struck_jobs_wait_while_the_run_has_no_answer(monkeypatch):
@@ -1907,14 +1929,15 @@ def test_an_expired_strike_is_not_deferred(monkeypatch):
     assert _running(log) == [1, 2, 3]
 
 
-def test_when_every_fetched_job_is_struck_they_run_in_order(monkeypatch):
+def test_when_every_fetched_job_is_struck_the_order_starts_at_a_drawn_point(monkeypatch):
     import lib.llm_fallback as lf
 
+    monkeypatch.setattr(w, "release_rng", lambda run_id: _FixedDraws(start=1))
     stamp = datetime.now(timezone.utc).isoformat()
     monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator(set()))
     log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(i) for i in range(1, 4)],
                store={i: {w.STRIKE_KEY: stamp} for i in range(1, 4)})
-    assert _running(log) == [1, 2, 3]
+    assert _running(log) == [2, 3, 1]
 
 
 def test_a_bad_struck_job_is_still_charged_on_its_second_run(monkeypatch):
@@ -1935,6 +1958,7 @@ def test_a_released_struck_block_longer_than_the_bound_does_not_end_the_run(monk
     bound: after an answer only one probe is allowed, and it would land in the same block and end the run."""
     import lib.llm_fallback as lf
 
+    _release_at(monkeypatch, 0)  # release point pinned to the front: this test checks another property
     stamp = datetime.now(timezone.utc).isoformat()
     store = {i: {w.STRIKE_KEY: stamp} for i in range(1, 13)}
     monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator(set(range(1, 13))))
@@ -1948,6 +1972,7 @@ def test_struck_jobs_are_released_in_chunks_of_the_bound_each_behind_an_answer(m
     confirmed by the answer that follows it even when a time budget cuts the run short."""
     import lib.llm_fallback as lf
 
+    _release_at(monkeypatch, 0)  # release point pinned to the front: this test checks another property
     bound = int(POLICY["max_consecutive_request_rejections"])
     stamp = datetime.now(timezone.utc).isoformat()
     store = {i: {w.STRIKE_KEY: stamp} for i in range(1, 25)}
@@ -1964,6 +1989,7 @@ def test_a_released_struck_chunk_never_trips_the_between_range_cap(monkeypatch, 
     behind the jobs after the probe."""
     import lib.llm_fallback as lf
 
+    _release_at(monkeypatch, 0)  # release point pinned to the front: this test checks another property
     stamp = datetime.now(timezone.utc).isoformat()
     store = {i: {w.STRIKE_KEY: stamp} for i in range(1, 11)}
     bad = set(range(1, 31))  # 1-10 struck; 11-30 a fresh block: bound at 20, probes 21 (bad) and 41 (answers)
@@ -1981,9 +2007,104 @@ def test_a_bad_job_right_after_a_struck_chunk_does_not_end_the_run(monkeypatch):
     only one probe is allowed, it would hit the next (bad) job, and the run would end as systemic."""
     import lib.llm_fallback as lf
 
+    _release_at(monkeypatch, 0)  # release point pinned to the front: this test checks another property
     stamp = datetime.now(timezone.utc).isoformat()
     store = {i: {w.STRIKE_KEY: stamp} for i in range(1, 11)}
     monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator(set(range(1, 11)) | {12, 13}))
     log = _run(monkeypatch, ["--route", "cloud", "--limit", "30"], rows=[_row(i) for i in range(1, 31)], store=store)
     assert _running(log) == [11, *range(1, 11), *range(12, 31)]
     assert sorted(_done(log)) == [11, *range(14, 31)]
+
+
+# Round 16 (review of #2438/#2439 round 15): the release point is drawn fresh in every run.
+def _run_ids(n):
+    t0 = datetime(2026, 11, 1, tzinfo=timezone.utc)
+    return [(t0 + timedelta(minutes=30 * i)).isoformat() for i in range(n)]
+
+
+def test_release_points_differ_across_runs_and_repeat_within_a_run():
+    bound = int(POLICY["max_consecutive_request_rejections"])
+    firsts = [w.release_offset(w.release_rng(rid), 90, bound) for rid in _run_ids(200)]
+    assert all(1 <= p <= 2 * bound for p in firsts), "never right behind the answer, never past 2 * bound"
+    assert len(set(firsts)) >= 2 * bound - 2, "a different point in different runs"
+    rid = _run_ids(1)[0]
+    a, b = w.release_rng(rid), w.release_rng(rid)
+    assert [w.release_offset(a, 90, bound) for _ in range(5)] == [w.release_offset(b, 90, bound) for _ in range(5)]
+
+
+def test_the_release_point_always_leaves_a_job_after_the_chunk():
+    bound = int(POLICY["max_consecutive_request_rejections"])
+    rng = w.release_rng(_run_ids(1)[0])
+    for n in range(2, 30):
+        assert all(1 <= w.release_offset(rng, n, bound) <= n - 1 for _ in range(50))
+    assert w.release_offset(rng, 1, bound) == 0 and w.release_offset(rng, 0, bound) == 0
+
+
+def test_the_next_chunk_waits_until_the_released_one_has_run(monkeypatch):
+    import lib.llm_fallback as lf
+
+    _release_at(monkeypatch, 2)
+    stamp = datetime.now(timezone.utc).isoformat()
+    store = {i: {w.STRIKE_KEY: stamp} for i in range(1, 16)}  # chunks 1-10 and 11-15
+    monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator(set()))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "40"], rows=[_row(i) for i in range(1, 41)], store=store)
+    assert _running(log)[:22] == [16, 17, 18, *range(1, 11), 19, 20, *range(11, 16), 21, 22]
+
+
+def test_a_blip_over_a_released_chunk_and_ordinary_jobs_charges_no_struck_job(monkeypatch):
+    """Mixed-stretch rule: a run of rejections that took ordinary jobs too is a blip, not the struck prompts."""
+    import lib.llm_fallback as lf
+
+    _release_at(monkeypatch, 2)
+    stamp = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    store = {i: {w.STRIKE_KEY: stamp} for i in range(1, 6)}
+    monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["ok"] + ["400"] * 6 + ["ok"] * 40))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "30"], rows=[_row(i) for i in range(1, 31)], store=store)
+    assert _running(log)[:8] == [6, 7, 8, 1, 2, 3, 4, 5]
+    assert _counted_ids(log) == []
+    assert all(store[i][w.STRIKE_KEY] == stamp for i in range(1, 5)), "the struck jobs keep their strike"
+    assert sorted(_struck_ids(log)) == [7, 8], "the ordinary jobs are struck as usual"
+
+
+def test_a_released_chunk_rejected_on_its_own_is_charged(monkeypatch):
+    import lib.llm_fallback as lf
+
+    _release_at(monkeypatch, 2)
+    stamp = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    store = {i: {w.STRIKE_KEY: stamp} for i in range(1, 4)}
+    monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator({1, 2, 3}))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "30"], rows=[_row(i) for i in range(1, 31)], store=store)
+    assert sorted(_counted_ids(log)) == [1, 2, 3]
+
+
+def test_a_blip_after_the_first_call_of_every_run_charges_nobody(monkeypatch):
+    """A token refresh triggered by each run's first call breaks calls 2-6 of every run; every job is good."""
+    import lib.llm_fallback as lf
+
+    store, rows, counted = {}, [_row(i) for i in range(1, 121)], []
+    for _ in range(8):
+        monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["ok"] + ["400"] * 5 + ["ok"] * 200))
+        counted += _counted_ids(_run(monkeypatch, ["--route", "cloud", "--limit", "100"], rows=rows, store=store))
+    assert counted == []
+
+
+def test_in_an_all_struck_run_rejections_before_the_first_answer_are_not_charged(monkeypatch):
+    import lib.llm_fallback as lf
+
+    monkeypatch.setattr(w, "release_rng", lambda run_id: _FixedDraws(start=0))
+    stamp = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    store = {i: {w.STRIKE_KEY: stamp} for i in range(1, 7)}
+    monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["400"] * 3 + ["ok"] * 10))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "6"], rows=[_row(i) for i in range(1, 7)], store=store)
+    assert _counted_ids(log) == [] and all(store[i][w.STRIKE_KEY] == stamp for i in range(1, 4))
+
+
+def test_in_an_all_struck_run_a_bad_job_after_the_first_answer_is_charged(monkeypatch):
+    import lib.llm_fallback as lf
+
+    monkeypatch.setattr(w, "release_rng", lambda run_id: _FixedDraws(start=0))
+    stamp = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    store = {i: {w.STRIKE_KEY: stamp} for i in range(1, 7)}
+    monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator({5}))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "6"], rows=[_row(i) for i in range(1, 7)], store=store)
+    assert _counted_ids(log) == [5]
