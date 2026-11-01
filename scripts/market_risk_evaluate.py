@@ -88,7 +88,12 @@ def persist(doc: dict, now: datetime, *, shadow: bool = False) -> str:
         }
     )
     hist.sort(key=lambda h: scoring._parse(h.get("as_of")) or datetime.min.replace(tzinfo=timezone.utc))
-    atomic_write_json(snapshot_path(), snapshot_from_assessment(body, history=hist))  # carries mode: live|shadow
+    snap = snapshot_from_assessment(body, history=hist)  # carries mode: live|shadow
+    # Keep the last deep brief on the snapshot while risk stays elevated (the brief is written once per episode
+    # transition, the snapshot every cycle).
+    if isinstance(prev.get("deep_brief"), dict) and str(doc.get("tier") or "").upper() in ("YELLOW", "ORANGE", "RED"):
+        snap["deep_brief"] = prev["deep_brief"]
+    atomic_write_json(snapshot_path(), snap)
     return str(d / (SHADOW_PRIOR if shadow else "latest.json"))
 
 
@@ -260,13 +265,13 @@ def run_cycle(
             if src.exists():
                 shutil.copy2(src, dst)
     try:
-        return _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_assessed)
+        return _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_assessed, reader=reader)
     finally:
         if tmpdir is not None:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
 
-def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_assessed=None) -> dict[str, Any]:
+def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_assessed=None, reader=None) -> dict[str, Any]:
     """Crash-safe order (review of #2383, B5d):
 
     1. ``observe`` folds the evaluation into the episode store;
@@ -312,6 +317,7 @@ def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_asse
             now=now,
             path=ledger,
         )
+    _queue_deep_brief(doc, prior, now, ledger, out.get("episode_id"), intent)
     for rep in [] if bootstrap else escalation.due_repeats(now=now, policy=policy, path=store):
         if intent and rep["episode_id"] == out["episode_id"] and ep["event"] in ("opened", "upgraded", "reopened"):
             continue  # the initial card of this episode is already queued this cycle
@@ -366,7 +372,10 @@ def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_asse
         on_assessed(doc)
     for ent in alerts.outbox_due(now=now, path=ledger, claim_ttl_min=ttl):
         try:  # one bad entry never stops the others or crashes the cycle (review round 3, H2)
-            res = _drain_one(ent, now, doc, policy, apply, store, ledger, call_model, esc_cfg)
+            if ent.get("kind") == "deep_brief":
+                res = _drain_deep_brief(ent, now, doc, policy, apply, ledger, call_model, reader)
+            else:
+                res = _drain_one(ent, now, doc, policy, apply, store, ledger, call_model, esc_cfg)
         except Exception as exc:  # noqa: BLE001 — logged and reported; the entry stays queued for the next cycle
             print(
                 f"market_risk_evaluate: outbox entry {ent.get('key')} failed ({type(exc).__name__}: {exc})",
@@ -382,6 +391,44 @@ def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_asse
             out["sends"].append(res)
     out["stalled"] = escalation.stalled(now=now, policy=policy, path=store)
     return out
+
+
+def _deep_brief(now, doc, prior, reader, policy, apply, ledger, out, call_model) -> dict[str, Any] | None:
+    """The follow-up deep brief, AFTER the initial cards of this cycle (never delays them). Any failure is reported in
+    the cycle, never raised: the alert path is already done."""
+    try:
+        from scripts.lib.market_risk import deep_brief
+
+        sources = None
+        if hasattr(reader, "_rows"):  # production PgReader: the other stores through the same read-only session
+            from scripts.lib.market_risk.deep_brief_facts import PgSources
+
+            sources = PgSources(reader)
+        snap = _read_prior(snapshot_path()) if apply else None
+        res = deep_brief.follow_up(
+            doc,
+            prior,
+            now=now,
+            reader=reader,
+            policy=policy,
+            apply=apply,
+            ledger=ledger,
+            episode_id=out.get("episode_id"),
+            snapshot=snap,
+            sources=sources,
+            call_model=call_model,
+        )
+        if res is None:
+            return None
+        if apply:
+            snap = _read_prior(snapshot_path())
+            if isinstance(snap, dict):
+                snap["deep_brief"] = deep_brief.snapshot_block(res)
+                atomic_write_json(snapshot_path(), snap)
+        return {k: res[k] for k in ("trigger", "brief", "send")} | {"unknown": res["pack"].get("unknown")}
+    except Exception as exc:  # noqa: BLE001 — the brief can never break the alert cycle; reported, not swallowed
+        print(f"market_risk_evaluate: deep brief failed ({type(exc).__name__}: {exc})", file=sys.stderr)
+        return {"error": f"{type(exc).__name__}: {exc}"[:240]}
 
 
 def _drain_one(ent, now, doc, policy, apply, store, ledger, call_model, esc_cfg) -> dict[str, Any] | None:
@@ -445,6 +492,57 @@ def _drain_one(ent, now, doc, policy, apply, store, ledger, call_model, esc_cfg)
             alerts.mark_recorded(key, path=ledger)
     elif delivered and orphan:
         alerts.mark_superseded(key, path=ledger, reason="sent; its episode was replaced (torn ledger)")
+    return res
+
+
+def _queue_deep_brief(doc, prior, now, ledger, episode_id, initial_intent) -> None:
+    """Queue the follow-up deep brief in the outbox, in the same crash-safe step as the initial card (BEFORE the prior
+    is persisted): a crash before this point recomputes the same transition next cycle; after it, the entry waits in
+    the outbox. Its text is built at drain time, only once the initial card is ``sent`` (review of #2393, item 1)."""
+    try:
+        from scripts.lib.market_risk import alerts, deep_brief
+
+        entry = deep_brief.outbox_entry(doc, prior, episode_id=episode_id, initial_intent=initial_intent)
+        if entry is not None:
+            alerts.outbox_put(entry, now=now, path=ledger)
+    except Exception as exc:  # noqa: BLE001 — a brief can never break the alert cycle; logged, not swallowed
+        print(f"market_risk_evaluate: deep brief not queued ({type(exc).__name__}: {exc})", file=sys.stderr)
+
+
+def _drain_deep_brief(ent, now, doc, policy, apply, ledger, call_model, reader) -> dict[str, Any] | None:
+    """Send a queued deep brief once no card of its episode is unsent (``deep_brief.drain_gate``); built now from the current assessment (read-only
+    fact pack; the model only when enabled, in a daemon thread with a hard timeout). A failed send is retried like
+    any other card (``settle`` reschedules it with backoff)."""
+    from scripts.lib.market_risk import alerts, deep_brief
+
+    key = ent["key"]
+    verdict, why = deep_brief.drain_gate(ent, doc, alerts._load_ledger(ledger).get("keys") or {})  # noqa: SLF001
+    if verdict == "retire":
+        alerts.mark_superseded(key, path=ledger, reason=why)
+        return None  # reconciled, not sent (same contract as _drain_one)
+    if verdict == "wait":
+        return None  # every card of its episode goes first; the brief stays queued
+    sources = None
+    if hasattr(reader, "_rows"):  # production PgReader: the other stores through the same read-only session
+        from scripts.lib.market_risk.deep_brief_facts import PgSources
+
+        sources = PgSources(reader)
+    snap = _read_prior(snapshot_path()) if apply else None
+    model = call_model if call_model is not None else (deep_brief.default_call_model() if apply else None)
+    brief, pack = deep_brief.build(now, reader, doc, snapshot=snap, sources=sources, call_model=model)
+    res = alerts.deliver(brief["text"], dict(ent["intent"], dedupe_key=key), policy, dry_run=not apply, now=now, ledger=ledger)
+    res.update(kind="deep_brief", key=key, curated=brief["curated"], curation_reason=brief["reason"], text=brief["text"])
+    if not apply and not res.get("deduped"):
+        alerts.settle(key, True, path=ledger, now=now)  # scratch ledger only
+    if apply and res.get("sent"):
+        try:
+            cur = _read_prior(snapshot_path())
+            if isinstance(cur, dict):
+                cur["deep_brief"] = deep_brief.snapshot_block({"brief": brief, "pack": pack, "generated_at": now.isoformat(), "trigger": (ent.get("intent") or {}).get("transition")})
+                atomic_write_json(snapshot_path(), cur)
+        except Exception as exc:  # noqa: BLE001 — the card is sent; the stored copy is a convenience, logged
+            print(f"market_risk_evaluate: deep brief not stored ({type(exc).__name__}: {exc})", file=sys.stderr)
+    res["unknown"] = pack.get("unknown")
     return res
 
 

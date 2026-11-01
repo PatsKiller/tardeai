@@ -272,6 +272,7 @@ def build(
         "history": list(snapshot.get("history") or [])[-30:],
         "mode": snapshot.get("mode"),
         "carried_only": bool(snapshot.get("carried_only")),
+        "deep_brief": snapshot.get("deep_brief") if isinstance(snapshot.get("deep_brief"), dict) else None,
         "sources": sources,
         "generated_at": now.isoformat(),
     }
