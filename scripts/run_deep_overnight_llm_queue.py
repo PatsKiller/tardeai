@@ -624,10 +624,19 @@ UNPARSEABLE_OUTPUT_TYPES = frozenset({"ValueError", "JSONDecodeError"})
 
 
 class CloudRefused(Exception):
-    """Not the job's fault: no lane produced a model answer because of the gate, a cap, a deferral, auth, transport
+    """Not (yet) the job's fault: no lane produced a model answer because of the gate, a cap, a deferral, auth, transport
     or HTTP errors, or an unavailable lane. The job goes back to pending with its attempt uncounted and the run
     stops. 2026-11-01 review: a lane outage (Grok down + ChatGPT AUTH_EXPIRED / HTTP 400 / refused connections) used
-    to count as a failed attempt on every job, so one run could walk the backlog to 'failed'."""
+    to count as a failed attempt on every job, so one run could walk the backlog to 'failed'.
+
+    ``request_rejected`` is True only when every lane that actually ran rejected the REQUEST itself (HTTP 400/413/422
+    or a malformed body), and at least two distinct lanes did: the one refusal shape that can be this job's own
+    prompt. Transport, auth, timeout, 5xx and
+    unavailable lanes are never request_rejected, so a pure outage can never strike a job."""
+
+    def __init__(self, reason, request_rejected=False):
+        super().__init__(reason)
+        self.request_rejected = bool(request_rejected)
 
 
 def _error_code(err):
@@ -653,6 +662,41 @@ def _attempt_kind(a):
     if etype in UNPARSEABLE_OUTPUT_TYPES:
         return "job"
     return "outage"
+
+
+#: HTTP statuses that reject the request's content rather than the caller or the transport.
+REQUEST_REJECTED_HTTP = frozenset({400, 413, 422})
+#: A lane returned a body without the expected fields: could be this prompt, could be a proxy page; ambiguous.
+MALFORMED_BODY_TYPES = frozenset({"KeyError"})
+
+
+#: Distinct lanes that must independently reject a request before it can be this job's own fault. One lane answering
+#: 400 to everything while the others are down is that lane's outage (the llm_fallback "11/11" pattern, round 5).
+MIN_CORROBORATING_LANES = 2
+
+
+def request_rejected(exc):
+    """True when every lane that ran rejected the request itself (see CloudRefused) AND at least
+    MIN_CORROBORATING_LANES distinct lanes did so. Structured, never substring."""
+    attempts = getattr(exc, "attempts", None)
+    if attempts is None:
+        attempts = [{"ok": False, "error": f"{type(exc).__name__}: {exc}"}]
+    ran = []
+    lanes = set()
+    for a in attempts:
+        err = str(a.get("error") or "")
+        if a.get("ok") or err in ("", "unavailable"):
+            continue
+        etype, code = _error_code(err)
+        if etype == "HTTPError":
+            first = code.split(" ", 1)[0]
+            rejected = first.isdigit() and int(first) in REQUEST_REJECTED_HTTP
+        else:
+            rejected = etype in MALFORMED_BODY_TYPES
+        ran.append(rejected)
+        if rejected:
+            lanes.add(str(a.get("lane") or ""))
+    return bool(ran) and all(ran) and len(lanes) >= MIN_CORROBORATING_LANES
 
 
 def classify_cloud_failure(exc):
@@ -714,11 +758,21 @@ def load_breaker(path):
         return _fresh_breaker()
     state = _fresh_breaker()
     for k in _BREAKER_KINDS:
-        if isinstance(doc.get(k), dict):
-            state[k].update(doc[k])
+        src = doc.get(k) if isinstance(doc.get(k), dict) else {}
+        state[k] = {"trips": _int_or_zero(src.get("trips")),
+                    "open_until": src.get("open_until") if isinstance(src.get("open_until"), str) else None,
+                    "reason": str(src.get("reason") or "")[:300]}
     if isinstance(doc.get("strikes"), dict):
-        state["strikes"] = {str(j): int(n) for j, n in doc["strikes"].items() if str(n).isdigit()}
+        state["strikes"] = {str(j): _int_or_zero(n) for j, n in doc["strikes"].items() if _int_or_zero(n) > 0}
     return state
+
+
+def _int_or_zero(value):
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return n if n > 0 else 0
 
 
 def save_breaker(path, state):
@@ -732,15 +786,18 @@ def breaker_open(state, kind, now=None):
     if not until:
         return False
     try:
-        return (now or datetime.now(timezone.utc)) < datetime.fromisoformat(str(until))
+        until_dt = datetime.fromisoformat(str(until))
     except ValueError:
         return False
+    if until_dt.tzinfo is None:
+        until_dt = until_dt.replace(tzinfo=timezone.utc)  # a naive stamp is read as UTC, never compared naive
+    return (now or datetime.now(timezone.utc)) < until_dt
 
 
 def trip_breaker(state, kind, reason, policy, now=None):
     """Open (or extend) a breaker; returns the cooldown in minutes."""
     b = state[kind]
-    b["trips"] = int(b.get("trips") or 0) + 1
+    b["trips"] = _int_or_zero(b.get("trips")) + 1
     base = float((policy or {}).get("breaker_cooldown_min") or 30)
     cap = float((policy or {}).get("breaker_cooldown_max_min") or 360)
     minutes = min(base * (2 ** min(b["trips"] - 1, 16)), cap)
@@ -808,7 +865,7 @@ def call_cloud(prompt, policy, *, fallback=None, now=None):
     except Exception as e:  # noqa: BLE001 - every lane failed or the budget gate refused
         kind, reason = classify_cloud_failure(e)
         if kind != "job":
-            raise CloudRefused(reason) from e
+            raise CloudRefused(reason, request_rejected=request_rejected(e)) from e
         log(f"  cloud chain {chain} failed (counts against the job): {reason}")
         return None, round(time.monotonic() - t0, 1), "cloud:none"
     runtime = round(time.monotonic() - t0, 1)
@@ -1179,6 +1236,10 @@ def main():
     suspect = None  # (job_id, reason): refused, waiting to learn whether the lanes or the job were at fault
     if outage_probe or failure_probe:
         log(f"Breaker open ({'outage' if outage_probe else 'failure'}): this run tries one job first.")
+    if outage_probe and len(jobs) > 1:
+        # Probe a job OTHER than the head: a head that only fails on its own prompt must not keep the breaker
+        # open forever. If the probe is answered, the breaker closes and the head runs next in this same run.
+        jobs = [jobs[1], jobs[0]] + list(jobs[2:])
 
     for row in jobs:
         job = dict(zip(columns, row))
@@ -1314,20 +1375,23 @@ def main():
                 processed += 1
                 if cloud and (outage_probe or suspect is not None):
                     # Two refusals in a row, or the probe refused while the breaker is open: the lanes are out.
-                    head_id = job_id if outage_probe else suspect[0]
-                    if add_strike(breaker, head_id) >= strike_limit:
-                        _count_deferred_attempt(cur, head_id, f"counted after {strike_limit} refusals at the queue "
-                                                f"head (a prompt every lane rejects): {refusal}")
-                        conn.commit()
-                        breaker["strikes"].pop(str(head_id), None)
-                        failed += 1
-                        log(f"  COUNTED #{head_id} — refused at the head {strike_limit} times in a row")
+                    # Two refusals in a row never strike anyone (round 4: that is an outage). Only a refused PROBE
+                    # whose lanes rejected the request itself is struck, so a prompt every lane rejects still counts
+                    # eventually while a transport/auth/5xx outage never spends an attempt.
+                    if outage_probe and getattr(refusal, "request_rejected", False):
+                        if add_strike(breaker, job_id) >= strike_limit:
+                            _count_deferred_attempt(cur, job_id, f"counted after {strike_limit} probe runs in which "
+                                                    f"every lane rejected this request: {refusal}")
+                            conn.commit()
+                            breaker["strikes"].pop(str(job_id), None)
+                            failed += 1
+                            log(f"  COUNTED #{job_id} — every lane rejected its request on {strike_limit} probe runs")
                     minutes = trip_breaker(breaker, "outage", str(refusal), drain_policy)
                     save_breaker(bpath, breaker)
                     log(f"  REFUSED #{job_id} — {refusal}; lane outage: breaker open {minutes:.0f} min. Stopping the run.")
                     suspect = None
                     break
-                suspect = (job_id, str(refusal))
+                suspect = (job_id, str(refusal), getattr(refusal, "request_rejected", False))
                 log(f"  REFUSED #{job_id} — {refusal}; back to pending, attempt not counted. Trying the next job.")
                 continue
             # A lane answered this job (text or a counted failure): the lanes work.
@@ -1445,8 +1509,9 @@ def main():
 
         processed += 1
 
-    if cloud and suspect is not None:
-        # Refused, and no later job in this run told us why: one strike; the head is counted after strike_limit.
+    if cloud and suspect is not None and suspect[2]:
+        # Refused with a request rejection, and no later job in this run told us why (a one-job queue, or the run
+        # ended): one strike; counted after strike_limit. An outage-shaped refusal is never struck.
         if add_strike(breaker, suspect[0]) >= strike_limit:
             _count_deferred_attempt(cur, suspect[0], f"counted after {strike_limit} unresolved refusals: {suspect[1]}")
             conn.commit()
