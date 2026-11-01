@@ -92,12 +92,14 @@ def successful_runs(path: Path, *, now: datetime) -> dict[tuple[str, str], dict]
 def cause(receipt: dict | None, fallback: str | None = None) -> str:
     """The bounded stderr cause, then an explicit missing-diagnostic gap."""
     receipt = receipt or {}
+    from scripts.lib.error_line_redaction import redact_error_line
     from scripts.lib.scheduler_operations import redact_command
     stderr = receipt.get("stderr_tail")
     if isinstance(stderr, str) and stderr.strip():
-        # Use the existing command redactor before projecting logs to operator UI.
-        return redact_command(stderr.strip())[-600:]
+        # The command redactor knows NAME=value shell pairs only; error text also carries URL query
+        # keys, bot tokens, DSN passwords and secrets paths (2026-10-31), so the strict one runs too.
+        return redact_error_line(redact_command(stderr.strip()))[-600:]
     reason = str(receipt.get("reason") or fallback or "").strip()
     if reason and not re.fullmatch(r"exit[_ :\-]?\d+", reason, flags=re.I):
-        return redact_command(reason)[:600]
+        return redact_error_line(redact_command(reason))[:600]
     return "Failure recorded; stderr diagnostic was not retained"

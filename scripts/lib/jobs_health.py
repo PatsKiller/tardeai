@@ -30,6 +30,7 @@ NO_DIAGNOSTIC = "Failure recorded; stderr diagnostic was not retained"
 #: A job log's last error line explains a wrapper failure only if the log was written this close to it.
 LOG_DIAGNOSTIC_SLACK = timedelta(minutes=5)
 _ERROR_LINE = re.compile(r"^[A-Za-z_][\w.]*(?:Error|Exception|Exit|Interrupt)(?::|$)")
+_LINE_TIME = re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?")
 
 
 def last_log_success(path: Path, *, now: datetime):
@@ -75,16 +76,34 @@ def last_log_success(path: Path, *, now: datetime):
     return latest
 
 
+def _line_time(line: str):
+    """The timestamp printed on a log line, or None. A naive stamp is host time, America/New_York."""
+    match = _LINE_TIME.search(line)
+    if not match:
+        return None
+    try:
+        at = datetime.fromisoformat(match.group(0).replace(" ", "T", 1).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return (at if at.tzinfo else at.replace(tzinfo=ZoneInfo("America/New_York"))).astimezone(timezone.utc)
+
+
 def last_log_error(path: Path):
-    """The last exception line in a job's own log tail, with the log's last write time.
+    """The last exception line in a job's own log tail, with the time that error was written.
 
     Host cron lines send stderr into the job log (``>> logs/<job>.log 2>&1``), so the safe_flock
     wrapper event records only ``exit_code: 1``. The traceback's final line is in this log.
     2026-10-30: the stop supervisor failed 137 times on ``AssertionError: ALPACA_MODE must be paper``
     and the Jobs page could only say the diagnostic was not retained.
+
+    The time belongs to the error, not to the file: the nearest timestamp printed in the error's own
+    block (after the previous error line), else the file's last write only when the error line is
+    the last thing in the log. An older error followed by later untimed output has no time and is
+    never attached to a newer failure. The line is returned raw; the caller shows it via ``cause()``,
+    which redacts it.
     """
     try:
-        at = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+        mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
         with path.open("rb") as stream:
             stream.seek(0, 2)
             start = max(0, stream.tell() - 64 * 1024)
@@ -94,11 +113,26 @@ def last_log_error(path: Path):
             raw = raw.partition(b"\n")[2]
     except OSError:
         return None
+    lines = [line.strip() for line in raw.decode("utf-8", errors="replace").splitlines()]
+    lines = [line for line in lines if line]
     found = None
-    for line in raw.decode("utf-8", errors="replace").splitlines():
-        if _ERROR_LINE.match(line.strip()):
-            found = line.strip()
-    return {"line": found[:400], "at": at} if found else None
+    for index, line in enumerate(lines):
+        if _ERROR_LINE.match(line):
+            found = index
+    if found is None:
+        return None
+    at = None
+    for index in range(found, -1, -1):
+        if index != found and _ERROR_LINE.match(lines[index]):
+            break
+        at = _line_time(lines[index])
+        if at:
+            break
+    if at is None and found == len(lines) - 1:
+        at = mtime
+    if at is None:
+        return None
+    return {"line": lines[found][:400], "at": at}
 
 
 def _json(path, limit=8 * 1024 * 1024):
