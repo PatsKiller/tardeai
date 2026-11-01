@@ -18933,18 +18933,44 @@
       "lane_id": "market-quotes-offhours-schwab",
       "owner": "platform",
       "scheduler": {
-        "kind": "none"
+        "kind": "cron",
+        "expression": "*/15 18-23 * * 0 + */15 * * * 1-4 + */15 0-9 * * 5",
+        "match": "scripts/market_quotes_offhours_schwab.py --apply",
+        "schedules": [
+          "*/15 18-23 * * 0",
+          "*/15 * * * 1-4",
+          "*/15 0-9 * * 5"
+        ],
+        "command_text": "cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_offhours_schwab.lock $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1"
       },
-      "expected_cadence_hours": 0.25,
-      "state": "NEVER_SCHEDULED",
+      "expected_cadence_hours": 56.25,
+      "state": "ACTIVE",
       "state_since": "2026-11-01",
-      "state_reason": "Declared, not yet scheduled. Schwab off-hours market-data quotes for the Market Risk Engine (scripts/market_quotes_offhours_schwab.py, #2416/#2423): index futures, indices and the extended-hours universe in the overnight (20:00-04:00 ET), Sunday futures_open (18:00-20:00 ET), pre-market and after-hours sessions, into market_quotes_extended (feed schwab) through its single writer. Operator, in session 2026-11-01 ~13:45 ET (verbatim): \"enable schwab\", under the 2026-10-31 broker-market-data allowance (AGENTS.md 29.2.0 §24.11). This PR sets schwab.enabled true and records the grant (config/data_source_authority.json providers.schwab.supply_grants); the crontab lines are installed after merge (§25.10.2) and this row then flips to ACTIVE.",
+      "state_reason": "Operator, in session 2026-11-01 ~13:45 ET (verbatim): \"enable schwab\", under the 2026-10-31 broker-market-data allowance (AGENTS.md 29.2.0 §24.11: read-only market data via host lanes; never orders, accounts, stops, 2FA, auth endpoints or credentials). #2454 set schwab.enabled true and recorded the grant (config/data_source_authority.json providers.schwab.supply_grants). The coordinator's session installed three host crontab lines (crontab -l L1092-L1094; backup persistent-state/archive/crontab/crontab.pre-schwab-offhours.20261101T161509.txt) running scripts/market_quotes_offhours_schwab.py --apply every 15 minutes from Sunday 18:00 to Friday 09:45 ET; the script's own window (Sunday 18:00 to Friday 09:30, regular session skipped) decides when Schwab is called.",
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "No crontab line or timer runs scripts/market_quotes_offhours_schwab.py. 2026-11-01 from release 4bc61bcdb: --probe reported enabled false (before this PR), store_domain_granted true, url_rail_ok true, live_call_made false; --dry-run --fixture tests/fixtures/offhours_quotes/schwab_quotes_overnight_20261102.json --now 2026-11-02T02:30-05:00 produced 5 rows, 2 skipped, 0 inserted.",
+      "reason_evidence": "crontab -l L1092 '*/15 18-23 * * 0', L1093 '*/15 * * * 1-4', L1094 '*/15 0-9 * * 5', each '... $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1' (ungated). Release a618e759b (CURRENT, carries #2454) --probe 2026-11-01 17:45 ET: enabled true, store_domain_granted true, url_rail_ok true, live_call_made false. First scheduled run 2026-11-01 18:00 ET: status ok, window futures_overnight, 30 symbols, inserted 4 (session futures_open, session_date 2026-11-02, feed schwab: /ESZ26 7638.25, /NQZ26 28677.0, /RTYZ26 2829.7, /YMZ26 52030.0, all level-only: no dated settlement in the payload), 26 skipped (25 stale_trade equities/indices last traded 2026-10-30, 1 not_a_quote 'errors' key). market_quotes_extended now holds feed schwab 4 rows, feed sip 23 rows.",
       "output_signal": {
-        "kind": "none"
+        "kind": "file_mtime",
+        "path": "logs/market_quotes_offhours_schwab.log",
+        "evidence": "CRON_LOG_REDIRECT"
       },
-      "note": "Proposed host crontab lines (host TZ America/New_York, no CRON_TZ, ungated: overnight and Sunday futures trade on NYSE holidays' eves): '*/15 18-23 * * 0', '*/15 * * * 1-4' and '*/15 0-9 * * 5', each 'cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_offhours_schwab.lock $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1'. The script enforces its own window (config/market_risk_offhours_quotes.yaml schwab.window Sunday 18:00 to Friday 09:30 ET, skip_regular_session on trading days), so fires outside it exit outside_window without a Schwab call. Rail: GET https://api.schwabapi.com/marketdata/v1/quotes only (marketdata_url refuses any other URL); never imports schwab_transport; reads the stored access token only while the token manager's health() says it is fresh, and never refreshes; never reads a credential file; schwab_access_mode must allow reads."
+      "note": "Installed host crontab lines L1092-L1094 (host TZ America/New_York, no CRON_TZ, ungated: overnight and Sunday futures trade on NYSE holidays' eves): '*/15 18-23 * * 0', '*/15 * * * 1-4' and '*/15 0-9 * * 5', each 'cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_offhours_schwab.lock $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1'. The script enforces its own window (config/market_risk_offhours_quotes.yaml schwab.window Sunday 18:00 to Friday 09:30 ET, skip_regular_session on trading days), so fires outside it exit outside_window without a Schwab call. Rail: GET https://api.schwabapi.com/marketdata/v1/quotes only (marketdata_url refuses any other URL); never imports schwab_transport; reads the stored access token only while the token manager's health() says it is fresh, and never refreshes; never reads a credential file; schwab_access_mode must allow reads. expected_cadence_hours 56.25 is the max gap of the union of the three expressions (Friday 09:45 to Sunday 18:00, reconcile_lane_registry.cron_cadence_hours_union); inside the window the cadence is 15 minutes.",
+      "adopted_on": "2026-11-01",
+      "adopted_reason": "2026-11-01: flipped NEVER_SCHEDULED -> ACTIVE after the operator-approved install of crontab L1092-L1094 (\"enable schwab\"); hand-maintained.",
+      "value_class": "UNCLASSIFIED",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": null,
+        "recommendation": null,
+        "value_class": "UNCLASSIFIED",
+        "note": "no rationalization item joined to this line"
+      },
+      "stay_on_cron": {
+        "class": "broker_order",
+        "token": "schwab",
+        "source": "config/lane_stay_on_cron_tokens.json"
+      }
     },
     {
       "lane_id": "run-scheduled-quote-refresh-incubator",

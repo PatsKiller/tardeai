@@ -224,14 +224,18 @@ def test_snapshot_carries_the_post_install_crontab():
     # siem-active-flip 2026-10-11 appends L1060+L1063 after them; tmp-scratch-cleanup 2026-10-14 appends L1065;
     # market-risk-evaluate 2026-11-01 appends L1083-L1086 last (the Market Risk Engine, operator "run it now"; shadow
     # until ~11:10 ET, then --apply on "I also approve turning on real alerts"); market-quotes-extended 2026-11-01
-    # appends L1089-L1090 after them ("I approve the after-hour")
-    assert len(SNAP_LINES[-2:]) == 2 and all(
-        "scripts/market_quotes_extended.py --apply" in ln for ln in SNAP_LINES[-2:]
+    # appends L1089-L1090 after them ("I approve the after-hour"); market-quotes-offhours-schwab 2026-11-01 appends
+    # L1092-L1094 last ("enable schwab")
+    assert len(SNAP_LINES[-3:]) == 3 and all(
+        "scripts/market_quotes_offhours_schwab.py --apply" in ln for ln in SNAP_LINES[-3:]
     )
-    assert len(SNAP_LINES[-6:-2]) == 4 and all(
-        "scripts/market_risk_evaluate.py --scheduled --apply" in ln for ln in SNAP_LINES[-6:-2]
+    assert len(SNAP_LINES[-5:-3]) == 2 and all(
+        "scripts/market_quotes_extended.py --apply" in ln for ln in SNAP_LINES[-5:-3]
     )
-    before = SNAP_LINES[:-6]
+    assert len(SNAP_LINES[-9:-5]) == 4 and all(
+        "scripts/market_risk_evaluate.py --scheduled --apply" in ln for ln in SNAP_LINES[-9:-5]
+    )
+    before = SNAP_LINES[:-9]
     assert before[-5:-3] == LINES
     assert not any("check_n8n_workflow_drift.py" in ln for ln in SNAP_LINES)
     assert before[-3:-1] == [
