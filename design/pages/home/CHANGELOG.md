@@ -66,3 +66,6 @@
 
   No size, order, stop level or "buy" anywhere. Mockup only, awaiting the operator's decision in Approvals → Designs;
   mockups in the private design store.
+
+- 2026-11-01 APPROVED v006. The operator, verbatim: "I approve version 6." Recorded from the message under AGENTS.md §20
+  (as for v002, v004 and v005). Build follows in a PR stacked on this one, citing `Design: home/v006`.

@@ -1,9 +1,9 @@
-# Home v006 — SPEC (PROPOSED 2026-11-01): Protect / Hedge / Rotate, tap-to-explain
+# Home v006 — SPEC (APPROVED 2026-11-01): Protect / Hedge / Rotate, tap-to-explain
 
 Builds on the approved home/v005 (live component `MarketRiskActionable.tsx`, test id `home-market-risk-summary`).
 Same slot, same states, same sections; v006 adds an action block under the verdict, an (i) explanation on every term,
-and four fixes. **PROPOSED, awaiting the operator's decision in Approvals → Designs.** The build cites
-`Design: home/v006` only after approval.
+and four fixes. **APPROVED by the operator on 2026-11-01: "I approve version 6."** Recorded from the message under
+AGENTS.md §20, as for v002, v004 and v005. The build cites `Design: home/v006`.
 
 The operator approved making this version ("Yes, version 0.0.6", 2026-11-01). That is approval to design it, not of
 the design.

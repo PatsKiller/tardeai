@@ -2,10 +2,20 @@
   "schema": "DesignVersionStatus@v1",
   "page": "home",
   "version": "v006",
-  "state": "PROPOSED",
+  "state": "APPROVED",
   "title": "Home: Protect / Hedge / Rotate block under the verdict, tap-to-explain (i) on every term, folded $0 groups, issuer segment label",
   "created": "2026-11-01",
-  "approval": null,
+  "approval": {
+    "by": "operator",
+    "at": "2026-11-01",
+    "ref": "in-session directive (coordinator session_01GeLa7JgVXENzWSJSDhcHkF)",
+    "kind": "operator in-session words, verbatim: \"I approve version 6.\" (2026-11-01). Recorded from the message under AGENTS.md \u00a720, as for home/v002, v004 and v005; the Approvals -> Designs tap is not yet recording to the ledger.",
+    "source": [
+      "docs/designs/DSN-20261031-market-risk-ui.md"
+    ],
+    "push_approval": "https://github.com/PatsKiller/tardeai/pull/2409#issuecomment-6563998617",
+    "ledger": null
+  },
   "request": {
     "by": "operator",
     "at": "2026-11-01",
