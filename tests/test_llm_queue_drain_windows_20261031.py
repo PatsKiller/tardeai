@@ -88,16 +88,16 @@ def test_call_cloud_routes_through_the_budget_gated_chain(monkeypatch):
     assert seen["allow_paid"] is True and seen["extra_lanes"][-1] == "deepseek-flash"
 
 
-def test_call_cloud_model_failure_is_a_failed_job_not_a_crash():
+def test_call_cloud_empty_model_output_is_a_failed_job_not_a_crash():
     from lib.llm_fallback import AllLanesFailed
 
-    def timeouts(prompt, **kw):
+    def empty(prompt, **kw):
         raise AllLanesFailed([
             {"lane": "anthropic", "ok": False, "error": "RuntimeError: POLICY_NOT_ALLOWED", "skipped_reason": ""},
-            {"lane": "grok", "ok": False, "error": "TimeoutError: read timed out", "skipped_reason": ""},
+            {"lane": "grok", "ok": False, "error": "empty response", "skipped_reason": ""},
         ])
 
-    assert w.call_cloud("p", POLICY, fallback=timeouts, now=_utc(2026, 10, 31, 18))[0] is None
+    assert w.call_cloud("p", POLICY, fallback=empty, now=_utc(2026, 10, 31, 18))[0] is None
 
 
 @pytest.mark.parametrize(
@@ -125,12 +125,59 @@ def test_all_lanes_refused_or_unavailable_is_a_refusal():
         {"lane": "chatgpt", "ok": False, "error": "", "skipped_reason": "availability probe error: OSError"},
         {"lane": "chatgpt", "ok": False, "error": "RuntimeError: COST_CAP_EXCEEDED: {...}", "skipped_reason": ""},
     ])
-    assert w.classify_cloud_failure(exc)
-    assert w.classify_cloud_failure(RuntimeError("read timed out")) is None
+    assert w.classify_cloud_failure(exc)[0] == "outage"
+    assert w.classify_cloud_failure(TimeoutError("read timed out"))[0] == "outage"
 
 
 def test_job_specific_input_limit_is_not_a_run_stopping_refusal():
-    assert w.classify_cloud_failure(RuntimeError("INPUT_LIMIT_EXCEEDED: 40000 > 32000")) is None
+    assert w.classify_cloud_failure(RuntimeError("INPUT_LIMIT_EXCEEDED: 40000 > 32000"))[0] == "job"
+
+
+def _a(lane, error, ok=False, skipped=""):
+    return {"lane": lane, "ok": ok, "error": error, "skipped_reason": skipped}
+
+
+class _AllLanesFailed(RuntimeError):
+    def __init__(self, attempts):
+        self.attempts = attempts
+        super().__init__("all lanes failed")
+
+
+# Reviewer round 2 (2026-11-01, probe_cls.py): only empty/unparseable output from a lane that RETURNED, or the
+# job-specific gate code, is the job's fault. Everything else is an outage: pending, attempt uncounted, run stops.
+@pytest.mark.parametrize(
+    "attempts,kind",
+    [
+        ([_a("anthropic", "RuntimeError: POLICY_NOT_ALLOWED: promotional adapter requires governed routing"),
+          _a("grok", "unavailable", skipped="reported unavailable"),
+          _a("chatgpt", "RuntimeError: AUTH_EXPIRED: ChatGPT session ended"),
+          _a("deepseek-flash", "RuntimeError: COST_CONFIGURATION_INVALID: process daily_cost_cap_usd required")], "outage"),
+        ([_a("anthropic", "RuntimeError: POLICY_NOT_ALLOWED"), _a("grok", "unavailable"),
+          _a("chatgpt", "HTTPError: 400 Client Error: Bad Request for url: http://127.0.0.1:10531/v1/chat/completions")],
+         "outage"),
+        ([_a("anthropic", "RuntimeError: POLICY_NOT_ALLOWED"),
+          _a("grok", "ConnectionError: HTTPConnectionPool(host='127.0.0.1', port=10530): Max retries exceeded"),
+          _a("chatgpt", "ConnectionError: refused")], "outage"),
+        ([_a("anthropic", "RuntimeError: POLICY_NOT_ALLOWED"), _a("grok", "unavailable"), _a("chatgpt", "unavailable"),
+          _a("deepseek-flash", "DeferredToOffPeak: deferred to off-peak")], "outage"),
+        ([_a("anthropic", "RuntimeError: POLICY_NOT_ALLOWED"), _a("grok", "unavailable"), _a("chatgpt", "unavailable"),
+          _a("deepseek-flash", "RuntimeError: INPUT_LIMIT_EXCEEDED: prompt ~40000 tokens exceeds process "
+             "max_input_tokens=32000")], "job"),
+        ([_a("anthropic", "AnthropicError: INPUT_LIMIT_EXCEEDED")], "job"),
+        ([_a("grok", "ValueError: model said 'COST_CAP_EXCEEDED is not a field'")], "job"),
+        ([_a("grok", "ValueError: model said 'INPUT_LIMIT_EXCEEDED' somewhere")], "job"),
+        ([_a("grok", "HTTPError: 500 body mentions INPUT_LIMIT_EXCEEDED")], "outage"),
+        ([_a("grok", "ConnectionError: INPUT_LIMIT_EXCEEDED")], "outage"),  # code only counts from the gate's types
+        ([_a("grok", "unavailable"), _a("chatgpt", "RuntimeError: " + "x" * 190 + " COST_CAP_EXCEEDED")], "outage"),
+        ([_a("grok", "unavailable"), _a("chatgpt", ("RuntimeError: INPUT_LIMIT_EXCEEDED: " + "y" * 300)[:200])], "job"),
+        ([_a("anthropic", "RuntimeError: POLICY_NOT_ALLOWED"), _a("grok", "unavailable"), _a("chatgpt", "unavailable")],
+         "outage"),
+        ([_a("grok", "empty response"), _a("chatgpt", "ConnectionError: refused")], "job"),
+        ([], "outage"),
+    ],
+)
+def test_classification_is_structured_not_substring(attempts, kind):
+    assert w.classify_cloud_failure(_AllLanesFailed(attempts))[0] == kind
 
 
 class _Cur:
@@ -278,11 +325,17 @@ def test_gate_refusal_does_not_burn_attempts_and_stops_the_run(monkeypatch):
     assert running == [(7,)], "the run must stop at the first refusal"
 
 
+def _raise_all_failed(*attempts):
+    def gen(prompt, **kw):
+        raise _AllLanesFailed(list(attempts))
+
+    return gen
+
+
 def test_model_failure_still_counts_an_attempt(monkeypatch):
     import lib.llm_fallback as lf
 
-    monkeypatch.setattr(lf, "generate_with_fallback",
-                        lambda prompt, **kw: (_ for _ in ()).throw(TimeoutError("read timed out")))
+    monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(_a("grok", "empty response")))
     log = _run(monkeypatch, ["--route", "cloud", "--limit", "1"], rows=[_row(9)])
     assert [s for s in _sqls(log) if "attempt_count >= 3 THEN 'failed'" in s]
     assert not [s for s in _sqls(log) if "GREATEST(attempt_count - 1, 0)" in s]
@@ -340,3 +393,73 @@ def test_empty_lane_chain_is_a_refusal_not_a_failed_job():
     empty = dict(POLICY, provider_order=["deepseek-flash"])  # inside DeepSeek's peak nothing is left
     with pytest.raises(w.CloudRefused):
         w.call_cloud("p", empty, fallback=lambda *a, **k: pytest.fail("called a model"), now=_utc(2026, 11, 2, 2))
+
+
+
+@pytest.mark.parametrize(
+    "attempts",
+    [
+        (_a("grok", "unavailable"), _a("chatgpt", "RuntimeError: AUTH_EXPIRED: ChatGPT session ended")),
+        (_a("grok", "unavailable"), _a("chatgpt", "HTTPError: 400 Client Error: Bad Request")),
+        (_a("grok", "ConnectionError: refused"), _a("chatgpt", "ConnectionError: refused")),
+        (_a("chatgpt", "unavailable"), _a("deepseek-flash", "DeferredToOffPeak: deferred to off-peak")),
+    ],
+)
+def test_lane_outage_never_fails_the_backlog(monkeypatch, attempts):
+    """39 jobs sat at attempt 2: one outage run must not push any of them to 'failed'."""
+    import lib.llm_fallback as lf
+
+    monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*attempts))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(21), _row(22), _row(23)])
+    sqls = _sqls(log)
+    assert not [s for s in sqls if "attempt_count >= 3 THEN 'failed'" in s]
+    assert len([s for s in sqls if "GREATEST(attempt_count - 1, 0)" in s]) == 1
+    assert [p for s, p in log if "SET status = 'running'" in s] == [(21,)]
+
+
+def _sequence_generator(outcomes):
+    seq = iter(outcomes)
+
+    def gen(prompt, **kw):
+        nxt = next(seq)
+        if nxt is None:
+            raise _AllLanesFailed([_a("grok", "empty response")])
+        return _Res()
+
+    return gen
+
+
+def test_circuit_breaker_stops_after_consecutive_failures(monkeypatch):
+    import lib.llm_fallback as lf
+
+    n = int(POLICY["max_consecutive_failures"])
+    assert n >= 2
+    monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator([None] * (n + 3)))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", str(n + 3)], rows=[_row(30 + i) for i in range(n + 3)])
+    assert len([p for s, p in log if "SET status = 'running'" in s]) == n
+    assert len([s for s in _sqls(log) if "attempt_count >= 3 THEN 'failed'" in s]) == n
+
+
+def test_circuit_breaker_counts_only_consecutive_failures(monkeypatch):
+    import lib.llm_fallback as lf
+
+    n = int(POLICY["max_consecutive_failures"])
+    outcomes = [None] * (n - 1) + ["ok"] + [None] * (n - 1) + ["ok"]
+    monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(outcomes))
+    rows = [_row(50 + i) for i in range(len(outcomes))]
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", str(len(outcomes))], rows=rows)
+    assert len([p for s, p in log if "SET status = 'running'" in s]) == len(outcomes)
+
+
+def test_probe_error_skip_is_not_reported_as_a_lane_error():
+    kind, reason = w.classify_cloud_failure(_AllLanesFailed([
+        _a("grok", "", skipped="availability probe error: OSError"),
+        _a("grok", "empty response"),
+    ]))
+    assert kind == "job"
+    assert "availability probe error" not in reason and reason == "grok: empty response"
+
+
+def test_an_answering_lane_is_never_an_outage():
+    # AllLanesFailed never normally carries ok=True; if it ever does, a lane answered, so it is not an outage.
+    assert w.classify_cloud_failure(_AllLanesFailed([_a("grok", "", ok=True)]))[0] == "job"
