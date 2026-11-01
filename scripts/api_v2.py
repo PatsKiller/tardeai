@@ -16612,7 +16612,9 @@ def _defense_posture(query=None):
         # design home/v006: the inverse-hedge stoplight decides; a stale defense_hedge alert never reads as live
         from lib.defense_hedge_state import hedge_state as _hedge_state
 
-        _sl_cfg = (_load_json(PROJECT_ROOT / "config" / "defense_recommendations.json") or {}).get("inverse_stoplights") or {}
+        _sl_cfg = (_load_json(PROJECT_ROOT / "config" / "defense_recommendations.json") or {}).get(
+            "inverse_stoplights"
+        ) or {}
         hs = _hedge_state(
             stoplights=_load_json(PROJECT_ROOT / "data" / "runtime" / "inverse_stoplights_latest.json"),
             intent=_hint,
