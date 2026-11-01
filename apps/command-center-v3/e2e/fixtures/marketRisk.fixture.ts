@@ -61,9 +61,39 @@ export function marketRiskShadow(tier: 'RED' | 'YELLOW') {
   return { ...base, mode: 'shadow', episode: null }
 }
 
+/** Design home/v004: the live projection's YELLOW shape (MarketRiskProjection@v1). Market figures as served on
+ *  2026-11-01; the book carries budget names and synthetic DEMO symbols only (no actual/limit, as the API serves it). */
+export function marketRiskYellow(mode: 'live' | 'shadow' = 'live') {
+  return { schema: 'MarketRiskProjection@v1', state: 'evaluated', tier: 'YELLOW', score: 59.744, as_of: iso(1_200_000), age_hours: 0.33, stale: false, stale_after_hours: 1,
+    reason: null, confirming: { n: 2, of: 9 }, uplift: null, episode: null, mode, carried_only: false,
+    deescalates_if: 'YELLOW -> BLUE if score below 40 (now 60) and fewer than 3 categories at WARN or STRESS (now 2); the largest driver is options_flow.',
+    contributors: [
+      { name: 'Options flow', category: 'options_flow', points: 34.42, detail: 'QQQ P/C OI 3.97 (3.85x median) · SPY P/C OI 2.20 (2.32x median)', as_of: iso(86_400_000 * 2) },
+      { name: 'Technical', category: 'technical', points: 25.32, detail: 'AI basket: 0% above 20-day · RS -15.3 pts vs benchmark · SOXX -28.0% off 52w high', as_of: iso(86_400_000 * 2 + 5_000_000) },
+    ],
+    categories: [
+      { name: 'Technical', state: 'STRESS' }, { name: 'Breadth', state: 'CALM' }, { name: 'Volatility', state: 'CALM' }, { name: 'Options flow', state: 'STRESS' },
+      { name: 'Macro credit', state: 'CALM' }, { name: 'Cross asset', state: 'CALM' }, { name: 'Event', state: 'CALM' }, { name: 'Seasonal', state: 'CALM' },
+      { name: 'Extended hours', state: 'UNKNOWN', detail: 'no proven extended-session print for the index proxies' },
+    ],
+    book: { vulnerability: 8.4, note: 'components: synthetic',
+      budgets: [ { budget: 'single_sector_pct', scope: 'account', breached: true }, { budget: 'growth_style_pct', scope: 'account', breached: true },
+        { budget: 'unprotected_pct', scope: 'account', breached: true }, { budget: 'single_sector_pct', scope: 'account', breached: true } ],
+      positions: [ { symbol: 'DEMOA', stop_distance_pct: 4.5, note: null }, { symbol: 'DEMOB', stop_distance_pct: null, note: null },
+        { symbol: 'DEMOC', stop_distance_pct: null, note: null }, { symbol: 'DEMOD', stop_distance_pct: null, note: null }, { symbol: 'DEMOE', stop_distance_pct: null, note: null } ] },
+    probabilities: null, history: [], sources: {} }
+}
+
 /** Route the market-risk endpoints on top of whatever page fixtures are already installed (later routes win). */
-export async function marketRiskRoutes(page: Page, variant: 'red' | 'green' | 'not_evaluated' | 'shadow_red' | 'shadow_yellow' | 'carried_yellow', writes: string[] = []) {
-  const body = variant === 'red' ? marketRiskRed() : variant === 'green' ? marketRiskGreen() : variant === 'shadow_red' ? marketRiskShadow('RED') : variant === 'shadow_yellow' ? marketRiskShadow('YELLOW') : variant === 'carried_yellow' ? { ...marketRiskShadow('YELLOW'), mode: 'live', carried_only: true } : marketRiskNotEvaluated()
+export async function marketRiskRoutes(page: Page, variant: 'red' | 'green' | 'not_evaluated' | 'shadow_red' | 'shadow_yellow' | 'carried_yellow' | 'yellow_live' | 'yellow_shadow' | 'yellow_stale' | 'yellow_empty' | 'yellow_nobook' | 'orange', writes: string[] = []) {
+  const v4: Record<string, unknown> = {
+    yellow_live: marketRiskYellow('live'), yellow_shadow: marketRiskYellow('shadow'),
+    yellow_stale: { ...marketRiskYellow('shadow'), state: 'stale', stale: true, age_hours: 3.2, as_of: iso(3.2 * 3_600_000) },
+    yellow_empty: { ...marketRiskYellow('live'), contributors: [], book: null },
+    yellow_nobook: { ...marketRiskYellow('live'), book: null },
+    orange: { ...marketRiskRed(), tier: 'ORANGE', score: 68, episode: { id: 'EP-FIXTURE-2', tier: 'ORANGE', opened_at: iso(3_600_000), repeats: 1, max_repeats: 12, acknowledged_at: null, status: 'OPEN' } },
+  }
+  const body = variant in v4 ? v4[variant] : variant === 'red' ? marketRiskRed() : variant === 'green' ? marketRiskGreen() : variant === 'shadow_red' ? marketRiskShadow('RED') : variant === 'shadow_yellow' ? marketRiskShadow('YELLOW') : variant === 'carried_yellow' ? { ...marketRiskShadow('YELLOW'), mode: 'live', carried_only: true } : marketRiskNotEvaluated()
   await page.route('**/api/v2/market-risk/**', route => {
     const req = route.request(), p = new URL(req.url()).pathname
     if (req.method() === 'POST' && p === '/api/v2/market-risk/ack') {
