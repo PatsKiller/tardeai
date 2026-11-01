@@ -1,5 +1,7 @@
 """A scheduler-launched --shadow run writes the lane's output signal (PR #2409, 2026-11-01).
 
+ANCHOR: MARKET_RISK_SCHEDULED_SHADOW_RECEIPT_20261101
+
 The market-risk-evaluate cron lines installed 2026-11-01 run ``--scheduled --shadow``. Before the fix, main()
 returned from _shadow() before the ``if a.scheduled`` receipt write, so run_last.json (the lane's output signal and
 what the stalled-escalation check reads) was never written and the lane read stale while it ran. The mutant test
