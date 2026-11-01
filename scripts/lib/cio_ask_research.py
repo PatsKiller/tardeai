@@ -1130,7 +1130,9 @@ def _src_prospectus(ent: Entity, ctx: ResearchContext) -> list[Fact]:
 
 def default_sources() -> list[SourceSpec]:
     return [
-        SourceSpec("internal.cio_record_research", "internal", _src_cio_record_research, 6.0),
+        # A local snapshot read measured at ~3.7 s on its own; under the 30-job gather it exceeded 6 s
+        # and failed the whole check on a source that had in fact answered (2026-11-01).
+        SourceSpec("internal.cio_record_research", "internal", _src_cio_record_research, 15.0),
         SourceSpec("internal.cio_prospect", "internal", _src_prospect, 6.0),
         SourceSpec("internal.prospectus", "internal", _src_prospectus, 6.0),
         SourceSpec("internal.holdings", "internal", _src_holdings, 6.0),
