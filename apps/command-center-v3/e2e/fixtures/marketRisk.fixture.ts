@@ -62,8 +62,8 @@ export function marketRiskShadow(tier: 'RED' | 'YELLOW') {
 }
 
 /** Route the market-risk endpoints on top of whatever page fixtures are already installed (later routes win). */
-export async function marketRiskRoutes(page: Page, variant: 'red' | 'green' | 'not_evaluated' | 'shadow_red' | 'shadow_yellow', writes: string[] = []) {
-  const body = variant === 'red' ? marketRiskRed() : variant === 'green' ? marketRiskGreen() : variant === 'shadow_red' ? marketRiskShadow('RED') : variant === 'shadow_yellow' ? marketRiskShadow('YELLOW') : marketRiskNotEvaluated()
+export async function marketRiskRoutes(page: Page, variant: 'red' | 'green' | 'not_evaluated' | 'shadow_red' | 'shadow_yellow' | 'carried_yellow', writes: string[] = []) {
+  const body = variant === 'red' ? marketRiskRed() : variant === 'green' ? marketRiskGreen() : variant === 'shadow_red' ? marketRiskShadow('RED') : variant === 'shadow_yellow' ? marketRiskShadow('YELLOW') : variant === 'carried_yellow' ? { ...marketRiskShadow('YELLOW'), mode: 'live', carried_only: true } : marketRiskNotEvaluated()
   await page.route('**/api/v2/market-risk/**', route => {
     const req = route.request(), p = new URL(req.url()).pathname
     if (req.method() === 'POST' && p === '/api/v2/market-risk/ack') {

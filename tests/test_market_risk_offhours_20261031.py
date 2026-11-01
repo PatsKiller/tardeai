@@ -996,7 +996,7 @@ def test_r5_bootstrap_never_pages_p1(tmp_path, monkeypatch, mode):
     out = ev.run_cycle(
         now, object(), pol, None, apply=True, episodes_path=tmp_path / "ep.json", ledger_path=tmp_path / "sk.json"
     )
-    assert out["episode_event"] == "bootstrap_no_episode" and out["episode_id"] is None
+    assert out["episode_event"] in ("bootstrap_no_episode", "carried_only_no_episode") and out["episode_id"] is None
     assert all(k.get("priority") != "P1" for k in sent) and all(s["intent"]["priority"] != "P1" for s in out["sends"])
 
 
@@ -1026,9 +1026,13 @@ def test_r5_torn_prior_falls_back_to_the_live_snapshot(tmp_path, monkeypatch):
 def test_r5_torn_prior_falls_back_to_the_newest_receipt(tmp_path, monkeypatch):
     ev, d = _state(tmp_path, monkeypatch)
     (d / "latest.json").write_text("[]")
-    (d / "receipts" / "20261030T200000Z.json").write_text(json.dumps({"tier": "BLUE"}))
-    (d / "receipts" / "20261030T210000Z.json").write_text(json.dumps({"tier": "YELLOW"}))
-    (d / "receipts" / "20261030T220000Z-shadow.json").write_text(json.dumps({"tier": "RED"}))
+    (d / "receipts" / "20261030T200000Z.json").write_text(json.dumps({"tier": "BLUE", "as_of": "2026-10-30T20:00:00Z"}))
+    (d / "receipts" / "20261030T210000Z.json").write_text(
+        json.dumps({"tier": "YELLOW", "as_of": "2026-10-30T21:00:00Z"})
+    )
+    (d / "receipts" / "20261030T220000Z-shadow.json").write_text(
+        json.dumps({"tier": "RED", "as_of": "2026-10-30T22:00:00Z"})
+    )
     p = ev._resolve_prior(d / "latest.json", shadow=False)
     assert p["tier"] == "YELLOW" and p["prior_source"] == "receipts/20261030T210000Z.json"
     (d / "shadow_latest.json").write_text("{")
@@ -1065,3 +1069,241 @@ def test_r5_observations_computed_now_are_never_carried():
     ]
     a = scoring.compose(obs, P, prior=_prior5("YELLOW", now), now=now)
     assert a.hysteresis["carried"]["categories"] == ["technical"]
+
+
+# ── Round 6 (review of PR 2431): CARRIED-ONLY mark, deleted prior, content-dated receipts, fresh window ──────────────
+def _carried_red_cycle_obs(now):
+    fri = et(2026, 10, 30, 16)
+    spec = {
+        "technical": ("STRESS", 85, fri),
+        "breadth": ("STRESS", 80, fri),
+        "volatility": ("STRESS", 80, fri),
+        "options_flow": ("STRESS", 85, et(2026, 10, 30, 17, 35)),
+        "cross_asset": ("WARN", 45, fri),
+        "macro_credit": ("WARN", 40, fri),
+    }
+    out = [_ob5(k, st, sc, t, 120 if k == "macro_credit" else 32) for k, (st, sc, t) in spec.items()]
+    out += [
+        _ob5("event", "CALM", 5, now, 24),
+        _ob5("seasonal", "CALM", 10, now, 24),
+        _ob5("extended_hours", "CALM", 0, now - timedelta(minutes=5), 2),
+    ]
+    return out
+
+
+def _chain(tmp_path, monkeypatch, times, obs_fn, pol=None):
+    import importlib
+
+    from scripts.lib.market_risk import registry
+
+    ev = importlib.import_module("scripts.market_risk_evaluate")
+    sent = []
+    tg = types.ModuleType("telegram_alert")
+    tg.send_telegram = lambda m, **k: sent.append(k) or True
+    monkeypatch.setitem(sys.modules, "telegram_alert", tg)
+    monkeypatch.setattr(registry, "evaluate_all", lambda ctx: obs_fn(ctx.now))
+    prior, rows = None, []
+    for t in times:
+        r = ev.run_cycle(
+            t,
+            object(),
+            pol or P,
+            prior,
+            apply=True,
+            episodes_path=tmp_path / "ep.json",
+            ledger_path=tmp_path / "sk.json",
+        )
+        prior = r["assessment"]
+        rows.append((t, r))
+    return rows, sent
+
+
+MON_TIMES = [
+    et(2026, 11, 2, 8, 0),
+    et(2026, 11, 2, 8, 15),
+    et(2026, 11, 2, 8, 31),
+    et(2026, 11, 2, 8, 46),
+    et(2026, 11, 2, 9, 32),
+]
+
+
+def test_r6_carried_only_chain_never_pages_and_opens_no_episode(tmp_path, monkeypatch):
+    rows, sent = _chain(tmp_path, monkeypatch, MON_TIMES, _carried_red_cycle_obs)
+    tiers = [r["assessment"]["tier"] for _, r in rows]
+    assert tiers[0] == tiers[-1] and scoring.SEVERITY[tiers[0]] >= scoring.SEVERITY["ORANGE"]  # shown, held
+    for _, r in rows:
+        assert r["assessment"]["hysteresis"]["carried_only"] is True
+        assert r["episode_event"] == "carried_only_no_episode" and r["episode_id"] is None
+        assert all(s["intent"]["priority"] == "P3" for s in r["sends"])
+    assert not any(k.get("priority") in ("P1", "P2") for k in sent)
+    assert len([k for k in sent if k.get("priority") == "P3"]) == 1  # one first-reading card for the tier
+    assert not (tmp_path / "ep.json").exists() or json.loads((tmp_path / "ep.json").read_text()).get("episodes") in (
+        [],
+        None,
+    )
+
+
+def test_r6_fresh_stress_releases_the_mark_and_pages_normally(tmp_path, monkeypatch):
+    fresh_at = et(2026, 11, 2, 9, 31)
+
+    def obs(now):
+        out = _carried_red_cycle_obs(now)
+        if now >= fresh_at:  # Monday's open: fresh STRESS in the categories that carry the tier
+            out = [
+                _ob5(o.category, "STRESS", 90, fresh_at, 32)
+                if o.category in ("technical", "breadth", "volatility", "options_flow", "cross_asset")
+                else o
+                for o in out
+            ] + []
+            out = [o for o in out if o.category != "extended_hours"] + [
+                _ob5("extended_hours", "STRESS", 95, fresh_at, 2)
+            ]
+        return out
+
+    times = MON_TIMES[:4] + [et(2026, 11, 2, 9, 32), et(2026, 11, 2, 9, 47)]
+    rows, sent = _chain(tmp_path, monkeypatch, times, obs)
+    before = [r for t, r in rows if t < fresh_at]
+    after = [r for t, r in rows if t >= fresh_at]
+    assert all(r["assessment"]["hysteresis"]["carried_only"] for r in before)
+    assert after[0]["assessment"]["hysteresis"]["carried_only"] is False
+    assert after[0]["episode_id"] is not None  # the episode opens with the fresh confirmation
+    first = [s for s in after[0]["sends"] if s["kind"] == "initial"]
+    assert (
+        first and first[0]["intent"]["priority"] == "P1" and first[0]["intent"]["transition"].startswith("up_from_none")
+    )
+
+
+def test_r6_carried_only_needs_an_origin():
+    # a tier held over a weekend from a normal (alerted) prior is not carried-only: its episode keeps running
+    now = et(2026, 11, 2, 8)
+    prior = _prior5("RED", now)
+    a = scoring.compose(_carried_red_cycle_obs(now), P, prior=prior, now=now)
+    assert a.hysteresis["carried_only"] is False
+
+
+def test_r6_deleted_prior_with_traces_is_not_a_bootstrap(tmp_path, monkeypatch):
+    ev, d = _state(tmp_path, monkeypatch)
+    (tmp_path / "data/runtime/market_risk_latest.json").write_text(json.dumps({"tier": "RED", "mode": "live"}))
+    p = ev._resolve_prior(d / "latest.json", shadow=False)
+    assert p["tier"] == "RED" and p["prior_source"] == "market_risk_latest.json"
+    (tmp_path / "data/runtime/market_risk_latest.json").unlink()
+    (d / "receipts" / "20261030T220000Z.json").write_text(
+        json.dumps({"tier": "ORANGE", "as_of": "2026-10-30T22:00:00Z"})
+    )
+    assert ev._resolve_prior(d / "latest.json", shadow=False)["tier"] == "ORANGE"
+
+
+def test_r6_receipts_are_dated_by_content_and_replays_ignored(tmp_path, monkeypatch):
+    ev, d = _state(tmp_path, monkeypatch)
+    (d / "latest.json").write_text("{tor")
+    r = d / "receipts"
+    # a name that sorts last but content that is older
+    (r / "20991231T000000Z.json").write_text(json.dumps({"tier": "GREEN", "as_of": "2026-10-29T20:00:00Z"}))
+    (r / "20261030T220000Z.json").write_text(json.dumps({"tier": "RED", "as_of": "2026-10-30T22:00:00Z"}))
+    # an --apply --as-of replay of a future instant, and a flagged replay
+    (r / "20311010T150000Z.json").write_text(json.dumps({"tier": "BLUE", "as_of": "2031-10-10T15:00:00Z"}))
+    (r / "20261031T010000Z.json").write_text(
+        json.dumps({"tier": "NONE", "as_of": "2026-10-31T01:00:00Z", "replay": True})
+    )
+    p = ev._resolve_prior(d / "latest.json", shadow=False, now=datetime(2026, 11, 2, 13, tzinfo=timezone.utc))
+    assert p["tier"] == "RED" and p["prior_source"] == "receipts/20261030T220000Z.json"
+
+
+def test_r6_receipts_carry_evaluated_at_and_replay_flag(tmp_path, monkeypatch):
+    ev = _shadow_env(tmp_path, monkeypatch)
+    assert ev.main(["--shadow", "--no-portfolio"]) == 0
+    doc = json.loads((tmp_path / "data/runtime/market_risk/shadow_latest.json").read_text())
+    assert doc["replay"] is False and doc["evaluated_at"]
+
+
+def test_r6_replay_receipt_is_flagged(tmp_path, monkeypatch):
+    ev = _shadow_env(tmp_path, monkeypatch)  # one main() per process: --apply/--shadow hold the evaluator lock
+    assert ev.main(["--shadow", "--no-portfolio", "--as-of", "2026-10-29T19:00:00Z"]) == 0
+    rep = json.loads((tmp_path / "data/runtime/market_risk/receipts/20261029T190000Z-shadow-replay.json").read_text())
+    assert rep["replay"] is True
+
+
+def test_r6_fresh_window_is_sixty_seconds():
+    assert scoring.FRESH_WINDOW_SECONDS == 60
+    # stored data re-stamped two minutes before a Saturday evaluation is carried (a 3600 s window would call it fresh)
+    now = et(2026, 10, 31, 22, 55)
+    obs = [
+        _ob5("technical", "STRESS", 80, now - timedelta(seconds=120)),
+        _ob5("event", "CALM", 5, now - timedelta(seconds=30)),
+    ]
+    a = scoring.compose(obs, P, prior=_prior5("YELLOW", now), now=now)
+    assert a.hysteresis["carried"]["categories"] == ["technical"]
+
+
+def test_r6_projection_and_cio_label_carried_only():
+    from scripts.lib import cio_market_context_state as cms
+    from scripts.lib import market_risk_projection as proj
+
+    now = datetime(2026, 11, 2, 13, tzinfo=timezone.utc)
+    snap = proj.snapshot_from_assessment(
+        {
+            "schema": c.SCHEMA_ASSESSMENT,
+            "tier": "YELLOW",
+            "score": 59.7,
+            "as_of": now.isoformat(),
+            "mode": "apply",
+            "hysteresis": {"carried_only": True},
+        }
+    )
+    p = proj.build(snap, None, now=now)
+    assert p["carried_only"] is True and p["mode"] == "live"
+    st = cms.build_market_context_state(regime_snapshot={}, evaluated_at=now, market_risk=p)
+    m = st["summary"]["market_risk"] if "summary" in st else st["market_risk"]
+    assert "carried over the closure, not alerting" in m["line"]
+
+
+def test_r6_undated_receipts_fall_back_to_the_name_stamp(tmp_path, monkeypatch):
+    ev, d = _state(tmp_path, monkeypatch)
+    (d / "latest.json").write_text("{tor")
+    r = d / "receipts"
+    (r / "20261030T220000Z.json").write_text(json.dumps({"tier": "YELLOW"}))
+    (r / "20311010T150000Z.json").write_text(json.dumps({"tier": "GREEN"}))  # a future-named replay: skipped
+    (r / "20261102T130000Z-shadow.json").write_text(json.dumps({"tier": "ORANGE"}))
+    now = datetime(2026, 11, 2, 14, tzinfo=timezone.utc)
+    assert ev._resolve_prior(d / "latest.json", shadow=False, now=now)["tier"] == "YELLOW"
+    assert ev._resolve_prior(d / "shadow_latest.json", shadow=True, now=now)["tier"] == "ORANGE"
+
+
+def test_r6_live_snapshot_seen_then_unreadable_is_never_replaced_by_shadow():
+    from scripts.lib import market_risk_projection as proj
+
+    shadow = {"schema": proj.ASSESSMENT_SCHEMA, "as_of": "2026-10-24T20:00:00+00:00", "tier": "GREEN", "score": 5}
+    seen = {"live": True}
+
+    def exists(rel):
+        return seen["live"] if rel == proj.SNAPSHOT_REL else True
+
+    def load(rel):
+        if rel == proj.SNAPSHOT_REL:
+            seen["live"] = False  # deleted between the existence check and the read
+            return None
+        return shadow
+
+    snap = proj.load_snapshot(load, exists)
+    assert snap["schema"] == proj.UNREADABLE_SCHEMA
+
+
+def test_r6_receipts_dated_by_content_not_name(tmp_path, monkeypatch):
+    ev, d = _state(tmp_path, monkeypatch)
+    (d / "latest.json").write_text("{tor")
+    r = d / "receipts"
+    (r / "20261029T000000Z.json").write_text(json.dumps({"tier": "ORANGE", "evaluated_at": "2026-10-30T23:00:00Z"}))
+    (r / "20261030T220000Z.json").write_text(json.dumps({"tier": "BLUE", "as_of": "2026-10-30T22:00:00Z"}))
+    p = ev._resolve_prior(d / "latest.json", shadow=False, now=datetime(2026, 11, 2, 13, tzinfo=timezone.utc))
+    assert p["tier"] == "ORANGE"
+
+
+def test_r6_carried_only_tier_change_is_never_p1_or_p2():
+    from scripts.lib.market_risk import alerts
+
+    prior = {"tier": "YELLOW", "hysteresis": {"carried_only": True}}
+    doc = {"tier": "RED", "as_of": "2026-11-02T13:00:00Z", "hysteresis": {"carried_only": True}}
+    i = alerts.intent_for(doc, prior, P)
+    assert i["priority"] == P["alerts"]["bootstrap_priority"] and i["transition"] == "carried_red"
+    down = alerts.intent_for(dict(doc, tier="YELLOW"), {"tier": "RED", "hysteresis": {"carried_only": True}}, P)
+    assert down["priority"] not in ("P1", "P2")

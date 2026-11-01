@@ -118,6 +118,7 @@ def _market_risk_field(mr: dict[str, Any] | None) -> dict[str, Any]:
         ),
         "probabilities": mr.get("probabilities"),
         "mode": mr.get("mode"),  # live | shadow (shadow: evaluated, no alert sent)
+        "carried_only": bool(mr.get("carried_only")),  # tier rests only on carried data: not alerting
     }
     return _field(
         value, source="market_risk_projection", as_of=mr.get("as_of"), state="STALE" if mr.get("stale") else "VERIFIED"
@@ -165,6 +166,7 @@ def _market_risk_summary(field: dict[str, Any]) -> dict[str, Any]:
         + (f" {round(v['score'])}/100" if isinstance(v.get("score"), (int, float)) else "")
         # a shadow tier was evaluated but nobody was alerted on it; the CIO must not say "the engine warned you"
         + (" (SHADOW, not alerting)" if mode == "shadow" else "")
+        + (" (carried over the closure, not alerting)" if v.get("carried_only") and mode != "shadow" else "")
         + (f" — {why}" if why else "")
     )
     return {

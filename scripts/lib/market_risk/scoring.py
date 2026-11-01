@@ -22,6 +22,9 @@ from scripts.lib.market_risk import sessions
 ET = ZoneInfo("America/New_York")
 SEVERITY = {t: i for i, t in enumerate(c.TIERS)}  # GREEN 0 < NONE 1 < BLUE 2 < YELLOW 3 < ORANGE 4 < RED 5
 CONFIRMING_STATES = ("WARN", "STRESS")
+# An observation stamped within this many seconds of the evaluation was computed by it (event calendar, seasonal prior)
+# and is never "carried"; anything older that crosses a closure is stored data (review of PR 2431).
+FRESH_WINDOW_SECONDS = 60
 SESSION_CLOSE_ET = time(16, 0)
 
 
@@ -308,7 +311,7 @@ def _carried(eff: list[dict], now: datetime) -> list[str]:
         at = _parse(o.observed_at) if o.state != "UNKNOWN" else None
         # an observation computed at evaluation time (event calendar, seasonal prior) is current by construction,
         # even on a weekend; only stored market data can be carried across a closure
-        if at is not None and (now - at).total_seconds() > 60 and sessions.closure_between(at, now):
+        if at is not None and (now - at).total_seconds() > FRESH_WINDOW_SECONDS and sessions.closure_between(at, now):
             out.append(o.category)
     return out
 
@@ -374,6 +377,20 @@ def _hold_not_escalate(
     return capped, info
 
 
+def _carried_only(tier: str, carried: dict, eff: list[dict], prior: dict | None, policy: dict) -> bool:
+    """The CARRIED-ONLY mark (coordinator decision on PR 2431, pending the operator). Set when a first reading
+    (bootstrap) or an evaluation whose prior was already marked shows a tier that the fresh observations alone do not
+    reach: the tier rests only on data carried across a closure. While set the evaluator opens no episode, drains no
+    repeat and sends no P1/P2 card (at most one P3 card per tier). It clears as soon as the fresh-only tier reaches the
+    shown tier; the next card is then a normal transition (alerts.intent_for)."""
+    cats = list((carried or {}).get("categories") or [])
+    origin = not prior or prior.get("tier") not in SEVERITY or bool((prior.get("hysteresis") or {}).get("carried_only"))
+    if not origin or not cats or SEVERITY.get(tier, 0) <= SEVERITY["NONE"]:
+        return False
+    fresh_raw = carried.get("raw_fresh_only") or _fresh_only(eff, cats, policy)[0]
+    return SEVERITY[fresh_raw] < SEVERITY[tier]
+
+
 def compose(
     observations: list[c.CategoryObservation],
     policy: dict,
@@ -396,6 +413,7 @@ def compose(
     coverage = known_w / total_w
     raw, last_stress = _green_guard(raw, why, eff, coverage, prior, now, policy)
     tier, hyst = _hysteresis(raw, why, prior, now, policy)
+    hyst["carried_only"] = _carried_only(tier, carried, eff, prior, policy)
     hyst.update(
         {
             "last_stress_at": last_stress,

@@ -45,10 +45,13 @@ def load_snapshot(load, exists=None) -> dict | None:
       not_evaluated with that reason and still carries the live episode. Never the shadow fallback: a stale shadow
       tier must not replace a live one that is merely torn (review of PR 2425 round 4);
     * live snapshot absent -> the shadow assessment, converted and marked ``mode: shadow``; else None."""
+    # existence is checked BEFORE the read: a file seen on disk that then fails to load (torn, or deleted mid-read)
+    # is "unreadable", never "absent", so a stale shadow tier can never replace it through that race
+    on_disk_before = bool(exists(SNAPSHOT_REL)) if exists is not None else None
     live = load(SNAPSHOT_REL)
     if isinstance(live, dict) and live.get("mode") != "shadow":
         return live
-    on_disk = bool(exists(SNAPSHOT_REL)) if exists is not None else live is not None
+    on_disk = on_disk_before if on_disk_before is not None else live is not None
     if on_disk and not isinstance(live, dict):
         return {
             "schema": UNREADABLE_SCHEMA,
@@ -158,6 +161,8 @@ def snapshot_from_assessment(doc: dict, *, history: list | None = None) -> dict:
         "history": list(history or [])[-30:],
         "episode": None,
         "mode": snapshot_mode(doc.get("mode")),
+        # the tier rests only on data carried across a closure: shown, labelled "carried — not alerting" (PR 2431)
+        "carried_only": bool((doc.get("hysteresis") or {}).get("carried_only")),
     }
 
 
@@ -254,6 +259,7 @@ def build(
         "probabilities": snapshot.get("probabilities"),
         "history": list(snapshot.get("history") or [])[-30:],
         "mode": snapshot.get("mode"),
+        "carried_only": bool(snapshot.get("carried_only")),
         "sources": sources,
         "generated_at": now.isoformat(),
     }

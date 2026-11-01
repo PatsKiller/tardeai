@@ -18,6 +18,9 @@
     "the snapshot slots (one missed or late slot tolerated).",
     "Round 5 (review of PR 2425 round 4): carried decided by the session a row belongs to (holiday-stamped",
     "rows are carried; MLK and Labor Day cases), torn live snapshot -> not_evaluated keeping the live episode,",
-    "decay.bootstrap_mode, bootstrap never pages P1, torn prior never a bootstrap, options slots == lane registry."
+    "decay.bootstrap_mode, bootstrap never pages P1, torn prior never a bootstrap, options slots == lane registry.",
+    "Round 6 (review of PR 2431): CARRIED-ONLY mark (no episode, no repeats, no P1/P2 while a tier rests only on",
+    "carried data; released by fresh agreement), deleted prior with traces is not a bootstrap, receipts dated by",
+    "content with replays ignored, 60-second fresh window pinned."
   ]
 }

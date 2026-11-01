@@ -189,12 +189,17 @@ def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_asse
     esc_cfg = policy.get("escalation") or {}
     ttl = float(esc_cfg.get("claim_ttl_min") or 10)
     out: dict[str, Any] = {"assessment": doc, "object": a, "mode": "apply" if apply else "dry_run", "sends": []}
-    bootstrap = bool((doc.get("hysteresis") or {}).get("bootstrap"))
+    hy = doc.get("hysteresis") or {}
+    # a first reading, or a tier that rests only on data carried across a closure (CARRIED-ONLY, PR 2431), never pages
+    bootstrap = bool(hy.get("bootstrap")) or bool(hy.get("carried_only"))
     if bootstrap:
         # a first reading never pages (review of PR 2425 round 4, finding 2): no episode opens (an ORANGE/RED episode
         # schedules P1 repeats) and no repeat is drained this cycle; the next evaluation, with this one as its prior,
         # opens the episode if the tier holds
-        ep: dict[str, Any] = {"event": "bootstrap_no_episode", "episode": None}
+        ep: dict[str, Any] = {
+            "event": "carried_only_no_episode" if hy.get("carried_only") else "bootstrap_no_episode",
+            "episode": None,
+        }
     else:
         ep = escalation.observe(doc, now=now, policy=policy, path=store)
     out["episode_event"] = ep["event"]
@@ -351,6 +356,8 @@ def _shadow(
     doc = assessment.to_dict()
     doc["mode"] = "shadow"
     doc["session"] = session_of(now)
+    doc["evaluated_at"] = datetime.now(timezone.utc).isoformat()
+    doc["replay"] = replay
     if replay:
         # a replay (--as-of) is never what the market looks like now: it writes only its own receipt, never the
         # snapshot Home/API/CIO read, its history, or the shadow prior (review of #2415, F3)
@@ -378,16 +385,34 @@ def _shadow(
     return 0
 
 
-def _resolve_prior(path: Path, *, shadow: bool) -> dict | None:
-    """The previous assessment. None (bootstrap) only when ``path`` does not exist. A torn or unreadable prior is never
-    a bootstrap (review of PR 2425 round 4, finding 2): fall back to the tier in the live snapshot
-    (market_risk_latest.json, live runs only), then to the newest readable receipt of the same mode, then to a NONE
-    prior that still escalates through the normal two-evaluation path and never pages as a first reading."""
-    if not path.exists():
-        return None
-    p = _read_prior(path)
-    if isinstance(p, dict) and p.get("tier"):
-        return p
+def _receipt_time(r: dict, name: str) -> datetime | None:
+    """When a receipt was evaluated: its ``evaluated_at`` (wall clock, written since PR 2431), else its ``as_of``,
+    else (a receipt with neither) the stamp in its file name."""
+    t = scoring._parse(r.get("evaluated_at")) or scoring._parse(r.get("as_of"))
+    if t is None:
+        try:
+            t = datetime.strptime(name[:16], "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+    return t
+
+
+def _resolve_prior(path: Path, *, shadow: bool, now: datetime | None = None) -> dict | None:
+    """The previous assessment.
+
+    A first reading (bootstrap, None) only when there is no trace of an earlier evaluation at all: ``path`` absent AND
+    no live snapshot (live runs) AND no usable receipt of the same mode. A torn, unreadable or DELETED prior with any
+    such trace is never a bootstrap (review of PR 2425 round 4 and PR 2431): fall back to the tier in the live
+    snapshot, then to the newest usable receipt of the same mode, dated by its content (``evaluated_at``/``as_of``,
+    never the file name) and skipping replays (``--as-of``: flagged ``replay``, named ``-shadow-replay``, or dated
+    after now); then, if a prior file existed but nothing is readable, a NONE prior that escalates through the normal
+    two-evaluation path and never pages as a first reading."""
+    now = now or datetime.now(timezone.utc)
+    existed = path.exists()
+    if existed:
+        p = _read_prior(path)
+        if isinstance(p, dict) and p.get("tier"):
+            return p
     if not shadow:
         snap = _read_prior(snapshot_path())
         if isinstance(snap, dict) and snap.get("tier") and snap.get("mode") != "shadow":
@@ -398,16 +423,22 @@ def _resolve_prior(path: Path, *, shadow: bool) -> dict | None:
                 "prior_source": "market_risk_latest.json",
             }
     rdir = state_dir() / "receipts"
-    names = sorted(
-        (n for n in (os.listdir(rdir) if rdir.is_dir() else []) if n.endswith(".json")),
-        reverse=True,
-    )
-    for n in names:
-        if n.endswith("-shadow-replay.json") or n.endswith("-shadow.json") != shadow:
+    best: tuple[datetime, str, dict] | None = None
+    for n in os.listdir(rdir) if rdir.is_dir() else []:
+        if not n.endswith(".json") or n.endswith("-shadow-replay.json") or n.endswith("-shadow.json") != shadow:
             continue
         r = _read_prior(rdir / n)
-        if isinstance(r, dict) and r.get("tier"):
-            return dict(r, prior_source=f"receipts/{n}")
+        if not isinstance(r, dict) or not r.get("tier") or r.get("replay"):
+            continue
+        t = _receipt_time(r, n)
+        if t is None or t > now:
+            continue  # undatable, or a replay of a future instant
+        if best is None or t > best[0]:
+            best = (t, n, r)
+    if best is not None:
+        return dict(best[2], prior_source=f"receipts/{best[1]}")
+    if not existed:
+        return None  # nothing anywhere: a genuine first reading
     print(f"market_risk_evaluate: prior {path} unreadable and nothing to fall back to; NONE prior", file=sys.stderr)
     return {"tier": "NONE", "hysteresis": {}, "prior_source": "unreadable prior, no fallback"}
 
@@ -470,6 +501,8 @@ def main(argv: list[str] | None = None) -> int:
     def _persist(d: dict) -> None:
         d["mode"] = "apply"
         d["session"] = session_of(now)
+        d["evaluated_at"] = datetime.now(timezone.utc).isoformat()  # wall clock: dates the receipt (PR 2431)
+        d["replay"] = bool(a.as_of)
         written["latest"] = persist(d, now)
 
     cycle = run_cycle(now, reader, policy, prior, apply=apply, portfolio=portfolio, on_assessed=_persist)

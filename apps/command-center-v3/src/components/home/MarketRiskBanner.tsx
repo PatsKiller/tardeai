@@ -16,7 +16,7 @@ export function ShadowTag({ mr, testid }: { mr: MarketRisk | null; testid: strin
   if (!shadowMarker(mr)) return null
   return <span data-testid={testid}
     style={{ fontSize: TYPE.sm, color: TOKENS.text[1], border: `1px dashed ${toneVars('warning').border}`, borderRadius: RADIUS.pill, padding: '2px 8px' }}>
-    <b style={{ fontWeight: 800, letterSpacing: '0.04em', color: toneVars('warning').color }}>SHADOW</b> · not alerting — no alert was sent for this tier
+    <b style={{ fontWeight: 800, letterSpacing: '0.04em', color: toneVars('warning').color }}>{shadowMarker(mr).split(' ')[0]}</b> · not alerting — {shadowMarker(mr) === SHADOW_MARKER ? 'no alert was sent for this tier' : 'the tier rests on data from before the market closed; no alert sent'}
   </span>
 }
 
@@ -30,7 +30,7 @@ export function MarketRiskFact({ mr, loading }: { mr: MarketRisk | null; loading
       <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2], textTransform: 'uppercase', letterSpacing: '0.04em' }}>Market risk</span>
       <span data-testid="home-market-risk-value" style={{ ...numStyle, fontSize: TYPE.lg, fontWeight: 700, color: f.tone === 'neutral' ? TOKENS.text[0] : tv.color }}>{loading && !mr ? '…' : f.value}</span>
       <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>{loading && !mr ? '' : shadowMarker(mr)
-        ? <><b data-testid="home-market-risk-shadow" style={{ fontWeight: 800, letterSpacing: '0.04em', color: toneVars('warning').color }}>SHADOW</b> · not alerting{f.sub.slice(SHADOW_MARKER.length)}</>
+        ? <><b data-testid="home-market-risk-shadow" style={{ fontWeight: 800, letterSpacing: '0.04em', color: toneVars('warning').color }}>{shadowMarker(mr).split(' ')[0]}</b> · not alerting{f.sub.slice(shadowMarker(mr).length)}</>
         : f.sub}</span>
     </Link>
   )
@@ -122,7 +122,7 @@ export function MarketRiskBanner({ mr }: { mr: MarketRisk | null }) {
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button type="button" data-testid="home-market-risk-ack" onClick={acknowledge} disabled={ack.busy || acked || shadow}
           style={{ ...tap, flex: '1 1 140px', border: 0, background: tv.color, color: TOKENS.bg[0], fontWeight: 800, cursor: ack.busy || acked || shadow ? 'default' : 'pointer', opacity: acked || shadow ? 0.7 : 1 }}>
-          {shadow ? 'Shadow: nothing to acknowledge' : acked ? `Acknowledged ${shortTime(mr.episode?.acknowledged_at)}` : ack.busy ? 'Recording…' : 'Acknowledge'}
+          {shadow ? `${shadowMarker(mr) === SHADOW_MARKER ? 'Shadow' : 'Carried'}: nothing to acknowledge` : acked ? `Acknowledged ${shortTime(mr.episode?.acknowledged_at)}` : ack.busy ? 'Recording…' : 'Acknowledge'}
         </button>
         <Link to="/risk?tab=market-risk" style={{ ...tap, flex: '1 1 110px', border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[1], color: TOKENS.text[0] }}>Open Risk</Link>
         <Link to="/risk?tab=exposure" style={{ ...tap, flex: '1 1 110px', border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[1], color: TOKENS.text[0] }}>Review stops</Link>

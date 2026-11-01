@@ -136,3 +136,18 @@ for (const width of [412, 390]) {
     await page.screenshot({ path: `test-results/shadow-risk-${width}-red.png`, fullPage: false })
   })
 }
+
+// CARRIED-ONLY (PR 2431): a live tier that rests only on data carried across a closure is labelled, not alerted.
+for (const width of [412, 390]) {
+  test(`Home ${width}: a carried-only YELLOW says CARRIED · not alerting`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 915 })
+    await homeFixtures(page)
+    await marketRiskRoutes(page, 'carried_yellow')
+    await page.goto('/v3/')
+    await expect(page.getByTestId('home-market-risk-shadow')).toHaveText('CARRIED')
+    await expect(page.getByTestId('home-market-risk')).toContainText('not alerting')
+    await expect(page.getByTestId('home-market-risk-compact-shadow')).toContainText('data from before the market closed')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBeTruthy()
+    await page.screenshot({ path: `test-results/carried-home-${width}-yellow.png`, fullPage: false })
+  })
+}

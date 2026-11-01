@@ -6,7 +6,7 @@ const assert = {
   deepEqual(a: unknown, b: unknown, m?: string) { const x = JSON.stringify(a), y = JSON.stringify(b); if (x !== y) fail(m ?? `expected ${x} to deep-equal ${y}`) },
   match(s: string, re: RegExp, m?: string) { if (!re.test(s)) fail(m ?? `expected ${JSON.stringify(s)} to match ${re}`) },
 }
-import { unwrapMarketRisk, bannerVisible, factLine, tierTone, contributorsLine, pointsSum, episodeLine, fmtPct, shadowMarker, SHADOW_MARKER } from './marketRisk.ts'
+import { unwrapMarketRisk, bannerVisible, factLine, tierTone, contributorsLine, pointsSum, episodeLine, fmtPct, shadowMarker, SHADOW_MARKER, CARRIED_MARKER } from './marketRisk.ts'
 
 const notEval = unwrapMarketRisk({ ok: true, data: { state: 'not_evaluated', tier: 'NOT_EVALUATED', score: null, as_of: null, age_hours: null, stale: false,
   reason: 'engine not live', contributors: [], categories: [], sources: { options_flow: { findings: [{ symbol: 'QQQ', state: 'STRESS', pc_vol_ratio: 3.309 }] } } } })
@@ -48,4 +48,9 @@ assert.equal(unwrapMarketRisk({ state: 'evaluated', tier: 'BLUE', score: 30, con
 assert.equal(shadowMarker(notEval), '', 'not evaluated: no shadow marker')
 // a live episode never rides on a shadow tier (the API drops it; the model keeps whatever arrives, so check the shape)
 assert.equal(unwrapMarketRisk({ state: 'evaluated', tier: 'RED', score: 80, contributors: [], categories: [], mode: 'shadow', episode: null })?.episode, null)
+// CARRIED-ONLY (PR 2431): a live tier resting only on data carried across a closure is labelled, never alerted
+const carried = unwrapMarketRisk({ state: 'evaluated', tier: 'YELLOW', score: 59.7, contributors: [{ name: 'Options flow', points: 34 }], categories: [], mode: 'live', carried_only: true })
+assert.equal(carried?.carried_only, true); assert.equal(shadowMarker(carried), CARRIED_MARKER)
+assert.match(factLine(carried).sub, /^CARRIED · not alerting · options flow/)
+assert.equal(shadowMarker(unwrapMarketRisk({ state: 'evaluated', tier: 'YELLOW', score: 59.7, contributors: [], categories: [], mode: 'shadow', carried_only: true })), SHADOW_MARKER)
 console.log('marketRisk.test ok')
