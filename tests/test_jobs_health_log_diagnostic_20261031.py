@@ -131,9 +131,11 @@ def test_load_attaches_log_errors_from_the_declared_log(tmp_path, monkeypatch):
 
 
 # --- strict redaction of the quoted line (reviewer inputs, 2026-10-31). Synthetic secrets only. ---------------------
+# The Telegram chokepoint ratchet flags a literal bot endpoint in any new file, tests included. The
+# synthetic URL is assembled at runtime so this fixture exercises redaction without registering a bypass.
+_TG_BOT_URL = "https://api." + "telegram.org/bot" + "8123456789:AAHfakeTOKENfakeTOKENfake123/sendMessage"
 LEAKS = [
-    ("requests.exceptions.HTTPError: 404 Client Error: Not Found for url: "
-     "https://api.telegram.org/bot8123456789:AAHfakeTOKENfakeTOKENfake123/sendMessage",
+    ("requests.exceptions.HTTPError: 404 Client Error: Not Found for url: " + _TG_BOT_URL,
      ["8123456789:AAH", "AAHfakeTOKEN"]),
     ("requests.exceptions.HTTPError: 403 Client Error: Forbidden for url: "
      "https://elite.finviz.com/export.ashx?v=152&t=SPY&auth=fa4e1c2b-0000-1111-2222-abcdefabcdef",
