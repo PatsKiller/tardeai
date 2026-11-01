@@ -49,6 +49,10 @@ def _shock(d: Optional[dict]) -> Optional[str]:
 
 def should_brief(doc: dict, prior: Optional[dict], cfg: dict) -> Optional[str]:
     """``"tier"`` on a transition into a trigger tier, ``"shock_type"`` on a shock change at the minimum tier, else None."""
+    # Carried-only data never escalates and never pages (operator's hold-not-escalate, #2425); a follow-up brief on it
+    # would be a page about information the engine has explicitly not confirmed.
+    if (doc.get("hysteresis") or {}).get("carried_only"):
+        return None
     trig = cfg.get("triggers") or {}
     tiers = {str(t).upper() for t in trig.get("tiers") or ["ORANGE", "RED"]}
     tier = str(doc.get("tier") or "NONE").upper()
