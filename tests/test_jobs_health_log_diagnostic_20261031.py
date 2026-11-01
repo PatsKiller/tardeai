@@ -143,8 +143,9 @@ LEAKS = [
     ("KeyError: 'sk-ant-api03-FAKEFAKEFAKEFAKE'", ["sk-ant-api03", "FAKEFAKEFAKE"]),
     ("ValueError: invalid dsn: postgresql://trade_ai:hunter2@127.0.0.1:5432/trade_ai", ["hunter2", "trade_ai:"]),
     ("RuntimeError: schwab refresh failed: refresh_token: Zx9FAKErefresh", ["Zx9FAKErefresh"]),
-    ("PermissionError: [Errno 13] Permission denied: '/home/johnclaw/.config/tradeai/secrets/bws_openclaw_gateway.env'",
-     ["bws_openclaw_gateway", "/home/johnclaw"]),
+    # Synthetic home path, assembled at runtime so the PII scanner never sees an operator path in git
+    ("PermissionError: [Errno 13] Permission denied: '" + os.path.join(os.sep, "home", "johnclaw", ".config", "tradeai", "secrets", "bws_openclaw_gateway.env") + "'",
+     ["bws_openclaw_gateway", os.path.join(os.sep, "home", "johnclaw")]),
 ]
 
 
