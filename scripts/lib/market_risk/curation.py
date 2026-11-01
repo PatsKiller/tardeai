@@ -57,9 +57,37 @@ def split_why(card_text: str, prefix: str) -> tuple[list[str], Optional[int]]:
     return lines, None
 
 
+# Typographic characters a model legitimately writes, folded to ASCII before the template check.
+_FOLD = {
+    "\u2019": "'",
+    "\u2018": "'",
+    "\u201c": '"',
+    "\u201d": '"',
+    "\u2014": "-",
+    "\u2013": "-",
+    "\u00b7": ";",
+    "\u00d7": "x",
+    "\u2026": "...",
+}
+
+
 def normalize(text: str) -> str:
-    """NFKC-normalised text (full-width digits become ASCII digits, so they are grounded like any other)."""
-    return unicodedata.normalize("NFKC", str(text or ""))
+    """NFKC-normalised text with every format character (Unicode category Cf: zero-width space, joiners, BOM, bidi
+    marks) removed, so "S\u200bell" cannot hide "Sell" from the checks (review of #2383, B3)."""
+    t = unicodedata.normalize("NFKC", str(text or ""))
+    return "".join(ch for ch in t if unicodedata.category(ch) != "Cf")
+
+
+def fold_ascii(text: str) -> str:
+    """``normalize`` plus the typographic folds in ``_FOLD``."""
+    t = normalize(text)
+    return "".join(_FOLD.get(ch, ch) for ch in t)
+
+
+def non_ascii_chars(text: str) -> list[str]:
+    """Characters left outside printable ASCII after folding. Confusables (Cyrillic "\u0405", Greek "\u039f"),
+    keycaps, emoji and variation selectors all land here and are refused — the "why" is plain English."""
+    return sorted({ch for ch in fold_ascii(text) if not (" " <= ch <= "~")})
 
 
 def non_ascii_digits(text: str) -> list[str]:
@@ -94,12 +122,59 @@ def allowed_figures(assessment: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
+_NUM_TOKEN = re.compile(r"\d+(?:[.,]\d+)*")
+
+
+def _num_key(raw: str) -> str | None:
+    """Canonical form of a numeric token: "3.970" -> "3.97", "50" -> "50". A comma is never read as a decimal
+    point or a thousands mark ("3,97" and "1,000" are not figures the engine displays), so it never matches."""
+    if "," in raw:
+        return None
+    try:
+        v = float(raw)
+    except ValueError:
+        return None
+    return f"{v:.6f}".rstrip("0").rstrip(".")
+
+
 def ungrounded_numbers(sentence: str, card_text: str, assessment: dict[str, Any]) -> list[str]:
-    """Numbers in ``sentence`` that the allow-list (``allowed_figures``) does not supply. Zero tolerance.
-    ``card_text`` is accepted for signature compatibility and deliberately not used as grounding."""
-    g = _grounding()
-    res = g.check_grounding([normalize(sentence)], allowed_figures(assessment), min_unsupported=1, max_share=0.0)
-    return list(res.get("unsupported") or [])
+    """Every numeric token in ``sentence`` that is not one of the displayed figures (``allowed_figures``). Zero
+    tolerance and NO trivial-number exemption: ``agent_number_grounding`` skips integers up to 31 and 1900-2100, which
+    let "QQQ could fall 25 percent" and "the S&P could drop to 2050" through (review of #2383, B3). ``card_text`` is
+    accepted for signature compatibility and deliberately not used as grounding."""
+    allowed = {k for k in (_num_key(m) for m in _NUM_TOKEN.findall(normalize(allowed_figures(assessment)))) if k}
+    out: list[str] = []
+    for m in _NUM_TOKEN.findall(normalize(sentence)):
+        k = _num_key(m)
+        if k is None or k not in allowed:
+            out.append(m)
+    return out
+
+
+_WORD = re.compile(r"[A-Za-z][A-Za-z0-9/&'-]*")
+
+
+def template_vocabulary(assessment: dict[str, Any], cfg: dict[str, Any]) -> set[str]:
+    """The allow-list template: the descriptive words in ``cfg['why_vocabulary']`` plus every word of the
+    contributors' displayed names and headlines and the category names. Nothing else may appear in the sentence."""
+    words = {str(w).lower() for w in cfg.get("why_vocabulary") or []}
+    for c in (assessment.get("contributors") or [])[:5]:
+        if not isinstance(c, dict):
+            continue
+        for k in ("category", "name", "headline", "detail"):
+            for w in _WORD.findall(fold_ascii(str(c.get(k) or "").replace("_", " "))):
+                words.add(w.lower())
+    for o in assessment.get("observations") or []:
+        if isinstance(o, dict) and o.get("category"):
+            words.update(w.lower() for w in str(o["category"]).split("_"))
+    return words
+
+
+def off_template_words(sentence: str, assessment: dict[str, Any], cfg: dict[str, Any]) -> list[str]:
+    """Words outside the template. Numbers are checked separately (``ungrounded_numbers``)."""
+    vocab = template_vocabulary(assessment, cfg)
+    text = _NUM_TOKEN.sub(" ", fold_ascii(sentence))
+    return sorted({w for w in _WORD.findall(text) if w.lower() not in vocab and w.lower().rstrip("'s") not in vocab})
 
 
 def build_prompt(card_text: str, assessment: dict[str, Any], current_why: str, cfg: dict[str, Any]) -> str:
@@ -116,7 +191,8 @@ def build_prompt(card_text: str, assessment: dict[str, Any], current_why: str, c
         f"Return only the sentence, at most {int(cfg.get('max_why_chars') or 280)} characters, no prefix, no quotes.\n"
         "RULES: say why risk is at this level, using only the facts below. Do not add any number that is not in the "
         "facts. Do not recommend buying, selling, trimming, hedging, a stop level, an order or a position size. "
-        "Do not reassure and do not exaggerate.\n\n"
+        "Do not reassure and do not exaggerate. Use only the category names, words from the contributor lines and "
+        "these words: " + ", ".join(sorted(str(w) for w in cfg.get("why_vocabulary") or [])) + ".\n\n"
         f"CURRENT SENTENCE: {current_why or '(none)'}\n\n"
         f"CARD:\n{card_text}\n\nFACTS:\n{json.dumps(facts, default=str, indent=1)}\n"
     )
@@ -194,13 +270,19 @@ def curate(
     odd = non_ascii_digits(sentence)
     if odd:
         return _result(card_text, curated=False, lane=lane, reason="non-ASCII digits rejected", rejected=odd)
-    sentence = normalize(sentence)
+    odd = non_ascii_chars(sentence)
+    if odd:
+        return _result(card_text, curated=False, lane=lane, reason="non-ASCII characters rejected", rejected=odd)
+    sentence = fold_ascii(sentence)
     hits = behaviour_hits(sentence, list(cfg.get("behaviour_patterns") or []))
     if hits:
         return _result(card_text, curated=False, lane=lane, reason="behaviour wording rejected", rejected=hits)
     bad = ungrounded_numbers(sentence, card_text, assessment)
     if bad:
         return _result(card_text, curated=False, lane=lane, reason="ungrounded numbers rejected", rejected=bad)
+    off = off_template_words(sentence, assessment, cfg)
+    if off:
+        return _result(card_text, curated=False, lane=lane, reason="words outside the template rejected", rejected=off)
 
     new_line = f"{prefix}{sentence}"
     if idx is None:

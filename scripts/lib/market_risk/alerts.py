@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import re
 import tempfile
 from datetime import datetime, timedelta, timezone
@@ -65,6 +66,24 @@ def render(a: dict[str, Any], *, max_contributors: int = 5, repeat: dict[str, An
     if a.get("confirming") is not None:
         head += f" · {a.get('confirming')} of 9 categories confirm"
     lines.append(head)
+    shock = a.get("shock_type") or {}
+    if shock.get("headline"):
+        lines.append(str(shock["headline"]))
+    from scripts.lib.market_risk import sectors as _sectors
+
+    sec_line = _sectors.card_line(a.get("sectors"))
+    if sec_line:
+        lines.append(sec_line)
+    flagged = [
+        p
+        for k, p in (a.get("positions") or {}).items()
+        if not str(k).startswith("_") and isinstance(p, dict) and p.get("stance") not in (None, "HOLD")
+    ]
+    meta = (a.get("positions") or {}).get("_book") or {}
+    if meta.get("residuals_ignored"):
+        lines.append(f"residuals ignored: {meta['residuals_ignored']}")
+    for p in flagged[:6]:
+        lines.append(f"{p['symbol']}: CIO {p['label']} — {'; '.join(p.get('reasons') or [])[:160]}")
     up = a.get("uplift") or None
     if up:
         why = "; ".join(str(r) for r in (up.get("reasons") or [])) or (
@@ -80,9 +99,15 @@ def render(a: dict[str, Any], *, max_contributors: int = 5, repeat: dict[str, An
     parts = []
     # "Your book" carries symbols, stop distances and budget NAMES only — never a book-weight number, an actual or a
     # limit (review of #2362, M3). Free-text reasons pass the same behaviour lexicon as curated prose, else dropped.
-    breached = sorted({str(b.get("budget")) for b in book.get("budget_breaches") or [] if b.get("budget")})
+    # book-level breaches by name; account-level ones are labelled as such, so a small account's limit never reads
+    # as the whole book's (review of #2383 round 3, L3)
+    bb = [b for b in book.get("budget_breaches") or [] if isinstance(b, dict) and b.get("budget")]
+    breached = sorted({str(b["budget"]) for b in bb if b.get("scope", "book") == "book"})
+    acct = sorted({str(b["budget"]) for b in bb if b.get("scope", "book") != "book"} - set(breached))
     if breached:
         parts.append("over budget: " + ", ".join(breached))
+    if acct:
+        parts.append("over budget in one account: " + ", ".join(acct))
     for d in book.get("drivers") or []:
         s = str(d.get("symbol") or "")
         if d.get("stop_distance_pct") is not None:
@@ -135,6 +160,12 @@ def intent_for(assessment: dict[str, Any], prior: dict[str, Any] | None, policy:
     cfg = policy.get("alerts") or {}
     tier = str(assessment.get("tier") or "NONE").upper()
     was = str((prior or {}).get("tier") or "NONE").upper()
+    if ((prior or {}).get("hysteresis") or {}).get("carried_only") and not (
+        (assessment.get("hysteresis") or {}).get("carried_only")
+    ):
+        # a fresh observation now supports the tier the operator was never alerted on: a normal transition from
+        # nothing, with the tier's own priority (PR 2431)
+        was = "NONE"
     if tier == was:
         return None
     if _rank(tier) > _rank(was):
@@ -151,6 +182,15 @@ def intent_for(assessment: dict[str, Any], prior: dict[str, Any] | None, policy:
             key, transition = "deescalated", f"down_from_{was.lower()}"
     pri = (cfg.get("priority") or {}).get(key, "P2")
     dedupe = int((cfg.get("dedupe_minutes") or {}).get(key, 240))
+    hy = assessment.get("hysteresis") or {}
+    if hy.get("carried_only"):
+        # the tier rests only on data carried across a closure: one informational card per tier, never P1/P2
+        pri = str(cfg.get("bootstrap_priority") or "P3")
+        transition = f"carried_{tier.lower()}"
+    elif hy.get("bootstrap") or not prior:
+        # a first reading (no prior tier) never pages P1, whatever the tier (review of PR 2425 round 4, finding 2)
+        pri = str(cfg.get("bootstrap_priority") or "P3")
+        transition = f"first_reading_{tier.lower()}"
     as_of = assessment.get("as_of")
     try:
         session_date = datetime.fromisoformat(str(as_of).replace("Z", "+00:00")).astimezone(ET).date().isoformat()
@@ -158,7 +198,7 @@ def intent_for(assessment: dict[str, Any], prior: dict[str, Any] | None, policy:
         session_date = "unknown"
     return {
         "priority": pri,
-        "dedupe_minutes": 0 if tier == "RED" else dedupe,
+        "dedupe_minutes": 0 if tier == "RED" and pri == "P1" else dedupe,
         "dedupe_key": f"market_risk:{tier}:{session_date}:{transition}",
         "tier": tier,
         "transition": transition,
@@ -205,33 +245,165 @@ def _save_ledger(path: Path, data: dict[str, Any]) -> None:
         raise
 
 
-def claim(key: str, dedupe_minutes: int, *, now: datetime, path: Path) -> bool:
-    """Claim ``key`` BEFORE sending (review of #2362, B5c/d). False when the key was already sent or claimed inside
-    its window — ``dedupe_minutes`` 0 means once per key ever (repeat and episode keys are unique). A claim is written
-    before the send, so a crash between send and the next write cannot re-send the same card every cycle."""
-    data = _load_ledger(path)
-    prev = (data.get("keys") or {}).get(key)
-    if prev and prev.get("status") in ("claimed", "sent"):
-        if int(dedupe_minutes) <= 0:
-            return False
-        at = datetime.fromisoformat(str(prev["at"]))
-        if now - at < timedelta(minutes=int(dedupe_minutes)):
-            return False
-    data.setdefault("keys", {})[key] = {"at": now.astimezone(timezone.utc).isoformat(), "status": "claimed"}
-    _save_ledger(path, data)
-    return True
+def _locked(path: Path):
+    try:
+        from lib.market_risk.escalation import locked
+    except ImportError:  # pragma: no cover
+        from scripts.lib.market_risk.escalation import locked
+    return locked(path)
 
 
-def settle(key: str, ok: bool, *, path: Path) -> None:
-    data = _load_ledger(path)
-    rec = (data.get("keys") or {}).get(key)
-    if rec is None:
-        return
-    if ok:
-        rec["status"] = "sent"
-    else:  # a failed send releases the key so the next cycle may try again
-        data["keys"].pop(key, None)
-    _save_ledger(path, data)
+def _ts(v: Any) -> datetime | None:
+    try:
+        t = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+
+
+def _retry_delay(attempts: int, max_attempts: int) -> timedelta:
+    """No delay for the first ``max_attempts`` failures; after that an hourly-capped exponential backoff. A key is
+    NEVER terminal (review of #2383 round 3, H1): a 3-hour Telegram outage must not wedge the card for ever."""
+    over = attempts - max_attempts
+    if over < 0:
+        return timedelta(0)
+    return timedelta(minutes=min(60, 15 * (2 ** min(over, 4))))
+
+
+def claim(key: str, dedupe_minutes: int, *, now: datetime, path: Path, claim_ttl_min: float = 10.0) -> bool:
+    """Claim ``key`` BEFORE sending (review of #2362, B5c/d; #2383, B5d; round 3, H1/H5). True when this caller may
+    send now: the key is new or outside its ``dedupe_minutes`` window (0 = once per key ever); or queued ``pending``
+    (or the legacy ``failed``) and due; or ``claimed`` and stale — a stale claim is retried after
+    ``claim_ttl_min * 2**stale_claims`` (capped at 6 doublings), so a card whose send keeps killing the process backs
+    off instead of looping every cycle. False when ``sent``, freshly claimed, or not yet due. Runs under the lock."""
+    with _locked(path):
+        data = _load_ledger(path)
+        keys = data.setdefault("keys", {})
+        prev = keys.get(key)
+        if prev:
+            st = prev.get("status")
+            if st in ("pending", "failed"):
+                due = _ts(prev.get("next_attempt_at"))
+                if due is not None and now < due:
+                    return False
+            elif st == "claimed":
+                at = _ts(prev.get("claimed_at") or prev["at"]) or now
+                stale = int(prev.get("stale_claims") or 0)
+                if now - at < timedelta(minutes=float(claim_ttl_min) * (2 ** min(stale, 6))):
+                    return False
+                prev["stale_claims"] = min(stale + 1, 99)
+            elif st == "superseded":
+                return False
+            elif st == "sent":
+                if int(dedupe_minutes) <= 0:
+                    return False
+                if now - (_ts(prev["at"]) or now) < timedelta(minutes=int(dedupe_minutes)):
+                    return False
+                prev = None
+        rec = dict(prev or {})
+        rec.update(status="claimed", claimed_at=now.astimezone(timezone.utc).isoformat())
+        rec.setdefault("at", now.astimezone(timezone.utc).isoformat())
+        keys[key] = rec
+        _save_ledger(path, data)
+        return True
+
+
+def settle(key: str, ok: bool, *, path: Path, now: datetime | None = None) -> None:
+    """A sent key becomes ``sent``. A failed send goes back to ``pending`` with ``attempts + 1`` and a
+    ``next_attempt_at`` from ``_retry_delay`` — never a terminal state (H1). A bare claim with nothing queued is
+    released, as before. Runs under the lock."""
+    now = now or datetime.now(timezone.utc)
+    with _locked(path):
+        data = _load_ledger(path)
+        rec = (data.get("keys") or {}).get(key)
+        if rec is None:
+            return
+        if ok:
+            rec["status"] = "sent"
+            rec["sent_at"] = now.astimezone(timezone.utc).isoformat()
+        elif "text" not in rec:
+            data["keys"].pop(key, None)
+        else:
+            rec["attempts"] = int(rec.get("attempts") or 0) + 1
+            rec["status"] = "pending"
+            rec["next_attempt_at"] = (
+                (now + _retry_delay(rec["attempts"], int(rec.get("max_attempts") or 8)))
+                .astimezone(timezone.utc)
+                .isoformat()
+            )
+        _save_ledger(path, data)
+
+
+def outbox_put(entry: dict[str, Any], *, now: datetime, path: Path) -> bool:
+    """Queue one intent in the sent-key ledger as ``pending`` (the outbox). Written BEFORE the prior and snapshot are
+    persisted (market_risk_evaluate._cycle), so a crash after it leaves the card queued, and a crash before it leaves
+    the prior unpersisted so the next cycle recomputes the same transition (review of #2383, B5d). False when the
+    key is already queued, claimed, sent or superseded inside its window. Runs under the lock (H5)."""
+    key = str(entry["key"])
+    with _locked(path):
+        data = _load_ledger(path)
+        keys = data.setdefault("keys", {})
+        prev = keys.get(key)
+        dm = int((entry.get("intent") or {}).get("dedupe_minutes") or 0)
+        if prev and prev.get("status") in ("pending", "claimed", "sent", "failed", "superseded"):
+            if dm <= 0 or prev.get("status") != "sent":
+                return False
+            if now - (_ts(prev["at"]) or now) < timedelta(minutes=dm):
+                return False
+        keys[key] = {
+            "at": now.astimezone(timezone.utc).isoformat(),
+            "status": "pending",
+            "text": entry["text"],
+            "intent": entry["intent"],
+            "kind": entry.get("kind"),
+            "episode_id": entry.get("episode_id"),
+            "recorded": False,
+            "attempts": 0,
+            "max_attempts": int(entry.get("max_attempts") or 8),
+        }
+        _save_ledger(path, data)
+        return True
+
+
+def outbox_due(*, now: datetime, path: Path, claim_ttl_min: float = 10.0) -> list[dict[str, Any]]:
+    """Entries to act on this cycle, oldest first: ``pending`` (and legacy ``failed``) that are due, stale ``claimed``
+    (with the same backoff as ``claim``), and ``sent`` but not yet recorded in the episode store."""
+    out = []
+    for key, rec in (_load_ledger(path).get("keys") or {}).items():
+        if "text" not in rec:
+            continue
+        st = rec.get("status")
+        if st in ("pending", "failed"):
+            due = _ts(rec.get("next_attempt_at"))
+            if due is None or now >= due:
+                out.append({"key": key, **rec})
+        elif st == "claimed":
+            at = _ts(rec.get("claimed_at") or rec["at"]) or now
+            wait = timedelta(minutes=float(claim_ttl_min) * (2 ** min(int(rec.get("stale_claims") or 0), 6)))
+            if now - at >= wait:
+                out.append({"key": key, **rec})
+        elif st == "sent" and rec.get("episode_id") and not rec.get("recorded"):
+            out.append({"key": key, **rec})
+    return sorted(out, key=lambda r: str(r.get("at")))
+
+
+def mark_recorded(key: str, *, path: Path) -> None:
+    with _locked(path):
+        data = _load_ledger(path)
+        rec = (data.get("keys") or {}).get(key)
+        if rec is not None:
+            rec["recorded"] = True
+            _save_ledger(path, data)
+
+
+def mark_superseded(key: str, *, path: Path, reason: str) -> None:
+    """Retire an outbox entry that must not be sent: its episode was acknowledged, resolved or replaced (H2, H4)."""
+    with _locked(path):
+        data = _load_ledger(path)
+        rec = (data.get("keys") or {}).get(key)
+        if rec is not None:
+            rec.update(status="superseded", superseded_reason=reason[:200])
+            _save_ledger(path, data)
 
 
 def deliver(
@@ -256,21 +428,26 @@ def deliver(
             out["deduped"] = True
         return out
     path = ledger or sent_ledger_path()
-    if key and not claim(key, int(intent.get("dedupe_minutes") or 0), now=now, path=path):
+    ttl = float((policy.get("escalation") or {}).get("claim_ttl_min") or 10)
+    if key and not claim(key, int(intent.get("dedupe_minutes") or 0), now=now, path=path, claim_ttl_min=ttl):
         out.update(sent=False, deduped=True)
         return out
     from telegram_alert import send_telegram
 
-    ok = send_telegram(
-        message,
-        priority=intent["priority"],
-        dedupe_minutes=int(intent["dedupe_minutes"]),
-        producer=producer,
-        message_class="market_risk",
-    )
+    try:
+        ok = send_telegram(
+            message,
+            priority=intent["priority"],
+            dedupe_minutes=int(intent["dedupe_minutes"]),
+            producer=producer,
+            message_class="market_risk",
+        )
+    except Exception as exc:  # noqa: BLE001 — a transport error is a failed send: returned, logged, retried next cycle
+        print(f"market_risk alerts: send failed ({type(exc).__name__}: {exc})", file=sys.stderr)
+        ok, out["error"] = False, f"send raised {type(exc).__name__}"
     out["sent"] = bool(ok)
     if key:
-        settle(key, bool(ok), path=path)
+        settle(key, bool(ok), path=path, now=now)
     if not ok:
-        out["error"] = "send_telegram returned False"
+        out.setdefault("error", "send_telegram returned False")
     return out

@@ -53,6 +53,7 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 | Options positioning | **option_chain_strikes** | PROPOSED | `option_chain_strikes` (table) | `scripts/options_chain_snapshot.py` | host: options-chain-snapshot | 8 h on market days; the 10:00 row is expected by 10:15 ET | Risk, CIO, Telegram |
 | ETF look-through | **etf_holdings_snapshot** | PROPOSED | `etf_holdings_snapshot` (table) | UNCONSOLIDATED → `scripts/lib/writers/etf_holdings_writer.py` (to_build (0 writers measured 2026-10-31; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)) | host: etf-holdings-weekly | 8 days; a held ETF with no snapshot is a gap the Risk page says so about | Risk, Home, CIO, Telegram |
 | Market risk escalation | **market_risk_episodes** | PROPOSED | `market_risk_episodes` (table) | UNCONSOLIDATED → `scripts/lib/market_risk/escalation.py` (to_build (0 writers measured 2026-10-31; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)) | event: market-risk-evaluate | event-driven; an OPEN Red with no repeat receipt for 75 min is the stalled-escalation page | Home, Risk, Approvals, Telegram |
+| Extended-session prints | **quote_extended_session** | PROPOSED | `market_quotes_extended` (table) | `scripts/lib/writers/market_quotes_extended_writer.py` | host: market-quotes-extended | 30 min during 04:00-09:30 and 16:00-20:00 ET on NYSE trading days; once the overnight migration is applied and the Schwab lane runs, also 20:00-04:00 ET Sunday night to Friday 04:00 and Sunday 18:00-20:00 for futures (the engine reads an overnight print older than extended_hours.overnight.stale_after_minutes as UNKNOWN); otherwise the newest print is the previous extended session's | scripts/lib/market_risk/reader.py (PgReader.extended_quotes) |
 
 ## Entity by entity
 
@@ -498,6 +499,19 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 - **Read path (projection):** `market_risk_episodes` — to_build
 - **Readers:** Home, Risk, Approvals, Telegram
 - **Measured 2026-10-31 (repo scan: no table, no writer, no reader):** 0 writer file(s) of the store
+
+### Pre-market / after-hours prints (Market Risk Engine) — `quote_extended_session` (PROPOSED)
+
+**Operator decision (§17):** operator approved new stores as design §11 item 1 on 2026-10-31; grant recorded at promotion (activation PR)
+
+- **Facts:** price, reference_close, change_pct, session, bar_end
+- **Store of record:** `market_quotes_extended` (table)
+- **Single writer:** `scripts/lib/writers/market_quotes_extended_writer.py`
+- **Cadence:** */15 04:00-09:30 and 16:00-20:00 Mon-Fri NYSE trading days · stale after 0.5 h
+- **Freshness SLA:** 30 min during 04:00-09:30 and 16:00-20:00 ET on NYSE trading days; once the overnight migration is applied and the Schwab lane runs, also 20:00-04:00 ET Sunday night to Friday 04:00 and Sunday 18:00-20:00 for futures (the engine reads an overnight print older than extended_hours.overnight.stale_after_minutes as UNKNOWN); otherwise the newest print is the previous extended session's
+- **Refresh lane:** host: market-quotes-extended — Host crontab, scripts/market_quotes_extended.py --apply every 15 min in the extended sessions; declared NEVER_SCHEDULED in config/lane_registry.json, activated by the operator under §25.10.2.
+- **Read path (projection):** `none`
+- **Readers:** scripts/lib/market_risk/reader.py (PgReader.extended_quotes)
 
 ## Field level
 

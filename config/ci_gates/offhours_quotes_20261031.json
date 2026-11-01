@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "offhours_quotes_20261031",
+  "files": [
+    "tests/test_offhours_quotes_20261031.py"
+  ],
+  "anchor": "OFFHOURS_QUOTES_20261031",
+  "comment": [
+    "ANCHOR: OFFHOURS_QUOTES_20261031 — Market Risk Engine off-hours quotes (DSN-20261031-market-risk-engine), stacked on #2384.",
+    "Schwab market-data quotes into market_quotes_extended through #2384's single writer (never market_quotes), OFF by",
+    "default until the operator approves the schedule (AGENTS.md 28.2.0 ratified on #2407). Proves #2384's session and",
+    "reference contract, bar_end = the trade instant, universe read from config, the domain-proposed --apply refusal, the",
+    "switch off by default, no order capability reached, and dry runs that write nothing.",
+    "Hermetic: fixtures only, no network, no DB, no credential. Schedules nothing."
+  ]
+}

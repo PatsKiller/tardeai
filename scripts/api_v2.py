@@ -164,6 +164,10 @@ def _json_clean(obj):
 
 def _load_json(path: Path):
     try:
+        if path.exists() and path.stat().st_size == 0:
+            # 2026-10-30: the disk-full night left state files at 0 bytes; say so instead of silently reading nothing.
+            log.warning("%s is empty (0 bytes); treating it as missing", path)
+            return None
         return json.loads(path.read_text()) if path.exists() else None
     except Exception:
         return None
@@ -30726,6 +30730,17 @@ def _queue_summary():
         or {}
     ).get("cnt", 0)
     pending = by_status.get("pending", 0)
+    # The consumer lane's registry state: RETIRED means nothing drains this table by design (needs_action.rule_queue
+    # then raises no Do-now item, and the Jobs page labels the backlog retired instead of CRIT).
+    try:
+        from lib.lane_registry import load_registry as _qs_load
+
+        _qs_lanes = (_qs_load() or {}).get("lanes") or []
+        _qs_row = next((r for r in _qs_lanes if isinstance(r, dict) and r.get("lane_id") == "deep-overnight-llm"), {})
+        lane_state = _qs_row.get("state")
+    except Exception as exc:  # noqa: BLE001 — an unreadable registry is reported, never treated as retired
+        lane_state = None
+        print(f"[queue_summary] lane registry unreadable: {type(exc).__name__}", file=_sys_heal.stderr)
     cap = 100
     now = datetime.now()
     window_start = now.replace(hour=23, minute=0, second=0, microsecond=0)
@@ -30737,6 +30752,9 @@ def _queue_summary():
         # False when the queue table could not be read (db_adapter returns None): the zeros below are then not
         # measurements. GET /api/v2/needs-action reports the source unavailable instead (2026-10-21).
         "measured": raw_rows is not None,
+        "lane_id": "deep-overnight-llm",
+        "lane_state": lane_state,
+        "retired": lane_state == "RETIRED",
         "pending": pending,
         "done_today": done_today,
         "failed": by_status.get("failed", 0),
@@ -37519,7 +37537,13 @@ def _data_source_health(query=None):
         except Exception as e:
             out.append({"source": label, "category": cat, "status": "error", "error": str(e)[:80]})
 
-    _feed("FRED macro", "macro", "SELECT max(fetched_at), count(*) FROM fred_economic_series", 72)
+    _feed(  # last_seen_at (2026_10_31 migration) else fetched_at, which is now first-fetch only (review of #2383, N5)
+        "FRED macro",
+        "macro",
+        "SELECT MAX(COALESCE((to_jsonb(f)->>'last_seen_at')::timestamptz, f.fetched_at)), count(*) "
+        "FROM fred_economic_series f",
+        72,
+    )
     _feed(
         "Finviz screeners", "finviz", "SELECT max(last_run), count(*) FILTER (WHERE active) FROM finviz_screeners", 24
     )
@@ -68325,11 +68349,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     # POST ack: records the operator's acknowledgment in the episode ledger (P3-T7, lib.market_risk.escalation).
     if base_path == "/api/v2/market-risk/latest" and method == "GET":
         try:
-            from lib.market_risk_projection import SNAPSHOT_REL as _MR_REL, build as _mr_build
+            from lib.market_risk_projection import build as _mr_build, load_snapshot as _mr_load
 
             from lib.market_risk import escalation as _mr_esc
 
-            _snap = _load_json(PROJECT_ROOT / _MR_REL)
+            # live snapshot when present, else the labelled shadow one (never a live episode on a shadow tier)
+            _snap = _mr_load(lambda _rel: _load_json(PROJECT_ROOT / _rel), lambda _rel: (PROJECT_ROOT / _rel).exists())
             _radar = _load_json(PROJECT_ROOT / "data" / "runtime" / "hedging_radar_latest.json")
             _ep_err = None
             try:
@@ -68348,14 +68373,25 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             from lib.market_risk import escalation as _mr_esc
             from lib.market_risk_projection import ack_outcome as _mr_ack, build as _mr_build
 
-            from lib.market_risk_projection import SNAPSHOT_REL as _MR_REL
+            from lib.market_risk_projection import load_snapshot as _mr_load
 
-            _snap = _load_json(PROJECT_ROOT / _MR_REL)
-            _proj = _mr_build(_snap, None, episode=_mr_esc.open_episode(_mr_esc.load()))
+            # handler-side same-origin CSRF, enforced whatever enforce/report_only say — the deploy STOP pattern
+            # (cc_auth.command_csrf_check; review of #2383 round 3, M-C)
+            _mr_csrf_ok, _mr_csrf_why = _mr_auth.command_csrf_check(_mr_auth.load_config(), method, base_path)
+            if not _mr_csrf_ok:
+                return 403, {"ok": False, "error": "acknowledgment refused: cross-site request", "reason": _mr_csrf_why}
+
+            _snap = _mr_load(lambda _rel: _load_json(PROJECT_ROOT / _rel), lambda _rel: (PROJECT_ROOT / _rel).exists())
+            try:
+                _ep = _mr_esc.open_episode(_mr_esc.load())
+            except _mr_esc.EpisodeStoreCorrupt:
+                # a torn ledger: refuse the ack with the reason, never a 500 echoing a path (review of #2383, M2)
+                return 503, {"ok": False, "error": "episode ledger unreadable; the next evaluation recovers it"}
+            _proj = _mr_build(_snap, None, episode=_ep)
             _code, _out = _mr_ack(_proj, body or {}, actor=_mr_auth.current_principal())
             return _code, _json_clean(_out)
         except Exception as e:
-            return 500, {"ok": False, "error": str(e)}
+            return 500, {"ok": False, "error": f"acknowledgment failed: {type(e).__name__}"}
 
     # ── Session 33: Risk Regime + Strategy Rotation ───────────────────────
     if base_path in ("/api/v2/risk-regime/status", "/api/v2/risk-regime/latest"):

@@ -310,6 +310,11 @@ def upsert_candidate(candidate_type: str, label: str, *,
     if not label:
         raise DiscoveryInboxError("label is required")
     key = normalized_key or dedupe.normalize_key(label)
+    if not key and candidate_type == "TICKER_CANDIDATE":
+        # A bare ticker that is also a stopword (A, IT, ON, ARE, BE, AN) normalizes to nothing. On 2026-10-26 the
+        # analyst-signal run hit 'A' (Agilent), raised, and three failures opened the n8n breaker for
+        # hermes-analyst-signal-discovery. A ticker's identity is the symbol itself, so key on it.
+        key = label.lower()
     if not key:
         raise DiscoveryInboxError(f"label normalizes to empty key: {label!r}")
 

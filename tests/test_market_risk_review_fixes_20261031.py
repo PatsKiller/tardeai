@@ -157,7 +157,12 @@ def test_b1_one_path_constant_everywhere():
     api = (ROOT / "scripts/api_v2.py").read_text()
     ctx = (ROOT / "scripts/lib/cio_market_context_state.py").read_text()
     assert '"market_risk_latest.json"' not in api and '"data/runtime/market_risk_latest.json"' not in ctx
-    assert "SNAPSHOT_REL" in api and "SNAPSHOT_REL" in ctx
+    # since PR 2425 both read through market_risk_projection.load_snapshot, which owns SNAPSHOT_REL (live) and
+    # SHADOW_REL (the labelled fallback)
+    assert "load_snapshot" in api and "load_snapshot" in ctx
+    projection = (ROOT / "scripts/lib/market_risk_projection.py").read_text()
+    body = projection[projection.index("def load_snapshot") :][:2500]
+    assert "load(SNAPSHOT_REL)" in body and "load(SHADOW_REL)" in body
 
 
 # ── B3: curation ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -320,24 +325,36 @@ def test_b5c_dedupe_key_is_enforced_by_the_sent_key_ledger(tmp_path, monkeypatch
     assert a1["sent"] and a2.get("deduped") and a3["sent"] and len(calls) == 2
 
 
-def test_b5d_crash_after_send_does_not_resend_and_prior_is_written_first(state, monkeypatch):
+class _ProcessKilled(BaseException):
+    """A process death mid-send (not an ordinary transport error, which ``deliver`` catches and retries)."""
+
+
+def test_b5d_crash_mid_send_is_retried_once_and_prior_is_written_first(state, monkeypatch):
+    # review of #2383, B5d: at-least-once. The prior and snapshot are written before the drain; a death mid-send leaves
+    # the card claimed; the next cycle (after claim_ttl_min) sends it once and records it once — never lost, never
+    # repeated every cycle.
     mod = _evaluator()
     seen = {}
 
     def boom(message, kw):
         seen["latest_existed"] = (state / "data/runtime/market_risk/latest.json").exists()
         seen["snapshot_existed"] = (state / proj.SNAPSHOT_REL).exists()
-        raise RuntimeError("process killed mid-send")
+        raise _ProcessKilled("process killed mid-send")
 
     _transport(monkeypatch, on_send=boom)
-    with pytest.raises(RuntimeError):
+    with pytest.raises(_ProcessKilled):
         _run_apply(mod, T_ORANGE, monkeypatch)
     assert seen == {"latest_existed": True, "snapshot_existed": True}
     calls = _transport(monkeypatch)
     prior = json.loads((state / "data/runtime/market_risk/latest.json").read_text())
     cycle, _ = _run_apply(mod, T_ORANGE + timedelta(minutes=15), monkeypatch, prior=prior)
-    initial = [s for s in cycle["sends"] if s["kind"] == "initial"]
-    assert initial == [] and not any("MARKET RISK" in m and "ALERT ACTIVE" not in m for m, _ in calls)
+    initial = [s for s in cycle["sends"] if s["kind"] == "initial" and s.get("sent")]
+    assert len(initial) == 1
+    calls2 = _transport(monkeypatch)
+    cycle, _ = _run_apply(mod, T_ORANGE + timedelta(minutes=30), monkeypatch,
+                          prior=json.loads((state / "data/runtime/market_risk/latest.json").read_text()))
+    assert not [s for s in cycle["sends"] if s["kind"] == "initial" and s.get("sent")]
+    assert not any("ALERT ACTIVE" not in m and "MARKET RISK" in m for m, _ in calls2)
 
 
 def test_b5_repeat_priority_comes_from_policy(state, monkeypatch):
@@ -348,8 +365,9 @@ def test_b5_repeat_priority_comes_from_policy(state, monkeypatch):
     pol = copy.deepcopy(POLICY)
     pol["escalation"]["repeat_priority"] = "P2"
     monkeypatch.setattr(registry, "evaluate_all", lambda ctx: _obs(ORANGE_SPEC, ctx.now))
-    first = mod.run_cycle(T_ORANGE, object(), pol, None, apply=True)
-    later = mod.run_cycle(T_ORANGE + timedelta(minutes=61), object(), pol, first["assessment"], apply=True)
+    first = mod.run_cycle(T_ORANGE, object(), pol, None, apply=True)  # bootstrap: no episode, no page (PR 2425 r4)
+    second = mod.run_cycle(T_ORANGE + timedelta(minutes=1), object(), pol, first["assessment"], apply=True)
+    later = mod.run_cycle(T_ORANGE + timedelta(minutes=62), object(), pol, second["assessment"], apply=True)
     reps = [s for s in later["sends"] if s["kind"] != "initial"]
     assert reps and all(s["intent"]["priority"] == "P2" for s in reps)
 

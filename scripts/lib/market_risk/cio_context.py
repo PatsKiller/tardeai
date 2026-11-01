@@ -101,6 +101,12 @@ def tier_line(mr: Optional[dict[str, Any]]) -> str:
         names = _contributor_names(mr)
         if names:
             line += " — " + ", ".join(names)
+        shock = mr.get("shock_type") if isinstance(mr.get("shock_type"), dict) else {}
+        if shock.get("class") and shock.get("class") not in ("UNKNOWN", "MIXED"):
+            line += f" · {shock['class'].lower()}"
+            hit = (mr.get("sectors") or {}).get("stressed") if isinstance(mr.get("sectors"), dict) else None
+            if hit:
+                line += f" ({', '.join(hit[:3])})"
         line += f"; as of {_et_hhmm(mr.get('as_of'))}"
         if mr.get("state") == "stale":
             line += " (stale)"
@@ -165,6 +171,27 @@ def ask_facts(mr: Optional[dict[str, Any]]) -> dict[str, Any]:
             else None,
             "probabilities": mr.get("probabilities"),
             "stale": bool(mr.get("stale")),
+            "shock_type": {
+                k: (mr.get("shock_type") or {}).get(k) for k in ("class", "headline", "confidence", "evidence", "as_of")
+            }
+            if isinstance(mr.get("shock_type"), dict)
+            else None,
+            "sectors": {
+                k: (mr.get("sectors") or {}).get(k) for k in ("stressed", "weak", "resilient", "rotating", "as_of")
+            }
+            if isinstance(mr.get("sectors"), dict)
+            else None,
+            "reentry_watch": {
+                s: {k: w.get(k) for k in ("status", "headline", "met", "of", "conditions", "base_rate", "as_of")}
+                for s, w in (mr.get("reentry_watch") or {}).items()
+                if isinstance(w, dict) and not str(s).startswith("_")
+            },
+            "leadership": _leadership_facts(mr.get("leadership")),
+            "position_stances": {
+                s: {k: p.get(k) for k in ("stance", "label", "reasons", "re_enter_if", "as_of")}
+                for s, p in (mr.get("positions") or {}).items()
+                if isinstance(p, dict) and not str(s).startswith("_")
+            },
         }
     )
     db = mr.get("deep_brief")
@@ -177,6 +204,49 @@ def ask_facts(mr: Optional[dict[str, Any]]) -> dict[str, Any]:
             "unknown": (db.get("unknown") or [])[:12],
         }
     return out
+
+
+def _leadership_facts(block: Any) -> Optional[dict[str, Any]]:
+    """Durable leadership classes per group (rotation advisor), for Ask-the-CIO; None when not evaluated."""
+    if not isinstance(block, dict) or block.get("state") != "evaluated":
+        return None
+    from scripts.lib.market_risk import rotation_advice
+
+    tr = leadership_track_record()
+    return {
+        "as_of": block.get("as_of"),
+        "groups": {
+            k: {x: g.get(x) for x in ("label", "class", "horizon", "confidence", "macro_aligned")}
+            for k, g in (block.get("groups") or {}).items()
+            if isinstance(g, dict) and g.get("class") not in ("NEUTRAL", "UNKNOWN")
+        },
+        # R1/R7: the classes carry their track record, including the 2026 holdout, so the CIO never cites them as edge
+        "track_record": tr,
+        "caveat": (
+            "No demonstrated edge: "
+            + str((tr or {}).get("verdict") or "track record unavailable")
+            + ". "
+            + rotation_advice.track_record_holdout_line(tr or {})
+        ),
+    }
+
+
+def leadership_track_record() -> Optional[dict[str, Any]]:
+    """The leadership backtest summary (docs/audits/ROTATION_LEADERSHIP_BACKTEST_20261031.json); None if unreadable."""
+    import json
+
+    root = Path(__file__).resolve().parents[3]
+    try:
+        from scripts.lib.market_risk.policy import load_policy
+
+        rel = str(((load_policy() or {}).get("leadership") or {}).get("track_record_path") or "")
+    except Exception:  # noqa: BLE001 — the default path below still applies
+        rel = ""
+    path = root / (rel or "docs/audits/ROTATION_LEADERSHIP_BACKTEST_20261031.json")
+    try:
+        return dict(json.loads(path.read_text(encoding="utf-8")).get("summary") or {}) or None
+    except (OSError, ValueError):
+        return None
 
 
 DEEP_BRIEF_ASK = ("deep brief", "deeper analysis", "market risk brief", "what normally happens")
@@ -202,9 +272,9 @@ def deep_brief_on_demand(now: Optional[datetime] = None) -> dict[str, Any]:
         root = _P(_os.environ.get("TRADEAI_STATE_ROOT") or _P.home() / "trade-ai-releases" / "persistent-state")
         latest = root / "data" / "runtime" / "market_risk" / "latest.json"
         doc = _json.loads(latest.read_text(encoding="utf-8"))
-        from . import deep_brief
-        from .deep_brief_facts import PgSources, build_fact_pack
-        from .reader import PgReader
+        from scripts.lib.market_risk import deep_brief
+        from scripts.lib.market_risk.deep_brief_facts import PgSources, build_fact_pack
+        from scripts.lib.market_risk.reader import PgReader
 
         reader = PgReader()
         try:

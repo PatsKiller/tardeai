@@ -228,7 +228,10 @@ def test_calm_to_unknown_never_raises_score_or_tier_fuzz():
         k = rnd.choice(calm)
         spec[k] = ("UNKNOWN", None)
         b = scoring.compose([_ob(k2, *spec[k2], now) for k2 in c.CATEGORIES], POL, now=now)
-        if (b.score or 0) > (a.score or 0) + 1e-9 or scoring.SEVERITY[b.tier] > scoring.SEVERITY[a.tier]:
+        # GREEN -> NONE when a category goes unmeasured is LESS confidence, not more risk: GREEN needs 70% coverage
+        # (review of #2383, N2), so that one move is allowed; any other tier rise is a defect.
+        green_drop = a.tier == "GREEN" and b.tier == "NONE"
+        if (b.score or 0) > (a.score or 0) + 1e-9 or (scoring.SEVERITY[b.tier] > scoring.SEVERITY[a.tier] and not green_drop):
             raised.append((k, a.score, b.score, a.tier, b.tier))
     assert not raised, raised[:3]
 

@@ -137,10 +137,18 @@ def test_confirmation_without_required_stress_is_not_orange():
 
 def test_green():
     # design §5.2: score <= 20 with >= 3 categories CALM -> IMPROVING
-    spec = {"technical": ("IMPROVING", 10), "breadth": ("IMPROVING", 12), "volatility": ("IMPROVING", 15)}
-    assert scoring.compose(obs(spec), POLICY, now=NOW).tier == "GREEN"
+    # GREEN also needs >= 70% of the weight measured (review of #2383, N2): the other categories read CALM here
+    spec = {k: ("CALM", 5) for k in c.CATEGORIES}
+    spec.update({"technical": ("IMPROVING", 10), "breadth": ("IMPROVING", 12), "volatility": ("IMPROVING", 15)})
+    pr = {"tier": "NONE", "market_tier": "NONE", "hysteresis": {}}  # never GREEN on a bootstrap (round 3, M-B)
+    assert scoring.compose(obs(spec), POLICY, now=NOW).tier == "NONE"
+    a = scoring.compose(obs(spec), POLICY, prior=pr, now=NOW)
+    a = scoring.compose(obs(spec), POLICY, prior=a.to_dict(), now=NOW)
+    assert a.tier == "GREEN"
     spec["volatility"] = ("CALM", 15)
     assert scoring.compose(obs(spec), POLICY, now=NOW).tier == "NONE"
+    thin = {"technical": ("IMPROVING", 10), "breadth": ("IMPROVING", 12), "volatility": ("IMPROVING", 15)}
+    assert scoring.compose(obs(thin), POLICY, now=NOW).tier == "NONE"  # rest UNKNOWN: not enough evidence
 
 
 def test_unknown_is_not_zero_and_coverage_drops():
@@ -178,7 +186,9 @@ def test_bootstrap_adopts_raw():
 
 
 def test_decay_steps_and_staleness():
-    pol = POLICY
+    # the step table in wall-clock hours: 100 h before this Wednesday spans a weekend, which the policy's market clock
+    # (decay.clock: market) does not count; that clock is tested in test_market_risk_offhours_20261031
+    pol = dict(POLICY, decay=dict(POLICY["decay"], clock="wall"))
     w = [scoring.decay_weight(ob("event", "STRESS", 80, age_h=h), NOW, pol)[0] for h in (1, 20, 40, 70, 90, 100)]
     assert w == [1.0, 0.8, 0.6, 0.4, 0.4, 0.0]
     stale = scoring.compose(
@@ -219,7 +229,10 @@ def test_yellow_budget_uplift():
     spec = {k: ("WARN", 41) for k in ("technical", "breadth", "volatility")}
     a = scoring.compose(obs(spec), POLICY, now=NOW)
     assert a.tier == "YELLOW"
-    pc = c.PortfolioContext(vulnerability=10, budget_breaches=({"budget": "earnings_48h", "ratio": 1.3},))
+    # a budget uplift also needs a moderately vulnerable book (review of #2383, N1): 10 never lifts, 60 does
+    low = c.PortfolioContext(vulnerability=10, budget_breaches=({"budget": "earnings_48h", "ratio": 1.3},))
+    assert scoring.apply_uplift(scoring.compose(obs(spec), POLICY, now=NOW), low, POLICY).tier == "YELLOW"
+    pc = c.PortfolioContext(vulnerability=60, budget_breaches=({"budget": "earnings_48h", "ratio": 1.3},))
     assert scoring.apply_uplift(a, pc, POLICY).tier == "ORANGE"
 
 

@@ -751,6 +751,20 @@ def _fred_rows(series_id: str, name: str, observations: list) -> list:
             if o.get("value") not in (None, ".", "") and o.get("date")]
 
 
+_FRED_LAST_SEEN: dict = {}
+
+
+def _fred_has_last_seen(cur) -> bool:
+    """Whether fred_economic_series has the last_seen_at column (cached per process)."""
+    if "v" not in _FRED_LAST_SEEN:
+        cur.execute(
+            "SELECT 1 FROM information_schema.columns WHERE table_name='fred_economic_series' "
+            "AND column_name='last_seen_at'"
+        )
+        _FRED_LAST_SEEN["v"] = cur.fetchone() is not None
+    return bool(_FRED_LAST_SEEN["v"])
+
+
 def ingest_fred(dry_run: bool = False) -> dict:
     """Fetch key macro economic series from FRED: the last ``_fred_window()`` observations of each series,
     upserted idempotently. ``dry_run`` fetches and reports the rows it would write and writes nothing."""
@@ -778,13 +792,23 @@ def ingest_fred(dry_run: bool = False) -> dict:
             rows = _fred_rows(series_id, name, data.get("observations", []))
             # fetched_at is the FIRST time an observation was seen: a re-upsert updates the value (FRED revision) but
             # never the timestamp, so replays can filter on what was knowable (review of #2362, M1).
+            # last_seen_at (migration 2026_10_31_fred_last_seen_at) is the freshness signal, set on every upsert;
+            # before the migration is applied the old statement runs unchanged (review of #2383, N5).
             if rows:
                 if cur is not None:
-                    cur.executemany("""
-                        INSERT INTO fred_economic_series (series_id, series_name, value, observation_date)
-                        VALUES (%s, %s, %s, %s)
-                        ON CONFLICT (series_id, observation_date) DO UPDATE SET value=EXCLUDED.value
-                    """, rows)
+                    if _fred_has_last_seen(cur):
+                        cur.executemany("""
+                            INSERT INTO fred_economic_series (series_id, series_name, value, observation_date, last_seen_at)
+                            VALUES (%s, %s, %s, %s, NOW())
+                            ON CONFLICT (series_id, observation_date)
+                            DO UPDATE SET value=EXCLUDED.value, last_seen_at=NOW()
+                        """, rows)
+                    else:
+                        cur.executemany("""
+                            INSERT INTO fred_economic_series (series_id, series_name, value, observation_date)
+                            VALUES (%s, %s, %s, %s)
+                            ON CONFLICT (series_id, observation_date) DO UPDATE SET value=EXCLUDED.value
+                        """, rows)
                 fetched += 1
                 rows_total += len(rows)
                 newest = max(rows, key=lambda r: r[3])

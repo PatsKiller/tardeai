@@ -13,9 +13,13 @@ receipts — never a size, order, stop value or weight (``contract.assert_no_beh
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import json
 import os
+import threading
 import secrets
+import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -56,18 +60,104 @@ def _parse(s: str | None) -> datetime | None:
     return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
 
 
+_HELD = threading.local()
+
+
+@contextlib.contextmanager
+def locked(path: Path):
+    """Exclusive ``fcntl.flock`` on ``<path>.lock`` around one load-modify-save (review of #2383 round 3, H5): an API
+    ACK and an evaluator write never interleave, and two evaluators never both open an episode. Re-entrant within one
+    thread (a nested writer in the same thread does not deadlock); separate threads and processes exclude each other."""
+    key = str(Path(path).resolve())
+    held = getattr(_HELD, "paths", None)
+    if held is None:
+        held = _HELD.paths = {}
+    if held.get(key):
+        held[key] += 1
+        try:
+            yield
+        finally:
+            held[key] -= 1
+        return
+    lp = Path(path).with_name(Path(path).name + ".lock")
+    lp.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(lp), os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        held[key] = 1
+        try:
+            yield
+        finally:
+            held[key] = 0
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
+def _acks_path(path: Path) -> Path:
+    return Path(path).with_name(Path(path).name + ".acks.jsonl")
+
+
+def _fold_acks(data: dict[str, Any], path: Path) -> dict[str, Any]:
+    """Re-apply operator ACKs from the append-only sidecar. A write that raced an ACK (read before it, saved after it)
+    can drop the ACK from the ledger; the sidecar puts it back on every read (review of #2383 round 3, H5 case C).
+    An ACK only applies to the episode it named and only if it is not older than the episode's current anchor (an
+    ACK never silences a later reopen)."""
+    ap = _acks_path(path)
+    if not ap.exists():
+        return data
+    eps = {e.get("id"): e for e in data.get("episodes") or []}
+    for line in ap.read_text(encoding="utf-8").splitlines():
+        try:
+            ack = json.loads(line)
+        except ValueError:
+            continue
+        ep = eps.get(ack.get("episode_id"))
+        if ep is None:
+            continue
+        seen = {a.get("ack_id") for a in ep.get("acks") or []}
+        if ack.get("ack_id") in seen:
+            continue
+        anchor = _parse(ep.get("anchor_at")) or _parse(ep.get("opened_at"))
+        at = _parse(ack.get("at"))
+        if anchor is not None and at is not None and at < anchor:
+            continue
+        rec = {k: ack.get(k) for k in ("ack_id", "at", "actor", "channel", "tier")}
+        ep.setdefault("acks", []).append(rec)
+        if ep.get("status") in ("OPEN", "CAPPED"):
+            ep.update(status="ACKED", acknowledged_at=rec["at"], acknowledged_by=rec["actor"], below_open=False)
+    return data
+
+
 class EpisodeStoreCorrupt(ValueError):
     """The episode ledger exists but cannot be parsed (a torn write). Readers that only display report it."""
 
 
 def load(path: Path | None = None) -> dict[str, Any]:
+    """Read the ledger. A torn file raises ``EpisodeStoreCorrupt`` (display readers report it); the message names the
+    file, never its absolute path, because API callers may echo it."""
     p = path or store_path()
     if not p.exists():
         return {"schema": "MarketRiskEpisodeStore@v1", "episodes": []}
     try:
-        return json.loads(p.read_text(encoding="utf-8"))
+        data = json.loads(p.read_text(encoding="utf-8"))
     except ValueError as exc:
-        raise EpisodeStoreCorrupt(f"{p}: {exc}") from exc
+        raise EpisodeStoreCorrupt(f"{p.name} is unreadable ({type(exc).__name__})") from exc
+    return _fold_acks(data, p)
+
+
+def load_for_write(path: Path | None = None) -> dict[str, Any]:
+    """The writers' read. A torn ledger is moved aside to ``<name>.corrupt-<UTC>`` (kept for inspection, never
+    deleted) and the writer starts a fresh ledger, so a torn file can never stop every send (review of #2383, M2) —
+    the same rule as the sent-key ledger (``alerts._load_ledger``). The move is logged."""
+    p = path or store_path()
+    try:
+        return load(p)
+    except EpisodeStoreCorrupt as exc:
+        dest = p.with_name(f"{p.name}.corrupt-{datetime.now(timezone.utc):%Y%m%dT%H%M%S%fZ}")
+        p.replace(dest)
+        print(f"market_risk escalation: {exc}; moved aside to {dest.name}, starting a fresh ledger", file=sys.stderr)
+        return {"schema": "MarketRiskEpisodeStore@v1", "episodes": [], "recovered_from": dest.name}
 
 
 def save(data: dict[str, Any], path: Path | None = None) -> None:
@@ -103,13 +193,19 @@ def _stress_set(assessment: dict[str, Any]) -> set[str]:
 
 
 def observe(assessment: dict[str, Any], *, now: datetime, policy: dict[str, Any], path: Path | None = None) -> dict:
+    """``_observe`` under the ledger lock (H5)."""
+    with locked(path or store_path()):
+        return _observe(assessment, now=now, policy=policy, path=path)
+
+
+def _observe(assessment: dict[str, Any], *, now: datetime, policy: dict[str, Any], path: Path | None = None) -> dict:
     """Fold one evaluation into the episode ledger. Returns {"event", "episode"}; events: opened, upgraded, reopened,
     unchanged, resolved, none. Writes the store (callers in dry-run pass a temp path)."""
     cfg = policy.get("escalation") or {}
     opens = {str(t).upper() for t in cfg.get("opens_at") or ["ORANGE", "RED"]}
     tier = str(assessment.get("tier") or "NONE").upper()
     stress = _stress_set(assessment)
-    data = load(path)
+    data = load_for_write(path)
     ep = open_episode(data)
     event = "none"
     if ep is None:
@@ -139,13 +235,24 @@ def observe(assessment: dict[str, Any], *, now: datetime, policy: dict[str, Any]
         if _rank(tier) > _rank(ep["tier"]):
             ep["tier"] = tier
             ep["tier_history"].append({"at": _iso(now), "tier": tier})
-            ep.update(status="OPEN", anchor_at=_iso(now), repeats=0, below_sessions=[])
+            ep.update(status="OPEN", anchor_at=_iso(now), repeats=0, below_sessions=[], below_open=False)
             event = "upgraded"
         elif new_stress and ep["status"] in ("ACKED", "CAPPED"):
-            ep.update(status="OPEN", anchor_at=_iso(now), repeats=0)
+            ep.update(status="OPEN", anchor_at=_iso(now), repeats=0, below_open=False)
+            event = "reopened"
+        elif tier in opens and ep.get("below_open") and ep["status"] in ("ACKED", "CAPPED"):
+            # the market left the episode's opening range and came back: a fresh alarm, not a stale ack
+            # (review of #2383, N3: a RED two weeks after an acked RED stayed silent)
+            ep.update(status="OPEN", anchor_at=_iso(now), repeats=0, below_open=False)
+            ep["tier_history"].append({"at": _iso(now), "tier": tier, "reentered": True})
             event = "reopened"
         else:
             event = "unchanged"
+        if tier not in opens:
+            ep["below_open"] = True
+        elif ep["status"] == "OPEN":
+            # back in the opening range while still OPEN: nothing to reopen later (review round 3, H3 case A)
+            ep["below_open"] = False
         ep["stress_categories"] = sorted(set(ep.get("stress_categories") or []) | stress)
         below = str(cfg.get("resolve_below_tier") or "YELLOW").upper()
         if _rank(tier) < _rank(below):
@@ -163,7 +270,8 @@ def observe(assessment: dict[str, Any], *, now: datetime, policy: dict[str, Any]
 
 
 def _last_send(ep: dict[str, Any]) -> datetime | None:
-    sends = ep.get("sends") or []
+    """The last DELIVERED send. A failed attempt is not a send: a dead transport must still read as stalled."""
+    sends = [x for x in ep.get("sends") or [] if x.get("ok", True)]
     return _parse(sends[-1]["at"]) if sends else None
 
 
@@ -218,7 +326,7 @@ def _next_due(ep: dict[str, Any], cfg: dict[str, Any], now: datetime) -> tuple[d
 def due_repeats(*, now: datetime, policy: dict[str, Any], path: Path | None = None) -> list[dict[str, Any]]:
     """Repeat intents due now for the open, unacknowledged episode. Pure read; call ``record_send`` after sending."""
     cfg = policy.get("escalation") or {}
-    ep = open_episode(load(path))
+    ep = open_episode(load_for_write(path))
     if ep is None or ep.get("status") != "OPEN":
         return []
     last = _last_send(ep)
@@ -241,7 +349,13 @@ def due_repeats(*, now: datetime, policy: dict[str, Any], path: Path | None = No
     ]
 
 
-def record_send(
+def record_send(episode_id: str, **kw: Any) -> dict[str, Any] | None:
+    """``_record_send`` under the ledger lock (H5). Returns None for an episode the ledger does not hold (H2)."""
+    with locked(kw.get("path") or store_path()):
+        return _record_send(episode_id, **kw)
+
+
+def _record_send(
     episode_id: str,
     *,
     now: datetime,
@@ -250,12 +364,21 @@ def record_send(
     detail: str = "",
     path: Path | None = None,
     policy_escalation: dict[str, Any] | None = None,
+    key: str | None = None,
 ):
-    """Append a send receipt; a successful repeat advances the repeat counter."""
-    data = load(path)
+    """Append a send receipt; a successful repeat advances the repeat counter. Idempotent on ``key`` (the dedupe key
+    of the card): recording the same key twice — a retry after a crash between the send and this write — is a no-op,
+    so the counter advances exactly once per card (review of #2383, B5d)."""
+    data = load_for_write(path)
     for ep in data.get("episodes") or []:
         if ep.get("id") == episode_id:
+            done = ep.setdefault("recorded_keys", [])
+            if key and key in done:
+                return ep
             ep.setdefault("sends", []).append({"at": _iso(now), "kind": kind, "ok": bool(ok), "detail": detail[:200]})
+            if key and ok:
+                done.append(key)
+                del done[:-200]
             if ok and kind != "initial":
                 ep["repeats"] = int(ep.get("repeats") or 0) + 1
                 cap = repeat_cap(effective_tier(ep), policy_escalation or {})
@@ -264,14 +387,49 @@ def record_send(
                     ep.update(status="CAPPED", capped_at=_iso(now))
             save(data, path)
             return ep
-    raise KeyError(f"episode {episode_id} not found")
+    # an outbox entry can outlive its episode (a torn ledger moved aside, H2): report it, never crash the cycle
+    print(f"market_risk escalation: record_send for unknown episode {episode_id}; skipped", file=sys.stderr)
+    return None
 
 
 def acknowledge(
-    episode_id: str | None, *, actor: str, channel: str, now: datetime, path: Path | None = None
+    episode_id: str | None,
+    *,
+    actor: str,
+    channel: str,
+    now: datetime,
+    path: Path | None = None,
+    expected_tier: str | None = None,
+    require_expected_tier: bool = False,
 ) -> tuple[int, dict[str, Any]]:
-    """Operator acknowledgment (safe direction, one click, AGENTS §27.3). Returns (http_status, body)."""
-    data = load(path)
+    """Operator acknowledgment (safe direction, one click, AGENTS §27.3). Returns (http_status, body).
+
+    The ACK is written to the ledger under the lock AND appended to the ``.acks.jsonl`` sidecar first, so a racing
+    writer that drops it from the ledger cannot lose it (H5). It clears ``below_open`` (H3)."""
+    p = path or store_path()
+    with locked(p):
+        return _acknowledge(
+            episode_id,
+            actor=actor,
+            channel=channel,
+            now=now,
+            path=p,
+            expected_tier=expected_tier,
+            require_expected_tier=require_expected_tier,
+        )
+
+
+def _acknowledge(
+    episode_id: str | None,
+    *,
+    actor: str,
+    channel: str,
+    now: datetime,
+    path: Path,
+    expected_tier: str | None = None,
+    require_expected_tier: bool = False,
+) -> tuple[int, dict[str, Any]]:
+    data = load_for_write(path)
     ep = open_episode(data)
     if ep is None:
         return 409, {"ok": False, "error": "no open market-risk episode to acknowledge"}
@@ -279,9 +437,36 @@ def acknowledge(
         return 409, {"ok": False, "error": f"episode {episode_id} is not the open episode {ep['id']}"}
     if not actor:
         return 403, {"ok": False, "error": "acknowledgment needs an authenticated operator principal"}
-    ack = {"at": _iso(now), "actor": actor[:120], "channel": channel[:40], "tier": ep["tier"]}
+    if require_expected_tier and not expected_tier:
+        # the caller must say which tier the operator saw; a missing tier is refused, never assumed (review of #2411, B1)
+        return 409, {
+            "ok": False,
+            "error": f"acknowledgment must name the episode tier shown (the open episode is {ep.get('tier')}); reload and retry",
+            "episode_tier": ep.get("tier"),
+        }
+    if expected_tier and str(expected_tier).upper() != str(ep.get("tier") or "").upper():
+        # checked under the ledger lock: an ORANGE->RED upgrade that lands after the operator read ORANGE must not
+        # let "ACK ORANGE" silence the RED (review of #2354, race)
+        return 409, {
+            "ok": False,
+            "error": f"the open episode is {ep.get('tier')}, not {str(expected_tier).upper()}",
+            "episode_tier": ep.get("tier"),
+        }
+    ack = {
+        "ack_id": f"ack-{secrets.token_hex(4)}",
+        "at": _iso(now),
+        "actor": actor[:120],
+        "channel": channel[:40],
+        "tier": ep["tier"],
+    }
+    ap = _acks_path(path)
+    ap.parent.mkdir(parents=True, exist_ok=True)
+    with open(ap, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"episode_id": ep["id"], **ack}) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
     ep.setdefault("acks", []).append(ack)
-    ep.update(status="ACKED", acknowledged_at=ack["at"], acknowledged_by=ack["actor"])
+    ep.update(status="ACKED", acknowledged_at=ack["at"], acknowledged_by=ack["actor"], below_open=False)
     save(data, path)
     return 200, {"ok": True, "episode": ep}
 
