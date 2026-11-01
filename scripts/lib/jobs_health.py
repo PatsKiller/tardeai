@@ -1,7 +1,9 @@
 """One read-only execution projection for /ops/jobs and the five monitoring embeds.
 
-Existing lane registry, wrapper events, run receipts and watchdog readback only.
-No scheduler discovery subprocess, producer execution, DB migration or sender.
+Existing lane registry, wrapper events, run receipts, watchdog readback and a persisted host
+systemd-timer census only. No scheduler discovery subprocess at read time, no producer execution,
+DB migration or sender. The census is written hourly by the expected-services audit
+(scripts/lib/systemd_schedule_census.py); this projection only reads its artifact.
 """
 from __future__ import annotations
 
@@ -21,6 +23,9 @@ from scripts.lib.n8n_dlq_disposition import cause, instant
 from scripts.lib.scheduler_operations import successful_execution
 
 SCHEMA = "JobsHealth@v1"
+#: Written hourly by the expected-services audit (scripts/lib/systemd_schedule_census.py). Read-only here.
+SYSTEMD_CENSUS_REL = "data/runtime/systemd_schedule_census.json"
+CENSUS_MAX_AGE = timedelta(hours=2)
 ROOT = Path(__file__).resolve().parents[2]
 _CACHE = {}
 _LOCK = threading.Lock()
@@ -169,6 +174,39 @@ def _schedule(lane, now, trading_day):
     return due, next_due, issue, gated, bool(today_fires)
 
 
+def _systemd_census(root: Path, now: datetime) -> tuple[dict, dict]:
+    """The host's timer observation plus its state; never a subprocess at read time."""
+    doc = _json(Path(root) / SYSTEMD_CENSUS_REL)
+    units = doc.get("units")
+    seen = instant(doc.get("observed_at"))
+    if doc.get("schema") != "SystemdScheduleCensus@v1" or not isinstance(units, dict):
+        return {}, {"state": "unavailable", "as_of": None}
+    if seen is None or seen > now or now - seen > CENSUS_MAX_AGE:
+        return {}, {"state": "stale", "as_of": doc.get("observed_at")}
+    return units, {"state": "fresh", "as_of": doc.get("observed_at"), "coverage": doc.get("coverage")}
+
+
+def _host_schedule(lane: dict, units: dict, now: datetime) -> tuple[list, datetime | None, bool, bool]:
+    """(due, next_due, due_today, measured) for a systemd lane from the census row.
+
+    ``measured`` is False when the unit is absent, stopped or carries no parseable elapse; the
+    lane then keeps the honest "no schedule declared" result instead of inventing one.
+    """
+    scheduler = lane.get("scheduler") or {}
+    if scheduler.get("kind") != "systemd":
+        return [], None, False, False
+    row = units.get(str(scheduler.get("expression") or ""))
+    if not isinstance(row, dict):
+        return [], None, False, False
+    zone = ZoneInfo(str((lane.get("dispatch") or {}).get("tz") or scheduler.get("timezone") or "America/New_York"))
+    next_due = instant(row.get("next_elapse"))
+    last = instant(row.get("last_trigger"))
+    today = now.astimezone(zone).date()
+    due = [last] if last and last.astimezone(zone).date() == today else []
+    due_today = bool(due) or bool(next_due and next_due.astimezone(zone).date() == today)
+    return due, next_due if next_due and next_due > now else None, due_today, bool(next_due or last)
+
+
 def _measurement(unknown: int, collection_gaps: list, breakdown: str | None = None) -> dict:
     """A count that cannot be measured is a gap, never 0 (operator design rule 2026-10-25).
 
@@ -231,7 +269,8 @@ def _watchers(registry: dict, rows: list[dict], monitor: dict, monitor_ok: bool)
     return out
 
 
-def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, now: datetime, trading_day) -> dict:
+def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, now: datetime, trading_day,
+          host_schedule: dict | None = None) -> dict:
     if now.tzinfo is None:
         raise ValueError("jobs health requires an aware clock")
     by_lane = {}
@@ -259,6 +298,13 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
         last = values[-1] if values else {}
         successful = [r for r in values if successful_execution(r, now)]
         success = instant(check.get("last_success_at"))
+        if success is None:
+            # The watchdog returns NOT_APPLICABLE for a systemd lane, so its row carries no
+            # success clock. Use the validated successes already merged for this lane.
+            stamps = [instant(hit.get("at")) for hit in (captured.get("successes") or {}).get(lane_id) or []
+                      if hit.get("validated_success")]
+            stamps = [stamp for stamp in stamps if stamp and stamp <= now]
+            success = max(stamps) if stamps else None
         last_at = instant(last.get("finished_at") or last.get("started_at"))
         diagnostic = None
         failure_at = None
@@ -284,6 +330,11 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
             due, upcoming, issue, gated, due_today = _schedule(lane, now, trading_day)
         except (ValueError, TypeError, KeyError):
             due, upcoming, issue, gated, due_today = [], None, "schedule could not be measured", False, False
+        # A systemd lane's schedule is measured from the host census, not from a cron expression.
+        host_due, host_next, host_today, host_measured = _host_schedule(lane, host_schedule or {}, now)
+        if host_measured:
+            due, upcoming, issue, due_today = host_due, host_next, None, host_today
+        schedule_source = "systemd_timer" if host_measured else (None if issue else "registry")
         outcome, reason = "unknown", "Successful execution is not yet measured"
         if state in {"PAUSED", "RETIRED", "DISABLED"}:
             outcome, reason = ("retired" if state == "RETIRED" else "paused"), lane.get("state_reason") or f"Job is {state.lower()}"
@@ -314,7 +365,7 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
                 evidence_gap, reason = "schedule_not_declared", "No schedule is declared, so this lane cannot be measured"
             else:
                 evidence_gap, reason = "execution_not_measured", "No run receipt proves a successful run"
-        schedule_measured = bool(state != "NEVER_SCHEDULED" and not issue)
+        schedule_measured = bool(host_measured or (state != "NEVER_SCHEDULED" and not issue))
         rows.append({"lane_id": lane_id, "job": lane.get("display_name") or lane_id.replace("-", " ").replace("_", " ").capitalize(),
             "scheduler": scheduler.get("kind") or "unknown", "state": state, "result": outcome,
             "last_run_at": W.iso(last_at) if last_at else None, "last_success_at": W.iso(success) if success else None,
@@ -322,6 +373,7 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
             "next_due_at": W.iso(upcoming) if upcoming else None, "due_today": due_today,
             "missed_fires": check.get("missed_fires"), "market_hours_only": gated,
             "evidence_gap": evidence_gap, "schedule_measured": schedule_measured,
+            "schedule_source": schedule_source,
             "cause": reason, "evidence": last.get("run_id") or ("wrapper event" if events else None)})
     counts = Counter(row["result"] for row in rows)
     gaps = Counter(row["evidence_gap"] for row in rows if row["result"] == "unknown")
@@ -388,8 +440,10 @@ def _load(root: Path, registry_path: Path, now: datetime):
         snapshot.setdefault("collection_gaps", []).append(why or "run ledger unavailable")
     if not registry.get("lanes"):
         snapshot.setdefault("collection_gaps", []).append("lane registry unavailable")
+    units, census = _systemd_census(root, now)
     report = build(registry, snapshot, runs, _json(root / "data/runtime/cron_outage_watchdog_latest.json"),
-                   now=now, trading_day=is_trading_day)
+                   now=now, trading_day=is_trading_day, host_schedule=units)
+    report["schedule_census"] = census
     from scripts.lib.jobs_conflict_errors import get_data_errors
     report["data_errors"] = get_data_errors(root)
     return report

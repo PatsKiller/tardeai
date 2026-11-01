@@ -308,6 +308,16 @@ def main() -> int:
 
     _write_run_receipt(len(results), len(off), {"off_items": [f"{r['status']}:{r['name']}" for r in off]})
 
+    # One scheduler observation for the Jobs projection: which systemd timers fire when.
+    # Best effort by construction — a census failure must never change this gate's exit code,
+    # its alert or its receipt (operator review 2026-11-01).
+    try:
+        import systemd_schedule_census as census
+
+        census.write_census(PROJECT_ROOT)
+    except Exception as exc:  # noqa: BLE001
+        print(f"  census: could not write ({type(exc).__name__})", file=sys.stderr)
+
     if args.alert:
         _alert(off)
 

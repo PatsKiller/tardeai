@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "jobs_health_systemd_schedule_20261101",
+  "files": [
+    "tests/test_jobs_health_systemd_schedule_20261101.py"
+  ],
+  "anchor": "JOBS_HEALTH_SYSTEMD_SCHEDULE_20261101",
+  "comment": [
+    "ANCHOR: JOBS_HEALTH_SYSTEMD_SCHEDULE_20261101 — a systemd lane gets a real next due and a",
+    "measured schedule from the persisted census; a stale, future or absent census invents nothing."
+  ]
+}
