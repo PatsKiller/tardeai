@@ -227,6 +227,25 @@ def test_parallel_gather_with_per_source_timeout():
     assert len(g["facts"]) == 1  # four sources produced the same fact: de-duplicated by fact_id
 
 
+def test_a_queued_source_gets_its_own_timeout_not_the_batchs():
+    """With fewer workers than jobs, a queued source used to be marked timeout without ever running.
+
+    That false timeout failed the whole Ask-the-CIO check on evidence that was in fact available
+    (2026-11-01). The budget must start when the source runs, not when it is submitted.
+    """
+    ctx = car.ResearchContext(question="q")
+    ent = car.resolve_entity(
+        {"symbol": "TSLA"}, identity_fn=fake_identity, name_fn=fake_name, issuer_guid_fn=fake_issuer
+    )
+    srcs = [_src("slow0", "internal", catalyst_facts, delay=0.4)]
+    srcs += [_src(f"fast{i}", "internal", catalyst_facts, delay=0.0, timeout=0.2) for i in range(3)]
+    g = car.gather_facts([ent], srcs, ctx, max_workers=1)
+    statuses = {r["source"]: r["status"] for r in g["runs"]}
+    assert statuses["slow0"] == "ok"
+    assert all(statuses[f"fast{i}"] == "ok" for i in range(3)), statuses
+    assert not [x for x in g["gaps"] if x["reason"] == "TIMEOUT"]
+
+
 def test_source_error_and_uncited_fact_become_named_gaps():
     def boom(ent, ctx):
         raise ConnectionError("store offline")
