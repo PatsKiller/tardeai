@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "hermes_stopword_ticker_key_20261031",
+  "files": [
+    "tests/test_hermes_stopword_ticker_key_20261031.py"
+  ],
+  "anchor": "HERMES_STOPWORD_TICKER_KEY_20261031",
+  "comment": [
+    "ANCHOR: HERMES_STOPWORD_TICKER_KEY_20261031 — a bare ticker that is a stopword (A, IT, ON, ...) is keyed on its",
+    "symbol instead of raising 'label normalizes to empty key'; root cause of the hermes-analyst-signal-discovery n8n",
+    "breaker (2026-10-26). Ordinary tickers keep their key; stopword-only trends are still refused. Hermetic."
+  ]
+}

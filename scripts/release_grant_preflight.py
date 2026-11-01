@@ -99,7 +99,9 @@ def consume_release_grant(*, tier: str = "release-write", runner=None, grant_id:
 # (cio-hardening, agent-governance, release-readiness; AGENTS §23.13, AI_WORK_POLICY §11).
 # release-readiness was missing, so a manual `promote` accepted a SHA whose release proof was red.
 REQUIRED_PUSH_WORKFLOWS = frozenset({
-    ".github/workflows/cio-production-hardening-ci.yml",
+    # 29.3.0 (DSN-20261031-ci-load-reduction §4.3): the combined suite is the push-run provider of BOTH
+    # required contexts, cio-hardening and ci-gate. cio-production-hardening-ci is dispatch-only now.
+    ".github/workflows/cio-full-suite-sharded.yml",
     ".github/workflows/agent-governance.yml",
     ".github/workflows/release-readiness.yml",
 })

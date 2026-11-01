@@ -2,19 +2,15 @@ name: cio-production-hardening-ci
 
 # Phase 10 — required gates for Investment Office / Alex CIO hardening.
 # READ_ONLY_ADVISORY: no broker writes, no live Telegram (pytest interdict).
+#
+# RETIRED AS A PR/PUSH PROVIDER 2026-11-01 (AGENTS 29.3.0, DSN-20261031-ci-load-reduction §4.3).
+# The combined suite in cio-full-suite-sharded.yml reports BOTH required contexts — `ci-gate` and
+# `cio-hardening` — from one sharded run, on pull requests and on pushes to main. This workflow no
+# longer runs on PRs or pushes; its jobs stay for the `full` isolation profile (workflow_dispatch)
+# and as the reference implementation. The red-alert for push and nightly runs lives in the
+# combined workflow (job nightly-red-alert); this file's main-red-alert only rides a manual dispatch.
 
 on:
-  # Post-merge: EVERY registered test (fast profile) on every push to main. A red
-  # run opens/updates a `ci-main-red` issue (job main-red-alert) instead of
-  # blocking PRs. Until 2026-09-25 push ran only on 11 CIO paths and on wt/**,
-  # hardening/**, feat/** branches -- a second copy of each PR run.
-  push:
-    branches: ["main"]
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    # `cio-hardening` is a required status check on main. A path filter here
-    # would let unrelated PRs skip the job and leave the check "Pending",
-    # blocking merge. Run on every PR so the required check is always reported.
   workflow_dispatch:
   # 2026-10-21 (alignment audit H1): the nightly moved to cio-full-suite-sharded.yml (schedule
   # "17 7 * * *"). The serial `full` profile was cancelled at its 40-minute timeout on 8 of the

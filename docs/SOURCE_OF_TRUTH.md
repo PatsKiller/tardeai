@@ -1,7 +1,7 @@
 # Source of Truth — one declaration per domain
 
 **Rendered from `config/data_source_authority.json` by `scripts/render_source_of_truth.py`. Do not edit by hand.**
-Registry as of 2026-10-31T11:55:00-04:00 · schema `DataSourceAuthority@v2` · authority READ_ONLY_ADVISORY · 64 domains · 26 providers.
+Registry as of 2026-10-31T11:55:00-04:00 · schema `DataSourceAuthority@v2` · authority READ_ONLY_ADVISORY · 65 domains · 26 providers.
 
 One source of truth per domain. For five months Performance (10 Years) was stored as a 1-5 analyst rating because two files mapped Finviz columns by position and nothing declared which store was the analyst source. For eighteen days the site served one copy of the state tree while the producers wrote another, because nothing declared where each store is served from. This file is that declaration. The data broker reads it; scripts/check_data_source_authority.py enforces it; docs/SOURCE_OF_TRUTH.md is rendered from it.
 
@@ -114,6 +114,7 @@ Both the release (CURRENT) and the dev tree the 344 cron producers run from must
 | **operator_decisions** | native | `governance/operator_decisions.jsonl` | `scripts/lib/operator_approvals.py` | event-driven authenticated operator review and separately governed audit proposals | 720h | — | native | — | — | `say_so` | operator 2026-10-27 |
 | **conflict_ledger** | derived | `data/conflicts/conflict_events.jsonl` | `scripts/lib/conflicts/ledger.py` | event changes; conflict-resolver shadow cadence separately owned by W8 | 0.5h | `conflict_records` | — | — | — | `say_so` | operator 2026-10-29 |
 | **conflict_rule_proposals** | derived | `data/conflicts/rule_proposals.jsonl` | `scripts/lib/conflicts/proposals.py` | conflict-resolver shadow runs (unmatched observations); conflict-rule-proposals lane (proposals); operator decisions | 24h | `conflict_proposals` | — | — | — | `say_so` | operator 2026-10-29 |
+| **quote_extended_session** | ingested | `market_quotes_extended` | `scripts/lib/writers/market_quotes_extended_writer.py` | */15 04:00-09:30 and 16:00-20:00 Mon-Fri NYSE trading days | 0.5h | — | alpaca | — | — | `say_so` | operator 2026-11-01 |
 
 ## Writer ceilings — stores not yet consolidated to one writer
 
@@ -132,7 +133,7 @@ module every other writer must call.
 | Provider | Class | Status | Supplies | Markers the gate recognises | Approval |
 |---|---|---|---|---|---|
 | **alpaca** | live_external | active | quotes, bars, paper_execution | `alpaca`, `data.alpaca.markets` | operator 2026-09-13 |
-| **schwab** | live_external | active | positions, option_chain, stream_quotes, instruments | `schwab_transport`, `schwab_api`, `api.schwabapi.com` | operator 2026-09-13 |
+| **schwab** | live_external | active | positions, option_chain, stream_quotes, instruments, market_data_quotes | `schwab_transport`, `schwab_api`, `api.schwabapi.com` | operator 2026-09-13 |
 | **yfinance** | live_external | active | profiles, quote_backup, prices, technicals, earnings, analyst_on_demand | `import yfinance`, `yfinance as yf` | operator 2026-09-13 |
 | **yahoo** | live_external | active | analyst_targets, vix, news_feed | `query1.finance.yahoo.com`, `query2.finance.yahoo.com`, `finance.yahoo.com` | operator 2026-09-13 |
 | **finviz** | live_external | active | screeners, enrichment, industry_groups, sector_perf, news | `finviz.com`, `elite.finviz.com` | operator 2026-09-13 |
@@ -197,6 +198,7 @@ Every provider and domain row carries `approval`. The distinct references, and t
 - **Operator in this session: "what disable enable and test call", following deployed PR #2181. Authorizes the promotional router and its required append-only credit authorization journal. This records activation intent, not a successful authentication/canary or backup proof.** — 1 rows: domain `anthropic_promotional_credit`
 - **Operator in the coordinator Claude Code session 2026-10-27, verbatim: "D1–D7 as recommended" (D5 = turn on the operator_decisions store) and "Markups approved." for design approvals-pr-review/v001 (PR #2241; build #2245/#2246)** — 1 rows: domain `operator_decisions`
 - **operator 2026-10-29 in-session ('I authorize you to put those switches on now'; turn-key CIO review go-live); recorded in the data-authority grant PR #0000 (placeholder — operator fills the real PR number at merge)** — 2 rows: domain `conflict_ledger`, domain `conflict_rule_proposals`
+- **operator 2026-11-01 ~11:10 ET in-session (verbatim): "I approve the after-hour and I also approve turning on real alerts. We can always tune it later." Store, single writer, provider (Alpaca SIP) and schedule approved earlier as design DSN-20261031-market-risk-engine §11 items 1-2 on 2026-10-31 (proposal.reference). Recorded in the data-authority grant PR #0000 (placeholder — operator fills the real PR number at merge)** — 1 rows: domain `quote_extended_session`
 
 ## Monitors
 

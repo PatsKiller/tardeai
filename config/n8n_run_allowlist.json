@@ -4470,10 +4470,11 @@
         "DB_NAME",
         "DB_PASSWORD",
         "DB_USER",
-        "POSTGRES_PASSWORD"
+        "POSTGRES_PASSWORD",
+        "TRADEAI_ANTHROPIC_WEB_SEARCH"
       ],
       "env_allowlist_mode": "report",
-      "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer plus the three separately registered provider-pinned critique processes; the executor binds that exact process_ids set and provider secrets remain bridge-side. Closure/env report must be rechecked before enforce.",
+      "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer plus the three separately registered provider-pinned critique processes; the executor binds that exact process_ids set and provider secrets remain bridge-side. TRADEAI_ANTHROPIC_WEB_SEARCH (default-off) is the operator switch for the paid hosted web-search source web.anthropic, whose bridge process is cio_ask_web_search. Closure/env report must be rechecked before enforce.",
       "env_report_reason": "Candidate closure awaits root integration; no unverified enforce declaration.",
       "source": "Canary-stage live admission (DSN-20261026-ask-hourly P1-T4; operator 2026-10-26 \"Checks need to run hourly, not once a day\"). live_arg [] — the script default (--once / --once --events-only) is the live run; --dry-run stays the dry_run_arg. llm_route process_ids cio_ask_reanswer + cio_ask_critique_{deepseek,grok,chatgpt} are registered (config/llm_process_registry.json, automated). The verified per-thread check + memory/readback/delivery is runtime evidence from the canary run and natural slots, operator-reviewed before cutover."
     },
@@ -4509,10 +4510,11 @@
         "DB_NAME",
         "DB_PASSWORD",
         "DB_USER",
-        "POSTGRES_PASSWORD"
+        "POSTGRES_PASSWORD",
+        "TRADEAI_ANTHROPIC_WEB_SEARCH"
       ],
       "env_allowlist_mode": "report",
-      "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer plus the three separately registered provider-pinned critique processes; the executor binds that exact process_ids set and provider secrets remain bridge-side. Closure/env report must be rechecked before enforce.",
+      "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer plus the three separately registered provider-pinned critique processes; the executor binds that exact process_ids set and provider secrets remain bridge-side. TRADEAI_ANTHROPIC_WEB_SEARCH (default-off) is the operator switch for the paid hosted web-search source web.anthropic, whose bridge process is cio_ask_web_search. Closure/env report must be rechecked before enforce.",
       "env_report_reason": "Candidate closure awaits root integration; no unverified enforce declaration.",
       "source": "Canary-stage live admission (DSN-20261026-ask-hourly P1-T4; operator 2026-10-26 \"Checks need to run hourly, not once a day\"). live_arg [] — the script default (--once / --once --events-only) is the live run; --dry-run stays the dry_run_arg. llm_route process_ids cio_ask_reanswer + cio_ask_critique_{deepseek,grok,chatgpt} are registered (config/llm_process_registry.json, automated). The verified per-thread check + memory/readback/delivery is runtime evidence from the canary run and natural slots, operator-reviewed before cutover."
     },

@@ -108,10 +108,10 @@ pull_request_rules:
       - check-success=ci-gate
       - label!=solo
       - label!=shared-infra
-      - or:
-          - schedule=Mon-Fri 16:15-23:59[America/New_York]
-          - schedule=Mon-Fri 00:00-09:30[America/New_York]
-          - schedule=Sat-Sun 00:00-23:59[America/New_York]
+      # DSN-20261031-ci-load-reduction §4.4 (operator 2026-11-01): ONE weekday merge window.
+      # Approved PRs queue all day and land together at 17:30-18:30 ET; urgent fixes merge by the
+      # operator naming the PR (the per-PR path is unchanged).
+      - schedule=Mon-Fri 17:30-18:30[America/New_York]
     actions:
       queue:
         name: default
@@ -128,10 +128,10 @@ pull_request_rules:
       - or:
           - label=solo
           - label=shared-infra
-      - or:
-          - schedule=Mon-Fri 16:15-23:59[America/New_York]
-          - schedule=Mon-Fri 00:00-09:30[America/New_York]
-          - schedule=Sat-Sun 00:00-23:59[America/New_York]
+      # DSN-20261031-ci-load-reduction §4.4 (operator 2026-11-01): ONE weekday merge window.
+      # Approved PRs queue all day and land together at 17:30-18:30 ET; urgent fixes merge by the
+      # operator naming the PR (the per-PR path is unchanged).
+      - schedule=Mon-Fri 17:30-18:30[America/New_York]
     actions:
       queue:
         name: solo
@@ -147,9 +147,11 @@ pull_request_rules:
 
 queue_rules:
   - name: default
-    # batch_size 1 until speculative draft PRs run the four required checks (mergify/* CI).
-    # Cause 2026-10-27: batch+draft skipped cio-hardening/ci-gate/release-readiness → CHECKS_FAILED bisect.
-    batch_size: 1
+    # batch_size 10 since 2026-11-01 (DSN-20261031-ci-load-reduction §4.4): both required suites now run
+    # on mergify/* speculative branches (the workflows' own if-conditions allow startsWith(head_ref,
+    # 'mergify/')), so a batch no longer skips the required checks that caused the 2026-10-27
+    # CHECKS_FAILED bisect. Bisect on failure drops the bad PR and merges the rest.
+    batch_size: 10
     merge_method: squash
     merge_conditions:
       # Match branch protection: success OR skipped OR neutral (not failure).
@@ -172,10 +174,10 @@ queue_rules:
           - check-skipped=ci-gate
           - check-neutral=ci-gate
       - label=operator-merge
-      - or:
-          - schedule=Mon-Fri 16:15-23:59[America/New_York]
-          - schedule=Mon-Fri 00:00-09:30[America/New_York]
-          - schedule=Sat-Sun 00:00-23:59[America/New_York]
+      # DSN-20261031-ci-load-reduction §4.4 (operator 2026-11-01): ONE weekday merge window.
+      # Approved PRs queue all day and land together at 17:30-18:30 ET; urgent fixes merge by the
+      # operator naming the PR (the per-PR path is unchanged).
+      - schedule=Mon-Fri 17:30-18:30[America/New_York]
 
   - name: solo
     batch_size: 1
@@ -198,7 +200,7 @@ queue_rules:
           - check-skipped=ci-gate
           - check-neutral=ci-gate
       - label=operator-merge
-      - or:
-          - schedule=Mon-Fri 16:15-23:59[America/New_York]
-          - schedule=Mon-Fri 00:00-09:30[America/New_York]
-          - schedule=Sat-Sun 00:00-23:59[America/New_York]
+      # DSN-20261031-ci-load-reduction §4.4 (operator 2026-11-01): ONE weekday merge window.
+      # Approved PRs queue all day and land together at 17:30-18:30 ET; urgent fixes merge by the
+      # operator naming the PR (the per-PR path is unchanged).
+      - schedule=Mon-Fri 17:30-18:30[America/New_York]

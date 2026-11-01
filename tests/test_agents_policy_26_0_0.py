@@ -33,7 +33,10 @@ VH = AGENTS.index("\n# Version history")
 BINDING = AGENTS[:VH]
 #: Binding-text ceiling. 26.0.0 measured well under it; raising it is a PR that says why (version policy).
 #: 29.0.0: 28.0.0 (#2334, 2597 lines) and the workspace-lifecycle rules (#2311, 2599 lines) each fit alone; together 2633.
-MAX_BINDING_LINES = 2650
+#: 29.3.0: three §11 rules (draft-first, stack top, one merge window) add 18 binding lines to main's 2649. Their
+#: measurements, the 5,369-run evidence and the rollout live in LESSONS L11-01 and DSN-20261031-ci-load-reduction,
+#: not here. 2667 measured; this ceiling is that plus three lines of headroom.
+MAX_BINDING_LINES = 2670
 
 
 def _control() -> dict[str, str]:
@@ -77,6 +80,10 @@ def test_header_is_26_0_x_proposed_or_active():
         assert cb["Supersedes"] == "27.0.1"
     elif cb["Policy-Version"] == "29.0.0":
         assert cb["Supersedes"] == "28.0.0"
+    elif cb["Policy-Version"] == "29.1.0":  # renumbered 28.1.0 (#2392), rule text unchanged
+        assert cb["Supersedes"] == "29.0.0"
+    elif cb["Policy-Version"] == "29.2.0":  # renumbered 28.2.0 (#2407), rule text unchanged
+        assert cb["Supersedes"] == "29.1.0"
     assert cb["Approval-Class"] == "OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY"
     assert cb["Status"] in {"PROPOSED", "ACTIVE"}
     if cb["Status"] == "PROPOSED":

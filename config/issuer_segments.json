@@ -1,0 +1,18 @@
+{
+  "_comment": "Revenue-weighted segment look-through for multi-segment issuers (design home/v005, scripts/lib/market_risk/lookthrough.py issuer_segments_for). OPERATOR-OWNED WEIGHTS: an agent may propose an entry with status PROPOSED; only status APPROVED is ever used in a number. Ships empty: the operator approves the weights later.",
+  "_schema": {
+    "<TICKER>": {
+      "name": "issuer name",
+      "status": "PROPOSED | APPROVED",
+      "segments": [
+        {"segment": "segment name", "group": "sector or theme key from config/market_risk_policy.yaml sectors (e.g. industrials, comm, ai_basket)", "weight": 0.0}
+      ],
+      "source": "filing, section and period the weights come from",
+      "as_of": "YYYY-MM-DD",
+      "proposed_by": "agent session",
+      "approved_by": "operator ledger reference, or null"
+    },
+    "_rules": "Sector-kind weights sum to 1.0 within 0.01; theme weights (ai_basket, semis) are extra and overlap a sector. Stale after issuer_segments.stale_after_days in config/market_risk_policy.yaml."
+  },
+  "issuers": {}
+}
