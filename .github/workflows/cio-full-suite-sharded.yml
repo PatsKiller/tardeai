@@ -22,6 +22,12 @@ name: cio-full-suite-sharded
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  # 29.3.0 / DSN-20261031-ci-load-reduction §4.3: the combined suite must also run on pushes to main,
+  # because `cio-hardening` is a required context there and this workflow is its intended source once
+  # the operator retires cio-production-hardening-ci.yml. During rollout both run on main; the legacy
+  # one is removed after a day of parity.
+  push:
+    branches: [main]
   workflow_dispatch:
   # 2026-10-21 (alignment audit H1): the NIGHTLY full-suite run of main. Replaces the serial
   # `cio-hardening-full` nightly in cio-production-hardening-ci.yml, which hit its 40-minute
@@ -32,8 +38,11 @@ on:
 
 # The nightly has its own group and is never cancelled by a dispatch on main (or vice versa).
 concurrency:
-  group: cio-full-suite-sharded-${{ github.ref }}${{ github.event_name == 'schedule' && '-nightly' || '' }}
-  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+  # Push runs are keyed on the SHA and never cancel each other (a merge batch is several pushes; the
+  # deploy poller must see every main run finish, not a cancelled predecessor — the legacy hardening
+  # workflow uses the same rule). The nightly and PR runs keep their own groups.
+  group: cio-full-suite-sharded-${{ github.ref }}${{ github.event_name == 'schedule' && '-nightly' || '' }}${{ github.event_name == 'push' && format('-{0}', github.sha) || '' }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' && github.event_name != 'push' }}
 
 permissions:
   contents: read
@@ -359,9 +368,12 @@ jobs:
   # was cancelled (a job past timeout-minutes reports `cancelled`) or timed out opens or updates the
   # same `ci-main-red` issue cio-production-hardening-ci.yml uses. PR and dispatch runs never alert.
   nightly-red-alert:
-    needs: [shard, serial, pg, integrity, ci-gate]
+    # 29.3.0: fire on a scheduled run AND on a push to main (the combined workflow now runs both). PR and
+    # dispatch runs never alert. cio-hardening is in needs so its failure is part of the signal.
+    needs: [shard, serial, pg, integrity, ci-gate, cio-hardening]
     if: >-
-      always() && github.event_name == 'schedule' &&
+      always() && github.event_name != 'pull_request' &&
+      (github.event_name == 'schedule' || github.event_name == 'push') &&
       (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') ||
        contains(needs.*.result, 'timed_out'))
     runs-on: ubuntu-latest
@@ -379,7 +391,7 @@ jobs:
         run: |
           gh label create ci-main-red --color B60205 --description "cio-hardening red on main (post-merge/nightly)" --force
           summary="$(printf '%s' "$RESULTS" | jq -r 'to_entries | map("\(.key)=\(.value.result)") | join(", ")')"
-          body="nightly cio-full-suite-sharded red (failed, cancelled or timed out) on main at $SHA: $RUN_URL ($summary)"
+          body="${{ github.event_name }} cio-full-suite-sharded red (failed, cancelled or timed out) on main at $SHA: $RUN_URL ($summary)"
           n="$(gh issue list --label ci-main-red --state open --json number --jq '.[0].number')"
           if [ -n "$n" ]; then
             gh issue comment "$n" --body "$body"

@@ -130,23 +130,33 @@ def test_serial_nightly_is_retired_and_the_sharded_suite_runs_on_schedule():
 @pytest.mark.parametrize("result", OUTCOMES)
 def test_nightly_red_alert_fires_when_any_sharded_job_is_red(result):
     job = SHARD["jobs"]["nightly-red-alert"]
-    assert set(job["needs"]) == {"shard", "serial", "pg", "integrity", "ci-gate"}
-    results = ["success", "success", result, "success", "success"]
+    # 29.3.0: cio-hardening is part of the signal now that the combined suite runs on main pushes too.
+    assert set(job["needs"]) == {"shard", "serial", "pg", "integrity", "ci-gate", "cio-hardening"}
+    results = ["success", "success", result, "success", "success", "success"]
     ctx = {"github.event_name": "schedule", "needs.*.result": results}
     assert _eval(job["if"], ctx) is (result in RED)
     assert job["permissions"] == {"issues": "write"}
 
 
 @pytest.mark.parametrize("event", ["pull_request", "workflow_dispatch"])
-def test_nightly_red_alert_is_schedule_only(event):
+def test_nightly_red_alert_is_not_a_pr_or_dispatch_alarm(event):
     ctx = {"github.event_name": event, "needs.*.result": ["failure", "cancelled"]}
     assert _eval(SHARD["jobs"]["nightly-red-alert"]["if"], ctx) is False
+
+
+def test_red_alert_fires_on_a_push_to_main():
+    # 29.3.0: the combined suite also runs on pushes to main, so a red post-merge run must page.
+    ctx = {"github.event_name": "push", "needs.*.result": ["failure"]}
+    assert _eval(SHARD["jobs"]["nightly-red-alert"]["if"], ctx) is True
 
 
 def test_nightly_concurrency_group_is_separate_and_not_cancelled():
     conc = SHARD["concurrency"]
     assert "github.event_name == 'schedule' && '-nightly'" in conc["group"]
-    assert conc["cancel-in-progress"].strip() == "${{ github.event_name != 'schedule' }}"
+    # 29.3.0: push runs are SHA-keyed and never cancelled (a merge batch is several pushes; the deploy
+    # poller must see every main run finish).
+    assert "github.event_name == 'push' && format('-{0}', github.sha)" in conc["group"]
+    assert conc["cancel-in-progress"].strip() == "${{ github.event_name != 'schedule' && github.event_name != 'push' }}"
 
 
 def test_alert_issue_label_is_shared():
