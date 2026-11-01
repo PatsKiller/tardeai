@@ -20,7 +20,7 @@ import sys
 import time
 import urllib.request
 import urllib.error
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 PROJ = Path(__file__).resolve().parent.parent
@@ -676,6 +676,107 @@ def classify_cloud_failure(exc):
     return "outage", (reason or "no lane available")[:300]
 
 
+# ── Persistent breaker (2026-11-01 round 3) ──────────────────────────────────────────────────────────────────────
+# A cron run sees one queue snapshot; an outage outlives it. Without memory every run re-learns the outage on the
+# backlog's head jobs. Two breakers, one file:
+#   outage  -- two refusals in a row (or a refused probe). While open, a run tries ONE job; if any lane answers, the
+#              breaker closes and the run continues. A job refused at the head head_strike_limit times in a row is
+#              counted (so a prompt every lane rejects, e.g. HTTP 400 on its own context, cannot block the queue
+#              head forever).
+#   failure -- max_consecutive_failures counted failures in a row. While open, a run tries ONE job; a success
+#              closes it, another failure extends it, so a lane that "answers" empty burns one job per run, not three.
+# Cooldown doubles per consecutive trip, capped.
+BREAKER_SCHEMA = "DeepQueueDrainBreaker@v1"
+_BREAKER_KINDS = ("outage", "failure")
+_MAX_STRIKE_ENTRIES = 200
+
+
+def breaker_path():
+    env = os.environ.get("TRADEAI_DRAIN_BREAKER_STATE")
+    if env:
+        return Path(env)
+    root = os.environ.get("TRADEAI_PERSISTENT_STATE_ROOT")
+    return (Path(root) if root else PROJ) / "data" / "runtime" / "deep_overnight_llm_drain_breaker.json"
+
+
+def _fresh_breaker():
+    return {"schema": BREAKER_SCHEMA, "strikes": {},
+            **{k: {"trips": 0, "open_until": None, "reason": ""} for k in _BREAKER_KINDS}}
+
+
+def load_breaker(path):
+    """The saved breaker, or a closed one. An unreadable or foreign file reads as closed (never crashes a run)."""
+    try:
+        doc = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return _fresh_breaker()
+    if not isinstance(doc, dict) or doc.get("schema") != BREAKER_SCHEMA:
+        return _fresh_breaker()
+    state = _fresh_breaker()
+    for k in _BREAKER_KINDS:
+        if isinstance(doc.get(k), dict):
+            state[k].update(doc[k])
+    if isinstance(doc.get("strikes"), dict):
+        state["strikes"] = {str(j): int(n) for j, n in doc["strikes"].items() if str(n).isdigit()}
+    return state
+
+
+def save_breaker(path, state):
+    from lib.atomic_json_store import atomic_write_json
+    state["updated_at"] = datetime.now(timezone.utc).isoformat()
+    atomic_write_json(Path(path), state)
+
+
+def breaker_open(state, kind, now=None):
+    until = (state.get(kind) or {}).get("open_until")
+    if not until:
+        return False
+    try:
+        return (now or datetime.now(timezone.utc)) < datetime.fromisoformat(str(until))
+    except ValueError:
+        return False
+
+
+def trip_breaker(state, kind, reason, policy, now=None):
+    """Open (or extend) a breaker; returns the cooldown in minutes."""
+    b = state[kind]
+    b["trips"] = int(b.get("trips") or 0) + 1
+    base = float((policy or {}).get("breaker_cooldown_min") or 30)
+    cap = float((policy or {}).get("breaker_cooldown_max_min") or 360)
+    minutes = min(base * (2 ** min(b["trips"] - 1, 16)), cap)
+    b["open_until"] = ((now or datetime.now(timezone.utc)) + timedelta(minutes=minutes)).isoformat()
+    b["reason"] = str(reason)[:300]
+    return minutes
+
+
+def close_breaker(state, kind):
+    state[kind] = {"trips": 0, "open_until": None, "reason": ""}
+    if kind == "outage":
+        state["strikes"] = {}
+
+
+def add_strike(state, job_id):
+    strikes = state.setdefault("strikes", {})
+    key = str(job_id)
+    strikes[key] = int(strikes.get(key, 0)) + 1
+    while len(strikes) > _MAX_STRIKE_ENTRIES:
+        strikes.pop(next(iter(strikes)))
+    return strikes[key]
+
+
+def _count_deferred_attempt(cur, job_id, reason):
+    """Count an attempt the runner had uncounted, once the evidence shows the failure was the job's own."""
+    cur.execute("""
+        UPDATE deep_overnight_llm_queue SET attempt_count = attempt_count + 1, updated_at = NOW() WHERE id = %s
+    """, (job_id,))
+    cur.execute("""
+        UPDATE deep_overnight_llm_queue
+        SET status = CASE WHEN attempt_count >= 3 THEN 'failed' ELSE 'pending' END,
+            last_error = %s, updated_at = NOW()
+        WHERE id = %s
+    """, (str(reason)[:500], job_id))
+
+
 def call_cloud(prompt, policy, *, fallback=None, now=None):
     """One job through the drain chain (anthropic -> grok -> chatgpt -> deepseek off-peak only).
 
@@ -1069,6 +1170,15 @@ def main():
     refused = 0
     consecutive_failures = 0
     max_consecutive = int((drain_policy or {}).get("max_consecutive_failures") or 0)
+    cloud = args.route == "cloud" and drain_policy is not None and not args.dry_run
+    bpath = breaker_path() if cloud else None
+    breaker = load_breaker(bpath) if cloud else None
+    outage_probe = bool(cloud and breaker_open(breaker, "outage"))
+    failure_probe = bool(cloud and breaker_open(breaker, "failure"))
+    strike_limit = int((drain_policy or {}).get("head_strike_limit") or 3)
+    suspect = None  # (job_id, reason): refused, waiting to learn whether the lanes or the job were at fault
+    if outage_probe or failure_probe:
+        log(f"Breaker open ({'outage' if outage_probe else 'failure'}): this run tries one job first.")
 
     for row in jobs:
         job = dict(zip(columns, row))
@@ -1190,8 +1300,9 @@ def main():
             try:
                 text, runtime, model = call_cloud(prompt, drain_policy)
             except CloudRefused as refusal:
-                # Not a model failure: undo the attempt counted when the job was marked running, put it back
-                # to pending, and stop -- the next job would meet the same gate.
+                # Not (yet) the job's fault: undo the attempt counted when the job was marked running and put it
+                # back to pending. One refusal is ambiguous (a lane outage, or a prompt every lane rejects), so the
+                # next job decides: if a lane answers it, this refusal was the job's own and is counted then.
                 cur.execute("""
                     UPDATE deep_overnight_llm_queue
                     SET status = 'pending', attempt_count = GREATEST(attempt_count - 1, 0),
@@ -1200,8 +1311,39 @@ def main():
                 """, (f"refused before any model ran (no attempt counted): {refusal}"[:500], job_id))
                 conn.commit()
                 refused += 1
-                log(f"  REFUSED #{job_id} — {refusal}; back to pending, attempt not counted. Stopping the run.")
-                break
+                processed += 1
+                if cloud and (outage_probe or suspect is not None):
+                    # Two refusals in a row, or the probe refused while the breaker is open: the lanes are out.
+                    head_id = job_id if outage_probe else suspect[0]
+                    if add_strike(breaker, head_id) >= strike_limit:
+                        _count_deferred_attempt(cur, head_id, f"counted after {strike_limit} refusals at the queue "
+                                                f"head (a prompt every lane rejects): {refusal}")
+                        conn.commit()
+                        breaker["strikes"].pop(str(head_id), None)
+                        failed += 1
+                        log(f"  COUNTED #{head_id} — refused at the head {strike_limit} times in a row")
+                    minutes = trip_breaker(breaker, "outage", str(refusal), drain_policy)
+                    save_breaker(bpath, breaker)
+                    log(f"  REFUSED #{job_id} — {refusal}; lane outage: breaker open {minutes:.0f} min. Stopping the run.")
+                    suspect = None
+                    break
+                suspect = (job_id, str(refusal))
+                log(f"  REFUSED #{job_id} — {refusal}; back to pending, attempt not counted. Trying the next job.")
+                continue
+            # A lane answered this job (text or a counted failure): the lanes work.
+            if suspect is not None:
+                _count_deferred_attempt(cur, suspect[0], "counted: the next job reached a model, so this "
+                                        f"failure was the job's own: {suspect[1]}")
+                conn.commit()
+                breaker["strikes"].pop(str(suspect[0]), None)
+                failed += 1
+                log(f"  COUNTED #{suspect[0]} — the next job reached a model; its refusal was job-specific")
+                suspect = None
+            if cloud and (outage_probe or breaker["outage"]["trips"]):
+                close_breaker(breaker, "outage")
+                save_breaker(bpath, breaker)
+                outage_probe = False
+                log("  Outage breaker closed: a lane answered.")
         else:
             text, runtime = call_gemma(prompt, model=model)
 
@@ -1269,6 +1411,10 @@ def main():
 
             succeeded += 1
             consecutive_failures = 0
+            if cloud and (failure_probe or breaker["failure"]["trips"]):
+                close_breaker(breaker, "failure")
+                save_breaker(bpath, breaker)
+                failure_probe = False
             log(f"  DONE #{job_id} — result_id={result_id}, runtime={runtime}s")
         else:
             # Mark failed
@@ -1284,14 +1430,29 @@ def main():
             failed += 1
             consecutive_failures += 1
             log(f"  FAILED #{job_id} — no response after {runtime}s")
-            if max_consecutive and consecutive_failures >= max_consecutive:
-                # Circuit breaker: N failures in a row is the lanes, not N bad jobs. Stop before the backlog burns.
+            if (max_consecutive and consecutive_failures >= max_consecutive) or failure_probe:
+                # Circuit breaker: N failures in a row is the lanes, not N bad jobs. Stop before the backlog burns,
+                # and remember it, so the next cron run tries one job instead of burning N more.
                 processed += 1
+                if cloud:
+                    minutes = trip_breaker(breaker, "failure", f"{consecutive_failures} consecutive failures",
+                                           drain_policy)
+                    save_breaker(bpath, breaker)
+                    log(f"Circuit breaker: {consecutive_failures} consecutive failures; open {minutes:.0f} min.")
                 log(f"Circuit breaker: {consecutive_failures} consecutive failures "
                     f"(max_consecutive_failures={max_consecutive}). Stopping the run.")
                 break
 
         processed += 1
+
+    if cloud and suspect is not None:
+        # Refused, and no later job in this run told us why: one strike; the head is counted after strike_limit.
+        if add_strike(breaker, suspect[0]) >= strike_limit:
+            _count_deferred_attempt(cur, suspect[0], f"counted after {strike_limit} unresolved refusals: {suspect[1]}")
+            conn.commit()
+            breaker["strikes"].pop(str(suspect[0]), None)
+            failed += 1
+        save_breaker(bpath, breaker)
 
     total_elapsed = round((time.monotonic() - start_time) / 60, 1)
 
