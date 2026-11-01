@@ -27,3 +27,14 @@
 
 - 2026-11-01 APPROVED v004. The operator, verbatim: "I approve the markups implement". Recorded from the message under
   AGENTS.md §20 (as for v002). Build follows in a PR stacked on this one, citing `Design: home/v004`.
+
+- 2026-11-01 PROPOSED v005 (builds on v004; same slot): an actionable market-risk card for YELLOW, and the same
+  sections extending the ORANGE/RED banner. Adds a plain verdict line with the shock type and "your exposure" in dollars;
+  a sector table (1d/5d vs SPY, your dollars and share of book, look-through, UNKNOWN groups you hold flagged); your
+  positions in stressed groups ranked by dollars exposed (account, value, % of account, stressed share, stop distance,
+  stance); budget breaches with account labels and dollars; a "Review now" list of 1–5 prompts ranked by dollars at risk
+  linking to the existing Review / stop review; "Since you were stopped out" with Stage 1 (early setup) / Stage 2
+  (confirmed) re-entry status, invalidation level, wash-sale end date and earnings warning; a segment split for
+  multi-segment issuers from a new operator-owned `config/issuer_segments.json`. Moves the contributor lines to "Why the
+  score is N". Collapsed on phone to the verdict, exposure and the top review item. No size, order or stop level anywhere.
+  Mockup only, awaiting the operator's decision in Approvals → Designs; mockups in the private design store.

@@ -1,0 +1,81 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "home",
+  "version": "v005",
+  "state": "PROPOSED",
+  "title": "Home: actionable market-risk card (sectors with your dollars, positions at risk, budget breaches, review list, re-entry stages, look-through)",
+  "created": "2026-11-01",
+  "approval": {
+    "by": null,
+    "at": null,
+    "ref": null,
+    "kind": "awaiting the operator's decision in Approvals -> Designs",
+    "source": [
+      "docs/designs/DSN-20261031-market-risk-ui.md"
+    ],
+    "ledger": null
+  },
+  "spec": "SPEC.md",
+  "design": "DSN-20261031-market-risk-ui",
+  "base": "v004",
+  "depends_on": [
+    "home/v004 (APPROVED)",
+    "home/v002 (APPROVED)",
+    "GET /api/v2/market-risk/latest pass-through additions (SPEC: 'Data the projection must start passing through')",
+    "config/issuer_segments.json (new, operator-owned weights)",
+    "scripts/market_risk_backtest.py --reentry (Stage 1 / Stage 2 report; thresholds chosen by the operator)"
+  ],
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/home",
+    "note": "Private store, never committed (design/README.md rule 7). Market figures from the 2026-11-01 shadow evaluation; book values, symbols and accounts are bracketed placeholders; the ORANGE boards are an example tier on the same placeholder book. A separate real-data render for the operator's review is local-only and is not referenced here. Paths relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v005/mockups/HomeV005DesktopYellow.dc.html",
+        "sha256": "9ee9c9f7db9c03393de2f5ec04ddac8d8177b4f223ce6a83e8b036743026d2de",
+        "bytes": 19724,
+        "role": "mockups"
+      },
+      {
+        "path": "v005/mockups/HomeV005PhoneYellowCollapsed.dc.html",
+        "sha256": "ecbdf95c8f6dba20423c6318e35bdda0797d7140c9d4e9b7517f16082bb1e8a6",
+        "bytes": 19715,
+        "role": "mockups"
+      },
+      {
+        "path": "v005/mockups/HomeV005PhoneYellowExpanded.dc.html",
+        "sha256": "81e811daa98f2b50bd0e2e73835d93038ba7ab5cf86459ccc0b9643b78097f45",
+        "bytes": 19718,
+        "role": "mockups"
+      },
+      {
+        "path": "v005/mockups/HomeV005DesktopOrange.dc.html",
+        "sha256": "29b9e2b5bbb36607ad60bf55234c9e474628488783d0ecda26cd7282e5e4c0cd",
+        "bytes": 19945,
+        "role": "mockups"
+      },
+      {
+        "path": "v005/mockups/HomeV005PhoneOrange.dc.html",
+        "sha256": "d5116d3d57d6158460e599fdd48fa191bfbd707ba899297ab34176bc47ef3a23",
+        "bytes": 19945,
+        "role": "mockups"
+      },
+      {
+        "path": "v005/mockups/HomeV005States.dc.html",
+        "sha256": "9f8456167464273dbe64adc0daa3a1542103d2190ac15c320e819c6031f20c9d",
+        "bytes": 9515,
+        "role": "mockups"
+      },
+      {
+        "path": "v005/mockups/canvas.json",
+        "sha256": "70e8689e9453f0fde91b60ad053e6636134023d65df69f21f342a0c18b224c85",
+        "bytes": 1342,
+        "role": "mockups"
+      }
+    ]
+  },
+  "removals": [],
+  "moves": [
+    "v004 contributor lines, not-measured line and 'De-escalates if' move to section 7 'Why the score is N', below the actionable sections",
+    "v004 'Your book' panel replaced by sections 3-5 (same facts with dollars and accounts)"
+  ]
+}
