@@ -107,7 +107,14 @@ options_flow_category:
   # market hours (decay.clock): 32 = one missed session at most. Friday 16:00 -> Monday 08:00 is 22; Monday's close not
   # collected by Monday 18:00 makes it UNKNOWN (review of #2415 round 2, R2-1: 96 market hours let Wednesday's bars read
   # CALM the next Monday)
-  stale_after_hours: 32
+  stale_after_hours: 32          # fallback only when expected_slots_et is absent
+  # Staleness from the snapshot schedule instead (review of #2425): option_chain_snapshots run 10:00 and 17:35 ET on
+  # trading days (crontab, options_chain_snapshot.py). A snapshot stays current until the second expected slot after
+  # it is due + late_slack_minutes: one missed or late slot tolerated (Friday 10:00 with the 17:35 run failed is still
+  # current at a late Monday 10:30), two are not (fail closed).
+  expected_slots_et: ["10:00", "17:35"]
+  late_slack_minutes: 45
+  missed_slots_allowed: 1
   score: {CALM: 10, WARN: 50, STRESS: 85}
 
 macro_credit:
@@ -342,6 +349,18 @@ decay:
   # (a Friday close to the Tuesday open after a Monday holiday is 89.5h).
   max_market_hours: 120
   max_wall_hours: 120
+  # Hold, never escalate, on carried data (scoring._hold_not_escalate). An observation made before a market closure
+  # (a weekend or NYSE holiday between it and now, sessions.closure_between) keeps its market-clock weight for HOLDING
+  # and displaying the current tier, but the tier may rise only as far as fresh post-closure observations support.
+  # Operator approval, in session 2026-10-31 ~22:00 ET: "approve hold-not-escalate" (reviewer variant D, #2425).
+  # "off" restores carried data escalating.
+  carried_escalation: hold_only
+  # First evaluation with no prior tier (bootstrap), when observations are carried across a closure:
+  #   adopt_carried       - adopt the tier rebuilt from carried data (operator "keep bootstrap"; default for now)
+  #   fresh_only_no_page  - start at the tier fresh observations alone support; the carried tier is shown, labelled
+  # In both modes a bootstrap evaluation never sends P1 (alerts.bootstrap_priority). Pending operator decision
+  # (review of PR 2425 round 4, finding 2); a torn latest.json is never a bootstrap (market_risk_evaluate._resolve_prior).
+  bootstrap_mode: adopt_carried
   future_tolerance_seconds: 60     # an input stamped later than now + this is invalid (clock skew, bad writer)
   steps:
     - {max_age_hours: 12, weight: 1.0}
@@ -353,6 +372,9 @@ decay:
 alerts:
   # Phone card + delivery intent for engine tier transitions (scripts/lib/market_risk/alerts.py). Transitions only;
   # the same tier twice never sends. Red is an operator-action intent: P1, dedupe 0, never quiet-held (plan §5.8).
+  # A bootstrap evaluation (no prior tier) never pages: its card, if any, is an informational "first reading" at this
+  # priority, never P1 (review of PR 2425 round 4, finding 2).
+  bootstrap_priority: P3
   producer: market_risk_engine
   max_contributors: 5
   priority:
@@ -432,6 +454,7 @@ extended_hours:
     warn_atr: 0.75
     stress_atr: 1.5
     stale_after_hours: 7          # an opening gap stays current through that session's close
+
   # Overnight 20:00-04:00 ET (Sunday night to Friday 04:00) and the Sunday 18:00 futures open (operator 2026-10-31,
   # "No excuses"; scripts/lib/overnight_session.py, categories/_overnight.py). Index futures are measured with the same
   # warn/stress thresholds as the proxies (the 10-29 18:15 ET case was NQ futures -1.5%..-2%), but ONLY when their
@@ -445,7 +468,6 @@ extended_hours:
     # named with its session, trading date and age, and the category is UNKNOWN unless a fresh print stands. 45 = the
     # Schwab lane's max_trade_age_minutes (30) plus one 15-minute collection cycle.
     stale_after_minutes: 45
-
 composite:
   # How category observations combine into the 0-100 score (scripts/lib/market_risk/scoring._composite).
   # noisy_or: only WARN/STRESS categories add risk; independent confirmations accumulate, calm categories never dilute.
@@ -459,3 +481,202 @@ composite:
   max_per_category: 0.95
   # No coverage extrapolation (review of #2362, B2): an UNKNOWN category never raises the score or the tier; the card
   # shows the lost coverage instead. The former coverage_extrapolation_max knob is removed.
+
+sectors:
+  # scripts/lib/market_risk/sectors.py — sector and theme attribution + heat map (precision PR, operator 2026-10-31:
+  # "aware of which sectors got hit because [staples/healthcare] did not get affected"). STATED RULE, not fitted to
+  # October: every threshold is a standard-score band of the group's own trailing z_window_sessions history (z -1.5 is
+  # about the worst 7% of 5-session moves; -1.0 about the worst 16%). Groups are equal-weight indexes of their symbols.
+  benchmark: SPY
+  z_window_sessions: 252
+  corr_window_sessions: 10
+  stress_z: -1.5            # 5-session return z vs its own history ...
+  rs_stress_z: -1.0         # ... AND relative return vs SPY z (lagging the market, not just falling with it)
+  weak_z: -1.0
+  stress_z_1d: -2.0         # one-session shock band (about the worst 2% of days), same RS condition
+  weak_z_1d: -1.5
+  resilient_rs_z: 0.75      # beating SPY by 0.75 sd of its own relative history, or rising while SPY falls
+  price_dd_min_pct: -3.0    # price-weakness gate: STRESS/WEAK only when >= 3% under the 20-session high AND lagging SPY over 20 sessions
+  defensive_key: defensive
+  growth_keys: [tech, semis, ai_basket, comm]
+  factor_symbols: [IWF, IWD, IWM, HYG, TLT]
+  factor_pairs:
+    growth_value: [IWF, IWD]
+    small_large: [IWM, SPY]
+    credit: [HYG, TLT]
+  groups:
+    - {key: tech, label: Technology, kind: sector, symbols: [XLK]}
+    - {key: comm, label: Communications, kind: sector, symbols: [XLC]}
+    - {key: discretionary, label: Discretionary, kind: sector, symbols: [XLY]}
+    - {key: staples, label: Staples, kind: sector, symbols: [XLP]}
+    - {key: healthcare, label: Healthcare, kind: sector, symbols: [XLV]}
+    - {key: utilities, label: Utilities, kind: sector, symbols: [XLU]}
+    - {key: energy, label: Energy, kind: sector, symbols: [XLE]}
+    - {key: financials, label: Financials, kind: sector, symbols: [XLF]}
+    - {key: industrials, label: Industrials, kind: sector, symbols: [XLI]}
+    - {key: materials, label: Materials, kind: sector, symbols: [XLB]}
+    - {key: real_estate, label: Real estate, kind: sector, symbols: [XLRE]}
+    - {key: semis, label: Semis, kind: theme, symbols: [SMH, SOXX]}
+    - {key: ai_basket, label: AI basket, kind: theme, symbols: [NVDA, AMD, AVGO, MSFT, AMZN, GOOGL, META]}
+    - {key: defensive, label: Defensives, kind: defensive, symbols: [XLP, XLV, XLU]}
+    - {key: rates, label: Long Treasuries, kind: macro, symbols: [TLT]}
+    - {key: dollar, label: Dollar, kind: macro, symbols: [UUP]}
+
+shock_type:
+  # scripts/lib/market_risk/shock_type.py — what KIND of stress (operator 2026-10-31: "whether it's a pandemic or is
+  # it a certain sector related"). Each class is a list of indicators; its score is the share that hold; the top
+  # score at or above min_confidence wins (ties by priority), else MIXED. Same standard-score rule as sectors:.
+  min_confidence: 0.6
+  min_known_indicators: 2   # score over measured indicators once >= 2 of a class are measured (unknown is not a no-vote)
+  priority: [SYSTEMIC, CREDIT, SECTOR, FACTOR, RATES, EVENT]
+  systemic:
+    min_frac_sectors_down: 0.8      # 9 of 11 sectors down over 5 sessions
+    min_corr_z: 1.0                 # cross-sector correlation 1 sd above its own year
+  sector:
+    max_stressed_groups: 5
+    min_resilient_sectors: 3
+    min_dispersion_z: 1.0
+  factor:
+    min_abs_z: 2.0
+  rates:
+    bond_stress_z: -1.5
+    dollar_z: 1.5
+  credit:
+    hy_rel_z: -1.5
+
+positions:
+  # scripts/lib/market_risk/position_stances.py — per-position CIO stances (operator 2026-10-31: "advised me I would
+  # have got out earlier ... advise me when to get back in"). Advisory stances only; never size/price/stop.
+  # STATED RULE: a position is flagged when at least a quarter of it (look-through) sits in the stressed groups, or
+  # the whole book when the shock type is SYSTEMIC. Re-entry needs the flagged groups out of stress for 2 completed
+  # sessions AND the index back above its 50-day AND VIX below its 20-day — or the engine reaching GREEN.
+  min_exposure: 0.25
+  count_weak_at: ORANGE        # at ORANGE and above a WEAK group counts toward exposure as well as a STRESSED one
+  defensive_groups: [staples, healthcare, utilities]   # flat-or-up defensive groups are never trimmed (non-systemic)
+  evening_exit_room_pct: 2.0   # stated rule: implied open leaving <= 2 points before the broker stop (about one
+                               # median daily range of a large-cap ETF) raises EXIT review that evening, YELLOW and up
+  recovered_sessions: 2
+  reclaim_symbol: QQQ
+  # OPERATOR-OWNED theme mapping (§17): symbol -> extra groups at full weight, for a stock held as a theme bet that
+  # its own sector does not show. Empty by default; never inferred by code. Shape: {SYMBOL: [ai_basket]}
+  theme_overrides: {}
+  # Materiality floor (operator 2026-10-31, via coordinator: fractional dividend residuals got "trim review, no broker
+  # stop"). Below any of these a holding is a RESIDUAL: no stance, no playbook, no stop flag — one count line only.
+  materiality:
+    min_shares: 1.0
+    min_market_value: 1000.0
+    min_book_weight: 0.001   # 0.1% of the book
+  reenter_require_all: [group_recovered, index_reclaimed_50d, vix_below_20d]
+  reenter_or_any: [engine_green]
+
+  playbook:
+    # scripts/lib/market_risk/protection_playbook.py — DISPLAY ONLY. Stop and trail percentages come from
+    # config/stop_policy.yaml via scripts/holding_family.py; nothing here decides or places a stop (MBI_BEHAVIOR = 0).
+    # tier_posture is an OPERATOR-SET proposal (§17): at ORANGE/RED show the house band with stop_policy.yaml's own
+    # risk_off regime adjustment (caps shrink 1 point). Set a tier to null to show the unadjusted band.
+    tier_posture: {YELLOW: null, ORANGE: risk_off, RED: risk_off}
+    gap_lookback_sessions: 500
+    near_stop_pct: 2.0           # flag when the implied open leaves 2 points or less before the stop
+    min_cluster_corr: 0.8        # positions whose daily returns correlate this much move together in this shock
+    # Verified 2026-10-31 from schwab.com/stocks/extended-hours-trading (fetched, quoted):
+    session_facts:
+      - "Schwab: stop orders are not eligible for execution during an extended-hours session; only limit orders are accepted (schwab.com/stocks/extended-hours-trading). A stop placed today triggers no earlier than the 09:30 open, possibly far through its level after an overnight gap."
+      - "Schwab: EXTO (extended + overnight, 24 hours, Day or GTC) covers all S&P 500, Nasdaq 100 and Dow 30 stocks plus 600+ ETFs on thinkorswim — limit orders only (schwab.com/stocks/extended-hours-trading; schwab.com/learn/story/can-i-trade-pre-and-after-hours-markets)."
+    session_alternatives:
+      - "Information, not instruction: an extended-hours limit order is a manual action you would enter yourself."
+      - "Hedge eligibility follows the inverse-hedge stoplight (PSQ for Nasdaq / tech)."
+      - "Reducing exposure before the close is the only way to be out before an after-hours shock."
+    wash_sale_note: "Taxable account: a re-buy within 30 days of a loss sale is a wash sale (the loss is deferred into the new lot). Not applicable in IRAs."
+
+reentry_watch:
+  # scripts/lib/market_risk/reentry_watch.py — names exited in the last lookback_days get a CIO RE_ENTER_IF stance with
+  # per-symbol conditions (operator 2026-10-31: "let me know when is the right time to hop back in"). STATED RULES:
+  # trend repair = close above its 20-day average and the pre-exit close; earnings pending inside 5 sessions blocks
+  # evaluation, 3 sessions after a print to settle; market <= YELLOW; options hedging not STRESS. Base rate on the
+  # symbol's own history: breakdown = 8% under the 20-session high and below the 20-day average.
+  lookback_days: 30
+  group_sessions: 2
+  earnings_ahead_sessions: 5
+  settle_sessions: 3
+  breakdown_drawdown_pct: -8.0
+  horizon_sessions: 20
+  wash_sale_days: 30
+  card_priority: P2
+  card_dedupe_minutes: 1440
+leadership:
+  # scripts/lib/market_risk/leadership.py + rotation_advice.py — regime-turn rotation advisor (operator 2026-10-31:
+  # "if stuff is turning for the long term, I should have advisement of what I should be getting into"). STATED RULE,
+  # fixed before the backtest and not fitted to it: a group "leads" when its price relative to SPY is higher than it was
+  # N sessions ago (sign of the relative trend) AND it spent a majority of those sessions above its own relative-strength
+  # 20-session average (persistence), with the group itself above its 50- and 200-day averages (an uptrend, not a
+  # relative "least-bad"). Horizons are the conventional 1 / 3 / 6 trading months. 2026 is held out of the backtest.
+  benchmark: SPY
+  horizons: [20, 60, 120]
+  rs_sma_sessions: 20
+  persistence_min: 0.60        # majority-plus of sessions with RS above its 20-session average
+  fading_persistence_max: 0.40
+  breadth_min: 0.60            # multi-member groups: share of members above their 50-day average
+  new_high_pct: 0.05           # "near a 52-week high" = within 5%
+  volume_sessions: 20          # up-day volume / down-day volume over this window; > 1.0 confirms
+  min_history_sessions: 260
+  strategic_requires_macro: true
+  # Macro preference per group: the direction of rates (TLT 60-session return: up = falling yields), the dollar (UUP)
+  # and credit (HYG/TLT ratio) under which the group has historically led. Textbook sensitivities, not fitted.
+  macro_preference:
+    tech:          {rates: falling}
+    comm:          {rates: falling}
+    discretionary: {credit: improving}
+    staples:       {credit: worsening}
+    healthcare:    {credit: worsening}
+    utilities:     {rates: falling}
+    real_estate:   {rates: falling}
+    energy:        {dollar: falling}
+    materials:     {dollar: falling}
+    financials:    {rates: rising}
+    industrials:   {credit: improving}
+    semis:         {rates: falling}
+    ai_basket:     {rates: falling}
+  candidate_groups_kinds: [sector, theme]
+  candidates_per_group: 5
+  candidate_min_conviction: 55     # the CIO's own advice floor (opportunity_conviction.yaml advice.conviction_floor)
+  earnings_window_sessions: 10
+  residual_min_value_usd: 1000     # book overlap ignores fractional / residual lots below this value
+  entry_gate_tiers: [ORANGE, RED]  # the existing market_risk_gate: entries held at ORANGE+
+  card_priority: P2
+  card_dedupe_minutes: 10080       # one card per leadership-state signature per week
+  # The weekly / on-transition card stays OFF until the detector shows an edge over plain momentum. Backtest
+  # (scripts/market_risk_leadership_backtest.py, 2016-2025 in-sample, 2026 held out) did NOT beat the top-3 relative-
+  # strength baseline; see docs/audits/ROTATION_LEADERSHIP_BACKTEST_20261031.json. The payload and the CIO facts still
+  # carry the classes, labelled with that track record. Turning the card on is an operator decision.
+  card_enabled: false
+  track_record_path: docs/audits/ROTATION_LEADERSHIP_BACKTEST_20261031.json
+  # Operator 2026-10-31: "We also want to make sure that the CIO is memorizing all of this. And when stuff is pivoting
+  # to a new sector, I would think logically we're going to look first for stuff that we already researched that's on
+  # the watch list or our short list and then go to what else is leading in the industry. It should also click off
+  # separate Hermes searches and Brave and you.com searches related to all of this."
+  # scripts/lib/market_risk/cio_memory_fanout.py. Writes only through the EXISTING CIO paths (aif_memory admission,
+  # InstrumentRecordStore apply_cognition, SecurityResearchSpine silo=cio) and the EXISTING research queues
+  # (watch_directives single writer -> Hermes + TradeAI sweep; governed_research_producer -> Brave router).
+  candidate_tiers:
+    research_stale_days: 30          # research older than this is shown as stale and re-queued
+    tier3_min_momentum: 60           # "other leaders in the group" = un-researched names with momentum >= this
+    per_tier: 5
+  fanout:
+    triggers: [leadership_transition, shock_type_change, reentry_flip]
+    hermes:
+      enabled: true
+      created_by: market_risk_rotation
+      ttl_days: 21
+      priority: normal
+      daily_cap: 12                  # directives per day across all triggers
+    brave:
+      enabled: true
+      daily_cap: 10                  # research targets per day; never more than the router's own headroom
+      min_daily_headroom: 50         # leave this many Brave calls a day for every other caller
+    youcom:
+      registered: false              # no provider, client or registry row exists (grep 2026-10-31); §7A proposal:
+                                     # docs/proposals/REGISTRY_ROW_youcom_search_20261031.md
+  memory:
+    aif_memory_type: EPISODIC         # market-level episode and shock-type memories (governed admission, 30-day TTL)
+    spine_tag: market_risk            # per-symbol research-spine contributions Ask-the-CIO recalls
+    spine_kind: market_risk.event

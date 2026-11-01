@@ -118,6 +118,7 @@ def _market_risk_field(mr: dict[str, Any] | None) -> dict[str, Any]:
         ),
         "probabilities": mr.get("probabilities"),
         "mode": mr.get("mode"),  # live | shadow (shadow: evaluated, no alert sent)
+        "carried_only": bool(mr.get("carried_only")),  # tier rests only on carried data: not alerting
     }
     return _field(
         value, source="market_risk_projection", as_of=mr.get("as_of"), state="STALE" if mr.get("stale") else "VERIFIED"
@@ -138,11 +139,12 @@ def load_market_risk_projection(project_root: Path | None = None) -> dict[str, A
             return None
 
     try:
-        from lib.market_risk_projection import SNAPSHOT_REL, build
+        from lib.market_risk_projection import build, load_snapshot
     except ImportError:  # pragma: no cover - imported as scripts.lib
-        from scripts.lib.market_risk_projection import SNAPSHOT_REL, build
+        from scripts.lib.market_risk_projection import build, load_snapshot
 
-    snap = _load(SNAPSHOT_REL)
+    # live when present; torn live -> not_evaluated with the reason; absent -> the labelled shadow assessment
+    snap = load_snapshot(_load, lambda rel: (root / rel).exists())
     radar = _load("data/runtime/hedging_radar_latest.json")
     if snap is None and radar is None:
         return None
@@ -164,6 +166,7 @@ def _market_risk_summary(field: dict[str, Any]) -> dict[str, Any]:
         + (f" {round(v['score'])}/100" if isinstance(v.get("score"), (int, float)) else "")
         # a shadow tier was evaluated but nobody was alerted on it; the CIO must not say "the engine warned you"
         + (" (SHADOW, not alerting)" if mode == "shadow" else "")
+        + (" (carried over the closure, not alerting)" if v.get("carried_only") and mode != "shadow" else "")
         + (f" — {why}" if why else "")
     )
     return {

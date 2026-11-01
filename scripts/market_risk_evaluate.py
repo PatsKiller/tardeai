@@ -63,8 +63,9 @@ SHADOW_PRIOR = "shadow_latest.json"
 def persist(doc: dict, now: datetime, *, shadow: bool = False) -> str:
     """Write the assessment (prior for the next run + dated receipt) and the consumers' snapshot. Atomic.
 
-    ``shadow``: the receipt is ``<stamp>-shadow.json`` and the prior is ``shadow_latest.json``, so a shadow run never
-    becomes the live prior (the first live --apply still announces its tier as a transition)."""
+    ``shadow``: the receipt is ``<stamp>-shadow.json`` and ``shadow_latest.json`` is both the shadow prior and what
+    the API serves when no live snapshot exists. A shadow run never becomes the live prior and never overwrites the
+    live snapshot (the first live --apply still announces its tier as a transition)."""
     from scripts.lib.market_risk_projection import snapshot_from_assessment
 
     d = state_dir()
@@ -72,6 +73,10 @@ def persist(doc: dict, now: datetime, *, shadow: bool = False) -> str:
     body = {k: v for k, v in doc.items() if k != "cycle"}
     atomic_write_json(d / "receipts" / f"{stamp}{'-shadow' if shadow else ''}.json", body)
     atomic_write_json(d / (SHADOW_PRIOR if shadow else "latest.json"), body)
+    if shadow:
+        # never the snapshot Home/API/CIO read (review of #2425): the API serves the live snapshot when one exists
+        # and falls back to shadow_latest.json, labelled, only when none does (market_risk_projection.load_snapshot)
+        return str(d / SHADOW_PRIOR)
     prev = _read_prior(snapshot_path()) or {}
     hist = [h for h in (prev.get("history") or []) if isinstance(h, dict) and h.get("as_of") != doc.get("as_of")]
     hist.append(
@@ -85,6 +90,32 @@ def persist(doc: dict, now: datetime, *, shadow: bool = False) -> str:
     hist.sort(key=lambda h: scoring._parse(h.get("as_of")) or datetime.min.replace(tzinfo=timezone.utc))
     atomic_write_json(snapshot_path(), snapshot_from_assessment(body, history=hist))  # carries mode: live|shadow
     return str(d / (SHADOW_PRIOR if shadow else "latest.json"))
+
+
+RUN_RECEIPT_NAME = "run_last.json"
+
+
+def run_receipt_path() -> Path:
+    """``data/runtime/market_risk/run_last.json``: written by EVERY scheduled run, dry or apply (not by a replay), so
+    the lane's output signal and the stalled-escalation check see the evaluator alive during the shadow period."""
+    return state_dir() / RUN_RECEIPT_NAME
+
+
+def write_run_receipt(doc: dict, *, started: datetime, finished: datetime) -> str:
+    receipt = {
+        "schema": "MarketRiskRunReceipt@v1",
+        "lane_id": "market-risk-evaluate",
+        "started_at": started.astimezone(timezone.utc).isoformat(),
+        "finished_at": finished.astimezone(timezone.utc).isoformat(),
+        "mode": doc.get("mode"),
+        "session": doc.get("session"),
+        "as_of": doc.get("as_of"),
+        "tier": doc.get("tier"),
+        "score": doc.get("score"),
+        "sends": len(((doc.get("cycle") or {}).get("sends")) or []),
+    }
+    atomic_write_json(run_receipt_path(), receipt)
+    return str(run_receipt_path())
 
 
 def session_of(now: datetime) -> str:
@@ -113,7 +144,55 @@ def evaluate(now: datetime, reader: Any, policy: dict, prior: dict | None, portf
     a = scoring.compose(obs, policy, prior=prior, now=now)
     a = scoring.apply_uplift(a, portfolio, policy)
     a = explain.explain(a, policy)
+    attach_precision(a, ctx, policy)
+    if portfolio is not None and os.environ.get("MRE_BOOK_PRECISION", "1") == "1":
+        try:  # B3: per-session {tier, sectors} history carried in the assessment, read by the multi-session conditions
+            from scripts.lib.market_risk import book_precision
+
+            d0 = a.to_dict()
+            a.session_history = book_precision.session_history(
+                prior, now=now, tier=d0.get("tier"), sectors_block=d0.get("sectors")
+            )
+        except Exception as exc:  # noqa: BLE001 — additive; an empty history only delays the multi-session conditions
+            print(f"market_risk_evaluate: session history unavailable ({type(exc).__name__}: {exc})", file=sys.stderr)
+        try:  # live only: the backtests and replays pass no portfolio context
+            from scripts.lib.market_risk import book_precision
+            from scripts.lib.market_risk.reader import _default_conn
+
+            book_precision.attach(a, now=now, reader=reader, policy=policy, prior=prior, conn_factory=_default_conn)
+        except Exception as exc:  # noqa: BLE001 — the book layer is additive; the tier stands without it
+            a.positions = {"_note": f"book precision unavailable: {type(exc).__name__}: {exc}"}
+        try:  # the re-entry watch is independent of the held book: a failure here never hides the stances
+            from scripts.lib.market_risk import book_precision
+            from scripts.lib.market_risk.reader import _default_conn
+
+            book_precision.reentry_watch_block(
+                a, now=now, reader=reader, policy=policy, prior=prior, conn_factory=_default_conn
+            )
+        except Exception as exc:  # noqa: BLE001
+            a.reentry_watch = {"_note": f"re-entry watch unavailable: {type(exc).__name__}: {exc}"}
     return a
+
+
+def attach_precision(a: Any, ctx: c.EvalContext, policy: dict) -> None:
+    """Sector attribution, shock type and the heat map (precision PR). A failure here is reported in the block and never
+    blocks the tier: the market assessment stands on its own."""
+    from scripts.lib.market_risk import sectors, shock_type
+
+    try:
+        block = sectors.measure(ctx)
+        a.sectors = block
+        a.shock_type = shock_type.classify(block, [o.to_dict() for o in a.observations], policy)
+        a.heatmap = sectors.heatmap(block)
+    except Exception as exc:  # noqa: BLE001 — precision is additive; an error is an honest unknown in the payload
+        a.sectors = {"state": "UNKNOWN", "reason_unknown": f"{type(exc).__name__}: {exc}"}
+        a.shock_type = {"class": "UNKNOWN", "reason_unknown": f"{type(exc).__name__}: {exc}"}
+    try:  # rotation advisor: durable leadership turns (additive; never blocks the tier)
+        from scripts.lib.market_risk import leadership
+
+        a.leadership = leadership.measure(ctx)
+    except Exception as exc:  # noqa: BLE001 — additive layer; an error is an honest unknown in the payload
+        a.leadership = {"state": "UNKNOWN", "reason_unknown": f"{type(exc).__name__}: {exc}"}
 
 
 def portfolio_context(now: datetime) -> c.PortfolioContext | None:
@@ -125,6 +204,24 @@ def portfolio_context(now: datetime) -> c.PortfolioContext | None:
     except Exception as exc:  # noqa: BLE001 — a missing book is UNKNOWN vulnerability, reported in the card
         print(f"market_risk_evaluate: portfolio context unavailable ({type(exc).__name__}: {exc})", file=sys.stderr)
         return c.PortfolioContext(vulnerability=None, note=f"portfolio unavailable: {type(exc).__name__}")
+
+
+def _prior_from_open_episode(prior: dict | None, store: Path) -> dict | None:
+    """An open episode in the ledger means the operator was already alerted: never a first reading (review of
+    PR 2431 round 6, FIX 2). With no prior (latest.json, the snapshot and the receipts all lost), the open episode's
+    tier is the prior, so the tier is held, the CARRIED-ONLY mark is never set and the episode's repeats keep
+    draining. A torn ledger is left to escalation.observe, which quarantines it."""
+    if prior:
+        return prior
+    from scripts.lib.market_risk import escalation
+
+    try:
+        ep = escalation.open_episode(escalation.load(store))
+    except Exception:  # noqa: BLE001 — EpisodeStoreCorrupt or unreadable: observe() handles and reports it
+        return prior
+    if not ep or ep.get("tier") not in ("ORANGE", "RED"):
+        return prior
+    return {"tier": ep["tier"], "hysteresis": {}, "prior_source": f"open episode {ep.get('id')}"}
 
 
 def run_cycle(
@@ -148,6 +245,7 @@ def run_cycle(
 
     from scripts.lib.market_risk import alerts, escalation
 
+    prior = _prior_from_open_episode(prior, episodes_path or escalation.store_path())
     a = evaluate(now, reader, policy, prior, portfolio)
     doc = a.to_dict()
     real_store = episodes_path or escalation.store_path()
@@ -184,7 +282,19 @@ def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_asse
     esc_cfg = policy.get("escalation") or {}
     ttl = float(esc_cfg.get("claim_ttl_min") or 10)
     out: dict[str, Any] = {"assessment": doc, "object": a, "mode": "apply" if apply else "dry_run", "sends": []}
-    ep = escalation.observe(doc, now=now, policy=policy, path=store)
+    hy = doc.get("hysteresis") or {}
+    # a first reading, or a tier that rests only on data carried across a closure (CARRIED-ONLY, PR 2431), never pages
+    bootstrap = bool(hy.get("bootstrap")) or bool(hy.get("carried_only"))
+    if bootstrap:
+        # a first reading never pages (review of PR 2425 round 4, finding 2): no episode opens (an ORANGE/RED episode
+        # schedules P1 repeats) and no repeat is drained this cycle; the next evaluation, with this one as its prior,
+        # opens the episode if the tier holds
+        ep: dict[str, Any] = {
+            "event": "carried_only_no_episode" if hy.get("carried_only") else "bootstrap_no_episode",
+            "episode": None,
+        }
+    else:
+        ep = escalation.observe(doc, now=now, policy=policy, path=store)
     out["episode_event"] = ep["event"]
     out["episode_id"] = (ep.get("episode") or {}).get("id")
     intent = alerts.intent_for(doc, prior, policy)
@@ -202,7 +312,7 @@ def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_asse
             now=now,
             path=ledger,
         )
-    for rep in escalation.due_repeats(now=now, policy=policy, path=store):
+    for rep in [] if bootstrap else escalation.due_repeats(now=now, policy=policy, path=store):
         if intent and rep["episode_id"] == out["episode_id"] and ep["event"] in ("opened", "upgraded", "reopened"):
             continue  # the initial card of this episode is already queued this cycle
         rintent = {
@@ -219,6 +329,35 @@ def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_asse
                 "intent": rintent,
                 "kind": rep["kind"],
                 "episode_id": rep["episode_id"],
+            },
+            now=now,
+            path=ledger,
+        )
+    # RE-ENTRY WATCH: one P2 card when a watched symbol flips to RE_ENTER (dedupe per symbol and exit date). Queued in
+    # the same outbox as every other card (review round 3, H5), never curated, never tied to an episode.
+    from scripts.lib.market_risk import reentry_watch as _rw
+
+    prior_watch = (prior or {}).get("reentry_watch") or {}
+    rcfg = policy.get("reentry_watch") or {}
+    for sym, w in (doc.get("reentry_watch") or {}).items():
+        if str(sym).startswith("_") or not isinstance(w, dict) or w.get("status") != "RE_ENTER":
+            continue
+        if (prior_watch.get(sym) or {}).get("status") == "RE_ENTER":
+            continue
+        rkey = f"market_risk:reentry:{sym}:{w.get('exit_date')}"
+        alerts.outbox_put(
+            {
+                "key": rkey,
+                "text": _rw.render(w),
+                "intent": {
+                    "priority": str(rcfg.get("card_priority") or "P2"),
+                    "dedupe_minutes": int(rcfg.get("card_dedupe_minutes") or 1440),
+                    "dedupe_key": rkey,
+                    "tier": "REENTRY",
+                    "transition": "reentry",
+                },
+                "kind": "reentry",
+                "episode_id": None,
             },
             now=now,
             path=ledger,
@@ -270,7 +409,7 @@ def _drain_one(ent, now, doc, policy, apply, store, ledger, call_model, esc_cfg)
         else:
             alerts.mark_superseded(key, path=ledger, reason="episode no longer in the ledger")
         return None
-    if kind != "initial":
+    if kind not in ("initial", "reentry"):
         # a repeat ("acknowledgment required") is owed only while its episode is the OPEN one (H4): an ACK, a
         # resolution or a replaced ledger retires it instead of paging the operator after they acknowledged
         ep = episodes.get(ep_id)
@@ -278,7 +417,10 @@ def _drain_one(ent, now, doc, policy, apply, store, ledger, call_model, esc_cfg)
             why = "episode acknowledged or closed" if ep is not None else "episode no longer in the ledger"
             alerts.mark_superseded(key, path=ledger, reason=why)
             return None
-    cur = _curate(ent["text"], doc, call_model=call_model, live=apply)
+    if kind == "reentry":  # deterministic advisory card: never curated
+        cur = {"text": ent["text"], "curated": False, "reason": "re-entry card is deterministic"}
+    else:
+        cur = _curate(ent["text"], doc, call_model=call_model, live=apply)
     res = alerts.deliver(
         cur["text"], dict(ent["intent"], dedupe_key=key), policy, dry_run=not apply, now=now, ledger=ledger
     )
@@ -339,6 +481,8 @@ def _shadow(
     doc = assessment.to_dict()
     doc["mode"] = "shadow"
     doc["session"] = session_of(now)
+    doc["evaluated_at"] = datetime.now(timezone.utc).isoformat()
+    doc["replay"] = replay
     if replay:
         # a replay (--as-of) is never what the market looks like now: it writes only its own receipt, never the
         # snapshot Home/API/CIO read, its history, or the shadow prior (review of #2415, F3)
@@ -348,7 +492,7 @@ def _shadow(
         doc["written"], doc["snapshot"] = str(path), None
     else:
         doc["written"] = persist(doc, now, shadow=True)
-        doc["snapshot"] = str(snapshot_path())
+        doc["snapshot"] = None  # served from shadow_latest.json only while no live snapshot exists
     if as_json:
         print(json.dumps(doc, indent=2, default=str))
     else:
@@ -361,9 +505,67 @@ def _shadow(
         )
         print(
             f"  wrote {doc['written']}"
-            + (f" and {doc['snapshot']}" if doc["snapshot"] else " (replay: snapshot untouched)")
+            + (" (replay: receipt only)" if replay else " (the live snapshot is never touched by a shadow run)")
         )
     return 0
+
+
+def _receipt_time(r: dict, name: str) -> datetime | None:
+    """When a receipt was evaluated: its ``evaluated_at`` (wall clock, written since PR 2431), else its ``as_of``,
+    else (a receipt with neither) the stamp in its file name."""
+    t = scoring._parse(r.get("evaluated_at")) or scoring._parse(r.get("as_of"))
+    if t is None:
+        try:
+            t = datetime.strptime(name[:16], "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+    return t
+
+
+def _resolve_prior(path: Path, *, shadow: bool, now: datetime | None = None) -> dict | None:
+    """The previous assessment.
+
+    A first reading (bootstrap, None) only when there is no trace of an earlier evaluation at all: ``path`` absent AND
+    no live snapshot (live runs) AND no usable receipt of the same mode. A torn, unreadable or DELETED prior with any
+    such trace is never a bootstrap (review of PR 2425 round 4 and PR 2431): fall back to the tier in the live
+    snapshot, then to the newest usable receipt of the same mode, dated by its content (``evaluated_at``/``as_of``,
+    never the file name) and skipping replays (``--as-of``: flagged ``replay``, named ``-shadow-replay``, or dated
+    after now); then, if a prior file existed but nothing is readable, a NONE prior that escalates through the normal
+    two-evaluation path and never pages as a first reading."""
+    now = now or datetime.now(timezone.utc)
+    existed = path.exists()
+    if existed:
+        p = _read_prior(path)
+        if isinstance(p, dict) and p.get("tier"):
+            return p
+    if not shadow:
+        snap = _read_prior(snapshot_path())
+        if isinstance(snap, dict) and snap.get("tier") and snap.get("mode") != "shadow":
+            return {
+                "tier": snap["tier"],
+                "as_of": snap.get("as_of"),
+                "hysteresis": {},
+                "prior_source": "market_risk_latest.json",
+            }
+    rdir = state_dir() / "receipts"
+    best: tuple[datetime, str, dict] | None = None
+    for n in os.listdir(rdir) if rdir.is_dir() else []:
+        if not n.endswith(".json") or n.endswith("-shadow-replay.json") or n.endswith("-shadow.json") != shadow:
+            continue
+        r = _read_prior(rdir / n)
+        if not isinstance(r, dict) or not r.get("tier") or r.get("replay"):
+            continue
+        t = _receipt_time(r, n)
+        if t is None or t > now:
+            continue  # undatable, or a replay of a future instant
+        if best is None or t > best[0]:
+            best = (t, n, r)
+    if best is not None:
+        return dict(best[2], prior_source=f"receipts/{best[1]}")
+    if not existed:
+        return None  # nothing anywhere: a genuine first reading
+    print(f"market_risk_evaluate: prior {path} unreadable and nothing to fall back to; NONE prior", file=sys.stderr)
+    return {"tier": "NONE", "hysteresis": {}, "prior_source": "unreadable prior, no fallback"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -383,6 +585,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--policy", default=str(POLICY_PATH))
     ap.add_argument("--json", action="store_true", dest="as_json")
     ap.add_argument("--no-portfolio", action="store_true", help="market tier only (no exposure uplift)")
+    ap.add_argument(
+        "--scheduled",
+        action="store_true",
+        help="this run was launched by the scheduler (the market-risk-evaluate cron lines): write the run receipt "
+        "data/runtime/market_risk/run_last.json that the stalled-escalation check reads; manual runs never write it",
+    )
     a = ap.parse_args(argv)
     apply = a.apply and not a.dry_run and not a.shadow
     shadow = a.shadow and not a.dry_run
@@ -400,7 +608,8 @@ def main(argv: list[str] | None = None) -> int:
             os.close(lock_fd)
             print("market_risk_evaluate: another --apply run holds the lock; exiting", file=sys.stderr)
             return 0
-    now = scoring._parse(a.as_of) if a.as_of else datetime.now(timezone.utc)
+    started = datetime.now(timezone.utc)
+    now = scoring._parse(a.as_of) if a.as_of else started
     if now is None:
         ap.error(f"--as-of {a.as_of!r} is not ISO-8601")
     policy = load_policy(a.policy)
@@ -410,8 +619,12 @@ def main(argv: list[str] | None = None) -> int:
         print(exc, file=sys.stderr)
         return 2
     prior_name = SHADOW_PRIOR if shadow else "latest.json"
-    prior_path = Path(a.prior) if a.prior else (None if a.as_of else state_dir() / prior_name)
-    prior = _read_prior(prior_path) if prior_path else None
+    if a.prior:
+        prior = _read_prior(Path(a.prior))
+    elif a.as_of:
+        prior = None
+    else:
+        prior = _resolve_prior(state_dir() / prior_name, shadow=shadow)
     portfolio = None if a.no_portfolio else portfolio_context(now)
     if shadow:
         return _shadow(now, reader, policy, prior, portfolio, as_json=a.as_json, replay=bool(a.as_of))
@@ -420,6 +633,8 @@ def main(argv: list[str] | None = None) -> int:
     def _persist(d: dict) -> None:
         d["mode"] = "apply"
         d["session"] = session_of(now)
+        d["evaluated_at"] = datetime.now(timezone.utc).isoformat()  # wall clock: dates the receipt (PR 2431)
+        d["replay"] = bool(a.as_of)
         written["latest"] = persist(d, now)
 
     cycle = run_cycle(now, reader, policy, prior, apply=apply, portfolio=portfolio, on_assessed=_persist)
@@ -430,6 +645,10 @@ def main(argv: list[str] | None = None) -> int:
     doc["session"] = session_of(now)
     if apply:
         doc["written"] = written.get("latest") or str(state_dir() / "latest.json")
+    if a.scheduled and not a.as_of and not a.fixture:
+        # only a scheduler-launched run (dry or apply) leaves the receipt; a manual or replay run never does, so a
+        # hand-run cannot mask a dead schedule (review of #2411, M8)
+        doc["run_receipt"] = write_run_receipt(doc, started=started, finished=datetime.now(timezone.utc))
     if a.as_json:
         print(json.dumps(doc, indent=2, default=str))
     else:

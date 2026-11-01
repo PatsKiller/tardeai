@@ -157,9 +157,8 @@ class PgReader:
         return rows + self.extended_quotes(symbols, start=start, end=end)
 
     def extended_quotes(self, symbols: Iterable[str], *, start: datetime, end: datetime) -> list[dict[str, Any]]:
-        """Pre-market / after-hours / overnight / Sunday futures-open prints from their own store (never market_quotes,
-        the latest-quote ledger). A row is returned only when its bar had ended AND it had been inserted by ``end``
-        (replays see what existed then).
+        """Pre-market / after-hours prints from their own store (never market_quotes, the latest-quote ledger). A row
+        is returned only when its bar had ended AND it had been inserted by ``end`` (replays see what existed then).
         Before the migration is applied the table is absent: that is checked with ``to_regclass`` first, so no error
         is raised and the session's read-only setting is never rolled back (review of #2384 round 2). Any other read
         error rolls back and re-asserts ``default_transaction_read_only`` before returning nothing."""
@@ -189,12 +188,9 @@ class PgReader:
             out.append({
                 "symbol": r["symbol"], "source": f"{EXTENDED_TABLE}:{r['feed']}", "session": r["session"],
                 "session_date": _iso(r["session_date"]) if isinstance(r["session_date"], datetime) else str(r["session_date"]),
-                "price": float(r["price"]),
-                # overnight / futures_open rows may be level-only (no reference in the payload): None, never 0
-                "prev_close": None if r["reference_close"] is None else float(r["reference_close"]),
-                "reference_date": None if r["reference_date"] is None else str(r["reference_date"]),
-                "reference_basis": r["reference_basis"],
-                "day_change_pct": None if r["change_pct"] is None else float(r["change_pct"]), "volume": r["volume"],
+                "price": float(r["price"]), "prev_close": float(r["reference_close"]),
+                "reference_date": str(r["reference_date"]), "reference_basis": r["reference_basis"],
+                "day_change_pct": float(r["change_pct"]), "volume": r["volume"],
                 "as_of": _iso(r["bar_end"]), "fetched_at": _iso(r["bar_end"]),
             })
         return out
@@ -467,6 +463,31 @@ class PgReader:
             "coverage": len(caps),
             "source": "market_quotes.market_cap",
         }
+
+    def etf_holdings(self, symbols: Iterable[str], *, end: datetime) -> list[dict[str, Any]]:
+        """Newest ``etf_holdings_snapshot`` rows per ETF at or before ``end``. The store exists only once its §7A row
+        is granted and the writer has run; until then this returns [] and sets ``etf_holdings_note``."""
+        syms = [str(s).upper() for s in symbols]
+        if not syms:
+            return []
+        try:
+            cur = self._cur()
+            cur.execute(
+                "SELECT etf, holding, name, weight, as_of FROM etf_holdings_snapshot s WHERE etf = ANY(%s) AND as_of <= %s "
+                "AND as_of = (SELECT max(as_of) FROM etf_holdings_snapshot t WHERE t.etf = s.etf AND t.as_of <= %s)",
+                (syms, _aware(end), _aware(end)),
+            )
+            return [
+                {"etf": r[0], "holding": r[1], "name": r[2], "weight": float(r[3]), "as_of": _iso(r[4])}
+                for r in cur.fetchall()
+            ]
+        except Exception as exc:  # noqa: BLE001 — the store may not exist yet; look-through falls back to factsheets
+            try:
+                self._conn.rollback()
+            except Exception:  # noqa: BLE001
+                pass
+            self.etf_holdings_note = f"etf_holdings_snapshot unavailable: {type(exc).__name__}"
+            return []
 
     def macro_calendar(self, *, start: datetime, end: datetime) -> list[dict[str, Any]]:
         d0, d1 = _aware(start).astimezone(ET).date(), _aware(end).astimezone(ET).date()

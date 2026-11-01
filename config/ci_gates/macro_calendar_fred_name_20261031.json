@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "macro_calendar_fred_name_20261031",
+  "files": [
+    "tests/test_macro_calendar_fred_name_20261031.py"
+  ],
+  "anchor": "MACRO_CALENDAR_FRED_NAME_20261031",
+  "comment": [
+    "ANCHOR: MACRO_CALENDAR_FRED_NAME_20261031 — FRED renamed release 95 to \"Manufacturer's Shipments, Inventories, and Orders (M3) Survey\"; the old pattern failed verification on every macro-calendar-refresh run from 2026-10-23 and the breaker opened 10-25, so no calendar was written. Known spellings verify; a different release still fails closed. No network."
+  ]
+}

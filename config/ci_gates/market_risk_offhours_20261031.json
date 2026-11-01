@@ -12,6 +12,17 @@
     "age, regular-close feeds are not after-hours prints, --shadow writes the snapshot with no alert path. Hermetic.",
     "Round 3 (review of #2415 round 2): 32 market-hour limits for daily-bar categories (Fri bars on Wed",
     "read UNKNOWN; backtest with a 3-session data gap), shadow marker in the CIO line, fail-closed extended prints",
-    "(no reference_date / no source), no CALM unless every proxy is proven fresh, seasonal on the New York date."
+    "(no reference_date / no source), no CALM unless every proxy is proven fresh, seasonal on the New York date.",
+    "Round 4 (review of PR 2425): hold-not-escalate on data carried across a closure (operator-approved),",
+    "shadow never overwrites the live snapshot and never carries a live episode, options-flow staleness from",
+    "the snapshot slots (one missed or late slot tolerated).",
+    "Round 5 (review of PR 2425 round 4): carried decided by the session a row belongs to (holiday-stamped",
+    "rows are carried; MLK and Labor Day cases), torn live snapshot -> not_evaluated keeping the live episode,",
+    "decay.bootstrap_mode, bootstrap never pages P1, torn prior never a bootstrap, options slots == lane registry.",
+    "Round 6 (review of PR 2431): CARRIED-ONLY mark (no episode, no repeats, no P1/P2 while a tier rests only on",
+    "carried data; released by fresh agreement), deleted prior with traces is not a bootstrap, receipts dated by",
+    "content with replays ignored, 60-second fresh window pinned.",
+    "Round 7 (review of PR 2431 round 6): a never-alerted (CARRIED-ONLY) tier is not held by hysteresis and the",
+    "mark clears only when fresh data reaches the tier; an open episode in the ledger is never a first run."
   ]
 }

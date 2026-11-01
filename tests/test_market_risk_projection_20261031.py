@@ -91,7 +91,9 @@ def test_ack_writes_the_episode_ledger_and_refuses_without_an_open_episode(tmp_p
     assert code == 409 and "EP-9" in body["error"]
     code, body = mp.ack_outcome(mp.build(None, None, now=NOW), {"episode_id": ep["id"]}, actor="", path=store)
     assert code == 403
-    code, body = mp.ack_outcome(mp.build(None, None, now=NOW, episode=ep), {}, actor="tailnet:op", path=store, now=NOW)
+    code, body = mp.ack_outcome(
+        mp.build(None, None, now=NOW, episode=ep), {"episode_tier": "RED"}, actor="tailnet:op", path=store, now=NOW
+    )
     assert code == 200 and body["episode"]["status"] == "ACKED" and body["episode"]["acknowledged_by"] == "tailnet:op"
 
 

@@ -103,7 +103,10 @@ def test_intents_are_transitions_only():
     assert down["priority"] == "P2" and down["transition"] == "down_from_orange"
     assert alerts.intent_for(dict(RED, tier="BLUE"), {"tier": "YELLOW"}, POLICY) is None
     assert alerts.intent_for(dict(RED, tier="GREEN"), {"tier": "NONE"}, POLICY)["tier"] == "GREEN"
-    assert alerts.intent_for(dict(RED, tier="YELLOW"), None, POLICY)["priority"] == "P2"
+    # a first reading (no prior) never pages: informational priority (review of PR 2425 round 4, finding 2)
+    first = alerts.intent_for(dict(RED, tier="RED"), None, POLICY)
+    assert first["priority"] == POLICY["alerts"]["bootstrap_priority"] != "P1"
+    assert first["transition"] == "first_reading_red"
 
 
 def _fake_transport(monkeypatch, ok=True):

@@ -18844,6 +18844,24 @@
       "note": "Dead-man for the pre-market stack: P1 when the premarket pipeline receipt (data/runtime/pipeline_premarket_premarket_last.json) is absent/stale/failed after 06:45 ET or no MORNING CIO BRIEF comms event exists after 07:45 ET; repeats hourly up to 4x (config/premarket_delivery_deadman.json). Writes its LaneRunReceipt on every run so its own silence is visible."
     },
     {
+      "lane_id": "market-risk-evaluate",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-31",
+      "state_reason": "Declared, not scheduled. The Market Risk Engine evaluator (scripts/market_risk_evaluate.py, DSN-20261031-market-risk-engine P2-T1) lands in PR #2337 with its categories, reader and alerts in #2335-#2342 and #2351. The operator approved the schedule as design §11 item 2 on 2026-10-31; activation is a §25.10.2 in-session step after the engine merges and its replay and live dry run pass. Proposed cadence: weekdays every 15 min 04:00-20:00 ET plus Sunday 18:30 ET, first in DRY_RUN (shadow) mode, writing nothing and sending nothing.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/market_risk/latest.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "No crontab line and no timer exist for scripts/market_risk_evaluate.py; the evaluator is not on main yet (PR #2337). This row exists so the lane is declared before it is scheduled (AGENTS.md §23.11), and the activation PR flips it to ACTIVE with the cron expression.",
+      "note": "Proposed host crontab lines (shadow): '*/15 4-19 * * 1-5', '0 20 * * 1-5' and '30 18 * * 0', each 'cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_risk_evaluate.lock $PY scripts/market_risk_evaluate.py --dry-run --json >> logs/market_risk_evaluate.log 2>&1'. Shadow lasts until the operator promotes it to --apply."
+    },
+    {
       "lane_id": "market-quotes-extended",
       "owner": "platform",
       "scheduler": {
@@ -18859,23 +18877,6 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "No crontab line or timer runs scripts/market_quotes_extended.py and the table is created by migrations/2026_10_31_market_quotes_extended.sql (not applied). Measured 2026-10-31: feed=sip with end=now-16min returns 04:00-20:00 ET coverage on the current credentials.",
       "note": "Proposed host crontab lines: '*/15 4-9 * * 1-5' and '*/15 16-20 * * 1-5', each 'cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_extended.lock bash scripts/market_day_gate.sh $PY scripts/market_quotes_extended.py --apply >> logs/market_quotes_extended.log 2>&1'."
-    },
-    {
-      "lane_id": "market-quotes-offhours-schwab",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "none"
-      },
-      "expected_cadence_hours": 0.25,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-31",
-      "state_reason": "Declared, not scheduled, and switched OFF in config (schwab.enabled: false) until the operator approves the schedule. Schwab MARKET-DATA quotes for index futures (/ES /NQ /RTY /YM), indices ($SPX $COMPX $VIX) and the extended-session universe: scripts/market_quotes_offhours_schwab.py, GET /marketdata/v1/quotes only via the Schwab token manager's public read API, written to market_quotes_extended (feed schwab) through its single writer scripts/lib/writers/market_quotes_extended_writer.py -- never market_quotes. Policy: AGENTS.md 28.2.0 (host lanes may read broker market data) ratified by the operator on PR #2407 (APPROVE_AGENTS_POLICY_28_2_0 2407 cdb7802cc..., ratify commit f060c2e78; #2407 not merged to main as of 2026-10-31). Broker lane: host cron only, never n8n-dispatcher-eligible (§23.14).",
-      "output_signal": {
-        "kind": "none"
-      },
-      "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "No crontab line, timer or n8n row runs scripts/market_quotes_offhours_schwab.py; schwab.enabled is false and --apply returns status disabled before any Schwab or DB module is imported (tests/test_offhours_quotes_20261031.py); --apply also refuses while §7A domain quote_extended_session is in proposed_domains.",
-      "note": "Proposed host crontab lines, Sun 18:00 to Fri 09:30 ET every 15 min (NOT installed): '*/15 18-23 * * 0 cd $PROJ && $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1'; '*/15 * * * 1-4 cd $PROJ && $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1'; '*/15 0-9 * * 5 cd $PROJ && $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1'. The code skips the regular session and anything outside the window. Only premarket (04:00-09:30) and afterhours (close-20:00) prints are stored (the store's session CHECK); overnight futures need a #2384 schema change first. Switch-on: (1) migration migrations/2026_10_31_market_quotes_extended.sql applied and quote_extended_session promoted to domains (#2384 activation); (2) operator grants schwab for this domain and approves the schedule in session (§25.10.2); (3) a PR flips schwab.enabled; (4) the cron lines are installed."
     },
     {
       "lane_id": "run-scheduled-quote-refresh-incubator",
