@@ -34,6 +34,7 @@ import { useOpenSymbol } from '../components/opportunity/OpportunityContext'
 import { MobileDetailSheet, useMobilePageDetail } from '../components/MobileDetailSheet'
 import { readableTime, readableTimesInText } from '../lib/readableTime'
 import { MarketRiskBanner, MarketRiskCompact, MarketRiskFact } from '../components/home/MarketRiskBanner'
+import { MarketRiskSummary } from '../components/home/MarketRiskSummary'
 import { unwrapMarketRisk } from '../lib/marketRisk'
 
 const unwrap = (d: any) => (d?.data && typeof d.data === 'object' && !Array.isArray(d.data) ? d.data : d)
@@ -195,6 +196,8 @@ export default function HomeDoNow() {
       <style>{'@media(max-width:820px){[data-testid="home-do-now-page"] a{min-height:44px!important;display:inline-flex;align-items:center;box-sizing:border-box}[data-testid="home-do-now-page"] aside{max-width:none!important}}'}</style>
       {/* Design home/v002 §2: the market-risk banner, only while ORANGE or RED is evaluated; never sticky. */}
       <MarketRiskBanner mr={mr} />
+      {/* Design home/v004: at YELLOW the same slot holds the calm, collapsible summary card (no Acknowledge). */}
+      <MarketRiskSummary mr={mr} />
       {/* Slim header */}
       <header data-testid="home-header" style={{ ...card, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 24px', flexDirection: 'row' }}>
         <HeadFact name="Portfolio" big testId="home-portfolio" value={pv != null ? money(pv) : ovLoading ? '…' : '—'}
