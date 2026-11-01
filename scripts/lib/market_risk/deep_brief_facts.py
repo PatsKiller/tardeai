@@ -22,6 +22,7 @@ order, price target, weight or stop level is ever produced (MBI_BEHAVIOR = 0).
 from __future__ import annotations
 
 import math
+import re
 import string
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -183,8 +184,12 @@ def _happening(p: Pack, doc: dict, snap: dict, bars: dict[str, list[dict]]) -> N
     if isinstance(sectors, dict) and (sectors.get("stressed") or sectors.get("resilient")):
         for key in ("stressed", "resilient", "rotating"):
             names = [
-                str(x.get("name") or x.get("group") or x) if isinstance(x, dict) else str(x)
-                for x in sectors.get(key) or []
+                n
+                for n in (
+                    str(x.get("name") or x.get("group") or x) if isinstance(x, dict) else str(x)
+                    for x in sectors.get(key) or []
+                )
+                if _SECTOR_NAME.match(n)  # a label, never free text with figures
             ]
             if names:
                 p.add(
@@ -290,9 +295,9 @@ def _next(p: Pack, bars: dict[str, list[dict]], snap: dict, cfg: dict) -> dict[s
         p.add(
             "next",
             "trough timing",
-            f"Median sessions to the 60-session low: {tr['median']} (n={tr['n']}); from that low SPY regained "
-            f"the starting level within 120 sessions in {rc['recovered_within_120d']} of {rc['n']} cases, "
-            f"median {rc['median']} sessions after the low",
+            f"Median sessions to the lowest close of the next 60 sessions: {tr['median']} (n={tr['n']}). After that "
+            f"low, SPY closed back at or above the starting level within 120 sessions of the start in "
+            f"{rc['recovered_within_120d']} of {rc['n']} cases, a median {rc['median']} sessions after the low",
             source="base_rates_table",
             as_of=res.get("table_as_of"),
         )
@@ -507,13 +512,18 @@ def _catalysts(p: Pack, reader: Any, now: datetime, held: list[str], sources: An
     cats = _safe(lambda: sources.catalysts(names, now - timedelta(hours=72), now)) or []
     if cats:
         top = sorted(cats, key=lambda c: -(_f(c.get("impact_score")) or _f(c.get("severity")) or 0))[:5]
+        labels = cfg.get("catalyst_labels") or {}
+        parts = [
+            f"{c.get('symbol')} {labels.get(str(c.get('catalyst_type') or ''), 'other event')}"
+            for c in top
+            if _SYMBOL.match(str(c.get("symbol") or ""))
+        ]
+        # headlines are never rendered (review of #2410, N3: advice words, targets, $ and % ride in them); counted
+        hidden = sum(1 for c in top if str(c.get("headline") or "").strip())
         p.add(
             "catalysts",
             "company catalysts",
-            "Company catalysts in 72h: "
-            + "; ".join(
-                f"{c.get('symbol')} {c.get('catalyst_type')}: {str(c.get('headline') or '')[:80]}" for c in top
-            ),
+            "Company catalysts in 72h: " + "; ".join(parts) + _withheld(hidden, "headline"),
             source="catalyst_events",
             as_of=max(str(c.get("created_at")) for c in top),
         )
@@ -525,7 +535,11 @@ def _catalysts(p: Pack, reader: Any, now: datetime, held: list[str], sources: An
             "catalysts",
             "material changes",
             "Material changes in 72h: "
-            + "; ".join(f"{m.get('symbol')} {m.get('kind')} (authority {m.get('authority')})" for m in mc[:5]),
+            + "; ".join(
+                f"{m.get('symbol')} {(cfg.get('material_change_labels') or {}).get(str(m.get('kind') or ''), 'other change')}"
+                for m in mc[:5]
+                if _SYMBOL.match(str(m.get("symbol") or ""))
+            ),
             source="material_changes",
             as_of=max(str(m.get("created_at")) for m in mc),
         )
@@ -664,11 +678,17 @@ def _consensus(p: Pack, doc: dict, reads: dict, cat: dict, snap: dict, cfg: dict
         )
     cio = snap.get("cio") if isinstance(snap.get("cio"), dict) else None
     if cio and cio.get("posture"):
-        post = str(cio["posture"]).upper()
+        # Allowlist (review of #2410 round 3, B3): the posture is CIO free text from another store, like the stance
+        # reasons fixed under B1. Only a name from the fixed `posture_names` vocabulary is rendered or read; anything
+        # else ("Trim half above one ninety") is withheld and votes neutral.
+        raw = re.sub(r"[\s-]+", "_", str(cio["posture"]).strip().upper())
+        known = {str(x).upper() for x in c.get("posture_names") or []}
+        post = raw.replace("_", " ") if raw in known else "unrecognised (1 detail withheld)"
+        defensive = {str(x).upper() for x in c.get("posture_risk_up") or []}
         votes.append(
             {
                 "source": "cio",
-                "direction": "risk_up" if "DEFENSIVE" in post or "HOLD" in post else "neutral",
+                "direction": "risk_up" if raw in known and raw in defensive else "neutral",
                 "confidence": 0.5,
                 "basis": f"CIO posture {post}",
             }
@@ -723,17 +743,30 @@ def _change(p: Pack, doc: dict) -> None:
         )
 
 
-def _exposure(p: Pack, doc: dict, snap: dict) -> list[dict]:
+_SYMBOL = re.compile(r"^[A-Z][A-Z0-9._-]{0,9}$")
+_SECTOR_NAME = re.compile(r"^[A-Za-z][A-Za-z &/-]{0,39}$")
+
+
+def _withheld(n: int, what: str = "detail") -> str:
+    return f" ({n} {what}{'s' if n > 1 else ''} withheld)" if n else ""
+
+
+def _exposure(p: Pack, doc: dict, snap: dict, cfg: dict) -> list[dict]:
     stances = snap.get("stances") or snap.get("positions_stances") or doc.get("stances")
     out: list[dict] = []
     if isinstance(stances, list) and stances:
         for s in stances[:12]:
-            if not isinstance(s, dict) or not s.get("symbol"):
+            if not isinstance(s, dict) or not _SYMBOL.match(str(s.get("symbol") or "")):
                 continue
-            reasons = "; ".join(str(r) for r in (s.get("reasons") or [])[:3])
-            text = f"{s['symbol']}: CIO stance {s.get('stance')}" + (f" — {reasons}" if reasons else "")
-            if s.get("re_enter_if"):
-                text += f"; re-entry conditions: {s['re_enter_if']}" if isinstance(s["re_enter_if"], str) else ""
+            # Allowlist (review of #2410, B1): the stance NAME from a fixed vocabulary and nothing else. Free-text
+            # reasons and re-entry conditions are never rendered — "Half position until earnings clear" or "Price back
+            # above one ninety-five" carry sizing or levels no filter can be trusted to catch. They are counted.
+            stance = str(s.get("stance") or "").upper()
+            known = {str(x).upper() for x in cfg.get("stance_names") or []}
+            withheld = len([r for r in (s.get("reasons") or []) if str(r).strip()]) + int(bool(s.get("re_enter_if")))
+            if stance not in known:
+                stance, withheld = "unrecognised", withheld + 1
+            text = f"{s['symbol']}: CIO stance {stance}{_withheld(withheld)}"
             p.add(
                 "exposure",
                 f"stance {s['symbol']}",
@@ -741,7 +774,7 @@ def _exposure(p: Pack, doc: dict, snap: dict) -> list[dict]:
                 source="cio_overlay",
                 as_of=s.get("as_of") or snap.get("as_of"),
             )
-            out.append(s)
+            out.append({"symbol": s["symbol"], "stance": stance})
         return out
     port = doc.get("portfolio") if isinstance(doc.get("portfolio"), dict) else {}
     drivers = [d for d in port.get("drivers") or [] if isinstance(d, dict) and d.get("symbol")]
@@ -798,7 +831,7 @@ def build_fact_pack(
     cat = _catalysts(p, reader, now, held, sources, doc, cfg)
     cons = _consensus(p, doc, reads, cat, snap, cfg)
     _change(p, doc)
-    exposure = _exposure(p, doc, snap)
+    exposure = _exposure(p, doc, snap, cfg)
     return {
         "schema": SCHEMA,
         "as_of": now.isoformat(),
@@ -832,26 +865,7 @@ class NullSources:
         return []
 
     def analyst_revisions(self, symbols, end):
-        """Mean consensus price-target change over 20 days (recommendation scores are mostly empty in the store)."""
-        if not symbols:
-            return []
-        now_rows = self._rows(
-            "SELECT DISTINCT ON (symbol) symbol, target_price AS tgt_now, snapshot_date AS as_of FROM analyst_consensus_history "
-            "WHERE symbol = ANY(%s) AND created_at <= %s AND target_price IS NOT NULL ORDER BY symbol, snapshot_date DESC",
-            [list(symbols), end],
-        )
-        then = {
-            r["symbol"]: r["tgt_then"]
-            for r in self._rows(
-                "SELECT DISTINCT ON (symbol) symbol, target_price AS tgt_then FROM analyst_consensus_history "
-                "WHERE symbol = ANY(%s) AND created_at <= %s AND snapshot_date <= (%s::date - 20) "
-                "AND target_price IS NOT NULL ORDER BY symbol, snapshot_date DESC",
-                [list(symbols), end, end],
-            )
-        }
-        return [
-            dict(r, tgt_then=then[r["symbol"]], as_of=_iso(r.get("as_of"))) for r in now_rows if then.get(r["symbol"])
-        ]
+        return []
 
     def hermes_events(self, start, end):
         return None
@@ -924,24 +938,25 @@ class PgSources:
         )
 
     def analyst_revisions(self, symbols, end):
+        """Mean consensus price-target change over 20 days (recommendation scores are mostly empty in the store)."""
         if not symbols:
             return []
-        rows = self._rows(
-            "SELECT DISTINCT ON (symbol) symbol, recom_score AS recom_now, snapshot_date AS as_of FROM analyst_consensus_history "
-            "WHERE symbol = ANY(%s) AND created_at <= %s AND recom_score IS NOT NULL ORDER BY symbol, snapshot_date DESC",
+        now_rows = self._rows(
+            "SELECT DISTINCT ON (symbol) symbol, target_price AS tgt_now, snapshot_date AS as_of FROM analyst_consensus_history "
+            "WHERE symbol = ANY(%s) AND created_at <= %s AND target_price IS NOT NULL ORDER BY symbol, snapshot_date DESC",
             [list(symbols), end],
         )
         then = {
-            r["symbol"]: r["recom_then"]
+            r["symbol"]: r["tgt_then"]
             for r in self._rows(
-                "SELECT DISTINCT ON (symbol) symbol, recom_score AS recom_then FROM analyst_consensus_history "
+                "SELECT DISTINCT ON (symbol) symbol, target_price AS tgt_then FROM analyst_consensus_history "
                 "WHERE symbol = ANY(%s) AND created_at <= %s AND snapshot_date <= (%s::date - 20) "
-                "AND recom_score IS NOT NULL ORDER BY symbol, snapshot_date DESC",
+                "AND target_price IS NOT NULL ORDER BY symbol, snapshot_date DESC",
                 [list(symbols), end, end],
             )
         }
         return [
-            dict(r, recom_then=then.get(r["symbol"]), as_of=_iso(r.get("as_of"))) for r in rows if r["symbol"] in then
+            dict(r, tgt_then=then[r["symbol"]], as_of=_iso(r.get("as_of"))) for r in now_rows if then.get(r["symbol"])
         ]
 
     def hermes_events(self, start, end):

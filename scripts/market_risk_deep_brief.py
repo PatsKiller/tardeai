@@ -5,8 +5,9 @@
   python3 scripts/market_risk_deep_brief.py
   # replay an instant (the engine is evaluated at that instant first; the brief is built from that assessment):
   python3 scripts/market_risk_deep_brief.py --as-of 2026-10-29T22:15:00Z --json
-  # show the prose path with a stubbed model (no model is called; the stub's text is validated like a real answer):
-  python3 scripts/market_risk_deep_brief.py --as-of 2026-10-29T22:15:00Z --stub-model draft.txt
+  # show the coordination path with a stubbed model answer (JSON picks of template id + fact id; validated like a real
+  # answer; the model is never called and its text is never sent):
+  python3 scripts/market_risk_deep_brief.py --as-of 2026-10-29T22:15:00Z --stub-model picks.json
 
 The live send path is the evaluator (scripts/market_risk_evaluate.py --apply), which calls the brief after the
 initial cards. This script never calls a model and never sends. MBI_BEHAVIOR = 0.
@@ -35,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--as-of", help="ISO-8601 instant")
     ap.add_argument("--fixture", help="fixture directory (replay without a DB)")
     ap.add_argument("--overlay")
-    ap.add_argument("--stub-model", help="file whose text stands in for the model's answer (validated, never sent)")
+    ap.add_argument("--stub-model", help="file whose JSON picks stand in for the model's answer (validated, never sent)")
     ap.add_argument("--json", action="store_true", dest="as_json")
     a = ap.parse_args(argv)
     now = scoring._parse(a.as_of) if a.as_of else datetime.now(timezone.utc)
@@ -60,7 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     if a.stub_model:
         txt = Path(a.stub_model).read_text(encoding="utf-8")
         stub = lambda prompt, timeout_s: (txt, "stub")  # noqa: E731
-    brief = deep_brief.write(pack, call_model=stub, cfg=cfg)
+    brief = deep_brief.write(pack, call_model=stub, cfg=dict(cfg, enabled=True) if stub else cfg)
     if a.as_json:
         print(json.dumps({"assessment_tier": doc.get("tier"), "pack": pack, "brief": brief}, indent=2, default=str))
     else:

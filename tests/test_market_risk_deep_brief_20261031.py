@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import sys
 import time
 import types
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -205,7 +206,7 @@ def test_deterministic_brief_has_every_section_and_the_advisory_line():
     assert "[hist-a]" in text and "Unknown:" in text
 
 
-# ── the hardened prose gate ───────────────────────────────────────────────────────────────────────────────────
+# ── the model only picks; the system renders ─────────────────────────────────────────────────────────────────
 PROBE_P_CUR2 = [
     "Reduce exposure to tech.",
     "Pare back the AI names.",
@@ -276,116 +277,213 @@ PROBE_P_CUR2 = [
     "Scale back.",
     "Pull back on new buys.",
     "Ｓｅｌｌ NVDA.",
-    "S​ell NVDA.",
+    "S\u200bell NVDA.",
     "Ѕell NVDA.",
-]
-PROBE_P_CUR3 = [
     "QQQ could fall 25 percent this week.",
     "The S&P could drop to 2050.",
     "Expect a 30 point drop in QQQ.",
-    "Risk 50 could become 51.6 tomorrow.",
-    "QQQ could fall 12 percent, VIX to 31.",
-    "Risk is 50, 3.97 P/C means 52 by Monday.",
-    "NVDA could lose 5.0 percent.",
-    "NVDA could lose 5.0%.",
+    "Support at 98.01 should hold.",
+    "$ell NVDA.",
+    "S e l l NVDA.",
+    "S.e.l.l NVDA.",
+    "Se-ll NVDA.",
+    "De-risking now.",
 ]
-DESCRIPTIVE_CONTROLS = {"Risk is 50 with 32 points from options flow, 3.97 P/C.", "Options flow scores 32 at 3.85x."}
-GATE_PACK = {
-    "facts": [
-        {"id": "now-a", "section": "happening", "text": "Market risk YELLOW 50/100, 2 categories confirming"},
-        {"id": "now-b", "section": "happening", "text": "options_flow: QQQ P/C OI 3.97 (3.85x median) (+32 points)"},
-    ]
-}
 
 
-def _draft(sentence: str, cite: bool) -> str:
-    lines = []
-    for i, t in enumerate(TITLES):
-        lines += [t, (sentence + (" [now-a, now-b]" if cite else "")) if i == 0 else "Market risk is YELLOW [now-a]."]
-    return "\n".join(lines)
+def _pack():
+    return build_fact_pack(NOW, _reader(), DOC, cfg=CFG)
 
 
-@pytest.mark.parametrize("cite", [False, True])
-def test_probe_strings_never_pass_except_pure_descriptions(cite):
-    passed = {s for s in PROBE_P_CUR2 + PROBE_P_CUR3 if deep_brief.validate(_draft(s, cite), GATE_PACK, CFG)["ok"]}
-    if not cite:
-        assert passed == set(), passed
-    else:
-        assert passed <= DESCRIPTIVE_CONTROLS, passed - DESCRIPTIVE_CONTROLS
+ON = dict(CFG, enabled=True, timeout_s=2)
 
 
-@pytest.mark.parametrize(
-    "bad",
-    [
-        "Hedging demand is high [now-b]. You may want to look at it [now-b].",
-        "QQQ open interest is 3.97 and risk could reach 25 [now-b].",
-        "Index put/call open interest is 3.97 [opt-z].",
-        "Investors are hedging, with put/call at 3.97 and a 2050 target [now-b].",
-        "Put/call is 3.97 (аbout 4x) [now-b].",
-        "Put/call is 3.97 ⁣today [now-b].",
-        "Put/call is 3.97, so a half-size position fits [now-b].",
-        "Consider the 3.97 put/call [now-b].",
-        "We see index hedging demand at 3.97 [now-b].",  # first person alone
-        "Hedging demand on the index is elevated.",  # no citation and no number: only the citation rule catches it
-    ],
-)
-def test_gate_rejects_person_invention_unknown_ids_confusables_and_number_words(bad):
-    assert not deep_brief.validate(_draft(bad, False), GATE_PACK, CFG)["ok"]
-
-
-def test_citation_after_the_full_stop_belongs_to_its_sentence():
-    draft = _draft("Index hedging demand is elevated: QQQ put/call open interest is 3.97.", False).replace(
-        "3.97.", "3.97. [now-b]", 1
-    )
-    assert deep_brief.validate(draft, GATE_PACK, CFG)["ok"]
-
-
-# ── writer ────────────────────────────────────────────────────────────────────────────────────────────────────
-def _good_draft(pack: dict) -> str:
-    fa = next(f for f in pack["facts"] if f["id"] == "now-a")
-    lines = []
-    for t in TITLES:
-        lines += [t, f"The engine reads {fa['text'].split(',')[0]} [now-a]."]
-    return "\n".join(lines)
-
-
-def test_writer_accepts_a_grounded_draft_and_keeps_exposure_deterministic():
-    pack = build_fact_pack(NOW, _reader(), DOC, cfg=CFG)
-    res = deep_brief.write(pack, call_model=lambda p, t: (_good_draft(pack), "grok"), cfg=CFG)
-    assert res["curated"] is True and res["lane"] == "grok", res.get("validation")
-    assert "Your exposure" in res["text"] and deep_brief.ADVISORY in res["text"]
-
-
-@pytest.mark.parametrize(
-    "model",
-    [
-        lambda p, t: "Sell semis now.",
-        lambda p, t: (_ for _ in ()).throw(RuntimeError("lane down")),
-        lambda p, t: "",
-    ],
-)
-def test_writer_falls_back_to_the_deterministic_brief(model):
-    pack = build_fact_pack(NOW, _reader(), DOC, cfg=CFG)
-    res = deep_brief.write(pack, call_model=model, cfg=CFG)
+@pytest.mark.parametrize("answer", PROBE_P_CUR2)
+def test_no_model_text_ever_reaches_the_brief(answer):
+    pack = _pack()
+    res = deep_brief.write(pack, call_model=lambda p, t, a=answer: (a, "grok"), cfg=ON)
     assert res["curated"] is False and res["text"] == deep_brief.render_deterministic(pack, CFG)
 
 
-def test_writer_times_out_to_the_deterministic_brief():
-    pack = build_fact_pack(NOW, _reader(), DOC, cfg=CFG)
-    cfg = dict(CFG, timeout_s=0.2)
+def test_valid_picks_render_only_bank_lead_ins_and_fact_text():
+    pack = _pack()
+    by = {f["id"]: f for f in pack["facts"]}
+    nxt = [f["id"] for f in pack["facts"] if f["section"] == "next"]
+    hap = [f["id"] for f in pack["facts"] if f["section"] == "happening"]
+    # whole sections, reordered: the model leads with now-b and labels the history; it never drops a fact
+    ans = json.dumps(
+        {
+            "happening": [{"t": "lead", "f": "now-b"}] + [{"t": "also", "f": f} for f in hap if f != "now-b"],
+            "next": [{"t": "history", "f": nxt[1]}] + [{"t": "history", "f": f} for f in nxt if f != nxt[1]],
+        }
+    )
+    res = deep_brief.write(pack, call_model=lambda p, t: (ans, "grok"), cfg=ON)
+    assert res["curated"] is True, res.get("validation")
+    assert f"- Main driver: {by['now-b']['text']} [now-b]" in res["text"]
+    assert f"- Historically: {by[nxt[1]]['text']} [{nxt[1]}]" in res["text"]
+    body = res["text"].split("Your exposure")[0]
+    allowed = {ln for ln in deep_brief.render_deterministic(pack, CFG).splitlines()}
+    for ln in body.splitlines():  # every line is a heading, a deterministic line, or a bank lead-in + a fact's text
+        if ln and ln not in allowed:
+            assert any(
+                ln == f"- {tpl.format(text=f['text'])} [{f['id']}]"
+                for tpl in deep_brief.TEMPLATES.values()
+                for f in pack["facts"]
+            ), ln
+
+
+@pytest.mark.parametrize(
+    "ans",
+    [
+        '{"happening": [{"t": "lead", "f": "hist-a"}]}',  # fact from another section
+        '{"happening": [{"t": "Sell now: {text}", "f": "now-b"}]}',  # template not in the bank
+        '{"happening": [{"t": "lead", "f": "now-zz"}]}',  # unknown fact
+        '{"happening": [{"t": "lead", "f": "now-b", "x": "Sell"}]}',  # extra free-text field
+        '{"exposure": [{"t": "plain", "f": "pos-a"}]}',  # the model never touches exposure
+        '{"happening": [{"t": "lead", "f": "now-b"}, {"t": "also", "f": "now-b"}]}',  # duplicate
+        '{"happening": ' + json.dumps([{"t": "plain", "f": "now-a"}] * 6) + "}",  # too many
+        '["now-a"]',
+        "Sell semis. {}",
+        "{}",
+    ],
+)
+def test_invalid_picks_send_the_deterministic_brief(ans):
+    pack = _pack()
+    res = deep_brief.write(pack, call_model=lambda p, t, a=ans: (a, "grok"), cfg=ON)
+    assert res["curated"] is False and res["text"] == deep_brief.render_deterministic(pack, CFG)
+
+
+def test_model_is_off_by_default_with_a_review_date():
+    assert CFG["enabled"] is False
+    assert str(CFG["disabled_until"]["review_by"]) == "2026-11-07"
+    res = deep_brief.write(_pack(), call_model=lambda p, t: (_ for _ in ()).throw(AssertionError("called")), cfg=CFG)
+    assert res["reason"] == "deep brief model disabled"
+
+
+def test_writer_falls_back_on_lane_failure():
+    pack = _pack()
+    res = deep_brief.write(pack, call_model=lambda p, t: (_ for _ in ()).throw(RuntimeError("lane down")), cfg=ON)
+    assert res["curated"] is False and "lane failure" in res["reason"]
+
+
+def test_a_hung_model_never_holds_the_process(tmp_path):
+    """Daemon thread + hard timeout: a process whose model sleeps 30 s still exits right after the timeout."""
+    import subprocess
+
+    script = tmp_path / "hang.py"
+    script.write_text(
+        "import sys, time\n"
+        f"sys.path[:0] = [{str(ROOT)!r}, {str(ROOT / 'scripts')!r}]\n"
+        "from scripts.lib.market_risk import deep_brief\n"
+        "pack = {'facts': [{'id': 'now-a', 'section': 'happening', 'text': 'x'}], 'unknown': []}\n"
+        "cfg = dict(deep_brief.load_config(), enabled=True, timeout_s=0.5)\n"
+        "r = deep_brief.write(pack, call_model=lambda p, t: time.sleep(30), cfg=cfg)\n"
+        "print(r['reason'])\n",
+        encoding="utf-8",
+    )
     t0 = time.monotonic()
-    res = deep_brief.write(pack, call_model=lambda p, t: time.sleep(2) or "late", cfg=cfg)
-    assert res["curated"] is False and "timeout" in res["reason"] and time.monotonic() - t0 < 1.5
+    out = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, timeout=25)
+    assert "timeout" in out.stdout and time.monotonic() - t0 < 10, (out.stdout, out.stderr)
 
 
-def test_prompt_carries_only_the_pack():
-    pack = build_fact_pack(NOW, _reader(), DOC, cfg=CFG)
+def test_prompt_carries_only_the_pack_and_never_exposure():
+    pack = _pack()
     prompt = deep_brief.build_prompt(pack, CFG)
     assert all(f["id"] in prompt for f in pack["facts"] if f["section"] != "exposure")
     assert not any(f["id"] in prompt for f in pack["facts"] if f["section"] == "exposure")
 
 
-# ── triggers and delivery ─────────────────────────────────────────────────────────────────────────────────────
+# ── stance text and analyst source (review of #2393, items 4 and 5) ───────────────────────────────────────────
+B1_PHRASES = [  # review of #2410, B1: all passed the old free-text filter unchanged
+    "Half position until earnings clear",
+    "Ten percent off the highs before adding",
+    "One hundred ninety is the line",
+    "Price back above one ninety-five",
+    "Taking profits is warranted",
+    "Smaller size into the print",
+    "Fade strength into the print",
+    "Under-weight vs index",
+    "s e l l on strength",
+    "trim 25% above $190",
+    "AI look-through heavy",  # even a harmless phrase: free text is never rendered
+]
+
+
+@pytest.mark.parametrize("phrase", B1_PHRASES)
+def test_stance_free_text_never_ships(phrase):
+    snap = {
+        "stances": [
+            {"symbol": "ETF_A", "stance": "TRIM_REVIEW", "reasons": [phrase]},
+            {"symbol": "ETF_B", "stance": "RE_ENTER_IF", "re_enter_if": phrase},
+        ]
+    }
+    pack = build_fact_pack(NOW, _reader(), DOC, snapshot=snap, cfg=CFG)
+    texts = {f["label"]: f["text"] for f in pack["facts"] if f["section"] == "exposure"}
+    assert texts["stance ETF_A"] == "ETF_A: CIO stance TRIM_REVIEW (1 detail withheld)"
+    assert texts["stance ETF_B"] == "ETF_B: CIO stance RE_ENTER_IF (1 detail withheld)"
+    brief = deep_brief.render_deterministic(pack, CFG)
+    assert phrase not in brief and phrase.lower() not in brief.lower()
+
+
+def test_unknown_stance_names_and_bad_symbols_are_withheld():
+    snap = {"stances": [{"symbol": "ETF_C", "stance": "sell 500 now"}, {"symbol": "bad symbol $", "stance": "HOLD"}]}
+    pack = build_fact_pack(NOW, _reader(), DOC, snapshot=snap, cfg=CFG)
+    texts = {f["label"]: f["text"] for f in pack["facts"] if f["section"] == "exposure"}
+    assert texts["stance ETF_C"] == "ETF_C: CIO stance unrecognised (1 detail withheld)"
+    assert "stance bad symbol $" not in texts
+
+
+class _CatalystSources(NullSources):
+    def catalysts(self, symbols, start, end):
+        return [
+            {
+                "symbol": "NVDA",
+                "catalyst_type": "analyst_upgrade",
+                "headline": "Buy NVDA now, target $250 (+12%)",
+                "impact_score": 9,
+                "created_at": "2026-10-29T12:00:00+00:00",
+            },
+            {
+                "symbol": "AAPL",
+                "catalyst_type": "hedge_fund_buying",
+                "headline": "Funds load up; trim at 240",
+                "impact_score": 5,
+                "created_at": "2026-10-29T13:00:00+00:00",
+            },
+        ]
+
+    def material_changes(self, symbols, start, end):
+        return [{"symbol": "NVDA", "kind": "sell_signal", "authority": "x", "created_at": "2026-10-29T13:00:00+00:00"}]
+
+
+def test_catalyst_headlines_and_unknown_types_never_ship():
+    pack = build_fact_pack(NOW, _reader(), DOC, sources=_CatalystSources(), cfg=CFG)
+    t = {f["label"]: f["text"] for f in pack["facts"]}
+    assert t["company catalysts"] == (
+        "Company catalysts in 72h: NVDA analyst upgrade; AAPL other event (2 headlines withheld)"
+    )
+    assert t["material changes"] == "Material changes in 72h: NVDA other change"
+    brief = deep_brief.render_deterministic(pack, CFG)
+    for bad in ("Buy NVDA", "$250", "12%", "load up", "trim at", "sell_signal", "hedge_fund_buying"):
+        assert bad not in brief
+
+
+def test_analyst_targets_come_from_pg_sources_and_null_sources_is_empty():
+    assert NullSources().analyst_revisions(["AAPL"], NOW) == []
+    seen = []
+
+    class FakeReader:
+        def _rows(self, sql, params):
+            seen.append(sql)
+            if "tgt_now" in sql:
+                return [{"symbol": "AAPL", "tgt_now": 210.0, "as_of": "2026-10-28"}]
+            return [{"symbol": "AAPL", "tgt_then": 200.0}]
+
+    rows = PgSources(FakeReader()).analyst_revisions(["AAPL"], NOW)
+    assert rows and rows[0]["tgt_now"] == 210.0 and rows[0]["tgt_then"] == 200.0
+    assert all("target_price" in q for q in seen)
+
+
 def test_triggers():
     assert deep_brief.should_brief({"tier": "ORANGE"}, None, CFG) == "tier"
     assert deep_brief.should_brief({"tier": "ORANGE"}, {"tier": "YELLOW"}, CFG) == "tier"
@@ -399,47 +497,17 @@ def test_triggers():
     assert deep_brief.should_brief({"tier": "BLUE", "shock_type": s2}, {"tier": "BLUE", "shock_type": s1}, CFG) is None
 
 
-def _transport(monkeypatch):
+def _transport(monkeypatch, ok=True):
     calls = []
     mod = types.ModuleType("telegram_alert")
 
     def send_telegram(message, **kw):
         calls.append((message, kw))
-        return True
+        return ok(message) if callable(ok) else ok
 
     mod.send_telegram = send_telegram
     monkeypatch.setitem(sys.modules, "telegram_alert", mod)
     return calls
-
-
-def test_follow_up_dry_run_sends_nothing_and_dedupes(tmp_path, monkeypatch):
-    calls = _transport(monkeypatch)
-    ledger = tmp_path / "keys.json"
-    kw = dict(now=NOW, reader=_reader(), policy=POLICY, apply=False, ledger=ledger, episode_id="ep1", cfg=CFG)
-    r1 = deep_brief.follow_up(DOC, None, **kw)
-    r2 = deep_brief.follow_up(DOC, None, **kw)
-    assert calls == [] and r1["send"]["sent"] is False and r1["brief"]["curated"] is False
-    assert r2["send"].get("deduped") is True, "once per episode transition"
-
-
-def test_follow_up_live_sends_one_p2_market_risk_card(tmp_path, monkeypatch):
-    calls = _transport(monkeypatch)
-    res = deep_brief.follow_up(
-        DOC,
-        {"tier": "YELLOW"},
-        now=NOW,
-        reader=_reader(),
-        policy=POLICY,
-        apply=True,
-        ledger=tmp_path / "keys.json",
-        episode_id="ep1",
-        call_model=lambda p, t: "Sell now.",
-        cfg=CFG,
-    )
-    assert len(calls) == 1 and res["send"]["sent"] is True
-    msg, kw = calls[0]
-    assert kw["priority"] == "P2" and kw["message_class"] == "market_risk"
-    assert msg.startswith("MARKET RISK DEEP BRIEF") and "Sell now" not in msg
 
 
 # ── evaluator: after the initial cards, stored in the snapshot, kept while elevated ────────────────────────────
@@ -481,36 +549,66 @@ def _orange_obs(now):
     ]
 
 
-def test_evaluator_sends_the_initial_card_first_then_stores_the_brief(state, monkeypatch):
+def _run(mod, now, prior=None, apply=True):
+    return mod.run_cycle(
+        now,
+        object(),
+        POLICY,
+        prior,
+        apply=apply,
+        on_assessed=(lambda d: mod.persist(d, now)) if apply else None,
+        call_model=lambda p, t: "",
+    )
+
+
+def test_evaluator_sends_the_initial_card_first_then_the_brief_and_stores_it(state, monkeypatch):
     calls = _transport(monkeypatch)
     mod = _evaluator()
     monkeypatch.setattr(registry, "evaluate_all", lambda ctx: _orange_obs(ctx.now))
-    out = mod.run_cycle(
-        NOW, object(), POLICY, None, apply=True, on_assessed=lambda d: mod.persist(d, NOW), call_model=lambda p, t: ""
-    )
-    kinds = [kw.get("priority") for _, kw in calls]
+    out = _run(mod, NOW)
     assert out["assessment"]["tier"] in ("ORANGE", "RED")
     assert calls and not calls[0][0].startswith("MARKET RISK DEEP BRIEF"), "initial card first"
-    assert calls[-1][0].startswith("MARKET RISK DEEP BRIEF") and kinds[-1] == "P2"
+    assert calls[-1][0].startswith("MARKET RISK DEEP BRIEF") and calls[-1][1]["priority"] == "P2"
+    assert calls[-1][1]["message_class"] == "market_risk"
     snap = json.loads(mod.snapshot_path().read_text())
     assert snap["deep_brief"]["text"].startswith("MARKET RISK DEEP BRIEF")
     projection = proj.build(snap, None)
-    assert projection["deep_brief"]["trigger"] == "tier"
-    facts = cio_context.ask_facts(projection)
-    assert facts["deep_brief"]["facts"], "Ask-the-CIO sees the cited facts"
+    assert projection["deep_brief"]["text"] and cio_context.ask_facts(projection)["deep_brief"]["facts"]
+    _run(mod, NOW + timedelta(minutes=15), prior=out["assessment"])
+    assert sum(m.startswith("MARKET RISK DEEP BRIEF") for m, _ in calls) == 1, "once per episode transition"
     mod.persist(dict(out["assessment"], tier="YELLOW"), NOW)
     assert "deep_brief" in json.loads(mod.snapshot_path().read_text()), "kept while elevated"
     mod.persist(dict(out["assessment"], tier="BLUE"), NOW)
     assert "deep_brief" not in json.loads(mod.snapshot_path().read_text()), "dropped once risk is low"
 
 
+def test_brief_waits_for_a_sent_initial_card_and_is_retried(state, monkeypatch):
+    fail_initial = {"on": True}
+    calls = _transport(
+        monkeypatch, ok=lambda m: not (fail_initial["on"] and not m.startswith("MARKET RISK DEEP BRIEF"))
+    )
+    mod = _evaluator()
+    monkeypatch.setattr(registry, "evaluate_all", lambda ctx: _orange_obs(ctx.now))
+    out = _run(mod, NOW)
+    assert calls and not any(m.startswith("MARKET RISK DEEP BRIEF") for m, _ in calls), "no brief before a sent initial"
+    fail_initial["on"] = False
+    for k in range(1, 12):  # the initial card's retry backoff, then the brief right after it
+        _run(mod, NOW + timedelta(minutes=15 * k), prior=out["assessment"])
+        if any(m.startswith("MARKET RISK DEEP BRIEF") for m, _ in calls):
+            break
+    briefs = [i for i, (m, _) in enumerate(calls) if m.startswith("MARKET RISK DEEP BRIEF")]
+    sent_initial = [i for i, (m, _) in enumerate(calls) if not m.startswith("MARKET RISK DEEP BRIEF")]
+    assert len(briefs) == 1 and briefs[0] > max(sent_initial[:-1] or [0]), (len(calls), briefs)
+
+
 def test_a_brief_failure_never_breaks_the_cycle(state, monkeypatch):
     _transport(monkeypatch)
     mod = _evaluator()
     monkeypatch.setattr(registry, "evaluate_all", lambda ctx: _orange_obs(ctx.now))
-    monkeypatch.setattr(deep_brief, "follow_up", lambda *a, **k: (_ for _ in ()).throw(ValueError("boom")))
-    out = mod.run_cycle(NOW, object(), POLICY, None, apply=False)
-    assert out["deep_brief"]["error"].startswith("ValueError") and out["sends"]
+    monkeypatch.setattr(deep_brief, "build", lambda *a, **k: (_ for _ in ()).throw(ValueError("boom")))
+    out = _run(mod, NOW, apply=False)
+    kinds = {s.get("kind"): s for s in out["sends"]}
+    assert "initial" in kinds and kinds.get("deep_brief", {}).get("error", "").startswith("drain raised ValueError")
 
 
 def test_ask_the_cio_on_demand(monkeypatch):
@@ -527,3 +625,135 @@ def test_null_sources_report_unknown_not_zero():
     pack = build_fact_pack(NOW, _reader(), DOC, sources=NullSources(), cfg=CFG)
     whats = {u["what"] for u in pack["unknown"]}
     assert {"social sentiment", "news tone", "company catalysts"} <= whats
+
+
+# ── review of #2410: N4 pick rules, the drain gate (B2, N1, N2) end to end ─────────────────────────────────────
+def test_deeply_nested_json_falls_back_instead_of_raising():
+    pack = _pack()
+    for ans in ("[" * 100000, '{"happening": ' + "[" * 50000 + "]" * 50000 + "}"):
+        res = deep_brief.write(pack, call_model=lambda p, t, a=ans: (a, "grok"), cfg=ON)
+        assert res["curated"] is False and res["text"] == deep_brief.render_deterministic(pack, CFG)
+
+
+def test_lead_ins_are_tied_to_their_sections():
+    pack = _pack()
+    hap = [f["id"] for f in pack["facts"] if f["section"] == "happening"]
+    ans = json.dumps({"happening": [{"t": "history", "f": f} for f in hap]})  # "Historically:" on today's facts
+    v = deep_brief.parse_picks(ans, pack)
+    assert not v["ok"] and any("not allowed in happening" in r for r in v["reasons"])
+    for t, secs in deep_brief.TEMPLATE_SECTIONS.items():
+        assert t in deep_brief.TEMPLATES and secs <= set(deep_brief.SECTION_KEYS)
+
+
+def test_a_section_the_model_includes_must_be_complete():
+    pack = _pack()
+    nxt = [f["id"] for f in pack["facts"] if f["section"] == "next"]
+    assert len(nxt) > 2
+    # cherry-picking the rosiest base rate and dropping the rest is refused
+    v = deep_brief.parse_picks(json.dumps({"next": [{"t": "history", "f": nxt[0]}]}), pack)
+    assert not v["ok"] and any("omits" in r for r in v["reasons"])
+    res = deep_brief.write(
+        pack, call_model=lambda p, t: (json.dumps({"next": [{"t": "history", "f": nxt[0]}]}), "g"), cfg=ON
+    )
+    assert res["curated"] is False
+
+
+def _brief_ent(transition="deep_brief:tier", after="init-k", episode="ep1"):
+    return {
+        "key": "market_risk:deep_brief:ep1:ORANGE:na",
+        "kind": "deep_brief",
+        "intent": {"transition": transition, "after_key": after, "episode": episode},
+    }
+
+
+def test_drain_gate_retires_a_brief_whose_tier_has_fallen_away():
+    sent = {"init-k": {"status": "sent", "kind": "initial", "episode_id": "ep1"}}
+    assert deep_brief.drain_gate(_brief_ent(), {"tier": "BLUE"}, sent, CFG)[0] == "retire"
+    assert deep_brief.drain_gate(_brief_ent(), {"tier": "YELLOW"}, sent, CFG)[0] == "retire"
+    assert deep_brief.drain_gate(_brief_ent(), {"tier": "ORANGE"}, sent, CFG)[0] == "send"
+    shock = _brief_ent("deep_brief:shock_type", after=None)
+    assert deep_brief.drain_gate(shock, {"tier": "BLUE"}, sent, CFG)[0] == "retire"
+    assert deep_brief.drain_gate(shock, {"tier": "YELLOW"}, sent, CFG)[0] == "send"
+
+
+def test_drain_gate_a_sent_then_superseded_initial_does_not_retire_its_brief():
+    torn = {"init-k": {"status": "superseded", "sent_at": "2026-10-29T22:15:00+00:00", "episode_id": "ep1"}}
+    assert deep_brief.drain_gate(_brief_ent(), {"tier": "ORANGE"}, torn, CFG) == ("send", "ok")
+    unsent = {"init-k": {"status": "superseded", "episode_id": "ep1"}}
+    assert deep_brief.drain_gate(_brief_ent(), {"tier": "ORANGE"}, unsent, CFG)[0] == "retire"
+
+
+def test_drain_gate_waits_for_every_unsent_card_of_its_episode():
+    shock = _brief_ent("deep_brief:shock_type", after=None)  # a same-tier shock change has no initial card
+    keys = {"init-k": {"status": "pending", "kind": "initial", "episode_id": "ep1"}}
+    assert deep_brief.drain_gate(shock, {"tier": "ORANGE"}, keys, CFG)[0] == "wait"
+    keys["init-k"]["status"] = "sent"
+    keys["other-ep"] = {"status": "pending", "kind": "initial", "episode_id": "ep2"}
+    assert deep_brief.drain_gate(shock, {"tier": "ORANGE"}, keys, CFG)[0] == "send"
+
+
+class _WithShock:
+    """Delegating wrapper: the evaluator's assessment plus a shock type, as the precision builder will add one."""
+
+    def __init__(self, a, shock):
+        self._a, self._shock = a, shock
+
+    def __getattr__(self, name):
+        return getattr(self._a, name)
+
+    def to_dict(self):
+        return {**self._a.to_dict(), "shock_type": {"class": self._shock}}
+
+
+def test_shock_brief_never_overtakes_an_unsent_initial_card(state, monkeypatch):
+    """Review of #2410, B2: ORANGE initial queued, Telegram down 10 cycles, the shock type changes at the same tier,
+    Telegram returns. No brief may be sent while the initial card is unsent."""
+    up = {"on": False}
+    calls = _transport(monkeypatch, ok=lambda m: up["on"])
+    mod = _evaluator()
+    monkeypatch.setattr(registry, "evaluate_all", lambda ctx: _orange_obs(ctx.now))
+    shock = {"v": "TECH_CONCENTRATED"}
+    orig = mod.evaluate
+    monkeypatch.setattr(mod, "evaluate", lambda *a, **k: _WithShock(orig(*a, **k), shock["v"]))
+    prior, delivered = None, []
+    for k in range(40):
+        if k == 10:
+            shock["v"] = "BROAD_DELEVERAGING"
+        if k == 11:
+            up["on"] = True
+        before = len(calls)
+        out = _run(mod, NOW + timedelta(minutes=15 * k), prior=prior)
+        prior = out["assessment"]
+        if up["on"]:
+            delivered += [m for m, _ in calls[before:]]
+    first_brief = next(i for i, m in enumerate(delivered) if m.startswith("MARKET RISK DEEP BRIEF"))
+    initials = [i for i, m in enumerate(delivered) if m.startswith("🟠 MARKET RISK")]
+    assert initials and initials[0] < first_brief, "the initial card is delivered before any brief"
+    ledger = json.loads(Path(os.environ["MARKET_RISK_SENT_LEDGER"]).read_text())["keys"]
+    pending_cards = [
+        k for k, r in ledger.items() if r.get("kind") != "deep_brief" and r.get("status") in ("pending", "claimed")
+    ]
+    assert pending_cards == []
+    assert sum(m.startswith("MARKET RISK DEEP BRIEF") for m in delivered) == 2, "tier brief + shock-type brief"
+
+
+@pytest.mark.parametrize(
+    "posture",
+    B1_PHRASES + ["Trim half above one ninety, cut to underweight", "DEFENSIVE then sell at 190"],
+)
+def test_cio_posture_free_text_never_ships(posture):
+    """Review of #2410 round 3, B3: the CIO posture is free text from another store; only a fixed name renders."""
+    pack = build_fact_pack(NOW, _reader(), DOC, snapshot={"cio": {"posture": posture}}, cfg=CFG)
+    cons = [f["text"] for f in pack["facts"] if f["section"] == "consensus"]
+    brief = deep_brief.render_deterministic(pack, CFG)
+    assert any("CIO posture unrecognised (1 detail withheld)" in t for t in cons)
+    assert posture.upper() not in brief.upper()
+
+
+@pytest.mark.parametrize(
+    "posture,shown", [("defensive", "DEFENSIVE"), ("risk-off", "RISK OFF"), ("Neutral", "NEUTRAL")]
+)
+def test_cio_posture_known_names_still_render(posture, shown):
+    pack = build_fact_pack(NOW, _reader(), DOC, snapshot={"cio": {"posture": posture}}, cfg=CFG)
+    cons = [f["text"] for f in pack["facts"] if f["section"] == "consensus"]
+    assert any(f"CIO posture {shown}" in t for t in cons)
