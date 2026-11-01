@@ -25,6 +25,12 @@ ROOT = Path(__file__).resolve().parents[2]
 _CACHE = {}
 _LOCK = threading.Lock()
 _FAILURES = {"RUN_FAILED", "RUN_TIMEOUT", "RUN_REFUSED"}
+#: The generic text cause() returns when a failure carries no stderr and no specific reason.
+NO_DIAGNOSTIC = "Failure recorded; stderr diagnostic was not retained"
+#: A job log's last error line explains a wrapper failure only if the log was written this close to it.
+LOG_DIAGNOSTIC_SLACK = timedelta(minutes=5)
+_ERROR_LINE = re.compile(r"^[A-Za-z_][\w.]*(?:Error|Exception|Exit|Interrupt)(?::|$)")
+_LINE_TIME = re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?")
 
 
 def last_log_success(path: Path, *, now: datetime):
@@ -68,6 +74,65 @@ def last_log_success(path: Path, *, now: datetime):
         if at and at <= now:
             latest = max(latest, at) if latest else at
     return latest
+
+
+def _line_time(line: str):
+    """The timestamp printed on a log line, or None. A naive stamp is host time, America/New_York."""
+    match = _LINE_TIME.search(line)
+    if not match:
+        return None
+    try:
+        at = datetime.fromisoformat(match.group(0).replace(" ", "T", 1).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return (at if at.tzinfo else at.replace(tzinfo=ZoneInfo("America/New_York"))).astimezone(timezone.utc)
+
+
+def last_log_error(path: Path):
+    """The last exception line in a job's own log tail, with the time that error was written.
+
+    Host cron lines send stderr into the job log (``>> logs/<job>.log 2>&1``), so the safe_flock
+    wrapper event records only ``exit_code: 1``. The traceback's final line is in this log.
+    2026-10-30: the stop supervisor failed 137 times on ``AssertionError: ALPACA_MODE must be paper``
+    and the Jobs page could only say the diagnostic was not retained.
+
+    The time belongs to the error, not to the file: the nearest timestamp printed in the error's own
+    block (after the previous error line), else the file's last write only when the error line is
+    the last thing in the log. An older error followed by later untimed output has no time and is
+    never attached to a newer failure. The line is returned raw; the caller shows it via ``cause()``,
+    which redacts it.
+    """
+    try:
+        mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+        with path.open("rb") as stream:
+            stream.seek(0, 2)
+            start = max(0, stream.tell() - 64 * 1024)
+            stream.seek(start)
+            raw = stream.read(64 * 1024)
+        if start:
+            raw = raw.partition(b"\n")[2]
+    except OSError:
+        return None
+    lines = [line.strip() for line in raw.decode("utf-8", errors="replace").splitlines()]
+    lines = [line for line in lines if line]
+    found = None
+    for index, line in enumerate(lines):
+        if _ERROR_LINE.match(line):
+            found = index
+    if found is None:
+        return None
+    at = None
+    for index in range(found, -1, -1):
+        if index != found and _ERROR_LINE.match(lines[index]):
+            break
+        at = _line_time(lines[index])
+        if at:
+            break
+    if at is None and found == len(lines) - 1:
+        at = mtime
+    if at is None:
+        return None
+    return {"line": lines[found][:400], "at": at}
 
 
 def _json(path, limit=8 * 1024 * 1024):
@@ -205,6 +270,11 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
                 last_at = max(filter(None, [last_at, at]))
             if event.get("event_type") == "refused" or (event.get("event_type") == "completed" and event.get("exit_code") != 0):
                 failure_at, diagnostic = at, cause(event)
+        log_error = (captured.get("log_errors") or {}).get(lane_id)
+        if (diagnostic == NO_DIAGNOSTIC and failure_at and log_error
+                and abs(log_error["at"] - failure_at) <= LOG_DIAGNOSTIC_SLACK):
+            source = (lane.get("output_signal") or {}).get("path") or "the job log"
+            diagnostic = cause({}, f"{log_error['line']} (last error line in {source})")
         if last.get("state") in _FAILURES:
             if failure_at is None or last_at and last_at >= failure_at:
                 failure_at, diagnostic = instant(last.get("finished_at")), cause(RV.receipt_of(last), last.get("reason"))
@@ -281,6 +351,9 @@ def _load(root: Path, registry_path: Path, now: datetime):
         at = last_log_success(path, now=now)
         if at:
             snapshot["successes"].setdefault(W.identity(lane), []).append({"at": W.iso(at), "validated_success": True})
+        error = last_log_error(path)
+        if error:
+            snapshot.setdefault("log_errors", {})[W.identity(lane)] = error
     runs, measured, why = read_run_ledger(root / "data/governance/n8n_coordination_ledger.sqlite")
     if not measured:
         snapshot.setdefault("collection_gaps", []).append(why or "run ledger unavailable")
