@@ -1,0 +1,120 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "approvals-pr-review",
+  "version": "v001",
+  "state": "PROPOSED",
+  "title": "Approvals: Merges tab + independent PR review sheet (Approve / Hold / Ask, head-bound)",
+  "created": "2026-10-27",
+  "request": {
+    "by": "operator",
+    "at": "2026-10-27",
+    "quote": "we really need to build something that actually has a review that I can review in the same modal of the command center.",
+    "relayed_by": "coordinator"
+  },
+  "approval": null,
+  "spec": "SPEC.md",
+  "design_spec_doc": "docs/ops/PR_REVIEW_MODAL_SPEC.md",
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/approvals-pr-review",
+    "note": "Private by §28.13 item 7 even though synthetic: the HTML mockup and its 390/412/1440 renders. Paths are relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v001/mockups/approvals-pr-review-v001.html",
+        "sha256": "35dfc7424562011d7a5767d37437e8a349fc74cdd37d186ad8eea9799bd12a52",
+        "bytes": 32288,
+        "role": "mockups",
+        "source": "synthetic mockup (agent-authored HTML, Playwright render at 390/412/1440)"
+      },
+      {
+        "path": "v001/evidence/desktop-1440-held.png",
+        "sha256": "e3870db074ac83a6067379d7d6857181892c90ccfc9984a17c94a2d7fccbf895",
+        "bytes": 169263,
+        "role": "evidence",
+        "source": "synthetic mockup (agent-authored HTML, Playwright render at 390/412/1440)"
+      },
+      {
+        "path": "v001/evidence/desktop-1440-list.png",
+        "sha256": "2c1524f81ff182b3ac0a6acb34a86a920321abbe28a148daa374dcf2769f3502",
+        "bytes": 202490,
+        "role": "evidence",
+        "source": "synthetic mockup (agent-authored HTML, Playwright render at 390/412/1440)"
+      },
+      {
+        "path": "v001/evidence/desktop-1440-review-full.png",
+        "sha256": "539371a3f4f5d628fd304c75cb3b513b63f501d1629c6785da7a742f6b483ff7",
+        "bytes": 329034,
+        "role": "evidence",
+        "source": "synthetic mockup (agent-authored HTML, Playwright render at 390/412/1440)"
+      },
+      {
+        "path": "v001/evidence/desktop-1440-review.png",
+        "sha256": "dcbbaba9505630b3ccb53f0a1897f3755cb21a22c69d132d2dac094c0355cbb9",
+        "bytes": 190698,
+        "role": "evidence",
+        "source": "synthetic mockup (agent-authored HTML, Playwright render at 390/412/1440)"
+      },
+      {
+        "path": "v001/evidence/phone-390-list.png",
+        "sha256": "3b0fd0ca9bc4bc16e3fe40d0de59b5ca789cd9e6fb5cd13ff6942322d97d9333",
+        "bytes": 89377,
+        "role": "evidence",
+        "source": "synthetic mockup (agent-authored HTML, Playwright render at 390/412/1440)"
+      },
+      {
+        "path": "v001/evidence/phone-390-review-viewport.png",
+        "sha256": "1c2d43b72c4fc2b77a10c17bb886413d8db8a9466b2e6f06faf7eb9fde2b733b",
+        "bytes": 85132,
+        "role": "evidence",
+        "source": "synthetic mockup (agent-authored HTML, Playwright render at 390/412/1440)"
+      },
+      {
+        "path": "v001/evidence/phone-390-review.png",
+        "sha256": "8e1167b44682c6328d8100214e779a2bf4cf32fbafe074573c3e37f116e1fa77",
+        "bytes": 298041,
+        "role": "evidence",
+        "source": "synthetic mockup (agent-authored HTML, Playwright render at 390/412/1440)"
+      },
+      {
+        "path": "v001/evidence/phone-390-stale.png",
+        "sha256": "72f2666160d1bae2d82323d07af38c3fe584eac57fc933e00647a176e99147d9",
+        "bytes": 77786,
+        "role": "evidence",
+        "source": "synthetic mockup (agent-authored HTML, Playwright render at 390/412/1440)"
+      },
+      {
+        "path": "v001/evidence/phone-412-held.png",
+        "sha256": "f452d21492fca1fa012b63584e21b038ef15465e99a76d254a38bbfd53b4c95a",
+        "bytes": 158921,
+        "role": "evidence",
+        "source": "synthetic mockup (agent-authored HTML, Playwright render at 390/412/1440)"
+      },
+      {
+        "path": "v001/evidence/phone-412-list.png",
+        "sha256": "f4ceb1706d06ca640b77e5cc1382d99711051d56db249b284bbc5f083275f868",
+        "bytes": 98601,
+        "role": "evidence",
+        "source": "synthetic mockup (agent-authored HTML, Playwright render at 390/412/1440)"
+      },
+      {
+        "path": "v001/evidence/phone-412-review.png",
+        "sha256": "a12640f7556e45304fd2076a441fd3215a4231fc0b42cc1f9563e5891638d4fc",
+        "bytes": 294785,
+        "role": "evidence",
+        "source": "synthetic mockup (agent-authored HTML, Playwright render at 390/412/1440)"
+      }
+    ]
+  },
+  "checks": {
+    "phone_390_412_sideways_scroll": "none",
+    "tap_targets_under_44px": 0,
+    "fixed_chrome": "56 px sheet header only (~7% of 844 px)"
+  },
+  "prs": [],
+  "history": [
+    {
+      "state": "PROPOSED",
+      "at": "2026-10-27",
+      "by": "agent"
+    }
+  ]
+}
