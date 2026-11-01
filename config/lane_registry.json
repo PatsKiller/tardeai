@@ -18891,18 +18891,43 @@
       "lane_id": "market-quotes-extended",
       "owner": "platform",
       "scheduler": {
-        "kind": "none"
+        "kind": "cron",
+        "expression": "*/15 4-9 * * 1-5 + */15 16-20 * * 1-5",
+        "match": "scripts/market_quotes_extended.py --apply",
+        "schedules": [
+          "*/15 4-9 * * 1-5",
+          "*/15 16-20 * * 1-5"
+        ],
+        "command_text": "cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_extended.lock bash scripts/market_day_gate.sh $PY scripts/market_quotes_extended.py --apply >> logs/market_quotes_extended.log 2>&1"
       },
-      "expected_cadence_hours": 0.25,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-31",
-      "state_reason": "Declared, not scheduled. Pre-market / after-hours prints for the Market Risk Engine's extended_hours category (scripts/market_quotes_extended.py, DSN-20261031-market-risk-engine P1-T4) into their own store market_quotes_extended (single writer scripts/lib/writers/market_quotes_extended_writer.py; never market_quotes). Alpaca SIP 5-minute bars ending 16 minutes before now, through the quote ingest's existing credentials. The operator approved the store, provider and schedule as design §11 items 1-2 on 2026-10-31; activation (migration apply + crontab) is a §25.10.2 in-session step after this PR merges.",
+      "expected_cadence_hours": 55.25,
+      "state": "ACTIVE",
+      "state_since": "2026-11-01",
+      "state_reason": "Operator, in session 2026-11-01 ~11:10 ET (verbatim): \"I approve the after-hour and I also approve turning on real alerts. We can always tune it later.\" The store was granted in config/data_source_authority.json by #2448 (AGENTS.md 29.2.1; store, writer, provider and schedule approved as design DSN-20261031-market-risk-engine §11 items 1-2 on 2026-10-31). The coordinator's session installed two host crontab lines (crontab -l L1089-L1090; backup persistent-state/archive/crontab/crontab.pre-market-quotes-extended.20261101T125651.txt) running scripts/market_quotes_extended.py --apply every 15 minutes in the pre-market and after-hours windows of NYSE trading days. Alpaca SIP 5-minute bars into market_quotes_extended through its single writer; never market_quotes.",
       "output_signal": {
-        "kind": "none"
+        "kind": "file_mtime",
+        "path": "logs/market_quotes_extended.log",
+        "evidence": "CRON_LOG_REDIRECT"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "No crontab line or timer runs scripts/market_quotes_extended.py. The table exists: migrations/2026_10_31_market_quotes_extended.sql was applied to the prod DB on 2026-11-01 11:07 ET (to_regclass('public.market_quotes_extended') not null; indexes market_quotes_extended_pkey, market_quotes_extended_uniq, idx_market_quotes_extended_symbol_inserted; 0 rows). A live --apply run on 2026-11-01 refused: \"refusing --apply: §7A domain quote_extended_session is still in proposed_domains (config/data_source_authority.json); promote it in the activation PR first\". Remaining activation: promote that domain (re-renders the AGENTS.md §7A table, a held-class PATCH), then install the crontab lines in note and flip this row to ACTIVE. Measured 2026-10-31: feed=sip with end=now-16min returns 04:00-20:00 ET coverage on the current credentials.",
-      "note": "Proposed host crontab lines: '*/15 4-9 * * 1-5' and '*/15 16-20 * * 1-5', each 'cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_extended.lock bash scripts/market_day_gate.sh $PY scripts/market_quotes_extended.py --apply >> logs/market_quotes_extended.log 2>&1'."
+      "reason_evidence": "crontab -l L1089 '*/15 4-9 * * 1-5 ... bash scripts/market_day_gate.sh $PY scripts/market_quotes_extended.py --apply', L1090 '*/15 16-20 * * 1-5' (same command). Migrations applied to the prod DB 2026-11-01: migrations/2026_10_31_market_quotes_extended.sql at 11:07 ET and migrations/2026_10_31_market_quotes_extended_overnight.sql at 12:41 ET (session CHECK now premarket/afterhours/overnight/futures_open; reference columns nullable only for overnight/futures_open). First live run 2026-11-01 12:56 ET from release 4bc61bcdb (CURRENT): --apply inserted 23 rows (afterhours, session_date 2026-10-30, feed sip); table count 23. Host timezone America/New_York, no CRON_TZ.",
+      "note": "Gate: both lines run through market_day_gate.sh (skips weekends and NYSE holidays). The writer labels only bars inside an extended session of a trading day (pre-market 04:00-09:30, after-hours close-20:00), so the 09:30-09:45 and 20:00-20:45 fires write the newest complete in-session bar or nothing. expected_cadence_hours 55.25 is the max gap of the union of the two expressions (Friday 20:45 to Monday 04:00, reconcile_lane_registry.cron_cadence_hours_union); inside a session the cadence is 15 minutes and the store's freshness SLA is 30 minutes (config/data_source_authority.json quote_extended_session). One lock, /tmp/market_quotes_extended.lock (safe_flock). The Schwab off-hours reader (scripts/market_quotes_offhours_schwab.py, overnight and Sunday futures_open) is a separate lane, still switched off (schwab.enabled false) pending its own operator approval. Hand-maintained row.",
+      "adopted_on": "2026-11-01",
+      "adopted_reason": "2026-11-01: flipped NEVER_SCHEDULED -> ACTIVE after the operator-approved install of crontab L1089-L1090 (\"I approve the after-hour\"); hand-maintained.",
+      "value_class": "UNCLASSIFIED",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": null,
+        "recommendation": null,
+        "value_class": "UNCLASSIFIED",
+        "note": "no rationalization item joined to this line"
+      },
+      "stay_on_cron": {
+        "class": "pipeline_excluded_gate",
+        "token": "market_day_gate.sh",
+        "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+      }
     },
     {
       "lane_id": "run-scheduled-quote-refresh-incubator",

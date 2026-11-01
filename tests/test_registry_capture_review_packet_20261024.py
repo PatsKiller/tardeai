@@ -40,7 +40,7 @@ def host_barrier(monkeypatch):
     assert not calls
 
 
-POST_PACKET_SNAPSHOT_LINES = {1083, 1084, 1085, 1086}
+POST_PACKET_SNAPSHOT_LINES = {1083, 1084, 1085, 1086, 1089, 1090}
 
 
 def load_base():
@@ -79,7 +79,7 @@ def test_actual_canonical_historical_fixedpoint_contract_is_preserved_or_explici
     candidate = json.loads(P.preview(kind))
     snapshot = json.loads((R.DATA_DIR / "scheduler_snapshot_20261009.json").read_text())
     # The packet's registry is frozen at 2026-10-24; lines appended to the snapshot after it (2026-11-01: L1083-L1086,
-    # market-risk-evaluate, PR #2409) have no row in that registry, so they are not part of this historical contract.
+    # market-risk-evaluate, PR #2409; L1089-L1090, market-quotes-extended) have no row in that registry, so they are not part of this historical contract.
     snapshot["cron_lines"] = [c for c in snapshot["cron_lines"] if c["n"] not in POST_PACKET_SNAPSHOT_LINES]
     result = R.reconcile(candidate, cron_text=R.snapshot_cron_text(snapshot), units=snapshot["units"],
                          f_rows=R.load_rationalization(), evidence=R.load_evidence())

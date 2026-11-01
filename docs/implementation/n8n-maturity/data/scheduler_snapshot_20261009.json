@@ -1798,6 +1798,14 @@
   {
    "n": 1086,
    "line": "0 0-3 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_risk_evaluate.lock $PY scripts/market_risk_evaluate.py --scheduled --apply >> logs/market_risk_evaluate.log 2>&1"
+  },
+  {
+   "n": 1089,
+   "line": "*/15 4-9 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_extended.lock bash scripts/market_day_gate.sh $PY scripts/market_quotes_extended.py --apply >> logs/market_quotes_extended.log 2>&1"
+  },
+  {
+   "n": 1090,
+   "line": "*/15 16-20 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_extended.lock bash scripts/market_day_gate.sh $PY scripts/market_quotes_extended.py --apply >> logs/market_quotes_extended.log 2>&1"
   }
  ],
  "units": {
