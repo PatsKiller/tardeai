@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_cio_memory_fanout_20261031",
+  "files": [
+    "tests/test_market_risk_cio_memory_fanout_20261031.py"
+  ],
+  "anchor": "MARKET_RISK_CIO_MEMORY_FANOUT_20261031",
+  "comment": [
+    "ANCHOR: MARKET_RISK_CIO_MEMORY_FANOUT_20261031 — CIO memory, watchlist-first candidate tiers and research fan-out",
+    "(operator 2026-10-31). Pins: tier 1 = researched + watchlist/short list, tier 2 = researched, tier 3 = new leaders;",
+    "research age from research inputs only; every transition kind; Hermes via the watch_directives single writer;",
+    "Brave via the governed producer, fail-closed on unknown budget and inside a reserve; you.com unavailable; memory",
+    "text passes admission; the CIO recalls the episode. Hermetic."
+  ]
+}

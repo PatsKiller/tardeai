@@ -6007,6 +6007,66 @@
         "writer_files": 0,
         "surface_reads": {}
       }
+    },
+    {
+      "domain": "quote_extended_session",
+      "class": "ingested",
+      "store": {
+        "table": "market_quotes_extended"
+      },
+      "writer": "scripts/lib/writers/market_quotes_extended_writer.py",
+      "writer_facade": "scripts/market_quotes_extended.py",
+      "cadence": "*/15 04:00-09:30 and 16:00-20:00 Mon-Fri NYSE trading days",
+      "stale_after_hours": 0.5,
+      "stale_after_hours_closed": 72,
+      "projection": null,
+      "required_fields": [
+        "price",
+        "reference_close",
+        "bar_end",
+        "inserted_at"
+      ],
+      "primary_provider": "alpaca",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "_why": "Review of #2384: extended prints written into market_quotes would become the live quote for ~20 newest-row readers (data broker latest_quote, repricer, stop checks, watch alerts, sector RS). Own store, own writer, migration migrations/2026_10_31_market_quotes_extended.sql.",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 72,
+          "expected_seconds": 30
+        }
+      ],
+      "_projection_note": "No broker projection on purpose: the store is read only by the Market Risk Engine (scripts/lib/market_risk/reader.py PgReader.extended_quotes), so it can never surface as a latest quote.",
+      "status": "proposed",
+      "entity": "Extended-session prints",
+      "title": "Pre-market / after-hours prints (Market Risk Engine)",
+      "facts": [
+        "price",
+        "reference_close",
+        "change_pct",
+        "session",
+        "bar_end"
+      ],
+      "_status_note": "Proposed, not granted, until the operator activates the lane: the operator approved new stores as design §11 item 1 (2026-10-31, verbatim in approval.reference); moving this row to `domains` is the activation PR's step and re-renders the §7A table (AGENTS.md), which is a held-class edit.",
+      "proposal": {
+        "proposed_by": "agent (Claude Code coordinator session, Market Risk Engine P1-T4)",
+        "proposed_on": "2026-10-31",
+        "reference": "Operator, in session 2026-10-31 (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" Design DSN-20261031-market-risk-engine §11 item 1 (new stores and their single writers).",
+        "decision": "operator approved new stores as design §11 item 1 on 2026-10-31; grant recorded at promotion (activation PR)"
+      },
+      "freshness_sla": "30 min during 04:00-09:30 and 16:00-20:00 ET on NYSE trading days; otherwise the newest print is the previous extended session's",
+      "refresh_lane": {
+        "lane": "market-quotes-extended",
+        "runner": "host",
+        "note": "Host crontab, scripts/market_quotes_extended.py --apply every 15 min in the extended sessions; declared NEVER_SCHEDULED in config/lane_registry.json, activated by the operator under §25.10.2."
+      },
+      "readers": [
+        "scripts/lib/market_risk/reader.py (PgReader.extended_quotes)"
+      ],
+      "derived_copies": []
     }
   ],
   "data_dictionary": {

@@ -130,8 +130,20 @@ def run(apply: bool, limit_print: int = 10) -> dict:
     ctx = op.gather(_db_query, syms)
     assessments = op.rank([op.assess(s, ctx[s]) for s in syms])
     cfg = op.load_config()
+    # Market-risk gate (DSN-20261031-market-risk-engine P3-T3, config market_risk_gate): entry ideas demoted at YELLOW,
+    # held at ORANGE/RED. Conviction and rank are unchanged; each gated assessment records what changed and why.
+    from scripts.lib.market_risk import cio_context as _mr_cio
+
+    # Versions persist the CIO's own (pre-gate) stance; the gate is an overlay on the projection only, so a tier crossing
+    # never writes a new CIO-memory version (review of #2383, M4).
+    import copy as _copy
+
+    pre_gate = _copy.deepcopy(assessments)
+    assessments, mr_gate = _mr_cio.apply_entry_gate(
+        assessments, _mr_cio.load_market_risk(), cfg.get("market_risk_gate") or {}
+    )
     store = CIOOpportunityStore()
-    lines = store.plan(assessments, cfg.get("material_change") or {})
+    lines = store.plan(pre_gate, cfg.get("material_change") or {})
     run_id = f"opp-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:6]}"
     provenance = {"writer": "cio_opportunity_curator", "run_id": run_id, "owner_agent": "cio",
                   "config_version": cfg.get("version"),
@@ -155,6 +167,7 @@ def run(apply: bool, limit_print: int = 10) -> dict:
         "top": [{"rank": a["rank"], "symbol": a["symbol"], "conviction": a["conviction"],
                  "rr": (a.get("risk_reward") or {}).get("rr"), "upside_pct": a.get("upside_pct"),
                  "type": a.get("type")} for a in top],
+        "market_risk_gate": mr_gate,
         "seconds": round(time.time() - t0, 1),
     }
     review = review_candidates(top_ranked=[a["symbol"] for a in op.sort_items(

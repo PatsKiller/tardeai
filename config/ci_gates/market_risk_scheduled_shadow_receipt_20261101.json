@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_scheduled_shadow_receipt_20261101",
+  "files": [
+    "tests/test_market_risk_scheduled_shadow_receipt_20261101.py"
+  ],
+  "anchor": "MARKET_RISK_SCHEDULED_SHADOW_RECEIPT_20261101",
+  "comment": [
+    "ANCHOR: MARKET_RISK_SCHEDULED_SHADOW_RECEIPT_20261101 — a scheduler-launched --shadow run writes run_last.json,",
+    "the market-risk-evaluate lane's output signal (PR #2409; the 2026-11-01 cron lines run --scheduled --shadow).",
+    "Manual and replay shadow runs never write it; a mutant of the old early return is caught. Hermetic."
+  ]
+}

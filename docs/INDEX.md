@@ -758,6 +758,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/FCNTX_144_ACCEPTANCE_2026-07-14.md` | FCNTX Event #144 — A–G Acceptance Fixture (Part H) |
 | `docs/audits/FCNTX_144_DECISION_PACKET_LATEST.md` | FCNTX event #144 — operator decision packet (version-bound) |
 | `docs/audits/FCNTX_144_DECISION_PACKET_v31_2026-07-14.md` | FCNTX event #144 — operator decision packet (version-bound) |
+| `docs/audits/MARKET_RISK_ENGINE_BACKTEST_20261031.md` | Market Risk Engine backtest |
 | `docs/audits/MARKET_SELLOFF_ALERT_RCA_2026-10-30.md` | Why no warning preceded the 2026-10-30 selloff — root cause analysis |
 | `docs/audits/OPTIONS_DESK_ARCHITECTURE_MAP_2026-09-25.md` | Options Desk Architecture Map — 2026-09-25 |
 | `docs/audits/OPTIONS_DESK_EXECUTIVE_AUDIT_2026-09-25.md` | Options Desk Executive Audit — 2026-09-25 |
@@ -1055,6 +1056,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261029-deploy-console.md` | Deploy console — design of record |
 | `docs/designs/DSN-20261030-disk-recovery.md` | DSN-20261030-disk-recovery.md |
 | `docs/designs/DSN-20261030-rule6-scratch-delete-amendment.md` | Rule 6 amendment — agents delete their own scratch, plus a scheduled purge |
+| `docs/designs/DSN-20261030-workspace-lifecycle.md` | Workspace lifecycle |
 | `docs/designs/DSN-20261031-market-risk-engine.md` | Market Risk Engine (MRE) |
 | `docs/designs/DSN-20261031-market-risk-ui.md` | Market risk on Home and the Risk page |
 | `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
@@ -2620,6 +2622,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_2.md` | CODEX IMPLEMENTATION PROGRAM v1.2 |
 | `docs/proposal_quality/phase_promote1_pre_promotion_readiness_gate/00_README.md` | PROMOTE-1 — Pre-Promotion Readiness Gate |
 | `docs/proposal_sandbox/PHASE115B_PROPOSAL_DRAFT_SCORE_RESULTS.md` | Phase 115B — Proposal Draft Score Results |
+| `docs/proposals/MARKET_RISK_BROKER_DATA_SOURCES_20261031.md` | Proposal — broker market data for the Market Risk Engine (Schwab, moomoo) |
+| `docs/proposals/REGISTRY_ROW_index_constituent_caps_20261031.md` | Registry-row proposal: index constituent market caps (Market Risk Engine, event concentration) |
+| `docs/proposals/REGISTRY_ROW_youcom_search_20261031.md` | Proposal: you.com search as a registered provider (§7A), not built |
 | `docs/remediation-plan.md` | Remediation plan — 5-stage hardening, governance and bitemporal cutover |
 | `docs/reporting/REPORTING_ENGINE.md` | Reporting & Prospectus Generation Module |
 | `docs/risk_management/stop_management_v2_3_strategy_trailing_tiers/00_README.md` | Stop Management V2.3 — Strategy Trailing Tiers |
@@ -2642,6 +2647,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/runbooks/KEY_ROTATION.md` | Key Rotation Runbook (2026-07-18) |
 | `docs/runbooks/OPTIONS_FIRST_POSITION_ACCEPTANCE.md` | First Real Option Position — Acceptance Runbook (v1.1 Phase 10) |
 | `docs/runbooks/PLAYWRIGHT_ARTIFACTS_POLICY.md` | Playwright / visual-review artifact policy |
+| `docs/runbooks/RELAY_LIVE_SET_GATE.md` | Relay live-set gate — operator runbook |
 | `docs/runbooks/TRADING_LOCK.md` | Trading lock (READ-ONLY toward brokers) — operator runbook |
 | `docs/runbooks/post-sale-redeploy-sync-2026-07-14.md` | Post-Sale Redeploy Sync — 2026-07-14 |
 | `docs/runbooks/protective-stop-integration-2026-06-30.md` | Protective Stop Integration Runbook — 2026-06-30 |

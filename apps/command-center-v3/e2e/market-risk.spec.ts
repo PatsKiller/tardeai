@@ -85,3 +85,69 @@ test('Risk: the old ?tab=regime link lands on Market risk', async ({ page }) => 
   await page.goto('/v3/risk?tab=regime')
   await expect(page.getByTestId('risk-market-risk-tier')).toHaveText('NOT EVALUATED')
 })
+
+// Shadow (review of PR 2425): the tier is labelled SHADOW in visible bold text on every surface, never with a live episode,
+// and there is nothing to acknowledge. Phone first: 412 and 390 with touch.
+for (const width of [412, 390]) {
+  test(`Home ${width}: a shadow RED says SHADOW in the fact, the card and the banner, and offers nothing to acknowledge`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 915 })
+    const writes: string[] = []
+    await homeFixtures(page)
+    await marketRiskRoutes(page, 'shadow_red', writes)
+    await page.goto('/v3/')
+    const fact = page.getByTestId('home-market-risk-shadow')
+    await expect(fact).toHaveText('SHADOW')
+    expect(Number(await fact.evaluate(el => getComputedStyle(el).fontWeight))).toBeGreaterThanOrEqual(700)
+    await expect(page.getByTestId('home-market-risk')).toContainText('not alerting')
+    await expect(page.getByTestId('home-market-risk-banner-shadow')).toContainText('no alert was sent for this tier')
+    await expect(page.getByTestId('home-market-risk-compact-shadow')).toBeVisible()
+    await expect(page.getByTestId('home-market-risk-banner')).not.toContainText('repeat')
+    const ack = page.getByTestId('home-market-risk-ack')
+    await expect(ack).toBeDisabled()
+    await expect(ack).toHaveText('Shadow: nothing to acknowledge')
+    expect(writes.filter(w => w.startsWith('POST'))).toHaveLength(0)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBeTruthy()
+    await page.screenshot({ path: `test-results/shadow-home-${width}-red.png`, fullPage: false })
+  })
+
+  test(`Home ${width}: a shadow YELLOW labels the fact and the card`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 915 })
+    await homeFixtures(page)
+    await marketRiskRoutes(page, 'shadow_yellow')
+    await page.goto('/v3/')
+    await expect(page.getByTestId('home-market-risk-value')).toHaveText('YELLOW 60')
+    await expect(page.getByTestId('home-market-risk-shadow')).toHaveText('SHADOW')
+    await expect(page.getByTestId('home-market-risk-compact-shadow')).toContainText('not alerting')
+    await expect(page.getByTestId('home-market-risk-banner')).toHaveCount(0)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBeTruthy()
+    await page.screenshot({ path: `test-results/shadow-home-${width}-yellow.png`, fullPage: false })
+  })
+
+  test(`Risk ${width}: a shadow tier carries the SHADOW label beside the pill`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 915 })
+    await page.route('**/api/**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, data: { positions: { rows: [] }, stops: {}, regime: {} } }) }))
+    await marketRiskRoutes(page, 'shadow_red')
+    await page.goto('/v3/risk?tab=market-risk')
+    await expect(page.getByTestId('risk-market-risk-tier')).toHaveText('RED')
+    await expect(page.getByTestId('risk-market-risk-shadow')).toContainText('SHADOW')
+    await expect(page.getByTestId('risk-market-risk-shadow')).toContainText('no alert was sent for this tier')
+    await expect(page.getByTestId('risk-market-risk-ack')).toBeDisabled()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBeTruthy()
+    await page.screenshot({ path: `test-results/shadow-risk-${width}-red.png`, fullPage: false })
+  })
+}
+
+// CARRIED-ONLY (PR 2431): a live tier that rests only on data carried across a closure is labelled, not alerted.
+for (const width of [412, 390]) {
+  test(`Home ${width}: a carried-only YELLOW says CARRIED · not alerting`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 915 })
+    await homeFixtures(page)
+    await marketRiskRoutes(page, 'carried_yellow')
+    await page.goto('/v3/')
+    await expect(page.getByTestId('home-market-risk-shadow')).toHaveText('CARRIED')
+    await expect(page.getByTestId('home-market-risk')).toContainText('not alerting')
+    await expect(page.getByTestId('home-market-risk-compact-shadow')).toContainText('data from before the market closed')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBeTruthy()
+    await page.screenshot({ path: `test-results/carried-home-${width}-yellow.png`, fullPage: false })
+  })
+}
