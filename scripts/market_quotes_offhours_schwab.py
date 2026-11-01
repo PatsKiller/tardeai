@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """Schwab off-hours market-data quotes for the Market Risk Engine: index futures, indices, extended-hours prices.
 
-OFF BY DEFAULT (``schwab.enabled: false`` in config/market_risk_offhours_quotes.yaml). It depends on AGENTS.md 28.2.0
-(PR #2407, PROPOSED, not ratified), which would let host lanes read broker MARKET DATA. Until the operator ratifies
-28.2.0, grants the §7A row (schwab provider supplies quotes) and activates the lane in session (§25.10.2), every live
-invocation stops at ``disabled`` before any Schwab module is imported.
+OFF BY DEFAULT (``schwab.enabled: false`` in config/market_risk_offhours_quotes.yaml) until the operator approves the
+schedule in session (§25.10.2). Policy: AGENTS.md 28.2.0 (host lanes may read broker MARKET DATA), ratified by the
+operator on PR #2407 (ratify commit f060c2e78). While off, every live invocation stops at ``disabled`` before any
+Schwab or database module is imported.
 
 What it reads: GET ``/marketdata/v1/quotes`` only (the host in ``schwab.marketdata_base_url``; any other URL is
 refused), with the access token from the Schwab token manager's public read API (``get_access_token``). It does not
 import ``schwab_transport`` (the module that also carries the order surface), never touches an account, order, stop,
 2FA or auth-flow endpoint, and never reads a credential file itself. ``config/schwab_access_mode.yaml`` must allow
-reads. Rows go to ``market_quotes`` as source ``schwab`` through the one writer
-(scripts/lib/writers/market_quotes_writer.py).
+reads. Rows go to ``market_quotes_extended`` (feed ``schwab``) through its single writer
+(scripts/lib/writers/market_quotes_extended_writer.py), in #2384's contract -- NEVER ``market_quotes``, whose newest
+row is the latest quote for stop checks, the repricer and watch alerts. ``--apply`` also refuses while the §7A domain
+``quote_extended_session`` is still proposed.
 
     python3 scripts/market_quotes_offhours_schwab.py --probe                 # availability, no Schwab call
     python3 scripts/market_quotes_offhours_schwab.py --dry-run --fixture F   # parse a recorded payload; no DB, no net
@@ -88,7 +90,8 @@ def probe(cfg: dict) -> dict:
     except ValueError as exc:
         url, url_ok = str(exc), False
     universe, prov = oq.resolve_universe(cfg)
-    return {"schema": "OffHoursQuoteProbe@v1", "provider": "schwab", "enabled": bool(s.get("enabled")),
+    return {"schema": "OffHoursQuoteProbe@v2", "provider": "schwab", "store": oq.STORE, "enabled": bool(s.get("enabled")),
+            "store_domain_granted": oq.mqe.domain_promoted(),
             "requires_policy": s.get("requires_policy"), "window_now": why, "in_window_now": ok,
             "marketdata_url": url, "url_rail_ok": url_ok,
             "token_manager_present": importlib.util.find_spec("schwab_token_manager") is not None,
@@ -96,15 +99,15 @@ def probe(cfg: dict) -> dict:
             "live_call_made": False}
 
 
-def _write(rows: list[dict]):
+def _write(rows: list[dict]) -> dict:
     from db_adapter import _get_conn
-    from lib.writers.market_quotes_writer import write_market_quotes
+    from lib.writers.market_quotes_extended_writer import write_extended_quotes
 
     conn = _get_conn()
     try:
-        rc = write_market_quotes(conn.cursor(), rows, source="schwab")
+        res = write_extended_quotes(conn.cursor(), rows)
         conn.commit()
-        return rc
+        return res
     finally:
         conn.close()
 
@@ -131,14 +134,14 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         doc = json.loads(Path(a.fixture).read_text(encoding="utf-8"))
         dry_cfg = {**cfg, "schwab": {**cfg["schwab"], "enabled": True}}  # parse path only; no Schwab, no DB
-        r = oq.run("schwab", cfg=dry_cfg, now=now, fetch=lambda _s: doc.get("quotes", doc), write=None,
+        r = oq.run(cfg=dry_cfg, now=now, fetch=lambda _s: doc.get("quotes", doc), write=None,
                    dry_run=True, force_window=a.force_window)
         r["config_enabled"] = bool(cfg["schwab"].get("enabled"))
         print(json.dumps(r, default=str, indent=1))
         return 0
-    r = oq.run("schwab", cfg=cfg, now=now, fetch=lambda syms: live_fetch(syms, cfg), write=_write, dry_run=False)
+    r = oq.run(cfg=cfg, now=now, fetch=lambda syms: live_fetch(syms, cfg), write=_write, dry_run=False)
     print(json.dumps(r, default=str, indent=1))
-    return 0 if r.get("status") in ("ok", "disabled", "outside_window", "schwab_paused") else 1
+    return 0 if r.get("status") in ("ok", "disabled", "outside_window", "schwab_paused", "refused_domain_proposed") else 1
 
 
 if __name__ == "__main__":

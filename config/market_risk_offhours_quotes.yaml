@@ -1,58 +1,43 @@
-# Market Risk Engine off-hours quote collector (scripts/lib/offhours_quotes.py). Operator-owned settings.
-# Why: the Market Risk Engine (#2383) reads market_quotes rows from sources alpaca and schwab, and nothing collects a
-# quote after about 16:10 ET or before the 09:30 open (2026-10-30 selloff RCA, design DSN-20261031-market-risk-engine).
+# Market Risk Engine off-hours quotes from Schwab market data (scripts/lib/offhours_quotes.py,
+# scripts/market_quotes_offhours_schwab.py). Operator-owned settings.
+# Why: the Market Risk Engine (#2383) had no quote after about 16:10 ET or before the 09:30 open (2026-10-30 selloff
+# RCA, design DSN-20261031-market-risk-engine). Alpaca extended-session prints are collected by #2384's producer
+# (scripts/market_quotes_extended.py, config/market_quotes_extended.json); this lane adds Schwab's view.
+# STORE: market_quotes_extended through its single writer scripts/lib/writers/market_quotes_extended_writer.py --
+# NEVER market_quotes, whose newest row is the "latest quote" for stop checks, the repricer and watch alerts
+# (coordinator decision 2026-10-31, option 3; review of #2384).
 # Advisory market data only (MBI_BEHAVIOR = 0): no order, stop, account or auth endpoint is reachable from here.
-# NOTHING IS SCHEDULED by this file. The lanes are NEVER_SCHEDULED in config/lane_registry.json; activation is the
-# operator's in-session word (AGENTS.md §25.10.2).
-schema: MarketRiskOffHoursQuotes@v1
+# NOTHING IS SCHEDULED by this file (lane market-quotes-offhours-schwab is NEVER_SCHEDULED in config/lane_registry.json).
+schema: MarketRiskOffHoursQuotes@v2
 as_of: 2026-10-31
 
 universe:
-  # The fixed index / breadth / sector proxies the engine watches outside regular hours.
-  symbols: [QQQ, SPY, IWM, DIA, RSP, SMH, SOXX, XLK]
-  # The engine's large-cap list is READ from the engine policy, never copied here. Each entry is a dotted key path
-  # into policy_file; a key that is absent (e.g. before #2383 merges) is named on the run receipt as
-  # missing_refs and the run continues with the rest.
-  policy_file: config/market_risk_policy.yaml
-  include_from_policy:
-    - extended_hours.heavyweights
-
-sessions:
-  # Session tags derive from each row's own trade timestamp (scripts/market_session.py holiday calendar). A
-  # weekday-night or Sunday-evening timestamp at or after this time, before a trading day, is tagged "overnight".
-  overnight_start: "18:00"
-
-alpaca:
-  # Already granted (registry quote_price primary). Code path on; the lane itself is NEVER_SCHEDULED.
-  enabled: true
-  feed: iex
-  batch_size: 200
-  trading_days_only: true
-  # ET, inclusive at both ends.
-  windows:
-    - {start: "16:00", end: "20:00", label: after_hours}
-    - {start: "04:00", end: "09:30", label: premarket}
-  # A trade older than this is not re-written as a new quote (the 19:59 print is not "fresh" at 04:00).
-  max_trade_age_minutes: 30
-  # Only rows whose OWN trade timestamp falls in these sessions are written: the regular-session close is the
-  # existing */15 09:30-16:00 lane's row, never duplicated here.
-  write_sessions: [premarket, after_hours]
+  # One list, read from where it already lives; nothing is copied here. A key that is absent is named on the run
+  # receipt as missing_refs and the run continues with the rest.
+  sources:
+    - {file: config/market_quotes_extended.json, key: symbols}          # #2384's Alpaca universe (index/sector proxies + heavyweights)
+    - {file: config/market_risk_policy.yaml, key: extended_hours.heavyweights}  # the engine's large-cap list
 
 schwab:
-  # OFF by default. Depends on AGENTS.md 28.2.0 (PR #2407, PROPOSED, not ratified): host lanes may read broker
-  # market data. Switching this on also needs the §7A grant (schwab provider "supplies" gains quotes) and the
-  # operator's §25.10.2 activation word. Reads go through the Schwab token manager's public read API and the
-  # market-data host only; config/schwab_access_mode.yaml must allow reads.
+  # OFF until the operator approves the schedule. AGENTS.md 28.2.0 (host lanes may read broker market data) was
+  # ratified by the operator on PR #2407 (ratify commit f060c2e78); #2407 is not yet merged to main.
   enabled: false
-  requires_policy: "AGENTS.md 28.2.0 (PR #2407)"
+  requires_policy: "AGENTS.md 28.2.0 (PR #2407, ratified f060c2e78)"
   marketdata_base_url: "https://api.schwabapi.com/marketdata/v1/"
   batch_size: 100
+  feed: schwab                 # market_quotes_extended.feed; the unique key (symbol, bar_start, feed) keeps it apart from Alpaca sip
   futures: ["/ES", "/NQ", "/RTY", "/YM"]
   indices: ["$SPX", "$COMPX", "$VIX"]
-  # Also ask Schwab for the universe's extended-hours / overnight prices.
-  include_universe: true
-  # ET window: Sunday 18:00 through Friday 09:30, excluding the regular session on trading days.
+  include_universe: true       # also the universe's extended-hours prices
+  # ET window: Sunday 18:00 through Friday 09:30, regular session skipped on trading days.
   window: {start_day: sun, start: "18:00", end_day: fri, end: "09:30"}
   skip_regular_session: true
   max_trade_age_minutes: 30
-  write_sessions: [premarket, after_hours, overnight]
+  # A point quote has no bar: bar_end is the trade instant itself (when the print became knowable) and bar_start is
+  # this many milliseconds earlier, because the store's contract requires bar_end > bar_start.
+  point_quote_span_ms: 1
+  # Reference close, per #2384's rule: after-hours moves from the SAME day's close, pre-market from the previous
+  # session's close; a missing reference refuses the row, never falls back.
+  reference_basis:
+    afterhours_equity: schwab_regular_market_last_price     # regular.regularMarketLastPrice, same trading day
+    premarket: schwab_quote_close_price_previous_session    # quote.closePrice (Schwab: previous day's close)

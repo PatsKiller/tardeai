@@ -1,0 +1,57 @@
+{
+ "_note": "Synthetic values in the Schwab /marketdata/v1/quotes shape (fields=quote,extended,regular). Clock for the dry run: 2026-10-30T08:00:00-04:00 (Friday pre-market).",
+ "now": "2026-10-30T08:00:00-04:00",
+ "quotes": {
+  "/ES": {
+   "assetMainType": "FUTURE",
+   "symbol": "/ES",
+   "quote": {
+    "lastPrice": 6760.5,
+    "closePrice": 6850.0,
+    "tradeTime": 1793361571000
+   }
+  },
+  "/NQ": {
+   "assetMainType": "FUTURE",
+   "symbol": "/NQ",
+   "quote": {
+    "lastPrice": 25210.0,
+    "closePrice": 25820.0,
+    "tradeTime": 1793361590000
+   }
+  },
+  "QQQ": {
+   "assetMainType": "EQUITY",
+   "symbol": "QQQ",
+   "quote": {
+    "lastPrice": 606.2,
+    "closePrice": 615.0,
+    "tradeTime": 1793361480000
+   },
+   "extended": {
+    "lastPrice": 606.1,
+    "tradeTime": 1793361492000
+   },
+   "regular": {
+    "regularMarketLastPrice": 615.0
+   }
+  },
+  "NVDA": {
+   "assetMainType": "EQUITY",
+   "symbol": "NVDA",
+   "quote": {
+    "lastPrice": 195.0,
+    "tradeTime": 1793361300000
+   }
+  },
+  "$VIX": {
+   "assetMainType": "INDEX",
+   "symbol": "$VIX",
+   "quote": {
+    "lastPrice": 21.4,
+    "closePrice": 19.1,
+    "tradeTime": 1793360700000
+   }
+  }
+ }
+}

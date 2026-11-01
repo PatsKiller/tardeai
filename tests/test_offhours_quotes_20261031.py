@@ -1,16 +1,19 @@
-"""Market Risk Engine off-hours quote collector (2026-10-31).
+"""Market Risk Engine off-hours quotes: Schwab market data into market_quotes_extended (2026-10-31, stacked on #2384).
 
-scripts/lib/offhours_quotes.py + scripts/external_market_data_ingest.py --quotes-offhours (Alpaca, IEX) +
-scripts/market_quotes_offhours_schwab.py (Schwab market data, OFF by default; AGENTS.md 28.2.0 / PR #2407 pending).
+scripts/lib/offhours_quotes.py + scripts/market_quotes_offhours_schwab.py (OFF by default until the operator approves
+the schedule; AGENTS.md 28.2.0 ratified on PR #2407). Alpaca extended prints are #2384's producer; this PR adds DIA,
+RSP, SOXX and XLK to its universe (config/market_quotes_extended.json).
 
 Proves:
-  * session tagging: every row's fetched_at is the quote's OWN trade timestamp (tz-aware UTC), and its session tag
-    (premarket / regular / after_hours / overnight / closed / weekend / holiday) derives from that timestamp;
-  * the universe is read from config (fixed proxies + the engine's large-cap list from the policy file), never
-    hardcoded, and a missing policy key is named, not filled;
-  * the Schwab path is off by default, stops before any Schwab/DB module is touched, refuses a non-market-data URL,
-    and never reaches an order capability (lane capability scanner + a function-level reach walk);
-  * a dry run writes nothing (the DB connection and the writer raise if touched).
+  * session tagging: rows follow #2384's contract exactly -- premarket/afterhours via market_quotes_extended.session_of,
+    bar_end = the trade instant (tz-aware UTC), the right reference close and date per session; overnight, regular and
+    non-trading-day prints are refused, never stored or relabelled; every row passes the store's writer validate();
+  * the universe is read from config (#2384's symbol list + the engine's large-cap list), never hardcoded;
+  * the store is market_quotes_extended through its single writer, never market_quotes;
+  * the Schwab path is off by default, stops before any Schwab/DB module, refuses a non-market-data URL, refuses
+    --apply while the §7A domain is proposed, and never reaches an order capability (lane capability scanner +
+    function-level reach walk);
+  * a dry run writes nothing.
 
 Hermetic: fixtures only, no network, no DB, no credential, no live state. Schedules nothing.
 """
@@ -19,20 +22,22 @@ from __future__ import annotations
 import ast
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
+for _p in (ROOT, ROOT / "scripts"):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 from lib import offhours_quotes as oq  # noqa: E402
-from lib.writers.market_quotes_writer import coerce_quote_row  # noqa: E402
+from lib.writers.market_quotes_extended_writer import validate  # noqa: E402
 
 FX = ROOT / "tests" / "fixtures" / "offhours_quotes"
-ALPACA_FX = FX / "alpaca_snapshots_afterhours_20261029.json"
-SCHWAB_FX = FX / "schwab_quotes_afterhours_20261029.json"
+AH_FX = FX / "schwab_quotes_afterhours_20261029.json"
+PM_FX = FX / "schwab_quotes_premarket_20261030.json"
 SCHWAB_ENTRY = ROOT / "scripts" / "market_quotes_offhours_schwab.py"
 LIB = ROOT / "scripts" / "lib" / "offhours_quotes.py"
 
@@ -41,117 +46,104 @@ def _t(s: str) -> datetime:
     return datetime.fromisoformat(s)
 
 
+def _ms(s: str) -> int:
+    return int(_t(s).timestamp() * 1000)
+
+
 @pytest.fixture()
 def cfg():
     return oq.load_config()
 
 
-# ── session tagging ─────────────────────────────────────────────────────────────────────────────────
+def _rows(path: Path, cfg):
+    doc = json.loads(path.read_text())
+    return doc, *oq.schwab_rows(doc["quotes"], _t(doc["now"]), cfg)
+
+
+# ── timestamps and session tagging ──────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize("raw,expected", [
     ("2026-10-29T21:58:12.123456789Z", "2026-10-29T21:58:12.123456+00:00"),
     ("2026-10-29T21:59:30.5Z", "2026-10-29T21:59:30.500000+00:00"),
-    ("2026-10-29T21:50:00Z", "2026-10-29T21:50:00+00:00"),
     ("2026-10-29T17:50:00-04:00", "2026-10-29T21:50:00+00:00"),
     (1793317750000, "2026-10-29T23:49:10+00:00"),
 ])
 def test_parse_ts_is_precise_and_utc(raw, expected):
     got = oq.parse_ts(raw)
-    assert got is not None and got.utcoffset().total_seconds() == 0
-    assert got.isoformat() == expected
+    assert got is not None and got.utcoffset() == timedelta(0) and got.isoformat() == expected
 
 
 @pytest.mark.parametrize("raw", [None, "", "yesterday", "2026-10-29T21:50:00", 0, -5, True, float("nan")])
 def test_parse_ts_refuses_ambiguous(raw):
-    assert oq.parse_ts(raw) is None  # naive or junk timestamps are skipped, never guessed
+    assert oq.parse_ts(raw) is None
 
 
-@pytest.mark.parametrize("ts,tag", [
-    ("2026-10-29T08:15:00-04:00", "premarket"),
-    ("2026-10-29T11:00:00-04:00", "regular"),
-    ("2026-10-29T16:00:00-04:00", "after_hours"),
-    ("2026-10-29T19:59:00-04:00", "after_hours"),
-    ("2026-10-29T21:00:00-04:00", "overnight"),   # Thursday night before Friday's session
-    ("2026-10-30T02:00:00-04:00", "overnight"),   # small hours of a trading day
-    ("2026-10-30T21:00:00-04:00", "closed"),      # Friday night: Saturday is not a trading day
-    ("2026-11-01T18:30:00-05:00", "overnight"),   # Sunday evening futures open before Monday
-    ("2026-10-31T12:00:00-04:00", "weekend"),
-    ("2026-11-26T12:00:00-05:00", "holiday"),     # Thanksgiving
-])
-def test_session_tag_from_timestamp(ts, tag, cfg):
-    assert oq.session_tag(_t(ts), cfg) == tag
-
-
-def test_alpaca_rows_carry_trade_time_and_session(cfg):
-    doc = json.loads(ALPACA_FX.read_text())
-    rows, skipped = oq.alpaca_rows(doc["snapshots"], _t(doc["now"]), cfg)
-    by = {r["row"]["symbol"]: r for r in rows}
-    assert set(by) == {"QQQ", "SPY", "NVDA"}
-    for sym, r in by.items():
-        raw_t = doc["snapshots"][sym]["latestTrade"]["t"]
-        assert r["row"]["fetched_at"] == oq.parse_ts(raw_t)  # the trade's own time, not the write time
-        assert r["row"]["fetched_at"].tzinfo is not None
-        assert r["session"] == "after_hours" == oq.session_tag(r["row"]["fetched_at"], cfg)
-        coerced = coerce_quote_row(r["row"], source="alpaca")  # the one writer accepts every row unchanged
-        assert coerced["fetched_at"] == r["row"]["fetched_at"]
+def test_afterhours_rows_follow_store_contract(cfg):
+    doc, rows, skipped = _rows(AH_FX, cfg)
+    assert [r["symbol"] for r in rows] == ["QQQ"]
+    r = rows[0]
+    assert validate(r) is None  # the store's own writer accepts it unchanged
+    assert r["session"] == "afterhours" and str(r["session_date"]) == "2026-10-29"
+    assert r["bar_end"] == oq.parse_ts(doc["quotes"]["QQQ"]["extended"]["tradeTime"])  # the trade instant, exactly
+    assert r["bar_end"].tzinfo is not None and r["bar_end"] - r["bar_start"] == timedelta(milliseconds=1)
+    assert r["price"] == 610.85  # extended block wins over quote.lastPrice
+    # after-hours moves from the SAME day's close (#2384 review), never quote.closePrice (the previous day)
+    assert r["reference_close"] == 615.0 and str(r["reference_date"]) == "2026-10-29"
+    assert r["reference_basis"] == "schwab_regular_market_last_price" and r["change_pct"] == -0.6748
+    assert r["feed"] == "schwab"
     reasons = {s["symbol"]: s["reason"] for s in skipped}
-    assert reasons == {"XLK": "stale_trade", "DIA": "no_trade_price_or_time", "IWM": "no_trade_price_or_time"}
+    assert reasons == {"/ES": "no_reference_close_for_afterhours", "/NQ": "no_reference_close_for_afterhours",
+                       "$VIX": "no_reference_close_for_afterhours", "$SPX": "stale_trade",
+                       "SPY": "no_trade_price_or_time", "/RTY": "not_a_quote"}
 
 
-def test_regular_session_trade_is_not_relabelled(cfg):
-    snap = {"Q": {"latestTrade": {"p": 10.0, "t": "2026-10-29T19:59:59Z"}}}  # 15:59:59 ET
-    rows, skipped = oq.alpaca_rows(snap, _t("2026-10-29T16:15:00-04:00"), cfg)
-    assert rows == [] and skipped[0]["reason"] == "session_regular"
+def test_premarket_rows_reference_previous_session(cfg):
+    doc, rows, skipped = _rows(PM_FX, cfg)
+    by = {r["symbol"]: r for r in rows}
+    assert set(by) == {"/ES", "/NQ", "QQQ", "$VIX"}
+    for sym, r in by.items():
+        assert validate(r) is None
+        assert r["session"] == "premarket" and str(r["session_date"]) == "2026-10-30"
+        assert str(r["reference_date"]) == "2026-10-29"  # previous NYSE session
+        assert r["reference_basis"] == "schwab_quote_close_price_previous_session"
+        q = doc["quotes"][sym]
+        assert r["bar_end"] == oq.parse_ts((q.get("extended") or q["quote"])["tradeTime"])
+    assert by["/ES"]["change_pct"] == round(100 * (6760.5 - 6850.0) / 6850.0, 4)
+    assert {s["symbol"]: s["reason"] for s in skipped} == {"NVDA": "no_reference_close_for_premarket"}
 
 
-def test_schwab_rows_prefer_extended_block_and_tag_sessions(cfg):
-    doc = json.loads(SCHWAB_FX.read_text())
-    rows, skipped = oq.schwab_rows(doc["quotes"], _t(doc["now"]), cfg)
-    by = {r["row"]["symbol"]: r for r in rows}
-    assert set(by) == {"/ES", "/NQ", "$VIX", "QQQ"}
-    assert by["QQQ"]["row"]["price"] == 610.85  # extended.lastPrice, not quote.lastPrice
-    assert by["QQQ"]["row"]["fetched_at"] == oq.parse_ts(doc["quotes"]["QQQ"]["extended"]["tradeTime"])
-    assert by["/ES"]["row"]["fetched_at"] == oq.parse_ts(doc["quotes"]["/ES"]["quote"]["tradeTime"])
-    assert all(r["session"] == "after_hours" for r in rows)
-    assert {s["symbol"]: s["reason"] for s in skipped} == {
-        "$SPX": "stale_trade", "SPY": "no_trade_price_or_time", "/RTY": "not_a_quote"}
+def test_premarket_after_holiday_uses_last_session(cfg):
+    # Friday 2026-11-27 pre-market: the previous NYSE session is Wednesday 11-25 (Thanksgiving closed).
+    p = {"/ES": {"quote": {"lastPrice": 6800.0, "closePrice": 6820.0, "tradeTime": _ms("2026-11-27T08:00:00-05:00")}}}
+    rows, _ = oq.schwab_rows(p, _t("2026-11-27T08:05:00-05:00"), cfg)
+    assert str(rows[0]["reference_date"]) == "2026-11-25"
 
 
-def test_overnight_futures_row_is_tagged_overnight(cfg):
-    ms = int(_t("2026-11-01T19:10:00-05:00").timestamp() * 1000)  # Sunday evening
-    payload = {"/ES": {"quote": {"lastPrice": 6800.0, "closePrice": 6820.0, "tradeTime": ms}}}
-    rows, _ = oq.schwab_rows(payload, _t("2026-11-01T19:15:00-05:00"), cfg)
-    assert rows[0]["session"] == "overnight"
-
-
-def test_alpaca_prev_close_has_one_implementation():
-    import external_market_data_ingest as emdi
-
-    snap = {"dailyBar": {"t": "2026-10-28T04:00:00Z", "c": 5.0}, "prevDailyBar": {"t": "2026-10-27T04:00:00Z", "c": 4.0}}
-    now = _t("2026-10-29T07:00:00-04:00")
-    assert emdi._alpaca_prev_close(snap, now) == oq.alpaca_prev_close(snap, now) == 5.0
-    assert oq.alpaca_prev_close(snap, _t("2026-10-28T18:00:00-04:00")) == 4.0
-    src = (ROOT / "scripts" / "external_market_data_ingest.py").read_text()
-    assert "prevDailyBar" not in src.split("def _alpaca_prev_close", 1)[1].split("\ndef ", 1)[0]
-
-
-# ── windows ─────────────────────────────────────────────────────────────────────────────────────────
-
-
-@pytest.mark.parametrize("ts,ok", [
-    ("2026-10-29T16:00:00-04:00", True), ("2026-10-29T20:00:00-04:00", True), ("2026-10-29T20:15:00-04:00", False),
-    ("2026-10-29T04:00:00-04:00", True), ("2026-10-29T09:30:00-04:00", True), ("2026-10-29T09:45:00-04:00", False),
-    ("2026-10-29T12:00:00-04:00", False), ("2026-10-31T17:00:00-04:00", False), ("2026-11-26T17:00:00-05:00", False),
+@pytest.mark.parametrize("ts", [
+    "2026-10-29T21:00:00-04:00",   # weekday overnight
+    "2026-11-01T19:10:00-05:00",   # Sunday evening futures
+    "2026-10-30T02:00:00-04:00",   # small hours
+    "2026-10-29T11:00:00-04:00",   # regular session
+    "2026-10-31T12:00:00-04:00",   # Saturday
 ])
-def test_alpaca_window(ts, ok, cfg):
-    assert oq.alpaca_window(_t(ts), cfg)[0] is ok
+def test_prints_outside_store_sessions_are_refused(ts, cfg):
+    p = {"/ES": {"quote": {"lastPrice": 6800.0, "closePrice": 6820.0, "tradeTime": _ms(ts)}}}
+    rows, skipped = oq.schwab_rows(p, _t(ts) + timedelta(minutes=2), cfg)
+    assert rows == [] and skipped[0]["reason"] == "session_not_in_store_contract"
+
+
+def test_stale_and_future_prints_refused(cfg):
+    p = {"QQQ": {"assetMainType": "EQUITY", "quote": {"closePrice": 615.0},
+                 "extended": {"lastPrice": 600.0, "tradeTime": _ms("2026-10-30T07:00:00-04:00")}}}
+    assert oq.schwab_rows(p, _t("2026-10-30T08:00:00-04:00"), cfg)[1][0]["reason"] == "stale_trade"
+    assert oq.schwab_rows(p, _t("2026-10-30T06:00:00-04:00"), cfg)[1][0]["reason"] == "future_timestamp"
 
 
 @pytest.mark.parametrize("ts,ok", [
     ("2026-11-01T17:45:00-05:00", False), ("2026-11-01T18:00:00-05:00", True), ("2026-11-02T03:00:00-05:00", True),
-    ("2026-11-02T11:00:00-05:00", False), ("2026-11-02T19:00:00-05:00", True), ("2026-11-06T09:15:00-05:00", True), ("2026-11-06T09:30:00-05:00", False),
-    ("2026-11-06T09:45:00-05:00", False), ("2026-11-07T12:00:00-05:00", False),
+    ("2026-11-02T11:00:00-05:00", False), ("2026-11-02T19:00:00-05:00", True), ("2026-11-06T09:15:00-05:00", True),
+    ("2026-11-06T09:30:00-05:00", False), ("2026-11-07T12:00:00-05:00", False),
 ])
 def test_schwab_window(ts, ok, cfg):
     assert oq.schwab_window(_t(ts), cfg)[0] is ok
@@ -160,41 +152,65 @@ def test_schwab_window(ts, ok, cfg):
 # ── universe from config ────────────────────────────────────────────────────────────────────────────
 
 
-def test_universe_read_from_config_and_policy(tmp_path):
-    (tmp_path / "config").mkdir()
-    (tmp_path / "config" / "policy.yaml").write_text("extended_hours:\n  heavyweights: [nvda, MSFT, QQQ]\n")
-    cfg = {"universe": {"symbols": ["QQQ", "spy"], "policy_file": "config/policy.yaml",
-                        "include_from_policy": ["extended_hours.heavyweights", "no.such.key"]}}
+def test_universe_union_of_config_sources(tmp_path):
+    (tmp_path / "a.json").write_text(json.dumps({"symbols": ["qqq", "SPY"]}))
+    (tmp_path / "p.yaml").write_text("extended_hours:\n  heavyweights: [NVDA, QQQ]\n")
+    cfg = {"universe": {"sources": [{"file": "a.json", "key": "symbols"},
+                                    {"file": "p.yaml", "key": "extended_hours.heavyweights"},
+                                    {"file": "p.yaml", "key": "no.such"}, {"file": "gone.json", "key": "x"}]}}
     syms, prov = oq.resolve_universe(cfg, root=tmp_path)
-    assert syms == ["QQQ", "SPY", "NVDA", "MSFT"]
-    assert prov["included"] == {"extended_hours.heavyweights": ["NVDA", "MSFT", "QQQ"]}
-    assert prov["missing_refs"] == ["no.such.key"]
+    assert syms == ["QQQ", "SPY", "NVDA"]
+    assert prov["missing_refs"][0] == "p.yaml:no.such" and prov["missing_refs"][1].startswith("gone.json:x")
 
 
-def test_shipped_config_universe_and_policy_ref(cfg):
-    assert cfg["universe"]["symbols"] == ["QQQ", "SPY", "IWM", "DIA", "RSP", "SMH", "SOXX", "XLK"]
-    assert cfg["universe"]["policy_file"] == "config/market_risk_policy.yaml"
-    assert "extended_hours.heavyweights" in cfg["universe"]["include_from_policy"]
+def test_shipped_universe_reads_2384_list_and_engine_policy(cfg):
+    srcs = cfg["universe"]["sources"]
+    assert {"file": "config/market_quotes_extended.json", "key": "symbols"} in srcs
+    assert {"file": "config/market_risk_policy.yaml", "key": "extended_hours.heavyweights"} in srcs
     syms, prov = oq.resolve_universe(cfg)
-    assert syms[:8] == cfg["universe"]["symbols"]
-    assert set(prov["missing_refs"]) | set(prov["included"]) == set(cfg["universe"]["include_from_policy"])
+    assert prov["missing_refs"] == []
+    ext = json.loads((ROOT / "config" / "market_quotes_extended.json").read_text())["symbols"]
+    for etf in ("QQQ", "SPY", "IWM", "DIA", "RSP", "SMH", "SOXX", "XLK"):  # the Alpaca universe extension
+        assert etf in ext and etf in syms
+    assert syms[: len(ext)] == ext
 
 
 def test_no_symbol_list_hardcoded_in_code():
     for path in (LIB, SCHWAB_ENTRY):
-        tree = ast.parse(path.read_text())
-        for node in ast.walk(tree):
+        for node in ast.walk(ast.parse(path.read_text())):
             if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
-                vals = [e.value for e in node.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)]
-                assert not {"QQQ", "SPY", "/ES", "$SPX"} & set(vals), f"{path.name}: hardcoded symbols {vals}"
+                vals = {e.value for e in node.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)}
+                assert not {"QQQ", "SPY", "/ES", "$SPX"} & vals, path.name
 
 
-def test_run_uses_resolved_universe(cfg, tmp_path):
-    seen = []
-    doc = json.loads(ALPACA_FX.read_text())
-    r = oq.run("alpaca", cfg=cfg, now=_t(doc["now"]), fetch=lambda s: seen.append(list(s)) or doc["snapshots"],
-               write=None, dry_run=True)
-    assert seen and seen[0] == r["symbols"] and seen[0][:8] == cfg["universe"]["symbols"]
+# ── the store: market_quotes_extended only ──────────────────────────────────────────────────────────
+
+
+def test_never_writes_market_quotes():
+    for path in (LIB, SCHWAB_ENTRY):
+        src = path.read_text()
+        assert "market_quotes_writer" not in src and "write_market_quotes" not in src
+        assert "INSERT INTO" not in src.upper()
+    assert "from lib.writers.market_quotes_extended_writer import write_extended_quotes" in SCHWAB_ENTRY.read_text()
+
+
+def test_apply_refuses_while_domain_proposed(cfg):
+    on = {**cfg, "schwab": {**cfg["schwab"], "enabled": True}}
+
+    def boom(*_a, **_k):
+        raise AssertionError("fetched or wrote while the store's domain is proposed")
+    r = oq.run(cfg=on, now=_t("2026-10-30T08:00:00-04:00"), fetch=boom, write=boom, dry_run=False,
+               promoted=lambda: False)
+    assert r["status"] == "refused_domain_proposed"
+
+
+def test_apply_writes_through_the_extended_writer(cfg):
+    doc = json.loads(PM_FX.read_text())
+    on = {**cfg, "schwab": {**cfg["schwab"], "enabled": True}}
+    got = []
+    r = oq.run(cfg=on, now=_t(doc["now"]), fetch=lambda s: doc["quotes"], dry_run=False, promoted=lambda: True,
+               write=lambda rows: got.extend(rows) or {"inserted": len(rows), "rejected": []})
+    assert r["status"] == "ok" and r["inserted"] == 4 and all(validate(x) is None for x in got)
 
 
 # ── Schwab: off by default, never reaches an order capability ───────────────────────────────────────
@@ -206,8 +222,9 @@ def test_schwab_switch_defaults_off(cfg):
 
     def boom(*_a, **_k):
         raise AssertionError("fetch/write must not run while the switch is off")
-    r = oq.run("schwab", cfg=cfg, now=_t("2026-10-29T21:00:00-04:00"), fetch=boom, write=boom, dry_run=False)
-    assert r["status"] == "disabled" and r["written"] == 0
+    r = oq.run(cfg=cfg, now=_t("2026-10-30T08:00:00-04:00"), fetch=boom, write=boom, dry_run=False,
+               promoted=lambda: True)
+    assert r["status"] == "disabled" and r["inserted"] == 0
 
 
 def test_schwab_apply_stops_before_schwab_modules(monkeypatch, capsys):
@@ -247,6 +264,7 @@ def test_schwab_probe_makes_no_live_call(cfg, monkeypatch):
     monkeypatch.setattr(ent, "live_fetch", lambda *a, **k: (_ for _ in ()).throw(AssertionError("live call")))
     p = ent.probe(cfg)
     assert p["enabled"] is False and p["live_call_made"] is False and p["url_rail_ok"] is True
+    assert p["store"] == "market_quotes_extended"
     assert p["symbols"][:7] == [*cfg["schwab"]["futures"], *cfg["schwab"]["indices"]]
 
 
@@ -254,22 +272,14 @@ ORDER_NAMES = {"place_order", "submit_order", "cancel_order", "replace_order"}
 FORBIDDEN_IMPORTS = ("schwab_transport", "brokers", "alpaca_trade_api", "schwab.client")
 
 
-def _own_imports(path: Path) -> set[str]:
-    out = set()
-    for node in ast.walk(ast.parse(path.read_text())):
-        if isinstance(node, ast.Import):
-            out |= {a.name for a in node.names}
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            out.add(node.module)
-    return out
-
-
 def test_own_modules_import_no_broker_execution_code():
     for path in (LIB, SCHWAB_ENTRY):
-        mods = _own_imports(path)
+        tree = ast.parse(path.read_text())
+        mods = {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
+        mods |= {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module}
         assert not [m for m in mods if m.startswith(FORBIDDEN_IMPORTS)], (path.name, mods)
-        names = {n.id for n in ast.walk(ast.parse(path.read_text())) if isinstance(n, ast.Name)}
-        names |= {n.attr for n in ast.walk(ast.parse(path.read_text())) if isinstance(n, ast.Attribute)}
+        names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+        names |= {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
         assert not names & ORDER_NAMES
 
 
@@ -284,67 +294,51 @@ def _scan(entry: str) -> dict:
     for mod in order:
         for c in res.info(mod).caps:
             caps.setdefault(c, []).append(cap._chain(mod, parent))
-    eager_caps = {c for m in eager for c in res.info(m).caps}
-    return {"caps": caps, "eager": eager_caps}
+    return {"caps": caps, "eager": {c for m in eager for c in res.info(m).caps}}
 
 
 def test_capability_scanner_schwab_entry():
     s = _scan("scripts/market_quotes_offhours_schwab.py")
     assert "direct_sender" not in s["caps"]
-    # Nothing forbidden loads when the lane starts.
-    assert not {"order_placement", "broker_module", "direct_sender"} & s["eager"]
-    # Static (lazy) reach to the order surface exists ONLY through the token manager's own module (its live_probe
-    # lazily imports schwab_transport) -- never through this lane's code. The function-level walk below proves the
-    # token-manager functions this lane calls do not reach it.
+    assert not {"order_placement", "broker_module", "direct_sender"} & s["eager"]  # nothing forbidden at start
+    # Lazy static reach to the order surface exists only via the token manager's live_probe or the shared
+    # db_adapter chain (operator ruling DD01 2026-10-15), never through this lane's own code; the walk below proves
+    # the token-manager functions this lane calls do not reach it.
+    own = {"scripts/market_quotes_offhours_schwab.py", "scripts/lib/offhours_quotes.py"}
     for chain in s["caps"].get("order_placement", []):
-        assert chain[1] == "scripts/schwab_token_manager.py", chain
+        assert chain[1] in {"scripts/schwab_token_manager.py", "scripts/db_adapter.py"} or chain[1] in own, chain
+        assert not (set(chain[1:]) & own), chain
 
 
-def test_capability_scanner_ingest_lane_unchanged():
-    s = _scan("scripts/external_market_data_ingest.py")
-    assert set(s["caps"]) == {"db_write", "network_http"}  # same as main before this change
-
-
-# Function-level reach: the token-manager functions the Schwab lane calls, followed through same-module calls and
-# function-local imports. None may import broker execution code or name an order function.
 TM = ROOT / "scripts" / "schwab_token_manager.py"
 CALLED = {"canonical_token_key", "get_access_token", "is_auth_failure", "record_auth_failure"}
 
 
-def _functions(tree: ast.Module) -> dict[str, ast.FunctionDef]:
-    return {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
-
-
 def test_called_token_manager_functions_never_reach_order_code():
     tree = ast.parse(TM.read_text())
-    fns = _functions(tree)
+    fns = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
     assert CALLED <= set(fns), "token manager public read API changed"
     module_level = ast.Module(body=[n for n in tree.body if not isinstance(n, (ast.FunctionDef, ast.ClassDef))],
                               type_ignores=[])
-    todo, seen, lazy_mods = list(CALLED) + ["_load_broker_secrets_env"], set(), set()
-    bodies = [module_level]
+    todo, seen, lazy_mods, bodies = list(CALLED) + ["_load_broker_secrets_env"], set(), set(), [module_level]
     while todo:
         name = todo.pop()
         if name in seen or name not in fns:
             continue
         seen.add(name)
         bodies.append(fns[name])
-        for n in ast.walk(fns[name]):
-            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in fns:
-                todo.append(n.func.id)
+        todo += [n.func.id for n in ast.walk(fns[name])
+                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in fns]
     for body in bodies:
         for n in ast.walk(body):
             if isinstance(n, ast.Import):
                 lazy_mods |= {a.name for a in n.names}
             elif isinstance(n, ast.ImportFrom) and n.module:
                 lazy_mods.add(n.module)
-            if isinstance(n, ast.Name):
-                assert n.id not in ORDER_NAMES
-            if isinstance(n, ast.Attribute):
-                assert n.attr not in ORDER_NAMES
+            assert not (isinstance(n, ast.Name) and n.id in ORDER_NAMES)
+            assert not (isinstance(n, ast.Attribute) and n.attr in ORDER_NAMES)
     assert "live_probe" not in seen  # the one function that imports schwab_transport is not on this path
     assert not [m for m in lazy_mods if m.startswith(FORBIDDEN_IMPORTS)], sorted(lazy_mods)
-    # Repo modules imported on that path must not load order code at import time either.
     import audit_lane_transitive_capabilities as cap
     res = cap.Resolver()
     for m in sorted(lazy_mods):
@@ -356,62 +350,33 @@ def test_called_token_manager_functions_never_reach_order_code():
 # ── dry runs write nothing ──────────────────────────────────────────────────────────────────────────
 
 
-def test_alpaca_dry_run_writes_nothing(monkeypatch, capsys):
-    import external_market_data_ingest as emdi
-
-    def boom(*_a, **_k):
-        raise AssertionError("dry run touched the DB or the writer")
-    monkeypatch.setattr(emdi, "_get_conn", boom)
-    monkeypatch.setattr(emdi, "write_market_quotes", boom)
-    monkeypatch.setattr(emdi, "_alpaca_creds", boom)
-    r = emdi.ingest_alpaca_offhours_quotes(dry_run=True, fixture=str(ALPACA_FX), now=_t("2026-10-29T18:00:00-04:00"))
-    assert r["status"] == "dry_run" and r["written"] == 0 and len(r["rows"]) == 3
-    assert all(row["session"] == "after_hours" for row in r["rows"])
-    assert '"status": "dry_run"' in capsys.readouterr().out
-
-
-def test_alpaca_apply_writes_through_the_one_writer(monkeypatch):
-    import external_market_data_ingest as emdi
-
-    calls = []
-
-    class Conn:
-        def cursor(self): return object()
-        def commit(self): calls.append("commit")
-        def close(self): calls.append("close")
-
-    class Rc:
-        rows_accepted = 3
-        rejected = []
-
-    monkeypatch.setattr(emdi, "_get_conn", lambda: Conn())
-    monkeypatch.setattr(emdi, "write_market_quotes",
-                        lambda cur, rows, source: calls.append((source, [r["fetched_at"] for r in rows])) or Rc())
-    r = emdi.ingest_alpaca_offhours_quotes(fixture=str(ALPACA_FX), now=_t("2026-10-29T18:00:00-04:00"))
-    assert r["status"] == "ok" and r["written"] == 3
-    assert calls[0][0] == "alpaca" and all(t.tzinfo for t in calls[0][1]) and calls[-1] == "close"
-
-
-def test_alpaca_outside_window_fetches_nothing(cfg):
-    r = oq.run("alpaca", cfg=cfg, now=_t("2026-10-29T12:00:00-04:00"),
-               fetch=lambda s: (_ for _ in ()).throw(AssertionError("fetched")), write=None, dry_run=False)
-    assert r["status"] == "outside_window"
-
-
-def test_schwab_dry_run_writes_nothing(monkeypatch, capsys):
+@pytest.mark.parametrize("fx,n", [(AH_FX, 1), (PM_FX, 4)])
+def test_schwab_dry_run_writes_nothing(fx, n, monkeypatch, capsys):
     import market_quotes_offhours_schwab as ent
 
     def boom(*_a, **_k):
         raise AssertionError("dry run reached live code")
     monkeypatch.setattr(ent, "_write", boom)
     monkeypatch.setattr(ent, "live_fetch", boom)
-    assert ent.main(["--dry-run", "--fixture", str(SCHWAB_FX), "--now", "2026-10-29T19:50:00-04:00"]) == 0
+    doc = json.loads(fx.read_text())
+    assert ent.main(["--dry-run", "--fixture", str(fx), "--now", doc["now"]]) == 0
     out = json.loads(capsys.readouterr().out)
-    assert out["status"] == "dry_run" and out["written"] == 0 and out["config_enabled"] is False
-    assert {r["symbol"] for r in out["rows"]} == {"/ES", "/NQ", "$VIX", "QQQ"}
+    assert out["status"] == "dry_run" and out["inserted"] == 0 and out["config_enabled"] is False
+    assert out["store"] == "market_quotes_extended" and len(out["rows"]) == n
 
 
 def test_run_requires_writer_when_not_dry(cfg):
-    doc = json.loads(ALPACA_FX.read_text())
+    doc = json.loads(PM_FX.read_text())
+    on = {**cfg, "schwab": {**cfg["schwab"], "enabled": True}}
     with pytest.raises(ValueError):
-        oq.run("alpaca", cfg=cfg, now=_t(doc["now"]), fetch=lambda s: doc["snapshots"], write=None, dry_run=False)
+        oq.run(cfg=on, now=_t(doc["now"]), fetch=lambda s: doc["quotes"], write=None, dry_run=False,
+               promoted=lambda: True)
+
+
+def test_feed_label_comes_from_config(tmp_path):
+    src = (ROOT / "config" / "market_risk_offhours_quotes.yaml").read_text()
+    assert "\n  feed: schwab" in src
+    bad = tmp_path / "c.yaml"
+    bad.write_text(src.replace("\n  feed: schwab", "\n  feed: ''"))
+    with pytest.raises(oq.ConfigError):
+        oq.load_config(bad)

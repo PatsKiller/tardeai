@@ -6066,7 +6066,24 @@
       "readers": [
         "scripts/lib/market_risk/reader.py (PgReader.extended_quotes)"
       ],
-      "derived_copies": []
+      "derived_copies": [],
+      "secondary_producers": [
+        {
+          "lane": "market-quotes-offhours-schwab",
+          "provider": "schwab",
+          "feed": "schwab",
+          "entry": "scripts/market_quotes_offhours_schwab.py --apply",
+          "config": "config/market_risk_offhours_quotes.yaml",
+          "writer": "scripts/lib/writers/market_quotes_extended_writer.py (the same single writer; no second writer)",
+          "reads": "GET https://api.schwabapi.com/marketdata/v1/quotes only, token via schwab_token_manager public read API (canonical_token_key, get_access_token); never schwab_transport, account, order, stop, 2FA or auth endpoints",
+          "symbols": "/ES /NQ /RTY /YM, $SPX $COMPX $VIX, plus config/market_quotes_extended.json symbols and config/market_risk_policy.yaml extended_hours.heavyweights",
+          "contract": "premarket/afterhours of NYSE trading days only (session_of); bar_end = trade instant, bar_start = bar_end - 1 ms; afterhours equity reference = regular.regularMarketLastPrice same day, premarket reference = quote.closePrice previous session; missing reference refuses the row. Overnight (20:00-04:00) futures are refused by the store's session CHECK: storing them needs a #2384 schema change (operator decision).",
+          "policy": "AGENTS.md 28.2.0 (host lanes may read broker market data) ratified by the operator on PR #2407 (APPROVE_AGENTS_POLICY_28_2_0 2407 cdb7802cc..., ratify commit f060c2e78; #2407 not merged to main as of 2026-10-31)",
+          "status": "built, switched off (schwab.enabled false), NEVER_SCHEDULED; --apply also refuses while this domain is proposed",
+          "grant": "PENDING: operator approves the schedule in session (§25.10.2) and grants schwab as a provider for this domain (providers.schwab.supplies gains market-data quotes, §7A rule 7); then a PR flips schwab.enabled"
+        }
+      ],
+      "_universe_note": "2026-10-31 (PR #2416): DIA, RSP, SOXX and XLK added to config/market_quotes_extended.json symbols so the engine's full index/breadth/sector proxy set is collected by the Alpaca producer."
     }
   ],
   "data_dictionary": {

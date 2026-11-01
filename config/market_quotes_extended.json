@@ -11,6 +11,7 @@
   "reference_basis": "alpaca_sip_daily_bar_close",
   "daily_lookback_days": 10,
   "retry": {"attempts": 3, "backoff_seconds": [2, 6, 18]},
-  "symbols": ["SPY", "QQQ", "IWM", "SMH",
+  "_symbols_note": "2026-10-31 off-hours collector (PR #2416): DIA, RSP, SOXX and XLK added so the engine's full index, breadth and sector proxy set is collected; the Schwab extended-hours lane reads this same list (config/market_risk_offhours_quotes.yaml universe.sources).",
+  "symbols": ["SPY", "QQQ", "IWM", "SMH", "DIA", "RSP", "SOXX", "XLK",
               "NVDA", "MSFT", "AAPL", "AMZN", "GOOGL", "META", "AVGO", "TSLA", "BRK.B", "JPM", "LLY", "ORCL", "NFLX", "AMD", "INTC"]
 }
