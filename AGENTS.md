@@ -1,17 +1,22 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      29.2.0
+Policy-Version:      29.2.1
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
-Effective-Date:      2026-10-31
-Last-Reviewed:       2026-10-31T23:00:00-04:00
+Effective-Date:      2026-11-01
+Last-Reviewed:       2026-11-01T11:45:00-05:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          29.1.0
+Supersedes:          29.2.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**29.2.1 is ACTIVE (PATCH) — generated §7A source-of-truth table refreshed.** The Market Risk Engine's
+extended-session store `quote_extended_session` (`market_quotes_extended`) was granted by the operator (§7A/§26.6, in-session
+2026-11-01: "I approve the after-hour and I also approve turning on real alerts. We can always tune it later.") and the
+generated table in §7A now lists it as an active domain; no rule-text change. Supersedes 29.2.0.
 
 **29.2.0 is ACTIVE (MAJOR) — host lanes read broker market data; Finviz cookie pages and API both (§24.11).**
 Ratified 2026-10-31 (`APPROVE_AGENTS_POLICY_29_2_0 2407 eef5607759c3e32dbfdeafe6492906f5cdca535c`, §20). Renumbered only, no rule-text change: ratified as 28.2.0 on
@@ -30,13 +35,7 @@ a883ab7147498aa59750f4cf8fa8d1c60edfe2f7`), but #2334 merged its own 28.0.0 firs
 `docs/designs/DSN-20261030-workspace-lifecycle.md`. **Why MAJOR:** narrows exception (c), adds deleting rules (C/R/X,
 nested-repo bundling, backups); `MBI_BEHAVIOR = 0`.
 
-**27.0.1 is ACTIVE (PATCH) — ratification of 27.0.0 (agents delete their own scratch; a scheduled purge reclaims the rest).**
-27.0.0 was merged as PROPOSED (a defect: the ratifying commit was not pushed before the operator's `--admin` merge,
-LESSONS L0-01/L0-02); this PATCH is the §20 ratifying edit — header `Status: PROPOSED → ACTIVE`, `Effective-Date:
-2026-10-30`, banner and history row — with **no rule-text change**. Ratified by the operator 2026-10-30
-(`APPROVE_AGENTS_POLICY_27_0_0 2303`), superseding 26.2.2.
-
-Older banners (26.2.2 and before): `docs/governance/AGENTS_HISTORY.md`.
+Older banners (27.0.1 and before): `docs/governance/AGENTS_HISTORY.md`.
 
 ---
 
@@ -817,6 +816,7 @@ either by hand. *Cause: 2026-09-13 — three incidents in one week, none declare
 | **operator_decisions** | native | `governance/operator_decisions.jsonl` | `scripts/lib/operator_approvals.py` | event-driven authenticated operator review and separately governed audit proposals | 720h | — | native | — | — | `say_so` | operator 2026-10-27 |
 | **conflict_ledger** | derived | `data/conflicts/conflict_events.jsonl` | `scripts/lib/conflicts/ledger.py` | event changes; conflict-resolver shadow cadence separately owned by W8 | 0.5h | `conflict_records` | — | — | — | `say_so` | operator 2026-10-29 |
 | **conflict_rule_proposals** | derived | `data/conflicts/rule_proposals.jsonl` | `scripts/lib/conflicts/proposals.py` | conflict-resolver shadow runs (unmatched observations); conflict-rule-proposals lane (proposals); operator decisions | 24h | `conflict_proposals` | — | — | — | `say_so` | operator 2026-10-29 |
+| **quote_extended_session** | ingested | `market_quotes_extended` | `scripts/lib/writers/market_quotes_extended_writer.py` | */15 04:00-09:30 and 16:00-20:00 Mon-Fri NYSE trading days | 0.5h | — | alpaca | — | — | `say_so` | operator 2026-11-01 |
 <!-- SOURCE_OF_TRUTH_TABLE_END -->
 
 ## Positions, cost basis and portfolio value — the source of truth
@@ -2654,6 +2654,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 29.2.1 | 2026-11-01 | ACTIVE | PATCH | Supersedes 29.2.0. Generated §7A source-of-truth table refreshed: `quote_extended_session` (`market_quotes_extended`, single writer `scripts/lib/writers/market_quotes_extended_writer.py`, Alpaca SIP) granted (operator §7A/§26.6, in-session 2026-11-01; store, writer, provider and schedule approved as DSN-20261031-market-risk-engine §11 items 1-2 on 2026-10-31) and listed as an active domain; no rule-text change. | operator 2026-11-01 in-session (recorded in `config/data_source_authority.json` approval) |
 | 29.2.0 | 2026-10-31 | ACTIVE | MAJOR | Supersedes 29.1.0. Renumbered 28.2.0 (#2407): ratified as 28.2.0 on 2026-10-31 before 29.0.0 merged; renumbered, plus an operator-approved citation fix (§24.12 causes back to L24-16; new lesson numbered L24-19). §24.11 gains "Broker market data and paid data feeds": scheduled host lanes may read broker MARKET-DATA endpoints only (quotes incl. extended hours, price history, option chains, market hours, movers; moomoo quotes and capital flow) through the existing token managers / OpenD session; never account, order, position-write, stop, 2FA or auth-flow endpoints; agents never read credentials or cookie files; Finviz Elite API exports AND the cookie-authenticated pages are both used, each only by its existing host lane; each new lane gets a §7A row; data-fee decisions stay operator-only. MAJOR because it widens what host lanes may read from a broker. §0 untouched. | `APPROVE_AGENTS_POLICY_29_2_0 2407 eef5607759c3e32dbfdeafe6492906f5cdca535c` (operator, in-session 2026-10-31); held-class operator merge (§25.10). Provenance: `APPROVE_AGENTS_POLICY_28_2_0 2407 cdb7802ccd58ac976f8fdbbc740a0b8dc18655ef` (operator, in-session 2026-10-31, ratified as 28.2.0 before 29.0.0 merged; renumbered only, no rule-text change). |
 | 29.1.0 | 2026-10-31 | ACTIVE | MINOR | Supersedes 29.0.0. Renumbered 28.1.0 (#2392): ratified as 28.1.0 on 2026-10-31 before 29.0.0 merged; renumbered only, no rule-text change. §25.10: after a healthy promote or rollback the deploy restarts its long-standing bound list plus grok-oauth-proxy, chatgpt-oauth-proxy and heartbeat-receiver (named; ratifying is the operator decision `config/release_pin_daemons.json` reserves), fail-closed: WorkingDirectory=CURRENT only, installed units only, §23.14 tokens over name/argv/environment applied to every candidate incl. override, ops-applier and portfolio-server never, callback-poller never during any session, cap 12; verify reads `/proc/<pid>/cwd`, receipts, pages P1 on failure; the promote continues. §10 bullet corrected. MINOR: no approval/guard daemon gains a restart (ops-applier excluded; callback-poller narrowed to closed sessions); the deploy delegation is unchanged and §28.1 is not touched. | `APPROVE_AGENTS_POLICY_29_1_0 2392 b2348fcef400d4cf320f039f128653f2087c4caf` (operator, in-session 2026-10-31); held-class operator merge (§25.10). Provenance: `APPROVE_AGENTS_POLICY_28_1_0 2392 2a424d7799c4e8aec6a7e02abc649cda800e6351` (operator, in-session 2026-10-31, ratified as 28.1.0 before 29.0.0 merged; renumbered only, no rule-text change). |
 | 29.0.0 | 2026-10-31 | ACTIVE | MAJOR | Supersedes 28.0.0. Renumbered union of the operator-ratified 2026-10-30 content of #2309 (27.0.1), #2310 (28.0.0) and #2311 (29.0.0), none merged before #2306 took 27.0.1: §0 rule 6 exception (c) narrowed to `~/.cache/agent-tmp/<task-id>` (owner deletes after proofs; rule T reclaims the rest); (d) backups: one dump on host, N+1 on Drive, removed only after Drive verification (§24.15); worktrees closed only by archive-then-remove (§24.14, rules W/C); §24.13 rule T bundles nested unique commits instead of holding; §24.12 kinds (e)/(f); §24.14 workspace lifecycle (rules C/R/X, daily/pressure sweep to target); §24.15 twice-weekly growth audit; §17 thresholds operator-only. | `APPROVE_AGENTS_POLICY_29_0_0 2311 df34d1d1e8e80d19fdab6a7f415a064eb5bcf6f6` (renumbered: #2334 took 28.0.0 first; content previously ratified as `APPROVE_AGENTS_POLICY_28_0_0 2311 a883ab71`, `APPROVE_AGENTS_POLICY_27_0_1 2309 c499b57b`, `_28_0_0 2310 06a90d74`, `_29_0_0 2311 6f5db2cf`) |
