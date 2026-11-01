@@ -496,6 +496,10 @@ sectors:
   stress_z_1d: -2.0         # one-session shock band (about the worst 2% of days), same RS condition
   weak_z_1d: -1.5
   resilient_rs_z: 0.75      # beating SPY by 0.75 sd of its own relative history, or rising while SPY falls
+  freshness:                # review of PR 2460: a group is scored only on a series current with SPY's calendar; returns
+                            # are taken on SPY's calendar and history samples the group cannot date-align are dropped
+    recent_sessions: 21       # the r1 / r5 / r20 windows
+    max_missing_recent: 0     # SPY sessions a group may miss inside them (0: every session present)
   price_dd_min_pct: -3.0    # price-weakness gate: STRESS/WEAK only when >= 3% under the 20-session high AND lagging SPY over 20 sessions
   defensive_key: defensive
   growth_keys: [tech, semis, ai_basket, comm]

@@ -50,6 +50,49 @@ def _index(series: dict[str, list[tuple[str, float]]], members: list[str]) -> li
     return [(d, mean(look[m][d] / base[m] for m in have if base[m])) for d in ordered]
 
 
+def _calendar_gaps(idx: list[tuple[str, float]], bench: list[tuple[str, float]], *, recent: int, window: int) -> dict[str, Any]:
+    """The group's last date vs the benchmark's, and how many benchmark sessions it misses in the last ``recent``
+    sessions (the r1/r5/r20 windows) and in the last ``window`` sessions (the z-history)."""
+    have = {d for d, _ in idx}
+    bdates = [d for d, _ in bench]
+    first = idx[0][0] if idx else None
+    # history gaps are holes INSIDE the group's own span: a series that simply starts later is short history, which
+    # the length and z-score minimums already handle, not a gap
+    hist = [d for d in bdates[-(window + 1):] if first is not None and d >= first]
+    return {
+        "first": first,
+        "last": idx[-1][0] if idx else None,
+        "bench_last": bdates[-1] if bdates else None,
+        "missing_recent": sum(1 for d in bdates[-(recent + 1):] if d not in have),
+        "missing_history": sum(1 for d in hist if d not in have),
+    }
+
+
+def _cal_ret(gmap: dict[str, float], cal: list[str], n: int, back: int = 0) -> float | None:
+    """Return over n benchmark sessions ending ``back`` sessions ago, on the benchmark's calendar; None when the group
+    lacks a close at either endpoint."""
+    if len(cal) <= n + back:
+        return None
+    a, b = gmap.get(cal[-1 - back - n]), gmap.get(cal[-1 - back])
+    return (b / a - 1.0) * 100.0 if a and b is not None else None
+
+
+def _cal_hist(gmap: dict[str, float], bmap: dict[str, float], cal: list[str], n: int, window: int) -> tuple[list[float], list[float]]:
+    """The group's n-session returns over the last ``window`` benchmark sessions, and its returns relative to the
+    benchmark on the SAME dates; samples whose endpoints the group lacks are dropped."""
+    own, rel = [], []
+    for i in range(max(n, len(cal) - window), len(cal)):
+        a, b = gmap.get(cal[i - n]), gmap.get(cal[i])
+        if not a or b is None:
+            continue
+        r = (b / a - 1.0) * 100.0
+        own.append(r)
+        ba, bb = bmap.get(cal[i - n]), bmap.get(cal[i])
+        if ba and bb is not None:
+            rel.append(r - (bb / ba - 1.0) * 100.0)
+    return own, rel
+
+
 def _ret(idx: list[tuple[str, float]], n: int, back: int = 0) -> float | None:
     if len(idx) <= n + back:
         return None
@@ -111,6 +154,9 @@ def measure(ctx: c.EvalContext) -> dict[str, Any]:
     b20 = _ret(b_idx, 20)
     b1 = _ret(b_idx, 1)
     as_of = b_idx[-1][0] if b_idx else None
+    fr = cfg.get("freshness") or {}
+    recent_sessions = int(fr.get("recent_sessions", 21))
+    max_missing_recent = int(fr.get("max_missing_recent", 0))
     rows: list[dict[str, Any]] = []
     sector_dailies: list[list[float]] = []
     r5_sectors: list[float] = []
@@ -127,18 +173,40 @@ def measure(ctx: c.EvalContext) -> dict[str, Any]:
             row.update(state="UNKNOWN", tier="UNKNOWN", reason_unknown="insufficient history", as_of=as_of)
             rows.append(row)
             continue
-        r1, r5, r20 = _ret(idx, 1), _ret(idx, 5), _ret(idx, 20)
+        # Freshness and gaps against SPY's calendar (review of PR 2460): a series that ends before the benchmark, or
+        # misses benchmark sessions inside the return windows or the z-history, is not scored. Returns are then taken
+        # on the dates both series share, so a step back of n is n BENCHMARK sessions, never n rows of a gappy series.
+        gap = _calendar_gaps(idx, b_idx, recent=recent_sessions, window=window)
+        reason = None
+        if gap["last"] != gap["bench_last"]:
+            reason = f"stale: last close {gap['last']}, SPY {gap['bench_last']}"
+        elif gap["missing_recent"] > max_missing_recent:
+            reason = f"gaps: {gap['missing_recent']} of the last {recent_sessions} SPY sessions missing (limit {max_missing_recent})"
+        if reason:
+            row.update(state="UNKNOWN", tier="UNKNOWN", reason_unknown=reason, as_of=gap["last"],
+                       missing_recent=gap["missing_recent"], missing_history=gap["missing_history"])
+            rows.append(row)
+            continue
+        # Returns on SPY's calendar (review of PR 2460): an n-session return is close(D) / close(D - n SPY sessions);
+        # a sample whose endpoints the group lacks is dropped, never stepped over by row offset. The current r1/r5/r20
+        # endpoints are present (max_missing_recent above); the z-history keeps only the samples it can date-align.
+        cal = [d for d, _ in b_idx]
+        gmap, bmap = dict(idx), dict(b_idx)
+        n_in_window = sum(1 for d in cal[-(window + 1):] if d in gmap)
+        if n_in_window < 60:
+            row.update(state="UNKNOWN", tier="UNKNOWN", as_of=as_of,
+                       reason_unknown=f"insufficient history: {n_in_window} SPY sessions with a close (need 60)")
+            rows.append(row)
+            continue
+        r1, r5, r20 = _cal_ret(gmap, cal, 1), _cal_ret(gmap, cal, 5), _cal_ret(gmap, cal, 20)
         rs5 = None if r5 is None else r5 - b5
         rs20 = None if (r20 is None or b20 is None) else r20 - b20
-        hist5 = _hist_rets(idx, 5, window)
-        bhist5 = _hist_rets(b_idx, 5, window)
-        k = min(len(hist5), len(bhist5))
-        rs_hist = [x - y for x, y in zip(hist5[-k:], bhist5[-k:])]
+        hist5, rs_hist = _cal_hist(gmap, bmap, cal, 5, window)
         z5, zrs = _z(r5, hist5), _z(rs5, rs_hist)
-        hist1, bhist1 = _hist_rets(idx, 1, window), _hist_rets(b_idx, 1, window)
-        k1 = min(len(hist1), len(bhist1))
+        hist1, rs_hist1 = _cal_hist(gmap, bmap, cal, 1, window)
         rs1 = None if (r1 is None or b1 is None) else r1 - b1
-        z1, zrs1 = _z(r1, hist1), _z(rs1, [x - y for x, y in zip(hist1[-k1:], bhist1[-k1:])])
+        z1, zrs1 = _z(r1, hist1), _z(rs1, rs_hist1)
+        idx = [(d, gmap[d]) for d in cal if d in gmap]
         hi20 = max(x[1] for x in idx[-20:])
         dd20 = (idx[-1][1] / hi20 - 1.0) * 100.0 if hi20 else None
         state = "NEUTRAL"

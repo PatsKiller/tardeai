@@ -5,6 +5,7 @@ budget. Synthetic data only (public repo)."""
 from __future__ import annotations
 
 import json
+import math
 import re
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -409,3 +410,95 @@ def test_hedge_block_refuses_a_forbidden_key_without_asserts(monkeypatch):
     monkeypatch.setattr(ha, "HEDGE_FORBIDDEN", ("thresholds",))
     with pytest.raises(ValueError):
         ha.hedge(stoplights=_stoplights({"PSQ": "RED"}), momentum_rows=[], book_exposure=BE, defense_cfg=DEFENSE, today=TODAY)
+
+
+# ── Sector freshness and calendar alignment (review of PR 2460, round 2) ──────────────────────────────────────────
+from scripts.lib.market_risk import contract as mrc  # noqa: E402
+from scripts.lib.market_risk import sectors as sec  # noqa: E402
+
+
+def _weekdays(n, last):
+    out, d = [], last
+    while len(out) < n:
+        if d.weekday() < 5:
+            out.append(d)
+        d -= timedelta(days=1)
+    return sorted(out)
+
+
+SPY_DAYS = _weekdays(320, date(2026, 10, 30))
+
+
+class _SeriesReader:
+    """Synthetic closes: SPY on every weekday; each other symbol on the days ``days_for`` keeps."""
+
+    def __init__(self, days_for=None, price=None):
+        self.days_for, self.price = days_for or {}, price or {}
+
+    def daily_bars(self, symbols, *, sessions, end):
+        rows = []
+        for s in symbols:
+            days = self.days_for.get(s, SPY_DAYS)
+            for i, d in enumerate(SPY_DAYS):
+                if d in days:
+                    px = self.price.get(s, lambda i: 100 * (1 + 0.0004 * i) + 3 * math.sin(i / 5))(i)
+                    rows.append({"symbol": s, "date": d.isoformat(), "close": px})
+        return rows
+
+    def __getattr__(self, k):
+        return lambda *a, **kw: []
+
+
+def _group(out, key):
+    return next(g for g in out["groups"] if g["key"] == key)
+
+
+def test_reviewer_probe_a_series_ending_before_spy_is_unknown_not_scored():
+    reader = _SeriesReader({"XLRE": [d for d in SPY_DAYS if d <= date(2026, 10, 16)]}, {"XLRE": lambda i: 100 * (1 + 0.0004 * i)})
+    out = sec.measure(mrc.EvalContext(now=datetime(2026, 10, 31, 21, tzinfo=timezone.utc), reader=reader, policy=POLICY))
+    g = _group(out, "real_estate")
+    assert g["state"] == "UNKNOWN" and g["reason_unknown"].startswith("stale: last close 2026-10-16")
+    assert g.get("r5") is None and g["as_of"] == "2026-10-16"
+
+
+def test_a_hole_inside_the_return_windows_is_unknown():
+    hole = {SPY_DAYS[-8]}  # one SPY session missing inside the r20 window
+    reader = _SeriesReader({"XLRE": [d for d in SPY_DAYS if d not in hole]})
+    out = sec.measure(mrc.EvalContext(now=datetime(2026, 10, 31, 21, tzinfo=timezone.utc), reader=reader, policy=POLICY))
+    g = _group(out, "real_estate")
+    assert g["state"] == "UNKNOWN" and g["reason_unknown"].startswith("gaps: 1 of the last 21")
+
+
+def test_returns_are_on_spys_calendar_not_row_offsets():
+    """A hole older than the return windows drops z samples; the current 5-session return still spans exactly 5 SPY
+    sessions (a row-offset step would reach across the hole)."""
+    hole = set(SPY_DAYS[-60:-40])
+    lin = lambda i: 100.0 + i  # noqa: E731 — close = 100 + i on the i-th SPY session
+    reader = _SeriesReader({"XLRE": [d for d in SPY_DAYS if d not in hole]}, {"XLRE": lin})
+    out = sec.measure(mrc.EvalContext(now=datetime(2026, 10, 31, 21, tzinfo=timezone.utc), reader=reader, policy=POLICY))
+    g = _group(out, "real_estate")
+    n = len(SPY_DAYS) - 1
+    assert g["state"] != "UNKNOWN"
+    assert g["r5"] == round((lin(n) / lin(n - 5) - 1) * 100, 2)
+    assert g["r20"] == round((lin(n) / lin(n - 20) - 1) * 100, 2)
+    hist, rel = sec._cal_hist({d.isoformat(): lin(i) for i, d in enumerate(SPY_DAYS) if d not in hole},
+                              {d.isoformat(): 1.0 for d in SPY_DAYS}, [d.isoformat() for d in SPY_DAYS], 5, 252)
+    assert len(hist) == len(rel) and len(hist) < 252  # samples across the hole are dropped, never stepped over
+
+
+def test_freshness_tolerances_live_in_config():
+    fr = POLICY["sectors"]["freshness"]
+    assert {"recent_sessions", "max_missing_recent"} <= set(fr)
+
+
+def test_with_a_tolerated_recent_hole_returns_still_span_spy_sessions():
+    import copy
+
+    pol = copy.deepcopy(POLICY)
+    pol["sectors"]["freshness"]["max_missing_recent"] = 3
+    hole = {SPY_DAYS[-10]}  # inside the r20 window, not an endpoint
+    lin = lambda i: 100.0 + i  # noqa: E731
+    reader = _SeriesReader({"XLRE": [d for d in SPY_DAYS if d not in hole]}, {"XLRE": lin})
+    g = _group(sec.measure(mrc.EvalContext(now=datetime(2026, 10, 31, 21, tzinfo=timezone.utc), reader=reader, policy=pol)), "real_estate")
+    n = len(SPY_DAYS) - 1
+    assert g["r20"] == round((lin(n) / lin(n - 20) - 1) * 100, 2)  # a row-offset step would span 21 sessions
