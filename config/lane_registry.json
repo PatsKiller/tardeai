@@ -2549,8 +2549,11 @@
       "expected_cadence_hours": 1,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/rotation_summary_cache.json"
+        "kind": "json_key",
+        "path": "data/runtime/warm-caches_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/warm_caches.py:_receipt writes a LaneRunReceipt via lib.lane_last_receipt on every real run (2026-11-01). The previous file_mtime named the cache it refreshes, which a failed run also leaves behind."
       },
       "note": "DECLARED BY THE INTEGRATOR, not this lane's owner. The cron was added while PRs were in flight and check_lane_registry failed on clean main, blocking every merge. Facts used: the cron expression, and the script's own statement that it 'computes + writes data/runtime/rotation_summary_cache.json'. Cadence 1h against an 8-minute schedule -- deliberately loose, because an integrator guessing a tight cadence on someone else's lane manufactures false SILENTs. The owner should tighten it.",
       "value_class": "Technical Debt",
@@ -3286,9 +3289,13 @@
       "expected_cadence_hours": 12.5,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "none"
+        "kind": "json_key",
+        "path": "data/runtime/hermes-usefulness-backfill_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/hermes_external_feedback_loop.py writes a LaneRunReceipt via lib.lane_last_receipt (2026-11-01); this closes the 'would make this verifiable' gap the note used to describe."
       },
-      "note": "Scores hermes_external_research.usefulness_score. The column it writes carries no companion timestamp, so there is nothing to take a max() of; a scored_at column or a run receipt would make this verifiable. | 2026-09-14: gated to the operator window; weekday nights skip (up to 12 h without a run). Operator rule 2026-09-14: scheduled paid work runs weekdays 09:00-21:00 ET or weekends, never inside DeepSeek billing peak (scripts/run_with_deepseek_offpeak.sh --scheduled).",
+      "note": "Scores hermes_external_research.usefulness_score. A LaneRunReceipt now makes this lane verifiable. | 2026-09-14: gated to the operator window; weekday nights skip (up to 12 h without a run). Operator rule 2026-09-14: scheduled paid work runs weekdays 09:00-21:00 ET or weekends, never inside DeepSeek billing peak (scripts/run_with_deepseek_offpeak.sh --scheduled).",
       "value_class": "Nice to Have",
       "recommendation": "PIPELINE:P13",
       "rationalization": {
@@ -19219,9 +19226,11 @@
       "expected_cadence_hours": 744.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/monthly_trade_review.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/multi-tier-trade-reviewer-monthly_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/multi_tier_trade_reviewer.py writes a LaneRunReceipt via lib.lane_last_receipt; the log redirect proved only that cron opened a file (2026-11-01)."
       },
       "value_class": "Operationally Important",
       "recommendation": "PIPELINE:P07",
@@ -21143,9 +21152,11 @@
       "expected_cadence_hours": 0.5,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/hermes_directive_discovery.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/hermes-directive-discovery_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/hermes_directive_discovery.py writes a LaneRunReceipt via lib.lane_last_receipt; the log redirect proved only that cron opened a file (2026-11-01)."
       },
       "value_class": "Nice to Have",
       "recommendation": "PIPELINE:P10",
@@ -21836,9 +21847,11 @@
       "expected_cadence_hours": 0.5,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/directive_keyword_enhancer.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/directive-keyword-enhancer_last.json",
+        "key": "ok_at",
+        "evidence": "LANE_RECEIPT",
+        "evidence_ref": "scripts/directive_keyword_enhancer.py writes a LaneRunReceipt via lib.lane_last_receipt; the log redirect proved only that cron opened a file (2026-11-01)."
       },
       "value_class": "Operationally Important",
       "recommendation": "EVENT_DRIVEN_CANDIDATE",
