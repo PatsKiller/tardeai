@@ -188,6 +188,53 @@ render_relay_live_lanes() {
   else
     log "WARN relay live-lane render failed — relay keeps the host-file list (fallback)"
   fi
+  # 2026-10-31: say what this release would change in the EFFECTIVE live set (vs the served CURRENT), record every
+  # exclusion, and page once when it changes. Never fatal here; promote holds on it (relay_live_set_gate_step).
+  local gate="${dir}/scripts/relay_live_set_gate.py"
+  if [[ -f "$gate" ]]; then
+    (cd "$dir" && "$py" "$gate" diff --release "$dir" --served "$(current_release)" --write --notify) \
+      || log "WARN relay live-set diff could not be computed"
+  fi
+}
+
+# 2026-10-31: a promote that changes which lanes the n8n relay runs live is held until the operator acknowledges that
+# exact change with a guard grant (scripts/lib/relay_live_set_gate.py; diff_id binds the build sha and the lane delta).
+# A no-rule-text AGENTS.md PATCH moved the live set by 10 lanes (trade-ai-scalp-live among them) with no operator step.
+# After the gate passes, the host-state pin is latched (one-way), so no later rollback can unpin a release that reads it.
+relay_live_set_gate_step() {
+  local dir="$1"
+  local gate="${dir}/scripts/relay_live_set_gate.py"
+  if [[ ! -f "$gate" ]]; then
+    log "relay live-set gate skipped (script not present in release)"
+    return 0
+  fi
+  local py="$VENV_PYTHON"
+  [[ -x "$py" ]] || py="python3"
+  if ! (cd "$dir" && "$py" "$gate" gate --release "$dir" --served "$(current_release)"); then
+    write_deploy_receipt false promote blocked false "relay_live_set_unacknowledged"
+    die "relay live set would change and the operator has not acknowledged this diff_id — promote held (${dir}/N8N_RELAY_LIVE_SET_DIFF.json)"
+  fi
+  (cd "$dir" && "$py" "$gate" latch-pin --release "$dir") || log "WARN relay live-source host pin could not be latched"
+}
+
+# 2026-11-01: rollback runs no gate (it is the recovery path), but it must not change the relay live set silently:
+# rolling back to a release older than the pin (351c7df0b, 99bfa4abc, 7e9dc51a6 carry 27.0.0 PROPOSED) runs that
+# release's own resolver, which follows the header. Compute the diff with each release's own code, WARN and page once.
+relay_live_set_rollback_diff() {
+  local target="$1" from="$2"
+  local gate=""
+  local cand
+  for cand in "${from}/scripts/relay_live_set_gate.py" "${ROOT}/scripts/relay_live_set_gate.py"; do
+    if [[ -f "$cand" ]]; then gate="$cand"; break; fi
+  done
+  if [[ -z "$gate" ]]; then
+    log "WARN relay live-set rollback diff skipped (no gate script in ${from} or ${ROOT})"
+    return 0
+  fi
+  local py="$VENV_PYTHON"
+  [[ -x "$py" ]] || py="python3"
+  "$py" "$gate" rollback-diff --release "$target" --served "$from" --notify \
+    || log "WARN relay live-set rollback diff could not be computed"
 }
 
 health_check() {
@@ -893,6 +940,7 @@ cmd_promote() {
   # release-write use (2026-10-21: 71df62acc was refused by CI after its use was consumed).
   release_grant_preflight promote "$sha" --no-consume
   conformance_gate "$sha"
+  relay_live_set_gate_step "$dir"
   # Re-query immediately before activation. Pending, missing, failed or unavailable
   # push/main evidence cannot be substituted with PR CI or an old receipt.
   local promote_note="promote_ok"
@@ -1107,6 +1155,7 @@ cmd_rollback() {
   log "Rolling back to $target (sha=$sha)"
   local rolled_from
   rolled_from="$(current_release)"
+  relay_live_set_rollback_diff "$target" "$rolled_from"
   activate_release "$target" "$sha"
   if ! health_check "rollback"; then
     write_deploy_receipt false rollback fail true "rollback_health_failed" "$target" "$sha" "$target" "$sha" "$rolled_from"

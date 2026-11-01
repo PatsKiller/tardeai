@@ -60,7 +60,7 @@ export function MarketRiskBanner({ mr }: { mr: MarketRisk | null }) {
   const acknowledge = async () => {
     setAck({ busy: true, note: null })
     try {
-      const r = await fetch('/api/v2/market-risk/ack', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ episode_id: mr.episode?.id ?? null, tier: mr.tier, score: mr.score }) })
+      const r = await fetch('/api/v2/market-risk/ack', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ episode_id: mr.episode?.id ?? null, episode_tier: mr.episode?.tier ?? null, tier: mr.tier, score: mr.score }) })
       const j: any = await r.json().catch(() => ({}))
       setAck({ busy: false, note: r.ok ? `Acknowledged ${shortTime(new Date().toISOString())}` : `Not recorded: ${j?.error ?? `HTTP ${r.status}`}${j?.detail ? ` — ${j.detail}` : ''}` })
     } catch (e) {

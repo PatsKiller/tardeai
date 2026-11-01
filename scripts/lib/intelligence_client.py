@@ -1090,8 +1090,27 @@ def _emit_memory_delta(ctx: dict, row: dict, env: dict) -> None:
         pass
 
 
+def admit_memory(record: dict, *, admitted_by: str, root: Path | None = None) -> dict:
+    """Admit ONE candidate memory into durable agent memory through the existing admission gate
+    (``agent_memory_admission.admit_candidate`` on ``agent_durable_memory.get_durable_provider(root)``).
+
+    The façade's door for producers that already write governed episodic memory (first caller:
+    ``lib/market_risk/cio_memory_fanout.py``, review of #2412, 2026-10-31), so they stop importing the silos
+    by name (Ring 1, scripts/check_memory_chokepoint.py). It adds nothing to the write path but the façade's
+    own MBI_BEHAVIOR = 0 rail: a record naming any BEHAVIOR_FIELDS key is refused (``BehaviorWriteRefused``)
+    before admission runs. Admission's own rules (forbidden authoritative wording, source refs, dedupe) apply
+    unchanged and its result dict is returned as is."""
+    hits = _scan_behavior(record)
+    if hits:
+        raise BehaviorWriteRefused(f"admit_memory named behaviour fields {hits}; MBI_BEHAVIOR = 0")
+    durable = _lib("agent_durable_memory")
+    provider = durable.get_durable_provider(root) if root is not None else durable.get_durable_provider()
+    return _lib("agent_memory_admission").admit_candidate(record, provider=provider, admitted_by=admitted_by)
+
+
 __all__ = ["open_context", "retrieve_or_generate", "run_ladder", "commit", "Loaders", "default_loaders",
            "MemoryUnavailable", "BehaviorWriteRefused", "contexts_path", "retrieval_receipts_path",
            "resolve_mode", "is_namespaced", "behavior_fields", "SCHEMA_CONTEXT", "SCHEMA_RETRIEVAL",
            "SCHEMA_COMMIT", "PURPOSES", "MODES", "DECISIONS", "shadow_open", "observe_generation", "shadow_commit",
-           "set_current_context", "current_context_id", "current_retrieval_receipt_id", "substrate", "SUBSTRATE_MODULES"]
+           "set_current_context", "current_context_id", "current_retrieval_receipt_id", "substrate", "SUBSTRATE_MODULES",
+           "admit_memory"]
