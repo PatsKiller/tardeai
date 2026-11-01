@@ -93,7 +93,7 @@ _NOT_A_KEY = re.compile(r"(?:Error|Exception|Warning|Exit|Interrupt|Violation)$"
 #: {'access_tokens': '<secret>'} is still redacted.
 _TOKEN_COUNT_KEY = re.compile(r"(?i)(?:tokens|token_?(?:count|limit|budget|usage|used))$")
 _INTEGER = re.compile(r"[+-]?\d+")
-#: A brokerage account number in prose ("account 12345678", "acct #12345678", "account number: 12345678").
+#: A brokerage account number in prose ("account <digits>", "acct #<digits>", "account number: <digits>").
 _ACCOUNT_NUMBER = re.compile(r"(?i)\b(acc(?:oun)?t(?:\s+(?:number|no\.?))?\s*[:#]?\s*)\d{6,12}\b")
 
 
