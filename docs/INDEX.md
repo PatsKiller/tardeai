@@ -1059,6 +1059,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261030-workspace-lifecycle.md` | Workspace lifecycle |
 | `docs/designs/DSN-20261031-market-risk-engine.md` | Market Risk Engine (MRE) |
 | `docs/designs/DSN-20261031-market-risk-ui.md` | Market risk on Home and the Risk page |
+| `docs/designs/DSN-20261101-issuer-segment-lookthrough.md` | Issuer segment look-through |
 | `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
 | `docs/diligence/current/AUDIT_LEDGER_STATUS.md` | Audit Ledger Status |
 | `docs/diligence/current/BROKER_WRITE_GUARD_EVIDENCE.md` | Broker Write Guard Evidence |
