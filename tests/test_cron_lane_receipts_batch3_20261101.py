@@ -50,3 +50,15 @@ def test_goal_loop_baseline_writes_a_receipt_and_no_write_does_not(tmp_path, mon
     monkeypatch.setattr(sys, "argv", ["report_goal_loop_baseline", "--json", "--no-write"])
     assert G.main() == 0
     assert not path.exists(), "--no-write must not write a receipt"
+
+
+def test_ensemble_heartbeat_carries_ok_only_when_errors_are_zero(tmp_path, monkeypatch):
+    from scripts import inference_ensemble_worker as E
+
+    path = tmp_path / "hb.json"
+    monkeypatch.setenv("ENSEMBLE_WORKER_HEARTBEAT", str(path))
+    E._write_heartbeat({"claimed": 1, "done": 1, "errors": 0})
+    first = json.loads(path.read_text())
+    assert first["ok"] is True and first["at"]
+    E._write_heartbeat({"claimed": 1, "done": 0, "errors": 1})
+    assert json.loads(path.read_text())["ok"] is False

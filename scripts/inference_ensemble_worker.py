@@ -188,7 +188,10 @@ def _write_heartbeat(out: dict) -> None:
         path = Path(os.environ.get("ENSEMBLE_WORKER_HEARTBEAT",
                                    str(Path(__file__).resolve().parents[1] / "data" / "runtime" / "ensemble_worker_heartbeat.json")))
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({**out, "at": datetime.now(timezone.utc).isoformat()}), encoding="utf-8")
+        # `ok` makes the heartbeat a receipt the Jobs projection can read: the registry declares
+        # this file's `at` as its clock, and a declared non-ok key only counts beside ok:true.
+        ok = int(out.get("errors") or 0) == 0
+        path.write_text(json.dumps({"ok": ok, **out, "at": datetime.now(timezone.utc).isoformat()}), encoding="utf-8")
     except Exception as e:
         log.warning("heartbeat write failed: %s", e)
 
