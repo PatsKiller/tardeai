@@ -1,4 +1,5 @@
-/** The YELLOW market-risk summary card on Home (design home/v004, builds on home/v002; DSN-20261031-market-risk-ui).
+/** The YELLOW market-risk summary card on Home (design home/v005 when the projection carries the v005 data — verdict
+ *  with dollars, top review item, sectors, re-entry, positions, review, budgets, "Why the score is N" — else home/v004, builds on home/v002; DSN-20261031-market-risk-ui).
  *  Sits in the v002 banner slot, above the header, never sticky, and only for an evaluated YELLOW (live or shadow, fresh
  *  or stale). Calm warning tone: the ordinary card surface with a warning left rule and a soft pill, not the ORANGE/RED
  *  alarm fill. Collapsible: collapsed by default on phone (≤820 px), open on desktop; the viewer's choice is remembered
@@ -7,7 +8,8 @@
 import { useId, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { RADIUS, TOKENS, TYPE, chipStyle, numStyle, toneVars } from '../../lib/designTokens'
-import { SUMMARY_OPEN_KEY, SUMMARY_PHONE_MAX_PX, summaryDefaultOpen, summaryModel, type MarketRisk } from '../../lib/marketRisk'
+import { SUMMARY_OPEN_KEY, SUMMARY_PHONE_MAX_PX, actionableModel, summaryDefaultOpen, summaryModel, type MarketRisk } from '../../lib/marketRisk'
+import { ActionableBody, ActionableHead, TopReview } from './MarketRiskActionable'
 import { ShadowTag } from './MarketRiskBanner'
 
 function readStored(): boolean | null {
@@ -32,6 +34,8 @@ const linkStyle = {
 
 export function MarketRiskSummary({ mr }: { mr: MarketRisk | null }) {
   const m = summaryModel(mr)
+  // design home/v005: the actionable card when the projection carries the v005 data; the v004 card otherwise
+  const a = m && !m.stale ? actionableModel(mr) : null
   const bodyId = useId()
   // The viewer's tap this session; until then the default (phone/desktop, stale, remembered choice) decides. Computed
   // per render so a projection that arrives after first paint (or turns stale) still gets its own default.
@@ -64,12 +68,31 @@ export function MarketRiskSummary({ mr }: { mr: MarketRisk | null }) {
           {open && !m.stale && m.confirm && <span className="mr-summary-wide" data-testid="home-market-risk-summary-confirm-wide" style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>{m.confirm}</span>}
           <span aria-hidden="true" style={{ marginLeft: 'auto', fontSize: TYPE.base, fontWeight: 700, color: TOKENS.text[1], whiteSpace: 'nowrap' }}>{open ? 'Less ▴' : 'Details ▾'}</span>
         </span>
-        {(!open || m.stale) && (
+        {a ? <ActionableHead m={a} /> : (!open || m.stale) && (
           <span data-testid="home-market-risk-summary-line" style={{ fontSize: TYPE.base, lineHeight: 1.5, color: m.stale ? warn.color : TOKENS.text[1] }}>{m.line}</span>
         )}
       </button>
+      {a && <TopReview m={a} />}
       <div id={bodyId} data-testid="home-market-risk-summary-body" hidden={!open} style={{ paddingBottom: 10 }}>
-        {m.stale ? (
+        {a ? (
+          <ActionableBody m={a} why={(
+            <div data-testid="mr-why" style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+              <h3 style={{ margin: 0, fontSize: TYPE.base, color: TOKENS.text[2], textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Why the score is {m.score ?? '—'}</h3>
+              <div style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>{m.evaluated}{m.confirm ? ` · ${m.confirm}` : ''}</div>
+              {m.contributors.map((c, i) => (
+                <div key={i} data-testid="home-market-risk-summary-contributor" style={{ display: 'flex', alignItems: 'baseline', gap: 10, fontSize: TYPE.md, lineHeight: 1.4 }}>
+                  <span style={{ flex: '1 1 0%', minWidth: 0, color: TOKENS.text[0], overflowWrap: 'anywhere' }}>{c.name}{c.detail ? <span style={{ color: TOKENS.text[2] }}> · {c.detail}</span> : null}</span>
+                  <span style={{ ...numStyle, flex: '0 0 auto', fontWeight: 700, color: TOKENS.text[1], textAlign: 'right' }}>{c.points}</span>
+                </div>
+              ))}
+              {m.uplift && <div style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>{m.uplift}</div>}
+              {m.notMeasured && <div data-testid="home-market-risk-summary-not-measured" style={{ fontSize: TYPE.sm, color: TOKENS.text[3], lineHeight: 1.5 }}>{m.notMeasured}</div>}
+              {m.deescalates && <div data-testid="home-market-risk-summary-deescalates" style={{ fontSize: TYPE.base, color: TOKENS.text[2], lineHeight: 1.5 }}><b style={{ color: TOKENS.text[0] }}>De-escalates if</b> {m.deescalates}</div>}
+              <div data-testid="home-market-risk-summary-footer" style={{ fontSize: TYPE.sm, color: TOKENS.text[3], lineHeight: 1.5 }}>{m.footer}</div>
+              {links}
+            </div>
+          )} />
+        ) : m.stale ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{ fontSize: TYPE.base, color: TOKENS.text[2], lineHeight: 1.5 }}>{m.footer}</div>
             {links}

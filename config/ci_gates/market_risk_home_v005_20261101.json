@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_home_v005_20261101",
+  "files": [
+    "tests/test_market_risk_v005_build_20261101.py"
+  ],
+  "anchor": "MARKET_RISK_HOME_V005_20261101",
+  "comment": [
+    "ANCHOR: MARKET_RISK_HOME_V005_20261101 — design home/v005 build: re-entry Stage 1/2 and verdicts, per-account exits",
+    "(a same-account re-buy is a holding; its wash sale occurred), value-weighted book exposure, issuer segments (APPROVED",
+    "only; shipped empty), budget numbers kept out of the snapshot (M3), the API-side dollar join that reconciles to Home."
+  ]
+}
