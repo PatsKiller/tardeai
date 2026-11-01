@@ -581,3 +581,37 @@ def test_round4_undotted_violation_class_is_not_a_key():
 def test_round4_escaped_json_count_key_stays_readable():
     text = 'ValueError: request {\\"max_tokens\\": 4096} too large'
     assert _r3(text) == text
+
+
+# ── Review round 5 (2026-11-01, probe_redact6.py): the round-4 exclusions must not leak ────────────────────────
+
+def test_round5_token_plural_key_with_a_string_value_is_redacted():
+    shown = _r3("RuntimeError: {'access_tokens': '" + _secret("Zx9FAKE", "access123") + "'}")
+    assert shown == "RuntimeError: {'access_tokens': '[REDACTED]'}"
+
+
+def test_round5_dotted_camelcase_setting_is_still_a_key():
+    assert _r3("RuntimeError: settings.ApiKey=" + _secret("Zx9FAKE", "key123")) == "RuntimeError: settings.ApiKey=[REDACTED]"
+
+
+def test_round5_dotted_password_attribute_is_still_a_key():
+    assert _r3("RuntimeError: cfg.Password: " + _secret("hunter", "2xyz")) == "RuntimeError: cfg.Password: [REDACTED]"
+
+
+def test_round5_token_count_exclusion_needs_an_integer():
+    assert _r3("ValueError: max_tokens=-1 invalid") == "ValueError: max_tokens=-1 invalid"
+    assert _r3("ValueError: token_count: " + _secret("abc", "def99")) == "ValueError: token_count: [REDACTED]"
+
+
+def test_round5_dotted_exception_class_still_not_a_key():
+    text = "psycopg2.errors.UndefinedTableWarning: relation missing"
+    assert _r3(text) == text
+
+
+def test_round5_account_number_in_prose_is_redacted():
+    # Synthetic numbers only.
+    assert _r3("RuntimeError: Schwab 401 for account 12345678") == "RuntimeError: Schwab 401 for account [REDACTED]"
+    assert _r3("RuntimeError: acct #87654321 not found") == "RuntimeError: acct #[REDACTED] not found"
+    assert _r3("RuntimeError: account number: 11223344 locked") == "RuntimeError: account number: [REDACTED] locked"
+    text = "RuntimeError: account 12 of 3 failed"
+    assert _r3(text) == text

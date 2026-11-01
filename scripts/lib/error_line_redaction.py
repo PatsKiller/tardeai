@@ -86,11 +86,15 @@ _VALUE = re.compile(
     r"""|\\?'(?P<sq>(?:[^'\\\n]|\\(?!'))*)(?:\\?')?"""
     r"""|(?P<val>[^\s"',;)}\]&\\]+))"""
 )
-_NOT_A_KEY = re.compile(
-    r"(?:Error|Exception|Warning|Exit|Interrupt|Violation)$"  # exception class names (ForeignKeyViolation)
-    r"|\.[A-Z][A-Za-z0-9]*$"  # a dotted path ending in a CamelCase class (psycopg2.errors.Foo)
-    r"|(?i:tokens$|token_?(?:count|limit|budget|usage|used)$)"  # token counts (max_tokens: 4096), not tokens
-)
+#: Exception class names, dotted or not (psycopg2.errors.ForeignKeyViolation). Round 5: ONLY these suffixes; a
+#: general "dotted CamelCase" exclusion leaked settings.ApiKey= and cfg.Password: values.
+_NOT_A_KEY = re.compile(r"(?:Error|Exception|Warning|Exit|Interrupt|Violation)$")
+#: Token-count keys (max_tokens, input_tokens, token_count). Round 5: excluded ONLY when the value is an integer, so
+#: {'access_tokens': '<secret>'} is still redacted.
+_TOKEN_COUNT_KEY = re.compile(r"(?i)(?:tokens|token_?(?:count|limit|budget|usage|used))$")
+_INTEGER = re.compile(r"[+-]?\d+")
+#: A brokerage account number in prose ("account 12345678", "acct #12345678", "account number: 12345678").
+_ACCOUNT_NUMBER = re.compile(r"(?i)\b(acc(?:oun)?t(?:\s+(?:number|no\.?))?\s*[:#]?\s*)\d{6,12}\b")
 
 
 def _redact_pairs(text: str) -> str:
@@ -113,6 +117,8 @@ def _redact_pairs(text: str) -> str:
             continue
         value = _VALUE.match(text, sep_end)
         group = next((g for g in ("dq", "sq", "val") if value and value.group(g) is not None), None)
+        if group and _TOKEN_COUNT_KEY.search(key) and _INTEGER.fullmatch(value.group(group) or ""):
+            group = None  # a token count, not a token
         if not group or not value.group(group) or R[:-1] in value.group(group):
             out.append(text[pos:sep_end])
             pos = sep_end
@@ -197,6 +203,7 @@ def redact_error_line(text: str, *, home: str | None = None) -> str:
     out = _UUID.sub(R, out)
     out = _MYSQL_PW.sub(lambda m: m.group(1) + " " + R, out)
     out = _redact_pairs(out)
+    out = _ACCOUNT_NUMBER.sub(lambda m: m.group(1) + R, out)
     out = _SPACE_KEY_VALUE.sub(lambda m: m.group(1) + R if _letters_digits(m.group(2)) else m.group(0), out)
     out = _B64_RUN.sub(_high_entropy, out)
     out = _ALNUM_RUN.sub(_letters_and_digits, out)
