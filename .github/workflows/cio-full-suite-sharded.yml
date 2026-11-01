@@ -317,6 +317,44 @@ jobs:
           path: ${{ runner.temp }}/attestation/
           if-no-files-found: ignore
 
+  cio-hardening:
+    # The SECOND required context, reported from the SAME sharded run (DSN-20261031-ci-load-reduction §4.3,
+    # operator-approved 2026-11-01). Identical needs and verification to ci-gate: same shards, same
+    # integrity rails (this workflow's integrity job already runs the hardening gates, including the
+    # release manifest and the report HTML smoke). The context name must match branch protection
+    # exactly, which is why this job is named cio-hardening and not something new.
+    #
+    # ROLLOUT: advisory until it has reported correctly on main for a day. The legacy
+    # cio-production-hardening-ci workflow stays untouched until then; retiring it and flipping branch
+    # protection to this context is the operator's step (design §7).
+    name: cio-hardening
+    needs: [shard, serial, pg, integrity]
+    if: (always()) && (github.event_name != 'pull_request' || github.event.pull_request.draft == false || startsWith(github.head_ref, 'mergify/'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TEST_SHA }}
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install deps
+        run: python3 -m pip install pyyaml
+      - name: Download shard manifests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: cio-shard-*-attempt-*
+          path: ${{ runner.temp }}/manifests
+          merge-multiple: false
+      - name: Verify every job passed and the shards ran exactly the registered files
+        env:
+          CI_GATE_NEEDS: ${{ toJSON(needs) }}
+        run: |
+          python3 scripts/run_cio_hardening_ci.py --shards "$CIO_SHARDS" \
+            --verify-shards "$RUNNER_TEMP/manifests"
+
   # 2026-10-21 (alignment audit H1): the nightly alarm. Any job of the scheduled run that failed,
   # was cancelled (a job past timeout-minutes reports `cancelled`) or timed out opens or updates the
   # same `ci-main-red` issue cio-production-hardening-ci.yml uses. PR and dispatch runs never alert.

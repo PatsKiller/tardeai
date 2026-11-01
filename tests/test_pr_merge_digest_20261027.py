@@ -608,4 +608,8 @@ def test_mergify_queue_rules_unchanged_for_solo_and_default():
     default = next(r for n, r in rules.items() if n.startswith("Queue default"))
     assert "label!=solo" in default["conditions"] and "label!=shared-infra" in default["conditions"]
     q = {r["name"]: r for r in _mergify()["queue_rules"]}
-    assert q["solo"]["batch_size"] == 1 and q["default"]["batch_size"] == 1
+    # 29.3.0 / DSN-20261031-ci-load-reduction §4.4 (operator 2026-11-01): the default queue batches up to 10 in the
+    # single weekday 17:30-18:30 ET window; the solo/shared-infra queue still merges one at a time.
+    assert q["solo"]["batch_size"] == 1 and q["default"]["batch_size"] == 10
+    flat = " ".join(str(c) for c in q["default"]["merge_conditions"])
+    assert "Mon-Fri 17:30-18:30[America/New_York]" in flat
