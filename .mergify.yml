@@ -135,12 +135,15 @@ pull_request_rules:
     actions:
       queue:
         name: solo
-  - name: Keep PRs up to date
-    conditions:
-      - -draft
-      - "#commits-behind >= 1"
-    actions:
-      update: null
+  # 2026-10-31: the blanket "Keep PRs up to date" rule (#2274, 2026-10-28: every non-draft PR with
+  # #commits-behind >= 1) is REMOVED. Every merge to main made Mergify push a merge-main commit to
+  # every open PR, and each push starts ~36 hosted jobs (two 12-job sharded suites, ~110 runner-min).
+  # On 2026-10-31 that was 2,913 of 5,369 runs (54%) and 287 of 444 PR head SHAs, 237 of them on PRs
+  # nobody had approved; main's required `cio-hardening` aggregate then waited 48-104 min for a
+  # runner. Branch protection is not strict, so a PR does not have to be current to merge, and the
+  # rule above ("keep approved PRs up to date with main", label=operator-merge) still keeps every
+  # PR that is about to merge current. tests/test_ci_queue_janitor_20261031.py fails if an `update`
+  # action without label=operator-merge comes back.
 
 queue_rules:
   - name: default

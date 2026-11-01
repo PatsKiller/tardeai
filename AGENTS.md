@@ -1,20 +1,26 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      28.1.0
+Policy-Version:      29.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
 Effective-Date:      2026-10-31
-Last-Reviewed:       2026-10-31T15:30:00-04:00
+Last-Reviewed:       2026-10-31T20:16:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
 Supersedes:          28.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
-**28.1.0 is ACTIVE (MINOR) — a promote or rollback restarts the units named in §25.10 and verifies them.** Ratified
-2026-10-31 (`APPROVE_AGENTS_POLICY_28_1_0 2392 2a424d7799c4e8aec6a7e02abc649cda800e6351`, §20). Merges after 28.0.0 (#2334). §28.1 unchanged.
+**29.0.0 is ACTIVE (MAJOR) — agents close what they open; a daily, pressure-triggered, recursive sweep closes the
+rest; backups are one on host, N+1 on Drive.** One version for the content the operator ratified on 2026-10-30 as
+27.0.1 (#2309), 28.0.0 (#2310) and 29.0.0 (#2311); those PRs never merged and #2306 took 27.0.1 on main first, so the
+content is renumbered here. The operator ratified it as 28.0.0 on 2026-10-31 (`APPROVE_AGENTS_POLICY_28_0_0 2311
+a883ab7147498aa59750f4cf8fa8d1c60edfe2f7`), but #2334 merged its own 28.0.0 first, so it is renumbered 29.0.0. Ratified by the operator 2026-10-31
+(`APPROVE_AGENTS_POLICY_29_0_0 2311 df34d1d1e8e80d19fdab6a7f415a064eb5bcf6f6`, §20). §0 rule 6, §24.12–§24.15, §17;
+`docs/designs/DSN-20261030-workspace-lifecycle.md`. **Why MAJOR:** narrows exception (c), adds deleting rules (C/R/X,
+nested-repo bundling, backups); `MBI_BEHAVIOR = 0`.
 
 **28.0.0 is ACTIVE (MAJOR) — operator-delegated merge (§25.10.3).** Ratified 2026-10-31 by the operator in session
 (`APPROVE_AGENTS_POLICY_28_0_0 2334 b610eb4d2a0616644d689ca2b2b2fe5ce4e1f793`, §20). An agent never merges on its own; after the operator's explicit in-session approval naming the PR
@@ -22,15 +28,13 @@ numbers (§28.4), or the operator's own Command Center Approvals → Merges tap,
 head-SHA bound) and apply `operator-merge`, or merge directly when the operator says not to wait for Mergify.
 **Why MAJOR:** adds a merge-approval recording authority to agents. §0 untouched; §0 rules 1–2 / §24.7 never overridable; `MBI_BEHAVIOR = 0`.
 
-**26.1.0 is PROPOSED (MAJOR) — approved work pushes itself; "designed" = a task id; emergency merge/deploy bypasses
-Mergify.** Awaiting `APPROVE_AGENTS_POLICY_26_1_0 <pr> <head_sha>` (§20). (1) §0 rule 4 / §28.15 item 8: an
-operator-approved scope is the push authorization — no separate `git-push` grant for an approved-scope fast-forward
-push of the agent's own non-`main` branch; budget and never-`main`/`release/*` still bind. (2) §28.3b: each buildable
-unit is a registered task id, never prose. (3) §25.10 / §17: held PRs merge on the operator's per-PR tap (never
-GitHub), and operator-initiated emergency merge/merge-and-deploy bypasses Mergify, SHA-bound; broker rails are never
-bypassed. **Why MAJOR:** edits §0 rule 4 and widens merge/deploy authority. §2, §2A, §7A, §23.14 and the
-broker/order/stop/sizing/secret rails are unchanged; `MBI_BEHAVIOR = 0`. Details: LESSONS L28-29/L28-30/L25-07; named
-debt OI-131/133/134.
+**27.0.1 is ACTIVE (PATCH) — ratification of 27.0.0 (agents delete their own scratch; a scheduled purge reclaims the rest).**
+27.0.0 was merged as PROPOSED (a defect: the ratifying commit was not pushed before the operator's `--admin` merge,
+LESSONS L0-01/L0-02); this PATCH is the §20 ratifying edit — header `Status: PROPOSED → ACTIVE`, `Effective-Date:
+2026-10-30`, banner and history row — with **no rule-text change**. Ratified by the operator 2026-10-30
+(`APPROVE_AGENTS_POLICY_27_0_0 2303`), superseding 26.2.2.
+
+Older banners (26.2.2 and before): `docs/governance/AGENTS_HISTORY.md`.
 
 ---
 
@@ -72,13 +76,17 @@ in every tool adapter, because an agent that reads fifteen lines and stops must 
 5. **Never auto-remediate divergent copies of an authoritative store.** Report both paths, hashes
    and timestamps. A machine picking one can destroy the other.
 6. **Never delete.** Archive with a tripwire that fires if anything reads the archived path.
-   Three exceptions, and nothing else: (a) the n8n lane `disk-hygiene` may remove the reclaimable
+   Four exceptions, and nothing else: (a) the n8n lane `disk-hygiene` may remove the reclaimable
    items its reviewed rules select (scripts/disk_hygiene.py, config/disk_hygiene_rules.json);
    (b) the host /tmp hygiene lanes may remove the /tmp items their reviewed tmp.* rules select
-   (scripts/tmp_hygiene_auto.py); and (c) an agent may delete only scratch it created, in a
-   declared scratch namespace, after proving its branch/PR merged or abandoned and that no running
-   process or claim references it — never a live store, DB, holdings, identity, lineage, the
-   InstrumentRecord store, or another agent's active work (AGENTS.md §24.12, §24.13).
+   (scripts/tmp_hygiene_auto.py); (c) agent scratch under `~/.cache/agent-tmp/<task-id>`: the
+   agent that created it may delete it once its branch/PR is merged or recorded abandoned and no
+   running process, live claim or active worklog references it, and `disk-hygiene` rule T reclaims
+   what agents leave behind. A worktree is closed only by archive-then-remove (`agent_claim.py close`,
+   rules W/C), never by hand (§24.14); and (d) `scripts/backup_enforcer.py` keeps one DB dump on this host
+   and N+1 on Drive, removing an older copy only after the newer one is verified on Drive (§24.15); none of these
+   ever touches a live store, DB, holdings, identity, lineage, the InstrumentRecord store, a served
+   release, `persistent-state`, a credential, or another agent's work (AGENTS.md §24.12, §24.13).
 7. **Dry-run before any live run** that writes durable state, sends to an operator surface, spends
    money, or touches a scheduled job. Quote the dry run's output.
 8. **Exit code 0 is not evidence of work.** Prove by a durable artifact that would not exist if the
@@ -1166,11 +1174,11 @@ What an agent still owns is proving the effect of its change after promotion.
 - **One PR per finding**, validation output quoted in the body.
 - **A push is not a deploy.** A merge to `main` is promoted by the poller under the operator-armed standing deploy
   delegation (§25.10) — so merge readiness is deploy readiness.
-- **A promote restarts only the units §25.10 names** (`scripts/lib/current_bound_units.py`; the literal default in
-  `scripts/cio_phase2_exact_main_deploy.sh`). Any other long-lived process keeps the code it imported at start, because
-  `WorkingDirectory=…/CURRENT` does not re-resolve; read back its cwd (`readlink /proc/<MainPID>/cwd`), as verify does.
-  See `docs/ops/BRIDGE_PIN_ALIGNMENT.md`. *Cause: 2026-09-18 — the bridge served `0162d0f19` while portfolio-server
-  served `71535687d` (LESSONS L0-12).*
+- **A promote restarts only the units in `TRADEAI_CURRENT_BOUND_UNITS`** (default list in
+  `scripts/cio_phase2_exact_main_deploy.sh`). A long-lived process outside that list keeps the code it imported at
+  start, because `WorkingDirectory=…/CURRENT` does not re-resolve after the symlink moves; read back its cwd
+  (`readlink /proc/<MainPID>/cwd`). See `docs/ops/BRIDGE_PIN_ALIGNMENT.md`. *Cause: 2026-09-18 — the bridge served
+  `0162d0f19` while portfolio-server served `71535687d` (LESSONS L0-12).*
 - **A deploy does not install new user units.** A new `config/systemd/user/*.timer` reaches the host only through
   `scripts/install_cio_operator_runtime.sh`, and installing a new production timer or cron entry is operator-only
   (§17). Prove it with `check_expected_services.py`, not with the unit file existing. *Cause: 2026-09-13 —
@@ -1507,9 +1515,10 @@ the operator's own merge (§28.4) — never relayed by another agent, and never 
 - **Deleting anything**, including adding a scheduled deletion of database rows, and **changing the disk-hygiene
   rules or never-touch list** (§24.12 — a `config-write` grant and a reviewed PR). Applying an archive batch
   (`cio_archive_mechanism`, §26.6).
-- **Installing the scheduled agent-scratch purge lane, and approving its scratch namespace list and idle
-  threshold** (§24.13 — the lane deletes, so namespace list, age threshold and schedule install are operator-only;
-  the agent-facing self-delete is bounded to the §24.13 declared namespaces, nothing wider).
+- **Enabling `disk-hygiene` rules T, C, R and X and setting their thresholds, cadence and pressure targets** (§24.14);
+  **backup N, releasing a recovery hold, and audit thresholds** (§24.15)
+- **Enabling `disk-hygiene` rule T and setting its idle threshold and entry pattern** (§24.13 — the rule deletes,
+  so `standing_apply.rules`, `standing_apply.agent_scratch` and the standing approval are operator-only).
 - Positions: approving each `positions_store` reader batch (`approved_readers[]`), retiring `holdings.json` as a
   store, granting a new writer of `holdings.json` or the positions tables, changing any key in
   `config/portfolio_positions.yaml` (§7A); granting the `operator_settings` table and its writer (§27).
@@ -2168,12 +2177,13 @@ workflow health contract (`config/n8n_health_contracts.json`): `N8N_MONITORING_A
 
 - **Two scripts, no hand deletion.** Only `scripts/disk_hygiene.py` (n8n lane `disk-hygiene` or the operator's CLI)
   and `scripts/tmp_hygiene_auto.py` (`/tmp` timers) remove anything, and only what `config/disk_hygiene_rules.json`
-  selects. Agents may dry-run; no agent applies or deletes by hand. `scripts/disk_hygiene_enforcer.py` must remove
+  selects. Agents may dry-run; no agent applies or deletes by hand, except its own `~/.cache/agent-tmp/<task-id>`
+  scratch under §24.13. `scripts/disk_hygiene_enforcer.py` must remove
   nothing. *Cause: 2026-10-18 — amendment required (LESSONS L24-16).*
 - **Reclaimable, and only these:** (a) a git clone or worktree whose tree is clean, with no untracked files, nothing
   unpushed, HEAD merged into `origin/main`, nothing referencing it (`CURRENT`, a unit, a crontab line), no running
   process with its cwd inside it, and idle past the rule's day count; (b) a release directory, keeping `CURRENT`, the
-  previous release and the newest N (rules file); (c) the `tmp.*` items. A check the script cannot evaluate makes the
+  previous release and the newest N (rules file); (c) the `tmp.*` items; (d) rule T agent scratch (§24.13); (e) rules C, R and X (§24.14); (f) backups per §24.15. A check the script cannot evaluate makes the
   item ineligible. Never touched, in code: `db_backups`, `persistent-state`, `models`, any `.env`, credential, cookie
   or token path, `~/.ssh`, `~/.config`, Docker and n8n volumes, `CURRENT` and the previous release; any other kind
   needs an amendment. *Cause: 2026-10-18 — only copies (LESSONS L24-17).*
@@ -2181,24 +2191,58 @@ workflow health contract (`config/n8n_health_contracts.json`): `N8N_MONITORING_A
   operator-only (§17). Kill switch: drop `disk-hygiene` from `TRADEAI_N8N_RELAY_LIVE_LANES`, or set
   `standing_apply.enabled` or `tmp.auto_apply.enabled` to `false`. *Cause: 2026-10-18 — fast stop (LESSONS L24-16).*
 
-## 24.13 Agent scratch: self-deletion and the scheduled purge
+## 24.13 Agent scratch: the agent removes its own, rule T reclaims the rest
 
-- **An agent may delete only its own scratch, and only in a declared namespace.** Scratch = a path the agent's own
-  task/run created, under a declared root: `~/.cache/agent-tmp/<task-id>` and a worktree off a branch it owns
-  (`scripts/new-worktree.sh`). The namespace list is `config/disk_hygiene_rules.json` (`standing_apply.agent_scratch`).
-- **Prove before you delete.** Before removing a scratch dir an agent records, in the worklog: (a) the branch/PR is
-  merged (`origin/main` ancestor) or explicitly abandoned with a recorded handoff; (b) no running process has its cwd
-  or an open fd inside the path; (c) no live claim or active worklog references it (`scripts/agent_claim.py status`).
-  A check the agent cannot prove makes the dir ineligible — it is left in place and reported.
-- **Never agent-deletable, under any grant:** a live store, the DB, holdings, identity, lineage, the InstrumentRecord
-  store, a served release, `persistent-state`, credentials, or another agent's active/claimed work. Those stay
-  archive-with-tripwire and operator-only (§0 rule 6, §17).
-- **The scheduled purge lane** (proposed, not installed) is the `disk-hygiene` lane's standing path: a daily host
-  timer (05:00 ET, after the close, off-peak) runs `scripts/disk_hygiene.py --standing --apply` against the reviewed
-  `standing_apply` rules (A/S/T/W). It re-validates every item at apply time, reads the claim board, worklogs, open
-  PRs and process cwds, refuses on any opaque process, and stops at the caps. It never runs under the n8n executor;
-  installing it is operator-only (§17).
+- **Agents put scratch under `~/.cache/agent-tmp/<task-id>` and record that path in their claim or worklog.** A path
+  named on the board is held by rule T for as long as the text stays there.
+- **An agent may delete its own `~/.cache/agent-tmp/<task-id>`, and nothing else by hand.** Before it does, it
+  records in its worklog: (a) the branch/PR is merged (`origin/main` ancestor) or recorded abandoned in its handoff;
+  (b) no running process has its cwd or an open fd inside the path; (c) no other live claim or active worklog
+  references it (`scripts/agent_claim.py status`). A check it cannot prove leaves the directory in place, reported.
+  It never deletes a worktree (rule W's, §24.12), another agent's directory, or anything outside that root.
+- **What rule T checks, in code** (`scripts/disk_hygiene.py`, `config/disk_hygiene_rules.json`
+  `standing_apply.agent_scratch`): the entry is a real directory directly under exactly `~/.cache/agent-tmp`, its
+  name matches `entry_regex`, its newest mtime (bounded scan, symlinks never followed) is older than `idle_days`, it
+  holds no registered worktree (rule W's), no nested repo with changes or untracked files, and no never-touch path;
+  a nested repo whose commits the reference repo lacks is `git bundle`d and verified into `bundle_dir` before
+  removal, or the entry stays. Its path also appears in no coordination
+  document, live claim or worklog, open PR, or running process's cwd or open fd. Any check it cannot evaluate holds
+  the entry. Rule T does **not** map a directory to a PR; the board reference is the hold.
+- **Never removable by any rule or agent:** a live store, the DB, holdings, identity, lineage, the InstrumentRecord
+  store, a served release, `persistent-state`, credentials, or another agent's referenced work (§0 rule 6, §24.12).
+- **How rule T runs.** Only through the standing path (`disk_hygiene.py --standing --apply`), after the operator
+  approves `standing_apply` and lists `T` in `standing_apply.rules`; until then it is plan-only and shows in every
+  plan. The schedule is the `disk-hygiene` lane's; arming its standing argv is the pending allowlist change
+  `disk-hygiene-standing-apply-20261024` — operator-only (§17).
 
+## 24.14 Workspace lifecycle — close what you open; the sweep closes the rest
+
+- **Open only declared workspaces.** Worktrees via `scripts/new-worktree.sh`, recorded on the claim; scratch and
+  `TMPDIR` only under `~/.cache/agent-tmp/<claim-id>/`. A worktree never holds a copied secret: `.env` is a symlink,
+  only when asked; release prepare never copies `.env.*`.
+- **Close what you open.** When a claim ends (`done`, `release`, PR merged or closed) its worktree and scratch are
+  closed by `agent_claim.py close`: everything git can hold (commits, changes, untracked non-ignored files) is
+  committed to `refs/archive/closeout-<date>/<slug>-<hash>`, then the worktree is removed. Ignored files are not
+  kept. It refuses, and reports, when a process is inside or another live claim names the path.
+- **The sweep** (`disk-hygiene` standing path) adds three rules: **C** — abandoned worktrees (no open PR, no claim
+  heartbeat within `claim_fresh_days`, no change within `idle_days`, no process, not locked, no real credential
+  file), archived first; **R** — release dirs beyond CURRENT, previous and the newest N; **X** — closeout refs and
+  rule-T bundles older than `archive_retention_days`. It runs daily, weekly with X, and under pressure with
+  `--until-target`: re-plan and re-apply until usage ≤ `target_pct`, a pass removes nothing, or `max_passes`.
+  Ending above `alert_pct` alerts once with the held bytes per reason.
+- **Thresholds, cadence and enablement are operator-only (§17)**; receipts in `persistent-state/.../disk_hygiene/`
+  are the proof (§0 rule 8). *Cause: 2026-10-30 — 646 worktrees, 99.75% disk (LESSONS L24-18).*
+
+## 24.15 Backups: one on the host, N+1 on Drive; growth is audited
+
+- **Host: exactly one DB dump, the latest.** Drive: the newest N+1 (`config/backup_policy.yaml` `drive_db`). A copy
+  is removed only after the newer dump passes `gzip -t` and its Drive object is verified (name, size, checksum);
+  nothing moves to an on-host `archive` (a move frees no blocks). A failed or unverified upload keeps the old copy
+  and alerts. Recovery holds stay until the operator releases them (§17).
+- **Growth is audited twice a week and on anomaly** (`disk-growth-audit` lane): per-root sizes against the last
+  run, every new or grown directory attributed to a lane, claim or agent, and anything unattributed or growing
+  faster than `growth_alert_gib_per_day` reported to the operator with its path, owner and age.
+  *Cause: 2026-10-30 — backups archived on the same disk; no audit saw 646 worktrees accumulate (LESSONS L24-18).*
 ---
 
 # 25 · Merge and deploy
@@ -2239,14 +2283,6 @@ workflow health contract (`config/n8n_health_contracts.json`): `N8N_MONITORING_A
   `release-write` grant; it never merges or pushes. `TRADEAI_DEPLOY_DELEGATION_SOFT=1` never binds a release. A failed
   deploy, or one stuck with `main` ahead of CURRENT, pages P1. Agents may request STOP; arming the delegation and
   clearing STOP are operator-only (§17). *Cause: 2026-10-27 — per-SHA grant wait (LESSONS L25-05).*
-- **After a healthy promote or rollback (any path) the deploy restarts the bound units and verifies them.** Restarted:
-  its long-standing list plus grok-/chatgpt-oauth-proxy and heartbeat-receiver, WorkingDirectory=`CURRENT` installed units
-  only, cap 12; an operator `TRADEAI_CURRENT_BOUND_UNITS` replaces that list, still filtered. The long-standing list skips
-  the §23.14 `lane_dispatch` matcher (its "telegram"/"executor" words name daemons restarted every promote since
-  2026-09), never the code never-list. Paged if stale, never restarted: ops-applier, portfolio-server, §23.14 tokens in
-  name/argv/env (code constant; config only adds), callback-poller during any session, all others. Each cwd is read back
-  and receipted; a failure pages P1 and the deploy continues. Not a §28.1 run-ender. *Cause: 2026-10-31 — stale applier
-  (LESSONS L25-09).*
 - **The emergency promote (`scripts/emergency_manual_promote.sh`, §24.8) and rollback are the operator's.** A
   coordinator agent may run it only on the operator's explicit instruction given in that coordinator's own session
   (§28.4), quoted verbatim in the receipt. Agents revert by PR. *Cause: 2026-10-27 — review L5 (LESSONS L25-06).*
@@ -2602,7 +2638,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 28.1.0 | 2026-10-31 | ACTIVE | MINOR | Supersedes 28.0.0 (merges after #2334). §25.10: after a healthy promote or rollback the deploy restarts its long-standing bound list plus grok-oauth-proxy, chatgpt-oauth-proxy and heartbeat-receiver (named; ratifying is the operator decision `config/release_pin_daemons.json` reserves), fail-closed: WorkingDirectory=CURRENT only, installed units only, §23.14 tokens over name/argv/environment applied to every candidate incl. override, ops-applier and portfolio-server never, callback-poller never during any session, cap 12; verify reads `/proc/<pid>/cwd`, receipts, pages P1 on failure; the promote continues. §10 bullet corrected. MINOR: no approval/guard daemon gains a restart (ops-applier excluded; callback-poller narrowed to closed sessions); the deploy delegation is unchanged and §28.1 is not touched. 26.2.2 and 27.0.1 banners moved to `docs/governance/AGENTS_HISTORY.md` (size). | `APPROVE_AGENTS_POLICY_28_1_0 2392 2a424d7799c4e8aec6a7e02abc649cda800e6351` (operator, in-session 2026-10-31) |
+| 29.0.0 | 2026-10-31 | ACTIVE | MAJOR | Supersedes 28.0.0. Renumbered union of the operator-ratified 2026-10-30 content of #2309 (27.0.1), #2310 (28.0.0) and #2311 (29.0.0), none merged before #2306 took 27.0.1: §0 rule 6 exception (c) narrowed to `~/.cache/agent-tmp/<task-id>` (owner deletes after proofs; rule T reclaims the rest); (d) backups: one dump on host, N+1 on Drive, removed only after Drive verification (§24.15); worktrees closed only by archive-then-remove (§24.14, rules W/C); §24.13 rule T bundles nested unique commits instead of holding; §24.12 kinds (e)/(f); §24.14 workspace lifecycle (rules C/R/X, daily/pressure sweep to target); §24.15 twice-weekly growth audit; §17 thresholds operator-only. | `APPROVE_AGENTS_POLICY_29_0_0 2311 df34d1d1e8e80d19fdab6a7f415a064eb5bcf6f6` (renumbered: #2334 took 28.0.0 first; content previously ratified as `APPROVE_AGENTS_POLICY_28_0_0 2311 a883ab71`, `APPROVE_AGENTS_POLICY_27_0_1 2309 c499b57b`, `_28_0_0 2310 06a90d74`, `_29_0_0 2311 6f5db2cf`) |
 | 28.0.0 | 2026-10-31 | ACTIVE | MAJOR | Supersedes 27.0.1. §25.10.3 "Operator-delegated merge" added: an agent never merges on its own, but after the operator types an explicit approval naming the PR numbers in that agent's own session (§28.4), or taps approve on the Command Center Approvals → Merges surface, that agent may record a `PrMergeDigestApproval@v1` row (provenance "operator in-session directive", words verbatim, bound to each PR's current head SHA) and apply `operator-merge` through the host helper the Telegram tap uses; Mergify still merges under the four required checks, the ET windows and the head-SHA binding; held classes only when the operator names the PR; a direct `gh pr merge --squash --match-head-commit` only when the operator says not to wait for Mergify (operator 2026-10-31: "You don't need to wait for Merger 5 [Mergify], you can merge"), with the four required checks green on the approved head and never `--admin`; never the emergency path, never self-approval; §0 rules 1–2 and §24.7 never overridable. §25.10 first bullet, §25.10.1/§25.10.2 "never extends to merging", §28.4 and §17 cross-referenced. MAJOR because it adds a merge-approval recording authority to agents. §0 untouched (no adapter propagation). Textually independent of the open 27.0.1 ratification PRs #2306/#2309. | `APPROVE_AGENTS_POLICY_28_0_0 2334 b610eb4d2a0616644d689ca2b2b2fe5ce4e1f793` (operator, in-session 2026-10-31) |
 | 27.0.1 | 2026-10-30 | ACTIVE | PATCH | Ratifying edit only: 27.0.0 was merged to main as PROPOSED (ratifying commit not pushed before the operator's `--admin` merge), so this PATCH flips header `Status: PROPOSED → ACTIVE`, `Effective-Date: 2026-10-30`, banner and history row with no rule-text change. §0 rule 6 / §24.13 / §17 content is exactly as in 27.0.0. | `APPROVE_AGENTS_POLICY_27_0_0 2303` (ratified as 27.0.1) |
 | 27.0.0 | 2026-10-30 | SUPERSEDED | MAJOR | §0 rule 6 gains a third exception (c): an agent may delete only scratch it created in a declared namespace, after proving the branch/PR merged or abandoned and that no running process or claim references it. §24.13 "Agent scratch: self-deletion and the scheduled purge" added. §17 names the scratch namespace list, idle threshold and schedule install as operator-only. The two existing delete exceptions (§24.12 disk-hygiene, /tmp hygiene) are unchanged; §0 rule 6 still archive-with-tripwire for anything authoritative, and never agent-deletes a live store, DB, holdings, identity, lineage, InstrumentRecord, or another agent's active work. MAJOR because it adds a delete authority to agents (weakens §0). §0 rule 6 text propagated to the four adapters. | `APPROVE_AGENTS_POLICY_27_0_0 2303` (ratified as 27.0.1) |

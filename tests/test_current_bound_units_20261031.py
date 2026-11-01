@@ -1,4 +1,4 @@
-"""Post-promote restart of CURRENT-bound user units (AGENTS.md 28.1.0 §25.10): fail-closed filter, verify, receipt,
+"""Post-promote restart of CURRENT-bound user units (AGENTS.md 29.1.0 §25.10): fail-closed filter, verify, receipt,
 P1. Every reviewer-A/B failing input is a regression test here. Hermetic: fake systemctl and fake /proc cwd; the
 shell tests run the REAL restart_root_frozen_units under ``set -euo pipefail`` with a fake systemctl on PATH.
 """
