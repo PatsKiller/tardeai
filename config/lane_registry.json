@@ -2825,10 +2825,10 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "json_key",
-        "path": "/home/johnclaw/trade-ai-state/persistent_wake/research_producer_health.json",
-        "key": "as_of"
+        "path": "data/runtime/governed-research-producer_last.json",
+        "key": "ok_at"
       },
-      "note": "L2's recurring organic research producer. Keyed on the health file's as_of rather than research_objects.jsonl mtime on purpose: the producer legitimately produces nothing when every target is budget-refused, and that run is still a run. outcome/produced in the same file say which.",
+      "note": "L2's recurring organic research producer. Keyed on the lane receipt's ok_at: the producer legitimately produces nothing when every target is budget-refused, and that run is still a run (summary.outcome says which). The runner writes the receipt with write_lane_receipt on a real run and nothing when disabled. The previous value named the wake health file outside the state root with key as_of, which the collector refuses (receipt_path_not_admitted) and which carries no ok flag (2026-11-01).",
       "value_class": "Nice to Have",
       "recommendation": "PIPELINE:P10",
       "rationalization": {
@@ -9937,10 +9937,10 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "json_key",
-        "path": "~/trade-ai-releases/portfolio-server/CURRENT/data/monitoring/classifier_health.json",
-        "key": "checked_at",
+        "path": "data/runtime/classifier-health-check_last.json",
+        "key": "ok_at",
         "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/monitoring/classifier_health_check.py:41 writes data/monitoring/classifier_health.json (cwd CURRENT; NOT under the state root, release-local dir) every run; host mtime 2026-10-09T07:55:01-04:00, checked_at 2026-10-09T11:55:01Z"
+        "evidence_ref": "scripts/monitoring/classifier_health_check.py writes a LaneRunReceipt at data/runtime/classifier-health-check_last.json via write_lane_receipt (state root). The previous value named a literal '~' path in the release dir with key checked_at; the collector never admitted it, so the lane could not be measured (2026-11-01)."
       },
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P12",

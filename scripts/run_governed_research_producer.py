@@ -42,6 +42,7 @@ if str(_PROJECT) not in sys.path:
     sys.path.insert(0, str(_PROJECT))
 
 from scripts.lib import governed_research_producer as grp  # noqa: E402
+from scripts.lib.lane_last_receipt import write_lane_receipt  # noqa: E402
 
 
 def _targets_from_file(path: Path) -> list[dict]:
@@ -116,14 +117,31 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     result = grp.produce_research(targets=targets)
+    disabled = bool(getattr(result, "disabled", False))
+    errors = list(getattr(result, "errors", []) or [])
+    if not disabled:
+        # A real run leaves a lane receipt the Jobs projection can read, so a scheduled
+        # producer that legitimately produces nothing still proves it ran (ok_at advances
+        # only on success; a broken run carries the previous ok_at forward). Disabled is a
+        # no-side-effect outcome and writes nothing.
+        write_lane_receipt(
+            "governed-research-producer",
+            ok=bool(result.ok),
+            exit_code=1 if result.outcome == "broken" else 0,
+            script="scripts/run_governed_research_producer.py",
+            summary={"outcome": result.outcome,
+                     "eligible": getattr(result, "eligible", 0),
+                     "produced": getattr(result, "produced", 0)},
+            error="; ".join(errors) or None,
+        )
 
     print(json.dumps({
         "outcome": result.outcome,
         "ok": result.ok,
-        "disabled": getattr(result, "disabled", False),
+        "disabled": disabled,
         "eligible": getattr(result, "eligible", 0),
         "produced": getattr(result, "produced", 0),
-        "errors": list(getattr(result, "errors", []) or []),
+        "errors": errors,
         "source_sha": grp.source_sha(),
     }, sort_keys=True))
 

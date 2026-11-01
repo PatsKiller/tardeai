@@ -18,6 +18,12 @@ import pytest
 from scripts import run_governed_research_producer as runner
 
 
+@pytest.fixture(autouse=True)
+def _isolated_state_root(tmp_path, monkeypatch):
+    """A runner test must never write a receipt into the live persistent state root."""
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+
+
 def _run(argv, capsys):
     rc = runner.main(argv)
     return rc, json.loads(capsys.readouterr().out.strip().splitlines()[-1])
@@ -106,6 +112,42 @@ def test_symbols_and_targets_file_are_mutually_exclusive(tmp_path):
         runner.build_parser().parse_args(
             ["--symbols", "NVDA", "--targets-file", str(tmp_path / "x.json")]
         )
+
+
+# --- execution receipt --------------------------------------------------------
+
+def test_execute_writes_a_lane_receipt_the_jobs_page_can_read(tmp_path, capsys, monkeypatch):
+    """A real run leaves ok_at the Jobs projection reads; 'nothing eligible' is still a run."""
+    monkeypatch.setenv(runner.grp.FEATURE_FLAG, "1")
+
+    class _O:
+        outcome, ok, disabled, eligible, produced, errors = "nothing_eligible", True, False, 1, 0, []
+
+    monkeypatch.setattr(runner.grp, "produce_research", lambda **k: _O())
+    rc, _ = _run(["--execute", "--symbols", "NVDA"], capsys)
+    receipt = json.loads((tmp_path / "data/runtime/governed-research-producer_last.json").read_text())
+    assert rc == 0
+    assert receipt["lane_id"] == "governed-research-producer"
+    assert receipt["status"] == "ok" and receipt["ok_at"]
+
+
+def test_disabled_writes_no_receipt(tmp_path, capsys, monkeypatch):
+    """Disabled means no side effects, and a receipt is a side effect."""
+    monkeypatch.delenv(runner.grp.FEATURE_FLAG, raising=False)
+    _run(["--execute", "--symbols", "NVDA"], capsys)
+    assert not (tmp_path / "data/runtime/governed-research-producer_last.json").exists()
+
+
+def test_broken_run_writes_a_failed_receipt_without_advancing_ok_at(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv(runner.grp.FEATURE_FLAG, "1")
+
+    class _R:
+        outcome, ok, disabled, eligible, produced, errors = "broken", False, False, 1, 0, ["provider_unavailable"]
+
+    monkeypatch.setattr(runner.grp, "produce_research", lambda **k: _R())
+    _run(["--execute", "--symbols", "NVDA"], capsys)
+    receipt = json.loads((tmp_path / "data/runtime/governed-research-producer_last.json").read_text())
+    assert receipt["status"] == "failed" and receipt.get("ok_at") is None
 
 
 # --- exit status contract -----------------------------------------------------
