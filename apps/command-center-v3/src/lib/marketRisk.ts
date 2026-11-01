@@ -3,7 +3,7 @@
  *  compute is shown as NOT EVALUATED, never inferred from one source. */
 import type { Tone } from './designTokens'
 
-export type Tier = 'GREEN' | 'BLUE' | 'YELLOW' | 'ORANGE' | 'RED' | 'NOT_EVALUATED'
+export type Tier = 'GREEN' | 'NONE' | 'BLUE' | 'YELLOW' | 'ORANGE' | 'RED' | 'NOT_EVALUATED'
 export type MarketRiskState = 'not_evaluated' | 'evaluated' | 'stale'
 
 export interface Contributor { name: string; points: number; detail?: string | null; as_of?: string | null }

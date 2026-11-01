@@ -758,6 +758,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/FCNTX_144_ACCEPTANCE_2026-07-14.md` | FCNTX Event #144 — A–G Acceptance Fixture (Part H) |
 | `docs/audits/FCNTX_144_DECISION_PACKET_LATEST.md` | FCNTX event #144 — operator decision packet (version-bound) |
 | `docs/audits/FCNTX_144_DECISION_PACKET_v31_2026-07-14.md` | FCNTX event #144 — operator decision packet (version-bound) |
+| `docs/audits/MARKET_RISK_ENGINE_BACKTEST_20261031.md` | Market Risk Engine backtest |
 | `docs/audits/MARKET_SELLOFF_ALERT_RCA_2026-10-30.md` | Why no warning preceded the 2026-10-30 selloff — root cause analysis |
 | `docs/audits/OPTIONS_DESK_ARCHITECTURE_MAP_2026-09-25.md` | Options Desk Architecture Map — 2026-09-25 |
 | `docs/audits/OPTIONS_DESK_EXECUTIVE_AUDIT_2026-09-25.md` | Options Desk Executive Audit — 2026-09-25 |
@@ -2621,6 +2622,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_2.md` | CODEX IMPLEMENTATION PROGRAM v1.2 |
 | `docs/proposal_quality/phase_promote1_pre_promotion_readiness_gate/00_README.md` | PROMOTE-1 — Pre-Promotion Readiness Gate |
 | `docs/proposal_sandbox/PHASE115B_PROPOSAL_DRAFT_SCORE_RESULTS.md` | Phase 115B — Proposal Draft Score Results |
+| `docs/proposals/REGISTRY_ROW_index_constituent_caps_20261031.md` | Registry-row proposal: index constituent market caps (Market Risk Engine, event concentration) |
 | `docs/remediation-plan.md` | Remediation plan — 5-stage hardening, governance and bitemporal cutover |
 | `docs/reporting/REPORTING_ENGINE.md` | Reporting & Prospectus Generation Module |
 | `docs/risk_management/stop_management_v2_3_strategy_trailing_tiers/00_README.md` | Stop Management V2.3 — Strategy Trailing Tiers |
