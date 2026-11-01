@@ -17,3 +17,10 @@
   "Market" → "MARKET RISK" (tier, score, top contributor); Orange/Red banner with Acknowledge above the header; "Market in
   one look" gains the five contributors and takes the old regime/VIX/sectors text; classic hero tile "REGIME" → "MARKET
   RISK". Awaiting the operator's tap in Approvals → Designs. Mockups (synthetic) in the private design store.
+
+- 2026-11-01 PROPOSED v004 (builds on v002; v003 is PR #2394): a YELLOW market-risk summary card in the v002 banner slot.
+  Calm warning tone (card surface with a warning left rule, soft pill, no tone fill), collapsed by default on phone and
+  expanded on desktop; shows the contributor lines, "Your book", "De-escalates if", the SHADOW label in shadow mode, and
+  Open Risk / Review stops as links. No Acknowledge (YELLOW never pages). ORANGE/RED keep the v002 banner; not-evaluated
+  and GREEN/BLUE unchanged; stale shows the stale line instead of numbers. Nothing removed. Mockup only, awaiting the
+  operator's decision in Approvals → Designs; mockups in the private design store.

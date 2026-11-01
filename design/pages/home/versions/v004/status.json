@@ -1,0 +1,62 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "home",
+  "version": "v004",
+  "state": "PROPOSED",
+  "title": "Home: YELLOW market-risk summary card (calm warning tone, collapsible, no Acknowledge)",
+  "created": "2026-11-01",
+  "approval": {
+    "by": null,
+    "at": null,
+    "ref": null,
+    "kind": "awaiting the operator's decision in Approvals -> Designs; mockup only, no UI code until approved",
+    "source": [
+      "design/pages/home/versions/v002/SPEC.md"
+    ],
+    "ledger": null
+  },
+  "spec": "SPEC.md",
+  "design": "DSN-20261031-market-risk-ui",
+  "base": "v002",
+  "depends_on": [
+    "home/v002 (APPROVED)",
+    "GET /api/v2/market-risk/latest (MarketRiskAssessment@v1: contributors, portfolio, deescalates_if, mode)"
+  ],
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/home",
+    "note": "Private store, never committed (design/README.md rule 7). Market figures from the 2026-11-01 shadow evaluation; book values, symbols and accounts are bracketed placeholders. Paths relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v004/mockups/HomeDesktopYellow.dc.html",
+        "sha256": "12d4726feaf630ffbb6ae90b668a9fc202d9b7cb8051c26b6716979d8def733c",
+        "bytes": 11200,
+        "role": "mockups"
+      },
+      {
+        "path": "v004/mockups/HomePhoneYellowCollapsed.dc.html",
+        "sha256": "930a2cc8c7f9aa2fa8343ee5dbfd62a5e84b9d14b1e0d73a433b18bd77319522",
+        "bytes": 10347,
+        "role": "mockups"
+      },
+      {
+        "path": "v004/mockups/HomePhoneYellowExpanded.dc.html",
+        "sha256": "dec9a640411455d92ef1d388d2b9922ff73bbc4461e4248122c054ec9835b800",
+        "bytes": 10340,
+        "role": "mockups"
+      },
+      {
+        "path": "v004/mockups/HomeStates.dc.html",
+        "sha256": "5996856f565b266d6d38ce3130e04be4ba862ae99c0ae6b67f62465a7d952b23",
+        "bytes": 16864,
+        "role": "mockups"
+      },
+      {
+        "path": "v004/mockups/canvas.json",
+        "sha256": "d733a0aa6dbedfc5b1b6f3e347d45721c94407548848e48fad357afe42e319b6",
+        "bytes": 1405,
+        "role": "mockups"
+      }
+    ]
+  },
+  "removals": []
+}
