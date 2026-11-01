@@ -2413,7 +2413,7 @@
       "deepseek_allowed_policies": [
         "FAST"
       ],
-      "max_input_tokens": 4000,
+      "max_input_tokens": 32000,
       "max_output_tokens": 1500,
       "daily_soft_cap": 120,
       "daily_cost_cap_usd": 1.0,
