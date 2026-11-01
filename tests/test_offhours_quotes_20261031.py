@@ -8,6 +8,9 @@ Proves:
   * session tagging: rows follow #2384's contract exactly -- premarket/afterhours via market_quotes_extended.session_of,
     bar_end = the trade instant (tz-aware UTC), the right reference close and date per session; overnight, regular and
     non-trading-day prints are refused, never stored or relabelled; every row passes the store's writer validate();
+  * futures contract -> root mapping: Schwab answers a requested root (/ES) with the front-month CONTRACT (/ESZ26);
+    the row is stored under the root the engine names in market_risk_policy.yaml extended_hours.futures_proxies, with
+    the contract kept on the receipt, and the payload's "errors" key is reported instead of stored as a symbol;
   * the universe is read from config (#2384's symbol list + the engine's large-cap list), never hardcoded;
   * the store is market_quotes_extended through its single writer, never market_quotes;
   * the Schwab path is off by default, stops before any Schwab/DB module, refuses a non-market-data URL, refuses
@@ -98,7 +101,8 @@ def test_afterhours_rows_follow_store_contract(cfg):
     assert es["reference_basis"] == "schwab_quote_close_price_settle_dated" and validate(es) is None
     reasons = {s["symbol"]: s["reason"] for s in skipped}
     assert reasons == {"/NQ": "no_dated_reference_for_afterhours", "$VIX": "no_dated_reference_for_afterhours",
-                       "$SPX": "stale_trade", "SPY": "no_trade_price_or_time", "/RTY": "not_a_quote"}
+                       "$SPX": "stale_trade", "SPY": "no_trade_price_or_time", "/RTY": "provider_error"}
+    assert {s["symbol"]: s.get("detail") for s in skipped}["/RTY"] == ["not entitled"]
 
 
 def test_premarket_rows_reference_previous_session(cfg):
@@ -156,6 +160,84 @@ def test_stale_and_future_prints_refused(cfg):
 ])
 def test_schwab_window(ts, ok, cfg):
     assert oq.schwab_window(_t(ts), cfg)[0] is ok
+
+
+# ── futures contract -> root ────────────────────────────────────────────────────────────────────────
+
+
+def test_futures_contract_is_stored_under_the_policy_root(cfg):
+    """Schwab answers a requested root ('/ES') with the front-month CONTRACT ('/ESZ26'); live 2026-11-01. The engine
+    reads futures by the root named in market_risk_policy.yaml extended_hours.futures_proxies, so the row is stored
+    under the root and the contract is kept as receipt evidence."""
+    now = _t("2026-11-02T02:30:00-05:00")
+    p = {"/ESZ26": {"assetMainType": "FUTURE", "symbol": "/ESZ26",
+                    "quote": {"lastPrice": 6700.0, "closePrice": 6800.0,
+                              "tradeTime": _ms("2026-11-02T02:28:00-05:00"),
+                              "settleTime": _ms("2026-10-30T16:00:00-04:00")}}}
+    rows, skipped = oq.schwab_rows(p, now, cfg)
+    assert skipped == []
+    r = rows[0]
+    assert r["symbol"] == "/ES" and r["contract"] == "/ESZ26"
+    assert r["session"] == "overnight" and str(r["session_date"]) == "2026-11-02"
+    assert r["reference_close"] == 6800.0 and str(r["reference_date"]) == "2026-10-30"
+    assert validate(r) is None  # 'contract' is receipt evidence; the writer takes only its COLUMNS
+
+
+def test_a_contract_with_no_dated_close_is_level_only_under_the_root(cfg):
+    now = _t("2026-11-02T02:30:00-05:00")
+    p = {"/NQZ26": {"assetMainType": "FUTURE",
+                    "quote": {"lastPrice": 25200.0, "closePrice": 25700.0,
+                              "tradeTime": _ms("2026-11-02T02:28:00-05:00"),
+                              "settleTime": _ms("2026-10-29T16:00:00-04:00")}}}
+    rows, skipped = oq.schwab_rows(p, now, cfg)
+    assert skipped == [] and rows[0]["symbol"] == "/NQ" and rows[0]["contract"] == "/NQZ26"
+    assert rows[0]["reference_close"] is None and rows[0]["reference_date"] is None
+    assert validate(rows[0]) is None
+
+
+def test_mapping_only_applies_to_configured_futures_and_never_mangles_equities(cfg):
+    t = "2026-11-02T02:28:00-05:00"
+    p = {"/GCZ26": {"assetMainType": "FUTURE",  # gold: a contract this lane never requested
+                    "quote": {"lastPrice": 4000.0, "tradeTime": _ms(t)}},
+         "ABCZ26": {"assetMainType": "EQUITY",   # a symbol that LOOKS like a contract: an equity is never rewritten
+                    "quote": {"lastPrice": 50.0, "tradeTime": _ms(t), "closePrice": 49.0}}}
+    rows, skipped = oq.schwab_rows(p, _t("2026-11-02T02:30:00-05:00"), cfg)
+    assert [r["symbol"] for r in rows] == ["ABCZ26"] and rows[0].get("contract") is None
+    assert [(s["symbol"], s["reason"]) for s in skipped] == [("/GCZ26", "unmapped_contract")]
+
+
+def test_engine_futures_proxies_are_roots_this_lane_requests(cfg):
+    import yaml
+
+    pol = yaml.safe_load((ROOT / "config" / "market_risk_policy.yaml").read_text())
+    proxies = [str(x).upper() for x in pol["extended_hours"]["futures_proxies"]]
+    assert proxies and set(proxies) <= {str(x).upper() for x in cfg["schwab"]["futures"]}
+    for root in proxies:
+        assert oq.contract_root(root) is None  # a root is not itself a contract symbol
+
+
+def test_receipt_reports_provider_errors_and_the_contract_behind_each_root(cfg):
+    on = {**cfg, "schwab": {**cfg["schwab"], "enabled": True}}
+    t = "2026-11-02T02:28:00-05:00"
+    payload = {"/ESZ26": {"assetMainType": "FUTURE", "quote": {"lastPrice": 6700.0, "tradeTime": _ms(t)}},
+               "errors": {"invalidSymbols": ["BRK.B"]}}
+    r = oq.run(cfg=on, now=_t("2026-11-02T02:30:00-05:00"), fetch=lambda _s: payload, write=None, dry_run=True)
+    assert r["status"] == "dry_run"
+    assert r["provider_errors"] == {"invalidSymbols": ["BRK.B"]}
+    assert r["symbol_map"] == {"/ESZ26": "/ES"}
+    assert [x["symbol"] for x in r["rows"]] == ["/ES"]
+    assert all(s["symbol"] != "errors" for s in r["skipped"])
+
+
+def test_a_symbol_error_block_is_reported_not_stored(cfg):
+    p = {"BADX": {"errors": {"message": "invalid symbol"}}}
+    rows, skipped = oq.schwab_rows(p, _t("2026-11-02T02:30:00-05:00"), cfg)
+    assert rows == [] and skipped == [{"symbol": "BADX", "reason": "provider_error",
+                                       "detail": {"message": "invalid symbol"}}]
+    # a top-level 'errors' key handed straight to schwab_rows is named, never treated as a quote for a symbol
+    rows, skipped = oq.schwab_rows({"errors": {"invalidSymbols": ["BRK.B"]}},
+                                   _t("2026-11-02T02:30:00-05:00"), cfg)
+    assert rows == [] and [(s["symbol"], s["reason"]) for s in skipped] == [("errors", "provider_errors")]
 
 
 # ── universe from config ────────────────────────────────────────────────────────────────────────────
