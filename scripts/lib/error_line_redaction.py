@@ -32,7 +32,7 @@ _DISCORD_WEBHOOK = re.compile(r"(?i)(discord(?:app)?\.com/api/webhooks/\d+/)[A-Z
 _MYSQL_PW = re.compile(r"(?i)(\b(?:mysql|mysqladmin|mysqldump|mariadb)\b[^\n]*?\s-p)\s*(?!-)\S+")
 #: A secret key word followed by a SPACE and a token-like value ("rejected key c1a2b3...").
 _SPACE_KEY_VALUE = re.compile(
-    r"(?i)(?<![\w\-])((?:api[_\-]?key|app[_\-]?key|key|token|secret|password|passwd|pwd|pw)\s+)"
+    r"(?i)(?<![\w\-])((?:api[_\-]?key|app[_\-]?key|key|token|secret|passphrase|password|passwd|pwd|pw)\s+)"
     r"([A-Za-z0-9._~+/=\-]{8,})"
 )
 #: Bare UUID (Finviz API tokens have this shape).
@@ -42,7 +42,8 @@ _UUID = re.compile(r"(?i)(?<![0-9a-z])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
 _ALNUM_RUN = re.compile(r"(?<![A-Za-z0-9])[A-Za-z0-9]{20,}(?![A-Za-z0-9])")
 #: Alphanumeric segments joined by '-', '_' or '.', 24+ characters long, mixing upper, lower and digits.
 _JOINED_RUN = re.compile(r"(?<![A-Za-z0-9_.\-])[A-Za-z0-9]+(?:[-_.][A-Za-z0-9]+)+")
-_URL_USERINFO = re.compile(r"(?i)\b([a-z][a-z0-9+.\-]*://)[^\s/@'\"]+@")
+#: Userinfo runs to the LAST '@' before the path (round 4: "user:p@ssw0rd@host" leaked "ssw0rd").
+_URL_USERINFO = re.compile(r"(?i)\b([a-z][a-z0-9+.\-]*://)[^\s/'\"]*@")
 _URL_QUERY = re.compile(r"(?i)\b([a-z][a-z0-9+.\-]*://[^\s?#'\"]+)\?[^\s#'\"]*")
 _TOKEN_SHAPES = re.compile(
     r"(?:"
@@ -57,7 +58,9 @@ _TOKEN_SHAPES = re.compile(
     r"|\bya29\.[A-Za-z0-9_\-.]+"
     r")"
 )
-_BEARER = re.compile(r"(?i)\b(bearer|basic|token)\s+[A-Za-z0-9._~+/=\-]{6,}")
+#: Round 4: the bare word "token" is no longer a scheme here ("token expired", "token refresh failed" stayed
+#: unreadable); "Authorization: Token <v>" is still covered by _AUTH_HEADER, a token-like value by the key rules.
+_BEARER = re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=\-]{6,}")
 #: 2026-11-01 (review round 2): the whole value of an Authorization header, whatever its scheme
 #: ("Token <v>", "Bearer <v>", "Basic <v>", a bare value), up to the closing quote or the line end.
 _AUTH_HEADER = re.compile(r"""(?i)\b((?:proxy-)?authorization["']?\s*[:=]\s*["']?)[^"'\n,;}]+""")
@@ -68,15 +71,30 @@ _B64_RUN = re.compile(r"(?<![A-Za-z0-9+/=])[A-Za-z0-9+/]{20,}={0,2}(?![A-Za-z0-9
 _SECRET_KEY_WORD = re.compile(
     r"(?i)(token|secret|passw(?:or)?d|pwd|api[_\-]?key|apikey|auth(?:orization)?(?![a-z])|credential|private[_\-]?key|"
     r"session|cookie|dsn|access[_\-]?key|signature|sig\b|key|client[_\-]?id|app[_\-]?key|key[_\-]?id|"
-    r"(?<![a-z])(?:pw|pass)(?![a-z]))"
+    r"passphrase|(?<![a-z])(?:pw|pass)(?![a-z]))"
 )
 #: The key and separator only. A key starts at a word start (the lookbehind), so a long run without a
 #: separator is tried once, not from every character: the scan is linear (round 3: 3.2 s at 60 KB before).
-_KEY_SEP = re.compile(r"""(?<![\w.\-"'])(?P<key>["']?[A-Za-z_][\w.\-]*["']?)(?P<sep>\s*[:=]\s*)""")
+_KEY_SEP = re.compile(
+    r"""(?<![\w.\-"'\\])(?P<key>\\?["']?[A-Za-z_][\w.\-]*\\?["']?)(?P<sep>\s*[:=]\s*)"""
+)
 #: The value, matched only after a secret-looking key. A quoted value runs to ITS closing quote (it may
 #: hold spaces and the other quote); an unquoted one stops at a delimiter.
-_VALUE = re.compile(r"""(?:"(?P<dq>[^"\n]*)"?|'(?P<sq>[^'\n]*)'?|(?P<val>[^\s"',;)}\]&]+))""")
-_NOT_A_KEY = re.compile(r"(?:Error|Exception|Warning|Exit|Interrupt)$")
+#: Round 4: a value may sit in backslash-escaped quotes (JSON quoted inside a string: {\"password\": \"x\"}).
+_VALUE = re.compile(
+    r"""(?:\\?"(?P<dq>(?:[^"\\\n]|\\(?!"))*)(?:\\?")?"""
+    r"""|\\?'(?P<sq>(?:[^'\\\n]|\\(?!'))*)(?:\\?')?"""
+    r"""|(?P<val>[^\s"',;)}\]&\\]+))"""
+)
+#: Exception class names, dotted or not (psycopg2.errors.ForeignKeyViolation). Round 5: ONLY these suffixes; a
+#: general "dotted CamelCase" exclusion leaked settings.ApiKey= and cfg.Password: values.
+_NOT_A_KEY = re.compile(r"(?:Error|Exception|Warning|Exit|Interrupt|Violation)$")
+#: Token-count keys (max_tokens, input_tokens, token_count). Round 5: excluded ONLY when the value is an integer, so
+#: {'access_tokens': '<secret>'} is still redacted.
+_TOKEN_COUNT_KEY = re.compile(r"(?i)(?:tokens|token_?(?:count|limit|budget|usage|used))$")
+_INTEGER = re.compile(r"[+-]?\d+")
+#: A brokerage account number in prose ("account <digits>", "acct #<digits>", "account number: <digits>").
+_ACCOUNT_NUMBER = re.compile(r"(?i)\b(acc(?:oun)?t(?:\s+(?:number|no\.?))?\s*[:#]?\s*)\d{6,12}\b")
 
 
 def _redact_pairs(text: str) -> str:
@@ -91,7 +109,7 @@ def _redact_pairs(text: str) -> str:
         if not match:
             out.append(text[pos:])
             return "".join(out)
-        key = match.group("key").strip("\"'")
+        key = match.group("key").strip("\"'\\")
         sep_end = match.end("sep")
         if _NOT_A_KEY.search(key) or not _SECRET_KEY_WORD.search(key):
             out.append(text[pos:sep_end])
@@ -99,6 +117,8 @@ def _redact_pairs(text: str) -> str:
             continue
         value = _VALUE.match(text, sep_end)
         group = next((g for g in ("dq", "sq", "val") if value and value.group(g) is not None), None)
+        if group and _TOKEN_COUNT_KEY.search(key) and _INTEGER.fullmatch(value.group(group) or ""):
+            group = None  # a token count, not a token
         if not group or not value.group(group) or R[:-1] in value.group(group):
             out.append(text[pos:sep_end])
             pos = sep_end
@@ -123,8 +143,17 @@ def _high_entropy(match: re.Match) -> str:
     return R if _mixed(run) else run
 
 
+_CASE_FLIP = re.compile(r"[a-z][A-Z]")
+
+
 def _letters_digits(value: str) -> bool:
-    return R[:-1] not in value and any(c.isdigit() for c in value) and any(c.isalpha() for c in value)
+    """A token-like value after a space-separated key word: letters AND digits, or (round 4) letters only but
+    12+ long with an inner lower-to-upper flip ("aBcDeFgH..."). Plain words ("expired", "refresh") stay."""
+    if R[:-1] in value:
+        return False
+    if any(c.isdigit() for c in value) and any(c.isalpha() for c in value):
+        return True
+    return len(value) >= 12 and value.isalpha() and bool(_CASE_FLIP.search(value))
 
 
 #: Percent-decoding repeats until the text stops changing (triple-encoded bodies were seen in review), capped.
@@ -174,6 +203,7 @@ def redact_error_line(text: str, *, home: str | None = None) -> str:
     out = _UUID.sub(R, out)
     out = _MYSQL_PW.sub(lambda m: m.group(1) + " " + R, out)
     out = _redact_pairs(out)
+    out = _ACCOUNT_NUMBER.sub(lambda m: m.group(1) + R, out)
     out = _SPACE_KEY_VALUE.sub(lambda m: m.group(1) + R if _letters_digits(m.group(2)) else m.group(0), out)
     out = _B64_RUN.sub(_high_entropy, out)
     out = _ALNUM_RUN.sub(_letters_and_digits, out)
