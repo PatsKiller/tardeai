@@ -934,6 +934,60 @@ def _count_deferred_attempt(cur, job_id, reason):
     """, (str(reason)[:500], job_id))
 
 
+#: Key in a queue row's own metadata_json recording the run in which a request rejection was first confirmed.
+STRIKE_KEY = "drain_rejection_strike"
+
+
+def _job_meta(job):
+    meta = job.get("metadata_json") if isinstance(job, dict) else None
+    if isinstance(meta, str):
+        try:
+            meta = json.loads(meta)
+        except ValueError:
+            meta = None
+    return meta if isinstance(meta, dict) else {}
+
+
+def systemic_rejection_limit(jobs_seen):
+    """Round 11 ratio guard: more than max(2, 10% of the run's jobs) confirmed request rejections in one run is a
+    systemic or throttling pattern, not that many bad prompts: nobody is struck or charged for it."""
+    return max(2, -(-int(jobs_seen) // 10))
+
+
+def apply_rejection_strikes(cur, confirmed, run_id, jobs_seen, log=lambda m: None):
+    """Two strikes across runs (round 11). ``confirmed`` = [(job_id, reason, job_metadata)]: request rejections that
+    a LATER real-text answer in this run confirmed. Unless the ratio guard says the run was systemic, a job struck
+    in a DIFFERENT earlier run is charged now (its strike cleared); otherwise it is struck. The strike lives in the
+    job's own metadata_json, never in memory, and a strike is never an attempt. Returns (charged_ids, struck_ids)."""
+    if not confirmed:
+        return [], []
+    limit = systemic_rejection_limit(jobs_seen)
+    if len(confirmed) > limit:
+        log(f"  Ratio guard: {len(confirmed)} request rejections in {jobs_seen} jobs (> {limit}): systemic; "
+            "nobody struck or charged.")
+        return [], []
+    charged, struck = [], []
+    for job_id, reason, meta in confirmed:
+        prev = meta.get(STRIKE_KEY)
+        if isinstance(prev, str) and prev and prev != run_id:
+            _count_deferred_attempt(cur, job_id, "counted: request rejected and confirmed by a later answer on two "
+                                    f"different runs ({prev}, {run_id}): {reason}")
+            cur.execute("""
+                UPDATE deep_overnight_llm_queue
+                SET metadata_json = COALESCE(metadata_json, '{}'::jsonb) - %s, updated_at = NOW()
+                WHERE id = %s
+            """, (STRIKE_KEY, job_id))
+            charged.append(job_id)
+        else:
+            cur.execute("""
+                UPDATE deep_overnight_llm_queue
+                SET metadata_json = COALESCE(metadata_json, '{}'::jsonb) || %s::jsonb, updated_at = NOW()
+                WHERE id = %s
+            """, (json.dumps({STRIKE_KEY: run_id}), job_id))
+            struck.append(job_id)
+    return charged, struck
+
+
 def call_cloud(prompt, policy, *, fallback=None, now=None):
     """One job through the drain chain (anthropic -> grok -> chatgpt -> deepseek off-peak only).
 
@@ -1332,7 +1386,9 @@ def main():
     breaker = load_breaker(bpath) if cloud else None
     outage_probe = bool(cloud and breaker_open(breaker, "outage"))
     failure_probe = bool(cloud and breaker_open(breaker, "failure"))
-    suspects = []  # [(job_id, reason)]: request-rejected refusals waiting for a later answer to confirm them
+    suspects = []  # [(job_id, reason, metadata)]: request rejections waiting for a later REAL answer to confirm them
+    confirmed = []  # suspects a later real-text answer confirmed; struck or charged at the end of the run
+    run_id = datetime.now(timezone.utc).isoformat()
     refusals_in_row = 0  # refusals of any kind since the last answer: the outage signal
     lanes_proven = False  # a lane answered in this run
     outage_tripped = False
@@ -1491,7 +1547,7 @@ def main():
                     # Round 10: a request rejection is charged ONLY when a LATER job in this run is answered --
                     # never because an earlier job was. A systemic or throttling 400, or a proxy's error body at the
                     # end of a run, is therefore never charged, and a bad job that is always last stays pending.
-                    suspects.append((job_id, reason))
+                    suspects.append((job_id, reason, _job_meta(job)))
                 refusals_in_row += 1
                 if cloud and refusals_in_row >= outage_after:
                     # outage_after_refusals in a row with no answer: the lanes are out (or rate limiting). Nobody is
@@ -1512,17 +1568,14 @@ def main():
                 # unavailable, gate) is never charged, whatever comes next.
                 log(f"  REFUSED #{job_id} — {refusal}; back to pending, attempt not counted. Trying the next job.")
                 continue
-            # A lane answered this job (text or a counted failure): the lanes work, and every refusal before it in
-            # this run was that job's own.
+            # A lane answered this job: the lanes work. Round 11: only a REAL text answer confirms the request
+            # rejections waiting before it; a counted failure (an empty body included) confirms nothing. Confirmed
+            # rejections are struck or charged at the end of the run, under the ratio guard and two strikes.
             lanes_proven = True
             refusals_in_row = 0
-            for sid, sreason in suspects:
-                _count_deferred_attempt(cur, sid, "counted: a later job reached a model and every lane that ran "
-                                        f"rejected this request, so the failure was the job's own: {sreason}")
-                conn.commit()
-                failed += 1
-                log(f"  COUNTED #{sid} — a later job reached a model; its refusal was job-specific")
-            suspects = []
+            if text:
+                confirmed.extend(suspects)
+                suspects = []
             if cloud and (outage_probe or breaker["outage"]["trips"]):
                 close_breaker(breaker, "outage")
                 save_breaker(bpath, breaker)
@@ -1629,6 +1682,14 @@ def main():
 
         processed += 1
 
+    if cloud and confirmed:
+        charged_ids, struck_ids = apply_rejection_strikes(cur, confirmed, run_id, processed, log)
+        conn.commit()
+        failed += len(charged_ids)
+        for sid in charged_ids:
+            log(f"  COUNTED #{sid} — request rejected on two runs, each confirmed by a later answer")
+        for sid in struck_ids:
+            log(f"  STRUCK #{sid} — request rejected, confirmed by a later answer; charged if it recurs on another run")
     if cloud and lanes_proven and not outage_tripped and refusals_in_row < 2 and _int_or_zero(breaker.get("flaps")):
         breaker["flaps"] = 0  # a run that ended without an outage: the lane is no longer flapping
         save_breaker(bpath, breaker)

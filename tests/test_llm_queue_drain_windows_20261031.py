@@ -265,17 +265,31 @@ def _row(job_id, attempts=2):
 
 
 class _RecCur:
-    def __init__(self, log, rows):
-        self.log, self.rows, self.last = log, rows, ""
+    """Records SQL. With a ``store`` it also keeps each row's metadata_json across runs, as the real table does
+    (round 11: the rejection strike lives in the job's own metadata_json)."""
+
+    def __init__(self, log, rows, store=None):
+        self.log, self.rows, self.last, self.store = log, rows, "", store
         self.description = [(c,) for c in _COLS]
         self.rowcount = 0
 
     def execute(self, sql, params=None):
-        self.log.append((" ".join(sql.split()), params))
+        flat = " ".join(sql.split())
+        self.log.append((flat, params))
         self.last = sql
+        if self.store is not None and "SET metadata_json = COALESCE(metadata_json, '{}'::jsonb) ||" in flat:
+            self.store.setdefault(params[1], {}).update(json.loads(params[0]))
+        elif self.store is not None and "SET metadata_json = COALESCE(metadata_json, '{}'::jsonb) -" in flat:
+            self.store.setdefault(params[1], {}).pop(params[0], None)
 
     def fetchall(self):
-        return list(self.rows) if "FROM deep_overnight_llm_queue" in self.last and "pending" in self.last else []
+        if not ("FROM deep_overnight_llm_queue" in self.last and "pending" in self.last):
+            return []
+        if self.store is None:
+            return list(self.rows)
+        meta_at = _COLS.index("metadata_json")
+        return [tuple(dict(r[meta_at] or {}, **self.store.get(r[0], {})) if i == meta_at else v
+                      for i, v in enumerate(r)) for r in self.rows]
 
     def fetchone(self):
         return (0,)
@@ -285,11 +299,11 @@ class _RecCur:
 
 
 class _RecConn:
-    def __init__(self, log, rows):
-        self.log, self.rows = log, rows
+    def __init__(self, log, rows, store=None):
+        self.log, self.rows, self.store = log, rows, store
 
     def cursor(self):
-        return _RecCur(self.log, self.rows)
+        return _RecCur(self.log, self.rows, self.store)
 
     def commit(self):
         self.log.append(("COMMIT", None))
@@ -301,9 +315,9 @@ class _RecConn:
         pass
 
 
-def _run(monkeypatch, argv, rows=(), windows=None):
+def _run(monkeypatch, argv, rows=(), windows=None, store=None):
     log: list = []
-    monkeypatch.setattr(w, "get_db_connection", lambda: _RecConn(log, list(rows)))
+    monkeypatch.setattr(w, "get_db_connection", lambda: _RecConn(log, list(rows), store))
     monkeypatch.setattr(w, "log", lambda m: None)
     monkeypatch.setattr(w, "build_prompt", lambda job, *a, **k: f"JOB{job['id']}")
     monkeypatch.setattr(w, "_extract_and_register_gaps", lambda *a, **k: None, raising=False)
@@ -487,32 +501,51 @@ def _counted_ids(log):
     return [p[0] for s, p in log if s.startswith("UPDATE deep_overnight_llm_queue SET attempt_count = attempt_count + 1")]
 
 
-def test_refusal_is_counted_when_the_next_job_reaches_a_model(monkeypatch):
+def _struck_ids(log):
+    return [p[1] for s, p in log if "SET metadata_json = COALESCE(metadata_json, '{}'::jsonb) ||" in s]
+
+
+def test_refusal_is_struck_then_charged_on_a_second_run(monkeypatch):
+    """Round 11: a confirmed request rejection is a strike (not an attempt) on its first run and is charged only
+    when it recurs, confirmed again, on a DIFFERENT run. The strike lives in the job's own metadata_json."""
     import lib.llm_fallback as lf
 
+    store = {}
+    rows = [_row(61), _row(62), _row(63)]
     monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["400", "ok", "ok"]))
-    log = _run(monkeypatch, ["--route", "cloud", "--limit", "3"], rows=[_row(61), _row(62), _row(63)])
-    assert _counted_ids(log) == [61], "job 61's refusal was its own (62 reached a model) and must count"
-    assert [p for s, p in log if "SET status = 'running'" in s] == [(61,), (62,), (63,)]
+    first = _run(monkeypatch, ["--route", "cloud", "--limit", "3"], rows=rows, store=store)
+    assert _counted_ids(first) == [] and _struck_ids(first) == [61]
+    assert "drain_rejection_strike" in store[61]
+    assert [p for s, p in first if "SET status = 'running'" in s] == [(61,), (62,), (63,)]
+    monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["400", "ok", "ok"]))
+    second = _run(monkeypatch, ["--route", "cloud", "--limit", "3"], rows=rows, store=store)
+    assert _counted_ids(second) == [61] and "drain_rejection_strike" not in store[61], "charged; strike cleared"
 
 
-def test_refusal_is_counted_when_the_next_job_fails_with_an_answer(monkeypatch):
+def test_a_counted_failure_never_confirms_a_rejection(monkeypatch):
+    """Round 11: an empty reply (a counted failure) is not an answer; it confirms no earlier rejection."""
     import lib.llm_fallback as lf
 
-    monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["400", None]))
-    log = _run(monkeypatch, ["--route", "cloud", "--limit", "2"], rows=[_row(64), _row(65)])
-    assert _counted_ids(log) == [64]
+    store = {}
+    for _ in range(3):
+        monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["400", None]))
+        log = _run(monkeypatch, ["--route", "cloud", "--limit", "2"], rows=[_row(64), _row(65)], store=store)
+        assert _counted_ids(log) == [] and _struck_ids(log) == []
 
 
 def test_job_specific_400_is_counted_when_the_next_job_is_answered(monkeypatch, _isolated_breaker):
-    """Corrected adversarial test (round 6): ONE job's prompt is rejected by every lane, the others are answered.
-    The reviewer's round-3 version made every job 400, which is a systemic 400 outage, not a bad prompt."""
+    """Corrected adversarial test (round 6, two strikes since round 11): ONE job's prompt is rejected by every lane,
+    the others are answered. Struck on the first run, charged on the second."""
     import lib.llm_fallback as lf
 
-    monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["400", "ok", "ok"]))
-    log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(71), _row(72), _row(73)])
-    assert _counted_ids(log) == [71]
-    assert len([p for s, p in log if "status = 'done'" in s]) == 2
+    store, counted = {}, []
+    for _ in range(2):
+        monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["400", "ok", "ok"]))
+        log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(71), _row(72), _row(73)],
+                   store=store)
+        counted += _counted_ids(log)
+        assert len([p for s, p in log if "status = 'done'" in s]) == 2
+    assert counted == [71]
 
 
 def test_bad_probe_job_does_not_stall_the_queue_after_an_outage(monkeypatch, _isolated_breaker):
@@ -523,9 +556,9 @@ def test_bad_probe_job_does_not_stall_the_queue_after_an_outage(monkeypatch, _is
     w.trip_breaker(state, "outage", "earlier outage", POLICY)
     w.save_breaker(_isolated_breaker, state)
     monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["400", "ok", "ok"]))
-    log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1), _row(2), _row(3)])
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1), _row(2), _row(3)], store={})
     assert [p for s, p in log if "SET status = 'running'" in s] == [(2,), (1,), (3,)]
-    assert _counted_ids(log) == [2], "the probe's refusal was its own: the head was answered right after it"
+    assert _struck_ids(log) == [2] and _counted_ids(log) == [], "first confirmation is a strike, not a charge"
     assert len([p for s, p in log if "status = 'done'" in s]) == 2
     assert not w.breaker_open(w.load_breaker(_isolated_breaker), "outage")
 
@@ -869,15 +902,15 @@ def test_a_new_outage_after_recovery_pages_again(monkeypatch, _isolated_breaker)
 # ── round 8: throughput with bad jobs at the head; credential-free page text; claim before send ────────────────
 
 def test_two_bad_jobs_at_the_head_do_not_throttle_the_drain(monkeypatch, _isolated_breaker):
-    """[B1, B2, G3..G22], limit 5, 6 runs (the fake queue never shrinks): every run drains 3 good jobs and charges
-    B1 and B2, without ever tripping the outage breaker (reviewer round 8)."""
+    """[B1, B2, G3..G22], limit 5, 6 runs (the fake queue never shrinks): every run drains 3 good jobs; B1 and B2 are
+    struck on one run and charged on the next (two strikes), without ever tripping the outage breaker."""
     import lib.llm_fallback as lf
 
     rows = [_row(i) for i in range(1, 23)]
-    done, counted = [], []
+    done, counted, store = [], [], {}
     for _ in range(6):
         monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator({1, 2}))
-        log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=rows)
+        log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=rows, store=store)
         done += _done(log)
         counted += _counted_ids(log)
     assert len(done) >= 15 and set(counted) == {1, 2}
@@ -896,12 +929,15 @@ def test_rejections_after_an_answer_are_not_charged_without_a_later_answer(monke
     assert w.breaker_open(state, "outage") and state["flaps"] == 1
 
 
-def test_rejection_between_two_answers_is_charged(monkeypatch, _isolated_breaker):
+def test_rejection_between_two_answers_is_charged_on_its_second_run(monkeypatch, _isolated_breaker):
     import lib.llm_fallback as lf
 
-    monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["ok", "400", "ok"]))
-    log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1), _row(2), _row(3)])
-    assert _counted_ids(log) == [2]
+    store, counted = {}, []
+    for _ in range(2):
+        monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["ok", "400", "ok"]))
+        counted += _counted_ids(_run(monkeypatch, ["--route", "cloud", "--limit", "5"],
+                                     rows=[_row(1), _row(2), _row(3)], store=store))
+    assert counted == [2]
 
 
 def test_a_bad_job_that_is_always_last_stays_pending(monkeypatch, _isolated_breaker):
@@ -1095,8 +1131,9 @@ def test_transient_refusal_before_an_answer_is_never_charged(monkeypatch, _isola
         raise _AllLanesFailed(list(_TRANSIENT[kind]))
 
     monkeypatch.setattr(lf, "generate_with_fallback", gen)
-    log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1), _row(2), _row(3)])
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1), _row(2), _row(3)], store={})
     assert _counted_ids(log) == [] and len(_done(log)) == 2
+    assert _struck_ids(log) == [], "a transient refusal is never even struck"
 
 
 def test_rate_limit_over_many_runs_never_charges_good_jobs(monkeypatch, _isolated_breaker):
@@ -1156,3 +1193,79 @@ def test_an_outage_with_no_answers_is_not_a_flap(monkeypatch, _isolated_breaker)
 def test_flaps_are_sanitized_on_load(_isolated_breaker, raw, expected):
     _isolated_breaker.write_text(json.dumps({"schema": w.BREAKER_SCHEMA, "flaps": raw}), encoding="utf-8")
     assert w.load_breaker(_isolated_breaker)["flaps"] == expected
+
+
+# ── round 11: a real answer confirms; ratio guard; two strikes across runs ──────────────────────────────────────
+
+@pytest.mark.parametrize("seen,limit", [(1, 2), (5, 2), (10, 2), (20, 2), (21, 3), (30, 3), (100, 10)])
+def test_systemic_rejection_limit(seen, limit):
+    assert w.systemic_rejection_limit(seen) == limit
+
+
+def test_alternating_throttle_400_strikes_nobody(monkeypatch, _isolated_breaker):
+    """A token-bucket provider that 400s every other call: about half the run is 'rejected' -> systemic."""
+    import lib.llm_fallback as lf
+
+    store, counted, struck = {}, [], []
+    for _ in range(6):
+        monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["ok", "400"] * 20))
+        log = _run(monkeypatch, ["--route", "cloud", "--limit", "20"], rows=[_row(900 + i) for i in range(20)],
+                   store=store)
+        counted += _counted_ids(log)
+        struck += _struck_ids(log)
+    assert counted == [] and struck == [] and store == {}
+
+
+def test_ratio_guard_boundary(monkeypatch, _isolated_breaker):
+    import lib.llm_fallback as lf
+
+    # 2 rejections among 10 jobs: at the limit -> struck (not charged)
+    monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["ok", "ok", "400", "400"] + ["ok"] * 6))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "10"], rows=[_row(950 + i) for i in range(10)], store={})
+    assert sorted(_struck_ids(log)) == [952, 953] and _counted_ids(log) == []
+    # 3 rejections among 10 jobs: over the limit -> systemic, nobody struck
+    monkeypatch.setattr(lf, "generate_with_fallback",
+                        _sequence_generator(["ok", "400", "ok", "400", "ok", "400"] + ["ok"] * 4))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "10"], rows=[_row(960 + i) for i in range(10)], store={})
+    assert _struck_ids(log) == [] and _counted_ids(log) == []
+
+
+def test_empty_replies_after_rejections_strike_nobody(monkeypatch, _isolated_breaker):
+    import lib.llm_fallback as lf
+
+    store = {}
+    for _ in range(3):
+        monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["400", "400", None, None, None]))
+        log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(970 + i) for i in range(5)],
+                   store=store)
+        assert not {970, 971} & set(_counted_ids(log)) and _struck_ids(log) == []
+
+
+def test_a_strike_from_the_same_run_never_charges():
+    log = []
+
+    class Cur:
+        def execute(self, sql, params=None):
+            log.append((" ".join(sql.split()), params))
+
+    charged, struck = w.apply_rejection_strikes(Cur(), [(5, "r", {w.STRIKE_KEY: "RUN-A"})], "RUN-A", 10)
+    assert charged == [] and struck == [5]
+    charged, struck = w.apply_rejection_strikes(Cur(), [(5, "r", {w.STRIKE_KEY: "RUN-A"})], "RUN-B", 10)
+    assert charged == [5] and struck == []
+
+
+def test_a_strike_is_never_an_attempt():
+    log = []
+
+    class Cur:
+        def execute(self, sql, params=None):
+            log.append(" ".join(sql.split()))
+
+    w.apply_rejection_strikes(Cur(), [(5, "r", {})], "RUN-A", 10)
+    assert log and not [s for s in log if "attempt_count" in s]
+
+
+@pytest.mark.parametrize("meta,expected", [({"a": 1}, {"a": 1}), ('{"a": 1}', {"a": 1}), ("not json", {}),
+                                           (None, {}), ([1, 2], {})])
+def test_job_metadata_is_read_safely(meta, expected):
+    assert w._job_meta({"metadata_json": meta}) == expected
