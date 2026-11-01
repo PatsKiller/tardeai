@@ -36,7 +36,7 @@
     "note": "Every other pending job type in the queue (rag_content_curation, covered_call_scoring, risk_synthesis, *_strategy_scan, recovery_watch_review) was built on May 2026 article/option/position context and is not selected; retiring those rows is a separate operator decision."
   },
   "process_registration": "config/llm_process_registry.json id deep_overnight_llm_drain (this PR). _seed_registry creates its llm_process_config row on the next process start. Caps ship as 0 placeholders the operator sets: at 0 only Grok/ChatGPT OAuth run; DeepSeek is refused by the process cap; Anthropic needs anthropic_first (set) PLUS credit admission (daily_cost_cap_usd > 0 and daily_soft_cap > 0, anthropic_routing.credit_admitted).",
-  "refusal_rule": "A refused job goes back to pending uncounted and the runner keeps going. Only a REQUEST rejection (every lane that ran answered HTTP 400/413/422 or an ambiguous body: KeyError/JSONDecodeError) can ever be charged, and only when (1) a LATER job in the same run returned a real text answer (an empty or failed reply confirms nothing), (2) the run is not systemic (no more than max(2, 10% of its jobs) such rejections), and (3) the same job was struck the same way on a DIFFERENT earlier run (strike kept in the job's own metadata_json; a strike is not an attempt). Any other refusal is never charged. outage_after_refusals refusals in a row with no answer are a lane outage. An outage after answers is a flap: the next runs halve their volume per flap until a run ends cleanly.",
+  "refusal_rule": "A refused job goes back to pending uncounted and the runner keeps going. Only a REQUEST rejection (every lane that ran answered HTTP 400/413/422 or an ambiguous body: KeyError/JSONDecodeError) can ever be charged, and only when (1) a LATER job in the same run returned a real text answer, (2) the run is not systemic (no more than max(2, 10% of its jobs) such rejections), and (3) the same job was struck the same way on a DIFFERENT earlier run within strike_max_age_days (strike kept in the job's own metadata_json; a strike is not an attempt; a success clears it). Request rejections never count toward an outage; max_consecutive_request_rejections of them in a row ends the run without tripping the breaker, and if nothing was answered the run is recorded as no progress (paged after outage_page_after_hours). Only non-request refusals (429, 5xx, timeout, transport, unavailable, gate) count toward outage_after_refusals; an outage after answers is a flap.",
   "per_run_job_limit_note": "--route cloud caps --limit at per_run_job_limit.",
   "max_consecutive_failures": 3,
   "breaker_cooldown_min": 30,
@@ -44,5 +44,7 @@
   "breaker_state": "<persistent-state>/data/runtime/deep_overnight_llm_drain_breaker.json (DeepQueueDrainBreaker@v1)",
   "outage_page_after_hours": 6,
   "probe_rule": "While the outage breaker is open the probe is jobs[min(trips, n-1)] (rotating), then the head decides.",
-  "outage_after_refusals": 3
+  "outage_after_refusals": 3,
+  "max_consecutive_request_rejections": 10,
+  "strike_max_age_days": 7
 }

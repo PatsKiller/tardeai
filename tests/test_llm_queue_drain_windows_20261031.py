@@ -569,7 +569,7 @@ def test_probe_and_head_both_refused_extends_the_breaker_and_charges_nobody(monk
     state = w._fresh_breaker()
     w.trip_breaker(state, "outage", "earlier outage", POLICY)
     w.save_breaker(_isolated_breaker, state)
-    monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_HTTP400))
+    monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_CONN_REFUSED))
     log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1), _row(2), _row(3)])
     assert [p for s, p in log if "SET status = 'running'" in s] == [(2,), (1,), (3,)]
     assert _counted_ids(log) == []
@@ -579,10 +579,10 @@ def test_probe_and_head_both_refused_extends_the_breaker_and_charges_nobody(monk
 def test_outage_breaker_persists_and_the_next_run_tries_one_job(monkeypatch, _isolated_breaker):
     import lib.llm_fallback as lf
 
-    monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_HTTP400))
+    monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_CONN_REFUSED))
     _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(81), _row(82), _row(83)])
     state = w.load_breaker(_isolated_breaker)
-    assert w.breaker_open(state, "outage"), "three refusals in a row open the breaker"
+    assert w.breaker_open(state, "outage"), "three non-request refusals in a row open the breaker"
     log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(81), _row(82), _row(83)])
     assert [p for s, p in log if "SET status = 'running'" in s] == [(82,), (81,), (83,)], "probe first, then the head"
     assert _counted_ids(log) == []
@@ -919,14 +919,19 @@ def test_two_bad_jobs_at_the_head_do_not_throttle_the_drain(monkeypatch, _isolat
 
 def test_rejections_after_an_answer_are_not_charged_without_a_later_answer(monkeypatch, _isolated_breaker):
     """Round 10: an earlier answer proves nothing about a later 400 (a systemic or throttling 400 looks the same).
-    Without a LATER answer nobody is charged; the run ends in an outage (a flap, since lanes had answered)."""
+    Without a LATER answer nobody is charged. Round 12: request rejections never trip the outage breaker; an
+    unbroken run of max_consecutive_request_rejections ends the run instead (no trip, no flap)."""
     import lib.llm_fallback as lf
 
-    monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["ok"] + ["400"] * 10))
-    log = _run(monkeypatch, ["--route", "cloud", "--limit", "10"], rows=[_row(100 + i) for i in range(10)])
-    assert _counted_ids(log) == []
+    bound = int(POLICY["max_consecutive_request_rejections"])
+    monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["ok"] + ["400"] * (bound + 5)))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "30"], rows=[_row(100 + i) for i in range(bound + 5)],
+               store={})
+    assert _counted_ids(log) == [] and _struck_ids(log) == []
+    assert len([p for s, p in log if "SET status = 'running'" in s]) == 1 + bound
     state = w.load_breaker(_isolated_breaker)
-    assert w.breaker_open(state, "outage") and state["flaps"] == 1
+    assert not w.breaker_open(state, "outage") and state["flaps"] == 0
+    assert "no_progress" not in state, "a run with an answer is progress"
 
 
 def test_rejection_between_two_answers_is_charged_on_its_second_run(monkeypatch, _isolated_breaker):
@@ -1248,9 +1253,10 @@ def test_a_strike_from_the_same_run_never_charges():
         def execute(self, sql, params=None):
             log.append((" ".join(sql.split()), params))
 
-    charged, struck = w.apply_rejection_strikes(Cur(), [(5, "r", {w.STRIKE_KEY: "RUN-A"})], "RUN-A", 10)
+    run_a, run_b = "2026-11-01T01:00:00+00:00", "2026-11-01T02:00:00+00:00"
+    charged, struck = w.apply_rejection_strikes(Cur(), [(5, "r", {w.STRIKE_KEY: run_a})], run_a, 10)
     assert charged == [] and struck == [5]
-    charged, struck = w.apply_rejection_strikes(Cur(), [(5, "r", {w.STRIKE_KEY: "RUN-A"})], "RUN-B", 10)
+    charged, struck = w.apply_rejection_strikes(Cur(), [(5, "r", {w.STRIKE_KEY: run_a})], run_b, 10)
     assert charged == [5] and struck == []
 
 
@@ -1269,3 +1275,106 @@ def test_a_strike_is_never_an_attempt():
                                            (None, {}), ([1, 2], {})])
 def test_job_metadata_is_read_safely(meta, expected):
     assert w._job_meta({"metadata_json": meta}) == expected
+
+
+# ── round 12: request rejections never trip the outage breaker; bound + no-progress record; expiry; clear ──────
+
+def test_three_bad_jobs_at_the_head_do_not_stall_the_drain(monkeypatch, _isolated_breaker):
+    import lib.llm_fallback as lf
+
+    rows = [_row(i) for i in range(1, 41)]
+    done = []
+    for _ in range(4):
+        monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator({1, 2, 3}))
+        log = _run(monkeypatch, ["--route", "cloud", "--limit", "40"], rows=rows, store={})
+        done += _done(log)
+    assert len(done) == 4 * 37
+    assert not w.breaker_open(w.load_breaker(_isolated_breaker), "outage")
+
+
+def test_request_rejection_bound_ends_the_run_without_tripping_and_records_no_progress(monkeypatch, _isolated_breaker):
+    import lib.llm_fallback as lf
+
+    bound = int(POLICY["max_consecutive_request_rejections"])
+    monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_HTTP400))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "40"], rows=[_row(i) for i in range(1, 31)])
+    assert len([p for s, p in log if "SET status = 'running'" in s]) == bound
+    state = w.load_breaker(_isolated_breaker)
+    assert not w.breaker_open(state, "outage") and state["flaps"] == 0
+    assert state["no_progress"]["runs"] == 1, "a run with no answer at all must be recorded as no progress"
+    _run(monkeypatch, ["--route", "cloud", "--limit", "40"], rows=[_row(i) for i in range(1, 31)])
+    assert w.load_breaker(_isolated_breaker)["no_progress"]["runs"] == 2
+
+
+def test_no_progress_pages_after_the_threshold_and_clears_on_an_answer(monkeypatch, _isolated_breaker):
+    import lib.llm_fallback as lf
+
+    state = w._fresh_breaker()
+    state["no_progress"] = {"since": (datetime.now(timezone.utc) - timedelta(hours=7)).isoformat(), "runs": 5,
+                            "reason": "grok: HTTPError: 400 Bad Request"}
+    w.save_breaker(_isolated_breaker, state)
+    sent = _pages(monkeypatch)
+    monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_HTTP400))
+    _run(monkeypatch, ["--route", "cloud", "--limit", "40"], rows=[_row(i) for i in range(1, 31)])
+    _run(monkeypatch, ["--route", "cloud", "--limit", "40"], rows=[_row(i) for i in range(1, 31)])
+    assert len(sent) == 1 and "no progress" in sent[0] and "grok HTTP 400" in sent[0]
+    monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["ok"] * 5))
+    _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(i) for i in range(1, 6)])
+    assert "no_progress" not in w.load_breaker(_isolated_breaker)
+
+
+def test_no_progress_record_survives_a_restart_and_is_sanitized(_isolated_breaker):
+    _isolated_breaker.write_text(json.dumps({"schema": w.BREAKER_SCHEMA, "no_progress": {
+        "since": "2026-11-01T00:00:00+00:00", "runs": "3", "paged_since": "2026-11-01T00:00:00+00:00"}}))
+    npr = w.load_breaker(_isolated_breaker)["no_progress"]
+    assert npr["runs"] == 3 and npr["paged_since"] == "2026-11-01T00:00:00+00:00"
+    _isolated_breaker.write_text(json.dumps({"schema": w.BREAKER_SCHEMA, "no_progress": {"since": 5, "runs": 2}}))
+    assert "no_progress" not in w.load_breaker(_isolated_breaker)
+
+
+@pytest.mark.parametrize(
+    "prev,run_id,fresh",
+    [
+        ("2026-11-01T00:00:00+00:00", "2026-11-03T00:00:00+00:00", True),
+        ("2026-09-01T00:00:00+00:00", "2026-11-01T00:00:00+00:00", False),  # two months old
+        ("2026-10-25T00:00:00+00:00", "2026-11-01T00:00:00+00:00", True),   # exactly 7 days
+        ("2026-10-24T23:00:00+00:00", "2026-11-01T00:00:00+00:00", False),  # just past 7 days
+        ("2026-11-01T00:00:00+00:00", "2026-11-01T00:00:00+00:00", False),  # same run
+        ("2026-11-02T00:00:00+00:00", "2026-11-01T00:00:00+00:00", False),  # from the future
+        ("not a date", "2026-11-01T00:00:00+00:00", False),
+        (None, "2026-11-01T00:00:00+00:00", False),
+        ("2026-11-01T00:00:00", "2026-11-02T00:00:00+00:00", True),         # naive read as UTC
+    ],
+)
+def test_strike_freshness(prev, run_id, fresh):
+    assert w._strike_is_fresh(prev, run_id, 7) is fresh
+
+
+def test_an_expired_strike_is_overwritten_not_charged(monkeypatch, _isolated_breaker):
+    import lib.llm_fallback as lf
+
+    store = {1: {w.STRIKE_KEY: "2026-09-01T00:00:00+00:00"}}
+    monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator({1}))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1), _row(2), _row(3)], store=store)
+    assert _counted_ids(log) == [] and _struck_ids(log) == [1]
+    assert store[1][w.STRIKE_KEY] != "2026-09-01T00:00:00+00:00"
+
+
+def test_a_success_clears_a_strike(monkeypatch, _isolated_breaker):
+    import lib.llm_fallback as lf
+
+    store = {1: {w.STRIKE_KEY: datetime.now(timezone.utc).isoformat()}}
+    monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["ok", "ok"]))
+    _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1), _row(2)], store=store)
+    assert w.STRIKE_KEY not in store[1]
+
+
+def test_rejections_interleaved_with_answers_never_hit_the_bound(monkeypatch, _isolated_breaker):
+    """The bound is on CONSECUTIVE rejections with no answer between them: an answer resets it."""
+    import lib.llm_fallback as lf
+
+    n = int(POLICY["max_consecutive_request_rejections"]) + 4
+    monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["400", "ok"] * n))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "100"], rows=[_row(1000 + i) for i in range(2 * n)],
+               store={})
+    assert len([p for s, p in log if "SET status = 'running'" in s]) == 2 * n
