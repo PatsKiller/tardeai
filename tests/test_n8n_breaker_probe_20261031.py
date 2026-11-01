@@ -150,7 +150,11 @@ def test_enabled_false_and_dry_run_change_nothing(env):
 
 
 def test_config_defaults():
-    assert CFG["enabled"] is False and CFG["never_probe_extra"] == []
+    # Armed by the operator 2026-11-01 (verbatim: "release the breakers and install the probe
+    # timer"). Arming is only valid WITH the review/approval fields (§25.10.2); the floor below
+    # is what this test exists to pin, and it is unchanged.
+    assert CFG["enabled"] is True and CFG["review_status"] == "REVIEWED" and CFG["approved_by"].strip()
+    assert CFG["never_probe_extra"] == []
     for word in ("scalp", "sender", "secret", "deploy", "guard", "position", "paper", "broker", "stop", "execution"):
         assert word in BP.NEVER_PROBE
     assert BP.blocked("Tradeai-SCALP-feed", CFG)  # case-insensitive

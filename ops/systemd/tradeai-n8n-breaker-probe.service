@@ -1,0 +1,12 @@
+[Unit]
+Description=Release one long-open n8n breaker so its next slot is a half-open probe, then judge it
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
+# The durable config is the armed copy under the state root; a release update of
+# config/n8n_breaker_probe.json does not silently disarm or widen the live probe.
+ExecStart=%h/trade-ai-releases/portfolio-server/CURRENT/.venv/bin/python scripts/n8n_breaker_probe.py --apply --config %h/trade-ai-releases/persistent-state/data/governance/n8n_breaker_probe.json
+TimeoutStartSec=120
+# Never safe_flock/notifier/n8n: this releases what the dispatcher's own gate holds.

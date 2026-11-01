@@ -104,7 +104,13 @@ def world(tmp_path, monkeypatch):
 
 def test_repo_manifest_is_valid_and_admits_only_the_watchdog():
     assert I.validate_manifest(MANIFEST) == []
-    assert [g["id"] for g in MANIFEST["groups"]] == ["cron-outage-watchdog"]
+    assert [g["id"] for g in MANIFEST["groups"]] == ["cron-outage-watchdog", "n8n-breaker-probe"]
+    probe = next(g for g in MANIFEST["groups"] if g["id"] == "n8n-breaker-probe")
+    for unit in probe["units"]:
+        assert (ROOT / probe["source_dir"] / unit).is_file()
+    assert probe["admission"]["require"] == {"enabled": True, "review_status": "REVIEWED"}
+    pcfg = json.loads((ROOT / probe["admission"]["config"]).read_text())
+    assert pcfg["enabled"] is True and pcfg["review_status"] == "REVIEWED" and pcfg["approved_by"].strip()
     for unit in WATCHDOG["units"]:
         assert (ROOT / WATCHDOG["source_dir"] / unit).is_file()
     assert WATCHDOG["dry_run"]["argv"] == ["scripts/cron_outage_watchdog.py", "--dry-run"]
@@ -348,7 +354,9 @@ def test_retire_rolls_back_only_groups_the_target_lacks(world, tmp_path):
     (target / "config/staged_user_units.json").write_text(json.dumps(dict(MANIFEST, groups=[])))
     assert I.main(["retire", "--release", str(world.release), "--target", str(target), "--unit-dir", str(world.units),
                    "--state-root", str(world.state)]) == 0
-    assert [g["status"] for g in world.receipt()["groups"]] == ["ROLLED_BACK"]
+    # The probe group's config is not in this fixture's temp release, so it is PENDING_ADMISSION
+    # at install and NOTHING_INSTALLED at retire; only the watchdog was installed and rolled back.
+    assert [g["status"] for g in world.receipt()["groups"]] == ["ROLLED_BACK", "NOTHING_INSTALLED"]
     keep = tmp_path / "same"
     (keep / "config").mkdir(parents=True)
     (keep / "config/staged_user_units.json").write_text(json.dumps(MANIFEST))

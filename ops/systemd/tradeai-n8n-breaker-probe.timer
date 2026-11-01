@@ -1,0 +1,11 @@
+[Unit]
+Description=Half-open breaker probe every 10 minutes
+
+[Timer]
+OnCalendar=*-*-* *:0/10:00
+AccuracySec=30s
+Persistent=true
+Unit=tradeai-n8n-breaker-probe.service
+
+[Install]
+WantedBy=timers.target
