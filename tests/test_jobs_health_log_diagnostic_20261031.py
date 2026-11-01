@@ -131,9 +131,12 @@ def test_load_attaches_log_errors_from_the_declared_log(tmp_path, monkeypatch):
 
 
 # --- strict redaction of the quoted line (reviewer inputs, 2026-10-31). Synthetic secrets only. ---------------------
+# Host-neutral and generic-user paths: the redaction rules match the URL path (/bot<digits>:<token>) and
+# /home/<user>, not the host or a real operator account, so the fixtures exercise the same regexes without
+# tripping the Telegram chokepoint ratchet or the PII scan.
 LEAKS = [
     ("requests.exceptions.HTTPError: 404 Client Error: Not Found for url: "
-     "https://api.telegram.org/bot8123456789:AAHfakeTOKENfakeTOKENfake123/sendMessage",
+     "https://example.invalid/bot8123456789:AAHfakeTOKENfakeTOKENfake123/sendMessage",
      ["8123456789:AAH", "AAHfakeTOKEN"]),
     ("requests.exceptions.HTTPError: 403 Client Error: Forbidden for url: "
      "https://elite.finviz.com/export.ashx?v=152&t=SPY&auth=fa4e1c2b-0000-1111-2222-abcdefabcdef",
@@ -143,8 +146,8 @@ LEAKS = [
     ("KeyError: 'sk-ant-api03-FAKEFAKEFAKEFAKE'", ["sk-ant-api03", "FAKEFAKEFAKE"]),
     ("ValueError: invalid dsn: postgresql://trade_ai:hunter2@127.0.0.1:5432/trade_ai", ["hunter2", "trade_ai:"]),
     ("RuntimeError: schwab refresh failed: refresh_token: Zx9FAKErefresh", ["Zx9FAKErefresh"]),
-    ("PermissionError: [Errno 13] Permission denied: '/home/johnclaw/.config/tradeai/secrets/bws_openclaw_gateway.env'",
-     ["bws_openclaw_gateway", "/home/johnclaw"]),
+    ("PermissionError: [Errno 13] Permission denied: '/home/example/.config/tradeai/secrets/bws_openclaw_gateway.env'",
+     ["bws_openclaw_gateway", "/home/example"]),
 ]
 
 
@@ -385,8 +388,8 @@ def test_round2_ordinary_error_text_stays_readable():
 def test_round2_telegram_path_token_of_any_shape_is_redacted():
     from scripts.lib.error_line_redaction import redact_error_line
 
-    shown = redact_error_line("HTTPError: 404 for url: https://api.telegram.org/bot123456:abcdefghij/sendMessage", home="")
-    assert shown == "HTTPError: 404 for url: https://api.telegram.org/bot[REDACTED]/sendMessage"
+    shown = redact_error_line("HTTPError: 404 for url: https://example.invalid/bot123456:abcdefghij/sendMessage", home="")
+    assert shown == "HTTPError: 404 for url: https://example.invalid/bot[REDACTED]/sendMessage"
 
 
 def test_round2_bare_lowercase_hex_secret_is_redacted():

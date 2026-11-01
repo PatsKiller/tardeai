@@ -39,7 +39,8 @@ def world(tmp_path, monkeypatch):
     cfg["standing_apply"] = {"enabled": True, "rules": ["A", "S", "W"], "manifest_max_age_hours": 2,
                              "max_bytes_per_run": SR.MAX_BYTES, "max_gb_per_run": 40, "byte_unit": "GiB",
                              "approved_by": "SYNTHETIC_TEST_ONLY", "archive": {"path": "~/db_backups/archive"},
-                             "approval": {"status": "APPROVED", "approved_by": "SYNTHETIC_TEST_ONLY", "approved_at": NOW.isoformat()}}
+                             "approval": {"status": "APPROVED", "approved_by": "SYNTHETIC_TEST_ONLY", "approved_at": NOW.isoformat()},
+                             "agent_scratch": dict(cfg["standing_apply"]["agent_scratch"])}
     rules_path = tmp_path / "rules.json"
     rules_path.write_text(json.dumps(cfg))
     rules = DH.load_rules(rules_path, home=home)
@@ -924,3 +925,214 @@ def test_plan_bound_opaque_evidence_refuses_apply_before_remover(world, monkeypa
     report = DH.apply(path, world[1], NOW, grant=None, run_id="fixture", standing=True, evidence=doc,
                       manifest_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
     assert report["refused"] == "evidence_opaque_processes" and not calls
+
+
+def _scratch_dirs(home, names, days=10):
+    scratch = home / ".cache" / "agent-tmp"
+    out = []
+    for name in names:
+        p = scratch / name
+        (p / "nested").mkdir(parents=True)
+        f = p / "nested" / "evidence.txt"
+        f.write_text("fixture")
+        for child in (f, f.parent, p):
+            old(child, days)
+        out.append(p)
+    return out
+
+
+def test_agent_scratch_idle_threshold_and_entry_pattern_come_from_config(world):
+    home, rules, _, _ = world
+    rules["standing_apply"]["rules"] = ["A", "S", "T", "W"]
+    rules["standing_apply"]["agent_scratch"].update(idle_days=5, entry_regex=r"^task-[a-z0-9-]+$")
+    (four,) = _scratch_dirs(home, ("task-four",), days=4)
+    six, odd = _scratch_dirs(home, ("task-six", "Odd_Name"), days=6)
+    result = DH.standing_plan(rules, NOW, evidence())
+    assert {r["path"] for r in result["items"]} == {str(six)}
+    reasons = {r["path"]: " ".join(r["reasons"]) for r in result["excluded"]}
+    assert "scratch_not_older_than_5_days" in reasons[str(four)]
+    assert "scratch_name_not_declared" in reasons[str(odd)]
+
+
+def test_agent_scratch_is_plan_only_until_rule_t_is_listed(world):
+    home, rules, _, _ = world
+    (path,) = _scratch_dirs(home, ("idle-task",))
+    result = DH.standing_plan(rules, NOW, evidence())
+    assert str(path) not in {r["path"] for r in result["items"]}
+    assert any("rule_plan_only_not_authorized:T" in " ".join(r["reasons"]) for r in result["excluded"] if r["path"] == str(path))
+
+
+def test_agent_scratch_never_takes_a_worktree(world):
+    home, rules, _, _ = world
+    rules["standing_apply"]["rules"] = ["A", "S", "T", "W"]
+    (path,) = _scratch_dirs(home, ("task-with-worktree",))
+    (path / "wt").mkdir()
+    admin = home / "fixture-repo" / ".git" / "worktrees" / "wt"
+    admin.mkdir(parents=True)
+    (path / "wt" / ".git").write_text(f"gitdir: {admin}")  # its repo still knows it: rule W's, never T's
+    for child in (path / "wt" / ".git", path / "wt", path):
+        old(child)
+    result = DH.standing_plan(rules, NOW, evidence())
+    assert str(path) not in {r["path"] for r in result["items"]}
+
+
+@pytest.mark.parametrize("patch, error", [
+    ({"path": "~/.cache"}, "agent_scratch_scope"),
+    ({"idle_days": 0}, "agent_scratch_idle_days"),
+    ({"idle_days": "2"}, "agent_scratch_idle_days"),
+    ({"entry_regex": "("}, "agent_scratch_entry_regex"),
+    ({"require_claim_absent": False}, "agent_scratch_shape"),
+    ({"require_process_absent": False}, "agent_scratch_shape"),
+])
+def test_rule_t_config_is_validated_fail_closed(world, tmp_path, patch, error):
+    _, _, rules_path, cfg = world
+    doc = json.loads(rules_path.read_text())
+    doc["standing_apply"]["agent_scratch"].update(patch)
+    bad = tmp_path / "bad_rules.json"
+    bad.write_text(json.dumps(doc))
+    with pytest.raises(DH.RulesError, match=error):
+        DH.load_rules(bad, home=world[0])
+
+
+def test_rule_t_listed_without_its_config_refuses(world, tmp_path):
+    _, _, rules_path, _ = world
+    doc = json.loads(rules_path.read_text())
+    doc["standing_apply"]["rules"] = ["A", "S", "T", "W"]
+    del doc["standing_apply"]["agent_scratch"]
+    bad = tmp_path / "bad_rules.json"
+    bad.write_text(json.dumps(doc))
+    with pytest.raises(DH.RulesError, match="agent_scratch_scope"):
+        DH.load_rules(bad, home=world[0])
+
+
+def _collect_with_extra_claim(world, extra):
+    rules = collector_fixture(world)
+    base = world[0] / "trade-ai-releases" / "persistent-state" / "data" / "coordination"
+    (base / "claims" / "extra.json").write_text(json.dumps(extra))
+    reader = FixtureGithub([])
+    runner = lambda *a, **kw: type("R", (), {"returncode": 0, "stdout": ""})()
+    return COLLECT(rules, NOW, runner=runner, github=reader)["sources"]["coordination"]
+
+
+def test_policy_broadcast_state_in_claims_dir_is_not_a_claim(world):
+    held = str(world[0] / ".cache" / "agent-tmp" / "named-in-broadcast")
+    src = _collect_with_extra_claim(world, {"schema": "PolicyBroadcastState@v1", "note": held})
+    assert src["complete"], src
+    assert [c["claim_id"] for c in src["data"]["live_claims"]] == ["fixture"]
+    assert held in src["data"]["references"]  # its paths still hold
+
+
+@pytest.mark.parametrize("extra", [{"schema": "SomethingElse@v1"}, {"no_schema": True}, ["not", "a", "dict"]])
+def test_unknown_document_in_claims_dir_still_fails_closed(world, extra):
+    src = _collect_with_extra_claim(world, extra)
+    assert not src["complete"]
+    assert "claim_unreadable" in src["detail"]
+
+
+def test_future_fixture_mtime_counts_at_its_real_change_time(tmp_path):
+    f = tmp_path / "nested" / "stamped.txt"
+    f.parent.mkdir()
+    f.write_text("fixture")
+    real = f.lstat().st_ctime
+    now = real + 10 * 86400
+    ahead = now + 100 * 86400  # a test stamped this file far past "now"
+    os.utime(f, (ahead, ahead))
+    newest, why = SR.activity(f.parent, now=now)
+    assert why is None and newest < now - 9 * 86400
+    assert SR.activity(f.parent)[0] == ahead  # without now, behaviour is unchanged
+
+
+def test_past_mtime_is_still_trusted_with_now(tmp_path):
+    f = tmp_path / "old.txt"
+    f.write_text("fixture")
+    past = f.lstat().st_ctime - 30 * 86400
+    os.utime(f, (past, past))
+    os.utime(tmp_path, (past, past))
+    assert SR.activity(tmp_path, now=past + 60 * 86400)[0] == past
+
+
+def _git_fixture(repo, *args):
+    import subprocess
+    env = dict(os.environ, GIT_AUTHOR_NAME="f", GIT_AUTHOR_EMAIL="f@x", GIT_COMMITTER_NAME="f", GIT_COMMITTER_EMAIL="f@x",
+               GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_SYSTEM="/dev/null")
+    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, env=env)
+
+
+def _nested_world(world):
+    home, rules, _, _ = world
+    rules["standing_apply"]["rules"] = ["A", "S", "T", "W"]
+    ref = home / "trade-ai-v12-rebuild" / "trade-ai-v12-rebuild"
+    ref.mkdir(parents=True)
+    _git_fixture(ref, "init", "-q")
+    (ref / "a.txt").write_text("shared")
+    _git_fixture(ref, "add", "a.txt")
+    _git_fixture(ref, "commit", "-q", "-m", "shared")
+    return home, rules, ref
+
+
+def _age_tree(root, days=10):
+    for dp, dns, fns in os.walk(root):
+        for n in fns + dns:
+            old(Path(dp) / n, days)
+    old(root, days)
+
+
+def test_nested_clone_with_only_known_commits_is_reclaimable(world):
+    home, rules, ref = _nested_world(world)
+    (scratch,) = _scratch_dirs(home, ("proof-known",))
+    _git_fixture(scratch, "clone", "-q", str(ref), "clone")
+    _age_tree(scratch)
+    result = DH.standing_plan(rules, NOW, evidence())
+    item = next(r for r in result["items"] if r["path"] == str(scratch))
+    assert item["bundles"] == []
+
+
+def test_nested_repo_with_unique_commit_is_bundled_then_removed(world, monkeypatch):
+    home, rules, ref = _nested_world(world)
+    (scratch,) = _scratch_dirs(home, ("proof-unique",))
+    repo = scratch / "work"
+    repo.mkdir()
+    _git_fixture(repo, "init", "-q")
+    (repo / "b.txt").write_text("only here")
+    _git_fixture(repo, "add", "b.txt")
+    _git_fixture(repo, "commit", "-q", "-m", "unique")
+    _age_tree(scratch)
+    result = DH.standing_plan(rules, NOW, evidence())
+    item = next(r for r in result["items"] if r["path"] == str(scratch))
+    assert item["bundles"] == ["work"]
+    monkeypatch.undo()  # the real remover, on fixture paths only
+    ok, how = DH.remove_item(item)
+    assert ok and "bundled 1" in how and not scratch.exists()
+    bundle = Path(item["bundle_dir"]) / "proof-unique" / "work.bundle"
+    assert bundle.is_file()
+    restored = home / "restored"
+    _git_fixture(home, "clone", "-q", str(bundle), str(restored))
+    assert (restored / "b.txt").read_text() == "only here"
+
+
+@pytest.mark.parametrize("make, reason", [
+    ("dirty", "nested_repo_dirty"),
+    ("registered_worktree", "nested_worktree_registered"),
+])
+def test_nested_repo_holds(world, make, reason):
+    home, rules, ref = _nested_world(world)
+    (scratch,) = _scratch_dirs(home, ("proof-" + make.replace("_", "-"),))
+    if make == "dirty":
+        _git_fixture(scratch, "clone", "-q", str(ref), "clone")
+        (scratch / "clone" / "a.txt").write_text("edited")
+    else:
+        _git_fixture(ref, "worktree", "add", "-q", str(scratch / "wt"))
+    _age_tree(scratch)
+    result = DH.standing_plan(rules, NOW, evidence())
+    assert str(scratch) not in {r["path"] for r in result["items"]}
+    assert any(reason in " ".join(r["reasons"]) for r in result["excluded"] if r["path"] == str(scratch))
+
+
+def test_orphan_worktree_pointer_is_plain_files(world):
+    home, rules, _ = _nested_world(world)
+    (scratch,) = _scratch_dirs(home, ("orphan",))
+    (scratch / "wt").mkdir()
+    (scratch / "wt" / ".git").write_text("gitdir: /nonexistent/fixture/.git/worktrees/wt")
+    _age_tree(scratch)
+    result = DH.standing_plan(rules, NOW, evidence())
+    assert str(scratch) in {r["path"] for r in result["items"]}

@@ -20,3 +20,650 @@ options_flow:
     warn: P2
   dedupe_minutes: 240         # one card per symbol-state per four hours
   producer: options_chain_snapshot
+
+# ── P2 market-data categories (scripts/lib/market_risk/categories/{technical,volatility,options_flow,macro_credit,
+#    cross_asset}.py, scripts/lib/market_risk/correlations.py). Each category sums the points of the sub-signals that
+#    fire (capped at 100); state = STRESS at stress_score, WARN at warn_score, else CALM. Missing inputs are UNKNOWN,
+#    never zero. Proposed defaults, operator-owned (§11 item 3). RCA fixture values quoted beside each rule.
+technical:
+  symbols: [QQQ, SPY, SMH, SOXX, IWM]
+  semis_symbols: [SMH, SOXX]
+  history_sessions: 260          # enough for a 52-week high and a 200-day average
+  min_sessions: 25
+  # market hours (decay.clock): 32 = one missed session at most. Friday 16:00 -> Monday 08:00 is 22; Monday's close not
+  # collected by Monday 18:00 makes it UNKNOWN (review of #2415 round 2, R2-1: 96 market hours let Wednesday's bars read
+  # CALM the next Monday)
+  stale_after_hours: 32
+  warn_score: 30
+  stress_score: 60
+  drawdown_52w_pct: 8.0          # NDX was 10% off its 10-06 record on 10-30
+  drawdown_20d_pct: 4.0
+  losing_streak_sessions: 5      # SOX lost 8 straight sessions into 10-16
+  retest_window_sessions: 5
+  retest_reference_sessions: 20
+  retest_tolerance_pct: 0.34     # half the median |QQQ daily move| 2016-2025 (scripts/market_risk_calibrate.py)
+  retest_fail_pct: 1.5           # then closed 2.7% lower on 10-29
+  semis_mtd_pct: -10.0           # SOX -15% month to date
+  points:
+    drawdown_52w: 15
+    drawdown_20d: 10
+    losing_streak: 15
+    failed_retest: 20
+    below_dma50: 8
+    below_dma200: 12
+    semis_mtd: 15
+    ai_basket_warn: 10           # ai_concentration.technical_signal WARN (participation < warn or RS <= rs_warn_pct)
+    ai_basket_stress: 20         # ... STRESS (participation < 40% or RS <= -5 pts over 20 sessions, plan §5.7)
+  # IMPROVING (design §5.2 Green input, gap-close 2026-10-31): only when the category is otherwise CALM. The index
+  # reclaimed its 50-day within reclaim_sessions after a correction of at least min_correction_pct from its
+  # high_sessions high, inside correction_window sessions.
+  improving:
+    symbol: SPY
+    reclaim_sessions: 10
+    correction_window: 60
+    high_sessions: 126
+    min_correction_pct: 8.0
+
+volatility:
+  vix_symbol: "^VIX"
+  index_symbol: QQQ
+  realized_symbol: SPY
+  term_symbols: {vix9d: "^VIX9D", vix3m: "^VIX3M", vvix: "^VVIX", skew: "^SKEW"}
+  history_sessions: 30
+  # market hours (decay.clock): 32 = one missed session at most. Friday 16:00 -> Monday 08:00 is 22; Monday's close not
+  # collected by Monday 18:00 makes it UNKNOWN (review of #2415 round 2, R2-1: 96 market hours let Wednesday's bars read
+  # CALM the next Monday)
+  stale_after_hours: 32
+  warn_score: 30
+  stress_score: 60
+  vix_warn: 20.0
+  vix_stress: 25.0
+  vix_5d_change_pct: 30.9          # p95 of VIX 5-day change 2016-2025 (market_risk_calibrate.py)
+  divergence_index_drop_pct: -2.3   # p5 of QQQ daily move 2016-2025 (market_risk_calibrate.py)
+  divergence_vix_max_change_pct: 7.1  # VIX same-day change in its weakest quartile on those days (not <= 0.0)
+  vvix_warn: 110.0
+  skew_warn: 150.0
+  realized_window: 10
+  realized_over_implied: 1.0        # 10-day realized (annualised, %) above VIX
+  points:
+    vix_warn: 15
+    vix_stress: 30
+    vix_jump: 15
+    divergence: 30             # alone it is WARN: the 10-29 signal
+    term_inversion_front: 15        # VIX9D above VIX
+    term_inversion_back: 20         # VIX above VIX3M
+    vvix: 10
+    skew: 10
+    realized_over_implied: 10
+  # IMPROVING (design §5.2 "falling vol"): otherwise CALM, VIX down at least vix_change_pct over change_sessions, below
+  # its 20-day mean and below vix_warn.
+  improving:
+    change_sessions: 10
+    vix_change_pct: -26.7         # p5 of VIX 10-session change 2016-2025
+
+options_flow_category:
+  # Category wrapper over the P0 detector (key options_flow above): the detector decides WARN/STRESS per symbol.
+  history_extra_sessions: 1
+  # market hours (decay.clock): 32 = one missed session at most. Friday 16:00 -> Monday 08:00 is 22; Monday's close not
+  # collected by Monday 18:00 makes it UNKNOWN (review of #2415 round 2, R2-1: 96 market hours let Wednesday's bars read
+  # CALM the next Monday)
+  stale_after_hours: 32          # fallback only when expected_slots_et is absent
+  # Staleness from the snapshot schedule instead (review of #2425): option_chain_snapshots run 10:00 and 17:35 ET on
+  # trading days (crontab, options_chain_snapshot.py). A snapshot stays current until the second expected slot after
+  # it is due + late_slack_minutes: one missed or late slot tolerated (Friday 10:00 with the 17:35 run failed is still
+  # current at a late Monday 10:30), two are not (fail closed).
+  expected_slots_et: ["10:00", "17:35"]
+  late_slack_minutes: 45
+  missed_slots_allowed: 1
+  score: {CALM: 10, WARN: 50, STRESS: 85}
+
+macro_credit:
+  series: {hy_oas: BAMLH0A0HYM2, ust10: DGS10, curve: T10Y2Y, wti: DCOILWTICO, dxy: DTWEXBGS}
+  observations: 400
+  stale_after_hours: 120            # market hours; FRED publishes with a one-to-two-day lag (kept wide on purpose)
+  warn_score: 30
+  stress_score: 60
+  hy_oas_5d_bp: 25                  # p95 of 5-obs change, 2023-11..2025 (FRED history starts 2023-11)
+  hy_oas_20d_bp: 51                 # p95 of 20-obs change, 2023-11..2025
+  hy_oas_z: 2.0
+  ust10_level: 5.0                  # 5.19% on 10-14
+  ust10_20d_bp: 44                  # p95 of 20-obs change 2016-2025
+  curve_20d_bp: 25                  # fast move either way
+  wti_20d_pct: 15.9                 # p95 of 20-obs change 2016-2025
+  dxy_20d_pct: 2.4                  # p95 of 20-obs change 2016-2025
+  points:
+    hy_oas_5d: 20
+    hy_oas_20d: 15
+    hy_oas_z: 15
+    ust10_level: 10
+    ust10_move: 10
+    curve_move: 10
+    wti: 10
+    dxy: 10
+  # IMPROVING (design §5.2 "improving credit"): otherwise CALM, HY OAS down at least hy_oas_20d_bp in 20 observations;
+  # before FRED's spread history (2023-10) HYG up hyg_20d_pct in 20 sessions while above its 50-day.
+  improving:
+    hy_oas_20d_bp: 49             # p5 (tightening) of 20-obs change, 2023-11..2025
+    proxy_symbol: HYG
+    hyg_20d_pct: 3.1              # p95 of HYG 20-session return 2016-2025
+
+correlations:
+  window: 20
+  lookback_sessions: 252
+  min_sessions: 60
+  z_anomaly: 2.0
+  sign_flip_sessions: 3
+  min_abs_mean_for_flip: 0.2
+  pairs:
+    - [SPY, "^VIX"]
+    - [SPY, TLT]
+    - [SPY, UUP]
+    - [SPY, HYG]
+    - [QQQ, SMH]
+    - [SPY, RSP]
+    - [SPY, GLD]
+
+cross_asset:
+  history_sessions: 280
+  # market hours (decay.clock): 32 = one missed session at most. Friday 16:00 -> Monday 08:00 is 22; Monday's close not
+  # collected by Monday 18:00 makes it UNKNOWN (review of #2415 round 2, R2-1: 96 market hours let Wednesday's bars read
+  # CALM the next Monday)
+  stale_after_hours: 32
+  warn_score: 30
+  stress_score: 60
+  hyg_5d_pct: -1.5
+  flight_to_safety_spy_5d_pct: -2.0
+  flight_to_safety_tlt_5d_pct: 1.0
+  points:
+    anomaly: 20
+    hyg_drop: 15
+    flight_to_safety: 15
+event:
+  # Event concentration (scripts/lib/market_risk/event_calendar.py, categories/event.py). Index-weighted earnings
+  # share in the next N sessions + scheduled macro releases + calendar tags -> event_concentration_score 0-100.
+  # RCA fixture (synthetic weights): FOMC 10-28 14:00, four mega-caps reporting 10-28/10-29 after hours,
+  # month-end 10-30 -> STRESS from 10-26 onward.
+  windows_sessions: [1, 3, 5]
+  earnings_window_sessions: 3     # the window whose share drives the score
+  earnings_share_full: 0.25       # index-cap share reporting in the window that earns all earnings points
+  earnings_max_points: 60
+  amc_cutoff_et: "20:00"          # today's after-close reporters still count until the extended session ends
+  bmo_cutoff_et: "09:30"          # today's before-open reporters stop counting at the open
+  macro_window_sessions: 3
+  macro_points: {fomc: 25, cpi: 15, employment_situation: 15, default: 5}
+  macro_max_points: 30
+  calendar_window_sessions: 5
+  calendar_points: {month_end: 5, quarter_end: 5, options_expiration: 5, election_day: 10}
+  calendar_max_points: 15
+  warn_score: 40
+  stress_score: 60
+  stale_after_hours: 24
+  # Earnings share is measured over the largest index constituents only (registry._covered_weights); the share is of
+  # this universe's combined cap. Below min_cap_coverage of the list with a known cap, earnings read "not measured".
+  index_universe: [AAPL, MSFT, NVDA, AMZN, GOOGL, GOOG, META, AVGO, TSLA, BRK.B, JPM, LLY, V, WMT, ORCL, MA, XOM,
+                   NFLX, COST, JNJ, HD, PG, ABBV, BAC, AMD, PLTR, KO, CVX, CSCO, UNH, IBM, INTC, MU, CRM, GE]
+  min_cap_coverage: 0.8
+  # AI-basket earnings sensitivity (P2-T6): basket index-cap share reporting within this many sessions.
+  ai_sensitivity_window_sessions: 2
+  ai_sensitivity_stress_share: 0.15
+  ai_sensitivity_stress_score: 80
+
+ai_concentration:
+  # scripts/lib/market_risk/ai_concentration.py. Feeds technical (participation / relative strength) and event
+  # (earnings sensitivity). Basket is operator-owned.
+  basket: [NVDA, AMD, AVGO, MSFT, AMZN, GOOGL, META]
+  optional: [AAPL, TSLA, INTC, MU, TSM, ORCL]
+  include_optional: false
+  benchmarks: [RSP, SPY]
+  lookback_sessions: 60
+  rs_sessions: 20
+  participation_calm: 0.70        # share of basket above its 20-day average considered healthy
+  participation_warn: 0.55
+  participation_stress: 0.40
+  rs_warn_pct: -2.5               # basket 20-session return minus benchmark, percentage points
+  rs_stress_pct: -5.0
+  rs_full_pct: -10.0              # relative weakness that earns a full 100 score
+  earnings_lookahead_days: 10     # calendar days of earnings rows read to cover the 5-session window
+  stale_after_hours: 30
+
+breadth:
+  # categories/breadth.py from existing sector_momentum_state rows (style pairs, sector states, sector breadth).
+  # Market-wide breadth (new highs/lows, % above DMAs) comes from market_breadth_daily once that store exists;
+  # until then that sub-signal is UNKNOWN, never zero.
+  style_key: "STYLE:equal_vs_cap"
+  style_points: {LEADING: 0, IMPROVING: 5, WEAKENING: 20, LAGGING: 30}
+  leadership_etfs: [XLK, SMH]
+  leadership_points: {LEADING: 0, IMPROVING: 5, WEAKENING: 15, LAGGING: 20}
+  leadership_max_points: 25
+  weak_breadth_pct: 45            # leadership sector breadth (% of members positive) below this adds points
+  weak_breadth_points: 10
+  deteriorating_states: [WEAKENING, LAGGING]
+  deteriorating_share_points_full: 25   # share of sector ETFs WEAKENING/LAGGING x this
+  warn_score: 35
+  stress_score: 60
+  stale_after_hours: 30
+  # Sector-ETF breadth proxy (scripts/lib/market_risk/breadth_proxy.py) until market_breadth_daily exists. No free API
+  # carries NYSE advance/decline or new highs/lows, so participation is measured across the eleven sector SPDRs, which
+  # together span the S&P 500. The category takes the stronger of this and the sector-state score, never the sum.
+  proxy:
+    enabled: true
+    universe: [XLB, XLC, XLE, XLF, XLI, XLK, XLP, XLRE, XLU, XLV, XLY]
+    min_members: 8
+    min_history_sessions: 60
+    history_sessions: 300
+    high_low_sessions: 252        # 52-week window for the new-low / new-high proxy
+    near_low_pct: 2.0             # within this % of the 52-week low counts as "at a low"
+    weak_above_50: 0.30           # share above the 50-day at or below this is named in the headline
+    many_at_low: 0.30
+    mcclellan_full: 100           # ratio-adjusted McClellan at -100 earns the full McClellan points
+    rsp_spy_weak_pct: -1.5        # RSP vs SPY over 20 sessions at or below this
+    thrust_sessions: 10
+    stale_after_hours: 30
+    points:
+      below_20dma_full: 20        # x share of sectors below their 20-day
+      below_50dma_full: 25        # x share below their 50-day
+      at_52w_low_full: 35         # x share within near_low_pct of a 52-week low
+      mcclellan_negative_full: 20
+      rsp_spy_weak: 10
+    improving:
+      # Breadth thrust (design §5.2 Green: "breadth expansion, participation"): washed-out to broad inside thrust_sessions.
+      thrust_to: 0.70             # share above the 20-day now at or above this
+      thrust_rise: 0.50           # ... having risen by at least this much in thrust_sessions
+      mcclellan_swing: 50         # or the McClellan went from <= -this to >= +this in thrust_sessions
+
+seasonal:
+  # categories/seasonal.py: a low-weight prior from scripts/lib/cio_seasonality_engine.py. It can never by itself
+  # raise the category above WARN (enforced in code, not only by these numbers).
+  points:
+    weak_month: 10
+    worst_six_months: 5
+    midterm_year: 5
+    options_expiration_week: 5
+    quarter_end_window: 3
+    turn_of_month_late: 2
+  max_score: 35
+  warn_score: 25
+  stale_after_hours: 24
+# ── Composite scoring (scripts/lib/market_risk/scoring.py, builder A, P2-T1/P2-T10) ──────────────────────────
+# The composite is set by composite.method (noisy-OR: only WARN/STRESS categories add risk; "mean" = the original
+# weighted mean of KNOWN category scores, kept for comparison). Either way the contributors' points sum to the score
+# exactly; UNKNOWN categories are reported as lost coverage, never counted as zero. The operator owns the numbers
+# (design §11 item 3).
+weights:
+  technical: 1.0
+  breadth: 1.0
+  volatility: 1.0
+  options_flow: 1.2
+  macro_credit: 0.6
+  cross_asset: 0.8
+  event: 1.2
+  seasonal: 0.3
+  extended_hours: 1.3
+
+tiers:
+  # A tier holds when one of require_stress_any (if listed) is at STRESS AND (score >= min_score OR at least min_warn
+  # categories are WARN/STRESS). require_stress_any binds the score path too (review of #2362, B2). Plan §5.2.
+  blue:   {min_score: 25, min_warn: 1}
+  yellow: {min_score: 40, min_warn: 3}
+  orange: {min_score: 60, min_warn: 4, require_stress_any: [options_flow, cross_asset, event]}
+  red:    {min_score: 75, min_warn: 5, require_stress_any: [extended_hours, breadth]}
+  # Shock: an extended-hours STRESS at or above shock_min_score while the market is already ORANGE-or-worse makes
+  # RED on that one evaluation (the 10-29 18:15 ET case: NQ futures -1.5%..-2% after AMZN/INTC prints).
+  red_shock: {category: extended_hours, shock_min_score: 80, from_tier: ORANGE}
+  # GREEN also needs >= 70% of the category weight measured and no STRESS observation in the last 24 hours; a move to
+  # GREEN from BLUE-or-above is a de-escalation and waits for the closed-session count (review of #2383, N2).
+  # ...and options_flow, volatility and breadth measured (or >= 85% of the weight measured), and never on a bootstrap
+  # evaluation with no prior (review of #2383 round 3, M-B).
+  green:  {max_score: 20, min_calm_or_improving: 3, min_improving: 3, max_warn: 0, min_coverage: 0.7, no_stress_hours: 24,
+           must_measure: [options_flow, volatility, breadth], min_coverage_if_missing_must: 0.85}
+  # Portfolio uplift (plan §5.9/§5.11): at most ONE tier in total, BLUE never uplifts.
+  uplift:
+    max_tiers: 1
+    vulnerability_rules:
+      - {from: ORANGE, min_vulnerability: 70, to: RED}
+      - {from: YELLOW, min_vulnerability: 80, to: ORANGE}
+    # A breach lifts one tier only at >= 1.25x its limit. A whole-book breach counts at its ratio; an account breach
+    # counts at 1 + (ratio - 1) x the account's share of the book, so a small single-name account never lifts the tier
+    # alone (review of #2383, N1). The book must also be at least moderately vulnerable.
+    budget_ratio_uplift: 1.25
+    budget_uplift_from: [YELLOW, ORANGE]
+    budget_uplift_min_vulnerability: 50
+
+hysteresis:
+  escalate_consecutive: 2          # evaluations in a row at the higher tier before it is adopted
+  deescalate_sessions: 3           # distinct ET session dates below the current tier before it drops
+  bootstrap_adopts_raw: true       # no prior assessment -> adopt the raw tier (recorded as bootstrap)
+
+decay:
+  # Contribution weight by age of the observation (hours): weight of the first step whose max_age >= age.
+  # clock: market — age counts only hours the market could have produced newer information in (scoring._age_hours,
+  # sessions.market_hours_between): weekends and NYSE holidays do not age Friday's close, and the clock restarts at
+  # reopen_et on the evening before a trading day (index futures and Asia open Sunday 18:00 ET). Measured 2026-10-31
+  # on live data with clock wall: YELLOW 59.7 on Friday 18:30 ET fell to BLUE 39 by Saturday 19:50 and BLUE 27 with
+  # breadth UNKNOWN by Monday 08:00 premarket, with no new market information at all. "wall" restores wall-clock age.
+  clock: market
+  reopen_et: "18:00"
+  # Backstops every staleness check obeys (scoring.staleness; categories through _marketdata.stale), beyond each
+  # category's own stale_after_hours (the binding limit: 32 market hours for daily-bar categories, 120 for FRED).
+  # max_market_hours only catches a category without a sensible limit; max_wall_hours: 120 covers the longest closure
+  # (a Friday close to the Tuesday open after a Monday holiday is 89.5h).
+  max_market_hours: 120
+  max_wall_hours: 120
+  # Hold, never escalate, on carried data (scoring._hold_not_escalate). An observation made before a market closure
+  # (a weekend or NYSE holiday between it and now, sessions.closure_between) keeps its market-clock weight for HOLDING
+  # and displaying the current tier, but the tier may rise only as far as fresh post-closure observations support.
+  # Operator approval, in session 2026-10-31 ~22:00 ET: "approve hold-not-escalate" (reviewer variant D, #2425).
+  # "off" restores carried data escalating.
+  carried_escalation: hold_only
+  # First evaluation with no prior tier (bootstrap), when observations are carried across a closure:
+  #   adopt_carried       - adopt the tier rebuilt from carried data (operator "keep bootstrap"; default for now)
+  #   fresh_only_no_page  - start at the tier fresh observations alone support; the carried tier is shown, labelled
+  # In both modes a bootstrap evaluation never sends P1 (alerts.bootstrap_priority). Pending operator decision
+  # (review of PR 2425 round 4, finding 2); a torn latest.json is never a bootstrap (market_risk_evaluate._resolve_prior).
+  bootstrap_mode: adopt_carried
+  future_tolerance_seconds: 60     # an input stamped later than now + this is invalid (clock skew, bad writer)
+  steps:
+    - {max_age_hours: 12, weight: 1.0}
+    - {max_age_hours: 24, weight: 0.8}
+    - {max_age_hours: 48, weight: 0.6}
+    - {max_age_hours: 72, weight: 0.4}
+  default_stale_after_hours: 96    # market hours (backstop; every category sets its own); beyond an observation's stale_after (or this) it becomes UNKNOWN, weight 0
+  confirm_min_weight: 0.8          # a WARN/STRESS older than ~24h (weight < 0.8) no longer confirms a tier
+alerts:
+  # Phone card + delivery intent for engine tier transitions (scripts/lib/market_risk/alerts.py). Transitions only;
+  # the same tier twice never sends. Red is an operator-action intent: P1, dedupe 0, never quiet-held (plan §5.8).
+  # A bootstrap evaluation (no prior tier) never pages: its card, if any, is an informational "first reading" at this
+  # priority, never P1 (review of PR 2425 round 4, finding 2).
+  bootstrap_priority: P3
+  producer: market_risk_engine
+  max_contributors: 5
+  priority:
+    RED: P1
+    ORANGE: P1
+    YELLOW: P2
+    BLUE: P3
+    GREEN: P2
+    deescalated: P2        # a drop out of ORANGE/RED is news too
+  dedupe_minutes:
+    RED: 0
+    ORANGE: 60
+    YELLOW: 240
+    BLUE: 720
+    GREEN: 720
+    deescalated: 240
+
+escalation:
+  # MarketRiskEpisode@v1 (scripts/lib/market_risk/escalation.py). File store until the market_risk_episodes table
+  # is granted (§7A). One open episode at a time; ORANGE or RED opens it.
+  opens_at: [ORANGE, RED]
+  red_repeat_offsets_min: [15, 30, 60]   # after the first send, then every red_repeat_every_min
+  red_repeat_every_min: 60
+  red_repeat_cap: 12
+  orange_repeat_offsets_min: [60]        # once at +60, then once at each session boundary
+  orange_session_boundaries_et: ["05:00", "09:45", "16:30"]
+  orange_repeat_cap: 4
+  min_seconds_between_sends: 60          # never two sends of one episode inside a minute
+  resolve_after_sessions_below: 3        # below YELLOW for 3 closed NYSE trading sessions (sessions.py) -> RESOLVED
+  resolve_below_tier: YELLOW
+  stalled_after_min: 75                  # OPEN RED with no repeat receipt this long -> health_tick pages
+  # A card claimed but never settled (a crash between claim and send) is retried after this long; the outbox keeps
+  # its text, so a crash delays a card by one cycle and never loses or wedges it (review of #2383, B5d).
+  claim_ttl_min: 10
+  repeat_priority: P1                    # repeats of an open ORANGE/RED episode (were hardcoded in the evaluator)
+  repeat_dedupe_minutes: 0               # repeat keys are unique per episode and repeat number
+
+opening_shock:
+  # 09:16-09:46 ET opening-shock detector (scripts/lib/market_risk/opening_shock.py, plan §5.14).
+  symbols: [SPY, QQQ, IWM, SMH]
+  gap_and_go_atr: 0.75        # |gap| >= this many ATRs, breadth confirms, range extends
+  gap_fade_retrace: 0.50      # >= 50% of the gap retraced by 09:45
+  panic_gap_atr: -1.5         # gap <= -1.5 ATR ...
+  panic_advancers_pct: 20     # ... advancers below 20% ...
+  panic_trin: 2.0             # ... TRIN above 2.0 ...
+  panic_vix_change_pct: 10    # ... VIX up 10% or more
+  panic_gap_atr_without_internals: -2.0   # internals unknown: a deeper gap plus the VIX rule is required
+  window_et: ["09:16", "09:46"]
+
+extended_hours:
+  # Premarket / after-hours index proxies and index heavyweights (categories/extended_hours.py).
+  index_proxies: [QQQ, SPY]
+  heavyweights: [NVDA, MSFT, AAPL, AMZN, GOOGL, META, AVGO, TSLA, AMD, INTC]
+  warn_pct: -0.75             # worst index proxy move vs previous close
+  stress_pct: -1.5
+  heavyweight_stress_pct: -8  # a heavyweight this far down after hours is named as evidence
+  lookback_hours: 18             # and never less than back to the last regular close (Friday's after-hours on a weekend)
+  stale_after_hours: 2           # in the decay clock (market hours); an older quote is named, with its age, as UNKNOWN
+  # Stores/feeds whose rows are real extended-session prints. market_quotes_extended (#2384) holds Alpaca SIP 5-minute
+  # bars (a row exists only when something traded; bar_end is when it became knowable; reference_close is that
+  # session's official daily close). market_quotes is NOT one: its fetched_at is a fetch time and Alpaca IEX
+  # latestTrade repeats the closing print when nothing traded (20 of 106 after-close QQQ/SPY rows in the 30 days to
+  # 2026-10-31 were priced exactly at the close), and yfinance regularMarketPrice is the regular close. Even from an
+  # allowed source, a price equal to its reference close or a reference from another session is "not proven" and
+  # reads UNKNOWN, never CALM (review of #2415, F1/F4). Add schwab when a Schwab quote lane exists.
+  extended_sources: [market_quotes_extended, schwab]
+  # Feeds with an overnight (24/5, 20:00-04:00 ET) book. Alpaca (IEX and SIP bars) has none: an Alpaca row stamped
+  # overnight is an earlier last trade and is "not proven", never a calm overnight market.
+  overnight_sources: [schwab]
+  # Overnight-gap proxy (gap-close 2026-10-31): today's 09:30 open vs the previous close, from daily bars. Known from
+  # the open only, so it covers the session after a night the extended-session quotes were not collected (and all of
+  # history before the system existed). Same % thresholds as above, or a gap of this many 14-day ATRs; plan §5.14
+  # uses -1.5 ATR for a panic open and 0.75 ATR for a material gap.
+  gap_proxy:
+    enabled: true
+    atr_sessions: 14
+    warn_atr: 0.75
+    stress_atr: 1.5
+    stale_after_hours: 7          # an opening gap stays current through that session's close
+
+composite:
+  # How category observations combine into the 0-100 score (scripts/lib/market_risk/scoring._composite).
+  # noisy_or: only WARN/STRESS categories add risk; independent confirmations accumulate, calm categories never dilute.
+  # x_i = min(max_per_category, unit_weight * f * weight_i * score_i/100 * decay_i), f = 1 STRESS / warn_factor WARN;
+  # score = 100 * (1 - prod(1 - x_i)). unit_weight 0.40: one fully stressed weight-1.0 category alone = 40 (Yellow
+  # floor); two = 64; three = 78. Orange and Red also need a STRESS in their require_stress_any list (tiers), so
+  # WARNs alone never reach Orange whatever the score (enforced in scoring._raw_tier).
+  method: noisy_or
+  unit_weight: 0.40
+  warn_factor: 0.6
+  max_per_category: 0.95
+  # No coverage extrapolation (review of #2362, B2): an UNKNOWN category never raises the score or the tier; the card
+  # shows the lost coverage instead. The former coverage_extrapolation_max knob is removed.
+
+sectors:
+  # scripts/lib/market_risk/sectors.py — sector and theme attribution + heat map (precision PR, operator 2026-10-31:
+  # "aware of which sectors got hit because [staples/healthcare] did not get affected"). STATED RULE, not fitted to
+  # October: every threshold is a standard-score band of the group's own trailing z_window_sessions history (z -1.5 is
+  # about the worst 7% of 5-session moves; -1.0 about the worst 16%). Groups are equal-weight indexes of their symbols.
+  benchmark: SPY
+  z_window_sessions: 252
+  corr_window_sessions: 10
+  stress_z: -1.5            # 5-session return z vs its own history ...
+  rs_stress_z: -1.0         # ... AND relative return vs SPY z (lagging the market, not just falling with it)
+  weak_z: -1.0
+  stress_z_1d: -2.0         # one-session shock band (about the worst 2% of days), same RS condition
+  weak_z_1d: -1.5
+  resilient_rs_z: 0.75      # beating SPY by 0.75 sd of its own relative history, or rising while SPY falls
+  price_dd_min_pct: -3.0    # price-weakness gate: STRESS/WEAK only when >= 3% under the 20-session high AND lagging SPY over 20 sessions
+  defensive_key: defensive
+  growth_keys: [tech, semis, ai_basket, comm]
+  factor_symbols: [IWF, IWD, IWM, HYG, TLT]
+  factor_pairs:
+    growth_value: [IWF, IWD]
+    small_large: [IWM, SPY]
+    credit: [HYG, TLT]
+  groups:
+    - {key: tech, label: Technology, kind: sector, symbols: [XLK]}
+    - {key: comm, label: Communications, kind: sector, symbols: [XLC]}
+    - {key: discretionary, label: Discretionary, kind: sector, symbols: [XLY]}
+    - {key: staples, label: Staples, kind: sector, symbols: [XLP]}
+    - {key: healthcare, label: Healthcare, kind: sector, symbols: [XLV]}
+    - {key: utilities, label: Utilities, kind: sector, symbols: [XLU]}
+    - {key: energy, label: Energy, kind: sector, symbols: [XLE]}
+    - {key: financials, label: Financials, kind: sector, symbols: [XLF]}
+    - {key: industrials, label: Industrials, kind: sector, symbols: [XLI]}
+    - {key: materials, label: Materials, kind: sector, symbols: [XLB]}
+    - {key: real_estate, label: Real estate, kind: sector, symbols: [XLRE]}
+    - {key: semis, label: Semis, kind: theme, symbols: [SMH, SOXX]}
+    - {key: ai_basket, label: AI basket, kind: theme, symbols: [NVDA, AMD, AVGO, MSFT, AMZN, GOOGL, META]}
+    - {key: defensive, label: Defensives, kind: defensive, symbols: [XLP, XLV, XLU]}
+    - {key: rates, label: Long Treasuries, kind: macro, symbols: [TLT]}
+    - {key: dollar, label: Dollar, kind: macro, symbols: [UUP]}
+
+shock_type:
+  # scripts/lib/market_risk/shock_type.py — what KIND of stress (operator 2026-10-31: "whether it's a pandemic or is
+  # it a certain sector related"). Each class is a list of indicators; its score is the share that hold; the top
+  # score at or above min_confidence wins (ties by priority), else MIXED. Same standard-score rule as sectors:.
+  min_confidence: 0.6
+  min_known_indicators: 2   # score over measured indicators once >= 2 of a class are measured (unknown is not a no-vote)
+  priority: [SYSTEMIC, CREDIT, SECTOR, FACTOR, RATES, EVENT]
+  systemic:
+    min_frac_sectors_down: 0.8      # 9 of 11 sectors down over 5 sessions
+    min_corr_z: 1.0                 # cross-sector correlation 1 sd above its own year
+  sector:
+    max_stressed_groups: 5
+    min_resilient_sectors: 3
+    min_dispersion_z: 1.0
+  factor:
+    min_abs_z: 2.0
+  rates:
+    bond_stress_z: -1.5
+    dollar_z: 1.5
+  credit:
+    hy_rel_z: -1.5
+
+positions:
+  # scripts/lib/market_risk/position_stances.py — per-position CIO stances (operator 2026-10-31: "advised me I would
+  # have got out earlier ... advise me when to get back in"). Advisory stances only; never size/price/stop.
+  # STATED RULE: a position is flagged when at least a quarter of it (look-through) sits in the stressed groups, or
+  # the whole book when the shock type is SYSTEMIC. Re-entry needs the flagged groups out of stress for 2 completed
+  # sessions AND the index back above its 50-day AND VIX below its 20-day — or the engine reaching GREEN.
+  min_exposure: 0.25
+  count_weak_at: ORANGE        # at ORANGE and above a WEAK group counts toward exposure as well as a STRESSED one
+  defensive_groups: [staples, healthcare, utilities]   # flat-or-up defensive groups are never trimmed (non-systemic)
+  evening_exit_room_pct: 2.0   # stated rule: implied open leaving <= 2 points before the broker stop (about one
+                               # median daily range of a large-cap ETF) raises EXIT review that evening, YELLOW and up
+  recovered_sessions: 2
+  reclaim_symbol: QQQ
+  # OPERATOR-OWNED theme mapping (§17): symbol -> extra groups at full weight, for a stock held as a theme bet that
+  # its own sector does not show. Empty by default; never inferred by code. Shape: {SYMBOL: [ai_basket]}
+  theme_overrides: {}
+  # Materiality floor (operator 2026-10-31, via coordinator: fractional dividend residuals got "trim review, no broker
+  # stop"). Below any of these a holding is a RESIDUAL: no stance, no playbook, no stop flag — one count line only.
+  materiality:
+    min_shares: 1.0
+    min_market_value: 1000.0
+    min_book_weight: 0.001   # 0.1% of the book
+  reenter_require_all: [group_recovered, index_reclaimed_50d, vix_below_20d]
+  reenter_or_any: [engine_green]
+
+  playbook:
+    # scripts/lib/market_risk/protection_playbook.py — DISPLAY ONLY. Stop and trail percentages come from
+    # config/stop_policy.yaml via scripts/holding_family.py; nothing here decides or places a stop (MBI_BEHAVIOR = 0).
+    # tier_posture is an OPERATOR-SET proposal (§17): at ORANGE/RED show the house band with stop_policy.yaml's own
+    # risk_off regime adjustment (caps shrink 1 point). Set a tier to null to show the unadjusted band.
+    tier_posture: {YELLOW: null, ORANGE: risk_off, RED: risk_off}
+    gap_lookback_sessions: 500
+    near_stop_pct: 2.0           # flag when the implied open leaves 2 points or less before the stop
+    min_cluster_corr: 0.8        # positions whose daily returns correlate this much move together in this shock
+    # Verified 2026-10-31 from schwab.com/stocks/extended-hours-trading (fetched, quoted):
+    session_facts:
+      - "Schwab: stop orders are not eligible for execution during an extended-hours session; only limit orders are accepted (schwab.com/stocks/extended-hours-trading). A stop placed today triggers no earlier than the 09:30 open, possibly far through its level after an overnight gap."
+      - "Schwab: EXTO (extended + overnight, 24 hours, Day or GTC) covers all S&P 500, Nasdaq 100 and Dow 30 stocks plus 600+ ETFs on thinkorswim — limit orders only (schwab.com/stocks/extended-hours-trading; schwab.com/learn/story/can-i-trade-pre-and-after-hours-markets)."
+    session_alternatives:
+      - "Information, not instruction: an extended-hours limit order is a manual action you would enter yourself."
+      - "Hedge eligibility follows the inverse-hedge stoplight (PSQ for Nasdaq / tech)."
+      - "Reducing exposure before the close is the only way to be out before an after-hours shock."
+    wash_sale_note: "Taxable account: a re-buy within 30 days of a loss sale is a wash sale (the loss is deferred into the new lot). Not applicable in IRAs."
+
+reentry_watch:
+  # scripts/lib/market_risk/reentry_watch.py — names exited in the last lookback_days get a CIO RE_ENTER_IF stance with
+  # per-symbol conditions (operator 2026-10-31: "let me know when is the right time to hop back in"). STATED RULES:
+  # trend repair = close above its 20-day average and the pre-exit close; earnings pending inside 5 sessions blocks
+  # evaluation, 3 sessions after a print to settle; market <= YELLOW; options hedging not STRESS. Base rate on the
+  # symbol's own history: breakdown = 8% under the 20-session high and below the 20-day average.
+  lookback_days: 30
+  group_sessions: 2
+  earnings_ahead_sessions: 5
+  settle_sessions: 3
+  breakdown_drawdown_pct: -8.0
+  horizon_sessions: 20
+  wash_sale_days: 30
+  card_priority: P2
+  card_dedupe_minutes: 1440
+leadership:
+  # scripts/lib/market_risk/leadership.py + rotation_advice.py — regime-turn rotation advisor (operator 2026-10-31:
+  # "if stuff is turning for the long term, I should have advisement of what I should be getting into"). STATED RULE,
+  # fixed before the backtest and not fitted to it: a group "leads" when its price relative to SPY is higher than it was
+  # N sessions ago (sign of the relative trend) AND it spent a majority of those sessions above its own relative-strength
+  # 20-session average (persistence), with the group itself above its 50- and 200-day averages (an uptrend, not a
+  # relative "least-bad"). Horizons are the conventional 1 / 3 / 6 trading months. 2026 is held out of the backtest.
+  benchmark: SPY
+  horizons: [20, 60, 120]
+  rs_sma_sessions: 20
+  persistence_min: 0.60        # majority-plus of sessions with RS above its 20-session average
+  fading_persistence_max: 0.40
+  breadth_min: 0.60            # multi-member groups: share of members above their 50-day average
+  new_high_pct: 0.05           # "near a 52-week high" = within 5%
+  volume_sessions: 20          # up-day volume / down-day volume over this window; > 1.0 confirms
+  min_history_sessions: 260
+  strategic_requires_macro: true
+  # Macro preference per group: the direction of rates (TLT 60-session return: up = falling yields), the dollar (UUP)
+  # and credit (HYG/TLT ratio) under which the group has historically led. Textbook sensitivities, not fitted.
+  macro_preference:
+    tech:          {rates: falling}
+    comm:          {rates: falling}
+    discretionary: {credit: improving}
+    staples:       {credit: worsening}
+    healthcare:    {credit: worsening}
+    utilities:     {rates: falling}
+    real_estate:   {rates: falling}
+    energy:        {dollar: falling}
+    materials:     {dollar: falling}
+    financials:    {rates: rising}
+    industrials:   {credit: improving}
+    semis:         {rates: falling}
+    ai_basket:     {rates: falling}
+  candidate_groups_kinds: [sector, theme]
+  candidates_per_group: 5
+  candidate_min_conviction: 55     # the CIO's own advice floor (opportunity_conviction.yaml advice.conviction_floor)
+  earnings_window_sessions: 10
+  residual_min_value_usd: 1000     # book overlap ignores fractional / residual lots below this value
+  entry_gate_tiers: [ORANGE, RED]  # the existing market_risk_gate: entries held at ORANGE+
+  card_priority: P2
+  card_dedupe_minutes: 10080       # one card per leadership-state signature per week
+  # The weekly / on-transition card stays OFF until the detector shows an edge over plain momentum. Backtest
+  # (scripts/market_risk_leadership_backtest.py, 2016-2025 in-sample, 2026 held out) did NOT beat the top-3 relative-
+  # strength baseline; see docs/audits/ROTATION_LEADERSHIP_BACKTEST_20261031.json. The payload and the CIO facts still
+  # carry the classes, labelled with that track record. Turning the card on is an operator decision.
+  card_enabled: false
+  track_record_path: docs/audits/ROTATION_LEADERSHIP_BACKTEST_20261031.json
+  # Operator 2026-10-31: "We also want to make sure that the CIO is memorizing all of this. And when stuff is pivoting
+  # to a new sector, I would think logically we're going to look first for stuff that we already researched that's on
+  # the watch list or our short list and then go to what else is leading in the industry. It should also click off
+  # separate Hermes searches and Brave and you.com searches related to all of this."
+  # scripts/lib/market_risk/cio_memory_fanout.py. Writes only through the EXISTING CIO paths (aif_memory admission,
+  # InstrumentRecordStore apply_cognition, SecurityResearchSpine silo=cio) and the EXISTING research queues
+  # (watch_directives single writer -> Hermes + TradeAI sweep; governed_research_producer -> Brave router).
+  candidate_tiers:
+    research_stale_days: 30          # research older than this is shown as stale and re-queued
+    tier3_min_momentum: 60           # "other leaders in the group" = un-researched names with momentum >= this
+    per_tier: 5
+  fanout:
+    triggers: [leadership_transition, shock_type_change, reentry_flip]
+    hermes:
+      enabled: true
+      created_by: market_risk_rotation
+      ttl_days: 21
+      priority: normal
+      daily_cap: 12                  # directives per day across all triggers
+    brave:
+      enabled: true
+      daily_cap: 10                  # research targets per day; never more than the router's own headroom
+      min_daily_headroom: 50         # leave this many Brave calls a day for every other caller
+    youcom:
+      registered: false              # no provider, client or registry row exists (grep 2026-10-31); §7A proposal:
+                                     # docs/proposals/REGISTRY_ROW_youcom_search_20261031.md
+  memory:
+    aif_memory_type: EPISODIC         # market-level episode and shock-type memories (governed admission, 30-day TTL)
+    spine_tag: market_risk            # per-symbol research-spine contributions Ask-the-CIO recalls
+    spine_kind: market_risk.event

@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_rotation_20261031",
+  "files": [
+    "tests/test_market_risk_rotation_20261031.py"
+  ],
+  "anchor": "MARKET_RISK_ROTATION_20261031",
+  "comment": [
+    "ANCHOR: MARKET_RISK_ROTATION_20261031 — rotation advisor (operator 2026-10-31: 'if stuff is turning for the long",
+    "term, I should have advisement of what I should be getting into'). Pins the durable-leadership classes, the entry",
+    "gate at ORANGE+, residual lots ignored, no behaviour fields or sizing text, the P2 chokepoint send, the card off",
+    "until an edge is shown, and the 2026 hold-out in the backtest. Hermetic: synthetic series and the public fixture."
+  ]
+}
