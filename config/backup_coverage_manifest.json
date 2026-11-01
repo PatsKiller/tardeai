@@ -217,6 +217,7 @@
     "store:options_iv",
     "store:positions_store",
     "store:private_company",
+    "store:quote_extended_session",
     "store:quote_price",
     "store:research_thesis",
     "store:symbol_identity",
