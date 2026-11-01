@@ -6,9 +6,19 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars } from '../../lib/designTokens'
-import { bannerVisible, contributorsLine, episodeLine, factLine, fmtPct, pointsSum, shortTime, tierTone, type MarketRisk } from '../../lib/marketRisk'
+import { SHADOW_MARKER, bannerVisible, contributorsLine, episodeLine, factLine, fmtPct, pointsSum, shadowMarker, shortTime, tierTone, type MarketRisk } from '../../lib/marketRisk'
 
 const tap = { minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' as const, textDecoration: 'none', fontWeight: 600, fontSize: TYPE.md, borderRadius: RADIUS.md, padding: '0 14px' }
+
+/** The shadow label beside a tier pill: a label only, no new widget (UI change control). Nothing when live. The
+ *  explanation is visible text, not a title tooltip — touch has no hover (review of PR 2425). */
+export function ShadowTag({ mr, testid }: { mr: MarketRisk | null; testid: string }) {
+  if (!shadowMarker(mr)) return null
+  return <span data-testid={testid}
+    style={{ fontSize: TYPE.sm, color: TOKENS.text[1], border: `1px dashed ${toneVars('warning').border}`, borderRadius: RADIUS.pill, padding: '2px 8px' }}>
+    <b style={{ fontWeight: 800, letterSpacing: '0.04em', color: toneVars('warning').color }}>{shadowMarker(mr).split(' ')[0]}</b> · not alerting — {shadowMarker(mr) === SHADOW_MARKER ? 'no alert was sent for this tier' : 'the tier rests on data from before the market closed; no alert sent'}
+  </span>
+}
 
 /** Header fact (replaces the "Market" fact; the old regime/VIX text moved to the Market-in-one-look card). */
 export function MarketRiskFact({ mr, loading }: { mr: MarketRisk | null; loading?: boolean }) {
@@ -19,7 +29,9 @@ export function MarketRiskFact({ mr, loading }: { mr: MarketRisk | null; loading
       style={{ display: 'flex', flexDirection: 'column', gap: 2, minHeight: 44, textDecoration: 'none', cursor: 'pointer' }}>
       <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2], textTransform: 'uppercase', letterSpacing: '0.04em' }}>Market risk</span>
       <span data-testid="home-market-risk-value" style={{ ...numStyle, fontSize: TYPE.lg, fontWeight: 700, color: f.tone === 'neutral' ? TOKENS.text[0] : tv.color }}>{loading && !mr ? '…' : f.value}</span>
-      <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>{loading && !mr ? '' : f.sub}</span>
+      <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>{loading && !mr ? '' : shadowMarker(mr)
+        ? <><b data-testid="home-market-risk-shadow" style={{ fontWeight: 800, letterSpacing: '0.04em', color: toneVars('warning').color }}>{shadowMarker(mr).split(' ')[0]}</b> · not alerting{f.sub.slice(shadowMarker(mr).length)}</>
+        : f.sub}</span>
     </Link>
   )
 }
@@ -41,6 +53,7 @@ export function MarketRiskCompact({ mr }: { mr: MarketRisk | null }) {
     <div data-testid="home-market-risk-compact" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <span style={{ fontSize: TYPE.sm, fontWeight: 800, letterSpacing: '0.04em', color: TOKENS.bg[0], background: tv.color, borderRadius: RADIUS.pill, padding: '3px 8px' }}>{mr.tier}</span>
+        <ShadowTag mr={mr} testid="home-market-risk-compact-shadow" />
         <span style={{ ...numStyle, fontSize: TYPE.md, fontWeight: 700, color: TOKENS.text[0] }}>{mr.score != null ? `${Math.round(mr.score)}/100` : '—'}</span>
         {mr.confirming && <span style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>· {mr.confirming.n} of {mr.confirming.of} categories confirm</span>}
         {mr.state === 'stale' && <span style={{ fontSize: TYPE.base, color: toneVars('warning').color }}>· stale, last evaluation {shortTime(mr.as_of)}</span>}
@@ -57,6 +70,7 @@ export function MarketRiskBanner({ mr }: { mr: MarketRisk | null }) {
   const tv = toneVars(tierTone(mr.tier))
   const sum = pointsSum(mr)
   const acked = !!mr.episode?.acknowledged_at
+  const shadow = !!shadowMarker(mr)  // a shadow tier sent nothing and has no episode: nothing to acknowledge
   const acknowledge = async () => {
     setAck({ busy: true, note: null })
     try {
@@ -72,6 +86,7 @@ export function MarketRiskBanner({ mr }: { mr: MarketRisk | null }) {
       style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 14, borderRadius: RADIUS.lg, background: tv.bg, border: `1px solid ${tv.border}` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span data-testid="home-market-risk-tier" style={{ fontSize: TYPE.base, fontWeight: 800, letterSpacing: '0.04em', color: TOKENS.bg[0], background: tv.color, borderRadius: RADIUS.pill, padding: '4px 10px' }}>{mr.tier}</span>
+        <ShadowTag mr={mr} testid="home-market-risk-banner-shadow" />
         <span style={{ ...numStyle, fontSize: TYPE.xl, fontWeight: 700, color: TOKENS.text[0] }}>MARKET RISK {mr.score != null ? Math.round(mr.score) : '—'}<span style={{ fontSize: TYPE.md, color: TOKENS.text[2] }}>/100</span></span>
       </div>
       <div style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>
@@ -105,9 +120,9 @@ export function MarketRiskBanner({ mr }: { mr: MarketRisk | null }) {
       {mr.deescalates_if && <div style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}><b style={{ color: TOKENS.text[0] }}>De-escalates if</b> {mr.deescalates_if}</div>}
       <div style={{ fontSize: TYPE.sm, color: TOKENS.text[3] }}>Advisory. No order, size or stop level is implied.</div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button type="button" data-testid="home-market-risk-ack" onClick={acknowledge} disabled={ack.busy || acked}
-          style={{ ...tap, flex: '1 1 140px', border: 0, background: tv.color, color: TOKENS.bg[0], fontWeight: 800, cursor: ack.busy || acked ? 'default' : 'pointer', opacity: acked ? 0.7 : 1 }}>
-          {acked ? `Acknowledged ${shortTime(mr.episode?.acknowledged_at)}` : ack.busy ? 'Recording…' : 'Acknowledge'}
+        <button type="button" data-testid="home-market-risk-ack" onClick={acknowledge} disabled={ack.busy || acked || shadow}
+          style={{ ...tap, flex: '1 1 140px', border: 0, background: tv.color, color: TOKENS.bg[0], fontWeight: 800, cursor: ack.busy || acked || shadow ? 'default' : 'pointer', opacity: acked || shadow ? 0.7 : 1 }}>
+          {shadow ? `${shadowMarker(mr) === SHADOW_MARKER ? 'Shadow' : 'Carried'}: nothing to acknowledge` : acked ? `Acknowledged ${shortTime(mr.episode?.acknowledged_at)}` : ack.busy ? 'Recording…' : 'Acknowledge'}
         </button>
         <Link to="/risk?tab=market-risk" style={{ ...tap, flex: '1 1 110px', border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[1], color: TOKENS.text[0] }}>Open Risk</Link>
         <Link to="/risk?tab=exposure" style={{ ...tap, flex: '1 1 110px', border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[1], color: TOKENS.text[0] }}>Review stops</Link>

@@ -68349,11 +68349,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     # POST ack: records the operator's acknowledgment in the episode ledger (P3-T7, lib.market_risk.escalation).
     if base_path == "/api/v2/market-risk/latest" and method == "GET":
         try:
-            from lib.market_risk_projection import SNAPSHOT_REL as _MR_REL, build as _mr_build
+            from lib.market_risk_projection import build as _mr_build, load_snapshot as _mr_load
 
             from lib.market_risk import escalation as _mr_esc
 
-            _snap = _load_json(PROJECT_ROOT / _MR_REL)
+            # live snapshot when present, else the labelled shadow one (never a live episode on a shadow tier)
+            _snap = _mr_load(lambda _rel: _load_json(PROJECT_ROOT / _rel), lambda _rel: (PROJECT_ROOT / _rel).exists())
             _radar = _load_json(PROJECT_ROOT / "data" / "runtime" / "hedging_radar_latest.json")
             _ep_err = None
             try:
@@ -68372,7 +68373,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             from lib.market_risk import escalation as _mr_esc
             from lib.market_risk_projection import ack_outcome as _mr_ack, build as _mr_build
 
-            from lib.market_risk_projection import SNAPSHOT_REL as _MR_REL
+            from lib.market_risk_projection import load_snapshot as _mr_load
 
             # handler-side same-origin CSRF, enforced whatever enforce/report_only say — the deploy STOP pattern
             # (cc_auth.command_csrf_check; review of #2383 round 3, M-C)
@@ -68380,7 +68381,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             if not _mr_csrf_ok:
                 return 403, {"ok": False, "error": "acknowledgment refused: cross-site request", "reason": _mr_csrf_why}
 
-            _snap = _load_json(PROJECT_ROOT / _MR_REL)
+            _snap = _mr_load(lambda _rel: _load_json(PROJECT_ROOT / _rel), lambda _rel: (PROJECT_ROOT / _rel).exists())
             try:
                 _ep = _mr_esc.open_episode(_mr_esc.load())
             except _mr_esc.EpisodeStoreCorrupt:

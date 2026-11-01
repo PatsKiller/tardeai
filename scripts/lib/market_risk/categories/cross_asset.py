@@ -21,7 +21,7 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
     if len(spy) < 6:
         return unknown(CATEGORY, ctx.now, "SPY history missing")
     newest = spy[-1][0]
-    if md.stale(newest, ctx.now, cfg["stale_after_hours"]):
+    if md.stale(newest, ctx.now, cfg["stale_after_hours"], ctx.policy.get("decay")):
         return unknown(CATEGORY, ctx.now, f"SPY bars stale (newest {md.iso(newest)})")
     asof = md.iso(newest)
     fired: list[tuple[str, Evidence]] = []

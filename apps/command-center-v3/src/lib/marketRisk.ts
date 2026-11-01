@@ -34,6 +34,10 @@ export interface MarketRisk {
   probabilities?: ProbRow[] | null
   history?: HistoryPoint[]
   sources?: { options_flow?: OptionsFlowSource } | null
+  /** 'shadow': evaluated by `market_risk_evaluate.py --shadow` — no alert was sent for this tier. 'live': --apply. */
+  mode?: 'live' | 'shadow' | null
+  /** The tier rests only on data carried across a market closure: shown, never alerted on (PR 2431). */
+  carried_only?: boolean
 }
 
 export const ACTIONABLE: readonly Tier[] = ['ORANGE', 'RED'] as const
@@ -50,6 +54,8 @@ export function unwrapMarketRisk(resp: unknown): MarketRisk | null {
     confirming: raw.confirming ?? null, deescalates_if: raw.deescalates_if ?? null, uplift: raw.uplift ?? null,
     episode: raw.episode ?? null, book: raw.book ?? null, probabilities: raw.probabilities ?? null,
     history: Array.isArray(raw.history) ? raw.history : [], sources: raw.sources ?? null,
+    mode: raw.mode === 'shadow' ? 'shadow' : raw.mode === 'live' ? 'live' : null,
+    carried_only: raw.carried_only === true,
   }
 }
 
@@ -75,6 +81,17 @@ export function tierWord(mr: MarketRisk | null): string {
   return mr.tier
 }
 
+/** The marker every surface shows beside a shadow tier: the engine evaluated it, nobody was alerted. '' when live. */
+export const SHADOW_MARKER = 'SHADOW · not alerting'
+export const CARRIED_MARKER = 'CARRIED · not alerting'
+/** The "not alerting" label: SHADOW (evaluated by --shadow) or CARRIED (the tier rests only on data carried across a
+ *  market closure, so no alert was sent). '' for an alerting live tier. */
+export function shadowMarker(mr: MarketRisk | null): string {
+  if (!mr || mr.state === 'not_evaluated') return ''
+  if (mr.mode === 'shadow') return SHADOW_MARKER
+  return mr.carried_only ? CARRIED_MARKER : ''
+}
+
 /** The header fact: value line and one-line why (top contributor), with the tier's tone. */
 export function factLine(mr: MarketRisk | null): { value: string; sub: string; tone: Tone } {
   if (!mr) return { value: '—', sub: 'market risk unavailable', tone: 'neutral' }
@@ -86,7 +103,8 @@ export function factLine(mr: MarketRisk | null): { value: string; sub: string; t
   const top = mr.contributors[0]
   const score = mr.score != null ? ` ${Math.round(mr.score)}` : ''
   const sub = mr.state === 'stale' ? `stale — last evaluation ${shortTime(mr.as_of)}` : top ? `${top.name.toLowerCase()}${top.detail ? ` · ${top.detail}` : ''}` : (mr.confirming ? `${mr.confirming.n} of ${mr.confirming.of} categories` : '')
-  return { value: `${mr.tier}${score}`, sub, tone: mr.state === 'stale' ? 'neutral' : tierTone(mr.tier) }
+  const sh = shadowMarker(mr)
+  return { value: `${mr.tier}${score}`, sub: sh ? `${sh}${sub ? ` · ${sub}` : ''}` : sub, tone: mr.state === 'stale' ? 'neutral' : tierTone(mr.tier) }
 }
 
 export function contributorsLine(mr: MarketRisk | null): string {

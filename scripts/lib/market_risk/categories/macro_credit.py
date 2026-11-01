@@ -24,7 +24,11 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
     ids = cfg["series"]
     by = md.series_by_id(ctx.reader.fred(list(ids.values()), observations=int(cfg["observations"]), end=ctx.now))
     s = {k: by.get(v) or [] for k, v in ids.items()}
-    fresh = {k: v for k, v in s.items() if v and not md.stale(v[-1][0], ctx.now, cfg["stale_after_hours"])}
+    fresh = {
+        k: v
+        for k, v in s.items()
+        if v and not md.stale(v[-1][0], ctx.now, cfg["stale_after_hours"], ctx.policy.get("decay"))
+    }
     if "hy_oas" not in fresh and "ust10" not in fresh:
         return unknown(CATEGORY, ctx.now, "HY OAS and 10-year both missing or stale")
     newest = max(v[-1][0] for v in fresh.values())
@@ -174,7 +178,7 @@ def _credit_improving(ctx: EvalContext, cfg: dict, fresh: dict) -> list[Evidence
         return []
     bars = md.closes_by_symbol(ctx.reader.daily_bars([imp["proxy_symbol"]], sessions=60, end=ctx.now))
     s = bars.get(imp["proxy_symbol"]) or []
-    if len(s) < 51 or md.stale(s[-1][0], ctx.now, cfg["stale_after_hours"]):
+    if len(s) < 51 or md.stale(s[-1][0], ctx.now, cfg["stale_after_hours"], ctx.policy.get("decay")):
         return []
     closes = [c for _, c in s]
     r20 = md.pct(closes[-1], closes[-21])

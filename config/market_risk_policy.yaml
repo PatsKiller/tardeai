@@ -30,7 +30,10 @@ technical:
   semis_symbols: [SMH, SOXX]
   history_sessions: 260          # enough for a 52-week high and a 200-day average
   min_sessions: 25
-  stale_after_hours: 96          # a Friday close is still current on Monday morning
+  # market hours (decay.clock): 32 = one missed session at most. Friday 16:00 -> Monday 08:00 is 22; Monday's close not
+  # collected by Monday 18:00 makes it UNKNOWN (review of #2415 round 2, R2-1: 96 market hours let Wednesday's bars read
+  # CALM the next Monday)
+  stale_after_hours: 32
   warn_score: 30
   stress_score: 60
   drawdown_52w_pct: 8.0          # NDX was 10% off its 10-06 record on 10-30
@@ -67,7 +70,10 @@ volatility:
   realized_symbol: SPY
   term_symbols: {vix9d: "^VIX9D", vix3m: "^VIX3M", vvix: "^VVIX", skew: "^SKEW"}
   history_sessions: 30
-  stale_after_hours: 96
+  # market hours (decay.clock): 32 = one missed session at most. Friday 16:00 -> Monday 08:00 is 22; Monday's close not
+  # collected by Monday 18:00 makes it UNKNOWN (review of #2415 round 2, R2-1: 96 market hours let Wednesday's bars read
+  # CALM the next Monday)
+  stale_after_hours: 32
   warn_score: 30
   stress_score: 60
   vix_warn: 20.0
@@ -98,13 +104,23 @@ volatility:
 options_flow_category:
   # Category wrapper over the P0 detector (key options_flow above): the detector decides WARN/STRESS per symbol.
   history_extra_sessions: 1
-  stale_after_hours: 96
+  # market hours (decay.clock): 32 = one missed session at most. Friday 16:00 -> Monday 08:00 is 22; Monday's close not
+  # collected by Monday 18:00 makes it UNKNOWN (review of #2415 round 2, R2-1: 96 market hours let Wednesday's bars read
+  # CALM the next Monday)
+  stale_after_hours: 32          # fallback only when expected_slots_et is absent
+  # Staleness from the snapshot schedule instead (review of #2425): option_chain_snapshots run 10:00 and 17:35 ET on
+  # trading days (crontab, options_chain_snapshot.py). A snapshot stays current until the second expected slot after
+  # it is due + late_slack_minutes: one missed or late slot tolerated (Friday 10:00 with the 17:35 run failed is still
+  # current at a late Monday 10:30), two are not (fail closed).
+  expected_slots_et: ["10:00", "17:35"]
+  late_slack_minutes: 45
+  missed_slots_allowed: 1
   score: {CALM: 10, WARN: 50, STRESS: 85}
 
 macro_credit:
   series: {hy_oas: BAMLH0A0HYM2, ust10: DGS10, curve: T10Y2Y, wti: DCOILWTICO, dxy: DTWEXBGS}
   observations: 400
-  stale_after_hours: 120            # FRED publishes with a one-to-two-day lag
+  stale_after_hours: 120            # market hours; FRED publishes with a one-to-two-day lag (kept wide on purpose)
   warn_score: 30
   stress_score: 60
   hy_oas_5d_bp: 25                  # p95 of 5-obs change, 2023-11..2025 (FRED history starts 2023-11)
@@ -149,7 +165,10 @@ correlations:
 
 cross_asset:
   history_sessions: 280
-  stale_after_hours: 96
+  # market hours (decay.clock): 32 = one missed session at most. Friday 16:00 -> Monday 08:00 is 22; Monday's close not
+  # collected by Monday 18:00 makes it UNKNOWN (review of #2415 round 2, R2-1: 96 market hours let Wednesday's bars read
+  # CALM the next Monday)
+  stale_after_hours: 32
   warn_score: 30
   stress_score: 60
   hyg_5d_pct: -1.5
@@ -317,16 +336,45 @@ hysteresis:
 
 decay:
   # Contribution weight by age of the observation (hours): weight of the first step whose max_age >= age.
+  # clock: market — age counts only hours the market could have produced newer information in (scoring._age_hours,
+  # sessions.market_hours_between): weekends and NYSE holidays do not age Friday's close, and the clock restarts at
+  # reopen_et on the evening before a trading day (index futures and Asia open Sunday 18:00 ET). Measured 2026-10-31
+  # on live data with clock wall: YELLOW 59.7 on Friday 18:30 ET fell to BLUE 39 by Saturday 19:50 and BLUE 27 with
+  # breadth UNKNOWN by Monday 08:00 premarket, with no new market information at all. "wall" restores wall-clock age.
+  clock: market
+  reopen_et: "18:00"
+  # Backstops every staleness check obeys (scoring.staleness; categories through _marketdata.stale), beyond each
+  # category's own stale_after_hours (the binding limit: 32 market hours for daily-bar categories, 120 for FRED).
+  # max_market_hours only catches a category without a sensible limit; max_wall_hours: 120 covers the longest closure
+  # (a Friday close to the Tuesday open after a Monday holiday is 89.5h).
+  max_market_hours: 120
+  max_wall_hours: 120
+  # Hold, never escalate, on carried data (scoring._hold_not_escalate). An observation made before a market closure
+  # (a weekend or NYSE holiday between it and now, sessions.closure_between) keeps its market-clock weight for HOLDING
+  # and displaying the current tier, but the tier may rise only as far as fresh post-closure observations support.
+  # Operator approval, in session 2026-10-31 ~22:00 ET: "approve hold-not-escalate" (reviewer variant D, #2425).
+  # "off" restores carried data escalating.
+  carried_escalation: hold_only
+  # First evaluation with no prior tier (bootstrap), when observations are carried across a closure:
+  #   adopt_carried       - adopt the tier rebuilt from carried data (operator "keep bootstrap"; default for now)
+  #   fresh_only_no_page  - start at the tier fresh observations alone support; the carried tier is shown, labelled
+  # In both modes a bootstrap evaluation never sends P1 (alerts.bootstrap_priority). Pending operator decision
+  # (review of PR 2425 round 4, finding 2); a torn latest.json is never a bootstrap (market_risk_evaluate._resolve_prior).
+  bootstrap_mode: adopt_carried
+  future_tolerance_seconds: 60     # an input stamped later than now + this is invalid (clock skew, bad writer)
   steps:
     - {max_age_hours: 12, weight: 1.0}
     - {max_age_hours: 24, weight: 0.8}
     - {max_age_hours: 48, weight: 0.6}
     - {max_age_hours: 72, weight: 0.4}
-  default_stale_after_hours: 96    # beyond an observation's stale_after (or this) it becomes UNKNOWN, weight 0
+  default_stale_after_hours: 96    # market hours (backstop; every category sets its own); beyond an observation's stale_after (or this) it becomes UNKNOWN, weight 0
   confirm_min_weight: 0.8          # a WARN/STRESS older than ~24h (weight < 0.8) no longer confirms a tier
 alerts:
   # Phone card + delivery intent for engine tier transitions (scripts/lib/market_risk/alerts.py). Transitions only;
   # the same tier twice never sends. Red is an operator-action intent: P1, dedupe 0, never quiet-held (plan §5.8).
+  # A bootstrap evaluation (no prior tier) never pages: its card, if any, is an informational "first reading" at this
+  # priority, never P1 (review of PR 2425 round 4, finding 2).
+  bootstrap_priority: P3
   producer: market_risk_engine
   max_contributors: 5
   priority:
@@ -383,8 +431,19 @@ extended_hours:
   warn_pct: -0.75             # worst index proxy move vs previous close
   stress_pct: -1.5
   heavyweight_stress_pct: -8  # a heavyweight this far down after hours is named as evidence
-  lookback_hours: 18
-  stale_after_hours: 2
+  lookback_hours: 18             # and never less than back to the last regular close (Friday's after-hours on a weekend)
+  stale_after_hours: 2           # in the decay clock (market hours); an older quote is named, with its age, as UNKNOWN
+  # Stores/feeds whose rows are real extended-session prints. market_quotes_extended (#2384) holds Alpaca SIP 5-minute
+  # bars (a row exists only when something traded; bar_end is when it became knowable; reference_close is that
+  # session's official daily close). market_quotes is NOT one: its fetched_at is a fetch time and Alpaca IEX
+  # latestTrade repeats the closing print when nothing traded (20 of 106 after-close QQQ/SPY rows in the 30 days to
+  # 2026-10-31 were priced exactly at the close), and yfinance regularMarketPrice is the regular close. Even from an
+  # allowed source, a price equal to its reference close or a reference from another session is "not proven" and
+  # reads UNKNOWN, never CALM (review of #2415, F1/F4). Add schwab when a Schwab quote lane exists.
+  extended_sources: [market_quotes_extended, schwab]
+  # Feeds with an overnight (24/5, 20:00-04:00 ET) book. Alpaca (IEX and SIP bars) has none: an Alpaca row stamped
+  # overnight is an earlier last trade and is "not proven", never a calm overnight market.
+  overnight_sources: [schwab]
   # Overnight-gap proxy (gap-close 2026-10-31): today's 09:30 open vs the previous close, from daily bars. Known from
   # the open only, so it covers the session after a night the extended-session quotes were not collected (and all of
   # history before the system existed). Same % thresholds as above, or a gap of this many 14-day ATRs; plan §5.14

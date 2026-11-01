@@ -1,0 +1,16 @@
+{
+  "schema": "MarketQuotesExtended@v2",
+  "_why": "Extended-session (pre-market / after-hours) prints for the Market Risk Engine's extended_hours category (DSN-20261031-market-risk-engine P1-T4), stored in their own table market_quotes_extended (never market_quotes, the latest-quote ledger). Operator approved the store/provider/schedule items of design §11 on 2026-10-31 (\"I approve and agree to everything one through eight\"). Advisory data only; MBI_BEHAVIOR = 0.",
+  "feed": "sip",
+  "_feed_note": "Measured 2026-10-31 (review of #2384, H2): feed=sip on the current credentials returns full 04:00-20:00 ET coverage when the request ends at least 16 minutes before now (the free plan's SIP delay). The earlier 'IEX only 16:00-17:00 / 08:00-09:30' note was wrong for this feed choice.",
+  "sip_delay_minutes": 16,
+  "bar_timeframe_minutes": 5,
+  "premarket_open_et": "04:00",
+  "regular_open_et": "09:30",
+  "afterhours_close_et": "20:00",
+  "reference_basis": "alpaca_sip_daily_bar_close",
+  "daily_lookback_days": 10,
+  "retry": {"attempts": 3, "backoff_seconds": [2, 6, 18]},
+  "symbols": ["SPY", "QQQ", "IWM", "SMH",
+              "NVDA", "MSFT", "AAPL", "AMZN", "GOOGL", "META", "AVGO", "TSLA", "BRK.B", "JPM", "LLY", "ORCL", "NFLX", "AMD", "INTC"]
+}

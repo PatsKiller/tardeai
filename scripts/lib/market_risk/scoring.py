@@ -22,6 +22,9 @@ from scripts.lib.market_risk import sessions
 ET = ZoneInfo("America/New_York")
 SEVERITY = {t: i for i, t in enumerate(c.TIERS)}  # GREEN 0 < NONE 1 < BLUE 2 < YELLOW 3 < ORANGE 4 < RED 5
 CONFIRMING_STATES = ("WARN", "STRESS")
+# An observation stamped within this many seconds of the evaluation was computed by it (event calendar, seasonal prior)
+# and is never "carried"; anything older that crosses a closure is stored data (review of PR 2431).
+FRESH_WINDOW_SECONDS = 60
 SESSION_CLOSE_ET = time(16, 0)
 
 
@@ -35,15 +38,50 @@ def _parse(ts: str | None) -> datetime | None:
     return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
 
 
+def _age_hours(at: datetime, now: datetime, cfg: dict) -> float:
+    """Age of an observation for decay and staleness. ``decay.clock: market`` counts only hours in which the market
+    could have produced newer information (``sessions.market_hours_between``): a weekend or holiday does not age
+    Friday's close, and from ``decay.reopen_et`` on the evening before a trading day (index futures and Asia open
+    Sunday 18:00 ET) the clock runs again. Any other value (or none) is wall-clock hours."""
+    if str(cfg.get("clock") or "wall").lower() == "market":
+        reopen = None
+        if cfg.get("reopen_et"):
+            hh, mm = str(cfg["reopen_et"]).split(":")
+            reopen = time(int(hh), int(mm))
+        return max(0.0, sessions.market_hours_between(at, now, reopen=reopen))
+    return max(0.0, (now - at).total_seconds() / 3600.0)
+
+
+def staleness(at: datetime, now: datetime, cfg: dict, stale_after: float) -> tuple[float, str | None]:
+    """(age in the decay clock, reason it is unusable or None). The ONE staleness rule every category and the scorer
+    share. Unusable when: stamped in the future (beyond ``decay.future_tolerance_seconds``); older than
+    ``stale_after`` in the decay clock; or past a hard cap that no clock can stretch — ``decay.max_market_hours``
+    of market time or ``decay.max_wall_hours`` of wall time. The caps keep truly old data UNKNOWN even though a
+    weekend no longer ages it (a feed dead since Wednesday is not "fresh" on Monday)."""
+    tol = float(cfg.get("future_tolerance_seconds", 60))
+    wall = (now - at).total_seconds() / 3600.0
+    if wall < -tol / 3600.0:
+        return 0.0, f"stamped {-wall:.1f}h in the future"
+    age = _age_hours(at, now, cfg)
+    if age > float(stale_after):
+        return age, f"stale: {age:.0f}h old (limit {float(stale_after):g}h)"
+    cap_m, cap_w = cfg.get("max_market_hours"), cfg.get("max_wall_hours")
+    if cap_m is not None and str(cfg.get("clock") or "wall").lower() == "market" and age > float(cap_m):
+        return age, f"stale: {age:.0f} market hours old (cap {float(cap_m):g}h)"
+    if cap_w is not None and wall > float(cap_w):
+        return age, f"stale: {wall:.0f}h old by the wall clock (cap {float(cap_w):g}h)"
+    return age, None
+
+
 def decay_weight(obs: c.CategoryObservation, now: datetime, policy: dict) -> tuple[float, float | None]:
-    """(weight, age_hours). Weight 0 means stale beyond stale_after: the category becomes UNKNOWN."""
+    """(weight, age_hours). Weight 0 means unusable (``staleness``): the category becomes UNKNOWN."""
     cfg = policy["decay"]
     at = _parse(obs.observed_at)
     if at is None:
         return 0.0, None
-    age = max(0.0, (now - at).total_seconds() / 3600.0)
     stale_after = obs.stale_after_hours if obs.stale_after_hours is not None else cfg["default_stale_after_hours"]
-    if age > float(stale_after):
+    age, why = staleness(at, now, cfg, float(stale_after))
+    if why:
         return 0.0, age
     for step in cfg["steps"]:
         if age <= float(step["max_age_hours"]):
@@ -56,7 +94,12 @@ def _effective(observations: list[c.CategoryObservation], now: datetime, policy:
     for o in observations:
         w_decay, age = decay_weight(o, now, policy) if o.state != "UNKNOWN" else (0.0, None)
         if o.state != "UNKNOWN" and w_decay == 0.0:
-            o = replace(o, state="UNKNOWN", score=None, reason_unknown=f"stale: {age:.0f}h old" if age else "no time")
+            at = _parse(o.observed_at)
+            sa = (
+                o.stale_after_hours if o.stale_after_hours is not None else policy["decay"]["default_stale_after_hours"]
+            )
+            why = staleness(at, now, policy["decay"], float(sa))[1] if at else "no time"
+            o = replace(o, state="UNKNOWN", score=None, reason_unknown=why or "stale")
         out.append(
             {"obs": o, "decay": w_decay, "age_hours": age, "weight": float(policy["weights"].get(o.category, 0))}
         )
@@ -260,6 +303,94 @@ def _composite(known: list[dict], known_w: float, policy: dict) -> tuple[dict[st
     return points, score
 
 
+def _carried(eff: list[dict], now: datetime) -> list[str]:
+    """Categories whose (known) observation was made before a market closure that lies between it and ``now``."""
+    out = []
+    for e in eff:
+        o = e["obs"]
+        at = _parse(o.observed_at) if o.state != "UNKNOWN" else None
+        # an observation computed at evaluation time (event calendar, seasonal prior) is current by construction,
+        # even on a weekend; only stored market data can be carried across a closure
+        if at is not None and (now - at).total_seconds() > FRESH_WINDOW_SECONDS and sessions.closure_between(at, now):
+            out.append(o.category)
+    return out
+
+
+def _fresh_only(eff: list[dict], carried: list[str], policy: dict) -> tuple[str, dict]:
+    """The raw tier the fresh (non-carried) observations alone support."""
+    fresh_eff = [
+        dict(
+            e, obs=replace(e["obs"], state="UNKNOWN", score=None, reason_unknown="carried across a closure"), decay=0.0
+        )
+        if e["obs"].category in carried
+        else e
+        for e in eff
+    ]
+    fk = [e for e in fresh_eff if e["obs"].state != "UNKNOWN"]
+    _, fscore = _composite(fk, sum(e["weight"] for e in fk), policy)
+    return _raw_tier(fscore, fresh_eff, policy)
+
+
+def _hold_not_escalate(
+    raw: str, why: dict, eff: list[dict], known_w: float, prior: dict | None, now: datetime, policy: dict
+) -> tuple[str, dict[str, Any]]:
+    """``decay.carried_escalation: hold_only`` (operator 2026-10-31, "approve hold-not-escalate"). An observation
+    carried across a market closure keeps its market-clock weight for HOLDING the current tier and for the displayed
+    score, but may not ESCALATE: the raw tier may rise above the held tier only as far as the fresh (post-closure)
+    observations alone support. A carried category stops counting as carried once a fresh observation replaces it.
+
+    With no prior (bootstrap) the held tier is set by ``decay.bootstrap_mode``: ``adopt_carried`` (default until the
+    operator answers) adopts the reconstruction from the carried observations; ``fresh_only_no_page`` starts at the
+    fresh-only tier and records the carried picture as a labelled ``carried_tier`` for display. Either way a bootstrap
+    evaluation never sends P1 (alerts.intent_for, market_risk_evaluate._cycle)."""
+    dcfg = policy.get("decay") or {}
+    mode = str(dcfg.get("carried_escalation") or "off").lower()
+    carried = _carried(eff, now) if mode == "hold_only" else []
+    info: dict[str, Any] = {"mode": mode, "categories": carried, "raw_with_carried": raw, "capped": False}
+    if not carried:
+        return raw, info
+    if not prior or prior.get("tier") not in SEVERITY:
+        bmode = str(dcfg.get("bootstrap_mode") or "adopt_carried").lower()
+        info["bootstrap_mode"] = bmode
+        if bmode != "fresh_only_no_page":
+            return raw, info
+        fresh_raw, fwhy = _fresh_only(eff, carried, policy)
+        if SEVERITY[fresh_raw] < SEVERITY[raw]:
+            info.update(
+                capped=True,
+                raw_fresh_only=fresh_raw,
+                carried_tier=raw,
+                note=f"first reading after a closure: {raw} on carried data shown for context; tier starts at {fresh_raw}",
+            )
+            why["shock"] = bool(fwhy.get("shock"))
+            return fresh_raw, info
+        return raw, info
+    held = str(prior["tier"])
+    if SEVERITY[raw] <= SEVERITY[held]:
+        return raw, info
+    fresh_raw, fwhy = _fresh_only(eff, carried, policy)
+    capped = fresh_raw if SEVERITY[fresh_raw] > SEVERITY[held] else held
+    capped = capped if SEVERITY[capped] <= SEVERITY[raw] else raw
+    if capped != raw:
+        info.update(capped=True, raw_fresh_only=fresh_raw, held_tier=held)
+        why["shock"] = bool(fwhy.get("shock"))
+    return capped, info
+
+
+def _carried_only(tier: str, carried: dict, eff: list[dict], prior: dict | None, policy: dict) -> bool:
+    """The CARRIED-ONLY mark (coordinator decision on PR 2431, pending the operator). Set when a first reading
+    (bootstrap) or an evaluation whose prior was already marked shows a tier that the fresh observations alone do not
+    reach: the tier rests only on data carried across a closure. While set the evaluator opens no episode, drains no
+    repeat and sends no P1/P2 card (at most one P3 card per tier). It clears as soon as the fresh-only tier reaches the
+    shown tier; the next card is then a normal transition (alerts.intent_for)."""
+    cats = list((carried or {}).get("categories") or [])
+    origin = not prior or prior.get("tier") not in SEVERITY or bool((prior.get("hysteresis") or {}).get("carried_only"))
+    if not origin or not cats or SEVERITY.get(tier, 0) <= SEVERITY["NONE"]:
+        return False
+    fresh_raw = carried.get("raw_fresh_only") or _fresh_only(eff, cats, policy)[0]
+    return SEVERITY[fresh_raw] < SEVERITY[tier]
+
+
 def compose(
     observations: list[c.CategoryObservation],
     policy: dict,
@@ -278,9 +409,26 @@ def compose(
     known_w = sum(e["weight"] for e in known)
     points, score = _composite(known, known_w, policy)
     raw, why = _raw_tier(score, eff, policy)
+    raw, carried = _hold_not_escalate(raw, why, eff, known_w, prior, now, policy)
     coverage = known_w / total_w
     raw, last_stress = _green_guard(raw, why, eff, coverage, prior, now, policy)
-    tier, hyst = _hysteresis(raw, why, prior, now, policy)
+    if prior and bool((prior.get("hysteresis") or {}).get("carried_only")):
+        # the shown tier was never alerted (CARRIED-ONLY): hysteresis never holds it (review of PR 2431 round 6,
+        # FIX 1). The tier follows the raw tier at once, up or down; the mark below clears only when the fresh-only
+        # tier reaches it, and the transition is then a normal alert at that tier (alerts.intent_for).
+        tier = raw
+        hyst = {
+            "bootstrap": False,
+            "raw_tier": raw,
+            "prior_tier": prior.get("tier"),
+            "candidate": None,
+            "count": 0,
+            "below_sessions": [],
+            "unalerted_tier_released": SEVERITY.get(raw, 0) < SEVERITY.get(str(prior.get("tier")), 0),
+        }
+    else:
+        tier, hyst = _hysteresis(raw, why, prior, now, policy)
+    hyst["carried_only"] = _carried_only(tier, carried, eff, prior, policy)
     hyst.update(
         {
             "last_stress_at": last_stress,
@@ -291,6 +439,7 @@ def compose(
                 e["obs"].category: (round(e["age_hours"], 2) if e["age_hours"] is not None else None) for e in eff
             },
             "why": why,
+            "carried": carried,
         }
     )
     a = c.RiskAssessment(
