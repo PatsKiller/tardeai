@@ -213,6 +213,24 @@ check('garbage → null', parseTimestamp('not-a-date') == null)
   check('a dated block never exposes the loader clock', dated.asOf !== LOADER)
 }
 
+// ---- the aggregate owns the verdict; the header must not use a shorter budget ----
+// 2026-11-01: a Friday book read STALE on Sunday because the header applied 36h
+// while PortfolioAggregate@v2 uses 48h, and the aggregate itself said COMPLETE.
+{
+  const sunday = new Date('2026-11-01T15:31:00Z')
+  const book = { as_of: '2026-10-31T07:30:00-04:00', data_as_of: '2026-10-30' }
+  const complete = overviewSurfaceFreshness(
+    { ...book, portfolio_aggregate: { freshness_state: 'COMPLETE', stale_after_hours: 48 } }, sunday)
+  check('aggregate COMPLETE is not overridden by the header', complete.stale === false)
+
+  const stale = overviewSurfaceFreshness(
+    { ...book, portfolio_aggregate: { freshness_state: 'STALE', stale_after_hours: 48 } }, sunday)
+  check('aggregate STALE wins even inside the header window', stale.stale === true)
+
+  const noAgg = overviewSurfaceFreshness(book, sunday)
+  check('without an aggregate the 48h budget applies (not 36h)', noAgg.stale === false)
+}
+
 // ---- WI provenance (not a second model) ----
 check('WI dataSource is decision_projection', WI_SYNOPSIS_PROVENANCE.dataSource === 'decision_projection')
 check('WI liveClaim false', WI_SYNOPSIS_PROVENANCE.liveClaim === false)

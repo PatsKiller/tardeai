@@ -437,8 +437,10 @@ export default function MetricStrip({ onDrill }: Props) {
       // The tile shows the POSITION observation. Saying "data_as_of" named no
       // clock at all; saying "positions observed" names the one on screen and
       // leaves the other three visibly absent rather than silently merged.
-      asOf: posNewest ?? overviewFresh.asOf,
-      asOfLabel: 'positions observed',
+      // Name the clock the decision used. On a stale book that is the OLDEST
+      // contributing observation, not the newest one on screen.
+      asOf: overviewFresh.stale ? (posOldest ?? posNewest ?? overviewFresh.asOf) : (posNewest ?? overviewFresh.asOf),
+      asOfLabel: overviewFresh.stale ? 'oldest position' : 'positions observed',
       asOfNote: portfolioFaceNote,
       tone: worseTone(portfolioTone, overviewFresh.stale ? 'warn' : 'ok'),
       valueSize: VALUE_BIG,
