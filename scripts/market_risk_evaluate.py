@@ -134,7 +134,55 @@ def evaluate(now: datetime, reader: Any, policy: dict, prior: dict | None, portf
     a = scoring.compose(obs, policy, prior=prior, now=now)
     a = scoring.apply_uplift(a, portfolio, policy)
     a = explain.explain(a, policy)
+    attach_precision(a, ctx, policy)
+    if portfolio is not None and os.environ.get("MRE_BOOK_PRECISION", "1") == "1":
+        try:  # B3: per-session {tier, sectors} history carried in the assessment, read by the multi-session conditions
+            from scripts.lib.market_risk import book_precision
+
+            d0 = a.to_dict()
+            a.session_history = book_precision.session_history(
+                prior, now=now, tier=d0.get("tier"), sectors_block=d0.get("sectors")
+            )
+        except Exception as exc:  # noqa: BLE001 — additive; an empty history only delays the multi-session conditions
+            print(f"market_risk_evaluate: session history unavailable ({type(exc).__name__}: {exc})", file=sys.stderr)
+        try:  # live only: the backtests and replays pass no portfolio context
+            from scripts.lib.market_risk import book_precision
+            from scripts.lib.market_risk.reader import _default_conn
+
+            book_precision.attach(a, now=now, reader=reader, policy=policy, prior=prior, conn_factory=_default_conn)
+        except Exception as exc:  # noqa: BLE001 — the book layer is additive; the tier stands without it
+            a.positions = {"_note": f"book precision unavailable: {type(exc).__name__}: {exc}"}
+        try:  # the re-entry watch is independent of the held book: a failure here never hides the stances
+            from scripts.lib.market_risk import book_precision
+            from scripts.lib.market_risk.reader import _default_conn
+
+            book_precision.reentry_watch_block(
+                a, now=now, reader=reader, policy=policy, prior=prior, conn_factory=_default_conn
+            )
+        except Exception as exc:  # noqa: BLE001
+            a.reentry_watch = {"_note": f"re-entry watch unavailable: {type(exc).__name__}: {exc}"}
     return a
+
+
+def attach_precision(a: Any, ctx: c.EvalContext, policy: dict) -> None:
+    """Sector attribution, shock type and the heat map (precision PR). A failure here is reported in the block and never
+    blocks the tier: the market assessment stands on its own."""
+    from scripts.lib.market_risk import sectors, shock_type
+
+    try:
+        block = sectors.measure(ctx)
+        a.sectors = block
+        a.shock_type = shock_type.classify(block, [o.to_dict() for o in a.observations], policy)
+        a.heatmap = sectors.heatmap(block)
+    except Exception as exc:  # noqa: BLE001 — precision is additive; an error is an honest unknown in the payload
+        a.sectors = {"state": "UNKNOWN", "reason_unknown": f"{type(exc).__name__}: {exc}"}
+        a.shock_type = {"class": "UNKNOWN", "reason_unknown": f"{type(exc).__name__}: {exc}"}
+    try:  # rotation advisor: durable leadership turns (additive; never blocks the tier)
+        from scripts.lib.market_risk import leadership
+
+        a.leadership = leadership.measure(ctx)
+    except Exception as exc:  # noqa: BLE001 — additive layer; an error is an honest unknown in the payload
+        a.leadership = {"state": "UNKNOWN", "reason_unknown": f"{type(exc).__name__}: {exc}"}
 
 
 def portfolio_context(now: datetime) -> c.PortfolioContext | None:
@@ -244,6 +292,35 @@ def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_asse
             now=now,
             path=ledger,
         )
+    # RE-ENTRY WATCH: one P2 card when a watched symbol flips to RE_ENTER (dedupe per symbol and exit date). Queued in
+    # the same outbox as every other card (review round 3, H5), never curated, never tied to an episode.
+    from scripts.lib.market_risk import reentry_watch as _rw
+
+    prior_watch = (prior or {}).get("reentry_watch") or {}
+    rcfg = policy.get("reentry_watch") or {}
+    for sym, w in (doc.get("reentry_watch") or {}).items():
+        if str(sym).startswith("_") or not isinstance(w, dict) or w.get("status") != "RE_ENTER":
+            continue
+        if (prior_watch.get(sym) or {}).get("status") == "RE_ENTER":
+            continue
+        rkey = f"market_risk:reentry:{sym}:{w.get('exit_date')}"
+        alerts.outbox_put(
+            {
+                "key": rkey,
+                "text": _rw.render(w),
+                "intent": {
+                    "priority": str(rcfg.get("card_priority") or "P2"),
+                    "dedupe_minutes": int(rcfg.get("card_dedupe_minutes") or 1440),
+                    "dedupe_key": rkey,
+                    "tier": "REENTRY",
+                    "transition": "reentry",
+                },
+                "kind": "reentry",
+                "episode_id": None,
+            },
+            now=now,
+            path=ledger,
+        )
     if apply and on_assessed is not None:
         on_assessed(doc)
     for ent in alerts.outbox_due(now=now, path=ledger, claim_ttl_min=ttl):
@@ -291,7 +368,7 @@ def _drain_one(ent, now, doc, policy, apply, store, ledger, call_model, esc_cfg)
         else:
             alerts.mark_superseded(key, path=ledger, reason="episode no longer in the ledger")
         return None
-    if kind != "initial":
+    if kind not in ("initial", "reentry"):
         # a repeat ("acknowledgment required") is owed only while its episode is the OPEN one (H4): an ACK, a
         # resolution or a replaced ledger retires it instead of paging the operator after they acknowledged
         ep = episodes.get(ep_id)
@@ -299,7 +376,10 @@ def _drain_one(ent, now, doc, policy, apply, store, ledger, call_model, esc_cfg)
             why = "episode acknowledged or closed" if ep is not None else "episode no longer in the ledger"
             alerts.mark_superseded(key, path=ledger, reason=why)
             return None
-    cur = _curate(ent["text"], doc, call_model=call_model, live=apply)
+    if kind == "reentry":  # deterministic advisory card: never curated
+        cur = {"text": ent["text"], "curated": False, "reason": "re-entry card is deterministic"}
+    else:
+        cur = _curate(ent["text"], doc, call_model=call_model, live=apply)
     res = alerts.deliver(
         cur["text"], dict(ent["intent"], dedupe_key=key), policy, dry_run=not apply, now=now, ledger=ledger
     )
