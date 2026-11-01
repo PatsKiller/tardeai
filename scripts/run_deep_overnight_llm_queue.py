@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import re
+from collections import deque
 import sys
 import time
 import urllib.request
@@ -1018,6 +1019,21 @@ def apply_rejection_strikes(cur, confirmed, run_id, jobs_seen, log=lambda m: Non
     return charged, struck
 
 
+def record_no_progress(breaker, policy, persist, reason, log=lambda m: None):
+    """A run reached max_consecutive_request_rejections with nothing answered yet: update the no_progress record
+    (since, runs) and page once through the claim-before-send path after outage_page_after_hours. Called at the
+    moment the bound is hit, so a stall is recorded even if a probe later in the run answers (which then clears it)."""
+    npr = breaker.get("no_progress") if isinstance(breaker.get("no_progress"), dict) else {}
+    if not _int_or_zero(npr.get("runs")) or not isinstance(npr.get("since"), str):
+        npr = {"since": datetime.now(timezone.utc).isoformat(), "runs": 0}
+    npr["runs"] = _int_or_zero(npr.get("runs")) + 1
+    npr["reason"] = str(reason or "")[:300]
+    breaker["no_progress"] = npr
+    if maybe_page_long_outage(breaker, policy, persist=persist, kind="no_progress"):
+        log("  Paged the operator: no progress past outage_page_after_hours.")
+    persist(breaker)
+
+
 def call_cloud(prompt, policy, *, fallback=None, now=None):
     """One job through the drain chain (anthropic -> grok -> chatgpt -> deepseek off-peak only).
 
@@ -1423,6 +1439,14 @@ def main():
     rejections_in_row = 0  # request rejections since the last answer: bounded separately, never an outage
     max_rejections = max(1, int((drain_policy or {}).get("max_consecutive_request_rejections") or 10))
     rejection_bound_hit = False
+    # Round 13 probe-ahead: when the bound is hit, probe the LAST untried job of this fetch (past a head block of any
+    # length short of the limit). Answered -> the lanes are up, the waiting rejections are confirmed as usual, and the
+    # run continues through the remaining untried jobs from the tail toward the head (good jobs first, the bad block
+    # last). Rejected -> systemic: the run ends with no breaker trip. At most max_probes_per_run probes per run.
+    max_probes = max(0, int((drain_policy or {}).get("max_probes_per_run", 3)))
+    probes_used = 0
+    probing = False
+    no_progress_recorded = False
     lanes_proven = False  # a lane answered in this run
     outage_tripped = False
     outage_after = max(2, int((drain_policy or {}).get("outage_after_refusals") or 3))
@@ -1442,7 +1466,9 @@ def main():
         k = probe_index(breaker, len(jobs))
         jobs = [jobs[k]] + list(jobs[:k]) + list(jobs[k + 1:])
 
-    for row in jobs:
+    queue_rows = deque(jobs)
+    while queue_rows:
+        row = queue_rows.popleft()
         job = dict(zip(columns, row))
         job_id = job["id"]
         elapsed = time.monotonic() - start_time
@@ -1583,11 +1609,23 @@ def main():
                     suspects.append((job_id, reason, _job_meta(job)))
                     rejections_in_row += 1
                     if cloud and rejections_in_row >= max_rejections:
-                        # Round 12: request rejections never count toward an outage (bad prompts at the head must
-                        # not trip the breaker), but a long unbroken run of them ends this run -- no breaker trip,
-                        # no flap. If nothing in this run was answered, it is recorded as no progress below.
-                        log(f"  REFUSED #{job_id} — {rejections_in_row} request rejections in a row with no answer "
-                            "(max_consecutive_request_rejections): ending the run without tripping the breaker.")
+                        # Round 12: request rejections never count toward an outage and never trip the breaker.
+                        # Round 13: the bound no longer simply ends the run (a block of >= bound bad prompts at the
+                        # head would starve the queue forever): it records no progress if nothing was answered yet,
+                        # then probes past the block. A rejected probe is systemic and ends the run.
+                        if not lanes_proven and not no_progress_recorded:
+                            record_no_progress(breaker, drain_policy, lambda st: save_breaker(bpath, st), reason, log)
+                            no_progress_recorded = True
+                        if not probing and probes_used < max_probes and queue_rows:
+                            probes_used += 1
+                            probing = True
+                            queue_rows = deque(reversed(queue_rows))
+                            log(f"  REFUSED #{job_id} — {rejections_in_row} request rejections in a row: probing past "
+                                f"the block (probe {probes_used}/{max_probes}).")
+                            continue
+                        log(f"  REFUSED #{job_id} — request rejections with no answer"
+                            f"{' (the probe was rejected too: systemic)' if probing else ''}: ending the run "
+                            "without tripping the breaker.")
                         rejection_bound_hit = True
                         break
                 else:
@@ -1617,6 +1655,7 @@ def main():
             lanes_proven = True
             refusals_in_row = 0
             rejections_in_row = 0
+            probing = False
             if text:
                 confirmed.extend(suspects)
                 suspects = []
@@ -1733,20 +1772,8 @@ def main():
 
         processed += 1
 
-    if cloud and rejection_bound_hit and not lanes_proven:
-        # No progress: the run ended on the request-rejection bound and nothing was answered. This must not hide a
-        # real stall, so it is recorded (and paged after outage_page_after_hours) like an open outage.
-        npr = breaker.get("no_progress") if isinstance(breaker.get("no_progress"), dict) else {}
-        if not _int_or_zero(npr.get("runs")) or not isinstance(npr.get("since"), str):
-            npr = {"since": datetime.now(timezone.utc).isoformat(), "runs": 0}
-        npr["runs"] = _int_or_zero(npr.get("runs")) + 1
-        npr["reason"] = suspects[-1][1] if suspects else ""
-        breaker["no_progress"] = npr
-        if maybe_page_long_outage(breaker, drain_policy, persist=lambda st: save_breaker(bpath, st),
-                                  kind="no_progress"):
-            log("  Paged the operator: no progress past outage_page_after_hours.")
-        save_breaker(bpath, breaker)
-    elif cloud and lanes_proven and breaker.get("no_progress"):
+    # (no_progress is recorded at the moment the request-rejection bound is hit with nothing answered; see above.)
+    if cloud and lanes_proven and breaker.get("no_progress"):
         breaker.pop("no_progress", None)  # an answer is progress
         save_breaker(bpath, breaker)
     if cloud and confirmed:

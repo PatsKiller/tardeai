@@ -46,5 +46,7 @@
   "probe_rule": "While the outage breaker is open the probe is jobs[min(trips, n-1)] (rotating), then the head decides.",
   "outage_after_refusals": 3,
   "max_consecutive_request_rejections": 10,
-  "strike_max_age_days": 7
+  "strike_max_age_days": 7,
+  "max_probes_per_run": 3,
+  "probe_ahead_rule": "When max_consecutive_request_rejections is hit, record no progress if nothing was answered yet, then probe the LAST untried job of the fetch. Answered: the waiting rejections are confirmed (later-answer rule) and the run continues through the remaining untried jobs from the tail toward the head. Rejected: systemic; the run ends without a breaker trip. At most max_probes_per_run probes per run."
 }
