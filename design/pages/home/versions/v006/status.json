@@ -1,0 +1,74 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "home",
+  "version": "v006",
+  "state": "PROPOSED",
+  "title": "Home: Protect / Hedge / Rotate block under the verdict, tap-to-explain (i) on every term, folded $0 groups, issuer segment label",
+  "created": "2026-11-01",
+  "approval": null,
+  "request": {
+    "by": "operator",
+    "at": "2026-11-01",
+    "kind": "in-session words to make the version (not approval of the design), verbatim: \"Yes, version 0.0.6\"; feedback on v005, verbatim: \"Can you use any improvement any tooltips? Does it show what's actionable? I don't see it showing what I should be getting into. To hedge against these risks.\""
+  },
+  "spec": "SPEC.md",
+  "design": "DSN-20261031-market-risk-ui",
+  "base": "v005",
+  "depends_on": [
+    "home/v005 (APPROVED)",
+    "GET /api/v2/market-risk/latest additions (SPEC: 'Data the projection must add'): review[].pct_account + clauses, hedge, rotate, glossary, heatmap chip, sectors_folded, segments status",
+    "config/market_risk_glossary.json (new, operator-editable texts)",
+    "config/market_risk_policy.yaml home_actions + glossary keys",
+    "engine fix: daily bars for sector group symbols (Communications / Real estate UNKNOWN)",
+    "Defense posture hedge_state reads the stoplight; defense_hedge alerts deactivated when no HEDGE card (separate reviewed PR)"
+  ],
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/home",
+    "note": "Private store, never committed (design/README.md rule 7). Market figures from the 2026-11-01 evaluation (Fri 10-30 close); book values, symbols and accounts are bracketed placeholders. A separate real-data render for the operator's review is local-only and is not referenced here. Paths relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v006/mockups/HomeV006DesktopYellow.dc.html",
+        "sha256": "cf58ff536a2dfc6ca3ef8b996f34c6db560e1ad2066fbc0b0c54b54039989d52",
+        "bytes": 33455,
+        "role": "mockups"
+      },
+      {
+        "path": "v006/mockups/HomeV006PhoneCollapsed.dc.html",
+        "sha256": "e2e0293974ccfb272fcd6d03a5fe12a202d5300fd6f6a6951625e1a31078bec3",
+        "bytes": 33439,
+        "role": "mockups"
+      },
+      {
+        "path": "v006/mockups/HomeV006PhoneExpanded.dc.html",
+        "sha256": "e957856a4bd4557b0ea759379f98b85cce59a928926806b73364c7dd35c38348",
+        "bytes": 33442,
+        "role": "mockups"
+      },
+      {
+        "path": "v006/mockups/HomeV006PhoneGlossary.dc.html",
+        "sha256": "3ab87dba80a3e616a39677121aec16b3062415d26a226c7c7aa64b5f9bc8d472",
+        "bytes": 33502,
+        "role": "mockups"
+      },
+      {
+        "path": "v006/mockups/HomeV006States.dc.html",
+        "sha256": "f4543f40f62f1f7b28e942b975fbd99d71fed6d4e1cae6d403cadce1f7673eec",
+        "bytes": 16912,
+        "role": "mockups"
+      },
+      {
+        "path": "v006/mockups/canvas.json",
+        "sha256": "9b7f4680dfe203004e4e0f2e3901adc30b7ebdf58712faa4ed2fcdf978f8cab8",
+        "bytes": 1156,
+        "role": "mockups"
+      }
+    ]
+  },
+  "removals": [],
+  "moves": [
+    "v005 section 4 'Review now' moves into the Protect block (same items, ranking, links; 3 shown + '+N more')",
+    "collapsed: v005 top review item (S4) replaced by the three-row Protect / Hedge / Rotate digest (first row is the same item)",
+    "stressed / not-measured groups held under home_actions.sectors.fold_below_usd fold into one line under the sector table",
+    "chip HOLDING renamed RESILIENT for state RESILIENT (NEUTRAL keeps HOLDING)"
+  ]
+}
