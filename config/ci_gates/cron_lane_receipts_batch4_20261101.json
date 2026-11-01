@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cron_lane_receipts_batch4_20261101",
+  "files": [
+    "tests/test_cron_lane_receipts_batch4_20261101.py"
+  ],
+  "anchor": "CRON_LANE_RECEIPTS_BATCH4_20261101",
+  "comment": [
+    "ANCHOR: CRON_LANE_RECEIPTS_BATCH4_20261101 — comms-lifecycle, material-change-notifier-stage2,",
+    "due-diligence-questions, persistent-wake-hourly and claude-escalation-handler write a lane",
+    "receipt at the entry point on a live run; a dry run writes nothing."
+  ]
+}

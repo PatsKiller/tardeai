@@ -1744,6 +1744,20 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
     log.info(f"Queue: {resolved_count} retried, {len(remaining)} tier3 → {final_status}, {len(deferred)} deferred")
 
 
+def _write_run_receipt() -> None:
+    """Execution proof for the Jobs projection. Never raises; a dry run never calls it."""
+    try:
+        try:
+            from scripts.lib.lane_last_receipt import write_lane_receipt
+        except ImportError:
+            from lib.lane_last_receipt import write_lane_receipt
+        write_lane_receipt("claude-escalation-handler", ok=True, exit_code=0,
+                           summary={"entry": "claude_escalation_handler"},
+                           script="scripts/claude_escalation_handler.py")
+    except Exception:
+        pass
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -1767,3 +1781,5 @@ if __name__ == "__main__":
         tier1_only=args.tier1_only,
         no_llm=args.no_llm,
     )
+    if not args.dry_run:
+        _write_run_receipt()

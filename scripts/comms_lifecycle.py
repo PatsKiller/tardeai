@@ -219,5 +219,18 @@ def main(argv: Optional[list[str]] = None) -> int:
     return 0
 
 
+def _entry() -> int:
+    code = main()
+    if code == 0 and "--apply" in sys.argv[1:]:
+        # Execution proof for the Jobs projection; a dry run persists nothing and writes no receipt.
+        try:
+            from lib.lane_last_receipt import write_lane_receipt
+            write_lane_receipt("comms-lifecycle", ok=True, exit_code=0, summary={"mode": "apply"},
+                               script="scripts/comms_lifecycle.py")
+        except Exception:
+            pass
+    return code
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(_entry())

@@ -760,7 +760,7 @@ def main(argv: list[str] | None = None) -> int:
 
     env = dict(os.environ)
     mem = Path(args.memory_path) if args.memory_path else None
-    return run_once(
+    code = run_once(
         agent_id=args.agent_id,
         subject_guid=args.subject_guid,
         dry_run=args.dry_run,
@@ -771,6 +771,16 @@ def main(argv: list[str] | None = None) -> int:
         limit=args.limit,
         select_only=args.select_only,
     )
+    if code == 0 and not args.dry_run and not args.select_only:
+        # Execution proof for the Jobs projection; a dry or select-only run writes nothing.
+        try:
+            from scripts.lib.lane_last_receipt import write_lane_receipt
+            write_lane_receipt("persistent-wake-hourly", ok=True, exit_code=0,
+                               summary={"agent_id": args.agent_id},
+                               script="scripts/run_persistent_wake.py")
+        except Exception:
+            pass
+    return code
 
 
 if __name__ == "__main__":
