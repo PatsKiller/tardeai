@@ -1,5 +1,6 @@
 /** Synthetic market-risk fixtures for GET /api/v2/market-risk/latest (design home/v002, risk/v002). No real positions. */
 import type { Page } from '@playwright/test'
+import { readFileSync } from 'node:fs'
 
 const NOW = Date.parse('2031-03-10T15:00:00Z')
 const iso = (ago = 0) => new Date(NOW - ago).toISOString()
@@ -84,15 +85,89 @@ export function marketRiskYellow(mode: 'live' | 'shadow' = 'live') {
     probabilities: null, history: [], sources: {} }
 }
 
+
+/** Design home/v005: the YELLOW projection with the engine pass-through and the API-side dollar join. Synthetic DEMO
+ *  symbols, synthetic accounts and dollars only — never real holdings. */
+export function marketRiskV005(tier: 'YELLOW' | 'ORANGE' = 'YELLOW') {
+  const base: any = tier === 'YELLOW' ? marketRiskYellow('shadow') : { ...marketRiskRed(), tier: 'ORANGE', score: 72, mode: 'live',
+    episode: { id: 'EP-FIXTURE-5', tier: 'ORANGE', opened_at: iso(3_600_000), repeats: 1, max_repeats: 12, acknowledged_at: null, status: 'OPEN' } }
+  const heat = (key: string, label: string, kind: string, state: string, rs1: number | null, rs5: number | null) => ({ key, label, kind, state, tier: state === 'STRESS' ? 'RED' : state === 'UNKNOWN' ? 'UNKNOWN' : 'GREEN', rs1, rs5, reason_unknown: state === 'UNKNOWN' ? 'insufficient history' : null })
+  const exitDay = new Date(NOW - 86_400_000 * 2).toISOString().slice(0, 10)
+  return { ...base,
+    shock_type: { class: 'SECTOR', label: 'sector / theme', headline: 'Type: SECTOR' },
+    sectors: { stressed: ['Technology', 'Semis', 'AI basket'], sectors_measured: 9 },
+    heatmap: [
+      heat('tech', 'Technology', 'sector', 'STRESS', -3.11, -1.5), heat('comm', 'Communications', 'sector', 'UNKNOWN', null, null),
+      heat('discretionary', 'Discretionary', 'sector', 'RESILIENT', 1.1, 2.54), heat('staples', 'Staples', 'sector', 'RESILIENT', 3.23, 1.84),
+      heat('healthcare', 'Healthcare', 'sector', 'RESILIENT', 2.25, 3.69), heat('utilities', 'Utilities', 'sector', 'RESILIENT', 2.5, 2.62),
+      heat('energy', 'Energy', 'sector', 'RESILIENT', 3.66, 1.52), heat('financials', 'Financials', 'sector', 'RESILIENT', 1.03, 1.63),
+      heat('industrials', 'Industrials', 'sector', 'RESILIENT', 0.18, 2.23), heat('materials', 'Materials', 'sector', 'RESILIENT', 2.19, 3.33),
+      heat('real_estate', 'Real estate', 'sector', 'UNKNOWN', null, null), heat('semis', 'Semis', 'theme', 'STRESS', -5.78, -0.61),
+      heat('ai_basket', 'AI basket', 'theme', 'STRESS', -3.0, -2.98),
+    ],
+    book_exposure: {
+      total_usd: 500_000, home_total_usd: 500_000, reconciles: true, cash_usd: 200_000, invested_usd: 300_000,
+      stressed_groups: ['ai_basket', 'semis', 'tech'], stressed_usd: 12_400, stressed_pct_book: 2.48, stressed_pct_invested: 4.13, cash_pct_book: 40,
+      largest_contributor: { symbol: 'DEMOF', account_label: 'Demo IRA', group: 'tech', share: 0.08 },
+      groups: { financials: { usd: 90_000, pct_book: 18 }, industrials: { usd: 60_000, pct_book: 12 }, tech: { usd: 12_400, pct_book: 2.48 },
+        comm: { usd: 15_000, pct_book: 3 }, semis: { usd: 6_000, pct_book: 1.2 }, materials: { usd: 20_000, pct_book: 4 } },
+      unmapped: [{ symbol: 'DEMOM', account_label: 'Demo IRA', usd: 3_000, reason: 'no sector profile' }],
+      rows: [
+        { symbol: 'DEMOF', account_label: 'Demo IRA', value_usd: 150_000, pct_account: 30, stressed_share: 0.08, usd_exposed: 12_000, stop_distance_pct: 6.1, stance: 'hold', material: true },
+        { symbol: 'DEMOF', account_label: 'Demo Roth', value_usd: 5_000, pct_account: 10, stressed_share: 0.08, usd_exposed: 400, stop_distance_pct: null, stance: 'hold', material: true },
+      ],
+      more: { count: 0, usd: 0 }, zero_exposure_symbols: ['DEMOA', 'DEMOB'], as_of: '2031-03-09', stops_known: true,
+    },
+    review: [
+      { symbol: 'DEMOA', account_label: 'Demo Roth', kinds: ['stop_near'], text: 'stop 3.5% below last', usd: 40_000, to: '/risk?tab=exposure&symbol=DEMOA' },
+      { symbol: 'DEMOA', account_label: 'Demo IRA', kinds: ['no_stop'], text: 'no stop', usd: 30_000, to: '/risk?tab=exposure&symbol=DEMOA' },
+      { symbol: 'DEMOB', account_label: 'Demo Taxable', kinds: ['no_stop'], text: 'no stop', usd: 20_000, to: '/risk?tab=exposure&symbol=DEMOB' },
+      { symbol: 'DEMOF', account_label: 'Demo IRA', kinds: ['stressed_exposure'], text: '8% in stressed groups', usd: 12_000, to: '/prospectus/DEMOF' },
+      { symbol: 'DEMOM', account_label: 'Demo IRA', kinds: ['no_stop', 'no_lookthrough'], text: 'no stop · no look-through (sector unknown)', usd: 3_000, to: '/prospectus/DEMOM' },
+    ],
+    budgets_detail: [
+      { account_label: 'Demo Taxable', budget: 'unprotected_pct', limit: 10, actual: 46.6, unit: '%', actual_usd: 21_000, drivers: [{ name: 'DEMOB', usd: 20_000 }, { name: 'DEMOC', usd: 600 }, { name: 'DEMOD', usd: 400 }, { name: 'DEMOE', usd: 100 }] },
+      { account_label: 'Demo Roth', budget: 'single_sector_pct', limit: 30, actual: 96.3, unit: '%', actual_usd: 40_000, drivers: [{ name: 'Financial Services', usd: null }] },
+    ],
+    reentry_watch: {
+      DEMOX: { symbol: 'DEMOX', exit_date: exitDay, exit_price: 34.46, status: 'RE_ENTER_IF', conditions: [{ key: 'earnings_clear', met: true, text: '' }],
+        look_through: { groups: { tech: 0.46, discretionary: 0.14, comm: 0.12, healthcare: 0.08 }, basis: 'factsheet' },
+        stages: { verdict: 'Still falling', exit_price: 34.46, last_close: 34.32, swing_low: 33.97, invalidation_level: 33.97, sma10: 35.25, sma20: 35.82, pct_vs_exit: -0.41, pct_vs_sma20: -4.19, trend: 'down',
+          stage1: { met: 1, of: 5, conditions: [
+            { key: 'follow_through', met: false, text: 'higher low + 2 green closes' }, { key: 'volume', met: false, text: 'volume ≥1×' },
+            { key: 'group_no_new_low', met: false, text: 'look-through groups still at relative lows' }, { key: 'hedging_easing', met: false, text: 'hedging easing (history 1 of 5 sessions)' },
+            { key: 'tier_ok', met: true, text: 'market tier YELLOW' } ] },
+          stage2: { met: false, conditions: [{ key: 'above_sma10', met: false, text: 'close above the 10-day 35.25' }, { key: 'above_exit', met: false, text: 'close above 34.46' }] } } },
+      DEMOY: { symbol: 'DEMOY', exit_date: exitDay, exit_price: 137.19, status: 'RE_ENTER_IF', conditions: [{ key: 'earnings_clear', met: false, text: '' }],
+        look_through: { groups: { industrials: 1.0 }, basis: 'stock' },
+        stages: { verdict: 'Basing', exit_price: 137.19, last_close: 134.72, swing_low: 134.5, invalidation_level: 134.5, pct_vs_exit: -1.8, pct_vs_sma20: -12.2, trend: 'flat',
+          stage1: { met: 2, of: 5, conditions: [{ key: 'follow_through', met: false, text: 'higher low + 2 green closes' }, { key: 'volume', met: false, text: 'volume ≥1×' },
+            { key: 'group_no_new_low', met: true, text: '' }, { key: 'hedging_easing', met: false, text: 'hedging easing' }, { key: 'tier_ok', met: true, text: '' }] },
+          stage2: { met: false, conditions: [{ key: 'above_exit', met: false, text: 'close above 137.19' }] } } },
+      DEMOZ: { symbol: 'DEMOZ', exit_date: '2031-02-10', exit_price: 10, stages: { verdict: 'Confirmed', stage1: { met: 3, of: 5, conditions: [] }, stage2: { met: true, conditions: [] } } },
+    },
+    reentry_detail: {
+      DEMOX: { exit_account_label: 'Demo IRA', held_elsewhere_labels: [], wash_sale: null },
+      DEMOY: { exit_account_label: 'Demo IRA', held_elsewhere_labels: ['Demo Taxable'],
+        wash_sale: { state: 'occurred', account_label: 'Demo Taxable', loss_sale_date: exitDay, rebuy_date: exitDay, rebuy_price: 144.78, deferred_loss_usd: 1049.6 } },
+    },
+    reentry_card: { recent_sessions: 5, max_rows: 5 },
+  }
+}
+
 /** Route the market-risk endpoints on top of whatever page fixtures are already installed (later routes win). */
-export async function marketRiskRoutes(page: Page, variant: 'red' | 'green' | 'not_evaluated' | 'shadow_red' | 'shadow_yellow' | 'carried_yellow' | 'yellow_live' | 'yellow_shadow' | 'yellow_stale' | 'yellow_empty' | 'yellow_nobook' | 'orange', writes: string[] = []) {
+export async function marketRiskRoutes(page: Page, variant: 'red' | 'green' | 'not_evaluated' | 'shadow_red' | 'shadow_yellow' | 'carried_yellow' | 'yellow_live' | 'yellow_shadow' | 'yellow_stale' | 'yellow_empty' | 'yellow_nobook' | 'orange' | 'v005_yellow' | 'v005_orange' | 'v005_unreconciled' | 'v005_file', writes: string[] = []) {
   const v4: Record<string, unknown> = {
     yellow_live: marketRiskYellow('live'), yellow_shadow: marketRiskYellow('shadow'),
     yellow_stale: { ...marketRiskYellow('shadow'), state: 'stale', stale: true, age_hours: 3.2, as_of: iso(3.2 * 3_600_000) },
     yellow_empty: { ...marketRiskYellow('live'), contributors: [], book: null },
     yellow_nobook: { ...marketRiskYellow('live'), book: null },
+    v005_yellow: marketRiskV005('YELLOW'), v005_orange: marketRiskV005('ORANGE'),
+    v005_unreconciled: { ...marketRiskV005('YELLOW'), book_exposure: { ...marketRiskV005('YELLOW').book_exposure, reconciles: false } },
     orange: { ...marketRiskRed(), tier: 'ORANGE', score: 68, episode: { id: 'EP-FIXTURE-2', tier: 'ORANGE', opened_at: iso(3_600_000), repeats: 1, max_repeats: 12, acknowledged_at: null, status: 'OPEN' } },
   }
+  // v005_file: a projection JSON from disk, for a LOCAL review render only (V005_PROJECTION_JSON; never committed)
+  if (variant === 'v005_file') v4.v005_file = JSON.parse(readFileSync(String(process.env.V005_PROJECTION_JSON), 'utf-8'))
   const body = variant in v4 ? v4[variant] : variant === 'red' ? marketRiskRed() : variant === 'green' ? marketRiskGreen() : variant === 'shadow_red' ? marketRiskShadow('RED') : variant === 'shadow_yellow' ? marketRiskShadow('YELLOW') : variant === 'carried_yellow' ? { ...marketRiskShadow('YELLOW'), mode: 'live', carried_only: true } : marketRiskNotEvaluated()
   await page.route('**/api/v2/market-risk/**', route => {
     const req = route.request(), p = new URL(req.url()).pathname

@@ -167,7 +167,9 @@ def evaluate(now: datetime, reader: Any, policy: dict, prior: dict | None, portf
             from scripts.lib.market_risk.reader import _default_conn
 
             book_precision.reentry_watch_block(
-                a, now=now, reader=reader, policy=policy, prior=prior, conn_factory=_default_conn
+                a, now=now, reader=reader, policy=policy, prior=prior, conn_factory=_default_conn,
+                # design home/v005: what each account holds now, so a same-account re-buy is a holding, not an exit
+                held_accounts=book_precision._held_accounts(policy),  # noqa: SLF001
             )
         except Exception as exc:  # noqa: BLE001
             a.reentry_watch = {"_note": f"re-entry watch unavailable: {type(exc).__name__}: {exc}"}

@@ -44,6 +44,9 @@ SECTOR_TO_GROUP = {
     "real estate": "real_estate",
 }
 SEMI_INDUSTRIES = ("semiconductor",)
+#: theme groups overlap sectors (a theme weight is extra, never part of the sector partition)
+THEME_GROUPS = ("ai_basket", "semis")
+SEGMENT_SUM_TOLERANCE = 0.01
 ALIASES = {"GOOG": "GOOGL"}
 
 
@@ -64,6 +67,7 @@ def exposure_for(
     fund_cfg: dict[str, Any] | None = None,
     ipos: dict[str, Any] | None = None,
     themes: dict[str, list[str]] | None = None,
+    segments_cfg: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     out = _exposure_for(
         symbol,
@@ -73,6 +77,7 @@ def exposure_for(
         reporting_soon=reporting_soon,
         fund_cfg=fund_cfg,
         ipos=ipos,
+        segments_cfg=segments_cfg,
     )
     extra = (themes or {}).get(str(symbol).upper()) or []
     if extra:
@@ -92,6 +97,7 @@ def _exposure_for(
     reporting_soon: set[str] | None = None,
     fund_cfg: dict[str, Any] | None = None,
     ipos: dict[str, Any] | None = None,
+    segments_cfg: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     sym = str(symbol).upper()
     fund_cfg = fund_cfg if fund_cfg is not None else (_load("fund_lookthrough.json").get("funds") or {})
@@ -108,6 +114,13 @@ def _exposure_for(
             f"fund_lookthrough.json entry for {sym} ({fund.get('name')}) is stale: {sym} is a listed IPO; treated as a stock"
         )
         fund = None
+    if not fund:
+        seg = issuer_segments_for(sym, segments_cfg)
+        if seg is not None:
+            out.update(groups=seg["groups"], basis=seg["basis"])
+            if sym in reporting_soon:
+                out["reporting"] = [sym]
+            return out
     if fund:
         if str(fund.get("lookthrough") or "") == "none" or not fund.get("weights"):
             out.update(
@@ -163,10 +176,38 @@ def _exposure_for(
     return out
 
 
-def book_group_exposure(per_symbol: list[dict[str, Any]]) -> dict[str, float]:
-    """Average look-through share per group across the measured positions (equal per position, no amounts)."""
+def issuer_segments_for(sym: str, segments_cfg: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    """Segment look-through for a multi-segment issuer from ``config/issuer_segments.json`` (design home/v005). Only
+    ``status: APPROVED`` entries count — the weights are operator-owned; a PROPOSED entry is never used in a number.
+    Sector-kind weights must sum to 1.0 within ``SEGMENT_SUM_TOLERANCE``, else the entry is refused (None)."""
+    cfg = segments_cfg if segments_cfg is not None else (_load("issuer_segments.json").get("issuers") or {})
+    e = cfg.get(str(sym).upper()) if isinstance(cfg, dict) else None
+    if not isinstance(e, dict) or str(e.get("status") or "").upper() != "APPROVED":
+        return None
+    groups: dict[str, float] = {}
+    for seg in e.get("segments") or []:
+        g, w = str((seg or {}).get("group") or ""), (seg or {}).get("weight")
+        if g and isinstance(w, (int, float)) and w > 0:
+            groups[g] = round(groups.get(g, 0.0) + float(w), 4)
+    sector_sum = sum(w for g, w in groups.items() if g not in THEME_GROUPS)
+    if abs(sector_sum - 1.0) > SEGMENT_SUM_TOLERANCE:
+        return None
+    return {"groups": groups, "basis": f"segments ({e.get('source') or 'issuer_segments.json'}, {e.get('as_of') or 'no date'})"}
+
+
+def book_group_exposure(
+    per_symbol: list[dict[str, Any]], weights: dict[str, float] | None = None
+) -> dict[str, float]:
+    """Look-through share per group of the measured book. With ``weights`` (symbol -> position value) the shares are
+    VALUE-weighted (design home/v005: a fractional residual never counts as much as the largest holding); without
+    them, equal per position (legacy callers). Shares only, never an amount."""
     known = [p for p in per_symbol if p.get("groups")]
     if not known:
         return {}
     keys = {k for p in known for k in p["groups"]}
+    if weights:
+        w = {id(p): max(0.0, float(weights.get(str(p.get("symbol") or "").upper()) or 0.0)) for p in known}
+        tot = sum(w.values())
+        if tot > 0:
+            return {k: round(sum(p["groups"].get(k, 0.0) * w[id(p)] for p in known) / tot, 4) for k in sorted(keys)}
     return {k: round(sum(p["groups"].get(k, 0.0) for p in known) / len(known), 4) for k in sorted(keys)}

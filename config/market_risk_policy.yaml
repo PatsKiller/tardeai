@@ -590,6 +590,37 @@ reentry_watch:
   wash_sale_days: 30
   card_priority: P2
   card_dedupe_minutes: 1440
+  # Design home/v005 (operator 2026-11-01: "second green candle ... catch the ride going back up"). STATED RULES, read
+  # by scripts/lib/market_risk/reentry_stages.py; the Home card shows them. Thresholds chosen by the operator from the
+  # re-entry backtest (scripts/market_risk_backtest.py --reentry, follow-up); these are the agreed starting values.
+  card: {recent_sessions: 5, max_rows: 5}
+  stage1:
+    volume_ratio_min: 1.0        # second green day's volume vs its average
+    volume_avg_sessions: 20
+    group_rs_sessions: 5         # look-through group vs SPY: no new relative low in this many sessions
+    hedging_peak_sessions: 5     # index put/call-vs-median factor below its peak of this many sessions ...
+    hedging_ease_pct: 10         # ... by at least this percent
+    blocked_tiers: [ORANGE, RED]
+  stage2:
+    confirm_ma_sessions: [10, 20]
+    confirm_above_exit: true
+  short_history_anchor: swing_low_vwap   # fewer bars than an average needs -> anchored VWAP from the swing low
+  verdict:
+    basing_min_sessions: 3
+    basing_band_pct: 3.0
+    invalidation_sessions: 10
+    trend_sessions: 5
+home_review:
+  # Design home/v005 "Review now": review prompts ranked by dollars at risk (API-side join,
+  # scripts/lib/market_risk_book_dollars.py). Display thresholds only; nothing here sets or moves a stop.
+  max_items: 5
+  max_position_rows: 5
+  stop_near_pct: 5.0
+  stressed_min_usd: 1000
+issuer_segments:
+  # config/issuer_segments.json — operator-owned segment weights for multi-segment issuers (APPROVED entries only)
+  path: config/issuer_segments.json
+  stale_after_days: 120
 leadership:
   # scripts/lib/market_risk/leadership.py + rotation_advice.py — regime-turn rotation advisor (operator 2026-10-31:
   # "if stuff is turning for the long term, I should have advisement of what I should be getting into"). STATED RULE,
