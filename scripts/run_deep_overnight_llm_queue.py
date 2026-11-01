@@ -621,7 +621,7 @@ _CODED_ERROR_TYPES = frozenset({"RuntimeError", "AnthropicError"})
 #: llm_fallback's marker for a lane that RETURNED but with no text.
 EMPTY_RESPONSE = "empty response"
 #: Exception types a lane raises when the model RETURNED but its output could not be parsed: the job's failure.
-UNPARSEABLE_OUTPUT_TYPES = frozenset({"ValueError", "JSONDecodeError"})
+UNPARSEABLE_OUTPUT_TYPES = frozenset({"ValueError"})
 
 
 class CloudRefused(Exception):
@@ -666,7 +666,9 @@ def _attempt_kind(a):
 #: HTTP statuses that reject the request's content rather than the caller or the transport.
 REQUEST_REJECTED_HTTP = frozenset({400, 413, 422})
 #: A lane returned a body without the expected fields: could be this prompt, could be a proxy page; ambiguous.
-MALFORMED_BODY_TYPES = frozenset({"KeyError"})
+#: Round 10: JSONDecodeError joins KeyError -- a proxy's error JSON or an HTML login page parses this way, so the
+#: body is ambiguous, never the job's own failure by itself.
+MALFORMED_BODY_TYPES = frozenset({"KeyError", "JSONDecodeError"})
 
 
 #: Exception types and gate codes that mean "no model ran on this lane" (the consumption gate, a cap, a deferral):
@@ -1485,25 +1487,11 @@ def main():
                 processed += 1
                 reason = str(refusal)
                 rejected = getattr(refusal, "request_rejected", False)
-                if cloud and lanes_proven and rejected:
-                    # A lane answered earlier in this run and every lane that ran rejected THIS request (HTTP
-                    # 400/413/422 or a malformed body): the job's own. Round 9: only a request rejection counts
-                    # here; a 429, 5xx, timeout, connection error, unavailable lane or gate refusal never does.
-                    _count_deferred_attempt(cur, job_id, "counted: a lane answered earlier in this run and every "
-                                            f"lane that ran rejected this request: {reason}")
-                    conn.commit()
-                    failed += 1
-                    consecutive_failures += 1
-                    log(f"  COUNTED #{job_id} — request rejected after the lanes were proven up in this run")
-                    if max_consecutive and consecutive_failures >= max_consecutive:
-                        minutes = trip_breaker(breaker, "failure", f"{consecutive_failures} consecutive failures",
-                                               drain_policy)
-                        save_breaker(bpath, breaker)
-                        log(f"Circuit breaker: {consecutive_failures} consecutive failures; open {minutes:.0f} min.")
-                        break
-                    continue
                 if rejected:
-                    suspects.append((job_id, reason))  # confirmed (and counted) only if a later job is answered
+                    # Round 10: a request rejection is charged ONLY when a LATER job in this run is answered --
+                    # never because an earlier job was. A systemic or throttling 400, or a proxy's error body at the
+                    # end of a run, is therefore never charged, and a bad job that is always last stays pending.
+                    suspects.append((job_id, reason))
                 refusals_in_row += 1
                 if cloud and refusals_in_row >= outage_after:
                     # outage_after_refusals in a row with no answer: the lanes are out (or rate limiting). Nobody is
