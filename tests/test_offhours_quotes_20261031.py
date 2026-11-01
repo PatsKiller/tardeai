@@ -225,13 +225,15 @@ def test_apply_writes_through_the_extended_writer(cfg):
 # ── Schwab: off by default, never reaches an order capability ───────────────────────────────────────
 
 
-def test_schwab_switch_defaults_off(cfg):
-    assert cfg["schwab"]["enabled"] is False
-    assert "28.2.0" in cfg["schwab"]["requires_policy"]
+def test_schwab_switch_is_on_and_off_still_stops_everything(cfg):
+    # Operator 2026-11-01 ~13:45 ET "enable schwab" (AGENTS.md 29.2.0 §24.11); the off path must still stop every call.
+    assert cfg["schwab"]["enabled"] is True
+    assert "29.2.0" in cfg["schwab"]["requires_policy"]
+    off = {**cfg, "schwab": {**cfg["schwab"], "enabled": False}}
 
     def boom(*_a, **_k):
         raise AssertionError("fetch/write must not run while the switch is off")
-    r = oq.run(cfg=cfg, now=_t("2026-10-30T08:00:00-04:00"), fetch=boom, write=boom, dry_run=False,
+    r = oq.run(cfg=off, now=_t("2026-10-30T08:00:00-04:00"), fetch=boom, write=boom, dry_run=False,
                promoted=lambda: True)
     assert r["status"] == "disabled" and r["inserted"] == 0
 
@@ -241,6 +243,9 @@ def test_schwab_apply_stops_before_schwab_modules(monkeypatch, capsys):
 
     def boom(*_a, **_k):
         raise AssertionError("live path reached while disabled")
+    real = ent.oq.load_config()
+    off = {**real, "schwab": {**real["schwab"], "enabled": False}}
+    monkeypatch.setattr(ent.oq, "load_config", lambda *_a: off)
     monkeypatch.setattr(ent, "live_fetch", boom)
     monkeypatch.setattr(ent, "_write", boom)
     for name in ("schwab_token_manager", "schwab_transport"):
@@ -272,7 +277,7 @@ def test_schwab_probe_makes_no_live_call(cfg, monkeypatch):
 
     monkeypatch.setattr(ent, "live_fetch", lambda *a, **k: (_ for _ in ()).throw(AssertionError("live call")))
     p = ent.probe(cfg)
-    assert p["enabled"] is False and p["live_call_made"] is False and p["url_rail_ok"] is True
+    assert p["enabled"] is True and p["live_call_made"] is False and p["url_rail_ok"] is True
     assert p["store"] == "market_quotes_extended"
     assert p["symbols"][:7] == [*cfg["schwab"]["futures"], *cfg["schwab"]["indices"]]
 
@@ -320,7 +325,7 @@ def test_capability_scanner_schwab_entry():
 
 
 TM = ROOT / "scripts" / "schwab_token_manager.py"
-CALLED = {"canonical_token_key", "get_access_token", "is_auth_failure", "record_auth_failure"}
+CALLED = {"canonical_token_key", "health", "get_access_token", "is_auth_failure", "record_auth_failure"}
 
 
 def test_called_token_manager_functions_never_reach_order_code():
@@ -370,7 +375,7 @@ def test_schwab_dry_run_writes_nothing(fx, n, monkeypatch, capsys):
     doc = json.loads(fx.read_text())
     assert ent.main(["--dry-run", "--fixture", str(fx), "--now", doc["now"]]) == 0
     out = json.loads(capsys.readouterr().out)
-    assert out["status"] == "dry_run" and out["inserted"] == 0 and out["config_enabled"] is False
+    assert out["status"] == "dry_run" and out["inserted"] == 0 and out["config_enabled"] is True
     assert out["store"] == "market_quotes_extended" and len(out["rows"]) == n
 
 

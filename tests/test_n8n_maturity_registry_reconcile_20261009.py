@@ -213,7 +213,8 @@ def test_every_live_crontab_line_maps_to_exactly_one_row(inputs, committed):
     # - L1053 check_n8n_workflow_drift.py (2026-10-27: withdrawn from the approved install, never on the host; the
     #   lane n8n-workflow-drift-check is the user timer tradeai-n8n-drift-watch.timer)
     # + L1083-L1086 market-risk-evaluate (2026-11-01: Market Risk Engine shadow, installed on the operator's "run it now")
-    assert len(lines) == 449
+    # + L1089-L1090 market-quotes-extended (2026-11-01: Alpaca extended-session writer, operator "I approve the after-hour")
+    assert len(lines) == 451
     mapping = R.line_mapping(committed, lines)
     bad = {R.sanitize(ln)[:120]: ids for ln, ids in mapping.items() if len(ids) != 1}
     assert not bad, bad

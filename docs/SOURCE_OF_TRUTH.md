@@ -133,7 +133,7 @@ module every other writer must call.
 | Provider | Class | Status | Supplies | Markers the gate recognises | Approval |
 |---|---|---|---|---|---|
 | **alpaca** | live_external | active | quotes, bars, paper_execution | `alpaca`, `data.alpaca.markets` | operator 2026-09-13 |
-| **schwab** | live_external | active | positions, option_chain, stream_quotes, instruments | `schwab_transport`, `schwab_api`, `api.schwabapi.com` | operator 2026-09-13 |
+| **schwab** | live_external | active | positions, option_chain, stream_quotes, instruments, market_data_quotes | `schwab_transport`, `schwab_api`, `api.schwabapi.com` | operator 2026-09-13 |
 | **yfinance** | live_external | active | profiles, quote_backup, prices, technicals, earnings, analyst_on_demand | `import yfinance`, `yfinance as yf` | operator 2026-09-13 |
 | **yahoo** | live_external | active | analyst_targets, vix, news_feed | `query1.finance.yahoo.com`, `query2.finance.yahoo.com`, `finance.yahoo.com` | operator 2026-09-13 |
 | **finviz** | live_external | active | screeners, enrichment, industry_groups, sector_perf, news | `finviz.com`, `elite.finviz.com` | operator 2026-09-13 |

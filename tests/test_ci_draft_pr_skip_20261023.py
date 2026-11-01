@@ -124,7 +124,13 @@ def test_pull_request_runs_are_cancelled_when_superseded(path: Path):
     group = str(conc.get("group"))
     cancel = str(conc.get("cancel-in-progress"))
     assert "github.ref" in group, (path.name, group)
-    assert cancel in ("True", "${{ github.event_name == 'pull_request' }}", "${{ github.event_name != 'schedule' }}"), (
+    assert cancel in (
+        "True",
+        "${{ github.event_name == 'pull_request' }}",
+        "${{ github.event_name != 'schedule' }}",
+        # 29.3.0: push runs are SHA-keyed and never cancelled; PR runs still are.
+        "${{ github.event_name != 'schedule' && github.event_name != 'push' }}",
+    ), (
         path.name,
         cancel,
     )
