@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_ask_anthropic_web_search_20261101",
+  "files": [
+    "tests/test_cio_ask_anthropic_search_20261101.py"
+  ],
+  "anchor": "CIO_ASK_ANTHROPIC_WEB_SEARCH_20261101",
+  "comment": [
+    "ANCHOR: CIO_ASK_ANTHROPIC_WEB_SEARCH_20261101 — Ask-the-CIO hosted web search as an opt-in cited source.",
+    "Hermetic throughout (injected transports, no network, no credit): the transport's tools_processes",
+    "allowlist (cio_ask_web_search only, refusal before any reservation), the web_search_tool_result",
+    "normalisation, typed bridge/transport failures, the default-off TRADEAI_ANTHROPIC_WEB_SEARCH switch,",
+    "cited facts, dry-run silence, and the degraded -> no_data rule that keeps an unavailable paid tier from",
+    "failing the hourly check or opening the Ask lane's breaker."
+  ]
+}

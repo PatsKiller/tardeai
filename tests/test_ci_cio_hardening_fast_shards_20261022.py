@@ -94,11 +94,17 @@ def _ctx(event: str, *, draft: bool = False, cancelled: bool = False, mergify_he
 
 
 def test_triggers_cover_ready_for_review_and_keep_push_and_dispatch():
+    # 29.3.0 (DSN-20261031-ci-load-reduction §4.3): this workflow is retired as a PR/push provider.
+    # The combined suite in cio-full-suite-sharded.yml carries those triggers and reports both required
+    # contexts (ci-gate and cio-hardening) from one run. The legacy file stays dispatch-only for the
+    # full isolation profile.
     on = HARD.get(True, HARD.get("on"))
-    assert on["push"] == {"branches": ["main"]}
-    assert {"opened", "synchronize", "reopened", "ready_for_review"} <= set(on["pull_request"]["types"])
-    assert "paths" not in on["pull_request"] and "paths-ignore" not in on["pull_request"]
-    assert "workflow_dispatch" in on and "schedule" not in on
+    assert list(on) == ["workflow_dispatch"], on
+    con = SHARD.get(True, SHARD.get("on"))
+    assert con["push"] == {"branches": ["main"]}
+    assert {"opened", "synchronize", "reopened", "ready_for_review"} <= set(con["pull_request"]["types"])
+    assert "paths" not in con["pull_request"] and "paths-ignore" not in con["pull_request"]
+    assert "workflow_dispatch" in con and "schedule" in con
 
 
 @pytest.mark.parametrize("job", PARTS)

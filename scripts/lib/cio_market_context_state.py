@@ -117,6 +117,8 @@ def _market_risk_field(mr: dict[str, Any] | None) -> dict[str, Any]:
             (mr.get("book") or {}).get("vulnerability") if isinstance(mr.get("book"), dict) else None
         ),
         "probabilities": mr.get("probabilities"),
+        "mode": mr.get("mode"),  # live | shadow (shadow: evaluated, no alert sent)
+        "carried_only": bool(mr.get("carried_only")),  # tier rests only on carried data: not alerting
     }
     return _field(
         value, source="market_risk_projection", as_of=mr.get("as_of"), state="STALE" if mr.get("stale") else "VERIFIED"
@@ -136,12 +138,16 @@ def load_market_risk_projection(project_root: Path | None = None) -> dict[str, A
         except Exception:  # noqa: BLE001 — a missing or torn file is "not evaluated", never a crash of the CIO
             return None
 
-    snap = _load("data/runtime/market_risk_latest.json")
+    try:
+        from lib.market_risk_projection import build, load_snapshot
+    except ImportError:  # pragma: no cover - imported as scripts.lib
+        from scripts.lib.market_risk_projection import build, load_snapshot
+
+    # live when present; torn live -> not_evaluated with the reason; absent -> the labelled shadow assessment
+    snap = load_snapshot(_load, lambda rel: (root / rel).exists())
     radar = _load("data/runtime/hedging_radar_latest.json")
     if snap is None and radar is None:
         return None
-    from lib.market_risk_projection import build
-
     return build(snap, radar)
 
 
@@ -154,9 +160,13 @@ def _market_risk_summary(field: dict[str, Any]) -> dict[str, Any]:
         if top
         else (v.get("reason") or "")
     )
+    mode = v.get("mode") if v.get("mode") in ("live", "shadow") else None
     line = (
         f"Market risk: {tier}"
         + (f" {round(v['score'])}/100" if isinstance(v.get("score"), (int, float)) else "")
+        # a shadow tier was evaluated but nobody was alerted on it; the CIO must not say "the engine warned you"
+        + (" (SHADOW, not alerting)" if mode == "shadow" else "")
+        + (" (carried over the closure, not alerting)" if v.get("carried_only") and mode != "shadow" else "")
         + (f" — {why}" if why else "")
     )
     return {
@@ -164,6 +174,7 @@ def _market_risk_summary(field: dict[str, Any]) -> dict[str, Any]:
         "score": v.get("score"),
         "state": field.get("state"),
         "as_of": field.get("as_of"),
+        "mode": mode,
         "line": line,
     }
 
