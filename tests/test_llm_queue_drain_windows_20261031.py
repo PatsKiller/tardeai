@@ -1974,3 +1974,16 @@ def test_a_released_struck_chunk_never_trips_the_between_range_cap(monkeypatch, 
     assert ran[12:22] == list(range(1, 11)), "the struck chunk runs right behind the first answer"
     assert ran[22:41] == list(range(22, 41)), "then the whole between range: 9 bad in a row never reach the cap"
     assert ran[41] == 42
+
+
+def test_a_bad_job_right_after_a_struck_chunk_does_not_end_the_run(monkeypatch):
+    """The released chunk is exempt from the bound. Counted, its 10 rejections would trip the bound; after an answer
+    only one probe is allowed, it would hit the next (bad) job, and the run would end as systemic."""
+    import lib.llm_fallback as lf
+
+    stamp = datetime.now(timezone.utc).isoformat()
+    store = {i: {w.STRIKE_KEY: stamp} for i in range(1, 11)}
+    monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator(set(range(1, 11)) | {12, 13}))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "30"], rows=[_row(i) for i in range(1, 31)], store=store)
+    assert _running(log) == [11, *range(1, 11), *range(12, 31)]
+    assert sorted(_done(log)) == [11, *range(14, 31)]
