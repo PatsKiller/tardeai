@@ -473,10 +473,22 @@ def _read_prior(path: Path) -> dict | None:
 
 
 def _shadow(
-    now: datetime, reader: Any, policy: dict, prior: dict | None, portfolio, *, as_json: bool, replay: bool = False
+    now: datetime,
+    reader: Any,
+    policy: dict,
+    prior: dict | None,
+    portfolio,
+    *,
+    as_json: bool,
+    replay: bool = False,
+    scheduled_started: datetime | None = None,
 ) -> int:
     """--shadow: evaluate, then persist the receipt, the shadow prior and the consumers' snapshot. The alert path
-    (outbox, episode store, sent-key ledger, curation, send_telegram) is never imported or called."""
+    (outbox, episode store, sent-key ledger, curation, send_telegram) is never imported or called.
+
+    ``scheduled_started``: set only for a scheduler-launched, non-replay run (--scheduled); the run receipt
+    run_last.json, the lane's output signal, is then written exactly as a scheduled dry/apply run writes it (#2409:
+    the 2026-11-01 cron lines run --scheduled --shadow, and before this fix main() returned here without it)."""
     assessment = evaluate(now, reader, policy, prior, portfolio)
     doc = assessment.to_dict()
     doc["mode"] = "shadow"
@@ -493,6 +505,8 @@ def _shadow(
     else:
         doc["written"] = persist(doc, now, shadow=True)
         doc["snapshot"] = None  # served from shadow_latest.json only while no live snapshot exists
+    if scheduled_started is not None and not replay:
+        doc["run_receipt"] = write_run_receipt(doc, started=scheduled_started, finished=datetime.now(timezone.utc))
     if as_json:
         print(json.dumps(doc, indent=2, default=str))
     else:
@@ -627,7 +641,18 @@ def main(argv: list[str] | None = None) -> int:
         prior = _resolve_prior(state_dir() / prior_name, shadow=shadow)
     portfolio = None if a.no_portfolio else portfolio_context(now)
     if shadow:
-        return _shadow(now, reader, policy, prior, portfolio, as_json=a.as_json, replay=bool(a.as_of))
+        # a scheduler-launched shadow run leaves run_last.json too; a manual, replay or fixture run never does
+        # (review of #2411, M8), the same rule as the dry/apply branch below
+        return _shadow(
+            now,
+            reader,
+            policy,
+            prior,
+            portfolio,
+            as_json=a.as_json,
+            replay=bool(a.as_of),
+            scheduled_started=started if (a.scheduled and not a.as_of and not a.fixture) else None,
+        )
     written: dict[str, str] = {}
 
     def _persist(d: dict) -> None:
