@@ -18844,6 +18844,23 @@
       "note": "Dead-man for the pre-market stack: P1 when the premarket pipeline receipt (data/runtime/pipeline_premarket_premarket_last.json) is absent/stale/failed after 06:45 ET or no MORNING CIO BRIEF comms event exists after 07:45 ET; repeats hourly up to 4x (config/premarket_delivery_deadman.json). Writes its LaneRunReceipt on every run so its own silence is visible."
     },
     {
+      "lane_id": "market-quotes-extended",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-31",
+      "state_reason": "Declared, not scheduled. Pre-market / after-hours prints for the Market Risk Engine's extended_hours category (scripts/market_quotes_extended.py, DSN-20261031-market-risk-engine P1-T4) into their own store market_quotes_extended (single writer scripts/lib/writers/market_quotes_extended_writer.py; never market_quotes). Alpaca SIP 5-minute bars ending 16 minutes before now, through the quote ingest's existing credentials. The operator approved the store, provider and schedule as design §11 items 1-2 on 2026-10-31; activation (migration apply + crontab) is a §25.10.2 in-session step after this PR merges.",
+      "output_signal": {
+        "kind": "none"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "No crontab line or timer runs scripts/market_quotes_extended.py and the table is created by migrations/2026_10_31_market_quotes_extended.sql (not applied). Measured 2026-10-31: feed=sip with end=now-16min returns 04:00-20:00 ET coverage on the current credentials.",
+      "note": "Proposed host crontab lines: '*/15 4-9 * * 1-5' and '*/15 16-20 * * 1-5', each 'cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_extended.lock bash scripts/market_day_gate.sh $PY scripts/market_quotes_extended.py --apply >> logs/market_quotes_extended.log 2>&1'."
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {

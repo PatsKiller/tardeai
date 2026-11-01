@@ -136,12 +136,15 @@ def load_market_risk_projection(project_root: Path | None = None) -> dict[str, A
         except Exception:  # noqa: BLE001 — a missing or torn file is "not evaluated", never a crash of the CIO
             return None
 
-    snap = _load("data/runtime/market_risk_latest.json")
+    try:
+        from lib.market_risk_projection import SNAPSHOT_REL, build
+    except ImportError:  # pragma: no cover - imported as scripts.lib
+        from scripts.lib.market_risk_projection import SNAPSHOT_REL, build
+
+    snap = _load(SNAPSHOT_REL)
     radar = _load("data/runtime/hedging_radar_latest.json")
     if snap is None and radar is None:
         return None
-    from lib.market_risk_projection import build
-
     return build(snap, radar)
 
 

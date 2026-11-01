@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_gaps_20261031",
+  "files": [
+    "tests/test_market_risk_gaps_20261031.py"
+  ],
+  "anchor": "MARKET_RISK_GAPS_20261031",
+  "comment": [
+    "ANCHOR: MARKET_RISK_GAPS_20261031 — gap-close for the integrated Market Risk Engine (DSN-20261031): sector-ETF",
+    "breadth proxy, overnight-gap proxy for extended hours (known from the 09:30 open only), IMPROVING inputs for the",
+    "Green tier, and the review-of-#2362 B2 regressions (UNKNOWN never raises score or tier; WARNs alone never reach",
+    "Orange). Hermetic: synthetic readers and the public fixture library, no DB, no network."
+  ]
+}

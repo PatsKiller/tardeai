@@ -22,7 +22,7 @@ number that can be recomputed. It does not use the prospectus code paths to do i
 | Last close, 1W/1M/3M/YTD/1Y returns, 1-year high and low | `ticker_prices`, NYSE sessions only |
 | Annual dividend, fund trailing 12 months, distribution history | `ticker_dividends` against `ticker_dividend_data` and the fund profile |
 | Fundamentals and peers | the Finviz enrichment cache (the same snapshot only; a later refresh is drift, not a defect) |
-| Macro series, dates, rate beta, calendar | `fred_economic_series` |
+| Macro series, dates, rate beta, calendar | `fred_economic_series` (freshness: `last_seen_at`; `fetched_at` is first-fetch only, migration `2026_10_31_fred_last_seen_at`) |
 | Round trips and realized P/L coverage | `trade_transactions` sells |
 | Fund profile against look-through, dividends tile | the report's own blocks |
 | Charts and prose numbers | the report's chart series, and the gate's layer-3 matcher |
