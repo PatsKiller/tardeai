@@ -1,0 +1,26 @@
+{
+  "schema": "LlmQueueDrainPolicy@v1",
+  "status": "PROPOSED",
+  "activation": "operator only: the cron line in the PR body plus an llm_process_config row for process_id; nothing here schedules anything",
+  "operator_direction": [
+    "2026-10-31: on the weekend, the LLM queue should be running just about 24 hours to clear any backlogs the same with Hermes. There should be no restriction, no trading is going on.",
+    "2026-10-31: the same thing from nine p.m. trading days into 4 a.m.",
+    "2026-10-31: Anthropic (promo credit), Grok and ChatGPT (OAuth) need no window; DeepSeek only outside its billing peak; cap by the existing budget ceilings, not by time of day."
+  ],
+  "unrestricted_windows": {
+    "non_trading_days_all_day": true,
+    "trading_day_night_et": {"start_hour": 21, "end_hour": 4}
+  },
+  "provider_order": ["anthropic", "grok", "chatgpt", "deepseek-flash"],
+  "deepseek_lanes": ["deepseek-flash"],
+  "deepseek_rule": "dropped from the chain inside scripts/lib/deepseek_offpeak.is_deepseek_peak_utc (weekdays 01:00-04:00 and 06:00-10:00 UTC)",
+  "process_id": "deep_overnight_llm_drain",
+  "per_call_timeout_s": 120,
+  "per_run_job_limit": 100,
+  "triage": {
+    "runnable_job_types": {
+      "strategy_classification": {"symbol_snapshot_within_days": 14}
+    },
+    "note": "Every other pending job type in the queue (rag_content_curation, covered_call_scoring, risk_synthesis, *_strategy_scan, recovery_watch_review) was built on May 2026 article/option/position context and is not selected; retiring those rows is a separate operator decision."
+  }
+}

@@ -610,6 +610,41 @@ def call_gemma(prompt, model="gemma3-overnight", timeout=300):
         return None, elapsed
 
 
+def call_cloud(prompt, policy, *, fallback=None, now=None):
+    """One job through the drain chain (anthropic -> grok -> chatgpt -> deepseek off-peak only).
+
+    Returns (text, runtime_sec, lane_that_answered) or (None, runtime, "cloud:none"). Every attempt runs under
+    the consumption gate (process_id), so the existing per-process and global budget ceilings bind.
+    """
+    from lib.llm_queue_drain_policy import provider_chain
+    chain = provider_chain(now, policy)
+    if not chain:
+        return None, 0, "cloud:none"
+    if fallback is None:
+        try:
+            from lib.llm_fallback import generate_with_fallback as fallback
+        except ImportError:  # pragma: no cover
+            from scripts.lib.llm_fallback import generate_with_fallback as fallback
+    ds = set(policy.get("deepseek_lanes") or [])
+    t0 = time.monotonic()
+    try:
+        res = fallback(
+            prompt,
+            lane=chain[0],
+            extra_lanes=chain[1:],
+            allow_paid=any(l in ds for l in chain),
+            oauth_first=False,
+            process_id=policy["process_id"],
+            timeout=int(policy.get("per_call_timeout_s") or 120),
+        )
+    except Exception as e:  # noqa: BLE001 - every lane failed or the budget gate refused
+        log(f"  cloud chain {chain} failed: {e}")
+        return None, round(time.monotonic() - t0, 1), "cloud:none"
+    runtime = round(time.monotonic() - t0, 1)
+    log(f"  cloud: {res.provenance_line()} ({runtime}s)")
+    return (res.text or None), runtime, f"cloud:{res.lane}"
+
+
 def _apply_curation_verdict(cur, job, parsed):
     """Write curation verdict back to source content table."""
     source_table = job.get("source_table")
@@ -835,6 +870,14 @@ def main():
                         help="[PILOT] Log hybrid RAG metrics per job")
     parser.add_argument("--hybrid-rag-cache", type=str, default=None,
                         help="[PILOT] Path to prefetched hybrid RAG context JSON cache (Stage A output)")
+    parser.add_argument("--route", choices=["local", "cloud"], default="local",
+                        help="local = gemma3-overnight via Ollama (default, unchanged); cloud = the lanes in "
+                             "config/llm_queue_drain.json via llm_fallback (budget-gated by process_id)")
+    parser.add_argument("--drain-window", action="store_true",
+                        help="refuse to start outside the drain window (weekends/holidays all day, trading days "
+                             "21:00-04:00 ET) and stop when it closes; replaces --hard-stop")
+    parser.add_argument("--triaged", action="store_true",
+                        help="select only jobs config/llm_queue_drain.json triage marks worth running")
     args = parser.parse_args()
 
     # Handle --force-job-types overriding --job-types
@@ -857,12 +900,30 @@ def main():
         f"{', force_types=' + args.force_job_types if args.force_job_types else ''}"
         f"{', quota_policy=balanced' if use_balanced else ''}")
 
+    drain_policy = None
+    if args.route == "cloud" or args.drain_window or args.triaged:
+        from lib.llm_queue_drain_policy import load_policy, provider_chain, triage_filter_sql, window_state
+        drain_policy = load_policy()
+        ws = window_state(policy=drain_policy)
+        log(f"Drain window: unrestricted={ws['unrestricted']} ({ws['reason']}); "
+            f"chain now={provider_chain(policy=drain_policy) if args.route == 'cloud' else ['local']}")
+        if args.drain_window and not ws["unrestricted"]:
+            log("Outside the drain window — nothing started.")
+            return
+
     conn = get_db_connection()
     cur = conn.cursor()
 
-    # Recover stale running jobs
-    recovered = recover_stale_running(cur)
-    conn.commit()
+    # Recover stale running jobs. Never in a dry run: until 2026-10-31 --dry-run ran this UPDATE and committed.
+    recovered = 0
+    if not args.dry_run:
+        recovered = recover_stale_running(cur)
+        conn.commit()
+
+    triage_sql, triage_params = ("", [])
+    if args.triaged:
+        _pred, triage_params = triage_filter_sql(drain_policy)
+        triage_sql = f"AND {_pred}"
 
     # Build job list — balanced or simple
     if use_balanced and args.job_types:
@@ -890,9 +951,10 @@ def main():
             FROM deep_overnight_llm_queue
             WHERE status = 'pending'
             {type_filter}
+            {triage_sql}
             ORDER BY priority_score DESC, queued_at ASC
             LIMIT %s
-        """, type_params + [args.limit])
+        """, type_params + triage_params + [args.limit])
 
         jobs = cur.fetchall()
         columns = [desc[0] for desc in cur.description]
@@ -934,8 +996,12 @@ def main():
             log(f"Time budget exhausted ({args.time_budget_min}m). Stopping.")
             break
 
-        # Hard stop check
-        if past_hard_stop(args.hard_stop):
+        # Hard stop check (the drain window replaces the fixed 03:00 stop)
+        if args.drain_window:
+            if not window_state(policy=drain_policy)["unrestricted"]:
+                log("Drain window closed. Stopping.")
+                break
+        elif past_hard_stop(args.hard_stop):
             log(f"Hard stop {args.hard_stop} reached. Stopping.")
             break
 
@@ -1036,7 +1102,10 @@ def main():
                 except Exception as e:
                     log(f"  [hybrid-rag] Non-fatal error: {e}")
 
-        text, runtime = call_gemma(prompt, model=model)
+        if args.route == "cloud":
+            text, runtime, model = call_cloud(prompt, drain_policy)
+        else:
+            text, runtime = call_gemma(prompt, model=model)
 
         if text:
             # Parse JSON from response if present
