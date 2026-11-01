@@ -1454,6 +1454,15 @@ Passing mentions and ticker collisions have repeatedly been read as subject news
 
 *Rule:* §29 News drives a rewrite only after checks. AGENTS.md 25.0.1 lines 6560-6564.
 
+
+### L24-18 · Nothing closed what agents opened (2026-10-30)
+The disk reached 99.75%. 646 git worktrees existed (332 abandoned, 59.6 GiB); `~/.cache/agent-tmp` held 43 GB;
+release prepares copied `.env.*` backups into every release; older DB dumps were "archived" on the same disk, freeing
+nothing. The reviewed hygiene rules were plan-only, failed every `--standing` plan on a non-claim file, and held any
+folder with a nested repo or a fixture timestamp. The config `.env` was truncated to 0 bytes during the full-disk
+window. Rule: agents close what they open (archive, then remove); a recurring, pressure-triggered sweep closes the
+rest; backups keep one on host and N+1 verified on Drive; growth is audited twice a week (AGENTS.md §24.14–§24.15).
+
 ## Coordinator, 2026-10-27 (rules added during the consolidation)
 
 ### LC-01 · Approvals the operator could not read (2026-10-27)

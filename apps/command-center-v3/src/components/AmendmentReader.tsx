@@ -111,6 +111,16 @@ export default function AmendmentReader({ id }: { id: string }) {
     } catch (err) { setError((err as Error).message) } finally { setBusy(false) }
   }
   const allRead = !!doc && doc.changes.every(c => read.has(c.id))
+  // A tap on Approve always records or says why not. A disabled button swallowed two phone taps on 2026-10-31.
+  const approve = () => {
+    if (!doc) return
+    if (!review) { setError('Approval not recorded: tap "Start reading" first, then read every highlighted change.'); return }
+    if (!allRead) { setError(`Approval not recorded: ${doc.changes.length - read.size} of ${doc.changes.length} changes are still unread. Each one must stay fully on screen for three seconds.`); return }
+    void record('APPROVE')
+  }
+  const governed = item?.decision_mode === 'GOVERNED_PATH'
+  const governedLabel = item?.kind === 'FINANCIAL' ? 'Open existing trade review' : item?.kind === 'DESIGN' ? 'Approve this design with your passkey →' : 'Continue to operator controls'
+  const governedLink = item?.governed_href ? <Link className="primary" data-testid="governed-decision-link" to={item.governed_href}>{governedLabel}</Link> : <p className="warning">The governed decision path has not been supplied.</p>
   const changes = doc?.changes.filter(c => !search || `${c.section} ${c.before} ${c.after}`.toLowerCase().includes(search.toLowerCase())) ?? []
   const block = (change: Change) => <ChangeBlock key={change.id} change={change} review={review} sha={doc!.document_sha} itemId={id} isRead={read.has(change.id)} onRead={onRead} onFailure={setError} />
   const blocks = <>{changes.map(block)}</>
@@ -129,6 +139,12 @@ export default function AmendmentReader({ id }: { id: string }) {
   }
   return <div className="approvals"><Link className="primary" to="/approvals">← Back to approvals</Link>
     <h1 ref={title} tabIndex={-1} style={{ margin: '16px 0', fontSize: 22 }}>{item?.title ?? 'Read & decide'}</h1>
+    {governed && <section className="panel stack" role="note" data-testid="governed-decision" style={{ marginBottom: 16 }}>
+      <p>{item?.kind === 'DESIGN'
+        ? 'Designs are approved on their work-pipeline card with your passkey and typed words. That is the only approval the design registry reads; nothing on this page records it.'
+        : 'This decision is made on its governed page. This reader shows the exact version only.'}</p>
+      {governedLink}
+    </section>}
     <DeskPage title="Document reader" purpose="Read each highlighted change for three seconds. Your decision will name this exact version."
       sources={[{ id: 'document', label: 'Exact document', gap: 'A committed document does not have a scheduled writer clock.' }]} decisionGap="Approval waits until every change has been read.">
       {loadError && <DeskGap title="Review needs attention" reason={loadError}><button onClick={refresh}>Reload document</button></DeskGap>}
@@ -166,8 +182,8 @@ export default function AmendmentReader({ id }: { id: string }) {
               <label>Comment<textarea aria-label="Decision comment" value={comment} onChange={event => setComment(event.target.value)} /></label>
               {saved ? <div role="status" className="success"><strong>Decision recorded</strong><p>{saved.decision.replace(/_/g, ' ')} · {saved.actor}</p>
                 {saved.policy_token && <details><summary>Policy approval record</summary><code>{saved.policy_token}</code></details>}<Link className="primary" to="/approvals">Return to approvals</Link></div> : <>
-                {item.decision_mode === 'GOVERNED_PATH' ? item.governed_href ? <Link className="primary" to={item.governed_href}>{item.kind === 'FINANCIAL' ? 'Open existing trade review' : 'Continue to operator controls'}</Link> : <p className="warning">The governed decision path has not been supplied.</p> :
-                  <button className="primary" disabled={!review || !allRead || busy} onClick={() => record('APPROVE')}>Approve{!allRead ? ` — read ${doc.changes.length - read.size} more` : ''}</button>}
+                {governed ? <p className="muted">This decision is made on its governed page. Use the link at the top of this page.</p> :
+                  <button className="primary" data-testid="approve-button" data-unready={!review || !allRead ? 'true' : undefined} disabled={busy} onClick={approve}>Approve{!allRead ? ` — read ${doc.changes.length - read.size} more` : ''}</button>}
                 <button disabled={!review || busy || !comment.trim()} onClick={() => record('REQUEST_CHANGES')}>Request changes</button>
                 <button disabled={!review || busy} onClick={() => record('REJECT')}>Reject</button>
                 <p className="muted">Recorded with your tailnet identity and this exact version. Changed wording resets your reading progress.</p>

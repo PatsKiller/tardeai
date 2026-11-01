@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ci_queue_janitor_20261031",
+  "files": [
+    "tests/test_ci_queue_janitor_20261031.py"
+  ],
+  "anchor": "CI_QUEUE_JANITOR_20261031",
+  "comment": [
+    "ANCHOR: CI_QUEUE_JANITOR_20261031 — .mergify.yml auto-updates only approved (label=operator-merge) PRs; the blanket",
+    "\"Keep PRs up to date\" rule flooded hosted CI (2,913 of 5,369 runs on 2026-10-31). scripts/ci_queue_janitor.py cancels only",
+    "pull_request runs whose PR closed or moved on, never main/push/schedule/dynamic runs, and is a dry run unless --apply. Hermetic."
+  ]
+}
