@@ -1159,7 +1159,7 @@ Root disk at 89%, ~100 GB in stale clones and worktrees and 36 GB in old release
 
 After the 2026-10-30 selloff the engine lacked held-name option chains, an extended-hours cross-check, institutional flow, earnings dates and sector groups. Operator: "Modify the agents.md. Those are allowed. No problems at all. In FinViz, remember you get different data from the cookies than you do the APIs. I'm paying for it, we need to utilize both. So if you need a ratification on any type of data fees that we need, it's okay to use the broker accounts."
 
-*Rule:* §24.11 Broker market data and paid data feeds. AGENTS.md 28.2.0.
+*Rule:* §24.11 Broker market data and paid data feeds. AGENTS.md 29.2.0 (ratified as 28.2.0; renumbered).
 ### L25-01 · #2208 merged by gh with zero reviews (2026-10-26)
 
 PR #2208 was merged by `gh` under the `PR_MERGE_BOOTSTRAP_GH_MERGE` flag with zero reviews, rewriting §25.10 with no version bump (review H2).
@@ -1459,6 +1459,15 @@ Prospectus defects — units, filing labels and price series — reached the mod
 Passing mentions and ticker collisions have repeatedly been read as subject news (identity spine).
 
 *Rule:* §29 News drives a rewrite only after checks. AGENTS.md 25.0.1 lines 6560-6564.
+
+
+### L24-18 · Nothing closed what agents opened (2026-10-30)
+The disk reached 99.75%. 646 git worktrees existed (332 abandoned, 59.6 GiB); `~/.cache/agent-tmp` held 43 GB;
+release prepares copied `.env.*` backups into every release; older DB dumps were "archived" on the same disk, freeing
+nothing. The reviewed hygiene rules were plan-only, failed every `--standing` plan on a non-claim file, and held any
+folder with a nested repo or a fixture timestamp. The config `.env` was truncated to 0 bytes during the full-disk
+window. Rule: agents close what they open (archive, then remove); a recurring, pressure-triggered sweep closes the
+rest; backups keep one on host and N+1 verified on Drive; growth is audited twice a week (AGENTS.md §24.14–§24.15).
 
 ## Coordinator, 2026-10-27 (rules added during the consolidation)
 
