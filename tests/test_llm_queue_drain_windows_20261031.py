@@ -422,8 +422,8 @@ def test_lane_outage_never_fails_the_backlog(monkeypatch, attempts):
     log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(21), _row(22), _row(23)])
     sqls = _sqls(log)
     assert not [s for s in sqls if "attempt_count >= 3 THEN 'failed'" in s]
-    assert len([s for s in sqls if "GREATEST(attempt_count - 1, 0)" in s]) == 2
-    assert [p for s, p in log if "SET status = 'running'" in s] == [(21,), (22,)]
+    assert len([s for s in sqls if "GREATEST(attempt_count - 1, 0)" in s]) == 3
+    assert [p for s, p in log if "SET status = 'running'" in s] == [(21,), (22,), (23,)], "3 refusals = outage"
 
 
 def _sequence_generator(outcomes):
@@ -538,7 +538,7 @@ def test_probe_and_head_both_refused_extends_the_breaker_and_charges_nobody(monk
     w.save_breaker(_isolated_breaker, state)
     monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_HTTP400))
     log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1), _row(2), _row(3)])
-    assert [p for s, p in log if "SET status = 'running'" in s] == [(2,), (1,)]
+    assert [p for s, p in log if "SET status = 'running'" in s] == [(2,), (1,), (3,)]
     assert _counted_ids(log) == []
     assert w.load_breaker(_isolated_breaker)["outage"]["trips"] == 2
 
@@ -549,9 +549,9 @@ def test_outage_breaker_persists_and_the_next_run_tries_one_job(monkeypatch, _is
     monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_HTTP400))
     _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(81), _row(82), _row(83)])
     state = w.load_breaker(_isolated_breaker)
-    assert w.breaker_open(state, "outage"), "two refusals in a row open the breaker"
+    assert w.breaker_open(state, "outage"), "three refusals in a row open the breaker"
     log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(81), _row(82), _row(83)])
-    assert [p for s, p in log if "SET status = 'running'" in s] == [(82,), (81,)], "probe first, then the head decides"
+    assert [p for s, p in log if "SET status = 'running'" in s] == [(82,), (81,), (83,)], "probe first, then the head"
     assert _counted_ids(log) == []
     monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["ok", "ok", "ok"]))
     log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(81), _row(82), _row(83)])
@@ -813,7 +813,7 @@ def test_long_outage_pages_once(monkeypatch, _isolated_breaker):
     for _ in range(3):
         monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_CONN_REFUSED))
         _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1), _row(2)])
-    assert len(sent) == 1 and "every lane has refused" in sent[0] and "/" not in sent[0].split("Last reason:")[0]
+    assert len(sent) == 1 and "every lane has refused" in sent[0] and "/" not in sent[0]
     assert w.load_breaker(_isolated_breaker)["outage"]["paged_since"] == since
 
 
@@ -863,3 +863,140 @@ def test_a_new_outage_after_recovery_pages_again(monkeypatch, _isolated_breaker)
     w.trip_breaker(state, "outage", "b", POLICY, now=t0 + timedelta(hours=21))
     assert state["outage"]["since"] == (t0 + timedelta(hours=20)).isoformat(), "since is kept across trips"
     assert w.maybe_page_long_outage(state, POLICY, now=t0 + timedelta(hours=27)) and len(sent) == 2
+
+
+
+# ── round 8: throughput with bad jobs at the head; credential-free page text; claim before send ────────────────
+
+def test_two_bad_jobs_at_the_head_do_not_throttle_the_drain(monkeypatch, _isolated_breaker):
+    """[B1, B2, G3..G22], limit 5, 6 runs (the fake queue never shrinks): every run drains 3 good jobs and charges
+    B1 and B2, without ever tripping the outage breaker (reviewer round 8)."""
+    import lib.llm_fallback as lf
+
+    rows = [_row(i) for i in range(1, 23)]
+    done, counted = [], []
+    for _ in range(6):
+        monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator({1, 2}))
+        log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=rows)
+        done += _done(log)
+        counted += _counted_ids(log)
+    assert len(done) >= 15 and set(counted) == {1, 2}
+    assert not w.breaker_open(w.load_breaker(_isolated_breaker), "outage")
+
+
+def test_refusal_after_a_lane_answered_is_counted_and_the_failure_breaker_bounds_it(monkeypatch, _isolated_breaker):
+    """Lanes die mid-run: after an answer, refusals count (they are no longer ambiguous), but at most
+    max_consecutive_failures of them before the failure breaker stops the run."""
+    import lib.llm_fallback as lf
+
+    n = int(POLICY["max_consecutive_failures"])
+    monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["ok"] + ["400"] * 10))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "10"], rows=[_row(100 + i) for i in range(10)])
+    assert _counted_ids(log) == [101 + i for i in range(n)]
+    assert w.breaker_open(w.load_breaker(_isolated_breaker), "failure")
+    assert not w.breaker_open(w.load_breaker(_isolated_breaker), "outage")
+
+
+def test_two_refusals_at_the_end_of_the_queue_open_the_outage_breaker(monkeypatch, _isolated_breaker):
+    import lib.llm_fallback as lf
+
+    monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_CONN_REFUSED))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1), _row(2)])
+    assert _counted_ids(log) == []
+    assert w.breaker_open(w.load_breaker(_isolated_breaker), "outage")
+
+
+@pytest.mark.parametrize(
+    "reason,expected",
+    [
+        ("grok: unavailable; chatgpt: HTTPError: 400 for url: https://x.example/v1?api_key=SECRETabc123&t=1",
+         "grok unavailable; chatgpt HTTP 400"),
+        ("anthropic: RuntimeError: POLICY_NOT_ALLOWED: detail https://h/?token=SECRETxyz",
+         "anthropic POLICY_NOT_ALLOWED"),
+        ("grok: ConnectionError: HTTPConnectionPool(host='127.0.0.1', port=10530): password=hunter2",
+         "grok ConnectionError"),
+        ("chatgpt: RuntimeError: AUTH_EXPIRED: Bearer SECRETtok", "chatgpt RuntimeError"),
+        ("https://u:SECRETpw@h/x: boom; grok: unavailable", "grok unavailable"),
+        ("", "no lane detail"),
+    ],
+)
+def test_page_summary_never_carries_free_text(reason, expected):
+    out = w.safe_reason_summary(reason)
+    assert out == expected and "SECRET" not in out and "hunter2" not in out
+
+
+def test_page_claim_is_recorded_before_the_send(monkeypatch):
+    state = w._fresh_breaker()
+    t0 = datetime(2026, 11, 1, 0, tzinfo=timezone.utc)
+    w.trip_breaker(state, "outage", "grok: unavailable", POLICY, now=t0)
+    order = []
+    monkeypatch.setattr(w, "_send_page", lambda m: order.append(("send", dict(state["outage"]).get("paging_claim"))) or True)
+    persisted = []
+    assert w.maybe_page_long_outage(state, POLICY, now=t0 + timedelta(hours=7),
+                                    persist=lambda st: persisted.append(json.loads(json.dumps(st))))
+    assert order and order[0][1] is not None, "the claim must exist when the send happens"
+    assert persisted[0]["outage"].get("paging_claim"), "the claim is persisted before the send"
+    assert persisted[-1]["outage"]["paged_since"] == state["outage"]["since"]
+
+
+def test_unpersistable_claim_means_no_send(monkeypatch):
+    state = w._fresh_breaker()
+    t0 = datetime(2026, 11, 1, 0, tzinfo=timezone.utc)
+    w.trip_breaker(state, "outage", "grok: unavailable", POLICY, now=t0)
+    sent = _pages(monkeypatch)
+
+    def broken(st):
+        raise OSError("disk full")
+
+    assert not w.maybe_page_long_outage(state, POLICY, now=t0 + timedelta(hours=7), persist=broken)
+    assert sent == [] and "paging_claim" not in state["outage"]
+
+
+def test_a_fresh_claim_blocks_a_second_page_and_a_stale_one_retries(monkeypatch):
+    state = w._fresh_breaker()
+    t0 = datetime(2026, 11, 1, 0, tzinfo=timezone.utc)
+    w.trip_breaker(state, "outage", "grok: unavailable", POLICY, now=t0)
+    now = t0 + timedelta(hours=7)
+    state["outage"]["paging_claim"] = {"since": state["outage"]["since"], "at": now.isoformat()}  # send in doubt
+    sent = _pages(monkeypatch)
+    assert not w.maybe_page_long_outage(state, POLICY, now=now + timedelta(minutes=10)) and sent == []
+    assert w.maybe_page_long_outage(state, POLICY, now=now + timedelta(hours=2)) and len(sent) == 1
+
+
+def test_page_claim_survives_a_restart(_isolated_breaker):
+    state = w._fresh_breaker()
+    w.trip_breaker(state, "outage", "grok: unavailable", POLICY)
+    state["outage"]["paging_claim"] = {"since": state["outage"]["since"], "at": "2026-11-01T07:00:00+00:00"}
+    w.save_breaker(_isolated_breaker, state)
+    assert w.load_breaker(_isolated_breaker)["outage"]["paging_claim"]["since"] == state["outage"]["since"]
+
+
+def test_outage_stops_after_outage_after_refusals_not_at_the_end_of_the_queue(monkeypatch, _isolated_breaker):
+    import lib.llm_fallback as lf
+
+    n = int(POLICY["outage_after_refusals"])
+    monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_CONN_REFUSED))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "10"], rows=[_row(200 + i) for i in range(n + 3)])
+    assert [p for s, p in log if "SET status = 'running'" in s] == [(200 + i,) for i in range(n)]
+    assert _counted_ids(log) == [] and w.breaker_open(w.load_breaker(_isolated_breaker), "outage")
+
+
+def test_page_text_never_carries_the_raw_reason(monkeypatch):
+    state = w._fresh_breaker()
+    t0 = datetime(2026, 11, 1, 0, tzinfo=timezone.utc)
+    w.trip_breaker(state, "outage", "grok: unavailable; chatgpt: HTTPError: 400 for url: "
+                   "https://x.example/v1?api_key=SECRETabc123&t=1", POLICY, now=t0)
+    sent = _pages(monkeypatch)
+    assert w.maybe_page_long_outage(state, POLICY, now=t0 + timedelta(hours=7))
+    assert "SECRETabc123" not in sent[0] and "api_key" not in sent[0] and "chatgpt HTTP 400" in sent[0]
+
+
+def test_long_outage_pages_from_a_mid_run_trip(monkeypatch, _isolated_breaker):
+    import lib.llm_fallback as lf
+
+    _long_open_breaker(_isolated_breaker, hours_ago=7)
+    sent = _pages(monkeypatch)
+    monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_CONN_REFUSED))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "10"], rows=[_row(300 + i) for i in range(6)])
+    assert len([p for s, p in log if "SET status = 'running'" in s]) == int(POLICY["outage_after_refusals"])
+    assert len(sent) == 1

@@ -16,6 +16,7 @@ Does NOT touch broker, holdings, execution, or trading behavior.
 import argparse
 import json
 import os
+import re
 import sys
 import time
 import urllib.request
@@ -767,6 +768,9 @@ def load_breaker(path):
         for extra in ("since", "paged_since"):
             if isinstance(src.get(extra), str):
                 state[k][extra] = src[extra]
+        if isinstance(src.get("paging_claim"), dict):
+            state[k]["paging_claim"] = {"since": str(src["paging_claim"].get("since")),
+                                        "at": str(src["paging_claim"].get("at"))}
     return state
 
 
@@ -811,12 +815,42 @@ def _send_page(message):
     return bool(send_telegram(message, priority="P2", producer="deep_overnight_llm_drain"))
 
 
-def maybe_page_long_outage(state, policy, now=None):
+_SAFE_TOKEN = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{0,40}$")
+_PAGE_CLAIM_STALE = timedelta(hours=1)
+
+
+def safe_reason_summary(reason):
+    """Lane names and error classes / HTTP statuses / gate codes only -- never free text. A lane error can quote a
+    URL with a credential in its query string (round 8), so nothing outside a strict token shape is kept."""
+    parts = []
+    for chunk in str(reason or "").split("; "):
+        lane, _, err = chunk.partition(": ")
+        lane = lane.strip()
+        if not _SAFE_TOKEN.match(lane):
+            continue
+        etype, code = _error_code(err)
+        if err.strip() == "unavailable":
+            label = "unavailable"
+        elif etype == "HTTPError" and code.split(" ", 1)[0].isdigit():
+            label = f"HTTP {code.split(' ', 1)[0]}"
+        elif etype in _CODED_ERROR_TYPES and code in _GATE_CODES:
+            label = code
+        elif _SAFE_TOKEN.match(etype or ""):
+            label = etype
+        else:
+            label = "error"
+        parts.append(f"{lane} {label}")
+    return "; ".join(parts[:6]) or "no lane detail"
+
+
+def maybe_page_long_outage(state, policy, now=None, persist=None):
     """Page once when the outage breaker has stayed open longer than outage_page_after_hours (default 6).
 
-    One page per outage (keyed by the time it first opened). The "paged" marker is written only after the send is
-    accepted, so a failed send is retried on the next refused run. The message names the duration, trips and the
-    last reason only. Returns True when a page was accepted on this call."""
+    One page per outage (keyed by the time it first opened). At most once: a claim is recorded (and persisted via
+    ``persist`` when given) BEFORE the send; an accepted send marks it paged, a refused send releases the claim so
+    the next refused run retries, and a claim left behind by a crash is retried after an hour. The text carries the
+    duration, the trip count and lane names with error classes only -- no free text, so no credential can leak.
+    Returns True when a page was accepted on this call."""
     b = state.get("outage") or {}
     since = b.get("since")
     if not _int_or_zero(b.get("trips")) or not isinstance(since, str):
@@ -831,16 +865,38 @@ def maybe_page_long_outage(state, policy, now=None):
     now = now or datetime.now(timezone.utc)
     if now - since_dt < timedelta(hours=hours) or b.get("paged_since") == since:
         return False
+    claim = b.get("paging_claim")
+    if isinstance(claim, dict) and claim.get("since") == since:
+        try:
+            claimed_at = datetime.fromisoformat(str(claim.get("at")))
+            claimed_at = claimed_at if claimed_at.tzinfo else claimed_at.replace(tzinfo=timezone.utc)
+            if now - claimed_at < _PAGE_CLAIM_STALE:
+                return False
+        except ValueError:
+            pass
+    b["paging_claim"] = {"since": since, "at": now.isoformat()}
+    if persist is not None:
+        try:
+            persist(state)
+        except Exception:  # noqa: BLE001 - cannot record the claim: do not send (at most once)
+            b.pop("paging_claim", None)
+            return False
     open_h = (now - since_dt).total_seconds() / 3600
     message = (f"Deep overnight LLM queue drain: every lane has refused for {open_h:.1f} h "
                f"({_int_or_zero(b.get('trips'))} breaker trips). No job is charged during an outage; the queue "
-               f"waits. Last reason: {str(b.get('reason') or '')[:160]}")
+               f"waits. Lanes: {safe_reason_summary(b.get('reason'))}")
     try:
         accepted = _send_page(message)
     except Exception:  # noqa: BLE001 - a broken notifier must never crash the drain
         accepted = False
+    b.pop("paging_claim", None)
     if accepted:
         b["paged_since"] = since
+    if persist is not None:
+        try:
+            persist(state)
+        except Exception:  # noqa: BLE001 - the caller saves again right after
+            pass
     return bool(accepted)
 
 
@@ -1273,7 +1329,9 @@ def main():
     breaker = load_breaker(bpath) if cloud else None
     outage_probe = bool(cloud and breaker_open(breaker, "outage"))
     failure_probe = bool(cloud and breaker_open(breaker, "failure"))
-    suspect = None  # (job_id, reason): refused, waiting to learn whether the lanes or the job were at fault
+    suspects = []  # [(job_id, reason, request_rejected)]: refused, waiting to learn whether the lanes or the job failed
+    lanes_proven = False  # a lane answered in this run: from here on a refusal is the job's own
+    outage_after = max(2, int((drain_policy or {}).get("outage_after_refusals") or 3))
     if outage_probe or failure_probe:
         log(f"Breaker open ({'outage' if outage_probe else 'failure'}): this run tries one job first.")
     if outage_probe and len(jobs) > 1:
@@ -1415,28 +1473,50 @@ def main():
                 conn.commit()
                 refused += 1
                 processed += 1
-                if cloud and suspect is not None:
-                    # Two refusals in a row: the lanes are out. Nobody is charged (round 6: no strikes).
-                    minutes = trip_breaker(breaker, "outage", str(refusal), drain_policy)
-                    if maybe_page_long_outage(breaker, drain_policy):
+                reason = str(refusal)
+                rejected = getattr(refusal, "request_rejected", False)
+                if cloud and lanes_proven:
+                    # A lane answered earlier in this run, so the lanes are up: this refusal is the job's own.
+                    # It counts like any failure, so the failure breaker still bounds a mid-run outage.
+                    _count_deferred_attempt(cur, job_id, "counted: a lane answered earlier in this run, so this "
+                                            f"refusal was the job's own: {reason}")
+                    conn.commit()
+                    failed += 1
+                    consecutive_failures += 1
+                    log(f"  COUNTED #{job_id} — refused after the lanes were proven up in this run")
+                    if max_consecutive and consecutive_failures >= max_consecutive:
+                        minutes = trip_breaker(breaker, "failure", f"{consecutive_failures} consecutive failures",
+                                               drain_policy)
+                        save_breaker(bpath, breaker)
+                        log(f"Circuit breaker: {consecutive_failures} consecutive failures; open {minutes:.0f} min.")
+                        break
+                    continue
+                suspects.append((job_id, reason, rejected))
+                if cloud and len(suspects) >= outage_after:
+                    # outage_after_refusals in a row with no answer: the lanes are out. Nobody is charged.
+                    minutes = trip_breaker(breaker, "outage", reason, drain_policy)
+                    if maybe_page_long_outage(breaker, drain_policy, persist=lambda st: save_breaker(bpath, st)):
                         log("  Paged the operator: the outage breaker has been open past outage_page_after_hours.")
                     save_breaker(bpath, breaker)
-                    log(f"  REFUSED #{job_id} — {refusal}; lane outage: breaker open {minutes:.0f} min. Stopping the run.")
-                    suspect = None
+                    log(f"  REFUSED #{job_id} — {refusal}; {len(suspects)} refusals in a row: lane outage, "
+                        f"breaker open {minutes:.0f} min. Stopping the run.")
+                    suspects = []
                     break
-                suspect = (job_id, str(refusal), getattr(refusal, "request_rejected", False))
-                # In probe mode (breaker open) this is the probe; the next job is the head and decides as usual.
+                # One or two refusals are ambiguous (a lane outage, or prompts every lane rejects): the next job
+                # decides. In probe mode (breaker open) the first one is the probe; the head runs next.
                 log(f"  REFUSED #{job_id} — {refusal}; back to pending, attempt not counted. Trying the next job.")
                 continue
-            # A lane answered this job (text or a counted failure): the lanes work.
-            if suspect is not None:
-                _count_deferred_attempt(cur, suspect[0], "counted: the next job reached a model, so this failure "
-                                        f"was the job's own{' (every lane that ran rejected the request)' if suspect[2] else ''}: "
-                                        f"{suspect[1]}")
+            # A lane answered this job (text or a counted failure): the lanes work, and every refusal before it in
+            # this run was that job's own.
+            lanes_proven = True
+            for sid, sreason, srejected in suspects:
+                _count_deferred_attempt(cur, sid, "counted: a later job reached a model, so this failure was the "
+                                        f"job's own{' (every lane that ran rejected the request)' if srejected else ''}: "
+                                        f"{sreason}")
                 conn.commit()
                 failed += 1
-                log(f"  COUNTED #{suspect[0]} — the next job reached a model; its refusal was job-specific")
-                suspect = None
+                log(f"  COUNTED #{sid} — a later job reached a model; its refusal was job-specific")
+            suspects = []
             if cloud and (outage_probe or breaker["outage"]["trips"]):
                 close_breaker(breaker, "outage")
                 save_breaker(bpath, breaker)
@@ -1543,7 +1623,13 @@ def main():
 
         processed += 1
 
-    # A refusal no later job could decide (a one-job queue, or the run ended): it stays pending, uncounted.
+    # Refusals no later job could decide (the queue or the run ended): they stay pending, uncounted. Two or more
+    # with no answer at all are outage evidence, so the breaker opens (and nobody is charged).
+    if cloud and len(suspects) >= 2:
+        trip_breaker(breaker, "outage", suspects[-1][1], drain_policy)
+        if maybe_page_long_outage(breaker, drain_policy, persist=lambda st: save_breaker(bpath, st)):
+            log("  Paged the operator: the outage breaker has been open past outage_page_after_hours.")
+        save_breaker(bpath, breaker)
 
     total_elapsed = round((time.monotonic() - start_time) / 60, 1)
 
