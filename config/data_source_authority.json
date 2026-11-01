@@ -6097,6 +6097,100 @@
         "writer_files": 0,
         "surface_reads": {}
       }
+    },
+    {
+      "domain": "issuer_segments",
+      "status": "proposed",
+      "entity": "Issuer revenue segment",
+      "title": "Issuer segment look-through: revenue share per reported segment, mapped to market-risk groups",
+      "class": "derived",
+      "supersedes": [],
+      "facts": [
+        "issuer",
+        "period",
+        "as_of",
+        "source accession and URL",
+        "segment",
+        "revenue share",
+        "mapped group",
+        "basis",
+        "confidence"
+      ],
+      "store": {
+        "table": "issuer_segments"
+      },
+      "store_detail": "issuer_segments: does not exist yet (measured 2026-11-01); one row per (issuer_guid, accession, segment_member, line). Created by the writer PR (design DSN-20261101-issuer-segment-lookthrough Phase 2). Operator overrides stay in config/issuer_segments.json (status APPROVED, git-reviewed) and are read beside the table, never copied into it.",
+      "writer": null,
+      "writer_status": "UNCONSOLIDATED",
+      "writer_target": "scripts/lib/writers/issuer_segments_writer.py",
+      "writer_target_status": "to_build (0 writers measured 2026-11-01; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)",
+      "_writer_note": "Single writer. Inputs: SEC EDGAR filing archives (XBRL instance *_htm.xml of 10-K/10-Q; S-1/424B HTML tables for recent IPOs), the deterministic map config/issuer_segment_map.json, and validated offline classifier results (basis model_classified, verbatim filing quote + confidence) from the governed model-job path. The scoring path (scripts/lib/market_risk/lookthrough.py, risk_budget.py) only reads; no model is called there.",
+      "cadence": "event-driven: a new 10-K / 10-Q / S-1 / 424B accession for a covered issuer in sec_filing_events triggers one pull; weekly coverage sweep Sunday 07:30 ET for issuers newly held, watched or held through funds",
+      "stale_after_hours": 2880,
+      "freshness_sla": "re-pulled within one business day of each new 10-Q/10-K; older than issuer_segments.stale_after_days (120) is used and marked stale; older than issuer_segments.hard_stale_days falls back to the symbol_profiles sector with a visible flag",
+      "refresh_lane": {
+        "runner": "n8n",
+        "lane": "issuer-segments-refresh",
+        "never_list": false,
+        "note": "new lane, scheduled only after the lane grant; triggered off sec_filing_events, no second EDGAR poller"
+      },
+      "projection": "issuer_segments",
+      "projection_status": "to_build",
+      "required_fields": [
+        "issuer_guid",
+        "symbol",
+        "period_end",
+        "as_of",
+        "accession",
+        "source_url",
+        "segment",
+        "revenue_share",
+        "group",
+        "basis",
+        "confidence"
+      ],
+      "readers": [
+        "Home",
+        "Risk",
+        "Market risk engine (look-through, risk budget)"
+      ],
+      "derived_copies": [],
+      "primary_provider": "sec_edgar",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "fall_back_to_profile_sector_with_flag",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 4,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "approval": null,
+      "provider_amendment": {
+        "provider": "sec_edgar",
+        "current_scope": "may supply: form4, filings (operator 2026-09-13)",
+        "proposed_scope": "may supply: form4, filings, xbrl_segments (dimensional XBRL revenue facts from 10-K/10-Q instance documents; S-1/424B segment tables)",
+        "match_unchanged": [
+          "sec.gov",
+          "efts.sec.gov"
+        ],
+        "client": "User-Agent from config/sec_edgar_client.json (project contact address, not a personal address); <= 8 requests/s, 0.15 s spacing per process (SEC fair access: 10/s, contact required; measured 2026-11-01: a request with no contact address returned HTTP 403)",
+        "note": "No host is added: data.sec.gov and www.sec.gov/Archives are already matched. Recorded here so the one grant names the widened scope; the providers.sec_edgar row is amended at promotion."
+      },
+      "proposal": {
+        "proposed_by": "agent (Claude Opus 5.5, session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF)",
+        "proposed_on": "2026-11-01",
+        "reference": "Operator 2026-11-01 (verbatim): \"I pointed out SpaceX, but you should have the intelligence or either with your LLMs be able to break apart companies. Similarly, if I was in AT&T, you would know that AT&T or IBM, they have multiple lines of services. It's just not one.\" Design docs/designs/DSN-20261101-issuer-segment-lookthrough.md (EDGAR probes 2026-11-01: T, IBM, HON, SPCX).",
+        "decision": "Grant (1) the issuer_segments domain (table issuer_segments, single writer scripts/lib/writers/issuer_segments_writer.py, lane issuer-segments-refresh) and (2) the sec_edgar provider scope widened to xbrl_segments. With the grant, refreshed filing splits apply automatically; only operator overrides in config/issuer_segments.json need approval."
+      }
     }
   ],
   "data_dictionary": {
