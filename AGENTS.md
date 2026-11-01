@@ -1,17 +1,19 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      29.2.1
+Policy-Version:      29.3.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              ACTIVE
-Effective-Date:      2026-11-01
-Last-Reviewed:       2026-11-01T11:45:00-05:00
+Status:              PROPOSED
+Effective-Date:      PENDING
+Last-Reviewed:       2026-11-01T12:50:00-05:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          29.2.0
+Supersedes:          29.2.1
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**29.3.0 is PROPOSED (MINOR) — a standing, dated operator push approval for agent branches (§28.15 item 8).** Operator 2026-11-01: "Yes, draft stand and approval."; class "minor". The active version governs until ratified; §0 unchanged.
 
 **29.2.1 is ACTIVE (PATCH) — generated §7A source-of-truth table refreshed.** The Market Risk Engine's
 extended-session store `quote_extended_session` (`market_quotes_extended`) was granted by the operator (§7A/§26.6, in-session
@@ -22,10 +24,6 @@ generated table in §7A now lists it as an active domain; no rule-text change. S
 Ratified 2026-10-31 (`APPROVE_AGENTS_POLICY_29_2_0 2407 eef5607759c3e32dbfdeafe6492906f5cdca535c`, §20). Renumbered only, no rule-text change: ratified as 28.2.0 on
 2026-10-31 (`APPROVE_AGENTS_POLICY_28_2_0 2407 cdb7802ccd58ac976f8fdbbc740a0b8dc18655ef`) before 29.0.0 merged. Merges after 29.1.0. Operator-approved citation fix (2026-10-31, "fix 29.2.0 citations"): §24.12 causes restored to L24-16; the new lesson is L24-19 (29.0.0 already owns L24-18). §0 rules 1–2 and §24.7 unchanged.
 
-**29.1.0 is ACTIVE (MINOR) — a promote or rollback restarts the units named in §25.10 and verifies them.** Ratified
-2026-10-31 (`APPROVE_AGENTS_POLICY_29_1_0 2392 b2348fcef400d4cf320f039f128653f2087c4caf`, §20). Renumbered only, no rule-text change: ratified as 28.1.0 on
-2026-10-31 (`APPROVE_AGENTS_POLICY_28_1_0 2392 2a424d7799c4e8aec6a7e02abc649cda800e6351`) before 29.0.0 merged. §28.1 unchanged.
-
 **29.0.0 is ACTIVE (MAJOR) — agents close what they open; a daily, pressure-triggered, recursive sweep closes the
 rest; backups are one on host, N+1 on Drive.** One version for the content the operator ratified on 2026-10-30 as
 27.0.1 (#2309), 28.0.0 (#2310) and 29.0.0 (#2311); those PRs never merged and #2306 took 27.0.1 on main first, so the
@@ -35,7 +33,7 @@ a883ab7147498aa59750f4cf8fa8d1c60edfe2f7`), but #2334 merged its own 28.0.0 firs
 `docs/designs/DSN-20261030-workspace-lifecycle.md`. **Why MAJOR:** narrows exception (c), adds deleting rules (C/R/X,
 nested-repo bundling, backups); `MBI_BEHAVIOR = 0`.
 
-Older banners (27.0.1 and before): `docs/governance/AGENTS_HISTORY.md`.
+Older banners (29.1.0, 27.0.1 and before): `docs/governance/AGENTS_HISTORY.md`.
 
 ---
 
@@ -2616,6 +2614,8 @@ Procedures: `docs/ops/AGENT_CLAIM_BOARD.md`, `docs/ops/DELIVERY_LIFECYCLE.md`, `
   force-pushing, resetting, running `filter-branch` or deleting a remote branch. The guard hook must not ask for
   a `git-push` grant on such a push; it logs it. Running `npm run`, Playwright,
   `pytest` or builds is never `deps`. *Cause: 2026-10-25 — Telegram grant asks (LESSONS L28-26).*
+  **Standing approval (29.3.0):** for the pusher's own live claim, an operator line `APPROVE_PUSH_STANDING <glob> until <YYYY-MM-DD>` on the open "Standing push approvals" issue (`guard_push_free.py`) meets the plan step. Literal prefix `wt/` `feat/` `fix/` `chore/` `docs/` only; never `*` or anything matching `main`, `master`, `release/*`, `train/*`;
+  expiry required, ≤45 days, void when past; a later `REVOKE_PUSH_STANDING` or closing the issue voids it. All other checks run; the guard log records the comment URL. *Cause: 2026-11-01 — per-branch approvals unworkable.*
 - **9 What reaches the operator is §17;** everything else ships through §25.10, and spending money is never delegated.
   *Cause: 2026-10-25 — "fully automatic" (LESSONS L28-27).*
 - **10 No self-review.** A sign-off counts only from a reviewer other than the author's agent and session; `SELF`
@@ -2654,6 +2654,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 29.3.0 | 2026-11-01 | PROPOSED | MINOR | Supersedes 29.2.1 (#2448). Operator chose MINOR (2026-11-01, "minor"). §28.15 item 8 gains the standing push approval: an operator `APPROVE_PUSH_STANDING <glob> until <YYYY-MM-DD>` comment on the standing-approval issue meets the approved-plan step for the pusher's own live claim on a branch the glob covers (prefixes wt/ feat/ fix/ chore/ docs/ only; never main, master, release/*, train/*; expiry required, at most 45 days; `REVOKE_PUSH_STANDING` voids earlier ones). All other push checks unchanged. Operator 2026-11-01: "Yes, draft stand and approval." | PENDING `APPROVE_AGENTS_POLICY_29_3_0 <PR> <head-sha>` |
 | 29.2.1 | 2026-11-01 | ACTIVE | PATCH | Supersedes 29.2.0. Generated §7A source-of-truth table refreshed: `quote_extended_session` (`market_quotes_extended`, single writer `scripts/lib/writers/market_quotes_extended_writer.py`, Alpaca SIP) granted (operator §7A/§26.6, in-session 2026-11-01; store, writer, provider and schedule approved as DSN-20261031-market-risk-engine §11 items 1-2 on 2026-10-31) and listed as an active domain; no rule-text change. | operator 2026-11-01 in-session (recorded in `config/data_source_authority.json` approval) |
 | 29.2.0 | 2026-10-31 | ACTIVE | MAJOR | Supersedes 29.1.0. Renumbered 28.2.0 (#2407): ratified as 28.2.0 on 2026-10-31 before 29.0.0 merged; renumbered, plus an operator-approved citation fix (§24.12 causes back to L24-16; new lesson numbered L24-19). §24.11 gains "Broker market data and paid data feeds": scheduled host lanes may read broker MARKET-DATA endpoints only (quotes incl. extended hours, price history, option chains, market hours, movers; moomoo quotes and capital flow) through the existing token managers / OpenD session; never account, order, position-write, stop, 2FA or auth-flow endpoints; agents never read credentials or cookie files; Finviz Elite API exports AND the cookie-authenticated pages are both used, each only by its existing host lane; each new lane gets a §7A row; data-fee decisions stay operator-only. MAJOR because it widens what host lanes may read from a broker. §0 untouched. | `APPROVE_AGENTS_POLICY_29_2_0 2407 eef5607759c3e32dbfdeafe6492906f5cdca535c` (operator, in-session 2026-10-31); held-class operator merge (§25.10). Provenance: `APPROVE_AGENTS_POLICY_28_2_0 2407 cdb7802ccd58ac976f8fdbbc740a0b8dc18655ef` (operator, in-session 2026-10-31, ratified as 28.2.0 before 29.0.0 merged; renumbered only, no rule-text change). |
 | 29.1.0 | 2026-10-31 | ACTIVE | MINOR | Supersedes 29.0.0. Renumbered 28.1.0 (#2392): ratified as 28.1.0 on 2026-10-31 before 29.0.0 merged; renumbered only, no rule-text change. §25.10: after a healthy promote or rollback the deploy restarts its long-standing bound list plus grok-oauth-proxy, chatgpt-oauth-proxy and heartbeat-receiver (named; ratifying is the operator decision `config/release_pin_daemons.json` reserves), fail-closed: WorkingDirectory=CURRENT only, installed units only, §23.14 tokens over name/argv/environment applied to every candidate incl. override, ops-applier and portfolio-server never, callback-poller never during any session, cap 12; verify reads `/proc/<pid>/cwd`, receipts, pages P1 on failure; the promote continues. §10 bullet corrected. MINOR: no approval/guard daemon gains a restart (ops-applier excluded; callback-poller narrowed to closed sessions); the deploy delegation is unchanged and §28.1 is not touched. | `APPROVE_AGENTS_POLICY_29_1_0 2392 b2348fcef400d4cf320f039f128653f2087c4caf` (operator, in-session 2026-10-31); held-class operator merge (§25.10). Provenance: `APPROVE_AGENTS_POLICY_28_1_0 2392 2a424d7799c4e8aec6a7e02abc649cda800e6351` (operator, in-session 2026-10-31, ratified as 28.1.0 before 29.0.0 merged; renumbered only, no rule-text change). |
