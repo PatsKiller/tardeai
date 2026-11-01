@@ -621,7 +621,7 @@ _CODED_ERROR_TYPES = frozenset({"RuntimeError", "AnthropicError"})
 #: llm_fallback's marker for a lane that RETURNED but with no text.
 EMPTY_RESPONSE = "empty response"
 #: Exception types a lane raises when the model RETURNED but its output could not be parsed: the job's failure.
-UNPARSEABLE_OUTPUT_TYPES = frozenset({"ValueError", "JSONDecodeError"})
+UNPARSEABLE_OUTPUT_TYPES = frozenset({"ValueError"})
 
 
 class CloudRefused(Exception):
@@ -666,7 +666,9 @@ def _attempt_kind(a):
 #: HTTP statuses that reject the request's content rather than the caller or the transport.
 REQUEST_REJECTED_HTTP = frozenset({400, 413, 422})
 #: A lane returned a body without the expected fields: could be this prompt, could be a proxy page; ambiguous.
-MALFORMED_BODY_TYPES = frozenset({"KeyError"})
+#: Round 10: JSONDecodeError joins KeyError -- a proxy's error JSON or an HTML login page parses this way, so the
+#: body is ambiguous, never the job's own failure by itself.
+MALFORMED_BODY_TYPES = frozenset({"KeyError", "JSONDecodeError"})
 
 
 #: Exception types and gate codes that mean "no model ran on this lane" (the consumption gate, a cap, a deferral):
@@ -747,7 +749,7 @@ def breaker_path():
 
 
 def _fresh_breaker():
-    return {"schema": BREAKER_SCHEMA,
+    return {"schema": BREAKER_SCHEMA, "flaps": 0,
             **{k: {"trips": 0, "open_until": None, "reason": ""} for k in _BREAKER_KINDS}}
 
 
@@ -760,6 +762,7 @@ def load_breaker(path):
     if not isinstance(doc, dict) or doc.get("schema") != BREAKER_SCHEMA:
         return _fresh_breaker()
     state = _fresh_breaker()
+    state["flaps"] = min(_int_or_zero(doc.get("flaps")), 10)
     for k in _BREAKER_KINDS:
         src = doc.get(k) if isinstance(doc.get(k), dict) else {}
         state[k] = {"trips": _int_or_zero(src.get("trips")),
@@ -1329,11 +1332,20 @@ def main():
     breaker = load_breaker(bpath) if cloud else None
     outage_probe = bool(cloud and breaker_open(breaker, "outage"))
     failure_probe = bool(cloud and breaker_open(breaker, "failure"))
-    suspects = []  # [(job_id, reason, request_rejected)]: refused, waiting to learn whether the lanes or the job failed
-    lanes_proven = False  # a lane answered in this run: from here on a refusal is the job's own
+    suspects = []  # [(job_id, reason)]: request-rejected refusals waiting for a later answer to confirm them
+    refusals_in_row = 0  # refusals of any kind since the last answer: the outage signal
+    lanes_proven = False  # a lane answered in this run
+    outage_tripped = False
     outage_after = max(2, int((drain_policy or {}).get("outage_after_refusals") or 3))
     if outage_probe or failure_probe:
         log(f"Breaker open ({'outage' if outage_probe else 'failure'}): this run tries one job first.")
+    flaps = _int_or_zero(breaker.get("flaps")) if cloud else 0
+    if flaps:
+        # The lane flapped (an outage after answers) on recent runs: back off, halving this run's volume per flap.
+        cap = max(2, len(jobs) >> flaps)
+        if len(jobs) > cap:
+            log(f"Lane flapping ({flaps}): this run takes {cap} of {len(jobs)} jobs.")
+            jobs = list(jobs[:cap])
     if outage_probe and len(jobs) > 1:
         # Probe a job OTHER than the head, rotating with the trip count (jobs[1], then jobs[2], ...): two adjacent
         # bad prompts at the head can no longer wedge the breaker (pre-activation review). The head still runs
@@ -1475,44 +1487,38 @@ def main():
                 processed += 1
                 reason = str(refusal)
                 rejected = getattr(refusal, "request_rejected", False)
-                if cloud and lanes_proven:
-                    # A lane answered earlier in this run, so the lanes are up: this refusal is the job's own.
-                    # It counts like any failure, so the failure breaker still bounds a mid-run outage.
-                    _count_deferred_attempt(cur, job_id, "counted: a lane answered earlier in this run, so this "
-                                            f"refusal was the job's own: {reason}")
-                    conn.commit()
-                    failed += 1
-                    consecutive_failures += 1
-                    log(f"  COUNTED #{job_id} — refused after the lanes were proven up in this run")
-                    if max_consecutive and consecutive_failures >= max_consecutive:
-                        minutes = trip_breaker(breaker, "failure", f"{consecutive_failures} consecutive failures",
-                                               drain_policy)
-                        save_breaker(bpath, breaker)
-                        log(f"Circuit breaker: {consecutive_failures} consecutive failures; open {minutes:.0f} min.")
-                        break
-                    continue
-                suspects.append((job_id, reason, rejected))
-                if cloud and len(suspects) >= outage_after:
-                    # outage_after_refusals in a row with no answer: the lanes are out. Nobody is charged.
+                if rejected:
+                    # Round 10: a request rejection is charged ONLY when a LATER job in this run is answered --
+                    # never because an earlier job was. A systemic or throttling 400, or a proxy's error body at the
+                    # end of a run, is therefore never charged, and a bad job that is always last stays pending.
+                    suspects.append((job_id, reason))
+                refusals_in_row += 1
+                if cloud and refusals_in_row >= outage_after:
+                    # outage_after_refusals in a row with no answer: the lanes are out (or rate limiting). Nobody is
+                    # charged. If lanes had answered earlier in this run, the lane is flapping: remember it so the
+                    # next runs back off instead of re-probing at full volume.
+                    if lanes_proven:
+                        breaker["flaps"] = min(_int_or_zero(breaker.get("flaps")) + 1, 10)
                     minutes = trip_breaker(breaker, "outage", reason, drain_policy)
                     if maybe_page_long_outage(breaker, drain_policy, persist=lambda st: save_breaker(bpath, st)):
                         log("  Paged the operator: the outage breaker has been open past outage_page_after_hours.")
                     save_breaker(bpath, breaker)
-                    log(f"  REFUSED #{job_id} — {refusal}; {len(suspects)} refusals in a row: lane outage, "
+                    log(f"  REFUSED #{job_id} — {refusal}; {refusals_in_row} refusals in a row: lane outage, "
                         f"breaker open {minutes:.0f} min. Stopping the run.")
                     suspects = []
+                    outage_tripped = True
                     break
-                # One or two refusals are ambiguous (a lane outage, or prompts every lane rejects): the next job
-                # decides. In probe mode (breaker open) the first one is the probe; the head runs next.
+                # Ambiguous so far: the next job decides. A non-request refusal (429, 5xx, timeout, transport,
+                # unavailable, gate) is never charged, whatever comes next.
                 log(f"  REFUSED #{job_id} — {refusal}; back to pending, attempt not counted. Trying the next job.")
                 continue
             # A lane answered this job (text or a counted failure): the lanes work, and every refusal before it in
             # this run was that job's own.
             lanes_proven = True
-            for sid, sreason, srejected in suspects:
-                _count_deferred_attempt(cur, sid, "counted: a later job reached a model, so this failure was the "
-                                        f"job's own{' (every lane that ran rejected the request)' if srejected else ''}: "
-                                        f"{sreason}")
+            refusals_in_row = 0
+            for sid, sreason in suspects:
+                _count_deferred_attempt(cur, sid, "counted: a later job reached a model and every lane that ran "
+                                        f"rejected this request, so the failure was the job's own: {sreason}")
                 conn.commit()
                 failed += 1
                 log(f"  COUNTED #{sid} — a later job reached a model; its refusal was job-specific")
@@ -1623,10 +1629,16 @@ def main():
 
         processed += 1
 
+    if cloud and lanes_proven and not outage_tripped and refusals_in_row < 2 and _int_or_zero(breaker.get("flaps")):
+        breaker["flaps"] = 0  # a run that ended without an outage: the lane is no longer flapping
+        save_breaker(bpath, breaker)
     # Refusals no later job could decide (the queue or the run ended): they stay pending, uncounted. Two or more
     # with no answer at all are outage evidence, so the breaker opens (and nobody is charged).
-    if cloud and len(suspects) >= 2:
-        trip_breaker(breaker, "outage", suspects[-1][1], drain_policy)
+    if cloud and refusals_in_row >= 2 and not outage_tripped:
+        if lanes_proven:
+            breaker["flaps"] = min(_int_or_zero(breaker.get("flaps")) + 1, 10)
+        trip_breaker(breaker, "outage", "refusals at the end of the queue", drain_policy)
+        outage_tripped = True
         if maybe_page_long_outage(breaker, drain_policy, persist=lambda st: save_breaker(bpath, st)):
             log("  Paged the operator: the outage breaker has been open past outage_page_after_hours.")
         save_breaker(bpath, breaker)
