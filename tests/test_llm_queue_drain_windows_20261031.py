@@ -1000,3 +1000,113 @@ def test_long_outage_pages_from_a_mid_run_trip(monkeypatch, _isolated_breaker):
     log = _run(monkeypatch, ["--route", "cloud", "--limit", "10"], rows=[_row(300 + i) for i in range(6)])
     assert len([p for s, p in log if "SET status = 'running'" in s]) == int(POLICY["outage_after_refusals"])
     assert len(sent) == 1
+
+
+# ── round 9: only a request rejection is ever charged; a flapping lane backs off ─────────────────────────────────
+
+_TRANSIENT = {
+    "429": (_a("grok", "HTTPError: 429 Too Many Requests"), _a("chatgpt", "HTTPError: 429 Too Many Requests")),
+    "503": (_a("grok", "HTTPError: 503 Service Unavailable"), _a("chatgpt", "HTTPError: 502 Bad Gateway")),
+    "timeout": (_a("grok", "ReadTimeout: read timed out"), _a("chatgpt", "ReadTimeout: read timed out")),
+    "transport": _CONN_REFUSED,
+    "unavailable": (_a("grok", "unavailable"), _a("chatgpt", "unavailable")),
+    "gate": (_a("anthropic", "RuntimeError: POLICY_NOT_ALLOWED"), _a("grok", "RuntimeError: COST_CAP_EXCEEDED: x")),
+}
+
+
+def _answers_then(n_ok, attempts):
+    calls = {"n": 0}
+
+    def gen(prompt, **kw):
+        calls["n"] += 1
+        if calls["n"] <= n_ok:
+            return _Res()
+        raise _AllLanesFailed(list(attempts))
+
+    return gen
+
+
+@pytest.mark.parametrize("kind", sorted(_TRANSIENT))
+def test_transient_refusal_after_an_answer_is_never_charged(monkeypatch, _isolated_breaker, kind):
+    import lib.llm_fallback as lf
+
+    monkeypatch.setattr(lf, "generate_with_fallback", _answers_then(2, _TRANSIENT[kind]))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "20"], rows=[_row(400 + i) for i in range(20)])
+    assert _counted_ids(log) == []
+    assert len(_done(log)) == 2
+    assert w.breaker_open(w.load_breaker(_isolated_breaker), "outage")
+
+
+@pytest.mark.parametrize("kind", sorted(_TRANSIENT))
+def test_transient_refusal_before_an_answer_is_never_charged(monkeypatch, _isolated_breaker, kind):
+    import lib.llm_fallback as lf
+
+    seq = iter([False, True, True])
+
+    def gen(prompt, **kw):
+        if next(seq):
+            return _Res()
+        raise _AllLanesFailed(list(_TRANSIENT[kind]))
+
+    monkeypatch.setattr(lf, "generate_with_fallback", gen)
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1), _row(2), _row(3)])
+    assert _counted_ids(log) == [] and len(_done(log)) == 2
+
+
+def test_rate_limit_over_many_runs_never_charges_good_jobs(monkeypatch, _isolated_breaker):
+    import lib.llm_fallback as lf
+
+    counted, done = [], []
+    for _ in range(12):
+        monkeypatch.setattr(lf, "generate_with_fallback", _answers_then(2, _TRANSIENT["429"]))
+        log = _run(monkeypatch, ["--route", "cloud", "--limit", "100"], rows=[_row(i) for i in range(1, 30)])
+        counted += _counted_ids(log)
+        done += _done(log)
+    assert counted == [] and len(done) == 24
+
+
+def test_flapping_lane_backs_off_and_a_clean_run_resets_it(monkeypatch, _isolated_breaker):
+    import lib.llm_fallback as lf
+
+    rows = [_row(500 + i) for i in range(40)]
+    monkeypatch.setattr(lf, "generate_with_fallback", _answers_then(2, _TRANSIENT["429"]))
+    _run(monkeypatch, ["--route", "cloud", "--limit", "100"], rows=rows)
+    assert w.load_breaker(_isolated_breaker)["flaps"] == 1, "an outage after answers is a flap"
+    monkeypatch.setattr(lf, "generate_with_fallback", _answers_then(2, _TRANSIENT["429"]))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "100"], rows=rows)
+    assert len([p for s, p in log if "SET status = 'running'" in s]) <= 2 + int(POLICY["outage_after_refusals"])
+    assert w.load_breaker(_isolated_breaker)["flaps"] == 2
+    # volume is halved per flap: with 3 flaps, 40 jobs -> 5 taken; all answered -> clean run resets the counter
+    state = w.load_breaker(_isolated_breaker)
+    w.close_breaker(state, "outage")
+    state["flaps"] = 3
+    w.save_breaker(_isolated_breaker, state)
+    monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["ok"] * 50))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "100"], rows=rows)
+    assert len(_done(log)) == 40 >> 3
+    assert w.load_breaker(_isolated_breaker)["flaps"] == 0
+
+
+def test_flap_floor_keeps_two_jobs(monkeypatch, _isolated_breaker):
+    import lib.llm_fallback as lf
+
+    state = w._fresh_breaker()
+    state["flaps"] = 10
+    w.save_breaker(_isolated_breaker, state)
+    monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["ok"] * 10))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "10"], rows=[_row(600 + i) for i in range(6)])
+    assert len(_done(log)) == 2
+
+
+def test_an_outage_with_no_answers_is_not_a_flap(monkeypatch, _isolated_breaker):
+    import lib.llm_fallback as lf
+
+    monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_CONN_REFUSED))
+    _run(monkeypatch, ["--route", "cloud", "--limit", "10"], rows=[_row(700 + i) for i in range(5)])
+    assert w.load_breaker(_isolated_breaker)["flaps"] == 0
+
+
+@pytest.mark.parametrize("raw,expected", [("x", 0), (-3, 0), (99, 10), (2, 2), (None, 0)])
+def test_flaps_are_sanitized_on_load(_isolated_breaker, raw, expected):
+    _isolated_breaker.write_text(json.dumps({"schema": w.BREAKER_SCHEMA, "flaps": raw}), encoding="utf-8")
+    assert w.load_breaker(_isolated_breaker)["flaps"] == expected
