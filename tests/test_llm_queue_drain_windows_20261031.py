@@ -504,20 +504,43 @@ def test_refusal_is_counted_when_the_next_job_fails_with_an_answer(monkeypatch):
     assert _counted_ids(log) == [64]
 
 
-def test_job_specific_400_is_eventually_counted(monkeypatch, _isolated_breaker):
-    """A prompt every lane rejects must eventually count, or it holds the queue head forever (reviewer round 3)."""
+def test_job_specific_400_is_counted_when_the_next_job_is_answered(monkeypatch, _isolated_breaker):
+    """Corrected adversarial test (round 6): ONE job's prompt is rejected by every lane, the others are answered.
+    The reviewer's round-3 version made every job 400, which is a systemic 400 outage, not a bad prompt."""
     import lib.llm_fallback as lf
 
-    limit = int(POLICY["head_strike_limit"])
-    counted = []
-    for _ in range(limit + 2):  # consecutive cron runs; every job gets HTTP 400 from every lane
-        monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_HTTP400))
-        counted += _counted_ids(_run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(71), _row(72)]))
-    # Round 4: two refusals in a row never strike; the PROBE (a job other than the head) is struck because every
-    # lane rejected its request, so it is the job that eventually counts.
-    assert counted and counted[0] == 72, "no request-rejected job ever counted"
-    # run 1 is two refusals (no strike); probe runs 2..limit+1 strike 72 to the limit; run limit+2 starts again at 1
-    assert counted == [72], "a counted job's strikes must reset: one attempt per head_strike_limit probe runs"
+    monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["400", "ok", "ok"]))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(71), _row(72), _row(73)])
+    assert _counted_ids(log) == [71]
+    assert len([p for s, p in log if "status = 'done'" in s]) == 2
+
+
+def test_bad_probe_job_does_not_stall_the_queue_after_an_outage(monkeypatch, _isolated_breaker):
+    """Breaker open; the probe (jobs[1]) is a prompt every lane rejects; the head is fine (reviewer round 6)."""
+    import lib.llm_fallback as lf
+
+    state = w._fresh_breaker()
+    w.trip_breaker(state, "outage", "earlier outage", POLICY)
+    w.save_breaker(_isolated_breaker, state)
+    monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["400", "ok", "ok"]))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1), _row(2), _row(3)])
+    assert [p for s, p in log if "SET status = 'running'" in s] == [(2,), (1,), (3,)]
+    assert _counted_ids(log) == [2], "the probe's refusal was its own: the head was answered right after it"
+    assert len([p for s, p in log if "status = 'done'" in s]) == 2
+    assert not w.breaker_open(w.load_breaker(_isolated_breaker), "outage")
+
+
+def test_probe_and_head_both_refused_extends_the_breaker_and_charges_nobody(monkeypatch, _isolated_breaker):
+    import lib.llm_fallback as lf
+
+    state = w._fresh_breaker()
+    w.trip_breaker(state, "outage", "earlier outage", POLICY)
+    w.save_breaker(_isolated_breaker, state)
+    monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_HTTP400))
+    log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1), _row(2), _row(3)])
+    assert [p for s, p in log if "SET status = 'running'" in s] == [(2,), (1,)]
+    assert _counted_ids(log) == []
+    assert w.load_breaker(_isolated_breaker)["outage"]["trips"] == 2
 
 
 def test_outage_breaker_persists_and_the_next_run_tries_one_job(monkeypatch, _isolated_breaker):
@@ -526,14 +549,15 @@ def test_outage_breaker_persists_and_the_next_run_tries_one_job(monkeypatch, _is
     monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_HTTP400))
     _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(81), _row(82), _row(83)])
     state = w.load_breaker(_isolated_breaker)
-    assert w.breaker_open(state, "outage") and state["strikes"] == {}, "two refusals in a row strike no one"
+    assert w.breaker_open(state, "outage"), "two refusals in a row open the breaker"
     log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(81), _row(82), _row(83)])
-    assert [p for s, p in log if "SET status = 'running'" in s] == [(82,)], "breaker open: one probe, not the head"
+    assert [p for s, p in log if "SET status = 'running'" in s] == [(82,), (81,)], "probe first, then the head decides"
+    assert _counted_ids(log) == []
     monkeypatch.setattr(lf, "generate_with_fallback", _sequence_generator(["ok", "ok", "ok"]))
     log = _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(81), _row(82), _row(83)])
     assert len([p for s, p in log if "SET status = 'running'" in s]) == 3, "an answered probe closes the breaker"
     state = w.load_breaker(_isolated_breaker)
-    assert not w.breaker_open(state, "outage") and state["strikes"] == {}
+    assert not w.breaker_open(state, "outage")
 
 
 def test_failure_breaker_persists_so_a_bad_lane_burns_one_job_per_run(monkeypatch, _isolated_breaker):
@@ -570,19 +594,16 @@ def test_unreadable_breaker_file_reads_closed(_isolated_breaker):
     assert not w.breaker_open(w.load_breaker(_isolated_breaker), "outage")
 
 
-def test_last_job_refused_with_no_next_job_still_counts_eventually(monkeypatch, _isolated_breaker):
-    """A one-job queue (or a refusal at the end of a run) has no next job to decide; strikes still accrue."""
+def test_one_job_queue_refused_stays_pending_uncounted(monkeypatch, _isolated_breaker):
+    """Round 6: no next job can decide, so the job simply stays pending; nothing is ever charged for a refusal."""
     import lib.llm_fallback as lf
 
-    limit = int(POLICY["head_strike_limit"])
     counted = []
-    for _ in range(limit):
+    for _ in range(6):
         monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_HTTP400))
         counted += _counted_ids(_run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(99)]))
-    assert counted == [99]
+    assert counted == []
     assert not w.breaker_open(w.load_breaker(_isolated_breaker), "outage"), "one ambiguous refusal is not an outage"
-
-
 
 # ── round 4: an outage never strikes; the probe is not the head; corrupt breaker fields never crash ──────────────
 
@@ -599,7 +620,6 @@ def test_long_transport_outage_spends_no_attempts(monkeypatch, _isolated_breaker
         spent += len(_counted_ids(_run(monkeypatch, ["--route", "cloud", "--limit", "5"],
                                        rows=[_row(1), _row(2), _row(3)])))
     assert spent == 0
-    assert w.load_breaker(_isolated_breaker)["strikes"] == {}
 
 
 @pytest.mark.parametrize(
@@ -608,11 +628,18 @@ def test_long_transport_outage_spends_no_attempts(monkeypatch, _isolated_breaker
         (_HTTP400, True),
         ((_a("grok", "HTTPError: 413 Payload Too Large"), _a("chatgpt", "HTTPError: 422 Unprocessable")), True),
         ((_a("grok", "KeyError: 'choices'"), _a("chatgpt", "HTTPError: 400 Bad Request")), True),
-        # round 5: one lane rejecting while the others are down is that lane's outage, not this prompt
-        ((_a("grok", "HTTPError: 413 Payload Too Large"), _a("chatgpt", "unavailable")), False),
-        ((_a("grok", "unavailable"), _a("chatgpt", "HTTPError: 400 Client Error: Bad Request")), False),
-        ((_a("grok", "KeyError: 'choices'"),), False),
-        ((_a("grok", "HTTPError: 400 Bad Request"), _a("grok", "HTTPError: 400 Bad Request")), False),
+        # round 6: diagnostic only; lanes that did not run (unavailable, gate refusal, deferral) are ignored
+        ((_a("grok", "HTTPError: 413 Payload Too Large"), _a("chatgpt", "unavailable")), True),
+        ((_a("grok", "unavailable"), _a("chatgpt", "HTTPError: 400 Client Error: Bad Request")), True),
+        ((_a("grok", "KeyError: 'choices'"),), True),
+        ((_a("anthropic", "RuntimeError: POLICY_NOT_ALLOWED: promotional adapter requires governed routing"),
+          _a("grok", "HTTPError: 400 Bad Request"), _a("chatgpt", "HTTPError: 400 Bad Request")), True),
+        ((_a("grok", "HTTPError: 400 Bad Request"),
+          _a("deepseek-flash", "RuntimeError: COST_CONFIGURATION_INVALID: process daily_cost_cap_usd required")), True),
+        ((_a("grok", "HTTPError: 400 Bad Request"), _a("deepseek-flash", "DeferredToOffPeak: deferred")), True),
+        ((_a("anthropic", "RuntimeError: POLICY_NOT_ALLOWED"), _a("deepseek-flash", "ManualRequired: m")), False),
+        ((_a("grok", "HTTPError: 400 Bad Request"), _a("chatgpt", "RuntimeError: AUTH_EXPIRED: x")), False),
+        ((_a("grok", "HTTPError: 400 Bad Request"), _a("chatgpt", "ValueError: POLICY_NOT_ALLOWED")), False),
         # two lanes agreeing on a non-request status is still not this prompt's fault
         ((_a("grok", "HTTPError: 401 Unauthorized"), _a("chatgpt", "HTTPError: 401 Unauthorized")), False),
         ((_a("grok", "HTTPError: 429 Too Many Requests"), _a("chatgpt", "HTTPError: 429 Too Many")), False),
@@ -669,7 +696,6 @@ def test_corrupt_breaker_fields_never_crash(monkeypatch, _isolated_breaker, doc)
         assert state[kind]["open_until"] is None or isinstance(state[kind]["open_until"], str)
         w.breaker_open(state, kind)
         w.trip_breaker(dict(state), kind, "r", POLICY)
-    assert all(isinstance(v, int) and v > 0 for v in state["strikes"].values())
     monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_CONN_REFUSED))
     _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1), _row(2)])
 
@@ -693,10 +719,10 @@ def test_one_job_queue_in_a_transport_outage_is_never_struck(monkeypatch, _isola
     import lib.llm_fallback as lf
 
     spent = 0
-    for _ in range(int(POLICY["head_strike_limit"]) + 2):
+    for _ in range(6):
         monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_CONN_REFUSED))
         spent += len(_counted_ids(_run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(5)])))
-    assert spent == 0 and w.load_breaker(_isolated_breaker)["strikes"] == {}
+    assert spent == 0
 
 
 
@@ -711,4 +737,4 @@ def test_long_systemic_single_lane_400_outage_spends_no_attempts(monkeypatch, _i
         monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*systemic))
         spent += len(_counted_ids(_run(monkeypatch, ["--route", "cloud", "--limit", "5"],
                                        rows=[_row(1), _row(2), _row(3)])))
-    assert spent == 0 and w.load_breaker(_isolated_breaker)["strikes"] == {}
+    assert spent == 0
