@@ -1,17 +1,21 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      29.0.0
+Policy-Version:      29.1.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              ACTIVE
-Effective-Date:      2026-10-31
-Last-Reviewed:       2026-10-31T20:16:00-04:00
+Status:              PROPOSED
+Effective-Date:      PENDING
+Last-Reviewed:       2026-10-31T22:00:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          28.0.0
+Supersedes:          29.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**29.1.0 is PROPOSED (MINOR) — a promote or rollback restarts the units named in §25.10 and verifies them.** Awaiting
+`APPROVE_AGENTS_POLICY_29_1_0 <pr> <head_sha>` (§20). Renumbered only, no rule-text change: ratified as 28.1.0 on
+2026-10-31 (`APPROVE_AGENTS_POLICY_28_1_0 2392 2a424d7799c4e8aec6a7e02abc649cda800e6351`) before 29.0.0 merged. §28.1 unchanged.
 
 **29.0.0 is ACTIVE (MAJOR) — agents close what they open; a daily, pressure-triggered, recursive sweep closes the
 rest; backups are one on host, N+1 on Drive.** One version for the content the operator ratified on 2026-10-30 as
@@ -1174,11 +1178,11 @@ What an agent still owns is proving the effect of its change after promotion.
 - **One PR per finding**, validation output quoted in the body.
 - **A push is not a deploy.** A merge to `main` is promoted by the poller under the operator-armed standing deploy
   delegation (§25.10) — so merge readiness is deploy readiness.
-- **A promote restarts only the units in `TRADEAI_CURRENT_BOUND_UNITS`** (default list in
-  `scripts/cio_phase2_exact_main_deploy.sh`). A long-lived process outside that list keeps the code it imported at
-  start, because `WorkingDirectory=…/CURRENT` does not re-resolve after the symlink moves; read back its cwd
-  (`readlink /proc/<MainPID>/cwd`). See `docs/ops/BRIDGE_PIN_ALIGNMENT.md`. *Cause: 2026-09-18 — the bridge served
-  `0162d0f19` while portfolio-server served `71535687d` (LESSONS L0-12).*
+- **A promote restarts only the units §25.10 names** (`scripts/lib/current_bound_units.py`; the literal default in
+  `scripts/cio_phase2_exact_main_deploy.sh`). Any other long-lived process keeps the code it imported at start, because
+  `WorkingDirectory=…/CURRENT` does not re-resolve; read back its cwd (`readlink /proc/<MainPID>/cwd`), as verify does.
+  See `docs/ops/BRIDGE_PIN_ALIGNMENT.md`. *Cause: 2026-09-18 — the bridge served `0162d0f19` while portfolio-server
+  served `71535687d` (LESSONS L0-12).*
 - **A deploy does not install new user units.** A new `config/systemd/user/*.timer` reaches the host only through
   `scripts/install_cio_operator_runtime.sh`, and installing a new production timer or cron entry is operator-only
   (§17). Prove it with `check_expected_services.py`, not with the unit file existing. *Cause: 2026-09-13 —
@@ -2283,6 +2287,14 @@ workflow health contract (`config/n8n_health_contracts.json`): `N8N_MONITORING_A
   `release-write` grant; it never merges or pushes. `TRADEAI_DEPLOY_DELEGATION_SOFT=1` never binds a release. A failed
   deploy, or one stuck with `main` ahead of CURRENT, pages P1. Agents may request STOP; arming the delegation and
   clearing STOP are operator-only (§17). *Cause: 2026-10-27 — per-SHA grant wait (LESSONS L25-05).*
+- **After a healthy promote or rollback (any path) the deploy restarts the bound units and verifies them.** Restarted:
+  its long-standing list plus grok-/chatgpt-oauth-proxy and heartbeat-receiver, WorkingDirectory=`CURRENT` installed units
+  only, cap 12; an operator `TRADEAI_CURRENT_BOUND_UNITS` replaces that list, still filtered. The long-standing list skips
+  the §23.14 `lane_dispatch` matcher (its "telegram"/"executor" words name daemons restarted every promote since
+  2026-09), never the code never-list. Paged if stale, never restarted: ops-applier, portfolio-server, §23.14 tokens in
+  name/argv/env (code constant; config only adds), callback-poller during any session, all others. Each cwd is read back
+  and receipted; a failure pages P1 and the deploy continues. Not a §28.1 run-ender. *Cause: 2026-10-31 — stale applier
+  (LESSONS L25-09).*
 - **The emergency promote (`scripts/emergency_manual_promote.sh`, §24.8) and rollback are the operator's.** A
   coordinator agent may run it only on the operator's explicit instruction given in that coordinator's own session
   (§28.4), quoted verbatim in the receipt. Agents revert by PR. *Cause: 2026-10-27 — review L5 (LESSONS L25-06).*
@@ -2638,6 +2650,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 29.1.0 | 2026-10-31 | PROPOSED | MINOR | Supersedes 29.0.0. Renumbered 28.1.0 (#2392): ratified as 28.1.0 on 2026-10-31 before 29.0.0 merged; renumbered only, no rule-text change. §25.10: after a healthy promote or rollback the deploy restarts its long-standing bound list plus grok-oauth-proxy, chatgpt-oauth-proxy and heartbeat-receiver (named; ratifying is the operator decision `config/release_pin_daemons.json` reserves), fail-closed: WorkingDirectory=CURRENT only, installed units only, §23.14 tokens over name/argv/environment applied to every candidate incl. override, ops-applier and portfolio-server never, callback-poller never during any session, cap 12; verify reads `/proc/<pid>/cwd`, receipts, pages P1 on failure; the promote continues. §10 bullet corrected. MINOR: no approval/guard daemon gains a restart (ops-applier excluded; callback-poller narrowed to closed sessions); the deploy delegation is unchanged and §28.1 is not touched. | PENDING — `APPROVE_AGENTS_POLICY_29_1_0 <pr> <head_sha>`; held-class operator merge (§25.10). Provenance: `APPROVE_AGENTS_POLICY_28_1_0 2392 2a424d7799c4e8aec6a7e02abc649cda800e6351` (operator, in-session 2026-10-31, ratified as 28.1.0 before 29.0.0 merged; renumbered only, no rule-text change). |
 | 29.0.0 | 2026-10-31 | ACTIVE | MAJOR | Supersedes 28.0.0. Renumbered union of the operator-ratified 2026-10-30 content of #2309 (27.0.1), #2310 (28.0.0) and #2311 (29.0.0), none merged before #2306 took 27.0.1: §0 rule 6 exception (c) narrowed to `~/.cache/agent-tmp/<task-id>` (owner deletes after proofs; rule T reclaims the rest); (d) backups: one dump on host, N+1 on Drive, removed only after Drive verification (§24.15); worktrees closed only by archive-then-remove (§24.14, rules W/C); §24.13 rule T bundles nested unique commits instead of holding; §24.12 kinds (e)/(f); §24.14 workspace lifecycle (rules C/R/X, daily/pressure sweep to target); §24.15 twice-weekly growth audit; §17 thresholds operator-only. | `APPROVE_AGENTS_POLICY_29_0_0 2311 df34d1d1e8e80d19fdab6a7f415a064eb5bcf6f6` (renumbered: #2334 took 28.0.0 first; content previously ratified as `APPROVE_AGENTS_POLICY_28_0_0 2311 a883ab71`, `APPROVE_AGENTS_POLICY_27_0_1 2309 c499b57b`, `_28_0_0 2310 06a90d74`, `_29_0_0 2311 6f5db2cf`) |
 | 28.0.0 | 2026-10-31 | ACTIVE | MAJOR | Supersedes 27.0.1. §25.10.3 "Operator-delegated merge" added: an agent never merges on its own, but after the operator types an explicit approval naming the PR numbers in that agent's own session (§28.4), or taps approve on the Command Center Approvals → Merges surface, that agent may record a `PrMergeDigestApproval@v1` row (provenance "operator in-session directive", words verbatim, bound to each PR's current head SHA) and apply `operator-merge` through the host helper the Telegram tap uses; Mergify still merges under the four required checks, the ET windows and the head-SHA binding; held classes only when the operator names the PR; a direct `gh pr merge --squash --match-head-commit` only when the operator says not to wait for Mergify (operator 2026-10-31: "You don't need to wait for Merger 5 [Mergify], you can merge"), with the four required checks green on the approved head and never `--admin`; never the emergency path, never self-approval; §0 rules 1–2 and §24.7 never overridable. §25.10 first bullet, §25.10.1/§25.10.2 "never extends to merging", §28.4 and §17 cross-referenced. MAJOR because it adds a merge-approval recording authority to agents. §0 untouched (no adapter propagation). Textually independent of the open 27.0.1 ratification PRs #2306/#2309. | `APPROVE_AGENTS_POLICY_28_0_0 2334 b610eb4d2a0616644d689ca2b2b2fe5ce4e1f793` (operator, in-session 2026-10-31) |
 | 27.0.1 | 2026-10-30 | ACTIVE | PATCH | Ratifying edit only: 27.0.0 was merged to main as PROPOSED (ratifying commit not pushed before the operator's `--admin` merge), so this PATCH flips header `Status: PROPOSED → ACTIVE`, `Effective-Date: 2026-10-30`, banner and history row with no rule-text change. §0 rule 6 / §24.13 / §17 content is exactly as in 27.0.0. | `APPROVE_AGENTS_POLICY_27_0_0 2303` (ratified as 27.0.1) |
