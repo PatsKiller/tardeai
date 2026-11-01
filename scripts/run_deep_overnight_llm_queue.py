@@ -764,6 +764,9 @@ def load_breaker(path):
         state[k] = {"trips": _int_or_zero(src.get("trips")),
                     "open_until": src.get("open_until") if isinstance(src.get("open_until"), str) else None,
                     "reason": str(src.get("reason") or "")[:300]}
+        for extra in ("since", "paged_since"):
+            if isinstance(src.get(extra), str):
+                state[k][extra] = src[extra]
     return state
 
 
@@ -794,9 +797,58 @@ def breaker_open(state, kind, now=None):
     return (now or datetime.now(timezone.utc)) < until_dt
 
 
+def probe_index(state, n_jobs):
+    """Which job probes an open outage breaker: jobs[min(trips, n-1)], never the head while there is another."""
+    if n_jobs < 2:
+        return 0
+    trips = _int_or_zero((state.get("outage") or {}).get("trips"))
+    return min(max(trips, 1), n_jobs - 1)
+
+
+def _send_page(message):
+    """The one operator-alert chokepoint (scripts/telegram_alert.send_telegram). True = accepted."""
+    from telegram_alert import send_telegram
+    return bool(send_telegram(message, priority="P2", producer="deep_overnight_llm_drain"))
+
+
+def maybe_page_long_outage(state, policy, now=None):
+    """Page once when the outage breaker has stayed open longer than outage_page_after_hours (default 6).
+
+    One page per outage (keyed by the time it first opened). The "paged" marker is written only after the send is
+    accepted, so a failed send is retried on the next refused run. The message names the duration, trips and the
+    last reason only. Returns True when a page was accepted on this call."""
+    b = state.get("outage") or {}
+    since = b.get("since")
+    if not _int_or_zero(b.get("trips")) or not isinstance(since, str):
+        return False
+    try:
+        since_dt = datetime.fromisoformat(since)
+    except ValueError:
+        return False
+    if since_dt.tzinfo is None:
+        since_dt = since_dt.replace(tzinfo=timezone.utc)
+    hours = float((policy or {}).get("outage_page_after_hours") or 6)
+    now = now or datetime.now(timezone.utc)
+    if now - since_dt < timedelta(hours=hours) or b.get("paged_since") == since:
+        return False
+    open_h = (now - since_dt).total_seconds() / 3600
+    message = (f"Deep overnight LLM queue drain: every lane has refused for {open_h:.1f} h "
+               f"({_int_or_zero(b.get('trips'))} breaker trips). No job is charged during an outage; the queue "
+               f"waits. Last reason: {str(b.get('reason') or '')[:160]}")
+    try:
+        accepted = _send_page(message)
+    except Exception:  # noqa: BLE001 - a broken notifier must never crash the drain
+        accepted = False
+    if accepted:
+        b["paged_since"] = since
+    return bool(accepted)
+
+
 def trip_breaker(state, kind, reason, policy, now=None):
-    """Open (or extend) a breaker; returns the cooldown in minutes."""
+    """Open (or extend) a breaker; returns the cooldown in minutes. ``since`` records when it first opened."""
     b = state[kind]
+    if not _int_or_zero(b.get("trips")) or not isinstance(b.get("since"), str):
+        b["since"] = (now or datetime.now(timezone.utc)).isoformat()
     b["trips"] = _int_or_zero(b.get("trips")) + 1
     base = float((policy or {}).get("breaker_cooldown_min") or 30)
     cap = float((policy or {}).get("breaker_cooldown_max_min") or 360)
@@ -1225,9 +1277,11 @@ def main():
     if outage_probe or failure_probe:
         log(f"Breaker open ({'outage' if outage_probe else 'failure'}): this run tries one job first.")
     if outage_probe and len(jobs) > 1:
-        # Probe a job OTHER than the head: a head that only fails on its own prompt must not keep the breaker
-        # open forever. If the probe is answered, the breaker closes and the head runs next in this same run.
-        jobs = [jobs[1], jobs[0]] + list(jobs[2:])
+        # Probe a job OTHER than the head, rotating with the trip count (jobs[1], then jobs[2], ...): two adjacent
+        # bad prompts at the head can no longer wedge the breaker (pre-activation review). The head still runs
+        # right after the probe and decides, as in normal mode.
+        k = probe_index(breaker, len(jobs))
+        jobs = [jobs[k]] + list(jobs[:k]) + list(jobs[k + 1:])
 
     for row in jobs:
         job = dict(zip(columns, row))
@@ -1364,6 +1418,8 @@ def main():
                 if cloud and suspect is not None:
                     # Two refusals in a row: the lanes are out. Nobody is charged (round 6: no strikes).
                     minutes = trip_breaker(breaker, "outage", str(refusal), drain_policy)
+                    if maybe_page_long_outage(breaker, drain_policy):
+                        log("  Paged the operator: the outage breaker has been open past outage_page_after_hours.")
                     save_breaker(bpath, breaker)
                     log(f"  REFUSED #{job_id} — {refusal}; lane outage: breaker open {minutes:.0f} min. Stopping the run.")
                     suspect = None

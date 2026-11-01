@@ -41,5 +41,7 @@
   "max_consecutive_failures": 3,
   "breaker_cooldown_min": 30,
   "breaker_cooldown_max_min": 360,
-  "breaker_state": "<persistent-state>/data/runtime/deep_overnight_llm_drain_breaker.json (DeepQueueDrainBreaker@v1)"
+  "breaker_state": "<persistent-state>/data/runtime/deep_overnight_llm_drain_breaker.json (DeepQueueDrainBreaker@v1)",
+  "outage_page_after_hours": 6,
+  "probe_rule": "While the outage breaker is open the probe is jobs[min(trips, n-1)] (rotating), then the head decides."
 }

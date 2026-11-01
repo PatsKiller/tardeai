@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -305,7 +305,7 @@ def _run(monkeypatch, argv, rows=(), windows=None):
     log: list = []
     monkeypatch.setattr(w, "get_db_connection", lambda: _RecConn(log, list(rows)))
     monkeypatch.setattr(w, "log", lambda m: None)
-    monkeypatch.setattr(w, "build_prompt", lambda *a, **k: "p")
+    monkeypatch.setattr(w, "build_prompt", lambda job, *a, **k: f"JOB{job['id']}")
     monkeypatch.setattr(w, "_extract_and_register_gaps", lambda *a, **k: None, raising=False)
     if windows is not None:
         seq = iter(windows)
@@ -738,3 +738,128 @@ def test_long_systemic_single_lane_400_outage_spends_no_attempts(monkeypatch, _i
         spent += len(_counted_ids(_run(monkeypatch, ["--route", "cloud", "--limit", "5"],
                                        rows=[_row(1), _row(2), _row(3)])))
     assert spent == 0
+
+
+
+# ── pre-activation: rotating probe; one page for a long outage ────────────────────────────────────────────────────
+
+def _bad_ids_generator(bad):
+    def gen(prompt, **kw):
+        if int(prompt[3:]) in bad:
+            raise _AllLanesFailed(list(_HTTP400))
+        return _Res()
+
+    return gen
+
+
+def _done(log):
+    return [p[-1] for s, p in log if "status = 'done'" in s]
+
+
+@pytest.mark.parametrize("trips,n,expected", [(0, 4, 1), (1, 4, 1), (2, 4, 2), (3, 4, 3), (9, 4, 3), (5, 2, 1), (3, 1, 0)])
+def test_probe_index_rotates_with_trip_count(trips, n, expected):
+    state = w._fresh_breaker()
+    state["outage"]["trips"] = trips
+    assert w.probe_index(state, n) == expected
+
+
+def test_two_adjacent_bad_jobs_at_the_head_do_not_wedge_the_drain(monkeypatch, _isolated_breaker):
+    import lib.llm_fallback as lf
+
+    rows = [_row(1), _row(2), _row(3), _row(4)]
+    done = []
+    for _ in range(4):
+        monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator({1, 2}))
+        done += _done(_run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=rows))
+    assert 3 in done, f"good job 3 never ran behind two bad heads: {done}"
+
+
+def test_two_job_queue_both_bad_charges_nobody(monkeypatch, _isolated_breaker):
+    import lib.llm_fallback as lf
+
+    counted = []
+    for _ in range(6):
+        monkeypatch.setattr(lf, "generate_with_fallback", _bad_ids_generator({1, 2}))
+        counted += _counted_ids(_run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1), _row(2)]))
+    assert counted == []
+
+
+def _long_open_breaker(path, hours_ago, **extra):
+    state = w._fresh_breaker()
+    t0 = datetime.now(timezone.utc) - timedelta(hours=hours_ago)
+    w.trip_breaker(state, "outage", "earlier outage", POLICY, now=t0)
+    state["outage"]["open_until"] = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    state["outage"].update(extra)
+    w.save_breaker(path, state)
+    return state["outage"]["since"]
+
+
+def _pages(monkeypatch, accept=True):
+    sent = []
+
+    def fake(message):
+        sent.append(message)
+        return accept
+
+    monkeypatch.setattr(w, "_send_page", fake)
+    return sent
+
+
+def test_long_outage_pages_once(monkeypatch, _isolated_breaker):
+    import lib.llm_fallback as lf
+
+    since = _long_open_breaker(_isolated_breaker, hours_ago=7)
+    sent = _pages(monkeypatch)
+    for _ in range(3):
+        monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_CONN_REFUSED))
+        _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1), _row(2)])
+    assert len(sent) == 1 and "every lane has refused" in sent[0] and "/" not in sent[0].split("Last reason:")[0]
+    assert w.load_breaker(_isolated_breaker)["outage"]["paged_since"] == since
+
+
+def test_long_outage_page_retries_after_a_failed_send(monkeypatch, _isolated_breaker):
+    import lib.llm_fallback as lf
+
+    _long_open_breaker(_isolated_breaker, hours_ago=7)
+    sent = _pages(monkeypatch, accept=False)
+    monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_CONN_REFUSED))
+    _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1), _row(2)])
+    assert len(sent) == 1 and "paged_since" not in w.load_breaker(_isolated_breaker)["outage"]
+    sent = _pages(monkeypatch, accept=True)
+    _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1), _row(2)])
+    assert len(sent) == 1 and "paged_since" in w.load_breaker(_isolated_breaker)["outage"]
+
+
+def test_short_outage_does_not_page(monkeypatch, _isolated_breaker):
+    import lib.llm_fallback as lf
+
+    _long_open_breaker(_isolated_breaker, hours_ago=float(POLICY["outage_page_after_hours"]) - 1)
+    sent = _pages(monkeypatch)
+    monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_CONN_REFUSED))
+    _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1), _row(2)])
+    assert sent == []
+
+
+def test_a_broken_notifier_never_crashes_the_drain(monkeypatch, _isolated_breaker):
+    import lib.llm_fallback as lf
+
+    _long_open_breaker(_isolated_breaker, hours_ago=7)
+    monkeypatch.setattr(w, "_send_page", lambda m: (_ for _ in ()).throw(OSError("telegram down")))
+    monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_CONN_REFUSED))
+    _run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(1), _row(2)])
+    assert "paged_since" not in w.load_breaker(_isolated_breaker)["outage"]
+
+
+def test_a_new_outage_after_recovery_pages_again(monkeypatch, _isolated_breaker):
+    state = w._fresh_breaker()
+    t0 = datetime(2026, 11, 1, 0, tzinfo=timezone.utc)
+    w.trip_breaker(state, "outage", "a", POLICY, now=t0)
+    sent = _pages(monkeypatch)
+    assert w.maybe_page_long_outage(state, POLICY, now=t0 + timedelta(hours=7))
+    assert not w.maybe_page_long_outage(state, POLICY, now=t0 + timedelta(hours=8))
+    w.close_breaker(state, "outage")
+    w.trip_breaker(state, "outage", "b", POLICY, now=t0 + timedelta(hours=20))
+    assert state["outage"]["since"] == (t0 + timedelta(hours=20)).isoformat()
+    w.trip_breaker(state, "outage", "b", POLICY, now=t0 + timedelta(hours=21))
+    assert state["outage"]["since"] == (t0 + timedelta(hours=20)).isoformat(), "since is kept across trips"
+    assert w.maybe_page_long_outage(state, POLICY, now=t0 + timedelta(hours=27)) and len(sent) == 2
