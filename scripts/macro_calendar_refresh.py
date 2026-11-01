@@ -152,7 +152,10 @@ RELEASE_MAP: tuple[Release, ...] = (
         95,
         "durable_goods",
         "Durable Goods (Manufacturers' Shipments, Inventories, and Orders)",
-        r"manufacturers'? shipments,? inventories,? (and|&) orders|durable goods",
+        # 2026-10-31: FRED now names release 95 "Manufacturer's Shipments, Inventories, and Orders (M3) Survey"
+        # (apostrophe before the s). The old pattern required "manufacturers'?" and failed verification on every
+        # run from 2026-10-23, so no calendar was ever written and the breaker opened on 10-25.
+        r"manufacturer'?s'? shipments,? inventories,? (and|&) orders|durable goods",
         "08:30",
         "Census",
         "FRED release 95 'Manufacturers' Shipments, Inventories, and Orders' (DGORDER). Census publishes the "

@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_registered_sources_20261031",
+  "files": [
+    "tests/test_market_risk_registered_sources_20261031.py"
+  ],
+  "anchor": "MARKET_RISK_REGISTERED_SOURCES_20261031",
+  "comment": [
+    "ANCHOR: MARKET_RISK_REGISTERED_SOURCES_20261031 — engine inputs from already-registered sources: implied moves",
+    "and provisional sector closes from the Schwab option-chain snapshots the host lane already stores, and positioning",
+    "(institutional/insider transaction %, short float, trend) from the Finviz enrichment cache. No new fetch, no broker call."
+  ]
+}

@@ -308,6 +308,14 @@ def poll_once(timeout=25):
         # promptly left the registry and the database disagreeing.
         # PR merge digest: "hold #N" / "unhold #N" excludes / re-includes one PR from the
         # pending digest's Approve all (scripts/lib/pr_merge_digest.py, AGENTS.md §25.10).
+        # Market-risk acknowledgment: "ACK RED" / "ACK ORANGE" / "ACK" silences repeats of the open episode
+        # (scripts/lib/market_risk_ack_telegram.py, DSN-20261031-market-risk-engine P3-T7, AGENTS.md §27.3).
+        elif _is_market_risk_ack(text):
+            try:
+                _handle_market_risk_ack(msg, text, chat_id, allowed)
+                handled = True
+            except Exception as e:
+                log.error(f"market-risk ack error: {e}")
         elif _is_digest_hold_text(lower):
             try:
                 _handle_digest_hold(msg, text, chat_id, allowed)
@@ -381,6 +389,28 @@ def _is_digest_hold_text(lower):
     import re as _re
 
     return bool(_re.match(r"^\s*(hold|unhold|include)\s+#?\d+[\s,#\d]*$", lower or ""))
+
+
+def _is_market_risk_ack(text):
+    try:
+        from scripts.lib import market_risk_ack_telegram as _mra
+    except ImportError:
+        from lib import market_risk_ack_telegram as _mra  # type: ignore
+    return _mra.is_ack_text(text)
+
+
+def _handle_market_risk_ack(msg, text, chat_id, allowed):
+    """``ACK RED`` reply acknowledges the open market-risk episode; the reply confirms or says why not."""
+    try:
+        from scripts.lib import market_risk_ack_telegram as _mra
+    except ImportError:
+        from lib import market_risk_ack_telegram as _mra  # type: ignore
+    from_id = (msg.get("from") or {}).get("id")
+    reply = _mra.handle_ack_text(
+        text, chat_id=chat_id, from_id=from_id, allowed_chats=allowed, reply_to=msg.get("reply_to_message")
+    )
+    if reply and not _post_message(chat_id, reply, reply_to_message_id=msg.get("message_id")):
+        log.error("market-risk ack reply send failed")
 
 
 def _handle_digest_hold(msg, text, chat_id, allowed):

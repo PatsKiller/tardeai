@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_contract_20261031",
+  "files": [
+    "tests/test_market_risk_contract_20261031.py"
+  ],
+  "anchor": "MARKET_RISK_CONTRACT_20261031",
+  "comment": [
+    "ANCHOR: MARKET_RISK_CONTRACT_20261031 — Market Risk Engine contract (DSN-20261031-market-risk-engine P2-T1):",
+    "UNKNOWN is not zero, the behaviour-field guard refuses size/order/stop/weight anywhere in a payload, and the",
+    "nine categories are distinct. Hermetic: no DB, no network."
+  ]
+}

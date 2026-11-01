@@ -76,8 +76,17 @@ def evidence_context(doc: Mapping[str, Any], now: datetime, *, applying: bool = 
             "opaque_processes": opaque}
 
 
-def activity(path: Path, *, max_entries: int = 250000, protected: Callable[[Path], bool] | None = None) -> tuple[float | None, str | None]:
-    """Bounded recursive lstat, no symlink following; incomplete scans are held."""
+#: An mtime this far past ``now`` is a fixture or clock artefact, not activity (tests stamp files weeks ahead).
+FUTURE_MTIME_SKEW_SECONDS = 300
+
+
+def activity(path: Path, *, max_entries: int = 250000, protected: Callable[[Path], bool] | None = None,
+             now: float | None = None) -> tuple[float | None, str | None]:
+    """Bounded recursive lstat, no symlink following; incomplete scans are held.
+
+    With ``now``, an entry whose mtime lies in the future counts at its ctime instead: the kernel sets ctime on
+    every change (``utime`` included), so it is the real time the entry was last written.
+    """
     newest, count = 0.0, 0
     pending = [path]
     try:
@@ -86,7 +95,10 @@ def activity(path: Path, *, max_entries: int = 250000, protected: Callable[[Path
             if protected and protected(p):
                 return None, "activity_contains_protected_entry"
             st = p.lstat()
-            newest = max(newest, st.st_mtime)
+            stamp = st.st_mtime
+            if now is not None and stamp > now + FUTURE_MTIME_SKEW_SECONDS:
+                stamp = st.st_ctime
+            newest = max(newest, stamp)
             count += 1
             if count > max_entries:
                 return None, "activity_scan_limit"

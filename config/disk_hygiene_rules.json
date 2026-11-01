@@ -476,12 +476,14 @@
       "never": "standalone clone, branch/ref or commit deletion; force removal"
     },
     "agent_scratch": {
-      "_why": "Rule T (2026-10-30): ~/.cache/agent-tmp grew to 43 GB across 119 per-task agent scratch dirs (2026-10-25..10-30) because §0 rule 6 forbade agents deleting even their own scratch. <root>/<task-id>/ is a candidate only when idle > idle_days (bounded newest-mtime scan), no /proc/*/cwd or /proc/*/fd inside, no live claim or worklog reference (coordination evidence), and the owning branch/PR is merged or abandoned. Removed by rmtree, symlinks never followed.",
+      "_why": "Rule T (2026-10-30, AGENTS.md §24.13): ~/.cache/agent-tmp grew to 43 GB across per-task agent scratch dirs nothing reclaimed. Read by scripts/disk_hygiene.py (load_rules validates; standing_results applies). <root>/<entry>/ is a candidate only when: a real dir directly under exactly this path; name fullmatches entry_regex; newest mtime (bounded scan, symlinks never followed) older than idle_days; no .git entry inside (worktrees are rule W); no never-touch path; and its path appears in no coordination document, live claim/worklog, open PR, or running process cwd/fd. There is no PR-merged check: the board reference is the hold. Removed by rmtree. Operator-only values (§17).",
       "path": "~/.cache/agent-tmp",
       "idle_days": 2,
       "entry_regex": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
       "require_claim_absent": true,
       "require_process_absent": true,
+      "reference_repo": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+      "bundle_dir": "~/trade-ai-releases/persistent-state/data/runtime/disk_hygiene/bundles",
       "never": "symlink, or an entry equal to / inside / containing a never-touch or protected path"
     },
     "coordination_root": "~/trade-ai-releases/persistent-state/data/coordination",

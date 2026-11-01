@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import shutil
 import sys
 from collections import defaultdict
@@ -29,12 +30,36 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
+from lib.atomic_json_store import atomic_write_json  # noqa: E402
+
 HOLDINGS_PATH = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
 LOTS_PATH = PROJECT_ROOT / "data" / "portfolios" / "state" / "tax_lots.json"
 REPORT_PATH = PROJECT_ROOT / "data" / "runtime" / "tax_lots_rebuild_latest.json"
 BACKUP_DIR = PROJECT_ROOT / "data" / "portfolios" / "state" / "backups"
 
 SHARE_MATCH_TOLERANCE = 0.05  # 5%
+
+log = logging.getLogger(__name__)
+
+
+def _load_lots() -> tuple[dict, str | None]:
+    """Current lots, or -- when tax_lots.json is empty (0 bytes; the 2026-10-30 disk-full night) -- the newest
+    backup that parses. Returns (lots, recovered_from) and never feeds an empty file to the rebuild."""
+    if LOTS_PATH.stat().st_size > 0:
+        raw = json.loads(LOTS_PATH.read_text(encoding="utf-8"))
+        return (raw if isinstance(raw, dict) else {}), None
+    log.warning("%s is empty (0 bytes); recovering from the newest valid backup", LOTS_PATH)
+    for backup in sorted(BACKUP_DIR.glob("tax_lots.json.bak-*"), reverse=True):
+        try:
+            if backup.stat().st_size == 0:
+                continue
+            raw = json.loads(backup.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            log.warning("backup %s unusable: %s", backup, exc)
+            continue
+        if isinstance(raw, dict) and raw:
+            return raw, str(backup)
+    raise FileNotFoundError(f"{LOTS_PATH} is empty and no valid backup exists in {BACKUP_DIR}")
 
 
 def _norm_sym(s: str) -> str:
@@ -50,9 +75,10 @@ def rebuild(*, dry_run: bool = False) -> dict:
         return {"ok": False, "error": f"missing tax_lots: {LOTS_PATH}"}
 
     holdings = json.loads(HOLDINGS_PATH.read_text(encoding="utf-8"))
-    lots_raw = json.loads(LOTS_PATH.read_text(encoding="utf-8"))
-    if not isinstance(lots_raw, dict):
-        lots_raw = {}
+    try:
+        lots_raw, recovered_from = _load_lots()
+    except FileNotFoundError as exc:
+        return {"ok": False, "error": str(exc)}
 
     holdings_total: dict[str, float] = defaultdict(float)
     positions = holdings.get("holdings") or holdings.get("positions") or []
@@ -203,6 +229,7 @@ def rebuild(*, dry_run: bool = False) -> dict:
         "symbols": len(sym_list),
         "tolerance": SHARE_MATCH_TOLERANCE,
         "results": sorted(results, key=lambda r: -float(r.get("holding_shares") or 0)),
+        "recovered_from_backup": recovered_from,
         "untrusted_symbols": [r["symbol"] for r in results if r["status"] == "UNTRUSTED"],
         "no_txn_symbols": [r["symbol"] for r in results if r["status"] == "NO_TXN_DATA"],
     }
@@ -211,8 +238,9 @@ def rebuild(*, dry_run: bool = False) -> dict:
         BACKUP_DIR.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         backup = BACKUP_DIR / f"tax_lots.json.bak-{stamp}"
-        shutil.copy2(LOTS_PATH, backup)
-        LOTS_PATH.write_text(json.dumps(lots_raw, indent=2, default=str), encoding="utf-8")
+        if LOTS_PATH.stat().st_size > 0:  # never rotate an empty file into the backups
+            shutil.copy2(LOTS_PATH, backup)
+        atomic_write_json(LOTS_PATH, lots_raw)
         report["backup"] = str(backup)
         report["written"] = str(LOTS_PATH)
 

@@ -89,6 +89,8 @@ GRANT_ENV = "TRADEAI_DISK_HYGIENE_GRANT"
 RUN_ID_ENV = "TRADEAI_RUN_ID"
 SKIP_DEPENDENCY = "dependency_unavailable"
 DOT_GIT = ".git"
+#: Known board-state documents that live in coordination/claims/ but are not claims (exact names, never a pattern).
+NON_CLAIM_SCHEMAS = frozenset({"PolicyBroadcastState@v1"})
 
 
 class RulesError(ValueError):
@@ -159,6 +161,26 @@ def load_rules(path: Optional[Path] = None, *, home: Optional[Path] = None) -> d
             raise RulesError("standing_rules_shape")
         if standing["approval"].get("status") == "APPROVED" and SR.aware(standing["approval"].get("approved_at")) is None:
             raise RulesError("standing_approval_timestamp")
+        scratch = standing.get("agent_scratch")
+        if scratch is not None or "T" in standing["rules"]:
+            # Rule T: the reviewed config must name exactly this root, a real idle threshold and a compilable entry
+            # pattern, and keep both reference checks on; no configurable bypass.
+            if not isinstance(scratch, dict) or scratch.get("path") != "~/.cache/agent-tmp":
+                raise RulesError("agent_scratch_scope")
+            idle = scratch.get("idle_days")
+            if type(idle) not in (int, float) or not idle >= 1:
+                raise RulesError("agent_scratch_idle_days")
+            try:
+                re.compile(str(scratch.get("entry_regex")))
+            except re.error as exc:
+                raise RulesError("agent_scratch_entry_regex") from exc
+            if not isinstance(scratch.get("entry_regex"), str) or scratch.get("require_claim_absent") is not True or scratch.get("require_process_absent") is not True:
+                raise RulesError("agent_scratch_shape")
+            for key in ("reference_repo", "bundle_dir"):
+                if not isinstance(scratch.get(key), str) or not scratch[key].startswith("~/"):
+                    raise RulesError(f"agent_scratch_{key}")
+            if scratch["bundle_dir"] == "~/.cache/agent-tmp" or scratch["bundle_dir"].startswith("~/.cache/agent-tmp/"):
+                raise RulesError("agent_scratch_bundle_dir")
     return doc
 
 
@@ -897,7 +919,11 @@ def collect_standing_evidence(rules: Mapping[str, Any], now: datetime, *, github
             refs += re.findall(r"/[^\s\"'`<>|=,;)\]}]+", text)
             if path.parent == claims_dir and path.suffix == ".json":
                 claim = json.loads(text)
-                if not isinstance(claim, dict) or claim.get("schema") != "AgentClaim@v1":
+                if not isinstance(claim, dict) or not isinstance(claim.get("schema"), str):
+                    raise ValueError("claim_unreadable")
+                if claim["schema"] in NON_CLAIM_SCHEMAS:
+                    continue  # its paths are already in refs; it is board state, not a claim
+                if claim["schema"] != "AgentClaim@v1":
                     raise ValueError("claim_unreadable")
                 if claim.get("status") == "active":
                     live.append(claim)
@@ -965,6 +991,81 @@ def standing_hard_reason(path: Path, kind: str, rules: Mapping[str, Any]) -> Opt
     return never_touch_reason(path, narrowed)
 
 
+def _nested_git(repo: Path, *args: str, timeout: float = 60) -> tuple[int, str]:
+    """git in a nested scratch repo: its own config can neither run an fsmonitor nor a hook."""
+    return _git(repo, "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", *args, timeout=timeout)
+
+
+def nested_repos(path: Path, reference_repo: Path, *, max_entries: int = 250000) -> tuple[list[str], Optional[str]]:
+    """Rule T: the nested git repos inside a scratch dir that hold commits found nowhere else.
+
+    Returns (repos needing a bundle before removal, hold reason). Held: a ``.git`` file whose gitdir still exists (a
+    registered linked worktree is rule W's), a repo with tracked changes or untracked files, a repo or reference
+    check git cannot answer, and an unbounded scan. A ``.git`` file whose gitdir is gone is an orphan: plain files.
+    """
+    found, count, pending = [], 0, [path]
+    while pending:
+        p = pending.pop()
+        try:
+            with os.scandir(p) as entries:
+                for e in entries:
+                    count += 1
+                    if count > max_entries:
+                        return [], "nested_repo_scan_limit"
+                    if e.name == DOT_GIT:
+                        found.append(Path(e.path))
+                    elif e.is_dir(follow_symlinks=False):
+                        pending.append(Path(e.path))
+        except OSError:
+            return [], "nested_repo_scan_unreadable"
+    bundles = []
+    for dot in sorted(found):
+        repo = dot.parent
+        if dot.is_symlink():
+            return [], "nested_repo_symlink"
+        if dot.is_file():
+            try:
+                target = dot.read_text().strip().removeprefix("gitdir:").strip()
+            except OSError:
+                return [], "nested_repo_unreadable"
+            if not target or os.path.lexists(target if os.path.isabs(target) else repo / target):
+                return [], "nested_worktree_registered"
+            continue
+        rc, status = _nested_git(repo, "status", "--porcelain", "--untracked-files=normal")
+        if rc != 0:
+            return [], "nested_repo_unreadable"
+        if status.strip():
+            return [], "nested_repo_dirty"
+        rc, refs = _nested_git(repo, "for-each-ref", "--format=%(objectname)")
+        hrc, head = _nested_git(repo, "rev-parse", "--verify", "-q", "HEAD")
+        if rc != 0:
+            return [], "nested_repo_unreadable"
+        shas = set(refs.split()) | (set(head.split()) if hrc == 0 else set())
+        for sha in sorted(shas):
+            erc, _ = _git(reference_repo, "cat-file", "-e", sha + "^{commit}")
+            if erc not in (0, 1, 128):
+                return [], "reference_repo_unreadable"
+            if erc != 0:
+                bundles.append(str(repo.relative_to(path)))
+                break
+    return bundles, None
+
+
+def bundle_nested(item: Mapping[str, Any]) -> Optional[str]:
+    """Before rule T removes a dir: bundle each nested repo holding unique commits, verified; None when all held."""
+    root, bdir = Path(item["path"]), Path(item["bundle_dir"])
+    for rel in item.get("bundles") or []:
+        out = bdir / root.name / (rel.replace("/", "__") + ".bundle")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        rc, _ = _nested_git(root / rel, "bundle", "create", str(out), "--all", timeout=600)
+        if rc != 0 or not out.is_file():
+            return f"bundle_failed:{rel}"
+        vrc, _ = _nested_git(root / rel, "bundle", "verify", str(out), timeout=600)
+        if vrc != 0:
+            return f"bundle_verify_failed:{rel}"
+    return None
+
+
 def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any]) -> list[dict]:
     """Only A/S/W, with fresh complete coordination/process/PR references."""
     cfg = rules.get("standing_apply")
@@ -1030,7 +1131,8 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any]) -> list[d
             item = row(path, "S", "rtc_scratch")
             if not path.is_dir() or path.is_symlink():
                 item["reasons"].append("not_scratch_directory")
-            activity, why = SR.activity(path, protected=lambda p: p.name == DOT_GIT or p.is_symlink() or bool(never_touch_reason(p, rules)))
+            activity, why = SR.activity(path, protected=lambda p: p.name == DOT_GIT or p.is_symlink() or bool(never_touch_reason(p, rules)),
+                                        now=ctx["now"].timestamp())
             if why:
                 item["reasons"].append(why)
             if activity is None or ctx["now"].timestamp() - activity <= 7 * 86400:
@@ -1038,24 +1140,37 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any]) -> list[d
             item["fingerprint"] = {"activity": activity, "kind": "rtc_scratch"}
             results.append(item)
 
+    t_cfg = cfg.get("agent_scratch")  # validated in load_rules; rule T is plan-only unless listed in cfg["rules"]
     agent_tmp = rules["_home"] / ".cache" / "agent-tmp"
-    if agent_tmp.exists():
+    if t_cfg is not None and agent_tmp.exists():
         if agent_tmp.is_symlink():
             raise RulesError("agent_tmp_root_symlink")
         try:
             paths = sorted(agent_tmp.iterdir())
         except OSError as exc:
             raise RulesError("agent_tmp_unreadable") from exc
+        idle_days = float(t_cfg["idle_days"])
+        entry_re = re.compile(t_cfg["entry_regex"])
+        ref_repo = _expand(t_cfg["reference_repo"], rules["_home"])
+        bundle_dir = _expand(t_cfg["bundle_dir"], rules["_home"])
         for path in paths:
             item = row(path, "T", "agent_scratch")
             if not path.is_dir() or path.is_symlink():
                 item["reasons"].append("not_scratch_directory")
-            activity, why = SR.activity(path, protected=lambda p: p.name == DOT_GIT or p.is_symlink() or bool(never_touch_reason(p, rules)))
+            if not entry_re.fullmatch(path.name):
+                item["reasons"].append("scratch_name_not_declared")
+            bundles, nested_why = nested_repos(path, ref_repo) if path.is_dir() and not path.is_symlink() else ([], None)
+            if nested_why:
+                item["reasons"].append(nested_why)
+            item["bundles"], item["bundle_dir"] = bundles, str(bundle_dir)
+            activity, why = SR.activity(path, protected=lambda p: p.is_symlink() or bool(never_touch_reason(p, rules)),
+                                        now=ctx["now"].timestamp())
             if why:
                 item["reasons"].append(why)
-            if activity is None or ctx["now"].timestamp() - activity <= 2 * 86400:
-                item["reasons"].append("scratch_not_older_than_2_days")
-            item["fingerprint"] = {"activity": activity, "kind": "agent_scratch"}
+            if activity is None or ctx["now"].timestamp() - activity <= idle_days * 86400:
+                item["reasons"].append(f"scratch_not_older_than_{idle_days:g}_days")
+            item["evidence"]["idle_days"] = round((ctx["now"].timestamp() - activity) / 86400.0, 2) if activity else None
+            item["fingerprint"] = {"activity": activity, "kind": "agent_scratch", "bundles": bundles}
             results.append(item)
 
     for path in discover_git_dirs(rules):
@@ -1344,8 +1459,12 @@ def remove_item(item: Mapping[str, Any]) -> tuple[bool, str]:
     if kind in ("git_clone", "release_dir", "cache_entry", "rtc_scratch", "agent_scratch"):
         if p.is_symlink() or not p.is_dir():
             return False, "not_a_dir"
+        if kind == "agent_scratch" and item.get("bundles"):
+            failed = bundle_nested(item)
+            if failed:
+                return False, failed
         shutil.rmtree(p)
-        return True, "rmtree"
+        return True, "rmtree" + (f"; bundled {len(item['bundles'])}" if kind == "agent_scratch" and item.get("bundles") else "")
     if kind in ("release_file", "archived_dump"):
         if p.is_symlink() or not p.is_file():
             return False, "not_a_file"
