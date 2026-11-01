@@ -200,3 +200,146 @@ def test_the_held_release_is_parsed_from_the_deploy_die_line() -> None:
            "not acknowledged this diff_id — promote held (/home/u/rel/abc-main/N8N_RELAY_LIVE_SET_DIFF.json)")
     assert DM.held_release(log) == "/home/u/rel/abc-main"
     assert DM.held_release("no die line") == ""
+
+
+# ── (round 4) an unreadable live set is INDETERMINATE: hold, refuse, page once; never "unchanged" ──────────────
+
+from scripts.lib import n8n_relay_live_lanes as RLL  # noqa: E402
+from tests.test_relay_live_source_oneway_20261031 import _root  # noqa: E402
+
+BAD_OVERRIDES = {"zero_byte": "", "malformed_json": "{not json", "wrong_schema": "[1, 2, 3]"}
+
+
+@pytest.fixture()
+def one_lane_change(tmp_path: Path):
+    """A real one-lane change: served drops the live arg of one lane that the new release serves."""
+    state = tmp_path / "state"
+    state.mkdir()
+    env = {"TRADEAI_STATE_ROOT": str(state)}
+    probe = _root(tmp_path, "probe")
+    lane = sorted(RLL.resolve(env, probe)["lanes"])[0]
+    served = _root(tmp_path, "served", drop_live_arg=lane)
+    new = _root(tmp_path, "new", build="b" * 40)
+    rep = G.compute(new, served, env)
+    assert rep["changed"] is True and rep["added"] == [lane] and rep["indeterminate"] is False
+    return {"new": new, "served": served, "env": env, "state": state, "lane": lane, "report": rep}
+
+
+def _break_overrides(state: Path, text: str) -> None:
+    p = state / RLL.OVERRIDE_REL
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(text, encoding="utf-8")
+
+
+@pytest.mark.parametrize("kind", sorted(BAD_OVERRIDES))
+def test_unreadable_overrides_make_the_diff_indeterminate_and_the_gate_refuses(one_lane_change, kind) -> None:
+    c = one_lane_change
+    _break_overrides(c["state"], BAD_OVERRIDES[kind])
+    rep = G.compute(c["new"], c["served"], c["env"])
+    assert rep["indeterminate"] is True
+    assert set(rep["indeterminate_reasons"]) == {"new", "served"}
+    assert G.gate(rep, rows={}) == (False, "indeterminate")
+    # Even a grant naming this exact diff_id does not pass an unknown live set.
+    row = {"r@g": {"tier": "release-write", "status": "active", "expires": NOW + 3600, "grant_id": "g",
+                   "reason": f"relay-live-set:{rep['diff_id']}"}}
+    assert G.gate(rep, rows=row) == (False, "indeterminate")
+
+
+def test_both_resolvers_failing_is_indeterminate(monkeypatch, one_lane_change) -> None:
+    c = one_lane_change
+    monkeypatch.setattr(G, "effective", lambda root, environ: {
+        "lanes": None, "source": "resolver_failed", "detail": "own resolver failed: timeout", "paused": [],
+        "resolver": "own_failed"})
+    rep = G.compute(c["new"], c["served"], c["env"])
+    assert rep["changed"] is False  # what used to pass the gate as "unchanged"
+    assert rep["indeterminate"] is True and G.gate(rep, rows={}) == (False, "indeterminate")
+
+
+def test_one_side_failing_closed_with_an_empty_list_is_indeterminate(monkeypatch, one_lane_change) -> None:
+    c = one_lane_change
+    real = G.effective
+
+    def eff(root, environ):
+        if Path(root) == c["served"]:
+            return {"lanes": [], "source": "registry_render", "detail": "override_unreadable: fail closed, no lane live",
+                    "paused": [], "resolver": "own"}
+        return real(root, environ)
+
+    monkeypatch.setattr(G, "effective", eff)
+    rep = G.compute(c["new"], c["served"], c["env"])
+    assert rep["indeterminate"] is True and list(rep["indeterminate_reasons"]) == ["served"]
+    assert G.gate(rep, rows={}) == (False, "indeterminate")
+
+
+@pytest.mark.parametrize("breakage", ["zero_byte", "malformed_json", "resolver_failed"])
+def test_a_held_promote_keeps_holding_when_the_recompute_is_indeterminate(monkeypatch, tmp_path: Path,
+                                                                         one_lane_change, breakage) -> None:
+    c = one_lane_change
+    if breakage == "resolver_failed":
+        monkeypatch.setattr(G, "effective", lambda root, environ: {
+            "lanes": None, "source": "resolver_failed", "detail": "timeout", "paused": [], "resolver": "own_failed"})
+    else:
+        _break_overrides(c["state"], BAD_OVERRIDES[breakage])
+    releases = tmp_path / "releases"
+    releases.mkdir()
+    (releases / "CURRENT").symlink_to(c["served"])
+    monkeypatch.setattr(DM, "DEFAULT_RELEASES", releases)
+    monkeypatch.setattr(G, "host_env", lambda path: dict(c["env"]))
+    monkeypatch.setattr(DM, "hold_acknowledged", lambda did, since=None: pytest.fail("an unknown set is not acked"))
+    sd = tmp_path / "rw"
+    did = c["report"]["diff_id"]
+    DM._save_hold(sd, {"status": "held", "main_sha": "s1", "diff_id": did, "held_at": "2026-11-01T03:00:00Z",
+                       "release": str(c["new"])})
+    for _ in range(3):
+        held = DM.hold_blocks(sd, "s1")
+        assert held is not None and held["diff_id"] == did
+    hold = DM.load_hold(sd)
+    assert hold["status"] == "held" and hold["last_recompute"] == "indeterminate"
+    assert "previous_diff_ids" not in hold
+
+
+def test_the_gate_cli_refuses_and_pages_once_on_indeterminate(monkeypatch, one_lane_change) -> None:
+    import scripts.relay_live_set_gate as CLI
+
+    c = one_lane_change
+    _break_overrides(c["state"], "")
+    pages = []
+    monkeypatch.setattr(CLI.G, "notify", lambda report, state, event="promote", sender=None:
+                        pages.append(event) or {"accepted": True})
+    monkeypatch.setenv("TRADE_AI_CI", "0")
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(c["state"]))
+    argv = ["--release", str(c["new"]), "--served", str(c["served"]), "--host-file", str(c["state"] / "no.env")]
+    assert CLI.main(["gate", *argv]) == 3
+    assert CLI.main(["diff", *argv, "--notify"]) == 0
+    assert pages == ["indeterminate", "indeterminate"]  # one marker key: notify's two-phase marker pages it once
+
+
+def test_indeterminate_page_names_no_path_and_no_command() -> None:
+    rep = dict(REPORT, indeterminate=True, indeterminate_reasons={"served": "override_unreadable: fail closed"})
+    text = G.message(rep, event="promote")
+    assert "UNKNOWN" in text and "abcdef0123456789" in text and "/" not in text.replace("n/a", "")
+
+
+def test_indeterminate_pages_once_through_the_real_marker(tmp_path: Path) -> None:
+    rep = dict(REPORT, indeterminate=True, indeterminate_reasons={"new": "x"})
+    send = _Sender(True, True)
+    assert G.notify(rep, tmp_path, event="indeterminate", sender=send)["accepted"] is True
+    assert G.notify(rep, tmp_path, event="indeterminate", sender=send)["skipped"] == "already_paged"
+    assert send.calls == 1
+
+
+@pytest.mark.parametrize(
+    "eff,unknown",
+    [
+        ({"lanes": None, "source": "registry_render", "detail": "render_missing; key unset"}, True),
+        ({"lanes": [], "source": "resolver_failed", "detail": "x"}, True),
+        ({"lanes": [], "source": "registry_render", "detail": "override_unreadable: fail closed, no lane live"}, True),
+        ({"lanes": [], "source": "registry_render", "detail": "override_malformed: fail closed, no lane live"}, True),
+        ({"lanes": ["a"], "source": "host_env_fallback", "detail": "render_unreadable"}, True),
+        ({"lanes": ["a"], "source": "host_env_fallback", "detail": "render_malformed"}, True),
+        ({"lanes": [], "source": "registry_render", "detail": "ok"}, False),  # a real empty set is known
+        ({"lanes": ["a"], "source": "host_env_legacy", "detail": "AGENTS.md 20.4.0 not ACTIVE"}, False),
+    ],
+)
+def test_indeterminate_reason(eff, unknown) -> None:
+    assert (G.indeterminate_reason(eff) is not None) is unknown

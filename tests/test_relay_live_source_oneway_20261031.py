@@ -87,9 +87,20 @@ def test_a_present_but_other_or_broken_pin_never_falls_back(tmp_path: Path, env:
 def test_header_flip_without_pin_is_caught_and_held(tmp_path: Path, env: dict) -> None:
     served = _root(tmp_path, "served", status="ACTIVE")
     new = _root(tmp_path, "new", status="PROPOSED", pin=None, build="b" * 40)
+    env = {**env, RLL.LIVE_LANES_ENV: "host-only-lane"}  # a real host list: the flip is a known change
     rep = G.compute(new, served, env)
     assert rep["changed"] is True and rep["new"]["source"] == "host_env_legacy"
+    assert rep["indeterminate"] is False
     assert G.gate(rep, rows={}) == (False, "unacknowledged")
+
+
+def test_header_flip_onto_a_missing_host_list_is_indeterminate(tmp_path: Path, env: dict) -> None:
+    # No host list at all: that side's live set is unknown, so it is refused as indeterminate, never "unchanged".
+    served = _root(tmp_path, "served", status="ACTIVE")
+    new = _root(tmp_path, "new", status="PROPOSED", pin=None, build="b" * 40)
+    rep = G.compute(new, served, env)
+    assert rep["indeterminate"] is True and "new" in rep["indeterminate_reasons"]
+    assert G.gate(rep, rows={}) == (False, "indeterminate")
 
 
 def test_unchanged_set_passes_the_gate(tmp_path: Path, env: dict) -> None:

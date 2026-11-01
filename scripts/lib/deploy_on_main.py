@@ -676,6 +676,12 @@ def hold_blocks(sd: Path, sha: str) -> Optional[dict[str, Any]]:
         _save_hold(sd, {**hold, "status": "superseded", "superseded_by": sha, "closed_at": _utc_now()})
         return None
     fresh = hold_recompute(hold)
+    if fresh is not None and fresh.get("indeterminate"):
+        # The live set could not be read on one side: keep holding, never clear and never move the diff_id on an
+        # unknown (round-4 review: a 0-byte overrides file used to clear the hold as "no change").
+        _save_hold(sd, {**hold, "last_recompute": "indeterminate", "last_recompute_at": _utc_now(),
+                        "indeterminate_reasons": fresh.get("indeterminate_reasons")})
+        return load_hold(sd)
     if fresh is not None:
         if not fresh.get("changed"):
             _save_hold(sd, {**hold, "status": "cleared_no_change", "closed_at": _utc_now()})

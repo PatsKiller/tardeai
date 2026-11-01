@@ -191,9 +191,31 @@ def diff_id(build: Optional[str], added: list[str], removed: list[str]) -> str:
     return hashlib.sha256(blob).hexdigest()[:16]
 
 
+#: Detail words that mean a side's live set was NOT read: the resolver failed closed or could not read an input.
+INDETERMINATE_WORDS = ("unreadable", "malformed", "fail closed", "failed closed")
+
+
+def indeterminate_reason(eff: Mapping[str, Any]) -> Optional[str]:
+    """Why one side's effective live set is unknown, or None when it was really read.
+
+    2026-11-01 round-4 review: a 0-byte ops overrides file makes the resolver fail closed to an EMPTY list. Both sides
+    then read as empty, compute said ``changed=False``, the gate passed (``unchanged``), the poller cleared the hold,
+    and the unacknowledged change went live once the file was readable again. An unknown side is never "no change".
+    """
+    if eff.get("lanes") is None:
+        return f"list_missing: {eff.get('detail')}"
+    if eff.get("source") == "resolver_failed":
+        return f"resolver_failed: {eff.get('detail')}"
+    detail = str(eff.get("detail") or "")
+    if any(word in detail.lower() for word in INDETERMINATE_WORDS):
+        return detail[:200]
+    return None
+
+
 def compute(new_root: Path, served_root: Path, environ: Mapping[str, str]) -> dict[str, Any]:
     new_root, served_root = Path(new_root), Path(served_root)
     new, old = effective(new_root, environ), effective(served_root, environ)
+    why_new, why_old = indeterminate_reason(new), indeterminate_reason(old)
     a, b = set(new["lanes"] or []), set(old["lanes"] or [])
     added, removed = sorted(a - b), sorted(b - a)
     build = _build(new_root)
@@ -206,6 +228,8 @@ def compute(new_root: Path, served_root: Path, environ: Mapping[str, str]) -> di
         "served": {k: old[k] for k in ("source", "detail")} | {"count": len(b), "list_missing": old["lanes"] is None},
         "added": added, "removed": removed,
         "changed": bool(added or removed) or (new["lanes"] is None) != (old["lanes"] is None),
+        "indeterminate": bool(why_new or why_old),
+        "indeterminate_reasons": {k: v for k, v in (("new", why_new), ("served", why_old)) if v},
         "diff_id": diff_id(build, added, removed),
         "exclusions": exclusions(new_root, new),
     }
@@ -273,6 +297,10 @@ def is_acked(report: Mapping[str, Any], rows: Optional[Mapping[str, Mapping[str,
 
 
 def gate(report: Mapping[str, Any], rows: Optional[Mapping[str, Mapping[str, Any]]] = None) -> tuple[bool, str]:
+    # An unknown live set is refused before anything else: it is never "unchanged" and no grant acknowledges it
+    # (the operator cannot have reviewed a delta that could not be computed).
+    if report.get("indeterminate"):
+        return False, "indeterminate"
     if not report["changed"]:
         return True, "unchanged"
     if is_acked(report, rows):
@@ -284,6 +312,10 @@ def message(report: Mapping[str, Any], *, event: str = "promote") -> str:
     """Page text. Names only the diff_id, the build and the counts: stable for one diff_id, so it dedupes, and it
     carries no release path and no command."""
     build = str(report.get("new_build") or "?")[:12]
+    if report.get("indeterminate"):
+        sides = ", ".join(sorted((report.get("indeterminate_reasons") or {}).keys())) or "?"
+        return (f"RELAY LIVE SET UNKNOWN ({event}) diff_id {report['diff_id']} build {build}: the live set could not be "
+                f"read on the {sides} side, so the change cannot be computed. Promote is held until it can.")
     held = ("Promote is held until the operator acknowledges this diff_id."
             if event == "promote" else "Rollback is not held; review the diff.")
     return (f"RELAY LIVE SET CHANGE ({event}) diff_id {report['diff_id']} build {build}: "
