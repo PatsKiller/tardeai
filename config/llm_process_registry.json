@@ -2377,6 +2377,36 @@
       "registered_by": "market-risk-p3-cio-llm-20261031",
       "registered_at": "2026-10-31T13:00:00Z",
       "anthropic_first": false
+    },
+    {
+      "id": "deep_overnight_llm_drain",
+      "name": "Deep overnight LLM queue drain (cloud lanes)",
+      "category": "Research",
+      "default_mode": "automated",
+      "lane_policy": "either",
+      "allowed_lanes": [
+        "grok",
+        "chatgpt",
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "deepseek_default_policy": "FAST",
+      "anthropic_first": true,
+      "fallback_allowed": true,
+      "advisory_only": true,
+      "tools_allowed": false,
+      "circuit_breaker": true,
+      "max_input_tokens": 32000,
+      "max_output_tokens": 4096,
+      "daily_cost_cap_usd": 0.0,
+      "daily_soft_cap": 0,
+      "description": "scripts/run_deep_overnight_llm_queue.py --route cloud: strategy_classification reviews from deep_overnight_llm_queue through anthropic -> grok -> chatgpt -> deepseek-flash (off-peak only), in the windows of config/llm_queue_drain.json. READ_ONLY_ADVISORY; writes deep_overnight_llm_results only. MBI_BEHAVIOR=0.",
+      "notes": "PROPOSED 2026-11-01 (draft PR #2422). daily_cost_cap_usd and daily_soft_cap are 0 PLACEHOLDERS the operator sets (llm_cap_admin / sync). At 0: Grok and ChatGPT OAuth calls run (projected $0); every paid DeepSeek reservation is refused (COST_CAP_EXCEEDED); the Anthropic promo credit is NOT admitted (anthropic_routing.credit_admitted needs both caps > 0) even though anthropic_first is true. A refusal returns the job to pending without counting an attempt and stops the run.",
+      "registered_at": "2026-11-01T01:30:00Z",
+      "registered_by": "llm-queue-drain-windows-20261031"
     }
   ],
   "default_deepseek_policy": "FAST",
