@@ -40,6 +40,7 @@ import fnmatch
 import hashlib
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -288,8 +289,11 @@ _VERIFICATION_KEYS = (
     "ledger_path", "ledger_max_records", "cache_path", "cache_max_entries", "receipt_path", "removals_log_path",
     "lock_path", "fifo_dir", "alert_realert_minutes",
 )
-_DRIVE_KEYS = ("folder_id", "prefix", "keep_n", "account", "gog_bin", "keyring_password_file", "list_max",
+_DRIVE_KEYS = ("folder_id", "prefix", "keep_n", "gog_bin", "keyring_password_file", "list_max",
                "command_timeout_s", "prune_enabled")
+#: The Drive account is never in a committed config (public repo): drive_db.account_source names the uploader script
+#: whose ACCT="..." line it reads, so the enforcer and backup_secrets_state.sh always use the same account.
+_ACCT_LINE = re.compile(r'^ACCT="([^"]+)"\s*$', re.M)
 _LOCAL_KEYS = ("dir", "pattern", "keep_on_host", "min_bytes", "max_total_bytes", "skip_younger_than_s")
 
 # Reasons that mean "the newest dump simply has not been offsited yet" (waits out the grace window).
@@ -314,6 +318,17 @@ def load_sections(policy: dict) -> tuple[dict, dict, dict]:
     """(local_pg, drive_db, verification) with every key enforcement needs, or PolicyError."""
     local = _require(dict(policy.get("local_pg") or {}), _LOCAL_KEYS, "local_pg")
     drive = _require(dict(policy.get("drive_db") or {}), _DRIVE_KEYS, "drive_db")
+    if not drive.get("account"):
+        src = drive.get("account_source")
+        if not src:
+            raise PolicyError("drive_db.account_source")
+        try:
+            m = _ACCT_LINE.search(_repo_path(str(src)).read_text(encoding="utf-8"))
+        except OSError:
+            m = None
+        if not m:
+            raise PolicyError("drive_db.account_source unreadable or has no ACCT line")
+        drive["account"] = m.group(1)
     ver = _require(dict(policy.get("verification") or {}), _VERIFICATION_KEYS, "verification")
     if int(local["keep_on_host"]) < 1 or int(drive["keep_n"]) < 0:
         raise PolicyError("keep_on_host>=1 and keep_n>=0 required")

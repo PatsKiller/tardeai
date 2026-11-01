@@ -473,3 +473,22 @@ def test_policy_file_declares_one_on_host_and_n_plus_one_on_drive():
     assert local["keep_on_host"] == 1 == local["max_count"]
     assert drive["keep_n"] == 1
     assert ver["newest_unverified_grace_hours"] > 0 and ver["drive_unreachable_grace_hours"] > 0
+
+
+def test_drive_account_is_read_from_the_uploader_script_not_committed_config(tmp_path):
+    """Public repo: config/backup_policy.yaml carries no account; the enforcer reads the uploader's ACCT= line."""
+    import yaml
+    from scripts import backup_enforcer as be
+
+    policy = yaml.safe_load((be.ROOT / "config" / "backup_policy.yaml").read_text())
+    assert "account" not in policy["drive_db"] and policy["drive_db"]["account_source"]
+    _, drive, _ = be.load_sections(policy)
+    assert drive["account"] and "@" in drive["account"]
+
+    script = tmp_path / "uploader.sh"
+    script.write_text('#!/bin/bash\nACCT="ops' + '@' + 'example.invalid"\n')
+    policy["drive_db"]["account_source"] = str(script)
+    assert be.load_sections(policy)[1]["account"] == "ops" + "@" + "example.invalid"
+    script.write_text("#!/bin/bash\n")
+    with pytest.raises(be.PolicyError):
+        be.load_sections(policy)

@@ -26,7 +26,7 @@ drive_db:
   # Drive object is verified (name, size, md5) against the host's upload ledger.
   keep_n: 1
   prune_enabled: true          # false = verify and report only; never delete on Drive
-  account: "john@jwwhiting.com"                    # same account backup_secrets_state.sh uses
+  account_source: "scripts/backup_secrets_state.sh"  # its ACCT= line; the account is never committed here
   gog_bin: "~/.local/bin/gog"
   keyring_password_file: "~/.openclaw/credentials/gog_keyring_password"  # read by the gog child only
   list_max: 200                # one page; a listing with a next page is "incomplete" and blocks deletes
