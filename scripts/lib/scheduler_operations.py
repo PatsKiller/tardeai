@@ -322,6 +322,9 @@ def read_run_ledger(path: Path) -> tuple[list[dict[str, Any]], bool, str | None]
         conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
         conn.row_factory = sqlite3.Row
         try:
+            fast = _read_runs_projected(conn)
+            if fast is not None:
+                return fast, True, None
             rows = [dict(r) for r in conn.execute("SELECT * FROM runs ORDER BY requested_at DESC LIMIT 10000")]
             for row in rows:
                 receipt = json.loads(row.pop("receipt_json", None) or "{}")
@@ -331,6 +334,43 @@ def read_run_ledger(path: Path) -> tuple[list[dict[str, Any]], bool, str | None]
             conn.close()
     except (sqlite3.Error, OSError, ValueError):
         return [], False, "ledger unreadable"
+
+
+def _read_runs_projected(conn) -> list[dict[str, Any]] | None:
+    """The same rows as the Python path in ``read_run_ledger``, with the receipt cut to RECEIPT_KEYS inside SQLite.
+
+    Memory 2026-10-25: the newest 10k receipts are ~56 MB of JSON; parsing them all in Python cost ~73 MB peak and
+    ~2 s per Jobs-health rebuild, to keep 20 keys. ``->`` keeps each value's JSON type (true stays true), a missing
+    key is null, and an empty or absent receipt stays None. None = use the Python path (old SQLite without ``->``,
+    a malformed receipt, or a receipt that is not an object), so the result and its failures never change."""
+    try:
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(runs)")]
+        if "receipt_json" not in cols or any('"' in c for c in cols):
+            return None
+        keep = ", ".join(f'"{c}"' for c in cols if c != "receipt_json")
+        pairs = ", ".join(f"'{k}', receipt_json -> '$.{k}'" for k in RECEIPT_KEYS)
+        kind = (
+            "CASE WHEN receipt_json IS NULL OR receipt_json = '' THEN 0 "
+            "WHEN json_type(receipt_json) <> 'object' THEN -1 "
+            "WHEN NOT EXISTS (SELECT 1 FROM json_each(receipt_json)) THEN 0 ELSE 1 END"
+        )
+        # CASE is lazy in SQLite: json_object only runs for non-empty object receipts (an empty string would raise).
+        sql = (
+            f"SELECT {keep}, {kind} AS _receipt_kind, CASE WHEN ({kind}) = 1 THEN json_object({pairs}) END AS _receipt "
+            "FROM runs ORDER BY requested_at DESC LIMIT 10000"
+        )
+        rows = []
+        for r in conn.execute(sql):
+            row = dict(r)
+            kind = row.pop("_receipt_kind")
+            small = row.pop("_receipt")
+            if kind == -1:
+                return None
+            row["receipt"] = json.loads(small) if kind == 1 else None
+            rows.append(row)
+        return rows
+    except (sqlite3.Error, ValueError):
+        return None
 
 
 def _pctl(values: list[float], q: float) -> float | None:
