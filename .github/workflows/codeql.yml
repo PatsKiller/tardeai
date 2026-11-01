@@ -1,0 +1,48 @@
+name: CodeQL
+
+# DSN-20261031-ci-load-reduction §4.6 (operator-approved 2026-11-01): CodeQL default setup scanned
+# every PR push (392 runs, 7% of 2026-10-31's 5,369). CodeQL is not a required context; this
+# workflow keeps it on pushes to main and a weekly schedule, and never runs on pull_request.
+#
+# ROLLOUT: this file only takes over once the repository's CodeQL DEFAULT SETUP is disabled
+# (Settings → Code security → Code scanning → CodeQL analysis → Remove, or
+#   gh api -X PATCH repos/PatsKiller/tardeai/code-scanning/default-setup -f state=not-configured
+# ). The operator owns that setting (§17); until it is off, default setup keeps scanning PRs and
+# this workflow is the intended replacement. Revert by re-enabling default setup.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 6 * * 1"  # Mondays 06:23 UTC (02:23 ET)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: codeql-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [actions, javascript-typescript, python]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"

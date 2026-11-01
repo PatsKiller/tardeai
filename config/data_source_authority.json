@@ -61,13 +61,24 @@
         "approved_by": "operator",
         "approved_on": "2026-09-13",
         "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
-        "scope": "may supply: positions, option_chain, stream_quotes, instruments"
+        "scope": "may supply: positions, option_chain, stream_quotes, instruments; market_data_quotes for quote_extended_session (GET /marketdata/v1/quotes only, host lane market-quotes-offhours-schwab; granted 2026-11-01, see supply_grants)"
       },
       "supplies": [
         "positions",
         "option_chain",
         "stream_quotes",
-        "instruments"
+        "instruments",
+        "market_data_quotes"
+      ],
+      "supply_grants": [
+        {
+          "supply": "market_data_quotes",
+          "domain": "quote_extended_session",
+          "approved_by": "operator",
+          "approved_on": "2026-11-01",
+          "reference": "operator 2026-11-01 ~13:45 ET in-session (verbatim): \"enable schwab\"; under the operator's 2026-10-31 allowance (AGENTS.md 29.2.0 §24.11, ratified #2407): scheduled host lanes may read broker market data only, via the existing token managers, never account, order, stop, 2FA or auth endpoints, and no agent reads credentials or cookies",
+          "scope": "scripts/market_quotes_offhours_schwab.py reads GET https://api.schwabapi.com/marketdata/v1/quotes only (marketdata_url rail); never imports schwab_transport; reads the stored access token only while fresh (never refreshes); writes market_quotes_extended feed schwab through its single writer"
+        }
       ]
     },
     "yfinance": {
@@ -4119,9 +4130,9 @@
           "reads": "GET https://api.schwabapi.com/marketdata/v1/quotes only, token via schwab_token_manager public read API (canonical_token_key, get_access_token); never schwab_transport, account, order, stop, 2FA or auth endpoints",
           "symbols": "/ES /NQ /RTY /YM, $SPX $COMPX $VIX, plus config/market_quotes_extended.json symbols and config/market_risk_policy.yaml extended_hours.heavyweights",
           "contract": "sessions premarket/afterhours of NYSE trading days (session_of), and overnight (20:00-04:00 ET, Sunday night to Friday 04:00) / futures_open (Sunday 18:00-20:00 ET, futures) once migrations/2026_10_31_market_quotes_extended_overnight.sql is applied (PR #2423; session_date = the NEXT NYSE trading day, scripts/lib/overnight_session.py). bar_end = trade instant, bar_start = bar_end - 1 ms. Reference (offhours_quotes.dated_reference, one rule for every session; review of #2416 F4 and #2423 F2/F6): the close of the same day (afterhours), the previous session (premarket) or the trading day before the trading date (overnight/futures_open), used ONLY when the payload dates it to that day: equities regular.regularMarketLastPrice + regularMarketTradeTime, futures/indices quote.closePrice + settleTime. Undated or another day: premarket/afterhours rows are refused (no_dated_reference_for_<session>); overnight/futures_open rows store the level only (reference_close, reference_date, change_pct NULL), and the engine ties them to the close through an earlier referenced print of the same symbol or reads UNKNOWN. A run where every Schwab batch fails is status http_error with a non-zero exit (F5).",
-          "policy": "AGENTS.md 28.2.0 (host lanes may read broker market data) ratified by the operator on PR #2407 (APPROVE_AGENTS_POLICY_28_2_0 2407 cdb7802cc..., ratify commit f060c2e78; #2407 not merged to main as of 2026-10-31)",
-          "status": "built, switched off (schwab.enabled false), NEVER_SCHEDULED; --apply also refuses while this domain is proposed",
-          "grant": "PENDING: operator approves the schedule in session (§25.10.2) and grants schwab as a provider for this domain (providers.schwab.supplies gains market-data quotes, §7A rule 7); then a PR flips schwab.enabled"
+          "policy": "AGENTS.md 29.2.0 §24.11 (host lanes may read broker market data), ratified by the operator on PR #2407 (merged)",
+          "status": "granted; enabled (schwab.enabled true in config/market_risk_offhours_quotes.yaml); lane market-quotes-offhours-schwab declared, crontab installed after merge",
+          "grant": "GRANTED 2026-11-01: operator in-session \"enable schwab\" (~13:45 ET), under the 2026-10-31 broker-market-data allowance (AGENTS.md 29.2.0 §24.11: read-only market data via host lanes; never orders, accounts, stops, 2FA, auth endpoints or credentials). Recorded in providers.schwab.supply_grants."
         }
       ],
       "_universe_note": "2026-10-31 (PR #2416): DIA, RSP, SOXX and XLK added to config/market_quotes_extended.json symbols so the engine's full index/breadth/sector proxy set is collected by the Alpaca producer."

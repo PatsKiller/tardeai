@@ -1,17 +1,24 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      29.2.1
+Policy-Version:      29.3.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
 Effective-Date:      2026-11-01
-Last-Reviewed:       2026-11-01T11:45:00-05:00
+Last-Reviewed:       2026-11-01T14:30:00-05:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          29.2.0
+Supersedes:          29.2.1
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**29.3.0 is ACTIVE (MINOR) — draft-first PRs, stack discipline, and one merge window.** DSN-20261031-ci-load-reduction
+§4.2/§4.4/§4.5, operator-approved in session 2026-11-01 (§20; the operator chose "approve both rules" and "one window,
+17:30 ET"). Adds to §11: every PR opens as a draft and is marked ready only when the work is done and adversarial
+review has passed; only a stack's top is marked ready, so one CI run covers the whole stack; approved PRs merge in one
+weekday window (17:30–18:30 ET, `.mergify.yml`), with urgent fixes by the operator naming the PR. Adds obligations
+only; §0, §2, §17 and role authority are untouched.
 
 **29.2.1 is ACTIVE (PATCH) — generated §7A source-of-truth table refreshed.** The Market Risk Engine's
 extended-session store `quote_extended_session` (`market_quotes_extended`) was granted by the operator (§7A/§26.6, in-session
@@ -1211,6 +1218,15 @@ The claim board, worklogs, pickup order and coordinator role are §28.3. Beyond 
 - **No agent marks its own work DONE.** Done is the §28.12 lifecycle stage, reached by a PASSED receipt, and no
   agent reviews its own PR (§28.15).
 - **Other sessions may be running on this machine.** Stamp every measurement with the pin it was read at (§1).
+- **Open every PR as a draft.** Push freely inside the push budget; mark the PR ready only when the work is done and
+  the independent review has passed. Both sharded suites skip drafts, so iteration costs a draft-quick run instead of
+  about 110 runner-minutes. *Cause: 2026-10-31 — 5,369 Actions runs in one day saturated the queue (LESSONS L11-01,
+  DSN-20261031-ci-load-reduction §4.2).*
+- **Only the top of a stack is marked ready.** A stack's lower layers stay draft and are reviewed individually; the
+  top's CI covers the whole stack and it merges as one batch item. *Cause: 2026-10-31 — a multi-layer stack ran the
+  full suite on every layer and again after every rebase (LESSONS L11-01, §4.5).*
+- **Merges land in one window.** Approved PRs queue and merge in the weekday 17:30–18:30 ET window; an urgent fix
+  merges when the operator names the PR. *Cause: 2026-10-31 — 19 main pushes in a day (LESSONS L11-01, §4.4).*
 
 ---
 
@@ -2284,8 +2300,10 @@ workflow health contract (`config/n8n_health_contracts.json`): `N8N_MONITORING_A
     `scripts/emergency_manual_promote.sh`, `scripts/cio_phase2_exact_main_deploy.sh`.
 - **A PR in a named class the file misses is labelled `held`;** removing a held path is itself held. *Cause:
   2026-10-27 — five held paths (LESSONS L25-03).*
-- **Mergify merges in ET windows:** non-draft, `operator-merge`, the four required checks `success` on the head; no
-  merge Monday to Friday 09:30–16:15 ET. *Cause: 2026-10-26 — market hours (LESSONS L25-04).*
+- **Mergify merges in one weekday window:** non-draft, `operator-merge`, the four required checks `success` on the
+  head, inside Monday–Friday 17:30–18:30 ET (`.mergify.yml`; 29.3.0). No merge Monday to Friday 09:30–16:15 ET; the
+  window is after the close. *Cause: 2026-10-26 — market hours (LESSONS L25-04); 2026-10-31 — CI saturation
+  (LESSONS L11-01).*
 - **The host promotes under the standing deploy delegation.** `scripts/deploy_on_main_poll.py` promotes the exact
   `main` SHA when the `STOP.json` latch and `GlobalReleaseLock` allow and the delegation is armed, with no SHA-named
   `release-write` grant; it never merges or pushes. `TRADEAI_DEPLOY_DELEGATION_SOFT=1` never binds a release. A failed
@@ -2654,6 +2672,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 29.3.0 | 2026-11-01 | ACTIVE | MINOR | Supersedes 29.2.1. §11 gains draft-first PRs (open every PR as a draft; mark it ready only when the work is done and adversarial review has passed), stack discipline (only the top of a stack is ready; its CI covers the whole stack) and one weekday merge window (17:30-18:30 ET in `.mergify.yml`; urgent fixes by the operator naming the PR). §28.1's merge-window bullet now states the single window. Adds obligations only; §0, §2, §17 and role authority untouched. Cause: LESSONS L11-01 (5,369 Actions runs on 2026-10-31). | operator in-session 2026-11-01 (this session: chose "approve both rules" and "one window, 17:30 ET"); held-class operator merge (§25.10). Design: `DSN-20261031-ci-load-reduction` §4.2/§4.4/§4.5. |
 | 29.2.1 | 2026-11-01 | ACTIVE | PATCH | Supersedes 29.2.0. Generated §7A source-of-truth table refreshed: `quote_extended_session` (`market_quotes_extended`, single writer `scripts/lib/writers/market_quotes_extended_writer.py`, Alpaca SIP) granted (operator §7A/§26.6, in-session 2026-11-01; store, writer, provider and schedule approved as DSN-20261031-market-risk-engine §11 items 1-2 on 2026-10-31) and listed as an active domain; no rule-text change. | operator 2026-11-01 in-session (recorded in `config/data_source_authority.json` approval) |
 | 29.2.0 | 2026-10-31 | ACTIVE | MAJOR | Supersedes 29.1.0. Renumbered 28.2.0 (#2407): ratified as 28.2.0 on 2026-10-31 before 29.0.0 merged; renumbered, plus an operator-approved citation fix (§24.12 causes back to L24-16; new lesson numbered L24-19). §24.11 gains "Broker market data and paid data feeds": scheduled host lanes may read broker MARKET-DATA endpoints only (quotes incl. extended hours, price history, option chains, market hours, movers; moomoo quotes and capital flow) through the existing token managers / OpenD session; never account, order, position-write, stop, 2FA or auth-flow endpoints; agents never read credentials or cookie files; Finviz Elite API exports AND the cookie-authenticated pages are both used, each only by its existing host lane; each new lane gets a §7A row; data-fee decisions stay operator-only. MAJOR because it widens what host lanes may read from a broker. §0 untouched. | `APPROVE_AGENTS_POLICY_29_2_0 2407 eef5607759c3e32dbfdeafe6492906f5cdca535c` (operator, in-session 2026-10-31); held-class operator merge (§25.10). Provenance: `APPROVE_AGENTS_POLICY_28_2_0 2407 cdb7802ccd58ac976f8fdbbc740a0b8dc18655ef` (operator, in-session 2026-10-31, ratified as 28.2.0 before 29.0.0 merged; renumbered only, no rule-text change). |
 | 29.1.0 | 2026-10-31 | ACTIVE | MINOR | Supersedes 29.0.0. Renumbered 28.1.0 (#2392): ratified as 28.1.0 on 2026-10-31 before 29.0.0 merged; renumbered only, no rule-text change. §25.10: after a healthy promote or rollback the deploy restarts its long-standing bound list plus grok-oauth-proxy, chatgpt-oauth-proxy and heartbeat-receiver (named; ratifying is the operator decision `config/release_pin_daemons.json` reserves), fail-closed: WorkingDirectory=CURRENT only, installed units only, §23.14 tokens over name/argv/environment applied to every candidate incl. override, ops-applier and portfolio-server never, callback-poller never during any session, cap 12; verify reads `/proc/<pid>/cwd`, receipts, pages P1 on failure; the promote continues. §10 bullet corrected. MINOR: no approval/guard daemon gains a restart (ops-applier excluded; callback-poller narrowed to closed sessions); the deploy delegation is unchanged and §28.1 is not touched. | `APPROVE_AGENTS_POLICY_29_1_0 2392 b2348fcef400d4cf320f039f128653f2087c4caf` (operator, in-session 2026-10-31); held-class operator merge (§25.10). Provenance: `APPROVE_AGENTS_POLICY_28_1_0 2392 2a424d7799c4e8aec6a7e02abc649cda800e6351` (operator, in-session 2026-10-31, ratified as 28.1.0 before 29.0.0 merged; renumbered only, no rule-text change). |
