@@ -157,8 +157,9 @@ class PgReader:
         return rows + self.extended_quotes(symbols, start=start, end=end)
 
     def extended_quotes(self, symbols: Iterable[str], *, start: datetime, end: datetime) -> list[dict[str, Any]]:
-        """Pre-market / after-hours prints from their own store (never market_quotes, the latest-quote ledger). A row
-        is returned only when its bar had ended AND it had been inserted by ``end`` (replays see what existed then).
+        """Pre-market / after-hours / overnight / Sunday futures-open prints from their own store (never market_quotes,
+        the latest-quote ledger). A row is returned only when its bar had ended AND it had been inserted by ``end``
+        (replays see what existed then).
         Before the migration is applied the table is absent: that is checked with ``to_regclass`` first, so no error
         is raised and the session's read-only setting is never rolled back (review of #2384 round 2). Any other read
         error rolls back and re-asserts ``default_transaction_read_only`` before returning nothing."""
@@ -188,9 +189,12 @@ class PgReader:
             out.append({
                 "symbol": r["symbol"], "source": f"{EXTENDED_TABLE}:{r['feed']}", "session": r["session"],
                 "session_date": _iso(r["session_date"]) if isinstance(r["session_date"], datetime) else str(r["session_date"]),
-                "price": float(r["price"]), "prev_close": float(r["reference_close"]),
-                "reference_date": str(r["reference_date"]), "reference_basis": r["reference_basis"],
-                "day_change_pct": float(r["change_pct"]), "volume": r["volume"],
+                "price": float(r["price"]),
+                # overnight / futures_open rows may be level-only (no reference in the payload): None, never 0
+                "prev_close": None if r["reference_close"] is None else float(r["reference_close"]),
+                "reference_date": None if r["reference_date"] is None else str(r["reference_date"]),
+                "reference_basis": r["reference_basis"],
+                "day_change_pct": None if r["change_pct"] is None else float(r["change_pct"]), "volume": r["volume"],
                 "as_of": _iso(r["bar_end"]), "fetched_at": _iso(r["bar_end"]),
             })
         return out
