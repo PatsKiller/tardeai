@@ -7,6 +7,13 @@ redactor (``scheduler_operations.redact_command``) only knows ``NAME=value`` she
 those reached the page. Patterns follow ``maturity_control/redaction.py`` and go wider.
 
 Pure function, no I/O. Over-redaction is the accepted failure mode.
+
+Deliberate choices (review round 3, 2026-11-01):
+* Hex and alphanumeric runs of 20+ characters that mix letters and digits are redacted, git SHAs
+  included. A 40-hex SHA is indistinguishable from a hex API key (Finnhub, Polygon, signatures), and a
+  page line loses little without it; short SHAs (7-12 characters) stay readable.
+* A bare UUID is redacted (the Finviz token shape), run ids that are UUIDs included.
+* Runs are bounded and every pattern is anchored so the whole pass is linear in the line length.
 """
 from __future__ import annotations
 
@@ -19,6 +26,22 @@ R = "[REDACTED]"
 _SECRETS_PATH = re.compile(r"(?:~|/home/[^/\s'\"]+|/root)/\.config/tradeai/secrets/[^\s'\"]*")
 _HOME_PATH = re.compile(r"/home/[^/\s'\"]+")
 _TELEGRAM_PATH = re.compile(r"/bot\d+:[A-Za-z0-9_\-]+")
+#: Discord webhook: the id stays, the token tail goes.
+_DISCORD_WEBHOOK = re.compile(r"(?i)(discord(?:app)?\.com/api/webhooks/\d+/)[A-Za-z0-9_\-.]+")
+#: mysql-family client password flag: "-p <pw>" or "-p<pw>" (psql's -p is a port, so only these clients).
+_MYSQL_PW = re.compile(r"(?i)(\b(?:mysql|mysqladmin|mysqldump|mariadb)\b[^\n]*?\s-p)\s*(?!-)\S+")
+#: A secret key word followed by a SPACE and a token-like value ("rejected key c1a2b3...").
+_SPACE_KEY_VALUE = re.compile(
+    r"(?i)(?<![\w\-])((?:api[_\-]?key|app[_\-]?key|key|token|secret|password|passwd|pwd|pw)\s+)"
+    r"([A-Za-z0-9._~+/=\-]{8,})"
+)
+#: Bare UUID (Finviz API tokens have this shape).
+_UUID = re.compile(r"(?i)(?<![0-9a-z])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![0-9a-z])")
+#: 20+ alphanumerics in one run mixing letters and digits, any case ("c1a2b3...", "PKA1B2..."). This also covers
+#: every hex secret, so the separate hex rule of round 2 was removed (2026-11-01, round 3).
+_ALNUM_RUN = re.compile(r"(?<![A-Za-z0-9])[A-Za-z0-9]{20,}(?![A-Za-z0-9])")
+#: Alphanumeric segments joined by '-', '_' or '.', 24+ characters long, mixing upper, lower and digits.
+_JOINED_RUN = re.compile(r"(?<![A-Za-z0-9_.\-])[A-Za-z0-9]+(?:[-_.][A-Za-z0-9]+)+")
 _URL_USERINFO = re.compile(r"(?i)\b([a-z][a-z0-9+.\-]*://)[^\s/@'\"]+@")
 _URL_QUERY = re.compile(r"(?i)\b([a-z][a-z0-9+.\-]*://[^\s?#'\"]+)\?[^\s#'\"]*")
 _TOKEN_SHAPES = re.compile(
@@ -31,6 +54,7 @@ _TOKEN_SHAPES = re.compile(
     r"|\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|APKA)[0-9A-Z]{12,}"
     r"|\beyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}(?:\.[A-Za-z0-9_\-]+)?"
     r"|\b\d{6,12}:AA[A-Za-z0-9_\-]{6,}"
+    r"|\bya29\.[A-Za-z0-9_\-.]+"
     r")"
 )
 _BEARER = re.compile(r"(?i)\b(bearer|basic|token)\s+[A-Za-z0-9._~+/=\-]{6,}")
@@ -41,41 +65,46 @@ _AUTH_HEADER = re.compile(r"""(?i)\b((?:proxy-)?authorization["']?\s*[:=]\s*["']
 #: upper case, lower case and digits, and hex runs of >= 20 that mix digits and letters. Ordinary words,
 #: identifiers (underscores split them) and lower-case paths never have all three classes.
 _B64_RUN = re.compile(r"(?<![A-Za-z0-9+/=])[A-Za-z0-9+/]{20,}={0,2}(?![A-Za-z0-9+/=])")
-_HEX_RUN = re.compile(r"(?<![0-9A-Za-z])[0-9a-fA-F]{20,}(?![0-9A-Za-z])")
 _SECRET_KEY_WORD = re.compile(
     r"(?i)(token|secret|passw(?:or)?d|pwd|api[_\-]?key|apikey|auth(?:orization)?(?![a-z])|credential|private[_\-]?key|"
-    r"session|cookie|dsn|access[_\-]?key|signature|sig\b|key|client[_\-]?id|app[_\-]?key|key[_\-]?id)"
+    r"session|cookie|dsn|access[_\-]?key|signature|sig\b|key|client[_\-]?id|app[_\-]?key|key[_\-]?id|"
+    r"(?<![a-z])(?:pw|pass)(?![a-z]))"
 )
-#: A quoted value runs to its closing quote (it may hold spaces); an unquoted one stops at a delimiter.
-_KEY_VALUE = re.compile(
-    r"""(?P<key>["']?[A-Za-z_][\w.\-]*["']?)(?P<sep>\s*[:=]\s*)"""
-    r"""(?:(?P<q>["'])(?P<qval>[^"'\n]*)|(?P<val>[^\s"',;)}\]&]+))"""
-)
+#: The key and separator only. A key starts at a word start (the lookbehind), so a long run without a
+#: separator is tried once, not from every character: the scan is linear (round 3: 3.2 s at 60 KB before).
+_KEY_SEP = re.compile(r"""(?<![\w.\-"'])(?P<key>["']?[A-Za-z_][\w.\-]*["']?)(?P<sep>\s*[:=]\s*)""")
+#: The value, matched only after a secret-looking key. A quoted value runs to ITS closing quote (it may
+#: hold spaces and the other quote); an unquoted one stops at a delimiter.
+_VALUE = re.compile(r"""(?:"(?P<dq>[^"\n]*)"?|'(?P<sq>[^'\n]*)'?|(?P<val>[^\s"',;)}\]&]+))""")
 _NOT_A_KEY = re.compile(r"(?:Error|Exception|Warning|Exit|Interrupt)$")
 
 
 def _redact_pairs(text: str) -> str:
     """Redact the value of every ``key: value`` / ``key=value`` pair whose key looks secret.
 
-    A non-secret pair consumes only its key, so ``failed: refresh_token: abc`` still finds
-    ``refresh_token: abc``.
+    A non-secret pair consumes only its key and separator, so ``failed: refresh_token: abc`` still finds
+    ``refresh_token: abc``; the value is only scanned for a secret key, and the scan then jumps past it.
     """
     out, pos = [], 0
     while True:
-        match = _KEY_VALUE.search(text, pos)
+        match = _KEY_SEP.search(text, pos)
         if not match:
             out.append(text[pos:])
             return "".join(out)
         key = match.group("key").strip("\"'")
-        group = "qval" if match.group("q") else "val"
-        value = match.group(group) or ""
-        secret = not _NOT_A_KEY.search(key) and _SECRET_KEY_WORD.search(key) and value and R[:-1] not in value
-        if secret:
-            out.append(text[pos:match.start(group)] + R)
-            pos = match.end(group)
-        else:
-            out.append(text[pos:match.end("sep")])
-            pos = match.end("sep")
+        sep_end = match.end("sep")
+        if _NOT_A_KEY.search(key) or not _SECRET_KEY_WORD.search(key):
+            out.append(text[pos:sep_end])
+            pos = sep_end
+            continue
+        value = _VALUE.match(text, sep_end)
+        group = next((g for g in ("dq", "sq", "val") if value and value.group(g) is not None), None)
+        if not group or not value.group(group) or R[:-1] in value.group(group):
+            out.append(text[pos:sep_end])
+            pos = sep_end
+            continue
+        out.append(text[pos:value.start(group)] + R)
+        pos = value.end(group)
 
 
 def _mixed(run: str) -> bool:
@@ -94,14 +123,32 @@ def _high_entropy(match: re.Match) -> str:
     return R if _mixed(run) else run
 
 
-def _hex_secret(match: re.Match) -> str:
+def _letters_digits(value: str) -> bool:
+    return R[:-1] not in value and any(c.isdigit() for c in value) and any(c.isalpha() for c in value)
+
+
+#: Percent-decoding repeats until the text stops changing (triple-encoded bodies were seen in review), capped.
+MAX_PERCENT_DECODES = 6
+
+
+def _letters_and_digits(match: re.Match) -> str:
     run = match.group(0)
     return R if any(c.isdigit() for c in run) and any(c.isalpha() for c in run) else run
 
 
+_DIGIT_THEN_LETTER = re.compile(r"[0-9][A-Za-z]")
+
+
+def _joined_secret(match: re.Match) -> str:
+    """A joined token: 24+ characters, upper + lower + digits, and a digit followed by a letter inside a segment
+    (token material). Dotted Python names ("psycopg2.OperationalError") put digits only at a segment's end."""
+    run = match.group(0)
+    return R if len(run) >= 24 and _mixed(run) and _DIGIT_THEN_LETTER.search(run) else run
+
+
 def _percent_decode(text: str) -> str:
-    """Decode %XX escapes (twice, for double-encoded bodies) so encoded keys and values are matched."""
-    for _ in range(2):
+    """Decode %XX escapes until stable (capped) so encoded keys and values are matched."""
+    for _ in range(MAX_PERCENT_DECODES):
         if "%" not in text:
             break
         decoded = unquote(text)
@@ -118,14 +165,19 @@ def redact_error_line(text: str, *, home: str | None = None) -> str:
     out = _percent_decode(str(text))
     out = _SECRETS_PATH.sub("~/.config/tradeai/secrets/" + R, out)
     out = _TELEGRAM_PATH.sub("/bot" + R, out)
+    out = _DISCORD_WEBHOOK.sub(lambda m: m.group(1) + R, out)
     out = _URL_USERINFO.sub(r"\1" + R + "@", out)
     out = _URL_QUERY.sub(r"\1?" + R, out)
     out = _AUTH_HEADER.sub(lambda m: m.group(1) + R, out)
     out = _BEARER.sub(lambda m: f"{m.group(1)} {R}", out)
     out = _TOKEN_SHAPES.sub(R, out)
+    out = _UUID.sub(R, out)
+    out = _MYSQL_PW.sub(lambda m: m.group(1) + " " + R, out)
     out = _redact_pairs(out)
+    out = _SPACE_KEY_VALUE.sub(lambda m: m.group(1) + R if _letters_digits(m.group(2)) else m.group(0), out)
     out = _B64_RUN.sub(_high_entropy, out)
-    out = _HEX_RUN.sub(_hex_secret, out)
+    out = _ALNUM_RUN.sub(_letters_and_digits, out)
+    out = _JOINED_RUN.sub(_joined_secret, out)
     home = home if home is not None else str(Path.home())
     if home and home != "/":
         out = out.replace(home, "~")

@@ -394,3 +394,131 @@ def test_round2_bare_lowercase_hex_secret_is_redacted():
 
     shown = redact_error_line("ValueError: bad signature 9f8e7d6c5b4a39281706abcd", home="")
     assert shown == "ValueError: bad signature [REDACTED]"
+
+
+# ── Review round 3 (2026-11-01, probe_redact3.py): shapes that still leaked, and a linear pass ─────────────
+
+def _r3(line):
+    from scripts.lib.error_line_redaction import redact_error_line
+
+    return redact_error_line(line, home="/home/nobody")
+
+
+def _secret(*parts):
+    return "".join(parts)  # assembled at runtime so no literal token shape sits in the source
+
+
+ROUND3 = [
+    ("space-separated key", "RuntimeError: finnhub rejected key " + _secret("c1a2b3c4d5", "e6f7g8h9i0j1k2"),
+     "c1a2b3c4d5e6f7g8h9i0j1k2"),
+    ("single-case upper run", "APIError: forbidden for key " + _secret("PKA1B2C3D4", "E5F6G7H8I9"), "PKA1B2C3D4E5F6G7H8I9"),
+    ("single-case lower run", "RuntimeError: secret is all-lowercase " + _secret("k3j4h5g6f7d8s9a0", "q1w2e3r4t5y6u7i8"),
+     "k3j4h5g6f7d8s9a0q1w2e3r4t5y6u7i8"),
+    ("bare uuid", "RuntimeError: invalid auth " + _secret("fa4e1c2b-0000-1111", "-2222-abcdefabcdef"),
+     "fa4e1c2b-0000-1111-2222-abcdefabcdef"),
+    ("google ya29", "RuntimeError: google oauth " + _secret("ya29.a0AfB_byC1xYz", "-AbcDef12_GhIjKl34"), "a0AfB_byC1xYz"),
+    ("discord webhook tail",
+     "HTTPError: 401 for url: https://discord.com/api/webhooks/1234567890/" + _secret("abcDEF-ghi_JKL", "-mno_PQR"),
+     "abcDEF-ghi_JKL-mno_PQR"),
+    ("dotted token", "RuntimeError: refresh rejected: " + _secret("I0.b2F1dGgy.YmMuY", "-2Fwa_S1zY2h3YWI.AvBGW"),
+     "b2F1dGgy"),
+    ("mysql -p", "RuntimeError: mysql -u root -p " + _secret("hunter2", "hunter2") + " failed", "hunter2hunter2"),
+    ("mysql -pPW", "RuntimeError: mysqldump -uroot -p" + _secret("hunter2", "hunter2") + " db", "hunter2hunter2"),
+    ("pw quoted with space", 'RuntimeError: pw="' + _secret("a ", "b") + '" done', '"a b"'),
+    ("triple percent", "RuntimeError: triple %252570assword%25253D" + _secret("hunter", "2"), "hunter2"),
+]
+
+
+def test_round3_every_leaking_shape_is_redacted():
+    for name, line, secret in ROUND3:
+        shown = _r3(line)
+        assert secret not in shown and "[REDACTED]" in shown, (name, shown)
+        assert shown.split(":", 1)[0] == line.split(":", 1)[0], name
+
+
+def test_round3_discord_keeps_the_webhook_id():
+    assert _r3(ROUND3[5][1]).endswith("discord.com/api/webhooks/1234567890/[REDACTED]")
+
+
+def test_round3_quoted_value_keeps_both_quotes_and_the_rest():
+    assert _r3("RuntimeError: x pw=\"a b\" token='c d' done") == "RuntimeError: x pw=\"[REDACTED]\" token='[REDACTED]' done"
+
+
+def test_round3_stderr_path_redacts_the_new_shapes():
+    stderr = "Traceback\nRuntimeError: finnhub rejected key " + _secret("c1a2b3c4d5", "e6f7g8h9i0j1k2") + "\n"
+    shown = DD.cause({"stderr_tail": stderr})
+    assert "c1a2b3c4d5e6f7g8h9i0j1k2" not in shown and "[REDACTED]" in shown
+
+
+def test_round3_redaction_is_linear():
+    import time
+
+    from scripts.lib.error_line_redaction import redact_error_line
+
+    for big in ("RuntimeError: " + ("a:" * 30000),
+                "RuntimeError: " + ("aB3/" * 16000) + ("x=" * 4000) + ('"' + "a" * 10000),
+                "RuntimeError: " + ("password=" * 6000)):
+        t0 = time.perf_counter()
+        redact_error_line(big, home="")
+        assert time.perf_counter() - t0 < 0.5, len(big)
+
+
+def test_round3_ordinary_error_text_stays_readable():
+    for text in (
+        "AssertionError: ALPACA_MODE must be paper",
+        'File "/usr/lib/python3.14/json/decoder.py", line 363, in raw_decode',
+        "scripts.lib.n8n_dlq_disposition.cause failed at 2026-10-31T13:50:05.906418+00:00",
+        "ModuleNotFoundError: No module named 'scripts.lib.test_market_context_afterhours_close_20261031'",
+        "deploy refused: commit 9ac8a87 is not on main",
+        "the key is missing",
+        "password authentication failed for user trade_ai",
+        "KeyError: 'AAPL'",
+        'psycopg2.OperationalError: connection to server at "localhost" (127.0.0.1), port 5432 failed',
+        "urllib3.exceptions.MaxRetryError: HTTPSConnectionPool(host='api.example.com', port=443)",
+        "botocore.exceptions.NoCredentialsError: Unable to locate credentials",
+    ):
+        assert _r3(text) == text, text
+
+
+def test_round3_documented_choice_long_hex_shas_and_uuid_run_ids_are_redacted():
+    # Deliberate (module docstring): a 40-hex SHA looks exactly like a hex API key, and a UUID run id like a Finviz
+    # token, so both go; a short SHA stays.
+    assert _r3("ValueError: build 9ac8a87305156bbfcac6784a3f57b66436752b48 mismatch") == \
+        "ValueError: build [REDACTED] mismatch"
+    assert _r3("run_id=8f3c2a10-1b2c-4d5e-8f90-123456789abc") == "run_id=[REDACTED]"
+
+
+def test_round3_percent_decoding_is_capped():
+    from scripts.lib import error_line_redaction as E
+
+    deep = "x" + "%25" * 0 + "%" + "25" * 20 + "41"
+    assert E.MAX_PERCENT_DECODES <= 10
+    assert "%" in E._percent_decode(deep)  # stops after the cap instead of looping forever
+
+
+def test_round3_base64_with_plus_and_slash_is_redacted_whole():
+    # Every '+'/'/'-separated piece is short, so only the base64-run rule (not the alphanumeric one) sees it.
+    blob = _secret("aB3+dE5/gH7+", "jK9/mN1+pQ3x")
+    shown = _r3("RuntimeError: signature " + blob + " rejected")
+    assert shown == "RuntimeError: signature [REDACTED] rejected"
+
+
+def test_round3_short_space_separated_key_value_is_redacted():
+    # Under 20 characters, so only the "key <value>" rule sees it.
+    shown = _r3("RuntimeError: provider rejected key " + _secret("Abc123", "xyz9") + " today")
+    assert shown == "RuntimeError: provider rejected key [REDACTED] today"
+
+
+def test_round3_lowercase_ya29_token_is_redacted():
+    # No upper case, so the joined-token rule would not see it: only the ya29 shape does.
+    shown = _r3("RuntimeError: oauth " + _secret("ya29.a0afb_byc1", "xyz-abcdef12") + " expired")
+    assert shown == "RuntimeError: oauth [REDACTED] expired"
+
+
+def test_round3_short_joined_version_strings_stay_readable():
+    for text in ("release v2.3a-Beta1 failed", "pip install Django4.2b1 failed"):
+        assert _r3(text) == text, text
+
+
+def test_round3_quoted_value_runs_to_its_own_closing_quote():
+    assert _r3("RuntimeError: pw=\"it's x9 y\" end") == "RuntimeError: pw=\"[REDACTED]\" end"
