@@ -630,7 +630,8 @@ class CloudRefused(Exception):
     to count as a failed attempt on every job, so one run could walk the backlog to 'failed'.
 
     ``request_rejected`` is True only when every lane that actually ran rejected the REQUEST itself (HTTP 400/413/422
-    or a malformed body): the one refusal shape that can be this job's own prompt. Transport, auth, timeout, 5xx and
+    or a malformed body), and at least two distinct lanes did: the one refusal shape that can be this job's own
+    prompt. Transport, auth, timeout, 5xx and
     unavailable lanes are never request_rejected, so a pure outage can never strike a job."""
 
     def __init__(self, reason, request_rejected=False):
@@ -669,12 +670,19 @@ REQUEST_REJECTED_HTTP = frozenset({400, 413, 422})
 MALFORMED_BODY_TYPES = frozenset({"KeyError"})
 
 
+#: Distinct lanes that must independently reject a request before it can be this job's own fault. One lane answering
+#: 400 to everything while the others are down is that lane's outage (the llm_fallback "11/11" pattern, round 5).
+MIN_CORROBORATING_LANES = 2
+
+
 def request_rejected(exc):
-    """True when every lane that ran rejected the request itself (see CloudRefused). Structured, never substring."""
+    """True when every lane that ran rejected the request itself (see CloudRefused) AND at least
+    MIN_CORROBORATING_LANES distinct lanes did so. Structured, never substring."""
     attempts = getattr(exc, "attempts", None)
     if attempts is None:
         attempts = [{"ok": False, "error": f"{type(exc).__name__}: {exc}"}]
     ran = []
+    lanes = set()
     for a in attempts:
         err = str(a.get("error") or "")
         if a.get("ok") or err in ("", "unavailable"):
@@ -682,10 +690,13 @@ def request_rejected(exc):
         etype, code = _error_code(err)
         if etype == "HTTPError":
             first = code.split(" ", 1)[0]
-            ran.append(first.isdigit() and int(first) in REQUEST_REJECTED_HTTP)
+            rejected = first.isdigit() and int(first) in REQUEST_REJECTED_HTTP
         else:
-            ran.append(etype in MALFORMED_BODY_TYPES)
-    return bool(ran) and all(ran)
+            rejected = etype in MALFORMED_BODY_TYPES
+        ran.append(rejected)
+        if rejected:
+            lanes.add(str(a.get("lane") or ""))
+    return bool(ran) and all(ran) and len(lanes) >= MIN_CORROBORATING_LANES
 
 
 def classify_cloud_failure(exc):

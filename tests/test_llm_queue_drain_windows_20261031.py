@@ -606,8 +606,23 @@ def test_long_transport_outage_spends_no_attempts(monkeypatch, _isolated_breaker
     "attempts,expected",
     [
         (_HTTP400, True),
-        ((_a("grok", "HTTPError: 413 Payload Too Large"), _a("chatgpt", "unavailable")), True),
-        ((_a("grok", "KeyError: 'choices'"),), True),
+        ((_a("grok", "HTTPError: 413 Payload Too Large"), _a("chatgpt", "HTTPError: 422 Unprocessable")), True),
+        ((_a("grok", "KeyError: 'choices'"), _a("chatgpt", "HTTPError: 400 Bad Request")), True),
+        # round 5: one lane rejecting while the others are down is that lane's outage, not this prompt
+        ((_a("grok", "HTTPError: 413 Payload Too Large"), _a("chatgpt", "unavailable")), False),
+        ((_a("grok", "unavailable"), _a("chatgpt", "HTTPError: 400 Client Error: Bad Request")), False),
+        ((_a("grok", "KeyError: 'choices'"),), False),
+        ((_a("grok", "HTTPError: 400 Bad Request"), _a("grok", "HTTPError: 400 Bad Request")), False),
+        # two lanes agreeing on a non-request status is still not this prompt's fault
+        ((_a("grok", "HTTPError: 401 Unauthorized"), _a("chatgpt", "HTTPError: 401 Unauthorized")), False),
+        ((_a("grok", "HTTPError: 429 Too Many Requests"), _a("chatgpt", "HTTPError: 429 Too Many")), False),
+        ((_a("grok", "HTTPError: 502 Bad Gateway"), _a("chatgpt", "HTTPError: 503 Unavailable")), False),
+        ((_a("grok", "ReadTimeout: read timed out"), _a("chatgpt", "ReadTimeout: read timed out")), False),
+        # every lane that ran must reject; an unavailable lane neither rejects nor blocks
+        ((_a("grok", "HTTPError: 400 Bad Request"), _a("chatgpt", "HTTPError: 400 Bad Request"),
+          _a("deepseek-flash", "ConnectionError: refused")), False),
+        ((_a("grok", "HTTPError: 400 Bad Request"), _a("chatgpt", "HTTPError: 400 Bad Request"),
+          _a("deepseek-flash", "unavailable")), True),
         ((_a("grok", "HTTPError: 400 Bad Request"), _a("chatgpt", "ConnectionError: refused")), False),
         ((_a("grok", "HTTPError: 401 Unauthorized"),), False),
         ((_a("grok", "HTTPError: 429 Too Many Requests"),), False),
@@ -681,4 +696,19 @@ def test_one_job_queue_in_a_transport_outage_is_never_struck(monkeypatch, _isola
     for _ in range(int(POLICY["head_strike_limit"]) + 2):
         monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*_CONN_REFUSED))
         spent += len(_counted_ids(_run(monkeypatch, ["--route", "cloud", "--limit", "5"], rows=[_row(5)])))
+    assert spent == 0 and w.load_breaker(_isolated_breaker)["strikes"] == {}
+
+
+
+def test_long_systemic_single_lane_400_outage_spends_no_attempts(monkeypatch, _isolated_breaker):
+    """Grok unavailable + ChatGPT answering 400 to every request for 12 h (reviewer round 5): no attempts spent."""
+    import lib.llm_fallback as lf
+
+    systemic = (_a("grok", "unavailable", skipped="reported unavailable"),
+                _a("chatgpt", "HTTPError: 400 Client Error: Bad Request for url: http://127.0.0.1:10531/v1/chat"))
+    spent = 0
+    for _ in range(24):
+        monkeypatch.setattr(lf, "generate_with_fallback", _raise_all_failed(*systemic))
+        spent += len(_counted_ids(_run(monkeypatch, ["--route", "cloud", "--limit", "5"],
+                                       rows=[_row(1), _row(2), _row(3)])))
     assert spent == 0 and w.load_breaker(_isolated_breaker)["strikes"] == {}
