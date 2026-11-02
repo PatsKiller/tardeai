@@ -214,11 +214,16 @@ def schwab_rows(payload: Any, now: datetime, cfg: dict[str, Any],
     ext_cfg = ext_cfg or mqe.load_config()
     s = cfg.get("schwab") or {}
     span = timedelta(milliseconds=float(s.get("point_quote_span_ms", 1)))
-    roots = {str(x).strip().upper() for x in s.get("futures") or []}
+    # Configured roots keyed by a spelling-insensitive form: '/ES' and 'ESZ26' must land on the SAME stored name, the
+    # one market_risk_policy.yaml futures_proxies reads, or a provider spelling change silently hides futures again.
+    roots = {str(x).strip().upper().lstrip("/"): str(x).strip().upper() for x in s.get("futures") or []}
+    # 'is this a futures print' is the store's own config (the list ovn.label uses), never a second hardcoded one.
+    future_assets = {str(x).strip().upper()
+                     for x in (ext_cfg.get("overnight") or {}).get("futures_open_asset_types") or _FUTURE_ASSETS}
     rows: list[dict] = []
     skipped: list[dict] = []
     for sym, blk in (payload.items() if isinstance(payload, dict) else []):
-        sym_u = str(sym).upper()
+        sym_u = str(sym).strip().upper()
         if sym_u == "ERRORS":
             # Schwab's invalid-symbol report, never a quote for a symbol called "errors" (live 2026-11-01: BRK.B)
             skipped.append({"symbol": "errors", "reason": "provider_errors"})
@@ -226,38 +231,50 @@ def schwab_rows(payload: Any, now: datetime, cfg: dict[str, Any],
         if not isinstance(blk, dict):
             skipped.append({"symbol": sym_u, "reason": "not_a_quote"})
             continue
-        if not isinstance(blk.get("quote"), dict):
-            err = blk.get("errors")
-            if err not in (None, {}, []):
+        err = blk.get("errors")  # truthiness, not ==: [], {} and None all mean "no report"
+        q = blk.get("quote") if isinstance(blk.get("quote"), dict) else None
+        if not q:
+            if err:
                 skipped.append({"symbol": sym_u, "reason": "provider_error", "detail": err})
             else:
                 skipped.append({"symbol": sym_u, "reason": "not_a_quote"})
             continue
-        q = blk["quote"]
         ext = blk.get("extended") if isinstance(blk.get("extended"), dict) else {}
         reg = blk.get("regular") if isinstance(blk.get("regular"), dict) else {}
         asset = str(blk.get("assetMainType", ""))
         contract = None
-        if asset.upper() in _FUTURE_ASSETS or sym_u.startswith("/"):
+        if asset.upper() in future_assets or sym_u.startswith("/"):
             root = contract_root(sym_u)
             if root and root != sym_u:
-                if root not in roots:
+                configured = roots.get(root.lstrip("/"))
+                if not configured:
                     skipped.append({"symbol": sym_u, "reason": "unmapped_contract",
-                                    "detail": f"contract root {root} is not in schwab.futures {sorted(roots)}"})
+                                    "detail": f"contract root {root} is not in schwab.futures {sorted(roots.values())}"})
                     continue
-                sym_u, contract = root, sym_u  # store the root the engine names; keep the contract as evidence
+                sym_u, contract = configured, sym_u  # store the root the engine names; keep the contract as evidence
+
+        def skip(reason: str, **extra: Any) -> None:
+            """A refused print, named by the root it would have been stored under, with its contract when mapped."""
+            entry: dict[str, Any] = {"symbol": sym_u, "reason": reason, **extra}
+            if contract:
+                entry["contract"] = contract
+            skipped.append(entry)
+
         price, ts = _num(ext.get("lastPrice")), parse_ts(ext.get("tradeTime"))
         if price is None or ts is None:
             price, ts = _num(q.get("lastPrice")), parse_ts(q.get("tradeTime"))
         if price is None or ts is None:
-            skipped.append({"symbol": sym_u, "reason": "no_trade_price_or_time"})
+            if err:
+                skip("provider_error", detail=err)  # an empty quote block whose cause Schwab did state
+            else:
+                skip("no_trade_price_or_time")
             continue
         age = (now - ts).total_seconds() / 60.0
         if age > float(s.get("max_trade_age_minutes", 30)):
-            skipped.append({"symbol": sym_u, "reason": "stale_trade", "as_of": ts.isoformat(), "age_minutes": round(age, 1)})
+            skip("stale_trade", as_of=ts.isoformat(), age_minutes=round(age, 1))
             continue
         if age < -5:
-            skipped.append({"symbol": sym_u, "reason": "future_timestamp", "as_of": ts.isoformat()})
+            skip("future_timestamp", as_of=ts.isoformat())
             continue
         et = ts.astimezone(ET)
         sess = mqe.session_of(et, ext_cfg)
@@ -267,9 +284,9 @@ def schwab_rows(payload: Any, now: datetime, cfg: dict[str, Any],
         else:
             night = ovn.label(ts, ext_cfg, asset_type=asset)
             if night is None:
-                skipped.append({"symbol": sym_u, "reason": "session_not_in_store_contract", "as_of": ts.isoformat(),
-                                "detail": "market_quotes_extended stores premarket/afterhours of NYSE trading days, "
-                                          "overnight 20:00-04:00 ET Sun-Thu nights and the Sunday 18:00 futures open"})
+                skip("session_not_in_store_contract", as_of=ts.isoformat(),
+                     detail="market_quotes_extended stores premarket/afterhours of NYSE trading days, "
+                            "overnight 20:00-04:00 ET Sun-Thu nights and the Sunday 18:00 futures open")
                 continue
             sess, tdate = night
             ref_date = ovn.reference_date(tdate)
@@ -288,8 +305,7 @@ def schwab_rows(payload: Any, now: datetime, cfg: dict[str, Any],
                        reference_basis=str((s.get("dated_reference_basis") or {}).get("level_only") or "none_level_only"),
                        level_only_reason=why_not)
         else:
-            skipped.append({"symbol": sym_u, "reason": f"no_dated_reference_for_{sess}", "as_of": ts.isoformat(),
-                            "detail": why_not})
+            skip(f"no_dated_reference_for_{sess}", as_of=ts.isoformat(), detail=why_not)
             continue
         rows.append(row)
     return rows, skipped

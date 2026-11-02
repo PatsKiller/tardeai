@@ -206,6 +206,40 @@ def test_mapping_only_applies_to_configured_futures_and_never_mangles_equities(c
     assert [(s["symbol"], s["reason"]) for s in skipped] == [("/GCZ26", "unmapped_contract")]
 
 
+@pytest.mark.parametrize("sym,root", [
+    ("/ESZ26", "/ES"), ("/NQZ26", "/NQ"), ("/RTYZ26", "/RTY"), ("/YMZ26", "/YM"), ("/6EZ26", "/6E"),
+    ("/ES", None), ("/NQ", None), ("$SPX", None), ("QQQ", None), ("BRK.B", None),
+])
+def test_contract_root(sym, root):
+    """The two roots that end in a month letter (/YM, /RTY) and a digit-leading root (/6E) are the ambiguous ones."""
+    assert oq.contract_root(sym) == root
+
+
+def test_a_slashless_contract_still_maps_to_the_configured_root(cfg):
+    """'ESZ26' and '/ESZ26' are the same root: a provider spelling change must not hide futures again."""
+    now = _t("2026-11-02T02:30:00-05:00")
+    p = {"ESZ26": {"assetMainType": "FUTURE", "quote": {"lastPrice": 6700.0,
+                                                        "tradeTime": _ms("2026-11-02T02:28:00-05:00")}}}
+    rows, skipped = oq.schwab_rows(p, now, cfg)
+    assert skipped == [] and rows[0]["symbol"] == "/ES" and rows[0]["contract"] == "ESZ26"
+
+
+def test_a_skipped_contract_names_the_root_and_keeps_the_contract(cfg):
+    """A mapped contract that is not stored must still say which contract stood behind the root."""
+    now = _t("2026-11-02T02:30:00-05:00")
+    p = {"/RTYZ26": {"assetMainType": "FUTURE", "quote": {"lastPrice": 2829.7,
+                                                          "tradeTime": _ms("2026-11-02T01:00:00-05:00")}}}
+    rows, skipped = oq.schwab_rows(p, now, cfg)
+    assert rows == [] and skipped == [{"symbol": "/RTY", "reason": "stale_trade", "contract": "/RTYZ26",
+                                       "as_of": "2026-11-02T06:00:00+00:00", "age_minutes": 90.0}]
+
+
+def test_a_block_with_errors_and_an_empty_quote_reports_the_provider_error(cfg):
+    p = {"BADX": {"errors": ["not entitled"], "quote": {}}}
+    rows, skipped = oq.schwab_rows(p, _t("2026-11-02T02:30:00-05:00"), cfg)
+    assert rows == [] and skipped == [{"symbol": "BADX", "reason": "provider_error", "detail": ["not entitled"]}]
+
+
 def test_engine_futures_proxies_are_roots_this_lane_requests(cfg):
     import yaml
 

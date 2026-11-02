@@ -70,6 +70,7 @@ def live_fetch(symbols: list[str], cfg: dict) -> dict:
     if not token:
         return {"_status": "no_token", "_detail": "token manager returned no access token (fail closed)"}
     out: dict = {}
+    provider_errors: list = []  # per-batch invalid-symbol reports: a later batch must never erase an earlier one
     size = int((cfg.get("schwab") or {}).get("batch_size", 100))
     batches, failed = 0, []
     for i in range(0, len(symbols), size):
@@ -91,7 +92,12 @@ def live_fetch(symbols: list[str], cfg: dict) -> dict:
         if not isinstance(body, dict):
             failed.append({"batch": i // size, "http_status": r.status_code, "error": "body is not an object"})
             continue
+        errs = body.pop("errors", None) if "errors" in body else None
         out.update(body)
+        if errs:
+            provider_errors.append(errs)
+    if provider_errors:  # the receipt reports the union, in batch order; one batch keeps the provider's own shape
+        out["errors"] = provider_errors[0] if len(provider_errors) == 1 else provider_errors
     # review of #2416 F5: a run where every batch failed is an error, never "ok with 0 rows"
     if batches and len(failed) == batches:
         return {"_status": "http_error", "_detail": f"all {batches} Schwab quote batch(es) failed", "_failed": failed}
