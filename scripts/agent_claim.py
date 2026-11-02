@@ -1024,6 +1024,27 @@ def cmd_list(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ask(a: argparse.Namespace) -> int:
+    board = _board(a)
+    session = _session(a)
+    branch = B.current_branch()
+    try:
+        rows = board.conflicts(a.paths, session=session, branch=branch)
+    except (B.ClaimError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    try:
+        from lib import claim_ask as _CA
+    except ImportError:
+        from scripts.lib import claim_ask as _CA
+    out = _CA.plan_ask(rows, now_iso=B.iso(board.now()), stale_hours=a.stale_hours, message=a.message, paths=a.paths)
+    if a.json:
+        print(json.dumps(out, indent=2, sort_keys=True))
+    else:
+        print(_CA.render(out))
+    return 0
+
+
 def cmd_check(a: argparse.Namespace) -> int:
     board = _board(a)
     session = _session(a)
@@ -1124,6 +1145,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--gh-call-timeout", type=float, default=B.LC.GH_TIMEOUT_S, help="seconds per GitHub GET")
     sub = p.add_subparsers(dest="cmd", required=True)
+
+    c = sub.add_parser("ask")
+    c.add_argument("paths", nargs="+", help="the paths you want to work on")
+    c.add_argument("--message", default=None, help="the message to send the holder")
+    c.add_argument("--stale-hours", type=float, default=2.0, help="heartbeat age that makes a claim stale")
+    c.add_argument("--json", action="store_true")
+    c.set_defaults(fn=cmd_ask)
 
     c = sub.add_parser("claim")
     c.add_argument("--task", default=None)
