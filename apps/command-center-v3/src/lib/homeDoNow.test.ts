@@ -203,6 +203,8 @@ check('present missing account membership is not supplied by Overview', accountR
 const missingPerfRows = accountRows(null, refusedOverview)
 check('absent performance fallback names its actual Overview source', missingPerfRows[0].value === 1100 && missingPerfRows[0].tip.includes('/api/v2/overview (performance unavailable') && !missingPerfRows[0].tip.includes('/api/v2/portfolio/performance'))
 check('absent performance honors Overview economic refusal even with mixed numeric fields', missingPerfRows.every(r => r.d1 === null))
+check('legacy performance lacking economic proof is UNKNOWN during mixed refresh', economicDayEvidence({ current_value: 150, periods: { '1D': { change: 7 } } }).unknown && accountRows({ current_value: 150, periods: { '1D': { change: 7 } } }, refusedOverview)[0].tip.includes('UNKNOWN'))
+check('unknown status does not become known from complete=true alone', economicDayEvidence({ today_pnl: { complete: true } }).unknown)
 check('status refusal does not mutate source evidence/null census', JSON.stringify({ refusedPerf, refusedOverview }) === beforeRefused && refusedDay.funded_account_count === null && refusedDay.represented_account_count === null)
 
 console.log(`homeDoNow: ${pass} passed, ${fail} failed`)

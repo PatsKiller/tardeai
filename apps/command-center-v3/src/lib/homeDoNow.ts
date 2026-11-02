@@ -375,7 +375,7 @@ function periodChange(d: any): { ch: number | null; approx: boolean; note: strin
 /** Economic-day refusal is metadata, never a replacement amount or a new financial definition. */
 export function economicDayEvidence(payload: any): { unknown: boolean; label: string; reason: string; evidence: string } {
   const pnl = payload?.today_pnl
-  const unknown = pnl?.status === 'UNKNOWN' || pnl?.complete === false
+  const unknown = payload != null && (pnl?.status !== 'KNOWN' || pnl?.complete !== true)
   const reason = unknown ? [pnl?.gap?.reason ?? pnl?.coverage_reason ?? 'Economic day proof unavailable', pnl?.gap?.ticket].filter(Boolean).join(' · ') : ''
   return { unknown, label: unknown ? 'Economic day UNKNOWN' : '', reason,
     evidence: unknown ? '1D retains original source values, unverified as economic day P&L.' : '' }
