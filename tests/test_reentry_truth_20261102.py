@@ -218,8 +218,11 @@ def test_a_sell_stop_is_matched_one_sidedly():
     assert bp._stop_basis("AAA", acct, 72.00, 400.0, rows, 3.0, 0.5) == "manual sell"
     # a stop quantity that does not cover the sale is not this sale
     assert bp._stop_basis("AAA", acct, 70.17, 500.0, rows, 3.0) == "manual sell"
+    # AXTI: a gap-down open 3.38% below the stop, qty 400, is a stop fill at the 5.0% bound
+    axti = [("AAA", "Schwab-1", 82.34, 400.0)]
+    assert bp._stop_basis("AAA", acct, 79.561, 400.0, axti, 5.0, 0.5) == "stop (matched by price)"
     # further below the stop than the configured slippage is a manual sale
-    assert bp._stop_basis("AAA", acct, 60.00, 400.0, rows, 3.0) == "manual sell"
+    assert bp._stop_basis("AAA", acct, 60.00, 400.0, rows, 5.0) == "manual sell"
     # another account never matches
     assert bp._stop_basis("AAA", bp._acct_key("Other"), 70.17, 400.0, rows, 3.0) == "manual sell"
 
