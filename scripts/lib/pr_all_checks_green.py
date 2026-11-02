@@ -102,8 +102,8 @@ def evaluate(check_runs: CheckRuns, *, allow_empty: bool = False) -> dict[str, A
         label = _label(name, suite)
         run = latest[key]
         # GitHub omits `status` on some payloads; an unknown status is pending, never completed.
-        status = str(run.get("status") or "queued")
-        conclusion = str(run.get("conclusion") or "")
+        status = str(run.get("status") or "queued").lower()
+        conclusion = str(run.get("conclusion") or "").lower()
         if status != "completed":
             failing.append(f"{label}: {status}")
         elif conclusion == SKIPPED_CONCLUSION:
@@ -144,9 +144,11 @@ def normalize_rollup(rollup: Iterable[Mapping[str, Any]] | None) -> list[dict[st
             continue
         state = str(row.get("state") or "").upper()
         status = str(row.get("status") or "").lower()
-        if not status:
-            status = "completed" if state in ("SUCCESS", "FAILURE", "ERROR") else "queued"
         conclusion = str(row.get("conclusion") or "").lower() or (state.lower() if state else "")
+        if not status:
+            # A rollup row that carries a conclusion IS a completed run; StatusContext rows carry only
+            # `state`. Treating a conclusion-only CheckRun as pending made every fixture look red.
+            status = "completed" if conclusion else "queued"
         run = {"name": name, "status": status, "conclusion": conclusion,
                "started_at": str(row.get("startedAt") or row.get("started_at") or "")}
         workflow = row.get("workflowName") or row.get("workflow")
