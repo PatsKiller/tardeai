@@ -1109,3 +1109,44 @@ def test_orphan_worktree_pointer_is_plain_files(world):
     _age_tree(scratch)
     result = DH.standing_plan(rules, NOW, evidence())
     assert str(scratch) in {r["path"] for r in result["items"]}
+
+
+# ── apply-time evidence recheck (2026-11-02) ───────────────────────────────────────────────────────
+
+
+def _opaque_evidence():
+    doc = evidence()
+    set_source(doc, "processes", [{"pid": "1234", "opaque": True, "uid": 0, "own_uid": False, "comm": "hidden"}])
+    return doc
+
+
+def test_recheck_retry_survives_one_transient_opaque_process(world, monkeypatch):
+    """One opaque capture, gone on the next attempt: the pass must continue, not refuse."""
+    path, manifest, doc, calls = planned(world, monkeypatch)
+    assert manifest["items"], "fixture must plan at least one removal"
+    sequence = [_opaque_evidence()]
+
+    def capture(*_a, **_k):
+        return sequence.pop(0) if sequence else evidence()
+
+    monkeypatch.setattr(DH, "collect_standing_evidence", capture)
+    monkeypatch.setattr(DH.time, "sleep", lambda _s: None)
+
+    report = do_apply(path, world[1], doc)
+
+    assert report["refused"] is None, report.get("refusal_detail")
+    assert report["removed"], "the pass continues after a transient opaque capture"
+    assert calls, "the planned items were removed"
+
+
+def test_recheck_refuses_and_names_a_persistent_opaque_process(world, monkeypatch):
+    """When the opaque process outlasts the retries the apply still refuses — and says which check."""
+    path, manifest, doc, calls = planned(world, monkeypatch)
+    monkeypatch.setattr(DH, "collect_standing_evidence", lambda *_a, **_k: _opaque_evidence())
+    monkeypatch.setattr(DH.time, "sleep", lambda _s: None)
+
+    report = do_apply(path, world[1], doc)
+
+    assert report["refused"] == "evidence_recheck_unavailable"
+    assert report["refusal_detail"] == "evidence_opaque_processes", "the receipt must name the refusing check"
+    assert calls == [], "an opaque capture never authorizes a removal"
