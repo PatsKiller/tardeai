@@ -1,5 +1,5 @@
 import {
-  doNowFrom, homeWithCurrentTruth, visibleItems, routerPath, positionsFreshness, moversBars, accountRows, cashPct, inMarketHours, money, pct, ageLabel, briefingSummary, parseObservedTime,
+  doNowFrom, homeWithCurrentTruth, visibleItems, routerPath, positionsFreshness, moversBars, accountRows, cashPct, inMarketHours, money, pct, ageLabel, briefingSummary, briefingProvenance, parseObservedTime,
 } from './homeDoNow.ts'
 declare const process: { exit(code?: number): never }
 let pass = 0, fail = 0
@@ -71,6 +71,28 @@ check('briefing plain string kept', briefingSummary('plain text') === 'plain tex
 check('briefing JSON string parsed', briefingSummary('{"content":"from json"}') === 'from json')
 check('briefing truncated with ellipsis', briefingSummary('a'.repeat(200)).length === 111 && briefingSummary('a'.repeat(200)).endsWith('…'))
 check('briefing empty/null → empty', briefingSummary(null) === '' && briefingSummary({}) === '' && briefingSummary('  ') === '')
+// Saved briefing provenance is section metadata, never the current command/portfolio clock.
+const briefNow = Date.parse('2026-11-02T20:00:00Z')
+const savedSection = { content: 'Synthetic saved analysis remains unchanged.', generated_at: '2026-10-30T18:00:00Z' }
+const savedClock = briefingProvenance(savedSection, briefNow)
+check('saved briefing has its own source clock', savedClock.state === 'dated' && savedClock.generatedAt === savedSection.generated_at)
+check('saved briefing displays actual generation date and ET', savedClock.label.includes('Oct 30, 2026 14:00 ET'))
+check('old briefing reports age without inventing a freshness policy', savedClock.label.includes('3 d ago') && !savedClock.label.includes('fresh') && !savedClock.label.includes('STALE'))
+const sqlClock = briefingProvenance({ generated_at: '2026-11-02 19:30:00+00:00' }, briefNow)
+check('SQL TIMESTAMPTZ string is dated', sqlClock.state === 'dated' && sqlClock.label.includes('Nov 2, 2026 14:30 ET') && sqlClock.label.includes('30 min ago'))
+check('offsets normalize to the same actual generation time', briefingProvenance({ generated_at: '2026-11-02T14:30:00-05:00' }, briefNow).label === sqlClock.label)
+check('actual midnight generation is a clock, not an invented date-only observation', briefingProvenance({ generated_at: '2026-11-02T00:00:00Z' }, briefNow).label.includes('Nov 1, 2026 19:00 ET'))
+const futureClock = briefingProvenance({ generated_at: '2026-11-02T20:00:02Z' }, briefNow)
+check('future generation is explicit, never just-now age', futureClock.state === 'future' && futureClock.label.includes('in the future') && !futureClock.label.includes('ago'))
+check('missing section clock is unknown', briefingProvenance(null, briefNow).state === 'unknown' && briefingProvenance({ content: 'Synthetic prose' }, briefNow).generatedAt === null)
+check('legacy prose has no invented clock', briefingProvenance('Synthetic prose', briefNow).state === 'unknown')
+check('JSON-looking prose is not parsed for a clock', briefingProvenance('{"generated_at":"2026-11-02T19:30:00Z"}', briefNow).state === 'unknown')
+check('unzoned generation stays unknown', briefingProvenance({ generated_at: '2026-11-02 19:30:00' }, briefNow).state === 'unknown')
+check('date-only generation stays unknown', briefingProvenance({ generated_at: '2026-11-02' }, briefNow).state === 'unknown')
+check('invalid generation dates are not normalized into invented dates', briefingProvenance({ generated_at: '2026-02-30T19:30:00Z' }, briefNow).state === 'unknown')
+check('unreadable and numeric generation stamps stay unknown', briefingProvenance({ generated_at: 'soon' }, briefNow).state === 'unknown' && briefingProvenance({ generated_at: briefNow }, briefNow).state === 'unknown')
+check('unknown comparison clock does not manufacture an age', briefingProvenance(savedSection, NaN).label.includes('current clock unavailable') && !briefingProvenance(savedSection, NaN).label.includes('ago'))
+check('provenance never changes saved prose', savedSection.content === 'Synthetic saved analysis remains unchanged.' && briefingSummary(savedSection) === savedSection.content)
 // "YYYY-MM-DD HH:MM:SS ET" observation stamps (server format) — Date.parse alone gives NaN (site validation 2026-10-22)
 check('ET stamp parsed (EDT)', parseObservedTime('2026-10-22 16:45:03 ET') === Date.parse('2026-10-22T20:45:03Z'))
 check('ET stamp parsed (EST)', parseObservedTime('2026-12-01 09:30 ET') === Date.parse('2026-12-01T14:30:00Z'))

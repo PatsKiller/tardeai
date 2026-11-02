@@ -16,7 +16,7 @@ import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars, type Tone } from '../lib/designTokens'
 import {
-  doNowFrom, homeWithCurrentTruth, positionsFreshness, moversBars, accountRows, cashPct, money, pct, ageLabel, briefingSummary,
+  doNowFrom, homeWithCurrentTruth, positionsFreshness, moversBars, accountRows, cashPct, money, pct, ageLabel, briefingSummary, briefingProvenance,
 } from '../lib/homeDoNow'
 import { platformHealthFrom, countsLabel } from '../lib/platformHealth'
 import { renderSetupCounts } from '../lib/setupRunSummary'
@@ -169,8 +169,8 @@ export default function HomeDoNow() {
   const notFresh: string[] = overview?.observation?.not_fresh_datasets ?? []
 
   const pulse: { k: string; v: string; tone: Tone; tip: string; to: string }[] = [
-    { k: 'Platform', v: ph.state === 'LOADING' ? '…' : ph.state === 'UNAVAILABLE' ? 'UNAVAILABLE' : countsLabel(ph.counts), to: '/system?tab=Platform',
-      tone: ph.state === 'OK' ? 'success' : ph.state === 'CRIT' ? 'danger' : 'warning', tip: `/api/v2/system/platform-health · ${ph.state}${ph.reason ? ` · ${ph.reason}` : ''}` },
+    { k: 'Platform component checks', v: ph.state === 'LOADING' ? '…' : ph.state === 'UNAVAILABLE' ? 'UNAVAILABLE' : countsLabel(ph.counts), to: '/system?tab=Platform',
+      tone: ph.state === 'OK' ? 'success' : ph.state === 'CRIT' ? 'danger' : 'warning', tip: `/api/v2/system/platform-health counts component probes; header Health counts findings from /api/v2/health · ${ph.state}${ph.reason ? ` · ${ph.reason}` : ''}` },
     { k: 'Latest scan', v: tradeAi ? `${runLabel(tradeAi.run_label, tradeAi.run_date)} · ${setup.counts}` : '—', to: '/trading',
       tone: scanStale || setup.degraded || setup.healthDegraded ? 'warning' : 'success', tip: `/api/v2/trade-ai/summary · ${setup.population || 'population unknown'}${setup.runHealthStatus ? ` · ${setup.runHealthStatus}` : ''}` },
     { k: 'Data health', v: overview ? `${overview.pipeline_status ?? 'unknown'}${notFresh.length ? ` · ${notFresh.length} not fresh` : ''}` : '—', to: '/system?tab=Data%20Sources',
@@ -184,7 +184,11 @@ export default function HomeDoNow() {
 
   const llm = cmd.llm_intelligence
   const briefText = briefingSummary(llm?.portfolio_risk)
-  const briefSummary = briefText || (command ? 'no briefing in /api/v2/command' : 'loading…')
+  const briefClock = briefingProvenance(llm?.portfolio_risk, now)
+  const briefSummary = briefText ? <span data-testid="home-briefing-summary">
+    <span style={{ display: 'block', color: briefClock.state === 'dated' ? TOKENS.text[2] : TOKENS.warning }}>Saved portfolio risk analysis · <time data-testid="home-briefing-clock" dateTime={briefClock.generatedAt?.replace(' ', 'T')} title={briefClock.generatedAt ?? undefined}>{briefClock.label}</time> · historical snapshot</span>
+    <span>{briefText}</span>
+  </span> : command ? 'No saved portfolio risk briefing in this response.' : 'Loading saved briefing…'
   const agentsN = (cmd.agent_health ?? []).length
   const newsN = (cmd.top_news ?? []).length
   const stops = cio?.stops
@@ -359,7 +363,8 @@ export default function HomeDoNow() {
         </section>
 
         <section style={card} data-testid="home-pulse" aria-label="System pulse">
-          <CardHead title="System pulse" to="/health" linkText="Health" />
+          <CardHead title="System pulse" to="/health" linkText="Health findings" />
+          <p data-testid="home-health-population-scope" style={{ margin: 0, color: TOKENS.text[2], fontSize: TYPE.sm }}>Platform counts component checks. Header Health counts critical and warning findings; these are different populations.</p>
           {pulse.map(p => (
             <Link key={p.k} to={p.to} title={p.tip} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: TYPE.base, textDecoration: 'none' }}>
               <span style={{ color: TOKENS.text[1] }}>{p.k}</span>
@@ -377,7 +382,16 @@ export default function HomeDoNow() {
       {/* Collapsed drawers — bodies mount (and poll) only when open */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <Drawer id="briefing" title="AI briefing" summary={briefSummary}>
-          {() => (llm || cmd.executive_brief) ? <>{llm && <AiIntelligenceBriefing llm={llm} />}{cmd.executive_brief && <ExecutiveBriefCard brief={cmd.executive_brief} />}</>
+          {() => (llm || cmd.executive_brief) ? <>
+            <p data-testid="home-briefing-historical-note" style={{ margin: 0, color: TOKENS.text[2] }}>Saved analysis describes its generation snapshot. Its figures and text do not update when live totals change.</p>
+            {llm && <div data-testid="home-briefing-section-clocks" style={{ display: 'grid', gap: 6 }}>
+              {([['Portfolio risk', llm.portfolio_risk], ['Morning synthesis', llm.morning_synthesis]] as const).filter(([, section]) => section != null).map(([name, section]) => {
+                const clock = briefingProvenance(section, now)
+                return <div key={name} style={{ color: clock.state === 'dated' ? TOKENS.text[2] : TOKENS.warning }}>{name} · <time dateTime={clock.generatedAt?.replace(' ', 'T')} title={clock.generatedAt ?? undefined}>{clock.label}</time></div>
+              })}
+              <AiIntelligenceBriefing llm={llm} />
+            </div>}
+            {cmd.executive_brief && <ExecutiveBriefCard brief={cmd.executive_brief} />}</>
             : <span style={{ color: TOKENS.text[3] }}>No briefing in /api/v2/command yet.</span>}
         </Drawer>
         <Drawer id="deploys" title="Deploys" summary={dp.line}
