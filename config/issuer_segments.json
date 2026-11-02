@@ -5,7 +5,11 @@
       "name": "issuer name",
       "status": "PROPOSED | APPROVED",
       "segments": [
-        {"segment": "segment name", "group": "sector or theme key from config/market_risk_policy.yaml sectors (e.g. industrials, comm, ai_basket)", "weight": 0.0}
+        {
+          "segment": "segment name",
+          "group": "sector or theme key from config/market_risk_policy.yaml sectors (e.g. industrials, comm, ai_basket)",
+          "weight": 0.0
+        }
       ],
       "source": "filing, section and period the weights come from",
       "as_of": "YYYY-MM-DD",
@@ -14,5 +18,58 @@
     },
     "_rules": "Sector-kind weights sum to 1.0 within 0.01; theme weights (ai_basket, semis) are extra and overlap a sector. Stale after issuer_segments.stale_after_days in config/market_risk_policy.yaml."
   },
-  "issuers": {}
+  "issuers": {
+    "SPCX": {
+      "name": "Space Exploration Technologies Corp. (SpaceX), Class A common stock, Nasdaq",
+      "status": "APPROVED",
+      "segments": [
+        {
+          "segment": "Space (Launch Services $1,130M + Launch & Development $637M; Falcon/Dragon/Starship launch, NASA and national-security launch work)",
+          "group": "industrials",
+          "weight": 0.1212,
+          "basis": "Q3 2026 revenue $1,767M of $14,575M",
+          "source": "SpaceX 10-Q Q3 2026, Note 3 revenue by type and segment + Note 18 Segments; filed 2026-10-22; https://www.sec.gov/Archives/edgar/data/1181412/000162828026066880/spcx-20260930.htm",
+          "as_of": "2026-09-30"
+        },
+        {
+          "segment": "Connectivity (Starlink: Consumer $3,121M + Enterprise & Government incl. Starlink Mobile $2,127M)",
+          "group": "comm",
+          "weight": 0.3601,
+          "basis": "Q3 2026 revenue $5,248M of $14,575M",
+          "source": "SpaceX 10-Q Q3 2026, Note 3 + Note 18; filed 2026-10-22; https://www.sec.gov/Archives/edgar/data/1181412/000162828026066880/spcx-20260930.htm",
+          "as_of": "2026-09-30"
+        },
+        {
+          "segment": "SI segment - Advertising (X platform)",
+          "group": "comm",
+          "weight": 0.0369,
+          "basis": "Q3 2026 revenue $538M of $14,575M",
+          "source": "SpaceX 10-Q Q3 2026, Note 3 revenue by type and segment; filed 2026-10-22; https://www.sec.gov/Archives/edgar/data/1181412/000162828026066880/spcx-20260930.htm",
+          "as_of": "2026-09-30"
+        },
+        {
+          "segment": "SI segment - SI Solutions & Infrastructure (cloud/reserved GPU compute contracts, Grok, Cursor, X subscriptions, data licensing, Grok API)",
+          "group": "tech",
+          "weight": 0.4818,
+          "basis": "Q3 2026 revenue $7,022M of $14,575M",
+          "source": "SpaceX 10-Q Q3 2026, Note 3 revenue by type and segment; filed 2026-10-22; https://www.sec.gov/Archives/edgar/data/1181412/000162828026066880/spcx-20260930.htm",
+          "as_of": "2026-09-30"
+        },
+        {
+          "segment": "AI theme overlay at the capex share (operator option 'A + capex AI'): raises only the ai_basket theme; overlaps tech and is never summed with the sector weights",
+          "group": "ai_basket",
+          "weight": 0.839,
+          "basis": "capital-expenditure share of the AI segment, 83.9% (proposal option 'A + capex overlay'); theme overlay, not part of the sector sum",
+          "source": "SpaceX 10-Q Q3 2026, Note 3 revenue by type and segment; filed 2026-10-22; https://www.sec.gov/Archives/edgar/data/1181412/000162828026066880/spcx-20260930.htm",
+          "as_of": "2026-09-30"
+        }
+      ],
+      "source": "SpaceX Form 10-Q for the quarter ended 2026-09-30 (filed 2026-10-22, accession 0001628280-26-066880), Notes 3 and 18, quarter revenue; AI overlay = capex share",
+      "as_of": "2026-09-30",
+      "proposed_by": "agent session_01GeLa7JgVXENzWSJSDhcHkF (fable-mre SPCX segment research, 2026-11-01)",
+      "approved_by": "operator in-session 2026-11-01, verbatim: \"A + capex AI\" (relayed by coordinator session_01GeLa7JgVXENzWSJSDhcHkF; recorded under AGENTS.md §20)",
+      "option": "A + capex AI: option A revenue sector weights (industrials 0.1212, comm 0.3601 + 0.0369 = 0.3970, tech 0.4818; sum 1.0000) with only the ai_basket theme overlay raised to the capex share 0.839",
+      "approved_at": "2026-11-01"
+    }
+  }
 }

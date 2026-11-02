@@ -16584,17 +16584,19 @@ def _defense_posture(query=None):
                        WHERE intent_type='inverse_etf' AND status IN ('filled','armed_ticket','submitted_paper')
                        ORDER BY updated_at DESC LIMIT 1""")
         _hint = _hc.fetchone()
-        _hc.execute("""SELECT symbol, threshold, last_fired_at FROM watch_alerts
-                       WHERE created_by='defense_hedge' AND note LIKE '%%bounce%%' LIMIT 1""")
+        _hc.execute("""SELECT symbol, threshold, last_fired_at, created_at FROM watch_alerts
+                       WHERE created_by='defense_hedge' AND active AND note LIKE '%%bounce%%'
+                       ORDER BY id DESC LIMIT 1""")
         _bounce = _hc.fetchone()
+        # design home/v006 (review of #2460, B2): the newest THESIS -> GREEN transition; a bounce alert armed before it
+        # belongs to an earlier episode and is never shown as live
+        _hc.execute("""SELECT instrument, max(created_at) FROM inverse_stoplight_transitions
+                       WHERE light='THESIS' AND split_part(new_state, '|', 1)='GREEN' GROUP BY instrument""")
+        _green_since = {str(r[0]).upper(): r[1] for r in _hc.fetchall()}
         _rows = (out.get("momentum") or {}).get("rows") or []
         _tech = next((r for r in _rows if r.get("sector") == "Technology"), {})
-        if _tech.get("state") not in ("LAGGING", "WEAKENING", None) and _hint:
-            hs = {
-                "state": "stand_down",
-                "line": f"HEDGE: stand-down signaled — Technology recovered to {_tech.get('state')}",
-            }
-        elif _hint and _hint[0] == "filled":
+        _in_play_line, _close_meta = None, None
+        if _hint and _hint[0] == "filled":
             # Phase 4: last close via the daily_bars projection (ticker_prices), with its age.
             from lib.data_broker.daily_bars import get_last_close as _brk_last_close
 
@@ -16605,24 +16607,25 @@ def _defense_posture(query=None):
                 if _px is not None and _hint[1]
                 else None
             )
-            hs = {
-                "state": "in_play",
-                "line": f"HEDGE: {_hint[2]} in play" + (f" {_pl:+.1f}%" if _pl is not None else ""),
-                "close_as_of": _lc.get("as_of"),
-                "close_stale": _lc.get("stale"),
-            }
-        elif _bounce and _bounce[2] and str(_bounce[2])[:10] == datetime.now(timezone.utc).date().isoformat():
-            hs = {
-                "state": "entry_window_open",
-                "line": f"HEDGE: entry window OPEN — {_bounce[0]} bounce ≥ ${_bounce[1]}",
-            }
-        else:
-            hs = {
-                "state": "armed",
-                "line": f"HEDGE: waiting for a bounce day ({_bounce[0]} ≥ ${_bounce[1]})"
-                if _bounce
-                else "HEDGE: alerts arming tonight",
-            }
+            _in_play_line = f"HEDGE: {_hint[2]} in play" + (f" {_pl:+.1f}%" if _pl is not None else "")
+            _close_meta = {"close_as_of": _lc.get("as_of"), "close_stale": _lc.get("stale")}
+        # design home/v006: the inverse-hedge stoplight decides; a stale defense_hedge alert never reads as live
+        from lib.defense_hedge_state import hedge_state as _hedge_state
+
+        _sl_cfg = (_load_json(PROJECT_ROOT / "config" / "defense_recommendations.json") or {}).get(
+            "inverse_stoplights"
+        ) or {}
+        hs = _hedge_state(
+            stoplights=_load_json(PROJECT_ROOT / "data" / "runtime" / "inverse_stoplights_latest.json"),
+            intent=_hint,
+            bounce=_bounce,
+            tech_state=_tech.get("state"),
+            today=datetime.now(timezone.utc).date(),
+            stale_days=int(_sl_cfg.get("stale_calendar_days", 4)),
+            in_play_line=_in_play_line,
+            close_meta=_close_meta,
+            green_since=_green_since,
+        )
         out["hedge_state"] = hs
     except Exception as e:
         import traceback

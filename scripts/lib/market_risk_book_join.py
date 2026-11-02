@@ -132,7 +132,125 @@ def card_config(policy: dict[str, Any]) -> dict[str, Any]:
         "recent_sessions": int(card.get("recent_sessions", 5)),
         "lookthrough_top_groups": int(rv.get("lookthrough_top_groups", 3)),
         "budget_drivers_shown": int(rv.get("budget_drivers_shown", 3)),
+        "fold_below_usd": float((((policy or {}).get("home_actions") or {}).get("sectors") or {}).get("fold_below_usd", 0)),
     }
+
+
+def _home_v006_reads(conn: Any, policy: dict[str, Any], now: datetime) -> tuple[set[str] | None, list[dict[str, Any]]]:
+    """Read-only: symbols with an overnight print newer than ``overnight.stale_after_minutes`` (the session is trading
+    now), and the newest inverse-stoplight THESIS transitions. Each read fails soft on its own."""
+    mins = int(((policy.get("overnight") or {}).get("stale_after_minutes")) or 45)
+    overnight: set[str] | None = None
+    transitions: list[dict[str, Any]] = []
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT DISTINCT upper(symbol) FROM market_quotes_extended WHERE session = 'overnight' "
+                "AND bar_end >= %s::timestamptz - make_interval(mins => %s) AND bar_end <= %s",
+                (now, mins, now),
+            )
+            overnight = {str(r[0]) for r in cur.fetchall()}
+    except Exception:  # noqa: BLE001 — unread: no "trades overnight now" clause
+        overnight = None
+        try:
+            conn.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT instrument, light, new_state, created_at FROM inverse_stoplight_transitions "
+                "WHERE light = 'THESIS' ORDER BY created_at DESC LIMIT 20"
+            )
+            transitions = [{"instrument": r[0], "light": r[1], "new_state": r[2], "created_at": str(r[3])} for r in cur.fetchall()]
+    except Exception:  # noqa: BLE001
+        transitions = []
+        try:
+            conn.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+    return overnight, transitions
+
+
+def home_actions(
+    projection: dict[str, Any],
+    out: dict[str, Any],
+    *,
+    policy: dict[str, Any],
+    overnight: set[str] | None,
+    transitions: list[dict[str, Any]],
+    now: datetime,
+    load_json: Any = None,
+) -> dict[str, Any]:
+    """design home/v006 blocks: ``protect``, ``hedge``, ``rotate``, ``sectors_folded``, ``glossary``,
+    ``segments_status``. Each fails soft to an ``<name>_error`` key; the v005 card is unaffected."""
+    ha = _import("market_risk_home_actions")
+    import json as _json
+
+    def _lj(rel: str) -> Any:
+        if load_json is not None:
+            return load_json(rel)
+        try:
+            return _json.loads((ha.ROOT / rel).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+
+    res: dict[str, Any] = {}
+    heat = [h for h in projection.get("heatmap") or [] if isinstance(h, dict)]
+    groups = (out.get("book_exposure") or {}).get("groups") or {}
+    defense_cfg = _lj("config/defense_recommendations.json") or {}
+    momentum = (_lj("data/runtime/sector_momentum_latest.json") or {}).get("rows") or []
+    try:
+        res["protect"] = ha.protect(out.get("review") or [], budgets=out.get("budgets") or [],
+                                    reentry=out.get("reentry") or {}, overnight=overnight, policy=policy)
+    except Exception as exc:  # noqa: BLE001
+        res["protect_error"] = f"{type(exc).__name__}: {exc}"
+    try:
+        res["hedge"] = ha.hedge(stoplights=_lj("data/runtime/inverse_stoplights_latest.json"), momentum_rows=momentum,
+                                book_exposure=out.get("book_exposure") or {}, defense_cfg=defense_cfg,
+                                today=now.date(), transitions=transitions)
+    except Exception as exc:  # noqa: BLE001
+        res["hedge_error"] = f"{type(exc).__name__}: {exc}"
+    try:
+        res["rotate"] = ha.rotate(heat, leadership=projection.get("leadership"), momentum_rows=momentum,
+                                  book_groups=groups, policy=policy,
+                                  sector_groups=(projection.get("sectors") or {}).get("groups"),
+                                  as_of=(projection.get("sectors") or {}).get("as_of"))
+    except Exception as exc:  # noqa: BLE001
+        res["rotate_error"] = f"{type(exc).__name__}: {exc}"
+    try:
+        res["sectors_folded"] = ha.folded(heat, groups, policy)
+    except Exception as exc:  # noqa: BLE001
+        res["sectors_folded"] = []
+        res["sectors_folded_error"] = f"{type(exc).__name__}: {exc}"
+    try:
+        budget_cfg = None
+        try:
+            budget_cfg = _import("market_risk.risk_budget").load_budget()
+        except Exception:  # noqa: BLE001
+            budget_cfg = None
+        res["glossary"] = ha.glossary(policy, defense_cfg, budget_cfg)
+    except Exception as exc:  # noqa: BLE001
+        res["glossary_error"] = f"{type(exc).__name__}: {exc}"
+    try:
+        lt = _import("market_risk.lookthrough")
+        syms = {str(r.get("symbol")).upper() for r in (out.get("book_exposure") or {}).get("rows") or []}
+        syms |= {str(i.get("symbol")).upper() for i in out.get("review") or []}
+        syms |= {str(k).upper() for k in (projection.get("reentry_watch") or {}) if not str(k).startswith("_")}
+        rel = str(((policy.get("issuer_segments") or {}).get("path")) or "config/issuer_segments.json")
+        entries = (_lj(rel) or {}).get("issuers") or {}
+        st = {}
+        for sym in sorted(syms):
+            e = entries.get(sym)
+            if not isinstance(e, dict):
+                continue
+            seg = lt.issuer_segments_for(sym, entries)
+            st[sym] = {"status": "approved" if seg else "pending", "groups": (seg or {}).get("groups"),
+                       "basis": (seg or {}).get("basis"), "as_of": e.get("as_of"), "source": e.get("source")}
+        res["segments_status"] = st
+    except Exception as exc:  # noqa: BLE001
+        res["segments_status_error"] = f"{type(exc).__name__}: {exc}"
+    return res
 
 
 def join(
@@ -164,6 +282,8 @@ def join(
     ledger_sells: list[dict[str, Any]] = []
     ledger_error: str | None = None
     deferred_cache: dict[tuple[str, str], list[tuple[str, float]]] = {}
+    overnight: set[str] | None = None  # design home/v006: symbols with a fresh overnight print (None = unread)
+    transitions: list[dict[str, Any]] = []
     rw = policy.get("reentry_watch") or {}
     ledger_days = int(rw.get("lookback_days", 30)) + int(rw.get("wash_sale_days", 30))
     conn = None
@@ -207,6 +327,7 @@ def join(
                 )
                 for sym, acct, d, pnl in cur.fetchall():
                     deferred_cache.setdefault((str(sym).upper(), str(d)[:10]), []).append((str(acct), float(pnl)))
+            overnight, transitions = _home_v006_reads(conn, policy, now)
     except Exception as exc:  # noqa: BLE001 — no ledger: no data-conflict item and no deferred-loss amount
         ledger_error = f"{type(exc).__name__}: {exc}"
     finally:
@@ -235,8 +356,10 @@ def join(
     be = out["book_exposure"]
     be["stops_known"] = stops is not None
     be["ledger_error"] = ledger_error
+    actions = home_actions(projection, out, policy=policy, overnight=overnight, transitions=transitions, now=now)
     return {
         **projection,
+        **actions,
         "book_exposure": be,
         "review": out["review"],
         "scope_labels": out["scope_labels"],
