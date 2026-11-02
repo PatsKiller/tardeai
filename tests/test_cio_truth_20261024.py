@@ -310,10 +310,13 @@ def test_financial_queue_truncation_is_a_gap_not_a_total():
 
 def test_projection_does_not_redate_positions_with_quote_clock(holdings, tmp_path):
     holdings["positions_built_at"] = "2026-10-23T19:00:00-04:00"
+    for row in holdings["holdings"]:
+        row["broker_position_as_of_at"] = "2026-10-24T21:00:00Z"
     doc = truth.resolve(tmp_path, NOW, inputs={"holdings": holdings, "companies": {}, "cio_status": {}, "policy": {}, "broker_stops": []})
     risk = truth.risk_payload(document=doc)
     header = truth.overview_payload({"pricing": {"canonical_total_value": 999}, "today_pnl": {"total_change": 999}}, document=doc)
-    assert risk["positions_as_of"] == holdings["positions_built_at"]
+    assert risk["positions_as_of"] == "2026-10-24T21:00:00Z"
+    assert risk["positions_as_of"] != holdings["positions_built_at"]
     assert header["pricing"]["canonical_total_value"] == header["portfolio_value"]
     assert header["today_pnl"]["total_change"] == header["today_change"]
 
@@ -322,12 +325,15 @@ def test_projection_does_not_redate_positions_with_quote_clock(holdings, tmp_pat
 def test_documented_legacy_et_clocks_normalize_once_with_raw_provenance(holdings, tmp_path, date, offset):
     holdings.update(positions_built_at=f"{date} 09:45:02 ET", generated_at=f"{date} 15:57:07 ET",
                     last_repriced=f"{date} 15:57:07 ET")
+    for row in holdings["holdings"]:
+        row["broker_position_as_of_at"] = f"{date} 11:45:02 ET"
     doc = truth.resolve(tmp_path, NOW, inputs={"holdings": holdings, "companies": {}, "cio_status": {}, "policy": {}, "broker_stops": []})
     p = doc["portfolio"]
-    assert p["positions_as_of"] == f"{date}T09:45:02{offset}"
+    expected_position = datetime.fromisoformat(f"{date}T11:45:02{offset}").astimezone(timezone.utc)
+    assert p["positions_as_of"] == expected_position.isoformat().replace("+00:00", "Z")
     assert p["valuation_as_of"] == p["quote_as_of"] == f"{date}T15:57:07{offset}"
-    assert p["clock_provenance"]["positions"]["raw"] == holdings["positions_built_at"]
-    assert p["clock_provenance"]["positions"]["source_field"] == "positions_built_at"
+    assert p["clock_provenance"]["position_list"]["raw"] == holdings["positions_built_at"]
+    assert p["holdings"][0]["position_clock"]["source_field"] == "broker_position_as_of_at"
     risk, header = truth.risk_payload(document=doc), truth.overview_payload({}, document=doc)
     holding_payload = truth.holdings_payload({"last_repriced": "old unparseable clock"}, document=doc)
     assert risk["positions_as_of"] == p["positions_as_of"]
@@ -340,8 +346,109 @@ def test_documented_legacy_et_clocks_normalize_once_with_raw_provenance(holdings
 
 @pytest.mark.parametrize("raw", ["2026-10-23 09:45:02", "2026-10-23", "unreadable", "2026-11-01 01:30:00 ET", "2026-03-08 02:30:00 ET"])
 def test_holdings_clocks_without_a_proven_offset_stay_gaps(holdings, raw):
-    holdings["positions_built_at"] = raw
+    holdings["positions_built_at"] = NOW.isoformat()
+    for row in holdings["holdings"]:
+        row["broker_position_as_of_at"] = raw
     p = truth.portfolio_for(holdings, now=NOW)
     assert p["positions_as_of"] is None
     assert p["clock_provenance"]["positions"]["gap"]
-    assert p["clock_provenance"]["positions"]["raw"] == raw
+    assert p["holdings"][0]["position_clock"]["raw"] == raw
+
+
+
+def _clock_truth():
+    import importlib.util
+    from pathlib import Path
+    import sys
+    name = "scripts.lib._cio_truth_clock_contract"
+    spec = importlib.util.spec_from_file_location(name, Path(__file__).resolve().parents[1] / "scripts/lib/cio_truth.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_position_clock_uses_oldest_declared_row_observation_and_exposes_spread():
+    model = _clock_truth()
+    h = {"positions_built_at": "2026-09-01T12:00:00Z", "last_repriced": "2026-10-24T21:59:00Z",
+         "generated_at": "2026-10-24T21:59:30Z", "holdings": [
+             {"account": "synthetic_alpha", "symbol": "ZZAA", "market_value": 100, "day_change": 1,
+              "broker_position_as_of_at": "2026-10-24T17:30:00-04:00"},
+             {"account": "synthetic_alpha", "symbol": "ZZBB", "market_value": 50, "day_change": 0,
+              "provider_observed_at": "2026-10-24T21:00:00Z"},
+             {"account": "synthetic_beta", "symbol": "ZZCC", "market_value": 25, "day_change": -1,
+              "observation": {"provider_observed_at": "2026-10-24T21:45:00Z"}},
+         ]}
+    p = model.portfolio_for(h, now=NOW)
+    clock = p["clock_provenance"]["positions"]
+    assert p["positions_as_of"] == "2026-10-24T21:00:00Z"
+    assert clock["known_rows"] == 3 and clock["unknown_rows"] == 0 and clock["mixed"] is True
+    assert clock["newest_known_as_of"] == "2026-10-24T21:45:00Z"
+    assert p["accounts"][0]["as_of"] == p["positions_as_of"]
+    assert p["valuation_as_of"] != p["positions_as_of"] != p["quote_as_of"]
+    assert p["clock_provenance"]["day_pnl"]["as_of"] is None
+    assert "position_clock" not in h["holdings"][0]
+
+
+@pytest.mark.parametrize("metadata", [
+    {"broker_position_as_of": "2026-10-24"},
+    {"broker_position_as_of_at": "2026-10-24 21:00:00"},
+    {"updated_at": "2026-10-24T21:00:00Z"},
+    {"as_of": "2026-10-24T21:00:00Z"},
+    {},
+])
+def test_unknown_row_never_borrows_build_quote_or_another_rows_clock(metadata):
+    model = _clock_truth()
+    h = {"positions_built_at": NOW.isoformat(), "data_as_of": NOW.isoformat(),
+         "generated_at": NOW.isoformat(), "last_repriced": NOW.isoformat(), "holdings": [
+             {"account": "synthetic_alpha", "symbol": "ZZAA", "market_value": 100, "day_change": 1,
+              "broker_position_as_of_at": "2026-10-24T21:00:00Z"},
+             {"account": "synthetic_alpha", "symbol": "ZZBB", "market_value": 50, "day_change": 0, **metadata}]}
+    p = model.portfolio_for(h, now=NOW)
+    assert p["positions_as_of"] is None and p["accounts"][0]["as_of"] is None
+    assert p["clock_provenance"]["positions"]["status"] == "UNKNOWN"
+    assert p["clock_provenance"]["positions"]["unknown_rows"] == 1
+    assert p["clock_provenance"]["positions"]["oldest_known_as_of"] == "2026-10-24T21:00:00Z"
+    assert p["holdings"][1]["position_clock"]["gap"]["reason"]
+    assert p["day_pl_usd"] == 1  # clock uncertainty cannot erase a known stored value
+
+
+
+def test_overview_replaces_legacy_position_aliases_and_coverage_from_normalized_rows():
+    model = _clock_truth()
+    h = {"generated_at": NOW.isoformat(), "last_repriced": NOW.isoformat(), "holdings": [
+        {"account": "synthetic_alpha", "symbol": "ZZAA", "market_value": 100, "day_change": 1,
+         "broker_position_as_of_at": "2026-10-24T21:00:00Z"},
+        {"account": "synthetic_beta", "symbol": "ZZBB", "market_value": 50, "day_change": 0,
+         "updated_at": NOW.isoformat()}]}
+    document = {"portfolio": model.portfolio_for(h, now=NOW), "approvals": {"total": 0},
+                "paper": {}, "regime": {"label": None, "vix": None, "vix_as_of": None}}
+    prior = {"portfolio_aggregate": {"freshness_state": "COMPLETE", "coverage": {"value_dated_pct": 100},
+             "position_observation_oldest": "2000-01-01T00:00:00Z", "accounts": [
+                 {"account": "synthetic_beta", "position_observation_time": NOW.isoformat(), "dated": True}]}}
+    out = model.overview_payload(prior, document=document, now=NOW)
+    agg = out["portfolio_aggregate"]
+    assert agg["freshness_state"] == "PARTIAL"
+    assert agg["coverage"]["undated_accounts"] == ["synthetic_beta"]
+    assert agg["coverage"]["value_dated_pct"] == 66.7
+    beta = next(r for r in agg["accounts"] if r["account"] == "synthetic_beta")
+    assert beta["position_observation_time"] is None and beta["observation_time"] is None
+    assert beta["dated"] is False
+    assert out["clock_provenance"]["positions"]["as_of"] is None
+    assert out["today_by_account"]["synthetic_beta"]["as_of"] == out["today_pnl"]["calculated_at"]
+    assert out["today_by_account"]["synthetic_beta"]["positions_as_of"] is None
+
+
+
+def test_position_clock_orders_subseconds_as_instants_and_keeps_stronger_invalid_evidence():
+    model = _clock_truth()
+    rows = [{"account": "synthetic_alpha", "symbol": "ZZAA", "market_value": 100,
+             "broker_position_as_of_at": at} for at in ["2026-10-24T21:00:00.1Z", "2026-10-24T21:00:00Z"]]
+    p = model.portfolio_for({"holdings": rows}, now=NOW)
+    assert p["positions_as_of"] == "2026-10-24T21:00:00Z"
+    assert p["clock_provenance"]["positions"]["newest_known_as_of"] == "2026-10-24T21:00:00.100000Z"
+    rows[0]["broker_position_as_of_at"] = "unreadable"
+    rows[0]["provider_observed_at"] = "2026-10-24T21:00:00Z"
+    p = model.portfolio_for({"holdings": rows}, now=NOW)
+    assert p["positions_as_of"] is None
+    assert p["holdings"][0]["position_clock"]["raw"] == "unreadable"

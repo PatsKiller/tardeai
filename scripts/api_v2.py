@@ -5140,7 +5140,9 @@ def portfolio_performance():
                 result["max_drawdown_pct_30d"] = min(p["drawdown"] for p in _recent)
         except Exception:
             pass
-    return result
+    # Current 1D shares the canonical stored-row contract with Overview. Longer
+    # periods retain their existing snapshot / contribution-adjusted semantics.
+    return _cio_truth_readers().performance_payload(result, holdings_doc=holdings)
 
 
 def research_ticker(symbol: str):
