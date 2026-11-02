@@ -215,6 +215,19 @@ def test_a_red_status_context_is_red():
     assert plan.classification == "REAL_CI_FAIL"
 
 
+def test_a_green_head_with_a_skipped_check_is_not_red():
+    plan = _plan([_rollup("cio-hardening", "SUCCESS"), _rollup("draft-quick", "SKIPPED"),
+                  _rollup("provider-cost", "NEUTRAL")])
+    assert plan.classification != "REAL_CI_FAIL"
+    assert plan.page_p1 is False
+
+
+def test_an_empty_rollup_holds():
+    plan = _plan([])
+    assert plan.classification == "UNMEASURED"
+    assert plan.requeue is False
+
+
 def test_an_unreadable_head_holds_and_never_requeues():
     plan = _plan(None)
     assert plan.classification == "UNMEASURED"
@@ -230,31 +243,58 @@ def test_mergify_own_checks_are_never_graded():
     assert plan.classification != "WAIT"
 
 
-def test_wait_posts_no_comment_and_pages_once_after_the_limit(tmp_path, monkeypatch):
-    import scripts.lib.mergify_queue_monitor as mqm
-
+def _wire_wait(monkeypatch, mqm, *, head="a" * 40, rollup=None):
     monkeypatch.setattr(mqm, "fetch_main_mergify_yml", lambda repo=None: "")
     monkeypatch.setattr(mqm, "fetch_open_operator_merge_prs", lambda repo=None: [
-        {"number": 7, "labels": [{"name": "operator-merge"}], "mergeable": "MERGEABLE"}])
+        {"number": 7, "labels": [{"name": "operator-merge"}], "mergeable": "MERGEABLE",
+         "headRefOid": head}])
     monkeypatch.setattr(mqm, "fetch_latest_dequeue_comment",
                         lambda pr, repo=None: ("", {"state": "dequeued", "dequeue_reason": {"code": "CHECKS_FAILED"}}))
-    monkeypatch.setattr(mqm, "fetch_head_check_rollup",
-                        lambda pr, repo=None: [_rollup("shard 0", status="IN_PROGRESS", conclusion=None)])
+    monkeypatch.setattr(mqm, "fetch_head_check_rollup", lambda pr, repo=None: (
+        rollup if rollup is not None else [_rollup("shard 0", status="IN_PROGRESS", conclusion=None)]))
     comments = []
     monkeypatch.setattr(mqm, "post_pr_comment", lambda pr, body, repo=None: comments.append(body) or True)
     pages = []
     import scripts.delivery_failure_alerts as dfa
     monkeypatch.setattr(dfa, "page_p1", lambda **kw: pages.append(kw))
+    return comments, pages
 
+
+def test_wait_posts_no_comment_and_pages_once_per_head(tmp_path, monkeypatch):
+    import scripts.lib.mergify_queue_monitor as mqm
+
+    comments, pages = _wire_wait(monkeypatch, mqm)
     first = mqm.run_once(dry_run=False, root=tmp_path)
     assert first["actions"][0].get("waiting") is True
     assert comments == []  # WAIT never comments
+    key = next(iter(json.loads((tmp_path / "mergify_wait_since.json").read_text())))
 
-    # age the wait clock past the configured limit: exactly one page, still no comment
+    # age this head past the limit: exactly one page, still no comment
     ledger = json.loads((tmp_path / "mergify_wait_since.json").read_text())
-    ledger["7"] = "2026-11-02T00:00:00Z"
+    ledger[key]["first"] = "2026-11-02T00:00:00Z"
     (tmp_path / "mergify_wait_since.json").write_text(json.dumps(ledger))
     second = mqm.run_once(dry_run=False, root=tmp_path)
     assert second["actions"][0].get("paged_stuck") is True
+    assert len(pages) == 1 and comments == []
+
+    # a third tick keeps the paged marker: no second page
+    third = mqm.run_once(dry_run=False, root=tmp_path)
+    assert third["actions"][0].get("paged") is True
+    assert len(pages) == 1 and comments == []
+
+    # a NEW head starts its own clock
+    monkeypatch.setattr(mqm, "fetch_open_operator_merge_prs", lambda repo=None: [
+        {"number": 7, "labels": [{"name": "operator-merge"}], "mergeable": "MERGEABLE",
+         "headRefOid": "b" * 40}])
+    fourth = mqm.run_once(dry_run=False, root=tmp_path)
+    assert "b" * 40 in next(iter([k for k in json.loads(
+        (tmp_path / "mergify_wait_since.json").read_text()) if k.startswith("7:b")]))
     assert len(pages) == 1
-    assert comments == []
+
+
+def test_the_dry_run_writes_no_wait_clock(tmp_path, monkeypatch):
+    import scripts.lib.mergify_queue_monitor as mqm
+
+    _wire_wait(monkeypatch, mqm)
+    mqm.run_once(dry_run=True, root=tmp_path)
+    assert not (tmp_path / "mergify_wait_since.json").exists()
