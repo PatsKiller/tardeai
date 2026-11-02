@@ -214,7 +214,8 @@ def test_delivery_worker_shadow_never_live(iso_dedupe):
     from lib.cio_notification_delivery import CIONotificationDeliveryWorker as W
 
     class FakeOutbox:
-        def list_notifications(self, status=None):
+        # Mirrors NotificationOutbox.list_notifications (the worker asks for limit=None: every PENDING note).
+        def list_notifications(self, status=None, channel=None, message_class=None, limit=50):
             return []
 
     worker = W(notification_outbox=FakeOutbox(), mode="shadow")
