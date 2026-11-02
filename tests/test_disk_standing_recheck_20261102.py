@@ -11,7 +11,7 @@ refuses — now naming the check instead of the opaque ``evidence_recheck_unavai
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from scripts import disk_hygiene as DH
 from scripts.lib import disk_hygiene_retention as SR
@@ -100,9 +100,39 @@ def test_the_attempt_count_is_bounded(monkeypatch):
     assert len(seen) == 2, "the retry is bounded; it must not loop"
 
 
-def test_the_apply_report_carries_a_refusal_detail_field():
-    """The receipt must be able to say which check refused (§0 rule 8)."""
-    import inspect
+def test_each_retry_advances_the_capture_time(monkeypatch):
+    """Reusing the first attempt's ``now`` would record evidence as fresher than it is (finding F3)."""
+    stamps = []
+    ticks = iter([0.0, 6.0])  # the retry happens 6 s after the first attempt
+    monkeypatch.setattr(
+        DH, "collect_standing_evidence",
+        lambda _r, when: (stamps.append(when), _evidence(opaque=len(stamps) == 1))[1],
+    )
 
-    source = inspect.getsource(DH.apply)
-    assert '"refusal_detail"' in source
+    ctx, reason = DH.revalidate_evidence({}, NOW, sleep=lambda _s: None, clock=lambda: next(ticks))
+
+    assert reason is None and ctx is not None
+    assert stamps == [NOW, NOW + timedelta(seconds=6.0)], "the retry captures at its own time"
+    assert stamps[1] > stamps[0], "and stays on the caller's time base, not the wall clock"
+
+
+def test_the_reason_is_clipped_to_one_short_line():
+    class Boom(ValueError):
+        pass
+
+    long_reason = "evidence_incomplete:coordination\nline two\n" + "x" * 500
+    assert DH._clip_reason(Boom(long_reason)) == "evidence_incomplete:coordination"
+    assert len(DH._clip_reason(Boom("y" * 500))) == 200
+    assert DH._clip_reason(Boom()) == "Boom", "a blank message still names the exception"
+
+
+def test_the_digest_names_the_refusing_check():
+    """The digest is what reaches alerts, so `refused` alone is not enough (§0 rule 8)."""
+    digest = SR.operator_digest({
+        "per_rule": {}, "held_bytes": 0, "removed": [], "skipped": [],
+        "refused": "evidence_recheck_unavailable", "refusal_detail": "evidence_opaque_processes",
+    })
+    assert "evidence_recheck_unavailable (evidence_opaque_processes)" in digest
+
+    plain = SR.operator_digest({"per_rule": {}, "held_bytes": 0, "removed": [], "skipped": [], "refused": None})
+    assert plain.endswith("refusal none")

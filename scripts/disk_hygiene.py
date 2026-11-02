@@ -1902,24 +1902,38 @@ EVIDENCE_RECHECK_ATTEMPTS = 3
 EVIDENCE_RECHECK_DELAY_S = 3.0
 
 
+def _clip_reason(exc: BaseException, limit: int = 200) -> str:
+    """One short line naming the check. A ``JSONDecodeError`` carries a multi-line decoder message and a
+    fragment of the offending document; that must never be pasted whole into a receipt."""
+    text = (str(exc) or "").strip()
+    return (text.splitlines()[0] if text else type(exc).__name__)[:limit]
+
+
 def revalidate_evidence(
     rules: Mapping[str, Any], now: datetime, *, attempts: int = EVIDENCE_RECHECK_ATTEMPTS,
-    delay_s: float = EVIDENCE_RECHECK_DELAY_S, sleep=time.sleep,
+    delay_s: float = EVIDENCE_RECHECK_DELAY_S, sleep=time.sleep, clock=time.monotonic,
 ) -> tuple[Optional[dict], Optional[str]]:
     """Apply-time evidence: ``(context, None)`` on success, ``(None, reason)`` when every attempt failed.
 
     Never returns a partial context. An incomplete or opaque capture can authorize a quoted preview, never a
     removal (AGENTS.md §0 rule 7), so a failed attempt is retried and then surfaced by name — never ignored.
+
+    A retry advances the capture time by the real elapsed delay, the same way ``apply()`` derives
+    ``validation_now``: reusing the first attempt's ``now`` would record evidence as fresher than it is, and
+    switching to the wall clock would abandon the caller's time base. ``clock`` is injectable for tests.
     """
+    started = clock()
     reason = "evidence_unavailable"
+    attempt_now = now
     for attempt in range(max(1, int(attempts))):
         if attempt:
             sleep(delay_s)
+            attempt_now = now + timedelta(seconds=max(0.0, clock() - started))
         try:
-            refreshed = collect_standing_evidence(rules, now)
-            return SR.evidence_context(refreshed, now, applying=True), None
+            refreshed = collect_standing_evidence(rules, attempt_now)
+            return SR.evidence_context(refreshed, attempt_now, applying=True), None
         except (RulesError, ValueError) as exc:
-            reason = str(exc) or type(exc).__name__
+            reason = _clip_reason(exc)
     return None, reason
 
 
