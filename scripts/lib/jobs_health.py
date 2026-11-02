@@ -174,29 +174,45 @@ def _schedule(lane, now, trading_day):
     return due, next_due, issue, gated, bool(today_fires)
 
 
+#: The four things the census artifact itself can be. Only ``ok`` supports a unit lookup.
+CENSUS_MISSING, CENSUS_STALE, CENSUS_OK = "missing", "stale", "ok"
+#: A registry expression that is actually a unit name. Anything else cannot be asked of the host.
+_UNIT_EXPRESSION = re.compile(r"^[A-Za-z0-9@._:-]+\.(timer|service|socket|path|target)$")
+
+
 def _systemd_census(root: Path, now: datetime) -> tuple[dict, dict]:
-    """The host's timer observation plus its state; never a subprocess at read time."""
+    """The host's timer observation plus its state; never a subprocess at read time.
+
+    ``census`` names the artifact's own condition so a reader can say *why* a lane is unmeasured.
+    A total capture failure still writes a fresh artifact with no units, which is why ``coverage``
+    is reported: ``UNMEASURED``/``PARTIAL`` must never be read as "the unit is not installed".
+    """
     doc = _json(Path(root) / SYSTEMD_CENSUS_REL)
     units = doc.get("units")
     seen = instant(doc.get("observed_at"))
     if doc.get("schema") != "SystemdScheduleCensus@v1" or not isinstance(units, dict):
-        return {}, {"state": "unavailable", "as_of": None}
+        return {}, {"state": "unavailable", "census": CENSUS_MISSING, "as_of": None}
     if seen is None or seen > now or now - seen > CENSUS_MAX_AGE:
-        return {}, {"state": "stale", "as_of": doc.get("observed_at")}
-    return units, {"state": "fresh", "as_of": doc.get("observed_at"), "coverage": doc.get("coverage")}
+        return {}, {"state": "stale", "census": CENSUS_STALE, "as_of": doc.get("observed_at")}
+    return units, {"state": "fresh", "census": CENSUS_OK, "as_of": doc.get("observed_at"),
+                   "coverage": doc.get("coverage")}
 
 
 def _host_schedule(lane: dict, units: dict, now: datetime) -> tuple[list, datetime | None, bool, bool]:
     """(due, next_due, due_today, measured) for a systemd lane from the census row.
 
     ``measured`` is False when the unit is absent, stopped or carries no parseable elapse; the
-    lane then keeps the honest "no schedule declared" result instead of inventing one.
+    lane then keeps an honest unmeasured result instead of inventing a schedule.
     """
     scheduler = lane.get("scheduler") or {}
     if scheduler.get("kind") != "systemd":
         return [], None, False, False
     row = units.get(str(scheduler.get("expression") or ""))
     if not isinstance(row, dict):
+        return [], None, False, False
+    # A stopped unit keeps its last elapse in the census; that is not a schedule it will meet.
+    active_state = str(row.get("active_state") or "").strip().lower()
+    if active_state and active_state != "active":
         return [], None, False, False
     zone = ZoneInfo(str((lane.get("dispatch") or {}).get("tz") or scheduler.get("timezone") or "America/New_York"))
     next_due = instant(row.get("next_elapse"))
@@ -205,6 +221,56 @@ def _host_schedule(lane: dict, units: dict, now: datetime) -> tuple[list, dateti
     due = [last] if last and last.astimezone(zone).date() == today else []
     due_today = bool(due) or bool(next_due and next_due.astimezone(zone).date() == today)
     return due, next_due if next_due and next_due > now else None, due_today, bool(next_due or last)
+
+
+#: Why a systemd lane's schedule could not be measured. Each is a different operator action.
+SYSTEMD_GAP_REASONS = {
+    "schedule_census_unavailable":
+        "The host timer census has not been written, so this lane's schedule cannot be measured",
+    "schedule_census_stale":
+        "The host timer census is stale, so this lane's schedule cannot be trusted",
+    "schedule_census_incomplete":
+        "The host timer census did not cover this unit, so whether it is installed is unknown",
+    "schedule_unit_not_installed":
+        "The host census is complete and does not contain this unit; it is not installed",
+    "schedule_unit_not_active":
+        "The unit is installed but not active, so it has no next fire",
+    "schedule_expression_not_a_unit":
+        "The registry declares a schedule expression, not a unit name, so the host cannot be asked about it",
+    "schedule_continuous_service":
+        "A continuous service has no schedule; liveness comes from its run receipt, not a fire time",
+}
+
+
+def _systemd_gap(lane: dict, units: dict, census: dict | None) -> str | None:
+    """Which distinct fact makes this systemd lane's schedule unmeasurable, or None if it is fine.
+
+    The six conditions used to collapse into ``schedule_not_declared``, which claims the lane
+    declares nothing. That is false for a missing/stale census, for a unit that is not installed,
+    and for a continuous service, and an operator can only act on the difference.
+    """
+    scheduler = lane.get("scheduler") or {}
+    if scheduler.get("kind") != "systemd":
+        return None
+    expression = str(scheduler.get("expression") or "").strip()
+    if not _UNIT_EXPRESSION.match(expression):
+        return "schedule_expression_not_a_unit"
+    if expression.endswith(".service"):
+        # No timer exists to ask about; a receipt is the only evidence this lane can produce.
+        return "schedule_continuous_service"
+    row = (units or {}).get(expression)
+    if isinstance(row, dict):
+        active_state = str(row.get("active_state") or "").strip().lower()
+        return None if not active_state or active_state == "active" else "schedule_unit_not_active"
+    condition = (census or {}).get("census")
+    if condition == CENSUS_STALE:
+        return "schedule_census_stale"
+    if condition == CENSUS_OK:
+        coverage = str((census or {}).get("coverage") or "").strip().upper()
+        # No stated coverage is treated as a complete capture: the artifact is fresh and parsed.
+        return ("schedule_census_incomplete" if coverage and coverage != "COMPLETE"
+                else "schedule_unit_not_installed")
+    return "schedule_census_unavailable"
 
 
 def _measurement(unknown: int, collection_gaps: list, breakdown: str | None = None) -> dict:
@@ -270,7 +336,7 @@ def _watchers(registry: dict, rows: list[dict], monitor: dict, monitor_ok: bool)
 
 
 def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, now: datetime, trading_day,
-          host_schedule: dict | None = None) -> dict:
+          host_schedule: dict | None = None, census: dict | None = None) -> dict:
     if now.tzinfo is None:
         raise ValueError("jobs health requires an aware clock")
     by_lane = {}
@@ -362,7 +428,12 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
             if state == "NEVER_SCHEDULED":
                 evidence_gap, reason = "never_scheduled", "Registered but never scheduled; no run is expected"
             elif issue:
-                evidence_gap, reason = "schedule_not_declared", "No schedule is declared, so this lane cannot be measured"
+                # Six different facts used to print as "no schedule declared". Name the one that holds.
+                systemd_gap = _systemd_gap(lane, host_schedule or {}, census)
+                if systemd_gap:
+                    evidence_gap, reason = systemd_gap, SYSTEMD_GAP_REASONS[systemd_gap]
+                else:
+                    evidence_gap, reason = "schedule_not_declared", "No schedule is declared, so this lane cannot be measured"
             else:
                 evidence_gap, reason = "execution_not_measured", "No run receipt proves a successful run"
         schedule_measured = bool(host_measured or (state != "NEVER_SCHEDULED" and not issue))
@@ -377,14 +448,17 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
             "cause": reason, "evidence": last.get("run_id") or ("wrapper event" if events else None)})
     counts = Counter(row["result"] for row in rows)
     gaps = Counter(row["evidence_gap"] for row in rows if row["result"] == "unknown")
-    # The three facts behind "not measured", guaranteed to sum to it: an unclassified
-    # unknown is counted as a missing receipt rather than dropped.
+    # The facts behind "not measured", guaranteed to sum to it: an unclassified unknown is
+    # counted as a missing receipt rather than dropped. `schedule_not_declared` now means only
+    # "this lane declares nothing"; the causes that used to masquerade as it are named apart.
     never = gaps.get("never_scheduled", 0)
     undeclared = gaps.get("schedule_not_declared", 0)
-    no_receipt = max(0, counts["unknown"] - never - undeclared)
+    unmeasurable = sum(gaps.get(key, 0) for key in SYSTEMD_GAP_REASONS)
+    no_receipt = max(0, counts["unknown"] - never - undeclared - unmeasurable)
     breakdown = " · ".join(part for part in (
         f"{never} never scheduled" if never else "",
         f"{undeclared} declare no schedule" if undeclared else "",
+        f"{unmeasurable} cannot measure the schedule" if unmeasurable else "",
         f"{no_receipt} need a run receipt" if no_receipt else "") if part) or None
     seen = instant(watchdog.get("observed_at"))
     monitor_ok = bool(watchdog.get("schema") == W.SCHEMA and watchdog.get("mode") == "monitor"
@@ -404,7 +478,9 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
                     **{key: counts[key] for key in ("succeeded", "failed", "missed", "paused", "retired", "unknown", "due", "outside_window")},
                     "unknown_never_scheduled": never,
                     "unknown_schedule_not_declared": undeclared,
+                    "unknown_schedule_unmeasurable": unmeasurable,
                     "unknown_execution_not_measured": no_receipt,
+                    "schedule_gap_counts": {key: gaps[key] for key in SYSTEMD_GAP_REASONS if gaps.get(key)},
                     **_measurement(counts["unknown"], captured.get("collection_gaps") or [], breakdown)},
         "monitor": monitor, "watchers": _watchers(registry, rows, monitor, monitor_ok),
         "incidents": incidents, "incident_count": len(incidents),
@@ -442,7 +518,7 @@ def _load(root: Path, registry_path: Path, now: datetime):
         snapshot.setdefault("collection_gaps", []).append("lane registry unavailable")
     units, census = _systemd_census(root, now)
     report = build(registry, snapshot, runs, _json(root / "data/runtime/cron_outage_watchdog_latest.json"),
-                   now=now, trading_day=is_trading_day, host_schedule=units)
+                   now=now, trading_day=is_trading_day, host_schedule=units, census=census)
     report["schedule_census"] = census
     from scripts.lib.jobs_conflict_errors import get_data_errors
     report["data_errors"] = get_data_errors(root)

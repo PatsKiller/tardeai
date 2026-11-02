@@ -50,17 +50,19 @@ def test_systemd_success_after_the_last_trigger_is_succeeded():
     assert row["result"] == "succeeded"
 
 
-def test_missing_census_leaves_the_lane_schedule_not_declared():
+def test_no_census_at_all_is_named_as_a_missing_census():
+    # This fixture passes no census state at all, which is the "artifact was never written" case.
+    # It must not read "the lane declares no schedule" - that statement would be untrue.
     row = build([lane()], {})["rows"][0]
     assert row["schedule_measured"] is False
     assert row["schedule_source"] is None
-    assert row["evidence_gap"] == "schedule_not_declared"
+    assert row["evidence_gap"] == "schedule_census_unavailable"
 
 
-def test_a_service_with_no_elapse_does_not_invent_a_schedule():
+def test_a_stopped_unit_does_not_invent_a_schedule():
     host = {"tradeai-svc.timer": {"active_state": "inactive", "next_elapse": None, "last_trigger": None}}
     row = build([lane()], host)["rows"][0]
-    assert row["schedule_measured"] is False and row["evidence_gap"] == "schedule_not_declared"
+    assert row["schedule_measured"] is False and row["evidence_gap"] == "schedule_unit_not_active"
 
 
 def test_census_is_fresh_for_two_hours_and_then_stale(tmp_path):
