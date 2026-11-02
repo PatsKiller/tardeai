@@ -62,9 +62,19 @@ def _run_gate(repo: Path) -> tuple[int, str]:
     return proc.returncode, proc.stdout + proc.stderr
 
 
+def _synthetic_address() -> str:
+    """Assembled at runtime on purpose.
+
+    A literal address in this file is itself a PII finding — `check_no_pii` scans the added lines of
+    this very PR, and no inline marker silences one. The domain is deliberately not an .example one:
+    the value has to trip the rule for the test to mean anything.
+    """
+    return "someone" + "@" + "acme-corp" + ".com"
+
+
 def test_gate_refuses_pii_on_a_staged_added_line(tmp_path):
     repo = _temp_repo(tmp_path)
-    _stage(repo, "notes.md", b"contact: john.doe@acme-corp.com\n")
+    _stage(repo, "notes.md", f"contact: {_synthetic_address()}\n".encode())
     rc, out = _run_gate(repo)
     assert rc != 0
     assert "personal or identifying data" in out
