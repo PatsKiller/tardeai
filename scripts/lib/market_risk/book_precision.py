@@ -546,6 +546,99 @@ def _held_accounts(policy: dict[str, Any], doc: dict | None = None) -> set[tuple
     }
 
 
+def _held_share_map(policy: dict[str, Any], doc: dict | None = None) -> dict[tuple[str, str], float]:
+    """(canonical account, SYMBOL) -> shares, for every non-cash holding with a positive balance."""
+    try:
+        if doc is None:
+            from pathlib import Path as _Path
+
+            from scripts.lib import canonical_store_registry as reg
+            from scripts.lib import portfolio_positions as pp_
+
+            doc = pp_.load_store(_Path(reg.resolve_store(HOLDINGS_STORE_ID)["path"]))
+    except Exception:  # noqa: BLE001
+        return {}
+    out: dict[tuple[str, str], float] = {}
+    for h in (doc or {}).get("holdings") or []:
+        if not isinstance(h, dict) or h.get("is_cash"):
+            continue
+        sh = float(h.get("shares") or h.get("quantity") or 0)
+        if sh > 0:
+            out[(_acct_key(h.get("account")), str(h.get("symbol")).upper())] = sh
+    return out
+
+
+def _is_fractional_residual(shares: float, sold_shares: float = 0.0, floor: float = 1.0,
+                            fraction: float = 0.15) -> bool:
+    """Is this remaining balance what a sale left behind, rather than a position to wait on?
+
+    A residual is (a) a balance below the materiality floor — dust — or (b) a balance under a small
+    fraction of everything that account sold on its most recent sale day plus what remains. A mere
+    non-integer balance is NOT a residual: 17 of 26 live holdings are fractional, and trimming 20 of
+    SCHD's 6000.253 (or 600 of 1000.25) must leave SCHD held. SPCX's 200-share holding stays held.
+    Operator 2026-11-02 (PFLT): a 10-07 taxable stop left 1.15 shares, which the 1-share "still
+    held" floor read as a live position and hid the exit. A balance exactly at the floor is held.
+    """
+    if shares <= 0:
+        return False
+    if shares < floor:
+        return True
+    total = shares + max(float(sold_shares or 0.0), 0.0)
+    return total > 0 and (shares / total) < fraction
+
+
+def _stop_basis(symbol: str, account: str, price: Any, sold_qty: float, stop_rows: list[tuple],
+                max_slippage_pct: float = 3.0, max_above_pct: float = 0.5) -> str:
+    """'stop (matched by price)' when a filled SELL stop explains this sale.
+
+    A triggered stop becomes a market order and can fill slightly ABOVE the stop (SCHG: 34.4647
+    against a 34.46 stop), and a gap-down open fills below it (NFLX: 70.17 against 71.55). The band
+    is therefore stop × (1 − max_slippage_pct) to stop × (1 + max_above_pct), in the same account,
+    with a stop quantity that covers what was sold. No table links a sale to its stop order (checked
+    2026-11-02: trade_transactions has no order id/type; stop_last_known.order_id matches a pilot
+    order only for PFLT), so this is a price-and-quantity match, and stop_last_known.captured_at is
+    the refresh time, not a fill time — the label says how the match was made.
+    """
+    px = float(price) if price is not None else None
+    if px is None:
+        return "manual sell"
+    for row in stop_rows or []:
+        sym, acct, stop_price = row[:3]
+        qty = float(row[3]) if len(row) > 3 and row[3] is not None else None
+        if str(sym).upper() != symbol or _acct_key(acct) != account or stop_price is None:
+            continue
+        sp = float(stop_price)
+        if sp <= 0:
+            continue
+        if px > sp * (1.0 + max_above_pct / 100.0) or px < sp * (1.0 - max_slippage_pct / 100.0):
+            continue
+        if sold_qty and qty is not None and qty < sold_qty:
+            continue
+        return "stop (matched by price)"
+    return "manual sell"
+
+
+def _sold_on_latest_day(closes_rows: list[tuple]) -> dict[tuple[str, str], float]:
+    """Shares sold per (account, SYMBOL) on that account's MOST RECENT sale day, summing its lots.
+
+    A day's sale can arrive as several trade_closed rows (V: 0.23 and 0.269); an older day's lots are
+    excluded so yesterday's trim cannot be read as today's sale.
+    """
+    latest: dict[tuple[str, str], str] = {}
+    for r in closes_rows:
+        k = (_acct_key(r[1]), str(r[0]).upper())
+        d = str(r[2])[:10]
+        if d > latest.get(k, ""):
+            latest[k] = d
+    out: dict[tuple[str, str], float] = {}
+    for r in closes_rows:
+        if len(r) > 5 and r[5] is not None:
+            k = (_acct_key(r[1]), str(r[0]).upper())
+            if str(r[2])[:10] == latest.get(k):
+                out[k] = out.get(k, 0.0) + float(r[5])
+    return out
+
+
 def _after(buy_date: str, buy_time: Any, sell_date: str, sell_time: Any, held_now: bool = False) -> bool:
     """A Buy is a RE-buy only when it came after the sale: a later date, or the same date at a later time. A same-day
     Buy without times on both sides counts only when the account holds the symbol now (then the buy must have come
@@ -629,6 +722,7 @@ def per_account_exits(
         out[sym] = {
             "exit_date": top["date"],
             "exit_price": top["price"],
+            "exit_account_key": top["account"],
             "exit_account_scope": _opaque(top["account"]),
             "exit_account_type": _account_type(top["account"]),
             "held_elsewhere": sorted(_opaque(a) for a, s in held if s == sym),
@@ -667,7 +761,7 @@ def reentry_watch_block(
         with conn.cursor() as cur:
             lookback = int(cfg.get("lookback_days", 30))
             cur.execute(
-                "SELECT symbol, account, close_date, (pnl < 0), sell_price FROM trade_closed "
+                "SELECT symbol, account, close_date, (pnl < 0), sell_price, shares FROM trade_closed "
                 "WHERE close_date >= %s::date - %s AND close_date <= %s::date ORDER BY close_date",
                 (now.date(), lookback, now.date()),
             )
@@ -687,8 +781,27 @@ def reentry_watch_block(
             sells = [
                 (str(r[0]).upper(), _acct_key(r[1]), str(r[2])[:10], r[4]) for r in tx if str(r[5]).startswith("sell")
             ]
+            sale_symbols = {str(r[0]).upper() for r in closes_rows}
+            floor = float((((policy.get("positions") or {}).get("materiality") or {}).get("min_shares", 1.0)))
+            rcfg = policy.get("reentry_watch") or {}
+            fraction = float(rcfg.get("residual_remaining_fraction", 0.15))
+            sold_map = _sold_on_latest_day(closes_rows)
+            held = set(held_accounts or set())
+            shares_map = _held_share_map(policy)
+            for (acct, sym), sh in shares_map.items():
+                if sym in sale_symbols and _is_fractional_residual(sh, sold_map.get((acct, sym), 0.0), floor, fraction):
+                    held.discard((acct, sym))  # what the sale left behind, not a position to wait on
+            try:
+                cur.execute(
+                    "SELECT symbol, account, stop_price, qty FROM stop_last_known "
+                    "WHERE lower(status) = 'filled' AND symbol = ANY(%s)",
+                    (sorted(sale_symbols),),
+                )
+                stop_rows = list(cur.fetchall())
+            except Exception:  # noqa: BLE001 — no stop evidence: every sale is labelled a manual sell
+                stop_rows = []
             exits = per_account_exits(
-                closes_rows, buys, held=held_accounts or set(), wash_days=int(cfg.get("wash_sale_days", 30)), sells=sells
+                closes_rows, buys, held=held, wash_days=int(cfg.get("wash_sale_days", 30)), sells=sells
             )
             syms = sorted(exits)
             earn: dict[str, Any] = {}
@@ -794,10 +907,15 @@ def reentry_watch_block(
                 held_elsewhere=e.get("held_elsewhere") or [],
                 wash_sale=e.get("wash_sale"),
                 look_through={"groups": groups, "basis": ex.get("basis"), "note": ex.get("note")},
+                exit_basis=_stop_basis(sym, e.get("exit_account_key"), e.get("exit_price"),
+                                       sold_map.get((e.get("exit_account_key"), sym), 0.0), stop_rows,
+                                       float((policy.get("reentry_watch") or {}).get("stop_fill_max_slippage_pct", 3.0)),
+                                       float((policy.get("reentry_watch") or {}).get("stop_fill_max_above_pct", 0.5))),
                 stages=st,
             )
             c.assert_no_behavior_fields(cards[sym])
         except Exception as exc:  # noqa: BLE001 — one symbol failing is reported, the rest still render
             cards[sym] = {"symbol": sym, "error": f"{type(exc).__name__}: {exc}"}
+    cards["_stages_contract"] = rw.STAGES_CONTRACT
     a.reentry_watch = cards
     return cards

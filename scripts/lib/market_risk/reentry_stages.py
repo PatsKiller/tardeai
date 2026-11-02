@@ -159,7 +159,9 @@ def evaluate(
     """Stage 1 / Stage 2 status for one exit. ``bars``: daily OHLCV for the symbol, oldest first, through the last
     completed session (the engine's reader)."""
     k = _cfg(policy)
-    bars = [b for b in bars if _f(b.get("close")) is not None]
+    # A provisional row is a same-day quote, not a completed session: it must never move a moving
+    # average or decide a verdict (2026-11-02: a 07:15 pre-market snapshot became a fake close).
+    bars = [b for b in bars if _f(b.get("close")) is not None and not b.get("provisional")]
     closes = [float(b["close"]) for b in bars]
     since = [b for b in bars if str(b.get("date") or "")[:10] >= exit_date]
     last = closes[-1] if closes else None
@@ -196,15 +198,35 @@ def evaluate(
     wli = min(range(len(wl)), key=lambda x: wl[x])
     swing_low = round(active["swing_low"] if active else wl[wli], 4)
 
-    conds = [{"key": "follow_through", "met": active is not None, "text": "higher low + 2 green closes"}]
+    # Quote-derived bars carry no open/high/low or volume. A test it cannot evaluate is "not measured",
+    # never "not met": the old text claimed Stage 1 could not pass for names it was never able to judge.
+    opens_known = any(_f(b.get("open")) is not None for b in bars)
+    volumes_known = any(_f(b.get("volume")) is not None for b in bars)
+    conds = [
+        {
+            "key": "follow_through",
+            "met": active is not None if opens_known else False,
+            "measured": opens_known,
+            "text": "higher low + 2 green closes"
+            if opens_known
+            else "not measured — quote bars have no session open",
+        }
+    ]
     vol_ok = False
-    if active is not None:
+    if active is not None and volumes_known:
         j = bars.index(since[active["index"]])
         vols = [_f(b.get("volume")) for b in bars[max(0, j - k["volume_avg_sessions"]) : j]]
         vols = [v for v in vols if v]
         v2 = _f(bars[j].get("volume"))
         vol_ok = bool(vols and v2 and v2 >= k["volume_ratio_min"] * mean(vols))
-    conds.append({"key": "volume", "met": vol_ok, "text": f"volume ≥{k['volume_ratio_min']:g}×"})
+    conds.append(
+        {
+            "key": "volume",
+            "met": vol_ok,
+            "measured": volumes_known,
+            "text": f"volume ≥{k['volume_ratio_min']:g}×" if volumes_known else "not measured — quote bars have no volume",
+        }
+    )
     g = group_no_new_low(group_ratio, k["group_rs_sessions"])
     conds.append(
         {
