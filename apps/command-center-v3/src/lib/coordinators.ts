@@ -2,6 +2,8 @@
 // read-only view of GET /api/v2/coordination/coordinators and /board. No writes: scripts/coordinator.py is the only
 // writer of the registry and the shared notebook.
 
+import type { Tone } from './designTokens'
+
 export type CoordinatorState = 'active' | 'stale' | 'stood_down'
 export type CoordinatorRole = 'lead' | 'member' | 'observer'
 
@@ -71,8 +73,8 @@ export type BoardPayload = {
   inbox?: Record<string, number>
 }
 
-export function stateTone(state?: string): 'positive' | 'warning' | 'neutral' | 'danger' {
-  if (state === 'active') return 'positive'
+export function stateTone(state?: string): Tone {
+  if (state === 'active') return 'success'
   if (state === 'stale') return 'warning'
   if (state === 'stood_down') return 'neutral'
   return 'neutral'

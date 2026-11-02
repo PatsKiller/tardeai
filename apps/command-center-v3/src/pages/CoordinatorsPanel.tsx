@@ -32,7 +32,7 @@ function Card({ c }: { c: NonNullable<CoordinatorsPayload['coordinators']>[numbe
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
         <span style={{ fontSize: TYPE.base, fontWeight: 800, color: TOKENS.text[0] }}>{c.id}</span>
         <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>{c.vendor || 'vendor?'}</span>
-        <Chip tone={String(c.role) === 'lead' ? 'positive' : 'neutral'} title="role">{String(c.role || 'member')}</Chip>
+        <Chip tone={String(c.role) === 'lead' ? 'success' : 'neutral'} title="role">{String(c.role || 'member')}</Chip>
         <Chip tone={tone} title="heartbeat freshness">{stateLabel(c.state)}</Chip>
       </div>
       <div style={{ fontSize: TYPE.sm, color: TOKENS.text[1] }}>
@@ -90,7 +90,7 @@ export default function CoordinatorsPanel() {
           </div>
         ) : null}
         <ChipRow style={{ marginTop: 8 }}>
-          <Chip tone={d?.lead ? 'positive' : 'warning'} title="the only coordinator that brings questions to the operator">
+          <Chip tone={d?.lead ? 'success' : 'warning'} title="the only coordinator that brings questions to the operator">
             lead: {d?.lead || 'none'}
           </Chip>
           <Chip tone="neutral" title="how long silence marks a coordinator stale">{d?.stale_after_minutes ?? 30}m stale rule</Chip>
@@ -186,7 +186,7 @@ export default function CoordinatorsPanel() {
                   <tr key={String(a.session)}>
                     <td style={mono}>{a.session}</td>
                     <td style={cell}>
-                      <Chip tone={a.state === 'busy' ? 'positive' : a.state === 'idle' ? 'neutral' : 'warning'}
+                      <Chip tone={a.state === 'busy' ? 'success' : a.state === 'idle' ? 'neutral' : 'warning'}
                         title="guess from tmux last-activity">{a.state || 'unknown'}</Chip>
                     </td>
                     <td style={mono}>{a.captured_at ? heartbeatLabel(a.captured_at) : '—'}</td>
