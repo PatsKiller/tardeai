@@ -82,11 +82,36 @@ export function canAct(i: Incident): { ack: boolean; close: boolean } {
   return { ack: !terminal && !i.acknowledged, close: !terminal }
 }
 
+/** An escalation event is an attempt; only a typed durable delivery verdict confirms it. */
+export function escalationStatus(i: Pick<Incident, 'escalations'>): { label: string; tone: Tone } | null {
+  const attempts = i.escalations ?? []
+  if (!attempts.length) return null
+  const delivered = attempts.filter(attempt => attempt.delivered === true).length
+  return delivered
+    ? { label: `${delivered} of ${attempts.length} escalation deliveries confirmed`, tone: delivered === attempts.length ? 'info' : 'warning' }
+    : { label: `Escalation delivery unconfirmed (${attempts.length} attempt${attempts.length === 1 ? '' : 's'})`, tone: 'warning' }
+}
+
+export function severityLabel(value?: string): { label: string; tone: Tone; rank: number } {
+  const severity = value?.trim().toUpperCase()
+  if (severity && /^P[0-3]$/.test(severity)) {
+    const rank = Number(severity.slice(1))
+    return { label: severity, tone: rank <= 1 ? 'danger' : rank === 2 ? 'warning' : 'neutral', rank }
+  }
+  return { label: severity ? `Severity unknown (${severity})` : 'Severity unknown', tone: 'warning', rank: 9 }
+}
+
 export function sortIncidents(rows: Incident[]): Incident[] {
   return [...rows].sort((a, b) => {
+    const terminal = a.status === 'fixed' || a.status === 'closed'
+    const terminalB = b.status === 'fixed' || b.status === 'closed'
+    if (terminal !== terminalB) return terminal ? 1 : -1
+    if (!terminal) {
+      const severity = severityLabel(a.severity).rank - severityLabel(b.severity).rank
+      if (severity) return severity
+    }
     const sa = STATUS_ORDER.indexOf(a.status), sb = STATUS_ORDER.indexOf(b.status)
     if (sa !== sb) return sa - sb
-    const terminal = a.status === 'fixed' || a.status === 'closed'
     return terminal ? Date.parse(b.updated_at) - Date.parse(a.updated_at) : Date.parse(a.opened_at) - Date.parse(b.opened_at)
   })
 }

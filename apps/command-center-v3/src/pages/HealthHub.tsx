@@ -153,11 +153,12 @@ export default function HealthHub({ onDrill, jobsHealth }: Props) {
       {tab === 'overview' && health && (
         <>
           <RiskHealthStrip
-            heatPct={riskData?.portfolio_heat_pct ?? 0}
+            heatPct={riskData?.portfolio_heat_pct ?? null}
             healthScore={overall}
-            unprotected={(riskData?.positions || []).filter((p: any) => !p.has_stop).length}
-            brokerStale={propHealth?.broker?.stale_count ?? 0}
-            optionsAlerts={propHealth?.options?.needs_action ?? 0}
+            healthStatus={health?.status}
+            unprotected={Array.isArray(riskData?.positions) ? riskData.positions.filter((p: any) => !p.has_stop).length : null}
+            brokerStale={propHealth?.broker?.stale_count ?? null}
+            optionsAlerts={propHealth?.options?.needs_action ?? null}
           />
           {/* Score hero */}
           <div className={terminalUi ? 'cc-panel' : undefined} style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 16,
