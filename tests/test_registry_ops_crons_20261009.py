@@ -186,6 +186,8 @@ SNAP_LINES = [x["line"] for x in SNAPSHOT["cron_lines"]]
 MOVED_SINCE_SNAPSHOT = {
     "hermes-learning-pipeline-learn": {"20 11 * * *"},
     "hermes-learning-pipeline-tune": {"20 17 * * *"},
+    # operator 2026-11-02: "repricing needs to run 24 hours as we have 24-hour markets" (was */15 9-16 1-5)
+    "portfolio-repricer": {"*/15 * * * 1-5", "*/15 20-23 * * 0", "10 16 * * 1-5"},
 }
 
 
