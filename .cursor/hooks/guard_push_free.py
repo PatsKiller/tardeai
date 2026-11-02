@@ -522,7 +522,11 @@ def resolve_approval(ref: Optional[str], cfg: dict[str, Any], *, branch: str, bi
         if "APPROVE_AGENTS_POLICY_" in body:
             raise Refused(f"comment {m.group('id')} carries a policy ratification token; it does not approve a push")
         # G2: an explicit, branch-specific token on its own line. It binds the approval to this branch on both paths.
-        if not re.search(r"^[ \t]*APPROVE_PUSH[ \t]+" + re.escape(branch) + r"[ \t]*$", body, re.MULTILINE):
+        # Review 2 of #2459 (2026-11-02): this path matched the RAW body, so a token inside a fence, an
+        # HTML comment or an indented block counted as an approval - the standing path already strips
+        # those ("an example or a hidden line is never an approval"). The refusal on a policy-ratification
+        # token above deliberately stays on the raw body: a token anywhere still disqualifies.
+        if not re.search(r"^[ \t]*APPROVE_PUSH[ \t]+" + re.escape(branch) + r"[ \t]*$", _unfenced(body), re.MULTILINE):
             raise Refused(f"approval comment {m.group('id')} has no line 'APPROVE_PUSH {branch}'")
         bound = "approve-push-token"
         if bind_branch and "/pull/" in ref:

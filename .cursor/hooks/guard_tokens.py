@@ -163,7 +163,51 @@ def _git(args: list[str]) -> set[str]:
     verb, rest = args[i], args[i + 1:]
     if verb in GIT_PUSH_VERBS or (verb == "reset" and "--hard" in rest):
         return {"git-push"}
+    if verb == "config" and _git_config_writes_an_alias(rest):
+        # Review 2 of #2459 (2026-11-02): a PERSISTENT alias defeated this classifier.
+        # `git config alias.p push` followed by `git p origin <branch>` showed as `none` for both
+        # commands, and on this host .git/hooks/pre-push runs only the secrets scan, so those two
+        # agent-typed commands would reach GitHub with no approval, no grant and no budget.
+        # The guarantee is "no alias can be CREATED", not "an existing alias is caught": `git p`
+        # cannot be resolved without reading config, which this classifier never does.
+        return {"git-push"}
     return set()
+
+
+#: `git config` sub-commands that only read. Everything else is a write.
+_GIT_CONFIG_READS = frozenset({"get", "get-all", "list", "show", "show-origin", "show-scope", "--get",
+                               "--get-all", "--list", "--show", "--show-origin", "--show-scope", "-l"})
+#: `git config` options that consume the following argument as their value.
+_GIT_CONFIG_VALUE_OPTS = frozenset({"--file", "-f", "--type", "--blob", "--default", "--comment"})
+
+
+def _git_config_writes_an_alias(rest: list[str]) -> bool:
+    """True when a `git config` invocation writes an `alias.*` key.
+
+    Handles `alias.x y`, `--local/--global/--system`, `--add`, `-f`/`--file <path>`, and the
+    `key=value` form. A bare read (`--list`, `--get user.name`) stays unguarded.
+    """
+    args = list(rest)
+    j = 0
+    while j < len(args):
+        w = args[j]
+        if w in _GIT_CONFIG_VALUE_OPTS:
+            j += 2
+            continue
+        if w.startswith("--file="):
+            j += 1
+            continue
+        if w.startswith("-"):
+            j += 1
+            continue
+        break
+    if j >= len(args):
+        return False
+    first = args[j]
+    if first in _GIT_CONFIG_READS or first.split("=", 1)[0] in _GIT_CONFIG_READS:
+        return False
+    key = first.split("=", 1)[0].strip().lower()
+    return key == "alias" or key.startswith("alias.")
 
 
 def _simple(argv: list[str], depth: int) -> set[str]:

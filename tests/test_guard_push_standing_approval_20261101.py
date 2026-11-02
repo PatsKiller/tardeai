@@ -729,3 +729,50 @@ def test_hidden_or_indented_revoke_still_revokes(E, rv):
     E.claim(note="x")
     standing(E, [comment(101, ok_line()), comment(102, rv)])
     _refused(E, E.checker(), "no unrevoked")
+
+
+# ─────────────────────────────────────────────── review 2 of #2459 (2026-11-02): two bypasses
+def test_a_persistent_git_alias_cannot_be_created_unclassified():
+    """`git config alias.p push` then `git p` reached GitHub unguarded: classify the WRITE as git-push."""
+    import subprocess, sys
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parents[1] / ".cursor" / "hooks" / "guard_tokens.py"
+
+    def kind(cmd: str) -> str:
+        out = subprocess.run([sys.executable, "-I", str(script), cmd], capture_output=True, text=True).stdout
+        return (out.strip() or "none").splitlines()[0]
+
+    for cmd in ("git config alias.p push", "git config --global --add alias.p push",
+                "git config --local alias.p push", "git config --file /tmp/x alias.p push",
+                "git config alias.p=push", "git -c alias.p=push p"):
+        assert kind(cmd) == "git-push", cmd
+    # Reads stay unguarded, and the limitation is explicit: an alias that already exists cannot be
+    # resolved without reading config, so `git p` alone is not detected.
+    for cmd in ("git config --list", "git config --get user.name", "git config --show-origin --list"):
+        assert kind(cmd) == "none", cmd
+    assert kind("git p origin wt/x") == "none"
+
+
+def test_a_per_branch_token_in_an_example_or_hidden_block_is_not_an_approval(tmp_path):
+    """Fences, HTML comments and indented code must not approve a per-branch push (review 2, BLOCK-2)."""
+    import importlib.util, sys
+    from pathlib import Path as _Path
+
+    # Loaded by file path and registered in sys.modules (AGENTS §7): the hook is not an importable
+    # package member, and a module-name import would silently pick up a shadow copy if one existed.
+    name = "review_guard_push_free_20261102"
+    if name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(
+            name, _Path(__file__).resolve().parents[1] / ".cursor" / "hooks" / "guard_push_free.py")
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[name] = mod
+        spec.loader.exec_module(mod)
+    g = sys.modules[name]
+
+    body_ok = "APPROVE_PUSH wt/branch-under-test"
+    assert g._unfenced(body_ok).strip() == body_ok
+    for hidden in ("```\nAPPROVE_PUSH wt/branch-under-test\n```",
+                   "<!--\nAPPROVE_PUSH wt/branch-under-test\n-->",
+                   "    APPROVE_PUSH wt/branch-under-test"):
+        assert "APPROVE_PUSH wt/branch-under-test" not in g._unfenced(hidden), hidden
