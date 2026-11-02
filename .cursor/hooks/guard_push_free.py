@@ -252,7 +252,36 @@ def policy_state_from_text(text: Optional[str]) -> dict[str, Any]:
     row = re.search(r"^\|\s*" + re.escape(version or "") + r"\s*\|[^|]*\|\s*([^|]*)\|", text, re.M)
     if not row or not row.group(1).strip().upper().startswith("ACTIVE"):
         return {**base, "detail": f"AGENTS.md {version} version-history row is not ACTIVE"}
-    return {**base, "active": True, "detail": f"AGENTS.md {version} ACTIVE"}
+    # Review 1 addendum on #2459 (cc-deepseek-4, 2026-11-02): a version number is not a feature grant.
+    # A real, unrelated amendment could be ACTIVE at 29.4.0 with no standing-push clause and would have
+    # admitted standing approvals. The ACTIVE binding document must itself declare the capability.
+    return {**base, "active": True, "standing_push": _declares_standing_push(text),
+            "detail": f"AGENTS.md {version} ACTIVE"}
+
+
+#: The capability the standing path needs, as the policy grammar states it.
+_STANDING_CAPABILITY = re.compile(r"APPROVE_PUSH_STANDING\s+<glob>\s+until", re.I)
+_BINDING_START = re.compile(r"^# 0 · If you read nothing else", re.M)
+_BINDING_END = re.compile(r"^# Version history", re.M)
+
+
+def _declares_standing_push(text: str) -> bool:
+    """Does the ACTIVE binding text itself grant the standing-push capability?
+
+    Only the operative text counts: the version-history table, the banner block above §0, fenced code,
+    ``<!-- -->`` comments and 4-space/tab indented examples are removed first, so a borrowed token in a
+    history row, an example or a comment cannot act as a feature grant.
+    """
+    if not isinstance(text, str):
+        return False
+    start = _BINDING_START.search(text)
+    end = _BINDING_END.search(text)
+    if start is None:
+        return False
+    body = text[start.start(): end.start() if end and end.start() > start.start() else len(text)]
+    body = _unfenced(body)
+    body = "\n".join(ln for ln in body.splitlines() if not ln.lstrip().startswith("|"))
+    return bool(_STANDING_CAPABILITY.search(body))
 
 
 # --------------------------------------------------------------------------- repo checks
@@ -677,6 +706,11 @@ def standing_approval(branch: str, cfg: dict[str, Any], *, now: Optional[datetim
     if not st.get("active") or sv is None or sv < STANDING_MIN_POLICY:
         raise Refused(f"standing approval needs AGENTS.md {STANDING_MIN_POLICY_TEXT}+ ACTIVE on main "
                       f"(main has {st.get('version') or 'unknown'}, {'ACTIVE' if st.get('active') else 'not active'})")
+    if not st.get("standing_push"):
+        # Review 1 addendum (2026-11-02): the version alone was the whole gate, so a real unrelated
+        # amendment at 29.4.0 ACTIVE with NO standing-push clause admitted standing approvals.
+        raise Refused(f"standing approval needs the standing-push capability in main's ACTIVE binding text "
+                      f"({st.get('version')} is ACTIVE but declares no APPROVE_PUSH_STANDING rule)")
     repo = _standing_repo(cfg)
     num = standing_issue(cfg, repo)
     op = str(cfg["operator_login"])
