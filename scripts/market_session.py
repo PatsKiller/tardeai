@@ -256,6 +256,41 @@ def is_approval_stale(approved_at, strategy_id=None, max_age_minutes=None):
     return is_recommendation_stale(approved_at, strategy_id, max_age_minutes)
 
 
+def trading_sessions_between(start, end=None) -> int:
+    """Completed US equity trading sessions strictly after ``start`` and by ``end``.
+
+    Both instants are converted to Eastern first. A session is *completed* once
+    its close has passed — 16:00 ET, or 13:00 ET on an early-close day — so an
+    observation made after Friday's close has seen zero completed sessions by
+    Monday morning. Weekends and NYSE full-closure holidays never count.
+
+    This is the honest measure of position staleness: 48 wall-clock hours over a
+    weekend contains zero sessions and must not read as two days of drift. The
+    close time is compared explicitly so a Friday-evening observation is not
+    counted as a completed session for the whole weekend.
+    """
+    end_et = _to_eastern(end) if end is not None else _eastern_now()
+    if start is None:
+        return 0
+    start_et = _to_eastern(start)
+    if start_et > end_et:
+        start_et, end_et = end_et, start_et
+
+    count = 0
+    day = start_et.date()
+    last = end_et.date()
+    while day <= last:
+        holidays, early_closes = _calendar(day.year)
+        iso = day.isoformat()
+        if day.weekday() < 5 and iso not in holidays:
+            close_at = EARLY_CLOSE_TIME if iso in early_closes else MARKET_CLOSE
+            close_dt = datetime.combine(day, close_at, tzinfo=start_et.tzinfo)
+            if start_et < close_dt <= end_et:
+                count += 1
+        day += timedelta(days=1)
+    return count
+
+
 def get_status():
     """Return full market session status."""
     et = _eastern_now()

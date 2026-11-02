@@ -1,0 +1,16 @@
+{
+  "schema": "PortfolioObservationClock@v1",
+  "stale_after_sessions": 1,
+  "comment": [
+    "Home Command Center PORTFOLIO tile stale decision, measured in COMPLETED US",
+    "equity trading sessions (weekdays minus NYSE full-closure holidays; a session",
+    "is complete once its 16:00 ET close, or 13:00 ET early close, has passed).",
+    "One completed session with no newer position observation is stale: a daily",
+    "broker sync that misses a trading day is worth surfacing. Over a weekend zero",
+    "sessions complete, so a Friday-after-close observation is FRESH on Monday",
+    "before the 09:07 ET sync instead of tripping the 48 wall-clock-hour rule.",
+    "This threshold lives here, not in code. coverage.stale_after_hours and",
+    "position_observation_oldest_age_hours keep their existing meaning for every",
+    "other consumer; the session fields are additive."
+  ]
+}

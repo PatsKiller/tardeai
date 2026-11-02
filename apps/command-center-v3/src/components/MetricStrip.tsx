@@ -191,6 +191,9 @@ export default function MetricStrip({ onDrill }: Props) {
   const posOldest = portfolioAgg?.position_observation_oldest ?? null
   const posOldestAcct = portfolioAgg?.position_observation_oldest_account ?? null
   const posOldestAgeH = portfolioAgg?.position_observation_oldest_age_hours ?? null
+  // Producer's session-based decision: completed US trading sessions only, so a
+  // weekend or NYSE holiday cannot make a fresh Friday observation read stale.
+  const posStaleBySessions = portfolioAgg?.position_observation_stale ?? null
   const valuationTime = portfolioAgg?.valuation_time ?? null
   const quoteObsTime = portfolioAgg?.quote_observation_time ?? null
 
@@ -226,7 +229,7 @@ export default function MetricStrip({ onDrill }: Props) {
   // strip and duplicated tip content. Provenance is not dropped — tip + drill
   // still carry oldest stamp/age, empties, coverage, and divergences.
   const oldestLine = posOldest
-    ? `oldest ${posOldestAcct ?? '—'} ${posOldest}${ageMark(posOldestAgeH)}`
+    ? `oldest ${posOldestAcct ?? '—'} ${fmtAsOf(posOldest) ?? posOldest}${ageMark(posOldestAgeH)}`
     : cov?.accounts_undated
       ? `no dated position observation (${cov.accounts_undated} account(s) undated)`
       : 'oldest —'
@@ -257,7 +260,9 @@ export default function MetricStrip({ onDrill }: Props) {
   // Is anything actually wrong with the position clock? Drives the tile's tone,
   // which is what makes the strip quiet when healthy and loud when not.
   const portfolioStaleObs =
-    posOldestAgeH != null && cov?.stale_after_hours != null && posOldestAgeH > cov.stale_after_hours
+    posStaleBySessions != null
+      ? posStaleBySessions === true
+      : posOldestAgeH != null && cov?.stale_after_hours != null && posOldestAgeH > cov.stale_after_hours
   const portfolioTone: Tone = worseTone(
     clockDivergences.length ? 'warn' : 'ok',
     portfolioStaleObs ? 'warn' : 'ok',
@@ -266,7 +271,7 @@ export default function MetricStrip({ onDrill }: Props) {
   )
 
   const clockLines = [
-    posNewest ? `positions observed ${posNewest} (newest, ${portfolioAgg?.position_observation_newest_account ?? '—'})${coverageMark}` : 'positions observed UNDATED',
+    posNewest ? `positions observed ${fmtAsOf(posNewest) ?? posNewest} (newest, ${portfolioAgg?.position_observation_newest_account ?? '—'})${coverageMark}` : 'positions observed UNDATED',
     oldestLine,
     valuationTime ? `valued ${valuationTime}` : 'valued UNDATED',
     quoteObsTime ? `quotes observed ${quoteObsTime}${portfolioAgg?.quote_source ? ` (${portfolioAgg.quote_source})` : ''}` : 'quotes observed UNDATED',
@@ -283,6 +288,12 @@ export default function MetricStrip({ onDrill }: Props) {
   // while the cache stays empty for days — census/bisect 2026-08-28).
   const setupsFresh = tradeAiSurfaceFreshness(tradeAi)
   const overviewFresh = overviewSurfaceFreshness(overview)
+  // overviewSurfaceFreshness ages `overview.data_as_of` in wall-clock hours
+  // (36h). For the PORTFOLIO tile that is the SAME position clock the producer
+  // now judges in completed sessions, so the session decision governs here.
+  // A fail-closed surface (missing/undated data, ageHours null) still wins.
+  const portfolioSurfaceStale =
+    (overviewFresh.stale && overviewFresh.ageHours == null) || portfolioStaleObs
   const scanStale = setupsFresh.stale
   const setupsRun = runLabel(tradeAi?.run_label ?? tradeAi?.latest_run_label, tradeAi?.run_date)
   const setupsAsOfMark = setupsFresh.asOf
@@ -433,21 +444,21 @@ export default function MetricStrip({ onDrill }: Props) {
   const tiles = [
     {
       label: 'PORTFOLIO', value: portfolioVal != null ? fmt$(portfolioVal, 0) : '—',
-      stale: overviewFresh.stale ? (overviewFresh.surfaceLabel?.replace(/^STALE · /, ' · ') || overviewAsOfMark) : null,
+      stale: portfolioSurfaceStale ? (overviewFresh.surfaceLabel?.replace(/^STALE · /, ' · ') || overviewAsOfMark) : null,
       // The tile shows the POSITION observation. Saying "data_as_of" named no
       // clock at all; saying "positions observed" names the one on screen and
       // leaves the other three visibly absent rather than silently merged.
-      asOf: posNewest ?? overviewFresh.asOf,
+      asOf: posNewest ? (fmtAsOf(posNewest) ?? posNewest) : overviewFresh.asOf,
       asOfLabel: 'positions observed',
       asOfNote: portfolioFaceNote,
-      tone: worseTone(portfolioTone, overviewFresh.stale ? 'warn' : 'ok'),
+      tone: worseTone(portfolioTone, portfolioSurfaceStale ? 'warn' : 'ok'),
       valueSize: VALUE_BIG,
       minWidth: 175, maxWidth: 265,
       undated: !posNewest && !overviewFresh.dataAsOf,
-      color: overviewFresh.stale ? BB.amber : 'var(--text0)',
-      tip: `Total portfolio equity — an ALL-ACCOUNTS aggregate${portfolioAgg?.included_account_count != null ? ` of ${portfolioAgg.included_account_count} account(s)` : ''} (Schwab, Alpaca, Moomoo). No single account is the source of the total.\n\nACCOUNTS (hover):\n · ${portfolioHoverAccounts ?? '—'}\n\nFOUR SEPARATE CLOCKS:\n · ${clockLines.join('\n · ')}\n\nThe newest position observation dates ${cov?.at_newest_pct ?? '—'}% of the aggregate value; ${cov?.value_fresh_pct ?? '—'}% is within ${cov?.stale_after_hours ?? 48}h.${clockDivergences.length ? `\n\nCLOCK DIVERGENCE — two copies of the position clock disagree:\n · ${clockDivergences.map(d => `${d.account}: ${d.detail}`).join('\n · ')}\naccount_summaries.as_of is not maintained by the loader; the position rows are. Neither copy is edited.` : ''} Refreshes every 2 min via /api/v2/overview.${overviewFresh.stale ? ` · ${overviewFresh.reason}` : ''}`,
-      drill: { title: 'Portfolio (ALL ACCOUNTS)', subtitle: overviewFresh.stale ? `STALE · ${oldestLine}` : `All-account aggregate · ${portfolioAgg?.included_account_count ?? '?'} account(s)${coverageMark}`, endpoint: '/api/v2/overview',
-        rows: overview ? [{ portfolio_value: overview.portfolio_value, positions_observed_newest: posNewest, positions_observed_oldest: posOldest, positions_observed_oldest_account: posOldestAcct, positions_observed_oldest_age_hours: posOldestAgeH, valuation_time: valuationTime, quote_observation_time: quoteObsTime, quote_source: portfolioAgg?.quote_source, coverage: cov, observation_divergences: clockDivergences, portfolio_aggregate: overview.portfolio_aggregate, total_cash: overview.total_cash, position_count: overview.position_count, today_change: overview.today_change, today_pct: overview.today_pct, as_of: overview.as_of, surface_stale: overviewFresh.stale, surface_reason: overviewFresh.reason }] : [] },
+      color: portfolioSurfaceStale ? BB.amber : 'var(--text0)',
+      tip: `Total portfolio equity — an ALL-ACCOUNTS aggregate${portfolioAgg?.included_account_count != null ? ` of ${portfolioAgg.included_account_count} account(s)` : ''} (Schwab, Alpaca, Moomoo). No single account is the source of the total.\n\nACCOUNTS (hover):\n · ${portfolioHoverAccounts ?? '—'}\n\nFOUR SEPARATE CLOCKS:\n · ${clockLines.join('\n · ')}\n\nThe newest position observation dates ${cov?.at_newest_pct ?? '—'}% of the aggregate value; ${cov?.value_fresh_pct ?? '—'}% is within ${cov?.stale_after_hours ?? 48}h.${clockDivergences.length ? `\n\nCLOCK DIVERGENCE — two copies of the position clock disagree:\n · ${clockDivergences.map(d => `${d.account}: ${d.detail}`).join('\n · ')}\naccount_summaries.as_of is not maintained by the loader; the position rows are. Neither copy is edited.` : ''} Refreshes every 2 min via /api/v2/overview.${portfolioSurfaceStale ? ` · ${overviewFresh.reason}` : ''}`,
+      drill: { title: 'Portfolio (ALL ACCOUNTS)', subtitle: portfolioSurfaceStale ? `STALE · ${oldestLine}` : `All-account aggregate · ${portfolioAgg?.included_account_count ?? '?'} account(s)${coverageMark}`, endpoint: '/api/v2/overview',
+        rows: overview ? [{ portfolio_value: overview.portfolio_value, positions_observed_newest: posNewest, positions_observed_oldest: posOldest, positions_observed_oldest_account: posOldestAcct, positions_observed_oldest_age_hours: posOldestAgeH, valuation_time: valuationTime, quote_observation_time: quoteObsTime, quote_source: portfolioAgg?.quote_source, coverage: cov, observation_divergences: clockDivergences, portfolio_aggregate: overview.portfolio_aggregate, total_cash: overview.total_cash, position_count: overview.position_count, today_change: overview.today_change, today_pct: overview.today_pct, as_of: overview.as_of, surface_stale: portfolioSurfaceStale, surface_reason: overviewFresh.reason }] : [] },
     },
     {
       label: 'TODAY', value: todayChange != null ? `${todayChange >= 0 ? '+' : ''}${fmt$(todayChange, 0)}${todayPct != null ? ` ${todayPct >= 0 ? '+' : ''}${todayPct}%` : ''}` : '—',
@@ -473,7 +484,7 @@ export default function MetricStrip({ onDrill }: Props) {
               account_value: d.value, top_movers: d.top_movers || null,
             })),
         ] : [] },
-      tip: `Today's net change ($ and %).\n\nACCOUNTS (hover):\n · ${todayHoverAccounts ?? '—'}\n\n · P&L session: ${todayPnl?.session_date ?? 'UNDATED'}${todayPnl?.session_source ? ` (from ${todayPnl.session_source})` : ''}\n · calculated: ${todayPnl?.calculated_at ?? '—'}\n · marks: ${todayPnl?.mark_source ?? '—'}\n · coverage: ${todayPnl?.coverage_reason ?? '—'}\n\nThis is the P&L's OWN session — not the date the share counts were observed (${posNewest ?? 'UNDATED'}). Click for the per-account breakdown. Refreshes every 2 min.`,
+      tip: `Today's net change ($ and %).\n\nACCOUNTS (hover):\n · ${todayHoverAccounts ?? '—'}\n\n · P&L session: ${todayPnl?.session_date ?? 'UNDATED'}${todayPnl?.session_source ? ` (from ${todayPnl.session_source})` : ''}\n · calculated: ${todayPnl?.calculated_at ?? '—'}\n · marks: ${todayPnl?.mark_source ?? '—'}\n · coverage: ${todayPnl?.coverage_reason ?? '—'}\n\nThis is the P&L's OWN session — not the date the share counts were observed (${posNewest ? (fmtAsOf(posNewest) ?? posNewest) : 'UNDATED'}). Click for the per-account breakdown. Refreshes every 2 min.`,
     },
     {
       // "53.3% · 169 · $55,429" was three unlabelled numbers. A reader cannot tell which

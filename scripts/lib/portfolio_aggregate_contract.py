@@ -52,7 +52,9 @@ break; they are documented as the position clock they always were.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 
@@ -63,6 +65,44 @@ SCOPE_ALL_ACCOUNTS = "ALL_ACCOUNTS"
 
 # A position observation older than this no longer dates the aggregate as fresh.
 STALE_AFTER_HOURS = 48.0
+
+# The session-based staleness threshold lives in config, never in code: a
+# missing or malformed file yields None and the caller keeps the hours decision.
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+OBSERVATION_CLOCK_CONFIG = _PROJECT_ROOT / "config" / "portfolio_observation_clock.json"
+
+
+def _session_stale_threshold() -> Optional[int]:
+    """Configured completed-session count at which an observation is stale.
+
+    Deliberately has no code default. If the config is absent or the value is
+    not a positive int (``True`` is rejected despite being an int subclass),
+    the session decision is withheld rather than invented.
+    """
+    try:
+        doc = json.loads(OBSERVATION_CLOCK_CONFIG.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    value = doc.get("stale_after_sessions") if isinstance(doc, dict) else None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return None
+    return value
+
+
+def _age_sessions(value: Any, now: datetime) -> Optional[int]:
+    """Completed US equity trading sessions between an observation and ``now``."""
+    dt = _parse_obs(value)
+    if dt is None:
+        return None
+    try:
+        from market_session import trading_sessions_between
+    except ImportError:  # pragma: no cover -- scripts/ not on path
+        import sys as _sys
+        from pathlib import Path as _P
+
+        _sys.path.insert(0, str(_P(__file__).resolve().parent.parent))
+        from market_session import trading_sessions_between
+    return trading_sessions_between(dt, now)
 
 
 def _parse_obs(value: Any) -> Optional[datetime]:
@@ -484,6 +524,20 @@ def build_portfolio_aggregate(
     coverage = coverage_by_value(accounts, newest_obs=newest_obs, now=now_utc)
     oldest_age = _age_hours(oldest_obs, now_utc) if oldest_obs else None
 
+    # Session-based staleness is a SECOND, additive decision. It does not
+    # redefine `stale_after_hours` or anything derived from it — other readers
+    # keep that contract — but it is the decision a week of zero sessions must
+    # not trip. The threshold comes from config; with no config the decision is
+    # withheld (None) and consumers fall back to the hours rule.
+    stale_after_sessions = _session_stale_threshold()
+    oldest_age_sessions = _age_sessions(oldest_obs, now_utc) if oldest_obs else None
+    stale_by_sessions = (
+        oldest_age_sessions >= stale_after_sessions
+        if oldest_age_sessions is not None and stale_after_sessions is not None
+        else None
+    )
+    coverage["stale_after_sessions"] = stale_after_sessions
+
     agg_state = "UNAVAILABLE"
     agg_reason = "no account observations"
     if accounts:
@@ -527,6 +581,11 @@ def build_portfolio_aggregate(
         "position_observation_oldest": oldest_obs,
         "position_observation_oldest_account": oldest_acct,
         "position_observation_oldest_age_hours": oldest_age,
+        # The same age in COMPLETED TRADING SESSIONS (weekends and NYSE
+        # holidays do not count), and the configured session stale decision.
+        "position_observation_oldest_age_sessions": oldest_age_sessions,
+        "position_observation_stale_after_sessions": stale_after_sessions,
+        "position_observation_stale": stale_by_sessions,
         "position_observation_newest": newest_obs,
         "position_observation_newest_account": newest_acct,
         # ── clock 3: when the aggregate value was computed ────────────────────
