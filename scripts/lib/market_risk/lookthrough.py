@@ -65,7 +65,9 @@ def exposure_for(
     ipos: dict[str, Any] | None = None,
     themes: dict[str, list[str]] | None = None,
     segments_cfg: dict[str, Any] | None = None,
+    as_of: Any = None,
 ) -> dict[str, Any]:
+    """``as_of``: the evaluation instant (a replay's as-of); issuer segments approved after it are not used."""
     out = _exposure_for(
         symbol,
         ai_basket=ai_basket,
@@ -75,6 +77,7 @@ def exposure_for(
         fund_cfg=fund_cfg,
         ipos=ipos,
         segments_cfg=segments_cfg,
+        as_of=as_of,
     )
     extra = (themes or {}).get(str(symbol).upper()) or []
     if extra:
@@ -95,6 +98,7 @@ def _exposure_for(
     fund_cfg: dict[str, Any] | None = None,
     ipos: dict[str, Any] | None = None,
     segments_cfg: dict[str, Any] | None = None,
+    as_of: Any = None,
 ) -> dict[str, Any]:
     sym = str(symbol).upper()
     fund_cfg = fund_cfg if fund_cfg is not None else (_load("fund_lookthrough.json").get("funds") or {})
@@ -112,7 +116,7 @@ def _exposure_for(
         )
         fund = None
     if not fund:
-        seg = issuer_segments_for(sym, segments_cfg)
+        seg = issuer_segments_for(sym, segments_cfg, today=as_of)
         if seg is not None:
             out.update(groups=seg["groups"], basis=seg["basis"])
             if sym in reporting_soon:
@@ -209,6 +213,18 @@ def issuer_segments_for(
     e = cfg.get(str(sym).upper()) if isinstance(cfg, dict) else None
     if not isinstance(e, dict) or str(e.get("status") or "").upper() != "APPROVED":
         return None
+    if hasattr(today, "date") and callable(getattr(today, "date")):
+        today = today.date()  # a datetime evaluation instant
+    if today is not None:
+        # point in time (review of #2460): weights approved, or for a period that ended, after the evaluation date
+        # did not exist then — a replay before the approval uses the profile sector
+        for k in ("as_of", "approved_at"):
+            v = str(e.get(k) or "")[:10]
+            try:
+                if v and _date.fromisoformat(v) > today:
+                    return None
+            except ValueError:
+                return None
     groups: dict[str, float] = {}
     for seg in e.get("segments") or []:
         g, w = str((seg or {}).get("group") or ""), (seg or {}).get("weight")

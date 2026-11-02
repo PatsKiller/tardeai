@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -195,7 +196,9 @@ def test_agent_scratch_candidate_and_reference_and_recent_hold(world):
     fresh = paths[2] / "nested" / "evidence.txt"
     os.utime(fresh, (NOW.timestamp(), NOW.timestamp()))
     doc = evidence()
-    set_source(doc, "coordination", {"references": [{"historical_progress": str(paths[1] / "body.md")}], "live_claims": [], "live_worklogs": []})
+    # 2026-10-31: only a LIVE claim/worklog holds agent scratch; closed history naming it does not (paths[0]).
+    set_source(doc, "coordination", {"references": [{"historical_progress": str(paths[0] / "body.md")}],
+                                     "live_claims": [{"scratch": str(paths[1] / "body.md")}], "live_worklogs": []})
     result = DH.standing_plan(rules, NOW, doc)
     assert {r["path"] for r in result["items"]} == {str(paths[0])}
     assert any("referenced" in " ".join(r["reasons"]) for r in result["excluded"] if r["path"] == str(paths[1]))
@@ -254,7 +257,7 @@ def test_apply_simulated_only_binds_rules_manifest_and_all_three_rule_totals(wor
     report = do_apply(path, world[1], doc)
     assert report["refused"] is None and calls
     assert report["per_rule"]["A"]["applied_bytes"] == sum(r["size_bytes"] for r in manifest["items"])
-    assert set(report["per_rule"]) == {"A", "S", "T", "W"}
+    assert set(report["per_rule"]) == set(SR.RULE_KINDS) == {"A", "S", "T", "W", "C", "R"}
     assert "planned/applied" in report["operator_digest"]
     assert all(Path(r["path"]).exists() for r in calls)  # no real unlink/remove/rmtree happened
 
@@ -415,20 +418,22 @@ def test_explicit_manifest_hash_mismatch_refuses_before_remover(world, monkeypat
     assert report["refused"] == "manifest_sha_mismatch" and not calls
 
 
-def test_default_committed_configuration_remains_unconfigured_and_disabled():
+def test_committed_configuration_is_the_operator_activation_and_the_old_packet_cannot_rerun(tmp_path):
+    """2026-10-31: the operator approved the standing sweep in a direct session; this PR is its activation, so the
+    2026-10-24 promotion packet (kept as history) is superseded and refuses: it only ever promotes a disabled config."""
     rules = DH.load_rules()
-    assert rules["standing_apply"]["enabled"] is False
-    assert rules["standing_apply"]["approval"]["status"] == "PENDING_OPERATOR_REVIEW"
+    assert rules["standing_apply"]["enabled"] is True and rules["standing_apply"]["approval"]["status"] == "APPROVED"
     for filename, key in (("lane_registry.json", "lane_id"), ("n8n_run_allowlist.json", "lane_id"), ("n8n_health_contracts.json", "id")):
         doc = json.loads((ROOT / "config" / filename).read_text())
         collection = doc["contracts"] if key == "id" else doc["lanes"]
         row = next(r for r in collection if r.get(key) == "disk-hygiene")
-        if filename == "lane_registry.json": assert row["dispatch"]["cron"] == ["0 4 * * 0"]
-        if filename == "n8n_run_allowlist.json": assert row["live_arg"] == ["--plan"]
-        if filename == "n8n_health_contracts.json": assert row["status"] == "REVIEWED" and "Deletes nothing" in row["purpose"]["text"]
-        assert doc["pending_changes"]["disk-hygiene-standing-apply-20261024"]
-
-
+        if filename == "lane_registry.json": assert row["dispatch"]["cron"] == ["17 * * * *"] and row["dispatch"]["retry_policy"] == "none"
+        if filename == "n8n_run_allowlist.json": assert row["live_arg"] == ["--standing", "--apply", "--scheduled"]
+        if filename == "n8n_health_contracts.json": assert row["status"] == "REVIEWED" and row["previous_plan_review"]["purpose"]["text"].startswith("Weekly")
+        assert "disk-hygiene-standing-apply-20261024" not in doc.get("pending_changes", {})
+    mod, packet, config, review = activation_fixture(tmp_path)
+    with pytest.raises(ValueError, match="standing_not_disabled"):
+        mod.promotion(config, packet, review)
 
 def monitor_world(world, tmp_path, monkeypatch):
     rules = world[1]
@@ -637,41 +642,6 @@ def activation_fixture(tmp_path):
     return mod,packet,config,review
 
 
-def test_activation_packet_is_default_read_only_and_requires_real_review_shape(tmp_path):
-    mod,packet,config,review = activation_fixture(tmp_path)
-    before={p.name:p.read_bytes() for p in config.iterdir()}
-    pending=dict(review,decision='PENDING_OPERATOR_REVIEW')
-    with pytest.raises(ValueError,match='operator_review_pending'):
-        mod.promotion(config,packet,pending)
-    assert before == {p.name:p.read_bytes() for p in config.iterdir()}
-    rendered,digest = mod.promotion(config,packet,review)
-    assert before == {p.name:p.read_bytes() for p in config.iterdir()}  # pure preview, even with synthetic approval
-    assert len(digest)==64
-    rules=json.loads(rendered['disk_hygiene_rules.json'])
-    assert rules['standing_apply']['enabled'] and rules['standing_apply']['approval']['approved_by']=='SYNTHETIC_OPERATOR_FIXTURE_ONLY'
-
-
-def test_exact_promotion_changes_cadence_contract_argv_and_enable_together(tmp_path):
-    from scripts.lib.n8n_health_contracts import validate_contract
-    mod,packet,config,review=activation_fixture(tmp_path)
-    rendered,_=mod.promotion(config,packet,review)
-    reg=json.loads(rendered['lane_registry.json']);allow=json.loads(rendered['n8n_run_allowlist.json']);contracts=json.loads(rendered['n8n_health_contracts.json'])
-    row=next(x for x in reg['lanes'] if x['lane_id']=='disk-hygiene')
-    assert row['dispatch']['cron']==['0 4 * * 1,3,5,0'] and row['dispatch']['tz']=='America/New_York'
-    assert row['expected_cadence_hours']==48 and row['dispatch']['retry_policy']=='none'
-    entry=next(x for x in allow['lanes'] if x['lane_id']=='disk-hygiene')
-    assert entry['live_arg']==['--standing','--apply']
-    contract=next(x for x in contracts['contracts'] if x['id']=='disk-hygiene')
-    assert not validate_contract(contract)
-    assert contract['status']=='REVIEWED' and contract['reviewed_by']==review['approved_by']
-    assert contract['previous_plan_review']['purpose']['text'].startswith('Weekly')
-    # Every other operative object is preserved, including data from the shared base.
-    for name,key,idkey in [('lane_registry.json','lanes','lane_id'),('n8n_run_allowlist.json','lanes','lane_id'),('n8n_health_contracts.json','contracts','id')]:
-        before=json.loads((config/name).read_text())
-        after=json.loads(rendered[name])
-        assert [r for r in before[key] if r.get(idkey)!='disk-hygiene']==[r for r in after[key] if r.get(idkey)!='disk-hygiene']
-
-
 def test_activation_refuses_changed_base_and_wrong_reviewed_draft(tmp_path):
     mod,packet,config,review=activation_fixture(tmp_path)
     with pytest.raises(ValueError,match='review_contract_hash_mismatch'):
@@ -753,29 +723,6 @@ def test_two_hour_manifest_limit_applies_to_manual_grant_and_standing(world,monk
     assert at['refused'] is None
     after=DH.apply(path,world[1],NOW+timedelta(hours=2,microseconds=1),**kwargs)
     assert after['refused']=='manifest_stale'
-
-
-def test_activation_cli_preview_and_unbound_write_leave_fixture_configs_unchanged(tmp_path):
-    mod,packet,config,review=activation_fixture(tmp_path)
-    review_path=tmp_path/'synthetic-review.json'
-    review_path.write_text(json.dumps(review))
-    args=['--config-dir',str(config),'--review-file',str(review_path)]
-    before={p.name:p.read_bytes() for p in config.iterdir()}
-    assert mod.main(args)==0
-    assert mod.main([*args,'--write','--plan-sha256','wrong'])==1
-    assert before=={p.name:p.read_bytes() for p in config.iterdir()}
-
-
-def test_activation_cli_exact_source_write_is_contained_in_owned_fixture(tmp_path):
-    mod,packet,config,review=activation_fixture(tmp_path)
-    review_path=tmp_path/'synthetic-review.json'
-    review_path.write_text(json.dumps(review))
-    encoded,digest=mod.promotion(config,packet,review)
-    args=['--config-dir',str(config),'--review-file',str(review_path),'--write','--plan-sha256',digest]
-    assert mod.main(args)==0
-    assert {p.name:p.read_bytes() for p in config.iterdir()}==encoded
-    assert mod.main(args)==1  # stale/replayed source write cannot pass the old pins
-    assert json.loads((ROOT/'config/disk_hygiene_rules.json').read_text())['standing_apply']['enabled'] is False
 
 
 def test_old_review_cannot_authorize_changed_source_with_regenerated_pins(tmp_path):
@@ -962,18 +909,23 @@ def test_agent_scratch_is_plan_only_until_rule_t_is_listed(world):
     assert any("rule_plan_only_not_authorized:T" in " ".join(r["reasons"]) for r in result["excluded"] if r["path"] == str(path))
 
 
-def test_agent_scratch_never_takes_a_worktree(world):
+def test_agent_scratch_never_takes_a_worktree(world, monkeypatch):
     home, rules, _, _ = world
     rules["standing_apply"]["rules"] = ["A", "S", "T", "W"]
     (path,) = _scratch_dirs(home, ("task-with-worktree",))
     (path / "wt").mkdir()
     admin = home / "fixture-repo" / ".git" / "worktrees" / "wt"
     admin.mkdir(parents=True)
-    (path / "wt" / ".git").write_text(f"gitdir: {admin}")  # its repo still knows it: rule W's, never T's
+    (path / "wt" / ".git").write_text(f"gitdir: {admin}")  # its repo still knows it
     for child in (path / "wt" / ".git", path / "wt", path):
         old(child)
     result = DH.standing_plan(rules, NOW, evidence())
-    assert str(path) not in {r["path"] for r in result["items"]}
+    # 2026-10-31: a registered proof worktree inside scratch is archived then removed with the dir, never left behind
+    item = next(r for r in result["items"] if r["path"] == str(path))
+    assert item["bundles"] == ["worktree:wt"]
+    monkeypatch.undo()  # the real remover, on fixture paths only
+    ok, how = DH.remove_item(item)  # the fake admin dir is no repo: archive cannot run, so nothing is removed
+    assert not ok and how.startswith("nested_worktree_unreadable") and (path / "wt" / ".git").exists()
 
 
 @pytest.mark.parametrize("patch, error", [
@@ -1110,9 +1062,30 @@ def test_nested_repo_with_unique_commit_is_bundled_then_removed(world, monkeypat
     assert (restored / "b.txt").read_text() == "only here"
 
 
+def test_nested_registered_worktree_is_archived_then_removed(world, monkeypatch):
+    home, rules, ref = _nested_world(world)
+    (scratch,) = _scratch_dirs(home, ("proof-registered-worktree",))
+    _git_fixture(ref, "worktree", "add", "-q", "-b", "proof", str(scratch / "wt"))
+    (scratch / "wt" / "a.txt").write_text("edited in proof")
+    (scratch / "wt" / "new.txt").write_text("untracked proof output")
+    _age_tree(scratch)
+    item = next(r for r in DH.standing_plan(rules, NOW, evidence())["items"] if r["path"] == str(scratch))
+    assert item["bundles"] == ["worktree:wt"]
+    monkeypatch.undo()  # the real remover, on fixture paths only
+    ok, how = DH.remove_item(item)
+    assert ok and not scratch.exists()
+    refs = subprocess.run(["git", "-C", str(ref), "for-each-ref", "--format=%(refname)", item["archive_ns"]],
+                          capture_output=True, text=True, check=True).stdout.split()
+    assert len(refs) == 1
+    restored = home / "restored-proof"
+    _git_fixture(ref, "worktree", "add", "-q", "--detach", str(restored), refs[0])
+    assert (restored / "a.txt").read_text() == "edited in proof"
+    assert (restored / "new.txt").read_text() == "untracked proof output"
+    assert subprocess.run(["git", "-C", str(ref), "rev-parse", "--verify", "refs/heads/proof"], capture_output=True).returncode == 0
+
+
 @pytest.mark.parametrize("make, reason", [
     ("dirty", "nested_repo_dirty"),
-    ("registered_worktree", "nested_worktree_registered"),
 ])
 def test_nested_repo_holds(world, make, reason):
     home, rules, ref = _nested_world(world)

@@ -496,6 +496,10 @@ sectors:
   stress_z_1d: -2.0         # one-session shock band (about the worst 2% of days), same RS condition
   weak_z_1d: -1.5
   resilient_rs_z: 0.75      # beating SPY by 0.75 sd of its own relative history, or rising while SPY falls
+  freshness:                # review of PR 2460: a group is scored only on a series current with SPY's calendar; returns
+                            # are taken on SPY's calendar and history samples the group cannot date-align are dropped
+    recent_sessions: 21       # the r1 / r5 / r20 windows
+    max_missing_recent: 0     # SPY sessions a group may miss inside them (0: every session present)
   price_dd_min_pct: -3.0    # price-weakness gate: STRESS/WEAK only when >= 3% under the 20-session high AND lagging SPY over 20 sessions
   defensive_key: defensive
   growth_keys: [tech, semis, ai_basket, comm]
@@ -721,3 +725,37 @@ leadership:
     aif_memory_type: EPISODIC         # market-level episode and shock-type memories (governed admission, 30-day TTL)
     spine_tag: market_risk            # per-symbol research-spine contributions Ask-the-CIO recalls
     spine_kind: market_risk.event
+home_actions:
+  # Design home/v006: Protect / Hedge / Rotate on the Home market-risk card (scripts/lib/market_risk_home_actions.py,
+  # joined API side). Display rules only; nothing here sets, moves or sizes anything (MBI_BEHAVIOR = 0).
+  protect:
+    shown: 3                       # items in the block; the rest of home_review.max_items on a "+N more" line
+    max_clauses: 3
+    concentration_min_share: 0.8   # the symbol's share of a budget's actual $ before "one stock is P% of the account"
+    templates:
+      stop_near: "stop {d}% below last"
+      no_stop: "no stop"
+      overnight: "trades overnight now"
+      concentration: "one stock is {p}% of the account, far above the {limit}% sector budget"
+      concentration_growth: "one stock is {p}% of the account, above the {limit}% growth-style budget"
+      unprotected: "{p}% of the account unprotected vs the {limit}% budget"
+      same_issuer: "with the {other_acct} position, {usd} in {sym} across {n} accounts"
+      stressed: "{s}% in stressed groups"
+      rebuy: "re-bought {date} (wash sale occurred)"
+  hedge:
+    # The verdict is the Defense desk's inverse-hedge stoplight; its thresholds stay in
+    # config/defense_recommendations.json (inverse_etf, inverse_stoplights). None is duplicated here.
+    source: defense_inverse_stoplights
+  rotate:
+    max_groups: 3
+    kinds: [sector, theme]
+    eligible_states: [RESILIENT]
+    eligible_leadership: [LEADERSHIP_CONFIRMED, LEADERSHIP_EMERGING]
+    exclude_leadership: [LEADERSHIP_FADING, BOUNCE_ONLY]
+    require_positive: [rs1, rs5]   # beating SPY on both horizons
+    rank_weights: {rs1: 0.5, rs5: 0.5}
+  sectors:
+    fold_below_usd: 100            # stressed / weak / not-measured groups held under this fold into one line
+glossary:
+  path: config/market_risk_glossary.json
+  max_chars: 320
