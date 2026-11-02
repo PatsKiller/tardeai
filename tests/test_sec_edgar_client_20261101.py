@@ -204,9 +204,15 @@ def test_no_email_address_in_any_user_agent_under_scripts():
 
 
 def test_scanner_catches_a_planted_address(tmp_path):
+    """The planted addresses are assembled at runtime: check_no_pii scans the repository text, so an
+    email literal here would be a real finding (and silently dropped by the scanner's own allow-list)."""
+    at = "@"
+    planted_a = "TradeAI " + "someone" + at + "realmail.net"
+    planted_b = "TradeAI " + "other" + at + "company.io"
+    allowed_c = "TradeAI " + "contact" + at + "example.com"
     d = tmp_path / "scripts"
     d.mkdir()
-    (d / "a.py").write_text('H = {"User-Agent": "TradeAI someone@realmail.net"}\n', encoding="utf-8")
-    (d / "b.py").write_text('SEC_UA = (\n    "TradeAI other@company.io"\n)\n', encoding="utf-8")
-    (d / "c.py").write_text('H = {"User-Agent": "TradeAI contact@example.com"}\n', encoding="utf-8")
+    (d / "a.py").write_text('H = {"User-Agent": "' + planted_a + '"}\n', encoding="utf-8")
+    (d / "b.py").write_text('SEC_UA = (\n    "' + planted_b + '"\n)\n', encoding="utf-8")
+    (d / "c.py").write_text('H = {"User-Agent": "' + allowed_c + '"}\n', encoding="utf-8")
     assert ua_email_findings(d) == ["scripts/a.py:1", "scripts/b.py:1"]

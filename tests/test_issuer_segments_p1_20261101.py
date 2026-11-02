@@ -238,7 +238,8 @@ def test_no_behavior_field_in_split_or_receipt():
 
 def test_receipt_refuses_repo_paths(tmp_path):
     r = shadow.build_receipt([], mode="replay")
-    for bad in (ROOT / "config" / "issuer_segments.json", ROOT / "config" / "x.json", Path("/home/x/receipt.json")):
+    # The home path uses a generic user ("runner"): a real username in a committed path is a PII finding.
+    for bad in (ROOT / "config" / "issuer_segments.json", ROOT / "config" / "x.json", Path("/home/runner/receipt.json")):
         with pytest.raises(PermissionError):
             shadow.write_receipt(r, bad)
     p = shadow.write_receipt(r, tmp_path / "data" / "runtime" / "issuer_segments_shadow.json")
