@@ -7,6 +7,7 @@ import { shortPriceStamp, tradingTileValue, vixProvenance } from '../lib/display
 import { dateOnlyPart, fmtAsOf } from '../lib/asOfDisplay'
 import { runLabel } from '../lib/homeLabels'
 import { overviewSurfaceFreshness, tradeAiSurfaceFreshness } from '../lib/surfaceFreshness'
+import { deriveTodayPnlState } from '../lib/todayPnlState'
 import { deriveHeaderFeedState } from '../lib/headerFeedState'
 import type { HeaderFeed } from '../lib/headerFeedState'
 import { renderSetupCounts } from '../lib/setupRunSummary'
@@ -208,6 +209,12 @@ export default function MetricStrip({ onDrill }: Props) {
   // never blanked to "—" because one holding has no day change (2026-10-26).
   const todayPartial: string[] = todayPnl?.partial_accounts ?? []
   const todayUnknownRows: number = todayPnl?.unknown_rows ?? 0
+  // TODAY is judged by its OWN clock and its OWN census. The overview surface
+  // freshness ages `data_as_of` -- the POSITION observation -- which says
+  // nothing about whether today's P&L is old. An incomplete census and a P&L
+  // clock older than the latest open session are different conditions and are
+  // labelled differently; neither is ever read from the position clock.
+  const todayState = deriveTodayPnlState(overview, now)
   // Account census for TODAY lives on hover, not the face (operator 2026-09-04).
   // True missing funded accounts still raise the face STALE chip via `todayMissing`.
   const todayHoverAccounts = (() => {
@@ -506,19 +513,19 @@ export default function MetricStrip({ onDrill }: Props) {
     {
       label: 'TODAY', value: todayChange != null ? `${todayChange >= 0 ? '+' : ''}${fmt$(todayChange, 0)}${todayPct != null ? ` ${todayPct >= 0 ? '+' : ''}${todayPct}%` : ''}` : '—',
       // A P&L is stamped with its OWN session, never the position clock.
-      stale: todayMissing.length ? ` · ${todayMissing.length} funded acct(s) did not report`
-        : todayPartial.length ? ` · partial: ${todayUnknownRows} row(s) without a day change` : null,
+      stale: todayState.reason,
+      staleLabel: todayState.label,
       asOf: todayPnl?.session_date ?? null,
       asOfLabel: 'P&L session',
       asOfNote: null,
-      tone: worseTone(todayMissing.length ? 'warn' : 'ok', overviewFresh.stale ? 'warn' : 'ok'),
+      tone: todayState.tone,
       valueSize: VALUE_BIG,
       minWidth: 150, maxWidth: 225,
       undated: !todayPnl?.session_date,
-      color: overviewFresh.stale ? BB.amber : todayChange == null ? 'var(--text3)' : todayChange >= 0 ? BB.green : BB.red,
+      color: todayState.tone === 'warn' ? BB.amber : todayChange == null ? 'var(--text3)' : todayChange >= 0 ? BB.green : BB.red,
       drill: { title: "Today's Move", subtitle: `${todayPnl?.session_date ? `session ${todayPnl.session_date}` : 'session UNDATED'} · ${todayHoverAccounts ?? todayPnl?.coverage_reason ?? 'coverage unknown'}`, endpoint: '/api/v2/overview',
         rows: overview ? [
-          { today_change: overview.today_change, today_pct: overview.today_pct, today_complete: todayPnl?.complete, partial_accounts: todayPartial, unknown_rows: todayUnknownRows, pnl_session_date: todayPnl?.session_date, pnl_session_source: todayPnl?.session_source, pnl_calculated_at: todayPnl?.calculated_at, pnl_mark_source: todayPnl?.mark_source, scope: todayPnl?.scope, linked_accounts: todayLinked, funded_accounts: todayFunded, represented_accounts: todayRepresented, contributing_accounts: todayPnl?.contributing_accounts, zero_change_accounts: todayPnl?.zero_change_accounts, empty_accounts: todayEmpty, missing_accounts: todayMissing, portfolio_value: overview.portfolio_value, surface_stale: overviewFresh.stale },
+          { today_change: overview.today_change, today_pct: overview.today_pct, today_complete: todayPnl?.complete, partial_accounts: todayPartial, unknown_rows: todayUnknownRows, pnl_session_date: todayPnl?.session_date, pnl_session_source: todayPnl?.session_source, pnl_calculated_at: todayPnl?.calculated_at, pnl_mark_source: todayPnl?.mark_source, scope: todayPnl?.scope, linked_accounts: todayLinked, funded_accounts: todayFunded, represented_accounts: todayRepresented, contributing_accounts: todayPnl?.contributing_accounts, zero_change_accounts: todayPnl?.zero_change_accounts, empty_accounts: todayEmpty, missing_accounts: todayMissing, portfolio_value: overview.portfolio_value, surface_stale: todayState.tone === 'warn', surface_state: todayState.label, surface_reason: todayState.reason },
           ...Object.entries(overview.today_by_account ?? {})
             .sort((a: any, b: any) => Math.abs(b[1].change) - Math.abs(a[1].change))
             .map(([acct, d]: any) => ({
@@ -527,7 +534,7 @@ export default function MetricStrip({ onDrill }: Props) {
               account_value: d.value, top_movers: d.top_movers || null,
             })),
         ] : [] },
-      tip: `Today's net change ($ and %).\n\nACCOUNTS (hover):\n · ${todayHoverAccounts ?? '—'}\n\n · P&L session: ${todayPnl?.session_date ?? 'UNDATED'}${todayPnl?.session_source ? ` (from ${todayPnl.session_source})` : ''}\n · calculated: ${todayPnl?.calculated_at ?? '—'}\n · marks: ${todayPnl?.mark_source ?? '—'}\n · coverage: ${todayPnl?.coverage_reason ?? '—'}\n\nThis is the P&L's OWN session — not the date the share counts were observed (${posNewest ? (fmtAsOf(posNewest) ?? posNewest) : 'UNDATED'}). Click for the per-account breakdown. Refreshes every 2 min.`,
+      tip: `Today's net change ($ and %).\n\nACCOUNTS (hover):\n · ${todayHoverAccounts ?? '—'}\n\n · P&L session: ${todayPnl?.session_date ?? 'UNDATED'}${todayPnl?.session_source ? ` (from ${todayPnl.session_source})` : ''}\n · calculated: ${todayPnl?.calculated_at ?? '—'}\n · marks: ${todayPnl?.mark_source ?? '—'}\n · coverage: ${todayPnl?.coverage_reason ?? '—'}${todayState.reason ? `\n\nTODAY STATE: ${todayState.label} — ${todayState.reason}` : ''}\n\nThis is the P&L's OWN session — not the date the share counts were observed (${posNewest ? (fmtAsOf(posNewest) ?? posNewest) : 'UNDATED'}). Click for the per-account breakdown. Refreshes every 2 min.`,
     },
     {
       // "53.3% · 169 · $55,429" was three unlabelled numbers. A reader cannot tell which
@@ -811,7 +818,7 @@ export default function MetricStrip({ onDrill }: Props) {
           >
             {t.label}
             {showStateDots && <span style={{ color: toneColor(tone), fontWeight: 800 }} data-tile-tone={tone}>{' '}{toneGlyph(tone)}</span>}
-            {(t as any).stale && <span style={{ color: BB.amber, fontWeight: 800 }} data-surface-stale>{' '}⚠ STALE</span>}
+            {(t as any).stale && <span style={{ color: BB.amber, fontWeight: 800 }} data-surface-stale>{' '}⚠ {(t as any).staleLabel || 'STALE'}</span>}
           </div>
           <div className="ms-value" style={{ ...((t as any).wrapValue ? VALUE_WRAP : NOWRAP), ...numStyle, fontSize: (t as any).valueSize ?? VALUE_BIG, fontWeight: 700, color: t.color }}>
             {t.value}
