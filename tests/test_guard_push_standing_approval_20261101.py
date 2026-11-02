@@ -21,7 +21,7 @@ import pytest
 from tests.test_guard_item8_grant_free_push_20261025 import (BRANCH, GH_DOCS, HOOKS, OK_COMMENT, OTHER_COMMENT,  # noqa: F401
                                                              SESSION, Env, _classify, _refused, agents_md, pytestmark)
 
-STANDING_POLICY = "29.4.0"
+STANDING_POLICY = "30.0.0"
 
 REPO = "PatsKiller/tardeai"
 ISSUE = 50
@@ -98,7 +98,7 @@ def standing(E: Env, comments: list[dict], *, state: str = "open", number: int |
 @pytest.fixture
 def E(tmp_path: Path) -> Env:
     e = Env(tmp_path)
-    e.build(agents=agents_md(STANDING_POLICY))  # (c) is live only under main's AGENTS.md 29.4.0+ ACTIVE
+    e.build(agents=agents_md(STANDING_POLICY))  # (c) is live only under main's AGENTS.md 30.0.0+ ACTIVE
     return e
 
 
@@ -594,12 +594,13 @@ def test_m2_revoke_in_any_markup_or_case_revokes(E, body):
     _refused(E, E.checker(), "no unrevoked")
 
 
-# ---- M3: gated on main's AGENTS.md 29.4.0+ ACTIVE
+# ---- M3: gated on main's AGENTS.md 30.0.0+ ACTIVE
 
 
 @pytest.mark.parametrize("version,header,row", [("29.2.1", "ACTIVE", "ACTIVE"), ("29.3.0", "ACTIVE", "ACTIVE"),
-                                                ("29.4.0", "PROPOSED", "PROPOSED"), ("29.4.0", "ACTIVE", "PROPOSED")])
-def test_m3_standing_needs_main_agents_29_4_0_active(tmp_path, version, header, row):
+                                                ("29.4.0", "ACTIVE", "ACTIVE"),
+                                                ("30.0.0", "PROPOSED", "PROPOSED"), ("30.0.0", "ACTIVE", "PROPOSED")])
+def test_m3_standing_needs_main_agents_30_0_0_active(tmp_path, version, header, row):
     e = Env(tmp_path)
     e.build(agents=agents_md(version, header, row))
     e.claim(note="x")
@@ -608,7 +609,7 @@ def test_m3_standing_needs_main_agents_29_4_0_active(tmp_path, version, header, 
     assert not out["allow"], out
     # an older ACTIVE main still lets the per-branch path work; the others fail the base policy gate first
     if header == "ACTIVE" and row == "ACTIVE":
-        assert "needs AGENTS.md 29.4.0+ ACTIVE" in out["reason"], out
+        assert "needs AGENTS.md 30.0.0+ ACTIVE" in out["reason"], out
 
 
 def test_m3_per_branch_path_unaffected_below_29_4_0(tmp_path):

@@ -48,7 +48,7 @@ Conditions for ``push`` (``check`` is the same minus the pusher-session binding 
     (c) STANDING approval (operator, 2026-11-01: "Yes, draft stand and approval."): on path (a) only -- the pusher's
         own live claim on the branch is still required -- when no per-branch ref resolves, an operator comment on the
         configured standing-approval issue with the line ``APPROVE_PUSH_STANDING <glob> until <YYYY-MM-DD>`` admits
-        the branch only while remote main's AGENTS.md is 29.4.0+ ACTIVE, if: the glob starts with a configured literal prefix (wt/ feat/ fix/ chore/ docs/), never ``*``
+        the branch only while remote main's AGENTS.md is 30.0.0+ ACTIVE, if: the glob starts with a configured literal prefix (wt/ feat/ fix/ chore/ docs/), never ``*``
         alone and never anything that could match main/master/release/train; the date is today or later (UTC) and at
         most ``standing_max_days`` after the comment; the comment carries no ``APPROVE_AGENTS_POLICY_`` token; and no
         later operator comment on that issue contains ``REVOKE_PUSH_STANDING`` (any case or markup). A closed issue
@@ -79,6 +79,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import pwd
@@ -126,8 +127,8 @@ STANDING_RE = re.compile(r"^[ \t]*APPROVE_PUSH_STANDING[ \t]+(?P<glob>\S+)[ \t]+
 STANDING_GLOB_RE = re.compile(r"^(?P<prefix>[a-z][a-z0-9-]{1,19}/)(?P<rest>[A-Za-z0-9._*?-]{1,121})$")
 PREFIX_RE = re.compile(r"^[a-z][a-z0-9-]{1,19}/$")
 #: (c) is live only once main's AGENTS.md carries it, ACTIVE.
-STANDING_MIN_POLICY = (29, 4, 0)
-STANDING_MIN_POLICY_TEXT = "29.4.0"
+STANDING_MIN_POLICY = (30, 0, 0)
+STANDING_MIN_POLICY_TEXT = "30.0.0"
 _PROTECTED_PROBES = ("main", "master", "HEAD", "head", "release/x", "release/2026-11-01", "train/x", "train/2026-11-01")
 
 DEFAULTS: dict[str, Any] = {
@@ -334,10 +335,15 @@ def _has(repo: Path, sha: str) -> bool:
 def check_policy(repo: Path, main_sha: str) -> dict[str, Any]:
     if not _has(repo, main_sha):
         raise Refused(f"remote main {main_sha[:9]} is not in the local object store; run: git fetch origin main")
-    st = policy_state_from_text(_out(repo, "show", f"{main_sha}:AGENTS.md"))
+    policy_text = _out(repo, "show", f"{main_sha}:AGENTS.md")
+    st = policy_state_from_text(policy_text)
     if not st["active"]:
         raise Refused(f"AGENTS.md on remote main is not {MIN_POLICY_TEXT}+ ACTIVE ({st['detail']})")
-    return st
+    try:
+        manifest = json.loads(_out(repo, "show", f"{main_sha}:config/agent_standing_authority.json") or "null")
+    except (ValueError, TypeError):
+        manifest = None
+    return {**st, "_text": policy_text, "_manifest": manifest, "_sha": main_sha}
 
 
 #: What the tracked pre-push hook executes or imports from the WORKTREE (it runs with PYTHONPATH=<repo root>). Each must
@@ -699,6 +705,8 @@ def standing_approval(branch: str, cfg: dict[str, Any], *, now: Optional[datetim
     a reopen). An edited operator comment after that point refuses the whole path (its earlier text is unknowable).
     A ``REVOKE_PUSH_STANDING`` anywhere in an operator comment, in any case or markup, voids everything before it.
     Dates are UTC: the expiry is the last valid UTC day, and the cap counts days from the comment's UTC date."""
+    if standing_policy_module().revoked_marker():
+        raise Refused("standing authority revoked")
     if PROTECTED_RE.search(branch):
         raise Refused(f"standing approval never covers {branch}")
     st = cfg.get("_main_policy") or {}
@@ -823,14 +831,155 @@ def _plan_sections(worklog: str) -> str:
     return "\n".join(out)
 
 
-def claim_approval(branch: str, session: Optional[str], cfg: dict[str, Any], claims: list[dict]) -> dict[str, str]:
-    """(a): the pusher's own live claim on the branch (hands_off_policy.claim_plan_approval semantics)."""
+_STANDING_MODULE = None
+
+
+def standing_policy_module():
+    """Load the guard-installed helper beside this trusted script, never from a worktree import."""
+    global _STANDING_MODULE
+    if _STANDING_MODULE is None:
+        path = HOOKS_DIR / "guard_standing_policy.py"
+        if path.is_symlink() or not path.is_file():
+            raise Refused("trusted standing authority helper unavailable")
+        spec = importlib.util.spec_from_file_location("_guard_standing_policy_trusted", path)
+        if spec is None or spec.loader is None:
+            raise Refused("trusted standing authority helper cannot be loaded")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        _STANDING_MODULE = module
+    return _STANDING_MODULE
+
+
+def ratified_authority(cfg: dict[str, Any], capability: str, branch: str) -> dict[str, Any]:
+    helper = standing_policy_module()
+    main = cfg.get("_main_policy") or {}
+    result = helper.authorize(main.get("_text"), main.get("_manifest"), capability=capability,
+                              policy_sha=main.get("_sha"), branch=branch, revoked=helper.revoked_marker())
+    if not result["ok"]:
+        raise Refused(result["reason"])
+    return result["authority"]
+
+
+def coordinator_lead(cfg: dict[str, Any]) -> str:
+    path = standing_policy_module().COORDINATION_ROOT / "coordinators.json"
+    # Explicit hermetic config is refused in installed hooks by main(); never an environment override.
+    if TEST_CONFIG is not None and cfg.get("coordinator_registry"):
+        path = Path(cfg["coordinator_registry"])
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        lead = doc.get("lead")
+        rows = doc.get("coordinators")
+        if (doc.get("schema") != "CoordinatorRegistry@v1" or not isinstance(lead, str) or not lead
+                or not isinstance(rows, list)):
+            raise ValueError("invalid registry")
+        active = [r for r in rows if isinstance(r, dict) and r.get("id") == lead]
+        if (len(active) != 1 or active[0].get("role") != "lead"
+                or not isinstance(active[0].get("territories"), list)
+                or not all(isinstance(t, str) for t in active[0]["territories"])
+                or "agents" not in active[0]["territories"]):
+            raise ValueError("lead does not own agents or registry identity is ambiguous")
+    except (OSError, ValueError, TypeError, AttributeError):
+        raise Refused("trusted current coordinator registry unavailable or inconsistent") from None
+    return lead
+
+
+def scope_field(text: str, key: str) -> Optional[str]:
+    matches = re.findall(r"^[ \t]*(?:[-*][ \t]+(?:\[[ xX]\][ \t]+)?)?" + re.escape(key)
+                         + r":[ \t]*([^\n]+?)[ \t]*$", _unfenced(text), re.MULTILINE)
+    values = set(m.strip() for m in matches)
+    return values.pop() if len(values) == 1 else None
+
+
+def claim_scope_text(row: dict) -> str:
+    path = Path(str(row.get("_path") or ""))
+    worklog = path.with_name(f"{row.get('claim_id')}.worklog.md")
+    try:
+        plan = _plan_sections(worklog.read_text(encoding="utf-8")) if worklog.is_file() and not worklog.is_symlink() else ""
+    except OSError:
+        plan = ""
+    return str(row.get("note") or "") + "\n" + plan
+
+
+def scope_provenance(row: dict, cfg: dict[str, Any]) -> dict[str, str]:
+    """Require scope plus recorded assignment/request, never a self-written Goal alone.
+
+    These local fields establish consistency/provenance, not cryptographic actor identity.
+    """
+    text = claim_scope_text(row)
+    request = scope_field(text, "Operator-request")
+    scope = scope_field(text, "Approved-scope") or request or str(row.get("task") or "").strip()
+    if not scope or scope.startswith("<") or scope.lower() in {"pending", "tbd", "none", "working on it"}:
+        raise Refused("claim has no real approved scope/task")
+    assigned = scope_field(text, "Assigned-by")
+    if assigned and assigned == coordinator_lead(cfg):
+        return {"scope": scope, "assigned_by": assigned, "provenance": "current coordinator assignment"}
+    if scope_field(text, "Approved-by") == "operator" and request and not request.startswith("<"):
+        return {"scope": scope, "assigned_by": "operator", "provenance": request}
+    raise Refused("scope lacks recorded operator request or current coordinator assignment")
+
+
+def ratified_handoff(branch: str, session: str, cfg: dict[str, Any], claims: list[dict]) -> dict[str, Any]:
+    authority = ratified_authority(cfg, "delegated_upload", branch)
+    lead = coordinator_lead(cfg)
+    recipients = [r for r in claims if r.get("_state") == "live" and r.get("session") == session]
+    root = Path(cfg["handoffs_dir"])
+    if not root.is_dir() or not recipients:
+        raise Refused("delegated upload needs recipient's own live scope claim and a handoff")
+    candidates = []
+    for directory in [root] + sorted(p for p in root.iterdir() if p.is_dir() and not p.is_symlink()):
+        candidates.extend(sorted(directory.iterdir()))
+    for path in candidates[:2000]:
+        try:
+            info = path.lstat()
+            if (path.suffix not in {".md", ".txt"} or not stat.S_ISREG(info.st_mode)
+                    or info.st_uid != os.getuid() or info.st_mode & 0o022 or info.st_size > 1_000_000):
+                continue
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            continue
+        if (scope_field(text, "Assigned-branch") != branch or scope_field(text, "Assigned-by") != lead
+                or scope_field(text, "Assigned-to") != session):
+            continue
+        owner_id, owner_session = scope_field(text, "Owner-claim"), scope_field(text, "Owner-session")
+        scope = scope_field(text, "Approved-scope")
+        owners = [r for r in claims if r.get("claim_id") == owner_id and r.get("session") == owner_session
+                  and r.get("branch") == branch and r.get("_state") in {"live", "stale"}]
+        if len(owners) != 1 or not scope or scope.startswith("<"):
+            continue
+        for recipient in recipients:
+            try:
+                provenance = scope_provenance(recipient, cfg)
+            except Refused:
+                continue
+            if provenance["scope"] != scope:
+                continue
+            return {"source": "handoff+ratified-policy", "handoff": path.relative_to(root).as_posix(),
+                    "assigned_by": lead, "recipient_session": session, "recipient_claim": recipient["claim_id"],
+                    "owner_claim": owner_id, "owner_session": owner_session, "budget_branch": branch,
+                    "scope": provenance, "authority": authority, "approval_kind": "ratified_policy",
+                    "approval_ref": f"policy:{authority['policy_sha']}"}
+    raise Refused("no consistent current-coordinator handoff/owner/recipient scope covers this branch")
+
+
+def claim_approval(branch: str, session: Optional[str], cfg: dict[str, Any], claims: list[dict]) -> dict[str, Any]:
+    """(a): own live claim; ratified scope provenance first, legacy comments second."""
     rows = [r for r in claims if r["_state"] == "live" and str(r.get("branch") or "") == branch
             and (session is None or str(r.get("session") or "") == session)]
     if not rows:
         who = f"session {session}" if session else "any session"
         raise Refused(f"no live claim on {branch} held by {who}")
     errs: list[str] = []
+    if session:
+        for r in rows:
+            try:
+                authority = ratified_authority(cfg, "feature_push", branch)
+                scope = scope_provenance(r, cfg)
+                return {"source": "claim+ratified-policy", "claim_id": str(r["claim_id"]),
+                        "session": session, "scope": scope, "authority": authority,
+                        "approval_kind": "ratified_policy", "approval_ref": f"policy:{authority['policy_sha']}"}
+            except Refused as exc:
+                errs.append(str(exc))
     for r in rows:
         wl = Path(r["_path"]).with_name(f"{r.get('claim_id')}.worklog.md")
         try:
@@ -862,8 +1011,14 @@ def _line(text: str, key: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
-def handoff_approval(branch: str, cfg: dict[str, Any], claims: list[dict]) -> dict[str, str]:
-    """(b): a coordinator task file assigning exactly this branch."""
+def handoff_approval(branch: str, cfg: dict[str, Any], claims: list[dict],
+                     session: Optional[str] = None) -> dict[str, Any]:
+    """(b): explicit delegated handoff, or the unchanged legacy comment path."""
+    if session:
+        try:
+            return ratified_handoff(branch, session, cfg, claims)
+        except Refused:
+            pass
     root = Path(cfg["handoffs_dir"])
     if not root.is_dir():
         raise Refused("no handoffs directory")
@@ -903,18 +1058,18 @@ def handoff_approval(branch: str, cfg: dict[str, Any], claims: list[dict]) -> di
     raise last or Refused(f"no coordinator task file with 'Assigned-branch: {branch}'")
 
 
-def find_plan(branch: str, session: Optional[str], cfg: dict[str, Any], *, bind_session: bool) -> dict[str, str]:
+def find_plan(branch: str, session: Optional[str], cfg: dict[str, Any], *, bind_session: bool) -> dict[str, Any]:
     claims = read_claims(Path(cfg["claims_dir"]))
     errors = []
     if bind_session and not session:
         errors.append("claim path: AGENT_CLAIM_SESSION is not set for the pusher")
     else:
         try:
-            return claim_approval(branch, session if bind_session else None, cfg, claims)
+            return claim_approval(branch, session, cfg, claims)
         except Refused as exc:
             errors.append(f"claim path: {exc}")
     try:
-        return handoff_approval(branch, cfg, claims)
+        return handoff_approval(branch, cfg, claims, session=session)
     except Refused as exc:
         errors.append(f"handoff path: {exc}")
     raise Refused("no approved plan covers " + branch + " — " + "; ".join(errors))
@@ -1026,7 +1181,7 @@ def evaluate(repo_arg: str, branch: str, session: Optional[str], *, bind_session
     if not main_sha:
         raise Refused("the canonical remote has no main")
     st = check_policy(repo, main_sha)
-    cfg["_main_policy"] = st  # gates (c): the standing path needs main's AGENTS.md 29.4.0+ ACTIVE
+    cfg["_main_policy"] = st  # policy and manifest both come from this exact trusted remote-main SHA
     check_prepush(repo, main_sha)
     remote_sha = refs.get(f"refs/heads/{branch}")
     ff = check_fast_forward(repo, remote_sha, local_sha)
@@ -1050,6 +1205,8 @@ def do_push(ev: dict[str, Any], session: Optional[str], cwd: str) -> dict[str, A
     rule = "AGENTS.md 21.0.0 §28.15 item 8 (a)"
     if ev["plan"].get("source") == "claim+standing":
         rule = "AGENTS.md §28.15 item 8 (a) under a standing approval (c)"
+    elif ev["plan"].get("source") in {"claim+ratified-policy", "handoff+ratified-policy"}:
+        rule = "AGENTS.md 30.0.0 ratified standing feature upload authority"
     base = {"tier": "git-push", "rule": rule, "branch": ev["branch"],
             "head": ev["head"], "remote_head": ev["remote_head"], "ff": ev["ff"], "refspec": ev["refspec"],
             "remote": ev["canonical"], "repo": ev["repo"], "cwd": cwd, "pusher_session": session or "",
@@ -1058,6 +1215,9 @@ def do_push(ev: dict[str, Any], session: Optional[str], cwd: str) -> dict[str, A
             "command": f"bin/agent-push {ev['branch']}",
             "standing_approval_url": ev["plan"]["approval_ref"] if ev["plan"].get("source") == "claim+standing" else ""}
     intent = audit(dict(base, event="grant-free-push-intent"), cfg)  # refuses on failure (M2)
+    if ev["plan"].get("source") in {"claim+standing", "claim+ratified-policy", "handoff+ratified-policy"}:
+        if standing_policy_module().revoked_marker():
+            raise Refused("standing authority revoked before push")
     cp = _git(repo, "push", "--porcelain", "--no-follow-tags", "--no-signed", "--recurse-submodules=no",
               ev["canonical"], ev["refspec"], pins=ev["pins"], timeout=float(cfg["push_timeout"]),
               env_extra={"TRADEAI_REMOTE_PUSH_AUTHORIZED": "1", "TRADEAI_GRANT_FREE": "1",

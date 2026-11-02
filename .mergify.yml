@@ -85,6 +85,11 @@ pull_request_rules:
           - files~=^config/systemd/user/tradeai\-pr\-merge\-[^/]*$
           - files~=^\.github/.*$
           - files~=^scripts/lib/release_control\.py$
+          - files~=^config/agent_standing_authority\.json$
+          - files~=^scripts/lib/pr_merge_delegation\.py$
+          - files~=^scripts/lib/pr_all_checks_green\.py$
+          - files~=^tests/test_pr_merge_delegation_20261102\.py$
+          - files~=^tests/test_pr_all_checks_standing_20261102\.py$
     actions:
       label:
         add:

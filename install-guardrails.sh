@@ -39,7 +39,7 @@ if ! _CANON_LIB="$(_canon .cursor/hooks/guard-lib.sh)"; then
   exit 1
 fi
 _CANON_DIR="$(mktemp -d "${TMPDIR:-/tmp}/guardrails-canon.XXXXXX")"
-for _f in .cursor/hooks/guard-lib.sh .cursor/hooks/guard_ledger.py .cursor/hooks/guard_push_free.py .cursor/hooks/guard_tokens.py .cursor/hooks/guard-read.sh \
+for _f in .cursor/hooks/guard-lib.sh .cursor/hooks/guard_ledger.py .cursor/hooks/guard_push_free.py .cursor/hooks/guard_standing_policy.py .cursor/hooks/guard_tokens.py .cursor/hooks/guard-read.sh \
           .cursor/hooks/guard-write.sh .cursor/hooks/guard-shell.sh .cursor/hooks/audit.sh \
           .cursor/hooks.json bin/guard; do
   if _c="$(_canon "$_f")"; then
