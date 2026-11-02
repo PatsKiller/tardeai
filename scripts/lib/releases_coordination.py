@@ -55,6 +55,23 @@ def _parse(value: Any) -> Optional[datetime]:
         return None
 
 
+#: The claim board's own staleness default; a claim older than this is stale, not working.
+WORKING_HEARTBEAT_HOURS = 2.0
+
+
+def _fresh(claim: Mapping[str, Any], now: Optional[datetime]) -> bool:
+    """True only when the claim's own heartbeat is inside the staleness threshold."""
+    if not claim:
+        return False
+    beat = _parse(claim.get("as_of"))
+    if beat is None:
+        return False
+    at = now or datetime.now(timezone.utc)
+    if beat.tzinfo is None:
+        beat = beat.replace(tzinfo=timezone.utc)
+    return (at - beat).total_seconds() <= WORKING_HEARTBEAT_HOURS * 3600
+
+
 def _newest(values: Iterable[Optional[str]]) -> Optional[str]:
     best: Optional[datetime] = None
     best_raw: Optional[str] = None
@@ -391,7 +408,9 @@ def build(ledger_path: Path, claims_dir: Path, prs: Iterable[Mapping[str, Any]],
             **row,
             "branch": claim.get("branch") or row["branch_or_pr"],
             "pr": claim.get("pr"),
-            "execution_state": "working" if claim else UNKNOWN,
+            # An active claim can be stale: ownership and context persist, but "working" requires a
+            # heartbeat inside the claim board's own staleness threshold (codex/cc6 review, 2026-11-02).
+            "execution_state": "working" if _fresh(claim, now) else UNKNOWN,
             "claim_as_of": claim.get("as_of"),
             "source": "board" if not claim else "board+claims",
         })
@@ -448,8 +467,10 @@ def build(ledger_path: Path, claims_dir: Path, prs: Iterable[Mapping[str, Any]],
             "next_action": _next,
             "next_action_source": _next_source,
             "board_owner": board_pr.get("owner") if board_pr else None,
+            # An ABSENT source means the row's as_of is null. Stamping the capture time would date a fact
+            # nobody observed (cc6 review, 2026-11-02).
             "as_of": _newest([(owner or {}).get("as_of"), board_pr.get("as_of"), review.get("as_of"),
-                              ci.get("as_of")]) or captured_at,
+                              ci.get("as_of")]),
             "source": "claims+coordinator_ledger" if owner and not gaps else ("claims" if owner else "none"),
         }
 

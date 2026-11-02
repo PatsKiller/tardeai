@@ -306,3 +306,33 @@ def test_a_worklog_next_step_wins_over_the_board_row(tmp_path):
     (claims / "c0.worklog.md").write_text("## Handoff\n- Next step: the worklog answer\n", encoding="utf-8")
     work = rc.build(tmp_path / "ledger.jsonl", claims, [_pr(number=2474)], now=NOW)["work"][2474]
     assert work["next_action"] == "the worklog answer" and work["next_action_source"] == "worklog"
+
+
+# ─────────────── cc6 joint review (2026-11-02): stale claim and absent-source invariants
+def test_a_five_day_old_active_claim_keeps_ownership_but_is_never_working(tmp_path):
+    """Ownership and context persist; execution is UNKNOWN because the heartbeat is stale."""
+    _board(tmp_path, BOARD_MD.replace("cc-deepseek-2", "cc-deepseek-2"))
+    stale = "2026-10-28T18:00:00Z"                     # five days before NOW
+    claims = _claims(tmp_path, {"session": "cc-deepseek-2", "branch": "wt/x", "task": "t", "status": "active",
+                                "claim_id": "c0", "head_sha": HEAD, "heartbeat_at": stale})
+    agents = {a["session"]: a for a in rc.build(tmp_path / "ledger.jsonl", claims, [_pr()], now=NOW)["agents"]}
+    row = agents["cc-deepseek-2"]
+    assert row["execution_state"] == "UNKNOWN"          # never "working" on a stale heartbeat
+    assert row["branch"] == "wt/x"                      # ownership/context retained
+    assert row["claim_as_of"] == stale
+
+
+def test_a_recent_heartbeat_is_working(tmp_path):
+    _board(tmp_path, BOARD_MD)
+    claims = _claims(tmp_path, {"session": "cc-deepseek-2", "branch": "wt/x", "task": "t", "status": "active",
+                                "claim_id": "c0", "heartbeat_at": "2026-11-02T17:30:00Z"})  # 30 min
+    agents = {a["session"]: a for a in rc.build(tmp_path / "ledger.jsonl", claims, [_pr()], now=NOW)["agents"]}
+    assert agents["cc-deepseek-2"]["execution_state"] == "working"
+
+
+def test_absent_sources_leave_the_row_as_of_null_not_captured_now(tmp_path):
+    """The empty stores case: nothing was observed, so the row's date is null rather than the read time."""
+    out = rc.build(tmp_path / "nope.jsonl", tmp_path / "no-claims", [_pr()], now=NOW)
+    work = out["work"][2474]
+    assert work["as_of"] is None
+    assert out["captured_at"] == "2026-11-02T18:00:00Z"   # the read time lives only on the envelope
