@@ -19,6 +19,9 @@ state, receipts and fixer requests live under tmp_path. Nothing reaches GitHub.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -138,8 +141,9 @@ def test_second_failure_pages_once_and_writes_one_fixer_request(tmp_path):
     requests = sorted((tmp_path / "state" / "fixer_requests").glob("*.json"))
     assert len(requests) == 1
     body = json.loads(requests[0].read_text())
-    assert body["failing_test_ids"] == ["tests/test_x.py::test_y"]
-    assert body["run_url"] == "https://example.com/run/991"
+    assert body["code_defect"]["schema"] == "N8nCodeDefect@v1"
+    assert body["main_red_autoheal"]["failing_test_ids"] == ["tests/test_x.py::test_y"]
+    assert body["main_red_autoheal"]["run_url"] == "https://example.com/run/991"
     assert receipt["actions"][0]["action"] == "page_and_dispatch"
 
 
@@ -280,3 +284,29 @@ def test_main_loads_the_default_config_end_to_end(tmp_path, monkeypatch, capsys)
 def test_default_state_dir_follows_tradeai_state_root(tmp_path, monkeypatch):
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
     assert mra.default_state_dir() == tmp_path / "data" / "runtime" / "main_red_autoheal"
+
+
+# ------------------------------------------------------------------ the fixer consumes it
+def test_the_request_is_consumable_by_self_heal_fixer_dry_run(tmp_path):
+    """Proves the incident format: the existing fixer admits a job from our request (it stays disarmed)."""
+    gh = FakeGh([run_json()], logs={"991": "FAILED tests/test_x.py::test_y - StopIteration"})
+    cfg = dict(CONFIG, rerun_classes={"infrastructure": True, "test_failure": False, "unknown": False})
+    cycle(tmp_path, gh, cfg=cfg, telegram=FakeTelegram())
+    request = tmp_path / "state" / "fixer_requests" / "991.json"
+    assert request.is_file()
+
+    out_dir = tmp_path / "fixer-out"
+    out_dir.mkdir()
+    env = dict(os.environ, TRADE_AI_CI="1", TRADEAI_STATE_ROOT=str(tmp_path / "fixer-state"),
+               TMPDIR=str(tmp_path))
+    proc = subprocess.run(
+        [sys.executable, str(REPO_ROOT / "scripts" / "self_heal_fixer.py"),
+         "--cycle", "--incident", str(request), "--out", str(out_dir)],
+        cwd=str(REPO_ROOT), capture_output=True, text=True, env=env, timeout=300)
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    result = json.loads(proc.stdout)
+    assert result["admitted"], result
+    job = result["admitted"][0]
+    assert job["lane"] == "cio-production-hardening-ci"
+    assert job["state"] == "fix_requested"
+    assert job["defect_id"] == "cd-main-red-991-ep1"

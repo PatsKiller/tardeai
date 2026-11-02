@@ -33,6 +33,7 @@ independent ``MERGE`` review, and a quoted dry-run receipt.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -307,7 +308,7 @@ def _handle_red_run(*, config, run, run_id, workflow, record, gh, state_dir, dry
     if dry_run:
         return {**base, "action": "would_" + ACTION_PAGE_AND_DISPATCH, "reason": why}
     return _escalate(config, base, record, run, run_id, workflow, gh, state_dir, dry_run,
-                     telegram, issue_writer, infra_markers, now, why=why)
+                     telegram, issue_writer, infra_markers, now, why=why, log_tail=log)
 
 
 def _failed_log(config, gh, run_id: str) -> str:
@@ -316,19 +317,93 @@ def _failed_log(config, gh, run_id: str) -> str:
     return (out or "")[-int(config["log_tail_chars"]):] if rc == 0 else ""
 
 
-def _escalate(config, base, record, run, run_id, workflow, gh, state_dir, dry_run,
-              telegram, issue_writer, infra_markers, now, *, why) -> dict:
-    failing = list(base.get("failing_test_ids") or [])
-    request = {
-        "schema": FIXER_REQUEST_SCHEMA, "created_at": now, "repo": str(config["repo"]),
-        "run_id": run_id, "run_url": run.get("url"), "workflow": workflow,
-        "head_sha": run.get("headSha"), "conclusion": run.get("conclusion"),
-        "failure_class": base.get("failure_class"), "failing_test_ids": failing,
-        "reason": why,
-        "note": "A Claude Code fixer opens ONE fix PR from this request; it follows the "
-                "merge gate (scripts/lib/pr_all_checks_green.py). The scheduled lane never "
-                "pushes, opens a PR or merges (AGENTS.md 24.5, 28.14).",
+def fixer_incident_document(*, run: Mapping[str, Any], run_id: str, workflow: str, failing: list[str],
+                            failure_class: str, log_tail: str, now: str) -> dict:
+    """A dry-run-consumable incident for ``scripts/self_heal_fixer.py --cycle --incident <file>``.
+
+    The fixer's ``--incident`` intake reads ``code_defect`` (the N8nCodeDefect@v1 contract it already
+    consumes), ``receipt`` (a RunReceipt@v2-shaped evidence record) and ``registry_row``. Everything
+    here is derived from the GitHub run; nothing is invented beyond naming the run's own fields.
+    """
+    basis = "|".join(failing) if failing else f"{workflow}:{run.get('conclusion')}"
+    signature = "sig-" + hashlib.sha1(basis.encode("utf-8")).hexdigest()[:16]
+    failed_run_id = f"gh:{run_id}"
+    return {
+        "at": now,
+        "code_defect": {
+            "schema": "N8nCodeDefect@v1",
+            "kind": "code_defect",
+            "consumer": "claude_code_iterative_fix",
+            "consumer_status": "pending_consumer",
+            "defect_id": f"cd-main-red-{run_id}-ep1",
+            "episode": 1,
+            "lane": workflow,
+            "signature": signature,
+            "failure_class": "code_error",
+            "failure_kind": f"ci_main_red:{workflow}",
+            "route": "fix_pr_release",
+            "next": "fix branch -> PR -> every check green -> merge (AGENTS.md deploy protocol)",
+            "evidence": {
+                "failed_run_id": failed_run_id,
+                "incident_key": f"gh:{workflow}:{run_id}",
+                "event_type": "RUN_FAILED",
+                "siem_id": None,
+                "receipt": f"github:{run.get('url')}",
+                "coordination_ledger": None,
+                "diagnoses_store": None,
+                "evidence_pack": None,
+            },
+        },
+        "receipt": {
+            "schema": "RunReceipt@v2",
+            "run_id": failed_run_id,
+            "lane_id": workflow,
+            "state": "RUN_FAILED",
+            "mode": "live",
+            "scheduler": "github_actions",
+            "attempt": 1,
+            "attempts": 1,
+            "exit_code": None,
+            "argv": [],
+            "reason": f"run_conclusion_{run.get('conclusion')}",
+            "stderr_tail": log_tail,
+            "output_signal": None,
+            "output_verdict": {"verdict": "not_evaluated", "why": "red_main_run"},
+            "started_at": None,
+            "finished_at": None,
+        },
+        "registry_row": {
+            "lane_id": workflow,
+            "owner": "platform",
+            "state": "ACTIVE",
+            "scheduler": {"kind": "github_actions", "workflow": workflow},
+            "output_signal": {"kind": "none"},
+        },
+        "main_red_autoheal": {
+            "schema": FIXER_REQUEST_SCHEMA,
+            "created_at": now,
+            "repo": None,
+            "run_id": run_id,
+            "run_url": run.get("url"),
+            "workflow": workflow,
+            "head_sha": run.get("headSha"),
+            "conclusion": run.get("conclusion"),
+            "failure_class": failure_class,
+            "failing_test_ids": list(failing),
+            "note": "Consumed by scripts/self_heal_fixer.py --cycle --incident <this file>. The fixer "
+                    "opens ONE fix PR through the merge gate (scripts/lib/pr_all_checks_green.py); the "
+                    "scheduled lane never pushes, opens a PR or merges (AGENTS.md 24.5, 28.14).",
+        },
     }
+
+
+def _escalate(config, base, record, run, run_id, workflow, gh, state_dir, dry_run,
+              telegram, issue_writer, infra_markers, now, *, why, log_tail="") -> dict:
+    failing = list(base.get("failing_test_ids") or [])
+    request = fixer_incident_document(
+        run=run, run_id=run_id, workflow=workflow, failing=failing,
+        failure_class=str(base.get("failure_class") or ""), log_tail=log_tail, now=now)
+    request["main_red_autoheal"]["repo"] = str(config["repo"])
     request_path = state_dir / str(config["fixer"].get("requests_rel") or "fixer_requests") / f"{run_id}.json"
     if dry_run:
         return {**base, "action": "would_escalate", "reason": why, "failing_test_ids": failing}
