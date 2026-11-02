@@ -53,11 +53,13 @@ CONFIG = {
 
 def run_json(run_id="991", workflow="cio-production-hardening-ci", conclusion="failure",
              head_sha="a" * 40, event="push", created_at="2026-11-02T03:00:00Z",
-             status="completed", url="https://example.com/run/991", attempt=1):
+             status="completed", url="https://example.com/run/991"):
+    # No `attempt` key: real `gh run list` has none, and this host's gh also rejects
+    # `gh run view --json attempt`. The attempt comes from the REST field via `gh api`.
     return {
         "databaseId": run_id, "workflowName": workflow, "conclusion": conclusion,
         "status": status, "headSha": head_sha, "event": event, "createdAt": created_at,
-        "url": url, "attempt": attempt,
+        "url": url,
     }
 
 
@@ -69,6 +71,7 @@ class FakeGh:
         self.views = views or {}
         self.logs = logs or {}
         self.rerun_rc = 0
+        self.attempts: dict[str, int] = {}
         self.calls: list[list[str]] = []
 
     def __call__(self, argv):
@@ -82,6 +85,9 @@ class FakeGh:
             return 0, json.dumps(self.views.get(run_id, {"conclusion": "failure", "status": "completed"}))
         if argv[:2] == ["run", "rerun"]:
             return self.rerun_rc, ""
+        if argv[:1] == ["api"] and "--jq" in argv:
+            run_id = str(argv[1]).rsplit("/", 1)[-1]
+            return 0, str(self.attempts.get(run_id, 1))
         return 1, f"unexpected gh argv: {argv}"
 
     @property
@@ -430,14 +436,22 @@ def test_a_failed_line_early_in_a_long_log_is_found(tmp_path):
 
 def test_a_different_failure_on_a_rerun_attempt_is_handled(tmp_path):
     cfg = dict(CONFIG, rerun_classes={"infrastructure": True, "test_failure": True, "unknown": False})
-    gh = FakeGh([run_json(attempt=1)], logs={"991": "FAILED tests/test_a.py::test_one - AssertionError"})
+    gh = FakeGh([run_json()], logs={"991": "FAILED tests/test_a.py::test_one - AssertionError"})
     cycle(tmp_path, gh, cfg=cfg)                       # attempt 1: re-run requested
-    gh.runs = [run_json(attempt=2)]
+    gh.runs = [run_json()]
+    gh.attempts = {"991": 2}
     gh.logs = {"991": "FAILED tests/test_b.py::test_two - AssertionError"}
     receipt = cycle(tmp_path, gh, cfg=cfg)              # attempt 2 fails with a DIFFERENT test
     assert receipt["actions"][0]["action"] == "page_and_dispatch"
     assert receipt["actions"][0]["failing_test_ids"] == ["tests/test_b.py::test_two"]
     assert (tmp_path / "state" / "fixer_requests" / "991-2.json").is_file()
+    # a THIRD manual attempt, failing differently again, must still be handled — not "already handled".
+    # With the attempt always read as 1 this returns noop, because attempt 2 escalated the shared record.
+    gh.attempts = {"991": 3}
+    gh.logs = {"991": "FAILED tests/test_c.py::test_three - AssertionError"}
+    third = cycle(tmp_path, gh, cfg=cfg)
+    assert third["actions"][0]["action"] == "page_and_dispatch"
+    assert third["actions"][0]["failing_test_ids"] == ["tests/test_c.py::test_three"]
 
 
 def test_the_twin_hardening_workflows_page_once_per_commit(tmp_path):
@@ -466,3 +480,22 @@ def test_the_page_ledger_is_pruned_to_the_cooldown(tmp_path):
     gh.logs = {"3": "opaque"}
     cycle(tmp_path, gh, cfg=cfg, telegram=FakeTelegram())
     assert key not in json.loads((tmp_path / "state" / "pages.json").read_text())
+
+
+def test_the_attempt_comes_from_the_rest_field(tmp_path):
+    gh = FakeGh([run_json()])
+    gh.attempts = {"991": 3}
+    assert mra._run_attempt(CONFIG, gh, "991", {}) == 3
+    assert ["api"] == gh.calls[-1][:1]
+
+
+def test_a_green_rerun_on_a_new_attempt_records_the_flake(tmp_path):
+    """A re-run that turns green is attempt 2; the flake belongs to the attempt that re-ran it."""
+    gh = FakeGh([run_json()], logs={"991": "The runner has received a shutdown signal"})
+    cycle(tmp_path, gh)                                 # attempt 1: red -> re-run
+    gh.runs = [run_json(conclusion="success")]
+    gh.attempts = {"991": 2}                           # the re-run is a new attempt, now green
+    receipt = cycle(tmp_path, gh)
+    assert receipt["actions"][0]["action"] == "flake_recorded"
+    assert receipt["actions"][0]["suspected_flake"] is True
+    assert len(gh.reruns) == 1

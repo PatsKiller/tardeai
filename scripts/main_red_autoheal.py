@@ -215,6 +215,11 @@ def run_cycle(
             continue
         if run.get("conclusion") not in FAILED_CONCLUSIONS:
             rec = runs_state.get(run_key) or {}
+            if not (int(rec.get("attempts") or 0) > 0):
+                # A re-run that turned green is a NEW attempt (id:2), so its own record has no
+                # attempts: the flake belongs to the attempt that actually re-ran the run.
+                rec = next((r for k, r in runs_state.items()
+                            if k.startswith(f"{run_id}:") and int(r.get("attempts") or 0) > 0), {})
             if int(rec.get("attempts") or 0) > 0 and not rec.get("flake_recorded") and not rec.get("escalated"):
                 # The re-run turned the run green: THIS is the flake receipt (it used to be skipped
                 # as "green" before the flake was ever recorded).
@@ -374,13 +379,19 @@ def _mark_page(state_dir: Path, key: str, now: str, hours: float = 6.0) -> None:
 
 
 def _run_attempt(config, gh, run_id: str, run: Mapping[str, Any]) -> int:
-    """The run attempt number. `gh run list` has no `attempt` field here, so a red run is read once."""
+    """The run attempt number.
+
+    `gh run list` has no `attempt` field, and this host's gh 2.46.0 also rejects
+    `gh run view --json attempt` ("Unknown JSON field"), which left every run on attempt 1 — so a
+    manual re-run that failed a different test was never seen as a new attempt. The REST field
+    ``run_attempt`` works on the host.
+    """
     if run.get("attempt") is not None:
         return int(run["attempt"])
-    rc, out = gh(["run", "view", run_id, "--repo", str(config["repo"]), "--json", "attempt"])
+    rc, out = gh(["api", f"repos/{config['repo']}/actions/runs/{run_id}", "--jq", ".run_attempt"])
     if rc == 0:
         try:
-            return int((json.loads(out or "{}") or {}).get("attempt") or 1)
+            return int(str(out).strip() or 1)
         except (ValueError, TypeError):
             pass
     return 1
