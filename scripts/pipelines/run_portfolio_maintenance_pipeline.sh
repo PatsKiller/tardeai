@@ -142,8 +142,12 @@ run_backup() {
   # ops state (crontab + systemd user units) — tiny, regenerated daily (scope audit 2026-07-17)
   pm_step "ops_state_backup"   "BACKUP_DAILY" bash "$PROJ/scripts/backup_secrets_state.sh" ops
   run_weekly_gated "secrets_backup_data" "$SECRETS_DATA_STAMP" data
-  # DB dump OFFSITE weekly (dumps were local-only — same-disk loss took DB history) + other apps
-  run_weekly_gated "db_offsite_backup"   "$DB_OFFSITE_STAMP"   db
+  # DB dump OFFSITE daily (2026-10-31, AGENTS.md §24.15: one dump on host, N+1 on Drive — backup_enforcer.py
+  # removes the older host dump only after the newest is verified on Drive, so the upload must follow every dump)
+  pm_step "db_offsite_backup"  "BACKUP_DAILY" bash "$PROJ/scripts/backup_secrets_state.sh" db
+  if [ "${STEP_STATUS[${#STEP_STATUS[@]}-1]}" = "ok" ]; then
+    mkdir -p "$(dirname "$DB_OFFSITE_STAMP")"; touch "$DB_OFFSITE_STAMP"
+  fi
   run_weekly_gated "apps_backup"         "$APPS_BACKUP_STAMP"  apps
 }
 run_daily()      {

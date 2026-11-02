@@ -127,7 +127,7 @@ def build(
             "pct_account": round(100.0 * mv / acct_tot[acct], 1) if acct_tot.get(acct) else None,
             "stressed_share": sh, "usd_exposed": round(mv * sh, 2), "stop_distance_pct": dist,
             "stance": rec.get("label") if material else "residual", "material": material,
-            "look_through_basis": lt.get("basis"),
+            "look_through_basis": lt.get("basis"), "groups": g,
         })
     rows.sort(key=lambda r: (-r["usd_exposed"], -r["value_usd"]))
     stressed_usd = round(sum(r["usd_exposed"] for r in rows), 2)
@@ -152,7 +152,7 @@ def build(
         "groups": {k: {"usd": round(v, 2), "pct_book": round(100.0 * v / total, 2) if total else None}
                    for k, v in sorted(groups_usd.items(), key=lambda kv: -kv[1])},
         "unmapped": unmapped,
-        "rows": exposed[:max_rows],
+        "rows": [{k: v for k, v in r.items() if k != "groups"} for r in exposed[:max_rows]],
         "more": {"count": max(0, len(exposed) - max_rows), "usd": round(sum(r["usd_exposed"] for r in exposed[max_rows:]), 2)},
         "zero_exposure_symbols": zero,
         "as_of": store.get("data_as_of"),
@@ -165,7 +165,12 @@ def build(
     def add(r: dict[str, Any], kind: str, text: str, usd: float, to: str) -> None:
         k = (r["symbol"], r["account_scope"])
         it = items.setdefault(k, {"symbol": r["symbol"], "account_label": r["account_label"], "kinds": [], "reasons": [],
-                                  "usd": 0.0, "to": to})
+                                  "usd": 0.0, "to": to, "pct_account": r.get("pct_account"),
+                                  # design home/v006: the facts the Protect clauses are built from (no stop level)
+                                  "facts": {"value_usd": r["value_usd"], "pct_account": r.get("pct_account"),
+                                            "stop_distance_pct": r.get("stop_distance_pct"),
+                                            "stressed_share": r.get("stressed_share"),
+                                            "groups": r.get("groups") or {}}})
         it["kinds"].append(kind)
         it["reasons"].append(text)
         it["usd"] = round(max(it["usd"], usd), 2)
