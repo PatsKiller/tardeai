@@ -88,6 +88,12 @@ alone would have been PATCH; the higher class wins, per the version policy above
 
 ## Version banners (moved here from the top of the file by 25.0.0; history, not binding)
 
+### Moved here by 29.4.0 (superseded version's banner, verbatim)
+
+**29.1.0 is ACTIVE (MINOR) — a promote or rollback restarts the units named in §25.10 and verifies them.** Ratified
+2026-10-31 (`APPROVE_AGENTS_POLICY_29_1_0 2392 b2348fcef400d4cf320f039f128653f2087c4caf`, §20). Renumbered only, no rule-text change: ratified as 28.1.0 on
+2026-10-31 (`APPROVE_AGENTS_POLICY_28_1_0 2392 2a424d7799c4e8aec6a7e02abc649cda800e6351`) before 29.0.0 merged. §28.1 unchanged.
+
 ### Moved here by 29.2.1 (superseded version's banner, verbatim)
 
 **27.0.1 is ACTIVE (PATCH) — ratification of 27.0.0 (agents delete their own scratch; a scheduled purge reclaims the rest).**

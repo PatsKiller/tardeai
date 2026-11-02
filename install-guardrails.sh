@@ -39,7 +39,7 @@ if ! _CANON_LIB="$(_canon .cursor/hooks/guard-lib.sh)"; then
   exit 1
 fi
 _CANON_DIR="$(mktemp -d "${TMPDIR:-/tmp}/guardrails-canon.XXXXXX")"
-for _f in .cursor/hooks/guard-lib.sh .cursor/hooks/guard_ledger.py .cursor/hooks/guard_push_free.py .cursor/hooks/guard-read.sh \
+for _f in .cursor/hooks/guard-lib.sh .cursor/hooks/guard_ledger.py .cursor/hooks/guard_push_free.py .cursor/hooks/guard_tokens.py .cursor/hooks/guard-read.sh \
           .cursor/hooks/guard-write.sh .cursor/hooks/guard-shell.sh .cursor/hooks/audit.sh \
           .cursor/hooks.json bin/guard; do
   if _c="$(_canon "$_f")"; then
@@ -206,7 +206,7 @@ fi
 grep -q '^\.cursor/approvals/' .gitignore 2>/dev/null || echo '.cursor/approvals/' >> .gitignore
 grep -q '^logs/cursor-agent-audit' .gitignore 2>/dev/null || echo 'logs/cursor-agent-audit.jsonl' >> .gitignore
 # bin/guard is written separately — see install-guard-cli.sh, or copy from the bundle.
-chmod +x .cursor/hooks/*.sh .cursor/hooks/guard_ledger.py .cursor/hooks/guard_push_free.py bin/guard 2>/dev/null
+chmod +x .cursor/hooks/*.sh .cursor/hooks/guard_ledger.py .cursor/hooks/guard_push_free.py .cursor/hooks/guard_tokens.py bin/guard 2>/dev/null
 sed -i 's/\r$//' .cursor/hooks/*.sh 2>/dev/null
 
 # ─────────────────────────────────────────────────────── SELF-TEST
