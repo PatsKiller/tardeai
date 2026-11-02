@@ -689,6 +689,11 @@ export default function MetricStrip({ onDrill }: Props) {
         {headerState.failed.length > 0 && (
           <span style={{ color: 'var(--text2)' }}>({headerState.failed.join(', ')})</span>
         )}
+        {/* A source that settled with no payload is named too, so "unknown" is
+            never a bare adjective over a healthy-looking strip. */}
+        {headerState.unavailable.length > 0 && (
+          <span style={{ color: 'var(--text2)' }}>({headerState.unavailable.join(', ')})</span>
+        )}
         {headerState.retryable && (
           <button
             type="button"

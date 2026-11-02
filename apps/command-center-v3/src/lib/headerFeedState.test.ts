@@ -141,6 +141,86 @@ function feed(over: Partial<HeaderFeed> = {}): HeaderFeed {
   const s = deriveHeaderFeedState([])
   check('no feeds is unknown, never a false ready', s.state === 'unknown')
   check('no feeds names nothing', s.failed.length === 0 && s.available.length === 0)
+  check('no feeds names no unavailable source', s.unavailable.length === 0)
+}
+
+// ---- partial unknown: one ready feed, one settled with no payload -----------
+// The BLOCK review's case: a source answering 200 with a null payload while a
+// sibling is healthy. It used to return ready with no banner and no Retry.
+{
+  const s = deriveHeaderFeedState([
+    feed({ key: 'overview', label: 'overview', hasData: true }),
+    feed({ key: 'tradeAi', label: 'trade AI summary' }), // settled, no payload, no error
+  ])
+  check('a ready feed beside a settled-empty feed is unknown, never ready', s.state === 'unknown')
+  check('partial unknown names the settled-empty feed', s.unavailable.join() === 'trade AI summary')
+  check('partial unknown keeps the loaded feed available', s.available.join() === 'overview')
+  check('partial unknown is retryable', s.retryable === true)
+  check('partial unknown has a banner message', s.message !== null)
+  check('partial unknown says a payload is missing', /no payload/i.test(s.message ?? ''))
+  check('partial unknown is not an error', s.state !== 'error')
+  check('partial unknown does not borrow the stale message', !/last good/i.test(s.message ?? ''))
+}
+
+// A settled-empty source outranks a still-loading sibling: one is a fact, the
+// other is only a hope.
+{
+  const s = deriveHeaderFeedState([
+    feed({ key: 'overview', label: 'overview', loading: true }),
+    feed({ key: 'regime', label: 'risk regime' }), // settled empty
+  ])
+  check('a settled-empty feed outranks a still-loading sibling', s.state === 'unknown')
+  check('unknown precedence names the empty source', s.unavailable.join() === 'risk regime')
+  check('unknown precedence still reports the pending source', s.pending.join() === 'overview')
+  check('unknown precedence is retryable', s.retryable === true)
+}
+
+// ---- partial loading: one ready feed, one still on first load ---------------
+{
+  const s = deriveHeaderFeedState([
+    feed({ key: 'overview', label: 'overview', hasData: true }),
+    feed({ key: 'regime', label: 'risk regime', loading: true }),
+  ])
+  check('a ready feed beside a first-load feed is loading', s.state === 'loading')
+  check('partial loading names the pending feed', s.pending.join() === 'risk regime')
+  check('partial loading says it is loading the remainder', /remaining/.test(s.message ?? ''))
+  check('partial loading is not retryable (nothing failed)', s.retryable === false)
+  check('partial loading keeps the loaded feed available', s.available.join() === 'overview')
+}
+
+// ---- error precedence over unknown and loading ------------------------------
+{
+  const s = deriveHeaderFeedState([
+    feed({ key: 'overview', label: 'overview', hasData: true }),
+    feed({ key: 'regime', label: 'risk regime' }), // settled empty
+    feed({ key: 'tradeAi', label: 'trade AI summary', error: 'HTTP 502' }),
+  ])
+  check('an error outranks a settled-empty feed', s.state === 'error')
+  check('error precedence names the failed feed', s.failed.join() === 'trade AI summary')
+  check('error precedence still reports the settled-empty feed', s.unavailable.join() === 'risk regime')
+  check('error precedence wins over ready data', s.available.join() === 'overview')
+  check('error precedence carries the transport text', s.detail === 'HTTP 502')
+}
+
+{
+  const s = deriveHeaderFeedState([
+    feed({ key: 'overview', label: 'overview', error: 'HTTP 502' }),
+    feed({ key: 'regime', label: 'risk regime', loading: true }),
+    feed({ key: 'tradeAi', label: 'trade AI summary' }), // settled empty
+  ])
+  check('failure outranks unknown and loading at once', s.state === 'error')
+  check('failure precedence names the failed feed only', s.failed.join() === 'overview')
+  check('failure precedence is retryable', s.retryable === true)
+}
+
+// ---- stale still outranks a loading sibling (unchanged semantics) -----------
+{
+  const s = deriveHeaderFeedState([
+    feed({ key: 'overview', label: 'overview', hasData: true, stale: true }),
+    feed({ key: 'regime', label: 'risk regime', loading: true }),
+  ])
+  check('stale last-good data outranks a loading sibling', s.state === 'stale')
+  check('stale still names the retained feed', s.staleFeeds.join() === 'overview')
 }
 
 console.log(`\nheaderFeedState: ${pass} passed, ${fail} failed`)
