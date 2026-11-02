@@ -248,7 +248,7 @@ export default function HomeDoNow() {
                 <thead>
                   <tr style={{ ...label, textAlign: 'right' }}>
                     <th style={{ textAlign: 'left', fontWeight: 600, padding: '2px 0' }}>Account</th>
-                    <th style={{ fontWeight: 600 }} title="Current value (/api/v2/portfolio/performance current_value)">Value</th>
+                    <th style={{ fontWeight: 600 }} title="Current value; the source is named on each account row">Value</th>
                     <th style={{ fontWeight: 600 }} title={accountDay.unknown ? `${accountDay.evidence} ${accountDay.reason}` : "Today's $ change"}>1D</th>
                     <th style={{ fontWeight: 600 }} title="Year-to-date $ change; ≈ = excluding transfers">YTD</th>
                   </tr>
