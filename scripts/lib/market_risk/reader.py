@@ -37,6 +37,26 @@ ET = ZoneInfo("America/New_York")
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 OVERRIDES_PATH = PROJECT_ROOT / "config" / "macro_calendar_overrides.json"
 REGULAR_CLOSE_CUTOFF_ET = time(16, 0, 59)  # last quote at or before this = the newest session's provisional close
+#: A same-day close may only come from the regular session. Without this floor a 07:15 ET pre-market
+#: quote became the day's "close" (2026-11-02: ten symbols, eight repeating Friday's close), shifting
+#: the moving averages and flipping verdicts.
+REGULAR_OPEN_ET = time(9, 30)
+EARLY_CLOSE_ET = time(13, 0, 59)
+
+
+def _same_day_cutoff_et(day: date) -> time:
+    """The last regular-session quote time for ``day`` (early close aware via scripts/market_session.py)."""
+    try:
+        try:
+            from scripts.market_session import market_early_closes
+        except ImportError:  # scripts/ on sys.path
+            from market_session import market_early_closes  # type: ignore[no-redef]
+        # market_early_closes() returns ISO date strings
+        if day.isoformat() in market_early_closes(day.year):
+            return EARLY_CLOSE_ET
+    except Exception:  # noqa: BLE001 — an unreadable calendar must not invent a close; fall back to 16:00
+        pass
+    return REGULAR_CLOSE_CUTOFF_ET
 VIX_SYMBOL = "^VIX"
 DAILY_TIMEFRAME = "daily"
 QUOTE_SOURCE_FOR_CLOSES = "alpaca"
@@ -381,7 +401,11 @@ class PgReader:
                         continue
                     close, prov, seen = nxt["prev_close"], False, nxt["fetched_at"]
                 else:
-                    regular = [q for q in by_day[d] if q["fetched_at"].astimezone(ET).time() <= REGULAR_CLOSE_CUTOFF_ET]
+                    cutoff = _same_day_cutoff_et(d)
+                    regular = [
+                        q for q in by_day[d]
+                        if REGULAR_OPEN_ET <= q["fetched_at"].astimezone(ET).time() <= cutoff
+                    ]
                     if not regular or regular[-1].get("price") is None:
                         continue
                     close, seen = regular[-1]["price"], regular[-1]["fetched_at"]

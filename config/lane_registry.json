@@ -2572,11 +2572,12 @@
       "owner": "portfolio",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/15 9-16 * * 1-5 + 10 16 * * 1-5",
+        "expression": "*/15 * * * 1-5 + */15 20-23 * * 0 + 10 16 * * 1-5",
         "command_text": "portfolio_repricer.py",
         "match": "portfolio_repricer.py",
         "schedules": [
-          "*/15 9-16 * * 1-5",
+          "*/15 * * * 1-5",
+          "*/15 20-23 * * 0",
           "10 16 * * 1-5"
         ]
       },
@@ -2586,14 +2587,15 @@
         1,
         2,
         3,
-        4
+        4,
+        6
       ],
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/portfolios/state/holdings.json"
       },
-      "note": "Writes holdings.json and data_as_of (LITMUS_LANES F7 / #831). Cadence matches the installed */15 9-16 market-hours cron, not a fake 24h. Artifact is the holdings.json CURRENT serves (persistent-state via symlink), not $PROJ. Three cron lines (*/15 9-16, 5 9 open, 10 16 postclose) share match=portfolio_repricer.py. F3 live_monitor and F5 warm_caches stay loose — out of scope.",
+      "note": "Writes holdings.json and data_as_of (LITMUS_LANES F7 / #831). Cadence: every 15 min around the clock Mon-Fri plus Sunday 20:00-23:45 ET (24-hour session open); operator 2026-11-02 \"repricing needs to run 24 hours as we have 24-hour markets\" (was */15 9-16). reprice_source names the session (premarket/live/afterhours/overnight). Artifact is the holdings.json CURRENT serves (persistent-state via symlink), not $PROJ. Three cron lines (*/15 all day Mon-Fri, */15 20-23 Sunday, 10 16 postclose) share match=portfolio_repricer.py. F3 live_monitor and F5 warm_caches stay loose — out of scope.",
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P01",
       "rationalization": {
@@ -18971,6 +18973,41 @@
         "token": "schwab",
         "source": "config/lane_stay_on_cron_tokens.json"
       }
+    },
+    {
+      "lane_id": "main-red-autoheal",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-main-red-autoheal.timer",
+        "match": "PROPOSED - NOT INSTALLED: no unit file, cron line or n8n workflow exists for this lane"
+      },
+      "expected_cadence_hours": 0.5,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-11-02",
+      "state_reason": "Plan item 4, operator-approved in-session 2026-11-01: when the newest origin/main run of a required workflow is red, a host lane re-runs its failed jobs once (infrastructure failures only - AGENTS.md 28.14 says never a test failure), records a suspected flake when the re-run clears it, and otherwise pages one P1 and writes one Claude Code fixer request. PROPOSED, NOT INSTALLED: no unit file, cron line or n8n workflow exists; adding a new systemd entry is operator-only (AGENTS.md 17). Activation was approved conditional on the PR merging with every check green, an independent MERGE review, and a quoted dry-run receipt; the coordinator installs it.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "persistent-state/data/coordination/handoffs/PLAN_COLLISION_AUTOREMEDIATION_20261101.md item 4; scripts/main_red_autoheal.py; config/main_red_autoheal.json; tests/test_main_red_autoheal_20261102.py. No unit file, crontab line or n8n workflow references this lane (an install is the operator's act).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/main_red_autoheal/last.json",
+        "evidence": "MainRedAutohealReceipt@v1 last.json + receipts/<started_at>.json + append-only runs.jsonl"
+      },
+      "value_class": "UNCLASSIFIED",
+      "recommendation": "KEEP_ON_CRON",
+      "proposed_state": {
+        "state": "PROPOSED",
+        "state_since": "2026-11-02",
+        "reason_confidence": "PROPOSED",
+        "state_reason": "Plan item 4, operator-approved in-session 2026-11-01: when the newest origin/main run of a required workflow is red, a host lane re-runs its failed jobs once (infrastructure failures only - AGENTS.md 28.14 says never a test failure), records a suspected flake when the re-run clears it, and otherwise pages one P1 and writes one Claude Code fixer request. PROPOSED, NOT INSTALLED: adding any new systemd entry is operator-only (AGENTS.md 17); activation was approved conditional on the PR merging with every check green, an independent MERGE review, and a quoted dry-run receipt. The coordinator installs it.",
+        "reason_evidence": "persistent-state/data/coordination/handoffs/PLAN_COLLISION_AUTOREMEDIATION_20261101.md item 4; scripts/main_red_autoheal.py; config/main_red_autoheal.json; tests/test_main_red_autoheal_20261102.py",
+        "ruled": false
+      },
+      "operator_decision_pending": true,
+      "status": "PROPOSED_NOT_INSTALLED",
+      "service": "tradeai-main-red-autoheal.service (PROPOSED; no unit file)",
+      "cadence_basis": "PROPOSED: tradeai-main-red-autoheal.timer, OnCalendar every 30 min (uninstalled)",
+      "exec_start": "PROPOSED: ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/main_red_autoheal.py --apply"
     },
     {
       "lane_id": "run-scheduled-quote-refresh-incubator",

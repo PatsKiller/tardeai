@@ -44,10 +44,12 @@ from typing import Any, Callable, Iterable, Optional
 try:
     from scripts import check_pr_plain_english as plain
     from scripts.lib import merge_hold_paths as mhp
+    from scripts.lib import pr_all_checks_green as pacg
     from scripts.lib import pr_merge_telegram as pmt
 except ImportError:  # pragma: no cover — run from scripts/
     import check_pr_plain_english as plain  # type: ignore
     from lib import merge_hold_paths as mhp  # type: ignore
+    from lib import pr_all_checks_green as pacg  # type: ignore
     from lib import pr_merge_telegram as pmt  # type: ignore
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -202,8 +204,13 @@ def label_set(pr: dict[str, Any]) -> set[str]:
     return pmt.label_names(pr)
 
 
+def every_check_green(rollup: Iterable[dict[str, Any]] | None) -> dict[str, Any]:
+    """Every non-skipped check run on this head is success or neutral (scripts/lib/pr_all_checks_green.py)."""
+    return pacg.evaluate_rollup(rollup)
+
+
 def checks_green(rollup: Iterable[dict[str, Any]] | None) -> tuple[bool, dict[str, str]]:
-    """Every required check present and every run of it ``SUCCESS`` on this head."""
+    """Every required check present and every run of it ``SUCCESS`` on this head (display only)."""
     seen: dict[str, set[str]] = {}
     for row in rollup or []:
         name = str(row.get("name") or row.get("context") or "")
@@ -286,8 +293,12 @@ def classify_pr(pr: dict[str, Any], *, repo: str, cfg: dict[str, Any]) -> dict[s
         return {**item, "status": "skip", "reason": "draft"}
     if pmt.LABEL in labels:
         return {**item, "status": "skip", "reason": "already_approved"}
-    green, statuses = checks_green(pr.get("statusCheckRollup"))
+    _required_green, statuses = checks_green(pr.get("statusCheckRollup"))
+    every = every_check_green(pr.get("statusCheckRollup"))
+    green = bool(every.get("ok"))
     item["checks"] = statuses
+    if not green:
+        item["blocking_checks"] = list(every.get("failing") or []) or [str(every.get("reason") or "not green")]
     held_labels = sorted(labels & mhp.hold_labels())
     held_paths = mhp.held_classes(files)
     errors = plain.check(item["title"], str(pr.get("body") or ""))

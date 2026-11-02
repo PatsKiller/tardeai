@@ -57,17 +57,15 @@ def _by_id(decisions):
 # ── .mergify.yml ───────────────────────────────────────────────────────────────────────────────
 
 
-def test_mergify_updates_or_rebases_only_approved_prs():
+def test_mergify_never_updates_or_rebases_a_pr():
+    """2026-11-02 (collision E): the label=operator-merge update rule pushed main into an approved,
+    already-green PR after every merge and restarted the ~30-minute suite each time. Branch protection
+    is not strict, so a PR does not need to be current to merge, and the queue recomputes checks on
+    its speculative branch. No rule may carry update or rebase again."""
     cfg = yaml.safe_load((ROOT / ".mergify.yml").read_text(encoding="utf-8"))
-    rules = cfg.get("pull_request_rules", [])
-    assert any("update" in (r.get("actions") or {}) for r in rules), "the approved-PR update rule must stay"
-    for rule in rules:
-        actions = set(rule.get("actions") or {}) & {"update", "rebase"}
-        if not actions:
-            continue
-        conds = [c for c in rule.get("conditions", []) if isinstance(c, str)]
-        assert "label=operator-merge" in conds, f"{sorted(actions)} without label=operator-merge: {rule.get('name')}"
-        assert "-draft" in conds
+    offenders = [r.get("name") for r in cfg.get("pull_request_rules", [])
+                 if set(r.get("actions") or {}) & {"update", "rebase"}]
+    assert offenders == [], offenders
 
 
 def test_blanket_keep_up_to_date_rule_is_gone():
