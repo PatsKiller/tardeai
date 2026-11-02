@@ -19,15 +19,16 @@ from __future__ import annotations
 import html as _html
 import json
 import re
-import time
 import urllib.request
 from datetime import date, timedelta
 from typing import Any, Callable, Optional
 
 try:
-    from scripts.lib.financial_senses.sec_companyfacts_reader import SEC_HEADERS, _RATE_SLEEP, _default_fetcher
+    from scripts.lib.financial_senses.sec_companyfacts_reader import _default_fetcher, sec_headers
+    from scripts.lib import sec_edgar_client as _sec_client
 except ImportError:  # scripts/ on sys.path
-    from lib.financial_senses.sec_companyfacts_reader import SEC_HEADERS, _RATE_SLEEP, _default_fetcher  # type: ignore
+    from lib.financial_senses.sec_companyfacts_reader import _default_fetcher, sec_headers  # type: ignore
+    from lib import sec_edgar_client as _sec_client  # type: ignore
 
 SOURCE_TYPE = "sec_8k_ex99"
 QUALITY = "PRIMARY_REGULATORY"
@@ -38,7 +39,7 @@ SENTENCE_CAP = 320         # chars of one fact sentence
 DOCUMENT_ITEMS = ("2.02", "7.01")
 DOCUMENT_FORMS = ("8-K", "8-K/A")
 
-_TEXT_HEADERS = {"User-Agent": SEC_HEADERS["User-Agent"], "Accept": "text/html,application/xhtml+xml,*/*"}
+_TEXT_ACCEPT = "text/html,application/xhtml+xml,*/*"  # User-Agent: sec_edgar_client (fails closed)
 
 # Exhibit file names on EDGAR: ex991.htm, exhibit991earnings8kq2fy27.htm, d1234dex991.htm,
 # ex99-1.htm, ex_99_1.htm, a2026q2ex991.htm ...
@@ -255,8 +256,8 @@ def filings_needing_documents(filings: list[dict[str, Any]], *, since_days: int 
 # ── network (thin) ──────────────────────────────────────────────────────────────
 
 def _default_text_fetcher(url: str, timeout: float = 20.0) -> str:
-    time.sleep(_RATE_SLEEP)
-    req = urllib.request.Request(url, headers=_TEXT_HEADERS)
+    req = urllib.request.Request(url, headers=sec_headers(_TEXT_ACCEPT))  # fails closed before any request
+    _sec_client.throttle()
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read().decode("utf-8", errors="replace")
 

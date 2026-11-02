@@ -54,6 +54,15 @@ def _insert_news_article(cur, title, url, symbol, source, quality):
     return receipt.rows_written > 0
 
 
+def _sec_edgar_headers(accept: str = "application/json") -> dict:
+    """SEC User-Agent from scripts/lib/sec_edgar_client.py (DSN-20261101 P0-T2); raises SecContactError, no fallback."""
+    try:
+        from lib import sec_edgar_client as _c
+    except ImportError:
+        from scripts.lib import sec_edgar_client as _c
+    return _c.headers(accept)
+
+
 def check_edgar_overnight(symbol, conn, dry_run=False):
     findings = []
     try:
@@ -62,7 +71,7 @@ def check_edgar_overnight(symbol, conn, dry_run=False):
         resp = requests.get('https://efts.sec.gov/LATEST/search-index', params={
             'q': symbol, 'dateRange': 'custom', 'startdt': cutoff, 'enddt': today,
             'forms': '8-K,S-1,S-3,424B1,424B3,424B5',
-        }, headers={'User-Agent': 'TradeAI/1.0 (john@jwwhiting.com)'}, timeout=8)
+        }, headers=_sec_edgar_headers(), timeout=8)
         if resp.status_code != 200:
             return []
         hits = resp.json().get('hits', {}).get('hits', [])

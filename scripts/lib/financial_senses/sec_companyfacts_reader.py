@@ -8,21 +8,29 @@ A caller may inject a `fetcher` (url -> dict) for deterministic offline tests.
 from __future__ import annotations
 
 import json
-import time
 import urllib.request
 from typing import Callable, Optional
 
+try:
+    from scripts.lib import sec_edgar_client as _sec_client
+except ImportError:  # scripts/ on sys.path
+    from lib import sec_edgar_client as _sec_client  # type: ignore
+
 SEC_EDGAR = "https://data.sec.gov"
-SEC_HEADERS = {
-    "User-Agent": "TradeAI john@jwwhiting.com",
-    "Accept": "application/json",
-}
-_RATE_SLEEP = 0.15  # SEC fair-access: ~6.7 req/s
+#: The User-Agent contact is read through scripts/lib/sec_edgar_client.py (config/sec_edgar_client.json + the
+#: local override), never hard-coded (DSN-20261101 P0-T2). It fails closed: SecContactError, no request sent.
+SecContactError = _sec_client.SecContactError
+_RATE_SLEEP = 0.15  # SEC fair-access: ~6.7 req/s (the client's spacing_s; kept for importers)
+
+
+def sec_headers(accept: str = "application/json") -> dict:
+    """Headers for one SEC request; raises SecContactError when the contact is not configured."""
+    return _sec_client.headers(accept)
 
 
 def _default_fetcher(url: str, timeout: float = 15.0) -> dict:
-    time.sleep(_RATE_SLEEP)
-    req = urllib.request.Request(url, headers=SEC_HEADERS)
+    req = urllib.request.Request(url, headers=sec_headers())  # fails closed before any request
+    _sec_client.throttle()
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read())
 

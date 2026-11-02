@@ -41,7 +41,17 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 SEC_BASE = "https://efts.sec.gov/LATEST/search-index?q="
 SEC_EDGAR = "https://data.sec.gov"
-SEC_HEADERS = {"User-Agent": "TradeAI john@jwwhiting.com", "Accept": "application/json"}
+try:
+    from lib import sec_edgar_client as _sec_client
+except ImportError:  # imported as scripts.sec_data_ingest
+    from scripts.lib import sec_edgar_client as _sec_client
+#: SEC fair-access contact comes from config/sec_edgar_client.json + the local override, never from code
+#: (DSN-20261101 P0-T2). An empty/placeholder/invalid contact raises SecContactError: no request is sent.
+SecContactError = _sec_client.SecContactError
+
+
+def _sec_headers() -> dict:
+    return _sec_client.headers("application/json")
 LANE_ID = "sec-data-ingest"
 SYMBOL_CAP = 15  # rate limit protection
 #: SEC request errors seen in this process (each failed request appends; ingest_form4 diffs the length)
@@ -67,8 +77,8 @@ def _get_conn():
 def _sec_get(url: str) -> dict:
     """Make a rate-limited request to SEC EDGAR."""
     import urllib.request
-    time.sleep(0.15)  # SEC rate limit: 10/sec
-    req = urllib.request.Request(url, headers=SEC_HEADERS)
+    req = urllib.request.Request(url, headers=_sec_headers())  # fails closed before any request
+    _sec_client.throttle()  # SEC fair access (config spacing_s / max_rps)
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             return json.loads(resp.read())
@@ -82,11 +92,11 @@ def _get_cik(symbol: str) -> str:
     """Look up CIK number for a ticker symbol."""
     url = f"{SEC_EDGAR}/submissions/CIK{symbol.upper()}.json"
     # Try the ticker mapping first
+    import urllib.request
+    map_url = "https://www.sec.gov/files/company_tickers.json"
+    req = urllib.request.Request(map_url, headers=_sec_headers())  # fails closed before any request
     try:
-        import urllib.request
-        map_url = "https://www.sec.gov/files/company_tickers.json"
-        req = urllib.request.Request(map_url, headers=SEC_HEADERS)
-        time.sleep(0.15)
+        _sec_client.throttle()
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read())
             for entry in data.values():
