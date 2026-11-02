@@ -239,10 +239,24 @@ def test_a_worklog_supplies_blocker_and_next_when_the_claim_doc_does_not(tmp_pat
     board = _board(tmp_path)
     claims = _claims(tmp_path, {"session": "cc-deepseek-2", "branch": "wt/x", "task": "t", "status": "active",
                                 "claim_id": "c0", "head_sha": HEAD})
-    (claims / "c0.worklog.md").write_text("# w\n\nBlockers: waiting on grant\nNext: push then review\n", encoding="utf-8")
+    # The CANONICAL shape (codex, 2026-11-02): blockers under "## Blockers", next under "## Handoff"
+    # as "- Next step:". A "next:" token anywhere is not the format and must not parse.
+    (claims / "c0.worklog.md").write_text(
+        "# Worklog\n\n## Blockers\n- waiting on grant\n\n## Handoff\n- Next step: push then review\n"
+        "- Branch: wt/x\n", encoding="utf-8")
     work = rc.build(tmp_path / "ledger.jsonl", claims, [_pr()], now=NOW)["work"][2474]
     assert work["blockers"] == ["waiting on grant"]
     assert work["next_action"].startswith("push then review")
+
+
+def test_a_word_containing_blocker_outside_the_blockers_section_is_not_a_blocker(tmp_path):
+    claims = _claims(tmp_path, {"session": "s", "branch": "wt/x", "task": "t", "status": "active",
+                                "claim_id": "c0", "head_sha": HEAD})
+    (claims / "c0.worklog.md").write_text(
+        "# W\n\n## Changes made\n- removed a blocker-shaped string from tests\n\n## Blockers\n(empty)\n",
+        encoding="utf-8")
+    work = rc.build(tmp_path / "ledger.jsonl", claims, [_pr()], now=NOW)["work"][2474]
+    assert work["blockers"] == []
 
 
 def test_a_worklog_outside_the_coordination_root_is_refused(tmp_path):

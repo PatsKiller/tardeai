@@ -280,17 +280,31 @@ def read_worklog(worklog_path: Path, root: Path) -> tuple[dict[str, Any], Option
         return {"blocker": None, "next_action": None}, "worklog_absent"
     except OSError as exc:
         return {"blocker": None, "next_action": None}, f"worklog_unreadable:{type(exc).__name__}"
-    blocker = next_action = None
-    for line in reversed(text.splitlines()):
-        low = line.lower()
-        if next_action is None and ("next:" in low or "**next:**" in low):
-            next_action = line.split(":", 1)[1].strip()[:300] or None
-        if blocker is None and "blocker" in low:
-            blocker = line.split(":", 1)[-1].strip()[:300] or None
-        if blocker and next_action:
-            break
+    # Reuse the CANONICAL parser rather than inventing one (codex, 2026-11-02): the handoff lives in
+    # "## Handoff" as "- Next step:", not as a "next:" token, and blockers live in "## Blockers", not in
+    # any line containing the word "blocker". `summarize()` owns that format; we only bound the read.
+    try:
+        from . import agent_claim_worklog as _wl
+    except ImportError:  # pragma: no cover - scripts/ on sys.path
+        import lib.agent_claim_worklog as _wl  # type: ignore
+    try:
+        summary = _wl.summarize(text)
+    except Exception:  # noqa: BLE001 - an unparseable worklog is a gap, not a crash
+        summary = {}
+    next_action = (summary.get("next_step") or None)
+    blocker_lines = []
+    try:
+        _h, sections = _wl.parse(text)
+        blocker_lines = [ln.lstrip("-*+ ").strip() for ln in _wl._strip_placeholder(sections.get("Blockers") or [])[:5]]
+        # "(empty)"/"(none)" are placeholders the canonical renderer writes into an unused section.
+        blocker_lines = [ln for ln in blocker_lines if ln.lower() not in ("(empty)", "(none)", "none", "empty")]
+    except Exception:  # noqa: BLE001
+        blocker_lines = []
     gap = "worklog_truncated" if size > WORKLOG_TAIL_BYTES else None
-    return {"blocker": blocker, "next_action": next_action, "truncated": bool(gap)}, gap
+    return {"blocker": (blocker_lines[0][:300] if blocker_lines else None),
+            "blockers": [b[:300] for b in blocker_lines],
+            "next_action": next_action,
+            "truncated": bool(gap)}, gap
 
 
 def agent_rows(claims: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -384,7 +398,9 @@ def build(ledger_path: Path, claims_dir: Path, prs: Iterable[Mapping[str, Any]],
             "published_head": head or None,
             "review": review,
             "ci": ci,
-            "blockers": [b for b in [(owner or {}).get("blocker"), (wl or {}).get("blocker")] if b],
+            "blockers": list(dict.fromkeys(
+                ([b for b in [(owner or {}).get("blocker")] if b] if not wl else [])
+                + list((wl or {}).get("blockers") or []))),
             "next_action": (wl or {}).get("next_action") or (owner or {}).get("next_action") or UNKNOWN,
             "as_of": _newest([(owner or {}).get("as_of"), review.get("as_of"), ci.get("as_of")]) or captured_at,
             "source": "claims+coordinator_ledger" if owner and not gaps else ("claims" if owner else "none"),
