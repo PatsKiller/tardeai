@@ -18,7 +18,11 @@ Contract reused exactly from #2384:
   futures_open), and only when the payload DATES it to that day -- equities ``regular.regularMarketLastPrice`` with
   ``regularMarketTradeTime``, futures and indices ``quote.closePrice`` with ``settleTime``. Undated or another day:
   premarket/afterhours rows are refused (``no_dated_reference_for_<session>``); overnight/futures_open rows store the
-  LEVEL ONLY (reference columns NULL). A reference is never assumed.
+  LEVEL ONLY (reference columns NULL). A reference is never assumed. One bounded exception, operator 2026-11-01:
+  Schwab dates a futures close to the PRINT's own session day (the live 2026-11-01 open carried settleTime 2026-11-01,
+  not the 2026-10-30 reference), so a futures/index close dated after the reference session and no later than the
+  print is accepted under ``schwab_quote_close_price_settle_same_day``; equities are never widened and the exception
+  can be switched off (``schwab.settle_same_day_reference``).
 * ``bar_end`` is when the print became knowable. A Schwab quote is a point in time, so ``bar_end`` = the trade
   instant exactly and ``bar_start`` = ``point_quote_span_ms`` earlier (the contract requires bar_end > bar_start).
 * Futures are stored under their ROOT (``contract_root``). Schwab keys a futures quote by the front-month CONTRACT,
@@ -290,7 +294,7 @@ def schwab_rows(payload: Any, now: datetime, cfg: dict[str, Any],
                 continue
             sess, tdate = night
             ref_date = ovn.reference_date(tdate)
-        ref, ref_basis, why_not = dated_reference(asset, q, reg, ref_date, s)
+        ref, ref_basis, why_not = dated_reference(asset, q, reg, ref_date, s, print_at=ts)
         row = {"symbol": sym_u, "session": sess, "session_date": tdate, "bar_start": ts - span, "bar_end": ts,
                "price": price, "volume": None, "feed": str(s["feed"])}
         if contract:
@@ -312,16 +316,25 @@ def schwab_rows(payload: Any, now: datetime, cfg: dict[str, Any],
 
 
 def dated_reference(asset: str, q: dict, reg: dict, ref_date: date,
-                    s: dict[str, Any]) -> tuple[float | None, str | None, str | None]:
+                    s: dict[str, Any], print_at: datetime | None = None) -> tuple[float | None, str | None, str | None]:
     """(reference_close, basis, None) when the payload PROVES the close of ``ref_date``, else (None, None, why).
 
     One rule for every session (review of #2416 F4 and #2423 F2/F6, 2026-10-31): equities use
     ``regular.regularMarketLastPrice`` dated by ``regular.regularMarketTradeTime``; futures and indices use
     ``quote.closePrice`` dated by ``quote.settleTime``. The date must be present AND fall on ``ref_date`` (ET): an
     undated price is not proof (a Monday 17:00 regular block can still hold Friday's close), so it is never used.
+
+    One bounded exception, for futures/indices only (operator 2026-11-01: "fix the futures settleTime so they
+    measure"): Schwab dates a futures close to the PRINT's own session day (live: the 2026-11-01 Sunday open carried
+    settleTime 2026-11-01, not the 2026-10-30 reference session), which left every overnight futures row level-only.
+    A close dated AFTER ``ref_date`` and no later than the print itself is accepted under its own basis label
+    (``schwab_quote_close_price_settle_same_day``): it is still the provider's last close, it is never older than the
+    reference session and never newer than the print. Equities are never widened. ``schwab.settle_same_day_reference``
+    (default true) switches the exception off.
     """
     basis = s.get("dated_reference_basis") or {}
-    if str(asset).upper() == "EQUITY":
+    is_equity = str(asset).upper() == "EQUITY"
+    if is_equity:
         ref, when, label, what = (_num(reg.get("regularMarketLastPrice")), reg.get("regularMarketTradeTime"),
                                   basis.get("equity"), "regular.regularMarketLastPrice/regularMarketTradeTime")
     else:
@@ -334,8 +347,15 @@ def dated_reference(asset: str, q: dict, reg: dict, ref_date: date,
     at = parse_ts(when)
     if at is None:
         return None, None, f"{what}: the close is undated, so it is not proven to be the {ref_date} close"
-    if at.astimezone(ET).date() != ref_date:
-        return None, None, f"{what}: the close is dated {at.astimezone(ET).date()}, not {ref_date}"
+    close_date = at.astimezone(ET).date()
+    if close_date != ref_date:
+        if (not is_equity and print_at is not None and s.get("settle_same_day_reference", True)
+                and ref_date < close_date and at <= print_at):
+            same_day = basis.get("non_equity_same_day")
+            if not same_day:
+                return None, None, "no dated_reference_basis.non_equity_same_day label configured"
+            return ref, same_day, None
+        return None, None, f"{what}: the close is dated {close_date}, not {ref_date}"
     return ref, label, None
 
 
