@@ -85,12 +85,25 @@ def label_set(pr: dict[str, Any]) -> set[str]:
     return out
 
 
+#: The three states GitHub uses, as the GraphQL/API form spells them.
+_MERGEABLE_TEXT = {"MERGEABLE": "MERGEABLE", "CONFLICTING": "CONFLICTING", "UNKNOWN": "UNKNOWN"}
+
+
 def normalize_mergeable(v: Any) -> str:
-    """``mergeable`` from gh is a JSON boolean or null → MERGEABLE | CONFLICTING | UNKNOWN."""
+    """``mergeable`` → MERGEABLE | CONFLICTING | UNKNOWN, from either form GitHub returns.
+
+    ``gh pr list --json mergeable`` gives a JSON boolean or null; the GraphQL/API projection gives the
+    enum strings. Only the boolean was handled, so a real ``"CONFLICTING"`` from the string form fell
+    through to UNKNOWN and a genuinely conflicting PR lost its rebase hint, while ``"MERGEABLE"`` also
+    read as unknown (2026-11-02, operator-requested Releases page fix). UNKNOWN stays UNKNOWN: it is
+    GitHub saying "not computed yet", and it must never be read as either state.
+    """
     if v is True:
         return "MERGEABLE"
     if v is False:
         return "CONFLICTING"
+    if isinstance(v, str):
+        return _MERGEABLE_TEXT.get(v.strip().upper(), "UNKNOWN")
     return "UNKNOWN"
 
 
@@ -129,7 +142,12 @@ def next_action(pr: dict[str, Any]) -> str:
         return "coordinator"
     if merge_state == "BLOCKED":
         return "blocked-shard-hints"
-    if merge_state in ("DIRTY", "BEHIND", "UNSTABLE") or mergeable == "UNKNOWN":
+    if mergeable == "UNKNOWN":
+        # GitHub saying "not computed yet" is not evidence of a conflict. Treating it as one put
+        # "auto-rebase" on a PR nobody had measured (2026-11-02). An unmeasured state is a coordinator
+        # question, never an inference.
+        return "coordinator"
+    if merge_state in ("DIRTY", "BEHIND", "UNSTABLE"):
         return "auto-rebase"
     if mergeable == "MERGEABLE":
         return "auto-merge"
@@ -158,8 +176,25 @@ def project_pr(pr: dict[str, Any]) -> dict[str, Any]:
 # ── assembly and route ──────────────────────────────────────────────────────────────────────────────────────
 
 
+def _default_coordination() -> Callable[..., dict[str, Any]]:
+    from lib import releases_coordination  # noqa: E402
+
+    state_root = os.getenv("TRADEAI_STATE_ROOT")
+    if state_root:
+        root = Path(state_root)
+    else:
+        root = Path(__file__).resolve().parents[3] / "trade-ai-releases" / "persistent-state"
+    return lambda rows, now: releases_coordination.build(
+        root / "data" / "coordination" / "coordinator" / "ledger.jsonl",
+        root / "data" / "coordination" / "claims",
+        rows,
+        now=now,
+    )
+
+
 def build(db_query: Any = None, *, now: Optional[datetime] = None, repo: Optional[str] = None,
-          lister: Optional[Callable[[str, int], list[dict[str, Any]]]] = None) -> dict[str, Any]:
+          lister: Optional[Callable[[str, int], list[dict[str, Any]]]] = None,
+          coordination: Optional[Callable[..., dict[str, Any]]] = None) -> dict[str, Any]:
     """One read of the open PRs. ``lister`` is injected in tests (no network, no live gh)."""
     now = now or datetime.now(timezone.utc)
     repo = repo or DEFAULT_REPO
@@ -172,7 +207,29 @@ def build(db_query: Any = None, *, now: Optional[datetime] = None, repo: Optiona
         return {**base, "prs": None, "count": None, "status": "UNAVAILABLE", "freshness": "UNAVAILABLE",
                 "reason": f"{type(exc).__name__}: {str(exc)[:240]}"}
     rows = [project_pr(p) for p in raw]
-    return {**base, "prs": rows, "count": len(rows), "status": "OK", "freshness": "OK", "reason": None}
+    out = {**base, "prs": rows, "count": len(rows), "status": "OK", "freshness": "OK", "reason": None}
+    # 2026-11-02 (operator-requested Releases fix): an ADDITIVE coordination view. The PR list above is
+    # unchanged - same keys, same values - and a failure to read the coordination sources degrades this
+    # block alone rather than the board.
+    try:
+        view = (coordination or _default_coordination())(rows, now)
+    except Exception as exc:  # noqa: BLE001 - the error is the evidence
+        view = {"schema": "ReleasesCoordination@v1", "status": "UNAVAILABLE", "as_of": None,
+                "captured_at": _iso(now), "source": "none", "gaps": [f"{type(exc).__name__}: {str(exc)[:160]}"],
+                "agents": [], "work": {}, "authority": "READ_ONLY_ADVISORY"}
+    out["coordination"] = {k: v for k, v in view.items() if k != "work"}
+    by_number = view.get("work") or {}
+    for row in rows:
+        row["work"] = by_number.get(row["number"]) or {
+            "owner": "UNKNOWN", "current_task": "UNKNOWN", "publication_state": "UNKNOWN",
+            "local_head": None, "published_head": row.get("head_sha") or None,
+            "review": {"state": "UNKNOWN", "head_sha": None, "as_of": None, "source": "none",
+                       "gap": "coordination_unavailable"},
+            "ci": {"state": "UNKNOWN", "head_sha": None, "as_of": None, "source": "none",
+                   "gap": "coordination_unavailable"},
+            "blockers": [], "next_action": "UNKNOWN", "as_of": None, "source": "none",
+        }
+    return out
 
 
 def handle(path: str, method: str, query: Optional[dict[str, Any]], db_query: Any) -> Optional[tuple[int, dict]]:
