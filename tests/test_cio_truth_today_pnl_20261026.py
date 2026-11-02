@@ -316,3 +316,97 @@ def test_summary_alias_conflict_never_discards_funded_missing_evidence(monkeypat
         assert out["today_pnl"]["complete"] is False
         assert out["today_pnl"]["missing_accounts"] == ["synthetic_current"]
         assert out["today_pnl"]["empty_accounts"] == []
+
+
+
+def test_holiday_reference_follows_existing_calendar_and_open_boundary():
+    from datetime import datetime
+    model = _day_truth()
+    cases = [
+        ("2026-11-26T20:00:00Z", "2026-11-25", "holiday"),
+        ("2026-11-27T14:29:59Z", "2026-11-25", "premarket"),
+        ("2026-11-27T14:30:00Z", "2026-11-27", "regular"),
+        ("2026-11-27T18:00:00Z", "2026-11-27", "afterhours"),
+        ("2026-11-28T17:00:00Z", "2026-11-27", "weekend"),
+        ("2026-11-30T14:29:59Z", "2026-11-27", "premarket"),
+        ("2026-11-30T14:30:00Z", "2026-11-30", "regular"),
+        ("2026-11-27T00:30:00Z", "2026-11-25", "holiday"),
+        ("2026-11-02T14:29:59Z", "2026-10-30", "premarket"),
+        ("2026-11-02T14:30:00Z", "2026-11-02", "regular"),
+        ("2026-03-09T13:30:00Z", "2026-03-09", "regular"),
+        ("2026-07-03T16:00:00Z", "2026-07-02", "holiday"),
+        ("2026-06-19T16:00:00Z", "2026-06-18", "holiday"),
+        ("2027-01-01T17:00:00Z", "2026-12-31", "holiday"),
+    ]
+    for raw, expected, phase in cases:
+        now = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        out = model.market_session_reference(now)
+        assert out["status"] == "KNOWN", (raw, out)
+        assert out["latest_open_session"] == expected
+        assert out["phase"] == phase
+        assert out["as_of"] == raw
+        assert out["latest_open_at"].endswith("Z")
+        assert out["gap"] is None
+
+
+def test_holiday_reference_refuses_unknown_calendar_or_unzoned_evaluation():
+    from types import SimpleNamespace
+    from datetime import datetime, time
+    model = _day_truth()
+    for raw in (None, "2026-11-26", datetime(2026, 11, 26, 15)):
+        out = model.market_session_reference(raw)
+        assert out["status"] == "UNKNOWN" and out["latest_open_session"] is None
+        assert out["latest_open_at"] is None and out["gap"]["reason"]
+    bad_phase = SimpleNamespace(MARKET_OPEN=time(9, 30), current_market_session=lambda now: "UNKNOWN",
+                                is_trading_day=lambda now: True)
+    out = model.market_session_reference(NOW, calendar=bad_phase)
+    assert out["status"] == "UNKNOWN" and out["latest_open_session"] is None
+    def unavailable(now):
+        raise RuntimeError("synthetic calendar unavailable")
+    broken = SimpleNamespace(MARKET_OPEN=time(9, 30), current_market_session=unavailable)
+    out = model.market_session_reference(NOW, calendar=broken)
+    assert out["status"] == "UNKNOWN" and "RuntimeError" in out["gap"]["reason"]
+    never_open = SimpleNamespace(MARKET_OPEN=time(9, 30), current_market_session=lambda now: "holiday",
+                                 is_trading_day=lambda now: False)
+    out = model.market_session_reference(NOW, calendar=never_open)
+    assert out["status"] == "UNKNOWN" and out["latest_open_session"] is None
+
+
+def test_overview_today_and_performance_share_calendar_reference_without_dating_pnl():
+    from datetime import datetime
+    model = _day_truth()
+    now = datetime(2026, 11, 26, 20, tzinfo=timezone.utc)
+    h = _day_doc()
+    p = model.portfolio_for(h, now=now)
+    overview = model.overview_payload({}, document=_doc(p), now=now)
+    perf = model.performance_payload({}, holdings_doc=h, now=now)
+    expected = overview["market_session"]
+    assert expected["latest_open_session"] == "2026-11-25"
+    assert overview["today_pnl"]["market_session"] == perf["market_session"] == perf["today_pnl"]["market_session"] == expected
+    assert overview["today_change"] == perf["periods"]["1D"]["change"] == 0
+    assert overview["position_count"] == p["position_count"]
+    assert overview["today_pnl"]["session_date"] is None
+    assert overview["today_pnl"]["calculated_at"] is None
+    assert set(expected).isdisjoint({"change", "display_change", "total_usd", "position_count", "complete"})
+
+
+
+def test_calendar_failure_reaches_real_payload_as_unknown_without_financial_changes(monkeypatch):
+    from scripts import market_session
+    model = _day_truth()
+    h = _day_doc()
+    p = model.portfolio_for(h, now=NOW)
+    def unavailable(now):
+        raise RuntimeError("synthetic unavailable")
+    monkeypatch.setattr(market_session, "current_market_session", unavailable)
+    overview = model.overview_payload({}, document=_doc(p), now=NOW)
+    perf = model.performance_payload({}, holdings_doc=h, now=NOW)
+    for out in (overview, perf):
+        assert out["market_session"]["status"] == "UNKNOWN"
+        assert out["market_session"]["latest_open_session"] is None
+        assert "RuntimeError" in out["market_session"]["gap"]["reason"]
+        assert out["today_pnl"]["market_session"] == out["market_session"]
+        assert out["today_pnl"]["total_change"] == p["day_pl_usd"]
+        assert out["today_pnl"]["complete"] == p["day_pl_complete"]
+        assert out["today_pnl"]["session_date"] is None
+    assert overview["portfolio_value"] == perf["current_value"] == p["total_usd"]

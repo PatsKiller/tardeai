@@ -1037,7 +1037,54 @@ _DAY_DEFINITION = (
 )
 
 
-def _today_payload(prior: dict, p: dict) -> dict:
+def market_session_reference(now: datetime | None, *, calendar=None) -> dict:
+    """Last already-opened session from the existing backend calendar only.
+
+    This dates a calendar decision, never a position/quote/P&L observation.
+    Refuse unzoned evaluation clocks and unavailable/unrecognized calendar facts.
+    """
+    out = {"status": "UNKNOWN", "latest_open_session": None, "latest_open_at": None,
+           "calendar_date": None, "phase": None, "is_trading_day": None,
+           "as_of": None, "source": "scripts.market_session", "timezone": "America/New_York",
+           "gap": None}
+    if not isinstance(now, datetime) or now.tzinfo is None or now.utcoffset() is None:
+        out["gap"] = {"reason": "session reference requires an explicit evaluation instant and timezone"}
+        return out
+    out["as_of"] = now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    allowed = {"weekend", "holiday", "closed", "premarket", "regular", "afterhours"}
+    try:
+        if calendar is None:
+            from scripts import market_session as calendar
+        et = now.astimezone(ZoneInfo("America/New_York"))
+        out["calendar_date"] = et.date().isoformat()
+        phase = calendar.current_market_session(now)
+        trading = calendar.is_trading_day(now)
+        if phase not in allowed or type(trading) is not bool or trading != (phase not in {"weekend", "holiday"}):
+            raise ValueError("unrecognized or inconsistent current calendar facts")
+        out.update(phase=phase, is_trading_day=trading)
+        for days_back in range(14):
+            day = et.date() - timedelta(days=days_back)
+            opened = datetime.combine(day, calendar.MARKET_OPEN, tzinfo=et.tzinfo)
+            if opened > now:
+                continue
+            candidate_phase = calendar.current_market_session(opened)
+            candidate_trading = calendar.is_trading_day(opened)
+            if (candidate_phase not in allowed or type(candidate_trading) is not bool
+                    or candidate_trading != (candidate_phase not in {"weekend", "holiday"})):
+                raise ValueError("unrecognized or inconsistent candidate calendar facts")
+            if candidate_trading:
+                if candidate_phase != "regular":
+                    raise ValueError("calendar does not confirm regular session at declared open")
+                out.update(status="KNOWN", latest_open_session=day.isoformat(),
+                           latest_open_at=opened.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"))
+                return out
+        out["gap"] = {"reason": "no proven opened session within the 14-day calendar lookup"}
+    except Exception as exc:  # noqa: BLE001 -- UNKNOWN is explicit; no alternate calendar fallback
+        out["gap"] = {"reason": f"market_session calendar reference unavailable: {type(exc).__name__}: {exc}"}
+    return out
+
+
+def _today_payload(prior: dict, p: dict, *, now=None) -> dict:
     out = deepcopy(prior)
     quote_at = _timestamp(p["quote_as_of"])
     out.update(contract_version="TodayPnl@v1", total_change=p["day_pl_usd"],
@@ -1050,7 +1097,8 @@ def _today_payload(prior: dict, p: dict) -> dict:
                mark_session_source="holdings.last_repriced" if quote_at else None,
                mark_source=p["quote_source"], scope="ALL_ACCOUNTS", definition=_DAY_DEFINITION,
                # These are batch metadata, not proof of each row's P&L observation.
-               observation_clock=deepcopy(p["clock_provenance"]["day_pnl"]))
+               observation_clock=deepcopy(p["clock_provenance"]["day_pnl"]),
+               market_session=market_session_reference(now if now is not None else datetime.now(timezone.utc)))
     out.update(_today_census(prior, p))
     return out
 
@@ -1091,8 +1139,9 @@ def performance_payload(payload, *, root=None, now=None, holdings_doc=None, docu
             holdings_doc = load_store(store_path(root))
         p = portfolio_for(holdings_doc, now=now)
     out = deepcopy(payload)
-    census = _today_payload({}, p)
+    census = _today_payload({}, p, now=now)
     out.update(current_value=p["total_usd"], today_pnl=census,
+               market_session=deepcopy(census["market_session"]),
                clock_provenance=deepcopy(p["clock_provenance"]),
                snapshot_source=p["source"])
     out.setdefault("periods", {})["1D"] = _day_period(p, census)
@@ -1192,8 +1241,9 @@ def overview_payload(payload, *, root=None, now=None, db_query=None, inputs=None
     pricing = out.setdefault("pricing", {})
     pricing.update(canonical_total_value=p["total_usd"], derived_total_value=p["total_usd"],
                    last_repriced=p["quote_as_of"], reprice_source=p["quote_source"])
-    today_pnl = _today_payload(out.get("today_pnl") or {}, p)
+    today_pnl = _today_payload(out.get("today_pnl") or {}, p, now=now)
     out["today_pnl"] = today_pnl
+    out["market_session"] = deepcopy(today_pnl["market_session"])
     out.setdefault("periods", {})["1D"] = _day_period(p, today_pnl)
     out["today_by_account"] = {r["account_id"]: {"value": r["total_usd"], "change": r["day_pl_usd"],
                                                  "account_label": r["account_label"], "as_of": None,
