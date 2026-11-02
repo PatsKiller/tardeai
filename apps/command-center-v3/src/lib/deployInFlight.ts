@@ -239,11 +239,12 @@ export function normalizeReview(raw: unknown, rowHead: string): Factor<ReviewSta
 
   if (listed) {
     const parsed: ReviewVerdict[] = []
+    let unrecognised = 0
     for (const v of listed) {
       const o = (v && typeof v === 'object' ? v : { verdict: v }) as Record<string, unknown>
       const word = String(o.verdict ?? o.state ?? '').trim().toUpperCase()
       const st = VERDICT[word]
-      if (!st) continue                                   // an unrecognised word is not a verdict
+      if (!st) { unrecognised++; continue }               // remembered, never silently dropped
       const head = asText(o.head_sha) ?? envelopeHead
       if (head !== rowHead) continue                     // a verdict on another head is not this head's review
       const at = asText(o.as_of) ?? asText(o.observed_at)
@@ -252,18 +253,23 @@ export function normalizeReview(raw: unknown, rowHead: string): Factor<ReviewSta
     if (!parsed.length) return unknown(gap ?? `no verdict on head ${shortSha(rowHead)}`, { head_sha: envelopeHead, as_of, as_of_basis, source })
     // Latest per reviewer: ledger order decides ties (a later record is appended later).
     const latest = new Map<string, ReviewVerdict>()
-    parsed.forEach((v, i) => {
+    parsed.forEach((v) => {
       const prev = latest.get(v.reviewer)
       if (!prev || !v.as_of || !prev.as_of || String(v.as_of) >= String(prev.as_of)) latest.set(v.reviewer, { ...v, reviewer: `${v.reviewer}` })
-      void i
     })
     const verdicts = [...latest.values()]
     const blocks = verdicts.filter(v => v.verdict === 'CHANGES')
     const merges = verdicts.filter(v => v.verdict === 'MERGE')
-    const state: ReviewState = blocks.length ? 'CHANGES' : merges.length ? 'MERGE' : 'NONE'
+    const envelope = String(r.state ?? '').trim().toUpperCase()
+    // BLOCK dominates. Beyond that, a mixed or unrecognised set is UNKNOWN — never MERGE from the survivors
+    // alone, and never an upgrade of an UNKNOWN the backend itself reported.
+    const uncertain = unrecognised > 0 || envelope === 'UNKNOWN'
+    const state: ReviewState = blocks.length ? 'CHANGES' : uncertain || !merges.length ? 'UNKNOWN' : 'MERGE'
     const reason = blocks.length
       ? `${blocks.length} blocking verdict${blocks.length > 1 ? 's' : ''}${merges.length ? ` vs ${merges.length} merge (conflicting_verdicts)` : ''}: ${blocks.map(b => b.reviewer).join(', ')}`
-      : null
+      : uncertain
+        ? `${unrecognised ? `${unrecognised} unrecognised verdict(s)` : 'backend reports the review UNKNOWN'}${merges.length ? ` beside ${merges.length} merge — mixed verdicts are not a pass` : ''}`
+        : null
     const newest = verdicts.map(v => v.as_of).filter((x): x is string => !!x).sort().pop() ?? as_of
     return { state, reported: state, head_sha: envelopeHead ?? rowHead, as_of: newest, as_of_basis: newest === as_of ? as_of_basis : 'as_of', source, reason, verdicts }
   }
@@ -316,8 +322,10 @@ export function normalizeWork(raw: unknown, rowHead: string): WorkBlock {
   }
 }
 
-/** The whole row → typed view. Per-row `work` is always present after this, so the renderer has one shape. */
-export function normalizeRow(pr: Record<string, unknown>): InFlightPr {
+/** The whole row → typed view. Per-row `work` is always present after this, so the renderer has one shape.
+ *  A null or non-object member is rejected by the caller; anything object-shaped is projected defensively. */
+export function normalizeRow(raw: unknown): InFlightPr {
+  const pr = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   const rawHead = String(pr.head_sha ?? pr.headRefOid ?? '')
   const head = rawHead.trim()
   const legacy = String(pr.next ?? '').trim() as LegacyNext
@@ -336,6 +344,18 @@ export function normalizeRow(pr: Record<string, unknown>): InFlightPr {
     next: (['auto-merge', 'coordinator', 'auto-rebase', 'blocked-shard-hints'] as string[]).includes(legacy) ? legacy : 'coordinator',
     work: normalizeWork(pr.work, head),
   }
+}
+
+/** Project the whole `prs` array. A null/non-object member is dropped and COUNTED — never a crash, never silence. */
+export function normalizeRows(raw: unknown): { rows: InFlightPr[]; dropped: number } {
+  if (!Array.isArray(raw)) return { rows: [], dropped: 0 }
+  const rows: InFlightPr[] = []
+  let dropped = 0
+  for (const p of raw) {
+    if (p && typeof p === 'object') rows.push(normalizeRow(p))
+    else dropped++
+  }
+  return { rows, dropped }
 }
 
 /** The next step the board shows. A stated backend answer wins; otherwise only a provable step is named. */
@@ -436,7 +456,12 @@ export function normalizeCoordination(raw: unknown, nowMs: number = Date.now()):
     if (!session) continue
     const reportedRaw = String(o.state ?? '').trim()
     const st = reportedRaw.toUpperCase()
-    const { state: exec, reason: execReason } = executionState(o.execution_state, asText(o.as_of), nowMs)
+    // Execution is proven by the CLAIM's own heartbeat. On a BOARD row `as_of` is the BOARD's updated-at,
+    // so using it would make a five-day-old claim look fresh (independent review, 2026-11-02).
+    const claimAsOf = asText(o.claim_as_of)
+    const sourceWord = String(o.source ?? '').trim().toLowerCase()
+    const heartbeat = claimAsOf ?? (sourceWord === 'claims' ? asText(o.as_of) : null)
+    const { state: exec, reason: execReason } = executionState(o.execution_state, heartbeat, nowMs)
     const mapped = AGENT_STATE_MAP[st] ?? ((AGENT_STATES as string[]).includes(st.toLowerCase()) ? (st.toLowerCase() as AgentState) : 'unknown')
     // The chip may say WORKING only when execution is proven by a fresh heartbeat.
     const chipState: AgentState = mapped === 'working' && exec !== 'working' ? 'assigned' : mapped

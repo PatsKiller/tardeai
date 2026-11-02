@@ -150,8 +150,7 @@ try {
           bodyScrollWidth: document.body.scrollWidth,
           agentCards: document.querySelectorAll('[data-testid^="agent-"]').length,
           agentStates: [...document.querySelectorAll('[data-testid^="agent-"]')].map(el => el.textContent || ''),
-          prRows: table ? table.querySelectorAll('tbody tr').length : 0,
-          labeledCells: table ? table.querySelectorAll('td[data-label]').length : 0,
+          prRows: table ? table.querySelectorAll('tbody tr').length : 0,          labeledCells: table ? table.querySelectorAll('td[data-label]').length : 0,
           unlabeledCells: table ? table.querySelectorAll('td:not([data-label])').length : 0,
           text,
         }
@@ -210,7 +209,8 @@ try {
         has('REVIEW · UNKNOWN', 'blank-head review evidence is not MERGE')
         has('CI · UNKNOWN', 'blank-head CI evidence is not GREEN')
         has('names no head', 'the reason names the missing head')
-        assert.ok(!t.includes('REVIEW · passed'), `${c.name}@${width}: a blank-head review never reads as passed`)
+        assert.ok(measure.prRows >= 3, `${c.name}@${width}: a null PR member does not take the board down (rows=${measure.prRows})`)
+        assert.ok(!t.includes('REVIEW · passed'), `${c.name}@${width}: a mixed review never reads as passed`)
         assert.ok(!t.includes('CI · green'), `${c.name}@${width}: blank-head CI never reads as green`)
       } else {
         has('UNAVAILABLE · agents/claims not in this response', 'old backend coordination is UNKNOWN')

@@ -17,7 +17,7 @@ import { RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import { ageText } from '../lib/releasesSchedules'
 import {
   ACTION_PATH, IN_FLIGHT_PATH, KNOWN_SCHEMAS, agentStateTone, nextActionFor, normalizeCoordination,
-  normalizeRow, rowFacts, shortSha,
+  normalizeRows, rowFacts, shortSha,
   type CoordinationAgent, type CoordinationBlock, type InFlightPr, type WorkBlock,
 } from '../lib/deployInFlight'
 
@@ -190,7 +190,10 @@ export default function DeployInFlightBoard() {
   const [overrideBudget, setOverrideBudget] = useState(false)
   const data = api.data
   const known = !!data && (KNOWN_SCHEMAS as readonly string[]).includes(String(data.schema ?? ''))
-  const prs: InFlightPr[] | null = known && Array.isArray(data!.prs) ? data!.prs.map(p => normalizeRow(p)) : null
+  // A null member in `prs` must not take the board down: it is dropped and counted, the rest still render.
+  const projected = known && Array.isArray(data!.prs) ? normalizeRows(data!.prs) : null
+  const prs: InFlightPr[] | null = projected ? projected.rows : null
+  const droppedRows = projected?.dropped ?? 0
   const coordination = normalizeCoordination(data?.coordination)
   const unavailable = !known || data?.freshness === 'UNAVAILABLE' || (prs === null && !!api.error)
   const staleHint = api.stale || (known && data!.freshness === 'STALE')
@@ -237,6 +240,7 @@ export default function DeployInFlightBoard() {
               ? <Chip tone="neutral">Loading</Chip>
               : <Chip tone={staleHint ? 'warning' : 'neutral'}>{known && data!.freshness === 'UNAVAILABLE' ? 'UNAVAILABLE' : staleHint ? 'STALE' : data?.status ?? '—'}</Chip>}
           {known && data!.count != null ? <Chip tone="neutral">{data!.count} open</Chip> : null}
+          {droppedRows > 0 ? <Chip tone="warning">{droppedRows} malformed row{droppedRows > 1 ? 's' : ''} dropped</Chip> : null}
           {data?.generated_at ? <Chip tone="neutral">captured {asOfText(data.generated_at)}</Chip> : <Chip tone="warning">capture time not stated</Chip>}
         </ChipRow>
       </div>

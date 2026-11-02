@@ -6,7 +6,7 @@
 // and an old backend (no `work` / no `coordination`) pretending to have facts.
 import {
   IN_FLIGHT_SCHEMA, IN_FLIGHT_SCHEMA_V2, KNOWN_SCHEMAS, agentStateTone, ciLabel2, draftLabel, executionState, nextActionFor,
-  normalizeCoordination, normalizeFactor, normalizeMergeable, normalizeReview, normalizeRow, normalizeWork, publicationLabel,
+  normalizeCoordination, normalizeFactor, normalizeMergeable, normalizeReview, normalizeRow, normalizeRows, normalizeWork, publicationLabel,
   reviewLabel, rowFacts, shortSha, type CiState, type ReviewState,
 } from './deployInFlight.ts'
 
@@ -238,6 +238,36 @@ eq('one row per session', dup.agents.length, 1)
 eq('the newest task wins', dup.agents[0].task, 'new task')
 eq('the newest branch wins', dup.agents[0].branch, 'wt/new')
 eq('the fold count is stated', dup.agents[0].duplicate_rows, 2)
+
+// ── P0 BLOCK 2026-11-02: mixed verdicts stay UNKNOWN; execution uses claim_as_of; null rows survive ──────
+const rv9 = (records: unknown[], envelope?: string) => normalizeReview({ head_sha: HEAD, source: 'ledger', state: envelope, records }, HEAD)
+eq('MERGE + unrecognised stays UNKNOWN', rv9([{ verdict: 'MERGE', reviewer: 'a' }, { verdict: 'MAYBE', reviewer: 'b' }]).state, 'UNKNOWN')
+check('and says the set is mixed', /unrecognised|mixed/.test(rv9([{ verdict: 'MERGE', reviewer: 'a' }, { verdict: 'MAYBE', reviewer: 'b' }]).reason ?? ''))
+eq('MERGE + explicit UNKNOWN stays UNKNOWN', rv9([{ verdict: 'MERGE', reviewer: 'a' }, { verdict: 'UNKNOWN', reviewer: 'b' }]).state, 'UNKNOWN')
+eq('BLOCK + unrecognised is still blocked', rv9([{ verdict: 'BLOCK', reviewer: 'a' }, { verdict: 'MAYBE', reviewer: 'b' }]).state, 'CHANGES')
+eq('a backend UNKNOWN is never upgraded to MERGE', rv9([{ verdict: 'MERGE', reviewer: 'a' }], 'UNKNOWN').state, 'UNKNOWN')
+eq('two clean MERGEs still pass', rv9([{ verdict: 'MERGE', reviewer: 'a' }, { verdict: 'MERGE', reviewer: 'b' }]).state, 'MERGE')
+
+const agentWith = (over: Record<string, unknown>) => normalizeCoordination({ status: 'OK', agents: [{
+  session: 'cc4', state: 'assigned', execution_state: 'working', ...over }] }, NOW_MS).agents[0]
+eq('a stale claim_as_of is not rescued by a fresh BOARD as_of',
+  agentWith({ as_of: ago(1), claim_as_of: ago(5 * 24 * 60), source: 'board+claims' }).execution_state, null)
+check('and the reason names the heartbeat',
+  (agentWith({ as_of: ago(1), claim_as_of: ago(5 * 24 * 60), source: 'board+claims' }).execution_reason ?? '').includes('older than 2h'))
+eq('a fresh claim_as_of proves working even when as_of is old',
+  agentWith({ as_of: ago(5 * 24 * 60), claim_as_of: ago(30), source: 'board+claims' }).execution_state, 'working')
+eq('claim-only rows use their own as_of', agentWith({ as_of: ago(30), source: 'claims' }).execution_state, 'working')
+eq('a BOARD-only row has no heartbeat to prove execution', agentWith({ as_of: ago(1), source: 'board' }).execution_state, null)
+
+eq('a null row is projected defensively, not crashed', normalizeRow(null).number, 0)
+eq('a numeric row likewise', normalizeRow(7).title, '')
+const members: unknown[] = [null, { number: 1, head_sha: HEAD }, undefined, { number: 2 }]
+const kept = members.filter((p): p is Record<string, unknown> => !!p && typeof p === 'object')
+eq('null members are dropped before projection', kept.length, 2)
+eq('the surviving rows project', kept.map(p => normalizeRow(p).number).join(','), '1,2')
+eq('normalizeRows counts what it dropped', normalizeRows([null, { number: 3 }, undefined, { number: 4 }]).dropped, 2)
+eq('normalizeRows keeps the survivors', normalizeRows([null, { number: 3 }, undefined, { number: 4 }]).rows.map(r => r.number).join(','), '3,4')
+eq('a whole non-array is empty, not a crash', normalizeRows(null).rows.length, 0)
 
 console.log(`deployInFlight: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)
