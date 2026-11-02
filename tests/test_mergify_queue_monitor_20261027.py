@@ -153,3 +153,28 @@ def test_a_red_non_required_check_is_a_real_failure_not_a_requeue():
     assert plan.classification == "REAL_CI_FAIL"
     assert plan.requeue is False
     assert "secret-scan" in str(plan.detail)
+
+
+def test_a_running_check_waits_instead_of_paging_a_false_failure():
+    """Regression the reviewer reproduced: {"shard 0": ""} became REAL_CI_FAIL + a P1 page."""
+    plan = classify_dequeue(
+        reason_code="CHECKS_FAILED",
+        body=SAMPLE_DEQUEUE,
+        mergeable="MERGEABLE",
+        checks={"shard 0": [""], "cio-hardening": ["PENDING"]},
+        hotfix_on_main=False,
+    )
+    assert plan.classification == "WAIT"
+    assert plan.page_p1 is False and plan.requeue is False
+
+
+def test_a_finished_failure_after_a_skipped_run_still_blocks():
+    plan = classify_dequeue(
+        reason_code="CHECKS_FAILED",
+        body=SAMPLE_DEQUEUE,
+        mergeable="MERGEABLE",
+        checks={"secret-scan": ["SKIPPED", "FAILURE"], "cio-hardening": ["SUCCESS"]},
+        hotfix_on_main=False,
+    )
+    assert plan.classification == "REAL_CI_FAIL"
+    assert plan.requeue is False

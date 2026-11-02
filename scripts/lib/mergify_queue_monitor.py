@@ -113,7 +113,7 @@ def classify_dequeue(
 
     draft_skip = bool(DRAFT_SKIP_HINT.search(body)) or (
         reason == "CHECKS_FAILED"
-        and any(checks.get(c) == "SUCCESS" for c in REQUIRED_CHECKS)
+        and any("SUCCESS" in (checks.get(c) or []) for c in REQUIRED_CHECKS)
         and "draft #" in body.lower()
     )
     # Cleared CONFLICTS dequeue (now MERGEABLE) is the same resubmit class as
@@ -125,13 +125,19 @@ def classify_dequeue(
         # (PR #2465, 2026-11-01) must not be requeued to fail again: grade every check on the head.
         from scripts.lib import pr_all_checks_green as ACG
 
-        graded = ACG.evaluate(
-            [
-                {"name": name, "conclusion": str(conclusion).lower(), "status": "completed"}
-                for name, conclusion in checks.items()
-            ]
-        )
-        real_red = graded["failing"]
+        # Grade only finished runs. A running check (empty conclusion, PENDING, IN_PROGRESS) is
+        # not a failure: grading it red paged the operator falsely and stopped the queue drain.
+        finished: list[dict[str, object]] = []
+        running = False
+        for name, states in checks.items():
+            values = states if isinstance(states, (list, tuple)) else [states]
+            for value in values:
+                state = str(value).upper()
+                if state in {"", "PENDING", "IN_PROGRESS", "QUEUED", "WAITING", "REQUESTED"}:
+                    running = True
+                    continue
+                finished.append({"name": name, "conclusion": state.lower(), "status": "completed"})
+        real_red = ACG.evaluate(finished)["failing"] if finished else []
         if real_red:
             return ActionPlan(
                 pr=0,
@@ -145,6 +151,17 @@ def classify_dequeue(
                 page_p1=True,
                 wake_claim=True,
                 detail={"red": real_red},
+            )
+        if running and not real_red:
+            return ActionPlan(
+                pr=0,
+                classification="WAIT",
+                action="wait",
+                message="Checks are still running on the head; nothing to requeue or page yet.",
+                requeue=False,
+                page_p1=False,
+                wake_claim=False,
+                detail={"reason": reason, "running": True},
             )
         if hotfix_on_main:
             kind = "cleared conflict" if cleared_conflict else "speculative draft skip (false fail)"
@@ -285,10 +302,11 @@ def fetch_head_check_conclusions(pr: int, repo: str = "PatsKiller/tardeai") -> d
         return out
     for row in data.get("statusCheckRollup") or []:
         name = row.get("name") or ""
-        conclusion = (row.get("conclusion") or row.get("state") or "").upper()
+        state = (row.get("conclusion") or row.get("state") or "").upper()
         if name:
-            # Every check, not only the required four: the merge gate grades all of them.
-            out[name] = conclusion
+            # Every run, per name: one skipped draft-era run listed last must not hide a failure
+            # that another run of the same name reported.
+            out.setdefault(name, []).append(state)
     return out
 
 

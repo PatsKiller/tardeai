@@ -115,11 +115,12 @@ PAGE_SIZE = 100
 MAX_PAGES = 10
 
 
-def check_runs_for(gh_json: GhJson, repo: str, sha: str) -> tuple[list[Mapping[str, Any]], int | None]:
+def check_runs_for(gh_json: GhJson, repo: str, sha: str) -> tuple[list[Mapping[str, Any]], int | None, bool]:
     """Every check run on ``sha``, paged, plus the ``total_count`` GitHub reported."""
     runs: list[Mapping[str, Any]] = []
     total: int | None = None
     page = 1
+    exhausted = False
     while page <= MAX_PAGES:
         doc = gh_json(f"repos/{repo}/commits/{sha}/check-runs?per_page={PAGE_SIZE}&page={page}") or {}
         chunk = list((doc.get("check_runs") if isinstance(doc, Mapping) else None) or [])
@@ -130,7 +131,9 @@ def check_runs_for(gh_json: GhJson, repo: str, sha: str) -> tuple[list[Mapping[s
         if len(chunk) < PAGE_SIZE:
             break  # a short page is the last page
         page += 1
-    return runs, total
+    else:
+        exhausted = True  # hit MAX_PAGES with a full last page
+    return runs, total, exhausted
 
 
 def all_checks_green(gh_json: GhJson, repo: str, sha: str, *, allow_empty: bool = False) -> dict[str, Any]:
@@ -139,11 +142,14 @@ def all_checks_green(gh_json: GhJson, repo: str, sha: str, *, allow_empty: bool 
     Fails closed if GitHub reports more runs than could be read: grading a partial page would let a
     red check sit on the unread page.
     """
-    runs, total = check_runs_for(gh_json, repo, sha)
+    runs, total, exhausted = check_runs_for(gh_json, repo, sha)
     result = evaluate(runs, allow_empty=allow_empty)
     result["sha"] = sha
     result["read"] = len(runs)
     if isinstance(total, int) and len(runs) < total:
         result["ok"] = False
         result["reason"] = f"could not read every check run: {len(runs)} of {total}"
+    elif exhausted and total is None:
+        result["ok"] = False
+        result["reason"] = f"could not confirm every check run was read ({len(runs)} in {MAX_PAGES} pages)"
     return result
