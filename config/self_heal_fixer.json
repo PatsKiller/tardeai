@@ -11,6 +11,12 @@
   },
   "_why": "Operator 2026-10-16: \"with the self-fixing in some of these procedures, I just don't want the regular LLM routing. I want it to connect into Claude Code to fix it in iterations.\" A self-heal diagnosis with failure_class code_error becomes ONE fix job per failure signature. scripts/self_heal_fixer.py runs headless Claude Code in an isolated worktree off origin/main, iterates (failing test first -> fix -> targeted tests + run_cio_hardening_ci.py --profile pr), and on success opens a PR labelled self-heal-fix. A fix PR is not a heal: the job closes only at incident_resolved (deployed code + recovered output). Design: docs/ops/self_heal_claude_fixer.md.",
   "arming": {
+    "arm_on": "guard_grant",
+    "_arm_on_why": "2026-10-25, AGENTS.md 21.0.0 section 28.14 (PR #2128): \"Arming is this section becoming ACTIVE; there is no separate guard grant.\" policy_section = armed iff the policy_gate heading (24.11 or 28.14) is ACTIVE at origin/main, no kill_switch_rels file exists under the state root, and the day is under daily_job_cap / daily_cost_cap_usd. The fixer then pushes its ONE fix branch with TRADEAI_REMOTE_PUSH_AUTHORIZED=1 (never the override) and logs the push to data/self_heal/fix_log.jsonl. guard_grant = the original rule below (kept for the hermetic attempt-loop suites).",
+    "kill_switch_rels": [
+      "data/self_heal/FIXER_DISABLED",
+      "data/self_heal/MONITOR_DISABLED"
+    ],
     "_why": "DISARMED by default. --apply needs ALL of: an ACTIVE guard grant of grant_tier whose reason names grant_reason_token (peek only, never consumed: bin/guard grant git-push --for 8h --uses 4 --reason 'self-heal-fixer ...'), and fewer than daily_job_cap jobs started today (ET). The model's output never arms anything. Budget (architect review 2026-10-16, finding 3): every attempt durably RESERVES its whole budget (iteration.max_iterations, max_cost_usd, max_minutes) in the claims db before the backend is launched; daily_job_cap and daily_cost_cap_usd are checked against reservations, so a crash can never let the day overspend and an interrupted attempt is counted exactly once.",
     "grant_tier": "git-push",
     "grant_reason_token": "self-heal-fixer",
@@ -51,14 +57,17 @@
   },
   "policy_gate": {
     "_why": "AGENTS.md 12.0.0 section 24.5 forbids a scheduled job from pushing or opening a PR. Until the operator ratifies the amendment (docs/ops/self_heal_claude_fixer.md section 9) the fixer stops at fix_ready_local: the fix is committed on a local branch and the PR body is written as an artifact. The push/PR step runs only when AGENTS.md at the job's base commit carries this heading marker with the word ACTIVE on the same line.",
-    "amendment_heading_marker": "## 24.11 Self-heal fix PRs from the self-heal-fixer lane",
+    "amendment_heading_marker": "## 28.14 Self-heal monitor and fixer",
+    "additional_heading_markers": [],
+    "_additional_why": "2026-10-31 (coordinator, stuck-work sweep): the gate looked for '## 24.11 Self-heal fix PRs', but §24.11 is now 'Read-only broker sync', so the fixer could never arm; the gate is now §28.14 only, ACTIVE on its heading line or in the AGENTS.md header Status (scripts/lib/self_heal_fixer.py policy_verdict). Earlier: 2026-10-25: AGENTS.md 21.0.0 section 28.14 (PR #2128; docs/ops/SELF_HEAL_TRAIN_FIXER.md) is the amendment that authorizes this lane's push + PR. Either heading counts; ACTIVE must be on that heading line.",
     "required_status_word": "ACTIVE"
   },
   "repo": {
     "repo_root": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
     "remote": "origin",
     "base_branch": "main",
-    "worktree_root": "/tmp/tradeai_self_heal_worktrees",
+    "worktree_root": "~/.shw",
+    "_worktree_root_why": "2026-10-25: on disk, never /tmp (the 10-25 /tmp ENOSPC incident), and SHORT: the egress bridge binds a unix socket at <worktree_root>/<job_id>-eg/s and AF_UNIX paths cap at 107 bytes (tests/test_self_heal_train_monitor_20261025.py pins the budget).",
     "branch_prefix": "self-heal-fix/",
     "python": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
     "pr_label": "self-heal-fix",
@@ -129,10 +138,10 @@
     "timeout_s": 1500,
     "setting_sources": "project",
     "auth": {
-      "_why": "The ONLY credential inside the agent sandbox (finding 2). The Claude CLI on Linux keeps its OAuth login in ~/.claude/.credentials.json; that one file is bind-mounted at {agent_home}/.claude/.credentials.json and CLAUDE_CONFIG_DIR points there, so the rest of ~/.claude (history, transcripts, settings, other projects), ~/.claude.json and every other credential stay invisible. rw lets the CLI persist a token refresh in place (a read-only bind could strand a rotated refresh token). The harness never reads or copies this file. mode none = bind nothing (stub CLIs in tests).",
+      "_why": "The ONLY credential inside the agent sandbox (finding 2). The Claude CLI on Linux keeps its OAuth login in ~/.claude/.credentials.json; that one file is bind-mounted at {agent_home}/.claude/.credentials.json and CLAUDE_CONFIG_DIR points there, so the rest of ~/.claude (history, transcripts, settings, other projects), ~/.claude.json and every other credential stay invisible. READ-ONLY (review 2026-10-31, H6): the sandbox can use the login but never rewrite it; a token the CLI would refresh is refreshed by the operator's own interactive session. The harness never reads or copies this file. mode none = bind nothing (stub CLIs in tests).",
       "mode": "credentials_file",
       "credentials_file": "{home}/.claude/.credentials.json",
-      "rw": true
+      "rw": false
     }
   },
   "sandbox": {
@@ -230,6 +239,23 @@
       "*order*",
       "*execution*",
       "*2fa*",
+      "*merge*",
+      ".mergify*",
+      "*hook*",
+      "*deploy*",
+      "*promote*",
+      "*guard*",
+      "*stop*",
+      "telegram*",
+      "*telegram*",
+      "*sender*",
+      "config/stop_policy.yaml",
+      "scripts/agent_merge_pr.sh",
+      "config/merge_hold_paths.json",
+      "config/agents_guard_hook_rules.json",
+      "scripts/githooks/*",
+      ".gitleaks*",
+      "config/pii_baseline.json",
       "scripts/lib/cio_instrument_record.py",
       "sql/*",
       "*migration*",
@@ -272,7 +298,8 @@
     "contract_schema": "N8nCodeDefect@v1",
     "consumer": "claude_code_iterative_fix",
     "diagnoses_rel": "data/runtime/n8n_diagnoses/diagnoses.jsonl",
-    "diagnoses_tail_lines": 5000
+    "diagnoses_tail_lines": 5000,
+    "train_defects_rel": "data/self_heal/fixer_defects.jsonl"
   },
   "state": {
     "state_rel": "data/runtime/self_heal_fixer_state.json",

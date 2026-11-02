@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "self_heal_train_monitor_20261025",
+  "files": [
+    "tests/test_self_heal_train_monitor_20261025.py"
+  ],
+  "anchor": "SELF_HEAL_TRAIN_MONITOR_20261025",
+  "comment": [
+    "ANCHOR: SELF_HEAL_TRAIN_MONITOR_20261025 — operator 2026-10-25 'Arm the fixer and also a logger that tracks what was fixed': train/CI/tester/sweep intake, deterministic remediations, fixer hand-off, append-only fix log; shadow until AGENTS.md 20.4.0 section 28.14 ACTIVE."
+  ]
+}

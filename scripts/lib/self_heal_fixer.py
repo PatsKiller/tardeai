@@ -1162,8 +1162,29 @@ def no_progress(history: list[Mapping[str, Any]], repeat: int) -> bool:
 
 
 # ---------------------------------------------------------------- gates
-def arming_verdict(grant: Optional[Mapping[str, Any]], *, cfg: Mapping[str, Any], jobs_today: int) -> dict:
+def arming_verdict(
+    grant: Optional[Mapping[str, Any]],
+    *,
+    cfg: Mapping[str, Any],
+    jobs_today: int,
+    policy: Optional[Mapping[str, Any]] = None,
+    disabled: Optional[str] = None,
+) -> dict:
+    """Is a live attempt allowed now?
+
+    Only ``arm_on: guard_grant``: an active operator grant naming ``grant_reason_token``, no kill switch, under the day
+    cap. (``policy_section`` arming is retired, review 2026-10-31 B1.) Armed means a LOCAL attempt only: the fixer
+    stops at a local branch and never pushes (``policy_verdict``, AGENTS.md §24.5)."""
     a = cfg["arming"]
+    if disabled:
+        return {"armed": False, "why": f"kill switch present: {disabled}"}
+    if a.get("arm_on", "guard_grant") != "guard_grant":
+        # Review 2026-10-31 (B1): arming on the policy section let a header Status arm the lane with no grant. Only an
+        # operator guard grant arms a live attempt, and even armed the fixer stops at a local branch (§24.5).
+        return {
+            "armed": False,
+            "why": f"arm_on {a.get('arm_on')!r} is retired: only guard_grant arms (AGENTS.md §24.5)",
+        }
     if not isinstance(grant, dict):
         return {"armed": False, "why": f"no active {a['grant_tier']} guard grant"}
     reason = str(grant.get("reason") or "")
@@ -1182,17 +1203,19 @@ def arming_verdict(grant: Optional[Mapping[str, Any]], *, cfg: Mapping[str, Any]
 
 
 def policy_verdict(agents_text: str, cfg: Mapping[str, Any]) -> dict:
-    """Push/PR allowed only when AGENTS.md (at the job's base) carries the ACTIVE amendment heading."""
+    """May the fixer push or open a PR? Never. AGENTS.md §24.5, verbatim: "A cron line, timer, n8n-fired lane or
+    daemon never pushes, opens a PR or writes to a remote. … The §28.14 fixer stops at a local fix branch." The
+    fixer is a timer lane, so push_allowed is always False whatever AGENTS.md's header or §28.14 heading say (review
+    2026-10-31, B1: an earlier revision armed a push on the header Status — removed). The §28.14 heading is reported
+    for the receipt only. A fix ships when a person pushes the local branch the fixer left (fix.patch alongside)."""
     pg = cfg["policy_gate"]
-    for line in (agents_text or "").splitlines():
-        if line.startswith(pg["amendment_heading_marker"]):
-            ok = pg["required_status_word"] in line
-            return {
-                "push_allowed": ok,
-                "why": "amendment ACTIVE" if ok else "amendment present but not ACTIVE",
-                "heading": line[:200],
-            }
-    return {"push_allowed": False, "why": "AGENTS.md 24.5: no push/PR from a scheduled job; amendment 24.11 absent"}
+    markers = [pg["amendment_heading_marker"], *(pg.get("additional_heading_markers") or [])]
+    heading = next((ln for ln in (agents_text or "").splitlines() if any(ln.startswith(m) for m in markers)), None)
+    return {
+        "push_allowed": False,
+        "why": "AGENTS.md §24.5: the §28.14 fixer stops at a local fix branch; a scheduled lane never pushes",
+        "heading": heading[:200] if heading else None,
+    }
 
 
 def branch_name(job: Mapping[str, Any], cfg: Mapping[str, Any], now: datetime) -> str:

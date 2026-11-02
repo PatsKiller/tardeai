@@ -40,7 +40,7 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Mapping, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -52,11 +52,14 @@ from lib import self_heal_fix_evaluator as E  # noqa: E402
 from lib import self_heal_egress as EG  # noqa: E402
 from lib import self_heal_fixer as F  # noqa: E402
 from lib import self_heal_fixer_claims as C  # noqa: E402
+from lib import self_heal_train_intake as TI  # noqa: E402
 from scripts.lib import recovery_validator as RV  # noqa: E402
 
 CONFIG = ROOT / "config" / "self_heal_fixer.json"
 REGISTRY = ROOT / "config" / "lane_registry.json"
 CUTOVER_POLICY = ROOT / "config" / "lane_cutover_policy.json"
+TRAIN_DEFECTS_REL = "data/self_heal/fixer_defects.jsonl"
+TRAIN_FIX_LOG_REL = "data/self_heal/fix_log.jsonl"
 _DEADLINE = contextvars.ContextVar("self_heal_absolute_deadline", default=None)
 
 
@@ -294,6 +297,80 @@ def checkout_digest(root: Path) -> str:
     return h.hexdigest()
 
 
+#: The scanners and their rules. The fix commit may not touch any of them (also refused by the diff guard); they are
+#: run as they are at the BASE commit, the way .github/workflows/secret-scan.yml runs check_no_pii from the base.
+SCAN_GUARDED = (
+    "scripts/check_no_pii.py",
+    "scripts/check_no_secrets.py",
+    "config/pii_baseline.json",
+    ".gitleaks.toml",
+    ".gitleaksignore",
+)
+
+
+def scan_range(fix_wt: Path, base: str, commit: str, rules_dir: Path, environ: Mapping[str, str]) -> list[str]:
+    """Pre-hand-off scan of base..commit (review 2026-10-31, H6 and round 2). The candidate never controls its own
+    scan: (1) a commit that changes any SCAN_GUARDED path is refused; (2) check_no_pii.py with its baseline, and the
+    gitleaks config and ignore file, are taken from BASE into ``rules_dir`` and run against the range; (3) without
+    gitleaks the repo's check_no_secrets.py runs over the checked-out tree, byte-identical to BASE's copy by (1).
+    Any finding, or a scanner missing at BASE, is returned as a refusal."""
+    env = {k: v for k, v in environ.items() if k in ("PATH", "HOME", "LANG", "TMPDIR")}
+    env["TRADE_AI_CI"] = "1"
+    changed = git(fix_wt, "diff", "--name-only", base, commit, "--", *SCAN_GUARDED)
+    if changed["rc"] != 0:
+        return [f"scan_diff_failed:{changed['err'][-200:]}"]
+    if changed["out"].strip():
+        return [f"scanner_or_rules_changed:{','.join(changed['out'].split())}"]
+    errs: list[str] = []
+    rules_dir.mkdir(parents=True, exist_ok=True)
+    have: dict[str, Path] = {}
+    for rel in SCAN_GUARDED:
+        r = git(fix_wt, "show", f"{base}:{rel}")
+        if r["rc"] == 0:
+            dst = rules_dir / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_text(r["out"], encoding="utf-8")
+            have[rel] = dst
+    if "scripts/check_no_pii.py" not in have:
+        errs.append("scanner_missing:check_no_pii.py at base")
+    else:
+        argv = [
+            sys.executable,
+            str(have["scripts/check_no_pii.py"]),
+            "--repo",
+            str(fix_wt),
+            "--range",
+            f"{base}..{commit}",
+        ]
+        if "config/pii_baseline.json" in have:
+            argv += ["--baseline", str(have["config/pii_baseline.json"])]
+        r = run(argv, cwd=fix_wt, env=env, timeout=600)
+        if r["rc"] != 0:
+            errs.append(f"check_no_pii:{(r['out'] + r['err'])[-300:]}")
+    gl = shutil.which("gitleaks")
+    if gl:
+        argv = [gl, "detect", "--no-banner", "--redact", "--source", str(fix_wt), "--log-opts", f"{base}..{commit}"]
+        if ".gitleaks.toml" in have:
+            argv += ["--config", str(have[".gitleaks.toml"])]
+        if ".gitleaksignore" in have:
+            argv += ["--gitleaks-ignore-path", str(have[".gitleaksignore"])]
+        r = run(argv, cwd=fix_wt, env=env, timeout=600)
+        if r["rc"] != 0:
+            errs.append(f"gitleaks:{(r['out'] + r['err'])[-300:]}")
+    elif "scripts/check_no_secrets.py" not in have:
+        errs.append("scanner_missing:check_no_secrets.py at base")
+    else:
+        r = run(
+            [sys.executable, str(Path(fix_wt) / "scripts" / "check_no_secrets.py"), "--tree"],
+            cwd=fix_wt,
+            env=env,
+            timeout=600,
+        )
+        if r["rc"] != 0:
+            errs.append(f"check_no_secrets:{(r['out'] + r['err'])[-300:]}")
+    return errs
+
+
 class Attempt:
     """One fix job: the sandboxed agent, immutable candidate commits, harness test runs bound to them, and the
     ship step (local branch, or push + PR when allowed) that proves it ships exactly the evaluated commit."""
@@ -317,7 +394,7 @@ class Attempt:
         r = cfg["repo"]
         self.repo = Path(r["repo_root"])
         self.py = r["python"]
-        self.wt_root = Path(r["worktree_root"])
+        self.wt_root = Path(r["worktree_root"]).expanduser()
         self.base = evidence["base_sha"]
         tag = job["job_id"]
         #: the candidate worktree: the ONLY path the agent may write
@@ -747,68 +824,15 @@ class Attempt:
             rec.get("acceptance"), commit_sha=commit, tree_sha=tree_now or "", prepush_refusals=refusals
         )
 
+    def scan_commit(self, commit: str) -> list[str]:
+        return scan_range(self.fix_wt, self.base, commit, self.dir / "scan_rules", self.environ)
+
     def land_local(self, commit: str) -> dict:
         """Point the job branch at the evaluated commit (compare-and-swap from base) and write fix.patch from it."""
         r = git(self.repo, "update-ref", f"refs/heads/{self.branch}", commit, self.base)
         patch = git(self.repo, "format-patch", "-1", "--stdout", commit)["out"]
         (self.dir / "fix.patch").write_text(patch, encoding="utf-8")
         return {"rc": r["rc"], "head": commit, "err": r["err"][-300:]}
-
-    def push_and_pr(self, body: str, commit: str, gh_view: Optional[Callable[[list[str]], dict]] = None) -> dict:
-        env = dict(self.environ)
-        env.pop("TRADEAI_REMOTE_PUSH_OVERRIDE", None)  # never an override: the budget binds
-        env["TRADEAI_REMOTE_PUSH_AUTHORIZED"] = "1"
-        # push the evaluated SHA itself, never "whatever the branch points at now"
-        p = run(
-            ["git", "-C", str(self.fix_wt), "push", self.cfg["repo"]["remote"], f"{commit}:refs/heads/{self.branch}"],
-            env=env,
-            timeout=600,
-        )
-        if p["rc"] != 0:
-            return {"ok": False, "why": f"push_failed:{(p['err'] or p['out'])[-300:]}"}
-        body_path = self.dir / "pr_body.md"
-        body_path.write_text(body, encoding="utf-8")
-        title = f"fix({self.job['lane']}): self-heal fix ({self.job['job_id']})"
-        base_args = [
-            "gh",
-            "pr",
-            "create",
-            "--base",
-            self.cfg["repo"]["base_branch"],
-            "--head",
-            self.branch,
-            "--title",
-            title,
-            "--body-file",
-            str(body_path),
-        ]
-        pr = run(base_args + ["--label", self.cfg["repo"]["pr_label"]], cwd=self.fix_wt, env=env, timeout=120)
-        label = True
-        if pr["rc"] != 0:
-            label = False
-            pr = run(base_args, cwd=self.fix_wt, env=env, timeout=120)
-        if pr["rc"] != 0:
-            return {"ok": False, "why": f"pr_create_failed:{pr['err'][-300:]}", "pushed": True}
-        url = pr["out"].strip().splitlines()[-1] if pr["out"].strip() else ""
-        num = url.rstrip("/").rsplit("/", 1)[-1]
-        out = {"ok": True, "pr_url": url, "pr_number": int(num) if num.isdigit() else None, "labelled": label}
-        # the PR head MUST be the evaluated commit
-        view = run(
-            ["gh", "pr", "view", url or self.branch, "--json", "headRefOid"], cwd=self.fix_wt, env=env, timeout=60
-        )
-        try:
-            head = str(json.loads(view["out"] or "{}").get("headRefOid") or "")
-        except ValueError:
-            head = ""
-        out["pr_head"] = head
-        if head != commit:
-            out.update(
-                ok=False,
-                why=f"pr_head_mismatch:{head[:12] or 'unreadable'}!={commit[:12]}",
-                pushed=True,
-                head_mismatch=True,
-            )
-        return out
 
 
 @_job_deadline
@@ -899,6 +923,17 @@ def attempt_job(
             a.teardown(keep_branch=False)
             return job
         commit = ship["commit_sha"]
+        scan = a.scan_commit(commit)
+        if scan:
+            F.transition(
+                job,
+                F.FIX_REFUSED,
+                now(),
+                reason=f"prehandoff_scan_failed:{';'.join(scan)[:400]}",
+                updated_at=now().isoformat(),
+            )
+            a.teardown(keep_branch=False)
+            return job
         c = a.land_local(commit)
         if c["rc"] != 0:
             F.transition(
@@ -915,34 +950,9 @@ def attempt_job(
         }
         body = F.pr_body(job, evidence)
         (evidence_dir / "pr_body.md").write_text(body, encoding="utf-8")
-        if may_push:
-            pr = a.push_and_pr(body, commit)
-            if pr.get("ok"):
-                F.transition(
-                    job,
-                    F.FIX_PR_OPENED,
-                    now(),
-                    pr_url=pr["pr_url"],
-                    pr_number=pr["pr_number"],
-                    labelled=pr["labelled"],
-                    pr_head=pr.get("pr_head"),
-                    updated_at=now().isoformat(),
-                )
-            elif pr.get("head_mismatch"):
-                F.transition(
-                    job,
-                    F.FIX_REFUSED,
-                    now(),
-                    reason=pr["why"],
-                    pr_url=pr.get("pr_url"),
-                    pr_number=pr.get("pr_number"),
-                    pr_head=pr.get("pr_head"),
-                    updated_at=now().isoformat(),
-                )
-            else:
-                F.transition(job, F.FIX_READY_LOCAL, now(), reason=pr["why"], updated_at=now().isoformat())
-        else:
-            F.transition(job, F.FIX_READY_LOCAL, now(), reason="push_not_allowed", updated_at=now().isoformat())
+        # AGENTS.md §24.5: the fixer stops at this local branch (fix.patch and pr_body.md beside it); a person pushes it.
+        # The push/PR path is deleted, not just disabled (review 2026-10-31 round 2).
+        F.transition(job, F.FIX_READY_LOCAL, now(), reason="push_not_allowed", updated_at=now().isoformat())
         a.teardown(keep_branch=True)
         return job
     new = F.FIX_REFUSED if stop == "guard_refused" else F.FIX_FAILED
@@ -1139,6 +1149,22 @@ def advance(
     ):
         job["acceptance_hold"] = "required_exact_head_acceptance_unavailable_or_rejected"
         return None
+    if st == F.FIX_DEPLOYED and str(job.get("lane") or "").startswith(TI.LANE_PREFIX):
+        # A train-monitor defect has no lane output in the coordination ledger: it is recovered when the monitor
+        # verified on the release that the failure signature no longer occurs (fix log fixed-released + verified_at).
+        row = TI.verified_for_defect(root / TRAIN_FIX_LOG_REL, str(job.get("defect_id") or ""))
+        job["recovery_check"] = {"validator": "self_heal_train_monitor.fix_log", "recovered": bool(row)}
+        if row:
+            F.transition(
+                job,
+                F.OUTPUT_RECOVERED,
+                now,
+                output_at=row.get("verified_at"),
+                recovery_basis="train_monitor_fix_log_verified",
+                updated_at=now.isoformat(),
+            )
+            return F.OUTPUT_RECOVERED
+        return None
     if st == F.FIX_DEPLOYED:
         rv = output_recovered(job["lane"], F._parse(job.get("deployed_at")), recovery_contract(cfg, root))
         job["recovery_check"] = rv
@@ -1226,7 +1252,75 @@ def incidents_from(args, cfg: dict, root: Path) -> tuple[list[dict], Optional[di
         return [inc], None
     diag = _load_json(root / i["diagnosis_state_rel"])
     records = _tail_jsonl(root / i["diagnoses_rel"], int(i.get("diagnoses_tail_lines", 5000)))
-    return F.code_defects(records, diag, cfg), diag
+    found = F.code_defects(records, diag, cfg)
+    # Second producer (2026-10-25): the self-heal train monitor (scripts/self_heal_train_monitor.py) hands CI / train
+    # / post-release tester / sweep defects over as the SAME N8nCodeDefect@v1 contract in its own store, each record
+    # carrying the failing log tail as its receipt. Read-only here; consumption is recorded in this lane's state.
+    train = train_incidents(cfg, root)
+    known = {inc.get("defect_id") for inc in found}
+    return found + [inc for inc in train if inc.get("defect_id") not in known], diag
+
+
+def kill_switch(cfg: dict, root: Path) -> Optional[str]:
+    """The first kill-switch file that exists (arming.kill_switch_rels, relative to the state root), else None."""
+    for rel in (cfg.get("arming") or {}).get("kill_switch_rels") or []:
+        if (root / rel).exists():
+            return rel
+    return None
+
+
+def log_push(root: Path, job: dict, *, now: datetime, branch: str, commit: str, pr: Optional[dict]) -> None:
+    """Section 28.14 item 5: every push the fixer makes is one row of the append-only fix log. A train-monitor job
+    keeps the monitor's fix id (``fx-<signature>``); a diagnoser-lane job gets ``fx-<job_id>``."""
+    lane = str(job.get("lane") or "")
+    train = lane.startswith(TI.LANE_PREFIX)
+    rec = {
+        "fix_id": TI.fix_id(str(job.get("signature"))) if train else f"fx-{job.get('job_id')}",
+        "detected_at": job.get("created_at"),
+        "source": lane[len(TI.LANE_PREFIX) :] if train else "lane",
+        "kind": "fixer_push",
+        "signature": job.get("signature"),
+        "title": f"self-heal fix for {lane}",
+        "evidence_refs": [f"self_heal_fixer:{job.get('job_id')}"],
+        "remediation_kind": "claude_code",
+        "attempts": len(job.get("iterations") or []),
+        "model_cost_usd": job.get("cost_usd"),
+        "pr_number": (pr or {}).get("pr_number"),
+        "pr_head": commit,
+        "outcome": "fix-PR-open" if (pr or {}).get("ok") else "remediating",
+    }
+    row = TI.log_row(
+        rec,
+        event="fixer_push",
+        now=now,
+        mode="live",
+        detail=f"pushed {commit[:12]} to {branch}" + (f"; PR {pr.get('pr_url')}" if (pr or {}).get("pr_url") else ""),
+    )
+    path = root / TRAIN_FIX_LOG_REL
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:  # append-only; never rewritten
+        fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
+
+
+def train_incidents(cfg: dict, root: Path) -> list[dict]:
+    """Incidents from data/self_heal/fixer_defects.jsonl (the train monitor's hand-off store), oldest first."""
+    path = root / str(cfg["intake"].get("train_defects_rel") or TRAIN_DEFECTS_REL)
+    out: dict[str, dict] = {}
+    for doc in TI.read_fixer_defects(path):
+        found = F.code_defects([doc], None, cfg)
+        if not found:
+            continue
+        inc = found[0]
+        inc["_receipt"] = doc.get("receipt")
+        out[inc["defect_id"]] = inc
+    return sorted(out.values(), key=lambda e: str(e.get("at") or ""))
+
+
+def train_incident_for(cfg: dict, root: Path, defect_id: Optional[str]) -> Optional[dict]:
+    for inc in train_incidents(cfg, root):
+        if inc.get("defect_id") == defect_id:
+            return inc
+    return None
 
 
 def main(
@@ -1424,8 +1518,9 @@ def _cycle(
         ledger_jobs = C.day_usage(claims_db, day)["jobs"] if apply else 0
         return max(F.jobs_started_today(work, now()), ledger_jobs)
 
-    arming = F.arming_verdict(grant, cfg=cfg, jobs_today=jobs_today())
     policy = F.policy_verdict(agents, cfg)
+    kill = kill_switch(cfg, root)
+    arming = F.arming_verdict(grant, cfg=cfg, jobs_today=jobs_today(), policy=policy, disabled=kill)
     backend, backend_why = F.select_backend(cfg)
     out.update(
         arming=arming,
@@ -1439,7 +1534,12 @@ def _cycle(
     queue.sort(key=lambda j: str(j.get("created_at")))
     it = cfg["iteration"]
     for job in queue[: int(cfg["arming"]["max_jobs_per_cycle"])]:
-        src = ev_by_job.get(job["job_id"]) or {
+        src = ev_by_job.get(job["job_id"])
+        if src is None and str(job.get("lane") or "").startswith(TI.LANE_PREFIX):
+            tinc = train_incident_for(cfg, root, job.get("defect_id"))
+            if tinc is not None:
+                src = {"incident": tinc, "receipt": tinc.pop("_receipt", None), "row": None}
+        src = src or {
             "incident": {"lane": job["lane"], "key": job.get("escalation_key")},
             "receipt": failed_receipt(ledger, job["lane"], job.get("failed_run_id")),
             "row": registry_row(job["lane"]),
@@ -1459,7 +1559,7 @@ def _cycle(
             memory_old + memory_new, failure_kind=job.get("failure_kind"), backends=names, chosen=backend
         )
         if not apply:
-            wt = Path(cfg["repo"]["worktree_root"])
+            wt = Path(cfg["repo"]["worktree_root"]).expanduser()
             pytest_cmd = str(wt / f"{job['job_id']}-bin" / "pytest")
             home = environ.get("HOME") or str(Path.home())
             ah = str(wt / f"{job['job_id']}-home")
@@ -1636,7 +1736,7 @@ def _cycle(
         if job["state"] in (F.FIX_FAILED, F.FIX_REFUSED) and not job.get("escalated_at"):
             out["escalations"].append(escalation_for(job, now()))
             job["escalated_at"] = now().isoformat()
-        arming = F.arming_verdict(grant, cfg=cfg, jobs_today=jobs_today())
+        arming = F.arming_verdict(grant, cfg=cfg, jobs_today=jobs_today(), policy=policy, disabled=kill)
     for job in work.get("jobs", {}).values():
         if job.get("state") in (F.FIX_READY_LOCAL, F.FIX_PR_OPENED, F.FIX_DEPLOYED, F.OUTPUT_RECOVERED):
             moved = advance(job, cfg=cfg, now=t, diag_state=diag, root=root, gh=gh, repo=repo)

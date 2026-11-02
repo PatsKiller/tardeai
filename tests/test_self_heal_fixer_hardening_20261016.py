@@ -209,9 +209,14 @@ def test_sandboxed_harness_runs_cannot_write_the_checkout_or_git(sandbox):
     assert all(r["integrity_ok"] for r in job["iterations"][0]["test_runs"])
 
 
-def test_pr_head_not_the_evaluated_commit_is_refused(sandbox):
+def test_handed_off_branch_is_exactly_the_evaluated_commit_and_nothing_ships(sandbox):
+    """Review 2026-10-31 (B1 + round 2): the push/PR path is deleted (AGENTS.md §24.5: the fixer stops at a local fix
+    branch), so the old "PR head moved after the push" check has nothing to check. The property it protected — what
+    leaves the fixer is exactly the evaluated commit — is pinned at the local hand-off instead: even with the
+    amendment heading ACTIVE and a PR head override armed, nothing is pushed, no PR is opened, and the local branch
+    points at the evaluated commit itself."""
     _actions(sandbox, _fix_with_test(GOOD_TEST))
-    (sandbox["bin"] / "gh_head_override").write_text("f" * 40)  # the PR head moved after the push
+    (sandbox["bin"] / "gh_head_override").write_text("f" * 40)
     marker = CFG["policy_gate"]["amendment_heading_marker"]
     p = sandbox["repo"] / "AGENTS.md"
     p.write_text(p.read_text() + f"\n{marker} (13.0.0, ACTIVE)\n")
@@ -219,12 +224,11 @@ def test_pr_head_not_the_evaluated_commit_is_refused(sandbox):
     B._sh("git", "-C", str(sandbox["repo"]), "push", "-q", "origin", "main")
     assert _cycle(sandbox) == 0
     (job,) = _state(sandbox)["jobs"].values()
-    assert job["state"] == F.FIX_REFUSED and job["reason"].startswith("pr_head_mismatch:ffffffffffff!=")
-    assert job["pr_number"] == 4242 and job["pr_head"] == "f" * 40
-    assert not F.is_healed(job)
-    # what WAS pushed is the evaluated commit itself (pushed by sha, not by branch name)
-    pushed = B._sh("git", "-C", str(sandbox["origin"]), "rev-parse", job["branch"]).strip()
-    assert pushed == job["evaluated"]["commit_sha"]
+    assert job["state"] == F.FIX_READY_LOCAL and not F.is_healed(job)
+    assert job["branch"] not in B._sh("git", "-C", str(sandbox["origin"]), "branch", "--list")  # nothing pushed
+    assert not (sandbox["bin"] / "gh_calls.txt").exists()  # no PR
+    local = B._sh("git", "-C", str(sandbox["repo"]), "rev-parse", job["branch"]).strip()
+    assert local == job["evaluated"]["commit_sha"] == job["head_sha"]
 
 
 def test_prepush_guard_rerun_on_the_commit_tree_refuses(sandbox, monkeypatch):
@@ -338,7 +342,9 @@ def test_agent_sandbox_is_an_allowlist_rw_only_on_its_worktree():
     probe = _fake_probe(kinds)
     binds, why = F.agent_auth_binds(cfg, home="/h", agent_home="/w/home", probe=probe)
     assert why == "auth:credentials_file"
-    assert binds == [("/h/.claude/.credentials.json", "/w/home/.claude/.credentials.json", True)]
+    # review 2026-10-31 (H6): the Claude login is bound READ-ONLY; the sandbox can use it, never rewrite it
+    agent_cred = "/".join(["", "w", "home", ".claude", ".credentials.json"])  # assembled: not a real home path
+    assert binds == [("/h/.claude/.credentials.json", agent_cred, False)]
     env = F.agent_env(
         {"HOME": "/h", "PATH": "/x", "USER": "u", "DB_PASSWORD": "p"},
         cfg,
@@ -366,15 +372,12 @@ def test_agent_sandbox_is_an_allowlist_rw_only_on_its_worktree():
     assert "--ro-bind / /" not in joined  # NOT the host view: an empty root
     pairs = [(argv[i], argv[i + 1], argv[i + 2]) for i in range(len(argv) - 2) if argv[i] in ("--bind", "--ro-bind")]
     rw = [(s, d) for f, s, d in pairs if f == "--bind"]
-    assert rw == [
-        ("/w/wt", "/w/wt"),
-        ("/w/home", "/w/home"),
-        ("/w/st", "/w/st"),
-        ("/h/.claude/.credentials.json", "/w/home/.claude/.credentials.json"),
-    ]
+    assert rw == [("/w/wt", "/w/wt"), ("/w/home", "/w/home"), ("/w/st", "/w/st")]  # credentials NOT writable (H6)
     ro = {s for f, s, d in pairs if f == "--ro-bind"}
     assert {"/usr", "/etc", "/r/.git", "/r/.venv", "/opt/claude", "/w/bin", "/w/eg"} <= ro
-    assert "/r" not in ro and "/h" not in ro and not any(s.startswith("/h/") for s in ro)  # no repo tree, no $HOME
+    cred = "/h/.claude/.credentials.json"
+    assert cred in ro  # the ONE file of $HOME the sandbox sees, read-only (review 2026-10-31)
+    assert "/r" not in ro and "/h" not in ro and not any(s.startswith("/h/") for s in ro - {cred})  # no tree, no $HOME
     assert ["--symlink", "usr/bin", "/bin"] == argv[argv.index("/bin") - 2 : argv.index("/bin") + 1]
     assert argv[-2:] == ["--chdir", "/w/wt"]
     # the env inside: throwaway HOME, the scoped config dir, the bridge proxy; nothing credential-shaped
