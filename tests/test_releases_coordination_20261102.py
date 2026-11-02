@@ -138,11 +138,21 @@ def test_ended_and_done_claims_are_not_current_agents(tmp_path):
     assert [a["session"] for a in out["agents"]] == ["live1"]
 
 
-def test_one_session_holding_two_claims_is_listed_once(tmp_path):
+def test_one_session_holding_two_claims_is_summarised_once_but_owns_both(tmp_path):
+    """codex review 2026-11-02: per-PR ownership keeps every claim; only the primary summary dedupes."""
     claims = _claims(tmp_path,
-                     {"session": "s1", "branch": "wt/a", "task": "one", "status": "active"},
-                     {"session": "s1", "branch": "wt/b", "task": "two", "status": "active"})
-    assert len([a for a in rc.build(_ledger(tmp_path), claims, [_pr()], now=NOW)["agents"] if a["session"] == "s1"]) == 1
+                     {"session": "s1", "branch": "wt/a", "task": "one", "status": "active",
+                      "heartbeat_at": "2026-11-02T17:00:00Z"},
+                     {"session": "s1", "branch": "wt/b", "task": "two", "status": "active",
+                      "heartbeat_at": "2026-11-02T17:50:00Z"})
+    out = rc.build(_ledger(tmp_path), claims, [_pr()], now=NOW)
+    # the agent list shows the session once, with its NEWEST claim
+    rows = [a for a in out["agents"] if a["session"] == "s1"]
+    assert len(rows) == 1 and rows[0]["branch"] == "wt/b"
+    # ...but a PR on either branch still finds its owner
+    for branch in ("wt/a", "wt/b"):
+        work = rc.build(_ledger(tmp_path), claims, [_pr(branch=branch)], now=NOW)["work"][2474]
+        assert work["owner"] == "s1", branch
 
 
 def test_two_reviewers_count_as_two_independent_sessions(tmp_path):

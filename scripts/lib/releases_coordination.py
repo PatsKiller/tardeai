@@ -375,15 +375,15 @@ def read_worklog(worklog_path: Path, root: Path) -> tuple[dict[str, Any], Option
 
 def agent_rows(claims: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
     rows = []
-    seen: set[str] = set()
+    # ALL live claims are kept (codex independent review, 2026-11-02): de-duplicating by session here
+    # dropped a session's NEWER claim, so a PR whose owner had moved branches lost its ownership. Every
+    # active claim is needed for per-PR lookup; only the primary summary dedupes.
     for doc in claims:
         if not is_live(doc):
             continue
         session = str(doc.get("session") or "")
-        key = session or str(doc.get("claim_id") or "")
-        if key in seen:            # one row per session: the newest claim it holds
+        if not session and not doc.get("claim_id"):
             continue
-        seen.add(key)
         rows.append({
             "session": doc.get("session"),
             "claim_id": doc.get("claim_id"),
@@ -398,6 +398,22 @@ def agent_rows(claims: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
             "source": "claims",
         })
     return rows
+
+
+def primary_claims(claims: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """One row per session for the PRIMARY summary: the newest live claim it holds.
+
+    Per-PR ownership keeps every claim (see ``agent_rows``); this is only the agent list, so a session
+    working two branches does not appear twice.
+    """
+    newest: dict[str, dict[str, Any]] = {}
+    for row in agent_rows(claims):
+        key = str(row.get("session") or row.get("claim_id") or "")
+        prior = newest.get(key)
+        if prior is None or (_parse(row.get("as_of")) or datetime.min.replace(tzinfo=timezone.utc)) >= (
+                _parse(prior.get("as_of")) or datetime.min.replace(tzinfo=timezone.utc)):
+            newest[key] = row
+    return list(newest.values())
 
 
 def build(ledger_path: Path, claims_dir: Path, prs: Iterable[Mapping[str, Any]], *,
@@ -430,7 +446,7 @@ def build(ledger_path: Path, claims_dir: Path, prs: Iterable[Mapping[str, Any]],
         })
     if not agents:            # no readable BOARD: fall back to live claims, and say so
         agents = [{**a, "execution_state": "working" if _fresh(a, now) else UNKNOWN,
-                   "branch_or_pr": a.get("branch")} for a in live[:20]]
+                   "branch_or_pr": a.get("branch")} for a in primary_claims(claims)[:20]]
     # Per-PR ownership comes from the CLAIMS (they carry the claim id the worklog is keyed by), while the
     # primary agent list above is BOARD context. Mixing the two lost the worklog lookup.
     by_branch = {a["branch"]: a for a in live if a.get("branch")}
