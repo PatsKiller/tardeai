@@ -666,3 +666,73 @@ def test_lane_closure_reaches_no_sender_broker_order_or_db():
     }, rels
     caps = set().union(*(res.info(m).caps for m in order))
     assert not caps & {"direct_sender", "broker_module", "order_placement", "chokepoint_send"}, caps
+
+
+# Receipt counters count calendar dates, never release-series IDs (CC operations audit 2026-11-02).
+def _receipt_count_modules(monkeypatch):
+    import importlib.util
+
+    def load(name, rel):
+        spec = importlib.util.spec_from_file_location(name, ROOT / rel)
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[name] = mod
+        spec.loader.exec_module(mod)
+        return mod
+
+    producer = load("macro_receipt_count_producer", "scripts/macro_calendar_refresh.py")
+    verifier = load("macro_receipt_count_verifier", "scripts/lib/n8n_output_verdict.py")
+    monkeypatch.setattr(producer, "urllib_fetch", FakeFred())
+    monkeypatch.setattr(producer, "_utcnow", lambda: NOW)
+    monkeypatch.setenv("TRADEAI_RUN_ATTEMPT", "1")
+    monkeypatch.setenv("TRADEAI_RUN_MODE", "live")
+    monkeypatch.setenv("TRADEAI_CODE_SHA", "a" * 40)
+    contracts = json.loads((ROOT / "config/n8n_health_contracts.json").read_text())["contracts"]
+    rule = next(r["expected_output"] for r in contracts if r["id"] == producer.LANE_ID)
+    return producer, verifier, rule
+
+
+def _attempt(state, lane, run_id):
+    return json.loads((state / "data/runtime/lane_attempts" / lane / f"{run_id}.json").read_text())
+
+
+def _output_verdict(verifier, rule, rec):
+    return verifier.evaluate(rule, rec, run_id=rec["run_id"], lane_id=rec["lane_id"], mode="live",
+                             attempt=1, started_at=rec["started_at"], finished_at=rec["finished_at"],
+                             code_sha="a" * 40)
+
+
+def test_receipt_dates_can_exceed_series_count_without_failing_the_real_verifier(state, monkeypatch):
+    producer, verifier, rule = _receipt_count_modules(monkeypatch)
+    run_id = "fixture-macro-many-dates"
+    monkeypatch.setenv("TRADEAI_RUN_ID", run_id)
+    assert producer.main([]) == 0
+    cal = json.loads((state / "data/runtime/macro_calendar.json").read_text())
+    rec = _attempt(state, producer.LANE_ID, run_id)
+    assert rec["produced_count"] == len(cal["skip_days_0800"]) > len(producer.RELEASE_MAP)
+    assert rec["attempted_count"] == len(cal["dates"]) >= rec["produced_count"]
+    assert rec["summary"]["source_series_expected"] == len(producer.RELEASE_MAP)
+    assert rec["summary"]["source_series_verified"] == len(producer.RELEASE_MAP)
+    assert _output_verdict(verifier, rule, rec)["verdict"] == "produced"
+    # Reproduce the original defect on the same real attempt receipt.
+    wrong_unit = {**rec, "attempted_count": len(producer.RELEASE_MAP)}
+    assert _output_verdict(verifier, rule, wrong_unit)["why"] == "counts_inconsistent"
+
+
+def test_one_missing_source_keeps_the_calendar_and_never_fabricates_attempted_dates(state, monkeypatch):
+    producer, verifier, rule = _receipt_count_modules(monkeypatch)
+    monkeypatch.setenv("TRADEAI_RUN_ID", "fixture-macro-good-before-source-failure")
+    assert producer.main([]) == 0
+    target = state / "data/runtime/macro_calendar.json"
+    before = target.read_bytes()
+    # One expected source is absent; all other synthetic release identities remain.
+    monkeypatch.setattr(producer, "urllib_fetch", FakeFred(releases=RELEASES[1:]))
+    run_id = "fixture-macro-one-source-fails"
+    monkeypatch.setenv("TRADEAI_RUN_ID", run_id)
+    assert producer.main([]) == 1
+    assert target.read_bytes() == before
+    rec = _attempt(state, producer.LANE_ID, run_id)
+    assert rec["status"] == "failed" and rec["produced_count"] == 0
+    assert rec.get("attempted_count") is None
+    assert rec["summary"]["source_series_expected"] == len(producer.RELEASE_MAP)
+    verdict = _output_verdict(verifier, rule, rec)
+    assert verdict["verdict"] == "empty_violation" and verdict["why"] == "receipt_status_failed"

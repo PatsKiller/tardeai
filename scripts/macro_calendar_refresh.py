@@ -607,10 +607,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 started_at=started,
                 script="macro_calendar_refresh.py",
                 error=f"RefreshError: {exc.reason}",
-                summary={"failure_kind": exc.reason, "detail": _scrub(str(exc), key)[:300]},
+                summary={"failure_kind": exc.reason, "detail": _scrub(str(exc), key)[:300],
+                         "source_series_expected": len(RELEASE_MAP)},
                 output={
                     "produced_count": 0,
-                    "attempted_count": len(RELEASE_MAP),
+                    # No calendar was built, so the number of candidate dates is unknown.
                     "skipped_reasons": {exc.skip_reason: 1},
                 },
             )
@@ -648,11 +649,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "covers_from": cal["covers_from"],
             "valid_through": cal["valid_through"],
             "skip_days_0800": n,
+            "candidate_dates_evaluated": len(cal["dates"]),
+            "source_series_expected": len(RELEASE_MAP),
+            "source_series_verified": sum(v.get("ok") is True for v in cal["verification"]),
             "fetched_at": cal["fetched_at"],
         },
         output={
             "produced_count": n,
-            "attempted_count": len(RELEASE_MAP),
+            # Both counts are dates: skip dates are a subset of evaluated event dates.
+            # Release-series count is a different unit and belongs in the summary.
+            "attempted_count": len(cal["dates"]),
             "output_evidence": [{"kind": "file_artifact", "ref": str(target), "fetched_at": cal["fetched_at"]}],
         },
     )
