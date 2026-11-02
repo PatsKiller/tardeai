@@ -1138,7 +1138,10 @@ def _src_anthropic_search(ent: Entity, ctx: ResearchContext) -> list[Fact]:
                 "provider": resp.get("provider") or "anthropic",
             }
         )
-    outcome = {"ok": True, "provider": resp.get("provider")}
+    # `web_search_20260209` answers through Anthropic-side dynamic filtering, which runs sandboxed code
+    # (see scripts/lib/anthropic_web_search.py). The count rides the run row so the receipt shows it.
+    outcome = {"ok": True, "provider": resp.get("provider"),
+               "code_execution_blocks": int(resp.get("code_execution_blocks") or 0)}
     out = SourceFacts(outcome=outcome)
     for r in (resp.get("results") or []) if resp.get("ok") is True else []:
         published = _iso(r.get("published"))

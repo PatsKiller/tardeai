@@ -2457,7 +2457,7 @@
       "reasoning_tier": "standard",
       "registered_by": "operator 2026-11-01: \"sonnet for search, build it and push live\" (Ask-the-CIO paid web source; Opus for answers, Sonnet for search)",
       "registered_at": "2026-11-01T18:10:00Z",
-      "notes": "One call ~ under 2k input + <= 1500 output tokens plus up to 3 server-side searches (~$0.01-0.02 at Sonnet 5.5 list price and the $10/1k-search tool fee); 120/day and $1.00/day bound the source well inside the $10/day credit cap. Enablement is the lane env flag TRADEAI_ANTHROPIC_WEB_SEARCH=1: registering this row does not turn the source on.",
+      "notes": "MEASURED 2026-11-01T23:55Z on the deployed release (b7c5c46f0): one real call cost $0.0752 in 23.2s and returned 5 cited results, so the routing ceiling moved from $0.10 to $0.25 - three server-side searches plus a long question would otherwise hit the ceiling. A call uses up to 3 hosted searches (~$0.01 each) plus Sonnet 5.5 tokens; 120/day and $1.00/day still bound the source well inside the $10/day credit cap. The tool version web_search_20260209 answers through Anthropic-side dynamic filtering, which runs sandboxed code execution in the provider (server_tool_use/code_execution_tool_result blocks appear in the response; the bridge allowlist is outbound-only, so the Ask source counts them into its run row instead). Enablement is the lane env flag TRADEAI_ANTHROPIC_WEB_SEARCH=1: registering this row does not turn the source on.",
       "anthropic_first": true
     }
   ],
