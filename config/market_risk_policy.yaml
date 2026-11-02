@@ -603,6 +603,9 @@ reentry_watch:
   # share floor, or below this fraction of (remaining + everything that account sold on its most recent
   # sale day). Operator 2026-11-02 (PFLT: 1.15 shares after a stop; SPCX taxable: 200 shares stay held).
   residual_remaining_fraction: 0.15
+  # A SELL stop fill is one-sided: sale price at or below the stop, no further below than this
+  # slippage, same account, and the stop quantity covers what was sold (operator 2026-11-02, NFLX).
+  stop_fill_max_slippage_pct: 3.0
   group_sessions: 2
   earnings_ahead_sessions: 5
   settle_sessions: 3

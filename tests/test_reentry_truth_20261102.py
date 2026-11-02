@@ -206,12 +206,32 @@ def test_a_trim_is_not_a_residual_and_a_stop_remainder_is():
     assert bp._is_fractional_residual(0.4, 0.0, 1.0, 0.15) is True
 
 
-def test_a_stop_is_matched_by_account_and_price():
+def test_a_sell_stop_is_matched_one_sidedly():
     acct = bp._acct_key("Schwab-1")
-    rows = [("AAA", "Schwab-1", 100.0)]
-    assert bp._stop_basis("AAA", acct, 100.5, rows) == "stop (matched by price)"
-    assert bp._stop_basis("AAA", bp._acct_key("Other"), 100.5, rows) == "manual sell"
-    assert bp._stop_basis("AAA", acct, 90.0, rows) == "manual sell"
+    rows = [("AAA", "Schwab-1", 71.55, 400.0)]
+    # NFLX shape: sold 400 at 70.17 against a 71.55 stop, a gap-down open 1.9% below.
+    assert bp._stop_basis("AAA", acct, 70.17, 400.0, rows, 3.0) == "stop (matched by price)"
+    # a sale ABOVE the stop is never a stop fill
+    assert bp._stop_basis("AAA", acct, 72.00, 400.0, rows, 3.0) == "manual sell"
+    # a stop quantity that does not cover the sale is not this sale
+    assert bp._stop_basis("AAA", acct, 70.17, 500.0, rows, 3.0) == "manual sell"
+    # further below the stop than the configured slippage is a manual sale
+    assert bp._stop_basis("AAA", acct, 60.00, 400.0, rows, 3.0) == "manual sell"
+    # another account never matches
+    assert bp._stop_basis("AAA", bp._acct_key("Other"), 70.17, 400.0, rows, 3.0) == "manual sell"
+
+
+def test_lots_on_the_most_recent_sale_day_sum_and_older_days_are_excluded():
+    rows = [
+        ("AAA", "Schwab-1", "2026-10-26", True, 10.0, 0.23),
+        ("AAA", "Schwab-1", "2026-10-26", True, 10.0, 0.269),   # same day, second lot
+        ("AAA", "Schwab-1", "2026-10-20", True, 10.0, 50.0),    # an older day is excluded
+        ("BBB", "Schwab-1", "2026-10-27", True, 20.0, 5.0),
+    ]
+    sold = bp._sold_on_latest_day(rows)
+    acct = bp._acct_key("Schwab-1")
+    assert round(sold[(acct, "AAA")], 3) == 0.499
+    assert sold[(acct, "BBB")] == 5.0
 
 
 def test_the_card_guard_refuses_stop_and_order_wording():

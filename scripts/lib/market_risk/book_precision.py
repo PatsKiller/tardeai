@@ -587,23 +587,56 @@ def _is_fractional_residual(shares: float, sold_shares: float = 0.0, floor: floa
     return total > 0 and (shares / total) < fraction
 
 
-def _stop_basis(symbol: str, account: str, price: Any, stop_rows: list[tuple]) -> str:
-    """'stop (matched by price)' when a filled stop matches this sale: same account, price within 1%.
+def _stop_basis(symbol: str, account: str, price: Any, sold_qty: float, stop_rows: list[tuple],
+                max_slippage_pct: float = 3.0) -> str:
+    """'stop (matched by price)' when a filled SELL stop explains this sale.
 
-    stop_last_known.captured_at is the table refresh time, not the fill time (every row shares the
-    refresh stamp), so a time bound cannot be honest here; the label says how the match was made.
+    A stop fill is one-sided: the sale price is AT OR BELOW the stop price (a gap-down open fills
+    below it) and no further below than ``max_slippage_pct``, in the same account, with a stop
+    quantity that covers what was sold. A sale ABOVE the stop price is never a stop fill, and the old
+    symmetric ±1% window missed a real one (NFLX: sold 400 at 70.17 against a 71.55 stop).
+
+    stop_last_known.captured_at is the table refresh time, not the fill time, so no time bound is
+    claimed; the label says how the match was made.
     """
     px = float(price) if price is not None else None
     if px is None:
         return "manual sell"
     for row in stop_rows or []:
         sym, acct, stop_price = row[:3]
+        qty = float(row[3]) if len(row) > 3 and row[3] is not None else None
         if str(sym).upper() != symbol or _acct_key(acct) != account or stop_price is None:
             continue
         sp = float(stop_price)
-        if sp > 0 and abs(px - sp) <= 0.01 * sp:
-            return "stop (matched by price)"
+        if sp <= 0 or px > sp:
+            continue
+        if (sp - px) / sp * 100.0 > max_slippage_pct:
+            continue
+        if sold_qty and qty is not None and qty < sold_qty:
+            continue
+        return "stop (matched by price)"
     return "manual sell"
+
+
+def _sold_on_latest_day(closes_rows: list[tuple]) -> dict[tuple[str, str], float]:
+    """Shares sold per (account, SYMBOL) on that account's MOST RECENT sale day, summing its lots.
+
+    A day's sale can arrive as several trade_closed rows (V: 0.23 and 0.269); an older day's lots are
+    excluded so yesterday's trim cannot be read as today's sale.
+    """
+    latest: dict[tuple[str, str], str] = {}
+    for r in closes_rows:
+        k = (_acct_key(r[1]), str(r[0]).upper())
+        d = str(r[2])[:10]
+        if d > latest.get(k, ""):
+            latest[k] = d
+    out: dict[tuple[str, str], float] = {}
+    for r in closes_rows:
+        if len(r) > 5 and r[5] is not None:
+            k = (_acct_key(r[1]), str(r[0]).upper())
+            if str(r[2])[:10] == latest.get(k):
+                out[k] = out.get(k, 0.0) + float(r[5])
+    return out
 
 
 def _after(buy_date: str, buy_time: Any, sell_date: str, sell_time: Any, held_now: bool = False) -> bool:
@@ -752,20 +785,7 @@ def reentry_watch_block(
             floor = float((((policy.get("positions") or {}).get("materiality") or {}).get("min_shares", 1.0)))
             rcfg = policy.get("reentry_watch") or {}
             fraction = float(rcfg.get("residual_remaining_fraction", 0.15))
-            # SUM the account's lots on its most recent sale day, not its largest single lot: a day's
-            # sale can arrive as several trade_closed rows (V: 0.23 and 0.269).
-            latest: dict[tuple[str, str], str] = {}
-            for r in closes_rows:
-                k = (_acct_key(r[1]), str(r[0]).upper())
-                d = str(r[2])[:10]
-                if d > latest.get(k, ""):
-                    latest[k] = d
-            sold_map: dict[tuple[str, str], float] = {}
-            for r in closes_rows:
-                if len(r) > 5 and r[5] is not None:
-                    k = (_acct_key(r[1]), str(r[0]).upper())
-                    if str(r[2])[:10] == latest.get(k):
-                        sold_map[k] = sold_map.get(k, 0.0) + float(r[5])
+            sold_map = _sold_on_latest_day(closes_rows)
             held = set(held_accounts or set())
             shares_map = _held_share_map(policy)
             for (acct, sym), sh in shares_map.items():
@@ -773,7 +793,7 @@ def reentry_watch_block(
                     held.discard((acct, sym))  # what the sale left behind, not a position to wait on
             try:
                 cur.execute(
-                    "SELECT symbol, account, stop_price FROM stop_last_known "
+                    "SELECT symbol, account, stop_price, qty FROM stop_last_known "
                     "WHERE lower(status) = 'filled' AND symbol = ANY(%s)",
                     (sorted(sale_symbols),),
                 )
@@ -887,7 +907,9 @@ def reentry_watch_block(
                 held_elsewhere=e.get("held_elsewhere") or [],
                 wash_sale=e.get("wash_sale"),
                 look_through={"groups": groups, "basis": ex.get("basis"), "note": ex.get("note")},
-                exit_basis=_stop_basis(sym, e.get("exit_account_key"), e.get("exit_price"), stop_rows),
+                exit_basis=_stop_basis(sym, e.get("exit_account_key"), e.get("exit_price"),
+                                       sold_map.get((e.get("exit_account_key"), sym), 0.0), stop_rows,
+                                       float((policy.get("reentry_watch") or {}).get("stop_fill_max_slippage_pct", 3.0))),
                 stages=st,
             )
             c.assert_no_behavior_fields(cards[sym])
