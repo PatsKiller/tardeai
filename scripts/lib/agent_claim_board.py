@@ -840,8 +840,14 @@ class ClaimBoard:
         _replace_own(v.path, d)
         return d
 
-    def extend(self, claim_id: str, paths: Iterable[str], *, session: str | None) -> dict[str, Any]:
-        """``claim --add``: add paths to an own active claim; refused if they overlap another live session's claim."""
+    def extend(self, claim_id: str, paths: Iterable[str], *, session: str | None,
+               note: str | None = None, approval_ref: str | None = None) -> dict[str, Any]:
+        """``claim --add``: add paths to an own active claim; refused if they overlap another live session's claim.
+
+        ``note`` is written with the same owner-only, locked write that adds the paths. Before
+        2026-11-02 the CLI computed the ``Operator-approval:`` note and then dropped it on this
+        arm, so ``claim --add ... --operator-approval`` exited 0 having recorded nothing.
+        """
         canon = []
         for p in paths:
             c = canonical_pattern(p)
@@ -866,6 +872,14 @@ class ClaimBoard:
                 if len(d["paths"]) + len(added) > MAX_PATHS:
                     raise ClaimError(f"too many paths (> {MAX_PATHS})")
                 d["paths"] = list(d["paths"]) + added
+                if note:
+                    d["note"] = note
+                if approval_ref:
+                    # Merged with the note already stored, under this lock, so an extension cannot
+                    # overwrite an earlier note (2026-11-02 review: the --add arm dropped it entirely).
+                    from . import operator_approval as _OA
+
+                    d["note"] = _OA.merge_into_note(d.get("note"), approval_ref)
                 d["heartbeat_at"] = iso(self.now())
                 _replace_own(v.path, d)
             finally:
