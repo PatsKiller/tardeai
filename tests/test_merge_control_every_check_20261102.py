@@ -268,13 +268,13 @@ def test_a_rollup_at_the_read_limit_fails_closed():
 def test_the_queue_monitor_does_not_requeue_while_a_non_required_check_is_red():
     from scripts.lib import mergify_queue_monitor as mqm
 
-    checks = {name: "SUCCESS" for name in REQUIRED}
-    checks["secret-scan"] = "FAILURE"
+    checks = {name: ["SUCCESS"] for name in REQUIRED}
+    checks["secret-scan"] = ["FAILURE"]
     plan = mqm.classify_dequeue(reason_code="CHECKS_FAILED", body="", mergeable="MERGEABLE",
                                 checks=checks, hotfix_on_main=True)
     assert plan.classification == "REAL_CI_FAIL"
     assert plan.requeue is False
-    assert "secret-scan" in plan.detail["red"]
+    assert "secret-scan" in " ".join(plan.detail["red"])
 
 
 def test_the_queue_monitor_reads_every_check_on_the_head(monkeypatch):
@@ -285,4 +285,4 @@ def test_the_queue_monitor_reads_every_check_on_the_head(monkeypatch):
     monkeypatch.setattr(mqm.subprocess, "run",
                         lambda *a, **k: subprocess_result(json.dumps({"statusCheckRollup": rollup})))
     checks = mqm.fetch_head_check_conclusions(101, repo="example-org/example-repo")
-    assert checks["secret-scan"] == "FAILURE"
+    assert checks["secret-scan"] == ["FAILURE"]  # every run per name, so a skip cannot hide it

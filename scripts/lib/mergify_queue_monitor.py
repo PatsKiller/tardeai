@@ -22,9 +22,6 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 
 REQUIRED_CHECKS = ("cio-hardening", "agent-governance", "release-readiness", "ci-gate")
-#: Conclusions that mean a check really failed. A cancelled run counts: agent-governance uses
-#: cancel-in-progress, so a superseded attempt must not be read as "not a failure".
-RED_CONCLUSIONS = frozenset({"FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "ERROR", "STARTUP_FAILURE"})
 MERGIFY_PAYLOAD_RE = re.compile(
     r"-\*- Mergify Payload -\*-\s*(\{.*?\})\s*-\*- Mergify Payload End -\*-",
     re.DOTALL,
@@ -40,10 +37,7 @@ def _utc() -> str:
 
 
 def state_root() -> Path:
-    return Path(
-        os.environ.get("TRADEAI_STATE_ROOT")
-        or (Path.home() / "trade-ai-releases" / "persistent-state")
-    )
+    return Path(os.environ.get("TRADEAI_STATE_ROOT") or (Path.home() / "trade-ai-releases" / "persistent-state"))
 
 
 def receipts_dir(root: Path | None = None) -> Path:
@@ -119,7 +113,7 @@ def classify_dequeue(
 
     draft_skip = bool(DRAFT_SKIP_HINT.search(body)) or (
         reason == "CHECKS_FAILED"
-        and any(checks.get(c) == "SUCCESS" for c in REQUIRED_CHECKS)
+        and any("SUCCESS" in (checks.get(c) or []) for c in REQUIRED_CHECKS)
         and "draft #" in body.lower()
     )
     # Cleared CONFLICTS dequeue (now MERGEABLE) is the same resubmit class as
@@ -127,9 +121,23 @@ def classify_dequeue(
     cleared_conflict = reason in {"CONFLICTS", "CONFLICT"} and (mergeable or "").upper() == "MERGEABLE"
 
     if draft_skip or reason == "CHECKS_FAILED" or cleared_conflict:
-        # Every check, not only the required four: a red non-required check is a real failure and
-        # must never be requeued as a flake (2026-11-01, collision A: secret-scan red on #2465).
-        real_red = [c for c, concl in sorted(checks.items()) if str(concl).upper() in RED_CONCLUSIONS]
+        # Required is not enough. A PR green on the four required checks and red on `secret-scan`
+        # (PR #2465, 2026-11-01) must not be requeued to fail again: grade every check on the head.
+        from scripts.lib import pr_all_checks_green as ACG
+
+        # Grade only finished runs. A running check (empty conclusion, PENDING, IN_PROGRESS) is
+        # not a failure: grading it red paged the operator falsely and stopped the queue drain.
+        finished: list[dict[str, object]] = []
+        running = False
+        for name, states in checks.items():
+            values = states if isinstance(states, (list, tuple)) else [states]
+            for value in values:
+                state = str(value).upper()
+                if state in {"", "PENDING", "IN_PROGRESS", "QUEUED", "WAITING", "REQUESTED"}:
+                    running = True
+                    continue
+                finished.append({"name": name, "conclusion": state.lower(), "status": "completed"})
+        real_red = ACG.evaluate(finished)["failing"] if finished else []
         if real_red:
             return ActionPlan(
                 pr=0,
@@ -143,6 +151,17 @@ def classify_dequeue(
                 page_p1=True,
                 wake_claim=True,
                 detail={"red": real_red},
+            )
+        if running and not real_red:
+            return ActionPlan(
+                pr=0,
+                classification="WAIT",
+                action="wait",
+                message="Checks are still running on the head; nothing to requeue or page yet.",
+                requeue=False,
+                page_p1=False,
+                wake_claim=False,
+                detail={"reason": reason, "running": True},
             )
         if hotfix_on_main:
             kind = "cleared conflict" if cleared_conflict else "speculative draft skip (false fail)"
@@ -274,25 +293,20 @@ def fetch_head_check_conclusions(pr: int, repo: str = "PatsKiller/tardeai") -> d
             "statusCheckRollup",
         ]
     )
+    out: dict[str, str] = {}
     if proc.returncode != 0:
-        return {}
+        return out
     try:
         data = json.loads(proc.stdout or "{}")
     except json.JSONDecodeError:
-        return {}
-    rows: list[tuple[str, str, str]] = []
+        return out
     for row in data.get("statusCheckRollup") or []:
-        name = str(row.get("name") or row.get("context") or "")
-        if not name:
-            continue
-        conclusion = str(row.get("conclusion") or row.get("state") or "").upper()
-        workflow = str(row.get("workflowName") or row.get("workflow") or "")
-        rows.append((name, conclusion, workflow))
-    duplicates = {name for name, _c, _w in rows if sum(1 for n2, _c2, _w2 in rows if n2 == name) > 1}
-    out: dict[str, str] = {}
-    for name, conclusion, workflow in rows:
-        key = f"{name} [{workflow or 'unknown'}]" if name in duplicates else name
-        out[key] = conclusion
+        name = row.get("name") or ""
+        state = (row.get("conclusion") or row.get("state") or "").upper()
+        if name:
+            # Every run, per name: one skipped draft-era run listed last must not hide a failure
+            # that another run of the same name reported.
+            out.setdefault(name, []).append(state)
     return out
 
 
