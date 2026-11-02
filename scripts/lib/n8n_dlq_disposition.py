@@ -100,6 +100,12 @@ def cause(receipt: dict | None, fallback: str | None = None) -> str:
         # keys, bot tokens, DSN passwords and secrets paths (2026-10-31), so the strict one runs too.
         return redact_error_line(redact_command(stderr.strip()))[-600:]
     reason = str(receipt.get("reason") or fallback or "").strip()
+    # An exit-zero process can fail its output contract. Keep the recorded subreason:
+    # "output_unverifiable" alone hides a missing attempt receipt, rule or invalid counts.
+    verdict = receipt.get("output_verdict")
+    why = verdict.get("why") if isinstance(verdict, dict) else None
+    if reason in {"output_unverifiable", "empty_output"} and isinstance(why, str) and why.strip():
+        reason = f"{reason}: {why.strip()}"
     if reason and not re.fullmatch(r"exit[_ :\-]?\d+", reason, flags=re.I):
         return redact_error_line(redact_command(reason))[:600]
     return "Failure recorded; stderr diagnostic was not retained"
