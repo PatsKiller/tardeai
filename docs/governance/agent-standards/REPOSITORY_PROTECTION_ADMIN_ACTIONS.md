@@ -129,34 +129,50 @@ went red at `f96c6399f` and the deploy poller refused to promote until a human r
 - Adding it does not create a draft deadlock: drafts are exempt from required checks until they are
   marked ready, which is exactly when `ready_for_review` fires the scan.
 
-**The command (operator runs this; no agent may).** Read the current list into the same command so
-nothing is dropped — the PATCH replaces the whole set:
+**The command (operator runs this; no agent may).** Two traps, both verified 2026-11-02:
+
+* the PATCH **replaces** the whole set, so the current checks must be carried into it;
+* the legacy `contexts` form **drops the `app_id` binding** on every check it sends. All four live
+  checks are bound to app `15368` (GitHub Actions); re-sending them as bare contexts would leave
+  them unbound, which is a weaker protection than the one being extended. Use the `checks` form,
+  built from the live list rather than typed out here.
 
 ```bash
+# 1. Read the live set, including each check's app binding.
 gh api repos/PatsKiller/tardeai/branches/main/protection/required_status_checks \
-  --jq '{strict, contexts}'   # expect: strict false, contexts [cio-hardening, agent-governance, release-readiness, ci-gate]
+  --jq '{strict, checks: [.checks[] | {context, app_id}]}'
 
-gh api -X PATCH repos/PatsKiller/tardeai/branches/main/protection/required_status_checks --input - <<'JSON'
-{"strict": false, "contexts": ["agent-governance", "ci-gate", "cio-hardening", "release-readiness", "secret-scan"]}
-JSON
+# 2. Build the new set from the live one plus secret-scan on the same app (15368), then PATCH it.
+gh api repos/PatsKiller/tardeai/branches/main/protection/required_status_checks \
+  --jq '{strict, checks: ([.checks[] | {context, app_id}] | . + [{"context":"secret-scan","app_id":15368}] | unique_by(.context))}' \
+  > /tmp/required_checks.json
+cat /tmp/required_checks.json   # confirm five entries, all with an app_id
 
-gh api repos/PatsKiller/tardeai/branches/main/protection/required_status_checks --jq '.contexts'   # read back; must list secret-scan
+gh api -X PATCH repos/PatsKiller/tardeai/branches/main/protection/required_status_checks \
+  --input /tmp/required_checks.json
+
+# 3. Read back: every entry must still carry its app_id.
+gh api repos/PatsKiller/tardeai/branches/main/protection/required_status_checks \
+  --jq '[.checks[] | "\(.context)@\(.app_id)"]'
 ```
 
-If the merge-queue ruleset from the section above is in force, the same context must be added there
-too, because a ruleset's `required_status_checks` rule is enforced independently of classic
-protection:
+**Do not add `secret-scan` to the merge-queue ruleset.** Two independent reasons, both measured:
 
-```bash
-gh api repos/PatsKiller/tardeai/rulesets --jq '.[] | select(.name=="main-merge-queue") | .id'
-gh api -X PUT repos/PatsKiller/tardeai/rulesets/<id> --input - <<'JSON'
-{"rules": [{"type": "required_status_checks", "parameters": {
-  "strict_required_status_checks_policy": false,
-  "required_status_checks": [
-    {"context": "agent-governance"}, {"context": "ci-gate"}, {"context": "cio-hardening"},
-    {"context": "release-readiness"}, {"context": "secret-scan"}]}}]}
-JSON
-```
+1. A `PUT /rulesets/<id>` replaces the **whole** `rules` array — a payload carrying only the status
+   checks deletes the `merge_queue` rule, silently disabling the queue.
+2. `.github/workflows/secret-scan.yml` has **no `merge_group` trigger**. A queued merge is judged on
+   the `merge_group` event, so a required check that never runs there would wait until
+   `check_response_timeout_minutes` (60) and then fail every queued merge.
+
+If the merge-queue ruleset is ever put in force, adding `merge_group:` to `secret-scan.yml` is the
+precondition, and that is a `.github/**` change (held). Until then, classic branch protection is the
+only place `secret-scan` becomes required.
+
+**Known gap (not fixed here, `.github/**` is held).** `secret-scan.yml:52` skips on `mergify/*`
+speculative branches. Mergify runs the required suites there so a batch does not fail for lack of
+checks; the secret scan does not, so a batch's speculative head is not secret-scanned. The real PR
+head still is, and the gate above reads the real head — so this is a coverage note for the batch
+window, not a hole in the requirement.
 
 **Risk and fallback.** Making a check required only ever blocks a merge that is already red; it
 cannot block a green one. The fallback is the reverse PATCH without `secret-scan`. Until the
