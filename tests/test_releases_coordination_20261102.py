@@ -109,15 +109,40 @@ def test_absent_stores_are_reported_not_faked(tmp_path):
 
 
 # ------------------------------------------------------------------ ownership / publication
-def test_owner_and_local_vs_published_head(tmp_path):
+def test_owner_and_a_head_difference_is_unknown_not_unpublished(tmp_path):
+    """codex review of d14ffa86b: a stale claim head is not proof the work is unpublished."""
     claims = _claims(tmp_path, {"session": "s1", "branch": "wt/x", "task": "fix releases", "status": "claimed",
                                 "head_sha": OTHER, "heartbeat_at": "2026-11-02T17:40:00Z",
                                 "blocker": "needs grant", "next": "push"})
     work = rc.build(_ledger(tmp_path, _ci()), claims, [_pr()], now=NOW)["work"][2474]
     assert work["owner"] == "s1" and work["current_task"] == "fix releases"
-    assert work["publication_state"] == "local_only"
+    assert work["publication_state"] == "UNKNOWN"          # never inferred from a head difference alone
     assert work["local_head"] == OTHER and work["published_head"] == HEAD
+    assert work["claim_head_recorded_at"] == "2026-11-02T17:40:00Z"   # the age a reader can judge
     assert work["blockers"] == ["needs grant"]
+
+
+def test_an_equal_head_is_the_only_proof_of_publication(tmp_path):
+    claims = _claims(tmp_path, {"session": "s1", "branch": "wt/x", "task": "t", "status": "claimed",
+                                "head_sha": HEAD, "heartbeat_at": "2026-11-02T17:40:00Z"})
+    assert rc.build(_ledger(tmp_path), claims, [_pr()], now=NOW)["work"][2474]["publication_state"] == "published"
+
+
+def test_ended_and_done_claims_are_not_current_agents(tmp_path):
+    claims = _claims(tmp_path,
+                     {"session": "done1", "branch": "wt/y", "task": "old", "status": "done"},
+                     {"session": "gone1", "branch": "wt/z", "task": "older", "status": "claimed",
+                      "ended_at": "2026-11-02T10:00:00Z"},
+                     {"session": "live1", "branch": "wt/x", "task": "now", "status": "active"})
+    out = rc.build(_ledger(tmp_path), claims, [_pr()], now=NOW)
+    assert [a["session"] for a in out["agents"]] == ["live1"]
+
+
+def test_one_session_holding_two_claims_is_listed_once(tmp_path):
+    claims = _claims(tmp_path,
+                     {"session": "s1", "branch": "wt/a", "task": "one", "status": "active"},
+                     {"session": "s1", "branch": "wt/b", "task": "two", "status": "active"})
+    assert len([a for a in rc.build(_ledger(tmp_path), claims, [_pr()], now=NOW)["agents"] if a["session"] == "s1"]) == 1
 
 
 def test_two_reviewers_count_as_two_independent_sessions(tmp_path):
@@ -129,3 +154,33 @@ def test_two_reviewers_count_as_two_independent_sessions(tmp_path):
 def test_one_reviewer_twice_is_still_one_session(tmp_path):
     ledger = _ledger(tmp_path, _review(session="cc3"), _review(session="cc3", at="2026-11-02T17:05:00Z"))
     assert rc.build(ledger, _claims(tmp_path), [_pr()], now=NOW)["work"][2474]["review"]["independent_reviewers"] == 1
+
+
+# ───────────────────────────── review aggregation (codex review of d14ffa86b, 2026-11-02)
+def test_all_block_is_block(tmp_path):
+    ledger = _ledger(tmp_path, _review(session="cc3", verdict="BLOCK"), _review(session="cc6", verdict="BLOCK"))
+    assert rc.build(ledger, _claims(tmp_path), [_pr()], now=NOW)["work"][2474]["review"]["state"] == "BLOCK"
+
+
+def test_one_block_dominates_a_merge(tmp_path):
+    ledger = _ledger(tmp_path, _review(session="cc3", verdict="MERGE"), _review(session="cc6", verdict="BLOCK"))
+    assert rc.build(ledger, _claims(tmp_path), [_pr()], now=NOW)["work"][2474]["review"]["state"] == "BLOCK"
+
+
+def test_a_later_reversal_counts(tmp_path):
+    ledger = _ledger(tmp_path,
+                     _review(session="cc3", verdict="MERGE", at="2026-11-02T16:00:00Z"),
+                     _review(session="cc3", verdict="BLOCK", at="2026-11-02T17:00:00Z"))
+    review = rc.build(ledger, _claims(tmp_path), [_pr()], now=NOW)["work"][2474]["review"]
+    assert review["state"] == "BLOCK" and review["independent_reviewers"] == 1
+    assert review["all_verdicts"] == ["MERGE", "BLOCK"]
+
+
+def test_an_unknown_verdict_never_reads_as_merge(tmp_path):
+    ledger = _ledger(tmp_path, _review(session="cc3", verdict="LOOKS-GOOD"))
+    assert rc.build(ledger, _claims(tmp_path), [_pr()], now=NOW)["work"][2474]["review"]["state"] == "UNKNOWN"
+
+
+def test_ci_evidence_carries_the_contract_as_of_field(tmp_path):
+    ci = rc.build(_ledger(tmp_path, _ci(at="2026-11-02T17:30:00Z")), _claims(tmp_path), [_pr()], now=NOW)["work"][2474]["ci"]
+    assert ci["as_of"] == "2026-11-02T17:30:00Z" and ci["observed_at"] == ci["as_of"]

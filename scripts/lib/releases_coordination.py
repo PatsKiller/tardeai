@@ -125,6 +125,7 @@ def evidence_for_pr(events: Iterable[Mapping[str, Any]], pr_number: int, head_sh
             candidate = {
                 "state": state if state in CI_STATES else UNKNOWN,
                 "head_sha": row_head,
+                "as_of": _iso(row.get("observed_at") or row.get("ts")),
                 "observed_at": _iso(row.get("observed_at") or row.get("ts")),
                 "source": str(row.get("source") or UNKNOWN),
                 "workflows": list(row.get("workflows") or []),
@@ -137,15 +138,36 @@ def evidence_for_pr(events: Iterable[Mapping[str, Any]], pr_number: int, head_sh
         elif kind == CI_KIND:
             stale_ci += 1
 
-    sessions = sorted({r["reviewer_session"] for r in reviews})
+    # Latest record PER REVIEWER, then BLOCK/CHANGES dominates. A reviewer who first MERGEs and later
+    # BLOCKs must end as BLOCK; an empty or unreadable verdict must never read as MERGE (codex review of
+    # d14ffa86b, 2026-11-02: a real probe printed state=MERGE with verdicts ['BLOCK']).
+    latest: dict[str, dict[str, Any]] = {}
+    for row in reviews:
+        who = row["reviewer_session"]
+        prior = latest.get(who)
+        if prior is None or (_parse(row["observed_at"]) or datetime.min.replace(tzinfo=timezone.utc)) >= (
+                _parse(prior["observed_at"]) or datetime.min.replace(tzinfo=timezone.utc)):
+            latest[who] = row
+    effective = list(latest.values())
+    verdicts = [str(r["verdict"]).upper() for r in effective]
+    if not effective:
+        state = UNKNOWN
+    elif any(v in ("BLOCK", "CHANGES", "CHANGES_REQUESTED", "REJECT") for v in verdicts):
+        state = "BLOCK"
+    elif all(v == "MERGE" for v in verdicts):
+        state = "MERGE"
+    else:
+        state = UNKNOWN          # an unrecognised verdict is not a merge
+    sessions = sorted(latest)
     review = {
-        "state": "MERGE" if reviews else UNKNOWN,
-        "verdicts": [r["verdict"] for r in reviews],
+        "state": state,
+        "verdicts": verdicts,
+        "all_verdicts": [r["verdict"] for r in reviews],
         "reviewers": sessions,
         "independent_reviewers": len(sessions),
-        "records": reviews,
-        "head_sha": head_sha if reviews else None,
-        "as_of": _newest(r["observed_at"] for r in reviews),
+        "records": effective,
+        "head_sha": head_sha if effective else None,
+        "as_of": _newest(r["observed_at"] for r in effective),
         "source": "coordinator_ledger" if reviews else "none",
         "gap": None if reviews else ("stale_review_for_other_head" if stale_reviews else "no_review_record"),
         "evidence_class": EVIDENCE_CLASS,
@@ -176,16 +198,33 @@ def read_claims(claims_dir: Path) -> tuple[list[dict[str, Any]], Optional[str]]:
     return out, None
 
 
+#: States that mean the work is over. An ended or done claim is history, not a current agent
+#: (codex review of d14ffa86b: 257 "agents", 112 of them DONE).
+ENDED_STATES = frozenset({"merged", "done", "ended", "abandoned", "closed", "released", "complete", "completed"})
+
+
+def is_live(doc: Mapping[str, Any]) -> bool:
+    if doc.get("ended_at"):
+        return False
+    state = str(doc.get("_state") or doc.get("status") or doc.get("state") or "").strip().lower()
+    return state not in ENDED_STATES
+
+
 def agent_rows(claims: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
     rows = []
+    seen: set[str] = set()
     for doc in claims:
-        if str(doc.get("_state") or doc.get("status") or "") not in ("active", "claimed", "pr_open", "ci_green",
-                                                                     "building", "merged", "done"):
+        if not is_live(doc):
             continue
+        session = str(doc.get("session") or "")
+        key = session or str(doc.get("claim_id") or "")
+        if key in seen:            # one row per session: the newest claim it holds
+            continue
+        seen.add(key)
         rows.append({
             "session": doc.get("session"),
             "task": doc.get("task"),
-            "state": doc.get("_state") or doc.get("status"),
+            "state": doc.get("_state") or doc.get("status") or doc.get("state") or doc.get("stage"),
             "branch": doc.get("branch"),
             "pr": doc.get("pr"),
             "head_sha": doc.get("head_sha") or doc.get("logged_sha"),
@@ -215,12 +254,14 @@ def build(ledger_path: Path, claims_dir: Path, prs: Iterable[Mapping[str, Any]],
         evidence = evidence_for_pr(events, number, head)
         owner = by_branch.get(str(pr.get("branch") or ""))
         local_head = str(owner.get("head_sha") or "") if owner else ""
+        # A head difference is NOT proof of unpublished work: the claim's head is often stale (recorded
+        # hours ago) while the push has since landed. Only an equal head is provable; anything else is
+        # UNKNOWN with the claim's own head and its age exposed so a reader can judge (codex review).
+        claim_head_at = (owner or {}).get("as_of")
         if not owner:
             publication = UNKNOWN
         elif local_head and head and local_head == head:
             publication = "published"
-        elif local_head:
-            publication = "local_only"
         else:
             publication = UNKNOWN
         review, ci = evidence["review"], evidence["ci"]
@@ -229,6 +270,7 @@ def build(ledger_path: Path, claims_dir: Path, prs: Iterable[Mapping[str, Any]],
             "current_task": (owner or {}).get("task") or UNKNOWN,
             "publication_state": publication,
             "local_head": local_head or None,
+            "claim_head_recorded_at": claim_head_at,
             "published_head": head or None,
             "review": review,
             "ci": ci,
