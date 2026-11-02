@@ -1,17 +1,22 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      29.3.0
+Policy-Version:      29.4.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
-Effective-Date:      2026-11-01
-Last-Reviewed:       2026-11-01T14:30:00-05:00
+Effective-Date:      2026-11-02
+Last-Reviewed:       2026-11-02T10:50:00-05:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          29.2.1
+Supersedes:          29.3.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**29.4.0 is ACTIVE (MINOR) — every approved plan is registered once, on the server, for every vendor.** Operator,
+in-session 2026-11-02 ("build the plan registry"): §28.3 gains the rule (Claude Code through the `ExitPlanMode` hook,
+other vendors through `scripts/plan_registry.py add --vendor <vendor>` before starting; claim/branch/PR linked, steps
+ticked, an unclaimed inactive plan flagged stalled). Adds obligations only; §0, §2, §17 and role authority untouched.
 
 **29.3.0 is ACTIVE (MINOR) — draft-first PRs, stack discipline, and one merge window.** DSN-20261031-ci-load-reduction
 §4.2/§4.4/§4.5, operator-approved in session 2026-11-01 (§20; the operator chose "approve both rules" and "one window,
@@ -2488,6 +2493,11 @@ Procedures: `docs/ops/AGENT_CLAIM_BOARD.md`, `docs/ops/DELIVERY_LIFECYCLE.md`, `
 - **Every claim has a lifecycle and a worklog** (Goal, Plan, Changes, Decisions, Blockers, Status, Handoff), kept with
   `plan`, `done`, `note`, `blocker`. A claim silent 2 hours is stale; take it over only with `agent_claim.py
   takeover`. Nothing is deleted. *Cause: 2026-10-23 — lose nothing (LESSONS L28-04).*
+- **An approved plan is registered once, on the server, for every vendor.** Claude Code through the `ExitPlanMode`
+  `PostToolUse` hook (snippet in `docs/ops/PLAN_REGISTRY.md`; the repository never edits the operator's
+  `~/.claude/settings.json`); every other vendor with `scripts/plan_registry.py add --vendor <vendor>` **before
+  starting**. Link claim/branch/PR (`link`), tick steps (`step done`); an unclaimed, inactive plan is flagged stalled in
+  the coordinator inbox. *Cause: 2026-11-02 — plans lived only in the session that approved them (LESSONS L28-25).*
 - **The pre-commit gate refuses** unclaimed or foreign-held files and claims without a plan or a 2-hour worklog entry;
   `TRADEAI_CLAIM_OVERRIDE=<reason>` is logged. The coordinator logs every agent it dispatches; long sessions end with
   an emailed handoff. *Cause: 2026-10-23 — a gate is evidence (LESSONS L28-04).*
@@ -2672,6 +2682,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 29.4.0 | 2026-11-02 | ACTIVE | MINOR | Supersedes 29.3.0. §28.3 gains the plan registry: every approved plan is persisted once on the server for every vendor; Claude Code registers through the `ExitPlanMode` PostToolUse hook, every other vendor through `scripts/plan_registry.py add --vendor <vendor>` before starting; claim/branch/PR linked, steps ticked, and a plan with no claim and no activity for the configured hours flagged stalled in the coordinator inbox. Adds obligations only; §0, §2, §17 and role authority untouched. Cause: 2026-11-02 - plans lived only in the session that approved them. | operator in-session 2026-11-02 ("build the plan registry"); held-class operator merge (§25.10). Design: `docs/ops/PLAN_REGISTRY.md`. |
 | 29.3.0 | 2026-11-01 | ACTIVE | MINOR | Supersedes 29.2.1. §11 gains draft-first PRs (open every PR as a draft; mark it ready only when the work is done and adversarial review has passed), stack discipline (only the top of a stack is ready; its CI covers the whole stack) and one weekday merge window (17:30-18:30 ET in `.mergify.yml`; urgent fixes by the operator naming the PR). §28.1's merge-window bullet now states the single window. Adds obligations only; §0, §2, §17 and role authority untouched. Cause: LESSONS L11-01 (5,369 Actions runs on 2026-10-31). | operator in-session 2026-11-01 (this session: chose "approve both rules" and "one window, 17:30 ET"); held-class operator merge (§25.10). Design: `DSN-20261031-ci-load-reduction` §4.2/§4.4/§4.5. |
 | 29.2.1 | 2026-11-01 | ACTIVE | PATCH | Supersedes 29.2.0. Generated §7A source-of-truth table refreshed: `quote_extended_session` (`market_quotes_extended`, single writer `scripts/lib/writers/market_quotes_extended_writer.py`, Alpaca SIP) granted (operator §7A/§26.6, in-session 2026-11-01; store, writer, provider and schedule approved as DSN-20261031-market-risk-engine §11 items 1-2 on 2026-10-31) and listed as an active domain; no rule-text change. | operator 2026-11-01 in-session (recorded in `config/data_source_authority.json` approval) |
 | 29.2.0 | 2026-10-31 | ACTIVE | MAJOR | Supersedes 29.1.0. Renumbered 28.2.0 (#2407): ratified as 28.2.0 on 2026-10-31 before 29.0.0 merged; renumbered, plus an operator-approved citation fix (§24.12 causes back to L24-16; new lesson numbered L24-19). §24.11 gains "Broker market data and paid data feeds": scheduled host lanes may read broker MARKET-DATA endpoints only (quotes incl. extended hours, price history, option chains, market hours, movers; moomoo quotes and capital flow) through the existing token managers / OpenD session; never account, order, position-write, stop, 2FA or auth-flow endpoints; agents never read credentials or cookie files; Finviz Elite API exports AND the cookie-authenticated pages are both used, each only by its existing host lane; each new lane gets a §7A row; data-fee decisions stay operator-only. MAJOR because it widens what host lanes may read from a broker. §0 untouched. | `APPROVE_AGENTS_POLICY_29_2_0 2407 eef5607759c3e32dbfdeafe6492906f5cdca535c` (operator, in-session 2026-10-31); held-class operator merge (§25.10). Provenance: `APPROVE_AGENTS_POLICY_28_2_0 2407 cdb7802ccd58ac976f8fdbbc740a0b8dc18655ef` (operator, in-session 2026-10-31, ratified as 28.2.0 before 29.0.0 merged; renumbered only, no rule-text change). |
