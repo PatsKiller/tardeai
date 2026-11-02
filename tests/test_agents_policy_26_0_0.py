@@ -33,7 +33,10 @@ VH = AGENTS.index("\n# Version history")
 BINDING = AGENTS[:VH]
 #: Binding-text ceiling. 26.0.0 measured well under it; raising it is a PR that says why (version policy).
 #: 29.0.0: 28.0.0 (#2334, 2597 lines) and the workspace-lifecycle rules (#2311, 2599 lines) each fit alone; together 2633.
-MAX_BINDING_LINES = 2650
+#: 29.3.0: three §11 rules (draft-first, stack top, one merge window) add 18 binding lines to main's 2649. Their
+#: measurements, the 5,369-run evidence and the rollout live in LESSONS L11-01 and DSN-20261031-ci-load-reduction,
+#: not here. 2667 measured; this ceiling is that plus three lines of headroom.
+MAX_BINDING_LINES = 2670
 
 
 def _control() -> dict[str, str]:

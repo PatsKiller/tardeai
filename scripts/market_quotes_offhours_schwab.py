@@ -7,7 +7,8 @@ operator on PR #2407 (ratify commit f060c2e78). While off, every live invocation
 Schwab or database module is imported.
 
 What it reads: GET ``/marketdata/v1/quotes`` only (the host in ``schwab.marketdata_base_url``; any other URL is
-refused), with the access token from the Schwab token manager's public read API (``get_access_token``). It does not
+refused), with the stored access token from the Schwab token manager's public read API (``health`` then
+``get_access_token``, only while the access token is fresh: this lane never refreshes a token). It does not
 import ``schwab_transport`` (the module that also carries the order surface), never touches an account, order, stop,
 2FA or auth-flow endpoint, and never reads a credential file itself. ``config/schwab_access_mode.yaml`` must allow
 reads. Rows go to ``market_quotes_extended`` (feed ``schwab``) through its single writer
@@ -56,14 +57,20 @@ def live_fetch(symbols: list[str], cfg: dict) -> dict:
         sam.log_skip("market_quotes_offhours_schwab")
         return {"_status": sam.PAUSED_STATUS, "_detail": f"schwab_access_mode={sam.mode()}"}
     import requests
-    import schwab_token_manager as tm  # public read API only: canonical_token_key, get_access_token
+    import schwab_token_manager as tm  # public read API only: canonical_token_key, health, get_access_token
 
     url = marketdata_url(cfg)
     key = tm.canonical_token_key()
+    # This lane never refreshes a token. get_access_token() refreshes a stale access token when the operator has
+    # armed HTTP refresh, and that path loads the Schwab app credentials; so the lane reads the stored token only
+    # while health() says it is fresh, and otherwise fails closed and leaves refresh to the token manager's owner.
+    if key and not tm.health(key).get("access_fresh"):
+        return {"_status": "no_token", "_detail": "access token not fresh; this lane never refreshes (fail closed)"}
     token = tm.get_access_token(key) if key else None
     if not token:
         return {"_status": "no_token", "_detail": "token manager returned no access token (fail closed)"}
     out: dict = {}
+    provider_errors: list = []  # per-batch invalid-symbol reports: a later batch must never erase an earlier one
     size = int((cfg.get("schwab") or {}).get("batch_size", 100))
     batches, failed = 0, []
     for i in range(0, len(symbols), size):
@@ -85,7 +92,12 @@ def live_fetch(symbols: list[str], cfg: dict) -> dict:
         if not isinstance(body, dict):
             failed.append({"batch": i // size, "http_status": r.status_code, "error": "body is not an object"})
             continue
+        errs = body.pop("errors", None) if "errors" in body else None
         out.update(body)
+        if errs:
+            provider_errors.append(errs)
+    if provider_errors:  # the receipt reports the union, in batch order; one batch keeps the provider's own shape
+        out["errors"] = provider_errors[0] if len(provider_errors) == 1 else provider_errors
     # review of #2416 F5: a run where every batch failed is an error, never "ok with 0 rows"
     if batches and len(failed) == batches:
         return {"_status": "http_error", "_detail": f"all {batches} Schwab quote batch(es) failed", "_failed": failed}

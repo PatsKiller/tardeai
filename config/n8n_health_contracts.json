@@ -30139,9 +30139,9 @@
       "target_reason": "stage:canary",
       "stage": "canary",
       "purpose": {
-        "text": "Weekly (Sun 04:00 ET), evaluate the disk-hygiene rules (git clones/worktrees, release archive keep-N, optional caches, hard never-touch list) and write a DiskHygieneManifest@v1 of candidates with size and rule evidence plus the excluded-with-reason set. Deletes nothing: --apply is operator-only and refuses under the executor (AGENTS.md \u00a723.14).",
+        "text": "Hourly (:17 ET) n8n fire with --standing --apply --scheduled: the day's full run at/after 04:00 ET and a pressure run whenever used% > 80, both re-running to <= 75% (max 5 passes). Collects fresh evidence, plans and applies only the reviewed rules S/T/W/C/R (worktrees archived before removal), <=40GiB and <=150 items per pass, <=2h exact rules/manifest SHA binding. Every run is digested to the operator.",
         "business_function": "platform-ops",
-        "source": "scripts/disk_hygiene.py; config/disk_hygiene_rules.json; operator 2026-10-18"
+        "source": "scripts/disk_hygiene.py; config/disk_hygiene_rules.json; operator 2026-10-18 and 2026-10-31"
       },
       "owner": "platform",
       "connects_to": [
@@ -30186,108 +30186,80 @@
           "kind": "host",
           "direction": "read",
           "source": "rule evidence"
+        },
+        {
+          "name": "GitHub open PRs (sanctioned GET reader), coordination claims/worklogs/history, proc cwd/fds",
+          "kind": "host",
+          "direction": "read",
+          "source": "scripts/disk_hygiene.py collect_standing_evidence; unknown/refused evidence holds candidates"
+        },
+        {
+          "name": "reviewed A/S/W removal path, durable progress and per-run result reports",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "scripts/disk_hygiene.py sole scoped removal implementation; enabled only after operator review"
         }
       ],
       "healthy": [
         {
-          "check": "last_live_run_done",
-          "text": "every dispatcher fire of this lane ends RUN_DONE in mode live (run ids d:disk-hygiene:live:<slot>)"
+          "check": "bound_result",
+          "text": "Fresh manifest, rules SHA, initial evidence and current per-item evidence agree; native run_id-bound v2 report is written, even for zero eligible items."
         },
         {
-          "check": "output_advanced",
-          "text": "LaneRunReceipt data/runtime/disk-hygiene_last.json ok_at advances on each successful live run"
+          "check": "durable_path_receipts",
+          "text": "Before each removal a durable pending record exists; after removal its measured bytes/rule/result are durably recorded; unresolved pending state is not successful removal proof."
         },
         {
-          "check": "fresh",
-          "text": "receipt ok_at is within 336.0 h (2x of expected_cadence_hours 168.0)"
-        },
-        {
-          "check": "duration_within_baseline",
-          "text": "duration <= 1440.0 s (80% of timeout_s 1800)"
-        },
-        {
-          "check": "dry_run_writes_nothing",
-          "text": "when dispatched dry_run (relay demotion, stage clamp, rollback), the state/manifest files and the receipt are unchanged (prints only)"
+          "check": "monitor_queued",
+          "text": "Per-rule planned/applied and eligible-unapplied bytes recorded; run-correlated digest intent queued by disk_usage_monitor. Operator delivery independently NOT_MEASURED."
         },
         {
           "check": "output_produced",
-          "text": "a live run reports produced_count = 1 (the manifest written)"
-        },
-        {
-          "check": "deletes_nothing",
-          "text": "a live (--plan) run removes no path: the manifest's items are still on disk after the run"
+          "text": "every live fire's LaneRunReceipt@v2 has produced_count >= 1 (a standing result report) or empty_reason nothing_due (an hourly fire at or below pressure.trigger_pct outside the day's full run); any other empty output is RUN_FAILED (expected_output)"
         }
       ],
       "degraded": [
         {
-          "check": "late",
-          "text": "output_signal older than 336.0 h but younger than 504.0 h (2x-3x cadence)"
+          "check": "eligible_work_held",
+          "text": "Cap/revalidation holds eligible planned work; unknown size is NOT_MEASURED. Protected/recovery-point bytes are separate."
         },
         {
-          "check": "slow",
-          "text": "duration above 1440.0 s"
-        },
-        {
-          "check": "retried",
-          "text": "a run needed attempt > 1 (retry_policy transient-2) or ended RUN_SKIPPED_LOCK in two consecutive slots"
-        },
-        {
-          "check": "unmeasured",
-          "text": "totals.unmeasured_candidates > 0 (du timed out on a candidate)"
+          "check": "alert_thresholds",
+          "text": "Disk used>85%; or eligible planned-unapplied>10GiB for two distinct known durable run IDs. Monitor crossing is measured independently of after-apply sample."
         }
       ],
       "failed": [
         {
           "check": "run_failed",
-          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
-        },
-        {
-          "check": "no_receipt",
-          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
-        },
-        {
-          "check": "stale",
-          "text": "output_signal older than 504.0 h (3x cadence)"
-        },
-        {
-          "check": "breaker_or_dlq",
-          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+          "text": "RUN_FAILED/TIMEOUT/REFUSED; incomplete source/PR/ref evidence; changed rules/manifest/kill switch; removal/journal/report failure. Never report failure as zero-removal success."
         },
         {
           "check": "empty_output",
-          "text": "an exit-0 live run produced below min_produced 1, or skipped for a fatal reason ['no_runner', 'dependency_unavailable'] -> RUN_FAILED empty_output"
-        },
-        {
-          "check": "output_unverifiable",
-          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
-        },
-        {
-          "check": "deleted_something",
-          "text": "any path removed by a dispatcher run (never allowed)"
+          "text": "an exit-0 live run produced below min_produced 1 without the allowed empty reason nothing_due, or skipped for a fatal reason ['no_runner', 'dependency_unavailable'] -> RUN_FAILED empty_output"
         }
       ],
       "baseline": {
-        "freshness_degraded_after_h": 336.0,
-        "freshness_failed_after_h": 504.0,
-        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
-        "timeout_s": 1800,
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0,
+        "freshness_rule": "the full run is daily; below-threshold fires also write the receipt, so a receipt older than 2 days is degraded, 3 days failed",
+        "timeout_s": 3600,
         "class": "hygiene",
-        "computed_on": "2026-10-18",
+        "computed_on": "2026-10-31",
         "basis": "CLASS_DEFAULT_PROVISIONAL",
-        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "source": "PROPOSED 2x/3x of max48h native ET cadence; duration1440s/timeout1800s retained provisionally. No empirical acceptance asserted.",
         "runs_considered": 0,
         "duration_degraded_above_s": 1440.0
       },
       "alerting": {
-        "lane_severity": "Low",
-        "severity_basis": "lane_registry.json row severity (a missed weekly plan only delays the operator's review; nothing is deleted by this lane)",
+        "lane_severity": "Medium",
+        "severity_basis": "PROPOSED bounded cleanup and incomplete-source/receipt failures; direct sends remain forbidden; monitor host intent queues DIGEST/P2.",
         "failed": {
-          "siem_severity": "INFO",
-          "notifier_priority": "P3"
+          "siem_severity": "WARNING",
+          "notifier_priority": "P2"
         },
         "degraded": {
-          "siem_severity": "INFO",
-          "notifier_priority": "P3"
+          "siem_severity": "WARNING",
+          "notifier_priority": "P2"
         },
         "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends). Never PAGE: the P1 path does not depend on n8n (AGENTS.md \u00a724.1).",
         "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
@@ -30306,13 +30278,13 @@
           "bash docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh proof"
         ],
         "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
-        "expected_output_basis": "expected_output derived 2026-10-18 from scripts/disk_hygiene.py lane_output(): produced = 1 manifest written per plan run (zero candidates is still a manifest); unreadable rules / home or a failed write is dependency_unavailable (fatal)."
+        "expected_output_basis": "Native disk-hygiene v2 receipt:produced_count1 means durable result report written, not that all planned bytes were removed. Failure/refusal reports produced_count0."
       },
-      "review_by": "2026-10-25",
-      "state_note": "Owner REVIEWED 2026-10-18 for canary (operator 2026-10-18; precedent n8n-comms-intent-consumer). Requires TRADEAI_N8N_RELAY_LIVE_LANES to include disk-hygiene after promote (docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh relay). Deletes nothing: --apply stays operator-gated (\u00a723.14).",
+      "review_by": "2026-11-07",
+      "state_note": "Operator approved the standing sweep 2026-10-31 (direct session); the previous plan-only review is kept as history.",
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
-        "unit": "hygiene manifests written",
+        "unit": "standing hygiene result reports written",
         "rule": "min_produced",
         "min_produced": 1,
         "window_h": null,
@@ -30321,7 +30293,9 @@
           "no_runner",
           "dependency_unavailable"
         ],
-        "empty_allowed_reasons": [],
+        "empty_allowed_reasons": [
+          "nothing_due"
+        ],
         "evidence": [
           {
             "kind": "receipt_field",
@@ -30332,6 +30306,213 @@
           "run_state": "RUN_FAILED",
           "reason": "empty_output",
           "notifier_priority": "P2"
+        }
+      },
+      "reviewed_by": "John (repository operator, GitHub PatsKiller), direct session 2026-10-31",
+      "reviewed_at": "2026-10-31T14:30:00+00:00",
+      "previous_plan_review": {
+        "schema": "N8nHealthContract@v1",
+        "id": "disk-hygiene",
+        "kind": "lane",
+        "workflow_id": "dispatcher",
+        "status": "REVIEWED",
+        "target_reason": "stage:canary",
+        "stage": "canary",
+        "purpose": {
+          "text": "Weekly (Sun 04:00 ET), evaluate the disk-hygiene rules (git clones/worktrees, release archive keep-N, optional caches, hard never-touch list) and write a DiskHygieneManifest@v1 of candidates with size and rule evidence plus the excluded-with-reason set. Deletes nothing: --apply is operator-only and refuses under the executor (AGENTS.md \u00a723.14).",
+          "business_function": "platform-ops",
+          "source": "scripts/disk_hygiene.py; config/disk_hygiene_rules.json; operator 2026-10-18"
+        },
+        "owner": "platform",
+        "connects_to": [
+          {
+            "name": "n8n -> run relay (port 18092) -> gateway coordination/run -> tradeai-n8n-run-executor",
+            "kind": "service",
+            "direction": "calls",
+            "source": "AGENTS.md \u00a723.3"
+          },
+          {
+            "name": "$PY scripts/disk_hygiene.py",
+            "kind": "runner",
+            "direction": "calls",
+            "source": "config/n8n_run_allowlist.json command"
+          },
+          {
+            "name": "/tmp/tradeai_disk_hygiene.lock",
+            "kind": "lock",
+            "direction": "read_write",
+            "source": "config/n8n_run_allowlist.json lock (flock)"
+          },
+          {
+            "name": "data/runtime/disk-hygiene_last.json",
+            "kind": "receipt",
+            "direction": "write",
+            "source": "LaneRunReceipt / allowlist output_signal"
+          },
+          {
+            "name": "config/disk_hygiene_rules.json",
+            "kind": "config",
+            "direction": "read",
+            "source": "every threshold, path and keep-count, re-read every run"
+          },
+          {
+            "name": "data/runtime/disk_hygiene/disk_hygiene_manifest_<ts>.json + _latest.json",
+            "kind": "store",
+            "direction": "write",
+            "source": "DiskHygieneManifest@v1 (atomic replace)"
+          },
+          {
+            "name": "git (read-only, GIT_OPTIONAL_LOCKS=0), du, crontab -l, systemd unit files, /proc/*/cwd",
+            "kind": "host",
+            "direction": "read",
+            "source": "rule evidence"
+          }
+        ],
+        "healthy": [
+          {
+            "check": "last_live_run_done",
+            "text": "every dispatcher fire of this lane ends RUN_DONE in mode live (run ids d:disk-hygiene:live:<slot>)"
+          },
+          {
+            "check": "output_advanced",
+            "text": "LaneRunReceipt data/runtime/disk-hygiene_last.json ok_at advances on each successful live run"
+          },
+          {
+            "check": "fresh",
+            "text": "receipt ok_at is within 336.0 h (2x of expected_cadence_hours 168.0)"
+          },
+          {
+            "check": "duration_within_baseline",
+            "text": "duration <= 1440.0 s (80% of timeout_s 1800)"
+          },
+          {
+            "check": "dry_run_writes_nothing",
+            "text": "when dispatched dry_run (relay demotion, stage clamp, rollback), the state/manifest files and the receipt are unchanged (prints only)"
+          },
+          {
+            "check": "output_produced",
+            "text": "a live run reports produced_count = 1 (the manifest written)"
+          },
+          {
+            "check": "deletes_nothing",
+            "text": "a live (--plan) run removes no path: the manifest's items are still on disk after the run"
+          }
+        ],
+        "degraded": [
+          {
+            "check": "late",
+            "text": "output_signal older than 336.0 h but younger than 504.0 h (2x-3x cadence)"
+          },
+          {
+            "check": "slow",
+            "text": "duration above 1440.0 s"
+          },
+          {
+            "check": "retried",
+            "text": "a run needed attempt > 1 (retry_policy transient-2) or ended RUN_SKIPPED_LOCK in two consecutive slots"
+          },
+          {
+            "check": "unmeasured",
+            "text": "totals.unmeasured_candidates > 0 (du timed out on a candidate)"
+          }
+        ],
+        "failed": [
+          {
+            "check": "run_failed",
+            "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+          },
+          {
+            "check": "no_receipt",
+            "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+          },
+          {
+            "check": "stale",
+            "text": "output_signal older than 504.0 h (3x cadence)"
+          },
+          {
+            "check": "breaker_or_dlq",
+            "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+          },
+          {
+            "check": "empty_output",
+            "text": "an exit-0 live run produced below min_produced 1, or skipped for a fatal reason ['no_runner', 'dependency_unavailable'] -> RUN_FAILED empty_output"
+          },
+          {
+            "check": "output_unverifiable",
+            "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
+          },
+          {
+            "check": "deleted_something",
+            "text": "any path removed by a dispatcher run (never allowed)"
+          }
+        ],
+        "baseline": {
+          "freshness_degraded_after_h": 336.0,
+          "freshness_failed_after_h": 504.0,
+          "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+          "timeout_s": 1800,
+          "class": "hygiene",
+          "computed_on": "2026-10-18",
+          "basis": "CLASS_DEFAULT_PROVISIONAL",
+          "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+          "runs_considered": 0,
+          "duration_degraded_above_s": 1440.0
+        },
+        "alerting": {
+          "lane_severity": "Low",
+          "severity_basis": "lane_registry.json row severity (a missed weekly plan only delays the operator's review; nothing is deleted by this lane)",
+          "failed": {
+            "siem_severity": "INFO",
+            "notifier_priority": "P3"
+          },
+          "degraded": {
+            "siem_severity": "INFO",
+            "notifier_priority": "P3"
+          },
+          "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends). Never PAGE: the P1 path does not depend on n8n (AGENTS.md \u00a724.1).",
+          "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+        },
+        "remediation": {
+          "catalogue_entry": false,
+          "diagnosis_excluded": false,
+          "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after the allowlist PR"
+        },
+        "evidence": {
+          "receipt": "data/runtime/disk-hygiene_last.json",
+          "monitor": "data/runtime/disk_hygiene/disk_hygiene_manifest_latest.json totals",
+          "verify": [
+            "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='disk-hygiene' ORDER BY requested_at DESC LIMIT 10\"",
+            "stat / jq the receipt: data/runtime/disk-hygiene_last.json",
+            "bash docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh proof"
+          ],
+          "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+          "expected_output_basis": "expected_output derived 2026-10-18 from scripts/disk_hygiene.py lane_output(): produced = 1 manifest written per plan run (zero candidates is still a manifest); unreadable rules / home or a failed write is dependency_unavailable (fatal)."
+        },
+        "review_by": "2026-10-25",
+        "state_note": "Owner REVIEWED 2026-10-18 for canary (operator 2026-10-18; precedent n8n-comms-intent-consumer). Requires TRADEAI_N8N_RELAY_LIVE_LANES to include disk-hygiene after promote (docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh relay). Deletes nothing: --apply stays operator-gated (\u00a723.14).",
+        "expected_output": {
+          "schema": "N8nExpectedOutput@v1",
+          "unit": "hygiene manifests written",
+          "rule": "min_produced",
+          "min_produced": 1,
+          "window_h": null,
+          "produced_field": "produced_count",
+          "fatal_skip_reasons": [
+            "no_runner",
+            "dependency_unavailable"
+          ],
+          "empty_allowed_reasons": [],
+          "evidence": [
+            {
+              "kind": "receipt_field",
+              "ref": "data/runtime/disk-hygiene_last.json produced_count (LaneRunReceipt@v2 output fields; the executor reads the immutable attempt copy data/runtime/lane_attempts/disk-hygiene/<run_id>.json; its output_evidence names the file data/runtime/disk_hygiene/disk_hygiene_manifest_latest.json)"
+            }
+          ],
+          "on_violation": {
+            "run_state": "RUN_FAILED",
+            "reason": "empty_output",
+            "notifier_priority": "P2"
+          }
         }
       }
     },
@@ -34715,40 +34896,6 @@
   }
   ],
   "pending_changes": {
-    "disk-hygiene-standing-apply-20261024": {
-      "status": "DRAFT",
-      "id": "disk-hygiene",
-      "operative": false,
-      "reviewer": null,
-      "reviewed_at": null,
-      "amendment": {
-        "status": "DRAFT_PENDING_REVIEW",
-        "old_review": "Old plan-only REVIEWED contract does not approve new behavior; preserve its provenance as history, never copy reviewer identity to this scope",
-        "purpose": "Native ET schedule collects fresh evidence, plans and conditionally applies only A/S/W, <=2h rules+manifest SHA binding and <=40GiB cap; manual grant retained; standing disabled until operator review",
-        "healthy": [
-          "expected native trigger -> exact host run_id/code_sha receipt -> fresh bound manifest -> per-item current checks -> measured planned/applied bytes per rule -> durable report -> monitor intent queued",
-          "zero candidates can be healthy only with complete measured evidence; zero removed after failure is failed",
-          "native LaneRunReceipt@v2 lane_id=disk-hygiene; produced_count1 means report written, not every planned byte reclaimed"
-        ],
-        "degraded": [
-          "caps/revalidation leave eligible planned-unapplied bytes",
-          "unmeasured size/activity/host/PR/coordination evidence is not zero"
-        ],
-        "failed": [
-          "RUN_FAILED/TIMEOUT/REFUSED",
-          "rules kill switch/hash or manifest/evidence changed/stale",
-          "removal failure or receipt write failure"
-        ],
-        "alerts": [
-          "monitor existing host intent path; DIGEST/P2 proposed, never P3-never-notify or direct send",
-          "one run-correlated digest intent per durable hygiene run; current transport may fan-in before operator delivery",
-          "disk used>85 on after-attempt sample OR later monitor crossing; eligible planned-unapplied>10GiB for two distinct known runs",
-          "queue/state failures retain run for retry; delivery not proven by queued intent"
-        ],
-        "cadence": "Max48h across ET/DST schedule; use applicable 48/96/144h baseline proposal, never retained weekly168/336/504h literals; empirical acceptance remains NOT_MEASURED"
-      },
-      "requires": "New apply-scope review; existing operative REVIEWED plan contract is preserved byte-for-byte as an object"
-    },
     "w8-writer-restoration-20261024": {
       "status": "DRAFT",
       "operative": false,

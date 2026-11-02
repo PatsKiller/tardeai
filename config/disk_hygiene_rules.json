@@ -439,21 +439,24 @@
     }
   },
   "standing_apply": {
-    "enabled": false,
+    "enabled": true,
+    "approved_by": "John (repository operator, GitHub PatsKiller), direct session 2026-10-31",
+    "_rules_why": "2026-10-31: A dropped. ~/db_backups is owned by scripts/backup_enforcer.py (AGENTS.md §0 rule 6 (d), §24.15: one dump on host, N+1 on Drive, removed only after Drive verification); rule A's 7-daily/4-Sunday archive keep contradicted it.",
     "rules": [
-      "A",
       "S",
       "T",
-      "W"
+      "W",
+      "C",
+      "R"
     ],
     "manifest_max_age_hours": 2,
     "max_bytes_per_run": 42949672960,
     "max_items_per_run": 150,
     "approval": {
-      "status": "PENDING_OPERATOR_REVIEW",
-      "approved_by": null,
-      "approved_at": null,
-      "source": "Direct-session operator metadata must be recorded by root after legitimate config handoff; peer relay is not ratification."
+      "status": "APPROVED",
+      "approved_by": "John (repository operator, GitHub PatsKiller), direct session 2026-10-31",
+      "approved_at": "2026-10-31T14:30:00+00:00",
+      "source": "Operator, direct session (AGENTS.md §20, recorded verbatim): 'Make sure everything merges and goes live complete. I need to also ensure that this is a repeatable process that's automated so we never get here again, and that it runs and when it fails I'm alerted with permissions to delete the same class of items you just deleted.' then 'Okay, still run the cleanup. I need to know what's going to run this daily, weekly, etc., and make sure it covers everything we've learned from this exercise. I need to be alerted on when it runs.' then 'Ok' to the plan (rules S/T/W/C/R daily 04:00 ET, pressure re-run at >=80% to <=75%, every run digested). The same classes were removed by hand on 2026-10-30/31: abandoned worktrees (archived first), stale ~/.cache/agent-tmp scratch. Final activation is the operator's per-PR held merge tap on this PR."
     },
     "archive": {
       "path": "~/db_backups/archive",
@@ -486,6 +489,28 @@
       "bundle_dir": "~/trade-ai-releases/persistent-state/data/runtime/disk_hygiene/bundles",
       "never": "symlink, or an entry equal to / inside / containing a never-touch or protected path"
     },
+    "abandoned_worktree": {
+      "_why": "Rule C (2026-10-31, AGENTS.md §24.14; DSN-20261030-workspace-lifecycle P2-T1): on 2026-10-30, 332 abandoned linked worktrees held 59.6 GiB that rule W (clean + merged only) never takes. Read by scripts/disk_hygiene.py (load_rules validates; standing_results applies). A linked worktree rule W does not take is a candidate only when: owned repo; not protected, canonical or under ~/trade-ai-releases; no open PR on its branch; its path in no live claim/worklog, crontab, unit, pointer or process cwd/fd; not `git worktree lock`ed; newest activity of the tree and its gitdir older than idle_days; untracked non-ignored bytes <= max_archive_mb and no untracked nested repo; no REAL credential-like file, untracked or ignored (symlinks are fine). Closed by archive-then-remove (scripts/lib/workspace_closeout.py): HEAD + tracked changes + untracked non-ignored files are committed with a temporary index to <archive_ns>/<slug>-<hash> (never pushed), then `git worktree remove --force`; branches and refs are never deleted. Restore: git worktree add <path> <ref>. archive_retention_days feeds rule X, which is plan-only (reported, never removed). Operator-only values (§17).",
+      "idle_days": 7,
+      "max_archive_mb": 200,
+      "archive_ns": "refs/archive/closeout",
+      "archive_retention_days": 90
+    },
+    "release_reclaim": {
+      "_why": "Rule R (2026-10-31, AGENTS.md §24.12 (b)/§24.14; = DSN-20261030-disk-recovery-P2-T1): release prepares add ~32 GiB per 48 h. Reuses evaluate_releases on `root`: holds CURRENT and every pointer target, the previous served release, the newest max(root keep_newest, keep_newest), anything referenced by a crontab line, unit, pointer, live claim/worklog or process cwd/fd, everything while the global release lock (`lock_path`, flock) is held or CURRENT cannot be resolved, and any release whose top level holds a REAL credential-like file (a copied .env.* backup; templates such as .env.example and .env symlinks are fine). Removed by rmtree (a release is rebuildable from its commit). Operator-only values (§17).",
+      "root": "~/trade-ai-releases/portfolio-server",
+      "keep_newest": 3,
+      "lock_path": "~/trade-ai-releases/persistent-state/data/runtime/release_window/.lock"
+    },
+    "pressure": {
+      "_why": "Pressure loop (2026-10-31, AGENTS.md §24.14; DSN-20261030-workspace-lifecycle P2-T4): disk_hygiene.py --standing --apply --only-if-above <trigger_pct> --until-target <target_pct> re-collects evidence, re-plans and re-applies until used% <= target_pct, a pass removes nothing, or max_passes; the final report carries ended_above_alert_pct and the top held reasons by bytes for the alert. Operator-only values (§17).",
+      "trigger_pct": 80,
+      "target_pct": 75,
+      "max_passes": 5,
+      "alert_pct": 85,
+      "daily_hour_et": 4,
+      "_schedule": "2026-10-31: one n8n lane `disk-hygiene` fires hourly with --standing --apply --scheduled. The day's full run happens at the first fire at/after daily_hour_et (ET) and is recorded in <state>/data/runtime/disk_hygiene/disk_hygiene_daily_latest.json whatever its outcome; every other fire plans nothing unless used% > trigger_pct. Both re-run to target_pct. Every run's report reaches the operator through disk_usage_monitor (disk_hygiene_digest; disk_hygiene_alert on refusal or >85% after)."
+    },
     "coordination_root": "~/trade-ai-releases/persistent-state/data/coordination",
     "github_repo": "PatsKiller/tardeai",
     "monitor": {
@@ -495,7 +520,6 @@
       "planned_unapplied_bytes_gt": 10737418240,
       "consecutive_distinct_runs": 2
     },
-    "approved_by": null,
     "max_gb_per_run": 40,
     "byte_unit": "GiB"
   },

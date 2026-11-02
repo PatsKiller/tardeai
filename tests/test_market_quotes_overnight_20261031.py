@@ -202,7 +202,8 @@ def test_overnight_rows_carry_the_next_trading_date_and_a_proven_reference_or_no
         assert r["reference_close"] is None and r["reference_date"] is None and r["change_pct"] is None
         assert r["reference_basis"] == "none_level_only_no_dated_reference_in_payload" and r["level_only_reason"]
     assert "2026-10-29" in by["/NQ"]["level_only_reason"]
-    assert skipped["$SPX"]["reason"] == "stale_trade" and skipped["/RTY"]["reason"] == "not_a_quote"
+    # 'not entitled' is Schwab's provider-error block, named as such (never silently a symbol that returned no quote)
+    assert skipped["$SPX"]["reason"] == "stale_trade" and skipped["/RTY"]["reason"] == "provider_error"
 
 
 def test_undated_reference_is_never_trusted(ocfg):
@@ -316,12 +317,24 @@ def _fake_fetch_env(monkeypatch, statuses):
     req.get = lambda *a, **k: (calls.append(k["params"]["symbols"]), Resp(statuses[len(calls) - 1]))[1]
     tm = types.ModuleType("schwab_token_manager")
     tm.canonical_token_key = lambda: "k"
+    tm.health = lambda key: {"access_fresh": True}
     tm.get_access_token = lambda key: "fake-token"
     tm.is_auth_failure = lambda text: False
     tm.record_auth_failure = lambda *a, **k: None
     monkeypatch.setitem(sys.modules, "requests", req)
     monkeypatch.setitem(sys.modules, "schwab_token_manager", tm)
     return ent, calls
+
+
+def test_stale_access_token_fails_closed_without_refresh(ocfg, monkeypatch):
+    """The lane never refreshes: a stale access token stops before get_access_token (which can refresh) and before
+    any Schwab request."""
+    ent, calls = _fake_fetch_env(monkeypatch, [200])
+    tm = sys.modules["schwab_token_manager"]
+    monkeypatch.setattr(tm, "health", lambda key: {"access_fresh": False, "refresh_valid": True})
+    monkeypatch.setattr(tm, "get_access_token", lambda key: (_ for _ in ()).throw(AssertionError("refresh path")))
+    out = ent.live_fetch(["/ES"], ocfg)
+    assert out["_status"] == "no_token" and "never refreshes" in out["_detail"] and calls == []
 
 
 def test_all_schwab_batches_failing_is_an_error_not_ok(ocfg, monkeypatch, capsys):
@@ -373,7 +386,7 @@ def test_dry_run_entry_on_the_fixture_writes_nothing(tmp_path):
     assert p.returncode == 0, p.stderr
     out = json.loads(p.stdout)
     assert out["status"] == "dry_run" and out["dry_run"] is True and out["inserted"] == 0
-    assert out["config_enabled"] is False and out["window"] == "futures_overnight"
+    assert out["config_enabled"] is True and out["window"] == "futures_overnight"
     assert sorted((r["symbol"], r["session"]) for r in out["rows"]) == sorted(
         (s, "overnight") for s in ("/ES", "/NQ", "/YM", "QQQ", "SPY"))
     assert list(tmp_path.iterdir()) == []

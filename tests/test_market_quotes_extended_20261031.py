@@ -201,11 +201,22 @@ def test_reference_close_is_never_taken_from_an_older_session():
     assert all("2026-10-29" in r["reason"] for r in refused)
 
 
-def test_apply_refuses_until_the_domain_is_promoted(tmp_path):
+def test_apply_refuses_until_the_domain_is_promoted(tmp_path, monkeypatch):
     bars, daily = _fx()
     saved = tmp_path / "b.json"
     saved.write_text(json.dumps({"bars": bars, "daily": daily}))
-    assert mqe.domain_promoted() is False  # this PR adds the row under proposed_domains
+    # The real registry granted the domain on 2026-11-01; the gate is proven on a copy with the row back in
+    # proposed_domains, and the real file must now read as promoted.
+    assert mqe.domain_promoted() is True
+    reg = json.loads(mqe.AUTHORITY_PATH.read_text(encoding="utf-8"))
+    row = next(r for r in reg["domains"] if r["domain"] == mqe.DOMAIN)
+    reg["domains"].remove(row)
+    reg["proposed_domains"].append(row)
+    proposed = tmp_path / "authority.json"
+    proposed.write_text(json.dumps(reg))
+    real = mqe.domain_promoted
+    assert real(proposed) is False
+    monkeypatch.setattr(mqe, "domain_promoted", lambda path=proposed: real(path))
     try:
         mqe.run(apply=True, bars_json=str(saved), now=datetime(2026, 10, 29, 18, 15, tzinfo=ET), conn=_Conn())
     except SystemExit as exc:

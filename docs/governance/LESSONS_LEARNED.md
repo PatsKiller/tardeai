@@ -1492,3 +1492,13 @@ resetting it? We need to build in a system that the system can automatically do 
 make an amendment." **Rule.** §25.10 (28.1.0): a fail-closed restart list (named units only, WorkingDirectory-bound,
 installed, §23.14 tokens over name/argv/env, approval and guard daemons excluded or session-gated, cap), each cwd read
 back and receipted, a P1 on failure, and the deploy continues.
+
+### L11-01 · Every push ran two full suites and the CI queue saturated (2026-10-31)
+**What happened.** 5,369 GitHub Actions runs started on 2026-10-31. Mergify's blanket "keep PRs up to date" rule pushed
+catch-up commits to every open PR after each merge (2,913 runs, 54%); agents opened ready PRs and pushed several times
+each (1,775, 33%); CodeQL default setup scanned every PR push (392, 7%). One PR push cost 9-10 workflows, about 36 jobs
+and about 110 runner-minutes; two near-identical 12-job sharded suites were about 97 of those minutes, and 269 of 444
+full-suite PR runs were cancelled by a newer push. Main's 12-second gating job then waited 48-104 minutes for a runner,
+merges stalled, and the operator cancelled runs by hand. **Rule.** §11 (29.3.0): open every PR as a draft and mark it
+ready only when the work is done and adversarial review has passed; only a stack's top is marked ready; approved PRs
+merge in one weekday window (17:30-18:30 ET). Design and measurements: `DSN-20261031-ci-load-reduction`.
