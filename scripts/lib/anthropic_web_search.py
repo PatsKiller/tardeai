@@ -6,6 +6,18 @@ caller ``web_search`` and normalises the returned ``web_search_tool_result`` blo
 
 Hermetic by construction: ``transport=`` is injectable, so tests never touch the network or the
 bridge. A refused or unreachable bridge is a typed gap, never an exception into the caller.
+
+**The tool version carries server-side code execution.** ``web_search_20260209`` uses Anthropic's
+"dynamic filtering": Claude writes and runs code in Anthropic's own sandbox to call ``web_search`` and
+filter the results before they reach the context window (provider docs, tool-use concepts). A real
+response therefore also contains ``server_tool_use`` / ``code_execution_tool_result`` blocks, seen live
+2026-11-01T23:5xZ, e.g. ``r = await web_search({"query": ...})`` followed by ``print(type(r), len(r))``.
+Nothing of ours is executed: the sandbox is Anthropic-side, it never sees a credential, a file or a
+broker path, and the only inputs are our query and public search results. The bridge's tool allowlist
+(§23.10 P5) is an *outbound* gate and does not cover these blocks, so this module counts them instead of
+hiding them: ``search()`` reports ``code_execution_blocks`` and the Ask source carries that count into its
+run row. Choosing the older ``web_search_20250305`` is the way to have no code execution at all, at the
+cost of the filtering that keeps result noise out of the context.
 """
 from __future__ import annotations
 
@@ -51,6 +63,18 @@ def results_from_blocks(blocks: Any, count: int) -> tuple[list[dict[str, Any]], 
     return out, None
 
 
+def code_execution_blocks(blocks: Any) -> int:
+    """How many sandbox results the provider's dynamic filtering produced (see the module docstring).
+
+    Counted, never consumed: the Ask source only reads ``web_search_tool_result`` rows. The count rides
+    the run row so a receipt shows that code ran Anthropic-side, instead of the operator discovering it.
+    """
+    return sum(
+        1 for b in (blocks or [])
+        if isinstance(b, dict) and b.get("type") == "code_execution_tool_result"
+    )
+
+
 def _post(url: str, body: dict[str, Any], timeout_s: float) -> dict[str, Any]:
     request = Request(
         url,
@@ -83,4 +107,12 @@ def search(query: str, *, count: int = 5, timeout_s: float = 60.0,
         return {"ok": False, "provider": "anthropic", "results": [], "error": reason}
     blocks = document.get("content_blocks") or (document.get("_tradeai") or {}).get("content_blocks") or []
     results, error = results_from_blocks(blocks, count)
-    return {"ok": bool(results) and not error, "provider": "anthropic", "results": results, "error": error}
+    return {
+        "ok": bool(results) and not error,
+        "provider": "anthropic",
+        "results": results,
+        "error": error,
+        # Dynamic filtering ran Anthropic-side code to answer this call (module docstring). Reported so the
+        # run row says so, rather than leaving it to a provider-side detail nobody reads.
+        "code_execution_blocks": code_execution_blocks(blocks),
+    }
