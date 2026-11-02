@@ -29,6 +29,7 @@ PREFIX = "/api/v2/coordination"
 SCHEMA_VIEW = "CoordinationCoordinatorsView@v1"
 SCHEMA_BOARD = "CoordinationBoardView@v1"
 SCHEMA_JOIN = "CoordinationJoinCommand@v1"
+SCHEMA_DOCS = "CoordinationDocs@v1"
 JOIN_TEMPLATE = "join_command.template"
 _ID_RE = re.compile(r"^[a-z0-9-]{1,40}$")
 _VENDOR_DEFAULT_ID = {"claude": "claude", "codex": "codex", "cursor": "cursor", "grok": "grok", "other": "other"}
@@ -45,6 +46,35 @@ def _q(query: Any, key: str, default: int) -> int:
         return max(1, min(500, int(str(raw))))
     except (TypeError, ValueError):
         return default
+
+
+def agents_view(root) -> list[dict[str, Any]]:
+    """Last screen snapshot per agent session (scripts/coordinator.py snapshot), newest first."""
+    out: list[dict[str, Any]] = []
+    d = notebook(root) / "agents"
+    try:
+        files = [f for f in d.iterdir() if f.is_file() and not f.is_symlink() and f.suffix == ".txt"]
+    except OSError:
+        return []
+    for f in files:
+        head = {}
+        try:
+            with f.open("r", encoding="utf-8", errors="replace") as fh:
+                for _ in range(5):
+                    line = fh.readline()
+                    if line.startswith("---"):
+                        break
+                    if ":" in line:
+                        k, _, v = line.partition(":")
+                        head[k.strip()] = v.strip()
+            mtime = datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc).replace(
+                microsecond=0).isoformat().replace("+00:00", "Z")
+        except OSError:
+            continue
+        out.append({"session": head.get("session") or f.stem, "state": head.get("state") or "unknown",
+                    "captured_at": head.get("captured_at"), "file_modified_at": mtime,
+                    "path": str(f), "bytes": f.stat().st_size if f.exists() else None})
+    return sorted(out, key=lambda r: str(r.get("captured_at") or ""), reverse=True)
 
 
 def coordinators_view(root) -> dict[str, Any]:
@@ -72,7 +102,25 @@ def coordinators_view(root) -> dict[str, Any]:
         "pending_checks": pending_checks(events),
         "pending_decisions": pending_decisions(events),
         "inbox": inbox_counts(root),
+        "agents": agents_view(root),
     }
+
+
+def docs_view(root, name: str | None) -> dict[str, Any]:
+    """The partner docs exactly as written on disk (ONBOARDING.md, RULES_INTERIM.md). No rewriting, no fallback."""
+    allowed = ("ONBOARDING.md", "RULES_INTERIM.md")
+    doc = str(name or "").strip()
+    if doc not in allowed:
+        return {"schema": SCHEMA_DOCS, "name": doc or None, "present": False,
+                "error": f"name must be one of {', '.join(allowed)}"}
+    p = notebook(root) / doc
+    try:
+        text = p.read_text(encoding="utf-8")
+        mtime = datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc).replace(
+            microsecond=0).isoformat().replace("+00:00", "Z")
+    except OSError:
+        return {"schema": SCHEMA_DOCS, "name": doc, "present": False, "path": str(p), "text": None}
+    return {"schema": SCHEMA_DOCS, "name": doc, "present": True, "path": str(p), "modified_at": mtime, "text": text}
 
 
 def board_view(root, limit: int = 50) -> dict[str, Any]:
@@ -135,4 +183,6 @@ def handle(base_path: str, query: Any, body: Any) -> dict[str, Any] | None:
         return board_view(root, limit=_q(query, "limit", 50))
     if path == f"{PREFIX}/join-command":
         return join_command_view(root, qv("id"), qv("vendor"))
+    if path == f"{PREFIX}/docs":
+        return docs_view(root, qv("name"))
     return None

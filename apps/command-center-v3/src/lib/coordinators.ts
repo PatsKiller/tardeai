@@ -23,6 +23,25 @@ export type CoordinatorRow = {
 
 export type CheckRow = { subject?: string; sha?: string; coordinator?: string | null; ts?: string; detail?: string | null }
 
+export type AgentRow = {
+  session?: string
+  state?: string
+  captured_at?: string | null
+  file_modified_at?: string | null
+  path?: string
+  bytes?: number | null
+}
+
+export type DocsPayload = {
+  schema?: string
+  name?: string | null
+  present?: boolean
+  path?: string
+  modified_at?: string | null
+  text?: string | null
+  error?: string | null
+}
+
 export type CoordinatorsPayload = {
   schema?: string
   generated_at?: string
@@ -36,6 +55,7 @@ export type CoordinatorsPayload = {
   pending_checks?: CheckRow[]
   pending_decisions?: CheckRow[]
   inbox?: Record<string, number>
+  agents?: AgentRow[]
 }
 
 export type BoardEvent = { ts?: string; kind?: string; subject?: string | null; detail?: string | null; coordinator?: string | null }

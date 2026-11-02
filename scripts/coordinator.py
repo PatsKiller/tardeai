@@ -39,10 +39,13 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import fnmatch
 import json
 import os
+import subprocess
 import sys
 import tempfile
+import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -62,6 +65,10 @@ DEFAULT_TERRITORIES = {
     "ui": "Command Center pages",
     "ops": "incidents, breakers, disk",
 }
+# Equal partners: a non-Claude coordinator runs sandboxed and cannot reach the tmux socket, so a host lane captures
+# each agent session's visible screen to a file they can read. Patterns, not a fixed list (operator 2026-11-02).
+DEFAULT_SNAPSHOT_SESSIONS = ("cc-deepseek-*", "codex", "cx-*")
+SNAPSHOT_IDLE_SECONDS = 90
 
 
 # ── store roots ────────────────────────────────────────────────────────────────────────────────────────
@@ -102,6 +109,10 @@ def inbox_dir(root: Path, cid: str) -> Path:
 
 def handoffs_dir(root: Path) -> Path:
     return notebook(root) / "handoffs"
+
+
+def agents_dir(root: Path) -> Path:
+    return notebook(root) / "agents"
 
 
 def now_iso() -> str:
@@ -345,6 +356,71 @@ def render_board(root: Path, registry: dict[str, Any], events: list[dict[str, An
                  "`LESSONS.md` is not seeded yet (the operator seeds it after merge).")
     lines.append("")
     return "\n".join(lines)
+
+
+# ── agent screenshots (host lane; tmux) ───────────────────────────────────────────────────────────────
+
+
+def _tmux(bin_: str, *args: str, timeout: float = 10.0) -> tuple[int, str]:
+    try:
+        p = subprocess.run([bin_, *args], capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        return 127, ""
+    return p.returncode, p.stdout
+
+
+def tmux_sessions(bin_: str = "tmux") -> list[tuple[str, int | None]]:
+    """[(session name, last-activity epoch)] or [] when tmux is unreachable (a sandboxed coordinator, no server)."""
+    rc, out = _tmux(bin_, "list-sessions", "-F", "#{session_name}\t#{session_activity}")
+    if rc != 0:
+        return []
+    rows: list[tuple[str, int | None]] = []
+    for ln in out.splitlines():
+        name, _, act = ln.partition("\t")
+        name = name.strip()
+        if not name:
+            continue
+        try:
+            activity: int | None = int(act.strip())
+        except ValueError:
+            activity = None
+        rows.append((name, activity))
+    return rows
+
+
+def snapshot_targets(sessions: list[tuple[str, int | None]], patterns: list[str]) -> list[tuple[str, int | None]]:
+    return [(n, a) for n, a in sessions if any(fnmatch.fnmatchcase(n, p) for p in patterns)]
+
+
+def agent_state(activity: int | None, now: float | None = None) -> str:
+    """A guess from tmux's last-activity clock: busy within 90 s, idle after, unknown without it."""
+    if activity is None:
+        return "unknown"
+    return "busy" if (now or time.time()) - activity <= SNAPSHOT_IDLE_SECONDS else "idle"
+
+
+def cmd_snapshot(args) -> int:
+    root = state_root(args.state_root)
+    reg = read_registry(root)
+    raw = args.sessions or ",".join(reg.get("snapshot_sessions") or DEFAULT_SNAPSHOT_SESSIONS)
+    patterns = [p.strip() for p in str(raw).split(",") if p.strip()]
+    lines = max(1, min(500, int(args.lines or 40)))
+    tmux = args.tmux_bin or "tmux"
+    started = time.time()
+    captured: list[dict[str, Any]] = []
+    with locked(root):
+        for name, activity in snapshot_targets(tmux_sessions(tmux), patterns):
+            rc, text = _tmux(tmux, "capture-pane", "-p", "-t", name, "-S", f"-{lines}")
+            if rc != 0:
+                continue
+            body = "\n".join(text.rstrip("\n").splitlines()[-lines:])
+            state = agent_state(activity, started)
+            header = f"captured_at: {now_iso()}\nsession: {name}\nstate: {state}\nlines: {lines}\n---\n"
+            _atomic_write(agents_dir(root) / f"{_safe(name)}.txt", header + body + "\n")
+            captured.append({"session": name, "state": state, "lines": len(body.splitlines()), "chars": len(body)})
+    print(json.dumps({"schema": "CoordinatorSnapshot@v1", "captured": captured, "patterns": patterns},
+                     indent=1 if args.json else None))
+    return 0
 
 
 # ── commands ──────────────────────────────────────────────────────────────────────────────────────────
@@ -718,6 +794,13 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("board", help="regenerate BOARD.md")
     p.add_argument("--json", action="store_true")
 
+    p = sub.add_parser("snapshot", help="host lane: capture each agent session's visible screen (tmux)")
+    p.add_argument("--sessions", default=None, help="comma-separated tmux session patterns "
+                                                    f"(default {'/'.join(DEFAULT_SNAPSHOT_SESSIONS)})")
+    p.add_argument("--lines", type=int, default=40)
+    p.add_argument("--tmux-bin", default="tmux")
+    p.add_argument("--json", action="store_true")
+
     p = sub.add_parser("whoami", help="which coordinator and territory is this session")
     p.add_argument("--session", default=None)
     p.add_argument("--json", action="store_true")
@@ -726,7 +809,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 COMMANDS = {"status": cmd_status, "appoint": cmd_appoint, "stand-down": cmd_stand_down,
             "heartbeat": cmd_heartbeat, "assign": cmd_assign, "event": cmd_event, "check": cmd_check,
-            "inbox": cmd_inbox, "handoff": cmd_handoff, "board": cmd_board, "whoami": cmd_whoami}
+            "inbox": cmd_inbox, "handoff": cmd_handoff, "board": cmd_board, "whoami": cmd_whoami,
+            "snapshot": cmd_snapshot}
 
 
 def main(argv: list[str] | None = None) -> int:

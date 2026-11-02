@@ -257,3 +257,74 @@ def test_join_command_reports_a_missing_template_without_creating_it(tmp_path, m
     out = _join({"id": ["a"], "vendor": ["claude"]})
     assert out["template_present"] is False and out["line"] is None
     assert not (tmp_path / "data").exists()
+
+
+# ── agent screens (snapshot) ─────────────────────────────────────────────────────────────────────────
+
+
+def _fake_tmux(tmp_path: Path) -> Path:
+    p = tmp_path / "fake-tmux"
+    p.write_text('''#!/usr/bin/env python3
+import sys, time
+a = sys.argv[1:]
+now = int(time.time())
+if a and a[0] == "list-sessions":
+    print(f"cc-deepseek-1\\t{now - 5}")
+    print(f"codex\\t{now - 500}")
+    print(f"other\\t{now - 5}")
+elif a and a[0] == "capture-pane":
+    print("hello from the pane")
+    print("second line")
+sys.exit(0)
+''', encoding="utf-8")
+    p.chmod(0o755)
+    return p
+
+
+def test_snapshot_writes_one_file_per_matching_session(tmp_path, capsys):
+    tmux = _fake_tmux(tmp_path)
+    assert run(tmp_path, "snapshot", "--tmux-bin", str(tmux), "--lines", "10") == 0
+    capsys.readouterr()
+    d = tmp_path / "data" / "coordination" / "coordinator" / "agents"
+    assert sorted(f.name for f in d.iterdir()) == ["cc-deepseek-1.txt", "codex.txt"]  # 'other' is not a default
+    busy = (d / "cc-deepseek-1.txt").read_text()
+    assert busy.startswith("captured_at: ") and "session: cc-deepseek-1" in busy
+    assert "state: busy" in busy and "hello from the pane" in busy
+    assert "state: idle" in (d / "codex.txt").read_text()  # 500 s of silence
+
+
+def test_snapshot_patterns_are_configurable(tmp_path):
+    tmux = _fake_tmux(tmp_path)
+    assert run(tmp_path, "snapshot", "--tmux-bin", str(tmux), "--sessions", "other") == 0
+    d = tmp_path / "data" / "coordination" / "coordinator" / "agents"
+    assert sorted(f.stem for f in d.iterdir()) == ["other"]
+
+
+def test_snapshot_without_tmux_is_a_no_op(tmp_path):
+    assert run(tmp_path, "snapshot", "--tmux-bin", str(tmp_path / "no-such-tmux")) == 0
+    d = tmp_path / "data" / "coordination" / "coordinator" / "agents"
+    assert not d.exists() or list(d.iterdir()) == []
+
+
+def test_view_lists_agent_snapshots(tmp_path, monkeypatch):
+    tmux = _fake_tmux(tmp_path)
+    assert run(tmp_path, "snapshot", "--tmux-bin", str(tmux)) == 0
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    agents = {a["session"]: a for a in V.coordinators_view(tmp_path)["agents"]}
+    assert agents["cc-deepseek-1"]["state"] == "busy" and agents["codex"]["state"] == "idle"
+    assert agents["cc-deepseek-1"]["captured_at"]
+
+
+# ── partner docs rendered as-is ──────────────────────────────────────────────────────────────────────
+
+
+def test_docs_render_as_written(tmp_path, monkeypatch):
+    d = tmp_path / "data" / "coordination" / "coordinator"
+    d.mkdir(parents=True)
+    text = "# Partner onboarding\n\nas-is **text** with `code`\n"
+    (d / "ONBOARDING.md").write_text(text, encoding="utf-8")
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    out = V.handle("/api/v2/coordination/docs", {"name": ["ONBOARDING.md"]}, None)
+    assert out["present"] is True and out["text"] == text and out["modified_at"]
+    assert V.handle("/api/v2/coordination/docs", {"name": ["../AGENTS.md"]}, None)["present"] is False
+    assert V.handle("/api/v2/coordination/docs", {"name": ["RULES_INTERIM.md"]}, None)["present"] is False

@@ -9,7 +9,7 @@ import AddCoordinatorModal from '../components/AddCoordinatorModal'
 import { RADIUS, TOKENS, TYPE, FONT, toneVars } from '../lib/designTokens'
 import {
   byTerritory, heartbeatLabel, sortCoordinators, stateLabel, stateTone,
-  type BoardPayload, type CoordinatorsPayload,
+  type AgentRow, type BoardPayload, type CoordinatorsPayload, type DocsPayload,
 } from '../lib/coordinators'
 
 const panel: CSSProperties = {
@@ -54,6 +54,8 @@ function Card({ c }: { c: NonNullable<CoordinatorsPayload['coordinators']>[numbe
 export default function CoordinatorsPanel() {
   const coordApi = useApi<CoordinatorsPayload>('/api/v2/coordination/coordinators', 30_000)
   const boardApi = useApi<BoardPayload>('/api/v2/coordination/board?limit=30', 30_000)
+  const onboardingApi = useApi<DocsPayload>('/api/v2/coordination/docs?name=ONBOARDING.md', 60_000)
+  const rulesApi = useApi<DocsPayload>('/api/v2/coordination/docs?name=RULES_INTERIM.md', 60_000)
   const [showBoard, setShowBoard] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const d = coordApi.data
@@ -63,6 +65,7 @@ export default function CoordinatorsPanel() {
   const checks = d?.pending_checks || []
   const decisions = d?.pending_decisions || []
   const inbox = d?.inbox || {}
+  const agents: AgentRow[] = d?.agents || []
 
   if (coordApi.loading && !d) return <div style={panel} data-testid="coordination-coordinators">Loading coordinators…</div>
   if (coordApi.error && !d) return <div style={panel} data-testid="coordination-coordinators">Coordinators unavailable.</div>
@@ -163,6 +166,60 @@ export default function CoordinatorsPanel() {
             {Object.entries(inbox).map(([id, n]) => <Chip key={id} tone={n ? 'warning' : 'neutral'} title="unread reports">{id} {n}</Chip>)}
           </ChipRow>
         ) : null}
+      </div>
+
+      <div style={panel} data-testid="agent-screens">
+        <div style={sectionTitle}>Agent screens</div>
+        <div style={{ ...label, marginTop: 2 }}>
+          each session's visible screen, captured by the host lane (equal partners: a sandboxed coordinator cannot reach tmux)
+        </div>
+        {agents.length ? (
+          <div style={{ overflowX: 'auto', marginTop: 8 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr>
+                <th style={{ ...cell, textAlign: 'left' }}>session</th>
+                <th style={{ ...cell, textAlign: 'left' }}>state</th>
+                <th style={{ ...cell, textAlign: 'left' }}>last snapshot</th>
+              </tr></thead>
+              <tbody>
+                {agents.map(a => (
+                  <tr key={String(a.session)}>
+                    <td style={mono}>{a.session}</td>
+                    <td style={cell}>
+                      <Chip tone={a.state === 'busy' ? 'positive' : a.state === 'idle' ? 'neutral' : 'warning'}
+                        title="guess from tmux last-activity">{a.state || 'unknown'}</Chip>
+                    </td>
+                    <td style={mono}>{a.captured_at ? heartbeatLabel(a.captured_at) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div style={{ marginTop: 6, fontSize: TYPE.sm, color: TOKENS.text[2] }}>
+            No snapshots yet — the timer is not installed until the operator installs it after merge.
+          </div>
+        )}
+      </div>
+
+      <div style={panel} data-testid="partner-docs">
+        <div style={sectionTitle}>Partner docs</div>
+        <div style={{ ...label, marginTop: 2 }}>rendered as written on disk; the coordinators' own copy is the source</div>
+        {[
+          { name: 'ONBOARDING.md', api: onboardingApi },
+          { name: 'RULES_INTERIM.md', api: rulesApi },
+        ].map(({ name, api }) => (
+          <details key={name} style={{ marginTop: 8 }}>
+            <summary style={{ cursor: 'pointer', minHeight: 44, fontSize: TYPE.sm, fontWeight: 750, color: TOKENS.text[1] }}>
+              {name}{api.data?.modified_at ? ` · updated ${heartbeatLabel(api.data.modified_at)}` : ''}
+            </summary>
+            <pre style={{
+              margin: '6px 0 0', padding: 10, background: TOKENS.bg[0], border: `1px solid ${TOKENS.border}`,
+              borderRadius: RADIUS.sm, fontFamily: FONT.mono, fontSize: TYPE.xs, color: TOKENS.text[1],
+              whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 420, overflow: 'auto',
+            }}>{api.data?.present ? api.data?.text : 'Not present on the host yet.'}</pre>
+          </details>
+        ))}
       </div>
 
       <div style={panel}>

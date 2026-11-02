@@ -43,3 +43,26 @@ receipt (today's practice). The operator's word is still required wherever §17 
 
 No seeding of `LESSONS.md` or the notebook, no appointments, no scheduling, no writes to a broker, no changes to the
 claim board or the merge rails.
+
+## Appendix — proposed lane row for the snapshot timer (NOT applied)
+
+`config/lane_registry.json` was held by another live claim when this PR was built, so the row is proposed here and
+must be added by whoever holds the registry (or after it releases): insert it in the **hand-written** section, before
+the first row carrying `generated_by`, then run
+`python3 scripts/reconcile_lane_registry.py --snapshot-in docs/implementation/n8n-maturity/data/scheduler_snapshot_20261009.json --write`
+so the committed registry stays the generator's fixed point.
+
+```json
+{
+  "lane_id": "coordinator-snapshot",
+  "owner": "ops",
+  "scheduler": {"kind": "none"},
+  "expected_cadence_hours": 0.0167,
+  "state": "NEVER_SCHEDULED",
+  "state_since": "2026-11-02",
+  "state_reason": "PROPOSED by the co-coordinator build (plan PLAN_CO_COORDINATORS_20261102, operator 2026-11-02: coordinators are equal partners, and a sandboxed non-Claude coordinator cannot reach the tmux socket). config/systemd/tradeai-coordinator-snapshot.{service,timer} exist and are NOT installed; the operator installs them after merge. Under the n8n cutover directive the same host capture becomes an n8n-scheduled host lane when it moves.",
+  "output_signal": {"kind": "file_mtime", "path": "data/coordination/coordinator/agents"},
+  "reason_confidence": "ESTABLISHED",
+  "reason_evidence": "No crontab line and no installed timer on the host. scripts/coordinator.py snapshot is the only writer of agents/<session>.txt; tests/test_coordinator_20261102.py covers it."
+}
+```

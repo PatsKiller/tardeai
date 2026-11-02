@@ -55902,7 +55902,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     # shared notebook, read-only. scripts/coordinator.py is the only writer; these GETs never create the store,
     # never lock and never repair (a torn ledger tail is skipped). ?limit=N bounds the board's event tail.
     if base_path in ("/api/v2/coordination/coordinators", "/api/v2/coordination/board",
-                     "/api/v2/coordination/join-command"):
+                     "/api/v2/coordination/join-command", "/api/v2/coordination/docs"):
         if method != "GET":
             return 405, {"ok": False, "error": "read_only"}
         try:
