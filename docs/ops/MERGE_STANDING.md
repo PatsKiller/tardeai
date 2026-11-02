@@ -11,10 +11,14 @@ promotes. The delegation moves one keyboard act, the label.
 
 ## Arming requires BOTH
 
-1. **A ratified policy capability.** `AGENTS.md` on `origin/main` must be `ACTIVE` at **29.6.0 or
-   later**, and that version's **history row** must name `APPROVE_MERGE_STANDING`. A version that
-   merely mentions the token elsewhere does not count; a `PROPOSED` header does not count. This is
-   read from `origin/main`, never from the branch being merged.
+1. **A ratified policy capability.** `AGENTS.md` must be `ACTIVE` at **29.6.0 or later**, and that
+   version's **history row** must be class **MAJOR** and carry the structured marker
+   `APPROVE_MERGE_STANDING: GRANTED`. A MINOR row can never grant it (the grant moves an
+   operator/role boundary); a bare mention — a rejected example, a "not adopted", a passing
+   reference — never arms anything; a `PROPOSED` header does not count. The text is read from
+   `origin/main` in a checkout, and from the tree's own `AGENTS.md` only in the **served release
+   tree** (`portfolio-server/CURRENT`), which is by construction the promoted main content. A branch's
+   own `AGENTS.md` is never read.
 2. **A genuine operator standing approval.** One operator-authored comment, on the single open issue
    opened by the operator with the title **`Standing merge approvals`**, carrying a line:
 
@@ -47,11 +51,19 @@ The evaluator re-reads the PR at decision time. All of these must hold:
 | held | no `held`/`broker`/`broker_active_trader` label, no held path (`config/merge_hold_paths.json`) |
 | files | every changed path readable; a partial view refuses |
 | checks | **every** check on the exact head green (`pr_all_checks_green`), at least one real success; a skip is not a pass; a truncated view refuses |
-| review | **two independent** `Adversarial-review: MERGE reviewer=… head=… coordinator=…` receipts, distinct reviewers, none written by the author's agent, session or GitHub login, each bound to this exact head |
+| review | **two** `Adversarial-review: MERGE reviewer=… head=… coordinator=…` receipts bound to this exact head, each written by a **different authenticated GitHub author** — the login that posted the comment, not the `reviewer=` string — none by the PR author's account, and each naming a `coordinator=` that holds a live coordinator claim. One comment is one signature |
 | window | inside the configured window (default `Mon–Fri 17:30–18:30 America/New_York`, asserted equal to `.mergify.yml` by a test) |
 | STOP | the deploy STOP latch must be `ABSENT`; SET or UNREADABLE refuses |
+| trust anchors | the PR changes none of the modules this path trusts (`trust_anchors` in the config: the evaluator, the check reader, the STOP reader, the claim board, the receipt parser, this config) |
 | rate | at most **one** label per run (`max_labels_per_run: 1`, matching `batch_size: 1`) |
-| race | the head is re-read immediately before labelling; if it moved, nothing is labelled |
+| race | **every** gate is re-asserted immediately before the label — head, draft, base, held labels, an independent `operator-merge`, STOP, the window and the still-valid standing approval. Any violation writes a `standing-merge-prelabel-refused` receipt and labels nothing |
+
+**Receipt provenance is the practical limit.** GitHub identity is the only unforgeable part of a
+receipt, so the two signatures must come from two different GitHub accounts. On this host `gh` is
+authenticated as the operator, so every agent-written comment shares one login: two distinct
+authenticated authors therefore need distinct agent GitHub identities, which do not exist yet.
+The gate refuses rather than falling back to the `reviewer=` text. That is deliberate fail-closed
+behaviour, not a bug to work around.
 
 ## Running it
 
@@ -67,6 +79,12 @@ The evaluator is wired into the **existing digest path** (`pr_merge_digest._run_
 run annotates its ready rows with a standing decision, and a PR the standing path labelled is removed
 from the tap list so it is never asked for twice. If the evaluator itself fails, the digest still
 sends — the failure is reported in the digest output (`standing.detail`), never raised.
+
+**Cadence honesty.** The digest timer runs 08:00 / 12:00 / 16:30 ET; the merge window is 17:30–18:30
+ET. The wired caller therefore **cannot reach the window**, and `review()` says so in
+`cadence.can_fire=false` instead of implying a label will be applied. A cadence that can reach the
+window is a **scheduler change and an operator decision** (§17): PROPOSED, nothing installed, no timer
+added by this change.
 
 ## Evidence
 
@@ -92,5 +110,8 @@ receipt.
 
 1. Merge the AGENTS.md amendment (29.6.0) that names `APPROVE_MERGE_STANDING` in its history row.
 2. Open the issue titled `Standing merge approvals` and post the dated line.
-3. No timer is added by this change; the existing digest timer runs the evaluator. If a separate
-   cadence is ever wanted, that is a new unit and an operator install — not part of this.
+3. No timer is added by this change. To make the path actually fire, the operator must decide a
+   cadence that overlaps the window (or move the window); until then every run reports
+   `cadence.can_fire=false` and labels nothing.
+4. Two agent GitHub identities are needed before two receipts can be independently authenticated;
+   until then the path refuses on `review:` even with every other gate green.

@@ -60,7 +60,13 @@ NO_CONSUMER_REASON = (
 
 TOKEN = "APPROVE_MERGE_STANDING"
 REVOKE = "REVOKE_MERGE_STANDING"
-#: The policy version that must be ACTIVE on main, and whose history row must name the capability.
+#: The structured, affirmative marker the ratifying version row must carry. A bare mention of the
+#: token — a rejected example, a "not adopted", a passing reference — never arms anything (review cc3
+#: B3). Only this exact string, in a MAJOR row, is the capability.
+GRANT_MARKER = "APPROVE_MERGE_STANDING: GRANTED"
+#: The grant moves an operator/role boundary (merge delegation), so it can only be ratified as MAJOR.
+REQUIRED_CLASS = "MAJOR"
+#: The policy version that must be ACTIVE on main, and whose history row must carry the marker.
 MIN_POLICY = (29, 6, 0)
 MIN_POLICY_TEXT = "29.6.0"
 
@@ -130,12 +136,17 @@ def _row_line(text: str, version: str) -> str:
 # --------------------------------------------------------------------------- policy capability
 
 
+def _row_fields(line: str) -> list[str]:
+    return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
 def policy_capability(text: Optional[str]) -> dict[str, Any]:
     """Is a STANDING MERGE capability explicitly ratified in this AGENTS.md text?
 
-    Three things, all required: the control block is ACTIVE at >= 29.6.0, and the version-history row
-    of that same version names ``APPROVE_MERGE_STANDING`` (the capability itself, not a passing
-    mention elsewhere in the document).
+    Three things, all required: the control block is ACTIVE at >= 29.6.0; the version-history row of
+    that same version is class **MAJOR** (an operator/role boundary, never a MINOR by number); and the
+    row carries the structured marker ``APPROVE_MERGE_STANDING: GRANTED``. A bare mention of the token
+    — a rejected example, a "not adopted", a passing reference — never arms anything.
     """
     base: dict[str, Any] = {"schema": "MergeStandingPolicy@v1", "version": None, "capability": False}
     if not isinstance(text, str) or not text.strip():
@@ -153,9 +164,84 @@ def policy_capability(text: Optional[str]) -> dict[str, Any]:
     if sv is None or sv < MIN_POLICY:
         return {**base, "detail": f"AGENTS.md {version} is below {MIN_POLICY_TEXT}"}
     row = _row_line(text, str(version))
-    if TOKEN not in row:
-        return {**base, "detail": f"AGENTS.md {version} history row does not name {TOKEN}"}
-    return {**base, "capability": True, "detail": f"AGENTS.md {version} ACTIVE with {TOKEN} ratified"}
+    if not row:
+        return {**base, "detail": f"AGENTS.md {version} has no history row"}
+    fields = _row_fields(row)
+    change_class = fields[3].upper() if len(fields) > 3 else ""
+    base["change_class"] = change_class or None
+    if change_class != REQUIRED_CLASS:
+        return {**base, "detail": f"AGENTS.md {version} is class {change_class or 'unknown'}; "
+                                  f"a merge delegation can only be ratified as {REQUIRED_CLASS}"}
+    if GRANT_MARKER not in row:
+        return {**base, "detail": f"AGENTS.md {version} row does not carry the affirmative marker {GRANT_MARKER!r} "
+                                  f"(a bare mention of {TOKEN} is not a grant)"}
+    return {**base, "capability": True, "detail": f"AGENTS.md {version} {REQUIRED_CLASS} ACTIVE with {GRANT_MARKER}"}
+
+
+def _inside_git_work_tree(path: Path) -> bool:
+    try:
+        cp = subprocess.run(["git", "-C", str(path), "rev-parse", "--is-inside-work-tree"],
+                            capture_output=True, text=True, timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return cp.returncode == 0 and cp.stdout.strip() == "true"
+
+
+def policy_text(root: Optional[Path] = None) -> Optional[str]:
+    """main's ratified AGENTS.md, read from the source that is main's text — never a branch's.
+
+    * In a git work tree: ``git show origin/main:AGENTS.md`` (the branch's own edit can never arm it).
+    * In the SERVED release tree (``portfolio-server/CURRENT``), which is not a git work tree, read the
+      tree's own ``AGENTS.md``: by construction that file *is* the promoted main content, and it is the
+      only policy the host actually runs (review cc3 B5). The served-tree read is allowed ONLY when
+      the directory is not inside a git work tree, so a checkout can never substitute its own text.
+    * Anything else (git fails inside a work tree, served file missing) → None, and the path is OFF.
+    """
+    base = Path(root or ROOT)
+    text = policy_text_from_git(cwd=base)
+    if isinstance(text, str) and text.strip():
+        return text
+    if _inside_git_work_tree(base):
+        return None  # fail closed: never fall back to a branch's own AGENTS.md
+    try:
+        served = (base / "AGENTS.md").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    return served if served.strip() else None
+
+
+def policy_text_read(cwd: Optional[Path] = None) -> Optional[str]:
+    """The text the evaluator judges: ``origin/main`` in a checkout, the served tree otherwise."""
+    return policy_text(cwd)
+
+
+def cadence_report(cfg: Mapping[str, Any]) -> dict[str, Any]:
+    """Can the WIRED caller ever run inside a merge window? Report it; never pretend it can.
+
+    The digest timer runs 08:00/12:00/16:30 ET and the window is 17:30-18:30 ET today, so the answer
+    is no. That is a scheduler fact, not a bug this module may fix: a cadence change is an operator
+    decision (PROPOSED, nothing installed), so the evaluator states the mismatch in its own output.
+    """
+    times = [str(t) for t in (cfg.get("caller_schedule_et") or [])]
+    windows = [(str(w.get("start") or ""), str(w.get("end") or "")) for w in (cfg.get("windows") or [])]
+    can = any(start and end and start <= t <= end for t in times for start, end in windows)
+    return {"schema": "MergeStandingCadence@v1", "caller": "pr_merge_digest", "caller_schedule_et": times,
+            "windows_local": [f"{a}-{b}" for a, b in windows], "timezone": cfg.get("timezone"), "can_fire": can,
+            "detail": ("a wired run can fall inside a window" if can else
+                       "the wired caller never runs inside the merge window; a cadence that can is an "
+                       "operator scheduler decision (PROPOSED, not installed)")}
+
+
+def _cached_gh(gh: Callable[[str], Any]) -> Callable[[str], Any]:
+    """Memoize reads for one run: the approval issue was re-read once per candidate (cc3 N3)."""
+    cache: dict[str, Any] = {}
+
+    def call(path: str) -> Any:
+        if path not in cache:
+            cache[path] = gh(path)
+        return cache[path]
+
+    return call
 
 
 def policy_text_from_git(ref: str = "origin/main", cwd: Path | str | None = None) -> Optional[str]:
@@ -389,38 +475,102 @@ def stop_state() -> dict[str, Any]:
             "detail": "STOP latch absent" if status == rc.LATCH_ABSENT else f"STOP latch {status}"}
 
 
-def review_receipts(comments: Iterable[Mapping[str, Any]], *, head: str, author_agent: str,
-                    author_session: str, author_login: str = "") -> dict[str, Any]:
-    """TWO independent review receipts bound to the exact head, neither written by the author.
+def coordinator_checker() -> Callable[[str], bool]:
+    """Is ``session`` a live (<= 24 h) claim on the coordinator virtual path? Fail closed on a read error."""
+    try:
+        from scripts.lib import agent_claim_board as board
+        from scripts.lib import hands_off_policy as hop
+    except ImportError:  # scripts/ on sys.path
+        from lib import agent_claim_board as board  # type: ignore
+        from lib import hands_off_policy as hop  # type: ignore
+    try:
+        views, _bad = board.ClaimBoard(None).views()
+        rows = []
+        for v in views:
+            doc = dict(v.doc)
+            doc["_state"] = v.state
+            doc["_path"] = str(v.path)
+            rows.append(doc)
+    except Exception:  # noqa: BLE001 - an unreadable board is no coordinator, never a pass
+        return lambda _session: False
 
-    Receipts use ``hands_off_policy.parse_receipt``'s shape:
-    ``Adversarial-review: MERGE reviewer=<ref> head=<sha> coordinator=<session>``. Independence is
-    checked against the branch claim's agent AND session, and against the PR author login.
+    def check(session: str) -> bool:
+        session = (session or "").strip()
+        if not session:
+            return False
+        if hop.coordinator_session_ok(session, rows, live_only=True) is not None:
+            return True
+        # A coordinator claim may be live-but-quiet; the push handoff path allows up to 24 h.
+        for r in hop.coordinator_claims(rows, live_only=False):
+            if str(r.get("session") or "").strip() == session:
+                hb = _ts(r.get("heartbeat_at") or r.get("started_at"))
+                if hb is not None and (datetime.now(timezone.utc) - hb).total_seconds() <= 24 * 3600:
+                    return True
+        return False
+
+    return check
+
+
+def review_receipts(comments: Iterable[Mapping[str, Any]], *, head: str, author_agent: str,
+                    author_session: str, author_login: str,
+                    coordinator_ok: Optional[Callable[[str], bool]] = None) -> dict[str, Any]:
+    """TWO independent review receipts bound to the exact head AND to their authenticated authors.
+
+    A receipt is a PR comment in ``hands_off_policy.parse_receipt``'s shape. The identity that counts is
+    the **GitHub login that wrote the comment**, not the ``reviewer=`` string: text is forgeable, an
+    authenticated author is not. One receipt per comment; logins are compared case-insensitively; the
+    PR author's own login never counts; and the named ``coordinator=`` must hold a live coordinator
+    claim. When provenance is unavailable — no comment author, or no coordinator checker — the path
+    refuses rather than falling back to the text (review cc3 B1/N2).
+
+    Consequence, stated plainly: on this host ``gh`` is authenticated as the operator, so agent-written
+    comments all share one login. Two distinct authenticated authors therefore need two distinct GitHub
+    identities; until agents have them, this gate cannot pass. That is the fail-closed behaviour the
+    lead asked for, not an oversight.
     """
     try:
         from scripts.lib import hands_off_policy as hop
     except ImportError:  # scripts/ on sys.path
         from lib import hands_off_policy as hop  # type: ignore
-    banned = {x for x in (author_agent, author_session, author_login) if x}
+    if coordinator_ok is None:
+        return {"ok": False, "receipts": [], "rejected": ["no coordinator-provenance check available"],
+                "detail": "coordinator provenance is unavailable; refusing"}
+    banned = {x.casefold() for x in (author_agent, author_session, author_login) if x}
+    author = (author_login or "").casefold()
     seen: list[dict[str, str]] = []
     rejected: list[str] = []
     for c in comments or []:
         if not isinstance(c, dict):
             continue
-        for r in hop.parse_receipt(str(c.get("body") or "")):
+        body = str(c.get("body") or "")
+        parsed = hop.parse_receipt(body)
+        if not parsed:
+            continue  # not a receipt line at all
+        login = _login(c)
+        if not login:
+            rejected.append("a receipt comment has no authenticated author")
+            continue
+        key = login.casefold()
+        if author and key == author:
+            rejected.append(f"{login}: wrote the PR under review")
+            continue
+        for r in parsed[:1]:  # one comment is one reviewer's signature, however many lines it carries
             if not head or not head.lower().startswith(r["head"]):
-                rejected.append(f"reviewer {r['reviewer']}: receipt head {r['head']} is not this head")
+                rejected.append(f"{login}: receipt head {r['head']} is not this head")
                 continue
-            if r["reviewer"] in banned:
-                rejected.append(f"reviewer {r['reviewer']}: is the author's agent, session or login")
+            if r["reviewer"].casefold() in banned:
+                rejected.append(f"{login}: names the author's agent, session or login")
                 continue
-            if any(x["reviewer"] == r["reviewer"] for x in seen):
+            if not coordinator_ok(r["coordinator"]):
+                rejected.append(f"{login}: coordinator {r['coordinator']} holds no live coordinator claim")
                 continue
-            seen.append(r)
+            if any(x["login"] == key for x in seen):
+                continue  # the same account cannot sign twice
+            seen.append({**r, "login": login})
     ok = len(seen) >= 2
     return {"ok": ok, "receipts": seen, "rejected": rejected[:6],
-            "detail": ("two independent receipts on this head" if ok
-                       else f"{len(seen)} independent receipt(s) on this head; two are required")}
+            "detail": ("two independently authenticated receipts on this head" if ok
+                       else f"{len(seen)} independently authenticated receipt(s) on this head; two are required")}
 
 
 # --------------------------------------------------------------------------- the decision
@@ -452,6 +602,9 @@ def decide(evidence: Mapping[str, Any], cfg: Mapping[str, Any], now: datetime) -
     held = evidence.get("held") or {}
     if held.get("labels") or held.get("classes"):
         refusals.append(f"held: labels={held.get('labels')} classes={held.get('classes')}")
+    trust = evidence.get("trust") or {}
+    if trust.get("hit"):
+        refusals.append(f"trust-anchor: the PR changes what this path trusts ({', '.join(trust['hit'][:3])})")
     if not evidence.get("files_verified"):
         refusals.append("files: could not verify every changed path")
     checks = evidence.get("checks") or {}
@@ -506,7 +659,8 @@ def _author_claim(branch: str) -> dict[str, str]:
 
 def gather(pr_number: int, *, repo: str, cfg: Mapping[str, Any], gh_json: Callable[[str], Any], now: datetime,
            capability: Mapping[str, Any], stop: Mapping[str, Any],
-           claim_reader: Optional[Callable[[str], Mapping[str, str]]] = None) -> dict[str, Any]:
+           claim_reader: Optional[Callable[[str], Mapping[str, str]]] = None,
+           coordinator_ok: Optional[Callable[[str], bool]] = None) -> dict[str, Any]:
     """Read one PR's evidence. Every read is GET-only; a failed read refuses, never admits."""
     view = _gh_json(gh_json, f"repos/{repo}/pulls/{int(pr_number)}")
     if not isinstance(view, dict) or not view:
@@ -525,6 +679,8 @@ def gather(pr_number: int, *, repo: str, cfg: Mapping[str, Any], gh_json: Callab
         from lib import merge_hold_paths as mhp  # type: ignore
     held_labels = sorted(labels & mhp.hold_labels())
     held_classes = sorted(mhp.held_classes(files)) if files else []
+    anchors = [str(a) for a in (cfg.get("trust_anchors") or [])]
+    trust_hits = sorted({f for f in files if any(f == a or f.startswith(a.rstrip("/") + "/") for a in anchors)})
     try:
         from scripts.lib import pr_all_checks_green as pacg
     except ImportError:  # scripts/ on sys.path
@@ -534,7 +690,8 @@ def gather(pr_number: int, *, repo: str, cfg: Mapping[str, Any], gh_json: Callab
         comments = _pages(gh_json, f"repos/{repo}/issues/{int(pr_number)}/comments?direction=asc", cfg,
                           f"the comments of #{pr_number}")
         receipts = review_receipts(comments, head=head, author_agent=author.get("agent", ""),
-                                   author_session=author.get("session", ""), author_login=author_login)
+                                   author_session=author.get("session", ""), author_login=author_login,
+                                   coordinator_ok=coordinator_ok)
     except Refused as exc:
         receipts = {"ok": False, "receipts": [], "rejected": [], "detail": str(exc)}
     try:
@@ -548,6 +705,7 @@ def gather(pr_number: int, *, repo: str, cfg: Mapping[str, Any], gh_json: Callab
                "draft": bool(view.get("draft")), "base": str((view.get("base") or {}).get("ref") or ""),
                "already_labelled": "operator-merge" in labels},
         "held": {"labels": held_labels, "classes": held_classes},
+        "trust": {"hit": trust_hits},
         "files_verified": bool(files) and len(files) >= changed,
         "checks": checks,
         "receipts": receipts,
@@ -583,38 +741,44 @@ def review(ready: Iterable[Mapping[str, Any]], *, repo: str, cfg: Optional[Mappi
            policy_text: Optional[str] = None,
            label_applier: Optional[Callable[..., Any]] = None,
            stop_reader: Optional[Callable[[], Mapping[str, Any]]] = None,
-           claim_reader: Optional[Callable[[str], Mapping[str, str]]] = None) -> dict[str, Any]:
+           claim_reader: Optional[Callable[[str], Mapping[str, str]]] = None,
+           coordinator_ok: Optional[Callable[[str], bool]] = None,
+           policy_root: Optional[Path] = None) -> dict[str, Any]:
     """Annotate the digest's ready rows with a standing decision; label at most one when ``apply``.
 
     ``apply`` is the host timer's flag. It is NOT sufficient on its own: nothing is labelled unless
     the policy capability is ratified AND a genuine operator standing approval covers the branch AND
-    every gate in ``decide`` holds on the head read at that moment.
+    every gate in ``decide`` holds on the head read at that moment, and every gate is re-asserted
+    immediately before the label is written.
     """
     cfg = dict(cfg or load_config())
     now = now or datetime.now(timezone.utc)
-    text = policy_text if policy_text is not None else policy_text_from_git(cwd=ROOT)
+    text = policy_text if policy_text is not None else policy_text_read(cwd=policy_root or ROOT)
     cap = policy_capability(text)
     out: dict[str, Any] = {"schema": SCHEMA, "enabled": bool(cap.get("capability")), "apply": bool(apply),
                            "policy": cap, "decisions": [], "applied": [], "considered": 0,
-                           "detail": ""}
+                           "cadence": cadence_report(cfg), "detail": ""}
     if not cap.get("capability"):
         out["detail"] = f"standing merge path OFF: {cap.get('detail')}"
         return out
-    gh = gh_json or _default_gh_json
+    gh = _cached_gh(gh_json or _default_gh_json)
+    raw_gh = gh_json or _default_gh_json
     stop = dict((stop_reader or stop_state)() or {})
+    coord_ok = coordinator_ok or coordinator_checker()
     rows = [i for i in ready if isinstance(i, Mapping) and isinstance(i.get("pr"), int)]
     limit = int(cfg.get("max_candidates") or 8)
     out["considered"] = min(len(rows), limit)
     for item in rows[:limit]:
         ev = gather(int(item["pr"]), repo=repo, cfg=cfg, gh_json=gh, now=now, capability=cap, stop=stop,
-                    claim_reader=claim_reader)
+                    claim_reader=claim_reader, coordinator_ok=coord_ok)
         if ev.get("error"):
             out["decisions"].append({"pr": int(item["pr"]), "eligible": False, "refusals": [ev["error"]]})
             continue
         decision = decide(ev, cfg, now)
         out["decisions"].append(decision)
         if apply and decision["eligible"] and len(out["applied"]) < int(cfg.get("max_labels_per_run") or 1):
-            applied = _apply_one(decision, repo=repo, cfg=cfg, applier=label_applier, gh_json=gh)
+            applied = _apply_one(decision, repo=repo, cfg=cfg, applier=label_applier, gh_json=raw_gh,
+                                 stop_reader=stop_reader, coordinator_ok=coord_ok, now=now)
             out["applied"].append(applied)
             decision["labelled"] = bool(applied.get("ok"))
     if not apply:
@@ -622,23 +786,82 @@ def review(ready: Iterable[Mapping[str, Any]], *, repo: str, cfg: Optional[Mappi
     return out
 
 
-def _apply_one(decision: Mapping[str, Any], *, repo: str, cfg: Mapping[str, Any],
-               applier: Optional[Callable[..., Any]], gh_json: Optional[Callable[[str], Any]] = None) -> dict[str, Any]:
-    """Label the PR, but only if its head is still the head every gate was proven on."""
+def _prelabel_problems(decision: Mapping[str, Any], *, repo: str, cfg: Mapping[str, Any],
+                       gh_json: Optional[Callable[[str], Any]],
+                       stop_reader: Optional[Callable[[], Mapping[str, Any]]],
+                       coordinator_ok: Optional[Callable[[str], bool]],
+                       now: Optional[datetime] = None) -> list[str]:
+    """Re-assert EVERY gate immediately before the label is written (review cc3 B4).
+
+    The decision was made after several API reads; a PR can turn draft, gain a held label, be labelled
+    by someone else, the head can move, the operator can revoke, the window can close and STOP can be
+    set in between. Only the head was re-read before. This re-reads the PR view (uncached), the STOP
+    latch (local), the window (clock) and the standing approval (GitHub) and returns every violated
+    gate; an empty list is the only state in which the label is written.
+    """
     number = int(decision["pr"])
     head = str(decision.get("head") or "")
-    if gh_json is not None and head:
+    branch = str(decision.get("branch") or "")
+    problems: list[str] = []
+    if gh_json is not None:
         view = _gh_json(gh_json, f"repos/{repo}/pulls/{number}")
-        now_head = str(((view or {}).get("head") or {}).get("sha") or "") if isinstance(view, dict) else ""
-        if now_head != head:
-            row = {"event": "standing-merge-head-moved", "pr": number, "branch": decision.get("branch"),
-                   "head": head, "head_now": now_head, "repo": repo,
-                   "detail": "the head moved after the gates were read; nothing was labelled"}
+        if not isinstance(view, dict) or not view:
+            problems.append("could not re-read the PR before labelling")
+        else:
+            now_head = str(((view.get("head") or {}).get("sha")) or "")
+            if now_head != head:
+                problems.append(f"head moved {head[:9]} -> {now_head[:9]}")
+            if view.get("draft"):
+                problems.append("the PR became a draft")
+            if str((view.get("base") or {}).get("ref") or "main") != "main":
+                problems.append("the base is no longer main")
+            labels = {str((lab or {}).get("name") or "") for lab in (view.get("labels") or [])}
+            if "operator-merge" in labels:
+                problems.append("operator-merge appeared on the PR independently")
             try:
-                row["receipt"] = str(write_receipt(row, cfg))
-            except OSError as exc:
-                row["receipt_error"] = f"{type(exc).__name__}: {exc}"
-            return {"pr": number, "ok": False, **row}
+                from scripts.lib import merge_hold_paths as mhp
+            except ImportError:  # scripts/ on sys.path
+                from lib import merge_hold_paths as mhp  # type: ignore
+            held = sorted(labels & mhp.hold_labels())
+            if held:
+                problems.append(f"held label(s) appeared: {held}")
+    stop = dict((stop_reader or stop_state)() or {})
+    if not stop.get("ok"):
+        problems.append(f"stop: {stop.get('detail')}")
+    now = now or datetime.now(timezone.utc)
+    win = merge_window(now, cfg)
+    if not win.get("ok"):
+        problems.append(f"window: {win.get('detail')}")
+    if gh_json is not None and branch:
+        try:
+            again = standing_approval(branch, repo=repo, cfg=cfg, gh_json=gh_json, now=now)
+            was = (decision.get("standing") or {}).get("ref")
+            if was and again.get("ref") != was:
+                problems.append(f"the standing approval changed ({was} -> {again.get('ref')})")
+        except Refused as exc:
+            problems.append(f"standing approval no longer resolves: {exc}")
+    return problems
+
+
+def _apply_one(decision: Mapping[str, Any], *, repo: str, cfg: Mapping[str, Any],
+               applier: Optional[Callable[..., Any]], gh_json: Optional[Callable[[str], Any]] = None,
+               stop_reader: Optional[Callable[[], Mapping[str, Any]]] = None,
+               coordinator_ok: Optional[Callable[[str], bool]] = None,
+               now: Optional[datetime] = None) -> dict[str, Any]:
+    """Label the PR, but only after every gate is re-asserted on the state read at that moment."""
+    number = int(decision["pr"])
+    problems = _prelabel_problems(decision, repo=repo, cfg=cfg, gh_json=gh_json, stop_reader=stop_reader,
+                                  coordinator_ok=coordinator_ok, now=now)
+    if problems:
+        event = ("standing-merge-head-moved"
+                 if len(problems) == 1 and problems[0].startswith("head moved") else "standing-merge-prelabel-refused")
+        row = {"event": event, "pr": number, "branch": decision.get("branch"), "head": decision.get("head"),
+               "repo": repo, "problems": problems, "detail": "nothing was labelled"}
+        try:
+            row["receipt"] = str(write_receipt(row, cfg))
+        except OSError as exc:
+            row["receipt_error"] = f"{type(exc).__name__}: {exc}"
+        return {"pr": number, "ok": False, **row}
     if applier is None:
         try:
             from scripts.lib import pr_merge_telegram as pmt
@@ -666,7 +889,9 @@ def _apply_one(decision: Mapping[str, Any], *, repo: str, cfg: Mapping[str, Any]
 
 
 def _default_gh_json(path: str) -> Any:
-    cp = subprocess.run(["gh", "api", "--paginate", path], capture_output=True, text=True, timeout=60, check=False)
+    # No --paginate: every caller builds its own page=N (mixing the two concatenated pages and made
+    # json.loads fail on a 100+ item issue; cc3 N1).
+    cp = subprocess.run(["gh", "api", path], capture_output=True, text=True, timeout=60, check=False)
     if cp.returncode != 0 or not cp.stdout.strip():
         return None
     try:

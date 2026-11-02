@@ -13,5 +13,21 @@
   "max_candidates": 8,
   "max_labels_per_run": 1,
   "max_pages": 10,
-  "receipt_rel": "data/runtime/pr_merge_standing"
+  "receipt_rel": "data/runtime/pr_merge_standing",
+  "_trust_anchors_why": "Every module this evaluator trusts to decide a merge is a held path FOR THIS PATH: a PR that weakens one of them can never receive the standing label. The list contains its own config, so it cannot be emptied by a PR that this path would then admit.",
+  "trust_anchors": [
+    "scripts/lib/merge_standing.py",
+    "config/merge_standing.json",
+    "scripts/lib/pr_all_checks_green.py",
+    "scripts/lib/deploy_stop.py",
+    "scripts/lib/release_control.py",
+    "scripts/lib/hands_off_policy.py",
+    "scripts/agent_claim.py",
+    "scripts/lib/agent_claim_board.py",
+    "scripts/lib/merge_hold_paths.py",
+    "scripts/lib/pr_merge_telegram.py",
+    "scripts/lib/pr_merge_digest.py"
+  ],
+  "_caller_cadence_why": "Honesty, not a control: the digest timer runs 08:00/12:00/16:30 ET and the window is 17:30-18:30 ET, so the wired caller can never reach the window. `review()` reports this as cadence.can_fire=false rather than implying the digest will label. A cadence that can reach the window is a scheduler change and an operator decision (PROPOSED; nothing installed).",
+  "caller_schedule_et": ["08:00", "12:00", "16:30"]
 }
