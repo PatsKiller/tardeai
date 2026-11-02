@@ -47,7 +47,7 @@ import sys
 import tempfile
 import time
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -69,6 +69,7 @@ DEFAULT_TERRITORIES = {
 # each agent session's visible screen to a file they can read. Patterns, not a fixed list (operator 2026-11-02).
 DEFAULT_SNAPSHOT_SESSIONS = ("cc-deepseek-*", "codex", "cx-*")
 SNAPSHOT_IDLE_SECONDS = 90
+DEFAULT_ACK_TIMEOUT_MINUTES = 15
 
 
 # ── store roots ────────────────────────────────────────────────────────────────────────────────────────
@@ -115,8 +116,15 @@ def agents_dir(root: Path) -> Path:
     return notebook(root) / "agents"
 
 
+_CLOCK: datetime | None = None
+
+
+def _now_dt() -> datetime:
+    return _CLOCK or datetime.now(timezone.utc)
+
+
 def now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return _now_dt().replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _stamp() -> str:
@@ -198,10 +206,14 @@ def read_registry(root: Path) -> dict[str, Any]:
     doc.setdefault("territories", dict(DEFAULT_TERRITORIES))
     doc.setdefault("coordinators", [])
     doc.setdefault("assignments", {})
+    doc.setdefault("ack_timeout_minutes", DEFAULT_ACK_TIMEOUT_MINUTES)
+    doc.setdefault("pending_acks", {})
     if not isinstance(doc["coordinators"], list):
         doc["coordinators"] = []
     if not isinstance(doc["assignments"], dict):
         doc["assignments"] = {}
+    if not isinstance(doc["pending_acks"], dict):
+        doc["pending_acks"] = {}
     if not isinstance(doc["territories"], dict):
         doc["territories"] = dict(DEFAULT_TERRITORIES)
     return doc
@@ -423,13 +435,288 @@ def cmd_snapshot(args) -> int:
     return 0
 
 
+# ── operator transfers: give / lead / take-back / add / ack ───────────────────────────────────────────
+
+
+def _parse_iso(ts: str | None) -> datetime | None:
+    if not ts:
+        return None
+    try:
+        d = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return d if d.tzinfo else None
+
+
+def _notify_session(tmux: str, session: str, text: str) -> bool:
+    """One tmux message to a coordinator's registered session. False when the session is gone."""
+    if not session:
+        return False
+    rc, _ = _tmux(tmux, "send-keys", "-t", session, text, "Enter")
+    return rc == 0
+
+
+def _operator_alert(subject: str, summary: str) -> bool:
+    """Queue one operator alert through the EXISTING comms-intent chokepoint (never a direct send).
+
+    The chokepoint is scripts/lib/host_comms_intents.queue_intent: it queues a comms intent into the coordination
+    ledger and the host consumer delivers it. It refuses an unrouted (domain, kind); that refusal is recorded on the
+    event as alert_queued=false, and routing it is an operator activation step (no route is added by this PR).
+    """
+    try:
+        try:
+            from lib.host_comms_intents import queue_intent
+        except ImportError:  # scripts/ on sys.path
+            from scripts.lib.host_comms_intents import queue_intent
+        queue_intent(producer="coordinator", domain="coordination", kind="coordinator_ack_timeout",
+                     subject=subject, summary=summary, execution_id=f"coordinator-{_stamp()}", node="coordinator")
+        return True
+    except Exception:  # noqa: BLE001 — a refused/absent chokepoint is reported, never a fallback send
+        return False
+
+
+def _all_territories(reg: dict[str, Any]) -> list[str]:
+    known = set(reg.get("territories") or {})
+    for c in reg["coordinators"]:
+        known |= set(c.get("territories") or [])
+    return sorted(known)
+
+
+def _holders(reg: dict[str, Any], territory: str) -> list[str]:
+    return [str(c.get("id")) for c in reg["coordinators"] if territory in (c.get("territories") or [])]
+
+
+def sweep_acks(root: Path, reg: dict[str, Any], now: datetime | None = None) -> list[dict[str, Any]]:
+    """Alert the operator ONCE for every pending transfer past its ack deadline. Caller holds the lock."""
+    now = now or _now_dt()
+    fired: list[dict[str, Any]] = []
+    for tid, p in (reg.get("pending_acks") or {}).items():
+        if p.get("acknowledged") or p.get("alerted"):
+            continue
+        due = _parse_iso(p.get("ack_by"))
+        if due is None or now < due:
+            continue
+        p["alerted"] = True
+        p["alerted_at"] = now_iso()
+        summary = (f"no ack from {p.get('to')} for {p.get('kind')} "
+                   f"({', '.join(p.get('territories') or []) or 'lead'}) since {p.get('issued_at')}")
+        queued = _operator_alert(str(p.get("to") or "coordinator"), summary)
+        p["alert_queued"] = queued
+        append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": None, "territory": None,
+                            "kind": "ack_timeout", "subject": str(p.get("to") or ""), "detail": summary,
+                            "alert_queued": queued})
+        fired.append(p)
+    return fired
+
+
+def _transfer(root: Path, reg: dict[str, Any], *, kind: str, to: str, territories: list[str],
+              quote: str, command: str, tmux: str) -> dict[str, Any]:
+    """Ledger-first transfer, handoff snapshot, registry/board update, tmux notices, ack tracking. Lock held."""
+    if not quote.strip():
+        raise ValueError("refused: an operator transfer needs --quote with the operator's own words")
+    if find(reg, to) is None:
+        raise ValueError(f"refused: no coordinator {to}")
+    known = set(_all_territories(reg))
+    bad = [t for t in territories if t not in known]
+    if bad:
+        raise ValueError(f"refused: unknown territory {', '.join(bad)}; known: {', '.join(sorted(known))}")
+    givers: dict[str, list[str]] = {}
+    for t in territories:
+        for holder in _holders(reg, t):
+            givers.setdefault(holder, []).append(t)
+    tid = f"{_stamp()}-{kind}-{to}"
+    # 1. WRITE-AHEAD: the ledger records the operator's command before the registry changes.
+    append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": "operator", "territory": None,
+                        "kind": f"transfer_{kind}", "subject": to, "detail": command,
+                        "operator_quote": quote, "transfer_id": tid,
+                        "territories": territories, "from": sorted(givers)})
+    # 2. The handoff note is generated from BOARD + ledger + assignments.
+    stamp = _stamp()
+    hpath = handoffs_dir(root) / f"{stamp}-operator-to-{to}-{kind}.md"
+    body = [f"# Transfer {kind}: -> {to} ({now_iso()})", "",
+            f"- command: `{command}`", f"- operator words: {quote}",
+            f"- territories: {', '.join(territories) or '(lead role only)'}",
+            f"- from: {', '.join(sorted(givers)) or '(unheld)'}", "",
+            "## Snapshot", "", render_board(root, reg, read_events(root)), ""]
+    _atomic_write(hpath, "\n".join(body))
+    # 3. Registry + BOARD.
+    for holder, ts in givers.items():
+        c = find(reg, holder)
+        if c:
+            c["territories"] = [t for t in (c.get("territories") or []) if t not in ts]
+    if kind == "lead":
+        for c in reg["coordinators"]:
+            if str(c.get("role")) == "lead" and str(c.get("id")) != to:
+                c["role"] = "member"
+        find(reg, to)["role"] = "lead"
+    if territories:
+        target = find(reg, to)
+        target["territories"] = sorted(set(target.get("territories") or []) | set(territories))
+    ack_min = float(reg.get("ack_timeout_minutes") or DEFAULT_ACK_TIMEOUT_MINUTES)
+    ack_by = (_now_dt() + timedelta(minutes=ack_min)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    reg.setdefault("pending_acks", {})[tid] = {
+        "kind": kind, "from": sorted(givers), "to": to, "territories": territories,
+        "issued_at": now_iso(), "ack_by": ack_by, "command": command, "operator_quote": quote,
+        "handoff": str(hpath), "acknowledged": False, "alerted": False,
+    }
+    reg["as_of"] = now_iso()
+    _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
+    _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
+    # 4. Notify both sides in their registered tmux sessions.
+    notices = []
+    for cid in sorted(set(givers) | {to}):
+        c = find(reg, cid)
+        sess = str((c or {}).get("session") or "")
+        if not sess:
+            notices.append({"to": cid, "session": None, "sent": False})
+            continue
+        msg = (f"[coordinator] {kind}: {to} now holds {', '.join(territories) or 'the lead role'}. "
+               f"Re-read BOARD.md and the handoff {hpath.name}; then run: coord ack {to}")
+        notices.append({"to": cid, "session": sess, "sent": _notify_session(tmux, sess, msg)})
+    append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": "operator", "territory": None,
+                        "kind": "transfer_notified", "subject": to, "detail": json.dumps(notices),
+                        "transfer_id": tid})
+    return {"transfer_id": tid, "to": to, "territories": territories, "from": sorted(givers),
+            "ack_by": ack_by, "handoff": str(hpath), "notices": notices}
+
+
+def cmd_give(args) -> int:
+    root = state_root(args.state_root)
+    with locked(root):
+        reg = read_registry(root)
+        sweep_acks(root, reg)
+        territories = (_all_territories(reg) if str(args.territories) == "all"
+                       else [t.strip() for t in str(args.territories).split(",") if t.strip()])
+        try:
+            out = _transfer(root, reg, kind="give", to=_safe(args.id), territories=territories,
+                            quote=str(args.quote or ""), command=" ".join(["coord"] + list(args.argv or [])),
+                            tmux=args.tmux_bin or "tmux")
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
+    print(json.dumps({"schema": "CoordinatorTransfer@v1", **out}, indent=1))
+    return 0
+
+
+def cmd_lead(args) -> int:
+    root = state_root(args.state_root)
+    with locked(root):
+        reg = read_registry(root)
+        sweep_acks(root, reg)
+        try:
+            out = _transfer(root, reg, kind="lead", to=_safe(args.id), territories=[],
+                            quote=str(args.quote or ""), command=" ".join(["coord"] + list(args.argv or [])),
+                            tmux=args.tmux_bin or "tmux")
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+    print(json.dumps({"schema": "CoordinatorTransfer@v1", **out}, indent=1))
+    return 0
+
+
+def cmd_take_back(args) -> int:
+    root = state_root(args.state_root)
+    with locked(root):
+        reg = read_registry(root)
+        sweep_acks(root, reg)
+        c = find(reg, _safe(args.id))
+        if not c:
+            print(f"error: no coordinator {args.id}", file=sys.stderr)
+            return 2
+        territories = list(c.get("territories") or [])
+        lead = next((x for x in reg["coordinators"] if str(x.get("role")) == "lead"), None)
+        target = str(lead.get("id")) if lead and str(lead.get("id")) != str(c.get("id")) else str(c.get("id"))
+        try:
+            out = _transfer(root, reg, kind="take-back", to=target, territories=territories,
+                            quote=str(args.quote or ""), command=" ".join(["coord"] + list(args.argv or [])),
+                            tmux=args.tmux_bin or "tmux")
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+    print(json.dumps({"schema": "CoordinatorTransfer@v1", **out}, indent=1))
+    return 0
+
+
+def cmd_add(args) -> int:
+    root = state_root(args.state_root)
+    with locked(root):
+        reg = read_registry(root)
+        cid = _safe(args.id)
+        if find(reg, cid):
+            print(f"error: {cid} already exists", file=sys.stderr)
+            return 2
+        if not str(args.quote or "").strip():
+            print("error: --quote is required: adding a coordinator is the operator's act", file=sys.stderr)
+            return 2
+        territories = [t.strip() for t in (args.territories or "").split(",") if t.strip()]
+        known = set(_all_territories(reg))
+        if [t for t in territories if t not in known]:
+            print(f"error: unknown territory; known: {', '.join(sorted(known))}", file=sys.stderr)
+            return 2
+        entry = {"id": cid, "vendor": args.vendor, "session": args.session or None, "where": args.where or None,
+                 "territories": territories, "role": "member", "appointed_by": "operator",
+                 "appointed_quote": str(args.quote), "appointed_at": now_iso(),
+                 "last_heartbeat": now_iso(), "status": "active"}
+        reg["coordinators"].append(entry)
+        reg["as_of"] = now_iso()
+        _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
+        append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": "operator", "territory": None,
+                            "kind": "appoint", "subject": cid, "detail": f"{args.vendor} as member",
+                            "operator_quote": str(args.quote)})
+        _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
+        joined = join_line(root, cid, args.vendor)
+    print(joined or f"added {cid} ({args.vendor}); join line unavailable (template missing)")
+    return 0
+
+
+def join_line(root: Path, cid: str, vendor: str) -> str | None:
+    try:
+        text = (notebook(root) / "join_command.template").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    return text.replace("{id}", cid).replace("{vendor}", vendor).rstrip("\n")
+
+
+def cmd_ack(args) -> int:
+    root = state_root(args.state_root)
+    with locked(root):
+        reg = read_registry(root)
+        cid = _safe(args.id)
+        if find(reg, cid) is None:
+            print(f"error: no coordinator {cid}", file=sys.stderr)
+            return 2
+        pending = reg.get("pending_acks") or {}
+        due = [(tid, p) for tid, p in pending.items()
+               if str(p.get("to")) == cid and not p.get("acknowledged")
+               and (not args.transfer or tid == args.transfer)]
+        if not due:
+            print(f"error: no pending transfer for {cid}", file=sys.stderr)
+            return 2
+        for tid, p in due:
+            p["acknowledged"] = True
+            p["acknowledged_at"] = now_iso()
+            append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": cid, "territory": None,
+                                "kind": "ack", "subject": cid, "detail": f"transfer {tid}",
+                                "transfer_id": tid})
+        reg["as_of"] = now_iso()
+        _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
+        _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
+    print(f"{cid} acknowledged {len(due)} transfer(s)")
+    return 0
+
+
 # ── commands ──────────────────────────────────────────────────────────────────────────────────────────
 
 
 def cmd_status(args) -> int:
     root = state_root(args.state_root)
-    reg = read_registry(root)
-    now = datetime.now(timezone.utc)
+    with locked(root):
+        reg = read_registry(root)
+        if sweep_acks(root, reg):
+            _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
+            _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
+    now = _now_dt()
     stale = float(reg.get("stale_after_minutes") or DEFAULT_STALE_MINUTES)
     events = read_events(root)
     doc = {
@@ -441,6 +728,7 @@ def cmd_status(args) -> int:
         "pending_checks": pending_checks(events),
         "pending_decisions": pending_decisions(events),
         "inbox": inbox_counts(root),
+        "pending_acks": reg.get("pending_acks") or {},
         "ledger_events": len(events),
         "store": str(coord_root(root)),
     }
@@ -724,19 +1012,24 @@ def cmd_whoami(args) -> int:
 # ── entry ─────────────────────────────────────────────────────────────────────────────────────────────
 
 
+CLOCK_PARSER = argparse.ArgumentParser(add_help=False)
+CLOCK_PARSER.add_argument("--now", default=None, help=argparse.SUPPRESS)
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="Co-coordinators by territory: registry and shared notebook")
     ap.add_argument("--state-root", default=None, help="persistent-state root (default: TRADEAI_STATE_ROOT or ~)")
+    ap.add_argument("--now", default=None, help="pin the clock (ISO with offset; tests and replays)")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     def common(p):
         p.add_argument("--coordinator", default=None, help="the acting coordinator id (ledger attribution)")
         p.add_argument("--json", action="store_true")
 
-    p = sub.add_parser("status", help="registry, freshness, pending checks and decisions")
+    p = sub.add_parser("status", parents=[CLOCK_PARSER], help="registry, freshness, pending checks and decisions")
     common(p)
 
-    p = sub.add_parser("appoint", help="operator: appoint a coordinator (--quote required)")
+    p = sub.add_parser("appoint", parents=[CLOCK_PARSER], help="operator: appoint a coordinator (--quote required)")
     p.add_argument("--id", required=True)
     p.add_argument("--vendor", required=True)
     p.add_argument("--session", default=None)
@@ -746,21 +1039,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--quote", required=True)
     p.add_argument("--json", action="store_true")
 
-    p = sub.add_parser("stand-down", help="operator: stand a coordinator down")
+    p = sub.add_parser("stand-down", parents=[CLOCK_PARSER], help="operator: stand a coordinator down")
     p.add_argument("--id", required=True)
     p.add_argument("--quote", default=None)
     p.add_argument("--json", action="store_true")
 
-    p = sub.add_parser("heartbeat", help="record liveness")
+    p = sub.add_parser("heartbeat", parents=[CLOCK_PARSER], help="record liveness")
     p.add_argument("--id", required=True)
     p.add_argument("--json", action="store_true")
 
-    p = sub.add_parser("assign", help="assign an agent or pr:<n> to a territory")
+    p = sub.add_parser("assign", parents=[CLOCK_PARSER], help="assign an agent or pr:<n> to a territory")
     p.add_argument("subject")
     p.add_argument("territory")
     common(p)
 
-    p = sub.add_parser("event", help="append a ledger event (write-ahead)")
+    p = sub.add_parser("event", parents=[CLOCK_PARSER], help="append a ledger event (write-ahead)")
     p.add_argument("kind")
     p.add_argument("--subject", default=None)
     p.add_argument("--detail", default=None)
@@ -768,7 +1061,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--quote", default=None)
     common(p)
 
-    p = sub.add_parser("check", help="two-coordinator check: request | ok | block")
+    p = sub.add_parser("check", parents=[CLOCK_PARSER], help="two-coordinator check: request | ok | block")
     p.add_argument("action", choices=("request", "ok", "block"))
     p.add_argument("subject")
     p.add_argument("--sha", default="")
@@ -776,7 +1069,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--reason", default=None)
     p.add_argument("--json", action="store_true")
 
-    p = sub.add_parser("inbox", help="send a report to a coordinator, or read (and move) its inbox")
+    p = sub.add_parser("inbox", parents=[CLOCK_PARSER], help="send a report to a coordinator, or read (and move) its inbox")
     p.add_argument("action", choices=("send", "read"))
     p.add_argument("--to", default=None)
     p.add_argument("--from", dest="from_", default=None)
@@ -786,22 +1079,55 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--keep", action="store_true", help="read without moving to read/")
     p.add_argument("--json", action="store_true")
 
-    p = sub.add_parser("handoff", help="snapshot, move territories and record the handover")
+    p = sub.add_parser("handoff", parents=[CLOCK_PARSER], help="snapshot, move territories and record the handover")
     p.add_argument("--from", dest="from_", required=True)
     p.add_argument("--to", required=True)
     p.add_argument("--json", action="store_true")
 
-    p = sub.add_parser("board", help="regenerate BOARD.md")
+    p = sub.add_parser("board", parents=[CLOCK_PARSER], help="regenerate BOARD.md")
     p.add_argument("--json", action="store_true")
 
-    p = sub.add_parser("snapshot", help="host lane: capture each agent session's visible screen (tmux)")
+    p = sub.add_parser("give", parents=[CLOCK_PARSER], help="operator: give a territory (or 'all') to a coordinator")
+    p.add_argument("id")
+    p.add_argument("territories")
+    p.add_argument("--quote", required=True, help="the operator's own words (recorded verbatim)")
+    p.add_argument("--tmux-bin", default="tmux")
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("lead", parents=[CLOCK_PARSER], help="operator: make a coordinator the one lead")
+    p.add_argument("id")
+    p.add_argument("--quote", required=True)
+    p.add_argument("--tmux-bin", default="tmux")
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("take-back", parents=[CLOCK_PARSER], help="operator: take a coordinator's territories back to the lead")
+    p.add_argument("id")
+    p.add_argument("--quote", required=True)
+    p.add_argument("--tmux-bin", default="tmux")
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("add", parents=[CLOCK_PARSER], help="operator: add a coordinator and print its join line")
+    p.add_argument("id")
+    p.add_argument("--vendor", required=True)
+    p.add_argument("--session", default=None)
+    p.add_argument("--where", default=None)
+    p.add_argument("--territories", default="")
+    p.add_argument("--quote", required=True)
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("ack", parents=[CLOCK_PARSER], help="receiver: acknowledge its pending transfer")
+    p.add_argument("id")
+    p.add_argument("--transfer", default=None)
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("snapshot", parents=[CLOCK_PARSER], help="host lane: capture each agent session's visible screen (tmux)")
     p.add_argument("--sessions", default=None, help="comma-separated tmux session patterns "
                                                     f"(default {'/'.join(DEFAULT_SNAPSHOT_SESSIONS)})")
     p.add_argument("--lines", type=int, default=40)
     p.add_argument("--tmux-bin", default="tmux")
     p.add_argument("--json", action="store_true")
 
-    p = sub.add_parser("whoami", help="which coordinator and territory is this session")
+    p = sub.add_parser("whoami", parents=[CLOCK_PARSER], help="which coordinator and territory is this session")
     p.add_argument("--session", default=None)
     p.add_argument("--json", action="store_true")
     return ap
@@ -810,11 +1136,32 @@ def build_parser() -> argparse.ArgumentParser:
 COMMANDS = {"status": cmd_status, "appoint": cmd_appoint, "stand-down": cmd_stand_down,
             "heartbeat": cmd_heartbeat, "assign": cmd_assign, "event": cmd_event, "check": cmd_check,
             "inbox": cmd_inbox, "handoff": cmd_handoff, "board": cmd_board, "whoami": cmd_whoami,
-            "snapshot": cmd_snapshot}
+            "snapshot": cmd_snapshot, "give": cmd_give, "lead": cmd_lead, "take-back": cmd_take_back,
+            "add": cmd_add, "ack": cmd_ack}
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    raw = list(sys.argv[1:] if argv is None else argv)
+    args = build_parser().parse_args(raw)
+    global _CLOCK
+    if getattr(args, "now", None):
+        clock = datetime.fromisoformat(str(args.now).replace("Z", "+00:00"))
+        _CLOCK = clock if clock.tzinfo else clock.replace(tzinfo=timezone.utc)
+    else:
+        _CLOCK = None
+    # The original command, minus the test-only clock/root options, is what the ledger records verbatim.
+    cleaned, skip = [], False
+    for a in raw:
+        if skip:
+            skip = False
+            continue
+        if a in ("--now", "--state-root"):
+            skip = True
+            continue
+        if a.startswith("--now=") or a.startswith("--state-root="):
+            continue
+        cleaned.append(a)
+    args.argv = cleaned
     return COMMANDS[args.cmd](args)
 
 

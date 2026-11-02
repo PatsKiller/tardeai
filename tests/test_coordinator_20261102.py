@@ -328,3 +328,128 @@ def test_docs_render_as_written(tmp_path, monkeypatch):
     assert out["present"] is True and out["text"] == text and out["modified_at"]
     assert V.handle("/api/v2/coordination/docs", {"name": ["../AGENTS.md"]}, None)["present"] is False
     assert V.handle("/api/v2/coordination/docs", {"name": ["RULES_INTERIM.md"]}, None)["present"] is False
+
+
+# ── operator transfers: give / lead / take-back / add / ack ──────────────────────────────────────────
+
+
+def _tmux_that_logs(tmp_path: Path):
+    """A fake tmux whose send-keys calls are appended to a file (the notice assertion)."""
+    log = tmp_path / "tmux-sends.log"
+    p = tmp_path / "fake-tmux-sends"
+    p.write_text('''#!/usr/bin/env python3
+import sys, time
+a = sys.argv[1:]
+if a and a[0] == "list-sessions":
+    now = int(time.time())
+    print("s-claude\\t" + str(now - 5))
+    print("s-codex\\t" + str(now - 5))
+elif a and a[0] == "capture-pane":
+    print("pane")
+elif a and a[0] == "send-keys":
+    with open(%r, "a", encoding="utf-8") as f:
+        f.write(" ".join(a[1:]) + "\\n")
+sys.exit(0)
+''' % str(log), encoding="utf-8")
+    p.chmod(0o755)
+    return p, log
+
+
+def _seed_lead_and_codex(root: Path, tmux: Path) -> None:
+    assert run(root, "appoint", "--id", "claude-lead", "--vendor", "claude", "--session", "s-claude",
+               "--territories", "release,agents,ui,ops", "--role", "lead", "--quote", "lead") == 0
+    assert run(root, "add", "codex", "--vendor", "codex", "--session", "s-codex", "--quote", "add codex") == 0
+
+
+def test_give_all_round_trip_notifies_and_acks(tmp_path):
+    tmux, log = _tmux_that_logs(tmp_path)
+    _seed_lead_and_codex(tmp_path, tmux)
+    assert run(tmp_path, "give", "codex", "all", "--quote", "codex handles everything",
+               "--tmux-bin", str(tmux)) == 0
+    by = {c["id"]: c for c in registry(tmp_path)["coordinators"]}
+    assert set(by["codex"]["territories"]) == {"agents", "ops", "release", "ui"}
+    assert by["claude-lead"]["territories"] == []
+    assert by["codex"]["role"] == "member" and by["claude-lead"]["role"] == "lead"  # give moves territory, not lead
+    sends = log.read_text().splitlines()
+    assert len(sends) == 2 and any("s-claude" in s for s in sends) and any("s-codex" in s for s in sends)
+    assert all("coord ack codex" in s for s in sends)
+    assert run(tmp_path, "ack", "codex") == 0
+    assert [p for p in registry(tmp_path)["pending_acks"].values() if not p["acknowledged"]] == []
+    assert run(tmp_path, "take-back", "codex", "--quote", "take it back", "--tmux-bin", str(tmux)) == 0
+    by = {c["id"]: c for c in registry(tmp_path)["coordinators"]}
+    assert set(by["claude-lead"]["territories"]) == {"agents", "ops", "release", "ui"}
+    assert by["codex"]["territories"] == []
+
+
+def test_lead_swaps_the_role_and_keeps_territories(tmp_path):
+    tmux, _ = _tmux_that_logs(tmp_path)
+    _seed_lead_and_codex(tmp_path, tmux)
+    assert run(tmp_path, "lead", "codex", "--quote", "codex is the lead now", "--tmux-bin", str(tmux)) == 0
+    by = {c["id"]: c for c in registry(tmp_path)["coordinators"]}
+    assert by["codex"]["role"] == "lead" and by["claude-lead"]["role"] == "member"
+    assert set(by["claude-lead"]["territories"]) == {"agents", "ops", "release", "ui"}  # territories untouched
+
+
+def test_a_transfer_without_the_operator_words_is_refused(tmp_path):
+    tmux, _ = _tmux_that_logs(tmp_path)
+    _seed_lead_and_codex(tmp_path, tmux)
+    before = ledger(tmp_path)
+    assert run(tmp_path, "give", "codex", "agents", "--quote", "   ", "--tmux-bin", str(tmux)) == 2
+    assert ledger(tmp_path) == before  # nothing written, not even the write-ahead event
+    assert run(tmp_path, "take-back", "codex", "--quote", "", "--tmux-bin", str(tmux)) == 2
+    assert run(tmp_path, "lead", "codex", "--quote", "", "--tmux-bin", str(tmux)) == 2
+
+
+def test_give_refuses_an_unknown_coordinator_or_territory(tmp_path):
+    tmux, _ = _tmux_that_logs(tmp_path)
+    _seed_lead_and_codex(tmp_path, tmux)
+    assert run(tmp_path, "give", "nobody", "agents", "--quote", "q", "--tmux-bin", str(tmux)) == 2
+    assert run(tmp_path, "give", "codex", "nope", "--quote", "q", "--tmux-bin", str(tmux)) == 2
+
+
+def test_ack_by_the_wrong_coordinator_is_refused(tmp_path):
+    tmux, _ = _tmux_that_logs(tmp_path)
+    _seed_lead_and_codex(tmp_path, tmux)
+    assert run(tmp_path, "give", "codex", "agents", "--quote", "q", "--tmux-bin", str(tmux)) == 0
+    assert run(tmp_path, "ack", "claude-lead") == 2
+    assert run(tmp_path, "ack", "codex") == 0
+
+
+def test_transfer_writes_the_ledger_first_and_a_handoff(tmp_path):
+    tmux, _ = _tmux_that_logs(tmp_path)
+    _seed_lead_and_codex(tmp_path, tmux)
+    assert run(tmp_path, "give", "codex", "all", "--quote", "codex handles everything",
+               "--tmux-bin", str(tmux)) == 0
+    kinds = [e["kind"] for e in ledger(tmp_path)]
+    assert kinds.index("transfer_give") < kinds.index("transfer_notified")
+    tr = [e for e in ledger(tmp_path) if e["kind"] == "transfer_give"][0]
+    assert tr["operator_quote"] == "codex handles everything"
+    assert tr["detail"] == "coord give codex all --quote codex handles everything --tmux-bin " + str(tmux)
+    snaps = list((tmp_path / "data" / "coordination" / "coordinator" / "handoffs").iterdir())
+    assert any("operator-to-codex-give" in p.name for p in snaps)
+
+
+def test_ack_timeout_alerts_once_through_the_chokepoint(tmp_path, monkeypatch):
+    calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(C, "_operator_alert", lambda subject, summary: calls.append((subject, summary)) or True)
+    tmux, _ = _tmux_that_logs(tmp_path)
+    _seed_lead_and_codex(tmp_path, tmux)
+    assert run(tmp_path, "give", "codex", "agents", "--quote", "q", "--tmux-bin", str(tmux),
+               "--now", "2026-11-02T15:00:00Z") == 0
+    assert run(tmp_path, "status", "--now", "2026-11-02T15:05:00Z") == 0  # inside the 15-minute window
+    assert calls == []
+    assert run(tmp_path, "status", "--now", "2026-11-02T15:16:00Z") == 0
+    assert len(calls) == 1 and calls[0][0] == "codex"
+    assert run(tmp_path, "status", "--now", "2026-11-02T16:30:00Z") == 0
+    assert len(calls) == 1  # alerted once, never repeated
+    assert [e for e in ledger(tmp_path) if e["kind"] == "ack_timeout"]
+
+
+def test_add_prints_the_join_line_from_the_template(tmp_path):
+    d = tmp_path / "data" / "coordination" / "coordinator"
+    d.mkdir(parents=True)
+    (d / "join_command.template").write_text("Your coordinator id is {id} ({vendor}).\n", encoding="utf-8")
+    assert run(tmp_path, "appoint", "--id", "claude-lead", "--vendor", "claude", "--role", "lead",
+               "--territories", "release", "--quote", "lead") == 0
+    assert run(tmp_path, "add", "codex", "--vendor", "codex", "--quote", "add codex") == 0
+    assert registry(tmp_path)["coordinators"][-1]["id"] == "codex"

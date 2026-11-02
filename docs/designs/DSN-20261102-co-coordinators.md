@@ -66,3 +66,32 @@ so the committed registry stays the generator's fixed point.
   "reason_evidence": "No crontab line and no installed timer on the host. scripts/coordinator.py snapshot is the only writer of agents/<session>.txt; tests/test_coordinator_20261102.py covers it."
 }
 ```
+
+## Operator CLI (`coord`)
+
+The operator drives everything from one wrapper, not by editing files: `scripts/coord` (optional install below).
+
+```
+coord status                      # registry, freshness, pending checks, waiting-on-you, pending acks
+coord give <id> <territory|all>   # move territory; 'all' includes release
+coord lead <id>                   # make <id> the one lead (the previous lead becomes a member)
+coord take-back <id>              # return <id>'s territories to the lead
+coord add <id> --vendor <v>       # add a coordinator and print its join line from the template
+coord ack <id>                    # the receiver acknowledges its pending transfer
+```
+
+Every transfer (`give`/`lead`/`take-back`) is **operator-issued**: `--quote "<the operator's words>"` is required
+and recorded verbatim. The order is ledger first (the original command), then the auto-generated handoff note
+(BOARD + ledger + assignments), then the registry/BOARD update, then a tmux notice to both registered sessions, then
+`ack` tracking. An unacknowledged transfer alerts the operator once after `ack_timeout_minutes` (registry, default 15)
+through the existing comms-intent chokepoint; no timer is installed and no route is added by this PR, so the alert is
+queued only once the operator routes it. Moving a territory transfers **responsibility**, never merge/deploy/scheduler
+authority beyond the rules that already bind whoever holds it.
+
+**Optional install** (documented, not performed by the PR):
+
+```bash
+ln -sf "$(git -C /path/to/trade-ai rev-parse --show-toplevel)/scripts/coord" ~/.local/bin/coord
+```
+
+The wrapper runs `scripts/coordinator.py`; it installs nothing, opens no socket by itself, and never sends.

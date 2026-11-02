@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# coord — operator wrapper for the co-coordinator CLI (scripts/coordinator.py).
+#
+#   coord status · give <id> <territory|all> · lead <id> · take-back <id> · add <id> --vendor <v> · ack <id>
+#
+# Optional install (documented in docs/designs/DSN-20261102-co-coordinators.md):
+#   ln -sf "$(git -C /path/to/trade-ai rev-parse --show-toplevel)/scripts/coord" ~/.local/bin/coord
+# The wrapper runs the repo's CLI; it installs nothing and opens no socket itself.
+set -euo pipefail
+here="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+exec "${PYTHON:-python3}" "$here/coordinator.py" "$@"
