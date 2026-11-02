@@ -2595,7 +2595,7 @@
         "kind": "file_mtime",
         "path": "data/portfolios/state/holdings.json"
       },
-      "note": "Writes holdings.json and data_as_of (LITMUS_LANES F7 / #831). Cadence: every 15 min around the clock Mon-Fri plus Sunday 20:00-23:45 ET (24-hour session open); operator 2026-11-02 \"repricing needs to run 24 hours as we have 24-hour markets\" (was */15 9-16). reprice_source names the session (premarket/live/afterhours/overnight). Artifact is the holdings.json CURRENT serves (persistent-state via symlink), not $PROJ. Three cron lines (*/15 9-16, 5 9 open, 10 16 postclose) share match=portfolio_repricer.py. F3 live_monitor and F5 warm_caches stay loose — out of scope.",
+      "note": "Writes holdings.json and data_as_of (LITMUS_LANES F7 / #831). Cadence: every 15 min around the clock Mon-Fri plus Sunday 20:00-23:45 ET (24-hour session open); operator 2026-11-02 \"repricing needs to run 24 hours as we have 24-hour markets\" (was */15 9-16). reprice_source names the session (premarket/live/afterhours/overnight). Artifact is the holdings.json CURRENT serves (persistent-state via symlink), not $PROJ. Three cron lines (*/15 all day Mon-Fri, */15 20-23 Sunday, 10 16 postclose) share match=portfolio_repricer.py. F3 live_monitor and F5 warm_caches stay loose — out of scope.",
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P01",
       "rationalization": {

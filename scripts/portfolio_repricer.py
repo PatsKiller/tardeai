@@ -175,6 +175,39 @@ def _reprice_source(now: Optional[datetime] = None) -> str:
     return _SESSION_SOURCE.get(_price_session(now), "finviz_overnight")
 
 
+def _fills_trade_date(now: Optional[datetime] = None) -> str:
+    """The trade date whose fills match the prices being written (YYYY-MM-DD).
+
+    Overnight (20:00-04:00), on weekends and on holidays, Finviz's price, change_pct and
+    prev_close still describe the last regular session, so day change must use THAT
+    session's fills. Reading the new calendar day's (empty) fills would drop yesterday's
+    buys and sells from day P/L: a Monday buy re-measured from Friday's close at 00:15
+    Tuesday, and Monday's closed positions gone from closed_today.
+    """
+    now = now or _et_now()
+    today = now.date()
+    if _price_session(now) != "overnight":
+        return today.isoformat()
+    try:
+        from market_session import is_trading_day
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("America/New_York")
+
+        def _trading(d):
+            return is_trading_day(datetime.combine(d, datetime.min.time()).replace(hour=12, tzinfo=tz))
+    except Exception:
+        def _trading(d):
+            return d.weekday() < 5
+    if now.hour >= 20 and _trading(today):
+        return today.isoformat()
+    d = today - timedelta(days=1)
+    for _ in range(10):
+        if _trading(d):
+            return d.isoformat()
+        d -= timedelta(days=1)
+    return today.isoformat()
+
+
 def _load_env(root: Path) -> None:
     """Load .env from project root — guaranteed before any API call."""
     try:
@@ -982,7 +1015,7 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
     # 2026-10-06 (12:01, 13:01, 14:00 ET). Refuse instead: leave the holdings untouched so the last good marks
     # stand, and say so. config/portfolio_positions.yaml positions.reprice_min_live_coverage.
     _schwab = sym_groups.get("schwab") or []
-    if _schwab and _is_market_hours(now):
+    if _schwab:  # every session: an all-night run must not fall back to days-old closes either
         _cov = len([s for s in _schwab if s in live_prices]) / len(_schwab)
         _min = _min_live_coverage(root)
         if _cov < _min:
@@ -1025,7 +1058,7 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
             print(f"  [repricer] Yahoo fallback: {len(yahoo_prices)} symbols "
                   f"({', '.join(yahoo_prices.keys())})")
 
-    intraday_fills = _load_intraday_fills()
+    intraday_fills = _load_intraday_fills(_fills_trade_date(now))
     n_holdings = _apply_to_holdings(portfolio.get("holdings", []), live_prices, fidelity_prices, intraday_fills)
     print(f"  [repricer] Holdings updated: {n_holdings}")
 
