@@ -22,6 +22,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 
 REQUIRED_CHECKS = ("cio-hardening", "agent-governance", "release-readiness", "ci-gate")
+#: Conclusions that mean a check really failed. A cancelled run counts: agent-governance uses
+#: cancel-in-progress, so a superseded attempt must not be read as "not a failure".
+RED_CONCLUSIONS = frozenset({"FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "ERROR", "STARTUP_FAILURE"})
 MERGIFY_PAYLOAD_RE = re.compile(
     r"-\*- Mergify Payload -\*-\s*(\{.*?\})\s*-\*- Mergify Payload End -\*-",
     re.DOTALL,
@@ -124,11 +127,9 @@ def classify_dequeue(
     cleared_conflict = reason in {"CONFLICTS", "CONFLICT"} and (mergeable or "").upper() == "MERGEABLE"
 
     if draft_skip or reason == "CHECKS_FAILED" or cleared_conflict:
-        real_red = [
-            c
-            for c in REQUIRED_CHECKS
-            if checks.get(c) in {"FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED"}
-        ]
+        # Every check, not only the required four: a red non-required check is a real failure and
+        # must never be requeued as a flake (2026-11-01, collision A: secret-scan red on #2465).
+        real_red = [c for c, concl in sorted(checks.items()) if str(concl).upper() in RED_CONCLUSIONS]
         if real_red:
             return ActionPlan(
                 pr=0,
@@ -273,18 +274,25 @@ def fetch_head_check_conclusions(pr: int, repo: str = "PatsKiller/tardeai") -> d
             "statusCheckRollup",
         ]
     )
-    out: dict[str, str] = {}
     if proc.returncode != 0:
-        return out
+        return {}
     try:
         data = json.loads(proc.stdout or "{}")
     except json.JSONDecodeError:
-        return out
+        return {}
+    rows: list[tuple[str, str, str]] = []
     for row in data.get("statusCheckRollup") or []:
-        name = row.get("name") or ""
-        conclusion = (row.get("conclusion") or row.get("state") or "").upper()
-        if name in REQUIRED_CHECKS:
-            out[name] = conclusion
+        name = str(row.get("name") or row.get("context") or "")
+        if not name:
+            continue
+        conclusion = str(row.get("conclusion") or row.get("state") or "").upper()
+        workflow = str(row.get("workflowName") or row.get("workflow") or "")
+        rows.append((name, conclusion, workflow))
+    duplicates = {name for name, _c, _w in rows if sum(1 for n2, _c2, _w2 in rows if n2 == name) > 1}
+    out: dict[str, str] = {}
+    for name, conclusion, workflow in rows:
+        key = f"{name} [{workflow or 'unknown'}]" if name in duplicates else name
+        out[key] = conclusion
     return out
 
 

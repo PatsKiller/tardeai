@@ -5,16 +5,17 @@ be red somewhere else, and every merge path that reads only the required list wi
 That is what happened on 2026-11-01: PR #2465 merged with `secret-scan` red on four heads,
 main went red at f96c6399f and the deploy poller refused to promote.
 
-Callers today:
+Callers wired today:
 
-* ``work_pipeline_tier2.merge_preconditions`` (the Command Center merge applier, currently OFF);
-* ``mergify_queue_monitor.classify_dequeue`` (requeue decisions — a red unrequired check is a real
-  failure, not a flake to resubmit).
+* ``pr_merge_digest.classify_pr`` — digest eligibility;
+* ``pr_merge_telegram.pr_check_rollup_green`` — the Telegram approve/notify gate;
+* ``mergify_queue_monitor.fetch_head_check_conclusions`` + ``classify_dequeue`` — a red check of any
+  kind is a real failure, never a flake to requeue;
+* ``work_pipeline_tier2.merge_preconditions`` — the Command Center merge applier (OFF today).
 
-Callers today: ``pr_merge_digest.classify_pr`` (digest eligibility), ``pr_merge_telegram.pr_check_rollup_green``
-(the Telegram approve/notify gate), ``work_pipeline_tier2.merge_preconditions`` and
-``mergify_queue_monitor.classify_dequeue``. ``.mergify.yml`` carries the same rule as
-``#check-failure=0`` + ``#check-pending=0`` on every queue entry rule and queue merge condition.
+``.mergify.yml`` carries the same rule as ``#check-failure=0`` + ``#check-pending=0`` on every queue
+entry rule and queue merge condition. Not yet wired: ``pr_merge_telegram._bootstrap_gh_merge``
+(OI-097) and ``scripts/agent_merge_pr.sh``.
 
 A check is green when its conclusion is `success` or `neutral`. `skipped` never blocks, but a skip
 never replaces a run that actually reported. Anything else — including a missing status, which is
@@ -38,24 +39,42 @@ CheckRuns = Iterable[Mapping[str, Any]]
 GhJson = Callable[[str], Any]
 
 
-def _latest_per_name(check_runs: CheckRuns) -> dict[str, Mapping[str, Any]]:
-    latest: dict[str, Mapping[str, Any]] = {}
+def _suite_of(run: Mapping[str, Any]) -> str:
+    """The check suite or workflow that produced a run, so equal job names never merge.
+
+    Generic job names ("shard 0", "test") repeat across workflows; grouped by name alone, a green
+    run in one workflow could stand in for a red one in another.
+    """
+    suite = run.get("check_suite")
+    if isinstance(suite, Mapping):
+        return str(suite.get("id") or "")
+    return str(run.get("check_suite_id") or run.get("workflow") or run.get("workflowName") or "")
+
+
+def _label(name: str, suite: str) -> str:
+    return f"{name} [{suite}]" if suite else name
+
+
+def _latest_per_name(check_runs: CheckRuns) -> dict[tuple[str, str], Mapping[str, Any]]:
+    """One entry per (check name, check suite): the run that actually reported wins over a skip."""
+    latest: dict[tuple[str, str], Mapping[str, Any]] = {}
     for run in check_runs or []:
         name = str(run.get("name") or "").strip()
         if not name:
             continue
-        prev = latest.get(name)
+        key = (name, _suite_of(run))
+        prev = latest.get(key)
         if prev is None:
-            latest[name] = run
+            latest[key] = run
             continue
         prev_skipped = str(prev.get("conclusion") or "") == SKIPPED_CONCLUSION
         new_skipped = str(run.get("conclusion") or "") == SKIPPED_CONCLUSION
         if prev_skipped and not new_skipped:
-            latest[name] = run  # a real run supersedes a skip
+            latest[key] = run  # a real run supersedes a skip
         elif new_skipped and not prev_skipped:
             continue  # a skip never hides a failure: keep the run that actually reported
         elif str(run.get("started_at") or "") >= str(prev.get("started_at") or ""):
-            latest[name] = run
+            latest[key] = run
     return latest
 
 
@@ -78,19 +97,21 @@ def evaluate(check_runs: CheckRuns, *, allow_empty: bool = False) -> dict[str, A
     passing: list[str] = []
     failing: list[str] = []
     skipped: list[str] = []
-    for name in sorted(latest):
-        run = latest[name]
+    for key in sorted(latest):
+        name, suite = key
+        label = _label(name, suite)
+        run = latest[key]
         # GitHub omits `status` on some payloads; an unknown status is pending, never completed.
         status = str(run.get("status") or "queued")
         conclusion = str(run.get("conclusion") or "")
         if status != "completed":
-            failing.append(f"{name}: {status}")
+            failing.append(f"{label}: {status}")
         elif conclusion == SKIPPED_CONCLUSION:
-            skipped.append(name)
+            skipped.append(label)
         elif conclusion in OK_CONCLUSIONS:
-            passing.append(name)
+            passing.append(label)
         else:
-            failing.append(f"{name}: {conclusion or 'no conclusion'}")
+            failing.append(f"{label}: {conclusion or 'no conclusion'}")
     return {
         "ok": not failing,
         "passing": passing,
@@ -126,17 +147,32 @@ def normalize_rollup(rollup: Iterable[Mapping[str, Any]] | None) -> list[dict[st
         if not status:
             status = "completed" if state in ("SUCCESS", "FAILURE", "ERROR") else "queued"
         conclusion = str(row.get("conclusion") or "").lower() or (state.lower() if state else "")
-        runs.append({"name": name, "status": status, "conclusion": conclusion,
-                     "started_at": str(row.get("startedAt") or row.get("started_at") or "")})
+        run = {"name": name, "status": status, "conclusion": conclusion,
+               "started_at": str(row.get("startedAt") or row.get("started_at") or "")}
+        workflow = row.get("workflowName") or row.get("workflow")
+        if workflow:
+            run["workflowName"] = str(workflow)
+        runs.append(run)
     return runs
 
 
 def evaluate_rollup(rollup: Iterable[Mapping[str, Any]] | None, *, allow_empty: bool = False) -> dict[str, Any]:
-    """``evaluate`` over a PR's ``statusCheckRollup`` (the checks on its current head)."""
-    return evaluate(normalize_rollup(rollup), allow_empty=allow_empty)
+    """``evaluate`` over a PR's ``statusCheckRollup`` (the checks on its current head).
+
+    Fails closed at ``ROLLUP_LIMIT`` rows: the rollup is truncated at that size, and grading a
+    truncated view would let a red check sit on the part we could not read.
+    """
+    rows = list(rollup or [])
+    result = evaluate(normalize_rollup(rows), allow_empty=allow_empty)
+    if len(rows) >= ROLLUP_LIMIT:
+        result["ok"] = False
+        result["reason"] = f"rollup reached its {ROLLUP_LIMIT}-row limit; every check could not be proven"
+    return result
 
 
 PAGE_SIZE = 100
+#: `gh pr view --json statusCheckRollup` is capped; at the cap we cannot prove every check was read.
+ROLLUP_LIMIT = 100
 #: A head carries ~80 runs today; this is a runaway guard, not a real limit.
 MAX_PAGES = 10
 

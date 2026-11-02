@@ -23,6 +23,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from scripts.lib import pr_all_checks_green as pacg  # noqa: E402
+import scripts.lib.pr_all_checks_green as mra_checks  # noqa: E402
 from scripts.lib import pr_merge_digest as pmd  # noqa: E402
 from scripts.lib import pr_merge_telegram as pmt  # noqa: E402
 
@@ -175,3 +176,91 @@ def test_mergify_never_re_tests_a_pr_with_an_update_action():
     offenders = [r["name"] for r in cfg["pull_request_rules"]
                  if set(r.get("actions") or {}) & {"update", "rebase"}]
     assert offenders == [], offenders
+
+
+# ---------------------------------------------------------------- mutation proofs
+def _run_row(name, conclusion, started_at, suite=None):
+    row = {"name": name, "status": "completed", "conclusion": conclusion, "started_at": started_at}
+    if suite is not None:
+        row["check_suite"] = {"id": suite}
+    return row
+
+
+def test_a_later_skip_never_hides_a_failure():
+    """Mutation (a): turning `_latest_per_name`'s skip `continue` into an assignment must fail here."""
+    runs = [_run_row("x", "failure", "2026-11-02T02:00:00Z"),
+            _run_row("x", "skipped", "2026-11-02T03:00:00Z")]
+    surviving = list(mra_checks._latest_per_name(runs).values())
+    assert [r["conclusion"] for r in surviving] == ["failure"]
+    assert pacg.evaluate(runs)["ok"] is False
+
+
+def test_an_older_run_never_replaces_a_newer_one():
+    """Mutation (c): flipping `>=` to `<=` would let the list's last row win regardless of age."""
+    runs = [_run_row("x", "success", "2026-11-02T02:00:00Z"),
+            _run_row("x", "failure", "2026-11-02T01:00:00Z")]
+    assert pacg.evaluate(runs)["ok"] is True
+
+
+def test_paging_that_cannot_read_every_run_fails_closed():
+    """Mutation (b): making the `ok=False` paging guards pass would let a red check sit unread."""
+    page = [{"name": f"check-{i}", "status": "completed", "conclusion": "success"} for i in range(100)]
+
+    def gh_json(_path):
+        return {"total_count": 2000, "check_runs": page}
+
+    result = pacg.all_checks_green(gh_json, "example-org/example-repo", "a" * 40)
+    assert result["ok"] is False
+    assert "could not read" in result["reason"]
+
+
+def test_paging_stops_at_the_last_short_page():
+    pages = {1: [{"name": "a", "status": "completed", "conclusion": "success"}] * 100,
+             2: [{"name": "b", "status": "completed", "conclusion": "success"}]}
+
+    def gh_json(path):
+        page = int(path.rsplit("page=", 1)[1])
+        return {"total_count": 101, "check_runs": pages.get(page, [])}
+
+    runs, total, exhausted = pacg.check_runs_for(gh_json, "example-org/example-repo", "a" * 40)
+    assert len(runs) == 101 and total == 101 and exhausted is False
+
+
+def test_the_same_job_name_in_two_workflows_is_two_checks():
+    """Grouped by name alone, a green `shard 0` in one workflow hides a red one in another."""
+    runs = [_run_row("shard 0", "failure", "2026-11-02T01:00:00Z", suite=1),
+            _run_row("shard 0", "success", "2026-11-02T02:00:00Z", suite=2)]
+    result = pacg.evaluate(runs)
+    assert result["ok"] is False
+    assert any("shard 0 [1]" in line for line in result["failing"])
+
+
+def test_a_rollup_at_the_read_limit_fails_closed():
+    rows = [{"name": f"c{i}", "status": "COMPLETED", "conclusion": "SUCCESS"} for i in range(pacg.ROLLUP_LIMIT)]
+    result = pacg.evaluate_rollup(rows)
+    assert result["ok"] is False
+    assert "limit" in result["reason"]
+
+
+# ---------------------------------------------------------------- the queue monitor
+def test_the_queue_monitor_does_not_requeue_while_a_non_required_check_is_red():
+    from scripts.lib import mergify_queue_monitor as mqm
+
+    checks = {name: "SUCCESS" for name in REQUIRED}
+    checks["secret-scan"] = "FAILURE"
+    plan = mqm.classify_dequeue(reason_code="CHECKS_FAILED", body="", mergeable="MERGEABLE",
+                                checks=checks, hotfix_on_main=True)
+    assert plan.classification == "REAL_CI_FAIL"
+    assert plan.requeue is False
+    assert "secret-scan" in plan.detail["red"]
+
+
+def test_the_queue_monitor_reads_every_check_on_the_head(monkeypatch):
+    from scripts.lib import mergify_queue_monitor as mqm
+
+    rollup = [{"name": name, "conclusion": "SUCCESS"} for name in REQUIRED]
+    rollup.append({"name": "secret-scan", "conclusion": "FAILURE", "workflowName": "secret-scan"})
+    monkeypatch.setattr(mqm.subprocess, "run",
+                        lambda *a, **k: subprocess_result(json.dumps({"statusCheckRollup": rollup})))
+    checks = mqm.fetch_head_check_conclusions(101, repo="example-org/example-repo")
+    assert checks["secret-scan"] == "FAILURE"

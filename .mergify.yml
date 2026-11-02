@@ -103,6 +103,13 @@ pull_request_rules:
       - check-success=release-readiness
       - check-success=ci-gate
       - label!=solo
+      # Whole-set gate (2026-11-02, plan items 1/6): every check on the head must be settled and
+      # green, not only the four required ones (#2465 merged with secret-scan red).
+      # Mergify's own "Mergify Merge Queue" check reports COMPLETED / NEUTRAL (observed on #2479),
+      # so it is neither a failure nor pending here. A cancelled, timed-out or action-required check
+      # counts as a failure by Mergify's definition (docs.mergify.com conditions: "Checks that report
+      # being cancelled, timed out, and action required are also considered as failures"); a
+      # superseded run is cancelled on the OLD head, so a new commit starts from a clean rollup.
       - "#check-failure=0"
       - "#check-pending=0"
       - label!=shared-infra
@@ -126,6 +133,13 @@ pull_request_rules:
       - or:
           - label=solo
           - label=shared-infra
+      # Whole-set gate (2026-11-02, plan items 1/6): every check on the head must be settled and
+      # green, not only the four required ones (#2465 merged with secret-scan red).
+      # Mergify's own "Mergify Merge Queue" check reports COMPLETED / NEUTRAL (observed on #2479),
+      # so it is neither a failure nor pending here. A cancelled, timed-out or action-required check
+      # counts as a failure by Mergify's definition (docs.mergify.com conditions: "Checks that report
+      # being cancelled, timed out, and action required are also considered as failures"); a
+      # superseded run is cancelled on the OLD head, so a new commit starts from a clean rollup.
       - "#check-failure=0"
       - "#check-pending=0"
       # DSN-20261031-ci-load-reduction §4.4 (operator 2026-11-01): ONE weekday merge window.
@@ -140,10 +154,10 @@ pull_request_rules:
   # every open PR, and each push starts ~36 hosted jobs (two 12-job sharded suites, ~110 runner-min).
   # On 2026-10-31 that was 2,913 of 5,369 runs (54%) and 287 of 444 PR head SHAs, 237 of them on PRs
   # nobody had approved; main's required `cio-hardening` aggregate then waited 48-104 min for a
-  # runner. Branch protection is not strict, so a PR does not have to be current to merge, and the
-  # rule above ("keep approved PRs up to date with main", label=operator-merge) still keeps every
-  # PR that is about to merge current. tests/test_ci_queue_janitor_20261031.py fails if an `update`
-  # action without label=operator-merge comes back.
+  # runner. Branch protection is not strict, so a PR does not have to be current to merge: the
+  # queue recomputes the required checks on its own speculative branch. The old label=operator-merge
+  # update rule was removed 2026-11-02 (collision E) for the same reason; no rule may carry update or
+  # rebase. tests/test_ci_queue_janitor_20261031.py fails if one comes back.
 
 queue_rules:
   - name: default
@@ -173,6 +187,13 @@ queue_rules:
           - check-success=ci-gate
           - check-skipped=ci-gate
           - check-neutral=ci-gate
+      # Whole-set gate (2026-11-02, plan items 1/6): every check on the head must be settled and
+      # green, not only the four required ones (#2465 merged with secret-scan red).
+      # Mergify's own "Mergify Merge Queue" check reports COMPLETED / NEUTRAL (observed on #2479),
+      # so it is neither a failure nor pending here. A cancelled, timed-out or action-required check
+      # counts as a failure by Mergify's definition (docs.mergify.com conditions: "Checks that report
+      # being cancelled, timed out, and action required are also considered as failures"); a
+      # superseded run is cancelled on the OLD head, so a new commit starts from a clean rollup.
       - "#check-failure=0"
       - "#check-pending=0"
       - label=operator-merge
@@ -201,6 +222,13 @@ queue_rules:
           - check-success=ci-gate
           - check-skipped=ci-gate
           - check-neutral=ci-gate
+      # Whole-set gate (2026-11-02, plan items 1/6): every check on the head must be settled and
+      # green, not only the four required ones (#2465 merged with secret-scan red).
+      # Mergify's own "Mergify Merge Queue" check reports COMPLETED / NEUTRAL (observed on #2479),
+      # so it is neither a failure nor pending here. A cancelled, timed-out or action-required check
+      # counts as a failure by Mergify's definition (docs.mergify.com conditions: "Checks that report
+      # being cancelled, timed out, and action required are also considered as failures"); a
+      # superseded run is cancelled on the OLD head, so a new commit starts from a clean rollup.
       - "#check-failure=0"
       - "#check-pending=0"
       - label=operator-merge
