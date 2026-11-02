@@ -417,3 +417,16 @@ def test_a_final_component_symlink_is_refused_by_nofollow(tmp_path, monkeypatch)
     monkeypatch.setattr(hook, "plan_file_roots", lambda: [plans.resolve()])
     assert hook.read_plan_file(str(real)).startswith("# Plan")
     assert hook.read_plan_file(str(plans / "link.md")) == ""
+
+
+def test_view_skips_an_unreadable_entry_instead_of_taking_the_listing_down(tmp_path):
+    """F1 from the core/API integration review (2026-11-02): one odd entry must not 500 /api/v2/plans."""
+    r = _reg(tmp_path)
+    p = tmp_path / "p.md"
+    p.write_text("# T\n\n- [ ] a\n")
+    pid = r.add(title="T", body_path=p, author="s", vendor="claude", approved_at="2026-11-02T10:00:00Z")
+    inside = tmp_path / "data/coordination/plans"
+    (inside / "adir.md").mkdir()  # glob matches it; read_text raises IsADirectoryError (an OSError)
+    listing = r.view()
+    assert [row["id"] for row in listing["plans"]] == [pid]
+    assert [row["id"] for row in r.list()] == [pid]

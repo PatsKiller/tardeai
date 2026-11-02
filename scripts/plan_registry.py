@@ -385,7 +385,10 @@ class Registry:
             return {"schema": VIEW_SCHEMA, "plan": self._entry(pid, self.get(pid), body=True)}
         rows = []
         for path in self._iter_plans():
-            doc = parse_plan(path.read_text(encoding="utf-8"))
+            try:
+                doc = parse_plan(path.read_text(encoding="utf-8"))
+            except OSError:
+                continue  # one unreadable entry must not take the whole Plans listing down
             if doc["front"]:
                 rows.append(self._entry(path.stem, doc, body=False))
         rows.sort(key=lambda r: str(r.get("approved_at") or ""), reverse=True)
