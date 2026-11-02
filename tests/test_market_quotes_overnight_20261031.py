@@ -202,7 +202,8 @@ def test_overnight_rows_carry_the_next_trading_date_and_a_proven_reference_or_no
         assert r["reference_close"] is None and r["reference_date"] is None and r["change_pct"] is None
         assert r["reference_basis"] == "none_level_only_no_dated_reference_in_payload" and r["level_only_reason"]
     assert "2026-10-29" in by["/NQ"]["level_only_reason"]
-    assert skipped["$SPX"]["reason"] == "stale_trade" and skipped["/RTY"]["reason"] == "not_a_quote"
+    # 'not entitled' is Schwab's provider-error block, named as such (never silently a symbol that returned no quote)
+    assert skipped["$SPX"]["reason"] == "stale_trade" and skipped["/RTY"]["reason"] == "provider_error"
 
 
 def test_undated_reference_is_never_trusted(ocfg):
