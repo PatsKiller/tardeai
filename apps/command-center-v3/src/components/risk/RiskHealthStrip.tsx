@@ -10,9 +10,13 @@ type Props = {
   optionsAlerts?: number | null
 }
 
+export function healthVerdictTone(status: unknown): Tone {
+  return status === 'healthy' ? 'success' : status === 'degraded' ? 'warning' : status === 'unhealthy' ? 'danger' : 'neutral'
+}
+
 export default function RiskHealthStrip({ heatPct, healthScore, healthStatus, unprotected, brokerStale, optionsAlerts }: Props) {
   // Health is higher-is-better. Its producer verdict owns the color; risk gauges retain their existing thresholds.
-  const healthTone: Tone = healthStatus === 'healthy' ? 'success' : healthStatus === 'degraded' ? 'warning' : healthStatus === 'unhealthy' ? 'danger' : 'neutral'
+  const healthTone = healthVerdictTone(healthStatus)
   const items = [
     { label: 'Portfolio heat', value: heatPct, max: 15, threshold: 5, unit: '%' },
     { label: 'Health score', value: healthScore, max: 100, tone: healthTone, unit: '' },
