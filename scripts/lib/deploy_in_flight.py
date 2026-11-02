@@ -85,12 +85,25 @@ def label_set(pr: dict[str, Any]) -> set[str]:
     return out
 
 
+#: The three states GitHub uses, as the GraphQL/API form spells them.
+_MERGEABLE_TEXT = {"MERGEABLE": "MERGEABLE", "CONFLICTING": "CONFLICTING", "UNKNOWN": "UNKNOWN"}
+
+
 def normalize_mergeable(v: Any) -> str:
-    """``mergeable`` from gh is a JSON boolean or null → MERGEABLE | CONFLICTING | UNKNOWN."""
+    """``mergeable`` → MERGEABLE | CONFLICTING | UNKNOWN, from either form GitHub returns.
+
+    ``gh pr list --json mergeable`` gives a JSON boolean or null; the GraphQL/API projection gives the
+    enum strings. Only the boolean was handled, so a real ``"CONFLICTING"`` from the string form fell
+    through to UNKNOWN and a genuinely conflicting PR lost its rebase hint, while ``"MERGEABLE"`` also
+    read as unknown (2026-11-02, operator-requested Releases page fix). UNKNOWN stays UNKNOWN: it is
+    GitHub saying "not computed yet", and it must never be read as either state.
+    """
     if v is True:
         return "MERGEABLE"
     if v is False:
         return "CONFLICTING"
+    if isinstance(v, str):
+        return _MERGEABLE_TEXT.get(v.strip().upper(), "UNKNOWN")
     return "UNKNOWN"
 
 
@@ -129,7 +142,12 @@ def next_action(pr: dict[str, Any]) -> str:
         return "coordinator"
     if merge_state == "BLOCKED":
         return "blocked-shard-hints"
-    if merge_state in ("DIRTY", "BEHIND", "UNSTABLE") or mergeable == "UNKNOWN":
+    if mergeable == "UNKNOWN":
+        # GitHub saying "not computed yet" is not evidence of a conflict. Treating it as one put
+        # "auto-rebase" on a PR nobody had measured (2026-11-02). An unmeasured state is a coordinator
+        # question, never an inference.
+        return "coordinator"
+    if merge_state in ("DIRTY", "BEHIND", "UNSTABLE"):
         return "auto-rebase"
     if mergeable == "MERGEABLE":
         return "auto-merge"

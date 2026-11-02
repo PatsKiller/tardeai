@@ -71,7 +71,10 @@ def test_next_action_four_buckets():
     assert D.next_action(_pr(4, mergeable=True, draft=True)) == "coordinator"
     assert D.next_action(_pr(5, mergeable=True, state="BLOCKED")) == "blocked-shard-hints"
     assert D.next_action(_pr(6, mergeable=True, state="BEHIND")) == "auto-rebase"
-    assert D.next_action(_pr(7, mergeable=None, state="CLEAN")) == "auto-rebase"
+    # 2026-11-02 (operator-requested Releases fix): an UNMEASURED mergeability is not a conflict.
+    # GitHub's "UNKNOWN" means "not computed yet"; it used to be bucketed as auto-rebase, which told the
+    # board a rebase was needed for a state nobody had measured.
+    assert D.next_action(_pr(7, mergeable=None, state="CLEAN")) == "coordinator"
 
 
 def test_build_projects_and_counts():
@@ -116,3 +119,29 @@ def test_module_is_read_only():
         assert bad not in src, bad
     # gh is called only as a read: `gh pr list` (and nothing else that mutates).
     assert "gh pr list" in src and "gh api" not in src
+
+
+# ─────────────────────────── 2026-11-02: the string form GitHub's API actually returns
+def test_normalize_mergeable_accepts_the_enum_form_as_well_as_the_boolean():
+    """`gh pr list --json mergeable` gives a boolean; the GraphQL/API projection gives the enum strings.
+
+    Only the boolean was handled, so a real "CONFLICTING" fell through to UNKNOWN and the PR lost its
+    conflict bucket, while "MERGEABLE" read as unknown too.
+    """
+    assert D.normalize_mergeable("MERGEABLE") == "MERGEABLE"
+    assert D.normalize_mergeable("CONFLICTING") == "CONFLICTING"
+    assert D.normalize_mergeable("UNKNOWN") == "UNKNOWN"
+    assert D.normalize_mergeable(" mergeable ") == "MERGEABLE"  # case/space tolerant
+    assert D.normalize_mergeable(True) == "MERGEABLE"
+    assert D.normalize_mergeable(False) == "CONFLICTING"
+    assert D.normalize_mergeable(None) == "UNKNOWN"
+    assert D.normalize_mergeable("something-else") == "UNKNOWN"  # never a guess
+
+
+def test_unknown_never_implies_a_rebase_even_in_the_string_form():
+    for value in (None, "UNKNOWN", "unknown", "not-a-state"):
+        assert D.next_action(_pr(9, mergeable=value, state="CLEAN")) == "coordinator", value
+    # A real conflict in the string form is bucketed as a conflict, not as unknown.
+    assert D.next_action(_pr(10, mergeable="CONFLICTING", state="CLEAN")) == "coordinator"
+    assert D.why_held(_pr(11, mergeable="CONFLICTING")) == "merge conflict — needs a coordinator"
+    assert D.why_held(_pr(12, mergeable="MERGEABLE", state="CLEAN")) is None
