@@ -1084,52 +1084,70 @@ def market_session_reference(now: datetime | None, *, calendar=None) -> dict:
     return out
 
 
+_ECONOMIC_DAY_GAP = (
+    "Economic account-day P&L is unproven: stored day_change mixes prior-mark deltas and fill-aware session P&L; "
+    "current rows do not establish closed-position, cash/loan or whole-account coverage. "
+    "Neither zeros, percentages, retained basis flags nor build/quote clocks resolve this."
+)
+
+
 def _today_payload(prior: dict, p: dict, *, now=None) -> dict:
-    out = deepcopy(prior)
+    """Refuse an economic-day claim while preserving the narrower raw evidence."""
     quote_at = _timestamp(p["quote_as_of"])
-    out.update(contract_version="TodayPnl@v1", total_change=p["day_pl_usd"],
-               calculated_at=None, calculation_time_source=None, session_date=None, session_source=None,
-               calculation_clock={"as_of": None, "status": "UNKNOWN",
-                                  "gap": {"reason": "no declared stored day_change calculation/session clock"}},
-               batch_built_at=p["valuation_as_of"], batch_build_source="holdings.generated_at",
-               mark_batch_at=p["quote_as_of"],
-               mark_session_date=quote_at.astimezone(ZoneInfo("America/New_York")).date().isoformat() if quote_at else None,
-               mark_session_source="holdings.last_repriced" if quote_at else None,
-               mark_source=p["quote_source"], scope="ALL_ACCOUNTS", definition=_DAY_DEFINITION,
-               # These are batch metadata, not proof of each row's P&L observation.
-               observation_clock=deepcopy(p["clock_provenance"]["day_pnl"]),
-               market_session=market_session_reference(now if now is not None else datetime.now(timezone.utc)))
-    out.update(_today_census(prior, p))
-    return out
+    census = _today_census(prior, p)
+    gap = {"reason": _ECONOMIC_DAY_GAP, "ticket": "OI-044", "owner": "portfolio/holdings_accounts"}
+    return {"contract_version": "TodayPnl@v1", "total_change": None,
+            "status": "UNKNOWN", "complete": False, "scope": "ALL_ACCOUNTS_ECONOMIC_DAY",
+            "definition": "Full-account economic/session-day P&L, including applicable intraday and closed positions",
+            "coverage_reason": _ECONOMIC_DAY_GAP, "gap": gap,
+            "linked_account_count": None, "funded_account_count": None, "represented_account_count": None,
+            "contributing_accounts": None, "zero_change_accounts": None, "empty_accounts": None,
+            "missing_accounts": None, "partial_accounts": None, "unknown_rows": None, "unknown_value_usd": None,
+            "calculated_at": None, "calculation_time_source": None, "session_date": None, "session_source": None,
+            "calculation_clock": {"as_of": None, "status": "UNKNOWN", "gap": deepcopy(gap)},
+            "batch_built_at": p["valuation_as_of"], "batch_build_source": "holdings.generated_at",
+            "mark_batch_at": p["quote_as_of"],
+            "mark_session_date": quote_at.astimezone(ZoneInfo("America/New_York")).date().isoformat() if quote_at else None,
+            "mark_session_source": "holdings.last_repriced" if quote_at else None,
+            "mark_source": p["quote_source"], "observation_clock": deepcopy(p["clock_provenance"]["day_pnl"]),
+            "market_session": market_session_reference(now if now is not None else datetime.now(timezone.utc)),
+            "legacy_evidence": deepcopy(prior),
+            "stored_row_evidence": {
+                "scope": "CURRENT_STORED_HOLDING_ROWS", "definition": _DAY_DEFINITION,
+                "known_sum": p["day_pl_usd"], "row_values_complete": p["day_pl_complete"],
+                "census": census,
+                "source_values": [{"account_id": r["account_id"], "symbol": r.get("symbol"),
+                                   "day_change": _number(r.get("day_change")),
+                                   "day_change_pct": _number(r.get("day_change_pct")),
+                                   "day_change_raw": (str(r.get("day_change"))
+                                                      if r.get("day_change") is not None and _number(r.get("day_change")) is None
+                                                      else r.get("day_change")),
+                                   "day_change_pct_raw": (str(r.get("day_change_pct"))
+                                                          if r.get("day_change_pct") is not None and _number(r.get("day_change_pct")) is None
+                                                          else r.get("day_change_pct")),
+                                   "day_change_basis": r.get("day_change_basis"),
+                                   "is_cash": r.get("is_cash"), "is_loan": r.get("is_loan")}
+                                  for r in p["holdings"]]}}
 
 
-def _day_period(p: dict, census: dict, account: dict | None = None) -> dict:
-    row = account or p
-    change = row["day_pl_usd"]
-    total = row["total_usd"]
-    pct = (round(change / (total - change) * 100, 3)
-           if change is not None and total is not None and total - change > 0 else None)
-    return {"period": "1D", "change": change, "change_pct": pct,
-            "display_change": change, "display_change_pct": pct,
-            "start_value": total - change if total is not None and change is not None else None,
-            "end_value": total, "source": p["source"], "estimated": False,
-            "display_label": "Stored holdings day P&L", "nav_is_not_market_only": False,
-            "definition": _DAY_DEFINITION, "scope": "ACCOUNT" if account is not None else "ALL_ACCOUNTS",
-            "complete": row["day_pl_complete"] if account is not None else census["complete"],
-            "unknown_rows": row.get("day_pl_unknown_rows") if account is not None else census["unknown_rows"],
-            "missing_accounts": census["missing_accounts"],
-            "calculated_at": census["calculated_at"], "session_date": census["session_date"],
+def _day_period(p: dict, census: dict) -> dict:
+    """Economic 1D is unavailable; a stored-row sum is not a substitute."""
+    return {"period": "1D", "change": None, "change_pct": None,
+            "display_change": None, "display_change_pct": None,
+            "source": "UNPROVEN_ECONOMIC_DAY", "status": "UNKNOWN", "estimated": False,
+            "display_label": "Economic day P&L unavailable", "scope": census["scope"],
+            "complete": False, "gap": deepcopy(census["gap"]),
+            "calculated_at": None, "session_date": None,
             "batch_built_at": census["batch_built_at"], "mark_batch_at": census["mark_batch_at"],
-            "mark_session_date": census["mark_session_date"],
-            "adjustment_note": census["coverage_reason"]}
+            "mark_session_date": census["mark_session_date"], "adjustment_note": _ECONOMIC_DAY_GAP}
 
 
 def performance_payload(payload, *, root=None, now=None, holdings_doc=None, document=None) -> dict:
-    """Project current 1D from stored rows; retain historical/multiday adjustments.
+    """Retain the original performance money/membership; enrich evidence only.
 
-    This consumes the canonical store directly, never another API's display value.
-    A caller can pass its already-read holdings document to avoid a second read.
-    History-only accounts remain visible with UNKNOWN 1D and retain their periods.
+    Legacy economic-day calculations remain available as originally reported.
+    Their correctness is UNKNOWN until the source's basis/session/coverage is
+    proven; current holding rows must never replace those monetary semantics.
     """
     if document is not None:
         p = document["portfolio"]
@@ -1140,39 +1158,14 @@ def performance_payload(payload, *, root=None, now=None, holdings_doc=None, docu
         p = portfolio_for(holdings_doc, now=now)
     out = deepcopy(payload)
     census = _today_payload({}, p, now=now)
-    out.update(current_value=p["total_usd"], today_pnl=census,
-               market_session=deepcopy(census["market_session"]),
-               clock_provenance=deepcopy(p["clock_provenance"]),
-               snapshot_source=p["source"])
-    out.setdefault("periods", {})["1D"] = _day_period(p, census)
-    accounts = out.setdefault("accounts", {})
-    by_key = {r["account_id"]: r for r in p["accounts"]}
-    represented = {canonical_key(k) for k in accounts}
-    for key in sorted(set(by_key) - represented):
-        accounts[key] = {"periods": {}}
-    current_keys = {}
-    for key in sorted(accounts):
-        canonical = canonical_key(key)
-        if canonical not in current_keys or key == canonical:
-            current_keys[canonical] = key
-    for key, entry in accounts.items():
-        canonical = canonical_key(key)
-        row = by_key.get(canonical)
-        alias_of = current_keys[canonical] if row is not None and key != current_keys[canonical] else None
-        if row is None or alias_of:
-            row = {"day_pl_usd": None, "total_usd": None, "day_pl_complete": False,
-                   "day_pl_unknown_rows": None}
-        entry.setdefault("periods", {})["1D"] = _day_period(p, census, row)
-        if alias_of:
-            entry["current_alias_of"] = alias_of
-            entry["periods"]["1D"]["adjustment_note"] = (
-                f"Historical alias of {alias_of}; current value/day is represented once there")
-        elif canonical not in by_key:
-            entry["periods"]["1D"]["adjustment_note"] = "No current holdings evidence; historical account only"
-        entry["current_account_id"] = canonical
-        if entry.get("current_value") != row["total_usd"]:
-            entry["legacy_current_value"] = entry.get("current_value")
-        entry["current_value"] = row["total_usd"]
+    census["legacy_evidence"] = {
+        "scope": "ORIGINAL_PERFORMANCE_CALCULATION_UNVERIFIED",
+        "period_1d": deepcopy((payload.get("periods") or {}).get("1D")),
+        "account_1d": {k: deepcopy((v.get("periods") or {}).get("1D"))
+                       for k, v in (payload.get("accounts") or {}).items()},
+        "period_quality_note": payload.get("period_quality_note")}
+    out.update(today_pnl=census, market_session=deepcopy(census["market_session"]),
+               clock_provenance=deepcopy(p["clock_provenance"]))
     return out
 
 
@@ -1232,8 +1225,8 @@ def overview_payload(payload, *, root=None, now=None, db_query=None, inputs=None
     doc = document or resolve(root, now, db_query=db_query, inputs=inputs)
     out = deepcopy(payload)
     p = doc["portfolio"]
-    out.update(portfolio_value=p["total_usd"], total_cash=p["cash_usd"], today_change=p["day_pl_usd"],
-               today_pct=p["day_pl_pct"], position_count=p["position_count"], position_counts=p["position_counts"],
+    out.update(portfolio_value=p["total_usd"], total_cash=p["cash_usd"], today_change=None,
+               today_pct=None, position_count=p["position_count"], position_counts=p["position_counts"],
                pending_approvals=doc["approvals"]["total"], approval_counts=doc["approvals"],
                paper=doc["paper"], clock_provenance=p.get("clock_provenance"),
                truth={k: p[k] for k in ("source", "as_of", "stale", "gap")})
@@ -1242,13 +1235,20 @@ def overview_payload(payload, *, root=None, now=None, db_query=None, inputs=None
     pricing.update(canonical_total_value=p["total_usd"], derived_total_value=p["total_usd"],
                    last_repriced=p["quote_as_of"], reprice_source=p["quote_source"])
     today_pnl = _today_payload(out.get("today_pnl") or {}, p, now=now)
+    today_pnl["legacy_evidence"] = {"today_pnl": deepcopy(payload.get("today_pnl")),
+                                    "today_change": payload.get("today_change"), "today_pct": payload.get("today_pct"),
+                                    "period_1d": deepcopy((payload.get("periods") or {}).get("1D")),
+                                    "today_by_account": deepcopy(payload.get("today_by_account"))}
     out["today_pnl"] = today_pnl
     out["market_session"] = deepcopy(today_pnl["market_session"])
     out.setdefault("periods", {})["1D"] = _day_period(p, today_pnl)
-    out["today_by_account"] = {r["account_id"]: {"value": r["total_usd"], "change": r["day_pl_usd"],
+    out["today_by_account"] = {r["account_id"]: {"value": r["total_usd"], "change": None,
+                                                 "status": "UNKNOWN", "gap": deepcopy(today_pnl["gap"]),
                                                  "account_label": r["account_label"], "as_of": None,
                                                  "batch_built_at": p["valuation_as_of"], "positions_as_of": r["as_of"],
-                                                 "complete": r.get("day_pl_complete"),
+                                                 "complete": False,
+                                                 "stored_row_change": r["day_pl_usd"],
+                                                 "row_values_complete": r.get("day_pl_complete"),
                                                  "unknown_rows": r.get("day_pl_unknown_rows")}
                                for r in p["accounts"]}
     aggregate = out.setdefault("portfolio_aggregate", {})

@@ -215,7 +215,8 @@ def test_header_holdings_risk_have_identical_totals_count_quote_and_stop_state(t
     risk = truth.risk_payload(document=doc)
     assert header["position_count"] == book["position_count"] == risk["position_count"] == 3
     assert header["portfolio_value"] == book["total_value"] == 3699
-    assert header["today_change"] == header["periods"]["1D"]["change"] == book["today_change"] == -57
+    assert header["today_change"] is None and header["periods"]["1D"]["change"] is None
+    assert header["today_pnl"]["stored_row_evidence"]["known_sum"] == book["today_change"] == -57
     a = next(r for r in book["holdings"] if r["symbol"] == "SPCX" and r["account_id"] == "schwab_roth_ira")
     b = next(r for r in risk["positions"] if r["symbol"] == "SPCX" and r["account_id"] == "schwab_roth_ira")
     assert a["price"] == b["price"] == 100
@@ -474,7 +475,8 @@ def test_future_row_cannot_hide_behind_older_row_or_account(same_account):
     out = model.overview_payload({}, document=document, now=NOW)
     assert out["portfolio_aggregate"]["freshness_state"] == "PARTIAL"
     assert out["portfolio_aggregate"]["coverage"]["value_fresh_pct"] < 100
-    assert out["today_change"] == 3
+    assert out["today_change"] is None
+    assert out["today_pnl"]["stored_row_evidence"]["known_sum"] == 3
 
 
 def test_legacy_divergence_evidence_survives_reprojection():

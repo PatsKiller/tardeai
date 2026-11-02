@@ -5140,8 +5140,8 @@ def portfolio_performance():
                 result["max_drawdown_pct_30d"] = min(p["drawdown"] for p in _recent)
         except Exception:
             pass
-    # Current 1D shares the canonical stored-row contract with Overview. Longer
-    # periods retain their existing snapshot / contribution-adjusted semantics.
+    # Preserve the existing performance monetary semantics and evidence. The
+    # read model adds honest UNKNOWN/coverage/clock metadata, never a new 1D sum.
     return _cio_truth_readers().performance_payload(result, holdings_doc=holdings)
 
 

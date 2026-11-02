@@ -75,39 +75,36 @@ def _doc(p):
             "regime": {"label": None, "vix": None, "vix_as_of": None}}
 
 
-def test_header_shows_partial_sum_and_a_census_on_canonical_keys():
+def test_header_refuses_economic_day_but_preserves_row_sum_and_census():
     p = truth.portfolio_for(_holdings(), now=NOW)
-    # The legacy census as it shipped: raw keys, every account "flat".
-    prior = {"empty_accounts": ["fidelity_rollover_ira"],
-             "zero_change_accounts": ["alpaca_taxable_live", "moomoo_taxable_live", "schwab_rollover_ira",
-                                      "schwab_roth", "schwab_taxable"], "contributing_accounts": []}
-    out = truth.overview_payload({"today_pnl": prior}, document=_doc(p))
-    assert out["today_change"] == 10.5 and out["today_pct"] is not None
+    prior = {"empty_accounts": ["synthetic_legacy_empty"], "total_change": 99}
+    out = truth.overview_payload({"today_change": 99, "today_pct": 2, "today_pnl": prior}, document=_doc(p), now=NOW)
+    assert out["today_change"] is None and out["today_pct"] is None
     tp = out["today_pnl"]
-    assert tp["contributing_accounts"] == ["schwab_rollover_ira", "schwab_roth_ira", "schwab_taxable"]
-    assert tp["zero_change_accounts"] == ["alpaca_taxable_live", "moomoo_taxable_live"]
-    assert "schwab_roth" not in tp["zero_change_accounts"]
-    assert tp["missing_accounts"] == [] and tp["empty_accounts"] == ["fidelity_rollover_ira"]
-    assert tp["partial_accounts"] == ["moomoo_taxable_live"] and tp["unknown_rows"] == 1
-    assert tp["complete"] is False
-    assert tp["funded_account_count"] == 5 and tp["represented_account_count"] == 5
-    assert "PARTIAL moomoo_taxable_live" in tp["coverage_reason"]
-    # The census keys match the per-account figures it describes.
-    assert set(tp["contributing_accounts"] + tp["zero_change_accounts"]) == set(out["today_by_account"])
+    assert tp["status"] == "UNKNOWN" and tp["complete"] is False
+    assert tp["funded_account_count"] is None and tp["represented_account_count"] is None
+    assert tp["gap"]["ticket"] == "OI-044"
+    assert tp["legacy_evidence"]["today_change"] == 99
+    assert tp["legacy_evidence"]["today_pnl"] == prior
+    evidence = tp["stored_row_evidence"]
+    assert evidence["known_sum"] == 10.5
+    assert evidence["row_values_complete"] is False
+    census = evidence["census"]
+    assert census["unknown_rows"] == 1
+    assert census["partial_accounts"]
+    assert all(row["change"] is None and row["complete"] is False for row in out["today_by_account"].values())
 
 
-def test_an_account_with_no_known_row_is_missing_not_flat():
+def test_missing_row_value_is_visible_without_claiming_economic_coverage():
     h = _holdings()
-    h["holdings"] = [r for r in h["holdings"] if r["account"] != "schwab_taxable"]
-    h["holdings"].append({"symbol": "ZZEE", "account": "schwab_taxable", "shares": 1, "price": 9,
-                          "market_value": 9})
+    h["holdings"][0].pop("day_change")
     p = truth.portfolio_for(h, now=NOW)
-    tp = truth.overview_payload({"today_pnl": {"empty_accounts": []}}, document=_doc(p))["today_pnl"]
-    assert tp["missing_accounts"] == ["schwab_taxable"]
-    assert "schwab_taxable" not in tp["zero_change_accounts"] and tp["complete"] is False
+    tp = truth.overview_payload({}, document=_doc(p), now=NOW)["today_pnl"]
+    assert tp["status"] == "UNKNOWN" and tp["complete"] is False
+    assert tp["stored_row_evidence"]["census"]["unknown_rows"] == 2
+    assert tp["missing_accounts"] is None and tp["zero_change_accounts"] is None
 
 
-# New read-model checks load by file path, isolated from earlier import stubs.
 def _day_truth():
     import importlib.util
     from pathlib import Path
@@ -128,85 +125,86 @@ def _day_doc(rows=None):
                  "price": 110, "market_value": 1100, "day_change": 0, "day_change_pct": 10}]}
 
 
-def test_performance_1d_reads_stored_rows_instead_of_recomputing_a_different_measure():
+def test_performance_preserves_original_financial_semantics_instead_of_forcing_row_agreement():
     from scripts.portfolio_snapshot_sanity import portfolio_market_day
     from copy import deepcopy
     model = _day_truth()
     h = _day_doc()
-    # This is the actual legacy read-model output, with its cache explicitly injected.
     legacy = portfolio_market_day({**h, "_finviz_day_pct": {}})
-    assert legacy["change"] == 100.0  # stored zero is recomputed from the percent
-    prior = {"periods": {"1D": {**legacy, "display_change": 100}, "YTD": {"display_change": 37}},
-             "accounts": {"synthetic_alpha": {"periods": {"1D": {"change": 100}, "YTD": {"change": 12}}}}}
+    assert legacy["change"] == 100.0
+    prior = {"current_value": 1100, "snapshot_source": "synthetic legacy",
+             "periods": {"1D": {**legacy, "display_change": 100}, "YTD": {"display_change": 37}},
+             "accounts": {"synthetic_alpha": {"current_value": 1100,
+                          "periods": {"1D": {"change": 100}, "YTD": {"change": 12}}}}}
     frozen = deepcopy(prior)
     out = model.performance_payload(prior, holdings_doc=h, now=NOW)
-    assert model.portfolio_for(h, now=NOW)["day_pl_usd"] == 0
-    assert out["periods"]["1D"]["change"] == out["periods"]["1D"]["display_change"] == 0
-    assert out["accounts"]["synthetic_alpha"]["periods"]["1D"]["change"] == 0
+    assert {key:out[key] for key in prior} == prior == frozen
+    assert out["today_pnl"]["total_change"] is None and out["today_pnl"]["complete"] is False
+    assert out["today_pnl"]["stored_row_evidence"]["known_sum"] == 0
+    assert out["today_pnl"]["legacy_evidence"]["period_1d"] == prior["periods"]["1D"]
     header = model.overview_payload({}, document=_doc(model.portfolio_for(h, now=NOW)), now=NOW)
-    assert header["today_change"] == out["periods"]["1D"]["change"]
-    assert header["today_pnl"] == out["today_pnl"]
-    assert out["periods"]["YTD"] == prior["periods"]["YTD"]
-    assert out["accounts"]["synthetic_alpha"]["periods"]["YTD"] == {"change": 12}
-    assert prior == frozen
+    assert header["today_change"] is None  # not forced to either unproven monetary source
+    assert header["today_pnl"]["market_session"] == out["today_pnl"]["market_session"]
 
 
-def test_performance_unknown_partial_and_nonfinite_are_named_not_flat():
+def test_raw_partial_nonfinite_evidence_is_named_without_new_performance_money():
     model = _day_truth()
     h = _day_doc([
         {"account": "synthetic_alpha", "symbol": "ZZAA", "market_value": 100, "day_change": 7},
         {"account": "synthetic_alpha", "symbol": "ZZBB", "market_value": 20},
         {"account": "synthetic_beta", "symbol": "ZZCC", "market_value": 10, "day_change": float("nan")},
     ])
-    out = model.performance_payload({"accounts": {}}, holdings_doc=h, now=NOW)
-    day = out["periods"]["1D"]
-    assert day["change"] == day["display_change"] == 7
-    assert day["complete"] is False and day["unknown_rows"] == 2
-    assert out["accounts"]["synthetic_beta"]["periods"]["1D"]["change"] is None
-    assert out["today_pnl"]["missing_accounts"] == ["synthetic_beta"]
-    assert out["today_pnl"]["partial_accounts"] == ["synthetic_alpha"]
-    assert "PARTIAL" in day["adjustment_note"]
+    prior = {"accounts": {}, "periods": {"1D": {"change": 9, "display_change": 9}}}
+    out = model.performance_payload(prior, holdings_doc=h, now=NOW)
+    assert out["accounts"] == prior["accounts"] and out["periods"] == prior["periods"]
+    assert out["today_pnl"]["status"] == "UNKNOWN"
+    evidence = out["today_pnl"]["stored_row_evidence"]
+    assert evidence["known_sum"] == 7 and evidence["row_values_complete"] is False
+    assert evidence["census"]["unknown_rows"] == 2
+    assert evidence["census"]["missing_accounts"] == ["synthetic_beta"]
 
 
-def test_current_summary_missing_rows_and_history_only_account_survive_with_unknown_day():
+def test_current_summary_gaps_do_not_add_or_remove_legacy_account_money():
     model = _day_truth()
     h = _day_doc()
     h["account_summaries"] = {"synthetic_beta": {"total_value": 500, "holdings_count": 1},
                               "synthetic_empty": {"total_value": 0, "holdings_count": 0}}
     prior = {"accounts": {"synthetic_history": {"current_value": 17, "periods": {"1D": {"change": 99}}}}}
     out = model.performance_payload(prior, holdings_doc=h, now=NOW)
-    assert set(out["accounts"]) == {"synthetic_alpha", "synthetic_beta", "synthetic_empty", "synthetic_history"}
-    assert out["accounts"]["synthetic_beta"]["periods"]["1D"]["change"] is None
-    assert out["accounts"]["synthetic_history"]["periods"]["1D"]["display_change"] is None
-    assert out["today_pnl"]["missing_accounts"] == ["synthetic_beta"]
-    assert out["today_pnl"]["empty_accounts"] == ["synthetic_empty"]
-    assert out["periods"]["1D"]["complete"] is False
+    assert out["accounts"] == prior["accounts"]
+    census = out["today_pnl"]["stored_row_evidence"]["census"]
+    assert census["missing_accounts"] == ["synthetic_beta"]
+    assert census["empty_accounts"] == ["synthetic_empty"]
+    assert out["today_pnl"]["complete"] is False
 
 
-def test_absent_holdings_refuses_snapshot_day_and_empty_book_does_not_invent_zero():
+def test_absent_holdings_preserves_original_evidence_and_refuses_economic_claim():
     model = _day_truth()
-    out = model.performance_payload({"periods": {"1D": {"change": 99, "display_change": 99}}},
-                                    holdings_doc={}, now=NOW)
-    assert out["periods"]["1D"]["change"] is None
-    assert out["periods"]["1D"]["display_change"] is None
-    assert out["periods"]["1D"]["complete"] is False
+    prior = {"current_value": 17, "periods": {"1D": {"change": 99, "display_change": 99}}}
+    out = model.performance_payload(prior, holdings_doc={}, now=NOW)
+    assert out["periods"] == prior["periods"] and out["current_value"] == 17
+    assert out["today_pnl"]["total_change"] is None and out["today_pnl"]["complete"] is False
+    assert out["today_pnl"]["stored_row_evidence"]["known_sum"] is None
     assert out["today_pnl"]["calculated_at"] is None
 
 
-def test_same_source_with_different_snapshot_clock_does_not_claim_identical_observations():
+def test_snapshot_clocks_and_row_values_do_not_rewrite_original_performance_day():
     model = _day_truth()
     h = _day_doc()
-    early = model.performance_payload({}, holdings_doc=h, now=NOW)
+    prior = {"periods": {"1D": {"change": 8, "display_change": 8}}}
+    early = model.performance_payload(prior, holdings_doc=h, now=NOW)
     h["generated_at"] = "2026-10-26T14:46:00Z"
     h["last_repriced"] = "2026-10-26T14:46:00Z"
     h["holdings"][0]["day_change"] = 3
-    late = model.performance_payload({}, holdings_doc=h, now=NOW)
-    assert early["periods"]["1D"]["change"] == 0 and late["periods"]["1D"]["change"] == 3
+    late = model.performance_payload(prior, holdings_doc=h, now=NOW)
+    assert early["periods"] == late["periods"] == prior["periods"]
+    assert early["today_pnl"]["stored_row_evidence"]["known_sum"] == 0
+    assert late["today_pnl"]["stored_row_evidence"]["known_sum"] == 3
     assert early["today_pnl"]["batch_built_at"] != late["today_pnl"]["batch_built_at"]
-    assert early["today_pnl"]["calculated_at"] is None and late["today_pnl"]["calculated_at"] is None
+    assert early["today_pnl"]["total_change"] is None and late["today_pnl"]["total_change"] is None
 
 
-def test_actual_performance_handler_emits_shared_1d_after_legacy_adjustments(monkeypatch, tmp_path):
+def test_actual_performance_handler_preserves_legacy_1d_and_adjustments(monkeypatch, tmp_path):
     from copy import deepcopy
     from pathlib import Path
     import sys
@@ -242,7 +240,9 @@ def test_actual_performance_handler_emits_shared_1d_after_legacy_adjustments(mon
           "_compute_drawdown_series": lambda rows: [], "_cio_truth_readers": lambda: model}
     exec(compile(body, "api_v2.py::portfolio_performance", "exec"), ns)
     out = ns["portfolio_performance"]()
-    assert out["periods"]["1D"]["change"] == out["periods"]["1D"]["display_change"] == 0
+    assert out["periods"]["1D"]["change"] == 100
+    assert out["periods"]["1D"]["display_change"] == 222
+    assert out["today_pnl"]["total_change"] is None and out["today_pnl"]["status"] == "UNKNOWN"
     assert out["periods"]["YTD"]["display_change"] == 42
     assert loaded.count("holdings.json") == 1
 
@@ -264,7 +264,7 @@ def test_day_session_uses_explicit_eastern_date_and_never_position_clock():
 
 
 
-def test_duplicate_account_alias_keeps_one_current_fact_and_preserves_history(monkeypatch):
+def test_alias_and_history_financial_keys_are_preserved_without_claiming_completeness(monkeypatch):
     model = _day_truth()
     monkeypatch.setattr(model, "canonical_key", lambda key: "synthetic_current" if key == "synthetic_legacy" else key)
     h = _day_doc([{"account": "synthetic_current", "symbol": "ZZAA", "market_value": 100, "day_change": 7}])
@@ -272,13 +272,10 @@ def test_duplicate_account_alias_keeps_one_current_fact_and_preserves_history(mo
         "synthetic_legacy": {"current_value": 80, "periods": {"YTD": {"change": 12}}},
         "synthetic_current": {"current_value": 100, "periods": {"YTD": {"change": 20}}}}}
     out = model.performance_payload(prior, holdings_doc=h, now=NOW)
-    assert out["periods"]["1D"]["display_change"] == 7
-    assert sum(a["periods"]["1D"]["change"] or 0 for a in out["accounts"].values()) == 7
-    assert out["accounts"]["synthetic_legacy"]["periods"]["1D"]["change"] is None
-    assert out["accounts"]["synthetic_legacy"]["current_value"] is None
-    assert out["accounts"]["synthetic_legacy"]["current_alias_of"] == "synthetic_current"
-    assert out["accounts"]["synthetic_legacy"]["periods"]["YTD"] == {"change": 12}
-    assert out["accounts"]["synthetic_current"]["periods"]["YTD"] == {"change": 20}
+    assert out["accounts"] == prior["accounts"]
+    assert "periods" not in out  # no invented 1D financial cell
+    assert out["today_pnl"]["complete"] is False
+    assert out["today_pnl"]["stored_row_evidence"]["known_sum"] == 7
 
 
 def test_missing_excluded_value_is_unknown_and_batch_clocks_do_not_date_pnl():
@@ -293,7 +290,8 @@ def test_missing_excluded_value_is_unknown_and_batch_clocks_do_not_date_pnl():
     assert tp["batch_built_at"] == "2026-10-26T14:45:00+00:00"
     assert tp["mark_batch_at"] == "2026-10-26T14:44:00+00:00"
     assert tp["mark_session_date"] == "2026-10-26"
-    assert out["periods"]["1D"]["change"] == 7
+    assert "periods" not in out
+    assert out["today_pnl"]["stored_row_evidence"]["known_sum"] == 7
 
 
 
@@ -314,8 +312,9 @@ def test_summary_alias_conflict_never_discards_funded_missing_evidence(monkeypat
         assert row["day_pl_usd"] is None and row["summary_alias_conflict"] is True
         assert len(row["summary_alias_evidence"]) == 2
         assert out["today_pnl"]["complete"] is False
-        assert out["today_pnl"]["missing_accounts"] == ["synthetic_current"]
-        assert out["today_pnl"]["empty_accounts"] == []
+        census = out["today_pnl"]["stored_row_evidence"]["census"]
+        assert census["missing_accounts"] == ["synthetic_current"]
+        assert census["empty_accounts"] == []
 
 
 
@@ -379,11 +378,13 @@ def test_overview_today_and_performance_share_calendar_reference_without_dating_
     h = _day_doc()
     p = model.portfolio_for(h, now=now)
     overview = model.overview_payload({}, document=_doc(p), now=now)
-    perf = model.performance_payload({}, holdings_doc=h, now=now)
+    prior = {"periods": {"1D": {"change": 7}}, "current_value": 999}
+    perf = model.performance_payload(prior, holdings_doc=h, now=now)
     expected = overview["market_session"]
     assert expected["latest_open_session"] == "2026-11-25"
     assert overview["today_pnl"]["market_session"] == perf["market_session"] == perf["today_pnl"]["market_session"] == expected
-    assert overview["today_change"] == perf["periods"]["1D"]["change"] == 0
+    assert overview["today_change"] is None
+    assert perf["periods"] == prior["periods"] and perf["current_value"] == 999
     assert overview["position_count"] == p["position_count"]
     assert overview["today_pnl"]["session_date"] is None
     assert overview["today_pnl"]["calculated_at"] is None
@@ -400,13 +401,68 @@ def test_calendar_failure_reaches_real_payload_as_unknown_without_financial_chan
         raise RuntimeError("synthetic unavailable")
     monkeypatch.setattr(market_session, "current_market_session", unavailable)
     overview = model.overview_payload({}, document=_doc(p), now=NOW)
-    perf = model.performance_payload({}, holdings_doc=h, now=NOW)
+    prior = {"current_value": 999, "periods": {"1D": {"change": 7}}}
+    perf = model.performance_payload(prior, holdings_doc=h, now=NOW)
     for out in (overview, perf):
         assert out["market_session"]["status"] == "UNKNOWN"
         assert out["market_session"]["latest_open_session"] is None
         assert "RuntimeError" in out["market_session"]["gap"]["reason"]
         assert out["today_pnl"]["market_session"] == out["market_session"]
-        assert out["today_pnl"]["total_change"] == p["day_pl_usd"]
-        assert out["today_pnl"]["complete"] == p["day_pl_complete"]
+        assert out["today_pnl"]["total_change"] is None and out["today_pnl"]["complete"] is False
+        assert out["today_pnl"]["stored_row_evidence"]["known_sum"] == p["day_pl_usd"]
         assert out["today_pnl"]["session_date"] is None
-    assert overview["portfolio_value"] == perf["current_value"] == p["total_usd"]
+    assert overview["portfolio_value"] == p["total_usd"]
+    assert perf["current_value"] == 999 and perf["periods"] == prior["periods"]
+
+
+
+def test_full_exit_and_loan_exclusion_performance_evidence_is_preserved():
+    from scripts.portfolio_snapshot_sanity import portfolio_market_day, account_market_days
+    from copy import deepcopy
+    model = _day_truth()
+    cash = {"holdings": [{"account": "synthetic_alpha", "symbol": "CASH", "is_cash": True, "market_value": 150}],
+            "portfolio_totals": {"total_value": 150, "day_change": 7},
+            "account_summaries": {"synthetic_alpha": {"total_value": 150, "holdings_count": 1, "day_change": 7}},
+            "closed_today": {"synthetic_alpha": [{"symbol": "ZZAA", "day_change": 7}]}, "_finviz_day_pct": {}}
+    loan = {"holdings": [{"account": "synthetic_alpha", "symbol": "ZZAA", "market_value": 100, "day_change": 7},
+                         {"account": "synthetic_alpha", "symbol": "LOAN", "is_loan": True, "market_value": -200, "day_change": -10},
+                         {"account": "synthetic_alpha", "symbol": "CASH", "is_cash": True, "market_value": 20}],
+            "portfolio_totals": {"total_value": 120, "day_change": 7}, "_finviz_day_pct": {}}
+    for h, expected_value in ((cash, 150), (loan, 120)):
+        legacy = portfolio_market_day(h)
+        account = account_market_days(h)["synthetic_alpha"]
+        assert legacy["change"] == account["change"] == 7
+        prior = {"current_value": expected_value, "snapshot_source": "original source",
+                 "periods": {"1D": {**legacy, "display_change": 7}, "YTD": {"change": 23}},
+                 "accounts": {"synthetic_alpha": {"current_value": expected_value,
+                              "periods": {"1D": account, "YTD": {"change": 19}}},
+                              "synthetic_history": {"current_value": 0, "periods": {"YTD": {"change": 5}}}},
+                 "period_quality_note": "Original legacy note retained as evidence"}
+        frozen = deepcopy(prior)
+        out = model.performance_payload(prior, holdings_doc=h, now=NOW)
+        assert {key:out[key] for key in prior} == frozen == prior
+        assert out["today_pnl"]["status"] == "UNKNOWN" and out["today_pnl"]["complete"] is False
+        assert out["today_pnl"]["legacy_evidence"]["period_1d"]["change"] == 7
+        overview = model.overview_payload({"today_change": 7, "today_pct": 1},
+                                          document=_doc(model.portfolio_for(h, now=NOW)), now=NOW)
+        assert overview["today_change"] is None
+        assert overview["today_pnl"]["legacy_evidence"]["today_change"] == 7
+        assert overview["today_pnl"]["gap"]["ticket"] == "OI-044"
+
+
+def test_zero_percentage_and_basis_do_not_select_an_economic_day_measure():
+    model = _day_truth()
+    for basis in (None, "intraday_fills"):
+        h = _day_doc()
+        h["holdings"][0]["day_change_basis"] = basis
+        prior = {"current_value": 1100, "periods": {"1D": {"change": 100, "display_change": 100}}}
+        out = model.performance_payload(prior, holdings_doc=h, now=NOW)
+        assert out["periods"] == prior["periods"]
+        tp = out["today_pnl"]
+        assert tp["total_change"] is None and tp["complete"] is False and tp["status"] == "UNKNOWN"
+        evidence = tp["stored_row_evidence"]
+        assert evidence["known_sum"] == 0 and evidence["row_values_complete"] is True
+        assert evidence["source_values"][0]["day_change"] == 0
+        assert evidence["source_values"][0]["day_change_pct"] == 10
+        assert evidence["source_values"][0]["day_change_basis"] == basis
+        assert tp["gap"]["owner"] == "portfolio/holdings_accounts"
