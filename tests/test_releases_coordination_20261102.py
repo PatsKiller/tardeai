@@ -272,3 +272,37 @@ def test_a_truncated_worklog_says_so(tmp_path):
     big.write_text("# w\n" + ("x" * (rc.WORKLOG_TAIL_BYTES + 10)) + "\nNext: push\n", encoding="utf-8")
     data, gap = rc.read_worklog(big, root)
     assert data["truncated"] is True and gap == "worklog_truncated"
+
+
+# ─────────────────────── BOARD `Open PRs` fallback (codex, 2026-11-02: "currently e508 missing")
+BOARD_WITH_PRS = BOARD_MD.replace("## Open PRs\n", """## Open PRs
+
+| PR | state | owner | what is needed |
+|---|---|---|---|
+| #2474 the approval form | READY fabebc077 | autoheal-5 | final CI then operator merge |
+""")
+
+
+def test_the_open_prs_table_supplies_next_and_owner_when_there_is_no_worklog(tmp_path):
+    _board(tmp_path, BOARD_WITH_PRS)
+    out = rc.build(tmp_path / "ledger.jsonl", tmp_path / "no-claims", [_pr(number=2474)], now=NOW)
+    work = out["work"][2474]
+    assert work["next_action"] == "final CI then operator merge"
+    assert work["next_action_source"] == "board_open_prs"
+    assert work["board_owner"] == "autoheal-5"
+    assert work["as_of"] == "2026-11-02T18:08:30Z"
+
+
+def test_the_board_fallback_never_supplies_a_review_verdict(tmp_path):
+    _board(tmp_path, BOARD_WITH_PRS)
+    work = rc.build(tmp_path / "ledger.jsonl", tmp_path / "no-claims", [_pr(number=2474)], now=NOW)["work"][2474]
+    assert work["review"]["state"] == "UNKNOWN" and work["ci"]["state"] == "UNKNOWN"
+
+
+def test_a_worklog_next_step_wins_over_the_board_row(tmp_path):
+    _board(tmp_path, BOARD_WITH_PRS)
+    claims = _claims(tmp_path, {"session": "s", "branch": "wt/x", "task": "t", "status": "active",
+                                "claim_id": "c0", "head_sha": HEAD})
+    (claims / "c0.worklog.md").write_text("## Handoff\n- Next step: the worklog answer\n", encoding="utf-8")
+    work = rc.build(tmp_path / "ledger.jsonl", claims, [_pr(number=2474)], now=NOW)["work"][2474]
+    assert work["next_action"] == "the worklog answer" and work["next_action_source"] == "worklog"

@@ -26,6 +26,7 @@ AUTHORITY: READ_ONLY_ADVISORY.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional
@@ -263,7 +264,41 @@ def read_board(board_path: Path, root: Path) -> tuple[dict[str, Any], Optional[s
             "as_of": updated,
             "source": "board",
         })
-    return {"agents": rows, "updated_at": updated}, None
+    return {"agents": rows, "updated_at": updated, "open_prs": parse_open_prs_table(text, updated)}, None
+
+
+def parse_open_prs_table(text: str, updated_at: Optional[str]) -> dict[int, dict[str, Any]]:
+    """The BOARD's `## Open PRs` rows, keyed by PR number.
+
+    Columns are `| PR | state | owner | what is needed |`; the PR cell starts with `#<n>`. This is the
+    documented fallback for a PR whose owner has no worklog to read (codex, 2026-11-02) - it supplies
+    next/owner CONTEXT only, never a review verdict or any merge authority.
+    """
+    rows: dict[int, dict[str, Any]] = {}
+    in_table = False
+    for line in text.splitlines():
+        if line.strip().lower().startswith("## open prs"):
+            in_table = True
+            continue
+        if in_table and line.startswith("## "):
+            break
+        if not in_table or not line.strip().startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 4:
+            continue
+        head = cells[0]
+        m = re.match(r"^#(\d+)\b", head)
+        if not m:
+            continue
+        rows[int(m.group(1))] = {
+            "state_text": cells[1] or UNKNOWN,
+            "owner": cells[2] or UNKNOWN,
+            "what_is_needed": cells[3] or UNKNOWN,
+            "as_of": updated_at,
+            "source": "board",
+        }
+    return rows
 
 
 def read_worklog(worklog_path: Path, root: Path) -> tuple[dict[str, Any], Optional[str]]:
@@ -389,6 +424,15 @@ def build(ledger_path: Path, claims_dir: Path, prs: Iterable[Mapping[str, Any]],
         else:
             publication = UNKNOWN
         review, ci = evidence["review"], evidence["ci"]
+        # BOARD fallback: the Open PRs row supplies next/owner CONTEXT when the claim's worklog has none.
+        # It never supplies a review verdict or any merge authority.
+        board_pr = (board.get("open_prs") or {}).get(number) or {}
+        if not ((wl or {}).get("next_action") or (owner or {}).get("next_action")) and board_pr.get("what_is_needed"):
+            _next = board_pr["what_is_needed"]
+            _next_source = "board_open_prs"
+        else:
+            _next = (wl or {}).get("next_action") or (owner or {}).get("next_action") or UNKNOWN
+            _next_source = "worklog" if (wl or {}).get("next_action") else ("claims" if owner else "none")
         work[number] = {
             "owner": (owner or {}).get("session") or UNKNOWN,
             "current_task": (owner or {}).get("task") or UNKNOWN,
@@ -401,8 +445,11 @@ def build(ledger_path: Path, claims_dir: Path, prs: Iterable[Mapping[str, Any]],
             "blockers": list(dict.fromkeys(
                 ([b for b in [(owner or {}).get("blocker")] if b] if not wl else [])
                 + list((wl or {}).get("blockers") or []))),
-            "next_action": (wl or {}).get("next_action") or (owner or {}).get("next_action") or UNKNOWN,
-            "as_of": _newest([(owner or {}).get("as_of"), review.get("as_of"), ci.get("as_of")]) or captured_at,
+            "next_action": _next,
+            "next_action_source": _next_source,
+            "board_owner": board_pr.get("owner") if board_pr else None,
+            "as_of": _newest([(owner or {}).get("as_of"), board_pr.get("as_of"), review.get("as_of"),
+                              ci.get("as_of")]) or captured_at,
             "source": "claims+coordinator_ledger" if owner and not gaps else ("claims" if owner else "none"),
         }
 
