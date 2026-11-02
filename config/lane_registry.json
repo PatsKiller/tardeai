@@ -17101,6 +17101,28 @@
       "severity": "Low"
     },
     {
+      "lane_id": "agent-scratch-purge",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-scratch-purge.timer",
+        "match": "scripts/disk_hygiene.py --standing --apply"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-30",
+      "state_reason": "Daily 05:00 ET host purge of agent scratch via the disk-hygiene standing path (DSN-20261030, AGENTS.md §24.13): scripts/disk_hygiene.py --standing --apply re-plans the reviewed standing_apply rules (A/S/T/W = archived dumps, ~/.cache/rtc scratch, ~/.cache/agent-tmp scratch, stale git worktrees), re-validates every item at apply time, reads the claim board, worklogs, open PRs and process cwds, refuses on any opaque process, and stops at the caps. Host timer, never n8n: AGENTS.md §23.14 keeps destructive retention off the n8n executor. NEVER_SCHEDULED until the operator (1) ratifies AGENTS.md 27.0.0, (2) approves config/disk_hygiene_rules.json standing_apply.approval, (3) sets standing_apply.enabled=true, and (4) installs the units (systemctl --user enable --now tradeai-agent-scratch-purge.timer).",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/disk_hygiene/disk_hygiene_standing_apply_latest.json",
+        "key": "finished_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/disk_hygiene.py (--standing --apply argv + standing_results T arm), scripts/lib/disk_hygiene_retention.py (RULE_KINDS T=agent_scratch), config/disk_hygiene_rules.json (standing_apply.agent_scratch), tests/test_disk_standing_apply_20261024.py, docs/designs/DSN-20261030-rule6-scratch-delete-amendment.md",
+      "note": "Deletes only what the reviewed standing_apply rules select (A/S/T/W), re-validating every item at apply time; refuses on any opaque process and stops at the caps. Kill switch: standing_apply.enabled=false or stop the timer. The output_signal is the standing-apply report (data/runtime/disk_hygiene/disk_hygiene_standing_apply_latest.json), distinct from the disk-hygiene --plan lane's receipt, so a --plan success can never hide a standing-apply failure.",
+      "severity": "Medium"
+    },
+    {
       "lane_id": "hermes-watchlist-scorer",
       "owner": "research",
       "scheduler": {
