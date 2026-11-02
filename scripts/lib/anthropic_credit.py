@@ -25,6 +25,11 @@ import os
 from pathlib import Path
 from typing import Any
 
+try:
+    from . import jsonl_tail
+except ImportError:  # pragma: no cover - flat import layout
+    import jsonl_tail  # type: ignore[no-redef]
+
 
 SCHEMA = "AnthropicCreditAuthorization@v1"
 JOURNAL_REL = "data/runtime/provider_cost/anthropic_credit.jsonl"
@@ -150,52 +155,64 @@ class CreditBook:
         rows: list[dict[str, Any]] = []
         previous = ""
         try:
-            with self.path.open(encoding="utf-8") as handle:
-                for line in handle:
-                    row = json.loads(line)
-                    if not isinstance(row, dict):
-                        raise CreditDenied("CREDIT_UNAVAILABLE")
-                    checksum = row.pop("checksum")
-                    expected = hashlib.sha256(json.dumps(row, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-                    # Every row (any promotion) is chain-verified; only this
-                    # promotion's rows are counted (see _own).
-                    if (checksum != expected or row["previous"] != previous
-                            or row["schema"] != SCHEMA or not isinstance(row.get("promotion_id"), str)
-                            or row["sequence"] != len(rows) + 1):
-                        raise CreditDenied("CREDIT_UNAVAILABLE")
-                    if (not isinstance(row.get("event"), str)
-                            or not isinstance(row.get("at"), str)
-                            or not isinstance(row.get("sequence"), int)
-                            or isinstance(row["sequence"], bool)):
-                        raise CreditDenied("CREDIT_UNAVAILABLE")
-                    try:
-                        utc(row["at"])
-                        event = row["event"]
-                        if event in {"reserve", "settle", "uncertain", "batch", "batch_collection_started", "batch_collected"}:
-                            if not isinstance(row.get("request"), str) or not row["request"]:
-                                raise CreditDenied("CREDIT_UNAVAILABLE")
-                        if event == "reserve":
-                            amount(row["projected"])
-                            if not isinstance(row.get("process"), str) or not isinstance(row.get("tier"), str):
-                                raise CreditDenied("CREDIT_UNAVAILABLE")
-                        if event in {"batch", "batch_collection_started", "batch_collected"}:
-                            if not isinstance(row.get("batch_id"), str):
-                                raise CreditDenied("CREDIT_UNAVAILABLE")
-                        if event == "batch":
-                            if (not isinstance(row.get("model"), str) or not isinstance(row.get("process_id"), str)
-                                    or not isinstance(row.get("ambiguous"), bool)):
-                                raise CreditDenied("CREDIT_UNAVAILABLE")
-                        if event in {"settle", "batch_collected"}:
-                            amount(row["actual"])
-                        if event in {"failure", "fallback"} and not isinstance(row.get("reason"), str):
+            raw = self.path.read_bytes()
+            tail = jsonl_tail.truncated_tail(raw)
+            if tail is not None:
+                # A half-written last record (disk full mid-write). The credit book stays fail-closed -- an
+                # unreadable spend journal is never read as zero spend (tests/test_anthropic_first_20261025.py,
+                # tests/test_anthropic_monitoring_20261025.py) -- but it is no longer silent: one P1 per day says
+                # the Anthropic lane is off and why. The operator archives the fragment (repair is in the alert).
+                jsonl_tail.report(
+                    self.path,
+                    len(tail[1]),
+                    action="Anthropic lane OFF (fail-closed) until the operator archives the fragment",
+                )
+                raise CreditDenied("CREDIT_UNAVAILABLE")
+            for line in raw.decode("utf-8").splitlines(keepends=True):
+                row = json.loads(line)
+                if not isinstance(row, dict):
+                    raise CreditDenied("CREDIT_UNAVAILABLE")
+                checksum = row.pop("checksum")
+                expected = hashlib.sha256(json.dumps(row, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+                # Every row (any promotion) is chain-verified; only this
+                # promotion's rows are counted (see _own).
+                if (checksum != expected or row["previous"] != previous
+                        or row["schema"] != SCHEMA or not isinstance(row.get("promotion_id"), str)
+                        or row["sequence"] != len(rows) + 1):
+                    raise CreditDenied("CREDIT_UNAVAILABLE")
+                if (not isinstance(row.get("event"), str)
+                        or not isinstance(row.get("at"), str)
+                        or not isinstance(row.get("sequence"), int)
+                        or isinstance(row["sequence"], bool)):
+                    raise CreditDenied("CREDIT_UNAVAILABLE")
+                try:
+                    utc(row["at"])
+                    event = row["event"]
+                    if event in {"reserve", "settle", "uncertain", "batch", "batch_collection_started", "batch_collected"}:
+                        if not isinstance(row.get("request"), str) or not row["request"]:
                             raise CreditDenied("CREDIT_UNAVAILABLE")
-                        if event == "operator_reset" and row.get("scope") not in RESET_SCOPES:
+                    if event == "reserve":
+                        amount(row["projected"])
+                        if not isinstance(row.get("process"), str) or not isinstance(row.get("tier"), str):
                             raise CreditDenied("CREDIT_UNAVAILABLE")
-                    except CreditDenied as exc:
-                        raise CreditDenied("CREDIT_UNAVAILABLE") from exc
-                    previous = checksum
-                    row["checksum"] = checksum
-                    rows.append(row)
+                    if event in {"batch", "batch_collection_started", "batch_collected"}:
+                        if not isinstance(row.get("batch_id"), str):
+                            raise CreditDenied("CREDIT_UNAVAILABLE")
+                    if event == "batch":
+                        if (not isinstance(row.get("model"), str) or not isinstance(row.get("process_id"), str)
+                                or not isinstance(row.get("ambiguous"), bool)):
+                            raise CreditDenied("CREDIT_UNAVAILABLE")
+                    if event in {"settle", "batch_collected"}:
+                        amount(row["actual"])
+                    if event in {"failure", "fallback"} and not isinstance(row.get("reason"), str):
+                        raise CreditDenied("CREDIT_UNAVAILABLE")
+                    if event == "operator_reset" and row.get("scope") not in RESET_SCOPES:
+                        raise CreditDenied("CREDIT_UNAVAILABLE")
+                except CreditDenied as exc:
+                    raise CreditDenied("CREDIT_UNAVAILABLE") from exc
+                previous = checksum
+                row["checksum"] = checksum
+                rows.append(row)
         except (OSError, ValueError, KeyError, TypeError, AttributeError, OverflowError) as exc:
             raise CreditDenied("CREDIT_UNAVAILABLE") from exc
         return rows

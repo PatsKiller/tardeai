@@ -9,6 +9,45 @@ import json
 import os
 from pathlib import Path
 from typing import Any
+import logging
+
+log = logging.getLogger(__name__)
+
+# Refusals that mean the credit book itself is broken (not an ordinary cap or pause). Each is logged on every call
+# and alerted once per UTC day per reason: on 2026-10-30 a half-written journal line made every Anthropic call fall
+# back to grok with no log line and no alert for 30+ hours.
+_BROKEN_BOOK_CODES = frozenset({"CREDIT_UNAVAILABLE", "CREDIT_CONFIGURATION_INVALID", "COST_PERSISTENCE_UNAVAILABLE"})
+_refusal_alerted: set[tuple[str, str]] = set()
+
+
+def _report_credit_refusal(code: str, *, where: str) -> bool:
+    """Log every Anthropic credit refusal; P2-alert broken-book refusals once per reason per UTC day."""
+    if code not in _BROKEN_BOOK_CODES:
+        log.info("anthropic credit refusal %s (%s); falling back", code, where)
+        return False
+    log.warning("anthropic credit book unavailable: %s (%s); falling back to the next lane", code, where)
+    key = (code, datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+    if key in _refusal_alerted:
+        return False
+    _refusal_alerted.add(key)
+    try:
+        from telegram_alert import send_telegram
+    except ImportError:
+        from scripts.telegram_alert import send_telegram  # type: ignore[no-redef]
+    try:
+        send_telegram(
+            f"⚠️ *ANTHROPIC LANE OFF* — {code}\n"
+            f"Every Anthropic call is refused by the credit book ({where}) and falls back to the next lane. "
+            "Check data/runtime/provider_cost/anthropic_credit.jsonl and the credit policy.",
+            priority="P2",
+            dedupe_minutes=1440,
+            producer="anthropic_routing",
+            message_class="ops_integrity",
+        )
+    except Exception as exc:  # visible, never fatal to routing
+        log.warning("anthropic credit refusal alert not sent: %s: %s", type(exc).__name__, exc)
+        return False
+    return True
 
 from .anthropic_credit import CreditBook, CreditDenied, amount
 from .anthropic_transport import AnthropicTransport, load_policy
@@ -209,8 +248,9 @@ class FundingContext:
     def record_fallback(reason: str) -> None:
         try:
             CreditBook(state_root(), load_policy()).record_fallback(reason, now=datetime.now(timezone.utc))
-        except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
-            pass  # Corrupt/unavailable credit must not prevent a governed free fallback.
+        except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError) as exc:
+            # Corrupt/unavailable credit must not prevent a governed free fallback -- but it must be visible.
+            _report_credit_refusal(getattr(exc, "reason", None) or "CREDIT_UNAVAILABLE", where="record_fallback")
 
     def authorize_candidate(self, candidate: dict) -> None:
         if candidate["provider"] == "anthropic":
@@ -308,6 +348,7 @@ def generate_in_process(prompt: str, *, process_id: str, cfg: dict, options: dic
             if getattr(exc, "code", "") in {"INPUT_LIMIT_EXCEEDED", "GOVERNANCE_UNAVAILABLE"}:
                 raise
             if provider == "anthropic":
+                _report_credit_refusal(getattr(exc, "code", "PROVIDER_UNAVAILABLE"), where="transport")
                 FundingContext.record_fallback(getattr(exc, "code", "PROVIDER_UNAVAILABLE"))
             last = exc
             receipts.append({"provider": provider, "outcome": getattr(exc, "code", "provider_failure")})
@@ -316,6 +357,7 @@ def generate_in_process(prompt: str, *, process_id: str, cfg: dict, options: dic
                     "CREDIT_", "COST_CAP_EXCEEDED", "COST_CEILING_EXCEEDED", "COST_CONFIGURATION_INVALID",
                     "COST_PERSISTENCE_UNAVAILABLE", "ANTHROPIC_"))):
                 code = getattr(exc, "reason", None) or str(exc).split(":", 1)[0]
+                _report_credit_refusal(code, where="route")
                 FundingContext.record_fallback(code)
                 last = exc
                 receipts.append({"provider": provider, "outcome": code})
