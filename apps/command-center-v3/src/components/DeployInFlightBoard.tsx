@@ -71,7 +71,11 @@ const asOfText = (iso: unknown): string => {
   if (!Number.isFinite(t)) return `as of ${iso}`
   const deltaS = Math.round((Date.now() - t) / 1000)
   // A clock ahead of ours is skew, not recency: never render it as "0s ago".
-  if (deltaS < -60) return `as of ${iso} (${ageText(Math.abs(deltaS))} in the future — clock skew)`
+  if (deltaS < -60) {
+    const ahead = Math.abs(deltaS)
+    const span = ahead < 3600 ? `${Math.max(1, Math.round(ahead / 60))}m` : ahead < 86_400 ? `${Math.round(ahead / 3600)}h` : `${Math.round(ahead / 86_400)}d`
+    return `clock skew — ${span} in the future`
+  }
   return `as of ${ageText(Math.max(0, deltaS))}`
 }
 
