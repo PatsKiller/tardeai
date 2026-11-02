@@ -88,6 +88,19 @@ alone would have been PATCH; the higher class wins, per the version policy above
 
 ## Version banners (moved here from the top of the file by 25.0.0; history, not binding)
 
+### 29.5.0 (PROPOSED) — operator-directed cross-agent pushes and a cleanup agent
+
+Proposed 2026-11-02: agents finished work and left it unpushed, so their results sat on local branches until someone
+chased them. Operator, verbatim: "I also want to have it in the rules that if I say any agent, I want, if I tell it,
+upload everyone else's work also, or a cleanup agency, see anything that's straggling, leaving behind." New §28.17
+rule 1 makes the operator's own words the authority for one agent to push another agent's committed, clean,
+non-`main` feature branch (fast-forward, budgeted, claim live or taken over, recorded on the claim board with the
+words verbatim and the pushed SHA); rule 2 lets an assigned cleanup agent list unpushed commits, idle worktrees and
+stale claims, push what rule 1 allows, hand off the rest in one table, and close idle worktrees only by
+archive-then-remove (§24.14), never deleting and never force-pushing, with one receipt per sweep. The 26.0.0
+binding-text budget moves 2,670 -> 2,690 so the two rules fit; no existing rule text is compressed. Held class:
+AGENTS.md. Requires `APPROVE_AGENTS_POLICY_29_5_0 <PR> <head-sha>` and the operator's merge.
+
 ### Moved here by 29.4.0 (superseded version's banner, verbatim)
 
 **29.1.0 is ACTIVE (MINOR) — a promote or rollback restarts the units named in §25.10 and verifies them.** Ratified

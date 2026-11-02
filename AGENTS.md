@@ -1,17 +1,19 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      29.4.0
+Policy-Version:      29.5.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              PROPOSED
 Effective-Date:      PENDING
-Last-Reviewed:       2026-11-01T17:30:00-05:00
+Last-Reviewed:       2026-11-02T10:00:00-05:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          29.3.0
+Supersedes:          29.4.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**29.5.0 is PROPOSED (MINOR) — an agent the operator names may upload other agents' clean work, and a cleanup agent may sweep stragglers without deleting anything (§28.17).** Operator 2026-11-02: "I also want to have it in the rules that if I say any agent, I want, if I tell it, upload everyone else's work also, or a cleanup agency, see anything that's straggling, leaving behind." **Why MINOR:** it adds an operator-authorised path and an operator-assignable role; every existing push rail stands unchanged, and §0, §2, §17 are untouched. The active version governs until ratified.
 
 **29.4.0 is PROPOSED (MINOR) — a standing, dated operator push approval for agent branches (§28.15 item 8).** Operator 2026-11-01: "Yes, draft stand and approval."; class "minor". **Why MINOR:** the operator's choice; it adds an operator-authored, dated, revocable way to meet the existing approved-plan step, and §0 and every other push rail are unchanged. The active version governs until ratified.
 
@@ -2653,6 +2655,21 @@ Procedures: `docs/ops/AGENT_CLAIM_BOARD.md`, `docs/ops/DELIVERY_LIFECYCLE.md`, `
 
 ---
 
+## 28.17 Operator-directed cross-agent pushes; the cleanup agent
+
+- **1 The operator's own words, and a clean branch.** When the operator tells an agent, in its own session, to upload
+  another agent's work, that agent may push that branch only if: it is committed and its tree clean (never another
+  agent's uncommitted work); it is not `main`, `master`, `release/*` or `train/*`; the push is fast-forward, never
+  force, reset, rewrite or a remote-branch delete; the per-branch budget applies; and the owner's claim is live or
+  taken over (§28.3). Record on the claim board whose branch, the operator's words verbatim, and the pushed SHA. Never
+  a PR merge, a held class, `main`, the deploy or any §17 item. *Cause: 2026-11-02 — operator: "if I tell it, upload
+  everyone else's work also".*
+- **2 A cleanup agent sweeps and never deletes.** An agent the operator or coordinator assigns may list unpushed
+  commits, idle worktrees and stale claims; push what rule 1 authorises; hand off the rest (dirty tree, no live claim,
+  unclear owner) in one table; and close an idle worktree only by archive-then-remove (§24.14, W/C). Never deletes
+  work, branches or another session's claim, never force-pushes; one receipt per sweep: found, pushed, handed off,
+  left alone and why. *Cause: 2026-11-02 — operator: "a cleanup agency, see anything that's straggling".*
+
 # 29 · Paid and LLM run discipline
 
 - **Preflight every limit before a long paid or LLM job.** Quote the credit journal
@@ -2672,6 +2689,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 29.5.0 | 2026-11-02 | PROPOSED | MINOR | Supersedes 29.4.0. This row is stacked on 29.4.0 and must land after it. The 26.0.0 binding-text budget moves from 2,670 to 2,690 lines so the two rules fit (test constant MAX_BINDING_LINES, raised in the same commit rather than compressing existing rules). New §28.17: (1) when the operator explicitly tells an agent to upload another agent's work, it may push that agent's committed, clean, non-`main`/`release/*`/`train/*` feature branch fast-forward, within the per-branch budget, only with the owner's claim live or taken over, recording whose branch, the operator's words verbatim and the pushed SHA on the claim board; never another agent's uncommitted work, never a held-class merge, never `main`, the deploy or any §17 item. (2) an operator- or coordinator-assigned cleanup agent may list unpushed commits, idle worktrees and stale claims, push what rule 1 authorises, hand the rest off in one table, and close idle worktrees only by archive-then-remove (§24.14 rules W/C); it never deletes, never force-pushes and writes one receipt per sweep. Adds an operator-authorised path and a role; §0 rules 1-4, §2, §17 unchanged. Operator 2026-11-02 verbatim: "I also want to have it in the rules that if I say any agent, I want, if I tell it, upload everyone else's work also, or a cleanup agency, see anything that's straggling, leaving behind." | PENDING `APPROVE_AGENTS_POLICY_29_5_0 <PR> <head-sha>` |
 | 29.4.0 | 2026-11-01 | PROPOSED | MINOR | Supersedes 29.3.0 (#2453; this content was drafted as 29.3.0 in #2450/#2451). Operator chose MINOR (2026-11-01, "minor"). §28.15 item 8 gains the standing push approval: an operator `APPROVE_PUSH_STANDING <glob> until <YYYY-MM-DD>` comment on the standing-approval issue meets the approved-plan step for the pusher's own live claim on a branch the glob covers (prefixes wt/ feat/ fix/ chore/ docs/ only; never main, master, release/*, train/*; expiry required, at most 45 days; `REVOKE_PUSH_STANDING` in any markup voids earlier ones; one operator issue, duplicates refuse; a close voids earlier comments for good; edited operator comments refuse; fenced, indented and HTML-commented lines ignored; only close-and-reopen of the same issue voids then restores; dates UTC; live only once main is 29.4.0+ ACTIVE; `gh issue create/edit/reopen/close`, `gh alias set` and `gh api` field writes are `gh-write` and `gh auth token` is `secret`, classified from shell tokens (`guard_tokens.py`), so quoting and flag placement cannot evade them). Hardened after the #2450 and #2451 security reviews (LESSONS L28-31). All other push checks unchanged. Operator 2026-11-01: "Yes, draft stand and approval." | PENDING `APPROVE_AGENTS_POLICY_29_4_0 <PR> <head-sha>` |
 | 29.3.0 | 2026-11-01 | ACTIVE | MINOR | Supersedes 29.2.1. §11 gains draft-first PRs (open every PR as a draft; mark it ready only when the work is done and adversarial review has passed), stack discipline (only the top of a stack is ready; its CI covers the whole stack) and one weekday merge window (17:30-18:30 ET in `.mergify.yml`; urgent fixes by the operator naming the PR). §28.1's merge-window bullet now states the single window. Adds obligations only; §0, §2, §17 and role authority untouched. Cause: LESSONS L11-01 (5,369 Actions runs on 2026-10-31). | operator in-session 2026-11-01 (this session: chose "approve both rules" and "one window, 17:30 ET"); held-class operator merge (§25.10). Design: `DSN-20261031-ci-load-reduction` §4.2/§4.4/§4.5. |
 | 29.2.1 | 2026-11-01 | ACTIVE | PATCH | Supersedes 29.2.0. Generated §7A source-of-truth table refreshed: `quote_extended_session` (`market_quotes_extended`, single writer `scripts/lib/writers/market_quotes_extended_writer.py`, Alpaca SIP) granted (operator §7A/§26.6, in-session 2026-11-01; store, writer, provider and schedule approved as DSN-20261031-market-risk-engine §11 items 1-2 on 2026-10-31) and listed as an active domain; no rule-text change. | operator 2026-11-01 in-session (recorded in `config/data_source_authority.json` approval) |

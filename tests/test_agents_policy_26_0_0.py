@@ -36,7 +36,9 @@ BINDING = AGENTS[:VH]
 #: 29.3.0: three §11 rules (draft-first, stack top, one merge window) add 18 binding lines to main's 2649. Their
 #: measurements, the 5,369-run evidence and the rollout live in LESSONS L11-01 and DSN-20261031-ci-load-reduction,
 #: not here. 2667 measured; this ceiling is that plus three lines of headroom.
-MAX_BINDING_LINES = 2670
+# 29.5.0 (§28.17, operator 2026-11-02) adds two rules the operator asked for; the operative text cannot fit the
+# 26.0.0 budget of 2,670, so the cap moves to 2,690 rather than by compressing existing rules in the same PR.
+MAX_BINDING_LINES = 2690
 
 
 def _control() -> dict[str, str]:
