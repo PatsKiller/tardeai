@@ -61,11 +61,18 @@ const btn = (tone: Tone, disabled: boolean): CSSProperties => {
   }
 }
 
-const asOfText = (iso: string | null): string => {
-  if (!iso) return 'source time not stated'
+/** A render boundary: a wire value that is not a string/number must never reach JSX as an object. */
+const text = (v: unknown, fallback = '—'): string =>
+  typeof v === 'string' && v.trim() ? v : typeof v === 'number' && Number.isFinite(v) ? String(v) : fallback
+
+const asOfText = (iso: unknown): string => {
+  if (typeof iso !== 'string' || !iso.trim()) return 'source time not stated'
   const t = Date.parse(iso)
   if (!Number.isFinite(t)) return `as of ${iso}`
-  return `as of ${ageText(Math.max(0, Math.round((Date.now() - t) / 1000)))}`
+  const deltaS = Math.round((Date.now() - t) / 1000)
+  // A clock ahead of ours is skew, not recency: never render it as "0s ago".
+  if (deltaS < -60) return `as of ${iso} (${ageText(Math.abs(deltaS))} in the future — clock skew)`
+  return `as of ${ageText(Math.max(0, deltaS))}`
 }
 
 function AgentCard({ a }: { a: CoordinationAgent }) {
@@ -238,8 +245,8 @@ export default function DeployInFlightBoard() {
             ? <Chip tone="warning">UNAVAILABLE</Chip>
             : api.loading && !data
               ? <Chip tone="neutral">Loading</Chip>
-              : <Chip tone={staleHint ? 'warning' : 'neutral'}>{known && data!.freshness === 'UNAVAILABLE' ? 'UNAVAILABLE' : staleHint ? 'STALE' : data?.status ?? '—'}</Chip>}
-          {known && data!.count != null ? <Chip tone="neutral">{data!.count} open</Chip> : null}
+              : <Chip tone={staleHint ? 'warning' : 'neutral'}>{known && data!.freshness === 'UNAVAILABLE' ? 'UNAVAILABLE' : staleHint ? 'STALE' : text(data?.status)}</Chip>}
+          {known && typeof data!.count === 'number' ? <Chip tone="neutral">{data!.count} open</Chip> : null}
           {droppedRows > 0 ? <Chip tone="warning">{droppedRows} malformed row{droppedRows > 1 ? 's' : ''} dropped</Chip> : null}
           {data?.generated_at ? <Chip tone="neutral">captured {asOfText(data.generated_at)}</Chip> : <Chip tone="warning">capture time not stated</Chip>}
         </ChipRow>
@@ -255,7 +262,7 @@ export default function DeployInFlightBoard() {
           lift push budget (“override”)
         </label>
         {busy ? <Chip tone="info">working…</Chip> : null}
-        {last ? <Chip tone={last.ok ? 'success' : 'danger'}>{last.ok ? (last.outcome ?? 'done') : (last.refusal ?? last.error ?? 'refused')}</Chip> : null}
+        {last ? <Chip tone={last.ok ? 'success' : 'danger'}>{last.ok ? text(last.outcome, 'done') : text(last.refusal ?? last.error, 'refused')}</Chip> : null}
       </div>
 
       {unavailable && !prs

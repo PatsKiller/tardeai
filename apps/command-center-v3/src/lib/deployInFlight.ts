@@ -233,6 +233,11 @@ export function normalizeReview(raw: unknown, rowHead: string): Factor<ReviewSta
   const source = asText(r.source)
   const gap = asText(r.source_gap) ?? asText(r.gap)
   if (!rowHead) return unknown('row head not stated — cannot bind', { head_sha: envelopeHead, as_of, as_of_basis, source })
+  // An envelope that names a different head contradicts any member that names this one. Contradiction is
+  // UNKNOWN — the two claims cannot both be the review of this head.
+  if (envelopeHead && envelopeHead !== rowHead) {
+    return unknown(`head_changed: review envelope ${shortSha(envelopeHead)} ≠ row ${shortSha(rowHead)}`, { head_sha: envelopeHead, as_of, as_of_basis, source })
+  }
   if (!listed && String(r.state ?? '').toUpperCase() === 'UNKNOWN' && gap) {
     return unknown(gap, { head_sha: envelopeHead, as_of, as_of_basis, source })
   }

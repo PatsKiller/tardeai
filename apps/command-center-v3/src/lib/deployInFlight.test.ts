@@ -249,6 +249,12 @@ eq('MERGE + explicit UNKNOWN stays UNKNOWN', rv9([{ verdict: 'MERGE', reviewer: 
 eq('BLOCK + unrecognised is still blocked', rv9([{ verdict: 'BLOCK', reviewer: 'a' }, { verdict: 'MAYBE', reviewer: 'b' }]).state, 'CHANGES')
 eq('a backend UNKNOWN is never upgraded to MERGE', rv9([{ verdict: 'MERGE', reviewer: 'a' }], 'UNKNOWN').state, 'UNKNOWN')
 eq('a backend BLOCK is never overridden by merge records', rv9([{ verdict: 'MERGE', reviewer: 'a' }], 'BLOCK').state, 'CHANGES')
+
+// A contradictory envelope: the envelope names another head while its members name this one.
+const contra = normalizeReview({ state: 'MERGE', head_sha: OLD, records: [{ verdict: 'MERGE', reviewer: 'a', head_sha: HEAD }] }, HEAD)
+eq('envelope/member head contradiction is UNKNOWN', contra.state, 'UNKNOWN')
+check('and names the contradiction', (contra.reason ?? '').includes('envelope'), contra.reason)
+eq('an envelope naming this head still aggregates', normalizeReview({ state: 'MERGE', head_sha: HEAD, records: [{ verdict: 'MERGE', reviewer: 'a' }] }, HEAD).state, 'MERGE')
 eq('two clean MERGEs still pass', rv9([{ verdict: 'MERGE', reviewer: 'a' }, { verdict: 'MERGE', reviewer: 'b' }]).state, 'MERGE')
 
 const agentWith = (over: Record<string, unknown>) => normalizeCoordination({ status: 'OK', agents: [{
