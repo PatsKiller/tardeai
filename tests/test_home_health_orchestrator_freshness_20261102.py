@@ -142,3 +142,32 @@ def test_a_missed_monday_run_is_stale(tmp_path):
     log = _write_log(tmp_path, last_run)
     result = health._check_log_freshness(str(log), 180, prev_fire=_last_due_before(now), now=now)
     assert result["status"] == "STALE", result
+
+
+# ───────────── cc3 review (2026-11-02): declared vs installed must be COMPARED and shown to the operator
+def test_declared_and_installed_are_compared_and_the_drift_is_named():
+    resolved = health._resolve_component_schedule(_orch())
+    drift = health.schedule_drift(resolved)
+    assert drift == "declared '0 9,10,12,14,16 * * 1-5' but the ACTIVE lane runs '30 17 * * 1-5'"
+
+
+def test_the_operator_view_shows_the_resolved_schedule_with_the_drift_beside_it():
+    """The persisted `expected_schedule` column is what the page renders; drift must appear there."""
+    resolved = health._resolve_component_schedule(_orch())
+    shown = health.schedule_display(resolved)
+    assert shown.startswith("30 17 * * 1-5")
+    assert "declared '0 9,10,12,14,16 * * 1-5'" in shown
+    assert "not installed by this check" in shown      # no install authority is implied
+
+
+def test_no_drift_is_reported_when_the_declaration_matches_the_lane():
+    comp = {"schedule": "30 17 * * 1-5", "declared_schedule": "30 17 * * 1-5"}
+    assert health.schedule_drift(comp) is None
+    assert health.schedule_display(comp) == "30 17 * * 1-5"
+
+
+def test_the_raw_declared_value_is_never_overwritten():
+    comp = _orch()
+    assert comp["declared_schedule"] == "0 9,10,12,14,16 * * 1-5"   # preserved verbatim
+    _ = health.schedule_display(health._resolve_component_schedule(comp))
+    assert comp["declared_schedule"] == "0 9,10,12,14,16 * * 1-5"   # displaying it changes nothing

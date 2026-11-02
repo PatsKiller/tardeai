@@ -1061,6 +1061,29 @@ def _resolve_component_schedule(comp, registry=None):
     return dict(comp, schedule=active[0] if len(active) == 1 else active, schedule_resolved_from="lane_registry")
 
 
+def schedule_drift(comp) -> str | None:
+    """How the schedule the component DECLARED differs from the ACTIVE lane's schedule.
+
+    cc3's review (2026-11-02): `declared_schedule` was preserved but nothing compared it to what the
+    lane actually runs, so a correction was invisible on the operator view. Returns None when the two
+    agree (or when either is unknown) - never a guess.
+    """
+    declared = str((comp or {}).get("declared_schedule") or "").strip()
+    resolved = str((comp or {}).get("schedule") or "").strip()
+    if not declared or not resolved or declared == resolved:
+        return None
+    return f"declared '{declared}' but the ACTIVE lane runs '{resolved}'"
+
+
+def schedule_display(comp) -> str:
+    """The schedule string the operator surface shows: the resolved one, with drift named beside it."""
+    resolved = str((comp or {}).get("schedule") or "")
+    drift = schedule_drift(comp)
+    if drift:
+        return f"{resolved} (corrected - {drift}; not installed by this check)"
+    return resolved
+
+
 def schedule_fallback_error(comp) -> str | None:
     """The operator-visible message when a component fell back to its literal schedule.
 
@@ -1894,7 +1917,7 @@ def run_health_check(dry_run=True, verbose=False):
             "component": component,
             "display": comp.get("display", component),
             "critical": comp.get("critical", False),
-            "schedule": comp.get("schedule", ""),
+            "schedule": schedule_display(comp),
             "status": freshness["status"],
             "age_min": freshness.get("age_min"),
             "last_line": (freshness.get("last_line") or "")[:100],
@@ -2031,7 +2054,7 @@ def run_health_check(dry_run=True, verbose=False):
                     "cron_health",
                     component,
                     check["status"],
-                    _fmt_schedule(comp.get("schedule")),
+                    _fmt_schedule(schedule_display(comp)),
                     now if check["status"] == "OK" else None,
                     now if check["status"] not in ("OK", "RECOVERED") else None,
                     None,
