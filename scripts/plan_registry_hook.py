@@ -17,9 +17,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import stat
 import sys
-import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -35,13 +35,15 @@ MAX_PLAN_BYTES = 256 * 1024
 
 
 def plan_file_roots() -> list[Path]:
-    """Where a client may keep a plan file: the state root, ``~/.claude`` and the temp dir."""
-    roots = [Path(os.environ.get("TRADEAI_STATE_ROOT")
-                  or (Path.home() / "trade-ai-releases" / "persistent-state")),
-             Path.home() / ".claude",
-             Path(tempfile.gettempdir())]
+    """The only two places a client actually writes a plan: the plan store, and ``~/.claude/plans``.
+
+    Deliberately NOT the whole state root, all of ``~/.claude`` (credential files live there) or the
+    temp dir (review 2, B1). A path outside these roots is never plan input.
+    """
+    state = Path(os.environ.get("TRADEAI_STATE_ROOT")
+                 or (Path.home() / "trade-ai-releases" / "persistent-state"))
     out = []
-    for r in roots:
+    for r in (state / "data" / "coordination" / "plans", Path.home() / ".claude" / "plans"):
         try:
             out.append(r.resolve())
         except OSError:
@@ -49,28 +51,59 @@ def plan_file_roots() -> list[Path]:
     return out
 
 
+#: A plan file is a named Markdown/plain-text document. Anything credential-shaped, extension-less,
+#: dot-named or binary is refused before a byte is read (review 2, B1).
+_PLAN_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]*\.(md|markdown|txt)$", re.IGNORECASE)
+_BAD_NAME_RE = re.compile(r"(credential|passwd|password|secret|token|apikey|api[_-]key|\.env|id_rsa|id_ed25519|\.pem|\.key)",
+                          re.IGNORECASE)
+
+
+def plan_name_ok(name: str) -> bool:
+    return bool(_PLAN_NAME_RE.match(name or "")) and not _BAD_NAME_RE.search(name)
+
+
+def _within(path: Path, roots: list[Path]) -> bool:
+    return any(path == root or root in path.parents for root in roots)
+
+
 def read_plan_file(raw: str) -> str:
-    """The plan text at ``raw``, or ``""`` when it is not a bounded regular file in a plan root."""
+    """The plan text at ``raw``, or ``""`` when it is not a bounded plan-shaped file in a plan root.
+
+    One descriptor does the whole job (review 2, B2): ``O_NOFOLLOW`` refuses a symlinked final
+    component, ``fstat`` on that descriptor decides regular/size, and containment is proven on
+    ``/proc/self/fd/<fd>`` — the file actually opened — so a swap between a check and the read cannot
+    redirect it. If the kernel cannot tell us where the descriptor points, nothing is read.
+    """
     try:
         path = Path(raw)
-        st = path.lstat()
-    except OSError:
+    except (TypeError, ValueError):
         return ""
-    if not stat.S_ISREG(st.st_mode) or st.st_size > MAX_PLAN_BYTES:
-        return ""  # symlinks (lstat) and oversize files are never plan input
-    try:
-        resolved = path.resolve()
-    except OSError:
-        return ""
-    if not any(resolved == root or root in resolved.parents for root in plan_file_roots()):
+    if not plan_name_ok(path.name):
         return ""
     try:
-        data = path.read_bytes()
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     except OSError:
         return ""
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode) or st.st_size > MAX_PLAN_BYTES:
+            return ""
+        try:
+            real = Path(os.readlink(f"/proc/self/fd/{fd}")).resolve()
+        except OSError:
+            return ""  # cannot prove where the descriptor points: fail closed
+        if not _within(real, plan_file_roots()):
+            return ""
+        data = os.read(fd, MAX_PLAN_BYTES + 1)
+    finally:
+        os.close(fd)
     if len(data) > MAX_PLAN_BYTES:
         return ""
-    return data.decode("utf-8", errors="replace")
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return ""
+    return "" if "\x00" in text else text
 
 
 def plan_from_payload(payload: dict) -> str:

@@ -169,7 +169,9 @@ def test_hook_prefers_the_approved_tool_response_plan(tmp_path, monkeypatch):
 def test_hook_falls_back_to_the_plan_file_path(tmp_path, monkeypatch):
     import os
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
-    plan_file = tmp_path / "edited.md"
+    plans_dir = tmp_path / "data" / "coordination" / "plans"
+    plans_dir.mkdir(parents=True, exist_ok=True)
+    plan_file = plans_dir / "edited.md"  # a real plan location under the state root
     plan_file.write_text("# Edited on disk\n")
     payload = {"session_id": "s", "tool_name": "ExitPlanMode", "tool_input": {},
                "tool_response": {"planFilePath": str(plan_file)}}
@@ -315,3 +317,73 @@ def test_the_hook_stores_no_plan_when_the_named_file_is_outside_the_roots(tmp_pa
     secret.write_text("TOKEN=super-secret\n")
     text = hook.plan_from_payload({"tool_response": {"planFilePath": str(secret)}, "tool_input": {}})
     assert "super-secret" not in text and text == ""
+
+
+# ---------------------------------------------------------------- review 2 round 2 (cc3, 2026-11-02)
+def test_the_default_plan_roots_are_only_plan_directories(tmp_path, monkeypatch):
+    import plan_registry_hook as hook
+
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    roots = hook.plan_file_roots()
+    assert roots == [(tmp_path / "data/coordination/plans").resolve(),
+                     (__import__("pathlib").Path.home() / ".claude/plans").resolve()]
+    # the breadth that mattered: neither all of ~/.claude nor the temp dir is a plan root
+    assert not any(str(r).endswith("/.claude") for r in roots)
+    assert not any(str(r) == "/tmp" for r in roots)
+
+
+def test_credential_shaped_names_under_an_allowed_root_are_refused(tmp_path, monkeypatch):
+    import plan_registry_hook as hook
+
+    plans = tmp_path / "plans"
+    plans.mkdir()
+    monkeypatch.setattr(hook, "plan_file_roots", lambda: [plans.resolve()])
+    for name in ("credentials-synthetic.json", "token.md", "my-secret.md", "api_key.txt",
+                 ".hidden.md", "plan.json", "notes"):
+        p = plans / name
+        p.write_text("SYNTHETIC-not-a-real-credential\n")
+        assert hook.read_plan_file(str(p)) == "", name
+    good = plans / "approved-plan.md"
+    good.write_text("# Plan\n\n- [ ] step\n")
+    assert hook.read_plan_file(str(good)).startswith("# Plan")
+
+
+def test_binary_or_non_utf8_plan_input_is_refused(tmp_path, monkeypatch):
+    import plan_registry_hook as hook
+
+    plans = tmp_path / "plans"
+    plans.mkdir()
+    monkeypatch.setattr(hook, "plan_file_roots", lambda: [plans.resolve()])
+    (plans / "nul.md").write_bytes(b"# Plan\x00rest")
+    (plans / "latin1.md").write_bytes("# Plan\n".encode() + b"\xff\xfe")
+    assert hook.read_plan_file(str(plans / "nul.md")) == ""
+    assert hook.read_plan_file(str(plans / "latin1.md")) == ""
+
+
+def test_containment_is_proven_on_the_open_descriptor_not_the_path(tmp_path, monkeypatch):
+    """A parent-directory symlink is not stopped by O_NOFOLLOW; the /proc/self/fd check must catch it."""
+    import plan_registry_hook as hook
+
+    plans = tmp_path / "plans"
+    plans.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "steal.md").write_text("# Not a plan root\n")
+    (plans / "sub").symlink_to(outside, target_is_directory=True)
+    monkeypatch.setattr(hook, "plan_file_roots", lambda: [plans.resolve()])
+    assert hook.read_plan_file(str(plans / "sub" / "steal.md")) == ""
+
+
+def test_a_final_component_symlink_is_refused_by_nofollow(tmp_path, monkeypatch):
+    import plan_registry_hook as hook
+
+    plans = tmp_path / "plans"
+    plans.mkdir()
+    # The target is INSIDE the allowed root, so containment alone would let a followed link through:
+    # only O_NOFOLLOW can refuse this one.
+    real = plans / "real-plan.md"
+    real.write_text("# Plan\n")
+    (plans / "link.md").symlink_to(real)
+    monkeypatch.setattr(hook, "plan_file_roots", lambda: [plans.resolve()])
+    assert hook.read_plan_file(str(real)).startswith("# Plan")
+    assert hook.read_plan_file(str(plans / "link.md")) == ""
