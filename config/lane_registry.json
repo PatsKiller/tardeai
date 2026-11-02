@@ -19010,6 +19010,40 @@
       "exec_start": "PROPOSED: ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/main_red_autoheal.py --apply"
     },
     {
+      "lane_id": "nightly-security-scan",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-nightly-security-scan.timer",
+        "match": "PROPOSED - NOT INSTALLED: no unit file, cron line or n8n workflow exists for this lane"
+      },
+      "expected_cadence_hours": 24,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-11-02",
+      "state_reason": "Operator 2026-11-02: remove CodeQL completely; semgrep OSS (p/python, p/javascript) plus pip-audit and npm audit run nightly and message only on findings absent from the previous night's receipt. PROPOSED, NOT INSTALLED: adding a systemd entry is operator-only (AGENTS.md 17); the coordinator installs the timer after this merges.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/nightly_security_scan.py; config/nightly_security_scan.json; docs/ops/NIGHTLY_SECURITY_SCAN.md; tests/test_security_scans_20261102.py. No unit file, crontab line or n8n workflow references this lane.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/security_scan/last.json"
+      },
+      "value_class": "UNCLASSIFIED",
+      "recommendation": "KEEP_ON_CRON",
+      "proposed_state": {
+        "state": "PROPOSED",
+        "state_since": "2026-11-02",
+        "reason_confidence": "PROPOSED",
+        "state_reason": "PROPOSED, NOT INSTALLED: nightly free security scan replacing CodeQL; the operator installs the schedule after merge.",
+        "reason_evidence": "docs/ops/NIGHTLY_SECURITY_SCAN.md",
+        "ruled": false
+      },
+      "operator_decision_pending": true,
+      "status": "PROPOSED_NOT_INSTALLED",
+      "service": "tradeai-nightly-security-scan.service (PROPOSED; no unit file)",
+      "cadence_basis": "PROPOSED: daily, after the overnight window",
+      "exec_start": "PROPOSED: ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/nightly_security_scan.py --apply"
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {
