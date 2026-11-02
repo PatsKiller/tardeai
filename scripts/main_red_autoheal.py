@@ -206,6 +206,7 @@ def run_cycle(
     infra_markers = list(config.get("infra_log_markers") or [])
     for workflow, run in sorted(newest.items()):
         run_id = str(run.get("databaseId"))
+        run_key = f"{run_id}:{_run_attempt(config, gh, run_id, run)}"
         if str(run.get("headSha")) != tip:
             receipt["skipped"].append({"run_id": run_id, "workflow": workflow, "reason": "stale_commit"})
             continue
@@ -213,7 +214,7 @@ def run_cycle(
             receipt["skipped"].append({"run_id": run_id, "workflow": workflow, "reason": "not_completed"})
             continue
         if run.get("conclusion") not in FAILED_CONCLUSIONS:
-            rec = runs_state.get(run_id) or {}
+            rec = runs_state.get(run_key) or {}
             if int(rec.get("attempts") or 0) > 0 and not rec.get("flake_recorded") and not rec.get("escalated"):
                 # The re-run turned the run green: THIS is the flake receipt (it used to be skipped
                 # as "green" before the flake was ever recorded).
@@ -226,12 +227,15 @@ def run_cycle(
             else:
                 receipt["skipped"].append({"run_id": run_id, "workflow": workflow, "reason": "green"})
             continue
+        prior_attempts = sum(1 for k in runs_state if k.startswith(f"{run_id}:")) - (1 if run_key in runs_state else 0)
         action = _handle_red_run(
             config=config, run=run, run_id=run_id, workflow=workflow,
-            record=runs_state.setdefault(run_id, {"attempts": 0, "escalated": False,
-                                                  "flake_recorded": False, "head_sha": tip}),
+            record=runs_state.setdefault(run_key, {"attempts": 0, "escalated": False,
+                                                   "flake_recorded": False, "head_sha": tip,
+                                                   "run_id": run_id}),
             gh=gh, state_dir=state_dir, dry_run=dry_run, telegram=telegram,
             issue_writer=issue_writer, infra_markers=infra_markers, now=started_at,
+            run_key=run_key, run_prior_attempts=max(prior_attempts, 0),
         )
         receipt["actions"].append(action)
 
@@ -263,7 +267,7 @@ def decide(*, attempts: int, max_reruns: int, escalated: bool, flake_recorded: b
 
 
 def _handle_red_run(*, config, run, run_id, workflow, record, gh, state_dir, dry_run,
-                    telegram, issue_writer, infra_markers, now) -> dict:
+                    telegram, issue_writer, infra_markers, now, run_key="", run_prior_attempts=0) -> dict:
     base = {"run_id": run_id, "workflow": workflow, "head_sha": str(run.get("headSha")),
             "run_url": run.get("url")}
     record["head_sha"] = str(run.get("headSha"))
@@ -293,7 +297,7 @@ def _handle_red_run(*, config, run, run_id, workflow, record, gh, state_dir, dry
     failure_class, test_ids = classify_failure(
         str(view_conclusion or run.get("conclusion")), log, infra_markers)
     base.update({"failure_class": failure_class, "failing_test_ids": test_ids})
-    rerun_allowed = bool((config.get("rerun_classes") or {}).get(failure_class))
+    rerun_allowed = bool((config.get("rerun_classes") or {}).get(failure_class)) and run_prior_attempts == 0
 
     decision = decide(attempts=attempts, max_reruns=int(config["max_reruns"]),
                       escalated=bool(record.get("escalated")),
@@ -336,7 +340,8 @@ def _handle_red_run(*, config, run, run_id, workflow, record, gh, state_dir, dry
     if dry_run:
         return {**base, "action": "would_" + ACTION_PAGE_AND_DISPATCH, "reason": why}
     return _escalate(config, base, record, run, run_id, workflow, gh, state_dir, dry_run,
-                     telegram, issue_writer, infra_markers, now, why=why, log_tail=log)
+                     telegram, issue_writer, infra_markers, now, why=why, log_tail=_log_tail(config, log),
+                     run_key=run_key)
 
 
 def _page_allowed(state_dir: Path, key: str, now: str, hours: float) -> bool:
@@ -352,16 +357,47 @@ def _page_allowed(state_dir: Path, key: str, now: str, hours: float) -> bool:
         return True
 
 
-def _mark_page(state_dir: Path, key: str, now: str) -> None:
+def _mark_page(state_dir: Path, key: str, now: str, hours: float = 6.0) -> None:
     pages = _load_json(state_dir / "pages.json")
     pages[key] = now
+    try:
+        cur = datetime.fromisoformat(str(now).replace("Z", "+00:00"))
+        keep = {}
+        for k, ts in pages.items():
+            seen = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+            if (cur - seen).total_seconds() <= float(hours) * 3600.0:
+                keep[k] = ts
+        pages = keep
+    except ValueError:
+        pass
     _write_json(state_dir / "pages.json", pages)
 
 
+def _run_attempt(config, gh, run_id: str, run: Mapping[str, Any]) -> int:
+    """The run attempt number. `gh run list` has no `attempt` field here, so a red run is read once."""
+    if run.get("attempt") is not None:
+        return int(run["attempt"])
+    rc, out = gh(["run", "view", run_id, "--repo", str(config["repo"]), "--json", "attempt"])
+    if rc == 0:
+        try:
+            return int((json.loads(out or "{}") or {}).get("attempt") or 1)
+        except (ValueError, TypeError):
+            pass
+    return 1
+
+
 def _failed_log(config, gh, run_id: str) -> str:
-    """The tail of a run's failed job log; classification only ever reads the tail."""
+    """The run's ENTIRE failed-job log. Classification must see all of it: on a real 35.9k log the
+    FAILED line sat at offset 4486, so a 20k tail classified it 'unknown', and an infra marker in
+    another job's tail could then re-run a test failure. The tail is taken separately, for the request."""
     rc, out = gh(["run", "view", run_id, "--repo", str(config["repo"]), "--log-failed"])
-    return (out or "")[-int(config["log_tail_chars"]):] if rc == 0 else ""
+    if rc != 0:
+        return ""
+    return out or ""
+
+
+def _log_tail(config, log: str) -> str:
+    return (log or "")[-int(config["log_tail_chars"]):]
 
 
 def fixer_incident_document(*, run: Mapping[str, Any], run_id: str, workflow: str, failing: list[str],
@@ -445,13 +481,15 @@ def fixer_incident_document(*, run: Mapping[str, Any], run_id: str, workflow: st
 
 
 def _escalate(config, base, record, run, run_id, workflow, gh, state_dir, dry_run,
-              telegram, issue_writer, infra_markers, now, *, why, log_tail="") -> dict:
+              telegram, issue_writer, infra_markers, now, *, why, log_tail="", run_key="") -> dict:
     failing = list(base.get("failing_test_ids") or [])
     request = fixer_incident_document(
         run=run, run_id=run_id, workflow=workflow, failing=failing,
         failure_class=str(base.get("failure_class") or ""), log_tail=log_tail, now=now)
     request["main_red_autoheal"]["repo"] = str(config["repo"])
-    request_path = state_dir / str(config["fixer"].get("requests_rel") or "fixer_requests") / f"{run_id}.json"
+    run_key = run_key or run_id
+    request_path = state_dir / str(config["fixer"].get("requests_rel") or "fixer_requests") / \
+        f"{run_key.replace(':', '-')}.json"
     if dry_run:
         return {**base, "action": "would_escalate", "reason": why, "failing_test_ids": failing}
 
@@ -467,13 +505,14 @@ def _escalate(config, base, record, run, run_id, workflow, gh, state_dir, dry_ru
     _write_json(request_path, request)
     if bool(config.get("fixer", {}).get("enabled", True)):
         _append_jsonl(state_dir / "fixer_requests.jsonl", request)
-    page_key = f"{run.get('headSha')}:{workflow}"
+    group = (config.get("page_groups") or {}).get(workflow) or workflow
+    page_key = f"{run.get('headSha')}:{group}"
     cooldown_h = float((config.get("page") or {}).get("page_cooldown_hours", 6))
     if (bool(config.get("page", {}).get("enabled", True)) and telegram is not None
             and _page_allowed(state_dir, page_key, now, cooldown_h)):
         try:
             telegram(text, priority=str(config["page"].get("severity", "P1")))
-            _mark_page(state_dir, page_key, now)
+            _mark_page(state_dir, page_key, now, cooldown_h)
         except Exception as exc:  # noqa: BLE001 - a page failure must not lose the request
             base["page_error"] = f"{type(exc).__name__}: {exc}"
     elif telegram is not None:

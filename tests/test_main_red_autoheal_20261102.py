@@ -53,11 +53,11 @@ CONFIG = {
 
 def run_json(run_id="991", workflow="cio-production-hardening-ci", conclusion="failure",
              head_sha="a" * 40, event="push", created_at="2026-11-02T03:00:00Z",
-             status="completed", url="https://example.com/run/991"):
+             status="completed", url="https://example.com/run/991", attempt=1):
     return {
         "databaseId": run_id, "workflowName": workflow, "conclusion": conclusion,
         "status": status, "headSha": head_sha, "event": event, "createdAt": created_at,
-        "url": url,
+        "url": url, "attempt": attempt,
     }
 
 
@@ -158,7 +158,7 @@ def test_already_rerun_run_is_never_rerun_again(tmp_path):
     state_dir.mkdir()
     (state_dir / "state.json").write_text(json.dumps({
         "schema": "MainRedAutohealState@v1",
-        "runs": {"991": {"attempts": 1, "head_sha": "a" * 40, "escalated": False,
+        "runs": {"991:1": {"attempts": 1, "head_sha": "a" * 40, "escalated": False,
                          "flake_recorded": False, "last_action": "rerun_requested"}},
     }))
 
@@ -297,7 +297,7 @@ def test_the_request_is_consumable_by_self_heal_fixer_dry_run(tmp_path):
     gh = FakeGh([run_json()], logs={"991": "FAILED tests/test_x.py::test_y - StopIteration"})
     cfg = dict(CONFIG, rerun_classes={"infrastructure": True, "test_failure": False, "unknown": False})
     cycle(tmp_path, gh, cfg=cfg, telegram=FakeTelegram())
-    request = tmp_path / "state" / "fixer_requests" / "991.json"
+    request = tmp_path / "state" / "fixer_requests" / "991-1.json"
     assert request.is_file()
 
     out_dir = tmp_path / "fixer-out"
@@ -410,3 +410,59 @@ def test_secret_scan_and_codeql_are_watched():
     cfg = json.loads((REPO_ROOT / "config" / "main_red_autoheal.json").read_text())
     assert "secret-scan" in cfg["required_workflows"]
     assert "CodeQL" in cfg["required_workflows"]
+
+
+# ---------------------------------------------------------------- review round 2
+def test_a_failed_line_early_in_a_long_log_is_found(tmp_path):
+    """Classification reads the whole log; the tail is only the fixer's evidence text."""
+    log = "\n".join([real_line("FAILED tests/test_early.py::test_it - AssertionError")]
+                     + [real_line("noise line " + str(i)) for i in range(3000)]
+                     + [real_line("No space left on device")])
+    assert len(log) > 20000
+    gh = FakeGh([run_json()], logs={"991": log})
+    receipt = cycle(tmp_path, gh)
+    assert receipt["actions"][0]["failure_class"] == "test_failure"
+    assert receipt["actions"][0]["action"] == "page_and_dispatch"
+    assert receipt["actions"][0]["failing_test_ids"] == ["tests/test_early.py::test_it"]
+    request = json.loads((tmp_path / "state" / "fixer_requests" / "991-1.json").read_text())
+    assert len(request["receipt"]["stderr_tail"]) <= CONFIG["log_tail_chars"]
+
+
+def test_a_different_failure_on_a_rerun_attempt_is_handled(tmp_path):
+    cfg = dict(CONFIG, rerun_classes={"infrastructure": True, "test_failure": True, "unknown": False})
+    gh = FakeGh([run_json(attempt=1)], logs={"991": "FAILED tests/test_a.py::test_one - AssertionError"})
+    cycle(tmp_path, gh, cfg=cfg)                       # attempt 1: re-run requested
+    gh.runs = [run_json(attempt=2)]
+    gh.logs = {"991": "FAILED tests/test_b.py::test_two - AssertionError"}
+    receipt = cycle(tmp_path, gh, cfg=cfg)              # attempt 2 fails with a DIFFERENT test
+    assert receipt["actions"][0]["action"] == "page_and_dispatch"
+    assert receipt["actions"][0]["failing_test_ids"] == ["tests/test_b.py::test_two"]
+    assert (tmp_path / "state" / "fixer_requests" / "991-2.json").is_file()
+
+
+def test_the_twin_hardening_workflows_page_once_per_commit(tmp_path):
+    telegram = FakeTelegram()
+    gh = FakeGh([run_json(run_id="1", workflow="cio-production-hardening-ci")], logs={"1": "opaque"})
+    cycle(tmp_path, gh, telegram=telegram)
+    gh.runs = [run_json(run_id="2", workflow="cio-full-suite-sharded")]
+    gh.logs = {"2": "opaque"}
+    cycle(tmp_path, gh, telegram=telegram)
+    assert len(telegram.sent) == 1
+
+
+def test_the_page_ledger_is_pruned_to_the_cooldown(tmp_path):
+    cfg = dict(CONFIG, page={"enabled": True, "severity": "P1", "page_cooldown_hours": 1})
+    gh = FakeGh([run_json(run_id="1")], logs={"1": "opaque"})
+    cycle(tmp_path, gh, cfg=cfg, telegram=FakeTelegram())
+    pages = json.loads((tmp_path / "state" / "pages.json").read_text())
+    assert len(pages) == 1
+    key = next(iter(pages))
+    # an entry older than the window is dropped on the next mark
+    import datetime as dt
+    old = (dt.datetime.fromisoformat("2026-11-02T03:05:00+00:00") - dt.timedelta(hours=5)).isoformat()
+    pages[key] = old
+    (tmp_path / "state" / "pages.json").write_text(json.dumps(pages))
+    gh.runs = [run_json(run_id="3", head_sha="b" * 40)]
+    gh.logs = {"3": "opaque"}
+    cycle(tmp_path, gh, cfg=cfg, telegram=FakeTelegram())
+    assert key not in json.loads((tmp_path / "state" / "pages.json").read_text())

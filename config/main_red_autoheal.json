@@ -46,5 +46,10 @@
     "severity": "P1",
     "page_cooldown_hours": 6
   },
-  "log_tail_chars": 20000
+  "log_tail_chars": 20000,
+  "page_groups": {
+    "cio-production-hardening-ci": "cio-hardening-suite",
+    "cio-full-suite-sharded": "cio-hardening-suite"
+  },
+  "_page_groups_why": "The two workflows run the same hardening suite; a page is deduplicated by (head SHA, group) so one red commit pages once, not once per workflow."
 }
