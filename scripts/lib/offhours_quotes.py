@@ -89,6 +89,16 @@ def load_config(path: Path | str | None = None) -> dict[str, Any]:
             raise ConfigError(f"{p}: section {key!r} missing")
     if not str((doc["schwab"].get("feed") or "")).strip():
         raise ConfigError(f"{p}: schwab.feed missing (the market_quotes_extended feed label comes from config)")
+    # Fail loud, never fail open: a quoted "false" or a misspelt key must not silently leave the same-day exception
+    # ON during an incident, and a missing basis label must not silently downgrade every futures row to level-only.
+    s = doc["schwab"]
+    if "settle_same_day_reference" in s and not isinstance(s["settle_same_day_reference"], bool):
+        raise ConfigError(f"{p}: schwab.settle_same_day_reference must be true or false, "
+                          f"not {s['settle_same_day_reference']!r}")
+    basis = s.get("dated_reference_basis") or {}
+    if s.get("settle_same_day_reference") and not str(basis.get("non_equity_same_day") or "").strip():
+        raise ConfigError(f"{p}: schwab.settle_same_day_reference is true but "
+                          "dated_reference_basis.non_equity_same_day is missing")
     return doc
 
 
@@ -294,7 +304,11 @@ def schwab_rows(payload: Any, now: datetime, cfg: dict[str, Any],
                 continue
             sess, tdate = night
             ref_date = ovn.reference_date(tdate)
-        ref, ref_basis, why_not = dated_reference(asset, q, reg, ref_date, s, print_at=ts)
+        # The same-day settlement exception is exactly the scope it was granted for: a FUTURE or INDEX print in a
+        # night session. It never reaches equities, and never widens premarket/afterhours (review of #2478).
+        same_day_ok = (asset.upper() in future_assets or asset.upper() == "INDEX") and sess in ovn.SESSIONS
+        ref, ref_basis, why_not = dated_reference(asset, q, reg, ref_date, s, print_at=ts,
+                                                  allow_same_day=same_day_ok)
         row = {"symbol": sym_u, "session": sess, "session_date": tdate, "bar_start": ts - span, "bar_end": ts,
                "price": price, "volume": None, "feed": str(s["feed"])}
         if contract:
@@ -316,7 +330,8 @@ def schwab_rows(payload: Any, now: datetime, cfg: dict[str, Any],
 
 
 def dated_reference(asset: str, q: dict, reg: dict, ref_date: date,
-                    s: dict[str, Any], print_at: datetime | None = None) -> tuple[float | None, str | None, str | None]:
+                    s: dict[str, Any], print_at: datetime | None = None,
+                    allow_same_day: bool = False) -> tuple[float | None, str | None, str | None]:
     """(reference_close, basis, None) when the payload PROVES the close of ``ref_date``, else (None, None, why).
 
     One rule for every session (review of #2416 F4 and #2423 F2/F6, 2026-10-31): equities use
@@ -327,10 +342,11 @@ def dated_reference(asset: str, q: dict, reg: dict, ref_date: date,
     One bounded exception, for futures/indices only (operator 2026-11-01: "fix the futures settleTime so they
     measure"): Schwab dates a futures close to the PRINT's own session day (live: the 2026-11-01 Sunday open carried
     settleTime 2026-11-01, not the 2026-10-30 reference session), which left every overnight futures row level-only.
-    A close dated AFTER ``ref_date`` and no later than the print itself is accepted under its own basis label
-    (``schwab_quote_close_price_settle_same_day``): it is still the provider's last close, it is never older than the
-    reference session and never newer than the print. Equities are never widened. ``schwab.settle_same_day_reference``
-    (default true) switches the exception off.
+    A close dated AFTER ``ref_date`` and no later than the print ITSELF is accepted when ``allow_same_day`` is set
+    (the caller sets it only for a futures/index print in an overnight/futures_open session), under its own basis
+    label (``schwab_quote_close_price_settle_same_day``): it is still the provider's last close, it is never older
+    than the reference session and never newer than the print. Equities are never widened, and
+    ``schwab.settle_same_day_reference`` switches the exception off.
     """
     basis = s.get("dated_reference_basis") or {}
     is_equity = str(asset).upper() == "EQUITY"
@@ -349,7 +365,7 @@ def dated_reference(asset: str, q: dict, reg: dict, ref_date: date,
         return None, None, f"{what}: the close is undated, so it is not proven to be the {ref_date} close"
     close_date = at.astimezone(ET).date()
     if close_date != ref_date:
-        if (not is_equity and print_at is not None and s.get("settle_same_day_reference", True)
+        if (allow_same_day and print_at is not None and s.get("settle_same_day_reference", False)
                 and ref_date < close_date and at <= print_at):
             same_day = basis.get("non_equity_same_day")
             if not same_day:

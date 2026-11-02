@@ -240,6 +240,12 @@ def test_a_block_with_errors_and_an_empty_quote_reports_the_provider_error(cfg):
     assert rows == [] and skipped == [{"symbol": "BADX", "reason": "provider_error", "detail": ["not entitled"]}]
 
 
+def _same_day_on(cfg):
+    """The acceptance tests pin the switch ON, so flipping the live config off (the documented rollback) does not
+    turn the suite red and invite someone to re-enable it."""
+    return {**cfg, "schwab": {**cfg["schwab"], "settle_same_day_reference": True}}
+
+
 def test_a_settlement_dated_on_the_print_day_is_used_for_futures(cfg):
     """Live 2026-11-01: Schwab dated the futures close to the PRINT's own day (2026-11-01), not the 2026-10-30
     reference session, so every futures overnight print read level-only. The close is still the provider's last
@@ -248,7 +254,7 @@ def test_a_settlement_dated_on_the_print_day_is_used_for_futures(cfg):
     p = {"/ESZ26": {"assetMainType": "FUTURE", "quote": {"lastPrice": 7649.75, "closePrice": 7612.0,
                                                           "tradeTime": _ms("2026-11-02T02:28:00-05:00"),
                                                           "settleTime": _ms("2026-11-01T16:00:00-05:00")}}}
-    rows, skipped = oq.schwab_rows(p, now, cfg)
+    rows, skipped = oq.schwab_rows(p, now, _same_day_on(cfg))
     assert skipped == []
     r = rows[0]
     assert r["symbol"] == "/ES" and r["reference_close"] == 7612.0
@@ -258,13 +264,42 @@ def test_a_settlement_dated_on_the_print_day_is_used_for_futures(cfg):
     assert validate(r) is None
 
 
+def test_the_same_day_rule_is_off_when_the_key_is_absent(cfg):
+    """Fail closed: a pinned/older config without the key must not switch the widening on."""
+    legacy = {**cfg, "schwab": {k: v for k, v in cfg["schwab"].items() if k != "settle_same_day_reference"}}
+    p = {"/ESZ26": {"assetMainType": "FUTURE", "quote": {"lastPrice": 7649.75, "closePrice": 7612.0,
+                                                          "tradeTime": _ms("2026-11-02T02:28:00-05:00"),
+                                                          "settleTime": _ms("2026-11-01T16:00:00-05:00")}}}
+    rows, skipped = oq.schwab_rows(p, _t("2026-11-02T02:30:00-05:00"), legacy)
+    assert rows[0]["reference_close"] is None and rows[0]["reference_basis"].startswith("none_level_only")
+
+
+def test_an_index_settlement_dated_on_the_print_day_is_used(cfg):
+    p = {"$SPX": {"assetMainType": "INDEX", "quote": {"lastPrice": 6800.0, "closePrice": 6790.0,
+                                                       "tradeTime": _ms("2026-11-02T02:28:00-05:00"),
+                                                       "settleTime": _ms("2026-11-01T16:00:00-05:00")}}}
+    rows, skipped = oq.schwab_rows(p, _t("2026-11-02T02:30:00-05:00"), _same_day_on(cfg))
+    assert skipped == [] and rows[0]["symbol"] == "$SPX"
+    assert rows[0]["reference_close"] == 6790.0 and str(rows[0]["reference_date"]) == "2026-10-30"
+    assert rows[0]["reference_basis"] == "schwab_quote_close_price_settle_same_day"
+
+
+def test_the_same_day_rule_does_not_widen_premarket(cfg):
+    """The exception is scoped to the night sessions: a pre-market futures close dated the print's day is refused."""
+    p = {"/ESZ26": {"assetMainType": "FUTURE", "quote": {"lastPrice": 7649.75, "closePrice": 7612.0,
+                                                          "tradeTime": _ms("2026-11-03T08:00:00-05:00"),
+                                                          "settleTime": _ms("2026-11-03T07:00:00-05:00")}}}
+    rows, skipped = oq.schwab_rows(p, _t("2026-11-03T08:05:00-05:00"), cfg)
+    assert rows == [] and skipped[0]["reason"] == "no_dated_reference_for_premarket"
+
+
 def test_a_settlement_dated_after_the_print_is_still_refused(cfg):
     """The relaxation is bounded on both sides: never newer than the print, never older than the reference."""
     now = _t("2026-11-02T02:30:00-05:00")
     p = {"/ESZ26": {"assetMainType": "FUTURE", "quote": {"lastPrice": 7649.75, "closePrice": 7612.0,
                                                           "tradeTime": _ms("2026-11-02T02:28:00-05:00"),
                                                           "settleTime": _ms("2026-11-02T16:00:00-05:00")}}}
-    rows, skipped = oq.schwab_rows(p, now, cfg)
+    rows, skipped = oq.schwab_rows(p, now, _same_day_on(cfg))
     assert skipped == [] and rows[0]["reference_close"] is None
     assert "dated 2026-11-02, not 2026-10-30" in rows[0]["level_only_reason"]
 
@@ -286,6 +321,22 @@ def test_the_same_day_rule_can_be_switched_off(cfg):
                                                           "settleTime": _ms("2026-11-01T16:00:00-05:00")}}}
     rows, skipped = oq.schwab_rows(p, _t("2026-11-02T02:30:00-05:00"), off)
     assert rows[0]["reference_close"] is None and rows[0]["reference_basis"].startswith("none_level_only")
+
+
+def test_load_config_refuses_a_non_boolean_switch(tmp_path):
+    src = (ROOT / "config" / "market_risk_offhours_quotes.yaml").read_text()
+    bad = tmp_path / "c.yaml"
+    bad.write_text(src.replace("  settle_same_day_reference: true", '  settle_same_day_reference: "false"'))
+    with pytest.raises(oq.ConfigError):
+        oq.load_config(bad)
+
+
+def test_load_config_refuses_a_missing_same_day_label(tmp_path):
+    src = (ROOT / "config" / "market_risk_offhours_quotes.yaml").read_text()
+    bad = tmp_path / "c.yaml"
+    bad.write_text(src.replace("    non_equity_same_day: schwab_quote_close_price_settle_same_day\n", ""))
+    with pytest.raises(oq.ConfigError):
+        oq.load_config(bad)
 
 
 def test_engine_futures_proxies_are_roots_this_lane_requests(cfg):

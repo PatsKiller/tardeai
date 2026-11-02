@@ -502,6 +502,16 @@ def test_sunday_futures_open_print_is_measured_from_friday_close():
     assert "2026-10-30 close" in obs.evidence[0].detail
 
 
+def test_a_same_day_dated_close_is_named_in_the_evidence():
+    """#2478 accepts a futures close the provider dates to the print's session. The reading must NAME that
+    assumption, so a wrong closePrice can never look like an ordinary measured move."""
+    now = _et(2026, 11, 2, 2, 30)
+    r = _q("/NQ", now - timedelta(minutes=2), 25300.0, 25700.0)
+    r["reference_basis"] = "schwab_quote_close_price_settle_same_day"
+    obs = _eval([r], now)
+    assert "same-day dated close" in obs.evidence[0].detail
+
+
 def test_stale_overnight_is_unknown_naming_session_and_age_never_calm():
     now = _et(2026, 11, 2, 2, 30)
     obs = _eval([_q("QQQ", now - timedelta(minutes=60), 700.5, 700.0),

@@ -262,6 +262,8 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
             source=str(latest[s].get("source") or "market_quotes"),
             detail=f"{m:+.1f}%"
             + (f" vs {latest[s]['reference_date']} close" if latest[s].get("reference_date") else "")
+            + (" (same-day dated close: the provider dates its close to the print's session, not the reference)"
+               if "settle_same_day" in str(latest[s].get("reference_basis") or "") else "")
             + f" ({_et_label(latest[s].get('as_of'))}, {aged[s]:.1f}h old)",
         )
         for s, m in sorted(moves.items(), key=lambda kv: kv[1])
