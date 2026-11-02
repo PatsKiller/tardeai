@@ -10,16 +10,12 @@
 # Schedule uses America/New_York (DST-aware). Market-hours freeze: no merge Mon–Fri 09:30–16:15 ET.
 
 pull_request_rules:
-  # Keep approved (operator-merge) PRs current with main so they never fall out of the queue when
-  # another PR merges first. Without this, every merge to main re-stales the waiting PRs (check-success
-  # computed on an old head) and the queue drains to empty — the 2026-10-28 held-PR deadlock.
-  - name: keep approved PRs up to date with main
-    conditions:
-      - base=main
-      - -draft
-      - label=operator-merge
-    actions:
-      update:
+  # 2026-11-02 (collision E, plan item 6): the label=operator-merge update rule is REMOVED.
+  # After every merge to main it pushed main into an approved, already-green PR and restarted the
+  # ~30-minute suite — twice after #2465 went green. Branch protection is not strict (strict: false),
+  # so an approved PR does not have to be current to merge, and the queue recomputes the required
+  # checks on its own speculative branch. No rule may carry update/rebase:
+  # tests/test_ci_queue_janitor_20261031.py fails if one comes back.
 
   # GENERATED from config/merge_hold_paths.json — do not hand-edit the file list.
   # Regenerate: python scripts/lib/merge_hold_paths.py --print-mergify
@@ -107,6 +103,8 @@ pull_request_rules:
       - check-success=release-readiness
       - check-success=ci-gate
       - label!=solo
+      - "#check-failure=0"
+      - "#check-pending=0"
       - label!=shared-infra
       # DSN-20261031-ci-load-reduction §4.4 (operator 2026-11-01): ONE weekday merge window.
       # Approved PRs queue all day and land together at 17:30-18:30 ET; urgent fixes merge by the
@@ -128,6 +126,8 @@ pull_request_rules:
       - or:
           - label=solo
           - label=shared-infra
+      - "#check-failure=0"
+      - "#check-pending=0"
       # DSN-20261031-ci-load-reduction §4.4 (operator 2026-11-01): ONE weekday merge window.
       # Approved PRs queue all day and land together at 17:30-18:30 ET; urgent fixes merge by the
       # operator naming the PR (the per-PR path is unchanged).
@@ -173,6 +173,8 @@ queue_rules:
           - check-success=ci-gate
           - check-skipped=ci-gate
           - check-neutral=ci-gate
+      - "#check-failure=0"
+      - "#check-pending=0"
       - label=operator-merge
       # DSN-20261031-ci-load-reduction §4.4 (operator 2026-11-01): ONE weekday merge window.
       # Approved PRs queue all day and land together at 17:30-18:30 ET; urgent fixes merge by the
@@ -199,6 +201,8 @@ queue_rules:
           - check-success=ci-gate
           - check-skipped=ci-gate
           - check-neutral=ci-gate
+      - "#check-failure=0"
+      - "#check-pending=0"
       - label=operator-merge
       # DSN-20261031-ci-load-reduction §4.4 (operator 2026-11-01): ONE weekday merge window.
       # Approved PRs queue all day and land together at 17:30-18:30 ET; urgent fixes merge by the
