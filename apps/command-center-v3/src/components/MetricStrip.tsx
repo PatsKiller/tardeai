@@ -7,6 +7,8 @@ import { shortPriceStamp, tradingTileValue, vixProvenance } from '../lib/display
 import { dateOnlyPart, fmtAsOf } from '../lib/asOfDisplay'
 import { runLabel } from '../lib/homeLabels'
 import { overviewSurfaceFreshness, tradeAiSurfaceFreshness } from '../lib/surfaceFreshness'
+import { deriveHeaderFeedState } from '../lib/headerFeedState'
+import type { HeaderFeed } from '../lib/headerFeedState'
 import { renderSetupCounts } from '../lib/setupRunSummary'
 import { payloadRunAge, LATEST_RUN_TIP } from '../lib/scanRunAge'
 // Same classifier the Trading panel uses, so the two surfaces cannot disagree
@@ -88,17 +90,56 @@ export default function MetricStrip({ onDrill }: Props) {
   })
 
   // App chrome: these yield to the page's own reads (useApi priority 'background', perf 2026-10-25).
-  const { data: overview } = useApi<any>('/api/v2/overview', 120_000, CHROME)
+  // The extra receipts (loading/error/stale) are used ONLY to present state; the
+  // paths, intervals and priority are unchanged, so request order never moves.
+  const {
+    data: overview, loading: overviewLoading, error: overviewError,
+    stale: overviewStale, refetch: overviewRefetch,
+  } = useApi<any>('/api/v2/overview', 120_000, CHROME)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000, CHROME)
-  const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 120_000, CHROME)
-  const { data: tradeAi } = useApi<any>('/api/v2/trade-ai/summary', 120_000, CHROME)
-  const { data: gate } = useApi<any>('/api/v2/live-trading-gate', 120_000, CHROME)
-  const { data: health } = useApi<any>('/api/v2/health', 120_000, CHROME)
+  const {
+    data: regime, loading: regimeLoading, error: regimeError,
+    stale: regimeStale, refetch: regimeRefetch,
+  } = useApi<any>('/api/v2/risk-regime/latest', 120_000, CHROME)
+  const {
+    data: tradeAi, loading: tradeAiLoading, error: tradeAiError,
+    stale: tradeAiStale, refetch: tradeAiRefetch,
+  } = useApi<any>('/api/v2/trade-ai/summary', 120_000, CHROME)
+  const {
+    data: gate, loading: gateLoading, error: gateError,
+    stale: gateStale, refetch: gateRefetch,
+  } = useApi<any>('/api/v2/live-trading-gate', 120_000, CHROME)
+  const {
+    data: health, loading: healthLoading, error: healthError,
+    stale: healthStale, refetch: healthRefetch,
+  } = useApi<any>('/api/v2/health', 120_000, CHROME)
   // Presentation flags from config/design_features.yaml. Cosmetics only: the
   // loader REFUSES to define a flag for a fault signal, so there is no flag here
   // that could gate a divergence, an underfilled run or degraded quotes. See
   // PROTECTED_SIGNALS in scripts/lib/design_features.py.
   const { data: designCfg } = useApi<any>('/api/v2/design-features', 600_000, CHROME)
+  // The header's own feeds. This list drives presentation only: it does not
+  // change what is requested, in what order, or at what priority. A hard reload
+  // must say which of loading / failed / last-good-stale / no-payload it is in,
+  // instead of painting every one of them as blank em dashes.
+  const headerFeeds: HeaderFeed[] = [
+    { key: 'overview', label: 'overview', hasData: overview != null, loading: overviewLoading, error: overviewError, stale: overviewStale, refetch: overviewRefetch },
+    { key: 'regime', label: 'risk regime', hasData: regime != null, loading: regimeLoading, error: regimeError, stale: regimeStale, refetch: regimeRefetch },
+    { key: 'tradeAi', label: 'trade AI summary', hasData: tradeAi != null, loading: tradeAiLoading, error: tradeAiError, stale: tradeAiStale, refetch: tradeAiRefetch },
+    { key: 'gate', label: 'live trading gate', hasData: gate != null, loading: gateLoading, error: gateError, stale: gateStale, refetch: gateRefetch },
+    { key: 'health', label: 'health findings', hasData: health != null, loading: healthLoading, error: healthError, stale: healthStale, refetch: healthRefetch },
+  ]
+  const headerState = deriveHeaderFeedState(headerFeeds)
+  const headerHasData = headerFeeds.some(f => f.hasData)
+  const retryHeaderFeeds = () => {
+    headerFeeds.forEach(f => { if (f.error || f.stale) f.refetch?.() })
+  }
+  // loading is neutral (nothing is wrong yet); stale/unknown are amber; a failed
+  // request with no payload is red. This never borrows the per-tile STALE chip.
+  const headerStateTone: Tone =
+    headerState.state === 'error' ? 'bad'
+      : headerState.state === 'loading' ? 'ok'
+        : 'warn'
   useEffect(() => {
     const viewport = metricsViewport.current
     if (!viewport) return
@@ -622,15 +663,62 @@ export default function MetricStrip({ onDrill }: Props) {
 
   return (
     <div className="metric-strip" data-mobile-expanded={mobileExpanded ? 'true' : 'false'} style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg0)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+    {headerState.state !== 'ready' && (
+      <div
+        data-header-state={headerState.state}
+        role={headerState.state === 'error' ? 'alert' : 'status'}
+        aria-live={headerState.state === 'error' ? 'assertive' : 'polite'}
+        aria-busy={headerState.state === 'loading' ? 'true' : undefined}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+          padding: '3px 16px', fontSize: TYPE.xs, fontFamily: 'var(--mono)',
+          color: headerStateTone === 'bad' ? BB.red : headerStateTone === 'warn' ? BB.amber : 'var(--text3)',
+          background: headerStateTone === 'bad' ? BB.redDim : headerStateTone === 'warn' ? BB.amberDim : 'var(--bg0)',
+          borderBottom: '1px solid var(--border)',
+        }}
+      >
+        {headerState.state === 'loading' && (
+          <span aria-hidden="true" style={{ display: 'inline-block', width: 10, height: 10, border: '2px solid var(--text3)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.9s linear infinite' }} />
+        )}
+        <strong style={{ fontWeight: 800 }}>{headerState.message}</strong>
+        {headerState.detail && (
+          <span title={headerState.detail} style={{ ...NOWRAP, maxWidth: 520, color: 'var(--text2)' }}>{headerState.detail}</span>
+        )}
+        {headerState.failed.length > 0 && (
+          <span style={{ color: 'var(--text2)' }}>({headerState.failed.join(', ')})</span>
+        )}
+        {headerState.retryable && (
+          <button
+            type="button"
+            onClick={retryHeaderFeeds}
+            style={{ marginLeft: 'auto', padding: '1px 8px', borderRadius: RADIUS.sm, border: '1px solid var(--border)', background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer' }}
+          >Retry</button>
+        )}
+      </div>
+    )}
     <div className="ms-compact" data-testid="ms-compact">
-      <button type="button" className="ms-compact__cell" onClick={() => onDrill(portfolioTile.drill)} title={(portfolioTile as any).tip}>
-        <span className="ms-compact__label">PORT{(portfolioTile as any).stale ? <span style={{ color: BB.amber }} data-surface-stale> ⚠</span> : null}</span>
-        <span className="ms-compact__value" style={{ ...numStyle, color: portfolioTile.color }}>{portfolioTile.value}</span>
-      </button>
-      <button type="button" className="ms-compact__cell" onClick={() => onDrill(todayTile.drill)} title={(todayTile as any).tip}>
-        <span className="ms-compact__label">TODAY</span>
-        <span className="ms-compact__value" style={{ ...numStyle, color: todayTile.color }}>{todayTile.value}</span>
-      </button>
+      {headerHasData ? (
+        <>
+          <button type="button" className="ms-compact__cell" onClick={() => onDrill(portfolioTile.drill)} title={(portfolioTile as any).tip}>
+            <span className="ms-compact__label">PORT{(portfolioTile as any).stale ? <span style={{ color: BB.amber }} data-surface-stale> ⚠</span> : null}</span>
+            <span className="ms-compact__value" style={{ ...numStyle, color: portfolioTile.color }}>{portfolioTile.value}</span>
+          </button>
+          <button type="button" className="ms-compact__cell" onClick={() => onDrill(todayTile.drill)} title={(todayTile as any).tip}>
+            <span className="ms-compact__label">TODAY</span>
+            <span className="ms-compact__value" style={{ ...numStyle, color: todayTile.color }}>{todayTile.value}</span>
+          </button>
+        </>
+      ) : (
+        // No payload yet: say which state we are in, never a pair of em dashes
+        // that reads like an authoritative zero.
+        <span
+          className="ms-compact__label"
+          data-header-compact-state={headerState.state}
+          style={{ padding: '0 6px', color: headerState.state === 'error' ? BB.red : headerState.state === 'loading' ? 'var(--text3)' : BB.amber }}
+        >
+          {headerState.state === 'loading' ? 'Loading header metrics…' : headerState.state === 'error' ? 'Header error' : 'Header unavailable'}
+        </span>
+      )}
       {approvals != null && approvals > 0 && (
         <button type="button" className="ms-compact__chip" onClick={() => navigate('/')}
           aria-label={`${approvals} pending approvals`} title={`${approvals} pending approvals — Home → Action Inbox`}
@@ -670,7 +758,9 @@ export default function MetricStrip({ onDrill }: Props) {
           >{priceStampShort}</div>
         )}
       </div>
-      {tiles.map(t => {
+      {/* No payload at all: the banner above carries the state. Do not paint a row
+          of em dashes, which reads as "the book is empty" rather than "not loaded". */}
+      {headerHasData && tiles.map(t => {
         // Exception-driven: the tone decides whether this tile is quiet or loud.
         // 'ok' renders a dim dot and grey meta; 'warn'/'bad' recolour the meta
         // line and swap the glyph. No extra line, so height is invariant.
