@@ -1,0 +1,221 @@
+"""Main-red self-heal (plan item 4, 2026-11-02).
+
+The lane watches the newest origin/main run of a required workflow. When it is red it
+re-runs the failed jobs ONCE (``gh run rerun <id> --failed``), and:
+
+* a green re-run records the failure as a suspected flake (the plan's case C: one flaky
+  test blocked the deploy poller until a human re-ran it);
+* a second red records an escalation: one P1 page and one Claude Code fixer request.
+
+AGENTS.md wins over the plan. §24.5 forbids a scheduled job from writing to a remote and
+§28.14 limits the monitor's rerun to an *infrastructure* flake, "never a test failure".
+So the shipped config re-runs infrastructure failures only; a run whose failed log names
+test ids escalates on the first cycle instead of being re-run. Every remote write is
+behind a config gate whose default honours those rules.
+
+Hermetic: every gh call, the Telegram sender and the issue writer are injected fakes;
+state, receipts and fixer requests live under tmp_path. Nothing reaches GitHub.
+"""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+import main_red_autoheal as mra
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+CONFIG = {
+    "schema": "MainRedAutohealConfig@v1",
+    "repo": "example-org/example-repo",
+    "branch": "main",
+    "required_workflows": ["cio-production-hardening-ci", "agent-governance"],
+    "run_list_limit": 40,
+    "max_reruns": 1,
+    "rerun_classes": {"infrastructure": True, "test_failure": False, "unknown": False},
+    "infra_log_markers": ["The runner has received a shutdown signal", "No space left on device"],
+    "flaky_issue": {"enabled": False, "label": "flaky-test"},
+    "fixer": {"enabled": True, "requests_rel": "fixer_requests"},
+    "page": {"enabled": True, "severity": "P1"},
+    "log_tail_chars": 4000,
+    "page_cooldown_hours": 6,
+}
+
+
+def run_json(run_id="991", workflow="cio-production-hardening-ci", conclusion="failure",
+             head_sha="a" * 40, event="push", created_at="2026-11-02T03:00:00Z",
+             status="completed", url="https://example.com/run/991"):
+    return {
+        "databaseId": run_id, "workflowName": workflow, "conclusion": conclusion,
+        "status": status, "headSha": head_sha, "event": event, "createdAt": created_at,
+        "url": url,
+    }
+
+
+class FakeGh:
+    """Stand-in for the gh CLI: records every argv and serves scripted output."""
+
+    def __init__(self, runs, views=None, logs=None):
+        self.runs = runs
+        self.views = views or {}
+        self.logs = logs or {}
+        self.calls: list[list[str]] = []
+
+    def __call__(self, argv):
+        self.calls.append(list(argv))
+        if argv[:2] == ["run", "list"]:
+            return 0, json.dumps(self.runs)
+        if argv[:2] == ["run", "view"]:
+            run_id = str(argv[2])
+            if "--log-failed" in argv:
+                return 0, self.logs.get(run_id, "")
+            return 0, json.dumps(self.views.get(run_id, {"conclusion": "failure", "status": "completed"}))
+        if argv[:2] == ["run", "rerun"]:
+            return 0, ""
+        return 1, f"unexpected gh argv: {argv}"
+
+    @property
+    def reruns(self):
+        return [c for c in self.calls if c[:2] == ["run", "rerun"]]
+
+    @property
+    def writes(self):
+        return [c for c in self.calls if c[:2] == ["run", "rerun"]]
+
+
+class FakeTelegram:
+    def __init__(self):
+        self.sent: list[dict] = []
+
+    def __call__(self, text, *, priority="P1"):
+        self.sent.append({"text": text, "priority": priority})
+        return True
+
+
+def cycle(tmp_path, gh, *, cfg=None, dry_run=False, telegram=None, issue_writer=None):
+    return mra.run_cycle(
+        cfg or dict(CONFIG), state_dir=tmp_path / "state", gh=gh, dry_run=dry_run,
+        telegram=telegram, issue_writer=issue_writer, now="2026-11-02T03:05:00Z",
+    )
+
+
+# ------------------------------------------------------------------ rerun paths
+def test_infrastructure_failure_is_rerun_exactly_once(tmp_path):
+    gh = FakeGh([run_json()], logs={"991": "Runner lost connection.\nThe runner has received a shutdown signal"})
+    receipt = cycle(tmp_path, gh)
+
+    assert [c[2] for c in gh.reruns] == ["991"]
+    assert receipt["actions"][0]["action"] == "rerun_requested"
+    assert receipt["actions"][0]["failure_class"] == "infrastructure"
+
+
+def test_green_rerun_records_a_suspected_flake(tmp_path):
+    gh = FakeGh([run_json()], logs={"991": "The runner has received a shutdown signal"},
+                views={"991": {"conclusion": "success", "status": "completed"}})
+    cycle(tmp_path, gh)                      # cycle 1 detects red and re-runs
+    receipt = cycle(tmp_path, gh)            # cycle 2 observes the re-run's result
+
+    assert receipt["actions"][0]["action"] == "healed_after_rerun"
+    assert receipt["actions"][0]["suspected_flake"] is True
+    assert len(gh.reruns) == 1               # never re-runs twice
+
+
+def test_second_failure_pages_once_and_writes_one_fixer_request(tmp_path):
+    gh = FakeGh([run_json()], logs={"991": "FAILED tests/test_x.py::test_y - StopIteration"},
+                views={"991": {"conclusion": "failure", "status": "completed"}})
+    telegram = FakeTelegram()
+    cfg = dict(CONFIG, rerun_classes={"infrastructure": True, "test_failure": True, "unknown": False})
+
+    cycle(tmp_path, gh, cfg=cfg, telegram=telegram)          # re-run requested
+    receipt = cycle(tmp_path, gh, cfg=cfg, telegram=telegram)  # still red -> escalate
+    cycle(tmp_path, gh, cfg=cfg, telegram=telegram)          # idempotent
+
+    assert len(gh.reruns) == 1
+    assert len(telegram.sent) == 1
+    assert "tests/test_x.py::test_y" in telegram.sent[0]["text"]
+    requests = sorted((tmp_path / "state" / "fixer_requests").glob("*.json"))
+    assert len(requests) == 1
+    body = json.loads(requests[0].read_text())
+    assert body["failing_test_ids"] == ["tests/test_x.py::test_y"]
+    assert body["run_url"] == "https://example.com/run/991"
+    assert receipt["actions"][0]["action"] == "escalated"
+
+
+def test_already_rerun_run_is_never_rerun_again(tmp_path):
+    gh = FakeGh([run_json()], logs={"991": "The runner has received a shutdown signal"})
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    (state_dir / "state.json").write_text(json.dumps({
+        "schema": "MainRedAutohealState@v1",
+        "runs": {"991": {"attempts": 1, "head_sha": "a" * 40, "escalated": False,
+                         "flake_recorded": False, "last_action": "rerun_requested"}},
+    }))
+
+    receipt = cycle(tmp_path, gh)
+
+    assert gh.reruns == []
+    assert receipt["actions"][0]["action"] == "escalated"
+
+
+# ------------------------------------------------------------------ AGENTS 24.5/28.14 gates
+def test_a_test_failure_is_not_rerun_by_default(tmp_path):
+    gh = FakeGh([run_json()], logs={"991": "FAILED tests/test_flaky.py::test_it - AssertionError"})
+    telegram = FakeTelegram()
+
+    receipt = cycle(tmp_path, gh, telegram=telegram)
+
+    assert gh.reruns == []                    # §28.14: never a test failure
+    assert receipt["actions"][0]["failure_class"] == "test_failure"
+    assert receipt["actions"][0]["action"] == "escalated"
+    assert len(telegram.sent) == 1
+
+
+def test_dry_run_never_writes_remotely_or_mutates_state(tmp_path):
+    gh = FakeGh([run_json()], logs={"991": "The runner has received a shutdown signal"})
+
+    receipt = cycle(tmp_path, gh, dry_run=True)
+
+    assert gh.writes == []
+    assert not (tmp_path / "state" / "state.json").exists()
+    assert receipt["actions"][0]["action"] == "would_rerun"
+
+
+# ------------------------------------------------------------------ selection
+def test_pull_request_runs_are_ignored(tmp_path):
+    gh = FakeGh([run_json(event="pull_request")], logs={"991": "The runner has received a shutdown signal"})
+
+    receipt = cycle(tmp_path, gh)
+
+    assert gh.reruns == []
+    assert receipt["actions"] == []
+    assert receipt["skipped"][0]["reason"] == "no_required_main_run_red"
+
+
+def test_stale_commit_run_is_ignored(tmp_path):
+    old, new = "b" * 40, "a" * 40
+    gh = FakeGh([
+        run_json(run_id="2", workflow="agent-governance", head_sha=new, conclusion="success",
+                 created_at="2026-11-02T03:00:00Z"),
+        run_json(run_id="1", workflow="cio-production-hardening-ci", head_sha=old, conclusion="failure",
+                 created_at="2026-11-02T02:00:00Z"),
+    ], logs={"1": "The runner has received a shutdown signal"})
+
+    receipt = cycle(tmp_path, gh)
+
+    assert gh.reruns == []
+    assert receipt["actions"] == []
+    assert any(s["reason"] == "stale_commit" for s in receipt["skipped"])
+
+
+# ------------------------------------------------------------------ shipped config
+def test_shipped_config_is_valid_and_gates_remote_writes():
+    cfg = json.loads((REPO_ROOT / "config" / "main_red_autoheal.json").read_text())
+
+    assert cfg["schema"] == "MainRedAutohealConfig@v1"
+    assert cfg["max_reruns"] == 1
+    assert cfg["rerun_classes"]["test_failure"] is False
+    assert cfg["flaky_issue"]["enabled"] is False
+    assert "24.5" in cfg["_why"] and "28.14" in cfg["_why"]
+    assert cfg["required_workflows"]
