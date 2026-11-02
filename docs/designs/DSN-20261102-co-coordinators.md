@@ -78,14 +78,28 @@ coord lead <id>                   # make <id> the one lead (the previous lead be
 coord take-back <id>              # return <id>'s territories to the lead
 coord add <id> --vendor <v>       # add a coordinator and print its join line from the template
 coord ack <id>                    # the receiver acknowledges its pending transfer
+coord timeouts [--dry-run|--apply]  # process ack deadlines (dry-run is the default; writes nothing)
 ```
+
+`coord status` is **strictly read-only**: it opens no lock, creates no directory and never writes. Timeout
+processing is its own write command, `coord timeouts --apply`; without `--apply` it prints the plan only. Every
+mutating verb (`give`/`lead`/`take-back`/`add`/`ack`) has a true `--dry-run` that shows the intended ledger event,
+handoff path, registry/board change, tmux notices and ack deadline, and reaches none of them.
+
+`take-back <id>` returns **<id>'s territories** to the current lead. It refuses when <id> holds nothing, when there is
+no lead, and when <id> is the lead itself (move the lead first with `coord lead <other>`, then take back). `add`
+appends to the ledger **before** the registry and refuses a territory another coordinator already holds (use
+`coord give`). A lead transfer notices **both** the former and the new lead.
 
 Every transfer (`give`/`lead`/`take-back`) is **operator-issued**: `--quote "<the operator's words>"` is required
 and recorded verbatim. The order is ledger first (the original command), then the auto-generated handoff note
 (BOARD + ledger + assignments), then the registry/BOARD update, then a tmux notice to both registered sessions, then
 `ack` tracking. An unacknowledged transfer alerts the operator once after `ack_timeout_minutes` (registry, default 15)
 through the existing comms-intent chokepoint; no timer is installed and no route is added by this PR, so the alert is
-queued only once the operator routes it. Moving a territory transfers **responsibility**, never merge/deploy/scheduler
+queued only once the operator routes it. A refused delivery is recorded as `ack_alert_failed` (`alert_queued=false`)
+and stays **retryable** after `ack_alert_retry_minutes` (default 15); only a queued alert ends retries. Timeouts are
+processed when `coord timeouts --apply` runs — there is **no wall-clock timer** in this PR; the host poll/timer is the
+unactivated integration. Moving a territory transfers **responsibility**, never merge/deploy/scheduler
 authority beyond the rules that already bind whoever holds it.
 
 **Optional install** (documented, not performed by the PR):

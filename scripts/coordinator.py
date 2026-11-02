@@ -70,6 +70,7 @@ DEFAULT_TERRITORIES = {
 DEFAULT_SNAPSHOT_SESSIONS = ("cc-deepseek-*", "codex", "cx-*")
 SNAPSHOT_IDLE_SECONDS = 90
 DEFAULT_ACK_TIMEOUT_MINUTES = 15
+DEFAULT_ACK_ALERT_RETRY_MINUTES = 15
 
 
 # ── store roots ────────────────────────────────────────────────────────────────────────────────────────
@@ -486,32 +487,57 @@ def _holders(reg: dict[str, Any], territory: str) -> list[str]:
     return [str(c.get("id")) for c in reg["coordinators"] if territory in (c.get("territories") or [])]
 
 
-def sweep_acks(root: Path, reg: dict[str, Any], now: datetime | None = None) -> list[dict[str, Any]]:
-    """Alert the operator ONCE for every pending transfer past its ack deadline. Caller holds the lock."""
+def sweep_acks(root: Path, reg: dict[str, Any], *, now: datetime | None = None, apply: bool = True,
+               retry_minutes: float | None = None) -> list[dict[str, Any]]:
+    """Expired, unacknowledged transfers. ``apply=False`` returns the plan and writes/notifies NOTHING.
+
+    Delivery is best-effort through the comms-intent chokepoint: a queued alert marks the transfer alerted (never
+    repeated); a REFUSED or absent chokepoint is recorded as alert_queued=false and the transfer stays retryable
+    after ``ack_alert_retry_minutes`` (default 15). Processing happens only when a write command runs — there is no
+    wall-clock timer in this PR; the host poll is the unactivated integration.
+    """
     now = now or _now_dt()
-    fired: list[dict[str, Any]] = []
+    retry = float(retry_minutes if retry_minutes is not None
+                  else reg.get("ack_alert_retry_minutes") or DEFAULT_ACK_ALERT_RETRY_MINUTES)
+    out: list[dict[str, Any]] = []
     for tid, p in (reg.get("pending_acks") or {}).items():
         if p.get("acknowledged") or p.get("alerted"):
             continue
         due = _parse_iso(p.get("ack_by"))
         if due is None or now < due:
             continue
-        p["alerted"] = True
-        p["alerted_at"] = now_iso()
+        last = _parse_iso(p.get("last_alert_at"))
+        cooling = last is not None and (now - last).total_seconds() < retry * 60
+        plan = {"transfer_id": tid, "to": p.get("to"), "kind": p.get("kind"),
+                "territories": p.get("territories"), "ack_by": p.get("ack_by"),
+                "alert_attempts": int(p.get("alert_attempts") or 0)}
+        if not apply:
+            out.append({**plan, "action": "would_alert" if not cooling else "would_wait_retry"})
+            continue
+        if cooling:
+            continue  # a failed delivery is retried only after the backoff
+        p["alert_attempts"] = int(p.get("alert_attempts") or 0) + 1
+        p["last_alert_at"] = now_iso()
         summary = (f"no ack from {p.get('to')} for {p.get('kind')} "
-                   f"({', '.join(p.get('territories') or []) or 'lead'}) since {p.get('issued_at')}")
-        queued = _operator_alert(str(p.get("to") or "coordinator"), summary)
+                   f"({', '.join(p.get('territories') or []) or 'lead'}) since {p.get('issued_at')} "
+                   f"(attempt {p['alert_attempts']})")
+        queued = bool(_operator_alert(str(p.get("to") or "coordinator"), summary))
         p["alert_queued"] = queued
+        if queued:
+            p["alerted"] = True
+            p["alerted_at"] = now_iso()
         append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": None, "territory": None,
-                            "kind": "ack_timeout", "subject": str(p.get("to") or ""), "detail": summary,
-                            "alert_queued": queued})
-        fired.append(p)
-    return fired
+                            "kind": "ack_timeout" if queued else "ack_alert_failed",
+                            "subject": str(p.get("to") or ""), "detail": summary,
+                            "alert_queued": queued, "attempt": p["alert_attempts"]})
+        out.append({**plan, "action": "alerted" if queued else "alert_failed",
+                    "attempt": p["alert_attempts"], "alert_queued": queued})
+    return out
 
 
-def _transfer(root: Path, reg: dict[str, Any], *, kind: str, to: str, territories: list[str],
-              quote: str, command: str, tmux: str) -> dict[str, Any]:
-    """Ledger-first transfer, handoff snapshot, registry/board update, tmux notices, ack tracking. Lock held."""
+def _transfer_plan(reg: dict[str, Any], *, kind: str, to: str, territories: list[str], quote: str,
+                   command: str) -> dict[str, Any]:
+    """Validate and describe a transfer without touching the store (shared by --dry-run and apply)."""
     if not quote.strip():
         raise ValueError("refused: an operator transfer needs --quote with the operator's own words")
     if find(reg, to) is None:
@@ -524,20 +550,46 @@ def _transfer(root: Path, reg: dict[str, Any], *, kind: str, to: str, territorie
     for t in territories:
         for holder in _holders(reg, t):
             givers.setdefault(holder, []).append(t)
+    former_lead = next((str(c.get("id")) for c in reg["coordinators"]
+                        if str(c.get("role")) == "lead" and str(c.get("id")) != to), None)
+    from_ids = sorted(set(givers) | ({former_lead} if kind == "lead" and former_lead else set()))
     tid = f"{_stamp()}-{kind}-{to}"
+    ack_min = float(reg.get("ack_timeout_minutes") or DEFAULT_ACK_TIMEOUT_MINUTES)
+    ack_by = (_now_dt() + timedelta(minutes=ack_min)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    notices = []
+    for cid in sorted(set(from_ids) | {to}):
+        c = find(reg, cid)
+        notices.append({"to": cid, "session": str((c or {}).get("session") or "") or None,
+                        "sent": False, "planned": True})
+    return {"transfer_id": tid, "kind": kind, "to": to, "territories": territories,
+            "from": from_ids, "givers": givers, "former_lead": former_lead, "ack_by": ack_by,
+            "handoff_name": f"{tid}-operator-to-{to}.md", "notices": notices,
+            "ledger_event": {"kind": f"transfer_{kind}", "subject": to, "detail": command,
+                             "operator_quote": quote, "transfer_id": tid,
+                             "territories": territories, "from": from_ids,
+                             "authority_note": "territory responsibility only; no broker, merge, deploy or "
+                                               "scheduler authority is transferred by this event"}}
+
+
+def _transfer(root: Path, reg: dict[str, Any], *, kind: str, to: str, territories: list[str],
+              quote: str, command: str, tmux: str, dry_run: bool = False) -> dict[str, Any]:
+    """Ledger-first transfer: plan -> ledger -> handoff -> registry/board -> tmux notices -> ack tracking."""
+    plan = _transfer_plan(reg, kind=kind, to=to, territories=territories, quote=quote, command=command)
+    hpath = handoffs_dir(root) / plan["handoff_name"]
+    plan["handoff_path"] = str(hpath)
+    if dry_run:
+        return {"schema": "CoordinatorTransferPlan@v1", "dry_run": True, **plan}
+    tid, givers = plan["transfer_id"], plan["givers"]
     # 1. WRITE-AHEAD: the ledger records the operator's command before the registry changes.
     append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": "operator", "territory": None,
-                        "kind": f"transfer_{kind}", "subject": to, "detail": command,
-                        "operator_quote": quote, "transfer_id": tid,
-                        "territories": territories, "from": sorted(givers)})
+                        **plan["ledger_event"]})
     # 2. The handoff note is generated from BOARD + ledger + assignments.
-    stamp = _stamp()
-    hpath = handoffs_dir(root) / f"{stamp}-operator-to-{to}-{kind}.md"
     body = [f"# Transfer {kind}: -> {to} ({now_iso()})", "",
-            f"- command: `{command}`", f"- operator words: {quote}",
+            f"- command: `{command}`", f"- operator words (audit record, not a grant): {quote}",
             f"- territories: {', '.join(territories) or '(lead role only)'}",
-            f"- from: {', '.join(sorted(givers)) or '(unheld)'}", "",
-            "## Snapshot", "", render_board(root, reg, read_events(root)), ""]
+            f"- from: {', '.join(plan['from']) or '(unheld)'}", "",
+            "Territory transfer moves RESPONSIBILITY only: no broker, merge, deploy or scheduler authority.",
+            "", "## Snapshot", "", render_board(root, reg, read_events(root)), ""]
     _atomic_write(hpath, "\n".join(body))
     # 3. Registry + BOARD.
     for holder, ts in givers.items():
@@ -552,50 +604,48 @@ def _transfer(root: Path, reg: dict[str, Any], *, kind: str, to: str, territorie
     if territories:
         target = find(reg, to)
         target["territories"] = sorted(set(target.get("territories") or []) | set(territories))
-    ack_min = float(reg.get("ack_timeout_minutes") or DEFAULT_ACK_TIMEOUT_MINUTES)
-    ack_by = (_now_dt() + timedelta(minutes=ack_min)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     reg.setdefault("pending_acks", {})[tid] = {
-        "kind": kind, "from": sorted(givers), "to": to, "territories": territories,
-        "issued_at": now_iso(), "ack_by": ack_by, "command": command, "operator_quote": quote,
-        "handoff": str(hpath), "acknowledged": False, "alerted": False,
+        "kind": kind, "from": plan["from"], "to": to, "territories": territories,
+        "issued_at": now_iso(), "ack_by": plan["ack_by"], "command": command, "operator_quote": quote,
+        "handoff": str(hpath), "acknowledged": False, "alerted": False, "alert_attempts": 0,
     }
     reg["as_of"] = now_iso()
     _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
     _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
-    # 4. Notify both sides in their registered tmux sessions.
+    # 4. Notify every side (including the FORMER lead on a lead transfer) in its registered session.
     notices = []
-    for cid in sorted(set(givers) | {to}):
+    for cid in sorted(set(plan["from"]) | {to}):
         c = find(reg, cid)
         sess = str((c or {}).get("session") or "")
         if not sess:
             notices.append({"to": cid, "session": None, "sent": False})
             continue
         msg = (f"[coordinator] {kind}: {to} now holds {', '.join(territories) or 'the lead role'}. "
-               f"Re-read BOARD.md and the handoff {hpath.name}; then run: coord ack {to}")
+               f"Re-read BOARD.md and {hpath.name}; then run: coord ack {to}. "
+               "Responsibility only: no broker/merge/deploy/scheduler authority.")
         notices.append({"to": cid, "session": sess, "sent": _notify_session(tmux, sess, msg)})
     append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": "operator", "territory": None,
                         "kind": "transfer_notified", "subject": to, "detail": json.dumps(notices),
                         "transfer_id": tid})
-    return {"transfer_id": tid, "to": to, "territories": territories, "from": sorted(givers),
-            "ack_by": ack_by, "handoff": str(hpath), "notices": notices}
+    return {"schema": "CoordinatorTransfer@v1", "dry_run": False, **plan, "notices": notices}
 
 
 def cmd_give(args) -> int:
     root = state_root(args.state_root)
     with locked(root):
         reg = read_registry(root)
-        sweep_acks(root, reg)
         territories = (_all_territories(reg) if str(args.territories) == "all"
                        else [t.strip() for t in str(args.territories).split(",") if t.strip()])
         try:
             out = _transfer(root, reg, kind="give", to=_safe(args.id), territories=territories,
                             quote=str(args.quote or ""), command=" ".join(["coord"] + list(args.argv or [])),
-                            tmux=args.tmux_bin or "tmux")
+                            tmux=args.tmux_bin or "tmux", dry_run=bool(args.dry_run))
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
-        _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
-    print(json.dumps({"schema": "CoordinatorTransfer@v1", **out}, indent=1))
+        if not args.dry_run:
+            _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
+    print(json.dumps(out, indent=1))
     return 0
 
 
@@ -603,15 +653,14 @@ def cmd_lead(args) -> int:
     root = state_root(args.state_root)
     with locked(root):
         reg = read_registry(root)
-        sweep_acks(root, reg)
         try:
             out = _transfer(root, reg, kind="lead", to=_safe(args.id), territories=[],
                             quote=str(args.quote or ""), command=" ".join(["coord"] + list(args.argv or [])),
-                            tmux=args.tmux_bin or "tmux")
+                            tmux=args.tmux_bin or "tmux", dry_run=bool(args.dry_run))
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
-    print(json.dumps({"schema": "CoordinatorTransfer@v1", **out}, indent=1))
+    print(json.dumps(out, indent=1))
     return 0
 
 
@@ -619,22 +668,31 @@ def cmd_take_back(args) -> int:
     root = state_root(args.state_root)
     with locked(root):
         reg = read_registry(root)
-        sweep_acks(root, reg)
         c = find(reg, _safe(args.id))
         if not c:
             print(f"error: no coordinator {args.id}", file=sys.stderr)
             return 2
         territories = list(c.get("territories") or [])
+        if not territories:
+            print(f"error: {args.id} holds no territories; nothing to take back "
+                  "(if it is the lead, move the lead with `coord lead <other>` first)", file=sys.stderr)
+            return 2
         lead = next((x for x in reg["coordinators"] if str(x.get("role")) == "lead"), None)
-        target = str(lead.get("id")) if lead and str(lead.get("id")) != str(c.get("id")) else str(c.get("id"))
+        if lead is None:
+            print("error: no lead to take the territories back to; appoint one with `coord lead <id>`",
+                  file=sys.stderr)
+            return 2
+        if str(lead.get("id")) == str(c.get("id")):
+            print(f"error: {args.id} is the lead; move the lead with `coord lead <other>` first", file=sys.stderr)
+            return 2
         try:
-            out = _transfer(root, reg, kind="take-back", to=target, territories=territories,
+            out = _transfer(root, reg, kind="take-back", to=str(lead.get("id")), territories=territories,
                             quote=str(args.quote or ""), command=" ".join(["coord"] + list(args.argv or [])),
-                            tmux=args.tmux_bin or "tmux")
+                            tmux=args.tmux_bin or "tmux", dry_run=bool(args.dry_run))
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
-    print(json.dumps({"schema": "CoordinatorTransfer@v1", **out}, indent=1))
+    print(json.dumps(out, indent=1))
     return 0
 
 
@@ -654,18 +712,30 @@ def cmd_add(args) -> int:
         if [t for t in territories if t not in known]:
             print(f"error: unknown territory; known: {', '.join(sorted(known))}", file=sys.stderr)
             return 2
+        taken = {t: _holders(reg, t) for t in territories if _holders(reg, t)}
+        if taken:
+            print(f"error: territory already held ({taken}); use `coord give {cid} <territory>` to transfer it",
+                  file=sys.stderr)
+            return 2
         entry = {"id": cid, "vendor": args.vendor, "session": args.session or None, "where": args.where or None,
                  "territories": territories, "role": "member", "appointed_by": "operator",
                  "appointed_quote": str(args.quote), "appointed_at": now_iso(),
                  "last_heartbeat": now_iso(), "status": "active"}
+        event = {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": "operator", "territory": None,
+                 "kind": "appoint", "subject": cid, "detail": f"{args.vendor} as member: "
+                                                              f"{', '.join(territories) or '(no territory)'}",
+                 "operator_quote": str(args.quote)}
+        joined = join_line(root, cid, args.vendor)
+        if args.dry_run:
+            print(json.dumps({"schema": "CoordinatorAddPlan@v1", "dry_run": True, "entry": entry,
+                              "ledger_event": event, "join_line": joined}, indent=1))
+            return 0
+        # LEDGER FIRST: the event is written before the registry changes.
+        append_event(root, event)
         reg["coordinators"].append(entry)
         reg["as_of"] = now_iso()
         _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
-        append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": "operator", "territory": None,
-                            "kind": "appoint", "subject": cid, "detail": f"{args.vendor} as member",
-                            "operator_quote": str(args.quote)})
         _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
-        joined = join_line(root, cid, args.vendor)
     print(joined or f"added {cid} ({args.vendor}); join line unavailable (template missing)")
     return 0
 
@@ -693,6 +763,10 @@ def cmd_ack(args) -> int:
         if not due:
             print(f"error: no pending transfer for {cid}", file=sys.stderr)
             return 2
+        if args.dry_run:
+            print(json.dumps({"schema": "CoordinatorAckPlan@v1", "dry_run": True, "id": cid,
+                              "transfers": [tid for tid, _ in due]}, indent=1))
+            return 0
         for tid, p in due:
             p["acknowledged"] = True
             p["acknowledged_at"] = now_iso()
@@ -706,16 +780,31 @@ def cmd_ack(args) -> int:
     return 0
 
 
+def cmd_timeouts(args) -> int:
+    """Process ack deadlines. --dry-run (default) never writes; --apply writes the bookkeeping and queues alerts."""
+    root = state_root(args.state_root)
+    if args.apply and args.dry_run:
+        print("error: --dry-run and --apply are mutually exclusive", file=sys.stderr)
+        return 2
+    if args.apply:
+        with locked(root):
+            reg = read_registry(root)
+            fired = sweep_acks(root, reg, apply=True)
+            if fired:
+                _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
+                _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
+    else:
+        fired = sweep_acks(root, read_registry(root), apply=False)
+    print(json.dumps({"schema": "CoordinatorTimeouts@v1", "dry_run": not args.apply, "expired": fired}, indent=1))
+    return 0
+
+
 # ── commands ──────────────────────────────────────────────────────────────────────────────────────────
 
 
 def cmd_status(args) -> int:
     root = state_root(args.state_root)
-    with locked(root):
-        reg = read_registry(root)
-        if sweep_acks(root, reg):
-            _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
-            _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
+    reg = read_registry(root)  # strictly read-only: no lock, no sweep, no writes, no directories
     now = _now_dt()
     stale = float(reg.get("stale_after_minutes") or DEFAULT_STALE_MINUTES)
     events = read_events(root)
@@ -1092,18 +1181,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("territories")
     p.add_argument("--quote", required=True, help="the operator's own words (recorded verbatim)")
     p.add_argument("--tmux-bin", default="tmux")
+    p.add_argument("--dry-run", action="store_true", help="show every intended effect; write and notify nothing")
     p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("lead", parents=[CLOCK_PARSER], help="operator: make a coordinator the one lead")
     p.add_argument("id")
     p.add_argument("--quote", required=True)
     p.add_argument("--tmux-bin", default="tmux")
+    p.add_argument("--dry-run", action="store_true")
     p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("take-back", parents=[CLOCK_PARSER], help="operator: take a coordinator's territories back to the lead")
     p.add_argument("id")
     p.add_argument("--quote", required=True)
     p.add_argument("--tmux-bin", default="tmux")
+    p.add_argument("--dry-run", action="store_true")
     p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("add", parents=[CLOCK_PARSER], help="operator: add a coordinator and print its join line")
@@ -1113,11 +1205,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--where", default=None)
     p.add_argument("--territories", default="")
     p.add_argument("--quote", required=True)
+    p.add_argument("--dry-run", action="store_true")
     p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("ack", parents=[CLOCK_PARSER], help="receiver: acknowledge its pending transfer")
     p.add_argument("id")
     p.add_argument("--transfer", default=None)
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--json", action="store_true")
+
+    p = sub.add_parser("timeouts", parents=[CLOCK_PARSER],
+                       help="process ack deadlines (--dry-run default; --apply writes bookkeeping and queues alerts)")
+    p.add_argument("--apply", action="store_true", help="write the bookkeeping and queue alerts (default: plan only)")
+    p.add_argument("--dry-run", action="store_true", help="explicit plan-only form (the default)")
     p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("snapshot", parents=[CLOCK_PARSER], help="host lane: capture each agent session's visible screen (tmux)")
@@ -1137,7 +1237,7 @@ COMMANDS = {"status": cmd_status, "appoint": cmd_appoint, "stand-down": cmd_stan
             "heartbeat": cmd_heartbeat, "assign": cmd_assign, "event": cmd_event, "check": cmd_check,
             "inbox": cmd_inbox, "handoff": cmd_handoff, "board": cmd_board, "whoami": cmd_whoami,
             "snapshot": cmd_snapshot, "give": cmd_give, "lead": cmd_lead, "take-back": cmd_take_back,
-            "add": cmd_add, "ack": cmd_ack}
+            "add": cmd_add, "ack": cmd_ack, "timeouts": cmd_timeouts}
 
 
 def main(argv: list[str] | None = None) -> int:
