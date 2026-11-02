@@ -202,7 +202,8 @@ def test_same_source_with_different_snapshot_clock_does_not_claim_identical_obse
     h["holdings"][0]["day_change"] = 3
     late = model.performance_payload({}, holdings_doc=h, now=NOW)
     assert early["periods"]["1D"]["change"] == 0 and late["periods"]["1D"]["change"] == 3
-    assert early["today_pnl"]["calculated_at"] != late["today_pnl"]["calculated_at"]
+    assert early["today_pnl"]["batch_built_at"] != late["today_pnl"]["batch_built_at"]
+    assert early["today_pnl"]["calculated_at"] is None and late["today_pnl"]["calculated_at"] is None
 
 
 def test_actual_performance_handler_emits_shared_1d_after_legacy_adjustments(monkeypatch, tmp_path):
@@ -252,10 +253,66 @@ def test_day_session_uses_explicit_eastern_date_and_never_position_clock():
     h["last_repriced"] = "2026-10-27T00:15:00Z"
     h["positions_built_at"] = "2026-10-01T12:00:00Z"
     out = model.performance_payload({}, holdings_doc=h, now=NOW)
-    assert out["today_pnl"]["session_date"] == "2026-10-26"
+    assert out["today_pnl"]["session_date"] is None
+    assert out["today_pnl"]["mark_session_date"] == "2026-10-26"
     assert out["today_pnl"]["observation_clock"]["status"] == "UNKNOWN"
     h["last_repriced"] = "2026-10-27"
     h["generated_at"] = "2026-10-27 10:30:00"
     out = model.performance_payload({}, holdings_doc=h, now=NOW)
     assert out["today_pnl"]["session_date"] is None
     assert out["today_pnl"]["calculated_at"] is None
+
+
+
+def test_duplicate_account_alias_keeps_one_current_fact_and_preserves_history(monkeypatch):
+    model = _day_truth()
+    monkeypatch.setattr(model, "canonical_key", lambda key: "synthetic_current" if key == "synthetic_legacy" else key)
+    h = _day_doc([{"account": "synthetic_current", "symbol": "ZZAA", "market_value": 100, "day_change": 7}])
+    prior = {"accounts": {
+        "synthetic_legacy": {"current_value": 80, "periods": {"YTD": {"change": 12}}},
+        "synthetic_current": {"current_value": 100, "periods": {"YTD": {"change": 20}}}}}
+    out = model.performance_payload(prior, holdings_doc=h, now=NOW)
+    assert out["periods"]["1D"]["display_change"] == 7
+    assert sum(a["periods"]["1D"]["change"] or 0 for a in out["accounts"].values()) == 7
+    assert out["accounts"]["synthetic_legacy"]["periods"]["1D"]["change"] is None
+    assert out["accounts"]["synthetic_legacy"]["current_value"] is None
+    assert out["accounts"]["synthetic_legacy"]["current_alias_of"] == "synthetic_current"
+    assert out["accounts"]["synthetic_legacy"]["periods"]["YTD"] == {"change": 12}
+    assert out["accounts"]["synthetic_current"]["periods"]["YTD"] == {"change": 20}
+
+
+def test_missing_excluded_value_is_unknown_and_batch_clocks_do_not_date_pnl():
+    model = _day_truth()
+    h = _day_doc([{"account": "synthetic_alpha", "symbol": "ZZAA", "market_value": 100, "day_change": 7},
+                  {"account": "synthetic_alpha", "symbol": "ZZBB", "market_value": None}])
+    p = model.portfolio_for(h, now=NOW)
+    assert p["day_pl_coverage"]["unknown_value_usd"] is None
+    out = model.performance_payload({}, holdings_doc=h, now=NOW)
+    tp = out["today_pnl"]
+    assert tp["calculated_at"] is None and tp["session_date"] is None
+    assert tp["batch_built_at"] == "2026-10-26T14:45:00+00:00"
+    assert tp["mark_batch_at"] == "2026-10-26T14:44:00+00:00"
+    assert tp["mark_session_date"] == "2026-10-26"
+    assert out["periods"]["1D"]["change"] == 7
+
+
+
+def test_summary_alias_conflict_never_discards_funded_missing_evidence(monkeypatch):
+    model = _day_truth()
+    monkeypatch.setattr(model, "canonical_key", lambda key: "synthetic_current" if key == "synthetic_legacy" else key)
+    for reverse in (False, True):
+        pairs = [("synthetic_legacy", {"total_value": 500, "holdings_count": 1}),
+                 ("synthetic_current", {"total_value": 0, "holdings_count": 0})]
+        if reverse:
+            pairs.reverse()
+        h = _day_doc()
+        h["account_summaries"] = dict(pairs)
+        p = model.portfolio_for(h, now=NOW)
+        out = model.performance_payload({}, holdings_doc=h, now=NOW)
+        row = next(r for r in p["accounts"] if r["account_id"] == "synthetic_current")
+        assert row["empty"] is False and row["reported_total_usd"] is None
+        assert row["day_pl_usd"] is None and row["summary_alias_conflict"] is True
+        assert len(row["summary_alias_evidence"]) == 2
+        assert out["today_pnl"]["complete"] is False
+        assert out["today_pnl"]["missing_accounts"] == ["synthetic_current"]
+        assert out["today_pnl"]["empty_accounts"] == []

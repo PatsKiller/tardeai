@@ -82,7 +82,7 @@ def _holdings_clock(value, source_field) -> dict:
 
 
 
-def _position_clock(row: dict) -> dict:
+def _position_clock(row: dict, now: datetime) -> dict:
     """Only explicitly named position/provider observations can date a row.
 
     Generic updated_at/as_of fields also describe loader/valuation writes. Their
@@ -102,6 +102,8 @@ def _position_clock(row: dict) -> dict:
     out = _holdings_clock(value, field)
     if out["as_of"]:
         out["as_of"] = _timestamp(out["as_of"]).astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    if out["as_of"] and _timestamp(out["as_of"]) > now:
+        out.update(as_of=None, gap={"reason": "position observation is in the future relative to evaluation clock"})
     out["status"] = "KNOWN" if out["as_of"] else "UNKNOWN"
     return out
 
@@ -143,7 +145,7 @@ def _day_coverage(rows) -> dict:
     return {"known_usd": round(sum(_number(r["day_change"]) for r in known), 2) if known else None,
             "complete": bool(rows) and not unknown,
             "known_rows": len(known), "unknown_rows": len(unknown),
-            "unknown_value_usd": round(sum(_number(r.get("market_value")) or 0 for r in unknown), 2),
+            "unknown_value_usd": _sum_known(unknown, "market_value") if unknown else 0.0,
             "unknown_accounts": sorted({r.get("account_id") or "" for r in unknown} - {""})}
 
 
@@ -173,7 +175,7 @@ def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
             # blank TODAY for the whole book (2026-10-26).
             r["day_change"] = 0.0
             r["day_change_basis"] = "delisted_zero_value"
-        r["position_clock"] = _position_clock(r)
+        r["position_clock"] = _position_clock(r, now)
         rows.append(r)
     total = _sum_known(rows, "market_value") if rows else None
     cash = _sum_known([r for r in rows if r["is_cash"]], "market_value") if rows else None
@@ -193,25 +195,35 @@ def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
     counted = [r for r in held if (_number(r.get("market_value")) or 0) >= 100]
     keys = {(r["account_id"], str(r.get("symbol") or "").upper()) for r in counted}
     accounts = []
-    summaries = {canonical_key(k): v for k, v in (holdings_doc.get("account_summaries") or {}).items()}
+    summaries: dict[str, list[dict]] = {}
+    for key, summary in (holdings_doc.get("account_summaries") or {}).items():
+        summaries.setdefault(canonical_key(key), []).append({"source_key": key, "summary": deepcopy(summary or {})})
     for account in sorted({r["account_id"] for r in rows} | set(summaries)):
         group = [r for r in rows if r["account_id"] == account]
-        summary = summaries.get(account) or {}
+        aliases = summaries.get(account) or []
+        summary_rows = [a["summary"] for a in aliases]
+        states = {str(s.get("state")) for s in summary_rows if s.get("state")}
+        reported = [_number(s.get("total_value")) for s in summary_rows]
+        summary_conflict = (any(len({_number(s.get(field)) for s in summary_rows}) > 1
+                                for field in ("total_value", "holdings_count"))
+                            or len({s.get("state") for s in summary_rows}) > 1)
         position_clock = _position_clock_aggregate(group)
         acov = _day_coverage(group)
         # A linked funded account without rows is missing, never flat or dropped.
-        empty = (not group and _number(summary.get("total_value")) == 0
-                 and _number(summary.get("holdings_count")) == 0)
+        empty = (not group and bool(summary_rows)
+                 and all(_number(s.get("total_value")) == 0 and _number(s.get("holdings_count")) == 0
+                         for s in summary_rows))
         accounts.append({"account_id": account, "account_label": account_label(account),
                          "total_usd": _sum_known(group, "market_value") if group else (0.0 if empty else None),
                          "cash_usd": _sum_known([r for r in group if r["is_cash"]], "market_value") if group else (0.0 if empty else None),
-                         "reported_total_usd": _number(summary.get("total_value")),
+                         "reported_total_usd": reported[0] if reported and len(set(reported)) == 1 else None,
+                         "summary_alias_evidence": aliases, "summary_alias_conflict": summary_conflict,
                          "empty": empty,
                          "day_pl_usd": 0.0 if empty else acov["known_usd"],
                          "day_pl_complete": empty or acov["complete"],
                          "day_pl_unknown_rows": acov["unknown_rows"],
                          "day_pl_unknown_value_usd": acov["unknown_value_usd"],
-                         "status": summary.get("state") or "UNCLASSIFIED",
+                         "status": next(iter(states)) if len(states) == 1 else "UNCLASSIFIED",
                          "position_clock": position_clock,
                          "as_of": position_clock["as_of"]})
     missing_accounts = [r["account_id"] for r in accounts if r["day_pl_usd"] is None]
@@ -227,6 +239,9 @@ def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
          f"(${day_cov['unknown_value_usd']:,.2f} of value) excluded" if not day_cov["complete"] else None))
     if missing_accounts:
         reason = (reason + "; " if reason else "") + "day P&L missing accounts: " + ", ".join(missing_accounts)
+    summary_conflicts = [r["account_id"] for r in accounts if r["summary_alias_conflict"]]
+    if summary_conflicts:
+        reason = (reason + "; " if reason else "") + "account summary aliases disagree: " + ", ".join(summary_conflicts)
     reason = reason or (aggregate_clock["gap"] or {}).get("reason")
     return {"total_usd": total, "cash_usd": cash, "day_pl_usd": day,
             # Coverage travels with the day figure. Partial is shown as partial,
@@ -1026,9 +1041,13 @@ def _today_payload(prior: dict, p: dict) -> dict:
     out = deepcopy(prior)
     quote_at = _timestamp(p["quote_as_of"])
     out.update(contract_version="TodayPnl@v1", total_change=p["day_pl_usd"],
-               calculated_at=p["valuation_as_of"], calculation_time_source="holdings.generated_at",
-               session_date=quote_at.astimezone(ZoneInfo("America/New_York")).date().isoformat() if quote_at else None,
-               session_source="holdings.last_repriced" if quote_at else None,
+               calculated_at=None, calculation_time_source=None, session_date=None, session_source=None,
+               calculation_clock={"as_of": None, "status": "UNKNOWN",
+                                  "gap": {"reason": "no declared stored day_change calculation/session clock"}},
+               batch_built_at=p["valuation_as_of"], batch_build_source="holdings.generated_at",
+               mark_batch_at=p["quote_as_of"],
+               mark_session_date=quote_at.astimezone(ZoneInfo("America/New_York")).date().isoformat() if quote_at else None,
+               mark_session_source="holdings.last_repriced" if quote_at else None,
                mark_source=p["quote_source"], scope="ALL_ACCOUNTS", definition=_DAY_DEFINITION,
                # These are batch metadata, not proof of each row's P&L observation.
                observation_clock=deepcopy(p["clock_provenance"]["day_pnl"]))
@@ -1052,6 +1071,8 @@ def _day_period(p: dict, census: dict, account: dict | None = None) -> dict:
             "unknown_rows": row.get("day_pl_unknown_rows") if account is not None else census["unknown_rows"],
             "missing_accounts": census["missing_accounts"],
             "calculated_at": census["calculated_at"], "session_date": census["session_date"],
+            "batch_built_at": census["batch_built_at"], "mark_batch_at": census["mark_batch_at"],
+            "mark_session_date": census["mark_session_date"],
             "adjustment_note": census["coverage_reason"]}
 
 
@@ -1080,14 +1101,28 @@ def performance_payload(payload, *, root=None, now=None, holdings_doc=None, docu
     represented = {canonical_key(k) for k in accounts}
     for key in sorted(set(by_key) - represented):
         accounts[key] = {"periods": {}}
+    current_keys = {}
+    for key in sorted(accounts):
+        canonical = canonical_key(key)
+        if canonical not in current_keys or key == canonical:
+            current_keys[canonical] = key
     for key, entry in accounts.items():
-        row = by_key.get(canonical_key(key))
-        if row is None:
+        canonical = canonical_key(key)
+        row = by_key.get(canonical)
+        alias_of = current_keys[canonical] if row is not None and key != current_keys[canonical] else None
+        if row is None or alias_of:
             row = {"day_pl_usd": None, "total_usd": None, "day_pl_complete": False,
                    "day_pl_unknown_rows": None}
         entry.setdefault("periods", {})["1D"] = _day_period(p, census, row)
-        if canonical_key(key) not in by_key:
+        if alias_of:
+            entry["current_alias_of"] = alias_of
+            entry["periods"]["1D"]["adjustment_note"] = (
+                f"Historical alias of {alias_of}; current value/day is represented once there")
+        elif canonical not in by_key:
             entry["periods"]["1D"]["adjustment_note"] = "No current holdings evidence; historical account only"
+        entry["current_account_id"] = canonical
+        if entry.get("current_value") != row["total_usd"]:
+            entry["legacy_current_value"] = entry.get("current_value")
         entry["current_value"] = row["total_usd"]
     return out
 
@@ -1099,6 +1134,10 @@ def _refresh_position_aggregate(aggregate: dict, p: dict, now: datetime | None) 
     at = now or datetime.now(timezone.utc)
     for row in aggregate["accounts"]:
         observed = row["as_of"]
+        if row.get("observation_divergence"):
+            row["legacy_observation_divergence"] = row["observation_divergence"]
+        if row.get("summary_as_of_stale"):
+            row["legacy_summary_as_of_stale"] = row["summary_as_of_stale"]
         age = (at - _timestamp(observed)).total_seconds() / 3600 if observed else None
         row.update(position_observation_time=observed, observation_time=observed,
                    position_observation_source="holdings[].position_clock",
@@ -1125,6 +1164,9 @@ def _refresh_position_aggregate(aggregate: dict, p: dict, now: datetime | None) 
         state, reason = "PARTIAL", "position observation UNKNOWN for: " + ", ".join(unknown)
     elif age is None or age < 0 or age > STALE_AFTER_HOURS:
         state, reason = "STALE", "oldest declared position observation is outside the freshness window"
+    if aggregate.get("observation_divergences"):
+        aggregate["legacy_observation_divergences"] = deepcopy(aggregate["observation_divergences"])
+        aggregate["legacy_observation_divergences_status"] = "UNVERIFIED after strict row-clock reprojection"
     aggregate.update(included_account_count=len(accounts), coverage=coverage,
                      position_observation_oldest=oldest, position_observation_oldest_account=oldest_account,
                      position_observation_oldest_age_hours=age, position_observation_newest=newest,
@@ -1154,8 +1196,8 @@ def overview_payload(payload, *, root=None, now=None, db_query=None, inputs=None
     out["today_pnl"] = today_pnl
     out.setdefault("periods", {})["1D"] = _day_period(p, today_pnl)
     out["today_by_account"] = {r["account_id"]: {"value": r["total_usd"], "change": r["day_pl_usd"],
-                                                 "account_label": r["account_label"], "as_of": p["valuation_as_of"],
-                                                 "positions_as_of": r["as_of"],
+                                                 "account_label": r["account_label"], "as_of": None,
+                                                 "batch_built_at": p["valuation_as_of"], "positions_as_of": r["as_of"],
                                                  "complete": r.get("day_pl_complete"),
                                                  "unknown_rows": r.get("day_pl_unknown_rows")}
                                for r in p["accounts"]}

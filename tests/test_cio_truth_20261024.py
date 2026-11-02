@@ -327,7 +327,8 @@ def test_documented_legacy_et_clocks_normalize_once_with_raw_provenance(holdings
                     last_repriced=f"{date} 15:57:07 ET")
     for row in holdings["holdings"]:
         row["broker_position_as_of_at"] = f"{date} 11:45:02 ET"
-    doc = truth.resolve(tmp_path, NOW, inputs={"holdings": holdings, "companies": {}, "cio_status": {}, "policy": {}, "broker_stops": []})
+    test_now = datetime.fromisoformat(f"{date}T23:00:00+00:00")
+    doc = truth.resolve(tmp_path, test_now, inputs={"holdings": holdings, "companies": {}, "cio_status": {}, "policy": {}, "broker_stops": []})
     p = doc["portfolio"]
     expected_position = datetime.fromisoformat(f"{date}T11:45:02{offset}").astimezone(timezone.utc)
     assert p["positions_as_of"] == expected_position.isoformat().replace("+00:00", "Z")
@@ -452,3 +453,41 @@ def test_position_clock_orders_subseconds_as_instants_and_keeps_stronger_invalid
     p = model.portfolio_for({"holdings": rows}, now=NOW)
     assert p["positions_as_of"] is None
     assert p["holdings"][0]["position_clock"]["raw"] == "unreadable"
+
+
+
+@pytest.mark.parametrize("same_account", [True, False])
+def test_future_row_cannot_hide_behind_older_row_or_account(same_account):
+    model = _clock_truth()
+    h = {"generated_at": NOW.isoformat(), "last_repriced": NOW.isoformat(), "holdings": [
+        {"account": "synthetic_alpha", "symbol": "ZZAA", "market_value": 100, "day_change": 1,
+         "broker_position_as_of_at": "2026-10-24T21:00:00Z"},
+        {"account": "synthetic_alpha" if same_account else "synthetic_beta", "symbol": "ZZBB",
+         "market_value": 50, "day_change": 2, "provider_observed_at": "2026-10-24T23:00:00Z"}]}
+    p = model.portfolio_for(h, now=NOW)
+    assert p["positions_as_of"] is None
+    assert p["clock_provenance"]["positions"]["unknown_rows"] == 1
+    assert p["holdings"][1]["position_clock"]["status"] == "UNKNOWN"
+    assert "future" in p["holdings"][1]["position_clock"]["gap"]["reason"]
+    document = {"portfolio": p, "approvals": {"total": 0}, "paper": {},
+                "regime": {"label": None, "vix": None, "vix_as_of": None}}
+    out = model.overview_payload({}, document=document, now=NOW)
+    assert out["portfolio_aggregate"]["freshness_state"] == "PARTIAL"
+    assert out["portfolio_aggregate"]["coverage"]["value_fresh_pct"] < 100
+    assert out["today_change"] == 3
+
+
+def test_legacy_divergence_evidence_survives_reprojection():
+    model = _clock_truth()
+    p = model.portfolio_for({"holdings": [
+        {"account": "synthetic_alpha", "symbol": "ZZAA", "market_value": 100, "day_change": 1,
+         "broker_position_as_of_at": "2026-10-24T21:00:00Z"}]}, now=NOW)
+    discrepancy = {"account": "synthetic_alpha", "detail": "synthetic old-summary discrepancy"}
+    document = {"portfolio": p, "approvals": {"total": 0}, "paper": {},
+                "regime": {"label": None, "vix": None, "vix_as_of": None}}
+    out = model.overview_payload({"portfolio_aggregate": {"observation_divergences": [discrepancy],
+        "accounts": [{"account": "synthetic_alpha", "observation_divergence": discrepancy["detail"]}]}},
+        document=document, now=NOW)
+    aggregate = out["portfolio_aggregate"]
+    assert aggregate["legacy_observation_divergences"] == [discrepancy]
+    assert aggregate["accounts"][0]["legacy_observation_divergence"] == discrepancy["detail"]
