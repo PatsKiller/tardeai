@@ -27,6 +27,11 @@ schwab:
   marketdata_base_url: "https://api.schwabapi.com/marketdata/v1/"
   batch_size: 100
   feed: schwab                 # market_quotes_extended.feed; the unique key (symbol, bar_start, feed) keeps it apart from Alpaca sip
+  # These are ROOTS. Schwab answers a root with the front-month CONTRACT (asking for "/ES" on 2026-11-01 returned
+  # "/ESZ26"); offhours_quotes.contract_root stores the row under the root listed here -- the same name
+  # market_risk_policy.yaml extended_hours.futures_proxies reads -- and the run receipt's symbol_map records which
+  # contract stood behind it. A contract whose root is not listed here is skipped (unmapped_contract), never stored
+  # under a name nothing reads.
   futures: ["/ES", "/NQ", "/RTY", "/YM"]
   indices: ["$SPX", "$COMPX", "$VIX"]
   include_universe: true       # also the universe's extended-hours prices

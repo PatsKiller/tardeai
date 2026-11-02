@@ -21,6 +21,14 @@ Contract reused exactly from #2384:
   LEVEL ONLY (reference columns NULL). A reference is never assumed.
 * ``bar_end`` is when the print became knowable. A Schwab quote is a point in time, so ``bar_end`` = the trade
   instant exactly and ``bar_start`` = ``point_quote_span_ms`` earlier (the contract requires bar_end > bar_start).
+* Futures are stored under their ROOT (``contract_root``). Schwab keys a futures quote by the front-month CONTRACT,
+  not by the root this lane requests: asking for ``/ES`` on 2026-11-01 returned ``/ESZ26``, so the engine -- which
+  names futures ``/ES``, ``/NQ`` in ``market_risk_policy.yaml`` ``extended_hours.futures_proxies`` -- never saw the
+  row. The lane normalises at this write boundary (one series per root, continuous across a roll, and every consumer
+  reads the name it configured) and carries the contract on the receipt as ``symbol_map``. Only a contract whose
+  root is one of ``schwab.futures`` is mapped; any other is skipped as ``unmapped_contract``, never stored under a
+  name nothing reads. A payload ``errors`` key (Schwab's invalid-symbol report, e.g. ``BRK.B``) is reported as
+  ``provider_errors`` and is never treated as a quote for a symbol called "errors".
 * ``--apply`` refuses while the §7A domain ``quote_extended_session`` is still proposed (``domain_promoted``).
 
 Pure: no network, database or credential here; the entry (``scripts/market_quotes_offhours_schwab.py``) injects
@@ -32,6 +40,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import sys
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
@@ -175,6 +184,21 @@ def schwab_window(now: datetime, cfg: dict[str, Any]) -> tuple[bool, str]:
 
 # ── payload -> market_quotes_extended rows ──────────────────────────────────────────────────────────
 
+_FUTURE_ASSETS = frozenset({"FUTURE", "FUTURES"})
+# root (1-4 alphanumerics, optional '/') + CME month code + 1-2 digit year: '/ESZ26' -> '/ES', '/6EZ26' -> '/6E'.
+# Non-greedy so a root that ends in a month letter ('/YM') still backtracks to the real month code.
+_CONTRACT_RE = re.compile(r"^(/?[A-Z0-9]{1,4}?)([FGHJKMNQUVXZ])(\d{1,2})$")
+
+
+def contract_root(symbol: Any) -> str | None:
+    """The ROOT of a futures contract symbol (``'/ESZ26'`` -> ``'/ES'``), or None when the symbol is not a contract.
+
+    Schwab answers a requested root with the front-month contract (live 2026-11-01: ``/ES`` -> ``/ESZ26``). The
+    engine reads futures by the root named in ``market_risk_policy.yaml`` ``extended_hours.futures_proxies``, so the
+    lane stores the root (see ``schwab_rows``)."""
+    m = _CONTRACT_RE.match(str(symbol).strip().upper())
+    return m.group(1) if m else None
+
 
 def _num(v: Any) -> float | None:
     try:
@@ -190,31 +214,69 @@ def schwab_rows(payload: Any, now: datetime, cfg: dict[str, Any],
     ext_cfg = ext_cfg or mqe.load_config()
     s = cfg.get("schwab") or {}
     span = timedelta(milliseconds=float(s.get("point_quote_span_ms", 1)))
+    # Configured roots keyed by a spelling-insensitive form: '/ES' and 'ESZ26' must land on the SAME stored name, the
+    # one market_risk_policy.yaml futures_proxies reads, or a provider spelling change silently hides futures again.
+    roots = {str(x).strip().upper().lstrip("/"): str(x).strip().upper() for x in s.get("futures") or []}
+    # 'is this a futures print' is the store's own config (the list ovn.label uses), never a second hardcoded one.
+    future_assets = {str(x).strip().upper()
+                     for x in (ext_cfg.get("overnight") or {}).get("futures_open_asset_types") or _FUTURE_ASSETS}
     rows: list[dict] = []
     skipped: list[dict] = []
     for sym, blk in (payload.items() if isinstance(payload, dict) else []):
-        if not isinstance(blk, dict) or not isinstance(blk.get("quote"), dict):
-            skipped.append({"symbol": sym, "reason": "not_a_quote"})
+        sym_u = str(sym).strip().upper()
+        if sym_u == "ERRORS":
+            # Schwab's invalid-symbol report, never a quote for a symbol called "errors" (live 2026-11-01: BRK.B)
+            skipped.append({"symbol": "errors", "reason": "provider_errors"})
             continue
-        q = blk["quote"]
+        if not isinstance(blk, dict):
+            skipped.append({"symbol": sym_u, "reason": "not_a_quote"})
+            continue
+        err = blk.get("errors")  # truthiness, not ==: [], {} and None all mean "no report"
+        q = blk.get("quote") if isinstance(blk.get("quote"), dict) else None
+        if not q:
+            if err:
+                skipped.append({"symbol": sym_u, "reason": "provider_error", "detail": err})
+            else:
+                skipped.append({"symbol": sym_u, "reason": "not_a_quote"})
+            continue
         ext = blk.get("extended") if isinstance(blk.get("extended"), dict) else {}
         reg = blk.get("regular") if isinstance(blk.get("regular"), dict) else {}
+        asset = str(blk.get("assetMainType", ""))
+        contract = None
+        if asset.upper() in future_assets or sym_u.startswith("/"):
+            root = contract_root(sym_u)
+            if root and root != sym_u:
+                configured = roots.get(root.lstrip("/"))
+                if not configured:
+                    skipped.append({"symbol": sym_u, "reason": "unmapped_contract",
+                                    "detail": f"contract root {root} is not in schwab.futures {sorted(roots.values())}"})
+                    continue
+                sym_u, contract = configured, sym_u  # store the root the engine names; keep the contract as evidence
+
+        def skip(reason: str, **extra: Any) -> None:
+            """A refused print, named by the root it would have been stored under, with its contract when mapped."""
+            entry: dict[str, Any] = {"symbol": sym_u, "reason": reason, **extra}
+            if contract:
+                entry["contract"] = contract
+            skipped.append(entry)
+
         price, ts = _num(ext.get("lastPrice")), parse_ts(ext.get("tradeTime"))
         if price is None or ts is None:
             price, ts = _num(q.get("lastPrice")), parse_ts(q.get("tradeTime"))
-        sym_u = str(sym).upper()
         if price is None or ts is None:
-            skipped.append({"symbol": sym_u, "reason": "no_trade_price_or_time"})
+            if err:
+                skip("provider_error", detail=err)  # an empty quote block whose cause Schwab did state
+            else:
+                skip("no_trade_price_or_time")
             continue
         age = (now - ts).total_seconds() / 60.0
         if age > float(s.get("max_trade_age_minutes", 30)):
-            skipped.append({"symbol": sym_u, "reason": "stale_trade", "as_of": ts.isoformat(), "age_minutes": round(age, 1)})
+            skip("stale_trade", as_of=ts.isoformat(), age_minutes=round(age, 1))
             continue
         if age < -5:
-            skipped.append({"symbol": sym_u, "reason": "future_timestamp", "as_of": ts.isoformat()})
+            skip("future_timestamp", as_of=ts.isoformat())
             continue
         et = ts.astimezone(ET)
-        asset = str(blk.get("assetMainType", ""))
         sess = mqe.session_of(et, ext_cfg)
         if sess is not None:
             tdate: date = et.date()
@@ -222,15 +284,17 @@ def schwab_rows(payload: Any, now: datetime, cfg: dict[str, Any],
         else:
             night = ovn.label(ts, ext_cfg, asset_type=asset)
             if night is None:
-                skipped.append({"symbol": sym_u, "reason": "session_not_in_store_contract", "as_of": ts.isoformat(),
-                                "detail": "market_quotes_extended stores premarket/afterhours of NYSE trading days, "
-                                          "overnight 20:00-04:00 ET Sun-Thu nights and the Sunday 18:00 futures open"})
+                skip("session_not_in_store_contract", as_of=ts.isoformat(),
+                     detail="market_quotes_extended stores premarket/afterhours of NYSE trading days, "
+                            "overnight 20:00-04:00 ET Sun-Thu nights and the Sunday 18:00 futures open")
                 continue
             sess, tdate = night
             ref_date = ovn.reference_date(tdate)
         ref, ref_basis, why_not = dated_reference(asset, q, reg, ref_date, s)
         row = {"symbol": sym_u, "session": sess, "session_date": tdate, "bar_start": ts - span, "bar_end": ts,
                "price": price, "volume": None, "feed": str(s["feed"])}
+        if contract:
+            row["contract"] = contract  # receipt evidence only; the writer takes its COLUMNS
         if why_not is None:
             row.update(reference_close=ref, reference_date=ref_date, reference_basis=ref_basis,
                        change_pct=round(100.0 * (price - ref) / ref, 4))
@@ -241,8 +305,7 @@ def schwab_rows(payload: Any, now: datetime, cfg: dict[str, Any],
                        reference_basis=str((s.get("dated_reference_basis") or {}).get("level_only") or "none_level_only"),
                        level_only_reason=why_not)
         else:
-            skipped.append({"symbol": sym_u, "reason": f"no_dated_reference_for_{sess}", "as_of": ts.isoformat(),
-                            "detail": why_not})
+            skip(f"no_dated_reference_for_{sess}", as_of=ts.isoformat(), detail=why_not)
             continue
         rows.append(row)
     return rows, skipped
@@ -319,7 +382,17 @@ def run(*, cfg: dict[str, Any], now: datetime, fetch: Callable[[list[str]], Any]
     if isinstance(payload, dict) and "_failed" in payload:  # symbols never start with "_"
         payload = dict(payload)
         receipt["failed_batches"] = payload.pop("_failed")
+    if isinstance(payload, dict):
+        # Schwab reports symbols it could not quote under a top-level "errors" key. It is not a symbol and carries no
+        # print: report it verbatim on the receipt (live 2026-11-01 named BRK.B) instead of a fake skipped row.
+        errs = {k: v for k, v in payload.items() if str(k).strip().lower() == "errors"}
+        if errs:
+            payload = {k: v for k, v in payload.items() if str(k).strip().lower() != "errors"}
+            receipt["provider_errors"] = next(iter(errs.values())) if len(errs) == 1 else errs
     rows, skipped = schwab_rows(payload, now, cfg)
+    mapped = {r["contract"]: r["symbol"] for r in rows if r.get("contract")}
+    if mapped:  # which front-month contract stood behind each root this run (evidence for the roll)
+        receipt["symbol_map"] = mapped
     receipt["rows"] = [_jsonable(r) for r in rows]
     receipt["skipped"] = skipped
     if dry_run:
