@@ -103,7 +103,7 @@ def test_as_of_is_the_source_time_and_captured_at_is_the_read_time(tmp_path):
 def test_absent_stores_are_reported_not_faked(tmp_path):
     out = rc.build(tmp_path / "nope.jsonl", tmp_path / "no-claims", [_pr()], now=NOW)
     assert out["status"] == "UNAVAILABLE"
-    assert set(out["gaps"]) == {"ledger_absent", "claims_absent"}
+    assert {"ledger_absent", "claims_absent", "board_absent"} <= set(out["gaps"])
     assert out["work"][2474]["owner"] == "UNKNOWN"
     assert out["work"][2474]["publication_state"] == "UNKNOWN"
 
@@ -184,3 +184,77 @@ def test_an_unknown_verdict_never_reads_as_merge(tmp_path):
 def test_ci_evidence_carries_the_contract_as_of_field(tmp_path):
     ci = rc.build(_ledger(tmp_path, _ci(at="2026-11-02T17:30:00Z")), _claims(tmp_path), [_pr()], now=NOW)["work"][2474]["ci"]
     assert ci["as_of"] == "2026-11-02T17:30:00Z" and ci["observed_at"] == ci["as_of"]
+
+
+# ───────────────────────────── BOARD primary agents + worklog (codex, 2026-11-02)
+BOARD_MD = """# COORDINATION BOARD
+
+Updated: 2026-11-02T18:08:30Z by **codex** (x).
+
+## Agents (tmux sessions)
+
+| session | task now | branch / PR | next |
+|---|---|---|---|
+| cc-deepseek-2 | Releases status backend | local 7f76a6030 | finish join |
+| cc-deepseek-4 | Releases frontend | #2484 | cards |
+
+## Open PRs
+"""
+
+
+def _board(tmp_path: Path, text: str = BOARD_MD) -> Path:
+    """BOARD.md sits beside ledger.jsonl in the real layout, so the fixtures do too."""
+    p = tmp_path / "BOARD.md"
+    p.write_text(text, encoding="utf-8")
+    return p
+
+
+def test_the_primary_agent_list_comes_from_the_board_table(tmp_path):
+    board = _board(tmp_path)
+    out = rc.build(tmp_path / "ledger.jsonl", tmp_path / "no-claims", [_pr()], now=NOW)
+    sessions = [a["session"] for a in out["agents"]]
+    assert sessions == ["cc-deepseek-2", "cc-deepseek-4"]      # exactly the BOARD rows, no hardcoded list
+    assert all(a["execution_state"] == "UNKNOWN" for a in out["agents"])  # assigned is not working
+    assert all(a["as_of"] == "2026-11-02T18:08:30Z" for a in out["agents"])  # BOARD's own updated time
+
+
+def test_historical_claims_are_not_listed_as_agents(tmp_path):
+    board = _board(tmp_path)
+    claims = _claims(tmp_path, *[{"session": f"s{i}", "branch": f"wt/{i}", "task": "t", "status": "active"}
+                                 for i in range(145)])
+    out = rc.build(tmp_path / "ledger.jsonl", claims, [_pr()], now=NOW)
+    assert [a["session"] for a in out["agents"]] == ["cc-deepseek-2", "cc-deepseek-4"]
+
+
+def test_a_board_session_with_a_live_claim_shows_working(tmp_path):
+    board = _board(tmp_path)
+    claims = _claims(tmp_path, {"session": "cc-deepseek-2", "branch": "wt/x", "task": "t", "status": "active",
+                                "claim_id": "c0", "heartbeat_at": "2026-11-02T17:40:00Z"})
+    agents = {a["session"]: a for a in rc.build(tmp_path / "ledger.jsonl", claims, [_pr()], now=NOW)["agents"]}
+    assert agents["cc-deepseek-2"]["execution_state"] == "working"
+    assert agents["cc-deepseek-4"]["execution_state"] == "UNKNOWN"
+
+
+def test_a_worklog_supplies_blocker_and_next_when_the_claim_doc_does_not(tmp_path):
+    board = _board(tmp_path)
+    claims = _claims(tmp_path, {"session": "cc-deepseek-2", "branch": "wt/x", "task": "t", "status": "active",
+                                "claim_id": "c0", "head_sha": HEAD})
+    (claims / "c0.worklog.md").write_text("# w\n\nBlockers: waiting on grant\nNext: push then review\n", encoding="utf-8")
+    work = rc.build(tmp_path / "ledger.jsonl", claims, [_pr()], now=NOW)["work"][2474]
+    assert work["blockers"] == ["waiting on grant"]
+    assert work["next_action"].startswith("push then review")
+
+
+def test_a_worklog_outside_the_coordination_root_is_refused(tmp_path):
+    root = tmp_path / "coord"; root.mkdir()
+    outside = tmp_path / "elsewhere.md"; outside.write_text("Next: push\n", encoding="utf-8")
+    data, gap = rc.read_worklog(outside, root)
+    assert gap == "worklog_unsafe_path" and data["next_action"] is None
+
+
+def test_a_truncated_worklog_says_so(tmp_path):
+    root = tmp_path / "coord"; root.mkdir()
+    big = root / "c0.worklog.md"
+    big.write_text("# w\n" + ("x" * (rc.WORKLOG_TAIL_BYTES + 10)) + "\nNext: push\n", encoding="utf-8")
+    data, gap = rc.read_worklog(big, root)
+    assert data["truncated"] is True and gap == "worklog_truncated"

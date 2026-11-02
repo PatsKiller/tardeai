@@ -210,6 +210,89 @@ def is_live(doc: Mapping[str, Any]) -> bool:
     return state not in ENDED_STATES
 
 
+# ───────────────────────────────────────────── bounded local reads (codex, 2026-11-02)
+#: Explicit limits: a worklog tail, the whole ledger, and a cap on how many files are opened.
+WORKLOG_TAIL_BYTES = 64 * 1024
+LEDGER_MAX_BYTES = 2 * 1024 * 1024
+MAX_WORKLOGS = 64
+
+
+def _safe_under(root: Path, path: Path) -> bool:
+    """Refuse symlinks and anything that escapes the coordination root."""
+    try:
+        path.resolve().relative_to(Path(root).resolve())
+    except (OSError, ValueError):
+        return False
+    return not path.is_symlink()
+
+
+def read_board(board_path: Path, root: Path) -> tuple[dict[str, Any], Optional[str]]:
+    """Primary agents from the BOARD's documented '## Agents' table, with the BOARD's own updated time."""
+    if not _safe_under(root, board_path):
+        return {"agents": [], "updated_at": None}, "board_unsafe_path"
+    try:
+        text = board_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {"agents": [], "updated_at": None}, "board_absent"
+    except OSError as exc:
+        return {"agents": [], "updated_at": None}, f"board_unreadable:{type(exc).__name__}"
+    updated = None
+    for line in text.splitlines()[:6]:
+        if line.lower().startswith("updated:"):
+            updated = line.split(":", 1)[1].strip().split(" by ")[0].strip() or None
+            break
+    rows: list[dict[str, Any]] = []
+    in_table = False
+    for line in text.splitlines():
+        if line.strip().lower().startswith("## agents"):
+            in_table = True
+            continue
+        if in_table and line.startswith("## "):
+            break
+        if not in_table or not line.strip().startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 4 or cells[0].lower() == "session" or set(cells[0]) <= {"-", ":"}:
+            continue
+        rows.append({
+            "session": cells[0],
+            "task": cells[1] or UNKNOWN,
+            "branch_or_pr": cells[2] or UNKNOWN,
+            "next_action": cells[3] or UNKNOWN,
+            "state": "assigned",          # the BOARD says who was assigned, not who is executing now
+            "as_of": updated,
+            "source": "board",
+        })
+    return {"agents": rows, "updated_at": updated}, None
+
+
+def read_worklog(worklog_path: Path, root: Path) -> tuple[dict[str, Any], Optional[str]]:
+    """Blocker/next from a claim's worklog TAIL, bounded; a truncated read says so."""
+    if not _safe_under(root, worklog_path):
+        return {"blocker": None, "next_action": None}, "worklog_unsafe_path"
+    try:
+        size = worklog_path.stat().st_size
+        with open(worklog_path, "rb") as f:
+            if size > WORKLOG_TAIL_BYTES:
+                f.seek(size - WORKLOG_TAIL_BYTES)
+            text = f.read().decode("utf-8", errors="replace")
+    except FileNotFoundError:
+        return {"blocker": None, "next_action": None}, "worklog_absent"
+    except OSError as exc:
+        return {"blocker": None, "next_action": None}, f"worklog_unreadable:{type(exc).__name__}"
+    blocker = next_action = None
+    for line in reversed(text.splitlines()):
+        low = line.lower()
+        if next_action is None and ("next:" in low or "**next:**" in low):
+            next_action = line.split(":", 1)[1].strip()[:300] or None
+        if blocker is None and "blocker" in low:
+            blocker = line.split(":", 1)[-1].strip()[:300] or None
+        if blocker and next_action:
+            break
+    gap = "worklog_truncated" if size > WORKLOG_TAIL_BYTES else None
+    return {"blocker": blocker, "next_action": next_action, "truncated": bool(gap)}, gap
+
+
 def agent_rows(claims: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
     rows = []
     seen: set[str] = set()
@@ -223,6 +306,7 @@ def agent_rows(claims: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
         seen.add(key)
         rows.append({
             "session": doc.get("session"),
+            "claim_id": doc.get("claim_id"),
             "task": doc.get("task"),
             "state": doc.get("_state") or doc.get("status") or doc.get("state") or doc.get("stage"),
             "branch": doc.get("branch"),
@@ -242,10 +326,31 @@ def build(ledger_path: Path, claims_dir: Path, prs: Iterable[Mapping[str, Any]],
     captured_at = _iso(now or datetime.now(timezone.utc))
     events, ledger_gap = read_ledger(ledger_path)
     claims, claims_gap = read_claims(claims_dir)
-    agents = agent_rows(claims)
+    live = agent_rows(claims)
 
-    gaps = [g for g in (ledger_gap, claims_gap) if g]
-    by_branch = {a["branch"]: a for a in agents if a.get("branch")}
+    root = ledger_path.parent
+    board, board_gap = read_board(root / "BOARD.md", root)
+    gaps = [g for g in (ledger_gap, claims_gap, board_gap) if g]
+
+    # PRIMARY list = the BOARD's documented current rows (never a hardcoded set). A BOARD row is
+    # "assigned", not "working": execution state stays UNKNOWN unless a claim proves otherwise.
+    by_session = {a["session"]: a for a in live if a.get("session")}
+    agents = []
+    for row in board["agents"]:
+        claim = by_session.get(row["session"]) or {}
+        agents.append({
+            **row,
+            "branch": claim.get("branch") or row["branch_or_pr"],
+            "pr": claim.get("pr"),
+            "execution_state": "working" if claim else UNKNOWN,
+            "claim_as_of": claim.get("as_of"),
+            "source": "board" if not claim else "board+claims",
+        })
+    if not agents:            # no readable BOARD: fall back to live claims, and say so
+        agents = [{**a, "execution_state": "working", "branch_or_pr": a.get("branch")} for a in live[:20]]
+    # Per-PR ownership comes from the CLAIMS (they carry the claim id the worklog is keyed by), while the
+    # primary agent list above is BOARD context. Mixing the two lost the worklog lookup.
+    by_branch = {a["branch"]: a for a in live if a.get("branch")}
 
     work: dict[int, dict[str, Any]] = {}
     for pr in prs:
@@ -253,6 +358,11 @@ def build(ledger_path: Path, claims_dir: Path, prs: Iterable[Mapping[str, Any]],
         head = str(pr.get("head_sha") or "")
         evidence = evidence_for_pr(events, number, head)
         owner = by_branch.get(str(pr.get("branch") or ""))
+        wl = None
+        if owner and owner.get("claim_id"):
+            wl, wl_gap = read_worklog(claims_dir / f"{owner['claim_id']}.worklog.md", claims_dir)
+            if wl_gap and wl_gap not in gaps:
+                gaps.append(wl_gap)
         local_head = str(owner.get("head_sha") or "") if owner else ""
         # A head difference is NOT proof of unpublished work: the claim's head is often stale (recorded
         # hours ago) while the push has since landed. Only an equal head is provable; anything else is
@@ -274,8 +384,8 @@ def build(ledger_path: Path, claims_dir: Path, prs: Iterable[Mapping[str, Any]],
             "published_head": head or None,
             "review": review,
             "ci": ci,
-            "blockers": [b for b in [(owner or {}).get("blocker")] if b],
-            "next_action": (owner or {}).get("next_action") or UNKNOWN,
+            "blockers": [b for b in [(owner or {}).get("blocker"), (wl or {}).get("blocker")] if b],
+            "next_action": (wl or {}).get("next_action") or (owner or {}).get("next_action") or UNKNOWN,
             "as_of": _newest([(owner or {}).get("as_of"), review.get("as_of"), ci.get("as_of")]) or captured_at,
             "source": "claims+coordinator_ledger" if owner and not gaps else ("claims" if owner else "none"),
         }
