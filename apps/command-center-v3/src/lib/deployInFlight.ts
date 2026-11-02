@@ -132,9 +132,20 @@ export type DeployInFlightWire = {
 }
 
 export function shortSha(sha: string | null | undefined): string {
-  const s = String(sha ?? '').trim()
+  const s = asString(sha).trim()
   return s ? s.slice(0, 9) : '—'
 }
+
+/**
+ * A JSON value → a primitive string WITHOUT coercing an object. `String({toString: "x"})` throws
+ * "Cannot convert object to primitive value", so every untrusted state/word goes through this guard at
+ * normalization time — before any String(), trim() or toUpperCase() can reach it.
+ */
+const asString = (v: unknown): string =>
+  typeof v === 'string' ? v
+    : typeof v === 'number' ? (Number.isFinite(v) ? String(v) : '')
+      : typeof v === 'boolean' ? String(v)
+        : ''
 
 const asText = (v: unknown): string | null => {
   if (typeof v !== 'string') return null
@@ -146,7 +157,7 @@ const asText = (v: unknown): string | null => {
 export function normalizeMergeable(v: unknown): Mergeable {
   if (v === true) return 'MERGEABLE'
   if (v === false) return 'CONFLICTING'
-  const s = String(v ?? '').trim().toUpperCase()
+  const s = asString(v).trim().toUpperCase()
   if (s === 'MERGEABLE') return 'MERGEABLE'
   if (s === 'CONFLICTING') return 'CONFLICTING'
   return 'UNKNOWN'
@@ -191,7 +202,7 @@ export function normalizeFactor<S extends string>(
     ({ state: 'UNKNOWN', reported: null, head_sha: null, as_of: null, as_of_basis: null, source: null, reason, ...extra })
   if (!raw || typeof raw !== 'object') return unknown(`no typed ${label} receipt`)
   const r = raw as Record<string, unknown>
-  const reportedRaw = String(r.state ?? '').trim().toUpperCase()
+  const reportedRaw = asString(r.state).trim().toUpperCase()
   const reported = reportedRaw || null
   const head = asText(r.head_sha)
   const { as_of, as_of_basis } = pickAsOf(r)
@@ -203,7 +214,7 @@ export function normalizeFactor<S extends string>(
   if (!head) return { ...unknown(`${label} receipt names no head`, base) }
   if (head !== rowHead) return { ...unknown(`head_changed: receipt ${shortSha(head)} ≠ row ${shortSha(rowHead)}${gap ? ` (${gap})` : ''}`, base) }
   if (!reported || !allowed.includes(reported as S)) {
-    return { ...unknown(`unrecognised ${label} state ${reported ? `"${reportedRaw}"` : '(missing)'}`, base) }
+    return { ...unknown(`unrecognised ${label} state ${reported ? `"${reportedRaw}"` : '(missing or non-text value)'}`, base) }
   }
   if (gap) return { ...unknown(gap, base) }
   return { state: reported as S, ...base, reason: null }
@@ -238,7 +249,7 @@ export function normalizeReview(raw: unknown, rowHead: string): Factor<ReviewSta
   if (envelopeHead && envelopeHead !== rowHead) {
     return unknown(`head_changed: review envelope ${shortSha(envelopeHead)} ≠ row ${shortSha(rowHead)}`, { head_sha: envelopeHead, as_of, as_of_basis, source })
   }
-  if (!listed && String(r.state ?? '').toUpperCase() === 'UNKNOWN' && gap) {
+  if (!listed && asString(r.state).toUpperCase() === 'UNKNOWN' && gap) {
     return unknown(gap, { head_sha: envelopeHead, as_of, as_of_basis, source })
   }
 
@@ -247,7 +258,7 @@ export function normalizeReview(raw: unknown, rowHead: string): Factor<ReviewSta
     let unrecognised = 0
     for (const v of listed) {
       const o = (v && typeof v === 'object' ? v : { verdict: v }) as Record<string, unknown>
-      const word = String(o.verdict ?? o.state ?? '').trim().toUpperCase()
+      const word = asString(o.verdict ?? o.state).trim().toUpperCase()
       const st = VERDICT[word]
       if (!st) { unrecognised++; continue }               // remembered, never silently dropped
       const head = asText(o.head_sha) ?? envelopeHead
@@ -265,7 +276,7 @@ export function normalizeReview(raw: unknown, rowHead: string): Factor<ReviewSta
     const verdicts = [...latest.values()]
     const blocks = verdicts.filter(v => v.verdict === 'CHANGES')
     const merges = verdicts.filter(v => v.verdict === 'MERGE')
-    const envelope = String(r.state ?? '').trim().toUpperCase()
+    const envelope = asString(r.state).trim().toUpperCase()
     // BLOCK dominates — including a backend that reports blocked while its records disagree.
     const envelopeBlocked = ['BLOCK', 'BLOCKED', 'CHANGES', 'CHANGES_REQUESTED', 'REJECT'].includes(envelope)
     // Beyond that, a mixed or unrecognised set is UNKNOWN — never MERGE from the survivors alone, and never
@@ -311,7 +322,7 @@ export function normalizeWork(raw: unknown, rowHead: string): WorkBlock {
     return emptyWork('work facts not in this response (backend predates the work block)')
   }
   const w = raw as Record<string, unknown>
-  const pub = String(w.publication_state ?? '').trim().toLowerCase()
+  const pub = asString(w.publication_state).trim().toLowerCase()
   const publication = (PUBLICATION as string[]).includes(pub) ? (pub as PublicationState) : 'unknown'
   return {
     present: true,
@@ -336,19 +347,19 @@ export function normalizeWork(raw: unknown, rowHead: string): WorkBlock {
  *  A null or non-object member is rejected by the caller; anything object-shaped is projected defensively. */
 export function normalizeRow(raw: unknown): InFlightPr {
   const pr = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
-  const rawHead = String(pr.head_sha ?? pr.headRefOid ?? '')
+  const rawHead = asString(pr.head_sha ?? pr.headRefOid)
   const head = rawHead.trim()
-  const legacy = String(pr.next ?? '').trim() as LegacyNext
+  const legacy = asString(pr.next).trim() as LegacyNext
   return {
     number: Number(pr.number ?? 0),
-    title: String(pr.title ?? ''),
-    url: String(pr.url ?? ''),
+    title: asString(pr.title),
+    url: asString(pr.url),
     head_sha: head,
     head_sha_short: head ? head.slice(0, 9) : '—',
-    branch: String(pr.branch ?? pr.headRefName ?? ''),
+    branch: asString(pr.branch ?? pr.headRefName),
     has_operator_merge: pr.has_operator_merge === true,
     mergeable: normalizeMergeable(pr.mergeable),
-    merge_state: String(pr.merge_state ?? pr.mergeStateStatus ?? '').toUpperCase() || 'UNKNOWN',
+    merge_state: asString(pr.merge_state ?? pr.mergeStateStatus).toUpperCase() || 'UNKNOWN',
     is_draft: pr.is_draft === true || pr.isDraft === true,
     why_held: asText(pr.why_held),
     next: (['auto-merge', 'coordinator', 'auto-rebase', 'blocked-shard-hints'] as string[]).includes(legacy) ? legacy : 'coordinator',
@@ -432,7 +443,7 @@ const FUTURE_TOLERANCE_MS = 5 * 60_000
  * backend that hardcodes `working` for a stale or heartbeat-less claim cannot make the page say so.
  */
 export function executionState(raw: unknown, asOf: string | null, nowMs: number): { state: AgentState | null; reason: string | null } {
-  const word = String(raw ?? '').trim().toUpperCase()
+  const word = asString(raw).trim().toUpperCase()
   if (!word || word === 'UNKNOWN') return { state: null, reason: null }
   const claimsWorking = word === 'WORKING' || word === 'IN_PROGRESS' || word === 'ACTIVE'
   if (!claimsWorking) return { state: AGENT_STATE_MAP[word] ?? null, reason: null }
@@ -452,7 +463,7 @@ export function normalizeCoordination(raw: unknown, nowMs: number = Date.now()):
   }
   if (!raw || typeof raw !== 'object') return missing
   const c = raw as Record<string, unknown>
-  const status = String(c.status ?? '').trim().toUpperCase()
+  const status = asString(c.status).trim().toUpperCase()
   const known = status === 'OK' || status === 'PARTIAL' || status === 'UNAVAILABLE' ? status : 'UNAVAILABLE'
   const agentsRaw = Array.isArray(c.agents) ? c.agents : []
   // One row per session: keep the newest as_of and say how many rows were folded, so a duplicate claim
@@ -464,12 +475,12 @@ export function normalizeCoordination(raw: unknown, nowMs: number = Date.now()):
     const o = a as Record<string, unknown>
     const session = asText(o.session)
     if (!session) continue
-    const reportedRaw = String(o.state ?? '').trim()
+    const reportedRaw = asString(o.state).trim()
     const st = reportedRaw.toUpperCase()
     // Execution is proven by the CLAIM's own heartbeat. On a BOARD row `as_of` is the BOARD's updated-at,
     // so using it would make a five-day-old claim look fresh (independent review, 2026-11-02).
     const claimAsOf = asText(o.claim_as_of)
-    const sourceWord = String(o.source ?? '').trim().toLowerCase()
+    const sourceWord = asString(o.source).trim().toLowerCase()
     const heartbeat = claimAsOf ?? (sourceWord === 'claims' ? asText(o.as_of) : null)
     const { state: exec, reason: execReason } = executionState(o.execution_state, heartbeat, nowMs)
     const mapped = AGENT_STATE_MAP[st] ?? ((AGENT_STATES as string[]).includes(st.toLowerCase()) ? (st.toLowerCase() as AgentState) : 'unknown')

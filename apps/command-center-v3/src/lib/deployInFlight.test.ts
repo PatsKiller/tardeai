@@ -278,5 +278,21 @@ eq('normalizeRows counts what it dropped', normalizeRows([null, { number: 3 }, u
 eq('normalizeRows keeps the survivors', normalizeRows([null, { number: 3 }, undefined, { number: 4 }]).rows.map(r => r.number).join(','), '3,4')
 eq('a whole non-array is empty, not a crash', normalizeRows(null).rows.length, 0)
 
+// The exact payload from the independent review: an object with a non-callable toString as review.state.
+// String() on it throws "Cannot convert object to primitive value"; every coercion is guarded at normalization.
+const evil = { toString: 'Synthetic malformed JSON value' }
+let threw: unknown = null
+let ew: ReturnType<typeof normalizeWork> | null = null
+try { ew = normalizeWork({ review: { state: evil, head_sha: HEAD }, ci: { state: evil, head_sha: HEAD } }, HEAD) } catch (e) { threw = e }
+eq('object-valued state does not throw', threw, null)
+eq('and the review is UNKNOWN', ew?.review.state, 'UNKNOWN')
+eq('and the CI is UNKNOWN', ew?.ci.state, 'UNKNOWN')
+eq('mergeable objects are UNKNOWN, not coerced', normalizeMergeable(evil), 'UNKNOWN')
+eq('a whole object-valued row projects', normalizeRow({ number: 1, title: evil, head_sha: evil, mergeable: evil, merge_state: evil, next: evil }).merge_state, 'UNKNOWN')
+eq('object-valued agent state is unknown', normalizeCoordination({ status: 'OK', agents: [{ session: 'x', state: evil, execution_state: evil }] }).agents[0].state, 'unknown')
+const evilWire = normalizeRows([{ number: 4001, head_sha: HEAD, title: 't', work: { review: { state: evil, head_sha: HEAD } } }])
+eq('the board payload still projects its row', evilWire.rows.length, 1)
+eq('with the review UNKNOWN', evilWire.rows[0].work.review.state, 'UNKNOWN')
+
 console.log(`deployInFlight: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)
