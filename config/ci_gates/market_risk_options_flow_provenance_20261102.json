@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_options_flow_provenance_20261102",
+  "files": [
+    "tests/test_market_risk_options_flow_provenance_20261102.py"
+  ],
+  "anchor": "MARKET_RISK_OPTIONS_FLOW_PROVENANCE_20261102",
+  "comment": [
+    "ANCHOR: MARKET_RISK_OPTIONS_FLOW_PROVENANCE_20261102 — options-flow category provenance (audit 2026-11-02, D1):",
+    "the contributor carries the evidence time of the reading it shows (Friday's QQQ while Monday's collection",
+    "failed), each symbol's latest row is gated on its own currency, missing/expired inputs are UNKNOWN (never",
+    "zero), and decay derives from the inputs that determine the state. Hermetic: synthetic fixture reader, no",
+    "DB/network; no threshold or missed_slots_allowed change."
+  ]
+}
