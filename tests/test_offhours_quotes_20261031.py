@@ -248,16 +248,20 @@ def _same_day_on(cfg):
     return {**cfg, "schwab": {**cfg["schwab"], "settle_same_day_reference": True}}
 
 
+def _ref(value):
+    """An independent stored reference for any (symbol, date), or None to model 'no reference exists'."""
+    return None if value is None else (lambda _sym, _date: value)
+
+
 def test_a_settlement_dated_on_the_print_day_is_used_for_futures(cfg):
-    """Live 2026-11-01: Schwab dated the futures close to the PRINT's own day (2026-11-01), not the 2026-10-30
-    reference session, so every futures overnight print read level-only. The close is still the provider's last
-    close for the contract; it is accepted under its own basis label, never silently as a same-date close."""
+    """Live 2026-11-01: Schwab dated the futures close to the PRINT's own day, not the 2026-10-30 reference
+    session. It is accepted only because an INDEPENDENT stored reference for that session agrees — the provider's
+    own netChange is derived from the same close and can never corroborate it."""
     now = _t("2026-11-02T02:30:00-05:00")
     p = {"/ESZ26": {"assetMainType": "FUTURE", "quote": {"lastPrice": 7649.75, "closePrice": 7612.0,
-                                                          "netChange": 37.75,
                                                           "tradeTime": _ms("2026-11-02T02:28:00-05:00"),
                                                           "settleTime": _ms("2026-11-01T16:00:00-05:00")}}}
-    rows, skipped = oq.schwab_rows(p, now, _same_day_on(cfg))
+    rows, skipped = oq.schwab_rows(p, now, _same_day_on(cfg), reference_lookup=_ref(7612.0))
     assert skipped == []
     r = rows[0]
     assert r["symbol"] == "/ES" and r["reference_close"] == 7612.0
@@ -267,37 +271,42 @@ def test_a_settlement_dated_on_the_print_day_is_used_for_futures(cfg):
     assert validate(r) is None
 
 
-def test_a_stale_close_with_a_fresh_stamp_is_level_only(cfg):
-    """Coordinator review of #2485: Schwab's settleTime is not trustworthy (it stamped a Sunday), so a fresh stamp
-    cannot prove a fresh close. A Thursday close carried into Monday 01:00 must not read as a -2.5% STRESS."""
+def test_a_stale_close_with_a_fresh_stamp_and_consistent_netchange_is_level_only(cfg):
+    """Round-2 review of #2485: Schwab derives netChange from the same closePrice, so a stale Thursday close and a
+    'consistent' netChange (-700) agree by construction. The independent stored reference is what refuses it."""
     p = {"/NQZ26": {"assetMainType": "FUTURE", "quote": {"lastPrice": 25000.0, "closePrice": 25700.0,
-                                                          "netChange": 0.25,
+                                                          "netChange": -700.0,
                                                           "tradeTime": _ms("2026-11-02T01:00:00-05:00"),
                                                           "settleTime": _ms("2026-11-02T00:30:00-05:00")}}}
-    rows, skipped = oq.schwab_rows(p, _t("2026-11-02T01:05:00-05:00"), _same_day_on(cfg))
+    rows, skipped = oq.schwab_rows(p, _t("2026-11-02T01:05:00-05:00"), _same_day_on(cfg),
+                                   reference_lookup=_ref(25000.0))
     assert skipped == [] and rows[0]["symbol"] == "/NQ"
     assert rows[0]["reference_close"] is None and rows[0]["reference_date"] is None
-    assert "inconsistent with lastPrice - netChange" in rows[0]["level_only_reason"]
+    assert "differs from the independent stored reference" in rows[0]["level_only_reason"]
     assert validate(rows[0]) is None  # level-only rows are storable; the engine reads them as not measured
 
 
-def test_a_same_day_close_without_netchange_stays_level_only(cfg):
-    """Fail closed: no netChange in the payload means the fresh stamp cannot be corroborated."""
+def test_a_same_day_close_without_a_stored_reference_stays_level_only(cfg):
+    """Fail closed: no independent reference means the fresh stamp cannot be corroborated."""
     p = {"/ESZ26": {"assetMainType": "FUTURE", "quote": {"lastPrice": 7649.75, "closePrice": 7612.0,
                                                           "tradeTime": _ms("2026-11-02T02:28:00-05:00"),
                                                           "settleTime": _ms("2026-11-01T16:00:00-05:00")}}}
-    rows, skipped = oq.schwab_rows(p, _t("2026-11-02T02:30:00-05:00"), _same_day_on(cfg))
+    rows, skipped = oq.schwab_rows(p, _t("2026-11-02T02:30:00-05:00"), _same_day_on(cfg), reference_lookup=_ref(None))
     assert rows[0]["reference_close"] is None
-    assert "no lastPrice/netChange to corroborate" in rows[0]["level_only_reason"]
+    assert "no independent stored reference exists" in rows[0]["level_only_reason"]
+    # and a lookup that raises is treated as "no reference", never a guess
+    def boom(_s, _d):
+        raise RuntimeError("db down")
+    rows, skipped = oq.schwab_rows(p, _t("2026-11-02T02:30:00-05:00"), _same_day_on(cfg), reference_lookup=boom)
+    assert rows[0]["reference_close"] is None
 
 
 def test_a_close_within_the_tolerance_is_measured(cfg):
     """Rounding differences within the configured tolerance still measure."""
     p = {"/ESZ26": {"assetMainType": "FUTURE", "quote": {"lastPrice": 7649.75, "closePrice": 7612.0,
-                                                          "netChange": 37.8,
                                                           "tradeTime": _ms("2026-11-02T02:28:00-05:00"),
                                                           "settleTime": _ms("2026-11-01T16:00:00-05:00")}}}
-    rows, skipped = oq.schwab_rows(p, _t("2026-11-02T02:30:00-05:00"), _same_day_on(cfg))
+    rows, skipped = oq.schwab_rows(p, _t("2026-11-02T02:30:00-05:00"), _same_day_on(cfg), reference_lookup=_ref(7612.05))
     assert rows[0]["reference_close"] == 7612.0
     assert rows[0]["reference_basis"] == "schwab_quote_close_price_settle_same_day"
 
@@ -308,16 +317,15 @@ def test_the_same_day_rule_is_off_when_the_key_is_absent(cfg):
     p = {"/ESZ26": {"assetMainType": "FUTURE", "quote": {"lastPrice": 7649.75, "closePrice": 7612.0,
                                                           "tradeTime": _ms("2026-11-02T02:28:00-05:00"),
                                                           "settleTime": _ms("2026-11-01T16:00:00-05:00")}}}
-    rows, skipped = oq.schwab_rows(p, _t("2026-11-02T02:30:00-05:00"), legacy)
+    rows, skipped = oq.schwab_rows(p, _t("2026-11-02T02:30:00-05:00"), legacy, reference_lookup=_ref(7612.0))
     assert rows[0]["reference_close"] is None and rows[0]["reference_basis"].startswith("none_level_only")
 
 
 def test_an_index_settlement_dated_on_the_print_day_is_used(cfg):
     p = {"$SPX": {"assetMainType": "INDEX", "quote": {"lastPrice": 6800.0, "closePrice": 6790.0,
-                                                       "netChange": 10.0,
                                                        "tradeTime": _ms("2026-11-02T02:28:00-05:00"),
                                                        "settleTime": _ms("2026-11-01T16:00:00-05:00")}}}
-    rows, skipped = oq.schwab_rows(p, _t("2026-11-02T02:30:00-05:00"), _same_day_on(cfg))
+    rows, skipped = oq.schwab_rows(p, _t("2026-11-02T02:30:00-05:00"), _same_day_on(cfg), reference_lookup=_ref(6790.0))
     assert skipped == [] and rows[0]["symbol"] == "$SPX"
     assert rows[0]["reference_close"] == 6790.0 and str(rows[0]["reference_date"]) == "2026-10-30"
     assert rows[0]["reference_basis"] == "schwab_quote_close_price_settle_same_day"

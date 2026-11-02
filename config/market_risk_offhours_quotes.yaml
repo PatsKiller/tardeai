@@ -61,13 +61,19 @@ schwab:
   # older than the reference and never newer than the print; equities are never widened. Set false to refuse it again
   # (futures then stay level-only and unmeasured); the value must be a real boolean and the label below must exist.
   #
-  # A fresh STAMP does not prove a fresh close: Schwab stamped a settle 2026-11-01, a Sunday, and CME does not settle
-  # on Sundays. A same-day-dated close is therefore accepted ONLY when the payload's own netChange corroborates it:
-  # |(quote.lastPrice - quote.netChange) - quote.closePrice| <= max(tolerance_abs, tolerance_pct% of closePrice).
-  # Missing netChange, or a disagreement, keeps the row LEVEL ONLY (not measured, and therefore unable to page on a
-  # phantom move). Coordinator review of #2485, 2026-11-02.
+  # A fresh STAMP does not prove a fresh close (Schwab stamped a Sunday, when CME does not settle), and the provider
+  # derives netChange FROM that same close, so it cannot corroborate itself (round-2 review of #2485, 2026-11-02). A
+  # same-day-dated close is accepted ONLY when an INDEPENDENT stored reference for the session date agrees within
+  # max(tolerance_abs, tolerance_pct% of closePrice). reference_symbols names the independent feed's symbol per root
+  # (read from market_ohlcv_bars daily bars). No reference, or a disagreement, keeps the row LEVEL ONLY (not
+  # measured, so a stale close with a fresh stamp can never page on a phantom move).
   same_day_reference_tolerance_pct: 0.25
   same_day_reference_tolerance_abs: 0.05
+  reference_symbols:
+    "/ES": "ES=F"
+    "/NQ": "NQ=F"
+    "/RTY": "RTY=F"
+    "/YM": "YM=F"
   settle_same_day_reference: true
   dated_reference_basis:
     equity: schwab_regular_market_last_price_dated

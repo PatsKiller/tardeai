@@ -328,6 +328,20 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
     head = f"{worst_sym} {worst:+.1f}% extended" if worst_sym else "opening shock"
     if gap_state is not None and worst_sym in gaps and worst == gaps[worst_sym]["gap_pct"]:
         head = f"{worst_sym} opened {worst:+.1f}% ({gaps[worst_sym]['gap_atr']:+.1f} ATR) vs previous close"
+    # Belt and braces (round-2 review of #2485, 2026-11-02): futures-only evidence may not raise this category above
+    # WARN — and so may not drive a page — unless an index proxy moves the same way by at least the configured
+    # fraction of the futures move. A stale futures close with a fresh stamp then cannot alert on its own.
+    frac = float((cfg.get("futures_confirm") or {}).get("fraction", 0.5))
+    if (state in ("WARN", "STRESS") and worst_sym in futures and worst is not None and worst < 0
+            and not shock.get("shock") and worst_sym not in gaps):
+        confirmed = any(moves.get(p) is not None and moves[p] < 0 and abs(moves[p]) >= frac * abs(worst)
+                        for p in proxies)
+        if not confirmed:
+            state, score = "WARN", min(score, 74.0)
+            head += f" · capped at WARN: no index proxy moved {frac:.0%} of the futures move"
+            evidence.append(Evidence(label="futures-only move not confirmed", value=None, as_of=None,
+                                     source=CATEGORY,
+                                     detail=f"needs an index proxy at >= {frac:.0%} of the futures move ({worst:+.1f}%)"))
     if big:
         head += " · " + ", ".join(big[:3])
     if shock.get("shock"):

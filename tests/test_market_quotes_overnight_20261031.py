@@ -487,18 +487,36 @@ def _eval(rows, now):
     return extended_hours.evaluate(EvalContext(now=now, reader=_Reader(rows), policy=POLICY, session="closed"))
 
 
-def test_fresh_overnight_futures_drop_is_measured():
+def test_fresh_overnight_futures_drop_is_measured_but_capped_without_a_proxy():
+    """Round-2 review of #2485: futures-only evidence is measured but may not exceed WARN, so a stale futures close
+    with a fresh stamp can never page on its own."""
     now = _et(2026, 11, 2, 2, 30)
     obs = _eval([_q("/NQ", now - timedelta(minutes=2), 25300.0, 25700.0)], now)
-    assert obs.state == "STRESS" and "/NQ" in obs.headline  # a real fresh STRESS stands without QQQ/SPY
+    assert obs.state == "WARN" and "/NQ" in obs.headline  # measured, but capped
+    assert "capped at WARN" in obs.headline
     assert obs.evidence[0].label.startswith("/NQ overnight move")
     assert obs.stale_after_hours == pytest.approx(45 / 60)
+
+
+def test_futures_stress_stands_when_an_index_proxy_confirms():
+    now = _et(2026, 11, 2, 2, 30)
+    obs = _eval([_q("/NQ", now - timedelta(minutes=2), 25300.0, 25700.0),
+                 _q("SPY", now - timedelta(minutes=2), 670.0, 680.0)], now)  # -1.47% vs -1.56% futures
+    assert obs.state == "STRESS" and "/NQ" in obs.headline
+    assert "capped at WARN" not in obs.headline
+
+
+def test_a_weak_proxy_does_not_confirm_a_futures_stress():
+    now = _et(2026, 11, 2, 2, 30)
+    obs = _eval([_q("/NQ", now - timedelta(minutes=2), 25300.0, 25700.0),
+                 _q("SPY", now - timedelta(minutes=2), 678.0, 680.0)], now)  # -0.29%, well under half
+    assert obs.state == "WARN" and "capped at WARN" in obs.headline
 
 
 def test_sunday_futures_open_print_is_measured_from_friday_close():
     now = _et(2026, 11, 1, 18, 10)
     obs = _eval([_q("/NQ", _et(2026, 11, 1, 18, 5), 25200.0, 25700.0, "futures_open")], now)
-    assert obs.state == "STRESS" and obs.evidence[0].label.startswith("/NQ futures_open move")
+    assert obs.state == "WARN" and obs.evidence[0].label.startswith("/NQ futures_open move")
     assert "2026-10-30 close" in obs.evidence[0].detail
 
 
