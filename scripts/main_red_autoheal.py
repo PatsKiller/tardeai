@@ -64,9 +64,20 @@ CLASS_INFRASTRUCTURE = "infrastructure"
 CLASS_TEST_FAILURE = "test_failure"
 CLASS_UNKNOWN = "unknown"
 
+#: Real `gh run view --log-failed` lines are "job<TAB>step<TAB><timestamp> FAILED tests/x.py::test".
+#: The earlier patterns anchored on ^FAILED, so a live log matched nothing and no test id was found.
 _TEST_ID_PATTERNS = (
-    re.compile(r"^FAILED\s+(\S+::\S+)"),
-    re.compile(r"^(\S+\.py::\S+)\s+FAILED"),
+    re.compile(r"\bFAILED\s+(\S+::\S+)"),
+    re.compile(r"\b(\S+\.py::\S+)\s+FAILED\b"),
+    re.compile(r"\bERROR\s+(\S+::\S+)"),
+)
+#: Any of these in a failed log means pytest ran and a test failed, whatever infra markers also appear.
+PYTEST_FAILURE_SIGNATURES = (
+    "short test summary info",
+    "assertionerror",
+    "error during collection",
+    "exit after collection",
+    "no tests ran",
 )
 
 
@@ -96,11 +107,14 @@ def classify_failure(conclusion: str, log_text: str, infra_markers: list[str]) -
     shipped config (§28.14), so mis-classifying one as infrastructure would hide it.
     """
     test_ids = extract_test_ids(log_text)
+    lowered = (log_text or "").lower()
     if test_ids:
         return CLASS_TEST_FAILURE, test_ids
+    if any(sig in lowered for sig in PYTEST_FAILURE_SIGNATURES):
+        # A 502/503 line or a step timeout inside a pytest step does not make a test failure infra.
+        return CLASS_TEST_FAILURE, []
     if conclusion in {"startup_failure", "timed_out"}:
         return CLASS_INFRASTRUCTURE, []
-    lowered = (log_text or "").lower()
     if any(marker.lower() in lowered for marker in infra_markers):
         return CLASS_INFRASTRUCTURE, []
     return CLASS_UNKNOWN, []
@@ -199,7 +213,18 @@ def run_cycle(
             receipt["skipped"].append({"run_id": run_id, "workflow": workflow, "reason": "not_completed"})
             continue
         if run.get("conclusion") not in FAILED_CONCLUSIONS:
-            receipt["skipped"].append({"run_id": run_id, "workflow": workflow, "reason": "green"})
+            rec = runs_state.get(run_id) or {}
+            if int(rec.get("attempts") or 0) > 0 and not rec.get("flake_recorded") and not rec.get("escalated"):
+                # The re-run turned the run green: THIS is the flake receipt (it used to be skipped
+                # as "green" before the flake was ever recorded).
+                rec["flake_recorded"] = True
+                rec["last_action"] = ACTION_FLAKE_RECORDED
+                rec["updated_at"] = started_at
+                receipt["actions"].append({"run_id": run_id, "workflow": workflow,
+                                           "action": ACTION_FLAKE_RECORDED, "suspected_flake": True,
+                                           "note": "the re-run passed; recorded as a suspected flake"})
+            else:
+                receipt["skipped"].append({"run_id": run_id, "workflow": workflow, "reason": "green"})
             continue
         action = _handle_red_run(
             config=config, run=run, run_id=run_id, workflow=workflow,
@@ -295,11 +320,14 @@ def _handle_red_run(*, config, run, run_id, workflow, record, gh, state_dir, dry
     if decision == ACTION_RERUN:
         if dry_run:
             return {**base, "action": "would_" + ACTION_RERUN}
-        rc, out = gh(["run", "rerun", run_id, "--failed"])
-        if rc != 0:
-            return {**base, "action": "rerun_failed", "error": (out or "")[:300]}
+        rc, out = gh(["run", "rerun", run_id, "--repo", str(config["repo"]), "--failed"])
+        # Count the attempt even when the call fails: otherwise a broken rerun would be retried on
+        # every cycle, forever.
         record["attempts"] = attempts + 1
         record["last_action"] = ACTION_RERUN
+        if rc != 0:
+            return {**base, "action": "rerun_failed", "attempt": record["attempts"],
+                    "error": (out or "")[:300]}
         return {**base, "action": ACTION_RERUN, "attempt": record["attempts"]}
 
     why = ("re-run failed again" if prior_outcome == "failure"
@@ -309,6 +337,25 @@ def _handle_red_run(*, config, run, run_id, workflow, record, gh, state_dir, dry
         return {**base, "action": "would_" + ACTION_PAGE_AND_DISPATCH, "reason": why}
     return _escalate(config, base, record, run, run_id, workflow, gh, state_dir, dry_run,
                      telegram, issue_writer, infra_markers, now, why=why, log_tail=log)
+
+
+def _page_allowed(state_dir: Path, key: str, now: str, hours: float) -> bool:
+    """Has the cooldown passed since this (commit, check) last paged? Config-driven, fail open on junk."""
+    last = _load_json(state_dir / "pages.json").get(key)
+    if not last:
+        return True
+    try:
+        seen = datetime.fromisoformat(str(last).replace("Z", "+00:00"))
+        cur = datetime.fromisoformat(str(now).replace("Z", "+00:00"))
+        return (cur - seen).total_seconds() >= float(hours) * 3600.0
+    except ValueError:
+        return True
+
+
+def _mark_page(state_dir: Path, key: str, now: str) -> None:
+    pages = _load_json(state_dir / "pages.json")
+    pages[key] = now
+    _write_json(state_dir / "pages.json", pages)
 
 
 def _failed_log(config, gh, run_id: str) -> str:
@@ -420,11 +467,17 @@ def _escalate(config, base, record, run, run_id, workflow, gh, state_dir, dry_ru
     _write_json(request_path, request)
     if bool(config.get("fixer", {}).get("enabled", True)):
         _append_jsonl(state_dir / "fixer_requests.jsonl", request)
-    if bool(config.get("page", {}).get("enabled", True)) and telegram is not None:
+    page_key = f"{run.get('headSha')}:{workflow}"
+    cooldown_h = float((config.get("page") or {}).get("page_cooldown_hours", 6))
+    if (bool(config.get("page", {}).get("enabled", True)) and telegram is not None
+            and _page_allowed(state_dir, page_key, now, cooldown_h)):
         try:
             telegram(text, priority=str(config["page"].get("severity", "P1")))
+            _mark_page(state_dir, page_key, now)
         except Exception as exc:  # noqa: BLE001 - a page failure must not lose the request
             base["page_error"] = f"{type(exc).__name__}: {exc}"
+    elif telegram is not None:
+        base["page_suppressed"] = f"cooldown {cooldown_h:g}h for {page_key}"
     if bool(config.get("flaky_issue", {}).get("enabled")) and issue_writer is not None and failing:
         try:
             base["flaky_issue_url"] = issue_writer(

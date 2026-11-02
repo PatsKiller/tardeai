@@ -18998,7 +18998,7 @@
         "state_since": "2026-11-02",
         "reason_confidence": "PROPOSED",
         "state_reason": "Plan item 4, operator-approved in-session 2026-11-01: when the newest origin/main run of a required workflow is red, a host lane re-runs its failed jobs once (infrastructure failures only - AGENTS.md 28.14 says never a test failure), records a suspected flake when the re-run clears it, and otherwise pages one P1 and writes one Claude Code fixer request. PROPOSED, NOT INSTALLED: adding any new systemd entry is operator-only (AGENTS.md 17); activation was approved conditional on the PR merging with every check green, an independent MERGE review, and a quoted dry-run receipt. The coordinator installs it.",
-        "reason_evidence": "persistent-state/data/coordination/handoffs/PLAN_COLLISION_AUTOMEDIATION_20261101.md item 4; scripts/main_red_autoheal.py; config/main_red_autoheal.json; tests/test_main_red_autoheal_20261102.py",
+        "reason_evidence": "persistent-state/data/coordination/handoffs/PLAN_COLLISION_AUTOREMEDIATION_20261101.md item 4; scripts/main_red_autoheal.py; config/main_red_autoheal.json; tests/test_main_red_autoheal_20261102.py",
         "ruled": false
       },
       "operator_decision_pending": true,

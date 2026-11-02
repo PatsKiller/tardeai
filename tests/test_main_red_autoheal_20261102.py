@@ -68,6 +68,7 @@ class FakeGh:
         self.runs = runs
         self.views = views or {}
         self.logs = logs or {}
+        self.rerun_rc = 0
         self.calls: list[list[str]] = []
 
     def __call__(self, argv):
@@ -80,7 +81,7 @@ class FakeGh:
                 return 0, self.logs.get(run_id, "")
             return 0, json.dumps(self.views.get(run_id, {"conclusion": "failure", "status": "completed"}))
         if argv[:2] == ["run", "rerun"]:
-            return 0, ""
+            return self.rerun_rc, ""
         return 1, f"unexpected gh argv: {argv}"
 
     @property
@@ -342,3 +343,70 @@ def test_main_apply_pages_through_its_own_send_import(tmp_path, monkeypatch):
     assert len(sent) == 1, sent
     assert "main is red" in sent[0][0]
     assert sent[0][1].get("priority") == "P1"
+
+
+# ---------------------------------------------------------------- real-log classification
+TAB = "\t"
+
+
+def real_line(text, ts="2026-11-02T13:35:42.7538000Z", job="shard 5", step="Shard 5 of 8"):
+    """A line in `gh run view --log-failed`'s real shape: job<TAB>step<TAB><timestamp> <text>."""
+    return f"{job}{TAB}{step}{TAB}{ts} {text}"
+
+
+def test_a_tab_prefixed_failed_line_yields_the_test_id():
+    log = "\n".join([
+        real_line("E   AssertionError: assert 56.29 == 62.09"),
+        real_line("FAILED tests/test_price_unit_integrity_20260914.py::test_prev_close_is_the_prior_bar - AssertionError"),
+    ])
+    assert mra.extract_test_ids(log) == ["tests/test_price_unit_integrity_20260914.py::test_prev_close_is_the_prior_bar"]
+    assert mra.classify_failure("failure", log, ["connection reset by peer"])[0] == "test_failure"
+
+
+def test_a_failed_test_plus_an_infra_marker_is_still_a_test_failure():
+    log = "\n".join([
+        real_line("FAILED tests/test_demo.py::test_alpha - AssertionError"),
+        real_line("503 Service Unavailable from the quote API"),
+        real_line("connection reset by peer"),
+    ])
+    failure_class, ids = mra.classify_failure("failure", log, ["Service Unavailable", "connection reset by peer"])
+    assert failure_class == "test_failure" and ids
+
+
+def test_an_assertion_without_ids_is_still_a_test_failure():
+    log = real_line("E   AssertionError: assert [] == [1]")
+    assert mra.classify_failure("failure", log, ["Service Unavailable"])[0] == "test_failure"
+
+
+def test_an_unknown_failure_pages_and_never_reruns(tmp_path):
+    gh = FakeGh([run_json()], logs={"991": "some opaque failure with no signature"})
+    telegram = FakeTelegram()
+    receipt = cycle(tmp_path, gh, telegram=telegram)
+    assert receipt["actions"][0]["failure_class"] == "unknown"
+    assert receipt["actions"][0]["action"] == "page_and_dispatch"
+    assert gh.reruns == []
+
+
+def test_a_failed_rerun_call_still_counts_the_attempt(tmp_path):
+    gh = FakeGh([run_json()], logs={"991": "The runner has received a shutdown signal"})
+    gh.rerun_rc = 1
+    cycle(tmp_path, gh)
+    cycle(tmp_path, gh)
+    assert len(gh.reruns) == 1  # never retried on the next cycle
+
+
+def test_the_page_is_deduped_by_commit_and_check(tmp_path):
+    gh = FakeGh([run_json(run_id="1")], logs={"1": "opaque failure"})
+    telegram = FakeTelegram()
+    cfg = dict(CONFIG, page_events=[])
+    cycle(tmp_path, gh, telegram=telegram)                       # first run: page
+    gh.runs = [run_json(run_id="2")]                             # a second run on the same commit
+    gh.logs = {"2": "opaque failure"}
+    cycle(tmp_path, gh, telegram=telegram)
+    assert len(telegram.sent) == 1  # cooldown by (head sha, workflow), not run id
+
+
+def test_secret_scan_and_codeql_are_watched():
+    cfg = json.loads((REPO_ROOT / "config" / "main_red_autoheal.json").read_text())
+    assert "secret-scan" in cfg["required_workflows"]
+    assert "CodeQL" in cfg["required_workflows"]
