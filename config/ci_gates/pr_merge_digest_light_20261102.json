@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "pr_merge_digest_light_20261102",
+  "files": [
+    "tests/test_pr_merge_digest_light_20261102.py"
+  ],
+  "anchor": "PR_MERGE_DIGEST_LIGHT_20261102",
+  "comment": [
+    "ANCHOR: PR_MERGE_DIGEST_LIGHT_20261102 — the merge digest lists open PRs with cheap fields only and fetches body/statusCheckRollup per candidate PR with a bounded retry and a soft per-PR failure; the ~67-PR GraphQL query that returned 504 from 08:15 can no longer fail the whole run. Hermetic: stubbed gh, no network."
+  ]
+}

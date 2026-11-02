@@ -158,15 +158,59 @@ def _gh_json(args: list[str], default: Any) -> Any:
         raise RuntimeError(f"gh {' '.join(args[:3])} returned non-JSON: {exc}") from exc
 
 
-PR_FIELDS = "number,title,url,headRefOid,isDraft,labels,body,files,changedFiles,statusCheckRollup,baseRefName"
+#: Cheap fields only. Asking for body/files/statusCheckRollup for ~67 open PRs in one GraphQL
+#: query exceeded GitHub's ~10s limit and every run failed 504 from 2026-11-02 08:15; a light list
+#: answers in about a second, and the expensive fields are fetched per candidate PR afterwards.
+PR_LIST_FIELDS = "number,title,url,headRefOid,isDraft,labels,baseRefName,changedFiles"
+PR_DETAIL_FIELDS = "body,statusCheckRollup"
+#: Transient GitHub answers worth one more try (never a 4xx contract error).
+RETRY_HINTS = ("504", "502", "503", "gateway timeout", "timeout", "unexpected end of json", "eof")
 
 
-def list_open_prs(repo: str, limit: int) -> list[dict[str, Any]]:
-    return _gh_json(
+def _gh_retry(args: list[str], cfg: dict[str, Any] | None, *, attempts_key: str, backoff_key: str,
+              default_attempts: int = 3, default_backoff: float = 2.0) -> tuple[int, str]:
+    """``_gh`` with a bounded exponential retry on transient GitHub failures."""
+    cfg = cfg or {}
+    attempts = max(1, int(cfg.get(attempts_key) or default_attempts))
+    backoff = float(cfg.get(backoff_key) or default_backoff)
+    rc, out = 0, ""
+    for i in range(attempts):
+        rc, out = _gh(args)
+        if rc == 0 or not any(hint in (out or "").lower() for hint in RETRY_HINTS) or i == attempts - 1:
+            return rc, out
+        time.sleep(backoff * (2 ** i))
+    return rc, out
+
+
+def list_open_prs(repo: str, limit: int, cfg: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    cfg = cfg if cfg is not None else load_config()
+    rc, out = _gh_retry(
         ["pr", "list", "--repo", repo, "--base", "main", "--state", "open",
-         "--limit", str(int(limit)), "--json", PR_FIELDS],
-        [],
+         "--limit", str(int(limit)), "--json", PR_LIST_FIELDS],
+        cfg, attempts_key="list_retry_attempts", backoff_key="list_retry_backoff_s",
     )
+    if rc != 0:
+        raise RuntimeError(f"gh pr list failed after retries: {out.strip()[:300]}")
+    try:
+        return json.loads(out) if out.strip() else []
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"gh pr list returned non-JSON: {exc}") from exc
+
+
+def enrich_pr(repo: str, pr: dict[str, Any], cfg: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Fetch body + statusCheckRollup for ONE candidate PR; on failure mark it and let the run go on."""
+    rc, out = _gh_retry(
+        ["pr", "view", str(int(pr["number"])), "--repo", repo, "--json", PR_DETAIL_FIELDS],
+        cfg, attempts_key="detail_retry_attempts", backoff_key="detail_retry_backoff_s",
+        default_attempts=2, default_backoff=1.0,
+    )
+    if rc != 0:
+        return {**pr, "_detail_error": (out or "").strip()[:200]}
+    try:
+        detail = json.loads(out or "{}") or {}
+    except json.JSONDecodeError:
+        return {**pr, "_detail_error": "detail view returned non-JSON"}
+    return {**pr, "body": detail.get("body") or "", "statusCheckRollup": detail.get("statusCheckRollup") or []}
 
 
 def pr_all_files(repo: str, number: int) -> list[str]:
@@ -324,7 +368,20 @@ def build_digest(repo: str, cfg: dict[str, Any]) -> dict[str, Any]:
     prs = list_open_prs(repo, int(cfg.get("pr_list_limit") or 100))
     ready, needs, skipped, undescribed = [], [], [], []
     for pr in sorted(prs, key=lambda p: int(p["number"])):
-        it = classify_pr(pr, repo=repo, cfg=cfg)
+        # Cheap filters first: a draft, or a PR already carrying operator-merge, never needs its
+        # expensive fields. Everyone else gets one per-PR view.
+        detail_needed = (
+            not pr.get("isDraft")
+            and "operator-merge" not in label_set(pr)
+            and not ("body" in pr and "statusCheckRollup" in pr)  # a caller already supplied them
+        )
+        row = enrich_pr(repo, pr, cfg) if detail_needed else pr
+        if row.get("_detail_error"):
+            skipped.append({"pr": int(pr["number"]), "title": pr.get("title"), "url": pr.get("url"),
+                            "status": "skip", "reason": "detail_unavailable",
+                            "error": row["_detail_error"]})
+            continue
+        it = classify_pr(row, repo=repo, cfg=cfg)
         {"ready": ready, "needs_operator": needs, "not_described": undescribed}.get(it["status"], skipped).append(it)
     cap = max(1, int(cfg.get("max_ready_per_digest") or 8))
     return {"ready": ready[:cap], "overflow": ready[cap:], "needs_operator": needs, "skipped": skipped,
