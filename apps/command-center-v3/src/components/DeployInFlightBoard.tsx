@@ -173,6 +173,7 @@ function BlockerCell({ p }: { p: InFlightPr }) {
       : <div style={tiny}>{p.work.present ? 'no blocker stated' : 'blockers UNKNOWN — work facts absent'}</div>}
     <div style={{ fontSize: TYPE.sm, color: TOKENS.text[1], marginTop: 2 }}>
       next: <b style={{ color: TOKENS.text[0] }}>{nextActionFor(p)}</b>
+      {p.work.next_action_source ? <span style={tiny}> · from {p.work.next_action_source}</span> : null}
     </div>
   </>
 }

@@ -62,6 +62,10 @@ export type WorkBlock = {
   ci: Factor<CiState>
   blockers: Blocker[]
   next_action: string | null
+  /** Where the next step came from (`worklog`, `claims`, `board_open_prs`, `none`). Display only. */
+  next_action_source: string | null
+  /** The BOARD's Open PRs owner, when the claim board has none. Context, never a verdict. */
+  board_owner: string | null
   as_of: string | null
   source: string | null
   reason: string | null
@@ -159,6 +163,7 @@ function emptyWork(reason: string): WorkBlock {
   const unknown = <S extends string>(r: string): Factor<S> => ({ state: 'UNKNOWN', reported: null, head_sha: null, as_of: null, as_of_basis: null, source: null, reason: r })
   return {
     present: false, owner: null, current_task: null, publication_state: 'unknown', local_head: null, published_head: null,
+    next_action_source: null, board_owner: null,
     review: unknown<ReviewState>(reason), ci: unknown<CiState>(reason), blockers: [], next_action: null,
     as_of: null, source: null, reason,
   }
@@ -186,7 +191,9 @@ export function normalizeFactor<S extends string>(
   const head = asText(r.head_sha)
   const { as_of, as_of_basis } = pickAsOf(r)
   const base = { reported, head_sha: head, as_of, as_of_basis, source: asText(r.source) }
-  const gap = asText(r.source_gap)
+  const gap = asText(r.source_gap) ?? asText(r.gap)
+  // The backend states UNKNOWN and its own gap; that gap is a better reason than "names no head".
+  if (reported === 'UNKNOWN' && gap) return { ...unknown(gap, base) }
   if (!rowHead) return { ...unknown('row head not stated — cannot bind', base) }
   if (!head) return { ...unknown(`${label} receipt names no head`, base) }
   if (head !== rowHead) return { ...unknown(`head_changed: receipt ${shortSha(head)} ≠ row ${shortSha(rowHead)}${gap ? ` (${gap})` : ''}`, base) }
@@ -215,12 +222,15 @@ export function normalizeReview(raw: unknown, rowHead: string): Factor<ReviewSta
   if (!raw || typeof raw !== 'object') return unknown('no typed review receipt')
   const r = raw as Record<string, unknown>
 
-  const listed = Array.isArray(r.verdicts) ? r.verdicts : Array.isArray(r.records) ? r.records : null
+  const listed = Array.isArray(r.records) ? r.records : Array.isArray(r.verdicts) ? r.verdicts : null
   const envelopeHead = asText(r.head_sha)
   const { as_of, as_of_basis } = pickAsOf(r)
   const source = asText(r.source)
-  const gap = asText(r.source_gap)
+  const gap = asText(r.source_gap) ?? asText(r.gap)
   if (!rowHead) return unknown('row head not stated — cannot bind', { head_sha: envelopeHead, as_of, as_of_basis, source })
+  if (!listed && String(r.state ?? '').toUpperCase() === 'UNKNOWN' && gap) {
+    return unknown(gap, { head_sha: envelopeHead, as_of, as_of_basis, source })
+  }
 
   if (listed) {
     const parsed: ReviewVerdict[] = []
@@ -232,9 +242,9 @@ export function normalizeReview(raw: unknown, rowHead: string): Factor<ReviewSta
       const head = asText(o.head_sha) ?? envelopeHead
       if (head !== rowHead) continue                     // a verdict on another head is not this head's review
       const at = asText(o.as_of) ?? asText(o.observed_at)
-      parsed.push({ verdict: st, reviewer: asText(o.reviewer) ?? asText(o.by) ?? asText(o.session) ?? `#${parsed.length}`, head_sha: head, as_of: at, source: asText(o.source) ?? source })
+      parsed.push({ verdict: st, reviewer: asText(o.reviewer) ?? asText(o.reviewer_session) ?? asText(o.by) ?? asText(o.session) ?? `#${parsed.length}`, head_sha: head, as_of: at, source: asText(o.source) ?? source })
     }
-    if (!parsed.length) return unknown(`no verdict on head ${shortSha(rowHead)}`, { head_sha: envelopeHead, as_of, as_of_basis, source })
+    if (!parsed.length) return unknown(gap ?? `no verdict on head ${shortSha(rowHead)}`, { head_sha: envelopeHead, as_of, as_of_basis, source })
     // Latest per reviewer: ledger order decides ties (a later record is appended later).
     const latest = new Map<string, ReviewVerdict>()
     parsed.forEach((v, i) => {
@@ -293,6 +303,8 @@ export function normalizeWork(raw: unknown, rowHead: string): WorkBlock {
     ci: normalizeFactor<CiState>(w.ci, ['GREEN', 'RED', 'PENDING', 'SKIPPED'], rowHead, 'ci'),
     blockers: normalizeBlockers(w.blockers),
     next_action: asText(w.next_action),
+    next_action_source: asText(w.next_action_source),
+    board_owner: asText(w.board_owner),
     as_of: asText(w.as_of),
     source: asText(w.source),
     reason: asText(w.reason),
@@ -423,7 +435,7 @@ export function normalizeCoordination(raw: unknown): CoordinationBlock {
 /** Facts the page shows for one row, all head-bound, for a single testable projection. */
 export function rowFacts(p: InFlightPr) {
   return {
-    owner: p.work.owner ?? 'UNKNOWN · owner not stated',
+    owner: p.work.owner ?? (p.work.board_owner ? `${p.work.board_owner} · BOARD context` : 'UNKNOWN · owner not stated'),
     task: p.work.current_task ?? 'UNKNOWN · task not stated',
     publication: publicationLabel(p.work),
     draft: draftLabel(p),
@@ -431,6 +443,7 @@ export function rowFacts(p: InFlightPr) {
     ci: ciLabel2(p.work.ci),
     blockers: p.work.blockers,
     next: nextActionFor(p),
+    nextSource: p.work.next_action ? (p.work.next_action_source ?? null) : (p.work.present ? 'derived here' : null),
     asOf: p.work.as_of ?? null,
     source: p.work.source ?? null,
   }

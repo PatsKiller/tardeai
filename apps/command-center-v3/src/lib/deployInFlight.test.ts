@@ -197,5 +197,20 @@ eq('the fallback is labelled', ciObserved.as_of_basis, 'observed_at')
 eq('as_of wins when both are present', normalizeFactor<CiState>({ state: 'GREEN', head_sha: HEAD, as_of: '2026-11-02T17:00:00Z', observed_at: '2026-11-02T16:00:00Z' }, ['GREEN'], HEAD, 'ci').as_of, '2026-11-02T17:00:00Z')
 eq('no time is stated as none', normalizeFactor<CiState>({ state: 'GREEN', head_sha: HEAD }, ['GREEN'], HEAD, 'ci').as_of, null)
 
+// The 9a0ae89e work keys: next_action_source, board_owner, and gap (not source_gap) as the honest reason.
+const w9 = normalizeWork({
+  owner: 'UNKNOWN', board_owner: 'cc4', current_task: 'releases frontend', publication_state: 'UNKNOWN',
+  local_head: null, published_head: HEAD, review: { state: 'UNKNOWN', head_sha: null, source: 'none', gap: 'stale_review_for_other_head' },
+  ci: { state: 'UNKNOWN', head_sha: null, source: 'none', gap: 'stale_ci_for_other_head' },
+  blockers: [], next_action: 'land the test fix', next_action_source: 'board_open_prs', as_of: null, source: 'claims',
+}, HEAD)
+eq('board_owner is carried as context', w9.board_owner, 'cc4')
+eq('the next step keeps its source', w9.next_action_source, 'board_open_prs')
+eq('a review gap is the reason, not "names no head"', w9.review.reason, 'stale_review_for_other_head')
+eq('a CI gap is the reason', w9.ci.reason, 'stale_ci_for_other_head')
+eq('an absent source clock stays null', w9.as_of, null)
+eq('BOARD context names the owner without inventing a claim', rowFacts(row({ work: w9 })).owner, 'cc4 · BOARD context')
+eq('a derived next step says so', rowFacts(row({ work: { ...w9, next_action: null, next_action_source: null } })).nextSource, 'derived here')
+
 console.log(`deployInFlight: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

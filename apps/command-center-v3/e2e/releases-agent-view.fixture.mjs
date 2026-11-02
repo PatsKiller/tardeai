@@ -112,7 +112,7 @@ try {
   const cases = [
     { name: 'full', payload: full, widths: [320, 390, 412, 1280] },
     { name: 'old-backend', payload: old, widths: [320, 1280] },
-    ...(backendPayload ? [{ name: 'backend', payload: backendPayload, widths: [320, 390, 412, 1280] }] : []),
+    ...(backendPayload ? [{ name: 'backend', payload: backendPayload, widths: [320, 390, 1440] }] : []),
   ]
   for (const c of cases) {
     for (const width of c.widths) {
@@ -177,19 +177,24 @@ try {
         has('wait for cc2', 'agent next action is visible')
         assert.ok(!/REVIEW · merge requested[^\n]*CI · red/.test(t), 'a blocked/red PR never reads as merge+green')
       } else if (c.name === 'backend') {
-        // The wire produced by the REAL backend projection at the head under review.
-        assert.equal(measure.agentCards, 5, `${c.name}@${width}: BOARD agents rendered`)
-        assert.equal(measure.agentStates.filter(s => s.includes('ASSIGNED')).length, 5,
+        // The wire produced by the REAL backend projection at the head under review (9a0ae89e).
+        assert.equal(measure.agentCards, 17, `${c.name}@${width}: all 17 BOARD agents rendered`)
+        assert.equal(measure.agentStates.filter(s => s.includes('ASSIGNED')).length, 17,
           `${c.name}@${width}: every BOARD agent is ASSIGNED (got ${JSON.stringify(measure.agentStates.map(s => s.slice(0, 60)))})`)
         assert.ok(measure.agentStates.every(s => !s.includes('UNKNOWN')),
           `${c.name}@${width}: no BOARD agent falls back to UNKNOWN`)
-        assert.ok(measure.agentStates.every(s => !s.includes('WORKING')),
-          `${c.name}@${width}: an assignment is never promoted to WORKING`)
+        assert.ok(measure.agentStates.every(s => !s.includes('WORKING ')),
+          `${c.name}@${width}: an assignment is never relabelled WORKING`)
+        assert.equal(measure.agentStates.filter(s => s.includes('execution: working')).length, 1,
+          `${c.name}@${width}: only the fresh 30-minute heartbeat proves execution`)
         has('#2501', 'first PR')
-        has('REVIEW · blocked', 'the BLOCK verdict from the ledger')
+        has('REVIEW · blocked', 'BLOCK dominates a MERGE verdict at the same head')
         has('CI · red', 'the CI observation from the ledger')
-        has('head_changed', 'a verdict recorded for another head is not current')
-        has('fix the BLOCK and re-review', 'the worklog next step is shown')
+        has('stale_review_for_other_head', 'a verdict recorded for another head is not current')
+        has('stale_ci_for_other_head', 'CI recorded for another head is not current')
+        has('land the test fix', 'the BOARD Open PRs next join')
+        has('from board_open_prs', 'the next step states its own source')
+        has('source time not stated', 'a row with no source clock is undated, not stamped with capture time')
         has('mergeability not stated (not auto-rebase)', 'UNKNOWN mergeability is never auto-rebase')
       } else {
         has('UNAVAILABLE · agents/claims not in this response', 'old backend coordination is UNKNOWN')
