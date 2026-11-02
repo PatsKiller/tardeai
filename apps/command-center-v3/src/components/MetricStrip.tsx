@@ -132,7 +132,9 @@ export default function MetricStrip({ onDrill }: Props) {
   const headerState = deriveHeaderFeedState(headerFeeds)
   const headerHasData = headerFeeds.some(f => f.hasData)
   const retryHeaderFeeds = () => {
-    headerFeeds.forEach(f => { if (f.error || f.stale) f.refetch?.() })
+    // A feed with no payload and no error still needs the retry (the unknown
+    // state); a failed or last-good feed does too.
+    headerFeeds.forEach(f => { if (!f.hasData || f.error || f.stale) f.refetch?.() })
   }
   // loading is neutral (nothing is wrong yet); stale/unknown are amber; a failed
   // request with no payload is red. This never borrows the per-tile STALE chip.
