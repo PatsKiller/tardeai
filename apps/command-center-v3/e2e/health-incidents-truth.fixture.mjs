@@ -40,13 +40,20 @@ try {
   for (const width of [1440, 390]) {
     for (const sample of [...healthCases, { name: 'incident' }]) {
       const page = await browser.newPage({ viewport: { width, height: width === 390 ? 844 : 1000 } })
+      await page.addInitScript(clock => {
+        const NativeDate = Date, frozen = NativeDate.parse(clock)
+        globalThis.Date = class extends NativeDate {
+          constructor(...args) { super(...(args.length ? args : [frozen])) }
+          static now() { return frozen }
+        }
+      }, at)
       const external = [], mutations = [], errors = [], reads = []
       page.on('pageerror', e => errors.push(String(e)))
       await page.route('**/*', async route => {
         const req = route.request(), url = new URL(req.url())
         if (req.method() !== 'GET') { mutations.push(req.method() + ' ' + url.pathname); return route.abort() }
         if (url.origin !== 'http://health-incidents-fixture.test') { external.push(url.origin + url.pathname); return route.abort() }
-        if (url.pathname === '/fixture') return route.fulfill({ contentType: 'text/html', body: `<html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style></head><body><div id="root"></div><script>${js}</script></body></html>` })
+        if (url.pathname === '/fixture') return route.fulfill({ contentType: 'text/html', body: `<html data-theme="dark"><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style></head><body><div id="root"></div><script>${js}</script></body></html>` })
         reads.push(url.pathname)
         if (url.pathname === '/api/v2/health') return route.fulfill({ json: { captured_at: at, findings: [], counts: { critical: 0, warning: 0 }, category_scores: {}, ...sample.health } })
         if (url.pathname === '/api/v2/risk') return route.fulfill({ json: sample.risk ?? { portfolio_heat_pct: 0, positions: [] } })
