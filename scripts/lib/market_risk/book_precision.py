@@ -568,24 +568,34 @@ def _held_share_map(policy: dict[str, Any], doc: dict | None = None) -> dict[tup
     return out
 
 
-def _is_fractional_residual(shares: float) -> bool:
-    """A fractional balance after a sale is what the sale left behind, not a position to wait on.
+def _is_fractional_residual(shares: float, sold_shares: float = 0.0, floor: float = 1.0) -> bool:
+    """Is this remaining balance what a sale left behind, rather than a position to wait on?
 
-    Operator 2026-11-02 (PFLT): a 10-07 taxable stop left 1.15 shares, which the 1-share "still held"
-    floor read as a live position and so hid the exit from the re-entry watch. Fractions are compared
-    exactly against the balance the ledger recorded; nothing is rounded.
+    Two tests, both necessary: the balance is below the materiality floor (dust), or the sale's own
+    quantity is at least the balance (the sale dominated it). A mere non-integer balance is NOT a
+    residual — 17 of 26 live holdings are fractional (V 130.4985, SCHD 6000.253), and trimming 20
+    SCHD must leave SCHD held. Operator 2026-11-02 (PFLT): a 10-07 taxable stop left 1.15 shares,
+    which the 1-share "still held" floor read as a live position and hid the exit.
     """
-    return shares > 0 and abs(shares - round(shares)) > 1e-9
+    if shares <= 0:
+        return False
+    return shares < floor or (sold_shares or 0.0) >= shares
 
 
-def _stop_basis(symbol: str, account: str, price: Any, stop_rows: list[tuple]) -> str:
-    """'stop' when a filled stop_last_known row matches this sale (same account, price within 1%)."""
+def _stop_basis(symbol: str, account: str, price: Any, stop_rows: list[tuple], sale_date: str | None = None) -> str:
+    """'stop' when a filled stop matches this sale: same account, same session, price within 1%.
+
+    The session bound matters: a filled stop from another day at a similar price is not this sale.
+    """
     px = float(price) if price is not None else None
     if px is None:
         return "manual sell"
     for row in stop_rows or []:
         sym, acct, stop_price = row[:3]
+        captured = str(row[3])[:10] if len(row) > 3 and row[3] is not None else None
         if str(sym).upper() != symbol or _acct_key(acct) != account or stop_price is None:
+            continue
+        if sale_date and captured != sale_date:
             continue
         sp = float(stop_price)
         if sp > 0 and abs(px - sp) <= 0.01 * sp:
@@ -715,7 +725,7 @@ def reentry_watch_block(
         with conn.cursor() as cur:
             lookback = int(cfg.get("lookback_days", 30))
             cur.execute(
-                "SELECT symbol, account, close_date, (pnl < 0), sell_price FROM trade_closed "
+                "SELECT symbol, account, close_date, (pnl < 0), sell_price, shares FROM trade_closed "
                 "WHERE close_date >= %s::date - %s AND close_date <= %s::date ORDER BY close_date",
                 (now.date(), lookback, now.date()),
             )
@@ -736,14 +746,20 @@ def reentry_watch_block(
                 (str(r[0]).upper(), _acct_key(r[1]), str(r[2])[:10], r[4]) for r in tx if str(r[5]).startswith("sell")
             ]
             sale_symbols = {str(r[0]).upper() for r in closes_rows}
+            floor = float((((policy.get("positions") or {}).get("materiality") or {}).get("min_shares", 1.0)))
+            sold_map: dict[tuple[str, str], float] = {}
+            for r in closes_rows:
+                if len(r) > 5 and r[5] is not None:
+                    k = (_acct_key(r[1]), str(r[0]).upper())
+                    sold_map[k] = max(sold_map.get(k, 0.0), float(r[5]))
             held = set(held_accounts or set())
             shares_map = _held_share_map(policy)
             for (acct, sym), sh in shares_map.items():
-                if sym in sale_symbols and _is_fractional_residual(sh):
-                    held.discard((acct, sym))  # a fractional remainder is what the sale left, not a position
+                if sym in sale_symbols and _is_fractional_residual(sh, sold_map.get((acct, sym), 0.0), floor):
+                    held.discard((acct, sym))  # what the sale left behind, not a position to wait on
             try:
                 cur.execute(
-                    "SELECT symbol, account, stop_price FROM stop_last_known "
+                    "SELECT symbol, account, stop_price, captured_at FROM stop_last_known "
                     "WHERE lower(status) = 'filled' AND symbol = ANY(%s)",
                     (sorted(sale_symbols),),
                 )
@@ -857,11 +873,13 @@ def reentry_watch_block(
                 held_elsewhere=e.get("held_elsewhere") or [],
                 wash_sale=e.get("wash_sale"),
                 look_through={"groups": groups, "basis": ex.get("basis"), "note": ex.get("note")},
-                exit_basis=_stop_basis(sym, e.get("exit_account_key"), e.get("exit_price"), stop_rows),
+                exit_basis=_stop_basis(sym, e.get("exit_account_key"), e.get("exit_price"), stop_rows,
+                                       e.get("exit_date")),
                 stages=st,
             )
             c.assert_no_behavior_fields(cards[sym])
         except Exception as exc:  # noqa: BLE001 — one symbol failing is reported, the rest still render
             cards[sym] = {"symbol": sym, "error": f"{type(exc).__name__}: {exc}"}
+    cards["_stages_contract"] = rw.STAGES_CONTRACT
     a.reentry_watch = cards
     return cards

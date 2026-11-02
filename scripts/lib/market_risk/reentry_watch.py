@@ -24,6 +24,7 @@ pay, no order; behaviour-field and sizing-text guards on every card.
 
 from __future__ import annotations
 
+import re
 from datetime import date
 from statistics import mean
 from typing import Any
@@ -190,6 +191,8 @@ def _guard(text: str) -> None:
 
     if br._SIZING_TEXT.search(text):  # noqa: SLF001 — the shared sizing-text guard
         raise ValueError("sizing text in re-entry card")
+    if _STOP_INSTRUCTION.search(text):
+        raise ValueError("order or stop instruction in re-entry card")
 
 
 def sessions_between(a: str, b: str, trading_days: list[str]) -> int | None:
@@ -205,6 +208,17 @@ def sessions_between(a: str, b: str, trading_days: list[str]) -> int | None:
 
 #: Verdict changes that page the operator. Status only: no size, order or stop (MBI_BEHAVIOR = 0).
 STAGE_CARD_VERDICTS = ("Early setup", "Confirmed", "Invalidated")
+#: Bumped when the stage computation changes in a way that makes old verdicts incomparable. A prior
+#: watch without this exact marker is a FIRST classification, even if it carries verdicts from the
+#: old computation (deploy day: XNDU/NAVN Confirmed and NFLX Basing came from the bad pre-market bar).
+STAGES_CONTRACT = "ReentryStages@v2"
+#: Behavior phrasing a status card must never carry, on top of the shared sizing-text guard.
+_STOP_INSTRUCTION = re.compile(
+    r"\b(place|set|move|raise|lower|use|honou?r)\s+(a\s+|the\s+)?stop\b"
+    r"|\bstop[\s-]?(loss|order|level)\b"
+    r"|\b(enter|exit|buy|sell)\s+(an?\s+|the\s+)?order\b",
+    re.I,
+)
 
 
 def render_stage(rec: dict[str, Any], verdict: str, previous: str | None) -> str:
@@ -215,7 +229,7 @@ def render_stage(rec: dict[str, Any], verdict: str, previous: str | None) -> str
     if px is not None and ex is not None:
         lines.append(f"· last close {float(px):.2f} vs exit {float(ex):.2f}")
     if st.get("swing_low") is not None:
-        lines.append(f"· swing low {float(st['swing_low']):.2f}")
+        lines.append(f"· invalidation level (swing low) {float(st['swing_low']):.2f}")
     if st.get("note"):
         lines.append(f"· {st['note']}")
     lines.append(f"as of {rec.get('as_of')} · advisory; no order, size or stop is implied")
@@ -233,13 +247,16 @@ def stage_cards(watch: dict[str, Any] | None, prior: dict[str, Any] | None, poli
     prio = str(cfg.get("card_priority") or "P2")
     dedupe_min = int(cfg.get("card_dedupe_minutes") or 1440)
     out: list[dict[str, Any]] = []
+    watch_contract = str((watch or {}).get("_stages_contract") or "")
+    prior_contract = str((prior or {}).get("_stages_contract") or "")
+    stages_comparable = bool(watch_contract) and prior_contract == watch_contract
     for sym, w in (watch or {}).items():
         if str(sym).startswith("_") or not isinstance(w, dict):
             continue
         prev = (prior or {}).get(sym) or {}
         verdict = str((w.get("stages") or {}).get("verdict") or "")
         prev_verdict = str((prev.get("stages") or {}).get("verdict") or "") or None
-        if prev_verdict and verdict in STAGE_CARD_VERDICTS and verdict != prev_verdict:
+        if stages_comparable and prev_verdict and verdict in STAGE_CARD_VERDICTS and verdict != prev_verdict:
             key = f"market_risk:reentry:{sym}:{w.get('exit_date')}:{verdict}"
             out.append(
                 {
@@ -251,7 +268,6 @@ def stage_cards(watch: dict[str, Any] | None, prior: dict[str, Any] | None, poli
                     "episode_id": None,
                 }
             )
-            continue
         if str(w.get("status")) == "RE_ENTER" and str(prev.get("status")) != "RE_ENTER":
             key = f"market_risk:reentry:{sym}:{w.get('exit_date')}"
             out.append(
