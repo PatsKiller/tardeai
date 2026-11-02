@@ -588,16 +588,16 @@ def _is_fractional_residual(shares: float, sold_shares: float = 0.0, floor: floa
 
 
 def _stop_basis(symbol: str, account: str, price: Any, sold_qty: float, stop_rows: list[tuple],
-                max_slippage_pct: float = 3.0) -> str:
+                max_slippage_pct: float = 3.0, max_above_pct: float = 0.5) -> str:
     """'stop (matched by price)' when a filled SELL stop explains this sale.
 
-    A stop fill is one-sided: the sale price is AT OR BELOW the stop price (a gap-down open fills
-    below it) and no further below than ``max_slippage_pct``, in the same account, with a stop
-    quantity that covers what was sold. A sale ABOVE the stop price is never a stop fill, and the old
-    symmetric ±1% window missed a real one (NFLX: sold 400 at 70.17 against a 71.55 stop).
-
-    stop_last_known.captured_at is the table refresh time, not the fill time, so no time bound is
-    claimed; the label says how the match was made.
+    A triggered stop becomes a market order and can fill slightly ABOVE the stop (SCHG: 34.4647
+    against a 34.46 stop), and a gap-down open fills below it (NFLX: 70.17 against 71.55). The band
+    is therefore stop × (1 − max_slippage_pct) to stop × (1 + max_above_pct), in the same account,
+    with a stop quantity that covers what was sold. No table links a sale to its stop order (checked
+    2026-11-02: trade_transactions has no order id/type; stop_last_known.order_id matches a pilot
+    order only for PFLT), so this is a price-and-quantity match, and stop_last_known.captured_at is
+    the refresh time, not a fill time — the label says how the match was made.
     """
     px = float(price) if price is not None else None
     if px is None:
@@ -608,9 +608,9 @@ def _stop_basis(symbol: str, account: str, price: Any, sold_qty: float, stop_row
         if str(sym).upper() != symbol or _acct_key(acct) != account or stop_price is None:
             continue
         sp = float(stop_price)
-        if sp <= 0 or px > sp:
+        if sp <= 0:
             continue
-        if (sp - px) / sp * 100.0 > max_slippage_pct:
+        if px > sp * (1.0 + max_above_pct / 100.0) or px < sp * (1.0 - max_slippage_pct / 100.0):
             continue
         if sold_qty and qty is not None and qty < sold_qty:
             continue
@@ -909,7 +909,8 @@ def reentry_watch_block(
                 look_through={"groups": groups, "basis": ex.get("basis"), "note": ex.get("note")},
                 exit_basis=_stop_basis(sym, e.get("exit_account_key"), e.get("exit_price"),
                                        sold_map.get((e.get("exit_account_key"), sym), 0.0), stop_rows,
-                                       float((policy.get("reentry_watch") or {}).get("stop_fill_max_slippage_pct", 3.0))),
+                                       float((policy.get("reentry_watch") or {}).get("stop_fill_max_slippage_pct", 3.0)),
+                                       float((policy.get("reentry_watch") or {}).get("stop_fill_max_above_pct", 0.5))),
                 stages=st,
             )
             c.assert_no_behavior_fields(cards[sym])

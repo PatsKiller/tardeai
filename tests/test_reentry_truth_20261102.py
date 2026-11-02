@@ -211,8 +211,11 @@ def test_a_sell_stop_is_matched_one_sidedly():
     rows = [("AAA", "Schwab-1", 71.55, 400.0)]
     # NFLX shape: sold 400 at 70.17 against a 71.55 stop, a gap-down open 1.9% below.
     assert bp._stop_basis("AAA", acct, 70.17, 400.0, rows, 3.0) == "stop (matched by price)"
-    # a sale ABOVE the stop is never a stop fill
-    assert bp._stop_basis("AAA", acct, 72.00, 400.0, rows, 3.0) == "manual sell"
+    # a triggered stop can fill slightly above the stop (SCHG 34.4647 vs 34.46, qty 4000)
+    schg = [("AAA", "Schwab-1", 34.46, 4000.0)]
+    assert bp._stop_basis("AAA", acct, 34.4647, 4000.0, schg, 3.0, 0.5) == "stop (matched by price)"
+    # but a sale well above the stop is never a stop fill
+    assert bp._stop_basis("AAA", acct, 72.00, 400.0, rows, 3.0, 0.5) == "manual sell"
     # a stop quantity that does not cover the sale is not this sale
     assert bp._stop_basis("AAA", acct, 70.17, 500.0, rows, 3.0) == "manual sell"
     # further below the stop than the configured slippage is a manual sale
