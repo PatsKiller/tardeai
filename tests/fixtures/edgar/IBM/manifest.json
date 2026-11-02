@@ -1,0 +1,66 @@
+{
+ "entries": {
+  "https://data.sec.gov/api/xbrl/companyconcept/CIK0000051143/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax.json": {
+   "bytes": 0,
+   "file": null,
+   "recorded_at": "2026-11-01T23:44:10Z",
+   "sha256": null,
+   "status": 404
+  },
+  "https://data.sec.gov/api/xbrl/companyconcept/CIK0000051143/us-gaap/RevenueFromContractWithCustomerIncludingAssessedTax.json": {
+   "bytes": 0,
+   "file": null,
+   "recorded_at": "2026-11-01T23:44:10Z",
+   "sha256": null,
+   "status": 404
+  },
+  "https://data.sec.gov/api/xbrl/companyconcept/CIK0000051143/us-gaap/Revenues.json": {
+   "bytes": 35950,
+   "file": "api_xbrl_companyconcept_CIK0000051143_us-gaap_Revenues.json.gz",
+   "gz_sha256": "0f91d73bc9c954ed55080bffd8894d29a98811c6eb8e99ebadf69e42836257c0",
+   "recorded_at": "2026-11-01T23:44:10Z",
+   "sha256": "60929630e2ec6572d1168c7a76326a22ebb7723d59b032722b41fa82e0daefa7",
+   "status": 200
+  },
+  "https://data.sec.gov/api/xbrl/companyconcept/CIK0000051143/us-gaap/SalesRevenueNet.json": {
+   "bytes": 0,
+   "file": null,
+   "recorded_at": "2026-11-01T23:44:10Z",
+   "sha256": null,
+   "status": 404
+  },
+  "https://www.sec.gov/Archives/edgar/data/51143/000005114326000095/FilingSummary.xml": {
+   "bytes": 54450,
+   "file": "Archives_edgar_data_51143_000005114326000095_FilingSummary.xml.gz",
+   "gz_sha256": "b8d2774b57b266706f4dd096fb1336bc146e66684b2458dce6f770587f608404",
+   "recorded_at": "2026-11-01T23:44:10Z",
+   "sha256": "38007243e8037a3fa8ddc11031006a854b1d2e3ca704e2d98a63985d2dd01a90",
+   "status": 200
+  },
+  "https://www.sec.gov/Archives/edgar/data/51143/000005114326000095/ibm-20260930_htm.xml": {
+   "bytes": 3933990,
+   "file": "Archives_edgar_data_51143_000005114326000095_ibm-20260930_htm.xml.gz",
+   "gz_sha256": "bc094d3c81efa5cc6507c6d672feee2d7c7744bd3d6f2c678f772a1add5d27a7",
+   "recorded_at": "2026-11-01T23:44:10Z",
+   "sha256": "002a778ebfc77bcd4290b5e4801197cef49c7ad8a13ebab99e0a99a42a9ee58b",
+   "status": 200
+  },
+  "https://www.sec.gov/Archives/edgar/data/51143/000005114326000095/ibm-20260930_lab.xml": {
+   "bytes": 1036415,
+   "file": "Archives_edgar_data_51143_000005114326000095_ibm-20260930_lab.xml.gz",
+   "gz_sha256": "68fff64055f3df2d1fdf2d3ec7ecc3e4e8ece107fb15696e15d10cb392ec35d5",
+   "recorded_at": "2026-11-01T23:44:10Z",
+   "sha256": "fe89e8cdc7264955c1a4fbcbee5f039c031a2cb21f9c78b92bf5e89f3aab20b6",
+   "status": 200
+  },
+  "https://www.sec.gov/Archives/edgar/data/51143/000005114326000095/index.json": {
+   "bytes": 10684,
+   "file": "Archives_edgar_data_51143_000005114326000095_index.json.gz",
+   "gz_sha256": "3f59a8cf04f3d419fea189c5972ff98c58277164c70c69db0f050fa67a69aa62",
+   "recorded_at": "2026-11-01T23:44:10Z",
+   "sha256": "7aa087674246634280a691131c4d76aa8748609a6680e6da8251eb56bd815b33",
+   "status": 200
+  }
+ },
+ "schema": "EdgarFixtureManifest@v1"
+}

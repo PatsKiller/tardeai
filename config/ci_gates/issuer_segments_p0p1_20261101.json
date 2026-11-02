@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "issuer_segments_p0p1_20261101",
+  "files": [
+    "tests/test_sec_edgar_client_20261101.py",
+    "tests/test_issuer_segments_p1_20261101.py"
+  ],
+  "anchor": "ISSUER_SEGMENTS_P0P1_20261101",
+  "comment": [
+    "ANCHOR: ISSUER_SEGMENTS_P0P1_20261101 — DSN-20261101 P0-T2: the SEC User-Agent contact is read through",
+    "scripts/lib/sec_edgar_client.py (committed placeholder + local override), fails closed, and no e-mail sits in a",
+    "User-Agent under scripts/. P1 (shadow only): companyconcept -> XBRL instance segment extractor on recorded",
+    "fixtures (T, IBM, HON, SPCX), deterministic config/issuer_segment_map.json with goldens (SPCX = the",
+    "operator-APPROVED split), model-classified stub + acceptance gate. No store, no live look-through wiring."
+  ]
+}

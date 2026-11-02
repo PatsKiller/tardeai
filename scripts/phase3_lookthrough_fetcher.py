@@ -215,6 +215,15 @@ def _fetch_ark(ark_symbol: str) -> dict:
 
 # ── SEC EDGAR fetch ───────────────────────────────────────────────────────────
 
+def _sec_edgar_headers(accept: str = "application/json") -> dict:
+    """SEC User-Agent from scripts/lib/sec_edgar_client.py (DSN-20261101 P0-T2); raises SecContactError, no fallback."""
+    try:
+        from lib import sec_edgar_client as _c
+    except ImportError:
+        from scripts.lib import sec_edgar_client as _c
+    return _c.headers(accept)
+
+
 def _fetch_sec_edgar(cik: str, fund_name: str) -> dict:
     """
     Fetch most recent N-CSR or N-CSRS filing from SEC EDGAR.
@@ -224,7 +233,7 @@ def _fetch_sec_edgar(cik: str, fund_name: str) -> dict:
         import urllib.request, json as _json
         # Get most recent filing list
         url = f"https://data.sec.gov/submissions/CIK{cik.zfill(10)}.json"
-        req = urllib.request.Request(url, headers={"User-Agent": "portfolio-intelligence admin@local.com"})
+        req = urllib.request.Request(url, headers=_sec_edgar_headers())
         resp = urllib.request.urlopen(req, timeout=30)
         data = _json.loads(resp.read())
 
