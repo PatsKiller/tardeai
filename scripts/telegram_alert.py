@@ -273,6 +273,7 @@ def _raw_send_telegram_result(
     """Low-level Telegram send with provider message ids. No routing."""
     # FQDN/v3 normalization at the send chokepoint: rewrite any internal IP/localhost + legacy /v2/
     # dashboard link to the public Tailscale FQDN + /v3/ so no notification can leak a wrong URL.
+    original_message = message
     message = operator_wire_text(message)
     token = _token()
     targets = chat_ids or _chat_ids()
@@ -286,9 +287,15 @@ def _raw_send_telegram_result(
     message_ids: list[str] = []
     by_chat: dict[str, str] = {}
     replies = {str(k): v for k, v in (reply_to_message_ids or {}).items() if v not in (None, "")}
+    from contextlib import ExitStack
+
     attempted = 0
+    chunk_scope = ExitStack()
     try:
         chunks = _smart_split(message, MAX_MSG_LEN)
+        from scripts.lib.watchdog_reminder_identity import editor_chunks
+
+        chunk_scope.enter_context(editor_chunks(original_message, message, chunks, normalise=operator_wire_text))
         for cid in targets:
             for i, chunk in enumerate(chunks):
                 # Attach keyboard only on the final chunk so buttons stay with the full body.
@@ -317,6 +324,8 @@ def _raw_send_telegram_result(
     except Exception as e:
         print(f"[telegram] Error: {e}")
         ok = False
+    finally:
+        chunk_scope.close()
     # Persist recognized reports so the v3 Reports portal can surface them (best-effort, never blocks).
     try:
         from report_capture import capture
@@ -483,12 +492,13 @@ def _comms_critical_override(message: str, level: str, router=None) -> dict | No
             from lib.comms.classify import classify as _comms_classify  # type: ignore[no-redef]
         c = _comms_classify(body=message)
     except Exception as exc:  # the classifier itself broke: say so through the receipted intent path, keep the hold
+        error_name = type(exc).__name__
         _intent_send(
             f"⚠️ *COMMS CLASSIFIER DOWN* — {type(exc).__name__}: {str(exc)[:120]}\n"
             "Legacy-routed alerts cannot be checked for critical stop/position content; they follow the router.",
             "P2",
             lambda: _raw_send_telegram_result(
-                f"⚠️ COMMS CLASSIFIER DOWN — {type(exc).__name__}", _chat_ids()
+                f"⚠️ COMMS CLASSIFIER DOWN — {error_name}", _chat_ids()
             ).get("ok"),
             dedupe_minutes=1440,
             producer="legacy_critical_override",
@@ -1200,8 +1210,11 @@ def delivery_outcome(accepted: bool) -> dict:
 
 def send_telegram_outcome(message: str, **kwargs) -> dict:
     """``send_telegram`` with the typed delivery outcome instead of a bool (WS3-21). Same routing, same sends."""
-    accepted = send_telegram(message, **kwargs)
-    return delivery_outcome(bool(accepted))
+    from scripts.lib.watchdog_reminder_identity import outcome_message
+
+    with outcome_message(message):
+        accepted = send_telegram(message, **kwargs)
+        return delivery_outcome(bool(accepted))
 
 
 def send_telegram_with_id(

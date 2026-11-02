@@ -812,6 +812,8 @@ class EditorDecision:
     subjects: list[dict[str, str]] = field(default_factory=list)
     cio_disagreements: list[dict[str, Any]] = field(default_factory=list)
     changes: list[str] = field(default_factory=list)
+    repeat_guard_key: Optional[str] = None
+    repeat_guard_seconds: Optional[int] = None
     schema: str = SCHEMA
     authority: str = AUTHORITY
 
@@ -920,7 +922,12 @@ def edit(
             missing = cio_missing_decisions(body, syms, views)
 
     # Fingerprint the body that will ship (post-rewrite) so WATCH dupes collapse.
-    fp = fingerprint(body)
+    from scripts.lib.watchdog_reminder_identity import editor_fingerprint
+
+    content_fp = fingerprint(body)
+    fp, repeat_guard_key, repeat_guard_seconds = editor_fingerprint(text, content_fp)
+    if fp != content_fp:
+        changes.append("watchdog_reminder_identity")
     guid = message_guid(str(chat_id), fp, now)
 
     if was_html:
@@ -936,6 +943,8 @@ def edit(
         missing = []
     held = None if is_operator_approval_request(body) else _hold_reason(body, disagree, missing)
     prior = ledger.check(chat_id, fp, now)
+    if repeat_guard_key and repeat_guard_seconds:
+        prior = prior or ledger.check(chat_id, repeat_guard_key, now, window_hours=repeat_guard_seconds / 3600)
 
     footer: list[str] = []
     if syms and len(html_body) < MAX_BODY_FOR_FOOTER:
@@ -996,6 +1005,8 @@ def edit(
         subjects=[s for s in subs if s.get("guid")],
         cio_disagreements=disagree,
         changes=changes,
+        repeat_guard_key=repeat_guard_key,
+        repeat_guard_seconds=repeat_guard_seconds,
     )
 
 
@@ -1010,7 +1021,10 @@ def commit(
     """Record a sent message in the ledger and append the receipt."""
     now = now or datetime.now(timezone.utc)
     if decision.send and decision.mode == "live":
-        (ledger or DuplicateLedger()).record(chat_id, decision.fingerprint, decision.guid, now)
+        target = ledger or DuplicateLedger()
+        target.record(chat_id, decision.fingerprint, decision.guid, now)
+        if decision.repeat_guard_key:
+            target.record(chat_id, decision.repeat_guard_key, decision.guid, now)
     receipts = Path(receipts or os.environ.get("COMMS_EDITOR_RECEIPTS") or DEFAULT_RECEIPTS)
     try:
         receipts.parent.mkdir(parents=True, exist_ok=True)
