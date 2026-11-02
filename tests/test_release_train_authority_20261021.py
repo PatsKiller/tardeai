@@ -1048,6 +1048,11 @@ def test_libraries_are_wired_into_nothing():
         # test-file paths, so a test named test_release_control_resume_settle_20261028.py appears as a key. A
         # filename in a generated timing map is not a caller or a wire-in; the test file itself is allowed below.
         "config/ci_shard_duration_hints.json",
+        # Ruff security baseline (#2488, 2026-11-02): its keys are every file the S-rules scan reads, so a
+        # Phase-2 library appears as a key with its finding counts. A file named in a lint baseline is not a
+        # caller or a wire-in — nothing imports or executes it from here. The baseline itself is still
+        # reviewed and compared against the live tree by scripts/check_ruff_security.py.
+        "config/ruff_security_baseline.json",
     }
     hits = []
     for base in ("scripts", "config", "deploy", "systemd", "n8n", "src", "bin"):

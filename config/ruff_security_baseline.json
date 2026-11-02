@@ -1,0 +1,5332 @@
+{
+  "schema": "RuffSecurityBaseline@v1",
+  "ruleset": "S",
+  "_why": "Baseline of flake8-bandit findings at adoption (2026-11-02). Only NEW findings fail; this file can only shrink. Update with `python3 scripts/check_ruff_security.py --update-baseline`.",
+  "findings": {
+    "apps/command-center-v2/serve.py": {
+      "S310": 2,
+      "S605": 1,
+      "S607": 1
+    },
+    "scripts/account_policy.py": {
+      "S110": 9,
+      "S608": 1
+    },
+    "scripts/active_trader/config_read.py": {
+      "S110": 3,
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/active_trader/export_scalp_fires.py": {
+      "S608": 1
+    },
+    "scripts/active_trader/fast_trigger_loop.py": {
+      "S110": 2
+    },
+    "scripts/active_trader/microstructure_recorder.py": {
+      "S110": 2
+    },
+    "scripts/active_trader/momentum_alert_pass.py": {
+      "S110": 6
+    },
+    "scripts/active_trader/momentum_alert_scoring.py": {
+      "S112": 2
+    },
+    "scripts/active_trader/momentum_alert_sources.py": {
+      "S110": 2
+    },
+    "scripts/active_trader/momentum_alerts_api.py": {
+      "S110": 4,
+      "S112": 1
+    },
+    "scripts/active_trader/motion_host_proof.py": {
+      "S310": 2
+    },
+    "scripts/active_trader/motion_shadow.py": {
+      "S110": 1
+    },
+    "scripts/active_trader/premarket_watch.py": {
+      "S110": 3
+    },
+    "scripts/active_trader/read_api.py": {
+      "S110": 3,
+      "S112": 2
+    },
+    "scripts/active_trader/session_control.py": {
+      "S101": 2
+    },
+    "scripts/active_trader/session_http.py": {
+      "S110": 1
+    },
+    "scripts/active_trader/sim_execution.py": {
+      "S105": 1
+    },
+    "scripts/active_trader/t2_jit_policy.py": {
+      "S105": 1
+    },
+    "scripts/active_trader/trade_learning.py": {
+      "S110": 1,
+      "S324": 1,
+      "S608": 1
+    },
+    "scripts/active_trader/trade_replay.py": {
+      "S110": 1
+    },
+    "scripts/admin_write_guard.py": {
+      "S110": 1
+    },
+    "scripts/aec_command_center_cycle.py": {
+      "S110": 1,
+      "S112": 1
+    },
+    "scripts/aegis_morning_brief_delivery.py": {
+      "S110": 10
+    },
+    "scripts/aegis_nightly_ingestion.py": {
+      "S110": 1
+    },
+    "scripts/aegis_overnight.py": {
+      "S110": 3,
+      "S603": 1
+    },
+    "scripts/aegis_synthesis.py": {
+      "S110": 4
+    },
+    "scripts/aegis_transcript_discovery.py": {
+      "S110": 1
+    },
+    "scripts/agent_bridge/tradeai_watchlist.py": {
+      "S110": 1,
+      "S310": 2
+    },
+    "scripts/agent_calibration_engine.py": {
+      "S110": 1,
+      "S608": 1
+    },
+    "scripts/agent_changed_file_quality.py": {
+      "S603": 2,
+      "S607": 2
+    },
+    "scripts/agent_claim.py": {
+      "S603": 2,
+      "S607": 3
+    },
+    "scripts/agent_collab.py": {
+      "S110": 1
+    },
+    "scripts/agent_curation_hooks.py": {
+      "S110": 2
+    },
+    "scripts/agent_event_router.py": {
+      "S603": 5
+    },
+    "scripts/agent_outcome_scorer.py": {
+      "S110": 2,
+      "S608": 2
+    },
+    "scripts/agent_reliability.py": {
+      "S603": 1,
+      "S607": 1,
+      "S608": 2
+    },
+    "scripts/agent_router_controlled.py": {
+      "S603": 2
+    },
+    "scripts/agent_router_reliable.py": {
+      "S603": 1
+    },
+    "scripts/agent_runtime/agents/maturity_gates.py": {
+      "S105": 1
+    },
+    "scripts/agent_runtime/contracts.py": {
+      "S105": 1
+    },
+    "scripts/agent_runtime/health_monitor.py": {
+      "S310": 1
+    },
+    "scripts/agent_runtime/persistence.py": {
+      "S608": 7
+    },
+    "scripts/agent_runtime/read_api.py": {
+      "S110": 1
+    },
+    "scripts/agent_runtime/read_postgres.py": {
+      "S110": 2,
+      "S608": 9
+    },
+    "scripts/agent_runtime/trigger_intake.py": {
+      "S608": 8
+    },
+    "scripts/agent_runtime/trigger_sources.py": {
+      "S608": 1
+    },
+    "scripts/agent_runtime_live_providers.py": {
+      "S110": 7,
+      "S112": 2,
+      "S310": 2
+    },
+    "scripts/agent_watchlist_engine.py": {
+      "S110": 15
+    },
+    "scripts/agent_worktree_retention.py": {
+      "S110": 1,
+      "S603": 2,
+      "S607": 3
+    },
+    "scripts/alert_daily_digest.py": {
+      "S110": 2
+    },
+    "scripts/alert_dispatcher.py": {
+      "S110": 4
+    },
+    "scripts/alert_dispatcher_unified.py": {
+      "S110": 1,
+      "S603": 1
+    },
+    "scripts/alert_event_writer.py": {
+      "S110": 2
+    },
+    "scripts/alert_missing_conditions.py": {
+      "S110": 2
+    },
+    "scripts/alert_outbox.py": {
+      "S110": 2
+    },
+    "scripts/alert_routing_resolver.py": {
+      "S110": 1
+    },
+    "scripts/alert_runtime_mode.py": {
+      "S110": 1
+    },
+    "scripts/alex_gov_research.py": {
+      "S110": 1,
+      "S310": 1
+    },
+    "scripts/alex_retirement_advisor.py": {
+      "S110": 10,
+      "S112": 1
+    },
+    "scripts/alpaca_live_read_sync.py": {
+      "S110": 4
+    },
+    "scripts/alpaca_paper_adapter.py": {
+      "S110": 11,
+      "S603": 2
+    },
+    "scripts/alpaca_paper_options_executor.py": {
+      "S110": 1
+    },
+    "scripts/alpaca_paper_reconciler.py": {
+      "S110": 1,
+      "S310": 4
+    },
+    "scripts/alpaca_stop_manager.py": {
+      "S110": 7,
+      "S310": 2
+    },
+    "scripts/alpaca_throttle.py": {
+      "S110": 1
+    },
+    "scripts/alpha_vantage_owner.py": {
+      "S324": 1
+    },
+    "scripts/analyst_coverage.py": {
+      "S110": 1
+    },
+    "scripts/analyst_report_builder.py": {
+      "S110": 23,
+      "S324": 1
+    },
+    "scripts/analyst_urgent_refresh.py": {
+      "S603": 1
+    },
+    "scripts/analyze_profit_capture_all_trades.py": {
+      "S608": 1
+    },
+    "scripts/api_budget.py": {
+      "S110": 1
+    },
+    "scripts/api_v2.py": {
+      "S108": 3,
+      "S110": 386,
+      "S112": 13,
+      "S310": 12,
+      "S324": 1,
+      "S602": 2,
+      "S603": 70,
+      "S607": 18,
+      "S608": 132
+    },
+    "scripts/api_v3_advisory.py": {
+      "S110": 6
+    },
+    "scripts/api_v3_cio.py": {
+      "S110": 7
+    },
+    "scripts/api_v3_watch_commands.py": {
+      "S110": 2
+    },
+    "scripts/apply_llm_priority_guard_to_crontab.py": {
+      "S607": 2
+    },
+    "scripts/apply_paper_protection_adjustment.py": {
+      "S101": 2,
+      "S110": 1
+    },
+    "scripts/apply_snaptrade_fund_map.py": {
+      "S603": 1
+    },
+    "scripts/approval_revalidator.py": {
+      "S110": 2
+    },
+    "scripts/archive/session_validate_20260927/session13_validate.py": {
+      "S607": 1
+    },
+    "scripts/archive/session_validate_20260927/session14_validate.py": {
+      "S607": 1
+    },
+    "scripts/archive/session_validate_20260927/session15_validate.py": {
+      "S603": 2,
+      "S607": 2
+    },
+    "scripts/archive/session_validate_20260927/session17v3_validate.py": {
+      "S603": 1,
+      "S607": 3
+    },
+    "scripts/archive/session_validate_20260927/session18_screener_validate.py": {
+      "S603": 1
+    },
+    "scripts/archive/session_validate_20260927/session18_validate.py": {
+      "S607": 6
+    },
+    "scripts/archive/session_validate_20260927/session18c_validate.py": {
+      "S603": 1,
+      "S607": 2
+    },
+    "scripts/archive/session_validate_20260927/session23e_validate.py": {
+      "S607": 1
+    },
+    "scripts/archive/session_validate_20260927/session24b_validate_strategy_playbook.py": {
+      "S603": 2
+    },
+    "scripts/archive/session_validate_20260927/session26_validate_proposal_enrichment.py": {
+      "S110": 1,
+      "S607": 2
+    },
+    "scripts/archive/session_validate_20260927/session27_validate_tca_reconciliation_outcomes.py": {
+      "S607": 3,
+      "S608": 1
+    },
+    "scripts/archive/session_validate_20260927/session28_validate.py": {
+      "S608": 1
+    },
+    "scripts/archive/session_validate_20260927/session28_validate_paper_execution_workflow.py": {
+      "S110": 1,
+      "S603": 3,
+      "S607": 2
+    },
+    "scripts/archive/session_validate_20260927/session29_validate.py": {
+      "S608": 1
+    },
+    "scripts/archive/session_validate_20260927/session30_validate.py": {
+      "S608": 1
+    },
+    "scripts/archive/session_validate_20260927/session31_validate.py": {
+      "S608": 1
+    },
+    "scripts/archive/session_validate_20260927/session32_validate.py": {
+      "S608": 1
+    },
+    "scripts/archive/session_validate_20260927/session33_validate.py": {
+      "S603": 1,
+      "S608": 1
+    },
+    "scripts/archive/session_validate_20260927/session34_validate.py": {
+      "S607": 1
+    },
+    "scripts/archive/session_validate_20260927/session35_validate.py": {
+      "S607": 1
+    },
+    "scripts/archive/session_validate_20260927/session36_validate.py": {
+      "S607": 1
+    },
+    "scripts/archive_offbox_sync.py": {
+      "S101": 1,
+      "S108": 1,
+      "S324": 1,
+      "S603": 2
+    },
+    "scripts/archive_trade_closed_probe_rows.py": {
+      "S608": 1
+    },
+    "scripts/ask_alerts.py": {
+      "S110": 1
+    },
+    "scripts/asset_intelligence_pipeline.py": {
+      "S110": 2,
+      "S310": 2
+    },
+    "scripts/atm_auto_approver.py": {
+      "S108": 1,
+      "S110": 9
+    },
+    "scripts/atm_market_open_watch.py": {
+      "S110": 1
+    },
+    "scripts/atm_position_reconciler.py": {
+      "S310": 1,
+      "S324": 1
+    },
+    "scripts/atm_technical_gate.py": {
+      "S110": 1
+    },
+    "scripts/audit/crawl_journal_backtest.py": {
+      "S108": 2
+    },
+    "scripts/audit_automated_open_trades.py": {
+      "S608": 3
+    },
+    "scripts/audit_enrichment_coverage.py": {
+      "S110": 3
+    },
+    "scripts/audit_finviz_throttle_coverage.py": {
+      "S112": 1
+    },
+    "scripts/audit_health_schedule_drift.py": {
+      "S607": 1
+    },
+    "scripts/audit_hermes_db_lineage.py": {
+      "S112": 1,
+      "S608": 5
+    },
+    "scripts/audit_hermes_identities.py": {
+      "S603": 1
+    },
+    "scripts/audit_hermes_job_call_graph.py": {
+      "S603": 1
+    },
+    "scripts/audit_hermes_live_fleet_health.py": {
+      "S603": 1,
+      "S607": 1,
+      "S608": 1
+    },
+    "scripts/audit_hermes_self_learning_loops.py": {
+      "S608": 3
+    },
+    "scripts/audit_hermes_workflow_owners.py": {
+      "S603": 1
+    },
+    "scripts/audit_ledger.py": {
+      "S110": 2
+    },
+    "scripts/audit_local_model_decommission.py": {
+      "S112": 1,
+      "S603": 1
+    },
+    "scripts/audit_no_local_generative_routing.py": {
+      "S112": 1
+    },
+    "scripts/audit_phase2h_bounded_approval.py": {
+      "S608": 1
+    },
+    "scripts/audit_position_basis.py": {
+      "S110": 1
+    },
+    "scripts/audit_proposal_source_parity.py": {
+      "S110": 1,
+      "S608": 1
+    },
+    "scripts/audit_table_readers_without_writers.py": {
+      "S112": 1,
+      "S608": 1
+    },
+    "scripts/audit_validation_taxonomy.py": {
+      "S112": 1
+    },
+    "scripts/auto_enrichment_runner.py": {
+      "S110": 3,
+      "S603": 2
+    },
+    "scripts/auto_proposal_generator.py": {
+      "S110": 13,
+      "S603": 6,
+      "S607": 1,
+      "S608": 1
+    },
+    "scripts/auto_research.py": {
+      "S110": 1,
+      "S603": 1,
+      "S608": 1
+    },
+    "scripts/backfill_document_mentions.py": {
+      "S608": 1
+    },
+    "scripts/backfill_entry_traits.py": {
+      "S608": 1
+    },
+    "scripts/backfill_hermes_research_provenance.py": {
+      "S608": 3
+    },
+    "scripts/backfill_journal_trade_fields.py": {
+      "S608": 1
+    },
+    "scripts/backfill_message_identity.py": {
+      "S608": 4
+    },
+    "scripts/backfill_proposal_route_audit.py": {
+      "S608": 1
+    },
+    "scripts/backfill_research_identity.py": {
+      "S608": 2
+    },
+    "scripts/backfill_stop_v20_tracking.py": {
+      "S101": 2,
+      "S110": 1
+    },
+    "scripts/backfill_subject_identity.py": {
+      "S608": 6
+    },
+    "scripts/backfill_ticker_prices.py": {
+      "S603": 2
+    },
+    "scripts/backfill_trade_in_view_mfe.py": {
+      "S603": 1
+    },
+    "scripts/backfill_trade_instances.py": {
+      "S608": 2
+    },
+    "scripts/backfill_trade_lineage.py": {
+      "S608": 2
+    },
+    "scripts/backfill_trade_plans_for_signals.py": {
+      "S110": 1
+    },
+    "scripts/backtest_analyzer.py": {
+      "S110": 1
+    },
+    "scripts/backtest_dataset_builder.py": {
+      "S608": 3
+    },
+    "scripts/backtest_profit_protection_rules.py": {
+      "S608": 1
+    },
+    "scripts/backup_enforcer.py": {
+      "S603": 2,
+      "S607": 1
+    },
+    "scripts/backup_verify.py": {
+      "S608": 1
+    },
+    "scripts/brave_search.py": {
+      "S110": 5,
+      "S310": 4
+    },
+    "scripts/bridge_llm_step_probe.py": {
+      "S310": 2
+    },
+    "scripts/broker_config.py": {
+      "S110": 3
+    },
+    "scripts/broker_desk_automation.py": {
+      "S110": 3
+    },
+    "scripts/broker_promote_oversight.py": {
+      "S110": 6,
+      "S112": 1,
+      "S603": 3
+    },
+    "scripts/broker_promote_sizing.py": {
+      "S110": 1
+    },
+    "scripts/broker_proposal_autocal.py": {
+      "S110": 8,
+      "S112": 1
+    },
+    "scripts/broker_proposal_curator.py": {
+      "S110": 9
+    },
+    "scripts/broker_proposal_intel.py": {
+      "S110": 2,
+      "S608": 1
+    },
+    "scripts/broker_proposal_queue_ops.py": {
+      "S110": 1,
+      "S608": 6
+    },
+    "scripts/broker_queue_hygiene.py": {
+      "S110": 3
+    },
+    "scripts/broker_trade_litmus.py": {
+      "S110": 6
+    },
+    "scripts/broker_trade_plan_gate.py": {
+      "S110": 2
+    },
+    "scripts/broker_write_scanner.py": {
+      "S112": 1
+    },
+    "scripts/brokers/alpaca_credentials.py": {
+      "S110": 1
+    },
+    "scripts/brokers/alpaca_factory.py": {
+      "S101": 1
+    },
+    "scripts/brokers/alpaca_read_client.py": {
+      "S110": 2,
+      "S310": 2
+    },
+    "scripts/brokers/approval_service.py": {
+      "S110": 6
+    },
+    "scripts/brokers/broker_entry_pilot.py": {
+      "S110": 2
+    },
+    "scripts/brokers/evidence_approval.py": {
+      "S110": 2
+    },
+    "scripts/brokers/execution_guard.py": {
+      "S110": 3
+    },
+    "scripts/brokers/execution_readiness.py": {
+      "S110": 2
+    },
+    "scripts/brokers/intent_submit_router.py": {
+      "S110": 3
+    },
+    "scripts/brokers/kill_switches.py": {
+      "S110": 3
+    },
+    "scripts/brokers/options_order_pilot.py": {
+      "S110": 1
+    },
+    "scripts/brokers/order_lifecycle.py": {
+      "S110": 1
+    },
+    "scripts/brokers/reconcile_orders.py": {
+      "S110": 7
+    },
+    "scripts/brokers/snaptrade_credentials.py": {
+      "S105": 1,
+      "S110": 1
+    },
+    "scripts/brokers/snaptrade_trade.py": {
+      "S112": 1
+    },
+    "scripts/brokers/snaptrade_trade_pilot.py": {
+      "S110": 1
+    },
+    "scripts/brokers/snaptrade_transport.py": {
+      "S110": 1
+    },
+    "scripts/brokers/translation_review.py": {
+      "S110": 1
+    },
+    "scripts/build_catalyst_graph.py": {
+      "S110": 1
+    },
+    "scripts/build_closed_trade_digest.py": {
+      "S608": 2
+    },
+    "scripts/build_daily_execution_coaching.py": {
+      "S608": 1
+    },
+    "scripts/build_hermes_canonical_status.py": {
+      "S603": 1
+    },
+    "scripts/build_n8n_health_contracts.py": {
+      "S608": 4
+    },
+    "scripts/build_phase2b_parallel_embedding_index.py": {
+      "S310": 6,
+      "S608": 3
+    },
+    "scripts/build_phase2e_qwen3_global_shadow_index.py": {
+      "S110": 3,
+      "S310": 8,
+      "S608": 8
+    },
+    "scripts/build_symbol_profiles.py": {
+      "S110": 2
+    },
+    "scripts/build_trade_execution_quality.py": {
+      "S110": 2
+    },
+    "scripts/calibration_shadow_harness.py": {
+      "S110": 1
+    },
+    "scripts/canary_local_llm_models.py": {
+      "S310": 6
+    },
+    "scripts/candidate_discovery_orchestrator.py": {
+      "S110": 3
+    },
+    "scripts/canonical_closed_trade_adapter.py": {
+      "S110": 1
+    },
+    "scripts/capture_cc_v3_proposals.py": {
+      "S110": 1
+    },
+    "scripts/capture_cc_v3_trading_desks.py": {
+      "S110": 1
+    },
+    "scripts/catalyst_cache.py": {
+      "S110": 2
+    },
+    "scripts/catalyst_calibration.py": {
+      "S608": 1
+    },
+    "scripts/catalyst_calibration_monitor.py": {
+      "S110": 1
+    },
+    "scripts/catalyst_classifier.py": {
+      "S310": 1
+    },
+    "scripts/catalyst_enrichment.py": {
+      "S110": 4,
+      "S314": 1,
+      "S324": 1
+    },
+    "scripts/catalyst_intelligence.py": {
+      "S110": 2,
+      "S310": 2
+    },
+    "scripts/catalyst_momentum_engine.py": {
+      "S603": 1
+    },
+    "scripts/cc_browser_matrix/__main__.py": {
+      "S110": 1,
+      "S603": 1,
+      "S607": 2
+    },
+    "scripts/cc_runtime_harness/__main__.py": {
+      "S607": 1
+    },
+    "scripts/cc_runtime_harness/capture.py": {
+      "S310": 4
+    },
+    "scripts/cc_runtime_harness/runner.py": {
+      "S101": 1,
+      "S310": 6
+    },
+    "scripts/cc_runtime_harness/safety.py": {
+      "S104": 1
+    },
+    "scripts/cc_v3_site_health_probe.py": {
+      "S310": 1
+    },
+    "scripts/cc_v3_ui_actionability_dry_test.py": {
+      "S603": 1
+    },
+    "scripts/chatgpt_oauth_proxy.py": {
+      "S603": 1
+    },
+    "scripts/check_a1a_compliance.py": {
+      "S110": 1,
+      "S602": 1
+    },
+    "scripts/check_agents_policy_state.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/check_comms_gateway_enforcement.py": {
+      "S603": 1
+    },
+    "scripts/check_data_product_freshness.py": {
+      "S110": 1
+    },
+    "scripts/check_deep_overnight_health.py": {
+      "S108": 1,
+      "S310": 2
+    },
+    "scripts/check_docs_drive_parity.py": {
+      "S110": 2,
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/check_env_flags_unread.py": {
+      "S607": 1
+    },
+    "scripts/check_expected_services.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/check_hermes_update_available.py": {
+      "S110": 1,
+      "S603": 2
+    },
+    "scripts/check_line_endings.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/check_llm_fleet_alerts.py": {
+      "S310": 1
+    },
+    "scripts/check_llm_provider_health.py": {
+      "S310": 1
+    },
+    "scripts/check_local_llm_health.py": {
+      "S310": 8,
+      "S607": 1
+    },
+    "scripts/check_local_model_fleet.py": {
+      "S310": 1
+    },
+    "scripts/check_n8n_relay_contract.py": {
+      "S101": 1,
+      "S310": 1,
+      "S603": 2
+    },
+    "scripts/check_no_pii.py": {
+      "S603": 3,
+      "S607": 4
+    },
+    "scripts/check_no_secrets.py": {
+      "S603": 1,
+      "S607": 3
+    },
+    "scripts/check_operator_answer_quality.py": {
+      "S110": 3,
+      "S112": 1
+    },
+    "scripts/check_registry_runtime_truth.py": {
+      "S607": 1
+    },
+    "scripts/check_ruff_security.py": {
+      "S603": 1
+    },
+    "scripts/check_served_copy_split.py": {
+      "S607": 1
+    },
+    "scripts/check_shared_infra_pr.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/check_unit_env_files.py": {
+      "S108": 1
+    },
+    "scripts/check_worker_pins.py": {
+      "S603": 1,
+      "S607": 2
+    },
+    "scripts/ci_gates_migrate.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/ci_outage_emergency_release.py": {
+      "S310": 1,
+      "S603": 13,
+      "S604": 1,
+      "S607": 12
+    },
+    "scripts/ci_queue_janitor.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/cio_api_contract_census.py": {
+      "S607": 1
+    },
+    "scripts/cio_commands.py": {
+      "S110": 1
+    },
+    "scripts/cio_decision_engine.py": {
+      "S110": 1
+    },
+    "scripts/cio_draft_plan_hygiene.py": {
+      "S110": 1
+    },
+    "scripts/cio_entry_state_runner.py": {
+      "S110": 2
+    },
+    "scripts/cio_event_lifecycle_census.py": {
+      "S110": 1
+    },
+    "scripts/cio_heartbeat.py": {
+      "S110": 1
+    },
+    "scripts/cio_instrument_record_drill.py": {
+      "S112": 1
+    },
+    "scripts/cio_migrate_instrument_records.py": {
+      "S110": 2,
+      "S112": 1
+    },
+    "scripts/cio_opportunity_curator.py": {
+      "S112": 1
+    },
+    "scripts/cio_p0_drytest.py": {
+      "S101": 13
+    },
+    "scripts/cio_phase13_telegram_live_canary.py": {
+      "S110": 1
+    },
+    "scripts/cio_phase13_telegram_prepare_only.py": {
+      "S101": 2
+    },
+    "scripts/cio_phase_a_schd_concentration_canary.py": {
+      "S108": 3,
+      "S110": 1
+    },
+    "scripts/cio_reactive_cycle.py": {
+      "S110": 2,
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/cio_release_manifest.py": {
+      "S110": 3,
+      "S603": 1
+    },
+    "scripts/cio_telegram_bot.py": {
+      "S110": 1,
+      "S310": 1
+    },
+    "scripts/cio_wave3c_report.py": {
+      "S110": 1
+    },
+    "scripts/classify_instruments.py": {
+      "S110": 1,
+      "S112": 1
+    },
+    "scripts/claude_challenger_curator.py": {
+      "S110": 2
+    },
+    "scripts/claude_escalation_handler.py": {
+      "S110": 16,
+      "S602": 1,
+      "S603": 2,
+      "S607": 1,
+      "S608": 1
+    },
+    "scripts/cleanup_stale_proposals.py": {
+      "S110": 2,
+      "S608": 2
+    },
+    "scripts/close_exited_tax_lots.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/cloud_consensus_verdict.py": {
+      "S110": 2
+    },
+    "scripts/cloud_oauth_usage_monitor.py": {
+      "S110": 1,
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/cloud_review.py": {
+      "S110": 2
+    },
+    "scripts/coder_dispatch.py": {
+      "S108": 1,
+      "S110": 9,
+      "S310": 3,
+      "S602": 1,
+      "S603": 4,
+      "S607": 2
+    },
+    "scripts/collect_phase5_feedback_observations.py": {
+      "S608": 1
+    },
+    "scripts/comms_lifecycle.py": {
+      "S608": 7
+    },
+    "scripts/comms_phase0_attest.py": {
+      "S603": 1
+    },
+    "scripts/communications_portal.py": {
+      "S110": 5,
+      "S608": 13
+    },
+    "scripts/compare_governance_pipeline_outputs.py": {
+      "S108": 1
+    },
+    "scripts/compare_phase2b_parallel_retrieval.py": {
+      "S112": 2,
+      "S310": 6,
+      "S608": 4
+    },
+    "scripts/compare_phase2f_global_shadow_retrieval.py": {
+      "S112": 1,
+      "S310": 6,
+      "S608": 3
+    },
+    "scripts/compute_intraday_vwap.py": {
+      "S112": 1
+    },
+    "scripts/compute_maturity_score.py": {
+      "S603": 1
+    },
+    "scripts/compute_scalp_lifecycle_maturity.py": {
+      "S603": 1
+    },
+    "scripts/compute_source_weights.py": {
+      "S608": 1
+    },
+    "scripts/config_db_loader.py": {
+      "S110": 2
+    },
+    "scripts/config_sync.py": {
+      "S608": 1
+    },
+    "scripts/config_tab.py": {
+      "S110": 1
+    },
+    "scripts/content_scoring.py": {
+      "S110": 3
+    },
+    "scripts/continuous_runner.py": {
+      "S108": 1,
+      "S110": 11,
+      "S603": 2,
+      "S608": 1
+    },
+    "scripts/contradiction_adjudicator.py": {
+      "S110": 1
+    },
+    "scripts/control_plane_api.py": {
+      "S110": 2
+    },
+    "scripts/crawl_journal_ui.py": {
+      "S108": 2,
+      "S110": 1,
+      "S112": 2
+    },
+    "scripts/crawl_v3_dashboard.py": {
+      "S110": 4
+    },
+    "scripts/create_phase2e_qwen3_shadow_index.py": {
+      "S608": 1
+    },
+    "scripts/create_phase5_feedback_schema.py": {
+      "S608": 1
+    },
+    "scripts/credential_monitor.py": {
+      "S110": 3,
+      "S310": 4
+    },
+    "scripts/cron_self_heal.py": {
+      "S110": 4,
+      "S602": 1,
+      "S607": 2
+    },
+    "scripts/current_bound_units.py": {
+      "S110": 1
+    },
+    "scripts/daily_incubator_refresh.py": {
+      "S110": 1
+    },
+    "scripts/darwin_outcome_scorer.py": {
+      "S110": 1
+    },
+    "scripts/data_gap_resolver.py": {
+      "S110": 1,
+      "S324": 3
+    },
+    "scripts/data_plausibility_monitor.py": {
+      "S608": 6
+    },
+    "scripts/db_adapter.py": {
+      "S110": 18,
+      "S112": 1,
+      "S324": 2,
+      "S608": 2
+    },
+    "scripts/db_retention.py": {
+      "S110": 1,
+      "S608": 11
+    },
+    "scripts/db_storage_report.py": {
+      "S110": 1
+    },
+    "scripts/db_trim.py": {
+      "S603": 5,
+      "S607": 4,
+      "S608": 8
+    },
+    "scripts/decision_action_policy.py": {
+      "S110": 2
+    },
+    "scripts/decision_qa.py": {
+      "S110": 2
+    },
+    "scripts/defense_cash_alternatives.py": {
+      "S110": 4
+    },
+    "scripts/defense_data_quality.py": {
+      "S110": 1
+    },
+    "scripts/defense_deepseek_refresh_job.py": {
+      "S108": 1,
+      "S603": 1
+    },
+    "scripts/defense_engine_gap_checker.py": {
+      "S110": 1
+    },
+    "scripts/defense_execution.py": {
+      "S110": 1
+    },
+    "scripts/defense_inverse_stoplights.py": {
+      "S110": 2
+    },
+    "scripts/defense_oversight.py": {
+      "S101": 2,
+      "S110": 2,
+      "S310": 4,
+      "S324": 1
+    },
+    "scripts/defense_refresh_job.py": {
+      "S108": 1,
+      "S603": 1
+    },
+    "scripts/defense_shadow_replay.py": {
+      "S108": 1
+    },
+    "scripts/defense_trim_ladders.py": {
+      "S110": 1
+    },
+    "scripts/defense_weekly_paid_review.py": {
+      "S110": 1
+    },
+    "scripts/delta_tracker.py": {
+      "S324": 1
+    },
+    "scripts/deploy_session34_hotfix.py": {
+      "S603": 1
+    },
+    "scripts/deploy_yaml_patches.py": {
+      "S603": 1
+    },
+    "scripts/diag_zero_grounded.py": {
+      "S608": 1
+    },
+    "scripts/diagnose_momentum_scalp_paper_path.py": {
+      "S110": 2,
+      "S608": 9
+    },
+    "scripts/directive_keyword_enhancer.py": {
+      "S110": 2,
+      "S112": 1
+    },
+    "scripts/directive_promotion.py": {
+      "S101": 2,
+      "S110": 6,
+      "S112": 1,
+      "S608": 5
+    },
+    "scripts/discovery_sources/finviz_source.py": {
+      "S110": 1
+    },
+    "scripts/discovery_sources/social_source.py": {
+      "S110": 1
+    },
+    "scripts/disk_hygiene.py": {
+      "S603": 3,
+      "S607": 2
+    },
+    "scripts/disk_pressure_guard.py": {
+      "S603": 1
+    },
+    "scripts/docs/update_reference_architecture_card_redesign_20260704.py": {
+      "S101": 1
+    },
+    "scripts/docs_audit.py": {
+      "S110": 1
+    },
+    "scripts/docs_tip_hygiene_enforcer.py": {
+      "S603": 1
+    },
+    "scripts/drain_cio_stance_classification.py": {
+      "S110": 1
+    },
+    "scripts/drain_discovery_backlog.py": {
+      "S110": 1
+    },
+    "scripts/drive_hygiene_report.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/dry_run_brave_budget_reconciliation.py": {
+      "S603": 1
+    },
+    "scripts/due_diligence_questions.py": {
+      "S110": 1,
+      "S603": 1
+    },
+    "scripts/earnings_date_enrichment.py": {
+      "S110": 1
+    },
+    "scripts/earnings_enrich.py": {
+      "S110": 1
+    },
+    "scripts/edge_fanout_consumer.py": {
+      "S110": 3
+    },
+    "scripts/email_notifier.py": {
+      "S110": 1,
+      "S603": 1
+    },
+    "scripts/embedding_ab_baseline.py": {
+      "S112": 1,
+      "S310": 4,
+      "S608": 1
+    },
+    "scripts/emit_sop_runtime_attestation.py": {
+      "S603": 2,
+      "S607": 1
+    },
+    "scripts/emit_whole_site_evidence.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/enrich_proposal_technicals.py": {
+      "S110": 1
+    },
+    "scripts/enterprise_backtester.py": {
+      "S608": 1
+    },
+    "scripts/entry_desk_ops.py": {
+      "S110": 4
+    },
+    "scripts/eod_open_trade_alert.py": {
+      "S110": 1
+    },
+    "scripts/etf_analyst_enrich.py": {
+      "S112": 2
+    },
+    "scripts/etf_performance_enrich.py": {
+      "S110": 2
+    },
+    "scripts/event_detector.py": {
+      "S110": 2
+    },
+    "scripts/execution_state.py": {
+      "S110": 2,
+      "S603": 1,
+      "S607": 2
+    },
+    "scripts/execution_time_revalidation_validate.py": {
+      "S607": 1
+    },
+    "scripts/export_diligence_evidence.py": {
+      "S603": 1
+    },
+    "scripts/external_market_data_ingest.py": {
+      "S110": 5,
+      "S310": 1,
+      "S608": 1
+    },
+    "scripts/feedback_loop_processor.py": {
+      "S110": 1
+    },
+    "scripts/fetch_betas_yfinance.py": {
+      "S108": 1
+    },
+    "scripts/fidelity_monitored_stop.py": {
+      "S110": 3
+    },
+    "scripts/finviz_enrichment.py": {
+      "S110": 6
+    },
+    "scripts/finviz_feed_preflight.py": {
+      "S110": 1
+    },
+    "scripts/finviz_filter_validator.py": {
+      "S110": 1
+    },
+    "scripts/finviz_health_check.py": {
+      "S110": 1,
+      "S310": 2
+    },
+    "scripts/finviz_industry_groups.py": {
+      "S108": 1,
+      "S110": 2,
+      "S310": 2
+    },
+    "scripts/finviz_ingestion.py": {
+      "S110": 4,
+      "S112": 1
+    },
+    "scripts/finviz_market_movers.py": {
+      "S310": 2
+    },
+    "scripts/finviz_news.py": {
+      "S110": 3
+    },
+    "scripts/finviz_proactive_research.py": {
+      "S110": 1
+    },
+    "scripts/finviz_registry_reconcile.py": {
+      "S324": 1,
+      "S607": 1
+    },
+    "scripts/finviz_screener_runner.py": {
+      "S110": 12,
+      "S310": 2
+    },
+    "scripts/finviz_sector_research.py": {
+      "S110": 1,
+      "S310": 2
+    },
+    "scripts/finviz_throttle.py": {
+      "S110": 1
+    },
+    "scripts/finviz_validator.py": {
+      "S110": 1
+    },
+    "scripts/fix_llm_consumption_cost_units.py": {
+      "S608": 7
+    },
+    "scripts/fix_strategy_registry_null_ids.py": {
+      "S110": 1
+    },
+    "scripts/fred_data_ingest.py": {
+      "S110": 1,
+      "S310": 1
+    },
+    "scripts/free_first_refresh.py": {
+      "S108": 1,
+      "S110": 1
+    },
+    "scripts/freshness_watchdog_heartbeat.py": {
+      "S110": 1
+    },
+    "scripts/full_system_backup.py": {
+      "S110": 2,
+      "S602": 2
+    },
+    "scripts/gain_guardian_shadow_report.py": {
+      "S110": 1
+    },
+    "scripts/generate_daily_intelligence_report.py": {
+      "S110": 1
+    },
+    "scripts/generate_enterprise_reports.py": {
+      "S110": 2
+    },
+    "scripts/generate_integrity_manifest.py": {
+      "S110": 1
+    },
+    "scripts/generate_max_hold_exit_proposals.py": {
+      "S110": 3
+    },
+    "scripts/generate_phase5_learning_recommendations.py": {
+      "S608": 2
+    },
+    "scripts/generate_reports_hub.py": {
+      "S110": 3
+    },
+    "scripts/generate_state_of_repo_snapshot.py": {
+      "S110": 4,
+      "S602": 1
+    },
+    "scripts/generate_system_facts.py": {
+      "S110": 2,
+      "S602": 1
+    },
+    "scripts/generate_weekly_docx.py": {
+      "S110": 1
+    },
+    "scripts/gog_drive_safe.py": {
+      "S603": 1
+    },
+    "scripts/gpu_lifecycle.py": {
+      "S110": 6,
+      "S310": 3,
+      "S607": 1
+    },
+    "scripts/grok_oauth_proxy.py": {
+      "S603": 1
+    },
+    "scripts/grok_stop_review.py": {
+      "S110": 1
+    },
+    "scripts/handle_telegram_proposal_callback.py": {
+      "S110": 1
+    },
+    "scripts/heal_trade_ai_session_cache.py": {
+      "S110": 2
+    },
+    "scripts/health_agent.py": {
+      "S110": 50,
+      "S112": 4,
+      "S310": 1,
+      "S602": 1,
+      "S603": 2,
+      "S607": 4,
+      "S608": 5
+    },
+    "scripts/health_agent_daemon.py": {
+      "S108": 2,
+      "S110": 8,
+      "S112": 1,
+      "S311": 1,
+      "S602": 1,
+      "S603": 2
+    },
+    "scripts/health_agent_llm_review.py": {
+      "S110": 1
+    },
+    "scripts/health_tick.py": {
+      "S603": 1
+    },
+    "scripts/heartbeat_receiver.py": {
+      "S104": 1,
+      "S110": 1
+    },
+    "scripts/heartbeat_watch.py": {
+      "S112": 1
+    },
+    "scripts/hermes_audit_remediation_dry_test.py": {
+      "S603": 1
+    },
+    "scripts/hermes_autonomous_loop.py": {
+      "S108": 1,
+      "S110": 7
+    },
+    "scripts/hermes_backlog_drain.py": {
+      "S108": 1,
+      "S110": 1,
+      "S310": 1
+    },
+    "scripts/hermes_browse_proxy.py": {
+      "S110": 1
+    },
+    "scripts/hermes_config_governor.py": {
+      "S608": 1
+    },
+    "scripts/hermes_coordinator.py": {
+      "S603": 1
+    },
+    "scripts/hermes_cross_source_synthesizer.py": {
+      "S110": 1,
+      "S608": 4
+    },
+    "scripts/hermes_deep_research_local.py": {
+      "S108": 1,
+      "S110": 6
+    },
+    "scripts/hermes_directive_discovery.py": {
+      "S608": 2
+    },
+    "scripts/hermes_discovery_ingestors.py": {
+      "S110": 1,
+      "S608": 4
+    },
+    "scripts/hermes_discovery_scorecard.py": {
+      "S110": 1,
+      "S607": 1
+    },
+    "scripts/hermes_discovery_yield_builder.py": {
+      "S110": 1
+    },
+    "scripts/hermes_embedding_worker.py": {
+      "S608": 1
+    },
+    "scripts/hermes_expanded_librarian_dry_run.py": {
+      "S110": 1
+    },
+    "scripts/hermes_external_researcher.py": {
+      "S110": 9,
+      "S310": 3,
+      "S603": 2,
+      "S607": 1
+    },
+    "scripts/hermes_governance_api.py": {
+      "S110": 2
+    },
+    "scripts/hermes_health_inspector.py": {
+      "S108": 1,
+      "S110": 4
+    },
+    "scripts/hermes_killswitch.py": {
+      "S112": 1
+    },
+    "scripts/hermes_legacy_agent_inventory.py": {
+      "S110": 2
+    },
+    "scripts/hermes_librarian_dry_run.py": {
+      "S110": 1
+    },
+    "scripts/hermes_llm_failover.py": {
+      "S310": 2
+    },
+    "scripts/hermes_maturity_gates.py": {
+      "S110": 2
+    },
+    "scripts/hermes_momentum_catalyst_researcher.py": {
+      "S110": 2,
+      "S112": 2,
+      "S310": 2
+    },
+    "scripts/hermes_news_bridge.py": {
+      "S110": 2,
+      "S608": 1
+    },
+    "scripts/hermes_observation_check.py": {
+      "S603": 1
+    },
+    "scripts/hermes_outcome_feedback_agent.py": {
+      "S110": 7
+    },
+    "scripts/hermes_outcome_grader.py": {
+      "S608": 1
+    },
+    "scripts/hermes_outcome_learning.py": {
+      "S110": 1
+    },
+    "scripts/hermes_pipeline_health.py": {
+      "S110": 8,
+      "S605": 1,
+      "S607": 1
+    },
+    "scripts/hermes_private_proxy_research.py": {
+      "S110": 1
+    },
+    "scripts/hermes_research_agenda.py": {
+      "S110": 5,
+      "S608": 3
+    },
+    "scripts/hermes_research_budget_guard.py": {
+      "S110": 1
+    },
+    "scripts/hermes_scalp_entry_validation.py": {
+      "S110": 1
+    },
+    "scripts/hermes_scalp_shadow_feeder.py": {
+      "S608": 1
+    },
+    "scripts/hermes_scheduled_source_discovery_dryrun.py": {
+      "S310": 2
+    },
+    "scripts/hermes_scope_governor.py": {
+      "S110": 1
+    },
+    "scripts/hermes_score_alerts.py": {
+      "S110": 1
+    },
+    "scripts/hermes_score_calibration.py": {
+      "S608": 1
+    },
+    "scripts/hermes_score_event_feeder.py": {
+      "S110": 4
+    },
+    "scripts/hermes_social_sentiment.py": {
+      "S110": 1,
+      "S310": 2
+    },
+    "scripts/hermes_source_auto_approval.py": {
+      "S110": 2,
+      "S112": 1
+    },
+    "scripts/hermes_source_curation.py": {
+      "S110": 2,
+      "S112": 1
+    },
+    "scripts/hermes_source_registry.py": {
+      "S110": 2
+    },
+    "scripts/hermes_staging_ingest.py": {
+      "S608": 1
+    },
+    "scripts/hermes_subject_enhance.py": {
+      "S110": 3,
+      "S603": 1
+    },
+    "scripts/hermes_subject_enhance_dispatch.py": {
+      "S108": 7,
+      "S603": 2
+    },
+    "scripts/hermes_think_tank.py": {
+      "S603": 1
+    },
+    "scripts/hermes_top20_external_intel.py": {
+      "S110": 3,
+      "S603": 1
+    },
+    "scripts/hermes_topic_monitor_bridge.py": {
+      "S608": 1
+    },
+    "scripts/hermes_tradeai_handshake.py": {
+      "S110": 1,
+      "S112": 1
+    },
+    "scripts/hermes_watchlist_scorer.py": {
+      "S110": 1,
+      "S608": 1
+    },
+    "scripts/hermes_youtube_discovery.py": {
+      "S110": 2,
+      "S310": 2
+    },
+    "scripts/high_llm_execution_worker.py": {
+      "S108": 1,
+      "S310": 2
+    },
+    "scripts/holding_family.py": {
+      "S110": 2,
+      "S112": 2
+    },
+    "scripts/holding_protection_advisor.py": {
+      "S110": 5
+    },
+    "scripts/holdings_change_trigger.py": {
+      "S110": 1,
+      "S603": 1
+    },
+    "scripts/holdings_gain_guardian.py": {
+      "S110": 4,
+      "S112": 1,
+      "S608": 1
+    },
+    "scripts/holdings_llm_refresh.py": {
+      "S110": 3
+    },
+    "scripts/hooks/agents_guard_pretooluse.py": {
+      "S105": 1,
+      "S108": 1,
+      "S110": 1
+    },
+    "scripts/hybrid_rag_context_adapter.py": {
+      "S110": 1,
+      "S310": 4,
+      "S608": 1
+    },
+    "scripts/hybrid_rag_retrieval_pilot.py": {
+      "S112": 2,
+      "S310": 6
+    },
+    "scripts/incubator_llm_screener.py": {
+      "S110": 3
+    },
+    "scripts/incubator_proposal_promoter.py": {
+      "S110": 9,
+      "S608": 1
+    },
+    "scripts/indicator_cache_refresh.py": {
+      "S110": 1
+    },
+    "scripts/indicator_engine.py": {
+      "S101": 1
+    },
+    "scripts/inference_api.py": {
+      "S110": 1,
+      "S608": 2
+    },
+    "scripts/inference_financial_modeling.py": {
+      "S110": 1,
+      "S608": 1
+    },
+    "scripts/inference_hermes_query.py": {
+      "S110": 4
+    },
+    "scripts/inference_layer_engine.py": {
+      "S112": 1
+    },
+    "scripts/inference_layers.py": {
+      "S110": 1
+    },
+    "scripts/ingest_reground_retirement_gaps.py": {
+      "S603": 2
+    },
+    "scripts/ingest_schwab_gainloss.py": {
+      "S112": 1,
+      "S324": 1
+    },
+    "scripts/ingest_trade_intrabar_bars.py": {
+      "S112": 1,
+      "S608": 1
+    },
+    "scripts/install_staged_units.py": {
+      "S603": 2
+    },
+    "scripts/install_watchlist_remediation_cron.py": {
+      "S607": 2
+    },
+    "scripts/intel_auto_discovery.py": {
+      "S110": 1
+    },
+    "scripts/intel_query.py": {
+      "S110": 14
+    },
+    "scripts/intel_table_staleness_monitor.py": {
+      "S110": 1,
+      "S608": 2
+    },
+    "scripts/intelligence_entity_manager.py": {
+      "S110": 2,
+      "S608": 1
+    },
+    "scripts/inventory_runtime_jobs.py": {
+      "S108": 1,
+      "S602": 1
+    },
+    "scripts/investment_costs.py": {
+      "S608": 6
+    },
+    "scripts/iris_proposal_curator.py": {
+      "S608": 2
+    },
+    "scripts/iris_taxonomy_agent.py": {
+      "S110": 6,
+      "S603": 3,
+      "S608": 2
+    },
+    "scripts/iterate_research_topics.py": {
+      "S110": 1
+    },
+    "scripts/job_coverage_monitor.py": {
+      "S110": 1,
+      "S603": 1,
+      "S607": 2
+    },
+    "scripts/job_schedule_audit.py": {
+      "S607": 1
+    },
+    "scripts/journal_agent_coach.py": {
+      "S310": 2
+    },
+    "scripts/journal_ai_critique.py": {
+      "S110": 8,
+      "S608": 2
+    },
+    "scripts/journal_analytics_engine.py": {
+      "S110": 1,
+      "S608": 1
+    },
+    "scripts/journal_annotation_reminder.py": {
+      "S110": 1
+    },
+    "scripts/journal_ask.py": {
+      "S110": 1
+    },
+    "scripts/journal_review_builder.py": {
+      "S608": 1
+    },
+    "scripts/journal_tilt_morning_hook.py": {
+      "S110": 1
+    },
+    "scripts/journal_trade_in_view.py": {
+      "S110": 5,
+      "S311": 1,
+      "S603": 2,
+      "S608": 19
+    },
+    "scripts/learning_governance.py": {
+      "S608": 2
+    },
+    "scripts/lib/account_state.py": {
+      "S101": 3,
+      "S110": 1,
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/lib/advice_digest.py": {
+      "S110": 7
+    },
+    "scripts/lib/advisory/advisory_memory.py": {
+      "S110": 5
+    },
+    "scripts/lib/advisory/advisory_opinion_engine.py": {
+      "S110": 11,
+      "S310": 2
+    },
+    "scripts/lib/advisory/kb_lessons.py": {
+      "S110": 1,
+      "S112": 1
+    },
+    "scripts/lib/advisory/kb_lessons_retention.py": {
+      "S112": 1
+    },
+    "scripts/lib/advisory/notification_broker.py": {
+      "S110": 4,
+      "S112": 1
+    },
+    "scripts/lib/advisory/promotion_gate.py": {
+      "S110": 1,
+      "S112": 1
+    },
+    "scripts/lib/advisory/shadow_session.py": {
+      "S110": 2
+    },
+    "scripts/lib/advisory/specialist_shadow.py": {
+      "S110": 4
+    },
+    "scripts/lib/advisory_desk_operator.py": {
+      "S110": 1
+    },
+    "scripts/lib/advisory_desk_schedule.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/lib/aec_narrator.py": {
+      "S110": 1
+    },
+    "scripts/lib/agent_claim_board.py": {
+      "S607": 1
+    },
+    "scripts/lib/agent_claim_lifecycle.py": {
+      "S603": 2,
+      "S607": 2
+    },
+    "scripts/lib/agent_commitment_v1.py": {
+      "S101": 1
+    },
+    "scripts/lib/agent_comms_consumption.py": {
+      "S608": 1
+    },
+    "scripts/lib/agent_decision_payload.py": {
+      "S110": 2
+    },
+    "scripts/lib/agent_file_lease.py": {
+      "S110": 1,
+      "S112": 2,
+      "S607": 1
+    },
+    "scripts/lib/agent_flash_governance.py": {
+      "S108": 1,
+      "S110": 2
+    },
+    "scripts/lib/agent_job_queue.py": {
+      "S608": 1
+    },
+    "scripts/lib/agent_jobs_cron.py": {
+      "S105": 1,
+      "S108": 1
+    },
+    "scripts/lib/agent_jobs_lock.py": {
+      "S108": 1,
+      "S110": 3
+    },
+    "scripts/lib/agent_memory_admission.py": {
+      "S105": 2
+    },
+    "scripts/lib/agent_session_receipt.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/lib/agent_shadow_acceptance.py": {
+      "S112": 1
+    },
+    "scripts/lib/agent_worktree_identity.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/lib/alpha_vantage_owner.py": {
+      "S110": 1
+    },
+    "scripts/lib/anthropic_monitoring.py": {
+      "S110": 2
+    },
+    "scripts/lib/anthropic_web_search.py": {
+      "S310": 1
+    },
+    "scripts/lib/approval_board_projection.py": {
+      "S603": 1
+    },
+    "scripts/lib/approval_package.py": {
+      "S112": 1
+    },
+    "scripts/lib/autonomy_watchdog/collectors.py": {
+      "S603": 1,
+      "S607": 3
+    },
+    "scripts/lib/autonomy_watchdog/telegram_system.py": {
+      "S310": 2
+    },
+    "scripts/lib/brave_router.py": {
+      "S110": 9,
+      "S310": 2
+    },
+    "scripts/lib/bridge_agent_preconditions.py": {
+      "S105": 1
+    },
+    "scripts/lib/bridge_llm_step.py": {
+      "S101": 1,
+      "S108": 1
+    },
+    "scripts/lib/bridge_oauth_transport.py": {
+      "S101": 1,
+      "S113": 1
+    },
+    "scripts/lib/broker_env_audit.py": {
+      "S105": 1,
+      "S110": 2
+    },
+    "scripts/lib/broker_read_sync_policy.py": {
+      "S105": 1
+    },
+    "scripts/lib/campaign_closeout.py": {
+      "S110": 2,
+      "S603": 1,
+      "S607": 2
+    },
+    "scripts/lib/campaign_maturity_truth.py": {
+      "S101": 1,
+      "S607": 1
+    },
+    "scripts/lib/canonical_store_registry.py": {
+      "S101": 1
+    },
+    "scripts/lib/cc_auth.py": {
+      "S105": 1,
+      "S110": 2
+    },
+    "scripts/lib/cc_client.py": {
+      "S310": 3
+    },
+    "scripts/lib/cc_symbol_cards.py": {
+      "S324": 1
+    },
+    "scripts/lib/ci_outage_emergency.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/lib/ci_shards.py": {
+      "S314": 1
+    },
+    "scripts/lib/cio_acceptance_evaluator.py": {
+      "S110": 1,
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/lib/cio_action_links.py": {
+      "S110": 1
+    },
+    "scripts/lib/cio_advisory_readiness.py": {
+      "S105": 1
+    },
+    "scripts/lib/cio_alex_telegram.py": {
+      "S112": 1
+    },
+    "scripts/lib/cio_ask_core.py": {
+      "S110": 2
+    },
+    "scripts/lib/cio_ask_reanswer.py": {
+      "S110": 1
+    },
+    "scripts/lib/cio_ask_research.py": {
+      "S110": 1
+    },
+    "scripts/lib/cio_capital_plan.py": {
+      "S110": 5
+    },
+    "scripts/lib/cio_command_center.py": {
+      "S110": 3,
+      "S112": 1
+    },
+    "scripts/lib/cio_committee_synthesis.py": {
+      "S110": 1
+    },
+    "scripts/lib/cio_converse_core.py": {
+      "S110": 5
+    },
+    "scripts/lib/cio_desk_depth.py": {
+      "S110": 1,
+      "S112": 2
+    },
+    "scripts/lib/cio_desk_synthesis.py": {
+      "S101": 1,
+      "S108": 4,
+      "S110": 9,
+      "S112": 1
+    },
+    "scripts/lib/cio_dlq_ledger.py": {
+      "S112": 1
+    },
+    "scripts/lib/cio_edgar_proof.py": {
+      "S310": 1
+    },
+    "scripts/lib/cio_event_bus.py": {
+      "S110": 3
+    },
+    "scripts/lib/cio_financial_snapshot.py": {
+      "S110": 1
+    },
+    "scripts/lib/cio_financial_truth_gate.py": {
+      "S110": 1
+    },
+    "scripts/lib/cio_goals.py": {
+      "S110": 4
+    },
+    "scripts/lib/cio_governed_model_bridge.py": {
+      "S101": 1,
+      "S108": 1,
+      "S110": 5
+    },
+    "scripts/lib/cio_graph_impact_held.py": {
+      "S110": 1
+    },
+    "scripts/lib/cio_grok_critique.py": {
+      "S110": 1
+    },
+    "scripts/lib/cio_held_thesis_coverage.py": {
+      "S110": 3,
+      "S112": 1
+    },
+    "scripts/lib/cio_hermes_research.py": {
+      "S110": 9
+    },
+    "scripts/lib/cio_identity_spine.py": {
+      "S110": 3
+    },
+    "scripts/lib/cio_instrument_record.py": {
+      "S110": 3,
+      "S112": 2
+    },
+    "scripts/lib/cio_investment_product.py": {
+      "S110": 6
+    },
+    "scripts/lib/cio_lineage.py": {
+      "S110": 3
+    },
+    "scripts/lib/cio_live_report.py": {
+      "S110": 1,
+      "S607": 1
+    },
+    "scripts/lib/cio_market_calendar.py": {
+      "S110": 2
+    },
+    "scripts/lib/cio_material_scan.py": {
+      "S110": 1
+    },
+    "scripts/lib/cio_narrative_compose.py": {
+      "S110": 1
+    },
+    "scripts/lib/cio_notification_delivery.py": {
+      "S110": 1
+    },
+    "scripts/lib/cio_notification_signal.py": {
+      "S110": 1
+    },
+    "scripts/lib/cio_notify_freshness.py": {
+      "S112": 1
+    },
+    "scripts/lib/cio_oauth_secondary_review.py": {
+      "S324": 1
+    },
+    "scripts/lib/cio_office_cycle.py": {
+      "S110": 1
+    },
+    "scripts/lib/cio_office_state.py": {
+      "S310": 1
+    },
+    "scripts/lib/cio_operator_desk_loop.py": {
+      "S110": 21,
+      "S112": 2,
+      "S607": 1
+    },
+    "scripts/lib/cio_opportunity_queue.py": {
+      "S110": 1,
+      "S112": 1,
+      "S608": 1
+    },
+    "scripts/lib/cio_outcome_observer.py": {
+      "S110": 1,
+      "S112": 1
+    },
+    "scripts/lib/cio_plan_enrichment.py": {
+      "S110": 27,
+      "S112": 1,
+      "S310": 2
+    },
+    "scripts/lib/cio_poller_reply.py": {
+      "S110": 2
+    },
+    "scripts/lib/cio_preconditions_board.py": {
+      "S112": 1
+    },
+    "scripts/lib/cio_product_reassessment.py": {
+      "S110": 4
+    },
+    "scripts/lib/cio_prompt_eval.py": {
+      "S110": 1,
+      "S112": 1
+    },
+    "scripts/lib/cio_prompt_judge.py": {
+      "S110": 2
+    },
+    "scripts/lib/cio_prompt_loader.py": {
+      "S110": 2,
+      "S112": 1
+    },
+    "scripts/lib/cio_prospect_writer.py": {
+      "S110": 1
+    },
+    "scripts/lib/cio_r13_institution.py": {
+      "S101": 1
+    },
+    "scripts/lib/cio_rebalancer_readonly.py": {
+      "S110": 2
+    },
+    "scripts/lib/cio_reconciliation.py": {
+      "S110": 2,
+      "S112": 1
+    },
+    "scripts/lib/cio_regime_facts.py": {
+      "S112": 1
+    },
+    "scripts/lib/cio_remote_sha_truth.py": {
+      "S603": 2,
+      "S607": 1
+    },
+    "scripts/lib/cio_report_charts.py": {
+      "S110": 1
+    },
+    "scripts/lib/cio_report_pipeline.py": {
+      "S110": 2,
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/lib/cio_report_render.py": {
+      "S110": 5,
+      "S603": 4,
+      "S607": 2
+    },
+    "scripts/lib/cio_report_v2.py": {
+      "S110": 4
+    },
+    "scripts/lib/cio_report_view.py": {
+      "S110": 1
+    },
+    "scripts/lib/cio_research_budget.py": {
+      "S112": 1
+    },
+    "scripts/lib/cio_residual_web.py": {
+      "S110": 1,
+      "S112": 1
+    },
+    "scripts/lib/cio_run_worker.py": {
+      "S110": 11
+    },
+    "scripts/lib/cio_s0_operator_loop.py": {
+      "S110": 1
+    },
+    "scripts/lib/cio_seasonality_analytics.py": {
+      "S112": 1
+    },
+    "scripts/lib/cio_seasonality_engine.py": {
+      "S110": 3
+    },
+    "scripts/lib/cio_situation_detector.py": {
+      "S110": 17
+    },
+    "scripts/lib/cio_situation_notify_bridge.py": {
+      "S110": 1
+    },
+    "scripts/lib/cio_source_clocks.py": {
+      "S603": 1,
+      "S607": 1,
+      "S608": 1
+    },
+    "scripts/lib/cio_source_discovery.py": {
+      "S112": 2
+    },
+    "scripts/lib/cio_strategy_knowledge.py": {
+      "S110": 1
+    },
+    "scripts/lib/cio_symbol_intelligence.py": {
+      "S110": 2
+    },
+    "scripts/lib/cio_symbol_research.py": {
+      "S110": 2,
+      "S112": 1
+    },
+    "scripts/lib/cio_telegram_canary.py": {
+      "S105": 1,
+      "S110": 3,
+      "S112": 1
+    },
+    "scripts/lib/cio_telegram_converse.py": {
+      "S104": 1,
+      "S110": 11,
+      "S112": 2
+    },
+    "scripts/lib/cio_telegram_stance_gate.py": {
+      "S110": 2
+    },
+    "scripts/lib/cio_telegram_transport.py": {
+      "S105": 1,
+      "S110": 1
+    },
+    "scripts/lib/cio_theses.py": {
+      "S110": 11
+    },
+    "scripts/lib/cio_topology_audit.py": {
+      "S108": 2,
+      "S110": 3,
+      "S603": 2
+    },
+    "scripts/lib/cio_wake_backlog_policy.py": {
+      "S110": 1
+    },
+    "scripts/lib/cio_wake_compose.py": {
+      "S110": 1
+    },
+    "scripts/lib/cio_wake_dispatcher.py": {
+      "S110": 5,
+      "S112": 2
+    },
+    "scripts/lib/cio_wake_jobs.py": {
+      "S110": 2
+    },
+    "scripts/lib/cio_wake_traces.py": {
+      "S110": 5
+    },
+    "scripts/lib/cio_whatsapp_egress.py": {
+      "S310": 2
+    },
+    "scripts/lib/comms/agent_contracts.py": {
+      "S110": 7
+    },
+    "scripts/lib/comms/classify.py": {
+      "S324": 1
+    },
+    "scripts/lib/comms/client.py": {
+      "S101": 2,
+      "S110": 1
+    },
+    "scripts/lib/comms/delivery.py": {
+      "S101": 3,
+      "S110": 7
+    },
+    "scripts/lib/comms/inbound.py": {
+      "S110": 7,
+      "S608": 5
+    },
+    "scripts/lib/comms/librarian.py": {
+      "S110": 5
+    },
+    "scripts/lib/comms/subject_memory.py": {
+      "S110": 4,
+      "S608": 1
+    },
+    "scripts/lib/comms_credential_resolve.py": {
+      "S110": 1
+    },
+    "scripts/lib/comms_memory.py": {
+      "S110": 2
+    },
+    "scripts/lib/cost_basis_transfer.py": {
+      "S110": 2
+    },
+    "scripts/lib/critique_question_writeback.py": {
+      "S112": 1
+    },
+    "scripts/lib/cross_asset/security_research_spine.py": {
+      "S110": 2
+    },
+    "scripts/lib/cross_asset/spine_sla_enqueue.py": {
+      "S112": 3
+    },
+    "scripts/lib/current_bound_units.py": {
+      "S603": 1
+    },
+    "scripts/lib/current_pin_integrity.py": {
+      "S603": 3,
+      "S607": 1
+    },
+    "scripts/lib/data_broker/advisory_desk.py": {
+      "S110": 11
+    },
+    "scripts/lib/data_broker/analyst_rollup.py": {
+      "S110": 1
+    },
+    "scripts/lib/data_broker/atomic_json.py": {
+      "S110": 2
+    },
+    "scripts/lib/data_broker/broker_access.py": {
+      "S101": 1,
+      "S105": 1,
+      "S110": 1
+    },
+    "scripts/lib/data_broker/catalyst_record.py": {
+      "S608": 5
+    },
+    "scripts/lib/data_broker/catalyst_record_readonly.py": {
+      "S608": 1
+    },
+    "scripts/lib/data_broker/cio_portfolio.py": {
+      "S110": 5
+    },
+    "scripts/lib/data_broker/cio_prospect.py": {
+      "S608": 1
+    },
+    "scripts/lib/data_broker/home_do_now.py": {
+      "S101": 2
+    },
+    "scripts/lib/data_broker/indicator_refresh.py": {
+      "S603": 1
+    },
+    "scripts/lib/data_broker/indicator_snapshot.py": {
+      "S110": 1
+    },
+    "scripts/lib/data_broker/opportunity.py": {
+      "S110": 2
+    },
+    "scripts/lib/data_broker/portfolio_snapshot.py": {
+      "S110": 1
+    },
+    "scripts/lib/data_broker/reentry_decision_desk.py": {
+      "S110": 4
+    },
+    "scripts/lib/data_broker/reentry_enrichment.py": {
+      "S110": 2
+    },
+    "scripts/lib/data_broker/risk_snapshot.py": {
+      "S110": 1
+    },
+    "scripts/lib/data_broker/rotation_ladders.py": {
+      "S110": 3
+    },
+    "scripts/lib/data_broker/scalp_list.py": {
+      "S110": 1
+    },
+    "scripts/lib/data_broker/sector_momentum.py": {
+      "S110": 1
+    },
+    "scripts/lib/data_broker/strategy_desk.py": {
+      "S110": 1
+    },
+    "scripts/lib/data_broker/subject_research.py": {
+      "S608": 4
+    },
+    "scripts/lib/data_broker/trade_journey.py": {
+      "S110": 1
+    },
+    "scripts/lib/data_broker/tradeinview_sources.py": {
+      "S110": 1
+    },
+    "scripts/lib/data_broker/watch_curation.py": {
+      "S110": 3
+    },
+    "scripts/lib/data_broker/watch_decision_desk.py": {
+      "S110": 1,
+      "S608": 1
+    },
+    "scripts/lib/data_broker/watch_discovery.py": {
+      "S110": 1
+    },
+    "scripts/lib/data_broker/watch_domains.py": {
+      "S110": 3,
+      "S112": 3
+    },
+    "scripts/lib/data_broker/watch_intelligence.py": {
+      "S110": 1
+    },
+    "scripts/lib/data_broker/watch_position_facts.py": {
+      "S112": 1
+    },
+    "scripts/lib/data_domain_readiness.py": {
+      "S110": 2,
+      "S112": 1,
+      "S608": 1
+    },
+    "scripts/lib/data_integrity_audit.py": {
+      "S110": 1
+    },
+    "scripts/lib/data_source_report.py": {
+      "S110": 1
+    },
+    "scripts/lib/deploy_console_actions.py": {
+      "S603": 3,
+      "S607": 1
+    },
+    "scripts/lib/deploy_delegation_binding.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/lib/deploy_events_db.py": {
+      "S110": 2,
+      "S608": 1
+    },
+    "scripts/lib/deploy_in_flight.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/lib/deploy_on_main.py": {
+      "S110": 1,
+      "S603": 7,
+      "S607": 5
+    },
+    "scripts/lib/deterministic_integrity.py": {
+      "S112": 3,
+      "S607": 3,
+      "S608": 3
+    },
+    "scripts/lib/effect_claim.py": {
+      "S101": 2,
+      "S603": 1
+    },
+    "scripts/lib/effective_truth.py": {
+      "S603": 1,
+      "S607": 2
+    },
+    "scripts/lib/embedding_index.py": {
+      "S110": 2
+    },
+    "scripts/lib/embedding_reader.py": {
+      "S608": 2
+    },
+    "scripts/lib/entry_planner_adapter.py": {
+      "S110": 3
+    },
+    "scripts/lib/env_bootstrap.py": {
+      "S110": 1
+    },
+    "scripts/lib/event_lineage.py": {
+      "S110": 4
+    },
+    "scripts/lib/execution_language.py": {
+      "S105": 1
+    },
+    "scripts/lib/fidelity_stop_sync.py": {
+      "S110": 1
+    },
+    "scripts/lib/file_integrity.py": {
+      "S110": 3,
+      "S607": 1
+    },
+    "scripts/lib/financial_reconciliation.py": {
+      "S101": 1
+    },
+    "scripts/lib/financial_senses/identity.py": {
+      "S310": 1
+    },
+    "scripts/lib/financial_senses/macro_provider.py": {
+      "S110": 1,
+      "S310": 1
+    },
+    "scripts/lib/financial_senses/sec_companyfacts_reader.py": {
+      "S110": 1,
+      "S310": 2
+    },
+    "scripts/lib/financial_senses/sec_provider.py": {
+      "S110": 1,
+      "S608": 1
+    },
+    "scripts/lib/financial_senses_aif.py": {
+      "S110": 1
+    },
+    "scripts/lib/finviz_snapshot.py": {
+      "S110": 1,
+      "S112": 3
+    },
+    "scripts/lib/free_first_circulation.py": {
+      "S110": 1
+    },
+    "scripts/lib/free_search.py": {
+      "S110": 1
+    },
+    "scripts/lib/gain_guardian_publish.py": {
+      "S110": 1,
+      "S112": 1
+    },
+    "scripts/lib/gap_resolver.py": {
+      "S110": 2,
+      "S310": 1,
+      "S603": 1
+    },
+    "scripts/lib/gateway_settlement.py": {
+      "S112": 1
+    },
+    "scripts/lib/goal_budget.py": {
+      "S110": 2,
+      "S112": 1
+    },
+    "scripts/lib/goal_pilot_material_change.py": {
+      "S110": 1
+    },
+    "scripts/lib/governed_research_producer.py": {
+      "S110": 1,
+      "S112": 2
+    },
+    "scripts/lib/hands_off_policy.py": {
+      "S105": 1
+    },
+    "scripts/lib/health_root_cause_memory.py": {
+      "S110": 5,
+      "S112": 1
+    },
+    "scripts/lib/hermes_bridge_backend.py": {
+      "S310": 2
+    },
+    "scripts/lib/hermes_discovery/analyst_signals.py": {
+      "S608": 1
+    },
+    "scripts/lib/hermes_discovery/autonomous_governance.py": {
+      "S101": 2,
+      "S110": 2
+    },
+    "scripts/lib/hermes_discovery/coverage.py": {
+      "S608": 2
+    },
+    "scripts/lib/hermes_discovery/domains.py": {
+      "S110": 1
+    },
+    "scripts/lib/hermes_discovery/entity_spikes.py": {
+      "S608": 4
+    },
+    "scripts/lib/hermes_discovery/inbox.py": {
+      "S608": 1
+    },
+    "scripts/lib/hermes_discovery/industry_novelty.py": {
+      "S608": 1
+    },
+    "scripts/lib/hermes_discovery/llm_review.py": {
+      "S110": 1,
+      "S608": 1
+    },
+    "scripts/lib/hermes_discovery/loft_law.py": {
+      "S608": 2
+    },
+    "scripts/lib/hermes_discovery/private_proxy.py": {
+      "S110": 1,
+      "S608": 2
+    },
+    "scripts/lib/hermes_discovery/promotion.py": {
+      "S101": 2
+    },
+    "scripts/lib/hermes_discovery/scoring.py": {
+      "S110": 1
+    },
+    "scripts/lib/hermes_discovery/strategy_discovery.py": {
+      "S112": 1
+    },
+    "scripts/lib/hermes_discovery/tag_lift.py": {
+      "S608": 1
+    },
+    "scripts/lib/hermes_discovery/white_space.py": {
+      "S110": 1
+    },
+    "scripts/lib/hermes_discovery/workspaces.py": {
+      "S101": 1
+    },
+    "scripts/lib/hermes_golden_judge.py": {
+      "S310": 2
+    },
+    "scripts/lib/hermes_holdings_lifecycle/holdings_lifecycle.py": {
+      "S110": 3
+    },
+    "scripts/lib/hermes_librarian/librarian.py": {
+      "S110": 3
+    },
+    "scripts/lib/hermes_librarian/retention.py": {
+      "S608": 1
+    },
+    "scripts/lib/hermes_librarian/taxonomy.py": {
+      "S110": 1,
+      "S310": 2
+    },
+    "scripts/lib/hermes_outcome_bus/alert_enrichment.py": {
+      "S110": 1
+    },
+    "scripts/lib/hermes_outcome_bus/scorecard.py": {
+      "S110": 4,
+      "S112": 3
+    },
+    "scripts/lib/hermes_request_log/logger.py": {
+      "S110": 2,
+      "S112": 1
+    },
+    "scripts/lib/hermes_research_loop.py": {
+      "S110": 5
+    },
+    "scripts/lib/hermes_scope_governor/engine.py": {
+      "S110": 6,
+      "S608": 1
+    },
+    "scripts/lib/hermes_scope_governor/health.py": {
+      "S110": 2,
+      "S112": 3,
+      "S603": 1
+    },
+    "scripts/lib/hermes_scope_governor/inputs.py": {
+      "S110": 4
+    },
+    "scripts/lib/hermes_scope_governor/reactions.py": {
+      "S110": 2
+    },
+    "scripts/lib/hermes_scope_governor/watchlist_health.py": {
+      "S110": 1
+    },
+    "scripts/lib/hermes_scope_governor/watchlist_lifecycle.py": {
+      "S110": 1,
+      "S112": 1
+    },
+    "scripts/lib/hermes_subject_join.py": {
+      "S110": 1
+    },
+    "scripts/lib/hermes_thresholds/closed_loop_evaluation.py": {
+      "S110": 1,
+      "S112": 1
+    },
+    "scripts/lib/hermes_thresholds/evaluation_engine.py": {
+      "S110": 3
+    },
+    "scripts/lib/hermes_thresholds/proposal_impact.py": {
+      "S110": 1
+    },
+    "scripts/lib/hermes_thresholds/store.py": {
+      "S112": 2
+    },
+    "scripts/lib/hermes_thresholds/threshold_learner.py": {
+      "S110": 1,
+      "S112": 1
+    },
+    "scripts/lib/hermes_thresholds/workflow.py": {
+      "S110": 4
+    },
+    "scripts/lib/hermes_traceability/symbol_journey.py": {
+      "S110": 2
+    },
+    "scripts/lib/hermes_worker.py": {
+      "S110": 8
+    },
+    "scripts/lib/hermetic_test_guard.py": {
+      "S110": 2
+    },
+    "scripts/lib/high_rvol_manual_review.py": {
+      "S105": 1
+    },
+    "scripts/lib/holdings_write_lock.py": {
+      "S108": 1
+    },
+    "scripts/lib/identity_health.py": {
+      "S110": 3,
+      "S607": 2
+    },
+    "scripts/lib/inbound_identity_tagger.py": {
+      "S110": 1
+    },
+    "scripts/lib/incident_flood_policy.py": {
+      "S608": 1
+    },
+    "scripts/lib/incident_supervisor.py": {
+      "S603": 2
+    },
+    "scripts/lib/incident_watchers.py": {
+      "S603": 2,
+      "S607": 2
+    },
+    "scripts/lib/indicator_universe_lane.py": {
+      "S110": 4
+    },
+    "scripts/lib/intelligence_client.py": {
+      "S110": 8
+    },
+    "scripts/lib/issuer_segments/xbrl_segments.py": {
+      "S314": 2
+    },
+    "scripts/lib/l3_judgment_cache.py": {
+      "S101": 1
+    },
+    "scripts/lib/lane_output.py": {
+      "S110": 1
+    },
+    "scripts/lib/lane_registry.py": {
+      "S112": 1,
+      "S603": 2,
+      "S607": 5,
+      "S608": 2
+    },
+    "scripts/lib/last_known_stops.py": {
+      "S110": 3
+    },
+    "scripts/lib/learning_watermark.py": {
+      "S101": 3
+    },
+    "scripts/lib/lifecycle_trace.py": {
+      "S110": 2,
+      "S608": 1
+    },
+    "scripts/lib/live_project_root.py": {
+      "S110": 1
+    },
+    "scripts/lib/llm_consumption.py": {
+      "S110": 14,
+      "S608": 1
+    },
+    "scripts/lib/llm_model_registry.py": {
+      "S112": 1
+    },
+    "scripts/lib/llm_spend.py": {
+      "S608": 2
+    },
+    "scripts/lib/low_price_manual_review.py": {
+      "S105": 1
+    },
+    "scripts/lib/maria_parity_hook.py": {
+      "S110": 1
+    },
+    "scripts/lib/market_risk/categories/seasonal.py": {
+      "S101": 1
+    },
+    "scripts/lib/market_risk/exposure.py": {
+      "S608": 1
+    },
+    "scripts/lib/market_risk/reader.py": {
+      "S110": 2,
+      "S608": 2
+    },
+    "scripts/lib/market_risk_book_join.py": {
+      "S110": 4
+    },
+    "scripts/lib/maturity_control/autonomy_health.py": {
+      "S110": 1,
+      "S603": 1,
+      "S607": 2
+    },
+    "scripts/lib/maturity_control/lessons.py": {
+      "S112": 2
+    },
+    "scripts/lib/maturity_control/schema.py": {
+      "S105": 1
+    },
+    "scripts/lib/mcp_provider_adapters.py": {
+      "S110": 1
+    },
+    "scripts/lib/memory_m2_benchmark.py": {
+      "S110": 2
+    },
+    "scripts/lib/memory_m2_v2.py": {
+      "S108": 1,
+      "S110": 3,
+      "S603": 2,
+      "S607": 6
+    },
+    "scripts/lib/memory_prod_cutover.py": {
+      "S603": 1,
+      "S607": 1,
+      "S608": 4
+    },
+    "scripts/lib/memory_retrieval_unit.py": {
+      "S105": 1
+    },
+    "scripts/lib/memory_ring2.py": {
+      "S110": 1
+    },
+    "scripts/lib/memory_shadow_projector.py": {
+      "S608": 1
+    },
+    "scripts/lib/mergify_queue_monitor.py": {
+      "S603": 3,
+      "S607": 1
+    },
+    "scripts/lib/micro_float_manual_review.py": {
+      "S105": 1
+    },
+    "scripts/lib/multi_source_quote_refresh.py": {
+      "S110": 5
+    },
+    "scripts/lib/n8n_broker_read_carveout.py": {
+      "S105": 1
+    },
+    "scripts/lib/n8n_coordination_ledger.py": {
+      "S101": 5,
+      "S608": 1
+    },
+    "scripts/lib/n8n_coordination_projection.py": {
+      "S608": 11
+    },
+    "scripts/lib/n8n_fabric_store.py": {
+      "S101": 1
+    },
+    "scripts/lib/n8n_gateway_client.py": {
+      "S310": 1
+    },
+    "scripts/lib/n8n_maturity/core.py": {
+      "S105": 1
+    },
+    "scripts/lib/n8n_maturity/dims_scheduling.py": {
+      "S608": 1
+    },
+    "scripts/lib/n8n_maturity/dims_signal.py": {
+      "S608": 1
+    },
+    "scripts/lib/n8n_model_job.py": {
+      "S101": 1,
+      "S310": 2
+    },
+    "scripts/lib/n8n_momentum_lifecycle.py": {
+      "S108": 3,
+      "S608": 1
+    },
+    "scripts/lib/needs_action.py": {
+      "S101": 1
+    },
+    "scripts/lib/nightly_cutover.py": {
+      "S108": 1,
+      "S608": 1
+    },
+    "scripts/lib/oauth_lane_status.py": {
+      "S110": 1
+    },
+    "scripts/lib/ollama_embedding_policy.py": {
+      "S310": 2
+    },
+    "scripts/lib/operator_approvals_api.py": {
+      "S112": 1,
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/lib/operator_internal_first.py": {
+      "S110": 1
+    },
+    "scripts/lib/operator_subject_resolver.py": {
+      "S110": 1
+    },
+    "scripts/lib/ops_controls_api.py": {
+      "S110": 1
+    },
+    "scripts/lib/ops_controls_core.py": {
+      "S101": 1,
+      "S603": 1
+    },
+    "scripts/lib/ops_controls_n8n_outcomes.py": {
+      "S608": 3
+    },
+    "scripts/lib/ops_controls_store.py": {
+      "S110": 2,
+      "S608": 3
+    },
+    "scripts/lib/ops_lanes.py": {
+      "S101": 1
+    },
+    "scripts/lib/option_chain_runs.py": {
+      "S608": 1
+    },
+    "scripts/lib/options_intent/store.py": {
+      "S608": 1
+    },
+    "scripts/lib/options_journal_read.py": {
+      "S608": 4
+    },
+    "scripts/lib/options_memory_envelope.py": {
+      "S110": 3
+    },
+    "scripts/lib/options_pipeline/alpaca_paper.py": {
+      "S324": 2,
+      "S608": 2
+    },
+    "scripts/lib/options_pipeline/atm_long_premium_generator.py": {
+      "S110": 1
+    },
+    "scripts/lib/options_pipeline/paper_monitor_ops.py": {
+      "S110": 1
+    },
+    "scripts/lib/options_pipeline/paper_positions.py": {
+      "S110": 1
+    },
+    "scripts/lib/options_pipeline/paper_positions_api.py": {
+      "S608": 1
+    },
+    "scripts/lib/options_pipeline/strategy_matcher.py": {
+      "S105": 1,
+      "S110": 1
+    },
+    "scripts/lib/options_scan.py": {
+      "S608": 1
+    },
+    "scripts/lib/options_thesis_lifecycle.py": {
+      "S110": 1
+    },
+    "scripts/lib/orchestrator_admission.py": {
+      "S108": 1
+    },
+    "scripts/lib/persistent_agent_wake.py": {
+      "S110": 5
+    },
+    "scripts/lib/persistent_wake_schedule.py": {
+      "S101": 1
+    },
+    "scripts/lib/pg_reconnect.py": {
+      "S110": 3
+    },
+    "scripts/lib/pipeline_repair_handoff.py": {
+      "S603": 2,
+      "S607": 1
+    },
+    "scripts/lib/platform_health.py": {
+      "S110": 1
+    },
+    "scripts/lib/policy_freshness.py": {
+      "S603": 2,
+      "S607": 2
+    },
+    "scripts/lib/portfolio_positions.py": {
+      "S110": 2
+    },
+    "scripts/lib/portfolio_role.py": {
+      "S110": 1
+    },
+    "scripts/lib/portfolio_server_shutdown.py": {
+      "S110": 1
+    },
+    "scripts/lib/position_transfer_normalize.py": {
+      "S110": 3,
+      "S608": 1
+    },
+    "scripts/lib/pr_merge_digest.py": {
+      "S101": 4,
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/lib/pr_merge_telegram.py": {
+      "S603": 3,
+      "S607": 2
+    },
+    "scripts/lib/prospectus/blocks.py": {
+      "S112": 1
+    },
+    "scripts/lib/prospectus/etf_profile.py": {
+      "S112": 1
+    },
+    "scripts/lib/prospectus/inputs.py": {
+      "S110": 2
+    },
+    "scripts/lib/prospectus/news_gate.py": {
+      "S324": 1
+    },
+    "scripts/lib/prospectus/print_render.py": {
+      "S603": 1
+    },
+    "scripts/lib/prospectus/quality_gate.py": {
+      "S112": 1
+    },
+    "scripts/lib/publisher_stance_gate.py": {
+      "S112": 1
+    },
+    "scripts/lib/queue_file.py": {
+      "S110": 1
+    },
+    "scripts/lib/quote_validator.py": {
+      "S110": 2,
+      "S603": 1
+    },
+    "scripts/lib/r17_checkpoint_binding.py": {
+      "S110": 1
+    },
+    "scripts/lib/recommendation_registry.py": {
+      "S110": 1,
+      "S608": 1
+    },
+    "scripts/lib/redeploy_audit.py": {
+      "S110": 2
+    },
+    "scripts/lib/redeploy_decision.py": {
+      "S110": 1
+    },
+    "scripts/lib/redeploy_monitor.py": {
+      "S110": 2
+    },
+    "scripts/lib/redeploy_oversight.py": {
+      "S110": 3
+    },
+    "scripts/lib/redeploy_performance.py": {
+      "S110": 1
+    },
+    "scripts/lib/redeploy_phase_a_db.py": {
+      "S608": 1
+    },
+    "scripts/lib/redeploy_plan_db.py": {
+      "S110": 3
+    },
+    "scripts/lib/redeploy_plan_engine.py": {
+      "S110": 1,
+      "S112": 1
+    },
+    "scripts/lib/redeploy_price_history.py": {
+      "S110": 3
+    },
+    "scripts/lib/reentry_llm_insight.py": {
+      "S110": 2
+    },
+    "scripts/lib/reentry_resistance.py": {
+      "S112": 1
+    },
+    "scripts/lib/reentry_rotation_alerts.py": {
+      "S105": 1,
+      "S112": 1
+    },
+    "scripts/lib/reentry_rules.py": {
+      "S110": 1
+    },
+    "scripts/lib/relay_live_set_gate.py": {
+      "S105": 1,
+      "S603": 1
+    },
+    "scripts/lib/release_capability.py": {
+      "S105": 1
+    },
+    "scripts/lib/releases_schedules_view.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/lib/request_isolation.py": {
+      "S603": 1
+    },
+    "scripts/lib/research_call_accounting.py": {
+      "S108": 1,
+      "S112": 1
+    },
+    "scripts/lib/research_circle.py": {
+      "S110": 4,
+      "S324": 1
+    },
+    "scripts/lib/research_governance/acceptance.py": {
+      "S110": 1
+    },
+    "scripts/lib/research_governance/acceptance_checks.py": {
+      "S110": 1,
+      "S311": 1
+    },
+    "scripts/lib/research_governance/bootstrap_reality_check.py": {
+      "S311": 1
+    },
+    "scripts/lib/research_governance/cio_retriever_adapter.py": {
+      "S110": 1
+    },
+    "scripts/lib/research_governance/enums.py": {
+      "S105": 1
+    },
+    "scripts/lib/research_governance/mechanics/common.py": {
+      "S110": 1,
+      "S607": 1
+    },
+    "scripts/lib/research_governance/memory_retriever.py": {
+      "S101": 1
+    },
+    "scripts/lib/research_governance/pbo.py": {
+      "S311": 1
+    },
+    "scripts/lib/research_governance/pr_scope_guard.py": {
+      "S603": 1,
+      "S607": 3
+    },
+    "scripts/lib/research_governance/r2_acceptance.py": {
+      "S110": 1
+    },
+    "scripts/lib/research_index_writer.py": {
+      "S110": 3
+    },
+    "scripts/lib/research_intelligence.py": {
+      "S110": 1,
+      "S608": 1
+    },
+    "scripts/lib/research_intelligence_portfolio.py": {
+      "S110": 3
+    },
+    "scripts/lib/research_intelligence_security.py": {
+      "S112": 1
+    },
+    "scripts/lib/research_lane_health.py": {
+      "S110": 1
+    },
+    "scripts/lib/research_need_decision.py": {
+      "S110": 1
+    },
+    "scripts/lib/research_observation/join.py": {
+      "S101": 1
+    },
+    "scripts/lib/research_quality.py": {
+      "S110": 1
+    },
+    "scripts/lib/research_skip_ledger.py": {
+      "S112": 1
+    },
+    "scripts/lib/research_write_path.py": {
+      "S110": 1
+    },
+    "scripts/lib/retention_archive.py": {
+      "S608": 7
+    },
+    "scripts/lib/retention_tripwire.py": {
+      "S607": 1
+    },
+    "scripts/lib/rockville/cio_scheduler.py": {
+      "S112": 1
+    },
+    "scripts/lib/rockville/decision_projection.py": {
+      "S101": 1
+    },
+    "scripts/lib/rockville/live_projection.py": {
+      "S110": 1
+    },
+    "scripts/lib/rockville/model_policy.py": {
+      "S110": 1
+    },
+    "scripts/lib/ross_catalog_hermes.py": {
+      "S110": 3,
+      "S310": 3
+    },
+    "scripts/lib/runtime_awareness.py": {
+      "S110": 1,
+      "S603": 1,
+      "S607": 4
+    },
+    "scripts/lib/runtime_identity.py": {
+      "S110": 1,
+      "S607": 1
+    },
+    "scripts/lib/sale_event_detector.py": {
+      "S110": 4
+    },
+    "scripts/lib/scalp_alert_format.py": {
+      "S110": 1
+    },
+    "scripts/lib/scalp_hot_tier.py": {
+      "S110": 1
+    },
+    "scripts/lib/scalp_priority.py": {
+      "S112": 2
+    },
+    "scripts/lib/scalp_research_route.py": {
+      "S112": 1
+    },
+    "scripts/lib/scheduled_job_receipt.py": {
+      "S110": 1
+    },
+    "scripts/lib/scheduler_operations.py": {
+      "S603": 1
+    },
+    "scripts/lib/schwab_access_mode.py": {
+      "S110": 1
+    },
+    "scripts/lib/search_budget.py": {
+      "S110": 8
+    },
+    "scripts/lib/search_health.py": {
+      "S310": 2
+    },
+    "scripts/lib/search_health_degradation.py": {
+      "S110": 1
+    },
+    "scripts/lib/search_router.py": {
+      "S110": 1,
+      "S112": 1
+    },
+    "scripts/lib/search_spend.py": {
+      "S110": 1
+    },
+    "scripts/lib/searxng_client.py": {
+      "S310": 2
+    },
+    "scripts/lib/sec_edgar_client.py": {
+      "S310": 1
+    },
+    "scripts/lib/sec_filing_documents.py": {
+      "S310": 2,
+      "S608": 3
+    },
+    "scripts/lib/self_heal_egress.py": {
+      "S603": 1
+    },
+    "scripts/lib/self_heal_fixer.py": {
+      "S108": 3
+    },
+    "scripts/lib/setup_run_contract.py": {
+      "S324": 1
+    },
+    "scripts/lib/site_payload_reads.py": {
+      "S110": 1,
+      "S608": 7
+    },
+    "scripts/lib/social_awareness.py": {
+      "S105": 1,
+      "S112": 1
+    },
+    "scripts/lib/sop_attestation_base.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/lib/sop_toolchain.py": {
+      "S603": 2
+    },
+    "scripts/lib/source_priority.py": {
+      "S110": 1
+    },
+    "scripts/lib/specialist_attribution.py": {
+      "S112": 1
+    },
+    "scripts/lib/squeeze_manual_review.py": {
+      "S105": 1
+    },
+    "scripts/lib/state_migration.py": {
+      "S110": 1,
+      "S603": 1,
+      "S607": 3
+    },
+    "scripts/lib/state_root_disposition.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/lib/stop_change_audit.py": {
+      "S110": 1
+    },
+    "scripts/lib/stop_consensus_check.py": {
+      "S110": 7
+    },
+    "scripts/lib/stop_monitoring_health.py": {
+      "S110": 4,
+      "S602": 1
+    },
+    "scripts/lib/strategy_research/options_chain.py": {
+      "S110": 1
+    },
+    "scripts/lib/supervisor_heartbeat.py": {
+      "S110": 1
+    },
+    "scripts/lib/symbol_thesis_acquisition.py": {
+      "S110": 3,
+      "S324": 1
+    },
+    "scripts/lib/symbol_thesis_attach.py": {
+      "S110": 1
+    },
+    "scripts/lib/symbol_thesis_coverage.py": {
+      "S112": 1
+    },
+    "scripts/lib/symbol_thesis_evidence.py": {
+      "S110": 4
+    },
+    "scripts/lib/symbol_thesis_queue.py": {
+      "S110": 2
+    },
+    "scripts/lib/symbol_thesis_review.py": {
+      "S112": 1
+    },
+    "scripts/lib/symbol_thesis_supply_plane.py": {
+      "S110": 10
+    },
+    "scripts/lib/symbol_thesis_synthesis.py": {
+      "S110": 2
+    },
+    "scripts/lib/symbol_universe.py": {
+      "S110": 1
+    },
+    "scripts/lib/telegram_card_gate.py": {
+      "S110": 1
+    },
+    "scripts/lib/telegram_rich.py": {
+      "S110": 1
+    },
+    "scripts/lib/test_impact.py": {
+      "S603": 2,
+      "S607": 2
+    },
+    "scripts/lib/ticker_alias.py": {
+      "S112": 1
+    },
+    "scripts/lib/ticker_price_quarantine.py": {
+      "S110": 3
+    },
+    "scripts/lib/trade_inspector.py": {
+      "S110": 1
+    },
+    "scripts/lib/tradeai_push_budget.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/lib/trading_lock.py": {
+      "S110": 1
+    },
+    "scripts/lib/two_way_curation.py": {
+      "S110": 4,
+      "S608": 7
+    },
+    "scripts/lib/universe_guard.py": {
+      "S110": 2
+    },
+    "scripts/lib/wake_subject_selector.py": {
+      "S110": 1
+    },
+    "scripts/lib/watch_canonical_quote.py": {
+      "S110": 2
+    },
+    "scripts/lib/watch_review_pipeline.py": {
+      "S101": 1,
+      "S110": 2,
+      "S112": 1
+    },
+    "scripts/lib/watch_review_policy_ledger.py": {
+      "S101": 2
+    },
+    "scripts/lib/watchlist_intelligence.py": {
+      "S110": 10
+    },
+    "scripts/lib/watchlist_priority.py": {
+      "S110": 2,
+      "S608": 6
+    },
+    "scripts/lib/watchlist_volatility.py": {
+      "S110": 1
+    },
+    "scripts/lib/weekly_learning_api.py": {
+      "S110": 1
+    },
+    "scripts/lib/whole_site_truth.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/lib/work_pipeline.py": {
+      "S603": 1
+    },
+    "scripts/lib/work_pipeline_commands.py": {
+      "S110": 1
+    },
+    "scripts/lib/worker_contract.py": {
+      "S110": 1
+    },
+    "scripts/lib/workspace_closeout.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/lib/writers/market_quotes_writer.py": {
+      "S608": 1
+    },
+    "scripts/lib/writers/news_articles_writer.py": {
+      "S608": 2
+    },
+    "scripts/lib/writers/symbol_profiles_writer.py": {
+      "S110": 1,
+      "S608": 2
+    },
+    "scripts/lib/writers/ticker_prices_writer.py": {
+      "S608": 2
+    },
+    "scripts/lib/writers/watch_directives_writer.py": {
+      "S101": 1,
+      "S608": 1
+    },
+    "scripts/lifecycle_event_writer.py": {
+      "S110": 2
+    },
+    "scripts/live_trading_interlock.py": {
+      "S110": 2
+    },
+    "scripts/llm_context_engine.py": {
+      "S110": 1
+    },
+    "scripts/llm_health_gate.py": {
+      "S310": 4
+    },
+    "scripts/llm_intelligence_enrichment.py": {
+      "S110": 2
+    },
+    "scripts/llm_lane.py": {
+      "S110": 6
+    },
+    "scripts/llm_net.py": {
+      "S110": 2,
+      "S310": 1
+    },
+    "scripts/llm_retry_monitor.py": {
+      "S112": 1
+    },
+    "scripts/llm_router.py": {
+      "S110": 2
+    },
+    "scripts/log_error_scraper.py": {
+      "S110": 1
+    },
+    "scripts/m2_substrate_check.py": {
+      "S608": 23
+    },
+    "scripts/macro_calendar_refresh.py": {
+      "S310": 1
+    },
+    "scripts/main_red_autoheal.py": {
+      "S324": 1,
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/manual_execution_tracker.py": {
+      "S110": 6,
+      "S608": 4
+    },
+    "scripts/market_context.py": {
+      "S110": 1,
+      "S112": 2
+    },
+    "scripts/market_observations/concurrency.py": {
+      "S311": 1
+    },
+    "scripts/market_observations/moomoo_t2.py": {
+      "S110": 1
+    },
+    "scripts/market_observations/providers.py": {
+      "S110": 1
+    },
+    "scripts/market_regime_classifier.py": {
+      "S110": 1
+    },
+    "scripts/market_regime_collector.py": {
+      "S110": 1,
+      "S310": 2
+    },
+    "scripts/market_risk_fixture_build.py": {
+      "S310": 1
+    },
+    "scripts/market_rotation_signals.py": {
+      "S110": 1
+    },
+    "scripts/material_change_detector.py": {
+      "S608": 2
+    },
+    "scripts/maturity_promotion.py": {
+      "S607": 1
+    },
+    "scripts/measure_live.py": {
+      "S603": 1
+    },
+    "scripts/migrate_b1c_bucket2.py": {
+      "S603": 1
+    },
+    "scripts/migrate_content_embeddings_pgvector.py": {
+      "S110": 1,
+      "S608": 10
+    },
+    "scripts/migrate_state_stores.py": {
+      "S108": 1,
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/mint_identity_registry.py": {
+      "S110": 8
+    },
+    "scripts/missed_opportunity_policy.py": {
+      "S110": 1
+    },
+    "scripts/momentum_scalp_early_lane_runner.py": {
+      "S108": 1,
+      "S110": 1,
+      "S603": 1,
+      "S608": 1
+    },
+    "scripts/momentum_scalp_fast_atm_runner.py": {
+      "S110": 1
+    },
+    "scripts/momentum_scalp_freshness_sla_report.py": {
+      "S110": 2,
+      "S608": 2
+    },
+    "scripts/momentum_scalp_paper_fast_path.py": {
+      "S110": 2,
+      "S608": 1
+    },
+    "scripts/momentum_scalp_source_latency_sla.py": {
+      "S110": 1
+    },
+    "scripts/momentum_scalp_source_maturity_report.py": {
+      "S110": 2,
+      "S608": 3
+    },
+    "scripts/momentum_scalp_validation_tracker.py": {
+      "S110": 1
+    },
+    "scripts/monthly_advisory.py": {
+      "S110": 4
+    },
+    "scripts/moomoo/client.py": {
+      "S110": 2
+    },
+    "scripts/moomoo/opend_credentials.py": {
+      "S105": 2,
+      "S324": 1
+    },
+    "scripts/moomoo/opend_health.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/moomoo_live_read_sync.py": {
+      "S110": 1
+    },
+    "scripts/morning_command_digest.py": {
+      "S110": 2
+    },
+    "scripts/morning_digest.py": {
+      "S110": 2
+    },
+    "scripts/multi_strategy_classifier.py": {
+      "S310": 2
+    },
+    "scripts/multi_tier_trade_reviewer.py": {
+      "S110": 3
+    },
+    "scripts/n8n_cutover_wave.py": {
+      "S108": 1,
+      "S603": 3
+    },
+    "scripts/n8n_export_workflows.py": {
+      "S603": 1
+    },
+    "scripts/n8n_incident_fanin.py": {
+      "S110": 1,
+      "S112": 1,
+      "S607": 1
+    },
+    "scripts/n8n_lab_watchdog.py": {
+      "S310": 2
+    },
+    "scripts/n8n_migration_board.py": {
+      "S607": 1
+    },
+    "scripts/n8n_pilot_dispatch.py": {
+      "S324": 1
+    },
+    "scripts/n8n_run_executor.py": {
+      "S101": 1,
+      "S110": 1,
+      "S603": 2
+    },
+    "scripts/n8n_run_relay.py": {
+      "S101": 1,
+      "S310": 2
+    },
+    "scripts/n8n_selftest_fail.py": {
+      "S108": 1
+    },
+    "scripts/n8n_siem_bridge.py": {
+      "S110": 1
+    },
+    "scripts/n8n_workflow_templates.py": {
+      "S101": 1
+    },
+    "scripts/news_ingestion.py": {
+      "S110": 13,
+      "S310": 3,
+      "S314": 2
+    },
+    "scripts/news_symbol_guard.py": {
+      "S110": 1
+    },
+    "scripts/news_to_catalyst.py": {
+      "S608": 1
+    },
+    "scripts/nightly_cutover_controller.py": {
+      "S108": 2,
+      "S603": 1
+    },
+    "scripts/nightly_cutover_cron_edit.py": {
+      "S108": 1,
+      "S603": 2
+    },
+    "scripts/nightly_integrity_sweep.py": {
+      "S110": 1
+    },
+    "scripts/notify_material_change.py": {
+      "S110": 3
+    },
+    "scripts/notify_pr_merge_ready.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/offbox_deadman.py": {
+      "S310": 1
+    },
+    "scripts/ohlc_charts.py": {
+      "S110": 5,
+      "S112": 2,
+      "S310": 2
+    },
+    "scripts/open_trade_manager.py": {
+      "S608": 1
+    },
+    "scripts/open_trade_monitor.py": {
+      "S110": 9
+    },
+    "scripts/open_trades_intelligence.py": {
+      "S110": 8,
+      "S608": 1
+    },
+    "scripts/operator_packets/packet_d_shadow_acceptance.py": {
+      "S105": 1,
+      "S110": 1
+    },
+    "scripts/operator_packets/packet_e_promotion_gate.py": {
+      "S101": 2,
+      "S105": 1
+    },
+    "scripts/operator_packets/packet_f_moomoo_stage0.py": {
+      "S105": 1
+    },
+    "scripts/operator_packets/packet_g_active_trader_stage0.py": {
+      "S105": 1
+    },
+    "scripts/ops/broker_read_sync.py": {
+      "S603": 1
+    },
+    "scripts/ops/cio_truth_copy_check.py": {
+      "S101": 9
+    },
+    "scripts/ops/emit_and_drain_desk_curation.py": {
+      "S608": 1
+    },
+    "scripts/ops/n8n_db_app_role.py": {
+      "S603": 1,
+      "S608": 1
+    },
+    "scripts/ops_retarget_peak_cron.py": {
+      "S108": 1,
+      "S603": 1,
+      "S607": 2
+    },
+    "scripts/ops_tree_pin_audit.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/options_desk_enterprise.py": {
+      "S110": 3
+    },
+    "scripts/options_engine.py": {
+      "S110": 16
+    },
+    "scripts/options_gate_proof.py": {
+      "S603": 1
+    },
+    "scripts/options_iv_snapshot.py": {
+      "S110": 3
+    },
+    "scripts/options_journal_bridge.py": {
+      "S101": 1
+    },
+    "scripts/options_lifecycle_alerts.py": {
+      "S110": 2
+    },
+    "scripts/options_lifecycle_basis.py": {
+      "S110": 2
+    },
+    "scripts/options_lifecycle_engine.py": {
+      "S110": 1,
+      "S607": 1
+    },
+    "scripts/options_lifecycle_model.py": {
+      "S101": 8
+    },
+    "scripts/options_paper_position_monitor.py": {
+      "S110": 1
+    },
+    "scripts/options_prime_rubric.py": {
+      "S110": 1
+    },
+    "scripts/options_strategy_scanner.py": {
+      "S110": 1
+    },
+    "scripts/options_thesis_lifecycle.py": {
+      "S108": 1,
+      "S110": 3,
+      "S603": 1
+    },
+    "scripts/options_tick.py": {
+      "S108": 4,
+      "S603": 1
+    },
+    "scripts/options_validation_status.py": {
+      "S110": 1
+    },
+    "scripts/overnight_batch.py": {
+      "S110": 11
+    },
+    "scripts/package_campaign_evidence.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/packet_invalidation.py": {
+      "S110": 2
+    },
+    "scripts/paper_canary_preflight.py": {
+      "S603": 1,
+      "S607": 4
+    },
+    "scripts/paper_execution_quality.py": {
+      "S608": 1
+    },
+    "scripts/paper_execution_revalidator.py": {
+      "S110": 3,
+      "S608": 1
+    },
+    "scripts/paper_performance_governance.py": {
+      "S110": 3
+    },
+    "scripts/paper_scale.py": {
+      "S110": 4
+    },
+    "scripts/paper_submit_readiness.py": {
+      "S110": 2
+    },
+    "scripts/paper_trade_advisory.py": {
+      "S603": 1,
+      "S608": 1
+    },
+    "scripts/paper_trade_analyzer.py": {
+      "S110": 1,
+      "S310": 2,
+      "S324": 1
+    },
+    "scripts/paper_trade_closer.py": {
+      "S110": 3,
+      "S603": 4
+    },
+    "scripts/paper_trade_logger.py": {
+      "S110": 19,
+      "S608": 1
+    },
+    "scripts/paper_trade_monitor.py": {
+      "S110": 7,
+      "S603": 3
+    },
+    "scripts/pending_trading_window.py": {
+      "S110": 1
+    },
+    "scripts/persist_closed_trade_lessons.py": {
+      "S324": 1
+    },
+    "scripts/phase2_sector_resolver.py": {
+      "S110": 1
+    },
+    "scripts/phase2_ticker_enrichment.py": {
+      "S110": 5
+    },
+    "scripts/phase3_lookthrough_fetcher.py": {
+      "S110": 4,
+      "S310": 2
+    },
+    "scripts/phase3_lookthrough_resolver.py": {
+      "S110": 2
+    },
+    "scripts/phase3_media_prose_router.py": {
+      "S310": 2
+    },
+    "scripts/phase6_approval_audit.py": {
+      "S110": 3,
+      "S608": 1
+    },
+    "scripts/phase6_market_session_policy.py": {
+      "S110": 2
+    },
+    "scripts/phone_status_endpoint.py": {
+      "S101": 1
+    },
+    "scripts/pipeline_alert.py": {
+      "S110": 2,
+      "S603": 1
+    },
+    "scripts/pipeline_controller.py": {
+      "S602": 1
+    },
+    "scripts/pipeline_freshness_monitor.py": {
+      "S110": 3,
+      "S608": 1
+    },
+    "scripts/pipeline_freshness_slo.py": {
+      "S110": 2
+    },
+    "scripts/pipeline_health_monitor.py": {
+      "S110": 4,
+      "S603": 1
+    },
+    "scripts/pipeline_registry.py": {
+      "S110": 3
+    },
+    "scripts/pipeline_run_telemetry.py": {
+      "S110": 1
+    },
+    "scripts/pipeline_watchdog.py": {
+      "S110": 5,
+      "S602": 1,
+      "S603": 1
+    },
+    "scripts/pipelines/cutover/_cutover.py": {
+      "S108": 1,
+      "S603": 3,
+      "S607": 1
+    },
+    "scripts/plan_drift_revalidator.py": {
+      "S603": 1
+    },
+    "scripts/portfolio_ai_analyst.py": {
+      "S110": 10,
+      "S608": 1
+    },
+    "scripts/portfolio_alerts.py": {
+      "S110": 5,
+      "S603": 1
+    },
+    "scripts/portfolio_ask.py": {
+      "S110": 1
+    },
+    "scripts/portfolio_behavioral.py": {
+      "S110": 1
+    },
+    "scripts/portfolio_dashboard.py": {
+      "S112": 1,
+      "S608": 1
+    },
+    "scripts/portfolio_dividend_calendar.py": {
+      "S110": 2
+    },
+    "scripts/portfolio_level_qa.py": {
+      "S110": 1
+    },
+    "scripts/portfolio_live_monitor.py": {
+      "S110": 4
+    },
+    "scripts/portfolio_lookthrough_themes.py": {
+      "S110": 1,
+      "S112": 1
+    },
+    "scripts/portfolio_monthly_report.py": {
+      "S108": 1,
+      "S110": 5
+    },
+    "scripts/portfolio_monthly_synthesis.py": {
+      "S110": 1
+    },
+    "scripts/portfolio_news.py": {
+      "S110": 6,
+      "S324": 1
+    },
+    "scripts/portfolio_options.py": {
+      "S110": 1
+    },
+    "scripts/portfolio_orchestrator.py": {
+      "S110": 9,
+      "S324": 1,
+      "S603": 1
+    },
+    "scripts/portfolio_performance.py": {
+      "S112": 1
+    },
+    "scripts/portfolio_performance_attribution.py": {
+      "S110": 5
+    },
+    "scripts/portfolio_performance_history.py": {
+      "S110": 3,
+      "S112": 1
+    },
+    "scripts/portfolio_period_quality.py": {
+      "S110": 2,
+      "S112": 1
+    },
+    "scripts/portfolio_price_cache.py": {
+      "S110": 5
+    },
+    "scripts/portfolio_proxy.py": {
+      "S310": 1
+    },
+    "scripts/portfolio_rebalancer.py": {
+      "S110": 1
+    },
+    "scripts/portfolio_reconcile.py": {
+      "S608": 1
+    },
+    "scripts/portfolio_report.py": {
+      "S110": 1,
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/portfolio_report_ms.py": {
+      "S110": 1
+    },
+    "scripts/portfolio_repricer.py": {
+      "S110": 3
+    },
+    "scripts/portfolio_retirement.py": {
+      "S110": 1
+    },
+    "scripts/portfolio_server.py": {
+      "S110": 24,
+      "S602": 1
+    },
+    "scripts/portfolio_snapshot_sanity.py": {
+      "S112": 1
+    },
+    "scripts/portfolio_stops.py": {
+      "S110": 3
+    },
+    "scripts/portfolio_stress.py": {
+      "S110": 1
+    },
+    "scripts/portfolio_tax_projection.py": {
+      "S110": 1
+    },
+    "scripts/portfolio_technical.py": {
+      "S110": 5
+    },
+    "scripts/portfolio_trade_analysis.py": {
+      "S110": 3
+    },
+    "scripts/portfolio_trade_watcher.py": {
+      "S110": 1,
+      "S603": 1
+    },
+    "scripts/portfolio_watchlist.py": {
+      "S110": 2
+    },
+    "scripts/portfolio_weekly_report.py": {
+      "S110": 9
+    },
+    "scripts/portfolio_yaml_advisor.py": {
+      "S310": 2
+    },
+    "scripts/positions_proof_daily.py": {
+      "S110": 1
+    },
+    "scripts/positions_sync.py": {
+      "S110": 1,
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/post_deploy_smoke_test.py": {
+      "S310": 1,
+      "S607": 1
+    },
+    "scripts/post_release_tester.py": {
+      "S310": 1
+    },
+    "scripts/post_trade_thesis_reviewer.py": {
+      "S310": 2
+    },
+    "scripts/pr_hygiene_audit.py": {
+      "S324": 1,
+      "S603": 1
+    },
+    "scripts/pre_promotion_readiness_policy.py": {
+      "S110": 1
+    },
+    "scripts/prefetch_hybrid_rag_context.py": {
+      "S310": 8,
+      "S608": 1
+    },
+    "scripts/premarket_watcher.py": {
+      "S110": 8,
+      "S314": 1
+    },
+    "scripts/previously_traded_watchlist.py": {
+      "S110": 1
+    },
+    "scripts/price_db_sync.py": {
+      "S110": 4,
+      "S608": 1
+    },
+    "scripts/pro_analyst_fetch.py": {
+      "S110": 1,
+      "S324": 1
+    },
+    "scripts/pro_analyst_monitor.py": {
+      "S110": 3
+    },
+    "scripts/proactive_discovery.py": {
+      "S110": 1
+    },
+    "scripts/probe_n8n_platform_facts.py": {
+      "S603": 1,
+      "S608": 1
+    },
+    "scripts/process_reaper.py": {
+      "S110": 3,
+      "S607": 1
+    },
+    "scripts/process_watchlist_agent_jobs.py": {
+      "S110": 50,
+      "S112": 1,
+      "S608": 5
+    },
+    "scripts/process_watchlist_research_queue.py": {
+      "S603": 2,
+      "S607": 2,
+      "S608": 3
+    },
+    "scripts/profit_protection_advisory.py": {
+      "S110": 6
+    },
+    "scripts/profit_protection_shadow_thresholds.py": {
+      "S608": 1
+    },
+    "scripts/proposal_agent_review.py": {
+      "S110": 2
+    },
+    "scripts/proposal_alerter.py": {
+      "S110": 4
+    },
+    "scripts/proposal_backtest_engine.py": {
+      "S110": 4,
+      "S608": 2
+    },
+    "scripts/proposal_catalyst_quality.py": {
+      "S608": 2
+    },
+    "scripts/proposal_decision_gate.py": {
+      "S110": 1
+    },
+    "scripts/proposal_enrichment_bridge.py": {
+      "S110": 2
+    },
+    "scripts/proposal_enrichment_loop.py": {
+      "S108": 1,
+      "S110": 13,
+      "S603": 2,
+      "S607": 1
+    },
+    "scripts/proposal_execution_readiness.py": {
+      "S110": 1,
+      "S608": 8
+    },
+    "scripts/proposal_intelligence_analyzer.py": {
+      "S110": 1
+    },
+    "scripts/proposal_lifecycle.py": {
+      "S110": 3
+    },
+    "scripts/proposal_live_submit_tag.py": {
+      "S110": 1
+    },
+    "scripts/proposal_llm_reviewer.py": {
+      "S110": 1
+    },
+    "scripts/proposal_monitor.py": {
+      "S110": 1,
+      "S608": 1
+    },
+    "scripts/proposal_paper_submitter.py": {
+      "S110": 5
+    },
+    "scripts/proposal_quality_reviewer.py": {
+      "S110": 1
+    },
+    "scripts/proposal_research_packet_builder.py": {
+      "S110": 3
+    },
+    "scripts/proposal_route_audit_integration.py": {
+      "S110": 1
+    },
+    "scripts/proposal_technical_snapshot.py": {
+      "S110": 4
+    },
+    "scripts/prospectus_deliver.py": {
+      "S110": 1
+    },
+    "scripts/prospectus_print_fidelity.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/protection_alerts.py": {
+      "S110": 1
+    },
+    "scripts/protection_atm_pass.py": {
+      "S110": 1
+    },
+    "scripts/protection_trail_calculator.py": {
+      "S110": 1
+    },
+    "scripts/protective_stop_2fa_preflight.py": {
+      "S110": 2
+    },
+    "scripts/proxy_options_scanner.py": {
+      "S110": 3,
+      "S112": 1,
+      "S310": 2
+    },
+    "scripts/prune_document_mentions.py": {
+      "S608": 4
+    },
+    "scripts/pullback_macd_screener.py": {
+      "S110": 4,
+      "S112": 1,
+      "S310": 1,
+      "S608": 1
+    },
+    "scripts/quarantine_fabricated_analyst_ratings.py": {
+      "S608": 6
+    },
+    "scripts/quarantine_template_identity_links.py": {
+      "S608": 9
+    },
+    "scripts/queue_router.py": {
+      "S110": 4
+    },
+    "scripts/queue_runtime_status.py": {
+      "S603": 2,
+      "S607": 4
+    },
+    "scripts/r71_health_audit.py": {
+      "S607": 1
+    },
+    "scripts/rag_indexer.py": {
+      "S110": 4,
+      "S608": 4
+    },
+    "scripts/rag_retrieval.py": {
+      "S110": 2
+    },
+    "scripts/rebalance_verifier.py": {
+      "S110": 1
+    },
+    "scripts/reclassify_knowledge_directives.py": {
+      "S110": 1
+    },
+    "scripts/recommendation_intelligence_engine.py": {
+      "S110": 1,
+      "S608": 4
+    },
+    "scripts/reconcile_exit_advisory_outcomes.py": {
+      "S110": 1,
+      "S112": 1
+    },
+    "scripts/reconcile_holdings_state_classify.py": {
+      "S108": 1
+    },
+    "scripts/reconcile_lane_registry.py": {
+      "S603": 3,
+      "S607": 3
+    },
+    "scripts/reconcile_migration_inventory.py": {
+      "S101": 3,
+      "S607": 1
+    },
+    "scripts/reconcile_protection_advisory_outcomes.py": {
+      "S112": 1,
+      "S608": 1
+    },
+    "scripts/reconcile_pullback_outcomes.py": {
+      "S110": 1,
+      "S112": 1
+    },
+    "scripts/reconcile_stop_v21_broker_stops.py": {
+      "S101": 2,
+      "S110": 1
+    },
+    "scripts/reconcile_watch_outcomes.py": {
+      "S110": 1,
+      "S112": 1
+    },
+    "scripts/record_bridge_pin_soak.py": {
+      "S603": 1
+    },
+    "scripts/refresh_advisory_maturity_evidence.py": {
+      "S603": 1
+    },
+    "scripts/refresh_agent_context.py": {
+      "S603": 2,
+      "S607": 3
+    },
+    "scripts/refresh_symbol_cards.py": {
+      "S603": 1
+    },
+    "scripts/rehearse_state_migration.py": {
+      "S103": 1,
+      "S603": 1
+    },
+    "scripts/release_pin_daemons.py": {
+      "S603": 1
+    },
+    "scripts/release_window.py": {
+      "S105": 2,
+      "S603": 1
+    },
+    "scripts/release_wrapper_preflight.py": {
+      "S607": 1
+    },
+    "scripts/remediate_analyst_consensus_20261018.py": {
+      "S608": 3
+    },
+    "scripts/remediate_pipeline_failures.py": {
+      "S110": 3,
+      "S112": 2,
+      "S602": 1,
+      "S607": 1,
+      "S608": 4
+    },
+    "scripts/remediate_postgres_main.py": {
+      "S108": 1,
+      "S603": 1
+    },
+    "scripts/remediate_proposal_trade_plans.py": {
+      "S110": 3,
+      "S608": 1
+    },
+    "scripts/remediate_scalp_go_dark.py": {
+      "S602": 1,
+      "S608": 2
+    },
+    "scripts/remediate_watchlist_news_guard.py": {
+      "S603": 1
+    },
+    "scripts/remediate_weak_advisory_evidence.py": {
+      "S310": 2
+    },
+    "scripts/remediate_weekly_report_action.py": {
+      "S110": 1
+    },
+    "scripts/render_cio_report_files.py": {
+      "S108": 1,
+      "S110": 1,
+      "S607": 1
+    },
+    "scripts/replay_backfill.py": {
+      "S603": 1
+    },
+    "scripts/replay_operator_question.py": {
+      "S110": 1,
+      "S112": 1
+    },
+    "scripts/replay_social_route_policy.py": {
+      "S110": 1,
+      "S608": 1
+    },
+    "scripts/repo_hygiene_report.py": {
+      "S607": 1
+    },
+    "scripts/report_agent_fix1_queue_health.py": {
+      "S110": 1,
+      "S607": 1
+    },
+    "scripts/report_alert_sla_status.py": {
+      "S110": 1
+    },
+    "scripts/report_atp2_research_cadence_inventory.py": {
+      "S607": 1
+    },
+    "scripts/report_attr1_benchmark_alpha.py": {
+      "S110": 2
+    },
+    "scripts/report_attr1_data_availability.py": {
+      "S110": 2,
+      "S608": 1
+    },
+    "scripts/report_bucket2_watchpool_status.py": {
+      "S110": 1
+    },
+    "scripts/report_candidate_due_diligence_queue.py": {
+      "S608": 2
+    },
+    "scripts/report_candidate_status_breakdown.py": {
+      "S608": 7
+    },
+    "scripts/report_capture.py": {
+      "S110": 1
+    },
+    "scripts/report_catalyst_gate.py": {
+      "S110": 1
+    },
+    "scripts/report_current_research_pipeline_schedule.py": {
+      "S607": 1
+    },
+    "scripts/report_daily_momentum_scalp_boundary.py": {
+      "S110": 1,
+      "S608": 3
+    },
+    "scripts/report_db_hygiene.py": {
+      "S603": 1,
+      "S607": 2,
+      "S608": 2
+    },
+    "scripts/report_deep_overnight_queue_status.py": {
+      "S108": 1,
+      "S310": 1,
+      "S607": 1
+    },
+    "scripts/report_doc_recon1_post_audit_truth.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/report_docs_inventory.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/report_export.py": {
+      "S110": 3,
+      "S112": 1,
+      "S603": 2
+    },
+    "scripts/report_governance_count_consistency.py": {
+      "S110": 1
+    },
+    "scripts/report_governance_status.py": {
+      "S110": 2
+    },
+    "scripts/report_lane_governance_packet.py": {
+      "S607": 1
+    },
+    "scripts/report_lineage.py": {
+      "S110": 1
+    },
+    "scripts/report_llm_fix1_overnight_fallback.py": {
+      "S110": 2,
+      "S310": 1
+    },
+    "scripts/report_llm_fleet_status.py": {
+      "S110": 2
+    },
+    "scripts/report_maturity_control_board.py": {
+      "S110": 1
+    },
+    "scripts/report_missed_opportunity_audit.py": {
+      "S110": 1
+    },
+    "scripts/report_n8n_cutover_outcomes.py": {
+      "S112": 3,
+      "S603": 1
+    },
+    "scripts/report_n8n_shadow_policy.py": {
+      "S603": 2,
+      "S607": 2
+    },
+    "scripts/report_operator_morning_packet.py": {
+      "S110": 3
+    },
+    "scripts/report_operator_readiness_summary.py": {
+      "S110": 1
+    },
+    "scripts/report_operator_telegram_noise_audit.py": {
+      "S608": 1
+    },
+    "scripts/report_oversight.py": {
+      "S110": 1
+    },
+    "scripts/report_phase6_approval_audit.py": {
+      "S608": 4
+    },
+    "scripts/report_phase6_stale_proposals.py": {
+      "S608": 2
+    },
+    "scripts/report_phase_readiness_gates.py": {
+      "S602": 1,
+      "S607": 1
+    },
+    "scripts/report_pipeline_stage_actionability_audit.py": {
+      "S607": 1
+    },
+    "scripts/report_pipeline_truth_audit.py": {
+      "S110": 2,
+      "S607": 1,
+      "S608": 2
+    },
+    "scripts/report_proposal_strategy_fit_audit.py": {
+      "S110": 2,
+      "S608": 1
+    },
+    "scripts/report_proposal_supply_funnel.py": {
+      "S608": 12
+    },
+    "scripts/report_proposal_technical_backtest_audit.py": {
+      "S110": 1,
+      "S608": 1
+    },
+    "scripts/report_regime_cron1_staleness.py": {
+      "S607": 1
+    },
+    "scripts/report_render.py": {
+      "S110": 1
+    },
+    "scripts/report_screener_inventory_freshness.py": {
+      "S110": 1
+    },
+    "scripts/report_slo_burn_rate.py": {
+      "S110": 1
+    },
+    "scripts/report_strategy_config_drift.py": {
+      "S110": 1
+    },
+    "scripts/report_strategy_watch_horizon.py": {
+      "S110": 1
+    },
+    "scripts/report_synthesis.py": {
+      "S110": 1
+    },
+    "scripts/report_trade_lesson_memory.py": {
+      "S608": 1
+    },
+    "scripts/report_tranche_b_readiness.py": {
+      "S603": 1
+    },
+    "scripts/reporting_engine.py": {
+      "S110": 5
+    },
+    "scripts/reports_portal.py": {
+      "S110": 11,
+      "S112": 2,
+      "S608": 8
+    },
+    "scripts/request_pr_merge_approve.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/rerun_cio_dual_consensus.py": {
+      "S110": 1,
+      "S608": 1
+    },
+    "scripts/research/inverse_hedge_backtest.py": {
+      "S607": 1
+    },
+    "scripts/research_critique_pipeline.py": {
+      "S110": 2,
+      "S603": 1,
+      "S608": 1
+    },
+    "scripts/research_intelligence_materialize.py": {
+      "S108": 1
+    },
+    "scripts/research_intelligence_narrative_enrich.py": {
+      "S110": 2
+    },
+    "scripts/research_intelligence_qa_lint.py": {
+      "S110": 3
+    },
+    "scripts/research_intelligence_queue.py": {
+      "S108": 1,
+      "S110": 2,
+      "S603": 1
+    },
+    "scripts/research_scheduler.py": {
+      "S110": 1,
+      "S603": 1
+    },
+    "scripts/research_skip_gate_report.py": {
+      "S112": 1
+    },
+    "scripts/research_watchlist_discovery.py": {
+      "S110": 2
+    },
+    "scripts/reset_stuck_agent_jobs.py": {
+      "S608": 4
+    },
+    "scripts/resolve_due_checkpoints.py": {
+      "S110": 1
+    },
+    "scripts/risk_gate.py": {
+      "S101": 4,
+      "S110": 9
+    },
+    "scripts/rotation_autopilot.py": {
+      "S110": 2
+    },
+    "scripts/rotation_intelligence_engine.py": {
+      "S110": 1
+    },
+    "scripts/rotation_llm_advisor.py": {
+      "S603": 1
+    },
+    "scripts/rotation_rebalance_digest.py": {
+      "S310": 1
+    },
+    "scripts/run_agent_chain.py": {
+      "S603": 1
+    },
+    "scripts/run_agent_queue_health.py": {
+      "S608": 2
+    },
+    "scripts/run_aif_financial_senses_ci.py": {
+      "S603": 1
+    },
+    "scripts/run_alex_daily.py": {
+      "S110": 2
+    },
+    "scripts/run_atp2_research_cycle.py": {
+      "S608": 1
+    },
+    "scripts/run_atp_alert_evaluator.py": {
+      "S324": 1
+    },
+    "scripts/run_automated_trade_proposal_revalidation.py": {
+      "S608": 1
+    },
+    "scripts/run_cio_acceptance.py": {
+      "S110": 5,
+      "S112": 1,
+      "S603": 4,
+      "S607": 5
+    },
+    "scripts/run_cio_adversarial_suite.py": {
+      "S603": 1
+    },
+    "scripts/run_cio_hardening_ci.py": {
+      "S108": 1,
+      "S314": 1,
+      "S603": 8,
+      "S607": 2
+    },
+    "scripts/run_deep_overnight_llm_queue.py": {
+      "S110": 6,
+      "S310": 2,
+      "S311": 1,
+      "S608": 4
+    },
+    "scripts/run_family_slot.py": {
+      "S603": 1
+    },
+    "scripts/run_from_release.py": {
+      "S108": 5,
+      "S603": 1,
+      "S607": 3
+    },
+    "scripts/run_full_universe_strategy_fit_audit.py": {
+      "S110": 2
+    },
+    "scripts/run_hermes_librarian_retention.py": {
+      "S110": 1
+    },
+    "scripts/run_integrity_checks.py": {
+      "S110": 1
+    },
+    "scripts/run_paper_canary_chain.py": {
+      "S603": 2,
+      "S608": 1
+    },
+    "scripts/run_phase3d_expanded_media_prose_pilot.py": {
+      "S310": 2
+    },
+    "scripts/run_pipeline_repair.py": {
+      "S108": 1,
+      "S603": 1
+    },
+    "scripts/run_proactive_quote_refresh.py": {
+      "S110": 2,
+      "S603": 1
+    },
+    "scripts/run_regime_cron1_health.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/run_release_ci_equivalent.py": {
+      "S110": 1,
+      "S603": 1
+    },
+    "scripts/run_sec_form4_momentum_context.py": {
+      "S110": 2,
+      "S608": 1
+    },
+    "scripts/run_self_repair_loop_dry.py": {
+      "S108": 1
+    },
+    "scripts/run_symbol_thesis_acquisition.py": {
+      "S110": 2
+    },
+    "scripts/run_telegram_callback_poller.py": {
+      "S110": 3,
+      "S310": 1,
+      "S603": 1
+    },
+    "scripts/run_ticket_review_job.py": {
+      "S110": 1
+    },
+    "scripts/run_trade_ai_scalp_live.py": {
+      "S110": 3
+    },
+    "scripts/run_watch_review_canary.py": {
+      "S110": 3
+    },
+    "scripts/run_watch_review_workers.py": {
+      "S110": 1,
+      "S112": 2
+    },
+    "scripts/run_watchlist_intelligence_proof_reviews.py": {
+      "S108": 1,
+      "S110": 2
+    },
+    "scripts/run_whole_site_negative_controls.py": {
+      "S101": 3,
+      "S310": 2,
+      "S603": 4,
+      "S607": 1
+    },
+    "scripts/sandbox_output_ceiling_20.py": {
+      "S603": 1
+    },
+    "scripts/scalp_critic_agent.py": {
+      "S110": 7
+    },
+    "scripts/scalp_execution_gate.py": {
+      "S105": 2
+    },
+    "scripts/scalp_lifecycle_funnel_report.py": {
+      "S110": 3,
+      "S608": 12
+    },
+    "scripts/scalp_outcome_learning.py": {
+      "S110": 2,
+      "S608": 1
+    },
+    "scripts/scalp_shadow_logger.py": {
+      "S101": 1,
+      "S110": 2,
+      "S608": 2
+    },
+    "scripts/scalp_shadow_outcome_backfill.py": {
+      "S110": 1,
+      "S608": 1
+    },
+    "scripts/scalp_stop_monitor.py": {
+      "S110": 1
+    },
+    "scripts/scalp_trade_attribution.py": {
+      "S110": 1,
+      "S608": 1
+    },
+    "scripts/scalp_ws_server.py": {
+      "S104": 1
+    },
+    "scripts/schwab_adapter.py": {
+      "S105": 1,
+      "S110": 1
+    },
+    "scripts/schwab_auto_reauth.py": {
+      "S110": 12,
+      "S112": 4,
+      "S603": 1
+    },
+    "scripts/schwab_broker_trade_monitor.py": {
+      "S110": 2
+    },
+    "scripts/schwab_econfirm_reconcile.py": {
+      "S603": 1
+    },
+    "scripts/schwab_journal_builder.py": {
+      "S110": 1
+    },
+    "scripts/schwab_journal_classifier.py": {
+      "S110": 1,
+      "S608": 1
+    },
+    "scripts/schwab_position_sync.py": {
+      "S110": 9
+    },
+    "scripts/schwab_stop_batch_request.py": {
+      "S310": 1
+    },
+    "scripts/schwab_stream_daemon.py": {
+      "S110": 3
+    },
+    "scripts/schwab_token_manager.py": {
+      "S110": 11
+    },
+    "scripts/schwab_transaction_ingest.py": {
+      "S110": 7
+    },
+    "scripts/schwab_transport.py": {
+      "S110": 9
+    },
+    "scripts/scoring.py": {
+      "S110": 9
+    },
+    "scripts/screener_go_alerts.py": {
+      "S608": 1
+    },
+    "scripts/search_spend_report.py": {
+      "S112": 1
+    },
+    "scripts/searxng_manual_query.py": {
+      "S310": 2
+    },
+    "scripts/sec_data_ingest.py": {
+      "S310": 3,
+      "S608": 1
+    },
+    "scripts/sec_filings_feed.py": {
+      "S110": 1
+    },
+    "scripts/sec_form4_source_maturity.py": {
+      "S608": 2
+    },
+    "scripts/sec_fundamentals_ingest.py": {
+      "S110": 3
+    },
+    "scripts/secret_validators.py": {
+      "S110": 2
+    },
+    "scripts/secrets/ensure_m2_agent_dsn.py": {
+      "S105": 1,
+      "S603": 1,
+      "S607": 1,
+      "S608": 1
+    },
+    "scripts/secrets/ensure_shadow_rw_dsn.py": {
+      "S101": 1,
+      "S105": 1,
+      "S110": 2
+    },
+    "scripts/secrets/finviz_cookie.py": {
+      "S603": 1
+    },
+    "scripts/secrets/import_env_to_sm.py": {
+      "S603": 1
+    },
+    "scripts/secrets/mirror_fernet_key_to_sm.py": {
+      "S603": 1
+    },
+    "scripts/secrets/render_env.py": {
+      "S110": 2,
+      "S603": 1
+    },
+    "scripts/secrets/rotation_probes.py": {
+      "S310": 3
+    },
+    "scripts/secrets/store_schwab_login.py": {
+      "S603": 2
+    },
+    "scripts/secrets_admin.py": {
+      "S110": 3,
+      "S112": 1,
+      "S603": 5
+    },
+    "scripts/sector_cache.py": {
+      "S110": 1
+    },
+    "scripts/sector_leaders_service.py": {
+      "S608": 1
+    },
+    "scripts/sector_momentum_engine.py": {
+      "S110": 4
+    },
+    "scripts/sector_momentum_engine_v4.py": {
+      "S110": 1
+    },
+    "scripts/sector_research_universe.py": {
+      "S110": 1,
+      "S603": 1
+    },
+    "scripts/sector_rs_daily.py": {
+      "S110": 1,
+      "S608": 2
+    },
+    "scripts/seed_hermes_identities.py": {
+      "S310": 1
+    },
+    "scripts/seed_phase2e_shadow_from_qwen3_test.py": {
+      "S608": 4
+    },
+    "scripts/select_quote_refresh_targets.py": {
+      "S110": 4
+    },
+    "scripts/self_heal_fixer.py": {
+      "S108": 2,
+      "S314": 1,
+      "S603": 1
+    },
+    "scripts/send_advice_digest.py": {
+      "S110": 3,
+      "S112": 1
+    },
+    "scripts/send_agent_brief.py": {
+      "S110": 1
+    },
+    "scripts/send_alert_digest.py": {
+      "S101": 1
+    },
+    "scripts/send_morning_brief.py": {
+      "S110": 1
+    },
+    "scripts/send_no_leads_diagnostic_alert.py": {
+      "S110": 2,
+      "S603": 1
+    },
+    "scripts/send_telegram_proposal_alert.py": {
+      "S110": 9,
+      "S608": 1
+    },
+    "scripts/send_watchpool_maturity_alerts.py": {
+      "S110": 2
+    },
+    "scripts/sentinel_artifact_review.py": {
+      "S110": 1
+    },
+    "scripts/session16b_seed_strategy_metadata.py": {
+      "S608": 1
+    },
+    "scripts/session18_signal_flow_health.py": {
+      "S110": 1
+    },
+    "scripts/session34_diagnose.py": {
+      "S110": 3,
+      "S607": 5,
+      "S608": 1
+    },
+    "scripts/session34_fix_covered_call_schema.py": {
+      "S101": 1,
+      "S608": 2
+    },
+    "scripts/shadow_batch_generator.py": {
+      "S108": 1,
+      "S110": 2
+    },
+    "scripts/shadow_decision_service.py": {
+      "S110": 3,
+      "S607": 1
+    },
+    "scripts/shadow_strategy_job.py": {
+      "S110": 2,
+      "S603": 1
+    },
+    "scripts/share_reconciliation.py": {
+      "S110": 2
+    },
+    "scripts/signal_fusion.py": {
+      "S110": 2
+    },
+    "scripts/small_cap_rotation_bridge.py": {
+      "S110": 3,
+      "S608": 1
+    },
+    "scripts/smoke_test_phase3_gemma4_e4b.py": {
+      "S108": 1,
+      "S110": 4,
+      "S310": 8
+    },
+    "scripts/smoke_test_phase3_small_model.py": {
+      "S108": 1,
+      "S110": 4,
+      "S310": 8
+    },
+    "scripts/snaptrade_sync.py": {
+      "S110": 5
+    },
+    "scripts/social_ingest.py": {
+      "S105": 1,
+      "S110": 4
+    },
+    "scripts/social_monitor.py": {
+      "S110": 1,
+      "S310": 1
+    },
+    "scripts/social_route_policy.py": {
+      "S101": 1
+    },
+    "scripts/social_scalp_scanner.py": {
+      "S110": 6,
+      "S112": 1,
+      "S608": 4
+    },
+    "scripts/social_scout_pillars.py": {
+      "S105": 1
+    },
+    "scripts/social_scout_replay_report.py": {
+      "S110": 1,
+      "S608": 1
+    },
+    "scripts/source_attribution_monitor.py": {
+      "S110": 1
+    },
+    "scripts/source_litmus_vs_yahoo.py": {
+      "S311": 1
+    },
+    "scripts/source_maturity.py": {
+      "S110": 1
+    },
+    "scripts/source_outcome_attribution.py": {
+      "S608": 3
+    },
+    "scripts/source_vetting_ladder.py": {
+      "S110": 1
+    },
+    "scripts/state_freshness_writer.py": {
+      "S110": 1
+    },
+    "scripts/statement_reconciliation.py": {
+      "S608": 1
+    },
+    "scripts/stop_alert_assembler.py": {
+      "S310": 1
+    },
+    "scripts/stop_decision_brief.py": {
+      "S110": 1
+    },
+    "scripts/stop_drift_alert.py": {
+      "S110": 6,
+      "S608": 2
+    },
+    "scripts/stop_health_check.py": {
+      "S110": 3
+    },
+    "scripts/stop_lifecycle_monitor.py": {
+      "S110": 6
+    },
+    "scripts/stop_over_consensus_monitor.py": {
+      "S110": 2
+    },
+    "scripts/storage_watch.py": {
+      "S608": 1
+    },
+    "scripts/strategy_backtester.py": {
+      "S311": 3
+    },
+    "scripts/strategy_planner.py": {
+      "S110": 2
+    },
+    "scripts/strategy_router.py": {
+      "S101": 8
+    },
+    "scripts/strategy_rule_adapter.py": {
+      "S110": 1
+    },
+    "scripts/strategy_rule_engine.py": {
+      "S608": 1
+    },
+    "scripts/strategy_signal_simulator.py": {
+      "S110": 1
+    },
+    "scripts/strategy_signal_sync.py": {
+      "S110": 3,
+      "S608": 2
+    },
+    "scripts/strategy_tilt.py": {
+      "S110": 2
+    },
+    "scripts/strategy_utils.py": {
+      "S110": 3
+    },
+    "scripts/stuck_work_monitor.py": {
+      "S603": 1,
+      "S608": 1
+    },
+    "scripts/supervisor_breach_detector.py": {
+      "S110": 3,
+      "S603": 1
+    },
+    "scripts/sweep_stale_paper_proposals.py": {
+      "S608": 1
+    },
+    "scripts/symbol_enrichment.py": {
+      "S110": 6,
+      "S314": 2
+    },
+    "scripts/symbol_news_curation_monitor.py": {
+      "S110": 2
+    },
+    "scripts/symbol_volume_profile_builder.py": {
+      "S110": 1,
+      "S608": 1
+    },
+    "scripts/sync-docs-to-drive.py": {
+      "S108": 2,
+      "S110": 2,
+      "S603": 1
+    },
+    "scripts/sync_cio_release_manifest_drive.py": {
+      "S105": 2,
+      "S110": 1,
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/sync_portfolio_watchlist_membership.py": {
+      "S110": 1
+    },
+    "scripts/sync_social_to_intelligence.py": {
+      "S110": 1
+    },
+    "scripts/synthesis_safety.py": {
+      "S110": 1
+    },
+    "scripts/synthetic_stop_monitor.py": {
+      "S110": 5
+    },
+    "scripts/system_freshness_monitor.py": {
+      "S110": 4,
+      "S310": 1,
+      "S603": 1,
+      "S608": 2
+    },
+    "scripts/system_health_agent.py": {
+      "S108": 9,
+      "S110": 15,
+      "S602": 1,
+      "S603": 1,
+      "S608": 1
+    },
+    "scripts/system_health_alerts.py": {
+      "S110": 1,
+      "S603": 1,
+      "S607": 1,
+      "S608": 1
+    },
+    "scripts/system_preflight_check.py": {
+      "S310": 1,
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/tastytrade_adapter.py": {
+      "S110": 1
+    },
+    "scripts/taxonomy.py": {
+      "S310": 2,
+      "S608": 1
+    },
+    "scripts/taxonomy_tagger.py": {
+      "S608": 3
+    },
+    "scripts/technical_intelligence.py": {
+      "S110": 4,
+      "S112": 1
+    },
+    "scripts/technicals_gap_backfill.py": {
+      "S110": 2
+    },
+    "scripts/telegram_agent_router_bridge.py": {
+      "S603": 1
+    },
+    "scripts/telegram_alert.py": {
+      "S110": 8
+    },
+    "scripts/telegram_alert_router.py": {
+      "S110": 3,
+      "S324": 1
+    },
+    "scripts/telegram_callback_handler.py": {
+      "S110": 10,
+      "S310": 1,
+      "S603": 1
+    },
+    "scripts/telegram_callback_policy.py": {
+      "S324": 1
+    },
+    "scripts/telegram_command_handler.py": {
+      "S110": 7,
+      "S310": 3,
+      "S603": 9,
+      "S607": 1
+    },
+    "scripts/telegram_proposal_alert_policy.py": {
+      "S110": 3,
+      "S324": 1
+    },
+    "scripts/telegram_reply_processor.py": {
+      "S110": 2
+    },
+    "scripts/telegram_smart_alerts.py": {
+      "S110": 1
+    },
+    "scripts/telegram_transport.py": {
+      "S110": 2
+    },
+    "scripts/test_defense_recommendations.py": {
+      "S101": 48
+    },
+    "scripts/test_hermes_coordinator_promotion_smoke.py": {
+      "S101": 10
+    },
+    "scripts/test_phantom_confirmation.py": {
+      "S603": 1,
+      "S607": 1,
+      "S608": 1
+    },
+    "scripts/test_sector_momentum_debounce.py": {
+      "S101": 13
+    },
+    "scripts/tg_chat_ids.py": {
+      "S110": 1
+    },
+    "scripts/think_tank_prospect_discovery.py": {
+      "S603": 1
+    },
+    "scripts/think_tank_signal_miner.py": {
+      "S112": 2,
+      "S310": 2
+    },
+    "scripts/ticker_attribution.py": {
+      "S110": 1
+    },
+    "scripts/ticker_snapshot_builder.py": {
+      "S110": 1
+    },
+    "scripts/tmp_hygiene.py": {
+      "S108": 1
+    },
+    "scripts/tmp_hygiene_auto.py": {
+      "S108": 2
+    },
+    "scripts/topic_curator.py": {
+      "S110": 5,
+      "S603": 3
+    },
+    "scripts/topic_ingestion.py": {
+      "S108": 2,
+      "S110": 8,
+      "S112": 2,
+      "S310": 10,
+      "S314": 2,
+      "S603": 2
+    },
+    "scripts/topic_research_synthesizer.py": {
+      "S112": 1,
+      "S608": 2
+    },
+    "scripts/tos_export_backtest.py": {
+      "S110": 1
+    },
+    "scripts/track_dual_opinion_outcomes.py": {
+      "S110": 1
+    },
+    "scripts/trade_ai_health.py": {
+      "S110": 1
+    },
+    "scripts/trade_ai_news_monitor.py": {
+      "S110": 5
+    },
+    "scripts/trade_ai_orchestrator.py": {
+      "S110": 12,
+      "S112": 1,
+      "S603": 1,
+      "S608": 1
+    },
+    "scripts/trade_ai_restore_drill.py": {
+      "S110": 3,
+      "S607": 1
+    },
+    "scripts/trade_backtest_engine.py": {
+      "S110": 5,
+      "S608": 1
+    },
+    "scripts/trade_close_llm_analyzer.py": {
+      "S310": 2,
+      "S603": 1
+    },
+    "scripts/trade_execution_analyzer.py": {
+      "S110": 1,
+      "S608": 1
+    },
+    "scripts/trade_fill_verifier.py": {
+      "S110": 2
+    },
+    "scripts/trade_integrity_audit.py": {
+      "S110": 1,
+      "S603": 1,
+      "S608": 1
+    },
+    "scripts/trade_learning_engine.py": {
+      "S110": 2
+    },
+    "scripts/trade_modify.py": {
+      "S110": 1
+    },
+    "scripts/trade_plan.py": {
+      "S110": 2,
+      "S310": 2
+    },
+    "scripts/trade_recommendation_linker.py": {
+      "S608": 1
+    },
+    "scripts/trade_strategy_classifier.py": {
+      "S310": 2,
+      "S603": 1,
+      "S608": 2
+    },
+    "scripts/trade_thesis_review_engine.py": {
+      "S608": 1
+    },
+    "scripts/transcript_processor.py": {
+      "S110": 1
+    },
+    "scripts/transcript_slow_processor.py": {
+      "S608": 1
+    },
+    "scripts/unified_stop_supervisor.py": {
+      "S101": 2,
+      "S110": 2
+    },
+    "scripts/unify_trade_keyspace.py": {
+      "S608": 2
+    },
+    "scripts/update_doc_metrics.py": {
+      "S603": 1,
+      "S607": 3
+    },
+    "scripts/update_lockup_earnings_dates.py": {
+      "S112": 1
+    },
+    "scripts/v3_route_maturity_probe.py": {
+      "S108": 1
+    },
+    "scripts/validate_alert_intelligence.py": {
+      "S310": 1
+    },
+    "scripts/validate_classification_rule_engine.py": {
+      "S310": 1,
+      "S608": 1
+    },
+    "scripts/validate_closed_loop_intelligence.py": {
+      "S310": 1,
+      "S608": 1
+    },
+    "scripts/validate_journal_field_completeness.py": {
+      "S608": 1
+    },
+    "scripts/validate_journal_learning_fields.py": {
+      "S608": 1
+    },
+    "scripts/validate_llm_review_health_gate.py": {
+      "S603": 2
+    },
+    "scripts/validate_metric_consistency.py": {
+      "S112": 1
+    },
+    "scripts/validate_profit_protection_enhancement.py": {
+      "S608": 1
+    },
+    "scripts/validate_release_readiness.py": {
+      "S603": 1,
+      "S607": 1
+    },
+    "scripts/validate_schwab_write_policy.py": {
+      "S603": 1
+    },
+    "scripts/validate_synthesis_safety.py": {
+      "S310": 1
+    },
+    "scripts/validate_v4_signal_intelligence.py": {
+      "S310": 1,
+      "S608": 1
+    },
+    "scripts/validate_v5_signal_intelligence.py": {
+      "S310": 1,
+      "S608": 1
+    },
+    "scripts/validate_v7_cio_intelligence.py": {
+      "S310": 1,
+      "S608": 1
+    },
+    "scripts/validate_watchlist_workbench.py": {
+      "S310": 2,
+      "S607": 1,
+      "S608": 1
+    },
+    "scripts/verify_fib_proposals.py": {
+      "S110": 2,
+      "S607": 2
+    },
+    "scripts/verify_hermes_daily.py": {
+      "S110": 2,
+      "S603": 1,
+      "S607": 2
+    },
+    "scripts/verify_llm_providers.py": {
+      "S110": 2,
+      "S310": 3
+    },
+    "scripts/verify_paper_trade_broker_stops.py": {
+      "S101": 1
+    },
+    "scripts/volatility_tier_refresh.py": {
+      "S110": 4
+    },
+    "scripts/warrior_tradeai_audit.py": {
+      "S110": 2,
+      "S112": 1
+    },
+    "scripts/warrior_youtube_backfill.py": {
+      "S310": 1
+    },
+    "scripts/watch_alerts_eval.py": {
+      "S110": 4
+    },
+    "scripts/watch_decision_refresh.py": {
+      "S110": 6,
+      "S603": 5,
+      "S607": 1,
+      "S608": 1
+    },
+    "scripts/watch_decision_scheduler.py": {
+      "S110": 1
+    },
+    "scripts/watch_directive_hygiene.py": {
+      "S110": 3,
+      "S603": 1
+    },
+    "scripts/watch_directives_monitor.py": {
+      "S110": 3
+    },
+    "scripts/watch_directives_service.py": {
+      "S110": 2
+    },
+    "scripts/watch_goods_consistency_check.py": {
+      "S110": 1,
+      "S608": 1
+    },
+    "scripts/watch_quality_audit.py": {
+      "S110": 1
+    },
+    "scripts/watch_quality_gate3_sample_rebuild_v2.py": {
+      "S110": 1
+    },
+    "scripts/watch_quality_gate4_verify.py": {
+      "S110": 1
+    },
+    "scripts/watch_quality_gate6_bound_scheduler.py": {
+      "S110": 1
+    },
+    "scripts/watch_quality_local_scheduler.py": {
+      "S110": 2,
+      "S608": 1
+    },
+    "scripts/watch_quality_projection.py": {
+      "S110": 1
+    },
+    "scripts/watch_valuation_backfill.py": {
+      "S110": 1
+    },
+    "scripts/watchlist_enrichment_sweep.py": {
+      "S110": 3,
+      "S608": 1
+    },
+    "scripts/watchlist_entry_planner.py": {
+      "S110": 4,
+      "S608": 3
+    },
+    "scripts/watchlist_hygiene.py": {
+      "S110": 1
+    },
+    "scripts/watchlist_price_levels.py": {
+      "S110": 1
+    },
+    "scripts/watchlist_proposal_bridge.py": {
+      "S110": 4,
+      "S112": 1
+    },
+    "scripts/watchlist_research_api.py": {
+      "S104": 1,
+      "S603": 2,
+      "S607": 3,
+      "S608": 3
+    },
+    "scripts/watchpool_maturity_policy.py": {
+      "S324": 1
+    },
+    "scripts/web_news_fetcher.py": {
+      "S310": 1
+    },
+    "scripts/weekly_disk_cleanup_notify.py": {
+      "S603": 1
+    },
+    "scripts/weekly_hygiene.py": {
+      "S110": 1
+    },
+    "scripts/wire_advisory_lessons.py": {
+      "S603": 1
+    },
+    "scripts/write_state_freshness_history.py": {
+      "S603": 2,
+      "S607": 1
+    },
+    "scripts/yahoo_news.py": {
+      "S110": 1,
+      "S314": 1
+    },
+    "scripts/yfinance_info_snapshot_refresh.py": {
+      "S110": 1
+    },
+    "scripts/youtube_backfill_manager.py": {
+      "S110": 1
+    },
+    "scripts/youtube_channel_discovery.py": {
+      "S110": 1,
+      "S310": 1
+    },
+    "scripts/youtube_cookie_health_check.py": {
+      "S110": 1
+    },
+    "scripts/youtube_transcript_ingest.py": {
+      "S110": 5,
+      "S112": 1,
+      "S310": 4,
+      "S314": 1,
+      "S603": 1
+    }
+  }
+}
