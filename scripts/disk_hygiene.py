@@ -1892,6 +1892,37 @@ def disk_usage_sample(home: Path) -> dict:
         return {"used_pct": None, "measured_at": ts, "reason": "statvfs_unavailable"}
 
 
+#: The standing path re-captures the whole evidence set before EVERY removal, and one transient capture
+#: failure aborts the pass and re-holds every item not yet removed. Measured 2026-11-02 on this host:
+#: `evidence_opaque_processes` appeared in 1 capture in 40 (2.5%) — a short-lived process whose cwd/fds the
+#: kernel hides and whose ancestry cannot be read. Two consecutive 13/16-item standing runs both died on it
+#: at `evidence_recheck_unavailable`. A short bounded retry clears the transient case; the retries never
+#: weaken the guard, because absence is still proven only by a complete, fresh capture.
+EVIDENCE_RECHECK_ATTEMPTS = 3
+EVIDENCE_RECHECK_DELAY_S = 3.0
+
+
+def revalidate_evidence(
+    rules: Mapping[str, Any], now: datetime, *, attempts: int = EVIDENCE_RECHECK_ATTEMPTS,
+    delay_s: float = EVIDENCE_RECHECK_DELAY_S, sleep=time.sleep,
+) -> tuple[Optional[dict], Optional[str]]:
+    """Apply-time evidence: ``(context, None)`` on success, ``(None, reason)`` when every attempt failed.
+
+    Never returns a partial context. An incomplete or opaque capture can authorize a quoted preview, never a
+    removal (AGENTS.md §0 rule 7), so a failed attempt is retried and then surfaced by name — never ignored.
+    """
+    reason = "evidence_unavailable"
+    for attempt in range(max(1, int(attempts))):
+        if attempt:
+            sleep(delay_s)
+        try:
+            refreshed = collect_standing_evidence(rules, now)
+            return SR.evidence_context(refreshed, now, applying=True), None
+        except (RulesError, ValueError) as exc:
+            reason = str(exc) or type(exc).__name__
+    return None, reason
+
+
 def apply(
     manifest_path: Path, rules: Mapping[str, Any], now: datetime, *, grant: Optional[str], run_id: Optional[str],
     standing: bool = False, evidence: Optional[Mapping] = None, manifest_sha256: Optional[str] = None,
@@ -1905,6 +1936,7 @@ def apply(
         "removed": [],
         "skipped": [],
         "refused": None,
+        "refusal_detail": None,
     }
     def finish():
         if standing:
@@ -2027,11 +2059,11 @@ def apply(
             if (validation_now - gen).total_seconds() > age_limit * 3600:
                 rep["refused"] = "manifest_stale_during_apply"
                 break
-            try:
-                refreshed = collect_standing_evidence(rules, validation_now)
-                ctx = SR.evidence_context(refreshed, validation_now, applying=True)
-            except (RulesError, ValueError):
+            ctx, recheck_reason = revalidate_evidence(rules, validation_now)
+            if ctx is None:
+                # Named, not swallowed: the receipt must say which check refused and why (§0 rule 8).
                 rep["refused"] = "evidence_recheck_unavailable"
+                rep["refusal_detail"] = recheck_reason
                 break
             try:
                 current_rules = load_rules(Path(rules["_path"]), home=rules["_home"])
