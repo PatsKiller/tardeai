@@ -136,3 +136,25 @@ def test_the_digest_names_the_refusing_check():
 
     plain = SR.operator_digest({"per_rule": {}, "held_bytes": 0, "removed": [], "skipped": [], "refused": None})
     assert plain.endswith("refusal none")
+
+
+def test_the_run_start_capture_is_retried_too(monkeypatch):
+    """The apply-entry capture had no retry: one transient opaque process refused the pass before any removal."""
+    sequence = [_evidence(opaque=True), _evidence()]
+    sleeps = []
+    monkeypatch.setattr(DH, "collect_standing_evidence", lambda *a, **k: sequence.pop(0))
+
+    doc, reason = DH.capture_apply_evidence({}, NOW, sleep=sleeps.append, clock=lambda: 0.0)
+
+    assert reason is None, "a transient opaque process must not refuse the pass at run start"
+    assert doc is not None and doc["sources"]["processes"]["complete"] is True
+    assert sleeps == [DH.EVIDENCE_RECHECK_DELAY_S]
+
+
+def test_the_run_start_capture_refuses_and_is_named_when_opaque_persists(monkeypatch):
+    monkeypatch.setattr(DH, "collect_standing_evidence", lambda *a, **k: _evidence(opaque=True))
+
+    doc, reason = DH.capture_apply_evidence({}, NOW, sleep=lambda _s: None, clock=lambda: 0.0)
+
+    assert doc is None, "an opaque capture must never be returned as apply evidence"
+    assert reason == "evidence_opaque_processes"
