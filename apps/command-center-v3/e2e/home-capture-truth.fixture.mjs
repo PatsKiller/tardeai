@@ -71,7 +71,10 @@ const baseApi = {
     { id: 'n8n', group: 'lane', label: 'n8n', status: 'WARN', as_of: NOW, value: 'lag', reason: 'queue lag' },
   ] },
   '/api/v2/ops/deploys': { as_of: NOW, status: 'OK', open: [], stop: { state: 'RUNNING', effective_stop: false } },
-  '/api/v2/command': { as_of: NOW, llm: { generated_at: NOW, portfolio_risk: 'Synthetic morning briefing text for the fixture.' }, executive_brief: null },
+  // Both shapes: `llm` is what the pre-f94 Home reads; `llm_intelligence` is the f94 object shape.
+  '/api/v2/command': { as_of: NOW, llm: { generated_at: NOW, portfolio_risk: 'Synthetic morning briefing text for the fixture.' },
+    llm_intelligence: { portfolio_risk: { content: 'Synthetic morning briefing text for the fixture.', generated_at: NOW } },
+    executive_brief: null },
   '/api/v2/health': { as_of: NOW, findings: [
     ...Array.from({ length: 4 }, () => ({ severity: 'critical', code: 'synthetic' })),
     ...Array.from({ length: 113 }, () => ({ severity: 'warning', code: 'synthetic' })),
@@ -91,10 +94,16 @@ const baseApi = {
 const CASES = {
   baseline: {},
   'briefing-older-than-overview': {
-    '/api/v2/command': { as_of: OLD, llm: { generated_at: OLD, portfolio_risk: 'Briefing written three days ago but shown with no date.' } },
+    '/api/v2/command': { as_of: OLD, llm: { generated_at: OLD, portfolio_risk: 'Briefing written three days ago but shown with no date.' },
+      llm_intelligence: { portfolio_risk: { content: 'Briefing written three days ago but shown with no date.', generated_at: OLD } } },
   },
   'briefing-clock-missing-and-future': {
-    '/api/v2/command': { as_of: FUTURE, llm: { generated_at: FUTURE, portfolio_risk: 'Briefing clock is ahead of the page clock.' } },
+    '/api/v2/command': { as_of: FUTURE, llm: { generated_at: FUTURE, portfolio_risk: 'Briefing clock is ahead of the page clock.' },
+      llm_intelligence: { portfolio_risk: { content: 'Briefing clock is ahead of the page clock.', generated_at: FUTURE } } },
+  },
+  'briefing-clock-missing': {
+    '/api/v2/command': { llm: { portfolio_risk: 'Briefing with no clock at all.' },
+      llm_intelligence: { portfolio_risk: { content: 'Briefing with no clock at all.' } } },
   },
   'platform-counts-vs-health-findings': {
     '/api/v2/system/platform-health': (() => {
@@ -187,7 +196,7 @@ try {
       })
       await page.goto('http://home-fixture.test/')
       await page.waitForSelector('[data-testid="synthetic-home"]', { timeout: 20_000 })
-      await page.evaluate(() => new Promise(r => setTimeout(r, 400)))
+      await page.evaluate(() => new Promise(r => setTimeout(r, 900)))
       const m = await page.evaluate(() => {
         const text = (document.body.innerText || '').replace(/\s+/g, ' ')
         const near = (label, span = 260) => {
@@ -220,6 +229,8 @@ try {
       const text = m.text
       const observations = {
         briefingHasVisibleClock: /\b(?:Nov|Oct|Sep|Aug|Jul|Jun|May|Apr|Mar|Feb|Jan)\b|\d{4}-\d{2}-\d{2}T/.test(m.briefing ?? ''),
+        briefingAgeShown: /\b(?:\d+\s*(?:s|m|h|d)\s*ago|in the future|time is in the future|time unknown|not recorded)\b/i.test(m.briefing ?? ''),
+        platformScopeExplained: /component checks|different populations|counts critical and warning findings/i.test(text),
         platformCountsShown: /\d+\s+(?:OK|WARN|CRIT|STALE|UNKNOWN)/.test(m.platform ?? ''),
         healthFindingsInText: /\bcritical\b/i.test(text),
         rotationRenderedOnHome: /rotation/i.test(text),

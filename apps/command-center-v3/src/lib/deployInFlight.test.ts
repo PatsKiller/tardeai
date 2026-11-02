@@ -81,6 +81,8 @@ eq('no blockers', work({ blockers: null }).blockers.length, 0)
 // old backend: no work block at all
 const old = normalizeWork(undefined, HEAD)
 eq('old backend: work not present', old.present, false)
+eq('an array is not a work block', normalizeWork([], HEAD).present, false)
+eq('nor is a string', normalizeWork('facts', HEAD).present, false)
 eq('old backend: review UNKNOWN', old.review.state, 'UNKNOWN')
 eq('old backend: reason says the backend predates it', (old.reason ?? '').includes('predates'), true)
 check('old backend: nothing is invented green', old.ci.state === 'UNKNOWN' && old.owner === null)
@@ -246,6 +248,7 @@ check('and says the set is mixed', /unrecognised|mixed/.test(rv9([{ verdict: 'ME
 eq('MERGE + explicit UNKNOWN stays UNKNOWN', rv9([{ verdict: 'MERGE', reviewer: 'a' }, { verdict: 'UNKNOWN', reviewer: 'b' }]).state, 'UNKNOWN')
 eq('BLOCK + unrecognised is still blocked', rv9([{ verdict: 'BLOCK', reviewer: 'a' }, { verdict: 'MAYBE', reviewer: 'b' }]).state, 'CHANGES')
 eq('a backend UNKNOWN is never upgraded to MERGE', rv9([{ verdict: 'MERGE', reviewer: 'a' }], 'UNKNOWN').state, 'UNKNOWN')
+eq('a backend BLOCK is never overridden by merge records', rv9([{ verdict: 'MERGE', reviewer: 'a' }], 'BLOCK').state, 'CHANGES')
 eq('two clean MERGEs still pass', rv9([{ verdict: 'MERGE', reviewer: 'a' }, { verdict: 'MERGE', reviewer: 'b' }]).state, 'MERGE')
 
 const agentWith = (over: Record<string, unknown>) => normalizeCoordination({ status: 'OK', agents: [{

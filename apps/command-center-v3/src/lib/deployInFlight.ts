@@ -261,15 +261,19 @@ export function normalizeReview(raw: unknown, rowHead: string): Factor<ReviewSta
     const blocks = verdicts.filter(v => v.verdict === 'CHANGES')
     const merges = verdicts.filter(v => v.verdict === 'MERGE')
     const envelope = String(r.state ?? '').trim().toUpperCase()
-    // BLOCK dominates. Beyond that, a mixed or unrecognised set is UNKNOWN — never MERGE from the survivors
-    // alone, and never an upgrade of an UNKNOWN the backend itself reported.
+    // BLOCK dominates — including a backend that reports blocked while its records disagree.
+    const envelopeBlocked = ['BLOCK', 'BLOCKED', 'CHANGES', 'CHANGES_REQUESTED', 'REJECT'].includes(envelope)
+    // Beyond that, a mixed or unrecognised set is UNKNOWN — never MERGE from the survivors alone, and never
+    // an upgrade of an UNKNOWN the backend itself reported.
     const uncertain = unrecognised > 0 || envelope === 'UNKNOWN'
-    const state: ReviewState = blocks.length ? 'CHANGES' : uncertain || !merges.length ? 'UNKNOWN' : 'MERGE'
+    const state: ReviewState = blocks.length || envelopeBlocked ? 'CHANGES' : uncertain || !merges.length ? 'UNKNOWN' : 'MERGE'
     const reason = blocks.length
       ? `${blocks.length} blocking verdict${blocks.length > 1 ? 's' : ''}${merges.length ? ` vs ${merges.length} merge (conflicting_verdicts)` : ''}: ${blocks.map(b => b.reviewer).join(', ')}`
-      : uncertain
-        ? `${unrecognised ? `${unrecognised} unrecognised verdict(s)` : 'backend reports the review UNKNOWN'}${merges.length ? ` beside ${merges.length} merge — mixed verdicts are not a pass` : ''}`
-        : null
+      : envelopeBlocked
+        ? `backend reports the review ${envelope}${merges.length ? ' while its records read merge — the backend verdict wins' : ''}`
+        : uncertain
+          ? `${unrecognised ? `${unrecognised} unrecognised verdict(s)` : 'backend reports the review UNKNOWN'}${merges.length ? ` beside ${merges.length} merge — mixed verdicts are not a pass` : ''}`
+          : null
     const newest = verdicts.map(v => v.as_of).filter((x): x is string => !!x).sort().pop() ?? as_of
     return { state, reported: state, head_sha: envelopeHead ?? rowHead, as_of: newest, as_of_basis: newest === as_of ? as_of_basis : 'as_of', source, reason, verdicts }
   }
@@ -297,7 +301,8 @@ function normalizeBlockers(raw: unknown): Blocker[] {
 
 /** One row's additive `work` block. Absent (old backend) is UNKNOWN with a reason, not a clean state. */
 export function normalizeWork(raw: unknown, rowHead: string): WorkBlock {
-  if (!raw || typeof raw !== 'object') {
+  // An array is object-shaped to typeof but is not a work block: treat it as absent, never as facts.
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     return emptyWork('work facts not in this response (backend predates the work block)')
   }
   const w = raw as Record<string, unknown>
