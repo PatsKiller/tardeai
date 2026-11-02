@@ -336,3 +336,42 @@ def test_absent_sources_leave_the_row_as_of_null_not_captured_now(tmp_path):
     work = out["work"][2474]
     assert work["as_of"] is None
     assert out["captured_at"] == "2026-11-02T18:00:00Z"   # the read time lives only on the envelope
+
+
+# ───────────── adversarial regressions (codex review of 9a0ae89e, 2026-11-02)
+def test_future_heartbeat_is_not_working(tmp_path):
+    """A heartbeat five days in the FUTURE is clock skew or forgery, never proof of work."""
+    p_future = _claims(tmp_path, {"session": "cc-deepseek-2", "branch": "wt/x", "task": "t", "status": "active",
+                                  "claim_id": "c0", "heartbeat_at": "2026-11-07T18:00:00Z"})
+    agents = {a["session"]: a for a in rc.build(tmp_path / "ledger.jsonl", p_future, [_pr()], now=NOW)["agents"]}
+    assert agents["cc-deepseek-2"]["execution_state"] == "UNKNOWN"
+
+
+def test_with_no_board_the_fallback_does_not_hardcode_working(tmp_path):
+    """BOARD absent: the claim fallback must use the same freshness rule, not a literal 'working'."""
+    stale = _claims(tmp_path, {"session": "s1", "branch": "wt/x", "task": "t", "status": "active",
+                               "claim_id": "c0", "heartbeat_at": "2026-10-28T18:00:00Z"})
+    a = {x["session"]: x for x in rc.build(tmp_path / "L.jsonl", stale, [_pr()], now=NOW)["agents"]}
+    assert a["s1"]["execution_state"] == "UNKNOWN"
+
+    no_beat = _claims(tmp_path, {"session": "s2", "branch": "wt/x", "task": "t", "status": "active", "claim_id": "c9"})
+    b = {x["session"]: x for x in rc.build(tmp_path / "L.jsonl", no_beat, [_pr()], now=NOW)["agents"]}
+    assert b["s2"]["execution_state"] == "UNKNOWN"
+
+    fresh = _claims(tmp_path, {"session": "s3", "branch": "wt/x", "task": "t", "status": "active",
+                               "claim_id": "c1", "heartbeat_at": "2026-11-02T17:45:00Z"})
+    c = {x["session"]: x for x in rc.build(tmp_path / "L.jsonl", fresh, [_pr()], now=NOW)["agents"]}
+    assert c["s3"]["execution_state"] == "working"
+
+
+def test_an_empty_target_head_yields_no_evidence(tmp_path):
+    ledger = _ledger(tmp_path, _review(head=""), _ci(head="", state="GREEN"))
+    work = rc.build(ledger, _claims(tmp_path), [_pr(head="")], now=NOW)["work"][2474]
+    assert work["review"]["state"] == "UNKNOWN" and work["review"]["gap"] == "target_head_missing"
+    assert work["ci"]["state"] == "UNKNOWN" and work["ci"]["gap"] == "target_head_missing"
+
+
+def test_a_record_without_a_head_never_matches_a_real_head(tmp_path):
+    ledger = _ledger(tmp_path, _review(head="", verdict="MERGE"), _ci(head="", state="GREEN"))
+    work = rc.build(ledger, _claims(tmp_path), [_pr(head=HEAD)], now=NOW)["work"][2474]
+    assert work["review"]["state"] == "UNKNOWN" and work["ci"]["state"] == "UNKNOWN"

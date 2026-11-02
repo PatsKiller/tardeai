@@ -69,7 +69,10 @@ def _fresh(claim: Mapping[str, Any], now: Optional[datetime]) -> bool:
     at = now or datetime.now(timezone.utc)
     if beat.tzinfo is None:
         beat = beat.replace(tzinfo=timezone.utc)
-    return (at - beat).total_seconds() <= WORKING_HEARTBEAT_HOURS * 3600
+    delta = (at - beat).total_seconds()
+    # A heartbeat in the FUTURE is not proof of work either: it is a clock skew or a forged record.
+    # Bounded on both sides (codex review of 9a0ae89e, 2026-11-02).
+    return 0 <= delta <= WORKING_HEARTBEAT_HOURS * 3600
 
 
 def _newest(values: Iterable[Optional[str]]) -> Optional[str]:
@@ -110,11 +113,20 @@ def _truthy_class(row: Mapping[str, Any]) -> bool:
 
 
 def evidence_for_pr(events: Iterable[Mapping[str, Any]], pr_number: int, head_sha: str) -> dict[str, Any]:
-    """Head-bound review and CI evidence for one PR.
+    """Evidence is only attached when BOTH heads are real, non-empty and equal.
 
-    Only records that name this PR *and* this exact head count. Anything else is reported as a gap rather
-    than being attached to the current head.
+    An empty target head and an empty record head used to compare equal, so a row with no head and
+    a ledger record with no head produced review MERGE and CI GREEN out of nothing (codex review of
+    9a0ae89e, 2026-11-02).
     """
+    if not str(head_sha or "").strip():
+        # Only records that name this PR *and* this exact head count; anything else is a gap rather
+        # than evidence attached to the current head.
+        return {"review": {"state": UNKNOWN, "verdicts": [], "reviewers": [], "independent_reviewers": 0,
+                           "records": [], "head_sha": None, "as_of": None, "source": "none",
+                           "gap": "target_head_missing", "evidence_class": EVIDENCE_CLASS},
+                "ci": {"state": UNKNOWN, "head_sha": None, "as_of": None, "source": "none",
+                       "workflows": [], "evidence_class": EVIDENCE_CLASS, "gap": "target_head_missing"}}
     reviews: list[dict[str, Any]] = []
     ci: Optional[dict[str, Any]] = None
     stale_reviews = stale_ci = 0
@@ -125,7 +137,9 @@ def evidence_for_pr(events: Iterable[Mapping[str, Any]], pr_number: int, head_sh
         except (TypeError, ValueError):
             continue
         kind = str(row.get("kind") or "")
-        row_head = str(row.get("head_sha") or "")
+        row_head = str(row.get("head_sha") or "").strip()
+        if not row_head:
+            continue                      # a record that names no head proves nothing
         if kind == REVIEW_KIND and _truthy_class(row):
             if row_head != head_sha:
                 stale_reviews += 1
@@ -415,7 +429,8 @@ def build(ledger_path: Path, claims_dir: Path, prs: Iterable[Mapping[str, Any]],
             "source": "board" if not claim else "board+claims",
         })
     if not agents:            # no readable BOARD: fall back to live claims, and say so
-        agents = [{**a, "execution_state": "working", "branch_or_pr": a.get("branch")} for a in live[:20]]
+        agents = [{**a, "execution_state": "working" if _fresh(a, now) else UNKNOWN,
+                   "branch_or_pr": a.get("branch")} for a in live[:20]]
     # Per-PR ownership comes from the CLAIMS (they carry the claim id the worklog is keyed by), while the
     # primary agent list above is BOARD context. Mixing the two lost the worklog lookup.
     by_branch = {a["branch"]: a for a in live if a.get("branch")}
