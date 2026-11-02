@@ -5,6 +5,7 @@
 import { useState, type CSSProperties } from 'react'
 import { useApi } from '../hooks/useApi'
 import { Chip, ChipRow } from '../components/primitives'
+import AddCoordinatorModal from '../components/AddCoordinatorModal'
 import { RADIUS, TOKENS, TYPE, FONT, toneVars } from '../lib/designTokens'
 import {
   byTerritory, heartbeatLabel, sortCoordinators, stateLabel, stateTone,
@@ -54,6 +55,7 @@ export default function CoordinatorsPanel() {
   const coordApi = useApi<CoordinatorsPayload>('/api/v2/coordination/coordinators', 30_000)
   const boardApi = useApi<BoardPayload>('/api/v2/coordination/board?limit=30', 30_000)
   const [showBoard, setShowBoard] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)
   const d = coordApi.data
   const b = boardApi.data
   const rows = sortCoordinators(d?.coordinators)
@@ -73,6 +75,11 @@ export default function CoordinatorsPanel() {
           <div style={{ ...label, maxWidth: 640 }}>
             by territory · one lead is the one voice to you · nothing here writes
           </div>
+          <button type="button" onClick={() => setAddOpen(true)} data-testid="add-coordinator-open" style={{
+            minHeight: 44, marginLeft: 'auto', padding: '8px 14px', borderRadius: RADIUS.md,
+            border: `1px solid ${TOKENS.primary}`, background: TOKENS.bg[2], color: TOKENS.text[0],
+            cursor: 'pointer', fontSize: TYPE.sm, fontWeight: 800,
+          }}>Add a coordinator</button>
         </div>
         {d?.registry_present === false ? (
           <div role="alert" style={{ marginTop: 8, padding: '8px 10px', borderRadius: RADIUS.sm, fontSize: TYPE.sm, color: TOKENS.text[2], background: TOKENS.bg[2] }}>
@@ -196,6 +203,7 @@ export default function CoordinatorsPanel() {
           </div>
         ) : null}
       </div>
+      <AddCoordinatorModal open={addOpen} onClose={() => setAddOpen(false)} coordinators={rows} />
     </div>
   )
 }

@@ -208,3 +208,52 @@ def test_view_reports_freshness_and_the_board(tmp_path, monkeypatch):
 
 def test_view_ignores_a_foreign_path(tmp_path):
     assert V.handle("/api/v2/coordination/claims", {}, None) is None
+
+
+# ── join command (one server-side template) ──────────────────────────────────────────────────────────
+
+
+def _write_template(root: Path, text: str) -> Path:
+    d = root / "data" / "coordination" / "coordinator"
+    d.mkdir(parents=True, exist_ok=True)
+    p = d / V.JOIN_TEMPLATE
+    p.write_text(text, encoding="utf-8")
+    return p
+
+
+def _join(query: dict) -> dict:
+    return V.handle("/api/v2/coordination/join-command", query, None)
+
+
+def test_join_command_renders_the_template_and_follows_edits(tmp_path, monkeypatch):
+    _write_template(tmp_path, "Your coordinator id is {id}. Read and follow /x/ONBOARDING.md\n")
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    out = _join({"id": ["codex-a"], "vendor": ["codex"]})
+    assert out["schema"] == V.SCHEMA_JOIN and out["valid"] is True and out["template_present"] is True
+    assert out["line"] == "Your coordinator id is codex-a. Read and follow /x/ONBOARDING.md"
+    assert out["template_modified_at"]
+    # Editing the template is the only change: the page follows it with no deploy.
+    _write_template(tmp_path, "Join as {id} ({vendor})")
+    assert _join({"id": ["codex-a"], "vendor": ["codex"]})["line"] == "Join as codex-a (codex)"
+
+
+def test_join_command_defaults_the_id_from_the_vendor(tmp_path, monkeypatch):
+    _write_template(tmp_path, "id={id} vendor={vendor}")
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    assert _join({"vendor": ["codex"]})["line"] == "id=codex vendor=codex"
+    assert _join({"vendor": ["claude"]})["line"] == "id=claude vendor=claude"
+
+
+def test_join_command_validates_the_id_and_vendor(tmp_path, monkeypatch):
+    _write_template(tmp_path, "id {id}")
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    bad = _join({"id": ["Bad ID"], "vendor": ["codex"]})
+    assert bad["valid"] is False and "a-z0-9-" in bad["error"] and bad["line"] is None
+    assert _join({"id": ["ok-1"], "vendor": ["not-a-vendor"]})["valid"] is False
+
+
+def test_join_command_reports_a_missing_template_without_creating_it(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    out = _join({"id": ["a"], "vendor": ["claude"]})
+    assert out["template_present"] is False and out["line"] is None
+    assert not (tmp_path / "data").exists()
