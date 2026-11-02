@@ -599,6 +599,10 @@ reentry_watch:
   # evaluation, 3 sessions after a print to settle; market <= YELLOW; options hedging not STRESS. Base rate on the
   # symbol's own history: breakdown = 8% under the 20-session high and below the 20-day average.
   lookback_days: 30
+  # A residual (what a sale left behind, not a position to wait on) is a balance below the materiality
+  # share floor, or below this fraction of (remaining + everything that account sold on its most recent
+  # sale day). Operator 2026-11-02 (PFLT: 1.15 shares after a stop; SPCX taxable: 200 shares stay held).
+  residual_remaining_fraction: 0.15
   group_sessions: 2
   earnings_ahead_sessions: 5
   settle_sessions: 3

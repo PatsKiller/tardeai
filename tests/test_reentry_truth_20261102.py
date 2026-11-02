@@ -191,23 +191,27 @@ def test_re_enter_and_a_stage_change_send_both_cards():
 
 
 def test_a_trim_is_not_a_residual_and_a_stop_remainder_is():
+    # SCHD: selling 600 of 1000.25 leaves 400.25 held (40% of that day's activity).
+    assert bp._is_fractional_residual(400.25, 600.0, 1.0, 0.15) is False
     # SCHD: trimming 20 of 6000.253 leaves 5980.253 held.
-    assert bp._is_fractional_residual(5980.253, 20.0, 1.0) is False
-    # PFLT: a stop sold at least the remaining 1.15 shares.
-    assert bp._is_fractional_residual(1.15, 10.0, 1.0) is True
-    # dust below the materiality floor
-    assert bp._is_fractional_residual(0.4, 0.0, 1.0) is True
-    # a fractional holding with no sale is a position
-    assert bp._is_fractional_residual(130.4985, 0.0, 1.0) is False
+    assert bp._is_fractional_residual(5980.253, 20.0, 1.0, 0.15) is False
+    # SPCX taxable: 200 shares against 800 sold that day is 20% — held.
+    assert bp._is_fractional_residual(200.0, 800.0, 1.0, 0.15) is False
+    # PFLT: a stop left 1.15 shares after ~10 sold — the remainder is a residual.
+    assert bp._is_fractional_residual(1.15, 10.0, 1.0, 0.15) is True
+    # V: a fractional holding with no sale is a position.
+    assert bp._is_fractional_residual(130.4985, 0.0, 1.0, 0.15) is False
+    # A balance exactly at the floor is held; dust below it is a residual.
+    assert bp._is_fractional_residual(1.0, 0.0, 1.0, 0.15) is False
+    assert bp._is_fractional_residual(0.4, 0.0, 1.0, 0.15) is True
 
 
-def test_a_stop_must_match_the_sale_session():
+def test_a_stop_is_matched_by_account_and_price():
     acct = bp._acct_key("Schwab-1")
-    rows = [("AAA", "Schwab-1", 100.0, "2026-10-29T15:00:00Z")]
-    assert bp._stop_basis("AAA", acct, 100.5, rows, "2026-10-30") == "manual sell"
-    rows = [("AAA", "Schwab-1", 100.0, "2026-10-30T15:00:00Z")]
-    assert bp._stop_basis("AAA", acct, 100.5, rows, "2026-10-30") == "stop"
-    assert bp._stop_basis("AAA", bp._acct_key("Other"), 100.5, rows, "2026-10-30") == "manual sell"
+    rows = [("AAA", "Schwab-1", 100.0)]
+    assert bp._stop_basis("AAA", acct, 100.5, rows) == "stop (matched by price)"
+    assert bp._stop_basis("AAA", bp._acct_key("Other"), 100.5, rows) == "manual sell"
+    assert bp._stop_basis("AAA", acct, 90.0, rows) == "manual sell"
 
 
 def test_the_card_guard_refuses_stop_and_order_wording():
