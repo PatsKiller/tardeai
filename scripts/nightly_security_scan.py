@@ -29,6 +29,11 @@ from typing import Any, Callable, Mapping
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = ROOT / "config" / "nightly_security_scan.json"
+#: Dark-contract guard: this module defines a record schema and nothing under scripts/ imports it.
+NO_CONSUMER_REASON = (
+    "NightlySecurityScanReceipt@v1 is a data receipt, not an imported contract: the NEXT night's run "
+    "reads it to dedupe findings and the operator alert carries it; no script imports this module."
+)
 RECEIPT_SCHEMA = "NightlySecurityScanReceipt@v1"
 Runner = Callable[[list[str], Path], tuple[int, str, str]]
 
