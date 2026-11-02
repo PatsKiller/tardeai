@@ -50,7 +50,7 @@ import hashlib
 import json
 import uuid
 from dataclasses import asdict, dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -224,16 +224,20 @@ def compute_freshness(
 
 
 def market_session(at: datetime | None = None) -> str:
-    """US-equity session label, resolved in America/New_York.
+    """Coarse US-equity session label, resolved in America/New_York.
 
-    This is **not** advisory-only, whatever it used to say here: ``options_desk_quote_refresh``
-    refreshes quotes only when this returns ``REGULAR``, and ``options_desk_enterprise`` stamps it
-    onto every options proposal. It must therefore be a time-zone database lookup. A fixed -04:00
-    shift reads one hour ahead all winter, which stopped quote refreshes for the 15:00-16:00 ET hour
-    of the regular session and started them before the open (2026-11-02 DST audit, P0-1).
+    It is **not** purely advisory: ``options_desk_enterprise`` calls it directly to stamp
+    ``market_session_at_generation`` and recompute proposal freshness, and ``options_workflow_service``
+    writes it onto every options proposal. A fixed -04:00 shift read one hour ahead all winter, so
+    those stamps were wrong at the 04:00/09:30/16:00/20:00 boundaries (2026-11-02 DST audit).
+
+    It is **coarse**: weekday plus wall clock, with no NYSE holiday or early-close calendar. Callers
+    that must know whether the market is genuinely open use ``lib.cio_market_session.is_rth`` — as
+    ``lib.desk_session.market_session`` does, overriding this label with ``REGULAR`` whenever
+    ``is_rth`` is true. Quote refreshes go through that overlay, not through this function.
 
     ``zoneinfo`` is imported eagerly and without a fixed-offset fallback on purpose: a missing tz
-    database must fail loudly rather than silently mislabel a live trading session.
+    database must fail loudly rather than silently mislabel a session stamp.
     """
     at = at or utc_now()
     if at.tzinfo is None:

@@ -10,12 +10,21 @@ Usage:
 from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
+try:  # the RTH boundaries have one home; never restate them here (review F5, 2026-11-02)
+    from scripts.lib.cio_market_session import RTH_CLOSE, RTH_OPEN
+except ImportError:  # scripts/ on sys.path
+    from lib.cio_market_session import RTH_CLOSE, RTH_OPEN
+
 #: US equity session time zone. Never a fixed offset (P0-2, 2026-11-02 DST audit).
 _ET = ZoneInfo("America/New_York")
-PREMARKET_START = time(4, 0)
-MARKET_OPEN = time(9, 30)
-MARKET_CLOSE = time(16, 0)
-AFTERHOURS_END = time(20, 0)
+
+#: The window outside RTH in which this function reports trading. It is the OLD code's window
+#: preserved exactly: `13 <= hour < 21` UTC was 09:00-17:00 ET under EDT. This change is about which
+#: SEASON the clock is read in, never about widening the trading window (review F3, 2026-11-02):
+#: a first draft widened it to 04:00-20:00 ET, which flipped MARKET_CLOSED to UNKNOWN at 05:00 and
+#: 18:00 ET for proposals where no venue is trading.
+TRADING_START = time(9, 0)
+TRADING_END = time(17, 0)
 
 # Provider execution eligibility — only Alpaca with real-time bid/ask qualifies.
 # polygon / finnhub / fmp retired 2026-09-13 — config/data_source_authority.json
@@ -81,22 +90,28 @@ def classify_quote_trust(proposal: dict, *, now: datetime | None = None) -> dict
     # then (its own comment said 9:30-16:00 ET = 13:30-20:00 UTC while the code used 14:00-20:00).
     # Under EST that labelled 09:00-09:30 ET as `regular_hours` with trading_now=True and the last
     # hour of the real session as `extended_hours` (2026-11-02 DST audit, P0-2).
-    now = now or datetime.now(_ET)
+    now = now if now is not None else datetime.now(_ET)
     if now.tzinfo is None:
-        now = now.replace(tzinfo=_ET)
+        # Refused rather than guessed: canonical_observation reads a naive value as UTC while this
+        # function would read it as ET, so the same instant could be labelled open by one and
+        # pre-market by the other (review F6, 2026-11-02).
+        raise ValueError(
+            "classify_quote_trust(now=) must be timezone-aware — pass an ET or UTC datetime, "
+            "never a naive one"
+        )
     now = now.astimezone(_ET)
     t = now.time()
     if now.weekday() >= 5:
         market_session = "weekend"
         trading_now = False
-    elif t < PREMARKET_START or t >= AFTERHOURS_END:
+    elif not (TRADING_START <= t < TRADING_END):
         market_session = "closed"
         trading_now = False
-    elif t < MARKET_OPEN or t >= MARKET_CLOSE:
-        market_session = "extended_hours"
+    elif RTH_OPEN <= t < RTH_CLOSE:
+        market_session = "regular_hours"
         trading_now = True
     else:
-        market_session = "regular_hours"
+        market_session = "extended_hours"
         trading_now = True
 
     # Quote age

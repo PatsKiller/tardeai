@@ -79,12 +79,13 @@ def test_market_session_labels_the_weekend():
     "hour,minute,session,trading",
     [
         (3, 30, "closed", False),
-        (8, 0, "extended_hours", True),
-        (9, 0, "extended_hours", True),    # the regression: EST used to say regular_hours
-        (9, 25, "extended_hours", True),
+        (8, 0, "closed", False),
+        (9, 0, "extended_hours", True),
+        (9, 25, "extended_hours", True),   # the DST regression: EST used to say regular_hours
         (9, 35, "regular_hours", True),
-        (15, 30, "regular_hours", True),   # the regression: EST used to say extended_hours
+        (15, 30, "regular_hours", True),   # the DST regression: EST used to say extended_hours
         (16, 30, "extended_hours", True),
+        (19, 0, "closed", False),
         (20, 30, "closed", False),
     ],
 )
@@ -101,6 +102,56 @@ def test_quote_trust_weekend_is_never_trading():
     assert out["trading_now"] is False
 
 
-def test_quote_trust_reads_a_naive_now_as_eastern():
-    naive = _at(WINTER, 15, 30).replace(tzinfo=None)
-    assert classify_quote_trust({}, now=naive)["market_session"] == "regular_hours"
+def test_quote_trust_refuses_a_naive_now():
+    """A naive value is ambiguous: canonical_observation reads it as UTC, this would read it as ET."""
+    with pytest.raises(ValueError, match="timezone-aware"):
+        classify_quote_trust({}, now=datetime(2026, 11, 2, 15, 30))
+
+
+@pytest.mark.parametrize("day", [WINTER, SUMMER], ids=["EST", "EDT"])
+@pytest.mark.parametrize(
+    "hour,minute,second,session,trading",
+    [
+        (9, 29, 59, "extended_hours", True),
+        (9, 30, 0, "regular_hours", True),
+        (15, 59, 59, "regular_hours", True),
+        (16, 0, 0, "extended_hours", True),
+        (16, 59, 59, "extended_hours", True),
+        (17, 0, 0, "closed", False),
+    ],
+)
+def test_quote_trust_exact_boundaries(day, hour, minute, second, session, trading):
+    at = _at(day, hour, minute).replace(second=second)
+    out = classify_quote_trust({}, now=at)
+    assert out["market_session"] == session
+    assert out["trading_now"] is trading
+
+
+def test_quote_trust_does_not_widen_the_trading_window():
+    """The pre-DST window was 09:00-17:00 ET. 08:00 and 18:00 must stay closed (review F3)."""
+    for hour in (8, 18):
+        out = classify_quote_trust({}, now=_at(WINTER, hour, 0))
+        assert out["market_session"] == "closed", f"{hour}:00 ET must not report trading"
+        assert out["trading_now"] is False
+
+
+# ── F7: the REAL gate, not just the coarse label ───────────────────────────────────────────────────
+
+
+def test_desk_session_gate_is_calendar_and_dst_aware():
+    """Quote refresh gates on desk_session -> is_rth, which overrides the coarse label."""
+    from scripts.lib.desk_session import market_session as gate
+
+    assert gate(_at(WINTER, 15, 30)) == "REGULAR", "15:30 EST is RTH; the coarse -04:00 label said AFTER_HOURS"
+    assert gate(_at(WINTER, 8, 30)) == "PRE_MARKET"
+    assert gate(datetime(2026, 11, 26, 11, 0, tzinfo=NY)) == "CLOSED", "Thanksgiving"
+    assert gate(datetime(2026, 11, 27, 14, 0, tzinfo=NY)) == "CLOSED", "NYSE early close 13:00 ET"
+
+
+def test_the_coarse_label_has_no_calendar_and_that_is_documented():
+    """KNOWN LIMITATION, asserted so adding a calendar is a deliberate change and not a surprise.
+
+    The coarse label reports REGULAR on a holiday morning; only ``is_rth`` (via desk_session) knows
+    the NYSE calendar. Callers that gate live work must use is_rth.
+    """
+    assert CO.market_session(datetime(2026, 11, 26, 11, 0, tzinfo=NY)) == "REGULAR"
