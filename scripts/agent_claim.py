@@ -263,7 +263,8 @@ def cmd_claim(a: argparse.Namespace) -> int:
     if a.add:  # extend an existing claim
         try:
             cid = _resolve_claim(board, a)
-            doc = board.extend(cid, a.add, session=session)
+            doc = board.extend(cid, a.add, session=session,
+                               approval_ref=getattr(a, "operator_approval", None))
         except B.ClaimConflict as exc:
             _print_conflicts(exc.conflicts)
             print("refused: the added paths are claimed by another live session.", file=sys.stderr)
