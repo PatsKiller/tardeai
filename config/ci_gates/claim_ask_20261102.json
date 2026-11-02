@@ -1,7 +1,9 @@
 {
   "schema": "CiGate@v1",
   "name": "claim_ask_20261102",
-  "files": ["tests/test_claim_ask_20261102.py"],
+  "files": [
+    "tests/test_claim_ask_20261102.py"
+  ],
   "comment": [
     "2026-11-02 (item 7 of PLAN_COLLISION_AUTOREMEDIATION_20261101): agent_claim.py ask <path> names the real holder of a claimed path and the message to send, so agents stop guessing which session to ask (the 2026-11-01 collision). A stale holder points at takeover, never a restart. Hermetic: fixture rows, no board or network."
   ]
