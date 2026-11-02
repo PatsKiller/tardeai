@@ -89,7 +89,10 @@ function Protect({ m }: { m: ActionableModel }) {
       {p.items.map((it, i) => (
         <div key={`${it.symbol}-${it.account}`} data-testid="mr-protect-item" style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '6px 0', borderTop: i ? `1px solid ${TOKENS.borderSubtle}` : 0, fontSize: TYPE.base + 1, lineHeight: 1.45 }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 8px', alignItems: 'baseline' }}>
-            <b>{it.symbol}</b><span style={{ color: TOKENS.text[2] }}>· {it.account}</span><span style={numStyle}>{it.usd}</span>{it.pct && <span style={{ color: TOKENS.text[3] }}>({it.pct})</span>}
+            <b>{it.symbol}</b><span style={{ color: TOKENS.text[2] }}>· {it.account}</span>
+            <span style={numStyle}>{it.usd}</span>
+            {it.amountBasis && <span data-testid="mr-protect-amount-basis" style={{ color: TOKENS.text[3] }}>{it.amountBasis}</span>}
+            {it.pct && <span data-testid="mr-protect-pct" style={{ color: TOKENS.text[3] }}>· {it.pct}</span>}
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0 8px', alignItems: 'center' }}>
             <span data-testid="mr-protect-consideration" style={{ flex: '1 1 220px', minWidth: 0 }}>{it.consideration}</span>
@@ -111,6 +114,9 @@ function Hedge({ m }: { m: ActionableModel }) {
       <div style={{ fontSize: TYPE.base + 1, lineHeight: 1.45, color: TOKENS.text[1] }}>
         <span data-testid="mr-hedge-verdict" data-tone={h.tone} style={{ ...chipStyle(h.tone, 'soft'), marginRight: 6 }}>{h.verdict.toUpperCase()}</span>{h.line}
       </div>
+      {h.now && (
+        <div data-testid="mr-hedge-now" style={{ fontSize: TYPE.base + 1, lineHeight: 1.45, color: TOKENS.text[2], marginTop: 4 }}>{h.now}</div>
+      )}
       {h.lane && <div data-testid="mr-hedge-lane" style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>{h.lane}</div>}
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 'auto' }}><Link to="/defense" data-testid="mr-hedge-link" style={tap}>Defense desk →</Link></div>
     </div>

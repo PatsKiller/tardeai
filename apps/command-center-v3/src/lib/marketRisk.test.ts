@@ -96,7 +96,7 @@ assert.deepEqual(ml.contributors.map(c => c.points), ['+34.4', '+25.3'], 'points
 t(ml.contributors[0].detail.includes('QQQ P/C OI 3.97') && / ET$/.test(ml.contributors[0].detail), 'contributor line: the number behind it and its ET time')
 assert.match(ml.line, /^Options flow \+34\.4 · Technical \+25\.3 · 2 of 9 confirm · evaluated .* ET$/); n++
 assert.equal(ml.confirm, '2 of 9 categories confirm'); n++
-assert.match(ml.notMeasured, /^Not measured: extended hours\. /); n++
+assert.match(ml.notMeasured, /^Not measured: extended hours \(UNKNOWN — no extended-session print\)\. /); n++
 assert.match(ml.notMeasured, /Breadth and volatility add 0\.$/); n++
 assert.equal(ml.deescalates, 'YELLOW -> BLUE if score below 40 (now 60)'); n++
 assert.equal(ml.footer, 'YELLOW never pages and has nothing to acknowledge.', 'live: no shadow sentence'); n++
@@ -129,7 +129,7 @@ assert.equal(mst.links.length, 2, 'stale keeps the two links'); n++
 const me = summaryModel(yEmpty)!
 assert.match(me.line, /^no category above 0 points · 2 of 9 confirm · /); n++
 assert.equal(me.contributors.length, 0); n++
-t(me.notMeasured.startsWith('Not measured: extended hours.'), 'empty: only the not-measured line')
+t(me.notMeasured.startsWith('Not measured: extended hours (UNKNOWN — no extended-session print).'), 'empty: only the not-measured line')
 // helpers
 assert.equal(fmtPoints(34.42), '+34.4'); assert.equal(fmtPoints(-2), '-2.0'); assert.equal(fmtPoints(null), '—'); n += 3
 assert.equal(budgetLabel('unprotected_pct'), 'unprotected'); n++
@@ -216,15 +216,43 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
   assert.equal(a.foldLine, 'Also stressed, you hold under $100: AI basket ($28). Not measured, you hold under $100: Real estate ($1).')
   assert.equal(a.sectors.find(r => r.key === 'fin')!.chip, 'RESILIENT')
   assert.equal(a.sectors.find(r => r.key === 'ind')!.chip, 'HOLDING')
-  assert.equal(a.protect!.items[0].pct, '88% of account')
+  assert.equal(a.protect!.items[0].pct, '88% of the account (full position)')
+  assert.equal(a.protect!.items[0].amountBasis, 'position value', 'a stop reason carries the full position value')
+  assert.equal(a.protect!.items[0].usd, '$500', 'the API amount is passed through, never recomputed')
+  // Repair 3: a stressed-exposure amount and the full-position account share rest on different bases; both labels say so
+  const stressedProtect = actionableModel(unwrapMarketRisk({ ok: true, data: {
+    ...data,
+    protect: { items: [{ symbol: 'DEMOB', account_label: 'B', kinds: ['stressed_exposure'], text: '24% in stressed groups', usd: 137, to: '/prospectus/DEMOB',
+      pct_account: 40, facts: { value_usd: 500, pct_account: 40, stressed_share: 0.24 } }], more: [] },
+  } }))!
+  assert.equal(stressedProtect.protect!.items[0].amountBasis, 'stressed exposure', 'the amount is the exposed part')
+  assert.equal(stressedProtect.protect!.items[0].usd, '$137', 'never recomputed from 24% of the position value')
+  assert.equal(stressedProtect.protect!.items[0].pct, '40% of the account (full position)', 'the percentage is the full position share')
+  // Repair 2: an UNKNOWN category shows its engine reason and is never relabelled as a session clock
+  const unknownCats = summaryModel(unwrapMarketRisk({ ...yBase, categories: [
+    { name: 'Extended hours', category: 'extended_hours', state: 'UNKNOWN', detail: 'no proven extended-session print for QQQ' },
+    { name: 'Macro credit', state: 'UNKNOWN', detail: null },
+  ] }))!
+  assert.match(unknownCats.notMeasured, /^Not measured: extended hours \(UNKNOWN — no proven extended-session print for QQQ\), macro credit \(UNKNOWN\)\./)
+  assert.ok(!/after hours/i.test(unknownCats.notMeasured), 'UNKNOWN is a category state, never an "after hours" clock claim')
   assert.equal(a.protect!.items[0].linkLabel, 'Review stop →')
   assert.equal(a.protect!.more, '+1 more: DEMOB · B (no stop)')
   assert.equal(a.hedge!.verdict, 'Not now')
-  assert.equal(a.hedge!.line, '$12,345 (2.5% of book · 4.0% of invested) is in stressed groups. The Defense desk considers a hedge when one weakening sector is ≥ 10% of invested, or 4+ sectors lag — now Technology 5.5%, 1 sector lagging.')
+  // Repair 4: the threshold/action sentence and the dashboard reason are separate parts with a real separator
+  assert.equal(a.hedge!.line, '$12,345 (2.5% of book · 4.0% of invested) is in stressed groups. The Defense desk considers a hedge when one weakening sector is ≥ 10% of invested, or 4+ sectors lag.')
+  assert.equal(a.hedge!.now, 'Now: Technology 5.5%, 1 sector lagging.')
+  assert.ok(!/ — now |Technology/.test(a.hedge!.line), 'the reason never runs into the action sentence')
   assert.match(a.hedge!.lane, /^Inverse lane SH · PSQ: no bearish thesis since /)
   assert.ok(!/2-5%|size|band|playbook/i.test(JSON.stringify(a.hedge)), 'never a hedge size band or playbook')
   assert.equal(a.rotate!.rows[0].rs1, '+1.0%'); assert.equal(a.rotate!.rows[0].desk, 'desk LEADING')
   assert.match(a.rotate!.foot, /not a buy list/)
+  // Repair 1: the payload's date-only clock is shown as of that date, with no invented "close" basis
+  assert.match(a.rotate!.foot, /^Relative strength vs SPY, as of [A-Z][a-z]{2} 03-07\. /)
+  assert.ok(!/close/i.test(a.rotate!.foot), 'a date-only source never asserts a completed close')
+  const intraday = rotateModel({ groups: [{ key: 'fin', label: 'Financials', rs1: 1, rs5: 1 }], as_of: '2031-03-07T20:15:00Z' })!
+  assert.match(intraday.foot, /as of .*15:15 ET/, 'an intraday stamp keeps its actual ET clock')
+  assert.ok(!/close/i.test(intraday.foot), 'an intraday source never asserts a completed close')
+  assert.ok(!/as of/.test(rotateModel({ groups: [], none_reason: null })!.foot), 'no clock in the payload: no as-of claim')
   assert.equal(rotateModel({ groups: [], none_reason: null })!.none, 'No group is beating SPY on both 1 and 5 sessions today.')
   assert.equal(hedgeModel({ verdict: 'UNKNOWN', reason: 'no stoplight evaluation yet' } as any)!.line, 'Defense stoplight no stoplight evaluation yet — no verdict until it runs again.')
   const consider = hedgeModel({ verdict: 'CONSIDER', thesis_state: 'GREEN', candidates: ['PSQ'], thresholds: { trigger_book_pct: 10, bounce_day_pct: 0.75 },

@@ -62,7 +62,13 @@ export interface MarketRisk {
 }
 
 export interface GlossaryTerm { label: string; text: string }
-export interface ProtectItem extends ReviewItem { pct_account?: number | null; consideration?: string | null; clauses?: { key: string; text: string }[] }
+export interface ProtectItem extends ReviewItem {
+  pct_account?: number | null
+  consideration?: string | null
+  clauses?: { key: string; text: string }[]
+  /** Facts the API join already carried: the full position value/share, the stop distance and the stressed share. */
+  facts?: { value_usd?: number | null; pct_account?: number | null; stop_distance_pct?: number | null; stressed_share?: number | null; groups?: Record<string, number> | null } | null
+}
 export interface ProtectBlock { items: ProtectItem[]; more: { symbol: string; account_label?: string | null; short?: string | null; to?: string | null }[] }
 export interface HedgeBlock {
   verdict: 'NOT_NOW' | 'WATCH' | 'CONSIDER' | 'UNKNOWN'; thesis_state?: string; candidates?: string[]; since?: string | null; as_of?: string | null; reason?: string | null
@@ -345,10 +351,19 @@ export function summaryModel(mr: MarketRisk | null): SummaryModel | null {
   const lead = contributors.length ? contributors.map(c => `${c.name} ${c.points}`).join(' · ') : 'no category above 0 points'
   const line = [lead, mr.confirming ? `${mr.confirming.n} of ${mr.confirming.of} confirm` : '', evaluated].filter(Boolean).join(' · ')
   const scored = new Set(contributors.map(c => c.name.toLowerCase()))
-  const unknown = mr.categories.filter(c => c.state === 'UNKNOWN').map(c => c.name.toLowerCase())
+  const unknownCats = mr.categories.filter(c => c.state === 'UNKNOWN')
   const zero = mr.categories.filter(c => c.state !== 'UNKNOWN' && !scored.has(c.name.toLowerCase())).map(c => c.name.toLowerCase())
   const parts: string[] = []
-  if (unknown.length) parts.push(`Not measured: ${unknown.join(', ')}.`)
+  // An UNKNOWN category is a CATEGORY state, not a clock: name the state and the engine's own reason so the operator
+  // can see why it is unknown. Never relabel it as "after hours" or another session claim the payload did not make.
+  if (unknownCats.length) {
+    const why = unknownCats.map(c => {
+      const name = c.name.toLowerCase()
+      const reason = String(c.detail ?? '').trim()
+      return `${name} (UNKNOWN${reason ? ` — ${reason}` : ''})`
+    })
+    parts.push(`Not measured: ${why.join(', ')}.`)
+  }
   if (zero.length) parts.push(`${zero.length > 1 ? `${zero.slice(0, -1).join(', ')} and ${zero[zero.length - 1]}` : zero[0]} add 0.`.replace(/^./, s => s.toUpperCase()))
   const uplift = mr.uplift ? (mr.uplift.note ?? `Market ${mr.uplift.market_score ?? '—'} → ${mr.tier} after portfolio vulnerability ${mr.uplift.vulnerability ?? '—'}`) : null
   return {
@@ -389,6 +404,15 @@ export function shortDay(d: string | null | undefined): string {
   return t.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short', month: '2-digit', day: '2-digit' }).replace(',', '').replace('/', '-')
 }
 
+/** The clock a payload actually stated: a date-only stamp reads "Fri 10-30"; a stamp with a time reads its ET
+ *  clock. No basis ("close") is added — if the payload did not say the value is a completed close, the UI must not.
+ *  Empty when the payload carries no clock. */
+export function sourceClock(v: string | null | undefined): string {
+  const s = String(v ?? '').trim()
+  if (!s) return ''
+  return /T\d{2}:\d{2}/.test(s) ? shortTime(s) : shortDay(s)
+}
+
 const SHOCK_WORDS: Record<string, string> = {
   SECTOR: 'Sector selloff', SYSTEMIC: 'Market-wide selloff', FACTOR: 'Factor rotation', RATES: 'Rates shock',
   CREDIT: 'Credit stress', EVENT: 'Event shock',
@@ -427,8 +451,15 @@ export interface ActionableModel {
   segments: SegmentRowModel[]
   glossary: Record<string, GlossaryTerm>
 }
-export interface ProtectRowModel { symbol: string; account: string; usd: string; pct: string; consideration: string; to: string; linkLabel: string }
-export interface HedgeModel { verdict: string; tone: Tone; line: string; lane: string; short: string }
+export interface ProtectRowModel {
+  symbol: string; account: string; usd: string
+  /** What `usd` is measured on — "position value" or "stressed exposure". '' when the item's kinds do not say. */
+  amountBasis: string
+  /** The full position's share of its account (never the stressed share), or ''. */
+  pct: string
+  consideration: string; to: string; linkLabel: string
+}
+export interface HedgeModel { verdict: string; tone: Tone; line: string; now: string; lane: string; short: string }
 export interface RotateModel { rows: { key: string; label: string; rs1: string; rs5: string; rs1n: number | null; rs5n: number | null; desk: string; usd: string }[]; foot: string; none: string | null; short: string }
 export interface SegmentRowModel { symbol: string; status: 'approved' | 'pending'; line: string; split: { label: string; pct: number }[] }
 
@@ -445,15 +476,19 @@ export function hedgeModel(h: HedgeBlock | null | undefined): HedgeModel | null 
   const t = h.thresholds ?? {}
   const lw = h.largest_weakening
   const pct = (v: number | null | undefined) => v == null ? '—' : `${(+v).toFixed(1)}%`
-  const now = `now ${lw?.label ? `${lw.label} ${pct(lw.pct_invested)}` : 'no sector weakening'}, ${h.lagging_count ?? 0} sector${h.lagging_count === 1 ? '' : 's'} lagging`
+  const now = `${lw?.label ? `${lw.label} ${pct(lw.pct_invested)}` : 'no sector weakening'}, ${h.lagging_count ?? 0} sector${h.lagging_count === 1 ? '' : 's'} lagging`
   let line: string
+  // The NOT_NOW reason is a separate part, not the tail of the action sentence: the component renders `now` in its
+  // own block so the threshold sentence and the dashboard fact do not run together.
+  let nowLine = ''
   if (h.verdict === 'NOT_NOW') {
-    line = `${fmtUsd(h.stressed_usd ?? 0)} (${pct(h.stressed_pct_book)} of book · ${pct(h.stressed_pct_invested)} of invested) is in stressed groups. The Defense desk considers a hedge when one weakening sector is ≥ ${t.trigger_book_pct ?? '—'}% of invested, or ${t.index_trigger_lagging_sectors ?? '—'}+ sectors lag — ${now}.`
+    line = `${fmtUsd(h.stressed_usd ?? 0)} (${pct(h.stressed_pct_book)} of book · ${pct(h.stressed_pct_invested)} of invested) is in stressed groups. The Defense desk considers a hedge when one weakening sector is ≥ ${t.trigger_book_pct ?? '—'}% of invested, or ${t.index_trigger_lagging_sectors ?? '—'}+ sectors lag.`
+    nowLine = `Now: ${now}.`
   } else if (h.verdict === 'CONSIDER') {
     const e = h.entry
     line = `${lw?.label ?? 'A sector'} is ${pct(lw?.pct_invested)} of invested and weakening — above the ${t.trigger_book_pct ?? '—'}% the Defense desk uses.${e?.inverse ? ` ${e.inverse}: thesis green · entry ${String(e.label ?? e.state ?? 'not evaluated').toLowerCase()} (bounce days of +${t.bounce_day_pct ?? '—'}% on ${e.bench ?? 'the index'}).` : ''}`
   } else if (h.verdict === 'WATCH') {
-    line = `A trigger is active but your mapped exposure is below the ${t.materiality_exposure_pct ?? '—'}% materiality the stoplight uses — ${now}.`
+    line = `A trigger is active but your mapped exposure is below the ${t.materiality_exposure_pct ?? '—'}% materiality the stoplight uses — now ${now}.`
   } else {
     line = `Defense stoplight ${h.reason === 'stale' ? `last ran ${shortTime(h.as_of)}` : (h.reason ?? 'unavailable')} — no verdict until it runs again.`
   }
@@ -461,7 +496,7 @@ export function hedgeModel(h: HedgeBlock | null | undefined): HedgeModel | null 
     ? `Inverse lane ${(h.candidates ?? []).join(' · ')}: ${THESIS_WORDS[h.thesis_state]}${h.since ? ` since ${shortDay(h.since)}` : ''}.`
     : ''
   const short = h.verdict === 'NOT_NOW' ? `${pct(h.stressed_pct_book)} of book in stressed groups` : h.verdict === 'CONSIDER' ? `${lw?.label ?? 'a sector'} above the Defense desk threshold` : h.verdict === 'WATCH' ? 'deteriorating, below materiality' : 'stoplight not current'
-  return { verdict: w.word, tone: w.tone, line, lane, short }
+  return { verdict: w.word, tone: w.tone, line, now: nowLine, lane, short }
 }
 
 export function rotateModel(r: RotateBlock | null | undefined): RotateModel | null {
@@ -472,9 +507,23 @@ export function rotateModel(r: RotateBlock | null | undefined): RotateModel | nu
   }))
   return {
     rows, none: rows.length ? null : (r.none_reason ?? 'No group is beating SPY on both 1 and 5 sessions today.'),
-    foot: `Relative strength vs SPY${r.as_of ? `, ${shortDay(r.as_of)} close` : ''}. Groups beating SPY on both 1 and 5 sessions — not a buy list.`,
+    foot: `Relative strength vs SPY${r.as_of ? `, as of ${sourceClock(r.as_of)}` : ''}. Groups beating SPY on both 1 and 5 sessions — not a buy list.`,
     short: rows.length ? rows.map(x => `${x.label} ${x.rs1}/${x.rs5}`).join(' · ') : 'no group leading on both horizons',
   }
+}
+
+/** The kinds whose reason amount is the FULL position value (see market_risk_book_dollars.add: stop_near, no_stop,
+ *  no_lookthrough and data_conflict pass r.value_usd). stressed_exposure passes only the exposed part. */
+const POSITION_VALUE_KINDS = new Set(['stop_near', 'no_stop', 'no_lookthrough', 'data_conflict'])
+
+/** Name the basis of a review item's `${usd}`: the API sets it to the LARGEST reason amount, so a value-basis reason
+ *  makes it the full position value and a lone stressed_exposure reason makes it the stressed exposure. Purely a
+ *  label: neither number is recomputed or converted. '' when the item's kinds do not identify a basis. */
+export function protectAmountBasis(it: Pick<ProtectItem, 'kinds'> | null | undefined): string {
+  const kinds = it?.kinds ?? []
+  if (kinds.some(k => POSITION_VALUE_KINDS.has(k))) return 'position value'
+  if (kinds.includes('stressed_exposure')) return 'stressed exposure'
+  return ''
 }
 
 const VERDICT_TONE: Record<string, Tone> = { 'Still falling': 'danger', Invalidated: 'danger', Basing: 'warning', 'Early setup': 'success', Confirmed: 'success' }
@@ -630,7 +679,10 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
   const protect = mr.protect ? {
     items: mr.protect.items.map(it => ({
       symbol: it.symbol, account: it.account_label, usd: fmtUsd(it.usd),
-      pct: it.pct_account != null ? `${Math.round(it.pct_account)}% of account` : '',
+      amountBasis: protectAmountBasis(it),
+      // pct_account is the FULL position's share of its account even when `usd` is only the stressed exposure;
+      // say so. The percentage itself is the API's value, rounded as this surface already rounded it.
+      pct: it.pct_account != null ? `${Math.round(it.pct_account)}% of the account (full position)` : '',
       consideration: it.consideration || it.text, to: it.to,
       linkLabel: (it.kinds ?? []).some(k => k === 'stop_near' || k === 'no_stop') ? 'Review stop →' : 'Review →',
     })),
