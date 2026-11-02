@@ -28,9 +28,24 @@ ISSUERS = {
     "IBM": {"cik": "51143", "profile": "tech", "accession": "0000051143-26-000095"},
     "HON": {"cik": "773840", "profile": "industrials", "accession": "0000773840-26-000143"},
 }
-# Operator-APPROVED SPCX option A revenue split (PR #2460, operator in-session "A + capex AI"; 10-Q
-# 0001628280-26-066880 Notes 3 and 18). The capex ai_basket overlay (0.839) is an operator override, not a filing split.
-SPCX_APPROVED = {"industrials": 0.1212, "comm": 0.3970, "tech": 0.4818}
+
+
+def _approved_sector_split(sym: str) -> dict:
+    """Sector shares of the operator-APPROVED entry in config/issuer_segments.json (the live source, read-only here).
+
+    Theme overlays (ai_basket at the capex share 0.839 for SPCX) are operator override choices, not a filing split,
+    so only sector-kind groups are compared. The config's per-segment key is that file's schema, not ours."""
+    doc = json.loads((ROOT / "config" / "issuer_segments.json").read_text(encoding="utf-8"))
+    e = doc["issuers"][sym]
+    assert e["status"] == "APPROVED"
+    out: dict = {}
+    for seg in e["segments"]:
+        if seg["group"] in CFG["sector_keys"]:
+            out[seg["group"]] = round(out.get(seg["group"], 0.0) + float(seg["weight"]), 4)
+    return out
+
+
+SPCX_APPROVED = _approved_sector_split("SPCX")
 
 
 def _extract(sym: str) -> dict:
@@ -142,6 +157,7 @@ def test_labels_come_from_the_label_linkbase():
 # ── mapping goldens ────────────────────────────────────────────────────────────────────────────────────────────
 
 def test_spcx_reproduces_the_operator_approved_split():
+    assert set(SPCX_APPROVED) == {"industrials", "comm", "tech"} and abs(sum(SPCX_APPROVED.values()) - 1) < 1e-3
     s = _extract("SPCX")
     assert s["status"] == "ok" and s["flags"] == [] and s["queue"] == []
     assert s["groups"] == pytest.approx(SPCX_APPROVED, abs=1e-4)
