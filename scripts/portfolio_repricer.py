@@ -135,7 +135,9 @@ def _et_now() -> datetime:
         from zoneinfo import ZoneInfo
         return datetime.now(ZoneInfo("America/New_York")).replace(tzinfo=None)
     except Exception:
-        return datetime.utcnow() - timedelta(hours=4)
+        # No fixed UTC offset: -4h is wrong for half the year (EST is -5h). The host clock
+        # runs America/New_York, so local time is the honest fallback.
+        return datetime.now()
 
 
 def _is_market_hours(now: Optional[datetime] = None) -> bool:
@@ -144,6 +146,33 @@ def _is_market_hours(now: Optional[datetime] = None) -> bool:
         return False
     mins = now.hour * 60 + now.minute
     return 570 <= mins <= 960  # 9:30 AM - 4:00 PM
+
+
+# reprice_source names the session the prices were taken in. Holdings reprice around the
+# clock on trading days (24-hour markets), so a two-way market/after-hours split mislabels
+# pre-market as after-hours. scripts/market_session.py owns the calendar (holidays, early closes).
+_SESSION_SOURCE = {
+    "premarket": "finviz_premarket",
+    "regular": "finviz_live",
+    "afterhours": "finviz_afterhours",
+}
+
+
+def _price_session(now: Optional[datetime] = None) -> str:
+    """premarket | regular | afterhours | overnight, for an ET-naive or aware `now`."""
+    now = now or _et_now()
+    try:
+        from zoneinfo import ZoneInfo
+        from market_session import current_market_session
+        aware = now if now.tzinfo else now.replace(tzinfo=ZoneInfo("America/New_York"))
+        session = current_market_session(aware)
+    except Exception:
+        session = "regular" if _is_market_hours(now) else "overnight"
+    return session if session in _SESSION_SOURCE else "overnight"
+
+
+def _reprice_source(now: Optional[datetime] = None) -> str:
+    return _SESSION_SOURCE.get(_price_session(now), "finviz_overnight")
 
 
 def _load_env(root: Path) -> None:
@@ -920,7 +949,7 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
     now_str = now.strftime("%Y-%m-%d %H:%M:%S ET")
     now_min = now.hour * 60 + now.minute
 
-    print(f"  [repricer] {now_str} ({'market' if _is_market_hours(now) else 'after-hours'})")
+    print(f"  [repricer] {now_str} ({_price_session(now)})")
 
     sym_groups = _get_all_symbols(portfolio, root)
     finviz_syms  = sym_groups["finviz"]    # Schwab portfolio + watchlist
@@ -1022,7 +1051,7 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
     _annotate_canonical_quotes(portfolio.get("holdings") or [])
 
     portfolio["last_repriced"]  = now_str
-    portfolio["reprice_source"] = "finviz_live" if _is_market_hours(now) else "finviz_afterhours"
+    portfolio["reprice_source"] = _reprice_source(now)
     # generated_at used to hold the date the POSITION LIST was built and was never
     # touched by repricing, so a file repriced seconds ago still advertised
     # generated_at from days earlier (observed 2026-07-20: generated_at
