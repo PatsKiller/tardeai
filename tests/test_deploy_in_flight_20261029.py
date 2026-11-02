@@ -145,3 +145,46 @@ def test_unknown_never_implies_a_rebase_even_in_the_string_form():
     assert D.next_action(_pr(10, mergeable="CONFLICTING", state="CLEAN")) == "coordinator"
     assert D.why_held(_pr(11, mergeable="CONFLICTING")) == "merge conflict — needs a coordinator"
     assert D.why_held(_pr(12, mergeable="MERGEABLE", state="CLEAN")) is None
+
+
+# ────────────────── 2026-11-02: the additive coordination view on the same GET projection
+def test_the_coordination_view_is_additive_and_preserves_the_existing_keys():
+    """The PR list keeps its keys and values; the envelope and per-row `work` are added beside them."""
+    rows = [_pr(2211, mergeable=True, state="CLEAN")]
+    seen = {}
+
+    def fake_coordination(prs, now):
+        seen["prs"] = [p["number"] for p in prs]
+        return {"schema": "ReleasesCoordination@v1", "status": "OK", "as_of": "2026-11-02T17:00:00Z",
+                "captured_at": "2026-11-02T18:00:00Z", "source": "claims+coordinator_ledger", "gaps": [],
+                "agents": [], "authority": "READ_ONLY_ADVISORY",
+                "work": {2211: {"owner": "s1", "current_task": "t", "publication_state": "published",
+                                "local_head": "a" * 40, "published_head": "a" * 40,
+                                "review": {"state": "MERGE", "head_sha": "a" * 40, "as_of": "2026-11-02T17:00:00Z",
+                                           "source": "coordinator_ledger"},
+                                "ci": {"state": "GREEN", "head_sha": "a" * 40, "as_of": "2026-11-02T17:30:00Z",
+                                       "source": "coordinator_ledger"},
+                                "blockers": [], "next_action": "push", "as_of": "2026-11-02T17:30:00Z",
+                                "source": "claims"}}}
+
+    d = D.build(None, now=NOW, lister=lambda repo, limit: rows, coordination=fake_coordination)
+    assert d["schema"] == "DeployInFlight@v1" and d["generated_at"] and d["count"] == 1
+    row = d["prs"][0]
+    assert row["number"] == 2211 and row["mergeable"] == "MERGEABLE" and row["next"] == "auto-merge"
+    assert row["work"]["owner"] == "s1" and row["work"]["ci"]["state"] == "GREEN"
+    assert d["coordination"]["as_of"] == "2026-11-02T17:00:00Z"
+    assert d["coordination"]["captured_at"] == "2026-11-02T18:00:00Z"
+    assert seen["prs"] == [2211]
+
+
+def test_a_broken_coordination_read_degrades_only_the_envelope():
+    def boom(prs, now):
+        raise RuntimeError("ledger on fire")
+
+    d = D.build(None, now=NOW, lister=lambda repo, limit: [_pr(2211, mergeable=True, state="CLEAN")],
+                coordination=boom)
+    assert d["status"] == "OK" and d["count"] == 1           # the board still renders
+    assert d["coordination"]["status"] == "UNAVAILABLE"
+    assert d["coordination"]["gaps"] and "ledger on fire" in d["coordination"]["gaps"][0]
+    row = d["prs"][0]
+    assert row["work"]["ci"]["state"] == "UNKNOWN" and row["work"]["review"]["state"] == "UNKNOWN"
