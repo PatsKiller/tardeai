@@ -528,10 +528,35 @@ def run_digest(*, repo: str = pmt.DEFAULT_REPO, apply: bool = False, force: bool
     return out
 
 
+def _standing_review(d: dict[str, Any], *, repo: str, apply: bool) -> dict[str, Any]:
+    """Standing merge delegation (AGENTS.md 29.6.0+, scripts/lib/merge_standing.py).
+
+    Default OFF: until main's AGENTS.md is ACTIVE at 29.6.0 with APPROVE_MERGE_STANDING in its
+    version-history row, the evaluator returns ``enabled: False`` before any GitHub call. It can only
+    ADD ``operator-merge`` through the same helper the Telegram Approve tap uses, at most one per run,
+    and only when a genuine operator standing-approval comment covers the branch and every gate holds
+    on the exact head. A failure here must never take the digest dark: it is reported, not raised.
+    """
+    try:
+        from scripts.lib import merge_standing as ms
+    except ImportError:  # run from scripts/
+        from lib import merge_standing as ms  # type: ignore
+    try:
+        res = ms.review(d.get("ready") or [], repo=repo, apply=apply, cfg=ms.load_config())
+    except Exception as exc:  # noqa: BLE001 - the digest is the operator's surface; never lose it
+        return {"schema": "MergeStandingDecision@v1", "enabled": False, "apply": bool(apply), "decisions": [],
+                "applied": [], "considered": 0, "detail": f"standing review failed: {type(exc).__name__}: {exc}"}
+    labelled = {row.get("pr") for row in res.get("applied") or [] if row.get("ok")}
+    if labelled:  # never ask for a tap on a PR the standing path already labelled
+        d["ready"] = [i for i in d["ready"] if i.get("pr") not in labelled]
+    return res
+
+
 def _run_digest(*, repo: str, apply: bool, force: bool, cfg: dict[str, Any]) -> dict[str, Any]:
     d = build_digest(repo, cfg)
+    standing = _standing_review(d, repo=repo, apply=apply)
     out: dict[str, Any] = {
-        "ok": True, "apply": apply, "scanned": d["scanned"],
+        "ok": True, "apply": apply, "scanned": d["scanned"], "standing": standing,
         "ready": [i["pr"] for i in d["ready"]], "needs_operator": [i["pr"] for i in d["needs_operator"]],
         "overflow": [i["pr"] for i in d["overflow"]],
         "not_described": [i["pr"] for i in d["not_described"]],

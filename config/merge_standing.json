@@ -1,0 +1,17 @@
+{
+  "schema": "MergeStandingConfig@v1",
+  "_why": "Non-authority knobs for the standing merge delegation (scripts/lib/merge_standing.py). Nothing here arms the path: it is armed only by AGENTS.md on origin/main being ACTIVE at 29.6.0+ with APPROVE_MERGE_STANDING in that version's history row, plus a genuine operator standing-approval comment. Windows must match .mergify.yml; tests/test_merge_standing_20261102.py fails if they drift.",
+  "issue_title": "Standing merge approvals",
+  "issue_number": null,
+  "operator_login": "PatsKiller",
+  "max_days": 45,
+  "prefixes": ["wt/", "feat/", "fix/", "chore/", "docs/"],
+  "timezone": "America/New_York",
+  "windows": [
+    {"days": ["Mon", "Tue", "Wed", "Thu", "Fri"], "start": "17:30", "end": "18:30"}
+  ],
+  "max_candidates": 8,
+  "max_labels_per_run": 1,
+  "max_pages": 10,
+  "receipt_rel": "data/runtime/pr_merge_standing"
+}

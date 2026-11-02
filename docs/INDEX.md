@@ -2059,6 +2059,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/MATURE_INVESTMENT_OFFICE_LIVE_CONVERGENCE_2026-08-23.md` | Trade AI v12 R9.1 - Mature Investment Office Live Convergence |
 | `docs/ops/MATURITY_GAP_CLOSEOUT_2026-09-20-1445.md` | Maturity gap closeout — 2026-09-20 14:45 ET |
 | `docs/ops/MATURITY_SCORECARD.md` | Maturity scorecard (GET-only) |
+| `docs/ops/MERGE_STANDING.md` | Standing merge delegation |
 | `docs/ops/MERGIFY_CUTOVER_CHECKLIST.md` | Mergify cutover checklist (operator) |
 | `docs/ops/MERGIFY_DEPLOY_FOUNDATION.md` | Mergify + host deploy — foundation |
 | `docs/ops/N8N_CUTOVER_EFFECT_CLAIM_WRAPPER_20261023.md` | n8n cutover factory: the effect-claim wrapper, and four canary rows (2026-10-23) |
