@@ -346,30 +346,10 @@ def _cycle(now, doc, a, prior, policy, apply, store, ledger, call_model, on_asse
     from scripts.lib.market_risk import reentry_watch as _rw
 
     prior_watch = (prior or {}).get("reentry_watch") or {}
-    rcfg = policy.get("reentry_watch") or {}
-    for sym, w in (doc.get("reentry_watch") or {}).items():
-        if str(sym).startswith("_") or not isinstance(w, dict) or w.get("status") != "RE_ENTER":
-            continue
-        if (prior_watch.get(sym) or {}).get("status") == "RE_ENTER":
-            continue
-        rkey = f"market_risk:reentry:{sym}:{w.get('exit_date')}"
-        alerts.outbox_put(
-            {
-                "key": rkey,
-                "text": _rw.render(w),
-                "intent": {
-                    "priority": str(rcfg.get("card_priority") or "P2"),
-                    "dedupe_minutes": int(rcfg.get("card_dedupe_minutes") or 1440),
-                    "dedupe_key": rkey,
-                    "tier": "REENTRY",
-                    "transition": "reentry",
-                },
-                "kind": "reentry",
-                "episode_id": None,
-            },
-            now=now,
-            path=ledger,
-        )
+    # One card per stage-verdict change (Early setup / Confirmed / Invalidated) and per RE_ENTER flip,
+    # deduplicated by (symbol, exit date, verdict) and queued in the same outbox as every other card.
+    for entry in _rw.stage_cards(doc.get("reentry_watch") or {}, prior_watch, policy):
+        alerts.outbox_put(entry, now=now, path=ledger)
     if apply and on_assessed is not None:
         on_assessed(doc)
     for ent in alerts.outbox_due(now=now, path=ledger, claim_ttl_min=ttl):

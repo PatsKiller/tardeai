@@ -187,12 +187,18 @@ def test_issuer_segments_only_approved_and_partition_checked():
     assert ex["groups"]["comm"] == 0.7 and ex["basis"].startswith("segments")
 
 
-def test_shipped_issuer_segments_config_is_empty():
+def test_shipped_issuer_segments_entries_are_operator_approved_and_sourced():
+    """v005 shipped the file empty; home/v006 adds the first entry the operator approved in session. Every APPROVED
+    entry names the approval, its date and its source, and its sector weights validate (else it would be ignored)."""
     import json
     from pathlib import Path
 
     cfg = json.loads((Path(__file__).resolve().parents[1] / "config" / "issuer_segments.json").read_text())
-    assert cfg["issuers"] == {}
+    for sym, e in cfg["issuers"].items():
+        if str(e.get("status")).upper() != "APPROVED":
+            continue
+        assert e.get("approved_by") and e.get("approved_at") and e.get("source") and e.get("as_of"), sym
+        assert lt.issuer_segments_for(sym, cfg["issuers"]) is not None, sym
 
 
 # ── Projection pass-through ───────────────────────────────────────────────────────────────────────────────────────

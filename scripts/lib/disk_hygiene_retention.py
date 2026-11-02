@@ -16,7 +16,10 @@ from zoneinfo import ZoneInfo
 
 SCHEMA = "DiskHygieneEvidence@v1"
 SOURCES = ("cron", "units", "processes", "coordination", "prs", "pointers")
-RULE_KINDS = {"A": "archived_dump", "S": "rtc_scratch", "T": "agent_scratch", "W": "git_worktree"}
+RULE_KINDS = {"A": "archived_dump", "S": "rtc_scratch", "T": "agent_scratch", "W": "git_worktree",
+              "C": "abandoned_worktree", "R": "release_dir"}
+#: Rule X (archive retention) is reported only; it is never listable in standing_apply.rules and never removes.
+PLAN_ONLY_KINDS = {"X": "archive_ref"}
 MAX_BYTES = 40 * 1024**3
 MAX_AGE_SECONDS = 2 * 3600
 
@@ -131,7 +134,9 @@ def record_refs(ctx: Mapping, kind: str) -> list[tuple[str, str]]:
     co = data["coordination"]
     refs = list(ctx["refs"])
     refs += [("processes", json.dumps(data["processes"])), ("open_pr", json.dumps(data["prs"]))]
-    fields = ("references", "live_claims", "live_worklogs") if kind in ("rtc_scratch", "agent_scratch") else ("live_claims", "live_worklogs")
+    # rtc scratch is shared lane scratch, so any retained mention holds it. Agent scratch belongs to one task: only a
+    # live claim/worklog (plus processes, PRs, units, cron, pointers) holds it, never closed history (2026-10-31).
+    fields = ("references", "live_claims", "live_worklogs") if kind == "rtc_scratch" else ("live_claims", "live_worklogs")
     refs += [("coordination:" + k, json.dumps(co[k])) for k in fields]
     return refs
 
@@ -158,7 +163,13 @@ def operator_digest(report: Mapping) -> str:
     detail = " ".join(f"{key}:{val['planned_gb']:.3f}/{val['applied_gb']:.3f}GiB" for key, val in sorted(rules.items()))
     held = report.get("held_bytes")
     held_label = f"{held / 1024**3:.3f}GiB" if isinstance(held, int) else "NOT_MEASURED"
-    return f"Disk hygiene planned/applied {detail or 'NOT_MEASURED'}; held {held_label}; removed {len(report.get('removed') or [])}; skipped {len(report.get('skipped') or [])}; refusal {report.get('refused') or 'none'}"
+    # The digest is what reaches alerts and the operator summary, so a refusal must name the check that
+    # refused (2026-11-02: `evidence_recheck_unavailable` alone hid an opaque-process recheck for two runs).
+    refused = report.get("refused") or "none"
+    why = str(report.get("refusal_detail") or "").strip().splitlines()
+    if why and refused != "none":
+        refused = f"{refused} ({why[0][:200]})"
+    return f"Disk hygiene planned/applied {detail or 'NOT_MEASURED'}; held {held_label}; removed {len(report.get('removed') or [])}; skipped {len(report.get('skipped') or [])}; refusal {refused}"
 
 
 def monitor_decision(current: Mapping, previous: Mapping, used_pct: float | None) -> dict:

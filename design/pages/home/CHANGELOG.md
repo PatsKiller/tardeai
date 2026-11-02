@@ -43,3 +43,29 @@
   under AGENTS.md §20 (as for v002 and v004). With his correction from the broker screenshot: a symbol re-bought in the
   same account after a stop-out is a holding there, not an exit, and shows "wash sale occurred, loss deferred" instead of
   a forward warning. Build follows in a PR stacked on this one, citing `Design: home/v005`.
+
+- 2026-11-01 PROPOSED v006 (builds on v005; same slot). The operator asked for it ("Yes, version 0.0.6") after this
+  feedback on v005: "Does it show what's actionable? I don't see it showing what I should be getting into. To hedge
+  against these risks."
+  - Adds a **Protect / Hedge / Rotate** block under the verdict:
+    - Protect: the top review items, each with a reason built from facts (stop distance, no stop, overnight session,
+      account budget breach, same issuer across accounts, wash sale).
+    - Hedge: a verdict from the Defense desk's inverse-hedge stoplight (NOT NOW / WATCH / CONSIDER / UNKNOWN) against
+      the existing config thresholds, with a link to the Defense desk.
+    - Rotate: the top 3 groups beating SPY on both 1 and 5 sessions, with the Defense-desk state and your dollars, and
+      links to the Rotation desk and Best opportunities.
+  - Adds a three-row digest on the collapsed card.
+  - Adds a tap-to-explain (i) on every term, with texts in one config file.
+  - Folds stressed or not-measured groups where you hold under $100 into one line.
+  - Splits the chip into RESILIENT and HOLDING.
+  - Labels a multi-segment issuer without approved weights "segment weights pending approval".
+  - Moves "Review now" into Protect.
+  - Specifies two engine fixes:
+    - Communications and Real estate are UNKNOWN because the daily bars for the sector ETFs are missing.
+    - The Defense posture's "waiting for a bounce day" line is a stale alert that contradicts the stoplight.
+
+  No size, order, stop level or "buy" anywhere. Mockup only, awaiting the operator's decision in Approvals → Designs;
+  mockups in the private design store.
+
+- 2026-11-01 APPROVED v006. The operator, verbatim: "I approve version 6." Recorded from the message under AGENTS.md §20
+  (as for v002, v004 and v005). Build follows in a PR stacked on this one, citing `Design: home/v006`.

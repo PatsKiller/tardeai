@@ -8,6 +8,7 @@ import { Link } from 'react-router-dom'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars } from '../../lib/designTokens'
 import { SHADOW_MARKER, SUMMARY_PHONE_MAX_PX, markerRest, actionableModel, bannerVisible, contributorsLine, episodeLine, factLine, fmtPct, pointsSum, shadowMarker, shortTime, tierTone, type MarketRisk } from '../../lib/marketRisk'
 import { ActionableBody, ActionableHead, TopReview } from './MarketRiskActionable'
+import { ActionsTop } from './MarketRiskActions'
 
 const tap = { minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' as const, textDecoration: 'none', fontWeight: 600, fontSize: TYPE.md, borderRadius: RADIUS.md, padding: '0 14px' }
 
@@ -100,7 +101,7 @@ export function MarketRiskBanner({ mr }: { mr: MarketRisk | null }) {
         {episodeLine(mr) || `evaluated ${shortTime(mr.as_of)}`}{mr.confirming ? ` · ${mr.confirming.n} of ${mr.confirming.of} categories confirm` : ''} · evaluated {shortTime(mr.as_of)}
       </div>
       {a && <ActionableHead m={a} />}
-      {a && <TopReview m={a} />}
+      {a && (a.protect || a.hedge || a.rotate ? <ActionsTop m={a} open={open} /> : <TopReview m={a} />)}
       {a && (
         <button type="button" data-testid="home-market-risk-banner-details" aria-expanded={open} onClick={() => setDetailsOpen(!open)}
           style={{ ...tap, alignSelf: 'flex-start', border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[1], color: TOKENS.text[0], padding: '0 14px', cursor: 'pointer' }}>

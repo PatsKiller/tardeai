@@ -846,7 +846,7 @@ def test_the_committed_rules_hold_the_operator_numbers_and_the_hard_list():
 
 def test_registry_rows_are_dispatch_live_n8n_lanes_at_canary():
     rows = {r["lane_id"]: r for r in _load("lane_registry.json")["lanes"]}
-    want = {"disk-usage-monitor": ("*/15 * * * *", "monitor", 0.25), "disk-hygiene": ("0 4 * * 0", "hygiene", 168.0)}
+    want = {"disk-usage-monitor": ("*/15 * * * *", "monitor", 0.25), "disk-hygiene": ("17 * * * *", "hygiene", 1.0)}  # 2026-10-31 standing activation
     for lane, (cron, klass, hours) in want.items():
         row = rows[lane]
         assert (row["scheduler"]["kind"], row["scheduler"]["expression"], row["scheduler"]["stage"]) == (
@@ -859,15 +859,18 @@ def test_registry_rows_are_dispatch_live_n8n_lanes_at_canary():
         assert row["output_signal"] == {"kind": "json_key", "path": f"data/runtime/{lane}_last.json", "key": "ok_at"}
 
 
-def test_allowlist_entries_never_pass_apply_to_the_hygiene_lane():
+def test_allowlist_hygiene_lane_applies_only_the_reviewed_standing_path():
+    """2026-10-31: the operator activated the standing sweep; the n8n lane applies ONLY via --standing (reviewed
+    rules, approval + enabled gates); the manual grant path still refuses under the executor."""
     allow = {e["lane_id"]: e for e in _load("n8n_run_allowlist.json")["lanes"]}
     hyg, mon = allow["disk-hygiene"], allow["disk-usage-monitor"]
-    assert hyg["command"] == ["$PY", "scripts/disk_hygiene.py"] and hyg["live_arg"] == ["--plan"]
+    assert hyg["command"] == ["$PY", "scripts/disk_hygiene.py"] and hyg["live_arg"] == ["--standing", "--apply", "--scheduled"]
+    assert hyg["dry_run_arg"] == ["--standing", "--dry-run"]
     assert mon["command"] == ["$PY", "scripts/disk_usage_monitor.py"] and mon["live_arg"] == ["--apply"]
+    assert mon["dry_run_arg"] == ["--dry-run"]
     for e in (hyg, mon):
-        assert e["dry_run_arg"] == ["--dry-run"] and e["lock_kind"] == "flock" and e["output_receipt"] == "v2"
+        assert e["lock_kind"] == "flock" and e["output_receipt"] == "v2"
         assert e["market_gate"] is False
-    assert "--apply" not in json.dumps({k: hyg[k] for k in ("command", "live_arg", "dry_run_arg")})
     assert hyg["env_allowlist_mode"] == "enforce" and mon["env_allowlist_mode"] == "report"
     assert DH.main(["--apply", "--dry-run"]) == 2 and DH.main(["--plan", "--apply"]) == 2
 

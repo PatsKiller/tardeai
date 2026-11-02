@@ -1806,6 +1806,18 @@
   {
    "n": 1090,
    "line": "*/15 16-20 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_extended.lock bash scripts/market_day_gate.sh $PY scripts/market_quotes_extended.py --apply >> logs/market_quotes_extended.log 2>&1"
+  },
+  {
+   "n": 1092,
+   "line": "*/15 18-23 * * 0 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_offhours_schwab.lock $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1"
+  },
+  {
+   "n": 1093,
+   "line": "*/15 * * * 1-4 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_offhours_schwab.lock $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1"
+  },
+  {
+   "n": 1094,
+   "line": "*/15 0-9 * * 5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_offhours_schwab.lock $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1"
   }
  ],
  "units": {

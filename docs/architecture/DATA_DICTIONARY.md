@@ -53,6 +53,7 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 | Options positioning | **option_chain_strikes** | PROPOSED | `option_chain_strikes` (table) | `scripts/options_chain_snapshot.py` | host: options-chain-snapshot | 8 h on market days; the 10:00 row is expected by 10:15 ET | Risk, CIO, Telegram |
 | ETF look-through | **etf_holdings_snapshot** | PROPOSED | `etf_holdings_snapshot` (table) | UNCONSOLIDATED → `scripts/lib/writers/etf_holdings_writer.py` (to_build (0 writers measured 2026-10-31; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)) | host: etf-holdings-weekly | 8 days; a held ETF with no snapshot is a gap the Risk page says so about | Risk, Home, CIO, Telegram |
 | Market risk escalation | **market_risk_episodes** | PROPOSED | `market_risk_episodes` (table) | UNCONSOLIDATED → `scripts/lib/market_risk/escalation.py` (to_build (0 writers measured 2026-10-31; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)) | event: market-risk-evaluate | event-driven; an OPEN Red with no repeat receipt for 75 min is the stalled-escalation page | Home, Risk, Approvals, Telegram |
+| Issuer revenue segment | **issuer_segments** | PROPOSED | `issuer_segments` (table) | UNCONSOLIDATED → `scripts/lib/writers/issuer_segments_writer.py` (to_build (0 writers measured 2026-11-01; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)) | n8n: issuer-segments-refresh | re-pulled within one business day of each new 10-Q/10-K; older than issuer_segments.stale_after_days (120) is used and marked stale; older than issuer_segments.hard_stale_days falls back to the symbol_profiles sector with a visible flag | Home, Risk, Market risk engine (look-through, risk budget) |
 
 ## Entity by entity
 
@@ -498,6 +499,19 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 - **Read path (projection):** `market_risk_episodes` — to_build
 - **Readers:** Home, Risk, Approvals, Telegram
 - **Measured 2026-10-31 (repo scan: no table, no writer, no reader):** 0 writer file(s) of the store
+
+### Issuer segment look-through: revenue share per reported segment, mapped to market-risk groups — `issuer_segments` (PROPOSED)
+
+**Operator decision (§17):** Grant (1) the issuer_segments domain (table issuer_segments, single writer scripts/lib/writers/issuer_segments_writer.py, lane issuer-segments-refresh) and (2) the sec_edgar provider scope widened to xbrl_segments. With the grant, refreshed filing splits apply automatically; only operator overrides in config/issuer_segments.json need approval.
+
+- **Facts:** issuer, period, as_of, source accession and URL, segment, revenue share, mapped group, basis, confidence
+- **Store of record:** `issuer_segments` (table) — issuer_segments: does not exist yet (measured 2026-11-01); one row per (issuer_guid, accession, segment_member, line). Created by the writer PR (design DSN-20261101-issuer-segment-lookthrough Phase 2). Operator overrides stay in config/issuer_segments.json (status APPROVED, git-reviewed) and are read beside the table, never copied into it.
+- **Single writer:** UNCONSOLIDATED → `scripts/lib/writers/issuer_segments_writer.py` (to_build (0 writers measured 2026-11-01; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)) — Single writer. Inputs: SEC EDGAR filing archives (XBRL instance *_htm.xml of 10-K/10-Q; S-1/424B HTML tables for recent IPOs), the deterministic map config/issuer_segment_map.json, and validated offline classifier results (basis model_classified, verbatim filing quote + confidence) from the governed model-job path. The scoring path (scripts/lib/market_risk/lookthrough.py, risk_budget.py) only reads; no model is called there.
+- **Cadence:** event-driven: a new 10-K / 10-Q / S-1 / 424B accession for a covered issuer in sec_filing_events triggers one pull; weekly coverage sweep Sunday 07:30 ET for issuers newly held, watched or held through funds · stale after 2880 h
+- **Freshness SLA:** re-pulled within one business day of each new 10-Q/10-K; older than issuer_segments.stale_after_days (120) is used and marked stale; older than issuer_segments.hard_stale_days falls back to the symbol_profiles sector with a visible flag
+- **Refresh lane:** n8n: issuer-segments-refresh — new lane, scheduled only after the lane grant; triggered off sec_filing_events, no second EDGAR poller
+- **Read path (projection):** `issuer_segments` — to_build
+- **Readers:** Home, Risk, Market risk engine (look-through, risk budget)
 
 ## Field level
 
