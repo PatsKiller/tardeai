@@ -1,0 +1,27 @@
+{
+  "schema": "NightlySecurityScanConfig@v1",
+  "as_of": "2026-11-02",
+  "_why": "Operator 2026-11-02: remove CodeQL; ruff security + gitleaks per change, semgrep OSS + pip-audit + npm audit nightly, message only on NEW findings. Free tools only; versions are recorded in each receipt, never assumed. A missing tool is reported as tool_missing with its install command, never silently skipped.",
+  "alert_priority": "P1",
+  "tools": {
+    "semgrep": {
+      "enabled": true,
+      "argv": ["semgrep", "scan", "--config", "p/python", "--config", "p/javascript", "--json", "--quiet", "--disable-version-check", "."],
+      "install": "pipx install semgrep",
+      "rulesets": ["p/python", "p/javascript"]
+    },
+    "pip-audit": {
+      "enabled": true,
+      "argv": ["pip-audit", "-f", "json", "--progress-spinner", "off"],
+      "install": "pipx install pip-audit"
+    },
+    "npm-audit": {
+      "enabled": true,
+      "argv": ["npm", "audit", "--json", "--omit", "dev"],
+      "install": "installed with Node (npm 10.x); no separate package"
+    }
+  },
+  "receipt_rel": "data/runtime/security_scan/last.json",
+  "dedupe": "previous receipt ids: a finding is NEW only when its id was absent last night",
+  "timeout_s": 900
+}
