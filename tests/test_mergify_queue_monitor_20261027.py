@@ -129,3 +129,27 @@ def test_classify_cleared_conflict_auto_requeues_after_hotfix():
 def test_hotfix_landed_detects_skip_tolerant_yml():
     assert hotfix_landed("merge_conditions:\n  - check-skipped=cio-hardening\n") is True
     assert hotfix_landed("batch_size: 5\ncheck-success=*\n") is False
+
+
+def test_a_red_non_required_check_is_a_real_failure_not_a_requeue():
+    """2026-11-01: a PR can be green on all four required checks and red on `secret-scan`.
+
+    Requeueing that PR would put it straight back on the queue to fail again; the run that
+    actually reported must win, and the dequeue must be classified as a real CI failure.
+    """
+    plan = classify_dequeue(
+        reason_code="CHECKS_FAILED",
+        body=SAMPLE_DEQUEUE,
+        mergeable="MERGEABLE",
+        checks={
+            "cio-hardening": "SUCCESS",
+            "agent-governance": "SUCCESS",
+            "release-readiness": "SUCCESS",
+            "ci-gate": "SUCCESS",
+            "secret-scan": "FAILURE",
+        },
+        hotfix_on_main=False,
+    )
+    assert plan.classification == "REAL_CI_FAIL"
+    assert plan.requeue is False
+    assert "secret-scan" in str(plan.detail)

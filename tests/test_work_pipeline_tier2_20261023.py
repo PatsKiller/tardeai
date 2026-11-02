@@ -162,7 +162,7 @@ class FakeGh:
                 return 0, json.dumps({"contexts": sorted(self.required)}), ""
             if "/check-runs" in path:
                 runs = [
-                    {"name": n, "conclusion": c, "started_at": "2026-10-23T15:00:00Z"}
+                    {"name": n, "conclusion": c, "status": "completed", "started_at": "2026-10-23T15:00:00Z"}
                     for n, c in self.conclusions.items()
                 ]
                 return 0, json.dumps({"check_runs": runs}), ""

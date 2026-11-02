@@ -37,10 +37,7 @@ def _utc() -> str:
 
 
 def state_root() -> Path:
-    return Path(
-        os.environ.get("TRADEAI_STATE_ROOT")
-        or (Path.home() / "trade-ai-releases" / "persistent-state")
-    )
+    return Path(os.environ.get("TRADEAI_STATE_ROOT") or (Path.home() / "trade-ai-releases" / "persistent-state"))
 
 
 def receipts_dir(root: Path | None = None) -> Path:
@@ -124,11 +121,17 @@ def classify_dequeue(
     cleared_conflict = reason in {"CONFLICTS", "CONFLICT"} and (mergeable or "").upper() == "MERGEABLE"
 
     if draft_skip or reason == "CHECKS_FAILED" or cleared_conflict:
-        real_red = [
-            c
-            for c in REQUIRED_CHECKS
-            if checks.get(c) in {"FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED"}
-        ]
+        # Required is not enough. A PR green on the four required checks and red on `secret-scan`
+        # (PR #2465, 2026-11-01) must not be requeued to fail again: grade every check on the head.
+        from scripts.lib import pr_all_checks_green as ACG
+
+        graded = ACG.evaluate(
+            [
+                {"name": name, "conclusion": str(conclusion).lower(), "status": "completed"}
+                for name, conclusion in checks.items()
+            ]
+        )
+        real_red = graded["failing"]
         if real_red:
             return ActionPlan(
                 pr=0,
@@ -283,7 +286,8 @@ def fetch_head_check_conclusions(pr: int, repo: str = "PatsKiller/tardeai") -> d
     for row in data.get("statusCheckRollup") or []:
         name = row.get("name") or ""
         conclusion = (row.get("conclusion") or row.get("state") or "").upper()
-        if name in REQUIRED_CHECKS:
+        if name:
+            # Every check, not only the required four: the merge gate grades all of them.
             out[name] = conclusion
     return out
 
