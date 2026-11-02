@@ -34,8 +34,21 @@ export type Factor<S extends string> = {
   reported: string | null
   head_sha: string | null
   as_of: string | null
+  /** Which field the time came from. `observed_at` is the explicit old-ledger fallback, kept honest. */
+  as_of_basis: 'as_of' | 'observed_at' | null
   source: string | null
   reason: string | null
+  /** Present when the review was aggregated from several reviewers' verdicts. */
+  verdicts?: ReviewVerdict[]
+}
+
+/** One reviewer's verdict at one head. Two verdicts for the same reviewer: the later one wins. */
+export type ReviewVerdict = {
+  verdict: ReviewState
+  reviewer: string
+  head_sha: string | null
+  as_of: string | null
+  source: string | null
 }
 
 export type WorkBlock = {
@@ -131,7 +144,7 @@ const PUBLICATION: PublicationState[] = ['local_only', 'published', 'merged', 'l
 const AGENT_STATES: AgentState[] = ['working', 'blocked', 'waiting', 'idle', 'unknown']
 
 function emptyWork(reason: string): WorkBlock {
-  const unknown = <S extends string>(r: string): Factor<S> => ({ state: 'UNKNOWN', reported: null, head_sha: null, as_of: null, source: null, reason: r })
+  const unknown = <S extends string>(r: string): Factor<S> => ({ state: 'UNKNOWN', reported: null, head_sha: null, as_of: null, as_of_basis: null, source: null, reason: r })
   return {
     present: false, owner: null, current_task: null, publication_state: 'unknown', local_head: null, published_head: null,
     review: unknown<ReviewState>(reason), ci: unknown<CiState>(reason), blockers: [], next_action: null,
@@ -139,18 +152,28 @@ function emptyWork(reason: string): WorkBlock {
   }
 }
 
-/** A review/CI factor, bound to the row's exact head. Any mismatch or missing head is UNKNOWN, never edited-in. */
+/** The time a factor was measured. `observed_at` is the old-ledger field: accepted, and labelled as such. */
+function pickAsOf(r: Record<string, unknown>): { as_of: string | null; as_of_basis: 'as_of' | 'observed_at' | null } {
+  const direct = asText(r.as_of)
+  if (direct) return { as_of: direct, as_of_basis: 'as_of' }
+  const observed = asText(r.observed_at)
+  if (observed) return { as_of: observed, as_of_basis: 'observed_at' }
+  return { as_of: null, as_of_basis: null }
+}
+
+/** A CI factor, bound to the row's exact head. Any mismatch or missing head is UNKNOWN, never edited-in. */
 export function normalizeFactor<S extends string>(
   raw: unknown, allowed: readonly S[], rowHead: string, label: string,
 ): Factor<S> {
   const unknown = (reason: string, extra: Partial<Factor<S>> = {}): Factor<S> =>
-    ({ state: 'UNKNOWN', reported: null, head_sha: null, as_of: null, source: null, reason, ...extra })
+    ({ state: 'UNKNOWN', reported: null, head_sha: null, as_of: null, as_of_basis: null, source: null, reason, ...extra })
   if (!raw || typeof raw !== 'object') return unknown(`no typed ${label} receipt`)
   const r = raw as Record<string, unknown>
   const reportedRaw = String(r.state ?? '').trim().toUpperCase()
   const reported = reportedRaw || null
   const head = asText(r.head_sha)
-  const base = { reported, head_sha: head, as_of: asText(r.as_of), source: asText(r.source) }
+  const { as_of, as_of_basis } = pickAsOf(r)
+  const base = { reported, head_sha: head, as_of, as_of_basis, source: asText(r.source) }
   const gap = asText(r.source_gap)
   if (!rowHead) return { ...unknown('row head not stated — cannot bind', base) }
   if (!head) return { ...unknown(`${label} receipt names no head`, base) }
@@ -160,6 +183,69 @@ export function normalizeFactor<S extends string>(
   }
   if (gap) return { ...unknown(gap, base) }
   return { state: reported as S, ...base, reason: null }
+}
+
+const VERDICT: Record<string, ReviewState> = {
+  MERGE: 'MERGE', MERGED: 'MERGE', APPROVE: 'MERGE', APPROVED: 'MERGE', LGTM: 'MERGE',
+  BLOCK: 'CHANGES', BLOCKED: 'CHANGES', CHANGES: 'CHANGES', 'REQUEST_CHANGES': 'CHANGES', 'CHANGES_REQUESTED': 'CHANGES', REJECT: 'CHANGES',
+  NONE: 'NONE', COMMENT: 'NONE', COMMENTS: 'NONE',
+}
+
+/**
+ * The review state for one head, from whatever the ledger sent: a single `state`, or a `verdicts`/`records`
+ * array. BLOCK / CHANGES dominate — a single block makes the review not-green even beside MERGE verdicts.
+ * The latest verdict per reviewer wins (ledger order, then as_of). A record COUNT is not a verdict: a
+ * response that only carries `count` stays UNKNOWN, because counting "merge" records is not review.
+ */
+export function normalizeReview(raw: unknown, rowHead: string): Factor<ReviewState> {
+  const unknown = (reason: string, extra: Partial<Factor<ReviewState>> = {}): Factor<ReviewState> =>
+    ({ state: 'UNKNOWN', reported: null, head_sha: null, as_of: null, as_of_basis: null, source: null, reason, ...extra })
+  if (!raw || typeof raw !== 'object') return unknown('no typed review receipt')
+  const r = raw as Record<string, unknown>
+
+  const listed = Array.isArray(r.verdicts) ? r.verdicts : Array.isArray(r.records) ? r.records : null
+  const envelopeHead = asText(r.head_sha)
+  const { as_of, as_of_basis } = pickAsOf(r)
+  const source = asText(r.source)
+  const gap = asText(r.source_gap)
+  if (!rowHead) return unknown('row head not stated — cannot bind', { head_sha: envelopeHead, as_of, as_of_basis, source })
+
+  if (listed) {
+    const parsed: ReviewVerdict[] = []
+    for (const v of listed) {
+      const o = (v && typeof v === 'object' ? v : { verdict: v }) as Record<string, unknown>
+      const word = String(o.verdict ?? o.state ?? '').trim().toUpperCase()
+      const st = VERDICT[word]
+      if (!st) continue                                   // an unrecognised word is not a verdict
+      const head = asText(o.head_sha) ?? envelopeHead
+      if (head !== rowHead) continue                     // a verdict on another head is not this head's review
+      const at = asText(o.as_of) ?? asText(o.observed_at)
+      parsed.push({ verdict: st, reviewer: asText(o.reviewer) ?? asText(o.by) ?? asText(o.session) ?? `#${parsed.length}`, head_sha: head, as_of: at, source: asText(o.source) ?? source })
+    }
+    if (!parsed.length) return unknown(`no verdict on head ${shortSha(rowHead)}`, { head_sha: envelopeHead, as_of, as_of_basis, source })
+    // Latest per reviewer: ledger order decides ties (a later record is appended later).
+    const latest = new Map<string, ReviewVerdict>()
+    parsed.forEach((v, i) => {
+      const prev = latest.get(v.reviewer)
+      if (!prev || !v.as_of || !prev.as_of || String(v.as_of) >= String(prev.as_of)) latest.set(v.reviewer, { ...v, reviewer: `${v.reviewer}` })
+      void i
+    })
+    const verdicts = [...latest.values()]
+    const blocks = verdicts.filter(v => v.verdict === 'CHANGES')
+    const merges = verdicts.filter(v => v.verdict === 'MERGE')
+    const state: ReviewState = blocks.length ? 'CHANGES' : merges.length ? 'MERGE' : 'NONE'
+    const reason = blocks.length
+      ? `${blocks.length} blocking verdict${blocks.length > 1 ? 's' : ''}${merges.length ? ` vs ${merges.length} merge (conflicting_verdicts)` : ''}: ${blocks.map(b => b.reviewer).join(', ')}`
+      : null
+    const newest = verdicts.map(v => v.as_of).filter((x): x is string => !!x).sort().pop() ?? as_of
+    return { state, reported: state, head_sha: envelopeHead ?? rowHead, as_of: newest, as_of_basis: newest === as_of ? as_of_basis : 'as_of', source, reason, verdicts }
+  }
+
+  // A bare count is not a verdict.
+  if (r.count !== undefined && r.state === undefined) {
+    return unknown('record count is not a review verdict', { head_sha: envelopeHead, as_of, as_of_basis, source })
+  }
+  return normalizeFactor<ReviewState>(raw, ['MERGE', 'CHANGES', 'NONE'], rowHead, 'review')
 }
 
 function normalizeBlockers(raw: unknown): Blocker[] {
@@ -191,7 +277,7 @@ export function normalizeWork(raw: unknown, rowHead: string): WorkBlock {
     publication_state: publication,
     local_head: asText(w.local_head),
     published_head: asText(w.published_head),
-    review: normalizeFactor<ReviewState>(w.review, ['MERGE', 'CHANGES', 'NONE'], rowHead, 'review'),
+    review: normalizeReview(w.review, rowHead),
     ci: normalizeFactor<CiState>(w.ci, ['GREEN', 'RED', 'PENDING', 'SKIPPED'], rowHead, 'ci'),
     blockers: normalizeBlockers(w.blockers),
     next_action: asText(w.next_action),
@@ -254,7 +340,7 @@ export function draftLabel(p: InFlightPr): { text: string; tone: Tone } {
 
 export function reviewLabel(f: Factor<ReviewState>): { text: string; tone: Tone } {
   if (f.state === 'MERGE') return { text: 'REVIEW · merge requested', tone: 'success' }
-  if (f.state === 'CHANGES') return { text: 'REVIEW · changes requested', tone: 'danger' }
+  if (f.state === 'CHANGES') return { text: `REVIEW · blocked${f.reason ? ` · ${f.reason}` : ''}`, tone: 'danger' }
   if (f.state === 'NONE') return { text: 'REVIEW · none', tone: 'neutral' }
   return { text: `REVIEW · UNKNOWN${f.reason ? ` · ${f.reason}` : ''}`, tone: 'warning' }
 }

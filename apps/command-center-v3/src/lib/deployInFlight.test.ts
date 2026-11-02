@@ -6,7 +6,7 @@
 // and an old backend (no `work` / no `coordination`) pretending to have facts.
 import {
   IN_FLIGHT_SCHEMA, IN_FLIGHT_SCHEMA_V2, KNOWN_SCHEMAS, agentStateTone, ciLabel2, draftLabel, nextActionFor,
-  normalizeCoordination, normalizeFactor, normalizeMergeable, normalizeRow, normalizeWork, publicationLabel,
+  normalizeCoordination, normalizeFactor, normalizeMergeable, normalizeReview, normalizeRow, normalizeWork, publicationLabel,
   reviewLabel, rowFacts, shortSha, type CiState, type ReviewState,
 } from './deployInFlight.ts'
 
@@ -147,6 +147,36 @@ eq('a made-up status is UNAVAILABLE', normalizeCoordination({ status: 'GREAT', a
 // ── schema compatibility ───────────────────────────────────────────────────────────────────────────────────
 eq('v1 remains known', (KNOWN_SCHEMAS as readonly string[]).includes(IN_FLIGHT_SCHEMA), true)
 eq('v2 additive is known', (KNOWN_SCHEMAS as readonly string[]).includes(IN_FLIGHT_SCHEMA_V2), true)
+
+// ── review aggregation: BLOCK dominates, count is not a verdict ────────────────────────────────────────────
+const rev = (verdicts: unknown[], head = HEAD) => normalizeReview({ head_sha: head, source: 'ledger', verdicts }, head)
+eq('one BLOCK is blocked', rev([{ verdict: 'BLOCK', reviewer: 'cc3' }]).state, 'CHANGES')
+eq('a BLOCK alone is never green', reviewLabel(rev([{ verdict: 'BLOCK', reviewer: 'cc3' }])).tone, 'danger')
+eq('all MERGE is merge', rev([{ verdict: 'MERGE', reviewer: 'a' }, { verdict: 'MERGE', reviewer: 'b' }]).state, 'MERGE')
+const mixed = rev([{ verdict: 'MERGE', reviewer: 'a' }, { verdict: 'BLOCK', reviewer: 'b' }])
+eq('MERGE beside BLOCK is not green', mixed.state, 'CHANGES')
+check('the conflict is stated', (mixed.reason ?? '').includes('conflicting_verdicts'), mixed.reason)
+eq('latest verdict per reviewer wins (block then merge)', rev([
+  { verdict: 'BLOCK', reviewer: 'a', as_of: '2026-11-02T10:00:00Z' },
+  { verdict: 'MERGE', reviewer: 'a', as_of: '2026-11-02T11:00:00Z' },
+]).state, 'MERGE')
+eq('latest verdict per reviewer wins (merge then block)', rev([
+  { verdict: 'MERGE', reviewer: 'a', as_of: '2026-11-02T10:00:00Z' },
+  { verdict: 'BLOCK', reviewer: 'a', as_of: '2026-11-02T11:00:00Z' },
+]).state, 'CHANGES')
+eq('a verdict on another head is not this head\'s review', rev([{ verdict: 'BLOCK', reviewer: 'a', head_sha: OLD }]).state, 'UNKNOWN')
+eq('records count alone is not a review', normalizeReview({ count: 12, head_sha: HEAD }, HEAD).state, 'UNKNOWN')
+check('count-only says why', (normalizeReview({ count: 12, head_sha: HEAD }, HEAD).reason ?? '').includes('count'))
+eq('records array works like verdicts', normalizeReview({ head_sha: HEAD, records: [{ verdict: 'BLOCK', by: 'cc3' }] }, HEAD).state, 'CHANGES')
+eq('case and request_changes are normalised', rev([{ verdict: 'request_changes', reviewer: 'a' }]).state, 'CHANGES')
+eq('an unrecognised word is not a verdict', rev([{ verdict: 'probably fine', reviewer: 'a' }]).state, 'UNKNOWN')
+
+// CI times: as_of preferred, observed_at is the explicit honest fallback, never a capture time.
+const ciObserved = normalizeFactor<CiState>({ state: 'GREEN', head_sha: HEAD, observed_at: '2026-11-02T17:00:00Z' }, ['GREEN'], HEAD, 'ci')
+eq('observed_at fills a missing as_of', ciObserved.as_of, '2026-11-02T17:00:00Z')
+eq('the fallback is labelled', ciObserved.as_of_basis, 'observed_at')
+eq('as_of wins when both are present', normalizeFactor<CiState>({ state: 'GREEN', head_sha: HEAD, as_of: '2026-11-02T17:00:00Z', observed_at: '2026-11-02T16:00:00Z' }, ['GREEN'], HEAD, 'ci').as_of, '2026-11-02T17:00:00Z')
+eq('no time is stated as none', normalizeFactor<CiState>({ state: 'GREEN', head_sha: HEAD }, ['GREEN'], HEAD, 'ci').as_of, null)
 
 console.log(`deployInFlight: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)
