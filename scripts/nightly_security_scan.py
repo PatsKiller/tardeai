@@ -134,27 +134,54 @@ def run_scan(config: Mapping[str, Any], *, runner: Runner | None = None, state_d
         if rc == 127:
             tools[name] = {"status": "tool_missing", "install": spec.get("install")}
             continue
+        # A tool that exits >=2 or prints no JSON did not run: that is an ERROR, never "ran with
+        # zero findings" (which would overwrite the receipt and re-alert old findings tomorrow).
+        parsed = PARSERS.get(name, lambda _o: [])(out) if out.strip() else []
+        if rc >= 2 or not out.strip():
+            tools[name] = {"status": "error", "rc": rc, "stderr": (err or out).strip()[:300]}
+            continue
         tools[name] = {"status": "ran", "rc": rc, "version": _version(argv[0], run, where)}
-        if out.strip():
-            findings.extend(PARSERS.get(name, lambda _o: [])(out))
-        elif err.strip():
-            tools[name]["stderr"] = err.strip()[:200]
+        findings.extend(parsed)
 
     previous = {}
     try:
         previous = json.loads((sd / "last.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         previous = {}
+    previous_by_tool: dict[str, list[dict[str, Any]]] = {}
+    for f in (previous.get("findings") or []):
+        if isinstance(f, dict):
+            previous_by_tool.setdefault(str(f.get("tool")), []).append(f)
+    # A tool that could not run this night keeps its previous findings in the receipt, so the next
+    # good run does not re-alert them as NEW (the reproduced defect).
+    carried: list[dict[str, Any]] = []
+    unusable: list[str] = []
+    for name, t in tools.items():
+        if t.get("status") in ("tool_missing", "error"):
+            unusable.append(name)
+            carried.extend({**f, "carried": True} for f in previous_by_tool.get(name, []))
+    if carried:
+        findings = findings + carried
     seen = {str(f.get("id")) for f in (previous.get("findings") or []) if isinstance(f, dict)}
-    new = [f for f in findings if str(f.get("id")) not in seen]
+    new = [f for f in findings if str(f.get("id")) not in seen and not f.get("carried")]
+
+    def _problem_text() -> list[str]:
+        out = []
+        for name in unusable:
+            t = tools[name]
+            if t.get("status") == "tool_missing":
+                out.append(f"· {name}: NOT INSTALLED — {t.get('install') or 'install it'}")
+            else:
+                out.append(f"· {name}: CRASHED rc={t.get('rc')} {str(t.get('stderr') or '')[:120]}")
+        return out
+
     receipt = {"schema": RECEIPT_SCHEMA, "findings": findings, "new": [f["id"] for f in new],
-               "tools": tools, "dry_run": bool(dry_run), "alerted": False}
-    if new and not dry_run and send is not None:
-        lines = [f"[{config.get('alert_priority', 'P1')}] nightly security scan: {len(new)} NEW finding(s)"]
+               "tools": tools, "unusable": unusable, "dry_run": bool(dry_run), "alerted": False}
+    if (new or unusable) and not dry_run and send is not None:
+        lines = [f"[{config.get('alert_priority', 'P1')}] nightly security scan: "
+                 f"{len(new)} NEW finding(s), {len(unusable)} tool(s) not usable"]
         lines += [f"· {f['id']} ({f['severity']}) — {f['message']}" for f in new[:15]]
-        missing = [n for n, t in tools.items() if t.get("status") == "tool_missing"]
-        if missing:
-            lines.append("tools not installed: " + ", ".join(missing))
+        lines += _problem_text()
         send("\n".join(lines), priority=str(config.get("alert_priority", "P1")))
         receipt["alerted"] = True
     if not dry_run:
@@ -185,7 +212,7 @@ def main(argv: list[str] | None = None) -> int:
         missing = [n for n, t in receipt["tools"].items() if t.get("status") == "tool_missing"]
         print(f"nightly-security-scan: {len(receipt['findings'])} finding(s), {len(receipt['new'])} new; "
               f"ran={ran} missing={missing} dry_run={receipt['dry_run']}")
-    return 0
+    return 1 if receipt.get("unusable") else 0
 
 
 if __name__ == "__main__":

@@ -6,18 +6,47 @@
   "tools": {
     "semgrep": {
       "enabled": true,
-      "argv": ["semgrep", "scan", "--config", "p/python", "--config", "p/javascript", "--json", "--quiet", "--disable-version-check", "."],
+      "argv": [
+        "semgrep",
+        "scan",
+        "--config",
+        "p/python",
+        "--config",
+        "p/javascript",
+        "--json",
+        "--quiet",
+        "--disable-version-check",
+        "."
+      ],
       "install": "pipx install semgrep",
-      "rulesets": ["p/python", "p/javascript"]
+      "rulesets": [
+        "p/python",
+        "p/javascript"
+      ]
     },
     "pip-audit": {
       "enabled": true,
-      "argv": ["pip-audit", "-f", "json", "--progress-spinner", "off"],
-      "install": "pipx install pip-audit"
+      "argv": [
+        "pip-audit",
+        "-r",
+        "requirements.lock.txt",
+        "-f",
+        "json",
+        "--progress-spinner",
+        "off"
+      ],
+      "install": "pipx install pip-audit",
+      "_why": "Without -r, pip-audit audits pipx's own environment, not this project. requirements.lock.txt is the pinned tree CI installs."
     },
     "npm-audit": {
       "enabled": true,
-      "argv": ["npm", "audit", "--json", "--omit", "dev"],
+      "argv": [
+        "npm",
+        "audit",
+        "--json",
+        "--omit",
+        "dev"
+      ],
       "install": "installed with Node (npm 10.x); no separate package"
     }
   },

@@ -15,6 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
+#: A firing test below drives main --apply through the real send_telegram import path.
+COVERS = ["scripts/nightly_security_scan.py"]
 import check_ruff_security as rsec  # noqa: E402
 import nightly_security_scan as nss  # noqa: E402
 
@@ -103,3 +105,48 @@ def test_a_missing_or_broken_ruff_fails_closed():
 
 def test_a_clean_scan_is_an_empty_json_list():
     assert rsec.scan(runner=lambda argv: (0, "[]")) == {}
+
+
+# ---------------------------------------------------------------- review B (#2488)
+def test_a_missing_tool_alerts_on_its_own_and_exits_non_zero(tmp_path, monkeypatch, capsys):
+    import os, sys as _s, types
+    sent = []
+    fake = types.ModuleType("telegram_alert")
+    fake.send_telegram = lambda text, **kw: sent.append((text, kw)) or True
+    monkeypatch.setitem(_s.modules, "telegram_alert", fake)
+    monkeypatch.setattr(nss, "_default_runner", runner({}, missing=("semgrep",)))
+    cfg = tmp_path / "cfg.json"
+    cfg.write_text(json.dumps(dict(CONFIG, tools={**CONFIG["tools"], "pip-audit": {"enabled": False},
+                                                  "npm-audit": {"enabled": False}})))
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path / "state"))
+    rc = nss.main(["--apply", "--config", str(cfg), "--json"])
+    assert rc == 1
+    assert sent and "NOT INSTALLED" in sent[0][0]
+    assert "pipx install semgrep" in sent[0][0]
+
+
+def test_a_crashed_tool_carries_its_previous_findings_forward(tmp_path):
+    outs = {"semgrep": SEMGREP_ONE}
+    first = nss.run_scan(CONFIG, runner=runner(outs), state_dir=tmp_path, dry_run=False)
+    assert len(first["findings"]) == 1
+
+    def crash(argv, cwd):
+        if argv[0] == "semgrep":
+            return 2, "", "boom"
+        return (0, f"{argv[0]} 9.9.9\n", "") if argv[1:] == ["--version"] else (0, "{}", "")
+
+    second = nss.run_scan(CONFIG, runner=crash, state_dir=tmp_path, dry_run=False)
+    assert second["tools"]["semgrep"]["status"] == "error"
+    assert [f["id"] for f in second["findings"] if f.get("carried")] == [
+        "semgrep:python.lang.security.audit.x:scripts/a.py:7"]
+    # the next good night must not present the old finding as NEW again
+    sent = []
+    third = nss.run_scan(CONFIG, runner=runner(outs), state_dir=tmp_path,
+                         send=lambda text, priority="P1": sent.append(text), dry_run=False)
+    assert third["new"] == [] and sent == []
+
+
+def test_pip_audit_audits_the_project_lock_not_pipx():
+    cfg = json.loads((ROOT / "config" / "nightly_security_scan.json").read_text())
+    argv = cfg["tools"]["pip-audit"]["argv"]
+    assert "-r" in argv and "requirements.lock.txt" in argv
