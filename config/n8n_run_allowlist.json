@@ -4466,13 +4466,13 @@
         ]
       },
       "env_names": [
+        "BRAVE_ROUTER_LIVE",
         "DB_HOST",
         "DB_NAME",
         "DB_PASSWORD",
         "DB_USER",
         "POSTGRES_PASSWORD",
         "SEARCH_ROUTING_ENGINE",
-        "BRAVE_ROUTER_LIVE",
         "TRADEAI_ANTHROPIC_WEB_SEARCH"
       ],
       "env_allowlist_mode": "report",
