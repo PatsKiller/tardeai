@@ -107,7 +107,7 @@ def test_infrastructure_failure_is_rerun_exactly_once(tmp_path):
     receipt = cycle(tmp_path, gh)
 
     assert [c[2] for c in gh.reruns] == ["991"]
-    assert receipt["actions"][0]["action"] == "rerun_requested"
+    assert receipt["actions"][0]["action"] == "rerun"
     assert receipt["actions"][0]["failure_class"] == "infrastructure"
 
 
@@ -117,7 +117,7 @@ def test_green_rerun_records_a_suspected_flake(tmp_path):
     cycle(tmp_path, gh)                      # cycle 1 detects red and re-runs
     receipt = cycle(tmp_path, gh)            # cycle 2 observes the re-run's result
 
-    assert receipt["actions"][0]["action"] == "healed_after_rerun"
+    assert receipt["actions"][0]["action"] == "flake_recorded"
     assert receipt["actions"][0]["suspected_flake"] is True
     assert len(gh.reruns) == 1               # never re-runs twice
 
@@ -140,7 +140,7 @@ def test_second_failure_pages_once_and_writes_one_fixer_request(tmp_path):
     body = json.loads(requests[0].read_text())
     assert body["failing_test_ids"] == ["tests/test_x.py::test_y"]
     assert body["run_url"] == "https://example.com/run/991"
-    assert receipt["actions"][0]["action"] == "escalated"
+    assert receipt["actions"][0]["action"] == "page_and_dispatch"
 
 
 def test_already_rerun_run_is_never_rerun_again(tmp_path):
@@ -156,7 +156,7 @@ def test_already_rerun_run_is_never_rerun_again(tmp_path):
     receipt = cycle(tmp_path, gh)
 
     assert gh.reruns == []
-    assert receipt["actions"][0]["action"] == "escalated"
+    assert receipt["actions"][0]["action"] == "page_and_dispatch"
 
 
 # ------------------------------------------------------------------ AGENTS 24.5/28.14 gates
@@ -168,7 +168,7 @@ def test_a_test_failure_is_not_rerun_by_default(tmp_path):
 
     assert gh.reruns == []                    # §28.14: never a test failure
     assert receipt["actions"][0]["failure_class"] == "test_failure"
-    assert receipt["actions"][0]["action"] == "escalated"
+    assert receipt["actions"][0]["action"] == "page_and_dispatch"
     assert len(telegram.sent) == 1
 
 
@@ -219,3 +219,64 @@ def test_shipped_config_is_valid_and_gates_remote_writes():
     assert cfg["flaky_issue"]["enabled"] is False
     assert "24.5" in cfg["_why"] and "28.14" in cfg["_why"]
     assert cfg["required_workflows"]
+
+
+# ------------------------------------------------------------------ decision invariants
+def test_decide_only_ever_names_one_of_the_four_actions():
+    """Every reachable row of the decision table lands in the closed action set."""
+    seen = set()
+    for attempts in (0, 1, 2, 3):
+        for max_reruns in (0, 1, 2):
+            for escalated in (False, True):
+                for flake in (False, True):
+                    for outcome in (None, "success", "failure", "in_progress", "bogus"):
+                        for failure_class in ("infrastructure", "test_failure", "unknown", "weird"):
+                            for allowed in (False, True):
+                                decision = mra.decide(
+                                    attempts=attempts, max_reruns=max_reruns, escalated=escalated,
+                                    flake_recorded=flake, prior_rerun_outcome=outcome,
+                                    failure_class=failure_class, rerun_allowed=allowed)
+                                assert decision in mra.DECISIONS
+                                seen.add(decision)
+    assert seen == {"noop", "rerun", "flake_recorded", "page_and_dispatch"}
+
+
+def test_decide_maps_the_cases_the_lane_depends_on():
+    def d(**kw):
+        base = dict(attempts=0, max_reruns=1, escalated=False, flake_recorded=False,
+                    prior_rerun_outcome=None, failure_class="infrastructure", rerun_allowed=True)
+        return mra.decide(**{**base, **kw})
+
+    assert d() == "rerun"
+    assert d(rerun_allowed=False, failure_class="test_failure") == "page_and_dispatch"
+    assert d(attempts=1, prior_rerun_outcome="success") == "flake_recorded"
+    assert d(attempts=1, prior_rerun_outcome="failure") == "page_and_dispatch"
+    assert d(attempts=1, prior_rerun_outcome="in_progress") == "noop"
+    assert d(attempts=1, max_reruns=1, prior_rerun_outcome=None) == "noop"  # outcome unreadable yet: wait
+    assert d(escalated=True) == "noop"
+    assert d(flake_recorded=True) == "noop"
+
+
+# ------------------------------------------------------------------ the real default path
+def test_default_config_path_resolves_the_shipped_config():
+    path = mra.default_config_path()
+    assert path.is_file(), f"the lane's default config path does not exist: {path}"
+    cfg = json.loads(path.read_text())
+    assert cfg["schema"] == mra.CONFIG_SCHEMA
+    assert path.name == "main_red_autoheal.json"
+
+
+def test_main_loads_the_default_config_end_to_end(tmp_path, monkeypatch, capsys):
+    """The ROOT parent-count bug is caught here: main() must find config/ from its default path."""
+    green = [run_json(conclusion="success")]
+    monkeypatch.setattr(mra, "_gh_runner", lambda argv: (0, json.dumps(green)))
+    rc = mra.main(["--state-dir", str(tmp_path / "state"), "--json"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "MainRedAutohealReceipt@v1" in out
+    assert "refusing" not in out
+
+
+def test_default_state_dir_follows_tradeai_state_root(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    assert mra.default_state_dir() == tmp_path / "data" / "runtime" / "main_red_autoheal"

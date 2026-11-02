@@ -47,6 +47,13 @@ STATE_SCHEMA = "MainRedAutohealState@v1"
 RECEIPT_SCHEMA = "MainRedAutohealReceipt@v1"
 FIXER_REQUEST_SCHEMA = "MainRedAutohealFixerRequest@v1"
 
+#: Every action a decision may name. Nothing outside this set can be returned (tested exhaustively).
+ACTION_NOOP = "noop"
+ACTION_RERUN = "rerun"
+ACTION_FLAKE_RECORDED = "flake_recorded"
+ACTION_PAGE_AND_DISPATCH = "page_and_dispatch"
+DECISIONS = frozenset({ACTION_NOOP, ACTION_RERUN, ACTION_FLAKE_RECORDED, ACTION_PAGE_AND_DISPATCH})
+
 #: Conclusion values that mean "this run is red".
 FAILED_CONCLUSIONS = frozenset({"failure", "timed_out", "startup_failure"})
 #: Events a main-branch run may carry. A pull_request run is never this lane's business.
@@ -206,66 +213,101 @@ def run_cycle(
     return _finish(receipt, state, state_dir, dry_run)
 
 
+def decide(*, attempts: int, max_reruns: int, escalated: bool, flake_recorded: bool,
+           prior_rerun_outcome: Optional[str], failure_class: str, rerun_allowed: bool) -> str:
+    """The ONE pure decision for a red run. Returns exactly one of ``DECISIONS``.
+
+    ``prior_rerun_outcome`` is ``None`` (this run was never re-run), ``"success"``, ``"failure"`` or
+    ``"in_progress"``. The caller owns every side effect; this function owns the choice, so an
+    exhaustive test can prove no other action is reachable.
+    """
+    if flake_recorded or escalated:
+        return ACTION_NOOP
+    if int(attempts) > 0:
+        if prior_rerun_outcome == "success":
+            return ACTION_FLAKE_RECORDED
+        if prior_rerun_outcome == "failure":
+            return ACTION_PAGE_AND_DISPATCH
+        return ACTION_NOOP
+    if int(attempts) >= int(max_reruns):
+        return ACTION_PAGE_AND_DISPATCH
+    if rerun_allowed:
+        return ACTION_RERUN
+    return ACTION_PAGE_AND_DISPATCH
+
+
 def _handle_red_run(*, config, run, run_id, workflow, record, gh, state_dir, dry_run,
                     telegram, issue_writer, infra_markers, now) -> dict:
     base = {"run_id": run_id, "workflow": workflow, "head_sha": str(run.get("headSha")),
             "run_url": run.get("url")}
     record["head_sha"] = str(run.get("headSha"))
     record["updated_at"] = now
+    attempts = int(record.get("attempts") or 0)
 
-    # A re-run was requested earlier: read its outcome before deciding anything else.
-    if int(record.get("attempts") or 0) > 0 and not record.get("flake_recorded") and not record.get("escalated"):
-        rc, out = gh(["run", "view", run_id, "--repo", str(config["repo"]),
-                      "--json", "status,conclusion,url"])
+    # Read what a prior re-run produced, then classify. Both are reads; the choice stays in decide().
+    prior_outcome: Optional[str] = None
+    view_conclusion: Optional[str] = None
+    if attempts > 0 and not record.get("flake_recorded") and not record.get("escalated"):
+        rc, out = gh(["run", "view", run_id, "--repo", str(config["repo"]), "--json", "status,conclusion,url"])
         view = {}
         if rc == 0:
             try:
                 view = json.loads(out or "{}")
             except ValueError:
                 view = {}
-        conclusion = view.get("conclusion")
-        if view.get("status") == "completed" and conclusion == "success":
-            record["flake_recorded"] = True
-            record["last_action"] = "healed_after_rerun"
-            return {**base, "action": "healed_after_rerun",
-                    "suspected_flake": True,
-                    "note": "the re-run passed; recorded as a suspected flake"}
-        if view.get("status") == "completed" and conclusion in FAILED_CONCLUSIONS:
-            log = _failed_log(config, gh, run_id)
-            failure_class, test_ids = classify_failure(conclusion, log, infra_markers)
-            base.update({"failure_class": failure_class, "failing_test_ids": test_ids})
-            return _escalate(config, base, record, run, run_id, workflow, gh, state_dir,
-                             dry_run, telegram, issue_writer, infra_markers, now,
-                             why="re-run failed again")
-        return {**base, "action": "rerun_in_progress"}
-
-    if record.get("escalated"):
-        return {**base, "action": "already_escalated"}
+        view_conclusion = view.get("conclusion")
+        if view.get("status") == "completed" and view_conclusion == "success":
+            prior_outcome = "success"
+        elif view.get("status") == "completed" and view_conclusion in FAILED_CONCLUSIONS:
+            prior_outcome = "failure"
+        else:
+            prior_outcome = "in_progress"
 
     log = _failed_log(config, gh, run_id)
-    failure_class, test_ids = classify_failure(str(run.get("conclusion")), log, infra_markers)
+    failure_class, test_ids = classify_failure(
+        str(view_conclusion or run.get("conclusion")), log, infra_markers)
     base.update({"failure_class": failure_class, "failing_test_ids": test_ids})
+    rerun_allowed = bool((config.get("rerun_classes") or {}).get(failure_class))
 
-    if int(record.get("attempts") or 0) >= int(config["max_reruns"]):
-        return _escalate(config, base, record, run, run_id, workflow, gh, state_dir,
-                         dry_run, telegram, issue_writer, infra_markers, now,
-                         why=f"max_reruns={config['max_reruns']} reached")
+    decision = decide(attempts=attempts, max_reruns=int(config["max_reruns"]),
+                      escalated=bool(record.get("escalated")),
+                      flake_recorded=bool(record.get("flake_recorded")),
+                      prior_rerun_outcome=prior_outcome, failure_class=failure_class,
+                      rerun_allowed=rerun_allowed)
 
-    allowed = bool((config.get("rerun_classes") or {}).get(failure_class))
-    if allowed:
+    if decision == ACTION_NOOP:
+        return {**base, "action": ACTION_NOOP,
+                "reason": "already handled" if record.get("escalated") or record.get("flake_recorded")
+                else "re-run still in progress"}
+    if decision == ACTION_FLAKE_RECORDED:
+        record["flake_recorded"] = True
+        record["last_action"] = ACTION_FLAKE_RECORDED
+        if bool(config.get("flaky_issue", {}).get("enabled")) and issue_writer is not None and test_ids:
+            try:
+                base["flaky_issue_url"] = issue_writer(
+                    title=f"Flaky test on main: {test_ids[0]}", body=f"run {run.get('url')} cleared on re-run",
+                    label=str(config["flaky_issue"].get("label") or "flaky-test"))
+            except Exception as exc:  # noqa: BLE001
+                base["issue_error"] = f"{type(exc).__name__}: {exc}"
+        return {**base, "action": ACTION_FLAKE_RECORDED, "suspected_flake": True,
+                "note": "the re-run passed; recorded as a suspected flake"}
+    if decision == ACTION_RERUN:
         if dry_run:
-            return {**base, "action": "would_rerun"}
+            return {**base, "action": "would_" + ACTION_RERUN}
         rc, out = gh(["run", "rerun", run_id, "--failed"])
         if rc != 0:
             return {**base, "action": "rerun_failed", "error": (out or "")[:300]}
-        record["attempts"] = int(record.get("attempts") or 0) + 1
-        record["last_action"] = "rerun_requested"
-        return {**base, "action": "rerun_requested", "attempt": record["attempts"]}
+        record["attempts"] = attempts + 1
+        record["last_action"] = ACTION_RERUN
+        return {**base, "action": ACTION_RERUN, "attempt": record["attempts"]}
 
-    # The class is not re-runnable under this config: escalate on the first observation.
+    why = ("re-run failed again" if prior_outcome == "failure"
+           else f"max_reruns={config['max_reruns']} reached" if attempts >= int(config["max_reruns"])
+           else f"failure class '{failure_class}' is not re-runnable")
+    if dry_run:
+        return {**base, "action": "would_" + ACTION_PAGE_AND_DISPATCH, "reason": why}
     return _escalate(config, base, record, run, run_id, workflow, gh, state_dir, dry_run,
-                     telegram, issue_writer, infra_markers, now,
-                     why=f"failure class '{failure_class}' is not re-runnable")
+                     telegram, issue_writer, infra_markers, now, why=why)
 
 
 def _failed_log(config, gh, run_id: str) -> str:
@@ -298,7 +340,7 @@ def _escalate(config, base, record, run, run_id, workflow, gh, state_dir, dry_ru
         f"Run: {run.get('url')}\nFixer request: {request_path}"
     )
     record["escalated"] = True
-    record["last_action"] = "escalated"
+    record["last_action"] = ACTION_PAGE_AND_DISPATCH
     record["fixer_request"] = str(request_path)
     _write_json(request_path, request)
     if bool(config.get("fixer", {}).get("enabled", True)):
@@ -315,7 +357,7 @@ def _escalate(config, base, record, run, run_id, workflow, gh, state_dir, dry_ru
                 body=text, label=str(config["flaky_issue"].get("label") or "flaky-test"))
         except Exception as exc:  # noqa: BLE001
             base["issue_error"] = f"{type(exc).__name__}: {exc}"
-    return {**base, "action": "escalated", "reason": why, "failing_test_ids": failing,
+    return {**base, "action": ACTION_PAGE_AND_DISPATCH, "reason": why, "failing_test_ids": failing,
             "fixer_request": str(request_path)}
 
 
@@ -347,7 +389,16 @@ def _gh_runner(argv: list[str]) -> tuple[int, str]:
     return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
 
 
-def _default_state_dir() -> Path:
+def default_config_path() -> Path:
+    """``config/main_red_autoheal.json`` beside this script's package root.
+
+    ``parents[1]`` is the repo root for ``scripts/main_red_autoheal.py``; a test drives this exact
+    function so a wrong parent count fails a test, not only the first scheduled run.
+    """
+    return Path(__file__).resolve().parents[1] / "config" / "main_red_autoheal.json"
+
+
+def default_state_dir() -> Path:
     root = os.environ.get("TRADEAI_STATE_ROOT")
     return Path(root) / "data" / "runtime" / "main_red_autoheal" if root else \
         Path(__file__).resolve().parents[1] / "data" / "runtime" / "main_red_autoheal"
@@ -355,7 +406,7 @@ def _default_state_dir() -> Path:
 
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
-    parser.add_argument("--config", default=str(Path(__file__).resolve().parents[1] / "config" / "main_red_autoheal.json"))
+    parser.add_argument("--config", default=str(default_config_path()))
     parser.add_argument("--state-dir", default=None)
     parser.add_argument("--apply", action="store_true", help="act; without it the cycle is a dry run")
     parser.add_argument("--json", action="store_true")
@@ -372,7 +423,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         except Exception:  # pragma: no cover - import path differs under scripts/
             from scripts.telegram_alert import send_telegram  # type: ignore
         telegram = lambda text, priority="P1": send_telegram(text, priority=priority)  # noqa: E731
-    receipt = run_cycle(config, state_dir=Path(args.state_dir) if args.state_dir else _default_state_dir(),
+    receipt = run_cycle(config, state_dir=Path(args.state_dir) if args.state_dir else default_state_dir(),
                         gh=_gh_runner, dry_run=not args.apply, telegram=telegram)
     print(json.dumps(receipt, indent=1, sort_keys=True) if args.json else
           f"main-red-autoheal: {len(receipt['actions'])} action(s), "
