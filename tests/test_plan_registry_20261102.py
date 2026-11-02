@@ -123,3 +123,92 @@ def test_a_second_hook_run_with_the_same_plan_does_not_duplicate(tmp_path):
     a = r.add(title="Same", body=body, author="s", vendor="claude", approved_at="2026-11-02T10:00:00Z")
     b = r.add(title="Same", body=body, author="s", vendor="claude", approved_at="2026-11-02T10:00:00Z")
     assert a == b
+
+
+# ---------------------------------------------------------------- review (lead) round 1
+def test_ids_are_validated_and_contained(tmp_path):
+    import pytest
+
+    r = _reg(tmp_path)
+    for bad in ("../evil", "/tmp/evil", "a/b", "UPPER", "-lead", "x" * 100, ""):
+        with pytest.raises(ValueError):
+            r.add(title="T", body="x", author="s", vendor="claude", approved_at="2026-11-02T10:00:00Z", pid=bad)
+        with pytest.raises(ValueError):
+            r.get(bad)
+
+
+def test_a_symlinked_plan_file_cannot_escape_the_store(tmp_path):
+    import pytest
+
+    r = _reg(tmp_path)
+    inside = tmp_path / "data/coordination/plans"
+    inside.mkdir(parents=True)
+    outside = tmp_path / "outside.md"
+    outside.write_text("---\nid: \"evil\"\nstatus: \"approved\"\n---\n\nsecret\n")
+    (inside / "evil.md").symlink_to(outside)
+    with pytest.raises(ValueError):
+        r.get("evil")
+
+
+def test_hook_prefers_the_approved_tool_response_plan(tmp_path, monkeypatch):
+    import os
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    plan_file = tmp_path / "edited.md"
+    plan_file.write_text("# From file\n")
+    payload = {"session_id": "s", "tool_name": "ExitPlanMode",
+               "tool_input": {},  # 2.1.269+: empty input
+               "tool_response": {"plan": "# Approved text\n\n- [ ] a\n", "planFilePath": str(plan_file)}}
+    proc = subprocess.run([sys.executable, str(ROOT / "scripts" / "plan_registry_hook.py")],
+                          input=json.dumps(payload), capture_output=True, text=True,
+                          env={**os.environ, "TRADEAI_STATE_ROOT": str(tmp_path)}, check=False)
+    assert proc.returncode == 0
+    plans = list((tmp_path / "data/coordination/plans").glob("*.md"))
+    assert "Approved text" in plans[0].read_text() and "From file" not in plans[0].read_text()
+
+
+def test_hook_falls_back_to_the_plan_file_path(tmp_path, monkeypatch):
+    import os
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    plan_file = tmp_path / "edited.md"
+    plan_file.write_text("# Edited on disk\n")
+    payload = {"session_id": "s", "tool_name": "ExitPlanMode", "tool_input": {},
+               "tool_response": {"planFilePath": str(plan_file)}}
+    subprocess.run([sys.executable, str(ROOT / "scripts" / "plan_registry_hook.py")],
+                   input=json.dumps(payload), capture_output=True, text=True,
+                   env={**os.environ, "TRADEAI_STATE_ROOT": str(tmp_path)}, check=False)
+    plans = list((tmp_path / "data/coordination/plans").glob("*.md"))
+    assert plans and "Edited on disk" in plans[0].read_text()
+
+
+def test_a_non_object_payload_is_fail_soft(tmp_path):
+    import os
+    for raw in ("[]", "\"x\"", "not json"):
+        proc = subprocess.run([sys.executable, str(ROOT / "scripts" / "plan_registry_hook.py")],
+                              input=raw, capture_output=True, text=True,
+                              env={**os.environ, "TRADEAI_STATE_ROOT": str(tmp_path)}, check=False)
+        assert proc.returncode == 0, (raw, proc.stderr)
+
+
+def test_idempotency_ignores_the_day_but_not_the_author(tmp_path):
+    r = _reg(tmp_path)
+    a = r.add(title="T", body="same", author="alice", vendor="claude", approved_at="2026-11-01T10:00:00Z")
+    b = r.add(title="T", body="same", author="alice", vendor="claude", approved_at="2026-11-02T10:00:00Z")
+    c = r.add(title="T", body="same", author="bob", vendor="codex", approved_at="2026-11-02T10:00:00Z")
+    assert a == b and a != c
+
+
+def test_stale_rechecks_linkage_inside_the_lock(tmp_path, monkeypatch):
+    r = _reg(tmp_path)
+    p = tmp_path / "p.md"
+    p.write_text("# T\n")
+    pid = r.add(title="T", body_path=p, author="s", vendor="claude", approved_at="2026-08-01T10:00:00Z")
+    real_list = r.list
+
+    def listed_then_linked():
+        rows = real_list()
+        r.link(pid, pr=9)  # links between the scan and the mark
+        return rows
+
+    monkeypatch.setattr(r, "list", listed_then_linked)
+    assert r.stale(now="2026-11-02T12:00:00Z", apply=True) == []
+    assert r.get(pid)["front"]["status"] == "approved"

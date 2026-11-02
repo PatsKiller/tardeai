@@ -26,14 +26,35 @@ import plan_registry as pr  # noqa: E402
 
 
 def plan_from_payload(payload: dict) -> str:
+    """The APPROVED text, in the order Claude Code actually sends it.
+
+    Since 2.1.269 ExitPlanMode arrives with an empty ``tool_input`` and the approved text (including
+    the operator's edits) in ``tool_response.plan``, then ``planFilePath``; older builds put it in
+    ``tool_input.plan``. Reading only tool_input stored the pre-edit plan.
+    """
+    response = payload.get("tool_response")
+    response = response if isinstance(response, dict) else {}
+    value = response.get("plan")
+    if isinstance(value, str) and value.strip():
+        return value
+    for source in (response, payload):
+        for key in ("planFilePath", "plan_file_path"):
+            path = source.get(key)
+            if isinstance(path, str) and path.strip():
+                try:
+                    text = Path(path).read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    text = ""
+                if text.strip():
+                    return text
     tool_input = payload.get("tool_input")
     if isinstance(tool_input, str):
         return tool_input
     if isinstance(tool_input, dict):
         for key in ("plan", "content", "text"):
-            value = tool_input.get(key)
-            if isinstance(value, str) and value.strip():
-                return value
+            candidate = tool_input.get(key)
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate
     return ""
 
 
@@ -53,6 +74,9 @@ def main() -> int:
     except ValueError as exc:
         print(f"plan_registry_hook: unreadable payload ({exc})", file=sys.stderr)
         return 0
+    if not isinstance(payload, dict):
+        print("plan_registry_hook: payload is not an object", file=sys.stderr)
+        return 0
     if str(payload.get("tool_name") or "") != "ExitPlanMode":
         return 0
     text = plan_from_payload(payload)
@@ -70,4 +94,10 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except SystemExit:
+        raise
+    except BaseException as exc:  # noqa: BLE001 - a hook must never block the planner
+        print(f"plan_registry_hook: {type(exc).__name__}: {exc}", file=sys.stderr)
+        raise SystemExit(0) from None
