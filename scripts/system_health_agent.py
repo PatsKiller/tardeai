@@ -55,7 +55,14 @@ MONITORED_COMPONENTS = [
     {
         "component": "trade_ai_orchestrator",
         "display": "Trade AI Orchestrator",
-        "schedule": "0 9,10,12,14,16 * * 1-5",
+        # The literal was stale twice over: it claimed 09/10 through 16:00 on weekdays, while the only
+        # ACTIVE lane that writes `screener_pm.log` is `orchestrator-slot` at 17:30 ET, Monday to Friday
+        # (`orchestrator-slot-midday` is RETIRED in config/lane_registry.json). Judging a 180-minute age
+        # against the wall clock therefore flagged the component STALE every evening, all night and all
+        # weekend (CC5 Home audit D2, 2026-11-02). The schedule now comes from the ACTIVE lane rows, and
+        # this literal is the reviewed fail-back if the registry cannot be read.
+        "schedule": "30 17 * * 1-5",
+        "schedule_source": "lane_registry",
         "log_file": "screener_pm.log",
         "monitor_lane_ids": ["orchestrator-slot", "orchestrator-slot-midday"],
         "max_age_min": 180,
