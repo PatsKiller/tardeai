@@ -1097,6 +1097,20 @@ def schedule_fallback_error(comp) -> str | None:
     return f"schedule {resolved_from}"
 
 
+def schedule_expected_line(comp) -> str:
+    """The ``Expected:`` line of an escalation, saying so when the schedule is the literal fail-back.
+
+    cc3's BLOCK on the Home repair asked for the fallback to appear on the surface the operator
+    actually reads. For this agent that surface is the escalation message and the
+    ``system_health_events`` row built from it - not ``system_health_checks``, whose only consumer is
+    the frozen v2 page. So the fallback is stated here, in the message itself.
+    """
+    expected = _fmt_schedule((comp or {}).get("schedule", "unknown"))
+    if schedule_fallback_error(comp):
+        return f"{expected} (fallback - the lane registry could not be read)"
+    return expected
+
+
 def _component_schedule_intent(comp):
     """Source intent is drift context, never proof of host scheduler installation."""
     from lib.system_health_freshness import schedule_intent
@@ -1715,7 +1729,7 @@ def _escalate(comp, check_result, conn):
         f"{'🚨' if severity == 'CRITICAL' else '⚠️'} SYSTEM HEALTH: {comp['display']} — {check_result['status']}",
         "",
         f"Component: {component}",
-        f"Expected: {_fmt_schedule(comp.get('schedule', 'unknown'))}",
+        f"Expected: {schedule_expected_line(comp)}",
         f"Last observed output: {(check_result.get('freshness_evidence') or {}).get('success_at') or 'NOT_MEASURED'}",
         f"Status: {check_result['status']}",
     ]

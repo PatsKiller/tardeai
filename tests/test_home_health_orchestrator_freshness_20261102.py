@@ -171,3 +171,20 @@ def test_the_raw_declared_value_is_never_overwritten():
     assert comp["declared_schedule"] == "0 9,10,12,14,16 * * 1-5"   # preserved verbatim
     _ = health.schedule_display(health._resolve_component_schedule(comp))
     assert comp["declared_schedule"] == "0 9,10,12,14,16 * * 1-5"   # displaying it changes nothing
+
+
+def test_the_escalation_says_when_the_schedule_is_a_fallback():
+    """cc3 B1: the fallback must reach the surface the operator reads - the alert message itself.
+
+    `system_health_checks` has no live renderer (its only consumer is the frozen v2 page), so a
+    message that quietly shows the literal as "Expected" would be the same defect moved one field.
+    """
+    comp = {"display": "X", "schedule": "30 17 * * 1-5",
+            "schedule_resolved_from": "literal_fallback:registry_unavailable"}
+    assert health.schedule_expected_line(comp) == (
+        "30 17 * * 1-5 (fallback - the lane registry could not be read)")
+
+
+def test_the_escalation_does_not_cry_fallback_when_the_registry_was_read():
+    comp = {"display": "X", "schedule": "30 17 * * 1-5", "schedule_resolved_from": "lane_registry"}
+    assert health.schedule_expected_line(comp) == "30 17 * * 1-5"
