@@ -943,6 +943,62 @@ def _resolve_opaque(processes: list[dict], proc_root: Path) -> list[dict]:
     return out
 
 
+#: Archived coordination records are history, not live references (2026-11-02).
+#:
+#: ``agent_claim.py compact`` moves an ended claim into ``claims/claims_history.jsonl`` and an ended worklog
+#: into ``claims/worklog_archive/``; both keep every absolute path they ever mentioned. Because the scan read
+#: them, archiving a claim *moved* its references instead of dropping them: ``~/.cache/rtc`` scratch stayed
+#: held by claims that had been closed for days, and the history file grew without ever releasing anything.
+#: AGENTS.md §24.13 defines the hold as "no coordination document, *live* claim or worklog"; an archived
+#: record is neither. Archives are skipped before the size accounting too, so a history that grows past
+#: ``coordination_scan_limit`` can never turn every standing apply into ``coordination_scan_limit``.
+ARCHIVED_RELATIVE_FILES = frozenset({"claims/claims_history.jsonl"})
+ARCHIVED_RELATIVE_PREFIXES = ("claims/worklog_archive/",)
+
+
+def is_archived_coordination(relative: str) -> bool:
+    """True when a coordination-root-relative POSIX path is an archival record, never a live reference."""
+    return relative in ARCHIVED_RELATIVE_FILES or relative.startswith(ARCHIVED_RELATIVE_PREFIXES)
+
+
+def scan_coordination(base: Path, now: datetime) -> dict[str, Any]:
+    """Live claims/worklogs plus the absolute paths the coordination tree references (AGENTS.md §24.13)."""
+    claims_dir, worklogs = base / "claims", base / "worklogs"
+    if not claims_dir.is_dir() or not worklogs.is_dir() or not (base / "handoffs" / "PROGRESS_LOG.md").is_file():
+        raise ValueError("coordination_incomplete")
+    live, active_ids, refs, live_logs, archived = [], set(), [], [], 0
+    files = list(base.rglob("*.json")) + list(base.rglob("*.jsonl")) + list(base.rglob("*.md"))
+    total = 0
+    for path in files:
+        if is_archived_coordination(path.relative_to(base).as_posix()):
+            archived += 1
+            continue  # history, never a live reference
+        if path.is_symlink():
+            raise ValueError("coordination_symlink")
+        size = path.stat().st_size
+        total += size
+        if size > 32 * 1024**2 or total > 128 * 1024**2:
+            raise ValueError("coordination_scan_limit")
+        text = path.read_text()
+        refs += re.findall(r"/[^\s\"'`<>|=,;)\]}]+", text)
+        if path.parent == claims_dir and path.suffix == ".json":
+            claim = json.loads(text)
+            if not isinstance(claim, dict) or not isinstance(claim.get("schema"), str):
+                raise ValueError("claim_unreadable")
+            if claim["schema"] in NON_CLAIM_SCHEMAS:
+                continue  # its paths are already in refs; it is board state, not a claim
+            if claim["schema"] != "AgentClaim@v1":
+                raise ValueError("claim_unreadable")
+            if claim.get("status") == "active":
+                live.append(claim)
+                active_ids.add(claim.get("claim_id"))
+    for path in worklogs.rglob("*.md"):
+        if any(str(cid) in path.name for cid in active_ids) or now.timestamp() - path.stat().st_mtime <= 48 * 3600:
+            live_logs += re.findall(r"/[^\s\"'`<>|=,;)\]}]+", path.read_text())
+    return {"references": sorted(set(refs)), "live_claims": live, "live_worklogs": live_logs,
+            "archived_files": archived}
+
+
 def collect_standing_evidence(rules: Mapping[str, Any], now: datetime, *, github=None, runner=None) -> dict:
     """Fresh per-run READ-ONLY collection; unavailable evidence never becomes absence.
 
@@ -1032,36 +1088,7 @@ def collect_standing_evidence(rules: Mapping[str, Any], now: datetime, *, github
 
     def coordination():
         base = _expand(str(cfg.get("coordination_root") or "~/trade-ai-releases/persistent-state/data/coordination"), rules["_home"])
-        claims_dir, worklogs = base / "claims", base / "worklogs"
-        if not claims_dir.is_dir() or not worklogs.is_dir() or not (base / "handoffs" / "PROGRESS_LOG.md").is_file():
-            raise ValueError("coordination_incomplete")
-        live, active_ids, refs, live_logs = [], set(), [], []
-        files = list(base.rglob("*.json")) + list(base.rglob("*.jsonl")) + list(base.rglob("*.md"))
-        total = 0
-        for path in files:
-            if path.is_symlink():
-                raise ValueError("coordination_symlink")
-            size = path.stat().st_size
-            total += size
-            if size > 32 * 1024**2 or total > 128 * 1024**2:
-                raise ValueError("coordination_scan_limit")
-            text = path.read_text()
-            refs += re.findall(r"/[^\s\"'`<>|=,;)\]}]+", text)
-            if path.parent == claims_dir and path.suffix == ".json":
-                claim = json.loads(text)
-                if not isinstance(claim, dict) or not isinstance(claim.get("schema"), str):
-                    raise ValueError("claim_unreadable")
-                if claim["schema"] in NON_CLAIM_SCHEMAS:
-                    continue  # its paths are already in refs; it is board state, not a claim
-                if claim["schema"] != "AgentClaim@v1":
-                    raise ValueError("claim_unreadable")
-                if claim.get("status") == "active":
-                    live.append(claim)
-                    active_ids.add(claim.get("claim_id"))
-        for path in worklogs.rglob("*.md"):
-            if any(str(cid) in path.name for cid in active_ids) or now.timestamp() - path.stat().st_mtime <= 48 * 3600:
-                live_logs += re.findall(r"/[^\s\"'`<>|=,;)\]}]+", path.read_text())
-        return {"references": sorted(set(refs)), "live_claims": live, "live_worklogs": live_logs}
+        return scan_coordination(base, now)
 
     def prs():
         reader = github
