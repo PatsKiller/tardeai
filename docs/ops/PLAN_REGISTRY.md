@@ -37,14 +37,24 @@ Claude Code, add this to that file (merge into the existing `hooks` object):
 }
 ```
 
-The hook reads Claude Code's JSON on stdin, takes `tool_input.plan`, and writes an approved plan with
-`vendor: claude` and the session id as `author_session`. It never fails the tool: a registry problem
+The hook reads Claude Code's JSON on stdin, takes the approved text (`tool_response.plan` first, then
+a `planFilePath` file, then `tool_input.plan`), and writes an approved plan with `vendor: claude` and
+the session id as `author_session`. A `planFilePath` is read ONLY when it is a plan-shaped document — a `*.md` / `*.markdown` / `*.txt`
+name that is not a dotfile and not credential-shaped (`token`, `secret`, `credential`, `password`,
+`api_key`, `.env`, `id_rsa`, `.pem`, `.key` are refused) — inside one of two directories: the plan
+store (`<state root>/data/coordination/plans`) or `~/.claude/plans`. It must be a regular,
+non-symlink file of at most 256 KiB, valid UTF-8 text with no NUL byte. Nothing else is plan input,
+so the shared registry can never be used to copy a credential or an arbitrary file. It never fails the tool: a registry problem
 is reported on stderr and the exit status is 0.
 
 ## Every other vendor: the CLI
 
     python3 scripts/plan_registry.py add --title "..." --file plan.md \
         --author <session> --vendor codex [--quote "operator words"]
+
+`author_session` is a self-declared string. Each plan also records `author_proof`: `claim:<id>` when
+that session matches a live claim on the board, otherwise `self-declared` — weigh it accordingly; it
+is not an authentication.
     python3 scripts/plan_registry.py status
     python3 scripts/plan_registry.py list [--status approved] [--json]
     python3 scripts/plan_registry.py show <plan-id>
@@ -76,3 +86,21 @@ Command Center "Plans" page (list -> full-screen detail, steps done/left, claim 
 
 Read/write over the coordination plan store only. It never touches a broker, order, stop, position,
 credential or release path.
+
+
+## Containment (review 2, 2026-11-02)
+
+The store is not trusted to contain itself through the filesystem alone. Every read and write:
+
+* validates the id (`^[a-z0-9][a-z0-9-]{0,80}$`) and proves the resolved path stays under the plan
+  store — including `list()` and `stale()`, which skip any `*.md` whose stem fails that check, so a
+  symlink dropped into the store is never served;
+* writes through `mkstemp` (`O_EXCL`) inside the store and renames it into place, so a pre-planted
+  temp-name symlink cannot redirect the write outside;
+* opens the lock and the ledger with `O_NOFOLLOW`, so neither can be a link to another file.
+
+The hook's plan file is read through **one descriptor**: `O_NOFOLLOW` refuses a symlinked final
+component, `fstat` decides regular/size on that descriptor, containment is proven on
+`/proc/self/fd/<fd>` — the file actually opened — and the bytes are read from the same descriptor, so
+swapping the path between a check and the read cannot redirect it. If the kernel cannot say where the
+descriptor points, nothing is read.
