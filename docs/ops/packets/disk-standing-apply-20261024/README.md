@@ -1,5 +1,7 @@
 # Disabled source package and operator review packet
 
+> **SUPERSEDED 2026-10-31.** The operator approved the standing sweep in a direct session; the activation is the reviewed source change on branch `wt/sweep-rules-20261031` (rules S/T/W/C/R, hourly `--scheduled` lane, approval recorded verbatim in `config/disk_hygiene_rules.json`). This packet only promotes a disabled config, so it now refuses (`standing_not_disabled`). Kept as history.
+
 Design-Task: DSN-20261024-disk-standing-apply-P1-T1
 
 No script here performs host cleanup, imports or activates live n8n workflows, or changes host schedules. The operator-only promotion helper can change source configuration in an isolated review worktree after exact approval/digest. `rules.preview.json` is a copy of base rules with **disabled, pending-approval** standing metadata. `standing-apply.proposed.json` is the additive section; `admission.proposed.json` records the native schedule, new command/closure, draft contract, routes and acceptance changes; `activation-diff.json` is an inert operator-only change description. The four configuration scopes were legitimately handed off and source staging is integrated. The fresh accepted-main source union retains frozen C1 unscheduled proposal metadata. Current exact pins must be regenerated if any later integration changes configuration bytes. Never treat the old plan-only reviewed contract as approval of deletion.
