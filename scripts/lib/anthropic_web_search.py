@@ -54,8 +54,11 @@ def results_from_blocks(blocks: Any, count: int) -> tuple[list[dict[str, Any]], 
                 out.append({
                     "title": row.get("title"),
                     "url": row.get("url"),
-                    # The API returns encrypted_content; the readable page text is not exposed here.
-                    "content": row.get("encrypted_content") or "",
+                    # The API returns encrypted_content, which is opaque - never readable page text.
+                    # It is kept under its own key so no caller mistakes it for a snippet (2026-11-02: it
+                    # reached a fact's claim text as base64 and landed in CIO memory that way).
+                    "content": "",
+                    "encrypted_content": row.get("encrypted_content") or "",
                     "published": row.get("page_age"),
                 })
                 if len(out) >= count:

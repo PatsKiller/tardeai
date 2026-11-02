@@ -1152,12 +1152,16 @@ def _src_anthropic_search(ent: Entity, ctx: ResearchContext) -> list[Fact]:
                 kind="web",
                 subject_key=ent.subject_key,
                 symbol=ent.symbol,
-                claim=f"{r.get('title')}: {(r.get('content') or '')[:300]}",
+                # The provider exposes no readable snippet (only opaque encrypted_content), so the claim is
+                # the title and the citation says so. Never paste the encrypted blob into research text:
+                # 2026-11-02 it reached a fact's claim as base64 and was written into CIO memory that way.
+                claim=str(r.get("title") or "")[:300],
                 as_of=published or _iso(ctx.now),
                 citation={
                     "url": r.get("url"),
                     "as_of_basis": "published_at" if published else "retrieved_at",
                     "provider": "anthropic",
+                    "snippet_basis": "title_only_encrypted_content",
                     "outcome": outcome,
                 },
             )

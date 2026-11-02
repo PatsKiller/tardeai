@@ -85,8 +85,10 @@ def test_results_from_blocks_reads_only_web_search_results():
     assert error is None
     assert [r["url"] for r in results] == ["https://example.invalid/nvda", "https://example.invalid/second"]
     assert results[0]["title"] == "Nvidia data-centre revenue"
-    # The API exposes encrypted_content, never readable page text; the source must not pretend otherwise.
-    assert results[0]["content"] == "opaque"
+    # The API exposes encrypted_content, never readable page text. It stays under its own key: 2026-11-02
+    # it was returned as "content" and reached a fact's claim text as base64.
+    assert results[0]["content"] == ""
+    assert results[0]["encrypted_content"] == "opaque"
 
 
 def test_results_from_blocks_honours_count():
