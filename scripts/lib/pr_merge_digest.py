@@ -144,7 +144,14 @@ def _now_iso() -> str:
 
 
 def _gh(args: list[str], *, timeout: int = 90) -> tuple[int, str]:
-    proc = subprocess.run(["gh", *args], capture_output=True, text=True, timeout=timeout, check=False)
+    # A REAL subprocess timeout must not escape as an exception: one slow detail call would abort the
+    # whole digest before the next candidate is classified. It becomes rc 124 with a transient hint,
+    # so _gh_retry retries it a bounded number of times and then the caller's own failure policy runs
+    # (a detail timeout marks that PR detail_unavailable; a listing timeout fails visibly).
+    try:
+        proc = subprocess.run(["gh", *args], capture_output=True, text=True, timeout=timeout, check=False)
+    except subprocess.TimeoutExpired:
+        return 124, f"timeout after {timeout}s: gh {' '.join(args[:3])}"
     return proc.returncode, (proc.stdout or "") if proc.returncode == 0 else (proc.stderr or proc.stdout or "")
 
 
