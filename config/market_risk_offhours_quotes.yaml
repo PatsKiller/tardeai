@@ -60,6 +60,14 @@ schwab:
   # its own basis label below. Premarket/afterhours are not widened. It is still the provider's last close, never
   # older than the reference and never newer than the print; equities are never widened. Set false to refuse it again
   # (futures then stay level-only and unmeasured); the value must be a real boolean and the label below must exist.
+  #
+  # A fresh STAMP does not prove a fresh close: Schwab stamped a settle 2026-11-01, a Sunday, and CME does not settle
+  # on Sundays. A same-day-dated close is therefore accepted ONLY when the payload's own netChange corroborates it:
+  # |(quote.lastPrice - quote.netChange) - quote.closePrice| <= max(tolerance_abs, tolerance_pct% of closePrice).
+  # Missing netChange, or a disagreement, keeps the row LEVEL ONLY (not measured, and therefore unable to page on a
+  # phantom move). Coordinator review of #2485, 2026-11-02.
+  same_day_reference_tolerance_pct: 0.25
+  same_day_reference_tolerance_abs: 0.05
   settle_same_day_reference: true
   dated_reference_basis:
     equity: schwab_regular_market_last_price_dated

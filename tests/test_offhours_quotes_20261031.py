@@ -184,12 +184,14 @@ def test_futures_contract_is_stored_under_the_policy_root(cfg):
 
 
 def test_a_contract_with_no_dated_close_is_level_only_under_the_root(cfg):
+    """Pinned with the switch ON (coordinator LOW, #2485): with the switch off this passes trivially, so it must
+    prove the stale-close refusal with the exception enabled."""
     now = _t("2026-11-02T02:30:00-05:00")
     p = {"/NQZ26": {"assetMainType": "FUTURE",
-                    "quote": {"lastPrice": 25200.0, "closePrice": 25700.0,
+                    "quote": {"lastPrice": 25200.0, "closePrice": 25700.0, "netChange": 0.5,
                               "tradeTime": _ms("2026-11-02T02:28:00-05:00"),
                               "settleTime": _ms("2026-10-29T16:00:00-04:00")}}}
-    rows, skipped = oq.schwab_rows(p, now, cfg)
+    rows, skipped = oq.schwab_rows(p, now, _same_day_on(cfg))
     assert skipped == [] and rows[0]["symbol"] == "/NQ" and rows[0]["contract"] == "/NQZ26"
     assert rows[0]["reference_close"] is None and rows[0]["reference_date"] is None
     assert validate(rows[0]) is None
@@ -252,6 +254,7 @@ def test_a_settlement_dated_on_the_print_day_is_used_for_futures(cfg):
     close for the contract; it is accepted under its own basis label, never silently as a same-date close."""
     now = _t("2026-11-02T02:30:00-05:00")
     p = {"/ESZ26": {"assetMainType": "FUTURE", "quote": {"lastPrice": 7649.75, "closePrice": 7612.0,
+                                                          "netChange": 37.75,
                                                           "tradeTime": _ms("2026-11-02T02:28:00-05:00"),
                                                           "settleTime": _ms("2026-11-01T16:00:00-05:00")}}}
     rows, skipped = oq.schwab_rows(p, now, _same_day_on(cfg))
@@ -262,6 +265,41 @@ def test_a_settlement_dated_on_the_print_day_is_used_for_futures(cfg):
     assert r["reference_basis"] == "schwab_quote_close_price_settle_same_day"
     assert r["change_pct"] == round(100 * (7649.75 - 7612.0) / 7612.0, 4)
     assert validate(r) is None
+
+
+def test_a_stale_close_with_a_fresh_stamp_is_level_only(cfg):
+    """Coordinator review of #2485: Schwab's settleTime is not trustworthy (it stamped a Sunday), so a fresh stamp
+    cannot prove a fresh close. A Thursday close carried into Monday 01:00 must not read as a -2.5% STRESS."""
+    p = {"/NQZ26": {"assetMainType": "FUTURE", "quote": {"lastPrice": 25000.0, "closePrice": 25700.0,
+                                                          "netChange": 0.25,
+                                                          "tradeTime": _ms("2026-11-02T01:00:00-05:00"),
+                                                          "settleTime": _ms("2026-11-02T00:30:00-05:00")}}}
+    rows, skipped = oq.schwab_rows(p, _t("2026-11-02T01:05:00-05:00"), _same_day_on(cfg))
+    assert skipped == [] and rows[0]["symbol"] == "/NQ"
+    assert rows[0]["reference_close"] is None and rows[0]["reference_date"] is None
+    assert "inconsistent with lastPrice - netChange" in rows[0]["level_only_reason"]
+    assert validate(rows[0]) is None  # level-only rows are storable; the engine reads them as not measured
+
+
+def test_a_same_day_close_without_netchange_stays_level_only(cfg):
+    """Fail closed: no netChange in the payload means the fresh stamp cannot be corroborated."""
+    p = {"/ESZ26": {"assetMainType": "FUTURE", "quote": {"lastPrice": 7649.75, "closePrice": 7612.0,
+                                                          "tradeTime": _ms("2026-11-02T02:28:00-05:00"),
+                                                          "settleTime": _ms("2026-11-01T16:00:00-05:00")}}}
+    rows, skipped = oq.schwab_rows(p, _t("2026-11-02T02:30:00-05:00"), _same_day_on(cfg))
+    assert rows[0]["reference_close"] is None
+    assert "no lastPrice/netChange to corroborate" in rows[0]["level_only_reason"]
+
+
+def test_a_close_within_the_tolerance_is_measured(cfg):
+    """Rounding differences within the configured tolerance still measure."""
+    p = {"/ESZ26": {"assetMainType": "FUTURE", "quote": {"lastPrice": 7649.75, "closePrice": 7612.0,
+                                                          "netChange": 37.8,
+                                                          "tradeTime": _ms("2026-11-02T02:28:00-05:00"),
+                                                          "settleTime": _ms("2026-11-01T16:00:00-05:00")}}}
+    rows, skipped = oq.schwab_rows(p, _t("2026-11-02T02:30:00-05:00"), _same_day_on(cfg))
+    assert rows[0]["reference_close"] == 7612.0
+    assert rows[0]["reference_basis"] == "schwab_quote_close_price_settle_same_day"
 
 
 def test_the_same_day_rule_is_off_when_the_key_is_absent(cfg):
@@ -276,6 +314,7 @@ def test_the_same_day_rule_is_off_when_the_key_is_absent(cfg):
 
 def test_an_index_settlement_dated_on_the_print_day_is_used(cfg):
     p = {"$SPX": {"assetMainType": "INDEX", "quote": {"lastPrice": 6800.0, "closePrice": 6790.0,
+                                                       "netChange": 10.0,
                                                        "tradeTime": _ms("2026-11-02T02:28:00-05:00"),
                                                        "settleTime": _ms("2026-11-01T16:00:00-05:00")}}}
     rows, skipped = oq.schwab_rows(p, _t("2026-11-02T02:30:00-05:00"), _same_day_on(cfg))
@@ -335,6 +374,15 @@ def test_load_config_refuses_a_missing_same_day_label(tmp_path):
     src = (ROOT / "config" / "market_risk_offhours_quotes.yaml").read_text()
     bad = tmp_path / "c.yaml"
     bad.write_text(src.replace("    non_equity_same_day: schwab_quote_close_price_settle_same_day\n", ""))
+    with pytest.raises(oq.ConfigError):
+        oq.load_config(bad)
+
+
+def test_load_config_refuses_a_negative_tolerance(tmp_path):
+    src = (ROOT / "config" / "market_risk_offhours_quotes.yaml").read_text()
+    bad = tmp_path / "c.yaml"
+    bad.write_text(src.replace("  same_day_reference_tolerance_pct: 0.25",
+                               "  same_day_reference_tolerance_pct: -1"))
     with pytest.raises(oq.ConfigError):
         oq.load_config(bad)
 
