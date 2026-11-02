@@ -9,6 +9,23 @@ Authority:   READ_ONLY_ADVISORY · MBI_BEHAVIOR = 0
 Approval:    operator 2026-10-22 ("perfect approved"), mockup gate3 Pipeline.dc.html
 ```
 
+## Novice operator — Deploys tab (2026-10-30)
+
+You do **not** need to know GitHub to use this page. There are two jobs:
+
+| Job | What you do | What it does **not** do |
+|-----|-------------|-------------------------|
+| **A — Approve a merge** | Click **Approve** on a READY row (or Telegram Approve). | Does **not** put the change on your live site. |
+| **B — Put on the site** | When main is ahead of serving and CI is green (and STOP is off), promote (auto-poller or Push Live). | Does **not** merge open PRs. |
+
+**READY** means the same as Telegram: plain-English block present, four checks green
+(`cio-hardening`, `agent-governance`, `release-readiness`, `ci-gate`), not draft/held/conflict.
+**Hold** takes Approve back. **Update branch** (Advanced only) pushes to the PR’s GitHub branch —
+it is **not** “push live.” Use **? Help** on the Deploys tab for the glossary.
+
+In-flight data: `GET /api/v2/ops/in-flight`. Serving / main / STOP: `GET /api/v2/ops/releases-schedules`.
+Design: `docs/designs/DSN-20261029-deploy-console.md` (Operator clarity phase).
+
 ## 2026-10-27: release-train sections removed (operator directive)
 
 The operator directed "Remove everything about the old train ... from the Command Center and from the code"
