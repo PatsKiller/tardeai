@@ -2112,6 +2112,24 @@
           "latency_budget_ms": 150000,
           "cost_ceiling_usd": 0.25,
           "anthropic_first": false
+        },
+        "deep_overnight_llm_drain": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.05,
+          "anthropic_first": true
         }
       }
     }
