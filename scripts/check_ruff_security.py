@@ -19,6 +19,7 @@ Read-only: it runs ruff and reads its own baseline. Stdlib only.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import subprocess
 import sys
@@ -37,9 +38,15 @@ Runner = Callable[[list[str]], tuple[int, str]]
 
 
 def _default_runner(argv: list[str]) -> tuple[int, str]:
-    # stdout only: ruff's human summary on stderr would corrupt the JSON document.
-    proc = subprocess.run([sys.executable, "-m", "ruff", *argv], cwd=str(ROOT),
-                          capture_output=True, text=True, check=False)
+    # stdout only: ruff's human summary on stderr would corrupt the JSON document. Ruff missing is
+    # reported as rc 2 with no stdout, which ``scan`` refuses — never as zero findings.
+    if importlib.util.find_spec("ruff") is None:
+        return 2, ""
+    try:
+        proc = subprocess.run([sys.executable, "-m", "ruff", *argv], cwd=str(ROOT),
+                              capture_output=True, text=True, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return 2, ""
     return proc.returncode, (proc.stdout or "")
 
 
@@ -47,9 +54,13 @@ def scan(*, runner: Runner | None = None) -> dict[str, dict[str, int]]:
     """{(repo-relative file): {rule code: count}} for every S finding in the tree."""
     run = runner or _default_runner
     rc, out = run(["check", "--select", RULESET, "--output-format", "json", "--no-cache", *SCAN_PATHS])
-    # ruff exits 1 when it reports findings; only a parse failure is an error here.
+    # FAIL CLOSED. ruff exits 0 (clean) or 1 (findings) and ALWAYS prints a JSON document; an empty
+    # stdout means it never ran (not installed, crashed, or usage error). Reading that as "no
+    # findings" would let a tree with a missing linter pass the gate — the reviewer's finding.
+    if not out.strip():
+        raise RuntimeError(f"ruff --select {RULESET} produced no JSON (rc={rc}); the linter is not usable")
     try:
-        rows = json.loads(out) if out.strip() else []
+        rows = json.loads(out)
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"ruff --select {RULESET} returned non-JSON: {exc}") from exc
     counts: dict[str, Counter[str]] = {}

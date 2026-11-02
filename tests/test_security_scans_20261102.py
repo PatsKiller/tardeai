@@ -82,3 +82,24 @@ def test_a_new_security_finding_is_new_and_a_paid_one_is_stale():
     assert result["ok"] is False
     assert any("S105" in line for line in result["new"])
     assert any("S603" in line for line in result["stale"])
+
+
+def test_a_missing_or_broken_ruff_fails_closed():
+    """No JSON from ruff is not 'zero findings': the linter never ran, so the gate must refuse."""
+    import pytest
+
+    def missing(argv):
+        return 2, ""
+
+    with pytest.raises(RuntimeError):
+        rsec.scan(runner=missing)
+
+    def crashed(argv):
+        return 1, ""
+
+    with pytest.raises(RuntimeError):
+        rsec.scan(runner=crashed)
+
+
+def test_a_clean_scan_is_an_empty_json_list():
+    assert rsec.scan(runner=lambda argv: (0, "[]")) == {}
