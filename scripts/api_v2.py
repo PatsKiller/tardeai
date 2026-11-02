@@ -36309,6 +36309,22 @@ def _watch_alerts_post(body=None):
     }
 
 
+def _plans_registry(query=None):
+    """GET /api/v2/plans[?id=<plan-id>] — the read-only plan registry: every approved plan with
+    its provenance, lifecycle status, claim/branch/PR links and step counts. Detail includes the
+    body. Server reads the coordination plan store; it never writes it."""
+    try:
+        from scripts.plan_registry import Registry
+    except ImportError:
+        from plan_registry import Registry  # type: ignore
+    q = query or {}
+    pid = str((q.get("id") or [""])[0] if isinstance(q.get("id"), list) else q.get("id") or "").strip()
+    try:
+        return Registry().view(pid or None)
+    except KeyError:
+        return {"ok": False, "error": f"no plan {pid!r}"}
+
+
 def _ui_metric_guide(query=None):
     """GET /api/v2/ui/metric-guide — the metric guide (assets/ui_metric_guide.yaml): what each
     metric is, why it matters, how to read it, a benchmark. Server-supplied so the frontend
@@ -49133,6 +49149,7 @@ ROUTES = {
     "/api/v2/watch/alerts/list": _watch_alerts_list,
     "/api/v2/ui/prefs/get": _ui_prefs_get,
     "/api/v2/ui/metric-guide": _ui_metric_guide,
+    "/api/v2/plans": _plans_registry,
     "/api/v2/buy-ready/packets": _buy_ready_packets_index,
     "/api/v2/sectors/monitor": _sectors_monitor,
     "/api/v2/hermes/external-intel-map": _hermes_external_intel_map,

@@ -123,3 +123,17 @@ def test_a_second_hook_run_with_the_same_plan_does_not_duplicate(tmp_path):
     a = r.add(title="Same", body=body, author="s", vendor="claude", approved_at="2026-11-02T10:00:00Z")
     b = r.add(title="Same", body=body, author="s", vendor="claude", approved_at="2026-11-02T10:00:00Z")
     assert a == b
+
+
+def test_the_read_only_view_lists_and_shows_one_plan(tmp_path):
+    r = _reg(tmp_path)
+    p = tmp_path / "p.md"
+    p.write_text("# T\n\n- [x] one\n- [ ] two\n")
+    pid = r.add(title="T", body_path=p, author="s", vendor="claude", approved_at="2026-11-02T10:00:00Z")
+    listing = r.view()
+    assert listing["schema"] == "PlanRegistryView@v1"
+    row = listing["plans"][0]
+    assert row["id"] == pid and row["steps_done"] == 1 and row["steps_left"] == 1
+    assert "body" not in row
+    detail = r.view(pid)["plan"]
+    assert detail["body"].startswith("# T") and len(detail["steps"]) == 2

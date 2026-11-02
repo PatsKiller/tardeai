@@ -1,0 +1,29 @@
+/* Plans — mobile first (412/390 px). Cards are full-width tap targets; the detail is a full-screen
+   sheet on a phone and a side panel on desktop. No fixed chrome: the page scrolls as one column. */
+.pl-stack { display: flex; flex-direction: column; gap: 10px; }
+.pl-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.pl-card {
+  display: flex; flex-direction: column; gap: 4px; width: 100%; min-height: 72px;
+  padding: 12px 14px; text-align: left; border-radius: var(--radius-md); cursor: pointer;
+  border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.04); color: inherit;
+}
+.pl-card:active { background: rgba(255,255,255,.09); }
+.pl-card-title { font-weight: 600; font-size: 15px; line-height: 1.3; }
+.pl-card-line { font-size: 12.5px; opacity: .82; }
+.pl-card-links { opacity: .65; }
+.pl-empty { opacity: .7; padding: 16px 4px; }
+.pl-detail { display: flex; flex-direction: column; gap: 10px; }
+.pl-status { font-weight: 600; margin: 0; }
+.pl-meta, .pl-steps-summary { margin: 0; font-size: 12.5px; opacity: .8; }
+.pl-quote { margin: 0; padding: 8px 12px; border-left: 3px solid rgba(255,255,255,.3); font-style: italic; opacity: .9; }
+.pl-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.pl-step { font-size: 13.5px; line-height: 1.35; }
+.pl-step.done { opacity: .6; text-decoration: line-through; }
+.pl-links { margin: 0; font-size: 13px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pl-body { white-space: pre-wrap; word-break: break-word; font-size: 12.5px; line-height: 1.45; opacity: .85; max-height: 50vh; overflow: auto; }
+.pl-panel {
+  position: fixed; top: 0; right: 0; height: 100vh; width: min(520px, 92vw); z-index: 60;
+  overflow: auto; padding: 18px; background: var(--bg-1); border-left: 1px solid rgba(255,255,255,.14);
+}
+.pl-back { margin-bottom: 10px; }
+@media (min-width: 821px) { .pl-card:hover { background: rgba(255,255,255,.07); } }

@@ -40,6 +40,8 @@ ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = ROOT / "config" / "plan_registry.json"
 STATUSES = ("approved", "in_progress", "done", "abandoned", "stalled")
 STALE_STATUSES = ("approved", "in_progress")
+VIEW_SCHEMA = "PlanRegistryView@v1"
+_STEP_RE = re.compile(r"^\s*[-*]\s*\[( |x|X)\]\s+(.*)$")
 
 
 def _utc() -> str:
@@ -247,6 +249,33 @@ class Registry:
         if status not in STATUSES:
             raise ValueError(f"status {status!r} is not one of {STATUSES}")
         return self._mutate(pid, "status", {"status": status})
+
+    def _entry(self, pid: str, doc: dict[str, Any], *, body: bool) -> dict[str, Any]:
+        steps = []
+        for line in doc["body"].splitlines():
+            m = _STEP_RE.match(line)
+            if m:
+                steps.append({"done": m.group(1).lower() == "x", "text": m.group(2).strip()[:300]})
+        entry = {**{k: doc["front"].get(k) for k in ("id", "title", "author_session", "vendor", "approved_at",
+                                                    "operator_quote", "status", "claim", "branch", "pr",
+                                                    "updated_at", "stalled_since")},
+                 "id": doc["front"].get("id") or pid, "steps": steps,
+                 "steps_done": sum(1 for x in steps if x["done"]), "steps_left": sum(1 for x in steps if not x["done"])}
+        if body:
+            entry["body"] = doc["body"]
+        return entry
+
+    def view(self, pid: str | None = None) -> dict[str, Any]:
+        """The read-only shape served by /api/v2/plans (list, or one plan with its body)."""
+        if pid:
+            return {"schema": VIEW_SCHEMA, "plan": self._entry(pid, self.get(pid), body=True)}
+        rows = []
+        for path in sorted(self.plans.glob("*.md")):
+            doc = parse_plan(path.read_text(encoding="utf-8"))
+            if doc["front"]:
+                rows.append(self._entry(path.stem, doc, body=False))
+        rows.sort(key=lambda r: str(r.get("approved_at") or ""), reverse=True)
+        return {"schema": VIEW_SCHEMA, "plans": rows}
 
     def stale(self, *, now: str | None = None, apply: bool = False, hours: float | None = None) -> list[str]:
         """Approved/in-progress plans with no claim, branch or PR and no activity for N hours."""
