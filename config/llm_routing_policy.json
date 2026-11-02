@@ -2073,7 +2073,7 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.1,
+          "cost_ceiling_usd": 0.25,
           "route_profile": "anthropic_promotional_only",
           "anthropic_first": true
         },
