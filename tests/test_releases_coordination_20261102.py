@@ -385,3 +385,24 @@ def test_a_record_without_a_head_never_matches_a_real_head(tmp_path):
     ledger = _ledger(tmp_path, _review(head="", verdict="MERGE"), _ci(head="", state="GREEN"))
     work = rc.build(ledger, _claims(tmp_path), [_pr(head=HEAD)], now=NOW)["work"][2474]
     assert work["review"]["state"] == "UNKNOWN" and work["ci"]["state"] == "UNKNOWN"
+
+
+def test_the_board_join_uses_the_newest_claim_not_the_last_filename(tmp_path):
+    """codex final BLOCK on 498112306: file order must not let a stale claim shadow a fresh one."""
+    _board(tmp_path, BOARD_MD)
+    d = tmp_path / "claims"; d.mkdir(exist_ok=True)
+    # "a" is FRESH but sorts first; "b" is five days old but sorts last (last-wins would pick it).
+    (d / "a.json").write_text(json.dumps({"session": "cc-deepseek-2", "branch": "wt/fresh-a", "task": "fresh",
+                                          "status": "active", "claim_id": "a",
+                                          "heartbeat_at": "2026-11-02T17:50:00Z"}), encoding="utf-8")
+    (d / "b.json").write_text(json.dumps({"session": "cc-deepseek-2", "branch": "wt/stale-b", "task": "stale",
+                                          "status": "active", "claim_id": "b",
+                                          "heartbeat_at": "2026-10-28T18:00:00Z"}), encoding="utf-8")
+    agents = {a["session"]: a for a in rc.build(tmp_path / "ledger.jsonl", d, [_pr()], now=NOW)["agents"]}
+    row = agents["cc-deepseek-2"]
+    assert row["branch"] == "wt/fresh-a"                 # newest heartbeat wins, not the last filename
+    assert row["execution_state"] == "working"
+    # ...and a PR on EITHER branch still finds its owner
+    for branch in ("wt/fresh-a", "wt/stale-b"):
+        work = rc.build(tmp_path / "ledger.jsonl", d, [_pr(branch=branch)], now=NOW)["work"][2474]
+        assert work["owner"] == "cc-deepseek-2", branch

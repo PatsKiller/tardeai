@@ -430,7 +430,10 @@ def build(ledger_path: Path, claims_dir: Path, prs: Iterable[Mapping[str, Any]],
 
     # PRIMARY list = the BOARD's documented current rows (never a hardcoded set). A BOARD row is
     # "assigned", not "working": execution state stays UNKNOWN unless a claim proves otherwise.
-    by_session = {a["session"]: a for a in live if a.get("session")}
+    # The BOARD join must use the same latest-primary selector as the summary. A dict built from the
+    # claim files took the LAST filename, so a five-day-old claim could shadow a fresh one for the same
+    # session (codex final BLOCK on 498112306, 2026-11-02). Per-PR ownership still uses every claim.
+    by_session = {a["session"]: a for a in primary_claims(claims) if a.get("session")}
     agents = []
     for row in board["agents"]:
         claim = by_session.get(row["session"]) or {}
