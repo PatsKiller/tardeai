@@ -183,7 +183,7 @@ def test_source_emits_cited_facts(monkeypatch):
     assert fact.citation["url"] == "https://x.invalid/a"
     assert fact.citation["provider"] == "anthropic"
     assert fact.as_of  # every fact carries a clock; unknown page_age falls back to retrieved_at
-    assert facts.outcome == {"ok": True, "provider": "anthropic"}
+    assert facts.outcome == {"ok": True, "provider": "anthropic", "code_execution_blocks": 0}
 
 
 def test_source_is_dry_run_silent(monkeypatch):
@@ -278,3 +278,40 @@ def test_a_refusal_without_the_degraded_marker_still_fails_the_check(monkeypatch
     src = car.SourceSpec("web.other", "web", refused, 5.0, needs_symbol=False)
     gathered = car.gather_facts([_entity()], [src], car.ResearchContext(question="q", now=NOW))
     assert next(r for r in gathered["runs"] if r["source"] == "web.other")["status"] == "refused"
+
+
+# ------------------------------------------------------------- dynamic filtering (provider-side code)
+def test_code_execution_blocks_counts_only_sandbox_results():
+    """web_search_20260209 answers through dynamic filtering: Claude writes code in Anthropic's sandbox to
+    call web_search and filter results. Those blocks are counted, never consumed."""
+    blocks = [
+        {"type": "server_tool_use", "id": "c1", "name": "code_execution", "input": {"code": "r = await web_search(...)"}},
+        {"type": "server_tool_use", "id": "w1", "name": "web_search", "input": {"query": "x"}},
+        {"type": "web_search_tool_result", "tool_use_id": "w1", "content": [
+            {"type": "web_search_result", "title": "T", "url": "https://x.invalid", "encrypted_content": "e"}]},
+        {"type": "code_execution_tool_result", "tool_use_id": "c1", "content": {"type": "code_execution_result"}},
+        {"type": "code_execution_tool_result", "tool_use_id": "c1", "content": {"type": "code_execution_result"}},
+    ]
+    assert ws.code_execution_blocks(blocks) == 2
+    results, error = ws.results_from_blocks(blocks, 5)
+    assert error is None and [r["url"] for r in results] == ["https://x.invalid"]
+
+
+def test_search_reports_the_sandbox_count():
+    def transport(url, body, timeout_s):
+        return {"_tradeai": {"content_blocks": [
+            {"type": "code_execution_tool_result", "tool_use_id": "c1", "content": {}},
+            {"type": "web_search_tool_result", "tool_use_id": "w1", "content": [
+                {"type": "web_search_result", "title": "T", "url": "https://x.invalid", "encrypted_content": "e"}]},
+        ]}}
+
+    out = ws.search("q", transport=transport)
+    assert out["ok"] is True and out["code_execution_blocks"] == 1
+
+
+def test_source_carries_the_sandbox_count_into_its_outcome(monkeypatch):
+    monkeypatch.setattr(_ws_module(), "search", lambda q, count=5: {
+        "ok": True, "provider": "anthropic", "error": None, "code_execution_blocks": 3,
+        "results": [{"title": "A", "url": "https://x.invalid/a", "content": "", "published": None}]})
+    facts = car._src_anthropic_search(_entity(), car.ResearchContext(question="q", now=NOW))
+    assert facts.outcome["code_execution_blocks"] == 3
