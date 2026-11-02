@@ -9,7 +9,7 @@ Callers wired today:
 
 * ``pr_merge_digest.classify_pr`` — digest eligibility;
 * ``pr_merge_telegram.pr_check_rollup_green`` — the Telegram approve/notify gate;
-* ``mergify_queue_monitor.fetch_head_check_conclusions`` + ``classify_dequeue`` — a red check of any
+* ``mergify_queue_monitor.fetch_head_check_rollup`` + ``classify_dequeue`` — a red check of any
   kind is a real failure, never a flake to requeue.
 
 ``.mergify.yml`` carries the same rule on every queue entry rule and queue merge condition, as

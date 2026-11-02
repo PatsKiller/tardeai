@@ -284,5 +284,5 @@ def test_the_queue_monitor_reads_every_check_on_the_head(monkeypatch):
     rollup.append({"name": "secret-scan", "conclusion": "FAILURE", "workflowName": "secret-scan"})
     monkeypatch.setattr(mqm.subprocess, "run",
                         lambda *a, **k: subprocess_result(json.dumps({"statusCheckRollup": rollup})))
-    checks = mqm.fetch_head_check_conclusions(101, repo="example-org/example-repo")
-    assert checks["secret-scan"] == ["FAILURE"]  # every run per name, so a skip cannot hide it
+    rollup = mqm.fetch_head_check_rollup(101, repo="example-org/example-repo")
+    assert any(row.get("name") == "secret-scan" and row.get("conclusion") == "FAILURE" for row in rollup)

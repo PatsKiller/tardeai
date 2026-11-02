@@ -178,3 +178,83 @@ def test_a_finished_failure_after_a_skipped_run_still_blocks():
     )
     assert plan.classification == "REAL_CI_FAIL"
     assert plan.requeue is False
+
+
+# ---------------------------------------------------------------- review round 1 (#2486)
+def _rollup(name, conclusion=None, *, state=None, workflow=None, status="COMPLETED"):
+    row = {"name": name, "status": status, "conclusion": conclusion}
+    if state is not None:
+        row = {"context": name, "state": state, "startedAt": "2026-11-02T03:00:00Z"}
+    if workflow:
+        row["workflowName"] = workflow
+    return row
+
+
+def _plan(rollup, *, checks=None, mergeable="MERGEABLE", reason="CHECKS_FAILED", body=""):
+    from scripts.lib.mergify_queue_monitor import classify_dequeue
+
+    return classify_dequeue(reason_code=reason, body=body, mergeable=mergeable,
+                            rollup=rollup, hotfix_on_main=True, checks=checks)
+
+
+def test_a_failed_check_beside_a_running_one_is_red_not_waited():
+    plan = _plan([_rollup("cio-hardening", "FAILURE"),
+                  _rollup("shard 0", status="IN_PROGRESS", conclusion=None)])
+    assert plan.classification == "REAL_CI_FAIL"
+    assert plan.requeue is False
+
+
+def test_the_same_job_name_in_two_workflows_with_one_red_is_red():
+    plan = _plan([_rollup("shard 0", "FAILURE", workflow="cio-full-suite-sharded"),
+                  _rollup("shard 0", "SUCCESS", workflow="other-workflow")])
+    assert plan.classification == "REAL_CI_FAIL"
+
+
+def test_a_red_status_context_is_red():
+    plan = _plan([_rollup("legacy/ci", state="FAILURE")])
+    assert plan.classification == "REAL_CI_FAIL"
+
+
+def test_an_unreadable_head_holds_and_never_requeues():
+    plan = _plan(None)
+    assert plan.classification == "UNMEASURED"
+    assert plan.requeue is False and plan.page_p1 is False
+
+
+def test_mergify_own_checks_are_never_graded():
+    plan = _plan([_rollup("Mergify Merge Queue", "NEUTRAL"),
+                  _rollup("Rule: Queue default", status="IN_PROGRESS"),
+                  _rollup("Summary", "SUCCESS"),
+                  _rollup("cio-hardening", "SUCCESS")])
+    assert plan.classification != "REAL_CI_FAIL"
+    assert plan.classification != "WAIT"
+
+
+def test_wait_posts_no_comment_and_pages_once_after_the_limit(tmp_path, monkeypatch):
+    import scripts.lib.mergify_queue_monitor as mqm
+
+    monkeypatch.setattr(mqm, "fetch_main_mergify_yml", lambda repo=None: "")
+    monkeypatch.setattr(mqm, "fetch_open_operator_merge_prs", lambda repo=None: [
+        {"number": 7, "labels": [{"name": "operator-merge"}], "mergeable": "MERGEABLE"}])
+    monkeypatch.setattr(mqm, "fetch_latest_dequeue_comment",
+                        lambda pr, repo=None: ("", {"state": "dequeued", "dequeue_reason": {"code": "CHECKS_FAILED"}}))
+    monkeypatch.setattr(mqm, "fetch_head_check_rollup",
+                        lambda pr, repo=None: [_rollup("shard 0", status="IN_PROGRESS", conclusion=None)])
+    comments = []
+    monkeypatch.setattr(mqm, "post_pr_comment", lambda pr, body, repo=None: comments.append(body) or True)
+    pages = []
+    import scripts.delivery_failure_alerts as dfa
+    monkeypatch.setattr(dfa, "page_p1", lambda **kw: pages.append(kw))
+
+    first = mqm.run_once(dry_run=False, root=tmp_path)
+    assert first["actions"][0].get("waiting") is True
+    assert comments == []  # WAIT never comments
+
+    # age the wait clock past the configured limit: exactly one page, still no comment
+    ledger = json.loads((tmp_path / "mergify_wait_since.json").read_text())
+    ledger["7"] = "2026-11-02T00:00:00Z"
+    (tmp_path / "mergify_wait_since.json").write_text(json.dumps(ledger))
+    second = mqm.run_once(dry_run=False, root=tmp_path)
+    assert second["actions"][0].get("paged_stuck") is True
+    assert len(pages) == 1
+    assert comments == []
