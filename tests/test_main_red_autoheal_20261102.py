@@ -412,10 +412,10 @@ def test_the_page_is_deduped_by_commit_and_check(tmp_path):
     assert len(telegram.sent) == 1  # cooldown by (head sha, workflow), not run id
 
 
-def test_secret_scan_and_codeql_are_watched():
+def test_secret_scan_is_watched_and_codeql_is_gone():
     cfg = json.loads((REPO_ROOT / "config" / "main_red_autoheal.json").read_text())
     assert "secret-scan" in cfg["required_workflows"]
-    assert "CodeQL" in cfg["required_workflows"]
+    assert "CodeQL" not in cfg["required_workflows"]  # removed 2026-11-02
 
 
 # ---------------------------------------------------------------- review round 2
