@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "conflict_output_receipt_20261102",
+  "files": [
+    "tests/test_conflict_output_receipt_20261102.py"
+  ],
+  "comment": [
+    "Non-broker receipt engineering only: guarded synthetic _run with fake memory writer; collector/main/protected imports unreachable. Requires a real report and identity-bound immutable shared attempt; zero subjects still produces a comparison artifact. OI-135 broker-closure governance blocker remains open; no admission or activation change."
+  ]
+}
