@@ -1,7 +1,9 @@
 {
   "schema": "CiGate@v1",
   "name": "operator_approval_20261102",
-  "files": ["tests/test_operator_approval_20261102.py"],
+  "files": [
+    "tests/test_operator_approval_20261102.py"
+  ],
   "comment": [
     "2026-11-02 (item 5 of PLAN_COLLISION_AUTOREMEDIATION_20261101): only a GitHub comment URL posted by the operator authorises a grant-free push. agent_claim.py claim --operator-approval validates that shape and writes the Operator-approval: line the guard reads; a free-text reference is refused with the exact ~/bin/approve-push command. Hermetic: no network, no GitHub call."
   ]
