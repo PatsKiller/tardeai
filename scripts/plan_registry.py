@@ -42,6 +42,8 @@ STATUSES = ("approved", "in_progress", "done", "abandoned", "stalled")
 STALE_STATUSES = ("approved", "in_progress")
 VIEW_SCHEMA = "PlanRegistryView@v1"
 _STEP_RE = re.compile(r"^\s*[-*]\s*\[( |x|X)\]\s+(.*)$")
+#: A plan id is a single path component; anything else is refused before it reaches the filesystem.
+ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,80}$")
 
 
 def _utc() -> str:
@@ -72,9 +74,10 @@ def slug(text: str) -> str:
     return (s or "plan")[:40]
 
 
-def plan_id(title: str, body: str, day: str) -> str:
-    digest = hashlib.sha256(f"{title}\n{body}".encode("utf-8")).hexdigest()[:8]
-    return f"{day.replace('-', '')}-{slug(title)}-{digest}"
+def plan_id(title: str, body: str, author: str = "") -> str:
+    """Stable from the plan itself (title, text, author) — NOT the day, so a retry tomorrow dedupes."""
+    digest = hashlib.sha256(f"{title}\n{body}\n{author}".encode("utf-8")).hexdigest()[:12]
+    return f"{slug(title)}-{digest}"
 
 
 # ------------------------------------------------------------------ document format
@@ -134,9 +137,12 @@ class Registry:
                 fcntl.flock(fh, fcntl.LOCK_UN)
 
     def _write(self, pid: str, front: dict[str, Any], body: str) -> None:
-        path = self.plans / f"{pid}.md"
+        path = self._path(pid)
         tmp = path.with_suffix(".md.tmp")
-        tmp.write_text(render_plan(front, body), encoding="utf-8")
+        with tmp.open("w", encoding="utf-8") as fh:
+            fh.write(render_plan(front, body))
+            fh.flush()
+            os.fsync(fh.fileno())  # durable BEFORE the rename: a crash never leaves a torn plan
         os.replace(tmp, path)
 
     def _event(self, event: str, pid: str, **detail: Any) -> None:
@@ -148,7 +154,21 @@ class Registry:
             os.fsync(fh.fileno())
 
     def _path(self, pid: str) -> Path:
-        return self.plans / f"{pid}.md"
+        """Validate the id and prove the resolved file stays inside the plan store.
+
+        Refuses traversal ("../x"), absolute ids ("/tmp/x"), slash-bearing ids and any existing
+        symlink that resolves outside plans/ — before any read, write or render touches the disk.
+        """
+        pid = str(pid)
+        if not ID_RE.match(pid):
+            raise ValueError(f"invalid plan id {pid!r}: expected {ID_RE.pattern}")
+        base = self.plans.resolve()
+        path = self.plans / f"{pid}.md"
+        try:
+            path.resolve().relative_to(base)
+        except ValueError:
+            raise ValueError(f"plan id {pid!r} resolves outside the plan store") from None
+        return path
 
     def _last_activity(self, pid: str, front: dict[str, Any]) -> datetime | None:
         """The last real plan event: approval or a ledger entry. Not the file's insert time."""
@@ -174,8 +194,9 @@ class Registry:
         if status not in STATUSES:
             raise ValueError(f"status {status!r} is not one of {STATUSES}")
         text = body if body is not None else (Path(body_path).read_text(encoding="utf-8") if body_path else "")
-        day = (_parse_ts(approved_at) or datetime.now(timezone.utc)).strftime("%Y-%m-%d")
-        new_id = pid or plan_id(title, text, day)
+        new_id = pid if pid is not None else plan_id(title, text, author)
+        if not ID_RE.match(str(new_id)):
+            raise ValueError(f"invalid plan id {new_id!r}: expected {ID_RE.pattern}")
         with self._lock():
             if self._path(new_id).is_file():
                 return new_id  # idempotent: the same plan is never written twice
@@ -195,9 +216,22 @@ class Registry:
         doc["front"].setdefault("id", pid)
         return doc
 
+    def _iter_plans(self) -> Iterator[Path]:
+        """Every plan file, held to the same containment as an id.
+
+        ``glob`` follows a symlink, so a plan-shaped link dropped in the store could otherwise be
+        read by ``list``/``view`` even though ``get`` refuses it. Validating ``path.stem`` through
+        ``_path`` skips exactly those entries.
+        """
+        for path in sorted(self.plans.glob("*.md")):
+            try:
+                yield self._path(path.stem)
+            except ValueError:
+                continue
+
     def list(self, status: str | None = None) -> list[dict[str, Any]]:
         rows = []
-        for path in sorted(self.plans.glob("*.md")):
+        for path in self._iter_plans():
             front = parse_plan(path.read_text(encoding="utf-8"))["front"]
             if not front:
                 continue
@@ -250,6 +284,20 @@ class Registry:
             raise ValueError(f"status {status!r} is not one of {STATUSES}")
         return self._mutate(pid, "status", {"status": status})
 
+    def _mark_stalled(self, pid: str) -> bool:
+        """Re-check under the lock: a plan linked while the scan ran is NOT stale."""
+        with self._lock():
+            doc = self.get(pid)
+            front = doc["front"]
+            if any(front.get(k) for k in ("claim", "branch", "pr")):
+                return False
+            if str(front.get("status")) not in STALE_STATUSES:
+                return False
+            self._write(pid, {**front, "status": "stalled", "stalled_since": _utc(), "updated_at": _utc()},
+                        doc["body"])
+            self._event("stalled", pid)
+        return True
+
     def _entry(self, pid: str, doc: dict[str, Any], *, body: bool) -> dict[str, Any]:
         steps = []
         for line in doc["body"].splitlines():
@@ -270,7 +318,7 @@ class Registry:
         if pid:
             return {"schema": VIEW_SCHEMA, "plan": self._entry(pid, self.get(pid), body=True)}
         rows = []
-        for path in sorted(self.plans.glob("*.md")):
+        for path in self._iter_plans():
             doc = parse_plan(path.read_text(encoding="utf-8"))
             if doc["front"]:
                 rows.append(self._entry(path.stem, doc, body=False))
@@ -290,9 +338,9 @@ class Registry:
             last = self._last_activity(str(front["id"]), front)
             if last is None or current - last < timedelta(hours=limit):
                 continue
+            if apply and not self._mark_stalled(str(front["id"])):
+                continue  # linked or resumed between the scan and the lock
             flagged.append(str(front["id"]))
-            if apply:
-                self._mutate(str(front["id"]), "stalled", {"status": "stalled", "stalled_since": _utc()})
         if apply and flagged:
             self.inbox.parent.mkdir(parents=True, exist_ok=True)
             with self.inbox.open("a", encoding="utf-8") as fh:
