@@ -16,13 +16,61 @@ hook that blocks ExitPlanMode would stop the operator's own planning.
 from __future__ import annotations
 
 import json
+import os
+import stat
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import plan_registry as pr  # noqa: E402
+
+#: A plan is text. The hook must never copy an arbitrary file into a SHARED registry (review
+#: 2026-11-02, B2): a payload naming ``secret.env`` stored its contents as a plan body. The path is
+#: constrained to the directories a client actually writes plans in, must be a regular file (not a
+#: symlink) and is size-capped.
+MAX_PLAN_BYTES = 256 * 1024
+
+
+def plan_file_roots() -> list[Path]:
+    """Where a client may keep a plan file: the state root, ``~/.claude`` and the temp dir."""
+    roots = [Path(os.environ.get("TRADEAI_STATE_ROOT")
+                  or (Path.home() / "trade-ai-releases" / "persistent-state")),
+             Path.home() / ".claude",
+             Path(tempfile.gettempdir())]
+    out = []
+    for r in roots:
+        try:
+            out.append(r.resolve())
+        except OSError:
+            continue
+    return out
+
+
+def read_plan_file(raw: str) -> str:
+    """The plan text at ``raw``, or ``""`` when it is not a bounded regular file in a plan root."""
+    try:
+        path = Path(raw)
+        st = path.lstat()
+    except OSError:
+        return ""
+    if not stat.S_ISREG(st.st_mode) or st.st_size > MAX_PLAN_BYTES:
+        return ""  # symlinks (lstat) and oversize files are never plan input
+    try:
+        resolved = path.resolve()
+    except OSError:
+        return ""
+    if not any(resolved == root or root in resolved.parents for root in plan_file_roots()):
+        return ""
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return ""
+    if len(data) > MAX_PLAN_BYTES:
+        return ""
+    return data.decode("utf-8", errors="replace")
 
 
 def plan_from_payload(payload: dict) -> str:
@@ -41,10 +89,7 @@ def plan_from_payload(payload: dict) -> str:
         for key in ("planFilePath", "plan_file_path"):
             path = source.get(key)
             if isinstance(path, str) and path.strip():
-                try:
-                    text = Path(path).read_text(encoding="utf-8", errors="replace")
-                except OSError:
-                    text = ""
+                text = read_plan_file(path)
                 if text.strip():
                     return text
     tool_input = payload.get("tool_input")

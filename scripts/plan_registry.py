@@ -31,6 +31,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -101,16 +102,43 @@ def parse_plan(text: str) -> dict[str, Any]:
 
 def render_plan(front: dict[str, Any], body: str) -> str:
     lines = ["---"]
-    for key in ("id", "title", "author_session", "vendor", "approved_at", "operator_quote", "status",
-                "claim", "branch", "pr", "updated_at", "stalled_since"):
+    for key in ("id", "title", "author_session", "author_proof", "vendor", "approved_at", "operator_quote",
+                "status", "claim", "branch", "pr", "updated_at", "stalled_since"):
         if key in front and front[key] is not None:
             lines.append(f"{key}: {json.dumps(front[key], ensure_ascii=False)}")
     for key, value in front.items():
-        if key not in {"id", "title", "author_session", "vendor", "approved_at", "operator_quote",
-                       "status", "claim", "branch", "pr", "updated_at", "stalled_since"} and value is not None:
+        if key not in {"id", "title", "author_session", "author_proof", "vendor", "approved_at",
+                       "operator_quote", "status", "claim", "branch", "pr", "updated_at",
+                       "stalled_since"} and value is not None:
             lines.append(f"{key}: {json.dumps(value, ensure_ascii=False)}")
     lines.append("---")
     return "\n".join(lines) + "\n\n" + body.lstrip("\n")
+
+
+def author_proof(author: str, *, root: Path | None = None) -> str:
+    """How this author is evidenced — never a claim that it is authenticated.
+
+    A session id is a self-declared string. When ``author`` matches a LIVE claim on the board, the
+    record names that claim (``claim:<id>``); otherwise it says ``self-declared``. The distinction is
+    recorded on the plan so a reader can weigh the authorship instead of assuming it.
+    """
+    author = str(author or "")
+    if not author:
+        return "self-declared"
+    claims = Path(root or state_root()) / "data" / "coordination" / "claims"
+    if not claims.is_dir():
+        return "self-declared"
+    for p in sorted(claims.glob("*.json")):
+        try:
+            doc = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(doc, dict) or str(doc.get("status") or "") != "active":
+            continue
+        if str(doc.get("session") or "") != author:
+            continue
+        return f"claim:{doc.get('claim_id') or p.stem}"
+    return "self-declared"
 
 
 # ------------------------------------------------------------------ registry
@@ -126,8 +154,16 @@ class Registry:
     # -- io
     @contextmanager
     def _lock(self) -> Iterator[None]:
+        # O_NOFOLLOW: the lock file is opened with the same containment rule as everything else in the
+        # store. A symlink planted at plans/.lock is an error (ELOOP), never a lock held on some other
+        # file; without this the store's own lock could be redirected outside it.
         self.plans.mkdir(parents=True, exist_ok=True)
-        with open(self.plans / ".lock", "a+") as fh:
+        lock = self.plans / ".lock"
+        try:
+            fd = os.open(lock, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        except OSError as exc:
+            raise ValueError(f"plan store lock {lock} is not a regular file ({exc.strerror}); refusing") from None
+        with os.fdopen(fd, "a+", encoding="utf-8") as fh:
             fcntl.flock(fh, fcntl.LOCK_EX)
             try:
                 yield
@@ -136,16 +172,32 @@ class Registry:
 
     def _write(self, pid: str, front: dict[str, Any], body: str) -> None:
         path = self._path(pid)
-        tmp = path.with_suffix(".md.tmp")
-        with tmp.open("w", encoding="utf-8") as fh:
-            fh.write(render_plan(front, body))
-            fh.flush()
-            os.fsync(fh.fileno())  # durable BEFORE the rename: a crash never leaves a torn plan
-        os.replace(tmp, path)
+        # A pre-planted symlink at a predictable temp name must never be followed (review 2026-11-02,
+        # B1): mkstemp creates a NEW 0600 file with O_EXCL inside the plan store, so the write can
+        # neither land outside it nor replace someone else's file.
+        fd, tmp_name = tempfile.mkstemp(prefix=".plan-", suffix=".tmp", dir=str(self.plans))
+        tmp = Path(tmp_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(render_plan(front, body))
+                fh.flush()
+                os.fsync(fh.fileno())  # durable BEFORE the rename: a crash never leaves a torn plan
+            os.replace(tmp, path)
+        except BaseException:
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+            raise
 
     def _event(self, event: str, pid: str, **detail: Any) -> None:
+        # O_NOFOLLOW: the append-only ledger cannot be redirected outside the store by a planted link.
         self.plans.mkdir(parents=True, exist_ok=True)
-        with self.ledger.open("a", encoding="utf-8") as fh:
+        try:
+            fd = os.open(self.ledger, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
+        except OSError as exc:
+            raise ValueError(f"plan ledger {self.ledger} is not a regular file ({exc.strerror}); refusing") from None
+        with os.fdopen(fd, "a", encoding="utf-8") as fh:
             fh.write(json.dumps({"at": _utc(), "event": event, "id": pid, "detail": detail},
                                 sort_keys=True) + "\n")
             fh.flush()
@@ -188,7 +240,7 @@ class Registry:
     # -- api
     def add(self, *, title: str, author: str, vendor: str, approved_at: str,
             body: str | None = None, body_path: Path | None = None, quote: str | None = None,
-            pid: str | None = None, status: str = "approved") -> str:
+            pid: str | None = None, status: str = "approved", proof: str | None = None) -> str:
         if status not in STATUSES:
             raise ValueError(f"status {status!r} is not one of {STATUSES}")
         text = body if body is not None else (Path(body_path).read_text(encoding="utf-8") if body_path else "")
@@ -198,7 +250,8 @@ class Registry:
         with self._lock():
             if self._path(new_id).is_file():
                 return new_id  # idempotent: the same plan is never written twice
-            front = {"id": new_id, "title": title, "author_session": author, "vendor": vendor,
+            front = {"id": new_id, "title": title, "author_session": author,
+                     "author_proof": proof or author_proof(author, root=self.root), "vendor": vendor,
                      "approved_at": approved_at, "status": status, "updated_at": _utc()}
             if quote:
                 front["operator_quote"] = quote
@@ -215,9 +268,22 @@ class Registry:
         return doc
 
     def list(self, status: str | None = None) -> list[dict[str, Any]]:
+        """Every plan in the store, held to the SAME containment as an id-addressed read.
+
+        ``glob`` follows a symlink, so a plan-shaped link dropped in the store could otherwise be
+        read by list()/stale() even though get() refuses it (review 2026-11-02, B1). A link that
+        resolves outside the store is skipped here too.
+        """
         rows = []
         for path in sorted(self.plans.glob("*.md")):
-            front = parse_plan(path.read_text(encoding="utf-8"))["front"]
+            try:
+                path = self._path(path.stem)  # id rules + resolved containment
+            except ValueError:
+                continue  # a file that escapes the store is never served
+            try:
+                front = parse_plan(path.read_text(encoding="utf-8"))["front"]
+            except OSError:
+                continue  # one unreadable file must not take the whole listing down
             if not front:
                 continue
             if status and front.get("status") != status:

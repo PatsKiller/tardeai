@@ -212,3 +212,106 @@ def test_stale_rechecks_linkage_inside_the_lock(tmp_path, monkeypatch):
     monkeypatch.setattr(r, "list", listed_then_linked)
     assert r.stale(now="2026-11-02T12:00:00Z", apply=True) == []
     assert r.get(pid)["front"]["status"] == "approved"
+
+
+# ---------------------------------------------------------------- review 2 (cc3, 2026-11-02) B1/B2
+def test_list_never_serves_a_file_that_escapes_the_store(tmp_path):
+    r = _reg(tmp_path)
+    p = tmp_path / "p.md"
+    p.write_text("# T\n")
+    pid = r.add(title="T", body_path=p, author="s", vendor="claude", approved_at="2026-11-02T10:00:00Z")
+    inside = tmp_path / "data/coordination/plans"
+    outside = tmp_path / "victim.md"
+    outside.write_text('---\ntitle: "victim"\nstatus: "approved"\n---\n\noutside\n')
+    (inside / "leak.md").symlink_to(outside)
+    assert [row["id"] for row in r.list()] == [pid]
+    assert r.stale(now="2026-11-02T12:00:00Z", apply=False) == []
+
+
+def test_a_planted_temp_symlink_never_redirects_a_write(tmp_path):
+    r = _reg(tmp_path)
+    p = tmp_path / "p.md"
+    p.write_text("# T\n")
+    pid = r.add(title="T", body_path=p, author="s", vendor="claude", approved_at="2026-11-02T10:00:00Z")
+    inside = tmp_path / "data/coordination/plans"
+    outside = tmp_path / "outside-target"
+    outside.write_text("untouched\n")
+    (inside / f"{pid}.md.tmp").symlink_to(outside)  # the name the old code wrote through
+    r.set_status(pid, "in_progress")
+    assert outside.read_text() == "untouched\n"
+    assert r.get(pid)["front"]["status"] == "in_progress"
+    assert (inside / f"{pid}.md.tmp").is_symlink()  # the planted name is untouched, not written through
+
+
+def test_a_planted_lock_symlink_is_refused(tmp_path):
+    import pytest
+
+    r = _reg(tmp_path)
+    p = tmp_path / "p.md"
+    p.write_text("# T\n")
+    pid = r.add(title="T", body_path=p, author="s", vendor="claude", approved_at="2026-11-02T10:00:00Z")
+    inside = tmp_path / "data/coordination/plans"
+    outside = tmp_path / "lock-target"
+    outside.write_text("untouched\n")
+    (inside / ".lock").unlink()
+    (inside / ".lock").symlink_to(outside)
+    with pytest.raises(ValueError):
+        r.set_status(pid, "done")
+    assert outside.read_text() == "untouched\n"
+
+
+def test_a_planted_ledger_symlink_is_refused(tmp_path):
+    import pytest
+
+    r = _reg(tmp_path)
+    inside = tmp_path / "data/coordination/plans"
+    inside.mkdir(parents=True, exist_ok=True)
+    outside = tmp_path / "ledger-target"
+    outside.write_text("untouched\n")
+    (inside / "ledger.jsonl").symlink_to(outside)
+    with pytest.raises(ValueError):
+        r.add(title="T", body="x", author="s", vendor="claude", approved_at="2026-11-02T10:00:00Z")
+    assert outside.read_text() == "untouched\n"
+
+
+def test_author_proof_names_a_live_claim_or_says_self_declared(tmp_path):
+    import json as _json
+
+    r = _reg(tmp_path)
+    claims = tmp_path / "data/coordination/claims"
+    claims.mkdir(parents=True)
+    (claims / "c1.json").write_text(_json.dumps({"status": "active", "session": "sess-1", "claim_id": "c1"}))
+    a = r.add(title="A", body="x", author="sess-1", vendor="claude", approved_at="2026-11-02T10:00:00Z")
+    b = r.add(title="B", body="x", author="sess-2", vendor="claude", approved_at="2026-11-02T10:00:00Z")
+    plans = tmp_path / "data/coordination/plans"
+    assert 'author_proof: "claim:c1"' in (plans / f"{a}.md").read_text()
+    assert 'author_proof: "self-declared"' in (plans / f"{b}.md").read_text()
+
+
+def test_the_hook_reads_only_a_bounded_regular_file_under_the_plan_roots(tmp_path, monkeypatch):
+    import plan_registry_hook as hook
+
+    plans = tmp_path / "plans"
+    plans.mkdir()
+    monkeypatch.setattr(hook, "plan_file_roots", lambda: [plans.resolve()])
+    (plans / "p.md").write_text("# Plan\n")
+    secret = tmp_path / "secret.env"
+    secret.write_text("TOKEN=super-secret\n")
+    (plans / "link.md").symlink_to(secret)
+    (plans / "big.md").write_text("x" * (hook.MAX_PLAN_BYTES + 1))
+    assert hook.read_plan_file(str(plans / "p.md")) == "# Plan\n"
+    assert hook.read_plan_file(str(secret)) == ""
+    assert hook.read_plan_file(str(plans / "link.md")) == ""
+    assert hook.read_plan_file(str(plans / "big.md")) == ""
+
+
+def test_the_hook_stores_no_plan_when_the_named_file_is_outside_the_roots(tmp_path, monkeypatch):
+    import plan_registry_hook as hook
+
+    plans = tmp_path / "plans"
+    plans.mkdir()
+    monkeypatch.setattr(hook, "plan_file_roots", lambda: [plans.resolve()])
+    secret = tmp_path / "secret.env"
+    secret.write_text("TOKEN=super-secret\n")
+    text = hook.plan_from_payload({"tool_response": {"planFilePath": str(secret)}, "tool_input": {}})
+    assert "super-secret" not in text and text == ""
