@@ -372,29 +372,43 @@ function periodChange(d: any): { ch: number | null; approx: boolean; note: strin
   return { ch, approx: Boolean(d.nav_is_not_market_only || d.is_false_positive), note: [d.display_label, d.adjustment_note].filter(Boolean).join(' · ') || null }
 }
 
-/** Accounts table: value, 1D, YTD from /api/v2/portfolio/performance (display_change preferred, i.e. ex-transfers
- *  when flagged, the same rule as Portfolio → Returns); 1D falls back to overview.today_by_account. */
+/** Economic-day refusal is metadata, never a replacement amount or a new financial definition. */
+export function economicDayEvidence(payload: any): { unknown: boolean; label: string; reason: string; evidence: string } {
+  const pnl = payload?.today_pnl
+  const unknown = pnl?.status === 'UNKNOWN' || pnl?.complete === false
+  const reason = unknown ? [pnl?.gap?.reason ?? pnl?.coverage_reason ?? 'Economic day proof unavailable', pnl?.gap?.ticket].filter(Boolean).join(' · ') : ''
+  return { unknown, label: unknown ? 'Economic day UNKNOWN' : '', reason,
+    evidence: unknown ? '1D retains original source values, unverified as economic day P&L.' : '' }
+}
+
 export function accountRows(perf: any, overview: any): AccountRow[] {
   const rows: AccountRow[] = []
+  const hasPerformance = perf != null && typeof perf === 'object' && !Array.isArray(perf)
+  const day = economicDayEvidence(hasPerformance ? perf : overview)
+  const dayTip = [day.label, day.reason, day.evidence].filter(Boolean).join(' · ')
   const all1d = periodChange(perf?.periods?.['1D'])
   const allYtd = periodChange(perf?.periods?.YTD)
-  const allValue = num(perf?.current_value) ?? num(overview?.portfolio_value)
-  if (allValue != null || all1d.ch != null) {
-    rows.push({ key: 'all', name: 'All accounts', value: allValue, d1: all1d.ch ?? num(overview?.today_change), ytd: allYtd.ch, ytdApprox: allYtd.approx,
-      tip: ['All accounts · /api/v2/portfolio/performance', allYtd.approx ? 'YTD ≈ market change ex-transfers' : null, allYtd.note].filter(Boolean).join('\n') })
+  // A present performance response owns its nulls and membership too. Borrowing
+  // another snapshot would misattribute its amount and hide explicit refusal.
+  const allValue = hasPerformance ? num(perf.current_value) : num(overview?.portfolio_value)
+  const allDay = hasPerformance ? all1d.ch : day.unknown ? null : num(overview?.today_change)
+  const source = hasPerformance ? '/api/v2/portfolio/performance' : '/api/v2/overview (performance unavailable; YTD unknown)'
+  if (hasPerformance || allValue != null || allDay != null) {
+    rows.push({ key: 'all', name: 'All accounts', value: allValue, d1: allDay, ytd: allYtd.ch, ytdApprox: allYtd.approx,
+      tip: [`All accounts · ${source}`, dayTip, allYtd.approx ? 'YTD ≈ market change ex-transfers' : null, allYtd.note].filter(Boolean).join('\n') })
   }
-  const accts = perf?.accounts && typeof perf.accounts === 'object' ? perf.accounts : null
+  const accts = hasPerformance && perf.accounts && typeof perf.accounts === 'object' ? perf.accounts : null
   if (accts) {
     for (const [k, row] of Object.entries(accts) as [string, any][]) {
       const d1 = periodChange(row?.periods?.['1D'])
       const y = periodChange(row?.periods?.YTD)
-      rows.push({ key: k, name: accountName(k), value: num(row?.current_value), d1: d1.ch ?? num(overview?.today_by_account?.[k]?.change),
-        ytd: y.ch, ytdApprox: y.approx, tip: [`${accountName(k)} · /api/v2/portfolio/performance`, y.approx ? 'YTD ≈ market change ex-transfers' : null, y.note].filter(Boolean).join('\n') })
+      rows.push({ key: k, name: accountName(k), value: num(row?.current_value), d1: d1.ch,
+        ytd: y.ch, ytdApprox: y.approx, tip: [`${accountName(k)} · /api/v2/portfolio/performance`, dayTip, y.approx ? 'YTD ≈ market change ex-transfers' : null, y.note].filter(Boolean).join('\n') })
     }
-  } else if (overview?.today_by_account && typeof overview.today_by_account === 'object') {
+  } else if (!hasPerformance && overview?.today_by_account && typeof overview.today_by_account === 'object') {
     for (const [k, row] of Object.entries(overview.today_by_account) as [string, any][]) {
-      rows.push({ key: k, name: accountName(k), value: num(row?.value), d1: num(row?.change), ytd: null, ytdApprox: false,
-        tip: `${accountName(k)} · /api/v2/overview today_by_account (performance unavailable; YTD unknown)` })
+      rows.push({ key: k, name: accountName(k), value: num(row?.value), d1: day.unknown ? null : num(row?.change), ytd: null, ytdApprox: false,
+        tip: [`${accountName(k)} · /api/v2/overview today_by_account (performance unavailable; YTD unknown)`, dayTip].filter(Boolean).join('\n') })
     }
   }
   return rows
@@ -406,6 +420,30 @@ export function cashPct(overview: any): number | null {
   const pv = num(overview?.portfolio_value)
   if (cash == null || pv == null || pv <= 0) return null
   return (cash / pv) * 100
+}
+
+export type BriefingProvenance = { state: 'dated' | 'unknown' | 'future'; generatedAt: string | null; label: string }
+
+/** A saved section's own TIMESTAMPTZ, never the page/quote/position clock. No content parsing or freshness cutoff. */
+export function briefingProvenance(raw: unknown, nowMs = Date.now()): BriefingProvenance {
+  const unknown = (why: string): BriefingProvenance => ({ state: 'unknown', generatedAt: null, label: `Generation time unknown · ${why}` })
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return unknown('not recorded for this section')
+  const value = (raw as Record<string, unknown>).generated_at
+  if (typeof value !== 'string' || !value.trim()) return unknown('not recorded for this section')
+  const stamp = value.trim()
+  const parts = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/i.exec(stamp)
+  if (!parts) return unknown('a valid time and time zone are required')
+  const [year, month, day, hour, minute, second] = parts.slice(1, 7).map(v => Number(v ?? 0))
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  const at = Date.parse(stamp.replace(' ', 'T'))
+  if (month < 1 || month > 12 || day < 1 || day > days[month - 1] || hour > 23 || minute > 59 || second > 59 || !Number.isFinite(at)) return unknown('recorded time is invalid')
+  const display = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(at)
+  const part = (name: string) => display.find(p => p.type === name)?.value ?? ''
+  const when = `${part('month')} ${part('day')}, ${part('year')} ${part('hour')}:${part('minute')} ET`
+  if (!Number.isFinite(nowMs)) return { state: 'unknown', generatedAt: stamp, label: `Generated ${when} · current clock unavailable` }
+  if (at > nowMs) return { state: 'future', generatedAt: stamp, label: `Generated ${when} · time is in the future` }
+  return { state: 'dated', generatedAt: stamp, label: `Generated ${when} · ${ageLabel((nowMs - at) / 1000)} ago` }
 }
 
 /** One-line summary of an LLM briefing section for the collapsed "AI briefing" drawer.
