@@ -22,11 +22,15 @@ import json
 import os
 import subprocess
 import sys
+import types
 from pathlib import Path
 
 import pytest
 
 import main_red_autoheal as mra
+
+#: The firing test below drives main()'s own send import path, so this file's alarm site is covered.
+COVERS = ["scripts/main_red_autoheal.py"]
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -310,3 +314,31 @@ def test_the_request_is_consumable_by_self_heal_fixer_dry_run(tmp_path):
     assert job["lane"] == "cio-production-hardening-ci"
     assert job["state"] == "fix_requested"
     assert job["defect_id"] == "cd-main-red-991-ep1"
+
+
+# ------------------------------------------------------------------ the alarm fires through main()
+def test_main_apply_pages_through_its_own_send_import(tmp_path, monkeypatch):
+    """Fires the alarm through main()'s real import path, not an injected callable.
+
+    This is what the COVERS entry above claims: the only send_telegram site in the module is
+    executed and observed delivering the page.
+    """
+    sent: list[tuple[str, dict]] = []
+
+    def _send(text, **kwargs):
+        sent.append((text, kwargs))
+        return True
+
+    fake = types.ModuleType("telegram_alert")
+    fake.send_telegram = _send
+    monkeypatch.setitem(sys.modules, "telegram_alert", fake)
+
+    gh = FakeGh([run_json()], logs={"991": "FAILED tests/test_x.py::test_y - StopIteration"})
+    monkeypatch.setattr(mra, "_gh_runner", gh)
+
+    rc = mra.main(["--apply", "--state-dir", str(tmp_path / "state"), "--json"])
+
+    assert rc == 0
+    assert len(sent) == 1, sent
+    assert "main is red" in sent[0][0]
+    assert sent[0][1].get("priority") == "P1"
