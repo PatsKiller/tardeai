@@ -126,6 +126,18 @@ def test_a_not_installed_unit_is_a_row_not_a_missing_key(tmp_path):
     assert row["schedule_measured"] is False
 
 
+def test_an_uninspected_unit_is_not_reported_as_missing(tmp_path):
+    # A protected unit is deliberately not inspected. The writer still records the row but cannot
+    # fill UnitFileState, so the empty-string verdict ("the host says it is not installed") would be
+    # a claim we have no evidence for.
+    write_census(tmp_path, units={"tradeai-svc.timer": {
+        "active_state": "inactive", "sub_state": "dead", "unit_file_state": None,
+        "next_elapse": None, "last_trigger": None}}, coverage="PARTIAL")
+    row, _ = row_for(tmp_path, lane())
+    assert row["evidence_gap"] == "schedule_unit_uninspected"
+    assert row["schedule_measured"] is False
+
+
 def test_a_one_shot_timer_that_already_fired_stays_measured(tmp_path):
     # Inactive, but it fired and has no future elapse - that is a completed one-shot, not a dead unit.
     write_census(tmp_path, units={"tradeai-svc.timer": {

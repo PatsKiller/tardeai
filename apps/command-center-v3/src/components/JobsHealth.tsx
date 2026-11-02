@@ -12,8 +12,8 @@ export type JobResult = 'succeeded' | 'failed' | 'missed' | 'paused' | 'retired'
 /** Which fact makes an unknown row unmeasured. Each one is a different remedy. */
 export type EvidenceGap = 'never_scheduled' | 'schedule_not_declared' | 'execution_not_measured'
   | 'schedule_census_unavailable' | 'schedule_census_stale' | 'schedule_census_incomplete'
-  | 'schedule_unit_not_installed' | 'schedule_unit_not_active' | 'schedule_expression_not_a_unit'
-  | 'schedule_continuous_service'
+  | 'schedule_unit_not_installed' | 'schedule_unit_not_active' | 'schedule_unit_uninspected'
+  | 'schedule_expression_not_a_unit' | 'schedule_continuous_service'
 export interface JobHealthRow {
   lane_id: string; job: string; scheduler: string; state: string; result: JobResult
   last_run_at: string | null; last_success_at: string | null; next_due_at: string | null
@@ -44,6 +44,7 @@ const gapLabel: Record<EvidenceGap, string> = {
   schedule_census_incomplete: 'Unit not covered by the census',
   schedule_unit_not_installed: 'Unit not installed',
   schedule_unit_not_active: 'Unit installed but not active',
+  schedule_unit_uninspected: 'Unit not inspected',
   schedule_expression_not_a_unit: 'Registry declares an expression, not a unit',
   schedule_continuous_service: 'Continuous service, no schedule',
 }

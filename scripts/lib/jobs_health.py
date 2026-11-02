@@ -237,6 +237,8 @@ SYSTEMD_GAP_REASONS = {
         "The host timer census did not cover this unit, so whether it is installed is unknown",
     "schedule_unit_not_installed":
         "The host census is complete and does not contain this unit; it is not installed",
+    "schedule_unit_uninspected":
+        "The census recorded this unit without inspecting it, so whether it is installed is unknown",
     "schedule_unit_not_active":
         "The unit is installed but not active, so it has no next fire",
     "schedule_expression_not_a_unit":
@@ -271,8 +273,13 @@ def _systemd_gap(lane: dict, units: dict, census: dict | None) -> str | None:
         active_state = str(row.get("active_state") or "").strip().lower()
         if not active_state or active_state == "active":
             return None
-        unit_file_state = str(row.get("unit_file_state") or "").strip()
-        return "schedule_unit_not_active" if unit_file_state else "schedule_unit_not_installed"
+        unit_file_state = row.get("unit_file_state")
+        if unit_file_state is None:
+            # The row exists but the writer never captured UnitFileState: the unit was not inspected.
+            # That is not the same fact as "the host says it is not installed", and must not be
+            # reported as one - the audit deliberately leaves protected units uninspected.
+            return "schedule_unit_uninspected"
+        return "schedule_unit_not_active" if str(unit_file_state).strip() else "schedule_unit_not_installed"
     condition = (census or {}).get("census")
     if condition == CENSUS_STALE:
         return "schedule_census_stale"
