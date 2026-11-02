@@ -454,6 +454,16 @@ def collect(root: Path, now: datetime, prev: dict[str, Any] | None = None) -> li
         out.extend(_own)
     except Exception as exc:  # noqa: BLE001 - a broken source is a note on the receipt, not a crash
         NOTES["effect_ownership_source"] = f"unavailable:{type(exc).__name__}"
+    # 3o. poison-item quarantine (2026-10-31, scripts/lib/poison_quarantine.py): an item an n8n-dispatched lane set aside
+    # after the same deterministic error N runs in a row. The lane may not send (§23.3), so its P2 rides here: one
+    # finding per held item until it is released; the incident notifier delivers it.
+    try:
+        from scripts.lib.poison_quarantine import held_findings as _poison_findings
+
+        _pq, NOTES["poison_quarantine_source"] = _poison_findings(root, now=now)
+        out.extend(_pq)
+    except Exception as exc:  # noqa: BLE001 - a broken source is a note on the receipt, not a crash
+        NOTES["poison_quarantine_source"] = f"unavailable:{type(exc).__name__}"
     doc = _load(root / "backups" / "n8n" / "n8n_lab_backup_last.json")
     if doc:
         try:
