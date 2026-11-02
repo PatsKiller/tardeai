@@ -9,8 +9,9 @@ Local source remediation is committed, unpushed and undeployed. None of the find
 Evidence roots are the frozen Jobs snapshot and inventory; exact logical run keys from that snapshot were joined to existing rows in the read-only coordination ledger. No scheduled job was triggered. No arbitrary application log tail, credential, broker endpoint, broker source/test or protected unit was inspected. Protected lanes are classified from registry and already-retained receipt metadata only. No alert, restart, schedule change or paid request was issued.
 
 Snapshot SHA256: 014a995ae2a53f6db6771a67e2b96cfbf963b48b97dc32ecef2c806f79c44f7a.
-Inventory SHA256: 97f7ee1266db8eba01b5597e2233fff758d0312e66b1eb5a67f1aae72ce9d710.
-The adjacent failure_diagnostics_v2.json retains safe per-job metadata and proposed remediation keys. These keys are **not tickets**; the lead must bind them to actual issue or PR receipts.
+Original raw-baseline inventory SHA256:97f7ee1266db8eba01b5597e2233fff758d0312e66b1eb5a67f1aae72ce9d710.
+Committed curated inventory SHA256:afe1dae4748f7344e3542ec2104d684905aeb3544459b42bdc94c7cbcceca5dd. The original manifest preserves both; the copied public inventory is curated, not the raw baseline.
+The committed failure_diagnostics_metadata.json retains safe per-job metadata and proposed remediation keys. These keys are **not tickets**; the lead must bind them to actual issue or PR receipts.
 
 [VERIFIED] A read-only join on each frozen run key found eight ledger-backed failure records and one wrapper-backed failure. Two ledger failures are reaper-synthesized executor_lost outcomes: their wall interval and heartbeat exist, but the child's actual exit and traceback do not. Three exit-zero failures are output-contract failures. Three other ledger failures exited 1 with no retained stderr. The Sunday wrapper completion also records exit 1. No traceback was retained for any of these nine observed failures. A missing traceback cannot be reconstructed from an exit code.
 

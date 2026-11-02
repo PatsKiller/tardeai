@@ -2,22 +2,36 @@
 
 **Local source fixes are committed, unpushed and undeployed. Production recovery and lane admission are not established.** The immutable 18:45:27Z failure inventory and original report remain unchanged.
 
-## Prospect shadow attempt binding
+## Prospect shadow attempt binding — original claim refuted, repair in review
 
-Commit: 07376f6557b106af0d937980214a038f9f3b7acb.
-Files: scripts/cio_prospect_shadow_build.py; tests/test_cio_prospect_attempt_receipt_20261102.py; config/ci_gates/cio_prospect_attempt_receipt_20261102.json.
+Original source:07376f6557b106af0d937980214a038f9f3b7acb.
+Current local repair:322ae6735fab996ecbfd02defc43fe1092f05228, pending two independent exact-head reviews.
+Neither source is deployed.
 
-[CODE] The existing canary success branch writes the same shadow and comparison artifacts, hashes their actual bytes, and calls the existing shared write_lane_receipt writer at the same registered last-receipt path. The writer produces its normal immutable LaneRunReceipt@v2 attempt under its existing run/attempt/mode/code identity. Four legacy mutable fields are retained additively; the immutable attempt carries them in summary. Its success clock now records receipt completion. No new store, schema, DB connection, financial judgment, reader authority or scheduled invocation was introduced.
+[DOC-CLAIM — REFUTED] The original author asserted that duplicate/count/writer-failure handling
+could never replace good artifacts or return success without immutable proof. Independent review
+disproved that universal claim. Invalid count validation happened after replacing shared artifacts.
+A real normalized run-ID filename collision introduced after the initial check made the shared
+O_EXCL writer refuse its attempt, yet the producer returned0 using its mutable last receipt.
 
-[CODE] A pre-existing attempt is refused before replacing its artifacts. A count inconsistent with the actual prospect list, artifact-write failure or shared-receipt failure cannot return exit zero. Empty input preserves the previous good shadow and mutable receipt, as before; it does not create a successful current attempt. The existing dry-run path never reaches the artifact or receipt writer. Optional company-facts behavior is unchanged.
+[VERIFIED — REPORTED INDEPENDENT PROBE] The reviewer reproduced the actual shared writer collision
+with raw IDs fixture:prospect:attempt and fixture_prospect_attempt. The competing immutable record
+remained, the producer exited0, and the real verifier returned receipt_identity_mismatch.
+The earlier author tests passed but did not cover this path. Prior passing fixtures are not evidence
+that the refuted property held.
 
-[VERIFIED] New synthetic test runs:
-- Initial suite: 12 passed in 1.47s.
-- Added writer-failure/count-integrity cases: 2 passed, 12 deselected in 1.28s.
-- Mandatory existing broker-free import/capability regression: 7 passed in 1.83s.
-- Ruff and git diff whitespace checks passed.
+[CODE] Repair322ae6735 validates the actual list/count before either shared artifact is replaced.
+Complete execution identity is required before a write. After the unchanged shared writer returns,
+the producer reads the actual immutable attempt, applies the configured real output verifier and
+compares identity/mode/code/time/exit/count/summary/evidence plus both current artifact hashes before
+success. Missing or mismatched proof raises failure; competing immutable bytes are not overwritten.
 
-The real output verifier accepts the actual immutable attempt and rejects wrong lane/run/attempt/code/mode/time. Tests compare each receipt hash with the real temporary artifact bytes and show that a duplicate attempt leaves all artifact bytes unchanged. Inputs, company-facts call and DB boundary are stubbed; no production state or paid provider was reached.
+[DOC-CLAIM — AUTHOR VALIDATION]34synthetic cases and7broker-free regressions pass, including the
+reviewer's real collision. The two independent reviewers are replaying those proofs. Their final
+new-head verdicts, publication, deployment and actual scheduled output remain pending.
+
+No collector/main, broker, shared-writer authority, schedule or financial behavior changed.
+The original07376BLOCK remains historical evidence, not silently promoted to MERGE.
 
 ## Conflict comparison output proof
 

@@ -23,7 +23,7 @@ Raw217unknown includes185ACTIVE and32never scheduled.343due today is another pop
 [CODE / REVIEWED SOURCE] Local fixes address hidden failure causes, timeout diagnostic loss,
 receipt identity, misleading watcher labels, repeat suppression and false health/delivery states.
 The repeat fix has two independent MERGE reviews. Adversarial review found remaining Releases
-fallback/future-clock/blank-head defects and an unchecked Health hero; both are blocked for repair.
+fallback/future-clock/blank-head defects and an unchecked Health hero. The hero has a new local repair with one independent MERGE; final reviews and Releases corrections remain pending.
 
 [DOC-CLAIM / RECOMMENDATION] Keep deterministic detection, routing, budget and release controls
 outside the model. Qualify the existing isolated coding worker, use an independent evaluator,
