@@ -226,12 +226,62 @@ export function fmtPct(v: number | null | undefined): string {
   return v == null || Number.isNaN(Number(v)) ? '—' : `${Math.round(Number(v) * (Math.abs(Number(v)) <= 1 ? 100 : 1))}%`
 }
 
+/* ── ET clock semantics ─────────────────────────────────────────────────────────────────────────────────────────
+ * A timestamp with no offset ("2031-03-07T20:15:00", "2031-03-07 20:15:00") states an ET wall-clock time in this
+ * system: attach America/New_York explicitly rather than letting Date parse it in the viewer's ambient timezone.
+ * A value with Z or an explicit offset is an instant and converts as before. Every branch is independent of the
+ * host/browser TZ. */
+const ET_ZONE = 'America/New_York'
+/** YYYY-MM-DD[T ]HH:MM[:SS[.fff]] — a wall clock with no timezone designator. */
+const WALL_CLOCK = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?$/
+/** YYYY-MM-DDTHH:MM[:SS[.fff]](Z|±HH:MM|±HHMM) — an absolute instant (its parse never reads the ambient TZ). */
+const ABSOLUTE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/i
+/** YYYY-MM-DD — a date with no clock (parsed as UTC by the language spec, so TZ-independent). */
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/
+
+/** The America/New_York offset (ms east of UTC) in effect at an instant. */
+function etOffsetMs(utcMs: number): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: ET_ZONE, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(new Date(utcMs))
+  const p: Record<string, number> = {}
+  for (const x of parts) if (x.type !== 'literal') p[x.type] = Number(x.value)
+  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - utcMs
+}
+
+/** Resolve an ET wall-clock time to an instant, attaching the zone explicitly (two passes settle a DST edge).
+ *  null when the components would roll over (month 13, Feb 30, hour 24). */
+function etWallClockToDate(y: number, mo: number, d: number, h: number, mi: number, s: number, ms: number): Date | null {
+  const wall = Date.UTC(y, mo - 1, d, h, mi, s, ms)
+  const probe = new Date(wall)
+  if (probe.getUTCFullYear() !== y || probe.getUTCMonth() !== mo - 1 || probe.getUTCDate() !== d ||
+      probe.getUTCHours() !== h || probe.getUTCMinutes() !== mi || probe.getUTCSeconds() !== s) return null
+  let t = wall - etOffsetMs(wall)
+  t = wall - etOffsetMs(t)
+  return new Date(t)
+}
+
 /** Readable ET time, never a raw ISO stamp (design rule 5). */
 export function shortTime(iso: string | null | undefined): string {
   if (!iso) return 'time unavailable'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return 'time unavailable'
-  return d.toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).replace(',', '') + ' ET'
+  const raw = String(iso).trim()
+  if (!raw) return 'time unavailable'
+  // SQLite/Python emit "YYYY-MM-DD HH:MM:SS"; normalize only the separator, never the stated clock.
+  const s = raw.replace(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})/, '$1T$2')
+  const wall = WALL_CLOCK.exec(s)
+  let d: Date
+  if (wall) {
+    const ms = wall[7] ? Number(wall[7].slice(0, 3).padEnd(3, '0')) : 0
+    const parsed = etWallClockToDate(Number(wall[1]), Number(wall[2]), Number(wall[3]), Number(wall[4]), Number(wall[5]), Number(wall[6] ?? 0), ms)
+    if (!parsed) return 'time unavailable'
+    d = parsed
+  } else if (ABSOLUTE.test(s) || DATE_ONLY.test(s)) {
+    d = new Date(s)
+    if (Number.isNaN(d.getTime())) return 'time unavailable'
+  } else {
+    return 'time unavailable' // no ambient-TZ fallback for a shape that states no zone and no ET wall clock
+  }
+  return d.toLocaleString('en-US', { timeZone: ET_ZONE, weekday: 'short', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).replace(',', '') + ' ET'
 }
 
 /* ── Design home/v004: the YELLOW summary card (calm, collapsible, no Acknowledge) ─────────────────────────────── */
@@ -410,7 +460,7 @@ export function shortDay(d: string | null | undefined): string {
 export function sourceClock(v: string | null | undefined): string {
   const s = String(v ?? '').trim()
   if (!s) return ''
-  return /T\d{2}:\d{2}/.test(s) ? shortTime(s) : shortDay(s)
+  return /(?:T|\s)\d{2}:\d{2}/.test(s) ? shortTime(s) : shortDay(s)
 }
 
 const SHOCK_WORDS: Record<string, string> = {
@@ -505,9 +555,10 @@ export function rotateModel(r: RotateBlock | null | undefined): RotateModel | nu
     key: g.key, label: g.label, rs1: fmtSignedPct(g.rs1), rs5: fmtSignedPct(g.rs5), rs1n: g.rs1 ?? null, rs5n: g.rs5 ?? null,
     desk: g.desk_state ? `desk ${g.desk_state}` : '', usd: g.usd != null ? fmtUsd(g.usd) : '—',
   }))
+  const clock = sourceClock(r.as_of)
   return {
     rows, none: rows.length ? null : (r.none_reason ?? 'No group is beating SPY on both 1 and 5 sessions today.'),
-    foot: `Relative strength vs SPY${r.as_of ? `, as of ${sourceClock(r.as_of)}` : ''}. Groups beating SPY on both 1 and 5 sessions — not a buy list.`,
+    foot: `Relative strength vs SPY${clock ? `, as of ${clock}` : ''}. Groups beating SPY on both 1 and 5 sessions — not a buy list.`,
     short: rows.length ? rows.map(x => `${x.label} ${x.rs1}/${x.rs5}`).join(' · ') : 'no group leading on both horizons',
   }
 }

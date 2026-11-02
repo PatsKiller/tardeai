@@ -8,7 +8,7 @@ const assert = {
 }
 import { unwrapMarketRisk, bannerVisible, factLine, tierTone, contributorsLine, pointsSum, episodeLine, fmtPct, shadowMarker, SHADOW_MARKER, CARRIED_MARKER,
   summaryVisible, summaryDefaultOpen, summaryModel, fmtPoints, budgetLabel, SUMMARY_PHONE_MAX_PX,
-  actionableModel, verdictLine, fmtUsd, fmtSignedPct, hedgeModel, rotateModel } from './marketRisk.ts'
+  actionableModel, verdictLine, fmtUsd, fmtSignedPct, hedgeModel, rotateModel, shortTime, sourceClock } from './marketRisk.ts'
 
 const notEval = unwrapMarketRisk({ ok: true, data: { state: 'not_evaluated', tier: 'NOT_EVALUATED', score: null, as_of: null, age_hours: null, stale: false,
   reason: 'engine not live', contributors: [], categories: [], sources: { options_flow: { findings: [{ symbol: 'QQQ', state: 'STRESS', pc_vol_ratio: 3.309 }] } } } })
@@ -269,5 +269,54 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
   const v5 = actionableModel(unwrapMarketRisk({ ok: true, data: { ...data, protect: undefined, hedge: undefined, rotate: undefined, sectors_folded: undefined } }))!
   assert.equal(v5.protect, null); assert.equal(v5.hedge, null); assert.equal(v5.foldLine, '')
   console.log('marketRisk.test v006 actions: ok')
+}
+// ── D1 follow-up: a timestamp with no offset is an ET wall clock, never the viewer's local time ──
+{
+  // No @types/node in CI's tsc: read the env through a typed cast (Node-only, absent in a browser run).
+  const env = (globalThis as unknown as { process?: { env: Record<string, string | undefined> } }).process?.env
+  const cases: [string, string][] = [
+    ['2031-03-07T20:15:00', 'Fri 03/07, 20:15 ET'],       // naive ISO with a time: ET wall clock
+    ['2031-03-07 20:15:00', 'Fri 03/07, 20:15 ET'],       // space-separated (SQLite/Python): clock kept
+    ['2031-03-07T20:15:00Z', 'Fri 03/07, 15:15 ET'],      // Z instant, EST is -05:00
+    ['2031-03-07T20:15:00+05:00', 'Fri 03/07, 10:15 ET'], // explicit offset converts to the ET instant
+    ['2031-07-01T12:00:00', 'Tue 07/01, 12:00 ET'],       // future naive date: no calendar-day shift
+    ['2031-07-01T12:00:00Z', 'Tue 07/01, 08:00 ET'],      // Z instant, EDT is -04:00
+    ['2031-07-01T12:00:00-04:00', 'Tue 07/01, 12:00 ET'], // explicit EDT offset
+    ['2031-01-31T00:00:00', 'Fri 01/31, 00:00 ET'],       // ET midnight reads 00:00, not 24:00
+    ['2031-03-07T20:15:00.250Z', 'Fri 03/07, 15:15 ET'],  // fractional seconds
+  ]
+  const zones = ['America/New_York', 'UTC', 'Asia/Tokyo']
+  const rendered: Record<string, string[]> = {}
+  const originalTz = env?.TZ
+  try {
+    for (const zone of zones) {
+      if (env) env.TZ = zone
+      rendered[zone] = cases.map(([input]) => shortTime(input))
+      cases.forEach(([input, want], i) => assert.equal(rendered[zone][i], want, `${input} under TZ=${zone}`))
+    }
+  } finally {
+    if (env) { if (originalTz === undefined) delete env.TZ; else env.TZ = originalTz }
+  }
+  for (const zone of zones.slice(1)) assert.equal(rendered[zone].join('|'), rendered[zones[0]].join('|'), `naive-clock output is identical under ${zones[0]} and ${zone}`)
+  // a naive ET wall clock equals the UTC instant that states it explicitly
+  assert.equal(shortTime('2031-03-08T01:15:00Z'), shortTime('2031-03-07T20:15:00'), 'naive 20:15 ET == 2031-03-08T01:15Z')
+  // sourceClock: a stated clock survives; date-only keeps its date and invents no clock or basis
+  assert.equal(sourceClock('2031-03-07T20:15:00'), 'Fri 03/07, 20:15 ET', 'naive: ET clock')
+  assert.equal(sourceClock('2031-03-07 20:15:00'), 'Fri 03/07, 20:15 ET', 'space-separated: the clock is not dropped')
+  assert.equal(sourceClock('2031-03-07'), 'Fri 03-07', 'date-only: the date, no clock')
+  assert.equal(sourceClock('   '), '', 'whitespace-only: no as-of claim')
+  assert.equal(sourceClock(null), '', 'absent: no as-of claim')
+  // rotateModel: the whole sentence, including whitespace-only, which used to read "as of ."
+  const body = 'Groups beating SPY on both 1 and 5 sessions — not a buy list.'
+  assert.equal(rotateModel({ groups: [], none_reason: null, as_of: '   ' })!.foot, `Relative strength vs SPY. ${body}`,
+    'whitespace-only as_of emits no empty "as of ." phrase')
+  assert.equal(rotateModel({ groups: [], none_reason: null, as_of: '2031-03-07 20:15:00' })!.foot,
+    `Relative strength vs SPY, as of Fri 03/07, 20:15 ET. ${body}`, 'space-separated as_of keeps its clock')
+  assert.equal(rotateModel({ groups: [], none_reason: null, as_of: '2031-03-07T20:15:00' })!.foot,
+    `Relative strength vs SPY, as of Fri 03/07, 20:15 ET. ${body}`, 'naive as_of is an ET wall clock')
+  assert.equal(rotateModel({ groups: [], none_reason: null, as_of: '2031-03-07' })!.foot,
+    `Relative strength vs SPY, as of Fri 03-07. ${body}`, 'date-only as_of: date only, no clock')
+  assert.ok(!/close/i.test(rotateModel({ groups: [], none_reason: null, as_of: '2031-03-07' })!.foot), 'date-only: no invented close')
+  console.log(`marketRisk.test naive-clock: ${cases.length} inputs x ${zones.length} TZs identical; sourceClock + rotateModel ok`)
 }
 console.log('marketRisk.test ok')
