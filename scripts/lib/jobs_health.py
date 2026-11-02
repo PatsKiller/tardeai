@@ -211,9 +211,13 @@ def _host_schedule(lane: dict, units: dict, now: datetime) -> tuple[list, dateti
     if not isinstance(row, dict):
         return [], None, False, False
     # A stopped unit keeps its last elapse in the census; that is not a schedule it will meet.
+    # A one-shot timer that already fired is inactive too, so its last trigger still counts.
     active_state = str(row.get("active_state") or "").strip().lower()
     if active_state and active_state != "active":
-        return [], None, False, False
+        last_fire = instant(row.get("last_trigger"))
+        upcoming = instant(row.get("next_elapse"))
+        if not (last_fire and not (upcoming and upcoming > now)):
+            return [], None, False, False
     zone = ZoneInfo(str((lane.get("dispatch") or {}).get("tz") or scheduler.get("timezone") or "America/New_York"))
     next_due = instant(row.get("next_elapse"))
     last = instant(row.get("last_trigger"))
@@ -260,8 +264,15 @@ def _systemd_gap(lane: dict, units: dict, census: dict | None) -> str | None:
         return "schedule_continuous_service"
     row = (units or {}).get(expression)
     if isinstance(row, dict):
+        # `systemctl show` answers for a unit that does not exist: it returns a block with an Id,
+        # `ActiveState=inactive` and an EMPTY `UnitFileState`. So absence is not a missing key -
+        # a not-installed unit is a row, and its emptiness is the only thing that distinguishes it
+        # from an installed unit that is merely stopped.
         active_state = str(row.get("active_state") or "").strip().lower()
-        return None if not active_state or active_state == "active" else "schedule_unit_not_active"
+        if not active_state or active_state == "active":
+            return None
+        unit_file_state = str(row.get("unit_file_state") or "").strip()
+        return "schedule_unit_not_active" if unit_file_state else "schedule_unit_not_installed"
     condition = (census or {}).get("census")
     if condition == CENSUS_STALE:
         return "schedule_census_stale"

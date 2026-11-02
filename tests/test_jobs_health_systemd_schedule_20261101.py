@@ -60,7 +60,8 @@ def test_no_census_at_all_is_named_as_a_missing_census():
 
 
 def test_a_stopped_unit_does_not_invent_a_schedule():
-    host = {"tradeai-svc.timer": {"active_state": "inactive", "next_elapse": None, "last_trigger": None}}
+    host = {"tradeai-svc.timer": {"active_state": "inactive", "unit_file_state": "enabled",
+                                  "next_elapse": None, "last_trigger": None}}
     row = build([lane()], host)["rows"][0]
     assert row["schedule_measured"] is False and row["evidence_gap"] == "schedule_unit_not_active"
 

@@ -115,9 +115,31 @@ def test_a_complete_census_that_misses_the_unit_says_not_installed(tmp_path):
     assert row["evidence_gap"] == "schedule_unit_not_installed"
 
 
+def test_a_not_installed_unit_is_a_row_not_a_missing_key(tmp_path):
+    # `systemctl show` answers for a unit that does not exist: Id present, ActiveState=inactive,
+    # SubState=dead, UnitFileState empty. Key absence would mean a malformed expression instead.
+    write_census(tmp_path, units={"tradeai-svc.timer": {
+        "active_state": "inactive", "sub_state": "dead", "unit_file_state": "",
+        "next_elapse": None, "last_trigger": None}}, coverage="COMPLETE")
+    row, _ = row_for(tmp_path, lane())
+    assert row["evidence_gap"] == "schedule_unit_not_installed"
+    assert row["schedule_measured"] is False
+
+
+def test_a_one_shot_timer_that_already_fired_stays_measured(tmp_path):
+    # Inactive, but it fired and has no future elapse - that is a completed one-shot, not a dead unit.
+    write_census(tmp_path, units={"tradeai-svc.timer": {
+        "active_state": "inactive", "sub_state": "dead", "unit_file_state": "static",
+        "next_elapse": None, "last_trigger": "2026-11-01T13:00:00Z"}}, coverage="COMPLETE")
+    row, _ = row_for(tmp_path, lane())
+    assert row["schedule_measured"] is True
+    assert row["evidence_gap"] == "execution_not_measured"
+
+
 def test_a_stopped_unit_with_a_lingering_elapse_is_not_measured(tmp_path):
     write_census(tmp_path, units={"tradeai-svc.timer": {
-        "active_state": "inactive", "next_elapse": "2026-11-01T23:30:00Z",
+        "active_state": "inactive", "unit_file_state": "enabled",
+        "next_elapse": "2026-11-01T23:30:00Z",
         "last_trigger": None}})
     row, _ = row_for(tmp_path, lane())
     assert row["schedule_measured"] is False
