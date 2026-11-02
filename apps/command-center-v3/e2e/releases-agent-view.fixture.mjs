@@ -22,9 +22,12 @@ assert(out, 'explicit fixture evidence directory required')
 const backendPayload = process.argv[3]
   ? JSON.parse(fs.readFileSync(process.argv[3], 'utf8'))
   : null
+const adversarialPayload = process.argv[4]
+  ? JSON.parse(fs.readFileSync(process.argv[4], 'utf8'))
+  : null
 fs.mkdirSync(out, { recursive: true })
 
-const clock = '2026-11-02T18:00:00Z'
+const clock = '2026-11-02T19:00:00Z'
 const H1 = '1111111111111111111111111111111111111111'
 const H2 = '2222222222222222222222222222222222222222'
 const H3 = '3333333333333333333333333333333333333333'
@@ -113,6 +116,7 @@ try {
     { name: 'full', payload: full, widths: [320, 390, 412, 1280] },
     { name: 'old-backend', payload: old, widths: [320, 1280] },
     ...(backendPayload ? [{ name: 'backend', payload: backendPayload, widths: [320, 390, 1440] }] : []),
+    ...(adversarialPayload ? [{ name: 'backend-adversarial', payload: adversarialPayload, widths: [320, 1440] }] : []),
   ]
   for (const c of cases) {
     for (const width of c.widths) {
@@ -196,6 +200,18 @@ try {
         has('from board_open_prs', 'the next step states its own source')
         has('source time not stated', 'a row with no source clock is undated, not stamped with capture time')
         has('mergeability not stated (not auto-rebase)', 'UNKNOWN mergeability is never auto-rebase')
+      } else if (c.name === 'backend-adversarial') {
+        // Hostile wire: every claim says it is executing; review/CI name a blank head with a green verdict.
+        assert.equal(measure.agentStates.filter(s => s.includes('execution: working')).length, 0,
+          `${c.name}@${width}: no heartbeat-less or clock-skewed claim renders as executing`)
+        has('older than 2h', 'a five-day heartbeat is refused')
+        has('in the future', 'a future heartbeat is refused as clock skew')
+        has('no heartbeat time', 'a claim with no heartbeat is refused')
+        has('REVIEW · UNKNOWN', 'blank-head review evidence is not MERGE')
+        has('CI · UNKNOWN', 'blank-head CI evidence is not GREEN')
+        has('names no head', 'the reason names the missing head')
+        assert.ok(!t.includes('REVIEW · passed'), `${c.name}@${width}: a blank-head review never reads as passed`)
+        assert.ok(!t.includes('CI · green'), `${c.name}@${width}: blank-head CI never reads as green`)
       } else {
         has('UNAVAILABLE · agents/claims not in this response', 'old backend coordination is UNKNOWN')
         has('work facts UNKNOWN', 'old backend work is UNKNOWN')

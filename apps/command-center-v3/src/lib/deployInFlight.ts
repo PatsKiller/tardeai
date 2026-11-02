@@ -80,6 +80,10 @@ export type CoordinationAgent = {
   reported_state: string | null
   /** What the claim proves about execution, when the source states it separately from assignment. */
   execution_state: AgentState | null
+  /** Why execution is not `working`: no heartbeat, a stale one, or a clock-skewed one. */
+  execution_reason: string | null
+  /** More than one source row for this session: newest kept, count stated (never silently merged). */
+  duplicate_rows: number
   branch: string | null
   pr: number | null
   blocker: string | null
@@ -150,13 +154,14 @@ export function normalizeMergeable(v: unknown): Mergeable {
 
 const PUBLICATION: PublicationState[] = ['local_only', 'published', 'merged', 'live', 'unknown']
 const AGENT_STATES: AgentState[] = ['assigned', 'working', 'blocked', 'waiting', 'idle', 'unknown']
-/** Source words → an honest state. `assigned` (BOARD) is never promoted to `working`; only a claim stage is. */
+/** Source words → an honest state. A claim stage is a DECLARATION, never proof of execution: only a fresh
+ *  heartbeat yields `working`, so `building` reads as `assigned` until execution is proven. */
 const AGENT_STATE_MAP: Record<string, AgentState> = {
   ASSIGNED: 'assigned', CLAIMED: 'assigned', TAKEN: 'assigned', QUEUED: 'assigned',
-  BUILDING: 'working', WORKING: 'working', IN_PROGRESS: 'working', ACTIVE: 'working',
+  BUILDING: 'assigned', WORKING: 'assigned', IN_PROGRESS: 'assigned', ACTIVE: 'assigned',
   BLOCKED: 'blocked', BLOCKER: 'blocked', FAILED: 'blocked',
   WAITING: 'waiting', PR_OPEN: 'waiting', REVIEW: 'waiting',
-  IDLE: 'idle', DONE: 'idle', MERGED: 'idle', ABANDONED: 'idle',
+  IDLE: 'idle', DONE: 'idle', MERGED: 'idle', ABANDONED: 'idle', ENDED: 'idle',
 }
 
 function emptyWork(reason: string): WorkBlock {
@@ -386,8 +391,31 @@ export function agentStateTone(s: AgentState): Tone {
   return 'warning'
 }
 
+/** A claim proves execution for at most this long; the claim board's own staleness default is 2 h. */
+export const WORKING_MAX_MS = 2 * 3600 * 1000
+/** Small tolerance for clock drift; a heartbeat further in the future is skew, not evidence. */
+const FUTURE_TOLERANCE_MS = 5 * 60_000
+
+/**
+ * Execution is a claim, not a label: `working` counts only with a heartbeat that is present, parseable,
+ * not in the future and no older than 2 h. Anything else degrades to UNKNOWN with the reason, so a
+ * backend that hardcodes `working` for a stale or heartbeat-less claim cannot make the page say so.
+ */
+export function executionState(raw: unknown, asOf: string | null, nowMs: number): { state: AgentState | null; reason: string | null } {
+  const word = String(raw ?? '').trim().toUpperCase()
+  if (!word || word === 'UNKNOWN') return { state: null, reason: null }
+  const claimsWorking = word === 'WORKING' || word === 'IN_PROGRESS' || word === 'ACTIVE'
+  if (!claimsWorking) return { state: AGENT_STATE_MAP[word] ?? null, reason: null }
+  if (!asOf) return { state: null, reason: 'execution claimed working with no heartbeat time' }
+  const at = Date.parse(asOf)
+  if (!Number.isFinite(at)) return { state: null, reason: 'execution heartbeat time is unreadable' }
+  if (at - nowMs > FUTURE_TOLERANCE_MS) return { state: null, reason: 'execution heartbeat is in the future (clock skew)' }
+  if (nowMs - at > WORKING_MAX_MS) return { state: null, reason: 'execution heartbeat is older than 2h' }
+  return { state: 'working', reason: null }
+}
+
 /** The coordination envelope. A partial read is labelled PARTIAL and never renders as a clean OK. */
-export function normalizeCoordination(raw: unknown): CoordinationBlock {
+export function normalizeCoordination(raw: unknown, nowMs: number = Date.now()): CoordinationBlock {
   const missing: CoordinationBlock = {
     present: false, status: 'UNAVAILABLE', as_of: null, source: null,
     reason: 'agents/claims not in this response (backend predates the coordination envelope)', agents: [],
@@ -397,7 +425,10 @@ export function normalizeCoordination(raw: unknown): CoordinationBlock {
   const status = String(c.status ?? '').trim().toUpperCase()
   const known = status === 'OK' || status === 'PARTIAL' || status === 'UNAVAILABLE' ? status : 'UNAVAILABLE'
   const agentsRaw = Array.isArray(c.agents) ? c.agents : []
-  const agents: CoordinationAgent[] = []
+  // One row per session: keep the newest as_of and say how many rows were folded, so a duplicate claim
+  // cannot quietly keep an older branch/task (the multiclaim-join class).
+  const bySession = new Map<string, CoordinationAgent>()
+  const order: string[] = []
   for (const a of agentsRaw) {
     if (!a || typeof a !== 'object') continue
     const o = a as Record<string, unknown>
@@ -405,23 +436,36 @@ export function normalizeCoordination(raw: unknown): CoordinationBlock {
     if (!session) continue
     const reportedRaw = String(o.state ?? '').trim()
     const st = reportedRaw.toUpperCase()
-    const executionRaw = String(o.execution_state ?? '').trim().toUpperCase()
+    const { state: exec, reason: execReason } = executionState(o.execution_state, asText(o.as_of), nowMs)
+    const mapped = AGENT_STATE_MAP[st] ?? ((AGENT_STATES as string[]).includes(st.toLowerCase()) ? (st.toLowerCase() as AgentState) : 'unknown')
+    // The chip may say WORKING only when execution is proven by a fresh heartbeat.
+    const chipState: AgentState = mapped === 'working' && exec !== 'working' ? 'assigned' : mapped
     const pr = Number(o.pr)
-    agents.push({
+    const row: CoordinationAgent = {
       session,
       agent: asText(o.agent),
       task: asText(o.task),
-      state: AGENT_STATE_MAP[st] ?? ((AGENT_STATES as string[]).includes(st.toLowerCase()) ? (st.toLowerCase() as AgentState) : 'unknown'),
+      state: chipState,
       reported_state: reportedRaw ? reportedRaw.toLowerCase() : null,
-      execution_state: executionRaw ? (AGENT_STATE_MAP[executionRaw] ?? null) : null,
+      execution_state: exec,
+      execution_reason: execReason,
+      duplicate_rows: 1,
       branch: asText(o.branch) ?? asText(o.branch_or_pr),
       pr: Number.isFinite(pr) && pr > 0 ? pr : null,
       blocker: asText(o.blocker),
       next_action: asText(o.next_action),
       as_of: asText(o.as_of),
       source: asText(o.source),
-    })
+    }
+    const prior = bySession.get(session)
+    if (!prior) { bySession.set(session, row); order.push(session); continue }
+    const newer = !prior.as_of && row.as_of ? true
+      : prior.as_of && row.as_of ? Date.parse(row.as_of) >= Date.parse(prior.as_of) : false
+    const kept = newer ? row : prior
+    kept.duplicate_rows = prior.duplicate_rows + 1
+    bySession.set(session, kept)
   }
+  const agents = order.map(s => bySession.get(s)!).filter(Boolean)
   return {
     present: true,
     status: known,

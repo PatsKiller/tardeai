@@ -74,7 +74,12 @@ function AgentCard({ a }: { a: CoordinationAgent }) {
       <b style={{ fontSize: TYPE.sm, color: TOKENS.text[0], overflowWrap: 'anywhere' }}>{a.session}</b>
       <Chip tone={agentStateTone(a.state)}>{a.state.toUpperCase()}</Chip>
       {a.reported_state && a.reported_state !== a.state ? <span style={tiny}>source says “{a.reported_state}”</span> : null}
-      {a.execution_state ? <span style={tiny}>execution: {a.execution_state}</span> : null}
+      {a.execution_state
+        ? <span style={tiny}>execution: {a.execution_state}</span>
+        : a.execution_reason
+          ? <span style={{ ...tiny, color: toneVars('warning').color }}>execution UNKNOWN · {a.execution_reason}</span>
+          : null}
+      {a.duplicate_rows > 1 ? <span style={tiny}>{a.duplicate_rows} source rows merged (newest kept)</span> : null}
       {a.agent ? <span style={tiny}>{a.agent}</span> : null}
     </div>
     <div style={{ fontSize: TYPE.sm, color: TOKENS.text[1] }}>{a.task ?? 'UNKNOWN · task not stated'}</div>

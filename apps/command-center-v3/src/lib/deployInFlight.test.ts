@@ -5,7 +5,7 @@
 // "auto-rebase"), a review/CI receipt for an older head shown as current, local-only work shown as published,
 // and an old backend (no `work` / no `coordination`) pretending to have facts.
 import {
-  IN_FLIGHT_SCHEMA, IN_FLIGHT_SCHEMA_V2, KNOWN_SCHEMAS, agentStateTone, ciLabel2, draftLabel, nextActionFor,
+  IN_FLIGHT_SCHEMA, IN_FLIGHT_SCHEMA_V2, KNOWN_SCHEMAS, agentStateTone, ciLabel2, draftLabel, executionState, nextActionFor,
   normalizeCoordination, normalizeFactor, normalizeMergeable, normalizeReview, normalizeRow, normalizeWork, publicationLabel,
   reviewLabel, rowFacts, shortSha, type CiState, type ReviewState,
 } from './deployInFlight.ts'
@@ -155,7 +155,7 @@ eq('BOARD "assigned" is assigned, not working', beAgent.state, 'assigned')
 eq('the source word is kept', beAgent.reported_state, 'assigned')
 eq('a claim-backed agent shows execution separately', beAgent.execution_state, null)
 eq('branch_or_pr fills branch', beAgent.branch, 'wt/be')
-eq('a claim stage building is working', normalizeCoordination({ status: 'OK', agents: [{ session: 'c3', state: 'building' }] }).agents[0].state, 'working')
+eq('a claim stage building is a declaration, not proof', normalizeCoordination({ status: 'OK', agents: [{ session: 'c3', state: 'building' }] }).agents[0].state, 'assigned')
 eq('a claim at pr_open is waiting', normalizeCoordination({ status: 'OK', agents: [{ session: 'c4', state: 'pr_open' }] }).agents[0].state, 'waiting')
 eq('the literal UNKNOWN next_action is not text', beAgent.next_action, null)
 eq('assigned is amber-free but distinct', agentStateTone(beAgent.state), 'info')
@@ -211,6 +211,33 @@ eq('a CI gap is the reason', w9.ci.reason, 'stale_ci_for_other_head')
 eq('an absent source clock stays null', w9.as_of, null)
 eq('BOARD context names the owner without inventing a claim', rowFacts(row({ work: w9 })).owner, 'cc4 · BOARD context')
 eq('a derived next step says so', rowFacts(row({ work: { ...w9, next_action: null, next_action_source: null } })).nextSource, 'derived here')
+
+// ── the five BLOCK classes, defensively on the frontend ────────────────────────────────────────────────────
+const NOW_MS = Date.parse('2026-11-02T19:00:00Z')
+const ago = (m: number) => new Date(NOW_MS - m * 60_000).toISOString()
+eq('a 30-minute heartbeat proves working', executionState('working', ago(30), NOW_MS).state, 'working')
+eq('a 5-day heartbeat does not', executionState('working', ago(5 * 24 * 60), NOW_MS).state, null)
+check('and says why', (executionState('working', ago(5 * 24 * 60), NOW_MS).reason ?? '').includes('older than 2h'))
+eq('no heartbeat time does not', executionState('working', null, NOW_MS).state, null)
+check('and says why', (executionState('working', null, NOW_MS).reason ?? '').includes('no heartbeat'))
+eq('a future heartbeat is clock skew, not working', executionState('working', ago(-60), NOW_MS).state, null)
+check('and says why', (executionState('working', ago(-60), NOW_MS).reason ?? '').includes('future'))
+eq('unparseable heartbeat is not working', executionState('working', 'not a time', NOW_MS).state, null)
+eq('a non-working word is kept as itself', executionState('blocked', null, NOW_MS).state, 'blocked')
+
+// empty-head evidence never becomes MERGE/GREEN
+eq('blank review head is UNKNOWN', normalizeReview({ state: 'MERGE', head_sha: '' }, HEAD).state, 'UNKNOWN')
+eq('blank CI head is UNKNOWN', normalizeFactor<CiState>({ state: 'GREEN', head_sha: '   ' }, ['GREEN'], HEAD, 'ci').state, 'UNKNOWN')
+
+// multiclaim join: two rows for one session keep the NEWER branch/task and say how many were folded
+const dup = normalizeCoordination({ status: 'OK', agents: [
+  { session: 'cc4', task: 'old task', state: 'assigned', branch: 'wt/old', as_of: '2026-11-02T10:00:00Z' },
+  { session: 'cc4', task: 'new task', state: 'assigned', branch: 'wt/new', as_of: '2026-11-02T18:00:00Z' },
+] }, NOW_MS)
+eq('one row per session', dup.agents.length, 1)
+eq('the newest task wins', dup.agents[0].task, 'new task')
+eq('the newest branch wins', dup.agents[0].branch, 'wt/new')
+eq('the fold count is stated', dup.agents[0].duplicate_rows, 2)
 
 console.log(`deployInFlight: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)
