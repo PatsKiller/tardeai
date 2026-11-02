@@ -53,6 +53,10 @@ from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
+
+#: US equity session time zone. Never replace this with a fixed offset (P0-1, 2026-11-02 DST audit).
+_ET = ZoneInfo("America/New_York")
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -220,10 +224,21 @@ def compute_freshness(
 
 
 def market_session(at: datetime | None = None) -> str:
-    """Coarse US-equity session label. Advisory only; no trading logic reads it."""
+    """US-equity session label, resolved in America/New_York.
+
+    This is **not** advisory-only, whatever it used to say here: ``options_desk_quote_refresh``
+    refreshes quotes only when this returns ``REGULAR``, and ``options_desk_enterprise`` stamps it
+    onto every options proposal. It must therefore be a time-zone database lookup. A fixed -04:00
+    shift reads one hour ahead all winter, which stopped quote refreshes for the 15:00-16:00 ET hour
+    of the regular session and started them before the open (2026-11-02 DST audit, P0-1).
+
+    ``zoneinfo`` is imported eagerly and without a fixed-offset fallback on purpose: a missing tz
+    database must fail loudly rather than silently mislabel a live trading session.
+    """
     at = at or utc_now()
-    et_offset = timedelta(hours=-4)  # coarse; ET, not a tz database lookup
-    local = at + et_offset
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)  # this module's stamps are UTC
+    local = at.astimezone(_ET)
     if local.weekday() >= 5:
         return "WEEKEND"
     minutes = local.hour * 60 + local.minute
