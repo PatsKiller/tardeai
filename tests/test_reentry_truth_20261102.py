@@ -129,3 +129,53 @@ def test_missing_open_and_volume_read_as_not_measured():
     assert conds["follow_through"]["text"].startswith("not measured")
     assert conds["volume"]["measured"] is False
     assert conds["volume"]["text"].startswith("not measured")
+
+
+# ---------------------------------------------------------------- delivery and the watch list
+from scripts.lib.market_risk import book_precision as bp  # noqa: E402
+from scripts.lib.market_risk import reentry_watch as rw  # noqa: E402
+
+
+def _watch(verdict, *, status="RE_ENTER_IF", exit_date="2026-10-30"):
+    return {"symbol": "AAA", "status": status, "exit_date": exit_date, "exit_price": 100.0,
+            "last_close": 101.0, "as_of": "2026-11-01",
+            "stages": {"verdict": verdict, "swing_low": 98.0}}
+
+
+def test_a_stage_verdict_change_queues_one_card():
+    cards = rw.stage_cards({"AAA": _watch("Early setup")},
+                           {"AAA": {"stages": {"verdict": "Still falling"}}}, {"reentry_watch": {}})
+    assert len(cards) == 1
+    assert cards[0]["key"] == "market_risk:reentry:AAA:2026-10-30:Early setup"
+    assert "Early setup" in cards[0]["text"] and "was Still falling" in cards[0]["text"]
+    assert "no order, size or stop" in cards[0]["text"]
+    assert cards[0]["intent"]["priority"] == "P2"
+
+
+def test_no_stage_card_without_a_change():
+    prior = {"AAA": {"stages": {"verdict": "Early setup"}}}
+    assert rw.stage_cards({"AAA": _watch("Early setup")}, prior, {"reentry_watch": {}}) == []
+
+
+def test_no_stage_card_without_a_prior_verdict():
+    assert rw.stage_cards({"AAA": _watch("Confirmed")}, {}, {"reentry_watch": {}}) == []
+
+
+def test_an_invalidated_transition_queues_a_card():
+    cards = rw.stage_cards({"AAA": _watch("Invalidated")},
+                           {"AAA": {"stages": {"verdict": "Early setup"}}}, {"reentry_watch": {}})
+    assert len(cards) == 1 and cards[0]["key"].endswith(":Invalidated")
+
+
+def test_a_fractional_remainder_is_not_still_held():
+    assert bp._is_fractional_residual(1.15) is True
+    assert bp._is_fractional_residual(2.0) is False
+    assert bp._is_fractional_residual(0.0) is False
+
+
+def test_a_sale_is_labelled_stop_only_when_a_filled_stop_matches():
+    acct = bp._acct_key("Schwab-1")
+    rows = [("AAA", "Schwab-1", 100.0)]
+    assert bp._stop_basis("AAA", acct, 100.5, rows) == "stop"
+    assert bp._stop_basis("AAA", acct, 90.0, rows) == "manual sell"
+    assert bp._stop_basis("AAA", bp._acct_key("Other"), 100.5, rows) == "manual sell"

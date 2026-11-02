@@ -546,6 +546,53 @@ def _held_accounts(policy: dict[str, Any], doc: dict | None = None) -> set[tuple
     }
 
 
+def _held_share_map(policy: dict[str, Any], doc: dict | None = None) -> dict[tuple[str, str], float]:
+    """(canonical account, SYMBOL) -> shares, for every non-cash holding with a positive balance."""
+    try:
+        if doc is None:
+            from pathlib import Path as _Path
+
+            from scripts.lib import canonical_store_registry as reg
+            from scripts.lib import portfolio_positions as pp_
+
+            doc = pp_.load_store(_Path(reg.resolve_store(HOLDINGS_STORE_ID)["path"]))
+    except Exception:  # noqa: BLE001
+        return {}
+    out: dict[tuple[str, str], float] = {}
+    for h in (doc or {}).get("holdings") or []:
+        if not isinstance(h, dict) or h.get("is_cash"):
+            continue
+        sh = float(h.get("shares") or h.get("quantity") or 0)
+        if sh > 0:
+            out[(_acct_key(h.get("account")), str(h.get("symbol")).upper())] = sh
+    return out
+
+
+def _is_fractional_residual(shares: float) -> bool:
+    """A fractional balance after a sale is what the sale left behind, not a position to wait on.
+
+    Operator 2026-11-02 (PFLT): a 10-07 taxable stop left 1.15 shares, which the 1-share "still held"
+    floor read as a live position and so hid the exit from the re-entry watch. Fractions are compared
+    exactly against the balance the ledger recorded; nothing is rounded.
+    """
+    return shares > 0 and abs(shares - round(shares)) > 1e-9
+
+
+def _stop_basis(symbol: str, account: str, price: Any, stop_rows: list[tuple]) -> str:
+    """'stop' when a filled stop_last_known row matches this sale (same account, price within 1%)."""
+    px = float(price) if price is not None else None
+    if px is None:
+        return "manual sell"
+    for row in stop_rows or []:
+        sym, acct, stop_price = row[:3]
+        if str(sym).upper() != symbol or _acct_key(acct) != account or stop_price is None:
+            continue
+        sp = float(stop_price)
+        if sp > 0 and abs(px - sp) <= 0.01 * sp:
+            return "stop"
+    return "manual sell"
+
+
 def _after(buy_date: str, buy_time: Any, sell_date: str, sell_time: Any, held_now: bool = False) -> bool:
     """A Buy is a RE-buy only when it came after the sale: a later date, or the same date at a later time. A same-day
     Buy without times on both sides counts only when the account holds the symbol now (then the buy must have come
@@ -629,6 +676,7 @@ def per_account_exits(
         out[sym] = {
             "exit_date": top["date"],
             "exit_price": top["price"],
+            "exit_account_key": top["account"],
             "exit_account_scope": _opaque(top["account"]),
             "exit_account_type": _account_type(top["account"]),
             "held_elsewhere": sorted(_opaque(a) for a, s in held if s == sym),
@@ -687,8 +735,23 @@ def reentry_watch_block(
             sells = [
                 (str(r[0]).upper(), _acct_key(r[1]), str(r[2])[:10], r[4]) for r in tx if str(r[5]).startswith("sell")
             ]
+            sale_symbols = {str(r[0]).upper() for r in closes_rows}
+            held = set(held_accounts or set())
+            shares_map = _held_share_map(policy)
+            for (acct, sym), sh in shares_map.items():
+                if sym in sale_symbols and _is_fractional_residual(sh):
+                    held.discard((acct, sym))  # a fractional remainder is what the sale left, not a position
+            try:
+                cur.execute(
+                    "SELECT symbol, account, stop_price FROM stop_last_known "
+                    "WHERE lower(status) = 'filled' AND symbol = ANY(%s)",
+                    (sorted(sale_symbols),),
+                )
+                stop_rows = list(cur.fetchall())
+            except Exception:  # noqa: BLE001 — no stop evidence: every sale is labelled a manual sell
+                stop_rows = []
             exits = per_account_exits(
-                closes_rows, buys, held=held_accounts or set(), wash_days=int(cfg.get("wash_sale_days", 30)), sells=sells
+                closes_rows, buys, held=held, wash_days=int(cfg.get("wash_sale_days", 30)), sells=sells
             )
             syms = sorted(exits)
             earn: dict[str, Any] = {}
@@ -794,6 +857,7 @@ def reentry_watch_block(
                 held_elsewhere=e.get("held_elsewhere") or [],
                 wash_sale=e.get("wash_sale"),
                 look_through={"groups": groups, "basis": ex.get("basis"), "note": ex.get("note")},
+                exit_basis=_stop_basis(sym, e.get("exit_account_key"), e.get("exit_price"), stop_rows),
                 stages=st,
             )
             c.assert_no_behavior_fields(cards[sym])

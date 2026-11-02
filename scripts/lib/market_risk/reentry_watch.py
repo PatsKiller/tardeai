@@ -201,3 +201,67 @@ def sessions_between(a: str, b: str, trading_days: list[str]) -> int | None:
         except ValueError:
             return None
     return trading_days.index(b) - trading_days.index(a)
+
+
+#: Verdict changes that page the operator. Status only: no size, order or stop (MBI_BEHAVIOR = 0).
+STAGE_CARD_VERDICTS = ("Early setup", "Confirmed", "Invalidated")
+
+
+def render_stage(rec: dict[str, Any], verdict: str, previous: str | None) -> str:
+    """The card for a stage-verdict change (advisory: it never names a size, order or stop)."""
+    st = rec.get("stages") or {}
+    lines = [f"RE-ENTRY WATCH · {rec.get('symbol')} · {verdict} (was {previous or 'not classified'})"]
+    px, ex = rec.get("last_close"), rec.get("exit_price")
+    if px is not None and ex is not None:
+        lines.append(f"· last close {float(px):.2f} vs exit {float(ex):.2f}")
+    if st.get("swing_low") is not None:
+        lines.append(f"· swing low {float(st['swing_low']):.2f}")
+    if st.get("note"):
+        lines.append(f"· {st['note']}")
+    lines.append(f"as of {rec.get('as_of')} · advisory; no order, size or stop is implied")
+    text = "\n".join(lines)
+    _guard(text)
+    return text
+
+
+def stage_cards(watch: dict[str, Any] | None, prior: dict[str, Any] | None, policy: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Outbox payloads for a stage-verdict CHANGE, plus the existing RE_ENTER transition.
+
+    Deduplicated by (symbol, exit date, verdict): a card fires once per transition, never per cycle.
+    """
+    cfg = (policy or {}).get("reentry_watch") or {}
+    prio = str(cfg.get("card_priority") or "P2")
+    dedupe_min = int(cfg.get("card_dedupe_minutes") or 1440)
+    out: list[dict[str, Any]] = []
+    for sym, w in (watch or {}).items():
+        if str(sym).startswith("_") or not isinstance(w, dict):
+            continue
+        prev = (prior or {}).get(sym) or {}
+        verdict = str((w.get("stages") or {}).get("verdict") or "")
+        prev_verdict = str((prev.get("stages") or {}).get("verdict") or "") or None
+        if prev_verdict and verdict in STAGE_CARD_VERDICTS and verdict != prev_verdict:
+            key = f"market_risk:reentry:{sym}:{w.get('exit_date')}:{verdict}"
+            out.append(
+                {
+                    "key": key,
+                    "text": render_stage(w, verdict, prev_verdict),
+                    "intent": {"priority": prio, "dedupe_minutes": dedupe_min, "dedupe_key": key,
+                               "tier": "REENTRY", "transition": "reentry_stage"},
+                    "kind": "reentry",
+                    "episode_id": None,
+                }
+            )
+            continue
+        if str(w.get("status")) == "RE_ENTER" and str(prev.get("status")) != "RE_ENTER":
+            key = f"market_risk:reentry:{sym}:{w.get('exit_date')}"
+            out.append(
+                {
+                    "key": key,
+                    "text": render(w),
+                    "intent": {"priority": prio, "dedupe_minutes": dedupe_min, "dedupe_key": key,
+                               "tier": "REENTRY", "transition": "reentry"},
+                    "kind": "reentry",
+                    "episode_id": None,
+                }
+            )
+    return out
