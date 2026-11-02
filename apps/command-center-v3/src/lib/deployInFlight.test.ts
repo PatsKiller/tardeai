@@ -114,7 +114,7 @@ eq('legacy wire isDraft', legacy.is_draft, true)
 eq('legacy wire mergeable enum', legacy.mergeable, 'CONFLICTING')
 
 // review labels
-eq('review merge', reviewLabel(work().review).text, 'REVIEW · merge requested')
+eq('review merge', reviewLabel(work().review).text, 'REVIEW · passed')
 eq('review changes', reviewLabel(work({ review: { state: 'CHANGES', head_sha: HEAD } }).review).tone, 'danger')
 eq('review none', reviewLabel(work({ review: { state: 'NONE', head_sha: HEAD } }).review).text, 'REVIEW · none')
 check('review unknown carries its reason', reviewLabel(work({ review: null }).review).text.includes('UNKNOWN'))
@@ -141,7 +141,26 @@ eq('agent pr', co.agents[0].pr, 2485)
 eq('agent state', co.agents[1].state, 'blocked')
 eq('agent next action', co.agents[1].next_action, 'wait for cc2')
 eq('unrecognised agent state is unknown', co.agents[1].state === 'blocked' ? normalizeCoordination({ status: 'OK', agents: [{ session: 'x', state: 'flying' }] }).agents[0].state : 'n/a', 'unknown')
-eq('agent tones', [agentStateTone('working'), agentStateTone('blocked'), agentStateTone('waiting'), agentStateTone('idle'), agentStateTone('unknown')].join(','), 'success,danger,info,neutral,warning')
+eq('agent tones', [agentStateTone('assigned'), agentStateTone('working'), agentStateTone('blocked'), agentStateTone('waiting'), agentStateTone('idle'), agentStateTone('unknown')].join(','), 'info,success,danger,info,neutral,warning')
+
+// The exact shape the backend sends (releases_coordination.build at 57c7939e): a BOARD row is "assigned",
+// never "working", and execution is a separate field the claim proves.
+const beAgent = normalizeCoordination({
+  status: 'OK', as_of: '2026-11-02T18:00:00Z', source: 'claims+coordinator_ledger',
+  agents: [{ session: 'cc2', claim_id: 'c1', task: 'backend ledger', state: 'assigned', branch: 'wt/be', pr: 2501,
+    head_sha: HEAD, blocker: null, next_action: null, as_of: '2026-11-02T18:00:00Z', source: 'board+claims',
+    execution_state: 'UNKNOWN', claim_as_of: null, branch_or_pr: 'wt/be' }],
+}).agents[0]
+eq('BOARD "assigned" is assigned, not working', beAgent.state, 'assigned')
+eq('the source word is kept', beAgent.reported_state, 'assigned')
+eq('a claim-backed agent shows execution separately', beAgent.execution_state, null)
+eq('branch_or_pr fills branch', beAgent.branch, 'wt/be')
+eq('a claim stage building is working', normalizeCoordination({ status: 'OK', agents: [{ session: 'c3', state: 'building' }] }).agents[0].state, 'working')
+eq('a claim at pr_open is waiting', normalizeCoordination({ status: 'OK', agents: [{ session: 'c4', state: 'pr_open' }] }).agents[0].state, 'waiting')
+eq('the literal UNKNOWN next_action is not text', beAgent.next_action, null)
+eq('assigned is amber-free but distinct', agentStateTone(beAgent.state), 'info')
+
+eq('review passed is not "merge requested"', reviewLabel({ state: 'MERGE', reported: 'MERGE', head_sha: HEAD, as_of: null, as_of_basis: null, source: null, reason: null }).text, 'REVIEW · passed')
 eq('a made-up status is UNAVAILABLE', normalizeCoordination({ status: 'GREAT', agents: [] }).status, 'UNAVAILABLE')
 
 // ── schema compatibility ───────────────────────────────────────────────────────────────────────────────────

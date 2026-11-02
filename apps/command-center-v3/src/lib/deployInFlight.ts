@@ -23,7 +23,7 @@ export type Mergeable = 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN'
 export type ReviewState = 'MERGE' | 'CHANGES' | 'NONE' | 'UNKNOWN'
 export type CiState = 'GREEN' | 'RED' | 'PENDING' | 'SKIPPED' | 'UNKNOWN'
 export type PublicationState = 'local_only' | 'published' | 'merged' | 'live' | 'unknown'
-export type AgentState = 'working' | 'blocked' | 'waiting' | 'idle' | 'unknown'
+export type AgentState = 'assigned' | 'working' | 'blocked' | 'waiting' | 'idle' | 'unknown'
 export type LegacyNext = 'auto-merge' | 'coordinator' | 'auto-rebase' | 'blocked-shard-hints'
 
 export type Blocker = { text: string; kind: string | null; owner: string | null; as_of: string | null; source: string | null }
@@ -72,6 +72,10 @@ export type CoordinationAgent = {
   agent: string | null
   task: string | null
   state: AgentState
+  /** The source's own word (BOARD "assigned", claim "building", …), kept so nothing is retyped into a nicer state. */
+  reported_state: string | null
+  /** What the claim proves about execution, when the source states it separately from assignment. */
+  execution_state: AgentState | null
   branch: string | null
   pr: number | null
   blocker: string | null
@@ -141,7 +145,15 @@ export function normalizeMergeable(v: unknown): Mergeable {
 }
 
 const PUBLICATION: PublicationState[] = ['local_only', 'published', 'merged', 'live', 'unknown']
-const AGENT_STATES: AgentState[] = ['working', 'blocked', 'waiting', 'idle', 'unknown']
+const AGENT_STATES: AgentState[] = ['assigned', 'working', 'blocked', 'waiting', 'idle', 'unknown']
+/** Source words → an honest state. `assigned` (BOARD) is never promoted to `working`; only a claim stage is. */
+const AGENT_STATE_MAP: Record<string, AgentState> = {
+  ASSIGNED: 'assigned', CLAIMED: 'assigned', TAKEN: 'assigned', QUEUED: 'assigned',
+  BUILDING: 'working', WORKING: 'working', IN_PROGRESS: 'working', ACTIVE: 'working',
+  BLOCKED: 'blocked', BLOCKER: 'blocked', FAILED: 'blocked',
+  WAITING: 'waiting', PR_OPEN: 'waiting', REVIEW: 'waiting',
+  IDLE: 'idle', DONE: 'idle', MERGED: 'idle', ABANDONED: 'idle',
+}
 
 function emptyWork(reason: string): WorkBlock {
   const unknown = <S extends string>(r: string): Factor<S> => ({ state: 'UNKNOWN', reported: null, head_sha: null, as_of: null, as_of_basis: null, source: null, reason: r })
@@ -339,7 +351,7 @@ export function draftLabel(p: InFlightPr): { text: string; tone: Tone } {
 }
 
 export function reviewLabel(f: Factor<ReviewState>): { text: string; tone: Tone } {
-  if (f.state === 'MERGE') return { text: 'REVIEW · merge requested', tone: 'success' }
+  if (f.state === 'MERGE') return { text: 'REVIEW · passed', tone: 'success' }
   if (f.state === 'CHANGES') return { text: `REVIEW · blocked${f.reason ? ` · ${f.reason}` : ''}`, tone: 'danger' }
   if (f.state === 'NONE') return { text: 'REVIEW · none', tone: 'neutral' }
   return { text: `REVIEW · UNKNOWN${f.reason ? ` · ${f.reason}` : ''}`, tone: 'warning' }
@@ -354,6 +366,7 @@ export function ciLabel2(f: Factor<CiState>): { text: string; tone: Tone } {
 }
 
 export function agentStateTone(s: AgentState): Tone {
+  if (s === 'assigned') return 'info'
   if (s === 'working') return 'success'
   if (s === 'blocked') return 'danger'
   if (s === 'waiting') return 'info'
@@ -378,14 +391,18 @@ export function normalizeCoordination(raw: unknown): CoordinationBlock {
     const o = a as Record<string, unknown>
     const session = asText(o.session)
     if (!session) continue
-    const st = String(o.state ?? '').trim().toLowerCase() as AgentState
+    const reportedRaw = String(o.state ?? '').trim()
+    const st = reportedRaw.toUpperCase()
+    const executionRaw = String(o.execution_state ?? '').trim().toUpperCase()
     const pr = Number(o.pr)
     agents.push({
       session,
       agent: asText(o.agent),
       task: asText(o.task),
-      state: (AGENT_STATES as string[]).includes(st) ? st : 'unknown',
-      branch: asText(o.branch),
+      state: AGENT_STATE_MAP[st] ?? ((AGENT_STATES as string[]).includes(st.toLowerCase()) ? (st.toLowerCase() as AgentState) : 'unknown'),
+      reported_state: reportedRaw ? reportedRaw.toLowerCase() : null,
+      execution_state: executionRaw ? (AGENT_STATE_MAP[executionRaw] ?? null) : null,
+      branch: asText(o.branch) ?? asText(o.branch_or_pr),
       pr: Number.isFinite(pr) && pr > 0 ? pr : null,
       blocker: asText(o.blocker),
       next_action: asText(o.next_action),

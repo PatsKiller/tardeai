@@ -1,6 +1,10 @@
 // Releases & schedules → Deploy in flight: the REAL component + REAL bundled CSS, synthetic API, no server,
 // no credentials, no broker, no HTTP 7777. Mirrors the repo's existing *.fixture.mjs pattern.
-//   node e2e/releases-agent-view.fixture.mjs <output-directory>
+//   node e2e/releases-agent-view.fixture.mjs <output-directory> [backend-output.json]
+//
+// With the optional second argument, an extra case renders the wire produced by the REAL backend projection
+// (scripts/lib/deploy_in_flight.py at the head under review) against a synthetic coordination store, instead
+// of a hand-written shape. Sanitized/synthetic values only; zero external and zero mutating traffic.
 //
 // Proves at 320 / 390 / 412 / 1280: agent cards and per-PR review/CI/blocker facts are visible text (no hover),
 // there is no horizontal page overflow, BLOCK verdicts are never green, an older-head review is not current,
@@ -15,6 +19,9 @@ import { chromium } from '@playwright/test'
 const app = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const out = process.argv[2]
 assert(out, 'explicit fixture evidence directory required')
+const backendPayload = process.argv[3]
+  ? JSON.parse(fs.readFileSync(process.argv[3], 'utf8'))
+  : null
 fs.mkdirSync(out, { recursive: true })
 
 const clock = '2026-11-02T18:00:00Z'
@@ -105,6 +112,7 @@ try {
   const cases = [
     { name: 'full', payload: full, widths: [320, 390, 412, 1280] },
     { name: 'old-backend', payload: old, widths: [320, 1280] },
+    ...(backendPayload ? [{ name: 'backend', payload: backendPayload, widths: [320, 390, 412, 1280] }] : []),
   ]
   for (const c of cases) {
     for (const width of c.widths) {
@@ -137,6 +145,7 @@ try {
           pageScrollWidth: document.documentElement.scrollWidth,
           bodyScrollWidth: document.body.scrollWidth,
           agentCards: document.querySelectorAll('[data-testid^="agent-"]').length,
+          agentStates: [...document.querySelectorAll('[data-testid^="agent-"]')].map(el => el.textContent || ''),
           prRows: table ? table.querySelectorAll('tbody tr').length : 0,
           labeledCells: table ? table.querySelectorAll('td[data-label]').length : 0,
           unlabeledCells: table ? table.querySelectorAll('td:not([data-label])').length : 0,
@@ -167,6 +176,21 @@ try {
         has('review BLOCK: symlink escape', 'the blocker text is visible')
         has('wait for cc2', 'agent next action is visible')
         assert.ok(!/REVIEW · merge requested[^\n]*CI · red/.test(t), 'a blocked/red PR never reads as merge+green')
+      } else if (c.name === 'backend') {
+        // The wire produced by the REAL backend projection at the head under review.
+        assert.equal(measure.agentCards, 5, `${c.name}@${width}: BOARD agents rendered`)
+        assert.equal(measure.agentStates.filter(s => s.includes('ASSIGNED')).length, 5,
+          `${c.name}@${width}: every BOARD agent is ASSIGNED (got ${JSON.stringify(measure.agentStates.map(s => s.slice(0, 60)))})`)
+        assert.ok(measure.agentStates.every(s => !s.includes('UNKNOWN')),
+          `${c.name}@${width}: no BOARD agent falls back to UNKNOWN`)
+        assert.ok(measure.agentStates.every(s => !s.includes('WORKING')),
+          `${c.name}@${width}: an assignment is never promoted to WORKING`)
+        has('#2501', 'first PR')
+        has('REVIEW · blocked', 'the BLOCK verdict from the ledger')
+        has('CI · red', 'the CI observation from the ledger')
+        has('head_changed', 'a verdict recorded for another head is not current')
+        has('fix the BLOCK and re-review', 'the worklog next step is shown')
+        has('mergeability not stated (not auto-rebase)', 'UNKNOWN mergeability is never auto-rebase')
       } else {
         has('UNAVAILABLE · agents/claims not in this response', 'old backend coordination is UNKNOWN')
         has('work facts UNKNOWN', 'old backend work is UNKNOWN')
