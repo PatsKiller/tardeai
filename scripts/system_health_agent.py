@@ -62,6 +62,9 @@ MONITORED_COMPONENTS = [
         # weekend (CC5 Home audit D2, 2026-11-02). The schedule now comes from the ACTIVE lane rows, and
         # this literal is the reviewed fail-back if the registry cannot be read.
         "schedule": "30 17 * * 1-5",
+        # The literal this component declared before 2026-11-02, kept so the drift report can show what
+        # was claimed versus what the ACTIVE lane says - the corrected "schedule" must not erase that.
+        "declared_schedule": "0 9,10,12,14,16 * * 1-5",
         "schedule_source": "lane_registry",
         "log_file": "screener_pm.log",
         "monitor_lane_ids": ["orchestrator-slot", "orchestrator-slot-midday"],
@@ -1058,6 +1061,19 @@ def _resolve_component_schedule(comp, registry=None):
     return dict(comp, schedule=active[0] if len(active) == 1 else active, schedule_resolved_from="lane_registry")
 
 
+def schedule_fallback_error(comp) -> str | None:
+    """The operator-visible message when a component fell back to its literal schedule.
+
+    cc3's review (2026-11-02): ``schedule_resolved_from`` recorded an unreadable registry and nothing
+    read it, so the page showed the literal as though it had been resolved. This is the one place that
+    turns the marker into the text the persisted ``last_error`` column carries.
+    """
+    resolved_from = str((comp or {}).get("schedule_resolved_from") or "")
+    if not resolved_from.startswith("literal_fallback"):
+        return None
+    return f"schedule {resolved_from}"
+
+
 def _component_schedule_intent(comp):
     """Source intent is drift context, never proof of host scheduler installation."""
     from lib.system_health_freshness import schedule_intent
@@ -1894,6 +1910,13 @@ def run_health_check(dry_run=True, verbose=False):
             "recovery_reason": None,
             "schedule_evidence": _component_schedule_intent(comp),
         }
+        # cc3 BLOCK on the Home repair (2026-11-02): `schedule_resolved_from` recorded that the registry
+        # could not be read, and NOTHING read it - the page showed the literal as if it had been resolved.
+        # `last_error` is the field the operator surface renders and the row already persists, so the
+        # fallback says so there. No schema change. A later, real error still overwrites this.
+        _fallback = schedule_fallback_error(comp)
+        if _fallback:
+            check["last_error"] = _fallback
 
         # 4. Determine action
         needs_action = False

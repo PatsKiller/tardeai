@@ -110,3 +110,35 @@ def _last_due_before(now: datetime) -> datetime:
 def test_a_missing_log_is_missing_not_stale(tmp_path):
     result = health._check_log_freshness(str(tmp_path / "absent.log"), 180, now=datetime.now(timezone.utc))
     assert result["status"] == "MISSING" and result["reason"] == "log_missing"
+
+
+# ─────────────────────── cc3 review (2026-11-02): the fallback must not hide on the operator surface
+def test_a_registry_failure_surfaces_on_the_row_the_page_reads(monkeypatch):
+    """`schedule_resolved_from` used to be written and never read; `last_error` is what the page renders."""
+    comp = dict(_orch())
+    comp["schedule_resolved_from"] = "literal_fallback:source_registry_unavailable"
+    resolved = health._resolve_component_schedule(comp)
+    assert resolved["schedule"] == comp["declared_schedule"] or resolved["schedule"] == comp["schedule"]
+
+    # The row the page renders carries the reason in `last_error` - the column that already persists.
+    assert health.schedule_fallback_error(comp) == "schedule literal_fallback:source_registry_unavailable"
+    # A resolved component produces no message: the fallback is the only case that speaks.
+    assert health.schedule_fallback_error(_orch() | {"schedule_resolved_from": "lane_registry"}) is None
+    assert health.schedule_fallback_error({}) is None
+
+
+def test_the_original_declaration_is_kept_for_drift_comparison():
+    comp = _orch()
+    assert comp["declared_schedule"] == "0 9,10,12,14,16 * * 1-5"   # what was claimed before the repair
+    assert comp["schedule"] == "30 17 * * 1-5"                      # what the ACTIVE lane actually runs
+    assert comp["declared_schedule"] != comp["schedule"]
+
+
+def test_a_missed_monday_run_is_stale(tmp_path):
+    """The negative case that makes an all-OK mutation fail: the slot passed and nothing ran."""
+    # Friday 17:30 ET run; checked Monday 18:00 ET, after Monday's 17:30 slot was missed.
+    last_run = datetime(2026, 11, 6, 22, 35, tzinfo=timezone.utc)
+    now = datetime(2026, 11, 9, 23, 0, tzinfo=timezone.utc)
+    log = _write_log(tmp_path, last_run)
+    result = health._check_log_freshness(str(log), 180, prev_fire=_last_due_before(now), now=now)
+    assert result["status"] == "STALE", result
