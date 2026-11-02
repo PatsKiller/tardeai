@@ -10,12 +10,13 @@ Callers wired today:
 * ``pr_merge_digest.classify_pr`` — digest eligibility;
 * ``pr_merge_telegram.pr_check_rollup_green`` — the Telegram approve/notify gate;
 * ``mergify_queue_monitor.fetch_head_check_conclusions`` + ``classify_dequeue`` — a red check of any
-  kind is a real failure, never a flake to requeue;
-* ``work_pipeline_tier2.merge_preconditions`` — the Command Center merge applier (OFF today).
+  kind is a real failure, never a flake to requeue.
 
-``.mergify.yml`` carries the same rule as ``#check-failure=0`` + ``#check-pending=0`` on every queue
-entry rule and queue merge condition. Not yet wired: ``pr_merge_telegram._bootstrap_gh_merge``
-(OI-097) and ``scripts/agent_merge_pr.sh``.
+``.mergify.yml`` carries the same rule on every queue entry rule and queue merge condition, as
+negated regexes that exclude Mergify's own checks (``-check-failure~=`` / ``-check-pending~=``).
+Not yet wired, each named rather than implied: ``work_pipeline_tier2.merge_preconditions`` (the
+Command Center merge applier, OFF today), ``pr_merge_telegram._bootstrap_gh_merge`` (OI-097) and
+``scripts/agent_merge_pr.sh``.
 
 A check is green when its conclusion is `success` or `neutral`. `skipped` never blocks, but a skip
 never replaces a run that actually reported. Anything else — including a missing status, which is

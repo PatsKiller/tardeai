@@ -157,18 +157,40 @@ def _flat(conds):
     return out
 
 
-def test_mergify_rules_require_every_check_on_the_head_to_be_settled_and_green():
+GATE_FAIL = "-check-failure~=^(?!Mergify Merge Queue$|Rule: ).*"
+GATE_PENDING = "-check-pending~=^(?!Mergify Merge Queue$|Rule: ).*"
+
+
+def test_mergify_rules_require_every_check_to_be_settled_and_green_except_mergify_own():
+    """Every queue entry rule and merge condition carries the whole-set gate, and it excludes Mergify's
+    own checks by name: on an embarked PR "Mergify Merge Queue" stays IN_PROGRESS for the whole embark
+    (#2306, #2265), so a bare #check-pending=0 would dequeue or deadlock the solo queue."""
     cfg = yaml.safe_load((ROOT / ".mergify.yml").read_text())
+    seen = 0
     for rule in cfg["pull_request_rules"]:
         if "queue" not in (rule.get("actions") or {}):
             continue
         conds = _flat(rule.get("conditions"))
-        assert "#check-failure=0" in conds, rule["name"]
-        assert "#check-pending=0" in conds, rule["name"]
+        assert GATE_FAIL in conds, rule["name"]
+        assert GATE_PENDING in conds, rule["name"]
+        seen += 1
     for rule in cfg["queue_rules"]:
         conds = _flat(rule.get("merge_conditions"))
-        assert "#check-failure=0" in conds, rule["name"]
-        assert "#check-pending=0" in conds, rule["name"]
+        assert GATE_FAIL in conds, rule["name"]
+        assert GATE_PENDING in conds, rule["name"]
+        seen += 1
+    assert seen == 4, seen
+
+
+def test_the_bare_count_gates_are_gone():
+    """#check-failure=0 / #check-pending=0 count Mergify's own checks; they must not come back."""
+    cfg = yaml.safe_load((ROOT / ".mergify.yml").read_text())
+    for rule in cfg["pull_request_rules"]:
+        conds = _flat(rule.get("conditions"))
+        assert "#check-failure=0" not in conds and "#check-pending=0" not in conds, rule["name"]
+    for rule in cfg["queue_rules"]:
+        conds = _flat(rule.get("merge_conditions"))
+        assert "#check-failure=0" not in conds and "#check-pending=0" not in conds, rule["name"]
 
 
 def test_mergify_never_re_tests_a_pr_with_an_update_action():
