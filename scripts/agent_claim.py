@@ -249,6 +249,14 @@ def cmd_claim(a: argparse.Namespace) -> int:
     if not a.add and not (a.task and a.paths):
         print("error: claim needs --task and --paths (or --add <paths> to extend a claim)", file=sys.stderr)
         return 2
+    if getattr(a, "operator_approval", None):
+        try:
+            from lib import operator_approval as _OA
+
+            a.note = _OA.merge_into_note(a.note, a.operator_approval)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
     allowed, policy = _policy_gate("claim")
     if not allowed:
         return 1
@@ -1136,6 +1144,11 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--goal", default=None, help="worklog Goal (default: the task)")
     c.add_argument("--request", default=None, help="the operator request, quoted verbatim in the worklog Goal")
     c.add_argument("--plan", nargs="*", default=None, help="initial plan steps")
+    c.add_argument(
+        "--operator-approval",
+        default=None,
+        help="URL of the operator's GitHub comment approving this work; written as an Operator-approval: line the push guard reads",
+    )
     c.add_argument("--json", action="store_true")
     c.set_defaults(fn=cmd_claim)
 
