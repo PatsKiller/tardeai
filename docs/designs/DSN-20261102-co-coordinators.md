@@ -23,11 +23,19 @@ Command Center.
 
 ## Store
 
-- `persistent-state/data/coordination/coordinators.json` — `CoordinatorRegistry@v1`: coordinators (id, vendor,
-  session, where, territories, role, appointed_by/quote/at, last_heartbeat, status), exactly one lead, `territories`,
-  `assignments` (agent id or `pr:<n>` → territory).
+- `persistent-state/data/coordination/coordinator/coordinators.json` — `CoordinatorRegistry@v1`, the ONE file beside
+  `BOARD.md` and `coord_status.py` that the installed banner reads: coordinators (id, vendor, session, where, territories,
+  role, appointed_by/quote/at, last_heartbeat, status), the top-level `lead`, `territories`, `assignments` (agent id or
+  `pr:<n>` → territory), `pending_acks`, `updated_at`/`updated_by`, and the hand-written seed's `operator_quote`/`note`,
+  preserved verbatim. Every registry mutator keeps the top-level `lead` and the `coordinators[].role` mutually consistent
+  (one lead, a former lead demoted) and refuses a divergent registry instead of adjudicating it.
 - `persistent-state/data/coordination/coordinator/` — `ledger.jsonl` (`CoordinatorEvent@v1`, append-only, write-ahead),
   `BOARD.md` (generated), `LESSONS.md` (operator-seeded after merge), `inbox/<id>/`, `handoffs/`.
+
+Transfer IDs carry a random suffix, so two same-second give/lead calls keep both ledger events, both handoff notes and
+both `pending_acks` entries. A `--dry-run` never takes the lock (a lock creates the notebook and `.lock`): it reads the
+current registry and prints the plan. A timed-out ack writes `ack_timeout_attempt` before the comms queue is reached and
+the result after, so a refused enqueue stays visible and retryable.
 
 The CLI is the only writer; every write takes one flock and is atomic (temp + `os.replace` + fsync). Reads never
 create the store; a torn ledger tail is skipped, never repaired. Inbox reads move to `read/`; nothing is deleted.

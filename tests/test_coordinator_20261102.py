@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import importlib.util
+import subprocess
 import sys
 import types
 from concurrent.futures import ThreadPoolExecutor
@@ -54,7 +55,7 @@ def appoint(root: Path, cid: str = "claude-lead", role: str = "lead", terr: str 
 
 
 def registry(root: Path) -> dict:
-    return json.loads((root / "data" / "coordination" / "coordinators.json").read_text())
+    return json.loads((root / "data" / "coordination" / "coordinator" / "coordinators.json").read_text())
 
 
 def ledger(root: Path) -> list[dict]:
@@ -68,7 +69,7 @@ def ledger(root: Path) -> list[dict]:
 def test_appoint_requires_the_operator_quote(tmp_path):
     assert run(tmp_path, "appoint", "--id", "x", "--vendor", "codex", "--territories", "agents",
                "--role", "member", "--quote", "   ") == 2
-    assert not (tmp_path / "data" / "coordination" / "coordinators.json").exists()
+    assert not (tmp_path / "data" / "coordination" / "coordinator" / "coordinators.json").exists()
 
 
 def test_appoint_writes_the_registry_and_records_the_quote(tmp_path):
@@ -127,7 +128,7 @@ def test_a_stale_coordinator_cannot_answer_a_check(tmp_path):
     assert appoint(tmp_path, "codex-a", "member", "agents") == 0
     reg = registry(tmp_path)
     reg["coordinators"][1]["last_heartbeat"] = "2026-01-01T00:00:00Z"
-    (tmp_path / "data" / "coordination" / "coordinators.json").write_text(json.dumps(reg))
+    (tmp_path / "data" / "coordination" / "coordinator" / "coordinators.json").write_text(json.dumps(reg))
     assert run(tmp_path, "check", "request", "pr:1", "--sha", "s", "--by", "claude-lead") == 0
     assert run(tmp_path, "check", "ok", "pr:1", "--sha", "s", "--by", "codex-a") == 2
 
@@ -210,7 +211,7 @@ def test_view_reports_freshness_and_the_board(tmp_path, monkeypatch):
     assert appoint(tmp_path, "codex-a", "member", "agents") == 0
     reg = registry(tmp_path)
     reg["coordinators"][1]["last_heartbeat"] = "2026-01-01T00:00:00Z"
-    (tmp_path / "data" / "coordination" / "coordinators.json").write_text(json.dumps(reg))
+    (tmp_path / "data" / "coordination" / "coordinator" / "coordinators.json").write_text(json.dumps(reg))
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
     view = V.coordinators_view(tmp_path)
     states = {c["id"]: c["state"] for c in view["coordinators"]}
@@ -441,7 +442,7 @@ def test_transfer_writes_the_ledger_first_and_a_handoff(tmp_path):
     assert tr["operator_quote"] == "codex handles everything"
     assert tr["detail"] == "coord give codex all --quote codex handles everything --tmux-bin " + str(tmux)
     snaps = list((tmp_path / "data" / "coordination" / "coordinator" / "handoffs").iterdir())
-    assert any("give-codex-operator-to-codex" in p.name for p in snaps)
+    assert [p.name for p in snaps] == [f"{tr['transfer_id']}-operator-to-codex.md"]
 
 
 def test_ack_timeout_alerts_once_through_the_chokepoint(tmp_path, monkeypatch):
@@ -592,3 +593,185 @@ def test_take_back_refuses_nothing_to_take_and_a_lead_holder(tmp_path):
     by = {c["id"]: c for c in registry(tmp_path)["coordinators"]}
     assert set(by["claude-lead"]["territories"]) == {"agents", "ops", "release", "ui"}
     assert by["codex"]["territories"] == []
+
+
+# ── final acceptance: same-second transfers, lock-free dry runs, write-ahead timeout alerts ─────────────
+
+
+def _fixture_dir(root: Path) -> Path:
+    return root / "data" / "coordination" / "coordinator"
+
+
+HAND_WRITTEN_SEED = {
+    "schema": "CoordinatorRegistry@v1",
+    "lead": "codex",
+    "coordinators": [
+        {"id": "codex", "vendor": "codex", "where": "tmux cx-openai (start: cxo)", "role": "lead",
+         "territories": ["release", "agents", "ui", "ops"]},
+        {"id": "claude-lead", "vendor": "claude", "where": "Remote Control session", "role": "observer",
+         "territories": []},
+    ],
+    "updated_at": "2026-11-02T15:59:25Z",
+    "updated_by": "codex",
+    "operator_quote": "Then give Codex everything. You will just be watching when I ask.",
+    "note": "Interim hand-written registry.",
+}
+
+
+def _seed_hand_written(root: Path) -> Path:
+    """The synthetic fixture that mirrors the hand-written seed (no live registry is read or written)."""
+    d = _fixture_dir(root)
+    d.mkdir(parents=True)
+    (d / "coordinators.json").write_text(json.dumps(HAND_WRITTEN_SEED, indent=1), encoding="utf-8")
+    return d
+
+
+def test_two_same_second_transfers_keep_both_events_handoffs_and_pending_acks(tmp_path):
+    tmux, _ = _tmux_that_logs(tmp_path)
+    _seed_lead_and_codex(tmp_path, tmux)
+    frozen = "2026-11-02T15:00:00Z"  # both calls land in the same second
+    assert run(tmp_path, "give", "codex", "agents", "--quote", "q1", "--tmux-bin", str(tmux),
+               "--now", frozen) == 0
+    assert run(tmp_path, "give", "codex", "ops", "--quote", "q2", "--tmux-bin", str(tmux),
+               "--now", frozen) == 0
+    reg = registry(tmp_path)
+    pending = [p for p in reg["pending_acks"].values() if not p["acknowledged"]]
+    assert sorted(p["kind"] for p in pending) == ["give", "give"]
+    assert sorted(p["territories"][0] for p in pending) == ["agents", "ops"]
+    assert len(reg["pending_acks"]) == 2  # neither overwrote the other
+    tids = {p for e in ledger(tmp_path) if e["kind"] == "transfer_give" for p in [e["transfer_id"]]}
+    assert len(tids) == 2
+    snaps = list((_fixture_dir(tmp_path) / "handoffs").iterdir())
+    assert sorted(p.name for p in snaps) == sorted(f"{tid}-operator-to-codex.md" for tid in tids)
+    assert run(tmp_path, "ack", "codex", "--now", frozen) == 0
+    assert [p for p in registry(tmp_path)["pending_acks"].values() if not p["acknowledged"]] == []
+
+
+@pytest.mark.parametrize("verb", [
+    ["add", "codex", "--vendor", "codex", "--quote", "q"],
+    ["give", "codex", "release", "--quote", "q"],
+    ["lead", "codex", "--quote", "q"],
+    ["take-back", "codex", "--quote", "q"],
+    ["ack", "codex"],
+])
+def test_dry_run_on_an_absent_root_creates_absolutely_nothing(tmp_path, verb):
+    assert run(tmp_path, *verb, "--dry-run") in (0, 2)
+    assert not (tmp_path / "data").exists()  # no lock, no notebook, no ledger, no handoff
+
+
+def test_dry_run_add_on_an_absent_root_prints_its_plan_and_creates_nothing(tmp_path, capsys):
+    assert run(tmp_path, "add", "codex", "--vendor", "codex", "--quote", "q", "--dry-run") == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["dry_run"] is True and out["entry"]["id"] == "codex"
+    assert not (tmp_path / "data").exists()
+
+
+def test_dry_run_preview_follows_the_changed_registry(tmp_path, capsys):
+    tmux, _ = _tmux_that_logs(tmp_path)
+    _seed_lead_and_codex(tmp_path, tmux)
+    capsys.readouterr()
+    assert run(tmp_path, "give", "codex", "release", "--quote", "q", "--tmux-bin", str(tmux), "--dry-run") == 0
+    assert json.loads(capsys.readouterr().out)["from"] == ["claude-lead"]  # who holds it now
+    assert run(tmp_path, "give", "codex", "release", "--quote", "q", "--tmux-bin", str(tmux)) == 0
+    capsys.readouterr()
+    assert run(tmp_path, "give", "claude-lead", "release", "--quote", "q", "--tmux-bin", str(tmux),
+               "--dry-run") == 0
+    assert json.loads(capsys.readouterr().out)["from"] == ["codex"]  # the preview moved with the source
+
+
+def test_the_timeout_attempt_is_durable_before_the_queue_is_reached(tmp_path, monkeypatch):
+    seen: dict = {}
+
+    def spy(subject, summary):
+        kinds = [e["kind"] for e in ledger(tmp_path)]
+        seen["attempts"] = kinds.count("ack_timeout_attempt")
+        seen["order"] = kinds
+        return True
+
+    monkeypatch.setattr(C, "_operator_alert", spy)
+    tmux, _ = _tmux_that_logs(tmp_path)
+    _seed_lead_and_codex(tmp_path, tmux)
+    assert run(tmp_path, "give", "codex", "agents", "--quote", "q", "--tmux-bin", str(tmux),
+               "--now", "2026-11-02T15:00:00Z") == 0
+    assert run(tmp_path, "timeouts", "--apply", "--now", "2026-11-02T15:16:00Z") == 0
+    assert seen["attempts"] == 1  # the write-ahead event was already on disk when the queue was called
+    kinds = [e["kind"] for e in ledger(tmp_path)]
+    assert kinds.index("ack_timeout_attempt") < kinds.index("ack_timeout")
+    attempt = [e for e in ledger(tmp_path) if e["kind"] == "ack_timeout_attempt"][0]
+    assert attempt["attempt"] == 1 and attempt["subject"] == "codex" and attempt["transfer_id"]
+
+
+def test_a_failed_enqueue_leaves_the_attempt_visible_and_retryable(tmp_path, monkeypatch):
+    monkeypatch.setattr(C, "_operator_alert", lambda s, m: False)
+    tmux, _ = _tmux_that_logs(tmp_path)
+    _seed_lead_and_codex(tmp_path, tmux)
+    assert run(tmp_path, "give", "codex", "agents", "--quote", "q", "--tmux-bin", str(tmux),
+               "--now", "2026-11-02T15:00:00Z") == 0
+    assert run(tmp_path, "timeouts", "--apply", "--now", "2026-11-02T15:16:00Z") == 0
+    kinds = [e["kind"] for e in ledger(tmp_path)]
+    assert kinds.index("ack_timeout_attempt") < kinds.index("ack_alert_failed")
+    assert list(registry(tmp_path)["pending_acks"].values())[0]["alerted"] is False
+
+
+def test_the_import_fallback_fires_only_for_the_missing_lib_package(monkeypatch):
+    fake = types.SimpleNamespace(queue_intent=lambda **kw: {"request_id": "x"})
+    monkeypatch.setitem(sys.modules, "scripts.lib.host_comms_intents", fake)
+    monkeypatch.setitem(sys.modules, "scripts.lib", types.ModuleType("scripts.lib"))
+    monkeypatch.setitem(sys.modules, "scripts", types.ModuleType("scripts"))
+    monkeypatch.setitem(sys.modules, "lib", None)  # import of `lib` is halted → ModuleNotFoundError(name="lib")
+    assert C._queue_intent_fn() is fake.queue_intent
+
+    bad = types.ModuleType("lib.host_comms_intents")  # importable parent, missing the name → ImportError
+    monkeypatch.setitem(sys.modules, "lib", types.ModuleType("lib"))
+    monkeypatch.setitem(sys.modules, "lib.host_comms_intents", bad)
+    with pytest.raises(ImportError):
+        C._queue_intent_fn()  # a parent ImportError is never answered by the scripts.lib fallback
+
+
+def test_the_banner_reading_the_same_file_follows_every_ownership_change(tmp_path, capsys):
+    tmux, _ = _tmux_that_logs(tmp_path)
+    d = _seed_hand_written(tmp_path)
+    reg_path = d / "coordinators.json"
+    reg = json.loads(reg_path.read_text())
+    assert C.banner_text(reg, d).startswith(
+        "[COORDINATION] Lead: codex. Coordinators: codex=lead[release,agents,ui,ops]; claude-lead=observer[none].")
+    # give-all: claude-lead takes every territory; the banner changes with no second file to edit
+    assert run(tmp_path, "give", "claude-lead", "all", "--quote", "claude takes it",
+               "--tmux-bin", str(tmux)) == 0
+    reg = json.loads(reg_path.read_text())
+    banner = C.banner_text(reg, d)
+    assert "claude-lead=observer" in banner and "codex=lead[none]" in banner
+    assert "ui,ops]" not in banner.split("codex=")[1].split(";")[0]
+    assert registry(tmp_path)["lead"] == "codex"  # top-level lead untouched by a territory give
+    assert run(tmp_path, "lead", "claude-lead", "--quote", "claude leads", "--tmux-bin", str(tmux)) == 0
+    reg = json.loads(reg_path.read_text())
+    assert reg["lead"] == "claude-lead"
+    assert C.banner_text(reg, d).startswith("[COORDINATION] Lead: claude-lead.")
+    # take-back of the lead holder is refused; move the lead first, then it returns everything
+    assert run(tmp_path, "take-back", "claude-lead", "--quote", "q", "--tmux-bin", str(tmux)) == 2
+    assert run(tmp_path, "lead", "codex", "--quote", "codex leads", "--tmux-bin", str(tmux)) == 0
+    assert run(tmp_path, "take-back", "claude-lead", "--quote", "q", "--tmux-bin", str(tmux)) == 0
+    reg = json.loads(reg_path.read_text())
+    assert reg["lead"] == "codex"
+    by = {c["id"]: c for c in reg["coordinators"]}
+    assert by["claude-lead"]["territories"] == [] and set(by["codex"]["territories"]) == {
+        "release", "agents", "ui", "ops"}
+
+
+def test_the_banner_line_is_exactly_the_installed_format(tmp_path):
+    """The installed coord_status.py prints this literal shape from the SAME registry: no second file to edit."""
+    d = _fixture_dir(tmp_path)
+    expected = (f"[COORDINATION] Lead: codex. Coordinators: codex=lead[release,agents,ui,ops]; "
+                f"claude-lead=observer[none]. Report to the coordinator owning your work via {d}/inbox/<id>/ "
+                f"(default: inbox/codex/). Only the lead talks to the operator. Board: {d}/BOARD.md "
+                f"(updated 2026-11-02T15:59:25Z).")
+    assert C.banner_text(HAND_WRITTEN_SEED, d) == expected
+
+
+def test_reappointing_the_lead_as_a_member_is_refused(tmp_path):
+    tmux, _ = _tmux_that_logs(tmp_path)
+    _seed_lead_and_codex(tmp_path, tmux)
+    before = registry(tmp_path)
+    assert run(tmp_path, "appoint", "--id", "claude-lead", "--vendor", "claude", "--role", "member",
+               "--territories", "release", "--quote", "q") == 2
+    assert registry(tmp_path) == before  # refused, never silently left with no lead

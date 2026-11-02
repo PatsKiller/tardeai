@@ -19,11 +19,12 @@ from typing import Any
 
 try:  # scripts/ on sys.path (api_v2)
     from coordinator import (VENDORS, board_path, coordinator_state, coord_root, inbox_counts, notebook,
-                             pending_checks, pending_decisions, read_events, read_registry, registry_path, state_root)
+                             pending_checks, pending_decisions, read_events, read_registry, registry_path,
+                             registry_problems, state_root)
 except ImportError:  # imported as scripts.lib.coordination_view
     from scripts.coordinator import (VENDORS, board_path, coordinator_state, coord_root, inbox_counts, notebook,
                                      pending_checks, pending_decisions, read_events, read_registry, registry_path,
-                                     state_root)
+                                     registry_problems, state_root)
 
 PREFIX = "/api/v2/coordination"
 SCHEMA_VIEW = "CoordinationCoordinatorsView@v1"
@@ -88,14 +89,19 @@ def coordinators_view(root) -> dict[str, Any]:
         row["state"] = coordinator_state(c, stale, now)
         row["stale_after_minutes"] = stale
         rows.append(row)
+    problems = registry_problems(reg)
     return {
         "schema": SCHEMA_VIEW,
         "generated_at": _utc_now(),
         "store": str(coord_root(root)),
+        "registry_path": str(registry_path(root)),
         "registry_present": registry_path(root).exists(),
         "stale_after_minutes": stale,
-        "lead": next((c.get("id") for c in rows if str(c.get("role")) == "lead"
-                      and str(c.get("state")) != "stood_down"), None),
+        "lead": reg.get("lead"),  # the banner's field, never re-derived here
+        "registry_problems": problems,
+        "divergent": bool(rows) and bool(problems),
+        "updated_at": reg.get("updated_at"),
+        "updated_by": reg.get("updated_by"),
         "coordinators": rows,
         "territories": reg.get("territories") or {},
         "assignments": reg.get("assignments") or {},

@@ -46,7 +46,8 @@ import subprocess
 import sys
 import tempfile
 import time
-from contextlib import contextmanager
+import uuid
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
@@ -90,7 +91,8 @@ def coord_root(root: Path) -> Path:
 
 
 def registry_path(root: Path) -> Path:
-    return coord_root(root) / "coordinators.json"
+    """The ONE registry, beside BOARD.md and coord_status.py: the file the installed banner reads."""
+    return notebook(root) / "coordinators.json"
 
 
 def notebook(root: Path) -> Path:
@@ -129,7 +131,7 @@ def now_iso() -> str:
 
 
 def _stamp() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return _now_dt().strftime("%Y%m%dT%H%M%SZ")
 
 
 def _safe(name: str) -> str:
@@ -203,6 +205,9 @@ def read_registry(root: Path) -> dict[str, Any]:
     if not isinstance(doc, dict):
         doc = {}
     doc.setdefault("schema", SCHEMA_REGISTRY)
+    # The hand-written seed's top-level fields survive every normalisation (the banner reads `lead` and `updated_at`).
+    for key in ("lead", "updated_at", "updated_by", "operator_quote", "note"):
+        doc.setdefault(key, None)
     doc.setdefault("stale_after_minutes", DEFAULT_STALE_MINUTES)
     doc.setdefault("territories", dict(DEFAULT_TERRITORIES))
     doc.setdefault("coordinators", [])
@@ -271,6 +276,75 @@ def active_ids(registry: dict[str, Any], now: datetime | None = None) -> list[st
             if coordinator_state(c, stale, now) == "active"]
 
 
+def banner_text(registry: dict[str, Any], directory: str | Path) -> str:
+    """Exactly the line the installed coord_status.py prints, from the SAME fields (lead, coordinators, updated_at)."""
+    lead = registry.get("lead") or "?"
+    parts = []
+    for c in registry.get("coordinators") or []:
+        terr = ",".join(c.get("territories") or []) or "none"
+        parts.append(f"{c.get('id')}={c.get('role', '?')}[{terr}]")
+    return (f"[COORDINATION] Lead: {lead}. Coordinators: {'; '.join(parts)}. "
+            f"Report to the coordinator owning your work via {directory}/inbox/<id>/ (default: inbox/{lead}/). "
+            f"Only the lead talks to the operator. Board: {directory}/BOARD.md "
+            f"(updated {registry.get('updated_at') or '?'}).")
+
+
+def registry_problems(registry: dict[str, Any]) -> list[str]:
+    """Every way this registry can disagree with itself. Never repaired silently: the caller refuses or shows it."""
+    rows = list(registry.get("coordinators") or [])
+    ids = [str(c.get("id") or "") for c in rows]
+    problems: list[str] = []
+    if not ids:
+        return ["no coordinators"]
+    if any(not i for i in ids):
+        problems.append("a coordinator has no id")
+    if len(set(ids)) != len(ids):
+        problems.append("duplicate coordinator id")
+    for c in rows:
+        if str(c.get("role")) not in ("lead", "member", "observer"):
+            problems.append(f"{c.get('id')!r} has unknown role {c.get('role')!r}")
+    role_leads = [str(c.get("id")) for c in rows if str(c.get("role")) == "lead"]
+    top = str(registry.get("lead") or "")
+    if len(role_leads) > 1:
+        problems.append("more than one coordinator has role=lead")
+    if role_leads and top != role_leads[0]:
+        problems.append(f"top-level lead {top or '(none)'!r} does not match role lead {role_leads[0]!r}")
+    if not role_leads and top:
+        problems.append(f"top-level lead {top!r} but no coordinator has role=lead")
+    if not role_leads and not top:
+        problems.append("no lead")
+    if top and top not in ids:
+        problems.append(f"top-level lead {top!r} is not a coordinator")
+    held: dict[str, str] = {}
+    for c in rows:
+        for terr in c.get("territories") or []:
+            if terr in held and held[terr] != str(c.get("id")):
+                problems.append(f"territory {terr!r} held by both {held[terr]!r} and {c.get('id')!r}")
+            held.setdefault(terr, str(c.get("id")))
+    return problems
+
+
+def sync_lead(registry: dict[str, Any]) -> None:
+    """Make the top-level ``lead`` agree with the role — the banner's one source. Ambiguity becomes None, never a pick."""
+    leads = [str(c.get("id")) for c in registry["coordinators"] if str(c.get("role")) == "lead"]
+    registry["lead"] = leads[0] if len(leads) == 1 else None
+
+
+def touch(registry: dict[str, Any], *, by: str = "coordinator", quote: str | None = None) -> None:
+    registry["updated_at"] = now_iso()
+    registry["updated_by"] = by
+    if quote is not None:
+        registry["operator_quote"] = quote
+
+
+def coherence_error(registry: dict[str, Any]) -> str | None:
+    """None when coherent (or empty: bootstrap), else the refusal text for a mutator."""
+    if not registry.get("coordinators"):
+        return None
+    problems = registry_problems(registry)
+    return f"registry is divergent ({'; '.join(problems)}); fix or re-appoint before mutating" if problems else None
+
+
 # ── rendering ─────────────────────────────────────────────────────────────────────────────────────────
 
 
@@ -317,7 +391,11 @@ def render_board(root: Path, registry: dict[str, Any], events: list[dict[str, An
     stale = float(registry.get("stale_after_minutes") or DEFAULT_STALE_MINUTES)
     leads = [c for c in registry["coordinators"] if str(c.get("role")) == "lead"]
     lines = [f"# Coordination board — {now.replace(microsecond=0).isoformat().replace('+00:00', 'Z')}", ""]
-    lines.append(f"Lead (one voice to the operator): **{leads[0].get('id') if leads else '(none appointed)'}**")
+    lines.append(f"Lead (one voice to the operator): **{registry.get('lead') or '(none)'}**")
+    problems = registry_problems(registry) if registry["coordinators"] else []
+    if problems:
+        lines.append("")
+        lines.append("> **REGISTRY DIVERGENT** — mutations are refused until this is fixed: " + "; ".join(problems))
     lines.append("")
     lines.append("## Coordinators")
     lines.append("| id | vendor | role | territories | status | last heartbeat | session | where |")
@@ -457,6 +535,18 @@ def _notify_session(tmux: str, session: str, text: str) -> bool:
     return rc == 0
 
 
+def _queue_intent_fn():
+    """The comms-intent queue callable. The fallback fires ONLY for a missing `lib` package (AGENTS §7), never for an
+    ImportError raised inside the module itself."""
+    try:
+        from lib.host_comms_intents import queue_intent
+    except ModuleNotFoundError as exc:
+        if (getattr(exc, "name", "") or "") not in ("lib", "lib.host_comms_intents"):
+            raise
+        from scripts.lib.host_comms_intents import queue_intent  # type: ignore[no-redef]
+    return queue_intent
+
+
 def _operator_alert(subject: str, summary: str) -> bool:
     """Queue one operator alert through the EXISTING comms-intent chokepoint (never a direct send).
 
@@ -465,10 +555,7 @@ def _operator_alert(subject: str, summary: str) -> bool:
     event as alert_queued=false, and routing it is an operator activation step (no route is added by this PR).
     """
     try:
-        try:
-            from lib.host_comms_intents import queue_intent
-        except ImportError:  # scripts/ on sys.path
-            from scripts.lib.host_comms_intents import queue_intent
+        queue_intent = _queue_intent_fn()
         queue_intent(producer="coordinator", domain="coordination", kind="coordinator_ack_timeout",
                      subject=subject, summary=summary, execution_id=f"coordinator-{_stamp()}", node="coordinator")
         return True
@@ -521,6 +608,10 @@ def sweep_acks(root: Path, reg: dict[str, Any], *, now: datetime | None = None, 
         summary = (f"no ack from {p.get('to')} for {p.get('kind')} "
                    f"({', '.join(p.get('territories') or []) or 'lead'}) since {p.get('issued_at')} "
                    f"(attempt {p['alert_attempts']})")
+        # WRITE-AHEAD: the attempt is durable before the queue is reached (the queue can die mid-call).
+        append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": None, "territory": None,
+                            "kind": "ack_timeout_attempt", "subject": str(p.get("to") or ""),
+                            "detail": summary, "attempt": p["alert_attempts"], "transfer_id": tid})
         queued = bool(_operator_alert(str(p.get("to") or "coordinator"), summary))
         p["alert_queued"] = queued
         if queued:
@@ -553,7 +644,7 @@ def _transfer_plan(reg: dict[str, Any], *, kind: str, to: str, territories: list
     former_lead = next((str(c.get("id")) for c in reg["coordinators"]
                         if str(c.get("role")) == "lead" and str(c.get("id")) != to), None)
     from_ids = sorted(set(givers) | ({former_lead} if kind == "lead" and former_lead else set()))
-    tid = f"{_stamp()}-{kind}-{to}"
+    tid = f"{_stamp()}-{kind}-{to}-{uuid.uuid4().hex[:8]}"  # unique even for two calls in the same second
     ack_min = float(reg.get("ack_timeout_minutes") or DEFAULT_ACK_TIMEOUT_MINUTES)
     ack_by = (_now_dt() + timedelta(minutes=ack_min)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     notices = []
@@ -609,6 +700,8 @@ def _transfer(root: Path, reg: dict[str, Any], *, kind: str, to: str, territorie
         "issued_at": now_iso(), "ack_by": plan["ack_by"], "command": command, "operator_quote": quote,
         "handoff": str(hpath), "acknowledged": False, "alerted": False, "alert_attempts": 0,
     }
+    sync_lead(reg)
+    touch(reg, quote=quote)
     reg["as_of"] = now_iso()
     _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
     _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
@@ -632,8 +725,12 @@ def _transfer(root: Path, reg: dict[str, Any], *, kind: str, to: str, territorie
 
 def cmd_give(args) -> int:
     root = state_root(args.state_root)
-    with locked(root):
+    with (nullcontext() if getattr(args, "dry_run", False) else locked(root)):
         reg = read_registry(root)
+        err = coherence_error(reg)
+        if err:
+            print(f"error: {err}", file=sys.stderr)
+            return 2
         territories = (_all_territories(reg) if str(args.territories) == "all"
                        else [t.strip() for t in str(args.territories).split(",") if t.strip()])
         try:
@@ -651,8 +748,12 @@ def cmd_give(args) -> int:
 
 def cmd_lead(args) -> int:
     root = state_root(args.state_root)
-    with locked(root):
+    with (nullcontext() if getattr(args, "dry_run", False) else locked(root)):
         reg = read_registry(root)
+        err = coherence_error(reg)
+        if err:
+            print(f"error: {err}", file=sys.stderr)
+            return 2
         try:
             out = _transfer(root, reg, kind="lead", to=_safe(args.id), territories=[],
                             quote=str(args.quote or ""), command=" ".join(["coord"] + list(args.argv or [])),
@@ -666,8 +767,12 @@ def cmd_lead(args) -> int:
 
 def cmd_take_back(args) -> int:
     root = state_root(args.state_root)
-    with locked(root):
+    with (nullcontext() if getattr(args, "dry_run", False) else locked(root)):
         reg = read_registry(root)
+        err = coherence_error(reg)
+        if err:
+            print(f"error: {err}", file=sys.stderr)
+            return 2
         c = find(reg, _safe(args.id))
         if not c:
             print(f"error: no coordinator {args.id}", file=sys.stderr)
@@ -698,8 +803,12 @@ def cmd_take_back(args) -> int:
 
 def cmd_add(args) -> int:
     root = state_root(args.state_root)
-    with locked(root):
+    with (nullcontext() if getattr(args, "dry_run", False) else locked(root)):
         reg = read_registry(root)
+        err = coherence_error(reg)
+        if err:
+            print(f"error: {err}", file=sys.stderr)
+            return 2
         cid = _safe(args.id)
         if find(reg, cid):
             print(f"error: {cid} already exists", file=sys.stderr)
@@ -733,6 +842,8 @@ def cmd_add(args) -> int:
         # LEDGER FIRST: the event is written before the registry changes.
         append_event(root, event)
         reg["coordinators"].append(entry)
+        sync_lead(reg)
+        touch(reg, quote=str(args.quote))
         reg["as_of"] = now_iso()
         _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
         _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
@@ -750,8 +861,12 @@ def join_line(root: Path, cid: str, vendor: str) -> str | None:
 
 def cmd_ack(args) -> int:
     root = state_root(args.state_root)
-    with locked(root):
+    with (nullcontext() if getattr(args, "dry_run", False) else locked(root)):
         reg = read_registry(root)
+        err = coherence_error(reg)
+        if err:
+            print(f"error: {err}", file=sys.stderr)
+            return 2
         cid = _safe(args.id)
         if find(reg, cid) is None:
             print(f"error: no coordinator {cid}", file=sys.stderr)
@@ -773,6 +888,7 @@ def cmd_ack(args) -> int:
             append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": cid, "territory": None,
                                 "kind": "ack", "subject": cid, "detail": f"transfer {tid}",
                                 "transfer_id": tid})
+        touch(reg)
         reg["as_of"] = now_iso()
         _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
         _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
@@ -789,6 +905,10 @@ def cmd_timeouts(args) -> int:
     if args.apply:
         with locked(root):
             reg = read_registry(root)
+            err = coherence_error(reg)
+            if err:
+                print(f"error: {err}", file=sys.stderr)
+                return 2
             fired = sweep_acks(root, reg, apply=True)
             if fired:
                 _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
@@ -846,10 +966,19 @@ def cmd_appoint(args) -> int:
     root = state_root(args.state_root)
     with locked(root):
         reg = read_registry(root)
+        err = coherence_error(reg)
+        if err:
+            print(f"error: {err}", file=sys.stderr)
+            return 2
         tid = _safe(args.id)
         territories = [t.strip() for t in (args.territories or "").split(",") if t.strip()]
         if not territories:
             print("error: --territories is required (comma-separated)", file=sys.stderr)
+            return 2
+        existing = find(reg, tid)
+        if existing and str(existing.get("role")) == "lead" and args.role != "lead":
+            print(f"error: {tid} is the lead; re-appointing as {args.role} would leave no lead "
+                  f"(use `coord lead <id>` or `coord stand-down`)", file=sys.stderr)
             return 2
         if args.role == "lead":
             other = next((c for c in reg["coordinators"]
@@ -864,6 +993,8 @@ def cmd_appoint(args) -> int:
                  "appointed_by": "operator", "appointed_quote": quote, "appointed_at": now_iso(),
                  "last_heartbeat": now_iso(), "status": "active"}
         reg["coordinators"] = [c for c in reg["coordinators"] if str(c.get("id")) != tid] + [entry]
+        sync_lead(reg)
+        touch(reg, quote=quote)
         reg["as_of"] = now_iso()
         _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
         append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": tid, "territory": None,
@@ -887,6 +1018,10 @@ def cmd_stand_down(args) -> int:
             return 2
         c["status"] = "stood_down"
         c["last_heartbeat"] = now_iso()
+        if str(c.get("role")) == "lead":
+            c["role"] = "member"
+            sync_lead(reg)
+        touch(reg)
         reg["as_of"] = now_iso()
         _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
         append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": c["id"], "territory": None,
