@@ -470,3 +470,12 @@ def test_a_non_pageable_tier_does_not_create_pending_work(tmp_path):
                      notify=lambda case: {"sent": False, "reason": "not T1 (declared); Home card / digest"},
                      pending_path=pending)
     assert out["pending"] == 0
+
+
+def test_a_case_that_stays_recovering_without_pending_is_not_rehanded(tmp_path):
+    """The lead contract: notify on a transition or a pending retry, not on every pass that observes the state."""
+    store = RecordingStore([{**_t1_row(), "state": R.RECOVERING}])
+    calls = []
+    out = R.run_pass(store, lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0}, now=NOW, dry_run=False,
+                     notify=lambda case: calls.append(case) or {"sent": True}, pending_path=tmp_path / "p.json")
+    assert out["changed"] == 0 and out["notifier_calls"] == 0 and calls == []

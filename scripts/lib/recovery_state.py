@@ -560,7 +560,10 @@ def run_pass(store, snapshot_for, *, policy: Mapping[str, Any] | None = None,
                     row["write_error"] = f"{type(exc).__name__}: {exc}"
 
         key = str(case.get("case_key"))
-        wants_page = decision.state in tuple(notify_states)
+        # Lead contract (2026-11-03): notify on a TRANSITION into a paging state, or to retry pending work.
+        # A case that merely stays RECOVERING is not re-handed on every pass — C's day bound is the backstop,
+        # not the reason to call it.
+        wants_page = decision.changed and decision.state in tuple(notify_states)
         retrying = key in pending
         # Dispatch ONLY after the state is durable (a failed write must not page), and retry a pending
         # delivery on later passes even when the state no longer changes.
