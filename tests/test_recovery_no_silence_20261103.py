@@ -22,7 +22,14 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from scripts.lib import recovery_notify as rn  # noqa: E402
 import telegram_alert_router as router  # noqa: E402
 
-COVERS = ["scripts/lib/recovery_notify.py", "scripts/telegram_alert_router.py"]
+COVERS = ["scripts/lib/recovery_notify.py", "scripts/telegram_alert_router.py", "scripts/telegram_alert.py"]
+
+
+@pytest.fixture(autouse=True)
+def _isolated_recovery_ledger(tmp_path, monkeypatch):
+    """Every test writes its page ledger under tmp_path, never the real data/runtime file."""
+    monkeypatch.setattr(router, "_RECOVERY_T1_PAGE_PATH", tmp_path / "recovery_t1_pages.jsonl")
+    monkeypatch.setattr(router, "_RECOVERY_CLAIM_OWNERS", {}, raising=False)
 
 POLICY = {"materiality": {"t1": {"loss_usd": 10000, "weight_pct": 3.0}}}
 
@@ -57,11 +64,22 @@ class _NudgeState:
     def __init__(self, path):
         self.path = path
 
+    def due(self, keys, now, floor_minutes=120):
+        # Default: the key IS due, so a bare {send: false} is NOT a verified floor.
+        return list(keys)
+
     def note(self, keys, when):
         return {k: when.isoformat() for k in keys}
 
     def save(self, rows):
         return None
+
+
+class _HeldNudgeState(_NudgeState):
+    """A state whose key is genuinely inside the repeat floor (our own ledger says not due)."""
+
+    def due(self, keys, now, floor_minutes=120):
+        return []
 
 
 def _fake_batch(monkeypatch):
@@ -155,6 +173,344 @@ def test_the_marker_is_on_the_first_line():
     assert rn.RECOVERY_T1_MARKER in msg
 
 
+# ── cx-openai-2 whole-head BLOCK at 0a92a4cb4: F2, F3, F4, F5 ────────────────────────────────────────────
+
+def test_nan_materiality_resolves_loud():
+    """F2: NaN in both dimensions must be UNKNOWN, not a below-threshold T2."""
+    import math
+    send = _Sender()
+    case = _case(realized_loss_usd=float("nan"), pre_exit_weight_pct=float("nan"))
+    out = rn.notify_recovery_case(case, policy=POLICY, sender=send, state_path="/tmp/x.json")
+    assert out["tier"] == "T1" and out["sent"] is True and send.calls, out
+
+
+def test_partial_unknown_materiality_resolves_loud():
+    """F2: a known dimension below threshold does not let an UNKNOWN other dimension become T2."""
+    for case in (_case(realized_loss_usd=None, pre_exit_weight_pct=0.5),
+                 _case(realized_loss_usd=500, pre_exit_weight_pct=None)):
+        send = _Sender()
+        out = rn.notify_recovery_case(case, policy=POLICY, sender=send, state_path="/tmp/x.json")
+        assert out["tier"] == "T1" and send.calls, (case, out)
+
+
+def test_nonfinite_policy_thresholds_are_unusable_and_resolve_loud():
+    """F2: an infinite configured threshold is not a usable number."""
+    policy = {"materiality": {"t1": {"loss_usd": float("inf"), "weight_pct": float("inf")}}}
+    send = _Sender()
+    out = rn.notify_recovery_case(_case(), policy=policy, sender=send, state_path="/tmp/x.json")
+    assert out["tier"] == "T1" and send.calls, out
+
+
+def test_an_unverified_negative_batch_decision_falls_through_to_direct(monkeypatch):
+    """F3: {send:false, QUIET_HOURS} from a fresh state is NOT a verified repeat floor."""
+    mod = types.ModuleType("lib.telegram_batch")
+    mod.NudgeState = _NudgeState
+    mod.batch_text = lambda *, header, items, footer=None: header + "\n" + items[0]["title"]
+    mod.nudge_decision = lambda **kw: {"send": False, "reason": "QUIET_HOURS"}
+    monkeypatch.setitem(sys.modules, "lib.telegram_batch", mod)
+    send = _Sender()
+    out = rn.notify_recovery_case(_case(), policy=POLICY, sender=send, state_path="/tmp/x.json")
+    assert out["path"] == "direct" and out["sent"] is True and send.calls, out
+
+
+def test_a_verified_repeat_floor_still_holds(monkeypatch):
+    """F3: a genuine floor (our own ledger says not due) remains a recorded hold, not a page."""
+    class HeldState(_NudgeState):
+        def due(self, keys, now, floor_minutes=120):
+            return []
+
+    mod = types.ModuleType("lib.telegram_batch")
+    mod.NudgeState = HeldState
+    mod.batch_text = lambda *, header, items, footer=None: header + "\n" + items[0]["title"]
+    mod.nudge_decision = lambda **kw: {"send": False, "reason": "repeat floor"}
+    monkeypatch.setitem(sys.modules, "lib.telegram_batch", mod)
+    send = _Sender()
+    out = rn.notify_recovery_case(_case(), policy=POLICY, sender=send, state_path="/tmp/x.json")
+    assert out["path"] == "batch" and out["sent"] is False and out["deduped_by_floor"] is True
+    assert send.calls == []
+
+
+def test_a_non_utf8_policy_resolves_loud(tmp_path):
+    """F4: a damaged policy encoding must resolve T1, never raise."""
+    bad = tmp_path / "recovery_policy.yaml"
+    bad.write_bytes(b"\xff\xfe\x00broken")
+    policy = rn.load_policy(bad)           # must not raise
+    assert rn.resolve_tier(_case(realized_loss_usd=500, pre_exit_weight_pct=0.5), policy=policy)[0] == "T1"
+
+
+def test_a_marked_t1_is_exempt_from_the_legacy_send_gates(monkeypatch, tmp_path):
+    """F5: health-repeat, rate, daily budget and IGNORE filtering cannot suppress a marked T1."""
+    monkeypatch.setattr(router, "_budget_count_today", lambda: 10 ** 6)
+    monkeypatch.setattr(router, "_health_telegram_allowed", lambda message: False)
+    monkeypatch.setattr(router, "_RECOVERY_T1_PAGE_PATH", tmp_path / "pages.json")
+    assert router.should_send_telegram(rn.build_message(_case(case_id="spcx-a"))) is True
+    marked_ignore = rn.build_message(_case(case_id="spcx-b", plan="escalation VERDICT IGNORE confidence 10%"))
+    assert router.route_alert(marked_ignore)["send_telegram"] is True
+    routed = router.route_alert(rn.build_message(_case(case_id="spcx-c")))
+    assert "recovery_t1_exemptions" in routed and routed["recovery_t1_exemptions"]
+
+
+def test_a_recovery_t1_pages_at_most_once_per_case_per_day(monkeypatch, tmp_path):
+    """F5: the budget exemption is bounded explicitly by case id, and the bound is logged.
+
+    ``consume=True`` is the explicit form for a caller that delivers directly after the gate; the
+    DEFAULT is a preview (cc5 P1) and is covered separately below.
+    """
+    monkeypatch.setattr(router, "_budget_count_today", lambda: 10 ** 6)
+    monkeypatch.setattr(router, "_RECOVERY_T1_PAGE_PATH", tmp_path / "pages.json")
+    msg = rn.build_message(_case(case_id="spcx-20261030"))
+    assert router.should_send_telegram(msg, consume=True) is True
+    assert router.should_send_telegram(msg, consume=True) is False
+    assert any("recovery_t1_daily_case_bound" == r.get("reason") for r in router.get_suppression_log())
+
+
+def test_ordinary_alerts_still_hit_the_budget(monkeypatch, tmp_path):
+    """F5 regression guard: an ordinary P0 alert is still budget-suppressed."""
+    monkeypatch.setattr(router, "_budget_count_today", lambda: 10 ** 6)
+    monkeypatch.setattr(router, "_RECOVERY_T1_PAGE_PATH", tmp_path / "pages.json")
+    monkeypatch.setattr(router, "_ops_exempt", lambda message: False)
+    monkeypatch.setattr(router, "classify_alert", lambda message: "P0_INTERRUPT")
+    assert router.should_send_telegram("an ordinary system alert") is False
+
+
+# ── second BLOCK round at fb6b646e3: F3, F5, F6, F2 remainder, F7 ───────────────────────────────────────
+
+def test_two_accounts_same_symbol_and_state_are_two_cases(monkeypatch):
+    """F3: the repeat key must include case identity; two accounts' cases both page."""
+    _fake_batch(monkeypatch)
+    send = _Sender()
+    one = rn.notify_recovery_case(_case(case_id="spcx-taxable", account="schwab_taxable"),
+                                  policy=POLICY, sender=send, state_path="/tmp/x.json")
+    two = rn.notify_recovery_case(_case(case_id="spcx-ira", account="schwab_roth_ira"),
+                                  policy=POLICY, sender=send, state_path="/tmp/x.json")
+    assert one["sent"] is True and two["sent"] is True and len(send.calls) == 2
+
+
+def test_the_batched_body_carries_the_case_key(monkeypatch):
+    """F3: the router extracts case:<id> from the batch too, not only the direct body."""
+    _fake_batch(monkeypatch)
+    sent = []
+    monkeypatch.setattr(sys.modules["lib.telegram_batch"], "batch_text",
+                        lambda *, header, items, footer=None: sent.append(header) or header)
+    out = rn.notify_recovery_case(_case(case_id="spcx-20261030"), policy=POLICY,
+                                  sender=_Sender(), state_path="/tmp/x.json")
+    assert rn.parse_case_token(sent[0]) == "spcx-20261030" and out["sent"] is True
+
+
+def test_the_daily_bound_applies_on_the_intent_path(monkeypatch, tmp_path):
+    """F5: route_intent — the path a P1 actually takes — owns the per-case bound."""
+    from datetime import datetime, timezone
+    monkeypatch.setattr(router, "_RECOVERY_T1_PAGE_PATH", tmp_path / "pages.jsonl")
+    msg = rn.build_message(_case(case_id="spcx-intent"))
+    first = router.route_intent(msg, "P1", dedupe_minutes=0, now=datetime(2026, 11, 3, 15, 0, tzinfo=timezone.utc))
+    second = router.route_intent(msg, "P1", dedupe_minutes=0, now=datetime(2026, 11, 3, 15, 0, tzinfo=timezone.utc))
+    assert first["decision"] == "DELIVER" and first["deliver"] is True
+    assert second["decision"] == "DEDUPED" and second["reason"] == "recovery_t1_daily_case_bound"
+
+
+# ── third BLOCK round at 12990a369: cc5 P1 — a PREVIEW must not spend the day ──────────────────────────
+
+def test_the_gate_is_a_preview_and_cannot_spend_the_day(monkeypatch, tmp_path):
+    """cc5 P1 (2026-11-03): the default gate is a peek; the claim is delivery-owned.
+
+    Before this fix, a caller that only asked "would this send?" claimed the day, and the real
+    route then answered DEDUPED — the page was dropped after the peek had spent it.
+    """
+    msg = rn.build_message(_case(case_id="spcx-preview"))
+    assert router.should_send_telegram(msg) is True
+    assert router.should_send_telegram(msg) is True          # still a preview: no claim spent
+    assert router.recovery_t1_state(msg) == "absent"
+    first = router.route_intent(msg, "P1", dedupe_minutes=0)
+    assert first["decision"] == "DELIVER" and first["deliver"] is True
+
+
+def test_peek_never_claims_and_the_real_send_still_bounds_the_day(monkeypatch, tmp_path):
+    """cc5 P1 regression, both directions: N peeks then ONE send; then a second send is deduped."""
+    import telegram_alert as ta
+    monkeypatch.setattr(router, "record_intent_receipt", lambda *a, **k: None)
+    monkeypatch.setattr(router, "mark_intent_sent", lambda *a, **k: None)
+    msg = rn.build_message(_case(case_id="spcx-peek-n"))
+    for _ in range(5):
+        assert router.peek_should_send(msg) is True
+    assert router.recovery_t1_state(msg) == "absent"          # five questions, no claim
+    send = _Sender()
+    assert ta._intent_send(msg, "P1", lambda: send(msg), dedupe_minutes=0) is True
+    assert len(send.calls) == 1                               # exactly one page
+    assert router.recovery_t1_state(msg) == "delivered"
+    assert ta._intent_send(msg, "P1", lambda: send(msg), dedupe_minutes=0) is False
+    assert len(send.calls) == 1                               # the second REAL send is deduped
+
+
+def test_preview_then_the_real_delivery_sends_once(monkeypatch, tmp_path):
+    """cc5 P1 regression: peek, then the real intent path DELIVERS — one sender call, one page."""
+    import telegram_alert as ta
+    monkeypatch.setattr(router, "record_intent_receipt", lambda *a, **k: None)
+    monkeypatch.setattr(router, "mark_intent_sent", lambda *a, **k: None)
+    msg = rn.build_message(_case(case_id="spcx-preview-send"))
+    assert router.peek_should_send(msg) is True              # the peek
+    send = _Sender()
+    delivered = ta._intent_send(msg, "P1", lambda: send(msg), dedupe_minutes=0, producer="recovery_notify")
+    assert delivered is True and len(send.calls) == 1
+    assert router.recovery_t1_state(msg) == "delivered"
+
+
+def test_a_legacy_gate_then_an_intent_send_is_one_send(monkeypatch, tmp_path):
+    """cc5 P1: send_telegram_proposal_alert's shape — gate first, then priority="P1" send.
+
+    The second claim must not fail against the first: the preview leaves the day unspent, the
+    delivery path claims it exactly once, and the operator gets one message (never zero).
+    """
+    import telegram_alert as ta
+    monkeypatch.setattr(router, "record_intent_receipt", lambda *a, **k: None)
+    monkeypatch.setattr(router, "mark_intent_sent", lambda *a, **k: None)
+    msg = rn.build_message(_case(case_id="spcx-gate-then-send"))
+    assert router.should_send_telegram(msg) is True
+    send = _Sender()
+    assert ta._intent_send(msg, "P1", lambda: send(msg), dedupe_minutes=0) is True
+    assert len(send.calls) == 1
+    assert router.recovery_t1_state(msg) == "delivered"
+
+
+def test_an_explicit_consumer_still_owns_the_bound(monkeypatch, tmp_path):
+    """The consume=True contract is unchanged for a caller that delivers directly after the gate."""
+    msg = rn.build_message(_case(case_id="spcx-consume"))
+    assert router.should_send_telegram(msg, consume=True) is True
+    assert router.should_send_telegram(msg) is False           # in flight: the preview says not now
+    assert router.should_send_telegram(msg, consume=True) is False
+
+
+def test_an_unusable_primary_threshold_is_not_hidden_by_an_alias(monkeypatch, tmp_path):
+    """cx3 R5-F1: the first PRESENT policy path decides; an alias must not rescue a null primary."""
+    facts = dict(realized_loss_usd=-50, pre_exit_weight_pct=0.5)   # below the alias thresholds
+    primary_null = {"materiality": {"t1": {"loss_usd": None, "weight_pct": 3.0}},
+                    "tiers": {"T1": {"loss_usd": 100}}}
+    tier, why = rn.resolve_tier(_case(**facts), policy=primary_null)
+    assert tier == "T1" and "unusable" in why
+    primary_inf = {"materiality": {"t1": {"loss_usd": float("inf"), "weight_pct": 3.0}},
+                   "tiers": {"T1": {"loss_usd": 100}}}
+    assert rn.resolve_tier(_case(**facts), policy=primary_inf)[0] == "T1"
+    assert router.should_send_telegram(rn.build_message(_case(case_id="spcx-alias", **facts))) is True
+    # control: with no primary at all the alias IS the policy and may decide T2
+    alias_only = {"tiers": {"T1": {"loss_usd": 100, "weight_pct": 3.0}}}
+    assert rn.resolve_tier(_case(**facts), policy=alias_only)[0] == "T2"
+
+
+def test_a_resumed_claim_cannot_repage_after_a_peer_delivered(monkeypatch, tmp_path):
+    """cx3 R5-F2: the terminal check must run WHILE HOLDING the lock, not only before it.
+
+    Deterministic interleaving: A reads "absent" before the lock and pauses; B claims, invokes
+    the sender, records delivered and releases; A resumes on its stale read. A must not page.
+    """
+    import multiprocessing as mp
+
+    ctx = mp.get_context("fork")            # the interleaving needs the forked module state
+    msg = rn.build_message(_case(case_id="spcx-resume-race"))
+    real_state = router._recovery_state
+    q: "mp.Queue" = ctx.Queue()
+    resume = ctx.Event()
+
+    def peer_a(seed):
+        seen = {"n": 0}
+
+        def stale(day, key):
+            seen["n"] += 1
+            if seen["n"] == 1:
+                seed.put("a-read")          # the pre-lock read happened, with a stale view
+                resume.wait(15)
+                return "absent"             # resume on what it saw before the peer worked
+            return real_state(day, key)
+
+        router._recovery_state = stale
+        seed.put(("a-claimed", router.recovery_t1_claim(msg)))
+
+    proc = ctx.Process(target=peer_a, args=(q,))
+    proc.start()
+    try:
+        assert q.get(timeout=20) == "a-read"
+        assert router.recovery_t1_claim(msg) is True        # B claims
+        assert router.recovery_t1_state(msg) == "claimed"
+        router.recovery_t1_mark_delivered(msg)              # B delivers and frees the lock
+        resume.set()
+        assert q.get(timeout=20) == ("a-claimed", False), "a stale resumer re-opened a delivered case"
+    finally:
+        resume.set()
+        proc.join(20)
+
+
+def test_a_release_cannot_reopen_another_claimants_case(monkeypatch, tmp_path):
+    """cx3 R5-F2: release is bound to ownership; a process without the claim cannot free it."""
+    msg = rn.build_message(_case(case_id="spcx-owner"))
+    assert router.recovery_t1_claim(msg) is True
+    lock = router._recovery_claim_lock(router._budget_day(), router._recovery_case_key(msg))
+    router._RECOVERY_CLAIM_OWNERS.clear()            # this caller holds no claim on the case
+    router.recovery_t1_release(msg)
+    assert lock.exists()                              # the live claimant's lock is untouched
+    assert router.recovery_t1_state(msg) == "claimed"
+
+
+def test_a_failed_delivery_does_not_consume_the_day(monkeypatch, tmp_path):
+    """F5: claim -> failed send -> release -> the next attempt is allowed."""
+    monkeypatch.setattr(router, "_RECOVERY_T1_PAGE_PATH", tmp_path / "pages.jsonl")
+    msg = rn.build_message(_case(case_id="spcx-retry"))
+    assert router.recovery_t1_claim(msg) is True
+    assert router.recovery_t1_claim(msg) is False          # in flight
+    router.recovery_t1_release(msg)                        # transport failed
+    assert router.recovery_t1_claim(msg) is True           # retry allowed
+    router.recovery_t1_mark_delivered(msg)
+    assert router.recovery_t1_claim(msg) is False          # delivered consumes the day
+
+
+def test_the_claim_is_atomic_across_processes(monkeypatch, tmp_path):
+    """F5a: two synchronized processes must not both win the same case-day."""
+    import multiprocessing
+
+    monkeypatch.setattr(router, "_RECOVERY_T1_PAGE_PATH", tmp_path / "pages.jsonl")
+
+    def worker(start, q):
+        start.wait()
+        q.put(router.recovery_t1_claim(rn.build_message(_case(case_id="spcx-race"))))
+
+    ctx = multiprocessing.get_context("fork")
+    start = ctx.Event()
+    q = ctx.Queue()
+    procs = [ctx.Process(target=worker, args=(start, q)) for _ in range(2)]
+    for p in procs:
+        p.start()
+    start.set()
+    results = [q.get(timeout=10) for _ in procs]
+    for p in procs:
+        p.join(timeout=10)
+    assert sorted(results) == [False, True], results
+
+
+def test_exemptions_name_only_the_gates_that_would_bite(monkeypatch, tmp_path):
+    """F6: an empty list when nothing would have suppressed; only actual gates otherwise."""
+    monkeypatch.setattr(router, "_RECOVERY_T1_PAGE_PATH", tmp_path / "pages.jsonl")
+    monkeypatch.setattr(router, "_budget_count_today", lambda: 0)
+    plain = rn.build_message(_case(case_id="spcx-plain"))
+    assert router.route_alert(plain)["recovery_t1_exemptions"] == []
+    monkeypatch.setattr(router, "_budget_count_today", lambda: 10 ** 6)
+    busy = rn.build_message(_case(case_id="spcx-busy"))
+    assert router.route_alert(busy)["recovery_t1_exemptions"] == ["daily_budget"]
+
+
+def test_one_unusable_threshold_does_not_delete_its_dimension():
+    """F2 remainder: loss threshold inf must not let a small weight decide T2."""
+    policy = {"materiality": {"t1": {"loss_usd": float("inf"), "weight_pct": 20}}}
+    send = _Sender()
+    out = rn.notify_recovery_case(_case(realized_loss_usd=250, pre_exit_weight_pct=1.0),
+                                  policy=policy, sender=send, state_path="/tmp/x.json")
+    assert out["tier"] == "T1" and send.calls, out
+
+
+def test_a_huge_integer_materiality_resolves_loud():
+    """F7: a JSON-legal 10**1000 integer must not raise before the page."""
+    send = _Sender()
+    out = rn.notify_recovery_case(_case(realized_loss_usd=10 ** 1000, pre_exit_weight_pct=1.0),
+                                  policy=POLICY, sender=send, state_path="/tmp/x.json")
+    assert out["tier"] == "T1" and send.calls, out
+
+
 def test_the_marker_wins_with_an_empty_plan_and_with_tier_words():
     """The marker is an authority signal, not gated by the tier path or by message content."""
     for extra in ({"plan": ""}, {"plan": None}, {"plan": "T3 — small, do not page"}, {"state": "T2"}):
@@ -178,13 +534,14 @@ def test_a_transport_that_returns_false_is_recorded_not_treated_as_success(monke
 
 def test_a_consumed_dedupe_key_is_recorded_as_a_floor_hold(monkeypatch, caplog):
     _fake_batch(monkeypatch)
+    monkeypatch.setattr(sys.modules["lib.telegram_batch"], "NudgeState", _HeldNudgeState)
     monkeypatch.setattr(sys.modules["lib.telegram_batch"], "nudge_decision",
                         lambda **kw: {"send": False, "reason": "nothing due", "keys": []})
     send = _Sender()
     caplog.set_level("WARNING", logger="scripts.lib.recovery_notify")
     out = rn.notify_recovery_case(_case(), policy=POLICY, sender=send, state_path="/tmp/x.json")
     assert out["sent"] is False and out["deduped_by_floor"] is True and send.calls == []
-    assert "held by the repeat floor" in caplog.text
+    assert "held by the verified repeat floor" in caplog.text
 
 
 def test_a_batch_delivery_that_raises_is_loud_not_empty_success(monkeypatch):
@@ -206,3 +563,72 @@ def test_a_p1_intent_is_delivered_even_in_quiet_hours():
     route = router.route_intent(rn.build_message(_case()), "P1", dedupe_minutes=0,
                                 producer="recovery_notify", now=quiet)
     assert route["decision"] == "DELIVER" and route["deliver"] is True
+
+
+# ── round 4 at 0657f8c0a: F3 encoding, F5 durability edges, F6 ops-exempt, F8 reader, F2 null ─────────
+
+def test_case_ids_that_would_sanitise_alike_get_distinct_locks(monkeypatch):
+    """F3: 'a/b' and 'a_b' must not share a claim lock (old sanitisation collapsed them)."""
+    msg_a = rn.build_message(_case(case_id="a/b"))
+    msg_b = rn.build_message(_case(case_id="a_b"))
+    assert rn.parse_case_token(msg_a) == "a/b" and rn.parse_case_token(msg_b) == "a_b"
+    assert router.recovery_t1_claim(msg_a) is True
+    assert router.recovery_t1_claim(msg_b) is True
+
+
+def test_a_long_case_id_survives_the_message_round_trip():
+    """F3: the old parser truncated outside its class and the lock name cut at 80 chars."""
+    long_id = "case-" + "x" * 300 + "/with spaces:and:colons"
+    msg = rn.build_message(_case(case_id=long_id))
+    assert rn.parse_case_token(msg) == long_id
+    assert router.recovery_t1_claim(msg) is True
+
+
+def test_a_transport_exception_releases_the_claim_and_allows_retry(monkeypatch):
+    """F5a: send_fn raising must release the claim, not strand it and block the fallback."""
+    import telegram_alert
+    monkeypatch.setattr(telegram_alert, "_intent_router", lambda: router)
+    msg = rn.build_message(_case(case_id="spcx-transport-raise"))
+
+    def boom():
+        raise RuntimeError("transport down")
+
+    with pytest.raises(RuntimeError, match="transport down"):
+        telegram_alert._intent_send(msg, "P1", boom, dedupe_minutes=0, producer="recovery_notify")
+    assert router.recovery_t1_state(msg) != "claimed"
+    assert router.recovery_t1_claim(msg) is True
+
+
+def test_a_delivered_case_cannot_be_reclaimed_or_released(monkeypatch):
+    """F5b: delivered is terminal across a resume; a stale process releasing must not re-open it."""
+    msg = rn.build_message(_case(case_id="spcx-delivered"))
+    assert router.recovery_t1_claim(msg) is True
+    router.recovery_t1_mark_delivered(msg)
+    router.recovery_t1_release(msg)          # a stale resumer's release
+    assert router.recovery_t1_state(msg) == "delivered"
+    assert router.recovery_t1_claim(msg) is False
+
+
+def test_a_released_attempt_is_visible_to_the_reader(monkeypatch):
+    """F8: the reader must see `released`, not keep reading the earlier `claimed`."""
+    msg = rn.build_message(_case(case_id="spcx-reader"))
+    assert router.recovery_t1_claim(msg) is True
+    router.recovery_t1_release(msg)
+    assert router.recovery_t1_state(msg) == "released"
+    assert router.route_intent(msg, "P1", dedupe_minutes=0)["decision"] == "DELIVER"
+
+
+def test_ops_exempt_messages_do_not_name_the_budget_gate(monkeypatch):
+    """F6: the budget gate never applies to an ops-exempt message, so it is not a bypass."""
+    monkeypatch.setattr(router, "_budget_count_today", lambda: 10 ** 6)
+    monkeypatch.setattr(router, "_ops_exempt", lambda message: True)
+    assert router.route_alert(rn.build_message(_case(case_id="spcx-ops-exempt")))["recovery_t1_exemptions"] == []
+
+
+def test_a_present_but_null_threshold_is_not_absent():
+    """F2: a configured null is a configured dimension without a number -> loud T1."""
+    policy = {"materiality": {"t1": {"loss_usd": None, "weight_pct": 20}}}
+    send = _Sender()
+    out = rn.notify_recovery_case(_case(realized_loss_usd=250, pre_exit_weight_pct=1.0),
+                                  policy=policy, sender=send, state_path="/tmp/x.json")
+    assert out["tier"] == "T1" and send.calls, out
