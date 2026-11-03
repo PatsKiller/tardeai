@@ -501,3 +501,20 @@ def test_abbreviated_or_invalid_heads_are_not_exact_review_evidence():
         evidence = rc.evidence_for_pr([_review(head=head), _ci(head=head)], 2474, head)
         assert evidence["review"]["state"] == evidence["ci"]["state"] == "UNKNOWN"
         assert evidence["review"]["gap"] == "target_head_invalid"
+
+
+def test_legacy_and_canonical_owner_are_same_builder_when_review_claim_is_newer(tmp_path):
+    claims = _claims(tmp_path,
+        {"claim_id": "builder", "session": "builder", "pr": 2474, "branch": "wt/x", "status": "active",
+         "heartbeat_at": "2026-11-02T16:00:00Z"},
+        {"claim_id": "reviewer", "session": "reviewer", "pr": 2474, "branch": "review/scratch", "status": "active",
+         "heartbeat_at": "2026-11-02T17:00:00Z"})
+    data = rc.build(_ledger(tmp_path), claims, [_pr()], now=NOW)
+    assert data["work"][2474]["owner"] == data["pipeline"]["by_pr"][2474]["owner"]["value"]["session"] == "builder"
+
+
+def test_future_review_and_ci_are_unknown_at_the_evaluated_snapshot(tmp_path):
+    result = rc.build(_ledger(tmp_path, _review(at="2026-11-03T00:00:00Z"), _ci(at="2026-11-03T00:00:00Z")),
+                      _claims(tmp_path), [_pr()], now=NOW)
+    assert result["work"][2474]["review"]["state"] == result["pipeline"]["by_pr"][2474]["review"]["state"] == "UNKNOWN"
+    assert result["work"][2474]["ci"]["state"] == result["pipeline"]["by_pr"][2474]["ci"]["state"] == "UNKNOWN"

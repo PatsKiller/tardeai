@@ -159,14 +159,14 @@ def _public_event(row: Mapping, index: int, head: str) -> dict:
             "as_of": _iso(row.get("observed_at") or row.get("ts"))}
 
 
-def _evidence_events(events: list[Mapping]) -> tuple[list[dict], list[dict]]:
+def _evidence_events(events: list[Mapping], now: datetime) -> tuple[list[dict], list[dict]]:
     """Public typed evidence only, normalized before the canonical exact-head fold."""
     out, invalid = [], []
     for row in events:
         if row.get("kind") not in (coordination.REVIEW_KIND, coordination.CI_KIND):
             continue
         at = _iso(row.get("observed_at") or row.get("ts"))
-        if not at:
+        if not at or _parse(at) > now:
             invalid.append({"pr_number": _number(row.get("pr_number")),
                             "head_sha": row.get("head_sha"), "kind": row.get("kind")})
             continue
@@ -375,6 +375,20 @@ def _source(name: str, at: Any, gap: str | None = None) -> dict:
     return {"source": name, "as_of": _iso(at), "status": "UNAVAILABLE" if gap else "OK", "gap": gap}
 
 
+def matching_claims(pr: Mapping, claims: list[Mapping], now: datetime, *, stale_claim_hours: float = 24.0) -> list[Mapping]:
+    """One ownership selector for Work and Releases; review-only branches cannot steal a builder's PR."""
+    number = _number(pr.get("number"))
+    branch = pr.get("branch") or pr.get("headRefName")
+    matches = [c for c in claims if _number(c.get("pr_number") or c.get("pr")) == number
+               or (branch and c.get("branch") == branch and not _number(c.get("pr_number") or c.get("pr")))]
+    def rank(claim):
+        beat = _parse(claim.get("heartbeat_at") or claim.get("started_at"))
+        fresh = (not _terminal(claim) and beat is not None and 0 <= (now - beat).total_seconds() <= stale_claim_hours * 3600)
+        return (bool(branch and claim.get("branch") == branch), bool(pr.get("state") != "merged" and fresh),
+                beat or datetime.min.replace(tzinfo=timezone.utc), _sort_time(claim.get("started_at")))
+    return sorted(matches, key=rank, reverse=True)
+
+
 def build(prs: list[Mapping], claims: list[Mapping], events: list[Mapping], approvals: list[Mapping],
           plans: list[Mapping], now: datetime, *, serving: Mapping | None = None,
           health: Mapping | None = None, source_gaps: Mapping[str, str] | None = None,
@@ -417,7 +431,7 @@ def build(prs: list[Mapping], claims: list[Mapping], events: list[Mapping], appr
                 continue
         valid_approvals.append(record)
     approvals = valid_approvals
-    evidence_events, invalid_evidence = _evidence_events(events)
+    evidence_events, invalid_evidence = _evidence_events(events, now)
     if invalid_evidence:
         source_gaps["coordinator_ledger"] = "typed_evidence_timestamp_invalid"
     public_claims = [_public_claim(c) for c in claims]
@@ -440,11 +454,7 @@ def build(prs: list[Mapping], claims: list[Mapping], events: list[Mapping], appr
         raw_head = pr.get("head_sha") or pr.get("headRefOid")
         head = raw_head if isinstance(raw_head, str) and SHA.fullmatch(raw_head) else ""
         branch = pr.get("branch") or pr.get("headRefName")
-        matches = [c for c in public_claims if _number(c.get("pr_number") or c.get("pr")) == number
-                   or (branch and c.get("branch") == branch and not _number(c.get("pr_number") or c.get("pr")))]
-        matches.sort(key=lambda c: (bool(branch and c.get("branch") == branch),
-                                    bool(pr.get("state") != "merged" and c.get("claim_id") in active),
-                                    _sort_time(_claim_time(c)), _sort_time(c.get("started_at"))), reverse=True)
+        matches = matching_claims(pr, public_claims, now, stale_claim_hours=stale_claim_hours)
         owner = matches[0] if matches else None
         if matches:
             owner_candidates += 1
@@ -467,11 +477,11 @@ def build(prs: list[Mapping], claims: list[Mapping], events: list[Mapping], appr
                 if at:
                     history.append({"kind": kind, "as_of": at, "source": "claim_board",
                                     "source_ref": f"{CLAIMS_REL}/{claim.get('claim_id')}.json"})
-        evidence = coordination.evidence_for_pr(evidence_events, number, head)
+        evidence = coordination.evidence_for_pr(evidence_events, number, head, now=now)
         invalid_kinds = {record["kind"] for record in invalid_evidence
                          if head and record["head_sha"] == head and record["pr_number"] == number}
         if invalid_kinds:
-            unknown = coordination.evidence_for_pr([], number, head)
+            unknown = coordination.evidence_for_pr([], number, head, now=now)
             for kind, field in ((coordination.REVIEW_KIND, "review"), (coordination.CI_KIND, "ci")):
                 if kind in invalid_kinds:
                     evidence[field] = {**unknown[field], "source": "coordinator_ledger",
@@ -487,7 +497,8 @@ def build(prs: list[Mapping], claims: list[Mapping], events: list[Mapping], appr
                 if not isinstance(approved_head, str) or not SHA.fullmatch(approved_head):
                     continue
                 at = _iso(record.get("approved_at"))
-                if not at:
+                if not at or _parse(at) > now:
+                    source_gaps["digest_approvals"] = "approval_timestamp_invalid_or_future"
                     continue
                 ident = record.get("approval_id")
                 ident = ident if isinstance(ident, str) and SAFE_ID.fullmatch(ident) else None
@@ -575,9 +586,11 @@ def build(prs: list[Mapping], claims: list[Mapping], events: list[Mapping], appr
         "claims": _source(CLAIMS_REL, _latest(_claim_time(c) for c in public_claims), source_gaps.get("claims")),
         "coordination_registry": _source(REGISTRY_REL, registry.get("updated_at"),
                                          source_gaps.get("coordination_registry")),
-        "coordinator_ledger": _source(LEDGER_REL, _latest(e.get("observed_at") or e.get("ts") for e in events),
+        "coordinator_ledger": _source(LEDGER_REL, _latest(e.get("observed_at") or e.get("ts") for e in events
+                                                        if (stamp := _parse(e.get("observed_at") or e.get("ts"))) is not None and stamp <= now),
                                       source_gaps.get("coordinator_ledger")),
-        "digest_approvals": _source(APPROVALS_REL, _latest(r.get("approved_at") for r in approvals),
+        "digest_approvals": _source(APPROVALS_REL, _latest(r.get("approved_at") for r in approvals
+                                                        if (stamp := _parse(r.get("approved_at"))) is not None and stamp <= now),
                                     source_gaps.get("digest_approvals")),
         "plans": _source(PLANS_REL, _latest(p.get("updated_at") or p.get("approved_at") for p in plans),
                           source_gaps.get("plans")),

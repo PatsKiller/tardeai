@@ -122,7 +122,8 @@ def _truthy_class(row: Mapping[str, Any]) -> bool:
     return str(row.get("evidence_class") or "") == EVIDENCE_CLASS
 
 
-def evidence_for_pr(events: Iterable[Mapping[str, Any]], pr_number: int, head_sha: str) -> dict[str, Any]:
+def evidence_for_pr(events: Iterable[Mapping[str, Any]], pr_number: int, head_sha: str, *,
+                    now: Optional[datetime] = None) -> dict[str, Any]:
     """Evidence is only attached when BOTH heads are real, non-empty and equal.
 
     An empty target head and an empty record head used to compare equal, so a row with no head and
@@ -138,6 +139,7 @@ def evidence_for_pr(events: Iterable[Mapping[str, Any]], pr_number: int, head_sh
                            "gap": gap, "evidence_class": EVIDENCE_CLASS},
                 "ci": {"state": UNKNOWN, "head_sha": None, "as_of": None, "source": "none",
                        "workflows": [], "evidence_class": EVIDENCE_CLASS, "gap": gap}}
+    now = now or datetime.now(timezone.utc)
     reviews: list[dict[str, Any]] = []
     ci: Optional[dict[str, Any]] = None
     stale_reviews = stale_ci = invalid_reviews = invalid_ci = 0
@@ -152,7 +154,7 @@ def evidence_for_pr(events: Iterable[Mapping[str, Any]], pr_number: int, head_sh
         if not row_head:
             continue                      # a record that names no head proves nothing
         observed = _parse(row.get("observed_at") or row.get("ts"))
-        if row_head == head_sha and observed is None:
+        if row_head == head_sha and (observed is None or observed > now):
             if kind == REVIEW_KIND and _truthy_class(row):
                 invalid_reviews += 1
                 continue
@@ -423,13 +425,13 @@ def read_worklog(worklog_path: Path, root: Path) -> tuple[dict[str, Any], Option
             "truncated": bool(gap), "last_entry_at": summary.get("last_entry_at")}, gap
 
 
-def agent_rows(claims: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+def agent_rows(claims: Iterable[Mapping[str, Any]], *, include_finished: bool = False) -> list[dict[str, Any]]:
     rows = []
     # ALL live claims are kept (codex independent review, 2026-11-02): de-duplicating by session here
     # dropped a session's NEWER claim, so a PR whose owner had moved branches lost its ownership. Every
     # active claim is needed for per-PR lookup; only the primary summary dedupes.
     for doc in claims:
-        if not is_live(doc):
+        if not include_finished and not is_live(doc):
             continue
         session = str(doc.get("session") or "")
         if not session and not doc.get("claim_id"):
@@ -475,8 +477,6 @@ def build(ledger_path: Path, claims_dir: Path, prs: Iterable[Mapping[str, Any]],
     prs = list(prs)
     events, ledger_gap = read_ledger(ledger_path)
     claims, claims_gap = read_claims(claims_dir)
-    live = agent_rows(claims)
-
     root = ledger_path.parent
     board, board_gap = read_board(root / "BOARD.md", root)
     gaps = [g for g in (ledger_gap, claims_gap, board_gap) if g]
@@ -505,24 +505,16 @@ def build(ledger_path: Path, claims_dir: Path, prs: Iterable[Mapping[str, Any]],
                    "branch_or_pr": a.get("branch")} for a in primary_claims(claims)[:20]]
     # Per-PR ownership comes from the CLAIMS (they carry the claim id the worklog is keyed by), while the
     # primary agent list above is BOARD context. Mixing the two lost the worklog lookup.
-    by_branch, by_number = {}, {}
-    for candidate in sorted(live, key=lambda a: _parse(a.get("as_of")) or datetime.min.replace(tzinfo=timezone.utc)):
-        try:
-            number = int(candidate.get("pr") or 0)
-        except (TypeError, ValueError):
-            number = 0
-        if number:
-            by_number[number] = candidate
-        elif candidate.get("branch"):
-            by_branch[candidate["branch"]] = candidate
-
     work: dict[int, dict[str, Any]] = {}
     worklogs: dict[str, dict[str, Any]] = {}
     for pr in prs:
         number = int(pr.get("number") or 0)
         head = str(pr.get("head_sha") or "")
-        evidence = evidence_for_pr(events, number, head)
-        owner = by_number.get(number) or by_branch.get(str(pr.get("branch") or ""))
+        evidence = evidence_for_pr(events, number, head, now=now)
+        from scripts.lib.work_pipeline_sources import matching_claims
+        owner_candidates = matching_claims(pr, claims, now)
+        owner_rows = agent_rows(owner_candidates[:1], include_finished=True)
+        owner = owner_rows[0] if owner_rows else None
         wl = None
         if owner and owner.get("claim_id"):
             if len(worklogs) >= MAX_WORKLOGS and owner["claim_id"] not in worklogs:

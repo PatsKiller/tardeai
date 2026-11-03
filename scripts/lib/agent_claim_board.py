@@ -1727,6 +1727,7 @@ def board_view(
     observer: "LC.CachedObserver | None" = None,
     background: bool = True,
     worklog: str | None = None,
+    limit: int = 200,
 ) -> dict[str, Any]:
     """Read-only projection served by GET /api/v2/coordination/claims. Never creates the directory and never writes:
     lifecycle observations come from the sidecar cache plus an in-memory cache refreshed in a background thread
@@ -1747,7 +1748,8 @@ def board_view(
     obs, meta = cache.snapshot(docs, LC.read_sidecars(board.dir) if docs else {}, background=background)
     board.extra_obs = obs
     meta["repo"] = getattr(cache, "repo", None)
-    out = board.board(include_finished=include_finished, lifecycle_meta=meta)
+    out = board.board(include_finished=include_finished, lifecycle_meta=meta,
+                      limit=max(1, min(int(limit), MAX_CLAIM_FILES_READ)))
     try:  # the task board (additive): free / taken / in_progress / done
         try:
             from scripts.lib import agent_task_board as TB

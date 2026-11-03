@@ -747,3 +747,52 @@ def test_visible_optional_failure_cannot_hide_behind_green_required_checks():
     assert ci["passed"] == 1 and ci["total"] == 2
     missing = W._norm_open_pr({**row, "statusCheckRollup": row["statusCheckRollup"][:1]}, ["required", "not-run"])["ci"]
     assert missing["state"] == "pending" and missing["pending"] == ["not-run"]
+
+
+@pytest.mark.parametrize("flag,expected", [("truncated", "claim_board_truncated"), ("unreadable", "claim_board_schema_or_read_failure")])
+def test_legacy_board_completeness_flags_reach_shared_model(tmp_path, monkeypatch, flag, expected):
+    from scripts.lib import agent_claim_board as board
+    from scripts.lib import design_registry as designs
+    from scripts.lib import releases_coordination as releases
+    monkeypatch.setattr(releases, "read_claims", lambda root: ([], None))
+    seen = []
+    def legacy(*args, **kwargs):
+        seen.append(kwargs["limit"])
+        return {"claims": [], "task_board": {"tasks": []}, "claims_dir": str(tmp_path),
+                flag: ["schema-invalid.json"] if flag == "unreadable" else True}
+    monkeypatch.setattr(board, "board_view", legacy)
+    class Designs:
+        def designs(self): return {"awaiting_approval": []}
+    monkeypatch.setattr(designs, "work_board", lambda: Designs())
+    monkeypatch.setattr(W, "tier2_context", lambda: {})
+    monkeypatch.setattr(W, "open_approval_packages", lambda: [])
+    pipeline = W.WorkPipeline(claims_dir=tmp_path, state_root=tmp_path, health=lambda: {}, now=lambda: NOW)
+    data = pipeline._build()
+    assert seen == [1000]
+    assert data["coordination"]["sources"]["claims"]["gap"] == expected
+    assert data["summary"]["in_flight"] is None
+
+
+def test_work_item_cap_is_explicit_unknown_global_count(tmp_path, monkeypatch):
+    monkeypatch.setattr(W, "MAX_ITEMS", 1)
+    source = {"claims": [], "tasks": [{"task_id": "one", "title": "First", "status": "free", "created_at": ago(hours=1)},
+                                        {"task_id": "two", "title": "Second", "status": "free", "created_at": ago(hours=1)}], "awaiting": []}
+    data = W.WorkPipeline(sources=lambda: source, health=lambda: {}, now=lambda: NOW)._build()
+    assert len(data["items"]) == 1 and data["item_limits"]["candidate_count"] == 2
+    assert data["item_limits"]["truncated"] is True and data["summary"]["in_flight"] is None
+    assert data["coordination"]["sources"]["work_items"]["gap"] == "work_item_limit_exceeded"
+
+
+def test_board_view_internal_limit_is_configurable_without_changing_old_default(tmp_path, monkeypatch):
+    from scripts.lib import agent_claim_board as board
+    class Cache:
+        def snapshot(self, *args, **kwargs): return {}, {"observed_at": None, "warning": None}
+    monkeypatch.setattr(board, "_api_observer", lambda: Cache())
+    for n in range(2):
+        cid = f"20261023T150000Z-codex-{n:08x}"
+        (tmp_path / (cid + ".json")).write_text(json.dumps({"schema": board.SCHEMA, "claim_id": cid,
+            "status": "active", "session": "synthetic", "vendor": "codex", "paths": [], "heartbeat_at": ago(minutes=1)}))
+    clipped = board.board_view(tmp_path, limit=1, background=False)
+    full = board.board_view(tmp_path, limit=1000, background=False)
+    assert len(clipped["claims"]) == 1 and clipped["truncated"] is True
+    assert len(full["claims"]) == 2 and full["truncated"] is False and full["unreadable"] == []

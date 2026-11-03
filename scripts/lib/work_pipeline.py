@@ -1159,6 +1159,7 @@ def build_items(
     latest_line: Callable[[str | None], str | None] = latest_worklog_line,
     queue: Mapping[str, Any] | None = None,
     tier2: Mapping[str, Any] | None = None,
+    collection_meta: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Group the sources into work items (task > PR > claim > design) and derive each one."""
     now = now or _utc_now()
@@ -1236,6 +1237,8 @@ def build_items(
     items = []
     # Designs awaiting the operator are appended last; a plain [:MAX_ITEMS] cut dropped every one of them (and its
     # Tier 2 Approve, the only path design_registry reads) once tasks/PRs/claims filled the page (2026-10-31: 400/400).
+    if collection_meta is not None:
+        collection_meta.update(candidate_count=len(groups), limit=MAX_ITEMS, truncated=len(groups) > MAX_ITEMS)
     waiting = [g for g in groups if (g.get("design") or {}).get("awaiting")][:MAX_ITEMS]
     rest = [g for g in groups if not (g.get("design") or {}).get("awaiting")]
     for g in rest[: MAX_ITEMS - len(waiting)] + waiting:
@@ -1390,7 +1393,12 @@ class WorkPipeline:
                 "stale_hours": DEFAULT_STALE_HOURS,
                 "lifecycle": {"availability": "UNAVAILABLE", "warnings": [claims_gap]},
             }
-        view = B.board_view(self.claims_dir, include_finished=True)
+        view = B.board_view(self.claims_dir, include_finished=True, limit=1000)
+        board_gaps = {}
+        if view.get("truncated"):
+            board_gaps["claims"] = "claim_board_truncated"
+        if view.get("unreadable"):
+            board_gaps["claims"] = "claim_board_schema_or_read_failure"
         try:
             awaiting = DR.work_board().designs().get("awaiting_approval") or []
         except Exception:  # noqa: BLE001 - designs are additive
@@ -1403,7 +1411,7 @@ class WorkPipeline:
         packages = open_approval_packages()
         return {
             "state_root": str(self.state_root or runtime_dir().parents[1]),
-            "source_gaps": {"claims": claims_gap} if claims_gap else {},
+            "source_gaps": board_gaps,
             "tier2": tier2,
             "queue": WPC.read_queue(self.claims_dir or view.get("claims_dir")),
             "claims": view.get("claims") or [],
@@ -1440,6 +1448,7 @@ class WorkPipeline:
             coordination = {"schema": shared_sources.SCHEMA, "by_pr": {}, "active_claim_ids": [],
                             "sources": {}, "as_of": None, "captured_at": _iso(now),
                             "gaps": [{"source": "coordination", "reason": type(exc).__name__}]}
+        item_limits: dict[str, Any] = {}
         items = build_items(
             tasks=src.get("tasks") or [],
             claims=src.get("claims") or [],
@@ -1449,8 +1458,15 @@ class WorkPipeline:
             now=now,
             stale_hours=float(src.get("stale_hours") or DEFAULT_STALE_HOURS),
             queue=src.get("queue"),
-            tier2=src.get("tier2"),
+            tier2=src.get("tier2"), collection_meta=item_limits,
         )
+        if item_limits.get("truncated"):
+            coordination = {**coordination,
+                            "sources": {**(coordination.get("sources") or {}), "work_items": {
+                                "source": "work_pipeline_grouping", "as_of": _source_time(now),
+                                "status": "PARTIAL", "gap": "work_item_limit_exceeded"}},
+                            "gaps": [*(coordination.get("gaps") or []),
+                                     {"source": "work_items", "reason": "work_item_limit_exceeded"}]}
         try:
             if (src.get("source_gaps") or {}).get("claims"):
                 raise ValueError("claim store unavailable")
@@ -1524,10 +1540,11 @@ class WorkPipeline:
             "stage_label": dict(STAGE_LABEL),
             "stage_help": dict(STAGE_HELP),
             "summary": {**summarize(items),
-                        "in_flight": None if (src.get("source_gaps") or {}).get("claims") else sum(bool(i["in_flight"]) for i in items),
+                        "in_flight": None if (src.get("source_gaps") or {}).get("claims") or item_limits.get("truncated") else sum(bool(i["in_flight"]) for i in items),
                         "known_in_flight": sum(bool(i["in_flight"]) for i in items),
                         "needs_me": waiting.get("pending_count"), "known_needs_me": waiting.get("actionable_count")},
             "items": items,
+            "item_limits": item_limits,
             "coordination": coordination,
             "waiting_on_you": waiting,
             "sources": {

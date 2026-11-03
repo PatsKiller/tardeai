@@ -576,3 +576,13 @@ def test_typed_unassigned_publication_events_retain_only_bound_public_fields():
     assert data["work_events"][0]["claim_id"] == "claim-one"
     assert data["work_events"][0]["head_sha"] == HEAD
     assert "PRIVATE" not in json.dumps(data["work_events"])
+
+
+def test_future_typed_records_and_approvals_never_become_positive_or_fresh():
+    future = "2026-11-04T00:00:00Z"
+    result = build(events=[event(ts=future)], approvals=[approval(approved_at=future)])
+    row = result["by_pr"][2501]
+    assert row["review"]["state"] == "UNKNOWN" and row["review"]["as_of"] is None
+    assert row["approval"]["value"] is None
+    assert result["sources"]["coordinator_ledger"]["as_of"] is None
+    assert result["sources"]["digest_approvals"]["as_of"] is None
