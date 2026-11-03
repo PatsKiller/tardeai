@@ -1,0 +1,9 @@
+{
+  "schema": "CiGate@v1",
+  "name": "schwab_readpath_no_baseline_20261103",
+  "files": ["tests/test_schwab_readpath_no_baseline_20261103.py"],
+  "anchor": "SCHWAB_READPATH_NO_BASELINE_20261103",
+  "comment": [
+    "ANCHOR: SCHWAB_READPATH_NO_BASELINE_20261103 — an empty/corrupt holdings store is 'no snapshot' to the Schwab sync READ diff (never a JSONDecodeError), while a WRITE still resolves the restored candidate or a backup as its baseline so the coverage/cash/catastrophic-drop guards stay live and a write that drops a non-synced account is refused."
+  ]
+}

@@ -103,18 +103,50 @@ def _last_good_doc(path=None):
     return doc if state == "ok" else None
 
 
+def _backup_candidates(path=None):
+    """Sibling ``holdings.json.bak*`` files, newest first. Read-only."""
+    p = Path(path) if path else HOLDINGS_PATH
+    try:
+        return sorted(p.parent.glob(p.name + ".bak*"), key=lambda f: f.stat().st_mtime, reverse=True)
+    except OSError:
+        return []
+
+
+def _baseline_from_backups(path=None):
+    """Newest structurally usable backup as ``(doc, path)``, else ``(None, None)``.
+
+    2026-11-03 (operator execution-engineering grant): when the live store is empty/corrupt the
+    WRITE path must still have a baseline — the restored candidate or a backup — so
+    ``validate_payload`` runs WITH the coverage / cash / catastrophic-drop guards instead of
+    ``last_good=None``. Read-only; never invents a book.
+    """
+    fallback = None
+    for f in _backup_candidates(path):
+        state, doc = _store_state(f)
+        if state != "ok" or not _positions_of(doc):
+            continue
+        if validate_payload(doc, None).ok:
+            return doc, f
+        if fallback is None:
+            fallback = (doc, f)
+    return fallback if fallback else (None, None)
+
+
 def sane_payload(h, last_good=None):
     """PRE-WRITE SANITY — same contract as canonical_assert().
 
     With no explicit ``last_good``, a store that exists but is empty/corrupt is not a clean
-    slate: report NO_BASELINE rather than validate the candidate with every relative guard off.
+    slate: resolve the restored candidate or a backup as the baseline, and refuse only when
+    none exists (never validate with every relative guard off).
     """
     if last_good is not None:
         last = last_good
     else:
         state, last = _store_state()
-        if state in ("empty", "unparseable", "unreadable"):
-            return False, f"NO_BASELINE: holdings store is {state}"
+        if last is None:
+            last, _src = _baseline_from_backups()
+        if last is None:
+            return False, f"NO_BASELINE: holdings store is {state} and no usable backup was found"
     v = validate_payload(h, last)
     return v.ok, f"{v.reason_code}: {v.reason}"
 
@@ -310,7 +342,7 @@ def reconcile_totals(doc, *, source="unknown"):
 
 def protected_holdings_write(new_holdings, source="schwab_sync", account_key="schwab", protect_basis=False,
                             basis_label=None,
-                            target_path=None, skip_transfer_detect=False):
+                            target_path=None, skip_transfer_detect=False, baseline=None):
     """GATE B / mandatory holdings wipe-guard. Routes EVERY holdings/current-state write so a bad payload
     fails closed instead of zeroing holdings.json. NEVER overwrites a good snapshot with empty/zeroed/
     catastrophically-low data; backs up + writes atomically + post-asserts + restores on failure.
@@ -322,15 +354,22 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
     """
     HP = Path(target_path).resolve() if target_path else HOLDINGS_PATH
     prior_state, prior_doc = _store_state(HP)
-    if prior_state in ("empty", "unparseable", "unreadable"):
-        # The store exists but cannot serve as a baseline. Refuse: validate_payload(h, None)
-        # turns off the relative-drop/coverage/cash guards, so proceeding would let a partial
-        # writer (e.g. one account's sync) replace the whole book with no comparison.
-        reason = f"NO_BASELINE: holdings store is {prior_state}"
+    baseline_source = "store" if prior_doc is not None else None
+    if baseline is not None:
+        # An explicit restored candidate / DB-derived book (Step 1) is the strongest baseline.
+        prior_doc, baseline_source = baseline, "caller"
+    elif prior_doc is None:
+        # Store empty/corrupt: use the restored candidate or a backup so the relative guards stay
+        # live. Refuse only when no usable baseline exists — NEVER validate with last_good=None.
+        prior_doc, _src = _baseline_from_backups(HP)
+        if prior_doc is not None:
+            baseline_source = f"backup:{Path(_src).name}"
+    if prior_doc is None:
+        reason = f"NO_BASELINE: holdings store is {prior_state} and no usable backup was found"
         _record(account_key, "rejected_no_baseline", f"[{source}] {reason}")
         _alert(f"🛑 holdings write BLOCKED ({source}): {reason}. Prior snapshot kept (no wipe).", source)
         return {"wrote": False, "status": "rejected_no_baseline", "reason": reason,
-                "reason_code": "NO_BASELINE", "missing_accounts": []}
+                "reason_code": "NO_BASELINE", "missing_accounts": [], "baseline_source": None}
     # Totals must describe the positions in THIS payload -- see reconcile_totals.
     reconcile_totals(new_holdings, source=source)
     verdict = validate_payload(new_holdings, prior_doc)
@@ -523,7 +562,8 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
     except Exception as _e:
         print(f"  [holdings-guard] secondary mirror skipped (non-fatal): {str(_e)[:120]}")
 
-    return {"wrote": True, "status": "ok", "total_value": v, "position_count": n, "basis_flags": flagged}
+    return {"wrote": True, "status": "ok", "total_value": v, "position_count": n, "basis_flags": flagged,
+            "baseline_source": baseline_source}
 
 
 def _looks_like_cusip(sym):
@@ -746,16 +786,25 @@ def _sync_rows(account_key, label, live, st, *, dry_run):
     2026-11-03: a 0-byte store must never be the starting document for a read-modify-write.
     """
     state, cur = _store_state()
+    baseline_doc = None
+    baseline_source = "store"
     if state != "ok":
         if dry_run:
             # Read path: absent/empty/corrupt simply means there is no snapshot to diff.
             return {"status": "no_holdings_file" if state == "absent" else "no_snapshot",
                     "store_state": state, "broker_account": account_key,
                     "holdings_label": label, "wrote": False}
-        # Write path: empty/corrupt is NOT 'no baseline' — refuse before the read-modify-write.
-        _record(account_key, "rejected_no_baseline", f"[schwab_position_sync] holdings store {state}")
-        return {"status": "rejected_no_baseline", "store_state": state, "broker_account": account_key,
-                "holdings_label": label, "wrote": False}
+        # Write path: empty/corrupt is NOT 'no baseline'. Use the restored candidate or a backup
+        # and go through protected_holdings_write so the coverage/cash/drop guards stay live; a
+        # write is refused only when no baseline exists at all (operator grant 43212811, 2026-11-03).
+        baseline_doc, _src = _baseline_from_backups()
+        if baseline_doc is None:
+            _record(account_key, "rejected_no_baseline",
+                    f"[schwab_position_sync] holdings store {state} and no usable backup")
+            return {"status": "rejected_no_baseline", "store_state": state, "broker_account": account_key,
+                    "holdings_label": label, "wrote": False}
+        cur = baseline_doc
+        baseline_source = f"backup:{Path(_src).name}"
     hold = cur.get("holdings", [])
     existing_by_key = {((r.get("symbol") or "").upper(), label): r
                        for r in hold if r.get("account") == label}
@@ -772,8 +821,8 @@ def _sync_rows(account_key, label, live, st, *, dry_run):
                 "share_drift_events": drift_events, "wrote": False}
     cur["holdings"] = [r for r in hold if r.get("account") != label] + new_rows
     res = protected_holdings_write(cur, source="schwab_position_sync", account_key=account_key, protect_basis=True,
-                                   basis_label=label)
-    res.update({"added": added, "removed": removed})
+                                   basis_label=label, baseline=baseline_doc)
+    res.update({"added": added, "removed": removed, "store_state": state, "baseline_source": baseline_source})
     # Open approval tasks for DRIP-like share drift (non-fatal)
     if drift_events:
         try:
