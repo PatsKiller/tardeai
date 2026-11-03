@@ -43,7 +43,7 @@ const bundled = await build({
   define: { 'process.env.NODE_ENV': '"production"' },
   plugins: [{ name: 'stub-node-fs', setup(b) {
     b.onResolve({ filter: /^node:fs$/ }, () => ({ path: 'fs-stub', namespace: 'stub' }))
-    b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export function readFileSync(){return ' + JSON.stringify(GLOSSARY_RAW) + '}', loader: 'js' }))
+    b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export function readFileSync(p){return String(p).endsWith("config/market_risk_glossary.json") ? ' + JSON.stringify(GLOSSARY_RAW) + ' : "{}"}', loader: 'js' }))
   } }],
 })
 const js = bundled.outputFiles.find(f => f.path.endsWith('.js')).text
@@ -74,7 +74,7 @@ try {
     await page.waitForTimeout(300)
     const m = await page.evaluate(() => {
       const text = document.body.innerText || ''
-      const taps = [...document.querySelectorAll('button,a,[role="button"]')].map(el => {
+      const taps = [...document.querySelectorAll('button,a,[role="button"],summary')].map(el => {
         const r = el.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), text: (el.textContent || '').slice(0, 24) }
       })
       return {
