@@ -88,7 +88,8 @@
         "OVERBOUGHT_WAIT",
         "OVERSOLD_REVIEW",
         "READY_TO_REVIEW",
-        "WASH_BLOCK"
+        "WASH_BLOCK",
+        "IGNORE"
       ],
       "reduce": [
         "TRIM",
@@ -97,7 +98,8 @@
         "REDUCE",
         "TRIM_REVIEW",
         "EXIT_REVIEW",
-        "INVALIDATED"
+        "INVALIDATED",
+        "REBALANCE_TRIM"
       ]
     },
     "held_keep": [
@@ -150,7 +152,8 @@
       "UNKNOWN",
       "READY",
       "WAIT",
-      "MANAGING"
+      "MANAGING",
+      "REVIEW_PENDING"
     ],
     "canonical_max_age_trading_days": 2,
     "refresh_after_trading_days": 10,

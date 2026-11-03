@@ -236,3 +236,39 @@ def test_hysteresis_does_not_reuse_an_older_nonconsecutive_observation():
                {"key": "other", "signature": []}]
     rows = run("WATCH", Input("desk", "ADD", NOW), history=history)
     assert headline(rows) is None and rows[0].rule == "R15"
+
+
+@pytest.mark.parametrize("label,stance", [("REBALANCE_TRIM", "sell"), ("IGNORE", "watch")])
+def test_synthesis_enum_labels_are_mapped_not_vocabulary_errors(label, stance):
+    # run_watch_review_canary / process_watchlist_agent_jobs persist a free-form `recommendation` into
+    # watchlist_final_synthesis, and adapters.py:81 claims it. cio_agent_contract.py:364 documents the enum, which
+    # includes these two; both were in neither families nor unmapped_labels, so a synthesis that used one produced an
+    # R8 DATA_ERROR instead of a stance. Unbounded LLM verdicts remain unbounded - this covers the documented enum.
+    assert posture(label) == stance
+    assert not [f for f in run("WATCH", Input("desk", label, NOW)) if f.rule == "R8"]
+
+
+def test_review_pending_is_a_known_trade_gate_state():
+    # rockville.decision_projection.classify_primary_state returns REVIEW_PENDING, it becomes trade_ai_state, and the
+    # adapter validates against gate_known. It was missing, so the gate read as unknown vocabulary rather than as a
+    # pending review.
+    from scripts.lib.conflicts.profiles.rulebook import RULEBOOK
+    assert "REVIEW_PENDING" in RULEBOOK["security_stance"]["gate_known"]
+    fs = run("ADD", Input("trade_ai", "REVIEW_PENDING", NOW, role="gate"), held=True)
+    assert not [f for f in fs if f.kind == "DATA_ERROR"]
+    assert [(f.kind, f.rule) for f in fs] == [("GATE", "R3")]
+
+
+def test_every_documented_synthesis_recommendation_is_mapped_or_declared():
+    # Drift guard for the OTHER producer: cio_agent_contract documents the recommendation enum in its prompt text.
+    # Adding a value there must not silently become an R8 error.
+    import re
+    src = (Path(__file__).resolve().parents[1] / "scripts" / "lib" / "cio_agent_contract.py").read_text(encoding="utf-8")
+    match = re.search(r'"recommendation": one of ([A-Z_,\s]+)\\n', src)
+    assert match, "the documented recommendation enum moved; fix this guard rather than deleting it"
+    labels = [v.strip() for v in match.group(1).split(",") if v.strip()]
+    assert labels, "enum parse produced nothing"
+    rulebook = json.loads((Path(__file__).resolve().parents[1] / "config" / "conflict_rulebook.json").read_text())
+    declared = {str(v).strip().upper().replace(" ", "_") for v in rulebook["security_stance"]["unmapped_labels"]}
+    missing = [v for v in labels if posture(v) is None and v not in declared]
+    assert not missing, f"documented recommendations neither mapped nor declared: {missing}"
