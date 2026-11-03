@@ -1067,20 +1067,63 @@ def schedule_drift(comp) -> str | None:
     cc3's review (2026-11-02): `declared_schedule` was preserved but nothing compared it to what the
     lane actually runs, so a correction was invisible on the operator view. Returns None when the two
     agree (or when either is unknown) - never a guess.
+
+    The wording says "declares" because the lane registry is a declaration, not proof that the host
+    scheduler installed (or runs) anything; installation is not measured here.
     """
-    declared = str((comp or {}).get("declared_schedule") or "").strip()
-    resolved = str((comp or {}).get("schedule") or "").strip()
+    declared = str(_fmt_schedule((comp or {}).get("declared_schedule")) or "").strip()
+    resolved = str(_fmt_schedule((comp or {}).get("schedule")) or "").strip()
     if not declared or not resolved or declared == resolved:
         return None
-    return f"declared '{declared}' but the ACTIVE lane runs '{resolved}'"
+    return f"declared '{declared}' but the ACTIVE lane declares '{resolved}'"
+
+
+def schedule_fallback_reason(comp) -> str | None:
+    """The human reason a component fell back to its literal schedule, or None when it did not.
+
+    ``_resolve_component_schedule`` records ``literal_fallback:<reason>`` when it cannot take the
+    schedule from the ACTIVE lane. The reason must reach the operator surface as the REAL cause: the
+    earlier text always claimed "the lane registry could not be read", which was false for a missing
+    lane or an invalid scheduler entry. Unknown reasons are shown raw rather than guessed at.
+    """
+    resolved_from = str((comp or {}).get("schedule_resolved_from") or "")
+    if not resolved_from.startswith("literal_fallback:"):
+        return None
+    reason = resolved_from[len("literal_fallback:") :].strip()
+    lowered = reason.lower()
+    if (
+        "source_registry_unavailable" in lowered
+        or "registry_unavailable" in lowered
+        or "read" in lowered
+        or "parse" in lowered
+    ):
+        return "the lane registry could not be read"
+    if "source_mapping_missing_or_ambiguous" in lowered:
+        return "the mapped lane is missing or ambiguous"
+    if "source_scheduler_invalid" in lowered:
+        return "the lane's scheduler entry is invalid"
+    if "source_schedule_not_measured" in lowered:
+        return "the lane has no measured schedule"
+    if "component_registry_mapping_not_declared" in lowered:
+        return "this component has no mapped lane"
+    return reason
 
 
 def schedule_display(comp) -> str:
-    """The schedule string the operator surface shows: the resolved one, with drift named beside it."""
-    resolved = str((comp or {}).get("schedule") or "")
+    """The schedule string the operator surface shows: the resolved one, with its context named.
+
+    A list of cron expressions renders as ``A | B``. A correction names the drift; a fail-back says
+    the lane schedule was NOT MEASURED and gives its real reason (never both - the drift sentence
+    would imply the registry was read).
+    """
+    resolved = _fmt_schedule((comp or {}).get("schedule"))
+    resolved = "" if resolved is None else str(resolved)
+    fallback = schedule_fallback_reason(comp)
+    if fallback is not None:
+        return f"{resolved} (expected; lane schedule NOT MEASURED — {fallback})"
     drift = schedule_drift(comp)
     if drift:
-        return f"{resolved} (corrected - {drift}; not installed by this check)"
+        return f"{resolved} (corrected — {drift})"
     return resolved
 
 
@@ -1103,11 +1146,12 @@ def schedule_expected_line(comp) -> str:
     cc3's BLOCK on the Home repair asked for the fallback to appear on the surface the operator
     actually reads. For this agent that surface is the escalation message and the
     ``system_health_events`` row built from it - not ``system_health_checks``, whose only consumer is
-    the frozen v2 page. So the fallback is stated here, in the message itself.
+    the frozen v2 page. So the fallback is stated here, in the message itself, with its real reason.
     """
     expected = _fmt_schedule((comp or {}).get("schedule", "unknown"))
-    if schedule_fallback_error(comp):
-        return f"{expected} (fallback - the lane registry could not be read)"
+    fallback = schedule_fallback_reason(comp)
+    if fallback is not None:
+        return f"{expected} (fallback — {fallback})"
     return expected
 
 
@@ -1830,14 +1874,20 @@ def _notify_recovered(comp, check_result, conn):
     return "sent" if accepted else "rejected"
 
 
-def run_health_check(dry_run=True, verbose=False):
-    """Run all health checks. Returns full report."""
+def run_health_check(dry_run=True, verbose=False, *, now=None):
+    """Run all health checks. Returns full report.
+
+    ``now`` is the clock every freshness decision uses; tests pass a fixed instant so a weekend,
+    holidays and DST cannot make the assertions depend on when the suite runs. In production it is
+    omitted and the current UTC instant is used.
+    """
     conn = _get_conn()
     if not conn:
         log.error("No DB connection")
         return {"error": "no_db"}
 
-    now = datetime.now(timezone.utc)
+    now = now or datetime.now(timezone.utc)
+    now = now.astimezone(timezone.utc) if now.tzinfo else now.replace(tzinfo=timezone.utc)
     report = {
         "timestamp": now.isoformat(),
         "mode": "dry_run" if dry_run else "active",
@@ -1851,6 +1901,7 @@ def run_health_check(dry_run=True, verbose=False):
             "retried": 0,
             "retry_disarmed": 0,
             "escalated": 0,
+            "schedule_fallback": 0,
         },
     }
 
@@ -1912,7 +1963,9 @@ def run_health_check(dry_run=True, verbose=False):
         _grace_min = max(comp.get("max_runtime_sec", 600) / 60.0, 5) + 10
 
         # 1. Check log freshness (schedule-aware when a scheduled fire time is known)
-        freshness = _check_component_freshness(comp, prev_fire=_prev_fire, grace_min=_grace_min)
+        # The loop's fixed clock must reach the freshness comparison: a test (or a backfill) that
+        # passes now= must not have staleness judged against the host clock instead.
+        freshness = _check_component_freshness(comp, prev_fire=_prev_fire, grace_min=_grace_min, now=now)
 
         # 2. Check lock contention
         lock_info = _check_lock_contention(comp.get("lock_file"))
@@ -1954,6 +2007,7 @@ def run_health_check(dry_run=True, verbose=False):
         _fallback = schedule_fallback_error(comp)
         if _fallback:
             check["last_error"] = _fallback
+            report["summary"]["schedule_fallback"] += 1
 
         # 4. Determine action
         needs_action = False
