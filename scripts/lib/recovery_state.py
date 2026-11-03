@@ -13,9 +13,10 @@ Three rules from the spec that shape the code:
 
 * **A stop-out is an event with a follow-up, never an ending.** A case that has done nothing for 20 sessions
   stays WATCHING (its card moves to the digest); it is never auto-closed while materiality is T2 or worse.
-* **Gates annotate; they never silence.** Wash/house-hold, RSI, the entry zone and a held residual each become
-  an annotation with a *when* and a *what would change it*. Only an account with NO eligible route blocks
-  RE_ENTRY_READY; a single failing caveat never hides the card.
+* **Gates annotate; they never silence.** Wash/house-hold, RSI, the entry zone and the residual each become an
+  annotation with a *when* and a *what would change it*. A residual is a fact to display, never a disqualifier
+  (operator ruling 2026-11-03: the "held" concept is removed, not tuned). Only an account with NO date-open route
+  blocks RE_ENTRY_READY; a single failing caveat never hides the card.
 * **Recovery is a reclaim, not a pullback.** R1/R2 are reclaim triggers (exit +1%, the stop that fired); R3/R5
   raise confidence but can never advance a state on their own; R4 (SMA20 reclaim) is the ready trigger.
 """
@@ -55,8 +56,6 @@ DEFAULT_POLICY: dict[str, Any] = {
     "weights": {"R1": 0.35, "R2": 0.45, "R3": 0.10, "R4": 0.25, "R5": 0.15},
     "recovering_floor": 0.30,
     "ready_floor": 0.55,
-    # A residual below this fraction of the pre-exit shares is NOT "held" (spec §3.1; SPCX 200/≈1,000).
-    "residual_remaining_fraction": 0.15,
     # Decay: after this many sessions without a trigger the card is digest-only; the case is NOT closed.
     "decay_sessions": 20,
 }
@@ -106,8 +105,6 @@ def load_policy(path: str | Path | None = None) -> dict[str, Any]:
             if flat == "rsi_level" and isinstance(value, bool):
                 continue  # a boolean switch is not a level; keep the reviewed default
             merged[flat] = value
-    if "residual_remaining_fraction" in resid and resid["residual_remaining_fraction"] is not None:
-        merged["residual_remaining_fraction"] = resid["residual_remaining_fraction"]
     if isinstance(conf.get("weights"), Mapping):
         merged["weights"] = {**policy["weights"], **{str(k).upper(): v for k, v in conf["weights"].items()}}
     if conf.get("ready_floor") is not None:
@@ -155,25 +152,23 @@ def exit_price(case: Mapping[str, Any]) -> float | None:
     return max(prices) if prices else None
 
 
-def residual_is_held(case: Mapping[str, Any], policy: Mapping[str, Any]) -> bool:
-    """A residual below the fraction is NOT held for re-entry purposes.
+def residual_fact(case: Mapping[str, Any]) -> dict | None:
+    """The residual as a FACT TO DISPLAY, never a silencer (operator ruling 2026-11-03).
 
-    SPCX kept 200 of ~1,000 shares and the old path declared it held, killing every re-entry for every symbol
-    that keeps a residual. An explicit ``residual_is_held`` from the store wins; otherwise derive it.
+    Piece A carries ``residual_pct_of_pre_exit`` and a plain-language ``residual_note``; this module renders the
+    note and does not re-derive a percentage or decide held/not-held. The earlier "held" concept is removed, not
+    tuned: 200 of 1,200 shares is 14.3% while 200 of 1,000 is 20%, and a threshold on it suppressed SPCX either way.
     """
-    if case.get("residual_is_held") is not None:
-        return bool(case.get("residual_is_held"))
-    pre, res = _num(case.get("pre_exit_shares")), _num(case.get("residual_shares"))
-    try:  # piece A owns this rule (and cross-checks its fraction against market_risk_policy.yaml)
-        from lib.recovery_engine.policy import is_held as _is_held  # noqa: PLC0415
-        if pre is not None:
-            return bool(_is_held(pre, res or 0.0, policy))
-    except Exception:  # noqa: BLE001 — absent piece A: derive locally so B is not dead without it
-        pass
-    if pre is None or pre <= 0:
-        return bool(res and res > 0)
-    frac = float(policy.get("residual_remaining_fraction") or DEFAULT_POLICY["residual_remaining_fraction"])
-    return (res or 0.0) >= pre * frac
+    note = str(case.get("residual_note") or "").strip()
+    pct = _num(case.get("residual_pct_of_pre_exit"))
+    residual = _num(case.get("residual_shares"))
+    if not note and pct is None and not residual:
+        return None
+    detail = note or (f"{residual:g} shares remain after the exit ({pct:g}%)" if residual and pct is not None
+                      else f"{residual:g} shares remain after the exit" if residual else f"{pct:g}% of the position remains")
+    return {"gate": "residual", "account": case.get("account"), "until": None, "detail": detail,
+            "would_change_it": "a later exit or a re-entry; this is information, not a blocker",
+            "blocks_ready": False}
 
 
 def _eligibility(case: Mapping[str, Any]) -> dict[str, Any]:
@@ -212,16 +207,21 @@ def gate_annotations(case: Mapping[str, Any], snapshot: Mapping[str, Any], polic
     # Per-account eligibility: wash sale / house hold with an explicit date.
     for account, row in sorted(elig.items()):
         row = row if isinstance(row, Mapping) else {"eligible": bool(row)}
-        if row.get("eligible"):
-            continue
         until = row.get("until") or row.get("eligible_from")
+        if row.get("eligible"):
+            # The date gate is open; whether to re-enter is the operator's call, so the card says that and
+            # never turns an open gate into a recommendation.
+            out.append({"gate": "pending_operator_decision", "account": account, "until": None,
+                        "would_change_it": "your decision on the recovery card",
+                        "blocks_ready": False})
+            continue
         out.append({
             "gate": str(row.get("gate") or "house_hold"),
             "account": account,
             "until": until,
             "would_change_it": str(row.get("would_change_it")
                                    or (f"the date {until} is reached" if until else "the hold is lifted")),
-            "blocks_ready": False,  # recomputed below, once we know whether ANY account is eligible
+            "blocks_ready": False,  # recomputed below, once we know whether ANY account is date-open
         })
     any_eligible = any((r.get("eligible") if isinstance(r, Mapping) else bool(r)) for r in elig.values()) \
         if elig else True  # no eligibility data: do not invent a blocker
@@ -229,12 +229,10 @@ def gate_annotations(case: Mapping[str, Any], snapshot: Mapping[str, Any], polic
         for row in out:
             row["blocks_ready"] = True
 
-    # Residual: the case is still a recovery if the remaining shares are not a material fraction.
-    if residual_is_held(case, policy):
-        out.append({"gate": "residual_held", "account": case.get("account"),
-                    "until": None, "would_change_it": "the residual falls below the remaining fraction "
-                                                      "or is sold",
-                    "blocks_ready": True})
+    # Residual: shown, never used to suppress (operator ruling 2026-11-03).
+    fact = residual_fact(case)
+    if fact:
+        out.append(fact)
 
     # The entry zone: a price above it is not a blocker, only a stale plan to re-derive.
     plan = case.get("plan_json") if isinstance(case.get("plan_json"), Mapping) else {}

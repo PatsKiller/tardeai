@@ -59,14 +59,32 @@ def test_the_reclaim_needs_a_full_one_percent():
     assert d.state == R.WATCHING and d.triggers["R1"] is False
 
 
-def test_a_residual_is_not_held_when_it_is_a_small_fraction():
-    """200 of ~1,400 shares (14.3%): the old path declared SPCX held and killed every re-entry. Not held."""
-    assert R.residual_is_held(case(), R.DEFAULT_POLICY) is False
-    held = case(residual_shares=600.0)  # 43% of pre-exit: genuinely held
-    assert R.residual_is_held(held, R.DEFAULT_POLICY) is True
-    d = R.evaluate(held, snap(close=152.0), now=NOW)
-    assert d.state != R.RE_ENTRY_READY
-    assert any(a["gate"] == "residual_held" and a["blocks_ready"] for a in d.annotations)
+def test_the_residual_is_displayed_and_never_disqualifies():
+    """Operator ruling 2026-11-03: "drop 'held' as a disqualifier. A residual is a FACT TO DISPLAY, not a
+    silencer." Piece A carries the note; B renders it and never re-derives a percentage."""
+    shown = case(residual_pct_of_pre_exit=14.3,
+                 residual_note="200 of 1,400 shares remain after the 2026-10-30 exit (14.3%)")
+    d = R.evaluate(shown, snap(close=152.0), now=NOW)
+
+    fact = next(a for a in d.annotations if a["gate"] == "residual")
+    assert fact["blocks_ready"] is False
+    assert fact["detail"] == "200 of 1,400 shares remain after the 2026-10-30 exit (14.3%)"
+    assert "information, not a blocker" in fact["would_change_it"]
+    assert d.state == R.RE_ENTRY_READY           # the residual does not stop readiness
+
+    # 200 of 1,000 (20%) is the same fact, not a different verdict: no threshold exists any more.
+    twenty = case(residual_pct_of_pre_exit=20.0, residual_note="200 of 1,000 shares remain (20.0%)")
+    d2 = R.evaluate(twenty, snap(close=152.0), now=NOW)
+    assert d2.state == R.RE_ENTRY_READY
+    assert next(a for a in d2.annotations if a["gate"] == "residual")["blocks_ready"] is False
+
+
+def test_an_open_date_gate_reads_as_pending_your_decision():
+    """The engine reports the dated split; it never answers whether to re-enter."""
+    d = R.evaluate(case(), snap(close=141.65), now=NOW)
+    pending = [a for a in d.annotations if a["gate"] == "pending_operator_decision"]
+    assert [a["account"] for a in pending] == ["IRA"]
+    assert pending[0]["would_change_it"] == "your decision on the recovery card"
 
 
 def test_re_entry_ready_needs_the_mean_reclaim_and_an_eligible_account():
@@ -89,7 +107,7 @@ def test_every_account_blocked_means_no_ready_state_but_the_card_still_says_why(
     assert d.state != R.RE_ENTRY_READY
     assert d.eligible_accounts == []
     blockers = {a["account"] for a in d.annotations if a["blocks_ready"]}
-    assert {"IRA", "taxable"} <= blockers      # every blocked account is named; the residual gate rides too
+    assert blockers == {"IRA", "taxable"}      # every date-closed account is named; nothing else blocks
 
 
 def test_a_verified_catalyst_alone_never_advances_the_state():
@@ -144,7 +162,7 @@ def test_a_case_filed_over_the_journal_is_never_a_second_reason_to_buy():
 def test_policy_defaults_apply_when_the_reviewed_file_is_absent():
     policy = R.load_policy(ROOT / "config" / "does-not-exist.yaml")
     assert policy["reclaim_exit_pct"] == 0.010
-    assert policy["residual_remaining_fraction"] == 0.15
+    assert "residual_remaining_fraction" not in policy
     assert policy["policy_source"].startswith("defaults")
 
 
@@ -196,7 +214,8 @@ def test_the_reviewed_nested_policy_dialect_maps_onto_the_engine(tmp_path):
     policy = R.load_policy(path)
     assert policy["reclaim_exit_pct"] == 0.02 and policy["rsi_level"] == 45
     assert policy["macd_up_sessions"] == 3 and policy["catalyst_min_confidence"] == 0.9
-    assert policy["decay_sessions"] == 30 and policy["residual_remaining_fraction"] == 0.1
+    assert policy["decay_sessions"] == 30
+    assert "residual_remaining_fraction" not in policy   # the held concept is removed, not tuned
     assert policy["weights"]["R1"] == 0.4 and policy["weights"]["R4"] == 0.3
     assert policy["weights"]["R2"] == R.DEFAULT_POLICY["weights"]["R2"]   # unmapped weights keep defaults
     assert policy["ready_floor"] == 0.6
