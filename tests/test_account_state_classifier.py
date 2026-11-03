@@ -15,12 +15,20 @@ Labelling only: every assertion about total_value checks it was NOT changed.
 from __future__ import annotations
 
 import json
+import importlib.util
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
-from lib.account_state import (
+_STATE_SPEC = importlib.util.spec_from_file_location(
+    "lib.account_state_classifier_contract", Path(__file__).resolve().parents[1] / "scripts/lib/account_state.py")
+_STATE_MODULE = importlib.util.module_from_spec(_STATE_SPEC)
+sys.modules[_STATE_SPEC.name] = _STATE_MODULE
+_STATE_SPEC.loader.exec_module(_STATE_MODULE)
+
+from lib.account_state_classifier_contract import (  # noqa: E402
     ACCOUNT_STATES,
     STATE_LIVE,
     STATE_NO_API_MANUAL,
@@ -42,7 +50,7 @@ UNIT = "unit-under-test.service"  # any unit — the code names none
 
 
 def _iso(hours_ago: float) -> str:
-    return (NOW - timedelta(hours=hours_ago)).isoformat()
+    return (NOW - timedelta(hours=hours_ago)).isoformat().replace("+00:00", "Z")
 
 
 # ─────────────────────────── the pure classifier ────────────────────────────
@@ -108,7 +116,7 @@ def test_never_synced_api_account_is_stale_not_live():
     out = classify_account_state(sync_kind="api", last_sync_at=None, now=NOW)
     assert out["state"] == STATE_STALE
     assert out["state_as_of"] is None
-    assert "never" in out["state_reason"]
+    assert "no proven sync observation" in out["state_reason"]
 
 
 def test_every_outcome_is_one_of_the_registry_states():
@@ -182,20 +190,16 @@ def test_systemctl_probe_active_and_unknown():
     assert probe_service_unit(UNIT, runner=boom)["failed"] is None
 
 
-def test_last_sync_reads_the_broker_stamp_never_the_valuation_restamp():
-    """portfolio_loader.reprice_holdings rewrites as_of/updated_at to NOW on every
-    repriced row. If those counted as sync clocks, every repriced account would
-    read LIVE forever. Only broker_position_as_of is a sync stamp."""
-    rows = [{"account": "x", "broker_position_as_of": "2026-09-04",
-             "updated_at": "2026-09-13T13:00:00+00:00", "as_of": "2026-09-13"},   # restamped today
-            {"account": "x", "as_of": "2026-09-13", "updated_at": "2026-09-13T13:00:00+00:00"}]
-    ts, src = derive_last_sync(rows, {"as_of": "2026-07-17"})
-    assert ts.startswith("2026-09-04") and src == "holdings.broker_position_as_of"
-    # no broker stamp anywhere: the restamps are ignored and the summary mirror is the fallback
-    ts2, src2 = derive_last_sync([rows[1]], {"as_of": "2026-07-17"})
-    assert ts2.startswith("2026-07-17") and src2 == "account_summaries.as_of"
-    assert derive_last_sync([rows[1]], {}) == (None, "")
-    assert derive_last_sync([], {}) == (None, "")
+def test_last_sync_reads_the_declared_observation_never_a_valuation_restamp():
+    rows = [{"account": "x", "broker_position_as_of": "2026-09-04T21:00:00Z",
+             "updated_at": "2026-09-13T13:00:00Z", "as_of": "2026-09-13"},
+            {"account": "x", "as_of": "2026-09-13", "updated_at": "2026-09-13T13:00:00Z"}]
+    assert derive_last_sync(rows, {"as_of": "2026-07-17"}, now=NOW) == (
+        "2026-09-04T21:00:00Z", "holdings.broker_position_as_of")
+    assert derive_last_sync([rows[1]], {"as_of": "2026-07-17"}, now=NOW) == (None, "")
+    assert derive_last_sync([rows[1]], {"synced_at": "2026-07-17T20:00:00Z"}, now=NOW) == (
+        "2026-07-17T20:00:00Z", "account_summaries.synced_at")
+    assert derive_last_sync([], {}, now=NOW) == (None, "")
 
 
 # ─────────────────────────── the producer over a book ────────────────────────
@@ -216,7 +220,7 @@ def _book():
     return {
         "holdings": [
             {"symbol": "AAA", "account": "live_api", "shares": 10, "market_value": 1000.0,
-             "updated_at": _iso(2), "broker_position_as_of": NOW.date().isoformat()},
+             "updated_at": _iso(2), "broker_position_as_of_at": _iso(2)},
             {"symbol": "BBB", "account": "stale_api", "shares": 5, "market_value": 500.0,
              "updated_at": _iso(72)},
             {"symbol": "CASH", "account": "down_api", "is_cash": True, "shares": 500.0,
@@ -335,10 +339,10 @@ def _write_project(tmp_path: Path, *, with_registry: bool = True) -> Path:
     (root / "data" / "runtime").mkdir(parents=True)
     (root / "assets").mkdir()
     book = _book()
-    # the loader classifies on the WALL clock: pin the live account's broker stamp to today
+    # The loader uses its actual observation clock; inject a full aware instant.
     for h in book["holdings"]:
         if h["account"] == "live_api":
-            h["broker_position_as_of"] = datetime.now(timezone.utc).date().isoformat()
+            h["broker_position_as_of_at"] = datetime.now(timezone.utc).isoformat()
     book["as_of"] = "2026-09-12"
     book["portfolio_totals"] = {"total_value": 2000.0, "as_of": "2026-09-12"}
     (state / "holdings.json").write_text(json.dumps(book))
@@ -366,7 +370,7 @@ def test_loader_writes_state_fields_into_account_summaries(tmp_path):
     # stale_api rows carry only a (restamped) updated_at — no broker stamp, no receipt:
     # never-synced → STALE, and the loader's own reprice restamp did not make it LIVE
     assert s["stale_api"]["state"] == STATE_STALE
-    assert "never synced" in s["stale_api"]["state_reason"]
+    assert "no proven sync observation" in s["stale_api"]["state_reason"]
     # balances: repriced from the cache as before, the state stamp changed none of them
     assert s["live_api"]["total_value"] == 1000.0
     assert s["down_api"]["total_value"] == 500.0
@@ -430,3 +434,77 @@ def test_fixed_shape_passes_the_never_zero_assertion(tmp_path):
     assert manual["last_value"] == 566439.39 and manual["as_of"].startswith("2026-07-16")
     assert manual["counted_in_total"] == 0.0  # the total carried $0 for it — said out loud
     assert proj["stale_accounts"][0]["account"] == "stale_api"
+
+
+@pytest.mark.parametrize("fields, expected, source", [
+    ({"broker_position_as_of_at": "2026-09-11T21:52:07.123Z", "broker_position_as_of": "2026-09-11"},
+     "2026-09-11T21:52:07.123000Z", "holdings.broker_position_as_of_at"),
+    ({"provider_observed_at": "2026-09-11 17:52:07 ET"},
+     "2026-09-11T21:52:07Z", "holdings.provider_observed_at"),
+    ({"observation": {"provider_observed_at": "2026-09-11T17:52:07-04:00"}},
+     "2026-09-11T21:52:07Z", "holdings.observation.provider_observed_at"),
+    ({"broker_position_as_of": "2026-09-11T21:52:07Z"},
+     "2026-09-11T21:52:07Z", "holdings.broker_position_as_of"),
+])
+def test_declared_position_clock_priority_and_utc_normalization(fields, expected, source):
+    rows = [{**fields, "as_of": _iso(0), "updated_at": _iso(0)}]
+    assert derive_last_sync(rows, {}, now=NOW) == (expected, source)
+
+
+@pytest.mark.parametrize("clock", ["2026-09-11", "2026-09-11 ET", "2026-09-11T17:52:07",
+                                    "invalid", "2026-09-14T17:52:07Z", True])
+def test_unknown_preferred_observation_never_uses_a_convenient_legacy_clock(clock):
+    rows = [{"broker_position_as_of_at": clock, "broker_position_as_of": _iso(1),
+             "updated_at": _iso(0)}]
+    assert derive_last_sync(rows, {}, now=NOW) == (None, "")
+    assert classify_account_state(last_sync_at=clock, now=NOW)["state"] == STATE_STALE
+
+
+@pytest.mark.parametrize("clock", ["2026-09-13", "2026-09-13 ET", "2026-09-13T12:00:00", "2026-09-14T12:00:00Z"])
+def test_success_receipt_without_a_proven_instant_cannot_create_live_state(tmp_path, clock):
+    folder = tmp_path / "data/runtime/sync_receipts"
+    folder.mkdir(parents=True)
+    (folder / "synthetic_api.json").write_text(json.dumps({"ok": True, "at": clock}))
+    states = annotate_account_states({"synthetic_api": {}}, [], {}, project_root=tmp_path, now=NOW)
+    assert states["synthetic_api"]["state"] == STATE_STALE
+    assert states["synthetic_api"]["last_sync_at"] is None
+
+
+@pytest.mark.parametrize("window", [float("nan"), float("inf"), -float("inf"), True, False])
+def test_invalid_window_cannot_make_old_observation_live(window):
+    out = classify_account_state(last_sync_at=_iso(72), window_hours=window, now=NOW)
+    assert out["state"] == STATE_STALE
+    assert out["sync_window_hours"] == 24
+
+
+def test_producer_uses_the_declared_session_policy_without_changing_financial_fields(tmp_path):
+    # Friday close remains current on Sunday; Thursday misses that completed session.
+    summaries = {"synthetic_current": {"total_value": 100}, "synthetic_old": {"total_value": 200}}
+    rows = [{"account": "synthetic_current", "broker_position_as_of_at": "2026-09-11T20:00:00Z"},
+            {"account": "synthetic_old", "broker_position_as_of_at": "2026-09-10T20:00:00Z"}]
+    result = annotate_account_states(summaries, rows, {}, project_root=tmp_path, now=NOW, allow_shell=False)
+    assert result["synthetic_current"]["state"] == STATE_LIVE
+    assert result["synthetic_old"]["state"] == STATE_STALE
+    assert result["synthetic_current"]["freshness_market_hours_only"] is True
+    assert result["synthetic_current"]["last_sync_age_hours"] > 24
+    assert [summaries[k]["total_value"] for k in summaries] == [100, 200]
+    assert result["synthetic_current"]["state_as_of"] == "2026-09-11T20:00:00Z"
+
+
+@pytest.mark.parametrize("clock", ["9999-12-31T23:59:59-12:00", "0001-01-01T00:00:00+14:00",
+                                    "2026-11-01 01:30:00 ET", "2026-03-08 02:30:00 ET"])
+def test_extreme_or_dst_ambiguous_observations_refuse_without_raising(clock):
+    assert _STATE_MODULE.observation_instant(clock, now=datetime(2026, 12, 1, tzinfo=timezone.utc)) is None
+
+
+def test_failed_calendar_cannot_retain_a_prior_live_producer_label(tmp_path, monkeypatch):
+    from lib import cio_market_aware_freshness as freshness
+    def unavailable():
+        raise RuntimeError("synthetic unavailable calendar")
+    monkeypatch.setattr(freshness, "get_session_service", unavailable)
+    summary = {"synthetic_api": {"state": "LIVE", "account_state": {"state": "LIVE"}}}
+    rows = [{"account": "synthetic_api", "broker_position_as_of_at": "2026-09-11T20:00:00Z"}]
+    out = annotate_account_states(summary, rows, {}, project_root=tmp_path, now=NOW, allow_shell=False)
+    assert out["synthetic_api"]["state"] == STATE_STALE
+    assert out["synthetic_api"]["freshness_error"] == "RuntimeError"
+    assert "calendar unavailable" in out["synthetic_api"]["state_reason"]
