@@ -53,11 +53,15 @@ def _get_conn():
 
 
 def _get_holdings_symbols():
-    """Get portfolio symbols from holdings.json."""
+    """Get portfolio symbols from holdings.json.
+
+    0 bytes / corrupt is "no snapshot", not a crash: this lane ingests social rows and only
+    needs the symbol list. 2026-11-03: a 0-byte store raised JSONDecodeError here at 10:30.
+    """
+    from lib.state_read import read_json_object
+
     f = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
-    if not f.exists():
-        return []
-    data = json.loads(f.read_text())
+    data = read_json_object(f, default={})
     return [h["symbol"] for h in data.get("holdings", [])
             if h.get("symbol") and not h.get("is_cash") and not h.get("is_fund")]
 

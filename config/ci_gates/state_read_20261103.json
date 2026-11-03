@@ -1,0 +1,9 @@
+{
+  "schema": "CiGate@v1",
+  "name": "state_read_20261103",
+  "files": ["tests/test_state_read_20261103.py"],
+  "anchor": "STATE_READ_20261103",
+  "comment": [
+    "ANCHOR: STATE_READ_20261103 — a damaged (0-byte, corrupt or wrong-shape) state JSON is classified as absent/empty/unparseable/not_object and returned as the caller's default, never raised out of a lane reader."
+  ]
+}
