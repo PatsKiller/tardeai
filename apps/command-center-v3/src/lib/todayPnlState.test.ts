@@ -183,5 +183,8 @@ const legacyPnl: TodayPnlPayload = { ...currentPnl }
 delete legacyPnl.market_session
 check('absent legacy nested field can use explicitly named top backend reference', !deriveTodayPnlState({ today_pnl: legacyPnl, market_session: { status: 'KNOWN', latest_open_session: '2026-11-04' } }, NOW).sessionUnknown)
 
+const invalidMarketDate = deriveTodayPnlState(overview({ ...currentPnl, market_session: { status: 'KNOWN', latest_open_session: '2026-02-30' } }), NOW)
+check('impossible source date never becomes a validated latest opened session', invalidMarketDate.sessionUnknown && invalidMarketDate.latestOpenSession === null)
+
 console.log(`\ntodayPnlState: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

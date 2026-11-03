@@ -21,6 +21,7 @@ export type TodayPnlState = {
   agedSource: boolean
   economicUnknown: boolean
   sessionUnknown: boolean
+  latestOpenSession: string | null
 }
 function sessionDate(value: unknown): string | null {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null
@@ -48,5 +49,5 @@ export function deriveTodayPnlState(overview: Record<string, unknown> | null | u
   const label = [economicUnknown ? 'ECONOMIC UNKNOWN' : null, incompleteCoverage ? 'INCOMPLETE COVERAGE' : null,
     !economicUnknown && sessionUnknown ? 'SESSION UNKNOWN' : null, agedSource ? 'AGED SOURCE' : null].filter(Boolean).join(' · ') || null
   return { tone: label ? 'warn' : 'ok', label, reason: bits.join(' · ') || null,
-    incompleteCoverage, agedSource, economicUnknown, sessionUnknown }
+    incompleteCoverage, agedSource, economicUnknown, sessionUnknown, latestOpenSession: latest }
 }
