@@ -134,7 +134,10 @@ A `*.md` file in the store whose front matter cannot be parsed (truncated, missi
 still listed — as `{"status": "unreadable", "id": ..., "filename": ..., "reason": ...}` — rather than
 dropped, so the page never hides a plan the operator approved. A file listed but unreadable (`OSError`,
 e.g. an entry that is a directory) is the same kind of row, with the fixed reason
-`"the plan file cannot be read"`; one such entry never takes the listing down. The same row surfaces
+`"the plan file cannot be read"`; one such entry never takes the listing down. A **non-regular entry**
+(a FIFO, socket or device named `<valid-id>.md`) is the same kind of row with the fixed reason
+`"the plan entry is not a regular file"`: it is `lstat`ed and never opened, because reading a named
+pipe blocks forever and would hang the listing and the API request serving it. The same row surfaces
 from `list()`, so the stale scan skips it instead of failing. Valid plans are unchanged; a detail read
 (`get()`, or `/api/v2/plans?id=`) of such a file is `404`, never a decode error and never a plan with
 zero steps.
@@ -154,7 +157,10 @@ The store is not trusted to contain itself through the filesystem alone. Every r
   symlink dropped into the store is never served;
 * writes through `mkstemp` (`O_EXCL`) inside the store and renames it into place, so a pre-planted
   temp-name symlink cannot redirect the write outside;
-* opens the lock and the ledger with `O_NOFOLLOW`, so neither can be a link to another file.
+* opens the lock and the ledger with `O_NOFOLLOW` **and `O_NONBLOCK`**, and `fstat`s the descriptor:
+  a symlink is refused by the kernel, and a FIFO or other non-regular file is refused before the open
+  can block waiting for a peer (opening a named pipe for writing blocks before it returns a
+  descriptor, so `O_NOFOLLOW` alone was not enough).
 
 The hook's plan file is read through **one descriptor**: `O_NOFOLLOW` refuses a symlinked final
 component, `fstat` decides regular/size on that descriptor, containment is proven on

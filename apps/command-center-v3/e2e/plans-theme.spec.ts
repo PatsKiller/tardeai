@@ -92,7 +92,8 @@ async function mockApi(page: Page) {
 async function openPlans(page: Page, theme: 'light' | 'dark') {
   await page.addInitScript((value: string) => {
     try { window.localStorage.setItem('cc.ui.theme', value) } catch { /* private mode */ }
-    document.documentElement.dataset.theme = value
+    // At document-start documentElement can be null; the app's initTheme() sets it on mount.
+    if (document.documentElement) document.documentElement.dataset.theme = value
   }, theme)
   await mockApi(page)
   await page.goto('/v3/plans')

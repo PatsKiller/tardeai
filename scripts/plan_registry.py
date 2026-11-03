@@ -34,6 +34,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import sys
 import tempfile
 from contextlib import contextmanager
@@ -52,6 +53,7 @@ STORE_ABSENT_REASON = "the plan store directory does not exist"
 STORE_UNLISTABLE_REASON = "the plan store directory cannot be listed"
 UNREADABLE_FILE_REASON = "the plan file cannot be read"
 UNADDRESSABLE_NAME_REASON = "the plan filename is not a valid plan id"
+NOT_REGULAR_REASON = "the plan entry is not a regular file"
 _STEP_RE = re.compile(r"^\s*[-*]\s*\[( |x|X)\]\s+(.*)$")
 #: A plan id is a single path component; anything else is refused before it reaches the filesystem.
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,80}$")
@@ -183,6 +185,28 @@ def author_proof(author: str, *, root: Path | None = None) -> str:
 
 
 # ------------------------------------------------------------------ registry
+def _open_regular(path: Path, flags: int, mode: int, what: str) -> int:
+    """Open a store metadata file and refuse anything that is not a regular file.
+
+    ``O_NOFOLLOW`` stops a planted symlink, but it does not stop a FIFO: opening a named pipe blocks
+    until a reader or a writer exists, so a stray ``ledger.jsonl`` FIFO hung every ``add``. The
+    ``fstat`` is on the descriptor just opened, so it cannot be raced by a rename.
+    """
+    try:
+        # O_NONBLOCK is what actually stops the hang: open(O_WRONLY) on a FIFO blocks before it
+        # returns a descriptor, so the fstat below would never run. It is a no-op for a regular file.
+        fd = os.open(path, flags | os.O_NONBLOCK, mode)
+    except OSError as exc:
+        raise ValueError(f"{what} {path} is not usable ({exc.strerror}); refusing") from None
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise ValueError(f"{what} {path} is not a regular file; refusing")
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
 class Registry:
     def __init__(self, root: Path | None = None, cfg: dict[str, Any] | None = None) -> None:
         self.cfg = cfg if cfg is not None else load_config()
@@ -201,10 +225,7 @@ class Registry:
         # file; without this the store's own lock could be redirected outside it.
         self.plans.mkdir(parents=True, exist_ok=True)
         lock = self.plans / ".lock"
-        try:
-            fd = os.open(lock, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
-        except OSError as exc:
-            raise ValueError(f"plan store lock {lock} is not a regular file ({exc.strerror}); refusing") from None
+        fd = _open_regular(lock, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600, "plan store lock")
         with os.fdopen(fd, "a+", encoding="utf-8") as fh:
             fcntl.flock(fh, fcntl.LOCK_EX)
             try:
@@ -234,11 +255,9 @@ class Registry:
 
     def _event(self, event: str, pid: str, **detail: Any) -> None:
         # O_NOFOLLOW: the append-only ledger cannot be redirected outside the store by a planted link.
+        # A FIFO (or any non-regular file) is refused before the open can block waiting for a peer.
         self.plans.mkdir(parents=True, exist_ok=True)
-        try:
-            fd = os.open(self.ledger, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
-        except OSError as exc:
-            raise ValueError(f"plan ledger {self.ledger} is not a regular file ({exc.strerror}); refusing") from None
+        fd = _open_regular(self.ledger, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600, "plan ledger")
         with os.fdopen(fd, "a", encoding="utf-8") as fh:
             fh.write(json.dumps({"at": _utc(), "event": event, "id": pid, "detail": detail},
                                 sort_keys=True) + "\n")
@@ -347,9 +366,18 @@ class Registry:
         """One contained file as ``(doc, gap)`` — exactly one of the two is non-None.
 
         A name the id rule refuses cannot be addressed by ``get()``, so it is shown as an
-        ``unreadable`` row rather than dropped. Reasons are fixed strings: they are served over the
-        read-only API and must never carry a filesystem path or exception text.
+        ``unreadable`` row rather than dropped. A non-regular entry (FIFO, socket, device) is the
+        same kind of gap and is never opened: ``read_text`` on a named pipe blocks forever, which
+        would hang the read-only listing and the API request that serves it. Reasons are fixed
+        strings: they are served over the read-only API and must never carry a filesystem path or
+        exception text.
         """
+        try:
+            entry = path.lstat()
+        except OSError:
+            return None, unreadable_entry(path, UNREADABLE_FILE_REASON)
+        if not stat.S_ISREG(entry.st_mode):
+            return None, unreadable_entry(path, NOT_REGULAR_REASON)
         if not ID_RE.match(path.stem):
             return None, unreadable_entry(path, UNADDRESSABLE_NAME_REASON)
         try:

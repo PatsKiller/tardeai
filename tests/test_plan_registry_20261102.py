@@ -441,7 +441,7 @@ def test_view_skips_an_unreadable_entry_instead_of_taking_the_listing_down(tmp_p
     ids = [row["id"] for row in listing["plans"]]
     assert pid in ids and "adir" in ids, ids
     gap = next(row for row in listing["plans"] if row["id"] == "adir")
-    assert gap["status"] == "unreadable" and gap["reason"] == "the plan file cannot be read"
+    assert gap["status"] == "unreadable" and gap["reason"] == pr.NOT_REGULAR_REASON  # a directory is not a regular file
     assert sorted(row["id"] for row in r.list()) == sorted(ids)
 
 
@@ -699,7 +699,7 @@ def test_an_unreadable_file_is_a_visible_gap_and_the_other_rows_still_list(tmp_p
     rows = r.view()["plans"]
     gap = next(row for row in rows if row["id"] == "adir")
     assert gap["status"] == "unreadable" and gap["filename"] == "adir.md"
-    assert gap["reason"] == "the plan file cannot be read"
+    assert gap["reason"] == pr.NOT_REGULAR_REASON  # a directory is not a regular file (review 6)
     assert next(row for row in rows if row["id"] == pid)["status"] == "registered"
     lrows = r.list()
     assert next(row for row in lrows if row["id"] == "adir")["status"] == "unreadable"
@@ -876,3 +876,62 @@ def test_the_stale_scan_over_the_digest_store_flags_exactly_the_eligible_ids(tmp
     assert quiet.stale(now="2026-11-02T12:00:00Z", apply=True) == []
     quiet_inbox = tmp_path / "quiet" / "data/coordination/coordinator/inbox/codex"
     assert not quiet_inbox.exists() or list(quiet_inbox.glob("*plan-stalled.md")) == []
+
+
+# ---------------------------------------------------------------- review 6 (2026-11-03) BLOCK
+def _run_isolated(code: str, tmp_path, timeout: float = 15) -> subprocess.CompletedProcess:
+    """Run a probe in a child process so a hang fails the test instead of blocking the suite."""
+    import os
+
+    env = {**os.environ, "TRADEAI_STATE_ROOT": str(tmp_path),
+           "TRADEAI_PERSISTENT_STATE_ROOT": str(tmp_path / "ps"), "PYTHONDONTWRITEBYTECODE": "1"}
+    return subprocess.run([sys.executable, "-I", "-c", code], capture_output=True, text=True,
+                          timeout=timeout, env=env, cwd=str(ROOT))
+
+
+def test_a_fifo_in_the_store_is_unreadable_and_never_hangs_the_listing(tmp_path):
+    """Revert the lstat check -> read_text on the FIFO blocks forever (rc=124 in a 6 s child)."""
+    r = _reg(tmp_path)
+    plans = tmp_path / "data/coordination/plans"
+    plans.mkdir(parents=True, exist_ok=True)
+    (plans / "blocked-entry.md").unlink(missing_ok=True)
+    import os
+
+    os.mkfifo(plans / "blocked-entry.md")
+    code = (
+        "import json, sys\n"
+        f"sys.path.insert(0, {str(ROOT)!r}); sys.path.insert(0, {str(ROOT / 'scripts')!r})\n"
+        "from plan_registry import Registry\n"
+        f"r = Registry(root={str(tmp_path)!r})\n"
+        "print(json.dumps([[x['id'], x.get('status'), x.get('reason')] for x in r.list()]))\n"
+        "print(json.dumps([[x['id'], x.get('status'), x.get('reason')] for x in r.view()['plans']]))\n"
+    )
+    proc = _run_isolated(code, tmp_path)
+    assert proc.returncode == 0, (proc.returncode, proc.stdout, proc.stderr)
+    listed, viewed = [json.loads(line) for line in proc.stdout.strip().splitlines()[-2:]]
+    for rows in (listed, viewed):
+        row = next(item for item in rows if item[0] == "blocked-entry")
+        assert row[1] == "unreadable" and row[2] == "the plan entry is not a regular file", row
+
+
+def test_a_fifo_ledger_or_lock_is_refused_without_hanging(tmp_path):
+    """Opening a FIFO for writing blocks before it returns a descriptor; O_NONBLOCK plus fstat refuse it."""
+    import os
+
+    for name, expected in (("ledger.jsonl", "plan ledger"), (".lock", "plan store lock")):
+        root = tmp_path / f"store-{name.strip('.')}"
+        plans = root / "data/coordination/plans"
+        plans.mkdir(parents=True, exist_ok=True)
+        os.mkfifo(plans / name)
+        code = (
+            "import sys\n"
+            f"sys.path.insert(0, {str(ROOT)!r}); sys.path.insert(0, {str(ROOT / 'scripts')!r})\n"
+            "from plan_registry import Registry\n"
+            f"try:\n    Registry(root={str(root)!r}).add(title='t', body='x', author='s', vendor='claude')\n"
+            "    print('NO REFUSAL')\n"
+            "except ValueError as exc:\n    print('refused:', exc)\n"
+        )
+        proc = _run_isolated(code, root)
+        assert proc.returncode == 0, (proc.returncode, proc.stdout, proc.stderr)
+        assert "NO REFUSAL" not in proc.stdout, (name, proc.stdout)
+        assert expected in proc.stdout and "refusing" in proc.stdout, (name, proc.stdout)
