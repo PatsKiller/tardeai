@@ -27,10 +27,23 @@ def _row(run, key, symbol, qty, mv, *, cash=False, basis=100.0, as_of=NOW):
             cash, "CASH" if cash else "EQUITY", "positions_sync", as_of)
 
 
-def _receipt(run, rows, *, status="complete", promoted=True, accounts_ok=None, accounts_failed=None):
+def _detail(rows):
+    """The per-account position counts a real receipt carries (non-cash rows per account)."""
+    out: dict[str, dict] = {}
+    for r in rows:
+        key = r[1]
+        out.setdefault(key, {"positions": 0})
+        if not r[8]:
+            out[key]["positions"] += 1
+    return out
+
+
+def _receipt(run, rows, *, status="complete", promoted=True, accounts_ok=None, accounts_failed=None,
+             accounts=None):
     return (run, status, promoted, rows, NOW, NOW,
             DEFAULT_ACCOUNTS if accounts_ok is None else accounts_ok,
-            {} if accounts_failed is None else accounts_failed)
+            {} if accounts_failed is None else accounts_failed,
+            accounts)
 
 
 RUN641 = {
@@ -97,7 +110,10 @@ class BoomConn:
 
 def _conn(pointer=(641,), snapshots=None, receipts=None):
     snapshots = snapshots if snapshots is not None else RUN641
-    receipts = receipts if receipts is not None else {run: _receipt(run, len(rows)) for run, rows in snapshots.items()}
+    receipts = receipts if receipts is not None else {
+        run: _receipt(run, len(rows), accounts_ok=sorted(_detail(rows)), accounts=_detail(rows))
+        for run, rows in snapshots.items()
+    }
     return FakeConn(list(pointer), receipts, snapshots)
 
 
@@ -251,7 +267,7 @@ def test_no_latest_pointer_is_unavailable():
 
 
 def test_snapshot_row_count_mismatch_is_unavailable():
-    receipts = {641: _receipt(641, 4)}  # receipt says 4, snapshot has 3
+    receipts = {641: _receipt(641, 4, accounts=_detail(RUN641[641]))}  # receipt says 4, snapshot has 3
     out = m.rows(conn_factory=lambda: _conn(receipts=receipts))
     assert out["available"] is False and out["reason"] == "snapshot_rows_mismatch"
     assert out["receipt_rows"] == 4 and out["snapshot_rows"] == 3
@@ -259,7 +275,8 @@ def test_snapshot_row_count_mismatch_is_unavailable():
 
 def test_snapshot_account_outside_receipt_coverage_is_unavailable():
     # The fixture rows include the Roth, but the receipt claims only one account.
-    receipts = {641: _receipt(641, 3, accounts_ok=["schwab_taxable"])}
+    receipts = {641: _receipt(641, 3, accounts_ok=["schwab_taxable"],
+                              accounts={"schwab_taxable": {"positions": 1}})}
     out = m.rows(conn_factory=lambda: _conn(receipts=receipts))
     assert out["available"] is False and out["reason"] == "snapshot_account_not_in_receipt"
     assert out["missing_accounts"] == ["schwab_roth_ira"]
@@ -408,7 +425,7 @@ def test_cash_by_symbol_counts_as_cash():
         _row(641, "schwab_taxable", "SPAXX", 1, 250.0),   # is_cash False, cash by symbol
         _row(641, "schwab_taxable", "AAA", 10, 1200.0),
     ]}
-    receipts = {641: _receipt(641, 2)}
+    receipts = {641: _receipt(641, 2, accounts_ok=sorted(_detail(rows[641])), accounts=_detail(rows[641]))}
     conn = _conn(snapshots=rows, receipts=receipts)
     t = m.totals(conn_factory=lambda: conn)
     assert t["total_cash"] == 250.0 and t["total_value"] == 1450.0
@@ -481,3 +498,31 @@ def test_account_labels_come_from_the_canonical_config():
     assert m.label_for("schwab_rollover_ira") == "schwab_rollover"
     assert m.label_for("schwab_taxable") == "schwab_individual"
     assert m.label_for("tradeai_automated") == "alpaca_paper"
+
+
+def test_receipt_without_account_detail_is_unavailable():
+    # JSONB can be null/wrong type; without the per-account proof, completeness is not claimed.
+    out = m.rows(conn_factory=lambda: _conn(receipts={641: _receipt(641, 3, accounts=None)}))
+    assert out["available"] is False and out["reason"] == "receipt_account_detail_missing"
+
+
+def test_export_run_id_must_be_an_exact_integer(tmp_path):
+    for bad in (641.9, float("inf"), 10 ** 400):
+        p = _export(tmp_path, {"sync_run_id": bad, "holdings": [
+            {"account": "schwab_taxable", "symbol": "AAA", "qty": 1, "market_value": 10.0}]})
+        out = m.rows(conn_factory=lambda: (_ for _ in ()).throw(RuntimeError("db down")), export_path=p)
+        assert out["available"] is False and out["export"] == "sync_run_id_invalid", bad
+
+
+def test_export_rebuild_must_be_an_object(tmp_path):
+    p = _export(tmp_path, {"_rebuild": "corrupt", "holdings": [
+        {"account": "schwab_taxable", "symbol": "AAA", "qty": 1, "market_value": 10.0}]})
+    out = m.rows(conn_factory=lambda: (_ for _ in ()).throw(RuntimeError("db down")), export_path=p)
+    assert out["available"] is False and out["export"] == "no_sync_run_id"
+
+
+def test_export_huge_share_count_is_unavailable_not_a_crash(tmp_path):
+    p = _export(tmp_path, {"sync_run_id": 641, "holdings": [
+        {"account": "schwab_taxable", "symbol": "AAA", "qty": 10 ** 400, "market_value": 10.0}]})
+    out = m.rows(conn_factory=lambda: (_ for _ in ()).throw(RuntimeError("db down")), export_path=p)
+    assert out["available"] is False and out["export"] == "numeric_invalid"

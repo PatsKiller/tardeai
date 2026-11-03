@@ -97,10 +97,11 @@ def default_export_path() -> Path:
 
 
 def _num(value: Any) -> Optional[float]:
-    """A finite float, or None. NaN and infinity are not numbers a page may show."""
+    """A finite float, or None. NaN, infinity and ints too large for a float are not numbers
+    a page may show (the last raises OverflowError, not ValueError)."""
     try:
         out = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
     return out if math.isfinite(out) else None
 
@@ -193,7 +194,12 @@ def _resolve_run(cur, sync_run_id: Optional[int]):
     if not isinstance(receipt["accounts_ok"], list) or not receipt["accounts_ok"]:
         return None, _probe_unavailable("run_has_no_account_coverage", sync_run_id=run)
     detail = receipt["accounts"]
-    if detail is not None and set(detail) != set(receipt["accounts_ok"]):
+    if not isinstance(detail, dict) or not detail:
+        # The per-account detail is the completeness proof. Without it a zero-position account
+        # and a LOST account are indistinguishable, so a receipt that does not carry it is
+        # unavailable — never treated as complete (2026-11-03 codex review).
+        return None, _probe_unavailable("receipt_account_detail_missing", sync_run_id=run)
+    if set(detail) != set(receipt["accounts_ok"]):
         # The two receipt views must name the same accounts. A run whose `accounts` detail and
         # `accounts_ok` list disagree is a booking defect; refuse rather than pick one.
         return None, _probe_unavailable(
@@ -223,15 +229,21 @@ def _from_export(export_path, reason: str, requested_sync_run_id: Optional[int] 
         run = source_doc.get("run_id", doc.get("run_id"))
     if run is None:
         rebuild = source_doc.get("_rebuild") or doc.get("_rebuild") or {}
+        if not isinstance(rebuild, dict):
+            rebuild = {}
         run = rebuild.get("run") or rebuild.get("sync_run_id")
     if run is None:
         return _probe_unavailable(reason, export="no_sync_run_id", **stamp)
-    try:
-        run = int(run)
-    except (TypeError, ValueError):
-        # A parseable export with a non-integer run id is corrupt. The fallback must never raise:
-        # 236 readers will call this path (2026-11-03 review F1).
+    if isinstance(run, bool) or not isinstance(run, (int, float)):
         return _probe_unavailable(reason, export="sync_run_id_invalid", raw_run_id=repr(run), **stamp)
+    try:
+        # An exact integer run id: 641.9 must not truncate to 641, and Infinity/10**400 must
+        # not raise out of the reader (2026-11-03 codex review).
+        if not math.isfinite(float(run)) or int(run) != run:
+            return _probe_unavailable(reason, export="sync_run_id_invalid", raw_run_id=repr(run), **stamp)
+    except (TypeError, ValueError, OverflowError):
+        return _probe_unavailable(reason, export="sync_run_id_invalid", raw_run_id=repr(run), **stamp)
+    run = int(run)
     if requested_sync_run_id is not None and run != int(requested_sync_run_id):
         return _probe_unavailable(
             "export_run_mismatch", export_sync_run_id=run, **stamp,
