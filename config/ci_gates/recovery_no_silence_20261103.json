@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "recovery_no_silence_20261103",
+  "files": [
+    "tests/test_recovery_no_silence_20261103.py"
+  ],
+  "anchor": "RECOVERY_NO_SILENCE_20261103",
+  "comment": [
+    "ANCHOR: RECOVERY_NO_SILENCE_20261103 — a T1 recovery case is paged as P1 (through telegram_batch when present, direct otherwise) and the router can never classify a marked T1 recovery message P2_DASHBOARD_ONLY or P3_LOG_ONLY; the no-silence invariant is test-pinned."
+  ]
+}

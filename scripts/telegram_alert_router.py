@@ -20,6 +20,18 @@ log = logging.getLogger(__name__)
 PROJ = Path(__file__).resolve().parent.parent
 _POLICY_PATH = PROJ / "config" / "operator_alert_policy.yaml"
 
+# A T1 recovery page (scripts/lib/recovery_notify.py) must never be downgraded to a dashboard row.
+# Operator P0 2026-11-03: Recovery Watch found re-entry candidates for weeks, sent them as P2, and the
+# router answered P2_DASHBOARD_ONLY + LEGACY_SHADOWED; the operator missed his largest stop-out.
+# The marker is owned by recovery_notify; the literal is only the fallback when that lib is absent.
+try:
+    from scripts.lib.recovery_notify import RECOVERY_T1_MARKER as _RECOVERY_T1_MARKER
+except ImportError:  # pragma: no cover — scripts/ on sys.path variant
+    try:
+        from lib.recovery_notify import RECOVERY_T1_MARKER as _RECOVERY_T1_MARKER  # type: ignore
+    except ImportError:
+        _RECOVERY_T1_MARKER = "[[RECOVERY_T1]]"
+
 # B2, 2026-08-31: THESE DICTS CANNOT HOLD A CROSS-INVOCATION GUARANTEE.
 #
 # Every producer that reaches this module is a one-shot cron or systemd process.
@@ -243,6 +255,12 @@ def classify_alert(message: str) -> str:
             return "P3_LOG_ONLY"
     except Exception:
         pass
+
+    # A T1 recovery page can never be a dashboard row or a log line (operator P0 2026-11-03: Recovery
+    # Watch found SCHG/BAH/RTX every run since 10-01 and answered P2_DASHBOARD_ONLY + LEGACY_SHADOWED;
+    # the operator missed SPCX recovering). Marker check runs before every P2/P3 pattern.
+    if _RECOVERY_T1_MARKER in message:
+        return "P0_INTERRUPT"
 
     # Stop about to fire / fired → interrupt, ahead of every digest/dashboard route (2026-10-14 SPCX incident).
     if _STOP_FIRING_PATTERN.search(message):
