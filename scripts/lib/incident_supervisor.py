@@ -236,6 +236,27 @@ def build_prompt(rec: Mapping[str, Any], cfg: Mapping[str, Any], *, evidence: st
     )
 
 
+
+def _action_took_effect(spec, tail):
+    """Did the runbook actually DO something? Recorded as evidence; the attempt cap still applies.
+
+    ``cron_self_heal`` exits 0 with ``{"acted": []}`` for any lane it cannot manage. Recording that
+    as a no-op is what lets the cap branch route it to the fixer instead of a person (2026-11-03).
+    """
+    contract = (spec or {}).get("success_when") or {}
+    want = ((contract.get("json") or {}) if isinstance(contract, dict) else {}).get("acted")
+    if not want:
+        return True
+    try:
+        doc = json.loads(tail or "")
+    except (TypeError, ValueError):
+        return False
+    if not isinstance(doc, dict):
+        return False
+    acted = doc.get("acted")
+    return len(acted) > 0 if isinstance(acted, list) else bool(acted)
+
+
 def fixer_request(rec: Mapping[str, Any], verdict: Mapping[str, Any], cfg: Mapping[str, Any]) -> dict:
     """An N8nCodeDefect@v1-shaped intake file for scripts/self_heal_fixer.py --incident (its own contract)."""
     src = rec.get("source") or {}
@@ -393,7 +414,8 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
             cwd = str(release_root if spec.get("cwd") == "release" else root)
             rc, tail = deps.run(argv, cwd, action_env(cfg, environ), float(spec.get("timeout_s", 300)))
             L.attempt(iid, actor=ACTOR, action=chosen["name"], result=f"rc={rc}", ok=rc == 0,
-                      detail={**detail, "argv": argv, "output_tail": tail[-1200:]}, d=d, now=now)
+                      detail={**detail, "argv": argv, "output_tail": tail[-1200:],
+                              "no_op": not _action_took_effect(spec, tail)}, d=d, now=now)
             out["actions"].append({"id": iid, "action": chosen["name"], "rc": rc})
         elif verdict["class"] == "code_defect":
             if any(a.get("action") == "fixer_dispatch" for a in supervisor_attempts(rec)):
