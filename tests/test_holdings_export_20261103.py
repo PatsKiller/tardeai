@@ -17,7 +17,8 @@ sys.modules[_spec.name] = he
 _spec.loader.exec_module(he)
 
 COLUMNS = ["account_key", "symbol", "broker", "qty", "cost_basis_total", "avg_cost",
-           "broker_market_value", "is_cash", "asset_type", "source", "as_of"]
+           "broker_market_value", "is_cash", "asset_type", "source", "as_of", "sync_run_id"]
+RUN_ID = 7
 NOW = datetime(2026, 11, 3, 16, 0, tzinfo=timezone.utc)  # 11:00 ET, market open
 
 
@@ -60,9 +61,11 @@ class Cursor:
                 self.description = [("status",)]
                 self._result = [("failed",)] * self._conn.sync_failures + [("complete",)] * (2 - self._conn.sync_failures)
             else:
-                self.description = [("run_id",), ("finished_at",), ("accounts_ok",), ("position_rows",)]
-                accounts = sorted({r[0] for r in self._conn.positions})
-                self._result = [(7, NOW, accounts, len(self._conn.positions))] if self._conn.binding else []
+                self.description = [("run_id",), ("finished_at",), ("accounts_ok",), ("accounts_failed",),
+                                    ("position_rows",)]
+                accounts = self._conn.accounts_ok or sorted({r[0] for r in self._conn.positions})
+                self._result = ([(7, NOW, accounts, self._conn.accounts_failed, len(self._conn.positions))]
+                                if self._conn.binding else [])
         elif "to_regclass" in low:
             self.description = [("to_regclass",)]
             self._result = [(("etf_holdings_snapshot" if self._conn.lookthrough else None),)]
@@ -95,8 +98,13 @@ class Cursor:
 
 class Conn:
     def __init__(self, data=None, *, fail=False, quotes=None, profiles=None,
-                 lookthrough=False, lookthrough_rows=None, binding=True, sync_failures=0):
-        self.positions = data if data is not None else rows()
+                 lookthrough=False, lookthrough_rows=None, binding=True, sync_failures=0,
+                 accounts_failed=None, accounts_ok=None, row_run_id=None):
+        self.accounts_failed = accounts_failed or {}
+        self.accounts_ok = accounts_ok
+        self.row_run_id = row_run_id
+        self.positions = [tuple(r) + ((self.row_run_id or RUN_ID,) if len(r) == len(COLUMNS) - 1 else ())
+                         for r in (data if data is not None else rows())]
         self.binding = binding
         self.sync_failures = sync_failures
         self.fail = fail
@@ -325,3 +333,54 @@ def test_a_foreign_prefixed_backup_cannot_displace_the_fresh_snapshot(tmp_path):
     assert foreign.exists() and foreign.read_text() == "{}"
     assert Path(receipt["retention"]["hourly"]).exists()  # the fresh snapshot was not archived away
     assert store.exists()
+
+
+def test_a_receipt_account_missing_from_the_rows_refuses(tmp_path):
+    # codex's counterexample: receipt lists acct_a + a required account, rows hold only acct_a.
+    with pytest.raises(he.ExportError):
+        he.export(state_root=tmp_path, conn=Conn(accounts_ok=["acct_a", "acct_b"]),
+                  store=tmp_path / "holdings.json", backups=tmp_path / "b", now=NOW)
+
+
+def test_a_receipt_with_failed_accounts_refuses(tmp_path):
+    with pytest.raises(he.ExportError):
+        he.export(state_root=tmp_path, conn=Conn(accounts_failed={"acct_b": "timeout"}),
+                  store=tmp_path / "holdings.json", backups=tmp_path / "b", now=NOW)
+
+
+def test_rows_from_a_different_run_refuse(tmp_path):
+    with pytest.raises(he.ExportError):
+        he.export(state_root=tmp_path, conn=Conn(row_run_id=8),
+                  store=tmp_path / "holdings.json", backups=tmp_path / "b", now=NOW)
+
+
+def test_a_symlinked_directory_is_refused_by_the_fd_walk(tmp_path):
+    root = tmp_path / "root"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (root / "state").symlink_to(outside)
+    with pytest.raises(he.ExportError):
+        he.atomic_write(root / "state" / "holdings.json", "{}", root=root)
+    assert not (outside / "holdings.json").exists()
+
+
+def test_main_passes_the_connection_to_the_alert(tmp_path, monkeypatch):
+    captured = {}
+    monkeypatch.setattr(he, "_connect", lambda: Conn(sync_failures=2))
+    monkeypatch.setattr(he, "export", lambda **kw: {"ok": True, "holdings": 2, "bytes": 1,
+                                                    "generated_at": "x", "sync_run_id": 7})
+    monkeypatch.setattr(he, "maybe_alert_stale", lambda **kw: captured.update(kw) or {"sent": False})
+    rc = he.main(["--apply", "--store", str(tmp_path / "holdings.json")])
+    assert rc == 0 and captured.get("conn") is not None and captured.get("state_root") is not None
+
+
+def test_one_unresolved_episode_pages_once_as_the_document_ages(tmp_path):
+    store = tmp_path / "holdings.json"
+    he.export(state_root=tmp_path, conn=Conn(), store=store, backups=tmp_path / "b", now=NOW - timedelta(minutes=40))
+    calls = []
+    send = lambda *a, **k: calls.append(1) or {"delivered": True}
+    first = he.maybe_alert_stale(store=store, now=NOW, state_root=tmp_path, send=send)
+    # the clock advances (41 min old) but the CONDITION is the same unresolved episode
+    second = he.maybe_alert_stale(store=store, now=NOW + timedelta(minutes=1), state_root=tmp_path, send=send)
+    assert first["sent"] is True and second["sent"] is False and len(calls) == 1

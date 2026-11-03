@@ -72,7 +72,7 @@ def positions_rows(conn) -> list[dict[str, Any]]:
         cur = conn.cursor()
         cur.execute(
             """SELECT account_key, symbol, broker, qty, cost_basis_total, avg_cost, broker_market_value,
-                      is_cash, asset_type, source, as_of
+                      is_cash, asset_type, source, as_of, sync_run_id
                  FROM positions_current
              ORDER BY account_key, symbol""")
         columns = [d[0] for d in (cur.description or [])]
@@ -147,7 +147,7 @@ def run_binding(conn, rows: list[dict[str, Any]]) -> dict[str, Any]:
     """
     try:
         cur = conn.cursor()
-        cur.execute("""SELECT run_id, finished_at, accounts_ok, position_rows
+        cur.execute("""SELECT run_id, finished_at, accounts_ok, accounts_failed, position_rows
                          FROM positions_sync_runs
                         WHERE status = 'complete' AND promoted = TRUE
                      ORDER BY finished_at DESC NULLS LAST LIMIT 1""")
@@ -156,13 +156,23 @@ def run_binding(conn, rows: list[dict[str, Any]]) -> dict[str, Any]:
         raise ExportError(f"positions_sync_runs is unreachable: {type(exc).__name__}") from exc
     if not row:
         raise ExportError("no complete, promoted positions sync run to bind the export to")
-    run_id, finished_at, accounts_ok, position_rows = row
+    run_id, finished_at, accounts_ok, accounts_failed, position_rows = row
+    failed = accounts_failed or {}
+    if failed:
+        raise ExportError(f"the promoted run recorded failed accounts: {sorted(failed)[:5]}")
     accounts = {r.get("account_key") for r in rows}
     if not accounts_ok:
         raise ExportError("the promoted run recorded no successful accounts")
-    missing = accounts - set(accounts_ok)
-    if missing:
-        raise ExportError(f"positions_current holds accounts the promoted run did not confirm: {sorted(missing)[:5]}")
+    # COMPLETENESS BOTH WAYS: a receipt account missing from the rows is a partial book just as much as
+    # a row the receipt never confirmed. Counting rows alone accepted exactly that.
+    missing_rows = set(accounts_ok) - accounts
+    extra_rows = accounts - set(accounts_ok)
+    if missing_rows or extra_rows:
+        raise ExportError(f"account set mismatch: receipt {sorted(set(accounts_ok))[:5]}, rows {sorted(accounts)[:5]}")
+    # The rows must BE this run's output, not a mix of runs.
+    run_ids = {r.get("sync_run_id") for r in rows}
+    if run_ids != {run_id}:
+        raise ExportError(f"positions_current rows come from runs {sorted(str(x) for x in run_ids)[:5]}, not {run_id}")
     if int(position_rows or 0) != len(rows):
         raise ExportError(f"row count mismatch: run {run_id} wrote {position_rows}, positions_current has {len(rows)}")
     return {"run_id": int(run_id), "finished_at": finished_at, "accounts": sorted(accounts_ok),
@@ -340,25 +350,65 @@ def render_document(rows: Iterable[Mapping[str, Any]], *, generated_at: datetime
 
 
 # ── atomic write ───────────────────────────────────────────────────────────────
-def atomic_write(path: Path | str, text: str, *, mode: int = FILE_MODE) -> Path:
-    """Unique temp in the same directory, fsync, os.replace, mode 600. Never opens `path` for reading."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+def _dir_beneath(root: Path, target: Path, *, create: bool = True) -> int:
+    """Open `target` as a directory fd by walking from `root` with O_NOFOLLOW at every step.
+
+    A realpath check followed by path-based open/replace is racy: the parent can be swapped for a symlink
+    after the check. An fd walk pins each component, so the write cannot leave the root.
+    """
+    root_real = Path(os.path.realpath(root))
+    target_real = Path(os.path.realpath(target))
+    if not target_real.is_relative_to(root_real):
+        raise ExportError(f"path escapes the state root: {target_real} not under {root_real}")
+    fd = os.open(root_real, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(text)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(tmp, path)
-    finally:
+        for part in target_real.relative_to(root_real).parts:
+            try:
+                nfd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            except FileNotFoundError:
+                if not create:
+                    raise
+                os.mkdir(part, 0o700, dir_fd=fd)
+                nfd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = nfd
+            # Re-verify the pinned fd is still under the root (a swap between components).
+            pinned = os.readlink(f"/proc/self/fd/{fd}")
+            if Path(pinned) != Path(os.path.realpath(Path(pinned))) or not Path(pinned).is_relative_to(root_real):
+                raise ExportError(f"directory swap detected: {pinned} is not under {root_real}")
+        return fd
+    except Exception:
+        os.close(fd)
+        raise
+
+
+def atomic_write(path: Path | str, text: str, *, mode: int = FILE_MODE, root: Path | str | None = None) -> Path:
+    """Unique temp in the target directory, fsync, os.replace, mode 600, anchored to a directory fd.
+
+    Every step (mkdir, create, replace) uses dir_fd so a symlinked parent cannot redirect the write.
+    """
+    path = Path(path)
+    root = Path(root) if root is not None else path.parent
+    dir_fd = _dir_beneath(root, path.parent, create=True)
+    name = path.name
+    tmp_name = f".{name}.{os.getpid()}.{secrets.token_hex(4)}.tmp"
+    try:
+        fd = os.open(tmp_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode, dir_fd=dir_fd)
         try:
-            if tmp.exists():
-                tmp.unlink()
-        except OSError:
-            pass
-    os.chmod(path, mode)
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(text)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp_name, name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+            os.fsync(dir_fd)
+        finally:
+            try:
+                os.unlink(tmp_name, dir_fd=dir_fd)
+            except OSError:
+                pass
+        os.chmod(name, mode, dir_fd=dir_fd)
+    finally:
+        os.close(dir_fd)
     return path
 
 
@@ -370,7 +420,14 @@ def _archive(directory: Path, path: Path) -> None:
     dest = target / path.name
     if dest.exists():
         dest = target / f"{path.stem}-{secrets.token_hex(3)}{path.suffix}"
-    os.replace(path, dest)
+    root = directory.parent
+    src_fd = _dir_beneath(root, directory, create=True)
+    dst_fd = _dir_beneath(root, target, create=True)
+    try:
+        os.replace(path.name, dest.name, src_dir_fd=src_fd, dst_dir_fd=dst_fd)
+    finally:
+        os.close(src_fd)
+        os.close(dst_fd)
 
 
 def _prune(directory: Path, keep: int, prefix: str, *, protect: Path | None = None) -> list[Path]:
@@ -425,9 +482,10 @@ def write_backups(text: str, backups: Path, *, now: datetime,
     backups.mkdir(parents=True, exist_ok=True)
     hourly = backups / f"holdings-hourly-{now.astimezone(timezone.utc):%Y%m%dT%H}.json"
     daily = backups / f"holdings-daily-{now.astimezone(timezone.utc):%Y%m%d}.json"
-    atomic_write(hourly, text)
+    root = backups.parent
+    atomic_write(hourly, text, root=root)
     if not daily.exists():
-        atomic_write(daily, text)
+        atomic_write(daily, text, root=root)
     removed = _prune(backups, hourly_keep, "holdings-hourly-", protect=hourly)
     removed += _prune(backups, daily_keep, "holdings-daily-", protect=daily)
     removed += _enforce_size_cap(backups, size_cap_bytes, protect=hourly)
@@ -479,7 +537,7 @@ def export(*, conn, store: Path | str | None = None, backups: Path | str | None 
                               daily_keep=daily_keep, size_cap_bytes=size_cap_bytes)
     if not Path(retention["hourly"]).exists() or Path(retention["hourly"]).stat().st_size == 0:
         raise ExportError("backup was not durably written; the current store was left untouched")
-    atomic_write(store, text)
+    atomic_write(store, text, root=root_hint)
     return {"ok": True, "store": str(store), "bytes": len(text),
             "holdings": len(document["holdings"]), "generated_at": document["generated_at"],
             "sync_run_id": binding["run_id"],
@@ -589,8 +647,10 @@ def maybe_alert_stale(*, store: Path | str | None = None, state_root: Path | str
         root_real = Path(os.path.realpath(Path(state_root).expanduser()))
         if not Path(os.path.realpath(episode_file)).is_relative_to(root_real):
             episode_file = None  # never write alert state outside an explicit state root
-    episode = (f"{document.get('generated_at') or 'missing'}|empty={empty}|delta={mismatch}"
-               f"|sync_failures={sync_failures}|stale={age is not None and age > max_age_minutes}")
+    # One episode per unresolved condition, independent of the export clock: as the document ages the
+    # condition stays the same, so it pages once until it clears.
+    episode = (f"empty={empty}|mismatch={mismatch is not None}|sync_bad={sync_bad}"
+               f"|stale={age is not None and age > max_age_minutes}")
     if episode_file is not None:
         try:
             if json.loads(episode_file.read_text(encoding="utf-8")).get("episode") == episode:
@@ -654,20 +714,24 @@ def main(argv: list[str] | None = None) -> int:
 
     store = Path(args.store) if args.store else store_path()
     backups = Path(args.backups) if args.backups else store.parent / "backups"
+    conn = None
     try:
         conn = _connect()
-        try:
-            receipt = export(conn=conn, store=store, backups=backups)
-        finally:
-            _close(conn)
-        alert = maybe_alert_stale(store=store)
-    except ExportError as exc:
+        receipt = export(conn=conn, store=store, backups=backups)
+        # The connection stays open for the alert: the two-consecutive-sync-failure check lives there.
+        alert = maybe_alert_stale(store=store, conn=conn, state_root=store.parent)
+    except (ExportError, ConnectionError, OSError) as exc:
         # A refusal leaves the last good file untouched; the freshness check still pages if it is stale.
-        alert = maybe_alert_stale(store=store)
-        receipt = {"ok": False, "refused": str(exc), "store": str(store), "alert": alert}
+        alert = maybe_alert_stale(store=store, conn=conn, state_root=store.parent) if store.exists() else \
+            {"status": "refused_before_store", "sent": False}
+        receipt = {"ok": False, "refused": str(exc), "refused_type": type(exc).__name__,
+                   "store": str(store), "alert": alert}
         print(json.dumps(receipt, indent=1, sort_keys=True) if args.json else
               f"holdings-export: REFUSED — {exc}; last good file kept", file=sys.stderr)
         return 1
+    finally:
+        if conn is not None:
+            _close(conn)
     receipt["alert"] = alert
     if args.json:
         print(json.dumps(receipt, indent=1, sort_keys=True))
