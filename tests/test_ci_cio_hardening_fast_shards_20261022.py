@@ -454,27 +454,44 @@ def _isolated_readonly_observer(tmp_path, monkeypatch):
     shutil.copyfile(ROOT / "scripts/lib/pr_all_checks_green.py", checks)
     source = checkout / "synthetic_source.py"
     source.write_bytes(b"before\n")
+    # The real observer excludes TMPDIR. Keep that exclusion in an owned
+    # sibling, so pytest may put its base under /tmp or any other temp root.
+    excluded = tmp_path / "excluded_temp"
+    excluded.mkdir()
+    monkeypatch.setenv("TMPDIR", str(excluded))
     monkeypatch.setattr(observer, "ROOT", checkout)
-    return observer, merge, source
+    snapshots = []
+    actual_tree_state = observer.tree_state
+
+    def recorded_tree_state(root, **kwargs):
+        state = actual_tree_state(root, **kwargs)
+        if Path(root) == checkout:
+            snapshots.append(state)
+        return state
+
+    monkeypatch.setattr(observer, "tree_state", recorded_tree_state)
+    return observer, merge, source, snapshots
 
 
 def test_readonly_observer_accepts_metadata_established_before_its_snapshot(tmp_path, monkeypatch):
-    observer, merge, source = _isolated_readonly_observer(tmp_path, monkeypatch)
+    observer, merge, source, snapshots = _isolated_readonly_observer(tmp_path, monkeypatch)
     initial = source.stat()
     os.utime(source, ns=(initial.st_atime_ns, initial.st_mtime_ns - 1_000_000_000))
     assert source.read_bytes() == b"before\n" and source.stat().st_mtime_ns != initial.st_mtime_ns
     observer.test_evaluate_is_readonly_and_uses_only_read_apis(merge, tmp_path / "state", monkeypatch)
+    assert snapshots and str(source) in snapshots[0], "the real observer must watch the fixture"
 
 
 @pytest.mark.parametrize("mutation", ["same_size_content", "metadata_only", "new_file", "missing_file"])
 def test_serial_placement_preserves_real_snapshot_mutation_detection(tmp_path, monkeypatch, mutation):
-    observer, merge, source = _isolated_readonly_observer(tmp_path, monkeypatch)
+    observer, merge, source, snapshots = _isolated_readonly_observer(tmp_path, monkeypatch)
     actual_evaluate = merge.evaluate
     reached = []
 
     def changed(*args, **kwargs):
         result = actual_evaluate(*args, **kwargs)
         assert result["ok"], result
+        assert snapshots and str(source) in snapshots[0], "empty watch set before mutation"
         before = source.stat()
         if mutation == "same_size_content":
             source.write_bytes(b"after!\n")
@@ -494,3 +511,4 @@ def test_serial_placement_preserves_real_snapshot_mutation_detection(tmp_path, m
     with pytest.raises(AssertionError):
         observer.test_evaluate_is_readonly_and_uses_only_read_apis(merge, tmp_path / "state", monkeypatch)
     assert reached == [mutation]
+    assert snapshots and str(source) in snapshots[0]
