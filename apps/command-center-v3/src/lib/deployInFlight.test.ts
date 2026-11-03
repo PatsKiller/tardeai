@@ -300,5 +300,35 @@ const evilWire = normalizeRows([{ number: 4001, head_sha: HEAD, title: 't', work
 eq('the board payload still projects its row', evilWire.rows.length, 1)
 eq('with the review UNKNOWN', evilWire.rows[0].work.review.state, 'UNKNOWN')
 
+// ---- cx-openai-4's three P1s on #2517 (2026-11-03): each was a PASS displayed where the truth is unknown or blocked.
+// R3: clocks compared as text let an older MERGE beat a newer BLOCK.
+const r3 = normalizeReview({ head_sha: HEAD, source: 'ledger', verdicts: [
+  { verdict: 'MERGE', reviewer: 'cc2', head_sha: HEAD, as_of: '2026-11-03T12:00:00Z' },
+  { verdict: 'BLOCK', reviewer: 'cc2', head_sha: HEAD, as_of: '2026-11-03T12:00:00.900Z' },
+] }, HEAD)
+eq('R3 a sub-second-newer BLOCK beats an older MERGE', r3.state, 'CHANGES')
+
+// R2: an explicit source gap cannot be discarded once records parse.
+const r2 = normalizeReview({ head_sha: HEAD, source: 'ledger', source_gap: 'stale_review_for_other_head', verdicts: [
+  { verdict: 'MERGE', reviewer: 'cc2', head_sha: HEAD, as_of: '2026-11-03T12:00:00Z' },
+] }, HEAD)
+eq('R2 a source gap keeps the aggregate unknown', r2.state, 'UNKNOWN')
+const r2b = normalizeReview({ head_sha: HEAD, source: 'ledger', gap: 'review_source_unavailable', verdicts: [
+  { verdict: 'MERGE', reviewer: 'cc2', head_sha: HEAD, as_of: '2026-11-03T12:00:00Z' },
+] }, HEAD)
+eq('R2 the other gap spelling is not discarded either', r2b.state, 'UNKNOWN')
+
+// R1: an envelope word outside the vocabulary fails closed, even beside a MERGE member.
+const r1 = normalizeReview({ head_sha: HEAD, source: 'ledger', state: 'WAT', verdicts: [
+  { verdict: 'MERGE', reviewer: 'cc2', head_sha: HEAD, as_of: '2026-11-03T12:00:00Z' },
+] }, HEAD)
+eq('R1 an unrecognised envelope is not a pass', r1.state, 'UNKNOWN')
+check('R1 and it says which word it could not read', (r1.reason ?? '').toUpperCase().includes('WAT'))
+const r1b = normalizeReview({ head_sha: HEAD, source: 'ledger', verdicts: [
+  { verdict: 'REQUEST_CHANGES', reviewer: 'cc2', head_sha: HEAD, as_of: '2026-11-03T12:00:00Z' },
+  { verdict: 'MERGE', reviewer: 'cc3', head_sha: HEAD, as_of: '2026-11-03T12:00:00Z' },
+] }, HEAD)
+eq('R1 a blocking member beside a merge member is blocked', r1b.state, 'CHANGES')
+
 console.log(`deployInFlight: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)
