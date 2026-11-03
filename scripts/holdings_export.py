@@ -151,6 +151,8 @@ def render_document(rows: Iterable[Mapping[str, Any]], *, generated_at: datetime
     holdings: list[dict[str, Any]] = []
     total_value = 0.0
     total_cash = 0.0
+    day_change = 0.0
+    day_change_known = False
     newest: datetime | None = None
     for row in rows:
         qty = _number(row.get("qty")) or 0.0
@@ -212,6 +214,13 @@ def render_document(rows: Iterable[Mapping[str, Any]], *, generated_at: datetime
             total_value += market_value
             if is_cash:
                 total_cash += market_value
+        # Portfolio day change from the same DB quotes: qty × (price − prior close). Unknown marks
+        # contribute nothing and leave the field null rather than a fabricated zero.
+        price = _number(quote.get("price"))
+        prior = _number(quote.get("reference_close"))
+        if not is_cash and price is not None and prior is not None:
+            day_change += qty * (price - prior)
+            day_change_known = True
     return {
         "schema": SCHEMA,
         "generated_at": _iso(generated_at),
@@ -222,6 +231,9 @@ def render_document(rows: Iterable[Mapping[str, Any]], *, generated_at: datetime
             "as_of": _iso(newest) if newest is not None else None,
             "total_value": round(total_value, 2),
             "total_cash": round(total_cash, 2),
+            "day_change": round(day_change, 2) if day_change_known else None,
+            "day_change_pct": (round(day_change / (total_value - day_change) * 100.0, 2)
+                               if day_change_known and (total_value - day_change) else None),
             "positions": len(holdings),
         },
     }

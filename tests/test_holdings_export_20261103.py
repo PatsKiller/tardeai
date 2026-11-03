@@ -111,6 +111,14 @@ def test_render_totals_from_rows_only():
     assert doc["holdings"][0]["account"] == "acct_a" and doc["holdings"][0]["shares"] == 1000.0
 
 
+def test_portfolio_day_change_is_rendered_from_the_quote_join():
+    doc = he.render_document(_dicts(), generated_at=NOW, quotes={"NVDA": {"price": 120.0, "reference_close": 118.0}})
+    # 10 shares x $2 = $20; absent quotes leave it null rather than a fabricated zero
+    assert doc["portfolio_totals"]["day_change"] == 20.0
+    assert doc["portfolio_totals"]["day_change_pct"] is not None
+    assert he.render_document(_dicts(), generated_at=NOW)["portfolio_totals"]["day_change"] is None
+
+
 def test_a_zero_byte_store_is_regenerated_without_being_read(tmp_path, monkeypatch):
     store = tmp_path / "holdings.json"
     store.write_bytes(b"")
