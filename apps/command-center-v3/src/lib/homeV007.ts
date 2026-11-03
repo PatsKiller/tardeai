@@ -99,6 +99,8 @@ export type HomeV007 = {
   positions: Array<{ symbol: string; account: string | null; pctAccount: number | null; denominator: string | null; stopDistancePct: number | null; stopState: string | null }>
   risk: {
     score: number | null
+    /** The clock of the row the score came from; the score is a measurement like any other and shows its own. */
+    scoreAsOf: string | null
     categories: Array<{ key: string; label: string; chip: string | null; state: FactState; asOf: string | null; source: string | null; reason: string | null; carried: boolean }>
     nextEvaluation: { at: string | null; basis: string | null } | null
   }
@@ -169,6 +171,12 @@ function noValueIsUnknown<T extends Fact>(f: T, values: ReadonlyArray<number | n
   return { ...f, state: 'unknown', reason: 'measured claim carried no value' }
 }
 
+/** The same rule for a fact whose value is text: a measured CIO/stance with no word is not a measurement. */
+function measuredNeedsText<T extends Fact>(f: T, text: string | null): T {
+  if (f.state !== 'measured' || text) return f
+  return { ...f, state: 'unknown', reason: f.reason ?? 'measured claim carried no value' }
+}
+
 function quote(base: Record<string, unknown> | null): QuoteLine {
   const q = rec(base?.quote)
   const f = fact(q)
@@ -211,7 +219,12 @@ function quote(base: Record<string, unknown> | null): QuoteLine {
     })(),
   }
   // A measured quote with no price is not a measurement either: downgrade it rather than render an empty value.
-  return noValueIsUnknown(line, [line.price])
+  const priced = noValueIsUnknown(line, [line.price])
+  // And a price with no observation clock is a number nobody can date: unknown, with the clock as the reason.
+  if (priced.state === 'measured' && !priced.asOf) {
+    return { ...priced, state: 'unknown', reason: 'the quote carries no observation clock, so its price cannot be dated', price: null }
+  }
+  return priced
 }
 
 /** Inverse-fund moves arrive two ways: the producer's {symbol: symbol-context} map, or an array of move facts. */
@@ -221,7 +234,9 @@ function inverseMoves(raw: unknown): Array<{ symbol: string; dayPct: number | nu
     return Object.entries(map).slice(0, 12).map(([symbol, v]) => {
       const o = rec(v) ?? {}
       const day = rec(o.day_change)
-      return { symbol, dayPct: num(rec(day?.value)?.pct) ?? num(day?.value), state: fact(rec(o.quote) ?? o).state }
+      // The MOVE's own fact decides whether its number may print; a quote in a different state says nothing about it.
+      const dayFact = fact(day ?? rec(o.quote) ?? o)
+      return { symbol, dayPct: dayFact.state === 'measured' ? (num(rec(day?.value)?.pct) ?? num(day?.value)) : null, state: dayFact.state }
     })
   }
   const list = Array.isArray(rec(raw)?.value) ? (rec(raw)!.value as unknown[]) : (Array.isArray(raw) ? raw : [])
@@ -235,7 +250,7 @@ export function parseHomeV007(raw: unknown): HomeV007 {
   const ctx = rec(raw)
   const gaps: HomeV007['gaps'] = []
   const readErrors: HomeV007['readErrors'] = []
-  if (!ctx) return { present: false, state: null, unavailable: false, blockReason: null, blockRemediation: null, symbols: [], positions: [], risk: { score: null, categories: [], nextEvaluation: null }, hedge: { triggers: [], inverse: [] }, budgets: [], decisionHistory: { complete: null, count: null, history: 0 }, gaps: [{ member: 'home_v007', key: 'absent', reason: 'the response carries no home_v007 block', remediation: 'wait for the additive reader' }], readErrors }
+  if (!ctx) return { present: false, state: null, unavailable: false, blockReason: null, blockRemediation: null, symbols: [], positions: [], risk: { score: null, scoreAsOf: null, categories: [], nextEvaluation: null }, hedge: { triggers: [], inverse: [] }, budgets: [], decisionHistory: { complete: null, count: null, history: 0 }, gaps: [{ member: 'home_v007', key: 'absent', reason: 'the response carries no home_v007 block', remediation: 'wait for the additive reader' }], readErrors }
 
   for (const g of (Array.isArray(ctx.gaps) ? ctx.gaps : [])) {
     const o = rec(g); if (o) gaps.push({ member: [str(o.symbol), str(o.field)].filter(Boolean).join('.') || '?', key: remediationText(o.remediation) ?? '?', reason: str(o.reason), remediation: remediationText(o.remediation) })
@@ -294,8 +309,8 @@ export function parseHomeV007(raw: unknown): HomeV007 {
         return { title: str(o.title) ?? '(untitled)', source: str(o.source), publishedAt: str(o.published_at) }
       }) : [],
       nextEvent: { ...fact(ne), label: str(neVal?.label) ?? str(neVal?.kind), at: str(neVal?.at) ?? str(neVal?.date) },
-      cio: { ...fact(cioRaw), stance: str(cioVal?.stance), conviction: num(cioVal?.conviction) ?? str(cioVal?.conviction) ?? num(rec(s.conviction)?.value), stale: bool(cioVal?.stale) || bool(cioRaw?.stale) },
-      marketStance: { ...fact(st), value: str(stVal?.stance), headline: str(stVal?.headline) } as SymbolContext['marketStance'],
+      cio: measuredNeedsText({ ...fact(cioRaw), stance: str(cioVal?.stance), conviction: num(cioVal?.conviction) ?? str(cioVal?.conviction) ?? num(rec(s.conviction)?.value), stale: bool(cioVal?.stale) || bool(cioRaw?.stale) }, str(cioVal?.stance)),
+      marketStance: measuredNeedsText({ ...fact(st), value: str(stVal?.stance), headline: str(stVal?.headline) } as SymbolContext['marketStance'], str(stVal?.stance)),
       volume: { ...fact(vol), ratio: num(volVal?.ratio), basis: str(volVal?.basis), sampleSessions: num(volVal?.sample_sessions), averageStartDate: str(volVal?.average_start_date), averageEndDate: str(volVal?.average_end_date) },
     }
   })
@@ -307,12 +322,12 @@ export function parseHomeV007(raw: unknown): HomeV007 {
   })
 
   const riskRaw = rec(ctx.risk) ?? {}
+  // The producer carries the score (and its clock) on the latest history row, not at the top level.
+  const riskHistory = Array.isArray(riskRaw.history) ? riskRaw.history.filter(rec) as Record<string, unknown>[] : []
+  const lastScore = riskHistory.length ? riskHistory[riskHistory.length - 1] : null
   const risk = {
-    score: num(riskRaw.score) ?? (() => {
-      // The producer carries the score on the latest history row, not at the top level.
-      const hist = Array.isArray(riskRaw.history) ? riskRaw.history.filter(rec) as Record<string, unknown>[] : []
-      return hist.length ? num(hist[hist.length - 1].score) : null
-    })(),
+    score: num(riskRaw.score) ?? num(lastScore?.score),
+    scoreAsOf: str(riskRaw.as_of) ?? str(lastScore?.as_of),
     categories: (Array.isArray(riskRaw.categories) ? riskRaw.categories : []).filter(rec).map(c => {
       const o = rec(c) as Record<string, unknown>
       const f = fact(o)
@@ -362,7 +377,7 @@ export function parseHomeV007(raw: unknown): HomeV007 {
     // arithmetic result with no as_of is a number nobody can date, so it is unknown with a reason, never measured.
     const fallbackClock = str(sb?.as_of)
     const arithmeticallyMeasured = actual != null && limit != null && !!fallbackClock
-    const produced = typeof o.state === 'string' ? fact(o) : fact({
+    const stated = typeof o.state === 'string' ? fact(o) : fact({
       state: arithmeticallyMeasured ? 'measured' : 'unknown',
       as_of: fallbackClock,
       source: 'market_risk_budgets',
@@ -374,6 +389,11 @@ export function parseHomeV007(raw: unknown): HomeV007 {
         ? { key: 'HOMEV007:budget.source_binding', action: 'Restore the canonical source clock for this budget row.' }
         : null,
     })
+    // A producer-stated "measured" row still needs a clock: an amount nobody can date is not a measurement, whatever
+    // the state word says (cc2 whole-head review, 2026-11-03). The unknown row keeps its reason for the reader.
+    const produced = stated.state === 'measured' && !stated.asOf
+      ? { ...stated, state: 'unknown' as FactState, reason: 'measured with no observation clock, so the amount cannot be dated' }
+      : stated
     return {
       ...produced,
       key: str(o.budget) ?? '?', label: str(o.budget)?.replace(/_/g, ' ') ?? '?', current: actual, budget: limit, unit: str(o.unit),

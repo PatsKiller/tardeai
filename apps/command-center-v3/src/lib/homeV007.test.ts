@@ -62,9 +62,14 @@ eq('wrong-session quote is unknown', mismatch.symbols[0].quote.state, 'unknown')
 check('and names both sessions', (mismatch.symbols[0].quote.reason ?? '').includes('2026-10-30'))
 
 // The data owner's rule: expected_session_date comes from the canonical calendar even when the reader fails.
-const expectedOnly = parseHomeV007({ symbols: { X: { quote: { state: 'measured', expected_session_date: '2026-11-02', value: { price: 10 } } } } })
+const expectedOnly = parseHomeV007({ symbols: { X: { quote: { state: 'measured', as_of: NOW, expected_session_date: '2026-11-02', value: { price: 10 } } } } })
 eq('an expected session with no quote session is not a mismatch', expectedOnly.symbols[0].quote.state, 'measured')
 eq('and keeps its price', expectedOnly.symbols[0].quote.price, 10)
+// A price with no observation clock is not a dated observation: it is unknown with that reason, never a fresh price.
+const unclockedQuote = parseHomeV007({ symbols: { X: { quote: { state: 'measured', value: { price: 10 } } } } })
+eq('a measured quote with no clock is unknown', unclockedQuote.symbols[0].quote.state, 'unknown')
+eq('and carries no price', unclockedQuote.symbols[0].quote.price, null)
+check('and says why', (unclockedQuote.symbols[0].quote.reason ?? '').includes('no observation clock'), unclockedQuote.symbols[0].quote.reason)
 const unknownMismatch = parseHomeV007({ symbols: { X: { quote: { state: 'unknown', reason: 'reader failed', session_date: '2026-10-30', expected_session_date: '2026-11-02' } } } })
 eq('an unknown quote stays unknown', unknownMismatch.symbols[0].quote.state, 'unknown')
 eq('and keeps its own reason rather than the session one', unknownMismatch.symbols[0].quote.reason, 'reader failed')
@@ -392,6 +397,31 @@ const measuredTrigger = parseHomeV007({ hedge: { lagging_progress: { state: 'mea
 check('a measured trigger still prints its numbers and clock',
   /lagging sectors 4 of 10 sectors · Nov 2 16:00 ET · defense_hedge/.test(hedgeLine(measuredTrigger.hedge.triggers[0])),
   hedgeLine(measuredTrigger.hedge.triggers[0]))
+
+// Q. cc2 whole-head review (2026-11-03): four more facts that must not present a value without their own state.
+const staleBudget = parseHomeV007({ budgets: [{ budget: 'risk_budget', actual: 52, limit: 35, unit: '%',
+  state: 'stale', as_of: NOW, source_binding: { as_of: NOW, sha256: 'a'.repeat(64) } }] }).budgets[0]
+eq('a stale budget keeps its word', staleBudget.stale, true)
+eq('and stays measured with its clock', staleBudget.state, 'measured')
+const unclockedBudget = parseHomeV007({ budgets: [{ budget: 'risk_budget', actual: 52, limit: 35, unit: '%', state: 'measured' }] }).budgets[0]
+eq('a producer-measured budget with no clock is unknown', unclockedBudget.state, 'unknown')
+check('and says why', (unclockedBudget.reason ?? '').includes('no observation clock'), unclockedBudget.reason)
+
+const scored = parseHomeV007({ risk: { history: [{ as_of: '2026-11-02T20:00:00Z', score: 58 }, { as_of: NOW, score: 61 }] } })
+eq('the risk score clock comes from its own row', scored.risk.scoreAsOf, NOW)
+eq('and the score itself', scored.risk.score, 61)
+
+const blankCio = parseHomeV007({ symbols: { X: { cio: { state: 'measured', as_of: NOW } } } })
+eq('a measured CIO with no stance is unknown', blankCio.symbols[0].cio.state, 'unknown')
+const blankStance = parseHomeV007({ symbols: { X: { market_risk_stance: { state: 'measured', as_of: NOW } } } })
+eq('a measured market stance with no value is unknown', blankStance.symbols[0].marketStance.state, 'unknown')
+check('and its line says unknown instead of vanishing', (marketStanceLine(blankStance.symbols[0].marketStance) ?? '').includes('unknown'),
+  marketStanceLine(blankStance.symbols[0].marketStance))
+
+const unknownMove = parseHomeV007({ hedge: { inverse_moves: { SH: { quote: { state: 'measured', value: 31.2 },
+  day_change: { state: 'unknown', reason: 'no bar', value: { pct: 0.58 } } } } } })
+eq('an unknown inverse move publishes no number', unknownMove.hedge.inverse[0].dayPct, null)
+eq('and keeps its unknown state', unknownMove.hedge.inverse[0].state, 'unknown')
 
 console.log(`homeV007: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

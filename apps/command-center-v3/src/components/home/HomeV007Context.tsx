@@ -85,8 +85,10 @@ export default function HomeV007Context() {
       <span style={dim}>price, day change, since exit, next event, CIO stance, volume and risk categories show their clock and source when the payload supplies one; the quote clock is a fetch observation, not trade time</span>
     </div>
     {v7.symbols.map(s => <SymbolBlock key={s.symbol} s={s} />)}
-    {v7.risk.categories.length ? <div style={dim}>
-      risk score {v7.risk.score ?? 'unknown'} · {v7.risk.categories.map(c => `${categoryLine(c)}${provenance(c)}`).join(' · ')}
+    {/* The score is a measurement: it shows its own clock, and the row exists even when no category was returned
+        (an empty category list is a fact about the payload, not a reason to hide the score). */}
+    {v7.risk.score != null || v7.risk.categories.length || v7.risk.nextEvaluation?.at ? <div style={dim} data-testid="v7-risk">
+      risk score {v7.risk.score ?? 'unknown'}{v7.risk.scoreAsOf ? ` · ${fmtAsOf(v7.risk.scoreAsOf) ?? v7.risk.scoreAsOf}` : v7.risk.score != null ? ' · clock not recorded' : ''}{v7.risk.categories.length ? ` · ${v7.risk.categories.map(c => `${categoryLine(c)}${provenance(c)}`).join(' · ')}` : ' · no category returned'}
       {v7.risk.nextEvaluation?.at ? ` · next evaluation ${fmtAsOf(v7.risk.nextEvaluation.at) ?? v7.risk.nextEvaluation.at} (${v7.risk.nextEvaluation.basis ?? 'declared'})` : ''}
     </div> : null}
     {v7.hedge.triggers.length ? <div style={dim}>hedge: {v7.hedge.triggers.map(hedgeLine).join(' · ')}{v7.hedge.inverse.length ? ` · inverse today: ${v7.hedge.inverse.map(i => `${i.symbol} ${i.dayPct == null ? 'unknown' : pct(i.dayPct)}`).join(' · ')}` : ''}</div> : null}
@@ -94,15 +96,16 @@ export default function HomeV007Context() {
       budget {b.label}: {b.state === 'measured'
         // The producer states the unit on every risk-budget row ("%" for a share of the book). Rendering a percent
         // budget through money() printed "52% of 35%" as "$52 of $35" — a wrong number, not a formatting quibble.
-        ? <>{amount(b.current, b.unit) ?? 'unknown'} of {amount(b.budget, b.unit) ?? 'unknown'}{b.breach ? ' · breach' : ''}{b.clearsWhen ? ` · clears ${b.clearsWhen}` : ''}</>
+        ? <>{amount(b.current, b.unit) ?? 'unknown'} of {amount(b.budget, b.unit) ?? 'unknown'}{b.breach ? ' · breach' : ''}{b.clearsWhen ? ` · clears ${b.clearsWhen}` : ''}{provenance(b)}</>
         : <>{b.state === 'not_applicable' ? 'not applicable' : 'unknown'}{b.reason ? ` — ${b.reason}` : ''}{b.remediation ? ` · ${b.remediation}` : ''}</>}
       {b.decision.active
         ? ` · intentional${b.decision.intentionalUntil ? ` until ${fmtAsOf(b.decision.intentionalUntil) ?? b.decision.intentionalUntil}` : ''}${b.decision.actor ? ` · ${b.decision.actor}` : ''}${b.decision.receipt ? ` · receipt ${b.decision.receipt.slice(0, 8)}` : ''}${b.breach ? ' · breach still stands' : ''}${b.decision.history ? ` · ${b.decision.history} earlier` : ''}`
         : b.operatorDecision === 'unavailable'
           ? ` · intentional decision ${b.decisionRemediation ?? 'not available yet'}`
           : ' · intentional decision available to the operator'}
-      {b.sourceAsOf || b.sourceSha || b.presentationSha
-        ? ` · measured ${b.sourceAsOf ? (fmtAsOf(b.sourceAsOf) ?? b.sourceAsOf) : 'unknown'}${b.sourceSha ? ` · src ${b.sourceSha.slice(0, 8)}` : ''}${b.presentationSha ? ` · presentation ${b.presentationSha.slice(0, 8)}` : ''}`
+      {/* The clock and source are already in `provenance`; this adds the two binding hashes without repeating them. */}
+      {b.sourceSha || b.presentationSha
+        ? ` · src ${b.sourceSha ? b.sourceSha.slice(0, 8) : 'none'}${b.presentationSha ? ` · presentation ${b.presentationSha.slice(0, 8)}` : ''}`
         : ''}
       {offersBudgetDecision(b) ? <BudgetIntentControl row={b} onRecorded={() => api.refetch()} /> : null}
     </div>)}

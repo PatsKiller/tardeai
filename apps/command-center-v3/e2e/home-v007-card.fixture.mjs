@@ -7,6 +7,8 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+// esbuild is resolved from the vite toolchain (it is not a declared dependency of this app); a strict, non-hoisting
+// install layout would need it declared explicitly. Follow-up, not a runtime assumption of the shipped app.
 import { build } from 'esbuild'
 import { chromium } from '@playwright/test'
 
@@ -91,7 +93,7 @@ const V7 = {
   // The producer carries the risk score on the latest `history` row, not at the top level. `label` on a category is
   // NOT a producer field (it emits `category` only; the card falls back to the key) — kept here so the fixture can
   // assert a human label without pretending the payload supplies one.
-  risk: { history: [{ as_of: '2026-11-02T20:00:00Z', score: 58 }, { as_of: '2026-11-02T21:00:00Z', score: 61 }], categories: [
+  risk: { as_of: '2026-11-02T21:00:00Z', history: [{ as_of: '2026-11-02T20:00:00Z', score: 58 }, { as_of: '2026-11-02T21:00:00Z', score: 61 }], categories: [
     { category: 'tech', label: 'Technology', chip: 'STRESS', state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'market_risk.category.tech' },
     { category: 'volatility', label: 'Volatility', chip: 'not_measured', state: 'unknown', as_of: '2026-10-30T20:00:00Z', carried: true,
       source: 'market_risk.category.volatility',
@@ -103,7 +105,7 @@ const V7 = {
   // `budget_presentation_decision` and `source_binding` on every row, plus `state`/`as_of`). The `cash_reserve` row is a
   // COMPATIBILITY CASE: a row with no producer `state`/`as_of`/`source_binding`, kept to prove the arithmetic fallback
   // stays unknown without a clock. `risk_budget` carries the producer's `%` unit, which must not render as dollars.
-  budgets: [{ budget: 'unclocked_budget', actual: 900, limit: 500, unit: 'usd', state: 'unknown', as_of: null, reason: 'source clock unavailable or in the future', remediation: { key: 'HOMEV007:budget', action: 'restore the clock' }, operator_decision: { state: 'unavailable', reason: 'decision subtype not verified', remediation: { key: 'HOMEV007:budget_presentation_decision', action: 'wire the reviewed subtype' } } }, { budget: 'demo_taxable', actual: 21000, limit: 15000, unit: 'usd', clears_when: 'below 15000', scope_id: 'account:demo', breached: true, source_binding: { as_of: '2026-11-02T21:00:00Z', sha256: 'a'.repeat(64) }, presentation_binding: { sha256: 'b'.repeat(64) }, budget_presentation_decision: { active: true, intentional_until: '2026-11-09T05:00:00Z', actor: 'operator', receipt: 'rcpt-abcdef123', history: [{ state: 'previous' }] }, operator_decision: { state: 'available', subtype: 'market_risk_budget_presentation' } }, { budget: 'risk_budget', actual: 52, limit: 35, unit: '%', state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'market_risk.budgets_detail', source_binding: { as_of: '2026-11-02T21:00:00Z', sha256: 'c'.repeat(64) }, operator_decision: { state: 'unavailable', remediation: { key: 'HOMEV007:budget_presentation_decision', action: 'wire the reviewed subtype' } } }, { budget: 'cash_reserve', actual: 1000, limit: 5000, unit: 'usd', operator_decision: { state: 'unavailable', remediation: { key: 'pending_route', action: 'pending reviewed route' } } }],
+  budgets: [{ budget: 'unclocked_budget', actual: 900, limit: 500, unit: 'usd', state: 'unknown', as_of: null, reason: 'source clock unavailable or in the future', remediation: { key: 'HOMEV007:budget', action: 'restore the clock' }, operator_decision: { state: 'unavailable', reason: 'decision subtype not verified', remediation: { key: 'HOMEV007:budget_presentation_decision', action: 'wire the reviewed subtype' } } }, { budget: 'demo_taxable', actual: 21000, limit: 15000, unit: 'usd', clears_when: 'below 15000', scope_id: 'account:demo', breached: true, source_binding: { as_of: '2026-11-02T21:00:00Z', sha256: 'a'.repeat(64) }, presentation_binding: { sha256: 'b'.repeat(64) }, budget_presentation_decision: { active: true, intentional_until: '2026-11-09T05:00:00Z', actor: 'operator', receipt: 'rcpt-abcdef123', history: [{ state: 'previous' }] }, operator_decision: { state: 'available', subtype: 'market_risk_budget_presentation' } }, { budget: 'risk_budget', actual: 52, limit: 35, unit: '%', state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'market_risk.budgets_detail', source_binding: { as_of: '2026-11-02T21:00:00Z', sha256: 'c'.repeat(64) }, operator_decision: { state: 'unavailable', remediation: { key: 'HOMEV007:budget_presentation_decision', action: 'wire the reviewed subtype' } } }, { budget: 'stale_budget', actual: 9000, limit: 5000, unit: 'usd', state: 'stale', as_of: '2026-11-02T19:00:00Z', source: 'market_risk.budgets_detail', source_binding: { as_of: '2026-11-02T19:00:00Z', sha256: 'd'.repeat(64) }, operator_decision: { state: 'unavailable', remediation: { key: 'HOMEV007:budget_presentation_decision', action: 'wire the reviewed subtype' } } }, { budget: 'cash_reserve', actual: 1000, limit: 5000, unit: 'usd', operator_decision: { state: 'unavailable', remediation: { key: 'pending_route', action: 'pending reviewed route' } } }],
   // COMPATIBILITY SHAPE: E's real `items` is a LIST of decisions (operator_approvals.py:494-516); `items: 3` is the
   // legacy count the parser still reads for the incomplete-ledger line. Kept to exercise that line, not as a producer.
   budget_presentation_decisions: { complete: false, items: 3, history: [{ state: 'previous' }] },
@@ -160,6 +162,7 @@ try {
       }
     })
     assert.deepEqual(t.pageErrors, [], `page errors at ${width}`)
+    assert.deepEqual(t.external, [], `the card must not reach any external origin at ${width}: ${JSON.stringify(t.external)}`)
     try {
       assert.ok(Object.values(m.sections).every(Boolean), `a section is missing at ${width}: ${JSON.stringify(m.sections)}`)
       assert.equal(m.details, 6, `collapsible count at ${width}`)
@@ -195,6 +198,9 @@ try {
       assert.ok(/volume 1\.4× 20-day · observed session volume/.test(m.v7text), `the volume line carries the producer basis at ${width}: ${m.v7text.slice(0, 500)}`)
       assert.ok(/budget unclocked budget: unknown — source clock unavailable/.test(m.v7text), `an unclocked budget says unknown and why at ${width}: ${m.v7text.slice(0, 500)}`)
       // The producer states unit "%" on risk-budget rows; a percentage rendered as dollars is a wrong number.
+      // The producer's stale word must reach the budget line, and the score is a measurement with its own clock.
+      assert.ok(/budget stale budget: \$9,000 of \$5,000 · breach .*· stale/.test(m.v7text), `a stale budget says stale at ${width}: ${m.v7text.slice(0, 900)}`)
+      assert.ok(/risk score 61 · Nov 2 16:00 ET/.test(m.v7text), `the risk score shows its own clock at ${width}: ${m.v7text.slice(0, 900)}`)
       assert.ok(/budget risk budget: 52% of 35% · breach/.test(m.v7text), `a percent budget renders as a percent at ${width}: ${m.v7text.slice(0, 700)}`)
       assert.ok(!/\$52 of \$35/.test(m.v7text), `no percent budget may render as dollars at ${width}`)
       assert.ok(!/\$900/.test(m.v7text), `an unclocked budget must not publish its numbers at ${width}`)
@@ -247,6 +253,7 @@ try {
       }
     })
     assert.deepEqual(t.pageErrors, [], 'page errors on the unavailable block')
+    assert.deepEqual(t.external, [], `the unavailable block must not reach any external origin: ${JSON.stringify(t.external)}`)
     assert.ok(/unavailable/i.test(m.text), `the block says it is unavailable: ${m.text.slice(0, 300)}`)
     assert.ok(/could not be built \(TimeoutError\)/.test(m.text), `and states the producer's reason: ${m.text.slice(0, 300)}`)
     assert.ok(/Restore the additive context module/.test(m.text), `and its remediation: ${m.text.slice(0, 300)}`)

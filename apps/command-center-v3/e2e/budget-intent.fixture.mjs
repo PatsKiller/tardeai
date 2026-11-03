@@ -7,6 +7,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+// esbuild is resolved from the vite toolchain (not a declared dependency of this app); see the card fixture note.
 import { build } from 'esbuild'
 import { chromium } from '@playwright/test'
 
@@ -144,7 +145,8 @@ try {
     await page.getByTestId('v7-intent-error').waitFor()
     assert.match(await page.getByTestId('v7-intent-error').innerText(), /measurement changed/i, `source change not explained at ${width}`)
     assert.equal(seenC.posts.length, postsBefore, `a changed measurement must not be written at ${width}`)
-    assert.equal(await page.evaluate(() => window.recorded), undefined, 'nothing recorded after a source change')
+    // (`window.recorded` is not asserted here: `run()` mounts a fresh page, so it would be undefined either way.
+    //  The POST count above is the real proof that nothing was written.)
 
     // D. the store is not approved: the preview says so and the write is not implied.
     await page.unroute('**/*')
@@ -223,7 +225,7 @@ try {
     await page.getByTestId('v7-intent-error').waitFor()
     assert.equal(await page.getByTestId('v7-intent-done').count(), 0, `a 500 on the write must not show a done panel at ${width}`)
     assert.ok(!/intent recorded/i.test(await page.locator('body').innerText()), `a 500 on the write must not claim success at ${width}`)
-    assert.equal(await page.evaluate(() => window.recorded), undefined, 'nothing recorded after a failed write')
+    // (`window.recorded` is not asserted here for the same reason: a fresh mount resets it; the write count is the proof.)
     assert.equal(seenI.posts.filter(p => p.dry_run !== true).length, 1, `exactly one real write attempt at ${width}`)
 
     assert.deepEqual(errors, [], `page errors at ${width}`)
