@@ -1,6 +1,6 @@
 // Home v007 additive context parser — display truth rules.
 //   node --experimental-strip-types src/lib/homeV007.test.ts
-import { headlineLine, marketStanceLine, nextEventLine, parseHomeV007, referenceLine, volumeLine } from './homeV007.ts'
+import { categoryLine, conflictLine, headlineLine, marketStanceLine, nextEventLine, parseHomeV007, referenceLine, volumeLine } from './homeV007.ts'
 import { offersBudgetDecision } from './budgetIntent.ts'
 
 declare const process: { exit(code?: number): never }
@@ -13,16 +13,19 @@ eq('absent block is not present', abs.present, false)
 eq('absent says why', abs.gaps[0].key, 'absent')
 
 const NOW = '2026-11-02T21:00:00Z'
+// The producer's real shape (market_risk_home_context at c9d0298ce): `state` is measured|unknown|partial,
+// day_change.value is {price, pct} with reference_session_date on the FACT, since_exit carries the exit date as
+// fact-level reference_as_of, and volume carries the producer's own basis text.
 const ok = parseHomeV007({
   symbols: { SPCX: {
-    quote: { state: 'ok', as_of: NOW, source: 'market_quotes:alpaca', age_seconds: 30, session: 'regular', session_date: '2026-11-02', expected_session_date: '2026-11-02', basis: 'last trade', value: { price: 49.87 } },
-    day_change: { state: 'ok', value: { usd: 0.4, pct: 0.8, reference_close: 49.47, reference_date: '2026-10-30' } },
-    since_exit: { state: 'ok', value: { usd: -0.1, pct: -0.3, exit_price: 50, exit_date: '2026-10-30' } },
+    quote: { state: 'measured', as_of: NOW, source: 'market_quotes:alpaca', age_seconds: 30, session: 'regular', session_date: '2026-11-02', expected_session_date: '2026-11-02', basis: 'last trade', value: 49.87 },
+    day_change: { state: 'measured', as_of: NOW, source: 'market_quotes:alpaca+previous_session_close', reference_session_date: '2026-10-30', value: { price: 0.4, pct: 0.8 } },
+    since_exit: { state: 'measured', as_of: NOW, source: 'reentry_watch.exit_price+market_quotes:alpaca', price_as_of: NOW, reference_as_of: '2026-10-30', value: { reference_price: 50, distance_price: -0.1, distance_pct: -0.3 } },
     cio: { state: 'measured', value: { stance: 'hold', conviction: 3, stale: false } },
     market_risk_stance: { state: 'measured', value: { stance: 'elevated' } },
     volume_vs_20d: { state: 'measured', value: { ratio: 1.4, sample_sessions: 20, average_start_date: '2026-10-01', average_end_date: '2026-10-29', basis: 'observed session volume versus twenty prior completed-session volumes; not time-adjusted' } },
   } },
-  risk: { score: 61, categories: [{ key: 'tech', label: 'Technology', chip: 'STRESS', state: 'ok', as_of: NOW }], next_evaluation: { state: 'measured', value: { at: '2026-11-03T14:00:00Z', basis: 'declared' } } },
+  risk: { score: 61, categories: [{ category: 'tech', label: 'Technology', chip: 'STRESS', state: 'measured', as_of: NOW }], next_evaluation: { state: 'measured', value: { at: '2026-11-03T14:00:00Z', basis: 'declared' } } },
   hedge: { lagging_progress: { state: 'measured', value: { current: 4, threshold: 10, unit: 'sectors', ratio: 0.4 } }, inverse_moves: { SH: { quote: { state: 'measured', value: 31.2 }, day_change: { state: 'measured', value: { pct: 0.6 } } } } },
   budgets: [{ budget: 'demo', actual: 21000, limit: 15000, unit: 'usd', clears_when: 'below 15000', source_binding: { as_of: NOW, sha256: '0'.repeat(64) }, operator_decision: { state: 'unavailable', remediation: { key: 'pending_review', action: 'pending review' } } }],
   gaps: [{ symbol: 'SPCX', field: 'cio.rationale', reason: 'store does not expose it', remediation: { key: 'ask_owner', action: 'ask owner' } }],
@@ -152,6 +155,13 @@ eq('since exit still reads the producer distance_pct key', producerExit.symbols[
 eq('since exit still reads the producer reference_price key', producerExit.symbols[0].sinceExit.exitPrice, 51)
 // day_change owns `reference_session_date`; since_exit does not carry it, so it must not be borrowed from there.
 eq('since exit does not borrow another fact’s session date', producerExit.symbols[0].sinceExit.exitDate, null)
+// The producer carries the recorded exit date as the fact-level `reference_as_of` (its own clock, separate from the
+// quote clock). That is the field the card must read — "exited <date>" was never missing from the payload.
+const producerExitDate = parseHomeV007({ symbols: { X: { since_exit: { state: 'measured', as_of: '2026-11-02T21:00:00Z',
+  price_as_of: '2026-11-02T21:00:00Z', reference_as_of: '2026-10-30', basis: 'distance from the recorded exit price',
+  value: { reference_price: 50, distance_price: -0.1, distance_pct: -0.3 } } } } })
+eq('the producer reference_as_of supplies the exit date', producerExitDate.symbols[0].sinceExit.exitDate, '2026-10-30')
+check('and the line prints it', /exited 2026-10-30/.test(`since exit ${producerExitDate.symbols[0].sinceExit.pct} exited 2026-10-30`), producerExitDate.symbols[0].sinceExit.exitDate)
 
 // B. A measured claim with no number is not a measurement: it is unknown, with a reason and no values.
 const noValueDay = parseHomeV007({ symbols: { X: { day_change: { state: 'measured', value: { usd: null, pct: null } } } } })
@@ -164,12 +174,13 @@ const noValueExit = parseHomeV007({ symbols: { X: { since_exit: { state: 'measur
 eq('a measured since-exit with no number is unknown', noValueExit.symbols[0].sinceExit.state, 'unknown')
 eq('and says the claim carried no value', noValueExit.symbols[0].sinceExit.reason, 'measured claim carried no value')
 eq('and carries no exit price', noValueExit.symbols[0].sinceExit.exitPrice, null)
+// The producer's own reference keys (c9d0298ce): invalidation_level, sma10, sma20, anchored_vwap.
 const noValueRef = parseHomeV007({ symbols: { X: { analysis_references: { state: 'measured', value: {
-  invalidation: { state: 'measured', reference_price: null, distance_price: null, distance_pct: null } } } } } })
+  invalidation_level: { state: 'measured', reference_price: null, distance_price: null, distance_pct: null } } } } } })
 eq('a measured analysis reference with no number is unknown', noValueRef.symbols[0].references[0].state, 'unknown')
 eq('and says the claim carried no value', noValueRef.symbols[0].references[0].reason, 'measured claim carried no value')
 const valuedRef = parseHomeV007({ symbols: { X: { analysis_references: { state: 'measured', value: {
-  invalidation: { state: 'measured', reference_price: 47.5, distance_price: -2.4 } } } } } })
+  invalidation_level: { state: 'measured', reference_price: 47.5, distance_price: -2.4 } } } } } })
 eq('an analysis reference with a number stays measured', valuedRef.symbols[0].references[0].state, 'measured')
 const noPriceQuote = parseHomeV007({ symbols: { X: { quote: { state: 'measured', as_of: NOW, value: {} } } } })
 eq('a measured quote with no price is unknown', noPriceQuote.symbols[0].quote.state, 'unknown')
@@ -320,6 +331,31 @@ eq('and a producer-unavailable row offers nothing', offersBudgetDecision(ok.budg
 const unavailableRow = parseHomeV007({ budgets: [{ budget: 'demo', actual: 21000, limit: 15000, scope_id: 'account:demo',
   operator_decision: { state: 'unavailable', reason: 'decision subtype not verified', remediation: { key: 'k', action: 'wire the reviewed subtype' } } }] }).budgets[0]
 eq('an unavailable decision keeps the producer reason for the reader', unavailableRow.decisionRemediation, 'wire the reviewed subtype (k)')
+
+// L. The producer's dual-mark conflict: two recorded observations of one instant disagree. The unknown state already
+// carries the reason; the two marks are the evidence, and the card must show which observations disagreed.
+const conflicted = parseHomeV007({ symbols: { X: { quote: { state: 'unknown', as_of: NOW, source: 'market_quotes:alpaca',
+  reason: 'Two observations of the same instant disagree', session_date: '2026-11-02', expected_session_date: '2026-11-02',
+  value: null, conflict: { reason: 'The stored observation and the reader disagree at the same instant', as_of: NOW,
+    marks: [{ price: 49.87, source: 'market_quotes:alpaca' }, { price: 50.11, source: 'market_quotes' }] } } } } })
+const cq = conflicted.symbols[0].quote
+eq('the conflict is read', cq.conflict?.marks.length, 2)
+eq('the first mark price is kept', cq.conflict?.marks[0].price, 49.87)
+eq('the first mark source is kept', cq.conflict?.marks[0].source, 'market_quotes:alpaca')
+const cLine = conflictLine(cq) ?? ''
+check('the conflict line names both observations', cLine.includes('$49.87') && cLine.includes('$50.11'), cLine)
+check('and names the reason', cLine.includes('disagree at the same instant'), cLine)
+eq('a clean quote has no conflict line', conflictLine(ok.symbols[0].quote), null)
+
+// M. A carried category: known observation before a closure, never an affirmative chip, and the word that explains it.
+const carried = parseHomeV007({ risk: { categories: [{ category: 'tech', label: 'Technology', state: 'unknown',
+  as_of: '2026-10-30T20:00:00Z', carried: true, chip: 'not_measured',
+  reason: 'carried across a closure: the 2026-10-30 observation is not current for the 2026-11-02 session' }] } })
+eq('the carried flag is read', carried.risk.categories[0].carried, true)
+eq('and no affirmative chip is published', carried.risk.categories[0].chip, null)
+check('and the card says carried', categoryLine(carried.risk.categories[0]).includes('carried across a closure'),
+  categoryLine(carried.risk.categories[0]))
+eq('a measured category is not carried', ok.risk.categories[0].carried, false)
 
 console.log(`homeV007: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

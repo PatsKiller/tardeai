@@ -9,11 +9,15 @@
  * Is the operator decision offered for this budget row?
  *
  * The gate is the PAYLOAD, not a build constant: `operator_decision.state === "available"` is the producer's own
- * statement (E's contract, docs/ops/home_v007_data_contract.md) that a valid current source, the approved readable
- * decision store and the `POST /api/v2/governance/budget-presentation/decide` route are all live for this scope. While
- * E emits `unavailable` — which it does today — nothing is offered and the card shows the producer's own reason and
- * remediation instead. When that release lands, this control becomes live with no source change here: there is no
- * latch that could stay false after the producer says available.
+ * statement (E's contract, `docs/ops/home_v007_data_contract.md`) that a valid current source, the approved readable
+ * decision store and the served route are all live for this scope.
+ *
+ * The route is E's PR 2508, not a future endpoint: at its head `c101555d`, `scripts/lib/operator_approvals_api.py`
+ * registers `/budget-presentation` (GET basis) and `/budget-presentation/decide` (POST) under the
+ * `/api/v2/governance` prefix, `scripts/api_v2.py` dispatches that prefix to that handler, and the same commit makes
+ * the producer emit `available` and name this route. On `main` the handler does not yet carry those two sub-paths, so
+ * until that PR merges the producer says `unavailable` and nothing is offered — which is exactly the shipped state.
+ * There is no latch to flip here: when it merges, the payload flips and the control appears.
  *
  * The row must also name the canonical scope and the budget key, because the request body is scoped by them.
  */

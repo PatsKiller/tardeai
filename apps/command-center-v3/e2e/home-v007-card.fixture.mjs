@@ -58,9 +58,12 @@ const V7 = {
       // since_exit.value is the distance() dict; analysis_references.value is a {label: {...}} map; a headline row is
       // {title, source, url, published_at, guarded} with no age; volume carries its own basis text.
       day_change: { state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'market_data:daily_close', reference_session_date: '2026-10-30', value: { price: 0.4, pct: 0.8 } },
-      since_exit: { state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'reentry_watch.exit_price+market_data:daily_close', value: { reference_price: 50, distance_price: -0.1, distance_pct: -0.3 } },
+      since_exit: { state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'reentry_watch.exit_price+market_data:daily_close',
+        price_as_of: '2026-11-02T21:00:00Z', reference_as_of: '2026-10-30', basis: 'distance from the recorded exit price to the current quote; the fact is clocked by the quote',
+        value: { reference_price: 50, distance_price: -0.1, distance_pct: -0.3 } },
       analysis_references: { state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'analysis_references', value: {
-        invalidation: { state: 'measured', reference_price: 47.5, distance_price: -2.4, distance_pct: -4.8, price_as_of: '2026-11-02T21:00:00Z' } } },
+        invalidation_level: { state: 'measured', reference_price: 47.5, distance_price: -2.4, distance_pct: -4.8, price_as_of: '2026-11-02T21:00:00Z', reference_as_of: '2026-11-02T20:00:00Z' },
+        sma20: { state: 'unknown', reference_price: null, distance_price: null, distance_pct: null, remediation: { key: 'HOMEV007:analysis_reference:sma20', action: 'Refresh the canonical observation' } } } },
       headlines: { state: 'measured', as_of: '2026-11-02T18:00:00Z', source: 'guarded_symbol_headlines', value: [
         { title: 'Synthetic guarded headline', source: 'feed', url: 'https://example.invalid/a', published_at: '2026-11-02T18:00:00Z', guarded: true } ] },
       next_event: { state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'canonical_symbol_calendar', value: { kind: 'earnings', date: '2026-11-10' } },
@@ -70,8 +73,23 @@ const V7 = {
     },
     STALE1: { quote: { state: 'measured', age_seconds: 5400, as_of: '2026-11-02T19:30:00Z', value: { price: 12.5 } } },
     GONE: { quote: { state: 'missing', reason: 'canonical regular-session quote not measured', remediation: 'wait for the reader' } },
+    // The producer's dual-mark conflict (same instant, two recorded observations disagree) and its
+    // "source not recorded" refusal: both are payload states the card must name, not soften.
+    CONFLICT: { quote: { state: 'unknown', as_of: '2026-11-02T21:00:00Z', source: 'market_quotes:alpaca',
+      reason: 'Two observations of the same instant disagree',
+      conflict: { reason: 'The stored observation and the reader disagree at the same instant', as_of: '2026-11-02T21:00:00Z',
+        marks: [{ price: 18.04, source: 'market_quotes:alpaca' }, { price: 18.31, source: 'market_quotes' }] },
+      remediation: { key: 'HOMEV007:quote.conflict', action: 'Reconcile the two recorded observations; never keep one silently.' } } },
+    NOSRC: { quote: { state: 'unknown', as_of: '2026-11-02T21:00:00Z', source: 'not_recorded',
+      reason: 'Canonical quote source not recorded', value: null } },
   },
-  risk: { score: 61, categories: [{ category: 'tech', label: 'Technology', chip: 'STRESS', state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'risk_engine' }], next_evaluation: { value: '2026-11-03T14:00:00Z', state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'market_risk_evaluation_schedule', basis: 'registry declaration' } },
+  risk: { score: 61, categories: [
+    { category: 'tech', label: 'Technology', chip: 'STRESS', state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'market_risk.category.tech' },
+    { category: 'volatility', label: 'Volatility', chip: 'not_measured', state: 'unknown', as_of: '2026-10-30T20:00:00Z', carried: true,
+      source: 'market_risk.category.volatility',
+      reason: 'carried across a closure: the 2026-10-30 observation is not current for the 2026-11-02 session',
+      remediation: { key: 'HOMEV007:market_risk_category.carried', action: 'Recompute the category from this session’s canonical observations' } },
+  ], next_evaluation: { value: '2026-11-03T14:00:00Z', state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'market_risk_evaluation_schedule', basis: 'registry declaration' } },
   hedge: { lagging_progress: { state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'defense_hedge_existing_thresholds', value: { current: 4, threshold: 10, unit: 'sectors', ratio: 0.4 } }, exposure_progress: { state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'sector_momentum_existing_exposure_trigger', value: { current: 1, threshold: 2, ratio: 0.5, group: 'Technology', basis: 'same sector_momentum.book_pct compared by existing Defense trigger' } }, inverse_moves: { SH: { quote: { state: 'measured', value: 31.2 }, day_change: { state: 'measured', value: { pct: 0.58 } } } } },
   // Rows carry the producer's own shape. `presentation_binding` / `budget_presentation_decision` and the top-level
   // ledger are E's forward contract, not fields the 2506 producer emits today; they are labelled here as such and the
@@ -143,9 +161,15 @@ try {
       assert.ok(/inverse today: SH \+0\.58%/.test(m.v7text), `inverse moves render from the producer map at ${width}: ${m.v7text.slice(0, 400)}`)
       assert.ok(/next evaluation/.test(m.v7text), `a bare next-evaluation timestamp still renders at ${width}`)
       assert.ok(/since exit .*\$-?0\.1/.test(m.v7text), `a measured since-exit renders its value at ${width}: ${m.v7text.slice(0, 400)}`)
-      // The producer emits no exit date on this fact, so the card must not print one (it used to borrow day_change's).
-      assert.ok(!/exited \d{4}-\d{2}-\d{2}/.test(m.v7text), `no exit date may be invented at ${width}: ${m.v7text.slice(0, 400)}`)
-      assert.ok(/to trigger invalidation -4\.80%/.test(m.v7text), `an analysis reference renders from the producer map at ${width}: ${m.v7text.slice(0, 500)}`)
+      // The recorded exit date is the fact-level `reference_as_of`; the card shows it rather than borrowing another fact.
+      assert.ok(/exited 2026-10-30/.test(m.v7text), `the producer's reference_as_of renders as the exit date at ${width}: ${m.v7text.slice(0, 500)}`)
+      assert.ok(/to trigger invalidation_level -4\.80%/.test(m.v7text), `an analysis reference renders from the producer map at ${width}: ${m.v7text.slice(0, 500)}`)
+      assert.ok(/to trigger sma20 unknown/.test(m.v7text), `an unmeasured reference says unknown, not a blank level at ${width}: ${m.v7text.slice(0, 600)}`)
+      // The producer's dual-mark conflict and its "source not recorded" refusal must both be named on the card.
+      assert.ok(/conflicting observations: \$18\.04 \(market_quotes:alpaca\) vs \$18\.31 \(market_quotes\)/.test(m.v7text), `both conflict marks render at ${width}: ${m.v7text.slice(0, 800)}`)
+      assert.ok(/not_recorded/.test(m.v7text), `an unrecorded quote source is named, not dressed in a source at ${width}: ${m.v7text.slice(0, 800)}`)
+      // A carried category is unknown with the word that explains it, never an affirmative chip.
+      assert.ok(/Volatility unknown — carried across a closure/.test(m.v7text), `a carried category says so at ${width}: ${m.v7text.slice(0, 800)}`)
       assert.ok(/Synthetic guarded headline · Nov 2 13:00 ET/.test(m.v7text), `a headline shows its own published clock at ${width}: ${m.v7text.slice(0, 500)}`)
       assert.ok(/lagging sectors 4 of 10 sectors/.test(m.v7text), `the hedge trigger reads the producer unit at ${width}: ${m.v7text.slice(0, 500)}`)
       assert.ok(/volume 1\.4× 20-day · observed session volume/.test(m.v7text), `the volume line carries the producer basis at ${width}: ${m.v7text.slice(0, 500)}`)
@@ -153,7 +177,7 @@ try {
       assert.ok(!/\$900/.test(m.v7text), `an unclocked budget must not publish its numbers at ${width}`)
       assert.ok(/intentional decision pending reviewed route \(pending_route\)/.test(m.v7text), `an unavailable decision states its remediation at ${width}`)
       assert.ok(/Nov 2 16:00 ET · market_data:daily_close/.test(m.v7text), `a fact with a clock and source shows both in ET at ${width}: ${m.v7text.slice(0, 500)}`)
-      assert.ok(/Technology STRESS · Nov 2 16:00 ET · risk_engine/.test(m.v7text), `a risk category shows its own clock and source at ${width}: ${m.v7text.slice(0, 500)}`)
+      assert.ok(/Technology STRESS · Nov 2 16:00 ET · market_risk\.category\.tech/.test(m.v7text), `a risk category shows its own clock and source at ${width}: ${m.v7text.slice(0, 600)}`)
       assert.ok(/a size, an order or a stop level/.test(m.v7text), `advisory line missing at ${width}`)
       // The control is gated by the payload, not by a build constant: exactly the one row whose operator_decision is
       // `available` AND names a scope offers it; every other row stays read-only and shows its own unavailability.

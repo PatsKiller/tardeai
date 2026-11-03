@@ -31,6 +31,12 @@ export type QuoteLine = Fact & {
   sessionDate: string | null
   expectedSessionDate: string | null
   basis: string | null
+  /**
+   * The producer's own dual-mark conflict when two recorded observations of the same instant disagree. The two marks
+   * are the evidence a reader needs to reconcile them; the reason alone (which also drives the unknown state) is not
+   * enough to show WHICH two observations disagreed.
+   */
+  conflict: { reason: string | null; asOf: string | null; marks: Array<{ price: number | null; source: string | null }> } | null
 }
 
 export type SymbolContext = {
@@ -93,7 +99,7 @@ export type HomeV007 = {
   positions: Array<{ symbol: string; account: string | null; pctAccount: number | null; denominator: string | null; stopDistancePct: number | null; stopState: string | null }>
   risk: {
     score: number | null
-    categories: Array<{ key: string; label: string; chip: string | null; state: FactState; asOf: string | null; source: string | null; reason: string | null }>
+    categories: Array<{ key: string; label: string; chip: string | null; state: FactState; asOf: string | null; source: string | null; reason: string | null; carried: boolean }>
     nextEvaluation: { at: string | null; basis: string | null } | null
   }
   hedge: { triggers: Array<{ label: string; current: number | null; threshold: number | null; unit: string | null; group: string | null }>; inverse: Array<{ symbol: string; dayPct: number | null; state: FactState }> }
@@ -194,6 +200,15 @@ function quote(base: Record<string, unknown> | null): QuoteLine {
     sessionDate,
     expectedSessionDate: expected,
     basis: str(q?.basis),
+    conflict: (() => {
+      const c = rec(q?.conflict)
+      if (!c) return null
+      const marks = (Array.isArray(c.marks) ? c.marks : []).filter(rec).map(m => {
+        const mm = rec(m) as Record<string, unknown>
+        return { price: num(mm.price), source: str(mm.source) }
+      })
+      return { reason: str(c.reason), asOf: str(c.as_of), marks }
+    })(),
   }
   // A measured quote with no price is not a measurement either: downgrade it rather than render an empty value.
   return noValueIsUnknown(line, [line.price])
@@ -249,9 +264,10 @@ export function parseHomeV007(raw: unknown): HomeV007 {
       usd: num(seVal?.distance_price) ?? num(seVal?.usd),
       pct: num(seVal?.distance_pct) ?? num(seVal?.pct),
       exitPrice: num(seVal?.reference_price) ?? num(seVal?.exit_price),
-      // The producer emits `exit_date` nowhere on this fact today; `reference_session_date` belongs to `day_change`
-      // and is not borrowed here. When absent the card shows no date rather than a date from another fact.
-      exitDate: str(seVal?.exit_date) ?? str(se?.exit_date) }
+      // The recorded exit date is the fact-level `reference_as_of` (the exit record's own clock, which the producer
+      // deliberately keeps separate from the quote clock). `exit_date` is only a legacy spelling, never another
+      // fact's field: `reference_session_date` belongs to `day_change` and is not borrowed here.
+      exitDate: str(se?.reference_as_of) ?? str(seVal?.exit_date) ?? str(se?.exit_date) }
     const references = refsVal
       ? Object.entries(refsVal).slice(0, 12).map(([label, v]) => {
           const o = rec(v) ?? {}
@@ -300,7 +316,10 @@ export function parseHomeV007(raw: unknown): HomeV007 {
       // An affirmative chip is a claim about a measurement. Without one, AND without the clock that says when it was
       // measured (DATA R3, 2026-11-03), the chip is not shown and the row reads as unknown rather than publishing "OK"
       // over a fact that carries no provenance.
-      return { key, label: str(o.label) ?? key.replace(/_/g, ' '), chip: f.state === 'measured' && f.asOf ? str(o.chip) : null, state: f.state, asOf: f.asOf, source: f.source, reason: f.reason }
+      // `carried` is the producer's own flag: a known observation made before a market closure that lies between it
+      // and now. A carried category may never render an affirmative chip, so it arrives unknown with that reason —
+      // and the word "carried" is the only thing that explains why a CALM observation is not OK.
+      return { key, label: str(o.label) ?? key.replace(/_/g, ' '), chip: f.state === 'measured' && f.asOf ? str(o.chip) : null, state: f.state, asOf: f.asOf, source: f.source, reason: f.reason, carried: bool(o.carried) }
     }),
     nextEvaluation: (() => {
       const n = rec(riskRaw.next_evaluation)
@@ -428,4 +447,20 @@ export function headlineLine(h: SymbolContext['headlines'][number]): string {
 
 export function hedgeLine(t: HomeV007['hedge']['triggers'][number]): string {
   return `${t.label} ${t.current ?? '?'} of ${t.threshold ?? '?'}${t.unit ? ` ${t.unit}` : ''}${t.group ? ` · ${t.group}` : ''}`
+}
+
+/** The two observations that disagreed, when the producer recorded a same-instant conflict on the quote. */
+export function conflictLine(q: QuoteLine): string | null {
+  if (!q.conflict) return null
+  const marks = q.conflict.marks
+    .map(m => `${money(m.price) ?? 'unknown'}${m.source ? ` (${m.source})` : ''}`)
+    .join(' vs ')
+  return `conflicting observations${marks ? `: ${marks}` : ''}${q.conflict.reason ? ` — ${q.conflict.reason}` : ''}`
+}
+
+/** A category chip: the word, and — for a carried or unknown one — the producer's reason, which carries "carried". */
+export function categoryLine(c: HomeV007['risk']['categories'][number]): string {
+  const word = c.chip ?? c.state
+  if (c.state !== 'measured' && c.reason) return `${c.label} ${word} — ${c.reason}`
+  return `${c.label} ${word}${c.carried ? ' · carried across a closure' : ''}`
 }

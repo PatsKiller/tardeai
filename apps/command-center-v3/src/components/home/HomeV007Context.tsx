@@ -8,8 +8,8 @@
 import { useApi } from '../../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, toneVars } from '../../lib/designTokens'
 import {
-  headlineLine, hedgeLine, marketStanceLine, nextEventLine, parseHomeV007, provenanceText, referenceLine, stateText,
-  volumeLine, type Fact, type SymbolContext,
+  categoryLine, conflictLine, headlineLine, hedgeLine, marketStanceLine, nextEventLine, parseHomeV007, provenanceText,
+  referenceLine, stateText, volumeLine, type Fact, type SymbolContext,
 } from '../../lib/homeV007'
 import { offersBudgetDecision } from '../../lib/budgetIntent'
 import { fmtAsOf } from '../../lib/asOfDisplay'
@@ -34,13 +34,14 @@ function SymbolBlock({ s }: { s: SymbolContext }) {
       <b style={{ color: TOKENS.text[0] }}>{s.symbol}</b>
       {qState
         ? <span data-testid={`v7-quote-${s.symbol}`} style={{ color: toneVars('warning').color, fontWeight: 600 }}>
-            <>price {qState}</>
+            <>price {qState}{provenance(q)}</>
           </span>
         : <span data-testid={`v7-quote-${s.symbol}`} style={small}>
             <b style={{ color: TOKENS.text[0] }}>{money(q.price) ?? 'price unknown'}</b>
             {q.session ? ` · ${q.session}` : ''}{q.asOf ? ` · fetched ${fmtAsOf(q.asOf) ?? q.asOf}` : ''}{q.source ? ` · ${q.source}` : ''}{q.basis ? ` · ${q.basis}` : ''}{q.asOf ? ' · trade time unverified' : ''}{q.ageSeconds != null && q.ageSeconds >= 900 ? ' · stale' : ''}{q.ageSeconds != null && q.ageSeconds >= 300 ? ` · ${Math.round(q.ageSeconds / 60)}m old` : ''}
           </span>}
     </div>
+    {(() => { const line = conflictLine(q); return line ? <div style={dim} data-testid={`v7-conflict-${s.symbol}`}>{line}</div> : null })()}
     {stateText(s.dayChange) ? <div style={dim}>day change {stateText(s.dayChange)}{provenance(s.dayChange)}</div>
       : <div style={dim}>today {money(s.dayChange.usd) ?? ''}{s.dayChange.pct != null ? ` (${pct(s.dayChange.pct)})` : ''}{s.dayChange.referenceDate ? ` vs ${s.dayChange.referenceDate} close` : ''}{provenance(s.dayChange)}</div>}
     {stateText(s.sinceExit) ? <div style={dim}>since exit {stateText(s.sinceExit)}{provenance(s.sinceExit)}</div>
@@ -50,7 +51,7 @@ function SymbolBlock({ s }: { s: SymbolContext }) {
     {s.headlines.length ? <div style={dim}>headlines: {s.headlines.map(headlineLine).join(' · ')}</div> : null}
     {(() => { const line = nextEventLine(s.nextEvent); return line ? <div style={dim} data-testid={`v7-next-event-${s.symbol}`}>{line}</div> : null })()}
     {stateText(s.cio) ? <div style={dim}>CIO stance {stateText(s.cio)}{provenance(s.cio)}</div>
-      : <div style={dim}>CIO stance <b>{s.cio.stance}</b>{s.cio.conviction != null ? ` · conviction ${s.cio.conviction}` : ''}{provenance(s.cio)}{s.cio.stale ? ' · stale' : ''}</div>}
+      : <div style={dim}>CIO stance <b>{s.cio.stance}</b>{s.cio.conviction != null ? ` · conviction ${s.cio.conviction}` : ''}{provenance(s.cio)}</div>}
     {(() => { const line = marketStanceLine(s.marketStance); return line ? <div style={dim} data-testid={`v7-stance-${s.symbol}`}>{line}</div> : null })()}
     <div style={dim} data-testid={`v7-volume-${s.symbol}`}>{volumeLine(s.volume)}</div>
   </div>
@@ -82,7 +83,7 @@ export default function HomeV007Context() {
     </div>
     {v7.symbols.map(s => <SymbolBlock key={s.symbol} s={s} />)}
     {v7.risk.categories.length ? <div style={dim}>
-      risk score {v7.risk.score ?? 'unknown'} · {v7.risk.categories.map(c => `${c.label} ${c.chip ?? c.state}${provenance(c)}`).join(' · ')}
+      risk score {v7.risk.score ?? 'unknown'} · {v7.risk.categories.map(c => `${categoryLine(c)}${provenance(c)}`).join(' · ')}
       {v7.risk.nextEvaluation?.at ? ` · next evaluation ${fmtAsOf(v7.risk.nextEvaluation.at) ?? v7.risk.nextEvaluation.at} (${v7.risk.nextEvaluation.basis ?? 'declared'})` : ''}
     </div> : null}
     {v7.hedge.triggers.length ? <div style={dim}>hedge: {v7.hedge.triggers.map(hedgeLine).join(' · ')}{v7.hedge.inverse.length ? ` · inverse today: ${v7.hedge.inverse.map(i => `${i.symbol} ${i.dayPct == null ? 'unknown' : pct(i.dayPct)}`).join(' · ')}` : ''}</div> : null}
