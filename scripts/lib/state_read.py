@@ -15,13 +15,14 @@ that only needs portfolio context gets its ``default`` (normally ``{}``) and can
 say so; a reader that needs to report the damage uses ``read_json_state`` and
 gets the state back. It performs no write and no network call.
 """
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
 from typing import Any, Optional
 
-STATES = ("ok", "absent", "empty", "unparseable", "not_object", "unreadable")
+STATES = ("ok", "absent", "empty", "unparseable", "not_object", "unreadable", "invalid_shape")
 
 
 def read_json_state(path: Path | str) -> tuple[Optional[dict], str]:
@@ -40,10 +41,41 @@ def read_json_state(path: Path | str) -> tuple[Optional[dict], str]:
         return None, "empty"
     try:
         doc = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
+    except (ValueError, RecursionError):
+        # JSONDecodeError is a ValueError; so is CPython's 4300-digit int-conversion refusal
+        # (a ~5KB object with a 5000-digit integer). A deep-nesting RecursionError is the same
+        # class of decoder refusal. All mean "there is a file here that we cannot read".
         return None, "unparseable"
     if not isinstance(doc, dict):
         return None, "not_object"
+    return doc, "ok"
+
+
+def object_rows(value: Any) -> Optional[list[dict]]:
+    """The list of mappings at ``value``, or ``None`` when the shape is not a list of mappings.
+
+    A list with even one non-mapping member is not a usable book: silently dropping the bad
+    row would turn a damaged snapshot into a confident partial one.
+    """
+    if not isinstance(value, list):
+        return None
+    if any(not isinstance(row, dict) for row in value):
+        return None
+    return value
+
+
+def read_holdings_state(path: Path | str) -> tuple[Optional[dict], str]:
+    """A holdings document whose ``holdings`` member is a list of mappings, or ``(None, why)``.
+
+    ``state`` is the read state, or ``invalid_shape`` when the file parsed but its consumer
+    shape is wrong (``holdings`` null, a mapping, or containing scalar rows). Callers must
+    render an unavailable snapshot, never an empty book, when the document is ``None``.
+    """
+    doc, state = read_json_state(path)
+    if state != "ok" or doc is None:
+        return None, state
+    if object_rows(doc.get("holdings")) is None:
+        return None, "invalid_shape"
     return doc, "ok"
 
 
@@ -53,4 +85,4 @@ def read_json_object(path: Path | str, *, default: Any = None) -> Any:
     return doc if doc is not None else default
 
 
-__all__ = ["STATES", "read_json_state", "read_json_object"]
+__all__ = ["STATES", "object_rows", "read_holdings_state", "read_json_object", "read_json_state"]
