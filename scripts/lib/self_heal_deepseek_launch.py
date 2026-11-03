@@ -80,7 +80,8 @@ def main(argv: list[str]) -> int:
         return 2
     # cwd is inherited unchanged on purpose: the fixer runs this with the candidate worktree as cwd.
     cli = env.pop("_TRADEAI_CLAUDE_BIN", "claude")
-    os.execvpe(cli, [cli, *argv], env)
+    # exec, not a subprocess: the contract is to keep the caller's cwd, stdin and the sealed key descriptor.
+    os.execvpe(cli, [cli, *argv], env)  # noqa: S606 — exec is the point, not a shell-out
     return 127  # execvpe only returns by raising
 
 
