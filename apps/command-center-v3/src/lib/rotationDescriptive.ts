@@ -31,6 +31,8 @@ export type RotationDescriptive = {
     quoteAsOf: string | null
     freshness: string
     sourceGap: string | null
+    /** Age of the stored snapshot the projection was built from, when the contract states it. */
+    cacheAgeS: number | null
     note: string
   } | null
 }
@@ -108,17 +110,23 @@ export function rotationDescriptive(summary: unknown): RotationDescriptive {
     const freshness = typeof mr.freshness === 'string' && mr.freshness ? mr.freshness.toUpperCase() : 'UNKNOWN'
     const sourceGap = typeof mr.source_gap === 'string' && mr.source_gap ? mr.source_gap
       : typeof mr.sourcegap === 'string' && mr.sourcegap ? mr.sourcegap : null
+    const cache = isRecord(mr.cache) ? mr.cache : null
+    const cacheAgeS = num(cache?.build_age_seconds)
+    if (Array.isArray(mr.gaps)) for (const g of mr.gaps) if (typeof g === 'string' && g) gaps.push(`market: ${g}`)
     if (!computedAt) gaps.push('market projection has no zoned computed_at')
     if (!quoteAsOf) gaps.push(`market quotes are ${freshness}${sourceGap ? ` (${sourceGap})` : ''}`)
     const rsLine = (row: Record<string, unknown>): string => {
       const quality = num(row.data_quality)
       const status = typeof row.quality_status === 'string' ? row.quality_status.toUpperCase() : ''
       const returns = [num(row.return_1m), num(row.return_3m), num(row.return_6m)].filter((x): x is number => x !== null)
-      // A default score without return evidence is not proven strength.
-      const proven = returns.length > 0 && quality !== 0 && !(quality === null && status !== 'OK')
+      // The final contract allows quality_status KNOWN|UNKNOWN; a default score without return evidence is
+      // not proven strength, and zero returns with positive quality is a real zero.
+      const statusOk = status === 'OK' || status === 'KNOWN'
+      const proven = returns.length > 0 && quality !== 0 && (quality !== null || statusOk)
       if (!proven) return `RS UNKNOWN${status ? ` (quality ${status.toLowerCase()})` : quality === 0 ? ' (quality 0)' : ' (no return evidence)'}`
       const raw = num(row.rs_raw)
       const score = num(row.rs_score)
+      if (raw === null && score === null) return 'RS not provided'
       return [raw == null ? null : `raw ${raw.toFixed(2)}`, score == null ? null : `score ${score.toFixed(0)}`].filter(Boolean).join(' · ')
     }
     const returnsLine = (row: Record<string, unknown>): string => {
@@ -149,7 +157,7 @@ export function rotationDescriptive(summary: unknown): RotationDescriptive {
       rows: industryRows, empty: 'No industry rows in this projection.',
     })
     market = {
-      present: true, available: mr.available === true, computedAt, quoteAsOf, freshness, sourceGap,
+      present: true, available: mr.available === true, computedAt, quoteAsOf, freshness, sourceGap, cacheAgeS,
       note: computedAt ? 'Market projection is neutral and independent of the advisory gates.' : 'Market projection clock not stated.',
     }
   }

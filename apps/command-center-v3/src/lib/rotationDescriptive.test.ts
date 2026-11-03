@@ -83,6 +83,20 @@ eq('quality 0 → RS UNKNOWN', rotationDescriptive({ market_research: mrQ0 }).bl
 eq('naive computed_at is not a clock', rotationDescriptive({ market_research: { ...mrOk, computed_at: '2026-11-02 21:52' } }).market?.computedAt, null)
 check('naive clock becomes a gap', rotationDescriptive({ market_research: { ...mrOk, computed_at: '2026-11-02 21:52' } }).gaps.some(g => g.includes('computed_at')))
 eq('no market_research → null', rotationDescriptive({}).market, null)
+// Final contract details: quality_status KNOWN|UNKNOWN, NULL rs fields, market gaps and cache age.
+const mrKnown = { available: true, computed_at: '2026-11-02T21:52:00Z',
+  sectors: [{ name: 'K', return_1m: 1, return_3m: 2, return_6m: 3, rs_raw: 0.5, rs_score: 55, quality_status: 'KNOWN' }] }
+eq('quality_status KNOWN with returns proves RS', rotationDescriptive({ market_research: mrKnown }).blocks.find(b => b.key === 'market-sectors')?.rows[0].detail, 'raw 0.50 · score 55')
+const mrZero = { available: true, computed_at: '2026-11-02T21:52:00Z',
+  sectors: [{ name: 'Z', return_1m: 0, return_3m: 0, return_6m: 0, rs_raw: 0, rs_score: 0, data_quality: 1 }] }
+eq('a real zero with positive quality stays zero', rotationDescriptive({ market_research: mrZero }).blocks.find(b => b.key === 'market-sectors')?.rows[0].detail, 'raw 0.00 · score 0')
+const mrNullRs = { available: true, computed_at: '2026-11-02T21:52:00Z',
+  sectors: [{ name: 'N', return_1m: 1, return_3m: 1, return_6m: 1, rs_raw: null, rs_score: null, data_quality: 1 }] }
+eq('returns but NULL rs fields says so', rotationDescriptive({ market_research: mrNullRs }).blocks.find(b => b.key === 'market-sectors')?.rows[0].detail, 'RS not provided')
+const mrMeta = { available: true, computed_at: '2026-11-02T21:52:00Z', gaps: ['snapshot stale'],
+  cache: { source: 'stored_snapshot', snapshot_read_only: true, build_age_seconds: 900 } }
+eq('cache age is exposed', rotationDescriptive({ market_research: mrMeta }).market?.cacheAgeS, 900)
+check('market gaps become stated gaps', rotationDescriptive({ market_research: mrMeta }).gaps.some(g => g.includes('market: snapshot stale')))
 
 console.log(`rotationDescriptive: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)
