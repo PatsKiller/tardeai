@@ -15,9 +15,14 @@ CREATE TABLE IF NOT EXISTS recovery_cases (
     pre_exit_shares     NUMERIC,
     residual_shares     NUMERIC,
     pre_exit_weight_pct NUMERIC,
-    materiality_tier    TEXT NOT NULL CHECK (materiality_tier IN ('T1', 'T2', 'T3')),
+    -- UNKNOWN is a tier, not a silence: it means the realized loss could not be read, and the notification contract
+    -- must treat it as page-worthy rather than as the quiet rung (cx-openai-2 F4).
+    materiality_tier    TEXT NOT NULL CHECK (materiality_tier IN ('T1', 'T2', 'T3', 'UNKNOWN')),
     residual_pct_of_pre_exit NUMERIC,
     residual_note       TEXT,
+    pre_exit_source     TEXT,
+    residual_as_of      TIMESTAMPTZ,
+    gaps_json           JSONB,
     state               TEXT NOT NULL CHECK (state IN ('STOPPED_OUT','WATCHING','RECOVERING','RE_ENTRY_READY',
                                                       'RE_ENTERED','CLOSED','SNOOZED')),
     state_since         TIMESTAMPTZ NOT NULL,

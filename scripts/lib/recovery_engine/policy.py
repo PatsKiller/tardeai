@@ -6,6 +6,7 @@ the failure mode this engine exists to kill is a quiet assumption.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -189,16 +190,45 @@ def _num(value: float) -> str:
 
 
 # ── Rule 2: materiality tier ─────────────────────────────────────────────────────────────────────────────────
-def materiality_tier(realized_loss_usd: float, pre_exit_weight_pct: Optional[float], policy: Policy) -> str:
-    """T1 / T2 / T3 from the realized loss or the former weight of the position. Losses are negative numbers."""
-    loss = abs(float(realized_loss_usd or 0.0))
-    weight = abs(float(pre_exit_weight_pct)) if pre_exit_weight_pct not in (None, "") else 0.0
+def _finite(value: Any) -> Optional[float]:
+    """A usable number, or None. ``None``, ``""``, ``"NaN"``, ``nan`` and ``inf`` are all "unknown", never zero.
+
+    The false-value class this engine exists to kill: cx-openai-2 F4 — a NULL realized P&L used to fall through
+    ``float(x or 0.0)`` to a clean zero loss and resolve T3, the tier that never pages.
+    """
+    if value is None or value == "":
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def materiality_tier(realized_loss_usd: Optional[float], pre_exit_weight_pct: Optional[float],
+                     policy: Policy) -> str:
+    """T1 / T2 / T3 from the realized loss, raised by the former weight when it is known. Losses are negative.
+
+    An unknown realized loss is **UNKNOWN**, not T3 (cx-openai-2 F4): a tier the notification contract treats as
+    unpaged must never be the answer to "we could not read the number". Weight is a secondary signal — used only when
+    present, and only ever to raise the tier — so a missing weight never turns a known small loss into UNKNOWN.
+    """
     m = policy.materiality
-    if loss >= float(m["t1_loss_usd"]) or weight >= float(m["t1_weight_pct"]):
-        return "T1"
-    if loss >= float(m["t2_loss_usd"]) or weight >= float(m["t2_weight_pct"]):
-        return "T2"
-    return "T3"
+    loss = _finite(realized_loss_usd)
+    weight = _finite(pre_exit_weight_pct)
+    weight = abs(weight) if weight is not None else None
+    if loss is None:
+        # No loss dimension at all: only a weight that already proves T1 can speak for it.
+        if weight is not None and weight >= float(m["t1_weight_pct"]):
+            return "T1"
+        return "UNKNOWN"
+    loss = abs(loss)
+    tier = "T1" if loss >= float(m["t1_loss_usd"]) else "T2" if loss >= float(m["t2_loss_usd"]) else "T3"
+    if weight is not None and tier != "T1":
+        by_weight = "T1" if weight >= float(m["t1_weight_pct"]) else "T2" if weight >= float(m["t2_weight_pct"]) else "T3"
+        if by_weight in ("T1", "T2") and by_weight != tier:
+            tier = by_weight
+    return tier
 
 
 # ── Rule 3: per-account eligibility ──────────────────────────────────────────────────────────────────────────

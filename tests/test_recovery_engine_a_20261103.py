@@ -305,7 +305,10 @@ def test_every_residual_opens_a_case_named_by_its_percentage(store, residual, pr
     case = rc.consume_fills(store, _spcx_fills(), residual_shares=residual, pre_exit_shares=pre_exit,
                             pre_exit_weight_pct=2.25, today=TODAY, now=NOW)
     assert case.residual_pct_of_pre_exit == pytest.approx(pct_in_name, abs=0.1)
-    assert "pre_exit_shares from the fill ledger" in case.residual_note
+    # F1: this fixture supplies the denominator, and the note says so. Calling it fill-ledger provenance here was
+    # precisely the gap cx-openai-2 found — a caller's estimate and a fill-derived size rendered identically.
+    assert case.pre_exit_source.startswith("pre_exit_shares supplied by the caller")
+    assert "supplied by the caller" in case.residual_note
     assert case.state == "WATCHING" and case.case_key.startswith("SPCX::schwab_taxable::")
 
 
@@ -339,11 +342,19 @@ def test_an_unreadable_positions_store_is_unknown_not_zero(tmp_path, store):
 
 
 def test_the_store_executes_through_a_cursor(store):
-    """A DB-API connection has no execute(); psycopg2 would raise AttributeError on the old path."""
+    """A DB-API connection has no execute(), and psycopg2's Cursor.execute returns None (cx-openai-2 F2).
+
+    The old `return cur.execute(...)` looked fine against SQLite, whose execute returns a cursor, and raised
+    "'NoneType' object has no attribute 'fetchall'" against Postgres. This fake reproduces the Postgres return value.
+    """
     class CursorOnly:
-        def __init__(self, conn): self.conn = conn
+        def __init__(self, conn):
+            self.conn, self._cur = conn, None
         def execute(self, sql, params=()):
-            return self.conn._real.execute(sql.replace("%s", "?"), params)
+            self._cur = self.conn._real.execute(sql.replace("%s", "?"), params)
+            return None                      # what psycopg2 does; returning the cursor hides the defect
+        def fetchall(self):
+            return self._cur.fetchall()
     class Conn:
         def __init__(self, real):
             self._real = real
@@ -356,3 +367,202 @@ def test_the_store_executes_through_a_cursor(store):
                             today=TODAY, now=NOW)
     assert case.symbol == "SPCX" and wrapped_store.get(case.case_key) is not None
     real.close()
+
+
+# ── cx-openai-2's whole-head BLOCK at ad53aa9ee (F1-F11) ────────────────────────────────────────────────────
+def _source_db() -> sqlite3.Connection:
+    """The five stores the reader touches, empty, with the heartbeat clock the residual's age comes from."""
+    conn = sqlite3.connect(":memory:")
+    conn.executescript("""
+        CREATE TABLE stopped_out_watch (stopped_out_at TEXT, exit_price REAL, realized_pnl REAL, stop_price REAL,
+                                        broker TEXT, symbol TEXT, account TEXT, is_active INTEGER);
+        CREATE TABLE trade_transactions (trade_date TEXT, action TEXT, symbol TEXT, quantity REAL, price REAL,
+                                         account TEXT);
+        CREATE TABLE stop_last_known (broker TEXT, account TEXT, symbol TEXT, stop_price REAL, captured_at TEXT);
+        CREATE TABLE positions_current (account_key TEXT, symbol TEXT, qty REAL);
+        CREATE TABLE positions_sync_runs (run_id INTEGER PRIMARY KEY, finished_at TEXT, status TEXT, promoted INTEGER);
+    """)
+    return conn
+
+
+def _watch(conn, day, price, pnl, symbol="SPCX", account="schwab_taxable", stop=137.0):
+    conn.execute("INSERT INTO stopped_out_watch VALUES (?,?,?,?,?,?,?,1)",
+                 (day, price, pnl, stop, "schwab", symbol, account))
+
+
+def _tx(conn, day, qty, symbol="SPCX", account="schwab_taxable"):
+    conn.execute("INSERT INTO trade_transactions VALUES (?,?,?,?,?,?)",
+                 (day, "SELL", symbol, qty, 137.19, account))
+
+
+def _positions(conn, qty, symbol="SPCX", account="schwab_taxable"):
+    conn.execute("INSERT INTO positions_current VALUES (?,?,?)", (account, symbol, qty))
+
+
+def test_f1_the_denominator_says_where_it_came_from(store):
+    """F1: a caller estimate and a fill-derived size must not render identically."""
+    derived = rc.consume_fills(store, _spcx_fills(), residual_shares=200, today=TODAY, now=NOW)
+    assert derived.pre_exit_shares == pytest.approx(1400)
+    assert derived.pre_exit_source.startswith("pre_exit_shares from the fill ledger")
+    assert "from the fill ledger" in derived.residual_note
+    same_number = rc.consume_fills(store, _spcx_fills(), residual_shares=200, pre_exit_shares=1400,
+                                   today=TODAY, now=NOW)
+    assert same_number.pre_exit_source.startswith("pre_exit_shares supplied by the caller")
+    assert "supplied by the caller" in same_number.residual_note
+    assert same_number.pre_exit_source != derived.pre_exit_source
+
+
+def test_f3_decoded_json_values_read_back_on_postgres_semantics(store):
+    """F3: psycopg2 hands back decoded list/dict; json.loads on those raised TypeError and every read failed."""
+    row = ("SPCX::x::d..d", "SPCX", "schwab_taxable", "schwab", "d..d", [{"date": "2026-10-30", "price": 137.19}],
+           "2026-10-30", "2026-10-30", -12770.0, 1400.0, 200.0, 2.25, "T1", 14.3, "note", "src", None, [],
+           "WATCHING", "2026-11-03T00:00:00+00:00",
+           [{"account": "schwab_taxable", "eligible": False, "eligible_from": "2026-11-29", "reason": "hold",
+             "pending_operator_decision": True}],
+           {"proposal": "wait"}, None, None, "none", "a note", "2026-11-01T00:00:00+00:00",
+           "2026-11-03T00:00:00+00:00", "2026-11-03T00:00:00+00:00", "broker-fills")
+    case = store._row_to_case(row)
+    assert case.exits[0]["price"] == 137.19 and case.plan == {"proposal": "wait"}
+    assert case.eligibility[0].account == "schwab_taxable"
+
+
+def test_f4_a_null_realized_pnl_is_unknown_not_a_quiet_t3(store):
+    conn = _source_db()
+    _watch(conn, "2026-10-30", 137.19, None)          # the P&L is missing on the only source that carries it
+    _tx(conn, "2026-10-30", 1200)
+    _positions(conn, 200)
+    from lib.recovery_engine import fills_consumer as fc
+    read = fc.read_confirmed_exits(conn, "SPCX", "schwab_taxable")
+    assert read.fills and read.fills[0].realized_pnl is None
+    case = fc.consume_symbol(store, conn, "SPCX", "schwab_taxable", today=TODAY, now=NOW)
+    assert case.materiality_tier == "UNKNOWN"          # page-worthy, never the quiet rung
+    assert any("realized P&L is unknown" in gap for gap in case.gaps)
+    conn.close()
+
+
+def test_f4_a_nan_pnl_is_unknown_too(store):
+    conn = _source_db()
+    _watch(conn, "2026-10-30", 137.19, "NaN")
+    _tx(conn, "2026-10-30", 1200)
+    _positions(conn, 200)
+    from lib.recovery_engine import fills_consumer as fc
+    case = fc.consume_symbol(store, conn, "SPCX", "schwab_taxable", today=TODAY, now=NOW)
+    assert case.materiality_tier == "UNKNOWN"
+    conn.close()
+
+
+def test_f4_two_exits_on_one_day_are_not_each_given_the_whole_days_shares(store):
+    conn = _source_db()
+    _watch(conn, "2026-10-30", 137.19, -1000)
+    _watch(conn, "2026-10-30", 136.90, -2000)
+    _tx(conn, "2026-10-30", 6000)
+    _tx(conn, "2026-10-30", 6000)
+    _positions(conn, 200)
+    from lib.recovery_engine import fills_consumer as fc
+    read = fc.read_confirmed_exits(conn, "SPCX", "schwab_taxable")
+    assert [f.shares for f in read.fills] == [None, None]
+    assert any("cannot be attributed" in gap for gap in read.gaps)
+    assert not any(f.shares == 12000 for f in read.fills)
+    conn.close()
+
+
+def test_f4_a_delayed_fill_does_not_read_as_a_complete_sale(store):
+    conn = _source_db()
+    _watch(conn, "2026-10-30", 137.19, -12770)
+    _tx(conn, "2026-10-30", 1200)
+    _tx(conn, "2026-11-02", 300)                       # a fill with no stop-out row: the exit list is behind
+    _positions(conn, 200)
+    from lib.recovery_engine import fills_consumer as fc
+    read = fc.read_confirmed_exits(conn, "SPCX", "schwab_taxable")
+    assert any("no stopped_out_watch row" in gap for gap in read.gaps)
+    case = fc.consume_symbol(store, conn, "SPCX", "schwab_taxable", today=TODAY, now=NOW)
+    assert case.pre_exit_shares == pytest.approx(1400)   # 1200 sold + 200 residual, not 1500
+    conn.close()
+
+
+def test_f5_a_plan_carrying_an_execution_value_is_refused(store):
+    case = rc.consume_fills(store, _spcx_fills(), residual_shares=200, today=TODAY, now=NOW)
+    for bad in ({"shares": 17}, {"stop": 8}, {"order": "BUY"}, {"nested": {"qty": 3}}):
+        case.plan = bad
+        with pytest.raises(ValueError, match="execution value"):
+            store.upsert(case)
+    case.plan = {"proposal": "Wait for the operator; the card shows the reclaim level"}
+    assert store.upsert(case).plan["proposal"].startswith("Wait")
+
+
+def test_f7_a_refresh_keeps_the_plan_and_the_operator_note(store):
+    case = rc.consume_fills(store, _spcx_fills(), residual_shares=200, today=TODAY, now=NOW)
+    case.plan = {"proposal": "Wait for operator"}
+    store.upsert(case)
+    store.set_decision(case.case_key, "snoozed", note="Synthetic operator annotation")
+    again = rc.consume_fills(store, _spcx_fills(), residual_shares=200, today=TODAY, now=NOW)
+    assert again.plan == {"proposal": "Wait for operator"}
+    assert again.operator_note == "Synthetic operator annotation"
+    stored = store.get(case.case_key)
+    assert stored.plan == {"proposal": "Wait for operator"}
+    assert stored.operator_note == "Synthetic operator annotation"
+    assert stored.operator_decision == "snoozed"
+
+
+def test_f8_the_row_exposes_pending_and_answered(store):
+    case = rc.consume_fills(store, _spcx_fills(), residual_shares=200, today=TODAY, now=NOW)
+    doc = case.to_dict()
+    assert doc["pending_operator_decision"] is True
+    assert doc["eligibility"][0]["answered"] is False
+
+
+def test_f9_a_failed_enumeration_is_not_an_empty_work_list(store):
+    conn = sqlite3.connect(":memory:")                 # no stores at all
+    from lib.recovery_engine import fills_consumer as fc
+    out = fc.run(store, conn, today=TODAY, now=NOW)
+    assert out["opened"] == [] and out["cases"] == []
+    assert out["complete"] is False
+    assert any("work list is incomplete" in gap for gap in out["gaps"])
+    conn.close()
+
+
+def test_f10_one_damaged_case_does_not_block_the_others(store):
+    conn = _source_db()
+    _watch(conn, "2026-10-30", "damaged", -1000, symbol="AAAA")
+    _tx(conn, "2026-10-30", 100, symbol="AAAA")
+    _watch(conn, "2026-10-30", 40.0, -500, symbol="EXMPL", account="schwab_roth_ira")
+    _tx(conn, "2026-10-30", 50, symbol="EXMPL", account="schwab_roth_ira")
+    _positions(conn, 0, symbol="EXMPL", account="schwab_roth_ira")
+    from lib.recovery_engine import fills_consumer as fc
+    out = fc.run(store, conn, today=TODAY, now=NOW)
+    assert any(key.startswith("EXMPL::") for key in out["opened"]), out
+    assert any("AAAA" in gap and "excluded" in gap for gap in out["gaps"])
+    assert not any(key.startswith("AAAA::") for key in out["opened"])
+    conn.close()
+
+
+def test_f11_the_caller_s_boundary_is_honoured(store):
+    conn = _source_db()
+    _watch(conn, "2026-10-30", 137.19, -12770)
+    _tx(conn, "2026-10-30", 1200)
+    _watch(conn, "2030-01-01", 900.0, -400, symbol="FUTR")   # after the replay date: invisible at as_of
+    _tx(conn, "2030-01-01", 400, symbol="FUTR")
+    _positions(conn, 200)
+    conn.execute("INSERT INTO positions_sync_runs VALUES (1, '2026-11-02T21:00:00+00:00', 'complete', 1)")
+    from lib.recovery_engine import fills_consumer as fc
+    read = fc.read_confirmed_exits(conn, "SPCX", "schwab_taxable", as_of=date(2026, 11, 3))
+    assert [f.exit_date for f in read.fills] == [date(2026, 10, 30)]
+    assert all("2030" not in gap for gap in read.gaps)
+    # and the work list honours `since` the same way: from mid-November only the future-dated symbol is listed
+    pairs, _ = fc.symbols_with_confirmed_exits(conn, since=date(2026, 11, 15))
+    assert pairs == [("FUTR", "schwab_taxable")]
+    conn.close()
+
+
+def test_f11_a_positions_snapshot_older_than_the_exit_is_not_todays_residual(store):
+    conn = _source_db()
+    _watch(conn, "2026-10-30", 137.19, -12770)
+    _tx(conn, "2026-10-30", 1200)
+    _positions(conn, 14000)                            # a stale snapshot from before the exit
+    conn.execute("INSERT INTO positions_sync_runs VALUES (1, '2026-10-20T21:00:00+00:00', 'complete', 1)")
+    from lib.recovery_engine import fills_consumer as fc
+    case = fc.consume_symbol(store, conn, "SPCX", "schwab_taxable", today=TODAY, now=NOW)
+    assert case.residual_shares is None
+    assert case.residual_pct_of_pre_exit is None
+    assert any("before the 2026-10-30 exit" in gap for gap in case.gaps)
+    conn.close()
