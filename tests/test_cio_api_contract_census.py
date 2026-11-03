@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import textwrap
+
+import pytest
+from scripts import cio_api_contract_census as mod
 from pathlib import Path
 
 from scripts.cio_api_contract_census import build_census, normalize_route
@@ -221,3 +224,76 @@ def test_local_declared_route_constant_reaches_indirect_fetch_matcher(tmp_path):
     assert fetches[0].route == "/api/v3/opportunities"
     assert fetches[0].bound_names == ["data"] and fetches[0].used is True
     assert fetches[0].poll_ms == 60000
+
+def _scan_repair_case(tmp_path,body,export="export const API = '/api/v3/a'\n"):
+    src=tmp_path/'apps/command-center-v3/src'
+    (src/'pages').mkdir(parents=True,exist_ok=True)
+    (src/'lib').mkdir(exist_ok=True)
+    (src/'lib/r.ts').write_text(export)
+    (src/'pages/H.tsx').write_text("import { API } from '../lib/r'\n"+body)
+    return mod.scan_frontend(tmp_path,surfaces={'Home':'pages/H.tsx'})[0]
+
+
+def test_regex_then_literal_is_preserved(tmp_path):
+    found=_scan_repair_case(tmp_path,"const p = s.replace(/\\//g, '-'); useApi('/api/v3/x')\n")
+    assert [(f.route,f.callee) for f in found]==[('/api/v3/x','useApi')]
+
+
+def test_jsx_apostrophe_cannot_uncomment_named_call(tmp_path):
+    assert _scan_repair_case(tmp_path,"export default function H() { return <div>Don't panic</div> }\n// useApi(API, 300_000)\nconst tail = 'end'\n")==[]
+
+
+@pytest.mark.parametrize('body',[
+    'function f(API: string) { return useApi(API) }',
+    'const f = (API: string): string => useApi(API)',
+    'const x = { f(API: string) { return useApi(API) } }',
+    'function H() { const x = 1, API = buildUrl(); return useApi(API) }',
+    'function H() { function API() {} return useApi(API) }',
+    'function H() { class API {} return useApi(API) }',
+    'function f() { const API = buildUrl(); return useApi(API) }',
+    'function f() { let API = buildUrl(); return useApi(API) }',
+    'function f() { if (true) { var API = buildUrl() }; return useApi(API) }',
+    'const f = (API: string) => { return useApi(API) }',
+    'const f = API => useApi(API)',
+    'const f = ({API}: any) => useApi(API)',
+    'try {} catch (API) { useApi(API) }',
+    'function f() { const { API } = buildUrl(); return useApi(API) }',
+    "const label = 'useApi(API)'",
+    '// useApi(API)',
+    '/* useApi(API) */',
+    'onDrill(API)',
+    'useApi(API + suffix)',
+])
+def test_shadow_and_mentions_cannot_donate_import(tmp_path,body):
+    assert _scan_repair_case(tmp_path,body+'\n')==[]
+
+
+def test_nested_shadow_keeps_outer_consumer_and_uses_inner_route(tmp_path):
+    body="const {data: top} = useApi(API)\nfunction f() { const API = '/api/v3/b'; return useApi(API) }\nrender(top)\n"
+    found=_scan_repair_case(tmp_path,body)
+    assert [(f.route,f.bound_names) for f in found]==[('/api/v3/a',['top']),('/api/v3/b',[])]
+    assert found[0].used is True
+
+
+def test_parameter_shadow_does_not_leak_into_module(tmp_path):
+    found=_scan_repair_case(tmp_path,"function f(API:string) { return useApi(API) }\nconst { data } = useApi(API)\nrender(data)\n")
+    assert [(f.route,f.bound_names,f.used) for f in found]==[('/api/v3/a',['data'],True)]
+
+
+def test_lexical_block_shadow_does_not_leak(tmp_path):
+    found=_scan_repair_case(tmp_path,"function H() {\n{ const API = buildUrl(); useApi(API) }\nreturn useApi(API)\n}\n")
+    assert [f.route for f in found]==['/api/v3/a']
+
+
+@pytest.mark.parametrize('call,used',[
+    ("useApi('/api/v3/x').then(r => setData(r.data))",None),
+    ("useApi('/api/v3/x')",False),
+    ("await useApi('/api/v3/x')",False),
+    ("void useApi('/api/v3/x')",False),
+    ("useApi(API).then(r => setData(r.data))",None),
+    ("useApi(API)",False),
+])
+def test_discarded_is_distinct_from_chained_result(tmp_path,call,used):
+    found=_scan_repair_case(tmp_path,call+'\n')
+    assert len(found)==1
+    assert found[0].used is used

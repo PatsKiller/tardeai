@@ -371,8 +371,12 @@ def _binding(text: str, stmt_start: int, open_paren: int) -> tuple[list[str], st
         return [m.group(1)], "assign"
     stripped = head.strip()
     if stripped in ("", "await", "void", "void await") or re.fullmatch(
-            r"(?:(?:void|await)\s+)*(?:useApi|useJson)(?:<[^>()]*>)?", stripped):
+            r"(?:(?:void|await)\s+)+(?:useApi|useJson)(?:<[^>()]*>)?", stripped):
         return [], "discarded"
+    if re.fullmatch(r"(?:useApi|useJson)(?:<[^>()]*>)?", stripped):
+        closing = open_paren + len(_call_args_text(text, open_paren)) + 1
+        if not re.match(r"\s*(?:\.|\?\.|\[|\()", text[closing + 1:]):
+            return [], "discarded"
     return [], "expression"
 
 
@@ -498,7 +502,7 @@ def _fetch_from_call(root: Path, path: Path, text: str, raw: str, surfaces: set[
 
 
 _JS_COMMENTS = re.compile(
-    r"('(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\"|" + chr(96) + r"(?:[^" + chr(96) +
+    r"('(?:[^'\\\n]|\\.)*'|\"(?:[^\"\\\n]|\\.)*\"|" + chr(96) + r"(?:[^" + chr(96) +
     r"\\]|\\.)*" + chr(96) + r")|(/\*[\s\S]*?\*/|//[^\n]*)")
 
 
@@ -510,32 +514,195 @@ def _without_js_comments(text: str) -> str:
 _NAMED_IMPORT = re.compile(r"""\bimport\s*\{([^}]+)\}\s*from\s*(['"])(\.{1,2}/[^'"]+)\2""", re.S)
 
 
-def _named_route_fetches(root: Path, owners: dict[Path, set[str]], texts: dict[Path, str],
-                         declarations: dict[Path, dict[str, tuple[str, bool]]]) -> list[Fetch]:
-    """Follow the actual local/named-import binding, not a global name occurrence."""
+@dataclass
+class _SourceScope:
+    start: int
+    end: int
+    bindings: dict[str, Optional[str]] = field(default_factory=dict)
+    function: bool = False
+
+
+def _binding_names(pattern: str) -> list[str]:
+    """Binding side of ordinary, rest and destructured declarations/parameters."""
+    pattern = pattern.strip()
+    if pattern.startswith(("{", "[")):
+        names = []
+        closing = pattern.rfind("}" if pattern.startswith("{") else "]")
+        for part in _split_top_args(pattern[1:closing]):
+            # Object renaming binds the value, not the property key.
+            if pattern.startswith("{") and ":" in part:
+                part = part.split(":", 1)[1]
+            names.extend(_binding_names(part))
+        return names
+    match = re.match(r"(?:\.\.\.)?\s*([A-Za-z_$][\w$]*)", pattern)
+    return [match.group(1)] if match else []
+
+
+def _source_scopes(text: str) -> list[_SourceScope]:
+    """Lexical brace scopes, function parameters and block/expression arrow scopes.
+
+    Unknown initializers still bind a name: they must shadow an imported route.
+    Bindings are resolved at each call, so a nested declaration cannot erase a
+    module consumer. Only an exact immutable route initializer donates a route.
+    """
+    code = _code_only(text)
+    scopes = [_SourceScope(0, len(code))]
+    braces, parens, pairs = [], [], {}
+    for token in re.finditer(r"[{}()]", code):
+        ch, pos = token.group(), token.start()
+        if ch == "{":
+            scope = _SourceScope(pos, len(code))
+            scopes.append(scope)
+            braces.append(scope)
+        elif ch == "}" and braces:
+            braces.pop().end = pos + 1
+        elif ch == "(":
+            parens.append(pos)
+        elif ch == ")" and parens:
+            opening = parens.pop()
+            pairs[opening], pairs[pos] = pos, opening
+
+    def scope_at(pos: int, *, function: bool = False) -> _SourceScope:
+        return min((s for s in scopes if s.start <= pos < s.end and (not function or s.function or s.start == 0)),
+                   key=lambda s: s.end - s.start)
+
+    def parameters(scope: _SourceScope, params: str) -> None:
+        scope.function = True
+        for part in _split_top_args(params):
+            for name in _binding_names(part):
+                scope.bindings[name] = None
+
+    for match in re.finditer(r"\bfunction(?:\s*\*)?(?:\s+[A-Za-z_$][\w$]*)?\s*(?:<[^<>]*>)?\s*\(", code):
+        opening = match.end() - 1
+        closing = pairs.get(opening)
+        if closing is None:
+            continue
+        body = re.match(r"\s*(?::[^;={]+)?\s*\{", code[closing + 1:])
+        if body:
+            pos = closing + 1 + body.end() - 1
+            parameters(scope_at(pos), code[opening + 1:closing])
+
+    for arrow in re.finditer(r"=>", code):
+        before = code[:arrow.start()].rstrip()
+        closing = before.rfind(")")
+        if closing in pairs and re.fullmatch(r"\s*(?::[^=;{}]+)?", before[closing + 1:]):
+            opening = pairs[closing]
+            params = code[opening + 1:closing]
+        else:
+            name = re.search(r"([A-Za-z_$][\w$]*)\s*$", before)
+            if not name:
+                continue
+            params = name.group(1)
+        start = arrow.end()
+        while start < len(code) and code[start].isspace():
+            start += 1
+        if start < len(code) and code[start] == "{":
+            scope = scope_at(start)
+        else:
+            end, depth = start, 0
+            while end < len(code):
+                ch = code[end]
+                if depth == 0 and ch in ",;\n)}]":
+                    break
+                if ch in "([{":
+                    depth += 1
+                elif ch in ")]}":
+                    depth -= 1
+                end += 1
+            scope = _SourceScope(start, end)
+            scopes.append(scope)
+        parameters(scope, params)
+
+    # Object/class method parameters also bind inside their own body.
+    for closing, opening in pairs.items():
+        if code[closing] != ")":
+            continue
+        body = re.match(r"\s*(?::[^;={]+)?\s*\{", code[closing + 1:])
+        head = re.search(r"([A-Za-z_$][\w$]*)\s*$", code[:opening])
+        if body and head and head.group(1) not in {"if", "for", "while", "switch", "catch", "with"}:
+            parameters(scope_at(closing + body.end()), code[opening + 1:closing])
+
+    # Function/class declarations shadow imports in the declaring scope.
+    for decl in re.finditer(r"\b(?:function|class)\s+([A-Za-z_$][\w$]*)", code):
+        scope_at(decl.start()).bindings[decl.group(1)] = None
+
+    # Catch parameters have block scope rather than function scope.
+    for match in re.finditer(r"\bcatch\s*\(([^()]*)\)\s*\{", code):
+        scope = scope_at(match.end() - 1)
+        for name in _binding_names(match.group(1)):
+            scope.bindings[name] = None
+
+    route_literals = dict(iter_route_literals(text))
+    for declaration in re.finditer(r"\b(const|let|var)\s+", code):
+        # Split comma declarations at the declaration's own delimiter depth.
+        chunks, start, end, depth = [], declaration.end(), declaration.end(), 0
+        while end < len(code):
+            ch = code[end]
+            if depth == 0 and ch in ";\n)":
+                break
+            if depth == 0 and ch == ",":
+                chunks.append((start, end))
+                start = end + 1
+            elif ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                depth -= 1
+            end += 1
+        chunks.append((start, end))
+        scope = scope_at(declaration.start(), function=declaration.group(1) == "var")
+        for start, end in chunks:
+            decl = re.match(r"\s*([A-Za-z_$][\w$]*|\{[^}]*\}|\[[^\]]*\])", code[start:end])
+            if not decl:
+                continue
+            names = _binding_names(decl.group(1))
+            initializer_at = start + decl.end()
+            source_init = re.match(r"\s*(?::[^=;\n]+)?=\s*", text[initializer_at:end])
+            raw = None
+            if declaration.group(1) == "const" and len(names) == 1 and source_init:
+                position = initializer_at + source_init.end()
+                candidate = route_literals.get(position)
+                if candidate is not None:
+                    after = text[position + len(candidate) + 2:end]
+                    if not after.strip():
+                        raw = candidate
+            for name in names:
+                scope.bindings[name] = raw
+    return scopes
+
+
+def _named_route_fetches(root: Path, owners: dict[Path, set[str]], texts: dict[Path, str]) -> list[Fetch]:
+    """Follow each call's nearest lexical binding, including unknown shadows."""
     fetches = []
     callees = "|".join(sorted(FETCH_CALLEES))
+    clean = {path: _without_js_comments(text) for path, text in texts.items()}
+    scope_sets = {path: _source_scopes(text) for path, text in clean.items()}
     for path, surfaces in sorted(owners.items()):
-        text = _without_js_comments(texts[path])
-        bindings = {name: raw for name, (raw, _) in declarations.get(path, {}).items()}
+        text, scopes = clean[path], scope_sets[path]
         for imported in _NAMED_IMPORT.finditer(text):
+            if not _code_only(text)[imported.start():].startswith("import"):
+                continue
             target = _resolve_import(path, imported.group(3))
-            exports = declarations.get(target, {})
+            if target not in scope_sets:
+                continue
+            target_text = clean[target]
             for part in imported.group(1).split(","):
                 names = re.fullmatch(r"\s*([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?\s*", part)
-                if not names or names.group(1) not in exports:
+                if not names:
                     continue
-                raw, exported = exports[names.group(1)]
-                if not exported:
+                exported, local = names.group(1), names.group(2) or names.group(1)
+                raw = scope_sets[target][0].bindings.get(exported)
+                if raw is None or not re.search(rf"\bexport\s+const\s+{re.escape(exported)}\b", _code_only(target_text)):
                     continue
-                local = names.group(2) or names.group(1)
-                bindings[local] = raw if local not in bindings or bindings[local] == raw else None
+                scopes[0].bindings[local] = raw if local not in scopes[0].bindings else None
         code = _code_only(text)
-        for name, raw in bindings.items():
-            if raw is None:
-                continue  # Ambiguous declarations are not consumption evidence.
-            pattern = re.compile(rf"\b({callees})(?:<[^>()]*>)?\(\s*{re.escape(name)}\b")
-            for call in pattern.finditer(code):
+        pattern = re.compile(rf"(?<![\w$.])({callees})(?:<[^>()]*>)?\(\s*([A-Za-z_$][\w$]*)\s*(?=[,)])")
+        for call in pattern.finditer(code):
+            name, raw = call.group(2), None
+            for scope in sorted((s for s in scopes if s.start <= call.start() < s.end), key=lambda s: s.end - s.start):
+                if name in scope.bindings:
+                    raw = scope.bindings[name]
+                    break
+            if raw is not None:
                 open_paren = text.index("(", call.start())
                 fetches.append(_fetch_from_call(root, path, text, raw, surfaces,
                                                 call.group(1), open_paren, call.start()))
@@ -548,8 +715,7 @@ def scan_frontend(root: Path, *, surfaces: Optional[dict[str, str]] = None) -> t
     owners = import_closure(entries)
     fetches: list[Fetch] = []
     constants: list[dict[str, Any]] = []
-    texts = {path: _without_js_comments(path.read_text(encoding="utf-8", errors="replace")) for path in owners}
-    declarations: dict[Path, dict[str, tuple[str, bool]]] = {}
+    texts = {path: path.read_text(encoding="utf-8", errors="replace") for path in owners}
     for path, surfaces in sorted(owners.items()):
         text = texts[path]
         for start, raw in iter_route_literals(text):
@@ -558,7 +724,6 @@ def scan_frontend(root: Path, *, surfaces: Optional[dict[str, str]] = None) -> t
             decl = re.search(r"(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*$", text[_statement_start(text, start):start])
             if decl:
                 name = decl.group(1)
-                declarations.setdefault(path, {})[name] = (raw, decl.group(0).lstrip().startswith("export"))
                 refs = sum(len(re.findall(rf"\b{re.escape(name)}\b", p.read_text(encoding="utf-8", errors="replace"))) for p in owners)
                 constants.append({
                     "route": normalize_route(raw), "name": name, "file": _rel(path, root), "line": line,
@@ -590,7 +755,7 @@ def scan_frontend(root: Path, *, surfaces: Optional[dict[str, str]] = None) -> t
                 callee = call.group(1)
                 open_paren = text.index("(", call.start())
             fetches.append(_fetch_from_call(root, path, text, raw, surfaces, callee, open_paren, start))
-    fetches.extend(_named_route_fetches(root, owners, texts, declarations))
+    fetches.extend(_named_route_fetches(root, owners, texts))
     return fetches, constants, owners
 
 
