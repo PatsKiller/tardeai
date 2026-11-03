@@ -88,9 +88,14 @@ SCENARIOS = {
 
 @pytest.fixture
 def state_dir(tmp_path, monkeypatch):
-    """Point api_v2 at the temporary state directory and keep DB calls out of the surfaces."""
+    """Point api_v2 AND the canonical observation layer at the temporary state directory."""
     monkeypatch.setattr(api_v2, "STATE_DIR", tmp_path)
     monkeypatch.setattr(api_v2, "_db_query", lambda *a, **k: None)
+    from lib import canonical_observation as _co
+
+    # The overview envelopes resolve through canonical_state_path, not api_v2.STATE_DIR; without
+    # this they would read the live served copy and the test would assert about the wrong files.
+    monkeypatch.setattr(_co, "canonical_state_path", lambda filename, checkout_root=None: tmp_path / filename)
     return tmp_path
 
 
@@ -211,3 +216,64 @@ def test_only_the_guard_module_reads_the_manifest():
             if read_re.search(line):
                 offenders.append(f"{rel}:{lineno}: {line.strip()}")
     assert not offenders, "direct _freshness.json reads outside the guard: " + "; ".join(offenders)
+
+
+# ── R1: the PRIMARY overview status must consult the store, not only file ages (cx-openai-4) ────
+def _fresh_context(state_dir):
+    """The other overview datasets, so the envelope baseline is FRESH and only the guard can degrade it."""
+    for name in ("performance_history.json", "portfolio_news.json"):
+        (state_dir / name).write_text("{}", encoding="utf-8")
+    return state_dir
+
+
+def test_overview_primary_status_cannot_beat_the_store(state_dir):
+    _write_store(_fresh_context(state_dir), {"holdings": [], "as_of": NOW.date().isoformat()})
+    out = api_v2.overview()
+    assert out["pipeline_status"] != "fresh"
+    assert out["observation"]["surface_status"] != "FRESH"
+    assert "authoritative_store" in out["observation"]["not_fresh_datasets"]
+    assert out["observation"]["authoritative_store"]["ok"] is False
+
+
+def test_overview_hash_mismatch_primary_status_is_stale(state_dir):
+    _write_store(_fresh_context(state_dir), {"holdings": [HEALTHY_ROW], "as_of": NOW.date().isoformat()},
+                 holdings_hash_value="deadbeefcafe")
+    out = api_v2.overview()
+    assert out["pipeline_status"] == "stale"
+    assert out["observation"]["surface_status"] == "STALE"
+    assert "authoritative_store" in out["observation"]["not_fresh_datasets"]
+
+
+def test_overview_healthy_store_still_reports_fresh(state_dir):
+    _healthy(_fresh_context(state_dir))
+    out = api_v2.overview()
+    assert out["pipeline_status"] == "fresh"
+    assert out["observation"]["surface_status"] == "FRESH"
+    assert "authoritative_store" not in out["observation"]["not_fresh_datasets"]
+
+
+# ── R2: one manifest read, one validated document (cx-openai-4) ────────────────────────────────
+def test_guarded_manifest_validates_the_exact_document_it_returns(state_dir, monkeypatch):
+    _write_store(state_dir, {"holdings": [HEALTHY_ROW]}, holdings_hash_value="deadbeefcafe")
+    replacement = {
+        "status": "fresh",
+        "completed_at": NOW.isoformat(),
+        "holdings_hash": holdings_hash({"holdings": [HEALTHY_ROW]}),
+    }
+    reads = {"n": 0}
+    real_read_text = Path.read_text
+
+    def replacing_read(self, *args, **kwargs):
+        if self.name == "_freshness.json":
+            reads["n"] += 1
+            if reads["n"] > 1:  # an atomic replacement between two reads
+                return json.dumps(replacement)
+        return real_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", replacing_read)
+    doc = api_v2._guarded_freshness()
+
+    assert reads["n"] == 1, "the manifest must be read exactly once"
+    assert doc["guard"]["holdings_hash_expected"] == doc.get("holdings_hash")
+    assert doc["status"] != "fresh", "the returned document is the stale/mismatched one, and so is its verdict"
+    assert "holdings_hash_mismatch" in doc["guard"]["reasons"]

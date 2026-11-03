@@ -71,6 +71,11 @@ def guarded_manifest(state_dir: Path | str, *, now: datetime | None = None) -> d
     here, so a 0-byte/corrupt holdings.json (or a manifest whose hash/clock no longer matches
     it) cannot render FRESH on any surface. The returned document carries the manifest's own
     fields, a guarded ``status`` and the full ``guard`` verdict.
+
+    The manifest is read EXACTLY ONCE and that same parsed document is what the guard validates.
+    Reading metadata and then asking the guard to re-read could attach an ok verdict to a
+    different (replaced) manifest — a later write would then be published under an earlier
+    verdict (cx-openai-4 R2, 2026-11-03).
     """
     sd = Path(state_dir)
     doc: dict[str, Any] = {}
@@ -82,13 +87,24 @@ def guarded_manifest(state_dir: Path | str, *, now: datetime | None = None) -> d
                 doc = parsed
     except (OSError, UnicodeError, ValueError):
         doc = {}
-    verdict = guard(sd, now=now)
+    verdict = guard(sd, now=now, manifest_doc=doc or None, manifest_read=True)
     doc["status"] = effective_status(doc.get("status"), verdict)
     doc["guard"] = verdict
     return doc
 
 
-def guard(state_dir: Path | str, *, now: datetime | None = None) -> dict[str, Any]:
+def guard(
+    state_dir: Path | str,
+    *,
+    now: datetime | None = None,
+    manifest_doc: dict[str, Any] | None = None,
+    manifest_read: bool = False,
+) -> dict[str, Any]:
+    """The store guard. ``manifest_read=True`` validates ``manifest_doc`` instead of re-reading.
+
+    A reader that already parsed the manifest (``guarded_manifest``) passes it in, so the verdict and
+    the published metadata describe one snapshot. A direct caller keeps the read-once behaviour.
+    """
     now = now or datetime.now(timezone.utc)
     sd = Path(state_dir)
     # The store is read through the ONE approved accessor: this module reports the state it found,
@@ -151,10 +167,14 @@ def guard(state_dir: Path | str, *, now: datetime | None = None) -> dict[str, An
         return {**out, "ok": False, "status": STATUS_UNAVAILABLE,
                 "reasons": [f"holdings_hash_uncomputable:{type(exc).__name__}"]}
     out["holdings_hash_observed"] = observed
-    try:
-        fresh = json.loads(manifest.read_text(encoding="utf-8"))
-    except (OSError, ValueError, UnicodeError):
-        fresh = None
+    if manifest_read:
+        # The caller parsed the manifest once; validate THAT document, never a second read.
+        fresh = manifest_doc if isinstance(manifest_doc, dict) else None
+    else:
+        try:
+            fresh = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, ValueError, UnicodeError):
+            fresh = None
     if not isinstance(fresh, dict):
         return {**out, "ok": False, "status": STATUS_STALE, "reasons": ["freshness_manifest_absent_or_invalid"]}
 

@@ -191,6 +191,23 @@ def _guarded_freshness(state_dir=None):
         }
 
 
+def _store_guarded_surface_status(surface_status, guard_view, store_status):
+    """Fold the authoritative-store verdict into a surface freshness status.
+
+    The envelopes judge FILE ages; they cannot judge whether the holdings payload those files
+    describe is readable or still matches its manifest. A surface may therefore never be fresher than
+    the store: an unreadable store is UNKNOWN (it outranks STALE), a mismatched one is STALE, and a
+    healthy verdict leaves the envelope status untouched (cx-openai-4 R1, 2026-11-03).
+    """
+    if isinstance(guard_view, dict) and guard_view.get("ok") is True:
+        return surface_status
+    store_surface = "UNKNOWN" if str(store_status or "").upper() == "UNAVAILABLE" else "STALE"
+    order = {"FRESH": 0, "STALE": 1, "UNKNOWN": 2}
+    if order.get(store_surface, 2) >= order.get(str(surface_status or "UNKNOWN"), 2):
+        return store_surface
+    return surface_status
+
+
 def _load_json(path: Path):
     try:
         if path.exists() and path.stat().st_size == 0:
@@ -3856,8 +3873,18 @@ def overview():
     }
 
     # ── Surface freshness ────────────────────────────────────────────────────
-    # As fresh as the OLDEST contributing dataset, never as fresh as the newest.
-    _surface_status = worst_status(_envelopes)
+    # As fresh as the OLDEST contributing dataset, never as fresh as the newest — and never fresher
+    # than the authoritative store can prove. The envelopes measure files; only the guard proves the
+    # holdings payload they describe is readable and still matches the manifest (cx-openai-4 R1).
+    _surface_status = _store_guarded_surface_status(
+        worst_status(_envelopes),
+        _fresh_guarded.get("guard") if isinstance(_fresh_guarded.get("guard"), dict) else {},
+        _fresh_guarded.get("status"),
+    )
+    _guard_ok = (_fresh_guarded.get("guard") or {}).get("ok") is True
+    _not_fresh = {name for name, env in _envelopes.items() if env.status in NOT_FRESH}
+    if not _guard_ok:
+        _not_fresh.add("authoritative_store")
     _observation_block = {
         "trace_id": _trace,
         "surface_status": _surface_status,
@@ -3866,7 +3893,10 @@ def overview():
         "read_only": True,
         "envelopes": {name: env.to_dict() for name, env in _envelopes.items()},
         "diagnostics": envelope_diagnostics(_envelopes),
-        "not_fresh_datasets": sorted(n for n, e in _envelopes.items() if e.status in NOT_FRESH),
+        # The store verdict is evidence, not a second opinion: without it a "fresh" surface would
+        # be a claim about file ages that says nothing about the book they describe.
+        "authoritative_store": _fresh_guarded.get("guard"),
+        "not_fresh_datasets": sorted(_not_fresh),
         "position_counts": _position_counts,
     }
 
