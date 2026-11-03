@@ -104,6 +104,29 @@ eq('a payload without a ledger claims nothing', parseHomeV007({ budgets: [] }).d
 const noDecision = parseHomeV007({ budgets: [{ budget: 'b', actual: 10, limit: 100 }] })
 eq('no decision row means not active', noDecision.budgets[0].decision.active, false)
 
+// Measured against the producer's own shapes at e50b8627: inverse_moves is a {symbol: symbol-context}
+// map, and next_evaluation carries a bare ISO timestamp in `value`.
+const produced = parseHomeV007({
+  symbols: { SH: {
+    quote: { state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'canonical_stored_quote', value: 31.2, session: 'regular', session_date: '2026-11-02', expected_session_date: '2026-11-02' },
+    day_change: { state: 'measured', value: { price: 0.18, pct: 0.58 }, reference_session_date: '2026-10-30' },
+  } },
+  risk: { next_evaluation: { value: '2026-11-03T14:00:00Z', state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'market_risk_evaluation_schedule', basis: 'registry declaration' } },
+  hedge: { inverse_moves: {
+    SH: { quote: { state: 'measured', value: 31.2 }, day_change: { state: 'measured', value: { price: 0.18, pct: 0.58 } } },
+    PSQ: { quote: { state: 'unknown', reason: 'no quote' }, day_change: { state: 'unknown' } },
+  } },
+})
+eq('a bare quote value is still the price', produced.symbols[0].quote.price, 31.2)
+eq('inverse moves read from the producer map', produced.hedge.inverse.length, 2)
+eq('and carry their symbol', produced.hedge.inverse[0].symbol, 'SH')
+eq('and their day move', produced.hedge.inverse[0].dayPct, 0.58)
+eq('an unknown inverse quote stays unknown', produced.hedge.inverse[1].state, 'unknown')
+eq('a bare next-evaluation value is the time', produced.risk.nextEvaluation?.at, '2026-11-03T14:00:00Z')
+eq('and keeps its declared basis', produced.risk.nextEvaluation?.basis, 'registry declaration')
+const arrayInverse = parseHomeV007({ hedge: { inverse_moves: { value: [{ symbol: 'SDS', day_pct: -0.4, state: 'measured' }] } } })
+eq('the older array shape still reads', arrayInverse.hedge.inverse[0]?.symbol, 'SDS')
+
 const junk = parseHomeV007({ symbols: 'nope', risk: { categories: 'x' }, budgets: {} })
 eq('malformed members do not throw', junk.symbols.length, 0)
 eq('malformed budgets are empty', junk.budgets.length, 0)

@@ -66,8 +66,8 @@ const V7 = {
     STALE1: { quote: { state: 'measured', age_seconds: 5400, as_of: '2026-11-02T19:30:00Z', value: { price: 12.5 } } },
     GONE: { quote: { state: 'missing', reason: 'canonical regular-session quote not measured', remediation: 'wait for the reader' } },
   },
-  risk: { score: 61, categories: [{ category: 'tech', label: 'Technology', chip: 'STRESS', state: 'measured' }], next_evaluation: { state: 'measured', value: { at: '2026-11-03T14:00:00Z', basis: 'declared' } } },
-  hedge: { triggers: [{ label: 'Technology', current: 4.8, threshold: 10, met: false }], inverse_funds: [{ symbol: 'SH', day_pct: 0.6, state: 'ok' }] },
+  risk: { score: 61, categories: [{ category: 'tech', label: 'Technology', chip: 'STRESS', state: 'measured' }], next_evaluation: { value: '2026-11-03T14:00:00Z', state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'market_risk_evaluation_schedule', basis: 'registry declaration' } },
+  hedge: { lagging_progress: { value: { current: 4.8, threshold: 10, met: false }, state: 'measured' }, exposure_progress: { value: { current: 1, threshold: 2, met: false }, state: 'measured' }, inverse_moves: { SH: { quote: { state: 'measured', value: 31.2 }, day_change: { state: 'measured', value: { pct: 0.58 } } } } },
   budgets: [{ budget: 'demo_taxable', actual: 21000, limit: 15000, unit: 'usd', clears_when: 'below 15000', scope_id: 'account:demo', breached: true, source_binding: { as_of: '2026-11-02T21:00:00Z', sha256: 'a'.repeat(64) }, presentation_binding: { sha256: 'b'.repeat(64) }, budget_presentation_decision: { active: true, intentional_until: '2026-11-09T05:00:00Z', actor: 'operator', receipt: 'rcpt-abcdef123', history: [{ state: 'previous' }] }, operator_decision: { state: 'available', subtype: 'market_risk_budget_presentation' } }, { budget: 'cash_reserve', actual: 1000, limit: 5000, unit: 'usd', operator_decision: { state: 'unavailable', remediation: { key: 'pending_route', action: 'pending reviewed route' } } }],
   budget_presentation_decisions: { complete: false, items: 3, history: [{ state: 'previous' }] },
   gaps: [{ symbol: 'DEMO', field: 'cio.rationale', reason: 'store does not expose it', remediation: { key: 'ask_owner', action: 'ask owner' } }],
@@ -129,6 +129,8 @@ try {
       assert.ok(/intentional until/.test(m.v7text) && /breach still stands/.test(m.v7text), `an active decision reads back beside a breach that is still true at ${width}: ${m.v7text.slice(0, 400)}`)
       assert.ok(/presentation/.test(m.v7text) && /src/.test(m.v7text), `both bindings are shown and kept distinct at ${width}`)
       assert.ok(/decision history is incomplete/.test(m.v7text), `a partial ledger says so at ${width}`)
+      assert.ok(/inverse today: SH \+0\.58%/.test(m.v7text), `inverse moves render from the producer map at ${width}: ${m.v7text.slice(0, 400)}`)
+      assert.ok(/next evaluation/.test(m.v7text), `a bare next-evaluation timestamp still renders at ${width}`)
       assert.ok(/intentional decision pending reviewed route \(pending_route\)/.test(m.v7text), `an unavailable decision states its remediation at ${width}`)
       assert.ok(/a size, an order or a stop level/.test(m.v7text), `advisory line missing at ${width}`)
       assert.equal(m.v7buttons, 0, `the context section must never render an action button at ${width}`)

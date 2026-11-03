@@ -132,6 +132,23 @@ function quote(base: Record<string, unknown> | null): QuoteLine {
   }
 }
 
+/** Inverse-fund moves arrive two ways: the producer's {symbol: symbol-context} map, or an array of move facts. */
+function inverseMoves(raw: unknown): Array<{ symbol: string; dayPct: number | null; state: FactState }> {
+  const map = rec(raw)
+  if (map && !Array.isArray(map.value)) {
+    return Object.entries(map).slice(0, 12).map(([symbol, v]) => {
+      const o = rec(v) ?? {}
+      const day = rec(o.day_change)
+      return { symbol, dayPct: num(rec(day?.value)?.pct) ?? num(day?.value), state: fact(rec(o.quote) ?? o).state }
+    })
+  }
+  const list = Array.isArray(rec(raw)?.value) ? (rec(raw)!.value as unknown[]) : (Array.isArray(raw) ? raw : [])
+  return list.filter(rec).map(f => {
+    const o = rec(f) as Record<string, unknown>
+    return { symbol: str(o.symbol) ?? '?', dayPct: num(o.day_pct ?? o.day_change_pct), state: fact(o).state }
+  })
+}
+
 export function parseHomeV007(raw: unknown): HomeV007 {
   const ctx = rec(raw)
   const gaps: HomeV007['gaps'] = []
@@ -198,7 +215,11 @@ export function parseHomeV007(raw: unknown): HomeV007 {
       const n = rec(riskRaw.next_evaluation)
       if (!n) return null
       const v = rec(n.value)
-      return { at: str(v?.at), basis: str(v?.basis) ?? str(n.reason) ?? (fact(n).state === 'unknown' ? 'not declared' : null) }
+      // The producer puts a bare ISO timestamp in ``value``; older payloads nested it as {at, basis}.
+      return {
+        at: str(v?.at) ?? str(n.value),
+        basis: str(v?.basis) ?? str(n.basis) ?? str(n.reason) ?? (fact(n).state === 'unknown' ? 'not declared' : null),
+      }
     })(),
   }
 
@@ -207,13 +228,9 @@ export function parseHomeV007(raw: unknown): HomeV007 {
     const f = rec(hRaw[key]); const v = rec(f?.value)
     return f ? [{ label: key === 'lagging_progress' ? 'lagging sectors' : 'exposure', current: num(v?.current), threshold: num(v?.threshold), met: typeof v?.met === 'boolean' ? v.met : null }] : []
   }
-  const inv = rec(hRaw.inverse_moves); const invVal = inv?.value
   const hedge = {
     triggers: [...trig('lagging_progress'), ...trig('exposure_progress')],
-    inverse: (Array.isArray(invVal) ? invVal : []).filter(rec).map(f => {
-      const o = rec(f) as Record<string, unknown>
-      return { symbol: str(o.symbol) ?? '?', dayPct: num(o.day_pct ?? o.day_change_pct), state: fact(o).state }
-    }),
+    inverse: inverseMoves(hRaw.inverse_moves),
   }
 
   const budgets: BudgetRow[] = (Array.isArray(ctx.budgets) ? ctx.budgets : []).filter(rec).slice(0, 10).map(b => {
