@@ -102,7 +102,7 @@ export type HomeV007 = {
     categories: Array<{ key: string; label: string; chip: string | null; state: FactState; asOf: string | null; source: string | null; reason: string | null; carried: boolean }>
     nextEvaluation: { at: string | null; basis: string | null } | null
   }
-  hedge: { triggers: Array<{ label: string; current: number | null; threshold: number | null; unit: string | null; group: string | null }>; inverse: Array<{ symbol: string; dayPct: number | null; state: FactState }> }
+  hedge: { triggers: Array<{ label: string; current: number | null; threshold: number | null; unit: string | null; group: string | null } & Fact>; inverse: Array<{ symbol: string; dayPct: number | null; state: FactState }> }
   budgets: BudgetRow[]
   /** Top-level decision ledger. ``complete: false`` means the per-row history counts are partial. */
   decisionHistory: { complete: boolean | null; count: number | null; history: number }
@@ -271,7 +271,11 @@ export function parseHomeV007(raw: unknown): HomeV007 {
     const references = refsVal
       ? Object.entries(refsVal).slice(0, 12).map(([label, v]) => {
           const o = rec(v) ?? {}
-          const nested = fact({ ...o, state: o.state ?? refs?.state, as_of: o.price_as_of ?? refs?.as_of, source: refs?.source, age_seconds: refs?.age_seconds, reason: refs?.reason, remediation: o.remediation ?? refs?.remediation })
+          // The nested reference states its OWN state and reason; the collection's state/reason are only fallbacks.
+          // Overwriting a nested reason with the collection's loses the one line that explains this reference.
+          const nested = fact({ ...o, state: o.state ?? refs?.state, as_of: o.price_as_of ?? refs?.as_of,
+            source: refs?.source, age_seconds: refs?.age_seconds,
+            reason: str(o.reason) ?? str(refs?.reason), remediation: o.remediation ?? refs?.remediation })
           const ref = { ...nested, label, price: num(o.reference_price), distanceUsd: num(o.distance_price), distancePct: num(o.distance_pct) }
           return noValueIsUnknown(ref, [ref.price, ref.distanceUsd, ref.distancePct])
         })
@@ -337,8 +341,10 @@ export function parseHomeV007(raw: unknown): HomeV007 {
   const trig = (key: 'lagging_progress' | 'exposure_progress') => {
     const f = rec(hRaw[key]); const v = rec(f?.value)
     // The producer's trigger value is {current, threshold, unit?, group?}; it states no `met`, and the card does not
-    // derive one — a threshold comparison belongs to the producer that owns the trigger.
-    return f ? [{ label: key === 'lagging_progress' ? 'lagging sectors' : 'exposure', current: num(v?.current), threshold: num(v?.threshold), unit: str(v?.unit), group: str(v?.group) }] : []
+    // derive one — a threshold comparison belongs to the producer that owns the trigger. The FACT is carried, not
+    // dropped: an unmeasured or stale trigger must not print its numbers as if they were current.
+    return f ? [{ ...fact(f), label: key === 'lagging_progress' ? 'lagging sectors' : 'exposure',
+      current: num(v?.current), threshold: num(v?.threshold), unit: str(v?.unit), group: str(v?.group) }] : []
   }
   const hedge = {
     triggers: [...trig('lagging_progress'), ...trig('exposure_progress')],
@@ -352,9 +358,22 @@ export function parseHomeV007(raw: unknown): HomeV007 {
     const bpd = rec(o.budget_presentation_decision)
     const actual = num(o.actual), limit = num(o.limit)
     // The producer states whether the row is measured and when, precisely so an unclocked row cannot publish numbers.
-    // Only a payload without its own state falls back to the arithmetic, and that fallback still needs a clock.
-    const produced = typeof o.state === 'string' ? fact(o) : fact({ state: actual != null && limit != null ? 'measured' : 'unknown',
-      as_of: str(sb?.as_of), source: 'market_risk_budgets', age_seconds: null, reason: null, remediation: null })
+    // Only a payload without its own state falls back to the arithmetic, and that fallback REQUIRES a clock: an
+    // arithmetic result with no as_of is a number nobody can date, so it is unknown with a reason, never measured.
+    const fallbackClock = str(sb?.as_of)
+    const arithmeticallyMeasured = actual != null && limit != null && !!fallbackClock
+    const produced = typeof o.state === 'string' ? fact(o) : fact({
+      state: arithmeticallyMeasured ? 'measured' : 'unknown',
+      as_of: fallbackClock,
+      source: 'market_risk_budgets',
+      age_seconds: null,
+      reason: actual != null && limit != null && !fallbackClock
+        ? 'the row carries no measurement clock, so its arithmetic cannot be dated'
+        : null,
+      remediation: actual != null && limit != null && !fallbackClock
+        ? { key: 'HOMEV007:budget.source_binding', action: 'Restore the canonical source clock for this budget row.' }
+        : null,
+    })
     return {
       ...produced,
       key: str(o.budget) ?? '?', label: str(o.budget)?.replace(/_/g, ' ') ?? '?', current: actual, budget: limit, unit: str(o.unit),
@@ -446,7 +465,10 @@ export function headlineLine(h: SymbolContext['headlines'][number]): string {
 }
 
 export function hedgeLine(t: HomeV007['hedge']['triggers'][number]): string {
-  return `${t.label} ${t.current ?? '?'} of ${t.threshold ?? '?'}${t.unit ? ` ${t.unit}` : ''}${t.group ? ` · ${t.group}` : ''}`
+  // The trigger is a fact like every other: unknown or stale must say so instead of printing numbers as current.
+  const state = stateText(t)
+  if (state) return `${t.label} ${state}${provenanceText(t)}`
+  return `${t.label} ${t.current ?? '?'} of ${t.threshold ?? '?'}${t.unit ? ` ${t.unit}` : ''}${t.group ? ` · ${t.group}` : ''}${provenanceText(t)}`
 }
 
 /** The two observations that disagreed, when the producer recorded a same-instant conflict on the quote. */

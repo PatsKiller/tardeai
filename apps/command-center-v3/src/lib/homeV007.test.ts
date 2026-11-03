@@ -1,6 +1,6 @@
 // Home v007 additive context parser — display truth rules.
 //   node --experimental-strip-types src/lib/homeV007.test.ts
-import { categoryLine, conflictLine, headlineLine, marketStanceLine, nextEventLine, parseHomeV007, referenceLine, volumeLine } from './homeV007.ts'
+import { categoryLine, conflictLine, headlineLine, hedgeLine, marketStanceLine, nextEventLine, parseHomeV007, referenceLine, volumeLine } from './homeV007.ts'
 import { offersBudgetDecision } from './budgetIntent.ts'
 
 declare const process: { exit(code?: number): never }
@@ -356,6 +356,38 @@ eq('and no affirmative chip is published', carried.risk.categories[0].chip, null
 check('and the card says carried', categoryLine(carried.risk.categories[0]).includes('carried across a closure'),
   categoryLine(carried.risk.categories[0]))
 eq('a measured category is not carried', ok.risk.categories[0].carried, false)
+
+// N. cc5 recheck: the arithmetic fallback may not date a number by faith. A row with actual/limit but no producer
+// state AND no source clock is unknown with a reason — never "measured" and never a printable dollar amount.
+const unclockedArithmetic = parseHomeV007({ budgets: [{ budget: 'cash_reserve', actual: 1000, limit: 5000, unit: 'usd',
+  operator_decision: { state: 'unavailable' } }] }).budgets[0]
+eq('the fallback without a clock is unknown', unclockedArithmetic.state, 'unknown')
+eq('and carries no measurement clock', unclockedArithmetic.asOf, null)
+check('and says why', (unclockedArithmetic.reason ?? '').includes('no measurement clock'), unclockedArithmetic.reason)
+const clockedArithmetic = parseHomeV007({ budgets: [{ budget: 'cash_reserve', actual: 1000, limit: 5000, unit: 'usd',
+  source_binding: { as_of: '2026-11-02T20:00:00Z', sha256: 'a'.repeat(64) } }] }).budgets[0]
+eq('the fallback WITH a clock is measured', clockedArithmetic.state, 'measured')
+eq('and keeps the clock', clockedArithmetic.asOf, '2026-11-02T20:00:00Z')
+
+// O. A nested reference's own reason survives the collection reason.
+const nestedReason = parseHomeV007({ symbols: { X: { analysis_references: { state: 'partial', reason: 'the collection is incomplete',
+  value: { sma20: { state: 'unknown', reason: 'no twenty completed sessions yet' } } } } } }).symbols[0].references[0]
+eq('the nested reason wins', nestedReason.reason, 'no twenty completed sessions yet')
+const nestedNoReason = parseHomeV007({ symbols: { X: { analysis_references: { state: 'partial', reason: 'the collection is incomplete',
+  value: { sma20: { state: 'unknown', price_as_of: NOW } } } } } }).symbols[0].references[0]
+eq('the collection reason is the fallback', nestedNoReason.reason, 'the collection is incomplete')
+
+// P. A hedge trigger states whether it is measured, like every other fact.
+const unmeasuredTrigger = parseHomeV007({ hedge: { lagging_progress: { state: 'unknown', reason: 'momentum reader failed' } } })
+eq('an unmeasured trigger stays unknown', unmeasuredTrigger.hedge.triggers[0].state, 'unknown')
+check('and prints why instead of numbers', hedgeLine(unmeasuredTrigger.hedge.triggers[0]).includes('unknown — momentum reader failed'),
+  hedgeLine(unmeasuredTrigger.hedge.triggers[0]))
+check('and no threshold is invented', !/of \?/.test(hedgeLine(unmeasuredTrigger.hedge.triggers[0])), hedgeLine(unmeasuredTrigger.hedge.triggers[0]))
+const measuredTrigger = parseHomeV007({ hedge: { lagging_progress: { state: 'measured', as_of: NOW, source: 'defense_hedge_existing_thresholds',
+  value: { current: 4, threshold: 10, unit: 'sectors' } } } })
+check('a measured trigger still prints its numbers and clock',
+  /lagging sectors 4 of 10 sectors · Nov 2 16:00 ET · defense_hedge/.test(hedgeLine(measuredTrigger.hedge.triggers[0])),
+  hedgeLine(measuredTrigger.hedge.triggers[0]))
 
 console.log(`homeV007: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

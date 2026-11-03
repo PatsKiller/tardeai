@@ -72,6 +72,8 @@ const V7 = {
       volume_vs_20d: { state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'canonical_quote+daily_bars.volume', value: { ratio: 1.4, sample_sessions: 20, average_start_date: '2026-10-01', average_end_date: '2026-10-29', basis: 'observed session volume versus twenty prior completed-session volumes; not time-adjusted' } },
     },
     STALE1: { quote: { state: 'measured', age_seconds: 5400, as_of: '2026-11-02T19:30:00Z', value: { price: 12.5 } } },
+    // The producer's own stale word with NO age: the flag alone must put "stale" on the price line.
+    STALEWORD: { quote: { state: 'stale', as_of: '2026-11-02T20:00:00Z', value: { price: 7.25 } } },
     GONE: { quote: { state: 'missing', reason: 'canonical regular-session quote not measured', remediation: 'wait for the reader' } },
     // The producer's dual-mark conflict (same instant, two recorded observations disagree) and its
     // "source not recorded" refusal: both are payload states the card must name, not soften.
@@ -155,6 +157,8 @@ try {
       assert.ok(/\$12\.5/.test(m.v7text) && /stale/.test(m.v7text) && /90m old/.test(m.v7text), `a measured-but-old quote must show its value, the word stale and its age at ${width}: ${m.v7text.slice(0,400)}`)
       assert.ok(/price unknown/.test(m.v7text) && /not measured/.test(m.v7text), `missing case not explicit at ${width}`)
       assert.ok(/fetched .*ET/.test(m.v7text) && /trade time unverified/.test(m.v7text), `the quote clock is labelled a fetch observation, not trade time, at ${width}: ${m.v7text.slice(0, 300)}`)
+      // The producer's stale word carries no age: the flag alone must mark the price line.
+      assert.ok(/\$7\.25 .*trade time unverified · stale/.test(m.v7text), `a stale-flagged quote says stale without an age at ${width}: ${m.v7text.slice(0, 600)}`)
       assert.ok(/intentional until/.test(m.v7text) && /breach still stands/.test(m.v7text), `an active decision reads back beside a breach that is still true at ${width}: ${m.v7text.slice(0, 400)}`)
       assert.ok(/presentation/.test(m.v7text) && /src/.test(m.v7text), `both bindings are shown and kept distinct at ${width}`)
       assert.ok(/decision history is incomplete/.test(m.v7text), `a partial ledger says so at ${width}`)

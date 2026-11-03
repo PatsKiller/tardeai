@@ -38,7 +38,7 @@ function SymbolBlock({ s }: { s: SymbolContext }) {
           </span>
         : <span data-testid={`v7-quote-${s.symbol}`} style={small}>
             <b style={{ color: TOKENS.text[0] }}>{money(q.price) ?? 'price unknown'}</b>
-            {q.session ? ` · ${q.session}` : ''}{q.asOf ? ` · fetched ${fmtAsOf(q.asOf) ?? q.asOf}` : ''}{q.source ? ` · ${q.source}` : ''}{q.basis ? ` · ${q.basis}` : ''}{q.asOf ? ' · trade time unverified' : ''}{q.ageSeconds != null && q.ageSeconds >= 900 ? ' · stale' : ''}{q.ageSeconds != null && q.ageSeconds >= 300 ? ` · ${Math.round(q.ageSeconds / 60)}m old` : ''}
+            {q.session ? ` · ${q.session}` : ''}{q.asOf ? ` · fetched ${fmtAsOf(q.asOf) ?? q.asOf}` : ''}{q.source ? ` · ${q.source}` : ''}{q.basis ? ` · ${q.basis}` : ''}{q.asOf ? ' · trade time unverified' : ''}{q.stale || (q.ageSeconds != null && q.ageSeconds >= 900) ? ' · stale' : ''}{q.ageSeconds != null && q.ageSeconds >= 300 ? ` · ${Math.round(q.ageSeconds / 60)}m old` : ''}
           </span>}
     </div>
     {(() => { const line = conflictLine(q); return line ? <div style={dim} data-testid={`v7-conflict-${s.symbol}`}>{line}</div> : null })()}
