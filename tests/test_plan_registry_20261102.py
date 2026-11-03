@@ -430,3 +430,155 @@ def test_view_skips_an_unreadable_entry_instead_of_taking_the_listing_down(tmp_p
     listing = r.view()
     assert [row["id"] for row in listing["plans"]] == [pid]
     assert [row["id"] for row in r.list()] == [pid]
+
+
+# ---------------------------------------------------------------- cc3 review 3 (2026-11-02) BLOCK
+def test_the_plans_api_returns_the_view_for_a_valid_id(tmp_path, monkeypatch):
+    import api_v2
+
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    r = pr.Registry(tmp_path)
+    pid = r.add(title="T", body="# T\n\n- [ ] a\n", author="s", vendor="claude",
+                approved_at="2026-11-02T10:00:00Z")
+    status, payload = api_v2.handle("/api/v2/plans", method="GET", query={"id": [pid]})
+    assert status == 200, payload
+    assert payload["ok"] is True
+    view = payload["data"]
+    assert view["schema"] == "PlanRegistryView@v1"
+    assert view["plan"]["id"] == pid and view["plan"]["status"] == "approved"
+    assert view["plan"]["body"].startswith("# T")
+
+
+def test_the_plans_api_returns_400_not_500_for_an_invalid_id(tmp_path, monkeypatch):
+    """Old code caught only KeyError; Registry.get raised ValueError for an invalid id, which the
+    generic dispatcher turned into a 500 echoing the exception text (and the id)."""
+    import api_v2
+
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    for bad in ("../x", "a/b", "UPPER", "-lead", "x" * 100, ".hidden", "a b"):
+        status, payload = api_v2.handle("/api/v2/plans", method="GET", query={"id": [bad]})
+        assert status == 400, (bad, status, payload)
+        assert payload == {"ok": False, "error": "invalid plan id"}, (bad, payload)
+        blob = json.dumps(payload)
+        assert bad not in blob and "expected" not in blob and "resolves" not in blob
+
+
+def test_the_plans_api_returns_404_for_an_unknown_but_valid_id(tmp_path, monkeypatch):
+    import api_v2
+
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    status, payload = api_v2.handle("/api/v2/plans", method="GET", query={"id": ["no-such-plan"]})
+    assert status == 404, payload
+    assert payload == {"ok": False, "error": "plan not found"}
+    assert "no-such-plan" not in json.dumps(payload)
+
+
+def test_a_truncated_plan_is_an_explicit_unreadable_row_not_a_silent_gap(tmp_path):
+    """A real approved plan whose front matter is truncated used to vanish from a page that promises
+    every plan. It must stay visible as a gap with its id, filename and a reason."""
+    r = _reg(tmp_path)
+    p = tmp_path / "p.md"
+    p.write_text("# T\n\n- [ ] a\n")
+    pid = r.add(title="T", body_path=p, author="s", vendor="claude", approved_at="2026-11-02T10:00:00Z")
+    inside = tmp_path / "data/coordination/plans"
+    (inside / "truncated-plan.md").write_text('---\nid: "truncated-plan"\ntitle: "An approved pla')
+
+    listing = r.view()
+    ids = [row["id"] for row in listing["plans"]]
+    assert pid in ids, "the valid plan must survive the truncated neighbour"
+    gap = next(row for row in listing["plans"] if row["id"] == "truncated-plan")
+    assert gap["status"] == "unreadable"
+    assert gap["filename"] == "truncated-plan.md"
+    assert gap["reason"]
+    assert "truncated" in gap["reason"].lower()
+    # the valid plan's row keeps its normal shape
+    good = next(row for row in listing["plans"] if row["id"] == pid)
+    assert good["status"] == "approved" and good["steps_left"] == 1
+
+
+def test_a_plan_file_without_front_matter_is_an_unreadable_row(tmp_path):
+    r = _reg(tmp_path)
+    inside = tmp_path / "data/coordination/plans"
+    inside.mkdir(parents=True, exist_ok=True)
+    (inside / "bare.md").write_text("# Just a body, no front matter\n")
+    gap = next(row for row in r.view()["plans"] if row["id"] == "bare")
+    assert gap["status"] == "unreadable" and gap["reason"]
+
+
+def test_a_non_utf8_plan_file_is_an_unreadable_row_not_a_500(tmp_path):
+    r = _reg(tmp_path)
+    inside = tmp_path / "data/coordination/plans"
+    inside.mkdir(parents=True, exist_ok=True)
+    (inside / "binary.md").write_bytes(b"\xff\xfe---\nid: x\n")
+    gap = next(row for row in r.view()["plans"] if row["id"] == "binary")
+    assert gap["status"] == "unreadable" and "UTF-8" in gap["reason"]
+
+
+# ---------------------------------------------------------------- cc5 review (2026-11-02): list/get/stale
+def test_the_listing_keeps_a_non_utf8_plan_as_an_unreadable_row(tmp_path):
+    """list() caught only OSError; UnicodeDecodeError is a ValueError, so one corrupt .md took the
+    whole listing — and the hourly stale scan that reads it — down with a 500."""
+    r = _reg(tmp_path)
+    p = tmp_path / "p.md"
+    p.write_text("# T\n\n- [ ] a\n")
+    pid = r.add(title="T", body_path=p, author="s", vendor="claude", approved_at="2026-11-02T10:00:00Z")
+    inside = tmp_path / "data/coordination/plans"
+    (inside / "binary.md").write_bytes(b"\xff\xfe---\nid: x\n")
+
+    rows = r.list()
+    ids = [row["id"] for row in rows]
+    assert pid in ids and "binary" in ids, ids
+    gap = next(row for row in rows if row["id"] == "binary")
+    assert gap["status"] == "unreadable" and gap["filename"] == "binary.md"
+    assert "UTF-8" in gap["reason"]
+    assert next(row for row in rows if row["id"] == pid)["status"] == "approved"
+
+
+def test_the_stale_scan_completes_with_a_non_utf8_plan_in_the_store(tmp_path):
+    r = _reg(tmp_path)
+    pid = r.add(title="T", body="x", author="s", vendor="claude", approved_at="2026-08-01T10:00:00Z")
+    inside = tmp_path / "data/coordination/plans"
+    (inside / "binary.md").write_bytes(b"\xff\xfe---\nid: x\n")
+    assert r.stale(now="2026-11-02T12:00:00Z", apply=True) == [pid]
+    gap = next(row for row in r.list() if row["id"] == "binary")
+    assert gap["status"] == "unreadable"
+    assert r.get(pid)["front"]["status"] == "stalled"
+
+
+def test_get_raises_key_error_for_a_non_utf8_plan(tmp_path):
+    import pytest
+
+    r = _reg(tmp_path)
+    inside = tmp_path / "data/coordination/plans"
+    inside.mkdir(parents=True, exist_ok=True)
+    (inside / "binary.md").write_bytes(b"\xff\xfe---\nid: x\n")
+    with pytest.raises(KeyError):
+        r.get("binary")
+
+
+def test_the_plans_api_detail_is_404_for_a_non_utf8_plan(tmp_path, monkeypatch):
+    import api_v2
+
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    inside = tmp_path / "data/coordination/plans"
+    inside.mkdir(parents=True, exist_ok=True)
+    (inside / "binary.md").write_bytes(b"\xff\xfe---\nid: x\n")
+    status, payload = api_v2.handle("/api/v2/plans", method="GET", query={"id": ["binary"]})
+    assert status == 404, payload
+    assert payload == {"ok": False, "error": "plan not found"}
+
+
+def test_a_planted_inbox_symlink_is_refused_when_reporting_stale_plans(tmp_path):
+    import pytest
+
+    r = _reg(tmp_path)
+    pid = r.add(title="T", body="x", author="s", vendor="claude", approved_at="2026-08-01T10:00:00Z")
+    inbox = tmp_path / "data/coordination/coordinator/inbox.md"
+    inbox.parent.mkdir(parents=True, exist_ok=True)
+    outside = tmp_path / "inbox-target"
+    outside.write_text("untouched\n")
+    inbox.symlink_to(outside)
+    with pytest.raises(ValueError):
+        r.stale(now="2026-11-02T12:00:00Z", apply=True)
+    assert outside.read_text() == "untouched\n"
+    assert pid  # the scan still found the plan; only the append was refused

@@ -36312,7 +36312,11 @@ def _watch_alerts_post(body=None):
 def _plans_registry(query=None):
     """GET /api/v2/plans[?id=<plan-id>] — the read-only plan registry: every approved plan with
     its provenance, lifecycle status, claim/branch/PR links and step counts. Detail includes the
-    body. Server reads the coordination plan store; it never writes it."""
+    body. Server reads the coordination plan store; it never writes it.
+
+    Refusals are fixed, status-bearing bodies: an invalid id is the caller's error (400) and a
+    valid id with no plan is absent (404). Neither echoes the id nor the exception text — the
+    generic dispatcher's 500 would otherwise publish both."""
     try:
         from scripts.plan_registry import Registry
     except ImportError:
@@ -36320,9 +36324,11 @@ def _plans_registry(query=None):
     q = query or {}
     pid = str((q.get("id") or [""])[0] if isinstance(q.get("id"), list) else q.get("id") or "").strip()
     try:
-        return Registry().view(pid or None)
+        return 200, {"ok": True, "data": Registry().view(pid or None)}
     except KeyError:
-        return {"ok": False, "error": f"no plan {pid!r}"}
+        return 404, {"ok": False, "error": "plan not found"}
+    except ValueError:
+        return 400, {"ok": False, "error": "invalid plan id"}
 
 
 def _ui_metric_guide(query=None):
@@ -55097,7 +55103,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             import inspect as _insp
 
             _np = len(_insp.signature(handler).parameters)
-            return 200, {"ok": True, "data": (handler(query) if _np >= 1 else handler())}
+            result = handler(query) if _np >= 1 else handler()
+            # A handler may answer with its own (status, body) — a caller error or a missing
+            # resource. Every other result is wrapped as data exactly as before.
+            if isinstance(result, tuple) and len(result) == 2 and isinstance(result[0], int):
+                return result
+            return 200, {"ok": True, "data": result}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 

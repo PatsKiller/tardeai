@@ -11,8 +11,9 @@ find it, link its claim/branch/PR, tick its steps and follow it to done or aband
       ledger.jsonl          append-only: one line per add / link / step_done / status / stalled
       .lock                 flock target; every write is locked and atomic (tmp + replace)
 
-`<plan-id>` is `YYYYMMDD-<slug>-<8 hex>`, derived from the title and body, so the SAME plan always
-gets the same id and a retried registration never duplicates it.
+`<plan-id>` is `<slug>-<12 hex>`, derived from the title, body and author, so the SAME plan always
+gets the same id and a retried registration never duplicates it (the day is deliberately not part of
+the id).
 
 ## Claude Code: the ExitPlanMode hook
 
@@ -81,6 +82,17 @@ installing the timer is operator-only, AGENTS.md §17):
 
 Follow-up PR: `/api/v2/plans` (read-only list/detail from the same plan files) and a mobile-first
 Command Center "Plans" page (list -> full-screen detail, steps done/left, claim and PR links).
+
+The endpoint answers `200` with `{"ok": true, "data": {schema: "PlanRegistryView@v1", plans|plan: ...}}`.
+An id that fails the id rules is `400` with the fixed `{"ok": false, "error": "invalid plan id"}`; a
+valid id with no plan is `404` with `{"ok": false, "error": "plan not found"}`. Neither body echoes
+the id or an exception, because the generic dispatcher's `500` would publish both.
+
+A `*.md` file in the store whose front matter cannot be parsed (truncated, missing, or non-UTF-8) is
+still listed — as `{"status": "unreadable", "id": ..., "filename": ..., "reason": ...}` — rather than
+dropped, so the page never hides a plan the operator approved. The same row surfaces from `list()`,
+so the stale scan skips it instead of failing. Valid plans are unchanged; a detail read (`get()`, or
+`/api/v2/plans?id=`) of such a file is `404`, never a decode error.
 
 ## Authority
 

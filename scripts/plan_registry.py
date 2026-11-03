@@ -102,6 +102,35 @@ def parse_plan(text: str) -> dict[str, Any]:
     return {"front": {}, "body": text}  # unterminated front-matter is body
 
 
+def front_matter_gap(text: str) -> str | None:
+    """Why a plan file has no usable front matter, or ``None`` when it has one.
+
+    ``parse_plan`` is deliberately lenient — an unterminated block is treated as body and parsed
+    values fall back to raw strings — so an empty ``front`` is the signal that the file could not be
+    read as a plan. The view turns that into an explicit ``unreadable`` row instead of dropping it.
+    """
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return "no front matter at the start of the file"
+    for i, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            if any(":" in ln for ln in lines[1:i]):
+                return None
+            return "front matter has no key: value lines"
+    return "truncated front matter (no closing --- marker)"
+
+
+def unreadable_entry(path: Path, reason: str) -> dict[str, Any]:
+    """A visible gap for a plan file whose front matter cannot be read.
+
+    The page promises every plan, so the file is shown by the id and filename that could be read —
+    never silently dropped, which made a real approved plan look like it did not exist.
+    """
+    return {"id": path.stem, "filename": path.name, "title": path.name,
+            "status": "unreadable", "reason": reason,
+            "steps": [], "steps_done": 0, "steps_left": 0}
+
+
 def render_plan(front: dict[str, Any], body: str) -> str:
     lines = ["---"]
     for key in ("id", "title", "author_session", "author_proof", "vendor", "approved_at", "operator_quote",
@@ -265,7 +294,13 @@ class Registry:
         path = self._path(pid)
         if not path.is_file():
             raise KeyError(f"no plan {pid!r} in {self.plans}")
-        doc = parse_plan(path.read_text(encoding="utf-8"))
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            # A corrupt file is not a readable plan: KeyError keeps the API on its fixed 404 path
+            # instead of publishing a 500 with the decode error.
+            raise KeyError(f"no readable plan {pid!r} in {self.plans}") from None
+        doc = parse_plan(text)
         doc["front"].setdefault("id", pid)
         return doc
 
@@ -296,10 +331,16 @@ class Registry:
             except ValueError:
                 continue  # a file that escapes the store is never served
             try:
-                front = parse_plan(path.read_text(encoding="utf-8"))["front"]
+                text = path.read_text(encoding="utf-8")
             except OSError:
                 continue  # one unreadable file must not take the whole listing down
+            except UnicodeDecodeError:
+                rows.append(unreadable_entry(path, "file is not valid UTF-8 text"))
+                continue
+            front = parse_plan(text)["front"]
             if not front:
+                # Same gap the view shows: a file the store holds but cannot parse is still listed.
+                rows.append(unreadable_entry(path, front_matter_gap(text) or "front matter is not readable"))
                 continue
             if status and front.get("status") != status:
                 continue
@@ -386,11 +427,18 @@ class Registry:
         rows = []
         for path in self._iter_plans():
             try:
-                doc = parse_plan(path.read_text(encoding="utf-8"))
+                text = path.read_text(encoding="utf-8")
             except OSError:
                 continue  # one unreadable entry must not take the whole Plans listing down
+            except UnicodeDecodeError:
+                rows.append(unreadable_entry(path, "file is not valid UTF-8 text"))
+                continue
+            doc = parse_plan(text)
             if doc["front"]:
                 rows.append(self._entry(path.stem, doc, body=False))
+            else:
+                # A file the store holds but cannot parse is a gap, not a plan that never existed.
+                rows.append(unreadable_entry(path, front_matter_gap(text) or "front matter is not readable"))
         rows.sort(key=lambda r: str(r.get("approved_at") or ""), reverse=True)
         return {"schema": VIEW_SCHEMA, "plans": rows}
 
@@ -412,11 +460,20 @@ class Registry:
             flagged.append(str(front["id"]))
         if apply and flagged:
             self.inbox.parent.mkdir(parents=True, exist_ok=True)
-            with self.inbox.open("a", encoding="utf-8") as fh:
+            # O_NOFOLLOW: the coordinator inbox cannot be redirected outside the store by a planted
+            # link (same rule as the ledger); fsync makes the operator-visible line durable.
+            try:
+                fd = os.open(self.inbox, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
+            except OSError as exc:
+                raise ValueError(f"coordinator inbox {self.inbox} is not a regular file "
+                                 f"({exc.strerror}); refusing") from None
+            with os.fdopen(fd, "a", encoding="utf-8") as fh:
                 for pid in flagged:
                     fh.write(f"{self.cfg.get('stalled_prefix') or '[PLAN-STALLED]'} {pid}: approved or "
                              f"in_progress for over {limit:g}h with no claim, branch or PR "
                              f"({_utc()})\n")
+                fh.flush()
+                os.fsync(fh.fileno())
         return flagged
 
 
