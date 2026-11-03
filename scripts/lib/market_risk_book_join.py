@@ -199,7 +199,8 @@ def home_actions(
     heat = [h for h in projection.get("heatmap") or [] if isinstance(h, dict)]
     groups = (out.get("book_exposure") or {}).get("groups") or {}
     defense_cfg = _lj("config/defense_recommendations.json") or {}
-    momentum = (_lj("data/runtime/sector_momentum_latest.json") or {}).get("rows") or []
+    momentum_doc = _lj("data/runtime/sector_momentum_latest.json") or {}
+    momentum = momentum_doc.get("rows") or []
     try:
         res["protect"] = ha.protect(out.get("review") or [], budgets=out.get("budgets") or [],
                                     reentry=out.get("reentry") or {}, overnight=overnight, policy=policy)
@@ -209,6 +210,7 @@ def home_actions(
         res["hedge"] = ha.hedge(stoplights=_lj("data/runtime/inverse_stoplights_latest.json"), momentum_rows=momentum,
                                 book_exposure=out.get("book_exposure") or {}, defense_cfg=defense_cfg,
                                 today=now.date(), transitions=transitions)
+        res["hedge"]["momentum_as_of"] = momentum_doc.get("generated_at")
     except Exception as exc:  # noqa: BLE001
         res["hedge_error"] = f"{type(exc).__name__}: {exc}"
     try:
@@ -253,6 +255,70 @@ def home_actions(
     return res
 
 
+def home_context(
+    projection: dict[str, Any],
+    joined: dict[str, Any],
+    *,
+    policy: dict[str, Any],
+    now: datetime,
+    get_conn: Any = None,
+    reader: Any = None,
+) -> dict[str, Any]:
+    """v007 uses the existing canonical reader on its own bounded read-only connection."""
+    import json
+    from pathlib import Path
+
+    context = _import("market_risk_home_context")
+    owned = reader is None
+    try:
+        if reader is None:
+            conn = _ro_conn(db_bounds(policy), get_conn)
+            try:
+                reader = _import("market_risk.reader").PgReader(conn_factory=lambda: conn)
+            except Exception:
+                conn.close()
+                raise
+        try:
+            registry = json.loads((Path(__file__).resolve().parents[2] / "config/lane_registry.json").read_bytes())
+        except (OSError, ValueError):
+            registry = {}
+        cio_stances = {}
+        cio_error = None
+        try:
+            cio_stances = _import("cio_truth").stances_for_symbols(
+                context.symbols_for(projection, joined), root=Path(__file__).resolve().parents[2],
+                db_query=lambda sql, params=None: reader._rows(sql, params or []), now=now,
+                market_closed=_import("market_risk.sessions").session_label(now) != "regular", limit=80)
+        except Exception as exc:  # noqa: BLE001 — never substitute a different stance source
+            cio_error = type(exc).__name__
+        connection = getattr(reader, "_conn", None)
+        if connection is not None:
+            connection.rollback()  # end a read-only metadata transaction before independent quote reads
+        result = context.collect(projection, joined, reader=reader, read_rows=getattr(reader, "_rows", None),
+                                 now=now, registry=registry, cio_stances=cio_stances)
+        if cio_error:
+            result["read_errors"].append({"source": "cio_truth", "reason": cio_error,
+                                          "remediation": {"key": "HOMEV007:cio_truth",
+                                                          "action": "Restore the registered CIO read model."}})
+        return result
+    except Exception as exc:  # noqa: BLE001 — preserve known snapshot fields, expose typed source gap
+        result = context.build(projection, joined, now=now)
+        result["read_errors"] = [
+            {
+                "source": "canonical_home_context",
+                "reason": type(exc).__name__,
+                "remediation": {
+                    "key": "HOMEV007:canonical_home_context",
+                    "action": "Restore the canonical read-only context source.",
+                },
+            }
+        ]
+        return result
+    finally:
+        if owned and reader is not None:
+            reader.close()
+
+
 def join(
     projection: dict[str, Any],
     *,
@@ -261,6 +327,7 @@ def join(
     get_conn: Any = None,
     store: dict[str, Any] | None = None,
     policy: dict[str, Any] | None = None,
+    context_reader: Any = None,
 ) -> dict[str, Any]:
     """The projection with ``book_exposure``, ``review``, ``scope_labels``, ``budgets_detail`` and ``reentry_detail``
     added (or ``book_exposure_error`` with the reason)."""
@@ -296,7 +363,8 @@ def join(
             try:
                 lks = _import("last_known_stops")
                 stops = [
-                    {"account": r.get("account"), "symbol": r.get("symbol"), "stop_price": r.get("stop_price")}
+                    {"account": r.get("account"), "symbol": r.get("symbol"), "stop_price": r.get("stop_price"),
+                     "captured_at": r.get("captured_at"), "source": r.get("source"), "status": r.get("status")}
                     for r in lks.load_last_known(brokers=("schwab",), now=now, conn=conn)
                 ]
             except Exception:  # noqa: BLE001 — stops unread: "stops unavailable", never "no stop"
@@ -357,7 +425,19 @@ def join(
     be["stops_known"] = stops is not None
     be["ledger_error"] = ledger_error
     actions = home_actions(projection, out, policy=policy, overnight=overnight, transitions=transitions, now=now)
+    observed_stops = None if stops is None else [
+        {"symbol": row["symbol"], "account_label": ad.account_label(row["account"]),
+         "price": row["stop_price"], "as_of": row.get("captured_at"),
+         "source": row.get("source"), "status": row.get("status")} for row in stops]
+    try:
+        v007 = home_context(projection, {**out, **actions, "budgets_detail": out["budgets"],
+                                        "observed_stops": observed_stops}, policy=policy,
+                            now=now, get_conn=get_conn, reader=context_reader)
+    except Exception as exc:  # noqa: BLE001 — the additive context cannot erase the v006 card
+        v007 = {"schema": "HomeMarketRiskContext@v1", "state": "unavailable", "reason": type(exc).__name__,
+                "remediation": {"key": "HOMEV007:context", "action": "Restore the additive context module."}}
     return {
+        "home_v007": v007,
         **projection,
         **actions,
         "book_exposure": be,
