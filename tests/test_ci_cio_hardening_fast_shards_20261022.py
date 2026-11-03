@@ -460,16 +460,21 @@ def _isolated_readonly_observer(tmp_path, monkeypatch):
     excluded.mkdir()
     monkeypatch.setenv("TMPDIR", str(excluded))
     monkeypatch.setattr(observer, "ROOT", checkout)
+    # #2562 scoped the read-only proof to what evaluate() may write: repo_tracked_state over TRACKED_PATHS, derived
+    # from `git ls-files` of the REAL repository at import. In a synthetic checkout those paths do not exist, so the
+    # old hook on tree_state recorded nothing and every mutation was invisible. Point the watch set at the fixture and
+    # hook the function the observer actually calls.
+    monkeypatch.setattr(observer, "TRACKED_PATHS", ("synthetic_source.py",))
     snapshots = []
-    actual_tree_state = observer.tree_state
+    actual_repo_tracked_state = observer.repo_tracked_state
 
-    def recorded_tree_state(root, **kwargs):
-        state = actual_tree_state(root, **kwargs)
+    def recorded_repo_tracked_state(root, paths=None):
+        state = actual_repo_tracked_state(root, paths)
         if Path(root) == checkout:
             snapshots.append(state)
         return state
 
-    monkeypatch.setattr(observer, "tree_state", recorded_tree_state)
+    monkeypatch.setattr(observer, "repo_tracked_state", recorded_repo_tracked_state)
     return observer, merge, source, snapshots
 
 
@@ -479,11 +484,10 @@ def test_readonly_observer_accepts_metadata_established_before_its_snapshot(tmp_
     os.utime(source, ns=(initial.st_atime_ns, initial.st_mtime_ns - 1_000_000_000))
     assert source.read_bytes() == b"before\n" and source.stat().st_mtime_ns != initial.st_mtime_ns
     observer.test_evaluate_is_readonly_and_uses_only_read_apis(merge, tmp_path / "state", monkeypatch)
-    assert snapshots and str(source) in snapshots[0], "the real observer must watch the fixture"
+    assert snapshots and "synthetic_source.py" in snapshots[0], "the real observer must watch the fixture"
 
 
-@pytest.mark.parametrize("mutation", ["same_size_content", "metadata_only", "new_file", "missing_file"])
-def test_serial_placement_preserves_real_snapshot_mutation_detection(tmp_path, monkeypatch, mutation):
+def _mutate_during_evaluate(tmp_path, monkeypatch, mutation):
     observer, merge, source, snapshots = _isolated_readonly_observer(tmp_path, monkeypatch)
     actual_evaluate = merge.evaluate
     reached = []
@@ -491,7 +495,7 @@ def test_serial_placement_preserves_real_snapshot_mutation_detection(tmp_path, m
     def changed(*args, **kwargs):
         result = actual_evaluate(*args, **kwargs)
         assert result["ok"], result
-        assert snapshots and str(source) in snapshots[0], "empty watch set before mutation"
+        assert snapshots and "synthetic_source.py" in snapshots[0], "empty watch set before mutation"
         before = source.stat()
         if mutation == "same_size_content":
             source.write_bytes(b"after!\n")
@@ -508,7 +512,24 @@ def test_serial_placement_preserves_real_snapshot_mutation_detection(tmp_path, m
         return result
 
     monkeypatch.setattr(merge, "evaluate", changed)
+    return observer, merge, snapshots, reached
+
+
+@pytest.mark.parametrize("mutation", ["same_size_content", "metadata_only", "missing_file"])
+def test_serial_placement_preserves_real_snapshot_mutation_detection(tmp_path, monkeypatch, mutation):
+    """The guard still BITES on every change to a watched path (#2562: content, metadata and disappearance)."""
+    observer, merge, snapshots, reached = _mutate_during_evaluate(tmp_path, monkeypatch, mutation)
     with pytest.raises(AssertionError):
         observer.test_evaluate_is_readonly_and_uses_only_read_apis(merge, tmp_path / "state", monkeypatch)
-    assert reached == [mutation]
-    assert snapshots and str(source) in snapshots[0]
+    assert reached == [mutation], "the mutation ran between the two snapshots"
+    assert snapshots and "synthetic_source.py" in snapshots[0]
+
+
+def test_an_untracked_new_file_is_outside_the_scoped_watch_set(tmp_path, monkeypatch):
+    """#2562's contract, stated honestly: evaluate is proven to write nothing it is ALLOWED to write, and the watch
+    set is the repository's tracked content. A brand-new untracked file is not part of that proof — asserting
+    otherwise was the stale expectation that turned main red."""
+    observer, merge, snapshots, reached = _mutate_during_evaluate(tmp_path, monkeypatch, "new_file")
+    observer.test_evaluate_is_readonly_and_uses_only_read_apis(merge, tmp_path / "state", monkeypatch)
+    assert reached == ["new_file"]
+    assert snapshots and "synthetic_source.py" in snapshots[0]
