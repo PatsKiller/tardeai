@@ -1,23 +1,21 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      30.0.0
+Policy-Version:      30.0.2
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
 Effective-Date:      2026-11-03
-Last-Reviewed:       2026-11-03T02:15:07Z
+Last-Reviewed:       2026-11-03T22:50:00Z
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          29.3.0
+Supersedes:          30.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
-**30.0.0 is ACTIVE (MAJOR)** — standing feature uploads, delegated clean uploads, release-coordinator merges,
-merge-watching and one server-side approved-plan registry (§11, §25.10.4, §28.4, §28.15, §28.17).
-Ratified by the operator at the reviewed source head; this status-only edit takes effect on merge.
-Approval and consolidation records are in docs/governance/AGENTS_HISTORY.md; old source branches remain.
-No broker, secret or deploy grant.
+**30.0.2 is ACTIVE (PATCH)** — rides the 30.0.0 operator ratification; adds one §8.1 rule: a change to a shared
+helper or shared test surface is not tested until its consumers have run. No authority change, no broker, secret or
+deploy grant. Depends on 30.0.1 (PR #2567) merging first. Approval records are in docs/governance/AGENTS_HISTORY.md.
 
 ---
 
@@ -883,6 +881,10 @@ bullet), a registry `PAUSED` row's flip to `ACTIVE` after its natural-slot verif
 shadow slot and no run of clean days.
 
 **The forced run has the same bounds as the thing it runs.**
+
+> **A change to a shared helper or a shared test surface is not tested until the files that consume it have run.**
+> *Cause: 2026-11-03 — three changes passed their own tests while breaking a consumer: #2562 removed a `tree_state` call a
+> CI spy depended on, #2559's fixture lacked the shared predecessor, and #2566's predecessors watched an empty set.*
 
 - **It is the job's real work, so it needs the same authority.** A forced run of an `--apply` job, a store
   writer or an n8n lane in `live` mode needs the grant the install needed, still unexpired, and whatever grant
@@ -2672,6 +2674,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 30.0.2 | 2026-11-03 | ACTIVE | PATCH | Consumer-testing rule in §8.1: a shared helper or shared test surface is not tested until the files that consume it have run. Depends on 30.0.1 (PR #2567) merging first; no authority change. | PATCH — rides APPROVE_AGENTS_POLICY_30_0_0; no authority change; operator ratifies at merge |
 | 30.0.0 | 2026-11-03 | ACTIVE | MAJOR | Supersedes 29.3.0. Standing scoped/delegated uploads, ordinary AND held engineering merges with tests/docs and two held reviews, merge-watching, one approved-plan registry; §0 rule 4/§2B/§11/§17/§20/§25.10/§28.4/§28.15/§28.17; AI_WORK_POLICY §3/§9/§11/§16/§21/§27/§28 aligned. No broker, secret or deploy authority. | `APPROVE_AGENTS_POLICY_30_0_0 2501 995e86f9abf961a37c58ae2667b0b6f6eef1c9af` (operator, https://github.com/PatsKiller/tardeai/pull/2501#issuecomment-6594072975) |
 | 29.4.0 | 2026-11-01 | WITHDRAWN | MINOR | Supersedes 29.3.0 (#2453; this content was drafted as 29.3.0 in #2450/#2451). Operator chose MINOR (2026-11-01, "minor"). §28.15 item 8 gains the standing push approval: an operator `APPROVE_PUSH_STANDING <glob> until <YYYY-MM-DD>` comment on the standing-approval issue meets the approved-plan step for the pusher's own live claim on a branch the glob covers (prefixes wt/ feat/ fix/ chore/ docs/ only; never main, master, release/*, train/*; expiry required, at most 45 days; `REVOKE_PUSH_STANDING` in any markup voids earlier ones; one operator issue, duplicates refuse; a close voids earlier comments for good; edited operator comments refuse; fenced, indented and HTML-commented lines ignored; only close-and-reopen of the same issue voids then restores; dates UTC; live only once main is 29.4.0+ ACTIVE; `gh issue create/edit/reopen/close`, `gh alias set` and `gh api` field writes are `gh-write` and `gh auth token` is `secret`, classified from shell tokens (`guard_tokens.py`), so quoting and flag placement cannot evade them). Hardened after the #2450 and #2451 security reviews (LESSONS L28-31). All other push checks unchanged. Operator 2026-11-01: "Yes, draft stand and approval." | none (withdrawn) |
 | 29.3.0 | 2026-11-01 | ACTIVE | MINOR | Supersedes 29.2.1. §11 gains draft-first PRs (open every PR as a draft; mark it ready only when the work is done and adversarial review has passed), stack discipline (only the top of a stack is ready; its CI covers the whole stack) and one weekday merge window (17:30-18:30 ET in `.mergify.yml`; urgent fixes by the operator naming the PR). §28.1's merge-window bullet now states the single window. Adds obligations only; §0, §2, §17 and role authority untouched. Cause: LESSONS L11-01 (5,369 Actions runs on 2026-10-31). | operator in-session 2026-11-01 (this session: chose "approve both rules" and "one window, 17:30 ET"); held-class operator merge (§25.10). Design: `DSN-20261031-ci-load-reduction` §4.2/§4.4/§4.5. |
