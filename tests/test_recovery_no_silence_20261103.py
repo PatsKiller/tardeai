@@ -289,7 +289,7 @@ def test_the_batched_body_carries_the_case_key(monkeypatch):
                         lambda *, header, items, footer=None: sent.append(header) or header)
     out = rn.notify_recovery_case(_case(case_id="spcx-20261030"), policy=POLICY,
                                   sender=_Sender(), state_path="/tmp/x.json")
-    assert "case:spcx-20261030" in sent[0] and out["sent"] is True
+    assert rn.parse_case_token(sent[0]) == "spcx-20261030" and out["sent"] is True
 
 
 def test_the_daily_bound_applies_on_the_intent_path(monkeypatch, tmp_path):
@@ -418,3 +418,72 @@ def test_a_p1_intent_is_delivered_even_in_quiet_hours():
     route = router.route_intent(rn.build_message(_case()), "P1", dedupe_minutes=0,
                                 producer="recovery_notify", now=quiet)
     assert route["decision"] == "DELIVER" and route["deliver"] is True
+
+
+# ── round 4 at 0657f8c0a: F3 encoding, F5 durability edges, F6 ops-exempt, F8 reader, F2 null ─────────
+
+def test_case_ids_that_would_sanitise_alike_get_distinct_locks(monkeypatch):
+    """F3: 'a/b' and 'a_b' must not share a claim lock (old sanitisation collapsed them)."""
+    msg_a = rn.build_message(_case(case_id="a/b"))
+    msg_b = rn.build_message(_case(case_id="a_b"))
+    assert rn.parse_case_token(msg_a) == "a/b" and rn.parse_case_token(msg_b) == "a_b"
+    assert router.recovery_t1_claim(msg_a) is True
+    assert router.recovery_t1_claim(msg_b) is True
+
+
+def test_a_long_case_id_survives_the_message_round_trip():
+    """F3: the old parser truncated outside its class and the lock name cut at 80 chars."""
+    long_id = "case-" + "x" * 300 + "/with spaces:and:colons"
+    msg = rn.build_message(_case(case_id=long_id))
+    assert rn.parse_case_token(msg) == long_id
+    assert router.recovery_t1_claim(msg) is True
+
+
+def test_a_transport_exception_releases_the_claim_and_allows_retry(monkeypatch):
+    """F5a: send_fn raising must release the claim, not strand it and block the fallback."""
+    import telegram_alert
+    monkeypatch.setattr(telegram_alert, "_intent_router", lambda: router)
+    msg = rn.build_message(_case(case_id="spcx-transport-raise"))
+
+    def boom():
+        raise RuntimeError("transport down")
+
+    with pytest.raises(RuntimeError, match="transport down"):
+        telegram_alert._intent_send(msg, "P1", boom, dedupe_minutes=0, producer="recovery_notify")
+    assert router.recovery_t1_state(msg) != "claimed"
+    assert router.recovery_t1_claim(msg) is True
+
+
+def test_a_delivered_case_cannot_be_reclaimed_or_released(monkeypatch):
+    """F5b: delivered is terminal across a resume; a stale process releasing must not re-open it."""
+    msg = rn.build_message(_case(case_id="spcx-delivered"))
+    assert router.recovery_t1_claim(msg) is True
+    router.recovery_t1_mark_delivered(msg)
+    router.recovery_t1_release(msg)          # a stale resumer's release
+    assert router.recovery_t1_state(msg) == "delivered"
+    assert router.recovery_t1_claim(msg) is False
+
+
+def test_a_released_attempt_is_visible_to_the_reader(monkeypatch):
+    """F8: the reader must see `released`, not keep reading the earlier `claimed`."""
+    msg = rn.build_message(_case(case_id="spcx-reader"))
+    assert router.recovery_t1_claim(msg) is True
+    router.recovery_t1_release(msg)
+    assert router.recovery_t1_state(msg) == "released"
+    assert router.route_intent(msg, "P1", dedupe_minutes=0)["decision"] == "DELIVER"
+
+
+def test_ops_exempt_messages_do_not_name_the_budget_gate(monkeypatch):
+    """F6: the budget gate never applies to an ops-exempt message, so it is not a bypass."""
+    monkeypatch.setattr(router, "_budget_count_today", lambda: 10 ** 6)
+    monkeypatch.setattr(router, "_ops_exempt", lambda message: True)
+    assert router.route_alert(rn.build_message(_case(case_id="spcx-ops-exempt")))["recovery_t1_exemptions"] == []
+
+
+def test_a_present_but_null_threshold_is_not_absent():
+    """F2: a configured null is a configured dimension without a number -> loud T1."""
+    policy = {"materiality": {"t1": {"loss_usd": None, "weight_pct": 20}}}
+    send = _Sender()
+    out = rn.notify_recovery_case(_case(realized_loss_usd=250, pre_exit_weight_pct=1.0),
+                                  policy=policy, sender=send, state_path="/tmp/x.json")
+    assert out["tier"] == "T1" and send.calls, out

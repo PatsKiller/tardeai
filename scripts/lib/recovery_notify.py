@@ -27,10 +27,12 @@ No write to the broker, no credential, no order: this module only builds and sen
 """
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import math
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -86,16 +88,21 @@ def _finite(value: Any) -> Optional[float]:
 
 
 def _raw_threshold_present(policy: dict, key: str) -> bool:
-    """Whether the policy mentions a threshold for this dimension at all (usable or not)."""
+    """Whether the policy CONFIGURES a threshold for this dimension — even as null.
+
+    A present-but-null threshold is not an absent one (cx-openai-2 F2): it means the operator has
+    configured the dimension without a usable number, which must resolve loud, not delete the check.
+    """
     try:
-        for value in (policy.get("materiality", {}).get("t1", {}).get(key),
-                      policy.get("tiers", {}).get("T1", {}).get(key),
-                      policy.get(f"materiality_t1_{key}")):
-            if value is not None:
-                return True
+        materiality = policy.get("materiality", {})
+        tiers = policy.get("tiers", {})
+        if isinstance(materiality, dict) and isinstance(materiality.get("t1"), dict) and key in materiality["t1"]:
+            return True
+        if isinstance(tiers, dict) and isinstance(tiers.get("T1"), dict) and key in tiers["T1"]:
+            return True
+        return f"materiality_t1_{key}" in policy
     except (AttributeError, TypeError):
-        pass
-    return False
+        return False
 
 
 def _threshold(policy: dict, key: str) -> Optional[float]:
@@ -196,6 +203,32 @@ def case_key_for(case: dict) -> str:
     return str(case.get("case_id") or case.get("case_key") or f"{symbol}:{account}:{cluster}")
 
 
+def case_token_for(case_key: str) -> str:
+    """A lossless, URL/base64-safe wire form of the case key.
+
+    The message is parsed back by the router; a plain-id regex truncates anything outside its
+    character class, and two ids that differ only in those characters would collide. ``v1:`` +
+    url-safe base64 round-trips ANY key (cx-openai-2 F3, encoding half).
+    """
+    raw = base64.urlsafe_b64encode(str(case_key).encode("utf-8")).decode("ascii").rstrip("=")
+    return "v1:" + raw
+
+
+def parse_case_token(text: str) -> Optional[str]:
+    """The case key carried by a recovery message, or None. Handles v1 tokens and legacy plain ids."""
+    match = re.search(r"case:(v1:)?([A-Za-z0-9_=-]+)", text or "")
+    if not match:
+        return None
+    body = match.group(2)
+    if not match.group(1):
+        return body
+    try:
+        padded = body + "=" * (-len(body) % 4)
+        return base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8")
+    except (ValueError, UnicodeError):
+        return None
+
+
 def build_message(case: dict) -> str:
     """The operator page. First line carries the marker and the stable case key."""
     sym = str(case.get("symbol") or "UNKNOWN").upper()
@@ -203,7 +236,7 @@ def build_message(case: dict) -> str:
     price = case.get("price", case.get("current_price"))
     exit_price = case.get("exit_price", case.get("avg_exit_price"))
     vs_exit = case.get("pct_vs_exit")
-    lines = [f"{RECOVERY_T1_MARKER} Recovery: {sym} · case:{case_key}"]
+    lines = [f"{RECOVERY_T1_MARKER} Recovery: {sym} · case:{case_token_for(case_key)}"]
     facts = []
     if price is not None:
         facts.append(f"now {_money(price)}")
@@ -288,7 +321,7 @@ def notify_recovery_case(case: dict, *, policy: Optional[dict] = None,
             log.warning("batch declined a T1 for a non-floor reason (%s); using the direct P1 send for %s",
                         decision.get("reason"), symbol)
         else:
-            body = batch_text(header=f"{RECOVERY_T1_MARKER} Recovery · case:{case_key_for(case)}", items=[
+            body = batch_text(header=f"{RECOVERY_T1_MARKER} Recovery · case:{case_token_for(case_key_for(case))}", items=[
                 {"title": f"{symbol} is recovering", "detail": message.split("\n", 1)[1].strip() if "\n" in message else "",
                  "next": "Open Home to plan re-entry"}])
             ok = send(body, priority=PRIORITY_P1, dedupe_minutes=0, producer="recovery_notify")

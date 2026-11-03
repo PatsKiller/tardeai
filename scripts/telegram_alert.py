@@ -429,8 +429,18 @@ def _intent_send(message: str, priority: str, send_fn, *, dedupe_minutes: int | 
             _LAST_INTENT_ROUTE.update(route, accepted=True)
             return False
         route = {**route, "decision": "HOLD_UNPERSISTED_DELIVERED", "deliver": True}
-    ok = bool(send_fn())
     marker = getattr(router, "RECOVERY_T1_MARKER", "")
+    try:
+        ok = bool(send_fn())
+    except Exception:
+        # A transport exception must not strand the claim AND block the retry (cx-openai-2 F5a):
+        # release it before re-raising, so the next attempt can page.
+        if marker and marker in message:
+            try:
+                router.recovery_t1_release(message)
+            except Exception:
+                pass
+        raise
     if marker and marker in message:
         # Delivery-owned recovery bound: the claim made by route_intent is consumed only by a
         # confirmed send; a failed attempt releases it so a retry is allowed (cx-openai-2 F5).
@@ -638,16 +648,26 @@ def _legacy_send(
     #
     # The bool contract is unchanged -- >=36 verified boolean callers (182 across 150
     # files by the code's own count) still receive exactly what they received before.
-    delivered = bool(
-        _raw_send_telegram_result(
-            message,
-            targets,
-            reply_markup=reply_markup,
-            thread_id=thread_id,
-            link_preview_options=link_preview_options,
-            **({"reply_to_message_ids": reply_to_message_ids} if reply_to_message_ids else {}),
-        ).get("ok")
-    )
+    try:
+        delivered = bool(
+            _raw_send_telegram_result(
+                message,
+                targets,
+                reply_markup=reply_markup,
+                thread_id=thread_id,
+                link_preview_options=link_preview_options,
+                **({"reply_to_message_ids": reply_to_message_ids} if reply_to_message_ids else {}),
+            ).get("ok")
+        )
+    except Exception:
+        try:
+            import telegram_alert_router as _router_mod
+            marker = getattr(_router_mod, "RECOVERY_T1_MARKER", "")
+            if marker and marker in message:
+                _router_mod.recovery_t1_release(message)
+        except Exception:
+            pass
+        raise
     try:
         import telegram_alert_router as _router_mod
         marker = getattr(_router_mod, "RECOVERY_T1_MARKER", "")

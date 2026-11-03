@@ -25,12 +25,27 @@ _POLICY_PATH = PROJ / "config" / "operator_alert_policy.yaml"
 # router answered P2_DASHBOARD_ONLY + LEGACY_SHADOWED; the operator missed his largest stop-out.
 # The marker is owned by recovery_notify; the literal is only the fallback when that lib is absent.
 try:
-    from scripts.lib.recovery_notify import RECOVERY_T1_MARKER as _RECOVERY_T1_MARKER
+    from scripts.lib.recovery_notify import (
+        RECOVERY_T1_MARKER as _RECOVERY_T1_MARKER,
+        case_token_for as _case_token_for,
+        parse_case_token as _parse_case_token,
+    )
 except ImportError:  # pragma: no cover — scripts/ on sys.path variant
     try:
-        from lib.recovery_notify import RECOVERY_T1_MARKER as _RECOVERY_T1_MARKER  # type: ignore
+        from lib.recovery_notify import (  # type: ignore
+            RECOVERY_T1_MARKER as _RECOVERY_T1_MARKER,
+            case_token_for as _case_token_for,
+            parse_case_token as _parse_case_token,
+        )
     except ImportError:
         _RECOVERY_T1_MARKER = "[[RECOVERY_T1]]"
+
+        def _case_token_for(case_key: str) -> str:  # type: ignore
+            return "v1:" + str(case_key)
+
+        def _parse_case_token(text: str):  # type: ignore
+            match = re.search(r"case:(v1:)?([A-Za-z0-9_=-]+)", text or "")
+            return match.group(2) if match else None
 
 #: The per-case-per-day bound that makes the recovery T1 budget exemption safe (operator ruling,
 #: 2026-11-03): a T1 page is exempt from the daily budget, but at most ONE page per case per day.
@@ -591,8 +606,8 @@ def apply_rate_limit(message: str) -> dict:
 
 
 def _recovery_case_key(message: str) -> str:
-    match = _RECOVERY_CASE_RE.search(message or "")
-    return match.group(1) if match else build_dedupe_key(message)
+    parsed = _parse_case_token(message)
+    return parsed if parsed else build_dedupe_key(message)
 
 
 #: A claim older than this without a delivery is abandoned (crash/timeout) and may be retaken.
@@ -610,17 +625,22 @@ def _recovery_ledger_rows() -> list[dict]:
             row = json.loads(line)
         except ValueError:
             continue
-        if isinstance(row, dict) and row.get("case") and row.get("state") in ("claimed", "delivered"):
+        # `released` is a first-class state: the writer appends it and the reader must see it,
+        # otherwise a released attempt still reads as claimed (cx-openai-2 F8).
+        if isinstance(row, dict) and row.get("case") and row.get("state") in ("claimed", "delivered", "released"):
             rows.append(row)
     return rows
 
 
 def _recovery_state(day: str, key: str) -> str:
-    """Latest durable state for this case-day: delivered | claimed | released | absent."""
+    """State for this case-day. DELIVERED is terminal: no later row can un-deliver it (F5b)."""
     state = "absent"
     for row in _recovery_ledger_rows():
-        if row.get("day") == day and row.get("case") == key:
-            state = row["state"]
+        if row.get("day") != day or row.get("case") != key:
+            continue
+        if row["state"] == "delivered":
+            return "delivered"
+        state = row["state"]
     return state
 
 
@@ -637,8 +657,10 @@ def _recovery_append(day: str, key: str, state: str) -> None:
 
 
 def _recovery_claim_lock(day: str, key: str) -> Path:
-    safe = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in key)[:80]
-    return _RECOVERY_T1_PAGE_PATH.parent / f".recovery_t1_claim.{day}.{safe}.lock"
+    # A HASH of the case key, never a sanitised rendering: two distinct ids that both reduce to
+    # "a_b" (or that share an 80-char prefix) must not share a lock (cx-openai-2 F3 encoding half).
+    digest = hashlib.sha256(f"{day}\x00{key}".encode("utf-8")).hexdigest()[:32]
+    return _RECOVERY_T1_PAGE_PATH.parent / f".recovery_t1_claim.{day}.{digest}.lock"
 
 
 def recovery_t1_state(message: str) -> str:
@@ -691,9 +713,11 @@ def recovery_t1_mark_delivered(message: str) -> None:
 
 
 def recovery_t1_release(message: str) -> None:
-    """A failed attempt releases the claim: the day is not consumed and a retry is allowed."""
+    """A failed attempt releases the claim — unless another process already DELIVERED it (F5b)."""
     day = _budget_day()
     key = _recovery_case_key(message)
+    if _recovery_state(day, key) == "delivered":
+        return  # delivered is terminal; a stale resumer must not re-open the day
     _recovery_append(day, key, "released")
     try:
         _recovery_claim_lock(day, key).unlink()
@@ -711,7 +735,9 @@ def _recovery_exemptions_for(message: str) -> list[str]:
     if _GO_PATTERN.search(message) and _hourly_counts.get(f"go_{hour_key}", 0) >= int(
             rules.get("max_trade_ai_live_alerts_per_hour", 3)):
         bypassed.append("rate_limit")
-    if _budget_count_today() >= DAILY_SEND_BUDGET:
+    if not _ops_exempt(message) and _budget_count_today() >= DAILY_SEND_BUDGET:
+        # The budget gate never applies to ops-exempt messages (stop/risk/auth), so naming it as a
+        # bypass for one would be a false exemption (cx-openai-2 F6).
         bypassed.append("daily_budget")
     return bypassed
 
