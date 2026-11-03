@@ -100,7 +100,12 @@ export interface ReentryStages {
   stage1?: { met: number; of: number; conditions: StageCond[] }; stage2?: { met: boolean; conditions: StageCond[] }; error?: string
 }
 export interface WashSale { state: 'occurred' | 'window_open'; loss_sale_date?: string; until?: string; rebuy_date?: string; rebuy_price?: number | null; account_label?: string; deferred_loss_usd?: number | null }
-export interface ReentryCard { symbol: string; exit_date: string; exit_price?: number | null; status?: string; conditions?: StageCond[]; stages?: ReentryStages | null; wash_sale?: WashSale | null; look_through?: { groups?: Record<string, number>; basis?: string | null } | null }
+export interface ReentryCurrentQuote {
+  status?: string; price?: number | null; source?: string; session?: string; session_date?: string
+  expected_session_date?: string; as_of?: string | null; basis?: string; reason?: string | null; stale?: boolean
+  pct_vs_exit?: number | null; pct_vs_sma20?: number | null
+}
+export interface ReentryCard { current_quote?: ReentryCurrentQuote | null; symbol: string; exit_date: string; exit_price?: number | null; status?: string; conditions?: StageCond[]; stages?: ReentryStages | null; wash_sale?: WashSale | null; look_through?: { groups?: Record<string, number>; basis?: string | null } | null }
 export interface ReentryDetail { exit_account_label?: string | null; held_elsewhere_labels?: string[]; wash_sale?: WashSale | null }
 
 export const ACTIONABLE: readonly Tier[] = ['ORANGE', 'RED'] as const
@@ -608,18 +613,34 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
     const ltLine = top3.length
       ? `look-through: ${top3.map(([k, v]) => `${heat.find(h => h.key === k)?.label ?? k} ${Math.round(v * 100)}%`).join(' · ')}${rest > 0.01 ? ` · other ${Math.round(rest * 100)}%` : ''}${c.look_through?.basis ? ` (${c.look_through.basis})` : ''}`
       : 'look-through: not measured'
-    const ma = st.pct_vs_sma20 != null ? `${fmtSignedPct(st.pct_vs_sma20)} vs 20-day` : st.anchored_vwap != null ? 'short history: anchored VWAP' : ''
+    const quote = c.current_quote
+    const zoned = (value: unknown): number => typeof value === 'string' && /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? Date.parse(value) : NaN
+    const quoteAt = zoned(quote?.as_of), evaluatedAt = zoned(mr.as_of)
+    const quoteKnown = quote?.status === 'available' && !quote.stale && !mr.stale
+      && typeof quote.price === 'number' && Number.isFinite(quote.price) && quote.price > 0
+      && quote.source === 'market_quotes:alpaca' && quote.session === 'regular'
+      && !!quote.session_date && quote.session_date === quote.expected_session_date
+      && Number.isFinite(quoteAt) && Number.isFinite(evaluatedAt) && quoteAt <= evaluatedAt
+    const finite = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null
+    const price = quoteKnown ? quote!.price : null
+    const vsExit = quoteKnown ? finite(quote!.pct_vs_exit) : null
+    const vsMa = quoteKnown ? finite(quote!.pct_vs_sma20) : null
+    const ma = vsMa != null ? `${fmtSignedPct(vsMa)} vs confirmed 20-day` : ''
+    const priceEvidence = quoteKnown
+      ? `regular-session quote · ${shortTime(quote!.as_of)} · ${quote!.source}`
+      : `${quote?.stale || mr.stale || quote?.status === 'stale' ? 'Price stale' : 'Price unavailable'} · canonical regular-session quote not measured`
     return {
       symbol: sym,
       head: `exit ${fmtPrice(c.exit_price ?? st.exit_price)} · ${shortDay(c.exit_date)} · ${det.exit_account_label ?? 'one account'}${held}`,
-      now: fmtPrice(st.last_close), vsExit: fmtSignedPct(st.pct_vs_exit), vsExitNeg: (st.pct_vs_exit ?? 0) < 0, vsMa: ma,
+      now: quoteKnown ? fmtPrice(price) : (quote?.stale || mr.stale || quote?.status === 'stale' ? 'stale' : 'unavailable'),
+      vsExit: fmtSignedPct(vsExit), vsExitNeg: (vsExit ?? 0) < 0, vsMa: ma,
       trend: st.trend === 'up' ? '↑' : st.trend === 'down' ? '↓' : st.trend === 'flat' ? '→' : '',
       verdict: st.verdict ?? 'Still falling', verdictTone: VERDICT_TONE[st.verdict ?? 'Still falling'] ?? 'neutral',
       stage1: `${st.stage1?.met ?? 0} of ${st.stage1?.of ?? st.stage1?.conditions?.length ?? 0}`,
       waiting: unmet1.length ? unmet1.join(', ') : 'all met',
       invalidates: fmtPrice(st.invalidation_level),
       stage2: st.stage2?.met ? 'met' : unmet2.length ? unmet2.join(' or ') : 'not measured',
-      wash, earnings, lookThrough: ltLine,
+      wash, earnings, lookThrough: `${priceEvidence} · ${ltLine}${st.last_date ? ` · stage closes through ${shortDay(st.last_date)}` : ''}`,
     }
   })
   const firstOld = cards.filter(([, c]) => !isRecent(c))

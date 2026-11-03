@@ -187,6 +187,26 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
   assert.equal(shadowMarker(carriedSent), 'CARRIED · informational card sent (P3), no page')
   const carriedNone = unwrapMarketRisk({ ok: true, data: { ...base, mode: 'live', carried_only: true, alerts: { sends: 0, priorities: [] } } })
   assert.equal(shadowMarker(carriedNone), CARRIED_MARKER)
+  assert.equal(r.now, 'unavailable', 'legacy confirmed Friday close never masquerades as Now')
+  assert.equal(r.vsExit, '—', 'missing current quote cannot borrow Friday percent')
+  const currentQuote = { status: 'available', price: 12.34, source: 'market_quotes:alpaca', session: 'regular',
+    session_date: '2031-03-10', expected_session_date: '2031-03-10', as_of: '2031-03-10T20:00:59.999999Z',
+    pct_vs_exit: 23.4, pct_vs_sma20: 10 }
+  const quoteRow = (quote: any) => actionableModel(unwrapMarketRisk({ ...base, as_of: '2031-03-11T00:15:00Z',
+    reentry_watch: { NEWX: { ...base.reentry_watch.NEWX, current_quote: quote } } }))!.reentry[0]
+  const freshRow = quoteRow(currentQuote)
+  assert.equal(freshRow.now, '$12.34', 'Monday after-close quote wins display over confirmed Friday9.50')
+  assert.equal(freshRow.vsExit, '+23.4%', 'current quote percent is kept coherent')
+  assert.equal(freshRow.verdict, 'Still falling', 'display quote never changes the confirmed stage verdict')
+  assert.match(freshRow.lookThrough, /regular-session quote.*ET.*market_quotes:alpaca/)
+  for (const quote of [null, { ...currentQuote, price: Infinity }, { ...currentQuote, price: '12.34' },
+    { ...currentQuote, session_date: '2031-03-07' }, { ...currentQuote, as_of: '2031-03-11T01:00:00Z' },
+    { ...currentQuote, as_of: '2031-03-10T16:00:00' }, { ...currentQuote, session: 'premarket' }]) {
+    assert.equal(quoteRow(quote).now, 'unavailable', 'invalid quote never falls back to Friday')
+    assert.equal(quoteRow(quote).vsExit, '—')
+  }
+  assert.equal(quoteRow({ ...currentQuote, status: 'stale' }).now, 'stale')
+  assert.equal(quoteRow({ ...currentQuote, stale: true }).now, 'stale')
   console.log('marketRisk.test v005 actionable: ok')
 }
 {

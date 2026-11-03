@@ -64,6 +64,65 @@ def make(routes):
 
 QCOLS = ["symbol", "price", "prev_close", "fetched_at"]
 
+@pytest.mark.parametrize("hour,minute,second,microsecond,eligible", [
+    (9, 29, 59, 999999, False), (9, 30, 0, 0, True), (15, 59, 59, 0, True),
+    (16, 0, 0, 0, True), (16, 0, 59, 999999, True), (16, 1, 0, 0, False),
+])
+def test_current_regular_quote_keeps_the_full_session_after_close(hour, minute, second, microsecond, eligible):
+    stamp = et(2026, 11, 2, hour, minute).replace(second=second, microsecond=microsecond)
+    row = {"symbol": "ZZQ", "source": "alpaca", "price": Decimal("12.34"), "fetched_at": stamp}
+    r, conn = make({"FROM market_quotes WHERE source": (["symbol", "source", "price", "fetched_at"], [row])})
+    quote = r.regular_session_quotes(["ZZQ"], end=et(2026, 11, 2, 20, 15))["ZZQ"]
+    assert quote["status"] == ("available" if eligible else "unavailable")
+    assert quote["price"] == (12.34 if eligible else None)
+    assert quote["session_date"] == quote["expected_session_date"] == "2026-11-02"
+    assert quote["source"] == "market_quotes:alpaca" and quote["session"] == "regular"
+    assert conn.readonly is True and len(conn.log) == 1
+    if eligible:
+        assert quote["as_of"].endswith("Z")
+    sql, params = conn.log[0]
+    assert "fetched_at <= %s" in sql and params[0] == "alpaca"
+
+
+def test_current_regular_quote_selects_monday_not_friday_premarket_or_later_prints():
+    rows = [
+        {"symbol": "ZZQ", "source": "alpaca", "price": 9.0, "fetched_at": et(2026, 10, 30, 16)},
+        {"symbol": "ZZQ", "source": "alpaca", "price": 9.0, "fetched_at": et(2026, 11, 2, 7)},
+        {"symbol": "ZZQ", "source": "alpaca", "price": 12.0, "fetched_at": et(2026, 11, 2, 16)},
+        {"symbol": "ZZQ", "source": "alpaca", "price": 13.0, "fetched_at": et(2026, 11, 2, 17)},
+    ]
+    r, _ = make({"FROM market_quotes WHERE source": (["symbol", "source", "price", "fetched_at"], list(reversed(rows)))})
+    out = r.regular_session_quotes(["ZZQ", "ZZMISSING"], end=et(2026, 11, 2, 20))
+    assert out["ZZQ"]["price"] == 12.0 and out["ZZQ"]["as_of"] == "2026-11-02T21:00:00Z"
+    assert out["ZZMISSING"]["status"] == "unavailable" and out["ZZMISSING"]["price"] is None
+
+
+@pytest.mark.parametrize("day,utc_hour", [(datetime(2026, 11, 2).date(), 14), (datetime(2031, 3, 10).date(), 13)])
+def test_current_regular_quote_normalizes_dst_and_utc(day, utc_hour):
+    stamp = datetime(day.year, day.month, day.day, utc_hour, 30, tzinfo=timezone.utc)
+    row = {"symbol": "ZZQ", "source": "alpaca", "price": 12.0, "fetched_at": stamp}
+    r, _ = make({"FROM market_quotes WHERE source": (["symbol", "source", "price", "fetched_at"], [row])})
+    local_end = datetime(day.year, day.month, day.day, 20, 15, tzinfo=ET)
+    assert r.regular_session_quotes(["ZZQ"], end=local_end)["ZZQ"] == r.regular_session_quotes(["ZZQ"], end=local_end.astimezone(timezone.utc))["ZZQ"]
+    assert r.regular_session_quotes(["ZZQ"], end=local_end)["ZZQ"]["status"] == "available"
+
+
+def test_current_regular_quote_future_naive_invalid_and_early_close_fail_closed():
+    day = (2026, 11, 27)
+    rows = [
+        {"symbol": "ZZQ", "source": "alpaca", "price": 12.0, "fetched_at": et(*day, 13).replace(second=59, microsecond=999999)},
+        {"symbol": "ZZQ", "source": "alpaca", "price": 99.0, "fetched_at": et(*day, 13, 1)},
+        {"symbol": "ZZQ", "source": "alpaca", "price": float("inf"), "fetched_at": et(*day, 12)},
+        {"symbol": "ZZQ", "source": "finviz", "price": 99.0, "fetched_at": et(*day, 12)},
+        {"symbol": "ZZQ", "source": "alpaca", "price": 99.0, "fetched_at": datetime(*day, 12)},
+    ]
+    r, _ = make({"FROM market_quotes WHERE source": (["symbol", "source", "price", "fetched_at"], rows)})
+    assert r.regular_session_quotes(["ZZQ"], end=et(*day, 18))["ZZQ"]["price"] == 12.0
+    assert r.regular_session_quotes(["ZZQ"], end=et(*day, 10))["ZZQ"]["status"] == "unavailable"
+    with pytest.raises(ValueError):
+        r.regular_session_quotes(["ZZQ"], end=datetime(*day, 18))
+
+
 
 def test_session_is_read_only_before_any_query():
     r, conn = make({})

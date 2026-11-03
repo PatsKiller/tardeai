@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
@@ -36,12 +37,12 @@ from zoneinfo import ZoneInfo
 ET = ZoneInfo("America/New_York")
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 OVERRIDES_PATH = PROJECT_ROOT / "config" / "macro_calendar_overrides.json"
-REGULAR_CLOSE_CUTOFF_ET = time(16, 0, 59)  # last quote at or before this = the newest session's provisional close
+REGULAR_CLOSE_CUTOFF_ET = time(16, 0, 59, 999999)  # last quote at or before this = the newest session's provisional close
 #: A same-day close may only come from the regular session. Without this floor a 07:15 ET pre-market
 #: quote became the day's "close" (2026-11-02: ten symbols, eight repeating Friday's close), shifting
 #: the moving averages and flipping verdicts.
 REGULAR_OPEN_ET = time(9, 30)
-EARLY_CLOSE_ET = time(13, 0, 59)
+EARLY_CLOSE_ET = time(13, 0, 59, 999999)
 
 
 def _same_day_cutoff_et(day: date) -> time:
@@ -178,6 +179,51 @@ class PgReader:
             r["as_of"] = _iso(r["fetched_at"])
             r["fetched_at"] = r["as_of"]
         return rows + self.extended_quotes(symbols, start=start, end=end)
+
+    def regular_session_quotes(self, symbols: Iterable[str], *, end: datetime) -> dict[str, dict[str, Any]]:
+        """Latest eligible stored regular quote per symbol, independently of confirmed stage bars.
+
+        A quote observation is never promoted to confirmed OHLCV. After the close,
+        only this session's09:30-through-closing-minute prints qualify; older days
+        and extended-session prices cannot masquerade as today's regular price.
+        """
+        from scripts.lib.market_risk import sessions as market_sessions
+
+        end = _aware(end).astimezone(timezone.utc)
+        local = end.astimezone(ET)
+        day = local.date()
+        if not market_sessions.is_trading_day(day) or local.time() < REGULAR_OPEN_ET:
+            day = market_sessions.last_closed_session(end)
+        start = datetime.combine(day, REGULAR_OPEN_ET, ET).astimezone(timezone.utc)
+        until = min(end, datetime.combine(day, _same_day_cutoff_et(day), ET).astimezone(timezone.utc))
+        syms = sorted({str(s).strip().upper() for s in symbols if str(s).strip()})
+        out = {sym: {"schema": "ReentryRegularQuote@v1", "status": "unavailable", "price": None,
+                     "source": "market_quotes:alpaca", "session": "regular", "session_date": day.isoformat(),
+                     "expected_session_date": day.isoformat(), "as_of": None,
+                     "basis": "latest_regular_session_quote", "reason": "NO_REGULAR_QUOTE_FOR_SESSION"}
+               for sym in syms}
+        if not syms:
+            return out
+        rows = self._rows(
+            "SELECT symbol, source, price, fetched_at FROM market_quotes WHERE source = %s AND symbol = ANY(%s) "
+            "AND fetched_at >= %s AND fetched_at <= %s ORDER BY symbol, fetched_at",
+            [QUOTE_SOURCE_FOR_CLOSES, syms, start, until],
+        )
+        seen: dict[str, datetime] = {}
+        for row in rows:
+            sym, ts, price = str(row.get("symbol") or "").upper(), row.get("fetched_at"), row.get("price")
+            if (sym not in out or row.get("source") != QUOTE_SOURCE_FOR_CLOSES
+                    or not isinstance(ts, datetime) or ts.tzinfo is None
+                    or isinstance(price, bool) or not isinstance(price, (int, float, Decimal))):
+                continue
+            ts = ts.astimezone(timezone.utc)
+            if not start <= ts <= until or not math.isfinite(float(price)) or float(price) <= 0:
+                continue
+            if sym in seen and ts < seen[sym]:
+                continue
+            seen[sym] = ts
+            out[sym].update(status="available", price=float(price), as_of=ts.isoformat().replace("+00:00", "Z"), reason=None)
+        return out
 
     def extended_quotes(self, symbols: Iterable[str], *, start: datetime, end: datetime) -> list[dict[str, Any]]:
         """Pre-market / after-hours / overnight / Sunday futures-open prints from their own store (never market_quotes,
