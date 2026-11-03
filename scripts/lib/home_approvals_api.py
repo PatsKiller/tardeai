@@ -38,10 +38,17 @@ REFUSALS = {
     "STORE_UNAVAILABLE": 503,
     "STORE_ERROR": 500,
     "BAD_REQUEST": 400,
+    "DECISION_IN_PROGRESS": 409,
+    "ALREADY_EXECUTING": 409,
 }
 
 #: A's refusal codes -> this layer's HTTP codes. A owns the decision; B only translates.
 STORE_CODES = {
+    "actor_not_authenticated": "NOT_OPERATOR",
+    "binding_mismatch": "CHANGED",
+    "decision_in_progress": "DECISION_IN_PROGRESS",
+    "already_executing": "ALREADY_EXECUTING",
+    "duplicate_request_id": "NOT_OPEN",
     "approver_is_requester": "SELF_APPROVAL_REFUSED",
     "csrf_required": "CSRF_REFUSED",
     "operator_session_required": "NOT_OPERATOR",
@@ -260,8 +267,16 @@ def _decision_response(record: dict) -> tuple[int, dict]:
     record = record if isinstance(record, dict) else {}
     state = str(record.get("state") or "")
     result = record.get("result") if isinstance(record.get("result"), dict) else {}
-    outcome = "executed" if state == "executed" else "declined" if state == "declined" else (
-        "failed" if state == "failed" or result.get("ok") is False else "uncertain")
+    reported = str(result.get("outcome") or "")
+    if reported in ("refused",):
+        # A refused the action inside decide(): a refusal is not an execution.
+        return 409, {"ok": False, "code": "CHANGED",
+                     "reason": str(result.get("plain") or "The action was refused."), "data": {"outcome": "refused"}}
+    outcome = reported if reported in ("executed", "declined", "failed", "unknown_result") else (
+        "executed" if state == "executed" else "declined" if state == "declined" else (
+            "failed" if state == "failed" or result.get("ok") is False else "uncertain"))
+    if outcome == "unknown_result":
+        outcome = "uncertain"
     data = {"state": state, "outcome": outcome, "decision": record.get("decision"),
             "message": record.get("message"), "result": record.get("result"),
             "receipt": record.get("receipt"), "attempted": result.get("attempted")}
