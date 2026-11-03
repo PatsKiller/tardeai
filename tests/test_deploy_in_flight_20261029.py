@@ -234,7 +234,9 @@ def test_the_default_coordination_reader_really_runs(tmp_path, monkeypatch):
     rows = [{"number": 2211, "title": "t", "url": "u", "headRefOid": HEAD, "headRefName": "wt/x",
              "isDraft": False, "labels": [], "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN"}]
 
-    d = D.build(None, now=NOW, lister=lambda repo, limit: rows)      # coordination=None — the default
+    # This scenario observes the November fixtures after their last recorded event.
+    snapshot_at = datetime(2026, 11, 3, 1, 0, tzinfo=timezone.utc)
+    d = D.build(None, now=snapshot_at, lister=lambda repo, limit: rows)  # production default coordination
 
     assert not any("NameError" in g for g in d["coordination"]["gaps"])
     assert d["coordination"]["status"] == "OK", d["coordination"]["gaps"]
