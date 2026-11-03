@@ -32,6 +32,23 @@ REFUSED = (
     "scripts/lib/llm_consumption.py",
     "scripts/lib/anthropic_routing.py",
     "scripts/telegram_alert.py",
+    # cc2's completeness trace (second review, 2026-11-03): the rest of the model/spend/send path.
+    "config/llm_lane_floors.json",
+    "config/llm_model_registry.json",
+    "scripts/lib/anthropic_transport.py",
+    "scripts/lib/anthropic_credit.py",
+    "scripts/llm_lane.py",
+    "scripts/lib/llm_bridge_route.py",
+    "scripts/lib/llm_lane_reservation.py",
+    "scripts/lib/consumption_run_manual.py",
+    "scripts/lib/bridge_agent_preconditions.py",
+    "scripts/lib/governed_process_routes.py",
+    "scripts/lib/model_chooser.py",
+    "scripts/lib/oauth_lane_status.py",
+    "scripts/lib/llm_model_registry.py",
+    "scripts/lib/provider_cost/emit.py",
+    "scripts/telegram_transport.py",
+    "scripts/telegram_alert_router.py",
 )
 
 #: Entries that already protected the operator-only surface: the guard must not have shrunk to add these.
