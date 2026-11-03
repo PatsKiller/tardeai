@@ -213,6 +213,135 @@ def test_stale_predecessor_without_takeover_link_refuses(mod, tmp_path):
     assert result["reason"] == "current_source_holder_not_released"
 
 
+# --------------------------------------------------------------------------- current source-holder shared scopes
+
+SHARED_INDEX = "docs/INDEX.md"
+SHARED_CONFIG = {"schema": "AgentClaimSharedPaths@v1", "paths": [{"path": SHARED_INDEX}]}
+
+
+def holder_snapshot(mod, tmp_path, *, source_paths, holder_paths, live=True):
+    """Use genuine board records; only the trusted config in the snapshot supplies exemptions."""
+    clock = Clock(NOW if live else T0)
+    board = make_board(tmp_path, clock)
+    author = board.claim(vendor="claude", session=AUTHOR, agent=None, task="synthetic source",
+                         paths=source_paths, head_sha=HEAD)
+    board.release(author["claim_id"], session=AUTHOR, status="done")
+    holder = board.claim(vendor="claude", session="other-source-holder", agent=None,
+                         task="unrelated current custody", paths=holder_paths)
+    clock.at = NOW
+    board.claim(vendor="codex", session=ACTOR_B, agent=None, task="coordinator holder", paths=[COORD])
+    data = build_snapshot(mod, docs(board), author_claim_id=author["claim_id"])
+    data["pr"].update(files=source_paths, changedFiles=len(source_paths))
+    data["claim_shared_paths_config"] = SHARED_CONFIG
+    return board, data, holder
+
+
+@pytest.mark.parametrize("live", [True, False], ids=["live", "unresolved"])
+@pytest.mark.parametrize("source_paths,holder_paths", [
+    ([SHARED_INDEX], [SHARED_INDEX]),
+    ([SHARED_INDEX], ["./docs/INDEX.md/"]),
+    ([SHARED_INDEX], ["docs/"]),
+    ([SHARED_INDEX], ["docs/**"]),
+    (["docs"], [SHARED_INDEX]),  # board semantics: either exact shared side removes the pair
+])
+def test_shared_additive_current_holders_do_not_block_released_authors(
+        mod, tmp_path, live, source_paths, holder_paths):
+    board, data, holder = holder_snapshot(mod, tmp_path, source_paths=source_paths,
+                                         holder_paths=holder_paths, live=live)
+    before = {p.name: p.read_bytes() for p in board.dir.glob("*.json")}
+    states = mod.effective_claim_states(data["claims"], board, SHARED_CONFIG)
+    assert states[holder["claim_id"]] == ("live" if live else "unresolved")
+    result = mod.evaluate(data, now=NOW, claim_board=board)
+    assert result["ok"] is True, result
+    assert result["reason"] == "qualified"
+    assert {p.name: p.read_bytes() for p in board.dir.glob("*.json")} == before
+
+
+@pytest.mark.parametrize("live", [True, False], ids=["live", "unresolved"])
+@pytest.mark.parametrize("holder_paths", [[SOURCE], ["./scripts/synthetic_change.py/"],
+                                          ["scripts/"], ["scripts/**"]])
+def test_exclusive_current_holders_still_block(mod, tmp_path, live, holder_paths):
+    board, data, _ = holder_snapshot(mod, tmp_path, source_paths=[SOURCE],
+                                    holder_paths=holder_paths, live=live)
+    result = mod.evaluate(data, now=NOW, claim_board=board)
+    assert result["ok"] is False
+    assert result["reason"] == "current_source_holder_not_released"
+
+
+@pytest.mark.parametrize("live", [True, False], ids=["live", "unresolved"])
+def test_exclusive_holder_keeps_existing_cross_directory_fnmatch_refusal(mod, tmp_path, live):
+    source = "scripts/nested/synthetic_change.py"
+    scope = "scripts/*.py"
+    assert mod.overlaps(source, scope) is True
+    board, data, _ = holder_snapshot(mod, tmp_path, source_paths=[source], holder_paths=[scope], live=live)
+    result = mod.evaluate(data, now=NOW, claim_board=board)
+    assert result["ok"] is False
+    assert result["reason"] == "current_source_holder_not_released"
+
+
+@pytest.mark.parametrize("live", [True, False], ids=["live", "unresolved"])
+def test_a_shared_path_does_not_waive_a_mixed_holders_exclusive_source(mod, tmp_path, live):
+    board, data, _ = holder_snapshot(mod, tmp_path, source_paths=[SHARED_INDEX, SOURCE],
+                                    holder_paths=[SHARED_INDEX, SOURCE], live=live)
+    result = mod.evaluate(data, now=NOW, claim_board=board)
+    assert result["ok"] is False
+    assert result["reason"] == "current_source_holder_not_released"
+
+
+@pytest.mark.parametrize("config", [None, {},
+    {"schema": "AgentClaimSharedPaths@v1", "paths": [{"path": "docs/**"}]},
+])
+def test_current_holder_shared_exemption_defaults_exclusive(mod, tmp_path, config):
+    board, data, _ = holder_snapshot(mod, tmp_path, source_paths=[SHARED_INDEX],
+                                    holder_paths=[SHARED_INDEX])
+    data["claim_shared_paths_config"] = config
+    result = mod.evaluate(data, now=NOW, claim_board=board)
+    assert result["ok"] is False
+    assert result["reason"] == "current_source_holder_not_released"
+
+
+def test_current_holder_cannot_get_shared_authority_from_environment_or_dirty_config(
+        mod, tmp_path, monkeypatch):
+    dirty_root = tmp_path / "dirty-main"
+    (dirty_root / "config").mkdir(parents=True)
+    config = dirty_root / "config/agent_claim_shared_paths.json"
+    config.write_text(json.dumps({"schema": "AgentClaimSharedPaths@v1", "paths": [{"path": SOURCE}]}))
+    monkeypatch.setenv("TRADEAI_AGENT_CLAIM_SHARED_PATHS", str(config))
+    monkeypatch.setattr(mod, "TRUSTED_REPO", dirty_root)
+    board, data, _ = holder_snapshot(mod, tmp_path, source_paths=[SOURCE], holder_paths=[SOURCE])
+    result = mod.evaluate(data, now=NOW, claim_board=board)
+    assert result["ok"] is False
+    assert result["reason"] == "current_source_holder_not_released"
+
+
+@pytest.mark.parametrize("released,head", [(False, HEAD), (True, "e" * 40)])
+def test_shared_source_author_must_still_be_released_and_bound_to_source(mod, tmp_path, released, head):
+    board = make_board(tmp_path, Clock(NOW))
+    author = board.claim(vendor="claude", session=AUTHOR, agent=None, task="actual source author",
+                         paths=[SHARED_INDEX], head_sha=head)
+    if released:
+        board.release(author["claim_id"], session=AUTHOR, status="done")
+    board.claim(vendor="codex", session=ACTOR_B, agent=None, task="coordinator holder", paths=[COORD])
+    data = build_snapshot(mod, docs(board), author_claim_id=author["claim_id"])
+    data["pr"].update(files=[SHARED_INDEX], changedFiles=1)
+    data["claim_shared_paths_config"] = SHARED_CONFIG
+    result = mod.evaluate(data, now=NOW, claim_board=board)
+    assert result["ok"] is False
+    assert result["reason"] == "author_holder_release_unproven"
+
+
+def test_shared_source_still_needs_complete_actual_author_coverage(mod, tmp_path):
+    board = make_board(tmp_path, Clock(NOW))
+    author_id = seed_author(board)
+    board.claim(vendor="codex", session=ACTOR_B, agent=None, task="coordinator holder", paths=[COORD])
+    data = build_snapshot(mod, docs(board), author_claim_id=author_id)
+    data["pr"].update(files=[SOURCE, SHARED_INDEX], changedFiles=2)
+    data["claim_shared_paths_config"] = SHARED_CONFIG
+    result = mod.evaluate(data, now=NOW, claim_board=board)
+    assert result["ok"] is False
+    assert result["reason"] == "source_author_claim_coverage_incomplete"
+
+
 # --------------------------------------------------------------------------- malformed takeover graphs
 
 
@@ -649,45 +778,18 @@ def tree_state(root, *, exclude=None):
     return out
 
 
-def _git_tracked_paths(root):
-    """Repo-relative paths of every tracked file, from git. Derived, never hand-listed."""
-    try:
-        listing = subprocess.run(["git", "-C", str(root), "ls-files", "-z"],
-                                 capture_output=True, check=True)
-    except (OSError, subprocess.SubprocessError):
-        return ()
-    return tuple(rel for rel in listing.stdout.decode("utf-8").split("\0") if rel)
-
-
-#: Resolved at import, before any test's process-forbidding fixture is installed.
-TRACKED_PATHS = _git_tracked_paths(ROOT)
-
-
-def repo_tracked_state(root, paths=None):
-    """Content of the watched files under ``root``, keyed by repo-relative path.
-
-    The read-only proof watches what ``evaluate()`` is allowed to touch: the repository's committed
-    content. The list is derived from ``git ls-files`` at import (not hand-maintained), so it cannot
-    rot as files move and cannot silently become empty.
-
-    Why not the whole checkout: the hardening shard runs gates in PARALLEL in one checkout, so a
-    whole-tree snapshot also fails on untracked runtime state another gate writes (the same defect
-    fixed for the CI observer by serialising). Scoping the watch set keeps the parallelism and makes
-    the assertion say what it means — ``evaluate`` wrote nothing it was allowed to write.
-    """
-    root = Path(root)
-    out = {}
-    for rel in (TRACKED_PATHS if paths is None else paths):
-        path = root / rel
-        if not path.is_file():
-            out[rel] = ("missing",)  # a disappearance during the call is still a change
-            continue
-        st = path.stat()
-        out[rel] = (st.st_size, st.st_mtime_ns, hashlib.sha256(path.read_bytes()).hexdigest())
-    return out
-
-
 def test_evaluate_is_readonly_and_uses_only_read_apis(mod, tmp_path, monkeypatch):
+    """No file in the checkout — tracked OR untracked — may change while ``evaluate`` runs.
+
+    The watch is the DYNAMIC whole tree (size, mtime_ns and SHA per path), not a list resolved from
+    ``git ls-files`` at import: a tracked-only list cannot see a new untracked file, and creating one
+    is exactly the kind of write a read-only proof exists to catch (codex ruling 2026-11-03, restoring
+    the original read-only contract).
+
+    Only this test's own fixture directory is excluded — ``tmp_path`` is the isolated state directory
+    the caller passes in, and its claim-dir contents have their own exact snapshot below. Every other
+    path under ``ROOT``, including new untracked files, stays watched.
+    """
     clock = Clock(T0)
     board = make_board(tmp_path, clock)
     author_id = seed_author(board)
@@ -698,7 +800,10 @@ def test_evaluate_is_readonly_and_uses_only_read_apis(mod, tmp_path, monkeypatch
     data = build_snapshot(mod, docs(board), author_claim_id=author_id)
 
     from scripts.lib import agent_claim_board as AB
-    scratch_before = repo_tracked_state(ROOT)
+    fixture_dir = Path(tmp_path).resolve()
+    scratch_before = tree_state(ROOT, exclude=fixture_dir)
+    # A read-only proof over an empty watch set proves nothing; fail loudly rather than pass by emptiness.
+    assert scratch_before, "the read-only proof must watch a nonempty checkout"
     claims_before = tree_state(board.dir)
 
     def forbidden(*args, **kwargs):
@@ -715,25 +820,38 @@ def test_evaluate_is_readonly_and_uses_only_read_apis(mod, tmp_path, monkeypatch
     result = mod.evaluate(data, now=NOW, claim_board=board)
     assert result["ok"] is True, result
     assert tree_state(board.dir) == claims_before
-    assert repo_tracked_state(ROOT) == scratch_before
+    assert tree_state(ROOT, exclude=fixture_dir) == scratch_before
 
 
-def test_the_readonly_watch_set_is_derived_nonempty_and_bites(tmp_path):
-    """A read-only proof that watches an EMPTY set proves nothing (the #2561 lesson).
+def test_the_readonly_watch_set_is_dynamic_and_sees_untracked_creation(tmp_path):
+    """A read-only proof that watches an EMPTY set, or a fixed tracked list, proves nothing.
 
-    Two properties, both required: the real watch set is derived from the repository and is not
-    empty, and a write inside that set is actually detected by the comparison.
+    Required properties, each asserted: the watch set of a real tree is nonempty; a content change, an
+    mtime-only change and a disappearance are all detected; and a NEW file the git index never saw is
+    detected too — the exact case a ``git ls-files``-derived list could not see.
     """
-    assert len(TRACKED_PATHS) > 100, "the read-only proof must watch the repository, not an empty set"
-    assert str(Path(__file__).resolve().relative_to(ROOT)) in TRACKED_PATHS, "this test file must be watched"
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    (checkout / "app.py").write_text("one\n", encoding="utf-8")
+    before = tree_state(checkout)
+    assert before, "the watch set must be nonempty"
+    assert str(checkout / "app.py") in before
 
-    (tmp_path / "app.py").write_text("one\n", encoding="utf-8")
-    before = repo_tracked_state(tmp_path, ("app.py",))
-    assert before == {"app.py": (before["app.py"][0], before["app.py"][1], before["app.py"][2])}
-    (tmp_path / "app.py").write_text("two\n", encoding="utf-8")
-    assert repo_tracked_state(tmp_path, ("app.py",)) != before, "a write must fail the comparison"
-    (tmp_path / "app.py").unlink()
-    assert repo_tracked_state(tmp_path, ("app.py",)) == {"app.py": ("missing",)}
+    (checkout / "app.py").write_text("two\n", encoding="utf-8")
+    assert tree_state(checkout) != before, "a content write must fail the comparison"
+
+    before = tree_state(checkout)
+    st = (checkout / "app.py").stat()
+    os.utime(checkout / "app.py", ns=(st.st_atime_ns, st.st_mtime_ns - 1_000_000_000))
+    assert tree_state(checkout) != before, "an mtime-only change must fail the comparison"
+
+    before = tree_state(checkout)
+    (checkout / "untracked_new.py").write_text("new\n", encoding="utf-8")
+    assert tree_state(checkout) != before, "a NEW untracked file must fail the comparison"
+
+    before = tree_state(checkout)
+    (checkout / "app.py").unlink()
+    assert tree_state(checkout) != before, "a disappearance must fail the comparison"
 
 
 # -- claim-directory contents: one known auxiliary schema is skipped, anything else still refuses -----------------
