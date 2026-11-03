@@ -86,11 +86,6 @@ def _waiting_with_age(records, now) -> list[dict]:
     return out
 
 
-def waiting_with_age(root, *, now=None) -> list[dict]:
-    """Same list the brief renders, for any other surface that needs the clock."""
-    return digest(root, now=now)["waiting_on_operator"]
-
-
 def age_text(hours) -> str:
     """How long, in words short enough for a Telegram line. Never a fabricated zero."""
     if hours is None:
