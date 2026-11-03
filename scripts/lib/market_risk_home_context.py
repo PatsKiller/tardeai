@@ -73,6 +73,14 @@ def distance(current: float | None, reference: Any) -> dict:
     }
 
 
+def expected_regular_session_date(now: datetime) -> str:
+    """Canonical calendar target, independent of reader availability or cache claims."""
+    local = now.astimezone(sessions.ET)
+    if sessions.is_trading_day(local.date()) and local.time() >= sessions.REGULAR_OPEN:
+        return local.date().isoformat()
+    return sessions.last_closed_session(now).isoformat()
+
+
 def active_extended_start(now: datetime) -> datetime | None:
     local = now.astimezone(sessions.ET)
     label = sessions.session_label(now)
@@ -309,20 +317,12 @@ def build(
         card = reentry.get(symbol) if isinstance(reentry.get(symbol), dict) else {}
         current = card.get("current_quote") if isinstance(card.get("current_quote"), dict) else {}
         candidates = [*(quotes or []), *([current] if current else [])]
-        fresh = [
-            row
-            for row in (quotes or [])
-            if isinstance(row, dict)
-            and row.get("symbol") == symbol
-            and row.get("observed_at") == iso(now)
-            and row.get("expected_session_date")
-        ]
-        expected_date = fresh[0]["expected_session_date"] if len(fresh) == 1 else current.get("expected_session_date")
+        expected_date = expected_regular_session_date(now)
         extended_start = active_extended_start(now)
 
         def applicable(row: dict) -> bool:
             if row.get("session") in ("regular", "regular_close"):
-                return not expected_date or row.get("session_date") == expected_date
+                return row.get("session_date") == expected_date
             at = stamp(row.get("as_of"))
             return (
                 extended_start is not None
@@ -351,7 +351,11 @@ def build(
             and str(row.get("symbol") or "").upper() == symbol
             and row.get("status") == "unavailable"
         ]
-        quote = max(rows, key=lambda row: stamp(row["as_of"]), default=unavailable[0] if unavailable else {})
+        absent = {
+            "reason": "No accepted canonical quote for the calendar-selected session",
+            "source": "canonical_stored_quote",
+        }
+        quote = max(rows, key=lambda row: stamp(row["as_of"]), default=unavailable[0] if unavailable else absent)
         price = number(quote.get("price"))
         bars = [row for row in (daily_bars or []) if str(row.get("symbol") or "").upper() == symbol]
         bars = sorted(bars, key=lambda row: str(row.get("date") or ""))
@@ -362,7 +366,13 @@ def build(
             previous = number(quote.get("prev_close"))
         source = str(quote.get("source") or "canonical_stored_quote")
         qclock = quote.get("as_of")
-        quote_fact = fact(price, as_of=qclock, source=source, now=now, reason=quote.get("reason"))
+        quote_reason = quote.get("reason")
+        if quote.get("status") not in (None, "available"):
+            quote_reason = quote_reason or "Canonical quote status is unavailable"
+        quote_fact = fact(price, as_of=qclock, source=source, now=now, reason=quote_reason)
+        accepted = quote_fact["state"] == "measured"
+        price = number(quote_fact["value"]) if accepted else None
+        rejected_reason = None if accepted else quote_fact["reason"]
         quote_fact.update(
             session=quote.get("session"),
             session_date=quote.get("session_date"),
@@ -413,7 +423,7 @@ def build(
             if len(volumes) == 20 and all(value is not None and value >= 0 for value in volumes)
             else None
         )
-        volume = number(quote.get("volume"))
+        volume = number(quote.get("volume")) if accepted else None
         ratio = volume / average if volume is not None and volume >= 0 and average and average > 0 else None
         canonical_cio = (cio_stances or {}).get(symbol)
         canonical_cio = canonical_cio if isinstance(canonical_cio, dict) else {}
@@ -431,16 +441,19 @@ def build(
         per_symbol[symbol] = {
             "quote": quote_fact,
             "day_change": {
-                **fact(day, as_of=qclock, source=source + "+previous_session_close", now=now),
+                **fact(day, as_of=qclock, source=source + "+previous_session_close", now=now, reason=rejected_reason),
                 "reference_session_date": prior_session,
                 "basis": "previous completed NYSE session close",
             },
-            "since_exit": fact(since, as_of=qclock, source="reentry_watch.exit_price+" + source, now=now),
+            "since_exit": fact(
+                since, as_of=qclock, source="reentry_watch.exit_price+" + source, now=now, reason=rejected_reason
+            ),
             "analysis_references": fact(
-                references if stages else None,
+                references if stages and accepted else None,
                 as_of=card.get("as_of") or projection.get("as_of"),
                 source="reentry_watch.stages",
                 now=now,
+                reason=rejected_reason,
             ),
             "cio": fact(
                 cio_value if canonical_cio.get("stance") is not None else None,
@@ -478,6 +491,7 @@ def build(
                 as_of=qclock,
                 source="canonical_quote+daily_bars.volume",
                 now=now,
+                reason=rejected_reason,
             ),
             "headlines": fact(
                 news.get("rows") if isinstance(news, dict) else None,
