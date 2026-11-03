@@ -115,7 +115,9 @@ def test_the_registry_signal_is_the_receipt_json_key(tmp_path):
     cfg = json.loads((ROOT / "config" / "lane_registry.json").read_text())
     row = next(r for r in (cfg.get("lanes") or []) if r.get("lane_id") == "ask-alerts")
     signal = row["output_signal"]
-    assert signal == {"kind": "json_key", "path": "data/runtime/ask-alerts_last.json", "key": "ok_at"}, signal
+    # The row is the generator's fixed point, so it also carries evidence/evidence_ref; the signal triple is:
+    assert {k: signal.get(k) for k in ("kind", "path", "key")} == {
+        "kind": "json_key", "path": "data/runtime/ask-alerts_last.json", "key": "ok_at"}, signal
     assert signal["kind"] != "file_mtime" and signal["path"] != "data/runtime/ask_alerts.json"
 
     from lib import lane_last_receipt as lr  # noqa: E402
@@ -205,3 +207,90 @@ def test_a_confirmed_hit_is_enqueued_and_the_alert_is_triggered(tmp_path, lane, 
     assert doc["status"] == "ok" and doc["summary"]["fired"] == 1, doc
     assert len(saved) == 1 and saved[0]["parsed_payload"]["alert_id"] == "a1"
     assert json.loads(lane.STORE.read_text())["alerts"][0]["status"] == "triggered"
+
+
+# ---------------------------------------------------------------- cc2 review (2026-11-03) B1/B2
+def test_a_malformed_record_after_a_fired_alert_keeps_the_fired_state_and_fails(tmp_path, lane, monkeypatch):
+    """B1: a non-numeric target used to escape before _save, so the fired alert fired again next run."""
+    lane.STORE.parent.mkdir(parents=True, exist_ok=True)
+    lane.STORE.write_text(json.dumps({"alerts": [
+        {"id": "a1", "question": "when does ACME list?", "kind": "ipo_watch", "companies": ["ACME"],
+         "symbols": [], "target_price": None, "created_at": "x", "status": "active", "triggered_at": None},
+        {"id": "bad", "question": "wat", "kind": "price", "companies": [], "symbols": ["ACME"],
+         "target_price": {"not": "a number"}, "created_at": "x", "status": "active", "triggered_at": None},
+    ]}))
+    lane._news_hits = lambda name, kw: [{"title": "ACME files to go public", "url": "https://x", "at": "now"}]
+    events = types.ModuleType("alert_event_writer")
+    events.save_alert_event = lambda **_k: "evt-1"
+    monkeypatch.setitem(sys.modules, "alert_event_writer", events)
+
+    with pytest.raises(lane._EvalError) as raised:
+        lane.main(["--check"])
+    assert "record:TypeError" in str(raised.value), raised.value
+    stored = {a["id"]: a["status"] for a in json.loads(lane.STORE.read_text())["alerts"]}
+    assert stored["a1"] == "triggered", "the alert that already fired lost its state"
+    assert stored["bad"] == "active"
+    assert json.loads(_receipt(tmp_path).read_text())["status"] == "failed"
+
+
+def test_an_active_alert_the_evaluator_cannot_handle_fails_the_run(tmp_path, lane, monkeypatch):
+    """B2: an unsupported/incomplete active alert used to be skipped and the run said ok (a false green)."""
+    lane.STORE.parent.mkdir(parents=True, exist_ok=True)
+    lane.STORE.write_text(json.dumps({"alerts": [
+        {"id": "news-1", "question": "any news?", "kind": "news", "companies": [], "symbols": ["ACME"],
+         "target_price": None, "created_at": "x", "status": "active", "triggered_at": None},
+    ]}))
+    with pytest.raises(lane._EvalError) as raised:
+        lane.main(["--check"])
+    assert "unsupported active alert" in str(raised.value), raised.value
+    assert json.loads(_receipt(tmp_path).read_text())["status"] == "failed"
+    assert json.loads(lane.STORE.read_text())["alerts"][0]["status"] == "active"
+
+
+def test_a_non_dict_record_does_not_stop_later_alerts(tmp_path, lane, monkeypatch):
+    """The status check used to sit outside the per-alert try: a junk record aborted the whole scan."""
+    lane.STORE.parent.mkdir(parents=True, exist_ok=True)
+    lane.STORE.write_text(json.dumps({"alerts": [
+        None,
+        {"id": "a1", "question": "when does ACME list?", "kind": "ipo_watch", "companies": ["ACME"],
+         "symbols": [], "target_price": None, "created_at": "x", "status": "active", "triggered_at": None},
+    ]}))
+    lane._news_hits = lambda name, kw: [{"title": "ACME files to go public", "url": "https://x", "at": "now"}]
+    events = types.ModuleType("alert_event_writer")
+    events.save_alert_event = lambda **_k: "evt-1"
+    monkeypatch.setitem(sys.modules, "alert_event_writer", events)
+
+    with pytest.raises(lane._EvalError) as raised:
+        lane.main(["--check"])
+    assert "record is not an object" in str(raised.value), raised.value
+    stored = {a["id"]: a["status"] for a in json.loads(lane.STORE.read_text())["alerts"] if isinstance(a, dict)}
+    assert stored["a1"] == "triggered", "a junk record must not stop the alerts after it"
+
+
+def test_a_store_whose_alerts_is_not_a_list_fails_honestly(tmp_path, lane):
+    lane.STORE.parent.mkdir(parents=True, exist_ok=True)
+    lane.STORE.write_text(json.dumps({"alerts": "x"}))
+    with pytest.raises(lane._EvalError) as raised:
+        lane.main(["--check"])
+    assert "no alert list" in str(raised.value), raised.value
+    assert json.loads(_receipt(tmp_path).read_text())["status"] == "failed"
+
+
+def test_a_thousands_separated_price_is_parsed_as_a_real_target(lane, tmp_path, monkeypatch):
+    """'$1,000' used to parse as '000' -> 0.0, which the evaluator cannot handle and now fails every run."""
+    lane.STORE = tmp_path / "store" / "ask_alerts.json"
+    alert = lane.add_alert("alert me when NVDA hits $1,000",
+                           {"positions": [{"symbol": "NVDA", "held": True, "private": False}]})
+    assert alert["kind"] == "price" and alert["target_price"] == 1000.0, alert
+
+
+def test_a_non_finite_target_is_a_record_error(tmp_path, lane):
+    lane.STORE.parent.mkdir(parents=True, exist_ok=True)
+    for bad in ("nan", "inf"):
+        lane.STORE.write_text(json.dumps({"alerts": [
+            {"id": "p1", "question": "q", "kind": "price", "companies": [], "symbols": ["ACME"],
+             "target_price": bad, "created_at": "x", "status": "active", "triggered_at": None},
+        ]}))
+        with pytest.raises(lane._EvalError) as raised:
+            lane.main(["--check"])
+        assert "positive finite" in str(raised.value), (bad, raised.value)

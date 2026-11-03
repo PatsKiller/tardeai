@@ -19,6 +19,7 @@ blocked by the exact live cron comment; no scheduler or sender authority changed
 from __future__ import annotations
 
 import json
+import math
 import re
 import sys
 from datetime import datetime, timezone
@@ -76,13 +77,23 @@ def add_alert(question: str, context: dict | None = None) -> dict:
     context = context or {}
     privates = [p["name"] for p in context.get("positions", []) if p.get("private")]
     pubs = [p["symbol"] for p in context.get("positions", []) if not p.get("private") and p.get("held")]
-    m = re.search(r"\$?\s*(\d{2,5}(?:\.\d+)?)", question)
-    kind = "ipo_watch" if privates else ("price" if (m and pubs) else "ipo_watch" if not pubs else "news")
+    # Parse a THOUSANDS-SEPARATED amount: "$1,000" used to match "000" and become a 0.0 target, which
+    # the evaluator cannot handle (jobs coverage audit 2026-11-03). Only a positive finite price is a target.
+    target = None
+    m = re.search(r"\$\s*(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{1,6}(?:\.\d+)?)", question)
+    if m:
+        try:
+            value = float(m.group(1).replace(",", ""))
+        except ValueError:
+            value = None
+        if value is not None and math.isfinite(value) and value > 0:
+            target = value
+    kind = "ipo_watch" if privates else ("price" if (target is not None and pubs) else "ipo_watch" if not pubs else "news")
     d = _load()
     alert = {
         "id": f"ask_{abs(hash(question + _now())) % 10**8}",
         "question": question[:300], "kind": kind, "companies": privates, "symbols": pubs,
-        "target_price": float(m.group(1)) if (kind == "price" and m) else None,
+        "target_price": target if kind == "price" else None,
         "created_at": _now(), "status": "active", "triggered_at": None,
     }
     d["alerts"].append(alert)
@@ -133,34 +144,52 @@ def _fire(alert, subject, evidence):
 def check_alerts() -> list:
     """Evaluate every active alert. Returns the alerts that fired.
 
-    Every evaluation or enqueue failure is collected and raised AFTER pending state is saved, so the run receipt says
-    failed (with the previous ok_at preserved) instead of claiming a success that did not happen. A genuine "nothing
-    fired" is still a success.
+    Every failure is collected and raised AFTER the store is saved, so the run receipt says failed (with the previous
+    ok_at preserved) instead of claiming a success that did not happen, and an alert that already fired keeps its
+    ``triggered`` state instead of being fired again on the next run. A genuine "nothing fired" is still a success.
+    An active alert this evaluator cannot handle (an unknown kind, or a price alert without a numeric target) is an
+    error, not a silent skip: the lane may only report ok when every active alert was actually evaluated.
     """
     d = _load_strict(); fired = []; errors = []
-    for a in d.get("alerts", []):
-        if a.get("status") != "active":
-            continue
-        try:
-            if a["kind"] == "ipo_watch":
-                for name in a.get("companies", []) or ["SpaceX"]:
-                    hits = _news_hits(name, _IPO_KW)
-                    if hits and _fire(a, name, hits[0]):
+    alerts = d.get("alerts")
+    if not isinstance(alerts, list):
+        raise _EvalError("alert store has no alert list")
+    try:
+        for a in alerts:
+            try:
+                if not isinstance(a, dict):
+                    raise _EvalError(f"record is not an object ({type(a).__name__})")
+                if a.get("status") != "active":
+                    continue
+                if a["kind"] == "ipo_watch":
+                    for name in a.get("companies", []) or ["SpaceX"]:
+                        hits = _news_hits(name, _IPO_KW)
+                        if hits and _fire(a, name, hits[0]):
+                            a["status"], a["triggered_at"] = "triggered", _now()
+                            fired.append({"id": a["id"], "subject": name, "evidence": hits[0]})
+                            break
+                elif a["kind"] == "price" and a.get("target_price") and a.get("symbols"):
+                    target = float(a["target_price"])  # a non-numeric target is a malformed record, not a skip
+                    if not math.isfinite(target) or target <= 0:
+                        raise _EvalError("target price is not a positive finite number")
+                    try:
+                        import yfinance as yf
+                        px = float(yf.Ticker(a["symbols"][0]).fast_info["last_price"])
+                    except Exception as exc:
+                        raise _EvalError(f"price quote failed: {type(exc).__name__}") from exc
+                    if px >= target and _fire(a, a["symbols"][0], {"title": f"price ${px:.2f} ≥ ${target}"}):
                         a["status"], a["triggered_at"] = "triggered", _now()
-                        fired.append({"id": a["id"], "subject": name, "evidence": hits[0]})
-                        break
-            elif a["kind"] == "price" and a.get("target_price") and a.get("symbols"):
-                try:
-                    import yfinance as yf
-                    px = float(yf.Ticker(a["symbols"][0]).fast_info["last_price"])
-                except Exception as exc:
-                    raise _EvalError(f"price quote failed: {type(exc).__name__}") from exc
-                if px >= a["target_price"] and _fire(a, a["symbols"][0], {"title": f"price ${px:.2f} ≥ ${a['target_price']}"}):
-                    a["status"], a["triggered_at"] = "triggered", _now()
-                    fired.append({"id": a["id"], "subject": a["symbols"][0], "price": px})
-        except _EvalError as exc:
-            errors.append(f"{a.get('id')}:{exc}")
-    _save(d)  # persist whatever did complete before reporting the failure
+                        fired.append({"id": a["id"], "subject": a["symbols"][0], "price": px})
+                else:
+                    errors.append(f"{a.get('id')}:unsupported active alert (kind={a.get('kind')!r})")
+            except _EvalError as exc:
+                errors.append(f"{a.get('id') if isinstance(a, dict) else '?'}:{exc}")
+            except Exception as exc:  # a malformed record must never lose state already written
+                errors.append(f"{a.get('id') if isinstance(a, dict) else '?'}:record:{type(exc).__name__}")
+    finally:
+        # Persist whatever completed even if something unexpected escapes the loop: an alert whose event was
+        # already enqueued must not be fired a second time because its status write was skipped.
+        _save(d)
     if errors:
         raise _EvalError("; ".join(errors))
     return fired
