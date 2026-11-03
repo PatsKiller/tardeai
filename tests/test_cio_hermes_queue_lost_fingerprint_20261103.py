@@ -283,3 +283,40 @@ def test_a_projection_without_by_research_id_still_reports_the_lost_request(tmp_
     out = collect_cio_hermes_queue_health(now=NOW, path=ledger)
     assert out["projection_state"] == "ok"
     assert out["ok"] is False and out["lost_n"] == 1 and out["lost"] == ["res_lost"]
+
+
+# ── the ownership vocabulary is the QUEUE's, not re-typed (cx-openai-4 P1, 2026-11-03) ──────────
+def test_the_health_check_uses_the_queue_modules_own_state_constants():
+    from scripts.lib import cio_hermes_queue_health as qh
+    from scripts.lib.hermes_research_queue import IN_FLIGHT, TERMINAL
+
+    assert qh._OPEN_STATES is IN_FLIGHT, "the open-state set must BE the queue's, not a copy"
+    assert qh._DONE_STATES <= TERMINAL, "done states must come from the queue's terminal vocabulary"
+
+
+def test_the_legacy_started_owner_is_found(tmp_path):
+    """`started` is the native legacy synonym for running: the real lookup finds it, so must health."""
+    proj = {"by_research_id": {"res_owner": {"status": "started", "fingerprint": FP}}}
+    ledger = _ledger(tmp_path, proj, [_requested("res_dup", FP)])
+    out = collect_cio_hermes_queue_health(now=NOW, path=ledger)
+    assert out["lost_n"] == 0 and out["ok"] is True
+
+
+@pytest.mark.parametrize("invented", ["pending", "claimed", "open", "queued_running"])
+def test_an_invented_alias_does_not_suppress(tmp_path, invented):
+    """These states do not exist in the queue: the native lookup returns None, so the request is lost."""
+    proj = {"by_research_id": {"res_owner": {"status": invented, "fingerprint": FP}}}
+    ledger = _ledger(tmp_path, proj, [_requested("res_lost", FP)])
+    out = collect_cio_hermes_queue_health(now=NOW, path=ledger)
+    assert out["lost_n"] == 1 and out["lost"] == ["res_lost"]
+    assert out["ok"] is False
+
+
+@pytest.mark.parametrize("invented", ["done", "succeeded"])
+def test_an_invented_done_alias_does_not_own(tmp_path, invented):
+    """Only the queue's terminal vocabulary counts; 'done'/'succeeded' are not statuses it writes."""
+    proj = {"by_research_id": {"res_owner": {"status": invented, "fingerprint": FP,
+                                             "updated_ts": (NOW - timedelta(minutes=2)).isoformat()}}}
+    ledger = _ledger(tmp_path, proj, [_requested("res_lost", FP)])
+    out = collect_cio_hermes_queue_health(now=NOW, path=ledger)
+    assert out["lost_n"] == 1

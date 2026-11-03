@@ -191,8 +191,19 @@ def summarise(events: Iterable[dict[str, Any]], *, now: datetime, stall_hours: f
 # clock. It never treats a failed, cancelled, superseded or expired row as an owner, and it never suppresses on an
 # answer that predates the question. This function mirrors that rule so the health check cannot be silenced by
 # history the restore path would still restore.
-_OPEN_STATES = {"queued", "running", "claimed", "pending", "queued_running", "open"}
-_DONE_STATES = {"completed", "done", "succeeded"}
+#
+# The vocabulary is the QUEUE's, imported rather than re-typed (cx-openai-4 P1, 2026-11-03): invented aliases
+# (pending/claimed/open/queued_running) suppressed requests the native lookup does not consider in flight, and the
+# native legacy "started" state was missing, so a real owner's duplicate was reported lost. One constant, two
+# consumers, no drift. Import through the SAME package prefix as this module so the repo's dual lib./scripts.lib.
+# imports cannot create a second copy of the constant.
+if __package__ and __package__.startswith("scripts."):
+    from scripts.lib.hermes_research_queue import IN_FLIGHT as _OPEN_STATES, TERMINAL as _TERMINAL_STATES
+else:  # pragma: no cover - depends on how the caller set sys.path
+    from lib.hermes_research_queue import IN_FLIGHT as _OPEN_STATES, TERMINAL as _TERMINAL_STATES  # type: ignore
+
+# A terminal row owns a question only when it actually ANSWERED it; failed/cancelled/superseded never do.
+_DONE_STATES = frozenset(_TERMINAL_STATES - {"failed", "cancelled", "superseded"})
 
 
 def _parse_clock(value: Any) -> Optional[datetime]:
