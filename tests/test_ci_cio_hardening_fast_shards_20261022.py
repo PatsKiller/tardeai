@@ -18,7 +18,10 @@ The `if:` expressions are evaluated by a small interpreter for exactly the forms
 from __future__ import annotations
 
 import fnmatch
+import importlib.util
 import json
+import os
+import shutil
 import re
 import sys
 from pathlib import Path
@@ -419,3 +422,75 @@ def test_alerting_and_concurrency_are_unchanged():
     assert HARD["concurrency"]["cancel-in-progress"] == "${{ github.event_name == 'pull_request' }}"
     assert AGG["timeout-minutes"] <= 15
     assert JOBS["cio-hardening-full"]["if"] == "github.event_name == 'workflow_dispatch'"
+
+
+def _ci_module_by_path(name, relative):
+    spec = importlib.util.spec_from_file_location(name, ROOT / relative)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_checkout_wide_readonly_observer_is_serial_exactly_once():
+    runner = _ci_module_by_path("ci_readonly_serial_runner", "scripts/run_cio_hardening_ci.py")
+    observer = "tests/test_pr_merge_delegation_effective_state.py"
+    assert runner.file_needs_serial(observer)
+    plan = runner.shard_plan(N)
+    owners = [shard for shard, files in plan["shards"].items() for path in files if path == observer]
+    assert owners == ["serial"]
+    parallel, serial = runner.plan_units(runner.GATES)
+    assert not any(observer in files for _, files in parallel)
+    assert sum(files.count(observer) for _, files in serial) == 1
+
+
+def _isolated_readonly_observer(tmp_path, monkeypatch):
+    observer = _ci_module_by_path(
+        "ci_readonly_snapshot_probe", "tests/test_pr_merge_delegation_effective_state.py")
+    merge = observer.mod.__wrapped__(monkeypatch)
+    checkout = tmp_path / "checkout"
+    checks = checkout / "scripts/lib/pr_all_checks_green.py"
+    checks.parent.mkdir(parents=True)
+    shutil.copyfile(ROOT / "scripts/lib/pr_all_checks_green.py", checks)
+    source = checkout / "synthetic_source.py"
+    source.write_bytes(b"before\n")
+    monkeypatch.setattr(observer, "ROOT", checkout)
+    return observer, merge, source
+
+
+def test_readonly_observer_accepts_metadata_established_before_its_snapshot(tmp_path, monkeypatch):
+    observer, merge, source = _isolated_readonly_observer(tmp_path, monkeypatch)
+    initial = source.stat()
+    os.utime(source, ns=(initial.st_atime_ns, initial.st_mtime_ns - 1_000_000_000))
+    assert source.read_bytes() == b"before\n" and source.stat().st_mtime_ns != initial.st_mtime_ns
+    observer.test_evaluate_is_readonly_and_uses_only_read_apis(merge, tmp_path / "state", monkeypatch)
+
+
+@pytest.mark.parametrize("mutation", ["same_size_content", "metadata_only", "new_file", "missing_file"])
+def test_serial_placement_preserves_real_snapshot_mutation_detection(tmp_path, monkeypatch, mutation):
+    observer, merge, source = _isolated_readonly_observer(tmp_path, monkeypatch)
+    actual_evaluate = merge.evaluate
+    reached = []
+
+    def changed(*args, **kwargs):
+        result = actual_evaluate(*args, **kwargs)
+        assert result["ok"], result
+        before = source.stat()
+        if mutation == "same_size_content":
+            source.write_bytes(b"after!\n")
+            os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns))
+            assert source.stat().st_size == before.st_size
+            assert source.stat().st_mtime_ns == before.st_mtime_ns
+        elif mutation == "metadata_only":
+            os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns - 1_000_000_000))
+        elif mutation == "new_file":
+            source.with_name("synthetic_new.py").write_bytes(b"new\n")
+        else:
+            source.rename(tmp_path / "archived_synthetic_source.py")
+        reached.append(mutation)
+        return result
+
+    monkeypatch.setattr(merge, "evaluate", changed)
+    with pytest.raises(AssertionError):
+        observer.test_evaluate_is_readonly_and_uses_only_read_apis(merge, tmp_path / "state", monkeypatch)
+    assert reached == [mutation]
