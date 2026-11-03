@@ -519,3 +519,97 @@ def test_rule_proposal_href_allowlist_rejects_other_conflict_paths():
     bad = c.item(ident="rule-proposal:rp-2", kind="CONFLICT", title="t", proposed_by=None, created_at=None, doc=doc,
                  source="conflict_rule_proposals", governed_href="/conflicts/rules/../../evil")
     assert ok["governed_href"] == "/conflicts/rules?proposal=rp-1" and bad["governed_href"] is None
+
+
+
+def _sync_queue_item(ident, *, kind="DESIGN", refs=None):
+    return c.item(ident=ident, kind=kind, title="Review this item", proposed_by="worker",
+                  created_at="2032-04-01T12:00:00Z", source="fixture",
+                  doc=c.document("Keep or retire this proposed work.", source_sha=SHA), source_refs=refs)
+
+
+def test_keep_retire_preserves_old_work_without_counting_it_as_active(rig):
+    ctx, active, _ = rig
+    candidate = _sync_queue_item("design:old")
+    resolved = _sync_queue_item("design:done")
+    ctx.sources = {"designs": lambda: {"rows": [active], "keep_retire": [candidate], "resolved": [resolved]}}
+    result = api.queue(ctx)
+    assert result["pending_count"] == result["known_pending_count"] == 1
+    assert [row["id"] for row in result["items"]] == [active["id"]]
+    assert [row["id"] for row in result["keep_retire"]] == ["design:old"]
+    assert result["keep_retire_count"] == 1
+    assert [row["id"] for row in result["resolved"]] == ["design:done"]
+    assert result["recent"] == []
+    assert not ctx.ledger.path.exists()  # Projection does not decide or retire anything.
+
+
+def test_keep_retire_source_gap_keeps_known_candidates_and_unknown_global_count(rig):
+    ctx, active, _ = rig
+    candidate = _sync_queue_item("design:old")
+    ctx.sources = {"designs": lambda: {"rows": [active], "keep_retire": [candidate], "gap": "scan incomplete"}}
+    result = api.queue(ctx)
+    assert result["pending_count"] is None and result["known_pending_count"] == 1
+    assert result["gaps"] == [{"source": "designs", "reason": "scan incomplete"}]
+    assert result["keep_retire"][0]["id"] == candidate["id"]
+    assert not ctx.ledger.path.exists()
+
+
+def test_explicit_refs_dedupe_transitively_and_current_work_wins_over_retirement():
+    current = _sync_queue_item("current", refs=["entity:one"])
+    old = _sync_queue_item("old", refs=["entity:one", "entity:two"])
+    duplicate = _sync_queue_item("old-alias", refs=["entity:two"])
+    unrelated = _sync_queue_item("old-unrelated")  # Same title/text alone never joins work.
+    result = c.queue_projection({"fixture": lambda: {"rows": [current], "keep_retire": [old, duplicate, unrelated]}},
+                                decisions=[], now=NOW)
+    assert result["pending_count"] == 1 and result["items"][0]["id"] == "current"
+    assert {row["id"] for row in result["items"][0]["related_sources"]} == {"old", "old-alias"}
+    assert {"entity:one", "entity:two"}.issubset(result["items"][0]["source_refs"])
+    assert [row["id"] for row in result["keep_retire"]] == ["old-unrelated"]
+
+
+def test_keep_retire_aliases_remain_one_reachable_candidate():
+    first = _sync_queue_item("old-a", refs=["design:one"])
+    second = _sync_queue_item("old-b", refs=["design:one", "packet:two"])
+    result = c.queue_projection({"fixture": lambda: {"rows": [], "keep_retire": [first, second]}},
+                                decisions=[], now=NOW)
+    assert result["pending_count"] == 0 and result["items"] == []
+    assert result["keep_retire_count"] == 1
+    assert result["keep_retire"][0]["related_sources"] == [{"id": "old-b", "source": "fixture"}]
+    assert "packet:two" in result["keep_retire"][0]["source_refs"]
+
+
+@pytest.mark.parametrize("bad_candidates", [None, {}, "old", [None] * 501])
+def test_invalid_keep_retire_collection_is_a_named_gap(bad_candidates):
+    result = c.queue_projection({"designs": lambda: {"rows": [], "keep_retire": bad_candidates}}, decisions=[], now=NOW)
+    assert result["pending_count"] is None
+    assert result["gaps"] == [{"source": "designs", "reason": "SOURCE_BUDGET_EXCEEDED"}]
+
+
+def test_policy_command_is_exact_public_metadata_without_recording_approval(rig):
+    ctx, original, _ = rig
+    row = c.item(ident="policy:2501", kind="POLICY", title="Review policy", proposed_by="worker", created_at=None,
+                 source="fixture", doc=original["document"], pr=2501)
+    ctx.sources = {"fixture": lambda: [row]}
+    status, response = api.handle(api.PREFIX + "/approvals", "GET", ctx=ctx)
+    public = response["data"]["items"][0]
+    assert status == 200 and "document" not in public
+    assert public["policy_approval_command"] == f"APPROVE_AGENTS_POLICY_20_2_0 2501 {SHA}"
+    assert public["source_sha"] == SHA
+    assert response["data"]["recent"] == []
+    assert not ctx.ledger.path.exists()
+
+
+@pytest.mark.parametrize("field,value", [("source_verified", False), ("source_verified", "yes"),
+    ("version", "20.2.0; run"), ("version", None), ("source_sha", "abc123"), ("source_sha", None),
+    ("pr", True), ("pr", 0), ("pr", "2501"), ("kind", "DESIGN")])
+def test_invalid_policy_binding_never_offers_approval_command(rig, field, value):
+    _, original, _ = rig
+    doc = dict(original["document"])
+    args = {"ident": "policy:2501", "kind": "POLICY", "title": "Review policy", "proposed_by": "worker",
+            "created_at": None, "source": "fixture", "doc": doc, "pr": 2501}
+    if field in ("pr", "kind"):
+        args[field] = value
+    else:
+        doc[field] = value
+    row = c.item(**args)
+    assert "policy_approval_command" not in row

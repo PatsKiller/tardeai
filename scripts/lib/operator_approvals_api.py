@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -33,6 +34,7 @@ class Ctx:
     policy: Callable[[], dict]
     clock: Callable[[], datetime] = core.utc_now
     can_read: Callable[[], bool] = field(default=lambda: False)
+    verify_current: Callable[[dict], None] = field(default=lambda row: None)
 
 
 def design_approval_href(design_id: str) -> str:
@@ -167,7 +169,42 @@ def git_policy(root: Path = ROOT) -> dict:
     return policy
 
 
-def _default_sources(root: Path) -> dict:
+
+_PR_SNAPSHOTS: dict[Path, object] = {}
+_PR_SNAPSHOTS_LOCK = threading.Lock()
+
+
+def _pr_snapshot(root: Path):
+    from scripts.lib import design_registry, operator_approval_pr_source
+    key = Path(root).resolve()
+    with _PR_SNAPSHOTS_LOCK:
+        if key not in _PR_SNAPSHOTS:
+            _PR_SNAPSHOTS[key] = operator_approval_pr_source.Snapshot(
+                board=design_registry.work_board(), git=lambda *args: _git(key, *args), annotations=reader_annotations)
+        return _PR_SNAPSHOTS[key]
+
+
+def verify_current_pr(row: dict) -> None:
+    """A snapshot is display evidence; persistence rechecks GitHub's current open head."""
+    if row.get("source") != "github_pr_snapshot":
+        return
+    from scripts.lib import agent_claim_lifecycle, operator_approval_pr_source
+    number, head = row.get("pr"), row.get("document", {}).get("source_sha")
+    if type(number) is not int or number < 1 or not isinstance(head, str) or not core.SHA.fullmatch(head):
+        raise core.Refused("EXACT_PR_HEAD_REQUIRED", 503)
+    operator_approval_pr_source.verify_open_head({"number": number, "head": {"sha": head}},
+                                                agent_claim_lifecycle.GitHubReader())
+
+
+def _keep_retire_reason(created_at, *, now: datetime | None = None, after_hours: float = 24.0) -> str | None:
+    created = instant(created_at)
+    if created is None:
+        return "age_unavailable"
+    age_hours = ((now or core.utc_now()) - datetime.fromisoformat(created)).total_seconds() / 3600
+    return "Unresolved proposal older than the review threshold" if age_hours > after_hours else None
+
+
+def _default_sources(root: Path, *, keep_retire_after_hours: float = 24.0) -> dict:
     from scripts.lib import approval_package as packages_core
 
     def packages():
@@ -239,7 +276,7 @@ def _default_sources(root: Path) -> dict:
         from scripts.lib import activation_reconcile as reconcile
         designs, errors = DesignStore(root).load()
         candidates = designs_awaiting(root, designs, ledger_approved_ids(None))
-        code_sha, out, resolved = _git(root, "rev-parse", "HEAD").strip(), [], []
+        code_sha, out, resolved, keep_retire = _git(root, "rev-parse", "HEAD").strip(), [], [], []
         git = lambda *args: _git(root, *args)  # noqa: E731
         owners = {d.get("id"): d.get("owner") for d in designs}
         # Reconcile packets with what is live (lane registry, n8n live list, served release) and describe every row.
@@ -272,44 +309,23 @@ def _default_sources(root: Path) -> dict:
                 if state["state"] != reconcile.WAITING:
                     resolved.append(entry)  # already applied or superseded: shown under Resolved, never deleted
                     continue
-            out.append(entry)
-        return {"rows": out, "resolved": resolved,
+            reason = _keep_retire_reason(entry.get("created_at"), after_hours=keep_retire_after_hours)
+            if reason:
+                entry["keep_retire_reason"] = reason
+                keep_retire.append(entry)
+            else:
+                out.append(entry)
+        return {"rows": out, "resolved": resolved, "keep_retire": keep_retire,
                 "gap": "Design scan incomplete or invalid" if errors or incomplete or len(candidates) > 200 else None}
 
-    def policy_prs():
-        from scripts.lib.design_registry import work_board
-        board = work_board()
-        # Consume the existing board's background snapshot. A GET never starts a GitHub scan/job.
-        if board.prs is None:
-            raise core.Refused("POLICY_PR_SNAPSHOT_UNAVAILABLE", 503)
-        out, missing = [], bool(board.prs_warning or board._prs_at is None or time.monotonic() - board._prs_at > 120)
-        deadline = time.monotonic() + 1.5
-        for pr in board.prs[:100]:
-            if time.monotonic() > deadline:
-                missing = True
-                break
-            head, base = (pr.get("head") or {}).get("sha", ""), (pr.get("base") or {}).get("sha", "")
-            if not core.SHA.fullmatch(head) or not core.SHA.fullmatch(base):
-                missing = True
-                continue
-            try:
-                text, old = _git(root, "show", f"{head}:AGENTS.md"), _git(root, "show", f"{base}:AGENTS.md")
-            except (subprocess.SubprocessError, UnicodeDecodeError):
-                missing = True
-                continue
-            if text == old:
-                continue
-            version = re.search(r"^Policy-Version:\s*(\d+\.\d+\.\d+)\s*$", text, re.M)
-            doc = core.document(text, base_text=old, source_sha=head, version=version[1] if version else "",
-                                source_verified=True)
-            annotations = reader_annotations(pr, doc)
-            if annotations:
-                doc = core.document(text, base_text=old, source_sha=head, version=doc["version"],
-                                    source_verified=True, annotations=annotations)
-            out.append(core.item(ident=f"policy:{pr['number']}", kind="POLICY", title=pr["title"],
-                                 proposed_by=(pr.get("user") or {}).get("login"), created_at=pr.get("created_at"),
-                                 doc=doc, source="github_pr_snapshot", pr=pr["number"]))
-        return {"rows": out, "gap": "Exact open PR snapshot or local commit objects incomplete" if missing or len(board.prs) >= 100 else None}
+    def pr_approvals(kind):
+        data = _pr_snapshot(root).view()
+        return {**data, "rows": [row for row in data["rows"] if row["kind"] == kind]}
+
+    def coordinator_decisions():
+        from scripts.lib import coordination_approval_source
+        from scripts.lib.lane_last_receipt import runtime_dir
+        return coordination_approval_source.load(runtime_dir().parents[1], source_revision(root))
 
     def conflicts():
         from scripts.lib.conflicts.api import approval_rows
@@ -383,7 +399,8 @@ def _default_sources(root: Path) -> dict:
         return {"rows": out, "gap": None if result.get("complete") else "Financial queues incomplete"}
 
     # These missing adapters are explicit. Neither empty queues nor a complete global count are invented.
-    return {"packages": packages, "conflicts": conflicts, "conflict_rule_proposals": conflict_rule_proposals, "policy_prs": policy_prs,
+    return {"packages": packages, "conflicts": conflicts, "conflict_rule_proposals": conflict_rule_proposals, "policy_prs": lambda: pr_approvals("POLICY"), "held_prs": lambda: pr_approvals("RELEASE"),
+            "coordinator_decisions": coordinator_decisions,
             "guard_requests": guard_requests, "design_decisions": designs, "financial_queues": financial}
 
 
@@ -429,7 +446,7 @@ def default_ctx() -> Ctx:
                csrf=lambda m, p: cc_auth.command_csrf_check(cfg, m, p), allowed_logins=cfg.allowed_logins,
                sources=sources, ledger=ledger,
                policy=git_policy,
-               can_read=lambda: cc_auth.current_principal() == "service-token")
+               can_read=lambda: cc_auth.current_principal() == "service-token", verify_current=verify_current_pr)
 
 
 def _operator(ctx: Ctx) -> str | None:
@@ -476,6 +493,11 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = N
                 raise core.Refused("AUTHENTICATED_READER_REQUIRED", 403)
             if sub == "/approvals":
                 data = queue(ctx)
+                data["actionable_count"] = data["pending_count"]
+                data["known_actionable_count"] = data["known_pending_count"]
+                data["actionable_items"] = [{k: v for k, v in it.items() if k != "document"} | {
+                    "document_sha": it["document"]["document_sha"], "version": it["document"]["version"]}
+                                          for it in data["items"]]
                 q = query if isinstance(query, dict) else {}
                 kind = q.get("kind")
                 if isinstance(kind, list):
@@ -498,6 +520,9 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = N
                 data["resolved"] = [{k: v for k, v in it.items() if k != "document"} | {
                     "document_sha": it["document"]["document_sha"], "version": it["document"]["version"]}
                                     for it in data.get("resolved") or []]
+                data["keep_retire"] = [{k: v for k, v in it.items() if k != "document"} | {
+                    "document_sha": it["document"]["document_sha"], "version": it["document"]["version"]}
+                                      for it in data.get("keep_retire") or []]
                 return 200, {"ok": True, "data": data}
             if sub == "/policy":
                 data = ctx.policy()
@@ -553,7 +578,7 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = N
         parts = sub.strip("/").split("/")
         if len(parts) != 3 or parts[0] != "approvals":
             raise core.Refused("NOT_FOUND", 404)
-        current = _current(ctx, unquote(parts[1]))
+        current = _current(ctx, unquote(parts[1]), verify=parts[2] == "decide")
         if parts[2] == "open":
             result = ctx.ledger.start(actor, current, body.get("document_sha"))
         elif parts[2] == "read":
@@ -569,7 +594,7 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = N
         return 503, {"ok": False, "error": "SOURCE_UNAVAILABLE", "detail": type(exc).__name__}
 
 
-def _current(ctx: Ctx, ident: str):
+def _current(ctx: Ctx, ident: str, *, verify: bool = False):
     def current():
         # Re-read inside the ledger transaction so stale browser bodies cannot bind a newer document.
         matches = []
@@ -579,13 +604,15 @@ def _current(ctx: Ctx, ident: str):
                 if isinstance(rows, dict):
                     if rows.get("gap"):
                         continue  # stale/incomplete source snapshots cannot authorize a decision
-                    rows = rows.get("rows") or []
+                    rows = [*(rows.get("rows") or []), *(rows.get("keep_retire") or [])]
             except Exception:
                 continue
             for row in rows:
                 if row["id"] == ident:
                     matches.append(row)
         if len(matches) == 1:
+            if verify:
+                ctx.verify_current(matches[0])
             return matches[0]
         if matches:
             raise core.Refused("DUPLICATE_APPROVAL_ID", 503)

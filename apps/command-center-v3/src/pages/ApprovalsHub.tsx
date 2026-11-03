@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import DeskPage, { DeskGap, useDeskTab } from '../components/DeskPage'
 import AmendmentReader from '../components/AmendmentReader'
+import ReadableTime from '../components/ReadableTime'
 import { GOVERNANCE, KIND_LABEL, useGovernance, waitingSince, type ApprovalItem, type ApprovalQueue } from '../lib/operatorApprovals'
 import '../styles/operatorApprovals.css'
 import ResolvedActivations, { type QueueWithResolved } from '../components/approvals/ResolvedActivations'
 
 const tabs = [{ id: 'waiting', label: 'Waiting on you' }, { id: 'POLICY', label: 'Policy' }, { id: 'RELEASE', label: 'Releases' },
   { id: 'SPEND', label: 'Spending caps' }, { id: 'ACTIVATE', label: 'Activations' }, { id: 'DESIGN', label: 'Designs' },
-  { id: 'CONFLICT', label: 'Conflicts' }, { id: 'FINANCIAL', label: 'Trade reviews' }, { id: 'history', label: 'Decision history' }]
+  { id: 'CONFLICT', label: 'Conflicts' }, { id: 'FINANCIAL', label: 'Trade reviews' }, { id: 'keep_retire', label: 'Keep / retire' }, { id: 'history', label: 'Decision history' }]
 
 /** W10 AI-proposed conflict rule: the server only emits this local, allow-listed destination. */
 const isRuleProposal = (item: ApprovalItem) => item.source === 'conflict_rule_proposals' && !!item.governed_href?.startsWith('/conflicts/rules?proposal=')
@@ -23,9 +24,10 @@ function Queue() {
   const [active] = useDeskTab(tabs)
   const [offset, setOffset] = useState(0)
   useEffect(() => setOffset(0), [active])
-  const { data, error, refresh } = useGovernance<ApprovalQueue>(`${GOVERNANCE}/approvals?offset=${offset}&kind=${active === 'waiting' || active === 'history' ? '' : active}`)
+  const { data, error, refresh } = useGovernance<ApprovalQueue>(`${GOVERNANCE}/approvals?offset=${active === 'keep_retire' ? 0 : offset}&kind=${active === 'waiting' || active === 'history' || active === 'keep_retire' ? '' : active}`, 30000)
+  const candidates = data?.keep_retire ?? []
   return <div className="approvals"><DeskPage title="Approvals Center" purpose="Everything waiting for your decision. Read the exact version, then decide."
-    tabs={tabs} sources={[{ id: 'approvals', label: 'Approval queue', asOf: data?.as_of,
+    tabs={tabs} sources={[{ id: 'approvals', label: 'Approval queue', asOf: data?.as_of, clockOnly: true,
       gap: data?.gaps.length ? 'Some approval sources are unavailable. The total is not yet known.' : undefined }]}
     decisionGap={data?.pending_count === null ? 'The total is unavailable until every source can be checked.' : data ? `${data.pending_count} waiting for review.` : 'Loading the latest queue.'}>
     {active => <div className="stack">
@@ -38,17 +40,15 @@ function Queue() {
         {active === 'history' ? <section className="panel"><h2>Decision history</h2>{data.recent.length ? data.recent.map((record, i) => <article key={i} className="rule">
           <strong>{record.decision.replace(/_/g, ' ')}</strong><p>{record.actor} · {new Date(record.at).toLocaleString()}</p>
           <details><summary>Exact version and comment</summary><code>{record.document_sha}</code><p>{record.comment}</p></details>
-        </article>) : <p>No recorded decisions were returned.</p>}</section> : <div className="columns">
+        </article>) : <p>No recorded decisions were returned.</p>}</section> : active === 'keep_retire' ? <section className="panel" aria-label="Keep or retire candidates">
+          <h2>Keep / retire</h2><p>Older proposals remain available here for your decision. Moving them here does not retire or approve them.</p>
+          {candidates.slice(offset, offset + 50).map(item => <ApprovalCard key={item.id} item={item} candidate />)}
+          {!candidates.length && <p>No keep / retire candidates were returned. {data.complete ? '' : 'Some sources are still unavailable.'}</p>}
+          <div className="toolbar"><button disabled={!offset} onClick={() => setOffset(Math.max(0, offset - 50))}>Previous</button>
+            <button disabled={offset + 50 >= candidates.length} onClick={() => setOffset(offset + 50)}>Next</button></div>
+        </section> : <div className="columns">
           <section className="panel" aria-label="Waiting approvals">
-            {data.items.filter(item => active === 'waiting' || item.kind === active).map(item => <article className="queue-row" key={item.id}>
-              <span className="badge">{isRuleProposal(item) ? 'AI rule proposal' : KIND_LABEL[item.kind] ?? item.kind}</span><div><h2>{item.title}</h2><p className="muted">{item.version || 'Exact document available in the reader'}</p></div>
-              <span>{item.proposed_by ?? 'Proposer not recorded'}</span><span className="muted">{waitingSince(item.created_at)}</span>
-              {isRuleProposal(item)
-                // Rule proposals are decided only on the conflict rules page (single approval channel). Opening the
-                // sheet from here marks the history entry so its ← Back returns to this queue.
-                ? <Link className="primary" data-testid="approvals-rule-proposal-link" to={item.governed_href!} state={{ w9DetailOpened: true }}>Review proposal →</Link>
-                : <Link className="primary" to={`/approvals/${encodeURIComponent(item.id)}`}>Read &amp; decide</Link>}
-            </article>)}
+            {data.items.filter(item => active === 'waiting' || item.kind === active).map(item => <ApprovalCard key={item.id} item={item} />)}
             {!data.items.some(item => active === 'waiting' || item.kind === active) && <p>No items in this view. {data.complete ? '' : 'Some sources are still unavailable.'}</p>}
             <div className="toolbar"><button disabled={!offset} onClick={() => setOffset(Math.max(0, offset - 50))}>Previous</button>
               <button disabled={offset + 50 >= data.filtered_count} onClick={() => setOffset(offset + 50)}>Next</button></div>
@@ -65,4 +65,25 @@ function Queue() {
       </>}
     </div>}
   </DeskPage></div>
+}
+
+function ApprovalCard({ item, candidate = false }: { item: ApprovalItem; candidate?: boolean }) {
+  const prUrl = item.pr_url && /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/.test(item.pr_url) ? item.pr_url : null
+  const releaseAction = item.governed_href && /^\/releases(?:[/?#]|$)/.test(item.governed_href) ? item.governed_href : null
+  return <article className="queue-row">
+    <span className="badge">{candidate ? 'Keep / retire' : isRuleProposal(item) ? 'AI rule proposal' : KIND_LABEL[item.kind] ?? item.kind}</span>
+    <div style={{ minWidth: 0 }}><h2>{item.title}</h2><p className="muted">{item.version || 'Exact document available in the reader'}</p>
+      {candidate && <p>{item.keep_retire_reason ?? 'Review whether this older proposal is still needed.'}</p>}
+      {item.next_action && <p>{item.next_action}{item.next_actor ? ` · ${item.next_actor}` : ''}</p>}
+      {item.source_sha && <p className="muted" style={{ overflowWrap: 'anywhere' }}>Exact head: <code>{item.source_sha}</code></p>}
+      {item.policy_approval_command && <div><p>Approval line for this exact version:</p><code style={{ display: 'block', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{item.policy_approval_command}</code></div>}
+      <p className="muted">Source: {item.source.replace(/_/g, ' ')}{item.source_as_of && <> · <ReadableTime value={item.source_as_of} /></>}</p>
+      {prUrl && <a href={prUrl} target="_blank" rel="noreferrer">Open pull request #{item.pr}</a>}
+    </div>
+    <span>{item.proposed_by ?? 'Proposer not recorded'}</span><span className="muted">{waitingSince(item.created_at)}</span>
+    {isRuleProposal(item)
+      ? <Link className="primary" data-testid="approvals-rule-proposal-link" to={item.governed_href!} state={{ w9DetailOpened: true }}>Review proposal →</Link>
+      : releaseAction ? <Link className="primary" to={releaseAction}>Review release →</Link>
+        : <Link className="primary" to={`/approvals/${encodeURIComponent(item.id)}`}>{candidate ? 'Read proposal' : 'Read & decide'}</Link>}
+  </article>
 }

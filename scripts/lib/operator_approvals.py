@@ -124,14 +124,22 @@ def item(*, ident: str, kind: str, title: str, proposed_by: str | None, created_
         raise Refused("INVALID_SOURCE_ITEM", 503)
     # Only known local UI destinations; source text never supplies an executable command or arbitrary URL.
     href = governed_href if governed_href and governed_href.startswith(("/system/ops-controls", "/coordination", "/watch", "/trading?tab=Proposals", "/cio", "/conflicts/rules?proposal=")) and not governed_href.startswith("//") else None
-    return {"id": ident, "kind": kind, "title": title[:300], "proposed_by": proposed_by,
-            "created_at": created_at, "document": doc, "source": source, "pr": pr,
-            "source_refs": list(dict.fromkeys([source + ":" + ident] + (source_refs or []))),
-            "governed_href": href, "decision_mode": "GOVERNED_PATH" if kind in ("RELEASE", "SPEND", "ACTIVATE", "CONFLICT", "FINANCIAL") else "RECORD"}
+    row = {"id": ident, "kind": kind, "title": title[:300], "proposed_by": proposed_by,
+           "created_at": created_at, "document": doc, "source": source, "pr": pr,
+           "source_refs": list(dict.fromkeys([source + ":" + ident] + (source_refs or []))),
+           "governed_href": href, "decision_mode": "GOVERNED_PATH" if kind in ("RELEASE", "SPEND", "ACTIVATE", "CONFLICT", "FINANCIAL") else "RECORD"}
+    # This is display text for the operator, never an executed command or a recorded approval.
+    version, head = doc.get("version"), doc.get("source_sha")
+    if (kind == "POLICY" and doc.get("source_verified") is True and type(pr) is int and pr > 0
+            and isinstance(version, str) and re.fullmatch(r"\d+\.\d+\.\d+", version)
+            and isinstance(head, str) and SHA.fullmatch(head)):
+        row["source_sha"] = head
+        row["policy_approval_command"] = f"APPROVE_AGENTS_POLICY_{version.replace('.', '_')} {pr} {head}"
+    return row
 
 
 def queue_projection(sources: dict[str, Callable[[], list[dict]]], *, decisions: list[dict], now: datetime) -> dict:
-    rows, gaps, resolved = [], [], []
+    rows, gaps, resolved, keep_retire = [], [], [], []
     for name, load in sources.items():
         try:
             batch = load()
@@ -141,20 +149,26 @@ def queue_projection(sources: dict[str, Callable[[], list[dict]]], *, decisions:
                 # Items a source reconciled as already applied/superseded: never pending, never dropped.
                 if isinstance(batch.get("resolved"), list) and len(batch["resolved"]) <= 500:
                     resolved.extend(batch["resolved"])
+                candidates = batch.get("keep_retire", [])
+                if not isinstance(candidates, list) or len(candidates) > 500:
+                    raise Refused("SOURCE_BUDGET_EXCEEDED", 503)
+                keep_retire.extend(candidates)
                 batch = batch.get("rows")
             if not isinstance(batch, list) or len(batch) > 500:
                 raise Refused("SOURCE_BUDGET_EXCEEDED", 503)
             rows.extend(batch)
         except Exception as exc:  # a failed source never becomes a reassuring zero
             gaps.append({"source": name, "reason": exc.code if isinstance(exc, Refused) else type(exc).__name__})
+    keep_ids = {row["id"] for row in keep_retire}
+    all_rows = [*rows, *keep_retire]
     seen = set()
-    for row in rows:
+    for row in all_rows:
         if row["id"] in seen:
             raise Refused("DUPLICATE_APPROVAL_ID", 503)
         seen.add(row["id"])
     # Union only explicit authoritative references. Titles, symbols and account names are not identity.
     groups: list[list[dict]] = []
-    for row in rows:
+    for row in all_rows:
         overlap = [group for group in groups if set(row.get("source_refs") or []) &
                    {ref for member in group for ref in member.get("source_refs") or []}]
         if not overlap:
@@ -165,20 +179,24 @@ def queue_projection(sources: dict[str, Callable[[], list[dict]]], *, decisions:
                 merged.extend(group)
                 groups.remove(group)
             groups.append(merged)
-    rows = []
+    rows, keep_retire = [], []
     for group in groups:
-        group.sort(key=lambda r: (r["kind"] == "FINANCIAL", r["id"]))
+        # A current authoritative source keeps a shared entity active even if another source suggests retirement.
+        group.sort(key=lambda r: (r["id"] in keep_ids, r["kind"] == "FINANCIAL", r["id"]))
         primary = dict(group[0])
         primary["related_sources"] = [{"id": r["id"], "source": r["source"]} for r in group[1:]]
+        primary["source_refs"] = list(dict.fromkeys(ref for r in group for ref in r.get("source_refs") or []))
         primary["requires_governed_action"] = any(r["decision_mode"] == "GOVERNED_PATH" for r in group)
-        rows.append(primary)
+        (keep_retire if all(r["id"] in keep_ids for r in group) else rows).append(primary)
     recent = [r for r in decisions if r.get("event") == "DECIDED"]
     terminal = {(r["item_id"], r["document_sha"]) for r in recent}
     pending = [r for r in rows if r["requires_governed_action"] or (r["id"], r["document"]["document_sha"]) not in terminal]
     pending.sort(key=lambda r: (r.get("created_at") or "9999", r["id"]))
     return {"items": pending, "known_pending_count": len(pending), "pending_count": len(pending) if not gaps else None,
             "complete": not gaps, "gaps": gaps, "as_of": iso(now), "recent": recent[-30:][::-1],
-            "resolved": sorted(resolved, key=lambda r: (r.get("created_at") or "9999", r["id"]))}
+            "resolved": sorted(resolved, key=lambda r: (r.get("created_at") or "9999", r["id"])),
+            "keep_retire": sorted(keep_retire, key=lambda r: (r.get("created_at") or "9999", r["id"])),
+            "keep_retire_count": len(keep_retire)}
 
 
 def writes_approved(registry: dict) -> bool:
