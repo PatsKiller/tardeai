@@ -294,9 +294,11 @@ def _declares_standing_push(text: str) -> bool:
 # --------------------------------------------------------------------------- repo checks
 
 
+#: A local clean/smudge/process filter is repo-controlled code that `git status` executes while it compares the
+#: worktree (it is named from .gitattributes, so no pin can neutralise it by known name) — refuse it outright.
 _HIJACK_LOCAL = re.compile(
-    r"^(remote\.origin\.(push|mirror|receivepack|uploadpack|pushurl|proxy|vcs|pushoption)|include\.|includeif\."
-    r"|credential\.|http\.|core\.sshcommand|core\.gitproxy|core\.askpass|push\.)"
+    r"^(filter\.|remote\.origin\.(push|mirror|receivepack|uploadpack|pushurl|proxy|vcs|pushoption)|include\.|"
+    r"includeif\.|credential\.|http\.|core\.sshcommand|core\.gitproxy|core\.askpass|push\.)"
 )
 
 
@@ -315,6 +317,9 @@ def check_remote_config(repo: Path, canonical: str) -> None:
         val = parts[2] if len(parts) > 2 else ""
         if key.startswith("url.") and key.endswith(("insteadof", "pushinsteadof")):
             raise Refused(f"{scope} config {key} rewrites remote URLs")
+        if scope in ("local", "worktree", "command") and key.startswith("filter."):
+            raise Refused(f"{scope} config {key} runs a repo-controlled filter during a metadata read; "
+                          f"`git status` must never execute repo code")
         if scope in ("local", "worktree", "command") and _HIJACK_LOCAL.search(key):
             raise Refused(f"{scope} config {key} can redirect or alter a push")
         if scope in ("local", "worktree", "command") and key == "core.hookspath" and val not in (
@@ -1267,6 +1272,11 @@ def evaluate(repo_arg: str, branch: str, session: Optional[str], *, bind_session
     if not top:
         raise Refused(f"{repo_arg} is not a git work tree")
     repo = Path(top)
+    # Refuse a repo whose own config can execute code during a metadata read BEFORE the first such read: `git status`
+    # runs a repo-configured clean filter (via .gitattributes `filter=<name>`), which no pin can neutralise because the
+    # driver names are arbitrary. This check is a pure `config`/`remote get-url` read.
+    canonical = str(cfg["canonical_url"])
+    check_remote_config(repo, canonical)
     local_sha = _out(repo, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}^{{commit}}")
     if not local_sha or not SHA_RE.match(local_sha):
         raise Refused(f"no local branch {branch}")
@@ -1280,8 +1290,6 @@ def evaluate(repo_arg: str, branch: str, session: Optional[str], *, bind_session
     if dirty:
         names = (_out(repo, "diff", "--name-only", "HEAD", pins=METADATA_PINS) or "").splitlines()[:5]
         raise Refused(f"the worktree has uncommitted changes to tracked files ({', '.join(names)}); commit or stash")
-    canonical = str(cfg["canonical_url"])
-    check_remote_config(repo, canonical)
     pins = push_pins(repo, canonical, cfg)
     refs = ls_remote(repo, canonical, branch, float(cfg["ls_remote_timeout"]), pins)
     main_sha = refs.get("refs/heads/main")

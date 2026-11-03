@@ -866,6 +866,23 @@ def test_metadata_reads_never_execute_a_repo_fsmonitor_hook(E):
     assert not marker.exists(), f"a metadata read executed the repo's core.fsmonitor: {out}"
 
 
+def test_metadata_reads_refuse_a_repo_clean_filter_before_it_can_run(E):
+    """A .gitattributes `filter=<name>` plus local `filter.<name>.clean` is repo-controlled code that `git status`
+    executes while it re-hashes the worktree. The driver name is arbitrary, so no pin can switch it off: the guard
+    must refuse the repo config before the first metadata read, and the filter must never run."""
+    E.claim()
+    marker = E.repo / ".git" / "filter-ran"
+    script = E.repo / ".git" / "evil-filter.sh"
+    script.write_text(f"#!/bin/sh\nprintf 'ran\\n' >> {str(marker)!r}\ncat\n")
+    script.chmod(0o755)
+    E.git("config", "filter.evil.clean", str(script))
+    (E.repo / ".gitattributes").write_text("*.txt filter=evil\n")
+    os.utime(E.repo / "f.txt", None)  # stale stat cache: this is when `git status` re-runs the filter
+    out = E.checker(mode="check")
+    _refused(E, out, "filter")
+    assert not marker.exists(), f"a metadata read executed the repo's clean filter: {out}"
+
+
 def test_prepush_hook_must_be_executable_in_the_worktree(E):
     """Same blob, worktree mode 0644: the closure-hash check passes but git SILENTLY skips the hook."""
     gpf = _guard_module(E)
