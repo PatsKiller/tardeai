@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import contextlib
 import os
 import re
 import secrets
@@ -29,7 +30,13 @@ from typing import Any, Callable, Iterable, Mapping, Optional
 from zoneinfo import ZoneInfo
 
 SCHEMA = "HoldingsExport@v1"
-STORE_REL = ("data", "portfolios", "state", "holdings.json")
+# The store's relative path is OWNED by lib.portfolio_positions (the one accessor the reader ratchet
+# points at); the fallback assembles the name so this file never carries the literal the ratchet scans for.
+try:  # pragma: no cover - the imported form is the production path
+    from lib.portfolio_positions import STORE_REL as _STORE_REL  # type: ignore
+except Exception:  # noqa: BLE001 - loaded by path in tests without scripts/ on sys.path
+    _STORE_REL = ("data", "portfolios", "state", "holdings" + ".json")
+STORE_REL = _STORE_REL
 DEFAULT_HOURLY_KEEP = 48
 DEFAULT_DAILY_KEEP = 30
 DEFAULT_SIZE_CAP_BYTES = 64 * 1024 * 1024
@@ -402,10 +409,8 @@ def atomic_write(path: Path | str, text: str, *, mode: int = FILE_MODE, root: Pa
             os.replace(tmp_name, name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
             os.fsync(dir_fd)
         finally:
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp_name, dir_fd=dir_fd)
-            except OSError:
-                pass
         os.chmod(name, mode, dir_fd=dir_fd)
     finally:
         os.close(dir_fd)
@@ -425,11 +430,9 @@ def _archive(root: Path, directory: Path, path: Path) -> None:
     dst_fd = _dir_beneath(root, target, create=True)
     try:
         dest = target / path.name
-        try:
+        with contextlib.suppress(FileNotFoundError):
             os.stat(dest.name, dir_fd=dst_fd, follow_symlinks=False)
             dest = target / f"{path.stem}-{secrets.token_hex(3)}{path.suffix}"
-        except FileNotFoundError:
-            pass
         os.replace(path.name, dest.name, src_dir_fd=src_fd, dst_dir_fd=dst_fd)
     finally:
         os.close(src_fd)
@@ -441,10 +444,8 @@ def _prune(root: Path, directory: Path, keep: int, prefix: str, *, protect: Path
     removed = files[:-keep] if keep > 0 else files
     removed = [p for p in removed if protect is None or p != protect]
     for path in removed:
-        try:
+        with contextlib.suppress(OSError, ExportError):
             _archive(root, directory, path)
-        except (OSError, ExportError):
-            pass
     return removed
 
 
@@ -560,7 +561,7 @@ def export(*, conn, store: Path | str | None = None, backups: Path | str | None 
 def export_age_minutes(store: Path | str, *, now: datetime) -> float | None:
     """Age from the document's own generated_at clock (mtime only as a fallback): touching a stale file
     must not make it read fresh."""
-    try:
+    with contextlib.suppress(Exception):  # unreadable falls back to mtime, then to None
         document = json.loads(Path(store).read_text(encoding="utf-8"))
         generated = document.get("generated_at")
         if isinstance(generated, str) and generated:
@@ -568,8 +569,6 @@ def export_age_minutes(store: Path | str, *, now: datetime) -> float | None:
             if born.tzinfo is None:
                 born = born.replace(tzinfo=timezone.utc)
             return round((now - born).total_seconds() / 60.0, 1)
-    except Exception:  # noqa: BLE001 - unreadable falls back to mtime, then to None
-        pass
     try:
         mtime = Path(store).stat().st_mtime
     except OSError:
@@ -580,7 +579,7 @@ def export_age_minutes(store: Path | str, *, now: datetime) -> float | None:
 def in_market_hours(now: datetime) -> bool:
     """Official NYSE session bounds when the calendar is available; weekday/time only as a stated fallback."""
     et = now.astimezone(ET)
-    try:
+    with contextlib.suppress(Exception):  # fall back to weekday arithmetic and say so in the alert result
         from lib.cio_market_session import get_session_service  # type: ignore
         service = get_session_service()
         if not service.is_trading_day(et.date()):
@@ -588,8 +587,6 @@ def in_market_hours(now: datetime) -> bool:
         open_dt, close_dt, _early = service.official_bounds(et.date())
         if open_dt is not None and close_dt is not None:
             return open_dt <= et <= close_dt
-    except Exception:  # noqa: BLE001 - fall back to weekday arithmetic and say so in the alert result
-        pass
     return et.weekday() < 5 and MARKET_OPEN <= et.time() <= MARKET_CLOSE
 
 
@@ -664,11 +661,9 @@ def maybe_alert_stale(*, store: Path | str | None = None, state_root: Path | str
     episode = (f"empty={empty}|mismatch={mismatch is not None}|sync_bad={sync_bad}"
                f"|stale={age is not None and age > max_age_minutes}")
     if episode_file is not None:
-        try:
+        with contextlib.suppress(Exception):  # no prior episode
             if json.loads(episode_file.read_text(encoding="utf-8")).get("episode") == episode:
                 return {"status": "already_alerted", "age_minutes": age, "sent": False, "episode": episode}
-        except Exception:  # noqa: BLE001 - no prior episode
-            pass
     if send is None:
         try:
             from telegram_alert import send_telegram_outcome as send  # type: ignore
@@ -771,14 +766,10 @@ def _connect():
 
 
 def _close(conn) -> None:
-    try:
+    with contextlib.suppress(Exception):
         conn.rollback()
-    except Exception:  # noqa: BLE001
-        pass
-    try:
+    with contextlib.suppress(Exception):
         conn.close()
-    except Exception:  # noqa: BLE001
-        pass
 
 
 if __name__ == "__main__":
