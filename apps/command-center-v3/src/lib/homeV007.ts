@@ -110,6 +110,16 @@ function fact(o: Record<string, unknown> | null): Fact {
   }
 }
 
+/** The ET calendar date of an instant, so a quote's own clock can be checked against its declared session. */
+function etDate(iso: string | null): string | null {
+  if (!iso) return null
+  const at = Date.parse(iso)
+  if (!Number.isFinite(at)) return null
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York',
+    year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(at)).map(p => [p.type, p.value]))
+  return `${parts.year}-${parts.month}-${parts.day}`
+}
+
 function quote(base: Record<string, unknown> | null): QuoteLine {
   const q = rec(base?.quote)
   const f = fact(q)
@@ -117,14 +127,21 @@ function quote(base: Record<string, unknown> | null): QuoteLine {
   const sessionDate = str(q?.session_date)
   const expected = str(q?.expected_session_date)
   const mismatched = !!(sessionDate && expected && sessionDate !== expected)
-  // Only the measured-and-stale-case is ours to downgrade: an unknown fact keeps its own reason, which says more
-  // than the session mismatch does.
-  const downgrade = mismatched && f.state === 'measured'
+  // The declared session label is not evidence on its own: a cached print can be relabelled with today's date while
+  // its own clock still says yesterday (DATA R1, 2026-11-03). Bind the observation clock to the session it claims.
+  const clockDate = etDate(f.asOf)
+  const relabelled = !!(clockDate && sessionDate && clockDate !== sessionDate)
+  // Only a measured fact is ours to downgrade: an unknown fact keeps its own reason, which says more than a mismatch.
+  const downgrade = (mismatched || relabelled) && f.state === 'measured'
   return {
     ...f,
     state: downgrade ? 'unknown' : f.state,
-    reason: downgrade ? `quote belongs to session ${sessionDate}, expected ${expected}` : f.reason,
-    price: num(value?.price) ?? num(q?.value),
+    reason: downgrade
+      ? (mismatched ? `quote belongs to session ${sessionDate}, expected ${expected}`
+        : `quote clock is ${clockDate} but it is labelled session ${sessionDate}`)
+      : f.reason,
+    // A downgraded quote keeps no value: an unknown fact must not carry a price the card could render.
+    price: downgrade ? null : (num(value?.price) ?? num(q?.value)),
     session: str(q?.session),
     sessionDate,
     expectedSessionDate: expected,
@@ -209,7 +226,9 @@ export function parseHomeV007(raw: unknown): HomeV007 {
       const o = rec(c) as Record<string, unknown>
       const f = fact(o)
       const key = str(o.category) ?? str(o.key) ?? '?'
-      return { key, label: str(o.label) ?? key.replace(/_/g, ' '), chip: str(o.chip), state: f.state, asOf: f.asOf, reason: f.reason }
+      // An affirmative chip is a claim about a measurement. Without one (DATA R2, 2026-11-03) the chip is not shown and
+      // the row reads as unknown, rather than publishing "OK" over a fact that carries no provenance.
+      return { key, label: str(o.label) ?? key.replace(/_/g, ' '), chip: f.state === 'measured' ? str(o.chip) : null, state: f.state, asOf: f.asOf, reason: f.reason }
     }),
     nextEvaluation: (() => {
       const n = rec(riskRaw.next_evaluation)

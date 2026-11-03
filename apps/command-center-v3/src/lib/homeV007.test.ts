@@ -127,6 +127,21 @@ eq('and keeps its declared basis', produced.risk.nextEvaluation?.basis, 'registr
 const arrayInverse = parseHomeV007({ hedge: { inverse_moves: { value: [{ symbol: 'SDS', day_pct: -0.4, state: 'measured' }] } } })
 eq('the older array shape still reads', arrayInverse.hedge.inverse[0]?.symbol, 'SDS')
 
+// DATA R1/R2 (2026-11-03): a declared session label is not evidence, and an affirmative chip needs a measurement.
+const relabelled = parseHomeV007({ symbols: { X: { quote: { state: 'measured', value: { price: 12 }, session_date: '2026-11-02',
+  expected_session_date: '2026-11-02', as_of: '2026-11-01T21:00:00Z' } } } })
+eq('a quote whose clock says yesterday is not today’s price', relabelled.symbols[0].quote.state, 'unknown')
+eq('and the mismatched clock is named', (relabelled.symbols[0].quote.reason ?? '').includes('2026-11-01'), true)
+eq('and carries no price', relabelled.symbols[0].quote.price, null)
+const honestClock = parseHomeV007({ symbols: { X: { quote: { state: 'measured', value: { price: 12 }, session_date: '2026-11-02',
+  expected_session_date: '2026-11-02', as_of: '2026-11-02T21:00:00Z' } } } })
+eq('a quote taken inside its session stays measured', honestClock.symbols[0].quote.state, 'measured')
+const unclockedChip = parseHomeV007({ risk: { categories: [{ category: 'tech', label: 'Technology', chip: 'OK', state: 'unknown' }] } })
+eq('an unclocked category publishes no affirmative chip', unclockedChip.risk.categories[0].chip, null)
+eq('and stays unknown', unclockedChip.risk.categories[0].state, 'unknown')
+const measuredChip = parseHomeV007({ risk: { categories: [{ category: 'tech', chip: 'STRESS', state: 'measured', as_of: '2026-11-02T21:00:00Z' }] } })
+eq('a measured category keeps its chip', measuredChip.risk.categories[0].chip, 'STRESS')
+
 const junk = parseHomeV007({ symbols: 'nope', risk: { categories: 'x' }, budgets: {} })
 eq('malformed members do not throw', junk.symbols.length, 0)
 eq('malformed budgets are empty', junk.budgets.length, 0)
