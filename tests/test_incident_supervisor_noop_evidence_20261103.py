@@ -7,6 +7,10 @@ sys.path.insert(0, str(ROOT)); sys.path.insert(0, str(ROOT / "scripts"))
 from lib import incident_supervisor as S  # noqa: E402
 SPEC = {"success_when": {"json": {"acted": {"not_empty": True}}}}
 
+
+def _cfg():
+    return json.loads((ROOT / "config" / "incident_runbook_actions.json").read_text())
+
 def test_empty_acted_is_a_no_op():
     assert S._action_took_effect(SPEC, json.dumps({"acted": []})) is False
 
@@ -78,3 +82,44 @@ def test_at_the_cap_a_noop_runbook_dispatches_the_fixer(tmp_path, monkeypatch):
     after = L.load_records(tmp_path / "ledger")[rec["id"]]
     assert any(a.get("action") == "fixer_dispatch" for a in after["attempts"])
     assert after["status"] != "blocked"
+
+
+# ---------------------------------------------------------------- a live fix job owns the incident
+def _capped_incident(tmp_path, monkeypatch, *, dispatch_hours_ago, ok=True):
+    from datetime import datetime, timedelta, timezone
+    from lib import incidents as L
+    monkeypatch.setenv("TRADEAI_INCIDENTS_DIR", str(tmp_path / "ledger"))
+    monkeypatch.setenv("TRADEAI_PERSISTENT_STATE_ROOT", str(tmp_path / "ps"))
+    t0 = datetime(2026, 11, 3, 3, 0, tzinfo=timezone.utc)
+    rec, _ = L.open_incident(source={"kind": "watcher", "watcher": "health_tick", "job": "fixture-step"},
+                             title="health tick step fixture-step failed (rc=2)", d=tmp_path / "ledger", now=t0)
+    for k in range(3):
+        L.attempt(rec["id"], actor=S.ACTOR, action="cron_self_heal", result="rc=0",
+                  ok=True, detail={"no_op": True}, d=tmp_path / "ledger", now=t0 + timedelta(minutes=k + 1))
+    L.attempt(rec["id"], actor=S.ACTOR, action="fixer_dispatch", result="fixer rc=0",
+              ok=ok, detail={"provider": "cap_route"}, d=tmp_path / "ledger",
+              now=t0 + timedelta(hours=2) - timedelta(hours=dispatch_hours_ago))
+    return rec, t0 + timedelta(hours=3)
+
+
+def test_a_fresh_fixer_dispatch_does_not_page_a_person(tmp_path, monkeypatch):
+    rec, when = _capped_incident(tmp_path, monkeypatch, dispatch_hours_ago=1)
+    out = S.cycle(d=tmp_path / "ledger", state_root=tmp_path / "state", release_root=ROOT, cfg=_cfg(),
+                  deps=S.Deps(model=lambda p: (_ for _ in ()).throw(AssertionError("no model call")),
+                              run=lambda *a, **k: (0, "ok"), notify=lambda *a, **k: True,
+                              fixer=lambda *a, **k: {"rc": 0, "prs": []}),
+                  apply=True, now=when, environ={"HOME": "/h", "PATH": "/bin"}, root=ROOT)
+    assert {"id": rec["id"], "why": "fixer job active"} in out["skipped"], out
+    assert not out["blocked"] and not out["escalated"], out
+    from lib import incidents as L
+    assert L.load_records(tmp_path / "ledger")[rec["id"]]["status"] != "blocked"
+
+
+def test_a_stale_or_failed_dispatch_still_reaches_a_person(tmp_path, monkeypatch):
+    rec, when = _capped_incident(tmp_path, monkeypatch, dispatch_hours_ago=13)
+    out = S.cycle(d=tmp_path / "ledger", state_root=tmp_path / "state", release_root=ROOT, cfg=_cfg(),
+                  deps=S.Deps(model=lambda p: (_ for _ in ()).throw(AssertionError("no model call")),
+                              run=lambda *a, **k: (0, "ok"), notify=lambda *a, **k: True,
+                              fixer=lambda *a, **k: {"rc": 0, "prs": []}),
+                  apply=True, now=when, environ={"HOME": "/h", "PATH": "/bin"}, root=ROOT)
+    assert out["blocked"] and out["blocked"][0]["id"] == rec["id"], out

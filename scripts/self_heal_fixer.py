@@ -362,6 +362,29 @@ class Attempt:
         return (str(self.provider.get("name") or "").lower() not in ("", "anthropic")
                 and bool(self.provider.get("launcher")) and bool(self.provider.get("key_file")))
 
+    def provider_setup_problem(self) -> Optional[str]:
+        """A provider block must be complete AND safe: DeepSeek carries its own key, so it may never reuse the
+        CLI's OAuth credential. auth_mode must therefore be exactly "none"; anything else is a half-configured
+        block that would bind the Anthropic credential inside a DeepSeek run."""
+        if not self._provider_active():
+            return None
+        if str(self.provider.get("auth_mode") or "") != "none":
+            return "provider_auth_mode_invalid"
+        if not os.access(self.launcher_path(), os.R_OK):
+            return "provider_launcher_unavailable"
+        return None
+
+    def egress_allow(self) -> list[str]:
+        """Hosts the egress bridge may CONNECT to. A provider host is added ONLY while that provider is active;
+        on the Anthropic path the allowlist stays Anthropic-only, so a prompt-injected model cannot take the
+        bound OAuth credential to a third party."""
+        hosts = [str(h) for h in (self.asb.get("egress_allow") or [])]
+        if self._provider_active():
+            for h in self.provider.get("egress_allow") or []:
+                if str(h) not in hosts:
+                    hosts.append(str(h))
+        return hosts
+
     def launcher_path(self) -> str:
         raw = str(self.provider.get("launcher") or "").replace("{repo_root}", str(self.repo))
         return raw.replace("{home}", self.environ.get("HOME") or str(Path.home()))
@@ -420,7 +443,7 @@ class Attempt:
                 return why
             for _src, dst, _rw in binds:  # an EMPTY mount point; the credential itself is never read or copied
                 Path(dst).touch(exist_ok=True)
-            allow = list(self.asb.get("egress_allow") or [])
+            allow = self.egress_allow()
             self.proxy_port = int(self.asb.get("proxy_port", 18977)) if allow else None
             self.agent_env = F.agent_env(
                 self.environ,
@@ -429,9 +452,10 @@ class Attempt:
                 agent_home=str(self.agent_home),
                 proxy_port=self.proxy_port,
             )
+            problem = self.provider_setup_problem()
+            if problem:
+                return problem
             if self._provider_active():
-                if not os.access(self.launcher_path(), os.R_OK):
-                    return "provider_launcher_unavailable"
                 self.key_line = self._read_provider_key()
                 if self.key_line is None:
                     return "provider_key_unavailable"
@@ -530,7 +554,7 @@ class Attempt:
             # first line = the key, consumed by the launcher before the CLI starts; the rest is the prompt
             prompt = self.key_line.decode("utf-8", "replace") + "\n" + prompt
         if self.agent_prefix and self.proxy_port:
-            with EG.EgressProxy(str(self.egress_dir / "s"), self.asb.get("egress_allow") or []) as px:
+            with EG.EgressProxy(str(self.egress_dir / "s"), self.egress_allow()) as px:
                 cr = run(cmd, cwd=self.fix_wt, env=self.env, timeout=timeout, stdin=prompt)
                 return cr, px.summary()
         return run(cmd, cwd=self.fix_wt, env=self.env, timeout=timeout, stdin=prompt), None

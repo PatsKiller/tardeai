@@ -292,7 +292,8 @@ port; proxy allows only the listed target; the model's pytest sees no proxy/auth
    24.11 amendment is ACTIVE; every PR is human-reviewed and never auto-merged. Recommended before arming: a
    dedicated, revocable credential for this lane (a separate login used only here) so a leak is cheap to revoke.
 2. **Allowlisted hosts are coarse.** `claude.ai:443` / `console.anthropic.com:443` / `platform.claude.com:443` are
-   allowed for OAuth refresh; any data path through them is open to the model. No other host is reachable.
+   allowed for OAuth refresh; any data path through them is open to the model. No other host is reachable on
+   the Anthropic path; a provider run adds only that provider's configured hosts (§6b), never a static one.
 3. **The model's tests share the agent boundary** (nested bwrap is refused here): they cannot reach the host network
    but can reach the egress bridge (Anthropic hosts only) and read the agent HOME, including the credential. The
    harness's own test runs (red-first, targeted, CI) do not: they run in `eval_sandbox_prefix` without the agent HOME
@@ -321,7 +322,13 @@ runs the model on DeepSeek:
   bound read-only (`TRADEAI_CLAUDE_BIN`), because that path is not on the sandbox PATH.
 - **Auth.** `provider.auth_mode` overrides `claude.auth.mode`; for DeepSeek it is `none`, so the Claude OAuth
   file is not bound at all — one credential inside the boundary, not two.
-- **Egress.** `api.deepseek.com:443` is the only added host in `agent_sandbox.egress_allow`.
+- **Egress.** `api.deepseek.com:443` is NOT in the static `agent_sandbox.egress_allow`. The fixer appends a
+  provider's `egress_allow` hosts only while that provider is active (`Attempt.egress_allow()`), and the
+  egress bridge is started with that effective list. On the Anthropic path the allowlist is exactly the
+  Anthropic hosts in §6a — a prompt-injected model cannot take the bound OAuth credential to a third party.
+- **A half-configured block is refused.** An active provider must set `auth_mode: "none"`; anything else
+  (missing, `credentials_file`) fails the job with `provider_auth_mode_invalid` instead of binding the OAuth
+  file inside a DeepSeek run. A launcher that is not readable fails with `provider_launcher_unavailable`.
 - **Residual risk.** As with the OAuth credential above, the CLI holds the key in a readable descriptor; a
   model-run Bash that deliberately opens `/proc/<claude-pid>/fd/<n>` could read it. Nothing puts it in the
   prompt, the diff, the transcript or a test wrapper. The same recommendation applies: arm with a dedicated,

@@ -49,6 +49,8 @@ def seal_key(key: bytes) -> int:
 def build_env(environ: dict[str, str]) -> tuple[dict[str, str], list[str]]:
     """(env for the CLI, problems). The key stays in the descriptor; only its number is named."""
     env = dict(environ)
+    # Never inherit a descriptor from the caller: only the one this launcher seals may be named.
+    env.pop("CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR", None)
     problems: list[str] = []
     fd = str(env.get(FD_ENV) or "").strip()
     if not fd.isdigit():

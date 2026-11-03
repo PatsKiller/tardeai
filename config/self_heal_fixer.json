@@ -314,8 +314,7 @@
       "api.anthropic.com:443",
       "console.anthropic.com:443",
       "platform.claude.com:443",
-      "claude.ai:443",
-      "api.deepseek.com:443"
+      "claude.ai:443"
     ]
   },
   "lease": {

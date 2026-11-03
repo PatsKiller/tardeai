@@ -387,6 +387,17 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
                           fix_refs=refs or None, d=d, now=now)
                 out["dispatched"].append({"id": iid, "rc": res.get("rc"), "prs": res.get("prs")})
                 continue
+            # A dispatched fix job that is still fresh owns this incident: do not page a person for the same
+            # cause while the fixer works it. Bounded by policy, so a dead fixer cannot hide forever, and a
+            # failed dispatch (ok false) goes straight to a person.
+            dispatched = [a for a in supervisor_attempts(rec) if a.get("action") == "fixer_dispatch"]
+            if dispatched:
+                last_fix = max((L.parse_ts(a.get("at")) for a in dispatched if a.get("at")), default=None)
+                active_for = float(pol.get("fixer_active_hours", 12))
+                if (last_fix and not any(a.get("ok") is False for a in dispatched)
+                        and now - last_fix < timedelta(hours=active_for)):
+                    out["skipped"].append({"id": iid, "why": "fixer job active"})
+                    continue
             if apply:
                 rec = L.block(iid, actor=ACTOR, blocked_reason=why,
                               handoff="coordinator: read attempts[] and the evidence; fix by PR or record the operator decision", d=d, now=now)
