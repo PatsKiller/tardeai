@@ -98,7 +98,7 @@ function CurrentPipelineView({ payload, readFailed, readStale, onWorklog, onAct,
           {item.head ? <span style={mono}>Head {item.head}</span> : null}
           {item.command ? <><code style={{ ...mono, whiteSpace: 'pre-wrap' }}>{item.command}</code><button type="button" style={{ ...btn, minHeight: 44 }} onClick={() => { void copyText(item.command || '') }}>Copy exact command</button></> : null}
           {!item.url || item.url.startsWith('/')
-            ? <Link to={item.url || `/approvals/${encodeURIComponent(item.id)}`} style={{ ...linkStyle, minHeight: 44, display: 'flex', alignItems: 'center' }}>Open decision</Link>
+            ? <Link to={item.url ? item.url.replace(/^\/releases(?=[/?#]|$)/, '/system/releases') : `/approvals/${encodeURIComponent(item.id)}`} style={{ ...linkStyle, minHeight: 44, display: 'flex', alignItems: 'center' }}>Open decision</Link>
             : <a href={item.url} style={{ ...linkStyle, minHeight: 44, display: 'flex', alignItems: 'center' }}>Open decision</a>}
           <span style={small}>Source observed {et(item.sourceAt)}</span>
         </article>)}
