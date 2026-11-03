@@ -262,17 +262,26 @@ def run_ab_session(state_dir: Path, now_iso: str, out_path: Path) -> int:
     """
     _isolate_router_side_effects(state_dir)
     import telegram_alert as T
-    from lib import recovery_notify as C  # noqa: F401 — imported so C is on the path run_pass uses
+    from lib import recovery_notify as C  # imported so the same module object run_pass lazily resolves
     from lib import recovery_state as B
+
+    # C keeps its repeat-floor ledger under PROJECT_ROOT / NUDGE_STATE_REL; point that at scratch too, so
+    # one stage's delivery cannot dedupe another stage's (and nothing is written inside the repo).
+    C.PROJECT_ROOT = state_dir
 
     ledger = state_dir / "raw_transport.jsonl"
     counter = {"n": 0}
+
+    fail_transport = os.environ.get("BC_PROOF_FAIL_TRANSPORT") == "1"
+    fail_write = os.environ.get("BC_PROOF_FAIL_WRITE") == "1"
 
     def fake_raw(message, chat_ids=None, **kwargs):
         counter["n"] += 1
         with ledger.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps({"at": now_iso, "chars": len(message or ""),
                                  "marker": str(message or "").startswith(MARKER)}, sort_keys=True) + "\n")
+        if fail_transport:
+            return {"ok": False, "error": "synthetic raw transport refused"}
         return {"ok": True, "message_ids": [1000 + counter["n"]], "held": 0}
 
     T._raw_send_telegram_result = fake_raw
@@ -296,11 +305,22 @@ def run_ab_session(state_dir: Path, now_iso: str, out_path: Path) -> int:
             return list(self.cases)
 
         def update_state(self, key, **fields):
+            if fail_write:
+                raise OSError("synthetic durable write refused")
             self.writes.append({"case_key": key, **fields})
 
     store = MemoryStore([r for _obj, r in rows.values()])
+    pending_path = state_dir / "notify_pending.json"
+    notify = None
+    if fail_transport:
+        # A transport failure must be observable to C: the real router's "accepted" answer is not a delivery
+        # (telegram_alert returns True for an accepted intent), so this control injects the SENDER — the seam
+        # where a transport refusal is visible — and keeps every other C policy exactly as it ships.
+        def notify(case):
+            return C.notify_recovery_case(case, now=now, state_path=state_dir / "nudge.json",
+                                          sender=lambda *a, **k: False)
     out = B.run_pass(store, lambda case: snaps.get(str(case.get("symbol")), snaps["DEMO1"]),
-                     policy=policy_b, now=now, dry_run=False)
+                     policy=policy_b, now=now, dry_run=False, pending_path=pending_path, notify=notify)
 
     from lib.recovery_engine import cases as ac2
     receipts = {}
@@ -319,6 +339,8 @@ def run_ab_session(state_dir: Path, now_iso: str, out_path: Path) -> int:
                                     "state_writes": len(store.writes),
                                     "notifier_calls": out.get("notifier_calls"),
                                     "raw_deliveries_in_session": counter["n"],
+                                    "pending": out.get("pending"),
+                                    "write_errors": [d for d in out["decisions"] if d.get("write_error")],
                                     "receipts": receipts}, indent=1, sort_keys=True))
     return 0
 
@@ -464,6 +486,45 @@ def main(argv: list[str] | None = None) -> int:
     }
     proofs["P5_real_A_rows_and_actual_policy_through_the_real_router"] = p5
     proofs["P6_repeat_within_the_floor_delivers_nothing_and_says_so"] = p6
+
+    # P7 — failed delivery is RETRIED on the next scheduled pass (codex's failed-send counterexample)
+    retry_root = root / "retry"
+    retry_root.mkdir(parents=True, exist_ok=True)
+    r1_out, r2_out = retry_root / "fail.json", retry_root / "deliver.json"
+    env_fail = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "BC_PROOF_FAIL_TRANSPORT": "1"}
+    env_ok = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    for out, when, env in ((r1_out, t0, env_fail), (r2_out, t1, env_ok)):
+        proc = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--ab-session", str(retry_root),
+                               when.strftime("%Y-%m-%dT%H:%M:%SZ"), str(out)],
+                              capture_output=True, text=True, timeout=300, cwd=str(PROJECT_ROOT), env=env)
+        if proc.returncode != 0 or not out.exists():
+            raise RuntimeError(f"retry session failed: {(proc.stderr or proc.stdout)[-800:]}")
+    f1, f2 = json.loads(r1_out.read_text()), json.loads(r2_out.read_text())
+    proofs["P7_a_failed_delivery_is_retried_by_the_next_scheduled_pass"] = {
+        "pass": (f1["notifier_calls"] == 2 and f1["raw_deliveries_in_session"] == 0 and f1["pending"] == 2
+                 and f2["notifier_calls"] == 2 and f2["raw_deliveries_in_session"] == 2 and f2["pending"] == 0),
+        "failed_pass": {"notifier_calls": f1["notifier_calls"], "raw_deliveries": f1["raw_deliveries_in_session"],
+                        "pending": f1["pending"]},
+        "retry_pass": {"notifier_calls": f2["notifier_calls"], "raw_deliveries": f2["raw_deliveries_in_session"],
+                       "pending": f2["pending"]},
+    }
+
+    # P8 — a failed STATE WRITE pages nothing (and is recorded as an error)
+    bad_root = root / "badwrite"
+    bad_root.mkdir(parents=True, exist_ok=True)
+    bad_out = bad_root / "s.json"
+    proc = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--ab-session", str(bad_root),
+                           t0.strftime("%Y-%m-%dT%H:%M:%SZ"), str(bad_out)],
+                          capture_output=True, text=True, timeout=300, cwd=str(PROJECT_ROOT),
+                          env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "BC_PROOF_FAIL_WRITE": "1"})
+    if proc.returncode != 0 or not bad_out.exists():
+        raise RuntimeError(f"write-failure session failed: {(proc.stderr or proc.stdout)[-800:]}")
+    bad = json.loads(bad_out.read_text())
+    proofs["P8_a_failed_state_write_pages_nothing"] = {
+        "pass": bad["raw_deliveries_in_session"] == 0 and bad["state_writes"] == 0 and bool(bad["write_errors"]),
+        "raw_deliveries": bad["raw_deliveries_in_session"], "state_writes": bad["state_writes"],
+        "write_errors": bad["write_errors"],
+    }
 
     ok = all(p["pass"] for p in proofs.values())
     document = {"schema": SCHEMA, "ok": bool(ok), "state_root": str(root),
