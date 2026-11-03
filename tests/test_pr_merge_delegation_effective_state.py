@@ -477,6 +477,13 @@ def test_forged_takeover_of_live_predecessor_does_not_supersede(mod, tmp_path):
 # --------------------------------------------------------------------------- read-only proof
 
 
+#: Interpreter, VCS and pytest caches. Any import can write a ``.pyc``, any git command can rewrite ``.git``, and the
+#: gate runner's pytest cache lives at the repo root — none of that is evidence about the code under test, and in CI
+#: other gates share this checkout. Every *application* file is still hashed, and this is a directory exclusion, not an
+#: ignore-all-mtimes: a real write to source, config or state during the call still fails the comparison.
+CACHE_DIR_NAMES = frozenset({"__pycache__", ".git", ".pytest_cache"})
+
+
 def tree_state(root, *, exclude=None):
     out = {}
     root = Path(root)
@@ -484,6 +491,8 @@ def tree_state(root, *, exclude=None):
         return out
     for path in sorted(root.rglob("*")):
         if exclude is not None and (path == exclude or exclude in path.parents):
+            continue
+        if any(part in CACHE_DIR_NAMES for part in path.relative_to(root).parts):
             continue
         if path.is_dir():
             out[str(path)] = ("dir",)
