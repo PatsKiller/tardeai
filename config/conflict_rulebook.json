@@ -70,7 +70,10 @@
       "hold": [
         "HOLD",
         "KEEP",
-        "MAINTAIN"
+        "MAINTAIN",
+        "MANAGING",
+        "CURRENTLY_HELD",
+        "HOLD_/_MONITOR"
       ],
       "stand_aside": [
         "WATCH",
@@ -81,7 +84,10 @@
         "WAIT",
         "MONITOR",
         "NEUTRAL",
-        "NOT_YET"
+        "NOT_YET",
+        "OVERBOUGHT_WAIT",
+        "OVERSOLD_REVIEW",
+        "READY_TO_REVIEW"
       ],
       "reduce": [
         "TRIM",
@@ -152,7 +158,6 @@
       "RESEARCH_MORE",
       "MORE_RESEARCH",
       "INSUFFICIENT_DATA",
-      "HOLD / MONITOR",
       "BUY_READY",
       "NO_ACTION",
       "DEFER",

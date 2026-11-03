@@ -41,11 +41,34 @@ def test_e1_e22_position_aware_ordinal(a, b, held, relation):
 
 
 @pytest.mark.parametrize("label", ["ADD_ON_PULLBACK", "RESEARCH_MORE", "MORE_RESEARCH", "INSUFFICIENT_DATA",
-    "HOLD / MONITOR", "BUY_READY", "NO_ACTION", "DEFER", "SELL_TAXABLE"])
+    "BUY_READY", "NO_ACTION", "DEFER", "SELL_TAXABLE"])
 def test_unmapped_labels_are_visible_errors(label):
     fs = run("WATCH", Input("desk", label, NOW))
     assert [(f.kind, f.rule) for f in fs] == [("DATA_ERROR", "R8")]
     assert posture(label) is None
+
+
+@pytest.mark.parametrize("label,stance", [
+    ("MANAGING", "hold"), ("CURRENTLY_HELD", "hold"), ("HOLD / MONITOR", "hold"),
+    ("OVERBOUGHT_WAIT", "watch"), ("OVERSOLD_REVIEW", "watch"), ("READY_TO_REVIEW", "watch")])
+def test_observed_desk_labels_map_to_a_family_instead_of_a_data_error(label, stance):
+    # Operator spec 2026-11-02 Part 1: "extend the shared vocabulary for every observed label (config, reviewed)".
+    # These six were arriving from live desk rows and every one became a DATA_ERROR/R8, burying the real conflicts
+    # (992 of 1013 open items). They now carry a stance; MISSING_MARKET and MISSING_PLAN deliberately stay unmapped
+    # because "we do not know" must not read as "no action". posture() returns the stance, not the family key:
+    # stand_aside maps to "watch".
+    fs = run("WATCH", Input("desk", label, NOW))
+    assert not [f for f in fs if f.rule == "R8"], f"{label} must not be a vocabulary error"
+    assert posture(label) == stance
+
+
+@pytest.mark.parametrize("label", ["MISSING_MARKET", "MISSING_PLAN"])
+def test_missing_input_labels_stay_visible_errors(label):
+    # Deliberate: a missing input is not a stance. Mapping it would tell the CIO "no action" when the truth is
+    # "not measured". If the operator wants these mapped, that is a rulebook decision, not a vocabulary patch.
+    assert posture(label) is None
+    fs = run("WATCH", Input("desk", label, NOW))
+    assert [(f.kind, f.rule) for f in fs] == [("DATA_ERROR", "R8")]
 
 
 def test_missing_stance_blocks_go_and_queues_working_compared_input_producer():
