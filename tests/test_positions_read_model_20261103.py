@@ -1,0 +1,298 @@
+"""Hermetic tests for the Step 3 W0 positions read model.
+
+No DB, no broker, no live store. A fake read-only connection exercises the SQL contract.
+"""
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from lib import positions_read_model as m  # noqa: E402
+
+NOW = datetime(2026, 11, 3, 16, 30, tzinfo=timezone.utc)
+
+# (sync_run_id, account_key, broker, symbol, qty, cost_basis_total, avg_cost,
+#  broker_market_value, is_cash, asset_type, source, captured_at)
+ROW_COLS = m._SNAPSHOT_COLS
+
+
+def _row(run, key, symbol, qty, mv, *, cash=False, basis=100.0, as_of=NOW):
+    return (run, key, "schwab" if key.startswith("schwab") else "alpaca", symbol, qty,
+            basis, (basis / qty if qty else None), mv, cash, "CASH" if cash else "EQUITY",
+            "positions_sync", as_of)
+
+
+def _receipt(run, rows, *, status="complete", promoted=True):
+    return (run, status, promoted, rows, NOW, NOW, ["schwab_taxable"], {})
+
+
+RUN641 = {
+    641: [
+        _row(641, "schwab_taxable", "AAA", 10, 1200.0),
+        _row(641, "schwab_roth_ira", "BBB", 2, 80.0),
+        _row(641, "schwab_taxable", "CASH", 1, 500.0, cash=True, basis=500.0),
+    ]
+}
+RUN638 = {
+    638: [
+        _row(638, "schwab_taxable", "AAA", 10, 1100.0),
+        _row(638, "schwab_roth_ira", "BBB", 2, 70.0),
+    ]
+}
+
+
+class FakeCursor:
+    def __init__(self, pointer, receipts, snapshots):
+        self.pointer = pointer
+        self.receipts = receipts
+        self.snapshots = snapshots
+        self.executed = []
+        self._result = None
+
+    def execute(self, sql, params=None):
+        self.executed.append((" ".join(sql.split()).lower(), params))
+        s = " ".join(sql.split()).lower()
+        if s.startswith("begin") or s.startswith("commit") or s.startswith("rollback"):
+            self._result = None
+        elif "from positions_current" in s:
+            self._result = [(v,) for v in self.pointer]
+        elif "from positions_sync_runs" in s:
+            hit = self.receipts.get(int(params[0]))
+            self._result = [hit] if hit else []
+        elif "from position_snapshots" in s:
+            self._result = list(self.snapshots.get(int(params[0]), []))
+        else:
+            self._result = []
+
+    def fetchall(self):
+        return list(self._result or [])
+
+    def fetchone(self):
+        rows = self._result or []
+        return rows[0] if rows else None
+
+
+class FakeConn:
+    def __init__(self, pointer, receipts, snapshots):
+        self._cur = FakeCursor(pointer, receipts, snapshots)
+
+    def cursor(self):
+        return self._cur
+
+    def rollback(self):
+        pass
+
+
+class BoomConn:
+    def cursor(self):
+        raise RuntimeError("db down")
+
+
+def _conn(pointer=(641,), snapshots=None, receipts=None):
+    snapshots = snapshots if snapshots is not None else RUN641
+    receipts = receipts if receipts is not None else {run: _receipt(run, len(rows)) for run, rows in snapshots.items()}
+    return FakeConn(list(pointer), receipts, snapshots)
+
+
+def _export(tmp_path, doc):
+    p = tmp_path / "holdings_export.json"
+    p.write_text(json.dumps(doc))
+    return p
+
+
+# ── healthy path: one run, run+as_of on every result ─────────────────────────
+
+def test_rows_totals_clock_share_one_run_and_carry_as_of():
+    conn = _conn(snapshots=RUN641)
+    r = m.rows(conn_factory=lambda: conn)
+    assert r["available"] is True and r["source"] == "db"
+    assert r["sync_run_id"] == 641 and r["as_of"] == NOW.isoformat()
+    assert r["count"] == 3 and all(x["sync_run_id"] == 641 for x in r["rows"])
+
+    conn = _conn(snapshots=RUN641)
+    t = m.totals(conn_factory=lambda: conn)
+    assert t["available"] is True and t["sync_run_id"] == 641 and t["as_of"] == NOW.isoformat()
+    assert t["total_value"] == 1780.0 and t["total_cash"] == 500.0 and t["invested"] == 1280.0
+
+    conn = _conn(snapshots=RUN641)
+    c = m.clock(conn_factory=lambda: conn)
+    assert c["available"] is True and c["sync_run_id"] == 641 and c["as_of"] == NOW.isoformat()
+
+
+# ── 0-byte / corrupt export: available false, never an empty book ────────────
+
+def test_zero_byte_export_is_unavailable_not_empty(tmp_path):
+    p = tmp_path / "holdings_export.json"
+    p.write_bytes(b"")
+    assert m.load_export(p) is None
+    out = m.rows(conn_factory=lambda: (_ for _ in ()).throw(RuntimeError("db down")), export_path=p)
+    assert out["available"] is False
+    assert "rows" not in out, "an unavailable result must not carry an empty rows list as data"
+    assert out["reason"].startswith("db_unreachable")
+
+
+def test_corrupt_export_is_unavailable(tmp_path):
+    p = tmp_path / "holdings_export.json"
+    p.write_text("{not json")
+    out = m.totals(conn_factory=lambda: (_ for _ in ()).throw(RuntimeError("db down")), export_path=p)
+    assert out["available"] is False and out["reason"].startswith("db_unreachable")
+
+
+def test_export_with_no_positions_is_unavailable(tmp_path):
+    p = _export(tmp_path, {"sync_run_id": 641, "as_of": NOW.isoformat(), "holdings": []})
+    out = m.rows(conn_factory=lambda: (_ for _ in ()).throw(RuntimeError("db down")), export_path=p)
+    assert out["available"] is False and out["export"] == "has_no_positions"
+
+
+def test_valid_export_is_stamped_backup_with_run_and_as_of(tmp_path):
+    p = _export(tmp_path, {
+        "sync_run_id": 641, "as_of": NOW.isoformat(),
+        "holdings": [{"account": "schwab_roth_ira", "symbol": "BBB", "qty": 2,
+                      "broker_market_value": 80.0, "is_cash": False}],
+    })
+    out = m.rows(conn_factory=lambda: (_ for _ in ()).throw(RuntimeError("db down")), export_path=p)
+    assert out["available"] is True and out["source"] == "backup" and out["from_backup"] is True
+    assert out["sync_run_id"] == 641 and out["as_of"] == NOW.isoformat()
+
+
+# ── the Roth mapping ─────────────────────────────────────────────────────────
+
+def test_roth_is_not_split_or_dropped():
+    conn = _conn(snapshots=RUN641)
+    t = m.totals(conn_factory=lambda: conn)
+    accounts = {a["account"]: a for a in t["accounts"]}
+    assert "schwab_roth_ira" not in accounts, "the DB key leaked as a separate account"
+    assert "schwab_roth" in accounts, "the Roth disappeared"
+    roth = accounts["schwab_roth"]
+    assert roth["account_keys"] == ["schwab_roth_ira"]
+    assert roth["total_value"] == 80.0 and roth["rows"] == 1
+    assert len(t["accounts"]) == 2, "Roth must join taxable as its own single account"
+
+    conn = _conn(snapshots=RUN641)
+    r = m.rows(conn_factory=lambda: conn)
+    roth_rows = [x for x in r["rows"] if x["account"] == "schwab_roth"]
+    assert len(roth_rows) == 1 and roth_rows[0]["account_key"] == "schwab_roth_ira"
+
+    conn = _conn(snapshots=RUN641)
+    by_label = m.rows(account="schwab_roth", conn_factory=lambda: conn)
+    assert by_label["count"] == 1 and by_label["rows"][0]["symbol"] == "BBB"
+
+    conn = _conn(snapshots=RUN641)
+    by_key = m.rows(account="schwab_roth_ira", conn_factory=lambda: conn)
+    assert by_key["count"] == 1 and by_key["rows"][0]["account"] == "schwab_roth"
+
+
+# ── run isolation: two runs are never mixed ─────────────────────────────────
+
+def test_explicit_run_never_reads_the_latest_pointer_or_another_run():
+    conn = _conn(pointer=(641,), snapshots={**RUN641, **RUN638})
+    out = m.rows(sync_run_id=638, conn_factory=lambda: conn)
+    assert out["available"] is True and out["sync_run_id"] == 638
+    assert {x["sync_run_id"] for x in out["rows"]} == {638}
+    assert [x["symbol"] for x in out["rows"]] == ["AAA", "BBB"]
+    assert out["rows"][0]["broker_market_value"] == 1100.0, "served run 641's row for a 638 request"
+    assert not any("positions_current" in sql for sql, _ in conn._cur.executed), \
+        "an explicit run must not consult the latest pointer"
+
+
+def test_two_runs_requested_in_turn_are_never_mixed():
+    conn = _conn(snapshots={**RUN641, **RUN638})
+    a = m.totals(sync_run_id=638, conn_factory=lambda: conn)
+    conn2 = _conn(snapshots={**RUN641, **RUN638})
+    b = m.totals(sync_run_id=641, conn_factory=lambda: conn2)
+    assert a["sync_run_id"] == 638 and b["sync_run_id"] == 641
+    assert a["total_value"] == 1170.0 and b["total_value"] == 1780.0
+    assert a["as_of"] and b["as_of"]
+
+
+def test_mixed_latest_pointer_is_unavailable():
+    conn = _conn(pointer=(640, 641), snapshots=RUN641)
+    out = m.rows(conn_factory=lambda: conn)
+    assert out["available"] is False and out["reason"] == "mixed_latest_pointer"
+    assert out["pointer_runs"] == [640, 641]
+
+
+def test_no_latest_pointer_is_unavailable():
+    out = m.rows(conn_factory=lambda: _conn(pointer=()))
+    assert out["available"] is False and out["reason"] == "no_latest_pointer"
+
+
+def test_snapshot_row_count_mismatch_is_unavailable():
+    receipts = {641: _receipt(641, 4)}  # receipt says 4, snapshot has 3
+    out = m.rows(conn_factory=lambda: _conn(receipts=receipts))
+    assert out["available"] is False and out["reason"] == "snapshot_rows_mismatch"
+    assert out["receipt_rows"] == 4 and out["snapshot_rows"] == 3
+
+
+def test_run_not_promoted_is_unavailable():
+    receipts = {641: _receipt(641, 3, promoted=False)}
+    out = m.totals(conn_factory=lambda: _conn(receipts=receipts))
+    assert out["available"] is False and out["reason"] == "run_not_promoted"
+
+
+def test_run_with_no_positions_is_unavailable():
+    out = m.rows(conn_factory=lambda: _conn(snapshots={641: []},
+                                            receipts={641: _receipt(641, 0)}))
+    assert out["available"] is False and out["reason"] == "run_has_no_positions"
+
+
+def test_no_sync_receipt_is_unavailable():
+    out = m.rows(conn_factory=lambda: _conn(receipts={}))
+    assert out["available"] is False and out["reason"] == "no_sync_receipt"
+
+
+def test_db_unreachable_is_unavailable():
+    out = m.totals(conn_factory=lambda: BoomConn())
+    assert out["available"] is False and out["reason"].startswith("db_unreachable")
+    assert "rows" not in out and "accounts" not in out
+
+
+# ── read-only proof ─────────────────────────────────────────────────────────
+
+def test_only_read_only_statements_are_issued():
+    conn = _conn(snapshots=RUN641)
+    m.rows(conn_factory=lambda: conn)
+    verbs = set()
+    for sql, _ in conn._cur.executed:
+        verbs.add(sql.split()[0])
+    assert verbs <= {"select", "begin", "rollback", "commit"}, verbs
+    assert not any(v in ("insert", "update", "delete", "alter", "drop", "create") for v in verbs)
+    assert any(sql.startswith("begin isolation level repeatable read read only")
+               for sql, _ in conn._cur.executed)
+
+
+# ── cc4's provenance document shape, folded in on top of the run pin ─────────
+
+def test_document_is_load_store_shaped_with_provenance():
+    conn = _conn(snapshots=RUN641)
+    out = m.document(conn_factory=lambda: conn)
+    assert out["available"] is True and out["source"] == "db" and out["from_backup"] is False
+    assert out["sync_run_id"] == 641 and out["as_of"] == NOW.isoformat()
+    doc = out["doc"]
+    assert doc["sync_run_id"] == 641 and doc["as_of"] == NOW.isoformat()
+    by = {h["symbol"]: h for h in doc["holdings"]}
+    assert by["AAA"]["account"] == "schwab_taxable" and by["AAA"]["price"] == 120.0
+    assert by["BBB"]["account"] == "schwab_roth"
+    assert by["BBB"]["account_key"] == "schwab_roth_ira"
+    assert by["CASH"]["is_cash"] is True and by["CASH"]["price"] == 1.0
+
+
+def test_cash_by_symbol_counts_as_cash():
+    rows = {641: [
+        _row(641, "schwab_taxable", "SPAXX", 1, 250.0),   # is_cash False, cash by symbol
+        _row(641, "schwab_taxable", "AAA", 10, 1200.0),
+    ]}
+    receipts = {641: _receipt(641, 2)}
+    conn = _conn(snapshots=rows, receipts=receipts)
+    t = m.totals(conn_factory=lambda: conn)
+    assert t["total_cash"] == 250.0 and t["total_value"] == 1450.0
+
+    conn = _conn(snapshots=rows, receipts=receipts)
+    d = m.document(conn_factory=lambda: conn)
+    spaxx = next(h for h in d["doc"]["holdings"] if h["symbol"] == "SPAXX")
+    assert spaxx["is_cash"] is True and spaxx["price"] == 1.0
