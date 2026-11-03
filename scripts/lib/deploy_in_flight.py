@@ -25,6 +25,7 @@ import subprocess
 import threading
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 SCHEMA = "DeployInFlight@v1"
@@ -176,14 +177,23 @@ def project_pr(pr: dict[str, Any]) -> dict[str, Any]:
 # ── assembly and route ──────────────────────────────────────────────────────────────────────────────────────
 
 
+def _state_root() -> Path:
+    """Where persistent-state lives: ``$TRADEAI_STATE_ROOT``, else the house convention.
+
+    This defaulted to ``Path(__file__).parents[3] / "trade-ai-releases" / "persistent-state"``, which exists in
+    neither checkout layout (``…/portfolio-server/…`` in a release, ``…/trade-ai-v12-rebuild/…`` in the repo) and —
+    because ``Path`` was never imported — raised NameError before it could look. Both faults together made every
+    live read ``coordination_unavailable``: the served page showed no owner, task, review, CI or blockers for any
+    PR (found on the served release 2026-11-03). Every other reader of the store (platform_health, jobs_health,
+    n8n_coordination_projection) resolves it this way; follow them rather than inventing a path.
+    """
+    return Path(os.environ.get("TRADEAI_STATE_ROOT") or Path.home() / "trade-ai-releases" / "persistent-state")
+
+
 def _default_coordination() -> Callable[..., dict[str, Any]]:
     from lib import releases_coordination  # noqa: E402
 
-    state_root = os.getenv("TRADEAI_STATE_ROOT")
-    if state_root:
-        root = Path(state_root)
-    else:
-        root = Path(__file__).resolve().parents[3] / "trade-ai-releases" / "persistent-state"
+    root = _state_root()
     return lambda rows, now: releases_coordination.build(
         root / "data" / "coordination" / "coordinator" / "ledger.jsonl",
         root / "data" / "coordination" / "claims",
