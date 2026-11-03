@@ -1,6 +1,6 @@
 {
   "schema": "CiGate@v1",
-  "name": "TOTALS_NOTES_RECONCILED",
+  "name": "totals_notes_reconciled_20261103",
   "files": [
     "tests/test_totals_notes_reconciled_20261103.py"
   ],
