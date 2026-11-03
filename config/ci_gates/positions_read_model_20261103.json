@@ -1,7 +1,9 @@
 {
   "schema": "CiGate@v1",
   "name": "positions_read_model_20261103",
-  "files": ["tests/test_positions_read_model_20261103.py"],
+  "files": [
+    "tests/test_positions_read_model_20261103.py"
+  ],
   "anchor": "POSITIONS_READ_MODEL_20261103",
   "comment": [
     "ANCHOR: POSITIONS_READ_MODEL_20261103 — Step 3 W0: the positions read model is run-pinned to position_snapshots + positions_sync_runs (positions_current only as the latest pointer), maps schwab_roth_ira -> schwab_roth once, and returns available:false — never an empty book — for a 0-byte/corrupt export or an unreachable DB."

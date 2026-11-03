@@ -23,6 +23,7 @@ Contract
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 from datetime import datetime
@@ -61,9 +62,9 @@ def _load_alias_map() -> dict[str, str]:
 #: review: the exporter emits all four aliases; hard-coding only the Roth split the two paths).
 ACCOUNT_LABEL_MAP: dict[str, str] = _load_alias_map()
 
-#: Step 1's exporter writes the generated backup as `holdings.json` in the served state root
-#: (`scripts/holdings_export.py` STORE_REL). The DB-down fallback reads that file, stamped.
-DEFAULT_EXPORT_REL = Path("data/portfolios/state/holdings.json")
+#: Step 1's exporter writes the generated backup into the served state root. The DB-down fallback
+#: reads it through the ONE approved accessor (`lib/portfolio_positions.store_path` / `load_store`),
+#: so this module adds no new direct reader of the position store and hard-codes no host path.
 
 #: Cash is a row fact, not only an ``is_cash`` flag: the sync has written cash as a symbol.
 _CASH_SYMBOLS = {"CASH", "SPAXX", "FDRXX"}
@@ -75,6 +76,12 @@ _SNAPSHOT_COLS = (
 _RECEIPT_SQL = (
     "select run_id,status,promoted,position_rows,started_at,finished_at,accounts_ok,accounts_failed,"
     "accounts from positions_sync_runs where run_id=%s"
+)
+#: One literal statement: the column list is a constant, so nothing is assembled at run time (S608).
+_SNAPSHOT_SQL = (
+    "select sync_run_id,account_key,broker,symbol,qty,cost_basis_total,avg_cost,"
+    "broker_market_value,is_cash,asset_type,source,captured_at "
+    "from position_snapshots where sync_run_id=%s order by account_key,symbol"
 )
 
 
@@ -89,18 +96,11 @@ def _default_conn():
     return _get_conn()
 
 
-def _project_root() -> Path:
-    return Path(__file__).resolve().parents[2]
-
-
 def default_export_path() -> Path:
-    """Step 1's export under the persistent state root; the checkout path only if it cannot resolve."""
-    try:
-        from lib.persistent_state_root import good_persistent_root  # noqa: PLC0415
+    """The generated export's path, owned by the approved accessor (never a hard-coded copy)."""
+    from lib import portfolio_positions  # noqa: PLC0415 — keep import-time side effects out
 
-        return Path(good_persistent_root()) / DEFAULT_EXPORT_REL
-    except Exception:  # noqa: BLE001 — a resolution helper must not break the read model
-        return _project_root() / DEFAULT_EXPORT_REL
+    return Path(portfolio_positions.store_path())
 
 
 def _num(value: Any) -> Optional[float]:
@@ -146,21 +146,16 @@ def load_export(path: Path | str) -> Optional[dict]:
     """A generated export document, or None when it is absent, empty, corrupt or not an object.
 
     0 bytes is the 2026-11-03 failure class: a damaged file must never be read as an empty book.
+    The read goes through the approved accessor, which returns an empty mapping for any of those
+    states; an empty mapping is "no snapshot" here, never an empty book.
     """
-    p = Path(path)
-    if not p.exists():
-        return None
     try:
-        raw = p.read_bytes()
-    except OSError:
+        from lib import portfolio_positions  # noqa: PLC0415 — keep import-time side effects out
+
+        doc = portfolio_positions.load_store(Path(path))
+    except (OSError, ValueError, TypeError):
         return None
-    if not raw.strip():
-        return None
-    try:
-        doc = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        return None
-    return doc if isinstance(doc, dict) else None
+    return doc if isinstance(doc, dict) and doc else None
 
 
 def _resolve_run(cur, sync_run_id: Optional[int]):
@@ -310,28 +305,22 @@ def _snapshot(sync_run_id: Optional[int] = None, *, conn_factory=None, export_pa
             if run is None:
                 cur.execute("ROLLBACK")
                 return receipt  # reachable DB, invalid state: unavailable, no fallback
-            cur.execute(
-                "select " + ",".join(_SNAPSHOT_COLS) + " from position_snapshots "
-                "where sync_run_id=%s order by account_key,symbol",
-                (run,),
-            )
+            cur.execute(_SNAPSHOT_SQL, (run,))
             fetched = cur.fetchall() or []
             cur.execute("ROLLBACK")  # read-only; nothing to commit
         except Exception:
-            try:
+            # Best-effort cleanup, never the reason the read fails: suppressing is deliberate.
+            with contextlib.suppress(Exception):
                 cur.execute("ROLLBACK")
-            except Exception:  # noqa: BLE001 — best-effort cleanup
-                pass
             raise
     except Exception as exc:  # noqa: BLE001 — an unreachable DB is the only fallback trigger
         return _from_export(export_path, f"db_unreachable:{type(exc).__name__}",
                             requested_sync_run_id=sync_run_id)
     finally:
-        try:
+        # Closing is best-effort; the caller's result was already decided.
+        with contextlib.suppress(Exception):
             if conn is not None:
                 conn.rollback()
-        except Exception:  # noqa: BLE001
-            pass
 
     rows = [dict(zip(_SNAPSHOT_COLS, r)) for r in fetched]
     if len(rows) != receipt["position_rows"]:
@@ -524,6 +513,6 @@ def document(sync_run_id: Optional[int] = None, *, conn_factory=None, export_pat
 
 
 __all__ = [
-    "SCHEMA", "ACCOUNT_LABEL_MAP", "DEFAULT_EXPORT_REL", "label_for", "load_export",
+    "SCHEMA", "ACCOUNT_LABEL_MAP", "NO_CONSUMER_REASON", "label_for", "load_export",
     "default_export_path", "rows", "totals", "clock", "document",
 ]
