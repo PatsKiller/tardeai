@@ -179,3 +179,64 @@ def test_ack_refuses_unknown_key_or_missing_reason(tmp_path, monkeypatch, extra)
     state = _ack_world(tmp_path, monkeypatch, *extra, "--apply-ack")
     assert watchdog.main() != 0
     assert not (state / watchdog.ACKS).exists()
+
+
+# ── a fire during the lane's own run is IN PROGRESS, not missed (2026-11-03, ingest false positive) ──────
+def started(job, at):
+    return {"component": job, "job_id": job, "event_type": "started", "exit_code": None, "ts": at}
+
+
+WRAPPED = lane(scheduler={"kind": "cron", "expression": "7,22,37,52 * * * *",
+                          "match": "scripts/options_tick.py",
+                          "command_text": "bash scripts/safe_flock.sh /tmp/options_tick.lock python x.py"})
+JOB = "options_tick"
+
+
+def assess_runs(events):
+    return evaluate({"lanes": [WRAPPED]}, events, {}, now=NOW, trading_day=lambda at: True)
+
+
+def test_a_fire_inside_the_lane_s_own_run_is_in_progress_not_missed():
+    """23-minute runs on a 15-minute cadence: the in-between fire has no success because the run is still
+    going. Counting it missed re-opens the incident every cycle (external-market-data-ingest, 2026-11-03)."""
+    # The snapshot is taken WHILE the run is still going (the real 18:21Z receipt): the previous run
+    # completed at 22:45, this one started at 22:50 and has not finished by 23:18.
+    events = [completed(JOB, "2026-10-24T22:45:00-04:00"),
+              started(JOB, "2026-10-24T22:50:00-04:00")]
+    row = assess_runs(events)["rows"][0]
+
+    assert row["status"] == "OK" and row["missed_fires"] == 0
+    assert row["in_progress_fires"] == 2
+
+
+def test_without_the_run_window_the_same_history_is_still_missed():
+    row = assess_runs([completed(JOB, "2026-10-24T22:45:00-04:00")])["rows"][0]
+
+    assert row["status"] == "MISSED_RUNS" and row["missed_fires"] == 2
+    assert row["in_progress_fires"] == 0
+
+
+def test_a_launch_two_seconds_after_the_fire_still_covers_it():
+    events = [completed(JOB, "2026-10-24T22:45:00-04:00"),
+              started(JOB, "2026-10-24T23:07:02-04:00")]
+    row = assess_runs(events)["rows"][0]
+
+    assert row["missed_fires"] == 1 and row["in_progress_fires"] == 1 and row["status"] == "OK"
+
+
+def test_a_run_older_than_the_limit_is_a_stall_and_does_not_cover_the_fire():
+    """A hung run must still alert: something started 62 minutes ago is not progress."""
+    events = [completed(JOB, "2026-10-24T22:45:00-04:00"),
+              started(JOB, "2026-10-24T22:05:00-04:00")]
+    row = assess_runs(events)["rows"][0]
+
+    assert row["status"] == "MISSED_RUNS" and row["missed_fires"] == 2 and row["in_progress_fires"] == 0
+
+
+def test_another_job_s_run_window_never_covers_this_lane():
+    events = [completed(JOB, "2026-10-24T22:45:00-04:00"),
+              started("drive_sync", "2026-10-24T22:50:00-04:00"),
+              completed("drive_sync", "2026-10-24T23:12:00-04:00")]
+    row = assess_runs(events)["rows"][0]
+
+    assert row["status"] == "MISSED_RUNS"

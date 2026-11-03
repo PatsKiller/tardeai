@@ -82,6 +82,62 @@ def recurring_jobs(events: list[dict], *, now: datetime) -> set[str]:
     return {job for job, seen in hours.items() if len(seen) >= 2}
 
 
+#: A fire that lands inside a wrapper run's own execution window is IN PROGRESS, not missed — the lane is
+#: working. A run older than this at the fire is a stall, not progress, and does not cover it.
+IN_PROGRESS_LIMIT_SECONDS = 3600
+#: The launch may start a few seconds after the scheduler's fire instant; that still counts as the fire landing.
+LAUNCH_GRACE_SECONDS = 120
+
+
+def run_windows(events: list[dict], *, now: datetime) -> dict[str, list[tuple[datetime, datetime | None]]]:
+    """``{job: [(start, end_or_None)]}`` — when each wrapper job was actually executing.
+
+    Built from ``safe_flock`` events: a ``started`` opens a window and the next ``completed`` for the same
+    job closes it; a window still open at ``now`` means the job is running right now. Future events are
+    ignored, as everywhere in this module: an observation is never backdated.
+    """
+    by_job: dict[str, list[tuple[datetime, str]]] = {}
+    for event in events:
+        when = instant(event.get("ts"))
+        if when is None or when > now:
+            continue
+        kind = str(event.get("event_type") or "")
+        if kind not in {"started", "completed"}:
+            continue
+        job = job_key(event.get("job_id") or event.get("component"))
+        if job:
+            by_job.setdefault(job, []).append((when, kind))
+    windows: dict[str, list[tuple[datetime, datetime | None]]] = {}
+    for job, rows in by_job.items():
+        rows.sort(key=lambda r: r[0])
+        out: list[tuple[datetime, datetime | None]] = []
+        open_start: datetime | None = None
+        for when, kind in rows:
+            if kind == "started":
+                if open_start is not None:          # a started without a completed: keep the earliest
+                    continue
+                open_start = when
+            elif open_start is not None:
+                out.append((open_start, when))
+                open_start = None
+        if open_start is not None:
+            out.append((open_start, None))
+        windows[job] = out
+    return windows
+
+
+def fire_was_in_progress(fire: datetime, windows: list[tuple[datetime, datetime | None]], *,
+                         now: datetime, limit_seconds: int = IN_PROGRESS_LIMIT_SECONDS,
+                         launch_grace_seconds: int = LAUNCH_GRACE_SECONDS) -> bool:
+    """True when a wrapper run was executing at the fire (or started within the launch grace after it)."""
+    for start, end in windows:
+        end_eff = end or now
+        if start - timedelta(seconds=launch_grace_seconds) <= fire <= end_eff and \
+                (fire - start) <= timedelta(seconds=limit_seconds):
+            return True
+    return False
+
+
 def business_success(event: dict) -> bool:
     """New events declare mode; legacy commands can prove an explicit dry run only.
 
@@ -105,6 +161,7 @@ def evaluate(
     now: datetime, grace_seconds: int = 120, lookback_days: int = 400,
     previous_refusal_keys: set[str] | None = None, trading_day=None,
     registered_jobs: set[str] | None = None, acknowledged: dict[str, dict] | None = None,
+    in_progress_limit_seconds: int = IN_PROGRESS_LIMIT_SECONDS,
 ) -> dict:
     """One point-in-time result. Future observations are ignored, never backdated.
 
@@ -164,6 +221,7 @@ def evaluate(
         else:
             attributed.append(refusal)
     refusals = attributed
+    windows = run_windows(events, now=now)
     rows = []
     for lane in registry.get("lanes", []):
         if lane.get("state") != "ACTIVE" or not lane.get("expected_cadence_hours"):
@@ -237,8 +295,14 @@ def evaluate(
             # fabricate a successful history to calculate missed runs.
         else:
             last = max(times)
-            missed = sum(fire > last for fire in eligible)
+            job_windows = windows.get(job_key(component(lane) or ""), [])
+            late = [fire for fire in eligible if fire > last]
+            in_progress = [fire for fire in late
+                           if fire_was_in_progress(fire, job_windows, now=now,
+                                                   limit_seconds=in_progress_limit_seconds)]
+            missed = len(late) - len(in_progress)
             result.update(last_success_at=iso(last), missed_fires=missed,
+                          in_progress_fires=len(in_progress),
                           status="MISSED_RUNS" if missed >= 2 else "OK",
                           reason="two_or_more_scheduled_successes_missing" if missed >= 2 else None)
         rows.append(result)
