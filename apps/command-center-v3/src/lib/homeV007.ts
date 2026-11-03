@@ -120,6 +120,23 @@ function etDate(iso: string | null): string | null {
   return `${parts.year}-${parts.month}-${parts.day}`
 }
 
+/** The UTC calendar date of an instant: a date-only clock (``…T00:00:00Z``) names its session in UTC. */
+function utcDate(iso: string | null): string | null {
+  if (!iso) return null
+  const at = Date.parse(iso)
+  if (!Number.isFinite(at)) return null
+  return new Date(at).toISOString().slice(0, 10)
+}
+
+/**
+ * A measured claim that carries no number is not a measurement. It becomes unknown with a reason, so the card can
+ * neither publish an empty "measured" row nor affirm a chip over nothing (DATA R3, 2026-11-03).
+ */
+function noValueIsUnknown<T extends Fact>(f: T, values: ReadonlyArray<number | null>): T {
+  if (f.state !== 'measured' || values.some(v => v !== null)) return f
+  return { ...f, state: 'unknown', reason: 'measured claim carried no value' }
+}
+
 function quote(base: Record<string, unknown> | null): QuoteLine {
   const q = rec(base?.quote)
   const f = fact(q)
@@ -129,16 +146,21 @@ function quote(base: Record<string, unknown> | null): QuoteLine {
   const mismatched = !!(sessionDate && expected && sessionDate !== expected)
   // The declared session label is not evidence on its own: a cached print can be relabelled with today's date while
   // its own clock still says yesterday (DATA R1, 2026-11-03). Bind the observation clock to the session it claims.
-  const clockDate = etDate(f.asOf)
-  const relabelled = !!(clockDate && sessionDate && clockDate !== sessionDate)
+  // A DATE-ONLY clock (exactly midnight UTC) names its day in UTC, not ET, so it may match the session in UTC. Any
+  // other instant must agree in ET: 03:00Z is 22:00 ET on the previous day and is not a print for this session.
+  const clockEt = etDate(f.asOf)
+  const clockUtc = utcDate(f.asOf)
+  const dateOnly = !!f.asOf && /T00:00:00(?:\.000)?Z$/.test(f.asOf)
+  const utcAgrees = dateOnly && !!clockUtc && clockUtc === sessionDate
+  const relabelled = !!(clockEt && sessionDate && clockEt !== sessionDate && !utcAgrees)
   // Only a measured fact is ours to downgrade: an unknown fact keeps its own reason, which says more than a mismatch.
   const downgrade = (mismatched || relabelled) && f.state === 'measured'
-  return {
+  const line: QuoteLine = {
     ...f,
     state: downgrade ? 'unknown' : f.state,
     reason: downgrade
       ? (mismatched ? `quote belongs to session ${sessionDate}, expected ${expected}`
-        : `quote clock is ${clockDate} but it is labelled session ${sessionDate}`)
+        : `quote clock is ${clockEt} but it is labelled session ${sessionDate}`)
       : f.reason,
     // A downgraded quote keeps no value: an unknown fact must not carry a price the card could render.
     price: downgrade ? null : (num(value?.price) ?? num(q?.value)),
@@ -147,6 +169,8 @@ function quote(base: Record<string, unknown> | null): QuoteLine {
     expectedSessionDate: expected,
     basis: str(q?.basis),
   }
+  // A measured quote with no price is not a measurement either: downgrade it rather than render an empty value.
+  return noValueIsUnknown(line, [line.price])
 }
 
 /** Inverse-fund moves arrive two ways: the producer's {symbol: symbol-context} map, or an array of move facts. */
@@ -190,18 +214,30 @@ export function parseHomeV007(raw: unknown): HomeV007 {
     const refs = rec(s.analysis_references); const refsVal = rec(refs?.value)
     const heads = rec(s.headlines); const headVal = heads?.value
     const ne = rec(s.next_event); const neVal = rec(ne?.value)
+    // Producer names and the e2e fixture's names are both accepted: neither shape is invented, only read.
+    const dayChange = { ...fact(dc),
+      usd: num(dcVal?.price) ?? num(dcVal?.usd),
+      pct: num(dcVal?.pct),
+      referenceDate: str(dcVal?.reference_session_date) ?? str(dcVal?.reference_date) ?? str(dc?.reference_session_date) ?? str(dc?.reference_date) }
+    const sinceExit = { ...fact(se),
+      usd: num(seVal?.distance_price) ?? num(seVal?.usd),
+      pct: num(seVal?.distance_pct) ?? num(seVal?.pct),
+      exitPrice: num(seVal?.reference_price) ?? num(seVal?.exit_price),
+      exitDate: str(seVal?.exit_date) ?? str(seVal?.reference_session_date) ?? str(se?.exit_date) ?? str(se?.reference_session_date) }
+    const references = refsVal
+      ? Object.entries(refsVal).slice(0, 12).map(([label, v]) => {
+          const o = rec(v) ?? {}
+          const nested = fact({ ...o, state: o.state ?? refs?.state, as_of: o.price_as_of ?? refs?.as_of, source: refs?.source, age_seconds: refs?.age_seconds, reason: refs?.reason, remediation: o.remediation ?? refs?.remediation })
+          const ref = { ...nested, label, price: num(o.reference_price), distanceUsd: num(o.distance_price), distancePct: num(o.distance_pct) }
+          return noValueIsUnknown(ref, [ref.price, ref.distanceUsd, ref.distancePct])
+        })
+      : []
     return {
       symbol,
       quote: quote(s),
-      dayChange: { ...fact(dc), usd: num(dcVal?.price), pct: num(dcVal?.pct), referenceDate: str(dcVal?.reference_session_date) },
-      sinceExit: { ...fact(se), usd: num(seVal?.distance_price), pct: num(seVal?.distance_pct), exitPrice: num(seVal?.reference_price), exitDate: null },
-      references: refsVal
-        ? Object.entries(refsVal).slice(0, 12).map(([label, v]) => {
-            const o = rec(v) ?? {}
-            const nested = fact({ ...o, state: o.state ?? refs?.state, as_of: o.price_as_of ?? refs?.as_of, source: refs?.source, age_seconds: refs?.age_seconds, reason: refs?.reason, remediation: o.remediation ?? refs?.remediation })
-            return { ...nested, label, price: num(o.reference_price), distanceUsd: num(o.distance_price), distancePct: num(o.distance_pct) }
-          })
-        : [],
+      dayChange: noValueIsUnknown(dayChange, [dayChange.usd, dayChange.pct]),
+      sinceExit: noValueIsUnknown(sinceExit, [sinceExit.usd, sinceExit.pct, sinceExit.exitPrice]),
+      references,
       headlines: Array.isArray(headVal) ? headVal.filter(rec).slice(0, 4).map(h => {
         const o = rec(h) as Record<string, unknown>
         return { title: str(o.title) ?? '(untitled)', source: str(o.source), publishedAt: str(o.published_at), ageSeconds: num(o.age_seconds) }
@@ -226,9 +262,10 @@ export function parseHomeV007(raw: unknown): HomeV007 {
       const o = rec(c) as Record<string, unknown>
       const f = fact(o)
       const key = str(o.category) ?? str(o.key) ?? '?'
-      // An affirmative chip is a claim about a measurement. Without one (DATA R2, 2026-11-03) the chip is not shown and
-      // the row reads as unknown, rather than publishing "OK" over a fact that carries no provenance.
-      return { key, label: str(o.label) ?? key.replace(/_/g, ' '), chip: f.state === 'measured' ? str(o.chip) : null, state: f.state, asOf: f.asOf, reason: f.reason }
+      // An affirmative chip is a claim about a measurement. Without one, AND without the clock that says when it was
+      // measured (DATA R3, 2026-11-03), the chip is not shown and the row reads as unknown rather than publishing "OK"
+      // over a fact that carries no provenance.
+      return { key, label: str(o.label) ?? key.replace(/_/g, ' '), chip: f.state === 'measured' && f.asOf ? str(o.chip) : null, state: f.state, asOf: f.asOf, reason: f.reason }
     }),
     nextEvaluation: (() => {
       const n = rec(riskRaw.next_evaluation)

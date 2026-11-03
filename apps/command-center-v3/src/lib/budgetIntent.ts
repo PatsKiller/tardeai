@@ -141,7 +141,8 @@ export function networkOutcomeUnknown(error: unknown): string {
 }
 
 export function humanError(reply: PresentationReply): string {
-  return (reply.code && HUMAN[reply.code]) || 'The decision could not be recorded. Nothing was written.'
+  // An unrecognised code is not proof of anything: the reply may follow an append we could not read.
+  return (reply.code && HUMAN[reply.code]) || 'The decision could not be confirmed; check the history before retrying.'
 }
 
 /**
@@ -251,6 +252,7 @@ export function reconcile(records: DecisionRecord[], pending: IntentBody): Decis
     if (record.requestId !== pending.request_id) continue
     if (record.scopeId !== pending.scope_id || record.budget !== pending.budget) continue
     if (record.bindingSha !== pending.source_binding.sha256) continue
+    if (record.bindingAsOf !== pending.source_binding.as_of) continue
     if (record.intentionalUntil !== pending.intentional_until) continue
     return record
   }

@@ -124,6 +124,51 @@ eq('and their day move', produced.hedge.inverse[0].dayPct, 0.58)
 eq('an unknown inverse quote stays unknown', produced.hedge.inverse[1].state, 'unknown')
 eq('a bare next-evaluation value is the time', produced.risk.nextEvaluation?.at, '2026-11-03T14:00:00Z')
 eq('and keeps its declared basis', produced.risk.nextEvaluation?.basis, 'registry declaration')
+
+// A. The e2e fixture and the producer spell the same facts with different keys; both shapes must read.
+// Producer shape (above): day_change.value.price + fact-level reference_session_date.
+eq('day change still reads the producer price key', produced.symbols[0].dayChange.usd, 0.18)
+eq('day change still reads the producer reference_session_date', produced.symbols[0].dayChange.referenceDate, '2026-10-30')
+const fixtureShapes = parseHomeV007({ symbols: { X: {
+  day_change: { state: 'ok', value: { usd: 0.4, pct: 0.8, reference_date: '2026-10-30' } },
+  since_exit: { state: 'ok', value: { usd: -0.1, pct: -0.3, exit_price: 50, exit_date: '2026-10-30' } },
+} } })
+eq('day change reads the fixture usd key', fixtureShapes.symbols[0].dayChange.usd, 0.4)
+eq('day change reads the fixture reference_date', fixtureShapes.symbols[0].dayChange.referenceDate, '2026-10-30')
+eq('since exit reads the fixture usd key', fixtureShapes.symbols[0].sinceExit.usd, -0.1)
+eq('since exit reads the fixture pct key', fixtureShapes.symbols[0].sinceExit.pct, -0.3)
+eq('since exit reads the fixture exit_price key', fixtureShapes.symbols[0].sinceExit.exitPrice, 50)
+eq('since exit reads exit_date instead of a hard-coded null', fixtureShapes.symbols[0].sinceExit.exitDate, '2026-10-30')
+const producerExit = parseHomeV007({ symbols: { X: { since_exit: { state: 'measured',
+  value: { distance_price: -1.2, distance_pct: -2.4, reference_price: 51 }, reference_session_date: '2026-10-29' } } } })
+eq('since exit still reads the producer distance_price key', producerExit.symbols[0].sinceExit.usd, -1.2)
+eq('since exit still reads the producer distance_pct key', producerExit.symbols[0].sinceExit.pct, -2.4)
+eq('since exit still reads the producer reference_price key', producerExit.symbols[0].sinceExit.exitPrice, 51)
+eq('the producer reference_session_date supplies the exit date', producerExit.symbols[0].sinceExit.exitDate, '2026-10-29')
+
+// B. A measured claim with no number is not a measurement: it is unknown, with a reason and no values.
+const noValueDay = parseHomeV007({ symbols: { X: { day_change: { state: 'measured', value: { usd: null, pct: null } } } } })
+eq('a measured day change with no number is unknown', noValueDay.symbols[0].dayChange.state, 'unknown')
+eq('and says the claim carried no value', noValueDay.symbols[0].dayChange.reason, 'measured claim carried no value')
+eq('and carries no values', noValueDay.symbols[0].dayChange.usd, null)
+const partialValue = parseHomeV007({ symbols: { X: { day_change: { state: 'measured', value: { pct: 0.5 } } } } })
+eq('a measured day change with one number stays measured', partialValue.symbols[0].dayChange.state, 'measured')
+const noValueExit = parseHomeV007({ symbols: { X: { since_exit: { state: 'measured', value: { distance_price: null, distance_pct: null, reference_price: null } } } } })
+eq('a measured since-exit with no number is unknown', noValueExit.symbols[0].sinceExit.state, 'unknown')
+eq('and says the claim carried no value', noValueExit.symbols[0].sinceExit.reason, 'measured claim carried no value')
+eq('and carries no exit price', noValueExit.symbols[0].sinceExit.exitPrice, null)
+const noValueRef = parseHomeV007({ symbols: { X: { analysis_references: { state: 'measured', value: {
+  invalidation: { state: 'measured', reference_price: null, distance_price: null, distance_pct: null } } } } } })
+eq('a measured analysis reference with no number is unknown', noValueRef.symbols[0].references[0].state, 'unknown')
+eq('and says the claim carried no value', noValueRef.symbols[0].references[0].reason, 'measured claim carried no value')
+const valuedRef = parseHomeV007({ symbols: { X: { analysis_references: { state: 'measured', value: {
+  invalidation: { state: 'measured', reference_price: 47.5, distance_price: -2.4 } } } } } })
+eq('an analysis reference with a number stays measured', valuedRef.symbols[0].references[0].state, 'measured')
+const noPriceQuote = parseHomeV007({ symbols: { X: { quote: { state: 'measured', as_of: NOW, value: {} } } } })
+eq('a measured quote with no price is unknown', noPriceQuote.symbols[0].quote.state, 'unknown')
+eq('and says the claim carried no value', noPriceQuote.symbols[0].quote.reason, 'measured claim carried no value')
+eq('and carries no price', noPriceQuote.symbols[0].quote.price, null)
+
 const arrayInverse = parseHomeV007({ hedge: { inverse_moves: { value: [{ symbol: 'SDS', day_pct: -0.4, state: 'measured' }] } } })
 eq('the older array shape still reads', arrayInverse.hedge.inverse[0]?.symbol, 'SDS')
 
@@ -140,9 +185,18 @@ eq('a quote taken inside its session stays measured', honestClock.symbols[0].quo
 const offsetClock = parseHomeV007({ symbols: { X: { quote: { state: 'measured', value: { price: 12 }, session_date: '2026-11-02',
   expected_session_date: '2026-11-02', as_of: '2026-11-02T16:00:00-05:00' } } } })
 eq('an explicit ET offset inside the session stays measured', offsetClock.symbols[0].quote.state, 'measured')
+// D. A clock is judged against both calendars: ET and UTC. A date-only as_of (``…T00:00:00Z``) names its session
+// day in UTC while ET is still the previous day, so it must not be read as a relabel.
+const midnightUtc = parseHomeV007({ symbols: { X: { quote: { state: 'measured', value: { price: 12 }, session_date: '2026-11-02',
+  expected_session_date: '2026-11-02', as_of: '2026-11-02T00:00:00Z' } } } })
+eq('a midnight-UTC date-only clock is not a relabel', midnightUtc.symbols[0].quote.state, 'measured')
+eq('and keeps its price', midnightUtc.symbols[0].quote.price, 12)
+// Only a DATE-ONLY clock (exactly midnight UTC) may name its day in UTC. 03:00Z is 22:00 ET on the previous day - an
+// after-hours print labelled with the next session - so it is still a relabel and must not render as today's price.
 const lateEvening = parseHomeV007({ symbols: { X: { quote: { state: 'measured', value: { price: 12 }, session_date: '2026-11-02',
   expected_session_date: '2026-11-02', as_of: '2026-11-02T03:00:00Z' } } } })
-eq('a UTC instant that is still the previous ET day is not today', lateEvening.symbols[0].quote.state, 'unknown')
+eq('an after-hours print labelled with the next session is still not today', lateEvening.symbols[0].quote.state, 'unknown')
+eq('and carries no price', lateEvening.symbols[0].quote.price, null)
 const dstDay = parseHomeV007({ symbols: { X: { quote: { state: 'measured', value: { price: 12 }, session_date: '2026-11-01',
   expected_session_date: '2026-11-01', as_of: '2026-11-01T05:30:00Z' } } } })
 eq('the DST-change day keeps its own ET date', dstDay.symbols[0].quote.state, 'measured')
@@ -154,6 +208,10 @@ eq('an unclocked category publishes no affirmative chip', unclockedChip.risk.cat
 eq('and stays unknown', unclockedChip.risk.categories[0].state, 'unknown')
 const measuredChip = parseHomeV007({ risk: { categories: [{ category: 'tech', chip: 'STRESS', state: 'measured', as_of: '2026-11-02T21:00:00Z' }] } })
 eq('a measured category keeps its chip', measuredChip.risk.categories[0].chip, 'STRESS')
+// C. A chip needs BOTH the measurement and the clock that says when it was taken.
+const unclockedMeasuredChip = parseHomeV007({ risk: { categories: [{ category: 'tech', label: 'Technology', chip: 'OK', state: 'measured' }] } })
+eq('a measured category with no clock publishes no chip', unclockedMeasuredChip.risk.categories[0].chip, null)
+eq('and the measurement word is still kept', unclockedMeasuredChip.risk.categories[0].state, 'measured')
 
 const junk = parseHomeV007({ symbols: 'nope', risk: { categories: 'x' }, budgets: {} })
 eq('malformed members do not throw', junk.symbols.length, 0)

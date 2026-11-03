@@ -60,7 +60,12 @@ eq('a 503 basis carries no binding', unavailable.binding, null)
 eq('and asserts no breach either', unavailable.breached, null)
 
 eq('a source change is explained, not guessed', humanError({ ok: false, status: 409, code: 'BUDGET_SOURCE_CHANGED', data: null, outcome: 'refused' }).startsWith('The measurement changed'), true)
-eq('an unknown code still says nothing was written', humanError({ ok: false, status: 500, code: 'X', data: null, outcome: 'refused' }).includes('Nothing was written'), true)
+// E(i). An unrecognised code (and an unknown outcome) must never be reported as "nothing was written".
+const unknownCodeText = humanError({ ok: false, status: 500, code: 'X', data: null, outcome: 'refused' })
+check('an unknown code does not claim nothing was written', !/nothing was written/i.test(unknownCodeText), unknownCodeText)
+check('and points at the history before retrying', /could not be confirmed/.test(unknownCodeText) && /history/.test(unknownCodeText), unknownCodeText)
+const unknownOutcomeText = humanError({ ok: false, status: 0, code: null, data: null, outcome: 'unknown' })
+check('a no-code unknown outcome does not claim nothing was written', !/nothing was written/i.test(unknownOutcomeText), unknownOutcomeText)
 eq('the basis url carries both identifiers', basisUrl('account:demo', 'demo_taxable'), '/api/v2/governance/budget-presentation?scope_id=account%3Ademo&budget=demo_taxable')
 eq('the decide path is the contract path', BUDGET_DECIDE_PATH, '/api/v2/governance/budget-presentation/decide')
 check('request ids are unique and allowed', /^[A-Za-z0-9_-]{8,80}$/.test(requestId()) && requestId() !== requestId())
@@ -85,6 +90,8 @@ eq('an inactive decision is not called active', ledger[0].active, false)
 const pendingReal = { ...preview, dry_run: undefined } as any
 eq('the pending request is found by id and payload', reconcile(ledger, pendingReal)?.requestId, 'req-12345678')
 eq('a different binding is not a match', reconcile(ledger, { ...pendingReal, source_binding: { as_of: pendingReal.source_binding.as_of, sha256: OTHER } }), null)
+// E(ii). The binding is the SOURCE and its clock: the same sha at a different as_of is a different measurement.
+eq('the same sha at a different as_of is not a match', reconcile(ledger, { ...pendingReal, source_binding: { ...pendingReal.source_binding, as_of: '2026-11-03T04:58:00Z' } }), null)
 eq('a different expiry is not a match', reconcile(ledger, { ...pendingReal, intentional_until: '2026-11-11T05:00:00Z' }), null)
 eq('a different scope is not a match', reconcile(ledger, { ...pendingReal, scope_id: 'account:other' }), null)
 eq('a 503 basis carries its history', historyRecords({ current: null, budget_presentation_decisions: { complete: false, history: [event] } }).length, 1)
