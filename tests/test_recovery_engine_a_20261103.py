@@ -150,6 +150,32 @@ def test_consuming_the_same_cluster_twice_does_not_open_a_second_case(store):
     assert len(store.list()) == 1
 
 
+def test_the_same_symbol_in_two_accounts_is_two_cases(store):
+    """The identity C keys its per-case-per-day page on must not merge two accounts (lead ruling, 2026-11-03).
+
+    Both rows come out of the real `consume_fills` path over identical exits; no id is hand-authored.
+    """
+    taxable = rc.consume_fills(store, _spcx_fills(), residual_shares=200, pre_exit_weight_pct=2.25,
+                               today=TODAY, now=NOW)
+    ira_fills = [rc.ExitFill(f.symbol, "schwab_roth_ira", f.exit_date, f.shares, f.price, f.realized_pnl,
+                             stop_price=f.stop_price) for f in _spcx_fills()]
+    ira = rc.consume_fills(store, ira_fills, residual_shares=200, pre_exit_weight_pct=2.25, today=TODAY, now=NOW)
+    assert taxable.case_key != ira.case_key
+    assert "schwab_taxable" in taxable.case_key and "schwab_roth_ira" in ira.case_key
+    assert sorted(c.account for c in store.list()) == ["schwab_roth_ira", "schwab_taxable"]
+
+
+def test_a_later_exit_cluster_opens_its_own_case_for_the_same_account(store):
+    """A second, separated exit is a different case: the cluster dates are part of the identity, not just the symbol."""
+    first = rc.consume_fills(store, _spcx_fills(), residual_shares=200, pre_exit_weight_pct=2.25, today=TODAY, now=NOW)
+    later = rc.consume_fills(store, [rc.ExitFill("SPCX", "schwab_taxable", date(2026, 11, 2), 300, 139.97, -500,
+                                                 stop_price=140.0)],
+                             residual_shares=200, pre_exit_weight_pct=0.5, today=TODAY, now=NOW)
+    assert first.case_key != later.case_key
+    assert first.cluster_key == "2026-10-14..2026-10-30" and later.cluster_key == "2026-11-02..2026-11-02"
+    assert len(store.list()) == 2
+
+
 def test_a_large_residual_still_opens_the_case(store):
     """The ruling: a residual never suppresses the case. 1,300 of 1,400 remaining is displayed, not disqualifying."""
     case = rc.consume_fills(store, _spcx_fills(), residual_shares=1300, pre_exit_shares=1400,
