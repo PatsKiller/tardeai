@@ -289,7 +289,7 @@ def build_brief(*, window_hours: float = DEFAULT_WINDOW_HOURS,
     records = _read_jsonl(cio / "cio_instrument_records.jsonl")
     lessons = _read_jsonl(cio / "lesson_candidates.jsonl")
 
-    from scripts.lib.conflicts.cio import digest
+    from scripts.lib.conflicts.cio import age_text, digest
     return {
         "schema": SCHEMA,
         "authority": AUTHORITY,
@@ -387,6 +387,7 @@ def render_telegram(brief: dict[str, Any]) -> str:
         lines.append("")
 
     conflicts = brief.get("conflicts") or {}
+    from scripts.lib.conflicts.cio import age_text
     if conflicts.get("gap"):
         lines.append("*Conflicts* — evaluation unavailable: " + str(conflicts["gap"].get("reason")))
     elif conflicts:
@@ -403,7 +404,11 @@ def render_telegram(brief: dict[str, Any]) -> str:
             grouped.setdefault(record.get("rule") or "unknown", []).append(record)
         for rule, records in sorted(grouped.items()):
             labels = ", ".join(r["subject"]["label"] for r in records[:4])
-            lines.append(f"  • {len(records)} waiting on you ({rule}): {labels}")
+            # The age is the oldest in the group. "3 waiting on you (R12)" said nothing about whether they are
+            # minutes or days old, which is the difference between a queue and a backlog.
+            ages = [r["age_hours"] for r in records if r.get("age_hours") is not None]
+            oldest = f" · oldest {age_text(max(ages))}" if ages else f" · {age_text(None)}"
+            lines.append(f"  • {len(records)} waiting on you ({rule}): {labels}{oldest}")
     lines.append("")
     lines.append("_All counts deterministic (class D). Prose is template (class T)._")
     lines.append("_No judgment was exercised in this brief. Advisory only — no orders placed._")
