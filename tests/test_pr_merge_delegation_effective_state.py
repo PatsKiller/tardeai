@@ -249,15 +249,161 @@ def test_cycle_is_chain_invalid(mod, tmp_path):
     ])
 
 
-def test_two_live_claimants_naming_one_predecessor_is_chain_invalid(mod, tmp_path):
+
+@pytest.mark.parametrize("predecessors", [1, 3])
+@pytest.mark.parametrize("source_still_held", [False, True])
+def test_mechanical_disjoint_successors_do_not_manufacture_ambiguity(
+        mod, tmp_path, predecessors, source_still_held):
+    """The board itself records shared ancestry; no claim JSON is patched."""
+    clock = Clock(NOW - timedelta(hours=3 * predecessors))
+    board = make_board(tmp_path, clock)
+    author_id = seed_author(board)
+    historical = []
+    other = SOURCE if source_still_held else "scripts/synthetic_other.py"
+    for index in range(predecessors):
+        old = board.claim(vendor="claude", session=f"old-{index}", agent=None,
+                          task="broad stale scope", paths=[COORD, SOURCE, "scripts/synthetic_other.py"])
+        historical.append(old["claim_id"])
+        clock.at += timedelta(hours=3)
+    before = {cid: (board.dir / f"{cid}.json").read_bytes() for cid in historical}
+    actor = board.claim(vendor="codex", session=ACTOR_B, agent=None,
+                        task="coordinator scope", paths=[COORD])
+    sibling = board.claim(vendor="claude", session="disjoint-worker", agent=None,
+                          task="separate scope", paths=[other])
+    assert {x["claim_id"] for x in actor["takeover_of"]} == set(historical)
+    assert {x["claim_id"] for x in sibling["takeover_of"]} == set(historical)
+    result = mod.evaluate(build_snapshot(mod, docs(board), author_claim_id=author_id),
+                          now=NOW, claim_board=board)
+    assert result["ok"] is (not source_still_held), result
+    assert result["reason"] == ("current_source_holder_not_released" if source_still_held else "qualified")
+    assert {cid: (board.dir / f"{cid}.json").read_bytes() for cid in historical} == before
+
+
+@pytest.mark.parametrize("left,right", [
+    ("scripts/synthetic_change.py", "scripts/synthetic_change.py"),
+    ("scripts", "scripts/synthetic_change.py"),
+    ("scripts/", "./scripts/synthetic_change.py"),
+    ("scripts/**/synthetic_*.py", "scripts/lib/synthetic_change.py"),
+    ("scripts/lib/synthetic_*.py", "scripts/**/synthetic_change.?y"),
+])
+def test_live_siblings_with_exclusive_path_contention_refuse(mod, tmp_path, left, right):
     p, l1, l2 = ("20300107T234500Z-pred-a-aaaaaaaa", "20300107T234500Z-live-b-bbbbbbbb",
                  "20300107T234500Z-live-c-cccccccc")
     chain_refusal(mod, tmp_path, [
         {"claim_id": p, "session": "session-p", "heartbeat_at": T0, "paths": [SOURCE]},
-        {"claim_id": l1, "session": "session-l1", "paths": [COORD], "takeover_of": [p]},
-        {"claim_id": l2, "session": "session-l2", "paths": ["scripts/synthetic_other.py"],
-         "takeover_of": [p]},
+        {"claim_id": l1, "session": "session-l1", "paths": [left], "takeover_of": [p]},
+        {"claim_id": l2, "session": "session-l2", "paths": [right], "takeover_of": [p]},
     ])
+
+
+def sibling_board(tmp_path, left, right):
+    board = make_board(tmp_path, Clock(NOW))
+    p, l1, l2 = ("20300107T234500Z-pred-a-aaaaaaaa", "20300107T234500Z-live-b-bbbbbbbb",
+                 "20300107T234500Z-live-c-cccccccc")
+    write_claim(board.dir, p, session="session-p", paths=["scripts/**"], heartbeat_at=T0)
+    write_claim(board.dir, l1, session="session-l1", paths=left, takeover_of=[p])
+    write_claim(board.dir, l2, session="session-l2", paths=right, takeover_of=[p])
+    return board, l1, l2
+
+
+@pytest.mark.parametrize("left,right", [
+    (["scripts/a*.py"], ["scripts/b*.py"]),
+    (["config/synthetic_one.json"], ["scripts/lib/synthetic_other.py"]),
+])
+def test_live_siblings_with_disjoint_scopes_are_valid(mod, tmp_path, left, right):
+    board, _, _ = sibling_board(tmp_path, left, right)
+    views, unreadable = board.views()
+    assert not unreadable
+    mod.validate_takeover_graph(views, board)
+
+
+@pytest.mark.parametrize("left,right", [
+    (["docs/INDEX.md"], ["docs/INDEX.md"]),
+    (["docs/INDEX.md/"], ["./docs/INDEX.md"]),
+    (["docs/**"], ["docs/INDEX.md"]),
+])
+def test_only_trusted_shared_additive_overlap_is_not_contention(mod, tmp_path, left, right):
+    config = {"schema": "AgentClaimSharedPaths@v1", "paths": [{"path": "docs/INDEX.md"}]}
+    board, _, _ = sibling_board(tmp_path, left, right)
+    views, unreadable = board.views()
+    assert not unreadable
+    mod.validate_takeover_graph(views, board, config)
+
+
+def test_environment_cannot_exempt_an_exclusive_path(mod, tmp_path, monkeypatch):
+    untrusted = tmp_path / "untrusted-shared.json"
+    untrusted.write_text(json.dumps({"schema": "AgentClaimSharedPaths@v1", "paths": [{"path": SOURCE}]}))
+    monkeypatch.setenv("TRADEAI_AGENT_CLAIM_SHARED_PATHS", str(untrusted))
+    monkeypatch.setattr(mod, "TRUSTED_REPO", tmp_path / "missing-trusted-root")
+    board, _, _ = sibling_board(tmp_path, [SOURCE], [SOURCE])
+    views, unreadable = board.views()
+    assert not unreadable
+    with pytest.raises(mod.Refused, match="claim_takeover_chain_invalid"):
+        mod.validate_takeover_graph(views, board)
+
+
+@pytest.mark.parametrize("bad", [None, [], SOURCE, [None], [""], ["../escape.py"], ["/absolute.py"],
+                               ["scripts/line\nbreak.py"], ["scripts/[z-a].py"], ["elsewhere/[z-a].py"]])
+def test_unusable_live_sibling_scope_refuses_instead_of_looking_disjoint(mod, tmp_path, bad):
+    board, left, _ = sibling_board(tmp_path, [SOURCE], ["scripts/other.py"])
+    path = board.dir / f"{left}.json"
+    doc = json.loads(path.read_text())
+    doc["paths"] = bad  # corrupt only this isolated synthetic board
+    path.write_text(json.dumps(doc))
+    views, unreadable = board.views()
+    assert not unreadable
+    with pytest.raises(mod.Refused, match="claim_takeover_chain_invalid"):
+        mod.validate_takeover_graph(views, board)
+
+
+@pytest.mark.parametrize("config", [
+    None, {}, {"schema": "AgentClaimSharedPaths@v1", "paths": "not-a-list"},
+    {"schema": "AgentClaimSharedPaths@v1", "paths": [{"path": "scripts/**"}]},
+])
+def test_missing_invalid_or_glob_shared_config_is_exclusive(mod, tmp_path, config):
+    board, _, _ = sibling_board(tmp_path, [SOURCE], [SOURCE])
+    views, unreadable = board.views()
+    assert not unreadable
+    with pytest.raises(mod.Refused, match="claim_takeover_chain_invalid"):
+        mod.validate_takeover_graph(views, board, config)
+
+
+def test_removing_shared_exemption_takes_effect_without_cached_permission(mod, tmp_path):
+    board, _, _ = sibling_board(tmp_path, [SOURCE], [SOURCE])
+    views, _ = board.views()
+    mod.validate_takeover_graph(views, board, {
+        "schema": "AgentClaimSharedPaths@v1", "paths": [{"path": SOURCE}]})
+    with pytest.raises(mod.Refused, match="claim_takeover_chain_invalid"):
+        mod.validate_takeover_graph(views, board, {"schema": "AgentClaimSharedPaths@v1", "paths": []})
+
+
+def test_host_collects_shared_claim_config_from_the_same_main_sha(mod, tmp_path, monkeypatch):
+    baseline = load("delegation_collector_shared_scope_tests", "tests/test_pr_merge_delegation_20261102.py")
+    host = baseline.actual_collector_fixture(mod, tmp_path)
+    actual_git = host.git
+    reads = []
+    config = {"schema": "AgentClaimSharedPaths@v1", "paths": [{"path": "docs/INDEX.md"}]}
+
+    def git(*args):
+        if args[0] == "show" and args[1].endswith(":config/agent_claim_shared_paths.json"):
+            reads.append(args)
+            return json.dumps(config)
+        return actual_git(*args)
+
+    host.git = git
+    monkeypatch.setenv("TRADEAI_AGENT_CLAIM_SHARED_PATHS", "/untrusted/config.json")
+    result = host.collect(9999, baseline.ACTOR)
+    assert reads == [("show", f"{MAIN}:config/agent_claim_shared_paths.json")]
+    assert result["claim_shared_paths_config"] == config
+
+
+def test_unrelated_claims_do_not_gain_a_new_global_graph_gate(mod, tmp_path):
+    board = make_board(tmp_path, Clock(NOW))
+    write_claim(board.dir, "20300107T234500Z-a-aaaaaaaa", session="session-a", paths=[SOURCE])
+    write_claim(board.dir, "20300107T234500Z-b-bbbbbbbb", session="session-b", paths=[SOURCE])
+    views, unreadable = board.views()
+    assert not unreadable
+    mod.validate_takeover_graph(views, board)
 
 
 def test_stale_claimant_link_is_durable_not_chain_invalid(mod, tmp_path):
