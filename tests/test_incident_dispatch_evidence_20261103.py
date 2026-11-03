@@ -437,16 +437,25 @@ def test_the_incident_rails_and_their_gate_tests_are_refused_by_the_fixers_diff_
 
     Same shape as the launcher guard test (test_self_heal_deepseek_wiring_20261103): prove the MATCHER
     refuses each path, not merely that the string sits in a config list.
+
+    ``config/incident_runbook_actions.json`` is the policy file the supervisor obeys (refused-scope
+    regex, attempt cap, daily model cap, cycle budget) and ``scripts/incident_supervisor.py`` is the
+    CLI entrypoint its systemd unit runs; both sit one layer above the supervisor library and must be
+    refused too. Removing either entry from the config makes this test fail.
     """
     from lib import self_heal_fixer as F
     cfg = json.loads((ROOT / "config" / "self_heal_fixer.json").read_text())
     for rel in ("scripts/incident_requeue.py",
                 "scripts/lib/incident_supervisor.py",
+                "config/incident_runbook_actions.json",
+                "scripts/incident_supervisor.py",
                 "tests/test_incident_requeue_20261103.py",
                 "tests/test_incident_dispatch_evidence_20261103.py",
                 "tests/test_incident_supervisor_noop_evidence_20261103.py"):
         assert F._match_any(rel, cfg["diff_guard"]["refuse_paths"]) is not None, rel
-    for rel in ("scripts/incident_requeue.py", "scripts/lib/incident_supervisor.py"):
+    for rel in ("scripts/incident_requeue.py",
+                "scripts/lib/incident_supervisor.py",
+                "scripts/incident_supervisor.py"):
         why = F.lane_refusal("any-lane", rel, cfg)
         assert why and why.startswith("lane_refused:protected_script:"), why
 
@@ -553,6 +562,11 @@ def test_a_small_cycle_budget_defers_the_overflow_and_drains_it_next_cycle(tmp_p
     cfg["policy"]["cycle_budget_margin_s"] = 0.0
     cfg["policy"]["cycle_budget_floor_s"] = 0.2
     cfg["policy"]["fixer"]["timeout_s"] = 100.0
+    # This test exercises the DISPATCH-timeout gate with a 2s budget. The whole-cycle gate
+    # (2026-11-03) reserves the model call's own timeout (120s) before triage, which would defer
+    # every incident before the model; zero the reserve here so the third incident still reaches the
+    # dispatch gate this test is about. The model/runbook gates have their own file.
+    cfg["policy"]["model_timeout_s"] = 0.0
     recs = _open_budget_incidents(tmp_path, 3)
 
     dispatch_calls: list[dict] = []

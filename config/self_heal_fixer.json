@@ -246,6 +246,8 @@
       "scripts/lib/incidents.py",
       "scripts/incident_requeue.py",
       "scripts/lib/incident_supervisor.py",
+      "config/incident_runbook_actions.json",
+      "scripts/incident_supervisor.py",
       "tests/test_incident_requeue_20261103.py",
       "tests/test_incident_dispatch_evidence_20261103.py",
       "tests/test_incident_supervisor_noop_evidence_20261103.py",

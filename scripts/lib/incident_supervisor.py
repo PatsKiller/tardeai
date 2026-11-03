@@ -77,6 +77,11 @@ CYCLE_BUDGET_DEFAULT_S = 7500.0
 CYCLE_BUDGET_MARGIN_S = 300.0
 CYCLE_BUDGET_FLOOR_S = 600.0
 
+#: The governed model call in ``default_model(...)`` uses ``timeout=120``. The cycle budget is
+#: re-checked against this before every model call, so the supervisor never starts a call it cannot
+#: finish inside the unit's ``TimeoutStartSec=8100`` and lose the attempt row to a SIGKILL.
+MODEL_TIMEOUT_DEFAULT_S = 120.0
+
 
 @dataclass
 class Deps:
@@ -155,6 +160,17 @@ def current_attempts(rec: Mapping[str, Any]) -> list[dict]:
 def counted_attempts(rec: Mapping[str, Any]) -> int:
     """Attempts that count toward the cap in THIS episode: executed actions and fixer dispatches."""
     return sum(1 for a in current_attempts(rec) if a.get("action") not in ("triage", "triage_readonly", "refused"))
+
+
+def _is_budget_deferral(row: Mapping[str, Any]) -> bool:
+    """A cycle-budget deferral row: nothing ran, so it must not start the model cooldown.
+
+    The gate records a non-counting ``triage`` row (so the deferral is never lost) before it skips
+    an incident. If that row advanced ``model_cooldown_minutes``, the incident would then be skipped
+    for 30 minutes on the next cycle even though no model call and no action happened.
+    """
+    return (row.get("action") == "triage"
+            and str(row.get("result") or "").startswith("deferred: cycle budget"))
 
 
 def parse_verdict(text: str) -> Optional[dict]:
@@ -464,6 +480,21 @@ def _cycle_remaining_s(elapsed_s: float, budget_s: float, margin_s: float) -> fl
     return budget_s - elapsed_s - margin_s
 
 
+def _defer_budget(iid: str, stage: str, *, d: Path, now: datetime, apply: bool, out: dict,
+                  remaining_s: float) -> None:
+    """Record that an incident was left for a later cycle because the budget cannot cover the next step.
+
+    The triage row is written only under ``apply`` (a dry run writes nothing), and it never counts
+    toward the attempt cap. ``stage`` says which step was refused (``before model`` /
+    ``before runbook``). The caller ``continue``s to the next incident.
+    """
+    if apply:
+        L.attempt(iid, actor=ACTOR, action="triage", result="deferred: cycle budget", ok=None,
+                  sets_fixing=False, detail={"deferred_at": stage}, d=d, now=now)
+    out["skipped"].append({"id": iid, "why": "deferred: cycle budget", "stage": stage,
+                           "remaining_s": int(remaining_s)})
+
+
 def _call_fixer(deps: Deps, req: Path, apply: bool, timeout_s: float) -> dict:
     """Run the fixer with this cycle's remaining budget when it accepts a ``timeout``.
 
@@ -482,18 +513,24 @@ def _call_fixer(deps: Deps, req: Path, apply: bool, timeout_s: float) -> dict:
 
 
 def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, Any], deps: Deps, apply: bool,
-          now: Optional[datetime] = None, environ: Optional[Mapping[str, str]] = None, root: Path = ROOT) -> dict:
+          now: Optional[datetime] = None, environ: Optional[Mapping[str, str]] = None, root: Path = ROOT,
+          clock: Callable[[], float] = time.monotonic) -> dict:
     now = now or L.utcnow()
     pol = cfg["policy"]
     environ = os.environ if environ is None else environ
-    started = time.monotonic()
+    started = clock()
     budget_s = float(pol.get("cycle_budget_s", CYCLE_BUDGET_DEFAULT_S))
     margin_s = float(pol.get("cycle_budget_margin_s", CYCLE_BUDGET_MARGIN_S))
     floor_s = float(pol.get("cycle_budget_floor_s", CYCLE_BUDGET_FLOOR_S))
     fixer_timeout_s = float((pol.get("fixer") or {}).get("timeout_s", CYCLE_BUDGET_DEFAULT_S))
+    model_timeout_s = float(pol.get("model_timeout_s", MODEL_TIMEOUT_DEFAULT_S))
+
+    def spendable_s() -> float:
+        """Budget minus elapsed minus the safety margin: what the NEXT step may still consume."""
+        return _cycle_remaining_s(clock() - started, budget_s, margin_s)
 
     def dispatch_timeout() -> tuple[Optional[float], float]:
-        remaining = _cycle_remaining_s(time.monotonic() - started, budget_s, margin_s)
+        remaining = spendable_s()
         if remaining < floor_s:
             return None, remaining
         return min(fixer_timeout_s, remaining), remaining
@@ -577,13 +614,21 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
             _escalate(rec, f"unresolved {int(age_min)} min", "Open the incident; the supervisor is still working it.",
                       d, deps, apply, out, now, key="time_box")
         # 4. model triage (cooldown + daily call cap). Cooldown is per episode: a reopen is a person's
-        # explicit retry, so an old attempt must not delay it (2026-11-03).
-        last = max((L.parse_ts(a.get("at")) for a in current_attempts(rec) if a.get("at")), default=None)
+        # explicit retry, so an old attempt must not delay it (2026-11-03). A cycle-budget deferral
+        # row is excluded: it ran nothing, so it must not starve this incident for 30 minutes.
+        last = max((L.parse_ts(a.get("at")) for a in current_attempts(rec)
+                    if a.get("at") and not _is_budget_deferral(a)), default=None)
         if last and now - last < timedelta(minutes=float(pol.get("model_cooldown_minutes", 30))):
             out["skipped"].append({"id": iid, "why": "cooldown"})
             continue
         if _calls_today(d, now) >= int(pol.get("max_model_calls_per_day", 40)):
             out["skipped"].append({"id": iid, "why": "daily model-call cap"})
+            continue
+        # Cycle budget (2026-11-03): never start a model call the unit timeout could kill. The gate
+        # sits after every cheap/deterministic path and before build_prompt/model.
+        remaining = spendable_s()
+        if remaining < model_timeout_s:
+            _defer_budget(iid, "before model", d=d, now=now, apply=apply, out=out, remaining_s=remaining)
             continue
         prompt = build_prompt(rec, cfg, evidence=evidence_excerpt(rec, state_root), runbooks=runbook_excerpt(rec, cfg, root))
         if not apply:
@@ -625,9 +670,16 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
                 out["skipped"].append({"id": iid, "why": why})
                 continue
             spec = chosen["spec"]
+            need_s = float(spec.get("timeout_s", 300))
+            # Cycle budget (2026-11-03): a runbook action is all-or-nothing. Never shorten its own
+            # timeout (a shortened kill could leave partial state); defer instead.
+            remaining = spendable_s()
+            if remaining < need_s:
+                _defer_budget(iid, "before runbook", d=d, now=now, apply=apply, out=out, remaining_s=remaining)
+                continue
             argv = render_argv(spec, chosen["params"], cfg)
             cwd = str(release_root if spec.get("cwd") == "release" else root)
-            rc, tail = deps.run(argv, cwd, action_env(cfg, environ), float(spec.get("timeout_s", 300)))
+            rc, tail = deps.run(argv, cwd, action_env(cfg, environ), need_s)
             L.attempt(iid, actor=ACTOR, action=chosen["name"], result=f"rc={rc}", ok=rc == 0,
                       detail={**detail, "argv": argv, "output_tail": tail[-1200:],
                               "no_op": _action_took_effect(spec, tail) is False}, d=d, now=now)
