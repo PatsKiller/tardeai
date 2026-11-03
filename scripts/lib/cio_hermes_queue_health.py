@@ -307,8 +307,8 @@ def collect_cio_hermes_queue_health(*, now: Optional[datetime] = None, path: Opt
     # A request the ledger recorded but the projection does not hold is invisible to the worker.
     # Measured 2026-09-14: 7 that day, lost to unlocked writers. The worker now restores those
     # under 48h on its next claim; this signal staying on means a writer still bypasses the lock.
-    if projection_state == "ok":
-        assert proj_doc is not None
+    projection_ok = projection_state == "ok" and proj_doc is not None
+    if projection_ok:
         by_rid = proj_doc.get("by_research_id") or {}
         known = set(by_rid)
         # A request is NOT lost when its QUESTION is already owned by an open or completed
@@ -336,8 +336,8 @@ def collect_cio_hermes_queue_health(*, now: Optional[datetime] = None, path: Opt
     s["lost"], s["lost_n"] = (lost[:5], len(lost)) if known is not None else (None, None)
     outcomes = s["completed"] + s["failed"]
     firing: list[str] = []
-    if projection_state != "ok":
-        firing.append(f"projection_unreadable:{projection_state}")
+    if not projection_ok:
+        firing.append(f"projection_unreadable:{projection_state if projection_state != 'ok' else 'unreadable'}")
     if lost:
         firing.append(f"requests_lost:{len(lost)}")
     if outcomes >= min_outcomes and s["failed"] / outcomes >= fail_share:
