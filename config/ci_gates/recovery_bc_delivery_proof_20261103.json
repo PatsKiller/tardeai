@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "recovery_bc_delivery_proof_20261103",
+  "files": [
+    "tests/test_recovery_bc_delivery_proof_20261103.py"
+  ],
+  "anchor": "RECOVERY_BC_DELIVERY_PROOF_20261103",
+  "comment": [
+    "ANCHOR: RECOVERY_BC_DELIVERY_PROOF_20261103 — the B->C recovery delivery proof runs in CI by name and",
+    "cardinality: a skipped, renamed or dropped stage fails the wrapper instead of passing by absence."
+  ]
+}

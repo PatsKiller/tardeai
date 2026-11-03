@@ -66,41 +66,45 @@ SCHEMA = "RecoveryBcDeliveryProof@v1"
 MARKER = "[[RECOVERY_T1]]"
 
 # ── the cases: A's RecoveryCase.to_dict() shape, evaluated by B, handed to C ─────────────────────────────────
+#: Synthetic fixtures only: no operator financial observation (symbol, price, size, loss, account) appears here.
+#: AGENTS 2A treats every commit as published, and a public CI fixture may not carry the live book's numbers.
 CASES = {
-    "spcx": {
-        "case_key": "SPCX:schwab_taxable:2026-10-30", "symbol": "SPCX", "account": "schwab_taxable",
-        "state": "WATCHING", "materiality_tier": "T1", "realized_pnl": -12770.0, "pre_exit_weight_pct": 3.2,
-        "exits": [{"symbol": "SPCX", "price": 137.19, "shares": 200, "realized_pnl": -12770.0,
-                   "exit_date": "2026-10-30"}],
-        "eligibility": [{"account": "schwab_roth_ira", "eligible": True, "eligible_from": None,
-                         "reason": "ira eligible now"},
-                        {"account": "schwab_taxable", "eligible": False, "eligible_from": "2026-11-27",
+    "alpha": {
+        "case_key": "DEMOA:ACCT_A:2030-01-10", "symbol": "DEMOA", "account": "ACCT_A",
+        "state": "WATCHING", "materiality_tier": "T1", "realized_pnl": -5000.0, "pre_exit_weight_pct": 3.2,
+        "exits": [{"symbol": "DEMOA", "price": 100.0, "shares": 6, "realized_pnl": -5000.0,
+                   "exit_date": "2030-01-10"}],
+        "eligibility": [{"account": "ACCT_B", "eligible": True, "eligible_from": None,
+                         "reason": "ira-style account eligible now"},
+                        {"account": "ACCT_A", "eligible": False, "eligible_from": "2030-12-01",
                          "reason": "house hold 30 days after a taxable sale"}],
         "residual_pct_of_pre_exit": 14.3,
-        "residual_note": "200 of 1,400 shares remain after the 2026-10-30 exit (14.3%)",
+        "residual_note": "1 of 7 shares remain after the 2030-01-10 exit (14.3%)",
     },
     "t2": {
-        "case_key": "T2NAME:schwab_roth_ira:2026-10-20", "symbol": "T2NAME", "account": "schwab_roth_ira",
+        "case_key": "DEMOB:ACCT_B:2030-01-01", "symbol": "DEMOB", "account": "ACCT_B",
         "state": "WATCHING", "materiality_tier": "T2", "realized_pnl": -800.0,
-        "exits": [{"symbol": "T2NAME", "price": 50.0, "shares": 10, "realized_pnl": -800.0}],
-        "eligibility": [{"account": "schwab_roth_ira", "eligible": True, "eligible_from": None,
-                         "reason": "ira eligible now"}],
+        "exits": [{"symbol": "DEMOB", "price": 50.0, "shares": 10, "realized_pnl": -800.0,
+                   "exit_date": "2030-01-01"}],
+        "eligibility": [{"account": "ACCT_B", "eligible": True, "eligible_from": None,
+                         "reason": "ira-style account eligible now"}],
     },
     "quiet": {
-        "case_key": "QUIET:schwab_taxable:2026-10-20", "symbol": "QUIET", "account": "schwab_taxable",
+        "case_key": "DEMOC:ACCT_A:2030-01-01", "symbol": "DEMOC", "account": "ACCT_A",
         "state": "WATCHING", "materiality_tier": "T1", "realized_pnl": -12000.0,
-        "exits": [{"symbol": "QUIET", "price": 100.0, "shares": 100, "realized_pnl": -12000.0}],
-        "eligibility": [{"account": "schwab_taxable", "eligible": True, "eligible_from": None}],
+        "exits": [{"symbol": "DEMOC", "price": 100.0, "shares": 100, "realized_pnl": -12000.0,
+                   "exit_date": "2030-01-01"}],
+        "eligibility": [{"account": "ACCT_A", "eligible": True, "eligible_from": None}],
     },
 }
 
 SNAP_NOW = datetime(2026, 11, 3, 18, 0, tzinfo=timezone.utc)
 SNAPSHOTS = {
-    # SPCX reclaims its exit (+3.25%) but is still below the 20-day mean: RECOVERING, not READY.
-    "spcx": {"close": 141.65, "rsi": 39.1, "sma20": 151.62, "entry_high": 139.0},
-    # T2NAME also reclaims — B says RECOVERING, but C must not page a T2 case (Home card / digest).
+    # DEMOA reclaims its exit (+2.0%) but is still below the 20-day mean: RECOVERING, not READY.
+    "alpha": {"close": 102.0, "rsi": 35.0, "sma20": 130.0, "entry_high": 101.0},
+    # DEMOB also reclaims — B says RECOVERING, but C must not page a T2 case (Home card / digest).
     "t2": {"close": 51.5, "rsi": 44.0, "sma20": 49.0, "entry_high": 50.0},
-    # QUIET never reclaims.
+    # DEMOC never reclaims.
     "quiet": {"close": 96.0, "rsi": 33.0, "sma20": 101.0, "entry_high": 98.0},
 }
 
@@ -489,21 +493,21 @@ def main(argv: list[str] | None = None) -> int:
     # P1 — one page, through a real B -> C handoff.
     s1 = _spawn(with_batch, t0.strftime("%Y-%m-%dT%H:%M:%SZ"), no_batch=False, transport_dedupes=False)
     e1 = _entries(with_batch)
-    spcx = [e for e in e1 if "SPCX" in str(e.get("text"))]
+    spcx = [e for e in e1 if "DEMOA" in str(e.get("text"))]
     proofs["P1_one_page_for_recovering_t1"] = {
         "pass": bool(len(spcx) == 1 and spcx[0].get("priority") == "P1"
                      and str(spcx[0].get("text", "")).startswith(MARKER)
-                     and s1["receipts"]["spcx"]["state_after"] == "RECOVERING"),
-        "b_state": s1["receipts"]["spcx"]["state_after"],
+                     and s1["receipts"]["alpha"]["state_after"] == "RECOVERING"),
+        "b_state": s1["receipts"]["alpha"]["state_after"],
         "sender_entries_for_spcx": len(spcx),
         "priority": spcx[0].get("priority") if spcx else None,
         "marker_on_line_one": bool(spcx and str(spcx[0].get("text", "")).startswith(MARKER)),
-        "c_result": {k: v for k, v in s1["receipts"]["spcx"]["notify"].items() if k != "message"},
+        "c_result": {k: v for k, v in s1["receipts"]["alpha"]["notify"].items() if k != "message"},
     }
 
     # Non-T1 / non-recovering cases must not page at all.
-    t2_pages = [e for e in e1 if "T2NAME" in str(e.get("text"))]
-    quiet_pages = [e for e in e1 if "QUIET" in str(e.get("text"))]
+    t2_pages = [e for e in e1 if "DEMOB" in str(e.get("text"))]
+    quiet_pages = [e for e in e1 if "DEMOC" in str(e.get("text"))]
     proofs["P1b_t2_and_non_recovering_never_page"] = {
         "pass": len(t2_pages) == 0 and len(quiet_pages) == 0,
         "t2_state": s1["receipts"]["t2"]["state_after"], "t2_sender_entries": len(t2_pages),
@@ -515,13 +519,13 @@ def main(argv: list[str] | None = None) -> int:
     before = len(_entries(with_batch))
     s2 = _spawn(with_batch, t1.strftime("%Y-%m-%dT%H:%M:%SZ"), no_batch=False, transport_dedupes=False)
     new_entries = _entries_since(with_batch, before)
-    receipt2 = s2["receipts"]["spcx"]["notify"]
+    receipt2 = s2["receipts"]["alpha"]["notify"]
     proofs["P2_second_session_does_not_page_again_and_says_why"] = {
         "pass": len(new_entries) == 0 and bool(receipt2.get("deduped_by_floor"))
                 and "repeat floor" in str(receipt2.get("reason")),
         "sender_entries_in_second_session": len(new_entries),
         "c_result": {k: v for k, v in receipt2.items() if k != "message"},
-        "b_state_still": s2["receipts"]["spcx"]["state_after"],
+        "b_state_still": s2["receipts"]["alpha"]["state_after"],
     }
 
     # P3 — ONE page per case per day, delivered terminal (lead ruling 2026-11-03): the same case ids moving
@@ -588,9 +592,9 @@ def main(argv: list[str] | None = None) -> int:
     direct.mkdir(parents=True, exist_ok=True)
     d1 = _spawn(direct, t0.strftime("%Y-%m-%dT%H:%M:%SZ"), no_batch=True, transport_dedupes=True)
     d2 = _spawn(direct, t1.strftime("%Y-%m-%dT%H:%M:%SZ"), no_batch=True, transport_dedupes=True)
-    d_entries = [e for e in _entries(direct) if "SPCX" in str(e.get("text"))]
-    d2_first = d1["receipts"]["spcx"]["notify"]
-    d2_second = d2["receipts"]["spcx"]["notify"]
+    d_entries = [e for e in _entries(direct) if "DEMOA" in str(e.get("text"))]
+    d2_first = d1["receipts"]["alpha"]["notify"]
+    d2_second = d2["receipts"]["alpha"]["notify"]
     proofs["P4_without_batching_the_transport_refuses_and_records_it"] = {
         "pass": len(d_entries) == 2 and d2_first.get("path") == "direct"
                 and d_entries[0].get("delivered") is True and d_entries[1].get("delivered") is False
