@@ -8,6 +8,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -526,3 +528,26 @@ def test_export_huge_share_count_is_unavailable_not_a_crash(tmp_path):
         {"account": "schwab_taxable", "symbol": "AAA", "qty": 10 ** 400, "market_value": 10.0}]})
     out = m.rows(conn_factory=lambda: (_ for _ in ()).throw(RuntimeError("db down")), export_path=p)
     assert out["available"] is False and out["export"] == "numeric_invalid"
+
+
+_INVALID_LEAVES = [{"positions": None}, {"positions": "x"}, {"positions": True}, {},
+                   0, None, []]
+
+
+@pytest.mark.parametrize("leaf", _INVALID_LEAVES)
+def test_invalid_per_account_detail_leaf_is_unavailable(leaf):
+    # An unknown per-account count must not read as a legitimate zero, and must not raise.
+    detail = {"schwab_taxable": leaf, "schwab_roth_ira": {"positions": 1}}
+    out = m.rows(conn_factory=lambda: _conn(receipts={
+        641: _receipt(641, 3, accounts_ok=["schwab_taxable", "schwab_roth_ira"], accounts=detail)}))
+    assert out["available"] is False and out["reason"] == "receipt_account_detail_invalid", leaf
+    assert "rows" not in out
+
+
+def test_zero_position_leaf_still_passes():
+    detail = {"schwab_taxable": {"positions": 1}, "schwab_roth_ira": {"positions": 1},
+              "empty_acct": {"positions": 0}}
+    out = m.rows(conn_factory=lambda: _conn(receipts={
+        641: _receipt(641, 3, accounts_ok=["schwab_taxable", "schwab_roth_ira", "empty_acct"],
+                      accounts=detail)}))
+    assert out["available"] is True and out["count"] == 3

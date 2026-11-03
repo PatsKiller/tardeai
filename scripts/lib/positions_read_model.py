@@ -351,7 +351,14 @@ def _snapshot(sync_run_id: Optional[int] = None, *, conn_factory=None, export_pa
         # non-cash rows for that account (a zero-position account is legitimate and has no rows).
         mismatched = []
         for acct, info in detail.items():
-            expected = int((info or {}).get("positions") or 0)
+            positions = info.get("positions") if isinstance(info, dict) else None
+            if (not isinstance(info, dict) or isinstance(positions, bool)
+                    or not isinstance(positions, int)):
+                # An UNKNOWN per-account count is not a legitimate zero-position account, and a
+                # non-numeric count must not raise out of rows()/totals()/clock()/document().
+                return _probe_unavailable("receipt_account_detail_invalid", sync_run_id=run,
+                                          account=acct, detail=info)
+            expected = positions
             actual = sum(1 for row in rows if str(row["account_key"]) == str(acct) and not row["is_cash"])
             if expected != actual:
                 mismatched.append({"account": acct, "receipt_positions": expected, "snapshot_positions": actual})
