@@ -179,3 +179,55 @@ def test_the_incident_digest_uses_the_same_batch_helper():
                       footer="This batch contains an operator-only decision; no agent may act on it.")
     assert here.count("•") == 2 and here.count("Next:") == 2
     assert here.rstrip().endswith("no agent may act on it.")
+
+
+# ------------------------------------------------------------------ the backend store's real shapes
+def test_the_published_event_stream_shape_is_selected_correctly(tmp_path):
+    """PR #2550 publishes requester as a plain string and closes on approved before the action runs."""
+    p = tmp_path / "requests.jsonl"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("\n".join(json.dumps(r) for r in [
+        {"schema": "ApprovalRequestEvent@v1", "event": "created", "id": "apr-1", "type": "merge_pr",
+         "title": "Merge #2518", "why": "the reviewed head must not move", "rule": "§25.10.4",
+         "requester": "cc-deepseek-7", "requester_detail": {"session": "cc-deepseek-7"},
+         "created_at": "2026-11-03T12:00:00Z", "expires_at": "2026-11-05T12:00:00Z",
+         "state": "open", "facts": {"pr": 2518}},
+        {"schema": "ApprovalRequestEvent@v1", "event": "updated", "id": "apr-2", "type": "grant",
+         "title": "Grant release for 2h", "why": "push budget", "requester": "cc-deepseek-7",
+         "created_at": "2026-11-03T12:30:00Z", "expires_at": "2026-11-05T12:30:00Z",
+         "state": "open", "facts": {"tier": "release", "duration": "2h"}},
+        {"schema": "ApprovalRequestEvent@v1", "event": "approved", "id": "apr-3", "type": "merge_pr",
+         "title": "Merge #2500", "created_at": "2026-11-03T11:00:00Z", "state": "approved"},
+    ]) + "\n", encoding="utf-8")
+    sent = Sent()
+    receipt = go(tmp_path, "2026-11-03T13:00:00Z", sent=sent, requests_path=p)
+
+    assert receipt["source"] == "events"
+    assert receipt["keys"] == ["apr-1", "apr-2"]
+    assert len(sent.calls) == 1
+    assert "asked by cc-deepseek-7" in sent.calls[0]["text"]
+    assert "Merge #2500" not in sent.calls[0]["text"]          # approved → never re-asked
+
+
+def test_when_no_stream_exists_the_store_files_are_read(tmp_path):
+    root = tmp_path / "state"
+    d = root / "needs_you" / "requests"
+    d.mkdir(parents=True)
+    (d / "apr-a.json").write_text(json.dumps({
+        "schema": "HomeApprovalRequest@v1", "id": "apr-a", "type": "policy_approval",
+        "title": "Record APPROVE for policy PR #2525", "why": "standing authority", "rule": "§25.10.3",
+        "what_happens": "records the line", "risk": "low", "undo": "revert the line",
+        "requester": {"session": "cc-deepseek-7", "claim": None, "actor": None, "vendor": None},
+        "created_at": "2026-11-03T12:00:00Z", "expires_at": "2026-11-05T12:00:00Z", "state": "open",
+        "facts": {"pr": 2525}}), encoding="utf-8")
+    (d / "apr-done.json").write_text(json.dumps({"id": "apr-done", "state": "approved",
+                                                 "title": "old", "expires_at": "2026-11-05T00:00:00Z"}),
+                                     encoding="utf-8")
+    sent = Sent()
+    receipt = A.run(requests_path=tmp_path / "does-not-exist.jsonl", state_root=root,
+                    state_dir=tmp_path / "state2", config_path=tmp_path / "approvals_notify.json",
+                    now="2026-11-03T13:00:00Z", dry_run=False, notify=sent)
+
+    assert receipt["source"] == "store"
+    assert receipt["keys"] == ["apr-a"]
+    assert "asked by cc-deepseek-7" in sent.calls[0]["text"]

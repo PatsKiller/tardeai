@@ -11,7 +11,13 @@ those writers publish, select the ones that are due, and send one message throug
 ``scripts/lib/telegram_batch.py`` — the same batching, 2 h floor and quiet window the incident digest
 uses, so the operator sees one notification style, not two.
 
-Request-event contract (coordinated with the store/API pieces; a superset is tolerated):
+PRIMARY SOURCE — the published event stream (coordinated with the store owner, PR #2550):
+``persistent-state/data/approvals/requests.jsonl``. "approved" is written BEFORE the action runs, so a
+slow or failed merge is never re-asked as if still undecided; "updated" (a question, a moved fact)
+leaves the request open. ``requester`` is a plain string there.
+
+FALLBACK — the store's own files, ``<state-root>/needs_you/requests/<id>.json`` (``HomeApprovalRequest@v1``,
+``state == "open"``, ``requester`` a mapping), used when the stream does not exist yet. Also tested:
 
     {"schema": "ApprovalRequestEvent@v1", "event": "created" | "updated" | "resolved" | "expired",
      "id": "apr_...", "type": "merge_pr", "title": "Merge #2518",
@@ -46,6 +52,7 @@ from lib.telegram_batch import (  # noqa: E402
 SCHEMA = "ApprovalsNotifyReceipt@v1"
 PROJ = Path(__file__).resolve().parent.parent
 DEFAULT_REQUESTS = PROJ / "persistent-state" / "data" / "approvals" / "requests.jsonl"
+DEFAULT_STATE_ROOT = PROJ / "persistent-state"
 DEFAULT_STATE_DIR = PROJ / "data" / "runtime" / "approvals_notify"
 DEFAULT_CONFIG = PROJ / "config" / "approvals_notify.json"
 
@@ -121,6 +128,39 @@ def open_requests(rows: dict[str, dict], now: datetime) -> list[dict]:
     return out
 
 
+def load_store_requests(state_root: Path, now: datetime) -> list[dict] | None:
+    """Open, unexpired records from the backend store. None when the store is not there (use the fallback).
+
+    A record we cannot parse is skipped AND counted by the caller: one corrupt file must not silence the
+    nudge for every other open request, and it must not be invisible either.
+    """
+    d = Path(state_root) / "needs_you" / "requests"
+    if not d.is_dir():
+        return None
+    rows = []
+    for path in sorted(d.glob("*.json")):
+        try:
+            rec = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            rows.append({"_unreadable": path.name})
+            continue
+        if not isinstance(rec, dict) or str(rec.get("state") or "").strip().lower() != "open":
+            continue
+        expires = _dt(rec.get("expires_at"))
+        if expires is not None and expires <= now:
+            continue
+        rec.setdefault("id", path.stem)
+        rows.append(rec)
+    return rows
+
+
+def _requester(req: dict) -> str:
+    who = req.get("requester")
+    if isinstance(who, dict):
+        return str(who.get("session") or who.get("claim") or who.get("actor") or "").strip()
+    return str(who or "").strip()
+
+
 def _label(req: dict) -> str:
     title = str(req.get("title") or "").strip()
     if title:
@@ -146,7 +186,7 @@ def _label(req: dict) -> str:
 
 def _item(req: dict) -> dict:
     why = str(req.get("why") or "").strip()
-    who = str(req.get("requester") or "").strip()
+    who = _requester(req)
     detail = " · ".join(x for x in (why, f"asked by {who}" if who else "") if x)
     return {"title": _label(req), "detail": detail, "next": "Approve or decline on Home"}
 
@@ -165,9 +205,9 @@ def _config(path: Path) -> dict:
         return {}
 
 
-def run(*, requests_path: Path = DEFAULT_REQUESTS, state_dir: Path = DEFAULT_STATE_DIR,
-        config_path: Path = DEFAULT_CONFIG, now: str | None = None, dry_run: bool = True,
-        notify=None) -> dict:
+def run(*, requests_path: Path = DEFAULT_REQUESTS, state_root: Path | None = None,
+        state_dir: Path = DEFAULT_STATE_DIR, config_path: Path = DEFAULT_CONFIG, now: str | None = None,
+        dry_run: bool = True, notify=None) -> dict:
     """One cycle: read requests, decide dues, send at most ONE message. Pure apart from the state file."""
     cfg = _config(config_path)
     home_url = str(cfg.get("home_url") or "").strip()
@@ -175,15 +215,31 @@ def run(*, requests_path: Path = DEFAULT_REQUESTS, state_dir: Path = DEFAULT_STA
     priority = str(cfg.get("priority") or PRIORITY_P2).upper()
     now_dt = _now_dt(now)
 
-    rows = load_requests(requests_path)
-    open_now = open_requests(rows, now_dt)
+    root = Path(state_root or os.environ.get("TRADEAI_STATE_ROOT") or DEFAULT_STATE_ROOT)
+    unreadable: list[str] = []
+    if Path(requests_path).is_file():
+        # The store publishes this stream (coordinated 2026-11-03, PR #2550): one line per transition,
+        # "approved" written BEFORE the action runs so a slow/failed merge is never re-asked. It is the
+        # contract, so it wins when present.
+        source = "events"
+        open_now = open_requests(load_requests(requests_path), now_dt)
+    else:
+        store_rows = load_store_requests(root, now_dt)
+        if store_rows is not None:
+            source = "store"
+            unreadable = [str(r.get("_unreadable")) for r in store_rows if r.get("_unreadable")]
+            open_now = [r for r in store_rows if not r.get("_unreadable")]
+            open_now.sort(key=lambda r: (str(r.get("created_at") or ""), str(r.get("id"))))
+        else:
+            source, open_now = "none", []
     state = NudgeState(Path(state_dir) / "nudge_state.json")
     keys = [str(r["id"]) for r in open_now]
     decision = nudge_decision(keys=keys, state=state, now=now_dt, priority=priority, floor_minutes=floor)
 
     receipt = {
         "schema": SCHEMA, "at": now_dt.strftime("%Y-%m-%dT%H:%M:%SZ"), "dry_run": bool(dry_run),
-        "requests_path": str(requests_path), "open": len(open_now), "send": False,
+        "source": source, "requests_path": str(requests_path), "state_root": str(root),
+        "unreadable": unreadable, "open": len(open_now), "send": False,
         "reason": decision["reason"], "keys": [], "message": None, "priority": priority,
     }
     if not decision["send"]:
@@ -218,11 +274,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--requests", default=str(DEFAULT_REQUESTS))
     ap.add_argument("--state-dir", default=str(DEFAULT_STATE_DIR))
     ap.add_argument("--config", default=str(DEFAULT_CONFIG))
+    ap.add_argument("--state-root", default=None,
+                    help="backend store root (default: $TRADEAI_STATE_ROOT or ./persistent-state)")
     ap.add_argument("--now", default=None, help="ISO timestamp; default is the real clock")
     ap.add_argument("--apply", action="store_true", help="send; without it the cycle is a dry run")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
-    receipt = run(requests_path=Path(args.requests), state_dir=Path(args.state_dir),
+    receipt = run(requests_path=Path(args.requests), state_root=Path(args.state_root) if args.state_root else None,
+                  state_dir=Path(args.state_dir),
                   config_path=Path(args.config), now=args.now, dry_run=not args.apply)
     if args.json:
         print(json.dumps(receipt, indent=1, sort_keys=True))
