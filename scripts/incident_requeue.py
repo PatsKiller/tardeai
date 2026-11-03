@@ -35,13 +35,20 @@ DEFAULT_REFUSED = (r"(?i)(schwab|alpaca|moomoo|broker|place_order|\borders?\b|\b
 def refused_regex(config_path: Path = CONFIG) -> str:
     try:
         doc = json.loads(Path(config_path).read_text(encoding="utf-8"))
-        return str((doc.get("policy") or {}).get("refused_scope_regex") or DEFAULT_REFUSED)
+        extra = str((doc.get("policy") or {}).get("refused_scope_regex") or "")
     except (OSError, ValueError):
-        return DEFAULT_REFUSED
+        extra = ""
+    # The built-in list is never dropped: a config that omits siem/ledger must not widen this door.
+    # Both patterns carry their own inline (?i); strip it so the union compiles.
+    def bare(rx: str) -> str:
+        return rx[4:] if rx.startswith("(?i)") else rx
+    return f"(?i)({bare(DEFAULT_REFUSED)})|({bare(extra)})" if extra else DEFAULT_REFUSED
 
 
 def _text(rec: dict) -> str:
-    parts = [str(rec.get("title") or ""), str(rec.get("blocked_reason") or ""), str(rec.get("handoff") or "")]
+    src = rec.get("source") or {}
+    parts = [str(rec.get("title") or ""), str(rec.get("blocked_reason") or ""), str(rec.get("handoff") or ""),
+             str(rec.get("where") or ""), str(src.get("job") or ""), str(src.get("watcher") or "")]
     return " ".join(parts)
 
 

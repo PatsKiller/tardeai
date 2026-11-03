@@ -18,7 +18,8 @@ def test_without_a_contract_rc_semantics_hold():
 
 
 def _rec(*actions):
-    return {"attempts": [{"action": a, "actor": S.ACTOR, "at": f"2026-11-03T00:0{i}:00Z", "detail": d}
+    # L.attempt() writes the detail keys at the top level of the row; mirror that shape.
+    return {"attempts": [{"action": a, "actor": S.ACTOR, "at": f"2026-11-03T00:0{i}:00Z", **d}
                          for i, (a, d) in enumerate(actions)]}
 
 
@@ -32,3 +33,48 @@ def test_a_real_action_after_a_noop_is_not_a_noop():
 
 def test_triage_rows_do_not_count_as_actions():
     assert S._last_action_was_noop(_rec(("cron_self_heal", {"no_op": True}), ("triage", {"no_op": True}))) is True
+
+
+# ---------------------------------------------------------------- end-to-end: the cap route fires
+def test_at_the_cap_a_noop_runbook_dispatches_the_fixer(tmp_path, monkeypatch):
+    """Drive real cycle() rows — L.attempt() shape and all — with a no-op runbook and a stub fixer."""
+    from datetime import datetime, timedelta, timezone
+    from lib import incidents as L
+    monkeypatch.setenv("TRADEAI_INCIDENTS_DIR", str(tmp_path / "ledger"))
+    monkeypatch.setenv("TRADEAI_PERSISTENT_STATE_ROOT", str(tmp_path / "ps"))
+    root = ROOT
+    cfg = json.loads((root / "config" / "incident_runbook_actions.json").read_text())
+    t0 = datetime(2026, 11, 3, 3, 0, tzinfo=timezone.utc)
+    rec, _ = L.open_incident(source={"kind": "watcher", "watcher": "health_tick", "job": "fixture-step"},
+                             title="health tick step fixture-step failed (rc=2)", d=tmp_path / "ledger", now=t0)
+    answers, fixes = [], []
+
+    def deps():
+        def model(_p):
+            return (json.dumps({"class": "runbook", "action": "cron_self_heal", "params": {}, "rationale": "r"}),
+                    "anthropic")
+        def run(_argv, _cwd, _env, _timeout):
+            return 0, json.dumps({"acted": []})          # the runbook ran and acted on nothing
+        def notify(_t, _p):
+            return True
+        def fixer(req, apply):
+            fixes.append(json.loads(Path(req).read_text()))
+            return {"rc": 0, "admitted": ["shf-1"], "prs": ["https://example.invalid/pr/1"], "summary": "ok"}
+        return S.Deps(model=model, run=run, notify=notify, fixer=fixer)
+
+    for k in range(3):
+        S.cycle(d=tmp_path / "ledger", state_root=tmp_path / "state", release_root=root, cfg=cfg, deps=deps(),
+                apply=True, now=t0 + timedelta(minutes=31 * k),
+                environ={"HOME": "/h", "PATH": "/bin", "ANTHROPIC_API_KEY": "nope"}, root=root)
+    # The three real attempt rows must carry the flat no_op the cap predicate reads.
+    rows = [a for a in L.load_records(tmp_path / "ledger")[rec["id"]]["attempts"] if a.get("action") == "cron_self_heal"]
+    assert len(rows) == 3 and all(r.get("no_op") is True for r in rows)
+
+    out = S.cycle(d=tmp_path / "ledger", state_root=tmp_path / "state", release_root=root, cfg=cfg, deps=deps(),
+                  apply=True, now=t0 + timedelta(hours=3),
+                  environ={"HOME": "/h", "PATH": "/bin", "ANTHROPIC_API_KEY": "nope"}, root=root)
+    assert out["dispatched"] and out["dispatched"][0]["id"] == rec["id"], out
+    assert fixes and fixes[0]["code_defect"]["evidence"]["incident_key"] == rec["id"]
+    after = L.load_records(tmp_path / "ledger")[rec["id"]]
+    assert any(a.get("action") == "fixer_dispatch" for a in after["attempts"])
+    assert after["status"] != "blocked"

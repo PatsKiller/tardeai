@@ -247,12 +247,14 @@ def _action_took_effect(spec, tail):
     want = ((contract.get("json") or {}) if isinstance(contract, dict) else {}).get("acted")
     if not want:
         return True
+    # None = cannot tell. An unparseable tail is NOT evidence that the runbook acted on nothing,
+    # and must never route an incident to the fixer (2026-11-03).
     try:
         doc = json.loads(tail or "")
     except (TypeError, ValueError):
-        return False
+        return None
     if not isinstance(doc, dict):
-        return False
+        return None
     acted = doc.get("acted")
     return len(acted) > 0 if isinstance(acted, list) else bool(acted)
 
@@ -265,7 +267,8 @@ def _last_action_was_noop(rec) -> bool:
     if not rows:
         return False
     last = max(rows, key=lambda a: str(a.get("at") or ""))
-    return bool((last.get("detail") or {}).get("no_op"))
+    # L.attempt() merges detail into the row, so production rows carry a top-level no_op.
+    return bool(last.get("no_op", (last.get("detail") or {}).get("no_op")))
 
 
 def fixer_request(rec: Mapping[str, Any], verdict: Mapping[str, Any], cfg: Mapping[str, Any]) -> dict:
@@ -447,7 +450,7 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
             rc, tail = deps.run(argv, cwd, action_env(cfg, environ), float(spec.get("timeout_s", 300)))
             L.attempt(iid, actor=ACTOR, action=chosen["name"], result=f"rc={rc}", ok=rc == 0,
                       detail={**detail, "argv": argv, "output_tail": tail[-1200:],
-                              "no_op": not _action_took_effect(spec, tail)}, d=d, now=now)
+                              "no_op": _action_took_effect(spec, tail) is False}, d=d, now=now)
             out["actions"].append({"id": iid, "action": chosen["name"], "rc": rc})
         elif verdict["class"] == "code_defect":
             if any(a.get("action") == "fixer_dispatch" for a in supervisor_attempts(rec)):
