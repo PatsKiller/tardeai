@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from scripts.lib import recovery_notify as rn  # noqa: E402
 import telegram_alert_router as router  # noqa: E402
 
-COVERS = ["scripts/lib/recovery_notify.py", "scripts/telegram_alert_router.py"]
+COVERS = ["scripts/lib/recovery_notify.py", "scripts/telegram_alert_router.py", "scripts/telegram_alert.py"]
 
 
 @pytest.fixture(autouse=True)
@@ -250,12 +250,16 @@ def test_a_marked_t1_is_exempt_from_the_legacy_send_gates(monkeypatch, tmp_path)
 
 
 def test_a_recovery_t1_pages_at_most_once_per_case_per_day(monkeypatch, tmp_path):
-    """F5: the budget exemption is bounded explicitly by case id, and the bound is logged."""
+    """F5: the budget exemption is bounded explicitly by case id, and the bound is logged.
+
+    ``consume=True`` is the explicit form for a caller that delivers directly after the gate; the
+    DEFAULT is a preview (cc5 P1) and is covered separately below.
+    """
     monkeypatch.setattr(router, "_budget_count_today", lambda: 10 ** 6)
     monkeypatch.setattr(router, "_RECOVERY_T1_PAGE_PATH", tmp_path / "pages.json")
     msg = rn.build_message(_case(case_id="spcx-20261030"))
-    assert router.should_send_telegram(msg) is True
-    assert router.should_send_telegram(msg) is False
+    assert router.should_send_telegram(msg, consume=True) is True
+    assert router.should_send_telegram(msg, consume=True) is False
     assert any("recovery_t1_daily_case_bound" == r.get("reason") for r in router.get_suppression_log())
 
 
@@ -301,6 +305,77 @@ def test_the_daily_bound_applies_on_the_intent_path(monkeypatch, tmp_path):
     second = router.route_intent(msg, "P1", dedupe_minutes=0, now=datetime(2026, 11, 3, 15, 0, tzinfo=timezone.utc))
     assert first["decision"] == "DELIVER" and first["deliver"] is True
     assert second["decision"] == "DEDUPED" and second["reason"] == "recovery_t1_daily_case_bound"
+
+
+# ── third BLOCK round at 12990a369: cc5 P1 — a PREVIEW must not spend the day ──────────────────────────
+
+def test_the_gate_is_a_preview_and_cannot_spend_the_day(monkeypatch, tmp_path):
+    """cc5 P1 (2026-11-03): the default gate is a peek; the claim is delivery-owned.
+
+    Before this fix, a caller that only asked "would this send?" claimed the day, and the real
+    route then answered DEDUPED — the page was dropped after the peek had spent it.
+    """
+    msg = rn.build_message(_case(case_id="spcx-preview"))
+    assert router.should_send_telegram(msg) is True
+    assert router.should_send_telegram(msg) is True          # still a preview: no claim spent
+    assert router.recovery_t1_state(msg) == "absent"
+    first = router.route_intent(msg, "P1", dedupe_minutes=0)
+    assert first["decision"] == "DELIVER" and first["deliver"] is True
+
+
+def test_peek_never_claims_and_the_real_send_still_bounds_the_day(monkeypatch, tmp_path):
+    """cc5 P1 regression, both directions: N peeks then ONE send; then a second send is deduped."""
+    import telegram_alert as ta
+    monkeypatch.setattr(router, "record_intent_receipt", lambda *a, **k: None)
+    monkeypatch.setattr(router, "mark_intent_sent", lambda *a, **k: None)
+    msg = rn.build_message(_case(case_id="spcx-peek-n"))
+    for _ in range(5):
+        assert router.peek_should_send(msg) is True
+    assert router.recovery_t1_state(msg) == "absent"          # five questions, no claim
+    send = _Sender()
+    assert ta._intent_send(msg, "P1", lambda: send(msg), dedupe_minutes=0) is True
+    assert len(send.calls) == 1                               # exactly one page
+    assert router.recovery_t1_state(msg) == "delivered"
+    assert ta._intent_send(msg, "P1", lambda: send(msg), dedupe_minutes=0) is False
+    assert len(send.calls) == 1                               # the second REAL send is deduped
+
+
+def test_preview_then_the_real_delivery_sends_once(monkeypatch, tmp_path):
+    """cc5 P1 regression: peek, then the real intent path DELIVERS — one sender call, one page."""
+    import telegram_alert as ta
+    monkeypatch.setattr(router, "record_intent_receipt", lambda *a, **k: None)
+    monkeypatch.setattr(router, "mark_intent_sent", lambda *a, **k: None)
+    msg = rn.build_message(_case(case_id="spcx-preview-send"))
+    assert router.peek_should_send(msg) is True              # the peek
+    send = _Sender()
+    delivered = ta._intent_send(msg, "P1", lambda: send(msg), dedupe_minutes=0, producer="recovery_notify")
+    assert delivered is True and len(send.calls) == 1
+    assert router.recovery_t1_state(msg) == "delivered"
+
+
+def test_a_legacy_gate_then_an_intent_send_is_one_send(monkeypatch, tmp_path):
+    """cc5 P1: send_telegram_proposal_alert's shape — gate first, then priority="P1" send.
+
+    The second claim must not fail against the first: the preview leaves the day unspent, the
+    delivery path claims it exactly once, and the operator gets one message (never zero).
+    """
+    import telegram_alert as ta
+    monkeypatch.setattr(router, "record_intent_receipt", lambda *a, **k: None)
+    monkeypatch.setattr(router, "mark_intent_sent", lambda *a, **k: None)
+    msg = rn.build_message(_case(case_id="spcx-gate-then-send"))
+    assert router.should_send_telegram(msg) is True
+    send = _Sender()
+    assert ta._intent_send(msg, "P1", lambda: send(msg), dedupe_minutes=0) is True
+    assert len(send.calls) == 1
+    assert router.recovery_t1_state(msg) == "delivered"
+
+
+def test_an_explicit_consumer_still_owns_the_bound(monkeypatch, tmp_path):
+    """The consume=True contract is unchanged for a caller that delivers directly after the gate."""
+    msg = rn.build_message(_case(case_id="spcx-consume"))
+    assert router.should_send_telegram(msg, consume=True) is True
+    assert router.should_send_telegram(msg) is False           # in flight: the preview says not now
+    assert router.should_send_telegram(msg, consume=True) is False
 
 
 def test_a_failed_delivery_does_not_consume_the_day(monkeypatch, tmp_path):

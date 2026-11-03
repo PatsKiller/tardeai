@@ -584,7 +584,10 @@ def _legacy_send(
     if not bypass_router:
         try:
             from telegram_alert_router import should_send_telegram, mark_sent, classify_alert
-            if not should_send_telegram(message):
+            # This branch delivers directly after the gate, so it OWNS the recovery T1 claim:
+            # consume=True here, and the ack/release below. The gate's default is a preview
+            # (cc5 P1, 2026-11-03) so an intent-path caller cannot lose the day to a peek.
+            if not should_send_telegram(message, consume=True):
                 level = classify_alert(message)
                 import telegram_alert_router as _router_mod
 
@@ -649,8 +652,7 @@ def _legacy_send(
     # The bool contract is unchanged -- >=36 verified boolean callers (182 across 150
     # files by the code's own count) still receive exactly what they received before.
     try:
-        delivered = bool(
-            _raw_send_telegram_result(
+        delivered = _raw_send_telegram_result(
                 message,
                 targets,
                 reply_markup=reply_markup,
@@ -658,7 +660,6 @@ def _legacy_send(
                 link_preview_options=link_preview_options,
                 **({"reply_to_message_ids": reply_to_message_ids} if reply_to_message_ids else {}),
             ).get("ok")
-        )
     except Exception:
         try:
             import telegram_alert_router as _router_mod
@@ -677,7 +678,7 @@ def _legacy_send(
              else _router_mod.recovery_t1_release(message))
     except Exception:
         pass
-    return delivered
+    return bool(delivered)
 
 
 def publish_operator_message(message: str, *, bypass_router: bool = False,
@@ -1347,7 +1348,8 @@ def send_telegram_document(
     if not bypass_router:
         try:
             from telegram_alert_router import should_send_telegram, mark_sent, classify_alert
-            if not should_send_telegram(cap):
+            # Direct delivery follows this gate, so it owns the recovery T1 claim (cc5 P1).
+            if not should_send_telegram(cap, consume=True):
                 level = classify_alert(cap)
                 print(f"[telegram] document suppressed ({level}): {cap[:60]}...")
                 return False

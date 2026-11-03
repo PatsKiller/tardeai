@@ -742,15 +742,22 @@ def _recovery_exemptions_for(message: str) -> list[str]:
     return bypassed
 
 
-def should_send_telegram(message: str, *, consume: bool = True) -> bool:
-    """Main gate: should this message be sent to Telegram?"""
+def should_send_telegram(message: str, *, consume: bool = False) -> bool:
+    """Main gate: should this message be sent to Telegram?
+
+    A PREVIEW by default. For a recovery T1 the daily bound is delivery-owned (cx-openai-2 F5), so a
+    caller that only asks "would this send?" must not spend the claim (cc5 P1, 2026-11-03): the real
+    delivery path (``route_intent`` -> ``_recovery_intent_bound``) consumes it. A caller that sends
+    DIRECTLY after this gate passes ``consume=True`` and owns the ack/release.
+    """
     level = classify_alert(message)
 
     if _RECOVERY_T1_MARKER in message:
         # Operator ruling 2026-11-03 (cx-openai-2 F5): a recovery T1 is exempt from health-repeat,
         # rate-limit and daily-budget gates, and the exemption is bounded per CASE per day with a
-        # delivery-owned claim (claim now, delivered only on a confirmed send). ``consume=False`` is
-        # a read-only preview for route classification.
+        # delivery-owned claim (claim now, delivered only on a confirmed send). ``consume=False``
+        # (the default) is a read-only preview for route classification and for callers that hand
+        # the message to the intent path, which claims atomically at the point of delivery.
         state = recovery_t1_state(message)
         if state == "delivered":
             record_suppressed(message, "recovery_t1_daily_case_bound")
@@ -790,6 +797,17 @@ def should_send_telegram(message: str, *, consume: bool = True) -> bool:
     return True
 
 
+def peek_should_send(message: str) -> bool:
+    """Would this message send? A PURE READ: it never claims the recovery T1 day.
+
+    cc5 P1 (2026-11-03): the per-case bound exists to stop a SECOND DELIVERY, not to punish a
+    second question. Every preview, simulation and legacy pre-check goes through this; only the
+    real delivery path (``route_intent``) and a caller that sends directly right after its gate
+    (``should_send_telegram(..., consume=True)``) may claim.
+    """
+    return should_send_telegram(message, consume=False)
+
+
 def record_suppressed(message: str, reason: str):
     """Record a suppressed alert for audit purposes."""
     _suppression_log.append({
@@ -824,7 +842,7 @@ def _ignore_verdict_escalation(message: str) -> bool:
 def route_alert(message: str) -> dict:
     """Classify and route an alert, returning routing decision."""
     level = classify_alert(message)
-    send = should_send_telegram(message, consume=False)
+    send = peek_should_send(message)
     exemptions: list[str] = []
     if send and _RECOVERY_T1_MARKER in message:
         # Only the gates that WOULD have suppressed this message (measured side-effect-free by
