@@ -5,6 +5,7 @@ No real scanner, network, notification, unit, credential or broker operation.
 from __future__ import annotations
 import importlib.util
 import json
+import os
 from pathlib import Path
 import socket
 import subprocess
@@ -107,13 +108,42 @@ def test_production_runner_uses_configured_timeout_for_scan_and_bounded_version(
     assert values[1][0][-1]=="--version" and 0<values[1][1]<=10
 
 
+def _descendant_alive(pid):
+    """True while the process exists and is not a zombie (a zombie has already been killed)."""
+    try:
+        state=Path(f"/proc/{pid}/stat").read_text().split(") ",1)[1].split(" ",1)[0]
+    except (FileNotFoundError, IndexError):
+        return False
+    return state != "Z"
+
+
 def test_owned_tiny_process_tree_timeout_is_bounded(mod,tmp_path):
     # Only an owned synthetic Python child and its descendant; no real tool/network.
-    code="import subprocess,sys,time; subprocess.Popen([sys.executable,'-c','import time;time.sleep(30)']);time.sleep(30)"
+    pidfile=tmp_path/"descendant.pid"
+    code=("import subprocess,sys,time;"
+          "p=subprocess.Popen([sys.executable,'-c','import time;time.sleep(30)']);"
+          "open(sys.argv[1],'w').write(str(p.pid));"
+          "time.sleep(30)")
     start=time.monotonic()
-    rc,out,err=mod._default_runner([sys.executable,"-c",code],tmp_path,timeout_s=.2)
+    rc,out,err=mod._default_runner([sys.executable,"-c",code,str(pidfile)],tmp_path,timeout_s=.2)
     elapsed=time.monotonic()-start
     assert rc==124 and "timeout" in err.lower() and elapsed<3
+    # The property os.killpg exists for: the DESCENDANT must be dead, not just the direct child. Removing the
+    # process-group kill leaves this pid running while rc/elapsed alone still look correct (cc4's BLOCK).
+    pid=int(pidfile.read_text() or "0")
+    assert pid>0
+    deadline=time.monotonic()+2
+    while _descendant_alive(pid) and time.monotonic()<deadline:
+        time.sleep(.02)
+    assert not _descendant_alive(pid), f"descendant pid {pid} survived the process-group kill"
+
+
+def test_a_signal_killed_tool_is_unusable_not_a_clean_scan(mod,tmp_path):
+    """A tool killed by a signal reports a NEGATIVE rc; `rc >= 2` would accept it as a clean scan."""
+    result=mod.run_scan(CONFIG,runner=runner(GOOD,rc=-15),state_dir=tmp_path,dry_run=True)
+    assert result["tools"]["semgrep"]["status"]=="error"
+    assert result["tools"]["semgrep"]["reason"]=="tool_failed_or_empty_output"
+    assert result["unusable"]==["semgrep"] and not result["findings"]
 
 
 def test_normal_owned_child_output_exit_is_preserved(mod,tmp_path):
