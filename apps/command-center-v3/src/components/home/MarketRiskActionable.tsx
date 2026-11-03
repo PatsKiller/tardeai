@@ -239,10 +239,14 @@ export function ActionableBody({ m, why }: { m: ActionableModel; why: React.Reac
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}><Sectors m={m} /><Reentry m={m} /><HomeV007Context /></div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           <Positions m={m} />{!m.protect && <Review m={m} />}<Budgets m={m} />
-          {/* Protect / Hedge / Rotate live in MarketRiskActions' Segments; this file only adds the collapsible
-              wrapper so the section behaves like the rest of the card. Nothing inside is changed. */}
-          <Section title="Protect · Hedge · Rotate" one={[m.protect ? `${m.protect.items.length} protect` : null, m.hedge ? 'hedge' : null, m.rotate ? 'rotate' : null].filter(Boolean).join(' · ') || 'advisory sections'} testId="mr-advisory-section"><Segments m={m} /></Section>
-          <Section title="Why this tier" one={m.verdict} testId="mr-why-section">{why}</Section>
+          {/* This wrapper holds MarketRiskActions' Segments — the multi-segment ISSUER block. Protect, Hedge and
+              Rotate are NOT in here: ActionsTop renders them above the body (MarketRiskSummary / MarketRiskBanner),
+              so this heading and count name what the section actually contains, and the section is absent when the
+              issuer has no segments instead of showing an empty titled body. */}
+          {m.segments.length > 0 && (
+            <Section title="Multi-segment issuer" one={`${m.segments.length} segment${m.segments.length === 1 ? '' : 's'}`} testId="mr-advisory-section"><Segments m={m} /></Section>
+          )}
+          {why ? <Section title="Why this tier" one={m.verdict} testId="mr-why-section">{why}</Section> : null}
         </div>
       </div>
     </GlossaryProvider>

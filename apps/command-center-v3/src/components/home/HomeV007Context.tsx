@@ -22,6 +22,9 @@ const dim: React.CSSProperties = { fontSize: TYPE.xs, color: TOKENS.text[3] }
 const small: React.CSSProperties = { fontSize: TYPE.sm, color: TOKENS.text[1] }
 
 const money = (v: number | null) => (v == null ? null : `$${v.toLocaleString('en-US', { maximumFractionDigits: 2 })}`)
+/** A measured amount in its OWN unit: a share of the book is a percentage, never a dollar figure. */
+const amount = (v: number | null, unit: string | null): string | null =>
+  v == null ? null : unit === '%' ? `${v.toLocaleString('en-US', { maximumFractionDigits: 2 })}%` : money(v)
 const pct = (v: number | null) => (v == null ? null : `${v > 0 ? '+' : ''}${v.toFixed(2)}%`)
 
 const provenance = provenanceText
@@ -89,7 +92,9 @@ export default function HomeV007Context() {
     {v7.hedge.triggers.length ? <div style={dim}>hedge: {v7.hedge.triggers.map(hedgeLine).join(' · ')}{v7.hedge.inverse.length ? ` · inverse today: ${v7.hedge.inverse.map(i => `${i.symbol} ${i.dayPct == null ? 'unknown' : pct(i.dayPct)}`).join(' · ')}` : ''}</div> : null}
     {v7.budgets.map(b => <div key={b.key} style={dim} data-testid={`v7-budget-${b.key}`}>
       budget {b.label}: {b.state === 'measured'
-        ? <>{money(b.current) ?? 'unknown'} of {money(b.budget) ?? 'unknown'}{b.breach ? ' · breach' : ''}{b.clearsWhen ? ` · clears ${b.clearsWhen}` : ''}</>
+        // The producer states the unit on every risk-budget row ("%" for a share of the book). Rendering a percent
+        // budget through money() printed "52% of 35%" as "$52 of $35" — a wrong number, not a formatting quibble.
+        ? <>{amount(b.current, b.unit) ?? 'unknown'} of {amount(b.budget, b.unit) ?? 'unknown'}{b.breach ? ' · breach' : ''}{b.clearsWhen ? ` · clears ${b.clearsWhen}` : ''}</>
         : <>{b.state === 'not_applicable' ? 'not applicable' : 'unknown'}{b.reason ? ` — ${b.reason}` : ''}{b.remediation ? ` · ${b.remediation}` : ''}</>}
       {b.decision.active
         ? ` · intentional${b.decision.intentionalUntil ? ` until ${fmtAsOf(b.decision.intentionalUntil) ?? b.decision.intentionalUntil}` : ''}${b.decision.actor ? ` · ${b.decision.actor}` : ''}${b.decision.receipt ? ` · receipt ${b.decision.receipt.slice(0, 8)}` : ''}${b.breach ? ' · breach still stands' : ''}${b.decision.history ? ` · ${b.decision.history} earlier` : ''}`

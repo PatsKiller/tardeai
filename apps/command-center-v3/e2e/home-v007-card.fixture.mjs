@@ -53,7 +53,8 @@ const html = `<html><head><meta name="viewport" content="width=device-width,init
 const V7 = {
   symbols: {
     DEMO: {
-      quote: { state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'market_quotes:alpaca', age_seconds: 30, session: 'regular', session_date: '2026-11-02', expected_session_date: '2026-11-02', basis: 'last trade', value: { price: 49.87 } },
+      // The producer's quote fact carries the price as a BARE NUMBER in `value` (market_risk_home_context.py:546).
+      quote: { state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'market_quotes:alpaca', age_seconds: 30, session: 'regular', session_date: '2026-11-02', expected_session_date: '2026-11-02', basis: 'last trade', value: 49.87 },
       // Producer shapes at 89663c715: day_change.value is {price, pct} with reference_session_date on the fact;
       // since_exit.value is the distance() dict; analysis_references.value is a {label: {...}} map; a headline row is
       // {title, source, url, published_at, guarded} with no age; volume carries its own basis text.
@@ -72,7 +73,9 @@ const V7 = {
       volume_vs_20d: { state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'canonical_quote+daily_bars.volume', value: { ratio: 1.4, sample_sessions: 20, average_start_date: '2026-10-01', average_end_date: '2026-10-29', basis: 'observed session volume versus twenty prior completed-session volumes; not time-adjusted' } },
     },
     STALE1: { quote: { state: 'measured', age_seconds: 5400, as_of: '2026-11-02T19:30:00Z', value: { price: 12.5 } } },
-    // The producer's own stale word with NO age: the flag alone must put "stale" on the price line.
+    // COMPATIBILITY CASES, not producer shapes: the producer emits only measured | partial | unknown |
+    // not_applicable. `stale` and `missing` are legacy spellings the parser still accepts, kept here to prove the
+    // parser keeps the stale word (with no age) and the missing reason; do not read them as producer coverage.
     STALEWORD: { quote: { state: 'stale', as_of: '2026-11-02T20:00:00Z', value: { price: 7.25 } } },
     GONE: { quote: { state: 'missing', reason: 'canonical regular-session quote not measured', remediation: 'wait for the reader' } },
     // The producer's dual-mark conflict (same instant, two recorded observations disagree) and its
@@ -85,7 +88,10 @@ const V7 = {
     NOSRC: { quote: { state: 'unknown', as_of: '2026-11-02T21:00:00Z', source: 'not_recorded',
       reason: 'Canonical quote source not recorded', value: null } },
   },
-  risk: { score: 61, categories: [
+  // The producer carries the risk score on the latest `history` row, not at the top level. `label` on a category is
+  // NOT a producer field (it emits `category` only; the card falls back to the key) — kept here so the fixture can
+  // assert a human label without pretending the payload supplies one.
+  risk: { history: [{ as_of: '2026-11-02T20:00:00Z', score: 58 }, { as_of: '2026-11-02T21:00:00Z', score: 61 }], categories: [
     { category: 'tech', label: 'Technology', chip: 'STRESS', state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'market_risk.category.tech' },
     { category: 'volatility', label: 'Volatility', chip: 'not_measured', state: 'unknown', as_of: '2026-10-30T20:00:00Z', carried: true,
       source: 'market_risk.category.volatility',
@@ -93,10 +99,13 @@ const V7 = {
       remediation: { key: 'HOMEV007:market_risk_category.carried', action: 'Recompute the category from this session’s canonical observations' } },
   ], next_evaluation: { value: '2026-11-03T14:00:00Z', state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'market_risk_evaluation_schedule', basis: 'registry declaration' } },
   hedge: { lagging_progress: { state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'defense_hedge_existing_thresholds', value: { current: 4, threshold: 10, unit: 'sectors', ratio: 0.4 } }, exposure_progress: { state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'sector_momentum_existing_exposure_trigger', value: { current: 1, threshold: 2, ratio: 0.5, group: 'Technology', basis: 'same sector_momentum.book_pct compared by existing Defense trigger' } }, inverse_moves: { SH: { quote: { state: 'measured', value: 31.2 }, day_change: { state: 'measured', value: { pct: 0.58 } } } } },
-  // Rows carry the producer's own shape. `presentation_binding` / `budget_presentation_decision` and the top-level
-  // ledger are E's forward contract, not fields the 2506 producer emits today; they are labelled here as such and the
-  // parser unit test (homeV007.test.ts, "E's budget decision contract") is where that contract is pinned.
-  budgets: [{ budget: 'unclocked_budget', actual: 900, limit: 500, unit: 'usd', state: 'unknown', as_of: null, reason: 'source clock unavailable or in the future', remediation: { key: 'HOMEV007:budget', action: 'restore the clock' }, operator_decision: { state: 'unavailable', reason: 'decision subtype not verified', remediation: { key: 'HOMEV007:budget_presentation_decision', action: 'wire the reviewed subtype' } } }, { budget: 'demo_taxable', actual: 21000, limit: 15000, unit: 'usd', clears_when: 'below 15000', scope_id: 'account:demo', breached: true, source_binding: { as_of: '2026-11-02T21:00:00Z', sha256: 'a'.repeat(64) }, presentation_binding: { sha256: 'b'.repeat(64) }, budget_presentation_decision: { active: true, intentional_until: '2026-11-09T05:00:00Z', actor: 'operator', receipt: 'rcpt-abcdef123', history: [{ state: 'previous' }] }, operator_decision: { state: 'available', subtype: 'market_risk_budget_presentation' } }, { budget: 'cash_reserve', actual: 1000, limit: 5000, unit: 'usd', operator_decision: { state: 'unavailable', remediation: { key: 'pending_route', action: 'pending reviewed route' } } }],
+  // Rows carry the merged producer's own shape (E #2508 at f010cffac emits `presentation_binding`,
+  // `budget_presentation_decision` and `source_binding` on every row, plus `state`/`as_of`). The `cash_reserve` row is a
+  // COMPATIBILITY CASE: a row with no producer `state`/`as_of`/`source_binding`, kept to prove the arithmetic fallback
+  // stays unknown without a clock. `risk_budget` carries the producer's `%` unit, which must not render as dollars.
+  budgets: [{ budget: 'unclocked_budget', actual: 900, limit: 500, unit: 'usd', state: 'unknown', as_of: null, reason: 'source clock unavailable or in the future', remediation: { key: 'HOMEV007:budget', action: 'restore the clock' }, operator_decision: { state: 'unavailable', reason: 'decision subtype not verified', remediation: { key: 'HOMEV007:budget_presentation_decision', action: 'wire the reviewed subtype' } } }, { budget: 'demo_taxable', actual: 21000, limit: 15000, unit: 'usd', clears_when: 'below 15000', scope_id: 'account:demo', breached: true, source_binding: { as_of: '2026-11-02T21:00:00Z', sha256: 'a'.repeat(64) }, presentation_binding: { sha256: 'b'.repeat(64) }, budget_presentation_decision: { active: true, intentional_until: '2026-11-09T05:00:00Z', actor: 'operator', receipt: 'rcpt-abcdef123', history: [{ state: 'previous' }] }, operator_decision: { state: 'available', subtype: 'market_risk_budget_presentation' } }, { budget: 'risk_budget', actual: 52, limit: 35, unit: '%', state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'market_risk.budgets_detail', source_binding: { as_of: '2026-11-02T21:00:00Z', sha256: 'c'.repeat(64) }, operator_decision: { state: 'unavailable', remediation: { key: 'HOMEV007:budget_presentation_decision', action: 'wire the reviewed subtype' } } }, { budget: 'cash_reserve', actual: 1000, limit: 5000, unit: 'usd', operator_decision: { state: 'unavailable', remediation: { key: 'pending_route', action: 'pending reviewed route' } } }],
+  // COMPATIBILITY SHAPE: E's real `items` is a LIST of decisions (operator_approvals.py:494-516); `items: 3` is the
+  // legacy count the parser still reads for the incomplete-ledger line. Kept to exercise that line, not as a producer.
   budget_presentation_decisions: { complete: false, items: 3, history: [{ state: 'previous' }] },
   gaps: [{ symbol: 'DEMO', field: 'cio.rationale', reason: 'store does not expose it', remediation: { key: 'ask_owner', action: 'ask owner' } }],
 }
@@ -130,7 +139,14 @@ try {
       })
       return {
         width: innerWidth, scrollWidth: document.documentElement.scrollWidth,
-        sections: { protect: /Protect/i.test(text), hedge: /Hedge/i.test(text), rotate: /Rotate/i.test(text), sectors: /Sectors vs SPY/i.test(text), reentry: /Since you were stopped out/i.test(text) },
+        // Only what THIS component renders. Protect / Hedge / Rotate belong to ActionsTop, which the page
+        // renders above the body (MarketRiskSummary / MarketRiskBanner) and this fixture does not mount — the
+        // old checks passed only because a mislabelled section heading said "Protect · Hedge · Rotate".
+        sections: {
+          sectors: /Sectors vs SPY/i.test(text), reentry: /Since you were stopped out/i.test(text),
+          positions: /Your positions in stressed groups/i.test(text), budgets: /Budget breaches/i.test(text),
+          why: /Why this tier/i.test(text),
+        },
         details: document.querySelectorAll('details').length,
         tableRows: document.querySelectorAll('[data-mr-actionable] tbody tr').length,
         smallTaps: taps.filter(x => (x.w > 0 || x.h > 0) && (x.w < 44 || x.h < 44)).length, taps: taps.filter(x => x.w > 0 || x.h > 0).length,
@@ -178,6 +194,9 @@ try {
       assert.ok(/lagging sectors 4 of 10 sectors/.test(m.v7text), `the hedge trigger reads the producer unit at ${width}: ${m.v7text.slice(0, 500)}`)
       assert.ok(/volume 1\.4× 20-day · observed session volume/.test(m.v7text), `the volume line carries the producer basis at ${width}: ${m.v7text.slice(0, 500)}`)
       assert.ok(/budget unclocked budget: unknown — source clock unavailable/.test(m.v7text), `an unclocked budget says unknown and why at ${width}: ${m.v7text.slice(0, 500)}`)
+      // The producer states unit "%" on risk-budget rows; a percentage rendered as dollars is a wrong number.
+      assert.ok(/budget risk budget: 52% of 35% · breach/.test(m.v7text), `a percent budget renders as a percent at ${width}: ${m.v7text.slice(0, 700)}`)
+      assert.ok(!/\$52 of \$35/.test(m.v7text), `no percent budget may render as dollars at ${width}`)
       assert.ok(!/\$900/.test(m.v7text), `an unclocked budget must not publish its numbers at ${width}`)
       assert.ok(/intentional decision pending reviewed route \(pending_route\)/.test(m.v7text), `an unavailable decision states its remediation at ${width}`)
       assert.ok(/Nov 2 16:00 ET · market_data:daily_close/.test(m.v7text), `a fact with a clock and source shows both in ET at ${width}: ${m.v7text.slice(0, 500)}`)

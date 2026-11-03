@@ -109,6 +109,10 @@ eq('and how much history it kept', partial.decisionHistory.history, 2)
 const complete = parseHomeV007({ budgets: [], budget_presentation_decisions: { complete: true, items: 9 } })
 eq('a complete ledger is complete', complete.decisionHistory.complete, true)
 eq('a payload without a ledger claims nothing', parseHomeV007({ budgets: [] }).decisionHistory.complete, null)
+// E's real `items` is a LIST; reading only a numeric count left "N in the ledger" permanently unrenderable.
+const listLedger = parseHomeV007({ budgets: [], budget_presentation_decisions: { complete: true,
+  items: [{ scope_id: 'a', budget: 'b' }, { scope_id: 'c', budget: 'd' }] } })
+eq('the ledger count comes from the item list', listLedger.decisionHistory.count, 2)
 
 const noDecision = parseHomeV007({ budgets: [{ budget: 'b', actual: 10, limit: 100 }] })
 eq('no decision row means not active', noDecision.budgets[0].decision.active, false)

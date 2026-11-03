@@ -398,7 +398,9 @@ export function parseHomeV007(raw: unknown): HomeV007 {
   const dh = rec(ctx.budget_presentation_decisions)
   const decisionHistory = {
     complete: typeof dh?.complete === 'boolean' ? (dh!.complete as boolean) : null,
-    count: num(dh?.items) ?? num(dh?.count),
+    // E's `items` is a LIST of decisions; a numeric `items` (and `count`) are legacy spellings. Reading only the
+    // numeric forms made this null on every real payload, so the "N in the ledger" line could never render.
+    count: num(dh?.items) ?? num(dh?.count) ?? (Array.isArray(dh?.items) ? dh!.items.length : null),
     history: Array.isArray(dh?.history) ? dh!.history.length : 0,
   }
 
