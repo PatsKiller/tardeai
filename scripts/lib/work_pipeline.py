@@ -51,6 +51,7 @@ import re
 import subprocess
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
@@ -107,6 +108,7 @@ CENSUS_MIN_INTERVAL_S = 60.0
 GH_CALL_TIMEOUT_S = 25.0
 MAX_GH_OUTPUT_BYTES = 6 * 1024 * 1024
 MAX_OPEN_PRS = 100
+MAX_PR_DETAIL_WORKERS = 4
 MAX_MERGED_PRS = 40
 MAX_BATCHES = 3
 MAX_ITEMS = 400
@@ -344,21 +346,35 @@ class PrCensus:
         self._required = (self.clock(), req)
         return req
 
+    def _detail(self, pr: dict[str, Any], repo: str) -> tuple[dict[str, Any], str | None]:
+        # Never reuse checks carried by the list if the detail query fails.
+        clean = {k: v for k, v in pr.items() if k != "statusCheckRollup"}
+        number = int(pr.get("number") or 0)
+        doc, warning = self._json(
+            ["gh", "pr", "view", str(number), "--repo", repo, "--json", "headRefOid,statusCheckRollup"]
+        )
+        if not isinstance(doc, dict) or not isinstance(doc.get("statusCheckRollup"), list):
+            return clean, f"PR #{number} checks unavailable: {warning or 'invalid detail response'}"
+        if not pr.get("headRefOid") or doc.get("headRefOid") != pr["headRefOid"]:
+            return clean, f"PR #{number} checks unavailable: head changed during census"
+        return {**clean, "statusCheckRollup": doc["statusCheckRollup"]}, warning
+
     def _refresh(self) -> None:
         warnings: list[str] = []
         try:
             required = self._required_contexts()
+            repo = LC.default_repo()
             opened, w = self._json(
                 [
-                    "gh", "pr", "list", "--state", "open", "--limit", str(MAX_OPEN_PRS), "--json",
-                    "number,title,url,headRefName,headRefOid,baseRefName,isDraft,author,createdAt,updatedAt,statusCheckRollup",
+                    "gh", "pr", "list", "--repo", repo, "--state", "open", "--limit", str(MAX_OPEN_PRS), "--json",
+                    "number,title,url,headRefName,headRefOid,baseRefName,isDraft,author,createdAt,updatedAt",
                 ]
             )  # fmt: skip
             if w:
                 warnings.append(w)
             merged, w = self._json(
                 [
-                    "gh", "pr", "list", "--state", "merged", "--limit", str(MAX_MERGED_PRS), "--json",
+                    "gh", "pr", "list", "--repo", repo, "--state", "merged", "--limit", str(MAX_MERGED_PRS), "--json",
                     "number,title,url,headRefName,baseRefName,author,createdAt,mergedAt,mergeCommit",
                 ]
             )  # fmt: skip
@@ -368,18 +384,28 @@ class PrCensus:
             main_sha = main_doc.get("sha") if isinstance(main_doc, dict) else None
             if not isinstance(opened, list):
                 raise RuntimeError(warnings[0] if warnings else "open PR list unavailable")
-            open_prs = [_norm_open_pr(p, required) for p in opened[:MAX_OPEN_PRS] if isinstance(p, dict)]
+            if not isinstance(merged, list):
+                raise RuntimeError(warnings[-1] if warnings else "merged PR list unavailable")
+            # Keep the list cheap: large nested rollups time out on GitHub. Each bounded detail query
+            # is head-bound, so a push between the list and detail cannot lend green checks to an old head.
+            candidates = [p for p in opened[:MAX_OPEN_PRS] if isinstance(p, dict)]
+            with ThreadPoolExecutor(max_workers=MAX_PR_DETAIL_WORKERS) as pool:
+                enriched = list(pool.map(lambda p: self._detail(p, repo), candidates))
+            for _p, warning in enriched:
+                if warning:
+                    warnings.append(warning)
+            open_prs = [_norm_open_pr(p, required) for p, _warning in enriched]
             merged_prs = [_norm_merged_pr(p) for p in (merged or [])[:MAX_MERGED_PRS] if isinstance(p, dict)]
             batches: dict[int, dict[str, Any]] = {}
             for p in [p for p in open_prs if BATCH_BRANCH_RE.match(str(p.get("branch") or ""))][:MAX_BATCHES]:
-                doc, w = self._json(["gh", "pr", "view", str(p["number"]), "--json", "body"])
+                doc, w = self._json(["gh", "pr", "view", str(p["number"]), "--repo", repo, "--json", "body"])
                 if w:
                     warnings.append(w)
                 parsed = parse_batch_body((doc or {}).get("body") if isinstance(doc, dict) else None)
                 batches[p["number"]] = {**parsed, "number": p["number"], "title": p["title"], "ci": p["ci"]}
             # the last merged batches still carry standing exclusions ("the operator merges those")
             for p in [p for p in merged_prs if BATCH_BRANCH_RE.match(str(p.get("branch") or ""))][:2]:
-                doc, w = self._json(["gh", "pr", "view", str(p["number"]), "--json", "body"])
+                doc, w = self._json(["gh", "pr", "view", str(p["number"]), "--repo", repo, "--json", "body"])
                 if w:
                     warnings.append(w)
                 parsed = parse_batch_body((doc or {}).get("body") if isinstance(doc, dict) else None)

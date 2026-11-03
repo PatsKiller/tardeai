@@ -8,6 +8,7 @@ idle), the grouping (task > PR > claim > design), the next-step owner, and the m
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 import threading
@@ -21,7 +22,10 @@ for _p in (str(ROOT), str(ROOT / "scripts")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from scripts.lib import work_pipeline as W  # noqa: E402
+_spec = importlib.util.spec_from_file_location("work_pipeline_census_under_test", ROOT / "scripts/lib/work_pipeline.py")
+W = importlib.util.module_from_spec(_spec)
+sys.modules[_spec.name] = W
+_spec.loader.exec_module(W)
 
 NOW = datetime(2026, 10, 23, 17, 30, tzinfo=timezone.utc)
 
@@ -293,13 +297,18 @@ class FakeGh:
             return json.dumps({"contexts": ["ci-gate"]}), None
         if argv[:3] == ["gh", "pr", "list"] and "open" in argv:
             return json.dumps([
-                {"number": 2018, "title": "batch", "headRefName": "release/batch-9-x", "baseRefName": "main", "statusCheckRollup": [
+                {"number": 2018, "headRefOid": "head2018", "title": "batch", "headRefName": "release/batch-9-x", "baseRefName": "main", "statusCheckRollup": [
                     {"name": "ci-gate", "status": "COMPLETED", "conclusion": "FAILURE"}]},
-                {"number": 2005, "title": "x", "headRefName": "feat/x", "baseRefName": "main", "statusCheckRollup": [
+                {"number": 2005, "headRefOid": "head2005", "title": "x", "headRefName": "feat/x", "baseRefName": "main", "statusCheckRollup": [
                     {"name": "ci-gate", "status": "COMPLETED", "conclusion": "SUCCESS", "completedAt": "2026-10-23T15:00:00Z"}]},
             ]), None  # fmt: skip
         if argv[:3] == ["gh", "pr", "list"]:
             return "[]", None
+        if argv[:3] == ["gh", "pr", "view"] and "statusCheckRollup" in argv[-1]:
+            number = int(argv[3])
+            return json.dumps({"headRefOid": f"head{number}", "statusCheckRollup": [
+                {"name": "ci-gate", "status": "COMPLETED", "conclusion": "SUCCESS" if number == 2005 else "FAILURE"}
+            ]}), None
         if argv[:3] == ["gh", "pr", "view"]:
             return json.dumps({"body": "## Included\n| #2012 | x | y |\n"}), None
         return None, "unexpected"
@@ -328,13 +337,69 @@ def test_census_single_flight_and_min_interval():
     assert next(p for p in val["open"] if p["number"] == 2005)["ci"]["state"] == "green"
 
 
-def test_census_failure_keeps_last_good():
+def test_census_repo_scoped_and_light_lists(monkeypatch):
+    monkeypatch.setattr(W.LC, "default_repo", lambda: "example/synthetic")
+    gh = FakeGh()
+    c = W.PrCensus(runner=gh, now=lambda: NOW)
+    c.kick(background=False)
+    value, meta = c.snapshot()
+    assert meta["warning"] is None
+    for argv in gh.calls:
+        if argv[:2] == ["gh", "pr"]:
+            assert argv[argv.index("--repo") + 1] == "example/synthetic"
+        if argv[:3] == ["gh", "pr", "list"]:
+            assert "statusCheckRollup" not in argv[-1]
+    details = [a for a in gh.calls if a[:3] == ["gh", "pr", "view"] and "statusCheckRollup" in a[-1]]
+    assert sorted(a[3] for a in details) == ["2005", "2018"]
+    assert value["open"][1]["ci"]["state"] == "green"
+
+
+@pytest.mark.parametrize("failure", ["timeout", "invalid", "head_changed"])
+def test_census_detail_failure_cannot_reuse_green_list_checks(failure):
+    gh = FakeGh()
+
+    def runner(argv):
+        if argv[:3] == ["gh", "pr", "view"] and argv[3] == "2005" and "statusCheckRollup" in argv[-1]:
+            if failure == "timeout":
+                return None, "gh timed out after 25s"
+            if failure == "invalid":
+                return "[]", None
+            return json.dumps({"headRefOid": "new-head", "statusCheckRollup": []}), None
+        return gh(argv)
+
+    c = W.PrCensus(runner=runner, now=lambda: NOW)
+    c.kick(background=False)
+    value, meta = c.snapshot()
+    assert value is not None
+    assert next(p for p in value["open"] if p["number"] == 2005)["ci"]["state"] == "unknown"
+    assert "PR #2005 checks unavailable" in meta["warning"]
+    assert next(p for p in value["open"] if p["number"] == 2018)["ci"]["state"] == "failing"
+
+
+def test_gh_runner_release_directory_needs_no_git(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    gh = tmp_path / "gh"
+    gh.write_text("#!/usr/bin/env python3\nimport json, sys\na = sys.argv\n"
+                  "if '--repo' not in a: sys.exit('fatal: not a git repository')\n"
+                  "print(json.dumps([]))\n")
+    gh.chmod(0o700)
+    monkeypatch.setenv("PATH", f"{tmp_path}:{__import__('os').environ['PATH']}")
+    out, warning = W._gh_runner(["gh", "pr", "list", "--repo", "example/synthetic", "--json", "number"])
+    assert json.loads(out) == [] and warning is None
+    out, warning = W._gh_runner(["gh", "pr", "list", "--json", "number"])
+    assert out is None and "not a git repository" in warning
+
+
+@pytest.mark.parametrize("outage", ["all", "merged_only"])
+def test_census_failure_keeps_last_good(outage):
     gh = FakeGh()
     t = [0.0]
     c = W.PrCensus(runner=gh, clock=lambda: t[0], now=lambda: NOW)
     c.kick(background=False)
     good = c.snapshot()[0]
-    c.runner = lambda argv: (None, "gh timed out after 25s")
+    c.runner = lambda argv: (
+        (None, "gh timed out after 25s") if outage == "all" or "merged" in argv else gh(argv)
+    )
     t[0] = 120.0
     c.kick(background=False)
     val, meta = c.snapshot()
