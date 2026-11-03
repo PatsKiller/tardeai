@@ -111,6 +111,8 @@ try {
         v7: !!document.querySelector('[data-testid="home-v007"]'),
         v7text: document.querySelector('[data-testid="home-v007"]')?.innerText || '',
         v7buttons: document.querySelectorAll('[data-testid="home-v007"] button').length,
+        v7intentOpen: document.querySelectorAll('[data-testid="v7-intent-open"]').length,
+        v7otherButtons: [...document.querySelectorAll('[data-testid="home-v007"] button')].filter(b => b.getAttribute('data-testid') !== 'v7-intent-open').length,
       }
     })
     assert.deepEqual(t.pageErrors, [], `page errors at ${width}`)
@@ -133,7 +135,11 @@ try {
       assert.ok(/next evaluation/.test(m.v7text), `a bare next-evaluation timestamp still renders at ${width}`)
       assert.ok(/intentional decision pending reviewed route \(pending_route\)/.test(m.v7text), `an unavailable decision states its remediation at ${width}`)
       assert.ok(/a size, an order or a stop level/.test(m.v7text), `advisory line missing at ${width}`)
-      assert.equal(m.v7buttons, 0, `the context section must never render an action button at ${width}`)
+      // One control is legitimate now: the operator-only intent for the row that declares a decision available.
+      // Everything else in the section stays read-only, and an unavailable decision still offers nothing.
+      assert.equal(m.v7buttons, 1, `exactly one operator intent control at ${width}, got ${m.v7buttons}`)
+      assert.equal(m.v7intentOpen, 1, `the intent control must be the operator one at ${width}`)
+      assert.equal(m.v7otherButtons, 0, `no other button may appear in the context at ${width}`)
     } catch (e) { process.exitCode = 1; throw e }
     const shot = path.join(out, `card-${width}.png`)
     await page.screenshot({ path: shot, fullPage: true })

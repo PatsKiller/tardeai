@@ -8,6 +8,7 @@ import { useApi } from '../../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, toneVars } from '../../lib/designTokens'
 import { parseHomeV007, type Fact, type SymbolContext } from '../../lib/homeV007'
 import { fmtAsOf } from '../../lib/asOfDisplay'
+import BudgetIntentControl from './BudgetIntentControl'
 
 const PATH = '/api/v2/market-risk/latest'
 const card: React.CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 12, display: 'grid', gap: 8 }
@@ -83,6 +84,7 @@ export default function HomeV007Context() {
       {b.sourceAsOf || b.sourceSha || b.presentationSha
         ? ` · measured ${b.sourceAsOf ? (fmtAsOf(b.sourceAsOf) ?? b.sourceAsOf) : 'unknown'}${b.sourceSha ? ` · src ${b.sourceSha.slice(0, 8)}` : ''}${b.presentationSha ? ` · presentation ${b.presentationSha.slice(0, 8)}` : ''}`
         : ''}
+      <BudgetIntentControl row={b} onRecorded={() => api.refetch()} />
     </div>)}
     {v7.decisionHistory.complete === false ? <div style={dim} data-testid="v7-decision-history-partial">decision history is incomplete{typeof v7.decisionHistory.count === 'number' ? ` · ${v7.decisionHistory.count} in the ledger` : ''} — earlier decisions may be missing</div> : null}
     {v7.gaps.map((g, i) => <div key={i} style={dim}>gap {g.member} · {g.key}{g.reason ? ` — ${g.reason}` : ''}</div>)}
