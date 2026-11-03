@@ -275,3 +275,11 @@ def test_a_directory_projection_and_a_valid_ledger_report_no_count(tmp_path):
     proj.mkdir()
     out = collect_cio_hermes_queue_health(now=NOW, path=ledger)
     assert out["ok"] is False and out["projection_state"] == "unreadable"
+
+
+def test_a_projection_without_by_research_id_still_reports_the_lost_request(tmp_path):
+    """The lead's matrix: a VALID document missing the index is readable, so the request is really lost."""
+    ledger = _ledger(tmp_path, {"schema": "HermesProjection@v1"}, [_requested("res_lost", "sha256:deadbeef")])
+    out = collect_cio_hermes_queue_health(now=NOW, path=ledger)
+    assert out["projection_state"] == "ok"
+    assert out["ok"] is False and out["lost_n"] == 1 and out["lost"] == ["res_lost"]
