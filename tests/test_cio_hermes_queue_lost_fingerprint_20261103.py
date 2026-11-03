@@ -34,9 +34,16 @@ def _ledger(tmp_path, projection, events):
     return p
 
 
-def _requested(rid, fingerprint, *, minutes_ago=20):
-    return {"event": "HERMES_RESEARCH_REQUESTED", "research_id": rid, "fingerprint": fingerprint,
-            "ts": (NOW - timedelta(minutes=minutes_ago)).isoformat(), "status": "queued"}
+def _requested(rid, fingerprint, *, minutes_ago=20, created_minutes_ago=None, updated_minutes_ago=None):
+    """A HERMES_RESEARCH_REQUESTED ledger row. Real rows carry updated_ts; the event `ts` is its clock."""
+    if updated_minutes_ago is None:
+        updated_minutes_ago = minutes_ago
+    row = {"event": "HERMES_RESEARCH_REQUESTED", "research_id": rid, "fingerprint": fingerprint,
+           "ts": (NOW - timedelta(minutes=minutes_ago)).isoformat(),
+           "updated_ts": (NOW - timedelta(minutes=updated_minutes_ago)).isoformat(), "status": "queued"}
+    if created_minutes_ago is not None:
+        row["created_ts"] = (NOW - timedelta(minutes=created_minutes_ago)).isoformat()
+    return row
 
 
 def test_same_fingerprint_open_entry_is_not_lost(tmp_path):
@@ -140,3 +147,68 @@ def test_a_ts_only_completion_is_not_a_valid_clock(tmp_path, monkeypatch):
     monkeypatch.setenv("CIO_HERMES_PROJECTION", str(tmp_path / "hermes_research_projection.json"))
     out = collect_cio_hermes_queue_health(path=ledger, now=NOW)
     assert out["lost_n"] == 1 and out["ok"] is False
+
+
+# ── cx-openai-4 WHOLE-HEAD residuals at a2a54ba03: the oracle's exact clock expressions ────────────────
+def test_an_invalid_primary_completion_does_not_fall_through_to_as_of(tmp_path, monkeypatch):
+    """R3: parse_ts(completed_ts or as_of or updated_ts) picks the FIRST POPULATED clock, then parses once.
+
+    completed_ts is populated but invalid, so the oracle gets None and restores the request. Health
+    must report it lost — falling through to `as_of` was a false all-clear.
+    """
+    done = {"completed_ts": "not-a-clock", "as_of": (NOW - timedelta(minutes=5)).isoformat()}
+    ledger = _ledger(tmp_path, {"by_research_id": {}, "by_fingerprint_completed": {FP: done}},
+                     [_requested("res_new", FP, minutes_ago=20)])
+    monkeypatch.setenv("CIO_HERMES_PROJECTION", str(tmp_path / "hermes_research_projection.json"))
+    out = collect_cio_hermes_queue_health(path=ledger, now=NOW)
+    assert out["lost_n"] == 1 and out["ok"] is False
+    assert "res_new" in out["lost"]
+
+
+def test_two_invalid_populated_clocks_do_not_fall_through(tmp_path, monkeypatch):
+    """R3: invalid completed_ts + invalid updated_ts, with no as_of, is no completion clock at all."""
+    done = {"completed_ts": "not-a-clock", "updated_ts": "also-not-a-clock"}
+    ledger = _ledger(tmp_path, {"by_research_id": {}, "by_fingerprint_completed": {FP: done}},
+                     [_requested("res_new", FP, minutes_ago=20)])
+    monkeypatch.setenv("CIO_HERMES_PROJECTION", str(tmp_path / "hermes_research_projection.json"))
+    out = collect_cio_hermes_queue_health(path=ledger, now=NOW)
+    assert out["lost_n"] == 1 and out["ok"] is False
+
+
+def test_the_asked_clock_is_created_not_the_event_update_time(tmp_path, monkeypatch):
+    """R4: the oracle asks when the request was CREATED (or last updated), never when the event fired.
+
+    Created 40 min ago, event/update 20 min ago, answer 30 min ago: the answer came after the ask,
+    so the request is genuinely owned and the health check must not alarm on it.
+    """
+    req = _requested("res_new", FP, minutes_ago=20, created_minutes_ago=40, updated_minutes_ago=20)
+    done = {"completed_ts": (NOW - timedelta(minutes=30)).isoformat()}
+    ledger = _ledger(tmp_path, {"by_research_id": {}, "by_fingerprint_completed": {FP: done}}, [req])
+    monkeypatch.setenv("CIO_HERMES_PROJECTION", str(tmp_path / "hermes_research_projection.json"))
+    out = collect_cio_hermes_queue_health(path=ledger, now=NOW)
+    assert out["lost_n"] == 0 and out["ok"] is True
+
+
+def test_the_asked_clock_falls_back_to_updated_when_created_is_absent(tmp_path, monkeypatch):
+    """R4: no created_ts, updated_ts 20 min ago — still the request's own clock, not the event's."""
+    req = _requested("res_new", FP, minutes_ago=20, updated_minutes_ago=20)
+    done = {"completed_ts": (NOW - timedelta(minutes=15)).isoformat()}
+    ledger = _ledger(tmp_path, {"by_research_id": {}, "by_fingerprint_completed": {FP: done}}, [req])
+    monkeypatch.setenv("CIO_HERMES_PROJECTION", str(tmp_path / "hermes_research_projection.json"))
+    assert collect_cio_hermes_queue_health(path=ledger, now=NOW)["lost_n"] == 0
+
+
+def test_one_valid_duplicate_and_two_real_losses_stays_unhealthy(tmp_path, monkeypatch):
+    """Suppression is per question: one owned duplicate must not hide two genuinely lost requests."""
+    ledger = _ledger(
+        tmp_path,
+        {"by_research_id": {"res_open": {"status": "running", "fingerprint": FP}},
+         "by_fingerprint_open": {FP: {"research_id": "res_open"}}},
+        [_requested("res_dup", FP), _requested("res_l1", "sha256:aaaa"), _requested("res_l2", "sha256:bbbb")],
+    )
+    monkeypatch.setenv("CIO_HERMES_PROJECTION", str(tmp_path / "hermes_research_projection.json"))
+    out = collect_cio_hermes_queue_health(path=ledger, now=NOW)
+    assert out["lost_n"] == 2 and out["lost"] == ["res_l1", "res_l2"]
+    assert "requests_lost:2" in out["firing"]
+    assert out["ok"] is False
+

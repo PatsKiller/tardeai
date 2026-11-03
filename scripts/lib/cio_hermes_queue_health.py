@@ -146,21 +146,38 @@ _OPEN_STATES = {"queued", "running", "claimed", "pending", "queued_running", "op
 _DONE_STATES = {"completed", "done", "succeeded"}
 
 
-def _clock(record: dict[str, Any]) -> Optional[datetime]:
-    # Exactly the oracle's fields: restore_lost_requests reads completed_ts, as_of and updated_ts. A row that
-    # carries only a generic `ts` is NOT a valid completion clock and must not suppress.
-    for key in ("completed_ts", "as_of", "updated_ts"):
-        value = record.get(key)
-        if not value:
-            continue
-        try:
-            stamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-        except ValueError:
-            continue
-        if stamp.tzinfo is None:
-            stamp = stamp.replace(tzinfo=timezone.utc)
-        return stamp.astimezone(timezone.utc)
-    return None
+def _parse_clock(value: Any) -> Optional[datetime]:
+    """One clock, parsed once — the same accepted shape as the oracle's `parse_ts`."""
+    if not value:
+        return None
+    try:
+        stamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    return stamp.astimezone(timezone.utc)
+
+
+def _completion_clock(record: dict[str, Any]) -> Optional[datetime]:
+    """The oracle's exact completion expression: `parse_ts(completed_ts or as_of or updated_ts)`.
+
+    The FIRST POPULATED field is selected before parsing, so a populated-but-invalid
+    `completed_ts` does NOT fall through to a later field (cx-openai-4 R3). Falling through
+    suppressed requests the restore path would genuinely restore — a false all-clear. A row
+    carrying only a generic `ts` has no completion clock at all.
+    """
+    return _parse_clock(record.get("completed_ts") or record.get("as_of") or record.get("updated_ts"))
+
+
+def _asked_clock(record: dict[str, Any]) -> Optional[datetime]:
+    """The oracle's asked clock: `parse_ts(created_ts or updated_ts)`.
+
+    Never the event `ts` the ledger row was loaded on (cx-openai-4 R4): the event clock moves
+    with every update, so comparing an answer against it reported an already-answered request
+    as lost.
+    """
+    return _parse_clock(record.get("created_ts") or record.get("updated_ts"))
 
 
 def _question_owned(fingerprint: str, asked: Optional[datetime],
@@ -173,7 +190,7 @@ def _question_owned(fingerprint: str, asked: Optional[datetime],
         return True
     done = done_fp.get(fingerprint)
     if isinstance(done, dict):
-        completed = _clock(done)
+        completed = _completion_clock(done)
         if completed is not None and asked is not None and completed >= asked:
             return True
     for row in by_rid.values():
@@ -183,7 +200,7 @@ def _question_owned(fingerprint: str, asked: Optional[datetime],
         if state in _OPEN_STATES:
             return True
         if state in _DONE_STATES:
-            completed = _clock(row)
+            completed = _completion_clock(row)
             if completed is not None and asked is not None and completed >= asked:
                 return True
         # failed / cancelled / superseded / expired / unknown: never owns the question
@@ -222,10 +239,17 @@ def collect_cio_hermes_queue_health(*, now: Optional[datetime] = None, path: Opt
         known = None
         open_fp, done_fp, by_rid = {}, {}, {}
     grace = now - timedelta(minutes=10)
-    lost = sorted({str(r["research_id"]) for r in events
-                   if known is not None and r.get("event") == "HERMES_RESEARCH_REQUESTED"
-                   and r["_ts"] <= grace and str(r["research_id"]) not in known
-                   and not _question_owned(str(r.get("fingerprint") or ""), r["_ts"], by_rid, open_fp, done_fp)})
+    lost = sorted(
+        {
+            str(r["research_id"])
+            for r in events
+            if known is not None
+            and r.get("event") == "HERMES_RESEARCH_REQUESTED"
+            and r["_ts"] <= grace
+            and str(r["research_id"]) not in known
+            and not _question_owned(str(r.get("fingerprint") or ""), _asked_clock(r), by_rid, open_fp, done_fp)
+        }
+    )
     s["lost"], s["lost_n"] = lost[:5], len(lost)
     outcomes = s["completed"] + s["failed"]
     firing: list[str] = []
