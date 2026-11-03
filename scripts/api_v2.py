@@ -162,6 +162,29 @@ def _json_clean(obj):
     return obj
 
 
+def _guarded_freshness(state_dir=None):
+    """The freshness manifest with the authoritative-store guard applied (2026-11-03).
+
+    A manifest proves a producer ran; it does not prove the store it describes is readable. Every
+    consumer that publishes a freshness status must go through here, so a 0-byte or corrupt
+    holdings.json (or a manifest whose hash/clock no longer matches it) cannot render FRESH on any
+    surface — ops summary, portfolio monitor, global alerts, the page-open summary or the recovery
+    context. An unreadable guard is UNAVAILABLE, never the cached status.
+    """
+    sd = state_dir or STATE_DIR
+    doc = dict(_load_json(sd / "_freshness.json") or {})
+    try:
+        from lib.authoritative_store_guard import effective_status, guard as _store_guard
+
+        verdict = _store_guard(sd)
+        doc["status"] = effective_status(doc.get("status"), verdict)
+        doc["guard"] = {"ok": verdict.get("ok"), "status": verdict.get("status"),
+                        "reasons": verdict.get("reasons")}
+    except Exception as exc:  # noqa: BLE001 — a guard failure is not permission to say fresh
+        doc["status"] = "UNAVAILABLE"
+        doc["guard"] = {"ok": False, "status": "UNAVAILABLE", "reasons": [f"guard_error:{type(exc).__name__}"]}
+    return doc
+
 def _load_json(path: Path):
     try:
         if path.exists() and path.stat().st_size == 0:
@@ -7468,7 +7491,7 @@ def _ops_audit():
 
 
 def ops_summary():
-    fresh = _load_json(STATE_DIR / "_freshness.json") or {}
+    fresh = _guarded_freshness()
     health_rows = (
         _db_query(
             """
@@ -18778,7 +18801,7 @@ def stopped_out_watch_list():
 
     # Add portfolio context for strategic reasoning
     _rm = _load_json(STATE_DIR / "risk_management.json") or {}
-    _fr = _load_json(STATE_DIR / "_freshness.json") or {}
+    _fr = _guarded_freshness()
     _wl = _load_json(STATE_DIR / "watchlist.json") or {}
     portfolio_context = {
         "heat_pct": _rm.get("portfolio_heat_pct", 0),
@@ -24651,7 +24674,7 @@ def _portfolio_monitor():
     rm = _load_json(STATE_DIR / "risk_management.json") or {}
     ts = _load_json(STATE_DIR / "technical_snapshot.json") or {}
     news = _load_json(STATE_DIR / "portfolio_news.json") or {}
-    freshness = _load_json(STATE_DIR / "_freshness.json") or {}
+    freshness = _guarded_freshness()
     div_cal = _load_json(STATE_DIR / "dividend_calendar.json") or {}
 
     holdings = h.get("holdings", [])
@@ -29746,7 +29769,7 @@ def _morning_command():
     """
     h = _load_json(STATE_DIR / "holdings.json") or {}
     rm = _load_json(STATE_DIR / "risk_management.json") or {}
-    freshness = _load_json(STATE_DIR / "_freshness.json") or {}
+    freshness = _guarded_freshness()
     div_cal = _load_json(STATE_DIR / "dividend_calendar.json") or {}
     news_data = _load_json(STATE_DIR / "portfolio_news.json") or {}
 
@@ -30615,7 +30638,7 @@ def _global_alerts():
     across all pages until conditions resolve.
     """
     rm = _load_json(STATE_DIR / "risk_management.json") or {}
-    freshness = _load_json(STATE_DIR / "_freshness.json") or {}
+    freshness = _guarded_freshness()
 
     alerts = []
     heat = rm.get("portfolio_heat_pct", 0)

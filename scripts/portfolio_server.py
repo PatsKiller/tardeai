@@ -1662,6 +1662,46 @@ def _compute_watchdog() -> None:
                 pass
 
 
+
+
+def freshness_payload(fp):
+    """(http_status, payload) for GET /api/freshness, with the authoritative-store guard applied.
+
+    The manifest proves a producer ran; it does not prove the store is readable. 2026-11-03: this
+    route answered FRESH over a 0-byte holdings.json. Extracted from the handler so it can be tested.
+    """
+    import json as _json
+    from datetime import datetime as _dt
+    from pathlib import Path as _Path
+
+    fp = _Path(fp)
+    if not fp.exists():
+        return 200, {"status": "unknown", "age_hours": None,
+                     "message": "No freshness manifest found — pipeline has not written _freshness.json yet"}
+    try:
+        fm = _json.loads(fp.read_text())
+        completed = _dt.fromisoformat(fm.get("completed_at", "2000-01-01"))
+        age_hours = round((_dt.now() - completed).total_seconds() / 3600, 1)
+        status = "fresh" if age_hours <= 26 else "stale"
+    except Exception as exc:  # noqa: BLE001 — an unreadable manifest is an error, not a status
+        return 500, {"status": "error", "message": str(exc)}
+    try:
+        from lib.authoritative_store_guard import effective_status, guard as _store_guard
+        verdict = _store_guard(fp.parent)
+        status = effective_status(status, verdict)
+        fm["guard"] = {"ok": verdict.get("ok"), "status": verdict.get("status"),
+                       "reasons": verdict.get("reasons")}
+    except Exception as exc:  # noqa: BLE001 — a guard failure never means fresh
+        status = "UNAVAILABLE"
+        fm["guard"] = {"ok": False, "status": "UNAVAILABLE", "reasons": [f"guard_error:{type(exc).__name__}"]}
+    message = (f"Pipeline ran {age_hours:.1f}h ago" if status == "fresh"
+               else f"Data is {age_hours:.0f}h stale — pipeline may not have run")
+    return 200, {**fm, "age_hours": age_hours, "status": status,
+                 "message": message if status == "fresh" else (
+                     "The holdings store could not be read, so freshness cannot be confirmed."
+                     if status == "UNAVAILABLE" else message)}
+
+
 class PortfolioHandler(http.server.BaseHTTPRequestHandler):
 
     def finish(self):
@@ -2171,6 +2211,9 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         # Freshness manifest (Phase 0)
         if path == "/api/freshness":
             _fp = PROJECT_ROOT / "data" / "portfolios" / "state" / "_freshness.json"
+            _status_code, _payload = freshness_payload(_fp)
+            json_response(self, _status_code, _payload)
+            return
             if _fp.exists():
                 try:
                     _fm = json.loads(_fp.read_text())
@@ -2178,6 +2221,18 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                     _completed = _dt.fromisoformat(_fm.get("completed_at", "2000-01-01"))
                     _age_hours = round((_dt.now() - _completed).total_seconds() / 3600, 1)
                     _status = "fresh" if _age_hours <= 26 else "stale"
+                    # The manifest proves a producer ran; it does not prove the store it describes
+                    # is readable. 2026-11-03: this endpoint returned FRESH over a 0-byte store.
+                    try:
+                        from lib.authoritative_store_guard import effective_status, guard as _store_guard
+                        _verdict = _store_guard(_fp.parent)
+                        _status = effective_status(_status, _verdict)
+                        _fm["guard"] = {"ok": _verdict.get("ok"), "status": _verdict.get("status"),
+                                        "reasons": _verdict.get("reasons")}
+                    except Exception as _ge:  # noqa: BLE001 — a guard failure never means fresh
+                        _status = "UNAVAILABLE"
+                        _fm["guard"] = {"ok": False, "status": "UNAVAILABLE",
+                                        "reasons": [f"guard_error:{type(_ge).__name__}"]}
                     json_response(self, 200, {
                         **_fm,
                         "age_hours": _age_hours,

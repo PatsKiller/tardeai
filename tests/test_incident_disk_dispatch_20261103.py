@@ -196,3 +196,13 @@ def test_a_refused_dispatch_is_blocked_loudly_never_a_silent_no_op(tmp_path):
     assert stub.prompts == [], "still no model call"
     assert any(b.get("id") == rec["id"] for b in out["blocked"]), out
     assert not any(s.get("id") == rec["id"] and s.get("why") == "dry_run" for s in out["skipped"])
+
+
+def test_the_daily_model_call_cap_never_parks_a_deterministic_disk_incident(tmp_path, monkeypatch):
+    """cx-openai-3 F3: the cap is a MODEL gate; a disk incident needs no model, so it still dispatches at the cap."""
+    rec = _disk_inc(tmp_path)
+    monkeypatch.setattr(S, "_calls_today", lambda d, now: 10_000)
+    stub = Stub([_needs_operator()])
+    out = _cycle(tmp_path, stub)
+    assert [s for s in out["skipped"] if s.get("why") == "daily model-call cap"] == []
+    assert stub.fixes, "the disk incident was parked by a model-only cap"

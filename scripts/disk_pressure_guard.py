@@ -265,6 +265,35 @@ def _dry_run_quote(stdout: str) -> dict | None:
     return doc if isinstance(doc, dict) else None
 
 
+def _recognised_dry_run(quote: object) -> tuple[bool, str]:
+    """Is this a COMPLETE cleaner dry-run envelope we can positively recognise as a clean success?
+
+    Anything less is not an apply. cx-openai-3 F6: `{"candidates": 1}`, a nested partial and even
+    `{"candidates": 1, "refused": "manifest_stale"}` each used to reach the apply boundary, because the parser accepted any
+    dict or a loose fallback. A refusal signal inside a zero-exit preview is the dangerous shape: the status looks
+    successful.
+    """
+    if not isinstance(quote, dict):
+        return False, "dry_run_not_a_mapping"
+    if quote.get("ok") is False or quote.get("error"):
+        # Keep the cleaner's own words: the operator needs to see why it refused.
+        return False, str(quote.get("error") or "dry_run_not_ok")[:200]
+    if quote.get("refused") is not None:
+        return False, f"dry_run_refused:{str(quote.get('refused'))[:120]}"
+    if quote.get("outcome") == "below_threshold":
+        return True, ""                      # a recognised non-apply outcome; handled by the caller
+    if quote.get("dry_run") is not True:
+        return False, "dry_run_envelope_missing"
+    summary = quote.get("summary")
+    totals = summary.get("totals") if isinstance(summary, dict) else None
+    if not isinstance(totals, dict):
+        return False, "dry_run_totals_missing"
+    candidates = totals.get("candidates")
+    if isinstance(candidates, bool) or not isinstance(candidates, int) or candidates < 0:
+        return False, "dry_run_candidates_invalid"
+    return True, ""
+
+
 def run_cleaner(*, rules_path: Path, state_root: str | None, trigger_pct: float, target_pct: float | None,
                 timeout: float = 3600.0, recheck_armed: Callable[[], dict] | None = None) -> dict:
     """Dry-run the reviewed cleaner, quote the selection, then apply exactly that class of item — or refuse.
@@ -273,6 +302,18 @@ def run_cleaner(*, rules_path: Path, state_root: str | None, trigger_pct: float,
     decides whether to invoke it and records what it reported; it never touches a path itself.
     """
     out: dict = {"cleaner": str(CLEANER)}
+    # F4: the effect-owning helper is not allowed to rely on its caller. With no recheck supplied it reads the rules
+    # file itself, so a direct call cannot construct a mutation request for a disarmed guard — and it does not even
+    # preview, because a disarmed guard has nothing to do.
+    if recheck_armed is None:
+        recheck_armed = lambda: act_config(rules_path)  # noqa: E731
+    try:
+        armed_now = recheck_armed()
+    except Exception as exc:  # noqa: BLE001
+        return {**out, "decision": "refused_disarmed", "error": f"pressure_act_unreadable_before_apply:{type(exc).__name__}"}
+    if not isinstance(armed_now, dict) or armed_now.get("active") is not True:
+        return {**out, "decision": "refused_disarmed", "error": "pressure_act_disarmed_before_apply",
+                "why_not_active": (armed_now or {}).get("why_not_active") if isinstance(armed_now, dict) else None}
     if not CLEANER.is_file():
         return {**out, "decision": "error", "error": "disk_hygiene.py missing"}
     plan_argv = _cleaner_argv(rules_path=rules_path, state_root=state_root,
@@ -285,10 +326,10 @@ def run_cleaner(*, rules_path: Path, state_root: str | None, trigger_pct: float,
         out["error"] = plan["error"] or "dry_run_output_unparseable"
         out["stderr_tail"] = (plan["stderr"] or "")[-400:]
         return out
-    if quote.get("ok") is False or quote.get("error"):
-        # The cleaner reported a problem instead of a plan (rules/ruleset/evidence). Never read that as "nothing to do".
+    recognised, why = _recognised_dry_run(quote)
+    if not recognised:
         out["decision"] = "error"
-        out["error"] = str(quote.get("error") or "dry_run_not_ok")[:200]
+        out["error"] = why
         return out
     totals = quote.get("summary", {}).get("totals") if isinstance(quote.get("summary"), dict) else None
     totals = totals if isinstance(totals, dict) else quote
@@ -351,6 +392,14 @@ def run_cleaner(*, rules_path: Path, state_root: str | None, trigger_pct: float,
         out["decision"] = "error"
         out["error"] = (f"apply_failed_rc_{res['_rc']}" if res["_rc"] != 0
                         else str(applied.get("error") or "cleaner_reported_not_ok")[:200])
+        return out
+    if applied.get("outcome") == "below_threshold":
+        out["decision"] = "below_threshold"
+        out["apply"] = {**(out.get("apply") or {}), "result": applied}
+        return out
+    if applied.get("removed") in (None, "") and applied.get("reclaimed_bytes") in (None, ""):
+        out["decision"] = "error"
+        out["error"] = "apply_result_without_a_removal_count"
         return out
     out["reclaimed_bytes"] = int(applied.get("reclaimed_bytes") or 0)
     out["reclaimed_gb"] = applied.get("reclaimed_gb")

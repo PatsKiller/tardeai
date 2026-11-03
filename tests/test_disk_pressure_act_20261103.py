@@ -322,3 +322,43 @@ def test_every_arming_gate_closed_mid_preview_refuses_the_apply(monkeypatch, tmp
     assert [argv for argv in calls.argv if "--apply" in argv] == [], f"{gate} closed but an apply was constructed"
     assert out["cleaner"]["decision"] == "refused_disarmed"
     assert out["cleaner"]["error"] == "pressure_act_disarmed_before_apply"
+
+
+# ---------------------------------------------------------------- (F6) a refused or partial preview is not a plan
+@pytest.mark.parametrize("preview,why", [
+    (json.dumps({"candidates": 1}), "dry_run_envelope_missing"),
+    (json.dumps({"summary": {"totals": {"candidates": 1}}}), "dry_run_envelope_missing"),
+    (json.dumps({"candidates": 1, "refused": "manifest_stale"}), "dry_run_refused:manifest_stale"),
+    (json.dumps({"dry_run": True, "summary": {"totals": {"candidates": "1"}}}), "dry_run_candidates_invalid"),
+])
+def test_a_partial_or_refusing_preview_never_constructs_an_apply(monkeypatch, tmp_path, capsys, preview, why):
+    rules = _rules(tmp_path, armed=True)
+    calls = Calls([_Proc(stdout=preview, rc=0)])
+    _guard(monkeypatch, tmp_path, calls, used=91.0)
+    g.main(["--rules", str(rules)])
+    out = json.loads(capsys.readouterr().out)
+    assert [a for a in calls.argv if "--apply" in a] == [], "an apply was constructed from an unrecognised preview"
+    assert out["cleaner"]["decision"] == "error"
+    assert out["cleaner"]["error"] == why
+
+
+def test_a_below_threshold_apply_result_is_not_reported_as_applied(monkeypatch, tmp_path, capsys):
+    """F5: a child that returns below_threshold after the preview did not remove anything."""
+    rules = _rules(tmp_path, armed=True)
+    below = json.dumps({"outcome": "below_threshold", "removed": None, "reclaimed_bytes": 0})
+    calls = Calls([_Proc(stdout=_dry_line(12, 3 * GB), rc=0), _Proc(stdout=below, rc=0)])
+    _guard(monkeypatch, tmp_path, calls, used=91.0)
+    g.main(["--rules", str(rules)])
+    out = json.loads(capsys.readouterr().out)
+    assert out["cleaner"]["decision"] == "below_threshold"
+    assert out["cleaner"]["decision"] != "applied"
+
+
+def test_the_helper_enforces_the_gate_even_when_the_caller_passes_nothing(tmp_path, monkeypatch):
+    """F4: run_cleaner must not rely on its caller to supply the arming recheck."""
+    rules = _rules(tmp_path, armed=False)
+    calls = Calls([])
+    monkeypatch.setattr(g.subprocess, "run", calls.run)   # any cleaner invocation would IndexError on the empty queue
+    out = g.run_cleaner(rules_path=rules, state_root=None, trigger_pct=91.0, target_pct=None)
+    assert out["decision"] == "refused_disarmed", out
+    assert calls.argv == []

@@ -641,9 +641,6 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
         if last and now - last < timedelta(minutes=float(pol.get("model_cooldown_minutes", 30))):
             out["skipped"].append({"id": iid, "why": "cooldown"})
             continue
-        if _calls_today(d, now) >= int(pol.get("max_model_calls_per_day", 40)):
-            out["skipped"].append({"id": iid, "why": "daily model-call cap"})
-            continue
         # Cycle budget (2026-11-03): never start a model call the unit timeout could kill. The gate
         # sits after every cheap/deterministic path and before build_prompt/model.
         remaining = spendable_s()
@@ -667,6 +664,11 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
             detail = {"provider": "deterministic", "class": "code_defect", "route": "disk_incident",
                       "matched": disk, "proposed": verdict["action"]}
         else:
+            # The daily model-call cap is a MODEL gate (cx-openai-3 F3): it must never park a deterministic disk
+            # incident, which needs no model at all. It lives here, on the only branch that spends calls.
+            if _calls_today(d, now) >= int(pol.get("max_model_calls_per_day", 40)):
+                out["skipped"].append({"id": iid, "why": "daily model-call cap"})
+                continue
             prompt = build_prompt(rec, cfg, evidence=evidence_excerpt(rec, state_root), runbooks=runbook_excerpt(rec, cfg, root))
             if not apply:
                 out["skipped"].append({"id": iid, "why": "dry_run: would call model", "prompt_chars": len(prompt)})
