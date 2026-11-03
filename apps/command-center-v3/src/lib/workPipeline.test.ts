@@ -4,6 +4,7 @@ import {
   EMPTY_FILTER, PIPELINE_STAGES, ageLabel, cardActions, cellTitle, filterFromParams, filterItems, filterOptions, filterToParams,
   liveToday, planLabel, queuedSections, ragTone, summarize, type PipelineItem,
 } from './workPipeline.ts'
+import { WORK_PIPELINE_JOINT_SOURCE_FIXTURE } from '../fixtures/workPipeline.fixture.ts'
 import { COMMANDS_PATH, commandBody, parseSplitParts } from './workPipelineActions.ts'
 declare const process: { exit(code?: number): never }
 function fail(m: string): never { console.log(`  [FAIL] ${m}`); process.exit(1) }
@@ -451,3 +452,55 @@ t('a semantically exact policy line is preserved verbatim after its bindings are
   eq(p.members![0].command, line)
 })
 console.log(`workPipelinePolicyBinding: ${n - policyBindingN} passed`)
+
+
+// The independent review's null-PR and ambiguous-agent reproductions.
+const identityN = n
+const identityFixture = () => JSON.parse(JSON.stringify(WORK_PIPELINE_JOINT_SOURCE_FIXTURE))
+function addIdentityClaim(raw: ReturnType<typeof identityFixture>, id: string, session: string) {
+  const work = JSON.parse(JSON.stringify(raw.items.find((row: Record<string, unknown>) => row.id === 'claim-local')))
+  work.id = id; work.who.session = session; work.how.claim_ids = [id]; work.where.branch = `wt/synthetic-${id}`
+  raw.items.push(work)
+  const claim = JSON.parse(JSON.stringify(raw.coordination.claims.find((row: Record<string, unknown>) => row.claim_id === 'claim-local')))
+  claim.claim_id = id; claim.session = session; claim.branch = work.where.branch
+  raw.coordination.claims.push(claim); raw.coordination.active_claim_ids.push(id)
+  return { work, claim }
+}
+t('ordinary pre-PR agents bind their exact claims instead of the first null-PR item', () => {
+  const raw = identityFixture(); addIdentityClaim(raw, 'claim-other', 'session-other')
+  const p = flowProjection(raw, FLOW_NOW)
+  eq(p.agents.find(a => a.session === 'session-other')?.itemId, 'claim-other')
+  eq(p.agents.find(a => a.session === 'session-claim-local')?.itemId, 'claim-local')
+})
+t('an explicit claim association precedes a shared session label', () => {
+  const raw = identityFixture(), { claim } = addIdentityClaim(raw, 'claim-specific', 'session-claim-local')
+  raw.coordination.claims = [claim]; raw.coordination.active_claim_ids = [claim.claim_id]
+  eq(flowProjection(raw, FLOW_NOW).agents[0].itemId, 'claim-specific')
+})
+t('orphan and known-owner PR collisions remain unassigned', () => {
+  for (const pr of [null, 99001]) {
+    const raw = identityFixture(), claim = JSON.parse(JSON.stringify(raw.coordination.claims.find((r: Record<string, unknown>) => r.claim_id === 'claim-local')))
+    claim.claim_id = 'claim-orphan'; claim.session = 'session-orphan'; claim.pr_number = pr
+    raw.coordination.claims.push(claim); raw.coordination.active_claim_ids.push(claim.claim_id)
+    const agent = flowProjection(raw, FLOW_NOW).agents.find(a => a.session === claim.session)!
+    eq(agent.itemId, null); eq(agent.gaps.some(g => g.startsWith('Current item:')), true)
+  }
+})
+t('ambiguous session or PR associations retain a named gap rather than choosing a row', () => {
+  for (const pr of [null, 99077]) {
+    const raw = identityFixture(), local = raw.items.find((r: Record<string, unknown>) => r.id === 'claim-local')
+    const work = [JSON.parse(JSON.stringify(local)), JSON.parse(JSON.stringify(local))]
+    work.forEach((w, i) => { w.id = `unbound-${i}`; w.pr_number = pr; w.what.pr_number = pr; w.who.session = pr === null ? 'session-ambiguous' : null; w.how.claim_ids = [] })
+    const claim = JSON.parse(JSON.stringify(raw.coordination.claims.find((r: Record<string, unknown>) => r.claim_id === 'claim-local')))
+    claim.claim_id = 'unbound-claim'; claim.session = 'session-ambiguous'; claim.pr_number = pr
+    raw.items = work; raw.coordination.claims = [claim]; raw.coordination.active_claim_ids = [claim.claim_id]
+    const agent = flowProjection(raw, FLOW_NOW).agents[0]
+    eq(agent.itemId, null); eq(agent.gaps.some(g => /ambiguous|multiple/i.test(g)), true)
+  }
+})
+t('equally recent active claims for one session do not invent a unique current item', () => {
+  const raw = identityFixture(); addIdentityClaim(raw, 'claim-tied', 'session-claim-local')
+  const agent = flowProjection(raw, FLOW_NOW).agents.find(a => a.session === 'session-claim-local')!
+  eq(agent.itemId, null); eq(agent.gaps.some(g => g.includes('equally recent')), true)
+})
+console.log(`workPipelineAgentIdentity: ${n - identityN} passed`)

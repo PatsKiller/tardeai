@@ -260,15 +260,43 @@ function sourceAgents(sources: Row, items: FlowItem[], now: number): Row[] | und
     const r = rec(value), session = txt(r.session)
     if (!session) continue
     const activity = [instant(r.heartbeat_at, now), instant(rec(r.worklog).last_entry_at, now)].filter((v): v is string => v !== null).sort().slice(-1)[0] ?? null
-    const member = items.find(i => i.inFlight && (i.owner.session === session || i.prNumber === r.pr_number || i.prNumber === r.pr))
     const local: string[] = []
+    const liveItems = items.filter(item => item.inFlight)
+    const claimId = txt(r.claim_id)
+    const byClaim = claimId ? liveItems.filter(item => item.id === claimId
+      || (Array.isArray(item.legacy?.how.claim_ids) && item.legacy.how.claim_ids.includes(claimId))) : []
+    const rawPr = r.pr_number ?? r.pr
+    const numericPr = typeof rawPr === 'string' && /^#?\d+$/.test(rawPr) ? Number(rawPr.replace(/^#/, '')) : rawPr
+    const parsedPr = count(numericPr), claimPr = parsedPr !== null && parsedPr > 0 ? parsedPr : null
+    let member: FlowItem | undefined
+    const choose = (matches: FlowItem[], basis: string) => {
+      if (matches.length === 1) member = matches[0]
+      else if (matches.length > 1) local.push(`Current item: ambiguous ${basis}; more than one active work item matches`)
+    }
+    if (byClaim.length) choose(byClaim, 'claim membership')
+    else {
+      const bySession = liveItems.filter(item => item.owner.session === session)
+      if (bySession.length === 1) member = bySession[0]
+      else if (bySession.length > 1) {
+        const bySessionPr = claimPr !== null ? bySession.filter(item => item.prNumber === claimPr) : []
+        if (bySessionPr.length === 1) member = bySessionPr[0]
+        else local.push('Current item: ambiguous session membership without an exact claim or unique positive PR binding')
+      } else if (claimPr !== null) {
+        choose(liveItems.filter(item => item.prNumber === claimPr
+          && (item.owner.session === null || item.owner.session === session)), 'owner-compatible positive PR')
+      }
+    }
+    if (!member && !local.length) local.push('Current item: no exact claim, unique session or owner-compatible positive PR binding was recorded')
     const active = activeIds ? activeIds.has(r.claim_id) : null
     if (active === null) local.push('Claim activity: canonical active-claim source unavailable')
     else if (!active) local.push('Claim is inactive or stale in canonical active-claim membership')
     const row: Row = { session, vendor: r.vendor, coordinator: r.coordinator, item_id: member?.id, stage: member?.stage,
       last_activity: activity, nudges_today: r.nudges_today, active, gaps: local }
     const prior = bySession.get(session)
-    if (!prior || (active === true && prior.active !== true) || (active === prior.active && String(activity ?? '') > String(prior.last_activity ?? ''))) bySession.set(session, row)
+    if (prior && active === prior.active && activity === prior.last_activity && prior.item_id !== row.item_id) {
+      bySession.set(session, { ...prior, item_id: null, stage: null,
+        gaps: [...messages(prior.gaps), ...local, 'Current item: multiple equally recent active claims have different work items'] })
+    } else if (!prior || (active === true && prior.active !== true) || (active === prior.active && String(activity ?? '') > String(prior.last_activity ?? ''))) bySession.set(session, row)
   }
   return [...bySession.values()]
 }
