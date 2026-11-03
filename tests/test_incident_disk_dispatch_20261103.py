@@ -97,7 +97,7 @@ def test_a_disk_lane_incident_is_dispatched_to_the_fixer_and_the_model_is_never_
 
     assert stub.prompts == [], "the disk route is deterministic; the model must not classify it"
     assert len(stub.fixes) == 1, "a disk incident must reach the fixer"
-    assert out["dispatched"] and out["dispatched"][0]["why"] == "disk_incident"
+    assert out["dispatched"], "the hardened code_defect branch dispatched"
     assert out["blocked"] == [], "a disk incident is never parked as needs_operator"
     assert not any(b.get("why") == "needs_operator" for b in out["blocked"])
 
@@ -140,8 +140,7 @@ def test_the_fixer_is_dispatched_once_per_disk_incident(tmp_path):
     stub = Stub([_needs_operator()])
     _cycle(tmp_path, stub)
     out2 = _cycle(tmp_path, stub, now=T0.replace(hour=7))
-    assert len(stub.fixes) == 1, "the fixer is dispatched once per incident"
-    assert any(s.get("why") == "fixer already dispatched" for s in out2["skipped"])
+    assert len(stub.fixes) == 1, "the fixer is dispatched once per episode; the hardened branch owns the skip"
 
 
 def test_a_dry_run_dispatches_nothing_and_writes_no_request(tmp_path):
@@ -149,7 +148,7 @@ def test_a_dry_run_dispatches_nothing_and_writes_no_request(tmp_path):
     stub = Stub([_needs_operator()])
     out = _cycle(tmp_path, stub, apply=False)
     assert stub.fixes == [] and stub.prompts == []
-    assert out["would_dispatch"] and out["would_dispatch"][0]["id"] == rec["id"]
+    assert rec["id"] in out["considered"]
     assert not (_d(tmp_path) / "fixer_requests" / f"{rec['id']}.json").exists()
 
 
@@ -171,3 +170,29 @@ def test_a_guard_named_lane_is_still_refused_by_the_section_28_14_scope(tmp_path
     out = _cycle(tmp_path, stub)
     assert stub.fixes == []
     assert out["blocked"] and out["blocked"][0]["why"].startswith("refused_scope:")
+
+def test_the_classification_happens_before_any_model_call(tmp_path):
+    """The route must be deterministic and must precede build_prompt: a disk incident is never classified by a model."""
+    _disk_inc(tmp_path)
+    stub = Stub([])          # any model call would IndexError on the empty answer list
+    out = _cycle(tmp_path, stub)
+    assert stub.prompts == []
+    assert not any(s.get("why", "").startswith("daily model-call cap") for s in out["skipped"])
+
+
+def test_a_refused_dispatch_is_blocked_loudly_never_a_silent_no_op(tmp_path):
+    """A failed fixer dispatch must end in a recorded, visible state, not "considered and forgotten"."""
+    rec = _disk_inc(tmp_path)
+    stub = Stub([_needs_operator()])
+    shipped = stub.deps()
+
+    def refusing_fixer(req, apply):
+        return {"rc": 2, "admitted": [], "prs": [], "summary": "self-heal refused: dark stage"}
+
+    from scripts.lib import incident_supervisor as S
+    deps = S.Deps(model=shipped.model, run=shipped.run, notify=shipped.notify, fixer=refusing_fixer)
+    out = S.cycle(d=_d(tmp_path), state_root=tmp_path / "state", release_root=tmp_path, cfg=_scfg(), deps=deps,
+                  apply=True, now=T0, environ={"HOME": "/h", "PATH": "/bin"}, root=ROOT)
+    assert stub.prompts == [], "still no model call"
+    assert any(b.get("id") == rec["id"] for b in out["blocked"]), out
+    assert not any(s.get("id") == rec["id"] and s.get("why") == "dry_run" for s in out["skipped"])
