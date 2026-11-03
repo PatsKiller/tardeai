@@ -32,8 +32,9 @@ Conditions for ``push`` (``check`` is the same minus the pusher-session binding 
  5. The tracked pre-push and everything it executes from the worktree (``PREPUSH_CLOSURE``) are byte-identical to
     remote main's, and no module in its import path shadows the stdlib; the push runs it (``core.hooksPath``
     pinned), so the budget count and the secrets scan happen.
- 6. Fast-forward: remote branch absent or its ls-remote sha is an ancestor of the local sha; confirmed by a
-    ``--dry-run --porcelain`` push that must report exactly one ref, new or fast-forward.
+ 6. Fast-forward: remote branch absent or its ls-remote sha is an ancestor of the local sha. Check is a read-only
+    metadata preview, never a dry-run push or a transport/hook success claim. Only push invokes Git push, once,
+    with the verified pre-push hook enabled; its porcelain reports the actual single-ref result.
  7. No path in ``merge-base(main)..head`` matches the train's ``broker_active_trader`` globs.
  8. Budget: ``count_for(branch) < budget_for(branch)`` (``scripts/lib/tradeai_push_budget.py`` of the guard tree).
  9. Approved plan, either:
@@ -1260,15 +1261,18 @@ def evaluate(repo_arg: str, branch: str, session: Optional[str], *, bind_session
     budget = check_budget(repo, branch, cfg)
     plan = find_plan(branch, session, cfg, bind_session=bind_session)
     refspec = f"{local_sha}:refs/heads/{branch}"
-    dry = _git(repo, "push", "--dry-run", "--porcelain", "--no-verify", "--no-follow-tags", "--no-signed",
-               "--recurse-submodules=no", canonical, refspec, pins=pins, timeout=float(cfg["ls_remote_timeout"]))
-    if dry.returncode != 0:
-        raise Refused(f"dry-run push failed rc={dry.returncode}: {dry.stderr.strip()[:200]}")
-    dry_line = _porcelain(dry.stdout, branch)
+    # A preflight reads the same authority/scope/budget evidence as push, but
+    # never invokes push (even --dry-run), executes hooks or appends an audit.
+    # This is metadata evidence, not a server transport or hook success claim.
+    preview = {"schema": "GuardPushPreview@v1", "kind": "metadata-preflight",
+               "transport_checked": False, "pre_push_executed": False,
+               "remote_write_attempted": False}
     return {"schema": SCHEMA, "allow": True, "cfg": cfg, "repo": str(repo), "branch": branch, "head": local_sha,
             "remote_head": remote_sha or "", "ff": ff, "refspec": refspec, "canonical": canonical,
             "policy": {"version": st["version"], "main": main_sha}, "budget": budget, "plan": plan,
-            "approval_ref": plan["approval_ref"], "dry_run": dry_line["line"], "pins": pins}
+            "approval_ref": plan["approval_ref"], "preview": preview,
+            "dry_run": "metadata-only preview; no Git push, transport validation or pre-push hook execution",
+            "pins": pins}
 
 
 def do_push(ev: dict[str, Any], session: Optional[str], cwd: str) -> dict[str, Any]:
@@ -1282,10 +1286,11 @@ def do_push(ev: dict[str, Any], session: Optional[str], cwd: str) -> dict[str, A
             "head": ev["head"], "remote_head": ev["remote_head"], "ff": ev["ff"], "refspec": ev["refspec"],
             "remote": ev["canonical"], "repo": ev["repo"], "cwd": cwd, "pusher_session": session or "",
             "pusher_uid": os.getuid(), "approval_ref": ev["approval_ref"], "plan": ev["plan"],
-            "budget": ev["budget"], "policy": ev["policy"], "dry_run": ev["dry_run"],
+            "budget": ev["budget"], "policy": ev["policy"],
             "command": f"bin/agent-push {ev['branch']}",
             "standing_approval_url": ev["plan"]["approval_ref"] if ev["plan"].get("source") == "claim+standing" else ""}
-    intent = audit(dict(base, event="grant-free-push-intent"), cfg)  # refuses on failure (M2)
+    intent = audit(dict(base, event="grant-free-push-intent", dry_run=ev["dry_run"],
+                        preview=ev["preview"]), cfg)  # refuses on failure (M2)
     if ev["plan"].get("source") in {"claim+standing", "claim+ratified-policy", "handoff+ratified-policy"}:
         if standing_policy_module().revoked_marker():
             raise Refused("standing authority revoked before push")
