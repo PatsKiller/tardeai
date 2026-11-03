@@ -274,27 +274,52 @@ def run_ab_session(state_dir: Path, now_iso: str, out_path: Path) -> int:
 
     fail_transport = os.environ.get("BC_PROOF_FAIL_TRANSPORT") == "1"
     fail_write = os.environ.get("BC_PROOF_FAIL_WRITE") == "1"
+    second_state = os.environ.get("BC_PROOF_SECOND_STATE") == "1"
+
+    if fail_transport:
+        # Inject BELOW _raw_send_telegram_result, so its own _record_attempt runs and a transport refusal is
+        # real rather than a fabricated dict (lead's seam correction, 2026-11-03).
+        import telegram_alert as T2
+
+        def _refuse(**kwargs):
+            raise RuntimeError("synthetic transport refusal")
+
+        T2.send_message = _refuse
+
+    import re as _re
+    case_re = _re.compile(r"case:([A-Za-z0-9_.:+-]+)")
+
+    def _case_of(message):
+        match = case_re.search(str(message or ""))
+        if not match:
+            return None
+        token = match.group(1)
+        try:
+            import base64 as _b64
+            return _b64.b64decode(token[3:] if token.startswith("v1:") else token).decode("utf-8", "replace")
+        except Exception:  # noqa: BLE001
+            return token
 
     def fake_raw(message, chat_ids=None, **kwargs):
         counter["n"] += 1
         with ledger.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps({"at": now_iso, "chars": len(message or ""),
+            fh.write(json.dumps({"at": now_iso, "chars": len(message or ""), "case": _case_of(message),
                                  "marker": str(message or "").startswith(MARKER)}, sort_keys=True) + "\n")
-        if fail_transport:
-            return {"ok": False, "error": "synthetic raw transport refused"}
         return {"ok": True, "message_ids": [1000 + counter["n"]], "held": 0}
 
-    T._raw_send_telegram_result = fake_raw
+    if not fail_transport:
+        T._raw_send_telegram_result = fake_raw
     T._token = lambda: "proof-token"
     T._chat_ids = lambda: ["555"]
 
     policy_a, rows = _real_a_rows()
     policy_b = B.load_policy(PROJECT_ROOT / "config" / "recovery_policy.yaml")
     now = datetime.fromisoformat(now_iso.replace("Z", "+00:00"))
-    snaps = {"DEMO1": {"close": 102.0, "rsi": 35.0, "rsi_prev": 34.0, "sma20": 130.0,
-                       "macd_up_sessions": 0, "catalyst_confidence": 0.0},
-             "DEMO2": {"close": 102.0, "rsi": 35.0, "rsi_prev": 34.0, "sma20": 130.0,
-                       "macd_up_sessions": 0, "catalyst_confidence": 0.0}}
+    base_snap = {"close": 102.0, "rsi": 35.0, "rsi_prev": 34.0, "sma20": 130.0,
+                 "macd_up_sessions": 0, "catalyst_confidence": 0.0}
+    # a genuine NEW state: close above the 20-day mean plus an RSI cross lifts confidence over A's floor
+    ready_snap = {**base_snap, "close": 152.0, "rsi": 45.0, "rsi_prev": 34.0}
+    snaps = {"DEMO1": base_snap, "DEMO2": base_snap}
 
     class MemoryStore:
         def __init__(self, cases):
@@ -308,39 +333,87 @@ def run_ab_session(state_dir: Path, now_iso: str, out_path: Path) -> int:
             if fail_write:
                 raise OSError("synthetic durable write refused")
             self.writes.append({"case_key": key, **fields})
+            for case in self.cases:
+                if str(case.get("case_key")) == str(key):
+                    case.update(fields)
 
-    store = MemoryStore([r for _obj, r in rows.values()])
+    store = MemoryStore([dict(r) for _obj, r in rows.values()])
     pending_path = state_dir / "notify_pending.json"
-    notify = None
-    if fail_transport:
-        # A transport failure must be observable to C: the real router's "accepted" answer is not a delivery
-        # (telegram_alert returns True for an accepted intent), so this control injects the SENDER — the seam
-        # where a transport refusal is visible — and keeps every other C policy exactly as it ships.
-        def notify(case):
-            return C.notify_recovery_case(case, now=now, state_path=state_dir / "nudge.json",
-                                          sender=lambda *a, **k: False)
-    out = B.run_pass(store, lambda case: snaps.get(str(case.get("symbol")), snaps["DEMO1"]),
-                     policy=policy_b, now=now, dry_run=False, pending_path=pending_path, notify=notify)
+    first = B.run_pass(store, lambda case: snaps.get(str(case.get("symbol")), base_snap),
+                       policy=policy_b, now=now, dry_run=False, pending_path=pending_path)
+    deliveries_first = counter["n"]
+
+    # The day bound: the SAME case ids move to a NEW state on the same day; a distinct account/case is the
+    # positive control that the gate is per (case, day) and not a blanket mute.
+    second = None
+    deliveries_second = 0
+    if second_state:
+        other = {**rows["DEMO2"][1], "case_key": "DEMO2B:DEMO2_IRA",
+                 "account": "DEMO2_IRA"}
+        store.cases.append(dict(other))
+        snaps["DEMO2"] = ready_snap
+        before = counter["n"]
+        second = B.run_pass(store, lambda case: ready_snap if str(case.get("symbol")).startswith("DEMO") else base_snap,
+                            policy=policy_b, now=now, dry_run=False, pending_path=pending_path)
+        deliveries_second = counter["n"] - before
+
+    def _receipts():
+        out = {}
+        for symbol, (obj, row) in rows.items():
+            decision = next((d for d in first["decisions"] if d.get("case_key") == row.get("case_key")), {})
+            out[symbol] = {
+                "a_r1": bool(ac2.reclaim_exit_trigger(obj, 102.0, policy_a)),
+                "b_exit_ref": B.exit_price(row),
+                "b_state": decision.get("state"),
+                "b_triggers": decision.get("triggers"),
+                "notify": decision.get("notify"),
+            }
+        return out
 
     from lib.recovery_engine import cases as ac2
-    receipts = {}
-    for symbol, (obj, row) in rows.items():
-        decision = next((d for d in out["decisions"] if d.get("case_key") == row.get("case_key")), {})
-        receipts[symbol] = {
-            "a_r1": bool(ac2.reclaim_exit_trigger(obj, 102.0, policy_a)),
-            "b_exit_ref": B.exit_price(row),
-            "b_state": decision.get("state"),
-            "b_triggers": decision.get("triggers"),
-            "notify": decision.get("notify"),
-        }
+    receipts = _receipts()
+    deliveries_by_case: dict[str, int] = {}
+    try:
+        for line in ledger.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                row = json.loads(line)
+                key = str(row.get("case"))
+                deliveries_by_case[key] = deliveries_by_case.get(key, 0) + 1
+    except OSError:
+        pass
+    intent_decisions: dict[str, int] = {}
+    try:
+        for line in Path(os.environ.get("TRADEAI_INTENT_RECEIPTS_PATH", "")).read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                decision = str(json.loads(line).get("decision"))
+                intent_decisions[decision] = intent_decisions.get(decision, 0) + 1
+    except (OSError, ValueError):
+        pass
+    day_ledger = {}
+    try:
+        import telegram_alert_router as R2
+        doc = json.loads(Path(R2._RECOVERY_T1_PAGE_PATH).read_text(encoding="utf-8"))
+        day_ledger = {d: list(v) for d, v in doc.items() if isinstance(v, dict)}
+    except (OSError, ValueError, AttributeError):
+        day_ledger = {}
+
     out_path.write_text(json.dumps({"now": now_iso,
                                     "policy_percent_a": policy_a.triggers.get("r1_reclaim_exit_pct"),
                                     "policy_fraction_b": policy_b.get("reclaim_exit_pct"),
                                     "state_writes": len(store.writes),
-                                    "notifier_calls": out.get("notifier_calls"),
+                                    "notifier_calls": first.get("notifier_calls"),
                                     "raw_deliveries_in_session": counter["n"],
-                                    "pending": out.get("pending"),
-                                    "write_errors": [d for d in out["decisions"] if d.get("write_error")],
+                                    "deliveries_first_pass": deliveries_first,
+                                    "deliveries_second_pass": deliveries_second,
+                                    "second_pass_notifier_calls": (second or {}).get("notifier_calls"),
+                                    "second_pass_decisions": [
+                                        {"case_key": d.get("case_key"), "state": d.get("state"),
+                                         "notify": d.get("notify")} for d in (second or {}).get("decisions", [])],
+                                    "router_day_ledger": day_ledger,
+                                    "deliveries_by_case": deliveries_by_case,
+                                    "intent_receipt_decisions": intent_decisions,
+                                    "pending": first.get("pending"),
+                                    "write_errors": [d for d in first["decisions"] if d.get("write_error")],
                                     "receipts": receipts}, indent=1, sort_keys=True))
     return 0
 
@@ -411,19 +484,42 @@ def main(argv: list[str] | None = None) -> int:
         "b_state_still": s2["receipts"]["spcx"]["state_after"],
     }
 
-    # P3 — the same symbol in a NEW state pages again: dedupe is per (symbol, state), not a blanket mute.
-    _patch_case_state = {"state": "RE_ENTRY_READY"}
-    before = len(_entries(with_batch))
-    ready_case = {**CASES["spcx"], "state": "RE_ENTRY_READY"}
-    from lib import recovery_notify as C  # noqa: PLC0415  (same process is fine: the boundary proof is P1/P2)
-    ready_result = C.notify_recovery_case({**ready_case, "price": 152.0, "exit_price": 137.19},
-                                          sender=_make_sender(with_batch, transport_dedupes=False),
-                                          now=t1, state_path=with_batch / "recovery_nudge_state.json")
-    ready_entries = [e for e in _entries_since(with_batch, before) if "SPCX" in str(e.get("text"))]
-    proofs["P3_a_new_state_pages_again"] = {
-        "pass": len(ready_entries) == 1 and ready_result.get("sent") is True,
-        "sender_entries": len(ready_entries),
-        "c_result": {k: v for k, v in ready_result.items() if k != "message"},
+    # P3 — ONE page per case per day, delivered terminal (lead ruling 2026-11-03): the same case ids moving
+    # to a NEW state on the same day must NOT page again, while a distinct account/case still does. Driven
+    # through the scheduled adapter and C's real day/floor gate, not a custom sender.
+    day_root = root / "day"
+    day_root.mkdir(parents=True, exist_ok=True)
+    day_out = day_root / "s.json"
+    proc = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--ab-session", str(day_root),
+                           t0.strftime("%Y-%m-%dT%H:%M:%SZ"), str(day_out)],
+                          capture_output=True, text=True, timeout=300, cwd=str(PROJECT_ROOT),
+                          env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "BC_PROOF_SECOND_STATE": "1"})
+    if proc.returncode != 0 or not day_out.exists():
+        raise RuntimeError(f"day-bound session failed: {(proc.stderr or proc.stdout)[-800:]}")
+    day = json.loads(day_out.read_text())
+    same_case = [d for d in day["second_pass_decisions"]
+                 if not str(d.get("case_key", "")).startswith("DEMO2B")]
+    control = [d for d in day["second_pass_decisions"] if str(d.get("case_key", "")).startswith("DEMO2B")]
+    per_case = day.get("deliveries_by_case") or {}
+    demo1 = next((v for k, v in per_case.items() if k.startswith("DEMO1")), 0)
+    demo2 = next((v for k, v in per_case.items() if k.startswith("DEMO2:")), 0)
+    control_deliveries = sum(v for k, v in per_case.items() if not k.startswith(("DEMO1", "DEMO2:")))
+    proofs["P3_one_page_per_case_per_day_and_a_distinct_case_still_pages"] = {
+        "pass": (day["deliveries_first_pass"] == 2 and day["deliveries_second_pass"] == 1
+                 and demo1 == 1 and demo2 == 1 and control_deliveries == 1
+                 and all(d.get("state") == "RE_ENTRY_READY" for d in same_case)      # a genuine NEW state
+                 and (day.get("intent_receipt_decisions") or {}).get("DEDUPED", 0) >= 2),
+        "first_pass_deliveries": day["deliveries_first_pass"],
+        "second_pass_deliveries": day["deliveries_second_pass"],
+        "deliveries_by_case": per_case,
+        "second_pass_notifier_calls": day["second_pass_notifier_calls"],
+        "same_case_new_state_attempts": [{"case_key": d["case_key"], "state": d["state"],
+                                          "notify_sent_flag": (d.get("notify") or {}).get("sent")}
+                                         for d in same_case],
+        "distinct_case_control": [{"case_key": d["case_key"], "state": d["state"]} for d in control],
+        "intent_receipt_decisions": day.get("intent_receipt_decisions"),
+        "note": ("raw deliveries, not C's sent flag: the router reports an ACCEPTED intent as sent even when it "
+                 "deduped it, so the durable evidence is the per-case transport count plus the DEDUPED receipts"),
     }
 
     # P4 — without the batching module, dedupe moves to the transport and the refusal is recorded.
