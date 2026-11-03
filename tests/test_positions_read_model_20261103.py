@@ -359,7 +359,7 @@ def test_document_is_load_store_shaped_with_provenance():
     doc = out["doc"]
     assert doc["sync_run_id"] == 641 and doc["as_of"] == NOW.isoformat()
     by = {h["symbol"]: h for h in doc["holdings"]}
-    assert by["AAA"]["account"] == "schwab_taxable" and by["AAA"]["price"] == 120.0
+    assert by["AAA"]["account"] == "schwab_individual" and by["AAA"]["price"] == 120.0
     assert by["BBB"]["account"] == "schwab_roth"
     assert by["BBB"]["account_key"] == "schwab_roth_ira"
     assert by["CASH"]["is_cash"] is True and by["CASH"]["price"] == 1.0
@@ -374,9 +374,9 @@ def test_document_carries_producer_totals_and_account_summaries():
     assert pt["total_cost_basis"] == 200.0
     assert pt["total_gain"] == 1080.0
     summaries = doc["account_summaries"]
-    assert set(summaries) == {"schwab_taxable", "schwab_roth"}
+    assert set(summaries) == {"schwab_individual", "schwab_roth"}
     assert summaries["schwab_roth"]["value"] == 80.0 and summaries["schwab_roth"]["positions"] == 1
-    assert summaries["schwab_taxable"]["cash"] == 500.0
+    assert summaries["schwab_individual"]["cash"] == 500.0
 
 
 def test_document_basis_incomplete_leaves_totals_null():
@@ -417,3 +417,67 @@ def test_cash_by_symbol_counts_as_cash():
     d = m.document(conn_factory=lambda: conn)
     spaxx = next(h for h in d["doc"]["holdings"] if h["symbol"] == "SPAXX")
     assert spaxx["is_cash"] is True and spaxx["price"] == 1.0
+
+
+# ── 2026-11-03 reviews: fallback shape, receipt coverage, canonical labels ─────────────────
+
+def _receipt_detail(run, rows, accounts, *, accounts_ok=None):
+    ok = sorted(accounts) if accounts_ok is None else accounts_ok
+    return (run, "complete", True, rows, NOW, NOW, ok, {}, accounts)
+
+
+def test_export_sync_run_id_must_be_an_integer(tmp_path):
+    for bad in ("abc", "641.9", {"x": 1}):
+        p = _export(tmp_path, {"sync_run_id": bad, "holdings": [
+            {"account": "schwab_taxable", "symbol": "AAA", "qty": 1, "market_value": 10.0}]})
+        out = m.rows(conn_factory=lambda: (_ for _ in ()).throw(RuntimeError("db down")), export_path=p)
+        assert out["available"] is False and out["export"] == "sync_run_id_invalid", bad
+        assert "rows" not in out
+
+
+def test_export_member_must_be_an_object(tmp_path):
+    p = _export(tmp_path, {"sync_run_id": 641, "holdings": [
+        {"account": "schwab_taxable", "symbol": "AAA", "qty": 1, "market_value": 10.0}, 17]})
+    out = m.rows(conn_factory=lambda: (_ for _ in ()).throw(RuntimeError("db down")), export_path=p)
+    assert out["available"] is False and out["export"] == "member_not_object"
+    assert out["invalid_rows"] == [1] and "rows" not in out
+
+
+def test_unavailable_numeric_result_has_no_rows_key():
+    rows = {641: [_row(641, "schwab_taxable", "AAA", 10, 1200.0),
+                  _row(641, "schwab_taxable", "BAD", 1, math.inf)]}
+    out = m.rows(conn_factory=lambda: _conn(snapshots=rows))
+    assert out["available"] is False and out["reason"] == "snapshot_row_numeric_invalid"
+    assert "rows" not in out and out["invalid_rows"]
+
+
+def test_receipt_account_positions_must_match_the_snapshot():
+    accounts = {"schwab_taxable": {"positions": 1}, "schwab_roth_ira": {"positions": 5}}
+    out = m.rows(conn_factory=lambda: _conn(receipts={641: _receipt_detail(641, 3, accounts)}))
+    assert out["available"] is False and out["reason"] == "snapshot_account_positions_mismatch"
+    assert out["accounts"][0]["account"] == "schwab_roth_ira"
+
+
+def test_receipt_account_views_must_name_the_same_accounts():
+    accounts = {"schwab_taxable": {"positions": 1}}
+    r = _receipt_detail(641, 3, accounts, accounts_ok=["schwab_taxable", "schwab_roth_ira"])
+    out = m.rows(conn_factory=lambda: _conn(receipts={641: r}))
+    assert out["available"] is False and out["reason"] == "receipt_account_views_disagree"
+
+
+def test_zero_position_account_is_allowed():
+    accounts = {"schwab_taxable": {"positions": 1}, "schwab_roth_ira": {"positions": 1},
+                "empty_acct": {"positions": 0}}
+    out = m.rows(conn_factory=lambda: _conn(receipts={641: _receipt_detail(641, 3, accounts)}))
+    assert out["available"] is True and out["count"] == 3
+
+
+def test_default_export_is_step1_holdings_file():
+    assert m.default_export_path().as_posix().endswith("/data/portfolios/state/holdings.json")
+
+
+def test_account_labels_come_from_the_canonical_config():
+    assert m.label_for("schwab_roth_ira") == "schwab_roth"
+    assert m.label_for("schwab_rollover_ira") == "schwab_rollover"
+    assert m.label_for("schwab_taxable") == "schwab_individual"
+    assert m.label_for("tradeai_automated") == "alpaca_paper"

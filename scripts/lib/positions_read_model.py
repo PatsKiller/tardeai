@@ -31,12 +31,32 @@ from typing import Any, Optional
 
 SCHEMA = "PositionsReadModel@v1"
 
-#: One declaration, consumed by every view. The DB stores the broker account key; the
-#: holdings store and the value anchors use the shorter label.
-ACCOUNT_LABEL_MAP: dict[str, str] = {"schwab_roth_ira": "schwab_roth"}
+def _load_alias_map() -> dict[str, str]:
+    """Registry key -> the short label served readers use, from the ONE canonical declaration.
 
-#: The export lives under the persistent state root (Step 1's output), never a new store.
-DEFAULT_EXPORT_REL = Path("data/portfolios/state/holdings_export.json")
+    Step 1's exporter (`holdings_export.account_aliases`) reads the same config, so the DB path and the
+    export path label an account identically. Falls back to the Roth entry if the config is absent.
+    """
+    try:
+        cfg = json.loads(
+            (Path(__file__).resolve().parents[2] / "config" / "account_display_names.json")
+            .read_text(encoding="utf-8")
+        )
+        aliases = cfg.get("aliases") or {}
+        out = {str(registry): str(short) for short, registry in aliases.items() if short and registry}
+        return out or {"schwab_roth_ira": "schwab_roth"}
+    except (OSError, ValueError):
+        return {"schwab_roth_ira": "schwab_roth"}
+
+
+#: One declaration, consumed by every view. The DB stores the broker account key; the exporter and the
+#: holdings store serve the short label. Derived from `config/account_display_names.json` (2026-11-03
+#: review: the exporter emits all four aliases; hard-coding only the Roth split the two paths).
+ACCOUNT_LABEL_MAP: dict[str, str] = _load_alias_map()
+
+#: Step 1's exporter writes the generated backup as `holdings.json` in the served state root
+#: (`scripts/holdings_export.py` STORE_REL). The DB-down fallback reads that file, stamped.
+DEFAULT_EXPORT_REL = Path("data/portfolios/state/holdings.json")
 
 #: Cash is a row fact, not only an ``is_cash`` flag: the sync has written cash as a symbol.
 _CASH_SYMBOLS = {"CASH", "SPAXX", "FDRXX"}
@@ -46,8 +66,8 @@ _SNAPSHOT_COLS = (
     "broker_market_value", "is_cash", "asset_type", "source", "captured_at",
 )
 _RECEIPT_SQL = (
-    "select run_id,status,promoted,position_rows,started_at,finished_at,accounts_ok,accounts_failed "
-    "from positions_sync_runs where run_id=%s"
+    "select run_id,status,promoted,position_rows,started_at,finished_at,accounts_ok,accounts_failed,"
+    "accounts from positions_sync_runs where run_id=%s"
 )
 
 
@@ -156,6 +176,7 @@ def _resolve_run(cur, sync_run_id: Optional[int]):
         "position_rows": int(r[3] or 0), "started_at": _iso(r[4]), "finished_at": _iso(r[5]),
         "accounts_ok": list(r[6]) if isinstance(r[6], (list, tuple)) else r[6],
         "accounts_failed": r[7],
+        "accounts": r[8] if len(r) > 8 and isinstance(r[8], dict) else None,
     }
     if receipt["status"] != "complete" or not receipt["promoted"]:
         return None, _probe_unavailable(
@@ -171,6 +192,14 @@ def _resolve_run(cur, sync_run_id: Optional[int]):
         )
     if not isinstance(receipt["accounts_ok"], list) or not receipt["accounts_ok"]:
         return None, _probe_unavailable("run_has_no_account_coverage", sync_run_id=run)
+    detail = receipt["accounts"]
+    if detail is not None and set(detail) != set(receipt["accounts_ok"]):
+        # The two receipt views must name the same accounts. A run whose `accounts` detail and
+        # `accounts_ok` list disagree is a booking defect; refuse rather than pick one.
+        return None, _probe_unavailable(
+            "receipt_account_views_disagree", sync_run_id=run,
+            accounts_ok=sorted(receipt["accounts_ok"]), accounts_detail=sorted(detail),
+        )
     return run, receipt
 
 
@@ -197,15 +226,22 @@ def _from_export(export_path, reason: str, requested_sync_run_id: Optional[int] 
         run = rebuild.get("run") or rebuild.get("sync_run_id")
     if run is None:
         return _probe_unavailable(reason, export="no_sync_run_id", **stamp)
-    run = int(run)
+    try:
+        run = int(run)
+    except (TypeError, ValueError):
+        # A parseable export with a non-integer run id is corrupt. The fallback must never raise:
+        # 236 readers will call this path (2026-11-03 review F1).
+        return _probe_unavailable(reason, export="sync_run_id_invalid", raw_run_id=repr(run), **stamp)
     if requested_sync_run_id is not None and run != int(requested_sync_run_id):
         return _probe_unavailable(
             "export_run_mismatch", export_sync_run_id=run, **stamp,
         )
+    invalid = [i for i, r in enumerate(raw_rows) if not isinstance(r, dict)]
+    if invalid:
+        # A partly malformed export is not a partial book: drop nothing silently.
+        return _probe_unavailable(reason, export="member_not_object", invalid_rows=invalid[:10], **stamp)
     rows = []
     for r in raw_rows:
-        if not isinstance(r, dict):
-            continue
         key = r.get("account_key") or r.get("account")
         rows.append({
             "sync_run_id": run, "account_key": str(key or ""), "account": label_for(key),
@@ -225,7 +261,7 @@ def _from_export(export_path, reason: str, requested_sync_run_id: Optional[int] 
     bad = [{"account": x["account"], "symbol": x["symbol"], "fields": _numeric_problems(x)}
            for x in rows if _numeric_problems(x)]
     if bad:
-        return _probe_unavailable(reason, export="numeric_invalid", rows=bad[:10], **stamp)
+        return _probe_unavailable(reason, export="numeric_invalid", invalid_rows=bad[:10], **stamp)
     return {
         "schema": SCHEMA, "available": True, "source": "backup", "from_backup": True, "reason": reason,
         "sync_run_id": run, "as_of": source_doc.get("as_of") or document_as_of(source_doc),
@@ -297,10 +333,23 @@ def _snapshot(sync_run_id: Optional[int] = None, *, conn_factory=None, export_pa
             "snapshot_account_not_in_receipt", sync_run_id=run,
             missing_accounts=uncovered, receipt_accounts_ok=sorted(receipt_accounts),
         )
+    detail = receipt.get("accounts")
+    if detail:
+        # Both directions: the receipt's per-account position count must equal the snapshot's
+        # non-cash rows for that account (a zero-position account is legitimate and has no rows).
+        mismatched = []
+        for acct, info in detail.items():
+            expected = int((info or {}).get("positions") or 0)
+            actual = sum(1 for row in rows if str(row["account_key"]) == str(acct) and not row["is_cash"])
+            if expected != actual:
+                mismatched.append({"account": acct, "receipt_positions": expected, "snapshot_positions": actual})
+        if mismatched:
+            return _probe_unavailable("snapshot_account_positions_mismatch", sync_run_id=run,
+                                      accounts=mismatched[:10])
     bad = [(row["account_key"], row["symbol"], _numeric_problems(row))
            for row in rows if _numeric_problems(row)]
     if bad:
-        return _probe_unavailable("snapshot_row_numeric_invalid", sync_run_id=run, rows=bad[:10])
+        return _probe_unavailable("snapshot_row_numeric_invalid", sync_run_id=run, invalid_rows=bad[:10])
     for row in rows:
         row["account"] = label_for(row["account_key"])
         row["as_of"] = _iso(row.pop("captured_at", None))
