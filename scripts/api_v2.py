@@ -55108,8 +55108,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             # resource. Every other result is wrapped as data exactly as before. ``bool`` is a
             # subclass of ``int``, so it is excluded explicitly: a handler returning ``(True, x)``
             # must never emit status ``True``.
-            if (isinstance(result, tuple) and len(result) == 2 and isinstance(result[0], int)
-                    and not isinstance(result[0], bool)):
+            if (
+                isinstance(result, tuple)
+                and len(result) == 2
+                and isinstance(result[0], int)
+                and not isinstance(result[0], bool)
+            ):
                 return result
             return 200, {"ok": True, "data": result}
         except Exception as e:
