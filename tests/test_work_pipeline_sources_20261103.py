@@ -597,7 +597,7 @@ def test_stale_builder_blocker_uses_same_branch_owner_as_canonical_facts(tmp_pat
     builder = claim(claim_id=ident, session="builder", branch=pr()["branch"],
                     heartbeat_at="2026-11-01T01:00:00Z", worklog={"exists": True, "blockers": 1})
     reviewer = claim(claim_id="20261103T010000Z-codex-23456789", session="reviewer", branch="wt/review-other",
-                     worklog={"exists": True, "blockers": 0})
+                     pr=2501, heartbeat_at="2026-11-01T02:00:00Z", worklog={"exists": True, "blockers": 0})
     data = M.load(tmp_path, [pr()], [builder, reviewer], NOW, serving={"sha": SERVED})
     facts = data["by_pr"][2501]
     assert facts["owner"]["value"]["session"] == "builder"
