@@ -25,7 +25,7 @@ Fields: the exits of the cluster, `pre_exit_shares`, `residual_shares`, `pre_exi
 
 - **Residual is a displayed fact, never a silencer** (operator ruling 2026-11-03: "drop 'held' as a disqualifier… a
   residual is a FACT TO DISPLAY"). `policy.residual_display(pre_exit, residual, last_exit_date)` returns the percentage
-  and a plain sentence — `"200 of 1,400 shares remain after the 2026-10-30 exit (14.3%)"` — and nothing in the engine
+  and a plain sentence — `"200 of 1,400 shares remain after the 2026-10-30 exit (14.3%; pre_exit_shares from the fill ledger)"` — and nothing in the engine
   decides held/not-held. Every confirmed exit cluster opens a case; a 92% residual is shown exactly like a 0.2% one.
   Pre-exit is the shares held immediately before the **final** exit (shares sold in that exit + residual), not the sum of
   every exit.

@@ -154,7 +154,8 @@ def _scalar(value: str) -> Any:
 # Operator ruling, 2026-11-03: "drop 'held' as a disqualifier. A residual is a FACT TO DISPLAY, not a silencer."
 # No function here decides held/not-held; a case opens on the confirmed exit cluster regardless of what survived.
 def residual_display(pre_exit_shares: Optional[float], residual_shares: Optional[float],
-                     last_exit_date: Optional[str] = None) -> tuple[Optional[float], str]:
+                     last_exit_date: Optional[str] = None,
+                     source: str = "pre_exit_shares from the fill ledger") -> tuple[Optional[float], str]:
     """Return (percent of the pre-exit position that remains, plain-English note). Never a yes/no."""
     try:
         residual = float(residual_shares or 0.0)
@@ -172,7 +173,9 @@ def residual_display(pre_exit_shares: Optional[float], residual_shares: Optional
         return None, f"{residual:g} shares remain (pre-exit size unknown)"
     pct = round(100.0 * residual / pre_exit, 1)
     when = f" after the {last_exit_date} exit" if last_exit_date else ""
-    return pct, f"{_num(residual)} of {_num(pre_exit)} shares remain{when} ({pct:.1f}%)"
+    # The denominator and its source travel with the number. The share fraction is never mixed with a value
+    # fraction (weight_pct is a different axis), and no estimate is ever substituted for the fill-derived size.
+    return pct, f"{_num(residual)} of {_num(pre_exit)} shares remain{when} ({pct:.1f}%; {source})"
 
 
 def _num(value: float) -> str:

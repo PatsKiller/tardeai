@@ -73,13 +73,14 @@ def test_an_inverted_materiality_ladder_is_refused(tmp_path):
 def test_a_residual_is_reported_as_a_percentage_not_a_verdict(policy):
     pct, note = rp.residual_display(1400, 200, "2026-10-30")
     assert pct == 14.3
-    assert note == "200 of 1,400 shares remain after the 2026-10-30 exit (14.3%)"
+    assert note == ("200 of 1,400 shares remain after the 2026-10-30 exit "
+                    "(14.3%; pre_exit_shares from the fill ledger)")
     assert "held" not in note.lower()
 
 
 def test_a_large_residual_is_reported_the_same_way(policy):
     pct, note = rp.residual_display(1400, 1000, "2026-10-30")
-    assert pct == 71.4 and "1,000 of 1,400" in note
+    assert pct == 71.4 and "1,000 of 1,400" in note and "pre_exit_shares from the fill ledger" in note
     assert "held" not in note.lower()
 
 
@@ -266,3 +267,17 @@ def test_the_case_carries_no_sizing_decision(store):
     assert row.get("plan") is None
     for forbidden in ("size_to_restore", "order_qty", "shares_to_buy", "stop_price_target"):
         assert forbidden not in row
+
+
+# ── Residuals that must each open a case, named (operator ruling: the old 0.15 cliff is gone) ────────────────
+@pytest.mark.parametrize("residual,pre_exit,pct_in_name", [
+    (1.0, 500.0, 0.2),        # 0.2% — a fragment
+    (200.0, 1400.0, 14.3),    # 14.3% — SPCX, closest to the old cliff; the case must open
+    (1300.0, 1400.0, 92.9),   # 92.9% — almost everything survived; still opens
+])
+def test_every_residual_opens_a_case_named_by_its_percentage(store, residual, pre_exit, pct_in_name):
+    case = rc.consume_fills(store, _spcx_fills(), residual_shares=residual, pre_exit_shares=pre_exit,
+                            pre_exit_weight_pct=2.25, today=TODAY, now=NOW)
+    assert case.residual_pct_of_pre_exit == pytest.approx(pct_in_name, abs=0.1)
+    assert "pre_exit_shares from the fill ledger" in case.residual_note
+    assert case.state == "WATCHING" and case.case_key.startswith("SPCX::schwab_taxable::")
