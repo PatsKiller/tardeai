@@ -92,5 +92,23 @@ eq('an empty ledger is an empty list, not an error', historyRecords({ budget_pre
 check('a refusal never claims nothing was written', refusedText('BUDGET_SOURCE_CHANGED').includes('not proof'))
 check('an unknown code still says a refusal is not proof', refusedText('X').includes('not proof'))
 
+// E's REAL projected shape (cx4 review artifacts): the item carries the receipt and active flag, its nested
+// history events carry the request id and the composite binding. Reading only the item's top level finds no id.
+const projected = { budget_presentation_decisions: { complete: true, items: [{
+  scope_id: 'scope_synthetic_a', budget: 'single_sector_pct', breached: true, active: true,
+  intentional_until: '2032-04-12T14:05:00Z', actor: 'tailnet:fixture-operator@example.test', receipt: 'f'.repeat(64),
+  history: [{ event: 'BUDGET_PRESENTATION_DECISION', request_id: 'review2-actual-ui-body-001', scope_id: 'scope_synthetic_a',
+    budget: 'single_sector_pct', intentional_until: '2032-04-12T14:05:00Z',
+    source_binding: { as_of: '2032-04-12T13:59:00Z', sha256: 'f78f8000fb187028dabdbe57772470f4e4d6e202f044b26d54994d446f6bb050' } }] }] } }
+const projectedRecords = historyRecords(projected)
+eq('a projected decision is one record, not two', projectedRecords.length, 1)
+eq('the request id comes from the nested event', projectedRecords[0].requestId, 'review2-actual-ui-body-001')
+eq('the receipt comes from the item', projectedRecords[0].receipt, 'f'.repeat(64))
+eq('the active flag comes from the item', projectedRecords[0].active, true)
+const projectedPending = { ...preview, request_id: 'review2-actual-ui-body-001', scope_id: 'scope_synthetic_a', budget: 'single_sector_pct',
+  intentional_until: '2032-04-12T14:05:00Z', source_binding: { as_of: '2032-04-12T13:59:00Z', sha256: 'f78f8000fb187028dabdbe57772470f4e4d6e202f044b26d54994d446f6bb050' } } as any
+eq('an uncertain write reconciles against the projected shape', reconcile(projectedRecords, projectedPending)?.requestId, 'review2-actual-ui-body-001')
+check('and a different binding still does not match', reconcile(projectedRecords, { ...projectedPending, source_binding: { ...projectedPending.source_binding, sha256: OTHER } }) === null)
+
 console.log(`budgetIntent: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

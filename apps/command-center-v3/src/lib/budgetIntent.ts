@@ -188,33 +188,61 @@ export type DecisionRecord = {
   active: boolean
 }
 
-/** Every decision event a basis reply carries, active or inactive. An empty list is a fact, not a lack of data. */
+/**
+ * Every decision event a basis reply carries, active or inactive. An empty list is a fact, not a lack of data.
+ *
+ * E projects each budget as an ITEM whose own ``history`` array holds the ledger events — the request id and the
+ * composite binding live on those events, while the item carries the receipt and the active flag. A flattened list
+ * that reads only the item's top level would find no request id and could never reconcile an uncertain write, so both
+ * shapes are read here.
+ */
 export function historyRecords(data: unknown): DecisionRecord[] {
   const doc = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
   const ledger = (doc.budget_presentation_decisions && typeof doc.budget_presentation_decisions === 'object'
     ? doc.budget_presentation_decisions : {}) as Record<string, unknown>
-  const rows = [...(Array.isArray(ledger.items) ? ledger.items : []), ...(Array.isArray(ledger.history) ? ledger.history : [])]
-  const seen = new Set<string>()
+  const items = Array.isArray(ledger.items) ? ledger.items : []
+  const flat = Array.isArray(ledger.history) ? ledger.history : []
   const out: DecisionRecord[] = []
-  for (const row of rows) {
+  const seen = new Set<string>()
+
+  const push = (row: unknown, parent?: Record<string, unknown>) => {
     const r = (row && typeof row === 'object' ? row : {}) as Record<string, unknown>
-    const binding = (r.source_binding && typeof r.source_binding === 'object' ? r.source_binding : {}) as Record<string, unknown>
+    const p = parent ?? {}
+    const binding = (r.source_binding && typeof r.source_binding === 'object' ? r.source_binding
+      : p.source_binding && typeof p.source_binding === 'object' ? p.source_binding : {}) as Record<string, unknown>
     const id = typeof r.request_id === 'string' ? r.request_id : null
-    const key = `${id}|${String(r.hash_self ?? '')}`
-    if (seen.has(key)) continue
+    const receipt = typeof r.hash_self === 'string' ? r.hash_self : typeof r.receipt === 'string' ? r.receipt
+      : typeof p.receipt === 'string' ? p.receipt : null
+    const scope = typeof r.scope_id === 'string' ? r.scope_id : typeof p.scope_id === 'string' ? p.scope_id : null
+    const budget = typeof r.budget === 'string' ? r.budget : typeof p.budget === 'string' ? p.budget : null
+    const until = typeof r.intentional_until === 'string' ? r.intentional_until : typeof p.intentional_until === 'string' ? p.intentional_until : null
+    const key = `${id}|${receipt}|${scope}|${budget}|${until}`
+    if (seen.has(key)) return
     seen.add(key)
     out.push({
       requestId: id,
-      scopeId: typeof r.scope_id === 'string' ? r.scope_id : null,
-      budget: typeof r.budget === 'string' ? r.budget : null,
+      scopeId: scope,
+      budget,
       bindingSha: typeof binding.sha256 === 'string' ? binding.sha256 : null,
       bindingAsOf: typeof binding.as_of === 'string' ? binding.as_of : null,
-      intentionalUntil: typeof r.intentional_until === 'string' ? r.intentional_until : null,
-      receipt: typeof r.hash_self === 'string' ? r.hash_self : null,
-      active: r.active === true,
+      intentionalUntil: until,
+      receipt,
+      active: typeof r.active === 'boolean' ? r.active : p.active === true,
     })
   }
-  return out
+
+  for (const item of items) {
+    const row = (item && typeof item === 'object' ? item : {}) as Record<string, unknown>
+    const events = Array.isArray(row.history) ? row.history : []
+    // One decision must not be counted twice: when the item carries its ledger events, those are the records and the
+    // item is only their context (receipt, active flag). An item with no events is itself the record.
+    if (events.length) for (const event of events) push(event, row)
+    else push(item)
+  }
+  for (const event of flat) push(event)
+
+  // A record without any identity cannot be reconciled against; keep only rows that carry an id or a receipt.
+  return out.filter(r => r.requestId || r.receipt)
 }
 
 /** Did the pending request already land? Identity is the request id AND the payload it was bound to. */

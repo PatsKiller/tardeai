@@ -54,9 +54,10 @@ async function run(page, width, variant, plan) {
     if (url.pathname === '/api/v2/governance/budget-presentation') {
       seen.gets++
       const binding = plan.basisSha === 'changed' ? (seen.gets > 1 ? OTHER : SHA) : (plan.basisSha || SHA)
-      const history = seen.lastWrite ? [{ request_id: seen.lastWrite.request_id, scope_id: 'account:demo', budget: 'demo_taxable',
-        source_binding: { as_of: '2026-11-02T20:00:00Z', sha256: SHA }, intentional_until: seen.lastWrite.intentional_until,
-        hash_self: 'c'.repeat(64), active: false }] : []
+      const history = seen.lastWrite ? [{ scope_id: 'account:demo', budget: 'demo_taxable', breached: true, active: true,
+        intentional_until: seen.lastWrite.intentional_until, actor: 'tailnet:operator', receipt: 'c'.repeat(64),
+        history: [{ request_id: seen.lastWrite.request_id, scope_id: 'account:demo', budget: 'demo_taxable',
+          source_binding: { as_of: '2026-11-02T20:00:00Z', sha256: SHA }, intentional_until: seen.lastWrite.intentional_until }] }] : []
       if (plan.getUnavailable) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'SOURCE_UNAVAILABLE',
         data: { current: null, budget_presentation_decisions: { complete: false, items: [], history } } }) })
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, data: {

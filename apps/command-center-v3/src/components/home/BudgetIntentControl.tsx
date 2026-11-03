@@ -56,7 +56,7 @@ export default function BudgetIntentControl({ row, onRecorded }: { row: BudgetRo
     if (reply.outcome === 'unknown') throw new Error(networkOutcomeUnknown('Failed to fetch'))
     setHistory(historyRecords(reply.data))
     if (!reply.ok) {
-      if (reply.status === 503 || reply.code === 'SOURCE_UNAVAILABLE') {
+      if (reply.status === 503 || reply.code === 'SOURCE_UNAVAILABLE' || reply.code === 'BUDGET_SOURCE_UNAVAILABLE') {
         setBasisUnavailable(true)
         return { binding: null, breached: null, asOf: null, available: false }
       }
@@ -75,7 +75,7 @@ export default function BudgetIntentControl({ row, onRecorded }: { row: BudgetRo
       const reply = await presentationCall(basisUrl(String(row.scopeId), row.key))
       const records = historyRecords(reply.data)
       setHistory(records)
-      setBasisUnavailable(!reply.ok && (reply.status === 503 || reply.code === 'SOURCE_UNAVAILABLE'))
+      setBasisUnavailable(!reply.ok && (reply.status === 503 || reply.code === 'SOURCE_UNAVAILABLE' || reply.code === 'BUDGET_SOURCE_UNAVAILABLE'))
       const found = reconcile(records, pending)
       if (found) {
         setDone({ actor: 'an earlier request', until: found.intentionalUntil, receipt: found.receipt ? found.receipt.slice(0, 12) : null })
