@@ -35,6 +35,11 @@ OFFSET_FILE = PROJECT_ROOT / "data" / "portfolios" / "state" / ".telegram_callba
 #: so the EXISTING loop appends the plain-text message here instead, with its message id and timestamps.
 #: Override with TRADEAI_OPERATOR_REPLIES_DIR (tests); otherwise resolved under the persistent root.
 OPERATOR_REPLIES_REL = "data/coordination/coordinator/inbox/cc-deepseek-7/operator-replies"
+#: Durable at-least-once queue for a reply whose inbox append failed (cx-openai-4 R2). A reply that cannot
+#: be written to the inbox is queued here BEFORE the update checkpoint advances, then flushed into the inbox
+#: on a later poll; if even the queue cannot be written the checkpoint is not advanced and Telegram
+#: redelivers the update.
+OPERATOR_REPLIES_PENDING_REL = "data/runtime/operator_replies_pending.jsonl"
 
 #: Phase 8 activation — when truthy, inbound goes through
 #: ``process_update_atomically`` (checkpoint only after event+turn+receipt).
@@ -160,37 +165,107 @@ def _operator_replies_dir() -> Path:
         return PROJECT_ROOT / OPERATOR_REPLIES_REL
 
 
+def _operator_replies_pending_path() -> Path:
+    override = os.environ.get("TRADEAI_OPERATOR_REPLIES_PENDING", "").strip()
+    if override:
+        return Path(override)
+    try:
+        from scripts.lib.persistent_state_root import resolve_durable_dir
+
+        return resolve_durable_dir(OPERATOR_REPLIES_PENDING_REL, PROJECT_ROOT)
+    except Exception:  # noqa: BLE001
+        return PROJECT_ROOT / OPERATOR_REPLIES_PENDING_REL
+
+
+def _append_private(path: Path, line: str) -> None:
+    """Append one line, creating the file 0600. Raises on failure so the caller can queue/refuse."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    with os.fdopen(fd, "a", encoding="utf-8") as fh:
+        fh.write(line)
+
+
 def _record_operator_reply(msg: dict, text: str, chat_id: str, *, replies_dir=None,
-                           allowed=None) -> bool:
+                           allowed=None, chat_type=None, sender_id=None,
+                           pending_path=None) -> str:
     """Append one plain-text operator message to the coordinator inbox; never raise.
 
-    One JSON line per message: ``message_id``, the Telegram ``date``, ``recorded_at`` (UTC ISO),
-    ``chat_id`` and the text. Append-only and 0600 on create, so a coordinator reads the transcript
-    in order and no other user can read it. ``allowed`` is defence in depth: the loop already
-    filters before calling, and a chat outside it is refused here too.
+    Returns a status: ``recorded`` | ``queued`` | ``refused_room`` | ``refused_sender`` |
+    ``refused_chat`` | ``blank`` | ``failed``.
+
+    Two defects cx-openai-4 found on 2026-11-03 shaped this:
+
+    * **The room is not the operator (R1).** Being in the allowlisted chat used to be enough, so any member
+      of an allowed supergroup could type as the operator. The reply path now requires a PRIVATE chat whose
+      ``from.id`` equals the chat id — an unknown or group sender is refused, never recorded.
+    * **A failed write must not lose the reply (R2).** The caller commits the update checkpoint only after
+      this returns; on an inbox failure the record goes to a durable pending queue and is flushed later. If
+      even that fails the status is ``failed`` and the caller must NOT advance the checkpoint, so Telegram
+      redelivers the update.
+
+    One JSON line per message: ``message_id``, the Telegram ``date``, ``recorded_at`` (UTC ISO), ``chat_id``,
+    ``sender_id`` and the text. Append-only and 0600 on create.
     """
-    if not text or not str(text).strip() or (allowed is not None and chat_id not in allowed):
-        return False
+    if not text or not str(text).strip():
+        return "blank"
+    if allowed is not None and str(chat_id) not in {str(c) for c in allowed}:
+        return "refused_chat"
+    if str(chat_type or "").strip().lower() != "private":
+        log.warning(f"operator reply refused: chat {chat_id} is not a private chat (type={chat_type!r})")
+        return "refused_room"
+    if sender_id is None or str(sender_id) != str(chat_id):
+        log.warning(f"operator reply refused: sender {sender_id!r} is not the operator chat {chat_id}")
+        return "refused_sender"
+    record = {"message_id": msg.get("message_id"), "date": msg.get("date"),
+              "recorded_at": datetime.now(timezone.utc).isoformat(),
+              "chat_id": chat_id, "sender_id": str(sender_id), "text": text}
+    line = json.dumps(record, ensure_ascii=False) + "\n"
     try:
         directory = Path(replies_dir) if replies_dir is not None else _operator_replies_dir()
-        directory.mkdir(parents=True, exist_ok=True)
-        record = {"message_id": msg.get("message_id"), "date": msg.get("date"),
-                  "recorded_at": datetime.now(timezone.utc).isoformat(),
-                  "chat_id": chat_id, "text": text}
-        fd = os.open(directory / "telegram.jsonl",
-                     os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
-        with os.fdopen(fd, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+        _append_private(directory / "telegram.jsonl", line)
         log.info(f"operator reply recorded: {text[:40]} from chat={chat_id}")
-        return True
-    except Exception as exc:  # noqa: BLE001 — an inbox fault must never stall the poll loop
-        log.warning(f"operator reply not recorded: {exc}")
-        return False
+        return "recorded"
+    except Exception as exc:  # noqa: BLE001 — the inbox fault must not lose the reply
+        log.warning(f"operator reply inbox write failed ({exc}); queueing durably")
+    try:
+        queue = Path(pending_path) if pending_path is not None else _operator_replies_pending_path()
+        _append_private(queue, line)
+        log.warning(f"operator reply queued for flush: {text[:40]} from chat={chat_id}")
+        return "queued"
+    except Exception as exc:  # noqa: BLE001
+        log.error(f"operator reply neither recorded nor queued: {exc}")
+        return "failed"
+
+
+def _flush_operator_replies(*, replies_dir=None, pending_path=None) -> int:
+    """Move queued replies into the inbox. At-least-once: the queue is truncated only after the append."""
+    queue = Path(pending_path) if pending_path is not None else _operator_replies_pending_path()
+    try:
+        lines = [line for line in queue.read_text(encoding="utf-8").splitlines() if line.strip()]
+    except OSError:
+        return 0
+    if not lines:
+        return 0
+    directory = Path(replies_dir) if replies_dir is not None else _operator_replies_dir()
+    try:
+        _append_private(directory / "telegram.jsonl", "\n".join(lines) + "\n")
+    except Exception as exc:  # noqa: BLE001 — still not writable; keep the queue for the next poll
+        log.warning(f"operator reply flush deferred: {exc}")
+        return 0
+    try:
+        queue.write_text("", encoding="utf-8")
+    except OSError as exc:  # a crash here re-delivers the same lines; message_id keeps them identifiable
+        log.warning(f"operator reply queue not cleared after flush: {exc}")
+    log.info(f"operator replies flushed from the durable queue: {len(lines)}")
+    return len(lines)
 
 
 def poll_once(timeout=25):
     """Single long-poll iteration. Returns number of updates processed."""
-    import urllib.request
+    try:
+        _flush_operator_replies()
+    except Exception as exc:  # noqa: BLE001 — a flush fault never stalls the poll
+        log.warning(f"operator reply flush error: {exc}")
 
     token = _token()
     if not token:
@@ -270,12 +345,15 @@ def poll_once(timeout=25):
                     pass
                 continue
         else:
-            _save_offset(uid)
             used_atomic = False
 
         def _commit_if_legacy():
-            # Atomic path already committed inside process_update_atomically.
-            if inbound is not None and not used_atomic:
+            # Atomic path already committed inside process_update_atomically. Without the inbound
+            # machinery the durable checkpoint IS the offset file, so it must advance here — never
+            # before the operator reply has been recorded or queued (cx-openai-4 R2).
+            if inbound is None:
+                _save_offset(uid)
+            elif not used_atomic:
                 inbound["commit_checkpoint"](uid)
 
         # Handle callback queries (inline button presses)
@@ -390,6 +468,21 @@ def poll_once(timeout=25):
             except Exception as e:
                 log.error(f"schwab callback error: {e}")
 
+        # Free text nobody routed: record/queue the operator's reply BEFORE the checkpoint commits.
+        # cx-openai-4 (2026-11-03) proved the old order lost a reply permanently: the checkpoint had
+        # advanced, the inbox append failed, and the update was never redelivered. The same rule the
+        # inbound-persist path already applies (do not advance on a failed durable write) now governs
+        # this one: a reply that is neither recorded nor queued does not get its update committed.
+        reply_status = None
+        if not handled:
+            reply_status = _record_operator_reply(
+                msg, text, chat_id, allowed=allowed,
+                chat_type=(msg.get("chat") or {}).get("type"),
+                sender_id=(msg.get("from") or {}).get("id"))
+        if reply_status == "failed":
+            log.error(f"operator reply lost neither recorded nor queued; not advancing checkpoint for {uid}")
+            continue
+
         # Legacy path: inbound event is persisted; advance the durable
         # checkpoint so a crash or replayed poll does not re-deliver.
         # Atomic path already committed inside process_update_atomically.
@@ -397,14 +490,10 @@ def poll_once(timeout=25):
 
         # Free text nobody routed. Until now this fell off the end of the loop:
         # the message was persisted, bound to a subject and receipted, and the
-        # operator got silence. Placed AFTER the checkpoint commit on purpose --
-        # the atomic path committed inside process_update_atomically and the
-        # legacy path commits just above, so an answer that fails to compose can
-        # neither lose the message nor cause it to be redelivered.
+        # operator got silence. The checkpoint is committed just above, so an
+        # answer that fails to compose can neither lose the message nor cause it
+        # to be redelivered.
         if not handled:
-            # Operator request #7: the coordinator must see what the operator types. Recorded before
-            # the CIO responder runs, so an answer that fails to compose cannot lose the message.
-            _record_operator_reply(msg, text, chat_id, allowed=allowed)
             try:
                 from scripts.lib import cio_poller_reply
 
