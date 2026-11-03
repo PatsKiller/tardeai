@@ -440,7 +440,7 @@ def mint_and_notify(
 
 
 def pr_check_rollup_green(pr_number: int, *, repo: str = DEFAULT_REPO) -> tuple[bool, dict[str, str]]:
-    """(every non-skipped check on the head is green, {check: conclusion}).
+    """(required checks completed SUCCESS and every executed check green, {check: conclusion}).
 
     Every check counts, not only branch protection's required four: #2465 merged with `secret-scan`
     red on four heads because every merge path read only the required list. A missing required check
@@ -465,7 +465,7 @@ def pr_check_rollup_green(pr_number: int, *, repo: str = DEFAULT_REPO) -> tuple[
     statuses = {row["name"]: (row["conclusion"].upper() or "PENDING") for row in run_rows}
     if not run_rows:
         return False, {c: "UNKNOWN" for c in REQUIRED_CHECKS}
-    result = pacg.evaluate_rollup(rollup)
+    result = pacg.evaluate_merge_rollup(rollup, required=REQUIRED_CHECKS)
     missing = [c for c in REQUIRED_CHECKS if c not in statuses]
     for c in missing:
         statuses[c] = "MISSING"
