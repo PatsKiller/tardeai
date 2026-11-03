@@ -1292,6 +1292,24 @@ def send_telegram_with_id(
     }
 
 
+def _recovery_document_settle(caption: str, delivered: bool) -> None:
+    """Settle the recovery T1 claim a DIRECT document send took at its gate (cx3 R6-F2).
+
+    A document caption carrying the marker consumes the case-day at ``should_send_telegram(...,
+    consume=True)``, so every completion — success, transport False, an early return or an exception —
+    must settle it: delivered on a confirmed send, released otherwise. Without this the claim was
+    taken and never answered, so the corrected retry was deduped and never reached the sender.
+    """
+    try:
+        import telegram_alert_router as _router_mod
+        marker = getattr(_router_mod, "RECOVERY_T1_MARKER", "")
+        if marker and marker in caption:
+            (_router_mod.recovery_t1_mark_delivered(caption) if delivered
+             else _router_mod.recovery_t1_release(caption))
+    except Exception as ack_exc:  # an ack fault must not change the send outcome
+        print(f"[telegram] recovery T1 document ack failed: {type(ack_exc).__name__}")
+
+
 def send_telegram_document(
     file_path: str,
     caption: str = "",
@@ -1335,10 +1353,14 @@ def send_telegram_document(
     except Exception:
         pass
     _LAST_INTENT_ROUTE.clear()
+    # Prerequisites BEFORE any claim (cx3 R6-F2): an unconfigured install must not spend the day at
+    # the gate and then return without a sender, which is what made the corrected retry invisible.
+    token = _token()
+    targets = chat_ids or _chat_ids()
+    if not token or not targets:
+        print("[telegram] document skipped — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set")
+        return False
     if priority:
-        if not _token() or not (chat_ids or _chat_ids()):
-            print("[telegram] document skipped — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set")
-            return False
         sent = _intent_send(
             cap, priority,
             lambda: send_telegram_document(str(path), caption=cap, bypass_router=True, chat_ids=chat_ids,
@@ -1348,7 +1370,8 @@ def send_telegram_document(
     if not bypass_router:
         try:
             from telegram_alert_router import should_send_telegram, mark_sent, classify_alert
-            # Direct delivery follows this gate, so it owns the recovery T1 claim (cc5 P1).
+            # Direct delivery follows this gate, so it owns the recovery T1 claim (cc5 P1); every
+            # exit below settles it (cx3 R6-F2).
             if not should_send_telegram(cap, consume=True):
                 level = classify_alert(cap)
                 print(f"[telegram] document suppressed ({level}): {cap[:60]}...")
@@ -1356,49 +1379,50 @@ def send_telegram_document(
             mark_sent(cap)
         except ImportError:
             pass
-    token = _token()
-    targets = chat_ids or _chat_ids()
-    if not token or not targets:
-        print("[telegram] document skipped — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set")
-        return False
 
-    mc = (message_class or "operator_alert").strip() or "operator_alert"
-    # Optional CANARY chat filter when gateway owns the class.
-    if _comms_gateway_owns(mc):
-        try:
-            from scripts.lib.comms.channel_adapters import _telegram_canary_chats
-            from scripts.lib.comms.mode import MODE_CANARY, get_gateway_mode
-        except ImportError:
-            from lib.comms.channel_adapters import _telegram_canary_chats  # type: ignore
-            from lib.comms.mode import MODE_CANARY, get_gateway_mode  # type: ignore
-        if get_gateway_mode(refresh=True) == MODE_CANARY:
-            allow = _telegram_canary_chats()
-            if allow:
-                targets = [c for c in targets if c in allow]
-                if not targets:
-                    print("[telegram] document blocked — no chat in COMMS_GATEWAY_CANARY_CHATS")
-                    return False
-
-    ok = True
-    for cid in targets:
-        result = send_document(token=token, chat_id=cid, file_path=str(path), caption=cap)
-        if not result.get("ok"):
-            print(f"[telegram] document error to {cid}: {result.get('status_code')}")
-            ok = False
     try:
-        from report_capture import capture
-        capture(cap, ok=ok, channel="telegram_document")
+        mc = (message_class or "operator_alert").strip() or "operator_alert"
+        # Optional CANARY chat filter when gateway owns the class.
+        if _comms_gateway_owns(mc):
+            try:
+                from scripts.lib.comms.channel_adapters import _telegram_canary_chats
+                from scripts.lib.comms.mode import MODE_CANARY, get_gateway_mode
+            except ImportError:
+                from lib.comms.channel_adapters import _telegram_canary_chats  # type: ignore
+                from lib.comms.mode import MODE_CANARY, get_gateway_mode  # type: ignore
+            if get_gateway_mode(refresh=True) == MODE_CANARY:
+                allow = _telegram_canary_chats()
+                if allow:
+                    targets = [c for c in targets if c in allow]
+                    if not targets:
+                        print("[telegram] document blocked — no chat in COMMS_GATEWAY_CANARY_CHATS")
+                        _recovery_document_settle(cap, False)
+                        return False
+
+        ok = True
+        for cid in targets:
+            result = send_document(token=token, chat_id=cid, file_path=str(path), caption=cap)
+            if not result.get("ok"):
+                print(f"[telegram] document error to {cid}: {result.get('status_code')}")
+                ok = False
+        try:
+            from report_capture import capture
+            capture(cap, ok=ok, channel="telegram_document")
+        except Exception:
+            pass
+        # Ledger: best-effort for documents (gateway does not yet own file bytes),
+        # but the OUTCOME is still known — `ok` is False whenever any target errored,
+        # a few lines above. Publishing without it settled every document row
+        # LEGACY_DELIVERED including failed sends.
+        _best_effort_comms_publish(
+            cap, message_class=mc, producer="telegram_alert.send_telegram_document",
+            delivered=bool(ok),
+        )
+        _recovery_document_settle(cap, bool(ok))
+        return ok
     except Exception:
-        pass
-    # Ledger: best-effort for documents (gateway does not yet own file bytes),
-    # but the OUTCOME is still known — `ok` is False whenever any target errored,
-    # a few lines above. Publishing without it settled every document row
-    # LEGACY_DELIVERED including failed sends.
-    _best_effort_comms_publish(
-        cap, message_class=mc, producer="telegram_alert.send_telegram_document",
-        delivered=bool(ok),
-    )
-    return ok
+        _recovery_document_settle(cap, False)
+        raise
 
 
 def build_telegram_message(

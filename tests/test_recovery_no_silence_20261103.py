@@ -437,6 +437,121 @@ def test_a_resumed_claim_cannot_repage_after_a_peer_delivered(monkeypatch, tmp_p
         proc.join(20)
 
 
+# ── R6 (cx3, 2026-11-03): stale-reclamation generation race and the unpaired document claim ──────────
+
+def test_a_stale_reclaimer_cannot_steal_a_peer_fresh_lock(monkeypatch, tmp_path):
+    """cx3 R6-F1: two processes both see the OLD stale lock; exactly one may deliver.
+
+    A reaches the stale rename and pauses. B, which cached the same stale observation, must not
+    rename A's fresh lock and claim too. Both drive the REAL _intent_send path, so the metric is
+    actual sender invocations: one at this head, two before the reclamation guard existed.
+    """
+    import json as _json
+    import multiprocessing as mp
+    import os as _os
+    import time as _time
+
+    import telegram_alert as ta
+    ctx = mp.get_context("fork")
+    msg = rn.build_message(_case(case_id="spcx-stale-race"))
+    lock = router._recovery_claim_lock(router._budget_day(), router._recovery_case_key(msg))
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_text(_json.dumps({"pid": 424242, "owner": "crashed", "at": 0}))
+    old = _time.time() - router._RECOVERY_T1_CLAIM_STALE_SECONDS - 600
+    _os.utime(lock, (old, old))
+    sends = tmp_path / "sends.txt"
+    monkeypatch.setattr(router, "record_intent_receipt", lambda *a, **k: None)
+    monkeypatch.setattr(router, "mark_intent_sent", lambda *a, **k: None)
+
+    def _sender(message, **kwargs):                      # a counting spy, shared across processes
+        with open(sends, "a", encoding="utf-8") as fh:
+            fh.write(f"{_os.getpid()}\n")
+        return True
+
+    q = ctx.Queue()
+    resume = ctx.Event()
+
+    def peer_a(seed):
+        real_rename = _os.rename
+
+        def slow_rename(src, dst):
+            if ".stale." in str(dst):
+                seed.put("a-at-rename")
+                resume.wait(20)
+            return real_rename(src, dst)
+
+        _os.rename = slow_rename
+        seed.put(("a", bool(ta._intent_send(msg, "P1", lambda: _sender(msg), dedupe_minutes=0))))
+
+    proc = ctx.Process(target=peer_a, args=(q,))
+    proc.start()
+    try:
+        assert q.get(timeout=20) == "a-at-rename"
+        b = ta._intent_send(msg, "P1", lambda: _sender(msg), dedupe_minutes=0)
+        resume.set()
+        a = q.get(timeout=20)
+    finally:
+        resume.set()
+        proc.join(20)
+    assert (a[1], bool(b)) == (True, False), "a stale reclaimer and its peer both delivered"
+    assert len(sends.read_text(encoding="utf-8").splitlines()) == 1
+
+
+def _document_env(monkeypatch, tmp_path, *, token="tok", ok=True):
+    import telegram_alert as ta
+    sent: list = []
+
+    def _send_document(**kwargs):
+        sent.append(kwargs)
+        return {"ok": ok, "status_code": 200 if ok else 500}
+
+    monkeypatch.setattr(ta, "_enabled", lambda: True)
+    monkeypatch.setattr(ta, "_token", lambda: token)
+    monkeypatch.setattr(ta, "_chat_ids", lambda: ["1"])
+    monkeypatch.setattr(ta, "send_document", _send_document)
+    monkeypatch.setattr(ta, "_comms_gateway_owns", lambda mc: False)
+    monkeypatch.setattr(ta, "_best_effort_comms_publish", lambda *a, **k: None)
+    monkeypatch.setattr(ta, "reset_last_message_ids", lambda: None)
+    monkeypatch.setattr(router, "mark_sent", lambda *a, **k: None)
+    monkeypatch.setitem(sys.modules, "report_capture", types.SimpleNamespace(capture=lambda *a, **k: None))
+    path = tmp_path / "doc.txt"
+    path.write_text("x", encoding="utf-8")
+    return ta, sent, path
+
+
+def test_a_document_caption_settles_its_claim_on_success(monkeypatch, tmp_path):
+    """cx3 R6-F2: a direct document send confirms delivery, so the day is consumed exactly once."""
+    ta, sent, path = _document_env(monkeypatch, tmp_path)
+    msg = rn.build_message(_case(case_id="spcx-doc-ok"))
+    assert ta.send_telegram_document(str(path), caption=msg, bypass_router=False) is True
+    assert len(sent) == 1
+    assert router.recovery_t1_state(msg) == "delivered"
+    assert ta.send_telegram_document(str(path), caption=msg, bypass_router=False) is False
+    assert len(sent) == 1                              # the retry does not reach the transport
+
+
+def test_an_unconfigured_document_does_not_spend_the_day(monkeypatch, tmp_path):
+    """cx3 R6-F2: prerequisites are checked BEFORE the claim, so a corrected retry still sends."""
+    ta, sent, path = _document_env(monkeypatch, tmp_path, token=None)
+    msg = rn.build_message(_case(case_id="spcx-doc-unconfigured"))
+    assert ta.send_telegram_document(str(path), caption=msg, bypass_router=False) is False
+    assert sent == [] and router.recovery_t1_state(msg) == "absent"
+    monkeypatch.setattr(ta, "_token", lambda: "tok")
+    assert ta.send_telegram_document(str(path), caption=msg, bypass_router=False) is True
+    assert len(sent) == 1 and router.recovery_t1_state(msg) == "delivered"
+
+
+def test_a_failed_document_releases_the_claim_for_the_retry(monkeypatch, tmp_path):
+    """cx3 R6-F2: a transport failure releases the claim; the corrected retry is not deduped."""
+    ta, sent, path = _document_env(monkeypatch, tmp_path, ok=False)
+    msg = rn.build_message(_case(case_id="spcx-doc-fail"))
+    assert ta.send_telegram_document(str(path), caption=msg, bypass_router=False) is False
+    assert len(sent) == 1 and router.recovery_t1_state(msg) == "released"
+    monkeypatch.setattr(ta, "send_document", lambda **kw: {"ok": True})
+    assert ta.send_telegram_document(str(path), caption=msg, bypass_router=False) is True
+    assert router.recovery_t1_state(msg) == "delivered"
+
+
 def test_a_release_cannot_reopen_another_claimants_case(monkeypatch, tmp_path):
     """cx3 R5-F2: release is bound to ownership; a process without the claim cannot free it."""
     msg = rn.build_message(_case(case_id="spcx-owner"))
