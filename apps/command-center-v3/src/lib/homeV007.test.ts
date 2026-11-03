@@ -52,6 +52,15 @@ const mismatch = parseHomeV007({ symbols: { X: { quote: { state: 'ok', session_d
 eq('wrong-session quote is unknown', mismatch.symbols[0].quote.state, 'unknown')
 check('and names both sessions', (mismatch.symbols[0].quote.reason ?? '').includes('2026-10-30'))
 
+// The data owner's rule: expected_session_date comes from the canonical calendar even when the reader fails.
+const expectedOnly = parseHomeV007({ symbols: { X: { quote: { state: 'measured', expected_session_date: '2026-11-02', value: { price: 10 } } } } })
+eq('an expected session with no quote session is not a mismatch', expectedOnly.symbols[0].quote.state, 'measured')
+eq('and keeps its price', expectedOnly.symbols[0].quote.price, 10)
+const unknownMismatch = parseHomeV007({ symbols: { X: { quote: { state: 'unknown', reason: 'reader failed', session_date: '2026-10-30', expected_session_date: '2026-11-02' } } } })
+eq('an unknown quote stays unknown', unknownMismatch.symbols[0].quote.state, 'unknown')
+eq('and keeps its own reason rather than the session one', unknownMismatch.symbols[0].quote.reason, 'reader failed')
+eq('with no price invented', unknownMismatch.symbols[0].quote.price, null)
+
 const missing = parseHomeV007({ symbols: { X: { quote: { state: 'missing', reason: 'no canonical quote', remediation: 'wait for the reader' } } } })
 eq('missing has no price', missing.symbols[0].quote.price, null)
 eq('missing keeps the reason', missing.symbols[0].quote.reason, 'no canonical quote')

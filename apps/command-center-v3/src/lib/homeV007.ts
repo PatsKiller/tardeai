@@ -100,10 +100,13 @@ function quote(base: Record<string, unknown> | null): QuoteLine {
   const sessionDate = str(q?.session_date)
   const expected = str(q?.expected_session_date)
   const mismatched = !!(sessionDate && expected && sessionDate !== expected)
+  // Only the measured-and-stale-case is ours to downgrade: an unknown fact keeps its own reason, which says more
+  // than the session mismatch does.
+  const downgrade = mismatched && f.state === 'measured'
   return {
     ...f,
-    state: mismatched && f.state === 'measured' ? 'unknown' : f.state,
-    reason: mismatched ? `quote belongs to session ${sessionDate}, expected ${expected}` : f.reason,
+    state: downgrade ? 'unknown' : f.state,
+    reason: downgrade ? `quote belongs to session ${sessionDate}, expected ${expected}` : f.reason,
     price: num(value?.price) ?? num(q?.value),
     session: str(q?.session),
     sessionDate,
