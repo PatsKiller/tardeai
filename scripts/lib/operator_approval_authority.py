@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 REPOSITORY = "PatsKiller/tardeai"
-CANONICAL_REPOSITORY = Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild")
+CANONICAL_REPOSITORY = Path(pwd.getpwuid(os.getuid()).pw_dir) / "trade-ai-v12-rebuild" / "trade-ai-v12-rebuild"
 MAX_SOURCE_BYTES = 2_000_000
 MAX_COMMENT_PAGES = 10
 MAX_PATHS = 6000

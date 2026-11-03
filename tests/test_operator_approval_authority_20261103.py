@@ -20,6 +20,20 @@ NOW = datetime(2032, 4, 12, 14, tzinfo=timezone.utc)
 MAIN, HEAD, REVIEWED = "a" * 40, "b" * 40, "c" * 40
 
 
+def test_canonical_repository_uses_uid_home_even_when_home_is_spoofed(monkeypatch):
+    import os
+    import pwd
+
+    monkeypatch.setenv("HOME", "/tmp/synthetic-env-home")
+    monkeypatch.setattr(pwd, "getpwuid", lambda uid: SimpleNamespace(pw_dir="/tmp/synthetic-uid-home"))
+    spec = importlib.util.spec_from_file_location("operator_approval_uid_home_tested", PATH)
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, spec.name, module)
+    spec.loader.exec_module(module)
+    assert os.environ["HOME"] == "/tmp/synthetic-env-home"
+    assert module.CANONICAL_REPOSITORY == Path("/tmp/synthetic-uid-home/trade-ai-v12-rebuild/trade-ai-v12-rebuild")
+
+
 class FakeGuard:
     SCHEMA = "AgentStandingAuthority@v1"
 
