@@ -2066,6 +2066,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/N8N_PROMOTION_READINESS_2026-10-22.md` | n8n promotion readiness — 2026-10-22 |
 | `docs/ops/N8N_RELAY_LIVE_LANES_REGISTRY.md` | n8n relay live lanes — derived from the lane registry (AGENTS.md 20.4.0) |
 | `docs/ops/NIGHTLY_SECURITY_SCAN.md` | Free security scanning that replaces CodeQL |
+| `docs/ops/NUDGER_N8N_MIGRATION_PROPOSAL_20261103.md` | Nudger → n8n migration — reviewed proposal (2026-11-03) |
 | `docs/ops/OPERATOR_ACTION_REQUIRED.md` | OPERATOR_ACTION_REQUIRED — live advisory notification canary |
 | `docs/ops/OPERATOR_CLOSE_BRIEF_AEC_MATURITY_2026-09-20.md` | Operator close brief — Trade AI AEC maturity goal |
 | `docs/ops/OPERATOR_DEPLOYMENT_REQUIRED.md` | OPERATOR_DEPLOYMENT_REQUIRED |

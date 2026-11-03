@@ -249,6 +249,12 @@ eq('MERGE + explicit UNKNOWN stays UNKNOWN', rv9([{ verdict: 'MERGE', reviewer: 
 eq('BLOCK + unrecognised is still blocked', rv9([{ verdict: 'BLOCK', reviewer: 'a' }, { verdict: 'MAYBE', reviewer: 'b' }]).state, 'CHANGES')
 eq('a backend UNKNOWN is never upgraded to MERGE', rv9([{ verdict: 'MERGE', reviewer: 'a' }], 'UNKNOWN').state, 'UNKNOWN')
 eq('a backend BLOCK is never overridden by merge records', rv9([{ verdict: 'MERGE', reviewer: 'a' }], 'BLOCK').state, 'CHANGES')
+// A state-only review (no records) must use the same vocabulary — found on the served bundle 2026-11-03.
+eq('state-only BLOCK is blocked, not unrecognised', normalizeReview({ state: 'BLOCK', head_sha: HEAD }, HEAD).state, 'CHANGES')
+eq('state-only APPROVE is passed', normalizeReview({ state: 'APPROVE', head_sha: HEAD }, HEAD).state, 'MERGE')
+eq('state-only CHANGES_REQUESTED is blocked', normalizeReview({ state: 'CHANGES_REQUESTED', head_sha: HEAD }, HEAD).state, 'CHANGES')
+eq('state-only nonsense stays UNKNOWN', normalizeReview({ state: 'PROBABLY', head_sha: HEAD }, HEAD).state, 'UNKNOWN')
+check('state-only BLOCK never reads as passed', reviewLabel(normalizeReview({ state: 'BLOCK', head_sha: HEAD }, HEAD)).text.startsWith('REVIEW · blocked'))
 
 // A contradictory envelope: the envelope names another head while its members name this one.
 const contra = normalizeReview({ state: 'MERGE', head_sha: OLD, records: [{ verdict: 'MERGE', reviewer: 'a', head_sha: HEAD }] }, HEAD)
@@ -316,6 +322,56 @@ eq('operator_actions survives normalization', withActions.operator_actions?.elig
 eq('withheld survives normalization', withActions.operator_actions?.withheld?.[0]?.why, 'no label')
 eq('a row with no actions normalizes to null', normalizeRow({ number: 8, head_sha: HEAD }).operator_actions, null)
 eq('an unknown action word is dropped', normalizeRow({ number: 9, head_sha: HEAD, operator_actions: { required: false, eligible: ['nuke'], reason: null } }).operator_actions?.eligible.length, 0)
+// ---- cx-openai-4's three P1s on #2517 (2026-11-03): each was a PASS displayed where the truth is unknown or blocked.
+// R3: clocks compared as text let an older MERGE beat a newer BLOCK.
+const r3 = normalizeReview({ head_sha: HEAD, source: 'ledger', verdicts: [
+  { verdict: 'MERGE', reviewer: 'cc2', head_sha: HEAD, as_of: '2026-11-03T12:00:00Z' },
+  { verdict: 'BLOCK', reviewer: 'cc2', head_sha: HEAD, as_of: '2026-11-03T12:00:00.900Z' },
+] }, HEAD)
+eq('R3 a sub-second-newer BLOCK beats an older MERGE', r3.state, 'CHANGES')
+
+// R2: an explicit source gap cannot be discarded once records parse.
+const r2 = normalizeReview({ head_sha: HEAD, source: 'ledger', source_gap: 'stale_review_for_other_head', verdicts: [
+  { verdict: 'MERGE', reviewer: 'cc2', head_sha: HEAD, as_of: '2026-11-03T12:00:00Z' },
+] }, HEAD)
+eq('R2 a source gap keeps the aggregate unknown', r2.state, 'UNKNOWN')
+const r2b = normalizeReview({ head_sha: HEAD, source: 'ledger', gap: 'review_source_unavailable', verdicts: [
+  { verdict: 'MERGE', reviewer: 'cc2', head_sha: HEAD, as_of: '2026-11-03T12:00:00Z' },
+] }, HEAD)
+eq('R2 the other gap spelling is not discarded either', r2b.state, 'UNKNOWN')
+
+// R1: an envelope word outside the vocabulary fails closed, even beside a MERGE member.
+const r1 = normalizeReview({ head_sha: HEAD, source: 'ledger', state: 'WAT', verdicts: [
+  { verdict: 'MERGE', reviewer: 'cc2', head_sha: HEAD, as_of: '2026-11-03T12:00:00Z' },
+] }, HEAD)
+eq('R1 an unrecognised envelope is not a pass', r1.state, 'UNKNOWN')
+check('R1 and it says which word it could not read', (r1.reason ?? '').toUpperCase().includes('WAT'))
+const r1b = normalizeReview({ head_sha: HEAD, source: 'ledger', verdicts: [
+  { verdict: 'REQUEST_CHANGES', reviewer: 'cc2', head_sha: HEAD, as_of: '2026-11-03T12:00:00Z' },
+  { verdict: 'MERGE', reviewer: 'cc3', head_sha: HEAD, as_of: '2026-11-03T12:00:00Z' },
+] }, HEAD)
+eq('R1 a blocking member beside a merge member is blocked', r1b.state, 'CHANGES')
+
+// ---- cx-openai-4's surviving P1: the envelope's REQUEST_CHANGES must survive a MERGE member.
+// Asserted at the REAL call path (normalizeRow -> normalizeWork -> normalizeReview), not on the helper.
+const rowWith = (review: unknown) => normalizeRow({ number: 7, title: 't', url: 'u', head_sha: HEAD, branch: 'b',
+  mergeable: 'MERGEABLE', merge_state: 'CLEAN', is_draft: false, work: { present: true, review } })
+eq('P1 envelope REQUEST_CHANGES beside a MERGE member stays blocked',
+  rowWith({ state: 'REQUEST_CHANGES', head_sha: HEAD,
+    records: [{ verdict: 'MERGE', reviewer: 'cc2', head_sha: HEAD, as_of: '2026-11-03T12:00:00Z' }] }).work.review.state,
+  'CHANGES')
+eq('P1 the same through the verdicts key', 
+  rowWith({ state: 'REQUEST_CHANGES', head_sha: HEAD,
+    verdicts: [{ verdict: 'MERGE', reviewer: 'cc2', head_sha: HEAD, as_of: '2026-11-03T12:00:00Z' }] }).work.review.state,
+  'CHANGES')
+eq('P1 an unrecognised envelope beside a MERGE member stays UNKNOWN',
+  rowWith({ state: 'WAT', head_sha: HEAD,
+    records: [{ verdict: 'MERGE', reviewer: 'cc2', head_sha: HEAD, as_of: '2026-11-03T12:00:00Z' }] }).work.review.state,
+  'UNKNOWN')
+eq('P1 a plain MERGE envelope with MERGE records is still a pass',
+  rowWith({ state: 'MERGE', head_sha: HEAD,
+    records: [{ verdict: 'MERGE', reviewer: 'cc2', head_sha: HEAD, as_of: '2026-11-03T12:00:00Z' }] }).work.review.state,
+  'MERGE')
 
 console.log(`deployInFlight: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)
