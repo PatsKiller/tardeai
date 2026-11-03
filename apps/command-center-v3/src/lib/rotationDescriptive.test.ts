@@ -107,5 +107,45 @@ const mrMeta = { available: true, computed_at: '2026-11-02T21:52:00Z', gaps: ['s
 eq('cache age is exposed', rotationDescriptive({ market_research: mrMeta }).market?.cacheAgeS, 900)
 check('market gaps become stated gaps', rotationDescriptive({ market_research: mrMeta }).gaps.some(g => g.includes('market: snapshot stale')))
 
+// ── the exact payload the producer serves when the advisory is not READY ────────────────────────
+// scripts/lib/rotation_publication.py empties WITHHELD_FIELDS (sector_overweights, sector_underweights,
+// degraded_holdings, …) and sets summary={} whenever publication.status != READY. Those emptied lists are
+// a withholding, so the panel must never report them as "none" or "no sector".
+const withheldStale = {
+  ok: false, advisory_only: true, stale: true,
+  portfolio_total: 1234567, generated_at: '2026-11-02T21:52:00Z', cached_at: '2026-11-02T21:52:00Z',
+  sector_overweights: [], sector_underweights: [], degraded_holdings: [], summary: {},
+  etf_candidates: [], research_candidates: [], research_rotation_ideas: [], top_rotation_ideas: [],
+  top_pairs: [], top_candidates: [], sector_ladders: null, fee_swaps: [], total_annual_fee_usd: null,
+  publication: { schema: 'RotationPublication@v1', status: 'STALE', reasons: ['stale_source_clock'] },
+}
+const w = rotationDescriptive(withheldStale)
+const wBlock = (k: string) => w.blocks.find(b => b.key === k)
+eq('withheld: portfolio total still shown', w.portfolioTotal, '$1,234,567')
+check('withheld: overweight says withheld, not none', /withheld/i.test(wBlock('overweight')?.empty ?? ''), wBlock('overweight')?.empty)
+check('withheld: underweight says withheld, not none', /withheld/i.test(wBlock('underweight')?.empty ?? ''), wBlock('underweight')?.empty)
+check('withheld: flagged holdings says withheld, not none', /withheld/i.test(wBlock('degraded')?.empty ?? ''), wBlock('degraded')?.empty)
+check('withheld: the status is named in the block text', /STALE/.test(wBlock('overweight')?.empty ?? ''), wBlock('overweight')?.empty)
+check('withheld: the producer reason is carried', /stale_source_clock/.test(wBlock('overweight')?.empty ?? ''), wBlock('overweight')?.empty)
+check('withheld: a gap states why the lists are empty', w.gaps.some(g => /withheld/i.test(g) && /STALE/.test(g)), w.gaps)
+check('withheld: block text never claims a measured zero', !/none flagged|No overweight|No underweight/.test(
+  [wBlock('overweight')?.empty, wBlock('underweight')?.empty, wBlock('degraded')?.empty].join(' ')))
+
+// An unavailable verdict (not just stale) is the same withholding.
+const wU = rotationDescriptive({ ...withheldStale, publication: { schema: 'RotationPublication@v1', status: 'UNAVAILABLE', reasons: ['missing_bound_source_clock'] } })
+check('unavailable: still withheld with its reason', /UNAVAILABLE/.test(wU.blocks[0].empty) && /missing_bound_source_clock/.test(wU.blocks[0].empty), wU.blocks[0].empty)
+
+// A field the response does not carry is not the same as an empty one.
+const missing = rotationDescriptive({ portfolio_total: 100 })
+check('absent overweight list says so', /not carried/.test(missing.blocks[0].empty), missing.blocks[0].empty)
+check('absent flagged list says so', /not carried/.test(missing.blocks[2].empty), missing.blocks[2].empty)
+check('absent lists become gaps', missing.gaps.filter(g => /not carried/.test(g)).length === 3, missing.gaps)
+
+// The genuinely-empty READY case keeps its plain wording.
+const reallyEmpty = rotationDescriptive({ ok: true, publication: { status: 'READY', reasons: [] },
+  sector_overweights: [], sector_underweights: [], degraded_holdings: [] })
+eq('ready empty keeps the plain wording', reallyEmpty.blocks[0].empty, 'No overweight sector in this response.')
+check('ready empty states no withholding', !/withheld/i.test(reallyEmpty.blocks[0].empty))
+
 console.log(`rotationDescriptive: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

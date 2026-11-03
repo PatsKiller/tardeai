@@ -66,9 +66,32 @@ export function rotationDescriptive(summary: unknown): RotationDescriptive {
   const overRaw = data.sector_overweights
   const underRaw = data.sector_underweights
   const degradedRaw = data.degraded_holdings
+  // The producer empties these lists whenever the advisory evidence is not READY
+  // (scripts/lib/rotation_publication.py: WITHHELD_FIELDS). An emptied list is a withholding, never a
+  // measured "none" — without this branch the panel tells the operator nothing is flagged when the truth
+  // is that nothing was allowed through.
+  const publication = isRecord(data.publication) ? data.publication : null
+  const publicationStatus = typeof publication?.status === 'string' ? publication.status.toUpperCase() : ''
+  const publicationReasons = Array.isArray(publication?.reasons)
+    ? publication.reasons.filter((r): r is string => typeof r === 'string' && r.trim() !== '')
+    : []
+  const withheld = publicationStatus !== '' && publicationStatus !== 'READY'
+  const withheldReason = `${publicationStatus}${publicationReasons.length ? ` (${publicationReasons.join(', ')})` : ''}`
+  if (withheld) gaps.push(`the advisory evidence is ${withheldReason}, so sector exposure and flagged holdings were withheld`)
+  if (overRaw === undefined) gaps.push('sector overweights are not carried in this response')
+  if (underRaw === undefined) gaps.push('sector underweights are not carried in this response')
+  if (degradedRaw === undefined) gaps.push('degraded holdings are not carried in this response')
   if (overRaw !== undefined && !Array.isArray(overRaw)) gaps.push('sector overweights are not a list')
   if (underRaw !== undefined && !Array.isArray(underRaw)) gaps.push('sector underweights are not a list')
   if (degradedRaw !== undefined && !Array.isArray(degradedRaw)) gaps.push('degraded holdings are not a list')
+
+  /** Why a block has no rows: withheld, absent, malformed, or genuinely nothing to show. */
+  const emptyText = (what: string, raw: unknown): string | null => {
+    if (withheld) return `${what} withheld: the advisory evidence is ${withheldReason}. No list was carried — this is not a measured zero.`
+    if (raw === undefined) return `${what} is not carried in this response.`
+    if (!Array.isArray(raw)) return `${what} could not be read: the field is not a list.`
+    return null
+  }
 
   const overweight: DescriptiveRow[] = (Array.isArray(overRaw) ? overRaw : []).filter(isRecord).slice(0, 40).map(row => {
     const p = pct(row.pct)
@@ -95,10 +118,13 @@ export function rotationDescriptive(summary: unknown): RotationDescriptive {
   const degraded: DescriptiveBlock = {
     key: 'degraded', title: 'Holdings flagged for review',
     note: 'Descriptive count from the same response; the review itself stays withheld.',
-    rows: [], empty: degradedCount ? `${degradedCount} holding(s) flagged` : 'none flagged in this response',
+    rows: [], empty: degradedCount ? `${degradedCount} holding(s) flagged`
+      : emptyText('Flagged holdings', degradedRaw) ?? 'none flagged in this response',
   }
 
   // ── neutral market projection (RotationMarketResearch@v1) — independent of the advisory gates ──────
+  // NOTE (2026-11-03): no producer in this tree emits `market_research` yet — a git grep finds only the
+  // Maria routing intent. These blocks stay gated on the field's presence and render only when one appears.
   const mr = isRecord(data.market_research) ? data.market_research : null
   const zoned = (v: unknown): string | null =>
     typeof v === 'string' && /(?:Z|[+-]\d\d:\d\d)$/.test(v) && Number.isFinite(Date.parse(v)) ? v : null
@@ -163,8 +189,8 @@ export function rotationDescriptive(summary: unknown): RotationDescriptive {
   }
 
   const blocks: DescriptiveBlock[] = [
-    { key: 'overweight', title: 'Sector exposure · overweight', note: 'Descriptive: share of the book vs its target. Not a recommendation.', rows: overweight, empty: 'No overweight sector in this response.' },
-    { key: 'underweight', title: 'Sector exposure · underweight', note: 'Descriptive: share of the book vs its floor. Not a recommendation.', rows: underweight, empty: 'No underweight sector in this response.' },
+    { key: 'overweight', title: 'Sector exposure · overweight', note: 'Descriptive: share of the book vs its target. Not a recommendation.', rows: overweight, empty: emptyText('Overweight sector exposure', overRaw) ?? 'No overweight sector in this response.' },
+    { key: 'underweight', title: 'Sector exposure · underweight', note: 'Descriptive: share of the book vs its floor. Not a recommendation.', rows: underweight, empty: emptyText('Underweight sector exposure', underRaw) ?? 'No underweight sector in this response.' },
     degraded,
     ...marketBlocks,
   ]
