@@ -238,3 +238,37 @@ def test_unknown_paths_and_methods_are_refused(store):
     assert api.handle("/api/v2/other", "GET", ctx=_ctx()) is None
     status, payload = api.handle("/api/v2/home/approvals", "DELETE", ctx=_ctx())
     assert status == 405 and payload["code"] == "METHOD_NOT_ALLOWED"
+
+
+def test_a_plain_sentence_from_the_store_is_returned_verbatim(monkeypatch):
+    """A's Refused carries .plain; the card shows that sentence as written, never a reworded one."""
+
+    class PlainRefused(Exception):
+        def __init__(self, code, plain):
+            super().__init__(plain)
+            self.code = code
+            self.plain = plain
+
+    class Module(FakeModule):
+        def decide(self, store, request_id, *, ctx, actor, decision, note="", **kw):
+            raise PlainRefused("facts_moved", "This changed. The lead will re-ask.")
+
+    fake = Module({"apr-1": _record()})
+    monkeypatch.setattr(api, "_store_module", lambda: fake)
+    monkeypatch.setattr(api, "_store_handle", lambda module: module.store)
+    status, payload = api.handle("/api/v2/home/approvals/apr-1/approve", "POST", {}, ctx=_ctx())
+    assert status == 409 and payload["code"] == "CHANGED"
+    assert payload["reason"] == "This changed. The lead will re-ask."
+
+
+def test_a_store_that_cannot_be_read_is_not_an_empty_board(monkeypatch, tmp_path):
+    """list_open raises store_unreadable when the store cannot be read; the route must not say ok."""
+    class Module(FakeModule):
+        def list_open(self, store, *, now=None, limit=100):
+            raise Refused("store_unreadable", "The store could not be read, so nothing is shown.")
+
+    fake = Module({})
+    monkeypatch.setattr(api, "_store_module", lambda: fake)
+    monkeypatch.setattr(api, "_store_handle", lambda module: module.store)
+    status, payload = api.handle("/api/v2/home/approvals", "GET", ctx=_ctx(reader=True))
+    assert status == 500 and payload["ok"] is False and payload["code"] == "STORE_ERROR"

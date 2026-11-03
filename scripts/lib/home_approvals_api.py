@@ -229,7 +229,9 @@ def _deliver_question(request_id: str, actor: str, note: str, now) -> bool:
 def _store_error(exc: Exception) -> tuple[int, dict]:
     mapped = STORE_CODES.get(str(getattr(exc, "code", "") or ""))
     if mapped:
-        return _refused(mapped, str(getattr(exc, "reason", "") or mapped))
+        # A's Refused carries `.plain` — the sentence the card shows verbatim. Never reword it here.
+        plain = getattr(exc, "plain", None) or getattr(exc, "reason", None) or mapped
+        return _refused(mapped, str(plain))
     return _refused("STORE_ERROR", f"The approval store could not complete that ({type(exc).__name__}).")
 
 
