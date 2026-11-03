@@ -292,3 +292,29 @@ def test_an_equal_but_independent_baseline_is_not_refused(store):
     independent = json.loads(store.read_text())
     out = S.protected_holdings_write(candidate, source="test_equal", target_path=str(store), baseline=independent)
     assert out["wrote"] is True, out
+
+
+# ── cx-openai-2 third P0 (2026-11-03): an EMPTY baseline disables the guards lawfully ──────
+
+def test_an_empty_list_primary_is_not_a_baseline_for_the_sync(store, monkeypatch):
+    """Primary {"holdings": []} + a complete backup: the sync must not write a one-position book."""
+    store.write_text(json.dumps({"holdings": [], "as_of": "2026-11-03"}))
+    _backup(store, _big_book())
+    before = store.read_bytes()
+    monkeypatch.setattr(S, "_build_account_rows",
+                        lambda label, live, existing: ([_row("CCC", "schwab_rollover_ira", 10, 1000.0)], []))
+    monkeypatch.setattr(S, "_cash_rows_for_account", lambda *a: [])
+    out = S._sync_rows("schwab_rollover_ira", "schwab_rollover_ira", [], object(), dry_run=False)
+    assert out["wrote"] is False, out
+    assert store.read_bytes() == before, "an unusable baseline must not lead to a write"
+
+
+def test_an_empty_caller_baseline_cannot_silence_the_coverage_guard(store):
+    """A healthy complete primary + baseline={} used to replace every other account."""
+    store.write_text(json.dumps(_big_book()))
+    before = store.read_bytes()
+    candidate = {"holdings": [_row("BBB", "schwab_roth", 10, 1000.0)]}
+    out = S.protected_holdings_write(candidate, source="test_empty_baseline",
+                                     target_path=str(store), baseline={})
+    assert out["wrote"] is False and out["reason_code"] == "INCOMPLETE_ACCOUNTS", out
+    assert store.read_bytes() == before

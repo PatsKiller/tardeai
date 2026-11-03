@@ -60,6 +60,36 @@ def _positions_of(h):
     return h.get("holdings") or h.get("positions") or []
 
 
+def _usable_text(value) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _baseline_usable(doc) -> tuple[bool, str]:
+    """A distinct object is not proof of a USABLE baseline.
+
+    2026-11-03 (cx-openai-2, third P0): {"holdings": []} passes identity and is accepted as a
+    baseline, but validate_payload then sees no last positions and skips the account-coverage, cash
+    and catastrophic-drop guards entirely. An unusable baseline must be replaced (backup) or refused,
+    never used to silence the relative guards.
+    """
+    if not isinstance(doc, dict):
+        return False, "baseline is not an object"
+    rows = doc.get("holdings")
+    if rows is None:
+        rows = doc.get("positions")
+    if not isinstance(rows, list) or not rows:
+        return False, "baseline has no positions"
+    identified = [
+        row for row in rows
+        if isinstance(row, dict)
+        and _usable_text(row.get("symbol"))
+        and _usable_text(row.get("account") or row.get("account_key"))
+    ]
+    if not identified:
+        return False, "baseline has no positions with an account and symbol"
+    return True, ""
+
+
 def _total_of(h):
     try:
         return float((h.get("portfolio_totals") or {}).get("total_value") or h.get("total_value") or 0)
@@ -455,10 +485,19 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
                 "reason_code": "BASELINE_ALIAS", "missing_accounts": [], "baseline_source": None}
     prior_state, prior_doc = _store_state(HP)
     baseline_source = "store" if prior_doc is not None else None
+    if prior_doc is not None and not _baseline_usable(prior_doc)[0]:
+        # An empty / identity-less store cannot be the reference for the relative guards.
+        prior_state, prior_doc, baseline_source = "store_unusable", None, None
     if baseline is not None:
-        # An explicit restored candidate / DB-derived book (Step 1) is the strongest baseline.
-        prior_doc, baseline_source = baseline, "caller"
-    elif prior_doc is None:
+        usable, why = _baseline_usable(baseline)
+        if not usable:
+            # A distinct object is not a usable baseline ({"holdings": []} skipped every guard).
+            # Do not use it; fall through to the store/backup resolution below.
+            _record(account_key, "baseline_unusable", f"[{source}] caller baseline ignored: {why}")
+        else:
+            # An explicit restored candidate / DB-derived book (Step 1) is the strongest baseline.
+            prior_doc, baseline_source = baseline, "caller"
+    if prior_doc is None:
         # Store empty/corrupt: use the restored candidate or a backup so the relative guards stay
         # live. Refuse only when no usable baseline exists — NEVER validate with last_good=None.
         prior_doc, _src = _baseline_from_backups(HP)
@@ -854,6 +893,12 @@ def _sync_rows(account_key, label, live, st, *, dry_run):
     state, cur = _store_state()
     baseline_doc = None
     baseline_source = "store"
+    if state == "ok":
+        usable, _why = _baseline_usable(cur)
+        if not usable:
+            # An empty or identity-less live store is not a usable baseline: the relative guards
+            # would have nothing to compare against. Look for a genuine backup before writing.
+            state, cur = "store_unusable", None
     if state != "ok":
         if dry_run:
             # Read path: absent/empty/corrupt simply means there is no snapshot to diff.
