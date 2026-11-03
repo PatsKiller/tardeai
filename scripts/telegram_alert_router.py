@@ -702,6 +702,79 @@ _QUIET_TZ_ENV = ("TRADEAI_INCIDENT_NOTIFIER_TZ", "America/New_York")
 
 _intent_sent: dict = {}
 
+# Quiet-hours exemptions by message class (operator 2026-10-31, design DSN-20261031-market-risk-engine P3-T1,
+# §11 item 5): a P2 ``market_risk`` intent raised in the pre-market window is delivered, not archived. The 10-30
+# selloff RCA (finding 3): the only market-level warning of the week fired at 05:52 ET and was held for the digest.
+# The window, classes and priorities live in config, never here.
+QUIET_EXEMPTIONS_ENV = "TRADEAI_INTENT_QUIET_EXEMPTIONS_PATH"
+_QUIET_EXEMPTIONS_DEFAULT = PROJ / "config" / "notification_intent_quiet_exemptions.json"
+QUIET_EXEMPTIONS_SCHEMA = "NotificationIntentQuietExemptions@v1"
+
+
+def load_quiet_exemptions() -> list[dict]:
+    """The reviewed exemption rows (schema-checked). Unreadable or malformed config means no exemption, logged."""
+    path = Path(os.environ.get(QUIET_EXEMPTIONS_ENV) or _QUIET_EXEMPTIONS_DEFAULT)
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        log.warning("quiet exemptions unreadable (%s) at %s — no exemption applies", type(e).__name__, path)
+        return []
+    if not isinstance(doc, dict) or doc.get("schema") != QUIET_EXEMPTIONS_SCHEMA:
+        log.warning("quiet exemptions rejected: schema is not %s at %s — no exemption applies",
+                    QUIET_EXEMPTIONS_SCHEMA, path)
+        return []
+    rows = []
+    for r in doc.get("exemptions") or []:
+        if isinstance(r, dict) and r.get("id") and r.get("message_classes") and isinstance(r.get("window"), dict):
+            rows.append(r)
+        else:
+            log.warning("quiet exemption row rejected (shape) at %s: %r", path, str(r)[:120])
+    return rows
+
+
+def _hhmm_strict(text) -> int | None:
+    """Minutes after midnight for a strict HH:MM (00:00-23:59), else None. No default: a bad bound never widens."""
+    try:
+        h, m = (int(x) for x in str(text).strip().split(":"))
+    except ValueError:
+        return None
+    return h * 60 + m if 0 <= h < 24 and 0 <= m < 60 else None
+
+
+def quiet_exemption_for(message_class: str | None, priority: str, now=None) -> str | None:
+    """The id of the exemption that lets this intent through the quiet window right now, else None."""
+    from datetime import datetime as _dt, timezone as _tz
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    mc = str(message_class or "").strip()
+    if not mc:
+        return None
+    for row in load_quiet_exemptions():
+        if mc not in [str(x) for x in row.get("message_classes") or []]:
+            continue
+        if priority not in [str(x).upper() for x in row.get("priorities") or [INTENT_P2]]:
+            continue
+        win = row["window"]
+        start, end = _hhmm_strict(win.get("start")), _hhmm_strict(win.get("end"))
+        if start is None or end is None or start == end:
+            log.warning("quiet exemption %s skipped: window bounds %r-%r are not strict HH:MM",
+                        row.get("id"), win.get("start"), win.get("end"))
+            continue
+        default_tz = str(os.environ.get(_QUIET_TZ_ENV[0]) or _QUIET_TZ_ENV[1]).strip()
+        try:
+            tz = ZoneInfo(str(win.get("tz") or default_tz))
+        except (ZoneInfoNotFoundError, ValueError):
+            try:
+                tz = ZoneInfo(default_tz)
+            except (ZoneInfoNotFoundError, ValueError):
+                tz = ZoneInfo(_QUIET_TZ_ENV[1])
+        t = (now or _dt.now(_tz.utc)).astimezone(tz)
+        m = t.hour * 60 + t.minute
+        inside = (start <= m < end) if start < end else (m >= start or m < end)
+        if inside:
+            return str(row["id"])
+    return None
+
 
 def _hhmm(text: str, default: str) -> int:
     for candidate in (text, default):
@@ -746,7 +819,8 @@ def _intent_receipts_path() -> Path:
 def record_intent_receipt(route: dict, *, delivered, archived=None) -> None:
     """Append the route decision and its outcome. Best-effort: a receipt failure never blocks a send."""
     row = {"schema": INTENT_RECEIPT_SCHEMA, "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-           **{k: route.get(k) for k in ("priority", "decision", "dedupe_key", "window_minutes", "producer")},
+           **{k: route.get(k) for k in ("priority", "decision", "dedupe_key", "window_minutes", "producer",
+                                        "quiet_exemption")},
            "delivered": delivered, "archived_report_type": archived,
            "preview": str(route.get("preview") or "")[:80]}
     try:
@@ -759,13 +833,15 @@ def record_intent_receipt(route: dict, *, delivered, archived=None) -> None:
 
 
 def route_intent(message: str, priority: str, *, dedupe_minutes: int | None = None,
-                 producer: str | None = None, now=None) -> dict:
+                 producer: str | None = None, now=None, message_class: str | None = None) -> dict:
     """Decide one notification intent. Pure apart from reading the durable dedupe store.
 
     Returns {priority, decision, deliver, dedupe_key, window_minutes, producer, preview}; decision is one of
     DELIVER, DEDUPED (same body inside the window — already delivered), HELD_QUIET_HOURS (P2 only),
     DIGEST (P3 only: archived for the digest, never an interrupt).
     ``dedupe_minutes=0`` turns dedupe off for a producer that already keeps its own send ledger.
+    ``message_class`` lets a reviewed quiet-hours exemption (config/notification_intent_quiet_exemptions.json)
+    deliver a P2 inside the quiet window; the route then carries ``quiet_exemption``.
     """
     pr = str(priority or "").strip().upper()
     if pr not in INTENT_PRIORITIES:
@@ -780,6 +856,9 @@ def route_intent(message: str, priority: str, *, dedupe_minutes: int | None = No
     if pr == INTENT_P3:
         return {**route, "decision": "DIGEST", "deliver": False}
     if pr == INTENT_P2 and intent_in_quiet_hours(now):
+        exemption = quiet_exemption_for(message_class, pr, now)
+        if exemption:
+            return {**route, "decision": "DELIVER", "deliver": True, "quiet_exemption": exemption}
         return {**route, "decision": "HELD_QUIET_HOURS", "deliver": False}
     return {**route, "decision": "DELIVER", "deliver": True}
 

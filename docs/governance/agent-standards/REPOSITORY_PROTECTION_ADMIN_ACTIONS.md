@@ -66,11 +66,13 @@ Preconditions found 2026-10-09 (read-only `gh api repos/PatsKiller/tardeai` and 
   required checks on the `merge_group` event; without that trigger it never completes. Adding
   `merge_group:` to the `on:` block of the workflows that produce `agent-governance`,
   `cio-hardening` and `release-readiness` is a separate PR (workflow files are governed).
-- Required checks measured 2026-10-09 (`gh api repos/:owner/:repo/branches/main/protection/required_status_checks`):
-  `cio-hardening`, `agent-governance`, `release-readiness` — the three §23.13 condition (b) names.
-  The 2026-09-25 measurement above predates `release-readiness` becoming required, and `strict` now
-  reads `false` (the operator turned strict up-to-date protection off on 2026-10-09); the ruleset below
-  keeps it off.
+- Required checks measured 2026-11-02
+  (`gh api repos/PatsKiller/tardeai/branches/main/protection/required_status_checks`):
+  `cio-hardening`, `agent-governance`, `release-readiness`, `ci-gate` — `strict: false`.
+  The 2026-10-09 measurement above named three; `ci-gate` has since been added. **`secret-scan` is
+  not required**, which is how PR #2465 merged on 2026-11-01 with `secret-scan` red on four heads
+  (main red at `f96c6399f`, deploy blocked). Proposal to make it required: see
+  "Proposed: make `secret-scan` required" below.
 
 Steps (UI): Settings → Rules → Rulesets → New branch ruleset → name `main-merge-queue`, enforcement
 **Active**, target `main` (Include default branch) → enable **Require merge queue** (merge method
@@ -108,6 +110,75 @@ Verify (read back; the setting is not enforced until the API says so):
 gh api repos/PatsKiller/tardeai/rulesets --jq '.[] | {id, name, enforcement}'
 gh api repos/PatsKiller/tardeai/rules/branches/main --jq '[.[].type]'   # must include "merge_queue"
 ```
+
+## Proposed: make `secret-scan` required (operator-only, AGENTS.md §17)
+
+**Why.** Branch protection requires four checks. `secret-scan` is not one of them, so a PR can be
+green on every required check while secret scanning is red — and one did: PR #2465 merged on
+2026-11-01 with `secret-scan` failing on four heads (`6f21e6d6a`, `1f6715af0`, and two more). Main
+went red at `f96c6399f` and the deploy poller refused to promote until a human re-ran the job.
+
+**Confirmed before proposing** (measured 2026-11-02):
+
+- The workflow `.github/workflows/secret-scan.yml` runs on `pull_request` with types
+  `[opened, synchronize, reopened, ready_for_review]` — that is every non-draft PR head and every new
+  push to one. Drafts are skipped deliberately (push policy v2, `draft-quick-check` covers them).
+- It reports **one stable check name, `secret-scan`**, verified against PR #2465's head:
+  `gh api repos/PatsKiller/tardeai/commits/<head>/check-runs` returned exactly one matching run,
+  `{"name": "secret-scan", "conclusion": "failure", "status": "completed"}`.
+- Adding it does not create a draft deadlock: drafts are exempt from required checks until they are
+  marked ready, which is exactly when `ready_for_review` fires the scan.
+
+**The command (operator runs this; no agent may).** Two traps, both verified 2026-11-02:
+
+* the PATCH **replaces** the whole set, so the current checks must be carried into it;
+* the legacy `contexts` form **drops the `app_id` binding** on every check it sends. All four live
+  checks are bound to app `15368` (GitHub Actions); re-sending them as bare contexts would leave
+  them unbound, which is a weaker protection than the one being extended. Use the `checks` form,
+  built from the live list rather than typed out here.
+
+```bash
+# 1. Read the live set, including each check's app binding.
+gh api repos/PatsKiller/tardeai/branches/main/protection/required_status_checks \
+  --jq '{strict, checks: [.checks[] | {context, app_id}]}'
+
+# 2. Build the new set from the live one plus secret-scan on the same app (15368), then PATCH it.
+gh api repos/PatsKiller/tardeai/branches/main/protection/required_status_checks \
+  --jq '{strict, checks: ([.checks[] | {context, app_id}] | . + [{"context":"secret-scan","app_id":15368}] | unique_by(.context))}' \
+  > /tmp/required_checks.json
+cat /tmp/required_checks.json   # confirm five entries, all with an app_id
+
+gh api -X PATCH repos/PatsKiller/tardeai/branches/main/protection/required_status_checks \
+  --input /tmp/required_checks.json
+
+# 3. Read back: every entry must still carry its app_id.
+gh api repos/PatsKiller/tardeai/branches/main/protection/required_status_checks \
+  --jq '[.checks[] | "\(.context)@\(.app_id)"]'
+```
+
+**Do not add `secret-scan` to the merge-queue ruleset.** Two independent reasons, both measured:
+
+1. A `PUT /rulesets/<id>` replaces the **whole** `rules` array — a payload carrying only the status
+   checks deletes the `merge_queue` rule, silently disabling the queue.
+2. `.github/workflows/secret-scan.yml` has **no `merge_group` trigger**. A queued merge is judged on
+   the `merge_group` event, so a required check that never runs there would wait until
+   `check_response_timeout_minutes` (60) and then fail every queued merge.
+
+If the merge-queue ruleset is ever put in force, adding `merge_group:` to `secret-scan.yml` is the
+precondition, and that is a `.github/**` change (held). Until then, classic branch protection is the
+only place `secret-scan` becomes required.
+
+**Known gap (not fixed here, `.github/**` is held).** `secret-scan.yml:52` skips on `mergify/*`
+speculative branches. Mergify runs the required suites there so a batch does not fail for lack of
+checks; the secret scan does not, so a batch's speculative head is not secret-scanned. The real PR
+head still is, and the gate above reads the real head — so this is a coverage note for the batch
+window, not a hole in the requirement.
+
+**Risk and fallback.** Making a check required only ever blocks a merge that is already red; it
+cannot block a green one. The fallback is the reverse PATCH without `secret-scan`. Until the
+operator runs it, the code-side gate (`scripts/lib/pr_all_checks_green.py`) refuses merges from the
+work-pipeline applier on any red check, so the hole is narrowed but not closed for merges that
+happen outside it (Mergify, the operator's own `gh pr merge`).
 
 Then open a trivial PR, add it to the queue (`gh pr merge <n> --auto` routes through the queue once
 it is required) and confirm the three checks run on a `merge_group` ref before it lands. Record the

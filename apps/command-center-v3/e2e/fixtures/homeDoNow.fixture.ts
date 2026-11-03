@@ -6,7 +6,7 @@ const iso = (ago = 0) => new Date(NOW - ago).toISOString()
 const action = (id: string, category = 'fix') => ({ id, category, severity: 'P2', title: `Example action ${id}`,
   why: `Synthetic evidence ${id}`, action: { label: 'Review', where: '/v3/health' }, sources: ['fixture'] })
 
-export function currentCio(stale = false) {
+export function currentCio(stale = false, filledReason?: string) {
   return { positions: { source: 'Synthetic CIO positions', as_of: iso(), unprotected_value_usd: 2400,
     rows: [
       { symbol: 'DEMOA', account_id: 'example_income', account_label: 'Example Income', stop_category: 'none', market_value: 2400 },
@@ -15,7 +15,7 @@ export function currentCio(stale = false) {
       { symbol: 'DEMOD', account_id: 'example_growth', account_label: 'Example Growth', stop_category: 'active', market_value: 800 },
     ] }, stops: { unprotected_count: 1, stale, last_broker_read_at: iso(),
       gap: stale ? { reason: 'Synthetic broker read is old; review the source clock.' } : null,
-      filled_awaiting_sync: [{ symbol: 'DEMOC', account_label: 'Example Income' }] } }
+      filled_awaiting_sync: [{ symbol: 'DEMOC', account_label: 'Example Income', ...(filledReason ? { reason: filledReason } : {}) }] } }
 }
 
 /** Synthetic Deploys status (GET /api/v2/ops/deploys): latest DeployOnMainReceipt@v1 + the deploy STOP latch. */
@@ -29,14 +29,14 @@ export function deploysFixture(latch: 'ABSENT' | 'SET' = 'ABSENT') {
     stop_error: null, stop_effective: latch !== 'ABSENT', how: 'fixture' }
 }
 
-export async function homeFixtures(page: Page, opts: { stale?: boolean; unavailable?: boolean } = {}) {
+export async function homeFixtures(page: Page, opts: { stale?: boolean; unavailable?: boolean; filledReason?: string } = {}) {
   const writes: string[] = []
   await page.clock.install({ time: new Date(NOW) })
   await page.route('**/api/**', route => {
     const req = route.request(), p = new URL(req.url()).pathname
     if (req.method() !== 'GET') { writes.push(`${req.method()} ${p}`); return route.abort() }
     const json = (body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
-    if (p === '/api/v2/cio/pages') return opts.unavailable ? json({}, 503) : json({ ok: true, data: currentCio(opts.stale) })
+    if (p === '/api/v2/cio/pages') return opts.unavailable ? json({}, 503) : json({ ok: true, data: currentCio(opts.stale, opts.filledReason) })
     if (p === '/api/v2/home/do-now') return opts.unavailable ? json({}, 503) : json({ schema: 'HomeDoNow@v1', as_of: iso(),
       all_sources_answered: true, sources: { fixture: { status: 'OK', as_of: iso() } },
       // These two obsolete assertions must lose to the categorized Risk/CIO record.

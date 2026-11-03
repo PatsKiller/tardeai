@@ -427,5 +427,9 @@
     "conversion_window_days": 5,
     "underfilled_streak": 3,
     "social_inject_errors": 3
+  },
+  "setups_session": {
+    "_comment": "collect_trade_ai_session (2026-10-31 stuck sweep): the SETUPS business run is expected for today only once the first full scan has had time to land on a trading day; before that, and on weekends/holidays, the previous trading session is current. Since 2026-10-12 (0b22fdfac) heal_trade_ai_session_cache.py anchors session_date only and never changes run_date, so comparing run_date to the calendar date made the finding permanent and the heal 'ineffective'.",
+    "first_full_scan_et": "09:30"
   }
 }

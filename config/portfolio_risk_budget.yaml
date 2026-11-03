@@ -1,0 +1,46 @@
+# Portfolio risk budget — operator-owned trading policy (AGENTS.md §1, §17), design DSN-20261031-market-risk-engine
+# §5.9 (exposure-aware severity) and §5.11 (risk budget). Read by scripts/lib/market_risk/exposure.py and
+# scripts/lib/market_risk/risk_budget.py. The engine measures exposure against these limits and REPORTS it; it never
+# resizes, orders or moves a stop (MBI_BEHAVIOR = 0). Percentages are of the account's (or whole book's) value.
+#
+# Approval: operator, in session 2026-10-31 (design §11 item 3, "portfolio_risk_budget.yaml limits"), verbatim:
+#   "I approve and agree to everything one through eight. Everything goes live and everything is working,
+#    nothing left to do. Everything working, going live. I approve everything."
+# The values below are the design's proposed defaults; changing them is an operator decision by PR.
+schema: PortfolioRiskBudget@v1
+as_of: 2026-10-31
+
+accounts:
+  default:
+    max_single_sector_pct: 30
+    max_ai_basket_pct: 35                 # AI basket incl. ETF look-through when known
+    max_growth_style_pct: 50
+    max_single_theme_pct: 25
+    max_earnings_exposure_48h_pct: 25     # held + look-through names reporting within 2 sessions
+    max_event_cluster_exposure_pct: 40    # names tied to the active event cluster (caller supplies the set)
+    max_unprotected_pct: 10               # positions without a known resting stop
+    max_recent_entry_in_event_window_pct: 5
+  overrides: {}                           # opaque account key -> partial limits (never an account label here)
+
+uplift:
+  warn_at: 1.00     # actual / limit at or above -> budget WARN line in every card
+  uplift_at: 1.25   # actual / limit at or above on any budget -> eligible for the one-tier uplift (shared with
+                    # the vulnerability rule; at most one tier in total)
+  rules:            # market tier + vulnerability -> lifted tier (design §5.9). BLUE and NONE never uplift.
+    - {market_tier: ORANGE, min_vulnerability: 70, to: RED}
+    - {market_tier: YELLOW, min_vulnerability: 80, to: ORANGE}
+
+vulnerability:
+  # 0-100 = sum of component points; each component scales linearly to its max at full_at.
+  components:
+    concentration:     {max_points: 25, full_at_ratio: 2.0, starts_at_ratio: 0.5}  # worst sector/style/AI ratio to limit
+    earnings:          {max_points: 20, full_at_pct: 25, sessions: 5}              # book share reporting within N sessions
+    stop_proximity:    {max_points: 20, full_at_pct: 50, near_pct: 6.0}            # book share with a stop within near_pct
+    unprotected:       {max_points: 15, full_at_pct: 20}                           # book share with no known stop
+    recent_event_entry: {max_points: 20, full_at_pct: 10, entry_days: 10, event_sessions: 5}
+
+classification:
+  ai_basket: [NVDA, AMD, AVGO, MSFT, AMZN, GOOGL, GOOG, META, AAPL, TSLA, INTC, MU, TSM, ORCL]
+  growth_sectors: [Technology, Communication Services, Consumer Cyclical, Consumer Discretionary]
+  growth_name_tokens: [growth, nasdaq, technology, semiconductor, innovation]   # ETF names/descriptions
+  defensive_sectors: [Utilities, Consumer Defensive, Consumer Staples, Healthcare, Health Care]

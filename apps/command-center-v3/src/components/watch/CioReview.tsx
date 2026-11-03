@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { RADIUS, TOKENS, TYPE, chipStyle } from '../../lib/designTokens'
 import { askCio, askErrorText } from '../../lib/askCioApi'
-import { cioMemoryState, cioReviewNote, reviewStateText, reviewStateTone, type ProspectRow, type ReviewState } from '../../lib/watchProspectsModel'
+import { TOOLTIPS, cioMemoryState, cioReviewNote, reviewStateText, reviewStateTone, type ProspectRow, type ReviewState } from '../../lib/watchProspectsModel'
 import { requestCioReview } from '../../lib/watchListsModel'
 import { newerReviewState } from '../../lib/watchReviewState'
 import {
@@ -88,7 +88,8 @@ export function currentReviewState(row: ProspectRow, cio?: CioReviewController):
 export function ReviewStateChip({ state, testId = 'watch-review-state', compact = false }: { state: ReviewState | null; testId?: string; compact?: boolean }) {
   const text = compact ? (state && state.status !== 'none' ? state.label || state.status : null) : reviewStateText(state)
   if (!text) return null
-  return <span data-testid={testId} data-status={state?.status} title={state?.last_attempt?.block_reason || undefined}
+  const block = state?.last_attempt?.block_reason
+  return <span data-testid={testId} data-status={state?.status} title={block ? `${TOOLTIPS.review} Recorded by the acquisition run: ${block}` : TOOLTIPS.review}
     style={{ ...chipStyle(reviewStateTone(state), 'soft', 'sm'), whiteSpace: 'normal', lineHeight: 1.4, fontSize: TYPE.sm,
       alignSelf: 'flex-start', borderRadius: RADIUS.sm, padding: '4px 8px', maxWidth: '100%', boxSizing: 'border-box' }}>
     CIO review: {text}

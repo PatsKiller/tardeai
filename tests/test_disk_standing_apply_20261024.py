@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -39,7 +40,8 @@ def world(tmp_path, monkeypatch):
     cfg["standing_apply"] = {"enabled": True, "rules": ["A", "S", "W"], "manifest_max_age_hours": 2,
                              "max_bytes_per_run": SR.MAX_BYTES, "max_gb_per_run": 40, "byte_unit": "GiB",
                              "approved_by": "SYNTHETIC_TEST_ONLY", "archive": {"path": "~/db_backups/archive"},
-                             "approval": {"status": "APPROVED", "approved_by": "SYNTHETIC_TEST_ONLY", "approved_at": NOW.isoformat()}}
+                             "approval": {"status": "APPROVED", "approved_by": "SYNTHETIC_TEST_ONLY", "approved_at": NOW.isoformat()},
+                             "agent_scratch": dict(cfg["standing_apply"]["agent_scratch"])}
     rules_path = tmp_path / "rules.json"
     rules_path.write_text(json.dumps(cfg))
     rules = DH.load_rules(rules_path, home=home)
@@ -194,7 +196,9 @@ def test_agent_scratch_candidate_and_reference_and_recent_hold(world):
     fresh = paths[2] / "nested" / "evidence.txt"
     os.utime(fresh, (NOW.timestamp(), NOW.timestamp()))
     doc = evidence()
-    set_source(doc, "coordination", {"references": [{"historical_progress": str(paths[1] / "body.md")}], "live_claims": [], "live_worklogs": []})
+    # 2026-10-31: only a LIVE claim/worklog holds agent scratch; closed history naming it does not (paths[0]).
+    set_source(doc, "coordination", {"references": [{"historical_progress": str(paths[0] / "body.md")}],
+                                     "live_claims": [{"scratch": str(paths[1] / "body.md")}], "live_worklogs": []})
     result = DH.standing_plan(rules, NOW, doc)
     assert {r["path"] for r in result["items"]} == {str(paths[0])}
     assert any("referenced" in " ".join(r["reasons"]) for r in result["excluded"] if r["path"] == str(paths[1]))
@@ -253,7 +257,7 @@ def test_apply_simulated_only_binds_rules_manifest_and_all_three_rule_totals(wor
     report = do_apply(path, world[1], doc)
     assert report["refused"] is None and calls
     assert report["per_rule"]["A"]["applied_bytes"] == sum(r["size_bytes"] for r in manifest["items"])
-    assert set(report["per_rule"]) == {"A", "S", "T", "W"}
+    assert set(report["per_rule"]) == set(SR.RULE_KINDS) == {"A", "S", "T", "W", "C", "R"}
     assert "planned/applied" in report["operator_digest"]
     assert all(Path(r["path"]).exists() for r in calls)  # no real unlink/remove/rmtree happened
 
@@ -414,20 +418,22 @@ def test_explicit_manifest_hash_mismatch_refuses_before_remover(world, monkeypat
     assert report["refused"] == "manifest_sha_mismatch" and not calls
 
 
-def test_default_committed_configuration_remains_unconfigured_and_disabled():
+def test_committed_configuration_is_the_operator_activation_and_the_old_packet_cannot_rerun(tmp_path):
+    """2026-10-31: the operator approved the standing sweep in a direct session; this PR is its activation, so the
+    2026-10-24 promotion packet (kept as history) is superseded and refuses: it only ever promotes a disabled config."""
     rules = DH.load_rules()
-    assert rules["standing_apply"]["enabled"] is False
-    assert rules["standing_apply"]["approval"]["status"] == "PENDING_OPERATOR_REVIEW"
+    assert rules["standing_apply"]["enabled"] is True and rules["standing_apply"]["approval"]["status"] == "APPROVED"
     for filename, key in (("lane_registry.json", "lane_id"), ("n8n_run_allowlist.json", "lane_id"), ("n8n_health_contracts.json", "id")):
         doc = json.loads((ROOT / "config" / filename).read_text())
         collection = doc["contracts"] if key == "id" else doc["lanes"]
         row = next(r for r in collection if r.get(key) == "disk-hygiene")
-        if filename == "lane_registry.json": assert row["dispatch"]["cron"] == ["0 4 * * 0"]
-        if filename == "n8n_run_allowlist.json": assert row["live_arg"] == ["--plan"]
-        if filename == "n8n_health_contracts.json": assert row["status"] == "REVIEWED" and "Deletes nothing" in row["purpose"]["text"]
-        assert doc["pending_changes"]["disk-hygiene-standing-apply-20261024"]
-
-
+        if filename == "lane_registry.json": assert row["dispatch"]["cron"] == ["17 * * * *"] and row["dispatch"]["retry_policy"] == "none"
+        if filename == "n8n_run_allowlist.json": assert row["live_arg"] == ["--standing", "--apply", "--scheduled"]
+        if filename == "n8n_health_contracts.json": assert row["status"] == "REVIEWED" and row["previous_plan_review"]["purpose"]["text"].startswith("Weekly")
+        assert "disk-hygiene-standing-apply-20261024" not in doc.get("pending_changes", {})
+    mod, packet, config, review = activation_fixture(tmp_path)
+    with pytest.raises(ValueError, match="standing_not_disabled"):
+        mod.promotion(config, packet, review)
 
 def monitor_world(world, tmp_path, monkeypatch):
     rules = world[1]
@@ -636,41 +642,6 @@ def activation_fixture(tmp_path):
     return mod,packet,config,review
 
 
-def test_activation_packet_is_default_read_only_and_requires_real_review_shape(tmp_path):
-    mod,packet,config,review = activation_fixture(tmp_path)
-    before={p.name:p.read_bytes() for p in config.iterdir()}
-    pending=dict(review,decision='PENDING_OPERATOR_REVIEW')
-    with pytest.raises(ValueError,match='operator_review_pending'):
-        mod.promotion(config,packet,pending)
-    assert before == {p.name:p.read_bytes() for p in config.iterdir()}
-    rendered,digest = mod.promotion(config,packet,review)
-    assert before == {p.name:p.read_bytes() for p in config.iterdir()}  # pure preview, even with synthetic approval
-    assert len(digest)==64
-    rules=json.loads(rendered['disk_hygiene_rules.json'])
-    assert rules['standing_apply']['enabled'] and rules['standing_apply']['approval']['approved_by']=='SYNTHETIC_OPERATOR_FIXTURE_ONLY'
-
-
-def test_exact_promotion_changes_cadence_contract_argv_and_enable_together(tmp_path):
-    from scripts.lib.n8n_health_contracts import validate_contract
-    mod,packet,config,review=activation_fixture(tmp_path)
-    rendered,_=mod.promotion(config,packet,review)
-    reg=json.loads(rendered['lane_registry.json']);allow=json.loads(rendered['n8n_run_allowlist.json']);contracts=json.loads(rendered['n8n_health_contracts.json'])
-    row=next(x for x in reg['lanes'] if x['lane_id']=='disk-hygiene')
-    assert row['dispatch']['cron']==['0 4 * * 1,3,5,0'] and row['dispatch']['tz']=='America/New_York'
-    assert row['expected_cadence_hours']==48 and row['dispatch']['retry_policy']=='none'
-    entry=next(x for x in allow['lanes'] if x['lane_id']=='disk-hygiene')
-    assert entry['live_arg']==['--standing','--apply']
-    contract=next(x for x in contracts['contracts'] if x['id']=='disk-hygiene')
-    assert not validate_contract(contract)
-    assert contract['status']=='REVIEWED' and contract['reviewed_by']==review['approved_by']
-    assert contract['previous_plan_review']['purpose']['text'].startswith('Weekly')
-    # Every other operative object is preserved, including data from the shared base.
-    for name,key,idkey in [('lane_registry.json','lanes','lane_id'),('n8n_run_allowlist.json','lanes','lane_id'),('n8n_health_contracts.json','contracts','id')]:
-        before=json.loads((config/name).read_text())
-        after=json.loads(rendered[name])
-        assert [r for r in before[key] if r.get(idkey)!='disk-hygiene']==[r for r in after[key] if r.get(idkey)!='disk-hygiene']
-
-
 def test_activation_refuses_changed_base_and_wrong_reviewed_draft(tmp_path):
     mod,packet,config,review=activation_fixture(tmp_path)
     with pytest.raises(ValueError,match='review_contract_hash_mismatch'):
@@ -752,29 +723,6 @@ def test_two_hour_manifest_limit_applies_to_manual_grant_and_standing(world,monk
     assert at['refused'] is None
     after=DH.apply(path,world[1],NOW+timedelta(hours=2,microseconds=1),**kwargs)
     assert after['refused']=='manifest_stale'
-
-
-def test_activation_cli_preview_and_unbound_write_leave_fixture_configs_unchanged(tmp_path):
-    mod,packet,config,review=activation_fixture(tmp_path)
-    review_path=tmp_path/'synthetic-review.json'
-    review_path.write_text(json.dumps(review))
-    args=['--config-dir',str(config),'--review-file',str(review_path)]
-    before={p.name:p.read_bytes() for p in config.iterdir()}
-    assert mod.main(args)==0
-    assert mod.main([*args,'--write','--plan-sha256','wrong'])==1
-    assert before=={p.name:p.read_bytes() for p in config.iterdir()}
-
-
-def test_activation_cli_exact_source_write_is_contained_in_owned_fixture(tmp_path):
-    mod,packet,config,review=activation_fixture(tmp_path)
-    review_path=tmp_path/'synthetic-review.json'
-    review_path.write_text(json.dumps(review))
-    encoded,digest=mod.promotion(config,packet,review)
-    args=['--config-dir',str(config),'--review-file',str(review_path),'--write','--plan-sha256',digest]
-    assert mod.main(args)==0
-    assert {p.name:p.read_bytes() for p in config.iterdir()}==encoded
-    assert mod.main(args)==1  # stale/replayed source write cannot pass the old pins
-    assert json.loads((ROOT/'config/disk_hygiene_rules.json').read_text())['standing_apply']['enabled'] is False
 
 
 def test_old_review_cannot_authorize_changed_source_with_regenerated_pins(tmp_path):
@@ -924,3 +872,281 @@ def test_plan_bound_opaque_evidence_refuses_apply_before_remover(world, monkeypa
     report = DH.apply(path, world[1], NOW, grant=None, run_id="fixture", standing=True, evidence=doc,
                       manifest_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
     assert report["refused"] == "evidence_opaque_processes" and not calls
+
+
+def _scratch_dirs(home, names, days=10):
+    scratch = home / ".cache" / "agent-tmp"
+    out = []
+    for name in names:
+        p = scratch / name
+        (p / "nested").mkdir(parents=True)
+        f = p / "nested" / "evidence.txt"
+        f.write_text("fixture")
+        for child in (f, f.parent, p):
+            old(child, days)
+        out.append(p)
+    return out
+
+
+def test_agent_scratch_idle_threshold_and_entry_pattern_come_from_config(world):
+    home, rules, _, _ = world
+    rules["standing_apply"]["rules"] = ["A", "S", "T", "W"]
+    rules["standing_apply"]["agent_scratch"].update(idle_days=5, entry_regex=r"^task-[a-z0-9-]+$")
+    (four,) = _scratch_dirs(home, ("task-four",), days=4)
+    six, odd = _scratch_dirs(home, ("task-six", "Odd_Name"), days=6)
+    result = DH.standing_plan(rules, NOW, evidence())
+    assert {r["path"] for r in result["items"]} == {str(six)}
+    reasons = {r["path"]: " ".join(r["reasons"]) for r in result["excluded"]}
+    assert "scratch_not_older_than_5_days" in reasons[str(four)]
+    assert "scratch_name_not_declared" in reasons[str(odd)]
+
+
+def test_agent_scratch_is_plan_only_until_rule_t_is_listed(world):
+    home, rules, _, _ = world
+    (path,) = _scratch_dirs(home, ("idle-task",))
+    result = DH.standing_plan(rules, NOW, evidence())
+    assert str(path) not in {r["path"] for r in result["items"]}
+    assert any("rule_plan_only_not_authorized:T" in " ".join(r["reasons"]) for r in result["excluded"] if r["path"] == str(path))
+
+
+def test_agent_scratch_never_takes_a_worktree(world, monkeypatch):
+    home, rules, _, _ = world
+    rules["standing_apply"]["rules"] = ["A", "S", "T", "W"]
+    (path,) = _scratch_dirs(home, ("task-with-worktree",))
+    (path / "wt").mkdir()
+    admin = home / "fixture-repo" / ".git" / "worktrees" / "wt"
+    admin.mkdir(parents=True)
+    (path / "wt" / ".git").write_text(f"gitdir: {admin}")  # its repo still knows it
+    for child in (path / "wt" / ".git", path / "wt", path):
+        old(child)
+    result = DH.standing_plan(rules, NOW, evidence())
+    # 2026-10-31: a registered proof worktree inside scratch is archived then removed with the dir, never left behind
+    item = next(r for r in result["items"] if r["path"] == str(path))
+    assert item["bundles"] == ["worktree:wt"]
+    monkeypatch.undo()  # the real remover, on fixture paths only
+    ok, how = DH.remove_item(item)  # the fake admin dir is no repo: archive cannot run, so nothing is removed
+    assert not ok and how.startswith("nested_worktree_unreadable") and (path / "wt" / ".git").exists()
+
+
+@pytest.mark.parametrize("patch, error", [
+    ({"path": "~/.cache"}, "agent_scratch_scope"),
+    ({"idle_days": 0}, "agent_scratch_idle_days"),
+    ({"idle_days": "2"}, "agent_scratch_idle_days"),
+    ({"entry_regex": "("}, "agent_scratch_entry_regex"),
+    ({"require_claim_absent": False}, "agent_scratch_shape"),
+    ({"require_process_absent": False}, "agent_scratch_shape"),
+])
+def test_rule_t_config_is_validated_fail_closed(world, tmp_path, patch, error):
+    _, _, rules_path, cfg = world
+    doc = json.loads(rules_path.read_text())
+    doc["standing_apply"]["agent_scratch"].update(patch)
+    bad = tmp_path / "bad_rules.json"
+    bad.write_text(json.dumps(doc))
+    with pytest.raises(DH.RulesError, match=error):
+        DH.load_rules(bad, home=world[0])
+
+
+def test_rule_t_listed_without_its_config_refuses(world, tmp_path):
+    _, _, rules_path, _ = world
+    doc = json.loads(rules_path.read_text())
+    doc["standing_apply"]["rules"] = ["A", "S", "T", "W"]
+    del doc["standing_apply"]["agent_scratch"]
+    bad = tmp_path / "bad_rules.json"
+    bad.write_text(json.dumps(doc))
+    with pytest.raises(DH.RulesError, match="agent_scratch_scope"):
+        DH.load_rules(bad, home=world[0])
+
+
+def _collect_with_extra_claim(world, extra):
+    rules = collector_fixture(world)
+    base = world[0] / "trade-ai-releases" / "persistent-state" / "data" / "coordination"
+    (base / "claims" / "extra.json").write_text(json.dumps(extra))
+    reader = FixtureGithub([])
+    runner = lambda *a, **kw: type("R", (), {"returncode": 0, "stdout": ""})()
+    return COLLECT(rules, NOW, runner=runner, github=reader)["sources"]["coordination"]
+
+
+def test_policy_broadcast_state_in_claims_dir_is_not_a_claim(world):
+    held = str(world[0] / ".cache" / "agent-tmp" / "named-in-broadcast")
+    src = _collect_with_extra_claim(world, {"schema": "PolicyBroadcastState@v1", "note": held})
+    assert src["complete"], src
+    assert [c["claim_id"] for c in src["data"]["live_claims"]] == ["fixture"]
+    assert held in src["data"]["references"]  # its paths still hold
+
+
+@pytest.mark.parametrize("extra", [{"schema": "SomethingElse@v1"}, {"no_schema": True}, ["not", "a", "dict"]])
+def test_unknown_document_in_claims_dir_still_fails_closed(world, extra):
+    src = _collect_with_extra_claim(world, extra)
+    assert not src["complete"]
+    assert "claim_unreadable" in src["detail"]
+
+
+def test_future_fixture_mtime_counts_at_its_real_change_time(tmp_path):
+    f = tmp_path / "nested" / "stamped.txt"
+    f.parent.mkdir()
+    f.write_text("fixture")
+    real = f.lstat().st_ctime
+    now = real + 10 * 86400
+    ahead = now + 100 * 86400  # a test stamped this file far past "now"
+    os.utime(f, (ahead, ahead))
+    newest, why = SR.activity(f.parent, now=now)
+    assert why is None and newest < now - 9 * 86400
+    assert SR.activity(f.parent)[0] == ahead  # without now, behaviour is unchanged
+
+
+def test_past_mtime_is_still_trusted_with_now(tmp_path):
+    f = tmp_path / "old.txt"
+    f.write_text("fixture")
+    past = f.lstat().st_ctime - 30 * 86400
+    os.utime(f, (past, past))
+    os.utime(tmp_path, (past, past))
+    assert SR.activity(tmp_path, now=past + 60 * 86400)[0] == past
+
+
+def _git_fixture(repo, *args):
+    import subprocess
+    env = dict(os.environ, GIT_AUTHOR_NAME="f", GIT_AUTHOR_EMAIL="f@x", GIT_COMMITTER_NAME="f", GIT_COMMITTER_EMAIL="f@x",
+               GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_SYSTEM="/dev/null")
+    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, env=env)
+
+
+def _nested_world(world):
+    home, rules, _, _ = world
+    rules["standing_apply"]["rules"] = ["A", "S", "T", "W"]
+    ref = home / "trade-ai-v12-rebuild" / "trade-ai-v12-rebuild"
+    ref.mkdir(parents=True)
+    _git_fixture(ref, "init", "-q")
+    (ref / "a.txt").write_text("shared")
+    _git_fixture(ref, "add", "a.txt")
+    _git_fixture(ref, "commit", "-q", "-m", "shared")
+    return home, rules, ref
+
+
+def _age_tree(root, days=10):
+    for dp, dns, fns in os.walk(root):
+        for n in fns + dns:
+            old(Path(dp) / n, days)
+    old(root, days)
+
+
+def test_nested_clone_with_only_known_commits_is_reclaimable(world):
+    home, rules, ref = _nested_world(world)
+    (scratch,) = _scratch_dirs(home, ("proof-known",))
+    _git_fixture(scratch, "clone", "-q", str(ref), "clone")
+    _age_tree(scratch)
+    result = DH.standing_plan(rules, NOW, evidence())
+    item = next(r for r in result["items"] if r["path"] == str(scratch))
+    assert item["bundles"] == []
+
+
+def test_nested_repo_with_unique_commit_is_bundled_then_removed(world, monkeypatch):
+    home, rules, ref = _nested_world(world)
+    (scratch,) = _scratch_dirs(home, ("proof-unique",))
+    repo = scratch / "work"
+    repo.mkdir()
+    _git_fixture(repo, "init", "-q")
+    (repo / "b.txt").write_text("only here")
+    _git_fixture(repo, "add", "b.txt")
+    _git_fixture(repo, "commit", "-q", "-m", "unique")
+    _age_tree(scratch)
+    result = DH.standing_plan(rules, NOW, evidence())
+    item = next(r for r in result["items"] if r["path"] == str(scratch))
+    assert item["bundles"] == ["work"]
+    monkeypatch.undo()  # the real remover, on fixture paths only
+    ok, how = DH.remove_item(item)
+    assert ok and "bundled 1" in how and not scratch.exists()
+    bundle = Path(item["bundle_dir"]) / "proof-unique" / "work.bundle"
+    assert bundle.is_file()
+    restored = home / "restored"
+    _git_fixture(home, "clone", "-q", str(bundle), str(restored))
+    assert (restored / "b.txt").read_text() == "only here"
+
+
+def test_nested_registered_worktree_is_archived_then_removed(world, monkeypatch):
+    home, rules, ref = _nested_world(world)
+    (scratch,) = _scratch_dirs(home, ("proof-registered-worktree",))
+    _git_fixture(ref, "worktree", "add", "-q", "-b", "proof", str(scratch / "wt"))
+    (scratch / "wt" / "a.txt").write_text("edited in proof")
+    (scratch / "wt" / "new.txt").write_text("untracked proof output")
+    _age_tree(scratch)
+    item = next(r for r in DH.standing_plan(rules, NOW, evidence())["items"] if r["path"] == str(scratch))
+    assert item["bundles"] == ["worktree:wt"]
+    monkeypatch.undo()  # the real remover, on fixture paths only
+    ok, how = DH.remove_item(item)
+    assert ok and not scratch.exists()
+    refs = subprocess.run(["git", "-C", str(ref), "for-each-ref", "--format=%(refname)", item["archive_ns"]],
+                          capture_output=True, text=True, check=True).stdout.split()
+    assert len(refs) == 1
+    restored = home / "restored-proof"
+    _git_fixture(ref, "worktree", "add", "-q", "--detach", str(restored), refs[0])
+    assert (restored / "a.txt").read_text() == "edited in proof"
+    assert (restored / "new.txt").read_text() == "untracked proof output"
+    assert subprocess.run(["git", "-C", str(ref), "rev-parse", "--verify", "refs/heads/proof"], capture_output=True).returncode == 0
+
+
+@pytest.mark.parametrize("make, reason", [
+    ("dirty", "nested_repo_dirty"),
+])
+def test_nested_repo_holds(world, make, reason):
+    home, rules, ref = _nested_world(world)
+    (scratch,) = _scratch_dirs(home, ("proof-" + make.replace("_", "-"),))
+    if make == "dirty":
+        _git_fixture(scratch, "clone", "-q", str(ref), "clone")
+        (scratch / "clone" / "a.txt").write_text("edited")
+    else:
+        _git_fixture(ref, "worktree", "add", "-q", str(scratch / "wt"))
+    _age_tree(scratch)
+    result = DH.standing_plan(rules, NOW, evidence())
+    assert str(scratch) not in {r["path"] for r in result["items"]}
+    assert any(reason in " ".join(r["reasons"]) for r in result["excluded"] if r["path"] == str(scratch))
+
+
+def test_orphan_worktree_pointer_is_plain_files(world):
+    home, rules, _ = _nested_world(world)
+    (scratch,) = _scratch_dirs(home, ("orphan",))
+    (scratch / "wt").mkdir()
+    (scratch / "wt" / ".git").write_text("gitdir: /nonexistent/fixture/.git/worktrees/wt")
+    _age_tree(scratch)
+    result = DH.standing_plan(rules, NOW, evidence())
+    assert str(scratch) in {r["path"] for r in result["items"]}
+
+
+# ── apply-time evidence recheck (2026-11-02) ───────────────────────────────────────────────────────
+
+
+def _opaque_evidence():
+    doc = evidence()
+    set_source(doc, "processes", [{"pid": "1234", "opaque": True, "uid": 0, "own_uid": False, "comm": "hidden"}])
+    return doc
+
+
+def test_recheck_retry_survives_one_transient_opaque_process(world, monkeypatch):
+    """One opaque capture, gone on the next attempt: the pass must continue, not refuse."""
+    path, manifest, doc, calls = planned(world, monkeypatch)
+    assert manifest["items"], "fixture must plan at least one removal"
+    sequence = [_opaque_evidence()]
+
+    def capture(*_a, **_k):
+        return sequence.pop(0) if sequence else evidence()
+
+    monkeypatch.setattr(DH, "collect_standing_evidence", capture)
+    monkeypatch.setattr(DH.time, "sleep", lambda _s: None)
+
+    report = do_apply(path, world[1], doc)
+
+    assert report["refused"] is None, report.get("refusal_detail")
+    assert report["removed"], "the pass continues after a transient opaque capture"
+    assert calls, "the planned items were removed"
+
+
+def test_recheck_refuses_and_names_a_persistent_opaque_process(world, monkeypatch):
+    """When the opaque process outlasts the retries the apply still refuses — and says which check."""
+    path, manifest, doc, calls = planned(world, monkeypatch)
+    monkeypatch.setattr(DH, "collect_standing_evidence", lambda *_a, **_k: _opaque_evidence())
+    monkeypatch.setattr(DH.time, "sleep", lambda _s: None)
+
+    report = do_apply(path, world[1], doc)
+
+    assert report["refused"] == "evidence_recheck_unavailable"
+    assert report["refusal_detail"] == "evidence_opaque_processes", "the receipt must name the refusing check"
+    assert calls == [], "an opaque capture never authorizes a removal"

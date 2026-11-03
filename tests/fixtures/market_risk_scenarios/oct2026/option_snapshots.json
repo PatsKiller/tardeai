@@ -1,0 +1,104 @@
+{
+ "source": "Public market data quoted in docs/audits/MARKET_SELLOFF_ALERT_RCA_2026-10-30.md ([EXT] press reports, [VERIFIED] system snapshots of index option chains). No portfolio data.",
+ "note": "history rows stamped 17:35 ET (evening snapshot); 10-29 row is the 10:00 ET snapshot",
+ "rows": [
+  {
+   "symbol": "QQQ",
+   "as_of": "2026-10-21T17:35:00-04:00",
+   "snapshot_date": "2026-10-21",
+   "pc_oi_ratio": 1.5,
+   "pc_vol_ratio": 0.98
+  },
+  {
+   "symbol": "QQQ",
+   "as_of": "2026-10-22T17:35:00-04:00",
+   "snapshot_date": "2026-10-22",
+   "pc_oi_ratio": 1.6,
+   "pc_vol_ratio": 1.1
+  },
+  {
+   "symbol": "QQQ",
+   "as_of": "2026-10-23T17:35:00-04:00",
+   "snapshot_date": "2026-10-23",
+   "pc_oi_ratio": 2.914,
+   "pc_vol_ratio": 1.022
+  },
+  {
+   "symbol": "QQQ",
+   "as_of": "2026-10-26T17:35:00-04:00",
+   "snapshot_date": "2026-10-26",
+   "pc_oi_ratio": 2.1,
+   "pc_vol_ratio": 0.96
+  },
+  {
+   "symbol": "QQQ",
+   "as_of": "2026-10-27T17:35:00-04:00",
+   "snapshot_date": "2026-10-27",
+   "pc_oi_ratio": 1.337,
+   "pc_vol_ratio": 0.865
+  },
+  {
+   "symbol": "QQQ",
+   "as_of": "2026-10-28T17:35:00-04:00",
+   "snapshot_date": "2026-10-28",
+   "pc_oi_ratio": 1.375,
+   "pc_vol_ratio": 0.96
+  },
+  {
+   "symbol": "SPY",
+   "as_of": "2026-10-21T17:35:00-04:00",
+   "snapshot_date": "2026-10-21",
+   "pc_oi_ratio": 0.95,
+   "pc_vol_ratio": 0.99
+  },
+  {
+   "symbol": "SPY",
+   "as_of": "2026-10-22T17:35:00-04:00",
+   "snapshot_date": "2026-10-22",
+   "pc_oi_ratio": 1.0,
+   "pc_vol_ratio": 1.0
+  },
+  {
+   "symbol": "SPY",
+   "as_of": "2026-10-23T17:35:00-04:00",
+   "snapshot_date": "2026-10-23",
+   "pc_oi_ratio": 1.717,
+   "pc_vol_ratio": 1.118
+  },
+  {
+   "symbol": "SPY",
+   "as_of": "2026-10-26T17:35:00-04:00",
+   "snapshot_date": "2026-10-26",
+   "pc_oi_ratio": 1.193,
+   "pc_vol_ratio": 0.906
+  },
+  {
+   "symbol": "SPY",
+   "as_of": "2026-10-27T17:35:00-04:00",
+   "snapshot_date": "2026-10-27",
+   "pc_oi_ratio": 0.85,
+   "pc_vol_ratio": 0.924
+  },
+  {
+   "symbol": "SPY",
+   "as_of": "2026-10-28T17:35:00-04:00",
+   "snapshot_date": "2026-10-28",
+   "pc_oi_ratio": 0.9,
+   "pc_vol_ratio": 1.024
+  },
+  {
+   "symbol": "QQQ",
+   "as_of": "2026-10-29T10:00:00-04:00",
+   "snapshot_date": "2026-10-29",
+   "pc_oi_ratio": 2.856,
+   "pc_vol_ratio": 3.309
+  },
+  {
+   "symbol": "SPY",
+   "as_of": "2026-10-29T10:00:00-04:00",
+   "snapshot_date": "2026-10-29",
+   "pc_oi_ratio": 1.513,
+   "pc_vol_ratio": 1.292
+  }
+ ]
+}

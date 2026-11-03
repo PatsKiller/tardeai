@@ -382,6 +382,7 @@ current_release() { printf '%s' "$FIXTURE_PREVIOUS"; }
 require_canonical_source_at() { :; }
 release_grant_preflight() { :; }
 conformance_gate() { :; }
+relay_live_set_gate_step() { :; }
 release_pin_step() { echo "pin:$1" >>"$FIXTURE_TRACE"; }
 write_state() { :; }
 activate_release() { echo "activate:$1" >>"$FIXTURE_TRACE"; }
