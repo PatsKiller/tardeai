@@ -179,6 +179,7 @@ def test_moved_facts_leave_the_request_open_with_a_plain_reason(store):
     status, payload = api.handle("/api/v2/home/approvals/apr-1/approve", "POST", {}, ctx=_ctx())
     assert status == 409 and payload["code"] == "CHANGED"
     assert payload["reason"] == "This changed. The lead will re-ask."
+    assert payload["blocked_reason"] == payload["reason"] and payload["state"] == "open"
     assert store.records["apr-1"]["state"] == "open"
 
 

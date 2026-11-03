@@ -231,7 +231,15 @@ def _store_error(exc: Exception) -> tuple[int, dict]:
     if mapped:
         # A's Refused carries `.plain` — the sentence the card shows verbatim. Never reword it here.
         plain = getattr(exc, "plain", None) or getattr(exc, "reason", None) or mapped
-        return _refused(mapped, str(plain))
+        status, payload = _refused(mapped, str(plain))
+        if mapped == "CHANGED":
+            # The card disables the buttons from this field after a moved fact; the record stays open.
+            payload["blocked_reason"] = str(plain)
+            payload["state"] = "open"
+        elif mapped == "EXPIRED":
+            payload["state"] = "expired"
+            payload["reask_requested"] = True
+        return status, payload
     return _refused("STORE_ERROR", f"The approval store could not complete that ({type(exc).__name__}).")
 
 
