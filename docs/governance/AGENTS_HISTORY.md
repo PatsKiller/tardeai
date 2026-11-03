@@ -2,8 +2,8 @@
 
 Status:      ACTIVE (history; nothing here binds)
 Owner:       coordinator
-as_of:       2026-11-02T23:48:59Z
-Measured at: 30.0.0 preparation from main e7f0aaed3; PROPOSED, no ratification claimed
+as_of:       2026-11-03T02:00:58Z
+Measured at: operator ratification of reviewed source f582daf115f41d2e6cda9e17dfd28f2aa4308f96; status-only edit effective on merge
 
 This file holds the record that AGENTS.md no longer carries in its body: every version-history row in full, every
 version banner, and every ratifying edit. **Nothing here is a rule.** The binding text is the current AGENTS.md; why a
@@ -15,22 +15,22 @@ The complete AGENTS.md 25.0.1 text is preserved byte-exact at `tests/fixtures/ag
 ## 2026-11-02 — coherent 30.0.0 preparation
 
 The operator directly authorized Codex to prepare standing pushes, delegated uploads, release-coordinator merges,
-merge-watching and the approved-plan registry rule. Ratification remains one later exact-head operator act.
+merge-watching and the approved-plan registry rule. The operator ratified the reviewed source at 2026-11-03T02:00:58Z.
 Unratified proposals 29.4.0 (#2459), 29.5.0 (#2493) and plan-registry policy #2491 are consolidated. Branches and
 review receipts remain recoverable; none of those proposals is represented as ratified. The reviewed #2459 guard
 was carried and the older divergent #2493 copy was not overlaid. No approval token is invented by preparation.
 
-### 30.0.0 proposal record
+### 30.0.0 ratification record
 
-**30.0.0 is PROPOSED (MAJOR)** — standing feature uploads, delegated clean uploads, release-coordinator merges,
+**30.0.0 is ACTIVE (MAJOR)** — standing feature uploads, delegated clean uploads, release-coordinator merges,
 merge-watching and one server-side approved-plan registry (§11, §25.10.4, §28.4, §28.15, §28.17).
-The operator directly authorized preparation; ratification is still required. Policy and capability manifest stay
-PROPOSED and grant nothing until ratified and merged. **29.3.0 remains active.** Earlier banners and consolidation
-records are in docs/governance/AGENTS_HISTORY.md; old source branches remain. No broker, secret or deploy grant.
+Ratified by the operator at the reviewed source head; this status-only edit takes effect on merge.
+Approval and consolidation records are in docs/governance/AGENTS_HISTORY.md; old source branches remain.
+No broker, secret or deploy grant.
 
 | version | date | status | class | change | approval |
 |---|---|---|---|---|---|
-| 30.0.0 | PENDING | PROPOSED | MAJOR | Supersedes 29.3.0. Standing scoped/delegated uploads, ordinary AND held engineering merges with tests/docs and two held reviews, merge-watching, one approved-plan registry; §0 rule 4/§2B/§11/§17/§20/§25.10/§28.4/§28.15/§28.17; AI_WORK_POLICY §3/§9/§11/§16/§21/§27/§28 aligned. No broker, secret or deploy authority. | PENDING `APPROVE_AGENTS_POLICY_30_0_0 <PR> <head_sha>` |
+| 30.0.0 | 2026-11-03 | ACTIVE | MAJOR | Supersedes 29.3.0. Standing scoped/delegated uploads, ordinary AND held engineering merges with tests/docs and two held reviews, merge-watching, one approved-plan registry; §0 rule 4/§2B/§11/§17/§20/§25.10/§28.4/§28.15/§28.17; AI_WORK_POLICY §3/§9/§11/§16/§21/§27/§28 aligned. No broker, secret or deploy authority. | `APPROVE_AGENTS_POLICY_30_0_0 2501 f582daf115f41d2e6cda9e17dfd28f2aa4308f96` (operator, https://github.com/PatsKiller/tardeai/pull/2501#issuecomment-6593479735) |
 | 29.5.0 | PENDING | WITHDRAWN | MAJOR | Consolidated into30.0.0; no separate banner retained here. Original source c24d1f0edfd426fcb11e883be515d5ecaf79678b (#2493) and remote branch preserved. | none (withdrawn) |
 
 ### Earlier banners

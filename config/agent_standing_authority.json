@@ -1,11 +1,11 @@
 {
   "schema": "AgentStandingAuthority@v1",
   "minimum_policy": "30.0.0",
-  "status": "PROPOSED",
+  "status": "ACTIVE",
   "ratification": {
-    "approval_token": null,
-    "pr": null,
-    "reviewed_head": null
+    "approval_token": "APPROVE_AGENTS_POLICY_30_0_0 2501 f582daf115f41d2e6cda9e17dfd28f2aa4308f96",
+    "pr": 2501,
+    "reviewed_head": "f582daf115f41d2e6cda9e17dfd28f2aa4308f96"
   },
   "capabilities": {
     "feature_push": {
