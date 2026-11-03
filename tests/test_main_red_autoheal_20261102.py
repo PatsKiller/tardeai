@@ -7,11 +7,12 @@ re-runs the failed jobs ONCE (``gh run rerun <id> --failed``), and:
   test blocked the deploy poller until a human re-ran it);
 * a second red records an escalation: one P1 page and one Claude Code fixer request.
 
-AGENTS.md wins over the plan. §24.5 forbids a scheduled job from writing to a remote and
-§28.14 limits the monitor's rerun to an *infrastructure* flake, "never a test failure".
-So the shipped config re-runs infrastructure failures only; a run whose failed log names
-test ids escalates on the first cycle instead of being re-run. Every remote write is
-behind a config gate whose default honours those rules.
+AGENTS.md wins over the plan. §24.5 forbids a scheduled job from writing to a remote, so
+the fix task stays a LOCAL request file. The earlier §28.14 reading ("never a test failure")
+is superseded by the operator STANDING ORDER of 2026-11-03: every failed CI run gets ONE
+automatic re-run per failing head per check group; a passing re-run is FLAKY and opens the
+fix task, a second failure is REAL and is never re-run a third time. Every remote write is
+behind a config gate.
 
 Hermetic: every gh call, the Telegram sender and the issue writer are injected fakes;
 state, receipts and fixer requests live under tmp_path. Nothing reaches GitHub.
@@ -230,8 +231,11 @@ def test_shipped_config_is_valid_and_gates_remote_writes():
 
     assert cfg["schema"] == "MainRedAutohealConfig@v1"
     assert cfg["max_reruns"] == 1
-    assert cfg["rerun_classes"]["test_failure"] is False
-    assert cfg["flaky_issue"]["enabled"] is False
+    # Operator STANDING ORDER 2026-11-03: failed CI gets ONE automatic re-run by agents (test failures
+    # included), pass = FLAKY + a local fix task, fail again = REAL and never re-run a third time.
+    assert cfg["rerun_classes"]["test_failure"] is True
+    assert "ONE automatic re-run" in cfg["_why"] and "never re-run a third time" in cfg["_why"]
+    assert cfg["flaky_issue"]["enabled"] is False  # still no GitHub write from a scheduled job (§24.5)
     assert "24.5" in cfg["_why"] and "28.14" in cfg["_why"]
     assert cfg["required_workflows"]
 
@@ -343,6 +347,13 @@ def test_main_apply_pages_through_its_own_send_import(tmp_path, monkeypatch):
     gh = FakeGh([run_json()], logs={"991": "FAILED tests/test_x.py::test_y - StopIteration"})
     monkeypatch.setattr(mra, "_gh_runner", gh)
 
+    # Operator standing order 2026-11-03: the first cycle re-runs the failed jobs once (test failures
+    # included) instead of paging; the page happens only when the re-run fails again (REAL).
+    rc = mra.main(["--apply", "--state-dir", str(tmp_path / "state"), "--json"])
+
+    assert rc == 0
+    assert [c[2] for c in gh.reruns] == ["991"] and sent == []
+    gh.attempts["991"] = 2  # the re-run attempt is the red one
     rc = mra.main(["--apply", "--state-dir", str(tmp_path / "state"), "--json"])
 
     assert rc == 0
@@ -499,3 +510,47 @@ def test_a_green_rerun_on_a_new_attempt_records_the_flake(tmp_path):
     assert receipt["actions"][0]["action"] == "flake_recorded"
     assert receipt["actions"][0]["suspected_flake"] is True
     assert len(gh.reruns) == 1
+
+
+# --------------------------------------------- operator standing order 2026-11-03
+# "One re-run per failing head per check so red is never retried into green."
+GROUPED = {**CONFIG,
+           "required_workflows": ["cio-production-hardening-ci", "cio-full-suite-sharded"],
+           "rerun_classes": {"infrastructure": True, "test_failure": True, "unknown": False},
+           "page_groups": {"cio-production-hardening-ci": "cio-hardening-suite",
+                           "cio-full-suite-sharded": "cio-hardening-suite"}}
+
+
+def test_one_rerun_per_failing_head_and_check_group(tmp_path):
+    """Both workflows of one check group go red on the SAME head: the head is re-run once, not twice.
+
+    The ledger is keyed (head SHA, check group), so the second workflow is held even though its own run
+    record has never been seen — otherwise a single bad commit would burn one CI re-run per workflow.
+    """
+    gh = FakeGh([run_json("991", "cio-production-hardening-ci"),
+                 run_json("992", "cio-full-suite-sharded")],
+                logs={"991": "FAILED tests/test_x.py::test_y - StopIteration",
+                      "992": "FAILED tests/test_x.py::test_y - StopIteration"})
+    receipt = cycle(tmp_path, gh, cfg=dict(GROUPED))
+
+    assert len(gh.reruns) == 1, gh.reruns
+    actions = sorted((a["action"] for a in receipt["actions"]))
+    assert actions == ["noop", "rerun"]
+    held = next(a for a in receipt["actions"] if a["action"] == "noop")
+    assert held["reason"] == "one re-run already requested for this head/check"
+
+
+def test_passing_rerun_opens_a_fix_task_naming_the_flaky_test(tmp_path):
+    """"Pass on re-run = FLAKY, record the test name and run ids, OPEN A FIX TASK ... and carry on." """
+    gh = FakeGh([run_json()], logs={"991": "FAILED tests/test_x.py::test_y - StopIteration"},
+                views={"991": {"conclusion": "failure", "status": "completed"}})
+    cycle(tmp_path, gh, cfg=dict(GROUPED))            # cycle 1: one automatic re-run
+    gh.views["991"] = {"conclusion": "success", "status": "completed"}
+    receipt = cycle(tmp_path, gh, cfg=dict(GROUPED))  # cycle 2: the re-run passed -> flake
+
+    action = receipt["actions"][0]
+    assert action["action"] == "flake_recorded" and action["suspected_flake"] is True
+    doc = json.loads(Path(action["fixer_request"]).read_text())
+    assert doc["main_red_autoheal"]["why"].startswith("suspected flake")
+    assert "tests/test_x.py::test_y" in doc["main_red_autoheal"]["failing_test_ids"]
+    assert doc["main_red_autoheal"]["run_id"] == "991"

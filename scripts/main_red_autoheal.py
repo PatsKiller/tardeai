@@ -184,6 +184,10 @@ def run_cycle(
     if state.get("schema") != STATE_SCHEMA:
         state = {"schema": STATE_SCHEMA, "runs": {}}
     runs_state: dict[str, dict] = state.setdefault("runs", {})
+    # Operator standing order 2026-11-03: ONE re-run per failing HEAD per check group, so red is never
+    # retried into green. The ledger is keyed (head SHA, check group) and survives run-id changes: a
+    # second workflow in the same page group on the same head does not get its own retry.
+    rerun_ledger: dict[str, dict] = state.setdefault("rerun_ledger", {})
 
     rc, out = gh(["run", "list", "--repo", repo, "--branch", str(config.get("branch", "main")),
                   "--limit", str(int(config["run_list_limit"])),
@@ -226,13 +230,29 @@ def run_cycle(
                 rec["flake_recorded"] = True
                 rec["last_action"] = ACTION_FLAKE_RECORDED
                 rec["updated_at"] = started_at
+                fixer_path = None
+                failing: list[str] = []
+                if not dry_run and bool(config.get("fixer", {}).get("enabled", True)):
+                    # ONE re-run passed -> FLAKY; open the deterministic fix task with the named test ids.
+                    flog = _failed_log(config, gh, run_id)
+                    failure_class, failing = classify_failure("failure", flog, infra_markers)
+                    fixer_path, failing = _fix_request(
+                        config, {"failure_class": failure_class, "failing_test_ids": failing},
+                        run, run_id, workflow, state_dir, started_at,
+                        why="suspected flake: the re-run passed; make the failing test deterministic",
+                        log_tail=_log_tail(config, flog), run_key=run_key)
+                    rec["fixer_request"] = str(fixer_path)
                 receipt["actions"].append({"run_id": run_id, "workflow": workflow,
                                            "action": ACTION_FLAKE_RECORDED, "suspected_flake": True,
-                                           "note": "the re-run passed; recorded as a suspected flake"})
+                                           "failing_test_ids": list(failing),
+                                           "fixer_request": str(fixer_path) if fixer_path else None,
+                                           "note": "the re-run passed; recorded as a suspected flake and a fix task was opened"})
             else:
                 receipt["skipped"].append({"run_id": run_id, "workflow": workflow, "reason": "green"})
             continue
         prior_attempts = sum(1 for k in runs_state if k.startswith(f"{run_id}:")) - (1 if run_key in runs_state else 0)
+        group = (config.get("page_groups") or {}).get(workflow) or workflow
+        head_key = f"{tip}:{group}"
         action = _handle_red_run(
             config=config, run=run, run_id=run_id, workflow=workflow,
             record=runs_state.setdefault(run_key, {"attempts": 0, "escalated": False,
@@ -241,6 +261,7 @@ def run_cycle(
             gh=gh, state_dir=state_dir, dry_run=dry_run, telegram=telegram,
             issue_writer=issue_writer, infra_markers=infra_markers, now=started_at,
             run_key=run_key, run_prior_attempts=max(prior_attempts, 0),
+            head_key=head_key, rerun_ledger=rerun_ledger,
         )
         receipt["actions"].append(action)
 
@@ -272,7 +293,8 @@ def decide(*, attempts: int, max_reruns: int, escalated: bool, flake_recorded: b
 
 
 def _handle_red_run(*, config, run, run_id, workflow, record, gh, state_dir, dry_run,
-                    telegram, issue_writer, infra_markers, now, run_key="", run_prior_attempts=0) -> dict:
+                    telegram, issue_writer, infra_markers, now, run_key="", run_prior_attempts=0,
+                    head_key="", rerun_ledger=None) -> dict:
     base = {"run_id": run_id, "workflow": workflow, "head_sha": str(run.get("headSha")),
             "run_url": run.get("url")}
     record["head_sha"] = str(run.get("headSha"))
@@ -302,7 +324,23 @@ def _handle_red_run(*, config, run, run_id, workflow, record, gh, state_dir, dry
     failure_class, test_ids = classify_failure(
         str(view_conclusion or run.get("conclusion")), log, infra_markers)
     base.update({"failure_class": failure_class, "failing_test_ids": test_ids})
-    rerun_allowed = bool((config.get("rerun_classes") or {}).get(failure_class)) and run_prior_attempts == 0
+    ledger = rerun_ledger if rerun_ledger is not None else {}
+    head_rerun = bool(head_key) and head_key in ledger
+    # Only the ORIGINAL attempt of a held head/check waits. Once the rerun attempt itself is red
+    # (attempt >= 2) this is the 'fail again = REAL' case: it must page and get the fix task, never
+    # another rerun. The attempt number is the last run_key component.
+    try:
+        attempt_no = int(str(run_key).rsplit(":", 1)[-1]) if ":" in str(run_key) else 1
+    except ValueError:
+        attempt_no = 1
+    if (head_rerun and attempt_no <= 1 and attempts == 0
+            and not record.get("escalated") and not record.get("flake_recorded")):
+        # This head/check already got its one re-run (possibly from the other workflow in the group).
+        # Hold, do not page: the re-run's outcome is the decision.
+        return {**base, "action": ACTION_NOOP,
+                "reason": "one re-run already requested for this head/check"}
+    rerun_allowed = (bool((config.get("rerun_classes") or {}).get(failure_class))
+                     and run_prior_attempts == 0 and not head_rerun)
 
     decision = decide(attempts=attempts, max_reruns=int(config["max_reruns"]),
                       escalated=bool(record.get("escalated")),
@@ -317,6 +355,15 @@ def _handle_red_run(*, config, run, run_id, workflow, record, gh, state_dir, dry
     if decision == ACTION_FLAKE_RECORDED:
         record["flake_recorded"] = True
         record["last_action"] = ACTION_FLAKE_RECORDED
+        fixer_path = None
+        if not dry_run and bool(config.get("fixer", {}).get("enabled", True)):
+            # Operator standing order 2026-11-03: a passing re-run is FLAKY and must OPEN A FIX TASK so the
+            # test becomes deterministic. The task is this durable request; the fixer stops at a local fix.
+            fixer_path, test_ids = _fix_request(
+                config, base, run, run_id, workflow, state_dir, now,
+                why="suspected flake: the re-run passed; make the failing test deterministic",
+                log_tail=_log_tail(config, log), run_key=run_key)
+            record["fixer_request"] = str(fixer_path)
         if bool(config.get("flaky_issue", {}).get("enabled")) and issue_writer is not None and test_ids:
             try:
                 base["flaky_issue_url"] = issue_writer(
@@ -325,7 +372,9 @@ def _handle_red_run(*, config, run, run_id, workflow, record, gh, state_dir, dry
             except Exception as exc:  # noqa: BLE001
                 base["issue_error"] = f"{type(exc).__name__}: {exc}"
         return {**base, "action": ACTION_FLAKE_RECORDED, "suspected_flake": True,
-                "note": "the re-run passed; recorded as a suspected flake"}
+                "failing_test_ids": list(test_ids or []),
+                "fixer_request": str(fixer_path) if fixer_path else None,
+                "note": "the re-run passed; recorded as a suspected flake and a fix task was opened"}
     if decision == ACTION_RERUN:
         if dry_run:
             return {**base, "action": "would_" + ACTION_RERUN}
@@ -334,6 +383,8 @@ def _handle_red_run(*, config, run, run_id, workflow, record, gh, state_dir, dry
         # every cycle, forever.
         record["attempts"] = attempts + 1
         record["last_action"] = ACTION_RERUN
+        if rc == 0 and head_key:
+            ledger[head_key] = {"run_id": run_id, "at": now}
         if rc != 0:
             return {**base, "action": "rerun_failed", "attempt": record["attempts"],
                     "error": (out or "")[:300]}
@@ -491,18 +542,35 @@ def fixer_incident_document(*, run: Mapping[str, Any], run_id: str, workflow: st
     }
 
 
-def _escalate(config, base, record, run, run_id, workflow, gh, state_dir, dry_run,
-              telegram, issue_writer, infra_markers, now, *, why, log_tail="", run_key="") -> dict:
+def _fix_request(config, base, run, run_id, workflow, state_dir, now, *, why, log_tail="", run_key=""):
+    """Write the durable LOCAL fix task (N8nCodeDefect@v1) the self-heal fixer consumes.
+
+    Operator standing order 2026-11-03: a re-run that passes leaves a FLAKY test, and 'OPEN A FIX TASK so it
+    becomes deterministic'. The fix task is this request file, not a GitHub issue (a scheduled remote write is
+    §24.5); the fixer still stops at a local fix branch until it is armed. Returns (path, failing test ids).
+    """
     failing = list(base.get("failing_test_ids") or [])
     request = fixer_incident_document(
         run=run, run_id=run_id, workflow=workflow, failing=failing,
         failure_class=str(base.get("failure_class") or ""), log_tail=log_tail, now=now)
     request["main_red_autoheal"]["repo"] = str(config["repo"])
+    request["main_red_autoheal"]["why"] = why
     run_key = run_key or run_id
     request_path = state_dir / str(config["fixer"].get("requests_rel") or "fixer_requests") / \
         f"{run_key.replace(':', '-')}.json"
+    _write_json(request_path, request)
+    if bool(config.get("fixer", {}).get("enabled", True)):
+        _append_jsonl(state_dir / "fixer_requests.jsonl", request)
+    return request_path, failing
+
+
+def _escalate(config, base, record, run, run_id, workflow, gh, state_dir, dry_run,
+              telegram, issue_writer, infra_markers, now, *, why, log_tail="", run_key="") -> dict:
+    failing = list(base.get("failing_test_ids") or [])
     if dry_run:
         return {**base, "action": "would_escalate", "reason": why, "failing_test_ids": failing}
+    request_path, failing = _fix_request(config, base, run, run_id, workflow, state_dir, now,
+                                         why=why, log_tail=log_tail, run_key=run_key)
 
     text = (
         f"[{config['page'].get('severity', 'P1')}] main is red: {workflow} on "
@@ -513,9 +581,6 @@ def _escalate(config, base, record, run, run_id, workflow, gh, state_dir, dry_ru
     record["escalated"] = True
     record["last_action"] = ACTION_PAGE_AND_DISPATCH
     record["fixer_request"] = str(request_path)
-    _write_json(request_path, request)
-    if bool(config.get("fixer", {}).get("enabled", True)):
-        _append_jsonl(state_dir / "fixer_requests.jsonl", request)
     group = (config.get("page_groups") or {}).get(workflow) or workflow
     page_key = f"{run.get('headSha')}:{group}"
     cooldown_h = float((config.get("page") or {}).get("page_cooldown_hours", 6))
