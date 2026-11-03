@@ -57,11 +57,22 @@ class _NudgeState:
     def __init__(self, path):
         self.path = path
 
+    def due(self, keys, now, floor_minutes=120):
+        # Default: the key IS due, so a bare {send: false} is NOT a verified floor.
+        return list(keys)
+
     def note(self, keys, when):
         return {k: when.isoformat() for k in keys}
 
     def save(self, rows):
         return None
+
+
+class _HeldNudgeState(_NudgeState):
+    """A state whose key is genuinely inside the repeat floor (our own ledger says not due)."""
+
+    def due(self, keys, now, floor_minutes=120):
+        return []
 
 
 def _fake_batch(monkeypatch):
@@ -155,6 +166,102 @@ def test_the_marker_is_on_the_first_line():
     assert rn.RECOVERY_T1_MARKER in msg
 
 
+# ── cx-openai-2 whole-head BLOCK at 0a92a4cb4: F2, F3, F4, F5 ────────────────────────────────────────────
+
+def test_nan_materiality_resolves_loud():
+    """F2: NaN in both dimensions must be UNKNOWN, not a below-threshold T2."""
+    import math
+    send = _Sender()
+    case = _case(realized_loss_usd=float("nan"), pre_exit_weight_pct=float("nan"))
+    out = rn.notify_recovery_case(case, policy=POLICY, sender=send, state_path="/tmp/x.json")
+    assert out["tier"] == "T1" and out["sent"] is True and send.calls, out
+
+
+def test_partial_unknown_materiality_resolves_loud():
+    """F2: a known dimension below threshold does not let an UNKNOWN other dimension become T2."""
+    for case in (_case(realized_loss_usd=None, pre_exit_weight_pct=0.5),
+                 _case(realized_loss_usd=500, pre_exit_weight_pct=None)):
+        send = _Sender()
+        out = rn.notify_recovery_case(case, policy=POLICY, sender=send, state_path="/tmp/x.json")
+        assert out["tier"] == "T1" and send.calls, (case, out)
+
+
+def test_nonfinite_policy_thresholds_are_unusable_and_resolve_loud():
+    """F2: an infinite configured threshold is not a usable number."""
+    policy = {"materiality": {"t1": {"loss_usd": float("inf"), "weight_pct": float("inf")}}}
+    send = _Sender()
+    out = rn.notify_recovery_case(_case(), policy=policy, sender=send, state_path="/tmp/x.json")
+    assert out["tier"] == "T1" and send.calls, out
+
+
+def test_an_unverified_negative_batch_decision_falls_through_to_direct(monkeypatch):
+    """F3: {send:false, QUIET_HOURS} from a fresh state is NOT a verified repeat floor."""
+    mod = types.ModuleType("lib.telegram_batch")
+    mod.NudgeState = _NudgeState
+    mod.batch_text = lambda *, header, items, footer=None: header + "\n" + items[0]["title"]
+    mod.nudge_decision = lambda **kw: {"send": False, "reason": "QUIET_HOURS"}
+    monkeypatch.setitem(sys.modules, "lib.telegram_batch", mod)
+    send = _Sender()
+    out = rn.notify_recovery_case(_case(), policy=POLICY, sender=send, state_path="/tmp/x.json")
+    assert out["path"] == "direct" and out["sent"] is True and send.calls, out
+
+
+def test_a_verified_repeat_floor_still_holds(monkeypatch):
+    """F3: a genuine floor (our own ledger says not due) remains a recorded hold, not a page."""
+    class HeldState(_NudgeState):
+        def due(self, keys, now, floor_minutes=120):
+            return []
+
+    mod = types.ModuleType("lib.telegram_batch")
+    mod.NudgeState = HeldState
+    mod.batch_text = lambda *, header, items, footer=None: header + "\n" + items[0]["title"]
+    mod.nudge_decision = lambda **kw: {"send": False, "reason": "repeat floor"}
+    monkeypatch.setitem(sys.modules, "lib.telegram_batch", mod)
+    send = _Sender()
+    out = rn.notify_recovery_case(_case(), policy=POLICY, sender=send, state_path="/tmp/x.json")
+    assert out["path"] == "batch" and out["sent"] is False and out["deduped_by_floor"] is True
+    assert send.calls == []
+
+
+def test_a_non_utf8_policy_resolves_loud(tmp_path):
+    """F4: a damaged policy encoding must resolve T1, never raise."""
+    bad = tmp_path / "recovery_policy.yaml"
+    bad.write_bytes(b"\xff\xfe\x00broken")
+    policy = rn.load_policy(bad)           # must not raise
+    assert rn.resolve_tier(_case(realized_loss_usd=500, pre_exit_weight_pct=0.5), policy=policy)[0] == "T1"
+
+
+def test_a_marked_t1_is_exempt_from_the_legacy_send_gates(monkeypatch, tmp_path):
+    """F5: health-repeat, rate, daily budget and IGNORE filtering cannot suppress a marked T1."""
+    monkeypatch.setattr(router, "_budget_count_today", lambda: 10 ** 6)
+    monkeypatch.setattr(router, "_health_telegram_allowed", lambda message: False)
+    monkeypatch.setattr(router, "_RECOVERY_T1_PAGE_PATH", tmp_path / "pages.json")
+    assert router.should_send_telegram(rn.build_message(_case(case_id="spcx-a"))) is True
+    marked_ignore = rn.build_message(_case(case_id="spcx-b", plan="escalation VERDICT IGNORE confidence 10%"))
+    assert router.route_alert(marked_ignore)["send_telegram"] is True
+    routed = router.route_alert(rn.build_message(_case(case_id="spcx-c")))
+    assert "recovery_t1_exemptions" in routed and routed["recovery_t1_exemptions"]
+
+
+def test_a_recovery_t1_pages_at_most_once_per_case_per_day(monkeypatch, tmp_path):
+    """F5: the budget exemption is bounded explicitly by case id, and the bound is logged."""
+    monkeypatch.setattr(router, "_budget_count_today", lambda: 10 ** 6)
+    monkeypatch.setattr(router, "_RECOVERY_T1_PAGE_PATH", tmp_path / "pages.json")
+    msg = rn.build_message(_case(case_id="spcx-20261030"))
+    assert router.should_send_telegram(msg) is True
+    assert router.should_send_telegram(msg) is False
+    assert any("recovery_t1_daily_case_bound" == r.get("reason") for r in router.get_suppression_log())
+
+
+def test_ordinary_alerts_still_hit_the_budget(monkeypatch, tmp_path):
+    """F5 regression guard: an ordinary P0 alert is still budget-suppressed."""
+    monkeypatch.setattr(router, "_budget_count_today", lambda: 10 ** 6)
+    monkeypatch.setattr(router, "_RECOVERY_T1_PAGE_PATH", tmp_path / "pages.json")
+    monkeypatch.setattr(router, "_ops_exempt", lambda message: False)
+    monkeypatch.setattr(router, "classify_alert", lambda message: "P0_INTERRUPT")
+    assert router.should_send_telegram("an ordinary system alert") is False
+
+
 def test_the_marker_wins_with_an_empty_plan_and_with_tier_words():
     """The marker is an authority signal, not gated by the tier path or by message content."""
     for extra in ({"plan": ""}, {"plan": None}, {"plan": "T3 — small, do not page"}, {"state": "T2"}):
@@ -178,13 +285,14 @@ def test_a_transport_that_returns_false_is_recorded_not_treated_as_success(monke
 
 def test_a_consumed_dedupe_key_is_recorded_as_a_floor_hold(monkeypatch, caplog):
     _fake_batch(monkeypatch)
+    monkeypatch.setattr(sys.modules["lib.telegram_batch"], "NudgeState", _HeldNudgeState)
     monkeypatch.setattr(sys.modules["lib.telegram_batch"], "nudge_decision",
                         lambda **kw: {"send": False, "reason": "nothing due", "keys": []})
     send = _Sender()
     caplog.set_level("WARNING", logger="scripts.lib.recovery_notify")
     out = rn.notify_recovery_case(_case(), policy=POLICY, sender=send, state_path="/tmp/x.json")
     assert out["sent"] is False and out["deduped_by_floor"] is True and send.calls == []
-    assert "held by the repeat floor" in caplog.text
+    assert "held by the verified repeat floor" in caplog.text
 
 
 def test_a_batch_delivery_that_raises_is_loud_not_empty_success(monkeypatch):

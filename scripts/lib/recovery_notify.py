@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -59,7 +60,9 @@ def load_policy(path: Path | str | None = None) -> dict:
     p = Path(path) if path else PROJECT_ROOT / POLICY_REL
     try:
         raw = p.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, ValueError):
+        # ValueError covers UnicodeDecodeError: a damaged policy encoding is "no policy", which the
+        # loud T1 default in resolve_tier handles — never an exception before the page.
         return {}
     try:
         import yaml  # type: ignore
@@ -73,11 +76,21 @@ def load_policy(path: Path | str | None = None) -> dict:
     return doc if isinstance(doc, dict) else {}
 
 
+def _finite(value: Any) -> Optional[float]:
+    """A usable finite number, or None. NaN/inf are NOT numbers for materiality purposes."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
 def _threshold(policy: dict, key: str) -> Optional[float]:
     """Read one T1 threshold from any of the shapes the policy may use, never a built-in number.
 
     Accepted (first present wins): ``materiality.t1.<key>``, ``tiers.T1.<key>``,
     ``materiality_t1_<key>``. ``None`` means "the policy does not tell us" and the caller goes loud.
+    A non-finite configured value (NaN/inf) is unusable and treated the same as absent.
     """
     candidates = []
     try:
@@ -87,11 +100,9 @@ def _threshold(policy: dict, key: str) -> Optional[float]:
     except (AttributeError, TypeError):
         pass
     for value in candidates:
-        try:
-            if value is not None and float(value) > 0:
-                return float(value)
-        except (TypeError, ValueError):
-            continue
+        number = _finite(value)
+        if number is not None and number > 0:
+            return number
     return None
 
 
@@ -100,7 +111,8 @@ def resolve_tier(case: dict, *, policy: Optional[dict] = None) -> tuple[str, str
 
     The case's own ``materiality_tier`` wins when present (piece A computes it). Otherwise the tier is
     derived from ``realized_loss_usd`` / ``pre_exit_weight_pct`` against the config thresholds. A
-    missing policy or missing numbers is NOT a reason to be quiet.
+    missing policy, a non-finite fact, or an UNKNOWN dimension resolves T1: a below-threshold reading on
+    one axis cannot downgrade a case whose other axis is unknown (cx-openai-2 F2).
     """
     if not isinstance(case, dict):
         return "T1", "case is not an object; materiality unknown"
@@ -114,27 +126,32 @@ def resolve_tier(case: dict, *, policy: Optional[dict] = None) -> tuple[str, str
             return alt, f"tier in {key}"
     loss_raw = case.get("realized_loss_usd", case.get("realized_pnl", case.get("realized")))
     weight_raw = case.get("pre_exit_weight_pct", case.get("weight_pct"))
-    try:
-        loss = abs(float(loss_raw)) if loss_raw is not None else None
-    except (TypeError, ValueError):
-        loss = None
-    try:
-        weight = abs(float(weight_raw)) if weight_raw is not None else None
-    except (TypeError, ValueError):
-        weight = None
+    loss = _finite(loss_raw) if loss_raw is not None else None
+    weight = _finite(weight_raw) if weight_raw is not None else None
+    loss = abs(loss) if loss is not None else None
+    weight = abs(weight) if weight is not None else None
     if loss is None and weight is None:
-        return "T1", "no tier and no materiality numbers; unknown resolves loud"
+        return "T1", "no tier and no finite materiality numbers; unknown resolves loud"
     pol = load_policy() if policy is None else policy
     if not isinstance(pol, dict) or not pol:
         return "T1", "no recovery policy available; unknown resolves loud"
     t1_loss = _threshold(pol, "loss_usd")
     t1_weight = _threshold(pol, "weight_pct")
     if t1_loss is None and t1_weight is None:
-        return "T1", "policy carries no T1 thresholds; unknown resolves loud"
+        return "T1", "policy carries no usable T1 thresholds; unknown resolves loud"
     if t1_loss is not None and loss is not None and loss >= t1_loss:
         return "T1", f"realized loss {loss:,.0f} >= config t1_loss_usd {t1_loss:,.0f}"
     if t1_weight is not None and weight is not None and weight >= t1_weight:
         return "T1", f"pre-exit weight {weight:.2f}% >= config t1_weight_pct {t1_weight:.2f}"
+    required = []
+    if t1_loss is not None:
+        required.append(("realized loss", loss))
+    if t1_weight is not None:
+        required.append(("pre-exit weight", weight))
+    unknown = [name for name, value in required if value is None]
+    if unknown:
+        # A known dimension below threshold cannot make an UNKNOWN one quiet (F2).
+        return "T1", f"T1 dimension unknown or non-finite: {', '.join(unknown)}; unknown resolves loud"
     return "T2", "below the configured T1 thresholds"
 
 
@@ -155,10 +172,12 @@ def _pct(value: Any) -> str:
 def build_message(case: dict) -> str:
     """The operator page. First line carries the marker the router keys on."""
     sym = str(case.get("symbol") or "UNKNOWN").upper()
+    case_key = str(case.get("case_id") or case.get("case_key")
+                   or f"{sym}:{case.get('exit_date') or case.get('exit_cluster') or case.get('state') or 'unknown'}")
     price = case.get("price", case.get("current_price"))
     exit_price = case.get("exit_price", case.get("avg_exit_price"))
     vs_exit = case.get("pct_vs_exit")
-    lines = [f"{RECOVERY_T1_MARKER} Recovery: {sym}"]
+    lines = [f"{RECOVERY_T1_MARKER} Recovery: {sym} · case:{case_key}"]
     facts = []
     if price is not None:
         facts.append(f"now {_money(price)}")
@@ -189,10 +208,12 @@ def build_message(case: dict) -> str:
 
 
 def _default_sender():
-    def _send(message: str, **kwargs):
+    def _send(message: str, *, priority: str = PRIORITY_P1, **kwargs):
         from telegram_alert import send_telegram  # noqa: PLC0415 — lazy, keeps import cost out
 
-        return send_telegram(message, **kwargs)
+        # An explicit `priority=` keyword (never a **kwargs passthrough) so the notification-intent
+        # ratchet can see that this producer declares its priority (AGENTS.md §24.1).
+        return send_telegram(message, priority=priority, **kwargs)
 
     return _send
 
@@ -229,23 +250,28 @@ def notify_recovery_case(case: dict, *, policy: Optional[dict] = None,
         decision = nudge_decision(keys=[key], state=state, now=now,
                                   priority=PRIORITY_P1, floor_minutes=floor_minutes)
         if not decision.get("send"):
-            # P1 is never quiet-held by nudge_decision; the only no-send reason is the repeat floor,
-            # and the last page already reached the operator. Not a silence, but it is recorded: a
-            # consumed dedupe key must never look like a successful send.
-            log.warning("recovery T1 page held by the repeat floor for %s: %s", symbol, decision.get("reason"))
-            result.update({"path": "batch", "reason": f"repeat floor: {decision.get('reason')}",
-                           "deduped_by_floor": True})
-            return result
-        body = batch_text(header=f"{RECOVERY_T1_MARKER} Recovery", items=[
-            {"title": f"{symbol} is recovering", "detail": message.split("\n", 1)[1].strip() if "\n" in message else "",
-             "next": "Open Home to plan re-entry"}])
-        ok = send(body, priority=PRIORITY_P1, dedupe_minutes=0, producer="recovery_notify")
-        result.update({"path": "batch", "sent": bool(ok)})
-        if ok:
-            state.save(state.note([key], now))
+            # A negative decision is a genuine repeat floor ONLY when our own ledger says this key is
+            # not yet due. Quiet-hours or an unknown no-send from a broken/other module must never be
+            # read as "already paged" (cx-openai-2 F3) — fall through to the direct P1 send instead.
+            if not state.due([key], now, floor_minutes):
+                log.warning("recovery T1 page held by the verified repeat floor for %s: %s",
+                            symbol, decision.get("reason"))
+                result.update({"path": "batch", "reason": f"repeat floor: {decision.get('reason')}",
+                               "deduped_by_floor": True})
+                return result
+            log.warning("batch declined a T1 for a non-floor reason (%s); using the direct P1 send for %s",
+                        decision.get("reason"), symbol)
         else:
-            log.warning("recovery T1 page was not accepted by the transport for %s", symbol)
-        return result
+            body = batch_text(header=f"{RECOVERY_T1_MARKER} Recovery", items=[
+                {"title": f"{symbol} is recovering", "detail": message.split("\n", 1)[1].strip() if "\n" in message else "",
+                 "next": "Open Home to plan re-entry"}])
+            ok = send(body, priority=PRIORITY_P1, dedupe_minutes=0, producer="recovery_notify")
+            result.update({"path": "batch", "sent": bool(ok)})
+            if ok:
+                state.save(state.note([key], now))
+            else:
+                log.warning("recovery T1 page was not accepted by the transport for %s", symbol)
+            return result
     except Exception:  # noqa: BLE001 — any batching problem must not silence a T1 page
         pass
 

@@ -32,6 +32,15 @@ except ImportError:  # pragma: no cover — scripts/ on sys.path variant
     except ImportError:
         _RECOVERY_T1_MARKER = "[[RECOVERY_T1]]"
 
+#: The per-case-per-day bound that makes the recovery T1 budget exemption safe (operator ruling,
+#: 2026-11-03): a T1 page is exempt from the daily budget, but at most ONE page per case per day.
+_RECOVERY_T1_PAGE_PATH = PROJ / "data" / "runtime" / "recovery_t1_pages.json"
+_RECOVERY_CASE_RE = re.compile(r"\bcase:([A-Za-z0-9_.:-]+)")
+#: The gates bypassed by the last recovery-T1 decision; route_alert copies them into its result so a
+#: future reviewer can see the exemption was deliberate (cx-openai-2 F5).
+_RECOVERY_T1_EXEMPTIONS = ("health_repeat", "rate_limit", "daily_budget")
+_last_recovery_exemptions: list[str] = []
+
 # B2, 2026-08-31: THESE DICTS CANNOT HOLD A CROSS-INVOCATION GUARANTEE.
 #
 # Every producer that reaches this module is a one-shot cron or systemd process.
@@ -579,9 +588,58 @@ def apply_rate_limit(message: str) -> dict:
     return {"allowed": True, "reason": "ok"}
 
 
-def should_send_telegram(message: str) -> bool:
+def _recovery_case_key(message: str) -> str:
+    match = _RECOVERY_CASE_RE.search(message or "")
+    return match.group(1) if match else build_dedupe_key(message)
+
+
+def _recovery_t1_daily_allowed(message: str, *, consume: bool) -> bool:
+    """One recovery T1 per CASE per day, from a durable ledger. A ledger fault fails OPEN (loud).
+
+    ``consume=False`` only answers the question (route_alert classification must not spend the day's
+    slot); the real send path calls with ``consume=True``.
+    """
+    day = _budget_day()
+    key = _recovery_case_key(message)
+    try:
+        doc = json.loads(_RECOVERY_T1_PAGE_PATH.read_text(encoding="utf-8"))
+        if not isinstance(doc, dict):
+            doc = {}
+    except (OSError, ValueError):
+        doc = {}
+    today = doc.get(day) if isinstance(doc.get(day), dict) else {}
+    if key in today:
+        return False
+    if not consume:
+        return True
+    today[key] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    # Keep at most three days; this is a storm bound, not an audit trail.
+    doc = {k: v for k, v in sorted(doc.items())[-2:] if isinstance(v, dict)}
+    doc[day] = today
+    try:
+        _RECOVERY_T1_PAGE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _RECOVERY_T1_PAGE_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps(doc, indent=1, sort_keys=True), encoding="utf-8")
+        os.replace(tmp, _RECOVERY_T1_PAGE_PATH)
+    except OSError as exc:  # a ledger fault must not silence a T1
+        log.warning("recovery T1 page ledger write failed (%s); the page is still allowed", exc)
+    return True
+
+
+def should_send_telegram(message: str, *, consume: bool = True) -> bool:
     """Main gate: should this message be sent to Telegram?"""
     level = classify_alert(message)
+
+    if _RECOVERY_T1_MARKER in message:
+        # Operator ruling 2026-11-03 (cx-openai-2 F5): a recovery T1 is exempt from health-repeat,
+        # rate-limit and daily-budget gates. Returning the right classifier level is not enough — the
+        # real legacy gates must not suppress it. The exemption is bounded explicitly by case id
+        # (one page per case per day) and named in the route result.
+        if not _recovery_t1_daily_allowed(message, consume=consume):
+            record_suppressed(message, "recovery_t1_daily_case_bound")
+            return False
+        _last_recovery_exemptions[:] = list(_RECOVERY_T1_EXEMPTIONS)
+        return True
 
     if level in ("P2_DASHBOARD_ONLY", "P3_LOG_ONLY"):
         record_suppressed(message, f"level={level}")
@@ -643,8 +701,14 @@ def _ignore_verdict_escalation(message: str) -> bool:
 def route_alert(message: str) -> dict:
     """Classify and route an alert, returning routing decision."""
     level = classify_alert(message)
-    send = should_send_telegram(message)
-    if send and _ignore_verdict_escalation(message):
+    send = should_send_telegram(message, consume=False)
+    exemptions: list[str] = []
+    if send and _RECOVERY_T1_MARKER in message:
+        # A recovery T1 is exempt from the IGNORE-escalation filter too; name the gates bypassed.
+        exemptions = list(_RECOVERY_T1_EXEMPTIONS)
+        if _ignore_verdict_escalation(message):
+            exemptions.append("ignore_escalation")
+    elif send and _ignore_verdict_escalation(message):
         send = False  # A5: IGNORE-verdict escalations land in the ops digest, not a page
     policy = _load_policy()
     destinations = policy.get("destinations", {})
@@ -670,6 +734,7 @@ def route_alert(message: str) -> dict:
         "send_telegram": send,
         "destination": dest,
         "dedupe_key": build_dedupe_key(message),
+        "recovery_t1_exemptions": exemptions,
     }
 
 
