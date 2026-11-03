@@ -586,3 +586,21 @@ def test_future_typed_records_and_approvals_never_become_positive_or_fresh():
     assert row["approval"]["value"] is None
     assert result["sources"]["coordinator_ledger"]["as_of"] is None
     assert result["sources"]["digest_approvals"]["as_of"] is None
+
+
+def test_stale_builder_blocker_uses_same_branch_owner_as_canonical_facts(tmp_path):
+    write_sources(tmp_path)
+    ident = "20261103T010000Z-codex-12345678"
+    path = tmp_path / M.CLAIMS_REL / f"{ident}.worklog.md"
+    path.parent.mkdir(parents=True)
+    path.write_text("## Blockers\n- `2026-11-03T01:10:00Z` Builder blocked on synthetic dependency\n")
+    builder = claim(claim_id=ident, session="builder", branch=pr()["branch"],
+                    heartbeat_at="2026-11-01T01:00:00Z", worklog={"exists": True, "blockers": 1})
+    reviewer = claim(claim_id="20261103T010000Z-codex-23456789", session="reviewer", branch="wt/review-other",
+                     worklog={"exists": True, "blockers": 0})
+    data = M.load(tmp_path, [pr()], [builder, reviewer], NOW, serving={"sha": SERVED})
+    facts = data["by_pr"][2501]
+    assert facts["owner"]["value"]["session"] == "builder"
+    assert "Builder blocked on synthetic dependency" in facts["blocker"]["value"]
+    assert facts["blocker"]["as_of"] == "2026-11-03T01:10:00Z"
+    assert facts["blocker"]["gap"] is None

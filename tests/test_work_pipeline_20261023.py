@@ -796,3 +796,56 @@ def test_board_view_internal_limit_is_configurable_without_changing_old_default(
     full = board.board_view(tmp_path, limit=1000, background=False)
     assert len(clipped["claims"]) == 1 and clipped["truncated"] is True
     assert len(full["claims"]) == 2 and full["truncated"] is False and full["unreadable"] == []
+
+
+def test_agent_current_item_uses_exact_current_claim_before_shared_session(tmp_path):
+    from scripts.lib import work_pipeline_sources as shared
+    older = claim("20261023T140000Z-claude-11111111", stage="building", session="same-worker",
+                  hb_min=8, branch="wt/old", worktree_head_sha="a" * 40)
+    newer = claim("20261023T150000Z-claude-22222222", stage="building", session="same-worker",
+                  hb_min=2, branch="wt/new", worktree_head_sha="b" * 40)
+    events = [{"kind": "branch_uploaded", "claim_id": older["claim_id"], "head_sha": "a" * 40, "ts": ago(minutes=6)}]
+    def joined(root, prs, claims, now, **kwargs):
+        return shared.build(prs, claims, events, [], [], now, **kwargs)
+    pipeline = W.WorkPipeline(sources=lambda: {"claims": [older, newer]}, coordination=joined,
+                              state_root=tmp_path, now=lambda: NOW, health=lambda: {})
+    data = pipeline._build()
+    agent = data["coordination"]["agents"][0]
+    assert agent["current_claim_id"] == newer["claim_id"]
+    assert agent["item_id"] == newer["claim_id"]
+    assert agent["stage"] == "building"
+    assert agent["item_binding_source"] == "current_claim_id"
+    assert agent["item_binding_gap"] is None
+    assert next(i for i in data["items"] if i["id"] == older["claim_id"])["coordination"]["current_stage"]["value"] == "uploaded"
+
+
+@pytest.mark.parametrize("ambiguous", [False, True])
+def test_agent_binding_never_guesses_missing_or_ambiguous_current_item(tmp_path, ambiguous):
+    from scripts.lib import work_pipeline_sources as shared
+    first = claim(session="same-worker", branch="wt/shared", stage="building")
+    second = claim("20261023T150000Z-claude-bbbbbbbb", session="same-worker", branch="wt/shared", stage="building")
+    def joined(root, prs, claims, now, **kwargs):
+        result = shared.build(prs, claims, [], [], [], now, **kwargs)
+        # A source without a recorded current claim must prove a unique session+branch.
+        agent = result["agents"][0]
+        agent["current_claim_id"] = None if ambiguous else "20261023T150000Z-claude-cccccccc"
+        return result
+    pipeline = W.WorkPipeline(sources=lambda: {"claims": [first, second]}, coordination=joined,
+                              state_root=tmp_path, now=lambda: NOW, health=lambda: {})
+    agent = pipeline._build()["coordination"]["agents"][0]
+    assert agent["item_id"] is None and agent["stage"] is None
+    expected = "current_work_item_ambiguous" if ambiguous else "current_work_item_not_visible"
+    assert agent["item_binding_gap"] == expected and expected in agent["gaps"]
+
+
+def test_known_broadcast_state_is_not_a_claim_but_wrong_claim_schema_stays_visible(tmp_path):
+    from scripts.lib import agent_claim_board as board, releases_coordination as releases
+    ident = "20261023T150000Z-claude-aaaaaaaa"
+    (tmp_path / f"{ident}.json").write_text(json.dumps({**claim(), "schema": board.SCHEMA}))
+    (tmp_path / "policy_broadcast_state.json").write_text('{"schema":"PolicyBroadcastState@v1"}')
+    docs, bad = board.ClaimBoard(tmp_path).read_all()
+    raw, gap = releases.read_claims(tmp_path)
+    assert len(docs) == len(raw) == 1 and not bad and gap is None
+    (tmp_path / "20261023T150000Z-claude-bbbbbbbb.json").write_text('{"schema":"wrong"}')
+    _, bad = board.ClaimBoard(tmp_path).read_all()
+    assert bad == ["20261023T150000Z-claude-bbbbbbbb.json"]

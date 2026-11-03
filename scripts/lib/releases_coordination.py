@@ -252,6 +252,8 @@ def read_claims(claims_dir: Path) -> tuple[list[dict[str, Any]], Optional[str]]:
     try:
         files = []
         for path in claims_dir.glob("*.json"):
+            if path.name == "policy_broadcast_state.json":  # documented PolicyBroadcastState sibling
+                continue
             files.append(path)
             if len(files) > MAX_CLAIM_FILES:
                 return [], "claims_count_over_budget"

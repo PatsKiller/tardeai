@@ -522,7 +522,9 @@ class ClaimBoard:
             return [], []
         docs: list[dict[str, Any]] = []
         bad: list[str] = []
-        for i, p in enumerate(sorted(self.dir.glob("*.json"))):
+        # The policy broadcaster owns this documented sibling, not an AgentClaim record.
+        files = (p for p in sorted(self.dir.glob("*.json")) if p.name != "policy_broadcast_state.json")
+        for i, p in enumerate(files):
             if i >= MAX_CLAIM_FILES_READ:
                 bad.append(f"truncated_after_{MAX_CLAIM_FILES_READ}")
                 break

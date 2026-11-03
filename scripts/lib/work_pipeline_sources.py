@@ -756,12 +756,9 @@ def _worklogs(root: Path, prs: list[Mapping], claims: list[Mapping], now: dateti
         if not _terminal(raw) and beat is not None and 0 <= (now - beat).total_seconds() <= stale_hours * 3600:
             selected.add(raw.get("claim_id"))
     for pr in prs[:MAX_PRS]:
-        number, branch = _number(pr.get("number")), pr.get("branch") or pr.get("headRefName")
-        matches = [c for c in claims[:MAX_CLAIMS] if number and _number(c.get("pr_number") or c.get("pr")) == number
-                   or (branch and c.get("branch") == branch and not _number(c.get("pr_number") or c.get("pr")))]
+        matches = matching_claims(pr, claims[:MAX_CLAIMS], now, stale_claim_hours=stale_hours)
         if matches:
-            owner = max(matches, key=lambda c: (_sort_time(_claim_time(c)), _sort_time(c.get("started_at"))))
-            selected.add(owner.get("claim_id"))
+            selected.add(matches[0].get("claim_id"))
     out, gaps, read_count = [], [], 0
     for raw in claims:
         claim = dict(raw)

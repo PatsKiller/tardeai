@@ -1508,12 +1508,25 @@ class WorkPipeline:
                               stuck_after_minutes=self.stuck_after_minutes)
         coordination["agents"] = [dict(agent) for agent in coordination.get("agents") or []]
         for agent in coordination["agents"]:
-            matches = [item for item in items if item.get("in_flight")
-                       and agent.get("session") == ((((item.get("coordination") or {}).get("owner") or {}).get("value") or {}).get("session"))]
-            if matches:
+            current = agent.get("current_claim_id")
+            if current:
+                matches = [item for item in items if item.get("in_flight")
+                           and current in ((item.get("how") or {}).get("claim_ids") or [])]
+            else:
+                matches = [item for item in items if item.get("in_flight") and agent.get("session")
+                           and agent["session"] == ((((item.get("coordination") or {}).get("owner") or {}).get("value") or {}).get("session"))
+                           and (not agent.get("branch") or agent["branch"] == (item.get("where") or {}).get("branch"))]
+            agent["item_id"], agent["stage"] = None, None
+            agent["item_binding_source"] = "current_claim_id" if current else "unique_session_and_branch"
+            agent["item_binding_gap"] = None
+            if len(matches) == 1:
                 item = matches[0]
                 agent["item_id"] = item["id"]
                 agent["stage"] = ((item.get("coordination") or {}).get("current_stage") or {}).get("value")
+            elif agent.get("active"):
+                gap = "current_work_item_ambiguous" if len(matches) > 1 else "current_work_item_not_visible"
+                agent["item_binding_gap"] = gap
+                agent["gaps"] = [*(agent.get("gaps") or []), gap]
         t2 = src.get("tier2") or {}
         merged_waiting = sum(1 for i in items if i["stage"] in ("merged",))
         q = src.get("queue") or {}
