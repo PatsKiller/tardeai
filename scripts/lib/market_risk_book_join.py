@@ -319,6 +319,34 @@ def home_context(
             reader.close()
 
 
+def unavailable_context(exc: Exception, now: datetime) -> dict:
+    """The shaped block emitted when the additive context itself cannot be built.
+
+    It carries the same keys as a built block so a consumer that checks for presence can tell
+    "unavailable" from "present and empty", and both the gap and the read error name the same
+    remediation that would fix it.
+    """
+    reason = "the additive home context could not be built (" + type(exc).__name__ + ")"
+    remediation = {
+        "key": "HOMEV007:context",
+        "action": "Restore the additive context module; no fact is shown while it is unavailable.",
+    }
+    return {
+        "schema": "HomeMarketRiskContext@v1",
+        "state": "unavailable",
+        "generated_at": now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "symbols": {},
+        "positions": [],
+        "budgets": [],
+        "gaps": [{"symbol": None, "field": "home_v007", "reason": reason, "remediation": dict(remediation)}],
+        "read_errors": [{"source": "home_v007_join", "reason": type(exc).__name__,
+                         "remediation": dict(remediation)}],
+        "reason": reason,
+        "remediation": remediation,
+        "advisory_only": True,
+    }
+
+
 def join(
     projection: dict[str, Any],
     *,
@@ -434,8 +462,9 @@ def join(
                                         "observed_stops": observed_stops}, policy=policy,
                             now=now, get_conn=get_conn, reader=context_reader)
     except Exception as exc:  # noqa: BLE001 — the additive context cannot erase the v006 card
-        v007 = {"schema": "HomeMarketRiskContext@v1", "state": "unavailable", "reason": type(exc).__name__,
-                "remediation": {"key": "HOMEV007:context", "action": "Restore the additive context module."}}
+        # An unavailable block still has to be shaped like the block it replaces: a consumer that
+        # checks only for presence must be able to tell "unavailable" from "present and empty".
+        v007 = unavailable_context(exc, now)
     return {
         "home_v007": v007,
         **projection,

@@ -74,6 +74,35 @@ def distance(current: float | None, reference: Any) -> dict:
     }
 
 
+def quote_conflict(rows: list[dict]) -> dict | None:
+    """Two accepted observations of the same instant that disagree.
+
+    This is the canonical dual-mark shape (cio_canonical_quote: ``conflicted`` only when two genuine
+    marks disagree). A later observation of the same series is ordinary movement, not a conflict; only
+    the same instant carrying two different values is the same fact stated twice and contradicting
+    itself. Rounded to the four decimals the rest of this module publishes, so float formatting is not
+    mistaken for disagreement.
+    """
+    by_instant: dict[Any, list[tuple[float, dict]]] = {}
+    for row in rows:
+        at = stamp(row.get("as_of"))
+        price = number(row.get("price"))
+        if at is None or price is None:
+            continue
+        by_instant.setdefault(at, []).append((round(price, 4), row))
+    for at, marks in by_instant.items():
+        if len({price for price, _ in marks}) > 1:
+            return {
+                "reason": "Two observations of the same instant disagree",
+                "as_of": iso(at),
+                "marks": [
+                    {"price": price, "source": str(row.get("source") or "").strip() or "not_recorded"}
+                    for price, row in marks
+                ],
+            }
+    return None
+
+
 def expected_regular_session_date(now: datetime) -> str:
     """Canonical calendar target, independent of reader availability or cache claims."""
     local = now.astimezone(sessions.ET)
@@ -211,15 +240,32 @@ def collect(
                     ["alpaca", [row["symbol"] for row in regular], [row["as_of"] for row in regular]],
                 )
                 for quote in regular:
-                    matches = [
+                    same_clock = [
                         row
                         for row in rows
                         if str(row.get("symbol") or "").upper() == quote["symbol"]
                         and stamp(row.get("fetched_at")) == stamp(quote["as_of"])
-                        and number(row.get("price")) == number(quote.get("price"))
                     ]
+                    matches = [row for row in same_clock if number(row.get("price")) == number(quote.get("price"))]
                     if len(matches) == 1:
                         quote.update({key: matches[0].get(key) for key in ("prev_close", "volume")})
+                    elif same_clock:
+                        # The re-read found rows for this instant but none agrees with the reader's
+                        # price: two genuine marks of the same fact that contradict each other.
+                        quote["conflict"] = {
+                            "reason": "The stored observation and the reader disagree at the same instant",
+                            "as_of": iso(stamp(quote["as_of"])),
+                            "marks": [
+                                {
+                                    "price": number(quote.get("price")),
+                                    "source": str(quote.get("source") or "").strip() or "not_recorded",
+                                },
+                                *(
+                                    {"price": number(row.get("price")), "source": "market_quotes"}
+                                    for row in same_clock
+                                ),
+                            ],
+                        }
         except Exception as exc:  # noqa: BLE001 — never use a different snapshot's volume
             failed("market_quotes_exact_observation_fields", exc)
         try:
@@ -232,7 +278,7 @@ def collect(
                 "ORDER BY published_at DESC LIMIT 400",
                 [symbols, now - timedelta(hours=72), now],
             )
-            news = {symbol: {"rows": [], "as_of": iso(now)} for symbol in symbols}
+            news = {symbol: {"rows": [], "as_of": None} for symbol in symbols}
             for row in rows:
                 symbol = str(row.get("symbol") or "").upper()
                 at = stamp(row.get("published_at"))
@@ -240,6 +286,10 @@ def collect(
                     continue
                 guarded, _ = headline_matches_symbol(symbol, row.get("title") or "", row.get("summary") or "")
                 if guarded and len(news[symbol]["rows"]) < 2:
+                    if news[symbol]["as_of"] is None:
+                        # The fact is clocked by the newest headline it actually carries. Query time is
+                        # not an observation of the articles and must never reset their age to zero.
+                        news[symbol]["as_of"] = iso(at)
                     news[symbol]["rows"].append(
                         {
                             "title": row.get("title"),
@@ -377,7 +427,6 @@ def build(
         ]
         absent = {
             "reason": "No accepted canonical quote for the calendar-selected session",
-            "source": "canonical_stored_quote",
         }
         quote = max(rows, key=lambda row: stamp(row["as_of"]), default=unavailable[0] if unavailable else absent)
         price = number(quote.get("price"))
@@ -388,12 +437,28 @@ def build(
         previous = number(prior[-1].get("close")) if len(prior) == 1 else None
         if previous is None and quote.get("session") in ("regular", "regular_close"):
             previous = number(quote.get("prev_close"))
-        source = str(quote.get("source") or "canonical_stored_quote")
+        recorded_source = str(quote.get("source") or "").strip()
+        source = recorded_source or "not_recorded"
         qclock = quote.get("as_of")
         quote_reason = quote.get("reason")
         if quote.get("status") not in (None, "available"):
             quote_reason = quote_reason or "Canonical quote status is unavailable"
+        # A price with no recorded provenance is not a measured canonical quote, and a missing source
+        # is reported as "not_recorded" rather than dressed in a source string it never had.
+        conflict = quote.get("conflict") if isinstance(quote.get("conflict"), dict) else quote_conflict(rows)
+        if conflict is not None:
+            quote_reason = quote_reason or "Two observations of the same instant disagree"
+        if not recorded_source and price is not None:
+            quote_reason = quote_reason or "Canonical quote source not recorded"
         quote_fact = fact(price, as_of=qclock, source=source, now=now, reason=quote_reason)
+        if conflict is not None:
+            # The unknown-fact gap rule already indexes this fact; give that row the conflict key so
+            # the reader is sent to the reconciliation, and never emit a second row for the same fact.
+            quote_fact["conflict"] = conflict
+            quote_fact["remediation"] = {
+                "key": "HOMEV007:quote.conflict",
+                "action": "Reconcile the two recorded observations of this instant; never keep one silently.",
+            }
         accepted = quote_fact["state"] == "measured"
         price = number(quote_fact["value"]) if accepted else None
         rejected_reason = None if accepted else quote_fact["reason"]
@@ -611,18 +676,45 @@ def build(
     categories = {
         str(row.get("category") or ""): row for row in projection.get("categories") or [] if isinstance(row, dict)
     }
+    # Canonical carried-category rule (market_risk/scoring._carried): a known observation made before
+    # a market closure that lies between it and now is carried, and a carried category may never
+    # render an affirmative chip. Same constant, same calendar helper, no new threshold.
+    from scripts.lib.market_risk.scoring import FRESH_WINDOW_SECONDS
+
     chips = []
     for category in CATEGORIES:
         row = categories.get(category, {})
+        observed_at = stamp(row.get("as_of"))
+        carried = (
+            observed_at is not None
+            and (now - observed_at).total_seconds() > FRESH_WINDOW_SECONDS
+            and sessions.closure_between(observed_at, now)
+        )
         chip = fact(
             row or None,
             as_of=row.get("as_of"),
             source="market_risk.category." + category,
             now=now,
-            reason=(row.get("detail") or "category not measured") if row.get("state") == "UNKNOWN" else None,
+            reason=(
+                (row.get("detail") or "category not measured")
+                if row.get("state") == "UNKNOWN"
+                else (
+                    "carried across a closure: the "
+                    f"{iso(observed_at)[:10]} observation is not current for the "
+                    f"{expected_regular_session_date(now)} session"
+                    if carried
+                    else None
+                )
+            ),
         )
+        if carried and chip["state"] != "measured":
+            chip["remediation"] = {
+                "key": "HOMEV007:market_risk_category.carried",
+                "action": "Recompute the category from this session's canonical observations; never carry a prior session as OK.",
+            }
         chip.update(
             category=category,
+            carried=carried,
             chip=(
                 {"CALM": "OK", "WARN": "WARN", "STRESS": "STRESS"}.get(row.get("state"), "not_measured")
                 if chip["state"] == "measured"
@@ -778,8 +870,10 @@ def build(
         )
         price_clock = observation.get("as_of")
         stop_clock = stop.get("as_of")
-        quote_source = str(observation.get("source") or "canonical_stored_quote")
-        stop_source = str(stop.get("source") or "last_known_stops")
+        # A missing source is not a provenance string. "not_recorded" says plainly that no source was
+        # recorded, and a value that rests on it is refused as unknown below.
+        quote_source = str(observation.get("source") or "").strip() or "not_recorded"
+        stop_source = str(stop.get("source") or "").strip() or "not_recorded"
         price_clock_obj = stamp(price_clock)
         stop_clock_obj = stamp(stop_clock)
         valid_price_clock = price_clock_obj if price_clock_obj is not None and price_clock_obj <= now else None
@@ -837,9 +931,62 @@ def build(
         for symbol, row in per_symbol.items()
         for key, value in row.items()
         if isinstance(value, dict) and value.get("state") == "unknown"
-    ] + extra_gaps
+    ]
+
+    def unknown_gap(field: str, value: Any, symbol: str | None = None) -> dict | None:
+        if not isinstance(value, dict) or value.get("state") != "unknown":
+            return None
+        return {"symbol": symbol, "field": field, "reason": value.get("reason"),
+                "remediation": value.get("remediation")}
+
+    category_changes_fact = fact(
+        None,
+        as_of=projection.get("as_of"),
+        source="market_risk_category_history",
+        now=now,
+        reason="Stored score history does not retain earlier category observations",
+    )
+    next_evaluation_fact = {
+        **fact(next_evaluation_at, as_of=now.isoformat(), source="market_risk_evaluation_schedule", now=now),
+        "basis": "registry declaration, not proof of installation or execution",
+    }
+
+    # Every unknown fact is indexed, not only the per-symbol ones: a stop, a budget, the evaluation
+    # schedule and the hedge progress facts are evidence too, and a gap that is only implied by a null
+    # is not a gap the reader can find.
+    gaps.extend(
+        gap
+        for position in positions
+        for gap in (unknown_gap("positions.stop", position.get("stop"), position.get("symbol")),)
+        if gap
+    )
+    gaps.extend(
+        gap
+        for budget in budgets
+        for gap in (unknown_gap("budgets." + str(budget.get("budget") or "budget"), budget),)
+        if gap
+    )
+    gaps.extend(
+        gap
+        for chip in chips
+        for gap in (unknown_gap("risk.categories." + str(chip.get("category") or "category"), chip),)
+        if gap
+    )
+    gaps.extend(
+        gap
+        for field, value in (
+            ("risk.next_evaluation", next_evaluation_fact),
+            ("risk.category_changes", category_changes_fact),
+            ("hedge.lagging_progress", progress),
+            ("hedge.exposure_progress", exposure_progress),
+        )
+        for gap in (unknown_gap(field, value),)
+        if gap
+    )
+    gaps = gaps + extra_gaps
     return {
         "schema": SCHEMA,
+        "state": "available",
         "generated_at": iso(now),
         "symbols": per_symbol,
         "positions": positions,
@@ -850,17 +997,8 @@ def build(
             "history": history,
             "score_change": change,
             "categories": chips,
-            "category_changes": fact(
-                None,
-                as_of=projection.get("as_of"),
-                source="market_risk_category_history",
-                now=now,
-                reason="Stored score history does not retain earlier category observations",
-            ),
-            "next_evaluation": {
-                **fact(next_evaluation_at, as_of=now.isoformat(), source="market_risk_evaluation_schedule", now=now),
-                "basis": "registry declaration, not proof of installation or execution",
-            },
+            "category_changes": category_changes_fact,
+            "next_evaluation": next_evaluation_fact,
         },
         "hedge": {
             "lagging_progress": progress,

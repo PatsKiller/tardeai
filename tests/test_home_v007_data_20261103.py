@@ -802,3 +802,108 @@ def test_budget_rows_carry_state_and_as_of_or_an_explicit_unknown(mod):
     unknown = rows[1]
     assert unknown["state"] == "unknown" and unknown["as_of"] == ASOF
     assert unknown["reason"] and unknown["remediation"]["action"]
+
+
+# --------------------------------------------------------------------------- honesty repairs (cc4 BLOCK)
+
+
+def test_a_quote_without_a_recorded_source_is_unknown_never_a_provenance_string(mod):
+    """A price with no recorded source used to be measured and labelled "canonical_stored_quote"."""
+    p = projection()
+    del p["reentry_watch"]["SYNX"]["current_quote"]["source"]
+    result = mod.build(p, {}, now=NOW)
+    quote = result["symbols"]["SYNX"]["quote"]
+    assert quote["state"] == "unknown" and quote["value"] is None
+    assert quote["source"] == "not_recorded"
+    assert "source not recorded" in quote["reason"]
+    gap = next(row for row in result["gaps"] if row["symbol"] == "SYNX" and row["field"] == "quote")
+    assert gap["remediation"]["key"] == "HOMEV007:not_recorded"
+
+
+def test_a_category_carried_across_a_closure_never_affirms_ok(mod):
+    """The canonical scoring rule: an observation carried across a closure is not measured now."""
+    p = projection()
+    p["categories"] = [{"category": "technical", "state": "CALM", "as_of": "2032-03-05T20:00:00Z"}]
+    chip = next(c for c in mod.build(p, {}, now=NOW)["risk"]["categories"] if c["category"] == "technical")
+    assert chip["state"] == "unknown" and chip["chip"] == "not_measured" and chip["carried"] is True
+    assert chip["as_of"] == "2032-03-05T20:00:00Z" and chip["age_seconds"] > 72 * 3600
+    assert "carried across a closure" in chip["reason"]
+    result = mod.build(p, {}, now=NOW)
+    assert any(row["field"] == "risk.categories.technical" for row in result["gaps"])
+    # the same category observed inside the expected session still renders affirmatively
+    p["categories"] = [{"category": "technical", "state": "CALM", "as_of": "2032-03-09T20:00:00Z"}]
+    fresh = next(c for c in mod.build(p, {}, now=NOW)["risk"]["categories"] if c["category"] == "technical")
+    assert fresh["chip"] == "OK" and fresh["carried"] is False and fresh["state"] == "measured"
+
+
+def test_headlines_are_clocked_by_the_newest_headline_not_the_query(mod):
+    """A 71-hour-old headline used to report age 0, and an empty query read as measured-now."""
+    class NewsReader(StoredReader):
+        pass
+
+    def read(sql, params):
+        if "FROM news_articles " in sql:
+            return [{"symbol": "SYNX", "title": "SYNX announces synthetic product update",
+                     "published_at": "2032-03-06T22:00:00Z", "source": "synthetic", "source_url": "u"}]
+        return []
+
+    p = projection()
+    p["reentry_watch"]["SYNX"].pop("current_quote")
+    headlines = mod.collect(p, {}, reader=NewsReader(), read_rows=read, now=NOW)["symbols"]["SYNX"]["headlines"]
+    assert headlines["as_of"] == "2032-03-06T22:00:00Z"
+    assert headlines["age_seconds"] == 255600
+    empty = mod.collect(p, {}, reader=NewsReader(), read_rows=lambda sql, params: [], now=NOW)
+    missing = empty["symbols"]["SYNX"]["headlines"]
+    assert missing["state"] == "unknown" and missing["as_of"] is None and missing["value"] is None
+    assert "source clock" in missing["reason"]
+
+
+def test_two_observations_of_the_same_instant_are_a_conflict_not_a_silent_pick(mod):
+    """Same instant, two prices: the same fact stated twice contradicting itself (cio_canonical_quote)."""
+    other = {"symbol": "SYNX", "price": 12.5, "session": "regular_close", "session_date": "2032-03-09",
+             "as_of": ASOF, "source": "synthetic_second_mark"}
+    result = mod.build(projection(), {}, quotes=[other], now=NOW)
+    quote = result["symbols"]["SYNX"]["quote"]
+    assert quote["state"] == "unknown" and quote["value"] is None
+    assert quote["conflict"]["marks"] == [{"price": 12.5, "source": "synthetic_second_mark"},
+                                          {"price": 12.0, "source": "synthetic_daily_close"}]
+    gaps = [row for row in result["gaps"] if row["symbol"] == "SYNX" and row["field"] == "quote"]
+    assert len(gaps) == 1 and gaps[0]["remediation"]["key"] == "HOMEV007:quote.conflict"
+    # a second mark that agrees at the same instant is not a conflict
+    quote = mod.build(projection(), {}, quotes=[{**other, "price": 12}], now=NOW)["symbols"]["SYNX"]["quote"]
+    assert quote["state"] == "measured" and "conflict" not in quote
+
+
+def test_an_unknown_stop_and_budget_are_indexed_in_gaps(mod):
+    joined = {
+        "book_exposure": {"rows": [{"symbol": "SYNX", "account_label": "SYN"}]},
+        "observed_stops": [{"symbol": "SYNX", "account_label": "SYN", "price": None,
+                            "as_of": ASOF, "source": "synthetic_stops"}],
+        "budgets_detail": [{"budget": "sector_max", "actual": None, "limit": 25}],
+    }
+    result = mod.build(projection(), joined, now=NOW)
+    fields = {(row["symbol"], row["field"]) for row in result["gaps"]}
+    assert ("SYNX", "positions.stop") in fields
+    assert (None, "budgets.sector_max") in fields
+
+
+def test_the_unavailable_context_envelope_can_be_told_apart_from_an_empty_one():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "book_join_under_test", ROOT / "scripts/lib/market_risk_book_join.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    env = module.unavailable_context(RuntimeError("synthetic private diagnostic"), NOW)
+    assert env["schema"] == "HomeMarketRiskContext@v1" and env["state"] == "unavailable"
+    assert env["symbols"] == {} and env["positions"] == [] and env["budgets"] == []
+    assert env["generated_at"] == "2032-03-09T21:00:00Z"
+    assert env["gaps"][0]["field"] == "home_v007"
+    assert env["gaps"][0]["remediation"]["key"] == "HOMEV007:context"
+    assert env["read_errors"][0]["source"] == "home_v007_join"
+    assert env["advisory_only"] is True
+    assert "synthetic private diagnostic" not in str(env)
+    built = module.__dict__.get("unavailable_context")
+    assert callable(built)
