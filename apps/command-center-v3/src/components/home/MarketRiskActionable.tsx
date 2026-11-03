@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom'
 import { RADIUS, TOKENS, TYPE, chipStyle, numStyle, toneVars } from '../../lib/designTokens'
 import { SUMMARY_PHONE_MAX_PX, fmtUsd, type ActionableModel } from '../../lib/marketRisk'
 import { EXPLAIN_CSS, Explain, GlossaryProvider, Segments } from './MarketRiskActions'
+import HomeV007Context from './HomeV007Context'
 
 const CHIP_TERM: Record<string, string> = { STRESS: 'stress', WEAK: 'weak', RESILIENT: 'resilient', HOLDING: 'holding', 'NOT MEAS.': 'not_measured' }
 
@@ -236,7 +237,7 @@ export function ActionableBody({ m, why }: { m: ActionableModel; why: React.Reac
     <GlossaryProvider terms={m.glossary}>
       <div data-mr-actionable="" data-testid="mr-actionable-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 460px), 1fr))', gap: '16px 20px', alignItems: 'start', paddingTop: 8 }}>
         <style>{ACTIONABLE_CSS}</style>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}><Sectors m={m} /><Reentry m={m} /></div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}><Sectors m={m} /><Reentry m={m} /><HomeV007Context /></div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           <Positions m={m} />{!m.protect && <Review m={m} />}<Budgets m={m} />
           {/* Protect / Hedge / Rotate live in MarketRiskActions' Segments; this file only adds the collapsible

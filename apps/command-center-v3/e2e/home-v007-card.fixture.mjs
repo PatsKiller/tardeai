@@ -50,6 +50,27 @@ const js = bundled.outputFiles.find(f => f.path.endsWith('.js')).text
 const css = bundled.outputFiles.find(f => f.path.endsWith('.css'))?.text ?? ''
 const html = `<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body><main id="root"></main><script>${js.replace(/<\/script/gi, '<\\/script')}</script></body></html>`
 
+const V7 = {
+  symbols: {
+    DEMO: {
+      quote: { state: 'ok', as_of: '2026-11-02T21:00:00Z', source: 'market_quotes:alpaca', age_seconds: 30, session: 'regular', session_date: '2026-11-02', expected_session_date: '2026-11-02', basis: 'last trade', value: { price: 49.87 } },
+      day_change: { state: 'ok', value: { usd: 0.4, pct: 0.8, reference_date: '2026-10-30' } },
+      since_exit: { state: 'ok', value: { usd: -0.1, pct: -0.3, exit_price: 50, exit_date: '2026-10-30' } },
+      analysis_references: [{ label: 'invalidation', price: 47.5, distance_usd: -2.4, distance_pct: -4.8, state: 'ok' }],
+      headlines: [{ title: 'Synthetic guarded headline', source: 'feed', published_at: '2026-11-02T18:00:00Z', age_seconds: 10800 }],
+      next_event: { label: 'earnings', at: '2026-11-10T21:00:00Z', state: 'ok' },
+      cio: { state: 'ok', stance: 'hold', conviction: 3, store_label: 'canonical', stale: false, age_seconds: 7200 },
+      market_risk_stance: { state: 'ok', value: 'elevated' },
+      volume_vs_20d: { state: 'ok', value: { ratio: 1.4, sample_dates: ['2026-10-31'], not_time_adjusted: true } },
+    },
+    STALE1: { quote: { state: 'stale', age_seconds: 5400, as_of: '2026-11-02T19:30:00Z', value: { price: 12.5 } } },
+    GONE: { quote: { state: 'missing', reason: 'canonical regular-session quote not measured', remediation: 'wait for the reader' } },
+  },
+  risk: { score: 61, categories: [{ key: 'tech', label: 'Technology', chip: 'STRESS', state: 'ok' }], next_evaluation: { at: '2026-11-03T14:00:00Z', basis: 'declared' } },
+  hedge: { triggers: [{ label: 'Technology', current: 4.8, threshold: 10, met: false }], inverse_funds: [{ symbol: 'SH', day_pct: 0.6, state: 'ok' }] },
+  budgets: [{ key: 'b1', label: 'Demo Taxable', current: 21000, budget: 15000, unit: 'usd', breach: true, clears_when: 'below 15000', state: 'ok', operator_decision: { state: 'unavailable', remediation: 'pending reviewed route' } }],
+  gaps: [{ member: 'cio.rationale', key: 'not_exposed', reason: 'store does not expose it', remediation: 'ask owner' }],
+}
 const browser = await chromium.launch({ args: ['--no-sandbox'] })
 const results = []
 try {
@@ -62,6 +83,7 @@ try {
       const url = new URL(route.request().url())
       if (url.origin !== 'http://v007.test') { t.external.push(route.request().url()); return route.abort() }
       if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html })
+      if (url.pathname === '/api/v2/market-risk/latest') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, data: { home_v007: V7 } }) })
       return route.fulfill({ contentType: 'application/json', body: '{"ok":false}' })
     })
     await page.goto('http://v007.test/')
@@ -85,6 +107,8 @@ try {
         smallTaps: taps.filter(x => (x.w > 0 || x.h > 0) && (x.w < 44 || x.h < 44)).length, taps: taps.filter(x => x.w > 0 || x.h > 0).length,
         smallDetail: taps.filter(x => (x.w > 0 || x.h > 0) && (x.w < 44 || x.h < 44)).slice(0, 4),
         overflow: document.documentElement.scrollWidth > innerWidth + 1,
+        v7: !!document.querySelector('[data-testid="home-v007"]'),
+        v7text: document.querySelector('[data-testid="home-v007"]')?.innerText || '',
       }
     })
     assert.deepEqual(t.pageErrors, [], `page errors at ${width}`)
@@ -95,6 +119,13 @@ try {
       assert.equal(m.overflow, false, `horizontal overflow at ${width}`)
       assert.ok(m.smallTaps === 0, `taps under 44px at ${width}: ${JSON.stringify(m.smallDetail)}`)
       assert.ok(m.taps >= 20, `too few interactive targets measured at ${width}: ${m.taps}`)
+      assert.ok(m.v7, `home_v007 section missing at ${width}`)
+      assert.ok(m.v7text.includes('DEMO'), `v7 symbol missing at ${width}`)
+      assert.ok(m.v7text.includes('$49.87'), `v7 price missing at ${width}`)
+      assert.ok(/price stale/.test(m.v7text), `stale case missing at ${width}`)
+      assert.ok(/price unknown/.test(m.v7text) && /not measured/.test(m.v7text), `missing case not explicit at ${width}`)
+      assert.ok(/intentional decision/.test(m.v7text), `budget decision state missing at ${width}`)
+      assert.ok(/a size, an order or a stop level/.test(m.v7text), `advisory line missing at ${width}`)
     } catch (e) { process.exitCode = 1; throw e }
     const shot = path.join(out, `card-${width}.png`)
     await page.screenshot({ path: shot, fullPage: true })
