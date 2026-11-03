@@ -382,7 +382,7 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
                 refs = [{"kind": "pr", "ref": str(u)} for u in res.get("prs") or []]
                 L.attempt(iid, actor=ACTOR, action="fixer_dispatch",
                           result=f"fixer rc={res.get('rc')} admitted={res.get('admitted')} prs={res.get('prs')}",
-                          ok=res.get("rc") == 0,
+                          ok=_dispatch_ok(res),
                           detail={**detail, "request": str(reqp), "fixer": res.get("summary")},
                           fix_refs=refs or None, d=d, now=now)
                 out["dispatched"].append({"id": iid, "rc": res.get("rc"), "prs": res.get("prs")})
@@ -475,7 +475,7 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
             refs = [{"kind": "pr", "ref": str(u)} for u in res.get("prs") or []]
             L.attempt(iid, actor=ACTOR, action="fixer_dispatch",
                       result=f"fixer rc={res.get('rc')} admitted={res.get('admitted')} prs={res.get('prs')}",
-                      ok=res.get("rc") == 0, detail={**detail, "request": str(reqp), "fixer": res.get("summary")},
+                      ok=_dispatch_ok(res), detail={**detail, "request": str(reqp), "fixer": res.get("summary")},
                       fix_refs=refs or None, d=d, now=now)
             out["dispatched"].append({"id": iid, "rc": res.get("rc"), "prs": res.get("prs")})
         else:  # needs_operator
@@ -489,6 +489,19 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
         p = d / "supervisor_last.json"
         p.write_text(json.dumps(out, indent=1, default=str) + "\n", encoding="utf-8")
     return out
+
+
+def _dispatch_ok(res: Mapping[str, Any]) -> bool:
+    """True only when the fixer provably started (or already had) a job.
+
+    A zero exit code is not evidence of work: the fixer returns 0 for "not armed", "busy" and
+    "nothing to do". Callers that supply ``work_proven`` say so directly; otherwise an admitted job
+    is the evidence. Anything else must page a person rather than hide the incident.
+    """
+    proven = res.get("work_proven")
+    if proven is None:
+        proven = bool(res.get("admitted"))
+    return res.get("rc") == 0 and bool(proven)
 
 
 def default_fixer_factory(cfg: Mapping[str, Any], python: str, repo_root: Path) -> Callable[[Path, bool], dict]:
@@ -506,7 +519,22 @@ def default_fixer_factory(cfg: Mapping[str, Any], python: str, repo_root: Path) 
         except ValueError:
             doc = {}
         prs = re.findall(r"https://github\.com/[^\s\"']+/pull/\d+", p.stdout or "")
-        return {"rc": p.returncode, "admitted": [a.get("job_id") for a in doc.get("admitted") or []] if isinstance(doc, dict) else None,
+        admitted = ([a.get("job_id") for a in doc.get("admitted") or [] if isinstance(a, dict)]
+                    if isinstance(doc, dict) else None)
+        # Admission alone is NOT proof: self_heal_fixer appends to ``admitted`` BEFORE it checks arming,
+        # so a not_armed / no_backend / no_rails / not_claimed run reports an admitted job and then an
+        # ``attempted`` entry naming the refusal. Only a real attempt outcome is work. ``deduped:active``
+        # is not proof either: ``fix_requested`` counts as ACTIVE, and the five live dispatch rows show a
+        # stuck not-armed job keeps matching that signature. An unproven dispatch must page a person.
+        no_work = ("not_armed:", "no_backend:", "no_rails:", "not_claimed:", "dry_run_planned")
+        outcomes: dict[str, str] = {}
+        for row in (doc.get("attempted") or []) if isinstance(doc, dict) else []:
+            if isinstance(row, dict) and isinstance(row.get("job_id"), str):
+                outcomes[row["job_id"]] = str(row.get("outcome") or "")
+        work_proven = (isinstance(doc, dict) and not doc.get("busy")
+                       and any(outcome and not outcome.startswith(no_work) for outcome in outcomes.values()))
+        return {"rc": p.returncode, "admitted": admitted, "work_proven": work_proven,
+                "busy": bool(isinstance(doc, dict) and doc.get("busy")),
                 "prs": sorted(set(prs)), "summary": (p.stdout or p.stderr or "")[-800:]}
 
     return run_fixer

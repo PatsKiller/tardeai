@@ -192,3 +192,43 @@ def test_the_agent_run_uses_the_configured_timeout(tmp_path, monkeypatch):
     a.cfg["claude"]["timeout_s"] = 7
     a.run_agent([str(tmp_path / "claude")], "prompt")
     assert seen["timeout"] == 7.0, seen
+
+
+# ---------------------------------------------------------------- the dry run must quote the effective plan
+def test_the_plan_view_matches_the_run_for_every_provider_state(tmp_path):
+    static = ["api.anthropic.com:443", "claude.ai:443"]
+    base = {"agent_sandbox": {"egress_allow": static, "enabled": False},
+            "claude": {"auth": {"mode": "credentials_file"}}}
+    # no provider
+    egress, auth_cfg = FX.provider_plan_view(base)
+    assert egress == static and auth_cfg["claude"]["auth"]["mode"] == "credentials_file"
+    # half-configured blocks change nothing
+    for half in ({"name": "deepseek"}, {"name": "deepseek", "launcher": "x"},
+                 {"name": "deepseek", "launcher": "x", "key_file": "k", "egress_allow": ["api.deepseek.com:443"],
+                  "auth_mode": "none"}):
+        cfg = {**base, "claude": {**base["claude"], "provider": half}}
+        if half.get("key_file"):
+            continue
+        egress, auth_cfg = FX.provider_plan_view(cfg)
+        assert egress == static, half
+        assert auth_cfg["claude"]["auth"]["mode"] == "credentials_file", half
+    # an active provider adds its hosts and applies auth_mode none
+    active = {**base, "claude": {**base["claude"], "provider": {
+        "name": "deepseek", "launcher": "x", "key_file": "k",
+        "egress_allow": ["api.deepseek.com:443", "claude.ai:443"], "auth_mode": "none"}}}
+    egress, auth_cfg = FX.provider_plan_view(active)
+    assert egress == [*static, "api.deepseek.com:443"]          # deduped against the static host
+    assert auth_cfg["claude"]["auth"]["mode"] == "none"
+    # and the run's own view agrees
+    a = _cfg_with_egress(tmp_path, {"name": "deepseek", "launcher": "x", "key_file": "k",
+                                    "egress_allow": ["api.deepseek.com:443"]}, static)
+    assert a.egress_allow() == [*static, "api.deepseek.com:443"]
+
+
+def test_the_dry_run_plan_uses_the_provider_view_not_the_static_list():
+    """A revert to the static egress/auth in the planner must fail here (source pin)."""
+    src = (ROOT / "scripts" / "self_heal_fixer.py").read_text()
+    assert "plan_egress, _auth_cfg = provider_plan_view(cfg)" in src
+    assert '"egress_allow": plan_egress' in src
+    # the old inline static computation must not come back
+    assert '_prov = (cfg.get("claude") or {}).get("provider") or {}' not in src

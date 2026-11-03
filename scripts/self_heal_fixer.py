@@ -294,6 +294,29 @@ def checkout_digest(root: Path) -> str:
     return h.hexdigest()
 
 
+def provider_plan_view(cfg: dict) -> tuple[list[str], dict]:
+    """The effective egress list and auth config a provider block WOULD use (dry-run planning).
+
+    Mirrors Attempt.egress_allow() and Attempt.setup()'s auth_mode override so a quoted dry run shows
+    the provider host and no OAuth bind, never the static defaults. A half-configured block (name only,
+    or launcher/key_file missing) changes nothing.
+    """
+    asb = cfg.get("agent_sandbox") or {}
+    prov = (cfg.get("claude") or {}).get("provider") or {}
+    active = (str(prov.get("name") or "").lower() not in ("", "anthropic")
+              and bool(prov.get("launcher")) and bool(prov.get("key_file")))
+    egress = [str(h) for h in (asb.get("egress_allow") or [])]
+    if active:
+        for host in prov.get("egress_allow") or []:
+            if str(host) not in egress:
+                egress.append(str(host))
+    auth_cfg = cfg
+    if prov.get("auth_mode"):
+        auth_cfg = {**cfg, "claude": {**cfg["claude"], "auth": {
+            **(cfg["claude"].get("auth") or {}), "mode": str(prov["auth_mode"])}}}
+    return egress, auth_cfg
+
+
 class Attempt:
     """One fix job: the sandboxed agent, immutable candidate commits, harness test runs bound to them, and the
     ship step (local branch, or push + PR when allowed) that proves it ships exactly the evaluated commit."""
@@ -1548,7 +1571,10 @@ def _cycle(
             home = environ.get("HOME") or str(Path.home())
             ah = str(wt / f"{job['job_id']}-home")
             asb = cfg.get("agent_sandbox") or {}
-            binds, auth_why = F.agent_auth_binds(cfg, home=home, agent_home=ah, probe=_probe)
+            # The dry run must describe what WOULD run, not the static defaults: provider_plan_view
+            # mirrors Attempt.egress_allow() and the provider auth_mode override.
+            plan_egress, _auth_cfg = provider_plan_view(cfg)
+            binds, auth_why = F.agent_auth_binds(_auth_cfg, home=home, agent_home=ah, probe=_probe)
             plan = {
                 "job": job,
                 "evidence": evidence,
@@ -1585,7 +1611,7 @@ def _cycle(
                         environ, cfg, scratch_state="<scratch>", agent_home=ah, proxy_port=asb.get("proxy_port")
                     )
                 ),
-                "egress_allow": asb.get("egress_allow"),
+                "egress_allow": plan_egress,
                 "budget_reservation": {
                     "iterations": it["max_iterations"],
                     "usd": it["max_cost_usd"],

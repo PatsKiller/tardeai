@@ -326,9 +326,14 @@ runs the model on DeepSeek:
   provider's `egress_allow` hosts only while that provider is active (`Attempt.egress_allow()`), and the
   egress bridge is started with that effective list. On the Anthropic path the allowlist is exactly the
   Anthropic hosts in §6a — a prompt-injected model cannot take the bound OAuth credential to a third party.
-- **A half-configured block is refused.** An active provider must set `auth_mode: "none"`; anything else
-  (missing, `credentials_file`) fails the job with `provider_auth_mode_invalid` instead of binding the OAuth
-  file inside a DeepSeek run. A launcher that is not readable fails with `provider_launcher_unavailable`.
+- **A dry run describes the run it would do.** The planned `egress_allow` is the effective list (a provider's
+  configured hosts only while that provider is active) and the planned auth binds apply the provider's `auth_mode`, so a
+  dry run quoted to approve arming a provider block shows the provider host and no OAuth bind — not the static defaults.
+- **An active provider with an invalid auth_mode is refused.** An active provider (name + launcher +
+  key_file) must set `auth_mode: "none"`; anything else (missing, `credentials_file`) fails the job with
+  `provider_auth_mode_invalid` instead of binding the OAuth file inside a DeepSeek run. A launcher that is
+  not readable fails with `provider_launcher_unavailable`. A **half-configured** block (no launcher or no
+  key_file) is not "refused" — it is inert: the provider never activates and the CLI keeps its own auth.
 - **Residual risk.** As with the OAuth credential above, the CLI holds the key in a readable descriptor; a
   model-run Bash that deliberately opens `/proc/<claude-pid>/fd/<n>` could read it. Nothing puts it in the
   prompt, the diff, the transcript or a test wrapper. The same recommendation applies: arm with a dedicated,
