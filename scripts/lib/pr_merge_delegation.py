@@ -29,9 +29,11 @@ import sys
 from zoneinfo import ZoneInfo
 
 try:  # repo root on sys.path
-    from scripts.lib.agent_claim_board import ClaimBoard, ClaimError, canonical_pattern, patterns_overlap
+    from scripts.lib.agent_claim_board import (
+        ClaimBoard, ClaimError, canonical_pattern, patterns_overlap, _segment_regex as claim_segment_regex)
 except ImportError:  # scripts/ on sys.path
-    from lib.agent_claim_board import ClaimBoard, ClaimError, canonical_pattern, patterns_overlap  # type: ignore[no-redef]
+    from lib.agent_claim_board import (  # type: ignore[no-redef]
+        ClaimBoard, ClaimError, canonical_pattern, patterns_overlap, _segment_regex as claim_segment_regex)
 
 REPO = "PatsKiller/tardeai"
 TRUSTED_REPO = Path(pwd.getpwuid(os.getuid()).pw_dir) / "trade-ai-v12-rebuild/trade-ai-v12-rebuild"
@@ -396,6 +398,9 @@ def validate_takeover_graph(views, board, shared_config=None):
                 if not isinstance(raw, list) or not raw:
                     raise Refused("claim_takeover_chain_invalid")
                 canonical = [canonical_pattern(path) for path in raw]
+                for path in canonical:
+                    for segment in path.split("/"):
+                        claim_segment_regex(segment)  # validate before disjoint prefixes can short-circuit
                 scopes[source] = [path for path in canonical if path not in shared]
             for index, left in enumerate(ordered):
                 for right in ordered[index + 1:]:

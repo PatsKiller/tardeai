@@ -343,7 +343,7 @@ def test_environment_cannot_exempt_an_exclusive_path(mod, tmp_path, monkeypatch)
 
 
 @pytest.mark.parametrize("bad", [None, [], SOURCE, [None], [""], ["../escape.py"], ["/absolute.py"],
-                               ["scripts/line\nbreak.py"], ["scripts/[z-a].py"]])
+                               ["scripts/line\nbreak.py"], ["scripts/[z-a].py"], ["elsewhere/[z-a].py"]])
 def test_unusable_live_sibling_scope_refuses_instead_of_looking_disjoint(mod, tmp_path, bad):
     board, left, _ = sibling_board(tmp_path, [SOURCE], ["scripts/other.py"])
     path = board.dir / f"{left}.json"
