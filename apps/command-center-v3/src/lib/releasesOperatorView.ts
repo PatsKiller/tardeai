@@ -112,6 +112,28 @@ export function needsYou(prs: InFlightPr[]): InFlightPr[] {
   })
 }
 
+/** The facts a Needs-you card is allowed to state, derived per action from the served row.
+ *
+ *  cc3 review F6 (2026-11-03): the card said "<agent> finished it and the checks passed" unconditionally, and the
+ *  push-budget cards the server flags are exactly the rows where that is false — drafts, DIRTY and BLOCKED branches
+ *  with no review and no CI. A card that asks the operator to authorize an upload must not also tell him the work is
+ *  finished and green. */
+export function needsYouFacts(p: InFlightPr, action: { kind: 'approve' | 'push' }): { headline: string; warning: string | null } {
+  const warning = p.mergeable === 'CONFLICTING' || p.merge_state === 'DIRTY'
+    ? 'GitHub reports the branch has changes that are not committed, so it cannot be uploaded as it stands.'
+    : p.merge_state === 'BLOCKED'
+      ? 'GitHub reports this change is blocked by something it is waiting on.'
+      : p.is_draft ? 'It is still a draft, so it is not ready for anyone to merge.' : null
+  if (action.kind === 'approve') {
+    const proven = p.work?.review?.state === 'MERGE' && p.work?.ci?.state === 'GREEN'
+    return { headline: proven ? 'A reviewer approved it and its checks passed.'
+      : 'The server says this change is ready for your approval; its own record of the check is incomplete.',
+    warning }
+  }
+  return { headline: 'This branch holds work that has not been uploaded yet; the agent is waiting for your authorization.',
+    warning }
+}
+
 /** The one action a Needs-you card offers, and the words for it. Never offers an action the server did not list. */
 export function needsYouAction(p: InFlightPr): { kind: 'approve' | 'push'; label: string; effect: string } {
   const eligible = p.operator_actions?.eligible ?? []

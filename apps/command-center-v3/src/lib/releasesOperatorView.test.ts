@@ -1,7 +1,7 @@
 // Releases & Schedules operator view: plain words, honest clocks, no machine identifiers.
 // Runs in the CC-v3 build:  node --experimental-strip-types src/lib/releasesOperatorView.test.ts
 import {
-  checkSentence, goingLive, jobsLine, liveNow, needsYou, needsYouAction, plainReason, plainText, stuck,
+  checkSentence, goingLive, jobsLine, liveNow, needsYou, needsYouAction, needsYouFacts, plainReason, plainText, stuck,
 } from './releasesOperatorView.ts'
 import type { SectionView } from './releasesSchedules.ts'
 declare const process: { exit(code?: number): never }
@@ -84,6 +84,22 @@ check('a push-budget card offers authorising the upload', needsYouAction(pushOnl
 check('an approval card offers approving', needsYouAction(pr({ operator_actions: { required: true, eligible: ['approve'], reason: null } })).kind === 'approve')
 check('a row the server did not flag and did not list is not in Needs you',
   needsYou([pr({ operator_actions: { required: false, eligible: [], reason: 'the agent has the next step' } })]).length === 0)
+
+// cc3 review F6: the card used to say the work was finished and the checks passed, unconditionally. On the push-budget
+// rows the server flags, that is the opposite of what the payload says.
+const pushDraft = pr({ is_draft: true, merge_state: 'BLOCKED',
+  work: { ...pr().work, review: { state: 'UNKNOWN', reason: 'no_review_record' }, ci: { state: 'UNKNOWN', reason: 'no_ci_observation' } },
+  operator_actions: { required: true, eligible: ['push'], reason: 'upload limit', withheld: [] } })
+const pushFacts = needsYouFacts(pushDraft, needsYouAction(pushDraft))
+check('a push card never claims the checks passed', !/checks passed|green/i.test(pushFacts.headline) && /not been uploaded/i.test(pushFacts.headline))
+check('a blocked push card names the blockage', /blocked/i.test(pushFacts.warning ?? ''))
+const dirtyFacts = needsYouFacts(pr({ mergeable: 'CONFLICTING', operator_actions: { required: true, eligible: ['push'], reason: null } }),
+  { kind: 'push' })
+check('a conflicting push card names the conflict', /not committed|conflict/i.test(dirtyFacts.warning ?? ''))
+const approveFacts = needsYouFacts(pr({ operator_actions: { required: true, eligible: ['approve'], reason: null } }), { kind: 'approve' })
+check('an approve card may say the checks passed when the payload proves it', /checks passed/i.test(approveFacts.headline))
+const approveUnproven = needsYouFacts(pr({ work: { ...pr().work, review: { state: 'MERGE', reason: null }, ci: { state: 'UNKNOWN', reason: 'no_ci_observation' } } }), { kind: 'approve' })
+check('an approve card does not invent a green check', !/checks passed/i.test(approveUnproven.headline) && /incomplete/i.test(approveUnproven.headline))
 
 console.log(`releasesOperatorView: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)
