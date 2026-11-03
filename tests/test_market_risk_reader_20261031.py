@@ -124,6 +124,38 @@ def test_current_regular_quote_future_naive_invalid_and_early_close_fail_closed(
 
 
 
+@pytest.mark.parametrize("day,hour", [(datetime(2026, 11, 2).date(), 16), (datetime(2026, 11, 27).date(), 13)])
+def test_fractional_display_quote_preserves_original_stage_and_vix_cutoffs(day, hour):
+    """Main's exact-second close stays stage evidence; display alone admits the fractional print."""
+    from datetime import time
+    from scripts.lib.market_risk import reentry_stages
+
+    assert rd.REGULAR_CLOSE_CUTOFF_ET == time(16, 0, 59)
+    assert rd.EARLY_CLOSE_ET == time(13, 0, 59)
+    exact = datetime.combine(day, time(hour, 0, 59), ET)
+    fraction = exact.replace(microsecond=500000)
+    rows = [
+        {"symbol": "ZZQ", "source": "alpaca", "price": 10.0, "prev_close": 11.0, "fetched_at": exact},
+        {"symbol": "ZZQ", "source": "alpaca", "price": 99.0, "prev_close": 11.0, "fetched_at": fraction},
+    ]
+    r, conn = make({"FROM market_quotes WHERE source": (["symbol", "source", "price", "prev_close", "fetched_at"], rows)})
+    end = datetime.combine(day, time(20), ET)
+    closes = r._quote_closes(["ZZQ"], start=datetime.combine(day, time(0), ET), end=end)
+    assert len(closes) == 1 and closes[0]["close"] == 10.0
+    assert datetime.fromisoformat(closes[0]["as_of"]) == exact
+    assert closes[0]["provisional"] is True
+    assert r.regular_session_quotes(["ZZQ"], end=end)["ZZQ"]["price"] == 99.0
+    confirmed = [{"date": "2026-10-29", "close": 12.0}, {"date": "2026-10-30", "close": 11.0}]
+    args = dict(symbol="ZZQ", exit_date="2026-10-29", exit_price=13.0, group_ratio=[],
+                hedging_series=[], market_tier="GREEN", policy={})
+    before = reentry_stages.evaluate(bars=confirmed, **args)
+    after = reentry_stages.evaluate(bars=confirmed + closes, **args)
+    assert after == before and after["last_close"] == 11.0 and after["last_date"] == "2026-10-30"
+    r._vix_closes(start=datetime.combine(day, time(0), ET), end=end)
+    snapshot = next(params for sql, params in conn.log if "FROM market_regime_indicators" in sql)
+    assert snapshot[-1] == time(16, 0, 59), "VIX snapshot predicate retains main's exact-second cutoff"
+
+
 def test_session_is_read_only_before_any_query():
     r, conn = make({})
     r.quotes(["SPY"], start=et(2026, 10, 29, 4), end=et(2026, 10, 29, 20))

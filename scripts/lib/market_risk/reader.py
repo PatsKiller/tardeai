@@ -37,12 +37,12 @@ from zoneinfo import ZoneInfo
 ET = ZoneInfo("America/New_York")
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 OVERRIDES_PATH = PROJECT_ROOT / "config" / "macro_calendar_overrides.json"
-REGULAR_CLOSE_CUTOFF_ET = time(16, 0, 59, 999999)  # last quote at or before this = the newest session's provisional close
+REGULAR_CLOSE_CUTOFF_ET = time(16, 0, 59)  # last quote at or before this = the newest session's provisional close
 #: A same-day close may only come from the regular session. Without this floor a 07:15 ET pre-market
 #: quote became the day's "close" (2026-11-02: ten symbols, eight repeating Friday's close), shifting
 #: the moving averages and flipping verdicts.
 REGULAR_OPEN_ET = time(9, 30)
-EARLY_CLOSE_ET = time(13, 0, 59, 999999)
+EARLY_CLOSE_ET = time(13, 0, 59)
 
 
 def _same_day_cutoff_et(day: date) -> time:
@@ -58,6 +58,13 @@ def _same_day_cutoff_et(day: date) -> time:
     except Exception:  # noqa: BLE001 — an unreadable calendar must not invent a close; fall back to 16:00
         pass
     return REGULAR_CLOSE_CUTOFF_ET
+
+
+def _display_quote_cutoff_et(day: date) -> time:
+    """Include the last fractional second for display only; never widen stage/VIX inputs."""
+    return _same_day_cutoff_et(day).replace(microsecond=999999)
+
+
 VIX_SYMBOL = "^VIX"
 DAILY_TIMEFRAME = "daily"
 QUOTE_SOURCE_FOR_CLOSES = "alpaca"
@@ -184,7 +191,7 @@ class PgReader:
         """Latest eligible stored regular quote per symbol, independently of confirmed stage bars.
 
         A quote observation is never promoted to confirmed OHLCV. After the close,
-        only this session's09:30-through-closing-minute prints qualify; older days
+        only this session's 09:30-through-closing-minute prints qualify; older days
         and extended-session prices cannot masquerade as today's regular price.
         """
         from scripts.lib.market_risk import sessions as market_sessions
@@ -195,7 +202,7 @@ class PgReader:
         if not market_sessions.is_trading_day(day) or local.time() < REGULAR_OPEN_ET:
             day = market_sessions.last_closed_session(end)
         start = datetime.combine(day, REGULAR_OPEN_ET, ET).astimezone(timezone.utc)
-        until = min(end, datetime.combine(day, _same_day_cutoff_et(day), ET).astimezone(timezone.utc))
+        until = min(end, datetime.combine(day, _display_quote_cutoff_et(day), ET).astimezone(timezone.utc))
         syms = sorted({str(s).strip().upper() for s in symbols if str(s).strip()})
         out = {sym: {"schema": "ReentryRegularQuote@v1", "status": "unavailable", "price": None,
                      "source": "market_quotes:alpaca", "session": "regular", "session_date": day.isoformat(),
