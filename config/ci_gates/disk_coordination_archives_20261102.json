@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "disk_coordination_archives_20261102",
+  "files": [
+    "tests/test_disk_coordination_archives_20261102.py"
+  ],
+  "anchor": "DISK_COORDINATION_ARCHIVES_20261102",
+  "comment": [
+    "ANCHOR: DISK_COORDINATION_ARCHIVES_20261102 — archived claims and worklogs are history, not live references: the standing coordination scan skips claims_history.jsonl and worklog_archive/. Fixtures only."
+  ]
+}
