@@ -31,6 +31,13 @@ from typing import Any, Optional
 
 SCHEMA = "PositionsReadModel@v1"
 
+#: Step 3 W0 is the library; the serving-chain consumers switch to it in W1. It therefore has no
+#: production caller on this head, which the dark-contract guard requires us to state explicitly.
+NO_CONSUMER_REASON = (
+    "Step 3 W0 library: the W1 serving-chain switch is the consumer; until it lands, no production "
+    "reader calls this module (see the Step 3 plan in the coordination inbox)."
+)
+
 def _load_alias_map() -> dict[str, str]:
     """Registry key -> the short label served readers use, from the ONE canonical declaration.
 
