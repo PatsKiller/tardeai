@@ -198,7 +198,7 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
   assert.equal(freshRow.now, '$12.34', 'Monday after-close quote wins display over confirmed Friday9.50')
   assert.equal(freshRow.vsExit, '+23.4%', 'current quote percent is kept coherent')
   assert.equal(freshRow.verdict, 'Still falling', 'display quote never changes the confirmed stage verdict')
-  assert.match(freshRow.lookThrough, /regular-session quote.*ET.*market_quotes:alpaca/)
+  assert.match(freshRow.lookThrough, /Stored regular-session observation · fetched .*ET.*market_quotes:alpaca · trade time\/live freshness unverified/)
   for (const quote of [null, { ...currentQuote, price: Infinity }, { ...currentQuote, price: '12.34' },
     { ...currentQuote, session_date: '2031-03-07' }, { ...currentQuote, as_of: '2031-03-11T01:00:00Z' },
     { ...currentQuote, as_of: '2031-03-10T16:00:00' }, { ...currentQuote, session: 'premarket' }]) {
@@ -211,7 +211,7 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
     const prior = quoteRow(fridayQuote, assessment)
     assert.equal(prior.now, '—', 'pre-open/weekend prior close cannot be labeled Now')
     assert.equal(prior.vsExit, '—', 'prior quote percent is not a current comparison')
-    assert.match(prior.lookThrough, /Last regular close observation \$9\.50 · 2031-03-07 · .*ET · market_quotes:alpaca/)
+    assert.match(prior.lookThrough, /Last stored regular-session observation \$9\.50 · 2031-03-07 · fetched .*ET · market_quotes:alpaca · trade time\/live freshness unverified/)
     assert.ok(!/Price unavailable|Price stale/.test(prior.lookThrough), 'normal prior close is not a system failure')
     assert.equal(prior.verdict, 'Still falling')
   }
@@ -223,7 +223,7 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
     { ...currentQuote, session_date: {} as any, expected_session_date: {} as any },
   ]) {
     assert.equal(quoteRow(quote).now, 'unavailable', 'nonregular or mismatched timestamp is not Now or prior-close context')
-    assert.ok(!/Last regular close/.test(quoteRow(quote).lookThrough))
+    assert.ok(!/Last stored regular-session observation/.test(quoteRow(quote).lookThrough))
   }
   assert.equal(quoteRow({ ...currentQuote, as_of: '2031-03-10T13:30:00Z' }).now, '$12.34', '09:30 ET is inside regular session')
   assert.equal(quoteRow({ ...currentQuote, as_of: '2031-03-10T16:00:59-04:00' }).now, '$12.34', 'explicit ET offset closing minute remains valid')

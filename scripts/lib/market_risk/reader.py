@@ -190,6 +190,8 @@ class PgReader:
     def regular_session_quotes(self, symbols: Iterable[str], *, end: datetime) -> dict[str, dict[str, Any]]:
         """Latest eligible stored regular quote per symbol, independently of confirmed stage bars.
 
+        ``as_of`` is market_quotes.fetched_at, the ledger observation/ingestion clock,
+        not exchange/provider trade time or proof of live freshness/an official close.
         A quote observation is never promoted to confirmed OHLCV. After the close,
         only this session's 09:30-through-closing-minute prints qualify; older days
         and extended-session prices cannot masquerade as today's regular price.

@@ -642,9 +642,9 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
     const vsMa = quoteKnown ? finite(quote!.pct_vs_sma20) : null
     const ma = vsMa != null ? `${fmtSignedPct(vsMa)} vs confirmed 20-day` : ''
     const priceEvidence = quoteKnown
-      ? `regular-session quote · ${shortTime(quote!.as_of)} · ${quote!.source}`
+      ? `Stored regular-session observation · fetched ${shortTime(quote!.as_of)} · ${quote!.source} · trade time/live freshness unverified`
       : priorRegularQuote
-        ? `Last regular close observation ${fmtPrice(quote!.price)} · ${quote!.session_date} · ${shortTime(quote!.as_of)} · ${quote!.source}`
+        ? `Last stored regular-session observation ${fmtPrice(quote!.price)} · ${quote!.session_date} · fetched ${shortTime(quote!.as_of)} · ${quote!.source} · trade time/live freshness unverified`
         : `${quote?.stale || mr.stale || quote?.status === 'stale' ? 'Price stale' : 'Price unavailable'} · canonical regular-session quote not measured`
     return {
       symbol: sym,
