@@ -83,6 +83,15 @@ eq('quality 0 → RS UNKNOWN', rotationDescriptive({ market_research: mrQ0 }).bl
 eq('naive computed_at is not a clock', rotationDescriptive({ market_research: { ...mrOk, computed_at: '2026-11-02 21:52' } }).market?.computedAt, null)
 check('naive clock becomes a gap', rotationDescriptive({ market_research: { ...mrOk, computed_at: '2026-11-02 21:52' } }).gaps.some(g => g.includes('computed_at')))
 eq('no market_research → null', rotationDescriptive({}).market, null)
+// F5 of the Rotation-A review: a cached empty/malformed market_research must not look like data.
+const mrEmpty = rotationDescriptive({ market_research: { available: false, sectors: [], industries: [], gaps: ['snapshot empty'] } })
+eq('unavailable projection has no rows', mrEmpty.blocks.find(b => b.key === 'market-sectors')?.rows.length, 0)
+eq('and says so', mrEmpty.blocks.find(b => b.key === 'market-sectors')?.empty, 'Market projection not available in this response.')
+eq('available flag carried as false', mrEmpty.market?.available, false)
+check('its gap is stated', mrEmpty.gaps.some(g => g.includes('market: snapshot empty')))
+const mrMalformed = rotationDescriptive({ market_research: { sectors: 'nope', industries: {} } })
+eq('malformed lists do not throw', mrMalformed.blocks.find(b => b.key === 'market-sectors')?.rows.length, 0)
+eq('absent available is not true', mrMalformed.market?.available, false)
 // Final contract details: quality_status KNOWN|UNKNOWN, NULL rs fields, market gaps and cache age.
 const mrKnown = { available: true, computed_at: '2026-11-02T21:52:00Z',
   sectors: [{ name: 'K', return_1m: 1, return_3m: 2, return_6m: 3, rs_raw: 0.5, rs_score: 55, quality_status: 'KNOWN' }] }
