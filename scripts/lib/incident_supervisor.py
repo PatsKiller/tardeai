@@ -8,8 +8,13 @@ For each unresolved IncidentRecord@v1 (oldest first, at most ``max_incidents_per
 1. **Refused scope (deterministic, before any model):** a §0 class (orders/stops/sizing, broker writes, secrets) or a
    §28.14 item 4 scope (guard, policy, hooks, AGENTS.md, credentials) → ``needs_operator``. No model, no action.
 2. **Attempts cap:** ``max_attempts_per_incident`` supervisor attempts → ``blocked`` with a handoff + one P1.
-3. **Time box:** unresolved longer than ``escalate_after_minutes`` with no escalation yet → one P1.
-4. **Model triage** (process ``incident_supervisor``: Anthropic credit, Sonnet 5.5 tier ``mid``, ≤ $1/day in the
+3. **Disk incident (deterministic, before any model):** an incident whose structured source names a disk lane in
+   ``policy.disk_incident_routes`` is dispatched to the §28.14 fixer instead of being parked as ``needs_operator``
+   (operator 2026-11-03, disk permanent-fix item 4: "The incident supervisor must never park a disk incident as
+   'needs a person'; it dispatches the fixer."). A disk lane outage was blocked at 05:52Z and never revisited for
+   eight hours because the model answered ``needs_operator``; classification by model is no longer the only route.
+4. **Time box:** unresolved longer than ``escalate_after_minutes`` with no escalation yet → one P1.
+5. **Model triage** (process ``incident_supervisor``: Anthropic credit, Sonnet 5.5 tier ``mid``, ≤ $1/day in the
    process registry; the governed walk falls back to OAuth grok/chatgpt; DeepSeek is not in ``allowed_lanes``, and an
    answer from any provider in ``never_providers`` is discarded). Output ``{class, action, params, rationale}``.
    * ``runbook`` → the harness runs the action ONLY if it is in config/incident_runbook_actions.json, enabled, applies
@@ -105,6 +110,26 @@ def refused_scope(rec: Mapping[str, Any], policy: Mapping[str, Any]) -> Optional
 
 def supervisor_attempts(rec: Mapping[str, Any]) -> list[dict]:
     return [a for a in rec.get("attempts") or [] if a.get("actor") == ACTOR]
+
+
+def disk_incident_route(rec: Mapping[str, Any], cfg: Mapping[str, Any]) -> Optional[dict]:
+    """Which configured disk lane this incident came from, or None.
+
+    Matched EXACTLY (case-insensitive) against the structured source fields — ``job``, ``lane``, ``watcher`` — never
+    the free-text title, so an incident that merely mentions a disk is not swept into this route. Operator 2026-11-03
+    (disk permanent-fix item 4): a disk incident is never parked as ``needs_operator``; the fixer lane owns it.
+    """
+    route = ((cfg.get("policy") or {}).get("disk_incident_routes")) or {}
+    if not isinstance(route, dict):
+        return None
+    src = rec.get("source") or {}
+    jobs = {str(x).strip().lower() for x in route.get("jobs") or [] if str(x).strip()}
+    watchers = {str(x).strip().lower() for x in route.get("watchers") or [] if str(x).strip()}
+    hit_job = sorted({str(src.get(k) or "").strip().lower() for k in ("job", "lane")} & jobs)
+    hit_watcher = sorted({str(src.get("watcher") or "").strip().lower()} & watchers)
+    if not (hit_job or hit_watcher):
+        return None
+    return {"job": hit_job, "watcher": hit_watcher, "class": "code_defect"}
 
 
 def counted_attempts(rec: Mapping[str, Any]) -> int:
@@ -297,14 +322,42 @@ def _bump_calls(d: Path, now: datetime) -> None:
     p.write_text(json.dumps({"date": now.date().isoformat(), "count": n}) + "\n", encoding="utf-8")
 
 
+def _dispatch_fixer(rec: dict, verdict: Mapping[str, Any], cfg: Mapping[str, Any], d: Path, deps: Deps, apply: bool,
+                    out: dict, now: datetime, detail: Mapping[str, Any], *, why: str) -> Optional[dict]:
+    """Hand one incident to the §28.14 fixer, at most once per incident. The fixer opens a PR; it never merges.
+
+    In a dry run nothing is written and no fixer runs: the cycle records ``would_dispatch`` instead. Shared by the
+    model's ``code_defect`` verdict and the deterministic disk route so both obey the same once-per-incident rule.
+    """
+    iid = rec["id"]
+    if any(a.get("action") == "fixer_dispatch" for a in supervisor_attempts(rec)):
+        out["skipped"].append({"id": iid, "why": "fixer already dispatched"})
+        return None
+    req = fixer_request(rec, verdict, cfg)
+    reqp = d / "fixer_requests" / f"{iid}.json"
+    if not apply:
+        out["would_dispatch"].append({"id": iid, "why": why, "request": str(reqp)})
+        return req
+    reqp.parent.mkdir(parents=True, exist_ok=True)
+    reqp.write_text(json.dumps(req, indent=1) + "\n", encoding="utf-8")
+    res = deps.fixer(reqp, True)
+    refs = [{"kind": "pr", "ref": str(u)} for u in res.get("prs") or []]
+    L.attempt(iid, actor=ACTOR, action="fixer_dispatch",
+              result=f"fixer rc={res.get('rc')} admitted={res.get('admitted')} prs={res.get('prs')}",
+              ok=res.get("rc") == 0, detail={**detail, "request": str(reqp), "fixer": res.get("summary")},
+              fix_refs=refs or None, d=d, now=now)
+    out["dispatched"].append({"id": iid, "rc": res.get("rc"), "prs": res.get("prs"), "why": why})
+    return req
+
+
 def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, Any], deps: Deps, apply: bool,
           now: Optional[datetime] = None, environ: Optional[Mapping[str, str]] = None, root: Path = ROOT) -> dict:
     now = now or L.utcnow()
     pol = cfg["policy"]
     environ = os.environ if environ is None else environ
     out: dict[str, Any] = {"schema": RECEIPT_SCHEMA, "as_of": L.iso(now), "mode": "apply" if apply else "dry_run",
-                           "considered": [], "actions": [], "dispatched": [], "blocked": [], "escalated": [],
-                           "would_escalate": [], "skipped": []}
+                           "considered": [], "actions": [], "dispatched": [], "would_dispatch": [], "blocked": [],
+                           "escalated": [], "would_escalate": [], "skipped": []}
     recs = L.load_records(d)
     queue = sorted((r for r in recs.values() if r["status"] in L.UNRESOLVED), key=lambda r: r["opened_at"])
     for rec in queue[: int(pol.get("max_incidents_per_cycle", 5))]:
@@ -331,11 +384,30 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
             out["blocked"].append({"id": iid, "why": why})
             _escalate(rec, why, "Supervisor attempts exhausted; a person must take it.", d, deps, apply, out, now)
             continue
-        # 3. time box
+        # 3. disk incident: deterministic route to the fixer, never needs_operator (operator 2026-11-03, item 4).
+        #    Placed after the refused scopes (those rails still bind) and before the model, so a disk lane outage is
+        #    dispatched on first sight instead of waiting on — or being parked by — a model classification.
+        disk = disk_incident_route(rec, cfg)
+        if disk:
+            if any(a.get("action") == "fixer_dispatch" for a in supervisor_attempts(rec)):
+                # Already handed over: record nothing new (the cooldown does not apply before the model here).
+                out["skipped"].append({"id": iid, "why": "fixer already dispatched"})
+                continue
+            verdict = {"class": "code_defect",
+                       "action": f"fix the disk incident: {str(rec.get('title') or '')[:200]}",
+                       "params": {}, "rationale": "disk incident routed to the fixer lane (operator 2026-11-03)"}
+            detail = {"provider": "deterministic", "class": "code_defect", "route": "disk_incident",
+                      "matched": disk, "proposed": verdict["action"]}
+            if apply:
+                L.attempt(iid, actor=ACTOR, action="triage", result=f"disk incident routed to the fixer: {disk}",
+                          ok=None, sets_fixing=False, detail=detail, d=d, now=now)
+            _dispatch_fixer(rec, verdict, cfg, d, deps, apply, out, now, detail, why="disk_incident")
+            continue
+        # 4. time box
         if age_min >= float(pol.get("escalate_after_minutes", 60)):
             _escalate(rec, f"unresolved {int(age_min)} min", "Open the incident; the supervisor is still working it.",
                       d, deps, apply, out, now)
-        # 4. model triage (cooldown + daily call cap)
+        # 5. model triage (cooldown + daily call cap)
         last = max((L.parse_ts(a.get("at")) for a in supervisor_attempts(rec) if a.get("at")), default=None)
         if last and now - last < timedelta(minutes=float(pol.get("model_cooldown_minutes", 30))):
             out["skipped"].append({"id": iid, "why": "cooldown"})
@@ -390,20 +462,7 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
                       detail={**detail, "argv": argv, "output_tail": tail[-1200:]}, d=d, now=now)
             out["actions"].append({"id": iid, "action": chosen["name"], "rc": rc})
         elif verdict["class"] == "code_defect":
-            if any(a.get("action") == "fixer_dispatch" for a in supervisor_attempts(rec)):
-                out["skipped"].append({"id": iid, "why": "fixer already dispatched"})
-                continue
-            req = fixer_request(rec, verdict, cfg)
-            reqp = d / "fixer_requests" / f"{iid}.json"
-            reqp.parent.mkdir(parents=True, exist_ok=True)
-            reqp.write_text(json.dumps(req, indent=1) + "\n", encoding="utf-8")
-            res = deps.fixer(reqp, True)
-            refs = [{"kind": "pr", "ref": str(u)} for u in res.get("prs") or []]
-            L.attempt(iid, actor=ACTOR, action="fixer_dispatch",
-                      result=f"fixer rc={res.get('rc')} admitted={res.get('admitted')} prs={res.get('prs')}",
-                      ok=res.get("rc") == 0, detail={**detail, "request": str(reqp), "fixer": res.get("summary")},
-                      fix_refs=refs or None, d=d, now=now)
-            out["dispatched"].append({"id": iid, "rc": res.get("rc"), "prs": res.get("prs")})
+            _dispatch_fixer(rec, verdict, cfg, d, deps, apply, out, now, detail, why="code_defect")
         else:  # needs_operator
             L.attempt(iid, actor=ACTOR, action="triage", result=f"needs_operator: {verdict['action']}", ok=None,
                       sets_fixing=False, detail=detail, d=d, now=now)

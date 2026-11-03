@@ -16,6 +16,11 @@
     "_act_on_providers_why": "A fallback (OAuth grok/chatgpt) answer is read-only triage: recorded on the incident, never executed; the 60-minute time box still escalates.",
     "refused_scope_regex": "(?i)(schwab|alpaca|moomoo|broker|place_order|\\borders?\\b|\\bstops?\\b|stop[-_ ]loss|sizing|\\bsize\\b|weight|mbi|active[-_ ]?trader|execution|2fa|credential|secret|\\.env\\b|api[-_ ]?key|token|agents\\.md|guard|\\.githooks|mergify)",
     "_refused_why": "section 0 classes (orders/stops/sizing, broker writes, secrets) plus the section 28.14 item 4 refused scopes (guard, policy, hooks, AGENTS.md, credentials). A match forces needs_operator; no runbook action and no fixer dispatch.",
+    "disk_incident_routes": {
+      "_why": "Operator 2026-11-03, disk permanent-fix item 4: 'The incident supervisor must never park a disk incident as needs a person; it dispatches the fixer.' A disk incident whose structured source names a disk lane is routed deterministically to the section 28.14 fixer before the model, so no model answer can park it as needs_operator. Matching is EXACT (case-insensitive) against source.job, source.lane and source.watcher -- never the free-text title -- so an unrelated incident that merely mentions a disk is unaffected. Example caught in the ledger: INC-261103-jngkrp, job disk-hygiene, blocked as needs_operator at 05:52Z and never revisited until 14:05Z. This route does NOT weaken refused_scope_regex: an incident matching any refused scope is still refused first, including a lane whose job name contains the section 28.14 'guard' term.",
+      "jobs": ["disk-hygiene", "disk-hygiene-enforcer", "disk-usage-monitor", "weekly-disk-cleanup"],
+      "watchers": ["disk_health", "disk_hygiene"]
+    },
     "fixer": {
       "script": "scripts/self_heal_fixer.py",
       "timeout_s": 3600,
