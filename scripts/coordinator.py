@@ -996,11 +996,13 @@ def cmd_appoint(args) -> int:
         sync_lead(reg)
         touch(reg, quote=quote)
         reg["as_of"] = now_iso()
-        _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
+        # Write-ahead: the ledger line exists before the registry changes, so a crash between the two leaves an
+        # auditable record of what was granted instead of a silent grant.
         append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": tid, "territory": None,
                             "kind": "appoint", "subject": tid,
                             "detail": f"{args.vendor} as {args.role}: {', '.join(territories)}",
                             "operator_quote": quote})
+        _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
         append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": tid, "territory": None,
                             "kind": "heartbeat", "subject": tid, "detail": "initial"})
         _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
@@ -1010,12 +1012,19 @@ def cmd_appoint(args) -> int:
 
 def cmd_stand_down(args) -> int:
     root = state_root(args.state_root)
-    with locked(root):
+    if not str(args.quote or "").strip():
+        print("error: refused: an operator transfer needs --quote with the operator's own words", file=sys.stderr)
+        return 2
+    with (nullcontext() if getattr(args, "dry_run", False) else locked(root)):
         reg = read_registry(root)
         c = find(reg, _safe(args.id))
         if not c:
             print(f"error: no coordinator {args.id}", file=sys.stderr)
             return 2
+        if getattr(args, "dry_run", False):
+            print(json.dumps({"schema": "CoordinatorStandDownPlan@v1", "dry_run": True, "id": c["id"],
+                              "role": c.get("role"), "status": c.get("status")}, indent=1))
+            return 0
         c["status"] = "stood_down"
         c["last_heartbeat"] = now_iso()
         if str(c.get("role")) == "lead":
@@ -1073,8 +1082,21 @@ def cmd_assign(args) -> int:
     return 0
 
 
+#: Kinds whose meaning belongs to a verb with its own guards. The generic `event` append used to accept any word,
+#: so `coord event check_ok ...` cleared a pending check (and `--coordinator` was whatever the caller typed),
+#: bypassing the two-coordinator check path. Those kinds are refused here; use the owning verb.
+RESERVED_EVENT_KINDS = frozenset({
+    "check_request", "check_ok", "check_block", "transfer", "ack", "handoff", "stand_down",
+    "appoint", "heartbeat", "inbox_send",
+})
+
+
 def cmd_event(args) -> int:
     root = state_root(args.state_root)
+    if str(args.kind) in RESERVED_EVENT_KINDS:
+        print(f"error: refused: '{args.kind}' belongs to its own verb; the generic event cannot state it",
+              file=sys.stderr)
+        return 2
     with locked(root):
         append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": args.coordinator,
                             "territory": args.territory, "kind": str(args.kind), "subject": args.subject,
@@ -1136,7 +1158,7 @@ def cmd_inbox(args) -> int:
         with locked(root):
             d = inbox_dir(root, _safe(args.to))
             d.mkdir(parents=True, exist_ok=True)
-            p = d / f"{_stamp()}-{sender}.md"
+            p = d / f"{_stamp()}-{uuid.uuid4().hex[:8]}-{sender}.md"  # unique even for two sends in the same second
             _atomic_write(p, (body or "").rstrip() + "\n")
             append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": sender, "territory": None,
                                 "kind": "inbox_send", "subject": _safe(args.to), "detail": p.name})
@@ -1147,25 +1169,34 @@ def cmd_inbox(args) -> int:
         print("error: --id is required", file=sys.stderr)
         return 2
     d = inbox_dir(root, cid)
-    items = []
-    try:
-        items = sorted(f for f in d.iterdir() if f.is_file() and not f.is_symlink())
-    except OSError:
-        items = []
-    if not items:
-        print(f"inbox {cid}: empty")
-        return 0
-    for f in items:
-        print(f"=== {f.name} ===")
+    moved = 0
+    with locked(root):
         try:
-            print(f.read_text(encoding="utf-8").rstrip())
+            items = sorted(f for f in d.iterdir() if f.is_file() and not f.is_symlink())
         except OSError:
-            print("(unreadable)")
-        if not args.keep:
-            with locked(root):
-                read = d / "read"
-                read.mkdir(exist_ok=True)
-                os.replace(f, read / f.name)  # move, never delete
+            items = []
+        if not items:
+            print(f"inbox {cid}: empty")
+            return 0
+        read = d / "read"
+        for f in items:
+            print(f"=== {f.name} ===")
+            try:
+                print(f.read_text(encoding="utf-8").rstrip())
+            except OSError:
+                print("(unreadable)")
+            if not args.keep:
+                # Listing and moving happen under the same lock: another reader that moved the file first must
+                # not turn this into an uncaught FileNotFoundError.
+                try:
+                    read.mkdir(exist_ok=True)
+                    os.replace(f, read / f.name)  # move, never delete
+                    moved += 1
+                except OSError:
+                    continue
+    if not args.keep:
+        print(f"({moved} item(s) moved to {d / 'read'})")
+    return 0
     if not args.keep:
         print(f"({len(items)} item(s) moved to {d / 'read'})")
     return 0
@@ -1174,7 +1205,10 @@ def cmd_inbox(args) -> int:
 def cmd_handoff(args) -> int:
     root = state_root(args.state_root)
     src, dst = _safe(args.from_), _safe(args.to)
-    with locked(root):
+    if not str(args.quote or "").strip():
+        print("error: refused: an operator transfer needs --quote with the operator's own words", file=sys.stderr)
+        return 2
+    with (nullcontext() if getattr(args, "dry_run", False) else locked(root)):
         reg = read_registry(root)
         a, b = find(reg, src), find(reg, dst)
         if not a or not b:
@@ -1182,7 +1216,12 @@ def cmd_handoff(args) -> int:
             return 2
         events = read_events(root)
         stamp = _stamp()
-        p = handoffs_dir(root) / f"{stamp}-{src}-to-{dst}.md"
+        p = handoffs_dir(root) / f"{stamp}-{uuid.uuid4().hex[:8]}-{src}-to-{dst}.md"
+        if getattr(args, "dry_run", False):
+            print(json.dumps({"schema": "CoordinatorHandoffPlan@v1", "dry_run": True, "from": src, "to": dst,
+                              "territories": sorted(set(b.get("territories") or []) | set(a.get("territories") or [])),
+                              "lead_moves": str(a.get("role")) == "lead", "snapshot": str(p)}, indent=1))
+            return 0
         body = [f"# Handoff {src} -> {dst} ({now_iso()})", "",
                 f"- territories moved: {', '.join(a.get('territories') or []) or '(none)'}",
                 f"- role: {a.get('role')} -> {b.get('role')}", "",
@@ -1193,6 +1232,9 @@ def cmd_handoff(args) -> int:
         if str(a.get("role")) == "lead":
             a["role"] = "member"
             b["role"] = "lead"
+            # The registry has TWO views of the lead (the top-level field and a role). Handoff used to move only
+            # the role, leaving the registry divergent and every later mutation refused by coherence_error.
+            sync_lead(reg)
         reg["as_of"] = now_iso()
         _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
         append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": src, "territory": None,
@@ -1263,9 +1305,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--quote", required=True)
     p.add_argument("--json", action="store_true")
 
-    p = sub.add_parser("stand-down", parents=[CLOCK_PARSER], help="operator: stand a coordinator down")
+    p = sub.add_parser("stand-down", parents=[CLOCK_PARSER], help="operator: stand a coordinator down (--quote required)")
     p.add_argument("--id", required=True)
-    p.add_argument("--quote", default=None)
+    p.add_argument("--quote", required=True, help="the operator's own words (recorded verbatim)")
+    p.add_argument("--dry-run", action="store_true")
     p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("heartbeat", parents=[CLOCK_PARSER], help="record liveness")
@@ -1303,9 +1346,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--keep", action="store_true", help="read without moving to read/")
     p.add_argument("--json", action="store_true")
 
-    p = sub.add_parser("handoff", parents=[CLOCK_PARSER], help="snapshot, move territories and record the handover")
+    p = sub.add_parser("handoff", parents=[CLOCK_PARSER], help="operator: hand territories and the lead role over (--quote required)")
     p.add_argument("--from", dest="from_", required=True)
     p.add_argument("--to", required=True)
+    p.add_argument("--quote", required=True, help="the operator's own words (recorded verbatim)")
+    p.add_argument("--dry-run", action="store_true")
     p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("board", parents=[CLOCK_PARSER], help="regenerate BOARD.md")

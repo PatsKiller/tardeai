@@ -91,16 +91,19 @@ coord timeouts [--dry-run|--apply]  # process ack deadlines (dry-run is the defa
 
 `coord status` is **strictly read-only**: it opens no lock, creates no directory and never writes. Timeout
 processing is its own write command, `coord timeouts --apply`; without `--apply` it prints the plan only. Every
-mutating verb (`give`/`lead`/`take-back`/`add`/`ack`) has a true `--dry-run` that shows the intended ledger event,
-handoff path, registry/board change, tmux notices and ack deadline, and reaches none of them.
+mutating verb (`give`/`lead`/`take-back`/`handoff`/`stand-down`/`add`/`ack`) has a true `--dry-run` that shows the
+intended ledger event, handoff path, registry/board change, tmux notices and ack deadline, and reaches none of them.
 
 `take-back <id>` returns **<id>'s territories** to the current lead. It refuses when <id> holds nothing, when there is
 no lead, and when <id> is the lead itself (move the lead first with `coord lead <other>`, then take back). `add`
 appends to the ledger **before** the registry and refuses a territory another coordinator already holds (use
 `coord give`). A lead transfer notices **both** the former and the new lead.
 
-Every transfer (`give`/`lead`/`take-back`) is **operator-issued**: `--quote "<the operator's words>"` is required
-and recorded verbatim. The order is ledger first (the original command), then the auto-generated handoff note
+Every transfer (`give`/`lead`/`take-back`) **and every leadership change** (`handoff`/`stand-down`) is
+**operator-issued**: `--quote "<the operator's words>"` is required and recorded verbatim, and a handoff moves the
+registry's top-level `lead` together with the role (the two views never diverge). The generic `coord event` refuses the
+kinds other verbs own (`check_request`/`check_ok`/`check_block`/`transfer`/`ack`/`handoff`/`stand_down`/`appoint`/
+`heartbeat`/`inbox_send`), so a forged check outcome cannot be appended. The order is ledger first (the original command), then the auto-generated handoff note
 (BOARD + ledger + assignments), then the registry/BOARD update, then a tmux notice to both registered sessions, then
 `ack` tracking. An unacknowledged transfer alerts the operator once after `ack_timeout_minutes` (registry, default 15)
 through the existing comms-intent chokepoint; no timer is installed and no route is added by this PR, so the alert is

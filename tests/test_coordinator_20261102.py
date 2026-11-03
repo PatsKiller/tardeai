@@ -48,6 +48,14 @@ def run(root: Path, *args: str) -> int:
     return C.main(["--state-root", str(root), *args])
 
 
+def refused(root: Path, *args: str) -> int:
+    """A missing required flag is argparse's refusal (SystemExit 2), not a command status."""
+    try:
+        return run(root, *args)
+    except SystemExit as exc:
+        return int(exc.code or 0)
+
+
 def appoint(root: Path, cid: str = "claude-lead", role: str = "lead", terr: str = "release",
             session: str | None = None, vendor: str = "claude", quote: str = "appoint this one") -> int:
     return run(root, "appoint", "--id", cid, "--vendor", vendor, "--session", session or f"s-{cid}",
@@ -92,7 +100,12 @@ def test_exactly_one_lead(tmp_path):
 def test_heartbeat_and_stand_down(tmp_path):
     assert appoint(tmp_path, "codex-a", "member", "agents") == 0
     assert run(tmp_path, "heartbeat", "--id", "codex-a") == 0
-    assert run(tmp_path, "stand-down", "--id", "codex-a") == 0
+    # a stand-down is an operator act: no words, no change (the parser requires --quote)
+    assert refused(tmp_path, "stand-down", "--id", "codex-a") == 2
+    assert registry(tmp_path)["coordinators"][0]["status"] != "stood_down"
+    plan = run(tmp_path, "stand-down", "--id", "codex-a", "--quote", "stop the agents lane", "--dry-run")
+    assert plan == 0 and registry(tmp_path)["coordinators"][0]["status"] != "stood_down"
+    assert run(tmp_path, "stand-down", "--id", "codex-a", "--quote", "stop the agents lane") == 0
     assert registry(tmp_path)["coordinators"][0]["status"] == "stood_down"
     assert run(tmp_path, "heartbeat", "--id", "codex-a") == 2  # the operator alone re-appoints
 
@@ -159,9 +172,19 @@ def test_inbox_send_and_read_moves_never_deletes(tmp_path, capsys):
 def test_handoff_moves_territories_and_lead(tmp_path):
     assert appoint(tmp_path, "claude-lead", "lead", "release") == 0
     assert appoint(tmp_path, "codex-a", "member", "agents") == 0
-    assert run(tmp_path, "handoff", "--from", "claude-lead", "--to", "codex-a") == 0
+    # a lead handoff is an operator act: no words, no change
+    assert refused(tmp_path, "handoff", "--from", "claude-lead", "--to", "codex-a") == 2
+    assert registry(tmp_path)["lead"] == "claude-lead"
+    assert run(tmp_path, "handoff", "--from", "claude-lead", "--to", "codex-a",
+               "--quote", "let codex lead now", "--dry-run") == 0
+    assert registry(tmp_path)["lead"] == "claude-lead"
+    assert run(tmp_path, "handoff", "--from", "claude-lead", "--to", "codex-a",
+               "--quote", "let codex lead now") == 0
     reg = registry(tmp_path)
     by = {c["id"]: c for c in reg["coordinators"]}
+    # the top-level lead follows the role, or every later mutation is refused as divergent
+    assert reg["lead"] == "codex-a"
+    assert run(tmp_path, "assign", "pr:2492", "release") == 0
     assert by["codex-a"]["role"] == "lead" and by["claude-lead"]["role"] == "member"
     assert set(by["codex-a"]["territories"]) == {"agents", "release"} and by["claude-lead"]["territories"] == []
     snaps = list((tmp_path / "data" / "coordination" / "coordinator" / "handoffs").iterdir())
@@ -775,3 +798,82 @@ def test_reappointing_the_lead_as_a_member_is_refused(tmp_path):
     assert run(tmp_path, "appoint", "--id", "claude-lead", "--vendor", "claude", "--role", "member",
                "--territories", "release", "--quote", "q") == 2
     assert registry(tmp_path) == before  # refused, never silently left with no lead
+
+
+# ── recovery 2026-11-03: the CLI cannot hand the lead over unguarded, forge an event, or lose a record ────────────
+
+
+def test_a_handoff_dry_run_writes_nothing(tmp_path):
+    assert appoint(tmp_path, "claude-lead", "lead", "release") == 0
+    assert appoint(tmp_path, "codex-a", "member", "agents") == 0
+    assert run(tmp_path, "handoff", "--from", "claude-lead", "--to", "codex-a",
+               "--quote", "let codex lead now", "--dry-run") == 0
+    reg = registry(tmp_path)
+    assert reg["lead"] == "claude-lead"
+    assert {c["id"]: c["role"] for c in reg["coordinators"]} == {"claude-lead": "lead", "codex-a": "member"}
+    handoffs = tmp_path / "data" / "coordination" / "coordinator" / "handoffs"
+    assert not handoffs.exists() or not list(handoffs.iterdir())
+
+
+def test_a_handoff_moves_the_top_level_lead_with_the_role(tmp_path):
+    """The role moved but the registry's top-level lead did not, so every later mutation was refused as divergent."""
+    assert appoint(tmp_path, "claude-lead", "lead", "release") == 0
+    assert appoint(tmp_path, "codex-a", "member", "agents") == 0
+    assert run(tmp_path, "handoff", "--from", "claude-lead", "--to", "codex-a", "--quote", "codex leads") == 0
+    reg = registry(tmp_path)
+    assert reg["lead"] == "codex-a"
+    # coherence_error() would refuse this if the registry were divergent
+    assert run(tmp_path, "assign", "pr:2492", "release") == 0
+
+
+def test_the_generic_event_cannot_forge_a_check_outcome(tmp_path):
+    assert appoint(tmp_path, "claude-lead", "lead", "release") == 0
+    assert run(tmp_path, "check", "request", "pr:2492", "--by", "claude-lead") == 0
+    assert run(tmp_path, "event", "check_ok", "--subject", "pr:2492") == 2
+    assert run(tmp_path, "event", "transfer", "--subject", "claude-lead") == 2
+    # the real request is still pending: nothing forged a check_ok for it
+    events = C.read_events(tmp_path)
+    assert not any(str(e.get("kind")) == "check_ok" for e in events)
+
+
+def test_appoint_writes_the_ledger_before_the_registry(tmp_path, monkeypatch):
+    """A crash between the two writes must leave the grant auditable, not silently applied."""
+    real = C._atomic_write
+
+    def boom(path, text):
+        if str(path).endswith("coordinators.json"):
+            raise OSError("synthetic registry write failure")
+        return real(path, text)
+
+    monkeypatch.setattr(C, "_atomic_write", boom)
+    with pytest.raises(OSError):
+        appoint(tmp_path, "codex-b", "member", "agents")
+    kinds = [str(e.get("kind")) for e in C.read_events(tmp_path)]
+    assert "appoint" in kinds
+
+
+def test_two_inbox_sends_in_one_second_do_not_overwrite_each_other(tmp_path, monkeypatch):
+    assert appoint(tmp_path, "codex-a", "member", "agents") == 0
+    monkeypatch.setattr(C, "_stamp", lambda: "20261103T120000Z")
+    assert run(tmp_path, "inbox", "send", "--to", "codex-a", "--from", "claude-lead", "--text", "first") == 0
+    assert run(tmp_path, "inbox", "send", "--to", "codex-a", "--from", "claude-lead", "--text", "second") == 0
+    box = tmp_path / "data" / "coordination" / "coordinator" / "inbox" / "codex-a"
+    files = sorted(p for p in box.iterdir() if p.is_file() and p.name != "read")
+    assert len(files) == 2
+    bodies = " ".join(p.read_text() for p in files)
+    assert "first" in bodies and "second" in bodies
+
+
+def test_an_inbox_item_that_vanishes_before_the_move_does_not_crash(tmp_path, monkeypatch):
+    assert appoint(tmp_path, "codex-a", "member", "agents") == 0
+    assert run(tmp_path, "inbox", "send", "--to", "codex-a", "--from", "claude-lead", "--text", "note") == 0
+    real_replace = C.os.replace
+
+    def gone(src, dst):
+        raise FileNotFoundError("synthetic: another reader moved it first")
+
+    monkeypatch.setattr(C.os, "replace", gone)
+    try:
+        assert run(tmp_path, "inbox", "read", "--id", "codex-a") == 0
+    finally:
+        monkeypatch.setattr(C.os, "replace", real_replace)
