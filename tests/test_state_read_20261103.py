@@ -5,12 +5,25 @@ Hermetic: tmp files only; no DB, no network, no live store.
 
 import json
 import sys
+import types
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+
+# The consumer functions import psycopg2.extras for their RealDictCursor. These tests drive them
+# with a fake connection and never touch a real driver, and some CI shards install no psycopg2 at
+# all (shard 3), so supply a stub when the driver is absent. The pg shard still exercises the real
+# import.
+try:  # pragma: no cover - depends on the shard
+    import psycopg2  # noqa: F401
+except ModuleNotFoundError:  # pragma: no cover
+    _pg = types.ModuleType("psycopg2")
+    _pg.extras = types.SimpleNamespace(RealDictCursor=object)  # type: ignore[attr-defined]
+    sys.modules["psycopg2"] = _pg
+    sys.modules["psycopg2.extras"] = _pg.extras
 
 from lib import state_read as sr  # noqa: E402
 
