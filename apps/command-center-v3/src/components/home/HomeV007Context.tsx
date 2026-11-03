@@ -82,7 +82,9 @@ export default function HomeV007Context() {
     </div> : null}
     {v7.hedge.triggers.length ? <div style={dim}>hedge: {v7.hedge.triggers.map(t => `${t.label} ${t.current ?? '?'} of ${t.threshold ?? '?'}${t.met === true ? ' met' : t.met === false ? ' not met' : ''}`).join(' · ')}{v7.hedge.inverse.length ? ` · inverse today: ${v7.hedge.inverse.map(i => `${i.symbol} ${i.dayPct == null ? 'unknown' : pct(i.dayPct)}`).join(' · ')}` : ''}</div> : null}
     {v7.budgets.map(b => <div key={b.key} style={dim} data-testid={`v7-budget-${b.key}`}>
-      budget {b.label}: {money(b.current) ?? 'unknown'} of {money(b.budget) ?? 'unknown'}{b.breach ? ' · breach' : ''}{b.clearsWhen ? ` · clears ${b.clearsWhen}` : ''}
+      budget {b.label}: {b.state === 'measured'
+        ? <>{money(b.current) ?? 'unknown'} of {money(b.budget) ?? 'unknown'}{b.breach ? ' · breach' : ''}{b.clearsWhen ? ` · clears ${b.clearsWhen}` : ''}</>
+        : <>{b.state === 'not_applicable' ? 'not applicable' : 'unknown'}{b.reason ? ` — ${b.reason}` : ''}{b.remediation ? ` · ${b.remediation}` : ''}</>}
       {b.decision.active
         ? ` · intentional${b.decision.intentionalUntil ? ` until ${fmtAsOf(b.decision.intentionalUntil) ?? b.decision.intentionalUntil}` : ''}${b.decision.actor ? ` · ${b.decision.actor}` : ''}${b.decision.receipt ? ` · receipt ${b.decision.receipt.slice(0, 8)}` : ''}${b.breach ? ' · breach still stands' : ''}${b.decision.history ? ` · ${b.decision.history} earlier` : ''}`
         : b.operatorDecision === 'unavailable'

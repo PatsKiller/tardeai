@@ -200,7 +200,7 @@ export function parseHomeV007(raw: unknown): HomeV007 {
     const o = rec(g); if (o) gaps.push({ member: [str(o.symbol), str(o.field)].filter(Boolean).join('.') || '?', key: remediationText(o.remediation) ?? '?', reason: str(o.reason), remediation: remediationText(o.remediation) })
   }
   for (const e of (Array.isArray(ctx.read_errors) ? ctx.read_errors : [])) {
-    const o = rec(e); if (o) readErrors.push({ member: str(o.member) ?? '?', code: str(o.code) ?? '?', remediation: str(o.remediation) })
+    const o = rec(e); if (o) readErrors.push({ member: str(o.member) ?? str(o.source) ?? '?', code: str(o.code) ?? str(o.reason) ?? '?', remediation: str(o.remediation) ?? remediationText(o.remediation) })
   }
 
   const symbolsRaw = rec(ctx.symbols) ?? {}
@@ -242,7 +242,7 @@ export function parseHomeV007(raw: unknown): HomeV007 {
         const o = rec(h) as Record<string, unknown>
         return { title: str(o.title) ?? '(untitled)', source: str(o.source), publishedAt: str(o.published_at), ageSeconds: num(o.age_seconds) }
       }) : [],
-      nextEvent: { ...fact(ne), label: str(neVal?.label), at: str(neVal?.at) },
+      nextEvent: { ...fact(ne), label: str(neVal?.label) ?? str(neVal?.kind), at: str(neVal?.at) ?? str(neVal?.date) },
       cio: { ...fact(cioRaw), stance: str(cioVal?.stance), conviction: num(cioVal?.conviction) ?? str(cioVal?.conviction) ?? num(rec(s.conviction)?.value), storeLabel: str(cioVal?.store_label), stale: bool(cioVal?.stale) },
       marketStance: { ...fact(st), value: str(stVal?.stance), headline: str(stVal?.headline) } as SymbolContext['marketStance'],
       volume: { ...fact(vol), ratio: num(volVal?.ratio), sampleDates: Array.isArray(volVal?.sample_dates) ? volVal!.sample_dates.slice(0, 20).map(String) : [], notTimeAdjusted: bool(volVal?.not_time_adjusted) },
@@ -251,13 +251,17 @@ export function parseHomeV007(raw: unknown): HomeV007 {
 
   const positions = (Array.isArray(ctx.positions) ? ctx.positions : []).filter(rec).slice(0, 60).map(p => {
     const o = rec(p) as Record<string, unknown>
-    const sd = rec(o.stop_distance)
-    return { symbol: str(o.symbol) ?? '?', account: str(o.account_label), pctAccount: num(o.pct_account), denominator: str(o.pct_denominator), stopDistancePct: num(sd?.pct), stopState: str(o.stored_stop_state) }
+    const sd = rec(o.stop) ?? rec(o.stop_distance)  // the producer names the fact `stop`
+    return { symbol: str(o.symbol) ?? '?', account: str(o.account_label), pctAccount: num(o.pct_account) ?? num(o.account_pct_basis), denominator: str(o.pct_denominator) ?? str(o.account_pct_basis), stopDistancePct: num(sd?.pct) ?? num(rec(sd?.value)?.distance_pct_of_price), stopState: str(o.stored_stop_state) ?? str(rec(sd?.value)?.status) }
   })
 
   const riskRaw = rec(ctx.risk) ?? {}
   const risk = {
-    score: num(riskRaw.score),
+    score: num(riskRaw.score) ?? (() => {
+      // The producer carries the score on the latest history row, not at the top level.
+      const hist = Array.isArray(riskRaw.history) ? riskRaw.history.filter(rec) as Record<string, unknown>[] : []
+      return hist.length ? num(hist[hist.length - 1].score) : null
+    })(),
     categories: (Array.isArray(riskRaw.categories) ? riskRaw.categories : []).filter(rec).map(c => {
       const o = rec(c) as Record<string, unknown>
       const f = fact(o)
@@ -295,8 +299,12 @@ export function parseHomeV007(raw: unknown): HomeV007 {
     const sb = rec(o.source_binding), pb = rec(o.presentation_binding)
     const bpd = rec(o.budget_presentation_decision)
     const actual = num(o.actual), limit = num(o.limit)
+    // The producer states whether the row is measured and when, precisely so an unclocked row cannot publish numbers.
+    // Only a payload without its own state falls back to the arithmetic, and that fallback still needs a clock.
+    const produced = typeof o.state === 'string' ? fact(o) : fact({ state: actual != null && limit != null ? 'measured' : 'unknown',
+      as_of: str(sb?.as_of), source: 'market_risk_budgets', age_seconds: null, reason: null, remediation: null })
     return {
-      ...fact({ state: actual != null && limit != null ? 'measured' : 'unknown', as_of: str(rec(o.source_binding)?.as_of), source: 'market_risk_budgets', age_seconds: null, reason: null, remediation: null }),
+      ...produced,
       key: str(o.budget) ?? '?', label: str(o.budget)?.replace(/_/g, ' ') ?? '?', current: actual, budget: limit, unit: str(o.unit),
       clearsWhen: str(o.clears_when),
       breach: typeof o.breached === 'boolean' ? o.breached : actual != null && limit != null && actual > limit,

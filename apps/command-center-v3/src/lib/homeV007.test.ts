@@ -217,5 +217,28 @@ const junk = parseHomeV007({ symbols: 'nope', risk: { categories: 'x' }, budgets
 eq('malformed members do not throw', junk.symbols.length, 0)
 eq('malformed budgets are empty', junk.budgets.length, 0)
 
+// The producer's own contract names: budgets state/reason, next_event kind/date, read_errors source/reason,
+// risk score in history, and the position stop fact. Each was silently dropped before, so each is pinned now.
+const produced2 = parseHomeV007({
+  budgets: [
+    { budget: 'b_unknown', actual: 40, limit: 30, state: 'unknown', as_of: null, reason: 'source clock unavailable or in the future', remediation: { key: 'k', action: 'a' } },
+    { budget: 'b_measured', actual: 10, limit: 30, state: 'measured', as_of: '2026-11-02T20:59:00Z', source: 'market_risk.budgets_detail', age_seconds: 60 },
+  ],
+  symbols: { X: { next_event: { state: 'measured', as_of: '2026-11-02T20:00:00Z', source: 'symbol_profiles.updated_at', value: { kind: 'earnings', date: '2026-11-12' } } } },
+  read_errors: [{ source: 'cio_truth', reason: 'TimeoutError', remediation: { key: 'HOMEV007:cio_truth', action: 'restore' } }],
+  risk: { history: [{ as_of: '2026-11-02T19:00:00Z', score: 55 }, { as_of: '2026-11-02T20:00:00Z', score: 61 }] },
+  positions: [{ symbol: 'SPCX', account_label: 'demo', account_pct_basis: 'account_equity', stop: { value: { distance_pct_of_price: 4.5, status: 'intact' } } }],
+})
+eq('a producer-unknown budget stays unknown', produced2.budgets[0].state, 'unknown')
+eq('and carries no number it can publish', produced2.budgets[0].current, 40)
+eq('a measured budget keeps its clock', produced2.budgets[1].asOf, '2026-11-02T20:59:00Z')
+eq('next_event reads the producer kind', produced2.symbols[0].nextEvent.label, 'earnings')
+eq('next_event reads the producer date', produced2.symbols[0].nextEvent.at, '2026-11-12')
+eq('read_errors reads the producer source', produced2.readErrors[0].member, 'cio_truth')
+eq('read_errors reads the producer reason', produced2.readErrors[0].code, 'TimeoutError')
+eq('the risk score comes from the latest history row', produced2.risk.score, 61)
+eq('the stop distance reads the producer fact', produced2.positions[0].stopDistancePct, 4.5)
+eq('the stop state reads the producer fact', produced2.positions[0].stopState, 'intact')
+
 console.log(`homeV007: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)
