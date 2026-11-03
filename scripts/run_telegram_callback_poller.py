@@ -14,7 +14,7 @@ Paper mode only. No live trading.
 
 import json, logging, os, sys, time
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -28,6 +28,13 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [tg-poller] %(messag
 log = logging.getLogger(__name__)
 
 OFFSET_FILE = PROJECT_ROOT / "data" / "portfolios" / "state" / ".telegram_callback_offset"
+
+#: Typed operator replies (2026-11-03 operator request #7). The operator's free-text Telegram messages
+#: reached only the CIO responder, never the coordinator, so every approval needed a relay or a pasted
+#: command. A second getUpdates poller would steal updates from this one (one bot token, one consumer),
+#: so the EXISTING loop appends the plain-text message here instead, with its message id and timestamps.
+#: Override with TRADEAI_OPERATOR_REPLIES_DIR (tests); otherwise resolved under the persistent root.
+OPERATOR_REPLIES_REL = "data/coordination/coordinator/inbox/cc-deepseek-7/operator-replies"
 
 #: Phase 8 activation — when truthy, inbound goes through
 #: ``process_update_atomically`` (checkpoint only after event+turn+receipt).
@@ -138,6 +145,47 @@ def _allowed_chats():
         if c.strip():
             chats.add(c.strip())
     return chats
+
+
+def _operator_replies_dir() -> Path:
+    """Where typed operator replies are appended (persistent root; env override for tests)."""
+    override = os.environ.get("TRADEAI_OPERATOR_REPLIES_DIR", "").strip()
+    if override:
+        return Path(override)
+    try:
+        from scripts.lib.persistent_state_root import resolve_durable_dir
+
+        return resolve_durable_dir(OPERATOR_REPLIES_REL, PROJECT_ROOT)
+    except Exception:  # noqa: BLE001 — a resolver fault must not stop the poll loop
+        return PROJECT_ROOT / OPERATOR_REPLIES_REL
+
+
+def _record_operator_reply(msg: dict, text: str, chat_id: str, *, replies_dir=None,
+                           allowed=None) -> bool:
+    """Append one plain-text operator message to the coordinator inbox; never raise.
+
+    One JSON line per message: ``message_id``, the Telegram ``date``, ``recorded_at`` (UTC ISO),
+    ``chat_id`` and the text. Append-only and 0600 on create, so a coordinator reads the transcript
+    in order and no other user can read it. ``allowed`` is defence in depth: the loop already
+    filters before calling, and a chat outside it is refused here too.
+    """
+    if not text or not str(text).strip() or (allowed is not None and chat_id not in allowed):
+        return False
+    try:
+        directory = Path(replies_dir) if replies_dir is not None else _operator_replies_dir()
+        directory.mkdir(parents=True, exist_ok=True)
+        record = {"message_id": msg.get("message_id"), "date": msg.get("date"),
+                  "recorded_at": datetime.now(timezone.utc).isoformat(),
+                  "chat_id": chat_id, "text": text}
+        fd = os.open(directory / "telegram.jsonl",
+                     os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+        log.info(f"operator reply recorded: {text[:40]} from chat={chat_id}")
+        return True
+    except Exception as exc:  # noqa: BLE001 — an inbox fault must never stall the poll loop
+        log.warning(f"operator reply not recorded: {exc}")
+        return False
 
 
 def poll_once(timeout=25):
@@ -354,6 +402,9 @@ def poll_once(timeout=25):
         # legacy path commits just above, so an answer that fails to compose can
         # neither lose the message nor cause it to be redelivered.
         if not handled:
+            # Operator request #7: the coordinator must see what the operator types. Recorded before
+            # the CIO responder runs, so an answer that fails to compose cannot lose the message.
+            _record_operator_reply(msg, text, chat_id, allowed=allowed)
             try:
                 from scripts.lib import cio_poller_reply
 
