@@ -456,13 +456,19 @@ export default function MetricStrip({ onDrill }: Props) {
         : todayPartial.length ? ` · partial: ${todayUnknownRows} row(s) without a day change` : null,
       asOf: todayPnl?.session_date ?? null,
       asOfLabel: 'P&L session',
+      // An absent session date is a fact about the payload, not a blank: say why, and never let an
+      // undated money figure read as a dated one (operator 2026-11-03, clock fix 4).
       asOfNote: null,
+      undatedReason: todayPnl?.session_date ? null
+        : todayPnl?.mark_source || portfolioAgg?.quote_observation_time
+          ? 'the P&L carries marks but no session date'
+          : 'no quote clock on the holdings document (last_repriced absent), so the P&L session is unknown',
       tone: worseTone(todayMissing.length ? 'warn' : 'ok', overviewFresh.stale ? 'warn' : 'ok'),
       valueSize: VALUE_BIG,
       minWidth: 150, maxWidth: 225,
       undated: !todayPnl?.session_date,
       color: overviewFresh.stale ? BB.amber : todayChange == null ? 'var(--text3)' : todayChange >= 0 ? BB.green : BB.red,
-      drill: { title: "Today's Move", subtitle: `${todayPnl?.session_date ? `session ${todayPnl.session_date}` : 'session UNDATED'} · ${todayHoverAccounts ?? todayPnl?.coverage_reason ?? 'coverage unknown'}`, endpoint: '/api/v2/overview',
+      drill: { title: "Today's Move", subtitle: `${todayPnl?.session_date ? `session ${todayPnl.session_date}` : 'session UNAVAILABLE — no session date on the payload'} · ${todayHoverAccounts ?? todayPnl?.coverage_reason ?? 'coverage unknown'}`, endpoint: '/api/v2/overview',
         rows: overview ? [
           { today_change: overview.today_change, today_pct: overview.today_pct, today_complete: todayPnl?.complete, partial_accounts: todayPartial, unknown_rows: todayUnknownRows, pnl_session_date: todayPnl?.session_date, pnl_session_source: todayPnl?.session_source, pnl_calculated_at: todayPnl?.calculated_at, pnl_mark_source: todayPnl?.mark_source, scope: todayPnl?.scope, linked_accounts: todayLinked, funded_accounts: todayFunded, represented_accounts: todayRepresented, contributing_accounts: todayPnl?.contributing_accounts, zero_change_accounts: todayPnl?.zero_change_accounts, empty_accounts: todayEmpty, missing_accounts: todayMissing, portfolio_value: overview.portfolio_value, surface_stale: overviewFresh.stale },
           ...Object.entries(overview.today_by_account ?? {})
@@ -473,7 +479,7 @@ export default function MetricStrip({ onDrill }: Props) {
               account_value: d.value, top_movers: d.top_movers || null,
             })),
         ] : [] },
-      tip: `Today's net change ($ and %).\n\nACCOUNTS (hover):\n · ${todayHoverAccounts ?? '—'}\n\n · P&L session: ${todayPnl?.session_date ?? 'UNDATED'}${todayPnl?.session_source ? ` (from ${todayPnl.session_source})` : ''}\n · calculated: ${todayPnl?.calculated_at ?? '—'}\n · marks: ${todayPnl?.mark_source ?? '—'}\n · coverage: ${todayPnl?.coverage_reason ?? '—'}\n\nThis is the P&L's OWN session — not the date the share counts were observed (${posNewest ?? 'UNDATED'}). Click for the per-account breakdown. Refreshes every 2 min.`,
+      tip: `Today's net change ($ and %).\n\nACCOUNTS (hover):\n · ${todayHoverAccounts ?? '—'}\n\n · P&L session: ${todayPnl?.session_date ?? 'UNAVAILABLE (no session date on the payload)'}${todayPnl?.session_source ? ` (from ${todayPnl.session_source})` : ''}\n · calculated: ${todayPnl?.calculated_at ?? '—'}\n · marks: ${todayPnl?.mark_source ?? '—'}\n · coverage: ${todayPnl?.coverage_reason ?? '—'}\n\nThis is the P&L's OWN session — not the date the share counts were observed (${posNewest ?? 'UNDATED'}). Click for the per-account breakdown. Refreshes every 2 min.`,
     },
     {
       // "53.3% · 169 · $55,429" was three unlabelled numbers. A reader cannot tell which
@@ -667,8 +673,9 @@ export default function MetricStrip({ onDrill }: Props) {
         const asOfRaw = (t as any).asOf
         const metaUndated = !asOfRaw && !!(t as any).undated
         const metaLabel = (t as any).asOfLabel || 'as_of'
+        const undatedReason = (t as any).undatedReason as string | null | undefined
         const metaText = metaUndated
-          ? `${metaLabel} UNDATED`
+          ? `${metaLabel} UNAVAILABLE${undatedReason ? ` · ${undatedReason}` : ''}`
           : asOfRaw
             // A date-only clock widened to UTC midnight is shown as its date, never as "00:00" (P3).
             ? `${metaLabel} ${dateOnlyPart(asOfRaw) ?? String(asOfRaw).slice(0, 16).replace('T', ' ')}` +

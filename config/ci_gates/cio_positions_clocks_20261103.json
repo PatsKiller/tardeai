@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_positions_clocks_20261103",
+  "files": [
+    "tests/test_cio_positions_availability_20261103.py"
+  ],
+  "anchor": "CIO_POSITIONS_CLOCKS_20261103",
+  "comment": [
+    "ANCHOR: CIO_POSITIONS_CLOCKS_20261103 — operator list items 3 and 4 (2026-11-03): cio_truth.resolve() answers 'are the positions available' on positions.gap and carries the day-P&L coverage fact separately on positions.day_pl_gap, so a partial day change no longer hides a complete position set (Home said 'Current CIO positions unavailable' over 26 priced rows); the portfolio keeps its own coverage gap. Clock fixes are pinned in apps/command-center-v3/src/lib/homeDoNow.test.ts (ageFromClock: ET and microsecond clocks parse, absent or unparsable clocks answer null so the page says UNAVAILABLE with a reason rather than 'age unknown')."
+  ]
+}

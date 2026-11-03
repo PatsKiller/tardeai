@@ -1373,7 +1373,14 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
                         if portfolio.get("total_usd") and protected_loss is not None else None,
                         "unprotected_value_usd": unprotected_mv, "largest_name": None,
                         "loss_basis": "loss to observed active stops; unprotected downside is not bounded",
-                        **{k: portfolio[k] for k in ("source", "as_of", "stale", "gap")}}
+                        # `gap` answers ONE question — are the positions available — because that is how every
+                        # consumer reads it (Home's Do-now source `cio_positions`, the Risk desk). The aggregate's
+                        # day-P&L coverage gap is a DIFFERENT fact and travels separately: with 26 priced rows and
+                        # no day change per row it used to make the whole positions feed read "unavailable"
+                        # (2026-11-03), hiding a complete position set behind a partial P&L.
+                        **{k: portfolio[k] for k in ("source", "as_of", "stale")},
+                        "gap": None if positions else {"reason": "no positions in the canonical holdings store"},
+                        "day_pl_gap": portfolio.get("gap")}
     position_section["as_of"] = portfolio["positions_as_of"]
     position_section.update(_resting_summary(counted_positions, portfolio.get("total_usd"), broker_available=broker is not None))
     by_symbol = {}
