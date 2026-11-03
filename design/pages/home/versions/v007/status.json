@@ -1,0 +1,41 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "home",
+  "version": "v007",
+  "state": "PROPOSED",
+  "title": "Home: market-risk card context pass — what changed, per-section clocks, tap-to-explain on every remaining term, phone collapsible sections",
+  "created": "2026-11-02",
+  "approval": {
+    "by": null,
+    "at": null,
+    "ref": null,
+    "kind": "Pending. Nothing is built from this version until the operator approves it in Approvals → Designs (UI change control).",
+    "source": [
+      "docs/designs/DSN-20261031-market-risk-ui.md"
+    ],
+    "ledger": null
+  },
+  "request": {
+    "by": "operator",
+    "at": "2026-11-02",
+    "kind": "in-session words to the coordinator, verbatim: \"look at everything else on the card that could be enhanced. Give the design to Codex to distribute out to agents and sub-agents. Also implement tooling tips where appropriate and make sure this is all mobile responsive.\" Earlier on the same card: \"it's not giving us the current price points. It's not telling us the current catalyst ... Shouldn't we get a little bit more information and context here?\""
+  },
+  "spec": "SPEC.md",
+  "design": "DSN-20261031-market-risk-ui",
+  "base": "v006",
+  "depends_on": [
+    "home/v006 (APPROVED 2026-11-01)",
+    "config/market_risk_glossary.json (v006; v007 adds keys, reuses texts, adds no duplicate)",
+    "GET /api/v2/market-risk/latest additions listed in SPEC 'Data the projection must add' — Part A owns them",
+    "the stopped-out 'now' bug fix (ships separately, before this mockup is approved)"
+  ],
+  "private_assets": {
+    "note": "EMPTY — the visual mockup has not been rendered into the private store yet. This package is the SPEC and its state; Part B is complete only once the v007 images exist in persistent-state/data/design/pages/home with their sha256 recorded here, and the operator has looked at them before approving."
+  },
+  "removals": [],
+  "moves": [
+    "v006's single 'as of' line under the verdict becomes per-section as-of in each section header (mixed clocks made visible)",
+    "v006's flat Protect / Hedge / Rotate block becomes three collapsible sections on phone with one-line collapsed summaries",
+    "the 'Since you were stopped out' long SEC citation collapses into an (i) on the row"
+  ]
+}
