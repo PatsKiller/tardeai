@@ -28,6 +28,11 @@ import subprocess
 import sys
 from zoneinfo import ZoneInfo
 
+try:  # repo root on sys.path
+    from scripts.lib.agent_claim_board import ClaimBoard
+except ImportError:  # scripts/ on sys.path
+    from lib.agent_claim_board import ClaimBoard  # type: ignore[no-redef]
+
 REPO = "PatsKiller/tardeai"
 TRUSTED_REPO = Path(pwd.getpwuid(os.getuid()).pw_dir) / "trade-ai-v12-rebuild/trade-ai-v12-rebuild"
 STATE = Path(pwd.getpwuid(os.getuid()).pw_dir) / "trade-ai-releases/persistent-state/data/coordination"
@@ -215,7 +220,138 @@ def reviewer_artifact(raw):
     return {"reviewer": reviewers[0], "head_sha": heads[0], "verdict": value.get("verdict")}
 
 
-def evaluate(snapshot, *, now):
+RELEASED_CLAIM_STATUSES = frozenset({"done", "abandoned"})
+
+
+def takeover_targets(doc):
+    """Claim ids named by one claim's ``takeover_of``; a malformed link is the chain refusal."""
+    raw = doc.get("takeover_of") or []
+    if not isinstance(raw, list):
+        raise Refused("claim_takeover_chain_invalid")
+    targets = []
+    for item in raw:
+        target = item.get("claim_id") if isinstance(item, dict) else item
+        if not isinstance(target, str) or not target or target in targets:
+            raise Refused("claim_takeover_chain_invalid")
+        targets.append(target)
+    return targets
+
+
+def claim_is_live(view, board):
+    """A raw-active claim whose heartbeat is inside the board's stale window.
+
+    A takeover link never makes a fresh claim stale: a hand-forged ``takeover_of`` naming a
+    live claim leaves that claim live and blocking. Supersession is therefore evidence plus
+    the predecessor no longer being live, never the board's link-induced staleness alone.
+    """
+    if view.doc.get("status") != "active":
+        return False
+    age = view.heartbeat_age_s
+    return age is not None and age <= board.stale_after.total_seconds()
+
+
+def validate_takeover_graph(views, board):
+    """Refuse a takeover graph that is ambiguous or unreadable.
+
+    Chain-invalid: cycles, missing targets, duplicate/malformed entries, and two *currently
+    live* claimants naming the same predecessor. A released (or otherwise non-live) claimant
+    naming the same predecessor as a live one is durable history, not ambiguity.
+    """
+    by_id = {view.claim_id: view for view in views}
+    edges = {}
+    for view in views:
+        targets = takeover_targets(view.doc)
+        if targets:
+            edges[view.claim_id] = targets
+    for targets in edges.values():
+        for target in targets:
+            if target not in by_id:
+                raise Refused("claim_takeover_chain_invalid")
+    colour = {}
+
+    def visit(node):
+        colour[node] = "grey"
+        for nxt in edges.get(node, ()):
+            if colour.get(nxt) == "grey":
+                raise Refused("claim_takeover_chain_invalid")
+            if colour.get(nxt) is None:
+                visit(nxt)
+        colour[node] = "black"
+
+    for node in edges:
+        if colour.get(node) is None:
+            visit(node)
+    live = {view.claim_id: claim_is_live(view, board) for view in views}
+    claimants = {}
+    for source, targets in edges.items():
+        if not live.get(source):
+            continue
+        for target in targets:
+            claimants.setdefault(target, set()).add(source)
+    if any(len(sources) > 1 for sources in claimants.values()):
+        raise Refused("claim_takeover_chain_invalid")
+
+
+#: Files that sit in the claims directory without being claims. Only these may be skipped; an unknown or malformed
+#: claim still refuses, because "not a claim I recognise" is not the same as "a state file that lives here".
+AUXILIARY_CLAIM_DIR_SCHEMAS = frozenset({"PolicyBroadcastState@v1"})
+
+
+def _auxiliary_metadata(path) -> bool:
+    """True only for a file that declares itself one of the known non-claim schemas."""
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(doc, dict) and doc.get("schema") in AUXILIARY_CLAIM_DIR_SCHEMAS
+
+
+def effective_claim_states(claims, board):
+    """Classify snapshot claims with the canonical ``ClaimBoard.views()`` resolver.
+
+    released   : raw status in {done, abandoned}
+    live       : raw active and heartbeat inside the board's stale window (a forged link
+                 naming a live claim never defeats it)
+    superseded : raw active, not live, named by a well-formed ``takeover_of`` entry from any
+                 claim (a released successor's link is durable and keeps the predecessor
+                 superseded rather than reverting it to ``unresolved``)
+    unresolved : raw active, not live and not superseded (age alone never resolves)
+
+    Without a board (synthetic snapshots) the historical raw-status reading is kept: raw
+    ``active`` is treated as live, everything else as released.
+    """
+    if board is None:
+        return {claim.get("claim_id"): ("live" if claim.get("status") == "active" else "released")
+                for claim in claims}
+    views, unreadable = board.views()
+    unreadable = [name for name in unreadable if not _auxiliary_metadata(board.dir / name)]
+    if unreadable:
+        raise Refused("claim_board_unavailable_or_truncated")
+    validate_takeover_graph(views, board)
+    by_id = {view.claim_id: view for view in views}
+    live = {view.claim_id: claim_is_live(view, board) for view in views}
+    named = set()
+    for view in views:
+        named.update(takeover_targets(view.doc))
+    states = {}
+    for claim in claims:
+        claim_id = claim.get("claim_id")
+        view = by_id.get(claim_id)
+        status = claim.get("status")
+        if status in RELEASED_CLAIM_STATUSES:
+            states[claim_id] = "released"
+        elif view is None:
+            states[claim_id] = "unresolved" if status == "active" else "released"
+        elif live.get(claim_id):
+            states[claim_id] = "live"
+        elif status == "active" and claim_id in named:
+            states[claim_id] = "superseded"
+        else:
+            states[claim_id] = "unresolved"
+    return states
+
+
+def evaluate(snapshot, *, now, claim_board=None):
     """Pure decision over freshly collected, trusted-source evidence. No authority minting."""
     try:
         authority = snapshot.get("authority")
@@ -245,10 +381,19 @@ def evaluate(snapshot, *, now):
                 or "release" not in territories or not isinstance(lead.get("vendor"), str) or not lead["vendor"]):
             raise Refused("current_release_lead_missing")
         claims = snapshot["claims"]
-        actor_claims = [c for c in claims if c.get("session") == actor and c.get("status") == "active"
-                        and c.get("vendor") == lead.get("vendor") and any(
-                            isinstance(p, str) and p.endswith("coordination/coordinator/coordinators.json") for p in c.get("paths", []))]
+        # Effective state comes from the canonical board resolver, never raw status alone. The
+        # board is read-only here: views() only reads claim files and lifecycle sidecars.
+        board = claim_board if claim_board is not None else snapshot.get("claim_board")
+        if board is None and snapshot.get("claim_board_dir"):
+            board = ClaimBoard(snapshot["claim_board_dir"], now=lambda: now)
+        states = effective_claim_states(claims, board)
+        actor_candidates = [c for c in claims if c.get("session") == actor
+                            and c.get("vendor") == lead.get("vendor") and any(
+                                isinstance(p, str) and p.endswith("coordination/coordinator/coordinators.json") for p in c.get("paths", []))]
+        actor_claims = [c for c in actor_candidates if states.get(c.get("claim_id")) == "live"]
         if len(actor_claims) != 1 or actor_claims[0].get("schema") != "AgentClaim@v1" or (lead.get("session") is not None and lead["session"] != actor):
+            if any(states.get(c.get("claim_id")) == "superseded" for c in actor_candidates):
+                raise Refused("actor_holder_superseded")
             raise Refused("actor_not_registered_coordinator_holder")
         if freeze(now):
             raise Refused("market_operating_freeze_use_existing_urgent_route")
@@ -316,7 +461,9 @@ def evaluate(snapshot, *, now):
         if covered_paths != set(effective_files):
             raise Refused("source_author_claim_coverage_incomplete")
         for claim in claims:
-            if claim.get("status") == "active" and any(overlaps(p, cp) for p in effective_files for cp in claim.get("paths", []) if isinstance(cp, str)):
+            # A superseded predecessor no longer holds its files; released claims already freed them.
+            if states.get(claim.get("claim_id")) in {"live", "unresolved"} and any(
+                    overlaps(p, cp) for p in effective_files for cp in claim.get("paths", []) if isinstance(cp, str)):
                 raise Refused("current_source_holder_not_released")
         reviews = evidence.get("reviews")
         if not isinstance(reviews, list) or not reviews:
@@ -517,6 +664,7 @@ class Host:
             raise Refused("claim_board_unavailable_or_truncated")
         for path in paths:
             claims.append(json_read(path))
+        claim_board_dir = self.state / "claims"
         shared_config = json.loads(self.git("show", f"{sha}:config/shared_infra_paths.json"))
         patterns = shared_config.get("paths")
         if not isinstance(patterns, list) or any(not isinstance(pattern, str) for pattern in patterns):
@@ -540,6 +688,7 @@ class Host:
                     if isinstance(cap, dict) and isinstance(cap.get("excluded_globs"), list) else None,
                 "held": held, "held_classes": held_classes, "held_class_metadata": held_metadata,
                 "actor_session": actor_session, "shared_infra": shared,
+                "claim_board_dir": str(claim_board_dir),
                 "source_authorship_sha256": digest({"author": pr.get("author"), "commits": commits})}
 
     def ledger_path(self, pr):
