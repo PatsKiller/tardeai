@@ -23,9 +23,9 @@ from datetime import date, datetime, timedelta, timezone
 import json
 from typing import Any, Callable
 try:
-    from scripts.lib.dividend_source_trust import TRUSTED_ROW_SQL as _DIV_TRUSTED
+    from scripts.lib.dividend_source_trust import RETIRED_SOURCE_PATTERN as _DIV_RETIRED_PATTERN
 except ImportError:  # pragma: no cover -- hub import path
-    from lib.dividend_source_trust import TRUSTED_ROW_SQL as _DIV_TRUSTED  # type: ignore
+    from lib.dividend_source_trust import RETIRED_SOURCE_PATTERN as _DIV_RETIRED_PATTERN  # type: ignore
 
 CONTRACT = "StreetDetail@v1"
 
@@ -308,8 +308,8 @@ def dividends(db_query: Callable, symbol: str) -> dict:
     rec = _rows(
         db_query,
         """SELECT ex_div_date, updated_at FROM ticker_dividend_data WHERE upper(symbol) = %s
-                              AND """ + _DIV_TRUSTED + """ ORDER BY updated_at DESC NULLS LAST LIMIT 1""",
-        (symbol.upper(),),
+                              AND COALESCE(source, '') !~* %s ORDER BY updated_at DESC NULLS LAST LIMIT 1""",
+        (symbol.upper(), _DIV_RETIRED_PATTERN),
     )
     return {
         "history": [{"ex_date": str(r.get("ex_date"))[:10], "amount": r.get("amount")} for r in hist],

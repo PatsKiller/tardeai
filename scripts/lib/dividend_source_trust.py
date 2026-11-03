@@ -3,7 +3,7 @@
 The dividends domain's retired providers are named in ``config/data_source_authority.json``
 (domain ``dividends``, ``retired``). Rows they wrote are SUPERSEDED: never deleted (AGENTS.md §0 rule 6),
 marked by ``migrations/2026_10_26_ticker_dividend_superseded.sql`` (``superseded_at`` / ``superseded_reason``),
-and ignored by the eight research readers changed here through :data:`TRUSTED_ROW_SQL`. The prospectus accuracy audit (2026-10-26, A2)
+and ignored by the eight research readers through the bound :data:`RETIRED_SOURCE_PATTERN` value. The prospectus accuracy audit (2026-10-26, A2)
 measured the retired vendor's fund rows at 3-5x the real annual distribution.
 
 The predicate keys on the ``source`` column, which exists before the migration is applied, so readers stop
@@ -43,8 +43,19 @@ def trusted_row_sql(column: str = "source", providers: tuple[str, ...] | None = 
     """SQL boolean: the row was not written by a retired provider. No ``%`` (safe inside psycopg2 strings)."""
     if not re.match(r"^[A-Za-z_][A-Za-z0-9_.]*$", column):
         raise ValueError(f"bad column {column!r}")
-    alt = "|".join(providers or retired_providers())
-    return f"(COALESCE({column}, '') !~* '^({alt})([_-]|$)')"
+    return f"(COALESCE({column}, '') !~* '{retired_source_pattern(providers)}')"
+
+
+def retired_source_pattern(providers: tuple[str, ...] | None = None) -> str:
+    """Regex value for a bound SQL parameter; never interpolate it into reader queries."""
+    names = providers or retired_providers()
+    if any(not isinstance(name, str) or not _NAME.fullmatch(name) for name in names):
+        raise ValueError("invalid retired provider name")
+    return "^(" + "|".join(names) + ")([_-]|$)"
+
+
+#: The same registry-derived predicate, bound as data by the research readers.
+RETIRED_SOURCE_PATTERN = retired_source_pattern()
 
 
 #: ``... FROM ticker_dividend_data WHERE <...> AND {TRUSTED_ROW_SQL}``

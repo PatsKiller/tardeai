@@ -38,9 +38,9 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 try:
-    from scripts.lib.dividend_source_trust import TRUSTED_ROW_SQL as _DIV_TRUSTED
+    from scripts.lib.dividend_source_trust import RETIRED_SOURCE_PATTERN as _DIV_RETIRED_PATTERN
 except ImportError:  # pragma: no cover -- hub import path
-    from lib.dividend_source_trust import TRUSTED_ROW_SQL as _DIV_TRUSTED  # type: ignore
+    from lib.dividend_source_trust import RETIRED_SOURCE_PATTERN as _DIV_RETIRED_PATTERN  # type: ignore
 
 # One definition of the pills and the key, shared with every reply's Origin line.
 try:
@@ -160,7 +160,8 @@ def gather(symbols: list[str], *, db_query: DbQuery, runtime_dir: Path,
         d["iv"] = iv[0] if iv else None
         div = _rows(db_query, (
             "SELECT dividend_yield_pct, annual_dividend_per_share, ex_div_date, updated_at"
-            "  FROM ticker_dividend_data WHERE upper(symbol) = %s AND " + _DIV_TRUSTED + " LIMIT 1"), (sym,))
+            "  FROM ticker_dividend_data WHERE upper(symbol) = %s AND COALESCE(source, '') !~* %s LIMIT 1"),
+            (sym, _DIV_RETIRED_PATTERN))
         d["dividends"] = div[0] if div and div[0].get("dividend_yield_pct") else None
         prof_row = d["profile"] or {}
         d["sector"] = _sector_row(sector_doc, prof_row.get("sector"))

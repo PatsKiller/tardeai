@@ -243,21 +243,62 @@ _READERS = ["scripts/lib/subject_dossier.py", "scripts/portfolio_alerts.py", "sc
 
 
 def test_claimed_research_reader_queries_filter_retired_rows():
-    """The eight owned research readers filter retired rows; protected source is not inspected."""
+    """Execute only the nine reader query expressions against a synthetic capture."""
+    import ast
+
     from scripts.lib import merge_hold_paths
 
     assert not ({"broker_order", "secrets"} & merge_hold_paths.held_classes(_READERS).keys())
-    offenders = []
+    symbol = "ZZ'; SELECT 'synthetic'--"
+    counts = {}
     for rel in _READERS:
-        path = ROOT / rel
-        text = path.read_text(encoding="utf-8", errors="replace")
-        assert "dividend_source_trust" in text, rel
-        for m in re.finditer(r"FROM ticker_dividend_data\b", text):
-            window = text[m.start(): m.start() + 400]
-            if "_div_trusted" not in window.lower():
-                offenders.append(f"{rel}:{text.count(chr(10), 0, m.start()) + 1}")
-    assert offenders == []
+        text = (ROOT / rel).read_bytes()
+        tree = compile(text, str(ROOT / rel), "exec", ast.PyCF_ONLY_AST)
+        calls = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if any(isinstance(arg, ast.Constant) and isinstance(arg.value, str)
+                   and re.search(r"FROM ticker_dividend_data\b", arg.value) for arg in node.args):
+                calls.append(node)
+        assert len(calls) == (2 if rel == "scripts/materialize_income_engine.py" else 1), rel
+        counts[rel] = len(calls)
+        captured = []
 
+        def capture(*args, **kwargs):
+            index = next(i for i, value in enumerate(args) if isinstance(value, str))
+            captured.append((args[index], args[index + 1]))
+            return []
+
+        context = {
+            "cur": types.SimpleNamespace(execute=capture), "db_query": capture,
+            "rows": capture, "_rows": capture, "symbol": symbol, "sym": symbol,
+            "symbols": [symbol], "held": [symbol], "tickers": [symbol], "days_ahead": 7,
+            "_DIV_RETIRED_PATTERN": dst.RETIRED_SOURCE_PATTERN,
+            "_div_retired_pattern": lambda: dst.RETIRED_SOURCE_PATTERN,
+        }
+        for node in calls:
+            # Evaluate the query call only, never the containing operational module.
+            eval(compile(ast.Expression(node), rel, "eval"), {"__builtins__": {}}, context)
+        assert len(captured) == len(calls), rel
+        for sql, params in captured:
+            assert "COALESCE(source, '') !~* %s" in sql, rel
+            assert params[-1] == dst.RETIRED_SOURCE_PATTERN, rel
+            assert sql.count("%s") == len(params), rel
+            assert symbol not in sql and symbol.upper() not in sql, rel
+            assert dst.RETIRED_SOURCE_PATTERN not in sql, rel
+    assert sum(counts.values()) == 9
+
+
+def test_bound_retired_provider_regex_keeps_matching_rules_and_rejects_invalid_names():
+    pattern = dst.retired_source_pattern(("legacy", "older"))
+    for source in ("legacy", "LEGACY_api", "older-feed"):
+        assert re.search(pattern, source, re.I), source
+    for source in ("legacyx", "current", "", "vendor_legacy"):
+        assert not re.search(pattern, source, re.I), source
+    for providers in [("invalid|alternative",), ("name'; SELECT 1--",), ("",)]:
+        with pytest.raises(ValueError, match="invalid retired provider name"):
+            dst.retired_source_pattern(providers)
 
 def test_street_dividends_keeps_current_main_observation_and_filters_retired_rows():
     """Real read-model function, injected synthetic query; never DB/provider/broker execution."""
@@ -273,10 +314,12 @@ def test_street_dividends_keeps_current_main_observation_and_filters_retired_row
 
     def query(sql, params, *, fetch):
         queries.append(sql)
-        assert params == ("ZZZ",) and fetch == "all"
+        assert fetch == "all"
         if "FROM ticker_dividend_data" in sql:
-            assert dst.TRUSTED_ROW_SQL in sql
+            assert "COALESCE(source, '') !~* %s" in sql
+            assert params == ("ZZZ", dst.RETIRED_SOURCE_PATTERN)
             return [{"ex_div_date": "2030-01-03", "updated_at": observed}]
+        assert params == ("ZZZ",)
         return [{"ex_date": "2030-01-02", "amount": 1.5}]
 
     result = module.dividends(query, "zzz")
