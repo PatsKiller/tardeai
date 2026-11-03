@@ -551,3 +551,50 @@ def test_zero_position_leaf_still_passes():
         641: _receipt(641, 3, accounts_ok=["schwab_taxable", "schwab_roth_ira", "empty_acct"],
                       accounts=detail)}))
     assert out["available"] is True and out["count"] == 3
+
+
+# ── cx-openai-2 review (2026-11-03): export provenance, identity, and DB-vs-backup facts ──
+
+def test_a_mixed_run_export_is_refused_not_relabelled(tmp_path):
+    doc = {"sync_run_id": 101, "as_of": "2026-11-03T16:00:00Z", "holdings": [
+        {"sync_run_id": 101, "account": "schwab_taxable", "symbol": "AAA", "shares": 10, "market_value": 1200},
+        {"sync_run_id": 102, "account": "schwab_roth_ira", "symbol": "BBB", "shares": 2, "market_value": 80},
+    ]}
+    out = m.rows(conn_factory=lambda: (_ for _ in ()).throw(RuntimeError("db down")),
+                 export_path=_export(tmp_path, doc))
+    assert out["available"] is False and out["reason"] == "export_row_run_mismatch"
+    assert out.get("rows") is None and out["invalid_rows"] == [1]
+
+
+def test_an_export_row_without_identity_is_not_an_observation(tmp_path):
+    doc = {"sync_run_id": 101, "holdings": [{"qty": 1, "market_value": 10}]}
+    out = m.rows(conn_factory=lambda: (_ for _ in ()).throw(RuntimeError("db down")),
+                 export_path=_export(tmp_path, doc))
+    assert out["available"] is False and out["export"] == "row_identity_invalid"
+
+
+class _ObjectInAccountsConn(FakeConn):
+    """A reachable connection whose receipt carries an object inside accounts_ok."""
+
+    def __init__(self):
+        rows = RUN641[641]
+        detail = _detail(rows)
+        receipt = _receipt(641, len(rows), accounts_ok=["schwab_taxable", {"unexpected": "object"}],
+                           accounts=detail)
+        super().__init__([641], {641: receipt}, RUN641)
+
+
+def test_a_reachable_but_inconsistent_receipt_does_not_fall_back_to_the_export(tmp_path):
+    p = _export(tmp_path, {"sync_run_id": 101, "holdings": [
+        {"account": "schwab_taxable", "symbol": "AAA", "shares": 10, "market_value": 1200}]})
+    out = m.rows(conn_factory=lambda: _ObjectInAccountsConn(), export_path=p)
+    assert out["available"] is False
+    assert out["reason"] == "db_state_inconsistent"
+    assert out.get("source") != "backup", "a reachable inconsistent DB must never be masked by a backup"
+
+
+def test_no_connection_still_uses_the_export(tmp_path):
+    p = _export(tmp_path, {"sync_run_id": 101, "holdings": [
+        {"account": "schwab_taxable", "symbol": "AAA", "shares": 10, "market_value": 1200}]})
+    out = m.rows(conn_factory=lambda: (_ for _ in ()).throw(RuntimeError("db down")), export_path=p)
+    assert out["available"] is True and out["source"] == "backup" and out["sync_run_id"] == 101

@@ -211,6 +211,24 @@ def _resolve_run(cur, sync_run_id: Optional[int]):
     return run, receipt
 
 
+def _row_run_matches(value, run: int) -> bool:
+    """A row's own run id agrees with the document's, as an exact integer (no truncation)."""
+    if isinstance(value, bool) or value is None:
+        return False
+    if isinstance(value, int):
+        return value == run
+    if isinstance(value, float):
+        return math.isfinite(value) and value == int(value) and int(value) == run
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip()) == run
+    return False
+
+
+def _usable_identity(value) -> bool:
+    """An account or symbol a row can be grouped under: a non-empty string."""
+    return isinstance(value, str) and bool(value.strip())
+
+
 def _from_export(export_path, reason: str, requested_sync_run_id: Optional[int] = None) -> dict:
     """Serve a generated export for an unreachable DB, or say unavailable. Never an empty book.
 
@@ -254,6 +272,19 @@ def _from_export(export_path, reason: str, requested_sync_run_id: Optional[int] 
     if invalid:
         # A partly malformed export is not a partial book: drop nothing silently.
         return _probe_unavailable(reason, export="member_not_object", invalid_rows=invalid[:10], **stamp)
+    # Provenance and identity are checked BEFORE normalization (cx-openai-2 review, 2026-11-03):
+    # a row that names another run, or has no usable account/symbol, is not an observation of this
+    # book — and a mixed snapshot is never relabelled as one run.
+    mixed = [i for i, r in enumerate(raw_rows)
+             if "sync_run_id" in r and not _row_run_matches(r.get("sync_run_id"), run)]
+    if mixed:
+        return _probe_unavailable("export_row_run_mismatch", export_sync_run_id=run,
+                                  invalid_rows=mixed[:10], **stamp)
+    anonymous = [i for i, r in enumerate(raw_rows)
+                 if not _usable_identity(r.get("symbol")) or not _usable_identity(r.get("account_key") or r.get("account"))]
+    if anonymous:
+        return _probe_unavailable(reason, export="row_identity_invalid",
+                                  invalid_rows=anonymous[:10], **stamp)
     rows = []
     for r in raw_rows:
         key = r.get("account_key") or r.get("account")
@@ -289,6 +320,16 @@ def document_as_of(doc: dict) -> Optional[str]:
     return _iso(doc.get("as_of") or doc.get("data_as_of") or doc.get("generated_at"))
 
 
+_CONNECTION_ERROR_NAMES = frozenset(
+    {"OperationalError", "InterfaceError", "ConnectionException", "ConnectionError", "PoolError"}
+)
+
+
+def _is_connection_failure(exc: Exception) -> bool:
+    """A lost/unavailable connection may fall back to the export; a data defect may not."""
+    return isinstance(exc, OSError) or type(exc).__name__ in _CONNECTION_ERROR_NAMES
+
+
 def _snapshot(sync_run_id: Optional[int] = None, *, conn_factory=None, export_path=None) -> dict:
     """One read-only transaction: resolve the run, read its receipt and its rows, verify them.
 
@@ -297,25 +338,32 @@ def _snapshot(sync_run_id: Optional[int] = None, *, conn_factory=None, export_pa
     """
     conn = None
     try:
+        # A usable read session = a connection, a cursor and a read-only transaction. If any of
+        # those fail, the database is unusable to this reader and the export fallback is honest.
         conn = (conn_factory or _default_conn)()
         cur = conn.cursor()
         cur.execute("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
-        try:
-            run, receipt = _resolve_run(cur, sync_run_id)
-            if run is None:
-                cur.execute("ROLLBACK")
-                return receipt  # reachable DB, invalid state: unavailable, no fallback
-            cur.execute(_SNAPSHOT_SQL, (run,))
-            fetched = cur.fetchall() or []
-            cur.execute("ROLLBACK")  # read-only; nothing to commit
-        except Exception:
-            # Best-effort cleanup, never the reason the read fails: suppressing is deliberate.
-            with contextlib.suppress(Exception):
-                cur.execute("ROLLBACK")
-            raise
-    except Exception as exc:  # noqa: BLE001 — an unreachable DB is the only fallback trigger
+    except Exception as exc:  # noqa: BLE001 — no usable session is the ONLY fallback trigger
         return _from_export(export_path, f"db_unreachable:{type(exc).__name__}",
                             requested_sync_run_id=sync_run_id)
+    try:
+        run, receipt = _resolve_run(cur, sync_run_id)
+        if run is None:
+            cur.execute("ROLLBACK")
+            return receipt  # reachable DB, invalid state: unavailable, no fallback
+        cur.execute(_SNAPSHOT_SQL, (run,))
+        fetched = cur.fetchall() or []
+        cur.execute("ROLLBACK")  # read-only; nothing to commit
+    except Exception as exc:  # noqa: BLE001 — a connected DB that cannot answer is NOT unreachable
+        with contextlib.suppress(Exception):
+            cur.execute("ROLLBACK")
+        if _is_connection_failure(exc):
+            return _from_export(export_path, f"db_unreachable:{type(exc).__name__}",
+                                requested_sync_run_id=sync_run_id)
+        # Reachable but inconsistent (an object inside accounts_ok, a missing receipt field, ...)
+        # is its own fact: say unavailable rather than paper over it with a backup file.
+        return _probe_unavailable("db_state_inconsistent", error=type(exc).__name__,
+                                  sync_run_id=sync_run_id)
     finally:
         # Closing is best-effort; the caller's result was already decided.
         with contextlib.suppress(Exception):
