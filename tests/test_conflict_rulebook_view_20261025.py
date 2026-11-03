@@ -110,3 +110,16 @@ def test_live_counts_are_active_records_by_kind(tmp_path):
     st.reconcile(SUBJECT, [conflict(kind="NEEDS_OPERATOR", never_auto=True)], at=NOW, apply=True)
     live = rulebook_view.build(root=tmp_path)["live"]
     assert live["gap"] is None and live["by_kind"] == {"NEEDS_OPERATOR": 1} and live["open_total"] == 1
+
+
+def test_the_e2e_fixture_matches_the_rulebook_instead_of_drifting_behind_it():
+    # apps/command-center-v3/e2e/fixtures/conflict-rulebook-view.json is read-only test data the Playwright specs
+    # load. Nothing generates it from config, so a rulebook edit left it stating the previous vocabulary: it still
+    # listed "HOLD / MONITOR" as unmapped after that label was mapped, and carried the old R8 wording.
+    fixture = json.loads((REPO / "apps/command-center-v3/e2e/fixtures/conflict-rulebook-view.json")
+                         .read_text(encoding="utf-8"))
+    assert fixture["thresholds"]["unmapped_labels"] == RULEBOOK["security_stance"]["unmapped_labels"]
+    assert fixture["rulebook"]["version"] == RULEBOOK["version"]
+    r8_fixture = next(rule for rule in fixture["rules"] if rule["id"] == "R8")
+    r8_explained = next(rule for rule in EXPLAINED["rules"] if rule["id"] == "R8")
+    assert r8_fixture["exact_text"] == r8_explained["exact_text"]
