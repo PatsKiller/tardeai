@@ -76,6 +76,8 @@ export type HomeV007 = {
   }
   hedge: { triggers: Array<{ label: string; current: number | null; threshold: number | null; met: boolean | null }>; inverse: Array<{ symbol: string; dayPct: number | null; state: FactState }> }
   budgets: BudgetRow[]
+  /** Top-level decision ledger. ``complete: false`` means the per-row history counts are partial. */
+  decisionHistory: { complete: boolean | null; count: number | null; history: number }
   gaps: Array<{ member: string; key: string; reason: string | null; remediation: string | null }>
   readErrors: Array<{ member: string; code: string; remediation: string | null }>
 }
@@ -134,7 +136,7 @@ export function parseHomeV007(raw: unknown): HomeV007 {
   const ctx = rec(raw)
   const gaps: HomeV007['gaps'] = []
   const readErrors: HomeV007['readErrors'] = []
-  if (!ctx) return { present: false, symbols: [], positions: [], risk: { score: null, categories: [], nextEvaluation: null }, hedge: { triggers: [], inverse: [] }, budgets: [], gaps: [{ member: 'home_v007', key: 'absent', reason: 'the response carries no home_v007 block', remediation: 'wait for the additive reader' }], readErrors }
+  if (!ctx) return { present: false, symbols: [], positions: [], risk: { score: null, categories: [], nextEvaluation: null }, hedge: { triggers: [], inverse: [] }, budgets: [], decisionHistory: { complete: null, count: null, history: 0 }, gaps: [{ member: 'home_v007', key: 'absent', reason: 'the response carries no home_v007 block', remediation: 'wait for the additive reader' }], readErrors }
 
   for (const g of (Array.isArray(ctx.gaps) ? ctx.gaps : [])) {
     const o = rec(g); if (o) gaps.push({ member: [str(o.symbol), str(o.field)].filter(Boolean).join('.') || '?', key: remediationText(o.remediation) ?? '?', reason: str(o.reason), remediation: remediationText(o.remediation) })
@@ -241,5 +243,12 @@ export function parseHomeV007(raw: unknown): HomeV007 {
     }
   })
 
-  return { present: true, symbols, positions, risk, hedge, budgets, gaps, readErrors }
+  const dh = rec(ctx.budget_presentation_decisions)
+  const decisionHistory = {
+    complete: typeof dh?.complete === 'boolean' ? (dh!.complete as boolean) : null,
+    count: num(dh?.items) ?? num(dh?.count),
+    history: Array.isArray(dh?.history) ? dh!.history.length : 0,
+  }
+
+  return { present: true, symbols, positions, risk, hedge, budgets, decisionHistory, gaps, readErrors }
 }

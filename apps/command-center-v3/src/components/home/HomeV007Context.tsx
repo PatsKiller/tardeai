@@ -82,6 +82,7 @@ export default function HomeV007Context() {
         ? ` · measured ${b.sourceAsOf ? (fmtAsOf(b.sourceAsOf) ?? b.sourceAsOf) : 'unknown'}${b.sourceSha ? ` · src ${b.sourceSha.slice(0, 8)}` : ''}${b.presentationSha ? ` · presentation ${b.presentationSha.slice(0, 8)}` : ''}`
         : ''}
     </div>)}
+    {v7.decisionHistory.complete === false ? <div style={dim} data-testid="v7-decision-history-partial">decision history is incomplete{typeof v7.decisionHistory.count === 'number' ? ` · ${v7.decisionHistory.count} in the ledger` : ''} — earlier decisions may be missing</div> : null}
     {v7.gaps.map((g, i) => <div key={i} style={dim}>gap {g.member} · {g.key}{g.reason ? ` — ${g.reason}` : ''}</div>)}
     {v7.readErrors.map((e, i) => <div key={i} style={dim}>read error {e.member} · {e.code}</div>)}
     <div style={dim}>Facts only. Nothing here is a size, an order or a stop level.</div>
