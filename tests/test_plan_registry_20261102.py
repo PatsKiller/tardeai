@@ -786,3 +786,93 @@ def test_the_hook_registers_a_plan_without_claiming_approval(tmp_path, monkeypat
     front = pr.parse_plan(plans[0].read_text())["front"]
     assert front["status"] == "registered" and front["vendor"] == "claude"
     assert "approved_at" not in front  # the hook records no approval time
+
+
+# ---------------------------------------------------------------- review 4 (cc4, 2026-11-03) BLOCK ground 1/2
+def _digest_store(tmp_path):
+    """One store holding every row class the digest must survive (cc-deepseek-2, ground 2)."""
+    r = _reg(tmp_path)
+    inside = tmp_path / "data/coordination/plans"
+    p = tmp_path / "p.md"
+    p.write_text("# P\n\n- [ ] a\n")
+    pid = r.add(title="Valid", body_path=p, author="s", vendor="claude",
+                approved_at="2026-11-02T10:00:00Z")
+    linked = r.add(title="Linked", body="x", author="s", vendor="claude",
+                   approved_at="2026-08-01T10:00:00Z", status="approved")
+    r.link(linked, pr=3)
+    recent = r.add(title="Recent", body="x", author="s", vendor="claude",
+                   approved_at="2026-11-02T11:00:00Z", status="approved")
+    (inside / "id-less-plan.md").write_text(
+        '---\ntitle: "No id"\nstatus: "approved"\napproved_at: "2026-08-01T10:00:00Z"\n---\n\n')
+    (inside / "bare.md").write_text("# Body only\n")
+    (inside / "binary.md").write_bytes(b"\xff\xfe---\nid: x\n")
+    (inside / "adir.md").mkdir()
+    (inside / "Upper Case Plan.md").write_text('---\ntitle: "T"\nstatus: "approved"\n---\n\n')
+    outside = tmp_path / "outside.md"
+    outside.write_text('---\ntitle: "Evil"\nstatus: "approved"\n---\n\nsecret\n')
+    (inside / "escape.md").symlink_to(outside)
+    expected = {pid, linked, recent, "id-less-plan", "bare", "binary", "adir", "Upper Case Plan"}
+    return r, expected
+
+
+def test_an_id_less_approved_plan_is_listed_viewed_and_stale_flagged(tmp_path):
+    """Ground 1 (cc4, executed twice): ``list()`` returned the raw front matter, so an approved
+    plan whose front matter has no ``id`` made ``stale()`` raise ``KeyError: 'id'`` and the CLI
+    exit 2 having flagged nothing. Reverting the ``{**front, "id": path.stem}`` row identity in
+    ``list()`` reproduces that KeyError here."""
+    r = _reg(tmp_path)
+    inside = tmp_path / "data/coordination/plans"
+    inside.mkdir(parents=True, exist_ok=True)
+    (inside / "id-less-plan.md").write_text(
+        '---\ntitle: "An approved plan with no id"\nstatus: "approved"\n'
+        'approved_at: "2026-08-01T10:00:00Z"\n---\n\n# P\n\n- [ ] a\n')
+
+    rows = r.list()
+    row = next(row for row in rows if row["id"] == "id-less-plan")
+    assert row["status"] == "approved"
+    assert [row["id"] for row in r.view()["plans"]] == ["id-less-plan"]
+    assert r.stale(now="2026-11-02T12:00:00Z", apply=True) == ["id-less-plan"]
+
+    notices = sorted((tmp_path / "data/coordination/coordinator/inbox/codex").glob("*plan-stalled.md"))
+    assert len(notices) == 1, notices
+    assert "- id-less-plan" in notices[0].read_text()  # named by the id the store uses
+    assert r.get("id-less-plan")["front"]["status"] == "stalled"
+
+
+def test_the_store_wide_digest_shows_every_contained_file_and_still_refuses_an_escape(tmp_path):
+    """Ground 2 (cc-deepseek-2): a contained file whose stem fails the id rule was dropped by
+    ``_iter_plans``/``list``/``view`` with no row at all. Reverting the contained-but-unaddressable
+    branch to ``continue`` drops ``Upper Case Plan`` again, and the escaping symlink must stay
+    refused either way."""
+    r, expected = _digest_store(tmp_path)
+    for rows in (r.list(), r.view()["plans"]):
+        ids = {row["id"] for row in rows}
+        assert ids == expected, sorted(ids)
+        assert "escape" not in ids  # the symlink that resolves outside the store stays skipped
+        addressed = next(row for row in rows if row["id"] == "Upper Case Plan")
+        assert addressed["status"] == "unreadable"
+        assert addressed["reason"] == pr.UNADDRESSABLE_NAME_REASON
+        assert addressed["filename"] == "Upper Case Plan.md"
+        assert str(tmp_path) not in json.dumps(addressed)  # no path beyond its own filename
+        assert "invalid plan id" not in addressed["reason"]  # fixed, no exception text
+        assert "^[a-z0-9]" not in addressed["reason"]
+    # the whole digest completes on the same rows list()/view() just returned
+    assert r.stale(now="2026-11-02T12:00:00Z", apply=False) == ["id-less-plan"]
+
+
+def test_the_stale_scan_over_the_digest_store_flags_exactly_the_eligible_ids(tmp_path):
+    """Ground 1/2 together: the scan reads the same digest ``list()`` returns and flags only the
+    approved/in-progress, unlinked, old plans — never a linked, recent, registered or unreadable
+    row. Reverting the row identity or the digest rows changes this exact set."""
+    r, _ = _digest_store(tmp_path)
+    assert r.stale(now="2026-11-02T12:00:00Z", apply=False) == ["id-less-plan"]
+    inbox = tmp_path / "data/coordination/coordinator/inbox/codex"
+    assert not inbox.exists() or list(inbox.glob("*plan-stalled.md")) == []
+
+    # a store where nothing is eligible writes no notice at all, even with --apply
+    quiet = pr.Registry(tmp_path / "quiet", dict(CFG))
+    quiet.add(title="Registered only", body="x", author="s", vendor="claude",
+              approved_at="2026-08-01T10:00:00Z")
+    assert quiet.stale(now="2026-11-02T12:00:00Z", apply=True) == []
+    quiet_inbox = tmp_path / "quiet" / "data/coordination/coordinator/inbox/codex"
+    assert not quiet_inbox.exists() or list(quiet_inbox.glob("*plan-stalled.md")) == []

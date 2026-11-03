@@ -1,4 +1,4 @@
-"""Plans page UI repairs (2026-11-03): real light/dark contrast, 390 px wrapping, honest step counts.
+"""Plans page model/CSS guards (2026-11-03): 390 px wrapping, honest step counts, plans.css tokens.
 
 The CC-v3 app has no tsx test harness, so this test reads the stylesheet, the token source and the
 view-model/page source directly.
@@ -9,11 +9,18 @@ It guards four defects:
   on `!gap`, and the model turns `store.state != "ok"` into a gap with the server's reason).
 * A registered plan must not read as approved, and provenance must be visible.
 * An unreadable plan must not claim zero steps.
-* Light-theme contrast. `plans.css` used `color: inherit` and `opacity`, so contrast depended on an
-  ancestor's colour and a blend; grepping for `rgba(255,255,255` could not catch that. This test now
-  computes WCAG 2.1 relative-luminance contrast for every text token a rule names against the
-  surface that rule sits on, in BOTH themes, and structurally forbids `color: inherit` and
-  `opacity` on text.
+* `plans.css` light-theme tokens. The stylesheet used `color: inherit` and `opacity`, so contrast
+  depended on an ancestor's colour and a blend; grepping for `rgba(255,255,255` could not catch
+  that. This test computes WCAG 2.1 relative-luminance contrast for every text token a rule in
+  `plans.css` names against the surface that rule sits on, in BOTH themes, and structurally forbids
+  `color: inherit` and `opacity` on text.
+
+SCOPE: this file proves the `plans.css` rules only. It cannot see the page chrome — DeskPage's
+hardcoded inline colours, the active-nav accent, and the "showing last-good data" bar — which is
+exactly why it once certified a page whose light-theme chrome failed. The rendered chrome is
+proven in a real browser by `apps/command-center-v3/e2e/plans-theme.spec.ts`, which composites
+computed colours and measures the ratios. Do not add a source-string assertion here that claims to
+prove colour; add it to that spec.
 """
 from __future__ import annotations
 

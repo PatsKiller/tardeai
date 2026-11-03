@@ -604,10 +604,26 @@ body { font-family: var(--sans); background: var(--bg0); color: var(--text0); }
   --text1: var(--text-1); /* themed alias (PR4) */
   --text2: var(--text-2); /* themed alias (PR4) */
   --text3: var(--text-3); /* themed alias (PR4) */
-  --accent: #ffb000;
-  --accent-dim: rgba(255, 176, 0, 0.14);
+  /* --accent paints nav text and focus outlines on a page surface, so it must pass contrast in
+     BOTH themes. The terminal amber (#ffb000) is 1.68:1 on the light page, so the base pair is
+     the theme's info tone; the dark terminal look is restored by the scoped override below,
+     mirroring the tokens.css terminal scoping. */
+  --accent: var(--info-color);
+  --accent-dim: var(--info-bg);
   --amber: #ffb000;
   --radius: 2px;
+}
+/* The terminal palette is a DARK look: it must not override an explicit light theme. */
+:root:not([data-theme="light"]) .cc-terminal-ui {
+  --accent: #ffb000;
+  --accent-dim: rgba(255, 176, 0, 0.14);
+}
+/* "system" removes the attribute and lets prefers-color-scheme decide (see tokens.css). */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) .cc-terminal-ui {
+    --accent: var(--info-color);
+    --accent-dim: var(--info-bg);
+  }
 }
 .cc-terminal-ui .app-main { padding: 10px 14px !important; }
 .cc-terminal-ui .wlc-grid > .wlc-cell { padding: 6px 10px; }

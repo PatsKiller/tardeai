@@ -1,3 +1,4 @@
+import {useEffect, useRef} from 'react'
 import {createPortal} from 'react-dom'
 import {Link} from 'react-router-dom'
 import DeskPage, {DeskGap} from '../components/DeskPage'
@@ -56,6 +57,25 @@ export default function PlansPage() {
   const rows = plansFrom(index.data)
   const detailData = planFrom(one.data)
   const plan = selectedId && detailData && detailData.id === selectedId ? detailData : null
+  // The desktop panel is a portal outside the card's focus order, so nothing focused it and its
+  // Escape handler never fired. Focus the panel when it opens, listen for Escape while it is open,
+  // and hand focus back to the card that opened it on close. The phone sheet owns its own focus
+  // and Escape handling (MobileDetailSheet), so this deliberately does nothing there.
+  const panelRef = useRef<HTMLElement | null>(null)
+  const closeRef = useRef(detail.close)
+  closeRef.current = detail.close
+  const planId = plan?.id ?? null
+  useEffect(() => {
+    if (!planId || detail.mobile) return
+    const previous = document.activeElement
+    panelRef.current?.focus()
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') closeRef.current() }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      if (previous instanceof HTMLElement && previous.isConnected) previous.focus()
+    }
+  }, [planId, detail.mobile])
   // A wrong/missing schema or an `{ok:false}` body is a gap, not an empty registry. Hold the gap
   // while the first read is still in flight so a loading page does not paint an error.
   const listGap = index.error || (index.data || !index.loading ? plansGap(index.data) : null)
@@ -76,8 +96,7 @@ export default function PlansPage() {
     detail.mobile
       ? <MobileDetailSheet title={String(plan.title || plan.id)} onBack={detail.close}><DetailBody plan={plan} /></MobileDetailSheet>
       : createPortal(
-          <aside className="pl-panel" role="dialog" aria-modal="false" aria-label={String(plan.title || plan.id)}
-            onKeyDown={e => { if (e.key === 'Escape') detail.close() }}>
+          <aside ref={panelRef} tabIndex={-1} className="pl-panel" role="dialog" aria-modal="false" aria-label={String(plan.title || plan.id)}>
             <button type="button" className="pl-back" onClick={detail.close}>← Back</button>
             <h2>{plan.title || plan.id}</h2>
             <DetailBody plan={plan} />

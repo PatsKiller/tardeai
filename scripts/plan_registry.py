@@ -51,6 +51,7 @@ VIEW_SCHEMA = "PlanRegistryView@v1"
 STORE_ABSENT_REASON = "the plan store directory does not exist"
 STORE_UNLISTABLE_REASON = "the plan store directory cannot be listed"
 UNREADABLE_FILE_REASON = "the plan file cannot be read"
+UNADDRESSABLE_NAME_REASON = "the plan filename is not a valid plan id"
 _STEP_RE = re.compile(r"^\s*[-*]\s*\[( |x|X)\]\s+(.*)$")
 #: A plan id is a single path component; anything else is refused before it reaches the filesystem.
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,80}$")
@@ -325,48 +326,63 @@ class Registry:
         return doc
 
     def _iter_plans(self) -> Iterator[Path]:
-        """Every plan file, held to the same containment as an id.
+        """Every contained plan file, whatever its name.
 
-        ``glob`` follows a symlink, so a plan-shaped link dropped in the store could otherwise be
-        read by ``list``/``view`` even though ``get`` refuses it. Validating ``path.stem`` through
-        ``_path`` skips exactly those entries.
+        Containment is proven on each entry: a symlink (which ``glob`` would follow) and any path
+        that resolves outside the store is skipped, exactly as ``get`` refuses it. A name that
+        merely fails the id rule is NOT an escape — it is yielded so the listing can show it as an
+        ``unreadable`` row instead of silently dropping a plan (review 4 ground 2).
         """
+        base = self.plans.resolve()
         for path in sorted(self.plans.glob("*.md")):
-            try:
-                yield self._path(path.stem)
-            except ValueError:
+            if path.is_symlink():
                 continue
+            try:
+                path.resolve().relative_to(base)
+            except (OSError, ValueError):
+                continue
+            yield path
+
+    def _classify(self, path: Path) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+        """One contained file as ``(doc, gap)`` — exactly one of the two is non-None.
+
+        A name the id rule refuses cannot be addressed by ``get()``, so it is shown as an
+        ``unreadable`` row rather than dropped. Reasons are fixed strings: they are served over the
+        read-only API and must never carry a filesystem path or exception text.
+        """
+        if not ID_RE.match(path.stem):
+            return None, unreadable_entry(path, UNADDRESSABLE_NAME_REASON)
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            # one unreadable file must not take the whole listing down, but it is a visible gap
+            return None, unreadable_entry(path, UNREADABLE_FILE_REASON)
+        except UnicodeDecodeError:
+            return None, unreadable_entry(path, "file is not valid UTF-8 text")
+        doc = parse_plan(text)
+        if not doc["front"]:
+            # Same gap the view shows: a file the store holds but cannot parse is still listed.
+            return None, unreadable_entry(path, front_matter_gap(text) or "front matter is not readable")
+        return doc, None
 
     def list(self, status: str | None = None) -> list[dict[str, Any]]:
         """Every plan in the store, held to the SAME containment as an id-addressed read.
 
-        ``glob`` follows a symlink, so a plan-shaped link dropped in the store could otherwise be
-        read by list()/stale() even though get() refuses it (review 2026-11-02, B1). A link that
-        resolves outside the store is skipped here too.
+        Each parsed row carries the id the store actually addresses it by — the file stem, which
+        is what ``get()`` opens — so a plan whose front matter has no ``id`` still has an identity
+        (review 4 ground 1: ``stale`` raised ``KeyError: 'id'`` on one). A contained file whose
+        name is not a valid id is listed as an ``unreadable`` row, never dropped.
         """
         rows = []
-        for path in sorted(self.plans.glob("*.md")):
-            try:
-                path = self._path(path.stem)  # id rules + resolved containment
-            except ValueError:
-                continue  # a file that escapes the store is never served
-            try:
-                text = path.read_text(encoding="utf-8")
-            except OSError:
-                # one unreadable file must not take the whole listing down, but it is a visible gap
-                rows.append(unreadable_entry(path, UNREADABLE_FILE_REASON))
+        for path in self._iter_plans():
+            doc, gap = self._classify(path)
+            if gap is not None:
+                rows.append(gap)
                 continue
-            except UnicodeDecodeError:
-                rows.append(unreadable_entry(path, "file is not valid UTF-8 text"))
-                continue
-            front = parse_plan(text)["front"]
-            if not front:
-                # Same gap the view shows: a file the store holds but cannot parse is still listed.
-                rows.append(unreadable_entry(path, front_matter_gap(text) or "front matter is not readable"))
-                continue
+            front = doc["front"]
             if status and front.get("status") != status:
                 continue
-            rows.append(front)
+            rows.append({**front, "id": path.stem})
         return rows
 
     def _mutate(self, pid: str, event: str, change: dict[str, Any]) -> dict[str, Any]:
@@ -475,20 +491,11 @@ class Registry:
         rows = []
         if store["state"] == "ok":  # build the listing only after the store state is established
             for path in self._iter_plans():
-                try:
-                    text = path.read_text(encoding="utf-8")
-                except OSError:
-                    rows.append(unreadable_entry(path, UNREADABLE_FILE_REASON))
-                    continue
-                except UnicodeDecodeError:
-                    rows.append(unreadable_entry(path, "file is not valid UTF-8 text"))
-                    continue
-                doc = parse_plan(text)
-                if doc["front"]:
-                    rows.append(self._entry(path.stem, doc, body=False))
+                doc, gap = self._classify(path)
+                if gap is not None:
+                    rows.append(gap)
                 else:
-                    # A file the store holds but cannot parse is a gap, not a plan that never existed.
-                    rows.append(unreadable_entry(path, front_matter_gap(text) or "front matter is not readable"))
+                    rows.append(self._entry(path.stem, doc, body=False))
         rows.sort(key=lambda r: str(r.get("approved_at") or ""), reverse=True)
         return {"schema": VIEW_SCHEMA, "as_of": _utc(), "store": store, "plans": rows}
 
@@ -502,12 +509,20 @@ class Registry:
                 continue
             if any(front.get(k) for k in ("claim", "branch", "pr")):
                 continue
-            last = self._last_activity(str(front["id"]), front)
+            pid = str(front.get("id") or "")
+            if not pid:
+                # ``list()`` gives every row it returns the id the store addresses it by, so this
+                # is defensive only. Record the skip instead of raising KeyError on the scan.
+                print(
+                    f"plan_registry: stale scan skipped a {front.get('status')!r} plan row with no id", file=sys.stderr
+                )
+                continue
+            last = self._last_activity(pid, front)
             if last is None or current - last < timedelta(hours=limit):
                 continue
-            if apply and not self._mark_stalled(str(front["id"])):
+            if apply and not self._mark_stalled(pid):
                 continue  # linked or resumed between the scan and the lock
-            flagged.append(str(front["id"]))
+            flagged.append(pid)
         if apply and flagged:
             self._write_stall_notice(flagged, limit)
         return flagged

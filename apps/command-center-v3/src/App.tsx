@@ -157,8 +157,8 @@ function ReconnectingBar() {
 
   if (!degraded) return null
   return (
-    <div style={{
-      background: 'rgba(245,158,11,0.10)', color: '#f5c76a', borderBottom: '1px solid rgba(245,158,11,0.28)',
+    <div data-testid="cc-reconnect-bar" style={{
+      background: 'var(--warning-bg)', color: 'var(--warning-color)', borderBottom: '1px solid var(--warning-border)',
       fontSize: 10.5, fontWeight: 650, textAlign: 'center', padding: '2px 8px', letterSpacing: .2,
     }}>
       showing last-good data · live refresh paused (server busy{failing > 1 ? ` · ${failing} feeds` : ''}) · retrying with backoff
@@ -166,7 +166,7 @@ function ReconnectingBar() {
       <button
         type="button"
         onClick={() => { void retryApiConnection() }}
-        style={{ background: 'transparent', border: 'none', color: '#f5c76a', fontWeight: 750, fontSize: 10.5, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+        style={{ background: 'transparent', border: 'none', color: 'var(--warning-color)', fontWeight: 750, fontSize: 10.5, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
       >
         retry now
       </button>
