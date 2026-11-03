@@ -46,5 +46,17 @@ eq('null portfolio total is not $0', rotationDescriptive({ portfolio_total: null
 eq('fmtUsd rounds', fmtUsd(1234.7), '$1,235')
 eq('fmtUsd rejects strings', fmtUsd('1234'), null)
 
+// Harder shapes: a date-only clock, cached_at fallback, and rows with hostile values.
+const dateOnly = rotationDescriptive({ generated_at: '2026-11-02', sector_overweights: [{ theme: 'X', pct: 1 }] })
+eq('date-only clock is carried as-is', dateOnly.asOf, '2026-11-02')
+eq('cached_at fills a missing generated_at', rotationDescriptive({ cached_at: '2026-11-02T20:00:00Z' }).asOf, '2026-11-02T20:00:00Z')
+eq('a numeric clock is not a clock', rotationDescriptive({ generated_at: 1730000000 }).asOf, null)
+eq('NaN share is "share unknown"', rotationDescriptive({ sector_overweights: [{ theme: 'X', pct: Number.NaN }] }).blocks[0].rows[0].value, 'share unknown')
+eq('string share is "share unknown"', rotationDescriptive({ sector_overweights: [{ theme: 'X', pct: '12%' }] }).blocks[0].rows[0].value, 'share unknown')
+eq('null rows are skipped', rotationDescriptive({ sector_overweights: [null, { theme: 'Y', pct: 2 }] }).blocks[0].rows.length, 1)
+eq('top-holdings non-list is ignored', rotationDescriptive({ sector_overweights: [{ theme: 'X', pct: 1, top_holdings: 'AAA' }] }).blocks[0].rows[0].detail, null)
+eq('portfolio total zero is shown, not unknown', rotationDescriptive({ portfolio_total: 0 }).portfolioTotal, '$0')
+check('zero total still counts as data', rotationDescriptive({ portfolio_total: 0 }).hasAny)
+
 console.log(`rotationDescriptive: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)
