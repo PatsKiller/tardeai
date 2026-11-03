@@ -155,13 +155,25 @@ def collect_cio_hermes_queue_health(*, now: Optional[datetime] = None, path: Opt
     # under 48h on its next claim; this signal staying on means a writer still bypasses the lock.
     projection = Path(os.getenv("CIO_HERMES_PROJECTION") or ledger.with_name("hermes_research_projection.json"))
     try:
-        known = set(json.loads(projection.read_text(encoding="utf-8")).get("by_research_id") or {})
+        proj_doc = json.loads(projection.read_text(encoding="utf-8"))
+        by_rid = proj_doc.get("by_research_id") or {}
+        known = set(by_rid)
+        # A request is NOT lost when its QUESTION is already owned by an open or completed
+        # projection entry: `restore_lost_requests` dedups on fingerprint, so a same-question
+        # row is intentionally not re-projected. 2026-11-03: `res_c30a22ae6af8` was reported
+        # lost while `res_cfaa3b471ead` (2.7 s earlier, same fingerprint) was in the projection.
+        fp_known = {str(v.get("fingerprint")) for v in by_rid.values()
+                    if isinstance(v, dict) and v.get("fingerprint")}
+        fp_known |= set((proj_doc.get("by_fingerprint_open") or {}).keys())
+        fp_known |= set((proj_doc.get("by_fingerprint_completed") or {}).keys())
     except (OSError, ValueError):
         known = None
+        fp_known = set()
     grace = now - timedelta(minutes=10)
     lost = sorted({str(r["research_id"]) for r in events
                    if known is not None and r.get("event") == "HERMES_RESEARCH_REQUESTED"
-                   and r["_ts"] <= grace and str(r["research_id"]) not in known})
+                   and r["_ts"] <= grace and str(r["research_id"]) not in known
+                   and str(r.get("fingerprint") or "") not in fp_known})
     s["lost"], s["lost_n"] = lost[:5], len(lost)
     outcomes = s["completed"] + s["failed"]
     firing: list[str] = []
