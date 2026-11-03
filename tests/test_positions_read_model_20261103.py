@@ -3,11 +3,10 @@
 No DB, no broker, no live store. A fake read-only connection exercises the SQL contract.
 """
 import json
+import math
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-
-import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -19,16 +18,19 @@ NOW = datetime(2026, 11, 3, 16, 30, tzinfo=timezone.utc)
 # (sync_run_id, account_key, broker, symbol, qty, cost_basis_total, avg_cost,
 #  broker_market_value, is_cash, asset_type, source, captured_at)
 ROW_COLS = m._SNAPSHOT_COLS
+DEFAULT_ACCOUNTS = ["schwab_taxable", "schwab_roth_ira"]
 
 
 def _row(run, key, symbol, qty, mv, *, cash=False, basis=100.0, as_of=NOW):
     return (run, key, "schwab" if key.startswith("schwab") else "alpaca", symbol, qty,
-            basis, (basis / qty if qty else None), mv, cash, "CASH" if cash else "EQUITY",
-            "positions_sync", as_of)
+            basis, (basis / qty if qty and basis is not None else None), mv,
+            cash, "CASH" if cash else "EQUITY", "positions_sync", as_of)
 
 
-def _receipt(run, rows, *, status="complete", promoted=True):
-    return (run, status, promoted, rows, NOW, NOW, ["schwab_taxable"], {})
+def _receipt(run, rows, *, status="complete", promoted=True, accounts_ok=None, accounts_failed=None):
+    return (run, status, promoted, rows, NOW, NOW,
+            DEFAULT_ACCOUNTS if accounts_ok is None else accounts_ok,
+            {} if accounts_failed is None else accounts_failed)
 
 
 RUN641 = {
@@ -99,8 +101,8 @@ def _conn(pointer=(641,), snapshots=None, receipts=None):
     return FakeConn(list(pointer), receipts, snapshots)
 
 
-def _export(tmp_path, doc):
-    p = tmp_path / "holdings_export.json"
+def _export(tmp_path, doc, name="holdings_export.json"):
+    p = tmp_path / name
     p.write_text(json.dumps(doc))
     return p
 
@@ -113,6 +115,7 @@ def test_rows_totals_clock_share_one_run_and_carry_as_of():
     assert r["available"] is True and r["source"] == "db"
     assert r["sync_run_id"] == 641 and r["as_of"] == NOW.isoformat()
     assert r["count"] == 3 and all(x["sync_run_id"] == 641 for x in r["rows"])
+    assert r["coverage"]["rows"] == 3 and "schwab_roth_ira" in r["coverage"]["accounts"]
 
     conn = _conn(snapshots=RUN641)
     t = m.totals(conn_factory=lambda: conn)
@@ -158,6 +161,31 @@ def test_valid_export_is_stamped_backup_with_run_and_as_of(tmp_path):
     out = m.rows(conn_factory=lambda: (_ for _ in ()).throw(RuntimeError("db down")), export_path=p)
     assert out["available"] is True and out["source"] == "backup" and out["from_backup"] is True
     assert out["sync_run_id"] == 641 and out["as_of"] == NOW.isoformat()
+
+
+def test_explicit_run_is_never_served_from_a_different_export_run(tmp_path):
+    # codex counterexample: pin 638, backup is run 999 -> must be unavailable, not relabelled.
+    p = _export(tmp_path, {
+        "sync_run_id": 999, "as_of": NOW.isoformat(),
+        "holdings": [{"account": "schwab_taxable", "symbol": "AAA", "qty": 10,
+                      "broker_market_value": 1100.0}],
+    })
+    out = m.rows(sync_run_id=638, conn_factory=lambda: (_ for _ in ()).throw(RuntimeError("db down")),
+                 export_path=p)
+    assert out["available"] is False and out["reason"] == "export_run_mismatch"
+    assert out["requested_sync_run_id"] == 638 and out["export_sync_run_id"] == 999
+    assert "rows" not in out
+
+
+def test_export_accepts_step1_shares_and_rebuild_run(tmp_path):
+    p = _export(tmp_path, {
+        "_rebuild": {"run": 641}, "as_of": NOW.isoformat(),
+        "holdings": [{"account": "schwab_taxable", "symbol": "AAA", "shares": 10,
+                      "market_value": 1200.0}],
+    })
+    out = m.rows(conn_factory=lambda: (_ for _ in ()).throw(RuntimeError("db down")), export_path=p)
+    assert out["available"] is True and out["sync_run_id"] == 641
+    assert out["rows"][0]["qty"] == 10 and out["rows"][0]["broker_market_value"] == 1200.0
 
 
 # ── the Roth mapping ─────────────────────────────────────────────────────────
@@ -229,6 +257,26 @@ def test_snapshot_row_count_mismatch_is_unavailable():
     assert out["receipt_rows"] == 4 and out["snapshot_rows"] == 3
 
 
+def test_snapshot_account_outside_receipt_coverage_is_unavailable():
+    # The fixture rows include the Roth, but the receipt claims only one account.
+    receipts = {641: _receipt(641, 3, accounts_ok=["schwab_taxable"])}
+    out = m.rows(conn_factory=lambda: _conn(receipts=receipts))
+    assert out["available"] is False and out["reason"] == "snapshot_account_not_in_receipt"
+    assert out["missing_accounts"] == ["schwab_roth_ira"]
+
+
+def test_failed_accounts_receipt_is_unavailable():
+    receipts = {641: _receipt(641, 3, accounts_failed={"schwab_roth_ira": "fetch timeout"})}
+    out = m.totals(conn_factory=lambda: _conn(receipts=receipts))
+    assert out["available"] is False and out["reason"] == "run_has_failed_accounts"
+
+
+def test_receipt_without_account_coverage_is_unavailable():
+    receipts = {641: _receipt(641, 3, accounts_ok=[])}
+    out = m.rows(conn_factory=lambda: _conn(receipts=receipts))
+    assert out["available"] is False and out["reason"] == "run_has_no_account_coverage"
+
+
 def test_run_not_promoted_is_unavailable():
     receipts = {641: _receipt(641, 3, promoted=False)}
     out = m.totals(conn_factory=lambda: _conn(receipts=receipts))
@@ -246,10 +294,45 @@ def test_no_sync_receipt_is_unavailable():
     assert out["available"] is False and out["reason"] == "no_sync_receipt"
 
 
-def test_db_unreachable_is_unavailable():
-    out = m.totals(conn_factory=lambda: BoomConn())
+def test_reachable_db_invalid_state_does_not_fall_back_to_export(tmp_path):
+    # A valid export exists, but the DB is reachable and says "no pointer": report the DB state.
+    p = _export(tmp_path, {
+        "sync_run_id": 641, "as_of": NOW.isoformat(),
+        "holdings": [{"account": "schwab_taxable", "symbol": "AAA", "qty": 10,
+                      "broker_market_value": 1200.0}],
+    })
+    out = m.rows(conn_factory=lambda: _conn(pointer=()), export_path=p)
+    assert out["available"] is False and out["reason"] == "no_latest_pointer"
+    assert out.get("source") is None and "rows" not in out
+
+
+def test_non_finite_market_value_is_unavailable():
+    rows = {641: [
+        _row(641, "schwab_taxable", "AAA", 10, 1200.0),
+        _row(641, "schwab_taxable", "BAD", 1, math.inf),
+    ]}
+    out = m.rows(conn_factory=lambda: _conn(snapshots=rows))
+    assert out["available"] is False and out["reason"] == "snapshot_row_numeric_invalid"
+
+
+def test_missing_market_value_is_unavailable():
+    rows = {641: [
+        _row(641, "schwab_taxable", "AAA", 10, 1200.0),
+        _row(641, "schwab_taxable", "BAD", 1, None),
+    ]}
+    out = m.totals(conn_factory=lambda: _conn(snapshots=rows))
+    assert out["available"] is False and out["reason"] == "snapshot_row_numeric_invalid"
+
+
+def test_db_unreachable_is_unavailable(tmp_path):
+    out = m.totals(conn_factory=lambda: BoomConn(), export_path=tmp_path / "missing.json")
     assert out["available"] is False and out["reason"].startswith("db_unreachable")
     assert "rows" not in out and "accounts" not in out
+
+
+def test_num_rejects_infinity():
+    assert m._num(math.inf) is None and m._num(-math.inf) is None and m._num(math.nan) is None
+    assert m._num("12.5") == 12.5 and m._num(None) is None
 
 
 # ── read-only proof ─────────────────────────────────────────────────────────
@@ -266,7 +349,7 @@ def test_only_read_only_statements_are_issued():
                for sql, _ in conn._cur.executed)
 
 
-# ── cc4's provenance document shape, folded in on top of the run pin ─────────
+# ── producer-shaped document ────────────────────────────────────────────────
 
 def test_document_is_load_store_shaped_with_provenance():
     conn = _conn(snapshots=RUN641)
@@ -280,6 +363,44 @@ def test_document_is_load_store_shaped_with_provenance():
     assert by["BBB"]["account"] == "schwab_roth"
     assert by["BBB"]["account_key"] == "schwab_roth_ira"
     assert by["CASH"]["is_cash"] is True and by["CASH"]["price"] == 1.0
+
+
+def test_document_carries_producer_totals_and_account_summaries():
+    conn = _conn(snapshots=RUN641)
+    doc = m.document(conn_factory=lambda: conn)["doc"]
+    pt = doc["portfolio_totals"]
+    assert pt["total_value"] == 1780.0 and pt["total_cash"] == 500.0
+    assert pt["basis_complete"] is True and pt["basis_unsourced_rows"] == 0
+    assert pt["total_cost_basis"] == 200.0
+    assert pt["total_gain"] == 1080.0
+    summaries = doc["account_summaries"]
+    assert set(summaries) == {"schwab_taxable", "schwab_roth"}
+    assert summaries["schwab_roth"]["value"] == 80.0 and summaries["schwab_roth"]["positions"] == 1
+    assert summaries["schwab_taxable"]["cash"] == 500.0
+
+
+def test_document_basis_incomplete_leaves_totals_null():
+    rows = {641: [
+        _row(641, "schwab_taxable", "AAA", 10, 1200.0),
+        _row(641, "schwab_roth_ira", "BBB", 2, 80.0, basis=None),
+    ]}
+    conn = _conn(snapshots=rows)
+    doc = m.document(conn_factory=lambda: conn)["doc"]
+    pt = doc["portfolio_totals"]
+    assert pt["basis_complete"] is False and pt["basis_unsourced_rows"] == 1
+    assert pt["total_cost_basis"] is None and pt["total_gain"] is None
+
+
+def test_document_export_fallback_is_producer_shaped(tmp_path):
+    p = _export(tmp_path, {
+        "sync_run_id": 641, "as_of": NOW.isoformat(),
+        "holdings": [{"account": "schwab_roth_ira", "symbol": "BBB", "shares": 2,
+                      "market_value": 80.0, "cost_basis": 100.0}],
+    })
+    out = m.document(conn_factory=lambda: (_ for _ in ()).throw(RuntimeError("db down")), export_path=p)
+    assert out["available"] is True and out["source"] == "backup"
+    assert set(out["doc"]["account_summaries"]) == {"schwab_roth"}
+    assert out["doc"]["portfolio_totals"]["total_value"] == 80.0
 
 
 def test_cash_by_symbol_counts_as_cash():
