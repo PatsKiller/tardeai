@@ -372,6 +372,17 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
     a caller may pass its own resolved path (the guard operates entirely on that path).
     """
     HP = Path(target_path).resolve() if target_path else HOLDINGS_PATH
+    # A guard whose precondition can be violated by its caller is decorative (cc-deepseek-3 review,
+    # 2026-11-03). If the caller hands us the candidate as its own baseline, every relative check
+    # compares the new book with itself and the cash/drop guards can never fire. Refuse here, in the
+    # guard, so no present or future caller can disarm it — the call-site assertion stays as well.
+    if baseline is not None and baseline is new_holdings:
+        reason = ("BASELINE_ALIAS: the baseline is the candidate object itself, so the relative "
+                  "coverage/cash/drop guards would compare the new book with itself")
+        _record(account_key, "rejected_baseline_alias", f"[{source}] baseline is the candidate object")
+        _alert(f"🛑 holdings write BLOCKED ({source}): {reason}. Prior snapshot kept (no wipe).", source)
+        return {"wrote": False, "status": "rejected_baseline_alias", "reason": reason,
+                "reason_code": "BASELINE_ALIAS", "missing_accounts": [], "baseline_source": None}
     prior_state, prior_doc = _store_state(HP)
     baseline_source = "store" if prior_doc is not None else None
     if baseline is not None:

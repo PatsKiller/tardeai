@@ -234,3 +234,29 @@ def test_shape_corrupt_store_is_not_used_as_a_write_baseline(store, monkeypatch)
     out = S._sync_rows("schwab_roth_ira", "schwab_roth", [], object(), dry_run=False)
     assert out["wrote"] is False and out["status"] == "rejected_no_baseline", out
     assert store.read_bytes() == before
+
+
+# ── cc3 (2026-11-03): the GUARD must enforce its own precondition, not trust the caller ─────
+
+def test_the_guard_itself_refuses_a_baseline_that_is_the_candidate(store):
+    """cc3's reproduction: without patching anything inside _sync_rows, calling the guard directly
+    with the candidate as its own baseline used to return wrote:true and wipe the cash rows."""
+    store.write_text(json.dumps(_book()))
+    before = store.read_bytes()
+    candidate = json.loads(store.read_text())
+    candidate["holdings"] = [r for r in candidate["holdings"] if r.get("symbol") != "CASH"]
+    out = S.protected_holdings_write(candidate, source="test_alias", target_path=str(store), baseline=candidate)
+    assert out["wrote"] is False and out["reason_code"] == "BASELINE_ALIAS" and out["status"] == "rejected_baseline_alias", out
+    assert store.read_bytes() == before, "an aliased-baseline refusal must leave the store untouched"
+
+
+def test_the_same_payload_with_an_independent_baseline_is_refused_by_the_cash_guard(store):
+    """The control: the identical candidate against a distinct baseline hits the real guard."""
+    store.write_text(json.dumps(_book()))
+    before = store.read_bytes()
+    candidate = json.loads(store.read_text())
+    candidate["holdings"] = [r for r in candidate["holdings"] if r.get("symbol") != "CASH"]
+    out = S.protected_holdings_write(candidate, source="test_control", target_path=str(store),
+                                     baseline=json.loads(before))
+    assert out["wrote"] is False and out["reason_code"] == "CASH_EXCLUDED", out
+    assert store.read_bytes() == before
