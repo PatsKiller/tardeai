@@ -7,6 +7,7 @@
 import { useApi } from '../../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, toneVars } from '../../lib/designTokens'
 import { parseHomeV007, type Fact, type SymbolContext } from '../../lib/homeV007'
+import { fmtAsOf } from '../../lib/asOfDisplay'
 
 const PATH = '/api/v2/market-risk/latest'
 const card: React.CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 12, display: 'grid', gap: 8 }
@@ -35,7 +36,7 @@ function SymbolBlock({ s }: { s: SymbolContext }) {
         ? <span data-testid={`v7-quote-${s.symbol}`} style={{ color: toneVars('warning').color, fontWeight: 600 }}>price {qState}</span>
         : <span data-testid={`v7-quote-${s.symbol}`} style={small}>
             <b style={{ color: TOKENS.text[0] }}>{money(q.price) ?? 'price unknown'}</b>
-            {q.session ? ` · ${q.session}` : ''}{q.asOf ? ` · ${q.asOf}` : ''}{q.source ? ` · ${q.source}` : ''}{q.basis ? ` · ${q.basis}` : ''}
+            {q.session ? ` · ${q.session}` : ''}{q.asOf ? ` · ${fmtAsOf(q.asOf) ?? q.asOf}` : ''}{q.source ? ` · ${q.source}` : ''}{q.basis ? ` · ${q.basis}` : ''}
           </span>}
     </div>
     {stateText(s.dayChange) ? <div style={dim}>day change {stateText(s.dayChange)}</div>
@@ -44,7 +45,7 @@ function SymbolBlock({ s }: { s: SymbolContext }) {
       : <div style={dim}>since exit {money(s.sinceExit.usd) ?? ''}{s.sinceExit.pct != null ? ` (${pct(s.sinceExit.pct)})` : ''}{s.sinceExit.exitDate ? ` · exited ${s.sinceExit.exitDate}` : ''}</div>}
     {s.references.length ? <div style={dim}>to trigger: {s.references.map(r => `${r.label} ${r.distancePct != null ? pct(r.distancePct) : ''}${r.distanceUsd != null ? ` (${money(r.distanceUsd)})` : ''}`).join(' · ')}</div> : null}
     {s.headlines.length ? <div style={dim}>headlines: {s.headlines.map(h => `${h.title}${h.ageSeconds != null ? ` (${Math.round(h.ageSeconds / 3600)}h)` : ''}`).join(' · ')}</div> : null}
-    {s.nextEvent.label || s.nextEvent.at ? <div style={dim}>next event {s.nextEvent.label ?? ''}{s.nextEvent.at ? ` · ${s.nextEvent.at}` : ''}</div> : null}
+    {s.nextEvent.label || s.nextEvent.at ? <div style={dim}>next event {s.nextEvent.label ?? ''}{s.nextEvent.at ? ` · ${fmtAsOf(s.nextEvent.at) ?? s.nextEvent.at}` : ''}</div> : null}
     {stateText(s.cio) ? <div style={dim}>CIO stance {stateText(s.cio)}</div>
       : <div style={dim}>CIO stance <b>{s.cio.stance}</b>{s.cio.conviction != null ? ` · conviction ${s.cio.conviction}` : ''}{s.cio.storeLabel ? ` · ${s.cio.storeLabel}` : ''}{s.cio.ageSeconds != null ? ` · ${Math.round(s.cio.ageSeconds / 3600)}h old` : ''}{s.cio.stale ? ' · stale' : ''}</div>}
     {s.marketStance.value ? <div style={dim}>market-risk stance {s.marketStance.value} (separate from CIO)</div> : null}
@@ -65,7 +66,7 @@ export default function HomeV007Context() {
     {v7.symbols.map(s => <SymbolBlock key={s.symbol} s={s} />)}
     {v7.risk.categories.length ? <div style={dim}>
       risk score {v7.risk.score ?? 'unknown'} · {v7.risk.categories.map(c => `${c.label} ${c.chip ?? c.state}`).join(' · ')}
-      {v7.risk.nextEvaluation?.at ? ` · next evaluation ${v7.risk.nextEvaluation.at} (${v7.risk.nextEvaluation.basis ?? 'declared'})` : ''}
+      {v7.risk.nextEvaluation?.at ? ` · next evaluation ${fmtAsOf(v7.risk.nextEvaluation.at) ?? v7.risk.nextEvaluation.at} (${v7.risk.nextEvaluation.basis ?? 'declared'})` : ''}
     </div> : null}
     {v7.hedge.triggers.length ? <div style={dim}>hedge: {v7.hedge.triggers.map(t => `${t.label} ${t.current ?? '?'} of ${t.threshold ?? '?'}${t.met === true ? ' met' : t.met === false ? ' not met' : ''}`).join(' · ')}{v7.hedge.inverse.length ? ` · inverse today: ${v7.hedge.inverse.map(i => `${i.symbol} ${i.dayPct == null ? 'unknown' : pct(i.dayPct)}`).join(' · ')}` : ''}</div> : null}
     {v7.budgets.map(b => <div key={b.key} style={dim}>
