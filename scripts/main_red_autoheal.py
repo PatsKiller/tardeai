@@ -318,8 +318,11 @@ def rerun_for_request(run_id, expected_head_sha: str, *, config: Optional[Mappin
     if len(head) != 40:
         return {"ok": False, "plain": "The request does not bind a full 40-character head SHA."}
 
-    rc, out = runner(["run", "view", rid, "--repo", repo,
-                      "--json", "headSha,status,conclusion,workflowName"])
+    try:
+        rc, out = runner(["run", "view", rid, "--repo", repo,
+                          "--json", "headSha,status,conclusion,workflowName"])
+    except Exception as exc:  # noqa: BLE001 — a transport fault is a plain refusal here, never a raise
+        return {"ok": False, "plain": f"I could not read run {rid} ({type(exc).__name__}), so nothing was re-run."}
     try:
         view = json.loads(out or "{}")
     except ValueError:
@@ -349,7 +352,11 @@ def rerun_for_request(run_id, expected_head_sha: str, *, config: Optional[Mappin
         return {"ok": True, "dry_run": True, "head_key": head_key,
                 "plain": f"Would re-run the failed jobs of {rid} once."}
 
-    rc, out = runner(["run", "rerun", rid, "--repo", repo, "--failed"])
+    try:
+        rc, out = runner(["run", "rerun", rid, "--repo", repo, "--failed"])
+    except Exception as exc:  # noqa: BLE001 — the executor records a refused receipt, it does not catch ours
+        return {"ok": False, "head_key": head_key,
+                "plain": f"The re-run could not be issued ({type(exc).__name__}); nothing was re-run."}
     if rc != 0:
         return {"ok": False, "head_key": head_key,
                 "plain": f"GitHub refused the re-run: {(out or '').strip()[:200]}"}

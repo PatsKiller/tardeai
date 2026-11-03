@@ -615,3 +615,13 @@ def test_rerun_for_request_refuses_a_short_head_or_a_non_numeric_run(tmp_path):
     bad = mra.rerun_for_request("not-a-run", "a" * 40, config=dict(CONFIG), state_dir=tmp_path / "s2", gh=gh)
 
     assert short["ok"] is False and bad["ok"] is False and gh.reruns == []
+
+
+def test_rerun_for_request_never_raises_on_a_transport_fault(tmp_path):
+    class Boom:
+        def __call__(self, argv):
+            raise TimeoutError("gh did not answer")
+
+    out = mra.rerun_for_request(991, "a" * 40, config=dict(CONFIG), state_dir=tmp_path / "state", gh=Boom())
+
+    assert out["ok"] is False and "TimeoutError" in out["plain"]
