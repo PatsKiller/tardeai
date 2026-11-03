@@ -40,11 +40,14 @@ REFUSALS = {
     "BAD_REQUEST": 400,
     "DECISION_IN_PROGRESS": 409,
     "ALREADY_EXECUTING": 409,
+    "RECORD_NOT_APPROVED": 409,
 }
 
 #: A's refusal codes -> this layer's HTTP codes. A owns the decision; B only translates.
 STORE_CODES = {
     "actor_not_authenticated": "NOT_OPERATOR",
+    "card_changed": "CHANGED",
+    "no_recorded_approval": "RECORD_NOT_APPROVED",
     "binding_mismatch": "CHANGED",
     "decision_in_progress": "DECISION_IN_PROGRESS",
     "already_executing": "ALREADY_EXECUTING",
@@ -223,6 +226,12 @@ def _one(module, store, request_id: str, now, query) -> tuple[int, dict]:
     if record is None:
         return _refused("NOT_FOUND", "That request does not exist.")
     item = _item(record, now)
+    binding_of = getattr(module, "_binding_of", None)
+    if callable(binding_of):
+        try:
+            item["binding"] = binding_of(record)
+        except Exception:  # noqa: BLE001 — a binding helper failure must not break the sheet
+            item["binding"] = None
     wants = isinstance(query, dict) and str(query.get("revalidate") or "").lower() in ("1", "true", "yes")
     if wants:
         ok, plain = module.revalidate(store, record, now=now)
@@ -268,13 +277,18 @@ def _decision_response(record: dict) -> tuple[int, dict]:
     state = str(record.get("state") or "")
     result = record.get("result") if isinstance(record.get("result"), dict) else {}
     reported = str(result.get("outcome") or "")
-    if reported in ("refused",):
-        # A refused the action inside decide(): a refusal is not an execution.
-        return 409, {"ok": False, "code": "CHANGED",
-                     "reason": str(result.get("plain") or "The action was refused."), "data": {"outcome": "refused"}}
-    outcome = reported if reported in ("executed", "declined", "failed", "unknown_result") else (
-        "executed" if state == "executed" else "declined" if state == "declined" else (
-            "failed" if state == "failed" or result.get("ok") is False else "uncertain"))
+    if reported == "timed_out_unconfirmed":
+        outcome = "uncertain"
+    elif reported in ("executed", "declined", "failed", "unknown_result"):
+        outcome = reported
+    elif state == "executed":
+        outcome = "executed"
+    elif state == "declined":
+        outcome = "declined"
+    elif state == "failed" or result.get("ok") is False:
+        outcome = "failed"
+    else:
+        outcome = "uncertain"
     if outcome == "unknown_result":
         outcome = "uncertain"
     data = {"state": state, "outcome": outcome, "decision": record.get("decision"),
@@ -295,6 +309,9 @@ def _store_error(exc: Exception) -> tuple[int, dict]:
         # A's Refused carries `.plain` — the sentence the card shows verbatim. Never reword it here.
         plain = getattr(exc, "plain", None) or getattr(exc, "reason", None) or mapped
         status, payload = _refused(mapped, str(plain))
+        attempted = getattr(exc, "attempted", None)
+        if attempted:
+            payload["attempted"] = attempted
         if mapped == "CHANGED":
             # The card disables the buttons from this field after a moved fact; the record stays open.
             payload["blocked_reason"] = str(plain)
@@ -350,8 +367,10 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Optional[Ctx] 
         return _refused("CSRF_REFUSED", why or "The request did not come from the Command Center page.")
 
     note = ""
+    expected_binding = None
     if isinstance(body, dict):
         note = str(body.get("note") or "")[:2000]
+        expected_binding = str(body.get("binding") or "") or None
     login = actor[8:] if actor.startswith("tailnet:") else actor
 
     try:
@@ -374,6 +393,7 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Optional[Ctx] 
             }}
         record = module.decide(
             store, request_id, ctx=operator_ctx, actor=login, decision=DECISION_VERBS[verb], note=note, now=now,
+            expected_binding=expected_binding,
         )
         return _decision_response(record)
     except Exception as exc:  # noqa: BLE001 — A's typed refusal is the contract

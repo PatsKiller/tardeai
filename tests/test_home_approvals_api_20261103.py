@@ -50,7 +50,7 @@ class FakeModule:
     def list_open(self, store, *, now, limit=100):
         return [r for r in store.records.values() if r.get("state") == "open"]
 
-    def decide(self, store, request_id, *, ctx, actor, decision, note="", now=None, executor=None, timeout_s=120.0):
+    def decide(self, store, request_id, *, ctx, actor, decision, note="", now=None, executor=None, timeout_s=120.0, expected_binding=None):
         self.calls.append({"id": request_id, "actor": actor, "decision": decision, "ctx": ctx, "note": note})
         record = store.records.get(request_id)
         if record is None:
@@ -260,7 +260,7 @@ def test_a_plain_sentence_from_the_store_is_returned_verbatim(monkeypatch):
             self.plain = plain
 
     class Module(FakeModule):
-        def decide(self, store, request_id, *, ctx, actor, decision, note="", **kw):
+        def decide(self, store, request_id, *, ctx, actor, decision, note="", expected_binding=None, **kw):
             raise PlainRefused("facts_moved", "This changed. The lead will re-ask.")
 
     fake = Module({"apr-1": _record()})
@@ -313,7 +313,7 @@ class _OutcomeModule(FakeModule):
         super().__init__({"apr-1": _record()})
         self._record = record
 
-    def decide(self, store, request_id, *, ctx, actor, decision, note="", **kw):
+    def decide(self, store, request_id, *, ctx, actor, decision, note="", expected_binding=None, **kw):
         return self._record
 
 
@@ -349,3 +349,57 @@ def test_an_uncertain_outcome_is_202_not_200(monkeypatch):
 def test_a_declined_decision_is_200_declined(monkeypatch):
     status, payload = _decide_with(monkeypatch, {"state": "declined", "result": None})
     assert status == 200 and payload["data"]["outcome"] == "declined"
+
+
+# ── A's second-round interface (cc5 at 43e147707) ──────────────────────────────
+
+def test_one_item_carries_the_card_binding(monkeypatch, store):
+    monkeypatch.setattr(store, "_binding_of", lambda record: "bind-" + record["id"], raising=False)
+    status, payload = api.handle("/api/v2/home/approvals/apr-1", "GET", ctx=_ctx(reader=True))
+    assert status == 200 and payload["data"]["binding"] == "bind-apr-1"
+
+
+def test_the_binding_is_passed_back_to_decide(store):
+    seen = {}
+    orig = store.decide
+
+    def spy(store_, request_id, *, ctx, actor, decision, note="", now=None, expected_binding=None, **kw):
+        seen["binding"] = expected_binding
+        return orig(store_, request_id, ctx=ctx, actor=actor, decision=decision, note=note, now=now)
+
+    store.decide = spy
+    api.handle("/api/v2/home/approvals/apr-1/approve", "POST", {"binding": "bind-1"}, ctx=_ctx())
+    assert seen["binding"] == "bind-1"
+
+
+def test_card_changed_is_409_changed(monkeypatch):
+    class M(FakeModule):
+        def decide(self, store, request_id, *, ctx, actor, decision, note="", expected_binding=None, **kw):
+            raise Refused("card_changed", "This changed. The lead will re-ask.")
+
+    fake = M({"apr-1": _record()})
+    monkeypatch.setattr(api, "_store_module", lambda: fake)
+    monkeypatch.setattr(api, "_store_handle", lambda module: module.store)
+    status, payload = api.handle("/api/v2/home/approvals/apr-1/approve", "POST", {}, ctx=_ctx())
+    assert status == 409 and payload["code"] == "CHANGED"
+
+
+def test_no_recorded_approval_maps_to_record_not_approved(monkeypatch):
+    class M(FakeModule):
+        def decide(self, store, request_id, *, ctx, actor, decision, note="", expected_binding=None, **kw):
+            raise Refused("no_recorded_approval", "No approved record was found, so nothing ran.")
+
+    fake = M({"apr-1": _record()})
+    monkeypatch.setattr(api, "_store_module", lambda: fake)
+    monkeypatch.setattr(api, "_store_handle", lambda module: module.store)
+    status, payload = api.handle("/api/v2/home/approvals/apr-1/approve", "POST", {}, ctx=_ctx())
+    assert status == 409 and payload["code"] == "RECORD_NOT_APPROVED"
+
+
+def test_timed_out_unconfirmed_is_202_uncertain(monkeypatch):
+    status, payload = _decide_with(monkeypatch, {
+        "state": "executing", "result": {"outcome": "timed_out_unconfirmed", "needs_reconciliation": True,
+                                         "plain": "The action did not confirm in time.",
+                                         "attempted": {"type": "merge_pr", "step_reached": "merge"}}})
+    assert status == 202 and payload["ok"] is True and payload["data"]["outcome"] == "uncertain"
+    assert payload["data"]["attempted"]["step_reached"] == "merge"
