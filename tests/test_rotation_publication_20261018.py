@@ -408,7 +408,10 @@ def test_source_asof_is_oldest_bound_input_clock_not_arbitrary_restamp(producer)
     assert datetime.fromisoformat(out['publication']['source_as_of'].replace('Z', '+00:00')) == oldest
     assert out['publication']['source_as_of'].endswith('Z')
     assert out['publication']['source_as_of_basis'] == 'oldest_required_position_or_account_timestamp'
-    assert out['publication']['coverage'] == {'required_positions': 2, 'dated_positions': 2, 'accounts': 2, 'dated_accounts': 2}
+    # day_precision_positions is part of the coverage contract: a date-only broker clock is accepted at day
+    # precision, and the publication says how many of the dated positions rest on that evidence.
+    assert out['publication']['coverage'] == {'required_positions': 2, 'dated_positions': 2,
+                                              'day_precision_positions': 0, 'accounts': 2, 'dated_accounts': 2}
 
 
 def test_missing_required_position_clock_withholds_even_when_another_clock_is_known(producer):
@@ -561,3 +564,22 @@ def test_calendar_failure_withholds_advice_but_keeps_neutral_market_data(actual_
     assert "freshness_calendar_unavailable" in result["publication"]["reasons"]
     assert result["research_rotation_ideas"] == []
     assert result["market_research"]["available"] is True
+
+
+def test_a_date_only_position_clock_is_accepted_at_day_precision_not_withheld(producer):
+    """The moomoo producer writes a plain date. Before the repair that made the book permanently UNAVAILABLE."""
+    from datetime import date
+
+    from lib.rotation_publication import project_summary, ready
+    run, ctx = producer
+    result = run()
+    row = ctx['holdings']['holdings'][0]
+    for field in ('broker_position_as_of_at', 'provider_observed_at', 'observation'):
+        row.pop(field, None)
+    row['broker_position_as_of'] = date.today().isoformat()
+    out = project_summary(result, ctx['holdings'])
+    publication = out['publication']
+    assert ready(out), publication
+    assert publication['coverage']['day_precision_positions'] >= 1
+    # Day precision resolves to the START of that date: never a fabricated time of day.
+    assert publication['source_as_of'].endswith('T00:00:00Z')
