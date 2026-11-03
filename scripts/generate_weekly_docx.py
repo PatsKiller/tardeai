@@ -373,8 +373,12 @@ def _write_lane_receipt(
         print(f"[weekly] lane receipt not written: {type(exc).__name__}: {exc}", file=sys.stderr)
 
 
-def _produce_week(args, report, stem, today) -> tuple[int, int, dict[str, int]]:
-    """Write the dated report and its exports. Returns (produced, attempted, skipped_reasons)."""
+def _produce_week(args, report, stem, today, counts: dict) -> None:
+    """Write the dated report and its exports, recording progress in ``counts``.
+
+    The counters live in the caller's dict and are updated as each artifact lands, so a run that fails
+    half-way still reports what it actually produced instead of 0/0 (cc2's #2527 review).
+    """
     from analyst_report_builder import save_report_json
     from report_export import export_report
 
@@ -384,23 +388,25 @@ def _produce_week(args, report, stem, today) -> tuple[int, int, dict[str, int]]:
     analyst_dir.mkdir(parents=True, exist_ok=True)
 
     save_report_json(report, stem=stem)
-    produced, attempted, skipped = 1, 1, {}
+    counts["produced"] = 1
+    counts["attempted"] = 1
+    skipped = counts["skipped"]
 
     if args.legacy:
-        attempted += 1
+        counts["attempted"] += 1
         conn = _get_conn()
         try:
             data = gather_weekly_data(conn)
             output = Path(args.output) if args.output else week_dir / f"weekly_{today}.docx"
             path = generate_docx(data, output)
             print(f"[weekly] Legacy DOCX: {path} ({path.stat().st_size / 1024:.1f} KB)")
-            produced += 1
+            counts["produced"] += 1
         finally:
             conn.close()
 
     formats = ["docx", "pdf"] if args.format == "all" else [args.format]
     for fmt in formats:
-        attempted += 1
+        counts["attempted"] += 1
         result = export_report(report, fmt, output_stem=stem)
         if result.get("ok"):
             dest = week_dir / result["filename"]
@@ -411,7 +417,7 @@ def _produce_week(args, report, stem, today) -> tuple[int, int, dict[str, int]]:
             except Exception:
                 dest = Path(result["path"])
             print(f"[weekly] Analyst {fmt.upper()}: {dest} ({result.get('size_kb')} KB)")
-            produced += 1
+            counts["produced"] += 1
         else:
             skipped[f"{fmt}_export_failed"] = skipped.get(f"{fmt}_export_failed", 0) + 1
             print(f"[weekly] Analyst {fmt.upper()} failed: {result.get('error')}", file=sys.stderr)
@@ -425,7 +431,6 @@ def _produce_week(args, report, stem, today) -> tuple[int, int, dict[str, int]]:
         )
     except Exception:
         pass
-    return produced, attempted, skipped
 
 
 def main():
@@ -444,25 +449,30 @@ def main():
         return
 
     started = datetime.now(timezone.utc)
-    produced = attempted = 0
-    skipped: dict[str, int] = {}
+    counts: dict = {"produced": 0, "attempted": 0, "skipped": {}}
     try:
         report = build_weekly_review()
         today = date.today()
         stem = f"weekly_review_{today.strftime('%Y%m%d')}"
-        produced, attempted, skipped = _produce_week(args, report, stem, today)
+        _produce_week(args, report, stem, today, counts)
     except Exception as exc:  # noqa: BLE001 - record the failed run, then keep the real error
         _write_lane_receipt(
             ok=False,
             started=started,
-            produced=produced,
-            attempted=attempted,
-            skipped=skipped,
+            produced=counts["produced"],
+            attempted=counts["attempted"],
+            skipped=counts["skipped"],
             error=f"{type(exc).__name__}: {exc}",
         )
         raise
-    _write_lane_receipt(ok=produced > 0, started=started, produced=produced, attempted=attempted, skipped=skipped)
+    # ok means the run produced its artifacts: the dated JSON AND every requested export. A run whose
+    # DOCX/PDF failed is not a success even though the JSON landed (cc2's #2527 BLOCK).
+    exports_failed = any(str(key).endswith("_export_failed") for key in counts["skipped"])
+    ok = counts["produced"] > 0 and not exports_failed
+    _write_lane_receipt(ok=ok, started=started, produced=counts["produced"],
+                        attempted=counts["attempted"], skipped=counts["skipped"])
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

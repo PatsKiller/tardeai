@@ -75,13 +75,38 @@ def test_a_real_run_writes_the_lane_receipt_with_ok_at(tmp_path, monkeypatch):
     assert doc["produced_count"] == 2 and doc["attempted_count"] == 2, doc  # dated JSON + docx export
 
 
-def test_a_failed_export_still_produces_the_report_and_records_the_skip(tmp_path, monkeypatch):
+def test_a_failed_export_fails_the_run_and_records_the_skip(tmp_path, monkeypatch):
+    """Revert the ok rule to produced>0 -> a week with no report artifact still reads LIVE (cc2 BLOCK)."""
     _stub_modules(monkeypatch, export=lambda report, fmt, output_stem: {"ok": False, "error": "pdf backend missing"})
     receipt = _run(monkeypatch, tmp_path, ["--format", "pdf"])
     doc = json.loads(receipt.read_text())
-    assert doc["status"] == "ok", "the dated JSON was still produced"
+    assert doc["status"] == "failed", "the requested export was not produced"
     assert doc["produced_count"] == 1 and doc["attempted_count"] == 2, doc
     assert doc["skipped_reasons"].get("pdf_export_failed") == 1, doc
+
+
+def test_a_run_whose_exports_all_fail_is_not_ok(tmp_path, monkeypatch):
+    """--format all with both exports failing produced no report artifact; ok_at must not advance."""
+    _stub_modules(monkeypatch, export=lambda report, fmt, output_stem: {"ok": False, "error": "backend missing"})
+    receipt = _run(monkeypatch, tmp_path, ["--format", "all"])
+    doc = json.loads(receipt.read_text())
+    assert doc["status"] == "failed", doc
+    assert doc["ok_at"] is None, doc
+    assert doc["produced_count"] == 1 and doc["attempted_count"] == 3, doc
+    assert doc["skipped_reasons"] == {"docx_export_failed": 1, "pdf_export_failed": 1}, doc
+
+
+def test_partial_counts_survive_an_export_exception(tmp_path, monkeypatch):
+    """An exception mid-run must not collapse the counters to 0/0 (cc2's non-blocking finding)."""
+    def boom(report, fmt, output_stem):
+        raise RuntimeError("exporter exploded")
+
+    _stub_modules(monkeypatch, export=boom)
+    with pytest.raises(RuntimeError):
+        _run(monkeypatch, tmp_path, ["--format", "all"])
+    doc = json.loads((tmp_path / "state/data/runtime/generate-weekly-docx_last.json").read_text())
+    assert doc["status"] == "failed" and doc["error"] == "RuntimeError", doc
+    assert doc["produced_count"] == 1 and doc["attempted_count"] == 2, doc
 
 
 def test_a_failed_run_writes_a_failed_receipt_and_keeps_the_error(tmp_path, monkeypatch):
