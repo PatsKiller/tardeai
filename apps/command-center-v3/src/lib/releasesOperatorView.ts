@@ -101,14 +101,26 @@ export function goingLive(prs: InFlightPr[]): StageGroup[] {
 }
 
 /** Block 2: only the changes where the OPERATOR is the one who must act. */
+/** Block 2: every row the SERVER marks as needing the operator — approvals AND the push-budget/authorization
+ *  decisions the spec names. cc3 review F5: filtering on 'approve' alone hid ten such rows the server had flagged. */
 export function needsYou(prs: InFlightPr[]): InFlightPr[] {
   return prs.filter(p => {
-    // The server decides who may act; fall back to the same rules only when an older payload omits them.
     const actions = p.operator_actions
-    if (actions && Array.isArray(actions.eligible)) return actions.eligible.includes('approve')
+    if (actions) return actions.required === true || (actions.eligible ?? []).includes('approve')
     return !p.is_draft && p.mergeable !== 'CONFLICTING' && !p.has_operator_merge
       && p.work?.review?.state === 'MERGE' && p.work?.ci?.state === 'GREEN'
   })
+}
+
+/** The one action a Needs-you card offers, and the words for it. Never offers an action the server did not list. */
+export function needsYouAction(p: InFlightPr): { kind: 'approve' | 'push'; label: string; effect: string } {
+  const eligible = p.operator_actions?.eligible ?? []
+  if (eligible.includes('approve')) {
+    return { kind: 'approve', label: 'Open the change and approve it →',
+      effect: 'If you say yes, it is queued for the next merge window; the host still has to promote it before it is live.' }
+  }
+  return { kind: 'push', label: 'Authorize the upload for this branch →',
+    effect: 'If you say yes, one fast-forward upload is allowed, bound to this exact version. Force-push stays refused.' }
 }
 
 /** Block 4: stuck, and whose step it is. The threshold is stated in the heading, never implied. */

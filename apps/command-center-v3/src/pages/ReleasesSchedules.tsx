@@ -20,7 +20,7 @@ import {
 } from '../lib/releasesSchedules'
 import OpsDeskFrame from '../components/OpsDeskFrame'
 import { IN_FLIGHT_PATH, normalizeCoordination, normalizeRows, type DeployInFlightWire, type InFlightPr } from '../lib/deployInFlight'
-import { goingLive, jobsLine, liveNow, needsYou, plainText, stuck } from '../lib/releasesOperatorView'
+import { goingLive, jobsLine, liveNow, needsYou, needsYouAction, plainText, stuck } from '../lib/releasesOperatorView'
 
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 14, minWidth: 0, display: 'grid', gap: 8 }
 const h2: CSSProperties = { margin: 0, fontSize: TYPE.md, fontWeight: 800, color: TOKENS.text[0] }
@@ -206,8 +206,9 @@ function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, fli
         <div key={p.number} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}`, paddingTop: 8 }}>
           <div style={{ fontSize: TYPE.base, color: TOKENS.text[0], fontWeight: 700 }}>{plainText(p.title)}</div>
           <div style={muted}>{plainText(p.work?.current_task ?? p.work?.owner, 'the agent that wrote it')} finished it and the checks passed.</div>
-          <div style={muted}>If you say yes, it is queued for the next merge window; the host still has to promote it before it is live.</div>
-          <a href={p.url} style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', color: TOKENS.primary }}>Open the change and approve it →</a>
+          <div style={muted}>{needsYouAction(p).effect}</div>
+          <a href={needsYouAction(p).kind === 'approve' ? p.url : '/system/releases?engineer=1'}
+            style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', color: TOKENS.primary }}>{needsYouAction(p).label}</a>
         </div>))}
     </section>
 

@@ -1,7 +1,7 @@
 // Releases & Schedules operator view: plain words, honest clocks, no machine identifiers.
 // Runs in the CC-v3 build:  node --experimental-strip-types src/lib/releasesOperatorView.test.ts
 import {
-  checkSentence, goingLive, jobsLine, liveNow, needsYou, plainReason, plainText, stuck,
+  checkSentence, goingLive, jobsLine, liveNow, needsYou, needsYouAction, plainReason, plainText, stuck,
 } from './releasesOperatorView.ts'
 import type { SectionView } from './releasesSchedules.ts'
 declare const process: { exit(code?: number): never }
@@ -75,6 +75,15 @@ check('an unreviewed change is not stuck', stuck([notRecorded]).length === 0)
 check('a change with requested changes is stuck', stuck([pr({ work: { ...pr().work, review: { state: 'CHANGES', reason: null } } })]).length === 1)
 check('a change with failed checks is stuck', stuck([pr({ work: { ...pr().work, ci: { state: 'RED', reason: null } } })]).length === 1)
 check('a named blocker is stuck', stuck([pr({ work: { ...pr().work, blockers: [{ text: 'waiting', owner: 'cc2', as_of: null }] } })]).length === 1)
+
+// cc3 review F5: the server flags approval AND push-budget decisions as the operator's; both belong in Needs you,
+// and the card must offer the action the server actually listed.
+const pushOnly = pr({ operator_actions: { required: true, eligible: ['push'], reason: 'upload limit', withheld: [] } })
+check('a push-budget decision is in Needs you', needsYou([pushOnly]).length === 1)
+check('a push-budget card offers authorising the upload', needsYouAction(pushOnly).kind === 'push' && /upload/i.test(needsYouAction(pushOnly).label))
+check('an approval card offers approving', needsYouAction(pr({ operator_actions: { required: true, eligible: ['approve'], reason: null } })).kind === 'approve')
+check('a row the server did not flag and did not list is not in Needs you',
+  needsYou([pr({ operator_actions: { required: false, eligible: [], reason: 'the agent has the next step' } })]).length === 0)
 
 console.log(`releasesOperatorView: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)
