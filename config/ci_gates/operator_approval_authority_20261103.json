@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "operator_approval_authority_20261103",
+  "files": [
+    "tests/test_operator_approval_authority_20261103.py"
+  ],
+  "comment": [
+    "Read-only installed current-main authority adapter, no execution entrypoints."
+  ]
+}

@@ -3,9 +3,21 @@ import { useCallback, useEffect, useState } from 'react'
 export const GOVERNANCE = '/api/v2/governance'
 export type Change = { id: string; section: string; before: string; after: string; kind: string; plain: string | null; reason: string | null; before_offset?: number | null; after_offset?: number | null }
 export type ReviewDocument = { text: string; base_text: string; source_sha: string; version: string; document_sha: string; source_verified: boolean; changes: Change[]; sections: string[]; prechecks: { sensitive_sections: string[]; removed_blocks: number; weakens_rules: string; policy_tests: { state?: string; reason?: string } } }
-export type ApprovalItem = { id: string; title: string; kind: string; proposed_by: string | null; created_at: string | null; source: string; governed_href: string | null; decision_mode: string; document?: ReviewDocument; document_sha?: string; version?: string; pr?: number | null }
+export type ApprovalItem = { id: string; title: string; kind: string; proposed_by: string | null; created_at: string | null; source: string; governed_href: string | null; decision_mode: string; document?: ReviewDocument; document_sha?: string; version?: string; pr?: number | null; source_sha?: string | null; policy_approval_command?: string | null; next_action?: string | null; next_actor?: string | null; pr_url?: string | null; source_as_of?: string | null; keep_retire_reason?: string | null; actionable?: boolean; stale?: boolean; source_refs?: string[]; source_gap?: string | null }
 export type Decision = { actor: string; item_id: string; decision: string; document_sha: string; at: string; policy_token?: string; comment?: string }
-export type ApprovalQueue = { items: ApprovalItem[]; pending_count: number | null; known_pending_count: number; complete: boolean; gaps: { source: string; reason: string }[]; as_of: string; recent: Decision[]; filtered_count: number; offset: number }
+export type ApprovalQueue = { items: ApprovalItem[]; actionable_items?: ApprovalItem[]; actionable_count?: number; evidence_blockers?: ApprovalItem[]; keep_retire?: ApprovalItem[]; pending_count: number | null; known_pending_count: number; complete: boolean; gaps: { source: string; reason: string }[]; as_of: string; recent: Decision[]; filtered_count: number; offset: number }
+/** The unfiltered, document-free member list is shared with the header and Work pipeline.
+ * Legacy responses remain paginated; a disagreement in a canonical response is a named gap. */
+export function approvalQueueView(queue: ApprovalQueue) {
+  const canonical = Array.isArray(queue.actionable_items)
+  const members = canonical ? queue.actionable_items! : queue.items
+  const mismatch = canonical && (queue.actionable_count !== members.length || queue.known_pending_count !== members.length
+    || (queue.complete && queue.pending_count !== members.length))
+  const gaps = mismatch ? [...queue.gaps, { source: 'actionable_queue', reason: 'The approval count does not match its member list. Refresh before deciding.' }] : queue.gaps
+  return { canonical, members, gaps, mismatch, knownCount: canonical ? members.length : queue.known_pending_count,
+    pendingCount: canonical ? (queue.complete && !mismatch ? members.length : null) : queue.pending_count }
+}
+
 export type Rule = { id: string; section: string; subsection?: string | null; number?: string | null; text: string; plain: string | null; status: string; reason: string | null; evidence: Record<string, unknown> }
 export type Policy = { source_sha: string; document_sha: string; sections: string[]; rules: Rule[]; counts: Record<string, number>; total_rules: number; section_total: number; offset: number; view?: string; policy_version?: string | null; last_reviewed?: string | null; counts_measured?: boolean; section_counts?: Record<string, number>; positions: { position: string; rule_id: string }[]; audit: { state: string; last_audit: string | null; scope?: string; mapped_count?: number; unmapped_count?: number; reviewer_called?: boolean; findings?: { title: string; detail: string }[]; reason?: string | null } }
 
@@ -38,19 +50,29 @@ export async function governanceRequest<T>(path: string, body?: unknown, signal?
   return envelope.data as T
 }
 
-export function useGovernance<T>(path: string) {
+export function useGovernance<T>(path: string, pollMs = 0) {
   const [data, setData] = useState<T | null>(null)
   const [error, setError] = useState('')
   const [revision, setRevision] = useState(0)
   const refresh = useCallback(() => setRevision(n => n + 1), [])
   useEffect(() => {
     const controller = new AbortController()
+    let timer: ReturnType<typeof setTimeout> | undefined
     setData(null); setError('')
-    governanceRequest<T>(path, undefined, controller.signal).then(setData).catch(err => {
-      if (!controller.signal.aborted) setError(err.message)
-    })
-    return () => controller.abort()
-  }, [path, revision])
+    const load = async () => {
+      try {
+        const latest = await governanceRequest<T>(path, undefined, controller.signal)
+        if (!controller.signal.aborted) { setData(latest); setError('') }
+      } catch (err) {
+        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'The latest evidence is unavailable.')
+      } finally {
+        // Schedule after completion so a slow source cannot accumulate overlapping requests.
+        if (!controller.signal.aborted && pollMs > 0) timer = setTimeout(load, Math.max(1000, pollMs))
+      }
+    }
+    void load()
+    return () => { controller.abort(); if (timer !== undefined) clearTimeout(timer) }
+  }, [path, revision, pollMs])
   return { data, error, refresh }
 }
 

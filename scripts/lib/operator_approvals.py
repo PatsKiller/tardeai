@@ -4,12 +4,14 @@ This module never executes a grant, activation, policy edit, shell command or mo
 Production writes require the separately approved operator_decisions authority row.
 All clocks and sources are injected in tests; GET projections never write state.
 """
+
 from __future__ import annotations
 
 import difflib
 import fcntl
 import hashlib
 import json
+import math
 import os
 import re
 import secrets
@@ -56,8 +58,9 @@ def iso(now: datetime) -> str:
 
 
 def digest(value) -> str:
-    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False,
-                                     separators=(",", ":")).encode()).hexdigest()
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
+    ).hexdigest()
 
 
 def _paragraphs(text: str) -> list[dict]:
@@ -75,14 +78,22 @@ def _paragraphs(text: str) -> list[dict]:
             if offset < 0:
                 raise Refused("DOCUMENT_PARSE_FAILED", 503)
             for start in range(0, max(len(line), 1), 240):
-                chunk = line[start:start + 240]
+                chunk = line[start : start + 240]
                 out.append({"section": section, "text": chunk, "offset": offset + start})
             cursor = offset + len(line)
     return out
 
 
-def document(text: str, *, source_sha: str, version: str = "", base_text: str = "",
-             annotations: dict | None = None, tests: dict | None = None, source_verified: bool = False) -> dict:
+def document(
+    text: str,
+    *,
+    source_sha: str,
+    version: str = "",
+    base_text: str = "",
+    annotations: dict | None = None,
+    tests: dict | None = None,
+    source_verified: bool = False,
+) -> dict:
     if not isinstance(text, str) or not text.strip() or len(text) + len(base_text) > MAX_DOCUMENT:
         raise Refused("DOCUMENT_UNAVAILABLE", 503)
     if not SHA.fullmatch(source_sha):
@@ -97,41 +108,121 @@ def document(text: str, *, source_sha: str, version: str = "", base_text: str = 
             block = after or before
             ident = "change_" + digest([len(changes), tag, before, after])[:24]
             note = (annotations or {}).get(ident) or {}
-            changes.append({"id": ident, "section": block["section"], "before": before["text"] if before else "",
-                            "after": after["text"] if after else "", "kind": "added" if after else "removed",
-                            "plain": note.get("plain"), "reason": note.get("reason"),
-                            "before_offset": before["offset"] if before else None,
-                            "after_offset": after["offset"] if after else None})
+            changes.append(
+                {
+                    "id": ident,
+                    "section": block["section"],
+                    "before": before["text"] if before else "",
+                    "after": after["text"] if after else "",
+                    "kind": "added" if after else "removed",
+                    "plain": note.get("plain"),
+                    "reason": note.get("reason"),
+                    "before_offset": before["offset"] if before else None,
+                    "after_offset": after["offset"] if after else None,
+                }
+            )
     # Every decision binds the base, text, commit, and explanatory metadata shown to the reader.
-    doc_sha = digest({"reader_format": 1, "text": text, "base_text": base_text, "source_sha": source_sha,
-                      "version": version, "annotations": annotations or {}})
+    doc_sha = digest(
+        {
+            "reader_format": 1,
+            "text": text,
+            "base_text": base_text,
+            "source_sha": source_sha,
+            "version": version,
+            "annotations": annotations or {},
+        }
+    )
     sections = list(dict.fromkeys(b["section"] for b in new + old))
-    sensitive = sorted({m.group(1) for change in changes
-                        if (m := re.match(r"(?:§\s*)?(0|2|17)(?:\s|[.·])", change["section"]))})
+    sensitive = sorted(
+        {m.group(1) for change in changes if (m := re.match(r"(?:§\s*)?(0|2|17)(?:\s|[.·])", change["section"]))}
+    )
     removed = sum(c["kind"] == "removed" for c in changes)
     test_proof = tests if isinstance(tests, dict) and tests.get("source_sha") == source_sha else None
-    return {"text": text, "base_text": base_text, "source_sha": source_sha, "version": version,
-            "document_sha": doc_sha, "changes": changes, "sections": sections, "source_verified": source_verified,
-            "prechecks": {"sensitive_sections": sensitive, "removed_blocks": removed,
-                          "weakens_rules": "REVIEW_REQUIRED" if removed else "NOT_ASSESSED",
-                          "policy_tests": test_proof or {"state": "UNKNOWN", "reason": "No test receipt for this commit"}}}
+    return {
+        "text": text,
+        "base_text": base_text,
+        "source_sha": source_sha,
+        "version": version,
+        "document_sha": doc_sha,
+        "changes": changes,
+        "sections": sections,
+        "source_verified": source_verified,
+        "prechecks": {
+            "sensitive_sections": sensitive,
+            "removed_blocks": removed,
+            "weakens_rules": "REVIEW_REQUIRED" if removed else "NOT_ASSESSED",
+            "policy_tests": test_proof or {"state": "UNKNOWN", "reason": "No test receipt for this commit"},
+        },
+    }
 
 
-def item(*, ident: str, kind: str, title: str, proposed_by: str | None, created_at: str | None,
-         doc: dict, source: str, pr: int | None = None, governed_href: str | None = None,
-         source_refs: list[str] | None = None) -> dict:
+def item(
+    *,
+    ident: str,
+    kind: str,
+    title: str,
+    proposed_by: str | None,
+    created_at: str | None,
+    doc: dict,
+    source: str,
+    pr: int | None = None,
+    governed_href: str | None = None,
+    source_refs: list[str] | None = None,
+) -> dict:
     if kind not in KINDS or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,160}", ident):
         raise Refused("INVALID_SOURCE_ITEM", 503)
     # Only known local UI destinations; source text never supplies an executable command or arbitrary URL.
-    href = governed_href if governed_href and governed_href.startswith(("/system/ops-controls", "/coordination", "/watch", "/trading?tab=Proposals", "/cio", "/conflicts/rules?proposal=")) and not governed_href.startswith("//") else None
-    return {"id": ident, "kind": kind, "title": title[:300], "proposed_by": proposed_by,
-            "created_at": created_at, "document": doc, "source": source, "pr": pr,
-            "source_refs": list(dict.fromkeys([source + ":" + ident] + (source_refs or []))),
-            "governed_href": href, "decision_mode": "GOVERNED_PATH" if kind in ("RELEASE", "SPEND", "ACTIVATE", "CONFLICT", "FINANCIAL") else "RECORD"}
+    href = (
+        governed_href
+        if governed_href
+        and governed_href.startswith(
+            (
+                "/system/ops-controls",
+                "/coordination",
+                "/releases",
+                "/watch",
+                "/trading?tab=Proposals",
+                "/cio",
+                "/conflicts/rules?proposal=",
+            )
+        )
+        and not governed_href.startswith("//")
+        else None
+    )
+    row = {
+        "id": ident,
+        "kind": kind,
+        "title": title[:300],
+        "proposed_by": proposed_by,
+        "created_at": created_at,
+        "document": doc,
+        "source": source,
+        "pr": pr,
+        "source_refs": list(dict.fromkeys([source + ":" + ident] + (source_refs or []))),
+        "governed_href": href,
+        "decision_mode": "GOVERNED_PATH"
+        if kind in ("RELEASE", "SPEND", "ACTIVATE", "CONFLICT", "FINANCIAL")
+        else "RECORD",
+    }
+    # This is display text for the operator, never an executed command or a recorded approval.
+    version, head = doc.get("version"), doc.get("source_sha")
+    if (
+        kind == "POLICY"
+        and doc.get("source_verified") is True
+        and type(pr) is int
+        and pr > 0
+        and isinstance(version, str)
+        and re.fullmatch(r"\d+\.\d+\.\d+", version)
+        and isinstance(head, str)
+        and SHA.fullmatch(head)
+    ):
+        row["source_sha"] = head
+        row["policy_approval_command"] = f"APPROVE_AGENTS_POLICY_{version.replace('.', '_')} {pr} {head}"
+    return row
 
 
 def queue_projection(sources: dict[str, Callable[[], list[dict]]], *, decisions: list[dict], now: datetime) -> dict:
-    rows, gaps, resolved = [], [], []
+    rows, gaps, resolved, keep_retire = [], [], [], []
     for name, load in sources.items():
         try:
             batch = load()
@@ -141,22 +232,34 @@ def queue_projection(sources: dict[str, Callable[[], list[dict]]], *, decisions:
                 # Items a source reconciled as already applied/superseded: never pending, never dropped.
                 if isinstance(batch.get("resolved"), list) and len(batch["resolved"]) <= 500:
                     resolved.extend(batch["resolved"])
+                candidates = batch.get("keep_retire", [])
+                if not isinstance(candidates, list) or len(candidates) > 500:
+                    raise Refused("SOURCE_BUDGET_EXCEEDED", 503)
+                keep_retire.extend(candidates)
                 batch = batch.get("rows")
             if not isinstance(batch, list) or len(batch) > 500:
                 raise Refused("SOURCE_BUDGET_EXCEEDED", 503)
+            for row in batch:
+                if row.get("source_gap") and not any(gap["source"] == name for gap in gaps):
+                    gaps.append({"source": name, "reason": str(row["source_gap"])[:160]})
             rows.extend(batch)
         except Exception as exc:  # a failed source never becomes a reassuring zero
             gaps.append({"source": name, "reason": exc.code if isinstance(exc, Refused) else type(exc).__name__})
+    keep_ids = {row["id"] for row in keep_retire}
+    all_rows = [*rows, *keep_retire]
     seen = set()
-    for row in rows:
+    for row in all_rows:
         if row["id"] in seen:
             raise Refused("DUPLICATE_APPROVAL_ID", 503)
         seen.add(row["id"])
     # Union only explicit authoritative references. Titles, symbols and account names are not identity.
     groups: list[list[dict]] = []
-    for row in rows:
-        overlap = [group for group in groups if set(row.get("source_refs") or []) &
-                   {ref for member in group for ref in member.get("source_refs") or []}]
+    for row in all_rows:
+        overlap = [
+            group
+            for group in groups
+            if set(row.get("source_refs") or []) & {ref for member in group for ref in member.get("source_refs") or []}
+        ]
         if not overlap:
             groups.append([row])
         else:
@@ -165,20 +268,40 @@ def queue_projection(sources: dict[str, Callable[[], list[dict]]], *, decisions:
                 merged.extend(group)
                 groups.remove(group)
             groups.append(merged)
-    rows = []
+    rows, keep_retire = [], []
     for group in groups:
-        group.sort(key=lambda r: (r["kind"] == "FINANCIAL", r["id"]))
+        # A current authoritative source keeps a shared entity active even if another source suggests retirement.
+        group.sort(key=lambda r: (r["id"] in keep_ids, r["kind"] == "FINANCIAL", r["id"]))
         primary = dict(group[0])
         primary["related_sources"] = [{"id": r["id"], "source": r["source"]} for r in group[1:]]
+        primary["source_refs"] = list(dict.fromkeys(ref for r in group for ref in r.get("source_refs") or []))
         primary["requires_governed_action"] = any(r["decision_mode"] == "GOVERNED_PATH" for r in group)
-        rows.append(primary)
+        (keep_retire if all(r["id"] in keep_ids for r in group) else rows).append(primary)
     recent = [r for r in decisions if r.get("event") == "DECIDED"]
     terminal = {(r["item_id"], r["document_sha"]) for r in recent}
-    pending = [r for r in rows if r["requires_governed_action"] or (r["id"], r["document"]["document_sha"]) not in terminal]
+    pending = [
+        r for r in rows if r["requires_governed_action"] or (r["id"], r["document"]["document_sha"]) not in terminal
+    ]
     pending.sort(key=lambda r: (r.get("created_at") or "9999", r["id"]))
-    return {"items": pending, "known_pending_count": len(pending), "pending_count": len(pending) if not gaps else None,
-            "complete": not gaps, "gaps": gaps, "as_of": iso(now), "recent": recent[-30:][::-1],
-            "resolved": sorted(resolved, key=lambda r: (r.get("created_at") or "9999", r["id"]))}
+    evidence = [
+        row for row in pending if row.get("actionable") is False or row.get("next_actor", "operator") != "operator"
+    ]
+    pending = [
+        row for row in pending if row.get("actionable") is not False and row.get("next_actor", "operator") == "operator"
+    ]
+    return {
+        "items": pending,
+        "known_pending_count": len(pending),
+        "pending_count": len(pending) if not gaps else None,
+        "complete": not gaps,
+        "gaps": gaps,
+        "as_of": iso(now),
+        "recent": recent[-30:][::-1],
+        "resolved": sorted(resolved, key=lambda r: (r.get("created_at") or "9999", r["id"])),
+        "keep_retire": sorted(keep_retire, key=lambda r: (r.get("created_at") or "9999", r["id"])),
+        "keep_retire_count": len(keep_retire),
+        "evidence_blockers": evidence,
+    }
 
 
 def writes_approved(registry: dict) -> bool:
@@ -190,11 +313,207 @@ def writes_approved(registry: dict) -> bool:
         store = row.get("store") or {}
         if not isinstance(store, dict):
             continue
-        if (row.get("id", row.get("domain")) == "operator_decisions" and store.get("file") == "governance/operator_decisions.jsonl"
-                and row.get("writer") == WRITER and approval.get("approved_by") == "operator"
-                and approval.get("approved_on") and approval.get("reference")):
+        if (
+            row.get("id", row.get("domain")) == "operator_decisions"
+            and store.get("file") == "governance/operator_decisions.jsonl"
+            and row.get("writer") == WRITER
+            and approval.get("approved_by") == "operator"
+            and approval.get("approved_on")
+            and approval.get("reference")
+        ):
             return True
     return False
+
+
+BUDGET_PRESENTATION_SUBTYPE = "market_risk_budget_presentation"
+BUDGET_PRESENTATION_EVENT = "BUDGET_PRESENTATION_DECISION"
+_HEX256 = re.compile(r"[0-9a-f]{64}\Z")
+
+
+def _budget_instant(value, code="BUDGET_SOURCE_UNAVAILABLE") -> datetime:
+    if not isinstance(value, str) or "T" not in value:
+        raise Refused(code, 400 if code in ("INVALID_INTENTIONAL_UNTIL", "BUDGET_BINDING_REQUIRED") else 503)
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise Refused(code, 400 if code in ("INVALID_INTENTIONAL_UNTIL", "BUDGET_BINDING_REQUIRED") else 503) from None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise Refused(code, 400 if code in ("INVALID_INTENTIONAL_UNTIL", "BUDGET_BINDING_REQUIRED") else 503)
+    return parsed.astimezone(timezone.utc)
+
+
+def _budget_z(value: datetime) -> str:
+    if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
+        raise Refused("OBSERVATION_CLOCK_UNAVAILABLE", 503)
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _budget_ident(value) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or value != value.strip()
+        or len(value) > 160
+        or any(ord(c) < 32 for c in value)
+    ):
+        raise Refused("BUDGET_IDENTITY_REQUIRED", 400)
+    return value
+
+
+def _budget_values(row: dict) -> dict:
+    if not isinstance(row, dict):
+        raise Refused("BUDGET_SOURCE_UNAVAILABLE", 503)
+    try:
+        scope, budget = _budget_ident(row.get("scope_id")), _budget_ident(row.get("budget"))
+    except Refused:
+        raise Refused("BUDGET_SOURCE_UNAVAILABLE", 503) from None
+    actual, limit = row.get("actual"), row.get("limit")
+    try:
+        valid_numbers = (
+            type(actual) in (int, float)
+            and type(limit) in (int, float)
+            and math.isfinite(actual)
+            and math.isfinite(limit)
+        )
+    except (OverflowError, ValueError):
+        valid_numbers = False
+    if not valid_numbers or type(row.get("breached")) is not bool:
+        raise Refused("BUDGET_SOURCE_UNAVAILABLE", 503)
+    unit, mode = row.get("unit"), row.get("source_mode")
+    if (
+        not isinstance(unit, str)
+        or not unit
+        or unit != unit.strip()
+        or len(unit) > 80
+        or not isinstance(mode, str)
+        or not mode
+        or mode != mode.strip()
+        or len(mode) > 80
+    ):
+        raise Refused("BUDGET_SOURCE_UNAVAILABLE", 503)
+    binding = row.get("source_binding")
+    if (
+        not isinstance(binding, dict)
+        or not isinstance(binding.get("sha256"), str)
+        or not _HEX256.fullmatch(binding["sha256"])
+    ):
+        raise Refused("BUDGET_SOURCE_UNAVAILABLE", 503)
+    return {
+        "subtype": BUDGET_PRESENTATION_SUBTYPE,
+        "scope_id": scope,
+        "budget": budget,
+        "source_mode": mode,
+        "snapshot_as_of": _budget_z(_budget_instant(binding.get("as_of"))),
+        "actual": float(actual),
+        "limit": float(limit),
+        "unit": unit,
+        "breached": row["breached"],
+        "owner_basis_hash": binding["sha256"],
+    }
+
+
+def budget_presentation_binding(row: dict) -> dict:
+    """Bind the presentation decision to canonical identity and the owner's measurement.
+
+    This envelope neither calculates risk nor replaces the owner's source hash.
+    It prevents matching observations from different scopes/modes sharing an ACK.
+    """
+    values = _budget_values(row)
+    encoded = json.dumps(values, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    return {"as_of": values["snapshot_as_of"], "sha256": hashlib.sha256(encoded.encode()).hexdigest()}
+
+
+def _budget_current(row: dict, scope: str, budget: str, now: datetime) -> dict:
+    values = _budget_values(row)
+    if values["scope_id"] != scope or values["budget"] != budget:
+        raise Refused("BUDGET_SOURCE_CHANGED", 409)
+    statuses = [row[key] for key in ("state", "source_status") if row.get(key) is not None]
+    healthy = {"OK", "MEASURED", "EVALUATED", "FRESH", "CURRENT"}
+    if (
+        _budget_instant(values["snapshot_as_of"]) > now
+        or row.get("stale") is True
+        or ("stale" in row and type(row["stale"]) is not bool)
+        or any(not isinstance(status, str) or status.upper() not in healthy for status in statuses)
+    ):
+        raise Refused("BUDGET_SOURCE_UNAVAILABLE", 503)
+    return {**values, "source_binding": budget_presentation_binding(row)}
+
+
+def budget_presentation_decisions(rows: list[dict], current_budgets: list[dict] | None, now: datetime) -> dict:
+    """Presentation history beside unchanged breach truth; latest decision wins.
+
+    Expiry or any observation/identity change makes the decision inactive. An old
+    longer decision never revives after a newer decision expires. No writes occur.
+    """
+    clock = _budget_instant(_budget_z(now))
+    if not isinstance(rows, list) or len(rows) > 100000:
+        raise Refused("LEDGER_READ_BUDGET_EXCEEDED", 503)
+    decisions = [
+        dict(row)
+        for row in rows
+        if isinstance(row, dict)
+        and row.get("event") == BUDGET_PRESENTATION_EVENT
+        and row.get("subtype") == BUDGET_PRESENTATION_SUBTYPE
+    ]
+    current = {}
+    for row in current_budgets or []:
+        key = (_budget_ident(row.get("scope_id")), _budget_ident(row.get("budget")))
+        if key in current:
+            raise Refused("BUDGET_SOURCE_AMBIGUOUS", 503)
+        current[key] = _budget_current(row, *key, clock)
+    latest = {(row.get("scope_id"), row.get("budget")): index for index, row in enumerate(decisions)}
+    history = []
+    for index, row in enumerate(decisions):
+        key = (row.get("scope_id"), row.get("budget"))
+        snapshot = current.get(key)
+        invalid = []
+        if latest[key] != index:
+            invalid.append("superseded")
+        if snapshot is None:
+            invalid.append("source_unavailable")
+        elif row.get("source_binding") != snapshot["source_binding"]:
+            invalid.append("source_changed")
+        if snapshot is not None and snapshot["breached"] is not True:
+            invalid.append("breach_cleared")
+        try:
+            until = _budget_instant(row.get("intentional_until"), "INVALID_INTENTIONAL_UNTIL")
+            if until <= clock:
+                invalid.append("expired")
+        except Refused:
+            invalid.append("invalid_expiry")
+        if (
+            row.get("effect") != "PRESENTATION_ONLY"
+            or not isinstance(row.get("actor"), str)
+            or not row["actor"].startswith("tailnet:")
+            or not isinstance(row.get("hash_self"), str)
+            or not _HEX256.fullmatch(row["hash_self"])
+            or digest({key: value for key, value in row.items() if key != "hash_self"}) != row["hash_self"]
+        ):
+            invalid.append("invalid_receipt")
+        history.append({**row, "active": not invalid, "inactive_reasons": invalid, "receipt": row.get("hash_self")})
+    items = []
+    for key, snapshot in sorted(current.items()):
+        prior = [record for record in history if (record.get("scope_id"), record.get("budget")) == key]
+        active = next((record for record in reversed(prior) if record["active"]), None)
+        items.append(
+            {
+                "scope_id": key[0],
+                "budget": key[1],
+                "breached": snapshot["breached"],
+                "active": active is not None,
+                "intentional_until": active["intentional_until"] if active else None,
+                "actor": active["actor"] if active else None,
+                "receipt": active["receipt"] if active else None,
+                "history": prior,
+            }
+        )
+    return {
+        "schema": "BudgetPresentationDecisions@v1",
+        "as_of": _budget_z(clock),
+        "complete": current_budgets is not None,
+        "items": items,
+        "history": history,
+    }
 
 
 class DecisionLedger:
@@ -203,6 +522,7 @@ class DecisionLedger:
     Hashes detect edits; operator attribution comes from the authenticated server context.
     This is not a cryptographic signature or an alternative to a passkey/grant.
     """
+
     def __init__(self, path: Path, *, approved: Callable[[], bool], clock: Callable[[], datetime] = utc_now):
         self.path, self.approved, self.clock = Path(path), approved, clock
 
@@ -233,7 +553,7 @@ class DecisionLedger:
             return self._read(file)
 
     @contextmanager
-    def _transaction(self):
+    def _transaction(self, *, utc_z: bool = False):
         if not self.approved():
             raise Refused("STORE_APPROVAL_PENDING", 503)
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -241,14 +561,18 @@ class DecisionLedger:
         with os.fdopen(fd, "a+", encoding="utf-8") as file:
             fcntl.flock(file, fcntl.LOCK_EX)
             rows = self._read(file)
+
             def append(row):
-                row = {**row, "at": iso(self.clock()), "hash_prev": rows[-1]["hash_self"] if rows else None}
+                observed_at = self.clock()
+                recorded_at = _budget_z(observed_at) if utc_z else iso(observed_at)
+                row = {**row, "at": recorded_at, "hash_prev": rows[-1]["hash_self"] if rows else None}
                 row["hash_self"] = digest(row)
                 file.write(json.dumps(row, sort_keys=True, ensure_ascii=False) + "\n")
                 file.flush()
                 os.fsync(file.fileno())
                 rows.append(row)
                 return row
+
             yield rows, append
 
     def start(self, actor: str, current: Callable[[], dict], expected_sha: str) -> dict:
@@ -256,8 +580,15 @@ class DecisionLedger:
             it = current()
             if it["document"]["document_sha"] != expected_sha:
                 raise Refused("DOCUMENT_CHANGED")
-            return append({"event": "READ_STARTED", "actor": actor, "item_id": it["id"],
-                           "document_sha": expected_sha, "review_id": "review_" + secrets.token_hex(16)})
+            return append(
+                {
+                    "event": "READ_STARTED",
+                    "actor": actor,
+                    "item_id": it["id"],
+                    "document_sha": expected_sha,
+                    "review_id": "review_" + secrets.token_hex(16),
+                }
+            )
 
     def _session(self, rows: list[dict], actor: str, review_id: str, it: dict, sha: str) -> dict:
         start = next((r for r in rows if r.get("event") == "READ_STARTED" and r.get("review_id") == review_id), None)
@@ -278,10 +609,23 @@ class DecisionLedger:
                 raise Refused("INVALID_READ_MARKER", 400)
             prior = [r for r in rows if r.get("review_id") == review and r.get("change_id") == ident]
             if phase == "read":
-                if not prior or prior[-1].get("phase") != "enter" or (self.clock() - datetime.fromisoformat(prior[-1]["at"])).total_seconds() < 3:
+                if (
+                    not prior
+                    or prior[-1].get("phase") != "enter"
+                    or (self.clock() - datetime.fromisoformat(prior[-1]["at"])).total_seconds() < 3
+                ):
                     raise Refused("CHANGE_NOT_READ")
-            return append({"event": "READ_MARKER", "actor": actor, "item_id": it["id"], "review_id": review,
-                           "document_sha": sha, "change_id": ident, "phase": phase})
+            return append(
+                {
+                    "event": "READ_MARKER",
+                    "actor": actor,
+                    "item_id": it["id"],
+                    "review_id": review,
+                    "document_sha": sha,
+                    "change_id": ident,
+                    "phase": phase,
+                }
+            )
 
     def decide(self, actor: str, current: Callable[[], dict], body: dict) -> dict:
         choice = body.get("decision")
@@ -301,10 +645,19 @@ class DecisionLedger:
             self._session(rows, actor, review, it, sha)
             for r in rows:
                 if r.get("event") == "DECIDED" and r.get("request_id") == request:
-                    if (r["actor"], r["item_id"], r["document_sha"], r["decision"], r["comment"]) == (actor, it["id"], sha, choice, comment):
+                    if (r["actor"], r["item_id"], r["document_sha"], r["decision"], r["comment"]) == (
+                        actor,
+                        it["id"],
+                        sha,
+                        choice,
+                        comment,
+                    ):
                         return r
                     raise Refused("IDEMPOTENCY_CONFLICT")
-            if any(r.get("event") == "DECIDED" and r.get("item_id") == it["id"] and r.get("document_sha") == sha for r in rows):
+            if any(
+                r.get("event") == "DECIDED" and r.get("item_id") == it["id"] and r.get("document_sha") == sha
+                for r in rows
+            ):
                 raise Refused("ALREADY_DECIDED")
             token = None
             if choice == "APPROVE":
@@ -315,14 +668,130 @@ class DecisionLedger:
                     raise Refused("CHANGES_UNREAD")
                 if it["kind"] == "POLICY":
                     version = it["document"]["version"]
-                    if (not it["document"].get("source_verified") or not re.fullmatch(r"\d+\.\d+\.\d+", version)
-                            or type(it.get("pr")) is not int or it["pr"] < 1):
+                    if (
+                        not it["document"].get("source_verified")
+                        or not re.fullmatch(r"\d+\.\d+\.\d+", version)
+                        or type(it.get("pr")) is not int
+                        or it["pr"] < 1
+                    ):
                         raise Refused("POLICY_BINDING_REQUIRED")
-                    token = f"APPROVE_AGENTS_POLICY_{version.replace('.', '_')} {it['pr']} {it['document']['source_sha']}"
-            return append({"event": "DECIDED", "actor": actor, "item_id": it["id"], "kind": it["kind"],
-                           "document_sha": sha, "source_sha": it["document"]["source_sha"], "review_id": review,
-                           "decision": choice, "comment": comment, "request_id": request, "policy_token": token,
-                           "effect": "RECORD_ONLY", "governed_href": it["governed_href"]})
+                    token = (
+                        f"APPROVE_AGENTS_POLICY_{version.replace('.', '_')} {it['pr']} {it['document']['source_sha']}"
+                    )
+            return append(
+                {
+                    "event": "DECIDED",
+                    "actor": actor,
+                    "item_id": it["id"],
+                    "kind": it["kind"],
+                    "document_sha": sha,
+                    "source_sha": it["document"]["source_sha"],
+                    "review_id": review,
+                    "decision": choice,
+                    "comment": comment,
+                    "request_id": request,
+                    "policy_token": token,
+                    "effect": "RECORD_ONLY",
+                    "governed_href": it["governed_href"],
+                }
+            )
+
+    def budget_presentation_decision(self, actor: str, current_budget: Callable[[], dict], body: dict) -> dict:
+        """Operator presentation ACK only; never a budget/risk/behavior write."""
+        if not isinstance(actor, str) or not actor.startswith("tailnet:"):
+            raise Refused("AGENT_CALLER_REFUSED", 403)
+        allowed = {
+            "subtype",
+            "action",
+            "scope_id",
+            "budget",
+            "source_binding",
+            "intentional_until",
+            "request_id",
+            "comment",
+            "dry_run",
+        }
+        if not isinstance(body, dict) or set(body) - allowed:
+            raise Refused("INVALID_PRESENTATION_FIELDS", 400)
+        if body.get("subtype") != BUDGET_PRESENTATION_SUBTYPE or body.get("action") != "intentional_until":
+            raise Refused("INVALID_PRESENTATION_ACTION", 400)
+        if type(body.get("dry_run", False)) is not bool:
+            raise Refused("INVALID_DRY_RUN", 400)
+        scope, budget = _budget_ident(body.get("scope_id")), _budget_ident(body.get("budget"))
+        request = body.get("request_id")
+        if not isinstance(request, str) or not re.fullmatch(r"[A-Za-z0-9_-]{8,80}", request):
+            raise Refused("REQUEST_ID_REQUIRED", 400)
+        comment = body.get("comment", "")
+        if not isinstance(comment, str) or len(comment) > 4000:
+            raise Refused("COMMENT_TOO_LONG", 400)
+        expiry = body.get("intentional_until")
+        if not isinstance(expiry, str) or not expiry.endswith("Z"):
+            raise Refused("INVALID_INTENTIONAL_UNTIL", 400)
+        until = _budget_instant(expiry, "INVALID_INTENTIONAL_UNTIL")
+        supplied = body.get("source_binding")
+        if (
+            not isinstance(supplied, dict)
+            or set(supplied) != {"as_of", "sha256"}
+            or not isinstance(supplied.get("sha256"), str)
+            or not _HEX256.fullmatch(supplied["sha256"])
+        ):
+            raise Refused("BUDGET_BINDING_REQUIRED", 400)
+        expected = {
+            "as_of": _budget_z(_budget_instant(supplied.get("as_of"), "BUDGET_BINDING_REQUIRED")),
+            "sha256": supplied["sha256"],
+        }
+
+        def prepare():
+            now = _budget_instant(_budget_z(self.clock()))
+            if until <= now:
+                raise Refused("INVALID_INTENTIONAL_UNTIL", 400)
+            snapshot = _budget_current(current_budget(), scope, budget, now)
+            if snapshot["source_binding"] != expected:
+                raise Refused("BUDGET_SOURCE_CHANGED", 409)
+            if snapshot["breached"] is not True:
+                raise Refused("BUDGET_NOT_BREACHED", 409)
+            return {
+                "event": BUDGET_PRESENTATION_EVENT,
+                "subtype": BUDGET_PRESENTATION_SUBTYPE,
+                "action": "intentional_until",
+                "effect": "PRESENTATION_ONLY",
+                "actor": actor,
+                "scope_id": scope,
+                "budget": budget,
+                "source_binding": snapshot["source_binding"],
+                "snapshot_as_of": snapshot["snapshot_as_of"],
+                "source_mode": snapshot["source_mode"],
+                "observed": {key: snapshot[key] for key in ("actual", "limit", "unit", "breached")},
+                "intentional_until": _budget_z(until),
+                "request_id": request,
+                "comment": comment,
+            }
+
+        def prior(rows, proposed):
+            for record in rows:
+                if record.get("event") == BUDGET_PRESENTATION_EVENT and record.get("request_id") == request:
+                    content = {
+                        key: value for key, value in record.items() if key not in ("at", "hash_prev", "hash_self")
+                    }
+                    if content != proposed:
+                        raise Refused("IDEMPOTENCY_CONFLICT")
+                    return record
+            return None
+
+        preview = prepare()  # Invalid/stale sources cannot even create an empty ledger file.
+        if body.get("dry_run", False):
+            existing = prior(self.rows(), preview)
+            return {
+                "dry_run": True,
+                "written": False,
+                "would_append": preview,
+                "would_replay": existing is not None,
+                "store_approved": bool(self.approved()),
+            }
+        with self._transaction(utc_z=True) as (rows, append):
+            proposed = prepare()  # Bind again inside the existing serialized ledger transaction.
+            existing = prior(rows, proposed)
+            return existing if existing is not None else append(proposed)
 
     def incident_decision(self, actor: str, body: dict) -> dict:
         """Operator acknowledge / close-as-won't-fix on an IncidentRecord@v1 (Ops → Incidents, 2026-10-27).
@@ -347,11 +816,25 @@ class DecisionLedger:
         with self._transaction() as (rows, append):
             for r in rows:
                 if r.get("event") == "INCIDENT_DECISION" and r.get("request_id") == request:
-                    if (r["actor"], r["item_id"], r["decision"], r["comment"]) == (actor, f"incident:{incident}", choice, comment):
+                    if (r["actor"], r["item_id"], r["decision"], r["comment"]) == (
+                        actor,
+                        f"incident:{incident}",
+                        choice,
+                        comment,
+                    ):
                         return r
                     raise Refused("IDEMPOTENCY_CONFLICT")
-            return append({"event": "INCIDENT_DECISION", "actor": actor, "item_id": f"incident:{incident}",
-                           "decision": choice, "comment": comment, "request_id": request, "effect": "RECORD_ONLY"})
+            return append(
+                {
+                    "event": "INCIDENT_DECISION",
+                    "actor": actor,
+                    "item_id": f"incident:{incident}",
+                    "decision": choice,
+                    "comment": comment,
+                    "request_id": request,
+                    "effect": "RECORD_ONLY",
+                }
+            )
 
     def feedback(self, actor: str, current_policy: Callable[[], dict], body: dict) -> dict:
         if body.get("position") not in ("AGREE", "QUESTION", "DISAGREE"):
@@ -374,28 +857,62 @@ class DecisionLedger:
             if body.get("document_sha") != policy["document_sha"]:
                 raise Refused("DOCUMENT_CHANGED")
             if add_section:
-                return append({"event": "RULE_FEEDBACK", "actor": actor, "document_sha": policy["document_sha"],
-                               "source_sha": policy["source_sha"], "rule_id": None,
-                               "section": title.strip(), "rule_text": "", "position": "DISAGREE",
-                               "comment": comment, "action": "add_section",
-                               "proposal_id": "feedback_" + secrets.token_hex(12), "effect": "PROPOSAL_ONLY"})
+                return append(
+                    {
+                        "event": "RULE_FEEDBACK",
+                        "actor": actor,
+                        "document_sha": policy["document_sha"],
+                        "source_sha": policy["source_sha"],
+                        "rule_id": None,
+                        "section": title.strip(),
+                        "rule_text": "",
+                        "position": "DISAGREE",
+                        "comment": comment,
+                        "action": "add_section",
+                        "proposal_id": "feedback_" + secrets.token_hex(12),
+                        "effect": "PROPOSAL_ONLY",
+                    }
+                )
             rule = next((r for r in policy["rules"] if r["id"] == body.get("rule_id")), None)
             if not rule:
                 raise Refused("RULE_UNAVAILABLE", 404)
-            return append({"event": "RULE_FEEDBACK", "actor": actor, "document_sha": policy["document_sha"],
-                           "source_sha": policy["source_sha"], "rule_id": rule["id"], "section": rule["section"],
-                           "rule_text": rule["text"], "position": body["position"], "comment": comment,
-                           "proposal_id": "feedback_" + secrets.token_hex(12), "effect": "PROPOSAL_ONLY"})
+            return append(
+                {
+                    "event": "RULE_FEEDBACK",
+                    "actor": actor,
+                    "document_sha": policy["document_sha"],
+                    "source_sha": policy["source_sha"],
+                    "rule_id": rule["id"],
+                    "section": rule["section"],
+                    "rule_text": rule["text"],
+                    "position": body["position"],
+                    "comment": comment,
+                    "proposal_id": "feedback_" + secrets.token_hex(12),
+                    "effect": "PROPOSAL_ONLY",
+                }
+            )
 
     def proposal_rows(self) -> list[dict]:
         out = []
         for row in self.rows():
             if row.get("event") == "AUDIT_FINDINGS":
                 for index, finding in enumerate(row["findings"]):
-                    doc = document(json.dumps(finding, ensure_ascii=False, indent=2), source_sha=row["source_sha"],
-                                   version=row["document_sha"])
-                    out.append(item(ident=f"audit:{row['audit_key']}:{index}", kind="FINDING", title=finding["title"],
-                                    proposed_by=row["actor"], created_at=row["at"], source="policy_enforcement_audit", doc=doc))
+                    doc = document(
+                        json.dumps(finding, ensure_ascii=False, indent=2),
+                        source_sha=row["source_sha"],
+                        version=row["document_sha"],
+                    )
+                    out.append(
+                        item(
+                            ident=f"audit:{row['audit_key']}:{index}",
+                            kind="FINDING",
+                            title=finding["title"],
+                            proposed_by=row["actor"],
+                            created_at=row["at"],
+                            source="policy_enforcement_audit",
+                            doc=doc,
+                        )
+                    )
                 continue
             if row.get("event") != "RULE_FEEDBACK" or row.get("position") != "DISAGREE":
                 continue
@@ -406,8 +923,17 @@ class DecisionLedger:
                 body = f"{row['section']}\n\n{row.get('rule_text') or ''}\n\nRequested change:\n{row['comment']}"
                 title = "Proposed rule change: " + row["section"]
             doc = document(body, source_sha=row["source_sha"], version=row["document_sha"])
-            out.append(item(ident=row["proposal_id"], kind="DESIGN", title=title,
-                            proposed_by=row["actor"], created_at=row["at"], source="operator_decisions", doc=doc))
+            out.append(
+                item(
+                    ident=row["proposal_id"],
+                    kind="DESIGN",
+                    title=title,
+                    proposed_by=row["actor"],
+                    created_at=row["at"],
+                    source="operator_decisions",
+                    doc=doc,
+                )
+            )
         return out
 
     def audit_findings(self, *, policy: dict, audit_key: str, findings: list[dict], evidence_refs: set[str]) -> dict:
@@ -417,21 +943,43 @@ class DecisionLedger:
         normalized = []
         for finding in findings:
             refs = finding.get("evidence_refs")
-            if (not isinstance(refs, list) or not refs or any(not isinstance(r, str) or r not in evidence_refs for r in refs)
-                    or not isinstance(finding.get("title"), str) or not isinstance(finding.get("detail"), str)):
+            if (
+                not isinstance(refs, list)
+                or not refs
+                or any(not isinstance(r, str) or r not in evidence_refs for r in refs)
+                or not isinstance(finding.get("title"), str)
+                or not isinstance(finding.get("detail"), str)
+            ):
                 raise Refused("UNSUPPORTED_AUDIT_FINDING", 400)
-            normalized.append({"title": finding["title"][:300], "detail": finding["detail"][:3000],
-                               "rule_id": str(finding.get("rule_id") or "")[:100], "evidence_refs": refs,
-                               "status": "PROPOSED", "auto_apply": False})
+            normalized.append(
+                {
+                    "title": finding["title"][:300],
+                    "detail": finding["detail"][:3000],
+                    "rule_id": str(finding.get("rule_id") or "")[:100],
+                    "evidence_refs": refs,
+                    "status": "PROPOSED",
+                    "auto_apply": False,
+                }
+            )
         with self._transaction() as (rows, append):
-            existing = next((r for r in rows if r.get("event") == "AUDIT_FINDINGS" and r.get("audit_key") == audit_key), None)
+            existing = next(
+                (r for r in rows if r.get("event") == "AUDIT_FINDINGS" and r.get("audit_key") == audit_key), None
+            )
             if existing:
                 if existing["document_sha"] != policy["document_sha"]:
                     raise Refused("AUDIT_IDENTITY_CONFLICT")
                 return existing
-            return append({"event": "AUDIT_FINDINGS", "actor": "audit:policy-enforcement-audit", "audit_key": audit_key,
-                           "document_sha": policy["document_sha"], "source_sha": policy["source_sha"],
-                           "findings": normalized, "effect": "PROPOSAL_ONLY"})
+            return append(
+                {
+                    "event": "AUDIT_FINDINGS",
+                    "actor": "audit:policy-enforcement-audit",
+                    "audit_key": audit_key,
+                    "document_sha": policy["document_sha"],
+                    "source_sha": policy["source_sha"],
+                    "findings": normalized,
+                    "effect": "PROPOSAL_ONLY",
+                }
+            )
 
 
 _LIST_ITEM = re.compile(r"^(?P<indent> {0,3})(?P<marker>[-*+]|\d{1,3}[.)])\s+(?P<body>\S.*)$")
@@ -558,8 +1106,12 @@ def _rule_items(text: str) -> list[dict]:
         if match and not match["indent"]:
             close()
             marker = match["marker"]
-            current = {"section": section, "subsection": subsection,
-                       "number": marker.rstrip(".)") if marker[0].isdigit() else None, "lines": [match["body"]]}
+            current = {
+                "section": section,
+                "subsection": subsection,
+                "number": marker.rstrip(".)") if marker[0].isdigit() else None,
+                "lines": [match["body"]],
+            }
             blank_run = 0
             continue
         if current is not None and (raw.startswith((" ", "\t")) or not blank_run):
@@ -600,9 +1152,16 @@ def policy_projection(text: str, *, source_sha: str, enforcement: dict | None = 
         elif same and proof.get("test_passed") and proof.get("test_receipt"):
             status = "ENFORCED" if proof.get("runtime_passed") and proof.get("runtime_receipt") else "TESTED"
         plain = next((meaning for anchor, meaning in PLAIN_RULES.items() if anchor in block["text"]), None)
-        rules.append({"id": key, **block, "plain": proof.get("plain") if same and proof.get("plain") else plain, "status": status,
-                      "evidence": proof if same else {},
-                      "reason": None if same else ("No evidence for this document version" if measured else "Audit not run")})
+        rules.append(
+            {
+                "id": key,
+                **block,
+                "plain": proof.get("plain") if same and proof.get("plain") else plain,
+                "status": status,
+                "evidence": proof if same else {},
+                "reason": None if same else ("No evidence for this document version" if measured else "Audit not run"),
+            }
+        )
     counts = {"RULES": len(rules)}
     for name in ("ENFORCED", "TESTED", "WRITTEN-only", "VIOLATED"):
         counts[name] = sum(r["status"] == name for r in rules) if measured or name == "WRITTEN-only" else None
@@ -615,17 +1174,27 @@ def policy_projection(text: str, *, source_sha: str, enforcement: dict | None = 
             section_status[rule["section"]] = rule["status"]
     version_match = _POLICY_VERSION.search(text)
     reviewed_match = _LAST_REVIEWED.search(text)
-    return {"document_sha": doc["document_sha"], "source_sha": source_sha, "sections": sections,
-            "section_counts": per_section, "section_status": section_status if measured else {},
-            "rules": rules, "counts": counts, "counts_measured": measured,
-            "policy_version": version_match.group(1) if version_match else (doc.get("version") or None),
-            "last_reviewed": reviewed_match.group(1) if reviewed_match else None,
-            "audit": {"state": "NOT_MEASURED", "last_audit": None, "last_run": None, "reason": AUDIT_NOT_RUN}}
+    return {
+        "document_sha": doc["document_sha"],
+        "source_sha": source_sha,
+        "sections": sections,
+        "section_counts": per_section,
+        "section_status": section_status if measured else {},
+        "rules": rules,
+        "counts": counts,
+        "counts_measured": measured,
+        "policy_version": version_match.group(1) if version_match else (doc.get("version") or None),
+        "last_reviewed": reviewed_match.group(1) if reviewed_match else None,
+        "audit": {"state": "NOT_MEASURED", "last_audit": None, "last_run": None, "reason": AUDIT_NOT_RUN},
+    }
 
 
 def unverified_audit(report: dict) -> dict:
     """An audit report exists but does not bind this exact policy version: name its run time, measure nothing."""
     when = report.get("as_of") if isinstance(report, dict) and isinstance(report.get("as_of"), str) else None
-    reason = ("The last enforcement audit run does not match the served policy version, so its results are not shown."
-              if when else AUDIT_NOT_RUN)
+    reason = (
+        "The last enforcement audit run does not match the served policy version, so its results are not shown."
+        if when
+        else AUDIT_NOT_RUN
+    )
     return {"state": "NOT_MEASURED", "last_audit": None, "last_run": when, "reason": reason}

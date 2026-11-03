@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "coordination_approval_source_20261103",
+  "files": [
+    "tests/test_coordination_approval_source_20261103.py"
+  ],
+  "comment": [
+    "Explicit coordinator questions join the shared operator approval queue without granting authority.",
+    "Exact-id resolution, public-field projection, missing/corrupt sources and read budgets."
+  ]
+}

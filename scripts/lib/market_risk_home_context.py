@@ -24,7 +24,7 @@ def number(value: Any) -> float | None:
         return None
     try:
         result = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
     return result if math.isfinite(result) else None
 
@@ -96,7 +96,9 @@ def active_extended_start(now: datetime) -> datetime | None:
 
 def budget_source_binding(row: dict, projection: dict) -> dict:
     """An exact observation binding for the existing operator decision route."""
-    payload = {key: row.get(key) for key in ("account_label", "budget", "actual", "limit", "unit")}
+    payload = {key: row.get(key) for key in ("scope_id", "budget", "actual", "limit", "unit")}
+    payload["source_mode"] = projection.get("mode") or "live"
+    payload["breached"] = row.get("breached", True)
     payload.update(actual=number(row.get("actual")), limit=number(row.get("limit")))
     payload["as_of"] = projection.get("as_of")
     return {
@@ -105,6 +107,77 @@ def budget_source_binding(row: dict, projection: dict) -> dict:
             json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()
         ).hexdigest(),
     }
+
+
+def with_budget_presentation(
+    context: dict, projection: dict, *, decision_rows: list | None = None, store_approved: bool = False, now: datetime
+) -> dict:
+    """Attach presentation history without changing measurements or breach truth.
+
+    Pure: None means the ledger could not be read; [] is a verified empty read.
+    The owner measurement binding is distinct from the operator POST envelope.
+    """
+    from scripts.lib import operator_approvals as approvals
+
+    budgets, current = [], []
+    observed = stamp(projection.get("as_of"))
+    source_valid = (
+        projection.get("state") == "evaluated"
+        and projection.get("stale", False) is False
+        and projection.get("mode") in (None, "live", "shadow")
+        and observed is not None
+        and observed <= now
+    )
+    complete = decision_rows is not None and source_valid
+    for source in context.get("budgets") or []:
+        row = {
+            **source,
+            "source_mode": projection.get("mode") or "live",
+            "source_status": projection.get("state") if source_valid else "UNAVAILABLE",
+            "stale": projection.get("stale", False),
+        }
+        row["source_binding"] = budget_source_binding(row, projection)
+        valid = False
+        try:
+            if row.get("presentation_source_valid", True) is not True:
+                raise approvals.Refused("BUDGET_SOURCE_UNAVAILABLE", 503)
+            normalized = approvals._budget_current(row, row.get("scope_id"), row.get("budget"), now)
+            row["presentation_binding"] = normalized["source_binding"]
+            current.append(row)
+            valid = True
+        except approvals.Refused:
+            row["presentation_binding"] = None
+            complete = False
+        available = valid and decision_rows is not None and store_approved is True and row.get("breached") is True
+        row["operator_decision"] = {
+            "state": "available" if available else "unavailable",
+            "requires_operator": True,
+            "subtype": approvals.BUDGET_PRESENTATION_SUBTYPE,
+            "action": "intentional_until",
+            "route": "/api/v2/governance/budget-presentation/decide" if available else "/ops/approvals",
+            "basis_route": "/api/v2/governance/budget-presentation",
+            "reason": "Presentation acknowledgment only; the measured breach remains visible."
+            if available
+            else "A current canonical measurement and an approved readable decision store are required.",
+        }
+        if not available:
+            row["operator_decision"]["remediation"] = {
+                "key": "HOMEV007:budget_presentation_decision",
+                "action": "Restore the current measurement and the registered read-only decision store.",
+            }
+        budgets.append(row)
+    try:
+        readback = approvals.budget_presentation_decisions(decision_rows or [], current, now)
+        readback["complete"] = complete
+    except approvals.Refused:
+        readback = approvals.budget_presentation_decisions(decision_rows or [], None, now)
+        for row in budgets:
+            row["operator_decision"]["state"] = "unavailable"
+            row["operator_decision"]["route"] = "/ops/approvals"
+    by_key = {(item["scope_id"], item["budget"]): item for item in readback["items"]}
+    for row in budgets:
+        row["budget_presentation_decision"] = by_key.get((row.get("scope_id"), row.get("budget")))
+    return {**context, "budgets": budgets, "budget_presentation_decisions": readback}
 
 
 def previous_session_date(session_date: Any) -> str | None:
@@ -621,6 +694,12 @@ def build(
                 **row,
                 "actual": actual,
                 "limit": limit,
+                "presentation_source_valid": (
+                    type(row.get("actual")) in (int, float)
+                    and type(row.get("limit")) in (int, float)
+                    and actual is not None
+                    and limit is not None
+                ),
                 "source_binding": budget_source_binding(row, projection),
                 "plain_breach": (
                     f"{label} is above its recorded limit"

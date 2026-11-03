@@ -1,4 +1,5 @@
 """Exact-version reviews, actor/CSRF checks, source gaps and no authority escalation."""
+
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -15,15 +16,33 @@ SHA = "a" * 40
 @pytest.fixture
 def rig(tmp_path):
     clock = [NOW]
-    row = c.item(ident="policy-42", kind="POLICY", title="Policy amendment", proposed_by="worker",
-                 created_at=NOW.isoformat(), source="fixture", pr=42,
-                 doc=c.document("# 0 · Rules\n\nNever bypass a denial.\n\n# 28 · Operations\n\nRead every change.",
-                                source_sha=SHA, version="20.2.0", source_verified=True))
+    row = c.item(
+        ident="policy-42",
+        kind="POLICY",
+        title="Policy amendment",
+        proposed_by="worker",
+        created_at=NOW.isoformat(),
+        source="fixture",
+        pr=42,
+        doc=c.document(
+            "# 0 · Rules\n\nNever bypass a denial.\n\n# 28 · Operations\n\nRead every change.",
+            source_sha=SHA,
+            version="20.2.0",
+            source_verified=True,
+        ),
+    )
     ledger = c.DecisionLedger(tmp_path / "ledger.jsonl", approved=lambda: True, clock=lambda: clock[0])
-    ctx = api.Ctx(principal=lambda: "tailnet:operator@example.test", listener=lambda: "serve_proxy",
-                  csrf=lambda m, p: (True, ""), allowed_logins=frozenset({"operator@example.test"}),
-                  sources={"fixture": lambda: [row]}, ledger=ledger, policy=lambda: {}, clock=lambda: clock[0],
-                  can_read=lambda: True)
+    ctx = api.Ctx(
+        principal=lambda: "tailnet:operator@example.test",
+        listener=lambda: "serve_proxy",
+        csrf=lambda m, p: (True, ""),
+        allowed_logins=frozenset({"operator@example.test"}),
+        sources={"fixture": lambda: [row]},
+        ledger=ledger,
+        policy=lambda: {},
+        clock=lambda: clock[0],
+        can_read=lambda: True,
+    )
     return ctx, row, clock
 
 
@@ -32,8 +51,13 @@ def start(ctx, row):
 
 
 def decision(row, review, **extra):
-    return {"document_sha": row["document"]["document_sha"], "review_id": review["review_id"],
-            "decision": "APPROVE", "request_id": "request_123456", **extra}
+    return {
+        "document_sha": row["document"]["document_sha"],
+        "review_id": review["review_id"],
+        "decision": "APPROVE",
+        "request_id": "request_123456",
+        **extra,
+    }
 
 
 def read_all(ctx, row, clock, review):
@@ -63,13 +87,25 @@ def test_unread_changes_refused_and_no_decision_written(rig):
     assert not any(r["event"] == "DECIDED" for r in ctx.ledger.rows())
 
 
-@pytest.mark.parametrize("actor,listener", [("service-token", "serve_proxy"), ("tailnet:operator@example.test", "loopback"),
-                                            ("tailnet:stranger@example.test", "serve_proxy"), ("codex", "serve_proxy"), ("", "serve_proxy")])
+@pytest.mark.parametrize(
+    "actor,listener",
+    [
+        ("service-token", "serve_proxy"),
+        ("tailnet:operator@example.test", "loopback"),
+        ("tailnet:stranger@example.test", "serve_proxy"),
+        ("codex", "serve_proxy"),
+        ("", "serve_proxy"),
+    ],
+)
 def test_agents_and_forged_body_actor_cannot_decide(rig, actor, listener):
     ctx, row, _ = rig
     ctx.principal, ctx.listener = lambda: actor, lambda: listener
-    status, data = api.handle(api.PREFIX + "/approvals/policy-42/decide", "POST",
-                              {"actor": "tailnet:operator@example.test", "decision": "APPROVE"}, ctx=ctx)
+    status, data = api.handle(
+        api.PREFIX + "/approvals/policy-42/decide",
+        "POST",
+        {"actor": "tailnet:operator@example.test", "decision": "APPROVE"},
+        ctx=ctx,
+    )
     assert status == 403 and data["error"] == "AGENT_CALLER_REFUSED"
     assert not ctx.ledger.path.exists()
 
@@ -93,8 +129,10 @@ def test_get_does_not_create_ledger_or_embed_whole_documents(rig):
 
 def test_source_failure_is_unknown_count_and_preserves_known_rows(rig):
     ctx, _, _ = rig
+
     def broken():
         raise ValueError("do not expose raw error contents")
+
     ctx.sources["missing"] = broken
     data = api.queue(ctx)
     assert data["pending_count"] is None and data["known_pending_count"] == 1
@@ -172,11 +210,15 @@ def test_simultaneous_decisions_have_only_one_winner(rig):
     ctx, row, clock = rig
     review = start(ctx, row)
     read_all(ctx, row, clock, review)
+
     def decide(i):
         try:
-            return ctx.ledger.decide(ctx.principal(), lambda: row, decision(row, review, request_id=f"request_{i:08}"))["event"]
+            return ctx.ledger.decide(ctx.principal(), lambda: row, decision(row, review, request_id=f"request_{i:08}"))[
+                "event"
+            ]
         except c.Refused as exc:
             return exc.code
+
     with ThreadPoolExecutor(max_workers=2) as pool:
         outcomes = list(pool.map(decide, (1, 2)))
     assert sorted(outcomes) == ["ALREADY_DECIDED", "DECIDED"]
@@ -198,8 +240,18 @@ def test_build_permission_cannot_enable_new_store(rig):
         start(ctx, row)
     assert not ctx.ledger.path.exists()
     assert not c.writes_approved({"proposed_domains": [{"id": "operator_decisions"}]})
-    assert c.writes_approved({"domains": [{"id": "operator_decisions", "store": {"file": "governance/operator_decisions.jsonl"}, "writer": c.WRITER,
-                                           "approval": {"approved_by": "operator", "approved_on": "2032-04-12", "reference": "exact sign-off"}}]})
+    assert c.writes_approved(
+        {
+            "domains": [
+                {
+                    "id": "operator_decisions",
+                    "store": {"file": "governance/operator_decisions.jsonl"},
+                    "writer": c.WRITER,
+                    "approval": {"approved_by": "operator", "approved_on": "2032-04-12", "reference": "exact sign-off"},
+                }
+            ]
+        }
+    )
 
 
 def test_removals_require_reading_and_sensitive_sections_are_flagged():
@@ -214,7 +266,10 @@ def test_policy_no_evidence_is_never_enforced():
     assert policy["counts"]["WRITTEN-only"] == len(policy["rules"])
     rule = policy["rules"][-1]["id"]
     forged = {rule: {"document_sha": "stale", "test_passed": True, "runtime_passed": True}}
-    assert all(r["status"] == "WRITTEN-only" for r in c.policy_projection("# 0 · Rules\n\nNever delete.", source_sha=SHA, enforcement=forged)["rules"])
+    assert all(
+        r["status"] == "WRITTEN-only"
+        for r in c.policy_projection("# 0 · Rules\n\nNever delete.", source_sha=SHA, enforcement=forged)["rules"]
+    )
 
 
 def test_policy_sections_ordered_like_agents_chapters_not_document_preamble():
@@ -246,8 +301,16 @@ def test_policy_sections_ordered_like_agents_chapters_not_document_preamble():
 
 def test_explicit_ref_dedup_preserves_pending_governed_items(rig):
     ctx, row, _ = rig
-    financial = c.item(ident="financial:action_queue:7", kind="FINANCIAL", title=row["title"], proposed_by=None,
-                       created_at=None, source="action_queue", doc=row["document"], source_refs=["action_queue:7"])
+    financial = c.item(
+        ident="financial:action_queue:7",
+        kind="FINANCIAL",
+        title=row["title"],
+        proposed_by=None,
+        created_at=None,
+        source="action_queue",
+        doc=row["document"],
+        source_refs=["action_queue:7"],
+    )
     row["source_refs"].append("action_queue:7")
     ctx.sources["finance"] = lambda: [financial]
     data = api.queue(ctx)
@@ -273,8 +336,12 @@ def test_rejection_of_trade_review_does_not_hide_actual_pending_source(rig):
 def test_rule_disagreement_becomes_proposal_without_changing_policy(rig):
     ctx, _, _ = rig
     policy = c.policy_projection("# 0 · Rules\n\nNever delete.", source_sha=SHA)
-    body = {"position": "DISAGREE", "comment": "Please clarify the cleanup exception.",
-            "document_sha": policy["document_sha"], "rule_id": policy["rules"][-1]["id"]}
+    body = {
+        "position": "DISAGREE",
+        "comment": "Please clarify the cleanup exception.",
+        "document_sha": policy["document_sha"],
+        "rule_id": policy["rules"][-1]["id"],
+    }
     before = repr(policy)
     result = ctx.ledger.feedback(ctx.principal(), lambda: policy, body)
     assert result["effect"] == "PROPOSAL_ONLY" and repr(policy) == before
@@ -288,8 +355,13 @@ def test_add_section_becomes_proposal_without_rule_id(rig):
     ctx, _, _ = rig
     policy = c.policy_projection("# 0 · Rules\n\nNever delete.", source_sha=SHA)
     before = repr(policy)
-    body = {"position": "DISAGREE", "action": "add_section", "section_title": "29 · Observability",
-            "comment": "Add a section on alert ownership and runbooks.", "document_sha": policy["document_sha"]}
+    body = {
+        "position": "DISAGREE",
+        "action": "add_section",
+        "section_title": "29 · Observability",
+        "comment": "Add a section on alert ownership and runbooks.",
+        "document_sha": policy["document_sha"],
+    }
     result = ctx.ledger.feedback(ctx.principal(), lambda: policy, body)
     assert result["effect"] == "PROPOSAL_ONLY" and result["action"] == "add_section"
     assert result["section"] == "29 · Observability" and result.get("rule_id") is None
@@ -323,14 +395,23 @@ def test_actual_rulebook_before_after_pair_fits_and_offsets_name_exact_changed_t
     assert additions
     for change in additions:
         offset = change["after_offset"]
-        assert updated[offset:offset + len(change["after"])] == change["after"]
+        assert updated[offset : offset + len(change["after"])] == change["after"]
 
 
 def test_audit_proposals_cannot_embed_a_decision_or_invent_evidence(rig):
     ctx, _, _ = rig
     policy = c.policy_projection("# 0 · Rules\n\nNever delete.", source_sha=SHA)
-    finding = {"title": "Review cleanup evidence", "detail": "No receipt was supplied.", "rule_id": "rule", "evidence_refs": ["receipt:1"], "decision": "APPROVE", "auto_apply": True}
-    event = ctx.ledger.audit_findings(policy=policy, audit_key="c" * 40, findings=[finding], evidence_refs={"receipt:1"})
+    finding = {
+        "title": "Review cleanup evidence",
+        "detail": "No receipt was supplied.",
+        "rule_id": "rule",
+        "evidence_refs": ["receipt:1"],
+        "decision": "APPROVE",
+        "auto_apply": True,
+    }
+    event = ctx.ledger.audit_findings(
+        policy=policy, audit_key="c" * 40, findings=[finding], evidence_refs={"receipt:1"}
+    )
     assert event["event"] == "AUDIT_FINDINGS" and event["effect"] == "PROPOSAL_ONLY"
     assert "decision" not in event["findings"][0] and event["findings"][0]["auto_apply"] is False
     assert ctx.ledger.proposal_rows()[0]["kind"] == "FINDING"
@@ -342,10 +423,23 @@ def test_financial_adapter_accepts_real_database_clock_types_without_losing_queu
     import sys
     import types
     from decimal import Decimal
+
     module = types.ModuleType("scripts.lib.cio_truth")
-    module.financial_queue_items = lambda **kwargs: {"complete": True, "items": [{"source_id": "7", "canonical_entity_id": "action_queue:7",
-        "source": "action_queue", "source_refs": [{"source": "action_queue", "id": "7"}], "kind": "actions", "title": "Review fixture",
-        "created_at": NOW, "action": {"amount": Decimal("12.34")}}]}
+    module.financial_queue_items = lambda **kwargs: {
+        "complete": True,
+        "items": [
+            {
+                "source_id": "7",
+                "canonical_entity_id": "action_queue:7",
+                "source": "action_queue",
+                "source_refs": [{"source": "action_queue", "id": "7"}],
+                "kind": "actions",
+                "title": "Review fixture",
+                "created_at": NOW,
+                "action": {"amount": Decimal("12.34")},
+            }
+        ],
+    }
     monkeypatch.setitem(sys.modules, "scripts.lib.cio_truth", module)
     result = api._default_sources(Path(__file__).resolve().parents[1])["financial_queues"]()
     assert result["gap"] is None and result["rows"][0]["created_at"] == NOW.isoformat()
@@ -355,9 +449,13 @@ def test_financial_adapter_accepts_real_database_clock_types_without_losing_queu
 
 def test_author_explanations_bind_exact_pr_head_and_reset_review_hash():
     import json
+
     doc = c.document("A proposed rule.", source_sha=SHA)
     ident = doc["changes"][0]["id"]
-    notes = {"head_sha": SHA, "annotations": {ident: {"plain": "You review the proposal.", "reason": "A prior change lacked review."}}}
+    notes = {
+        "head_sha": SHA,
+        "annotations": {ident: {"plain": "You review the proposal.", "reason": "A prior change lacked review."}},
+    }
     pr = {"body": "```approval-reader-notes\n" + json.dumps(notes) + "\n```"}
     annotations = api.reader_annotations(pr, doc)
     updated = c.document("A proposed rule.", source_sha=SHA, annotations=annotations)
@@ -370,20 +468,32 @@ def test_author_explanations_bind_exact_pr_head_and_reset_review_hash():
 def _policy_repository(root):
     import os
     import subprocess
+
     root.mkdir()
     subprocess.run(["git", "init", "-q", "-b", "main", str(root)], check=True)
-    env = {**os.environ, "GIT_AUTHOR_NAME": "Fixture", "GIT_AUTHOR_EMAIL": "fixture@example.test",
-           "GIT_COMMITTER_NAME": "Fixture", "GIT_COMMITTER_EMAIL": "fixture@example.test",
-           "GIT_AUTHOR_DATE": "2032-04-12T14:00:00Z", "GIT_COMMITTER_DATE": "2032-04-12T14:00:00Z"}
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "Fixture",
+        "GIT_AUTHOR_EMAIL": "fixture@example.test",
+        "GIT_COMMITTER_NAME": "Fixture",
+        "GIT_COMMITTER_EMAIL": "fixture@example.test",
+        "GIT_AUTHOR_DATE": "2032-04-12T14:00:00Z",
+        "GIT_COMMITTER_DATE": "2032-04-12T14:00:00Z",
+    }
+
     def write(text, parent=None):
         def git(*args, data=None):
-            return subprocess.run(["git", "-C", str(root), *args], input=data, text=True, capture_output=True, check=True, env=env).stdout.strip()
+            return subprocess.run(
+                ["git", "-C", str(root), *args], input=data, text=True, capture_output=True, check=True, env=env
+            ).stdout.strip()
+
         blob = git("hash-object", "-w", "--stdin", data=text)
         tree = git("mktree", data=f"100644 blob {blob}\tAGENTS.md\n")
         args = ["commit-tree", tree, "-m", "fixture policy"] + (["-p", parent] if parent else [])
         commit = git(*args)
         git("update-ref", "refs/heads/main", commit)
         return commit
+
     return write
 
 
@@ -393,7 +503,8 @@ def test_packed_release_binds_its_own_commit_without_git_or_env_override(tmp_pat
     old_text = "Policy-Version: 20.1.0\n\n# 0 · Rules\n\nNever bypass a denial.\n"
     original = write(old_text)
     newer = write(old_text.replace("20.1.0", "20.2.0"), original)
-    release = repository / "packed-release"; release.mkdir()
+    release = repository / "packed-release"
+    release.mkdir()
     (release / "SOURCE_COMMIT").write_text(original)
     (release / "BUILD_SHA").write_text(original)
     (release / "AGENTS.md").write_text(old_text)
@@ -410,7 +521,8 @@ def test_packed_release_stamp_or_policy_disagreement_is_reported_not_repaired(tm
     write = _policy_repository(repository)
     text = "Policy-Version: 20.1.0\n\n# 0 · Rules\n\nNever bypass.\n"
     commit = write(text)
-    release = tmp_path / "release"; release.mkdir()
+    release = tmp_path / "release"
+    release.mkdir()
     (release / "SOURCE_COMMIT").write_text(commit)
     (release / "BUILD_SHA").write_text("f" * 40)
     (release / "AGENTS.md").write_text(text)
@@ -429,14 +541,33 @@ def test_w10_adapter_uses_durable_default_and_opaque_ids_with_real_watch_link(mo
     import sys
     import types
     from urllib.parse import urlparse, parse_qs
-    package = types.ModuleType("scripts.lib.conflicts"); package.__path__ = []
+
+    package = types.ModuleType("scripts.lib.conflicts")
+    package.__path__ = []
     module = types.ModuleType("scripts.lib.conflicts.api")
     key = "security:guid:U0:source:Schwab Rollover IRA / Research & ops"
+
     def read(**kwargs):
         assert kwargs == {"limit": 200}  # code artifacts must not replace W10's canonical state root
-        return {"gap": None, "total": 1, "rows": [{"id": key, "title": "Review source disagreement", "proposed_by": "conflict engine",
-            "created_at": NOW.isoformat(), "document": {"text": "Both source versions and their clear condition.", "version": "1", "source_sha": "d" * 64},
-            "governed_href": "/v3/watch?conflict=" + key}]}
+        return {
+            "gap": None,
+            "total": 1,
+            "rows": [
+                {
+                    "id": key,
+                    "title": "Review source disagreement",
+                    "proposed_by": "conflict engine",
+                    "created_at": NOW.isoformat(),
+                    "document": {
+                        "text": "Both source versions and their clear condition.",
+                        "version": "1",
+                        "source_sha": "d" * 64,
+                    },
+                    "governed_href": "/v3/watch?conflict=" + key,
+                }
+            ],
+        }
+
     module.approval_rows = read
     monkeypatch.setitem(sys.modules, "scripts.lib.conflicts", package)
     monkeypatch.setitem(sys.modules, "scripts.lib.conflicts.api", module)
@@ -454,34 +585,60 @@ def test_encoded_item_ids_resolve_for_read_and_open(rig):
     row["id"] = "policy:42"
     status, data = api.handle(api.PREFIX + "/approvals/policy%3A42", "GET", ctx=ctx)
     assert status == 200 and data["data"]["id"] == "policy:42"
-    status, data = api.handle(api.PREFIX + "/approvals/policy%3A42/open", "POST",
-                              {"document_sha": row["document"]["document_sha"]}, ctx=ctx)
+    status, data = api.handle(
+        api.PREFIX + "/approvals/policy%3A42/open", "POST", {"document_sha": row["document"]["document_sha"]}, ctx=ctx
+    )
     assert status == 200 and data["data"]["review_id"]
 
 
 def _rule_proposal_store(root, monkeypatch, *, pending=("rp-pending1",), decided=("rp-done1",)):
     from scripts.lib.conflicts import proposals as rp
+
     monkeypatch.setattr(rp, "default_root", lambda: root)
     store = rp.ProposalStore(root)
     for ident in (*pending, *decided):
-        store.append({"event": "proposal_created", "at": "2032-04-12T13:00:00Z", "proposal_id": ident,
-                      "proposal": {"proposal_id": ident, "signature": "ups-" + ident, "summary": "desk says FOO_BAR",
-                                   "plain_rule": "Treat FOO BAR as WATCH.", "tier": "T4", "never_auto": False,
-                                   "model": {"provider": "grok"}, "created_at": "2032-04-12T13:00:00Z",
-                                   "facts_sha256": "f" * 64}})
+        store.append(
+            {
+                "event": "proposal_created",
+                "at": "2032-04-12T13:00:00Z",
+                "proposal_id": ident,
+                "proposal": {
+                    "proposal_id": ident,
+                    "signature": "ups-" + ident,
+                    "summary": "desk says FOO_BAR",
+                    "plain_rule": "Treat FOO BAR as WATCH.",
+                    "tier": "T4",
+                    "never_auto": False,
+                    "model": {"provider": "grok"},
+                    "created_at": "2032-04-12T13:00:00Z",
+                    "facts_sha256": "f" * 64,
+                },
+            }
+        )
     for ident in decided:
-        store.append({"event": "decided", "at": "2032-04-12T13:30:00Z", "proposal_id": ident,
-                      "decision": {"decision": "reject", "actor_kind": "operator", "actor": "tailnet:operator@example.test"}})
+        store.append(
+            {
+                "event": "decided",
+                "at": "2032-04-12T13:30:00Z",
+                "proposal_id": ident,
+                "decision": {"decision": "reject", "actor_kind": "operator", "actor": "tailnet:operator@example.test"},
+            }
+        )
     return store
 
 
 def test_pending_ai_rule_proposals_join_queue_as_governed_conflicts_linked_to_proposal_sheet(tmp_path, monkeypatch):
     from urllib.parse import parse_qs, urlparse
+
     _rule_proposal_store(tmp_path, monkeypatch)
     rows = api._default_sources(Path(__file__).resolve().parents[1])["conflict_rule_proposals"]()
     assert [r["id"] for r in rows] == ["rule-proposal:rp-pending1"]  # approved/rejected proposals never wait on you
     row = rows[0]
-    assert (row["kind"], row["decision_mode"], row["source"]) == ("CONFLICT", "GOVERNED_PATH", "conflict_rule_proposals")
+    assert (row["kind"], row["decision_mode"], row["source"]) == (
+        "CONFLICT",
+        "GOVERNED_PATH",
+        "conflict_rule_proposals",
+    )
     assert urlparse(row["governed_href"]).path == "/conflicts/rules"
     assert parse_qs(urlparse(row["governed_href"]).query)["proposal"] == ["rp-pending1"]
     assert row["proposed_by"] == "AI rule proposer (grok)" and "facts_sha256" not in row["document"]["text"]
@@ -498,7 +655,9 @@ def test_rule_proposal_cannot_be_approved_in_approvals_ledger(tmp_path, monkeypa
     with pytest.raises(c.Refused, match="GOVERNED_ACTION_REQUIRED"):
         ctx.ledger.decide(ctx.principal(), lambda: row, decision(row, review))
     # Recording a reject disposition never hides a still-pending proposal: only the conflict rules page decides it.
-    ctx.ledger.decide(ctx.principal(), lambda: row, decision(row, review, decision="REJECT", request_id="request_654321"))
+    ctx.ledger.decide(
+        ctx.principal(), lambda: row, decision(row, review, decision="REJECT", request_id="request_654321")
+    )
     queue = c.queue_projection({"conflict_rule_proposals": lambda: [row]}, decisions=ctx.ledger.rows(), now=NOW)
     assert [r["id"] for r in queue["items"]] == ["rule-proposal:rp-pending1"]
 
@@ -507,15 +666,163 @@ def test_unreadable_rule_proposal_store_is_a_named_gap_not_zero(tmp_path, monkey
     _rule_proposal_store(tmp_path, monkeypatch, pending=("rp-pending1",), decided=())
     path = tmp_path / "data/conflicts/rule_proposals.jsonl"
     path.write_text(path.read_text().replace("FOO_BAR", "TAMPERED"))
-    sources = {"conflict_rule_proposals": api._default_sources(Path(__file__).resolve().parents[1])["conflict_rule_proposals"]}
+    sources = {
+        "conflict_rule_proposals": api._default_sources(Path(__file__).resolve().parents[1])["conflict_rule_proposals"]
+    }
     queue = c.queue_projection(sources, decisions=[], now=NOW)
     assert queue["pending_count"] is None and queue["gaps"][0]["source"] == "conflict_rule_proposals"
 
 
 def test_rule_proposal_href_allowlist_rejects_other_conflict_paths():
     doc = c.document("x", source_sha=SHA)
-    ok = c.item(ident="rule-proposal:rp-1", kind="CONFLICT", title="t", proposed_by=None, created_at=None, doc=doc,
-                source="conflict_rule_proposals", governed_href="/conflicts/rules?proposal=rp-1")
-    bad = c.item(ident="rule-proposal:rp-2", kind="CONFLICT", title="t", proposed_by=None, created_at=None, doc=doc,
-                 source="conflict_rule_proposals", governed_href="/conflicts/rules/../../evil")
+    ok = c.item(
+        ident="rule-proposal:rp-1",
+        kind="CONFLICT",
+        title="t",
+        proposed_by=None,
+        created_at=None,
+        doc=doc,
+        source="conflict_rule_proposals",
+        governed_href="/conflicts/rules?proposal=rp-1",
+    )
+    bad = c.item(
+        ident="rule-proposal:rp-2",
+        kind="CONFLICT",
+        title="t",
+        proposed_by=None,
+        created_at=None,
+        doc=doc,
+        source="conflict_rule_proposals",
+        governed_href="/conflicts/rules/../../evil",
+    )
     assert ok["governed_href"] == "/conflicts/rules?proposal=rp-1" and bad["governed_href"] is None
+
+
+def _sync_queue_item(ident, *, kind="DESIGN", refs=None):
+    return c.item(
+        ident=ident,
+        kind=kind,
+        title="Review this item",
+        proposed_by="worker",
+        created_at="2032-04-01T12:00:00Z",
+        source="fixture",
+        doc=c.document("Keep or retire this proposed work.", source_sha=SHA),
+        source_refs=refs,
+    )
+
+
+def test_keep_retire_preserves_old_work_without_counting_it_as_active(rig):
+    ctx, active, _ = rig
+    candidate = _sync_queue_item("design:old")
+    resolved = _sync_queue_item("design:done")
+    ctx.sources = {"designs": lambda: {"rows": [active], "keep_retire": [candidate], "resolved": [resolved]}}
+    result = api.queue(ctx)
+    assert result["pending_count"] == result["known_pending_count"] == 1
+    assert [row["id"] for row in result["items"]] == [active["id"]]
+    assert [row["id"] for row in result["keep_retire"]] == ["design:old"]
+    assert result["keep_retire_count"] == 1
+    assert [row["id"] for row in result["resolved"]] == ["design:done"]
+    assert result["recent"] == []
+    assert not ctx.ledger.path.exists()  # Projection does not decide or retire anything.
+
+
+def test_keep_retire_source_gap_keeps_known_candidates_and_unknown_global_count(rig):
+    ctx, active, _ = rig
+    candidate = _sync_queue_item("design:old")
+    ctx.sources = {"designs": lambda: {"rows": [active], "keep_retire": [candidate], "gap": "scan incomplete"}}
+    result = api.queue(ctx)
+    assert result["pending_count"] is None and result["known_pending_count"] == 1
+    assert result["gaps"] == [{"source": "designs", "reason": "scan incomplete"}]
+    assert result["keep_retire"][0]["id"] == candidate["id"]
+    assert not ctx.ledger.path.exists()
+
+
+def test_explicit_refs_dedupe_transitively_and_current_work_wins_over_retirement():
+    current = _sync_queue_item("current", refs=["entity:one"])
+    old = _sync_queue_item("old", refs=["entity:one", "entity:two"])
+    duplicate = _sync_queue_item("old-alias", refs=["entity:two"])
+    unrelated = _sync_queue_item("old-unrelated")  # Same title/text alone never joins work.
+    result = c.queue_projection(
+        {"fixture": lambda: {"rows": [current], "keep_retire": [old, duplicate, unrelated]}}, decisions=[], now=NOW
+    )
+    assert result["pending_count"] == 1 and result["items"][0]["id"] == "current"
+    assert {row["id"] for row in result["items"][0]["related_sources"]} == {"old", "old-alias"}
+    assert {"entity:one", "entity:two"}.issubset(result["items"][0]["source_refs"])
+    assert [row["id"] for row in result["keep_retire"]] == ["old-unrelated"]
+
+
+def test_keep_retire_aliases_remain_one_reachable_candidate():
+    first = _sync_queue_item("old-a", refs=["design:one"])
+    second = _sync_queue_item("old-b", refs=["design:one", "packet:two"])
+    result = c.queue_projection(
+        {"fixture": lambda: {"rows": [], "keep_retire": [first, second]}}, decisions=[], now=NOW
+    )
+    assert result["pending_count"] == 0 and result["items"] == []
+    assert result["keep_retire_count"] == 1
+    assert result["keep_retire"][0]["related_sources"] == [{"id": "old-b", "source": "fixture"}]
+    assert "packet:two" in result["keep_retire"][0]["source_refs"]
+
+
+@pytest.mark.parametrize("bad_candidates", [None, {}, "old", [None] * 501])
+def test_invalid_keep_retire_collection_is_a_named_gap(bad_candidates):
+    result = c.queue_projection({"designs": lambda: {"rows": [], "keep_retire": bad_candidates}}, decisions=[], now=NOW)
+    assert result["pending_count"] is None
+    assert result["gaps"] == [{"source": "designs", "reason": "SOURCE_BUDGET_EXCEEDED"}]
+
+
+def test_policy_command_is_exact_public_metadata_without_recording_approval(rig):
+    ctx, original, _ = rig
+    row = c.item(
+        ident="policy:2501",
+        kind="POLICY",
+        title="Review policy",
+        proposed_by="worker",
+        created_at=None,
+        source="fixture",
+        doc=original["document"],
+        pr=2501,
+    )
+    ctx.sources = {"fixture": lambda: [row]}
+    status, response = api.handle(api.PREFIX + "/approvals", "GET", ctx=ctx)
+    public = response["data"]["items"][0]
+    assert status == 200 and "document" not in public
+    assert public["policy_approval_command"] == f"APPROVE_AGENTS_POLICY_20_2_0 2501 {SHA}"
+    assert public["source_sha"] == SHA
+    assert response["data"]["recent"] == []
+    assert not ctx.ledger.path.exists()
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("source_verified", False),
+        ("source_verified", "yes"),
+        ("version", "20.2.0; run"),
+        ("version", None),
+        ("source_sha", "abc123"),
+        ("source_sha", None),
+        ("pr", True),
+        ("pr", 0),
+        ("pr", "2501"),
+        ("kind", "DESIGN"),
+    ],
+)
+def test_invalid_policy_binding_never_offers_approval_command(rig, field, value):
+    _, original, _ = rig
+    doc = dict(original["document"])
+    args = {
+        "ident": "policy:2501",
+        "kind": "POLICY",
+        "title": "Review policy",
+        "proposed_by": "worker",
+        "created_at": None,
+        "source": "fixture",
+        "doc": doc,
+        "pr": 2501,
+    }
+    if field in ("pr", "kind"):
+        args[field] = value
+    else:
+        doc[field] = value
+    row = c.item(**args)
+    assert "policy_approval_command" not in row

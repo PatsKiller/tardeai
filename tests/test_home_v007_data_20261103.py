@@ -18,7 +18,10 @@ ASOF = "2032-03-09T20:59:00Z"
 
 
 @pytest.fixture
-def mod(monkeypatch):
+def mod(monkeypatch, tmp_path):
+    monkeypatch.setenv("TRADEAI_GOVERNANCE_DIR", str(tmp_path / "governance"))
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+
     def forbidden(*args, **kwargs):
         raise AssertionError("Real external process or network forbidden")
 
@@ -633,12 +636,12 @@ def test_relabelled_yesterday_clock_never_becomes_current_or_supplies_derivative
     now = datetime(2032, 3, 9, 19, tzinfo=timezone.utc)
     p = projection()
     p["reentry_watch"]["SYNX"]["current_quote"].update(
-        session="regular", session_date="2032-03-09", expected_session_date="2032-03-09",
+        session="regular",
+        session_date="2032-03-09",
+        expected_session_date="2032-03-09",
         as_of="2032-03-08T21:00:00Z",
     )
-    result = mod.build(p, {}, now=now) if path == "build" else mod.collect(
-        p, {}, reader=FailedCurrentReader(), now=now
-    )
+    result = mod.build(p, {}, now=now) if path == "build" else mod.collect(p, {}, reader=FailedCurrentReader(), now=now)
     row = result["symbols"]["SYNX"]
     assert row["quote"]["expected_session_date"] == "2032-03-09"
     for field in ("quote", "day_change", "since_exit", "analysis_references", "volume_vs_20d"):
@@ -658,14 +661,10 @@ def test_relabelled_yesterday_clock_never_becomes_current_or_supplies_derivative
         ("2032-03-13T15:00:00Z", "2032-03-12", "2032-03-13T14:00:00Z", False),
     ],
 )
-def test_regular_quote_observation_clock_matches_actual_calendar_window(
-    mod, now_text, session_day, observed, accepted
-):
+def test_regular_quote_observation_clock_matches_actual_calendar_window(mod, now_text, session_day, observed, accepted):
     now = datetime.fromisoformat(now_text.replace("Z", "+00:00"))
     p = projection()
-    p["reentry_watch"]["SYNX"]["current_quote"].update(
-        session="regular", session_date=session_day, as_of=observed
-    )
+    p["reentry_watch"]["SYNX"]["current_quote"].update(session="regular", session_date=session_day, as_of=observed)
     result = mod.build(p, {}, now=now)["symbols"]["SYNX"]["quote"]
     assert (result["state"] == "measured") is accepted
     assert result["value"] == (12 if accepted else None)
