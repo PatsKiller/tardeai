@@ -35,20 +35,53 @@ def plan_ask(
     message: Optional[str] = None,
     paths: Optional[Iterable[str]] = None,
 ) -> dict[str, Any]:
-    """Shape the holder list: who to message, and whether to take the claim over instead."""
+    """Shape the holder list: who to message, and whether to take the claim over instead.
+
+    Two kinds of row reach this: a claim the board holds (live or stale) and an open DRAFT PR whose changed
+    files overlap the paths. A draft PR is not a claim and cannot be taken over, but it must still be
+    reported — otherwise the answer "go ahead" is given about a path an open PR is editing.
+
+    Staleness comes from the board's own ``state`` when the row carries it. Recomputing it from the heartbeat
+    is what made this command contradict the board: the age is rounded to 2 decimals, so 7190s reads as 2.0h
+    and a claim the board calls live was reported as one to take over.
+    """
     holders: list[dict[str, Any]] = []
     seen: set[str] = set()
     for row in rows or []:
-        if str(row.get("source") or "") != "claim":
-            continue  # a draft-PR conflict is not a claim board holder
+        source = str(row.get("source") or "")
+        if source == "draft_pr":
+            key = f"draft_pr:{row.get('pr') or row.get('branch') or ''}"
+            if key in seen:
+                continue
+            seen.add(key)
+            holders.append(
+                {
+                    "kind": "draft_pr",
+                    "session": row.get("author"),
+                    "agent": row.get("author"),
+                    "pr": row.get("pr"),
+                    "branch": row.get("branch"),
+                    "title": row.get("title"),
+                    "url": row.get("url"),
+                    "heartbeat_age_hours": None,
+                    "stale": False,
+                    "held": sorted({str(o.get("held")) for o in row.get("overlaps") or [] if o.get("held")}),
+                    "next": "ask the PR owner to merge or close it; a draft PR is not a claim and cannot be taken over",
+                }
+            )
+            continue
+        if source != "claim":
+            continue
         claim_id = str(row.get("claim_id") or "")
         if not claim_id or claim_id in seen:
             continue
         seen.add(claim_id)
         age = _age_hours(now_iso, row.get("heartbeat_at"))
-        stale = age is not None and age >= stale_hours
+        state = str(row.get("state") or "")
+        stale = state == "stale" if state else (age is not None and age >= stale_hours)
         holders.append(
             {
+                "kind": "claim",
                 "session": row.get("session"),
                 "agent": row.get("agent"),
                 "claim_id": claim_id,
@@ -78,6 +111,16 @@ def render(out: Mapping[str, Any]) -> str:
         return "no claim holds these paths — go ahead and claim them"
     lines = []
     for h in holders:
+        if h.get("kind") == "draft_pr":
+            who = h.get("session") or "(unknown author)"
+            lines.append(
+                f"open draft PR #{h.get('pr')} on branch {h.get('branch')} changes these files — author {who}"
+                + (f" ({h['url']})" if h.get("url") else "")
+            )
+            if h.get("held"):
+                lines.append(f"  held paths: {', '.join(h['held'])}")
+            lines.append("  " + (h.get("next") or "ask the PR owner to merge or close it"))
+            continue
         who = h.get("session") or h.get("agent") or "(unnamed session)"
         age = h.get("heartbeat_age_hours")
         stamp = f", last heartbeat {age}h ago" if age is not None else ""
