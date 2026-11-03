@@ -204,6 +204,72 @@ def _entries_since(state_dir: Path, count_before: int) -> list[dict]:
     return _entries(state_dir)[count_before:]
 
 
+
+
+# ── A→B→C on REAL A artifacts: actual policy file, real build_case rows, real router, fake raw transport ─────
+def _real_a_rows():
+    """Real A cases built by A's own build_case from A's ExitFill rows and the ACTUAL config policy."""
+    from datetime import date
+    from lib.recovery_engine import cases as ac
+    from lib.recovery_engine import policy as ap
+
+    policy_a = ap.load_policy(PROJECT_ROOT / "config" / "recovery_policy.yaml")
+    def build(symbol, prices, *, pre_exit=7.0, residual=1.0, weight=4.0):
+        fills = [ac.ExitFill(symbol=symbol, account="DEMO_IRA", exit_date=date(2030, 1, i + 1),
+                             shares=pre_exit - residual, price=price, realized_pnl=-20.0,
+                             source="synthetic-fills") for i, price in enumerate(prices)]
+        obj = ac.build_case(fills, policy=policy_a, residual_shares=residual, pre_exit_shares=pre_exit,
+                            pre_exit_weight_pct=weight, today=date(2030, 1, 10),
+                            now=datetime(2030, 1, 10, 18, 0, tzinfo=timezone.utc))
+        return obj, obj.to_dict()
+    return policy_a, {"DEMO1": build("DEMO1", [100.0]), "DEMO2": build("DEMO2", [120.0, 100.0])}
+
+
+def run_ab_session(state_dir: Path, now_iso: str, out_path: Path) -> int:
+    """One A→B→C pass through the REAL router with only the raw transport faked (never the network)."""
+    import telegram_alert as T
+    from lib import recovery_notify as C
+    from lib import recovery_state as B
+
+    ledger = state_dir / "raw_transport.jsonl"
+    counter = {"n": 0}
+
+    def fake_raw(message, chat_ids=None, **kwargs):   # the single faked seam
+        counter["n"] += 1
+        with ledger.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"at": now_iso, "chars": len(message or ""),
+                                 "marker": str(message or "").startswith(MARKER)}, sort_keys=True) + "\n")
+        return {"ok": True, "message_ids": [1000 + counter["n"]], "held": 0}
+
+    T._raw_send_telegram_result = fake_raw          # private: the real router runs above this
+    T._token = lambda: "proof-token"
+    T._chat_ids = lambda: ["555"]
+
+    policy_a, rows = _real_a_rows()
+    policy_b = B.load_policy(PROJECT_ROOT / "config" / "recovery_policy.yaml")
+    now = datetime.fromisoformat(now_iso.replace("Z", "+00:00"))
+    receipts = {}
+    for symbol, (obj, row) in rows.items():
+        snap = {"close": 102.0, "rsi": 35.0, "rsi_prev": 34.0, "sma20": 130.0, "macd_up_sessions": 0,
+                "catalyst_confidence": 0.0}
+        decision = B.evaluate(row, snap, policy_b, now=now)
+        handoff = {**row, "state": decision.state, "confidence": round(decision.confidence, 4),
+                   "next_trigger": decision.next_trigger, "price": 102.0,
+                   "exit_price": B.exit_price(row)}
+        # DEFAULT sender: the real recovery_notify -> telegram_alert -> telegram_alert_router path.
+        result = C.notify_recovery_case(handoff, now=now, state_path=state_dir / "nudge.json")
+        from lib.recovery_engine import cases as ac2
+        a_r1 = bool(ac2.reclaim_exit_trigger(obj, 102.0, policy_a))
+        receipts[symbol] = {"b_state": decision.state, "b_triggers": decision.triggers,
+                            "b_exit_ref": B.exit_price(row), "a_r1": a_r1,
+                            "notify": {k: v for k, v in result.items() if k != "message"}}
+    out_path.write_text(json.dumps({"now": now_iso, "policy_fraction_b": policy_b.get("reclaim_exit_pct"),
+                                    "policy_percent_a": policy_a.triggers.get("r1_reclaim_exit_pct"),
+                                    "receipts": receipts,
+                                    "raw_deliveries_in_session": counter["n"]}, indent=1, sort_keys=True))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Prove piece B hands a real case to piece C and a receipt results")
     ap.add_argument("--json", action="store_true", help="print the whole result as JSON")
@@ -212,7 +278,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--batch", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--transport-dedupes", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--no-transport-dedupe", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--ab-session", nargs=3, metavar=("STATE_DIR", "NOW", "OUT"), help=argparse.SUPPRESS)
     args = ap.parse_args(argv)
+
+    if args.ab_session:
+        return run_ab_session(Path(args.ab_session[0]), args.ab_session[1], Path(args.ab_session[2]))
 
     if args.session:
         state_dir, now_iso, out = (Path(args.session[0]), args.session[1], Path(args.session[2]))
@@ -300,6 +370,44 @@ def main(argv: list[str] | None = None) -> int:
                   if len(d_entries) > 1 else None,
         "c_result_second_session": {k: v for k, v in d2_second.items() if k != "message"},
     }
+
+    # P5/P6 — REAL A artifacts (actual policy file, build_case rows) through real B -> real C -> REAL router,
+    # with only the raw transport faked. This is the A/B/C integration codex's F probe asked to fold in.
+    ab_root = root / "ab"
+    ab_root.mkdir(parents=True, exist_ok=True)
+    ab1_out, ab2_out = ab_root / "s1.json", ab_root / "s2.json"
+    for out, when in ((ab1_out, t0), (ab2_out, t1)):
+        proc = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--ab-session", str(ab_root),
+                               when.strftime("%Y-%m-%dT%H:%M:%SZ"), str(out)],
+                              capture_output=True, text=True, timeout=300, cwd=str(PROJECT_ROOT),
+                              env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+        if proc.returncode != 0 or not out.exists():
+            raise RuntimeError(f"ab session failed: {(proc.stderr or proc.stdout)[-800:]}")
+    s1_ab, s2_ab = json.loads(ab1_out.read_text()), json.loads(ab2_out.read_text())
+
+    def _ab_row(session):
+        return {sym: r for sym, r in session["receipts"].items()}
+
+    r1, r2 = _ab_row(s1_ab), _ab_row(s2_ab)
+    p5 = {
+        "pass": (s1_ab["policy_percent_a"] == 1.0 and abs(s1_ab["policy_fraction_b"] - 0.01) < 1e-9
+                 and all(r["a_r1"] is True and r["b_triggers"]["R1"] is True
+                         and not any(r["b_triggers"][k] for k in ("R2", "R3", "R4", "R5")) for r in r1.values())
+                 and r1["DEMO2"]["b_exit_ref"] == 100.0
+                 and s1_ab["raw_deliveries_in_session"] == 2),
+        "policy_percent_a": s1_ab["policy_percent_a"], "policy_fraction_b": s1_ab["policy_fraction_b"],
+        "cases": {sym: {"a_r1": r["a_r1"], "b_state": r["b_state"], "b_exit_ref": r["b_exit_ref"],
+                        "b_triggers": r["b_triggers"], "notify": r["notify"]} for sym, r in r1.items()},
+        "raw_deliveries_session1": s1_ab["raw_deliveries_in_session"],
+    }
+    p6 = {
+        "pass": (s2_ab["raw_deliveries_in_session"] == 0
+                 and all(r["notify"].get("deduped_by_floor") for r in r2.values())),
+        "raw_deliveries_session2": s2_ab["raw_deliveries_in_session"],
+        "receipts": {sym: r["notify"] for sym, r in r2.items()},
+    }
+    proofs["P5_real_A_rows_and_actual_policy_through_the_real_router"] = p5
+    proofs["P6_repeat_within_the_floor_delivers_nothing_and_says_so"] = p6
 
     ok = all(p["pass"] for p in proofs.values())
     document = {"schema": SCHEMA, "ok": bool(ok), "state_root": str(root),
