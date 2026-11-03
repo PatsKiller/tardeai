@@ -538,3 +538,93 @@ def test_rollback_failure_is_retained_separately_without_private_text(mod):
         "regular_session_quotes",
     }
     assert "SYNTHETIC_PRIVATE" not in str(result)
+
+
+class FailedCurrentReader:
+    def regular_session_quotes(self, *args, **kwargs):
+        raise RuntimeError("synthetic current reader unavailable")
+
+    def extended_quotes(self, *args, **kwargs):
+        return []
+
+    def daily_bars(self, *args, **kwargs):
+        return []
+
+
+@pytest.mark.parametrize("mode", ["failed_reader", "missing_reader", "build_fallback"])
+def test_calendar_rejects_yesterday_cache_even_when_current_reader_has_no_observation(mod, mode):
+    now = datetime(2032, 3, 9, 19, tzinfo=timezone.utc)
+    p = projection()
+    p["as_of"] = "2032-03-09T18:59:00Z"
+    p["reentry_watch"]["SYNX"]["current_quote"].update(
+        session="regular_close",
+        session_date="2032-03-08",
+        expected_session_date="2032-03-08",
+        as_of="2032-03-08T21:00:00Z",
+    )
+    if mode == "build_fallback":
+        result = mod.build(p, {}, now=now)
+    else:
+        reader = FailedCurrentReader()
+        if mode == "missing_reader":
+            reader.regular_session_quotes = None
+        result = mod.collect(p, {}, reader=reader, now=now)
+        assert any(error["source"] == "regular_session_quotes" for error in result["read_errors"])
+    quote = result["symbols"]["SYNX"]["quote"]
+    assert quote["state"] == "unknown" and quote["value"] is None and quote["remediation"]
+    assert quote["expected_session_date"] == "2032-03-09"
+
+
+@pytest.mark.parametrize(
+    "now_text,cached_date,clock,expected,available",
+    [
+        ("2032-03-09T14:29:00Z", "2032-03-08", "2032-03-08T21:00:00Z", "2032-03-08", True),
+        ("2032-03-09T14:30:00Z", "2032-03-08", "2032-03-08T21:00:00Z", "2032-03-09", False),
+        ("2032-03-09T19:00:00Z", "2032-03-09", "2032-03-09T18:59:00Z", "2032-03-09", True),
+        ("2032-03-13T15:00:00Z", "2032-03-12", "2032-03-12T21:00:00Z", "2032-03-12", True),
+        ("2026-11-26T19:00:00Z", "2026-11-25", "2026-11-25T21:00:00Z", "2026-11-25", True),
+    ],
+)
+def test_calendar_cache_boundary_preserves_last_regular_context_and_same_session(
+    mod, now_text, cached_date, clock, expected, available
+):
+    now = datetime.fromisoformat(now_text.replace("Z", "+00:00"))
+    p = projection()
+    p["as_of"] = clock
+    p["reentry_watch"]["SYNX"]["current_quote"].update(
+        session="regular", session_date=cached_date, expected_session_date=cached_date, as_of=clock
+    )
+    quote = mod.collect(p, {}, reader=FailedCurrentReader(), now=now)["symbols"]["SYNX"]["quote"]
+    assert quote["expected_session_date"] == expected
+    assert (quote["state"] == "measured") is available
+    assert quote["value"] == (12 if available else None)
+
+
+@pytest.mark.parametrize("rejection", ["reason", "status", "future", "unclocked"])
+def test_rejected_quote_cannot_supply_any_measured_price_derivative(mod, rejection):
+    p = projection()
+    quote = p["reentry_watch"]["SYNX"]["current_quote"]
+    if rejection == "reason":
+        quote["reason"] = "synthetic quote source unavailable"
+    elif rejection == "status":
+        quote["status"] = "unavailable"
+    elif rejection == "future":
+        quote["as_of"] = "2032-03-09T22:00:00Z"
+    else:
+        quote["as_of"] = "2032-03-09T20:59:00"
+    bars = [
+        {"symbol": "SYNX", "date": (NOW.date() - timedelta(days=i + 1)).isoformat(), "volume": 100, "close": 11}
+        for i in range(20)
+    ]
+    joined = {
+        "book_exposure": {"rows": [{"symbol": "SYNX", "account_label": "Synthetic account"}]},
+        "observed_stops": [
+            {"symbol": "SYNX", "account_label": "Synthetic account", "price": 9, "as_of": ASOF, "source": "stored_stop"}
+        ],
+    }
+    result = mod.build(p, joined, daily_bars=bars, now=NOW)
+    row = result["symbols"]["SYNX"]
+    assert row["quote"]["state"] == "unknown" and row["quote"]["value"] is None
+    for field in ("day_change", "since_exit", "analysis_references", "volume_vs_20d"):
+        assert row[field]["state"] == "unknown" and row[field]["value"] is None and row[field]["remediation"]
+    assert result["positions"][0]["stop"]["state"] == "unknown"
