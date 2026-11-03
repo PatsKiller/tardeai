@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "freshness_consumers_20261103",
+  "files": [
+    "tests/test_freshness_consumers_20261103.py"
+  ],
+  "anchor": "FRESHNESS_CONSUMERS_20261103",
+  "comment": [
+    "Every active freshness consumer answers from the authoritative-store guard: portfolio monitor, global alerts and GET /api/freshness cannot render FRESH over a 0-byte, corrupt, hash-mismatched or stale store."
+  ]
+}

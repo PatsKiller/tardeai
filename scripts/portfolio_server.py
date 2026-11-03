@@ -1662,6 +1662,44 @@ def _compute_watchdog() -> None:
                 pass
 
 
+
+
+def freshness_payload(fp):
+    """(http_status, payload) for GET /api/freshness with the authoritative-store guard applied."""
+    import json as _json
+    from datetime import datetime as _dt
+    from pathlib import Path as _Path
+
+    fp = _Path(fp)
+    if not fp.exists():
+        return 200, {"status": "unknown", "age_hours": None,
+                     "message": "No freshness manifest found — pipeline has not written _freshness.json yet"}
+    try:
+        fm = _json.loads(fp.read_text())
+        completed = _dt.fromisoformat(fm.get("completed_at", "2000-01-01"))
+        now = _dt.now(completed.tzinfo) if completed.tzinfo else _dt.now()
+        age_hours = round((now - completed).total_seconds() / 3600, 1)
+        status = "fresh" if age_hours <= 26 else "stale"
+    except Exception as exc:  # noqa: BLE001
+        return 500, {"status": "error", "message": str(exc)}
+    try:
+        from lib.authoritative_store_guard import effective_status, guard as _store_guard
+        verdict = _store_guard(fp.parent)
+        status = effective_status(status, verdict)
+        fm["guard"] = {"ok": verdict.get("ok"), "status": verdict.get("status"),
+                       "reasons": verdict.get("reasons")}
+    except Exception as exc:  # noqa: BLE001
+        status = "UNAVAILABLE"
+        fm["guard"] = {"ok": False, "status": "UNAVAILABLE", "reasons": [f"guard_error:{type(exc).__name__}"]}
+    if status == "fresh":
+        message = f"Pipeline ran {age_hours:.1f}h ago"
+    elif status == "UNAVAILABLE":
+        message = "The holdings store could not be read, so freshness cannot be confirmed."
+    else:
+        message = f"Data is {age_hours:.0f}h stale — pipeline may not have run"
+    return 200, {**fm, "age_hours": age_hours, "status": status, "message": message}
+
+
 class PortfolioHandler(http.server.BaseHTTPRequestHandler):
 
     def finish(self):
@@ -2171,6 +2209,9 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         # Freshness manifest (Phase 0)
         if path == "/api/freshness":
             _fp = PROJECT_ROOT / "data" / "portfolios" / "state" / "_freshness.json"
+            _status_code, _payload = freshness_payload(_fp)
+            json_response(self, _status_code, _payload)
+            return
             if _fp.exists():
                 try:
                     _fm = json.loads(_fp.read_text())
