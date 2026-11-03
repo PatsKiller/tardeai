@@ -571,3 +571,58 @@ def test_displayed_work_owner_uses_latest_claim_in_shared_projection(tmp_path):
     assert item["who"]["session"] == "current-worker"
     assert item["who"]["as_of"] == ago(minutes=5)
     assert item["coordination"]["owner"]["value"]["session"] == item["who"]["session"]
+
+
+@pytest.mark.parametrize("release_at,health_at", [
+    ("2026-10-23T17:00:00Z", "2026-10-23T18:00:00Z"),
+    ("2026-10-23T17:45:00Z", "2026-10-23T18:00:00Z"),
+    ("2026-10-23T17:00:00", "2026-10-23T17:15:00Z"),
+    ("2026-10-23T17:00:00.900000Z", "2026-10-23T17:00:00.100000Z"),
+])
+def test_live_clocks_are_aware_past_and_correctly_ordered(release_at, health_at):
+    pr = {**open_pr(), "released": {"at": release_at, "sha": "c" * 40}, "served_contains": True}
+    data = W.derive(pr=pr, health={"ok": True, "sha": "a" * 40, "served_sha": "a" * 40, "at": health_at}, now=NOW)
+    assert data["stage"] == "released" and not data["finished"]
+
+
+def test_receipt_producers_preserve_subsecond_order(tmp_path):
+    (tmp_path / "release_pins").mkdir()
+    basis = "release_pins/apply-20261023T170000Z.json"
+    (tmp_path / basis).write_text(json.dumps({"at": "2026-10-23T17:00:00.900000Z"}))
+    (tmp_path / "deploy_receipt.json").write_text(json.dumps({
+        "at": "2026-10-23T17:00:00.100000Z", "ok": True, "health": "ok", "deployed_sha": "a" * 40}))
+    release = W.release_source_clock({"at": "2026-10-23T17:00:00Z", "sha": "c" * 40, "basis": basis}, tmp_path, {})
+    health = W.release_health(tmp_path)
+    assert release["at"] == "2026-10-23T17:00:00.900000Z"
+    assert health["at"] == "2026-10-23T17:00:00.100000Z"
+    data = W.derive(pr={**open_pr(), "released": release, "served_contains": True},
+                    health={**health, "served_sha": "a" * 40}, now=NOW)
+    assert data["stage"] == "released"
+
+
+def test_waiting_on_you_uses_canonical_members_and_count_without_old_inference():
+    members = [{"id": "policy:2501", "next_actor": "operator", "source_sha": "a" * 40}]
+    summary = {"actionable_items": members, "actionable_count": 1, "known_actionable_count": 1,
+               "pending_count": 1, "complete": True, "gaps": [], "as_of": iso(NOW)}
+    calls = []
+    def approvals(**kwargs):
+        calls.append(kwargs)
+        return summary
+    source = {"claims": [], "tasks": [{"task_id": "old-op-task", "title": "OPERATOR: old duplicate",
+                                        "status": "free"}], "awaiting": []}
+    pipeline = W.WorkPipeline(sources=lambda: source, health=lambda: {}, approvals=approvals, now=lambda: NOW)
+    data = pipeline._build()
+    assert data["waiting_on_you"] is summary
+    assert data["waiting_on_you"]["actionable_items"] is members
+    assert data["summary"]["needs_me"] == 1
+    assert data["summary"]["known_needs_me"] == 1
+    assert len(calls) == 1 and calls[0]["now"] == NOW
+
+
+def test_incomplete_or_missing_shared_members_never_look_like_financial_zero():
+    for summary in ({"pending_count": 12}, {"actionable_items": [], "actionable_count": 12}):
+        pipeline = W.WorkPipeline(sources=lambda: {}, health=lambda: {}, approvals=lambda **kw: summary, now=lambda: NOW)
+        data = pipeline._build()
+        assert data["summary"]["needs_me"] is None
+        assert data["waiting_on_you"]["complete"] is False
+        assert data["waiting_on_you"]["gaps"]

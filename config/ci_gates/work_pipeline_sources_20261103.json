@@ -4,6 +4,7 @@
   "files": [
     "tests/test_work_pipeline_sources_20261103.py"
   ],
+  "anchor": "WORK_PIPELINE_SOURCES_20261103",
   "comment": [
     "Shared bounded work facts: exact-head reviews/approvals, ownership, plans and verified served membership.",
     "Synthetic timeline and mutation proofs; no live broker, git/GitHub request work, or state writes."

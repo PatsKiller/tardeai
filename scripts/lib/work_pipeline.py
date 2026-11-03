@@ -139,6 +139,20 @@ def _iso(dt: datetime | None) -> str | None:
     return LC._iso(dt)
 
 
+def _observed_at(value: Any) -> datetime | None:
+    """Evidence timestamps require an explicit zone and retain subsecond ordering."""
+    try:
+        parsed = value if isinstance(value, datetime) else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return parsed.astimezone(timezone.utc) if parsed.tzinfo is not None else None
+
+
+def _source_time(value: Any) -> str | None:
+    observed = _observed_at(value)
+    return observed.isoformat().replace("+00:00", "Z") if observed is not None else None
+
+
 def _max_iso(*values: Any) -> str | None:
     got = [d for d in (_parse(v) for v in values) if d is not None]
     return _iso(max(got)) if got else None
@@ -416,12 +430,20 @@ class PrCensus:
                 # All ancestry probes stay in this background refresh, never in a page request.
                 try:
                     serving = self.release.serving()
+                    receipt_root = getattr(self.release, "deploy_state_dir", None)
+                    if receipt_root:
+                        receipt = release_health(Path(receipt_root))
+                        if receipt.get("sha") == serving.get("sha"):
+                            serving = {**serving, "since": receipt.get("at")}
                 except Exception as exc:  # noqa: BLE001 - membership remains explicitly unavailable
                     warnings.append(f"served identity unavailable ({type(exc).__name__})")
                 for p in merged_prs:
                     if p.get("merge_sha"):
                         try:
                             p["released"] = self.release.released(str(p["merge_sha"]), p.get("merged_at"))
+                            receipt_root = getattr(self.release, "deploy_state_dir", None)
+                            if p["released"] and receipt_root:
+                                p["released"] = release_source_clock(p["released"], Path(receipt_root), serving)
                             p["served_contains"] = (
                                 self.release.ancestor(str(p["merge_sha"]), str(serving["sha"]))
                                 if serving.get("sha") else None
@@ -474,11 +496,40 @@ def _gh_runner(argv: list[str]) -> tuple[str | None, str | None]:
 # --------------------------------------------------------------------------------------------- release health
 
 
+def _receipt_document(path: Path) -> dict[str, Any]:
+    if path.is_symlink():
+        raise ValueError("receipt is a symlink")
+    with path.open("rb") as handle:
+        raw = handle.read(128 * 1024 + 1)
+    if len(raw) > 128 * 1024:
+        raise ValueError("receipt exceeds read budget")
+    doc = json.loads(raw)
+    if not isinstance(doc, dict):
+        raise ValueError("receipt is not an object")
+    return doc
+
+
+def release_source_clock(released: Mapping[str, Any], root: Path, serving: Mapping[str, Any]) -> dict[str, Any]:
+    """Restore exact receipt precision after the legacy lifecycle reader's second-rounded clock."""
+    result = dict(released)
+    basis = str(result.get("basis") or "")
+    if re.fullmatch(r"release_pins/apply-\d{8}T\d+Z\.json", basis):
+        try:
+            result["at"] = _source_time(_receipt_document(root / basis).get("at"))
+        except (OSError, ValueError):
+            result["at"] = None
+    elif basis == "served CURRENT/BUILD_SHA":
+        result["at"] = serving.get("since") if result.get("sha") == serving.get("sha") else None
+    else:
+        result["at"] = None
+    return result
+
+
 def release_health(deploy_state_dir: Path | None = None) -> dict[str, Any]:
     """The last deploy receipt: served SHA, when, and whether its health check passed. Never raises."""
     d = Path(deploy_state_dir or Path.home() / ".local" / "state" / "cio-phase2-exact-main")
     try:
-        rec = json.loads((d / "deploy_receipt.json").read_text(encoding="utf-8"))
+        rec = _receipt_document(d / "deploy_receipt.json")
     except (OSError, ValueError):
         return {"sha": None, "ok": None, "at": None, "basis": "deploy_receipt.json unreadable"}
     ok = bool(rec.get("ok")) and str(rec.get("health") or "").lower() == "ok" and not rec.get("rolled_back")
@@ -486,7 +537,7 @@ def release_health(deploy_state_dir: Path | None = None) -> dict[str, Any]:
         "sha": rec.get("deployed_sha"),
         "ok": ok,
         "health": rec.get("health"),
-        "at": LC._norm_iso(rec.get("at")),
+        "at": _source_time(rec.get("at")),
         "basis": "deploy_receipt.json",
     }
 
@@ -674,8 +725,8 @@ def derive(
     if (released and health and health.get("ok") is True
             and re.fullmatch(r"[0-9a-f]{40}", str(health.get("sha") or ""))
             and health.get("served_sha") == health.get("sha") and (pr or {}).get("served_contains") is True):
-        r_at, h_at = _parse(released.get("at")), _parse(health.get("at"))
-        verified = r_at is not None and h_at is not None and h_at >= r_at
+        r_at, h_at = _observed_at(released.get("at")), _observed_at(health.get("at"))
+        verified = r_at is not None and h_at is not None and r_at <= h_at <= now
     if released and verified:
         stage, rag, label = "verified", "green", "live"
         times["verified"] = (health or {}).get("at")
@@ -1235,9 +1286,12 @@ class WorkPipeline:
         now: Callable[[], datetime] = _utc_now,
         state_root: Path | None = None,
         coordination: Callable[..., dict[str, Any]] | None = None,
+        approvals: Callable[..., dict[str, Any]] | None = None,
     ):
         self.state_root = state_root
         self.coordination = coordination
+        self.approvals = approvals
+        self._owns_default_sources = sources is None
         self.claims_dir = claims_dir
         self.census = census or PrCensus(release=LC.ReleaseReader())
         self.sources = sources or self._read_sources
@@ -1269,8 +1323,12 @@ class WorkPipeline:
         tier2 = tier2_context()
         packages = open_approval_packages()
         from scripts.lib.lane_last_receipt import runtime_dir
+        from scripts.lib.releases_coordination import read_claims
+        # The public board omits corrupt files; validate the input store so that omission is named.
+        _raw_claims, claims_gap = read_claims(Path(self.claims_dir or view.get("claims_dir") or B.default_claims_dir()))
         return {
             "state_root": str(self.state_root or runtime_dir().parents[1]),
+            "source_gaps": {"claims": claims_gap} if claims_gap else {},
             "tier2": tier2,
             "queue": WPC.read_queue(self.claims_dir or view.get("claims_dir")),
             "claims": view.get("claims") or [],
@@ -1292,6 +1350,7 @@ class WorkPipeline:
                 coordination = (self.coordination or shared_sources.load)(
                     Path(self.state_root or src.get("state_root") or "."), prs, src.get("claims") or [], now,
                     serving=(census or {}).get("serving") or {}, health=health,
+                    source_gaps=src.get("source_gaps") or {},
                 )
             else:
                 # Injected sources remain hermetic and must name the unconfigured joins.
@@ -1316,6 +1375,23 @@ class WorkPipeline:
             queue=src.get("queue"),
             tier2=src.get("tier2"),
         )
+        try:
+            if self.approvals is not None or (self._owns_default_sources and src.get("state_root")):
+                from scripts.lib.operator_approvals_api import queue_summary
+                waiting = (self.approvals or queue_summary)(
+                    state_root=Path(self.state_root or src.get("state_root") or "."), now=now,
+                )
+                members = waiting.get("actionable_items")
+                if (not isinstance(members, list) or len(members) > 5000
+                        or waiting.get("actionable_count") != len(members)):
+                    raise ValueError("canonical approval members unavailable")
+            else:
+                raise ValueError("canonical approval source not configured")
+        except Exception as exc:  # noqa: BLE001 - a missing adapter never restores the old financial-only count
+            waiting = {"actionable_items": [], "actionable_count": None, "known_actionable_count": None,
+                       "pending_count": None, "complete": False, "as_of": None,
+                       "scope": "all_operator_approvals", "source": "operator_approvals_api.queue_summary",
+                       "gaps": [{"source": "operator_approvals", "reason": type(exc).__name__}]}
         active_ids = set(coordination.get("active_claim_ids") or [])
         for item in items:
             item["coordination"] = (coordination.get("by_pr") or {}).get(item.get("pr_number"))
@@ -1356,9 +1432,11 @@ class WorkPipeline:
             "stages": list(STAGES),
             "stage_label": dict(STAGE_LABEL),
             "stage_help": dict(STAGE_HELP),
-            "summary": {**summarize(items), "in_flight": sum(bool(i["in_flight"]) for i in items)},
+            "summary": {**summarize(items), "in_flight": sum(bool(i["in_flight"]) for i in items),
+                        "needs_me": waiting.get("pending_count"), "known_needs_me": waiting.get("actionable_count")},
             "items": items,
             "coordination": coordination,
+            "waiting_on_you": waiting,
             "sources": {
                 "census": meta,
                 "census_age_s": None

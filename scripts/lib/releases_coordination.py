@@ -129,17 +129,18 @@ def evidence_for_pr(events: Iterable[Mapping[str, Any]], pr_number: int, head_sh
     a ledger record with no head produced review MERGE and CI GREEN out of nothing (codex review of
     9a0ae89e, 2026-11-02).
     """
-    if not str(head_sha or "").strip():
+    if not re.fullmatch(r"[0-9a-f]{40}", str(head_sha or "").strip()):
         # Only records that name this PR *and* this exact head count; anything else is a gap rather
         # than evidence attached to the current head.
+        gap = "target_head_missing" if not str(head_sha or "").strip() else "target_head_invalid"
         return {"review": {"state": UNKNOWN, "verdicts": [], "reviewers": [], "independent_reviewers": 0,
                            "records": [], "head_sha": None, "as_of": None, "source": "none",
-                           "gap": "target_head_missing", "evidence_class": EVIDENCE_CLASS},
+                           "gap": gap, "evidence_class": EVIDENCE_CLASS},
                 "ci": {"state": UNKNOWN, "head_sha": None, "as_of": None, "source": "none",
-                       "workflows": [], "evidence_class": EVIDENCE_CLASS, "gap": "target_head_missing"}}
+                       "workflows": [], "evidence_class": EVIDENCE_CLASS, "gap": gap}}
     reviews: list[dict[str, Any]] = []
     ci: Optional[dict[str, Any]] = None
-    stale_reviews = stale_ci = 0
+    stale_reviews = stale_ci = invalid_reviews = invalid_ci = 0
     for row in events:
         try:
             if int(row.get("pr_number") or 0) != int(pr_number):
@@ -150,6 +151,14 @@ def evidence_for_pr(events: Iterable[Mapping[str, Any]], pr_number: int, head_sh
         row_head = str(row.get("head_sha") or "").strip()
         if not row_head:
             continue                      # a record that names no head proves nothing
+        observed = _parse(row.get("observed_at") or row.get("ts"))
+        if row_head == head_sha and observed is None:
+            if kind == REVIEW_KIND and _truthy_class(row):
+                invalid_reviews += 1
+                continue
+            if kind == CI_KIND:
+                invalid_ci += 1
+                continue
         if kind == REVIEW_KIND and _truthy_class(row):
             if row_head != head_sha:
                 stale_reviews += 1
@@ -157,7 +166,7 @@ def evidence_for_pr(events: Iterable[Mapping[str, Any]], pr_number: int, head_sh
             reviews.append({
                 "verdict": str(row.get("verdict") or UNKNOWN),
                 "reviewer_session": str(row.get("reviewer_session") or UNKNOWN),
-                "observed_at": _iso(row.get("observed_at") or row.get("ts")),
+                "observed_at": _iso(observed),
                 "receipt_path": row.get("receipt_path"),
                 "receipt_sha256": row.get("receipt_sha256"),
                 "evidence_class": EVIDENCE_CLASS,
@@ -167,10 +176,11 @@ def evidence_for_pr(events: Iterable[Mapping[str, Any]], pr_number: int, head_sh
             candidate = {
                 "state": state if state in CI_STATES else UNKNOWN,
                 "head_sha": row_head,
-                "as_of": _iso(row.get("observed_at") or row.get("ts")),
-                "observed_at": _iso(row.get("observed_at") or row.get("ts")),
+                "as_of": _iso(observed),
+                "observed_at": _iso(observed),
                 "source": str(row.get("source") or UNKNOWN),
-                "workflows": list(row.get("workflows") or []),
+                "workflows": [{key: str(w.get(key) or "")[:200] for key in ("name", "status", "conclusion")}
+                              for w in row.get("workflows") or [] if isinstance(w, Mapping)],
                 "evidence_class": EVIDENCE_CLASS,
             }
             if ci is None or (_parse(candidate["observed_at"]) or datetime.min.replace(tzinfo=timezone.utc)) >= (
@@ -200,6 +210,8 @@ def evidence_for_pr(events: Iterable[Mapping[str, Any]], pr_number: int, head_sh
         state = "MERGE"
     else:
         state = UNKNOWN          # an unrecognised verdict is not a merge
+    if invalid_reviews and state != "BLOCK":
+        state = UNKNOWN
     sessions = sorted(latest)
     review = {
         "state": state,
@@ -211,33 +223,61 @@ def evidence_for_pr(events: Iterable[Mapping[str, Any]], pr_number: int, head_sh
         "head_sha": head_sha if effective else None,
         "as_of": _newest(r["observed_at"] for r in effective),
         "source": "coordinator_ledger" if reviews else "none",
-        "gap": None if reviews else ("stale_review_for_other_head" if stale_reviews else "no_review_record"),
+        "gap": "review_timestamp_invalid" if invalid_reviews else (
+            None if reviews else ("stale_review_for_other_head" if stale_reviews else "no_review_record")),
         "evidence_class": EVIDENCE_CLASS,
     }
     if ci is None:
         ci = {"state": UNKNOWN, "head_sha": None, "as_of": None, "source": "none",
               "workflows": [], "evidence_class": EVIDENCE_CLASS,
               "gap": "stale_ci_for_other_head" if stale_ci else "no_ci_observation"}
+    if invalid_ci:
+        ci = {**ci, "state": ci.get("state") if ci.get("state") == "RED" else UNKNOWN,
+              "gap": "ci_timestamp_invalid"}
     return {"review": review, "ci": ci}
 
 
 # ------------------------------------------------------------------------- claim board view
+MAX_CLAIM_FILES = 1000
+MAX_CLAIM_BYTES = 128 * 1024
+MAX_CLAIMS_BYTES = 8 * 1024 * 1024
+
+
 def read_claims(claims_dir: Path) -> tuple[list[dict[str, Any]], Optional[str]]:
+    """Bound claim count and bytes; unreadable/corrupt records never become healthy zero."""
+    if claims_dir.is_symlink():
+        return [], "claims_unsafe_path"
     try:
-        files = sorted(claims_dir.glob("*.json"))
+        files = []
+        for path in claims_dir.glob("*.json"):
+            files.append(path)
+            if len(files) > MAX_CLAIM_FILES:
+                return [], "claims_count_over_budget"
+        files.sort()
     except OSError as exc:
         return [], f"claims_unreadable:{type(exc).__name__}"
     if not files:
         return [], "claims_absent"
-    out = []
+    out, gaps, total = [], [], 0
     for path in files:
         try:
-            doc = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+            if path.is_symlink() or path.stat().st_size > MAX_CLAIM_BYTES:
+                gaps.append("claims_unsafe_or_over_budget")
+                continue
+            with path.open("rb") as handle:
+                raw = handle.read(MAX_CLAIM_BYTES + 1)
+            total += len(raw)
+            if len(raw) > MAX_CLAIM_BYTES or total > MAX_CLAIMS_BYTES:
+                return out, "claims_bytes_over_budget"
+            doc = json.loads(raw)
+        except (OSError, ValueError, UnicodeError):
+            gaps.append("claims_invalid_or_unreadable")
             continue
         if isinstance(doc, dict):
             out.append(doc)
-    return out, None
+        else:
+            gaps.append("claims_invalid_records")
+    return out, ";".join(dict.fromkeys(gaps)) or None
 
 
 #: States that mean the work is over. An ended or done claim is history, not a current agent
@@ -248,8 +288,8 @@ ENDED_STATES = frozenset({"merged", "done", "ended", "abandoned", "closed", "rel
 def is_live(doc: Mapping[str, Any]) -> bool:
     if doc.get("ended_at"):
         return False
-    state = str(doc.get("_state") or doc.get("status") or doc.get("state") or "").strip().lower()
-    return state not in ENDED_STATES
+    return not any(str(doc.get(key) or "").strip().lower() in ENDED_STATES
+                   for key in ("_state", "state", "stage", "status"))
 
 
 # ───────────────────────────────────────────── bounded local reads (codex, 2026-11-02)
@@ -485,7 +525,10 @@ def build(ledger_path: Path, claims_dir: Path, prs: Iterable[Mapping[str, Any]],
         owner = by_number.get(number) or by_branch.get(str(pr.get("branch") or ""))
         wl = None
         if owner and owner.get("claim_id"):
-            wl, wl_gap = read_worklog(claims_dir / f"{owner['claim_id']}.worklog.md", claims_dir)
+            if len(worklogs) >= MAX_WORKLOGS and owner["claim_id"] not in worklogs:
+                wl, wl_gap = {}, "worklog_count_over_budget"
+            else:
+                wl, wl_gap = read_worklog(claims_dir / f"{owner['claim_id']}.worklog.md", claims_dir)
             if wl_gap and wl_gap not in gaps:
                 gaps.append(wl_gap)
             if wl_gap is None or wl_gap == "worklog_truncated":
@@ -548,11 +591,14 @@ def build(ledger_path: Path, claims_dir: Path, prs: Iterable[Mapping[str, Any]],
         if health is None:
             from scripts.lib.work_pipeline import release_health
             health = release_health()
-        canonical = shared_sources.load(state_root, prs, canonical_claims, now, serving=serving or {}, health=health or {})
+        canonical = shared_sources.load(
+            state_root, prs, canonical_claims, now, serving=serving or {}, health=health or {},
+            source_gaps={key: gap for key, gap in (("claims", claims_gap), ("coordinator_ledger", ledger_gap)) if gap},
+        )
     else:
         canonical = shared_sources.build(
             prs, canonical_claims, events, [], [], now, serving=serving or {}, health=health or {},
-            source_gaps={"coordinator_ledger": ledger_gap} if ledger_gap else {},
+            source_gaps={key: gap for key, gap in (("claims", claims_gap), ("coordinator_ledger", ledger_gap)) if gap},
         )
     for number, facts in canonical["by_pr"].items():
         work[number]["pipeline"] = facts

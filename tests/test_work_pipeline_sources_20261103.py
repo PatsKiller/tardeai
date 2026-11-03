@@ -62,6 +62,14 @@ def write_sources(tmp_path, events=None, approvals=None):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("".join(json.dumps(row) + "\n" for row in rows))
     (tmp_path / M.PLANS_REL).mkdir(parents=True, exist_ok=True)
+    registry = tmp_path / M.REGISTRY_REL
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    registry.write_text(json.dumps(registry_value()))
+
+
+def registry_value(lead="test-lead", role="lead", updated_at="2026-11-03T00:30:00Z"):
+    return {"lead": lead, "updated_at": updated_at,
+            "coordinators": [{"id": lead, "role": role, "territories": ["ui", "release"]}]}
 
 
 def test_full_timeline_uses_first_apply_and_distinct_verification_clock():
@@ -78,7 +86,7 @@ def test_full_timeline_uses_first_apply_and_distinct_verification_clock():
     assert row["next_action"]["as_of"] == "2026-11-03T00:00:00Z"
     assert row["review"]["state"] == "MERGE"
     assert data["owner_coverage"] == {"prs_with_claim": 1, "owner_filled": 1, "pct": 100.0}
-    assert row["coordinator"]["gap"] == "coordinator_source_not_recorded"
+    assert row["coordinator"]["gap"] == "registry_not_supplied"
     assert row["plan_link"]["gap"] == "plan_link_not_recorded"
 
 
@@ -119,6 +127,154 @@ def test_stale_claim_history_preserved_but_active_count_excludes_it():
 def test_future_heartbeat_and_ended_claim_are_not_in_flight():
     assert not build(claims=[claim(heartbeat_at="2026-11-04T01:00:00Z")])["active_claim_ids"]
     assert not build(claims=[claim(status="done")])["active_claim_ids"]
+
+
+@pytest.mark.parametrize("effective", [{"_state": "done"}, {"state": "done"}, {"stage": "released"},
+                                       {"stage": "merged"}, {"ended_at": "2026-11-03T01:00:00Z"}])
+def test_effective_terminal_state_overrides_raw_active_status(effective):
+    result = build(claims=[claim(status="active", **effective)])
+    assert result["active_claim_ids"] == []
+    assert result["by_pr"][2501]["active_claim_ids"] == []
+    assert result["by_pr"][2501]["owner"]["value"]["session"] == "worker"
+    assert len(result["claims"]) == 1
+
+
+def test_nested_claim_metadata_is_allowlisted_and_clock_normalized():
+    original = claim(worklog={"exists": True, "next_step": "Verify served output",
+                              "last_entry_at": "2026-11-02T19:00:00-05:00",
+                              "plan_done": 1, "plan_total": 2, "blockers": 0,
+                              "path": "PRIVATE-PATH", "extra": {"secret": "PRIVATE-WORKLOG"}},
+                     stages={"building": "2026-11-02T12:30:00-05:00",
+                             "released": "2026-11-02T23:00:00",
+                             "extra": "PRIVATE-STAGE", "claimed": {"secret": "PRIVATE-NESTED"}},
+                     extra="PRIVATE-TOP")
+    result = build(claims=[original])
+    assert "PRIVATE" not in json.dumps(result)
+    public = result["claims"][0]
+    assert public["worklog"] == {"exists": True, "next_step": "Verify served output",
+                                 "last_entry_at": "2026-11-03T00:00:00Z",
+                                 "plan_done": 1, "plan_total": 2, "blockers": 0}
+    assert public["stages"] == {"building": "2026-11-02T17:30:00Z"}
+    assert original["worklog"]["extra"]["secret"] == "PRIVATE-WORKLOG"  # no mutation
+
+
+@pytest.mark.parametrize("release_at,verified_at", [
+    ("2026-11-02T23:00:00Z", "2026-11-04T00:00:00Z"),
+    ("2026-11-04T00:00:00Z", "2026-11-04T01:00:00Z"),
+])
+def test_future_release_or_health_never_proves_live(release_at, verified_at):
+    release = {"at": release_at, "sha": OTHER, "basis": "release_pins/synthetic.json"}
+    result = build(prs=[pr(released=release)], health={"sha": SERVED, "ok": True, "at": verified_at})
+    row = result["by_pr"][2501]
+    assert row["live"]["value"] is False
+    assert row["live"]["gap"]
+    assert not any(e["kind"] == "verified_live" for e in row["timeline"])
+
+
+@pytest.mark.parametrize("release_at,verified_at,expected", [
+    ("2026-11-03T00:00:00.900Z", "2026-11-03T00:00:00.100Z", False),
+    ("2026-11-03T00:00:00Z", "2026-11-03T00:00:00.100Z", True),
+    ("2026-11-03T00:00:00.100Z", "2026-11-03T00:00:00.900Z", True),
+])
+def test_subsecond_release_verification_order_is_preserved(release_at, verified_at, expected):
+    release = {"at": release_at, "sha": OTHER, "basis": "release_pins/subsecond.json"}
+    result = build(prs=[pr(released=release)], health={"sha": SERVED, "ok": True, "at": verified_at})
+    row = result["by_pr"][2501]
+    assert row["live"]["value"] is expected
+    assert M._parse(row["released"]["as_of"]) == M._parse(release_at)
+    if expected:
+        assert M._parse(row["live"]["as_of"]) == M._parse(verified_at)
+
+
+def test_subseconds_sort_latest_owner_and_timeline_by_instant():
+    newer = claim(session="newer", heartbeat_at="2026-11-03T01:00:00.100Z")
+    older = claim(session="older", heartbeat_at="2026-11-03T01:00:00Z")
+    data = build(claims=[newer, older], events=[
+        event("check_request", ts="2026-11-03T00:00:00.100Z"),
+        event("check_request", ts="2026-11-03T00:00:00Z"),
+    ])
+    row = data["by_pr"][2501]
+    assert row["owner"]["value"]["session"] == "newer"
+    assert data["sources"]["claims"]["as_of"] == "2026-11-03T01:00:00.100000Z"
+    times = [e["as_of"] for e in row["timeline"] if e["kind"] == "check_request"]
+    assert times == ["2026-11-03T00:00:00Z", "2026-11-03T00:00:00.100000Z"]
+
+
+@pytest.mark.parametrize("kind,field", [("review_receipt_recorded", "review"), ("ci_observation", "ci")])
+def test_invalid_current_head_record_never_lends_green_from_older_valid(kind, field):
+    result = build(events=[event(kind, state="GREEN"), event(kind, ts="invalid", state="RED", verdict="BLOCK")])
+    evidence = result["by_pr"][2501][field]
+    assert evidence["state"] == "UNKNOWN"
+    assert evidence["gap"] == f"invalid_{field}_timestamp"
+    assert result["sources"]["coordinator_ledger"]["gap"] == "typed_evidence_timestamp_invalid"
+
+
+def test_invalid_old_head_record_does_not_poison_current_head_review():
+    result = build(events=[event(), event(head_sha=OTHER, ts="invalid", verdict="BLOCK")])
+    assert result["by_pr"][2501]["review"]["state"] == "MERGE"
+
+
+def test_registered_lead_default_routing_keeps_its_own_provenance_and_changes():
+    registry = registry_value()
+    registry["operator_quote"] = "PRIVATE-QUOTE"
+    registry["note"] = "PRIVATE-NOTE"
+    registry["coordinators"][0]["where"] = "PRIVATE-LOCATION"
+    result = M.build([pr()], [claim()], [], [], [], NOW, coordination_registry=registry)
+    row = result["by_pr"][2501]
+    assert row["coordinator"] == {"value": "test-lead", "source": "coordinator_registry",
+                                  "as_of": "2026-11-03T00:30:00Z", "gap": None,
+                                  "source_ref": M.REGISTRY_REL, "routing_basis": "default_lead"}
+    assert row["owner"]["value"]["coordinator"] is None  # no forged claim metadata
+    assert "PRIVATE" not in json.dumps(result)
+    changed = M.build([pr()], [claim()], [], [], [], NOW,
+                      coordination_registry=registry_value("other-lead", updated_at="2026-11-03T01:00:00Z"))
+    assert changed["by_pr"][2501]["coordinator"]["value"] == "other-lead"
+    assert changed["by_pr"][2501]["coordinator"]["as_of"] == "2026-11-03T01:00:00Z"
+
+
+def test_explicit_claim_coordinator_wins_without_forging_registry_source():
+    result = M.build([pr()], [claim(coordinator="assigned-coordinator")], [], [], [], NOW,
+                     coordination_registry=registry_value())
+    routed = result["by_pr"][2501]["coordinator"]
+    assert routed["value"] == "assigned-coordinator"
+    assert routed["source"] == "claim_board"
+    assert routed["as_of"] == "2026-11-03T01:00:00Z"
+    assert routed["routing_basis"] == "explicit_claim"
+
+
+@pytest.mark.parametrize("registry", [registry_value(role="observer"), registry_value(updated_at=None),
+                                      registry_value(updated_at="2026-11-03T00:00:00"),
+                                      {"lead": "not-registered", "updated_at": "2026-11-03T00:00:00Z",
+                                       "coordinators": []}])
+def test_observer_unregistered_or_undated_lead_is_not_guessed(registry):
+    result = M.build([pr()], [claim()], [], [], [], NOW, coordination_registry=registry)
+    assert result["by_pr"][2501]["coordinator"]["value"] is None
+    assert result["by_pr"][2501]["coordinator"]["gap"]
+    assert result["sources"]["coordination_registry"]["gap"]
+
+
+def test_registry_load_missing_corrupt_and_budget_gaps_are_named(tmp_path, monkeypatch):
+    write_sources(tmp_path)
+    assert M.load(tmp_path, [pr()], [claim()], NOW)["by_pr"][2501]["coordinator"]["value"] == "test-lead"
+    path = tmp_path / M.REGISTRY_REL
+    path.write_text("{broken")
+    assert M.load(tmp_path, [pr()], [claim()], NOW)["sources"]["coordination_registry"]["gap"] == "registry_corrupt"
+    path.write_text(json.dumps(registry_value()))
+    monkeypatch.setattr(M, "MAX_REGISTRY_BYTES", 1)
+    assert M.load(tmp_path, [pr()], [claim()], NOW)["sources"]["coordination_registry"]["gap"] == "registry_byte_budget_exceeded"
+
+
+def test_caller_source_gaps_survive_successful_local_load(tmp_path):
+    write_sources(tmp_path)
+    result = M.load(tmp_path, [pr()], [claim()], NOW, serving={"sha": SERVED},
+                    source_gaps={"claims": "caller_claims_corrupt", "coordinator_ledger": "caller_ledger_gap"})
+    assert result["sources"]["claims"]["gap"] == "caller_claims_corrupt"
+    assert result["sources"]["coordinator_ledger"]["gap"] == "caller_ledger_gap"
+
+
+def test_ci_gate_declares_its_acceptance_anchor():
+    path = PATH.parents[2] / "config/ci_gates/work_pipeline_sources_20261103.json"
+    assert json.loads(path.read_text())["anchor"] == "WORK_PIPELINE_SOURCES_20261103"
 
 
 def test_latest_claim_owner_and_explicit_pr_conflict_are_respected():
@@ -175,7 +331,7 @@ def test_naive_typed_evidence_is_a_gap_and_never_a_fresh_review():
 
 def test_missing_and_corrupt_sources_are_named_gaps(tmp_path):
     missing = M.load(tmp_path, [pr()], [], NOW)
-    assert {row["source"] for row in missing["gaps"]} == {"coordinator_ledger", "digest_approvals", "plans", "releases"}
+    assert {row["source"] for row in missing["gaps"]} == {"coordinator_ledger", "digest_approvals", "plans", "releases", "coordination_registry"}
     write_sources(tmp_path)
     (tmp_path / M.LEDGER_REL).write_text("{broken")
     data = M.load(tmp_path, [pr()], [], NOW, serving={"sha": SERVED})

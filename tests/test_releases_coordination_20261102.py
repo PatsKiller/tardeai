@@ -452,3 +452,52 @@ def test_claim_naming_another_pr_does_not_own_reused_branch(tmp_path):
     result = rc.build(_ledger(tmp_path), claims, [_pr()], now=NOW)
     assert result["work"][2474]["owner"] == "UNKNOWN"
     assert result["pipeline"]["by_pr"][2474]["owner"]["value"] is None
+
+
+def test_invalid_typed_evidence_clocks_never_lend_merge_or_green(tmp_path):
+    for invalid in (None, "2026-11-02T17:50:00", "not a timestamp"):
+        result = rc.build(_ledger(tmp_path, _review(), _ci(), _review(at=invalid), _ci(at=invalid)),
+                          _claims(tmp_path), [_pr()], now=NOW)
+        legacy = result["work"][2474]
+        shared = result["pipeline"]["by_pr"][2474]
+        assert legacy["review"]["state"] == shared["review"]["state"] == "UNKNOWN"
+        assert legacy["ci"]["state"] == shared["ci"]["state"] == "UNKNOWN"
+        assert legacy["review"]["gap"] and legacy["ci"]["gap"]
+
+
+def test_corrupt_claims_are_named_in_legacy_and_shared_sources(tmp_path, monkeypatch):
+    claims = _claims(tmp_path)
+    (claims / "broken.json").write_text("{broken")
+    result = rc.build(_ledger(tmp_path), claims, [_pr()], now=NOW)
+    assert "claims_invalid_or_unreadable" in result["gaps"]
+    assert result["pipeline"]["sources"]["claims"]["status"] == "UNAVAILABLE"
+    assert result["pipeline"]["sources"]["claims"]["gap"] == "claims_invalid_or_unreadable"
+    monkeypatch.setattr(rc, "MAX_CLAIM_FILES", 0)
+    assert rc.read_claims(claims) == ([], "claims_count_over_budget")
+
+
+def test_claim_symlinks_and_oversize_files_are_not_read(tmp_path, monkeypatch):
+    claims = _claims(tmp_path)
+    private = tmp_path / "synthetic-private.json"
+    private.write_text(json.dumps({"session": "never-return"}))
+    (claims / "linked.json").symlink_to(private)
+    assert rc.read_claims(claims) == ([], "claims_unsafe_or_over_budget")
+    (claims / "large.json").write_text(" " * 1024)
+    monkeypatch.setattr(rc, "MAX_CLAIM_BYTES", 10)
+    assert rc.read_claims(claims) == ([], "claims_unsafe_or_over_budget")
+
+
+def test_effective_completed_stage_cannot_report_agent_working(tmp_path):
+    claims = _claims(tmp_path, {"claim_id": "done", "session": "completed-worker", "status": "active",
+                                "stage": "released", "branch": "wt/x", "heartbeat_at": "2026-11-02T17:55:00Z"})
+    result = rc.build(_ledger(tmp_path), claims, [_pr()], now=NOW)
+    assert result["agents"] == []
+    assert result["pipeline"]["active_claim_ids"] == []
+    assert result["pipeline"]["by_pr"][2474]["owner"]["value"]["session"] == "completed-worker"
+
+
+def test_abbreviated_or_invalid_heads_are_not_exact_review_evidence():
+    for head in ("abc1234", "x" * 40):
+        evidence = rc.evidence_for_pr([_review(head=head), _ci(head=head)], 2474, head)
+        assert evidence["review"]["state"] == evidence["ci"]["state"] == "UNKNOWN"
+        assert evidence["review"]["gap"] == "target_head_invalid"

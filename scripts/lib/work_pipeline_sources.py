@@ -22,6 +22,9 @@ LEDGER_REL = "data/coordination/coordinator/ledger.jsonl"
 APPROVALS_REL = "data/runtime/pr_merge_telegram/digest_approvals.jsonl"
 PLANS_REL = "data/coordination/plans"
 CLAIMS_REL = "data/coordination/claims"
+REGISTRY_REL = "data/coordination/coordinator/coordinators.json"
+MAX_REGISTRY_BYTES = 64 * 1024
+MAX_COORDINATORS = 64
 MAX_BYTES = 2_000_000
 MAX_EVENTS = 20_000
 MAX_PLANS = 200
@@ -29,6 +32,7 @@ MAX_PLAN_BYTES = 256_000
 MAX_PRS = 200
 MAX_CLAIMS = 1000
 MAX_HISTORY = 100
+LIFECYCLE_STAGES = frozenset({"claimed", "building", "pr_open", "ci_green", "merged", "released", "abandoned"})
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 SAFE_ID = re.compile(r"[A-Za-z0-9_.:-]{1,160}\Z")
 TIMELINE_KINDS = frozenset({"dispatch", "assign", "check_request", "check_ok", "check_block",
@@ -42,7 +46,7 @@ CLAIM_FIELDS = ("claim_id", "session", "agent", "vendor", "coordinator", "task",
                 "stage", "stages", "started_at", "heartbeat_at", "ended_at", "head_sha", "worktree_head_sha", "worklog")
 
 
-def _iso(value: Any) -> str | None:
+def _parse(value: Any) -> datetime | None:
     if isinstance(value, datetime):
         parsed = value
     elif isinstance(value, str) and "T" in value:
@@ -54,12 +58,21 @@ def _iso(value: Any) -> str | None:
         return None
     if parsed.tzinfo is None:
         return None
-    return parsed.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return parsed.astimezone(timezone.utc)
+
+
+def _iso(value: Any) -> str | None:
+    parsed = _parse(value)
+    return parsed.isoformat().replace("+00:00", "Z") if parsed is not None else None
+
+
+def _sort_time(value: Any) -> datetime:
+    return _parse(value) or datetime.min.replace(tzinfo=timezone.utc)
 
 
 def _latest(values: Iterable[Any]) -> str | None:
-    stamps = [stamp for value in values if (stamp := _iso(value))]
-    return max(stamps) if stamps else None
+    stamps = [stamp for value in values if (stamp := _parse(value))]
+    return _iso(max(stamps)) if stamps else None
 
 
 def _number(value: Any) -> int | None:
@@ -80,6 +93,30 @@ def _text(value: Any, limit: int = 300) -> str | None:
 
 def _fact(value: Any, source: str, at: Any = None, gap: str | None = None) -> dict:
     return {"value": value, "source": source, "as_of": _iso(at), "gap": gap}
+
+
+def _public_claim(claim: Mapping) -> dict:
+    """Canonical board metadata only; no raw nested worklog/stage payloads."""
+    public = {key: claim[key] for key in CLAIM_FIELDS if key in claim and key not in ("worklog", "stages")
+              and (claim[key] is None or isinstance(claim[key], (str, int, bool)))}
+    worklog = claim.get("worklog")
+    safe_worklog = {}
+    if isinstance(worklog, Mapping):
+        if isinstance(worklog.get("exists"), bool):
+            safe_worklog["exists"] = worklog["exists"]
+        if isinstance(worklog.get("next_step"), str):
+            safe_worklog["next_step"] = worklog["next_step"][:1000]
+        if (stamp := _iso(worklog.get("last_entry_at"))):
+            safe_worklog["last_entry_at"] = stamp
+        for key in ("plan_done", "plan_total", "blockers"):
+            value = worklog.get(key)
+            if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                safe_worklog[key] = value
+    public["worklog"] = safe_worklog
+    stages = claim.get("stages")
+    public["stages"] = {key: stamp for key, value in stages.items()
+                        if key in LIFECYCLE_STAGES and (stamp := _iso(value))} if isinstance(stages, Mapping) else {}
+    return public
 
 
 def _claim_time(claim: Mapping) -> str | None:
@@ -105,15 +142,16 @@ def _public_event(row: Mapping, index: int, head: str) -> dict:
             "as_of": _iso(row.get("observed_at") or row.get("ts"))}
 
 
-def _evidence_events(events: list[Mapping]) -> tuple[list[dict], bool]:
+def _evidence_events(events: list[Mapping]) -> tuple[list[dict], list[dict]]:
     """Public typed evidence only, normalized before the canonical exact-head fold."""
-    out, invalid = [], False
+    out, invalid = [], []
     for row in events:
         if row.get("kind") not in (coordination.REVIEW_KIND, coordination.CI_KIND):
             continue
         at = _iso(row.get("observed_at") or row.get("ts"))
         if not at:
-            invalid = True
+            invalid.append({"pr_number": _number(row.get("pr_number")),
+                            "head_sha": row.get("head_sha"), "kind": row.get("kind")})
             continue
         public = {key: row.get(key) for key in ("kind", "pr_number", "head_sha", "evidence_class",
                   "verdict", "reviewer_session", "receipt_path", "receipt_sha256", "state", "source")}
@@ -124,6 +162,38 @@ def _evidence_events(events: list[Mapping]) -> tuple[list[dict], bool]:
     return out, invalid
 
 
+def _registry_view(value: Mapping | None) -> tuple[dict, str | None]:
+    """Only registered default routing, never prose or inferred territory authority."""
+    if value is None:
+        return {}, "registry_not_supplied"
+    if not isinstance(value, Mapping):
+        return {}, "registry_corrupt"
+    stamp = _iso(value.get("updated_at"))
+    if stamp is None:
+        return {}, "registry_timestamp_invalid"
+    lead, rows = value.get("lead"), value.get("coordinators")
+    if not isinstance(lead, str) or not SAFE_ID.fullmatch(lead):
+        return {}, "registry_lead_invalid"
+    if not isinstance(rows, list) or len(rows) > MAX_COORDINATORS:
+        return {}, "registry_coordinator_budget_or_shape_invalid"
+    public, seen = [], set()
+    for row in rows:
+        if not isinstance(row, Mapping):
+            return {}, "registry_coordinator_invalid"
+        ident, role, territories = row.get("id"), row.get("role"), row.get("territories")
+        if (not isinstance(ident, str) or not SAFE_ID.fullmatch(ident) or ident in seen
+                or not isinstance(role, str) or role not in ("lead", "member", "observer")
+                or not isinstance(territories, list) or len(territories) > MAX_COORDINATORS
+                or any(not isinstance(t, str) or not SAFE_ID.fullmatch(t) for t in territories)):
+            return {}, "registry_coordinator_invalid"
+        seen.add(ident)
+        public.append({"id": ident, "role": role, "territories": list(territories)})
+    leads = [row for row in public if row["role"] == "lead"]
+    if len(leads) != 1 or leads[0]["id"] != lead:
+        return {}, "registry_lead_not_registered"
+    return {"lead": lead, "coordinators": public, "updated_at": stamp}, None
+
+
 def _source(name: str, at: Any, gap: str | None = None) -> dict:
     return {"source": name, "as_of": _iso(at), "status": "UNAVAILABLE" if gap else "OK", "gap": gap}
 
@@ -131,7 +201,7 @@ def _source(name: str, at: Any, gap: str | None = None) -> dict:
 def build(prs: list[Mapping], claims: list[Mapping], events: list[Mapping], approvals: list[Mapping],
           plans: list[Mapping], now: datetime, *, serving: Mapping | None = None,
           health: Mapping | None = None, source_gaps: Mapping[str, str] | None = None,
-          stale_claim_hours: float = 24.0) -> dict:
+          stale_claim_hours: float = 24.0, coordination_registry: Mapping | None = None) -> dict:
     """Pure public facts over snapshots. Historical owners survive stale/ended claims.
 
     Each PR supplies released={at,sha,basis} from the census's earliest apply
@@ -139,6 +209,9 @@ def build(prs: list[Mapping], claims: list[Mapping], events: list[Mapping], appr
     is inferred from a merge timestamp or an unrelated successful deployment.
     """
     serving, health, source_gaps = serving or {}, health or {}, dict(source_gaps or {})
+    registry, registry_gap = _registry_view(coordination_registry)
+    if registry_gap and "coordination_registry" not in source_gaps:
+        source_gaps["coordination_registry"] = registry_gap
     if len(prs) > MAX_PRS:
         source_gaps["prs"] = "pr_budget_exceeded"
         prs = prs[:MAX_PRS]
@@ -166,12 +239,16 @@ def build(prs: list[Mapping], claims: list[Mapping], events: list[Mapping], appr
     evidence_events, invalid_evidence = _evidence_events(events)
     if invalid_evidence:
         source_gaps["coordinator_ledger"] = "typed_evidence_timestamp_invalid"
-    public_claims = [{key: c.get(key) for key in CLAIM_FIELDS if key in c} for c in claims]
+    public_claims = [_public_claim(c) for c in claims]
     active = []
-    for claim in public_claims:
+    for raw_claim, claim in zip(claims, public_claims):
         stamp = _iso(claim.get("heartbeat_at"))
         age = (now - datetime.fromisoformat(stamp.replace("Z", "+00:00"))).total_seconds() if stamp else None
-        if (coordination.is_live(claim) and age is not None and 0 <= age <= stale_claim_hours * 3600
+        terminal = raw_claim.get("ended_at") or any(
+            str(raw_claim.get(key) or "").strip().lower() in coordination.ENDED_STATES
+            for key in ("_state", "state", "stage", "status")
+        )
+        if (not terminal and age is not None and 0 <= age <= stale_claim_hours * 3600
                 and claim.get("claim_id")):
             active.append(claim["claim_id"])
     inventory = [{**{key: plan.get(key) for key in PLAN_FIELDS if key in plan},
@@ -187,7 +264,7 @@ def build(prs: list[Mapping], claims: list[Mapping], events: list[Mapping], appr
         branch = pr.get("branch") or pr.get("headRefName")
         matches = [c for c in public_claims if _number(c.get("pr_number") or c.get("pr")) == number
                    or (branch and c.get("branch") == branch and not _number(c.get("pr_number") or c.get("pr")))]
-        matches.sort(key=lambda c: (_claim_time(c) or "", _iso(c.get("started_at")) or ""), reverse=True)
+        matches.sort(key=lambda c: (_sort_time(_claim_time(c)), _sort_time(c.get("started_at"))), reverse=True)
         owner = matches[0] if matches else None
         if matches:
             owner_candidates += 1
@@ -211,6 +288,14 @@ def build(prs: list[Mapping], claims: list[Mapping], events: list[Mapping], appr
                     history.append({"kind": kind, "as_of": at, "source": "claim_board",
                                     "source_ref": f"{CLAIMS_REL}/{claim.get('claim_id')}.json"})
         evidence = coordination.evidence_for_pr(evidence_events, number, head)
+        invalid_kinds = {record["kind"] for record in invalid_evidence
+                         if head and record["head_sha"] == head and record["pr_number"] == number}
+        if invalid_kinds:
+            unknown = coordination.evidence_for_pr([], number, head)
+            for kind, field in ((coordination.REVIEW_KIND, "review"), (coordination.CI_KIND, "ci")):
+                if kind in invalid_kinds:
+                    evidence[field] = {**unknown[field], "source": "coordinator_ledger",
+                                       "gap": f"invalid_{field}_timestamp"}
         public_approvals = []
         for record in approvals:
             if record.get("schema") != "PrMergeDigestApproval@v1":
@@ -246,8 +331,10 @@ def build(prs: list[Mapping], claims: list[Mapping], events: list[Mapping], appr
         exact_served = (isinstance(serving.get("sha"), str) and SHA.fullmatch(serving["sha"])
                         and health.get("sha") == serving["sha"])
         verified_at = _iso(health.get("at"))
-        live = bool(released and release_at and pr.get("served_contains") is True and exact_served
-                    and health.get("ok") is True and verified_at and verified_at >= release_at)
+        release_time, verified_time, now_time = _parse(release_at), _parse(verified_at), _parse(now)
+        live = bool(released and release_time and pr.get("served_contains") is True and exact_served
+                    and health.get("ok") is True and verified_time and now_time
+                    and release_time <= verified_time <= now_time)
         live_gap = None if live else ("served_membership_not_observed" if pr.get("served_contains") is not True
                                       else "served_health_not_bound" if not exact_served
                                       else "served_health_not_verified")
@@ -257,19 +344,26 @@ def build(prs: list[Mapping], claims: list[Mapping], events: list[Mapping], appr
         if live:
             history.append({"kind": "verified_live", "as_of": verified_at, "source": "deploy_receipt",
                             "source_ref": "deploy_receipt.json", "sha": serving.get("sha")})
-        history.sort(key=lambda row: (row.get("as_of") or "", str(row.get("source_ref") or "")))
+        history.sort(key=lambda row: (_sort_time(row.get("as_of")), str(row.get("source_ref") or "")))
         row_gaps = []
         if len(history) > MAX_HISTORY:
             row_gaps.append("timeline_truncated")
         owner_value = {key: (owner or {}).get(key) for key in ("session", "agent", "vendor", "coordinator", "claim_id", "task")}
+        if (owner or {}).get("coordinator"):
+            routed = {**_fact(owner["coordinator"], "claim_board", owner_at), "routing_basis": "explicit_claim"}
+        elif registry and not source_gaps.get("coordination_registry"):
+            routed = {**_fact(registry["lead"], "coordinator_registry", registry["updated_at"]),
+                      "source_ref": REGISTRY_REL, "routing_basis": "default_lead"}
+        else:
+            routed = {**_fact(None, "coordinator_registry", None, source_gaps.get("coordination_registry")
+                             or "coordinator_source_not_recorded"), "source_ref": REGISTRY_REL, "routing_basis": None}
         by_pr[number] = {
             "owner": _fact(owner_value if owner else None, "claim_board", owner_at,
                            None if owner and owner.get("session") else "claim_owner_not_recorded"),
             "last_activity": _fact(_claim_time(owner or {}), "claim_board+claim_worklog",
                                    _claim_time(owner or {}),
                                    None if _claim_time(owner or {}) else "activity_timestamp_not_recorded"),
-            "coordinator": _fact((owner or {}).get("coordinator"), "claim_board", owner_at,
-                                 None if (owner or {}).get("coordinator") else "coordinator_source_not_recorded"),
+            "coordinator": routed,
             "claim_ids": [c.get("claim_id") for c in matches],
             "active_claim_ids": [c.get("claim_id") for c in matches if c.get("claim_id") in active],
             "next_action": _fact(wl.get("next_step"), "claim_worklog", wl.get("last_entry_at"),
@@ -292,6 +386,8 @@ def build(prs: list[Mapping], claims: list[Mapping], events: list[Mapping], appr
         }
     sources = {
         "claims": _source(CLAIMS_REL, _latest(_claim_time(c) for c in public_claims), source_gaps.get("claims")),
+        "coordination_registry": _source(REGISTRY_REL, registry.get("updated_at"),
+                                         source_gaps.get("coordination_registry")),
         "coordinator_ledger": _source(LEDGER_REL, _latest(e.get("observed_at") or e.get("ts") for e in events),
                                       source_gaps.get("coordinator_ledger")),
         "digest_approvals": _source(APPROVALS_REL, _latest(r.get("approved_at") for r in approvals),
@@ -401,16 +497,40 @@ def _plans(root: Path) -> tuple[list[dict], str | None]:
     return plans, None
 
 
+def _registry(root: Path) -> tuple[dict | None, str | None]:
+    path = root / REGISTRY_REL
+    if not _safe_path(root, path):
+        return None, "registry_unsafe_path"
+    try:
+        with path.open("rb") as stream:
+            raw = stream.read(MAX_REGISTRY_BYTES + 1)
+    except FileNotFoundError:
+        return None, "registry_missing"
+    except OSError:
+        return None, "registry_unreadable"
+    if len(raw) > MAX_REGISTRY_BYTES:
+        return None, "registry_byte_budget_exceeded"
+    try:
+        value = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        return None, "registry_corrupt"
+    public, gap = _registry_view(value)
+    return public if not gap else None, gap
+
+
 def load(state_root: Path, prs: list[Mapping], claims: list[Mapping], now: datetime, *,
          release_reader: Any = None, health: Mapping | None = None, serving: Mapping | None = None,
-         stale_claim_hours: float = 24.0) -> dict:
+         stale_claim_hours: float = 24.0, source_gaps: Mapping[str, str] | None = None) -> dict:
     """Read bounded local sources; census already owns all GitHub/git membership work."""
     root = Path(state_root)
     events, event_gap = _jsonl(root / LEDGER_REL, root)
     approvals, approval_gap = _jsonl(root / APPROVALS_REL, root)
     plans, plans_gap = _plans(root)
-    gaps = {key: value for key, value in (("coordinator_ledger", event_gap),
-                                         ("digest_approvals", approval_gap), ("plans", plans_gap)) if value}
+    registry, registry_gap = _registry(root)
+    gaps = dict(source_gaps or {})
+    gaps.update({key: value for key, value in (("coordinator_ledger", event_gap),
+                                             ("digest_approvals", approval_gap), ("plans", plans_gap),
+                                             ("coordination_registry", registry_gap)) if value})
     if serving is None:
         try:
             serving = release_reader.serving() if release_reader is not None else {}
@@ -419,4 +539,4 @@ def load(state_root: Path, prs: list[Mapping], claims: list[Mapping], now: datet
     if not serving or not serving.get("sha"):
         gaps["releases"] = "served_identity_unavailable"
     return build(prs, claims, events, approvals, plans, now, serving=serving, health=health,
-                 source_gaps=gaps, stale_claim_hours=stale_claim_hours)
+                 source_gaps=gaps, stale_claim_hours=stale_claim_hours, coordination_registry=registry)
