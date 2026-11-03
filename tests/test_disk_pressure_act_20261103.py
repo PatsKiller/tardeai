@@ -14,6 +14,7 @@ Synthetic only: every test fakes `subprocess.run` and the disk reading; nothing 
 reaches the network.
 """
 from __future__ import annotations
+import pytest
 
 import json
 import os
@@ -249,17 +250,18 @@ def test_every_flag_the_guard_shells_exists_in_the_cleaner():
 
 # ---------------------------------------------------------------- (R1) disarm during the preview
 class _DisarmDuringPreview(Calls):
-    """Answers the preview, then rewrites the rules to armed=false before the guard's next decision."""
+    """Answers the preview, then mutates one gate in the rules before the guard's next decision."""
 
-    def __init__(self, rules: Path, answers):
+    def __init__(self, rules: Path, answers, mutate=None):
         super().__init__(answers)
         self.rules = rules
+        self.mutate = mutate or (lambda doc: doc["pressure_act"].__setitem__("armed", False))
 
     def run(self, argv, **kw):
         proc = super().run(argv, **kw)
         if "--dry-run" in [str(a) for a in argv]:
             doc = json.loads(self.rules.read_text(encoding="utf-8"))
-            doc["pressure_act"]["armed"] = False
+            self.mutate(doc)
             self.rules.write_text(json.dumps(doc, indent=1), encoding="utf-8")
         return proc
 
@@ -304,3 +306,19 @@ def test_a_failed_cleaner_is_not_reported_as_applied(monkeypatch, tmp_path, caps
     assert out["cleaner"]["decision"] == "error"
     assert out["cleaner"]["decision"] != "applied"
     assert out["cleaner"]["error"].startswith("apply_failed_rc_1")
+
+
+@pytest.mark.parametrize("gate,mutate", [
+    ("standing_apply.enabled", lambda doc: doc["standing_apply"].__setitem__("enabled", False)),
+    ("standing_apply.approval.status", lambda doc: doc["standing_apply"]["approval"].__setitem__("status", "PENDING")),
+])
+def test_every_arming_gate_closed_mid_preview_refuses_the_apply(monkeypatch, tmp_path, capsys, gate, mutate):
+    """cc4's point: the exec-boundary recheck must cover all three gates, not just `armed`."""
+    rules = _rules(tmp_path, armed=True)
+    calls = _DisarmDuringPreview(rules, [_Proc(stdout=_dry_line(12, 3 * GB), rc=0)], mutate=mutate)
+    _guard(monkeypatch, tmp_path, calls)
+    g.main(["--rules", str(rules)])
+    out = json.loads(capsys.readouterr().out)
+    assert [argv for argv in calls.argv if "--apply" in argv] == [], f"{gate} closed but an apply was constructed"
+    assert out["cleaner"]["decision"] == "refused_disarmed"
+    assert out["cleaner"]["error"] == "pressure_act_disarmed_before_apply"
