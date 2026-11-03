@@ -70,7 +70,7 @@
 - 2026-11-01 APPROVED v006. The operator, verbatim: "I approve version 6." Recorded from the message under AGENTS.md §20
   (as for v002, v004 and v005). Build follows in a PR stacked on this one, citing `Design: home/v006`.
 
-- 2026-11-02 PROPOSED v007 (builds on v006; same card). The operator asked for it — "look at everything else on the
+- 2026-11-02 APPROVED v007 (builds on v006; same card). The operator, verbatim: "why don't you create the design? I approve the design. And you leave the design and markup for Codex. I like your markups better." Approved mockup (private store, never committed): `v007/mockups/HomeV007MarketRisk.html` sha256 afca9e47…, review link <https://claude.ai/artifact/4dG8NHVfxscDxR36q3L2cQ>. The operator asked for it — "look at everything else on the
   card that could be enhanced. Give the design to Codex to distribute out to agents and sub-agents. Also implement
   tooling tips where appropriate and make sure this is all mobile responsive." — after asking on the same card for
   "the current price points" and "the current catalyst".
@@ -96,4 +96,4 @@
   - **Phone:** collapsible sections with a one-line collapsed summary, sticky section headers, stacked tables under
     600 px, 44 px targets, no horizontal page scroll at 412 or 390.
 
-  No size, order or stop level anywhere. Mockup only, awaiting the operator's decision in Approvals → Designs.
+  No size, order or stop level anywhere. Build order: the stopped-out "now" bug first, then the data fields, then the UI per the approved mockup, then tests and phone screenshots at 412/390.

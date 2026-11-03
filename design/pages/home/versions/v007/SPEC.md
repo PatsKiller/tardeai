@@ -1,8 +1,16 @@
-# Home v007 — SPEC (PROPOSED): context, clocks, tap-to-explain, phone
+# Home v007 — SPEC (**APPROVED 2026-11-02**): context, clocks, tap-to-explain, phone
 
 Design `DSN-20261031-market-risk-ui` · base **v006 (APPROVED 2026-11-01)** · operator request 2026-11-02
 Source of the request: `persistent-state/handoffs/SPEC_HOME_MARKET_RISK_CARD_V7_20261102.md` (verbatim quotes there).
-**Status: PROPOSED. Nothing is built from this document until the operator approves it in Approvals → Designs.**
+**Status: APPROVED.** The operator, verbatim: *"why don't you create the design? I approve the design. And you leave the
+design and markup for Codex. I like your markups better."*
+
+**Design of record:** the approved mockup in the private store,
+`persistent-state/data/design/pages/home/v007/mockups/HomeV007MarketRisk.html`
+(sha256 `afca9e470ea560cb129aa7af002cc805851b9df6b62d9dba879283e967cb491b`, 34,537 bytes; operator review link
+<https://claude.ai/artifact/4dG8NHVfxscDxR36q3L2cQ>). **Where this document and that mockup differ, the mockup wins** —
+this file is the written transcription the build cites, with placeholder values only (the repo is public; rule 7).
+Purple "sample" values and NEW tags in the mockup are the fields Part A must fill from live data.
 
 ## Why
 
@@ -162,7 +170,10 @@ props v006 shipped.
 
 ## Acceptance
 
-- The operator approves this mockup in Approvals → Designs; only then does Part C build it.
+- The operator approved this design on 2026-11-02 (record above); a build PR cites `Design: home/v007` and contains
+  only what the approved mockup shows. Build order: **1)** the stopped-out "now" bug fix ships first, **2)** the data
+  fields (Part A), **3)** the UI per the mockup (collapsible sections, stacked tables under 600 px, tap-to-explain
+  sheet), **4)** tests + phone screenshots at 412 and 390.
 - Phone screenshots at 412 and 390 with a tooltip open and a section collapsed.
 - Every value shows a time and a source; no section renders blank.
 - **Tests:** the stopped-out "now" bug (after 16:00 ET the row uses today's close; before it, the live/last price with
