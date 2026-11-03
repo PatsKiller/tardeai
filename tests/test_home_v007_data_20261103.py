@@ -1180,3 +1180,60 @@ def test_a_built_block_is_never_shadowed_by_the_incoming_projection(monkeypatch)
     out = module.join({"state": "evaluated", "home_v007": {"sentinel": True}},
                       store={"accounts": {}}, policy={"reentry_watch": {}}, now=NOW)
     assert out["home_v007"].get("built") is True and "sentinel" not in out["home_v007"]
+
+
+def _join_with_policy(policy):
+    from scripts.lib.market_risk_book_join import join
+
+    def no_db(**kwargs):
+        raise TimeoutError("hermetic: no database in this test")
+
+    return join(
+        {"state": "evaluated", "as_of": ASOF, "mode": "shadow", "categories": [], "positions": {},
+         "reentry_watch": {}},
+        now=NOW, budgets=[], get_conn=no_db, store=_book_store(), policy=policy,
+        context_reader=_JoinReader(),
+    )
+
+
+@pytest.mark.parametrize("path,value", [
+    (("reentry_watch", "card", "max_rows"), "x"),
+    (("home_review", "lookthrough_top_groups"), "z"),
+    (("home_actions", "sectors", "fold_below_usd"), "x"),
+])
+def test_a_malformed_operator_card_value_returns_the_shaped_block_and_keeps_legacy_fields(path, value):
+    """cc6: card_config() parses int/float from operator policy; a typo used to escape as 200 with no block."""
+    from copy import deepcopy
+
+    from scripts.lib.market_risk.policy import load_policy
+
+    policy = deepcopy(load_policy())
+    node = policy
+    for key in path[:-1]:
+        if not isinstance(node.get(key), dict):
+            node[key] = {}
+        node = node[key]
+    node[path[-1]] = value
+    out = _join_with_policy(policy)
+    block = out["home_v007"]
+    assert block["state"] == "unavailable" and block["symbols"] == {}
+    assert block["read_errors"][0]["reason"] == "ValueError"
+    assert "final assembly failed" in block["reason"]
+    assert block["gaps"][0]["remediation"]["key"] == "HOMEV007:context"
+    # the legacy fields already computed are preserved (present and of their own shape, not blanked)
+    for key in ("book_exposure", "review", "scope_labels", "budgets_detail", "reentry_detail", "reentry_card"):
+        assert key in out, key
+    assert out["card_config"] == {} and out["alerts"] == []  # the two that failed are the shaped fallbacks
+
+
+def test_an_alerts_failure_returns_the_shaped_block_and_keeps_legacy_fields(monkeypatch):
+    import scripts.lib.market_risk_book_join as bj
+
+    monkeypatch.setattr(bj, "run_alerts", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("synthetic alerts")))
+    from scripts.lib.market_risk.policy import load_policy
+
+    out = _join_with_policy(load_policy())
+    block = out["home_v007"]
+    assert block["state"] == "unavailable" and block["read_errors"][0]["reason"] == "RuntimeError"
+    assert "book_exposure" in out and isinstance(out["review"], list)
+    assert out["alerts"] == [] and out["card_config"] == {}

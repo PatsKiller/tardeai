@@ -507,6 +507,18 @@ def join(
         # checks only for presence must be able to tell "unavailable" from "present and empty".
         actions = {}
         v007 = unavailable_context(exc, now)
+    # Final assembly is part of the join's contract. card_config() parses int/float out of operator
+    # policy, and run_alerts() reads the projection: a malformed value or an alerts failure must not
+    # escape as a 200 with no block, and must not discard the legacy fields already computed.
+    try:
+        card_cfg = card_config(policy)
+        alerts = run_alerts(projection)
+    except Exception as exc:  # noqa: BLE001
+        card_cfg, alerts = {}, []
+        v007 = unavailable_block(
+            "the final assembly failed (" + type(exc).__name__ + "); the additive context was not completed",
+            now, code=type(exc).__name__,
+        )
     return {
         # The BUILT block is authoritative: an incoming projection key must never shadow it.
         **projection,
@@ -517,7 +529,7 @@ def join(
         "budgets_detail": out["budgets"],
         "reentry_detail": out["reentry"],
         "reentry_card": (policy.get("reentry_watch") or {}).get("card") or {},
-        "card_config": card_config(policy),
-        "alerts": run_alerts(projection),
+        "card_config": card_cfg,
+        "alerts": alerts,
         "home_v007": v007,
     }
