@@ -81,6 +81,130 @@
     "protect": {
       "label": "Protect",
       "text": "Your largest positions with something to review: a stop close to the price, no stop, or an account over a budget. Each one opens the existing review page; nothing is placed or changed from here."
+    },
+    "tier_blue": {
+      "label": "BLUE",
+      "text": "Calm: nothing in the book is close to a risk budget and few groups are stressed."
+    },
+    "tier_yellow": {
+      "label": "YELLOW",
+      "text": "Watch: one budget or stress reading is near its limit, so the card is telling you early."
+    },
+    "tier_orange": {
+      "label": "ORANGE",
+      "text": "Elevated: at least one risk budget is over its limit, or several groups are stressed at once."
+    },
+    "tier_red": {
+      "label": "RED",
+      "text": "High: multiple budgets are over their limits or a large share of the book sits in stressed groups."
+    },
+    "score": {
+      "label": "Score /100",
+      "text": "How exposed the book is right now, from 0 to 100: concentration, stops close to price and stressed groups. A smaller number is calmer."
+    },
+    "categories_confirm": {
+      "label": "categories confirm",
+      "text": "How many of the nine scored categories independently point the same way. More confirming categories make the score more reliable."
+    },
+    "repeat": {
+      "label": "repeat",
+      "text": "This reading repeats the previous evaluation, so nothing material changed since the last check."
+    },
+    "acknowledge": {
+      "label": "Acknowledge",
+      "text": "Silences repeat notices for this episode until the situation changes. It does not change the tier or the score."
+    },
+    "stressed_groups": {
+      "label": "stressed groups",
+      "text": "Groups marked STRESS or WEAK, counted after look-through. Themes overlap sectors and are never added together."
+    },
+    "unprotected_budget": {
+      "label": "unprotected",
+      "text": "Positions with no stop on file, as a share of the account. It compares against the unprotected budget you set."
+    },
+    "stop_waiting": {
+      "label": "WAITING",
+      "text": "A stop exists but the broker has not confirmed it as resting yet. It is shown so you know what is intended."
+    },
+    "pct_of_account": {
+      "label": "of this account",
+      "text": "This position's value divided by that account's total, cash included. Home shows a second percentage against the whole book."
+    },
+    "inverse_funds": {
+      "label": "Inverse funds",
+      "text": "Funds that rise when their index falls. Their daily move is shown as context for the hedge decision, never as advice."
+    },
+    "not_a_buy_list": {
+      "label": "not a buy list",
+      "text": "A ranking of groups by recent relative return. It describes what is working, not what to own."
+    },
+    "rotate": {
+      "label": "Rotate",
+      "text": "Which groups are leading or lagging over 1 and 5 sessions, and what you already hold in them. Descriptive only."
+    },
+    "hedge": {
+      "label": "Hedge",
+      "text": "The Defense desk's read on whether a hedge trigger is close, with the two conditions shown as progress."
+    },
+    "wash_sale": {
+      "label": "Wash sale",
+      "text": "Rebuying a sold security inside the wash-sale window defers the loss into the new position's basis. The card names the window."
+    },
+    "pc_vol": {
+      "label": "P/C vol",
+      "text": "Put/call volume: put contracts traded divided by call contracts on the index, and how that compares with its own median."
+    },
+    "price_since_exit": {
+      "label": "price since exit",
+      "text": "The line starts at the price you exited, with the invalidation low marked. It shows the path since, not a forecast."
+    },
+    "broker_resting": {
+      "label": "broker resting",
+      "text": "The stop order is live at the broker. Pending activation means it is recorded here but the broker has not confirmed it."
+    },
+    "status_chips": {
+      "label": "Status chips",
+      "text": "STRESS, WEAK, HOLDING and RESILIENT describe a group's behaviour versus the market over the last 5 sessions."
+    },
+    "intentional": {
+      "label": "This is intentional",
+      "text": "An operator decision recorded on this card. It explains why a reading looks the way it does and needs no action."
+    },
+    "trim_review": {
+      "label": "trim review",
+      "text": "Positions large enough versus the rest of the book that a smaller size may be worth reviewing. A prompt, not an instruction."
+    },
+    "heat": {
+      "label": "heat",
+      "text": "How much of the book is concentrated in a single group, shown after look-through. Higher heat means one theme drives the result."
+    },
+    "rr": {
+      "label": "R:R",
+      "text": "Reward-to-risk: the distance to a sensible target divided by the distance to the invalidation level, measured at the current quote."
+    },
+    "ma_10_20": {
+      "label": "10-day / 20-day",
+      "text": "Simple moving averages of the closing price. A close above them is one of the Stage 2 confirmation routes."
+    },
+    "rs_pts": {
+      "label": "RS pts",
+      "text": "Relative-strength points: how far a group has beaten or lagged the market, in percentage points, over the stated window."
+    },
+    "theme_overlap": {
+      "label": "theme overlap",
+      "text": "A holding can sit in a sector and in one or more themes. Overlapping groups are never summed into one exposure number."
+    },
+    "budget_breaches": {
+      "label": "budget breaches",
+      "text": "Accounts over one of your risk budgets, for example too much in a single sector. Each row names the budget it broke."
+    },
+    "score_today": {
+      "label": "Score today",
+      "text": "The score's path across today's evaluations, oldest to newest, so you can see whether risk is building or easing."
+    },
+    "source_clock": {
+      "label": "Show source",
+      "text": "The time and source behind this section's numbers. Sections update on different clocks; a stale section is marked amber."
     }
   }
 }
