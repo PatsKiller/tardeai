@@ -721,3 +721,41 @@ def test_f14_an_unknown_sibling_stays_unknown_on_refresh(store):
     assert after.materiality_tier == "UNKNOWN"
     assert sorted(e["realized_pnl"] for e in after.exits if e["realized_pnl"] is not None) == [-200.0]
     conn.close()
+
+
+def test_f15_a_late_same_day_exit_is_persisted_not_dropped(store):
+    """codex F15: a second confirmed same-day exit was read and silently discarded while the pass said complete."""
+    conn = _source_db()
+    _watch(conn, "2026-10-27", 82.0, -200)
+    _tx(conn, "2026-10-27", 10)
+    _positions(conn, 0)
+    from lib.recovery_engine import fills_consumer as fc
+    first = fc.run(store, conn, today=TODAY, now=NOW)
+    key = first["opened"][0]
+    assert store.get(key).realized_pnl == pytest.approx(-200) and store.get(key).materiality_tier == "T3"
+    _watch(conn, "2026-10-27", 80.0, -12000)      # the late arrival, same day, distinct exit
+    _tx(conn, "2026-10-27", 20)
+    second = fc.run(store, conn, today=TODAY, now=NOW)
+    case = store.get(key)
+    assert sorted(e["realized_pnl"] for e in case.exits) == [-12000.0, -200.0]
+    assert case.realized_pnl == pytest.approx(-12200) and case.materiality_tier == "T1"
+    assert second["complete"] is True and second["failed"] == []
+    conn.close()
+
+
+def test_f15_a_pass_that_cannot_persist_a_late_fill_reports_incomplete(store, monkeypatch):
+    """The one outcome that must be impossible: complete=True while a read fill was dropped."""
+    conn = _source_db()
+    _watch(conn, "2026-10-27", 82.0, -200)
+    _watch(conn, "2026-10-27", 80.0, -12000)
+    _tx(conn, "2026-10-27", 20)
+    _positions(conn, 0)
+    from lib.recovery_engine import fills_consumer as fc
+
+    def refuse(*a, **k):
+        raise OSError("store refused the write")
+
+    monkeypatch.setattr(store, "upsert", refuse)
+    out = fc.run(store, conn, today=TODAY, now=NOW)
+    assert out["complete"] is False and out["failed"], out
+    conn.close()

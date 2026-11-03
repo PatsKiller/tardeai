@@ -285,16 +285,24 @@ def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date]
         by_date: dict[str, list[rc.ExitFill]] = {}
         for fill in got:
             by_date.setdefault(fill.exit_date.isoformat(), []).append(fill)
-        stored_by_date: dict[str, int] = {}
-        for row in case.exits:
-            key = str(row["date"])[:10]
-            stored_by_date[key] = stored_by_date.get(key, 0) + 1
-        merged = [by_date[str(row["date"])[:10]][0]
-                  if stored_by_date[str(row["date"])[:10]] == 1 and len(by_date.get(str(row["date"])[:10]) or []) == 1
-                  else _as_exit_fill(symbol, account, row)
-                  for row in case.exits]
-        # A read fill on a date this case does not hold at all is a genuine late arrival for the cluster.
-        merged.extend(f for key, items in by_date.items() if key not in stored_by_date for f in items)
+        merged: list[rc.ExitFill] = []
+        for DateKey in {str(row["date"])[:10] for row in case.exits} | set(by_date):
+            stored = [row for row in case.exits if str(row["date"])[:10] == DateKey]
+            reads = list(by_date.get(DateKey) or [])
+            used: set[int] = set()
+            # Pair by EXACT price first: a re-read of the same exit matches itself, so a repeat pass changes nothing.
+            pairs: list[tuple[dict, Optional[rc.ExitFill]]] = []
+            for row in stored:
+                hit = next((j for j, f in enumerate(reads)
+                            if j not in used and abs(float(f.price) - float(row["price"])) < 1e-9), None)
+                if hit is not None:
+                    used.add(hit)
+                pairs.append((row, reads[hit] if hit is not None else None))
+            # A read fill paired to nobody is a DISTINCT exit this case has not persisted — a late arrival, not an
+            # ambiguity to be dropped (codex F15). It is appended, so the case never reads a fill and discards it.
+            extras = [f for j, f in enumerate(reads) if j not in used]
+            merged.extend(fill if fill is not None else _as_exit_fill(symbol, account, row) for row, fill in pairs)
+            merged.extend(extras)
         refreshed = rc.consume_fills(store, merged, cluster_key=case.cluster_key, **common)
         result = refreshed
     if unassigned:
