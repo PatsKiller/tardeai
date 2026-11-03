@@ -31,6 +31,16 @@ _IPO_KW = ["ipo", "goes public", "going public", "public offering", "files to go
            "s-1 filing", "begins trading", "debut", "stock market listing", "to list shares"]
 
 
+class _EvalError(Exception):
+    """An alert could not be evaluated or its firing could not be enqueued.
+
+    The run receipt may only say ok when every active alert was actually evaluated and every hit was durably enqueued.
+    Before this, a database or provider failure was swallowed and the run still reported success (jobs coverage audit,
+    2026-11-03): a failed news query looked like "no news", and an alert whose event row was not written was marked
+    triggered anyway, losing it permanently while the receipt said ok.
+    """
+
+
 def _now():
     return datetime.now(timezone.utc).isoformat()
 
@@ -40,6 +50,20 @@ def _load():
         return json.loads(STORE.read_text())
     except Exception:
         return {"alerts": []}
+
+
+def _load_strict():
+    """The store for an EVALUATION run: a missing store is empty, but a corrupt one is an error.
+
+    ``_load`` stays lenient for the API's ``add_alert``/``list_alerts``; an evaluation that silently treated a corrupt
+    store as empty and then saved it would erase every alert.
+    """
+    try:
+        return json.loads(STORE.read_text())
+    except FileNotFoundError:
+        return {"alerts": []}
+    except Exception as exc:
+        raise _EvalError(f"alert store unreadable: {type(exc).__name__}") from exc
 
 
 def _save(d):
@@ -85,45 +109,60 @@ def _news_hits(company: str, keywords):
             if any(k in t for k in keywords):
                 out.append({"title": title, "url": url, "at": str(pub)})
         return out
-    except Exception:
-        return []
+    except Exception as exc:
+        # A failed query is not "no news": it is an evaluation that did not happen.
+        raise _EvalError(f"news query failed: {type(exc).__name__}") from exc
 
 
 def _fire(alert, subject, evidence):
     try:
         from alert_event_writer import save_alert_event
-        save_alert_event(alert_type="strategic_alert", severity="urgent", source_script="ask_alerts.py",
-                         raw_text=f"[ask-alert] {subject}: {evidence.get('title','condition met')} — you asked: "
-                                  f"\"{alert['question']}\". {evidence.get('url','')}",
-                         parsed_payload={"kind": "ask_alert", "alert_id": alert["id"], "subject": subject,
-                                         "evidence": evidence})
-        return True
-    except Exception:
-        return False
+        alert_id = save_alert_event(alert_type="strategic_alert", severity="urgent", source_script="ask_alerts.py",
+                                    raw_text=f"[ask-alert] {subject}: {evidence.get('title','condition met')} — you "
+                                             f"asked: \"{alert['question']}\". {evidence.get('url','')}",
+                                    parsed_payload={"kind": "ask_alert", "alert_id": alert["id"], "subject": subject,
+                                                    "evidence": evidence})
+    except Exception as exc:
+        raise _EvalError(f"alert event write failed: {type(exc).__name__}") from exc
+    if alert_id is None:
+        # save_alert_event swallows its own DB error and returns None; the alert must stay active, not be "triggered".
+        raise _EvalError("alert event not saved")
+    return True
 
 
 def check_alerts() -> list:
-    d = _load(); fired = []
+    """Evaluate every active alert. Returns the alerts that fired.
+
+    Every evaluation or enqueue failure is collected and raised AFTER pending state is saved, so the run receipt says
+    failed (with the previous ok_at preserved) instead of claiming a success that did not happen. A genuine "nothing
+    fired" is still a success.
+    """
+    d = _load_strict(); fired = []; errors = []
     for a in d.get("alerts", []):
         if a.get("status") != "active":
             continue
-        if a["kind"] == "ipo_watch":
-            for name in a.get("companies", []) or ["SpaceX"]:
-                hits = _news_hits(name, _IPO_KW)
-                if hits and _fire(a, name, hits[0]):
-                    a["status"], a["triggered_at"] = "triggered", _now()
-                    fired.append({"id": a["id"], "subject": name, "evidence": hits[0]})
-                    break
-        elif a["kind"] == "price" and a.get("target_price") and a.get("symbols"):
-            try:
-                import yfinance as yf
-                px = float(yf.Ticker(a["symbols"][0]).fast_info["last_price"])
+        try:
+            if a["kind"] == "ipo_watch":
+                for name in a.get("companies", []) or ["SpaceX"]:
+                    hits = _news_hits(name, _IPO_KW)
+                    if hits and _fire(a, name, hits[0]):
+                        a["status"], a["triggered_at"] = "triggered", _now()
+                        fired.append({"id": a["id"], "subject": name, "evidence": hits[0]})
+                        break
+            elif a["kind"] == "price" and a.get("target_price") and a.get("symbols"):
+                try:
+                    import yfinance as yf
+                    px = float(yf.Ticker(a["symbols"][0]).fast_info["last_price"])
+                except Exception as exc:
+                    raise _EvalError(f"price quote failed: {type(exc).__name__}") from exc
                 if px >= a["target_price"] and _fire(a, a["symbols"][0], {"title": f"price ${px:.2f} ≥ ${a['target_price']}"}):
                     a["status"], a["triggered_at"] = "triggered", _now()
                     fired.append({"id": a["id"], "subject": a["symbols"][0], "price": px})
-            except Exception:
-                pass
-    _save(d)
+        except _EvalError as exc:
+            errors.append(f"{a.get('id')}:{exc}")
+    _save(d)  # persist whatever did complete before reporting the failure
+    if errors:
+        raise _EvalError("; ".join(errors))
     return fired
 
 

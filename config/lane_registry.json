@@ -21801,10 +21801,9 @@
       "expected_cadence_hours": 61.5,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/ask_alerts.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/ask_alerts.py:25 STORE; check_alerts() calls _save(d) unconditionally (:122); host mtime 2026-10-09T16:00:01"
+        "kind": "json_key",
+        "path": "data/runtime/ask-alerts_last.json",
+        "key": "ok_at"
       },
       "value_class": "Unused",
       "recommendation": "R0_ELIMINATE",
@@ -21820,7 +21819,7 @@
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. Jobs coverage audit 2026-11-03: the signal used to be the alert STORE mtime (data/runtime/ask_alerts.json), which check_alerts() saves unconditionally, so a failed evaluation advanced it; the script has written a LaneRunReceipt since shard 03 (ok/ok_at only on a completed check, the prior ok_at preserved on failure, nothing on --dry-run) and this row now reads that receipt.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
