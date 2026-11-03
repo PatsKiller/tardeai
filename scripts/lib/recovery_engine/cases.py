@@ -56,6 +56,16 @@ CREATE TABLE IF NOT EXISTS recovery_cases (
 """
 
 
+# Literal statements: the column list and placeholder count are fixed here, so no SQL is ever assembled from
+# runtime strings (ruff S608). The two dialects differ only in placeholder style and conflict handling.
+UPSERT_SQLITE = (
+    "INSERT OR REPLACE INTO recovery_cases (case_key, symbol, account, broker, cluster_key, exits_json, exit_first_date, exit_last_date, realized_pnl, pre_exit_shares, residual_shares, pre_exit_weight_pct, materiality_tier, residual_pct_of_pre_exit, residual_note, state, state_since, eligibility_json, plan_json, last_nudge_at, last_p1_at, operator_decision, operator_note, opened_at, updated_at, as_of, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+)
+UPSERT_POSTGRES = (
+    "INSERT INTO recovery_cases (case_key, symbol, account, broker, cluster_key, exits_json, exit_first_date, exit_last_date, realized_pnl, pre_exit_shares, residual_shares, pre_exit_weight_pct, materiality_tier, residual_pct_of_pre_exit, residual_note, state, state_since, eligibility_json, plan_json, last_nudge_at, last_p1_at, operator_decision, operator_note, opened_at, updated_at, as_of, source) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (case_key) DO UPDATE SET symbol=EXCLUDED.symbol, account=EXCLUDED.account, broker=EXCLUDED.broker, cluster_key=EXCLUDED.cluster_key, exits_json=EXCLUDED.exits_json, exit_first_date=EXCLUDED.exit_first_date, exit_last_date=EXCLUDED.exit_last_date, realized_pnl=EXCLUDED.realized_pnl, pre_exit_shares=EXCLUDED.pre_exit_shares, residual_shares=EXCLUDED.residual_shares, pre_exit_weight_pct=EXCLUDED.pre_exit_weight_pct, materiality_tier=EXCLUDED.materiality_tier, residual_pct_of_pre_exit=EXCLUDED.residual_pct_of_pre_exit, residual_note=EXCLUDED.residual_note, state=EXCLUDED.state, state_since=EXCLUDED.state_since, eligibility_json=EXCLUDED.eligibility_json, plan_json=EXCLUDED.plan_json, last_nudge_at=EXCLUDED.last_nudge_at, last_p1_at=EXCLUDED.last_p1_at, operator_decision=EXCLUDED.operator_decision, operator_note=EXCLUDED.operator_note, opened_at=EXCLUDED.opened_at, updated_at=EXCLUDED.updated_at, as_of=EXCLUDED.as_of, source=EXCLUDED.source"
+)
+
+
 def _utc(now: Optional[datetime] = None) -> datetime:
     moment = now or datetime.now(timezone.utc)
     if moment.tzinfo is None:
@@ -77,7 +87,8 @@ class _Sql:
 
     def run(self, sql: str, params: Sequence[Any] = ()) -> Any:
         text = sql.replace("%s", "?") if self.qmark else sql.replace("?", "%s")
-        return self.conn.execute(text, tuple(params))
+        cur = self.conn.cursor()   # DB-API: only a cursor executes; psycopg2 connections have no .execute
+        return cur.execute(text, tuple(params))
 
     def rows(self, sql: str, params: Sequence[Any] = ()) -> list[tuple]:
         cur = self.run(sql, params)
@@ -118,7 +129,7 @@ class RecoveryCase:
     exits: list[dict[str, Any]]
     realized_pnl: float
     pre_exit_shares: Optional[float]
-    residual_shares: float
+    residual_shares: Optional[float]
     pre_exit_weight_pct: Optional[float]
     materiality_tier: str
     residual_pct_of_pre_exit: Optional[float]
@@ -194,15 +205,7 @@ class CaseStore:
             case.last_nudge_at, case.last_p1_at, case.operator_decision, None,
             case.opened_at, case.updated_at, case.as_of, case.source,
         )
-        if self.sql.qmark:
-            sql = (f"INSERT OR REPLACE INTO recovery_cases ({', '.join(self.COLUMNS)}) "
-                   f"VALUES ({', '.join(['?'] * len(self.COLUMNS))})")
-        else:
-            updates = ", ".join(f"{col}=EXCLUDED.{col}" for col in self.COLUMNS if col != "case_key")
-            sql = (f"INSERT INTO recovery_cases ({', '.join(self.COLUMNS)}) "
-                   f"VALUES ({', '.join(['%s'] * len(self.COLUMNS))}) "
-                   f"ON CONFLICT (case_key) DO UPDATE SET {updates}")
-        self.sql.run(sql, values)
+        self.sql.run(UPSERT_SQLITE if self.sql.qmark else UPSERT_POSTGRES, values)
         self.conn.commit()
         return case
 
@@ -257,7 +260,8 @@ class CaseStore:
             case_key=data["case_key"], symbol=data["symbol"], account=data["account"],
             broker=data["broker"] or "", cluster_key=data["cluster_key"],
             exits=json.loads(data["exits_json"] or "[]"), realized_pnl=float(data["realized_pnl"] or 0.0),
-            pre_exit_shares=data["pre_exit_shares"], residual_shares=float(data["residual_shares"] or 0.0),
+            pre_exit_shares=data["pre_exit_shares"],
+            residual_shares=(None if data["residual_shares"] is None else float(data["residual_shares"])),
             pre_exit_weight_pct=data["pre_exit_weight_pct"],
             materiality_tier=data["materiality_tier"], residual_pct_of_pre_exit=data["residual_pct_of_pre_exit"],
             residual_note=data["residual_note"] or "", state=data["state"], state_since=data["state_since"],
@@ -305,7 +309,8 @@ def build_case(
     return RecoveryCase(
         case_key=case_key(symbol, account, cluster), symbol=symbol.upper(), account=account, broker=broker or last.broker,
         cluster_key=cluster, exits=exits, realized_pnl=realized, pre_exit_shares=pre_exit,
-        residual_shares=float(residual_shares or 0.0), pre_exit_weight_pct=pre_exit_weight_pct,
+        residual_shares=(None if residual_shares is None else float(residual_shares)),
+        pre_exit_weight_pct=pre_exit_weight_pct,
         materiality_tier=tier, residual_pct_of_pre_exit=residual_pct, residual_note=residual_note, state="WATCHING",
         state_since=_iso(moment), eligibility=eligibility, opened_at=_iso(moment), updated_at=_iso(moment),
         as_of=_iso(moment), source="broker-fills",

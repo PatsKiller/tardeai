@@ -281,3 +281,52 @@ def test_every_residual_opens_a_case_named_by_its_percentage(store, residual, pr
     assert case.residual_pct_of_pre_exit == pytest.approx(pct_in_name, abs=0.1)
     assert "pre_exit_shares from the fill ledger" in case.residual_note
     assert case.state == "WATCHING" and case.case_key.startswith("SPCX::schwab_taxable::")
+
+
+# ── cx-openai-2's two findings ──────────────────────────────────────────────────────────────────────────────
+def test_an_unreadable_positions_store_is_unknown_not_zero(tmp_path, store):
+    """The false-zero class: an unreadable store must never read as 'no shares remain'."""
+    from lib.recovery_engine import fills_consumer as fc
+    conn = sqlite3.connect(":memory:")
+    conn.executescript("""
+        CREATE TABLE stopped_out_watch (stopped_out_at TEXT, exit_price REAL, realized_pnl REAL, stop_price REAL,
+                                        broker TEXT, symbol TEXT, account TEXT, is_active INTEGER);
+        CREATE TABLE trade_transactions (trade_date TEXT, action TEXT, symbol TEXT, quantity REAL, price REAL,
+                                         account TEXT);
+        CREATE TABLE stop_last_known (broker TEXT, account TEXT, symbol TEXT, stop_price REAL, captured_at TEXT);
+        CREATE TABLE positions_current (account_key TEXT, symbol TEXT, qty REAL);
+    """)
+    conn.execute("INSERT INTO stopped_out_watch VALUES ('2026-10-30', 137.19, -12770, 137.0, 'schwab', 'SPCX',"
+                 " 'schwab_taxable', 1)")
+    conn.execute("INSERT INTO trade_transactions VALUES ('2026-10-30','SELL','SPCX',1200,137.19,'schwab_taxable')")
+    conn.commit()
+    conn.execute("DROP TABLE positions_current")          # the store is unavailable
+    conn.commit()
+    read = fc.read_confirmed_exits(conn, "SPCX", "schwab_taxable")
+    assert read.residual_shares is None                    # unknown, NOT 0.0
+    assert any("residual is unknown" in gap for gap in read.gaps)
+    case = fc.consume_symbol(store, conn, "SPCX", "schwab_taxable", today=TODAY, now=NOW)
+    assert case.residual_shares is None
+    assert case.residual_pct_of_pre_exit is None
+    assert "unknown" in case.residual_note and "zero" not in case.residual_note.lower()
+    conn.close()
+
+
+def test_the_store_executes_through_a_cursor(store):
+    """A DB-API connection has no execute(); psycopg2 would raise AttributeError on the old path."""
+    class CursorOnly:
+        def __init__(self, conn): self.conn = conn
+        def execute(self, sql, params=()):
+            return self.conn._real.execute(sql.replace("%s", "?"), params)
+    class Conn:
+        def __init__(self, real):
+            self._real = real
+        def cursor(self): return CursorOnly(self)
+        def commit(self): self._real.commit()
+    real = sqlite3.connect(":memory:")
+    wrapped = Conn(real)
+    wrapped_store = rc.CaseStore(wrapped, store.policy)
+    case = rc.consume_fills(wrapped_store, _spcx_fills(), residual_shares=200, pre_exit_weight_pct=2.25,
+                            today=TODAY, now=NOW)
+    assert case.symbol == "SPCX" and wrapped_store.get(case.case_key) is not None
+    real.close()

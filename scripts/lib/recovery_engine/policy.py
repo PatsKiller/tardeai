@@ -156,11 +156,17 @@ def _scalar(value: str) -> Any:
 def residual_display(pre_exit_shares: Optional[float], residual_shares: Optional[float],
                      last_exit_date: Optional[str] = None,
                      source: str = "pre_exit_shares from the fill ledger") -> tuple[Optional[float], str]:
-    """Return (percent of the pre-exit position that remains, plain-English note). Never a yes/no."""
+    """Return (percent of the pre-exit position that remains, plain-English note). Never a yes/no.
+
+    ``None`` means the residual could not be read (the positions store failed), which is NOT zero shares: an unknown
+    residual is reported as unknown so the card can say so instead of claiming the position is fully closed.
+    """
+    if residual_shares is None:
+        return None, "residual share count unknown — the positions store could not be read"
     try:
-        residual = float(residual_shares or 0.0)
+        residual = float(residual_shares)
     except (TypeError, ValueError):
-        residual = 0.0
+        return None, "residual share count unknown — the positions store could not be read"
     if residual <= 0:
         return 0.0, "no shares remain"
     if pre_exit_shares in (None, ""):

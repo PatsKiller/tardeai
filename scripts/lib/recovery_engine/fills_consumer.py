@@ -83,8 +83,8 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
         # residual rule falls back to the position row rather than inventing a size.
         tx = _rows(conn, "SELECT trade_date, quantity, price FROM trade_transactions "
                          "WHERE upper(symbol)=upper(%s) AND account=%s AND upper(action) IN "
-                         f"({', '.join(['%s'] * len(EXIT_ACTIONS))}) ORDER BY trade_date",
-                   (symbol, account, *EXIT_ACTIONS))
+                         "('SELL','SOLD','STOP','STOPPED','SELL_TO_CLOSE') ORDER BY trade_date",
+                   (symbol, account))
         by_day: dict[date, float] = {}
         for trade_date, quantity, _price in tx:
             day = _as_date(trade_date)
@@ -96,8 +96,8 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
     else:
         tx = _rows(conn, "SELECT trade_date, action, quantity, price FROM trade_transactions "
                          "WHERE upper(symbol)=upper(%s) AND account=%s AND upper(action) IN "
-                         f"({', '.join(['%s'] * len(EXIT_ACTIONS))}) ORDER BY trade_date",
-                   (symbol, account, *EXIT_ACTIONS))
+                         "('SELL','SOLD','STOP','STOPPED','SELL_TO_CLOSE') ORDER BY trade_date",
+                   (symbol, account))
         for trade_date, _action, quantity, price in tx:
             day = _as_date(trade_date)
             fills.append(rc.ExitFill(symbol=symbol, account=account, exit_date=day, shares=float(quantity or 0),
@@ -116,9 +116,15 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
         else:
             gaps.append("no stop level known for these exits (the host may not have placed the stop)")
 
-    residual_rows = _rows(conn, "SELECT qty FROM positions_current WHERE upper(symbol)=upper(%s) AND account_key=%s",
-                          (symbol, account))
-    residual = sum(float(qty or 0) for (qty,) in residual_rows) if residual_rows else 0.0
+    residual_rows, residual_err = _query(
+        conn, "SELECT qty FROM positions_current WHERE upper(symbol)=upper(%s) AND account_key=%s",
+        (symbol, account))
+    if residual_err:
+        # The false-zero class: an unreadable store is "unknown", never "no shares left".
+        gaps.append(f"positions_current is unreadable ({residual_err}); the residual is unknown")
+        residual: Optional[float] = None
+    else:
+        residual = sum(float(qty or 0) for (qty,) in residual_rows)
 
     return ExitRead(fills=fills, residual_shares=residual, pre_exit_weight_pct=None,
                     source="broker-fills", gaps=gaps)
@@ -140,8 +146,8 @@ def symbols_with_confirmed_exits(conn: Any, *, since: Optional[date] = None) -> 
                        "WHERE stopped_out_at IS NOT NULL AND is_active IS NOT FALSE ORDER BY symbol, account")
     seen = {(str(s).upper(), str(a)) for s, a in rows if s and a}
     tx = _rows(conn, "SELECT DISTINCT symbol, account FROM trade_transactions "
-                     f"WHERE upper(action) IN ({', '.join(['%s'] * len(EXIT_ACTIONS))}) ORDER BY symbol, account",
-               tuple(EXIT_ACTIONS))
+                     "WHERE upper(action) IN ('SELL','SOLD','STOP','STOPPED','SELL_TO_CLOSE') "
+                     "ORDER BY symbol, account")
     seen |= {(str(s).upper(), str(a)) for s, a in tx if s and a}
     return sorted(seen)
 
