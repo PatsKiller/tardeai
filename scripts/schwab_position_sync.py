@@ -249,25 +249,56 @@ def reconcile_totals(doc, *, source="unknown"):
         totals = doc.get("portfolio_totals")
         if not isinstance(totals, dict):
             return None
+        value_correction = None
         summed = round(sum(float(p.get("market_value") or p.get("value") or 0)
                            for p in pos), 2)
         declared = float(totals.get("total_value") or 0)
-        if abs(summed - declared) <= 0.01:
-            return None
-        totals["total_value"] = summed
-        totals["total_value_recomputed_at_write"] = True
-        correction = {"declared": declared, "summed": summed,
-                      "delta": round(summed - declared, 2), "source": source}
-        try:
-            # Visible, not silent: a writer that keeps needing this is a bug.
-            _record(source, "totals_recomputed",
-                    f"[{source}] portfolio_totals.total_value {declared:,.2f} -> "
-                    f"{summed:,.2f} (delta {correction['delta']:,.2f}) to match "
-                    f"{len(pos)} positions being written",
-                    len(pos), summed)
-        except Exception:
-            pass
-        return correction
+        if abs(summed - declared) > 0.01:
+            totals["total_value"] = summed
+            totals["total_value_recomputed_at_write"] = True
+            value_correction = {"declared": declared, "summed": summed,
+                                "delta": round(summed - declared, 2), "source": source}
+            try:
+                # Visible, not silent: a writer that keeps needing this is a bug.
+                _record(source, "totals_recomputed",
+                        f"[{source}] portfolio_totals.total_value {declared:,.2f} -> "
+                        f"{summed:,.2f} (delta {value_correction['delta']:,.2f}) to match "
+                        f"{len(pos)} positions being written",
+                        len(pos), summed)
+            except Exception:
+                pass
+
+        # total_cash is the SAME defect, one field later (2026-11-03 18:37:12Z: schwab_position_sync
+        # changed the cash rows by -30,450.00 on a PFE purchase and left total_cash at the figure the
+        # 18:30:43Z repricer had computed, so the authoritative store read 847,552.75 against cash rows
+        # summing to 817,102.75). The repricer fixed this for its own writer; reconciling it HERE, at the
+        # one gate every writer funnels through, is what makes the inconsistency structurally impossible
+        # instead of fixed one producer at a time. Same definition as the repricer: sum of is_cash rows.
+        cash_correction = None
+        cash_rows = [p for p in pos if p.get("is_cash")]
+        if cash_rows:
+            cash_summed = round(sum(float(p.get("market_value") or 0) for p in cash_rows), 2)
+            cash_declared = round(float(totals.get("total_cash") or 0), 2)
+            if abs(cash_summed - cash_declared) > 0.01:
+                totals["total_cash"] = cash_summed
+                totals["total_cash_source"] = "position_rows"
+                totals["total_cash_written_at"] = _now()
+                totals["total_cash_recomputed_at_write"] = True
+                cash_correction = {"field": "total_cash", "declared": cash_declared,
+                                   "summed": cash_summed,
+                                   "delta": round(cash_summed - cash_declared, 2),
+                                   "source": source}
+                try:
+                    _record(source, "totals_recomputed",
+                            f"[{source}] portfolio_totals.total_cash {cash_declared:,.2f} -> "
+                            f"{cash_summed:,.2f} (delta {cash_correction['delta']:,.2f}) to "
+                            f"match {len(cash_rows)} cash rows being written",
+                            len(cash_rows), cash_summed)
+                except Exception:
+                    pass
+        if value_correction:
+            return {**value_correction, "total_cash": cash_correction} if cash_correction else value_correction
+        return cash_correction
     except Exception:
         return None
 
