@@ -294,3 +294,29 @@ def test_a_non_finite_target_is_a_record_error(tmp_path, lane):
         with pytest.raises(lane._EvalError) as raised:
             lane.main(["--check"])
         assert "positive finite" in str(raised.value), (bad, raised.value)
+
+
+def test_add_alert_refuses_an_intent_the_evaluator_cannot_handle(lane, tmp_path):
+    """cc2 re-review: a created `news` alert was inert AND made every run fail; refuse the create instead."""
+    lane.STORE = tmp_path / "store" / "ask_alerts.json"
+    with pytest.raises(ValueError, match="cannot evaluate"):
+        lane.add_alert("alert me when there is news about ACME",
+                       {"positions": [{"symbol": "ACME", "held": True, "private": False}]})
+    with pytest.raises(ValueError, match="cannot evaluate"):
+        lane.add_alert("alert me when ACME hits $0", {"positions": [{"symbol": "ACME", "held": True, "private": False}]})
+
+
+def test_the_ask_alert_route_maps_a_refused_intent_to_400(monkeypatch):
+    """A caller error must not be a 500, and it must not create an alert the evaluator cannot watch."""
+    import api_v2
+
+    stub = types.ModuleType("ask_alerts")
+
+    def refuse(question, context):
+        raise ValueError("this alert would watch news, which the monitor cannot evaluate")
+
+    stub.add_alert = refuse
+    monkeypatch.setitem(sys.modules, "ask_alerts", stub)
+    status, payload = api_v2.handle("/api/v2/portfolio/ask-alert", method="POST", body={"question": "news about ACME"})
+    assert status == 400, (status, payload)
+    assert payload["ok"] is False and "cannot evaluate" in payload["error"], payload

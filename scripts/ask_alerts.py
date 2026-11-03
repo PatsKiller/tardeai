@@ -89,6 +89,12 @@ def add_alert(question: str, context: dict | None = None) -> dict:
         if value is not None and math.isfinite(value) and value > 0:
             target = value
     kind = "ipo_watch" if privates else ("price" if (target is not None and pubs) else "ipo_watch" if not pubs else "news")
+    if kind == "news":
+        # The evaluator has no news branch (an unsupported active alert is an error, cc2's B2). Storing an
+        # alert it can never evaluate would leave the alert permanently inert AND fail every run, so refuse
+        # the create and tell the caller instead of writing it.
+        raise ValueError("this alert would watch news, which the monitor cannot evaluate; "
+                         "ask for an IPO or a price target")
     d = _load()
     alert = {
         "id": f"ask_{abs(hash(question + _now())) % 10**8}",
