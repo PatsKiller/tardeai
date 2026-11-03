@@ -72,7 +72,7 @@ completion evidence refuses. Known engineering classes qualify; a new trusted he
 delegation_kind: engineering. Unresolved/malformed classification refuses. Missing/truncated metadata, explicit
 holds, active path holders and unsafe current/prior rename paths refuse. Broker/order/secret/branch-protection
 paths and policy/adapters/standing-manifest ratification remain operator-owned. Source changes never weaken
-§0/§2/§17; live activation remains a separate decision. Applicable section 17 activation decisions remain separate. The weekday
+§0/§2/§17; live activation remains a separate decision. Lane enables or moves remain the named §17 activation route; config/lane_registry.json cannot bypass that route through an engineering attestation. Applicable section 17 activation decisions remain separate. The weekday
 09:30–16:15 ET freeze remains; Mergify queue windows impose no additional wait on qualified standing merges.
 
 Apply locks one PR, revalidates, fsyncs a distinct PrMergeDelegationApproval@v1 before the sole exact-head

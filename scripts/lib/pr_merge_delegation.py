@@ -78,7 +78,7 @@ OPERATOR_ONLY = ("scripts/brokers/*", "scripts/active_trader/*", "scripts/moomoo
                  "scripts/lib/*branch*protection*",
                  "scripts/lib/trading_lock.py", "scripts/lib/trading_session_grant.py",
                  "scripts/validate_schwab_write_policy.py", "scripts/lib/cio_instrument_record.py")
-DECISION_PATHS = ("config/data_source_authority.json", "config/n8n_relay_live*.json",
+DECISION_PATHS = ("config/lane_registry.json", "config/data_source_authority.json", "config/n8n_relay_live*.json",
                   "config/n8n_live*.json", "config/*access_mode*", "config/*kill_switch*", "config/*risk_policy*")
 # New classes require explicit engineering classification in the trusted source
 # registry. A mutable class declaration cannot relax the immutable excluded paths.
@@ -405,6 +405,27 @@ class Host:
             sys.dont_write_bytecode = prior
         return module
 
+    def pr_file_rows(self, pr_number, expected):
+        """Plain API GETs supported by the installed gh; bound to the known count."""
+        if type(expected) is not int or not 1 <= expected <= 3000:
+            raise Refused("github_changed_files_incomplete")
+        rows, seen = [], set()
+        for page in range(1, (expected + 99) // 100 + 1):
+            chunk = self.gh(["api", f"repos/{REPO}/pulls/{pr_number}/files?per_page=100&page={page}"])
+            wanted = min(100, expected - len(rows))
+            if not isinstance(chunk, list) or len(chunk) != wanted:
+                raise Refused("github_file_pages_incomplete")
+            for row in chunk:
+                if (not isinstance(row, dict) or not path_ok(row.get("filename"))
+                        or row["filename"] in seen or not isinstance(row.get("status"), str)
+                        or row["status"] not in {"added", "removed", "modified", "renamed", "copied", "changed", "unchanged"}):
+                    raise Refused("github_prior_paths_incomplete")
+                seen.add(row["filename"])
+                # Patch contents are not eligibility evidence. Retain metadata
+                # only, rather than all response bodies across as many as 30 pages.
+                rows.append({key: row[key] for key in ("filename", "previous_filename", "status") if key in row})
+        return rows
+
     def collect(self, pr_number, actor_session):
         sha = self.git("rev-parse", "refs/remotes/origin/main")
         if not full_sha(sha) or self.git("rev-parse", "HEAD") != sha or self.gh(["api", f"repos/{REPO}/commits/main"])["sha"] != sha:
@@ -444,11 +465,8 @@ class Host:
         pr["files"] = [r.get("path") for r in pr.get("files", []) if isinstance(r, dict)]
         if rest.get("changed_files") != len(pr["files"]):
             raise Refused("github_changed_files_incomplete")
-        file_rows = self.gh(["api", f"repos/{REPO}/pulls/{pr_number}/files?per_page=100", "--paginate", "--slurp", "--jq",
-                             "[.[][] | {filename,previous_filename,status}]"])
-        if (not isinstance(file_rows, list) or len(file_rows) != rest["changed_files"] or len(file_rows) >= 3000
-                or any(not isinstance(row, dict) or not path_ok(row.get("filename")) for row in file_rows)
-                or sorted(row["filename"] for row in file_rows) != sorted(pr["files"])):
+        file_rows = self.pr_file_rows(pr_number, rest.get("changed_files"))
+        if sorted(row["filename"] for row in file_rows) != sorted(pr["files"]):
             raise Refused("github_prior_paths_incomplete")
         pr["prior_paths"] = []
         for row in file_rows:

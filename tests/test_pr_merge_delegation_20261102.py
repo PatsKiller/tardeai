@@ -402,7 +402,7 @@ def test_meaningful_held_reporting_workflow_still_qualifies_with_two_reviews(mod
     assert mod.evaluate(data,now=NOW)["reason"]=="independent_review_count_insufficient"
 
 
-def actual_collector_fixture(mod,tmp_path,*,new_class=None,class_kind=None,labels=(),ordinary=False,shared=False,changed=None,reviews=2):
+def actual_collector_fixture(mod,tmp_path,*,new_class=None,class_kind=None,labels=(),ordinary=False,shared=False,changed=None,reviews=2,current_manifest=False):
     from types import SimpleNamespace
     data=snapshot(mod,held=not ordinary,reviews=reviews)
     changed=changed or ("scripts/run_synthetic.sh" if shared else "scripts/synthetic_change.py" if ordinary else ".github/workflows/synthetic-report.yml")
@@ -421,7 +421,8 @@ def actual_collector_fixture(mod,tmp_path,*,new_class=None,class_kind=None,label
         row={"id":new_class,"globs":[changed]}
         if class_kind is not None:row["delegation_kind"]=class_kind
         config["classes"].append(row)
-    manifest={"capabilities":{"coordinator_merge":{"ordinary_reviews":1,"held_reviews":2,"excluded_globs":[]}}}
+    manifest=json.loads((ROOT/"config/agent_standing_authority.json").read_bytes()) if current_manifest else {
+        "capabilities":{"coordinator_merge":{"ordinary_reviews":1,"held_reviews":2,"excluded_globs":[]}}}
     def git(*args):
         if args[0]=="rev-parse":return MAIN
         path=args[1].split(":",1)[1]
@@ -559,7 +560,7 @@ ENGINEERING_EXAMPLES = [
     ".githooks/pre-commit", ".cursor/hooks/guard_push_free.py", "scripts/lib/pr_merge_telegram.py",
     "scripts/lib/pr_merge_delegation.py", ".github/workflows/cio-full-suite-sharded.yml", ".github/workflows/agent-governance.yml",
     ".github/workflows/release-readiness.yml", "scripts/lib/deploy_on_main.py",
-    "scripts/lib/pr_all_checks_green.py", ".cursor/hooks/new/nested_guard.py", "config/lane_registry.json",
+    "scripts/lib/pr_all_checks_green.py", ".cursor/hooks/new/nested_guard.py",
     "config/ci_gates/synthetic-reporting.json", "config/agent_clients.yaml",
 ]
 
@@ -658,3 +659,95 @@ def test_required_ci_workflow_cases_are_real_source_paths():
     for path in ENGINEERING_EXAMPLES:
         if path.startswith(".github/workflows/"):
             assert (ROOT/path).is_file()
+
+
+@pytest.mark.parametrize("count",[1,100,101,200,201,3000])
+def test_actual_file_page_reader_uses_installed_gh_compatible_bounded_argv(mod,count):
+    host=mod.Host();calls=[]
+    rows=[{"filename":f"apps/synthetic/page-{index}.py","status":"modified"} for index in range(count)]
+    def gh(args):
+        calls.append(args)
+        assert len(args)==2 and args[0]=="api" and not any(arg.startswith("--") for arg in args)
+        prefix="repos/PatsKiller/tardeai/pulls/9999/files?per_page=100&page="
+        assert args[1].startswith(prefix)
+        page=int(args[1][len(prefix):]);assert 1<=page<=30
+        return rows[(page-1)*100:page*100]
+    host.gh=gh
+    assert host.pr_file_rows(9999,count)==rows
+    assert len(calls)==(count+99)//100
+
+
+@pytest.mark.parametrize("case",["missing_page","duplicate","extra","wrong_shape","missing_name","bad_status","nested_status","count_bool","count_zero","count_over_limit"])
+def test_actual_file_page_reader_refuses_incomplete_or_ambiguous_evidence(mod,case):
+    host=mod.Host()
+    rows=[{"filename":f"apps/synthetic/page-{index}.py","status":"modified"} for index in range(101)]
+    def gh(args):
+        page=int(args[1].rsplit("=",1)[1]);chunk=deepcopy(rows[(page-1)*100:page*100])
+        if page==2:
+            if case=="missing_page":return []
+            if case=="duplicate":chunk[0]=deepcopy(rows[0])
+            elif case=="extra":chunk.append({"filename":"apps/synthetic/extra.py","status":"modified"})
+            elif case=="wrong_shape":return {}
+            elif case=="missing_name":chunk[0].pop("filename")
+            elif case=="bad_status":chunk[0]["status"]=None
+            elif case=="nested_status":chunk[0]["status"]=["modified"]
+        return chunk
+    host.gh=gh
+    count=True if case=="count_bool" else 0 if case=="count_zero" else 3001 if case=="count_over_limit" else 101
+    with pytest.raises(mod.Refused):host.pr_file_rows(9999,count)
+
+
+def test_actual_collector_multi_page_files_and_released_claim_coverage(mod,tmp_path):
+    host=actual_collector_fixture(mod,tmp_path);old=host.gh
+    paths=[f"apps/synthetic/paged-{index}.py" for index in range(201)]
+    def gh(args):
+        if "/files?" in args[1]:
+            page=int(args[1].rsplit("=",1)[1])
+            return [{"filename":path,"status":"modified"} for path in paths[(page-1)*100:page*100]]
+        value=old(args)
+        if args[0]=="pr":value.update(files=[{"path":path} for path in paths],changedFiles=len(paths))
+        elif args[1]=="repos/PatsKiller/tardeai/pulls/9999":value["changed_files"]=len(paths)
+        return value
+    host.gh=gh
+    claim=host.state/"claims/synthetic-1.json";row=json.loads(claim.read_bytes());row["paths"]=["apps/synthetic"]
+    claim.write_text(json.dumps(row))
+    collected=host.collect(9999,ACTOR)
+    assert len(collected["pr"]["files"])==201 and mod.evaluate(collected,now=NOW)["ok"]
+
+
+@pytest.mark.parametrize("previous",[None,"../unsafe.py",""])
+def test_actual_collector_paged_rename_requires_valid_previous_path(mod,tmp_path,previous):
+    host=actual_collector_fixture(mod,tmp_path);old=host.gh
+    def gh(args):
+        if "/files?" in args[1]:return [{"filename":".github/workflows/synthetic-report.yml","status":"renamed","previous_filename":previous}]
+        return old(args)
+    host.gh=gh
+    with pytest.raises(mod.Refused,match="github_rename_source_missing"):host.collect(9999,ACTOR)
+
+
+def test_real_current_registry_floor_resolves_but_lane_admission_needs_section17(mod,tmp_path):
+    real_hold=load("delegation_current_real_hold_probe","scripts/lib/merge_hold_paths.py")
+    config=json.loads((ROOT/"config/merge_hold_paths.json").read_bytes())
+    path="config/lane_registry.json"
+    # This is the ACTUAL current registry, not a fabricated matching class row.
+    assert not real_hold.held_classes([path],config)
+    classes,metadata=mod.collect_held_classes([path],config,real_hold)
+    assert classes==["merge_deploy_control"] and metadata=={}
+    host=actual_collector_fixture(mod,tmp_path,changed=path,current_manifest=True)
+    collected=host.collect(9999,ACTOR)
+    assert collected["held_classes"]==["merge_deploy_control"]
+    assert mod.evaluate(collected,now=NOW)["reason"]=="applicable_section17_decision_required"
+
+
+@pytest.mark.parametrize("path",[".githooks/pre-commit",".cursor/hooks/guard_push_free.py","scripts/lib/pr_merge_delegation.py",
+                                ".github/workflows/cio-full-suite-sharded.yml","scripts/lib/deploy_on_main.py"])
+def test_actual_current_manifest_and_held_helper_keep_reviewed_engineering_eligible(mod,tmp_path,path):
+    host=actual_collector_fixture(mod,tmp_path,changed=path,current_manifest=True)
+    collected=host.collect(9999,ACTOR)
+    assert collected["held"] and mod.evaluate(collected,now=NOW)["ok"]
+
+
+def test_actual_file_page_reader_retains_only_required_metadata(mod):
+    host=mod.Host()
+    host.gh=lambda args:[{"filename":"apps/synthetic/source.py","status":"modified","patch":"SYNTHETIC_UNUSED_PRIVATE_TEXT","contents_url":"unused"}]
+    assert host.pr_file_rows(9999,1)==[{"filename":"apps/synthetic/source.py","status":"modified"}]
