@@ -39,7 +39,8 @@ def store(policy):
 
 # ── Policy ─────────────────────────────────────────────────────────────────────────────────────────────────
 def test_the_policy_loads_and_reads_the_operator_owned_values(policy):
-    assert policy.residual_fraction == 0.15
+    assert policy.residual.get("display_only") is True
+    assert policy.eligibility.get("answered") is False
     assert policy.materiality["t1_loss_usd"] == 10000
     assert policy.eligibility["taxable_hold_days"] == 30
     assert policy.notification["t1_never_suppressed"] is True
@@ -68,22 +69,27 @@ def test_an_inverted_materiality_ladder_is_refused(tmp_path):
         rp.load_policy(bad)
 
 
-# ── Rule 1: residual-aware held ───────────────────────────────────────────────────────────────────────────
-def test_a_closed_position_is_not_held(policy):
-    assert rp.is_held(1000, 0, policy) is False
+# ── Rule 1: the residual is displayed, never a silencer (operator ruling 2026-11-03) ─────────────────────
+def test_a_residual_is_reported_as_a_percentage_not_a_verdict(policy):
+    pct, note = rp.residual_display(1400, 200, "2026-10-30")
+    assert pct == 14.3
+    assert note == "200 of 1,400 shares remain after the 2026-10-30 exit (14.3%)"
+    assert "held" not in note.lower()
 
 
-def test_the_spcx_residual_is_not_a_position(policy):
-    # 200 shares left of 1,400 held before the final exit (1,200 sold at 10-30 + 200 residual) = 0.143 < 0.15.
-    assert rp.is_held(1400, 200, policy) is False
+def test_a_large_residual_is_reported_the_same_way(policy):
+    pct, note = rp.residual_display(1400, 1000, "2026-10-30")
+    assert pct == 71.4 and "1,000 of 1,400" in note
+    assert "held" not in note.lower()
 
 
-def test_a_real_remaining_position_is_held(policy):
-    assert rp.is_held(1400, 1000, policy) is True
+def test_an_unknown_pre_exit_size_is_stated_not_guessed(policy):
+    pct, note = rp.residual_display(None, 200)
+    assert pct is None and "pre-exit size unknown" in note
 
 
-def test_an_unknown_pre_exit_size_never_reads_as_held(policy):
-    assert rp.is_held(None, 200, policy) is False
+def test_a_closed_position_reports_no_shares_left(policy):
+    assert rp.residual_display(1400, 0) == (0.0, "no shares remain")
 
 
 # ── Rule 2: materiality ───────────────────────────────────────────────────────────────────────────────────
@@ -102,9 +108,10 @@ def test_materiality_tiers(policy, loss, weight, tier):
 def test_a_taxable_exit_carries_the_house_hold_and_an_ira_is_eligible_now(policy):
     taxable = rp.eligibility_for("schwab_taxable", date(2026, 10, 30), policy, today=TODAY)
     assert taxable.eligible is False and taxable.eligible_from == "2026-11-29"
+    assert taxable.pending_operator_decision is True
     assert "house hold 30 days" in taxable.reason
     ira = rp.eligibility_for("schwab_roth_ira", date(2026, 10, 30), policy, today=TODAY)
-    assert ira.eligible is True
+    assert ira.eligible is True and ira.pending_operator_decision is True
     assert ira.line() == "schwab_roth_ira: now"
 
 
@@ -127,8 +134,7 @@ def test_the_case_row_carries_the_facts_the_card_needs(store):
     assert case.realized_pnl == pytest.approx(-30857)
     assert case.pre_exit_shares == pytest.approx(1400)          # 1,200 sold at the final exit + 200 residual
     assert case.residual_shares == pytest.approx(200)
-    assert case.residual_is_held is False and "not held" in case.held_reason
-    assert case.recovery_eligible is True
+    assert case.residual_pct_of_pre_exit == 14.3 and "held" not in case.residual_note.lower()
     assert case.materiality_tier == "T1"
     assert case.state == "WATCHING"
     assert case.eligibility_line() == "schwab_taxable: 2026-11-29 (house hold 30 days after a taxable sale)"
@@ -143,11 +149,13 @@ def test_consuming_the_same_cluster_twice_does_not_open_a_second_case(store):
     assert len(store.list()) == 1
 
 
-def test_a_held_residual_opens_a_case_but_marks_it_not_recoverable(store):
-    case = rc.consume_fills(store, _spcx_fills(), residual_shares=1300, pre_exit_weight_pct=2.25, today=TODAY, now=NOW)
-    assert case.residual_is_held is True
-    assert case.recovery_eligible is False
-    assert "still held" in case.held_reason
+def test_a_large_residual_still_opens_the_case(store):
+    """The ruling: a residual never suppresses the case. 1,300 of 1,400 remaining is displayed, not disqualifying."""
+    case = rc.consume_fills(store, _spcx_fills(), residual_shares=1300, pre_exit_shares=1400,
+                            pre_exit_weight_pct=2.25, today=TODAY, now=NOW)
+    assert case.residual_pct_of_pre_exit == 92.9
+    assert case.state == "WATCHING" and case.materiality_tier == "T1"
+    assert "held" not in case.residual_note.lower()
 
 
 # ── The replay gate (spec §4.1) ──────────────────────────────────────────────────────────────────────────
@@ -186,15 +194,14 @@ def test_a_t2_case_recovers_without_a_p1(store):
     small = [rc.ExitFill("PFLT", "schwab_taxable", date(2026, 10, 30), 500, 15.0, -600, stop_price=15.2)]
     case = rc.consume_fills(store, small, residual_shares=1.15, today=TODAY, now=NOW)
     assert case.materiality_tier == "T3"
-    assert case.residual_is_held is False          # 1.15 of ~501.15 shares is a fragment, not a position
-    assert case.recovery_eligible is True
+    assert case.residual_pct_of_pre_exit == 0.2    # 1.15 of 501.15 shares, displayed not judged
 
 
-def test_pflt_residual_is_not_held(store):
-    """The spec's second named name: a 1.15-share residual must never read as held."""
+def test_pflt_residual_is_displayed_not_judged(store):
+    """The spec's second named name: a 1.15-share residual is shown as a fact and opens its case."""
     fills = [rc.ExitFill("PFLT", "schwab_taxable", date(2026, 10, 20), 500, 14.9, -500)]
     case = rc.consume_fills(store, fills, residual_shares=1.15, today=TODAY, now=NOW)
-    assert case.residual_is_held is False
+    assert case.residual_pct_of_pre_exit == 0.2 and "1.15 of 501.15" in case.residual_note
 
 
 # ── The fills consumer against the live store shapes ───────────────────────────────────────────────────────
@@ -229,7 +236,7 @@ def test_the_consumer_reads_the_live_shapes_and_opens_spcx(store):
     assert read.fills[-1].shares == pytest.approx(1200)       # from trade_transactions, not invented
     assert read.fills[-1].stop_price == pytest.approx(137.0)  # from the watch row
     case = fc.consume_symbol(store, conn, "SPCX", "schwab_taxable", today=TODAY, now=NOW)
-    assert case.materiality_tier == "T1" and case.residual_is_held is False
+    assert case.materiality_tier == "T1" and case.residual_pct_of_pre_exit == 14.3
     conn.close()
 
 
@@ -250,3 +257,12 @@ def test_a_missing_store_is_a_stated_gap_not_an_invented_fill(store):
     assert read.fills == [] and read.gaps
     assert fc.consume_symbol(store, empty, "SPCX", "schwab_taxable", today=TODAY, now=NOW) is None
     empty.close()
+
+
+def test_the_case_carries_no_sizing_decision(store):
+    """Sizing is the operator's (MBI_BEHAVIOR = 0): the row may carry a proposal field, never a computed size."""
+    case = rc.consume_fills(store, _spcx_fills(), residual_shares=200, pre_exit_weight_pct=2.25, today=TODAY, now=NOW)
+    row = case.to_dict()
+    assert row.get("plan") is None
+    for forbidden in ("size_to_restore", "order_qty", "shares_to_buy", "stop_price_target"):
+        assert forbidden not in row

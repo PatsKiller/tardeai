@@ -16,21 +16,11 @@ materiality:
   t2_loss_usd: 2000
   t2_weight_pct: 1.0
 
-# A position whose remaining shares are below this fraction of the pre-exit shares is NOT held for re-entry.
-# Pre-exit means the shares held immediately before the FINAL exit of the cluster (for SPCX: 1,200 sold at 10-30 plus the
-# 200 residual = 1,400, so 200/1,400 = 0.143 < 0.15 -> not held).
+# Operator ruling 2026-11-03: "held" is NOT a disqualifier. A residual is a fact to display, never a silencer — a case
+# opens on the confirmed exit cluster whatever survived, and no code decides held/not-held. residual_remaining_fraction
+# stays owned by market_risk_policy.yaml for the rules that use it; the recovery engine does not read it.
 residual:
-  # The fraction itself is operator-owned in market_risk_policy.yaml (reentry_watch.residual_remaining_fraction); the
-  # loader reads it there and refuses if it disagrees with this file. It is repeated here only so the recovery policy
-  # is readable on its own.
-  residual_remaining_fraction: 0.15
-  source_of_truth: config/market_risk_policy.yaml#reentry_watch.residual_remaining_fraction
-  # "held" requires BOTH: residual >= fraction of pre-exit AND residual >= abs_floor shares. A 200-share fragment of a
-  # ~1,000-share position (0.20) would otherwise read as held, which is exactly the failure this engine exists to end.
-  residual_abs_floor_shares: 0
-  # When the pre-exit share count is unknown, a residual cannot be judged -> the case opens and the card says
-  # "pre-exit size unknown", rather than guessing held/not-held.
-  unknown_pre_exit: not_held
+  display_only: true
 
 triggers:
   r1_reclaim_exit_pct: 1.0        # one close >= exit_price * (1 + pct/100) -> RECOVERING
@@ -56,6 +46,8 @@ eligibility:
   # Operator-owned in market_risk_policy.yaml (reentry_watch.wash_sale_days); the loader cross-checks it.
   taxable_hold_days: 30
   ira_eligible_now: true
+  # PENDING operator decision: the engine reports the dated split, it never answers whether to re-enter.
+  answered: false
   # Per-account overrides by account key; empty means "use the defaults above".
   accounts: {}
 

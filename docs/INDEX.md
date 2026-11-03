@@ -2359,6 +2359,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/ready-three-2026-10-21/README.md` | Ready-three evidence and readiness — 2026-10-21 |
 | `docs/ops/ready-three-2026-10-21/SYSTEM_INVENTORY.md` | System inventory snapshot — 2026-10-21 |
 | `docs/ops/ready-three-2026-10-21/TEST_RESULTS.md` | Test results — current provisional checkpoint 2026-10-22 21:40 UTC |
+| `docs/ops/recovery_reentry_engine.md` | Recovery & Re-Entry Engine — piece A (recovery_cases, fills consumer, residual rule, materiality) |
 | `docs/ops/self_heal_claude_fixer.md` | Self-heal Claude Code fixer — code defects fixed in iterations, shipped as a tested PR |
 | `docs/ops/standing_agent_authority.md` | Standing agent authority — 30.0.0 |
 | `docs/ops/telegram_channel_diligence_20260916/00_EXECUTIVE_SUMMARY.md` | Telegram Channel Diligence — Executive Summary |

@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
-from .policy import Eligibility, Policy, eligibility_for, is_held, materiality_tier
+from .policy import Eligibility, Policy, eligibility_for, materiality_tier, residual_display
 
 SCHEMA = "RecoveryCase@v1"
 
@@ -38,8 +38,8 @@ CREATE TABLE IF NOT EXISTS recovery_cases (
     residual_shares     REAL,
     pre_exit_weight_pct REAL,
     materiality_tier    TEXT NOT NULL,
-    residual_is_held    INTEGER NOT NULL,
-    held_reason         TEXT,
+    residual_pct_of_pre_exit REAL,
+    residual_note       TEXT,
     state               TEXT NOT NULL,
     state_since         TEXT NOT NULL,
     eligibility_json    TEXT NOT NULL,
@@ -121,8 +121,8 @@ class RecoveryCase:
     residual_shares: float
     pre_exit_weight_pct: Optional[float]
     materiality_tier: str
-    residual_is_held: bool
-    held_reason: str
+    residual_pct_of_pre_exit: Optional[float]
+    residual_note: str
     state: str
     state_since: str
     eligibility: list[Eligibility]
@@ -134,11 +134,6 @@ class RecoveryCase:
     updated_at: str = ""
     as_of: str = ""
     source: str = ""
-
-    @property
-    def recovery_eligible(self) -> bool:
-        """A case exists to be recovered into only when the residual is not held."""
-        return not self.residual_is_held
 
     def eligibility_line(self) -> str:
         return " · ".join(e.line() for e in self.eligibility)
@@ -157,8 +152,8 @@ class RecoveryCase:
             "residual_shares": self.residual_shares,
             "pre_exit_weight_pct": self.pre_exit_weight_pct,
             "materiality_tier": self.materiality_tier,
-            "residual_is_held": self.residual_is_held,
-            "held_reason": self.held_reason,
+            "residual_pct_of_pre_exit": self.residual_pct_of_pre_exit,
+            "residual_note": self.residual_note,
             "state": self.state,
             "state_since": self.state_since,
             "eligibility": [e.__dict__ for e in self.eligibility],
@@ -183,9 +178,9 @@ class CaseStore:
     # -- writes --------------------------------------------------------------------------------------------
     COLUMNS = ("case_key", "symbol", "account", "broker", "cluster_key", "exits_json", "exit_first_date",
                "exit_last_date", "realized_pnl", "pre_exit_shares", "residual_shares", "pre_exit_weight_pct",
-               "materiality_tier", "residual_is_held", "held_reason", "state", "state_since", "eligibility_json",
-               "plan_json", "last_nudge_at", "last_p1_at", "operator_decision", "operator_note", "opened_at",
-               "updated_at", "as_of", "source")
+               "materiality_tier", "residual_pct_of_pre_exit", "residual_note", "state", "state_since",
+               "eligibility_json", "plan_json", "last_nudge_at", "last_p1_at", "operator_decision", "operator_note",
+               "opened_at", "updated_at", "as_of", "source")
 
     def upsert(self, case: RecoveryCase) -> RecoveryCase:
         values = (
@@ -193,7 +188,7 @@ class CaseStore:
             json.dumps(case.exits, sort_keys=True), case.exits[0]["date"] if case.exits else None,
             case.exits[-1]["date"] if case.exits else None,
             case.realized_pnl, case.pre_exit_shares, case.residual_shares, case.pre_exit_weight_pct,
-            case.materiality_tier, int(case.residual_is_held), case.held_reason, case.state, case.state_since,
+            case.materiality_tier, case.residual_pct_of_pre_exit, case.residual_note, case.state, case.state_since,
             json.dumps([e.__dict__ for e in case.eligibility], sort_keys=True),
             json.dumps(case.plan, sort_keys=True) if case.plan else None,
             case.last_nudge_at, case.last_p1_at, case.operator_decision, None,
@@ -251,7 +246,8 @@ class CaseStore:
     def _row_to_case(self, row: Sequence[Any]) -> RecoveryCase:
         keys = ("case_key", "symbol", "account", "broker", "cluster_key", "exits_json", "exit_first_date",
                 "exit_last_date", "realized_pnl", "pre_exit_shares", "residual_shares", "pre_exit_weight_pct",
-                "materiality_tier", "residual_is_held", "held_reason", "state", "state_since", "eligibility_json",
+                "materiality_tier", "residual_pct_of_pre_exit", "residual_note", "state", "state_since",
+                "eligibility_json",
                 "plan_json", "last_nudge_at", "last_p1_at", "operator_decision", "operator_note", "opened_at",
                 "updated_at", "as_of", "source")
         data = dict(zip(keys, row))
@@ -263,8 +259,8 @@ class CaseStore:
             exits=json.loads(data["exits_json"] or "[]"), realized_pnl=float(data["realized_pnl"] or 0.0),
             pre_exit_shares=data["pre_exit_shares"], residual_shares=float(data["residual_shares"] or 0.0),
             pre_exit_weight_pct=data["pre_exit_weight_pct"],
-            materiality_tier=data["materiality_tier"], residual_is_held=bool(data["residual_is_held"]),
-            held_reason=data["held_reason"] or "", state=data["state"], state_since=data["state_since"],
+            materiality_tier=data["materiality_tier"], residual_pct_of_pre_exit=data["residual_pct_of_pre_exit"],
+            residual_note=data["residual_note"] or "", state=data["state"], state_since=data["state_since"],
             eligibility=eligibility, operator_decision=data["operator_decision"] or "none", plan=plan,
             last_nudge_at=data["last_nudge_at"], last_p1_at=data["last_p1_at"],
             opened_at=data["opened_at"], updated_at=data["updated_at"], as_of=data["as_of"] or "",
@@ -301,15 +297,7 @@ def build_case(
     # residual look like a fragment of a position that never existed.
     sold = round(float(last.shares), 6)
     pre_exit = pre_exit_shares if pre_exit_shares not in (None, "") else (sold + float(residual_shares or 0.0))
-    held = is_held(pre_exit, residual_shares, policy)
-    if residual_shares in (None, ""):
-        held_reason = "residual share count unknown — a recovery case is still opened"
-    elif held:
-        held_reason = (f"{float(residual_shares):g} of {float(pre_exit):g} shares remain "
-                       f"(>= {policy.residual_fraction:.0%}) — still held; no re-entry applies")
-    else:
-        held_reason = (f"{float(residual_shares or 0):g} of {float(pre_exit):g} shares remain "
-                       f"(< {policy.residual_fraction:.0%} or below the floor) — not held; recovery applies")
+    residual_pct, residual_note = residual_display(pre_exit, residual_shares, last.exit_date.isoformat())
     tier = materiality_tier(realized, pre_exit_weight_pct, policy)
     eligibility = [eligibility_for(account, last.exit_date, policy, today=today)]
     moment = _utc(now)
@@ -318,7 +306,7 @@ def build_case(
         case_key=case_key(symbol, account, cluster), symbol=symbol.upper(), account=account, broker=broker or last.broker,
         cluster_key=cluster, exits=exits, realized_pnl=realized, pre_exit_shares=pre_exit,
         residual_shares=float(residual_shares or 0.0), pre_exit_weight_pct=pre_exit_weight_pct,
-        materiality_tier=tier, residual_is_held=held, held_reason=held_reason, state="WATCHING",
+        materiality_tier=tier, residual_pct_of_pre_exit=residual_pct, residual_note=residual_note, state="WATCHING",
         state_since=_iso(moment), eligibility=eligibility, opened_at=_iso(moment), updated_at=_iso(moment),
         as_of=_iso(moment), source="broker-fills",
     )

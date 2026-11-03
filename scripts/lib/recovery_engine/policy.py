@@ -31,14 +31,6 @@ class Policy:
     as_of: str = ""
     source: str = ""
 
-    @property
-    def residual_fraction(self) -> float:
-        return float(self.residual["residual_remaining_fraction"])
-
-    @property
-    def residual_abs_floor(self) -> float:
-        return float(self.residual.get("residual_abs_floor_shares") or 0.0)
-
 
 def load_policy(path: Optional[Path] = None) -> Policy:
     """Load and validate the policy. Refuses rather than defaulting."""
@@ -55,7 +47,7 @@ def load_policy(path: Optional[Path] = None) -> Policy:
         raise PolicyError(f"recovery policy schema is {doc.get('schema')!r}, expected {SCHEMA!r}")
     for section, keys in (
         ("materiality", ("t1_loss_usd", "t1_weight_pct", "t2_loss_usd", "t2_weight_pct")),
-        ("residual", ("residual_remaining_fraction",)),
+        ("residual", ("display_only",)),
         ("triggers", ("r1_reclaim_exit_pct", "decay_sessions")),
         ("confidence", ("weights", "ready_floor")),
         ("eligibility", ("taxable_hold_days",)),
@@ -69,9 +61,8 @@ def load_policy(path: Optional[Path] = None) -> Policy:
             raise PolicyError(f"recovery policy {section} is missing {', '.join(missing)}")
     if float(doc["materiality"]["t1_loss_usd"]) <= float(doc["materiality"]["t2_loss_usd"]):
         raise PolicyError("materiality: t1_loss_usd must be larger than t2_loss_usd")
-    fraction = float(doc["residual"]["residual_remaining_fraction"])
-    if not 0.0 < fraction < 1.0:
-        raise PolicyError("residual: residual_remaining_fraction must be between 0 and 1")
+    if doc["residual"].get("display_only") is not True:
+        raise PolicyError("residual: display_only must be true — a residual is a fact to display, never a silencer")
     if doc["notification"].get("t1_never_suppressed") is not True:
         raise PolicyError("notification: t1_never_suppressed must be true — a T1 case may never be silenced")
     _cross_check_operator_policy(doc, Path(path or POLICY_REL).parent.parent / MARKET_RISK_REL)
@@ -95,11 +86,6 @@ def _cross_check_operator_policy(recovery: Mapping[str, Any], market_risk: Path)
     except (OSError, ValueError, ImportError):
         return  # market-risk policy absent (tests, trimmed trees): the recovery file stands alone
     watch = ((doc.get("reentry_watch") or {}) if isinstance(doc, Mapping) else {}) or {}
-    fraction = watch.get("residual_remaining_fraction")
-    if fraction not in (None, "") and abs(float(fraction) - float(recovery["residual"]["residual_remaining_fraction"])) > 1e-9:
-        raise PolicyError(
-            f"recovery policy residual fraction {recovery['residual']['residual_remaining_fraction']} disagrees with "
-            f"market_risk_policy.yaml reentry_watch.residual_remaining_fraction {fraction}")
     wash = watch.get("wash_sale_days")
     if wash not in (None, "") and int(wash) != int(recovery["eligibility"]["taxable_hold_days"]):
         raise PolicyError(
@@ -164,39 +150,33 @@ def _scalar(value: str) -> Any:
     return value
 
 
-# ── Rule 1: residual-aware held ───────────────────────────────────────────────────────────────────────────────
-def is_held(pre_exit_shares: Optional[float], residual_shares: Optional[float], policy: Policy) -> bool:
-    """Is the position still *held* for re-entry purposes?
-
-    The spec's failure: SPCX kept a 200-share taxable residual after being cut from ~1,000 by stops, and the engine
-    treated the symbol as fully held, which killed the whole re-entry path. A residual is not a position unless it is a
-    material fraction of what was there before. "Held" therefore requires:
-
-    * a known pre-exit size — an unknown size can never mean held (policy ``unknown_pre_exit`` says not-held);
-    * residual >= ``residual_remaining_fraction`` of pre-exit shares;
-    * residual >= ``residual_abs_floor_shares`` when that floor is set.
-
-    A fully closed position (residual 0) is obviously not held.
-    """
+# ── Rule 1: the residual is a fact to display, never a silencer ─────────────────────────────────────────────
+# Operator ruling, 2026-11-03: "drop 'held' as a disqualifier. A residual is a FACT TO DISPLAY, not a silencer."
+# No function here decides held/not-held; a case opens on the confirmed exit cluster regardless of what survived.
+def residual_display(pre_exit_shares: Optional[float], residual_shares: Optional[float],
+                     last_exit_date: Optional[str] = None) -> tuple[Optional[float], str]:
+    """Return (percent of the pre-exit position that remains, plain-English note). Never a yes/no."""
     try:
         residual = float(residual_shares or 0.0)
     except (TypeError, ValueError):
-        return False
+        residual = 0.0
     if residual <= 0:
-        return False
+        return 0.0, "no shares remain"
     if pre_exit_shares in (None, ""):
-        return str(policy.residual.get("unknown_pre_exit", "not_held")) == "held"
+        return None, f"{residual:g} shares remain (pre-exit size unknown)"
     try:
         pre_exit = float(pre_exit_shares)
     except (TypeError, ValueError):
-        return False
+        return None, f"{residual:g} shares remain (pre-exit size unknown)"
     if pre_exit <= 0:
-        return False
-    if residual < policy.residual_fraction * pre_exit:
-        return False
-    if policy.residual_abs_floor and residual < policy.residual_abs_floor:
-        return False
-    return True
+        return None, f"{residual:g} shares remain (pre-exit size unknown)"
+    pct = round(100.0 * residual / pre_exit, 1)
+    when = f" after the {last_exit_date} exit" if last_exit_date else ""
+    return pct, f"{_num(residual)} of {_num(pre_exit)} shares remain{when} ({pct:.1f}%)"
+
+
+def _num(value: float) -> str:
+    return f"{value:,.0f}" if float(value).is_integer() else f"{value:,.2f}".rstrip("0").rstrip(".")
 
 
 # ── Rule 2: materiality tier ─────────────────────────────────────────────────────────────────────────────────
@@ -219,6 +199,7 @@ class Eligibility:
     eligible: bool
     eligible_from: Optional[str]
     reason: str
+    pending_operator_decision: bool = True
 
     def line(self) -> str:
         if self.eligible:
@@ -234,6 +215,7 @@ def eligibility_for(account: str, exit_date: date, policy: Policy, *, today: Opt
     "IRA: now · Taxable: 11-27" in one line per account.
     """
     conf = policy.eligibility
+    pending = conf.get("answered") is not True
     key = str(account or "")
     lower = key.lower()
     is_ira = "ira" in lower or "roth" in lower or "401" in lower
@@ -241,15 +223,16 @@ def eligibility_for(account: str, exit_date: date, policy: Policy, *, today: Opt
     override = overrides.get(key) if isinstance(overrides, Mapping) else None
     if isinstance(override, Mapping):
         if override.get("eligible_now") is True:
-            return Eligibility(key, True, None, "account policy: eligible now")
+            return Eligibility(key, True, None, "account policy: eligible now", pending)
         if override.get("eligible_now") is False:
             when = override.get("eligible_from")
-            return Eligibility(key, False, when, str(override.get("reason") or "account policy"))
+            return Eligibility(key, False, when, str(override.get("reason") or "account policy"), pending)
     if is_ira and conf.get("ira_eligible_now") is True:
-        return Eligibility(key, True, None, "IRA — wash/house hold does not apply")
+        return Eligibility(key, True, None, "IRA — wash/house hold does not apply", pending)
     hold_days = int(conf.get("taxable_hold_days") or 0)
     eligible_from = exit_date + timedelta(days=hold_days)
     current = today or datetime.now(timezone.utc).date()
     if current >= eligible_from:
-        return Eligibility(key, True, None, f"house hold ({hold_days} days) has passed")
-    return Eligibility(key, False, eligible_from.isoformat(), f"house hold {hold_days} days after a taxable sale")
+        return Eligibility(key, True, None, f"house hold ({hold_days} days) has passed", pending)
+    return Eligibility(key, False, eligible_from.isoformat(),
+                       f"house hold {hold_days} days after a taxable sale", pending)

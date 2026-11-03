@@ -20,7 +20,7 @@ __all__ = [
     "Policy",
     "RecoveryCase",
     "consume_fills",
-    "is_held",
+    "residual_display",
     "load_policy",
     "materiality_tier",
 ]
