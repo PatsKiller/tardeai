@@ -396,7 +396,10 @@ def _default_sources(root: Path, *, keep_retire_after_hours: float = 24.0) -> di
                                  governed_href="/trading?tab=Proposals" if row["kind"] in ("paper", "broker", "unclassified_proposals") else "/cio",
                                  source_refs=refs + [row["canonical_entity_id"]]))
             out[-1]["financial_kind"] = row["kind"]
-        return {"rows": out, "gap": None if result.get("complete") else "Financial queues incomplete"}
+        gaps = result.get("gaps") or []
+        reason = "; ".join(f"{gap.get('source', 'financial source')}: {gap.get('reason', 'unavailable')}"
+                           for gap in gaps if isinstance(gap, dict))
+        return {"rows": out, "gap": None if result.get("complete") else reason or "Financial queues incomplete"}
 
     # These missing adapters are explicit. Neither empty queues nor a complete global count are invented.
     return {"packages": packages, "conflicts": conflicts, "conflict_rule_proposals": conflict_rule_proposals, "policy_prs": lambda: pr_approvals("POLICY"), "held_prs": lambda: pr_approvals("RELEASE"),
@@ -461,8 +464,22 @@ def queue(ctx: Ctx) -> dict:
     return core.queue_projection(ctx.sources, decisions=ctx.ledger.rows(), now=ctx.clock())
 
 
+def actionable_projection(data: dict) -> dict:
+    """One unpaginated public member list for Approvals, header badge and Work Waiting.
+
+    Its count describes the members we actually have. Completeness and pending_count
+    separately say whether those known members establish the entire global queue.
+    """
+    members = [{k: v for k, v in row.items() if k != "document"} | {
+        "document_sha": row["document"]["document_sha"], "version": row["document"]["version"]}
+               for row in data["items"]]
+    return {key: data[key] for key in ("pending_count", "known_pending_count", "complete", "gaps", "as_of")} | {
+        "actionable_items": members, "actionable_count": len(members), "known_actionable_count": len(members),
+        "scope": "all_operator_approvals"}
+
+
 def queue_summary(*, root: Path = ROOT, state_root: Path | None = None, now: datetime | None = None) -> dict:
-    """Scoped administrative projection; never silently replaces the financial approval total."""
+    """The same canonical members and completeness used by the Approvals GET."""
     from scripts.lib.approval_package import governance_dir
     ledger = core.DecisionLedger((state_root / "data/governance" if state_root else governance_dir()) / "operator_decisions.jsonl",
                                  approved=lambda: False)
@@ -473,8 +490,8 @@ def queue_summary(*, root: Path = ROOT, state_root: Path | None = None, now: dat
     for row in data["items"]:
         kind = row.get("financial_kind") if row["kind"] == "FINANCIAL" else row["kind"].lower()
         by_type[kind] = by_type.get(kind, 0) + 1
-    return {key: data[key] for key in ("pending_count", "known_pending_count", "complete", "gaps", "as_of")} | {
-        "scope": "all_operator_approvals", "by_type": by_type, "total": data["pending_count"],
+    return actionable_projection(data) | {
+        "by_type": by_type, "total": data["pending_count"],
         "source": "operator_approvals_api.queue_summary", "stale": False,
         "gap": None if data["complete"] else {"reason": "Global queue incomplete", "gaps": data["gaps"]}}
 
@@ -493,11 +510,7 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = N
                 raise core.Refused("AUTHENTICATED_READER_REQUIRED", 403)
             if sub == "/approvals":
                 data = queue(ctx)
-                data["actionable_count"] = data["pending_count"]
-                data["known_actionable_count"] = data["known_pending_count"]
-                data["actionable_items"] = [{k: v for k, v in it.items() if k != "document"} | {
-                    "document_sha": it["document"]["document_sha"], "version": it["document"]["version"]}
-                                          for it in data["items"]]
+                data.update(actionable_projection(data))
                 q = query if isinstance(query, dict) else {}
                 kind = q.get("kind")
                 if isinstance(kind, list):

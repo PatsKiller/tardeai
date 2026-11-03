@@ -113,10 +113,10 @@ def project(pr: dict, *, git: Callable, gh, as_of: str, annotations: Callable | 
         row = core.item(ident=f"held-pr:{number}", kind="RELEASE", title=pr.get("title") or f"Held PR #{number}",
                         proposed_by=(pr.get("user") or {}).get("login"), created_at=pr.get("created_at"),
                         doc=core.document(json.dumps(public, indent=2), source_sha=head),
-                        source="github_pr_snapshot", pr=number, governed_href=f"/coordination?pr={number}")
+                        source="github_pr_snapshot", pr=number, governed_href=f"/releases?pr={number}")
         row["decision_mode"] = "GOVERNED_PATH"
         action = "Review this held pull request in Releases; merge after its required reviews and checks pass."
-    row.update(source_sha=head, source_as_of=as_of, updated_at=pr.get("updated_at"),
+    row.update(source_sha=head, source_as_of=as_of, actionable=True, stale=False, updated_at=pr.get("updated_at"),
                pr_url=f"https://github.com/{gh.repo}/pull/{number}", next_actor="operator", next_action=action,
                source_refs=[f"github_pr:{number}:{head}"])
     return row
@@ -139,6 +139,7 @@ class Snapshot:
             prs = None if self.board.prs is None else list(self.board.prs)
             warning = self.board.prs_warning
             observed_at = self.board._prs_at
+            upstream = prs
         with self._lock:
             due = self._at is None or self.clock() - self._at >= REFRESH_S
             # A cold view must not set its clock until the upstream snapshot arrives.
@@ -158,7 +159,23 @@ class Snapshot:
             gap = self.warning or warning
             if observed_at is None or self.clock() - observed_at > REFRESH_S * 2:
                 gap = gap or "Open PR snapshot is stale"
-            return {"rows": list(self.rows or []), "gap": gap, "as_of": self.as_of}
+            current = {pr.get("number"): pr for pr in upstream or []}
+            fresh = upstream is not None and not warning and observed_at is not None and self.clock() - observed_at <= REFRESH_S * 2
+            rows = []
+            for known in self.rows or []:
+                # A fresh successful census can resolve removed PRs immediately. An outage
+                # preserves history but cannot leave a stale approval line copyable.
+                if fresh and known.get("pr") not in current:
+                    continue
+                row = dict(known)
+                head = (current.get(row.get("pr"), {}).get("head") or {}).get("sha")
+                stale = bool(gap) or not fresh or head != row.get("source_sha")
+                if stale:
+                    row.update(actionable=False, stale=True, next_action="Refresh the current PR evidence before acting.")
+                    row.pop("policy_approval_command", None)
+                    gap = gap or "PR approval evidence does not match the current head"
+                rows.append(row)
+            return {"rows": rows, "gap": gap, "as_of": self.as_of}
 
     def _refresh(self, prs):
         rows, gaps = [], []

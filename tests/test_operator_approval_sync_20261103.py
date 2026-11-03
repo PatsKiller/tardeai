@@ -70,7 +70,7 @@ def test_held_pr_stays_visible_until_observed_done_even_with_merge_label():
     row = source.project({**pr(2472), "labels": [{"name": "operator-merge"}]},
                          git=lambda *args: ".github/workflows/ci.yml\n", gh=Gh(), as_of=STAMP)
     assert row["kind"] == "RELEASE" and row["decision_mode"] == "GOVERNED_PATH"
-    assert row["governed_href"] == "/coordination?pr=2472"
+    assert row["governed_href"] == "/releases?pr=2472"
     assert row["document"]["source_sha"] == HEAD
     assert "policy_approval_command" not in row
     assert source.project(pr(2502), git=lambda *args: "ordinary.txt\n", gh=Gh(), as_of=STAMP) is None
@@ -212,3 +212,52 @@ def test_actionable_projection_is_document_free_and_independent_of_pagination(tm
     assert len(data["actionable_items"]) == 55
     assert all("document" not in row for row in data["actionable_items"])
     assert not ctx.ledger.path.exists()
+
+
+
+def test_shared_summary_and_paged_get_return_identical_canonical_members(monkeypatch, tmp_path):
+    rows = [core.item(ident=f"item:{i}", kind="FINDING", title=f"Question {i}", proposed_by=None, created_at=None,
+                      source="fixture", doc=core.document("Question", source_sha=HEAD)) for i in range(55)]
+    ctx = context(tmp_path, rows[0])
+    def broken():
+        raise core.Refused("SYNTHETIC_UNAVAILABLE", 503)
+    ctx.sources = {"fixture": lambda: rows, "missing": broken}
+    monkeypatch.setattr(api, "_default_sources", lambda root: ctx.sources.copy())
+    status, response = api.handle(api.PREFIX + "/approvals", "GET", query={"offset": 50, "kind": "FINDING"}, ctx=ctx)
+    summary = api.queue_summary(root=tmp_path, state_root=tmp_path, now=NOW)
+    data = response["data"]
+    assert status == 200 and len(data["items"]) == 5
+    assert summary["actionable_items"] == data["actionable_items"]
+    assert summary["actionable_count"] == data["actionable_count"] == len(data["actionable_items"]) == 55
+    assert summary["pending_count"] is data["pending_count"] is None
+    assert summary["complete"] is data["complete"] is False
+    assert summary["scope"] == "all_operator_approvals"
+    assert summary["gaps"] == [{"source": "missing", "reason": "SYNTHETIC_UNAVAILABLE"}]
+
+
+def test_stale_last_good_policy_is_readable_but_approval_line_is_not_actionable():
+    board, clock = Board([pr()]), [0.0]
+    snapshot = source.Snapshot(board=board, git=git, gh_factory=Gh, clock=lambda: clock[0])
+    good = snapshot.view(background=False)["rows"][0]
+    assert good["actionable"] is True and good["policy_approval_command"]
+    clock[0], board._prs_at = 121.0, 121.0
+    snapshot.git = lambda *args: (_ for _ in ()).throw(OSError("synthetic failure"))
+    failed = snapshot.view(background=False)
+    row = failed["rows"][0]
+    assert failed["gap"] and row["stale"] is True and row["actionable"] is False
+    assert row["document"] == good["document"]
+    assert "policy_approval_command" not in row
+
+
+def test_new_upstream_head_disables_old_command_before_detail_refresh_is_due():
+    board, clock = Board([pr()]), [0.0]
+    snapshot = source.Snapshot(board=board, git=git, gh_factory=Gh, clock=lambda: clock[0])
+    snapshot.view(background=False)
+    clock[0], board._prs_at = 1.0, 1.0
+    board.prs = [{**pr(), "head": {"sha": "c" * 40}}]
+    stale = snapshot.view(background=False)
+    assert stale["rows"][0]["stale"] is True
+    assert "policy_approval_command" not in stale["rows"][0]
+    assert "current head" in stale["gap"]
+    board.prs = []
+    assert snapshot.view(background=False)["rows"] == []
