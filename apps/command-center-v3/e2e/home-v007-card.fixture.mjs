@@ -123,7 +123,7 @@ try {
       assert.ok(m.v7, `home_v007 section missing at ${width}`)
       assert.ok(m.v7text.includes('DEMO'), `v7 symbol missing at ${width}`)
       assert.ok(m.v7text.includes('$49.87'), `v7 price missing at ${width}`)
-      assert.ok(/\$12\.5/.test(m.v7text) && /90m old/.test(m.v7text), `a measured-but-old quote must show its value and age at ${width}: ${m.v7text.slice(0,400)}`)
+      assert.ok(/\$12\.5/.test(m.v7text) && /stale/.test(m.v7text) && /90m old/.test(m.v7text), `a measured-but-old quote must show its value, the word stale and its age at ${width}: ${m.v7text.slice(0,400)}`)
       assert.ok(/price unknown/.test(m.v7text) && /not measured/.test(m.v7text), `missing case not explicit at ${width}`)
       assert.ok(/intentional decision/.test(m.v7text), `budget decision state missing at ${width}`)
       assert.ok(/a size, an order or a stop level/.test(m.v7text), `advisory line missing at ${width}`)
