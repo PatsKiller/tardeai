@@ -5,7 +5,7 @@
 // "auto-rebase"), a review/CI receipt for an older head shown as current, local-only work shown as published,
 // and an old backend (no `work` / no `coordination`) pretending to have facts.
 import {
-  IN_FLIGHT_SCHEMA, IN_FLIGHT_SCHEMA_V2, KNOWN_SCHEMAS, agentStateTone, ciLabel2, draftLabel, executionState, nextActionFor,
+  IN_FLIGHT_SCHEMA, IN_FLIGHT_SCHEMA_V2, KNOWN_SCHEMAS, agentStateTone, ciLabel2, draftLabel, evidenceSentence, evidenceState, executionState, nextActionFor,
   normalizeCoordination, normalizeFactor, normalizeMergeable, normalizeReview, normalizeRow, normalizeRows, normalizeWork, publicationLabel,
   reviewLabel, rowFacts, shortSha, type CiState, type ReviewState,
 } from './deployInFlight.ts'
@@ -293,6 +293,16 @@ eq('object-valued agent state is unknown', normalizeCoordination({ status: 'OK',
 const evilWire = normalizeRows([{ number: 4001, head_sha: HEAD, title: 't', work: { review: { state: evil, head_sha: HEAD } } }])
 eq('the board payload still projects its row', evilWire.rows.length, 1)
 eq('with the review UNKNOWN', evilWire.rows[0].work.review.state, 'UNKNOWN')
+
+// ---- row 05: "UNKNOWN" on every PR was four different situations wearing one word. Each now has a sentence, and a
+// state we do not recognise stays unrecognised instead of becoming a pass.
+eq('evidence OBSERVED', evidenceSentence('OBSERVED'), 'checked')
+eq('evidence STALE_OTHER_HEAD', evidenceSentence('STALE_OTHER_HEAD'), 'checked, but for an older version of the change')
+eq('evidence NOT_RECORDED', evidenceSentence('NOT_RECORDED'), 'no check is recorded')
+eq('evidence SOURCE_UNAVAILABLE', evidenceSentence('SOURCE_UNAVAILABLE'), 'the record of the check could not be read')
+eq('evidence state is case-insensitive', evidenceState('observed'), 'OBSERVED')
+eq('an unrecognised evidence state stays null', evidenceState('WAT'), null)
+eq('no state gives no sentence', evidenceSentence(undefined), null)
 
 console.log(`deployInFlight: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

@@ -15,6 +15,38 @@ export const STAGE_LABEL: Record<PipelineStage, string> = {
   pr_open: 'PR open', ci: 'CI', in_batch: 'In batch', merged: 'Merged', released: 'Released', verified: 'Verified live',
 }
 
+/** The operator's five groups (SPEC_RELEASES_PAGE_OPERATOR_VIEW_20261103, 2026-11-03).
+ *
+ *  The pipeline speaks eleven codes; a non-developer reads five stages. `backlog` is not one of the spec's five:
+ *  proposed/approved/queued work is not "going live today", so it is kept out of that list and shown on its own. */
+export const OPERATOR_STAGES = ['backlog', 'building', 'review', 'ready', 'merging', 'live'] as const
+export type OperatorStage = (typeof OPERATOR_STAGES)[number]
+
+export const OPERATOR_STAGE_LABEL: Record<OperatorStage, string> = {
+  backlog: 'Not started', building: 'Being built', review: 'Waiting for review', ready: 'Ready',
+  merging: 'Merging in the batch', live: 'Live',
+}
+
+export const OPERATOR_STAGE_MEANING: Record<OperatorStage, string> = {
+  backlog: 'Planned or waiting its turn; nobody is working on it yet.',
+  building: 'An agent is working on it now.',
+  review: 'A change is written and is being checked before it can merge.',
+  ready: 'Checked and waiting for the merge step.',
+  merging: 'In the batch that merges and releases at the set time.',
+  live: 'Merged and, where recorded, verified running.',
+}
+
+const OPERATOR_STAGE_OF: Record<PipelineStage, OperatorStage> = {
+  proposed: 'backlog', approved: 'ready', queued: 'backlog', claimed: 'building', building: 'building',
+  pr_open: 'review', ci: 'review', in_batch: 'merging', merged: 'live', released: 'live', verified: 'live',
+}
+
+/** Which of the operator's groups an item belongs to. An unknown code is never guessed into "Live". */
+export function operatorStage(item: { stage?: string | null }): OperatorStage | null {
+  const stage = item?.stage as PipelineStage | undefined
+  return stage && stage in OPERATOR_STAGE_OF ? OPERATOR_STAGE_OF[stage] : null
+}
+
 export type StageCell = { stage: PipelineStage; rag: Rag; label: string; at?: string | null; evidence?: string }
 export type PipelineItem = {
   id: string

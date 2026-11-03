@@ -101,6 +101,31 @@ export type CoordinationBlock = {
   agents: CoordinationAgent[]
 }
 
+/** How a review/CI fact is known, in the operator's words (row 05; cc3's wire contract, 2026-11-03).
+ *
+ *  `UNKNOWN` on the page is a symptom, not an answer: four different situations produced it and the operator could
+ *  not tell "we never looked" from "we looked at a different version". Each state gets one plain sentence, and an
+ *  unrecognised state is never silently turned into a pass. */
+export type EvidenceState = 'OBSERVED' | 'STALE_OTHER_HEAD' | 'NOT_RECORDED' | 'SOURCE_UNAVAILABLE'
+
+export const EVIDENCE_SENTENCE: Record<EvidenceState, string> = {
+  OBSERVED: 'checked',
+  STALE_OTHER_HEAD: 'checked, but for an older version of the change',
+  NOT_RECORDED: 'no check is recorded',
+  SOURCE_UNAVAILABLE: 'the record of the check could not be read',
+}
+
+export function evidenceState(v: unknown): EvidenceState | null {
+  const raw = String(v ?? '').trim().toUpperCase()
+  return raw in EVIDENCE_SENTENCE ? (raw as EvidenceState) : null
+}
+
+/** The sentence for a raw state; null when the state is not one we know (callers say "unknown, and why"). */
+export function evidenceSentence(v: unknown): string | null {
+  const st = evidenceState(v)
+  return st ? EVIDENCE_SENTENCE[st] : null
+}
+
 export type InFlightPr = {
   number: number
   title: string
