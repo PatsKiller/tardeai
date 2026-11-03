@@ -11,19 +11,32 @@ right" is not evidence, so this harness drives the REAL modules through a REAL p
         ``suppressed`` field (cx-openai-2: `suppressed: false` is present on every normal result and
         therefore proves nothing about delivery).
 
-Two sessions, the second in a separate process against the same state directory, so the second pass must
-exercise the repeat floor rather than a fresh-start happy path. Four proofs:
+Separate processes share one state directory (stores, floor ledger and pending markers are file-backed), so a
+later pass must act on what an earlier one persisted rather than on a fresh start. Nine proofs:
 
-  P1  a T1 case that is RECOVERING pages exactly once (one sender invocation, priority P1, marker on line 1);
-  P2  the same case, a session later and inside the floor, produces ZERO sender invocations AND a receipt
-      that names the dedupe ("repeat floor: …") — the negative with an explanation, not silence;
-  P3  the same symbol moving to a NEW state (RE_ENTRY_READY) pages again: dedupe is per (symbol, state),
-      not a blanket mute;
-  P4  with the batching module unavailable (the code path that exists until v008's batching lands), the
-      dedupe moves to the transport: C calls it, the transport refuses the repeat, and the ledger records
-      the refusal with its reason. Also never silence.
+  P1   a T1 case that is RECOVERING pages exactly once (one sender invocation, priority P1, marker on line 1);
+  P1b  a T2 case and a non-recovering case produce no page at all;
+  P2   the same case, a session later and inside the floor, produces ZERO sender invocations AND a receipt
+       that names the dedupe ("repeat floor: …") — the negative with an explanation, not silence;
+  P3   ONE page per case per day, delivered terminal (lead ruling 2026-11-03): the SAME case ids moving to a
+       genuine NEW state (RE_ENTRY_READY) on the same day get ZERO further raw deliveries, while a distinct
+       account/case still pages once. Asserted on per-case raw transport counts and the router's DEDUPED
+       receipts, never on C's ``sent`` flag (the router reports an accepted-but-deduped intent as sent);
+  P4   with the batching module unavailable (the code path that exists until v008's batching lands), the
+       dedupe moves to the transport: C calls it, the transport refuses the repeat, and the ledger records
+       the refusal with its reason. Also never silence.
+  P5   real A artifacts: A's own ``build_case`` from ``ExitFill`` rows and the ACTUAL
+       ``config/recovery_policy.yaml`` through real B -> real C -> the real router (only the raw transport is
+       faked); A's percent loads as a fraction and both sides agree on the FINAL exit as the reference;
+  P6   an unchanged, already-delivered case on a later pass: ``changed 0``, ZERO notifier calls, zero
+       deliveries — C is not consulted for a case with nothing to say;
+  P7   a failed delivery leaves a durable pending marker and the next pass retries it even though the state
+       no longer changes (``changed 0``), clearing the marker once delivered;
+  P8   a failed state write pages nothing and records the error.
 
-Non-T1 and non-recovering cases are included and must produce no page at all.
+Non-T1 and non-recovering cases are included and must produce no page at all. Every router/publisher store
+(page ledger, budget, dedupe, intent receipts) is redirected into scratch, gateway routing is off and the
+enrichment/shadow hooks are stubbed, so a run cannot touch repository runtime state or a live database.
 
 Entry point for piece F:
 
