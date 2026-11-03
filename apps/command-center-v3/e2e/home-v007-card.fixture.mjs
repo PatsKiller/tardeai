@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
 import { chromium } from '@playwright/test'
 
+const GLOSSARY_RAW = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../config/market_risk_glossary.json'), 'utf8')
 const app = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const out = process.argv[2]
 assert(out, 'explicit fixture evidence directory required')
@@ -42,7 +43,7 @@ const bundled = await build({
   define: { 'process.env.NODE_ENV': '"production"' },
   plugins: [{ name: 'stub-node-fs', setup(b) {
     b.onResolve({ filter: /^node:fs$/ }, () => ({ path: 'fs-stub', namespace: 'stub' }))
-    b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export function readFileSync(){return \'{"terms":{}}\'}', loader: 'js' }))
+    b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export function readFileSync(){return ' + JSON.stringify(GLOSSARY_RAW) + '}', loader: 'js' }))
   } }],
 })
 const js = bundled.outputFiles.find(f => f.path.endsWith('.js')).text
@@ -81,12 +82,20 @@ try {
         sections: { protect: /Protect/i.test(text), hedge: /Hedge/i.test(text), rotate: /Rotate/i.test(text), sectors: /Sectors vs SPY/i.test(text), reentry: /Since you were stopped out/i.test(text) },
         details: document.querySelectorAll('details').length,
         tableRows: document.querySelectorAll('[data-mr-actionable] tbody tr').length,
-        smallTaps: taps.filter(x => x.w < 44 || x.h < 44).length, taps: taps.length,
-        smallDetail: taps.filter(x => x.w < 44 || x.h < 44).slice(0, 4),
+        smallTaps: taps.filter(x => (x.w > 0 || x.h > 0) && (x.w < 44 || x.h < 44)).length, taps: taps.filter(x => x.w > 0 || x.h > 0).length,
+        smallDetail: taps.filter(x => (x.w > 0 || x.h > 0) && (x.w < 44 || x.h < 44)).slice(0, 4),
         overflow: document.documentElement.scrollWidth > innerWidth + 1,
       }
     })
     assert.deepEqual(t.pageErrors, [], `page errors at ${width}`)
+    try {
+      assert.ok(Object.values(m.sections).every(Boolean), `a section is missing at ${width}: ${JSON.stringify(m.sections)}`)
+      assert.equal(m.details, 6, `collapsible count at ${width}`)
+      assert.equal(m.tableRows, 13, `sector row count at ${width}`)
+      assert.equal(m.overflow, false, `horizontal overflow at ${width}`)
+      assert.ok(m.smallTaps === 0, `taps under 44px at ${width}: ${JSON.stringify(m.smallDetail)}`)
+      assert.ok(m.taps >= 20, `too few interactive targets measured at ${width}: ${m.taps}`)
+    } catch (e) { process.exitCode = 1; throw e }
     const shot = path.join(out, `card-${width}.png`)
     await page.screenshot({ path: shot, fullPage: true })
     results.push({ width, shot, measured: m, traffic: t })

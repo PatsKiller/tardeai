@@ -59,7 +59,7 @@ const signed = (n: number | null): CSSProperties => ({ ...numStyle, color: n == 
 function Section({ title, one, testId, children }: { title: string; one?: string | null; testId: string; children: React.ReactNode }) {
   return (
     <details className="mr-sec" data-testid={testId} open>
-      <summary role="heading" aria-level={3}><span>{title}</span>{one ? <span className="mr-sec-one">{one}</span> : null}</summary>
+      <summary><span role="heading" aria-level={3}>{title}</span>{one ? <span className="mr-sec-one">{one}</span> : null}</summary>
       <div className="mr-sec-body">{children}</div>
     </details>
   )
