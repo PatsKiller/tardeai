@@ -486,6 +486,20 @@ def test_the_plans_api_returns_404_for_an_unknown_but_valid_id(tmp_path, monkeyp
     assert "no-such-plan" not in json.dumps(payload)
 
 
+def test_the_dispatcher_never_emits_a_bool_as_an_http_status(monkeypatch):
+    """A handler's own (status, body) is passed through (the plans route needs 400/404), but ``bool``
+    is a subclass of ``int``: ``(True, ...)`` must stay a normal 200 data payload, not status True."""
+    import api_v2
+
+    monkeypatch.setitem(api_v2.ROUTES, "/api/v2/__bool_status_probe__", lambda: (True, {"x": 1}))
+    status, payload = api_v2.handle("/api/v2/__bool_status_probe__")
+    assert status == 200, payload
+    assert payload == {"ok": True, "data": (True, {"x": 1})}
+
+    monkeypatch.setitem(api_v2.ROUTES, "/api/v2/__int_status_probe__", lambda: (404, {"ok": False}))
+    assert api_v2.handle("/api/v2/__int_status_probe__") == (404, {"ok": False})
+
+
 def test_a_truncated_plan_is_an_explicit_unreadable_row_not_a_silent_gap(tmp_path):
     """A real approved plan whose front matter is truncated used to vanish from a page that promises
     every plan. It must stay visible as a gap with its id, filename and a reason."""

@@ -55105,8 +55105,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _np = len(_insp.signature(handler).parameters)
             result = handler(query) if _np >= 1 else handler()
             # A handler may answer with its own (status, body) — a caller error or a missing
-            # resource. Every other result is wrapped as data exactly as before.
-            if isinstance(result, tuple) and len(result) == 2 and isinstance(result[0], int):
+            # resource. Every other result is wrapped as data exactly as before. ``bool`` is a
+            # subclass of ``int``, so it is excluded explicitly: a handler returning ``(True, x)``
+            # must never emit status ``True``.
+            if (isinstance(result, tuple) and len(result) == 2 and isinstance(result[0], int)
+                    and not isinstance(result[0], bool)):
                 return result
             return 200, {"ok": True, "data": result}
         except Exception as e:
