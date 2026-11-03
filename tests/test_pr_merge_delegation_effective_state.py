@@ -293,6 +293,99 @@ def test_takeover_link_to_missing_target_is_chain_invalid(mod, tmp_path):
     ])
 
 
+# --------------------------------------------------------------------------- compacted predecessors (durable archive)
+
+
+def archive_lines(board, *docs_):
+    """Append records to the canonical archive ``ClaimBoard.compact()`` writes, in the shape it stores them."""
+    with (board.dir / "claims_history.jsonl").open("a", encoding="utf-8") as fh:
+        for doc in docs_:
+            fh.write(json.dumps(doc, sort_keys=True) + "\n")
+
+
+def archived_claim(claim_id, *, status="done", state="released", record_id=None):
+    """One ``AgentClaimArchive@v1`` line in the exact shape ``ClaimBoard.compact()`` writes."""
+    return {"schema": "AgentClaimArchive@v1", "archived_at": iso(NOW), "state_at_archive": state,
+            "stage_at_archive": None, "sha256": "0" * 64, "lifecycle": None, "worklog_archive": None,
+            "claim": {"schema": "AgentClaim@v1", "claim_id": record_id or claim_id, "vendor": "codex",
+                      "session": "session-old", "agent": None, "task": "compacted predecessor", "paths": [SOURCE],
+                      "branch": None, "pr": None, "started_at": iso(T0), "heartbeat_at": iso(T0), "status": status,
+                      "note": None, "host": "synthetic", "takeover_of": []}}
+
+
+def compacted_board(tmp_path, predecessor):
+    directory = tmp_path / "claims"
+    holder = "20300107T234500Z-live-b-bbbbbbbb"
+    write_claim(directory, holder, session="session-m", paths=[COORD], takeover_of=[predecessor])
+    return ClaimBoard(directory, stale_after_hours=2.0, now=lambda: NOW), holder
+
+
+@pytest.mark.parametrize("status,state", [("done", "done"), ("abandoned", "abandoned"), ("active", "stale")])
+def test_a_compacted_predecessor_resolves_from_the_canonical_archive(mod, tmp_path, status, state):
+    """Compaction removes the live file, so the archive record is the only proof the predecessor ever existed.
+    Refusing the whole ledger for that blocks every merge forever; today 81 such targets are archived as `stale`."""
+    predecessor = "20300107T234500Z-archived-a-aaaaaaaa"
+    board, holder = compacted_board(tmp_path, predecessor)
+    archive_lines(board, archived_claim(predecessor, status=status, state=state))
+
+    states = mod.effective_claim_states(docs(board), board)  # must not raise
+    assert states[holder] == "live"
+
+
+def test_an_archive_record_for_a_live_claim_refuses(mod, tmp_path):
+    """Compaction must never remove a live holder; a record that says so is inconsistent or forged."""
+    predecessor = "20300107T234500Z-archived-a-aaaaaaaa"
+    board, _ = compacted_board(tmp_path, predecessor)
+    archive_lines(board, archived_claim(predecessor, status="active", state="live"))
+    with pytest.raises(mod.Refused) as exc:
+        mod.effective_claim_states(docs(board), board)
+    assert "claim_takeover_chain_invalid" in str(exc.value)
+
+
+def test_a_target_in_no_archive_still_refuses(mod, tmp_path):
+    predecessor = "20300107T234500Z-archived-a-aaaaaaaa"
+    board, _ = compacted_board(tmp_path, predecessor)
+    archive_lines(board, archived_claim("20300107T234500Z-someone-else-cccccccc"))
+    with pytest.raises(mod.Refused) as exc:
+        mod.effective_claim_states(docs(board), board)
+    assert "claim_takeover_chain_invalid" in str(exc.value)
+
+
+def test_an_archive_record_for_another_claim_id_does_not_resolve(mod, tmp_path):
+    """A record whose own claim_id is not the referenced target cannot vouch for it."""
+    predecessor = "20300107T234500Z-archived-a-aaaaaaaa"
+    board, _ = compacted_board(tmp_path, predecessor)
+    archive_lines(board, archived_claim(predecessor, record_id="20300107T234500Z-impostor-dddddddd"))
+    with pytest.raises(mod.Refused) as exc:
+        mod.effective_claim_states(docs(board), board)
+    assert "claim_takeover_chain_invalid" in str(exc.value)
+
+
+def test_an_override_record_never_resolves_a_target(mod, tmp_path):
+    """The archive also carries ``AgentClaimOverride@v1`` lines; they are not claims, so they cannot vouch for one."""
+    predecessor = "20300107T234500Z-archived-a-aaaaaaaa"
+    board, _ = compacted_board(tmp_path, predecessor)
+    archive_lines(board, {"schema": "AgentClaimOverride@v1", "at": iso(NOW), "claim_id": predecessor})
+    with pytest.raises(mod.Refused) as exc:
+        mod.effective_claim_states(docs(board), board)
+    assert "claim_takeover_chain_invalid" in str(exc.value)
+
+
+@pytest.mark.parametrize("line", ["{not json", "[]", {"schema": "AgentClaim@v1", "claim_id": "x", "status": "done"},
+                                  {"schema": "AgentClaimArchive@v1", "claim": {"schema": "AgentClaim@v1"}},
+                                  {"schema": "AgentClaimArchive@v1", "claim": "not a doc"},
+                                  {"schema": "Other@v1", "claim_id": "x", "status": "done"}])
+def test_a_malformed_archive_line_refuses_the_board(mod, tmp_path, line):
+    predecessor = "20300107T234500Z-archived-a-aaaaaaaa"
+    board, _ = compacted_board(tmp_path, predecessor)
+    archive_lines(board, archived_claim(predecessor))
+    with (board.dir / "claims_history.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write((line if isinstance(line, str) else json.dumps(line)) + "\n")
+    with pytest.raises(mod.Refused) as exc:
+        mod.effective_claim_states(docs(board), board)
+    assert "claim_takeover_chain_invalid" in str(exc.value)
+
+
 # --------------------------------------------------------------------------- durable supersession
 
 

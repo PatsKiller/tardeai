@@ -250,12 +250,65 @@ def claim_is_live(view, board):
     return age is not None and age <= board.stale_after.total_seconds()
 
 
+ARCHIVE_SCHEMA = "AgentClaimArchive@v1"
+#: The archive also carries operator overrides; they are not claims and never resolve a takeover target.
+ARCHIVE_NONCLAIM_SCHEMAS = frozenset({"AgentClaimOverride@v1"})
+
+
+def archived_claims(board) -> dict[str, dict[str, object]]:
+    """Canonical archive records by ``claim_id``, validated; ``{}`` when the archive does not exist.
+
+    ``ClaimBoard.compact()`` appends an ``AgentClaimArchive@v1`` wrapper around the original ``AgentClaim@v1`` and
+    removes the live file. A predecessor that is gone from the views is durable history only when the archive carries
+    a well-formed record whose nested claim names that same ``claim_id`` — absence alone never resolves a target, and
+    a malformed/unknown line refuses the whole ledger. A record archived while the claim was still ``live`` is
+    inconsistent (compaction must not remove a live holder) and also refuses. Read-only: the archive is never written.
+    """
+    path = getattr(board, "history", None)
+    if path is None:
+        return {}
+    try:
+        raw = Path(path).read_bytes()
+    except FileNotFoundError:
+        return {}
+    except OSError:
+        raise Refused("claim_takeover_chain_invalid") from None
+    if len(raw) > MAX_BYTES:
+        raise Refused("claim_takeover_chain_invalid")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise Refused("claim_takeover_chain_invalid") from None
+    out: dict[str, str] = {}
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            raise Refused("claim_takeover_chain_invalid") from None
+        if not isinstance(rec, dict):
+            raise Refused("claim_takeover_chain_invalid")
+        schema = rec.get("schema")
+        if schema in ARCHIVE_NONCLAIM_SCHEMAS:
+            continue
+        claim = rec.get("claim")
+        if (schema != ARCHIVE_SCHEMA or not isinstance(claim, dict) or claim.get("schema") != "AgentClaim@v1"
+                or not isinstance(claim.get("claim_id"), str) or not claim["claim_id"]):
+            raise Refused("claim_takeover_chain_invalid")
+        if rec.get("state_at_archive") == "live":
+            raise Refused("claim_takeover_chain_invalid")
+        out[claim["claim_id"]] = {"status": claim.get("status"), "state_at_archive": rec.get("state_at_archive")}
+    return out
+
+
 def validate_takeover_graph(views, board):
     """Refuse a takeover graph that is ambiguous or unreadable.
 
-    Chain-invalid: cycles, missing targets, duplicate/malformed entries, and two *currently
-    live* claimants naming the same predecessor. A released (or otherwise non-live) claimant
-    naming the same predecessor as a live one is durable history, not ambiguity.
+    Chain-invalid: cycles, unknown targets, duplicate/malformed entries, and two *currently live* claimants naming the
+    same predecessor. A released (or otherwise non-live) claimant naming the same predecessor as a live one is durable
+    history, not ambiguity — and a predecessor that compaction removed from the views is durable history only when the
+    canonical archive records it as released; a target nobody can account for still refuses.
     """
     by_id = {view.claim_id: view for view in views}
     edges = {}
@@ -263,9 +316,14 @@ def validate_takeover_graph(views, board):
         targets = takeover_targets(view.doc)
         if targets:
             edges[view.claim_id] = targets
+    archived: dict[str, dict[str, object]] | None = None
     for targets in edges.values():
         for target in targets:
-            if target not in by_id:
+            if target in by_id:
+                continue
+            if archived is None:
+                archived = archived_claims(board)
+            if target not in archived:
                 raise Refused("claim_takeover_chain_invalid")
     colour = {}
 
