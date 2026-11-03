@@ -8,6 +8,7 @@ annotation rather than a silence. Pure functions: no DB, no store, no order path
 from __future__ import annotations
 
 import sys
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -367,12 +368,13 @@ def _t1_row(exit_price=100.0, residual=1.0, pre_exit=7.0):
             "residual_pct_of_pre_exit": 14.3, "residual_note": "1 of 7 shares remain after the 2030-01-10 exit"}
 
 
-def test_the_scheduled_pass_pages_a_t1_recovering_transition():
+def test_the_scheduled_pass_pages_a_t1_recovering_transition(tmp_path):
     """The failure codex found: run_pass wrote a T1 RECOVERING case and made ZERO notifier calls."""
     store = RecordingStore([_t1_row()])
     calls = []
     out = R.run_pass(store, lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0},
-                     now=NOW, dry_run=False, notify=lambda case: calls.append(case) or {"sent": True})
+                     now=NOW, dry_run=False, notify=lambda case: calls.append(case) or {"sent": True},
+                     pending_path=tmp_path / "pending.json")
 
     assert out["store"] == "ok" and out["changed"] == 1 and out["notifier_calls"] == 1
     assert store.written == [("DEMO:DEMO_IRA:2030-01-10", R.RECOVERING)]
@@ -381,28 +383,90 @@ def test_the_scheduled_pass_pages_a_t1_recovering_transition():
     assert out["decisions"][0]["notify"] == {"sent": True}
 
 
-def test_the_scheduled_pass_does_not_page_a_case_that_did_not_transition():
+def test_the_scheduled_pass_does_not_page_a_case_that_did_not_transition(tmp_path):
     store = RecordingStore([{**_t1_row(), "state": "WATCHING"}])
     calls = []
     out = R.run_pass(store, lambda c: {"close": 90.0, "rsi": 30.0, "sma20": 130.0},
-                     now=NOW, dry_run=False, notify=lambda case: calls.append(case) or {"sent": True})
+                     now=NOW, dry_run=False, notify=lambda case: calls.append(case) or {"sent": True},
+                     pending_path=tmp_path / "pending.json")
     assert out["changed"] == 0 and out["notifier_calls"] == 0 and calls == []
 
 
-def test_a_dry_run_never_pages_or_writes():
+def test_a_dry_run_never_pages_or_writes(tmp_path):
     store = RecordingStore([_t1_row()])
     calls = []
     out = R.run_pass(store, lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0},
-                     now=NOW, dry_run=True, notify=lambda case: calls.append(case) or {"sent": True})
+                     now=NOW, dry_run=True, notify=lambda case: calls.append(case) or {"sent": True},
+                     pending_path=tmp_path / "pending.json")
     assert out["notifier_calls"] == 0 and calls == [] and store.written == []
     assert out["decisions"][0]["notify"]["reason"] == "dry_run"
 
 
-def test_a_notifier_fault_is_recorded_and_never_aborts_the_pass():
+def test_a_notifier_fault_is_recorded_and_never_aborts_the_pass(tmp_path):
     store = RecordingStore([_t1_row(), {**_t1_row(), "case_key": "OTHER:x", "symbol": "OTHER"}])
     def boom(case):
         raise RuntimeError("transport down")
     out = R.run_pass(store, lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0},
-                     now=NOW, dry_run=False, notify=boom)
+                     now=NOW, dry_run=False, notify=boom,
+                     pending_path=tmp_path / "pending.json")
     assert out["notifier_calls"] == 2 and len(store.written) == 2
     assert out["decisions"][0]["notify"]["error"].startswith("RuntimeError")
+
+
+# ── failure paths: durability order (codex's fade15f6a BLOCK) ──────────────────────────────────────────────
+class FailingWriteStore(RecordingStore):
+    def set_state(self, key, state):
+        raise OSError("disk full")
+
+
+def test_a_failed_state_write_never_pages(tmp_path):
+    """Step 2 of the sequence: a page must not fire for a case that was never recorded."""
+    store = FailingWriteStore([_t1_row()])
+    calls = []
+    out = R.run_pass(store, lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0}, now=NOW,
+                     dry_run=False, notify=lambda case: calls.append(case) or {"sent": True},
+                     pending_path=tmp_path / "pending.json")
+    assert calls == [] and out["notifier_calls"] == 0
+    assert out["decisions"][0]["write_error"].startswith("OSError")
+    assert out["decisions"][0]["notify"]["reason"].startswith("state write failed")
+
+
+def test_a_failed_send_stays_pending_and_is_retried_after_the_state_is_already_advanced(tmp_path):
+    """Step 3/4: delivery failed -> a durable marker survives the pass; the next pass retries it even
+    though the state no longer changes (this is the case codex proved was lost)."""
+    pending = tmp_path / "pending.json"
+    store = RecordingStore([_t1_row()])
+    snap = lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0}
+    first = R.run_pass(store, snap, now=NOW, dry_run=False,
+                       notify=lambda case: {"sent": False, "reason": "transport refused"}, pending_path=pending)
+    assert first["notifier_calls"] == 1 and first["pending"] == 1
+    assert json.loads(pending.read_text())["DEMO:DEMO_IRA:2030-01-10"]["attempts"] == 1
+
+    # The store now reports RECOVERING: no transition, so `changed` is 0 — the retry must still happen.
+    delivered = []
+    second = R.run_pass(RecordingStore([{**_t1_row(), "state": R.RECOVERING}]), snap, now=NOW, dry_run=False,
+                        notify=lambda case: delivered.append(case) or {"sent": True}, pending_path=pending)
+    assert second["changed"] == 0 and second["notifier_calls"] == 1 and delivered[0]["state"] == R.RECOVERING
+    assert second["pending"] == 0 and json.loads(pending.read_text()) == {}
+
+
+def test_a_deduped_retry_clears_the_pending_marker(tmp_path):
+    pending = tmp_path / "pending.json"
+    store = RecordingStore([_t1_row()])
+    snap = lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0}
+    R.run_pass(store, snap, now=NOW, dry_run=False,
+               notify=lambda case: {"sent": False}, pending_path=pending)
+    cleared = R.run_pass(RecordingStore([{**_t1_row(), "state": R.RECOVERING}]), snap, now=NOW, dry_run=False,
+                         notify=lambda case: {"sent": False, "deduped_by_floor": True, "reason": "repeat floor"},
+                         pending_path=pending)
+    assert cleared["pending"] == 0
+
+
+def test_a_non_pageable_tier_does_not_create_pending_work(tmp_path):
+    pending = tmp_path / "pending.json"
+    store = RecordingStore([_t1_row()])
+    snap = lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0}
+    out = R.run_pass(store, snap, now=NOW, dry_run=False,
+                     notify=lambda case: {"sent": False, "reason": "not T1 (declared); Home card / digest"},
+                     pending_path=pending)
+    assert out["pending"] == 0
