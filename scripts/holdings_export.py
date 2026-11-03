@@ -357,6 +357,23 @@ def render_document(rows: Iterable[Mapping[str, Any]], *, generated_at: datetime
 
 
 # ── atomic write ───────────────────────────────────────────────────────────────
+def _atomic_write_at(dir_fd: int, name: str, text: str, *, mode: int = FILE_MODE) -> None:
+    """Atomic write through an ALREADY-PINNED directory fd (survives a parent swap during a callback)."""
+    tmp = f".{name}.{os.getpid()}.{secrets.token_hex(4)}.tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode, dir_fd=dir_fd)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+        os.fsync(dir_fd)
+    finally:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp, dir_fd=dir_fd)
+    os.chmod(name, mode, dir_fd=dir_fd)
+
+
 def _dir_beneath(root: Path, target: Path, *, create: bool = True) -> int:
     """Open `target` as a directory fd by walking from `root` with O_NOFOLLOW at every step.
 
@@ -639,16 +656,13 @@ def maybe_alert_stale(*, store: Path | str | None = None, state_root: Path | str
     if not empty and mismatch is None and not sync_bad and not in_market_hours(now):
         return {"status": "outside_market_hours", "age_minutes": age, "sent": False}
     if not empty and mismatch is None and not sync_bad and age is not None and age <= max_age_minutes:
-        try:
-            if state_root is not None:
-                root_real = Path(os.path.realpath(Path(state_root).expanduser()))
-                marker = Path(store).parent / "backups" / ".alert-episode.json"
-                if Path(os.path.realpath(marker)).is_relative_to(root_real):
-                    marker.unlink()
-            else:
-                (Path(store).parent / "backups" / ".alert-episode.json").unlink()
-        except OSError:
-            pass
+        marker_root = Path(state_root).expanduser() if state_root is not None else Path(store).parent
+        with contextlib.suppress(OSError, ExportError):
+            fd = _dir_beneath(marker_root, Path(store).parent / "backups", create=True)
+            try:
+                os.unlink(".alert-episode.json", dir_fd=fd)
+            finally:
+                os.close(fd)
         return {"status": "fresh", "age_minutes": age, "sent": False}
     # Episode dedupe: one page per distinct episode, reset on recovery. Undelivered sends retry next run.
     episode_file: Path | None = Path(store).parent / "backups" / ".alert-episode.json"
@@ -660,9 +674,20 @@ def maybe_alert_stale(*, store: Path | str | None = None, state_root: Path | str
     # condition stays the same, so it pages once until it clears.
     episode = (f"empty={empty}|mismatch={mismatch is not None}|sync_bad={sync_bad}"
                f"|stale={age is not None and age > max_age_minutes}")
+    marker_fd = None
+    if episode_file is not None:
+        marker_root = Path(state_root).expanduser() if state_root is not None else Path(store).parent
+        try:
+            # PIN the directory now: the send callback runs below, and a swap during it must not
+            # redirect the marker write (the fd keeps pointing at the original directory).
+            marker_fd = _dir_beneath(marker_root, episode_file.parent, create=True)
+        except (OSError, ExportError):
+            marker_fd, episode_file = None, None
     if episode_file is not None:
         with contextlib.suppress(Exception):  # no prior episode
             if json.loads(episode_file.read_text(encoding="utf-8")).get("episode") == episode:
+                if marker_fd is not None:
+                    os.close(marker_fd)
                 return {"status": "already_alerted", "age_minutes": age, "sent": False, "episode": episode}
     if send is None:
         try:
@@ -679,13 +704,14 @@ def maybe_alert_stale(*, store: Path | str | None = None, state_root: Path | str
         outcome = send(text, priority=priority)
         delivered = outcome is True or (isinstance(outcome, Mapping) and outcome.get("delivered") is True)
     except Exception as exc:  # noqa: BLE001 — an alert failure must not mask the export state
+        if marker_fd is not None:
+            os.close(marker_fd)
         return {"status": "send_error", "age_minutes": age, "sent": False, "error_type": type(exc).__name__}
-    if delivered and episode_file is not None:
-        try:
-            episode_file.parent.mkdir(parents=True, exist_ok=True)
-            atomic_write(episode_file, json.dumps({"episode": episode, "at": _iso(now)}) + "\n")
-        except OSError:
-            pass
+    if delivered and marker_fd is not None:
+        with contextlib.suppress(OSError):
+            _atomic_write_at(marker_fd, episode_file.name, json.dumps({"episode": episode, "at": _iso(now)}) + "\n")
+    if marker_fd is not None:
+        os.close(marker_fd)
     return {"status": "stale_alerted", "age_minutes": age, "sent": bool(delivered)}
 
 

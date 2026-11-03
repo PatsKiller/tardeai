@@ -420,3 +420,26 @@ def test_main_always_runs_the_monitor_even_when_the_store_is_missing(tmp_path, m
 def test_the_unit_does_not_treat_a_refusal_as_success():
     unit = (ROOT / "ops/systemd/tradeai-holdings-export.service").read_text()
     assert "SuccessExitStatus" not in unit
+
+
+def test_a_parent_swap_during_the_send_cannot_redirect_the_marker(tmp_path):
+    # codex's exact fixture: the store's parent is renamed and symlinked outside DURING the send callback.
+    state = tmp_path / "state"
+    sub = state / "sub"
+    sub.mkdir(parents=True)
+    store = sub / "holdings.json"
+    he.export(state_root=state, conn=Conn(), store=store, backups=sub / "backups",
+              now=NOW - timedelta(minutes=40))
+    outside = tmp_path / "outside"
+    (outside / "backups").mkdir(parents=True)
+    calls = []
+
+    def send(*args, **kwargs):
+        sub.rename(tmp_path / "sub-moved")
+        (state / "sub").symlink_to(outside)
+        calls.append(1)
+        return {"delivered": True}
+
+    out = he.maybe_alert_stale(store=store, now=NOW, state_root=state, send=send)
+    assert out["sent"] is True and calls == [1]
+    assert not (outside / "backups" / ".alert-episode.json").exists()
