@@ -10,9 +10,9 @@
     "A backup answers the SAME question from a different provider. Cross-domain substitution is not a backup.",
     "A retired provider has zero call sites outside scripts/lib/retired_providers.py and the secret-hygiene scanners.",
     "A provider that stops reporting decays to unknown in data_source_health; healthy means succeeded within its window.",
-    "Adding a source: add it here first (domain, store, writer, projection, backup, retired, approval) and re-render AGENTS.md §7A and docs/SOURCE_OF_TRUTH.md with scripts/render_source_of_truth.py in the same PR. The gate fails on an undeclared provider host or SDK import.",
+    "Adding a source: add it here first (domain, store, writer, projection, backup, retired, approval) and re-render AGENTS.md \u00a77A and docs/SOURCE_OF_TRUTH.md with scripts/render_source_of_truth.py in the same PR. The gate fails on an undeclared provider host or SDK import.",
     "Every domain declares on_gap: the ordered, budgeted vectors the gap resolver may run when the store is stale or empty. Free before metered before paid; operator_ask last; retired providers never.",
-    "Adding, replacing or retiring a data source — or a writer of an authoritative store — is an operator-only decision (AGENTS.md §17). An agent proposes the registry row in a PR; the operator grants it; the grant is recorded in that row's `approval` {approved_by, approved_on, reference, scope} (retired rows: retired_by, retired_on, reference). Only then may a call site exist. A provider or domain without a complete approval fails check_data_source_authority.py with UNAPPROVED_SOURCE."
+    "Adding, replacing or retiring a data source \u2014 or a writer of an authoritative store \u2014 is an operator-only decision (AGENTS.md \u00a717). An agent proposes the registry row in a PR; the operator grants it; the grant is recorded in that row's `approval` {approved_by, approved_on, reference, scope} (retired rows: retired_by, retired_on, reference). Only then may a call site exist. A provider or domain without a complete approval fails check_data_source_authority.py with UNAPPROVED_SOURCE."
   ],
   "served_from": {
     "root": "/home/johnclaw/trade-ai-releases/persistent-state/data",
@@ -39,7 +39,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "may supply: quotes, bars, paper_execution"
       },
       "supplies": [
@@ -60,7 +60,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "may supply: positions, option_chain, stream_quotes, instruments; market_data_quotes for quote_extended_session (GET /marketdata/v1/quotes only, host lane market-quotes-offhours-schwab; granted 2026-11-01, see supply_grants)"
       },
       "supplies": [
@@ -76,7 +76,7 @@
           "domain": "quote_extended_session",
           "approved_by": "operator",
           "approved_on": "2026-11-01",
-          "reference": "operator 2026-11-01 ~13:45 ET in-session (verbatim): \"enable schwab\"; under the operator's 2026-10-31 allowance (AGENTS.md 29.2.0 §24.11, ratified #2407): scheduled host lanes may read broker market data only, via the existing token managers, never account, order, stop, 2FA or auth endpoints, and no agent reads credentials or cookies",
+          "reference": "operator 2026-11-01 ~13:45 ET in-session (verbatim): \"enable schwab\"; under the operator's 2026-10-31 allowance (AGENTS.md 29.2.0 \u00a724.11, ratified #2407): scheduled host lanes may read broker market data only, via the existing token managers, never account, order, stop, 2FA or auth endpoints, and no agent reads credentials or cookies",
           "scope": "scripts/market_quotes_offhours_schwab.py reads GET https://api.schwabapi.com/marketdata/v1/quotes only (marketdata_url rail); never imports schwab_transport; reads the stored access token only while fresh (never refreshes); writes market_quotes_extended feed schwab through its single writer"
         }
       ]
@@ -92,7 +92,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "may supply: profiles, quote_backup, prices, technicals, earnings, analyst_on_demand"
       },
       "supplies": [
@@ -116,7 +116,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "may supply: analyst_targets, vix, news_feed"
       },
       "supplies": [
@@ -136,7 +136,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "may supply: screeners, enrichment, industry_groups, sector_perf, news"
       },
       "supplies": [
@@ -159,7 +159,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "may supply: form4, filings"
       },
       "supplies": [
@@ -178,7 +178,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "may supply: macro"
       },
       "supplies": [
@@ -196,7 +196,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-10",
-        "reference": "Operator 2026-10-10 ~18:40 ET, verbatim \"Yes, from one to six\" (item 4: apply registry proposal rows A1, A2, A3, B1, B2; not N1) — config/policy_proposals/data_source_authority_alpha_vantage_scope_20261010.json; branch n8nmat/av-newsapi (PR #1675); direction 2026-10-10: \"let's use Alpha Vantage for the gaps and prioritize which gaps that really make sense\"",
+        "reference": "Operator 2026-10-10 ~18:40 ET, verbatim \"Yes, from one to six\" (item 4: apply registry proposal rows A1, A2, A3, B1, B2; not N1) \u2014 config/policy_proposals/data_source_authority_alpha_vantage_scope_20261010.json; branch n8nmat/av-newsapi (PR #1675); direction 2026-10-10: \"let's use Alpha Vantage for the gaps and prioritize which gaps that really make sense\"",
         "scope": "may supply: earnings_calendar, news_sentiment; same-question backup for earnings_date and catalyst_news (supply tags earnings, news_feed). All calls through scripts/lib/alpha_vantage_owner.py; <= 23 requests/day. Narrowed operator 2026-10-16: yes, narrow the AV row -- fundamentals (OVERVIEW) removed: premium endpoint on this key (10/10 calls 2026-10-12..16 refused); scalp_float and fundamentals_overview allotments 0"
       },
       "supplies": [
@@ -228,7 +228,7 @@
         "config": "config/alpha_vantage_owner.json"
       },
       "_narrowed_20261016": "operator 2026-10-16: yes, narrow the AV row. Removed fundamentals from supplies (OVERVIEW is a premium endpoint on this key: 10/10 counted calls 2026-10-12..16 answered This is a premium endpoint, 0 successes; the owner refuses OVERVIEW up front as premium_endpoint_unavailable). scalp_float 2 -> 0 (float now Finviz via the data broker, operator option A) and fundamentals_overview 5 -> 0 (the --fundamentals lane now reads stored Finviz, operator 2026-10-16 Switch to Finviz). Nothing widened. PR #1840.",
-      "_supplies_note": "news_feed and earnings are the supply tags catalyst_news (answers news/news_feed/web_search) and earnings_date match a same-question backup against (AGENTS.md §7A rule 5) — B1/B2, operator 2026-10-10 \"Yes, from one to six\".",
+      "_supplies_note": "news_feed and earnings are the supply tags catalyst_news (answers news/news_feed/web_search) and earnings_date match a same-question backup against (AGENTS.md \u00a77A rule 5) \u2014 B1/B2, operator 2026-10-10 \"Yes, from one to six\".",
       "health_window_hours": 192,
       "_health_window_note": "Provider liveness window for data_source_health. 192h = the weekly fundamentals lane (cron L162), the only scheduled AV caller until the owner's news/earnings jobs are scheduled; lower to 13 (the overnight gap between news pulls, 20:00->06:00 ET, with margin) when that cron/n8n grant lands. Domain freshness (news_sentiment 3h/13h, earnings_calendar 26h) is the read envelope's, not this row's."
     },
@@ -244,7 +244,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "may supply: web_search"
       },
       "budget": {
@@ -284,7 +284,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "may supply: web_search"
       },
       "budget": {
@@ -306,7 +306,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "may supply: web_search"
       },
       "budget": {
@@ -329,8 +329,8 @@
       "approval": {
         "retired_by": "operator",
         "retired_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep; retirement = Phase 2, archive/ARCHIVE_MANIFEST.json (polygon_source.py row) and zero call sites proven by RETIRED_CALL_SITE",
-        "scope": "none — retired; no code path may call it"
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep; retirement = Phase 2, archive/ARCHIVE_MANIFEST.json (polygon_source.py row) and zero call sites proven by RETIRED_CALL_SITE",
+        "scope": "none \u2014 retired; no code path may call it"
       },
       "retired_on": "2026-09-13",
       "_why": "HTTP 401 since 2026-07-27; sat at slot 1 of the catalyst chain for seven weeks while four scheduled callers fell through it every run. Operator decision 2026-09-13: retire; finviz_news leads."
@@ -347,8 +347,8 @@
       "approval": {
         "retired_by": "operator",
         "retired_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep; retirement = Phase 2, archive/ARCHIVE_MANIFEST.json (polygon_source.py row) and zero call sites proven by RETIRED_CALL_SITE",
-        "scope": "none — retired; no code path may call it"
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep; retirement = Phase 2, archive/ARCHIVE_MANIFEST.json (polygon_source.py row) and zero call sites proven by RETIRED_CALL_SITE",
+        "scope": "none \u2014 retired; no code path may call it"
       },
       "retired_on": "2026-09-13",
       "_why": "Paid-only plan; never ran on schedule; 0 candidates in data_source_health."
@@ -364,8 +364,8 @@
       "approval": {
         "retired_by": "operator",
         "retired_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep; retirement = Phase 2, archive/ARCHIVE_MANIFEST.json (polygon_source.py row) and zero call sites proven by RETIRED_CALL_SITE",
-        "scope": "none — retired; no code path may call it"
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep; retirement = Phase 2, archive/ARCHIVE_MANIFEST.json (polygon_source.py row) and zero call sites proven by RETIRED_CALL_SITE",
+        "scope": "none \u2014 retired; no code path may call it"
       },
       "retired_on": "2026-09-13",
       "_why": "Paid-only; HTTP 403/429 since July 2026."
@@ -382,8 +382,8 @@
       "approval": {
         "retired_by": "operator",
         "retired_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep; retirement = Phase 2, archive/ARCHIVE_MANIFEST.json (polygon_source.py row) and zero call sites proven by RETIRED_CALL_SITE",
-        "scope": "none — retired; no code path may call it"
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep; retirement = Phase 2, archive/ARCHIVE_MANIFEST.json (polygon_source.py row) and zero call sites proven by RETIRED_CALL_SITE",
+        "scope": "none \u2014 retired; no code path may call it"
       },
       "retired_on": "2026-09-13",
       "_why": "Never ran; health row never touched."
@@ -399,7 +399,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "may supply: inference"
       },
       "supplies": [
@@ -417,7 +417,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "may supply: inference"
       },
       "supplies": [
@@ -434,7 +434,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "may supply: sentiment"
       },
       "supplies": [
@@ -442,14 +442,14 @@
       ],
       "rate_limit": {
         "declared_on": "2026-10-10",
-        "approval_reference": "CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) — decision (14)",
+        "approval_reference": "CONSOLIDATION_PLAN.md \u00a7D decisions (2),(3),(5),(6),(7),(13),(14) \u2014 operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) \u2014 decision (14)",
         "budget_per_hour": 150,
         "provider_ceiling_per_hour": 200,
         "scope": "per egress IP, shared by every caller on this host (unauthenticated api.stocktwits.com/api/2)",
         "on_429": "stop the run for this source; do not retry inside the hour (social_ingest.py already does)",
         "min_interval_seconds": 1.0,
-        "basis": "[I] provider ceiling: StockTwits' historically published unauthenticated limit (200 requests/hour per IP); no official page reachable on 2026-10-10 (community reports 400/h authenticated). [M] 3 'Rate limited — stopping' lines in social_ingest.log (served release logs, 513 lines). Budget 150/h = the §C.3 hot-tier estimate, kept 25% under the ceiling. Callers today: social_ingest, social_monitor, premarket_watcher, social_sentiment, symbol_enrichment, aegis_social_sentiment (~4k req/wk, API_OVERLAP_CONSOLIDATION.md §1.2).",
-        "enforced": "declared, not yet metered: no shared StockTwits throttle exists; the social owner (§C.2 item 4) is where it belongs"
+        "basis": "[I] provider ceiling: StockTwits' historically published unauthenticated limit (200 requests/hour per IP); no official page reachable on 2026-10-10 (community reports 400/h authenticated). [M] 3 'Rate limited \u2014 stopping' lines in social_ingest.log (served release logs, 513 lines). Budget 150/h = the \u00a7C.3 hot-tier estimate, kept 25% under the ceiling. Callers today: social_ingest, social_monitor, premarket_watcher, social_sentiment, symbol_enrichment, aegis_social_sentiment (~4k req/wk, API_OVERLAP_CONSOLIDATION.md \u00a71.2).",
+        "enforced": "declared, not yet metered: no shared StockTwits throttle exists; the social owner (\u00a7C.2 item 4) is where it belongs"
       }
     },
     "reddit": {
@@ -463,7 +463,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "may supply: sentiment"
       },
       "supplies": [
@@ -480,7 +480,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "may supply: news_feed"
       },
       "supplies": [
@@ -499,7 +499,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "may supply: positions"
       },
       "supplies": [
@@ -519,7 +519,7 @@
         {
           "approved_by": "operator",
           "approved_on": "2026-10-05",
-          "reference": "Active Trader Phase 1 L2 alerts approved 2026-10-04 (moomoo 60-level depth proven); operator HARD RULE 2026-10-05: 'the source of truth should be the Command Center for all data … each individual process should not be going out looking for its own data sources' — PR wt/at-alert-sync-20261005 (session https://claude.ai/code/session_016HFMrnsdyVGo4QnLAijLVC)",
+          "reference": "Active Trader Phase 1 L2 alerts approved 2026-10-04 (moomoo 60-level depth proven); operator HARD RULE 2026-10-05: 'the source of truth should be the Command Center for all data \u2026 each individual process should not be going out looking for its own data sources' \u2014 PR wt/at-alert-sync-20261005 (session https://claude.ai/code/session_016HFMrnsdyVGo4QnLAijLVC)",
           "scope": "may supply: order_book, tape, intraday_bars (quote context only) to the active_trader_microstructure store via its single writer"
         }
       ]
@@ -535,7 +535,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "may supply: positions"
       },
       "supplies": [
@@ -554,13 +554,13 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-31",
-        "reference": "Operator 2026-10-31 in-session (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" — §11 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1",
+        "reference": "Operator 2026-10-31 in-session (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" \u2014 \u00a711 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1",
         "scope": "may supply: institutional_flow (Dark Pool Index and published GEX, free daily CSV). Granted 2026-10-31; no call site exists until the P1-T7 writer PR."
       },
       "supplies": [
         "institutional_flow"
       ],
-      "_note": "Free daily CSV; terms allow personal use. A call site before the writer PR is a defect (AGENTS.md §7A rule 9)."
+      "_note": "Free daily CSV; terms allow personal use. A call site before the writer PR is a defect (AGENTS.md \u00a77A rule 9)."
     },
     "cftc": {
       "class": "live_external",
@@ -573,8 +573,8 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-31",
-        "reference": "Operator 2026-10-31 in-session (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" — §11 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1",
-        "scope": "may supply: institutional_flow (Commitments of Traders: ES, NQ, VIX futures — asset manager and leveraged funds net, weekly Friday 15:30 ET). Granted 2026-10-31; no call site until the P1-T7 writer PR."
+        "reference": "Operator 2026-10-31 in-session (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" \u2014 \u00a711 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1",
+        "scope": "may supply: institutional_flow (Commitments of Traders: ES, NQ, VIX futures \u2014 asset manager and leveraged funds net, weekly Friday 15:30 ET). Granted 2026-10-31; no call site until the P1-T7 writer PR."
       },
       "supplies": [
         "institutional_flow"
@@ -591,7 +591,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-31",
-        "reference": "Operator 2026-10-31 in-session (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" — §11 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1",
+        "reference": "Operator 2026-10-31 in-session (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" \u2014 \u00a711 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1",
         "scope": "may supply: institutional_flow (ICI weekly mutual fund and ETF flow release). Granted 2026-10-31; no call site until the P1-T7 writer PR."
       },
       "supplies": [
@@ -607,11 +607,11 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-31",
-        "reference": "Operator 2026-10-31 in-session (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" — §11 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1",
+        "reference": "Operator 2026-10-31 in-session (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" \u2014 \u00a711 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1",
         "scope": "Operator decision 2026-10-31: paid options-flow data (block trades, sweeps) is declared and NOT funded. No provider, no host marker, no call site; the engine's block/sweep features stay no_coverage: say_so until the operator funds a provider and a registry row names it."
       },
       "supplies": [],
-      "_note": "Placeholder for the funding decision only. Adding a real provider here is a new §7A row with its own grant."
+      "_note": "Placeholder for the funding decision only. Adding a real provider here is a new \u00a77A row with its own grant."
     }
   },
   "domains": [
@@ -621,7 +621,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "authoritative answer for quote_price: store market_quotes via projection market_quote; primary provider alpaca"
       },
       "store": {
@@ -671,7 +671,7 @@
       ],
       "writer_facade": "scripts/external_market_data_ingest.py",
       "extended_hours_provider": "finviz_elite",
-      "extended_hours_note": "2026-09-28 (plan root cause 6): outside 09:30-16:00 the header is priced by portfolio_repricer from Finviz Elite (label 'after-hours mark'); alpaca stays the RTH authority for market_quotes. Mutual funds carry a cached NAV (price_cache_nav) — a mark, not a degraded quote. PROPOSED by the agent; operator ratification pending (approval block above unchanged)."
+      "extended_hours_note": "2026-09-28 (plan root cause 6): outside 09:30-16:00 the header is priced by portfolio_repricer from Finviz Elite (label 'after-hours mark'); alpaca stays the RTH authority for market_quotes. Mutual funds carry a cached NAV (price_cache_nav) \u2014 a mark, not a degraded quote. PROPOSED by the agent; operator ratification pending (approval block above unchanged)."
     },
     {
       "domain": "symbol_identity",
@@ -679,7 +679,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "authoritative answer for symbol_identity: store symbol_profiles via projection symbol_profile; primary provider yfinance"
       },
       "store": {
@@ -743,7 +743,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "authoritative answer for analyst_opinion: store yahoo_analyst_targets_history via projection analyst_detail; primary provider yahoo"
       },
       "store": {
@@ -777,7 +777,7 @@
         "finnhub"
       ],
       "no_coverage": "say_so",
-      "_writer_note": "INSERT lives in db_adapter.save_yahoo_analyst_targets_history; pro_analyst_fetch.py (06:10 daily) is the scheduled caller. analyst_coverage.py and etf_analyst_enrich.py also call it — same helper, same store, same scale.",
+      "_writer_note": "INSERT lives in db_adapter.save_yahoo_analyst_targets_history; pro_analyst_fetch.py (06:10 daily) is the scheduled caller. analyst_coverage.py and etf_analyst_enrich.py also call it \u2014 same helper, same store, same scale.",
       "answers": [
         "analyst_targets"
       ],
@@ -820,14 +820,14 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "authoritative answer for catalyst_news: store news_articles via projection catalyst_record; primary provider finviz"
       },
       "store": {
         "table": "news_articles"
       },
       "writer": "scripts/lib/writers/news_articles_writer.py",
-      "cadence": "00:30 · 12:30",
+      "cadence": "00:30 \u00b7 12:30",
       "stale_after_hours": 18,
       "projection": "catalyst_record",
       "required_fields": [
@@ -906,7 +906,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "authoritative answer for technicals: store ticker_prices via projection indicator_snapshot; primary provider alpaca"
       },
       "store": {
@@ -960,7 +960,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "authoritative answer for sector_momentum: store sector_rs_daily via projection sector_momentum; primary provider internal:market_quotes"
       },
       "store": {
@@ -1008,14 +1008,14 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "authoritative answer for industry_momentum: store runtime/industry_momentum_latest.json via projection sector_momentum; primary provider finviz"
       },
       "store": {
         "file": "runtime/industry_momentum_latest.json"
       },
       "writer": "scripts/finviz_industry_groups.py",
-      "cadence": "12:30 · 16:18",
+      "cadence": "12:30 \u00b7 16:18",
       "stale_after_hours": 26,
       "projection": "sector_momentum",
       "required_fields": [
@@ -1047,14 +1047,14 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "authoritative answer for market_regime: store market_regime_snapshots via projection market_regime; primary provider yahoo"
       },
       "store": {
         "table": "market_regime_snapshots"
       },
       "writer": "scripts/market_regime_classifier.py",
-      "cadence": "06:35 · 16:05 Mon-Fri (collector 06:30 feeds it)",
+      "cadence": "06:35 \u00b7 16:05 Mon-Fri (collector 06:30 feeds it)",
       "stale_after_hours": 26,
       "projection": "market_regime",
       "required_fields": [
@@ -1095,7 +1095,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "authoritative answer for earnings_date: store symbol_profiles via projection symbol_profile; primary provider yfinance"
       },
       "store": {
@@ -1155,7 +1155,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "authoritative answer for holdings_accounts: store portfolios/state/holdings.json via projection portfolio_snapshot; primary provider schwab"
       },
       "store": {
@@ -1240,7 +1240,7 @@
           "expected_seconds": 7200
         }
       ],
-      "_writer_note": "MEASURED 2026-10-06: holdings.json has several writers, not one — schwab_position_sync.py (*/15 shares+cash), sync_basis_from_broker.py (16:33 basis), portfolio_repricer.py (*/15 marks), alpaca_live_read_sync.py, moomoo_live_read_sync.py, holdings_reconcile.py, share_reconciliation.py (operator drift approvals), all through protected_holdings_write and (since 2026-10-06) the shared lock lib/holdings_write_lock.py. Two of them racing without the lock froze moomoo at 2026-09-28; the basis check comparing accounts against each other showed PL at +944%. The registry's writer field names the loader; the gate's UNCONSOLIDATED ceiling is table-only, so the count is recorded here instead. Target: positions_store (scripts/positions_sync.py) becomes the one writer; holdings.json becomes its read-only export (plan phase 4). Until then no NEW writer of holdings.json may be added."
+      "_writer_note": "MEASURED 2026-10-06: holdings.json has several writers, not one \u2014 schwab_position_sync.py (*/15 shares+cash), sync_basis_from_broker.py (16:33 basis), portfolio_repricer.py (*/15 marks), alpaca_live_read_sync.py, moomoo_live_read_sync.py, holdings_reconcile.py, share_reconciliation.py (operator drift approvals), all through protected_holdings_write and (since 2026-10-06) the shared lock lib/holdings_write_lock.py. Two of them racing without the lock froze moomoo at 2026-09-28; the basis check comparing accounts against each other showed PL at +944%. The registry's writer field names the loader; the gate's UNCONSOLIDATED ceiling is table-only, so the count is recorded here instead. Target: positions_store (scripts/positions_sync.py) becomes the one writer; holdings.json becomes its read-only export (plan phase 4). Until then no NEW writer of holdings.json may be added."
     },
     {
       "domain": "positions_store",
@@ -1248,7 +1248,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-06",
-        "reference": "Positions Source of Truth plan phase 1 — operator 2026-10-06 'yes start phase 1 and fix all of it' (session https://claude.ai/code/session_018utgrKN5h7J95riLqPm5te); plan PR #1449, docs/architecture/POSITIONS_SOURCE_OF_TRUTH_PLAN_2026-10-05.md",
+        "reference": "Positions Source of Truth plan phase 1 \u2014 operator 2026-10-06 'yes start phase 1 and fix all of it' (session https://claude.ai/code/session_018utgrKN5h7J95riLqPm5te); plan PR #1449, docs/architecture/POSITIONS_SOURCE_OF_TRUTH_PLAN_2026-10-05.md",
         "scope": "Broker-reported positions only (qty, cost basis, broker market value, cash) for the live Schwab, Alpaca live and moomoo accounts, plus FIFO lots/realized lots from the broker ledger; no market price is stored as truth. SHADOW: no reader until each phase-3 batch is approved."
       },
       "store": {
@@ -1285,7 +1285,7 @@
           "expected_seconds": 0
         }
       ],
-      "_writer_note": "Tables position_snapshots (append-only), positions_current, position_lots, realized_lots, positions_sync_runs — migrations/2026_10_06_positions_store_phase1.sql. One writer, enforced by tests/test_positions_store_phase1_20261006.py. A run is promoted to positions_current only when every required account (the three Schwab accounts) read OK. Readers: none in phase 1 (shadow); phase 3 moves readers to it in four operator-approved batches, each listed in approved_readers with its grant. Batch #1 (operator 2026-10-22): the Watch held flag (watch_domains.held_positions, surface watch).",
+      "_writer_note": "Tables position_snapshots (append-only), positions_current, position_lots, realized_lots, positions_sync_runs \u2014 migrations/2026_10_06_positions_store_phase1.sql. One writer, enforced by tests/test_positions_store_phase1_20261006.py. A run is promoted to positions_current only when every required account (the three Schwab accounts) read OK. Readers: none in phase 1 (shadow); phase 3 moves readers to it in four operator-approved batches, each listed in approved_readers with its grant. Batch #1 (operator 2026-10-22): the Watch held flag (watch_domains.held_positions, surface watch).",
       "approved_readers": [
         {
           "batch": 1,
@@ -1310,7 +1310,7 @@
           "approval": {
             "approved_by": "operator",
             "approved_on": "2026-10-22",
-            "reference": "Operator reply 2026-10-22 (verbatim): \"I take your recommendations on above.\" to the recommendation \"Use the broker-synced store for 'held' on Watch: Watch becomes positions batch #1 … Recommend: yes\" (session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko); reader built in PR #1926; switch flipped in branch feat/positions-reader-batch1-watch-held-20261022",
+            "reference": "Operator reply 2026-10-22 (verbatim): \"I take your recommendations on above.\" to the recommendation \"Use the broker-synced store for 'held' on Watch: Watch becomes positions batch #1 \u2026 Recommend: yes\" (session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko); reader built in PR #1926; switch flipped in branch feat/positions-reader-batch1-watch-held-20261022",
             "scope": "Phase-3 reader batch #1: the Watch held flag reads positions_current through watch_domains.held_positions(surface='watch') only. No other surface, file or fact; advice digest and opportunity callers keep holdings.json until a later batch is approved."
           }
         },
@@ -1415,7 +1415,7 @@
           "approval": {
             "approved_by": "operator",
             "approved_on": "2026-10-22",
-            "reference": "Operator reply 2026-10-22 (verbatim): \"yes i approve 'approve all' (A–L)\" — item G: \"Home reads positions from the broker-synced store (reader batch #3; you already said yes, this confirms it)\".",
+            "reference": "Operator reply 2026-10-22 (verbatim): \"yes i approve 'approve all' (A\u2013L)\" \u2014 item G: \"Home reads positions from the broker-synced store (reader batch #3; you already said yes, this confirms it)\".",
             "scope": "positions_store phase-3 reader batch #3: the Home do-now held filter via watch_domains.held_positions(surface='home'); same reader and freshness/fallback contract as batch #1"
           }
         },
@@ -1441,13 +1441,39 @@
           "approval": {
             "approved_by": "operator",
             "approved_on": "2026-10-23",
-            "reference": "Operator reply 2026-10-23 ~10:55 ET (verbatim): \"Yes, I approve. Paper right. Playwright every one of those. Pages on the watch list. I still don't see an area where I can select what I want to watch. Make sure everything is as you design.\" — \"Yes, I approve\" answers the ask in PR #2008 \"approve positions reader batch #4 (curator held flag)\" (relayed by the coordinator; session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko). \"Paper right\" is NOT read as a paper_proposals grant. Cause: NAVN showed Add-On / ADD on Watch the morning after it was sold because the curator's 09:00 run read the holdings file while positions_current had already dropped it.",
-            "scope": "positions_store phase-3 reader batch #4: the CIO opportunity curator's held flag (owned / not owned, and so type, stance and position_status) via watch_domains.held_positions(surface='opportunity'); held flag only — shares, basis and value stay the holdings file's; same reader and freshness/fallback contract as batch #1; position_basis stamped on every assessment and held_basis on the curator receipt"
+            "reference": "Operator reply 2026-10-23 ~10:55 ET (verbatim): \"Yes, I approve. Paper right. Playwright every one of those. Pages on the watch list. I still don't see an area where I can select what I want to watch. Make sure everything is as you design.\" \u2014 \"Yes, I approve\" answers the ask in PR #2008 \"approve positions reader batch #4 (curator held flag)\" (relayed by the coordinator; session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko). \"Paper right\" is NOT read as a paper_proposals grant. Cause: NAVN showed Add-On / ADD on Watch the morning after it was sold because the curator's 09:00 run read the holdings file while positions_current had already dropped it.",
+            "scope": "positions_store phase-3 reader batch #4: the CIO opportunity curator's held flag (owned / not owned, and so type, stance and position_status) via watch_domains.held_positions(surface='opportunity'); held flag only \u2014 shares, basis and value stay the holdings file's; same reader and freshness/fallback contract as batch #1; position_basis stamped on every assessment and held_basis on the curator receipt"
+          }
+        },
+        {
+          "batch": 5,
+          "reader": "scripts/lib/recovery_engine/fills_consumer.py::read_confirmed_exits",
+          "files": [
+            "scripts/lib/recovery_engine/fills_consumer.py"
+          ],
+          "tables": [
+            "positions_current"
+          ],
+          "surfaces": [
+            "recovery"
+          ],
+          "facts": "residual share quantity only (qty) for one symbol x account, to report what survived an exit; no basis, value or price is taken from this store",
+          "consumers": [
+            "scripts/lib/recovery_engine/cases.py",
+            "scripts/lib/recovery_engine/policy.py"
+          ],
+          "switch": "no switch: the recovery engine opens a case from confirmed exits and reports the residual as a fact",
+          "freshness_guard": "a missing row is read as zero shares and the case is opened anyway; an unreadable store is reported in the consumer's gaps list, never as an invented quantity",
+          "approval": {
+            "approved_by": "operator",
+            "approved_on": "2026-11-03",
+            "reference": "Operator directive 2026-11-03 (P0), verbatim: \u201cSpaceX is back up to 141 \u2026 Nothing has notified me to get back in. On the homepage.\u201d and \u201cthat was my largest stop out, 140k. Something should have said we can recover back into it.\u201d Spec SPEC_RECOVERY_REENTRY_ENGINE_20261103.md \u00a73.1/\u00a73.6 requires the case to carry residual_shares from the positions source of truth; the operator ruled on 2026-11-03 that a residual is a fact to display, not a silencer.",
+            "scope": "residual quantity only (positions_current.qty) for one symbol x account, read to report what survived a confirmed exit; no basis, value, price or other column; no write; the case opens whether or not a residual exists"
           }
         }
       ],
       "reader_gate": {
-        "_why": "AGENTS.md §7A: nothing reads the positions store until the operator approves each phase-3 reader batch. check_data_source_authority.py fails UNAPPROVED_READER when a file under scripts/ reads one of these tables (FROM/JOIN) and is not the writer, an approved_readers file, or a measured pre-batch reader below. positions_sync_runs is the heartbeat and is not gated.",
+        "_why": "AGENTS.md \u00a77A: nothing reads the positions store until the operator approves each phase-3 reader batch. check_data_source_authority.py fails UNAPPROVED_READER when a file under scripts/ reads one of these tables (FROM/JOIN) and is not the writer, an approved_readers file, or a measured pre-batch reader below. positions_sync_runs is the heartbeat and is not gated.",
         "tables": [
           "positions_current",
           "position_lots",
@@ -1470,8 +1496,8 @@
           "approval": {
             "approved_by": "operator",
             "approved_on": "2026-10-31",
-            "reference": "Operator 2026-10-31 in-session (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" — §11 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1",
-            "scope": "§7A rule 8: the Market Risk Engine is an approved positions_store reader batch. The approved_readers[] entry (which the gate requires to name an existing file that reads the table) is added by the PR that creates the reader; until then this record is the grant."
+            "reference": "Operator 2026-10-31 in-session (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" \u2014 \u00a711 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1",
+            "scope": "\u00a77A rule 8: the Market Risk Engine is an approved positions_store reader batch. The approved_readers[] entry (which the gate requires to name an existing file that reads the table) is added by the PR that creates the reader; until then this record is the grant."
           }
         }
       ]
@@ -1482,7 +1508,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "authoritative answer for options_iv: store options_iv_history via projection option_chain; primary provider schwab"
       },
       "store": {
@@ -1522,7 +1548,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "authoritative answer for research_thesis: store hermes_research_intelligence via projection research_card; primary provider internal"
       },
       "store": {
@@ -1594,7 +1620,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "authoritative answer for watch_directives: store watch_directives via projection watch_intelligence; primary provider internal"
       },
       "store": {
@@ -1637,7 +1663,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "authoritative answer for watch_discovery: store watch_candidate_events via projection watch_discovery; primary provider internal"
       },
       "store": {
@@ -1668,7 +1694,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "authoritative answer for web_search: store runtime/search_budget.json; primary provider brave"
       },
       "store": {
@@ -1718,7 +1744,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "authoritative answer for private_company: store private_company_proxies; primary provider none"
       },
       "store": {
@@ -1740,7 +1766,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "authoritative answer for dividends: store ticker_dividend_data; primary provider yfinance"
       },
       "store": {
@@ -1782,7 +1808,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "authoritative answer for macro: store fred_economic_series; primary provider fred"
       },
       "store": {
@@ -1826,7 +1852,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "authoritative answer for fundamentals: store fundamental_data; primary provider finviz (stored Finviz enrichment read through finviz_enrichment_snapshot; operator 2026-10-16 Switch to Finviz, was alpha_vantage OVERVIEW, premium on our key)"
       },
       "store": {
@@ -1871,7 +1897,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "authoritative answer for agent_opinion: store watchlist_agent_results via projection agent_opinion; primary provider internal"
       },
       "store": {
@@ -1914,7 +1940,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "authoritative answer for agent_debate: store agent_debate_log via projection agent_opinion; primary provider internal"
       },
       "store": {
@@ -1951,7 +1977,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "authoritative answer for ai_reports: store ai_reports via projection desk_feeds; primary provider internal"
       },
       "store": {
@@ -1988,7 +2014,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "authoritative answer for redeploy_analytics: store portfolios/state/redeploy_analytics_cache.json via projection desk_feeds; primary provider internal"
       },
       "store": {
@@ -2025,14 +2051,14 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
+        "reference": "One Source of Truth campaign \u2014 operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep",
         "scope": "authoritative answer for inverse_stoplights: store runtime/inverse_stoplights_latest.json; primary provider internal"
       },
       "store": {
         "file": "runtime/inverse_stoplights_latest.json"
       },
       "writer": "scripts/defense_inverse_stoplights.py",
-      "cadence": "10:15 · 17:55 Mon-Fri",
+      "cadence": "10:15 \u00b7 17:55 Mon-Fri",
       "stale_after_hours": 26,
       "projection": null,
       "required_fields": [
@@ -2137,8 +2163,8 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260927-cogx-w1-d9e1 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~18:50 ET); package docs/architecture/cognitive_transformation_20260927/ on PR #1304",
-        "scope": "MemoryContext@v1 / MemoryCommit@v1 receipts (read-before-act, write-after-act); appended only by the façade"
+        "reference": "ApprovalPackage pkg-20260927-cogx-w1-d9e1 (typed reply 'APPROVE \u2026 all', Claude Code 2026-09-27 ~18:50 ET); package docs/architecture/cognitive_transformation_20260927/ on PR #1304",
+        "scope": "MemoryContext@v1 / MemoryCommit@v1 receipts (read-before-act, write-after-act); appended only by the fa\u00e7ade"
       },
       "store": {
         "file": "cio/memory_contexts.jsonl"
@@ -2171,7 +2197,7 @@
           "expected_seconds": 0
         }
       ],
-      "_writer_note": "Wave 1: receipts only; deltas recorded on the row, not applied (01 §3.2). Postgres projection intelligence.memory_context (Wave 1 tranche 2) lands with the migration (migrations/2026_09_27_intelligence_v1.sql); the JSONL/file is canonical."
+      "_writer_note": "Wave 1: receipts only; deltas recorded on the row, not applied (01 \u00a73.2). Postgres projection intelligence.memory_context (Wave 1 tranche 2) lands with the migration (migrations/2026_09_27_intelligence_v1.sql); the JSONL/file is canonical."
     },
     {
       "domain": "intelligence_retrieval_receipts",
@@ -2179,8 +2205,8 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260927-cogx-w1-d9e1 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~18:50 ET); package docs/architecture/cognitive_transformation_20260927/ on PR #1304",
-        "scope": "RetrievalReceipt@v1 — the seven-step ladder run before any research generation (03 §4); appended only by the façade"
+        "reference": "ApprovalPackage pkg-20260927-cogx-w1-d9e1 (typed reply 'APPROVE \u2026 all', Claude Code 2026-09-27 ~18:50 ET); package docs/architecture/cognitive_transformation_20260927/ on PR #1304",
+        "scope": "RetrievalReceipt@v1 \u2014 the seven-step ladder run before any research generation (03 \u00a74); appended only by the fa\u00e7ade"
       },
       "store": {
         "file": "cio/retrieval_receipts.jsonl"
@@ -2222,8 +2248,8 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260927-cogx-w1-d9e1 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~18:50 ET); package docs/architecture/cognitive_transformation_20260927/ on PR #1304",
-        "scope": "LaneHeartbeat@v1 file fallback per lane (06 §3); one helper, supervisor_heartbeat.beat(); Postgres upsert when intelligence.heartbeat exists"
+        "reference": "ApprovalPackage pkg-20260927-cogx-w1-d9e1 (typed reply 'APPROVE \u2026 all', Claude Code 2026-09-27 ~18:50 ET); package docs/architecture/cognitive_transformation_20260927/ on PR #1304",
+        "scope": "LaneHeartbeat@v1 file fallback per lane (06 \u00a73); one helper, supervisor_heartbeat.beat(); Postgres upsert when intelligence.heartbeat exists"
       },
       "store": {
         "file": "runtime/heartbeats/<lane_id>.json",
@@ -2264,8 +2290,8 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260927-cogx-w1-d9e1 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~18:50 ET); package docs/architecture/cognitive_transformation_20260927/ on PR #1304",
-        "scope": "ApprovalPackage@v1 append-only hash-chained ledger (13 §3); written only by approval_package.Ledger"
+        "reference": "ApprovalPackage pkg-20260927-cogx-w1-d9e1 (typed reply 'APPROVE \u2026 all', Claude Code 2026-09-27 ~18:50 ET); package docs/architecture/cognitive_transformation_20260927/ on PR #1304",
+        "scope": "ApprovalPackage@v1 append-only hash-chained ledger (13 \u00a73); written only by approval_package.Ledger"
       },
       "store": {
         "file": "governance/approval_packages.jsonl",
@@ -2306,8 +2332,8 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260927-cogx-w1-d9e1 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~18:50 ET); package docs/architecture/cognitive_transformation_20260927/ on PR #1304",
-        "scope": "PlatformConformance@v1 nightly report (05 §4), measure only in v0"
+        "reference": "ApprovalPackage pkg-20260927-cogx-w1-d9e1 (typed reply 'APPROVE \u2026 all', Claude Code 2026-09-27 ~18:50 ET); package docs/architecture/cognitive_transformation_20260927/ on PR #1304",
+        "scope": "PlatformConformance@v1 nightly report (05 \u00a74), measure only in v0"
       },
       "store": {
         "file": "governance/platform_conformance_latest.json"
@@ -2346,8 +2372,8 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260927-cogx-w1-d9e1 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~18:50 ET); package docs/architecture/cognitive_transformation_20260927/ on PR #1304",
-        "scope": "GIR@v1 projection (entities, envelopes, edges) into schema intelligence — zero authority, idempotent, rebuildable; the canonical stores keep their writers (02 §5)"
+        "reference": "ApprovalPackage pkg-20260927-cogx-w1-d9e1 (typed reply 'APPROVE \u2026 all', Claude Code 2026-09-27 ~18:50 ET); package docs/architecture/cognitive_transformation_20260927/ on PR #1304",
+        "scope": "GIR@v1 projection (entities, envelopes, edges) into schema intelligence \u2014 zero authority, idempotent, rebuildable; the canonical stores keep their writers (02 \u00a75)"
       },
       "store": {
         "table": "intelligence.gir_entity",
@@ -2396,8 +2422,8 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260927-cogx-w1-d9e1 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~18:50 ET); package docs/architecture/cognitive_transformation_20260927/ on PR #1304",
-        "scope": "Breach@v1 append-only ledger + BreachDetectorRun@v1 latest (06 §5); detect and record only in Wave 1"
+        "reference": "ApprovalPackage pkg-20260927-cogx-w1-d9e1 (typed reply 'APPROVE \u2026 all', Claude Code 2026-09-27 ~18:50 ET); package docs/architecture/cognitive_transformation_20260927/ on PR #1304",
+        "scope": "Breach@v1 append-only ledger + BreachDetectorRun@v1 latest (06 \u00a75); detect and record only in Wave 1"
       },
       "store": {
         "file": "runtime/supervisor_breaches.jsonl",
@@ -2438,7 +2464,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); PR #1319; decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md item 2",
+        "reference": "ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE \u2026 all', Claude Code 2026-09-27 ~21:00 ET); PR #1319; decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md item 2",
         "scope": "WritePathReceipt@v1: what each producer lane handed (SHADOW: would have handed) to research_thesis_delta.accept_research_result, with memory provenance; appended only by the adapter"
       },
       "store": {
@@ -2481,7 +2507,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); PR #1319; decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md items 3-4",
+        "reference": "ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE \u2026 all', Claude Code 2026-09-27 ~21:00 ET); PR #1319; decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md items 3-4",
         "scope": "EdgeFanoutWorkItem@v1: reproject / notify items derived from GIR edge traversal on memory.delta and thesis.changed; appended only by the consumer lane"
       },
       "store": {
@@ -2516,7 +2542,7 @@
           "expected_seconds": 0
         }
       ],
-      "_writer_note": "Wave 2 items 3-4 (07 §4). Also writes data/runtime/gir_projector_dirty.json (the projector's incremental trigger). Reads intelligence.gir_edge read-only. Consumers: gir_projector --incremental (reproject); the reactive cycle (notify) in tranche 4."
+      "_writer_note": "Wave 2 items 3-4 (07 \u00a74). Also writes data/runtime/gir_projector_dirty.json (the projector's incremental trigger). Reads intelligence.gir_edge read-only. Consumers: gir_projector --incremental (reproject); the reactive cycle (notify) in tranche 4."
     },
     {
       "domain": "intelligence_research_index",
@@ -2524,8 +2550,8 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); PR #1319; decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md item 8",
-        "scope": "intelligence.research_index: deterministic answer index (thesis / catalysts / invalidation / bear_case → delta id) + per-URL/day citation index (canonical URL + extraction ref only; never page bodies)"
+        "reference": "ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE \u2026 all', Claude Code 2026-09-27 ~21:00 ET); PR #1319; decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md item 8",
+        "scope": "intelligence.research_index: deterministic answer index (thesis / catalysts / invalidation / bear_case \u2192 delta id) + per-URL/day citation index (canonical URL + extraction ref only; never page bodies)"
       },
       "store": {
         "table": "intelligence.research_index"
@@ -2559,7 +2585,7 @@
           "expected_seconds": 0
         }
       ],
-      "_writer_note": "Wave 2 item 8 (03 §3 steps 1 and 5). Called from research_thesis_delta.accept_research_result after the canonical delta row is appended; fail-soft (no DSN / no schema → skipped). Kill switch TRADEAI_RESEARCH_INDEX=0. Rebuildable from research_thesis_deltas.jsonl."
+      "_writer_note": "Wave 2 item 8 (03 \u00a73 steps 1 and 5). Called from research_thesis_delta.accept_research_result after the canonical delta row is appended; fail-soft (no DSN / no schema \u2192 skipped). Kill switch TRADEAI_RESEARCH_INDEX=0. Rebuildable from research_thesis_deltas.jsonl."
     },
     {
       "domain": "sec_filing_events",
@@ -2567,14 +2593,14 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); PR #1321; decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md item 5",
+        "reference": "ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE \u2026 all', Claude Code 2026-09-27 ~21:00 ET); PR #1321; decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md item 5",
         "scope": "FilingEvent@v1: SEC 8-K / 10-Q / 10-K filings for tracked symbols from the free EDGAR submissions API; immutable events keyed on issuer + form + accession; appended only by the feed"
       },
       "store": {
         "file": "cio/sec_filing_events.jsonl"
       },
       "writer": "scripts/sec_filings_feed.py",
-      "cadence": "4× on market days (cron, after the cron grant)",
+      "cadence": "4\u00d7 on market days (cron, after the cron grant)",
       "stale_after_hours": 30,
       "projection": null,
       "required_fields": [
@@ -2604,7 +2630,7 @@
           "expected_seconds": 0
         }
       ],
-      "_writer_note": "Wave 2 item 5. Consumers: gir_projector (EVENT:<guid> MARKET nodes, EVENT —AFFECTED_BY→ SEC edges) and material_change_detector.new_filings (HIGH severity → MaterialChange kind sec_filing; the detector stays the single Market owner). catalyst_events keeps its own sec_edgar writer (sec_fundamentals_ingest) for headlines; this feed is the event identity."
+      "_writer_note": "Wave 2 item 5. Consumers: gir_projector (EVENT:<guid> MARKET nodes, EVENT \u2014AFFECTED_BY\u2192 SEC edges) and material_change_detector.new_filings (HIGH severity \u2192 MaterialChange kind sec_filing; the detector stays the single Market owner). catalyst_events keeps its own sec_edgar writer (sec_fundamentals_ingest) for headlines; this feed is the event identity."
     },
     {
       "domain": "agent_checkpoints",
@@ -2612,8 +2638,8 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326; decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 3 item O-W3-1",
-        "scope": "CognitiveCheckpoint@v1 / ResumeReceipt@v1 per agent (working + episodic memory); appended only by cognitive_checkpoint via the façade commit; no authority"
+        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326; decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md \u00a7 Wave 3 item O-W3-1",
+        "scope": "CognitiveCheckpoint@v1 / ResumeReceipt@v1 per agent (working + episodic memory); appended only by cognitive_checkpoint via the fa\u00e7ade commit; no authority"
       },
       "store": {
         "file": "cio/agent_checkpoints/<agent_id>.jsonl"
@@ -2647,7 +2673,7 @@
           "expected_seconds": 0
         }
       ],
-      "_writer_note": "Wave 3 O-W3-1 (04 §3–§4). Hash-chained per agent; restore attaches the last checkpoint to the next context (resumed_from) — the agent re-validates. Kill switch TRADEAI_COGNITIVE_CHECKPOINT=0."
+      "_writer_note": "Wave 3 O-W3-1 (04 \u00a73\u2013\u00a74). Hash-chained per agent; restore attaches the last checkpoint to the next context (resumed_from) \u2014 the agent re-validates. Kill switch TRADEAI_COGNITIVE_CHECKPOINT=0."
     },
     {
       "domain": "lesson_promotions",
@@ -2655,8 +2681,8 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326; decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 3 item O-W3-2",
-        "scope": "LessonPromotion@v1 — the ONE queue from every lesson source into procedural memory; QUEUED by the CLI, PROMOTED/REFUTED/RETIRED only by an operator reply"
+        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326; decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md \u00a7 Wave 3 item O-W3-2",
+        "scope": "LessonPromotion@v1 \u2014 the ONE queue from every lesson source into procedural memory; QUEUED by the CLI, PROMOTED/REFUTED/RETIRED only by an operator reply"
       },
       "store": {
         "file": "cio/lesson_promotions.jsonl"
@@ -2689,7 +2715,7 @@
           "expected_seconds": 0
         }
       ],
-      "_writer_note": "Wave 3 O-W3-2 (04 §5). Sources: lesson_candidates.jsonl, advisory KB (candidates + iris-ratified), cio_reflection_candidates, aif_memory PROCEDURAL_HINT. Only PROMOTED rows reach MemoryContext.lessons."
+      "_writer_note": "Wave 3 O-W3-2 (04 \u00a75). Sources: lesson_candidates.jsonl, advisory KB (candidates + iris-ratified), cio_reflection_candidates, aif_memory PROCEDURAL_HINT. Only PROMOTED rows reach MemoryContext.lessons."
     },
     {
       "domain": "contradiction_verdicts",
@@ -2697,8 +2723,8 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326; decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 3 item O-W3-3",
-        "scope": "ContradictionVerdict@v1 — paid-judge verdicts over research contradiction candidates; advisory rows; appended only by the adjudicator lane"
+        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326; decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md \u00a7 Wave 3 item O-W3-3",
+        "scope": "ContradictionVerdict@v1 \u2014 paid-judge verdicts over research contradiction candidates; advisory rows; appended only by the adjudicator lane"
       },
       "store": {
         "file": "cio/contradiction_verdicts.jsonl"
@@ -2732,7 +2758,7 @@
           "expected_seconds": 0
         }
       ],
-      "_writer_note": "Wave 3 O-W3-3. Spend: process cap $0.50/day (llm_process_registry) AND Tier-2 policy (TRADEAI_TIER2_*: $2/day, off-peak, deepseek) checked before every call. The candidate store keeps its writer (research_thesis_delta → research_contradiction)."
+      "_writer_note": "Wave 3 O-W3-3. Spend: process cap $0.50/day (llm_process_registry) AND Tier-2 policy (TRADEAI_TIER2_*: $2/day, off-peak, deepseek) checked before every call. The candidate store keeps its writer (research_thesis_delta \u2192 research_contradiction)."
     },
     {
       "domain": "agent_registry",
@@ -2740,8 +2766,8 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 4 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 4 item O-W4-2",
-        "scope": "AgentRegistry@v1 — the ONE agent registry (canonical ids, aliases, lanes, bus events, model caller); edited by PR only; routing from it is SHADOW until TRADEAI_AGENT_REGISTRY_ROUTING=1"
+        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 4 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md \u00a7 Wave 4 item O-W4-2",
+        "scope": "AgentRegistry@v1 \u2014 the ONE agent registry (canonical ids, aliases, lanes, bus events, model caller); edited by PR only; routing from it is SHADOW until TRADEAI_AGENT_REGISTRY_ROUTING=1"
       },
       "store": {
         "file": "config/agent_registry.json"
@@ -2773,7 +2799,7 @@
           "expected_seconds": 0
         }
       ],
-      "_writer_note": "Wave 4 O-W4-2: supersedes 12 hard-coded agent lists (config/agents.json, agents.yaml, agent_runtime*.json, cio_event_bus.AGENT_EVENT_ROUTING, persistent_agent_wake.KNOWN_AGENTS, …) — kept, never deleted; tests/test_wave4_unification.py fails when a hard-coded id is not an alias here. The file is edited by PR only; scripts/lib/agent_registry.py is its sole reader/owner (no runtime writer exists)."
+      "_writer_note": "Wave 4 O-W4-2: supersedes 12 hard-coded agent lists (config/agents.json, agents.yaml, agent_runtime*.json, cio_event_bus.AGENT_EVENT_ROUTING, persistent_agent_wake.KNOWN_AGENTS, \u2026) \u2014 kept, never deleted; tests/test_wave4_unification.py fails when a hard-coded id is not an alias here. The file is edited by PR only; scripts/lib/agent_registry.py is its sole reader/owner (no runtime writer exists)."
     },
     {
       "domain": "model_chooser_receipts",
@@ -2781,8 +2807,8 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 4 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 4 item O-W4-3",
-        "scope": "ModelChoice@v1 receipts — what the ONE chooser would have picked vs what the caller picked (gate_and_generate, governed bridge); shadow by default"
+        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 4 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md \u00a7 Wave 4 item O-W4-3",
+        "scope": "ModelChoice@v1 receipts \u2014 what the ONE chooser would have picked vs what the caller picked (gate_and_generate, governed bridge); shadow by default"
       },
       "store": {
         "file": "runtime/model_chooser_receipts.jsonl"
@@ -2823,8 +2849,8 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 4 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 4 item O-W4-5",
-        "scope": "SupervisorLadderReceipt@v1 (L4 would-page / paged, L5 proposals) and OrchestrationProposal@v1 (governance/orchestration_proposals.jsonl, live only); the L1–L3 ladder stays detect + record + enqueue"
+        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 4 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md \u00a7 Wave 4 item O-W4-5",
+        "scope": "SupervisorLadderReceipt@v1 (L4 would-page / paged, L5 proposals) and OrchestrationProposal@v1 (governance/orchestration_proposals.jsonl, live only); the L1\u2013L3 ladder stays detect + record + enqueue"
       },
       "store": {
         "file": "runtime/supervisor_ladder_receipts.jsonl"
@@ -2872,8 +2898,8 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 5 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 5 item O-W5-4",
-        "scope": "MaturityScore@v1 — nine-domain scores from receipts only, written by the independent lane; never by a session"
+        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 5 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md \u00a7 Wave 5 item O-W5-4",
+        "scope": "MaturityScore@v1 \u2014 nine-domain scores from receipts only, written by the independent lane; never by a session"
       },
       "store": {
         "file": "governance/maturity_scores.jsonl"
@@ -2914,8 +2940,8 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 5 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 5 item O-W5-2",
-        "scope": "ConformanceGateReceipt@v1 — verdict of the conformance gate on every promote (warn by default; block under TRADEAI_CONFORMANCE_GATE=block; overrides recorded)"
+        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 5 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md \u00a7 Wave 5 item O-W5-2",
+        "scope": "ConformanceGateReceipt@v1 \u2014 verdict of the conformance gate on every promote (warn by default; block under TRADEAI_CONFORMANCE_GATE=block; overrides recorded)"
       },
       "store": {
         "file": "governance/conformance_gate_receipts.jsonl"
@@ -2948,7 +2974,7 @@
           "expected_seconds": 0
         }
       ],
-      "_writer_note": "Wave 5 O-W5-2 (05 §4). Invoked from cio_phase2_exact_main_deploy.sh cmd_promote (dev-tree check, like every deploy check) before activate_release."
+      "_writer_note": "Wave 5 O-W5-2 (05 \u00a74). Invoked from cio_phase2_exact_main_deploy.sh cmd_promote (dev-tree check, like every deploy check) before activate_release."
     },
     {
       "domain": "supervisor_recoveries",
@@ -2956,8 +2982,8 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 5 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 5 item O-W5-3",
-        "scope": "Recovery@v1 — self-heal decisions (L1 --user unit restart, L2 alternate start); executed only under --heal, shadow rows otherwise; system units never touched"
+        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 5 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md \u00a7 Wave 5 item O-W5-3",
+        "scope": "Recovery@v1 \u2014 self-heal decisions (L1 --user unit restart, L2 alternate start); executed only under --heal, shadow rows otherwise; system units never touched"
       },
       "store": {
         "file": "runtime/supervisor_recoveries.jsonl"
@@ -2990,7 +3016,7 @@
           "expected_seconds": 0
         }
       ],
-      "_writer_note": "Wave 5 O-W5-3 (06 §5–§6): 2 attempts per 10 min per lane; the lane's own systemd unit only (class A); S-W4-1 sudoers is needed only for system units, which this never restarts."
+      "_writer_note": "Wave 5 O-W5-3 (06 \u00a75\u2013\u00a76): 2 attempts per 10 min per lane; the lane's own systemd unit only (class A); S-W4-1 sudoers is needed only for system units, which this never restarts."
     },
     {
       "domain": "capital_plan_decisions",
@@ -2998,8 +3024,8 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-03",
-        "reference": "Decision Lineage Join Plan Phase 3 — operator approved all phases 2026-10-03 (artifact https://claude.ai/artifact/C89ctZQYdYWg8onPMiCjyD, session https://claude.ai/code/session_016HFMrnsdyVGo4QnLAijLVC); PR #1402",
-        "scope": "CIOCapitalPlanDecision@v1 — append-only, one row per capital-plan position decision id the first time a plan build produces it; keeps churned ids resolvable for decision lineage"
+        "reference": "Decision Lineage Join Plan Phase 3 \u2014 operator approved all phases 2026-10-03 (artifact https://claude.ai/artifact/C89ctZQYdYWg8onPMiCjyD, session https://claude.ai/code/session_016HFMrnsdyVGo4QnLAijLVC); PR #1402",
+        "scope": "CIOCapitalPlanDecision@v1 \u2014 append-only, one row per capital-plan position decision id the first time a plan build produces it; keeps churned ids resolvable for decision lineage"
       },
       "store": {
         "file": "cio/cio_capital_plan_decisions.jsonl"
@@ -3076,8 +3102,8 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-03",
-        "reference": "Policy Review P3 counterfactual ledger for blocked ideas — operator approved 2026-10-03 (artifact https://claude.ai/artifact/A9hC1prwHkkt3WbvTDBxiv, session https://claude.ai/code/session_016HFMrnsdyVGo4QnLAijLVC); PR #1425",
-        "scope": "CounterfactualLedger@v1 — append-only, one row per blocked idea (gate, symbol, ET day) and a new version when its 1/5/20-session measurement changes; observation only"
+        "reference": "Policy Review P3 counterfactual ledger for blocked ideas \u2014 operator approved 2026-10-03 (artifact https://claude.ai/artifact/A9hC1prwHkkt3WbvTDBxiv, session https://claude.ai/code/session_016HFMrnsdyVGo4QnLAijLVC); PR #1425",
+        "scope": "CounterfactualLedger@v1 \u2014 append-only, one row per blocked idea (gate, symbol, ET day) and a new version when its 1/5/20-session measurement changes; observation only"
       },
       "store": {
         "file": "cio/counterfactual_ledger.jsonl"
@@ -3116,7 +3142,7 @@
       "store_presence": {
         "status": "MISSING",
         "what": "cio/counterfactual_ledger.jsonl absent",
-        "why": "measured absent; daily builder not producing — verify before relying on it",
+        "why": "measured absent; daily builder not producing \u2014 verify before relying on it",
         "measured_at": "2026-10-22T11:35-04:00",
         "method": "read-only registry_check (file stat / to_regclass) 2026-10-22"
       }
@@ -3214,7 +3240,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-10",
-        "reference": "CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) — decision (2) register finviz_enrichment; (3) store of record = data/state copy",
+        "reference": "CONSOLIDATION_PLAN.md \u00a7D decisions (2),(3),(5),(6),(7),(13),(14) \u2014 operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) \u2014 decision (2) register finviz_enrichment; (3) store of record = data/state copy",
         "scope": "per-symbol Finviz Elite six-view enrichment (rsi, float, rvol, atr, valuation, performance, sector/industry) in data/state/ticker_enrichment_cache.json, read through finviz_enrichment_snapshot; market data only"
       },
       "store": {
@@ -3250,7 +3276,7 @@
           "expected_seconds": 0
         }
       ],
-      "_writer_note": "save_cache is locked, merged (newer cached_at wins per ticker) and atomic (consolidation step 1). The second copy data/portfolios/state/ticker_enrichment_cache.json is NOT a store of record (operator §D.3): portfolio_orchestrator copies onto it today; scripts/merge_enrichment_cache.py merges it into this store, archives it and leaves an alias — dry-run only until a release-write grant (packet n8n-maturity-verification/packets/enrichment-cache-merge).",
+      "_writer_note": "save_cache is locked, merged (newer cached_at wins per ticker) and atomic (consolidation step 1). The second copy data/portfolios/state/ticker_enrichment_cache.json is NOT a store of record (operator \u00a7D.3): portfolio_orchestrator copies onto it today; scripts/merge_enrichment_cache.py merges it into this store, archives it and leaves an alias \u2014 dry-run only until a release-write grant (packet n8n-maturity-verification/packets/enrichment-cache-merge).",
       "provider_health_window": false,
       "_provider_health_window_why": "Store freshness, not provider liveness: lib/data_source_health_view.window_minutes_for skips this row so registering the domain does not change the provider's health window (measured: without it finviz would drop 18h->15min, yfinance 168h->48h)."
     },
@@ -3260,14 +3286,14 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-10",
-        "reference": "CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) — decision (5) register scalp_list",
-        "scope": "scalp screener membership plus per-symbol price/float/setup_class in TradeAIScalpUniverse@v1; market data only — the scalp lane's GO/score columns are not part of this domain"
+        "reference": "CONSOLIDATION_PLAN.md \u00a7D decisions (2),(3),(5),(6),(7),(13),(14) \u2014 operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) \u2014 decision (5) register scalp_list",
+        "scope": "scalp screener membership plus per-symbol price/float/setup_class in TradeAIScalpUniverse@v1; market data only \u2014 the scalp lane's GO/score columns are not part of this domain"
       },
       "store": {
         "file": "trade_ai/scalp_universe_latest.json"
       },
       "writer": "scripts/run_trade_ai_scalp_live.py",
-      "cadence": "*/5 09:30-16:00 Mon-Fri (cron L1050, §23.3 lane; unchanged). Premarket 06:00-09:30 hot tier (operator decision §D.4, PR #1671) is code-complete with its knob OFF by default.",
+      "cadence": "*/5 09:30-16:00 Mon-Fri (cron L1050, \u00a723.3 lane; unchanged). Premarket 06:00-09:30 hot tier (operator decision \u00a7D.4, PR #1671) is code-complete with its knob OFF by default.",
       "stale_after_hours": 0.25,
       "stale_after_hours_closed": 72,
       "projection": "scalp_list",
@@ -3287,7 +3313,7 @@
           "expected_seconds": 0
         }
       ],
-      "_writer_note": "Store of record: data/trade_ai/scalp_universe_latest.json, written only by run_trade_ai_scalp_live.write_projection (temp file + replace under production_state_root). The projection (lib.data_broker.scalp_list, PR #1671) also reads the hot-tier refresh receipt data/runtime/momentum_scalp_refresh_receipt.json (single writer momentum_scalp_early_lane_runner.py) + screener_symbol_membership (single writer finviz_screener_runner.py) and returns the fresher list. No refresh_producer vector here: nothing may trigger the live scalp lane out of band (§23.3). data/trade_ai is not in served_from.linked_dirs.",
+      "_writer_note": "Store of record: data/trade_ai/scalp_universe_latest.json, written only by run_trade_ai_scalp_live.write_projection (temp file + replace under production_state_root). The projection (lib.data_broker.scalp_list, PR #1671) also reads the hot-tier refresh receipt data/runtime/momentum_scalp_refresh_receipt.json (single writer momentum_scalp_early_lane_runner.py) + screener_symbol_membership (single writer finviz_screener_runner.py) and returns the fresher list. No refresh_producer vector here: nothing may trigger the live scalp lane out of band (\u00a723.3). data/trade_ai is not in served_from.linked_dirs.",
       "provider_health_window": false,
       "_provider_health_window_why": "Store freshness, not provider liveness: lib/data_source_health_view.window_minutes_for skips this row so registering the domain does not change the provider's health window (measured: without it finviz would drop 18h->15min, yfinance 168h->48h)."
     },
@@ -3297,7 +3323,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-10",
-        "reference": "CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) — decision (5) register social_posts",
+        "reference": "CONSOLIDATION_PLAN.md \u00a7D decisions (2),(3),(5),(6),(7),(13),(14) \u2014 operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) \u2014 decision (5) register social_posts",
         "scope": "StockTwits posts (text, sentiment label/score, engagement) per mentioned symbol, read through social_feed"
       },
       "store": {
@@ -3334,7 +3360,7 @@
           "expected_seconds": 0
         }
       ],
-      "_writer_note": "Three files INSERT today (measured 2026-10-10): social_ingest.py, social_monitor.py, premarket_watcher.py; ceiling 3 in the baseline, may only fall; target the social owner social_ingest.py (§C.2 item 4). stale_after_hours 26 matches today's daily cadence; the 0.25 h hot-tier window waits for §D.4.",
+      "_writer_note": "Three files INSERT today (measured 2026-10-10): social_ingest.py, social_monitor.py, premarket_watcher.py; ceiling 3 in the baseline, may only fall; target the social owner social_ingest.py (\u00a7C.2 item 4). stale_after_hours 26 matches today's daily cadence; the 0.25 h hot-tier window waits for \u00a7D.4.",
       "provider_health_window": false,
       "_provider_health_window_why": "Store freshness, not provider liveness: lib/data_source_health_view.window_minutes_for skips this row so registering the domain does not change the provider's health window (measured: without it finviz would drop 18h->15min, yfinance 168h->48h)."
     },
@@ -3344,14 +3370,14 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-10",
-        "reference": "CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) — decision (13) create store yfinance_info_snapshot",
+        "reference": "CONSOLIDATION_PLAN.md \u00a7D decisions (2),(3),(5),(6),(7),(13),(14) \u2014 operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) \u2014 decision (13) create store yfinance_info_snapshot",
         "scope": "one raw yfinance .info payload per symbol (status ok/no_profile/error) for the reference owner to fan out; read through yfinance_info"
       },
       "store": {
         "table": "yfinance_info_snapshot"
       },
       "writer": "scripts/lib/writers/yfinance_info_snapshot_writer.py",
-      "cadence": "unscheduled — no producer until the yfinance-reference-ingest owner lane is decided (§D.12); migration migrations/2026_10_10_yfinance_info_snapshot.sql not yet applied",
+      "cadence": "unscheduled \u2014 no producer until the yfinance-reference-ingest owner lane is decided (\u00a7D.12); migration migrations/2026_10_10_yfinance_info_snapshot.sql not yet applied",
       "stale_after_hours": 48,
       "projection": "yfinance_info",
       "required_fields": [
@@ -3380,7 +3406,7 @@
       "store_presence": {
         "status": "MISSING",
         "what": "table yfinance_info_snapshot does not exist",
-        "why": "migration migrations/2026_10_10_yfinance_info_snapshot.sql never applied; no producer until the owner lane is decided (§D.12)",
+        "why": "migration migrations/2026_10_10_yfinance_info_snapshot.sql never applied; no producer until the owner lane is decided (\u00a7D.12)",
         "measured_at": "2026-10-22T11:35-04:00",
         "method": "read-only registry_check (file stat / to_regclass) 2026-10-22"
       }
@@ -3391,14 +3417,14 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-10",
-        "reference": "Operator 2026-10-10 ~18:40 ET, verbatim \"Yes, from one to six\" (item 4: apply registry proposal rows A1, A2, A3, B1, B2; not N1) — config/policy_proposals/data_source_authority_alpha_vantage_scope_20261010.json; branch n8nmat/av-newsapi (PR #1675); direction 2026-10-10: \"let's use Alpha Vantage for the gaps and prioritize which gaps that really make sense\"",
+        "reference": "Operator 2026-10-10 ~18:40 ET, verbatim \"Yes, from one to six\" (item 4: apply registry proposal rows A1, A2, A3, B1, B2; not N1) \u2014 config/policy_proposals/data_source_authority_alpha_vantage_scope_20261010.json; branch n8nmat/av-newsapi (PR #1675); direction 2026-10-10: \"let's use Alpha Vantage for the gaps and prioritize which gaps that really make sense\"",
         "scope": "authoritative answer for earnings_calendar (report date, pre/post-market timing, consensus estimate, whole US market, 3-month horizon): store runtime/alpha_vantage/earnings_calendar_latest.json via projection earnings_calendar; primary provider alpha_vantage"
       },
       "store": {
         "file": "runtime/alpha_vantage/earnings_calendar_latest.json"
       },
       "writer": "scripts/alpha_vantage_owner.py",
-      "cadence": "06:05 ET daily (1 EARNINGS_CALENDAR call) — once a cron/n8n grant schedules it",
+      "cadence": "06:05 ET daily (1 EARNINGS_CALENDAR call) \u2014 once a cron/n8n grant schedules it",
       "stale_after_hours": 26,
       "projection": "earnings_calendar",
       "required_fields": [
@@ -3441,14 +3467,14 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-10",
-        "reference": "Operator 2026-10-10 ~18:40 ET, verbatim \"Yes, from one to six\" (item 4: apply registry proposal rows A1, A2, A3, B1, B2; not N1) — config/policy_proposals/data_source_authority_alpha_vantage_scope_20261010.json; branch n8nmat/av-newsapi (PR #1675); direction 2026-10-10: \"let's use Alpha Vantage for the gaps and prioritize which gaps that really make sense\"",
+        "reference": "Operator 2026-10-10 ~18:40 ET, verbatim \"Yes, from one to six\" (item 4: apply registry proposal rows A1, A2, A3, B1, B2; not N1) \u2014 config/policy_proposals/data_source_authority_alpha_vantage_scope_20261010.json; branch n8nmat/av-newsapi (PR #1675); direction 2026-10-10: \"let's use Alpha Vantage for the gaps and prioritize which gaps that really make sense\"",
         "scope": "authoritative answer for news_sentiment (per-ticker relevance-weighted sentiment over 72 h): store runtime/alpha_vantage/news_sentiment_latest.json via projection news_sentiment; primary provider alpha_vantage"
       },
       "store": {
         "file": "runtime/alpha_vantage/news_sentiment_latest.json"
       },
       "writer": "scripts/alpha_vantage_owner.py",
-      "cadence": "14 windowed NEWS_SENTIMENT pulls 06:00-20:00 ET — once a cron/n8n grant schedules them",
+      "cadence": "14 windowed NEWS_SENTIMENT pulls 06:00-20:00 ET \u2014 once a cron/n8n grant schedules them",
       "stale_after_hours": 3,
       "stale_after_hours_closed": 13,
       "projection": "news_sentiment",
@@ -3492,7 +3518,7 @@
     },
     {
       "domain": "cio_prospect",
-      "entity": "CIO prospect — the per-security truth",
+      "entity": "CIO prospect \u2014 the per-security truth",
       "title": "CIO prospect record",
       "class": "derived",
       "supersedes": [
@@ -3512,18 +3538,18 @@
       "store": {
         "table": "cio_prospect"
       },
-      "store_detail": "One row per security_guid (current state) plus cio_prospect_events (append-only change log, same writer). Postgres, so it is Supabase-portable (AGENTS.md §24.9). Not created: the migration is its own operator-approved PR after this row is granted.",
+      "store_detail": "One row per security_guid (current state) plus cio_prospect_events (append-only change log, same writer). Postgres, so it is Supabase-portable (AGENTS.md \u00a724.9). Not created: the migration is its own operator-approved PR after this row is granted.",
       "writer": "scripts/lib/cio_instrument_record.py",
-      "_writer_note": "InstrumentRecordStore is the only write path (extend InstrumentRecord@v1, AGENTS.md §13.5; never a parallel type). The curator, entry-state runner, thesis store, wake dispatch and belief writer CALL it; none writes the table. apply_cognition / apply_belief rails unchanged: BEHAVIOR_FIELDS are refused, MBI_BEHAVIOR = 0.",
+      "_writer_note": "InstrumentRecordStore is the only write path (extend InstrumentRecord@v1, AGENTS.md \u00a713.5; never a parallel type). The curator, entry-state runner, thesis store, wake dispatch and belief writer CALL it; none writes the table. apply_cognition / apply_belief rails unchanged: BEHAVIOR_FIELDS are refused, MBI_BEHAVIOR = 0.",
       "cadence": "*/30 09:00-16:00 Mon-Fri curator pass + */10 entry-state pass + event-driven wake writes",
       "stale_after_hours": 0.5,
       "stale_after_hours_closed": 26,
       "freshness_sla": "stage/conviction 30 min in market hours; thesis 24 h; every field carries evidence_at and expires_at and renders its age",
       "refresh_lane": {
         "runner": "n8n_shadow_then_live",
-        "lane": "cio-opportunity-curator, cio-entry-state (dispatcher rows; shadow -> canary -> cutover under AGENTS.md §23.21)",
+        "lane": "cio-opportunity-curator, cio-entry-state (dispatcher rows; shadow -> canary -> cutover under AGENTS.md \u00a723.21)",
         "never_list": false,
-        "note": "n8n schedules gathering and refresh; the host runs the lane; only the CIO writer writes. Model calls only through registered capabilities (AGENTS.md §23.4)."
+        "note": "n8n schedules gathering and refresh; the host runs the lane; only the CIO writer writes. Model calls only through registered capabilities (AGENTS.md \u00a723.4)."
       },
       "projection": "cio_prospect",
       "projection_status": "to_build (scripts/lib/data_broker/cio_prospect.py)",
@@ -3637,12 +3663,12 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-22",
-        "reference": "Operator reply 2026-10-22 ~22:30 ET (verbatim): \"yes i approve 'approve all' (A–L)\" — item E, as presented: \"Approve the `cio_prospect` registry row, the migration (sha `6bac8924…`), and the read-only reader batch for its shadow lane. I apply the migration in a release after a dry run.\" Migration up file migrations/2026_10_22_cio_prospect.sql sha256=6bac89245fd6b990dc8a59c8fa6aeb85f34e6a97a5dd61e2fd3fa9b6e861f2be. Migration and InstrumentRecordStore backend built inert in PR #1944; shadow lane PR #1953. Recorded by task T-20261023-9c7a5c.",
-        "scope": "P1 shadow: cio_prospect + cio_prospect_events (migrations/2026_10_22_cio_prospect.sql, sha256 6bac8924…) written only by InstrumentRecordStore.upsert_prospect as a dual-write; cio/cio_instrument_records.jsonl stays the store of record; the Postgres write runs only when TRADEAI_CIO_PROSPECT_PG_DUAL_WRITE=1 (operator) and the table exists. Reader batch: the cio-prospect-shadow lane's READ ONLY inputs (schwab_round_trips + trade_closed.stop_used, trade_transactions, stop_lifecycle, trade_recommendation_links when present, ticker_prices closes). No page reader moves (P3 batches are separate decisions); MBI_BEHAVIOR = 0."
+        "reference": "Operator reply 2026-10-22 ~22:30 ET (verbatim): \"yes i approve 'approve all' (A\u2013L)\" \u2014 item E, as presented: \"Approve the `cio_prospect` registry row, the migration (sha `6bac8924\u2026`), and the read-only reader batch for its shadow lane. I apply the migration in a release after a dry run.\" Migration up file migrations/2026_10_22_cio_prospect.sql sha256=6bac89245fd6b990dc8a59c8fa6aeb85f34e6a97a5dd61e2fd3fa9b6e861f2be. Migration and InstrumentRecordStore backend built inert in PR #1944; shadow lane PR #1953. Recorded by task T-20261023-9c7a5c.",
+        "scope": "P1 shadow: cio_prospect + cio_prospect_events (migrations/2026_10_22_cio_prospect.sql, sha256 6bac8924\u2026) written only by InstrumentRecordStore.upsert_prospect as a dual-write; cio/cio_instrument_records.jsonl stays the store of record; the Postgres write runs only when TRADEAI_CIO_PROSPECT_PG_DUAL_WRITE=1 (operator) and the table exists. Reader batch: the cio-prospect-shadow lane's READ ONLY inputs (schwab_round_trips + trade_closed.stop_used, trade_transactions, stop_lifecycle, trade_recommendation_links when present, ticker_prices closes). No page reader moves (P3 batches are separate decisions); MBI_BEHAVIOR = 0."
       },
       "dictionary": {
         "schema": "DataDictionary@v1",
-        "entity": "CIO prospect — the per-security truth",
+        "entity": "CIO prospect \u2014 the per-security truth",
         "writer_ceiling": 1,
         "surface_read_ceilings": {
           "file:data/cio/cio_opportunity_projection.json": 1,
@@ -3665,9 +3691,9 @@
         ],
         "refresh_lane": {
           "runner": "n8n_shadow_then_live",
-          "lane": "cio-opportunity-curator, cio-entry-state (dispatcher rows; shadow -> canary -> cutover under AGENTS.md §23.21)",
+          "lane": "cio-opportunity-curator, cio-entry-state (dispatcher rows; shadow -> canary -> cutover under AGENTS.md \u00a723.21)",
           "never_list": false,
-          "note": "n8n schedules gathering and refresh; the host runs the lane; only the CIO writer writes. Model calls only through registered capabilities (AGENTS.md §23.4)."
+          "note": "n8n schedules gathering and refresh; the host runs the lane; only the CIO writer writes. Model calls only through registered capabilities (AGENTS.md \u00a723.4)."
         },
         "freshness_sla": "stage/conviction 30 min in market hours; thesis 24 h; every field carries evidence_at and expires_at and renders its age",
         "facts": [
@@ -3692,7 +3718,7 @@
     {
       "domain": "cio_asks",
       "entity": "Operator questions to the CIO (Ask the CIO)",
-      "title": "Ask the CIO — questions, answer versions, tracking (ledger + thread projection)",
+      "title": "Ask the CIO \u2014 questions, answer versions, tracking (ledger + thread projection)",
       "class": "native",
       "supersedes": [],
       "facts": [
@@ -3751,13 +3777,13 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-24",
-        "reference": "PR #2075 — operator 2026-10-24: \"push it live now ... I want everything live\" (Ask the CIO); store found still proposed when the operator's Ask returned 'turned off'",
+        "reference": "PR #2075 \u2014 operator 2026-10-24: \"push it live now ... I want everything live\" (Ask the CIO); store found still proposed when the operator's Ask returned 'turned off'",
         "scope": "authoritative ledger for Ask the CIO questions, answer versions, tracking and ask cost: store data/cio/cio_ask_events.jsonl written only by scripts/lib/cio_ask_store.py; per-security facts also appended to CIO memory (SecurityResearchSpine)"
       },
       "proposal": {
         "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
         "proposed_on": "2026-10-23",
-        "reference": "Operator 2026-10-23: build Ask the CIO as Phases 8-11; 'the key is the persistent memory. Across the CIO system.'; NO SILOS. AGENTS.md §26.2, §7A.",
+        "reference": "Operator 2026-10-23: build Ask the CIO as Phases 8-11; 'the key is the persistent memory. Across the CIO system.'; NO SILOS. AGENTS.md \u00a726.2, \u00a77A.",
         "decision": "Grant cio_asks as the one store of operator questions to the CIO and their answer versions, written only by scripts/lib/cio_ask_store.py, read through the cio_ask_threads projection; every security-level event is also appended to CIO memory keyed by security_guid."
       },
       "_projection_note": "Threads (My questions) are folded from this ledger by scripts/lib/cio_ask_store.py inside the Ask API (scripts/lib/cio_ask_api.py); not a data-broker catalog projection.",
@@ -3848,7 +3874,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-27",
-        "reference": "Operator in the coordinator Claude Code session 2026-10-27, verbatim: \"D1–D7 as recommended\" (D5 = turn on the operator_decisions store) and \"Markups approved.\" for design approvals-pr-review/v001 (PR #2241; build #2245/#2246)",
+        "reference": "Operator in the coordinator Claude Code session 2026-10-27, verbatim: \"D1\u2013D7 as recommended\" (D5 = turn on the operator_decisions store) and \"Markups approved.\" for design approvals-pr-review/v001 (PR #2241; build #2245/#2246)",
         "scope": "authoritative ledger for operator document reviews, decisions (including MERGE decisions bound to a PR head SHA) and rule feedback; single writer scripts/lib/operator_approvals.py"
       },
       "facts": [
@@ -3907,7 +3933,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-29",
-        "reference": "operator 2026-10-29 in-session ('I authorize you to put those switches on now'; turn-key CIO review go-live); recorded in the data-authority grant PR #0000 (placeholder — operator fills the real PR number at merge)",
+        "reference": "operator 2026-10-29 in-session ('I authorize you to put those switches on now'; turn-key CIO review go-live); recorded in the data-authority grant PR #0000 (placeholder \u2014 operator fills the real PR number at merge)",
         "scope": "conflict ledger writer (scripts/lib/conflicts/ledger.py)"
       },
       "entity": "Site-wide conflict lifecycle",
@@ -3983,7 +4009,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-29",
-        "reference": "operator 2026-10-29 in-session ('I authorize you to put those switches on now'; turn-key CIO review go-live); recorded in the data-authority grant PR #0000 (placeholder — operator fills the real PR number at merge)",
+        "reference": "operator 2026-10-29 in-session ('I authorize you to put those switches on now'; turn-key CIO review go-live); recorded in the data-authority grant PR #0000 (placeholder \u2014 operator fills the real PR number at merge)",
         "scope": "conflict rule proposals writer (scripts/lib/conflicts/proposals.py)"
       },
       "entity": "AI-proposed conflict rules and operator-approved rulebook amendments",
@@ -4053,7 +4079,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-11-01",
-        "reference": "operator 2026-11-01 ~11:10 ET in-session (verbatim): \"I approve the after-hour and I also approve turning on real alerts. We can always tune it later.\" Store, single writer, provider (Alpaca SIP) and schedule approved earlier as design DSN-20261031-market-risk-engine §11 items 1-2 on 2026-10-31 (proposal.reference). Recorded in the data-authority grant PR #0000 (placeholder — operator fills the real PR number at merge)",
+        "reference": "operator 2026-11-01 ~11:10 ET in-session (verbatim): \"I approve the after-hour and I also approve turning on real alerts. We can always tune it later.\" Store, single writer, provider (Alpaca SIP) and schedule approved earlier as design DSN-20261031-market-risk-engine \u00a711 items 1-2 on 2026-10-31 (proposal.reference). Recorded in the data-authority grant PR #0000 (placeholder \u2014 operator fills the real PR number at merge)",
         "scope": "market_quotes_extended writer (scripts/lib/writers/market_quotes_extended_writer.py) fed by scripts/market_quotes_extended.py from Alpaca SIP 5-minute bars; the Schwab secondary producer stays switched off and ungranted (secondary_producers[0].grant)"
       },
       "class": "ingested",
@@ -4101,19 +4127,19 @@
         "session",
         "bar_end"
       ],
-      "_status_note": "Granted 2026-11-01 (approval above): moved from proposed_domains to domains by the activation PR, which re-renders the §7A table. The crontab lines and the lane flip follow the merge (§25.10.2).",
+      "_status_note": "Granted 2026-11-01 (approval above): moved from proposed_domains to domains by the activation PR, which re-renders the \u00a77A table. The crontab lines and the lane flip follow the merge (\u00a725.10.2).",
       "proposal": {
         "proposed_by": "agent (Claude Code coordinator session, Market Risk Engine P1-T4)",
         "proposed_on": "2026-10-31",
-        "reference": "Operator, in session 2026-10-31 (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" Design DSN-20261031-market-risk-engine §11 item 1 (new stores and their single writers).",
-        "decision": "operator approved new stores as design §11 item 1 on 2026-10-31; grant recorded at promotion (activation PR)"
+        "reference": "Operator, in session 2026-10-31 (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" Design DSN-20261031-market-risk-engine \u00a711 item 1 (new stores and their single writers).",
+        "decision": "operator approved new stores as design \u00a711 item 1 on 2026-10-31; grant recorded at promotion (activation PR)"
       },
       "freshness_sla": "30 min during 04:00-09:30 and 16:00-20:00 ET on NYSE trading days; once the overnight migration is applied and the Schwab lane runs, also 20:00-04:00 ET Sunday night to Friday 04:00 and Sunday 18:00-20:00 for futures (the engine reads an overnight print older than extended_hours.overnight.stale_after_minutes as UNKNOWN); otherwise the newest print is the previous extended session's",
       "_overnight_note": "2026-10-31 (draft PR stacked on #2416): sessions overnight and futures_open added by migrations/2026_10_31_market_quotes_extended_overnight.sql (additive: widened session CHECK, reference columns nullable only for those two sessions and only all together). reference_close is required for premarket/afterhours rows and absent on level-only overnight/futures_open rows; required_fields lists the columns every row carries.",
       "refresh_lane": {
         "lane": "market-quotes-extended",
         "runner": "host",
-        "note": "Host crontab, scripts/market_quotes_extended.py --apply every 15 min in the extended sessions; declared NEVER_SCHEDULED in config/lane_registry.json, activated by the operator under §25.10.2."
+        "note": "Host crontab, scripts/market_quotes_extended.py --apply every 15 min in the extended sessions; declared NEVER_SCHEDULED in config/lane_registry.json, activated by the operator under \u00a725.10.2."
       },
       "readers": [
         "scripts/lib/market_risk/reader.py (PgReader.extended_quotes)"
@@ -4130,9 +4156,9 @@
           "reads": "GET https://api.schwabapi.com/marketdata/v1/quotes only, token via schwab_token_manager public read API (canonical_token_key, get_access_token); never schwab_transport, account, order, stop, 2FA or auth endpoints",
           "symbols": "/ES /NQ /RTY /YM, $SPX $COMPX $VIX, plus config/market_quotes_extended.json symbols and config/market_risk_policy.yaml extended_hours.heavyweights",
           "contract": "sessions premarket/afterhours of NYSE trading days (session_of), and overnight (20:00-04:00 ET, Sunday night to Friday 04:00) / futures_open (Sunday 18:00-20:00 ET, futures) once migrations/2026_10_31_market_quotes_extended_overnight.sql is applied (PR #2423; session_date = the NEXT NYSE trading day, scripts/lib/overnight_session.py). bar_end = trade instant, bar_start = bar_end - 1 ms. Reference (offhours_quotes.dated_reference, one rule for every session; review of #2416 F4 and #2423 F2/F6): the close of the same day (afterhours), the previous session (premarket) or the trading day before the trading date (overnight/futures_open), used ONLY when the payload dates it to that day: equities regular.regularMarketLastPrice + regularMarketTradeTime, futures/indices quote.closePrice + settleTime. Undated or another day: premarket/afterhours rows are refused (no_dated_reference_for_<session>); overnight/futures_open rows store the level only (reference_close, reference_date, change_pct NULL), and the engine ties them to the close through an earlier referenced print of the same symbol or reads UNKNOWN. A run where every Schwab batch fails is status http_error with a non-zero exit (F5).",
-          "policy": "AGENTS.md 29.2.0 §24.11 (host lanes may read broker market data), ratified by the operator on PR #2407 (merged)",
+          "policy": "AGENTS.md 29.2.0 \u00a724.11 (host lanes may read broker market data), ratified by the operator on PR #2407 (merged)",
           "status": "granted; enabled (schwab.enabled true in config/market_risk_offhours_quotes.yaml); lane market-quotes-offhours-schwab declared, crontab installed after merge",
-          "grant": "GRANTED 2026-11-01: operator in-session \"enable schwab\" (~13:45 ET), under the 2026-10-31 broker-market-data allowance (AGENTS.md 29.2.0 §24.11: read-only market data via host lanes; never orders, accounts, stops, 2FA, auth endpoints or credentials). Recorded in providers.schwab.supply_grants."
+          "grant": "GRANTED 2026-11-01: operator in-session \"enable schwab\" (~13:45 ET), under the 2026-10-31 broker-market-data allowance (AGENTS.md 29.2.0 \u00a724.11: read-only market data via host lanes; never orders, accounts, stops, 2FA, auth endpoints or credentials). Recorded in providers.schwab.supply_grants."
         }
       ],
       "_universe_note": "2026-10-31 (PR #2416): DIA, RSP, SOXX and XLK added to config/market_quotes_extended.json symbols so the engine's full index/breadth/sector proxy set is collected by the Alpaca producer."
@@ -4156,7 +4182,7 @@
       "store": {
         "file": "runtime/identity_registry.json"
       },
-      "store_detail": "IdentityRegistry@v1 (10k+ entities). Target: a Postgres identity table set (issuer/security/listing/ticker_alias) byte-identical on GUIDs, dry-run diffed — its own operator decision; never re-mint.",
+      "store_detail": "IdentityRegistry@v1 (10k+ entities). Target: a Postgres identity table set (issuer/security/listing/ticker_alias) byte-identical on GUIDs, dry-run diffed \u2014 its own operator decision; never re-mint.",
       "writer": "scripts/lib/identity_registry.py",
       "_writer_note": "GUIDs are computed only by scripts/lib/security_identity.py (ROOT GUID AUTHORITY); minting only via mint_identity_registry.",
       "cadence": "premarket pipeline + catalyst-graph 06:10 (n8n)",
@@ -4263,7 +4289,7 @@
         "runner": "host",
         "lane": "positions-sync",
         "never_list": true,
-        "note": "a broker READ through the existing read clients; stays on the host (AGENTS.md §23.14). Agents may run broker reads only under a broker-read grant (§24.11)."
+        "note": "a broker READ through the existing read clients; stays on the host (AGENTS.md \u00a723.14). Agents may run broker reads only under a broker-read grant (\u00a724.11)."
       },
       "projection": "positions_context",
       "projection_status": "exists",
@@ -4363,7 +4389,7 @@
         "runner": "host",
         "lane": "schwab-transaction-ingest-at-3-18-33-48-9-16",
         "never_list": true,
-        "note": "broker read; host only (AGENTS.md §23.14)"
+        "note": "broker read; host only (AGENTS.md \u00a723.14)"
       },
       "projection": "positions_context",
       "projection_status": "exists",
@@ -4448,7 +4474,7 @@
         "table": "stop_lifecycle"
       },
       "writer": "scripts/stop_lifecycle_monitor.py",
-      "_writer_note": "Observation only: the row records what the broker shows. Nothing in the dictionary grants any stop or order change (AGENTS.md §0 rules 1-2); code changes here need an execution-engineering grant.",
+      "_writer_note": "Observation only: the row records what the broker shows. Nothing in the dictionary grants any stop or order change (AGENTS.md \u00a70 rules 1-2); code changes here need an execution-engineering grant.",
       "cadence": "*/10 09:00-16:00 via stop_health_check",
       "stale_after_hours": 0.25,
       "stale_after_hours_closed": 72,
@@ -4457,7 +4483,7 @@
         "runner": "host",
         "lane": "stop-health-check",
         "never_list": true,
-        "note": "stop lanes are on the n8n never-list (AGENTS.md §23.14); stays cron/systemd"
+        "note": "stop lanes are on the n8n never-list (AGENTS.md \u00a723.14); stays cron/systemd"
       },
       "projection": null,
       "projection_status": "to_build (read-only stop view)",
@@ -4486,14 +4512,14 @@
             "table": "broker_order_intents"
           },
           "role": "excluded",
-          "how": "broker execution subsystem (AGENTS.md §0 rule 2): inventoried by SELECT only, never dictionary-managed"
+          "how": "broker execution subsystem (AGENTS.md \u00a70 rule 2): inventoried by SELECT only, never dictionary-managed"
         },
         {
           "store": {
             "table": "trade_approvals"
           },
           "role": "excluded",
-          "how": "broker execution subsystem (AGENTS.md §0 rule 2): never dictionary-managed"
+          "how": "broker execution subsystem (AGENTS.md \u00a70 rule 2): never dictionary-managed"
         }
       ],
       "primary_provider": "schwab",
@@ -4674,9 +4700,9 @@
       "freshness_sla": "5 min in market hours for scalp rows; daily for the full scan",
       "refresh_lane": {
         "runner": "n8n",
-        "lane": "trade-ai-scalp-live (AGENTS.md §23.3 live exception), orchestrator-slot",
+        "lane": "trade-ai-scalp-live (AGENTS.md \u00a723.3 live exception), orchestrator-slot",
         "never_list": false,
-        "note": "the one n8n live lane stays under its §23.3 conditions"
+        "note": "the one n8n live lane stays under its \u00a723.3 conditions"
       },
       "projection": null,
       "projection_status": "to_build (scan projection; the UI reads trade_ai_cache.json today)",
@@ -5109,7 +5135,7 @@
         "runner": "host",
         "lane": "options-tick",
         "never_list": true,
-        "note": "order/paper-adjacent; stays on the host (AGENTS.md §23.14)"
+        "note": "order/paper-adjacent; stays on the host (AGENTS.md \u00a723.14)"
       },
       "projection": "option_chain",
       "projection_status": "exists (chain); idea projection to_build",
@@ -5206,7 +5232,7 @@
       "writer_status": "UNCONSOLIDATED",
       "writer_target": "scripts/lib/proposal_lifecycle.py",
       "writer_target_status": "to_build",
-      "_writer_note": "51 writer files measured 2026-10-22: the worst multi-writer store. One lifecycle state machine becomes the only UPDATE path, in batches. Paper submit paths are broker-adjacent: execution-engineering grant territory (AGENTS.md §0 rule 2).",
+      "_writer_note": "51 writer files measured 2026-10-22: the worst multi-writer store. One lifecycle state machine becomes the only UPDATE path, in batches. Paper submit paths are broker-adjacent: execution-engineering grant territory (AGENTS.md \u00a70 rule 2).",
       "cadence": "many crons (auto-proposal */10, sweeps */5)",
       "stale_after_hours": 0.1,
       "freshness_sla": "5 min in market hours",
@@ -5214,7 +5240,7 @@
         "runner": "host",
         "lane": "auto-proposal, paper-execution-sweep",
         "never_list": true,
-        "note": "paper lanes are on the n8n never-list (AGENTS.md §23.14)"
+        "note": "paper lanes are on the n8n never-list (AGENTS.md \u00a723.14)"
       },
       "projection": null,
       "projection_status": "to_build (proposal projection)",
@@ -5352,7 +5378,7 @@
       "writer": null,
       "writer_status": "UNCONSOLIDATED",
       "writer_target": "scripts/alert_event_writer.py",
-      "writer_target_status": "exists (wire it; AGENTS.md §13.5 — do not build a second)",
+      "writer_target_status": "exists (wire it; AGENTS.md \u00a713.5 \u2014 do not build a second)",
       "_writer_note": "17 writer files measured 2026-10-22. An alert_events row is not a send (AGENTS.md 4.3.0 ruling 4); sends are comms intents.",
       "cadence": "event-driven",
       "stale_after_hours": 24,
@@ -5384,7 +5410,7 @@
             "table": "open_trade_alerts"
           },
           "role": "derived",
-          "how": "per-desk alert table; writer unknown in the 2026-10-22 inventory — classify before approval"
+          "how": "per-desk alert table; writer unknown in the 2026-10-22 inventory \u2014 classify before approval"
         },
         {
           "store": {
@@ -5467,7 +5493,7 @@
       "writer_status": "UNCONSOLIDATED",
       "writer_target": "scripts/lib/comms/client.py",
       "writer_target_status": "exists",
-      "_writer_note": "7 writer files measured 2026-10-22 (comms client, delivery, classify, lifecycle, portal, outbound identity, ...). AGENTS.md §24.1: the host communications gateway is the only sender; senders emit intents.",
+      "_writer_note": "7 writer files measured 2026-10-22 (comms client, delivery, classify, lifecycle, portal, outbound identity, ...). AGENTS.md \u00a724.1: the host communications gateway is the only sender; senders emit intents.",
       "cadence": "event-driven",
       "stale_after_hours": 1,
       "freshness_sla": "P1 immediate; P2 held 22:00-07:00 ET to the digest",
@@ -5539,7 +5565,7 @@
         "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
         "proposed_on": "2026-10-22",
         "reference": "Operator direction 2026-10-22 (verbatim): \"The CIO agent is supposed to tie all of this together, and it should all be in persistent memory. One data store with everything; use the CIO agent and n8n to accomplish this.\" and \"... we should also have a data dictionary that shows one source of data.\" Read-only inventory 2026-10-22 ~11:35 ET (16 entities, 131 stores). PR docs/data-foundation-cio-prospect-20261022; docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md",
-        "decision": "Grant communication_events as the notification-intent domain (gateway-only sends, AGENTS.md §24.1; 7-writer ceiling, target scripts/lib/comms/client.py)."
+        "decision": "Grant communication_events as the notification-intent domain (gateway-only sends, AGENTS.md \u00a724.1; 7-writer ceiling, target scripts/lib/comms/client.py)."
       },
       "measured": {
         "at": "2026-10-22 (repo scan, scripts/lib/data_dictionary.measure)",
@@ -5554,7 +5580,7 @@
       "domain": "operator_settings",
       "status": "proposed",
       "entity": "Operator settings and controls",
-      "title": "Operator settings (Ops → Controls)",
+      "title": "Operator settings (Ops \u2192 Controls)",
       "class": "native",
       "supersedes": [],
       "facts": [
@@ -5569,15 +5595,15 @@
       "writer_status": "UNCONSOLIDATED",
       "writer_target": "scripts/ops/operator_controls_applier.py",
       "writer_target_status": "to_build",
-      "_writer_note": "AGENTS.md 19.0.0 §27.2 (PROPOSED): one governed host applier (backup, audit, undo) is the only writer, and it also applies the crontab, the n8n relay live list and guard grants. Today settings are repository defaults and hand-edited host files. Agents never call the applier.",
-      "cadence": "event-driven (operator action on Ops → Controls)",
+      "_writer_note": "AGENTS.md 19.0.0 \u00a727.2 (PROPOSED): one governed host applier (backup, audit, undo) is the only writer, and it also applies the crontab, the n8n relay live list and guard grants. Today settings are repository defaults and hand-edited host files. Agents never call the applier.",
+      "cadence": "event-driven (operator action on Ops \u2192 Controls)",
       "stale_after_hours": 24,
       "freshness_sla": "applied in the applier run that follows the operator's confirmed action; history append-only (one row per change: who, when, factor, old and new value)",
       "refresh_lane": {
         "runner": "host",
         "lane": "operator-controls-applier (to build)",
         "never_list": true,
-        "note": "operator acts only (AGENTS.md §17, §27.2): never an n8n lane, never an agent"
+        "note": "operator acts only (AGENTS.md \u00a717, \u00a727.2): never an n8n lane, never an agent"
       },
       "projection": "operator_settings",
       "projection_status": "to_build",
@@ -5602,7 +5628,7 @@
       "proposal": {
         "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
         "proposed_on": "2026-10-22",
-        "reference": "Operator decisions 2026-10-22 (Ops → Controls): settings live in a Postgres operator-settings table with history that overrides repository defaults, registered in the data dictionary; one governed host applier (backup, audit, undo) for crontab, n8n live list, settings and grants; agents never call these endpoints. AGENTS.md 19.0.0 §27.2 (PROPOSED).",
+        "reference": "Operator decisions 2026-10-22 (Ops \u2192 Controls): settings live in a Postgres operator-settings table with history that overrides repository defaults, registered in the data dictionary; one governed host applier (backup, audit, undo) for crontab, n8n live list, settings and grants; agents never call these endpoints. AGENTS.md 19.0.0 \u00a727.2 (PROPOSED).",
         "decision": "Grant operator_settings as the one store of operator settings with history (a row overrides the repository default), written only by the governed host applier."
       }
     },
@@ -5635,7 +5661,7 @@
         "runner": "host",
         "lane": "market-breadth-daily",
         "never_list": false,
-        "note": "schedule is §11 item 2 of the design (operator), not installed by this PR"
+        "note": "schedule is \u00a711 item 2 of the design (operator), not installed by this PR"
       },
       "projection": "market_breadth",
       "projection_status": "to_build",
@@ -5669,8 +5695,8 @@
       "proposal": {
         "proposed_by": "agent (Claude Fable 5.1, session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF)",
         "proposed_on": "2026-10-31",
-        "reference": "Operator 2026-10-31 in-session (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" — §11 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1",
-        "decision": "Grant market_breadth_daily as the one breadth store (design §1, P1-T1/P1-T5). Operator grant given 2026-10-31 (verbatim above); the row is promoted into domains[] with its approval block by the writer PR, when the writer file exists (AGENTS.md §7A: registry row first, writer second)."
+        "reference": "Operator 2026-10-31 in-session (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" \u2014 \u00a711 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1",
+        "decision": "Grant market_breadth_daily as the one breadth store (design \u00a71, P1-T1/P1-T5). Operator grant given 2026-10-31 (verbatim above); the row is promoted into domains[] with its approval block by the writer PR, when the writer file exists (AGENTS.md \u00a77A: registry row first, writer second)."
       },
       "measured": {
         "at": "2026-10-31 (repo scan: no table, no writer, no reader)",
@@ -5710,7 +5736,7 @@
         "runner": "host",
         "lane": "market-risk-evaluate",
         "never_list": false,
-        "note": "schedule is §11 item 2 of the design (operator), not installed by this PR"
+        "note": "schedule is \u00a711 item 2 of the design (operator), not installed by this PR"
       },
       "projection": "market_risk",
       "projection_status": "to_build",
@@ -5745,8 +5771,8 @@
       "proposal": {
         "proposed_by": "agent (Claude Fable 5.1, session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF)",
         "proposed_on": "2026-10-31",
-        "reference": "Operator 2026-10-31 in-session (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" — §11 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1",
-        "decision": "Grant market_risk_snapshots as the one store of engine evaluations (design §1, P2-T1). Operator grant given 2026-10-31 (verbatim above); the row is promoted into domains[] with its approval block by the writer PR, when the writer file exists (AGENTS.md §7A: registry row first, writer second)."
+        "reference": "Operator 2026-10-31 in-session (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" \u2014 \u00a711 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1",
+        "decision": "Grant market_risk_snapshots as the one store of engine evaluations (design \u00a71, P2-T1). Operator grant given 2026-10-31 (verbatim above); the row is promoted into domains[] with its approval block by the writer PR, when the writer file exists (AGENTS.md \u00a77A: registry row first, writer second)."
       },
       "measured": {
         "at": "2026-10-31 (repo scan: no table, no writer, no reader)",
@@ -5785,7 +5811,7 @@
         "runner": "host",
         "lane": "market-internals-intraday",
         "never_list": false,
-        "note": "schedule is §11 item 2 of the design (operator), not installed by this PR"
+        "note": "schedule is \u00a711 item 2 of the design (operator), not installed by this PR"
       },
       "projection": "market_internals",
       "projection_status": "to_build",
@@ -5818,8 +5844,8 @@
       "proposal": {
         "proposed_by": "agent (Claude Fable 5.1, session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF)",
         "proposed_on": "2026-10-31",
-        "reference": "Operator 2026-10-31 in-session (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" — §11 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1",
-        "decision": "Grant market_internals_intraday as the one intraday-internals store (design §1, P1-T8). Operator grant given 2026-10-31 (verbatim above); the row is promoted into domains[] with its approval block by the writer PR, when the writer file exists (AGENTS.md §7A: registry row first, writer second)."
+        "reference": "Operator 2026-10-31 in-session (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" \u2014 \u00a711 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1",
+        "decision": "Grant market_internals_intraday as the one intraday-internals store (design \u00a71, P1-T8). Operator grant given 2026-10-31 (verbatim above); the row is promoted into domains[] with its approval block by the writer PR, when the writer file exists (AGENTS.md \u00a77A: registry row first, writer second)."
       },
       "measured": {
         "at": "2026-10-31 (repo scan: no table, no writer, no reader)",
@@ -5857,7 +5883,7 @@
         "runner": "host",
         "lane": "institutional-flow-daily",
         "never_list": false,
-        "note": "schedule is §11 item 2 of the design (operator), not installed by this PR"
+        "note": "schedule is \u00a711 item 2 of the design (operator), not installed by this PR"
       },
       "projection": "institutional_flow",
       "projection_status": "to_build",
@@ -5890,8 +5916,8 @@
       "proposal": {
         "proposed_by": "agent (Claude Fable 5.1, session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF)",
         "proposed_on": "2026-10-31",
-        "reference": "Operator 2026-10-31 in-session (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" — §11 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1",
-        "decision": "Grant institutional_flow_daily as the one institutional-positioning store (design §1, P1-T7). Operator grant given 2026-10-31 (verbatim above); the row is promoted into domains[] with its approval block by the writer PR, when the writer file exists (AGENTS.md §7A: registry row first, writer second)."
+        "reference": "Operator 2026-10-31 in-session (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" \u2014 \u00a711 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1",
+        "decision": "Grant institutional_flow_daily as the one institutional-positioning store (design \u00a71, P1-T7). Operator grant given 2026-10-31 (verbatim above); the row is promoted into domains[] with its approval block by the writer PR, when the writer file exists (AGENTS.md \u00a77A: registry row first, writer second)."
       },
       "measured": {
         "at": "2026-10-31 (repo scan: no table, no writer, no reader)",
@@ -5925,7 +5951,7 @@
         "runner": "host",
         "lane": "options-chain-snapshot",
         "never_list": false,
-        "note": "the existing options chain snapshot job writes this table in the same run; adding the 09:45/15:30 runs is §11 item 2 (operator)"
+        "note": "the existing options chain snapshot job writes this table in the same run; adding the 09:45/15:30 runs is \u00a711 item 2 (operator)"
       },
       "projection": "option_strikes",
       "projection_status": "to_build",
@@ -5957,8 +5983,8 @@
       "proposal": {
         "proposed_by": "agent (Claude Fable 5.1, session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF)",
         "proposed_on": "2026-10-31",
-        "reference": "Operator 2026-10-31 in-session (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" — §11 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1",
-        "decision": "Grant option_chain_strikes as the one per-strike store, written by the existing chain snapshot job (design §1, P1-T7). Operator grant given 2026-10-31 (verbatim above); the row is promoted into domains[] with its approval block by the writer PR, when the writer file exists (AGENTS.md §7A: registry row first, writer second)."
+        "reference": "Operator 2026-10-31 in-session (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" \u2014 \u00a711 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1",
+        "decision": "Grant option_chain_strikes as the one per-strike store, written by the existing chain snapshot job (design \u00a71, P1-T7). Operator grant given 2026-10-31 (verbatim above); the row is promoted into domains[] with its approval block by the writer PR, when the writer file exists (AGENTS.md \u00a77A: registry row first, writer second)."
       },
       "measured": {
         "at": "2026-10-31 (repo scan: no table, no writer, no reader)",
@@ -5986,7 +6012,7 @@
       "writer_status": "UNCONSOLIDATED",
       "writer_target": "scripts/lib/writers/etf_holdings_writer.py",
       "writer_target_status": "to_build (0 writers measured 2026-10-31; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)",
-      "_writer_note": "P1-T9 writer: yfinance fund data (provider already granted). Fund names only; never a position size (§2A).",
+      "_writer_note": "P1-T9 writer: yfinance fund data (provider already granted). Fund names only; never a position size (\u00a72A).",
       "cadence": "Sun 19:00 ET weekly + on a new ETF position (lane etf-holdings-weekly, proposed)",
       "stale_after_hours": 192,
       "freshness_sla": "8 days; a held ETF with no snapshot is a gap the Risk page says so about",
@@ -5994,7 +6020,7 @@
         "runner": "host",
         "lane": "etf-holdings-weekly",
         "never_list": false,
-        "note": "schedule is §11 item 2 of the design (operator), not installed by this PR"
+        "note": "schedule is \u00a711 item 2 of the design (operator), not installed by this PR"
       },
       "projection": "etf_holdings",
       "projection_status": "to_build",
@@ -6027,8 +6053,8 @@
       "proposal": {
         "proposed_by": "agent (Claude Fable 5.1, session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF)",
         "proposed_on": "2026-10-31",
-        "reference": "Operator 2026-10-31 in-session (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" — §11 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1",
-        "decision": "Grant etf_holdings_snapshot as the one ETF look-through store (design §1, P1-T9). Operator grant given 2026-10-31 (verbatim above); the row is promoted into domains[] with its approval block by the writer PR, when the writer file exists (AGENTS.md §7A: registry row first, writer second)."
+        "reference": "Operator 2026-10-31 in-session (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" \u2014 \u00a711 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1",
+        "decision": "Grant etf_holdings_snapshot as the one ETF look-through store (design \u00a71, P1-T9). Operator grant given 2026-10-31 (verbatim above); the row is promoted into domains[] with its approval block by the writer PR, when the writer file exists (AGENTS.md \u00a77A: registry row first, writer second)."
       },
       "measured": {
         "at": "2026-10-31 (repo scan: no table, no writer, no reader)",
@@ -6040,7 +6066,7 @@
       "domain": "market_risk_episodes",
       "status": "proposed",
       "entity": "Market risk escalation",
-      "title": "Market-risk episodes (OPEN → ACKED → RESOLVED), sends and acknowledgments",
+      "title": "Market-risk episodes (OPEN \u2192 ACKED \u2192 RESOLVED), sends and acknowledgments",
       "class": "derived",
       "supersedes": [],
       "facts": [
@@ -6059,7 +6085,7 @@
       "writer_status": "UNCONSOLIDATED",
       "writer_target": "scripts/lib/market_risk/escalation.py",
       "writer_target_status": "to_build (0 writers measured 2026-10-31; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)",
-      "_writer_note": "P3-T7 writer. The acknowledgment is a safe-direction operator control (§11 item 8, §27.3): one click; it silences repeats and nothing else.",
+      "_writer_note": "P3-T7 writer. The acknowledgment is a safe-direction operator control (\u00a711 item 8, \u00a727.3): one click; it silences repeats and nothing else.",
       "cadence": "event-driven (tier transitions, repeats, ACK RED reply, Risk-page Acknowledge)",
       "stale_after_hours": 24,
       "freshness_sla": "event-driven; an OPEN Red with no repeat receipt for 75 min is the stalled-escalation page",
@@ -6100,8 +6126,8 @@
       "proposal": {
         "proposed_by": "agent (Claude Fable 5.1, session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF)",
         "proposed_on": "2026-10-31",
-        "reference": "Operator 2026-10-31 in-session (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" — §11 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1",
-        "decision": "Grant market_risk_episodes as the one escalation-state store (design §5, P3-T7). Operator grant given 2026-10-31 (verbatim above); the row is promoted into domains[] with its approval block by the writer PR, when the writer file exists (AGENTS.md §7A: registry row first, writer second)."
+        "reference": "Operator 2026-10-31 in-session (verbatim): \"I approve and agree to everything one through eight. Everything goes live and everything is working, nothing left to do. Everything working, going live. I approve everything.\" \u2014 \u00a711 item 1 of design DSN-20261031-market-risk-engine (docs/designs/DSN-20261031-market-risk-engine.md, PR #2319); session https://claude.ai/code/session_01GeLa7JgVXENzWSJSDhcHkF; registry PR P1-T1",
+        "decision": "Grant market_risk_episodes as the one escalation-state store (design \u00a75, P3-T7). Operator grant given 2026-10-31 (verbatim above); the row is promoted into domains[] with its approval block by the writer PR, when the writer file exists (AGENTS.md \u00a77A: registry row first, writer second)."
       },
       "measured": {
         "at": "2026-10-31 (repo scan: no table, no writer, no reader)",
@@ -6207,7 +6233,7 @@
   "data_dictionary": {
     "schema": "DataDictionary@v1",
     "as_of": "2026-10-22T16:00:00-04:00",
-    "_why": "One source of data (operator 2026-10-22). Every fact names one domain; every domain one store and one writer; every page reads through a projection. Proposed rows live in proposed_domains[] until the operator grants them (AGENTS.md §17); scripts/check_data_source_authority.py warns on them and fails on granted ones. docs/architecture/DATA_DICTIONARY.md is rendered from here by scripts/render_data_dictionary.py.",
+    "_why": "One source of data (operator 2026-10-22). Every fact names one domain; every domain one store and one writer; every page reads through a projection. Proposed rows live in proposed_domains[] until the operator grants them (AGENTS.md \u00a717); scripts/check_data_source_authority.py warns on them and fails on granted ones. docs/architecture/DATA_DICTIONARY.md is rendered from here by scripts/render_data_dictionary.py.",
     "canonical_key": {
       "per_security": "security_guid",
       "per_company": "issuer_guid",
@@ -6237,7 +6263,7 @@
     "records": {
       "CIOProspect": {
         "domain": "cio_prospect",
-        "extends": "InstrumentRecord@v1 (AGENTS.md §13.4; extended, not cloned, per §13.5)",
+        "extends": "InstrumentRecord@v1 (AGENTS.md \u00a713.4; extended, not cloned, per \u00a713.5)",
         "fields": [
           {
             "field": "security_guid",
@@ -6294,13 +6320,13 @@
           {
             "field": "conviction_components",
             "type": "object",
-            "meaning": "named components that sum to the conviction: unified_edge, fused_score, catalyst_grade, thesis_quality, risk_reward, regime_fit — each with value, source, evidence_at",
+            "meaning": "named components that sum to the conviction: unified_edge, fused_score, catalyst_grade, thesis_quality, risk_reward, regime_fit \u2014 each with value, source, evidence_at",
             "source": "fused_signals / catalyst_events / cio_theses"
           },
           {
             "field": "stance",
             "type": "enum",
-            "meaning": "BUY_SETUP / ADD / HOLD / TRIM_REVIEW / EXIT_REVIEW / WATCH / AVOID — priority and posture only; never a size, order or stop (MBI_BEHAVIOR = 0)",
+            "meaning": "BUY_SETUP / ADD / HOLD / TRIM_REVIEW / EXIT_REVIEW / WATCH / AVOID \u2014 priority and posture only; never a size, order or stop (MBI_BEHAVIOR = 0)",
             "source": "cio_prospect",
             "required": true
           },
@@ -6337,7 +6363,7 @@
           {
             "field": "research",
             "type": "object",
-            "meaning": "SecurityResearchSpine@v1 summary (view_for_silo) — the same for every desk",
+            "meaning": "SecurityResearchSpine@v1 summary (view_for_silo) \u2014 the same for every desk",
             "source": "research_thesis"
           },
           {
@@ -6363,7 +6389,7 @@
           {
             "field": "conflicts",
             "type": "list",
-            "meaning": "every disagreement between inputs (e.g. opportunity stance ADD vs thesis stance watch): both values, both sources, both times — shown, never silently resolved",
+            "meaning": "every disagreement between inputs (e.g. opportunity stance ADD vs thesis stance watch): both values, both sources, both times \u2014 shown, never silently resolved",
             "source": "cio_prospect"
           },
           {
