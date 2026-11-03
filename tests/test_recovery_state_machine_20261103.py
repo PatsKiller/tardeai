@@ -245,9 +245,18 @@ def test_no_eligibility_rows_is_not_a_pass():
 
 
 def test_a_reclaim_still_shows_when_eligibility_is_unknown():
-    """The annotation blocks readiness, not the reclaim: the card must still appear."""
+    """The anti-regression pin for the readiness/state split: gates annotate, they never silence.
+
+    No eligibility rows AND a genuine reclaim (+3.3% above the exit) must end in RECOVERING — not WATCHING (a
+    silenced state, the original failure in a new place) and not RE_ENTRY_READY (unprovable readiness). The
+    operator's complaint was that nothing told him the name was recovering, so an account-split gap must never
+    be able to hide a reclaim.
+    """
     d = R.evaluate(case(eligibility_json=None), snap(close=141.65), now=NOW)
+
     assert d.state == R.RECOVERING
+    assert d.state not in (R.WATCHING, R.RE_ENTRY_READY)
+    assert any(a["gate"] == "eligibility_unknown" and a["blocks_ready"] for a in d.annotations)
 
 
 def test_all_dates_closed_shows_the_reclaim_but_never_readiness():
