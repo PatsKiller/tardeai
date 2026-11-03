@@ -298,7 +298,12 @@ export function normalizeReview(raw: unknown, rowHead: string): Factor<ReviewSta
   if (r.count !== undefined && r.state === undefined) {
     return unknown('record count is not a review verdict', { head_sha: envelopeHead, as_of, as_of_basis, source })
   }
-  return normalizeFactor<ReviewState>(raw, ['MERGE', 'CHANGES', 'NONE'], rowHead, 'review')
+  // No records: map the backend's own word through the SAME vocabulary before the factor check, so a
+  // legitimate `state: "BLOCK"` reads as blocked instead of "unrecognised" (found by rendering the served
+  // bundle, 2026-11-03). An unknown word still falls through to UNKNOWN.
+  const mappedWord = VERDICT[asString(r.state).trim().toUpperCase()]
+  const forFactor = mappedWord ? { ...(raw as Record<string, unknown>), state: mappedWord } : raw
+  return normalizeFactor<ReviewState>(forFactor, ['MERGE', 'CHANGES', 'NONE'], rowHead, 'review')
 }
 
 function normalizeBlockers(raw: unknown): Blocker[] {

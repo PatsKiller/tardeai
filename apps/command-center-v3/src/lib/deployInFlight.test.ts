@@ -249,6 +249,12 @@ eq('MERGE + explicit UNKNOWN stays UNKNOWN', rv9([{ verdict: 'MERGE', reviewer: 
 eq('BLOCK + unrecognised is still blocked', rv9([{ verdict: 'BLOCK', reviewer: 'a' }, { verdict: 'MAYBE', reviewer: 'b' }]).state, 'CHANGES')
 eq('a backend UNKNOWN is never upgraded to MERGE', rv9([{ verdict: 'MERGE', reviewer: 'a' }], 'UNKNOWN').state, 'UNKNOWN')
 eq('a backend BLOCK is never overridden by merge records', rv9([{ verdict: 'MERGE', reviewer: 'a' }], 'BLOCK').state, 'CHANGES')
+// A state-only review (no records) must use the same vocabulary — found on the served bundle 2026-11-03.
+eq('state-only BLOCK is blocked, not unrecognised', normalizeReview({ state: 'BLOCK', head_sha: HEAD }, HEAD).state, 'CHANGES')
+eq('state-only APPROVE is passed', normalizeReview({ state: 'APPROVE', head_sha: HEAD }, HEAD).state, 'MERGE')
+eq('state-only CHANGES_REQUESTED is blocked', normalizeReview({ state: 'CHANGES_REQUESTED', head_sha: HEAD }, HEAD).state, 'CHANGES')
+eq('state-only nonsense stays UNKNOWN', normalizeReview({ state: 'PROBABLY', head_sha: HEAD }, HEAD).state, 'UNKNOWN')
+check('state-only BLOCK never reads as passed', reviewLabel(normalizeReview({ state: 'BLOCK', head_sha: HEAD }, HEAD)).text.startsWith('REVIEW · blocked'))
 
 // A contradictory envelope: the envelope names another head while its members name this one.
 const contra = normalizeReview({ state: 'MERGE', head_sha: OLD, records: [{ verdict: 'MERGE', reviewer: 'a', head_sha: HEAD }] }, HEAD)
