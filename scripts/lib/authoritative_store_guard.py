@@ -42,7 +42,18 @@ def holdings_hash(doc: dict[str, Any]) -> str:
         for h in (doc.get("holdings") or [])
         if (h.get("market_value") or 0) > 100
     )
-    return hashlib.md5(str(tuples).encode()).hexdigest()[:12]
+    # Integrity signature, not a security control; same rule and exact digest as the producer.
+    return hashlib.md5(str(tuples).encode()).hexdigest()[:12]  # noqa: S324
+
+
+#: The accessor's store state -> the reason a consumer publishes for that state.
+_STORE_STATE_REASONS = {
+    "absent": "holdings_store_absent",
+    "empty": "holdings_store_empty",
+    "unparseable": "holdings_store_unparseable",
+    "unreadable": "holdings_store_unreadable",
+    "not_object": "holdings_store_not_an_object",
+}
 
 
 def effective_status(manifest_status: Any, guard: dict[str, Any]) -> str:
@@ -55,7 +66,12 @@ def effective_status(manifest_status: Any, guard: dict[str, Any]) -> str:
 def guard(state_dir: Path | str, *, now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     sd = Path(state_dir)
-    store, manifest = sd / "holdings.json", sd / "_freshness.json"
+    # The store is read through the ONE approved accessor: this module reports the state it found,
+    # it does not add a second reader of the file (test_portfolio_price_truth_20261005).
+    from lib import portfolio_positions  # noqa: PLC0415 — no import-time work
+
+    store = sd / portfolio_positions.STORE_REL[-1]
+    manifest = sd / "_freshness.json"
     reasons: list[str] = []
     out: dict[str, Any] = {
         "schema": SCHEMA, "checked_at": now.isoformat(), "remediation": REMEDIATION,
@@ -63,21 +79,10 @@ def guard(state_dir: Path | str, *, now: datetime | None = None) -> dict[str, An
         "holdings_hash_expected": None, "holdings_hash_observed": None,
     }
 
-    raw = b""
-    try:
-        raw = store.read_bytes()
-    except FileNotFoundError:
-        return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": ["holdings_store_absent"]}
-    except OSError as exc:
-        return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": [f"holdings_store_unreadable:{type(exc).__name__}"]}
-    if not raw.strip():
-        return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": ["holdings_store_empty"]}
-    try:
-        doc = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": [f"holdings_store_unparseable:{type(exc).__name__}"]}
-    if not isinstance(doc, dict):
-        return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": ["holdings_store_not_an_object"]}
+    doc, store_state = portfolio_positions.read_store_document(store)
+    if doc is None or store_state != "ok":
+        reason = _STORE_STATE_REASONS.get(store_state, "holdings_store_unreadable")
+        return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": [reason]}
     rows = doc.get("holdings")
     if not isinstance(rows, list) or not rows:
         return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": ["holdings_store_has_no_positions"]}

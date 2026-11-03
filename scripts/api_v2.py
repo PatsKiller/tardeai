@@ -7472,6 +7472,7 @@ def ops_summary():
     # The manifest proves a producer ran; it does not prove the store it describes
     # is healthy. A 0-byte holdings.json must never render FRESH from cached metadata.
     from lib.authoritative_store_guard import effective_status as _effective_status, guard as _holdings_guard
+
     _store_guard = _holdings_guard(STATE_DIR)
     health_rows = (
         _db_query(
