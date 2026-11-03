@@ -44,11 +44,16 @@ def _rules(tmp_path: Path, *, armed: bool, standing_enabled: bool = True, approv
     return p
 
 
+def _dry_doc(candidates: int, reclaimable: int = 0) -> dict:
+    """The envelope lane_last_receipt.dry_run_report actually emits for disk_hygiene.py --dry-run."""
+    return {"dry_run": True, "lane_id": "disk-hygiene", "would_write": ["/synthetic/manifests"],
+            "would_write_receipt": "/synthetic/receipts/disk-hygiene.json",
+            "summary": {"totals": {"candidates": candidates, "reclaimable_bytes": reclaimable,
+                                   "reclaimable_gb": round(reclaimable / GB, 2)}}}
+
+
 def _dry_line(candidates: int, reclaimable: int = 0) -> str:
-    doc = {"dry_run": True, "lane_id": "disk-hygiene", "would_write": [],
-           "summary": {"totals": {"candidates": candidates, "reclaimable_bytes": reclaimable,
-                                  "reclaimable_gb": round(reclaimable / GB, 2)}}}
-    return "DRY-RUN " + json.dumps(doc)
+    return "DRY-RUN " + json.dumps(_dry_doc(candidates, reclaimable))
 
 
 def _apply_line(removed: int = 12, reclaimed_gb: float = 3.4, refused=None) -> str:
@@ -325,11 +330,36 @@ def test_every_arming_gate_closed_mid_preview_refuses_the_apply(monkeypatch, tmp
 
 
 # ---------------------------------------------------------------- (F6) a refused or partial preview is not a plan
+def _shaped(**changes) -> str:
+    """A native-shaped preview with the given fields replaced (None removes the field)."""
+    doc = _dry_doc(1)
+    for key, value in changes.items():
+        if value is None:
+            doc.pop(key, None)
+        else:
+            doc[key] = value
+    return "DRY-RUN " + json.dumps(doc)
+
+
 @pytest.mark.parametrize("preview,why", [
+    # impossible shapes: the numbers are right but this is not an envelope the cleaner can emit
     (json.dumps({"candidates": 1}), "dry_run_envelope_missing"),
     (json.dumps({"summary": {"totals": {"candidates": 1}}}), "dry_run_envelope_missing"),
     (json.dumps({"candidates": 1, "refused": "manifest_stale"}), "dry_run_refused:manifest_stale"),
-    (json.dumps({"dry_run": True, "summary": {"totals": {"candidates": "1"}}}), "dry_run_candidates_invalid"),
+    (_shaped(lane_id=None), "dry_run_lane_unrecognised"),
+    (_shaped(lane_id="some-other-lane"), "dry_run_lane_unrecognised"),
+    (_shaped(would_write_receipt=None), "dry_run_receipt_missing"),
+    (_shaped(would_write_receipt="  "), "dry_run_receipt_missing"),
+    (_shaped(would_write="/synthetic/manifests"), "dry_run_would_write_missing"),
+    (_shaped(summary={"totals": {"candidates": "1"}}), "dry_run_candidates_invalid"),
+    # a refusal nested anywhere still means no — 4e4-F6 boundary observation
+    (_shaped(summary={"totals": {"candidates": 1}, "refused": "manifest_stale"}), "dry_run_refused:manifest_stale"),
+    (_shaped(summary={"totals": {"candidates": 1, "refused": "manifest_stale"}}), "dry_run_refused:manifest_stale"),
+    (_shaped(summary={"totals": {"candidates": 1},
+                      "detail": {"collector": {"error": "unreadable-store"}}}), "dry_run_error:unreadable-store"),
+    (_shaped(summary={"totals": {"candidates": 1}, "ok": False}), "dry_run_not_ok"),
+    ("DRY-RUN " + json.dumps({"outcome": "below_threshold", "used_pct": 70.0,
+                              "summary": {"refused": "manifest_stale"}}), "dry_run_refused:manifest_stale"),
 ])
 def test_a_partial_or_refusing_preview_never_constructs_an_apply(monkeypatch, tmp_path, capsys, preview, why):
     rules = _rules(tmp_path, armed=True)
@@ -340,6 +370,27 @@ def test_a_partial_or_refusing_preview_never_constructs_an_apply(monkeypatch, tm
     assert [a for a in calls.argv if "--apply" in a] == [], "an apply was constructed from an unrecognised preview"
     assert out["cleaner"]["decision"] == "error"
     assert out["cleaner"]["error"] == why
+
+
+def test_the_native_shaped_preview_is_the_positive_control(monkeypatch, tmp_path, capsys):
+    """The same gate must still let the REAL envelope through — a refusal-only validator deletes the fix."""
+    rules = _rules(tmp_path, armed=True)
+    calls = Calls([_Proc(stdout=_dry_line(12, 3 * GB), rc=0), _Proc(stdout=_apply_line(12, 3.0), rc=0)])
+    _guard(monkeypatch, tmp_path, calls, used=91.0)
+    g.main(["--rules", str(rules)])
+    out = json.loads(capsys.readouterr().out)
+    assert out["cleaner"]["decision"] == "applied", out
+    assert len([a for a in calls.argv if "--apply" in a]) == 1
+
+
+def test_the_accepted_lane_is_the_cleaners_own_lane_id():
+    """A rename on either side must fail here rather than silently refusing (or admitting) every apply."""
+    import ast as _ast
+
+    tree = _ast.parse((ROOT / "scripts" / "disk_hygiene.py").read_text(encoding="utf-8"))
+    lane = next(node.value.value for node in tree.body
+                if isinstance(node, _ast.Assign) and any(getattr(t, "id", None) == "LANE_ID" for t in node.targets))
+    assert lane == g.CLEANER_DRY_RUN_LANE
 
 
 def test_a_below_threshold_apply_result_is_not_reported_as_applied(monkeypatch, tmp_path, capsys):

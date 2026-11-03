@@ -265,6 +265,41 @@ def _dry_run_quote(stdout: str) -> dict | None:
     return doc if isinstance(doc, dict) else None
 
 
+# disk_hygiene.py's LANE_ID (line 85). A preview that does not carry it is not this cleaner's preview; a test asserts
+# the two constants stay equal, so renaming the lane cannot silently turn every apply into a refusal, or vice versa.
+CLEANER_DRY_RUN_LANE = "disk-hygiene"
+# Any of these, at any depth, is the cleaner saying no. `skipped` is deliberately absent: the native report carries a
+# skipped list on a perfectly good run.
+_REFUSAL_KEYS = ("refused", "refusal", "denied", "aborted", "blocked", "error", "errors")
+
+
+def _refusal_signal(node: object, depth: int = 0) -> tuple[str, object] | None:
+    """The first refusal signal anywhere in a preview envelope, or None.
+
+    Recursive on purpose: the native envelope is nested (`summary.totals`), and a refusal placed inside it was invisible
+    to the flat check — `{"dry_run": true, "summary": {"refused": "manifest_stale", "totals": {"candidates": 1}}}`
+    still constructed an apply request (cx-openai-3, 4e4-F6 boundary observation).
+    """
+    if depth > 5:
+        return None
+    if isinstance(node, dict):
+        if node.get("ok") is False:
+            return ("ok", node.get("error") or "dry_run_not_ok")
+        for key in _REFUSAL_KEYS:
+            if key in node and node[key] not in (None, False, "", [], {}, 0):
+                return (key, node[key])
+        children = node.values()
+    elif isinstance(node, list):
+        children = node
+    else:
+        return None
+    for child in children:
+        found = _refusal_signal(child, depth + 1)
+        if found:
+            return found
+    return None
+
+
 def _recognised_dry_run(quote: object) -> tuple[bool, str]:
     """Is this a COMPLETE cleaner dry-run envelope we can positively recognise as a clean success?
 
@@ -272,18 +307,33 @@ def _recognised_dry_run(quote: object) -> tuple[bool, str]:
     `{"candidates": 1, "refused": "manifest_stale"}` each used to reach the apply boundary, because the parser accepted any
     dict or a loose fallback. A refusal signal inside a zero-exit preview is the dangerous shape: the status looks
     successful.
+
+    The accepted shape is the one `lane_last_receipt.dry_run_report` actually emits for this cleaner
+    (`dry_run`, `lane_id`, `would_write_receipt`, `would_write`, `summary.totals`). A dict that merely contains the right
+    numbers is not a recognised envelope — the cleaner cannot produce a success without those fields, so anything that
+    omits them is a shape we do not understand, and the answer is no apply.
     """
     if not isinstance(quote, dict):
         return False, "dry_run_not_a_mapping"
-    if quote.get("ok") is False or quote.get("error"):
-        # Keep the cleaner's own words: the operator needs to see why it refused.
-        return False, str(quote.get("error") or "dry_run_not_ok")[:200]
-    if quote.get("refused") is not None:
-        return False, f"dry_run_refused:{str(quote.get('refused'))[:120]}"
+    signal = _refusal_signal(quote)
+    if signal:
+        key, value = signal
+        if key == "refused":                 # keep the operator-facing wording stable for the common case
+            return False, f"dry_run_refused:{str(value)[:120]}"
+        if key == "ok":                      # keep the cleaner's own words
+            return False, str(value or "dry_run_not_ok")[:200]
+        return False, f"dry_run_{key}:{str(value)[:160]}"
     if quote.get("outcome") == "below_threshold":
         return True, ""                      # a recognised non-apply outcome; handled by the caller
     if quote.get("dry_run") is not True:
         return False, "dry_run_envelope_missing"
+    if quote.get("lane_id") != CLEANER_DRY_RUN_LANE:
+        return False, "dry_run_lane_unrecognised"
+    if not isinstance(quote.get("would_write"), list):
+        return False, "dry_run_would_write_missing"
+    receipt = quote.get("would_write_receipt")
+    if not isinstance(receipt, str) or not receipt.strip():
+        return False, "dry_run_receipt_missing"
     summary = quote.get("summary")
     totals = summary.get("totals") if isinstance(summary, dict) else None
     if not isinstance(totals, dict):
