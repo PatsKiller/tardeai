@@ -6,7 +6,7 @@
 // so rather than looking like a gap. Advisory only — no size, order or stop level.
 // Runs under node --experimental-strip-types (homeV007.test.ts).
 
-export type FactState = 'ok' | 'stale' | 'unknown' | 'missing' | 'not_applicable'
+export type FactState = 'measured' | 'unknown' | 'not_applicable'
 
 export type Fact = {
   state: FactState
@@ -34,7 +34,7 @@ export type SymbolContext = {
   headlines: Array<{ title: string; source: string | null; publishedAt: string | null; ageSeconds: number | null }>
   nextEvent: { label: string | null; at: string | null } & Fact
   cio: { stance: string | null; conviction: string | number | null; storeLabel: string | null; stale: boolean } & Fact
-  marketStance: { value: string | null } & Fact
+  marketStance: { value: string | null; headline?: string | null } & Fact
   volume: { ratio: number | null; sampleDates: string[]; notTimeAdjusted: boolean } & Fact
 }
 
@@ -69,10 +69,18 @@ const rec = (v: unknown): Record<string, unknown> | null => (v !== null && typeo
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null)
 const bool = (v: unknown): boolean => v === true
-const STATES: FactState[] = ['ok', 'stale', 'unknown', 'missing', 'not_applicable']
+const STATES: FactState[] = ['measured', 'unknown', 'not_applicable']
+
+function remediationText(v: unknown): string | null {
+  const o = rec(v)
+  if (o) return [str(o.action), str(o.key) ? `(${str(o.key)})` : null].filter(Boolean).join(' ') || null
+  return str(v)
+}
 
 function fact(o: Record<string, unknown> | null): Fact {
-  const raw = str(o?.state)?.toLowerCase() as FactState | undefined
+  const rawWord = str(o?.state)?.toLowerCase()
+  // The 2506 contract emits measured | unknown | not_applicable.
+  const raw = (rawWord === 'ok' ? 'measured' : rawWord === 'stale' ? 'measured' : rawWord === 'missing' ? 'unknown' : rawWord) as FactState | undefined
   const asOf = str(o?.as_of)
   const future = asOf ? (() => { const t = Date.parse(asOf); return Number.isFinite(t) && t > Date.now() + 60_000 })() : false
   return {
@@ -81,7 +89,7 @@ function fact(o: Record<string, unknown> | null): Fact {
     source: str(o?.source),
     ageSeconds: num(o?.age_seconds),
     reason: future ? 'clock skew: as_of is in the future' : str(o?.reason),
-    remediation: str(o?.remediation),
+    remediation: future ? null : remediationText(o?.remediation),
   }
 }
 
@@ -94,9 +102,9 @@ function quote(base: Record<string, unknown> | null): QuoteLine {
   const mismatched = !!(sessionDate && expected && sessionDate !== expected)
   return {
     ...f,
-    state: mismatched && f.state === 'ok' ? 'unknown' : f.state,
+    state: mismatched && f.state === 'measured' ? 'unknown' : f.state,
     reason: mismatched ? `quote belongs to session ${sessionDate}, expected ${expected}` : f.reason,
-    price: num(value?.price) ?? num(value),
+    price: num(value?.price) ?? num(q?.value),
     session: str(q?.session),
     sessionDate,
     expectedSessionDate: expected,
@@ -111,7 +119,7 @@ export function parseHomeV007(raw: unknown): HomeV007 {
   if (!ctx) return { present: false, symbols: [], positions: [], risk: { score: null, categories: [], nextEvaluation: null }, hedge: { triggers: [], inverse: [] }, budgets: [], gaps: [{ member: 'home_v007', key: 'absent', reason: 'the response carries no home_v007 block', remediation: 'wait for the additive reader' }], readErrors }
 
   for (const g of (Array.isArray(ctx.gaps) ? ctx.gaps : [])) {
-    const o = rec(g); if (o) gaps.push({ member: str(o.member) ?? '?', key: str(o.key) ?? '?', reason: str(o.reason), remediation: str(o.remediation) })
+    const o = rec(g); if (o) gaps.push({ member: [str(o.symbol), str(o.field)].filter(Boolean).join('.') || '?', key: remediationText(o.remediation) ?? '?', reason: str(o.reason), remediation: remediationText(o.remediation) })
   }
   for (const e of (Array.isArray(ctx.read_errors) ? ctx.read_errors : [])) {
     const o = rec(e); if (o) readErrors.push({ member: str(o.member) ?? '?', code: str(o.code) ?? '?', remediation: str(o.remediation) })
@@ -122,24 +130,31 @@ export function parseHomeV007(raw: unknown): HomeV007 {
     const s = rec(v) ?? {}
     const dc = rec(s.day_change); const dcVal = rec(dc?.value)
     const se = rec(s.since_exit); const seVal = rec(se?.value)
-    const cioRaw = rec(s.cio)
+    const cioRaw = rec(s.cio); const cioVal = rec(cioRaw?.value)
     const vol = rec(s.volume_vs_20d); const volVal = rec(vol?.value)
+    const st = rec(s.market_risk_stance); const stVal = rec(st?.value)
+    const refs = rec(s.analysis_references); const refsVal = rec(refs?.value)
+    const heads = rec(s.headlines); const headVal = heads?.value
+    const ne = rec(s.next_event); const neVal = rec(ne?.value)
     return {
       symbol,
       quote: quote(s),
-      dayChange: { ...fact(dc), usd: num(dcVal?.usd), pct: num(dcVal?.pct), referenceDate: str(dcVal?.reference_date) },
-      sinceExit: { ...fact(se), usd: num(seVal?.usd), pct: num(seVal?.pct), exitPrice: num(seVal?.exit_price), exitDate: str(seVal?.exit_date) },
-      references: (Array.isArray(s.analysis_references) ? s.analysis_references : []).filter(rec).slice(0, 12).map(r => {
-        const o = rec(r) as Record<string, unknown>
-        return { ...fact(o), label: str(o.label) ?? '?', price: num(o.price), distanceUsd: num(o.distance_usd), distancePct: num(o.distance_pct) }
-      }),
-      headlines: (Array.isArray(s.headlines) ? s.headlines : []).filter(rec).slice(0, 4).map(h => {
+      dayChange: { ...fact(dc), usd: num(dcVal?.price), pct: num(dcVal?.pct), referenceDate: str(dcVal?.reference_session_date) },
+      sinceExit: { ...fact(se), usd: num(seVal?.distance_price), pct: num(seVal?.distance_pct), exitPrice: num(seVal?.reference_price), exitDate: null },
+      references: refsVal
+        ? Object.entries(refsVal).slice(0, 12).map(([label, v]) => {
+            const o = rec(v) ?? {}
+            const nested = fact({ ...o, state: o.state ?? refs?.state, as_of: o.price_as_of ?? refs?.as_of, source: refs?.source, age_seconds: refs?.age_seconds, reason: refs?.reason, remediation: o.remediation ?? refs?.remediation })
+            return { ...nested, label, price: num(o.reference_price), distanceUsd: num(o.distance_price), distancePct: num(o.distance_pct) }
+          })
+        : [],
+      headlines: Array.isArray(headVal) ? headVal.filter(rec).slice(0, 4).map(h => {
         const o = rec(h) as Record<string, unknown>
         return { title: str(o.title) ?? '(untitled)', source: str(o.source), publishedAt: str(o.published_at), ageSeconds: num(o.age_seconds) }
-      }),
-      nextEvent: { ...fact(rec(s.next_event)), label: str(rec(s.next_event)?.label), at: str(rec(s.next_event)?.at) },
-      cio: { ...fact(cioRaw), stance: str(cioRaw?.stance), conviction: num(cioRaw?.conviction) ?? str(cioRaw?.conviction), storeLabel: str(cioRaw?.store_label), stale: bool(cioRaw?.stale) },
-      marketStance: { ...fact(rec(s.market_risk_stance)), value: str(rec(s.market_risk_stance)?.value) },
+      }) : [],
+      nextEvent: { ...fact(ne), label: str(neVal?.label), at: str(neVal?.at) },
+      cio: { ...fact(cioRaw), stance: str(cioVal?.stance), conviction: num(cioVal?.conviction) ?? str(cioVal?.conviction) ?? num(rec(s.conviction)?.value), storeLabel: str(cioVal?.store_label), stale: bool(cioVal?.stale) },
+      marketStance: { ...fact(st), value: str(stVal?.stance), headline: str(stVal?.headline) } as SymbolContext['marketStance'],
       volume: { ...fact(vol), ratio: num(volVal?.ratio), sampleDates: Array.isArray(volVal?.sample_dates) ? volVal!.sample_dates.slice(0, 20).map(String) : [], notTimeAdjusted: bool(volVal?.not_time_adjusted) },
     }
   })
@@ -156,32 +171,41 @@ export function parseHomeV007(raw: unknown): HomeV007 {
     categories: (Array.isArray(riskRaw.categories) ? riskRaw.categories : []).filter(rec).map(c => {
       const o = rec(c) as Record<string, unknown>
       const f = fact(o)
-      return { key: str(o.key) ?? '?', label: str(o.label) ?? '?', chip: str(o.chip), state: f.state, asOf: f.asOf, reason: f.reason }
+      const key = str(o.category) ?? str(o.key) ?? '?'
+      return { key, label: str(o.label) ?? key.replace(/_/g, ' '), chip: str(o.chip), state: f.state, asOf: f.asOf, reason: f.reason }
     }),
-    nextEvaluation: (() => { const n = rec(riskRaw.next_evaluation); return n ? { at: str(n.at), basis: str(n.basis) } : null })(),
+    nextEvaluation: (() => {
+      const n = rec(riskRaw.next_evaluation)
+      if (!n) return null
+      const v = rec(n.value)
+      return { at: str(v?.at), basis: str(v?.basis) ?? str(n.reason) ?? (fact(n).state === 'unknown' ? 'not declared' : null) }
+    })(),
   }
 
   const hRaw = rec(ctx.hedge) ?? {}
+  const trig = (key: 'lagging_progress' | 'exposure_progress') => {
+    const f = rec(hRaw[key]); const v = rec(f?.value)
+    return f ? [{ label: key === 'lagging_progress' ? 'lagging sectors' : 'exposure', current: num(v?.current), threshold: num(v?.threshold), met: typeof v?.met === 'boolean' ? v.met : null }] : []
+  }
+  const inv = rec(hRaw.inverse_moves); const invVal = inv?.value
   const hedge = {
-    triggers: (Array.isArray(hRaw.triggers) ? hRaw.triggers : []).filter(rec).map(t => {
-      const o = rec(t) as Record<string, unknown>
-      return { label: str(o.label) ?? '?', current: num(o.current), threshold: num(o.threshold), met: typeof o.met === 'boolean' ? o.met : null }
-    }),
-    inverse: (Array.isArray(hRaw.inverse_funds) ? hRaw.inverse_funds : []).filter(rec).map(f => {
+    triggers: [...trig('lagging_progress'), ...trig('exposure_progress')],
+    inverse: (Array.isArray(invVal) ? invVal : []).filter(rec).map(f => {
       const o = rec(f) as Record<string, unknown>
-      return { symbol: str(o.symbol) ?? '?', dayPct: num(o.day_pct), state: fact(o).state }
+      return { symbol: str(o.symbol) ?? '?', dayPct: num(o.day_pct ?? o.day_change_pct), state: fact(o).state }
     }),
   }
 
   const budgets: BudgetRow[] = (Array.isArray(ctx.budgets) ? ctx.budgets : []).filter(rec).slice(0, 10).map(b => {
     const o = rec(b) as Record<string, unknown>
     const od = rec(o.operator_decision)
+    const actual = num(o.actual), limit = num(o.limit)
     return {
-      ...fact(o),
-      key: str(o.key) ?? '?', label: str(o.label) ?? '?', current: num(o.current), budget: num(o.budget), unit: str(o.unit),
-      clearsWhen: str(o.clears_when), breach: bool(o.breach),
+      ...fact({ state: actual != null && limit != null ? 'measured' : 'unknown', as_of: str(rec(o.source_binding)?.as_of), source: 'market_risk_budgets', age_seconds: null, reason: null, remediation: null }),
+      key: str(o.budget) ?? '?', label: str(o.budget)?.replace(/_/g, ' ') ?? '?', current: actual, budget: limit, unit: str(o.unit),
+      clearsWhen: str(o.clears_when), breach: actual != null && limit != null && actual > limit,
       operatorDecision: str(od?.state) === 'available' ? 'available' : 'unavailable',
-      decisionRemediation: str(od?.remediation),
+      decisionRemediation: remediationText(od?.remediation),
     }
   })
 

@@ -17,14 +17,14 @@ const ok = parseHomeV007({
     quote: { state: 'ok', as_of: NOW, source: 'market_quotes:alpaca', age_seconds: 30, session: 'regular', session_date: '2026-11-02', expected_session_date: '2026-11-02', basis: 'last trade', value: { price: 49.87 } },
     day_change: { state: 'ok', value: { usd: 0.4, pct: 0.8, reference_close: 49.47, reference_date: '2026-10-30' } },
     since_exit: { state: 'ok', value: { usd: -0.1, pct: -0.3, exit_price: 50, exit_date: '2026-10-30' } },
-    cio: { state: 'ok', stance: 'hold', conviction: 3, store_label: 'canonical', stale: false },
-    market_risk_stance: { state: 'ok', value: 'elevated' },
+    cio: { state: 'measured', value: { stance: 'hold', conviction: 3, store_label: 'canonical', stale: false } },
+    market_risk_stance: { state: 'measured', value: { stance: 'elevated' } },
     volume_vs_20d: { state: 'ok', value: { ratio: 1.4, sample_dates: ['2026-10-01'], not_time_adjusted: true } },
   } },
-  risk: { score: 61, categories: [{ key: 'tech', label: 'Technology', chip: 'STRESS', state: 'ok', as_of: NOW }], next_evaluation: { at: '2026-11-03T14:00:00Z', basis: 'declared' } },
+  risk: { score: 61, categories: [{ key: 'tech', label: 'Technology', chip: 'STRESS', state: 'ok', as_of: NOW }], next_evaluation: { state: 'measured', value: { at: '2026-11-03T14:00:00Z', basis: 'declared' } } },
   hedge: { triggers: [{ label: 'Technology', current: 4.8, threshold: 10, met: false }], inverse_funds: [{ symbol: 'SH', day_pct: 0.6, state: 'ok' }] },
-  budgets: [{ key: 'b1', label: 'Demo', current: 21000, budget: 15000, unit: 'usd', breach: true, clears_when: 'below 15000', state: 'ok', operator_decision: { state: 'unavailable', remediation: 'pending review' } }],
-  gaps: [{ member: 'cio.rationale', key: 'not_exposed', reason: 'store does not expose it', remediation: 'ask owner' }],
+  budgets: [{ budget: 'demo', actual: 21000, limit: 15000, unit: 'usd', clears_when: 'below 15000', source_binding: { as_of: NOW, sha256: '0'.repeat(64) }, operator_decision: { state: 'unavailable', remediation: { key: 'pending_review', action: 'pending review' } } }],
+  gaps: [{ symbol: 'SPCX', field: 'cio.rationale', reason: 'store does not expose it', remediation: { key: 'ask_owner', action: 'ask owner' } }],
 })
 eq('present', ok.present, true)
 eq('quote price', ok.symbols[0].quote.price, 49.87)
@@ -36,13 +36,13 @@ eq('nine-category passthrough', ok.risk.categories[0].chip, 'STRESS')
 eq('next evaluation is declared', ok.risk.nextEvaluation?.basis, 'declared')
 eq('budget breach kept', ok.budgets[0].breach, true)
 eq('intentional is not a button', ok.budgets[0].operatorDecision, 'unavailable')
-eq('budget remediation shown', ok.budgets[0].decisionRemediation, 'pending review')
-eq('gap carried', ok.gaps[0].key, 'not_exposed')
+eq('budget remediation shown', ok.budgets[0].decisionRemediation, 'pending review (pending_review)')
+eq('gap carried', ok.gaps[0].key, 'ask owner (ask_owner)')
 
 const stale = parseHomeV007({ symbols: { X: { quote: { state: 'stale', as_of: '2026-11-02T20:00:00Z', age_seconds: 5400, value: { price: 10 } } } } })
-eq('stale keeps its value', stale.symbols[0].quote.price, 10)
-eq('stale keeps its state', stale.symbols[0].quote.state, 'stale')
-eq('stale keeps its age', stale.symbols[0].quote.ageSeconds, 5400)
+eq('a stale word maps to measured and keeps its value', stale.symbols[0].quote.price, 10)
+eq('stale maps to the contract vocabulary', stale.symbols[0].quote.state, 'measured')
+eq('age is kept', stale.symbols[0].quote.ageSeconds, 5400)
 
 const future = parseHomeV007({ symbols: { X: { quote: { state: 'ok', as_of: '2099-01-01T00:00:00Z', value: { price: 10 } } } } })
 eq('a future clock is unknown', future.symbols[0].quote.state, 'unknown')

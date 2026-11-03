@@ -19,11 +19,11 @@ const money = (v: number | null) => (v == null ? null : `$${v.toLocaleString('en
 const pct = (v: number | null) => (v == null ? null : `${v > 0 ? '+' : ''}${v.toFixed(2)}%`)
 
 function stateText(f: Fact): string | null {
-  if (f.state === 'ok') return null
+  if (f.state === 'measured') return null
   if (f.state === 'not_applicable') return 'not applicable'
-  const label = f.state === 'stale' ? 'stale' : 'unknown'
+  const label = 'unknown'
   const bits = [f.reason, f.remediation].filter(Boolean).join(' · ')
-  return `${label}${f.ageSeconds != null && f.state === 'stale' ? ` (${Math.round(f.ageSeconds / 60)}m old)` : ''}${bits ? ` — ${bits}` : ''}`
+  return `${label}${bits ? ` — ${bits}` : ''}`
 }
 
 function SymbolBlock({ s }: { s: SymbolContext }) {
@@ -34,13 +34,11 @@ function SymbolBlock({ s }: { s: SymbolContext }) {
       <b style={{ color: TOKENS.text[0] }}>{s.symbol}</b>
       {qState
         ? <span data-testid={`v7-quote-${s.symbol}`} style={{ color: toneVars('warning').color, fontWeight: 600 }}>
-            {q.state === 'stale' && q.price != null
-              ? <>price <b style={{ color: TOKENS.text[0] }}>{money(q.price)}</b> stale{q.ageSeconds != null ? ` (${Math.round(q.ageSeconds / 60)}m old)` : ''}</>
-              : <>price {qState}</>}
+            <>price {qState}</>
           </span>
         : <span data-testid={`v7-quote-${s.symbol}`} style={small}>
             <b style={{ color: TOKENS.text[0] }}>{money(q.price) ?? 'price unknown'}</b>
-            {q.session ? ` · ${q.session}` : ''}{q.asOf ? ` · ${fmtAsOf(q.asOf) ?? q.asOf}` : ''}{q.source ? ` · ${q.source}` : ''}{q.basis ? ` · ${q.basis}` : ''}
+            {q.session ? ` · ${q.session}` : ''}{q.asOf ? ` · ${fmtAsOf(q.asOf) ?? q.asOf}` : ''}{q.source ? ` · ${q.source}` : ''}{q.basis ? ` · ${q.basis}` : ''}{q.ageSeconds != null && q.ageSeconds >= 300 ? ` · ${Math.round(q.ageSeconds / 60)}m old` : ''}
           </span>}
     </div>
     {stateText(s.dayChange) ? <div style={dim}>day change {stateText(s.dayChange)}</div>

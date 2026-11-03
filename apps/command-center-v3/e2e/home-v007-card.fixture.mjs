@@ -53,23 +53,23 @@ const html = `<html><head><meta name="viewport" content="width=device-width,init
 const V7 = {
   symbols: {
     DEMO: {
-      quote: { state: 'ok', as_of: '2026-11-02T21:00:00Z', source: 'market_quotes:alpaca', age_seconds: 30, session: 'regular', session_date: '2026-11-02', expected_session_date: '2026-11-02', basis: 'last trade', value: { price: 49.87 } },
+      quote: { state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'market_quotes:alpaca', age_seconds: 30, session: 'regular', session_date: '2026-11-02', expected_session_date: '2026-11-02', basis: 'last trade', value: { price: 49.87 } },
       day_change: { state: 'ok', value: { usd: 0.4, pct: 0.8, reference_date: '2026-10-30' } },
       since_exit: { state: 'ok', value: { usd: -0.1, pct: -0.3, exit_price: 50, exit_date: '2026-10-30' } },
       analysis_references: [{ label: 'invalidation', price: 47.5, distance_usd: -2.4, distance_pct: -4.8, state: 'ok' }],
       headlines: [{ title: 'Synthetic guarded headline', source: 'feed', published_at: '2026-11-02T18:00:00Z', age_seconds: 10800 }],
       next_event: { label: 'earnings', at: '2026-11-10T21:00:00Z', state: 'ok' },
-      cio: { state: 'ok', stance: 'hold', conviction: 3, store_label: 'canonical', stale: false, age_seconds: 7200 },
-      market_risk_stance: { state: 'ok', value: 'elevated' },
+      cio: { state: 'measured', value: { stance: 'hold', conviction: 3, store_label: 'canonical', stale: false }, age_seconds: 7200 },
+      market_risk_stance: { state: 'measured', value: { stance: 'elevated' } },
       volume_vs_20d: { state: 'ok', value: { ratio: 1.4, sample_dates: ['2026-10-31'], not_time_adjusted: true } },
     },
-    STALE1: { quote: { state: 'stale', age_seconds: 5400, as_of: '2026-11-02T19:30:00Z', value: { price: 12.5 } } },
+    STALE1: { quote: { state: 'measured', age_seconds: 5400, as_of: '2026-11-02T19:30:00Z', value: { price: 12.5 } } },
     GONE: { quote: { state: 'missing', reason: 'canonical regular-session quote not measured', remediation: 'wait for the reader' } },
   },
-  risk: { score: 61, categories: [{ key: 'tech', label: 'Technology', chip: 'STRESS', state: 'ok' }], next_evaluation: { at: '2026-11-03T14:00:00Z', basis: 'declared' } },
+  risk: { score: 61, categories: [{ category: 'tech', label: 'Technology', chip: 'STRESS', state: 'measured' }], next_evaluation: { state: 'measured', value: { at: '2026-11-03T14:00:00Z', basis: 'declared' } } },
   hedge: { triggers: [{ label: 'Technology', current: 4.8, threshold: 10, met: false }], inverse_funds: [{ symbol: 'SH', day_pct: 0.6, state: 'ok' }] },
-  budgets: [{ key: 'b1', label: 'Demo Taxable', current: 21000, budget: 15000, unit: 'usd', breach: true, clears_when: 'below 15000', state: 'ok', operator_decision: { state: 'unavailable', remediation: 'pending reviewed route' } }],
-  gaps: [{ member: 'cio.rationale', key: 'not_exposed', reason: 'store does not expose it', remediation: 'ask owner' }],
+  budgets: [{ budget: 'demo_taxable', actual: 21000, limit: 15000, unit: 'usd', clears_when: 'below 15000', source_binding: { as_of: '2026-11-02T21:00:00Z', sha256: '0'.repeat(64) }, operator_decision: { state: 'unavailable', remediation: { key: 'pending_route', action: 'pending reviewed route' } } }],
+  gaps: [{ symbol: 'DEMO', field: 'cio.rationale', reason: 'store does not expose it', remediation: { key: 'ask_owner', action: 'ask owner' } }],
 }
 const browser = await chromium.launch({ args: ['--no-sandbox'] })
 const results = []
@@ -123,7 +123,7 @@ try {
       assert.ok(m.v7, `home_v007 section missing at ${width}`)
       assert.ok(m.v7text.includes('DEMO'), `v7 symbol missing at ${width}`)
       assert.ok(m.v7text.includes('$49.87'), `v7 price missing at ${width}`)
-      assert.ok(/price \$12\.5 stale/.test(m.v7text), `stale case must keep its value at ${width}: ${m.v7text.slice(0,200)}`)
+      assert.ok(/\$12\.5/.test(m.v7text) && /90m old/.test(m.v7text), `a measured-but-old quote must show its value and age at ${width}: ${m.v7text.slice(0,400)}`)
       assert.ok(/price unknown/.test(m.v7text) && /not measured/.test(m.v7text), `missing case not explicit at ${width}`)
       assert.ok(/intentional decision/.test(m.v7text), `budget decision state missing at ${width}`)
       assert.ok(/a size, an order or a stop level/.test(m.v7text), `advisory line missing at ${width}`)
