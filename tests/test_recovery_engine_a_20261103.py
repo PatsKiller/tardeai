@@ -570,7 +570,8 @@ def test_f11_the_caller_s_boundary_is_honoured(store):
     assert [f.exit_date for f in read.fills] == [date(2026, 10, 30)]
     assert all("2030" not in gap for gap in read.gaps)
     # and the work list honours `since` the same way: from mid-November only the future-dated symbol is listed
-    pairs, _ = fc.symbols_with_confirmed_exits(conn, since=date(2026, 11, 15))
+    pairs, _, enumerated_ok = fc.symbols_with_confirmed_exits(conn, since=date(2026, 11, 15))
+    assert enumerated_ok is True
     assert pairs == [("FUTR", "schwab_taxable")]
     conn.close()
 
@@ -635,4 +636,46 @@ def test_r5_an_open_case_extends_without_changing_its_id(store):
     assert [e["date"] for e in case.exits] == ["2030-01-02", "2030-01-10"]
     assert case.operator_decision == "snoozed" and case.operator_note == "keep me"
     assert len(store.list()) == 1
+    conn.close()
+
+
+# ── cx-openai-2's F12/F13 at 6b844aace ──────────────────────────────────────────────────────────────────────
+def test_f12_a_third_unchanged_pass_does_not_refill_a_case_with_an_older_cluster(store):
+    """F12: the newest case was refreshed from ALL older history, so a repeat pass re-absorbed a CLOSED cluster."""
+    conn = _source_db()
+    _watch(conn, "2026-10-30", 100.0, -15000)
+    _tx(conn, "2026-10-30", 100)
+    _positions(conn, 0)
+    from lib.recovery_engine import fills_consumer as fc
+    first = fc.run(store, conn, today=TODAY, now=NOW)
+    closed_key = first["opened"][0]
+    store.set_state(closed_key, "CLOSED")
+    _watch(conn, "2026-11-02", 90.0, -500)
+    _tx(conn, "2026-11-02", 50)
+    second = fc.run(store, conn, today=TODAY, now=NOW)          # allocates the 11-02 case
+    third = fc.run(store, conn, today=TODAY, now=NOW)           # identical pass, no source change
+    assert second["complete"] is True and third["complete"] is True
+    cases = {c.case_key: c for c in store.list()}
+    assert len(cases) == 2, cases
+    new_key = next(k for k in cases if k != closed_key)
+    assert [e["date"] for e in cases[new_key].exits] == ["2026-11-02"], cases[new_key].exits
+    assert cases[new_key].realized_pnl == pytest.approx(-500) and cases[new_key].materiality_tier == "T3"
+    assert [e["date"] for e in cases[closed_key].exits] == ["2026-10-30"]
+    assert cases[closed_key].realized_pnl == pytest.approx(-15000)
+    owned = [(k, e["date"]) for k, c in cases.items() for e in c.exits]
+    assert sorted(d for _, d in owned) == ["2026-10-30", "2026-11-02"], owned
+
+
+def test_f13_a_confirmed_exit_that_cannot_be_priced_makes_the_pass_incomplete(store):
+    """F13: a confirmed exit excluded for want of a price reported complete=true."""
+    conn = _source_db()
+    _watch(conn, "2026-10-30", "damaged", -1000)
+    conn.execute("INSERT INTO trade_transactions VALUES ('2026-10-30','SELL','SPCX',100,'bad','schwab_taxable')")
+    _positions(conn, 0)
+    from lib.recovery_engine import fills_consumer as fc
+    out = fc.run(store, conn, today=TODAY, now=NOW)
+    assert out["opened"] == [] and out["cases"] == []
+    assert out["complete"] is False, out
+    assert out["failed"] and "no case could be built" in out["failed"][0]
+    assert any("no usable fill price" in gap for gap in out["gaps"])
     conn.close()

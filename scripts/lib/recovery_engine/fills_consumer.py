@@ -40,6 +40,9 @@ class ExitRead:
     source: str
     gaps: list[str]
     residual_as_of: Optional[str] = None
+    # Explicit case-coverage status, never inferred from the text of a gap (cx-openai-2 F13): True when a source was
+    # unavailable or a confirmed exit could not become a case at all (no usable price, damaged row).
+    incomplete: bool = False
 
 
 def _query(conn: Any, sql: str, params: tuple = ()) -> tuple[list[tuple], Optional[str]]:
@@ -74,6 +77,9 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
     """
     gaps: list[str] = []
     fills: list[rc.ExitFill] = []
+    # Explicit coverage status (cx-openai-2 F13): a source failure or an excluded confirmed exit means "this pair is
+    # not fully covered", never a clean pass inferred from the wording of a gap.
+    incomplete = False
 
     if as_of is None:
         watch_sql, watch_params = _WATCH_SQL, (symbol, account)
@@ -84,6 +90,7 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
     watch, watch_err = _query(conn, watch_sql, watch_params)
     if watch_err:
         gaps.append(f"stopped_out_watch is unavailable ({watch_err})")
+        incomplete = True
     for stopped_at, exit_price, realized, stop_price, broker in watch:
         try:
             closed_on = _as_date(stopped_at)
@@ -94,6 +101,7 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
         except (TypeError, ValueError) as exc:
             # One damaged row is excluded and reported; it never aborts the symbol and never becomes a zero fill.
             gaps.append(f"a stopped_out_watch row for {symbol}/{account} is unreadable ({exc}); it is excluded")
+            incomplete = True
             continue
         pnl = _finite(realized)
         if pnl is None:
@@ -110,6 +118,7 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
     tx, tx_err = _query(conn, tx_sql, tx_params)
     if tx_err:
         gaps.append(f"trade_transactions is unavailable ({tx_err}); the exit universe is incomplete")
+        incomplete = True
     tx_by_day: dict[date, list[tuple[float, Optional[float]]]] = {}
     for trade_date, quantity, price in tx:
         try:
@@ -117,11 +126,13 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
         except (TypeError, ValueError) as exc:
             gaps.append(f"a trade_transactions row for {symbol}/{account} has an unreadable date ({exc}); "
                         "it is excluded")
+            incomplete = True
             continue
         qty = _finite(quantity)
         if qty is None:
             gaps.append(f"a {day} trade_transactions row for {symbol}/{account} has no usable quantity; "
                         "it is excluded")
+            incomplete = True
             continue
         tx_by_day.setdefault(day, []).append((qty, _finite(price)))
 
@@ -163,6 +174,7 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
         priced = [(q, p) for q, p in quantities if p is not None]
         if not priced:
             gaps.append(f"the {day} exit has no usable fill price; no case is opened from a sale without a price")
+            incomplete = True
             continue
         price = round(sum(q * p for q, p in priced) / sum(q for q, _ in priced), 6)
         fills.append(rc.ExitFill(symbol=symbol, account=account, exit_date=day, shares=total_qty, price=price,
@@ -209,7 +221,7 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
         residual_as_of = str(clock_rows[0][0])[:10]
 
     return ExitRead(fills=fills, residual_shares=residual, pre_exit_weight_pct=None,
-                    source="broker-fills", gaps=gaps, residual_as_of=residual_as_of)
+                    source="broker-fills", gaps=gaps, residual_as_of=residual_as_of, incomplete=incomplete)
 
 
 # A case in one of these states is finished; a later exit opens a NEW case rather than extending it.
@@ -246,20 +258,44 @@ def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date]
               "residual_as_of": read.residual_as_of, "gaps": read.gaps, **moments}
     if not existing:
         return rc.consume_fills(store, fills, **common)
-    newest = existing[-1]
-    last_date = date.fromisoformat(str(newest.exits[-1]["date"])[:10])
-    within = [f for f in fills if f.exit_date <= last_date]
-    later = [f for f in fills if f.exit_date > last_date]
-    if later and newest.state not in TERMINAL_STATES:
-        # Extend the open case without re-keying: its stored exits plus the new ones, its cluster_key unchanged.
-        merged = [_as_exit_fill(symbol, account, row) for row in newest.exits] + later
-        return rc.consume_fills(store, merged, cluster_key=newest.cluster_key, **common)
-    if later:
-        # The newest case is finished: a new case from the new exits only. Old exits are not replayed.
-        return rc.consume_fills(store, later, **common)
-    if within:
-        return rc.consume_fills(store, within, cluster_key=newest.cluster_key, **common)
-    return None
+    # Partition by OWNERSHIP, not by "everything up to the newest row's last date" (cx-openai-2 F12). A fill belongs to
+    # the existing case whose date range contains it; only fills belonging to no case are new. Without this, a third
+    # unchanged pass refreshed the newest case with an OLDER case's fills and the same exit ended up in two rows.
+    ranges: list[tuple[rc.RecoveryCase, date, date]] = []
+    for case in existing:
+        dates = sorted(date.fromisoformat(str(e["date"])[:10]) for e in case.exits)
+        ranges.append((case, dates[0], dates[-1]))
+    assigned: dict[str, list[rc.ExitFill]] = {case.case_key: [] for case, _, _ in ranges}
+    unassigned: list[rc.ExitFill] = []
+    for fill in fills:
+        owner = next((case for case, low, high in ranges if low <= fill.exit_date <= high), None)
+        if owner is None:
+            unassigned.append(fill)
+        else:
+            assigned[owner.case_key].append(fill)
+    result: Optional[rc.RecoveryCase] = None
+    for case, _low, _high in ranges:
+        got = assigned[case.case_key]
+        if not got:
+            continue
+        # Refresh THIS case from its own stored exits, with the read's numbers for the dates it actually owns. Never
+        # merge in another cluster's fills, and never duplicate an exit that is already stored.
+        by_date = {f.exit_date.isoformat(): f for f in got}
+        merged = [by_date.pop(str(row["date"])[:10], None) or _as_exit_fill(symbol, account, row)
+                  for row in case.exits]
+        merged.extend(by_date.values())
+        refreshed = rc.consume_fills(store, merged, cluster_key=case.cluster_key, **common)
+        result = refreshed
+    if unassigned:
+        newest, _low, newest_last = ranges[-1]
+        if unassigned[0].exit_date > newest_last and newest.state not in TERMINAL_STATES:
+            # Extend the open case without re-keying: its stored exits plus the new ones, its cluster_key unchanged.
+            merged = [_as_exit_fill(symbol, account, row) for row in newest.exits] + unassigned
+            result = rc.consume_fills(store, merged, cluster_key=newest.cluster_key, **common)
+        else:
+            # The newest case is finished (or the fill predates every case): a new case from the new exits only.
+            result = rc.consume_fills(store, unassigned, **common)
+    return result
 
 
 def consume_symbol(store: rc.CaseStore, conn: Any, symbol: str, account: str, *,
@@ -280,11 +316,13 @@ _SYMBOLS_TX_SQL_SINCE = ("SELECT DISTINCT symbol, account FROM trade_transaction
                          "('SELL','SOLD','STOP','STOPPED','SELL_TO_CLOSE') AND trade_date >= %s")
 
 
-def symbols_with_confirmed_exits(conn: Any, *, since: Optional[date] = None) -> tuple[list[tuple[str, str]], list[str]]:
+def symbols_with_confirmed_exits(conn: Any, *, since: Optional[date] = None
+                                ) -> tuple[list[tuple[str, str]], list[str], bool]:
     """The work list — and the failures that would otherwise look like an empty one.
 
     A failed enumeration used to return no pairs and no error, so the pass reported "nothing to do" while every
-    possible case was being dropped (cx-openai-2 F9). ``since`` is now honoured.
+    possible case was being dropped (cx-openai-2 F9). ``since`` is now honoured. The third value is the structured
+    enumeration status: False when a source failed, so completeness never depends on the wording of a gap.
     """
     gaps: list[str] = []
     if since is None:
@@ -293,13 +331,16 @@ def symbols_with_confirmed_exits(conn: Any, *, since: Optional[date] = None) -> 
     else:
         rows, watch_err = _query(conn, _SYMBOLS_WATCH_SQL_SINCE, (since.isoformat(),))
         tx, tx_err = _query(conn, _SYMBOLS_TX_SQL_SINCE, (since.isoformat(),))
+    enumerated_ok = True
     if watch_err:
         gaps.append(f"stopped_out_watch is unavailable ({watch_err}); the work list is incomplete")
+        enumerated_ok = False
     seen = {(str(s).upper(), str(a)) for s, a in rows if s and a}
     if tx_err:
         gaps.append(f"trade_transactions is unavailable ({tx_err}); the work list is incomplete")
+        enumerated_ok = False
     seen |= {(str(s).upper(), str(a)) for s, a in tx if s and a}
-    return sorted(seen), gaps
+    return sorted(seen), gaps, enumerated_ok
 
 
 def run(store: rc.CaseStore, conn: Any, *, today: Optional[date] = None,
@@ -313,13 +354,19 @@ def run(store: rc.CaseStore, conn: Any, *, today: Optional[date] = None,
         "today": today or (now or datetime.now(timezone.utc)).date(),
         "now": now or datetime.now(timezone.utc),
     }
-    pairs, gaps = symbols_with_confirmed_exits(conn)
+    pairs, gaps, enumerated_ok = symbols_with_confirmed_exits(conn)
     opened, refreshed, failed = [], [], []
+    covered = True
     for symbol, account in pairs:
         try:
             read = read_confirmed_exits(conn, symbol, account, as_of=as_of)
             gaps.extend(f"{symbol}/{account}: {gap}" for gap in read.gaps)
+            if read.incomplete:
+                covered = False
             if not read.fills:
+                if read.incomplete:
+                    # Confirmed exits existed but none could become a case: say so as a failure, not a clean skip.
+                    failed.append(f"{symbol}/{account}: confirmed exits present, no case could be built")
                 continue
             before = {c.case_key for c in store.list()}
             case = open_or_extend(store, read, **moments)
@@ -330,5 +377,5 @@ def run(store: rc.CaseStore, conn: Any, *, today: Optional[date] = None,
             failed.append(f"{symbol}/{account}: {type(exc).__name__}: {exc}")
             gaps.append(f"{symbol}/{account}: the case could not be built ({type(exc).__name__}: {exc})")
     return {"opened": opened, "refreshed": refreshed, "failed": failed, "gaps": gaps,
-            "complete": not failed and not any("unavailable" in g for g in gaps),
+            "complete": bool(enumerated_ok and covered and not failed),
             "cases": [c.to_dict() for c in store.list()]}
