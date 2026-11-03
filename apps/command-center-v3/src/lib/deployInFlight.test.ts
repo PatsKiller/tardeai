@@ -304,5 +304,9 @@ eq('evidence state is case-insensitive', evidenceState('observed'), 'OBSERVED')
 eq('an unrecognised evidence state stays null', evidenceState('WAT'), null)
 eq('no state gives no sentence', evidenceSentence(undefined), null)
 
+// cc3's served contract adds two states to the vocabulary; both must read as words, never as a pass.
+eq('evidence PARTIAL', evidenceSentence('PARTIAL'), 'partly checked — one of the sources did not answer')
+eq('evidence TARGET_HEAD_MISSING', evidenceSentence('TARGET_HEAD_MISSING'), 'the check refers to a version that is no longer the one proposed')
+
 console.log(`deployInFlight: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

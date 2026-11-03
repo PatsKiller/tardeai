@@ -19,6 +19,8 @@ export const IN_FLIGHT_SCHEMA = 'DeployInFlight@v1'
 export const IN_FLIGHT_SCHEMA_V2 = 'DeployInFlight@v2'
 export const KNOWN_SCHEMAS = [IN_FLIGHT_SCHEMA, IN_FLIGHT_SCHEMA_V2] as const
 
+import type { PipelineStage } from './workPipeline'
+
 export type Mergeable = 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN'
 export type ReviewState = 'MERGE' | 'CHANGES' | 'NONE' | 'UNKNOWN'
 export type CiState = 'GREEN' | 'RED' | 'PENDING' | 'SKIPPED' | 'UNKNOWN'
@@ -89,6 +91,8 @@ export type CoordinationAgent = {
   blocker: string | null
   next_action: string | null
   as_of: string | null
+  /** The claim's own heartbeat — present even when the BOARD row carries no time. */
+  claim_as_of?: string | null
   source: string | null
 }
 
@@ -106,11 +110,32 @@ export type CoordinationBlock = {
  *  `UNKNOWN` on the page is a symptom, not an answer: four different situations produced it and the operator could
  *  not tell "we never looked" from "we looked at a different version". Each state gets one plain sentence, and an
  *  unrecognised state is never silently turned into a pass. */
-export type EvidenceState = 'OBSERVED' | 'STALE_OTHER_HEAD' | 'NOT_RECORDED' | 'SOURCE_UNAVAILABLE'
+/** Which pipeline stage a PR row is at, from its own facts — then `operatorStage()` gives the plain-English group.
+ *
+ *  Deliberately conservative: an unknown fact lands in the earliest stage that is still TRUE ("being built"), never in
+ *  "ready" or "live", because telling the operator something is ready when we cannot see its review is the failure this
+ *  page exists to stop. */
+export function prPipelineStage(pr: Pick<InFlightPr, 'has_operator_merge' | 'is_draft' | 'mergeable' | 'work'>): PipelineStage {
+  const pub = pr.work?.publication_state
+  if (pub === 'merged' || pub === 'live') return pub === 'merged' ? 'merged' : 'released'
+  if (pr.has_operator_merge) return 'in_batch'
+  if (pr.is_draft || pub === 'local_only') return 'building'
+  if (pr.mergeable === 'CONFLICTING') return 'pr_open'
+  const review = pr.work?.review?.state
+  const ci = pr.work?.ci?.state
+  if (review === 'MERGE' && ci === 'GREEN') return 'approved'
+  return 'pr_open'
+}
 
+export type EvidenceState = 'OBSERVED' | 'PARTIAL' | 'STALE_OTHER_HEAD' | 'TARGET_HEAD_MISSING' | 'NOT_RECORDED'
+  | 'SOURCE_UNAVAILABLE'
+
+/** The served wire states (cc3 contract, 2026-11-03) plus the local SOURCE_UNAVAILABLE kept for older payloads. */
 export const EVIDENCE_SENTENCE: Record<EvidenceState, string> = {
   OBSERVED: 'checked',
+  PARTIAL: 'partly checked — one of the sources did not answer',
   STALE_OTHER_HEAD: 'checked, but for an older version of the change',
+  TARGET_HEAD_MISSING: 'the check refers to a version that is no longer the one proposed',
   NOT_RECORDED: 'no check is recorded',
   SOURCE_UNAVAILABLE: 'the record of the check could not be read',
 }
@@ -124,6 +149,16 @@ export function evidenceState(v: unknown): EvidenceState | null {
 export function evidenceSentence(v: unknown): string | null {
   const st = evidenceState(v)
   return st ? EVIDENCE_SENTENCE[st] : null
+}
+
+/** What the OPERATOR may do on this row, as the server decided it (row 05, cc3 contract 2026-11-03).
+ *  `eligible` is the authority: a button is rendered only when its action is listed there. `withheld` explains an
+ *  action that exists but is not the operator's, so a missing button can say why instead of vanishing. */
+export type OperatorActions = {
+  required: boolean
+  eligible: Array<'approve' | 'hold' | 'push'>
+  reason: string | null
+  withheld?: Array<{ action: string; why: string | null }>
 }
 
 export type InFlightPr = {
@@ -140,6 +175,7 @@ export type InFlightPr = {
   why_held: string | null
   next: LegacyNext
   work: WorkBlock
+  operator_actions?: OperatorActions | null
 }
 
 export type DeployInFlightWire = {
@@ -526,6 +562,7 @@ export function normalizeCoordination(raw: unknown, nowMs: number = Date.now()):
       blocker: asText(o.blocker),
       next_action: asText(o.next_action),
       as_of: asText(o.as_of),
+      claim_as_of: claimAsOf,
       source: asText(o.source),
     }
     const prior = bySession.get(session)

@@ -19,6 +19,8 @@ import {
   type SectionKey, type SectionView, type Serving, type Timeline, type TimelineRow,
 } from '../lib/releasesSchedules'
 import OpsDeskFrame from '../components/OpsDeskFrame'
+import { IN_FLIGHT_PATH, normalizeCoordination, normalizeRows, type DeployInFlightWire, type InFlightPr } from '../lib/deployInFlight'
+import { goingLive, jobsLine, liveNow, needsYou, plainText, stuck } from '../lib/releasesOperatorView'
 
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 14, minWidth: 0, display: 'grid', gap: 8 }
 const h2: CSSProperties = { margin: 0, fontSize: TYPE.md, fontWeight: 800, color: TOKENS.text[0] }
@@ -166,11 +168,115 @@ function N8nTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
   </div>
 }
 
+
+/** The operator view: what is live, what needs him, what is stuck and who fixes it (operator 2026-11-03). Every number
+ *  carries its own clock or says in words that it has none; no code, SHA, branch or PR number appears here. */
+function OperatorView({ s, rows, agents, generatedAt, flightError, loading, now }: {
+  s: Record<SectionKey, SectionView<any>>; rows: InFlightPr[]
+  agents: Array<{ agent?: string | null; task?: string | null; state?: string; as_of?: string | null }>
+  generatedAt: string | null; flightError: string | null; loading: boolean; now: number }) {
+  const when = (v: string | null | undefined) => (v ? etDateTime(v) : 'unknown')
+  const status = liveNow(s as any, generatedAt, when)
+  const ask = needsYou(rows)
+  const groups = goingLive(rows)
+  const blocked = stuck(rows)
+  const td = s.n8n_today
+  const jobs = jobsLine(td as any, when)
+  const hist = s.history.value as { releases: ReleaseRow[]; receipts_total: number } | null
+  const notChecked = flightError ? `The open-change list could not be read (${flightError}); anything below is from the sources that answered, and this is not an all-clear.` : null
+  return <div data-testid="rs-operator-view" style={{ display: 'grid', gap: 12, minWidth: 0 }}>
+    <section data-testid="rs-what-is-live" style={{ ...panel, gap: 6 }}>
+      <ChipRow><Chip tone={status.tone} variant="solid">{status.tone === 'success' ? 'All good' : status.tone === 'danger' ? 'Needs attention' : 'Watch'}</Chip></ChipRow>
+      <h2 style={{ ...h2, fontSize: TYPE.lg }}>{loading ? 'Checking what is live…' : status.headline}</h2>
+      <p style={{ ...muted, color: TOKENS.text[1] }}>{loading ? 'This is not an all-clear yet — the sources have not answered.' : status.detail}</p>
+      <p style={muted}>{loading ? 'no clock yet' : status.clock}</p>
+      {ask.length ? <a href="#rs-needs-you" style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', color: TOKENS.primary, fontWeight: 700 }}>{ask.length} thing{ask.length === 1 ? '' : 's'} need you ↓</a> : null}
+    </section>
+
+    <section id="rs-needs-you" data-testid="rs-needs-you" style={panel}>
+      <h2 style={h2}>Needs you</h2>
+      {notChecked ? <p role="status" style={{ ...muted, color: toneVars('warning').color }}>{notChecked}</p> : null}
+      {ask.length === 0 ? <p style={muted}>{notChecked ? 'Nothing needs you from the sources that answered.' : 'Nothing needs you.'}</p> : ask.map(p => (
+        <div key={p.number} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}`, paddingTop: 8 }}>
+          <div style={{ fontSize: TYPE.base, color: TOKENS.text[0], fontWeight: 700 }}>{plainText(p.title)}</div>
+          <div style={muted}>{plainText(p.work?.current_task ?? p.work?.owner, 'the agent that wrote it')} finished it and the checks passed.</div>
+          <div style={muted}>If you say yes, it is queued for the next merge window; the host still has to promote it before it is live.</div>
+          <a href={p.url} style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', color: TOKENS.primary }}>Open the change and approve it →</a>
+        </div>))}
+    </section>
+
+    <section data-testid="rs-going-live" style={panel}>
+      <h2 style={h2}>Going live today</h2>
+      {!rows.length ? <p style={muted}>{notChecked ?? 'Nothing is going live today.'}</p> : groups.map(g => (
+        <div key={g.stage}>
+          <h3 style={{ ...h2, fontSize: TYPE.base, marginTop: 8 }}>{g.label} · {g.rows.length}</h3>
+          {g.rows.map(p => <div key={p.number} style={{ ...muted, padding: '4px 0' }}>
+            {plainText(p.title)} — {plainText(p.work?.owner ?? p.work?.board_owner, 'nobody assigned yet')}
+            {p.work?.as_of ? `, last touched ${when(p.work.as_of)}` : ', no time recorded for this step'}
+          </div>)}
+        </div>))}
+    </section>
+
+    <section data-testid="rs-stuck" style={panel}>
+      <h2 style={h2}>Stuck — and who fixes it</h2>
+      {!blocked.length ? <p style={muted}>{rows.length || !notChecked ? 'Nothing is stuck right now.' : 'Cannot tell what is stuck — the open-change list could not be read.'}</p>
+        : blocked.map(({ pr, because, whose }) => <div key={pr.number} style={{ ...muted, padding: '4px 0' }}>
+          <b style={{ color: TOKENS.text[0] }}>{plainText(pr.title)}</b> — {because}. {whose} has the next step.
+        </div>)}
+    </section>
+
+    <section data-testid="rs-agents-now" style={panel}>
+      <h2 style={h2}>Agents now</h2>
+      {!agents.length ? <p style={muted}>{notChecked ? 'Cannot tell who is working — the agent list could not be read. That is not the same as idle.' : 'No agent is working right now.'}</p>
+        : agents.map((a, i) => <div key={i} style={{ ...muted, padding: '2px 0', color: a.state === 'idle' ? toneVars('warning').color : TOKENS.text[1] }}>
+          {plainText(a.agent, 'An agent session')}: {plainText(a.task, 'no task named')} — {String(a.state ?? 'state not stated').replace(/_/g, ' ')}
+        </div>)}
+    </section>
+
+    <section data-testid="rs-old-work" style={panel}>
+      <h2 style={h2}>Old work</h2>
+      <p style={muted}>The daily pull-request audit is not counted on this page, so no number is shown here rather than a guess.</p>
+      <a href="/coordination?rag=red" style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', color: TOKENS.primary }}>See the blocked and red work →</a>
+    </section>
+
+    <section data-testid="rs-recent-releases" style={panel}>
+      <h2 style={h2}>Recent releases</h2>
+      {!hist?.releases?.length ? <p style={muted}>Release history cannot be read right now.</p> : hist.releases.slice(0, 5).map(r => {
+        const vl = verifyLabel(r)
+        const verdict = /VERIFIED$/.test(vl.text) ? 'Checked working: yes.' : vl.text === 'ROLLBACK' ? 'This release was rolled back.'
+          : /NOT VERIFIED/.test(vl.text) ? 'Checked working: no.' : 'Checked working: not recorded — the receipt was replaced by a later release.'
+        return <div key={r.receipt} style={{ ...muted, padding: '4px 0' }}>
+          <b style={{ color: TOKENS.text[0] }}>{etDateTime(r.at)}</b> — {verdict}
+          {' '}The recorded changes are not named in words on this page.
+        </div>
+      })}
+    </section>
+
+    <section data-testid="rs-jobs-health" style={panel}>
+      <h2 style={h2}>Scheduled jobs health</h2>
+      <p style={{ ...muted, color: jobs.tone === 'warning' ? toneVars('warning').color : TOKENS.text[1] }}>{jobs.text}</p>
+      <p style={muted}>{jobs.clock}</p>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Link to="/system/ops-controls?tab=jobs" style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', color: TOKENS.primary }}>Open the job controls →</Link>
+        <Link to="/ops/jobs" style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', color: TOKENS.primary }}>See every job →</Link>
+      </div>
+    </section>
+  </div>
+}
+
 export default function ReleasesSchedules() {
   const now = useNow(15_000)
   const [params, setParams] = useSearchParams()
   const tab: TabKey = params.get('tab') === 'jobs' ? 'jobs' : params.get('tab') === 'n8n' ? 'n8n' : 'deploys'
   const api = useApi<ReleasesSchedulesWire>(RELEASES_SCHEDULES_PATH, 60_000, { enabled: tab !== 'jobs' })
+  // Operator view first (operator 2026-11-03). The developer content stays, behind a toggle, closed by default.
+  const eng = params.get('engineer') === '1' || tab !== 'deploys'
+  const setEng = (open: boolean) => { const n = new URLSearchParams(params); if (open) n.set('engineer', '1'); else n.delete('engineer'); setParams(n, { replace: true }) }
+  const flight = useApi<DeployInFlightWire>(IN_FLIGHT_PATH, 60_000)
+  const flightWire = ((flight.data as { data?: DeployInFlightWire } | DeployInFlightWire | null) as any)?.data ?? flight.data
+  const flightRows: InFlightPr[] = flightWire && Array.isArray(flightWire.prs) ? normalizeRows(flightWire.prs).rows : []
+  const flightAgents = normalizeCoordination(flightWire?.coordination).agents
+  const flightError = flight.error ? String(flight.error) : (flightWire?.reason ?? null)
   const opts = { nowMs: now, error: !!api.error, stale: api.stale }
   const keys: SectionKey[] = ['serving', 'next_release', 'history', 'release_errors', 'n8n_today', 'timeline']
   const s = Object.fromEntries(keys.map(k => [k, sectionView(api.data, k, opts)])) as Record<SectionKey, SectionView<any>>
@@ -182,8 +288,29 @@ export default function ReleasesSchedules() {
   const select = (t: TabKey) => { const n = new URLSearchParams(params); if (t === 'deploys') n.delete('tab'); else n.set('tab', t); setParams(n, { replace: true }) }
   return <OpsDeskFrame page="releases">
 <div className="ops-evidence-page" data-testid="releases-schedules" style={{ display: 'grid', gap: 12, minWidth: 0, maxWidth: '100%' }}>
+    <OperatorView s={s} rows={flightRows} agents={flightAgents} generatedAt={api.data?.generated_at ?? null}
+      flightError={flightError} loading={api.loading && !api.data} now={now} />
+
+    <button type="button" id="rs-engineer-toggle" data-testid="rs-engineer-toggle" aria-expanded={eng} aria-controls="rs-engineer-details"
+      onClick={() => setEng(!eng)}
+      style={{ minHeight: 44, width: '100%', textAlign: 'left', cursor: 'pointer', background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`,
+        borderRadius: RADIUS.md, padding: '10px 14px', color: TOKENS.text[0], fontSize: TYPE.sm, fontWeight: 700 }}>
+      {eng ? 'Hide details for engineers' : 'Details for engineers'}
+      <span style={{ display: 'block', fontWeight: 400, color: TOKENS.text[2], marginTop: 2 }}>
+        Everything the page showed before is here: raw tables, commit identifiers, check names and run ids.
+      </span>
+    </button>
+
+    <div data-testid="rs-engineer-tabs">
+    <nav role="tablist" aria-label="Releases and schedules sections" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', borderBottom: `1px solid ${TOKENS.border}`, paddingBottom: 10 }}>
+      {TABS.map(([k, label]) => <button key={k} type="button" role="tab" aria-selected={tab === k} data-testid={`rs-tab-${k}`} onClick={() => select(k)}
+        style={{ borderRadius: RADIUS.md, padding: '8px 14px', fontSize: TYPE.sm, fontWeight: 700, cursor: 'pointer', minHeight: 44,
+          background: tab === k ? TOKENS.bg[2] : 'transparent', border: `1px solid ${tab === k ? TOKENS.primary : TOKENS.border}`, color: tab === k ? TOKENS.text[0] : TOKENS.text[2] }}>{label}</button>)}
+    </nav>
+    </div>
+
+    <section id="rs-engineer-details" aria-labelledby="rs-engineer-toggle" hidden={!eng} style={{ display: 'grid', gap: 12, minWidth: 0 }}>
     <div style={{ ...panel, gap: 4 }}>
-      <h1 style={{ margin: 0, fontSize: TYPE.lg, color: TOKENS.text[0] }}>Releases &amp; schedules</h1>
       <p style={muted}>Serving pin · last promote · deploy STOP · Mergify queue (external) · n8n schedules. Read-only; nothing here merges, promotes or schedules.</p>
       <ChipRow>
         {api.error && !api.data ? <Chip tone="warning">UNAVAILABLE · {api.error}</Chip> : api.loading && !api.data ? <Chip tone="neutral">Loading</Chip>
@@ -208,12 +335,9 @@ export default function ReleasesSchedules() {
       })}
     </div>
 
-    <nav role="tablist" aria-label="Releases and schedules sections" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', borderBottom: `1px solid ${TOKENS.border}`, paddingBottom: 10 }}>
-      {TABS.map(([k, label]) => <button key={k} type="button" role="tab" aria-selected={tab === k} data-testid={`rs-tab-${k}`} onClick={() => select(k)}
-        style={{ borderRadius: RADIUS.md, padding: '8px 14px', fontSize: TYPE.sm, fontWeight: 700, cursor: 'pointer', minHeight: 44,
-          background: tab === k ? TOKENS.bg[2] : 'transparent', border: `1px solid ${tab === k ? TOKENS.primary : TOKENS.border}`, color: tab === k ? TOKENS.text[0] : TOKENS.text[2] }}>{label}</button>)}
-    </nav>
+
     {tab === 'deploys' ? <DeploysTab s={s} /> : tab === 'jobs' ? <JobsHealth /> : <><p style={muted}>Schedules below declare intended fires. The Jobs tab shows whether each job actually ran and succeeded.</p><N8nTab s={s} /></>}
+    </section>
   </div>
   </OpsDeskFrame>
 }

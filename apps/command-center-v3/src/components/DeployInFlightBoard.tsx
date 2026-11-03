@@ -100,7 +100,9 @@ function AgentCard({ a }: { a: CoordinationAgent }) {
     </div>
     {a.blocker ? <div style={{ fontSize: TYPE.sm, color: toneVars('danger').color }}>blocked: {a.blocker}</div> : null}
     {a.next_action ? <div style={tiny}>next: {a.next_action}</div> : null}
-    <div style={tiny}>{a.as_of ? asOfText(a.as_of) : 'as_of not stated'} · {a.source ?? 'source not stated'}</div>
+    <div style={tiny}>{a.as_of ? asOfText(a.as_of)
+      : a.claim_as_of ? `claim heartbeat ${asOfText(a.claim_as_of)}`
+      : 'as of not stated — no claim heartbeat in the sources read'} · {a.source ?? 'source not stated'}</div>
   </div>
 }
 
@@ -236,9 +238,17 @@ export default function DeployInFlightBoard() {
   const refreshHints = () => post({ action: 'refresh_hints' }, 'refresh_hints')
 
   // Unchanged authority: the actions' guards are the same as before; review/CI text never enables a button.
-  const canApprove = (p: InFlightPr) => !p.is_draft && p.mergeable !== 'CONFLICTING' && !p.has_operator_merge
-  const canHold = (p: InFlightPr) => p.has_operator_merge
-  const canPush = (p: InFlightPr) => !p.is_draft && p.branch !== ''
+  // Row 05 (operator 2026-11-03): a button that is merely disabled still reads as 'this is on you'. A conflicted
+  // 8-day-old PR showed an ENABLED Push (it was neither draft nor branch-less). Actions are now rendered only
+  // where the operator could actually act, and a row with none says whose step it is instead of showing buttons.
+  // `operator_actions.eligible` is the server's decision (cc3 contract, 2026-11-03); the local rules below are
+  // only the fallback for an older payload that does not carry it.
+  const eligible = (p: InFlightPr, a: 'approve' | 'hold' | 'push') => p.operator_actions
+    ? (p.operator_actions.eligible ?? []).includes(a) : null
+  const canApprove = (p: InFlightPr) => eligible(p, 'approve') ?? (!p.is_draft && p.mergeable !== 'CONFLICTING' && !p.has_operator_merge)
+  const canHold = (p: InFlightPr) => eligible(p, 'hold') ?? p.has_operator_merge
+  const canPush = (p: InFlightPr) => eligible(p, 'push') ?? (!p.is_draft && p.branch !== '' && p.mergeable !== 'CONFLICTING' && p.next !== 'coordinator')
+  const hasAction = (p: InFlightPr) => canApprove(p) || canHold(p) || canPush(p)
 
   return <section data-testid="deploy-in-flight" style={{ display: 'grid', gap: 10 }}>
     <div style={panel}>
@@ -311,23 +321,24 @@ export default function DeployInFlightBoard() {
                     <div style={tiny}>{f.source ?? 'source not stated'}</div>
                   </td>
                   <td data-label="Actions" style={td}>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      <button type="button" data-testid={`approve-${p.number}`} onClick={() => approve(p)}
-                        disabled={busy !== null || !canApprove(p)} style={btn('success', busy !== null || !canApprove(p))}
+                    {!hasAction(p) ? <span style={tiny}>not yours to act on — {f.next ?? 'the next step belongs to the agent or coordinator'}</span>
+                      : <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {canApprove(p) && <button type="button" data-testid={`approve-${p.number}`} onClick={() => approve(p)}
+                        disabled={busy !== null} style={btn('success', busy !== null)}
                         title="Adds operator-merge (bound to this head SHA) so Mergify queues the PR.">
                         Approve
-                      </button>
-                      <button type="button" data-testid={`hold-${p.number}`} onClick={() => hold(p)}
-                        disabled={busy !== null || !canHold(p)} style={btn('warning', busy !== null || !canHold(p))}
+                      </button>}
+                      {canHold(p) && <button type="button" data-testid={`hold-${p.number}`} onClick={() => hold(p)}
+                        disabled={busy !== null} style={btn('warning', busy !== null)}
                         title="Removes operator-merge so Mergify will not queue the PR.">
                         Hold
-                      </button>
-                      <button type="button" data-testid={`push-${p.number}`} onClick={() => push(p)}
-                        disabled={busy !== null || !canPush(p)} style={btn('info', busy !== null || !canPush(p))}
+                      </button>}
+                      {canPush(p) && <button type="button" data-testid={`push-${p.number}`} onClick={() => push(p)}
+                        disabled={busy !== null} style={btn('info', busy !== null)}
                         title="Issues a git-push guard grant bound to this branch + head SHA and fast-forward pushes it. Force-push stays refused.">
                         Push
-                      </button>
-                    </div>
+                      </button>}
+                    </div>}
                   </td>
                 </tr>
               })}
