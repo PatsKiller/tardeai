@@ -369,6 +369,7 @@ class PrCensus:
                 "refreshing": self._running,
                 "min_interval_s": self.min_interval_s,
                 "refreshes": self.refreshes,
+                "open_truncated": bool((self.value or {}).get("open_truncated")),
             }
 
     def _json(self, argv: list[str]) -> tuple[Any, str | None]:
@@ -429,7 +430,7 @@ class PrCensus:
             repo = LC.default_repo()
             opened, w = self._json(
                 [
-                    "gh", "pr", "list", "--repo", repo, "--state", "open", "--limit", str(MAX_OPEN_PRS), "--json",
+                    "gh", "pr", "list", "--repo", repo, "--state", "open", "--limit", str(MAX_OPEN_PRS + 1), "--json",
                     "number,title,url,headRefName,headRefOid,baseRefName,isDraft,author,createdAt,updatedAt",
                 ]
             )  # fmt: skip
@@ -449,6 +450,9 @@ class PrCensus:
                 raise RuntimeError(warnings[0] if warnings else "open PR list unavailable")
             if not isinstance(merged, list):
                 raise RuntimeError(warnings[-1] if warnings else "merged PR list unavailable")
+            open_truncated = len(opened) > MAX_OPEN_PRS
+            if open_truncated:
+                warnings.append(f"open_pr_limit_exceeded: more than {MAX_OPEN_PRS} open PRs; observed subset retained")
             # Keep the list cheap: large nested rollups time out on GitHub. Each bounded detail query
             # is head-bound, so a push between the list and detail cannot lend green checks to an old head.
             candidates = [p for p in opened[:MAX_OPEN_PRS] if isinstance(p, dict)]
@@ -512,6 +516,7 @@ class PrCensus:
                             break
             value = {
                 "open": open_prs,
+                "open_truncated": open_truncated,
                 "merged": merged_prs,
                 "batches": batches,
                 "required": required,
@@ -1553,7 +1558,7 @@ class WorkPipeline:
             "stage_label": dict(STAGE_LABEL),
             "stage_help": dict(STAGE_HELP),
             "summary": {**summarize(items),
-                        "in_flight": None if (src.get("source_gaps") or {}).get("claims") or item_limits.get("truncated") else sum(bool(i["in_flight"]) for i in items),
+                        "in_flight": None if (src.get("source_gaps") or {}).get("claims") or item_limits.get("truncated") or (census or {}).get("open_truncated") else sum(bool(i["in_flight"]) for i in items),
                         "known_in_flight": sum(bool(i["in_flight"]) for i in items),
                         "needs_me": waiting.get("pending_count"), "known_needs_me": waiting.get("actionable_count")},
             "items": items,

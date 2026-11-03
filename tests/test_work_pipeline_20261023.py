@@ -849,3 +849,37 @@ def test_known_broadcast_state_is_not_a_claim_but_wrong_claim_schema_stays_visib
     (tmp_path / "20261023T150000Z-claude-bbbbbbbb.json").write_text('{"schema":"wrong"}')
     _, bad = board.ClaimBoard(tmp_path).read_all()
     assert bad == ["20261023T150000Z-claude-bbbbbbbb.json"]
+
+
+@pytest.mark.parametrize("count", [0, 2, 3, 4])
+def test_open_census_overflow_is_named_without_extra_detail_calls(monkeypatch, count):
+    monkeypatch.setattr(W, "MAX_OPEN_PRS", 2)
+    calls = []
+    def runner(argv):
+        calls.append(argv)
+        if argv[:3] == ["gh", "pr", "list"]:
+            if "open" not in argv:
+                return "[]", None
+            assert argv[argv.index("--limit") + 1] == "3"  # one lightweight overflow probe
+            return json.dumps([{"number": n, "headRefOid": f"{n:040x}", "headRefName": f"wt/synthetic-{n}",
+                                "createdAt": ago(hours=2), "updatedAt": ago(minutes=1)} for n in range(1, count + 1)]), None
+        if argv[:3] == ["gh", "pr", "view"]:
+            return json.dumps({"headRefOid": f"{int(argv[3]):040x}", "statusCheckRollup": [],
+                               "files": [], "labels": [], "changedFiles": 0}), None
+        return json.dumps({"contexts": [], "sha": "a" * 40}), None
+    census = W.PrCensus(runner=runner, now=lambda: NOW)
+    census.kick(background=False)
+    value, meta = census.snapshot()
+    overflow = count > 2
+    assert len(value["open"]) == min(count, 2)
+    assert value["open_truncated"] is meta["open_truncated"] is overflow
+    assert sum(a[:3] == ["gh", "pr", "view"] for a in calls) == min(count, 2)
+    assert ("open_pr_limit_exceeded" in (meta["warning"] or "")) is overflow
+    pipeline = W.WorkPipeline(census=census, sources=lambda: {"claims": [], "tasks": []},
+                              health=lambda: {}, now=lambda: NOW)
+    result = pipeline._build()
+    assert result["summary"]["in_flight"] == (None if overflow else count)
+    assert result["summary"]["known_in_flight"] == min(count, 2)
+    if overflow:
+        assert any(g["source"] == "census" and "open_pr_limit_exceeded" in g["reason"]
+                   for g in result["coordination"]["gaps"])
