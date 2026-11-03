@@ -135,6 +135,30 @@ def test_failed_watch_select_rolls_back_before_any_write(state):
     assert conn.rollbacks >= 1 and "ZZA" in pri["symbols"]
 
 
+def test_failed_watch_rollback_keeps_both_diagnostics_and_other_sources(tmp_path, monkeypatch):
+    def watch_unavailable(_cur):
+        raise RuntimeError("SYNTHETIC_PRIVATE_SOURCE")
+
+    class FailedRollback:
+        calls = 0
+
+        def rollback(self):
+            self.calls += 1
+            raise OSError("SYNTHETIC_PRIVATE_ROLLBACK")
+
+    monkeypatch.setattr(sdd, "_held", lambda _root: ["ZZA"])
+    monkeypatch.setattr(sdd, "_watch", watch_unavailable)
+    monkeypatch.setattr(sdd, "_prospectus", lambda _root: ["ZZF"])
+    conn = FailedRollback()
+    result = sdd.priority_universe(None, state_root=tmp_path, conn=conn)
+    assert result["symbols"] == ["ZZA", "ZZF"] and conn.calls == 1
+    assert result["sources"]["watch"] == {
+        "status": "error", "error": "RuntimeError", "rollback_error": "OSError"
+    }
+    assert result["sources"]["held"]["status"] == result["sources"]["prospectus"]["status"] == "ok"
+    assert "SYNTHETIC_PRIVATE" not in json.dumps(result)
+
+
 def test_sync_fetches_priority_first_and_paces(state, monkeypatch):
     conn = Conn(_responder())
     monkeypatch.setattr(sdd, "_get_conn", lambda: conn)
@@ -291,6 +315,8 @@ def test_claimed_research_reader_queries_filter_retired_rows():
 
 
 def test_bound_retired_provider_regex_keeps_matching_rules_and_rejects_invalid_names():
+    assert re.search(dst.RETIRED_SOURCE_PATTERN, "fmp_api", re.I)
+    assert not re.search(dst.RETIRED_SOURCE_PATTERN, "yfinance", re.I)
     pattern = dst.retired_source_pattern(("legacy", "older"))
     for source in ("legacy", "LEGACY_api", "older-feed"):
         assert re.search(pattern, source, re.I), source

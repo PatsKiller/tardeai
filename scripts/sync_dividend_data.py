@@ -182,8 +182,8 @@ def priority_universe(cur, state_root: Path = None, conn=None) -> dict:
             if name == "watch" and conn is not None:
                 try:
                     conn.rollback()
-                except Exception:  # noqa: BLE001
-                    pass
+                except Exception as rollback_exc:  # noqa: BLE001
+                    sources[name]["rollback_error"] = type(rollback_exc).__name__
         for s in got:
             if s not in seen:
                 seen.add(s)
