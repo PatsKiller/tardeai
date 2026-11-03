@@ -313,3 +313,28 @@ def test_within_portfolio_and_layer_status_weights_are_not_confident(wl, tmp_pat
     (tmp_path / "holdings.json").write_bytes(b"")
     layers = wl._build_layer_status(_Conn())
     assert "actual=" not in layers
+
+
+def test_an_absent_store_does_not_crash_any_consumer(wl, tmp_path):
+    """ABSENT means "no snapshot" (an empty book), and an empty book must still not crash a consumer.
+
+    Found at the frozen 6575714b9: `_build_layer_status` iterated `holdings.get(...)` with
+    `holdings is None` on this path. The contract stays (absent = no positions); the crash does not.
+    """
+    out_ctx = wl._get_context(_Conn(), "AAA")
+    out_port = wl._get_portfolio_context(_Conn(), "AAA")
+    text = wl._build_layer_status(_Conn())
+    assert out_ctx["snapshot"]["holdings_state"] == "absent"
+    assert out_ctx["snapshot"]["positions_available"] is True
+    assert "NOT CURRENTLY HELD" in out_ctx["text"]
+    assert out_port["positions_available"] is True and out_port["total_shares"] == 0
+    assert isinstance(text, str)  # absent is an empty book, not an unreadable file
+
+
+def test_a_path_like_store_that_is_a_directory_does_not_crash_any_consumer(wl, tmp_path):
+    (tmp_path / "holdings.json").mkdir()
+    out_ctx = wl._get_context(_Conn(), "AAA")
+    assert out_ctx["snapshot"]["positions_available"] is False
+    assert out_ctx["snapshot"]["holdings_state"] == "unreadable"
+    assert "NOT CURRENTLY HELD" not in out_ctx["text"]
+    assert isinstance(wl._build_layer_status(_Conn()), str)
