@@ -256,8 +256,8 @@ def label_set(pr: dict[str, Any]) -> set[str]:
 
 
 def every_check_green(rollup: Iterable[dict[str, Any]] | None) -> dict[str, Any]:
-    """Every non-skipped check run on this head is success or neutral (scripts/lib/pr_all_checks_green.py)."""
-    return pacg.evaluate_rollup(rollup)
+    """The required four completed SUCCESS; every other executed check is green."""
+    return pacg.evaluate_merge_rollup(rollup, required=pmt.REQUIRED_CHECKS)
 
 
 def checks_green(rollup: Iterable[dict[str, Any]] | None) -> tuple[bool, dict[str, str]]:
