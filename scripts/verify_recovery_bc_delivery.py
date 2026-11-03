@@ -321,13 +321,28 @@ def run_ab_session(state_dir: Path, now_iso: str, out_path: Path) -> int:
     ready_snap = {**base_snap, "close": 152.0, "rsi": 45.0, "rsi_prev": 34.0}
     snaps = {"DEMO1": base_snap, "DEMO2": base_snap}
 
+    store_path = state_dir / "cases.json"
+
     class MemoryStore:
+        """File-backed so a SECOND session observes the state the first one persisted (non-vacuity)."""
+
         def __init__(self, cases):
             self.cases = cases
             self.writes = []
+            if store_path.exists():
+                try:
+                    saved = json.loads(store_path.read_text(encoding="utf-8"))
+                except ValueError:
+                    saved = None
+                if isinstance(saved, list) and saved:
+                    by_key = {str(c.get("case_key")): c for c in saved}
+                    self.cases = [by_key.get(str(c.get("case_key")), c) for c in cases]
 
         def list_open(self, *, limit=200):
-            return list(self.cases)
+            return [dict(c) for c in self.cases]
+
+        def _persist(self):
+            store_path.write_text(json.dumps(self.cases, indent=1, sort_keys=True), encoding="utf-8")
 
         def update_state(self, key, **fields):
             if fail_write:
@@ -336,6 +351,7 @@ def run_ab_session(state_dir: Path, now_iso: str, out_path: Path) -> int:
             for case in self.cases:
                 if str(case.get("case_key")) == str(key):
                     case.update(fields)
+            self._persist()
 
     store = MemoryStore([dict(r) for _obj, r in rows.values()])
     pending_path = state_dir / "notify_pending.json"
@@ -401,6 +417,9 @@ def run_ab_session(state_dir: Path, now_iso: str, out_path: Path) -> int:
                                     "policy_percent_a": policy_a.triggers.get("r1_reclaim_exit_pct"),
                                     "policy_fraction_b": policy_b.get("reclaim_exit_pct"),
                                     "state_writes": len(store.writes),
+                                    "changed": first.get("changed"),
+                                    "first_pass_changed": first.get("changed"),
+                                    "second_pass_changed": (second or {}).get("changed"),
                                     "notifier_calls": first.get("notifier_calls"),
                                     "raw_deliveries_in_session": counter["n"],
                                     "deliveries_first_pass": deliveries_first,
@@ -574,8 +593,11 @@ def main(argv: list[str] | None = None) -> int:
                         "b_triggers": r["b_triggers"], "notify": r["notify"]} for sym, r in r1.items()},
     }
     p6 = {
-        "pass": (s2_ab["notifier_calls"] == 2 and s2_ab["raw_deliveries_in_session"] == 0
-                 and all((r["notify"] or {}).get("deduped_by_floor") for r in r2.values())),
+        # an unchanged, already-delivered case must not even reach C on the next pass (lead contract)
+        "pass": ((s2_ab.get("second_pass_changed") if s2_ab.get("second_pass_changed") is not None
+                  else s2_ab.get("changed")) == 0
+                 and s2_ab["notifier_calls"] == 0 and s2_ab["raw_deliveries_in_session"] == 0),
+        "changed_in_second_session": s2_ab.get("changed"),
         "notifier_calls_from_run_pass": s2_ab["notifier_calls"],
         "raw_deliveries_session2": s2_ab["raw_deliveries_in_session"],
         "receipts": {sym: r["notify"] for sym, r in r2.items()},
@@ -598,11 +620,13 @@ def main(argv: list[str] | None = None) -> int:
     f1, f2 = json.loads(r1_out.read_text()), json.loads(r2_out.read_text())
     proofs["P7_a_failed_delivery_is_retried_by_the_next_scheduled_pass"] = {
         "pass": (f1["notifier_calls"] == 2 and f1["raw_deliveries_in_session"] == 0 and f1["pending"] == 2
+                 and f1["changed"] == 2
+                 and f2.get("changed") == 0          # loaded from the persisted store: NOT a fresh transition
                  and f2["notifier_calls"] == 2 and f2["raw_deliveries_in_session"] == 2 and f2["pending"] == 0),
         "failed_pass": {"notifier_calls": f1["notifier_calls"], "raw_deliveries": f1["raw_deliveries_in_session"],
                         "pending": f1["pending"]},
         "retry_pass": {"notifier_calls": f2["notifier_calls"], "raw_deliveries": f2["raw_deliveries_in_session"],
-                       "pending": f2["pending"]},
+                       "pending": f2["pending"], "changed": f2.get("changed")},
     }
 
     # P8 — a failed STATE WRITE pages nothing (and is recorded as an error)
