@@ -394,10 +394,13 @@ def test_arming_needs_named_grant_and_daily_cap():
 
 
 def test_policy_gate_blocks_push_until_amendment_active():
-    assert not F.policy_verdict(AGENTS_TEXT, CFG)["push_allowed"]  # main today: 24.5 binds
     marker = CFG["policy_gate"]["amendment_heading_marker"]
-    assert not F.policy_verdict(f"{marker} (13.0.0, PROPOSED)\n", CFG)["push_allowed"]
-    assert F.policy_verdict(f"{marker} (13.0.0, ACTIVE; amends 24.5)\n", CFG)["push_allowed"]
+    # Before the amendment: §24.5 binds.
+    assert not F.policy_verdict("## 24.5 No push, PR or remote write from a scheduled job\n", CFG)["push_allowed"]
+    assert not F.policy_verdict(f"{marker} (31.0.0, PROPOSED)\n", CFG)["push_allowed"]
+    assert F.policy_verdict(f"{marker} (31.0.0, ACTIVE; amends 24.5)\n", CFG)["push_allowed"]
+    # The landed policy carries the ACTIVE heading (§24.16).
+    assert F.policy_verdict(AGENTS_TEXT, CFG)["push_allowed"]
 
 
 # ---------------------------------------------------------------- evaluator, selector, repair memory

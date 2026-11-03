@@ -1,7 +1,7 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      30.0.0
+Policy-Version:      31.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
@@ -13,8 +13,9 @@ Supersedes:          29.3.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
-**30.0.0 is ACTIVE (MAJOR)** — standing feature uploads, delegated clean uploads, release-coordinator merges,
-merge-watching and one server-side approved-plan registry (§11, §25.10.4, §28.4, §28.15, §28.17).
+**31.0.0 is ACTIVE (MAJOR)** — one named exception to §24.5: the `self-heal-fixer` lane may push one
+`self-heal-fix/…` branch and open one draft PR per fix job, never merge, never main/release, never broker,
+credential, order or policy paths, and every fix PR needs two independent reviews (§24.16).
 Ratified by the operator at the reviewed source head; this status-only edit takes effect on merge.
 Approval and consolidation records are in docs/governance/AGENTS_HISTORY.md; old source branches remain.
 No broker, secret or deploy grant.
@@ -2259,6 +2260,19 @@ workflow health contract (`config/n8n_health_contracts.json`): `N8N_MONITORING_A
   *Cause: 2026-10-30 — backups archived on the same disk; no audit saw 646 worktrees accumulate (LESSONS L24-18).*
 ---
 
+## 24.16 Self-heal fix PRs from the self-heal-fixer lane — ACTIVE (31.0.0; amends §24.5 for this lane only)
+
+- **One named exception to §24.5, only this lane.** The registered `self-heal-fixer` lane
+  (`scripts/self_heal_fixer.py`, `config/self_heal_fixer.json`) may push ONE `self-heal-fix/…` branch and open ONE
+  draft PR labelled `self-heal-fix` per fix job, within the push budget and never with an override.
+- **Never** `main`/`release/*`, a force-push, a broker/credential/order/execution/policy/guard/CI-gate path (the diff
+  guard refuses them), and **the fixer never merges** — every fix PR needs two independent reviews and the normal route.
+- **Proof before the PR:** a `code_error` diagnosis, a regression test failing at the base and passing with the fix, and
+  `run_cio_hardening_ci.py --profile pr` green in the worktree. **Armed** only by a `git-push` grant naming the lane,
+  capped at `daily_job_cap` jobs a day. Details: `docs/ops/self_heal_claude_fixer.md` §9. Nothing else in §24.5 changes.
+
+---
+
 # 25 · Merge and deploy
 
 §25.1–§25.9 are retired and not reused. Procedure: `docs/ops/AGENT_MERGIFY_HANDOFF.md`.
@@ -2672,6 +2686,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 31.0.0 | 2026-11-03 | ACTIVE | MAJOR | Supersedes 30.0.0. §24.16: ONE named exception to §24.5 for the `self-heal-fixer` lane only — it may push one `self-heal-fix/…` branch and open one draft PR per fix job (labelled `self-heal-fix`), within the push budget and never with an override; never main/release, never force-push, never broker/credential/order/execution/policy paths, the diff guard still refuses them; every fix PR needs two independent reviews and the fixer never merges; armed only by an active `git-push` grant naming `self-heal-fixer`. Nothing else in §24.5 loosens. | `APPROVE_AGENTS_POLICY_31_0_0 <PR> <sha>` (operator) |
 | 30.0.0 | 2026-11-03 | ACTIVE | MAJOR | Supersedes 29.3.0. Standing scoped/delegated uploads, ordinary AND held engineering merges with tests/docs and two held reviews, merge-watching, one approved-plan registry; §0 rule 4/§2B/§11/§17/§20/§25.10/§28.4/§28.15/§28.17; AI_WORK_POLICY §3/§9/§11/§16/§21/§27/§28 aligned. No broker, secret or deploy authority. | `APPROVE_AGENTS_POLICY_30_0_0 2501 995e86f9abf961a37c58ae2667b0b6f6eef1c9af` (operator, https://github.com/PatsKiller/tardeai/pull/2501#issuecomment-6594072975) |
 | 29.4.0 | 2026-11-01 | WITHDRAWN | MINOR | Supersedes 29.3.0 (#2453; this content was drafted as 29.3.0 in #2450/#2451). Operator chose MINOR (2026-11-01, "minor"). §28.15 item 8 gains the standing push approval: an operator `APPROVE_PUSH_STANDING <glob> until <YYYY-MM-DD>` comment on the standing-approval issue meets the approved-plan step for the pusher's own live claim on a branch the glob covers (prefixes wt/ feat/ fix/ chore/ docs/ only; never main, master, release/*, train/*; expiry required, at most 45 days; `REVOKE_PUSH_STANDING` in any markup voids earlier ones; one operator issue, duplicates refuse; a close voids earlier comments for good; edited operator comments refuse; fenced, indented and HTML-commented lines ignored; only close-and-reopen of the same issue voids then restores; dates UTC; live only once main is 29.4.0+ ACTIVE; `gh issue create/edit/reopen/close`, `gh alias set` and `gh api` field writes are `gh-write` and `gh auth token` is `secret`, classified from shell tokens (`guard_tokens.py`), so quoting and flag placement cannot evade them). Hardened after the #2450 and #2451 security reviews (LESSONS L28-31). All other push checks unchanged. Operator 2026-11-01: "Yes, draft stand and approval." | none (withdrawn) |
 | 29.3.0 | 2026-11-01 | ACTIVE | MINOR | Supersedes 29.2.1. §11 gains draft-first PRs (open every PR as a draft; mark it ready only when the work is done and adversarial review has passed), stack discipline (only the top of a stack is ready; its CI covers the whole stack) and one weekday merge window (17:30-18:30 ET in `.mergify.yml`; urgent fixes by the operator naming the PR). §28.1's merge-window bullet now states the single window. Adds obligations only; §0, §2, §17 and role authority untouched. Cause: LESSONS L11-01 (5,369 Actions runs on 2026-10-31). | operator in-session 2026-11-01 (this session: chose "approve both rules" and "one window, 17:30 ET"); held-class operator merge (§25.10). Design: `DSN-20261031-ci-load-reduction` §4.2/§4.4/§4.5. |

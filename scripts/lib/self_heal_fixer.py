@@ -1211,7 +1211,7 @@ def policy_verdict(agents_text: str, cfg: Mapping[str, Any]) -> dict:
                 "why": "amendment ACTIVE" if ok else "amendment present but not ACTIVE",
                 "heading": line[:200],
             }
-    return {"push_allowed": False, "why": "AGENTS.md 24.5: no push/PR from a scheduled job; amendment 24.11 absent"}
+    return {"push_allowed": False, "why": "AGENTS.md 24.5: no push/PR from a scheduled job; amendment 24.16 absent"}
 
 
 def branch_name(job: Mapping[str, Any], cfg: Mapping[str, Any], now: datetime) -> str:
