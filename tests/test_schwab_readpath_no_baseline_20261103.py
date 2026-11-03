@@ -120,3 +120,117 @@ def test_protected_write_uses_an_explicit_caller_baseline(store):
     out = S.protected_holdings_write(_book(), source="test_caller", target_path=str(store), baseline=_book())
     assert out["wrote"] is True and out["baseline_source"] == "caller", out
     assert store.exists() and json.loads(store.read_text())["holdings"]
+
+
+# ── P0 (cx-openai-2, 2026-11-03): the guard's baseline must be an INDEPENDENT snapshot ────
+
+def _big_book():
+    """1,040,000 total with 120,000 cash; the rollover account dominates, as in the review probe."""
+    return {"holdings": [
+        _row("AAA", "schwab_taxable", 100, 10000.0),
+        _row("BBB", "schwab_roth", 80, 8000.0),
+        _row("CASH", "schwab_roth", 2000, 2000.0, cash=True),
+        _row("CCC", "schwab_rollover_ira", 9020, 902000.0),
+        _row("CASH", "schwab_rollover_ira", 118000, 118000.0, cash=True),
+    ]}
+
+
+def test_baseline_is_an_independent_snapshot_of_the_live_store(store, monkeypatch):
+    store.write_text(json.dumps(_book()))
+    seen = {}
+
+    def spy(cur, **kw):
+        seen["cur"], seen["baseline"] = cur, kw.get("baseline")
+        return {"wrote": False, "status": "spy"}
+
+    monkeypatch.setattr(S, "protected_holdings_write", spy)
+    monkeypatch.setattr(S, "_build_account_rows",
+                        lambda label, live, existing: ([_row("BBB", "schwab_roth", 100, 41000.0)], []))
+    monkeypatch.setattr(S, "_cash_rows_for_account", lambda *a: [])
+    S._sync_rows("schwab_roth_ira", "schwab_roth", [], object(), dry_run=False)
+    assert seen["baseline"] is not seen["cur"], "the guard must not receive the mutated candidate"
+    original = {(h["symbol"], h["market_value"]) for h in seen["baseline"]["holdings"]}
+    assert ("BBB", 40000.0) in original and ("BBB", 41000.0) not in original
+
+
+def test_baseline_from_a_backup_is_independent_too(store, monkeypatch):
+    store.write_bytes(b"")
+    _backup(store, _book())
+    seen = {}
+
+    def spy(cur, **kw):
+        seen["cur"], seen["baseline"] = cur, kw.get("baseline")
+        return {"wrote": False, "status": "spy"}
+
+    monkeypatch.setattr(S, "protected_holdings_write", spy)
+    monkeypatch.setattr(S, "_build_account_rows",
+                        lambda label, live, existing: ([_row("BBB", "schwab_roth", 100, 41000.0)], []))
+    monkeypatch.setattr(S, "_cash_rows_for_account", lambda *a: [])
+    S._sync_rows("schwab_roth_ira", "schwab_roth", [], object(), dry_run=False)
+    assert seen["baseline"] is not seen["cur"]
+    assert {h["symbol"] for h in seen["baseline"]["holdings"]} == {"AAA", "BBB", "CASH", "CCC"}
+
+
+def test_re_aliasing_the_baseline_is_refused_not_written(store, monkeypatch):
+    """If a future refactor makes cur and the baseline one object again, fail loudly before writing."""
+    store.write_text(json.dumps(_book()))
+    monkeypatch.setattr(S.copy, "deepcopy", lambda x: x)          # simulate the regression
+    monkeypatch.setattr(S, "_build_account_rows",
+                        lambda label, live, existing: ([_row("BBB", "schwab_roth", 100, 41000.0)], []))
+    monkeypatch.setattr(S, "_cash_rows_for_account", lambda *a: [])
+    before = store.read_bytes()
+    with pytest.raises(RuntimeError, match="same object"):
+        S._sync_rows("schwab_roth_ira", "schwab_roth", [], object(), dry_run=False)
+    assert store.read_bytes() == before, "nothing may be written when the guard would be disarmed"
+
+
+def _sync_with(store, monkeypatch, rows):
+    monkeypatch.setattr(S, "_build_account_rows", lambda label, live, existing: (rows, []))
+    monkeypatch.setattr(S, "_cash_rows_for_account", lambda *a: [])
+    return S._sync_rows("schwab_rollover_ira", "schwab_rollover_ira", [], object(), dry_run=False)
+
+
+def test_removing_the_rollover_cash_is_refused_cash_excluded(store, monkeypatch):
+    store.write_bytes(b"")
+    _backup(store, _big_book())
+    before = store.read_bytes()
+    out = _sync_with(store, monkeypatch, [_row("CCC", "schwab_rollover_ira", 9020, 902000.0)])
+    assert out["wrote"] is False and out["reason_code"] == "CASH_EXCLUDED", out
+    assert store.read_bytes() == before, "a refused write must leave the store byte-identical"
+
+
+def test_collapsing_the_rollover_equity_is_refused_catastrophic_drop(store, monkeypatch):
+    store.write_bytes(b"")
+    _backup(store, _big_book())
+    before = store.read_bytes()
+    out = _sync_with(store, monkeypatch, [
+        _row("CCC", "schwab_rollover_ira", 210, 21000.0),
+        _row("CASH", "schwab_rollover_ira", 118000, 118000.0, cash=True),
+    ])
+    assert out["wrote"] is False and out["reason_code"] == "CATASTROPHIC_DROP", out
+    assert store.read_bytes() == before
+
+
+# ── P1 (cx-openai-2): shape-corrupt documents are 'no snapshot', never a crash ────────────
+
+@pytest.mark.parametrize("payload", [
+    '{"holdings": null}',
+    '{"holdings": {"AAA": {}}}',
+    '{"holdings": [1]}',
+])
+def test_shape_corrupt_store_is_no_snapshot_on_read(store, payload):
+    store.write_text(payload)
+    out = S._sync_rows("schwab_roth_ira", "schwab_roth", [], object(), dry_run=True)
+    assert out["status"] == "no_snapshot" and out["wrote"] is False
+    assert out["store_state"] == "shape_invalid"
+
+
+def test_shape_corrupt_store_is_not_used_as_a_write_baseline(store, monkeypatch):
+    store.write_text('{"holdings": [1]}')
+    before = store.read_bytes()
+    monkeypatch.setattr(S, "_build_account_rows",
+                        lambda label, live, existing: ([_row("BBB", "schwab_roth", 100, 41000.0)], []))
+    monkeypatch.setattr(S, "_cash_rows_for_account", lambda *a: [])
+    out = S._sync_rows("schwab_roth_ira", "schwab_roth", [], object(), dry_run=False)
+    assert out["wrote"] is False and out["status"] == "rejected_no_baseline", out
+    assert store.read_bytes() == before

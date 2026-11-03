@@ -17,6 +17,7 @@ open-item); without them sync_schwab_positions() is a degraded NO-OP. The PROTEC
 are fully functional and proven by simulation now.
 """
 from __future__ import annotations
+import copy
 import json, os, sys, tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -95,6 +96,24 @@ def _store_state(path=None):
         return "unparseable", None
     if not isinstance(doc, dict):
         return "unparseable", None
+    # A parseable document is still not a usable one when its shape is wrong. 2026-11-03 review
+    # (cx-openai-2, P1): {"holdings": null} raised TypeError and {"holdings": {"AAA": {}}} / [1]
+    # raised AttributeError out of the read path. Wrong shape is "no snapshot", never a crash, and
+    # it is forbidden as a write baseline for the same reason an empty file is.
+    if "holdings" in doc:
+        rows = doc.get("holdings")
+        if not isinstance(rows, list):
+            return "shape_invalid", None
+        if any(not isinstance(row, dict) for row in rows):
+            return "shape_invalid", None
+    elif "positions" in doc:  # the legacy key the rest of the module still accepts
+        rows = doc.get("positions")
+        if not isinstance(rows, list):
+            return "shape_invalid", None
+        if any(not isinstance(row, dict) for row in rows):
+            return "shape_invalid", None
+    else:
+        return "shape_invalid", None
     return "ok", doc
 
 
@@ -803,8 +822,13 @@ def _sync_rows(account_key, label, live, st, *, dry_run):
                     f"[schwab_position_sync] holdings store {state} and no usable backup")
             return {"status": "rejected_no_baseline", "store_state": state, "broker_account": account_key,
                     "holdings_label": label, "wrote": False}
-        cur = baseline_doc
+        cur = copy.deepcopy(baseline_doc)
         baseline_source = f"backup:{Path(_src).name}"
+    else:
+        # P0 (cx-openai-2, 2026-11-03): `cur` is mutated below, so the guard's baseline must be an
+        # INDEPENDENT snapshot taken before that mutation. When both names pointed at one document,
+        # the relative cash/drop guards compared the candidate with itself and could never fire.
+        baseline_doc = copy.deepcopy(cur)
     hold = cur.get("holdings", [])
     existing_by_key = {((r.get("symbol") or "").upper(), label): r
                        for r in hold if r.get("account") == label}
@@ -820,6 +844,14 @@ def _sync_rows(account_key, label, live, st, *, dry_run):
                 "live_positions": len(equity_rows), "added": added, "removed": removed,
                 "share_drift_events": drift_events, "wrote": False}
     cur["holdings"] = [r for r in hold if r.get("account") != label] + new_rows
+    # Structural, not incidental: a later refactor must not be able to re-alias the two and disarm
+    # the relative guards invisibly. Same object here means there is no independent baseline, so the
+    # write is refused loudly BEFORE anything is written.
+    if baseline_doc is cur:
+        raise RuntimeError(
+            "schwab_position_sync: baseline and candidate are the same object; "
+            "the coverage/cash/drop guards would compare the new book with itself"
+        )
     res = protected_holdings_write(cur, source="schwab_position_sync", account_key=account_key, protect_basis=True,
                                    basis_label=label, baseline=baseline_doc)
     res.update({"added": added, "removed": removed, "store_state": state, "baseline_source": baseline_source})
