@@ -91,6 +91,7 @@ def test_a_plain_operator_context_cannot_be_constructed_by_a_client(tmp_path):
         ha.OperatorContext(principal="operator", session="x", csrf_ok=True,
                            listener="client", _seal=None)  # type: ignore[arg-type]
     assert caught.value.code == "server_context_required"
+    assert caught.value.plain  # the card gets a sentence, not a code
     assert store.get(record["id"])["state"] == "open"
 
 
@@ -101,7 +102,9 @@ def test_decide_refuses_without_a_server_context(tmp_path):
         with pytest.raises(ha.Refused) as caught:
             ha.decide(store, record["id"], ctx=bad, actor="operator", decision="approve", now=NOW)  # type: ignore[arg-type]
         assert caught.value.code == "server_context_required"
-    assert store.get(record["id"])["state"] == "open"
+        assert caught.value.plain
+    stored = store.get(record["id"])
+    assert stored["state"] == "open" and stored["decision"] is None and stored["decided_by"] is None
 
 
 def test_an_unverified_operator_session_or_csrf_is_refused(tmp_path):
@@ -112,8 +115,9 @@ def test_an_unverified_operator_session_or_csrf_is_refused(tmp_path):
     assert caught.value.code == "operator_session_required"
     with pytest.raises(ha.Refused) as caught:
         _decide(store, record["id"], ctx=_ctx(csrf_ok=False))
-    assert caught.value.code == "csrf_required"
-    assert store.get(record["id"])["state"] == "open"
+    assert caught.value.code == "csrf_required" and caught.value.plain
+    stored = store.get(record["id"])
+    assert stored["state"] == "open" and stored["decision"] is None
 
 
 # ── Rail 2: the asker is never the decider ──────────────────────────────────────────────────────────────────
