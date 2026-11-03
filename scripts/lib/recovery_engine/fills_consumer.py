@@ -32,6 +32,19 @@ def _as_date(value: Any) -> date:
     return date.fromisoformat(str(value)[:10])
 
 
+def _identity(table: str, value: Any) -> Optional[str]:
+    """A source row's own id, namespaced by table; None when the source gives nothing usable.
+
+    Missing, blank and malformed keys all mean UNKNOWN IDENTITY — never a shared literal, and never a licence to
+    fall back to a mutable attribute (codex F16: an id7 that defaults to "" would make every such row "the same
+    event"). The table prefix keeps two providers' local ids apart: they need not denote the same economic exit.
+    """
+    text = "" if value is None else str(value).strip()
+    if not text:
+        return None
+    return f"{table}:{text}"
+
+
 @dataclass(frozen=True)
 class ExitRead:
     fills: list[rc.ExitFill]
@@ -58,14 +71,17 @@ def _query(conn: Any, sql: str, params: tuple = ()) -> tuple[list[tuple], Option
 
 # Literal statements only (ruff S608): every variant a caller can choose is written out in full here, so no SQL text
 # is ever assembled from a runtime variable.
-_WATCH_SQL = ("SELECT stopped_out_at, exit_price, realized_pnl, stop_price, broker FROM stopped_out_watch "
+# The row's own id leads every SELECT (codex F16). Matching persisted exits to reads on mutable attributes
+# (date F14, arrival F15, price F16) manufactured a second exit whenever an attribute was corrected; the id is
+# the one column a correction to price, P&L, shares or an equivalent date form does not change.
+_WATCH_SQL = ("SELECT id, stopped_out_at, exit_price, realized_pnl, stop_price, broker FROM stopped_out_watch "
               "WHERE upper(symbol)=upper(%s) AND account=%s ORDER BY stopped_out_at")
-_WATCH_SQL_ASOF = ("SELECT stopped_out_at, exit_price, realized_pnl, stop_price, broker FROM stopped_out_watch "
+_WATCH_SQL_ASOF = ("SELECT id, stopped_out_at, exit_price, realized_pnl, stop_price, broker FROM stopped_out_watch "
                    "WHERE upper(symbol)=upper(%s) AND account=%s AND stopped_out_at < %s ORDER BY stopped_out_at")
-_TX_SQL = ("SELECT trade_date, quantity, price FROM trade_transactions "
+_TX_SQL = ("SELECT dedupe_key, trade_date, quantity, price FROM trade_transactions "
            "WHERE upper(symbol)=upper(%s) AND account=%s AND upper(action) IN "
            "('SELL','SOLD','STOP','STOPPED','SELL_TO_CLOSE') ORDER BY trade_date DESC")
-_TX_SQL_ASOF = ("SELECT trade_date, quantity, price FROM trade_transactions "
+_TX_SQL_ASOF = ("SELECT dedupe_key, trade_date, quantity, price FROM trade_transactions "
                 "WHERE upper(symbol)=upper(%s) AND account=%s AND upper(action) IN "
                 "('SELL','SOLD','STOP','STOPPED','SELL_TO_CLOSE') AND trade_date < %s ORDER BY trade_date DESC")
 
@@ -91,7 +107,7 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
     if watch_err:
         gaps.append(f"stopped_out_watch is unavailable ({watch_err})")
         incomplete = True
-    for stopped_at, exit_price, realized, stop_price, broker in watch:
+    for watch_id, stopped_at, exit_price, realized, stop_price, broker in watch:
         try:
             closed_on = _as_date(stopped_at)
             price = _finite(exit_price)
@@ -103,13 +119,29 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
             gaps.append(f"a stopped_out_watch row for {symbol}/{account} is unreadable ({exc}); it is excluded")
             incomplete = True
             continue
+        source_id = _identity("stopped_out_watch", watch_id)
         pnl = _finite(realized)
         if pnl is None:
             gaps.append(f"the {closed_on} stopped_out_watch row carries no usable realized P&L; "
                         "that exit's loss is unknown")
         fills.append(rc.ExitFill(symbol=symbol, account=account, exit_date=closed_on,
                                  shares=None, price=price, realized_pnl=pnl, stop_price=stop,
-                                 broker=str(broker or ""), source="stopped_out_watch"))
+                                 broker=str(broker or ""), source="stopped_out_watch",
+                                 source_id=source_id))
+
+    # An id carried by more than one row identifies no single event (codex F16): null it on EVERY occurrence and
+    # say so, rather than letting the first row win and the second inherit another exit's facts.
+    id_counts: dict[str, int] = {}
+    for fill in fills:
+        if fill.source_id is not None:
+            id_counts[fill.source_id] = id_counts.get(fill.source_id, 0) + 1
+    clashing = {sid for sid, n in id_counts.items() if n > 1}
+    if clashing:
+        for sid in sorted(clashing):
+            gaps.append(f"{id_counts[sid]} exits for {symbol}/{account} share the source id {sid}; its identity is "
+                        "ambiguous, so none of them is treated as an identified exit")
+        fills = [rc.ExitFill(**{**f.__dict__, "source_id": None}) if f.source_id in clashing else f for f in fills]
+        incomplete = True
 
     if as_of is None:
         tx_sql, tx_params = _TX_SQL, (symbol, account)
@@ -119,8 +151,8 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
     if tx_err:
         gaps.append(f"trade_transactions is unavailable ({tx_err}); the exit universe is incomplete")
         incomplete = True
-    tx_by_day: dict[date, list[tuple[float, Optional[float]]]] = {}
-    for trade_date, quantity, price in tx:
+    tx_by_day: dict[date, list[tuple[float, Optional[float], Optional[str]]]] = {}
+    for trade_key, trade_date, quantity, price in tx:
         try:
             day = _as_date(trade_date)
         except (TypeError, ValueError) as exc:
@@ -134,7 +166,7 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
                         "it is excluded")
             incomplete = True
             continue
-        tx_by_day.setdefault(day, []).append((qty, _finite(price)))
+        tx_by_day.setdefault(day, []).append((qty, _finite(price), _identity("trade_transactions", trade_key)))
 
     # The exit universe is every confirmed exit from BOTH sources (cx-openai-4 R3). A later broker fill used to be
     # dropped merely because it had no stopped_out_watch row, and a fill that disagreed with the watch price was
@@ -149,7 +181,7 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
             gaps.append(f"no trade_transactions row for the {fill.exit_date} exit; its share count is unknown")
             attributed.append(fill)
             continue
-        for qty, price in quantities:
+        for qty, price, _sid in quantities:
             if price is not None and fill.price and abs(price - fill.price) > max(0.01, 0.005 * abs(fill.price)):
                 # Keep the stop-out row's price (it is the recorded exit event) but never hide the disagreement.
                 gaps.append(f"conflicting exit prices on {fill.exit_date}: stopped_out_watch {fill.price:g} vs "
@@ -161,7 +193,7 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
                         "attributed from a day-level total")
             attributed.append(fill)
         else:
-            attributed.append(rc.ExitFill(**{**fill.__dict__, "shares": round(sum(q for q, _ in quantities), 6)}))
+            attributed.append(rc.ExitFill(**{**fill.__dict__, "shares": round(sum(q for q, _, _ in quantities), 6)}))
     fills = attributed
     # Every fill dated beyond the last stop-out row is its own confirmed exit, priced from the fill itself, with the
     # realized P&L unknown. It joins the universe instead of being dropped (cx-openai-4 R3, omitted later fill).
@@ -170,15 +202,19 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
         if day in covered_days:
             continue
         quantities = tx_by_day[day]
-        total_qty = round(sum(q for q, _ in quantities), 6)
-        priced = [(q, p) for q, p in quantities if p is not None]
+        total_qty = round(sum(q for q, _, _ in quantities), 6)
+        priced = [(q, p) for q, p, _ in quantities if p is not None]
         if not priced:
             gaps.append(f"the {day} exit has no usable fill price; no case is opened from a sale without a price")
             incomplete = True
             continue
         price = round(sum(q * p for q, p in priced) / sum(q for q, _ in priced), 6)
+        # A day whose whole exit is ONE source row inherits that row's identity. A day that aggregates several rows
+        # has no single identity, so it stays unidentified rather than borrowing one (codex F16).
+        day_ids = {sid for _, _, sid in quantities if sid is not None}
+        day_id = next(iter(day_ids)) if len(quantities) == 1 and len(day_ids) == 1 else None
         fills.append(rc.ExitFill(symbol=symbol, account=account, exit_date=day, shares=total_qty, price=price,
-                                 realized_pnl=None, source="trade_transactions"))
+                                 realized_pnl=None, source="trade_transactions", source_id=day_id))
         gaps.append(f"the {day} exit comes from trade_transactions with no stopped_out_watch row: its price is the "
                     "fill price and its realized P&L is unknown")
 
@@ -233,7 +269,7 @@ def _as_exit_fill(symbol: str, account: str, row: dict) -> rc.ExitFill:
                        exit_date=date.fromisoformat(str(row["date"])[:10]),
                        shares=row.get("shares"), price=float(row["price"]),
                        realized_pnl=row.get("realized_pnl"), stop_price=row.get("stop_price"),
-                       source=str(row.get("source") or ""))
+                       source=str(row.get("source") or ""), source_id=row.get("source_id"))
 
 
 def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date] = None,
@@ -290,17 +326,39 @@ def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date]
             stored = [row for row in case.exits if str(row["date"])[:10] == DateKey]
             reads = list(by_date.get(DateKey) or [])
             used: set[int] = set()
-            # Pair by EXACT price first: a re-read of the same exit matches itself, so a repeat pass changes nothing.
+            # IDENTITY FIRST (codex F16). A persisted exit and a read fill that carry the same source id are the SAME
+            # event whatever their price, P&L or share count now say, so a correction refreshes the member instead of
+            # appending a second one. Price is the fallback for rows that predate the field, and it is labelled.
             pairs: list[tuple[dict, Optional[rc.ExitFill]]] = []
             for row in stored:
-                hit = next((j for j, f in enumerate(reads)
-                            if j not in used and abs(float(f.price) - float(row["price"])) < 1e-9), None)
+                stored_id = row.get("source_id")
+                if stored_id is not None:
+                    # An identified stored row never pairs by price: an equal price is not evidence of sameness.
+                    hit = next((j for j, f in enumerate(reads)
+                                if j not in used and f.source_id == stored_id), None)
+                else:
+                    # A LEGACY row has no identity to match, so the old exact-price pairing stands — as a fallback
+                    # that names itself, never as proof. Codex I12: it may not silently claim a complete match.
+                    hit = next((j for j, f in enumerate(reads)
+                                if j not in used and f.source_id is None
+                                and abs(float(f.price) - float(row["price"])) < 1e-9), None)
+                    if hit is not None:
+                        read.gaps.append(
+                            f"the {DateKey} exit was persisted before source identity existed and was paired to a "
+                            "read by exact price alone; the link is provisional, not established")
                 if hit is not None:
                     used.add(hit)
                 pairs.append((row, reads[hit] if hit is not None else None))
             # A read fill paired to nobody is a DISTINCT exit this case has not persisted — a late arrival, not an
             # ambiguity to be dropped (codex F15). It is appended, so the case never reads a fill and discards it.
             extras = [f for j, f in enumerate(reads) if j not in used]
+            for extra in extras:
+                if extra.source_id is None:
+                    # With no id on the read there is nothing to prove this is a NEW exit rather than a corrected
+                    # one, so it is appended on date evidence alone and the reason is stated (codex F16/I12).
+                    read.gaps.append(
+                        f"a {extra.exit_date} read fill for {symbol}/{account} carries no source identity; it is "
+                        "appended as a distinct exit on date evidence only, and that is unproven")
             merged.extend(fill if fill is not None else _as_exit_fill(symbol, account, row) for row, fill in pairs)
             merged.extend(extras)
         refreshed = rc.consume_fills(store, merged, cluster_key=case.cluster_key, **common)

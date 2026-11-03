@@ -137,6 +137,11 @@ class ExitFill:
     stop_price: Optional[float] = None
     broker: str = ""
     source: str = "broker-fills"
+    #: The source row's OWN stable identity, namespaced by table: ``stopped_out_watch:<id>`` or
+    #: ``trade_transactions:<dedupe_key>``. None = the source carries no key for this row (a legacy or
+    #: paper-scaled row), which is an UNKNOWN identity, never a licence to match on price (codex F16).
+    #: The namespace matters: two providers' local ids need not denote the same economic event.
+    source_id: Optional[str] = None
 
 
 @dataclass
@@ -378,7 +383,9 @@ def build_case(
         {"date": f.exit_date.isoformat(),
          "shares": (_finite(f.shares) if f.shares is not None else None),
          "price": float(f.price),
-         "realized_pnl": _finite(f.realized_pnl), "stop_price": f.stop_price, "source": f.source}
+         "realized_pnl": _finite(f.realized_pnl), "stop_price": f.stop_price, "source": f.source,
+         # Persisted so a later run can recognise THIS exit after its mutable facts change (codex F16).
+         "source_id": f.source_id}
         for f in ordered
     ]
     # Pre-exit size is what was held immediately before the FINAL exit of this cluster, not the sum of every exit: a

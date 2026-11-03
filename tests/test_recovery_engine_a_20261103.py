@@ -236,16 +236,16 @@ def _live_shaped_db():
     conn = sqlite3.connect(":memory:")
     conn.executescript("""
         CREATE TABLE stopped_out_watch (stopped_out_at TEXT, exit_price REAL, realized_pnl REAL, stop_price REAL,
-                                        broker TEXT, symbol TEXT, account TEXT, is_active INTEGER);
+                                        broker TEXT, symbol TEXT, account TEXT, is_active INTEGER, id INTEGER PRIMARY KEY AUTOINCREMENT);
         CREATE TABLE trade_transactions (trade_date TEXT, action TEXT, symbol TEXT, quantity REAL, price REAL,
-                                         account TEXT);
+                                         account TEXT, dedupe_key TEXT);
         CREATE TABLE stop_last_known (broker TEXT, account TEXT, symbol TEXT, stop_price REAL, captured_at TEXT);
         CREATE TABLE positions_current (account_key TEXT, symbol TEXT, qty REAL);
     """)
-    conn.executemany("INSERT INTO stopped_out_watch VALUES (?,?,?,?,?,?,?,?)", [
+    conn.executemany("INSERT INTO stopped_out_watch (stopped_out_at, exit_price, realized_pnl, stop_price, broker, symbol, account, is_active) VALUES (?,?,?,?,?,?,?,?)", [
         ("2026-10-30", 137.19, -12770, 137.0, "schwab", "SPCX", "schwab_taxable", 1),
     ])
-    conn.executemany("INSERT INTO trade_transactions VALUES (?,?,?,?,?,?)", [
+    conn.executemany("INSERT INTO trade_transactions (trade_date, action, symbol, quantity, price, account) VALUES (?,?,?,?,?,?)", [
         ("2026-10-30", "SELL", "SPCX", 1200, 137.19, "schwab_taxable"),
     ])
     conn.execute("INSERT INTO stop_last_known VALUES ('schwab','schwab_taxable','SPCX',137.0,'2026-10-30')")
@@ -319,15 +319,16 @@ def test_an_unreadable_positions_store_is_unknown_not_zero(tmp_path, store):
     conn = sqlite3.connect(":memory:")
     conn.executescript("""
         CREATE TABLE stopped_out_watch (stopped_out_at TEXT, exit_price REAL, realized_pnl REAL, stop_price REAL,
-                                        broker TEXT, symbol TEXT, account TEXT, is_active INTEGER);
+                                        broker TEXT, symbol TEXT, account TEXT, is_active INTEGER, id INTEGER PRIMARY KEY AUTOINCREMENT);
         CREATE TABLE trade_transactions (trade_date TEXT, action TEXT, symbol TEXT, quantity REAL, price REAL,
-                                         account TEXT);
+                                         account TEXT, dedupe_key TEXT);
         CREATE TABLE stop_last_known (broker TEXT, account TEXT, symbol TEXT, stop_price REAL, captured_at TEXT);
         CREATE TABLE positions_current (account_key TEXT, symbol TEXT, qty REAL);
     """)
-    conn.execute("INSERT INTO stopped_out_watch VALUES ('2026-10-30', 137.19, -12770, 137.0, 'schwab', 'SPCX',"
+    conn.execute("INSERT INTO stopped_out_watch (stopped_out_at, exit_price, realized_pnl, stop_price, broker,"
+                 " symbol, account, is_active) VALUES ('2026-10-30', 137.19, -12770, 137.0, 'schwab', 'SPCX',"
                  " 'schwab_taxable', 1)")
-    conn.execute("INSERT INTO trade_transactions VALUES ('2026-10-30','SELL','SPCX',1200,137.19,'schwab_taxable')")
+    conn.execute("INSERT INTO trade_transactions (trade_date, action, symbol, quantity, price, account) VALUES ('2026-10-30','SELL','SPCX',1200,137.19,'schwab_taxable')")
     conn.commit()
     conn.execute("DROP TABLE positions_current")          # the store is unavailable
     conn.commit()
@@ -375,9 +376,9 @@ def _source_db() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     conn.executescript("""
         CREATE TABLE stopped_out_watch (stopped_out_at TEXT, exit_price REAL, realized_pnl REAL, stop_price REAL,
-                                        broker TEXT, symbol TEXT, account TEXT, is_active INTEGER);
+                                        broker TEXT, symbol TEXT, account TEXT, is_active INTEGER, id INTEGER PRIMARY KEY AUTOINCREMENT);
         CREATE TABLE trade_transactions (trade_date TEXT, action TEXT, symbol TEXT, quantity REAL, price REAL,
-                                         account TEXT);
+                                         account TEXT, dedupe_key TEXT);
         CREATE TABLE stop_last_known (broker TEXT, account TEXT, symbol TEXT, stop_price REAL, captured_at TEXT);
         CREATE TABLE positions_current (account_key TEXT, symbol TEXT, qty REAL);
         CREATE TABLE positions_sync_runs (run_id INTEGER PRIMARY KEY, finished_at TEXT, status TEXT, promoted INTEGER);
@@ -386,12 +387,12 @@ def _source_db() -> sqlite3.Connection:
 
 
 def _watch(conn, day, price, pnl, symbol="SPCX", account="schwab_taxable", stop=137.0):
-    conn.execute("INSERT INTO stopped_out_watch VALUES (?,?,?,?,?,?,?,1)",
+    conn.execute("INSERT INTO stopped_out_watch (stopped_out_at, exit_price, realized_pnl, stop_price, broker, symbol, account, is_active) VALUES (?,?,?,?,?,?,?,1)",
                  (day, price, pnl, stop, "schwab", symbol, account))
 
 
 def _tx(conn, day, qty, symbol="SPCX", account="schwab_taxable"):
-    conn.execute("INSERT INTO trade_transactions VALUES (?,?,?,?,?,?)",
+    conn.execute("INSERT INTO trade_transactions (trade_date, action, symbol, quantity, price, account) VALUES (?,?,?,?,?,?)",
                  (day, "SELL", symbol, qty, 137.19, account))
 
 
@@ -488,7 +489,7 @@ def test_r3_a_later_confirmed_fill_joins_the_universe_instead_of_being_dropped(s
 def test_r3_contradictory_exit_prices_are_flagged_not_silently_overruled(store):
     conn = _source_db()
     _watch(conn, "2026-10-30", 50.0, -1000)
-    conn.execute("INSERT INTO trade_transactions VALUES ('2026-10-30','SELL','SPCX',100,200.0,'schwab_taxable')")
+    conn.execute("INSERT INTO trade_transactions (trade_date, action, symbol, quantity, price, account) VALUES ('2026-10-30','SELL','SPCX',100,200.0,'schwab_taxable')")
     _positions(conn, 0)
     from lib.recovery_engine import fills_consumer as fc
     read = fc.read_confirmed_exits(conn, "SPCX", "schwab_taxable")
@@ -670,7 +671,7 @@ def test_f13_a_confirmed_exit_that_cannot_be_priced_makes_the_pass_incomplete(st
     """F13: a confirmed exit excluded for want of a price reported complete=true."""
     conn = _source_db()
     _watch(conn, "2026-10-30", "damaged", -1000)
-    conn.execute("INSERT INTO trade_transactions VALUES ('2026-10-30','SELL','SPCX',100,'bad','schwab_taxable')")
+    conn.execute("INSERT INTO trade_transactions (trade_date, action, symbol, quantity, price, account) VALUES ('2026-10-30','SELL','SPCX',100,'bad','schwab_taxable')")
     _positions(conn, 0)
     from lib.recovery_engine import fills_consumer as fc
     out = fc.run(store, conn, today=TODAY, now=NOW)
@@ -758,4 +759,51 @@ def test_f15_a_pass_that_cannot_persist_a_late_fill_reports_incomplete(store, mo
     monkeypatch.setattr(store, "upsert", refuse)
     out = fc.run(store, conn, today=TODAY, now=NOW)
     assert out["complete"] is False and out["failed"], out
+    conn.close()
+
+
+# ── codex F16: the source identity, not a mutable attribute ──────────────────────────────────────────────────
+def test_f16_a_price_correction_refreshes_the_exit_instead_of_minting_a_second(store):
+    """codex's own counterexample. Persist one exit priced 80, then correct the SOURCE row to 82 with no INSERT and
+    run again. Matching on price appended 82 as a second exit: -200 became -400 while the case still reported
+    complete=True, gaps=[]. Identity makes a correction a refresh of the SAME member."""
+    from lib.recovery_engine import fills_consumer as fc
+    conn = _source_db()
+    _watch(conn, "2026-10-30", 80.0, -200.0)
+    _tx(conn, "2026-10-30", 100)
+    _positions(conn, 0)
+    conn.commit()
+    first = fc.run(store, conn, today=TODAY, now=NOW)
+    assert len(first["opened"]) == 1, first
+    case = store.get(first["opened"][0])
+    assert len(case.exits) == 1 and case.exits[0]["price"] == 80.0, case.exits
+    # The id is persisted, not just used: the next run must be able to recognise this exit after its price changes.
+    assert case.exits[0]["source_id"] == "stopped_out_watch:1", case.exits[0]
+    # The operator corrects the source row in place: same row, new price, no new row.
+    conn.execute("UPDATE stopped_out_watch SET exit_price = 82.0 WHERE id = 1")
+    conn.commit()
+    second = fc.run(store, conn, today=TODAY, now=NOW)
+    assert second["opened"] == [], second
+    after = store.get(case.case_key)
+    assert len(after.exits) == 1, f"a corrected price must refresh, never duplicate: {after.exits}"
+    assert after.exits[0]["price"] == 82.0, after.exits
+    assert after.realized_pnl == pytest.approx(-200.0), after.realized_pnl
+    conn.close()
+
+
+def test_f16_two_distinct_ids_at_the_same_price_stay_two_exits(store):
+    """The other half: equality is not identity. Two rows with different ids and the SAME day, price, quantity and
+    P&L are two economic exits and must not be collapsed into one."""
+    from lib.recovery_engine import fills_consumer as fc
+    conn = _source_db()
+    _watch(conn, "2026-10-30", 80.0, -100.0)
+    _watch(conn, "2026-10-30", 80.0, -100.0)   # a second row: different id, identical everything else
+    _tx(conn, "2026-10-30", 100)
+    _positions(conn, 0)
+    conn.commit()
+    out = fc.run(store, conn, today=TODAY, now=NOW)
+    assert len(out["opened"]) == 1, out
+    case = store.get(out["opened"][0])
+    assert len(case.exits) == 2, f"two established identities must stay two exits: {case.exits}"
+    assert len({e["source_id"] for e in case.exits}) == 2, case.exits
     conn.close()
