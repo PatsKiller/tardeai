@@ -777,3 +777,21 @@ def test_manual_decision_and_no_weakening_review_required_for_every_pr(mod,field
     data=snapshot(mod)
     data["evidence"][field]=value
     assert not mod.evaluate(data,now=NOW)["ok"]
+
+
+@pytest.mark.parametrize("reviews", [1, 2])
+def test_registry_keeps_release_latch_source_held_without_duplicate_literal(mod, tmp_path, reviews):
+    """The authoritative hold registry, not duplicated classifier text, protects latch source."""
+    path = "scripts/lib/release_control.py"
+    registry = json.loads((ROOT / "config/merge_hold_paths.json").read_bytes())
+    holders = [row["id"] for row in registry["classes"] if path in row.get("globs", [])]
+    assert holders == ["merge_deploy_control"], holders
+    host = actual_collector_fixture(mod, tmp_path, changed=path, current_manifest=True, shared=True,
+                                    labels=("shared-infra",), reviews=reviews)
+    collected = host.collect(9999, ACTOR)
+    assert collected["held"] and collected["held_classes"] == ["merge_deploy_control"]
+    result = mod.evaluate(collected, now=NOW)
+    if reviews == 2:
+        assert result["ok"] and result["required_reviews"] == 2
+    else:
+        assert not result["ok"] and result["reason"] == "independent_review_count_insufficient"
