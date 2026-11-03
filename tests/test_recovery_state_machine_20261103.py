@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import sys
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -40,7 +40,8 @@ def case(**over):
 
 def snap(**over):
     base = {"close": 141.65, "rsi": 39.1, "rsi_prev": 36.0, "sma20": 151.62, "macd_up_sessions": 0,
-            "catalyst_confidence": 0.88, "catalyst_sessions_ago": 1, "entry_high": 139.00}
+            "catalyst_confidence": 0.88, "catalyst_sessions_ago": 1, "entry_high": 139.00,
+            "fetched_at": NOW.isoformat()}
     base.update(over)
     return base
 
@@ -180,9 +181,10 @@ class FakeStore:
         self.written.append((key, state))
 
 
-def test_run_pass_returns_decisions_and_writes_only_through_the_store():
+def test_run_pass_returns_decisions_and_writes_only_through_the_store(tmp_path):
     store = FakeStore([case(), case(case_key="OTHER:x", symbol="OTHER", exit_price=10.0, residual_shares=900.0)])
-    out = R.run_pass(store, lambda c: snap(), dry_run=False)
+    out = R.run_pass(store, lambda c: snap(), now=NOW, dry_run=False,
+                     pending_path=tmp_path / "pending.json")
 
     assert out["store"] == "ok" and out["considered"] == 2 and out["changed"] == 2
     assert store.written == [(c[0], c[1]) for c in
@@ -316,7 +318,7 @@ def test_a_percent_policy_loads_as_a_fraction_not_as_100x(tmp_path):
              "exits": [{"symbol": "DEMO", "price": 100.0, "shares": 100, "realized_pnl": -5000.0,
                         "exit_date": "2026-10-30"}]}
     flat = {"close": 102.0, "rsi": 35.0, "rsi_prev": 34.0, "sma20": 130.0, "macd_up_sessions": 0,
-            "catalyst_confidence": 0.0}
+            "catalyst_confidence": 0.0, "fetched_at": NOW.isoformat()}
     d = R.evaluate(a_row, flat, policy, now=NOW)
 
     assert d.triggers == {"R1": True, "R2": False, "R3": False, "R4": False, "R5": False}
@@ -335,7 +337,7 @@ def test_the_reference_is_the_final_exit_not_the_max(tmp_path):
     assert R.exit_price(a_row) == 100.0                 # final exit, not max 120
 
     flat = {"close": 102.0, "rsi": 35.0, "rsi_prev": 34.0, "sma20": 130.0, "macd_up_sessions": 0,
-            "catalyst_confidence": 0.0}
+            "catalyst_confidence": 0.0, "fetched_at": NOW.isoformat()}
     d = R.evaluate(a_row, flat, now=NOW)                # default policy (0.01 fraction)
     assert d.triggers == {"R1": True, "R2": False, "R3": False, "R4": False, "R5": False}
     assert d.state == R.RECOVERING
@@ -372,7 +374,7 @@ def test_the_scheduled_pass_pages_a_t1_recovering_transition(tmp_path):
     """The failure codex found: run_pass wrote a T1 RECOVERING case and made ZERO notifier calls."""
     store = RecordingStore([_t1_row()])
     calls = []
-    out = R.run_pass(store, lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0},
+    out = R.run_pass(store, lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0, "fetched_at": NOW.isoformat()},
                      now=NOW, dry_run=False, notify=lambda case: calls.append(case) or {"sent": True},
                      pending_path=tmp_path / "pending.json")
 
@@ -386,7 +388,7 @@ def test_the_scheduled_pass_pages_a_t1_recovering_transition(tmp_path):
 def test_the_scheduled_pass_does_not_page_a_case_that_did_not_transition(tmp_path):
     store = RecordingStore([{**_t1_row(), "state": "WATCHING"}])
     calls = []
-    out = R.run_pass(store, lambda c: {"close": 90.0, "rsi": 30.0, "sma20": 130.0},
+    out = R.run_pass(store, lambda c: {"close": 90.0, "rsi": 30.0, "sma20": 130.0, "fetched_at": NOW.isoformat()},
                      now=NOW, dry_run=False, notify=lambda case: calls.append(case) or {"sent": True},
                      pending_path=tmp_path / "pending.json")
     assert out["changed"] == 0 and out["notifier_calls"] == 0 and calls == []
@@ -395,7 +397,7 @@ def test_the_scheduled_pass_does_not_page_a_case_that_did_not_transition(tmp_pat
 def test_a_dry_run_never_pages_or_writes(tmp_path):
     store = RecordingStore([_t1_row()])
     calls = []
-    out = R.run_pass(store, lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0},
+    out = R.run_pass(store, lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0, "fetched_at": NOW.isoformat()},
                      now=NOW, dry_run=True, notify=lambda case: calls.append(case) or {"sent": True},
                      pending_path=tmp_path / "pending.json")
     assert out["notifier_calls"] == 0 and calls == [] and store.written == []
@@ -406,7 +408,7 @@ def test_a_notifier_fault_is_recorded_and_never_aborts_the_pass(tmp_path):
     store = RecordingStore([_t1_row(), {**_t1_row(), "case_key": "OTHER:x", "symbol": "OTHER"}])
     def boom(case):
         raise RuntimeError("transport down")
-    out = R.run_pass(store, lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0},
+    out = R.run_pass(store, lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0, "fetched_at": NOW.isoformat()},
                      now=NOW, dry_run=False, notify=boom,
                      pending_path=tmp_path / "pending.json")
     assert out["notifier_calls"] == 2 and len(store.written) == 2
@@ -423,7 +425,7 @@ def test_a_failed_state_write_never_pages(tmp_path):
     """Step 2 of the sequence: a page must not fire for a case that was never recorded."""
     store = FailingWriteStore([_t1_row()])
     calls = []
-    out = R.run_pass(store, lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0}, now=NOW,
+    out = R.run_pass(store, lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0, "fetched_at": NOW.isoformat()}, now=NOW,
                      dry_run=False, notify=lambda case: calls.append(case) or {"sent": True},
                      pending_path=tmp_path / "pending.json")
     assert calls == [] and out["notifier_calls"] == 0
@@ -436,7 +438,7 @@ def test_a_failed_send_stays_pending_and_is_retried_after_the_state_is_already_a
     though the state no longer changes (this is the case codex proved was lost)."""
     pending = tmp_path / "pending.json"
     store = RecordingStore([_t1_row()])
-    snap = lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0}
+    snap = lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0, "fetched_at": NOW.isoformat()}
     first = R.run_pass(store, snap, now=NOW, dry_run=False,
                        notify=lambda case: {"sent": False, "reason": "transport refused"}, pending_path=pending)
     assert first["notifier_calls"] == 1 and first["pending"] == 1
@@ -453,7 +455,7 @@ def test_a_failed_send_stays_pending_and_is_retried_after_the_state_is_already_a
 def test_a_deduped_retry_clears_the_pending_marker(tmp_path):
     pending = tmp_path / "pending.json"
     store = RecordingStore([_t1_row()])
-    snap = lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0}
+    snap = lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0, "fetched_at": NOW.isoformat()}
     R.run_pass(store, snap, now=NOW, dry_run=False,
                notify=lambda case: {"sent": False}, pending_path=pending)
     cleared = R.run_pass(RecordingStore([{**_t1_row(), "state": R.RECOVERING}]), snap, now=NOW, dry_run=False,
@@ -465,7 +467,7 @@ def test_a_deduped_retry_clears_the_pending_marker(tmp_path):
 def test_a_non_pageable_tier_does_not_create_pending_work(tmp_path):
     pending = tmp_path / "pending.json"
     store = RecordingStore([_t1_row()])
-    snap = lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0}
+    snap = lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0, "fetched_at": NOW.isoformat()}
     out = R.run_pass(store, snap, now=NOW, dry_run=False,
                      notify=lambda case: {"sent": False, "reason": "not T1 (declared); Home card / digest"},
                      pending_path=pending)
@@ -476,6 +478,58 @@ def test_a_case_that_stays_recovering_without_pending_is_not_rehanded(tmp_path):
     """The lead contract: notify on a transition or a pending retry, not on every pass that observes the state."""
     store = RecordingStore([{**_t1_row(), "state": R.RECOVERING}])
     calls = []
-    out = R.run_pass(store, lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0}, now=NOW, dry_run=False,
+    out = R.run_pass(store, lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0, "fetched_at": NOW.isoformat()}, now=NOW, dry_run=False,
                      notify=lambda case: calls.append(case) or {"sent": True}, pending_path=tmp_path / "p.json")
     assert out["changed"] == 0 and out["notifier_calls"] == 0 and calls == []
+
+
+# ── quote freshness: a stale price must not move a case (codex's scheduled stale-quote BLOCK) ──────────────
+STALE_FETCHED = (NOW - timedelta(days=8)).isoformat()
+
+
+def _run_with_snapshot(tmp_path, snapshot, *, monkeypatch=None):
+    store = RecordingStore([_t1_row()])
+    calls = []
+    out = R.run_pass(store, lambda c: snapshot, now=NOW, dry_run=False,
+                     notify=lambda case: calls.append(case) or {"sent": True},
+                     pending_path=tmp_path / "pending.json")
+    return out, calls, store
+
+
+def test_an_eight_day_old_quote_does_not_move_a_case(tmp_path):
+    """The freshness guard already exists (derive_freshness); the snapshot used to drop fetched_at, so a stale
+    price reached the triggers. At the scheduled entry point: stale -> no transition, no page."""
+    out, calls, store = _run_with_snapshot(
+        tmp_path, {"close": 102.0, "rsi": 35.0, "sma20": 130.0, "fetched_at": STALE_FETCHED})
+
+    assert out["changed"] == 0 and out["notifier_calls"] == 0 and calls == [] and store.written == []
+    assert out["decisions"][0]["state"] == R.WATCHING
+    assert "quote not current" in (out["decisions"][0]["reason"] or "")
+
+
+def test_a_fresh_quote_does_move_a_case(tmp_path):
+    """The control: the same price, dated now, transitions and pages exactly once."""
+    out, calls, store = _run_with_snapshot(
+        tmp_path, {"close": 102.0, "rsi": 35.0, "sma20": 130.0, "fetched_at": NOW.isoformat()})
+
+    assert out["changed"] == 1 and out["notifier_calls"] == 1
+    assert store.written == [("DEMO:DEMO_IRA:2030-01-10", R.RECOVERING)]
+
+
+def test_a_snapshot_with_no_fetch_time_cannot_move_a_case(tmp_path):
+    """Drop the field again and the reply is the same: unknown provenance is not freshness."""
+    out, calls, store = _run_with_snapshot(tmp_path, {"close": 102.0, "rsi": 35.0, "sma20": 130.0})
+
+    assert out["changed"] == 0 and out["notifier_calls"] == 0 and store.written == []
+    assert "DATA_UNAVAILABLE" in (out["decisions"][0]["reason"] or "")
+
+
+def test_the_stale_guard_is_what_stops_it_not_the_price(tmp_path, monkeypatch):
+    """Non-vacuity: with freshness bypassed, the SAME stale snapshot advances — so the passing stale test above
+    measures the guard, not a price that happened to be below the threshold."""
+    monkeypatch.setattr(R, "snapshot_freshness", lambda snapshot, now=None: ("CURRENT", "regular"))
+    out, calls, store = _run_with_snapshot(
+        tmp_path, {"close": 102.0, "rsi": 35.0, "sma20": 130.0, "fetched_at": STALE_FETCHED})
+
+    assert out["changed"] == 1 and out["notifier_calls"] == 1
+    assert store.written == [("DEMO:DEMO_IRA:2030-01-10", R.RECOVERING)]

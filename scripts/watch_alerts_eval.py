@@ -194,7 +194,9 @@ def _recovery_snapshot(ex, case: dict) -> dict | None:
     close = _f("price") if _f("price") is not None else _f("close")
     if close is None:
         return None
-    snap = {"close": close}
+    # The quote's OWN timestamp travels with the price: the state machine refuses a price of unknown or stale
+    # age, and _quote_is_current is the existing judgement of what "current" means.
+    snap = {"close": close, "fetched_at": row.get("fetched_at")}
     for field, keys in (("rsi", ("rsi", "rsi_14", "rsi14")), ("rsi_prev", ("rsi_prev",)),
                         ("sma20", ("sma20", "sma_20")), ("macd_up_sessions", ("macd_up_sessions",)),
                         ("stop_level", ("stop_level",)), ("entry_high", ("entry_high",))):

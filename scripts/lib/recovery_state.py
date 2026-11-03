@@ -372,6 +372,12 @@ def evaluate(case: Mapping[str, Any], snapshot: Mapping[str, Any] | None,
     if not snapshot:
         return Decision(state=prev, previous_state=prev, confidence=0.0,
                         reason="no market snapshot; state unchanged rather than guessed")
+    freshness, session = snapshot_freshness(snapshot, now=now)
+    if freshness not in FRESH_QUOTE_STATES:
+        # The guard runs on the guard's own terms, before any trigger sees the price.
+        return Decision(state=prev, previous_state=prev, confidence=0.0,
+                        reason=f"quote not current ({freshness}{', ' + str(session) if session else ''}); "
+                               "a stale or unattributed price cannot move a case")
 
     flags = _trigger_flags(case, snapshot, policy)
     weights = policy.get("weights") or DEFAULT_POLICY["weights"]
@@ -431,6 +437,38 @@ def store_accessor(conn=None, policy: Mapping[str, Any] | None = None):
         return CaseStore(conn, policy or load_policy())
     except Exception:  # noqa: BLE001 — a store that cannot start is absent, and the caller says so
         return None
+
+
+#: Quote freshness states the engine will act on. ``derive_freshness`` (scripts/lib/watch_canonical_quote.py) is
+#: the existing, session-aware authority: RTH is tight, premarket/afterhours have their own windows, a closed
+#: market holds the last print for a bounded time. Anything else — including a snapshot with NO fetch time — is
+#: not current, and a price of unknown age must not move a case (codex's scheduled stale-quote BLOCK, 2026-11-03:
+#: the guard existed, and the snapshot threw its input away).
+FRESH_QUOTE_STATES = frozenset({"CURRENT", "PREMARKET_CURRENT", "AFTER_HOURS_CURRENT"})
+
+
+def snapshot_freshness(snapshot: Mapping[str, Any] | None, *, now: datetime | None = None) -> tuple[str, str | None]:
+    """(state, session) for a snapshot's quote. Missing provenance is NOT fresh.
+
+    Delegates to the one freshness authority so the recovery lane cannot disagree with the alert lane about
+    what "current" means. An unavailable helper fails closed (UNVERIFIED).
+    """
+    if not isinstance(snapshot, Mapping):
+        return "DATA_UNAVAILABLE", None
+    fetched = snapshot.get("fetched_at") or snapshot.get("quote_at") or snapshot.get("as_of")
+    if not fetched:
+        return "DATA_UNAVAILABLE", None
+    try:
+        from lib.watch_canonical_quote import derive_freshness  # noqa: PLC0415
+    except ImportError:
+        try:
+            from scripts.lib.watch_canonical_quote import derive_freshness  # noqa: PLC0415
+        except ImportError:
+            return "UNVERIFIED", None
+    try:
+        return derive_freshness(fetched, now=now)
+    except Exception:  # noqa: BLE001 — an unreadable timestamp is not a fresh one
+        return "DATA_UNAVAILABLE", None
 
 
 #: States that are worth telling the operator about. A transition INTO one of these hands the case to
