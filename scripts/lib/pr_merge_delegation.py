@@ -29,9 +29,9 @@ import sys
 from zoneinfo import ZoneInfo
 
 try:  # repo root on sys.path
-    from scripts.lib.agent_claim_board import ClaimBoard
+    from scripts.lib.agent_claim_board import ClaimBoard, ClaimError, canonical_pattern, patterns_overlap
 except ImportError:  # scripts/ on sys.path
-    from lib.agent_claim_board import ClaimBoard  # type: ignore[no-redef]
+    from lib.agent_claim_board import ClaimBoard, ClaimError, canonical_pattern, patterns_overlap  # type: ignore[no-redef]
 
 REPO = "PatsKiller/tardeai"
 TRUSTED_REPO = Path(pwd.getpwuid(os.getuid()).pw_dir) / "trade-ai-v12-rebuild/trade-ai-v12-rebuild"
@@ -317,11 +317,30 @@ def archived_claims(board) -> dict[str, dict[str, object]]:
     return out
 
 
-def validate_takeover_graph(views, board):
+def claim_shared_paths(config):
+    """Exact shared-additive scopes from Host's main-SHA blob, never an env override."""
+    if not isinstance(config, dict) or config.get("schema") != "AgentClaimSharedPaths@v1":
+        return frozenset()
+    rows = config.get("paths")
+    if not isinstance(rows, list):
+        return frozenset()
+    shared = set()
+    for row in rows:
+        try:
+            path = canonical_pattern(row["path"])
+        except (ClaimError, KeyError, TypeError, ValueError):
+            continue
+        if not any(char in path for char in "*?["):
+            shared.add(path)
+    return frozenset(shared)
+
+
+def validate_takeover_graph(views, board, shared_config=None):
     """Refuse a takeover graph that is ambiguous or unreadable.
 
-    Chain-invalid: cycles, unknown targets, duplicate/malformed entries, and two *currently live* claimants naming the
-    same predecessor. A released (or otherwise non-live) claimant naming the same predecessor as a live one is durable
+    Chain-invalid: cycles, unknown targets, duplicate/malformed entries, and currently live claimants naming the
+    same predecessor whose exclusive path scopes overlap (or cannot be read). Disjoint live siblings are valid:
+    the board records inherited links mechanically. A released or non-live sibling is durable
     history, not ambiguity — and a predecessor that compaction removed from the views is durable history only when the
     canonical archive records it as released; a target nobody can account for still refuses.
     """
@@ -361,11 +380,32 @@ def validate_takeover_graph(views, board):
             continue
         for target in targets:
             claimants.setdefault(target, set()).add(source)
-    if any(len(sources) > 1 for sources in claimants.values()):
-        raise Refused("claim_takeover_chain_invalid")
+    # _claim_locked mechanically records EVERY overlapping stale predecessor.
+    # Shared ancestry alone is not a declaration of exclusive succession.
+    shared = claim_shared_paths(shared_config)
+    scopes = {}
+    for sources in claimants.values():
+        if len(sources) < 2:
+            continue
+        ordered = sorted(sources)
+        try:
+            for source in ordered:
+                if source in scopes:
+                    continue
+                raw = by_id[source].doc.get("paths")
+                if not isinstance(raw, list) or not raw:
+                    raise Refused("claim_takeover_chain_invalid")
+                canonical = [canonical_pattern(path) for path in raw]
+                scopes[source] = [path for path in canonical if path not in shared]
+            for index, left in enumerate(ordered):
+                for right in ordered[index + 1:]:
+                    if any(patterns_overlap(a, b) for a in scopes[left] for b in scopes[right]):
+                        raise Refused("claim_takeover_chain_invalid")
+        except (ClaimError, TypeError, ValueError, re.error):
+            raise Refused("claim_takeover_chain_invalid") from None
 
 
-def effective_claim_states(claims, board):
+def effective_claim_states(claims, board, shared_config=None):
     """Classify snapshot claims with the canonical ``ClaimBoard.views()`` resolver.
 
     released   : raw status in {done, abandoned}
@@ -385,7 +425,7 @@ def effective_claim_states(claims, board):
     views, unreadable = board.views()
     if unreadable:
         raise Refused("claim_board_unavailable_or_truncated")
-    validate_takeover_graph(views, board)
+    validate_takeover_graph(views, board, shared_config)
     by_id = {view.claim_id: view for view in views}
     live = {view.claim_id: claim_is_live(view, board) for view in views}
     named = set()
@@ -444,7 +484,7 @@ def evaluate(snapshot, *, now, claim_board=None):
         board = claim_board if claim_board is not None else snapshot.get("claim_board")
         if board is None and snapshot.get("claim_board_dir"):
             board = ClaimBoard(snapshot["claim_board_dir"], now=lambda: now)
-        states = effective_claim_states(claims, board)
+        states = effective_claim_states(claims, board, snapshot.get("claim_shared_paths_config"))
         actor_candidates = [c for c in claims if c.get("session") == actor
                             and c.get("vendor") == lead.get("vendor") and any(
                                 isinstance(p, str) and p.endswith("coordination/coordinator/coordinators.json") for p in c.get("paths", []))]
@@ -723,6 +763,7 @@ class Host:
         for path in paths:
             claims.append(json_read(path))
         claim_board_dir = self.state / "claims"
+        claim_shared_config = json.loads(self.git("show", f"{sha}:config/agent_claim_shared_paths.json"))
         shared_config = json.loads(self.git("show", f"{sha}:config/shared_infra_paths.json"))
         patterns = shared_config.get("paths")
         if not isinstance(patterns, list) or any(not isinstance(pattern, str) for pattern in patterns):
@@ -746,7 +787,7 @@ class Host:
                     if isinstance(cap, dict) and isinstance(cap.get("excluded_globs"), list) else None,
                 "held": held, "held_classes": held_classes, "held_class_metadata": held_metadata,
                 "actor_session": actor_session, "shared_infra": shared,
-                "claim_board_dir": str(claim_board_dir),
+                "claim_board_dir": str(claim_board_dir), "claim_shared_paths_config": claim_shared_config,
                 "source_authorship_sha256": digest({"author": pr.get("author"), "commits": commits})}
 
     def ledger_path(self, pr):
