@@ -616,11 +616,26 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
     const quote = c.current_quote
     const zoned = (value: unknown): number => typeof value === 'string' && /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? Date.parse(value) : NaN
     const quoteAt = zoned(quote?.as_of), evaluatedAt = zoned(mr.as_of)
-    const quoteKnown = quote?.status === 'available' && !quote.stale && !mr.stale
+    const etClock = (stamp: number) => {
+      if (!Number.isFinite(stamp)) return null
+      const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York',
+        year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+      }).formatToParts(new Date(stamp)).map(part => [part.type, part.value]))
+      return { date: `${parts.year}-${parts.month}-${parts.day}`, weekday: parts.weekday,
+        seconds: Number(parts.hour) * 3600 + Number(parts.minute) * 60 + Number(parts.second) }
+    }
+    const quoteClock = etClock(quoteAt), evaluatedClock = etClock(evaluatedAt)
+    const quoteEvidenceKnown = quote?.status === 'available' && !quote.stale && !mr.stale
       && typeof quote.price === 'number' && Number.isFinite(quote.price) && quote.price > 0
       && quote.source === 'market_quotes:alpaca' && quote.session === 'regular'
-      && !!quote.session_date && quote.session_date === quote.expected_session_date
-      && Number.isFinite(quoteAt) && Number.isFinite(evaluatedAt) && quoteAt <= evaluatedAt
+      && typeof quote.session_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(quote.session_date)
+      && quote.session_date === quote.expected_session_date && quoteClock?.date === quote.session_date
+      && ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(quoteClock?.weekday ?? '')
+      && quoteClock!.seconds >= 9.5 * 3600 && quoteClock!.seconds < 16 * 3600 + 60
+      && Number.isFinite(evaluatedAt) && quoteAt <= evaluatedAt
+    const quoteKnown = quoteEvidenceKnown && quoteClock!.date === evaluatedClock?.date
+    const priorRegularQuote = quoteEvidenceKnown && !!evaluatedClock && quoteClock!.date < evaluatedClock.date
     const finite = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null
     const price = quoteKnown ? quote!.price : null
     const vsExit = quoteKnown ? finite(quote!.pct_vs_exit) : null
@@ -628,11 +643,13 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
     const ma = vsMa != null ? `${fmtSignedPct(vsMa)} vs confirmed 20-day` : ''
     const priceEvidence = quoteKnown
       ? `regular-session quote · ${shortTime(quote!.as_of)} · ${quote!.source}`
-      : `${quote?.stale || mr.stale || quote?.status === 'stale' ? 'Price stale' : 'Price unavailable'} · canonical regular-session quote not measured`
+      : priorRegularQuote
+        ? `Last regular close observation ${fmtPrice(quote!.price)} · ${quote!.session_date} · ${shortTime(quote!.as_of)} · ${quote!.source}`
+        : `${quote?.stale || mr.stale || quote?.status === 'stale' ? 'Price stale' : 'Price unavailable'} · canonical regular-session quote not measured`
     return {
       symbol: sym,
       head: `exit ${fmtPrice(c.exit_price ?? st.exit_price)} · ${shortDay(c.exit_date)} · ${det.exit_account_label ?? 'one account'}${held}`,
-      now: quoteKnown ? fmtPrice(price) : (quote?.stale || mr.stale || quote?.status === 'stale' ? 'stale' : 'unavailable'),
+      now: quoteKnown ? fmtPrice(price) : priorRegularQuote ? '—' : (quote?.stale || mr.stale || quote?.status === 'stale' ? 'stale' : 'unavailable'),
       vsExit: fmtSignedPct(vsExit), vsExitNeg: (vsExit ?? 0) < 0, vsMa: ma,
       trend: st.trend === 'up' ? '↑' : st.trend === 'down' ? '↓' : st.trend === 'flat' ? '→' : '',
       verdict: st.verdict ?? 'Still falling', verdictTone: VERDICT_TONE[st.verdict ?? 'Still falling'] ?? 'neutral',

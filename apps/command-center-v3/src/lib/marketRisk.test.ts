@@ -192,7 +192,7 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
   const currentQuote = { status: 'available', price: 12.34, source: 'market_quotes:alpaca', session: 'regular',
     session_date: '2031-03-10', expected_session_date: '2031-03-10', as_of: '2031-03-10T20:00:59.999999Z',
     pct_vs_exit: 23.4, pct_vs_sma20: 10 }
-  const quoteRow = (quote: any) => actionableModel(unwrapMarketRisk({ ...base, as_of: '2031-03-11T00:15:00Z',
+  const quoteRow = (quote: any, assessment = '2031-03-11T00:15:00Z') => actionableModel(unwrapMarketRisk({ ...base, as_of: assessment,
     reentry_watch: { NEWX: { ...base.reentry_watch.NEWX, current_quote: quote } } }))!.reentry[0]
   const freshRow = quoteRow(currentQuote)
   assert.equal(freshRow.now, '$12.34', 'Monday after-close quote wins display over confirmed Friday9.50')
@@ -205,6 +205,28 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
     assert.equal(quoteRow(quote).now, 'unavailable', 'invalid quote never falls back to Friday')
     assert.equal(quoteRow(quote).vsExit, '—')
   }
+  // A normal closed-market prior close is context, never Now or a system failure.
+  const fridayQuote = { ...currentQuote, price: 9.5, session_date: '2031-03-07', expected_session_date: '2031-03-07', as_of: '2031-03-07T21:00:59.999999Z' }
+  for (const assessment of ['2031-03-10T12:00:00Z', '2031-03-08T17:00:00Z', '2031-03-09T17:00:00Z']) {
+    const prior = quoteRow(fridayQuote, assessment)
+    assert.equal(prior.now, '—', 'pre-open/weekend prior close cannot be labeled Now')
+    assert.equal(prior.vsExit, '—', 'prior quote percent is not a current comparison')
+    assert.match(prior.lookThrough, /Last regular close observation \$9\.50 · 2031-03-07 · .*ET · market_quotes:alpaca/)
+    assert.ok(!/Price unavailable|Price stale/.test(prior.lookThrough), 'normal prior close is not a system failure')
+    assert.equal(prior.verdict, 'Still falling')
+  }
+  for (const quote of [
+    { ...currentQuote, as_of: '2031-03-10T13:29:59Z' }, // before 09:30 after DST
+    { ...currentQuote, as_of: '2031-03-10T20:01:00Z' }, // after 16:00 closing minute
+    { ...currentQuote, as_of: '2031-03-09T17:00:00Z', session_date: '2031-03-09', expected_session_date: '2031-03-09' }, // Sunday
+    { ...currentQuote, as_of: '2031-03-07T21:00:00Z' }, // timestamp/session mismatch
+    { ...currentQuote, session_date: {} as any, expected_session_date: {} as any },
+  ]) {
+    assert.equal(quoteRow(quote).now, 'unavailable', 'nonregular or mismatched timestamp is not Now or prior-close context')
+    assert.ok(!/Last regular close/.test(quoteRow(quote).lookThrough))
+  }
+  assert.equal(quoteRow({ ...currentQuote, as_of: '2031-03-10T13:30:00Z' }).now, '$12.34', '09:30 ET is inside regular session')
+  assert.equal(quoteRow({ ...currentQuote, as_of: '2031-03-10T16:00:59-04:00' }).now, '$12.34', 'explicit ET offset closing minute remains valid')
   assert.equal(quoteRow({ ...currentQuote, status: 'stale' }).now, 'stale')
   assert.equal(quoteRow({ ...currentQuote, stale: true }).now, 'stale')
   console.log('marketRisk.test v005 actionable: ok')
