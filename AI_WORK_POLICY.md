@@ -1,7 +1,7 @@
 # Trade AI — AI Engineering & Remote-Cost Policy
 
 Status: MANDATORY
-as_of: 2026-10-27 (aligned with AGENTS.md 26.0.0)
+as_of: 2026-11-02 (aligned with proposed AGENTS.md30.0.0; standing scope inactive until ratified)
 Scope: ALL human and AI development tools working in this repository.
 
 This file is canonical for remote synchronization, the push budget, CI cost and the
@@ -115,8 +115,7 @@ hook enforces it, and the hook change is tracked in
 number governs.
 
 An operator-approved scope, plan or execution request is the explicit operator
-intent of section 16 for the pushes that deliver it. An approval relayed
-between agents never counts (AGENTS.md §28.4). Force-push stays forbidden, and
+intent of section 16 for the pushes that deliver it. A peer approval never counts; ratified canonical-main standing authority is the operator own authorization within its scope (AGENTS.md §28.4/§25.10.4). Force-push stays forbidden, and
 renaming or re-creating a branch to reset a budget is routing around a denial
 (AGENTS.md §0 rule 3).
 
@@ -279,11 +278,11 @@ A watcher must NOT automatically:
 - update PRs
 - trigger CI
 - create evidence-only PRs
-- merge
+- merge outside AGENTS.md §25.10.3/§25.10.4
 - deploy
 
 A scheduled job or daemon never pushes, opens or updates a PR, or writes to a remote (AGENTS.md §24.5), and
-no agent or watcher merges or deploys (AGENTS.md §25.10). Mergify's merge after the operator's approval and the
+a watcher never merges or deploys; the registered release coordinator may merge only under AGENTS.md §25.10.3/§25.10.4. Mergify's merge after the operator's approval and the
 host deploy poller's promotion are the governed paths AGENTS.md §25.10 names; they are not watchers.
 
 ---
@@ -333,13 +332,12 @@ avoid further pushes unless CI identifies a genuine unresolved problem.
 
 PR descriptions may summarize the complete local validation result.
 
-Merge authority: agents never merge. Mergify merges a PR only when it is not a
-draft, its four required checks are green on its head, and the operator approved
-it (the digest's "Approve all" bound to the head SHA, or a per-PR approval); a
-held-class PR (`config/merge_hold_paths.json`) merges only by the operator's own
-merge (section 28, AGENTS.md §25.10). A draft PR may serve as a claim or recovery
-point (AGENTS.md §0 rule 11) and is never merged; mark it ready only when the
-tranche is complete.
+Merge authority: Mergify uses its configured queue after operator approval. Named operator directions
+use AGENTS.md §25.10.3; ratified standing coordinators use §25.10.4 immediately outside the weekday
+09:30–16:15 ET operating freeze. Four required contexts must succeed; every executed check must be green.
+Ordinary PRs need one independent exact-head MERGE review; held PRs need two. Reserved changes and every
+separate §17 decision remain operator-owned. Drafts never merge. Readiness requires finished work and review.
+A merge is neither deployment nor financial authority.
 
 ---
 
@@ -472,6 +470,8 @@ authorizes that remote synchronization event.
 
 A general instruction to "continue", "implement", "test", "mature", or "finish"
 does NOT by itself authorize repeated remote pushes.
+Ratified canonical-main standing authority (AGENTS.md §0 rule 4, §25.10.4) is the operator's explicit instruction
+within its declared scope. The pre-push flag remains required; claim text itself creates no authority.
 
 The git pre-push hook enforces this independently of which agent wrote the code:
 
@@ -598,7 +598,7 @@ A git push does not imply deployment authorization.
 A merge to `main` is promoted by the host `deploy_on_main` poller under the
 operator-armed standing deploy delegation (section 28). That delegation, not the
 merge, is the deployment authorization, which is why merge approval stays with
-the operator. Agents never promote.
+the operator except the ratified standing merge scope. Agents never promote.
 
 ---
 
@@ -678,7 +678,7 @@ Do not push merely to produce this report.
 
 It does **not** authorize:
 
-- merge
+- merge outside AGENTS.md §25.10.3/§25.10.4
 - deploy
 - broker/risk/2FA/cash/canary/registry changes
 - `MEMORY_BEHAVIOR_INFLUENCE` other than 0
@@ -693,7 +693,7 @@ train was retired by the operator on 2026-10-27.
 - **Mergify** may merge an eligible non-draft PR into `main` when required checks are
   green, the operator has approved the PR (the digest's "Approve all" bound to its head
   SHA, or a per-PR approval), and its `.mergify.yml` schedule/queue rules allow. A held-class PR
-  (`config/merge_hold_paths.json`) merges only by the operator's own merge. That merge is
+  needs named operator authority or ratified AGENTS.md §25.10.4 with two independent reviews. That merge is
   not an agent push and does not draw on an agent's push budget (section 3).
 - The host **`deploy_on_main` poller** may promote CURRENT to the new `origin/main` SHA
   under STOP clear, GlobalReleaseLock, and the armed standing **deploy** (promote-only)
@@ -703,9 +703,9 @@ train was retired by the operator on 2026-10-27.
   with `release-write` naming the SHA and `TRADEAI_EMERGENCY_RELEASE_SHA`. A coordinator
   agent may run it only on the operator's explicit instruction in that coordinator's own
   session, quoted in the receipt. No other agent sets that env or runs that script.
-- Coding agents keep every rule above: local commit is the checkpoint; pushes stay within
-  the push budget; a PR is their last remote act. An agent never pushes `main`, never
-  merges, never skips a hook (`--no-verify`, `core.hooksPath`), and never promotes.
+- Coding agents retain local checkpoints, branch budgets and every hook. A delegated upload never resets
+  the owner branch counter. No main/release push, force/history rewrite, undelegated merge or promote.
+
 
 A deploy STOP (AGENTS.md §25.10) halts the poller at the next mutation boundary.
 Clearing it, arming the deploy delegation, and Mergify App custody are operator-only.
