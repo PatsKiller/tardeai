@@ -104,6 +104,15 @@ def load_policy(path: str | Path | None = None) -> dict[str, Any]:
             value = trig[nested]
             if flat == "rsi_level" and isinstance(value, bool):
                 continue  # a boolean switch is not a level; keep the reviewed default
+            if nested.endswith("_pct"):
+                # Piece A's reviewed field NAMES the unit: ``r1_reclaim_exit_pct: 1.0`` means ONE PERCENT
+                # (A computes exit*(1+pct/100)). The engine's internal unit is a fraction, so the loader
+                # converts here — the silent 100x error codex's A->B probe found (2026-11-03) was a 1.0
+                # loaded as 100% and a trivial residual made "fully held".
+                try:
+                    value = float(value) / 100.0
+                except (TypeError, ValueError):
+                    continue
             merged[flat] = value
     if isinstance(conf.get("weights"), Mapping):
         merged["weights"] = {**policy["weights"], **{str(k).upper(): v for k, v in conf["weights"].items()}}
@@ -155,14 +164,27 @@ def exit_price(case: Mapping[str, Any]) -> float | None:
         if isinstance(raw, (list, tuple)):
             rows = raw
             break
-    prices = []
-    for row in rows:
+    # Piece A's canonical reference is the FINAL exit: its ``reclaim_exit_trigger`` compares against
+    # ``case.exits[-1].price``. B used the MAX cluster exit, so with exits 120 then 100 the two sides
+    # disagreed at any price between them (codex A->B probe, 2026-11-03). Follow the owner's semantics:
+    # the last exit in the row's own chronological order, falling back to the latest by date, and only
+    # then to any usable price.
+    usable = []
+    for index, row in enumerate(rows):
         if not isinstance(row, Mapping):
             continue
         price = _num(row.get("exit_price")) if row.get("exit_price") is not None else _num(row.get("price"))
-        if price:
-            prices.append(price)
-    return max(prices) if prices else None
+        if not price:
+            continue
+        when = row.get("exit_date") or row.get("date")
+        usable.append((index, when, price))
+    if not usable:
+        return None
+    dates = [w for _i, w, _p in usable if w]
+    if len(dates) == len(usable):
+        ordered = sorted(usable, key=lambda item: (str(item[1]), item[0]))
+        return ordered[-1][2]
+    return usable[-1][2]
 
 
 def residual_fact(case: Mapping[str, Any]) -> dict | None:
