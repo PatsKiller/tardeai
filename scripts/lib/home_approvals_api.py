@@ -247,6 +247,33 @@ def _deliver_question(request_id: str, actor: str, note: str, now) -> bool:
         return False
 
 
+def _decision_response(record: dict) -> tuple[int, dict]:
+    """A decision is three different facts, never one 200 (codex safety review, 2026-11-03).
+
+    - executed / declined: the action is confirmed — 200, ok:true, outcome named.
+    - failed: the server answered but the action did not happen — ok:false, code ACTION_FAILED,
+      the store's own plain sentence, and the record so the card can show what was attempted.
+      Returning 200/ok:true here would let a refused or failed action read as done downstream.
+    - approved / executing: not confirmed either way — 202, ok:true, outcome "uncertain", with the
+      state so the card says "result pending" rather than "done".
+    """
+    record = record if isinstance(record, dict) else {}
+    state = str(record.get("state") or "")
+    result = record.get("result") if isinstance(record.get("result"), dict) else {}
+    outcome = "executed" if state == "executed" else "declined" if state == "declined" else (
+        "failed" if state == "failed" or result.get("ok") is False else "uncertain")
+    data = {"state": state, "outcome": outcome, "decision": record.get("decision"),
+            "message": record.get("message"), "result": record.get("result"),
+            "receipt": record.get("receipt"), "attempted": result.get("attempted")}
+    if outcome == "failed":
+        return 502, {"ok": False, "code": "ACTION_FAILED",
+                     "reason": str(result.get("plain") or record.get("message") or "The action did not complete."),
+                     "data": data}
+    if outcome == "uncertain":
+        return 202, {"ok": True, "data": data}
+    return 200, {"ok": True, "data": data}
+
+
 def _store_error(exc: Exception) -> tuple[int, dict]:
     mapped = STORE_CODES.get(str(getattr(exc, "code", "") or ""))
     if mapped:
@@ -330,9 +357,10 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Optional[Ctx] 
                 "delivered": delivered,
                 "question": {"at": now.isoformat(), "by": actor, "note": note},
             }}
-        return 200, {"ok": True, "data": module.decide(
+        record = module.decide(
             store, request_id, ctx=operator_ctx, actor=login, decision=DECISION_VERBS[verb], note=note, now=now,
-        )}
+        )
+        return _decision_response(record)
     except Exception as exc:  # noqa: BLE001 — A's typed refusal is the contract
         return _store_error(exc)
 

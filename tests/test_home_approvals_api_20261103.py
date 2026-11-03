@@ -304,3 +304,48 @@ def test_revalidate_on_one_request_is_one_check_and_shows_the_refusal(store):
 def test_a_missing_request_is_404(store):
     status, payload = api.handle("/api/v2/home/approvals/nope", "GET", ctx=_ctx(reader=True))
     assert status == 404 and payload["code"] == "NOT_FOUND"
+
+
+# ── codex safety review (2026-11-03): success, refusal and uncertain are different facts ──
+
+class _OutcomeModule(FakeModule):
+    def __init__(self, record):
+        super().__init__({"apr-1": _record()})
+        self._record = record
+
+    def decide(self, store, request_id, *, ctx, actor, decision, note="", **kw):
+        return self._record
+
+
+def _decide_with(monkeypatch, record):
+    fake = _OutcomeModule(record)
+    monkeypatch.setattr(api, "_store_module", lambda: fake)
+    monkeypatch.setattr(api, "_store_handle", lambda module: module.store)
+    return api.handle("/api/v2/home/approvals/apr-1/approve", "POST", {}, ctx=_ctx())
+
+
+def test_an_executed_decision_is_200_and_named(monkeypatch):
+    status, payload = _decide_with(monkeypatch, {"state": "executed", "result": {"ok": True},
+                                                 "message": "Merged", "receipt": {"ledger": "x"}})
+    assert status == 200 and payload["ok"] is True and payload["data"]["outcome"] == "executed"
+
+
+def test_a_failed_action_is_not_ok_true(monkeypatch):
+    status, payload = _decide_with(monkeypatch, {
+        "state": "failed", "message": "The merge did not happen",
+        "result": {"ok": False, "plain": "The head moved, so nothing was merged.",
+                   "attempted": {"type": "merge_pr", "step_reached": "revalidate"}}})
+    assert status == 502 and payload["ok"] is False and payload["code"] == "ACTION_FAILED"
+    assert payload["reason"] == "The head moved, so nothing was merged."
+    assert payload["data"]["outcome"] == "failed"
+    assert payload["data"]["attempted"]["step_reached"] == "revalidate"
+
+
+def test_an_uncertain_outcome_is_202_not_200(monkeypatch):
+    status, payload = _decide_with(monkeypatch, {"state": "executing", "result": None})
+    assert status == 202 and payload["ok"] is True and payload["data"]["outcome"] == "uncertain"
+
+
+def test_a_declined_decision_is_200_declined(monkeypatch):
+    status, payload = _decide_with(monkeypatch, {"state": "declined", "result": None})
+    assert status == 200 and payload["data"]["outcome"] == "declined"
