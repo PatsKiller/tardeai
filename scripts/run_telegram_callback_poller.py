@@ -347,14 +347,40 @@ def poll_once(timeout=25):
     allowed = _allowed_chats()
     processed = 0
 
+    reply_handoff_failed = False
     for update in results:
         uid = update.get("update_id")
 
         if inbound is not None:
-            # Replay denial: skip updates already committed by a prior poll.
+            # Replay denial: skip updates already committed by a prior poll. The claim is taken BEFORE the
+            # coordinator copy so a redelivery does not duplicate a line that is already durable.
             claim = inbound["claim_update"](uid)
             if claim.already_processed:
                 continue
+
+        # The coordinator copy is attempted BEFORE anything can commit a checkpoint — including the ATOMIC
+        # path, whose process_update_atomically commits inside the persist call below (cx-openai-4 R2a,
+        # 2026-11-03: the ordering fix had covered only the legacy path). If this append and its durable
+        # queue both fail, NO checkpoint is committed for this update and the whole batch stops, so a later
+        # update cannot stride over the failed reply (R2b).
+        early_msg = update.get("message") or {}
+        early_chat = str((early_msg.get("chat") or {}).get("id", ""))
+        early_text = (early_msg.get("text") or "").strip()
+        reply_status = None
+        if early_chat and early_text and early_chat in allowed:
+            reply_status = _record_operator_reply(
+                early_msg, early_text, early_chat, allowed=allowed,
+                chat_type=(early_msg.get("chat") or {}).get("type"),
+                sender_id=(early_msg.get("from") or {}).get("id"))
+            if reply_status == "failed":
+                log.error(f"operator reply neither recorded nor queued; stopping the batch before any "
+                          f"checkpoint (update {uid})")
+                reply_handoff_failed = True
+                break
+
+        # (the early coordinator copy lives above this point, before any checkpoint can commit)
+
+        if inbound is not None:
             # Persist a canonical INBOUND event before business processing (C3).
             #
             # SFR-I-RUNTIME-001: route through Lane I so the operator reply
@@ -422,18 +448,9 @@ def poll_once(timeout=25):
             _commit_if_legacy()
             continue
 
-        # cx-openai-3 F3: the coordinator copy is written BEFORE handler classification. A handled
-        # command ("/approve …", a Schwab `code=` paste, a cap change) used to commit with NO coordinator
-        # copy at all, and an ordinary answer containing "code=" was routed away from the inbox by a
-        # pre-existing substring branch. Recording first makes the text impossible to lose; the outcome
-        # line below says what the system then did with it. This is evidence, never authority.
-        reply_status = _record_operator_reply(
-            msg, text, chat_id, allowed=allowed,
-            chat_type=(msg.get("chat") or {}).get("type"),
-            sender_id=(msg.get("from") or {}).get("id"))
-        if reply_status == "failed":
-            log.error(f"operator reply neither recorded nor queued; not advancing checkpoint for {uid}")
-            continue
+        # cx-openai-3 F3: the coordinator copy was written ABOVE, before any checkpoint could be committed
+        # and before handler classification — so a handled command ("/approve …", a Schwab `code=` paste, a
+        # cap change) still leaves a message line, and the outcome line below says what happened to it.
         authenticated = reply_status in ("recorded", "queued")
 
         # Route all recognized commands
@@ -526,8 +543,9 @@ def poll_once(timeout=25):
         if authenticated:
             outcome_status = _record_operator_outcome(msg, text, chat_id, handled=handled)
             if outcome_status == "failed":
-                log.error(f"operator reply outcome neither recorded nor queued; not advancing checkpoint {uid}")
-                continue
+                log.error(f"operator reply outcome neither recorded nor queued; stopping the batch (update {uid})")
+                reply_handoff_failed = True
+                break
 
         # Legacy path: inbound event is persisted; advance the durable
         # checkpoint so a crash or replayed poll does not re-deliver.
