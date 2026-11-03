@@ -3,7 +3,7 @@
 The dividends domain's retired providers are named in ``config/data_source_authority.json``
 (domain ``dividends``, ``retired``). Rows they wrote are SUPERSEDED: never deleted (AGENTS.md §0 rule 6),
 marked by ``migrations/2026_10_26_ticker_dividend_superseded.sql`` (``superseded_at`` / ``superseded_reason``),
-and ignored by every reader through :data:`TRUSTED_ROW_SQL`. The prospectus accuracy audit (2026-10-26, A2)
+and ignored by the eight research readers changed here through :data:`TRUSTED_ROW_SQL`. The prospectus accuracy audit (2026-10-26, A2)
 measured the retired vendor's fund rows at 3-5x the real annual distribution.
 
 The predicate keys on the ``source`` column, which exists before the migration is applied, so readers stop
