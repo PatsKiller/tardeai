@@ -1055,6 +1055,22 @@ def build(
         for gap in (unknown_gap(field, value),)
         if gap
     )
+    # F3 (cc2 review): symbols_for() truncates to SYMBOL_EVALUATION_CAP, but the cap gap above is emitted only
+    # for book_exposure rows — so a REENTRY-ONLY symbol past the cap vanished with no gap at all, against this
+    # block's own "over-cap symbols retain explicit gaps". Emit the same gap for them.
+    for symbol in sorted(
+        str(sym).upper() for sym in (projection.get("reentry_watch") or {}) if not str(sym).startswith("_")
+    ):
+        if symbol in per_symbol or symbol in cap_gap_symbols or not symbol:
+            continue
+        cap_gap_symbols.add(symbol)
+        extra_gaps.append({
+            "symbol": symbol,
+            "field": "quote",
+            "reason": cap_reason,
+            "remediation": {"key": "HOMEV007:symbol_cap", "action": "Raise SYMBOL_EVALUATION_CAP or trim the book."},
+        })
+
     for row in malformed_rows:
         gaps.append({
             "field": row["path"],
