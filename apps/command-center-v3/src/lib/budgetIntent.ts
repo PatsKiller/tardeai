@@ -89,12 +89,20 @@ export function intentBody(input: IntentInput, now = Date.now()): IntentBody {
   return body
 }
 
+export type PresentationOutcome = 'ok' | 'refused' | 'unknown'
+
 export type PresentationReply = {
   ok: boolean
   status: number
-  /** The server's own error code (never a prose guess), when the call failed. */
+  /** The server's own error code (never a prose guess), when the call was a clean refusal. */
   code: string | null
   data: unknown
+  /**
+   * ``refused`` = the server answered with its own error envelope (nothing may have been written, but a refusal can
+   * also follow an earlier append). ``unknown`` = a transport failure or a body we could not parse: the outcome is not
+   * known and must never be reported as "nothing was written".
+   */
+  outcome: PresentationOutcome
 }
 
 const HUMAN: Record<string, string> = {
@@ -119,6 +127,13 @@ const HUMAN: Record<string, string> = {
 }
 
 /** The call may have reached the server and still failed on the way back: never claim it did nothing. */
+export function refusedText(code: string | null): string {
+  const known = code ? HUMAN[code] : null
+  // A refusal is not proof that nothing happened: E prepares the source and expiry before it looks for an earlier
+  // identical request, so a 409/400 can be returned even when the decision already exists.
+  return `${known ?? 'The server refused this request.'} A refusal is not proof the decision is absent — an identical request may already be recorded.`
+}
+
 export function networkOutcomeUnknown(error: unknown): string {
   const message = String((error as Error)?.message || error || '')
   if (/abort/i.test(message)) return message
@@ -129,31 +144,96 @@ export function humanError(reply: PresentationReply): string {
   return (reply.code && HUMAN[reply.code]) || 'The decision could not be recorded. Nothing was written.'
 }
 
-/** GET the fresh basis, or POST the decide body. Never carries a request body on GET. */
+/**
+ * GET the fresh basis, or POST the decide body. Never carries a request body on GET.
+ *
+ * A transport failure or an unparseable body is ``unknown``, not ``refused``: the request may have reached the server
+ * and been applied, so the caller must preserve the pending request id and reconcile through the history read.
+ */
 export async function presentationCall(url: string, body?: IntentBody, signal?: AbortSignal): Promise<PresentationReply> {
-  const response = await fetch(url, {
-    method: body === undefined ? 'GET' : 'POST',
-    credentials: 'same-origin',
-    cache: 'no-store',
-    headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    signal,
-  })
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: body === undefined ? 'GET' : 'POST',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal,
+    })
+  } catch (error) {
+    if ((error as Error)?.name === 'AbortError') throw error
+    return { ok: false, status: 0, code: null, data: null, outcome: 'unknown' }
+  }
   let envelope: any = null
   try { envelope = await response.json() } catch { envelope = null }
+  const clean = envelope && typeof envelope === 'object' && typeof envelope.ok === 'boolean'
   return {
     ok: response.ok && envelope?.ok === true,
     status: response.status,
-    code: typeof envelope?.error === 'string' ? envelope.error : null,
-    data: envelope?.data ?? null,
+    code: clean && typeof envelope.error === 'string' ? envelope.error : null,
+    data: clean ? (envelope.data ?? null) : null,
+    outcome: response.ok && envelope?.ok === true ? 'ok' : clean ? 'refused' : 'unknown',
   }
+}
+
+export type DecisionRecord = {
+  requestId: string | null
+  scopeId: string | null
+  budget: string | null
+  bindingSha: string | null
+  bindingAsOf: string | null
+  intentionalUntil: string | null
+  receipt: string | null
+  active: boolean
+}
+
+/** Every decision event a basis reply carries, active or inactive. An empty list is a fact, not a lack of data. */
+export function historyRecords(data: unknown): DecisionRecord[] {
+  const doc = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
+  const ledger = (doc.budget_presentation_decisions && typeof doc.budget_presentation_decisions === 'object'
+    ? doc.budget_presentation_decisions : {}) as Record<string, unknown>
+  const rows = [...(Array.isArray(ledger.items) ? ledger.items : []), ...(Array.isArray(ledger.history) ? ledger.history : [])]
+  const seen = new Set<string>()
+  const out: DecisionRecord[] = []
+  for (const row of rows) {
+    const r = (row && typeof row === 'object' ? row : {}) as Record<string, unknown>
+    const binding = (r.source_binding && typeof r.source_binding === 'object' ? r.source_binding : {}) as Record<string, unknown>
+    const id = typeof r.request_id === 'string' ? r.request_id : null
+    const key = `${id}|${String(r.hash_self ?? '')}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({
+      requestId: id,
+      scopeId: typeof r.scope_id === 'string' ? r.scope_id : null,
+      budget: typeof r.budget === 'string' ? r.budget : null,
+      bindingSha: typeof binding.sha256 === 'string' ? binding.sha256 : null,
+      bindingAsOf: typeof binding.as_of === 'string' ? binding.as_of : null,
+      intentionalUntil: typeof r.intentional_until === 'string' ? r.intentional_until : null,
+      receipt: typeof r.hash_self === 'string' ? r.hash_self : null,
+      active: r.active === true,
+    })
+  }
+  return out
+}
+
+/** Did the pending request already land? Identity is the request id AND the payload it was bound to. */
+export function reconcile(records: DecisionRecord[], pending: IntentBody): DecisionRecord | null {
+  for (const record of records) {
+    if (record.requestId !== pending.request_id) continue
+    if (record.scopeId !== pending.scope_id || record.budget !== pending.budget) continue
+    if (record.bindingSha !== pending.source_binding.sha256) continue
+    if (record.intentionalUntil !== pending.intentional_until) continue
+    return record
+  }
+  return null
 }
 
 export function basisUrl(scopeId: string, budget: string): string {
   return `${BUDGET_BASIS_PATH}?scope_id=${encodeURIComponent(scopeId)}&budget=${encodeURIComponent(budget)}`
 }
 
-/** The current snapshot from a basis reply, or null when the source is unavailable (503 keeps history only). */
+/** The current snapshot from a basis reply; a source-unavailable (503) reply keeps its history but no basis. */
 export function currentBasis(data: unknown): { binding: SourceBinding | null; breached: boolean | null; asOf: string | null } {
   const doc = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
   const current = (doc.current && typeof doc.current === 'object' ? doc.current : null) as Record<string, unknown> | null

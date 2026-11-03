@@ -1,7 +1,7 @@
 // Budget intent requests — the body can only carry what the decide route allows.
 //   node --experimental-strip-types src/lib/budgetIntent.test.ts
 import {
-  BUDGET_DECIDE_PATH, basisUrl, currentBasis, futureUtcZ, humanError, intentBody, networkOutcomeUnknown, requestId, toUtcZ,
+  BUDGET_DECIDE_PATH, basisUrl, currentBasis, futureUtcZ, historyRecords, humanError, intentBody, networkOutcomeUnknown, reconcile, refusedText, requestId, toUtcZ,
 } from './budgetIntent.ts'
 
 declare const process: { exit(code?: number): never }
@@ -59,8 +59,8 @@ const unavailable = currentBasis({ current: null, budget_presentation_decisions:
 eq('a 503 basis carries no binding', unavailable.binding, null)
 eq('and asserts no breach either', unavailable.breached, null)
 
-eq('a source change is explained, not guessed', humanError({ ok: false, status: 409, code: 'BUDGET_SOURCE_CHANGED', data: null }).startsWith('The measurement changed'), true)
-eq('an unknown code still says nothing was written', humanError({ ok: false, status: 500, code: 'X', data: null }).includes('Nothing was written'), true)
+eq('a source change is explained, not guessed', humanError({ ok: false, status: 409, code: 'BUDGET_SOURCE_CHANGED', data: null, outcome: 'refused' }).startsWith('The measurement changed'), true)
+eq('an unknown code still says nothing was written', humanError({ ok: false, status: 500, code: 'X', data: null, outcome: 'refused' }).includes('Nothing was written'), true)
 eq('the basis url carries both identifiers', basisUrl('account:demo', 'demo_taxable'), '/api/v2/governance/budget-presentation?scope_id=account%3Ademo&budget=demo_taxable')
 eq('the decide path is the contract path', BUDGET_DECIDE_PATH, '/api/v2/governance/budget-presentation/decide')
 check('request ids are unique and allowed', /^[A-Za-z0-9_-]{8,80}$/.test(requestId()) && requestId() !== requestId())
@@ -69,11 +69,28 @@ check('request ids are unique and allowed', /^[A-Za-z0-9_-]{8,80}$/.test(request
 const other = intentBody({ ...base, binding: { as_of: '2026-11-03T04:59:00Z', sha256: OTHER } }, NOW)
 eq('a different binding is carried as given, never merged', other.source_binding.sha256, OTHER)
 
-eq('a 503 source is explained, not called a missing binding', humanError({ ok: false, status: 503, code: 'SOURCE_UNAVAILABLE', data: null }).includes('source is unavailable'), true)
-eq('an unintegrated route says so', humanError({ ok: false, status: 404, code: 'NOT_FOUND', data: null }).includes('not available on the running backend'), true)
-eq('an invalid field is named', humanError({ ok: false, status: 400, code: 'INVALID_PRESENTATION_FIELDS', data: null }).includes('does not accept'), true)
+eq('a 503 source is explained, not called a missing binding', humanError({ ok: false, status: 503, code: 'SOURCE_UNAVAILABLE', data: null, outcome: 'refused' }).includes('source is unavailable'), true)
+eq('an unintegrated route says so', humanError({ ok: false, status: 404, code: 'NOT_FOUND', data: null, outcome: 'refused' }).includes('not available on the running backend'), true)
+eq('an invalid field is named', humanError({ ok: false, status: 400, code: 'INVALID_PRESENTATION_FIELDS', data: null, outcome: 'refused' }).includes('does not accept'), true)
 check('a dropped reply never claims nothing was written', networkOutcomeUnknown(new TypeError('Failed to fetch')).includes('outcome is unknown'))
 check('and names the safe retry', /same request|replays/.test(networkOutcomeUnknown(new TypeError('Failed to fetch'))))
+
+// R1/R2 (cx4 reviewer2, 2026-11-03): history is evidence, and an uncertain outcome is never "nothing was written".
+const event = { event: 'BUDGET_PRESENTATION_DECISION', request_id: 'req-12345678', scope_id: 'account:demo', budget: 'demo_taxable',
+  source_binding: { as_of: '2026-11-03T04:59:00Z', sha256: SHA }, intentional_until: UNTIL, hash_self: 'c'.repeat(64), active: false }
+const ledger = historyRecords({ budget_presentation_decisions: { complete: true, items: [event], history: [event] } })
+eq('history items and history are merged without duplicates', ledger.length, 1)
+eq('the receipt is kept', ledger[0].receipt, 'c'.repeat(64))
+eq('an inactive decision is not called active', ledger[0].active, false)
+const pendingReal = { ...preview, dry_run: undefined } as any
+eq('the pending request is found by id and payload', reconcile(ledger, pendingReal)?.requestId, 'req-12345678')
+eq('a different binding is not a match', reconcile(ledger, { ...pendingReal, source_binding: { as_of: pendingReal.source_binding.as_of, sha256: OTHER } }), null)
+eq('a different expiry is not a match', reconcile(ledger, { ...pendingReal, intentional_until: '2026-11-11T05:00:00Z' }), null)
+eq('a different scope is not a match', reconcile(ledger, { ...pendingReal, scope_id: 'account:other' }), null)
+eq('a 503 basis carries its history', historyRecords({ current: null, budget_presentation_decisions: { complete: false, history: [event] } }).length, 1)
+eq('an empty ledger is an empty list, not an error', historyRecords({ budget_presentation_decisions: { complete: true, items: [] } }).length, 0)
+check('a refusal never claims nothing was written', refusedText('BUDGET_SOURCE_CHANGED').includes('not proof'))
+check('an unknown code still says a refusal is not proof', refusedText('X').includes('not proof'))
 
 console.log(`budgetIntent: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

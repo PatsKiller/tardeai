@@ -47,16 +47,21 @@ const cssText = bundled.outputFiles.find(f => f.path.endsWith('.css'))?.text ?? 
 const html = `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>${cssText}</style><body style="margin:0;padding:12px;background:#0b0d10;color:#e8e8e8;font:14px system-ui"><div id="root"></div><script type="module">${js.replace(/<\/script/gi, '<\\/script')}</script>`
 
 async function run(page, width, variant, plan) {
-  const seen = { gets: 0, posts: [], forbidden: [], dropped: false }
+  const seen = { gets: 0, posts: [], forbidden: [], dropped: false, lastWrite: null }
   await page.route('**/*', async route => {
     const req = route.request(), url = new URL(req.url())
     if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html })
     if (url.pathname === '/api/v2/governance/budget-presentation') {
       seen.gets++
       const binding = plan.basisSha === 'changed' ? (seen.gets > 1 ? OTHER : SHA) : (plan.basisSha || SHA)
+      const history = seen.lastWrite ? [{ request_id: seen.lastWrite.request_id, scope_id: 'account:demo', budget: 'demo_taxable',
+        source_binding: { as_of: '2026-11-02T20:00:00Z', sha256: SHA }, intentional_until: seen.lastWrite.intentional_until,
+        hash_self: 'c'.repeat(64), active: false }] : []
+      if (plan.getUnavailable) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'SOURCE_UNAVAILABLE',
+        data: { current: null, budget_presentation_decisions: { complete: false, items: [], history } } }) })
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, data: {
         current: plan.noBasis ? null : { source_binding: { as_of: '2026-11-02T20:00:00Z', sha256: binding }, breached: plan.breached !== false, snapshot_as_of: '2026-11-02T20:00:00Z' },
-        budget_presentation_decisions: { complete: true } } }) })
+        budget_presentation_decisions: { complete: true, items: history, history } } }) })
     }
     if (url.pathname === '/api/v2/governance/budget-presentation/decide') {
       const body = JSON.parse(req.postData() || '{}')
@@ -64,6 +69,11 @@ async function run(page, width, variant, plan) {
       for (const bad of ['actor', 'actual', 'limit', 'breached', 'breach']) if (bad in body) seen.forbidden.push(bad)
       if (plan.refuse) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ ok: false, error: plan.refuse }) })
       if (plan.dropFirstWrite && body.dry_run !== true && !seen.dropped) { seen.dropped = true; return route.abort('failed') }
+      if (body.dry_run !== true) seen.lastWrite = body
+      if (plan.appendThenStatus && body.dry_run !== true) {
+        if (plan.appendThenStatus === 'malformed') return route.fulfill({ status: 200, contentType: 'text/html', body: '<html>proxy error</html>' })
+        return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'SOURCE_UNAVAILABLE' }) })
+      }
       if (body.dry_run === true) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, data: {
         dry_run: true, written: false, would_append: {}, would_replay: false, store_approved: plan.storeApproved !== false } }) })
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, data: {
@@ -165,6 +175,33 @@ try {
     const ids = seenF.posts.filter(b => b.dry_run !== true).map(b => b.request_id)
     assert.ok(ids.length >= 2 && new Set(ids).size === 1, `the retry must reuse the previewed request id at ${width}: ${JSON.stringify(ids)}`)
     assert.deepEqual(seenF.forbidden, [], `a measured field was sent after a retry at ${width}`)
+
+    // G. the append happened, then the answer failed: history resolves it, and nothing claims "nothing was written".
+    for (const [label, mode] of [['503 after append', 'unavailable'], ['malformed 2xx', 'malformed']]) {
+      await page.unroute('**/*')
+      const seenG = await run(page, width, 'available', { appendThenStatus: mode })
+      await page.getByTestId('v7-intent-open').click()
+      await page.getByTestId('v7-intent-until').fill(TOMORROW.slice(0, 16))
+      await page.getByTestId('v7-intent-preview').click()
+      await page.getByTestId('v7-intent-preview-panel').waitFor()
+      await page.getByTestId('v7-intent-confirm').click()
+      await page.getByTestId('v7-intent-done').waitFor()
+      const text = await page.getByTestId('v7-intent-done').innerText()
+      assert.match(text, /intent recorded/i, `${label}: a reconciled record must be shown at ${width}`)
+      assert.match(text, /an earlier request/i, `${label}: the record must be the reconciled earlier request, not a fresh write at ${width}`)
+      assert.ok(!/nothing was written/i.test(await page.locator('body').innerText()), `${label}: must not claim nothing was written at ${width}`)
+      assert.equal(seenG.posts.filter(p => p.dry_run !== true).length, 1, `${label}: exactly one real write at ${width}`)
+    }
+
+    // H. the source itself is unavailable: the history is still shown and recording is off.
+    await page.unroute('**/*')
+    await run(page, width, 'available', { getUnavailable: true })
+    await page.getByTestId('v7-intent-open').click()
+    await page.getByTestId('v7-intent-until').fill(TOMORROW.slice(0, 16))
+    await page.getByTestId('v7-intent-preview').click()
+    await page.getByTestId('v7-intent-source-unavailable').waitFor()
+    assert.match(await page.getByTestId('v7-intent-source-unavailable').innerText(), /recording is off/i, `unavailable source not disclosed at ${width}`)
+    assert.equal(await page.getByTestId('v7-intent-preview-panel').count(), 0, `no preview may be offered without a current basis at ${width}`)
 
     assert.deepEqual(errors, [], `page errors at ${width}`)
     results.push({ width, ok: true })
