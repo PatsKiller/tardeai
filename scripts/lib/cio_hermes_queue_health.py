@@ -136,6 +136,58 @@ def summarise(events: Iterable[dict[str, Any]], *, now: datetime, stall_hours: f
     }
 
 
+# ── Question ownership: the exact predicate the restore path uses ────────────────────────────────────────────
+# `restore_lost_requests` (scripts/lib/cio_hermes_research.py) suppresses a candidate only when the question is
+# genuinely owned: an OPEN row with the same fingerprint, or a COMPLETED row whose completion clock is >= the asked
+# clock. It never treats a failed, cancelled, superseded or expired row as an owner, and it never suppresses on an
+# answer that predates the question. This function mirrors that rule so the health check cannot be silenced by
+# history the restore path would still restore.
+_OPEN_STATES = {"queued", "running", "claimed", "pending", "queued_running", "open"}
+_DONE_STATES = {"completed", "done", "succeeded"}
+
+
+def _clock(record: dict[str, Any]) -> Optional[datetime]:
+    for key in ("completed_ts", "as_of", "updated_ts", "ts"):
+        value = record.get(key)
+        if not value:
+            continue
+        try:
+            stamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=timezone.utc)
+        return stamp.astimezone(timezone.utc)
+    return None
+
+
+def _question_owned(fingerprint: str, asked: Optional[datetime],
+                    by_rid: dict[str, Any], open_fp: dict[str, Any],
+                    done_fp: dict[str, Any]) -> bool:
+    """True only when an open or completed-before-now owner genuinely holds this question."""
+    if not fingerprint:
+        return False
+    if fingerprint in open_fp:
+        return True
+    done = done_fp.get(fingerprint)
+    if isinstance(done, dict):
+        completed = _clock(done)
+        if completed is not None and asked is not None and completed >= asked:
+            return True
+    for row in by_rid.values():
+        if not isinstance(row, dict) or str(row.get("fingerprint") or "") != fingerprint:
+            continue
+        state = str(row.get("status") or row.get("state") or "").strip().lower()
+        if state in _OPEN_STATES:
+            return True
+        if state in _DONE_STATES:
+            completed = _clock(row)
+            if completed is not None and asked is not None and completed >= asked:
+                return True
+        # failed / cancelled / superseded / expired / unknown: never owns the question
+    return False
+
+
 def collect_cio_hermes_queue_health(*, now: Optional[datetime] = None, path: Optional[Path] = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     ledger = Path(path or os.getenv("CIO_HERMES_REQUEST_LEDGER") or REQUEST_LEDGER)
@@ -162,18 +214,16 @@ def collect_cio_hermes_queue_health(*, now: Optional[datetime] = None, path: Opt
         # projection entry: `restore_lost_requests` dedups on fingerprint, so a same-question
         # row is intentionally not re-projected. 2026-11-03: `res_c30a22ae6af8` was reported
         # lost while `res_cfaa3b471ead` (2.7 s earlier, same fingerprint) was in the projection.
-        fp_known = {str(v.get("fingerprint")) for v in by_rid.values()
-                    if isinstance(v, dict) and v.get("fingerprint")}
-        fp_known |= set((proj_doc.get("by_fingerprint_open") or {}).keys())
-        fp_known |= set((proj_doc.get("by_fingerprint_completed") or {}).keys())
+        open_fp = {str(k): v for k, v in (proj_doc.get("by_fingerprint_open") or {}).items() if k}
+        done_fp = {str(k): v for k, v in (proj_doc.get("by_fingerprint_completed") or {}).items() if k}
     except (OSError, ValueError):
         known = None
-        fp_known = set()
+        open_fp, done_fp, by_rid = {}, {}, {}
     grace = now - timedelta(minutes=10)
     lost = sorted({str(r["research_id"]) for r in events
                    if known is not None and r.get("event") == "HERMES_RESEARCH_REQUESTED"
                    and r["_ts"] <= grace and str(r["research_id"]) not in known
-                   and str(r.get("fingerprint") or "") not in fp_known})
+                   and not _question_owned(str(r.get("fingerprint") or ""), r["_ts"], by_rid, open_fp, done_fp)})
     s["lost"], s["lost_n"] = lost[:5], len(lost)
     outcomes = s["completed"] + s["failed"]
     firing: list[str] = []

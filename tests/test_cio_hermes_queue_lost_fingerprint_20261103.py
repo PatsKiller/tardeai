@@ -53,10 +53,12 @@ def test_same_fingerprint_open_entry_is_not_lost(tmp_path):
 
 
 def test_completed_fingerprint_is_not_lost(tmp_path):
+    """A genuine answer AFTER the request owns the question. (An undated or earlier answer does not — see the P1s.)"""
     ledger = _ledger(
         tmp_path,
         {"by_research_id": {},
-         "by_fingerprint_completed": {FP: {"research_id": "res_done"}}},
+         "by_fingerprint_completed": {FP: {"research_id": "res_done",
+                                           "completed_ts": (NOW - timedelta(minutes=5)).isoformat()}}},
         [_requested("res_dup", FP)],
     )
     row = collect_cio_hermes_queue_health(now=NOW, path=ledger)
@@ -74,3 +76,57 @@ def test_request_in_the_grace_window_is_not_lost(tmp_path):
     ledger = _ledger(tmp_path, {"by_research_id": {}}, [_requested("res_new", "sha256:cafe", minutes_ago=5)])
     row = collect_cio_hermes_queue_health(now=NOW, path=ledger)
     assert row["lost_n"] == 0
+
+
+# ── cx-openai-4's two P1s: history must not own a question ─────────────────────────────────────────────────
+def test_a_failed_owner_does_not_suppress_a_newer_missing_request(tmp_path, monkeypatch):
+    """R1: a FAILED row from 30h ago with the same fingerprint cannot hide a request asked 20 minutes ago."""
+    failed = {"fingerprint": FP, "status": "failed",
+              "updated_ts": (NOW - timedelta(hours=30)).isoformat()}
+    ledger = _ledger(tmp_path, {"by_research_id": {"res_old_failed": failed}}, [_requested("res_new", FP)])
+    monkeypatch.setenv("CIO_HERMES_PROJECTION", str(tmp_path / "hermes_research_projection.json"))
+    out = collect_cio_hermes_queue_health(path=ledger, now=NOW)
+    assert out["lost_n"] == 1 and out["ok"] is False
+    assert "res_new" in out["lost"]
+
+
+def test_a_cancelled_or_superseded_owner_does_not_suppress(tmp_path, monkeypatch):
+    for status in ("cancelled", "superseded", "failed"):
+        proj = {"by_research_id": {"res_old": {"fingerprint": FP, "status": status,
+                                               "updated_ts": (NOW - timedelta(hours=30)).isoformat()}}}
+        ledger = _ledger(tmp_path, proj, [_requested("res_new", FP)])
+        monkeypatch.setenv("CIO_HERMES_PROJECTION", str(tmp_path / "hermes_research_projection.json"))
+        out = collect_cio_hermes_queue_health(path=ledger, now=NOW)
+        assert out["lost_n"] == 1 and out["ok"] is False, status
+
+
+def test_an_answer_older_than_the_request_does_not_suppress(tmp_path, monkeypatch):
+    """R2: a completion 60 minutes before the request cannot own it."""
+    done = {"completed_ts": (NOW - timedelta(minutes=80)).isoformat()}
+    ledger = _ledger(tmp_path, {"by_research_id": {}, "by_fingerprint_completed": {FP: done}},
+                     [_requested("res_new", FP, minutes_ago=20)])
+    monkeypatch.setenv("CIO_HERMES_PROJECTION", str(tmp_path / "hermes_research_projection.json"))
+    out = collect_cio_hermes_queue_health(path=ledger, now=NOW)
+    assert out["lost_n"] == 1 and out["ok"] is False
+
+
+def test_an_undated_completion_does_not_suppress(tmp_path, monkeypatch):
+    ledger = _ledger(tmp_path, {"by_research_id": {}, "by_fingerprint_completed": {FP: {}}},
+                     [_requested("res_new", FP, minutes_ago=20)])
+    monkeypatch.setenv("CIO_HERMES_PROJECTION", str(tmp_path / "hermes_research_projection.json"))
+    out = collect_cio_hermes_queue_health(path=ledger, now=NOW)
+    assert out["lost_n"] == 1 and out["ok"] is False
+
+
+def test_an_open_owner_and_an_answer_after_the_request_still_suppress(tmp_path, monkeypatch):
+    """The two cases that must keep passing: a running duplicate, and an answer that came after the ask."""
+    ledger = _ledger(tmp_path, {"by_fingerprint_open": {FP: {"status": "running"}}},
+                     [_requested("res_new", FP)])
+    monkeypatch.setenv("CIO_HERMES_PROJECTION", str(tmp_path / "hermes_research_projection.json"))
+    assert collect_cio_hermes_queue_health(path=ledger, now=NOW)["lost_n"] == 0
+
+    done = {"completed_ts": (NOW - timedelta(minutes=5)).isoformat()}
+    ledger2 = _ledger(tmp_path, {"by_research_id": {}, "by_fingerprint_completed": {FP: done}},
+                      [_requested("res_new", FP, minutes_ago=20)])
+    monkeypatch.setenv("CIO_HERMES_PROJECTION", str(tmp_path / "hermes_research_projection.json"))
+    assert collect_cio_hermes_queue_health(path=ledger2, now=NOW)["lost_n"] == 0
