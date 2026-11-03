@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import stat
+import time
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -64,37 +65,55 @@ class Recorder:
             self.revalidated.append(record["id"])
             return self.ok, self.plain
 
-        def execute(record, actor):
+        def execute(record, actor, progress):
             self.executed += 1
+            progress.reached("kicked_off")
             return {"ok": True, "plain": f"Done ({actor})."}
 
         return ha.CallbackExecutor(revalidate, execute)
 
 
-def _decide(store, request_id, *, actor="operator", operator_session=True, csrf_ok=True, session="operator-cc",
-            executor=None, decision="approve", note="", now=NOW):
-    return ha.decide(store, request_id, actor=actor, decision=decision, operator_session=operator_session,
-                     csrf_ok=csrf_ok, session=session, note=note, now=now, executor=executor)
+def _ctx(principal="operator", csrf_ok=True, session="operator-cc", listener="serve_proxy"):
+    return ha.server_context(principal=principal, session=session, csrf_ok=csrf_ok, listener=listener)
 
 
-# ── Rail 1: the click must come from the operator's own verified session ─────────────────────────────────────
-def test_a_decision_without_an_operator_session_is_refused_and_runs_nothing(tmp_path):
-    store, rec = _store(tmp_path), Recorder()
+def _decide(store, request_id, *, actor="operator", ctx=None, executor=None, decision="approve", note="", now=NOW,
+            timeout_s=120.0):
+    return ha.decide(store, request_id, ctx=_ctx() if ctx is None else ctx, actor=actor, decision=decision,
+                     note=note, now=now, executor=executor, timeout_s=timeout_s)
+
+
+# ── Server-only: decide() cannot be reached by a plain import and two truthy booleans ────────────────────────
+def test_a_plain_operator_context_cannot_be_constructed_by_a_client(tmp_path):
+    store = _store(tmp_path)
     record = _ask(store)
     with pytest.raises(ha.Refused) as caught:
-        _decide(store, record["id"], operator_session=False, executor=rec.executor())
-    assert caught.value.code == "operator_session_required"
-    assert rec.executed == 0
+        ha.OperatorContext(principal="operator", session="x", csrf_ok=True,
+                           listener="client", _seal=None)  # type: ignore[arg-type]
+    assert caught.value.code == "server_context_required"
     assert store.get(record["id"])["state"] == "open"
 
 
-def test_a_decision_without_the_same_origin_check_is_refused(tmp_path):
-    store, rec = _store(tmp_path), Recorder()
+def test_decide_refuses_without_a_server_context(tmp_path):
+    store = _store(tmp_path)
+    record = _ask(store)
+    for bad in (None, {"principal": "operator", "csrf_ok": True}, True):
+        with pytest.raises(ha.Refused) as caught:
+            ha.decide(store, record["id"], ctx=bad, actor="operator", decision="approve", now=NOW)  # type: ignore[arg-type]
+        assert caught.value.code == "server_context_required"
+    assert store.get(record["id"])["state"] == "open"
+
+
+def test_an_unverified_operator_session_or_csrf_is_refused(tmp_path):
+    store = _store(tmp_path)
     record = _ask(store)
     with pytest.raises(ha.Refused) as caught:
-        _decide(store, record["id"], csrf_ok=False, executor=rec.executor())
+        _decide(store, record["id"], ctx=_ctx(principal=""))
+    assert caught.value.code == "operator_session_required"
+    with pytest.raises(ha.Refused) as caught:
+        _decide(store, record["id"], ctx=_ctx(csrf_ok=False))
     assert caught.value.code == "csrf_required"
-    assert rec.executed == 0
+    assert store.get(record["id"])["state"] == "open"
 
 
 # ── Rail 2: the asker is never the decider ──────────────────────────────────────────────────────────────────
@@ -111,7 +130,7 @@ def test_the_requesting_session_cannot_decide_even_under_another_name(tmp_path):
     store, rec = _store(tmp_path), Recorder()
     record = _ask(store)
     with pytest.raises(ha.Refused) as caught:
-        _decide(store, record["id"], actor="someone-else", session="cc-deepseek-5", executor=rec.executor())
+        _decide(store, record["id"], actor="someone-else", ctx=_ctx(session="cc-deepseek-5"), executor=rec.executor())
     assert caught.value.code == "approver_is_requester"
     assert rec.executed == 0
 
@@ -259,6 +278,51 @@ def test_a_failed_action_still_leaves_the_decision_on_record(tmp_path):
     assert events == ["created", "approved", "failed"]
 
 
+def test_a_timeout_records_what_was_attempted(tmp_path):
+    store = _store(tmp_path)
+
+    def slow(record, actor, progress):
+        progress.reached("gh_pr_merge_started")
+        time.sleep(0.5)
+        progress.reached("gh_pr_merge_returned")
+        return {"ok": True}
+
+    executor = ha.CallbackExecutor(lambda record: (True, ""), slow)
+    record = _ask(store)
+    result = _decide(store, record["id"], executor=executor, timeout_s=0.05)
+    assert result["state"] == "failed"
+    attempted = result["result"]["attempted"]
+    assert result["result"]["outcome"] == "timed_out"
+    assert attempted["type"] == "merge_pr"
+    assert attempted["facts"] == {"pr": 2504, "head_sha": HEAD}
+    assert attempted["timeout_s"] == 0.05
+    assert attempted["step_reached"] == "gh_pr_merge_started"
+    assert [step["step"] for step in attempted["steps"]] == ["gh_pr_merge_started"]
+    ledger = [json.loads(line) for line in store.ledger.read_text().splitlines()]
+    assert ledger[-1]["event"] == "timed_out" and ledger[-1]["outcome"] == "timed_out"
+    assert ledger[-1]["attempted"]["step_reached"] == "gh_pr_merge_started"
+    digest = [json.loads(line) for line in store.digest.read_text().splitlines()]
+    assert digest[-1]["event"] == "timed_out"
+
+
+def test_a_partial_failure_records_the_step_it_reached(tmp_path):
+    store = _store(tmp_path)
+
+    def half_done(record, actor, progress):
+        progress.reached("review_evidence_registered")
+        progress.reached("merge_api_called")
+        raise RuntimeError("API returned 405")
+
+    executor = ha.CallbackExecutor(lambda record: (True, ""), half_done)
+    record = _ask(store)
+    result = _decide(store, record["id"], executor=executor)
+    assert result["state"] == "failed" and result["result"]["outcome"] == "failed"
+    attempted = result["result"]["attempted"]
+    assert [step["step"] for step in attempted["steps"]] == ["review_evidence_registered", "merge_api_called"]
+    assert attempted["step_reached"] == "merge_api_called"
+    assert "API returned 405" in result["result"]["plain"]
+
+
 def test_a_decline_is_recorded_and_runs_nothing(tmp_path):
     store, rec = _store(tmp_path), Recorder()
     record = _ask(store)
@@ -333,7 +397,7 @@ def test_the_cli_refuses_a_decision_without_the_server_flags(tmp_path, capsys):
     record = _ask(store)
     code = ha.main(["--state-root", str(root), "approve", record["id"], "--actor", "operator"])
     assert code == 2
-    assert json.loads(capsys.readouterr().err)["code"] == "operator_session_required"
+    assert json.loads(capsys.readouterr().err)["code"] == "server_context_required"
 
 
 def test_the_cli_refuses_to_run_without_a_state_root(monkeypatch):

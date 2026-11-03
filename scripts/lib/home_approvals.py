@@ -43,8 +43,10 @@ import json
 import os
 import secrets
 import sys
+import threading
+import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional, Protocol
@@ -77,7 +79,16 @@ REQUIRED_FACTS: dict[str, tuple[str, ...]] = {
 STATES = ("open", "approved", "executing", "executed", "failed", "declined", "expired", "cancelled")
 
 DEFAULT_TTL_HOURS = 24.0
+DEFAULT_EXECUTE_TIMEOUT_S = 120.0
 TEXT_FIELDS = ("title", "why", "rule", "what_happens", "risk", "undo")
+
+
+# ── Server-only decision context ─────────────────────────────────────────────────────────────────────────────────
+# ``decide()`` will not accept a plain dict, a pair of booleans, or nothing: it requires an OperatorContext that only
+# ``server_context()`` can mint, and that factory is for the API layer alone. Python has no privilege boundary inside one
+# process — a determined caller can import anything — so this is not a sandbox; it is a shape that makes an accidental
+# client-side approval impossible and makes an intentional one an explicit, reviewable call in the server module.
+_SEAL = object()
 
 
 class Refused(Exception):
@@ -87,6 +98,49 @@ class Refused(Exception):
         super().__init__(f"{code}: {plain}")
         self.code = code
         self.plain = plain
+
+
+@dataclass(frozen=True)
+class OperatorContext:
+    """Proof that the HTTP layer verified the operator. Construct it only through ``server_context()``."""
+
+    principal: str
+    session: str
+    csrf_ok: bool
+    listener: str
+    _seal: object = None
+
+    def __post_init__(self) -> None:
+        if self._seal is not _SEAL:
+            raise Refused(
+                "server_context_required",
+                "An approval can only be decided by the Command Center server after it verified the operator's "
+                "session. This call did not come from there, so nothing was decided.",
+            )
+
+
+def server_context(*, principal: str, session: str = "", csrf_ok: bool, listener: str) -> OperatorContext:
+    """Mint the server-side context. Called by the Command Center API route (piece B) and by nothing else."""
+    return OperatorContext(principal=str(principal or ""), session=str(session or ""), csrf_ok=bool(csrf_ok),
+                           listener=str(listener or ""), _seal=_SEAL)
+
+
+def _check_context(ctx: Any) -> OperatorContext:
+    if not isinstance(ctx, OperatorContext):
+        raise Refused(
+            "server_context_required",
+            "An approval can only be decided by the Command Center server after it verified the operator's session. "
+            "This call did not come from there, so nothing was decided.",
+        )
+    if not ctx.principal:
+        raise Refused("operator_session_required",
+                      "A button click only counts from the operator's own logged-in Command Center session. This click "
+                      "did not name one, so nothing was decided.")
+    if not ctx.csrf_ok:
+        raise Refused("csrf_required",
+                      "This request did not pass the same-origin check, so it was refused. Reload Command Center and "
+                      "try again.")
+    return ctx
 
 
 def _utc(now: Optional[datetime] = None) -> datetime:
@@ -257,12 +311,26 @@ def _check_facts(kind: str, facts: Optional[Mapping[str, Any]]) -> dict[str, Any
 
 
 # ── Executor seam ───────────────────────────────────────────────────────────────────────────────────────────────
+@dataclass
+class Progress:
+    """What the executor had already done when it stopped — recorded on every failure and timeout receipt."""
+
+    steps: list[dict[str, Any]] = field(default_factory=list)
+
+    def reached(self, step: str) -> None:
+        self.steps.append({"step": str(step), "at": _iso()})
+
+    def last(self) -> str:
+        return self.steps[-1]["step"] if self.steps else "unknown"
+
+
 class Executor(Protocol):
     """Bridge to the real action. ``revalidate`` runs at click time and must re-read the live facts."""
 
     def revalidate(self, record: Mapping[str, Any], *, now: datetime) -> tuple[bool, str]: ...
 
-    def execute(self, record: Mapping[str, Any], *, actor: str, now: datetime) -> dict[str, Any]: ...
+    def execute(self, record: Mapping[str, Any], *, actor: str, now: datetime,
+                progress: Progress) -> dict[str, Any]: ...
 
 
 class RefuseAll:
@@ -272,20 +340,26 @@ class RefuseAll:
         return False, ("No executor is configured for this action yet, so approving it would do nothing. "
                        "The lead will wire it before offering the button.")
 
-    def execute(self, record: Mapping[str, Any], *, actor: str, now: datetime) -> dict[str, Any]:
+    def execute(self, record: Mapping[str, Any], *, actor: str, now: datetime,
+                progress: Progress) -> dict[str, Any]:
         raise Refused("no_executor", "No executor is configured for this action yet.")
 
 
 @dataclass
 class CallbackExecutor:
     revalidate_fn: Callable[[Mapping[str, Any]], tuple[bool, str]]
-    execute_fn: Callable[[Mapping[str, Any], str], dict[str, Any]]
+    execute_fn: Callable[..., dict[str, Any]]
 
     def revalidate(self, record: Mapping[str, Any], *, now: datetime) -> tuple[bool, str]:
         return self.revalidate_fn(record)
 
-    def execute(self, record: Mapping[str, Any], *, actor: str, now: datetime) -> dict[str, Any]:
-        return self.execute_fn(record, actor)
+    def execute(self, record: Mapping[str, Any], *, actor: str, now: datetime,
+                progress: Progress) -> dict[str, Any]:
+        try:
+            return self.execute_fn(record, actor, progress)
+        except TypeError:
+            # A two-argument callback (tests, simple adapters) still works; progress stays empty.
+            return self.execute_fn(record, actor)
 
 
 EXECUTORS: dict[str, Executor] = {}
@@ -394,36 +468,28 @@ def decide(
     store: Store,
     request_id: str,
     *,
+    ctx: OperatorContext,
     actor: str,
     decision: str,
-    operator_session: bool,
-    csrf_ok: bool,
-    session: str = "",
     note: str = "",
     now: Optional[datetime] = None,
     executor: Optional[Executor] = None,
+    timeout_s: float = DEFAULT_EXECUTE_TIMEOUT_S,
 ) -> dict[str, Any]:
-    """The single decision entry point. The three rails live here, so no caller can skip them."""
+    """The single decision entry point. Server-only (``ctx``), and it owns all three rails so no caller can skip them."""
     moment = _utc(now)
+    context = _check_context(ctx)
     record = store.require(request_id)
     choice = str(decision or "").strip().lower()
     if choice not in ("approve", "decline"):
         raise Refused("unknown_decision", "A decision is either approve or decline.")
 
-    if not operator_session:
-        raise Refused("operator_session_required",
-                      "A button click only counts from the operator's own logged-in Command Center session. This click "
-                      "did not come from one, so nothing was decided.")
-    if not csrf_ok:
-        raise Refused("csrf_required",
-                      "This request did not pass the same-origin check, so it was refused. Reload Command Center and "
-                      "try again.")
     requester = record.get("requester") or {}
     if not actor or actor == requester.get("actor") or actor == requester.get("session"):
         raise Refused("approver_is_requester",
                       "The session that asked cannot also decide: this request was created by the same identity that "
                       "clicked. The lead must re-ask it from a different session.")
-    if session and session == requester.get("session"):
+    if context.session and context.session == requester.get("session"):
         raise Refused("approver_is_requester",
                       "The session that created this request cannot decide it. The lead must re-ask it from a "
                       "different session.")
@@ -467,7 +533,7 @@ def decide(
     receipt = _append_jsonl(store.ledger, {
         "schema": RECEIPT_SCHEMA, "event": "approved", "at": _iso(moment), "id": request_id,
         "type": record.get("type"), "facts": record.get("facts"), "requester": requester, "actor": actor,
-        "approver_session": session, "approval_source": "operator_session+csrf",
+        "approver_session": context.session, "approval_source": "operator_session+csrf",
         "request_sha256": hashlib.sha256(json.dumps(record, sort_keys=True).encode()).hexdigest(),
     })
     _append_jsonl(store.digest, {"schema": RECEIPT_SCHEMA, "event": "approved", "at": _iso(moment), "id": request_id,
@@ -475,12 +541,17 @@ def decide(
     record.update({"state": "approved", "decision": "approve", "decided_by": actor, "decided_at": _iso(moment),
                    "receipt": receipt, "blocked_reason": None})
     store.put(record)
-    return execute(store, record, actor=actor, now=moment, executor=bridge)
+    return execute(store, record, actor=actor, now=moment, executor=bridge, timeout_s=timeout_s)
 
 
 def execute(store: Store, record: Mapping[str, Any], *, actor: str, now: Optional[datetime] = None,
-            executor: Optional[Executor] = None) -> dict[str, Any]:
-    """Run an approved action exactly once. Idempotent by id: a settled request returns its stored result."""
+            executor: Optional[Executor] = None, timeout_s: float = DEFAULT_EXECUTE_TIMEOUT_S) -> dict[str, Any]:
+    """Run an approved action exactly once, with a hard timeout.
+
+    Idempotent by id: a settled request returns its stored result. A timeout or a partial failure records WHAT WAS
+    ATTEMPTED — the action type, the exact bound facts, the executor steps reached, and the timeout — so a half-done
+    merge can be reconciled instead of guessed at.
+    """
     moment = _utc(now)
     current = store.require(str(record.get("id")))
     state = current.get("state")
@@ -491,15 +562,59 @@ def execute(store: Store, record: Mapping[str, Any], *, actor: str, now: Optiona
     bridge = executor or executor_for(str(current.get("type")))
     current["state"] = "executing"
     store.put(current)
-    try:
-        result = bridge.execute(current, actor=actor, now=moment)
-    except Exception as exc:  # noqa: BLE001 - a failed action must still leave the decision on record
-        current.update({"state": "failed", "result": {"ok": False, "plain": f"The action did not complete: {exc}"}})
+
+    progress = Progress()
+    box: dict[str, Any] = {}
+
+    def _run() -> None:
+        try:
+            box["result"] = bridge.execute(current, actor=actor, now=moment, progress=progress)
+        except BaseException as exc:  # noqa: BLE001 - reported through the receipt, never swallowed
+            box["error"] = exc
+
+    worker = threading.Thread(target=_run, name=f"home-approvals-{current['id']}", daemon=True)
+    started = time.monotonic()
+    worker.start()
+    worker.join(float(timeout_s))
+    elapsed = round(time.monotonic() - started, 3)
+    attempted = {
+        "type": current.get("type"),
+        "facts": current.get("facts"),
+        "steps": list(progress.steps),
+        "step_reached": progress.last(),
+        "timeout_s": float(timeout_s),
+        "elapsed_s": elapsed,
+    }
+
+    if worker.is_alive():
+        current.update({"state": "failed", "result": {
+            "ok": False, "outcome": "timed_out",
+            "plain": (f"The action did not finish within {float(timeout_s):.0f}s and was left as it was; what it had "
+                      f"already done is recorded so the lead can reconcile it."),
+            "attempted": attempted,
+        }})
+        store.put(current)
+        _append_jsonl(store.ledger, {"schema": RECEIPT_SCHEMA, "event": "timed_out", "at": _iso(moment),
+                                     "id": current["id"], "outcome": "timed_out", "attempted": attempted})
+        _append_jsonl(store.digest, {"schema": RECEIPT_SCHEMA, "event": "timed_out", "at": _iso(moment),
+                                     "id": current["id"], "outcome": "timed_out", "attempted": attempted})
+        return current
+
+    if "error" in box:
+        exc = box["error"]
+        current.update({"state": "failed", "result": {
+            "ok": False, "outcome": "failed",
+            "plain": f"The action did not complete: {exc}",
+            "attempted": attempted,
+        }})
         store.put(current)
         _append_jsonl(store.ledger, {"schema": RECEIPT_SCHEMA, "event": "failed", "at": _iso(moment),
-                                     "id": current["id"], "plain": current["result"]["plain"]})
+                                     "id": current["id"], "outcome": "failed", "error": str(exc),
+                                     "attempted": attempted})
         return current
-    current.update({"state": "executed", "result": dict(result or {})})
+
+    current.update({"state": "executed", "result": dict(box.get("result") or {})})
+    current["result"].setdefault("attempted", attempted)
     store.put(current)
     _append_jsonl(store.ledger, {"schema": RECEIPT_SCHEMA, "event": "executed", "at": _iso(moment),
                                  "id": current["id"], "result": current["result"]})
@@ -631,10 +746,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         if args.cmd == "question":
             _print(question(store, args.request_id, actor=args.actor, note=args.note), as_json=args.json)
             return 0
-        record = decide(store, args.request_id, actor=args.actor,
+        context = (server_context(principal=args.actor, session=args.session, csrf_ok=args.csrf_ok,
+                                  listener="cli-operator-shell")
+                   if args.operator_session else None)
+        record = decide(store, args.request_id, ctx=context, actor=args.actor,
                         decision="approve" if args.cmd == "approve" else "decline",
-                        operator_session=args.operator_session, csrf_ok=args.csrf_ok,
-                        session=args.session, note=args.note)
+                        note=args.note)
         _print(record, as_json=args.json)
         return 0
     except Refused as exc:
