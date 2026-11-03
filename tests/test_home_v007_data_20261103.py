@@ -929,7 +929,7 @@ def test_a_stored_row_that_differs_from_the_reader_is_a_conflict_even_when_anoth
     p["reentry_watch"]["SYNX"].pop("current_quote")
     result = mod.collect(p, {}, reader=StoredReader(), read_rows=read, now=NOW)
     quote = result["symbols"]["SYNX"]["quote"]
-    assert quote["state"] == "unknown" and quote["price"] if "price" in quote else True
+    assert quote["state"] == "unknown" and quote["value"] is None
     assert quote["conflict"]["reason"].startswith("The stored observation and the reader disagree")
     assert [m["price"] for m in quote["conflict"]["marks"]] == [12.0, 12.0, 13.0]
 
@@ -1110,3 +1110,73 @@ def test_an_older_instant_conflict_does_not_demote_the_newer_selected_quote(mod)
              "as_of": ASOF, "source": "synthetic_second_mark"}]
     conflict = mod.build(projection(), {}, quotes=same, now=NOW)["symbols"]["SYNX"]["quote"]
     assert conflict["state"] == "unknown" and conflict["conflict"]["as_of"] == ASOF
+
+
+def _load_join(name):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(name, ROOT / "scripts/lib/market_risk_book_join.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _synthetic_out():
+    return {"book_exposure": {"rows": []}, "review": [], "scope_labels": [], "budgets": [], "reentry": {}}
+
+
+def test_the_join_carries_the_block_when_a_dependency_cannot_be_imported(monkeypatch):
+    """cc6 finding 1: the book-dollars import used to escape with no home_v007 at all."""
+    module = _load_join("book_join_import_fail")
+    real = module._import
+
+    def boom(name):
+        if name == "market_risk_book_dollars":
+            raise ImportError("synthetic: book dollars unavailable")
+        return real(name)
+
+    monkeypatch.setattr(module, "_import", boom)
+    out = module.join({"state": "evaluated"}, store={"accounts": {}}, policy={"reentry_watch": {}}, now=NOW)
+    block = out["home_v007"]
+    assert block["state"] == "unavailable" and block["symbols"] == {}
+    assert block["read_errors"][0]["reason"] == "ImportError"
+
+
+def test_the_join_carries_the_block_when_the_book_build_fails(monkeypatch):
+    """cc6 finding 2: the build-failure envelope had no test that would notice its removal."""
+    import importlib
+
+    module = _load_join("book_join_build_fail")
+    dollars = importlib.import_module("lib.market_risk_book_dollars")
+    monkeypatch.setattr(dollars, "build", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("synthetic build failure")))
+    out = module.join({"state": "evaluated"}, store={"accounts": {}}, policy={"reentry_watch": {}}, now=NOW)
+    block = out["home_v007"]
+    assert block["state"] == "unavailable" and block["gaps"][0]["field"] == "home_v007"
+    assert block["read_errors"][0]["reason"] == "RuntimeError"
+
+
+def test_the_join_carries_the_block_when_home_actions_fails(monkeypatch):
+    import importlib
+
+    module = _load_join("book_join_actions_fail")
+    dollars = importlib.import_module("lib.market_risk_book_dollars")
+    monkeypatch.setattr(dollars, "build", lambda *a, **k: _synthetic_out())
+    monkeypatch.setattr(module, "home_actions", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("synthetic actions failure")))
+    out = module.join({"state": "evaluated"}, store={"accounts": {}}, policy={"reentry_watch": {}}, now=NOW)
+    block = out["home_v007"]
+    assert block["state"] == "unavailable" and block["read_errors"][0]["reason"] == "RuntimeError"
+
+
+def test_a_built_block_is_never_shadowed_by_the_incoming_projection(monkeypatch):
+    """cc6 finding 3: the final return spread the projection AFTER home_v007."""
+    import importlib
+
+    module = _load_join("book_join_shadow")
+    dollars = importlib.import_module("lib.market_risk_book_dollars")
+    monkeypatch.setattr(dollars, "build", lambda *a, **k: _synthetic_out())
+    monkeypatch.setattr(module, "home_context", lambda *a, **k: {"schema": "HomeMarketRiskContext@v1",
+                                                               "state": "available", "built": True})
+    out = module.join({"state": "evaluated", "home_v007": {"sentinel": True}},
+                      store={"accounts": {}}, policy={"reentry_watch": {}}, now=NOW)
+    assert out["home_v007"].get("built") is True and "sentinel" not in out["home_v007"]

@@ -377,8 +377,11 @@ def join(
             ),
         }
     now = now or datetime.now(timezone.utc)
-    bd = _import("market_risk_book_dollars")
     try:
+        # Inside the try: a missing dependency is a known failure, and a known failure must carry the
+        # shaped block. Outside it, an ImportError escapes to the route, which answers 200 with no
+        # home_v007 at all and makes "absent" mean both "did not run" and "failed".
+        bd = _import("market_risk_book_dollars")
         if store is None:
             store = _import("portfolio_positions").load_store()
         if not store:
@@ -488,21 +491,24 @@ def join(
     be = out["book_exposure"]
     be["stops_known"] = stops is not None
     be["ledger_error"] = ledger_error
-    actions = home_actions(projection, out, policy=policy, overnight=overnight, transitions=transitions, now=now)
     observed_stops = None if stops is None else [
         {"symbol": row["symbol"], "account_label": ad.account_label(row["account"]),
          "price": row["stop_price"], "as_of": row.get("captured_at"),
          "source": row.get("source"), "status": row.get("status")} for row in stops]
     try:
+        # home_actions feeds the context; if it fails, the block cannot be built and the shaped
+        # unavailable block is the honest answer (previously the exception escaped the join).
+        actions = home_actions(projection, out, policy=policy, overnight=overnight, transitions=transitions, now=now)
         v007 = home_context(projection, {**out, **actions, "budgets_detail": out["budgets"],
                                         "observed_stops": observed_stops}, policy=policy,
                             now=now, get_conn=get_conn, reader=context_reader)
     except Exception as exc:  # noqa: BLE001 — the additive context cannot erase the v006 card
         # An unavailable block still has to be shaped like the block it replaces: a consumer that
         # checks only for presence must be able to tell "unavailable" from "present and empty".
+        actions = {}
         v007 = unavailable_context(exc, now)
     return {
-        "home_v007": v007,
+        # The BUILT block is authoritative: an incoming projection key must never shadow it.
         **projection,
         **actions,
         "book_exposure": be,
@@ -513,4 +519,5 @@ def join(
         "reentry_card": (policy.get("reentry_watch") or {}).get("card") or {},
         "card_config": card_config(policy),
         "alerts": run_alerts(projection),
+        "home_v007": v007,
     }
