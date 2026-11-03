@@ -286,7 +286,10 @@ export function normalizeReview(raw: unknown, rowHead: string): Factor<ReviewSta
     const merges = verdicts.filter(v => v.verdict === 'MERGE')
     const envelope = asString(r.state).trim().toUpperCase()
     // BLOCK dominates — including a backend that reports blocked while its records disagree.
-    const envelopeBlocked = ['BLOCK', 'BLOCKED', 'CHANGES', 'CHANGES_REQUESTED', 'REJECT'].includes(envelope)
+    // ONE vocabulary (cx-openai-4, P1): this used to be a second, hand-written list that omitted
+    // REQUEST_CHANGES, so an envelope saying REQUEST_CHANGES beside a MERGE member rendered 'passed'.
+    // The envelope now goes through the same VERDICT map the records and the state-only path use.
+    const envelopeBlocked = VERDICT[envelope] === 'CHANGES'
     // Beyond that, a mixed or unrecognised set is UNKNOWN — never MERGE from the survivors alone, and never
     // an upgrade of an UNKNOWN the backend itself reported.
     // R1: ANY envelope word we do not recognise is a fail-closed condition — it used to be invisible, so a

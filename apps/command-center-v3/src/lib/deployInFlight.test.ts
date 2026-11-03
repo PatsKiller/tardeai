@@ -330,5 +330,26 @@ const r1b = normalizeReview({ head_sha: HEAD, source: 'ledger', verdicts: [
 ] }, HEAD)
 eq('R1 a blocking member beside a merge member is blocked', r1b.state, 'CHANGES')
 
+// ---- cx-openai-4's surviving P1: the envelope's REQUEST_CHANGES must survive a MERGE member.
+// Asserted at the REAL call path (normalizeRow -> normalizeWork -> normalizeReview), not on the helper.
+const rowWith = (review: unknown) => normalizeRow({ number: 7, title: 't', url: 'u', head_sha: HEAD, branch: 'b',
+  mergeable: 'MERGEABLE', merge_state: 'CLEAN', is_draft: false, work: { present: true, review } })
+eq('P1 envelope REQUEST_CHANGES beside a MERGE member stays blocked',
+  rowWith({ state: 'REQUEST_CHANGES', head_sha: HEAD,
+    records: [{ verdict: 'MERGE', reviewer: 'cc2', head_sha: HEAD, as_of: '2026-11-03T12:00:00Z' }] }).work.review.state,
+  'CHANGES')
+eq('P1 the same through the verdicts key', 
+  rowWith({ state: 'REQUEST_CHANGES', head_sha: HEAD,
+    verdicts: [{ verdict: 'MERGE', reviewer: 'cc2', head_sha: HEAD, as_of: '2026-11-03T12:00:00Z' }] }).work.review.state,
+  'CHANGES')
+eq('P1 an unrecognised envelope beside a MERGE member stays UNKNOWN',
+  rowWith({ state: 'WAT', head_sha: HEAD,
+    records: [{ verdict: 'MERGE', reviewer: 'cc2', head_sha: HEAD, as_of: '2026-11-03T12:00:00Z' }] }).work.review.state,
+  'UNKNOWN')
+eq('P1 a plain MERGE envelope with MERGE records is still a pass',
+  rowWith({ state: 'MERGE', head_sha: HEAD,
+    records: [{ verdict: 'MERGE', reviewer: 'cc2', head_sha: HEAD, as_of: '2026-11-03T12:00:00Z' }] }).work.review.state,
+  'MERGE')
+
 console.log(`deployInFlight: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)
