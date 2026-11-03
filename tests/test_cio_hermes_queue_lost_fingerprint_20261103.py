@@ -130,3 +130,13 @@ def test_an_open_owner_and_an_answer_after_the_request_still_suppress(tmp_path, 
                       [_requested("res_new", FP, minutes_ago=20)])
     monkeypatch.setenv("CIO_HERMES_PROJECTION", str(tmp_path / "hermes_research_projection.json"))
     assert collect_cio_hermes_queue_health(path=ledger2, now=NOW)["lost_n"] == 0
+
+
+def test_a_ts_only_completion_is_not_a_valid_clock(tmp_path, monkeypatch):
+    """The restore oracle never reads a bare `ts` as a completion clock, so neither may the health check."""
+    ledger = _ledger(tmp_path, {"by_research_id": {},
+                                "by_fingerprint_completed": {FP: {"ts": NOW.isoformat()}}},
+                     [_requested("res_new", FP, minutes_ago=20)])
+    monkeypatch.setenv("CIO_HERMES_PROJECTION", str(tmp_path / "hermes_research_projection.json"))
+    out = collect_cio_hermes_queue_health(path=ledger, now=NOW)
+    assert out["lost_n"] == 1 and out["ok"] is False

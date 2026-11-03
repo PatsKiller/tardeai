@@ -147,7 +147,9 @@ _DONE_STATES = {"completed", "done", "succeeded"}
 
 
 def _clock(record: dict[str, Any]) -> Optional[datetime]:
-    for key in ("completed_ts", "as_of", "updated_ts", "ts"):
+    # Exactly the oracle's fields: restore_lost_requests reads completed_ts, as_of and updated_ts. A row that
+    # carries only a generic `ts` is NOT a valid completion clock and must not suppress.
+    for key in ("completed_ts", "as_of", "updated_ts"):
         value = record.get(key)
         if not value:
             continue
