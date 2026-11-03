@@ -5,7 +5,7 @@
 // Read: GET /api/v2/coordination/pipeline (scripts/lib/work_pipeline.py). Act (Tier 1, operator only):
 // POST /api/v2/coordination/commands (scripts/lib/work_pipeline_commands.py). Model: lib/workPipeline.ts.
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { Chip } from '../components/primitives'
 import { RADIUS, TOKENS, TYPE, FONT, toneVars } from '../lib/designTokens'
@@ -97,7 +97,9 @@ function CurrentPipelineView({ payload, readFailed, readStale, onWorklog, onAct,
           <b>{item.title}</b>
           {item.head ? <span style={mono}>Head {item.head}</span> : null}
           {item.command ? <><code style={{ ...mono, whiteSpace: 'pre-wrap' }}>{item.command}</code><button type="button" style={{ ...btn, minHeight: 44 }} onClick={() => { void copyText(item.command || '') }}>Copy exact command</button></> : null}
-          {item.url ? <a href={item.url} style={{ ...linkStyle, minHeight: 44, display: 'flex', alignItems: 'center' }}>Open decision</a> : null}
+          {!item.url || item.url.startsWith('/')
+            ? <Link to={item.url || `/approvals/${encodeURIComponent(item.id)}`} style={{ ...linkStyle, minHeight: 44, display: 'flex', alignItems: 'center' }}>Open decision</Link>
+            : <a href={item.url} style={{ ...linkStyle, minHeight: 44, display: 'flex', alignItems: 'center' }}>Open decision</a>}
           <span style={small}>Source observed {et(item.sourceAt)}</span>
         </article>)}
     </section>
