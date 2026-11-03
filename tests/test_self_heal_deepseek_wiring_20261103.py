@@ -182,3 +182,13 @@ def test_inbound_anthropic_credentials_never_reach_the_child_env(tmp_path):
                 F.agent_env(inbound, cfg, scratch_state=str(tmp_path), agent_home=str(tmp_path), proxy_port=None)):
         assert "ANTHROPIC_AUTH_TOKEN" not in env and "ANTHROPIC_API_KEY" not in env, env
         assert "synthetic" not in json.dumps(env), env
+
+
+def test_the_agent_run_uses_the_configured_timeout(tmp_path, monkeypatch):
+    """cc4: the timeout had no test. run_agent must pass claude.timeout_s to run(), with the descriptors it holds."""
+    seen = {}
+    monkeypatch.setattr(FX, "run", lambda cmd, **kw: seen.update(kw) or {"rc": 124, "out": "", "err": "timeout"})
+    a = _attempt(tmp_path, {})
+    a.cfg["claude"]["timeout_s"] = 7
+    a.run_agent([str(tmp_path / "claude")], "prompt")
+    assert seen["timeout"] == 7.0, seen
