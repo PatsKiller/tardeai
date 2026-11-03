@@ -23,6 +23,10 @@ from lib import home_approvals as ha  # noqa: E402
 from lib import home_approvals_adapters as ad  # noqa: E402
 
 HEAD = "5c15ddb039e944b9c946d769265aea347943b7b8"
+# The operator identity comes from config/cc_auth.yaml at run time: no personal data is written into a test.
+LOGIN = sorted(ha.allowed_logins())[0]
+PRINCIPAL = f"tailnet:{LOGIN}"
+
 NOW = datetime(2026, 11, 3, 18, 0, tzinfo=timezone.utc)
 
 
@@ -187,8 +191,8 @@ def test_an_adapter_without_wiring_can_check_but_never_act(tmp_path):
         "undo": "u", "facts": {"pr": 2504, "head_sha": HEAD},
     }, requester={"session": "cc-deepseek-5"}, now=NOW)
     executor = ad.make_executor("merge_pr", run=_runner({"state": "OPEN", "headRefOid": HEAD}))
-    ctx = ha.server_context(principal="tailnet:john@jwwhiting.com", session="op", csrf_ok=True, listener="serve_proxy")
-    result = ha.decide(store, record["id"], ctx=ctx, actor="john@jwwhiting.com", decision="approve",
+    ctx = ha.server_context(principal=PRINCIPAL, session="op", csrf_ok=True, listener="serve_proxy")
+    result = ha.decide(store, record["id"], ctx=ctx, actor=LOGIN, decision="approve",
                        now=NOW,
                        executor=executor)
     assert result["state"] == "failed"
