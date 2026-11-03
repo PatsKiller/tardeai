@@ -1664,40 +1664,53 @@ def _compute_watchdog() -> None:
 
 
 
-def freshness_payload(fp):
-    """(http_status, payload) for GET /api/freshness with the authoritative-store guard applied."""
-    import json as _json
+def freshness_payload(state_dir):
+    """(http_status, payload) for GET /api/freshness with the authoritative-store guard applied.
+
+    Takes the STATE DIRECTORY, not a manifest path, so this module never constructs a manifest path
+    of its own: the read itself is ``lib.authoritative_store_guard.guarded_manifest`` — the same one
+    code path every other consumer uses. A 0-byte/corrupt holdings.json, a hash mismatch or a
+    stale/future completed_at therefore cannot come back as FRESH here. This function owns only the
+    HTTP shape.
+    """
     from datetime import datetime as _dt
     from pathlib import Path as _Path
 
-    fp = _Path(fp)
-    if not fp.exists():
-        return 200, {"status": "unknown", "age_hours": None,
-                     "message": "No freshness manifest found — pipeline has not written _freshness.json yet"}
+    state_dir = _Path(state_dir)
     try:
-        fm = _json.loads(fp.read_text())
-        completed = _dt.fromisoformat(fm.get("completed_at", "2000-01-01"))
-        now = _dt.now(completed.tzinfo) if completed.tzinfo else _dt.now()
-        age_hours = round((now - completed).total_seconds() / 3600, 1)
-        status = "fresh" if age_hours <= 26 else "stale"
-    except Exception as exc:  # noqa: BLE001
-        return 500, {"status": "error", "message": str(exc)}
-    try:
-        from lib.authoritative_store_guard import effective_status, guard as _store_guard
-        verdict = _store_guard(fp.parent)
-        status = effective_status(status, verdict)
-        fm["guard"] = {"ok": verdict.get("ok"), "status": verdict.get("status"),
-                       "reasons": verdict.get("reasons")}
-    except Exception as exc:  # noqa: BLE001
-        status = "UNAVAILABLE"
-        fm["guard"] = {"ok": False, "status": "UNAVAILABLE", "reasons": [f"guard_error:{type(exc).__name__}"]}
-    if status == "fresh":
-        message = f"Pipeline ran {age_hours:.1f}h ago"
-    elif status == "UNAVAILABLE":
+        from lib.authoritative_store_guard import guarded_manifest
+
+        doc = guarded_manifest(state_dir)
+    except Exception as exc:  # noqa: BLE001 — a guard failure is not permission to say fresh
+        doc = {
+            "status": "UNAVAILABLE",
+            "guard": {"ok": False, "status": "UNAVAILABLE", "reasons": [f"guard_error:{type(exc).__name__}"]},
+        }
+    age_hours = None
+    completed_raw = doc.get("completed_at")
+    if completed_raw:
+        try:
+            completed = _dt.fromisoformat(str(completed_raw).replace("Z", "+00:00"))
+            now = _dt.now(completed.tzinfo) if completed.tzinfo else _dt.now()
+            age_hours = round((now - completed).total_seconds() / 3600, 1)
+        except (TypeError, ValueError):
+            age_hours = None
+    status = str(doc.get("status") or "unknown")
+    guard_verdict = doc.get("guard") if isinstance(doc.get("guard"), dict) else {}
+    if status.lower() == "fresh":
+        message = f"Pipeline ran {age_hours:.1f}h ago" if age_hours is not None else "Pipeline reports fresh"
+    elif status.upper() == "UNAVAILABLE":
         message = "The holdings store could not be read, so freshness cannot be confirmed."
+    elif status.lower() == "stale":
+        # The clock may be recent while the store no longer matches the manifest: the reason, not
+        # the age, is what the operator needs to see.
+        if guard_verdict.get("ok") is False:
+            message = "Freshness metadata does not match the holdings store — data cannot be confirmed current."
+        else:
+            message = f"Data is {age_hours:.0f}h stale — pipeline may not have run"
     else:
-        message = f"Data is {age_hours:.0f}h stale — pipeline may not have run"
-    return 200, {**fm, "age_hours": age_hours, "status": status, "message": message}
+        message = "No freshness manifest found — pipeline has not written _freshness.json yet"
+    return 200, {**doc, "age_hours": age_hours, "status": status, "message": message}
 
 
 class PortfolioHandler(http.server.BaseHTTPRequestHandler):
@@ -2208,31 +2221,8 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
 
         # Freshness manifest (Phase 0)
         if path == "/api/freshness":
-            _fp = PROJECT_ROOT / "data" / "portfolios" / "state" / "_freshness.json"
-            _status_code, _payload = freshness_payload(_fp)
+            _status_code, _payload = freshness_payload(STATE_DIR)
             json_response(self, _status_code, _payload)
-            return
-            if _fp.exists():
-                try:
-                    _fm = json.loads(_fp.read_text())
-                    from datetime import datetime as _dt
-                    _completed = _dt.fromisoformat(_fm.get("completed_at", "2000-01-01"))
-                    _age_hours = round((_dt.now() - _completed).total_seconds() / 3600, 1)
-                    _status = "fresh" if _age_hours <= 26 else "stale"
-                    json_response(self, 200, {
-                        **_fm,
-                        "age_hours": _age_hours,
-                        "status": _status,
-                        "message": f"Pipeline ran {_age_hours:.1f}h ago" if _status == "fresh" else f"Data is {_age_hours:.0f}h stale — pipeline may not have run",
-                    })
-                except Exception as _e:
-                    json_response(self, 500, {"status": "error", "message": str(_e)})
-            else:
-                json_response(self, 200, {
-                    "status": "unknown",
-                    "age_hours": None,
-                    "message": "No freshness manifest found — pipeline has not written _freshness.json yet",
-                })
             return
 
         # Database health (Phase P5-3)

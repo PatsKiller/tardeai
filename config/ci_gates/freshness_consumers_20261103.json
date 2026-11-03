@@ -6,6 +6,6 @@
   ],
   "anchor": "FRESHNESS_CONSUMERS_20261103",
   "comment": [
-    "Every active freshness consumer answers from the authoritative-store guard: portfolio monitor, global alerts and GET /api/freshness cannot render FRESH over a 0-byte, corrupt, hash-mismatched or stale store."
+    "ANCHOR: FRESHNESS_CONSUMERS_20261103 — every freshness consumer (portfolio monitor, global alerts, morning command, ops summary, GET /api/freshness, the analyst prompt, the orchestrator pre-check) answers from ONE guarded read; a 0-byte or corrupt holdings store, a hash mismatch, or a stale/future completed_at can never render FRESH on any surface, and no runtime module outside the guard reads _freshness.json itself."
   ]
 }

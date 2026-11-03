@@ -168,20 +168,27 @@ def _guarded_freshness(state_dir=None):
     A manifest proves a producer ran; it does not prove the store it describes is readable. Every
     consumer that publishes a freshness status goes through here, so a 0-byte or corrupt holdings.json
     (or a manifest whose hash/clock no longer matches it) cannot render FRESH on any surface.
+
+    The read itself is ``lib.authoritative_store_guard.guarded_manifest`` — one code path, shared with
+    the HTTP server and the lane scripts; this wrapper only supplies api_v2's STATE_DIR.
     """
     sd = state_dir or STATE_DIR
-    doc = dict(_load_json(sd / "_freshness.json") or {})
     try:
-        from lib.authoritative_store_guard import effective_status, guard as _store_guard
+        from lib.authoritative_store_guard import guarded_manifest
 
-        verdict = _store_guard(sd)
-        doc["status"] = effective_status(doc.get("status"), verdict)
-        doc["guard"] = {"ok": verdict.get("ok"), "status": verdict.get("status"),
-                        "reasons": verdict.get("reasons")}
+        return guarded_manifest(sd)
     except Exception as exc:  # noqa: BLE001 — a guard failure is not permission to say fresh
-        doc["status"] = "UNAVAILABLE"
-        doc["guard"] = {"ok": False, "status": "UNAVAILABLE", "reasons": [f"guard_error:{type(exc).__name__}"]}
-    return doc
+        from datetime import datetime as _dt
+
+        return {
+            "status": "UNAVAILABLE",
+            "guard": {
+                "ok": False,
+                "status": "UNAVAILABLE",
+                "reasons": [f"guard_error:{type(exc).__name__}"],
+                "checked_at": _dt.now().isoformat(),
+            },
+        }
 
 
 def _load_json(path: Path):
@@ -3566,6 +3573,9 @@ def overview():
     h, _env_h = observe_state_file("holdings.json", observed_at_field="last_repriced", trace_id=_trace)
     perf, _env_perf = observe_state_file("performance_history.json", trace_id=_trace)
     fresh, _env_fresh = observe_state_file("_freshness.json", trace_id=_trace)
+    # The envelope proves the MANIFEST is recent; only the guard proves the store it describes is
+    # readable. pipeline_status_reported below republishes the guarded status, never the raw claim.
+    _fresh_guarded = _guarded_freshness()
     news, _env_news = observe_state_file("portfolio_news.json", trace_id=_trace)
     _envelopes = {
         "holdings": _env_h,
@@ -4027,7 +4037,7 @@ def overview():
         # contributing dataset (AGENTS.md 9.1). Fails closed to unknown.
         "pipeline_status": _surface_status.lower(),
         "pipeline_status_source": "computed:canonical_observation",
-        "pipeline_status_reported": fresh.get("status", "unknown"),
+        "pipeline_status_reported": _fresh_guarded.get("status", "unknown"),
         "pipeline_completed": fresh.get("completed_at", ""),
         "observation": _observation_block,
         # Sprint 4A additions (total_cash / last_repriced already set above — do not rekey)
@@ -7490,12 +7500,9 @@ def _ops_audit():
 
 
 def ops_summary():
+    # One guarded read: the manifest plus the authoritative-store verdict, status already applied.
     fresh = _guarded_freshness()
-    # The manifest proves a producer ran; it does not prove the store it describes
-    # is healthy. A 0-byte holdings.json must never render FRESH from cached metadata.
-    from lib.authoritative_store_guard import effective_status as _effective_status, guard as _holdings_guard
-
-    _store_guard = _holdings_guard(STATE_DIR)
+    _store_guard = fresh.get("guard") or {}
     health_rows = (
         _db_query(
             """
@@ -7511,7 +7518,7 @@ def ops_summary():
 
     return {
         "pipeline": {
-            "status": _effective_status(fresh.get("status", "unknown"), _store_guard),
+            "status": fresh.get("status", "unknown"),
             "authoritative_store": _store_guard,
             "completed_at": fresh.get("completed_at", ""),
             "duration_seconds": fresh.get("pipeline_duration_seconds", 0),
@@ -30181,15 +30188,21 @@ def _compute_freshness(freshness):
     from datetime import datetime, timezone
 
     file_ts = freshness.get("completed_at")
+    # The guard verdict decides whether any clock may be believed at all. A 0-byte holdings.json
+    # has a fresh mtime and a recent pipeline_runs row, so "most recent clock" alone reported
+    # fresh over an unreadable book — the exact false all-clear this surface must not publish.
+    _guard_verdict = freshness.get("guard") if isinstance(freshness.get("guard"), dict) else {}
+    _store_ok = _guard_verdict.get("ok") is True
     # Check latest pipeline run
     # 2026-06-12: column is finished_at (run_completed_at never existed — this errored on every
     # morning-command load and silently returned None for pipeline freshness)
     pr = _db_query("SELECT MAX(finished_at) as latest FROM pipeline_runs WHERE status='success'", fetch="one")
     db_ts = pr.get("latest") if pr else None
-    # Also check holdings.json mtime as most relevant freshness signal
+    # Also check holdings.json mtime as most relevant freshness signal — meaningful only when the
+    # store itself is readable; a 0-byte/corrupt file's mtime is not evidence of anything.
     holdings_ts = None
     _hp = STATE_DIR / "holdings.json"
-    if _hp.exists():
+    if _store_ok and _hp.exists():
         holdings_ts = datetime.fromtimestamp(_hp.stat().st_mtime, tz=timezone.utc).isoformat()
     # Pick most recent of all sources
     best = file_ts
@@ -30198,10 +30211,11 @@ def _compute_freshness(freshness):
             _cs = str(_candidate)
             if not best or _cs > str(best):
                 best = _cs
-    # Weekend awareness: if it's Sat/Sun and best is within 48h, mark fresh
+    # Weekend awareness: if it's Sat/Sun and best is within 48h, mark fresh — but only when the
+    # guard says the store and the manifest agree. A weekend clock never sanctions a bad store.
     now = datetime.now(timezone.utc)
     status = freshness.get("status", "unknown")
-    if best:
+    if best and _store_ok:
         try:
             from dateutil.parser import parse as dtparse
 

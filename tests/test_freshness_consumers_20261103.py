@@ -1,10 +1,18 @@
-"""Freshness fail-closed across the active consumers (#2530 second block, 2026-11-03).
+"""FRESHNESS_CONSUMERS_20261103 — every consumer answers from ONE guarded read.
 
-The guard was wired into the ops summary only; a 0-byte or corrupt holdings.json still rendered FRESH
-on the portfolio monitor, the global-alerts banner and GET /api/freshness. These tests make every one
-of those surfaces answer from the guard, not from the cached manifest.
+The authoritative-store guard existed but was wired into the ops summary only. A 0-byte or
+corrupt holdings.json (or a manifest whose hash/clock no longer matches it) still rendered FRESH
+on the portfolio monitor, the global-alerts banner and GET /api/freshness — a false all-clear on
+the exact incident shape. These cross-surface tests drive the same store states through every
+surface and assert that none of them can publish a healthy status over an unreadable book.
+
+The read lives in ``lib.authoritative_store_guard.guarded_manifest``; every surface below must
+answer through it. A surface that starts reading ``_freshness.json`` directly again is a
+regression, so the last test pins the single read path itself.
 """
+
 import json
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -15,73 +23,188 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import api_v2  # noqa: E402
+import portfolio_ai_analyst  # noqa: E402
 import portfolio_server  # noqa: E402
+from lib.authoritative_store_guard import guarded_manifest, holdings_hash  # noqa: E402
 
 NOW = datetime.now(timezone.utc)
 
+HEALTHY_ROW = {
+    "symbol": "AAA",
+    "account": "schwab_taxable",
+    "shares": 10,
+    "market_value": 1200.0,
+    "price": 120.0,
+}
 
-def _store(tmp_path, *, holdings_rows=None, status="fresh", hash_ok=True):
-    doc = {"holdings": holdings_rows if holdings_rows is not None else [
-        {"symbol": "AAA", "account": "schwab_taxable", "shares": 10, "market_value": 1200.0, "price": 120.0},
-    ], "as_of": NOW.date().isoformat()}
-    (tmp_path / "holdings.json").write_text(json.dumps(doc))
-    from lib.authoritative_store_guard import holdings_hash
 
-    (tmp_path / "_freshness.json").write_text(json.dumps({
+def _write_store(state_dir, holdings, *, completed_at=None, status="fresh", holdings_hash_value="__auto__"):
+    """A store + manifest pair; ``holdings`` is written verbatim (bytes/str raw, dict as JSON)."""
+    if isinstance(holdings, bytes):
+        (state_dir / "holdings.json").write_bytes(holdings)
+    elif isinstance(holdings, str):
+        (state_dir / "holdings.json").write_text(holdings)
+    else:
+        (state_dir / "holdings.json").write_text(json.dumps(holdings))
+    doc = holdings if isinstance(holdings, dict) else {}
+    stamp = completed_at if completed_at is not None else NOW - timedelta(minutes=5)
+    manifest = {
         "status": status,
-        "completed_at": (NOW - timedelta(minutes=5)).isoformat(),
-        "holdings_hash": holdings_hash(doc) if hash_ok else "deadbeefcafe",
-    }))
-    return tmp_path
+        "completed_at": stamp.isoformat() if isinstance(stamp, datetime) else stamp,
+        "holdings_hash": holdings_hash(doc) if holdings_hash_value == "__auto__" else holdings_hash_value,
+        "run_id": "run-42",
+        "steps_completed": 10,
+    }
+    (state_dir / "_freshness.json").write_text(json.dumps(manifest))
+    return state_dir
+
+
+def _healthy(state_dir):
+    return _write_store(state_dir, {"holdings": [HEALTHY_ROW], "as_of": NOW.date().isoformat()})
+
+
+SCENARIOS = {
+    # name: (builder, expected status on every surface)
+    "healthy": (_healthy, "fresh"),
+    "zero_byte_store": (lambda d: _write_store(d, b"", holdings_hash_value="94f18d5b8ced"), "UNAVAILABLE"),
+    "corrupt_store": (
+        lambda d: _write_store(d, '{"holdings": [{"symbol": "AAA"', holdings_hash_value="94f18d5b8ced"),
+        "UNAVAILABLE",
+    ),
+    "hash_mismatch": (
+        lambda d: _write_store(d, {"holdings": [HEALTHY_ROW]}, holdings_hash_value="deadbeefcafe"),
+        "STALE",
+    ),
+    "stale_completed_at": (
+        lambda d: _write_store(d, {"holdings": [HEALTHY_ROW]}, completed_at=NOW - timedelta(hours=40)),
+        "STALE",
+    ),
+    "future_completed_at": (
+        lambda d: _write_store(d, {"holdings": [HEALTHY_ROW]}, completed_at=NOW + timedelta(hours=2)),
+        "STALE",
+    ),
+}
 
 
 @pytest.fixture
-def broken(tmp_path, monkeypatch):
-    """A FRESH manifest over a 0-byte store — the incident shape."""
-    (tmp_path / "holdings.json").write_bytes(b"")
-    (tmp_path / "_freshness.json").write_text(json.dumps({
-        "status": "fresh", "completed_at": (NOW - timedelta(minutes=5)).isoformat(),
-        "holdings_hash": "94f18d5b8ced"}))
+def state_dir(tmp_path, monkeypatch):
+    """Point api_v2 at the temporary state directory and keep DB calls out of the surfaces."""
     monkeypatch.setattr(api_v2, "STATE_DIR", tmp_path)
+    monkeypatch.setattr(api_v2, "_db_query", lambda *a, **k: None)
     return tmp_path
 
 
-def test_guarded_freshness_is_unavailable_over_a_zero_byte_store(broken):
-    doc = api_v2._guarded_freshness()
-    assert doc["status"] == "UNAVAILABLE"
-    assert "holdings_store_empty" in (doc["guard"]["reasons"] or [])
+def _surface_statuses(state_dir):
+    """Every surface's published status for the store currently on disk."""
+    monitor = api_v2._portfolio_monitor()
+    alerts = api_v2._global_alerts()
+    morning = api_v2._morning_command()
+    ops = api_v2.ops_summary()
+    _code, http_payload = portfolio_server.freshness_payload(state_dir)
+    return {
+        "guarded_read": api_v2._guarded_freshness()["status"],
+        "portfolio_monitor": monitor["freshness"]["status"],
+        "global_alerts": alerts["freshness"]["status"],
+        "morning_command": morning["freshness"]["status"],
+        "ops_summary": ops["pipeline"]["status"],
+        "api_freshness": http_payload["status"],
+    }
 
 
-def test_global_alerts_banner_cannot_say_fresh(broken):
-    out = api_v2._global_alerts()
-    assert out["freshness"]["status"] == "UNAVAILABLE"
+@pytest.mark.parametrize("scenario", sorted(SCENARIOS))
+def test_every_surface_publishes_the_guarded_status(state_dir, scenario):
+    builder, expected = SCENARIOS[scenario]
+    builder(state_dir)
+    observed = _surface_statuses(state_dir)
+    wrong = {name: value for name, value in observed.items() if value != expected}
+    assert not wrong, f"{scenario}: surfaces must all publish {expected}, got {observed}"
 
 
-def test_portfolio_monitor_cannot_say_fresh(broken):
-    out = api_v2._portfolio_monitor()
-    assert "UNAVAILABLE" in json.dumps(out)
-
-
-def test_api_freshness_route_cannot_say_fresh(broken):
-    status, payload = portfolio_server.freshness_payload(broken / "_freshness.json")
-    assert status == 200 and payload["status"] == "UNAVAILABLE"
+def test_zero_byte_store_is_unavailable_with_a_plain_message(state_dir):
+    _write_store(state_dir, b"", holdings_hash_value="94f18d5b8ced")
+    _code, payload = portfolio_server.freshness_payload(state_dir)
+    assert payload["status"] == "UNAVAILABLE"
     assert payload["guard"]["ok"] is False
+    assert "holdings_store_empty" in payload["guard"]["reasons"]
     assert "could not be read" in payload["message"]
 
 
-def test_a_hash_mismatch_is_stale_not_fresh(tmp_path, monkeypatch):
-    _store(tmp_path, hash_ok=False)
-    monkeypatch.setattr(api_v2, "STATE_DIR", tmp_path)
-    assert api_v2._guarded_freshness()["status"] == "STALE"
-    _status, payload = portfolio_server.freshness_payload(tmp_path / "_freshness.json")
-    assert payload["status"] == "STALE"
+def test_corrupt_store_is_unavailable(state_dir):
+    _write_store(state_dir, '{"holdings": [', holdings_hash_value="94f18d5b8ced")
+    doc = guarded_manifest(state_dir)
+    assert doc["status"] == "UNAVAILABLE"
+    assert "holdings_store_unparseable" in doc["guard"]["reasons"]
 
 
-def test_a_healthy_store_still_reports_fresh(tmp_path, monkeypatch):
-    _store(tmp_path)
-    monkeypatch.setattr(api_v2, "STATE_DIR", tmp_path)
+def test_a_healthy_store_still_reads_fresh(state_dir):
+    _healthy(state_dir)
+    observed = _surface_statuses(state_dir)
+    assert set(observed.values()) == {"fresh"}, observed
+
+
+def test_hash_mismatch_is_never_fresh(state_dir):
+    _write_store(state_dir, {"holdings": [HEALTHY_ROW]}, holdings_hash_value="deadbeefcafe")
     doc = api_v2._guarded_freshness()
-    assert doc["status"] == "fresh" and doc["guard"]["ok"] is True
-    _status, payload = portfolio_server.freshness_payload(tmp_path / "_freshness.json")
-    assert payload["status"] == "fresh"
-    assert api_v2._global_alerts()["freshness"]["status"] == "fresh"
+    assert doc["status"] == "STALE"
+    assert "holdings_hash_mismatch" in doc["guard"]["reasons"]
+    _code, payload = portfolio_server.freshness_payload(state_dir)
+    assert payload["status"] == "STALE"
+    assert "cannot be confirmed current" in payload["message"]
+
+
+def test_a_recent_clock_cannot_upgrade_a_guarded_status(state_dir, monkeypatch):
+    """_compute_freshness must not let holdings mtime / pipeline_runs outvote the guard."""
+    _write_store(state_dir, b"", holdings_hash_value="94f18d5b8ced")
+    recent = (datetime.now() - timedelta(minutes=2)).isoformat()
+    monkeypatch.setattr(api_v2, "_db_query", lambda *a, **k: {"latest": recent} if "pipeline_runs" in str(a) else None)
+    doc = api_v2._guarded_freshness()
+    assert doc["status"] == "UNAVAILABLE"
+    computed = api_v2._compute_freshness(doc)
+    assert computed["status"] == "UNAVAILABLE"
+    assert computed["last_refresh"] is None or computed["last_refresh"] != recent
+
+
+def test_analyst_staleness_warning_fails_closed(state_dir):
+    _write_store(state_dir, b"", holdings_hash_value="94f18d5b8ced")
+    warning = portfolio_ai_analyst._freshness_warning_for(state_dir)
+    assert "STALENESS WARNING" in warning
+    assert "holdings_store_empty" in warning
+    _healthy(state_dir)
+    assert portfolio_ai_analyst._freshness_warning_for(state_dir) == ""
+
+
+def test_analyst_cache_hash_still_reads_the_manifest_field(state_dir):
+    _healthy(state_dir)
+    expected = holdings_hash({"holdings": [HEALTHY_ROW], "as_of": NOW.date().isoformat()})
+    assert portfolio_ai_analyst._current_holdings_hash(state_dir) == expected
+
+
+def test_only_the_guard_module_reads_the_manifest():
+    """One code path: no runtime module outside the guard may READ _freshness.json itself.
+
+    Matches a path join (``STATE_DIR / "_freshness.json"``), not every mention of the filename:
+    the observation envelope, the backup list and the staleness threshold map name the file without
+    reading it, and they are not freshness consumers.
+    """
+    read_re = re.compile(r'/\s*["\']_freshness\.json["\']')
+    offenders = []
+    for path in sorted((ROOT / "scripts").rglob("*.py")):
+        rel = path.relative_to(ROOT).as_posix()
+        if "test" in path.name or rel.startswith("scripts/cc_runtime_harness/"):
+            continue
+        if rel in {
+            "scripts/lib/authoritative_store_guard.py",  # the one read path
+            "scripts/portfolio_orchestrator.py",  # the producer/writer of the manifest
+            # Live-claim handoff, not a permanent exemption: cc-deepseek-6 holds this file for the
+            # recovery-engine slice (claim 20261103T185459Z-claude-16fa46ef). Its two reads are
+            # dead loads (assigned, never used); handoff filed 2026-11-03 to route them through
+            # guarded_manifest. Remove this line and the file must pass.
+            "scripts/recovery_watch_daily.py",
+        }:
+            continue
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if line.strip().startswith("#"):
+                continue
+            if read_re.search(line):
+                offenders.append(f"{rel}:{lineno}: {line.strip()}")
+    assert not offenders, "direct _freshness.json reads outside the guard: " + "; ".join(offenders)

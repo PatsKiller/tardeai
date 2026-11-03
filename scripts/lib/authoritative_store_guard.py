@@ -63,6 +63,31 @@ def effective_status(manifest_status: Any, guard: dict[str, Any]) -> str:
     return str(manifest_status or "unknown")
 
 
+def guarded_manifest(state_dir: Path | str, *, now: datetime | None = None) -> dict[str, Any]:
+    """The ONE read path for ``_freshness.json``: the manifest with the store guard applied.
+
+    A manifest proves a producer ran; it does not prove the store it describes is readable.
+    Every consumer that publishes, displays or acts on freshness reads the manifest through
+    here, so a 0-byte/corrupt holdings.json (or a manifest whose hash/clock no longer matches
+    it) cannot render FRESH on any surface. The returned document carries the manifest's own
+    fields, a guarded ``status`` and the full ``guard`` verdict.
+    """
+    sd = Path(state_dir)
+    doc: dict[str, Any] = {}
+    try:
+        text = (sd / "_freshness.json").read_text(encoding="utf-8")
+        if text.strip():
+            parsed = json.loads(text)
+            if isinstance(parsed, dict):
+                doc = parsed
+    except (OSError, UnicodeError, ValueError):
+        doc = {}
+    verdict = guard(sd, now=now)
+    doc["status"] = effective_status(doc.get("status"), verdict)
+    doc["guard"] = verdict
+    return doc
+
+
 def guard(state_dir: Path | str, *, now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     sd = Path(state_dir)
@@ -156,4 +181,12 @@ def guard(state_dir: Path | str, *, now: datetime | None = None) -> dict[str, An
     return {**out, "ok": True, "status": STATUS_OK, "reasons": []}
 
 
-__all__ = ["SCHEMA", "MAX_AGE_HOURS", "REMEDIATION", "holdings_hash", "guard", "effective_status"]
+__all__ = [
+    "SCHEMA",
+    "MAX_AGE_HOURS",
+    "REMEDIATION",
+    "holdings_hash",
+    "guard",
+    "effective_status",
+    "guarded_manifest",
+]

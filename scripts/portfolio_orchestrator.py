@@ -168,7 +168,7 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
     # Auto-detect monthly run (1st of month or explicit)
     if run_type == "daily" and datetime.now().day == 1:
         run_type = "monthly"
-        print(f"  [auto] 1st of month — upgrading to monthly deep analysis")
+        print("  [auto] 1st of month — upgrading to monthly deep analysis")
 
     print("="*60)
     print(f"  💼 Portfolio Intelligence v1.2  |  {run_type.upper()}")
@@ -178,11 +178,15 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
     # ── Stale-data check (before pipeline runs, checks PREVIOUS freshness) ───
     try:
         import os as _sd_os
-        _sd_fp = state_dir / "_freshness.json"
-        if _sd_fp.exists():
-            _sd_fm = json.loads(_sd_fp.read_text())
-            _sd_completed = datetime.fromisoformat(_sd_fm.get("completed_at", "2000-01-01"))
-            _sd_now = datetime.now()
+        from lib.authoritative_store_guard import guarded_manifest as _sd_guarded
+
+        # One guarded read: the previous manifest AND the authoritative store it describes. A store
+        # that is unreadable or no longer matches the manifest is a staleness alert even when the
+        # manifest's own clock is recent — the clock alone was the false all-clear.
+        _sd_fm = _sd_guarded(state_dir)
+        if _sd_fm.get("completed_at"):
+            _sd_completed = datetime.fromisoformat(str(_sd_fm.get("completed_at")))
+            _sd_now = datetime.now(_sd_completed.tzinfo) if _sd_completed.tzinfo else datetime.now()
             _sd_age_h = (_sd_now - _sd_completed).total_seconds() / 3600
             # Schedule-aware threshold: markets are closed Sat/Sun, so a Fri→Mon gap is
             # expected, not a failure. Allow +24h for each weekend calendar date in the gap
@@ -195,15 +199,21 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                     _sd_wknd += 1
                 _sd_cur += _sd_td(days=1)
             _sd_threshold = 26 + 24 * _sd_wknd
-            if _sd_age_h > _sd_threshold:
+            _sd_guard_reasons = (_sd_fm.get("guard") or {}).get("reasons") or []
+            _sd_guard_bad = (_sd_fm.get("guard") or {}).get("ok") is False
+            if _sd_age_h > _sd_threshold or _sd_guard_bad:
                 from db_adapter import notification_already_logged, save_notification_log_entry
                 _sd_bucket = datetime.now().hour // 6
                 _sd_dk = f"{date_str}:stale_data:telegram:bucket_{_sd_bucket}"
                 if not notification_already_logged(_sd_dk):
+                    _sd_reason_line = (
+                        f"Store: {', '.join(str(r) for r in _sd_guard_reasons)}\n" if _sd_guard_reasons else ""
+                    )
                     _sd_msg = (
                         f"\u26a0\ufe0f DATA STALENESS ALERT\n\n"
                         f"Portfolio data is {_sd_age_h:.0f}h old.\n"
-                        f"Last pipeline: {_sd_fm.get('completed_at', '?')[:16]}\n"
+                        f"{_sd_reason_line}"
+                        f"Last pipeline: {str(_sd_fm.get('completed_at', '?'))[:16]}\n"
                         f"Hash: {_sd_fm.get('holdings_hash', '?')}\n\n"
                         f"Pipeline is running now to refresh."
                     )
@@ -323,9 +333,9 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
             wr = trade_analysis.get("stats",{}).get("win_rate",0)
             print(f"  [trade_analysis] ✅ {tc} trades | PF={pf:.2f}x | WR={wr*100:.0f}%")
         elif status == "cached":
-            print(f"  [trade_analysis] ✅ Cached results (CSV unchanged)")
+            print("  [trade_analysis] ✅ Cached results (CSV unchanged)")
         elif status == "no_csv":
-            print(f"  [trade_analysis] ℹ️  No trades CSV in input/ — drop trades.csv to enable")
+            print("  [trade_analysis] ℹ️  No trades CSV in input/ — drop trades.csv to enable")
         else:
             print(f"  [trade_analysis] ⚠️  {status}")
     except Exception as e:
@@ -410,7 +420,7 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
             if _cached.get("generated_at","")[:10] == _today:
                 ai_analysis  = _cached
                 _ai_cached   = True
-                print(f"\n[8/10] AI analysis — ✅ using today\'s cached results (no Sonnet cost)")
+                print("\n[8/10] AI analysis — ✅ using today\'s cached results (no Sonnet cost)")
         except Exception:
             pass
     if not _ai_cached:
@@ -563,7 +573,7 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                 save_yahoo_analyst_targets_history(date_str, _targets_payload)
                 print(f"  [yahoo-targets] ✅ {len(_targets_payload)} symbols with analyst targets persisted")
             else:
-                print(f"  [yahoo-targets] No analyst targets returned")
+                print("  [yahoo-targets] No analyst targets returned")
     except Exception as _yte:
         print(f"  [yahoo-targets] Failed (pipeline continues): {_yte}")
 
@@ -863,9 +873,9 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                     _api_key = _line.split("=", 1)[-1].strip().strip("\"'")
                     break
     if _api_key:
-        print(f"  [dashboard] API key loaded — AI buttons will work in browser")
+        print("  [dashboard] API key loaded — AI buttons will work in browser")
     else:
-        print(f"  [dashboard] WARNING: API key not found — AI buttons will show error")
+        print("  [dashboard] WARNING: API key not found — AI buttons will show error")
     generate_portfolio_dashboard(
         portfolio, analysis, tax, rebalancing, risk, dash_path,
         performance=performance, ai_analysis=ai_analysis,
@@ -957,7 +967,7 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
     # ── Stage 11: Telegram Alerts ─────────────────────────────────────────────
     from portfolio_alerts import (run_portfolio_alerts, send_technical_alerts,
                                     send_monthly_report_telegram, send_weekly_digest)
-    print(f"\n[11/11] Portfolio alerts...")
+    print("\n[11/11] Portfolio alerts...")
     try:
         alert_counts = run_portfolio_alerts(portfolio, analysis, root, bundle=_morning_bundle)
         total_alerts = sum(alert_counts.values())
@@ -1088,7 +1098,7 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                         _fid_periods[_lbl] = {"change_pct": round((_chg/_start)*100, 2) if _start > 0 else 0, "change": round(_chg, 2), "source": "snapshot-derived"}
             print(f"  [fidelity-perf] Updated {len([k for k,v in _fid_periods.items() if isinstance(v,dict)])} periods from {len(_fund_returns)} funds")
         else:
-            print(f"  [fidelity-perf] No Fidelity positions with real ticker mappings")
+            print("  [fidelity-perf] No Fidelity positions with real ticker mappings")
         # 1D: canonical market day from holdings (matches header TODAY)
         try:
             from portfolio_snapshot_sanity import account_market_days, apply_market_day_1d, portfolio_market_day
@@ -1343,9 +1353,9 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
             # ── Escalation scoring (Phase A2-supervisory) ────────────────
             try:
                 from db_adapter import save_escalations, _execute
-                from datetime import timedelta
+                from datetime import timedelta as _td_esc
                 _escalations = []
-                _exp_date = (datetime.now() + timedelta(days=14)).strftime("%Y-%m-%d")
+                _exp_date = (datetime.now() + _td_esc(days=14)).strftime("%Y-%m-%d")
 
                 # Get observation IDs for today (for FK linkage)
                 _obs_rows = _execute(
@@ -1767,7 +1777,7 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                 }])
                 print(f"  [enrichment] ✅ Daily summary written ({len(_summary)} chars)")
             else:
-                print(f"  [enrichment] ⚠️  Summary rejected (banned language or too short)")
+                print("  [enrichment] ⚠️  Summary rejected (banned language or too short)")
     except Exception as _enr_e:
         print(f"  [enrichment] Skipped ({_enr_e})")
 
@@ -1909,7 +1919,7 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
             _h_hash = _freshness.get("holdings_hash", "") if '_freshness' in dir() else ""
             _sections.append(f"<hr><p style='font-size:11px;color:#888'>Data freshness: pipeline just completed | Hash: {_h_hash}</p>")
 
-            _body_html = f"<div style='font-family:sans-serif;max-width:600px'>" + "".join(_sections) + "</div>"
+            _body_html = "<div style='font-family:sans-serif;max-width:600px'>" + "".join(_sections) + "</div>"
 
             # Send via gog (set keyring password for non-interactive)
             import subprocess as _sp
@@ -1944,7 +1954,7 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                 "error": _send_err,
             })
             if _send_ok:
-                print(f"  [notifications] \u2705 Daily digest sent via Gmail")
+                print("  [notifications] \u2705 Daily digest sent via Gmail")
             else:
                 print(f"  [notifications] \u26a0\ufe0f  Gmail digest failed: {_send_err}")
     except Exception as _gde:
