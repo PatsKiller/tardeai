@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "approvals_notify_20261103",
+  "files": [
+    "tests/test_approvals_notify_20261103.py"
+  ],
+  "anchor": "APPROVALS_NOTIFY_20261103",
+  "comment": [
+    "ANCHOR: APPROVALS_NOTIFY_20261103 — approvals reach Telegram as ONE batched nudge per run, never repeated",
+    "inside a 2 h floor, quiet hours 22:00-07:00 except P0, and an unreadable store record reaches the operator",
+    "once in the same message."
+  ]
+}

@@ -48,6 +48,11 @@ try:
 except ImportError:  # noqa: SIM105
     import incidents as L  # type: ignore[no-redef]
 
+try:
+    from scripts.lib.telegram_batch import batch_text as _batch_message
+except ImportError:  # noqa: SIM105
+    from telegram_batch import batch_text as _batch_message  # type: ignore[no-redef]
+
 AUTHORITY = "READ_ONLY_ADVISORY"
 MBI = 0
 ACTOR = "incident_supervisor"
@@ -59,7 +64,8 @@ CC_INCIDENT_URL = "https://ms01-openclaw.tail163d14.ts.net/v3/ops/incidents?deta
 
 ModelCall = Callable[[str], tuple[str, str]]
 Runner = Callable[[list, str, dict, float], tuple[int, str]]
-Notifier = Callable[[str, str], bool]
+#: ``notify(text, producer, priority="P1"|"P2")`` — the batch sends once per cycle (ONBOARDING §12 rule 3).
+Notifier = Callable[..., bool]
 
 #: The fixer states that prove it actually worked the job (scripts/lib/self_heal_fixer.py STATES).
 #: ``fix_requested`` is only an admission, and ``fix_failed`` / ``fix_refused`` / ``fix_interrupted``
@@ -116,12 +122,12 @@ def default_run(argv: list, cwd: str, env: dict, timeout: float) -> tuple[int, s
     return p.returncode, ((p.stdout or "") + ("\n" + p.stderr if p.stderr else ""))[-2000:]
 
 
-def default_notify(text: str, producer: str) -> bool:
+def default_notify(text: str, producer: str, priority: str = "P2") -> bool:
     try:
         from scripts.telegram_alert import send_telegram
     except ImportError:
         from telegram_alert import send_telegram  # type: ignore
-    return bool(send_telegram(text, priority="P1", dedupe_minutes=0, producer=producer))
+    return bool(send_telegram(text, priority=priority, dedupe_minutes=0, producer=producer))
 
 
 # ---------------------------------------------------------------- pure decisions
@@ -387,9 +393,28 @@ def fixer_request(rec: Mapping[str, Any], verdict: Mapping[str, Any], cfg: Mappi
 # ---------------------------------------------------------------- the cycle
 
 
-def _p1_text(rec: Mapping[str, Any], reason: str, ask: str) -> str:
-    return (f"[P1] Incident {rec['id']}: {rec.get('title', '')[:160]}\n"
-            f"Why: {reason[:200]}\nNext: {ask[:300]}\n{CC_INCIDENT_URL.format(id=rec['id'])}")
+def _batch_text(rows: list[dict], priority: str) -> str:
+    """ONE page for every escalation this run (ONBOARDING §12 rule 3), as a list.
+
+    Each entry names the incident, how long it has been unresolved and the exact next action. The
+    operator asked for one batched message per run, never six separate P1s; a batch pages P1 only
+    when it carries an operator-only decision, otherwise P2.
+    """
+    items = []
+    for row in rows:
+        age = row.get("age_min")
+        unresolved = "unresolved age unknown" if age is None else f"unresolved {int(age)} min"
+        items.append({"title": f"{row['id']} — {str(row.get('title') or '')[:140]}",
+                      "detail": f"{str(row.get('reason') or '')[:180]} · {unresolved}",
+                      "next": str(row.get("ask") or "")[:240],
+                      "link": CC_INCIDENT_URL.format(id=row["id"])})
+    note = ("This batch contains an operator-only decision; no agent may act on it."
+            if any(row.get("operator_only") for row in rows) else None)
+    # The SAME batching style as the approvals nudge (scripts/lib/telegram_batch.py): one message per
+    # run, one bullet per item. Keeping one helper is what stops the two surfaces drifting apart.
+    return _batch_message(
+        header=f"[{priority}] Incident supervisor — {len(rows)} escalation(s) this run (batched once per run)",
+        items=items, footer=note)
 
 
 def _current_escalations(rec: Mapping[str, Any]) -> list[dict]:
@@ -433,31 +458,54 @@ def _pending_escalation(rec: Mapping[str, Any]) -> Optional[dict]:
 
 
 def _escalate(rec: dict, reason: str, ask: str, d: Path, deps: Deps, apply: bool, out: dict, now: datetime,
-              key: Optional[str] = None) -> None:
-    """Send ONE P1 for a reason class, at most once per DELIVERED page IN THIS EPISODE.
+              key: Optional[str] = None, *, operator_only: bool = False) -> None:
+    """Queue ONE escalation for a reason class, at most once per DELIVERED page IN THIS EPISODE.
 
     Causal rule (2026-11-03): suppress only an escalation that was delivered with the SAME key in the
     CURRENT episode (``reopen`` starts a new episode). An undelivered send (``delivered: False``)
     retries on the next evaluation, a different reason class (time box vs attempt cap vs refused
     scope) has its own key and still pages, and episode-1 history never hides an episode-2 page.
+
+    Batching (ONBOARDING §12 rule 3, operator 2026-11-03): nothing is sent here. The row is queued and
+    ``_flush_escalations`` sends ONE message for the whole run; ``operator_only`` decides P1 vs P2.
     """
     key = key or reason
     for e in _current_escalations(rec):
         # Rows written before keys existed carry no key: fall back to the exact reason text.
         if e.get("delivered") is True and (e.get("key") or e.get("reason")) == key:
             return
-    row = {"id": rec["id"], "reason": reason, "key": key}
+    opened = L.parse_ts(rec.get("opened_at"))
+    row = {"id": rec["id"], "reason": reason, "key": key, "ask": ask, "title": rec.get("title"),
+           "age_min": round((now - opened).total_seconds() / 60, 1) if opened else None,
+           "operator_only": bool(operator_only), "episode": int(rec.get("episode") or 1)}
     if not apply:
         out["would_escalate"].append(row)
         return
+    out.setdefault("_pending_escalations", []).append(row)
+
+
+def _flush_escalations(d: Path, deps: Deps, out: dict, now: datetime) -> None:
+    """Send the run's escalations as ONE message; record each incident's delivered row.
+
+    P1 only when the batch contains an operator-only decision, P2 otherwise (ONBOARDING §12 rule 3).
+    A failed send records ``delivered: False`` for every queued incident, so the existing
+    delivery-only retry path re-queues them next cycle instead of the page being silently lost.
+    """
+    pending = out.pop("_pending_escalations", [])
+    if not pending:
+        return
+    priority = "P1" if any(row.get("operator_only") for row in pending) else "P2"
+    delivered = False
     try:
-        delivered = deps.notify(_p1_text(rec, reason, ask), f"incident_supervisor:{rec['id']}")
-    except Exception as exc:  # noqa: BLE001
+        delivered = bool(deps.notify(_batch_text(pending, priority), "incident_supervisor:batch", priority=priority))
+    except Exception:  # noqa: BLE001 — a send fault must not lose the ledger rows
         delivered = False
-        reason = f"{reason} (send error {type(exc).__name__})"
-    L.escalate(rec["id"], actor=ACTOR, reason=reason, delivered=delivered, key=key,
-               episode=int(rec.get("episode") or 1), d=d, now=now)
-    out["escalated"].append({**row, "delivered": delivered})
+    for row in pending:
+        L.escalate(row["id"], actor=ACTOR, reason=row["reason"], delivered=delivered, key=row["key"],
+                   episode=row["episode"], d=d, now=now)
+        out["escalated"].append({"id": row["id"], "reason": row["reason"], "key": row["key"],
+                                 "delivered": delivered, "operator_only": row["operator_only"],
+                                 "priority": priority})
 
 
 def _calls_today(d: Path, now: datetime) -> int:
@@ -561,7 +609,8 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
                 rec = L.block(iid, actor=ACTOR, blocked_reason=f"needs_operator: refused scope {hit!r}",
                               handoff="operator/coordinator: review the evidence; no agent may act on this scope", d=d, now=now)
             out["blocked"].append({"id": iid, "why": f"refused_scope:{hit}"})
-            _escalate(rec, f"refused scope {hit!r}", ask, d, deps, apply, out, now, key="refused_scope")
+            _escalate(rec, f"refused scope {hit!r}", ask, d, deps, apply, out, now, key="refused_scope",
+                     operator_only=True)
             continue
         # 2. attempts cap (counted within THIS episode: attempts before the last reopen are history)
         if counted_attempts(rec) >= int(pol.get("max_attempts_per_incident", 3)):
@@ -748,7 +797,8 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
             rec = L.block(iid, actor=ACTOR, blocked_reason=f"needs_operator: {verdict['rationale'][:300]}",
                           handoff=verdict["action"] or "operator decision required", d=d, now=now)
             out["blocked"].append({"id": iid, "why": "needs_operator"})
-            _escalate(rec, "needs operator", verdict["action"], d, deps, apply, out, now, key="needs_operator")
+            _escalate(rec, "needs operator", verdict["action"], d, deps, apply, out, now, key="needs_operator",
+                      operator_only=True)
     # Delivery-only retry (2026-11-03) for blocked incidents whose latest current-episode page was
     # not delivered. This runs AFTER the unresolved queue and does nothing else: no model call, no
     # runbook action, no fixer dispatch and no new block. A successful retry makes the escalation
@@ -762,8 +812,10 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
         key = pending.get("key") or pending.get("reason")
         reason = pending.get("reason") or "incident blocked"
         ask = rec.get("handoff") or "A person must take this incident."
-        _escalate(rec, reason, ask, d, deps, apply, out, now, key=key)
+        _escalate(rec, reason, ask, d, deps, apply, out, now, key=key,
+                  operator_only=key in ("needs_operator", "refused_scope"))
     if apply:
+        _flush_escalations(d, deps, out, now)
         p = d / "supervisor_last.json"
         p.write_text(json.dumps(out, indent=1, default=str) + "\n", encoding="utf-8")
     return out

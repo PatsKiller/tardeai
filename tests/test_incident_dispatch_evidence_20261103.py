@@ -208,7 +208,7 @@ def _model(_prompt):
 def _deps(fixer, *, model=_model, notify=True):
     pages: list[str] = []
 
-    def _notify(text, _producer):
+    def _notify(text, _producer, priority="P2"):
         pages.append(text)
         return notify(text) if callable(notify) else bool(notify)
 
@@ -335,7 +335,7 @@ def test_a_failed_page_is_retried_on_the_next_cycle(tmp_path, monkeypatch):
 
     pages_seen: list[str] = []
 
-    def _notify(text, _producer):
+    def _notify(text, _producer, priority="P2"):
         pages_seen.append(text)
         return deliveries[len(pages_seen) - 1]
 
@@ -372,7 +372,7 @@ def test_the_cap_page_fires_after_a_time_box_escalation_with_a_different_reason(
 
     pages: list[str] = []
 
-    def _notify(text, _producer):
+    def _notify(text, _producer, priority="P2"):
         pages.append(text)
         return True
 
