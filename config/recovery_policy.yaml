@@ -1,0 +1,60 @@
+# Recovery & Re-Entry Engine — policy (operator directive 2026-11-03)
+#
+# Every threshold the engine uses lives here. Code reads this file; there is no default constant in the engine
+# (spec §3, "thresholds in config"). Changing behaviour is an edit here plus a review — never a code change.
+#
+# Tiers drive loudness (spec §3.3):
+#   T1  realized loss >= t1_loss_usd  OR  pre-exit weight >= t1_weight_pct   -> P1 immediate, never suppressed
+#   T2  realized loss >= t2_loss_usd  OR  pre-exit weight >= t2_weight_pct   -> Home card + one digest line
+#   T3  everything else                                                      -> digest only
+schema: RecoveryPolicy@v1
+as_of: "2026-11-03"
+
+materiality:
+  t1_loss_usd: 10000
+  t1_weight_pct: 3.0
+  t2_loss_usd: 2000
+  t2_weight_pct: 1.0
+
+# Operator ruling 2026-11-03: "held" is NOT a disqualifier. A residual is a fact to display, never a silencer — a case
+# opens on the confirmed exit cluster whatever survived, and no code decides held/not-held. residual_remaining_fraction
+# stays owned by market_risk_policy.yaml for the rules that use it; the recovery engine does not read it.
+residual:
+  display_only: true
+
+triggers:
+  r1_reclaim_exit_pct: 1.0        # one close >= exit_price * (1 + pct/100) -> RECOVERING
+  r2_reclaim_stop: true           # price >= the stop level that fired -> RECOVERING (strong)
+  r3_rsi_cross: 40.0              # RSI crosses up through this value
+  r3_macd_histogram_sessions: 2   # or MACD histogram turns up for N sessions
+  r4_reclaim_sma20: true          # close >= SMA20 -> RE_ENTRY_READY candidate
+  r5_catalyst_min_confidence: 0.8
+  r5_catalyst_window_sessions: 5
+  decay_sessions: 20              # no R-trigger for N sessions -> digest only; case never auto-closes at T2+
+
+confidence:
+  weights:
+    r1: 0.25
+    r2: 0.30
+    r3: 0.15
+    r4: 0.20
+    r5: 0.10
+  ready_floor: 0.55               # RE_ENTRY_READY needs confidence >= floor AND >= 1 eligible account
+
+eligibility:
+  # House rule: a taxable loss cannot be re-entered for N days after the exit (wash / house hold). IRA is eligible now.
+  # Operator-owned in market_risk_policy.yaml (reentry_watch.wash_sale_days); the loader cross-checks it.
+  taxable_hold_days: 30
+  ira_eligible_now: true
+  # PENDING operator decision: the engine reports the dated split, it never answers whether to re-enter.
+  answered: false
+  # Per-account overrides by account key; empty means "use the defaults above".
+  accounts: {}
+
+notification:
+  renudge_floor_minutes: 120
+  max_per_state_per_day: 1
+  # A T1 case may never produce a suppressed message. Piece C enforces it; the engine refuses to hand over a T1 event
+  # that carries a suppression reason.
+  t1_never_suppressed: true
+  digest_times_et: ["10:00", "15:00", "17:00"]
