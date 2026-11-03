@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "budget_presentation_20261103",
+  "files": [
+    "tests/test_budget_presentation_20261103.py"
+  ],
+  "comment": [
+    "Synthetic in-process budget presentation auth, binding, dry-run and immutable breach/history proof. No live HTTP, credentials, providers or stores."
+  ]
+}

@@ -10,6 +10,7 @@ import difflib
 import fcntl
 import hashlib
 import json
+import math
 import os
 import re
 import secrets
@@ -220,6 +221,138 @@ def writes_approved(registry: dict) -> bool:
     return False
 
 
+BUDGET_PRESENTATION_SUBTYPE = "market_risk_budget_presentation"
+BUDGET_PRESENTATION_EVENT = "BUDGET_PRESENTATION_DECISION"
+_HEX256 = re.compile(r"[0-9a-f]{64}\Z")
+
+
+def _budget_instant(value, code="BUDGET_SOURCE_UNAVAILABLE") -> datetime:
+    if not isinstance(value, str) or "T" not in value:
+        raise Refused(code, 400 if code in ("INVALID_INTENTIONAL_UNTIL", "BUDGET_BINDING_REQUIRED") else 503)
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise Refused(code, 400 if code in ("INVALID_INTENTIONAL_UNTIL", "BUDGET_BINDING_REQUIRED") else 503) from None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise Refused(code, 400 if code in ("INVALID_INTENTIONAL_UNTIL", "BUDGET_BINDING_REQUIRED") else 503)
+    return parsed.astimezone(timezone.utc)
+
+
+def _budget_z(value: datetime) -> str:
+    if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
+        raise Refused("OBSERVATION_CLOCK_UNAVAILABLE", 503)
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _budget_ident(value) -> str:
+    if not isinstance(value, str) or not value or value != value.strip() or len(value) > 160 or any(ord(c) < 32 for c in value):
+        raise Refused("BUDGET_IDENTITY_REQUIRED", 400)
+    return value
+
+
+def _budget_values(row: dict) -> dict:
+    if not isinstance(row, dict):
+        raise Refused("BUDGET_SOURCE_UNAVAILABLE", 503)
+    try:
+        scope, budget = _budget_ident(row.get("scope_id")), _budget_ident(row.get("budget"))
+    except Refused:
+        raise Refused("BUDGET_SOURCE_UNAVAILABLE", 503) from None
+    actual, limit = row.get("actual"), row.get("limit")
+    if (type(actual) not in (int, float) or type(limit) not in (int, float)
+            or not math.isfinite(actual) or not math.isfinite(limit) or type(row.get("breached")) is not bool):
+        raise Refused("BUDGET_SOURCE_UNAVAILABLE", 503)
+    unit, mode = row.get("unit"), row.get("source_mode")
+    if (not isinstance(unit, str) or not unit or unit != unit.strip() or len(unit) > 80
+            or not isinstance(mode, str) or not mode or mode != mode.strip() or len(mode) > 80):
+        raise Refused("BUDGET_SOURCE_UNAVAILABLE", 503)
+    binding = row.get("source_binding")
+    if not isinstance(binding, dict) or not isinstance(binding.get("sha256"), str) or not _HEX256.fullmatch(binding["sha256"]):
+        raise Refused("BUDGET_SOURCE_UNAVAILABLE", 503)
+    return {"subtype": BUDGET_PRESENTATION_SUBTYPE, "scope_id": scope, "budget": budget, "source_mode": mode,
+            "snapshot_as_of": _budget_z(_budget_instant(binding.get("as_of"))),
+            "actual": float(actual), "limit": float(limit), "unit": unit, "breached": row["breached"],
+            "owner_basis_hash": binding["sha256"]}
+
+
+def budget_presentation_binding(row: dict) -> dict:
+    """Bind the presentation decision to canonical identity and the owner's measurement.
+
+    This envelope neither calculates risk nor replaces the owner's source hash.
+    It prevents matching observations from different scopes/modes sharing an ACK.
+    """
+    values = _budget_values(row)
+    encoded = json.dumps(values, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    return {"as_of": values["snapshot_as_of"], "sha256": hashlib.sha256(encoded.encode()).hexdigest()}
+
+
+def _budget_current(row: dict, scope: str, budget: str, now: datetime) -> dict:
+    values = _budget_values(row)
+    if values["scope_id"] != scope or values["budget"] != budget:
+        raise Refused("BUDGET_SOURCE_CHANGED", 409)
+    statuses = [row[key] for key in ("state", "source_status") if row.get(key) is not None]
+    healthy = {"OK", "MEASURED", "EVALUATED", "FRESH", "CURRENT"}
+    if (_budget_instant(values["snapshot_as_of"]) > now or row.get("stale") is True
+            or ("stale" in row and type(row["stale"]) is not bool)
+            or any(not isinstance(status, str) or status.upper() not in healthy for status in statuses)):
+        raise Refused("BUDGET_SOURCE_UNAVAILABLE", 503)
+    return {**values, "source_binding": budget_presentation_binding(row)}
+
+
+def budget_presentation_decisions(rows: list[dict], current_budgets: list[dict] | None, now: datetime) -> dict:
+    """Presentation history beside unchanged breach truth; latest decision wins.
+
+    Expiry or any observation/identity change makes the decision inactive. An old
+    longer decision never revives after a newer decision expires. No writes occur.
+    """
+    clock = _budget_instant(_budget_z(now))
+    if not isinstance(rows, list) or len(rows) > 100000:
+        raise Refused("LEDGER_READ_BUDGET_EXCEEDED", 503)
+    decisions = [dict(row) for row in rows if isinstance(row, dict) and row.get("event") == BUDGET_PRESENTATION_EVENT
+                 and row.get("subtype") == BUDGET_PRESENTATION_SUBTYPE]
+    current = {}
+    for row in current_budgets or []:
+        key = (_budget_ident(row.get("scope_id")), _budget_ident(row.get("budget")))
+        if key in current:
+            raise Refused("BUDGET_SOURCE_AMBIGUOUS", 503)
+        current[key] = _budget_current(row, *key, clock)
+    latest = {(row.get("scope_id"), row.get("budget")): index for index, row in enumerate(decisions)}
+    history = []
+    for index, row in enumerate(decisions):
+        key = (row.get("scope_id"), row.get("budget"))
+        snapshot = current.get(key)
+        invalid = []
+        if latest[key] != index:
+            invalid.append("superseded")
+        if snapshot is None:
+            invalid.append("source_unavailable")
+        elif row.get("source_binding") != snapshot["source_binding"]:
+            invalid.append("source_changed")
+        if snapshot is not None and snapshot["breached"] is not True:
+            invalid.append("breach_cleared")
+        try:
+            until = _budget_instant(row.get("intentional_until"), "INVALID_INTENTIONAL_UNTIL")
+            if until <= clock:
+                invalid.append("expired")
+        except Refused:
+            invalid.append("invalid_expiry")
+        if (row.get("effect") != "PRESENTATION_ONLY" or not isinstance(row.get("actor"), str)
+                or not row["actor"].startswith("tailnet:") or not isinstance(row.get("hash_self"), str)
+                or not _HEX256.fullmatch(row["hash_self"])
+                or digest({key: value for key, value in row.items() if key != "hash_self"}) != row["hash_self"]):
+            invalid.append("invalid_receipt")
+        history.append({**row, "active": not invalid, "inactive_reasons": invalid, "receipt": row.get("hash_self")})
+    items = []
+    for key, snapshot in sorted(current.items()):
+        prior = [record for record in history if (record.get("scope_id"), record.get("budget")) == key]
+        active = next((record for record in reversed(prior) if record["active"]), None)
+        items.append({"scope_id": key[0], "budget": key[1], "breached": snapshot["breached"],
+                      "active": active is not None, "intentional_until": active["intentional_until"] if active else None,
+                      "actor": active["actor"] if active else None, "receipt": active["receipt"] if active else None,
+                      "history": prior})
+    return {"schema": "BudgetPresentationDecisions@v1", "as_of": _budget_z(clock),
+            "complete": current_budgets is not None, "items": items, "history": history}
+
+
 class DecisionLedger:
     """One append-only hash chain, serialized with flock; fail closed on corruption.
 
@@ -256,7 +389,7 @@ class DecisionLedger:
             return self._read(file)
 
     @contextmanager
-    def _transaction(self):
+    def _transaction(self, *, utc_z: bool = False):
         if not self.approved():
             raise Refused("STORE_APPROVAL_PENDING", 503)
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -265,7 +398,9 @@ class DecisionLedger:
             fcntl.flock(file, fcntl.LOCK_EX)
             rows = self._read(file)
             def append(row):
-                row = {**row, "at": iso(self.clock()), "hash_prev": rows[-1]["hash_self"] if rows else None}
+                observed_at = self.clock()
+                recorded_at = _budget_z(observed_at) if utc_z else iso(observed_at)
+                row = {**row, "at": recorded_at, "hash_prev": rows[-1]["hash_self"] if rows else None}
                 row["hash_self"] = digest(row)
                 file.write(json.dumps(row, sort_keys=True, ensure_ascii=False) + "\n")
                 file.flush()
@@ -346,6 +481,70 @@ class DecisionLedger:
                            "document_sha": sha, "source_sha": it["document"]["source_sha"], "review_id": review,
                            "decision": choice, "comment": comment, "request_id": request, "policy_token": token,
                            "effect": "RECORD_ONLY", "governed_href": it["governed_href"]})
+
+    def budget_presentation_decision(self, actor: str, current_budget: Callable[[], dict], body: dict) -> dict:
+        """Operator presentation ACK only; never a budget/risk/behavior write."""
+        if not isinstance(actor, str) or not actor.startswith("tailnet:"):
+            raise Refused("AGENT_CALLER_REFUSED", 403)
+        allowed = {"subtype", "action", "scope_id", "budget", "source_binding", "intentional_until",
+                   "request_id", "comment", "dry_run"}
+        if not isinstance(body, dict) or set(body) - allowed:
+            raise Refused("INVALID_PRESENTATION_FIELDS", 400)
+        if body.get("subtype") != BUDGET_PRESENTATION_SUBTYPE or body.get("action") != "intentional_until":
+            raise Refused("INVALID_PRESENTATION_ACTION", 400)
+        if type(body.get("dry_run", False)) is not bool:
+            raise Refused("INVALID_DRY_RUN", 400)
+        scope, budget = _budget_ident(body.get("scope_id")), _budget_ident(body.get("budget"))
+        request = body.get("request_id")
+        if not isinstance(request, str) or not re.fullmatch(r"[A-Za-z0-9_-]{8,80}", request):
+            raise Refused("REQUEST_ID_REQUIRED", 400)
+        comment = body.get("comment", "")
+        if not isinstance(comment, str) or len(comment) > 4000:
+            raise Refused("COMMENT_TOO_LONG", 400)
+        expiry = body.get("intentional_until")
+        if not isinstance(expiry, str) or not expiry.endswith("Z"):
+            raise Refused("INVALID_INTENTIONAL_UNTIL", 400)
+        until = _budget_instant(expiry, "INVALID_INTENTIONAL_UNTIL")
+        supplied = body.get("source_binding")
+        if (not isinstance(supplied, dict) or set(supplied) != {"as_of", "sha256"}
+                or not isinstance(supplied.get("sha256"), str) or not _HEX256.fullmatch(supplied["sha256"])):
+            raise Refused("BUDGET_BINDING_REQUIRED", 400)
+        expected = {"as_of": _budget_z(_budget_instant(supplied.get("as_of"), "BUDGET_BINDING_REQUIRED")), "sha256": supplied["sha256"]}
+
+        def prepare():
+            now = _budget_instant(_budget_z(self.clock()))
+            if until <= now:
+                raise Refused("INVALID_INTENTIONAL_UNTIL", 400)
+            snapshot = _budget_current(current_budget(), scope, budget, now)
+            if snapshot["source_binding"] != expected:
+                raise Refused("BUDGET_SOURCE_CHANGED", 409)
+            if snapshot["breached"] is not True:
+                raise Refused("BUDGET_NOT_BREACHED", 409)
+            return {"event": BUDGET_PRESENTATION_EVENT, "subtype": BUDGET_PRESENTATION_SUBTYPE,
+                    "action": "intentional_until", "effect": "PRESENTATION_ONLY", "actor": actor,
+                    "scope_id": scope, "budget": budget, "source_binding": snapshot["source_binding"],
+                    "snapshot_as_of": snapshot["snapshot_as_of"], "source_mode": snapshot["source_mode"],
+                    "observed": {key: snapshot[key] for key in ("actual", "limit", "unit", "breached")},
+                    "intentional_until": _budget_z(until), "request_id": request, "comment": comment}
+
+        def prior(rows, proposed):
+            for record in rows:
+                if record.get("event") == BUDGET_PRESENTATION_EVENT and record.get("request_id") == request:
+                    content = {key: value for key, value in record.items() if key not in ("at", "hash_prev", "hash_self")}
+                    if content != proposed:
+                        raise Refused("IDEMPOTENCY_CONFLICT")
+                    return record
+            return None
+
+        preview = prepare()  # Invalid/stale sources cannot even create an empty ledger file.
+        if body.get("dry_run", False):
+            existing = prior(self.rows(), preview)
+            return {"dry_run": True, "written": False, "would_append": preview,
+                    "would_replay": existing is not None, "store_approved": bool(self.approved())}
+        with self._transaction(utc_z=True) as (rows, append):
+            proposed = prepare()  # Bind again inside the existing serialized ledger transaction.
+            existing = prior(rows, proposed)
+            return existing if existing is not None else append(proposed)
 
     def incident_decision(self, actor: str, body: dict) -> dict:
         """Operator acknowledge / close-as-won't-fix on an IncidentRecord@v1 (Ops → Incidents, 2026-10-27).

@@ -35,6 +35,7 @@ class Ctx:
     clock: Callable[[], datetime] = core.utc_now
     can_read: Callable[[], bool] = field(default=lambda: False)
     verify_current: Callable[[dict], None] = field(default=lambda row: None)
+    budget_snapshot: Callable[[str, str], dict] | None = None
 
 
 def design_approval_href(design_id: str) -> str:
@@ -428,6 +429,27 @@ def instant(value) -> str | None:
     return None
 
 
+def default_budget_snapshot(scope_id: str, budget: str) -> dict:
+    """Use the data owner's narrow canonical reader, never the full Home hydration.
+
+    The source must provide canonical scope/mode and observation binding. Until
+    that reviewed leaf is installed this route is explicitly unavailable.
+    """
+    from scripts.lib import market_risk_book_join
+    read = getattr(market_risk_book_join, "budget_presentation_snapshot", None)
+    if not callable(read):
+        raise core.Refused("BUDGET_PRESENTATION_SOURCE_UNAVAILABLE", 503)
+    return read(scope_id=scope_id, budget=budget, now=core.utc_now())
+
+
+def _budget_source(ctx: Ctx, scope_id: str, budget: str) -> dict:
+    core._budget_ident(scope_id)
+    core._budget_ident(budget)
+    if not callable(ctx.budget_snapshot):
+        raise core.Refused("BUDGET_PRESENTATION_SOURCE_UNAVAILABLE", 503)
+    return ctx.budget_snapshot(scope_id, budget)
+
+
 def default_ctx() -> Ctx:
     # The server gate sets the request principal on ``lib.cc_auth``. ``scripts.lib.cc_auth`` is a separate module
     # object with its own thread-local, so importing it first made every governance GET a 403 for the operator.
@@ -450,7 +472,8 @@ def default_ctx() -> Ctx:
                csrf=lambda m, p: cc_auth.command_csrf_check(cfg, m, p), allowed_logins=cfg.allowed_logins,
                sources=sources, ledger=ledger,
                policy=git_policy,
-               can_read=lambda: cc_auth.current_principal() == "service-token", verify_current=verify_current_pr)
+               can_read=lambda: cc_auth.current_principal() == "service-token", verify_current=verify_current_pr,
+               budget_snapshot=default_budget_snapshot)
 
 
 def _operator(ctx: Ctx) -> str | None:
@@ -512,6 +535,24 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = N
         if method == "GET":
             if not actor and not ctx.can_read():
                 raise core.Refused("AUTHENTICATED_READER_REQUIRED", 403)
+            if sub == "/budget-presentation":
+                # Readback is operator-session-only too; a service reader cannot acquire a budget ACK basis.
+                if not actor:
+                    raise core.Refused("AGENT_CALLER_REFUSED", 403)
+                q = query if isinstance(query, dict) else {}
+                def selected(key):
+                    value = q.get(key)
+                    if isinstance(value, list):
+                        if len(value) != 1:
+                            raise core.Refused("BUDGET_IDENTITY_REQUIRED", 400)
+                        value = value[0]
+                    return core._budget_ident(value)
+                scope, budget = selected("scope_id"), selected("budget")
+                source = _budget_source(ctx, scope, budget)
+                current = core._budget_current(source, scope, budget, ctx.clock())
+                decisions = core.budget_presentation_decisions(ctx.ledger.rows(), [source], ctx.clock())
+                return 200, {"ok": True, "data": {"current": current,
+                            "budget_presentation_decisions": decisions, "decisions": decisions}}
             if sub == "/approvals":
                 data = queue(ctx)
                 data.update(actionable_projection(data))
@@ -589,6 +630,10 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = N
             raise core.Refused("CSRF_REFUSED", 403)
         if not isinstance(body, dict):
             raise core.Refused("OBJECT_BODY_REQUIRED", 400)
+        if sub == "/budget-presentation/decide":
+            result = ctx.ledger.budget_presentation_decision(
+                actor, lambda: _budget_source(ctx, body.get("scope_id"), body.get("budget")), body)
+            return 200, {"ok": True, "data": result}
         if sub == "/policy/feedback":
             result = ctx.ledger.feedback(actor, ctx.policy, body)
             return 200, {"ok": True, "data": result}
