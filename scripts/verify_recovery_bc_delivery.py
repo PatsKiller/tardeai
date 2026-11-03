@@ -289,6 +289,14 @@ def run_ab_session(state_dir: Path, now_iso: str, out_path: Path) -> int:
     fail_write = os.environ.get("BC_PROOF_FAIL_WRITE") == "1"
     second_state = os.environ.get("BC_PROOF_SECOND_STATE") == "1"
 
+    if os.environ.get("BC_PROOF_DISABLE_DAY_GATE") == "1":
+        # Counterfactual for non-vacuity: pretend the router's per-case-per-day gate never blocks.
+        import telegram_alert_router as R3
+        R3.recovery_t1_state = lambda message: "absent"
+        R3.recovery_t1_claim = lambda message: True
+        R3.recovery_t1_mark_delivered = lambda message: None
+        R3.recovery_t1_release = lambda message: None
+
     if fail_transport:
         # Inject BELOW _raw_send_telegram_result, so its own _record_attempt runs and a transport refusal is
         # real rather than a fabricated dict (lead's seam correction, 2026-11-03).
@@ -552,6 +560,27 @@ def main(argv: list[str] | None = None) -> int:
         "intent_receipt_decisions": day.get("intent_receipt_decisions"),
         "note": ("raw deliveries, not C's sent flag: the router reports an ACCEPTED intent as sent even when it "
                  "deduped it, so the durable evidence is the per-case transport count plus the DEDUPED receipts"),
+    }
+
+    # P3b — NON-VACUITY counterfactual at the adapter: with the router's day gate disabled in memory, the SAME
+    # scenario must fail P3 (the old cases page twice). If this control still showed one page, P3 would be
+    # proving nothing about the gate.
+    cf_root = root / "daycounterfactual"
+    cf_root.mkdir(parents=True, exist_ok=True)
+    cf_out = cf_root / "s.json"
+    proc = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--ab-session", str(cf_root),
+                           t0.strftime("%Y-%m-%dT%H:%M:%SZ"), str(cf_out)],
+                          capture_output=True, text=True, timeout=300, cwd=str(PROJECT_ROOT),
+                          env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1", "BC_PROOF_SECOND_STATE": "1",
+                               "BC_PROOF_DISABLE_DAY_GATE": "1"})
+    if proc.returncode != 0 or not cf_out.exists():
+        raise RuntimeError(f"day-gate counterfactual failed: {(proc.stderr or proc.stdout)[-800:]}")
+    cf = json.loads(cf_out.read_text())
+    proofs["P3b_counterfactual_day_gate_disabled_repages_so_P3_is_not_vacuous"] = {
+        "pass": cf["deliveries_first_pass"] == 2 and cf["deliveries_second_pass"] == 3,
+        "first_pass_deliveries": cf["deliveries_first_pass"],
+        "second_pass_deliveries_with_the_gate_disabled": cf["deliveries_second_pass"],
+        "expectation": "3 = the two old cases paged again plus the distinct case; P3 fails in this configuration",
     }
 
     # P4 — without the batching module, dedupe moves to the transport and the refusal is recorded.
