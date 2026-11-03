@@ -210,11 +210,25 @@ def _record_operator_reply(msg: dict, text: str, chat_id: str, *, replies_dir=No
         return "blank"
     if allowed is not None and str(chat_id) not in {str(c) for c in allowed}:
         return "refused_chat"
-    if str(chat_type or "").strip().lower() != "private":
-        log.warning(f"operator reply refused: chat {chat_id} is not a private chat (type={chat_type!r})")
-        return "refused_room"
-    if sender_id is None or str(sender_id) != str(chat_id):
-        log.warning(f"operator reply refused: sender {sender_id!r} is not the operator chat {chat_id}")
+    # R1, settled direction (lead 2026-11-03): the SENDER must be an operator user id, using the existing
+    # pattern from market_risk_ack_telegram.operator_from_ids — TRADEAI_OPERATOR_FROM_IDS when set, else the
+    # positive (private-chat) allowlisted ids; a group id is never an operator. A missing sender is refused.
+    # Being in an allowlisted room is not enough: that is how any group member could type as the operator.
+    try:
+        try:
+            from lib.market_risk_ack_telegram import operator_from_ids
+        except ImportError:
+            from scripts.lib.market_risk_ack_telegram import operator_from_ids
+        operator_ids = operator_from_ids(allowed or ())
+    except Exception as exc:  # noqa: BLE001 — a resolver fault must not authenticate anybody
+        log.warning(f"operator reply refused: operator-id resolver unavailable ({exc})")
+        return "refused_sender"
+    if sender_id is None:
+        log.warning(f"operator reply refused: no sender on a message from chat {chat_id}")
+        return "refused_sender"
+    if str(sender_id) not in operator_ids:
+        log.warning(f"operator reply refused: sender {sender_id!r} is not an operator id (chat={chat_id}, "
+                    f"type={chat_type!r})")
         return "refused_sender"
     record = {"message_id": msg.get("message_id"), "date": msg.get("date"),
               "recorded_at": datetime.now(timezone.utc).isoformat(),

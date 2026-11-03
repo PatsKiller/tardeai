@@ -11,9 +11,17 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+import pytest
+
 from scripts.run_telegram_callback_poller import (_flush_operator_replies, _record_operator_reply)
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture(autouse=True)
+def _no_host_operator_ids(monkeypatch):
+    """The operator-id set must come from this test's allowlist, never from the host environment."""
+    monkeypatch.delenv("TRADEAI_OPERATOR_FROM_IDS", raising=False)
 
 
 def test_a_plain_operator_message_is_appended_with_id_and_time(tmp_path):
@@ -35,7 +43,7 @@ def test_a_plain_operator_message_is_appended_with_id_and_time(tmp_path):
 def test_appends_and_never_truncates(tmp_path):
     for i in (1, 2):
         _record_operator_reply({"message_id": i, "date": 0}, f"message {i}", "9", replies_dir=tmp_path,
-                               chat_type="private", sender_id="9")
+                               allowed={"9"}, chat_type="private", sender_id="9")
     recs = [json.loads(line) for line in (tmp_path / "telegram.jsonl").read_text(encoding="utf-8").splitlines()]
     assert [r["message_id"] for r in recs] == [1, 2]
 
@@ -60,7 +68,7 @@ def test_a_broken_inbox_never_raises_and_queues_durably(tmp_path):
     blocker.write_text("x", encoding="utf-8")
     queue = tmp_path / "pending.jsonl"
     status = _record_operator_reply({"message_id": 1}, "hi", "1", replies_dir=blocker / "sub",
-                                    chat_type="private", sender_id="1", pending_path=queue)
+                                    allowed={"1"}, chat_type="private", sender_id="1", pending_path=queue)
     assert status == "queued"
     assert json.loads(queue.read_text().splitlines()[0])["text"] == "hi"
     # The next poll flushes it into the inbox once the inbox is writable again.
@@ -85,20 +93,35 @@ def test_the_record_happens_before_classification_and_before_the_responder():
 
 # ── R1: the ROOM is not the OPERATOR (cx-openai-4, 2026-11-03) ──────────────────────────────────────────
 def test_a_group_chat_member_cannot_speak_as_the_operator(tmp_path):
-    """Holding the allowed supergroup constant and changing the sender used to RECORD 1 and return True."""
+    """Holding the allowed supergroup constant and changing the sender used to RECORD 1 and return True.
+
+    Settled rule: the SENDER must be an operator user id (market_risk_ack_telegram.operator_from_ids), so a
+    member whose id is not an operator is refused even though the room is allowlisted.
+    """
     status = _record_operator_reply({"message_id": 7}, "approve the restore", "-100123", replies_dir=tmp_path,
                                     allowed={"-100123"}, chat_type="supergroup", sender_id="777")
-    assert status == "refused_room"
+    assert status == "refused_sender"
     assert not (tmp_path / "telegram.jsonl").exists()
 
 
-def test_a_missing_chat_type_is_refused(tmp_path):
+def test_a_group_message_from_the_operator_id_is_the_operator(tmp_path, monkeypatch):
+    """Identity, not room: the operator speaking in a group is still the operator when his id is configured."""
+    monkeypatch.setenv("TRADEAI_OPERATOR_FROM_IDS", "123")
+    status = _record_operator_reply({"message_id": 12}, "approve the restore", "-100123", replies_dir=tmp_path,
+                                    allowed={"-100123"}, chat_type="supergroup", sender_id="123")
+    assert status == "recorded"
+
+
+def test_a_missing_chat_type_does_not_by_itself_block_the_operator_id(tmp_path):
+    """Auth is the sender id; the chat type is context, and its absence must not silently widen anything."""
     assert _record_operator_reply({"message_id": 8}, "hi", "123", replies_dir=tmp_path,
-                                  chat_type=None, sender_id="123") == "refused_room"
+                                  allowed={"123"}, chat_type=None, sender_id="123") == "recorded"
+    assert _record_operator_reply({"message_id": 9}, "hi", "123", replies_dir=tmp_path,
+                                  allowed={"123"}, chat_type=None, sender_id="999") == "refused_sender"
 
 
 def test_a_private_chat_from_a_different_sender_is_refused(tmp_path):
-    """Even in a private chat, the sender must BE the operator chat, not merely be in an allowed room."""
+    """In a private chat the operator id is the chat id (operator_from_ids' default), so a foreign sender fails."""
     assert _record_operator_reply({"message_id": 9}, "hi", "123", replies_dir=tmp_path,
                                   chat_type="private", sender_id="999") == "refused_sender"
     assert _record_operator_reply({"message_id": 10}, "hi", "123", replies_dir=tmp_path,
@@ -110,7 +133,7 @@ def test_nothing_recorded_or_queued_is_reported_as_failed_so_the_checkpoint_hold
     blocker = tmp_path / "blocker"
     blocker.write_text("x", encoding="utf-8")
     status = _record_operator_reply({"message_id": 11}, "hi", "1", replies_dir=blocker / "sub",
-                                    chat_type="private", sender_id="1",
+                                    allowed={"1"}, chat_type="private", sender_id="1",
                                     pending_path=blocker / "queue.jsonl")
     assert status == "failed"
 
@@ -131,7 +154,7 @@ def test_an_outcome_line_pairs_with_the_message_line(tmp_path):
     """F3: a handled command leaves a message line AND an outcome line, paired by message_id."""
     from scripts.run_telegram_callback_poller import _record_operator_outcome
     _record_operator_reply({"message_id": 77}, "approve the restore code=abc", "555",
-                           replies_dir=tmp_path, chat_type="private", sender_id="555")
+                           replies_dir=tmp_path, allowed={"555"}, chat_type="private", sender_id="555")
     _record_operator_outcome({"message_id": 77}, "approve the restore code=abc", "555", handled=True,
                              replies_dir=tmp_path)
     rows = [json.loads(line) for line in (tmp_path / "telegram.jsonl").read_text().splitlines()]
@@ -142,8 +165,8 @@ def test_an_outcome_line_pairs_with_the_message_line(tmp_path):
 
 def test_a_malformed_envelope_or_unknown_sender_is_refused_not_written(tmp_path):
     """cx-openai-3 F2: a fallback path must not write a line with null provenance."""
-    assert _record_operator_reply({}, "hi", "555", replies_dir=tmp_path,
+    assert _record_operator_reply({}, "hi", "555", replies_dir=tmp_path, allowed={"555"},
                                   chat_type="private", sender_id=None) == "refused_sender"
-    assert _record_operator_reply({"message_id": 1}, "hi", "555", replies_dir=tmp_path,
+    assert _record_operator_reply({"message_id": 1}, "hi", "555", replies_dir=tmp_path, allowed={"555"},
                                   chat_type="private", sender_id="999") == "refused_sender"
     assert not (tmp_path / "telegram.jsonl").exists()
