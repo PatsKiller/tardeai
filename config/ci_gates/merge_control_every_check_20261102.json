@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "merge_control_every_check_20261102",
+  "files": [
+    "tests/test_merge_control_every_check_20261102.py"
+  ],
+  "comment": [
+    "2026-11-02 (held merge-control PR, plan items 1/6): every merge path grades EVERY non-skipped check on the exact head, groups equal job names by check suite, fails closed at the rollup and paging limits, and treats a cancelled run as a real failure. Includes mutation proofs for the helper's three guard branches. Hermetic: fixture rollups and a stubbed gh."
+  ]
+}
