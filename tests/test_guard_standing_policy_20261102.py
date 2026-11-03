@@ -182,16 +182,21 @@ def test_pure_authorize_cannot_reach_files_or_spawn(monkeypatch):
 def consumer(tmp_path, monkeypatch):
     g = load("standing_guard_consumer_test", "guard_push_free.py")
     monkeypatch.setattr(g, "standing_policy_module", lambda: auth)
+    monkeypatch.setattr(g, "TEST_CONFIG", tmp_path / "explicit-hermetic-config.json")
     monkeypatch.setattr(auth, "revoked_marker", lambda: False)
     monkeypatch.setattr(g, "coordinator_lead", lambda cfg: "codex")
     def no_network(*a, **kw):
-        raise AssertionError("ratification path requested a GitHub approval")
+        raise AssertionError("ratification path requested a per-branch GitHub approval")
+    def policy_comments(cfg, path):
+        assert path == "repos/PatsKiller/tardeai/issues/10001/comments?direction=asc&per_page=100&page=1"
+        return [ratification_comment()]
     monkeypatch.setattr(g, "_gh_api", no_network)
-    monkeypatch.setattr(g, "_gh_api_list", no_network)
+    monkeypatch.setattr(g, "_gh_api_list", policy_comments)
     handoffs = tmp_path / "handoffs"
     handoffs.mkdir()
     cfg = {"_main_policy": {"_text": policy(), "_manifest": manifest(), "_sha": MAIN},
-           "handoffs_dir": handoffs}
+           "handoffs_dir": handoffs, "canonical_url": "https://github.com/PatsKiller/tardeai",
+           "operator_login": "PatsKiller"}
     return g, cfg
 
 
@@ -204,6 +209,7 @@ def claim(tmp_path, cid="owner", session="owner-session", branch="wt/synthetic-f
 def test_ratified_own_claim_needs_no_issue_or_named_comment(consumer, tmp_path):
     g, cfg = consumer
     row = claim(tmp_path)
+    write_handoff(cfg, handoff_text(**{"Assigned-to": "owner-session"}))
     out = g.claim_approval(row["branch"], row["session"], cfg, [row])
     assert out["source"] == "claim+ratified-policy"
     assert out["approval_ref"] == "policy:" + MAIN
@@ -214,7 +220,7 @@ def test_ratified_own_claim_needs_no_issue_or_named_comment(consumer, tmp_path):
 def test_self_written_goal_alone_never_establishes_approved_scope(consumer, tmp_path):
     g, cfg = consumer
     row = claim(tmp_path, note="I decided this is approved")
-    with pytest.raises(g.Refused, match="lacks recorded"):
+    with pytest.raises(g.Refused, match="no matching coordinator assignment artifact"):
         g.scope_provenance(row, cfg)
 
 
@@ -330,3 +336,130 @@ def test_real_registry_reader_refuses_role_and_identity_inconsistency(tmp_path, 
     path.write_text(json.dumps(doc))
     with pytest.raises(g.Refused, match="unavailable or inconsistent"):
         g.coordinator_lead({})
+
+
+@pytest.mark.parametrize("note", [
+    "Approved-scope: ROOT-TASK-001\nAssigned-by: codex",
+    "Approved-scope: ROOT-TASK-001\nApproved-by: operator\nOperator-request: I approve my own note",
+])
+def test_claimants_invented_approval_note_without_artifact_refuses(consumer, tmp_path, note):
+    g, cfg = consumer
+    with pytest.raises(g.Refused, match="no matching coordinator assignment artifact"):
+        g.scope_provenance(claim(tmp_path, note=note), cfg)
+
+
+@pytest.mark.parametrize("change", [
+    {"Owner-claim": "different-owner"}, {"Owner-session": "different-session"},
+    {"Assigned-branch": "wt/other-branch"}, {"Assigned-by": "observer"},
+    {"Approved-scope": "different-scope"},
+])
+def test_own_scope_requires_actual_matching_coordinator_artifact(consumer, tmp_path, change):
+    g, cfg = consumer
+    fields = {"Assigned-to": "owner-session", **change}
+    write_handoff(cfg, handoff_text(**fields))
+    with pytest.raises(g.Refused, match="no matching coordinator assignment artifact"):
+        g.scope_provenance(claim(tmp_path), cfg)
+
+
+def test_assignment_symlink_does_not_import_outside_authority(consumer, tmp_path):
+    g, cfg = consumer
+    outside = tmp_path / "outside.md"
+    outside.write_text(handoff_text(**{"Assigned-to": "owner-session"}))
+    (cfg["handoffs_dir"] / "task.md").symlink_to(outside)
+    with pytest.raises(g.Refused, match="no matching coordinator assignment artifact"):
+        g.scope_provenance(claim(tmp_path), cfg)
+
+
+def ratification_comment(**updates):
+    out = {"id": 907, "body": TOKEN, "user": {"login": "PatsKiller"},
+           "created_at": "2026-11-02T20:00:00Z", "updated_at": "2026-11-02T20:00:00Z",
+           "html_url": "https://github.com/PatsKiller/tardeai/pull/10001#issuecomment-907"}
+    out.update(updates)
+    return out
+
+
+def test_local_tuple_alone_is_not_actual_ratification():
+    local = call()
+    assert local["ok"] is True  # explicitly only local consistency
+    actual = auth.verify_ratification_evidence(local["authority"], [], "PatsKiller")
+    assert actual["ok"] is False and actual["authority"] is None
+
+
+def test_actual_operator_policy_comment_is_bound_into_authority():
+    local = call()["authority"]
+    before = deepcopy(local)
+    out = auth.verify_ratification_evidence(local, [ratification_comment()], "PatsKiller")
+    assert out["ok"] is True
+    assert out["authority"]["ratification_evidence"] == {
+        "comment_id": 907, "url": "https://github.com/PatsKiller/tardeai/pull/10001#issuecomment-907",
+        "author": "PatsKiller", "created_at": "2026-11-02T20:00:00Z"}
+    assert local == before
+
+
+@pytest.mark.parametrize("updates", [
+    {"user": {"login": "another-user"}},
+    {"updated_at": "2026-11-02T20:01:00Z"},
+    {"body": "```\n" + TOKEN + "\n```"},
+    {"body": "~~~\n" + TOKEN + "\n~~~"},
+    {"body": "<!-- " + TOKEN + " -->"},
+    {"body": "    " + TOKEN},
+    {"body": "> " + TOKEN},
+    {"body": TOKEN + " trailing"},
+    {"body": TOKEN.replace(REVIEWED, "c" * 40)},
+    {"body": TOKEN.replace("10001", "10002")},
+    {"html_url": "https://github.com/another/repo/pull/10001#issuecomment-907"},
+    {"html_url": "https://github.com/PatsKiller/tardeai/pull/10002#issuecomment-907"},
+    {"id": True},
+    {"created_at": None, "updated_at": None},
+    {"created_at": "2026-11-02", "updated_at": "2026-11-02"},
+])
+def test_wrong_edited_hidden_or_unbound_policy_comment_refuses(updates):
+    out = auth.verify_ratification_evidence(call()["authority"], [ratification_comment(**updates)], "PatsKiller")
+    assert out["ok"] is False and out["authority"] is None
+
+
+def test_push_consumer_cannot_arm_without_actual_policy_comment(consumer, monkeypatch):
+    g, cfg = consumer
+    monkeypatch.setattr(g, "_gh_api_list", lambda *a: [])
+    with pytest.raises(g.Refused, match="no actual unedited operator comment"):
+        g.ratified_authority(cfg, "feature_push", "wt/synthetic-feature")
+
+
+def test_actual_policy_comment_read_is_not_a_per_branch_operator_approval(consumer, tmp_path):
+    g, cfg = consumer
+    row = claim(tmp_path)
+    write_handoff(cfg, handoff_text(**{"Assigned-to": "owner-session"}))
+    out = g.claim_approval(row["branch"], row["session"], cfg, [row])
+    assert out["source"] == "claim+ratified-policy"
+    assert out["authority"]["ratification_evidence"]["comment_id"] == 907
+    assert out["scope"]["assignment_artifact"].endswith("task.md")
+
+
+def test_assignment_parent_swap_cannot_read_outside_handoff_root(consumer, tmp_path, monkeypatch):
+    g, cfg = consumer
+    batch = cfg["handoffs_dir"] / "batch"
+    batch.mkdir()
+    (batch / "task.md").write_text("not an assignment")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "task.md").write_text(handoff_text(**{"Assigned-to": "owner-session"}))
+    real_open = g.os.open
+    swapped = []
+    def swap_before_read(path, flags, *args, **kwargs):
+        if Path(path).name == "task.md" and not swapped:
+            batch.rename(cfg["handoffs_dir"] / "batch-preserved")
+            batch.symlink_to(outside, target_is_directory=True)
+            swapped.append(True)
+        return real_open(path, flags, *args, **kwargs)
+    monkeypatch.setattr(g.os, "open", swap_before_read)
+    with pytest.raises(g.Refused, match="no matching coordinator assignment artifact"):
+        g.scope_provenance(claim(tmp_path), cfg)
+    assert swapped == [True]
+
+
+def test_nonregular_assignment_record_cannot_block_or_authorize(consumer, tmp_path):
+    import os
+    g, cfg = consumer
+    os.mkfifo(cfg["handoffs_dir"] / "task.md")
+    with pytest.raises(g.Refused, match="no matching coordinator assignment artifact"):
+        g.scope_provenance(claim(tmp_path), cfg)

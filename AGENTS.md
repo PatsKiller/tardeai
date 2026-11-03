@@ -14,10 +14,10 @@ Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
 **30.0.0 is PROPOSED (MAJOR)** — standing feature uploads, delegated clean uploads, release-coordinator merges,
-merge-watching and one server-side approved-plan registry (§11, §25.10.4, §28.15, §28.17).
+merge-watching and one server-side approved-plan registry (§11, §25.10.4, §28.4, §28.15, §28.17).
 The operator directly authorized preparation; ratification is still required. Policy and capability manifest stay
-PROPOSED and grant nothing until ratified and merged. **29.3.0 remains active.** Earlier banners and withdrawn
-29.4.0/29.5.0 proposals are preserved in docs/governance/AGENTS_HISTORY.md. No broker, secret or deploy grant.
+PROPOSED and grant nothing until ratified and merged. **29.3.0 remains active.** Earlier banners and consolidation
+records are in docs/governance/AGENTS_HISTORY.md; old source branches remain. No broker, secret or deploy grant.
 
 ---
 
@@ -1207,10 +1207,10 @@ The claim board, worklogs, pickup order and coordinator role are §28.3. Beyond 
 - **Merge-watching is the release coordinator's duty.** Every five minutes while work is open, inspect every
   worker and its PRs, log a heartbeat/action and re-rank BOARD. Merge qualified work immediately; name the blocker
   for every other PR. Send Telegram milestones and at least 30-minute status, mirrored to chat, STATUS.md and ledger.
-- **Register each approved plan once on the server.** Every vendor records the approved plan, source instruction,
-  scope and owner in the shared plan registry; retries reuse its stable id. Agents read that canonical record and
-  update progress rather than create divergent copies. Registration does not create approval, budget or authority.
-  *Cause: LESSONS L28-23, L28-26; withdrawn plan-registry proposal #2491.*
+- **Register each approved plan once on the server.** The sole plan store is persistent-state/data/coordination/plans/<id>.md;
+  scripts/plan_registry.py::Registry is its writer/reader and plan_id(title, body, author) its stable uniqueness key.
+  Its front matter/body record is authoritative for plan progress; §28.3 claims link ownership, handoffs delegate scope.
+  Registration grants no approval/budget; contract and deployment dependency: docs/ops/standing_agent_authority.md.
 
 ---
 
@@ -1589,8 +1589,8 @@ the operator's own merge (§28.4), or ratified standing authority within its exp
 - Changing what is ranked onto an operator surface; removing anything from an operator surface (an approved mockup
   is required, §28.9); approving a design or a phase (§28.13, §28.3b).
 - The conflict rulebook, and deciding protection, policy, money, data-error and flapping conflicts (§28.10).
-- Any MAJOR change to this file, and any change to §0, §2, §17 or §2B; ratifying `AGENTS.md` or `AI_WORK_POLICY.md`
-  and authorizing its ratifying activation and merge (§20).
+- Any MAJOR change to this file, and any change to §0, §2, §17 or §2B; ratifying `AGENTS.md` and its activation/merge (§20).
+  Any change to `AI_WORK_POLICY.md` is a §17 operator decision; §20 governs this file only.
 
 **The deferred list should shrink each wave.** The escalate-never-resolve rule exists for cases
 where a machine choosing between two candidate truths can destroy one. It does **not** cover
@@ -1801,11 +1801,11 @@ something and does not write it down.
   `policy:<PR>`, with each changed line, its section and the author's plain-language note. The operator reads every
   change and approves; the decision ledger records the token for the exact head SHA. The operator may instead post
   the token as a PR comment. The author then adds the ratifying commit — header, banner, history row and every
-  in-body status line of that version set to ACTIVE, nothing else — and the operator merges the PR.
+  in-body status line of that version set to ACTIVE, nothing else; the operator merges or issues the bounded instruction below.
   The exact-head ratification token also authorizes only those status changes and the matching manifest tuple;
   the coordinator records the approved source identity, obtains two independent activation-diff reviews and current
-  green checks, then may merge that exact activation head. Any other source change invalidates this bounded
-  activation permission. A generic pre-approval never substitutes for the actual exact-head operator token.
+  green checks, then may merge that exact activation head under named §25.10.3 authority, never its own standing tool.
+  Any semantic change invalidates this bounded permission; the actual unedited operator GitHub comment must be verified.
 
 ---
 
@@ -2272,7 +2272,9 @@ workflow health contract (`config/n8n_health_contracts.json`): `N8N_MONITORING_A
 - **Held classes** are config/merge_hold_paths.json and its labels; Mergify excludes them. A standing release
   coordinator may merge a non-reserved held PR with two independent exact-head reviews. Broker/order paths,
   credentials, branch protection and delegation definitions remain operator-only. Policy ratification and every
-  applicable §17 decision remain required; unknown classification refuses.
+  applicable §17 decision remain required; unknown/new held classes refuse. Held classes are never in "Approve all".
+  Covered: broker / Active Trader / MBI, secrets, `AGENTS.md`, `AI_WORK_POLICY.md`, hooks and guard, `bin/guard`,
+  `.mergify.yml` and `config/merge_hold_paths.json`.
 - **Shared infrastructure ships alone** with its independent review, Real-layout proof and shared-infra-review
   check (§28.15 item 2). Merge authority never activates a service, lane, schedule, data source or deployment.
 - **Mergify uses its configured weekday windows.** Standing coordinator merges do not wait for that queue; the
@@ -2361,15 +2363,16 @@ the default; when the operator says not to wait, exact-head squash is allowed wi
 ### 25.10.4 Standing release-coordinator merge authority (30.0.0)
 
 Standing-Authority: AgentStandingAuthority@v1
+Procedure and evidence: docs/ops/standing_agent_authority.md. Only hooks_guard/merge_deploy_control may delegate; new held classes start operator-only.
 
 Ratification authorizes config/agent_standing_authority.json only when manifest and operative policy are ACTIVE
 on the same trusted canonical-main commit. Branch text, a version number or a self-written approval claim grants
 nothing. The verifier binds the manifest to the actual token in this version's ACTIVE history row.
-- The current registered coordinator holding release owns its workers' merges. Use scripts/lib/pr_merge_delegation.py;
+- The current registered release lead owns merges for agents whose approved work it coordinates. Use scripts/lib/pr_merge_delegation.py;
   default is a read-only plan. One ordinary PR needs one independent exact-head MERGE review; held needs two
   distinct reviewers. Neither author/coauthor nor merger may supply an approving independent review.
-- The four required contexts must complete SUCCESS, every other executed check SUCCESS/NEUTRAL, the PR ready and
-  the head unchanged. Missing, contradictory, stale or ambiguous required evidence refuses. Shared-infra evidence
+- Required cio-hardening, agent-governance, release-readiness and ci-gate must complete SUCCESS; other executed checks
+  SUCCESS/NEUTRAL, PR ready and exact head unchanged. Missing/stale/ambiguous evidence refuses. Shared-infra evidence
   and every separate §17 decision remain required.
 - Broker/order paths, secrets, branch protection and delegation definitions are operator-reserved. The manifest's
   excluded paths are a floor, not permission to launder an unlisted authority change. Ratification stays operator-owned.
@@ -2380,7 +2383,8 @@ nothing. The verifier binds the manifest to the actual token in this version's A
   promotion, rollback, STOP, live activation and broker rails remain untouched.
 - Any trusted coordinator-state STANDING_AUTHORITY_REVOKED.json marker suspends every standing capability.
   Agents may request that conservative stop; only the operator clears it. Identity fields are local provenance
-  consistency, not cryptographic authentication. *Cause: LESSONS L28-24, L28-31.*
+  consistency, not cryptographic authentication. Independence/authorship completeness is a manual coordinator attestation;
+  native GitHub identities and commit/coauthor evidence must be checked before registration. Standing authority has no expiry; revocation ends it.
 
 
 ---
@@ -2668,8 +2672,8 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 30.0.0 | PENDING | PROPOSED | MAJOR | Supersedes29.3.0. Ratification-backed scoped feature/delegated uploads, coordinator merges and merge-watching, one approved-plan registry; §0rule4/§2B/§11/§17/§20/§25.10/§28 aligned; no broker, secret or deploy authority. | PENDING `APPROVE_AGENTS_POLICY_30_0_0 <PR> <head_sha>` |
-| 29.4.0 | 2026-11-01 | WITHDRAWN | MINOR | Supersedes 29.3.0 (#2453; this content was drafted as 29.3.0 in #2450/#2451). Operator chose MINOR (2026-11-01, "minor"). §28.15 item 8 gains the standing push approval: an operator `APPROVE_PUSH_STANDING <glob> until <YYYY-MM-DD>` comment on the standing-approval issue meets the approved-plan step for the pusher's own live claim on a branch the glob covers (prefixes wt/ feat/ fix/ chore/ docs/ only; never main, master, release/*, train/*; expiry required, at most 45 days; `REVOKE_PUSH_STANDING` in any markup voids earlier ones; one operator issue, duplicates refuse; a close voids earlier comments for good; edited operator comments refuse; fenced, indented and HTML-commented lines ignored; only close-and-reopen of the same issue voids then restores; dates UTC; live only once main is 29.4.0+ ACTIVE; `gh issue create/edit/reopen/close`, `gh alias set` and `gh api` field writes are `gh-write` and `gh auth token` is `secret`, classified from shell tokens (`guard_tokens.py`), so quoting and flag placement cannot evade them). Hardened after the #2450 and #2451 security reviews (LESSONS L28-31). All other push checks unchanged. Operator 2026-11-01: "Yes, draft stand and approval." | PENDING `APPROVE_AGENTS_POLICY_29_4_0 <PR> <head-sha>` |
+| 30.0.0 | PENDING | PROPOSED | MAJOR | Supersedes 29.3.0. Standing scoped/delegated uploads, coordinator merges and merge-watching, one approved-plan registry; §0 rule 4/§2B/§11/§17/§20/§25.10/§28.4/§28.15/§28.17; AI_WORK_POLICY §3/§9/§11/§16/§21/§27/§28 aligned. No broker, secret or deploy authority. | PENDING `APPROVE_AGENTS_POLICY_30_0_0 <PR> <head_sha>` |
+| 29.4.0 | 2026-11-01 | WITHDRAWN | MINOR | Supersedes 29.3.0 (#2453; this content was drafted as 29.3.0 in #2450/#2451). Operator chose MINOR (2026-11-01, "minor"). §28.15 item 8 gains the standing push approval: an operator `APPROVE_PUSH_STANDING <glob> until <YYYY-MM-DD>` comment on the standing-approval issue meets the approved-plan step for the pusher's own live claim on a branch the glob covers (prefixes wt/ feat/ fix/ chore/ docs/ only; never main, master, release/*, train/*; expiry required, at most 45 days; `REVOKE_PUSH_STANDING` in any markup voids earlier ones; one operator issue, duplicates refuse; a close voids earlier comments for good; edited operator comments refuse; fenced, indented and HTML-commented lines ignored; only close-and-reopen of the same issue voids then restores; dates UTC; live only once main is 29.4.0+ ACTIVE; `gh issue create/edit/reopen/close`, `gh alias set` and `gh api` field writes are `gh-write` and `gh auth token` is `secret`, classified from shell tokens (`guard_tokens.py`), so quoting and flag placement cannot evade them). Hardened after the #2450 and #2451 security reviews (LESSONS L28-31). All other push checks unchanged. Operator 2026-11-01: "Yes, draft stand and approval." | none (withdrawn) |
 | 29.3.0 | 2026-11-01 | ACTIVE | MINOR | Supersedes 29.2.1. §11 gains draft-first PRs (open every PR as a draft; mark it ready only when the work is done and adversarial review has passed), stack discipline (only the top of a stack is ready; its CI covers the whole stack) and one weekday merge window (17:30-18:30 ET in `.mergify.yml`; urgent fixes by the operator naming the PR). §28.1's merge-window bullet now states the single window. Adds obligations only; §0, §2, §17 and role authority untouched. Cause: LESSONS L11-01 (5,369 Actions runs on 2026-10-31). | operator in-session 2026-11-01 (this session: chose "approve both rules" and "one window, 17:30 ET"); held-class operator merge (§25.10). Design: `DSN-20261031-ci-load-reduction` §4.2/§4.4/§4.5. |
 | 29.2.1 | 2026-11-01 | ACTIVE | PATCH | Supersedes 29.2.0. Generated §7A source-of-truth table refreshed: `quote_extended_session` (`market_quotes_extended`, single writer `scripts/lib/writers/market_quotes_extended_writer.py`, Alpaca SIP) granted (operator §7A/§26.6, in-session 2026-11-01; store, writer, provider and schedule approved as DSN-20261031-market-risk-engine §11 items 1-2 on 2026-10-31) and listed as an active domain; no rule-text change. | operator 2026-11-01 in-session (recorded in `config/data_source_authority.json` approval) |
 | 29.2.0 | 2026-10-31 | ACTIVE | MAJOR | Supersedes 29.1.0. Renumbered 28.2.0 (#2407): ratified as 28.2.0 on 2026-10-31 before 29.0.0 merged; renumbered, plus an operator-approved citation fix (§24.12 causes back to L24-16; new lesson numbered L24-19). §24.11 gains "Broker market data and paid data feeds": scheduled host lanes may read broker MARKET-DATA endpoints only (quotes incl. extended hours, price history, option chains, market hours, movers; moomoo quotes and capital flow) through the existing token managers / OpenD session; never account, order, position-write, stop, 2FA or auth-flow endpoints; agents never read credentials or cookie files; Finviz Elite API exports AND the cookie-authenticated pages are both used, each only by its existing host lane; each new lane gets a §7A row; data-fee decisions stay operator-only. MAJOR because it widens what host lanes may read from a broker. §0 untouched. | `APPROVE_AGENTS_POLICY_29_2_0 2407 eef5607759c3e32dbfdeafe6492906f5cdca535c` (operator, in-session 2026-10-31); held-class operator merge (§25.10). Provenance: `APPROVE_AGENTS_POLICY_28_2_0 2407 cdb7802ccd58ac976f8fdbbc740a0b8dc18655ef` (operator, in-session 2026-10-31, ratified as 28.2.0 before 29.0.0 merged; renumbered only, no rule-text change). |

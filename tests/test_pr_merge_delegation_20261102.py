@@ -67,9 +67,14 @@ def snapshot(mod, *, held=False, reviews=1):
                          "registered_by": {"actor": "codex", "session": ACTOR},
                          "identity_provenance": "manual_coordinator_claim_and_source_check", "source_commit_shas": [HEAD],
                          "authors": [{"actor": "claude", "session": "author-synthetic", "claim_id": "synthetic-source"}],
-                         "reviews": artifact_rows},
+                         "reviews": artifact_rows, "authors_and_coauthors_complete":True,
+                         "source_authorship_sha256":mod.digest({"author":None,"commits":[{"oid":HEAD}]}),
+                         "shared_infra_isolated_reviewed":True,"authority_rails_unchanged":True},
             "review_artifacts": artifact_bytes, "registration_sha256": "d" * 64,
             "checks": checks, "checks_head": HEAD, "excluded_globs": ["synthetic/reserved/*"], "held": held,
+            "held_classes": ["merge_deploy_control"] if held else [],
+            "shared_infra":{"required":False,"ok":True},
+            "source_authorship_sha256":mod.digest({"author":None,"commits":[{"oid":HEAD}]}),
             "actor_session": ACTOR}
 
 
@@ -342,6 +347,7 @@ def test_renaming_reserved_source_to_ordinary_path_never_bypasses_boundary(mod,p
 
 def test_active_holder_of_old_renamed_path_still_blocks(mod):
     data=snapshot(mod);data["pr"]["prior_paths"]=["scripts/old_synthetic.py"]
+    data["claims"][1]["paths"].append("scripts/old_synthetic.py")
     data["claims"].append({"status":"active","session":"other-source-holder","paths":["scripts/old_synthetic.py"]})
     assert mod.evaluate(data,now=NOW)["reason"]=="current_source_holder_not_released"
 
@@ -360,3 +366,199 @@ def test_registry_role_ambiguity_never_grants_merge(mod,case):
     elif case=="duplicate_id":data["coordinators"]["coordinators"].append({**lead,"role":"observer"})
     else:lead["role"]="observer"
     assert mod.evaluate(data,now=NOW)["reason"]=="current_release_lead_missing"
+
+
+@pytest.mark.parametrize("path", [
+    ".cursor/hooks/new_authority.py", ".cursor/hooks/nested/new_authority.py",
+    ".githooks/pre-commit", "scripts/hooks/new_guard.py", "scripts/githooks/new-hook",
+    ".cursor/hooks.json", ".cursor/settings.json", ".claude/settings.local.json", ".codex/config.toml",
+    "config/shared_infra_paths.json",
+    "bin/guard", "bin/agent-push", "install-guardrails.sh",
+    "scripts/install_ai_work_policy.sh", "scripts/lib/guard_remote_approval.py",
+    "scripts/lib/pr_merge_digest.py", "scripts/lib/pr_merge_telegram.py",
+    "scripts/lib/pr_merge_future_authority.py", "scripts/lib/pr_all_checks_green.py",
+    "scripts/pr_merge_digest.py", "scripts/request_pr_merge_approve.py",
+    "scripts/notify_pr_merge_ready.py", "scripts/agent_merge_pr.sh",
+    "scripts/lib/work_pipeline_tier2.py", "scripts/lib/deploy_console_actions.py",
+    "scripts/lib/operator_approvals.py", "scripts/lib/operator_approvals_api.py",
+    "scripts/telegram_callback_handler.py", "scripts/api_v2.py",
+    "scripts/lib/branch_protection.py", "scripts/update_branch_protection.py",
+    "config/branch_protection.json", ".github/settings.yml",
+    "config/pr_merge_digest.json", "config/agent_clients.yaml",
+    "scripts/validate_schwab_write_policy.py", "scripts/lib/cio_instrument_record.py",
+    "scripts/lib/hands_off_policy.py", "scripts/lib/tradeai_push_budget.py",
+])
+def test_immutable_authority_floor_cannot_be_replaced_by_two_reviews(mod,path):
+    data=snapshot(mod,held=True,reviews=2)
+    data["excluded_globs"]=[]
+    data["authority"]["authority"]["reserved_paths"]=[]
+    data["pr"]["files"]=[path]
+    data["claims"][1]["paths"]=[path]
+    result=mod.evaluate(data,now=NOW)
+    assert result["reason"]=="operator_only_or_delegation_definition_path"
+
+
+def test_old_authority_path_cannot_be_renamed_out_of_immutable_floor(mod):
+    data=snapshot(mod,held=True,reviews=2)
+    data["excluded_globs"]=[]
+    data["pr"]["prior_paths"]=["scripts/lib/pr_merge_telegram.py"]
+    assert mod.evaluate(data,now=NOW)["reason"]=="operator_only_or_delegation_definition_path"
+
+
+def test_meaningful_held_reporting_workflow_still_qualifies_with_two_reviews(mod):
+    data=snapshot(mod,held=True,reviews=2)
+    data["pr"]["files"]=[".github/workflows/synthetic-report.yml"]
+    data["claims"][1]["paths"]=[".github/workflows/synthetic-report.yml"]
+    assert mod.evaluate(data,now=NOW)["ok"] is True
+    data["evidence"]["reviews"].pop()
+    assert mod.evaluate(data,now=NOW)["reason"]=="independent_review_count_insufficient"
+
+
+def actual_collector_fixture(mod,tmp_path,*,new_class=None,labels=(),ordinary=False,shared=False):
+    from types import SimpleNamespace
+    data=snapshot(mod,held=not ordinary,reviews=2)
+    changed="scripts/run_synthetic.sh" if shared else "scripts/synthetic_change.py" if ordinary else ".github/workflows/synthetic-report.yml"
+    data["pr"]["files"]=[changed];data["claims"][1]["paths"]=[changed]
+    host=mod.Host();host.state=tmp_path/"coordination"
+    coord=host.state/"coordinator";claims=host.state/"claims"
+    (coord/"review-evidence").mkdir(parents=True);claims.mkdir()
+    (coord/"coordinators.json").write_text(json.dumps(data["coordinators"]))
+    (coord/"review-evidence"/f"9999-{HEAD}.json").write_text(json.dumps(data["evidence"]))
+    for index,claim in enumerate(data["claims"]):(claims/f"synthetic-{index}.json").write_text(json.dumps(claim))
+    for name,raw in data["review_artifacts"].items():
+        path=coord/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw)
+    hold=load("delegation_actual_hold_classes","scripts/lib/merge_hold_paths.py")
+    config=json.loads((ROOT/"config/merge_hold_paths.json").read_bytes())
+    if new_class:config["classes"].append({"id":new_class,"globs":[changed]})
+    manifest={"capabilities":{"coordinator_merge":{"ordinary_reviews":1,"held_reviews":2,"excluded_globs":[]}}}
+    def git(*args):
+        if args[0]=="rev-parse":return MAIN
+        path=args[1].split(":",1)[1]
+        if path=="config/shared_infra_paths.json":return json.dumps({"paths":[]})
+        return json.dumps(manifest if path=="config/agent_standing_authority.json" else config) if path!="AGENTS.md" else "synthetic trusted policy"
+    host.git=git
+    real_checks=load("delegation_actual_collector_checks","scripts/lib/pr_all_checks_green.py")
+    authority=SimpleNamespace(authorize=lambda *args,**kwargs:deepcopy(data["authority"]),revoked_marker=lambda:False,
+                              verify_ratification_evidence=lambda *args,**kwargs:deepcopy(data["authority"]))
+    shared_gate=load("delegation_actual_shared_gate","scripts/check_shared_infra_pr.py")
+    host.helper=lambda path,sha:authority if "guard_standing_policy" in path else real_checks if "pr_all_checks" in path else shared_gate if "check_shared_infra_pr" in path else hold
+    graph={**data["pr"],"files":[{"path":changed}],"commits":[{"oid":HEAD}],
+           "labels":[{"name":name} for name in labels],
+           "statusCheckRollup":[{"name":name,"status":"COMPLETED","conclusion":"SUCCESS"} for name in ("cio-hardening","agent-governance","release-readiness","ci-gate")]}
+    if shared:
+        graph["title"]="[shared-infra] Synthetic report wrapper"
+        graph["body"]="Real-layout proof: synthetic isolated fixture artifact"
+        graph["statusCheckRollup"].append({"name":"shared-infra-review","status":"COMPLETED","conclusion":"SUCCESS"})
+    def gh(args):
+        if args==["api","repos/PatsKiller/tardeai/commits/main"]:return {"sha":MAIN}
+        if "/comments?" in args[1]:return []
+        if args[0]=="pr":return deepcopy(graph)
+        if "/files?" in args[1]:return [{"filename":changed,"previous_filename":None,"status":"modified"}]
+        return {"head":{"sha":HEAD},"commits":1,"changed_files":1}
+    host.gh=gh
+    return host
+
+
+def test_actual_collector_refuses_new_held_class_instead_of_default_delegation(mod,tmp_path):
+    host=actual_collector_fixture(mod,tmp_path,new_class="future_unrecognized_class")
+    with pytest.raises(mod.Refused,match="held_class_not_delegated"):
+        host.collect(9999,ACTOR)
+
+
+def test_actual_collector_retains_meaningful_known_held_class(mod,tmp_path):
+    host=actual_collector_fixture(mod,tmp_path)
+    collected=host.collect(9999,ACTOR)
+    assert collected["held"] is True and collected["held_classes"]==["merge_deploy_control"]
+    assert mod.evaluate(collected,now=NOW)["ok"] is True
+    # Reviewers have no source claims: their manually registered artifact identities
+    # remain evidence, never fabricated source ownership or operator authority.
+    assert all(not str(claim.get("session","")).startswith("reviewer-") for claim in collected["claims"])
+
+
+@pytest.mark.parametrize("label",["broker","broker_active_trader","active-trader"])
+def test_actual_collector_never_delegates_broker_labels(mod,tmp_path,label):
+    host=actual_collector_fixture(mod,tmp_path,labels=[label])
+    with pytest.raises(mod.Refused,match="broker_label_operator_only"):
+        host.collect(9999,ACTOR)
+
+
+def test_actual_collector_generic_held_label_needs_a_resolved_class(mod,tmp_path):
+    host=actual_collector_fixture(mod,tmp_path,labels=["held"],ordinary=True)
+    with pytest.raises(mod.Refused,match="held_label_class_unresolved"):
+        host.collect(9999,ACTOR)
+
+
+@pytest.mark.parametrize("class_id",["future_unrecognized_class","broker_order","secrets","agents_policy"])
+def test_pure_gate_refuses_non_delegated_held_classes(mod,class_id):
+    data=snapshot(mod,held=True,reviews=2);data["held_classes"]=[class_id]
+    assert mod.evaluate(data,now=NOW)["reason"]=="held_class_not_delegated"
+
+
+@pytest.mark.parametrize("edited",[False,True])
+def test_actual_collector_uses_real_policy_comment_verifier(mod,tmp_path,edited):
+    from types import SimpleNamespace
+    host=actual_collector_fixture(mod,tmp_path)
+    old_helper,old_gh=host.helper,host.gh
+    real=load("delegation_actual_ratification_verifier",".cursor/hooks/guard_standing_policy.py")
+    raw=deepcopy(snapshot(mod)["authority"]["authority"])
+    raw.update(repository="PatsKiller/tardeai",manifest_schema="AgentStandingAuthority@v1")
+    raw["ratification"]={"pr":9000,"reviewed_head":MAIN,"approval_token":f"APPROVE_AGENTS_POLICY_30_0_0 9000 {MAIN}"}
+    authority=SimpleNamespace(authorize=lambda *args,**kw:{"ok":True,"authority":deepcopy(raw)},revoked_marker=lambda:False,
+                              verify_ratification_evidence=real.verify_ratification_evidence)
+    host.helper=lambda path,sha:authority if "guard_standing_policy" in path else old_helper(path,sha)
+    comment={"id":123,"body":raw["ratification"]["approval_token"],"user":{"login":"PatsKiller"},
+             "html_url":"https://github.com/PatsKiller/tardeai/pull/9000#issuecomment-123",
+             "created_at":"2030-01-01T00:00:00Z","updated_at":"2030-01-01T00:01:00Z" if edited else "2030-01-01T00:00:00Z"}
+    host.gh=lambda args:[comment] if "/comments?" in args[1] else old_gh(args)
+    collected=host.collect(9999,ACTOR)
+    assert mod.evaluate(collected,now=NOW)["ok"] is (not edited)
+    if not edited:assert collected["authority"]["authority"]["ratification_evidence"]["comment_id"]==123
+
+
+def test_policy_comment_pagination_refuses_unproven_truncation(mod,tmp_path):
+    host=actual_collector_fixture(mod,tmp_path);old=host.gh;pages=[]
+    def gh(args):
+        if "/comments?" in args[1]:pages.append(args[1]);return [{}]*100
+        return old(args)
+    host.gh=gh
+    with pytest.raises(mod.Refused,match="policy_comment_evidence_truncated"):host.collect(9999,ACTOR)
+    assert len(pages)==10
+
+
+@pytest.mark.parametrize("case",["attestation","label","proof","check"])
+def test_actual_shared_infra_gate_requires_real_metadata_and_manual_attestation(mod,tmp_path,case):
+    host=actual_collector_fixture(mod,tmp_path,shared=True,labels=["shared-infra","solo"])
+    old=host.gh
+    if case in {"label","proof","check"}:
+        def gh(args):
+            value=old(args)
+            if args[0]=="pr":
+                if case=="label":value["labels"]=[]
+                elif case=="proof":value["body"]="No layout artifact supplied"
+                else:value["statusCheckRollup"][-1]["conclusion"]="NEUTRAL"
+            return value
+        host.gh=gh
+    collected=host.collect(9999,ACTOR)
+    if case=="attestation":collected["evidence"]["shared_infra_isolated_reviewed"]=False
+    assert mod.evaluate(collected,now=NOW)["reason"]=="shared_infra_evidence_unproven"
+
+
+@pytest.mark.parametrize("labels", [["shared-infra"], ["solo"], ["shared-infra", "solo"]])
+def test_actual_shared_infra_positive_case_has_explicit_success_and_manual_provenance(mod,tmp_path,labels):
+    host=actual_collector_fixture(mod,tmp_path,shared=True,labels=labels)
+    collected=host.collect(9999,ACTOR)
+    assert collected["shared_infra"]["required"] and collected["shared_infra"]["ok"]
+    assert mod.evaluate(collected,now=NOW)["ok"]
+
+
+def test_author_claim_union_must_cover_every_changed_file(mod):
+    data=snapshot(mod);data["pr"]["files"].append("scripts/extra_synthetic.py");data["pr"]["changedFiles"]=2
+    assert mod.evaluate(data,now=NOW)["reason"]=="source_author_claim_coverage_incomplete"
+
+
+@pytest.mark.parametrize("field",["authors_and_coauthors_complete","source_authorship_sha256","authority_rails_unchanged"])
+def test_manual_completeness_and_no_weakening_attestations_are_explicit(mod,field):
+    data=snapshot(mod,held=True,reviews=2)
+    data["pr"]["files"]=[".github/workflows/synthetic-report.yml"];data["claims"][1]["paths"]=data["pr"]["files"][:]
+    data["evidence"].pop(field)
+    assert not mod.evaluate(data,now=NOW)["ok"]

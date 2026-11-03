@@ -57,7 +57,7 @@ GH_SUB = {
 GH_WRITE = {
     "issue": {"comment", "create", "new", "edit", "reopen", "close", "delete", "transfer", "pin", "unpin", "lock",
               "unlock", "develop"},
-    "pr": {"comment", "review"},
+    "pr": {"comment", "review", "merge"},
     "alias": {"set", "import"},
 }
 GIT_VALUE_OPTS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env",

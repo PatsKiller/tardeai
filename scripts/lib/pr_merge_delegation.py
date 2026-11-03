@@ -37,19 +37,50 @@ MAX_BYTES = 2 * 1024 * 1024
 SHA = re.compile(r"[0-9a-f]{40}")
 HASH = re.compile(r"[0-9a-f]{64}")
 SESSION = re.compile(r"[A-Za-z0-9_./:-]{3,160}")
+# Immutable authority-definition floor, independent of a mutable manifest. A
+# second review never delegates edits to the code that records/recognizes approval,
+# grants a role, decides merge eligibility or installs agent enforcement. The
+# dedicated namespaces also cover new/nested hook or merge authority entrypoints.
+# Other held files (for example an ordinary reporting CI workflow) still qualify
+# through the held review floor; this is not a blanket shared-infrastructure ban.
 RESERVED = ("AGENTS.md", "AI_WORK_POLICY.md", "CLAUDE.md", "GEMINI.md", ".goosehints",
-            ".cursor/rules/*", ".github/copilot-instructions.md", "config/agent_standing_authority.json",
-            ".cursor/hooks/guard_standing_policy.py", "scripts/lib/pr_merge_delegation.py",
-            "config/merge_hold_paths.json", "scripts/lib/merge_hold_paths.py")
+            ".cursor/rules/*", ".github/copilot-instructions.md", ".mergify.yml",
+            ".cursor/hooks/*", ".githooks/*", "scripts/hooks/*", "scripts/githooks/*",
+            ".cursor/hooks.json", ".cursor/settings*.json", ".claude/settings*.json", ".codex/config.toml",
+            "bin/guard", "bin/agent-push", "install-guardrails.sh",
+            "scripts/install_ai_work_policy.sh", "scripts/install_git_hooks.sh",
+            "scripts/install-git-hygiene.sh", "scripts/git_hygiene_guard.sh",
+            "scripts/agent_claim_precommit.sh", "scripts/guard_*", "scripts/lib/guard*",
+            "scripts/lib/tradeai_push_budget.py", "scripts/lib/hands_off_policy.py",
+            "scripts/agent_session_start.py", "scripts/lib/agent_session_receipt.py",
+            "scripts/agent_claim.py", "scripts/lib/agent_claim_board.py",
+            "config/agent_clients.yaml", "config/agent_standing_authority.json",
+            "config/merge_hold_paths.json", "scripts/lib/merge_hold_paths.py", "config/shared_infra_paths.json",
+            "scripts/check_shared_infra_pr.py", ".github/workflows/shared-infra-review.yml",
+            "config/pr_merge_digest.json", "scripts/lib/pr_merge*.py",
+            "scripts/pr_merge*.py", "scripts/lib/pr_all_checks_green.py",
+            "scripts/request_pr_merge_approve.py", "scripts/notify_pr_merge_ready.py",
+            "scripts/agent_merge_pr.sh", "scripts/lib/mergify_queue_monitor.py",
+            "scripts/lib/work_pipeline_tier2.py", "scripts/lib/deploy_console_actions.py",
+            "scripts/lib/operator_approval*.py", "scripts/admin_write_guard.py",
+            "scripts/telegram_callback_handler.py", "scripts/api_v2.py",
+            "scripts/lib/*branch*protection*", "scripts/*branch*protection*",
+            "config/*branch*protection*", ".github/settings*",
+            "tests/test_guard_standing_policy_20261102.py",
+            "tests/test_pr_merge_delegation_20261102.py",
+            "tests/test_pr_all_checks_standing_20261102.py")
 OPERATOR_ONLY = ("scripts/brokers/*", "scripts/active_trader/*", "scripts/moomoo/*", "scripts/schwab_*",
                  "scripts/lib/schwab_*", "scripts/broker_*", "scripts/lib/broker*", "scripts/*order_intent*",
                  "scripts/lib/*order_intent*", "scripts/*execution_guard*", "scripts/lib/*execution_guard*",
                  "scripts/alpaca_*stop*", "scripts/defense_execution.py", "apps/broker-admin/*",
                  "config/active_trader*", "config/secret_registry.yaml", ".env", ".env.*", "*/.env", "*/.env.*",
                  "config/*branch*protection*", ".github/settings*", "scripts/*branch*protection*",
-                 "scripts/lib/trading_lock.py", "scripts/lib/trading_session_grant.py")
+                 "scripts/lib/trading_lock.py", "scripts/lib/trading_session_grant.py",
+                 "scripts/validate_schwab_write_policy.py", "scripts/lib/cio_instrument_record.py")
 DECISION_PATHS = ("config/lane_registry.json", "config/data_source_authority.json", "config/n8n_relay_live*.json",
                   "config/n8n_live*.json", "config/*access_mode*", "config/*kill_switch*", "config/*risk_policy*")
+# New held classes are never admitted by merely adding a row to the manifest.
+DELEGATED_HELD_CLASSES = frozenset({"hooks_guard", "merge_deploy_control"})
 IDENTITY_LIMIT = "Manual coordinator mapping of real agent sessions against claims/source; not cryptographic authentication."
 
 
@@ -206,10 +237,21 @@ def evaluate(snapshot, *, now):
         commit_shas = pr.get("commit_shas")
         if not isinstance(commit_shas, list) or not commit_shas or any(not full_sha(v) for v in commit_shas) or evidence.get("source_commit_shas") != commit_shas:
             raise Refused("source_authorship_coverage_unproven")
+        authorship_hash = evidence.get("source_authorship_sha256")
+        if (evidence.get("authors_and_coauthors_complete") is not True or not isinstance(authorship_hash, str)
+                or not HASH.fullmatch(authorship_hash) or authorship_hash != snapshot.get("source_authorship_sha256")):
+            raise Refused("source_authorship_manual_completeness_unproven")
+        shared = snapshot.get("shared_infra")
+        if not isinstance(shared, dict) or type(shared.get("required")) is not bool:
+            raise Refused("shared_infra_classification_unavailable")
+        if shared["required"] and (shared.get("ok") is not True or evidence.get("shared_infra_isolated_reviewed") is not True):
+            raise Refused("shared_infra_evidence_unproven")
+        if any(path.startswith(".github/workflows/") for path in effective_files) and evidence.get("authority_rails_unchanged") is not True:
+            raise Refused("reporting_workflow_no_weakening_attestation_missing")
         authors = evidence.get("authors")
         if not isinstance(authors, list) or not authors:
             raise Refused("authors_missing")
-        author_sessions = set()
+        author_sessions, covered_paths = set(), set()
         for author in authors:
             if not isinstance(author, dict) or not text_id(author.get("actor")) or not text_id(author.get("session")):
                 raise Refused("author_identity_invalid")
@@ -221,6 +263,9 @@ def evaluate(snapshot, *, now):
             if author["session"] in author_sessions:
                 raise Refused("author_identity_duplicate")
             author_sessions.add(author["session"])
+            covered_paths.update(path for path in effective_files if any(overlaps(path, cp) for cp in found[0].get("paths", []) if isinstance(cp, str)))
+        if covered_paths != set(effective_files):
+            raise Refused("source_author_claim_coverage_incomplete")
         for claim in claims:
             if claim.get("status") == "active" and any(overlaps(p, cp) for p in effective_files for cp in claim.get("paths", []) if isinstance(cp, str)):
                 raise Refused("current_source_holder_not_released")
@@ -245,15 +290,21 @@ def evaluate(snapshot, *, now):
             reviewers.add(session)
             proof.append({"reviewer_session": session, "artifact_sha256": review["artifact_sha256"]})
         held = snapshot.get("held")
-        if type(held) is not bool:
+        held_classes = snapshot.get("held_classes")
+        if (type(held) is not bool or not isinstance(held_classes, list)
+                or any(not isinstance(value, str) for value in held_classes)
+                or len(set(held_classes)) != len(held_classes) or held != bool(held_classes)):
             raise Refused("held_classification_unavailable")
+        if not set(held_classes).issubset(DELEGATED_HELD_CLASSES):
+            raise Refused("held_class_not_delegated")
         required = requirements["held_reviews"] if held else requirements["ordinary_reviews"]
         if len(reviewers) < required:
             raise Refused("independent_review_count_insufficient")
         bound = {"pr": pr["number"], "head_sha": head, "files": files, "prior_paths": prior_paths, "commit_shas": commit_shas,
                  "actor_session": actor, "coordinator": lead, "authority": authority["authority"],
                  "review_proof": proof, "registration_sha256": snapshot["registration_sha256"],
-                 "held": held, "claims": [{k: c.get(k) for k in ("claim_id", "session", "status", "head_sha", "paths")} for c in claims]}
+                 "source_authorship_sha256": snapshot["source_authorship_sha256"], "shared_infra": shared,
+                 "held": held, "held_classes": held_classes, "claims": [{k: c.get(k) for k in ("claim_id", "session", "status", "head_sha", "paths")} for c in claims]}
         return {"ok": True, "reason": "qualified", "head_sha": head, "pr": pr["number"], "actor": lead["id"],
                 "actor_session": actor, "held": held, "required_reviews": required, "review_proof": proof,
                 "authority": authority["authority"], "fingerprint": digest(bound), "identity_limit": IDENTITY_LIMIT,
@@ -312,7 +363,21 @@ class Host:
                                                revoked=authority_helper.revoked_marker())
         if authority.get("ok") is not True:
             return {"authority": authority}
-        fields = "number,state,isDraft,headRefOid,headRefName,baseRefName,mergeable,mergeStateStatus,files,changedFiles,statusCheckRollup,commits,author,reviews,labels"
+        policy_pr = authority["authority"]["ratification"]["pr"]
+        comments = []
+        for page in range(1, 11):
+            chunk = self.gh(["api", f"repos/{REPO}/issues/{policy_pr}/comments?per_page=100&page={page}"])
+            if not isinstance(chunk, list):
+                raise Refused("policy_comment_evidence_invalid")
+            comments.extend(chunk)
+            if len(chunk) < 100:
+                break
+        else:
+            raise Refused("policy_comment_evidence_truncated")
+        authority = authority_helper.verify_ratification_evidence(authority["authority"], comments, expected_operator=REPO.split("/")[0])
+        if authority.get("ok") is not True:
+            return {"authority": authority}
+        fields = "number,title,body,state,isDraft,headRefOid,headRefName,baseRefName,mergeable,mergeStateStatus,files,changedFiles,statusCheckRollup,commits,author,reviews,labels"
         pr = self.gh(["pr", "view", str(pr_number), "--repo", REPO, "--json", fields])
         rest = self.gh(["api", f"repos/{REPO}/pulls/{pr_number}"])
         if not isinstance(rest, dict) or rest.get("head", {}).get("sha") != pr.get("headRefOid"):
@@ -347,10 +412,17 @@ class Host:
         labels = pr.get("labels")
         if not isinstance(labels, list) or any(not isinstance(row, dict) or not isinstance(row.get("name"), str) for row in labels):
             raise Refused("pr_labels_incomplete")
-        if any(row["name"].lower() in {"hold", "do-not-merge", "operator-hold"} for row in labels):
+        label_names = {row["name"].lower() for row in labels}
+        if label_names & {"hold", "do-not-merge", "operator-hold"}:
             raise Refused("explicit_hold_requires_existing_resolution")
-        held = bool(hold.held_classes([*pr["files"], *pr["prior_paths"]], hold_config)
-                    or {row["name"] for row in labels} & hold.hold_labels(hold_config))
+        if label_names & {"broker", "broker_active_trader", "active-trader", "active_trader", "broker-active-trader"}:
+            raise Refused("broker_label_operator_only")
+        held_classes = sorted(hold.held_classes([*pr["files"], *pr["prior_paths"]], hold_config))
+        if not set(held_classes).issubset(DELEGATED_HELD_CLASSES):
+            raise Refused("held_class_not_delegated")
+        if label_names & hold.hold_labels(hold_config) and not held_classes:
+            raise Refused("held_label_class_unresolved")
+        held = bool(held_classes)
         coordinator = self.state / "coordinator"
         registration = coordinator / "review-evidence" / f"{pr_number}-{pr.get('headRefOid')}.json"
         raw = safe_read(registration)
@@ -371,13 +443,30 @@ class Host:
             raise Refused("claim_board_unavailable_or_truncated")
         for path in paths:
             claims.append(json_read(path))
+        shared_config = json.loads(self.git("show", f"{sha}:config/shared_infra_paths.json"))
+        patterns = shared_config.get("paths")
+        if not isinstance(patterns, list) or any(not isinstance(pattern, str) for pattern in patterns):
+            raise Refused("shared_infra_patterns_invalid")
+        assessment = self.helper("scripts/check_shared_infra_pr.py", sha).assess(
+            [*pr["files"], *pr["prior_paths"]], str(pr.get("title") or ""), str(pr.get("body") or ""), patterns)
+        shared_required = assessment.get("shared_infra") is True
+        shared_ok = assessment.get("ok") is True
+        if shared_required:
+            check_helper = self.helper("scripts/lib/pr_all_checks_green.py", sha)
+            required_shared = tuple(dict.fromkeys([*check_helper.MERGE_REQUIRED_CHECKS, "shared-infra-review"]))
+            extra = check_helper.evaluate_merge_rollup(pr.get("statusCheckRollup"), required=required_shared)
+            shared_ok = shared_ok and extra.get("ok") is True and bool({"shared-infra", "solo"} & label_names)
+        shared = {"required": shared_required, "ok": shared_ok,
+                  "metadata_sha256": digest({"title": pr.get("title"), "body": pr.get("body"), "labels": sorted(label_names)})}
         cap = manifest.get("capabilities", {}).get("coordinator_merge", {})
         return {"authority": authority, "pr": pr, "checks": checks, "checks_head": pr.get("headRefOid"),
                 "coordinators": json_read(coordinator / "coordinators.json"), "claims": claims,
                 "evidence": evidence, "review_artifacts": artifacts, "registration_sha256": hashlib.sha256(raw).hexdigest(),
                 "excluded_globs": [*authority["authority"]["reserved_paths"], *cap["excluded_globs"]]
-                    if isinstance(cap, dict) and isinstance(cap.get("excluded_globs"), list) else None, "held": held,
-                "actor_session": actor_session}
+                    if isinstance(cap, dict) and isinstance(cap.get("excluded_globs"), list) else None,
+                "held": held, "held_classes": held_classes,
+                "actor_session": actor_session, "shared_infra": shared,
+                "source_authorship_sha256": digest({"author": pr.get("author"), "commits": commits})}
 
     def ledger_path(self, pr):
         return self.state / "coordinator/merge-delegation" / f"{pr}.jsonl"

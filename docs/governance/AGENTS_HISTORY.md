@@ -12,17 +12,30 @@ rule exists is in `LESSONS_LEARNED.md`; what is still open is in `OPEN_ITEMS.md`
 The complete AGENTS.md 25.0.1 text is preserved byte-exact at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`
 (sha256 pinned in `tests/support/agents_policy_frozen.py`), and every earlier version is in git history.
 
-## 2026-11-02 — coherent30.0.0 preparation
+## 2026-11-02 — coherent 30.0.0 preparation
 
 The operator directly authorized Codex to prepare standing pushes, delegated uploads, release-coordinator merges,
 merge-watching and the approved-plan registry rule. Ratification remains one later exact-head operator act.
-Unratified proposals29.4.0 (#2459),29.5.0 (#2493) and plan-registry policy#2491 are consolidated. Branches and
+Unratified proposals 29.4.0 (#2459), 29.5.0 (#2493) and plan-registry policy #2491 are consolidated. Branches and
 review receipts remain recoverable; none of those proposals is represented as ratified. The reviewed #2459 guard
 was carried and the older divergent #2493 copy was not overlaid. No approval token is invented by preparation.
 
+### 30.0.0 proposal record
+
+**30.0.0 is PROPOSED (MAJOR)** — standing feature uploads, delegated clean uploads, release-coordinator merges,
+merge-watching and one server-side approved-plan registry (§11, §25.10.4, §28.4, §28.15, §28.17).
+The operator directly authorized preparation; ratification is still required. Policy and capability manifest stay
+PROPOSED and grant nothing until ratified and merged. **29.3.0 remains active.** Earlier banners and consolidation
+records are in docs/governance/AGENTS_HISTORY.md; old source branches remain. No broker, secret or deploy grant.
+
+| version | date | status | class | change | approval |
+|---|---|---|---|---|---|
+| 30.0.0 | PENDING | PROPOSED | MAJOR | Supersedes 29.3.0. Standing scoped/delegated uploads, coordinator merges and merge-watching, one approved-plan registry; §0 rule 4/§2B/§11/§17/§20/§25.10/§28.4/§28.15/§28.17; AI_WORK_POLICY §3/§9/§11/§16/§21/§27/§28 aligned. No broker, secret or deploy authority. | PENDING `APPROVE_AGENTS_POLICY_30_0_0 <PR> <head_sha>` |
+| 29.5.0 | PENDING | WITHDRAWN | MAJOR | Consolidated into30.0.0; no separate banner retained here. Original source c24d1f0edfd426fcb11e883be515d5ecaf79678b (#2493) and remote branch preserved. | none (withdrawn) |
+
 ### Earlier banners
 
-**29.4.0 is PROPOSED (MINOR) — a standing, dated operator push approval for agent branches (§28.15 item 8).** Operator 2026-11-01: "Yes, draft stand and approval."; class "minor". **Why MINOR:** the operator's choice; it adds an operator-authored, dated, revocable way to meet the existing approved-plan step, and §0 and every other push rail are unchanged. The active version governs until ratified.
+**29.4.0 is WITHDRAWN (original MINOR proposal) — a standing, dated operator push approval for agent branches (§28.15 item 8).** Operator 2026-11-01: "Yes, draft stand and approval."; class "minor". **Why MINOR:** the operator's choice; it adds an operator-authored, dated, revocable way to meet the existing approved-plan step, and §0 and every other push rail are unchanged. The active version governs until ratified.
 
 **29.3.0 is ACTIVE (MINOR) — draft-first PRs, stack discipline, and one merge window.** DSN-20261031-ci-load-reduction
 §4.2/§4.4/§4.5, operator-approved in session 2026-11-01 (§20; the operator chose "approve both rules" and "one window,

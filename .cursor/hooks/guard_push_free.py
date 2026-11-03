@@ -858,7 +858,17 @@ def ratified_authority(cfg: dict[str, Any], capability: str, branch: str) -> dic
                               policy_sha=main.get("_sha"), branch=branch, revoked=helper.revoked_marker())
     if not result["ok"]:
         raise Refused(result["reason"])
-    return result["authority"]
+    authority = result["authority"]
+    repository = authority["repository"]
+    if _standing_repo(cfg) != repository:
+        raise Refused("policy ratification repository is not the pinned canonical repository")
+    pr = authority["ratification"]["pr"]
+    comments = _gh_pages(cfg, f"repos/{repository}/issues/{pr}/comments?direction=asc",
+                         "policy ratification comments")
+    verified = helper.verify_ratification_evidence(authority, comments, cfg.get("operator_login"))
+    if not verified["ok"]:
+        raise Refused(verified["reason"])
+    return verified["authority"]
 
 
 def coordinator_lead(cfg: dict[str, Any]) -> str:
@@ -901,22 +911,94 @@ def claim_scope_text(row: dict) -> str:
     return str(row.get("note") or "") + "\n" + plan
 
 
-def scope_provenance(row: dict, cfg: dict[str, Any]) -> dict[str, str]:
-    """Require scope plus recorded assignment/request, never a self-written Goal alone.
+def assignment_documents(cfg: dict[str, Any]) -> list[tuple[Path, str]]:
+    """Regular coordinator assignment records from the fixed trusted handoff root.
 
-    These local fields establish consistency/provenance, not cryptographic actor identity.
+    Unix ownership and bound fields establish local consistency, not a signature
+    distinguishing processes sharing one uid. Coordinator writes remain governed.
+    """
+    root = standing_policy_module().COORDINATION_ROOT.parent / "handoffs"
+    if TEST_CONFIG is not None:  # explicit hermetic seam, refused in installed hooks by main()
+        root = Path(cfg["handoffs_dir"])
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    try:
+        root_fd = os.open(root, directory_flags)
+    except OSError:
+        return []
+    out = []
+    visited = 0
+
+    def read_directory(directory_fd: int, directory: Path) -> None:
+        nonlocal visited
+        for name in sorted(os.listdir(directory_fd)):
+            if visited >= 2000:
+                return
+            visited += 1
+            if Path(name).suffix not in {".md", ".txt"}:
+                continue
+            try:
+                fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory_fd)
+                with os.fdopen(fd, "r", encoding="utf-8") as handle:
+                    info = os.fstat(handle.fileno())
+                    if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o022
+                            or info.st_nlink != 1 or info.st_size > 1_000_000):
+                        continue
+                    text = handle.read(1_000_001)
+                    after = os.fstat(handle.fileno())
+                    if (len(text) > 1_000_000
+                            or (info.st_mtime_ns, info.st_size) != (after.st_mtime_ns, after.st_size)):
+                        continue
+            except (OSError, UnicodeError):
+                continue
+            out.append((directory / name, text))
+
+    try:
+        read_directory(root_fd, root)
+        for name in sorted(os.listdir(root_fd)):
+            if visited >= 2000:
+                break
+            try:
+                child_fd = os.open(name, directory_flags, dir_fd=root_fd)
+            except OSError:
+                continue
+            try:
+                read_directory(child_fd, root / name)
+            finally:
+                os.close(child_fd)
+    except OSError:
+        return []
+    finally:
+        os.close(root_fd)
+    return out
+
+
+def scope_provenance(row: dict, cfg: dict[str, Any], *, assigned_branch: Optional[str] = None,
+                     owner: Optional[dict] = None) -> dict[str, str]:
+    """Claim text describes work; only a matching coordinator artifact assigns it.
+
+    Ratification is authority. No claimant-written Approved-by/Assigned-by string
+    or Goal can stand in for a current coordinator assignment under the fixed root.
     """
     text = claim_scope_text(row)
-    request = scope_field(text, "Operator-request")
-    scope = scope_field(text, "Approved-scope") or request or str(row.get("task") or "").strip()
+    scope = (scope_field(text, "Approved-scope") or scope_field(text, "Operator-request")
+             or str(row.get("task") or "").strip())
     if not scope or scope.startswith("<") or scope.lower() in {"pending", "tbd", "none", "working on it"}:
         raise Refused("claim has no real approved scope/task")
-    assigned = scope_field(text, "Assigned-by")
-    if assigned and assigned == coordinator_lead(cfg):
-        return {"scope": scope, "assigned_by": assigned, "provenance": "current coordinator assignment"}
-    if scope_field(text, "Approved-by") == "operator" and request and not request.startswith("<"):
-        return {"scope": scope, "assigned_by": "operator", "provenance": request}
-    raise Refused("scope lacks recorded operator request or current coordinator assignment")
+    owner = row if owner is None else owner
+    branch = assigned_branch or str(row.get("branch") or "")
+    lead = coordinator_lead(cfg)
+    if (row.get("_state") != "live" or not row.get("session") or not row.get("claim_id")
+            or owner.get("_state") not in {"live", "stale"} or owner.get("branch") != branch
+            or not owner.get("claim_id") or not owner.get("session")):
+        raise Refused("assignment needs actual owner and recipient claim identities")
+    for path, assignment in assignment_documents(cfg):
+        expected = {"Assigned-branch": branch, "Assigned-by": lead, "Assigned-to": row["session"],
+                    "Owner-claim": owner["claim_id"], "Owner-session": owner["session"], "Approved-scope": scope}
+        if all(scope_field(assignment, key) == value for key, value in expected.items()):
+            return {"scope": scope, "assigned_by": lead, "provenance": "coordinator assignment artifact",
+                    "assignment_artifact": str(path), "owner_claim": owner["claim_id"],
+                    "owner_session": owner["session"], "recipient_session": row["session"]}
+    raise Refused("no matching coordinator assignment artifact covers this claim/scope")
 
 
 def ratified_handoff(branch: str, session: str, cfg: dict[str, Any], claims: list[dict]) -> dict[str, Any]:
@@ -926,18 +1008,7 @@ def ratified_handoff(branch: str, session: str, cfg: dict[str, Any], claims: lis
     root = Path(cfg["handoffs_dir"])
     if not root.is_dir() or not recipients:
         raise Refused("delegated upload needs recipient's own live scope claim and a handoff")
-    candidates = []
-    for directory in [root] + sorted(p for p in root.iterdir() if p.is_dir() and not p.is_symlink()):
-        candidates.extend(sorted(directory.iterdir()))
-    for path in candidates[:2000]:
-        try:
-            info = path.lstat()
-            if (path.suffix not in {".md", ".txt"} or not stat.S_ISREG(info.st_mode)
-                    or info.st_uid != os.getuid() or info.st_mode & 0o022 or info.st_size > 1_000_000):
-                continue
-            text = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeError):
-            continue
+    for path, text in assignment_documents(cfg):
         if (scope_field(text, "Assigned-branch") != branch or scope_field(text, "Assigned-by") != lead
                 or scope_field(text, "Assigned-to") != session):
             continue
@@ -949,7 +1020,7 @@ def ratified_handoff(branch: str, session: str, cfg: dict[str, Any], claims: lis
             continue
         for recipient in recipients:
             try:
-                provenance = scope_provenance(recipient, cfg)
+                provenance = scope_provenance(recipient, cfg, assigned_branch=branch, owner=owners[0])
             except Refused:
                 continue
             if provenance["scope"] != scope:

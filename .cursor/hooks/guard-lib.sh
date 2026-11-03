@@ -40,8 +40,9 @@ classify_cmd() {
   # gh/git tiers by shell tokens (guard_tokens.py), not regex over raw text: quoting ("gh", com\ment, git "push"),
   # flags before the noun or verb, env/command/path prefixes and $(...) argv[0] all reach the same words the shell
   # runs. Its answer is checked at each tier's old position, so precedence is unchanged; the regexes below remain a
-  # backstop. If the helper cannot run, any command naming gh or git takes that tier (fail closed).
+  # backstop. If the tokenizer is unavailable, classification fails closed for EVERY command, including quoted concatenation.
   local _tt; _tt=" $(python3 -I "$_GUARD_HOOKS/guard_tokens.py" "$cmd" 2>/dev/null || echo ERR) "
+  [[ "$_tt" == *" ERR "* ]] && { echo classifier-unavailable; return; }
   # The ledger is now the only thing standing between the agent and every
   # guarded scope, so the agent must not be able to issue itself a grant.
   # Operator grants come from a real terminal, which never passes through this

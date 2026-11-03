@@ -7,6 +7,7 @@ classify_cmd, and through the real guard-shell.sh hook; mutants prove each token
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -128,15 +129,29 @@ def test_reads_allowed_by_the_hook(E, cmd):
     assert E.hook(cmd).get("permission") == "allow", cmd
 
 
+@pytest.mark.parametrize("command", [
+    "gh pr merge 9999 --squash",
+    "gh -R o/r pr merge 9999 --match-head-commit " + "a" * 40,
+    '"g""h" pr "merge" 9999 --squash',
+])
+def test_direct_pr_merge_is_gated_including_real_shell_hook(E, command):
+    assert tiers(command) == "gh-write"
+    assert _classify(command) == "gh-write"
+    assert E.hook(command).get("permission") != "allow"
+
+
 def test_helper_missing_fails_closed(tmp_path):
     lib = tmp_path / "hooks"
     shutil.copytree(HOOKS, lib, ignore=shutil.ignore_patterns("__pycache__", "guard_tokens.py"))
     def cls(cmd: str) -> str:
         return subprocess.run(["bash", "-c", 'source "$1"; classify_cmd "$2"', "_", str(lib / "guard-lib.sh"), cmd],
                               capture_output=True, text=True, check=True).stdout.strip()
-    assert cls("\"gh\" issue view 5") == "gh-write"
-    assert cls("git \"status\"") == "git-push"
-    assert cls("ls") == "none"
+    for command in ['"gh" issue view 5', 'git "status"', 'ls', '"g""h" issue comment 5 --body synthetic', '"gi"t push origin main']:
+        assert cls(command) == "classifier-unavailable"
+    payload = json.dumps({"command": '"g""h" issue comment 5 --body synthetic'})
+    result = subprocess.run(["bash", str(lib / "guard-shell.sh")], input=payload,
+                            capture_output=True, text=True, timeout=10, check=True)
+    assert json.loads(result.stdout)["permission"] == "deny"
 
 
 # ------------------------------------------------------------------ mutants: each tokenizer rule is load-bearing

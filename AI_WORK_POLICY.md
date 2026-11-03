@@ -470,6 +470,8 @@ authorizes that remote synchronization event.
 
 A general instruction to "continue", "implement", "test", "mature", or "finish"
 does NOT by itself authorize repeated remote pushes.
+Ratified canonical-main standing authority (AGENTS.md §0 rule 4, §25.10.4) is the operator's explicit instruction
+within its declared scope. The pre-push flag remains required; claim text itself creates no authority.
 
 The git pre-push hook enforces this independently of which agent wrote the code:
 

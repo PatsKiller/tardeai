@@ -8,6 +8,7 @@ approval is invented. Revocation is a separate fixed-path fail-closed read.
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import datetime
 from pathlib import Path
 import os
 import pwd
@@ -15,6 +16,7 @@ import re
 from typing import Any
 
 SCHEMA = "AgentStandingAuthority@v1"
+REPOSITORY = "PatsKiller/tardeai"
 MINIMUM_POLICY = (30, 0, 0)
 CAPABILITIES = frozenset({"feature_push", "delegated_upload", "coordinator_merge"})
 COORDINATION_ROOT = (Path(pwd.getpwuid(os.getuid()).pw_dir)
@@ -72,7 +74,7 @@ def _history_row(text: str, version: str) -> list[str] | None:
 
 def authorize(policy_text: Any, manifest: Any, *, capability: Any,
               policy_sha: Any, branch: Any = None, revoked: bool = False) -> dict:
-    """Validate ratification and capability; this function has no I/O/effects.
+    """Validate local consistency only; actual policy-comment evidence is ALSO required.
 
     ``policy_sha`` identifies the trusted main snapshot, not the ratification's
     reviewed feature head. The manifest tuple must match the ACTIVE30.0.0
@@ -159,8 +161,64 @@ def authorize(policy_text: Any, manifest: Any, *, capability: Any,
         if (not isinstance(branch, str) or not _BRANCH.fullmatch(branch) or ".." in branch
                 or branch.endswith((".lock", "."))):
             return deny("standing upload covers only safe wt/ feature branches")
-    return {"ok": True, "reason": "ratified main policy grants this standing capability",
+    return {"ok": True, "reason": "local main policy/manifest consistency validated; actual operator comment required",
             "authority": {"policy_sha": policy_sha, "policy_version": version, "minimum_policy": manifest["minimum_policy"],
-                          "manifest_schema": SCHEMA, "capability": capability,
+                          "manifest_schema": SCHEMA, "repository": REPOSITORY, "capability": capability,
                           "ratification": deepcopy(ratification), "requirements": deepcopy(caps[capability]),
                           "reserved_paths": list(reserved)}}
+
+
+def verify_ratification_evidence(authority: Any, actual_comments: Any, expected_operator: Any) -> dict:
+    """Require the one genuine unedited operator policy-ratification comment.
+
+    ``authority`` is authorize()["authority"], not its wrapper. Comments must
+    come from the real canonical policy PR's bounded REST issue-comments read.
+    This pure function checks the returned provenance; it does not fetch or sign.
+    No per-branch comment, issue, grant or expiry is introduced.
+    """
+    def deny(reason: str) -> dict:
+        return {"ok": False, "reason": reason, "authority": None}
+
+    if (not isinstance(authority, dict) or authority.get("manifest_schema") != SCHEMA
+            or authority.get("repository") != REPOSITORY):
+        return deny("canonical local policy authority unavailable")
+    if not isinstance(expected_operator, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}", expected_operator):
+        return deny("expected operator identity unavailable")
+    ratification = authority.get("ratification")
+    if not isinstance(ratification, dict):
+        return deny("policy ratification tuple unavailable")
+    token, pr, reviewed = (ratification.get(k) for k in ("approval_token", "pr", "reviewed_head"))
+    match = _TOKEN.fullmatch(token) if isinstance(token, str) else None
+    if (match is None or type(pr) is not int or pr <= 0 or not isinstance(reviewed, str)
+            or not _SHA.fullmatch(reviewed) or str(pr) != match[1] or reviewed != match[2]):
+        return deny("policy ratification tuple malformed or inconsistent")
+    if not isinstance(actual_comments, list) or len(actual_comments) > 1000:
+        return deny("actual policy PR comment collection unavailable or incomplete")
+    for comment in actual_comments:
+        if not isinstance(comment, dict):
+            continue
+        user, body, cid = comment.get("user"), comment.get("body"), comment.get("id")
+        if (not isinstance(user, dict) or user.get("login") != expected_operator or not isinstance(body, str)
+                or type(cid) is not int or cid <= 0):
+            continue
+        url = comment.get("html_url")
+        allowed_urls = {f"https://github.com/{REPOSITORY}/{kind}/{pr}#issuecomment-{cid}"
+                        for kind in ("pull", "issues")}
+        if not isinstance(url, str) or url not in allowed_urls:
+            continue
+        created, updated = comment.get("created_at"), comment.get("updated_at")
+        if not isinstance(created, str) or not created or created != updated:
+            continue
+        try:
+            instant = datetime.fromisoformat(created.replace("Z", "+00:00"))
+            if instant.tzinfo is None or instant.utcoffset() is None:
+                continue
+        except ValueError:
+            continue
+        if not any(line.strip() == token for line in _unfenced(body).splitlines()):
+            continue
+        result = deepcopy(authority)
+        result["ratification_evidence"] = {"comment_id": cid, "url": url, "author": expected_operator,
+                                          "created_at": created}
+        return {"ok": True, "reason": "actual unedited operator policy ratification verified", "authority": result}
+    return deny("no actual unedited operator comment ratifies the exact policy PR/reviewed head")
