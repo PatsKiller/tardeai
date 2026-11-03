@@ -168,7 +168,9 @@ def main(argv: list[str] | None = None) -> int:
             send(s, RESUME, run=subprocess.run)
             rec["nudged_at"] = now
         elif action == "ENTER":
-            subprocess.run(["tmux", "send-keys", "-t", s, "Enter"], capture_output=True, text=True)
+            # tmux resolves from PATH on purpose; the session name passed the config regex and the refusal list
+            subprocess.run(["tmux", "send-keys", "-t", s, "Enter"],  # noqa: S603, S607
+                           capture_output=True, text=True)
             rec["nudged_at"] = now
         else:
             send(s, PROMPT.format(coord=coord), run=subprocess.run)
