@@ -232,7 +232,10 @@ def test_crash_between_append_and_ledger_rewrite_recovers_without_duplicates(adi
     assert len(gl.read_archive(adir)[0]) == lines_after_crash >= 4  # appended before the crash
     # Rows are now in both places: doctor says so, nothing is lost, the next run finishes the move.
     assert gl.doctor(adir)["archive_pending_removal"] == lines_after_crash
-    out = gl.ledger_archive_closed(adir, now=int(time.time()))
+    # The seeded clock, NOT a second time.time(): _seed writes a row at exactly closed_at = now - 90*DAY, so if a
+    # second boundary passes between the seed and this call the boundary row becomes due, the recovery appends one
+    # row and this assertion fails on an unrelated PR (seen on #2541 shard 6, 2026-11-03, passed on re-run).
+    out = gl.ledger_archive_closed(adir, now=now)
     assert out["appended"] == 0 and out["removed_from_ledger"] == lines_after_crash
     assert (adir / gl.ARCHIVE_NAME).read_text().count("\n") == lines_after_crash
     assert gl.doctor(adir)["archive_pending_removal"] == 0
