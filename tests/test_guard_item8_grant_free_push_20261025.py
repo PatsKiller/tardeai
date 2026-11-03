@@ -85,7 +85,13 @@ def agents_md(version: str = "21.0.0", header: str = "ACTIVE", row: str = "ACTIV
         "# AGENTS.md\n\n```\n"
         f"Policy-Version:      {version}\n"
         f"Status:              {header}\n"
-        "```\n\nbody\n\n# Version history\n\n"
+        "```\n\n# 0 · If you read nothing else\n\n"
+        # The standing-push capability lives in the binding text (review 1 addendum, 2026-11-02): a
+        # version number alone must not admit standing approvals, so the fixture carries the rule the
+        # real 29.4.0 policy carries.
+        "- **8 Routine pushes.** **Standing approval:** an operator line "
+        "`APPROVE_PUSH_STANDING <glob> until <YYYY-MM-DD>` on the standing-approval issue.\n\n"
+        "# Version history\n\n"
         "| Version | Date | Status | Class | Summary | Ratification |\n|---|---|---|---|---|---|\n"
         f"| {version} | 2026-10-25 | {row} | MAJOR | item 8 | ratified |\n"
     )
