@@ -122,7 +122,6 @@ def normalize_opportunity(raw: dict[str, Any]) -> Optional[dict[str, Any]]:
         rs_score = None
 
     surfaced_at = str(raw.get("surfaced_at") or raw.get("proposed_at") or "").strip() or None
-    narrative_at = str(raw.get("narrative_at") or "").strip() or None
 
     return {
         "opportunity_key": opportunity_key(source, symbol, label, verdict),
@@ -133,7 +132,6 @@ def normalize_opportunity(raw: dict[str, Any]) -> Optional[dict[str, Any]]:
         "state": state,
         "rs_score": rs_score,
         "surfaced_at": surfaced_at,
-        "narrative_at": narrative_at,
     }
 
 
@@ -167,9 +165,10 @@ def build_opportunity_queue(rows: list[dict[str, Any]], *,
         if existing is None or (opp.get("surfaced_at") or "") > (existing.get("surfaced_at") or ""):
             by_key[key] = opp
 
-    # Stale-guidance gate (Board row 33 piece E): guidance we can PROVE is old never enters the
-    # current queue or its digest. It is kept in `stale_items` so the history is visible and testable
-    # rather than silently deleted.
+    # Stale-guidance gate (Board row 33 piece E): a row whose OBSERVATION is provably old never enters
+    # the current queue or its digest. The clock is surfaced_at/proposed_at - never the directive's
+    # creation, which would suppress a fresh hit against an old directive. Stale rows are retained in
+    # stale_items with their reason so the suppression is visible rather than silent.
     limits = limits_from_env()
     fresh: list[dict[str, Any]] = []
     stale: list[dict[str, Any]] = []
@@ -200,6 +199,7 @@ def build_opportunity_queue(rows: list[dict[str, Any]], *,
         "by_source": by_source,
         "top": items[:12],
         "items": items,
+        "stale_count": len(stale),
         "stale_items": sorted(stale, key=_rank_score),
     }
 
@@ -235,7 +235,7 @@ def fetch_desk_suggestions(executor: Executor, *, limit: int = 200) -> list[dict
     try:
         hits = executor(
             """SELECT h.symbol, h.surfaced_by AS source, d.label AS directive_label,
-                      d.created_at AS narrative_at, h.surfaced_at
+                      h.surfaced_at
                FROM watch_directive_hits h
                JOIN watch_directives d ON d.id = h.directive_id
                WHERE h.promotion_status = 'STAGED_FOR_REVIEW'

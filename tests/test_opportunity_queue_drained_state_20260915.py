@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,4 +52,4 @@ def test_a_hit_with_no_staging_row_is_still_queued():
 
 def test_the_queue_counts_one_opportunity_per_reviewed_name():
     rows = q.fetch_desk_suggestions(_executor([HIT_DIVI], {"reentry_directive_hits_staging": [STAGED_DIVI]}))
-    assert q.build_opportunity_queue(rows)["count"] == 1
+    assert q.build_opportunity_queue(rows, now=datetime(2026, 9, 15, 16, tzinfo=timezone.utc))["count"] == 1
