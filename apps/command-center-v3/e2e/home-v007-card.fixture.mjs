@@ -109,6 +109,7 @@ try {
         overflow: document.documentElement.scrollWidth > innerWidth + 1,
         v7: !!document.querySelector('[data-testid="home-v007"]'),
         v7text: document.querySelector('[data-testid="home-v007"]')?.innerText || '',
+        v7buttons: document.querySelectorAll('[data-testid="home-v007"] button').length,
       }
     })
     assert.deepEqual(t.pageErrors, [], `page errors at ${width}`)
@@ -122,10 +123,11 @@ try {
       assert.ok(m.v7, `home_v007 section missing at ${width}`)
       assert.ok(m.v7text.includes('DEMO'), `v7 symbol missing at ${width}`)
       assert.ok(m.v7text.includes('$49.87'), `v7 price missing at ${width}`)
-      assert.ok(/price stale/.test(m.v7text), `stale case missing at ${width}`)
+      assert.ok(/price \$12\.5 stale/.test(m.v7text), `stale case must keep its value at ${width}: ${m.v7text.slice(0,200)}`)
       assert.ok(/price unknown/.test(m.v7text) && /not measured/.test(m.v7text), `missing case not explicit at ${width}`)
       assert.ok(/intentional decision/.test(m.v7text), `budget decision state missing at ${width}`)
       assert.ok(/a size, an order or a stop level/.test(m.v7text), `advisory line missing at ${width}`)
+      assert.equal(m.v7buttons, 0, `the context section must never render an action button at ${width}`)
     } catch (e) { process.exitCode = 1; throw e }
     const shot = path.join(out, `card-${width}.png`)
     await page.screenshot({ path: shot, fullPage: true })

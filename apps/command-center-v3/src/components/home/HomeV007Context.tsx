@@ -33,7 +33,11 @@ function SymbolBlock({ s }: { s: SymbolContext }) {
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
       <b style={{ color: TOKENS.text[0] }}>{s.symbol}</b>
       {qState
-        ? <span data-testid={`v7-quote-${s.symbol}`} style={{ color: toneVars('warning').color, fontWeight: 600 }}>price {qState}</span>
+        ? <span data-testid={`v7-quote-${s.symbol}`} style={{ color: toneVars('warning').color, fontWeight: 600 }}>
+            {q.state === 'stale' && q.price != null
+              ? <>price <b style={{ color: TOKENS.text[0] }}>{money(q.price)}</b> stale{q.ageSeconds != null ? ` (${Math.round(q.ageSeconds / 60)}m old)` : ''}</>
+              : <>price {qState}</>}
+          </span>
         : <span data-testid={`v7-quote-${s.symbol}`} style={small}>
             <b style={{ color: TOKENS.text[0] }}>{money(q.price) ?? 'price unknown'}</b>
             {q.session ? ` · ${q.session}` : ''}{q.asOf ? ` · ${fmtAsOf(q.asOf) ?? q.asOf}` : ''}{q.source ? ` · ${q.source}` : ''}{q.basis ? ` · ${q.basis}` : ''}
