@@ -130,6 +130,148 @@ def _report_stage_failures(state_dir):
     return n
 
 
+def _parse_manifest_clock(value):
+    """The manifest clock, or None. A malformed value is an ABSENT clock, never a crash.
+
+    2026-11-03 (cx-openai-2 R3): the guard-failure branch sat behind ``if completed_at``, so a
+    missing clock, a corrupt manifest or an unparseable timestamp skipped every warning and the
+    pipeline ran as if the store were fine. The clock may only add the age branch; it must never be
+    the gate on the guard verdict.
+    """
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed
+
+
+def _pre_run_stale_check(state_dir, *, date_str, now=None, send=None, already_logged=None, record=None):
+    """Warn before the pipeline runs when the previous store is stale OR its guard refused it.
+
+    The guard verdict is read FIRST and independently of the manifest clock. The guard already
+    answers ``ok is False`` for an absent store, an unreadable one, an empty one, a hash/clock
+    mismatch, a missing manifest and an invalid clock — that verdict must reach the operator in
+    every one of those cases. The clock only adds the age-based branch on top of it.
+
+    Collaborators default to the real notifier and log; tests pass fakes. Never raises: each
+    optional step is guarded, so a broken notifier cannot swallow the verdict and a broken check
+    cannot block the pipeline. Returns a small verdict for the caller's log.
+    """
+    verdict = {"alerted": False, "reasons": [], "age_hours": None, "guard_ok": None, "error": None}
+    try:
+        from lib.authoritative_store_guard import guarded_manifest
+        # `now` is injected by tests; production passes None and the guard reads the real clock, so
+        # the guard's verdict and the age branch below are computed against ONE reference time.
+        manifest = guarded_manifest(state_dir, now=now)
+    except Exception as exc:  # noqa: BLE001 — a broken check is reported, never raised
+        manifest = {}
+        verdict["error"] = f"guarded_manifest:{type(exc).__name__}"
+    if not isinstance(manifest, dict):
+        manifest = {}
+    guard = manifest.get("guard") if isinstance(manifest.get("guard"), dict) else {}
+    reasons = [str(r) for r in (guard.get("reasons") or []) if str(r)]
+    guard_ok = guard.get("ok")
+    guard_bad = guard_ok is False
+    verdict.update(reasons=reasons, guard_ok=guard_ok)
+
+    completed = _parse_manifest_clock(manifest.get("completed_at"))
+    age_h = None
+    threshold = None
+    if completed is not None:
+        try:
+            reference = now or (datetime.now(completed.tzinfo) if completed.tzinfo else datetime.now())
+            if reference.tzinfo is None and completed.tzinfo is not None:
+                reference = datetime.now(completed.tzinfo)
+            age_h = (reference - completed).total_seconds() / 3600
+            # Schedule-aware threshold: markets are closed Sat/Sun, so a Fri→Mon gap is expected,
+            # not a failure. Allow +24h for each weekend calendar date in the gap so weekend idle
+            # doesn't page; a genuine multi-day outage still exceeds it.
+            from datetime import timedelta as _td
+            weekend_days = 0
+            cursor = completed.date()
+            while cursor <= reference.date():
+                if cursor.weekday() >= 5:  # Sat=5, Sun=6
+                    weekend_days += 1
+                cursor += _td(days=1)
+            threshold = 26 + 24 * weekend_days
+        except (TypeError, ValueError, OverflowError):  # noqa: BLE001 — age is an extra, not the gate
+            age_h = None
+    over_age = age_h is not None and threshold is not None and age_h > threshold
+    verdict["age_hours"] = age_h
+    if not (guard_bad or over_age):
+        return verdict
+
+    if send is None or already_logged is None or record is None:
+        try:
+            from db_adapter import notification_already_logged as _logged, save_notification_log_entry as _record
+            already_logged = already_logged or _logged
+            record = record or _record
+            if send is None:
+                def _default_send(text):
+                    # The declaration stays at the call the intent ratchet can see (AGENTS.md §24.1).
+                    from telegram_alert import send_telegram
+                    return send_telegram(text, priority="P2", producer="portfolio_orchestrator")
+                send = _default_send
+        except Exception as exc:  # noqa: BLE001 — report the verdict even with no notifier
+            verdict["error"] = f"notifier_import:{type(exc).__name__}"
+            return verdict
+
+    hour = datetime.now().hour if now is None else now.hour
+    dedupe_key = f"{date_str}:stale_data:telegram:bucket_{hour // 6}"
+    try:
+        if already_logged(dedupe_key):
+            return verdict
+    except Exception as exc:  # noqa: BLE001 — an unreadable dedupe must not suppress the alert
+        verdict["error"] = f"dedupe:{type(exc).__name__}"
+
+    reason_line = f"Store: {', '.join(reasons)}\n" if reasons else ""
+    if age_h is not None:
+        lead_line = f"Portfolio data is {age_h:.0f}h old.\n"
+        summary = f"Data is {age_h:.0f}h old. Pipeline running to refresh."
+    else:
+        # No usable clock: say what is true instead of inventing an age.
+        lead_line = "Portfolio data could not be confirmed current.\n"
+        summary = "Portfolio store is not usable as a current snapshot. Pipeline running to refresh."
+    message = (
+        "⚠️ DATA STALENESS ALERT\n\n"
+        f"{lead_line}"
+        f"{reason_line}"
+        f"Last pipeline: {str(manifest.get('completed_at', '?'))[:16]}\n"
+        f"Hash: {manifest.get('holdings_hash', '?')}\n\n"
+        "Pipeline is running now to refresh."
+    )
+    sent, error = False, None
+    try:
+        sent = bool(send(message))
+    except Exception as exc:  # noqa: BLE001 — recorded, not raised
+        error = str(exc)
+    try:
+        record({
+            "notification_date": date_str,
+            "notification_type": "stale_data_alert",
+            "channel": "telegram",
+            "subject": "Data Staleness Alert",
+            "body_summary": summary,
+            "payload": {"age_hours": None if age_h is None else round(age_h, 1),
+                        "last_completed": manifest.get("completed_at"),
+                        "holdings_hash": manifest.get("holdings_hash"),
+                        "guard_reasons": reasons},
+            "status": "sent" if sent else "failed",
+            "dedupe_key": dedupe_key,
+            "sent_at": datetime.now().isoformat() if sent else None,
+            "error": error,
+        })
+    except Exception as exc:  # noqa: BLE001 — the alert was attempted; the log is secondary
+        error = error or str(exc)
+    verdict.update(alerted=True, sent=sent, error=error)
+    if sent:
+        suffix = f" ({age_h:.0f}h old)" if age_h is not None else ""
+        print(f"  [stale-alert] ⚠️  Stale data alert sent{suffix}")
+    return verdict
+
+
 def run_portfolio_pipeline(project_root, run_label="manual", generate_report=True, run_type="daily"):
     _STAGE_FAILURES.clear()
     _DEGRADATIONS.clear()
@@ -177,69 +319,14 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
 
     # ── Stale-data check (before pipeline runs, checks PREVIOUS freshness) ───
     try:
-        import os as _sd_os
-        from lib.authoritative_store_guard import guarded_manifest as _sd_guarded
-
-        # One guarded read: the previous manifest AND the authoritative store it describes. A store
-        # that is unreadable or no longer matches the manifest is a staleness alert even when the
-        # manifest's own clock is recent — the clock alone was the false all-clear.
-        _sd_fm = _sd_guarded(state_dir)
-        if _sd_fm.get("completed_at"):
-            _sd_completed = datetime.fromisoformat(str(_sd_fm.get("completed_at")))
-            _sd_now = datetime.now(_sd_completed.tzinfo) if _sd_completed.tzinfo else datetime.now()
-            _sd_age_h = (_sd_now - _sd_completed).total_seconds() / 3600
-            # Schedule-aware threshold: markets are closed Sat/Sun, so a Fri→Mon gap is
-            # expected, not a failure. Allow +24h for each weekend calendar date in the gap
-            # so weekend idle doesn't page; a genuine multi-day outage still exceeds it.
-            from datetime import timedelta as _sd_td
-            _sd_wknd = 0
-            _sd_cur = _sd_completed.date()
-            while _sd_cur <= _sd_now.date():
-                if _sd_cur.weekday() >= 5:  # Sat=5, Sun=6
-                    _sd_wknd += 1
-                _sd_cur += _sd_td(days=1)
-            _sd_threshold = 26 + 24 * _sd_wknd
-            _sd_guard_reasons = (_sd_fm.get("guard") or {}).get("reasons") or []
-            _sd_guard_bad = (_sd_fm.get("guard") or {}).get("ok") is False
-            if _sd_age_h > _sd_threshold or _sd_guard_bad:
-                from db_adapter import notification_already_logged, save_notification_log_entry
-                _sd_bucket = datetime.now().hour // 6
-                _sd_dk = f"{date_str}:stale_data:telegram:bucket_{_sd_bucket}"
-                if not notification_already_logged(_sd_dk):
-                    _sd_reason_line = (
-                        f"Store: {', '.join(str(r) for r in _sd_guard_reasons)}\n" if _sd_guard_reasons else ""
-                    )
-                    _sd_msg = (
-                        f"\u26a0\ufe0f DATA STALENESS ALERT\n\n"
-                        f"Portfolio data is {_sd_age_h:.0f}h old.\n"
-                        f"{_sd_reason_line}"
-                        f"Last pipeline: {str(_sd_fm.get('completed_at', '?'))[:16]}\n"
-                        f"Hash: {_sd_fm.get('holdings_hash', '?')}\n\n"
-                        f"Pipeline is running now to refresh."
-                    )
-                    _sd_ok = False
-                    _sd_err = None
-                    try:
-                        from telegram_alert import send_telegram as _sd_tg
-                        _sd_ok = _sd_tg(_sd_msg, priority="P2", producer="portfolio_orchestrator")
-                    except Exception as _sd_te:
-                        _sd_err = str(_sd_te)
-                    save_notification_log_entry({
-                        "notification_date": date_str,
-                        "notification_type": "stale_data_alert",
-                        "channel": "telegram",
-                        "subject": "Data Staleness Alert",
-                        "body_summary": f"Data is {_sd_age_h:.0f}h old. Pipeline running to refresh.",
-                        "payload": {"age_hours": round(_sd_age_h, 1), "last_completed": _sd_fm.get("completed_at"), "holdings_hash": _sd_fm.get("holdings_hash")},
-                        "status": "sent" if _sd_ok else "failed",
-                        "dedupe_key": _sd_dk,
-                        "sent_at": datetime.now().isoformat() if _sd_ok else None,
-                        "error": _sd_err,
-                    })
-                    if _sd_ok:
-                        print(f"  [stale-alert] \u26a0\ufe0f  Stale data alert sent ({_sd_age_h:.0f}h old)")
-    except Exception:
-        pass  # stale check is best-effort, never blocks pipeline
+        # The guard verdict is read independently of the manifest clock: an absent/corrupt
+        # manifest or an unparseable clock is exactly when the guard says ok=False, and that
+        # verdict must reach the operator (cx-openai-2 R3).
+        _sd_verdict = _pre_run_stale_check(state_dir, date_str=date_str)
+        if _sd_verdict.get("error"):
+            print(f"  [stale-alert] check reported: {_sd_verdict['error']}")
+    except Exception as _sd_exc:  # noqa: BLE001 — stale check is best-effort, never blocks pipeline
+        print(f"  [stale-alert] check failed: {type(_sd_exc).__name__}: {_sd_exc}")
 
     # 1 — Load
     from portfolio_loader import load_all_portfolios, save_state
