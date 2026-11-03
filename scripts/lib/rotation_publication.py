@@ -203,7 +203,7 @@ def project_summary(summary: dict, holdings: dict, *, cached: bool = False,
         unavailable.append("missing_input")
         rows, summaries = [], {}
     used, bound_times = set(), []
-    required_positions = dated_positions = dated_accounts = 0
+    required_positions = dated_positions = dated_accounts = day_precision_positions = 0
     from .cio_market_aware_freshness import is_stale
     from .cio_domain_registry import CIODomainRegistry
     try:
@@ -247,12 +247,14 @@ def project_summary(summary: dict, holdings: dict, *, cached: bool = False,
         as_of = block.get("last_sync_at") if "last_sync_at" in block else projected.get("state_as_of")
         window = block.get("sync_window_hours")
         valid_window = isinstance(window, (int, float)) and not isinstance(window, bool) and math.isfinite(window) and window > 0
-        position_stamp, _ = position_observation(row, now=now)
+        position_stamp, _, position_precision = position_observation(row, now=now)
         if position_stamp is None or position_stamp > now:
             unavailable.append("invalid_position_clock")
         else:
             dated_positions += 1
             bound_times.append(position_stamp)
+            if position_precision == "day":
+                day_precision_positions += 1
             if valid_window and capability and source_is_stale(position_stamp, window):
                 stale.append("position_evidence_stale")
         if acct in used:
@@ -315,6 +317,7 @@ def project_summary(summary: dict, holdings: dict, *, cached: bool = False,
         "source_as_of_basis": "oldest_required_position_or_account_timestamp",
         "holdings_reported_as_of": holdings.get("as_of") if isinstance(holdings, dict) else None,
         "coverage": {"required_positions": required_positions, "dated_positions": dated_positions,
+                     "day_precision_positions": day_precision_positions,
                      "accounts": len(accounts), "dated_accounts": dated_accounts},
         "cache_generated_at": out.get("generated_at"), "cached_at": out.get("cached_at") or out.get("_cached_at"),
         "accounts": accounts,

@@ -140,8 +140,28 @@ def observation_instant(value: Any, *, now: Optional[datetime] = None) -> Option
         return None
 
 
-def position_observation(row: dict[str, Any], *, now: Optional[datetime] = None) -> tuple[Optional[datetime], str]:
-    """Use declared position-provider clocks in authority order, never generic as_of/updated_at."""
+def day_precision_instant(value: Any, *, now: Optional[datetime] = None) -> Optional[datetime]:
+    """A bare calendar date as the START of that day, UTC - the oldest instant it licenses.
+
+    Never invents a time of day, and never makes day-precision evidence look fresher than it is: start-of-day is the
+    oldest instant consistent with the date, so a staleness judgement made from it errs towards stale, never fresh.
+    """
+    if not (isinstance(value, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", value.strip())):
+        return None
+    try:
+        dt = _utc(datetime.strptime(value.strip(), "%Y-%m-%d"))
+    except (TypeError, ValueError):
+        return None
+    return dt if dt <= _utc(now) else None
+
+
+def position_observation(row: dict[str, Any], *, now: Optional[datetime] = None) -> tuple[Optional[datetime], str, str]:
+    """Use declared position-provider clocks in authority order, never generic as_of/updated_at.
+
+    Returns (instant, source, precision). A date-only ``broker_position_as_of`` - what the moomoo producer writes - is
+    accepted at DAY precision instead of rejected: rejecting it made a live book permanently UNAVAILABLE, which states
+    something just as false as calling it fresh. Malformed full timestamps still return None and never fall through.
+    """
     observed = row.get("observation") if isinstance(row.get("observation"), dict) else {}
     fields = (("broker_position_as_of_at", row.get("broker_position_as_of_at")),
               ("provider_observed_at", row.get("provider_observed_at")),
@@ -149,9 +169,16 @@ def position_observation(row: dict[str, Any], *, now: Optional[datetime] = None)
               ("broker_position_as_of", row.get("broker_position_as_of")))
     for source, value in fields:
         if value not in (None, ""):
+            instant = observation_instant(value, now=now)
+            if instant is not None:
+                return instant, source, "instant"
+            if source == "broker_position_as_of":
+                day = day_precision_instant(value, now=now)
+                if day is not None:
+                    return day, source, "day"
             # Invalid preferred evidence must not fall through to a convenient clock.
-            return observation_instant(value, now=now), source
-    return None, ""
+            return None, source, ""
+    return None, "", ""
 
 
 def _iso_utc(value: datetime) -> str:
@@ -403,9 +430,9 @@ def derive_last_sync(rows: list[dict[str, Any]], summary: dict[str, Any], *,
     for row in rows or []:
         if not isinstance(row, dict):
             continue
-        dt, source = position_observation(row, now=now)
+        dt, source, precision = position_observation(row, now=now)
         if dt is not None and (best is None or dt > best):
-            best, best_src = dt, f"holdings.{source}"
+            best, best_src = dt, f"holdings.{source}" + (" (day precision)" if precision == "day" else "")
     if best is not None:
         return _iso_utc(best), best_src
     for source in _SUMMARY_SYNC_CLOCKS:
