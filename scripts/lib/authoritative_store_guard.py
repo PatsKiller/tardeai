@@ -88,6 +88,11 @@ def guard(state_dir: Path | str, *, now: datetime | None = None) -> dict[str, An
         if not isinstance(symbol, str) or not symbol.strip():
             # A row with no identity is not a position. `[{}]` used to pass as a healthy book.
             return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": ["holdings_row_missing_symbol"]}
+        account = row.get("account")
+        if not isinstance(account, str) or not account.strip():
+            # The producer tuple sorts (symbol, account, shares); a non-string account would raise
+            # TypeError while sorting, so a wrong-shape store must fail closed here (not crash).
+            return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": ["holdings_row_missing_account"]}
         for field in ("market_value", "value", "price", "shares", "qty"):
             if row.get(field) is None:
                 continue
@@ -102,12 +107,19 @@ def guard(state_dir: Path | str, *, now: datetime | None = None) -> dict[str, An
                 return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": [f"holdings_row_overflow:{field}"]}
             if not math.isfinite(numeric):
                 return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": [f"holdings_row_non_finite:{field}"]}
-        if not any(row.get(f) is not None for f in ("market_value", "value")):
-            return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": ["holdings_row_missing_market_value"]}
-        if not any(row.get(f) is not None for f in ("shares", "qty")):
-            return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": ["holdings_row_missing_quantity"]}
+        if row.get("market_value") is None:
+            # The binding hash reads the producer's canonical fields. Alias-only rows (qty/value)
+            # would hash as no represented positions while passing a looser check, falsely binding
+            # a nonempty book to md5('[]') — reject them at this canonical boundary.
+            return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": ["holdings_row_missing_canonical_market_value"]}
+        if row.get("shares") is None:
+            return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": ["holdings_row_missing_canonical_shares"]}
 
-    observed = holdings_hash(doc)
+    try:
+        observed = holdings_hash(doc)
+    except Exception as exc:  # noqa: BLE001 — a hash/schema failure is unavailable, never a crash or OK
+        return {**out, "ok": False, "status": STATUS_UNAVAILABLE,
+                "reasons": [f"holdings_hash_uncomputable:{type(exc).__name__}"]}
     out["holdings_hash_observed"] = observed
     try:
         fresh = json.loads(manifest.read_text(encoding="utf-8"))

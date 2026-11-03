@@ -55,7 +55,7 @@ def test_not_an_object_or_no_positions_is_unavailable(tmp_path):
 
 
 def test_non_finite_market_value_is_unavailable(tmp_path):
-    (tmp_path / "holdings.json").write_text('{"holdings":[{"symbol":"A","market_value":NaN}]}')
+    (tmp_path / "holdings.json").write_text('{"holdings":[{"symbol":"A","account":"a","shares":1,"market_value":NaN}]}')
     assert g.guard(tmp_path, now=NOW)["status"] == "UNAVAILABLE"
 
 
@@ -109,11 +109,37 @@ def test_a_row_with_no_identity_or_numbers_is_unavailable(tmp_path):
 
     (tmp_path / "holdings.json").write_text('{"holdings":[{"symbol":"AAA"}]}')
     r = g.guard(tmp_path, now=NOW)
-    assert r["status"] == "UNAVAILABLE" and "holdings_row_missing_market_value" in r["reasons"]
+    assert r["status"] == "UNAVAILABLE" and "holdings_row_missing_account" in r["reasons"]
 
-    (tmp_path / "holdings.json").write_text('{"holdings":[{"symbol":"AAA","market_value":1200}]}')
+    (tmp_path / "holdings.json").write_text('{"holdings":[{"symbol":"AAA","account":"a"}]}')
     r = g.guard(tmp_path, now=NOW)
-    assert r["status"] == "UNAVAILABLE" and "holdings_row_missing_quantity" in r["reasons"]
+    assert r["status"] == "UNAVAILABLE" and "holdings_row_missing_canonical_market_value" in r["reasons"]
+
+    (tmp_path / "holdings.json").write_text('{"holdings":[{"symbol":"AAA","account":"a","market_value":1200}]}')
+    r = g.guard(tmp_path, now=NOW)
+    assert r["status"] == "UNAVAILABLE" and any(
+        x.startswith("holdings_row_missing_canonical_") for x in r["reasons"])
+
+
+def test_mixed_account_types_is_unavailable_not_a_crash(tmp_path):
+    # The producer hash sorts (symbol, account, shares); 'synthetic' vs 1 (or None) would raise.
+    for bad_account in (1, None, {"x": 1}):
+        rows = [{"symbol": "SAME", "account": "synthetic", "shares": 1, "market_value": 1200},
+                {"symbol": "SAME", "account": bad_account, "shares": 1, "market_value": 1200}]
+        (tmp_path / "holdings.json").write_text(json.dumps({"holdings": rows}))
+        _raw_manifest(tmp_path, "94f18d5b8ced")
+        r = g.guard(tmp_path, now=NOW)          # must not raise TypeError
+        assert r["status"] == "UNAVAILABLE" and "holdings_row_missing_account" in r["reasons"], bad_account
+
+
+def test_alias_only_rows_do_not_hash_as_no_positions(tmp_path):
+    # qty/value pass a loose check but the producer hash reads shares/market_value -> md5('[]').
+    (tmp_path / "holdings.json").write_text(
+        '{"holdings":[{"symbol":"AAA","account":"a","qty":10,"value":1200}]}')
+    _raw_manifest(tmp_path, "d75171398898")
+    r = g.guard(tmp_path, now=NOW)
+    assert r["status"] == "UNAVAILABLE" and any(
+        x.startswith("holdings_row_missing_canonical_") for x in r["reasons"])
 
 
 def _raw_manifest(tmp_path, hash_value, *, completed_at=None):
