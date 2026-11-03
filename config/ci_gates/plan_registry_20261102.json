@@ -2,10 +2,12 @@
   "schema": "CiGate@v1",
   "name": "plan_registry_20261102",
   "files": [
-    "tests/test_plan_registry_20261102.py"
+    "tests/test_plan_registry_20261102.py",
+    "tests/test_plans_page_css_20261103.py"
   ],
   "anchor": "PLAN_REGISTRY_20261102",
   "comment": [
-    "ANCHOR: PLAN_REGISTRY_20261102 — every approved plan persisted with provenance, append-only ledger, locked atomic writes, link/step/status lifecycle, stale plan flagging to the coordinator inbox, and the ExitPlanMode hook. Hermetic: tmp state root, fake stdin payload."
+    "ANCHOR: PLAN_REGISTRY_20261102 — every approved plan persisted with provenance, append-only ledger, locked atomic writes, link/step/status lifecycle, stale plan flagging to the coordinator inbox, and the ExitPlanMode hook. Hermetic: tmp state root, fake stdin payload.",
+    "test_plans_page_css_20261103.py added with the cc3/cc5 repairs: the Plans page model never fabricates progress or an empty-success state, and the stylesheet keeps light-theme tokens and 390px wrap rules."
   ]
 }

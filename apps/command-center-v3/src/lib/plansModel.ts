@@ -21,6 +21,8 @@ export type PlanRow = {
 
 export type PlansView = {schema?: string; plans?: PlanRow[]; plan?: PlanRow; ok?: boolean; error?: string}
 
+export const PLANS_SCHEMA = 'PlanRegistryView@v1'
+
 export const STATUS_WORDS: Record<string, string> = {
   approved: 'Approved — nobody has picked it up',
   in_progress: 'In progress',
@@ -41,9 +43,26 @@ export function statusWord(status?: string, plan?: PlanRow): string {
   return STATUS_WORDS[s] || 'Unknown'
 }
 
+/** A step count is real only when it is a non-negative integer. The registry is a server payload,
+ *  so a string, a float, a negative or NaN must never be coerced into a total we invent. */
+function stepCount(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null
+}
+
+/** Progress is shown only when both counts are present and valid. A lone `steps_done: 5` used to
+ *  render "5 of 5 steps done · 0 left" — a fabricated 100% — so a missing or invalid count now
+ *  reads "steps unknown" instead of a derived total. A plan with no counts at all is listed as such. */
 export function stepSummary(plan: PlanRow): string {
-  const done = Number(plan.steps_done || 0)
-  const left = Number(plan.steps_left || 0)
+  // An unreadable plan is a known gap, not "no steps": say so rather than implying the plan listed none.
+  if ((plan as unknown as { status?: unknown }).status === 'unreadable') return 'steps unknown'
+  const doneRaw: unknown = plan.steps_done
+  const leftRaw: unknown = plan.steps_left
+  const donePresent = doneRaw !== undefined && doneRaw !== null
+  const leftPresent = leftRaw !== undefined && leftRaw !== null
+  if (!donePresent && !leftPresent) return 'no steps listed'
+  const done = stepCount(doneRaw)
+  const left = stepCount(leftRaw)
+  if (done === null || left === null) return 'steps unknown'
   const total = done + left
   if (!total) return 'no steps listed'
   return `${done} of ${total} step${total === 1 ? '' : 's'} done · ${left} left`
@@ -60,14 +79,54 @@ export function claimHref(plan: PlanRow): string | null {
 }
 
 export function plansFrom(view: PlansView | null): PlanRow[] {
-  if (!view || view.schema !== 'PlanRegistryView@v1' || !Array.isArray(view.plans)) return []
+  if (!view || view.schema !== PLANS_SCHEMA || !Array.isArray(view.plans)) return []
   return [...view.plans].sort((a, b) => String(b.approved_at || '').localeCompare(String(a.approved_at || '')))
 }
 
 export function planFrom(view: PlansView | null): PlanRow | null {
-  return view && view.schema === 'PlanRegistryView@v1' && view.plan ? view.plan : null
+  return view && view.schema === PLANS_SCHEMA && view.plan ? view.plan : null
 }
 
-export function openStepCount(plan: PlanRow): number {
-  return Number(plan.steps_left || 0)
+/** A wrong or missing schema is an unreadable registry, not an authoritative empty one. */
+function schemaGap(view: PlansView): string | null {
+  if (view.schema === PLANS_SCHEMA) return null
+  return view.schema ? `unrecognised plan registry schema (${String(view.schema)})` : 'plan registry schema missing'
+}
+
+/** Why a listing cannot be treated as an empty registry, or null when it is a usable view.
+ *  useApi unwraps `{ok,data}` but leaves an `{ok:false,error}` body in `data`, so both shapes are
+ *  checked here: the page must never paint "No plans registered yet." from an unparsed payload. */
+export function plansGap(view: PlansView | null): string | null {
+  if (!view) return 'no plan registry response'
+  if (view.ok === false) return String(view.error || 'Plan store unreadable')
+  const schema = schemaGap(view)
+  if (schema) return schema
+  if (!Array.isArray(view.plans)) return 'plan registry returned no plan list'
+  return null
+}
+
+/** Why a detail payload cannot be shown, or null when it carries a plan. A 200 `{ok:false}` detail
+ *  (a deleted id through a proxy that keeps the envelope) is a gap, never a silent empty sheet. */
+export function detailGap(view: PlansView | null, id: string | null): string | null {
+  if (!view) return 'no plan registry response'
+  if (view.ok === false) return String(view.error || 'Plan store unreadable')
+  const schema = schemaGap(view)
+  if (schema) return schema
+  if (!view.plan) return id ? `plan ${id} not found` : 'plan not found'
+  return null
+}
+
+/** The Decisions line. It must never claim an empty, healthy queue while the listing is still
+ *  loading or could not be read — that is an unknown, not "nothing waiting". */
+export function waitingDecision(waiting: number, state: {loading: boolean; known: boolean}): string {
+  if (state.loading) return 'Waiting plans unknown — the plan registry is still loading.'
+  if (!state.known) return 'Waiting plans unknown — the plan registry could not be read.'
+  if (waiting) return `${waiting} approved plan${waiting === 1 ? '' : 's'} nobody has picked up yet.`
+  return 'Nothing approved and unclaimed right now.'
+}
+
+/** Open step count, or null when the server value is not a real count. Same rule as stepSummary:
+ *  never coerce a missing/invalid value into a number, even for callers that only need the raw count. */
+export function openStepCount(plan: PlanRow): number | null {
+  return stepCount((plan as unknown as { steps_left?: unknown }).steps_left)
 }

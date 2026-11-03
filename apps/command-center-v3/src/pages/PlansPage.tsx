@@ -3,7 +3,7 @@ import {Link} from 'react-router-dom'
 import DeskPage, {DeskGap} from '../components/DeskPage'
 import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetailSheet'
 import {useApi} from '../hooks/useApi'
-import { claimHref, planFrom, plansFrom, prUrl, statusWord, stepSummary, type PlanRow, type PlansView, pickedUp } from '../lib/plansModel'
+import { claimHref, detailGap, planFrom, plansFrom, plansGap, prUrl, statusWord, stepSummary, waitingDecision, type PlanRow, type PlansView, pickedUp } from '../lib/plansModel'
 import '../styles/plans.css'
 
 const INDEX = '/api/v2/plans'
@@ -51,9 +51,14 @@ export default function PlansPage() {
   const rows = plansFrom(index.data)
   const detailData = planFrom(one.data)
   const plan = selectedId && detailData && detailData.id === selectedId ? detailData : null
+  // A wrong/missing schema or an `{ok:false}` body is a gap, not an empty registry. Hold the gap
+  // while the first read is still in flight so a loading page does not paint an error.
+  const listGap = index.error || (index.data || !index.loading ? plansGap(index.data) : null)
+  const detailGapReason = selectedId && !one.loading ? (one.error || detailGap(one.data, selectedId)) : null
+  const gap = listGap || detailGapReason || undefined
+  const listKnown = !index.loading && !listGap && Boolean(index.data)
   const waiting = rows.filter(r => r.status === 'approved' && !pickedUp(r)).length
-  const gap = index.error || (selectedId ? one.error : undefined)
-    || (index.data && index.data.ok === false ? String(index.data.error || 'Plan store unreadable') : undefined)
+  const decisionGap = waitingDecision(waiting, {loading: index.loading, known: listKnown})
   const asOf = rows.reduce<string | undefined>(
     (m, r) => (r.updated_at && (!m || String(r.updated_at) > m) ? String(r.updated_at) : m), undefined)
 
@@ -76,7 +81,7 @@ export default function PlansPage() {
         purpose="Every approved plan on the server for every agent: who approved it, who picked it up, what is left. Claude Code registers a plan when you leave plan mode; Codex and Cursor use scripts/plan_registry.py."
         sources={[{id: 'plans', label: 'Plan store', gap, asOf, clockOnly: true}]}
         decisions={[]}
-        decisionGap={waiting ? `${waiting} approved plan${waiting === 1 ? '' : 's'} nobody has picked up yet.` : 'Nothing approved and unclaimed right now.'}
+        decisionGap={decisionGap}
       >
         <div className="pl-stack">
           {gap && <DeskGap title="Plan registry" reason={String(gap)} />}
