@@ -70,7 +70,8 @@ is not an authentication.
 
 Every approved or in-progress plan with no `claim`, `branch` or `pr` and no activity for
 `stale_hours` (default 72, `config/plan_registry.json`) is set to `stalled` and one line per plan is
-appended to the coordinator inbox (`data/coordination/coordinator/inbox.md`). Registration itself is
+written as ONE dated notice file per run into the live coordinator inbox directory
+(`data/coordination/coordinator/inbox/codex/<ts>-plan-stalled.md`) that the lead reads. Registration itself is
 not activity; only a link, a step or a status change is.
 
 Run it hourly from a host timer (PROPOSED lane `plan-registry-stale` in `config/lane_registry.json`;

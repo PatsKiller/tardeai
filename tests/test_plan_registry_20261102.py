@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import plan_registry as pr  # noqa: E402
 
 CFG = {"schema": "PlanRegistryConfig@v1", "plans_rel": "data/coordination/plans",
-       "inbox_rel": "data/coordination/coordinator/inbox.md", "stale_hours": 72,
+       "inbox_rel": "data/coordination/coordinator/inbox/codex", "stale_hours": 72,
        "stalled_prefix": "[PLAN-STALLED]"}
 
 
@@ -86,8 +86,10 @@ def test_stale_flags_an_unlinked_old_plan_once(tmp_path):
     p.write_text("# T\n")
     pid = r.add(title="T", body_path=p, author="s", vendor="cursor", approved_at="2026-08-01T10:00:00Z")
     assert r.stale(now="2026-11-02T12:00:00Z", apply=True) == [pid]
-    inbox = (tmp_path / "data/coordination/coordinator/inbox.md").read_text()
-    assert "[PLAN-STALLED]" in inbox and pid in inbox
+    notices = sorted((tmp_path / "data/coordination/coordinator/inbox/codex").glob("*plan-stalled.md"))
+    assert len(notices) == 1, notices
+    notice = notices[0].read_text()
+    assert "[PLAN-STALLED]" in notice and f"- {pid}" in notice
     # the plan is now stalled; a second tick does not flag it again
     assert r.stale(now="2026-11-02T13:00:00Z", apply=True) == []
     assert r.get(pid)["front"]["status"] == "stalled"
@@ -573,12 +575,33 @@ def test_a_planted_inbox_symlink_is_refused_when_reporting_stale_plans(tmp_path)
 
     r = _reg(tmp_path)
     pid = r.add(title="T", body="x", author="s", vendor="claude", approved_at="2026-08-01T10:00:00Z")
-    inbox = tmp_path / "data/coordination/coordinator/inbox.md"
+    inbox = tmp_path / "data/coordination/coordinator/inbox/codex"
     inbox.parent.mkdir(parents=True, exist_ok=True)
     outside = tmp_path / "inbox-target"
-    outside.write_text("untouched\n")
-    inbox.symlink_to(outside)
+    outside.mkdir()
+    inbox.symlink_to(outside, target_is_directory=True)
     with pytest.raises(ValueError):
         r.stale(now="2026-11-02T12:00:00Z", apply=True)
-    assert outside.read_text() == "untouched\n"
-    assert pid  # the scan still found the plan; only the append was refused
+    assert list(outside.iterdir()) == []      # nothing was written through the link
+    assert pid  # the scan still found the plan; only the notice was refused
+
+
+def test_the_stale_scan_writes_nothing_when_nothing_is_stalled(tmp_path):
+    r = _reg(tmp_path)
+    assert r.stale(now="2026-11-02T12:00:00Z", apply=True) == []
+    inbox = tmp_path / "data/coordination/coordinator/inbox/codex"
+    assert not inbox.exists() or list(inbox.glob("*plan-stalled.md")) == []
+
+
+def test_each_stale_run_writes_its_own_dated_notice(tmp_path):
+    import time
+    r = _reg(tmp_path)
+    a = r.add(title="A", body="x", author="s", vendor="claude", approved_at="2026-08-01T10:00:00Z")
+    assert r.stale(now="2026-11-02T12:00:00Z", apply=True) == [a]
+    time.sleep(0.002)  # the filename carries microseconds; distinct runs still get distinct names
+    b = r.add(title="B", body="x", author="s", vendor="claude", approved_at="2026-08-01T10:00:00Z")
+    assert r.stale(now="2026-11-02T12:00:00Z", apply=True) == [b]
+    notices = sorted((tmp_path / "data/coordination/coordinator/inbox/codex").glob("*plan-stalled.md"))
+    assert len(notices) == 2, notices
+    bodies = "\n".join(n.read_text() for n in notices)
+    assert f"- {a}" in bodies and f"- {b}" in bodies

@@ -179,7 +179,8 @@ class Registry:
         self.root = Path(root or state_root())
         self.plans = self.root / str(self.cfg.get("plans_rel") or "data/coordination/plans")
         self.ledger = self.plans / "ledger.jsonl"
-        self.inbox = self.root / str(self.cfg.get("inbox_rel") or "data/coordination/coordinator/inbox.md")
+        #: the live coordinator inbox DIRECTORY; the stale scan writes one dated notice per run there
+        self.inbox = self.root / str(self.cfg.get("inbox_rel") or "data/coordination/coordinator/inbox/codex")
         self.stale_hours = float(self.cfg.get("stale_hours") or 72)
 
     # -- io
@@ -459,22 +460,43 @@ class Registry:
                 continue  # linked or resumed between the scan and the lock
             flagged.append(str(front["id"]))
         if apply and flagged:
-            self.inbox.parent.mkdir(parents=True, exist_ok=True)
-            # O_NOFOLLOW: the coordinator inbox cannot be redirected outside the store by a planted
-            # link (same rule as the ledger); fsync makes the operator-visible line durable.
-            try:
-                fd = os.open(self.inbox, os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
-            except OSError as exc:
-                raise ValueError(f"coordinator inbox {self.inbox} is not a regular file "
-                                 f"({exc.strerror}); refusing") from None
-            with os.fdopen(fd, "a", encoding="utf-8") as fh:
-                for pid in flagged:
-                    fh.write(f"{self.cfg.get('stalled_prefix') or '[PLAN-STALLED]'} {pid}: approved or "
-                             f"in_progress for over {limit:g}h with no claim, branch or PR "
-                             f"({_utc()})\n")
-                fh.flush()
-                os.fsync(fh.fileno())
+            self._write_stall_notice(flagged, limit)
         return flagged
+
+    def _write_stall_notice(self, flagged: list[str], limit: float) -> None:
+        """One dated notice per run, inside the live coordinator inbox DIRECTORY.
+
+        The old destination was a single ``inbox.md`` file that no coordinator reads; the live inbox is
+        ``data/coordination/coordinator/inbox/<coordinator>/``. A per-run file lands where the lead
+        actually looks. The directory is opened O_NOFOLLOW so a planted symlink cannot redirect the write,
+        and the file is created O_EXCL|O_NOFOLLOW so an existing name is never appended to or followed.
+        """
+        inbox_dir = self.inbox
+        inbox_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            dirfd = os.open(inbox_dir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        except OSError as exc:
+            raise ValueError(f"coordinator inbox {inbox_dir} is not a directory "
+                             f"({exc.strerror}); refusing") from None
+        name = f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}-plan-stalled.md"
+        prefix = self.cfg.get("stalled_prefix") or "[PLAN-STALLED]"
+        lines = [f"# {prefix} plans", "",
+                 f"{len(flagged)} plan(s) approved or in_progress for over {limit:g}h with no claim, "
+                 f"branch or PR ({_utc()}).", ""]
+        lines += [f"- {pid}" for pid in flagged]
+        lines.append("")
+        try:
+            fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=dirfd)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    fh.write("\n".join(lines))
+                    fh.flush()
+                    os.fsync(fh.fileno())
+            finally:
+                pass
+            os.fsync(dirfd)  # the directory entry is durable too
+        finally:
+            os.close(dirfd)
 
 
 # ------------------------------------------------------------------ cli
