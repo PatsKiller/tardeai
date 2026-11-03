@@ -298,14 +298,12 @@ def reconcile_totals(doc, *, source="unknown"):
                                    "summed": cash_summed,
                                    "delta": round(cash_summed - cash_declared, 2),
                                    "source": source}
-                try:
-                    _record(source, "totals_recomputed",
-                            f"[{source}] portfolio_totals.total_cash {cash_declared:,.2f} -> "
-                            f"{cash_summed:,.2f} (delta {cash_correction['delta']:,.2f}) to "
-                            f"match {len(cash_rows)} cash rows being written",
-                            len(cash_rows), cash_summed)
-                except Exception:
-                    pass
+                # _record swallows its own failures; the wrapper would only add an S110 site.
+                _record(source, "totals_recomputed",
+                        f"[{source}] portfolio_totals.total_cash {cash_declared:,.2f} -> "
+                        f"{cash_summed:,.2f} (delta {cash_correction['delta']:,.2f}) to "
+                        f"match {len(cash_rows)} cash rows being written",
+                        len(cash_rows), cash_summed)
         # account_summaries carry the SAME derived cash figure per account (2026-11-03: the rollover
         # summary read 807,840.61 while its cash row was 777,390.61 after the PFE purchase, so the
         # document disagreed with itself in two places). Only an account that already carries a
@@ -335,13 +333,10 @@ def reconcile_totals(doc, *, source="unknown"):
                 entry["cash_reconciled_at"] = _now()
                 summary_corrections.append({"account": acct, "declared": prior, "summed": rounded,
                                             "delta": round(rounded - float(prior or 0), 2)})
-                try:
-                    _record(source, "totals_recomputed",
-                            f"[{source}] account_summaries.{acct}.cash {prior} -> {rounded:,.2f} "
-                            f"to match its cash rows being written",
-                            None, None)
-                except Exception:
-                    pass
+                _record(source, "totals_recomputed",
+                        f"[{source}] account_summaries.{acct}.cash {prior} -> {rounded:,.2f} "
+                        f"to match its cash rows being written",
+                        None, None)
 
         # A note that says a field was not carried is false once the field IS carried. The rebuild
         # left "day change not carried" beside a populated day_change; clearing it is a proper write
@@ -351,16 +346,13 @@ def reconcile_totals(doc, *, source="unknown"):
         if isinstance(note, str) and "day change not carried" in note and totals.get("day_change") is not None:
             note_cleared = note
             totals.pop("note", None)
-            try:
-                _record(
-                    source,
-                    "note_cleared",
-                    f"[{source}] cleared stale portfolio_totals.note while day_change is populated: {note[:160]}",
-                    None,
-                    None,
-                )
-            except Exception:
-                pass
+            _record(
+                source,
+                "note_cleared",
+                f"[{source}] cleared stale portfolio_totals.note while day_change is populated: {note[:160]}",
+                None,
+                None,
+            )
 
         if isinstance(doc.get("last_writer"), dict):
             doc["last_writer"].update(

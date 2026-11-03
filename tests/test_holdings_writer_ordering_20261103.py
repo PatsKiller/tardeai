@@ -13,6 +13,8 @@ pins the remaining half — the per-account cash summary, run provenance (`last_
 from __future__ import annotations
 
 import json
+
+import pytest
 import sys
 from pathlib import Path
 
@@ -22,6 +24,21 @@ for p in (ROOT, ROOT / "scripts", ROOT / "scripts" / "lib"):
         sys.path.insert(0, str(p))
 
 from schwab_position_sync import protected_holdings_write, reconcile_totals  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_side_effects(monkeypatch):
+    """No DB receipt and no alert: this file may share a CI shard with a test that snapshots the tree.
+
+    `_record` would reach db_adapter (which falls back to a local JSON store when the driver/DSN is
+    unavailable) and `_alert` would attempt a notification. Neither is part of what these tests
+    assert, and either could write inside the checkout while another gate is proving read-only
+    behaviour.
+    """
+    import schwab_position_sync as sps
+
+    monkeypatch.setattr(sps, "_record", lambda *a, **k: None)
+    monkeypatch.setattr(sps, "_alert", lambda *a, **k: None)
 
 STALE_NOTE = "rebuilt from positions_current run 638; day change not carried"
 
