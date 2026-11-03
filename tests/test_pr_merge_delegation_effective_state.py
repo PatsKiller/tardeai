@@ -303,7 +303,7 @@ def archive_lines(board, *docs_):
             fh.write(json.dumps(doc, sort_keys=True) + "\n")
 
 
-def archived_claim(claim_id, *, status="done", state="released", record_id=None):
+def archived_claim(claim_id, *, status="done", state="done", record_id=None):
     """One ``AgentClaimArchive@v1`` line in the exact shape ``ClaimBoard.compact()`` writes."""
     return {"schema": "AgentClaimArchive@v1", "archived_at": iso(NOW), "state_at_archive": state,
             "stage_at_archive": None, "sha256": "0" * 64, "lifecycle": None, "worklog_archive": None,
@@ -343,6 +343,31 @@ def test_an_archive_record_outside_the_pairs_compact_can_write_refuses(mod, tmp_
     record = archived_claim(predecessor, status=status, state=state)
     if state is None:
         record.pop("state_at_archive")
+    archive_lines(board, record)
+    with pytest.raises(mod.Refused) as exc:
+        mod.effective_claim_states(docs(board), board)
+    assert "claim_takeover_chain_invalid" in str(exc.value)
+
+
+def test_an_archive_over_two_mib_still_resolves(mod, tmp_path):
+    """The archive is append-only and grows without a total bound: a file past the old 2 MiB cap must still resolve."""
+    predecessor = "20300107T234500Z-archived-a-aaaaaaaa"
+    board, holder = compacted_board(tmp_path, predecessor)
+    filler = [archived_claim(f"20300107T23450{i:02d}Z-filler-{i:08x}") for i in range(4000)]
+    archive_lines(board, *filler, archived_claim(predecessor))
+    size = (board.dir / "claims_history.jsonl").stat().st_size
+    assert size > 2 * 1024 * 1024, size  # the case the old whole-file cap refused
+
+    states = mod.effective_claim_states(docs(board), board)  # must not raise
+    assert states[holder] == "live"
+
+
+def test_one_oversized_archive_record_refuses(mod, tmp_path):
+    """A single record larger than any compaction writes is malformed, whatever the file's total size."""
+    predecessor = "20300107T234500Z-archived-a-aaaaaaaa"
+    board, _ = compacted_board(tmp_path, predecessor)
+    record = archived_claim(predecessor)
+    record["claim"]["note"] = "x" * (1_100_000)
     archive_lines(board, record)
     with pytest.raises(mod.Refused) as exc:
         mod.effective_claim_states(docs(board), board)

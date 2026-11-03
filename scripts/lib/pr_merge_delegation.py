@@ -257,6 +257,9 @@ ARCHIVE_NONCLAIM_SCHEMAS = frozenset({"AgentClaimOverride@v1"})
 #: absent: compaction must never remove a live holder, so a record that says so is inconsistent or forged. Anything
 #: outside these pairs — a missing, unknown or impossible ``state_at_archive``, or a mismatched status — refuses.
 ARCHIVE_STATE_PAIRS = frozenset({("stale", "active"), ("done", "done"), ("abandoned", "abandoned")})
+#: One archive record. ``claims_history.jsonl`` is append-only and grows without a total bound, so the file itself is
+#: streamed and never size-capped; a single line larger than this is a malformed record and refuses.
+MAX_ARCHIVE_RECORD_BYTES = 1_048_576
 
 
 def archived_claims(board) -> dict[str, dict[str, object]]:
@@ -265,46 +268,52 @@ def archived_claims(board) -> dict[str, dict[str, object]]:
     ``ClaimBoard.compact()`` appends an ``AgentClaimArchive@v1`` wrapper around the original ``AgentClaim@v1`` and
     removes the live file. A predecessor that is gone from the views is durable history only when the archive carries
     a well-formed record whose nested claim names that same ``claim_id`` — absence alone never resolves a target, and
-    a malformed/unknown line refuses the whole ledger. Only the ``(state_at_archive, status)`` pairs ``compact()`` can
-    write are accepted, so a record archived while the claim was still ``live`` — or one with an unknown or impossible
-    state — refuses. Read-only: the archive is never written.
+    a malformed/unknown record refuses the whole ledger. Only the ``(state_at_archive, status)`` pairs ``compact()``
+    can write are accepted, so a record archived while the claim was still ``live`` — or one with an unknown or
+    impossible state — refuses. The file is read strictly line by line and is never size-capped as a whole: an
+    append-only archive must keep resolving as it grows, so only a single oversized record is refused.
+    Read-only: the archive is never written.
     """
     path = getattr(board, "history", None)
     if path is None:
         return {}
+    out: dict[str, dict[str, object]] = {}
     try:
-        raw = Path(path).read_bytes()
+        handle = Path(path).open("rb")
     except FileNotFoundError:
         return {}
     except OSError:
         raise Refused("claim_takeover_chain_invalid") from None
-    if len(raw) > MAX_BYTES:
-        raise Refused("claim_takeover_chain_invalid")
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError:
-        raise Refused("claim_takeover_chain_invalid") from None
-    out: dict[str, dict[str, object]] = {}
-    for line in text.splitlines():
-        if not line.strip():
-            continue
-        try:
-            rec = json.loads(line)
-        except ValueError:
-            raise Refused("claim_takeover_chain_invalid") from None
-        if not isinstance(rec, dict):
-            raise Refused("claim_takeover_chain_invalid")
-        schema = rec.get("schema")
-        if schema in ARCHIVE_NONCLAIM_SCHEMAS:
-            continue
-        claim = rec.get("claim")
-        if (schema != ARCHIVE_SCHEMA or not isinstance(claim, dict) or claim.get("schema") != "AgentClaim@v1"
-                or not isinstance(claim.get("claim_id"), str) or not claim["claim_id"]):
-            raise Refused("claim_takeover_chain_invalid")
-        state, status = rec.get("state_at_archive"), claim.get("status")
-        if (state, status) not in ARCHIVE_STATE_PAIRS:
-            raise Refused("claim_takeover_chain_invalid")
-        out[claim["claim_id"]] = {"status": status, "state_at_archive": state}
+    with handle:
+        while True:
+            try:
+                raw = handle.readline(MAX_ARCHIVE_RECORD_BYTES + 1)
+            except OSError:
+                raise Refused("claim_takeover_chain_invalid") from None
+            if not raw:
+                break
+            if len(raw) > MAX_ARCHIVE_RECORD_BYTES or not raw.endswith(b"\n"):
+                raise Refused("claim_takeover_chain_invalid")  # one record larger than any compaction writes
+            if not raw.strip():
+                continue
+            try:
+                line = raw.decode("utf-8")
+                rec = json.loads(line)
+            except (UnicodeDecodeError, ValueError):
+                raise Refused("claim_takeover_chain_invalid") from None
+            if not isinstance(rec, dict):
+                raise Refused("claim_takeover_chain_invalid")
+            schema = rec.get("schema")
+            if schema in ARCHIVE_NONCLAIM_SCHEMAS:
+                continue
+            claim = rec.get("claim")
+            if (schema != ARCHIVE_SCHEMA or not isinstance(claim, dict) or claim.get("schema") != "AgentClaim@v1"
+                    or not isinstance(claim.get("claim_id"), str) or not claim["claim_id"]):
+                raise Refused("claim_takeover_chain_invalid")
+            state, status = rec.get("state_at_archive"), claim.get("status")
+            if (state, status) not in ARCHIVE_STATE_PAIRS:
+                raise Refused("claim_takeover_chain_invalid")
+            out[claim["claim_id"]] = {"status": status, "state_at_archive": state}
     return out
 
 
