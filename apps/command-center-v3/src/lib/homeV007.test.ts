@@ -136,6 +136,19 @@ eq('and carries no price', relabelled.symbols[0].quote.price, null)
 const honestClock = parseHomeV007({ symbols: { X: { quote: { state: 'measured', value: { price: 12 }, session_date: '2026-11-02',
   expected_session_date: '2026-11-02', as_of: '2026-11-02T21:00:00Z' } } } })
 eq('a quote taken inside its session stays measured', honestClock.symbols[0].quote.state, 'measured')
+// The clock check is a calendar comparison in ET, not a string prefix match.
+const offsetClock = parseHomeV007({ symbols: { X: { quote: { state: 'measured', value: { price: 12 }, session_date: '2026-11-02',
+  expected_session_date: '2026-11-02', as_of: '2026-11-02T16:00:00-05:00' } } } })
+eq('an explicit ET offset inside the session stays measured', offsetClock.symbols[0].quote.state, 'measured')
+const lateEvening = parseHomeV007({ symbols: { X: { quote: { state: 'measured', value: { price: 12 }, session_date: '2026-11-02',
+  expected_session_date: '2026-11-02', as_of: '2026-11-02T03:00:00Z' } } } })
+eq('a UTC instant that is still the previous ET day is not today', lateEvening.symbols[0].quote.state, 'unknown')
+const dstDay = parseHomeV007({ symbols: { X: { quote: { state: 'measured', value: { price: 12 }, session_date: '2026-11-01',
+  expected_session_date: '2026-11-01', as_of: '2026-11-01T05:30:00Z' } } } })
+eq('the DST-change day keeps its own ET date', dstDay.symbols[0].quote.state, 'measured')
+const noSession = parseHomeV007({ symbols: { X: { quote: { state: 'measured', value: { price: 12 }, as_of: '2026-11-02T21:00:00Z' } } } })
+eq('a quote with no declared session is not downgraded by this rule', noSession.symbols[0].quote.state, 'measured')
+
 const unclockedChip = parseHomeV007({ risk: { categories: [{ category: 'tech', label: 'Technology', chip: 'OK', state: 'unknown' }] } })
 eq('an unclocked category publishes no affirmative chip', unclockedChip.risk.categories[0].chip, null)
 eq('and stays unknown', unclockedChip.risk.categories[0].state, 'unknown')
