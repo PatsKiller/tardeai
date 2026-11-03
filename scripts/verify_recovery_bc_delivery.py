@@ -101,11 +101,14 @@ CASES = {
 SNAP_NOW = datetime(2026, 11, 3, 18, 0, tzinfo=timezone.utc)
 SNAPSHOTS = {
     # DEMOA reclaims its exit (+2.0%) but is still below the 20-day mean: RECOVERING, not READY.
-    "alpha": {"close": 102.0, "rsi": 35.0, "sma20": 130.0, "entry_high": 101.0},
+    "alpha": {"close": 102.0, "rsi": 35.0, "sma20": 130.0, "entry_high": 101.0,
+              "fetched_at": SNAP_NOW.isoformat()},
     # DEMOB also reclaims — B says RECOVERING, but C must not page a T2 case (Home card / digest).
-    "t2": {"close": 51.5, "rsi": 44.0, "sma20": 49.0, "entry_high": 50.0},
+    "t2": {"close": 51.5, "rsi": 44.0, "sma20": 49.0, "entry_high": 50.0,
+           "fetched_at": SNAP_NOW.isoformat()},
     # DEMOC never reclaims.
-    "quiet": {"close": 96.0, "rsi": 33.0, "sma20": 101.0, "entry_high": 98.0},
+    "quiet": {"close": 96.0, "rsi": 33.0, "sma20": 101.0, "entry_high": 98.0,
+              "fetched_at": SNAP_NOW.isoformat()},
 }
 
 
@@ -341,7 +344,7 @@ def run_ab_session(state_dir: Path, now_iso: str, out_path: Path) -> int:
     policy_b = B.load_policy(PROJECT_ROOT / "config" / "recovery_policy.yaml")
     now = datetime.fromisoformat(now_iso.replace("Z", "+00:00"))
     base_snap = {"close": 102.0, "rsi": 35.0, "rsi_prev": 34.0, "sma20": 130.0,
-                 "macd_up_sessions": 0, "catalyst_confidence": 0.0}
+                 "macd_up_sessions": 0, "catalyst_confidence": 0.0, "fetched_at": now_iso}
     # a genuine NEW state: close above the 20-day mean plus an RSI cross lifts confidence over A's floor
     ready_snap = {**base_snap, "close": 152.0, "rsi": 45.0, "rsi_prev": 34.0}
     snaps = {"DEMO1": base_snap, "DEMO2": base_snap}
