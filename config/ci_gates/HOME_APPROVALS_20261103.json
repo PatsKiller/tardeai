@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "HOME_APPROVALS_20261103",
+  "files": [
+    "tests/test_home_approvals_20261103.py",
+    "tests/test_home_approvals_adapters_20261103.py"
+  ],
+  "anchor": "HOME_APPROVALS_20261103",
+  "comment": [
+    "ANCHOR: HOME_APPROVALS_20261103 — Home v008 \"Needs you\": the request store, the closed 7-type action list,",
+    "server-only decide() (sealed OperatorContext, tailnet listener, actor binding), click-time revalidation,",
+    "immutable approval binding, exclusive per-request execution markers, timeout/partial attempted receipts,",
+    "the nudge event stream, and read-only fact adapters. Hermetic: tmp state root, fake runners, fake /proc tree."
+  ]
+}
