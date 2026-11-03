@@ -370,7 +370,8 @@ def _binding(text: str, stmt_start: int, open_paren: int) -> tuple[list[str], st
     if m:
         return [m.group(1)], "assign"
     stripped = head.strip()
-    if stripped in ("", "await", "void", "void await") :
+    if stripped in ("", "await", "void", "void await") or re.fullmatch(
+            r"(?:(?:void|await)\s+)*(?:useApi|useJson)(?:<[^>()]*>)?", stripped):
         return [], "discarded"
     return [], "expression"
 
@@ -475,20 +476,89 @@ def _name_used(text: str, name: str, *, decl_pos: int, _depth: int = 0) -> bool:
     return False
 
 
+def _fetch_from_call(root: Path, path: Path, text: str, raw: str, surfaces: set[str],
+                     callee: str, open_paren: int, position: int) -> Fetch:
+    """One source of call/binding evidence for literal and named-route fetches."""
+    args = _split_top_args(_call_args_text(text, open_paren))
+    poll_ms = _parse_interval(args[1]) if callee in ("useApi", "useJson") and len(args) >= 2 else None
+    method = "GET"
+    if callee in ("post", "postJson", "fire") or re.search(r"method\s*:\s*['\"](POST|PUT|PATCH|DELETE)", ",".join(args[1:])):
+        method = "POST"
+    stmt_start = _statement_start(text, open_paren)
+    names, kind = _binding(text, stmt_start, open_paren)
+    if names:
+        used = any(_name_used(text, name, decl_pos=position) for name in names)
+    elif kind == "discarded":
+        used = False if method == "GET" and callee in ("useApi", "useJson") else None
+    else:
+        used = None
+    return Fetch(route=normalize_route(raw), raw=raw, file=_rel(path, root),
+                 line=text.count("\n", 0, position) + 1, callee=callee, surfaces=sorted(surfaces),
+                 poll_ms=poll_ms, bound_names=names, used=used, method=method)
+
+
+_JS_COMMENTS = re.compile(
+    r"('(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\"|" + chr(96) + r"(?:[^" + chr(96) +
+    r"\\]|\\.)*" + chr(96) + r")|(/\*[\s\S]*?\*/|//[^\n]*)")
+
+
+def _without_js_comments(text: str) -> str:
+    return _JS_COMMENTS.sub(lambda match: match.group(1) if match.group(1) is not None else
+                            re.sub(r"[^\n]", " ", match.group(0)), text)
+
+
+_NAMED_IMPORT = re.compile(r"""\bimport\s*\{([^}]+)\}\s*from\s*(['"])(\.{1,2}/[^'"]+)\2""", re.S)
+
+
+def _named_route_fetches(root: Path, owners: dict[Path, set[str]], texts: dict[Path, str],
+                         declarations: dict[Path, dict[str, tuple[str, bool]]]) -> list[Fetch]:
+    """Follow the actual local/named-import binding, not a global name occurrence."""
+    fetches = []
+    callees = "|".join(sorted(FETCH_CALLEES))
+    for path, surfaces in sorted(owners.items()):
+        text = _without_js_comments(texts[path])
+        bindings = {name: raw for name, (raw, _) in declarations.get(path, {}).items()}
+        for imported in _NAMED_IMPORT.finditer(text):
+            target = _resolve_import(path, imported.group(3))
+            exports = declarations.get(target, {})
+            for part in imported.group(1).split(","):
+                names = re.fullmatch(r"\s*([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?\s*", part)
+                if not names or names.group(1) not in exports:
+                    continue
+                raw, exported = exports[names.group(1)]
+                if not exported:
+                    continue
+                local = names.group(2) or names.group(1)
+                bindings[local] = raw if local not in bindings or bindings[local] == raw else None
+        code = _code_only(text)
+        for name, raw in bindings.items():
+            if raw is None:
+                continue  # Ambiguous declarations are not consumption evidence.
+            pattern = re.compile(rf"\b({callees})(?:<[^>()]*>)?\(\s*{re.escape(name)}\b")
+            for call in pattern.finditer(code):
+                open_paren = text.index("(", call.start())
+                fetches.append(_fetch_from_call(root, path, text, raw, surfaces,
+                                                call.group(1), open_paren, call.start()))
+    return fetches
+
+
 def scan_frontend(root: Path, *, surfaces: Optional[dict[str, str]] = None) -> tuple[list[Fetch], list[dict[str, Any]], dict[Path, set[str]]]:
     src = root / SRC
     entries = [(surface, src / rel) for surface, rel in (surfaces if surfaces is not None else SURFACES).items()]
     owners = import_closure(entries)
     fetches: list[Fetch] = []
     constants: list[dict[str, Any]] = []
+    texts = {path: _without_js_comments(path.read_text(encoding="utf-8", errors="replace")) for path in owners}
+    declarations: dict[Path, dict[str, tuple[str, bool]]] = {}
     for path, surfaces in sorted(owners.items()):
-        text = path.read_text(encoding="utf-8", errors="replace")
+        text = texts[path]
         for start, raw in iter_route_literals(text):
             line = text.count("\n", 0, start) + 1
             # const NAME = '/api/...'
             decl = re.search(r"(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*$", text[_statement_start(text, start):start])
             if decl:
                 name = decl.group(1)
+                declarations.setdefault(path, {})[name] = (raw, decl.group(0).lstrip().startswith("export"))
                 refs = sum(len(re.findall(rf"\b{re.escape(name)}\b", p.read_text(encoding="utf-8", errors="replace"))) for p in owners)
                 constants.append({
                     "route": normalize_route(raw), "name": name, "file": _rel(path, root), "line": line,
@@ -496,7 +566,6 @@ def scan_frontend(root: Path, *, surfaces: Optional[dict[str, str]] = None) -> t
                 })
                 continue
             callee, open_paren = _enclosing_callee(text, start)
-            via = None
             if callee == "withQuery":
                 # A query builder is not a fetch by itself. Only count it when it
                 # is the first argument of a recognized enclosing fetch/hook.
@@ -505,7 +574,6 @@ def scan_frontend(root: Path, *, surfaces: Optional[dict[str, str]] = None) -> t
                 if outer not in FETCH_CALLEES:
                     continue
                 callee, open_paren = outer, outer_paren
-                via = "withQuery"
             if callee and callee not in FETCH_CALLEES:
                 continue  # argument of a non-fetch call (startsWith, includes, onDrill, ...)
             if not callee:
@@ -521,28 +589,8 @@ def scan_frontend(root: Path, *, surfaces: Optional[dict[str, str]] = None) -> t
                     continue
                 callee = call.group(1)
                 open_paren = text.index("(", call.start())
-                via = var_name
-            args = _split_top_args(_call_args_text(text, open_paren))
-            poll_ms = None
-            if callee in ("useApi", "useJson") and len(args) >= 2:
-                poll_ms = _parse_interval(args[1])
-            method = "GET"
-            if callee in ("post", "postJson", "fire") or re.search(r"method\s*:\s*['\"](POST|PUT|PATCH|DELETE)", ",".join(args[1:])):
-                method = "POST"
-            stmt_start = _statement_start(text, open_paren)
-            names, kind = _binding(text, stmt_start, open_paren)
-            used: Optional[bool]
-            if names:
-                used = any(_name_used(text, n, decl_pos=start) for n in names)
-            elif kind == "discarded":
-                # A discarded GET result is unused; a discarded mutation is fire-and-forget by design.
-                used = False if method == "GET" and callee in ("useApi", "useJson") else None
-            else:
-                used = None  # chained (.then / return / argument) — usage not statically decidable
-            fetches.append(Fetch(
-                route=normalize_route(raw), raw=raw, file=_rel(path, root), line=line, callee=callee,
-                surfaces=sorted(surfaces), poll_ms=poll_ms, bound_names=names, used=used, method=method,
-            ))
+            fetches.append(_fetch_from_call(root, path, text, raw, surfaces, callee, open_paren, start))
+    fetches.extend(_named_route_fetches(root, owners, texts, declarations))
     return fetches, constants, owners
 
 

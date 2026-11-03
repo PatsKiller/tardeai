@@ -135,3 +135,89 @@ def test_real_tree_census_is_computed_not_hardcoded():
     for row in report["endpoints"]:
         assert row["route"].startswith("/api/v")
         assert row["evidence_class"] == "SOURCE_ONLY"
+
+
+def _named_opportunity_fixture(root: Path, body: str, *, alias: str = "BEST_OPPORTUNITIES_API",
+                               exported: bool = True) -> Path:
+    """Same imported template-constant shape as Home; symbols/data stay synthetic."""
+    prefix = "export " if exported else ""
+    quote = chr(96)
+    _write(root / "apps/command-center-v3/src/lib/bestOpportunities.ts",
+           "export const PRESET = 'top5'\n" + prefix + "const BEST_OPPORTUNITIES_API = " + quote +
+           "/api/v3/opportunities?preset=" + "$" + "{PRESET}" + quote + "\n")
+    _write(root / "apps/command-center-v3/src/pages/HomeDoNow.tsx",
+           "import { BEST_OPPORTUNITIES_API" +
+           (" as " + alias if alias != "BEST_OPPORTUNITIES_API" else "") +
+           " } from '../lib/bestOpportunities'\n" + body)
+    return root
+
+
+def test_named_imported_route_constant_produces_real_consumer_evidence(tmp_path):
+    from scripts.cio_api_contract_census import scan_frontend
+
+    for alias in ("BEST_OPPORTUNITIES_API", "TOP_API"):
+        root = _named_opportunity_fixture(tmp_path / alias, f"""
+            export default function Home() {{
+              const {{ data: oppTop }} = useApi<any>({alias}, 300_000)
+              return <div>{{oppTop?.items.map(row => row.symbol)}}</div>
+            }}
+        """, alias=alias)
+        # A same-named unrelated export cannot donate a route to this fetch.
+        _write(root / "apps/command-center-v3/src/lib/other.ts",
+               "export const BEST_OPPORTUNITIES_API = '/api/v3/unrelated'\n")
+        home = root / "apps/command-center-v3/src/pages/HomeDoNow.tsx"
+        home.write_text(home.read_text() + "\nimport { BEST_OPPORTUNITIES_API as UNUSED } from '../lib/other'\n")
+        fetches, _, _ = scan_frontend(root, surfaces={"Home": "pages/HomeDoNow.tsx"})
+        assert len(fetches) == 1
+        fetch = fetches[0]
+        assert fetch.route == "/api/v3/opportunities"
+        assert fetch.file == "apps/command-center-v3/src/pages/HomeDoNow.tsx"
+        assert fetch.callee == "useApi" and fetch.poll_ms == 300000
+        assert fetch.bound_names == ["oppTop"] and fetch.used is True
+        assert fetch.surfaces == ["Home"]
+
+
+def test_named_route_constant_usage_requires_a_real_fetch_and_live_result(tmp_path):
+    from scripts.cio_api_contract_census import scan_frontend
+
+    bodies = {
+        "comment": "// useApi(BEST_OPPORTUNITIES_API, 300_000)\nexport default function Home() { return null }\n",
+        "block_comment": "/*\nuseApi(BEST_OPPORTUNITIES_API, 300_000)\n*/\nexport default function Home() { return null }\n",
+        "string": "const label = 'useApi(BEST_OPPORTUNITIES_API, 300_000)'\nexport default function Home() { return label }\n",
+        "non_fetch": "export default function Home() { return onDrill(BEST_OPPORTUNITIES_API) }\n",
+    }
+    for name, body in bodies.items():
+        root = _named_opportunity_fixture(tmp_path / name, body)
+        fetches, _, _ = scan_frontend(root, surfaces={"Home": "pages/HomeDoNow.tsx"})
+        assert fetches == [], name
+
+    for name, body in {
+        "discarded": "export default function Home() {\nuseApi(BEST_OPPORTUNITIES_API, 300_000)\nreturn null\n}\n",
+        "bound_unused": "export default function Home() {\nconst { data: oppTop } = useApi(BEST_OPPORTUNITIES_API, 300_000)\nreturn <div title='oppTop.items' />\n}\n",
+    }.items():
+        root = _named_opportunity_fixture(tmp_path / name, body)
+        fetches, _, _ = scan_frontend(root, surfaces={"Home": "pages/HomeDoNow.tsx"})
+        assert len(fetches) == 1 and fetches[0].used is False, name
+
+    root = _named_opportunity_fixture(tmp_path / "not_exported",
+        "export default function Home() {\nconst { data } = useApi(BEST_OPPORTUNITIES_API)\nreturn data.items\n}\n",
+        exported=False)
+    fetches, _, _ = scan_frontend(root, surfaces={"Home": "pages/HomeDoNow.tsx"})
+    assert fetches == []
+
+
+def test_local_declared_route_constant_reaches_indirect_fetch_matcher(tmp_path):
+    from scripts.cio_api_contract_census import scan_frontend
+
+    _write(tmp_path / "apps/command-center-v3/src/pages/HomeDoNow.tsx", """
+        const ENDPOINT = '/api/v3/opportunities'
+        export default function Home() {
+          const { data } = useApi<any>(ENDPOINT, 60_000)
+          return data.items
+        }
+    """)
+    fetches, _, _ = scan_frontend(tmp_path, surfaces={"Home": "pages/HomeDoNow.tsx"})
+    assert len(fetches) == 1
+    assert fetches[0].route == "/api/v3/opportunities"
+    assert fetches[0].bound_names == ["data"] and fetches[0].used is True
+    assert fetches[0].poll_ms == 60000
