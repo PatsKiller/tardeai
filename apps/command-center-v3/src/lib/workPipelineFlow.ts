@@ -6,7 +6,7 @@ export type FlowStage = typeof FLOW_STAGES[number]
 export const FLOW_STAGE_LABEL: Record<FlowStage, string> = { requested: 'Requested', building: 'Building', uploaded: 'Uploaded', pr_open: 'PR open', checks: 'Checks', review: 'Review', approval: 'Approval', merged: 'Merged', live: 'Live' }
 export type FlowActor = 'agent' | 'coordinator' | 'operator' | 'unknown'
 export type FlowEvent = { id: string; label: string; at: string | null; source: string | null; detail: string | null }
-export type FlowApproval = { id: string; title: string; command: string | null; url: string | null; head: string | null; sourceAt: string | null; source: string | null }
+export type FlowApproval = { id: string; title: string; command: string | null; url: string | null; head: string | null; sourceAt: string | null; source: string | null; prNumber?: number | null; prUrl?: string | null; nextActor?: FlowActor; nextAction?: string | null }
 export type FlowAgent = { session: string; vendor: string | null; coordinator: string | null; itemId: string | null; stage: FlowStage | null; lastActivity: string | null; idleMinutes: number | null; nudgesToday: number | null; gaps: string[] }
 export type FlowReview = { reviewer: string | null; verdict: string | null; currentHead: boolean | null; at: string | null; source: string | null }
 export type FlowItem = {
@@ -141,6 +141,80 @@ function approvalRows(raw: unknown, now: number, gaps: string[]): { members: Flo
   }
   return { members, complete }
 }
+export type FlowReadContext = { readFailed?: boolean; stale?: boolean }
+export type WaitingProjection = { members: FlowApproval[] | null; count: number | null; complete: boolean; gaps: string[]; sourceAt: string | null }
+function approvalUrl(raw: unknown): string | null {
+  const value = txt(raw)
+  return value && ((value.startsWith('/') && !value.startsWith('//')) || /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/.test(value)) ? value : null
+}
+/** Same unpaginated member list and count checks as E's approvalQueueView. Never reconstruct eligibility. */
+export function waitingProjection(payload: unknown, now: number | Date = Date.now(), context: FlowReadContext = {}): WaitingProjection {
+  const outer = rec(payload), root = outer.ok === true && outer.data && typeof outer.data === 'object' ? rec(outer.data) : outer
+  const ms = now instanceof Date ? now.getTime() : now, gaps: string[] = []
+  const readReady = context.readFailed !== true && context.stale !== true
+  if (context.readFailed === true) gaps.push('Waiting on you: approval queue read unavailable; retained members require a current read')
+  if (context.stale === true) gaps.push('Waiting on you: approval queue transport is stale; retained members require a current read')
+  const rootQueue = Object.prototype.hasOwnProperty.call(root, 'waiting_on_you')
+  const directQueue = !rootQueue && Object.prototype.hasOwnProperty.call(root, 'actionable_items')
+  if (!rootQueue && !directQueue) {
+    const prototype = rec(rec(root.coordination).approvals), legacy = approvalRows(prototype, ms, gaps)
+    const sourceAt = clock(prototype.as_of, 'Legacy approval queue snapshot', gaps, ms)
+    const complete = readReady && legacy.complete && sourceAt !== null && Number.isFinite(ms) && prototype.stale !== true
+    if (legacy.members) gaps.push('Waiting on you: legacy prototype source; canonical policy commands unavailable')
+    return { members: legacy.members?.map(m => ({ ...m, command: null })) ?? null, count: complete && legacy.members ? legacy.members.length : null,
+      complete, gaps, sourceAt }
+  }
+  const queue = rec(rootQueue ? root.waiting_on_you : root), rows = queue.actionable_items
+  gaps.push(...messages(queue.gaps))
+  const sourceAt = clock(queue.as_of, 'Canonical approval queue snapshot', gaps, ms)
+  const clockKnown = sourceAt !== null && Number.isFinite(ms)
+  if (!Number.isFinite(ms)) gaps.push('Canonical approval queue evaluation clock unavailable')
+  if (!Array.isArray(rows)) {
+    gaps.push('Waiting on you: canonical actionable_items source unavailable; no financial or legacy fallback')
+    return { members: null, count: null, complete: false, gaps, sourceAt }
+  }
+  if (queue.scope !== 'all_operator_approvals') {
+    gaps.push('Waiting on you: all-operator-approvals source scope unavailable; no financial-only fallback')
+    return { members: null, count: null, complete: false, gaps, sourceAt }
+  }
+  // E compares the canonical raw array length, including in a partial global queue.
+  const mismatch = queue.actionable_count !== rows.length || queue.known_pending_count !== rows.length
+    || (queue.complete === true && queue.pending_count !== rows.length)
+  if (mismatch) gaps.push('actionable_queue: The approval count does not match its member list. Refresh before deciding.')
+  const stale = queue.stale === true
+  if (stale) gaps.push('Waiting on you: canonical queue is stale; refresh before deciding')
+  if (queue.complete !== true) gaps.push('Waiting on you: canonical source is partial; known members retained and total unavailable')
+  if (rows.some(v => Object.keys(rec(v)).length === 0 || txt(rec(v).id) === null)) {
+    gaps.push('Waiting on you: canonical member source has a malformed or unidentified row; commands unavailable')
+    return { members: null, count: null, complete: false, gaps, sourceAt }
+  }
+  const members: FlowApproval[] = rows.map(value => {
+    const r = rec(value), id = txt(r.id)!, local: string[] = []
+    const boundHead = head(r.source_sha), memberAt = instant(r.source_as_of, ms), source = txt(r.source)
+    const commandRaw = typeof r.policy_approval_command === 'string' && r.policy_approval_command.trim() ? r.policy_approval_command : null
+    const pr = count(r.pr), actor = txt(r.next_actor)
+    let safeCommand = readReady && clockKnown && !mismatch && !stale && r.actionable === true && r.stale !== true && !txt(r.source_gap)
+      && boundHead !== null && memberAt !== null && source !== null && Number.isFinite(ms)
+    if (txt(r.source_gap)) local.push(`${source ?? 'Approval source'}: ${txt(r.source_gap)}`)
+    if (!memberAt) local.push('Member source_as_of: explicit observation instant unavailable; queue/build/created clocks are not substitutes')
+    if (commandRaw) {
+      const tokens = commandRaw.trim().split(/\s+/), version = txt(r.version)
+      const token = version && /^\d+\.\d+\.\d+$/.test(version) ? `APPROVE_AGENTS_POLICY_${version.replace(/\./g, '_')}` : null
+      if (r.kind !== 'POLICY' || actor !== 'operator' || pr === null || pr <= 0 || !token
+          || tokens.length !== 3 || tokens[0] !== token || tokens[1] !== String(pr) || tokens[2].toLowerCase() !== boundHead) {
+        safeCommand = false; local.push('Policy command: exact source head or PR binding and declared policy kind, operator actor and version must all match')
+      }
+      if (r.actionable !== true || r.stale === true) local.push('Policy command: member is not explicitly actionable with current evidence')
+    }
+    gaps.push(...local.map(g => `Waiting ${id}: ${g}`))
+    return { id, title: txt(r.title) ?? id, command: safeCommand ? commandRaw : null,
+      url: approvalUrl(r.governed_href) ?? approvalUrl(r.pr_url), head: boundHead, sourceAt: memberAt, source,
+      prNumber: pr, prUrl: approvalUrl(r.pr_url), nextActor: actor === 'agent' || actor === 'coordinator' || actor === 'operator' ? actor : 'unknown',
+      nextAction: txt(r.next_action) }
+  })
+  const complete = readReady && clockKnown && queue.complete === true && !mismatch && !stale
+  return { members, count: complete ? members.length : null, complete, gaps, sourceAt }
+}
 /** Adapter for A's frozen WorkPipelineSources@v1 facts; no second census or action policy. */
 function sourceItem(value: unknown, sources: Row, now: number): Row {
   const raw = rec(value), number = own(raw, 'pr_number') ?? rec(raw.what).pr_number
@@ -157,7 +231,8 @@ function sourceItem(value: unknown, sources: Row, now: number): Row {
   const reviews = Array.isArray(review.records) ? review.records.map(v => { const r = rec(v); return { ...r, reviewer: r.reviewer_session, at: r.observed_at, source: review.source, envelope_head: typedReview ? review.head_sha : null } }) : undefined
   const localGaps = messages(bundle.gaps)
   if (liveFact.value === true && !provenLive) localGaps.push('Live: positive source fact lacks a proven nonfuture observation or source binding')
-  for (const key of ['owner', 'coordinator', 'last_activity', 'next_action', 'live']) { const f = fact(key); if (txt(f.gap)) localGaps.push(`${txt(f.source) ?? key}: ${txt(f.gap)}`) }
+  for (const key of ['owner', 'coordinator', 'last_activity', 'next_action', 'current_stage', 'stage_since', 'created_at', 'next_actor', 'stuck', 'blocker', 'review', 'ci', 'live']) { const f = fact(key); if (txt(f.gap)) localGaps.push(`${key} · ${txt(f.source) ?? 'source not recorded'}: ${txt(f.gap)}`) }
+  if (txt(review.required_gap)) localGaps.push(`Review requirement: ${txt(review.required_gap)}`)
   if (!bundle.current_stage && !provenLive && !merged && !legacyStages[txt(raw.stage) ?? '']) localGaps.push('Current stage: legacy batch/release history does not establish Review, Approval or Live')
   const declaredStage = rec(bundle.current_stage).value ?? bundle.current_stage
   const currentStage = stage(declaredStage) ?? (provenLive ? 'live' : merged ? 'merged' : legacyStages[txt(raw.stage) ?? ''] ?? null)
@@ -169,6 +244,7 @@ function sourceItem(value: unknown, sources: Row, now: number): Row {
     last_touched: Object.keys(fact('last_activity')).length ? fact('last_activity').value : rec(raw.when).last_activity,
     stage_since: stageFact.value,
     next: { actor: fact('next_actor').value ?? bundle.next_actor, text: Object.keys(nextFact).length ? nextFact.value : rec(raw.next).text, command: null },
+    stuck: bundle.stuck, blocker: Object.prototype.hasOwnProperty.call(bundle, 'blocker') ? fact('blocker').value : raw.blocker,
     head_sha: currentHead, checks: ci, reviews: { items: reviews, required_count: review.required_count },
     merged_at: merged?.as_of, live_verified_at: liveAt,
     live: { verified: provenLive, served: provenLive, source: liveFact.source, at: liveAt },
@@ -198,7 +274,7 @@ function sourceAgents(sources: Row, items: FlowItem[], now: number): Row[] | und
 }
 function etDay(value: string | null): string | null { return value ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(value)) : null }
 
-export function flowProjection(payload: unknown, now: number | Date = Date.now()): FlowProjection {
+export function flowProjection(payload: unknown, now: number | Date = Date.now(), context: FlowReadContext = {}): FlowProjection {
   const outer = rec(payload), root = outer.ok === true && outer.data && typeof outer.data === 'object' ? rec(outer.data) : outer
   const c = rec(root.coordination), gaps = messages(c.gaps), ms = now instanceof Date ? now.getTime() : now
   if (!Number.isFinite(ms)) gaps.push('Projection evaluation clock unavailable')
@@ -217,7 +293,8 @@ export function flowProjection(payload: unknown, now: number | Date = Date.now()
   if (dropped) gaps.push(`Work-item source has ${dropped} malformed member(s); total unavailable`)
   const collectionKnown = collectionPresent && complete && dropped === 0
   const inFlight = items.filter(i => i.inFlight), membershipKnown = collectionKnown && items.every(i => i.membershipKnown)
-  const approval = approvalRows(c.approvals, ms, gaps)
+  const approval = waitingProjection(root, ms, context)
+  gaps.push(...approval.gaps)
   const agentRows = Array.isArray(c.agents) ? c.agents : sourceContract ? sourceAgents(c, items, ms) : undefined
   const agentsKnown = Array.isArray(agentRows) && (c.agents_complete === true || complete)
   if (!agentsKnown) gaps.push('Agents: claim/worklog activity and nudge source unavailable')
@@ -239,7 +316,7 @@ export function flowProjection(payload: unknown, now: number | Date = Date.now()
   return { items, inFlight, groups, waiting: approval.members, agents, gaps, sourceAt, metrics: {
     inFlight: membershipKnown ? inFlight.length : null,
     stuck: membershipKnown && inFlight.every(i => i.stuck !== null) ? inFlight.filter(i => i.stuck).length : null,
-    waiting: approval.complete && approval.members !== null ? approval.members.length : null,
+    waiting: approval.count,
     mergedToday: collectionKnown && !mergedUnknown && day ? items.filter(i => i.mergedAt && etDay(i.mergedAt) === day).length : null,
     liveToday: collectionKnown && !liveUnknown && day ? liveItems.filter(i => etDay(i.liveAt) === day).length : null,
     greenToLiveMinutes: collectionKnown && durations.length > 0 && durations.every((v): v is number => v !== null) ? durations.reduce((a, b) => a + b, 0) / durations.length : null,

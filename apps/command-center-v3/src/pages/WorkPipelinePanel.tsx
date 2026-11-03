@@ -58,12 +58,14 @@ function CurrentWorkCard({ item, onOpen, showTimeline = true }: { item: FlowItem
   </article>
 }
 
-function CurrentPipelineView({ payload, onWorklog, onAct, busy, onRefresh }: {
-  payload: PipelinePayload | null | undefined; onWorklog: (claimId: string) => void;
+function CurrentPipelineView({ payload, readFailed, readStale, onWorklog, onAct, busy, onRefresh }: {
+  payload: PipelinePayload | null | undefined; readFailed: boolean; readStale: boolean; onWorklog: (claimId: string) => void;
   onAct: (it: PipelineItem, cmd: CommandName, params: Record<string, unknown>) => void;
   busy: Busy; onRefresh: () => void;
 }) {
-  const flow = useMemo(() => flowProjection(payload), [payload])
+  const [projectionNow, setProjectionNow] = useState(() => Date.now())
+  useEffect(() => { const timer = window.setInterval(() => setProjectionNow(Date.now()), 30_000); return () => window.clearInterval(timer) }, [])
+  const flow = useMemo(() => flowProjection(payload, projectionNow, { readFailed, stale: readStale }), [payload, projectionNow, readFailed, readStale])
   const [includeFinished, setIncludeFinished] = useState(false)
   const [selected, setSelected] = useState<string | null>(null)
   const current = selected ? flow.items.find(it => it.id === selected) : null
@@ -119,7 +121,7 @@ function CurrentPipelineView({ payload, onWorklog, onAct, busy, onRefresh }: {
           })}
         </div>
       </div>
-      <div style={{ ...small, marginTop: 8 }}>Pipeline source observed {et(flow.sourceAt)}. Stage timestamps come from recorded evidence.</div>
+      <div style={{ ...small, marginTop: 8 }}>Latest source evidence observed {et(flow.sourceAt)}. Stage timestamps come from recorded evidence.</div>
     </section>
     <section style={panel} data-testid="pipeline-agents">
       <h2 style={{ margin: '0 0 8px', fontSize: TYPE.md }}>Agents</h2>
@@ -420,7 +422,7 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
         <div style={{ minWidth: 0 }}>
           <h1 style={{ margin: 0, fontSize: TYPE.lg, color: TOKENS.text[0] }}>Work pipeline</h1>
           <div style={small} data-testid="pipeline-sources">
-            One row per work item (task, PR or design phase). As of {et(api.data?.as_of)} · PR census {census?.refreshed_at ? `${api.data?.sources?.census_age_s ?? '?'} s old` : 'pending'} (refreshed at most once a minute)
+            One row per work item (task, PR or design phase). View built {et(api.data?.as_of)} · PR census {census?.refreshed_at ? `${api.data?.sources?.census_age_s ?? '?'} s old` : 'pending'} (refreshed at most once a minute)
             {served?.sha ? ` · served ${String(served.sha).slice(0, 9)} health ${served.ok ? 'ok' : served.ok === false ? 'FAILED' : 'unknown'}` : ''}
             {census?.warning ? <span style={{ color: TOKENS.warning }}> · {census.warning}</span> : null}
           </div>
@@ -447,7 +449,7 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
     </div>
 
     {api.error ? <div role="status" style={{ ...panel, color: TOKENS.warning }} data-testid="pipeline-read-error">{api.data ? 'Showing the last received pipeline; refresh failed' : 'Pipeline unavailable'}: {api.error}</div> : null}
-    <CurrentPipelineView payload={api.data} onWorklog={setWorklog} onAct={act} busy={busy} onRefresh={api.refetch} />
+    <CurrentPipelineView payload={api.data} readFailed={Boolean(api.loading || api.error)} readStale={api.stale} onWorklog={setWorklog} onAct={act} busy={busy} onRefresh={api.refetch} />
     <details data-testid="pipeline-history-controls" style={panel}><summary style={{ cursor: 'pointer', minHeight: 44, color: TOKENS.text[1] }}>Work item history, filters and existing controls</summary>
     <div style={panel} data-testid="pipeline-filters">
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
