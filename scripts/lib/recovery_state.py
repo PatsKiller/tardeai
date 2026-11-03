@@ -23,10 +23,13 @@ Three rules from the spec that shape the code:
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 STOPPED_OUT = "STOPPED_OUT"
 WATCHING = "WATCHING"
@@ -435,6 +438,57 @@ def store_accessor(conn=None, policy: Mapping[str, Any] | None = None):
 PAGING_STATES = (RECOVERING, RE_ENTRY_READY)
 
 
+PENDING_REL = Path("data") / "runtime" / "recovery_notify_pending.json"
+
+
+def _pending_path() -> Path:
+    """Durable record of a paging transition whose delivery has not been confirmed.
+
+    A failed send used to be lost: the state advanced to RECOVERING, the next pass saw no change, and C was
+    never called again (codex's failure probe, 2026-11-03). Pending work survives across scheduled passes
+    until it is delivered or C says the tier is not pageable.
+    """
+    try:
+        from lib.persistent_state_root import resolve_durable_dir  # noqa: PLC0415
+        return resolve_durable_dir(str(PENDING_REL), PROJECT_ROOT)
+    except Exception:  # noqa: BLE001
+        return PROJECT_ROOT / PENDING_REL
+
+
+def load_pending(path: str | Path | None = None) -> dict:
+    try:
+        doc = json.loads(Path(path or _pending_path()).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return doc if isinstance(doc, dict) else {}
+
+
+def save_pending(doc: Mapping[str, Any], path: str | Path | None = None) -> None:
+    target = Path(path or _pending_path())
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        tmp.write_text(json.dumps(dict(doc), indent=1, sort_keys=True), encoding="utf-8")
+        os.replace(tmp, target)
+    except OSError:
+        pass  # a pending-store fault must never lose the page: the caller keeps it in memory this pass
+
+
+def _delivery_confirmed(result: Mapping[str, Any] | None) -> bool:
+    """Did this handoff end the need for a retry?
+
+    ``sent: true`` is delivery. ``deduped_by_floor`` means C's own ledger says this page already reached the
+    operator. A T2/T3 refusal ("not T1 …") is C's decision that the tier is not pageable — not a failure. A
+    bare ``sent: false`` (transport refused) is NOT confirmed and must stay pending.
+    """
+    if not isinstance(result, Mapping):
+        return False
+    if result.get("sent") is True or result.get("deduped_by_floor"):
+        return True
+    reason = str(result.get("reason") or "")
+    return reason.startswith("not T1")
+
+
 def _default_notify():
     """Piece C's notifier, loaded lazily so B stays importable without it."""
     try:
@@ -449,7 +503,8 @@ def _default_notify():
 
 def run_pass(store, snapshot_for, *, policy: Mapping[str, Any] | None = None,
              now: datetime | None = None, dry_run: bool = True, limit: int = 200,
-             notify=None, notify_states: tuple[str, ...] = PAGING_STATES) -> dict:
+             notify=None, notify_states: tuple[str, ...] = PAGING_STATES,
+             pending_path: str | Path | None = None) -> dict:
     """Evaluate every open case once: write the state change AND hand a paging transition to piece C.
 
     ``snapshot_for(case)`` returns the market fields (close, sma20, rsi, rsi_prev, stop_level,
@@ -476,6 +531,7 @@ def run_pass(store, snapshot_for, *, policy: Mapping[str, Any] | None = None,
         return {"store": "unreadable", "error": f"{type(exc).__name__}: {exc}", "considered": 0,
                 "changed": 0, "decisions": []}
     notifier = notify if notify is not None else _default_notify()
+    pending = load_pending(pending_path)
     decisions, changed, notifier_calls = [], 0, 0
     for case in cases:
         try:
@@ -487,6 +543,7 @@ def run_pass(store, snapshot_for, *, policy: Mapping[str, Any] | None = None,
         row = {"case_key": case.get("case_key"), "symbol": case.get("symbol"),
                "snapshot": "present" if snapshot else "absent", **decision.as_dict()}
         decisions.append(row)
+        write_ok = True
         if decision.changed:
             changed += 1
             if not dry_run:
@@ -499,25 +556,47 @@ def run_pass(store, snapshot_for, *, policy: Mapping[str, Any] | None = None,
                                            confidence=round(decision.confidence, 4),
                                            next_trigger=decision.next_trigger)
                 except Exception as exc:  # noqa: BLE001 — one case failing never stops the pass
+                    write_ok = False
                     row["write_error"] = f"{type(exc).__name__}: {exc}"
-            if decision.state in tuple(notify_states):
-                if notifier is None:
-                    row["notify"] = {"sent": False, "reason": "notifier unavailable (piece C absent)"}
-                elif dry_run:
-                    row["notify"] = {"sent": False, "reason": "dry_run"}
-                else:
-                    handoff = {**case, "state": decision.state,
-                               "confidence": round(decision.confidence, 4),
-                               "next_trigger": decision.next_trigger,
-                               "price": (snapshot or {}).get("close"),
-                               "exit_price": exit_price(case)}
-                    try:
-                        result = notifier(handoff)
-                        notifier_calls += 1
-                        row["notify"] = {k: v for k, v in (result or {}).items() if k != "message"}
-                    except Exception as exc:  # noqa: BLE001 — a notifier fault never aborts the pass
-                        notifier_calls += 1
-                        row["notify"] = {"sent": False, "error": f"{type(exc).__name__}: {exc}"}
+
+        key = str(case.get("case_key"))
+        wants_page = decision.state in tuple(notify_states)
+        retrying = key in pending
+        # Dispatch ONLY after the state is durable (a failed write must not page), and retry a pending
+        # delivery on later passes even when the state no longer changes.
+        if not write_ok:
+            row["notify"] = {"sent": False, "reason": "state write failed; not notifying"}
+        elif not (wants_page or retrying):
+            pass
+        elif notifier is None:
+            row["notify"] = {"sent": False, "reason": "notifier unavailable (piece C absent)"}
+        elif dry_run:
+            row["notify"] = {"sent": False, "reason": "dry_run"}
+        else:
+            handoff = {**case, "state": decision.state,
+                       "confidence": round(decision.confidence, 4),
+                       "next_trigger": decision.next_trigger,
+                       "price": (snapshot or {}).get("close"),
+                       "exit_price": exit_price(case)}
+            try:
+                result = notifier(handoff)
+                notifier_calls += 1
+                row["notify"] = {k: v for k, v in (result or {}).items() if k != "message"}
+            except Exception as exc:  # noqa: BLE001 — a notifier fault never aborts the pass
+                notifier_calls += 1
+                result = {"sent": False, "error": f"{type(exc).__name__}: {exc}"}
+                row["notify"] = result
+            if _delivery_confirmed(result):
+                pending.pop(key, None)
+            elif wants_page or retrying:
+                entry = pending.get(key) or {"first_failed_at": now.isoformat(), "attempts": 0}
+                entry["state"] = decision.state
+                entry["attempts"] = int(entry.get("attempts") or 0) + 1
+                entry["last_error"] = (result or {}).get("error") or (result or {}).get("reason") or "sent false"
+                pending[key] = entry
+                row["notify_pending"] = True
+    if not dry_run:
+        save_pending(pending, pending_path)
     return {"store": "ok", "considered": len(cases), "changed": changed, "notifier_calls": notifier_calls,
-            "decisions": decisions,
+            "pending": len(pending), "decisions": decisions,
             "dry_run": bool(dry_run), "policy_source": policy.get("policy_source")}
