@@ -182,7 +182,19 @@ class AuthorityContext:
             if any(helper.hits(path, patterns) for path in paths):
                 result["reason"] = "operator_reserved_or_live_decision"
                 return result
-            helper.collect_held_classes(paths, self.hold_config, self.hold_helper)
+            collect = getattr(helper, "collect_held_classes", None)
+            if callable(collect):
+                collect(paths, self.hold_config, self.hold_helper)
+            else:
+                # Earlier ratified v30 helpers expose the same pure decision through
+                # held_classes + DELEGATED_HELD_CLASSES in Host.collect.
+                classes = self.hold_helper.held_classes(paths, self.hold_config)
+                delegated = getattr(helper, "DELEGATED_HELD_CLASSES", None)
+                if not isinstance(classes, dict) or not isinstance(delegated, (set, frozenset)):
+                    raise ValueError("trusted_helper_scope_contract_unavailable")
+                if not set(classes).issubset(delegated):
+                    result["reason"] = "held_class_operator_owned"
+                    return result
             result.update(
                 operator_required=False,
                 next_actor="coordinator",

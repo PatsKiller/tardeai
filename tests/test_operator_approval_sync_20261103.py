@@ -351,3 +351,31 @@ def test_already_active_policy_version_needs_coordinator_reconciliation():
     row = source.project(pr(), git=git, gh=Gh(), as_of=STAMP, authority=scoped_authority(True, version="30.0.0"))
     assert row["next_actor"] == "coordinator" and row["source_gap"] == "POLICY_VERSION_ALREADY_ACTIVE"
     assert row["actionable"] is False and "policy_approval_command" not in row
+
+
+
+@pytest.mark.parametrize("mode", ["legacy", "delegated"])
+@pytest.mark.parametrize("label", ["hold", "do-not-merge", "operator-hold", "Hold", "BROKER"])
+def test_explicit_holds_on_ordinary_files_survive_relevance_filter(mode, label):
+    authority = scoped_authority(False)
+    authority.classify = lambda *args, **kwargs: {"mode": mode, "complete": True, "operator_required": mode == "legacy"}
+    row = source.project({**pr(2472), "labels": [{"name": label}]}, git=lambda *args: "ordinary.txt\n",
+                         gh=Gh(), as_of=STAMP, authority=authority)
+    assert row is not None and row["next_actor"] == "operator" and row["actionable"] is True
+
+
+def test_authority_outage_never_reports_complete_zero_for_unclassified_work(monkeypatch, tmp_path):
+    from scripts.lib.operator_approval_authority import AuthorityContext
+    authority = AuthorityContext(BASE, STAMP, mode="unavailable", gap="APPROVAL_AUTHORITY_SOURCE_UNAVAILABLE")
+    monkeypatch.setattr(source, "load_authority", lambda **kwargs: authority)
+    board = Board([pr(2502)])
+    snapshot = source.Snapshot(board=board, git=lambda *args: "protected/runtime\n", gh_factory=Gh, clock=lambda: 0.0)
+    batch = snapshot.view(background=False)
+    assert batch["gap"] and "APPROVAL_AUTHORITY_SOURCE_UNAVAILABLE" in batch["gap"]
+    assert batch["rows"][0]["next_actor"] == "coordinator"
+    ctx = context(tmp_path, batch["rows"][0])
+    ctx.sources = {"held_prs": lambda: batch}
+    data = api.handle(api.PREFIX + "/approvals", "GET", ctx=ctx)[1]["data"]
+    assert data["pending_count"] is None and data["complete"] is False
+    assert data["actionable_count"] == len(data["actionable_items"]) == 0
+    assert data["evidence_blockers"][0]["pr"] == 2502

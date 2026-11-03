@@ -24,6 +24,10 @@ from scripts.lib.operator_approval_authority import load_context as load_authori
 MAX_PRS = 100
 MAX_FILES = 3000
 REFRESH_S = 120.0
+# Read-only reflection of the explicit refusals in trusted pr_merge_delegation.Host.collect.
+# The generic legacy `held` label does not undo ratified delegated engineering.
+EXPLICIT_OPERATOR_HOLD_LABELS = frozenset({"hold", "do-not-merge", "operator-hold", "broker", "broker_active_trader",
+                                           "active-trader", "active_trader", "broker-active-trader"})
 
 
 def _read(gh, path):
@@ -92,13 +96,20 @@ def project(pr: dict, *, git: Callable, gh, as_of: str, annotations: Callable | 
     if not core.SHA.fullmatch(head) or not core.SHA.fullmatch(base):
         raise core.Refused("EXACT_PR_HEAD_REQUIRED", 503)
     files = changed_files(pr, git, gh)
-    labels = {r.get("name") if isinstance(r, dict) else r for r in pr.get("labels") or []}
+    raw_labels = pr.get("labels")
+    if (not isinstance(raw_labels, list)
+            or any(not isinstance(row, str) and (not isinstance(row, dict) or not isinstance(row.get("name"), str))
+                   for row in raw_labels)):
+        raise core.Refused("PR_LABELS_UNAVAILABLE", 503)
+    labels = {(row["name"] if isinstance(row, dict) else row).lower() for row in raw_labels}
     held = merge_hold_paths.held_classes(files)
     is_policy = "AGENTS.md" in files
     scope = authority.classify(files, head_sha=head) if authority is not None else None
     protected = bool(scope and scope.get("mode") == "delegated" and scope.get("complete")
                      and scope.get("operator_required"))
-    if not is_policy and not held and not protected and not (labels & merge_hold_paths.hold_labels()):
+    explicit_hold = labels & EXPLICIT_OPERATOR_HOLD_LABELS
+    scope_unknown = bool(scope and not scope.get("complete"))
+    if not is_policy and not held and not protected and not explicit_hold and not scope_unknown and not (labels & merge_hold_paths.hold_labels()):
         return None
     # A label alone is not exact-head approval or evidence that a PR completed.
     number = int(pr["number"])
@@ -131,10 +142,6 @@ def project(pr: dict, *, git: Callable, gh, as_of: str, annotations: Callable | 
                         doc=doc, source="github_pr_snapshot", pr=number)
         action = "Read this exact policy version and record its approval line."
     else:
-        # These are the explicit label refusals of trusted pr_merge_delegation.Host.collect,
-        # reflected for display only. The generic legacy `held` label does not undo delegated engineering.
-        explicit_hold = labels & {"hold", "do-not-merge", "operator-hold", "broker", "broker_active_trader",
-                                  "active-trader", "active_trader", "broker-active-trader"}
         if scope and explicit_hold:
             scope = {**scope, "operator_required": True, "next_actor": "operator", "reason": "explicit_hold_requires_resolution"}
         if scope and scope.get("complete") and scope.get("operator_required") is False:
@@ -253,6 +260,8 @@ class Snapshot:
         try:
             gh = self.gh_factory()
             authority = load_authority(git=self.git, gh=gh, now=now)
+            if getattr(authority, "gap", None):
+                gaps.append(f"Approval authority: {authority.gap}")
             for pr in prs[:MAX_PRS]:
                 try:
                     row = project(pr, git=self.git, gh=gh, as_of=as_of, annotations=self.annotations, authority=authority)

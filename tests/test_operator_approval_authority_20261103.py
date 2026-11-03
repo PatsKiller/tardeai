@@ -317,3 +317,20 @@ def test_malformed_positive_verifier_proof_does_not_delegate(setup, monkeypatch)
     c = context(setup)
     assert c.mode == "unavailable" and c.gap == "APPROVAL_AUTHORITY_SOURCE_UNAVAILABLE"
     assert c.classify(["engineering/source"], head_sha=HEAD)["operator_required"]
+
+
+
+def test_scope_supports_earlier_v30_pure_helper_contract_without_invented_method(setup):
+    current = context(setup)
+    current.merge = SimpleNamespace(RESERVED=FakeMerge.RESERVED, OPERATOR_ONLY=FakeMerge.OPERATOR_ONLY,
+                                   DECISION_PATHS=FakeMerge.DECISION_PATHS, hits=FakeMerge.hits,
+                                   DELEGATED_HELD_CLASSES=frozenset({"engineering"}))
+    current.hold_helper = SimpleNamespace(held_classes=lambda paths, config: {"engineering": paths})
+    result = current.classify(["ordinary/workflow"], head_sha=HEAD)
+    assert result["complete"] is True and result["operator_required"] is False
+    current.hold_helper = SimpleNamespace(held_classes=lambda paths, config: {"operator_class": paths})
+    result = current.classify(["ordinary/workflow"], head_sha=HEAD)
+    assert result["complete"] is True and result["operator_required"] is True
+    assert result["reason"] == "held_class_operator_owned"
+    protected = current.classify(["protected/runtime"], head_sha=HEAD)
+    assert protected["complete"] is True and protected["operator_required"] is True
