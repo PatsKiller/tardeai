@@ -661,10 +661,14 @@ def _git_tracked_paths(root):
 
 #: Resolved at import, before any test's process-forbidding fixture is installed.
 TRACKED_PATHS = _git_tracked_paths(ROOT)
+#: The repository root this module was loaded from. Captured separately because the CI observer harness
+#: monkeypatches ``ROOT`` to a synthetic checkout; a comparison against the live global would then say
+#: "this IS the repo" and hand the synthetic tree the real repo's index.
+_REAL_ROOT = Path(ROOT).resolve()
 
 
 def repo_tracked_state(root, paths=None):
-    """Content of the watched files under ``root``, keyed by repo-relative path.
+    """Content of the watched files under ``root``, keyed by path.
 
     The read-only proof watches what ``evaluate()`` is allowed to touch: the repository's committed
     content. The list is derived from ``git ls-files`` at import (not hand-maintained), so it cannot
@@ -674,8 +678,16 @@ def repo_tracked_state(root, paths=None):
     whole-tree snapshot also fails on untracked runtime state another gate writes (the same defect
     fixed for the CI observer by serialising). Scoping the watch set keeps the parallelism and makes
     the assertion say what it means — ``evaluate`` wrote nothing it was allowed to write.
+
+    A root that is NOT this repository is a synthetic checkout (the CI observer harness): every file
+    under it is watched, because there is no index to derive from and nothing else writes there.
     """
     root = Path(root)
+    if paths is None and root.resolve() != _REAL_ROOT:
+        # A synthetic checkout (the CI observer harness): watch the whole tree it owns. Delegating to
+        # tree_state keeps that harness's recorder in the loop, which is how it proves the observer
+        # really watched its fixture.
+        return tree_state(root)
     out = {}
     for rel in (TRACKED_PATHS if paths is None else paths):
         path = root / rel
