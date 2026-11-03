@@ -312,3 +312,16 @@ def test_account_summaries_are_classified_and_use_the_short_alias(tmp_path):
     assert summary["account_key"] == "schwab_roth_ira" and summary["state"] != "UNCLASSIFIED"
     row = next(h for h in doc["holdings"] if h["symbol"] == "SCHD")
     assert row["account"] == "schwab_roth" and row["account_key"] == "schwab_roth_ira"
+
+
+def test_a_foreign_prefixed_backup_cannot_displace_the_fresh_snapshot(tmp_path):
+    backups = tmp_path / "backups"
+    backups.mkdir()
+    foreign = backups / "holdings-hourly-FOREIGN.json"
+    foreign.write_text("{}")
+    store = tmp_path / "holdings.json"
+    receipt = he.export(state_root=tmp_path, conn=Conn(), store=store, backups=backups, now=NOW,
+                        hourly_keep=1, size_cap_bytes=1)
+    assert foreign.exists() and foreign.read_text() == "{}"
+    assert Path(receipt["retention"]["hourly"]).exists()  # the fresh snapshot was not archived away
+    assert store.exists()

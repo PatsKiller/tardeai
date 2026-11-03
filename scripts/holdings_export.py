@@ -20,6 +20,7 @@ import argparse
 import json
 import math
 import os
+import re
 import secrets
 import sys
 from datetime import datetime, time as dtime, timezone
@@ -372,9 +373,10 @@ def _archive(directory: Path, path: Path) -> None:
     os.replace(path, dest)
 
 
-def _prune(directory: Path, keep: int, prefix: str) -> list[Path]:
-    files = sorted(directory.glob(f"{prefix}*.json"), key=lambda p: p.name)
+def _prune(directory: Path, keep: int, prefix: str, *, protect: Path | None = None) -> list[Path]:
+    files = [p for p in _own_backups(directory) if p.name.startswith(prefix)]
     removed = files[:-keep] if keep > 0 else files
+    removed = [p for p in removed if protect is None or p != protect]
     for path in removed:
         try:
             _archive(directory, path)
@@ -383,13 +385,17 @@ def _prune(directory: Path, keep: int, prefix: str) -> list[Path]:
     return removed
 
 
-OWN_BACKUP_GLOBS = ("holdings-hourly-*.json", "holdings-daily-*.json")
+# STRICT names only: a foreign file that happens to share the prefix (e.g. holdings-hourly-FOREIGN.json)
+# is neither trimmed nor allowed to displace the snapshot just written.
+OWN_HOURLY = re.compile(r"^holdings-hourly-\d{8}T\d{2}\.json$")
+OWN_DAILY = re.compile(r"^holdings-daily-\d{8}\.json$")
 
 
 def _own_backups(directory: Path) -> list[Path]:
-    files: list[Path] = []
-    for pattern in OWN_BACKUP_GLOBS:
-        files.extend(directory.glob(pattern))
+    if not directory.is_dir():
+        return []
+    files = [p for p in directory.iterdir()
+             if p.is_file() and (OWN_HOURLY.match(p.name) or OWN_DAILY.match(p.name))]
     return sorted(files, key=lambda p: p.name)
 
 
@@ -422,8 +428,8 @@ def write_backups(text: str, backups: Path, *, now: datetime,
     atomic_write(hourly, text)
     if not daily.exists():
         atomic_write(daily, text)
-    removed = _prune(backups, hourly_keep, "holdings-hourly-")
-    removed += _prune(backups, daily_keep, "holdings-daily-")
+    removed = _prune(backups, hourly_keep, "holdings-hourly-", protect=hourly)
+    removed += _prune(backups, daily_keep, "holdings-daily-", protect=daily)
     removed += _enforce_size_cap(backups, size_cap_bytes, protect=hourly)
     return {"hourly": str(hourly), "daily": str(daily), "pruned": [str(p) for p in removed]}
 
@@ -567,19 +573,30 @@ def maybe_alert_stale(*, store: Path | str | None = None, state_root: Path | str
         return {"status": "outside_market_hours", "age_minutes": age, "sent": False}
     if not empty and mismatch is None and not sync_bad and age is not None and age <= max_age_minutes:
         try:
-            (Path(store).parent / "backups" / ".alert-episode.json").unlink()
+            if state_root is not None:
+                root_real = Path(os.path.realpath(Path(state_root).expanduser()))
+                marker = Path(store).parent / "backups" / ".alert-episode.json"
+                if Path(os.path.realpath(marker)).is_relative_to(root_real):
+                    marker.unlink()
+            else:
+                (Path(store).parent / "backups" / ".alert-episode.json").unlink()
         except OSError:
             pass
         return {"status": "fresh", "age_minutes": age, "sent": False}
     # Episode dedupe: one page per distinct episode, reset on recovery. Undelivered sends retry next run.
-    episode_file = Path(store).parent / "backups" / ".alert-episode.json"
+    episode_file: Path | None = Path(store).parent / "backups" / ".alert-episode.json"
+    if state_root is not None:
+        root_real = Path(os.path.realpath(Path(state_root).expanduser()))
+        if not Path(os.path.realpath(episode_file)).is_relative_to(root_real):
+            episode_file = None  # never write alert state outside an explicit state root
     episode = (f"{document.get('generated_at') or 'missing'}|empty={empty}|delta={mismatch}"
                f"|sync_failures={sync_failures}|stale={age is not None and age > max_age_minutes}")
-    try:
-        if json.loads(episode_file.read_text(encoding="utf-8")).get("episode") == episode:
-            return {"status": "already_alerted", "age_minutes": age, "sent": False, "episode": episode}
-    except Exception:  # noqa: BLE001 - no prior episode
-        pass
+    if episode_file is not None:
+        try:
+            if json.loads(episode_file.read_text(encoding="utf-8")).get("episode") == episode:
+                return {"status": "already_alerted", "age_minutes": age, "sent": False, "episode": episode}
+        except Exception:  # noqa: BLE001 - no prior episode
+            pass
     if send is None:
         try:
             from telegram_alert import send_telegram_outcome as send  # type: ignore
@@ -596,7 +613,7 @@ def maybe_alert_stale(*, store: Path | str | None = None, state_root: Path | str
         delivered = outcome is True or (isinstance(outcome, Mapping) and outcome.get("delivered") is True)
     except Exception as exc:  # noqa: BLE001 — an alert failure must not mask the export state
         return {"status": "send_error", "age_minutes": age, "sent": False, "error_type": type(exc).__name__}
-    if delivered:
+    if delivered and episode_file is not None:
         try:
             episode_file.parent.mkdir(parents=True, exist_ok=True)
             atomic_write(episode_file, json.dumps({"episode": episode, "at": _iso(now)}) + "\n")
