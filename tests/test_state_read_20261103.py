@@ -269,3 +269,47 @@ def test_layer_status_says_unknown_not_in_range(wl, tmp_path, raw):
     text = wl._build_layer_status(_Conn())
     assert "UNKNOWN" in text
     assert "IN RANGE" not in text
+
+
+# ── the class guard: no damaged-store path may render a confident claim (lead, 2026-11-03) ──────
+# Every individual case above pins one surface. This one fails if ANY damaged path — bad bytes or a
+# wrong consumer shape — can render "not held", "0 shares", "zero", or "IN RANGE" without an explicit
+# unavailable indicator. It is the assertion the whole PR exists to make.
+CONFIDENT_PHRASES = ("NOT CURRENTLY HELD", "0 shares", "IN RANGE", "0.0%", "portfolio_weight")
+
+DAMAGED_CASES = tuple(("bytes:" + repr(raw), raw) for raw in DAMAGED_RAW) + tuple(
+    ("shape:" + doc, doc.encode()) for doc in WRONG_SHAPE
+)
+
+
+@pytest.mark.parametrize("label,raw", DAMAGED_CASES, ids=[c[0] for c in DAMAGED_CASES])
+def test_no_damaged_path_renders_a_confident_claim(wl, tmp_path, label, raw):
+    (tmp_path / "holdings.json").write_bytes(raw)
+
+    ctx = wl._get_context(_Conn(), "AAA")
+    port = wl._get_portfolio_context(_Conn(), "AAA")
+    layers = wl._build_layer_status(_Conn())
+
+    # 1. The analyst prompt must not assert ownership either way.
+    for phrase in ("NOT CURRENTLY HELD", "0 shares"):
+        assert phrase not in ctx["text"], f"{label}: prompt asserted {phrase!r} from a damaged store"
+    # 2. It must carry an explicit unavailable indicator instead.
+    assert ctx["snapshot"]["positions_available"] is False, f"{label}: prompt claims positions are known"
+    assert ctx["snapshot"]["holdings_state"] != "ok"
+    assert "UNKNOWN" in ctx["text"]
+
+    # 3. The synthesis ground-truth block must not assert zero shares / tiny position.
+    assert port["positions_available"] is False
+    assert port["position_tiny"] is False and port["position_small"] is False
+    assert port["total_shares"] == 0 and port["accounts"] == []  # placeholders, flagged unavailable
+
+    # 4. Layer allocation must not render a range verdict from a file it could not read.
+    assert "IN RANGE" not in layers
+    assert "UNKNOWN" in layers
+
+
+def test_within_portfolio_and_layer_status_weights_are_not_confident(wl, tmp_path):
+    """A damaged store must not yield a CONCRETE weight string anywhere in the layer block."""
+    (tmp_path / "holdings.json").write_bytes(b"")
+    layers = wl._build_layer_status(_Conn())
+    assert "actual=" not in layers
