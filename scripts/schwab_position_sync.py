@@ -359,6 +359,65 @@ def reconcile_totals(doc, *, source="unknown"):
         return None
 
 
+def _is_durable_store_target(path) -> bool:
+    """True only for a real store the host serves (persistent state / checkout), never a temp path.
+
+    This is what keeps the live side effects off a test or one-off write: a probe pointed at a temp
+    file must not commit watchlist membership to production (2026-11-03 incident).
+    """
+    try:
+        from lib.persistent_state_root import portfolio_state_write_targets
+        durable = {(Path(d) / "holdings.json").resolve() for d in portfolio_state_write_targets(PROJECT_ROOT)}
+    except Exception:  # noqa: BLE001 — without the resolver, only the configured store counts
+        durable = {Path(HOLDINGS_PATH).resolve()}
+    return Path(path).resolve() in durable
+
+
+def _post_write_side_effects(new_holdings, *, source, skip_transfer_detect, prior_doc, target):
+    """The post-write hooks that reach outside this process — separated so they are injectable.
+
+    Called ONLY for the canonical store (protected_holdings_write enforces that). Keeping them in one
+    named function means a test stubs one symbol, and a future caller cannot forget one of three.
+    """
+    HP = target
+    # Held-state change → re-queue CIO synthesis for affected watchlist symbols (advisory, non-fatal).
+    try:
+        from holdings_change_trigger import check_and_enqueue
+        trig = check_and_enqueue(apply=True)
+        if trig.get("changed"):
+            print(f"  [holdings-change] {trig['summary']}")
+    except Exception as _e:
+        print(f"  [holdings-change] trigger failed (non-fatal): {str(_e)[:120]}")
+
+    # ROOT: sold names must not keep source='portfolio' rows (watchlist HELD badge /
+    # watchlist_symbol_master.in_portfolio = bool_or(source='portfolio')).
+    try:
+        from sync_portfolio_watchlist_membership import sync_portfolio_watchlist_membership
+        _ms = sync_portfolio_watchlist_membership(new_holdings)
+        if _ms.get("exited") or _ms.get("ensured"):
+            print(f"  [portfolio-membership] exited={_ms.get('exited')} ensured={_ms.get('ensured')}")
+    except Exception as _e:
+        print(f"  [portfolio-membership] sync failed (non-fatal): {str(_e)[:120]}")
+
+    # Cross-account transfer detection + normalization (Fidelity→Schwab rollover, Trad→Roth ladder).
+    if not skip_transfer_detect and prior_doc is not None:
+        try:
+            from lib.cost_basis_transfer import process_holdings_change
+            xfer = process_holdings_change(prior_doc, new_holdings, sync_source=source, apply=True)
+            if xfer.get("events"):
+                print(f"  [transfer-normalize] {xfer.get('summary')}")
+                if xfer.get("stop_flags"):
+                    print(f"  [transfer-normalize] {len(xfer['stop_flags'])} stop(s) may need replace-mode resize")
+                tagged = xfer.get("holdings_doc")
+                if tagged and (xfer.get("applied_overrides") or xfer.get("normalized") or xfer.get("holdings_tagged")):
+                    fd2, tmp2 = tempfile.mkstemp(dir=str(HP.parent), suffix=".tmp")
+                    with os.fdopen(fd2, "w") as f:
+                        json.dump(tagged, f, indent=2, default=str)
+                    os.replace(tmp2, HP)
+        except Exception as _e:
+            print(f"  [transfer-normalize] detect failed (non-fatal): {str(_e)[:120]}")
+
+
 def protected_holdings_write(new_holdings, source="schwab_sync", account_key="schwab", protect_basis=False,
                             basis_label=None,
                             target_path=None, skip_transfer_detect=False, baseline=None):
@@ -376,8 +435,19 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
     # 2026-11-03). If the caller hands us the candidate as its own baseline, every relative check
     # compares the new book with itself and the cash/drop guards can never fire. Refuse here, in the
     # guard, so no present or future caller can disarm it — the call-site assertion stays as well.
-    if baseline is not None and baseline is new_holdings:
-        reason = ("BASELINE_ALIAS: the baseline is the candidate object itself, so the relative "
+    # Identity OR shared substructure: `dict(candidate)` shares the very holdings list that is
+    # mutated below, so a shallow copy is the same bypass wearing a different name (cc3 residual,
+    # 2026-11-03). Deliberately identity, never equality: an equal but independent baseline is a
+    # legitimate no-change write and must not be refused.
+    _shared_structure = bool(
+        isinstance(baseline, dict) and isinstance(new_holdings, dict)
+        and any(
+            baseline.get(key) is not None and baseline.get(key) is new_holdings.get(key)
+            for key in ("holdings", "positions", "portfolio_totals")
+        )
+    )
+    if baseline is not None and (baseline is new_holdings or _shared_structure):
+        reason = ("BASELINE_ALIAS: the baseline shares the candidate's own objects, so the relative "
                   "coverage/cash/drop guards would compare the new book with itself")
         _record(account_key, "rejected_baseline_alias", f"[{source}] baseline is the candidate object")
         _alert(f"🛑 holdings write BLOCKED ({source}): {reason}. Prior snapshot kept (no wipe).", source)
@@ -516,47 +586,13 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
 
     _record(account_key, "ok", f"wrote {n} positions / ${v:,.0f}; basis_flags={len(flagged)}", n, v, True)
 
-    # Held-state change → re-queue CIO synthesis for affected watchlist symbols (advisory, non-fatal).
-    # This is the single write gate for both the Schwab sync and the SnapTrade merge, so hooking here
-    # covers every position-changing path — see scripts/holdings_change_trigger.py.
-    try:
-        from holdings_change_trigger import check_and_enqueue
-        trig = check_and_enqueue(apply=True)
-        if trig.get("changed"):
-            print(f"  [holdings-change] {trig['summary']}")
-    except Exception as _e:
-        print(f"  [holdings-change] trigger failed (non-fatal): {str(_e)[:120]}")
-
-    # ROOT: sold names must not keep source='portfolio' rows (watchlist HELD badge /
-    # watchlist_symbol_master.in_portfolio = bool_or(source='portfolio')).
-    try:
-        from sync_portfolio_watchlist_membership import sync_portfolio_watchlist_membership
-        _ms = sync_portfolio_watchlist_membership(new_holdings)
-        if _ms.get("exited") or _ms.get("ensured"):
-            print(f"  [portfolio-membership] exited={_ms.get('exited')} ensured={_ms.get('ensured')}")
-    except Exception as _e:
-        print(f"  [portfolio-membership] sync failed (non-fatal): {str(_e)[:120]}")
-
-    # Cross-account transfer detection + normalization (Fidelity→Schwab rollover, Trad→Roth ladder).
-    # Carry cost basis, stamp transfer_history / original_source_account, persist DB audit, and
-    # re-write holdings when any provenance/basis change was applied (never silent fabrication).
-    if not skip_transfer_detect and prior_doc is not None:
-        try:
-            from lib.cost_basis_transfer import process_holdings_change
-            xfer = process_holdings_change(prior_doc, new_holdings, sync_source=source, apply=True)
-            if xfer.get("events"):
-                print(f"  [transfer-normalize] {xfer.get('summary')}")
-                if xfer.get("stop_flags"):
-                    print(f"  [transfer-normalize] {len(xfer['stop_flags'])} stop(s) may need replace-mode resize")
-                tagged = xfer.get("holdings_doc")
-                # Rewrite when overrides applied OR positions were provenance-normalized
-                if tagged and (xfer.get("applied_overrides") or xfer.get("normalized") or xfer.get("holdings_tagged")):
-                    fd2, tmp2 = tempfile.mkstemp(dir=str(HP.parent), suffix=".tmp")
-                    with os.fdopen(fd2, "w") as f:
-                        json.dump(tagged, f, indent=2, default=str)
-                    os.replace(tmp2, HP)
-        except Exception as _e:
-            print(f"  [transfer-normalize] detect failed (non-fatal): {str(_e)[:120]}")
+    # Every hook below reaches OUTSIDE this process (CIO trigger, watchlist membership, transfer
+    # tables). They run only for the canonical store: a write to a temp or alternate target_path is a
+    # test or a one-off and must never touch the live database. 2026-11-03 incident: a probe writing
+    # to a temp path still committed 21 membership removals to production through this block.
+    if _is_durable_store_target(HP):
+        _post_write_side_effects(new_holdings, source=source,
+                                 skip_transfer_detect=skip_transfer_detect, prior_doc=prior_doc, target=HP)
 
     # G1 — resolution-layer dual-write. When the primary path is one of the
     # durable write targets (served/persistent + checkout), mirror the validated

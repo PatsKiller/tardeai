@@ -260,3 +260,35 @@ def test_the_same_payload_with_an_independent_baseline_is_refused_by_the_cash_gu
                                      baseline=json.loads(before))
     assert out["wrote"] is False and out["reason_code"] == "CASH_EXCLUDED", out
     assert store.read_bytes() == before
+
+
+def test_a_write_to_an_alternate_path_never_runs_the_live_side_effects(store, monkeypatch):
+    """2026-11-03 incident: a temp-target probe still committed watchlist changes to the live DB.
+    The side-effect block is one named hook, and it does not run for a non-canonical target."""
+    calls = []
+    monkeypatch.setattr(S, "_post_write_side_effects", lambda *a, **k: calls.append(k))
+    store.write_text(json.dumps(_book()))          # a healthy store, written to itself
+    out = S.protected_holdings_write(_book(), source="test_alt_path", target_path=str(store))
+    assert out["wrote"] is True, out
+    assert calls == [], "a temp/alternate target must never reach the live watchlist or transfer tables"
+
+
+def test_a_shallow_copy_baseline_is_the_same_bypass_and_is_refused(store):
+    """dict(candidate) shares the holdings list that is then mutated (cc3 residual, 2026-11-03)."""
+    store.write_text(json.dumps(_book()))
+    before = store.read_bytes()
+    candidate = json.loads(store.read_text())
+    candidate["holdings"] = [r for r in candidate["holdings"] if r.get("symbol") != "CASH"]
+    shallow = dict(candidate)
+    out = S.protected_holdings_write(candidate, source="test_shallow", target_path=str(store), baseline=shallow)
+    assert out["wrote"] is False and out["reason_code"] == "BASELINE_ALIAS", out
+    assert store.read_bytes() == before
+
+
+def test_an_equal_but_independent_baseline_is_not_refused(store):
+    """Identity, not equality: the same book in a separate object is a legitimate write."""
+    store.write_text(json.dumps(_book()))
+    candidate = json.loads(store.read_text())
+    independent = json.loads(store.read_text())
+    out = S.protected_holdings_write(candidate, source="test_equal", target_path=str(store), baseline=independent)
+    assert out["wrote"] is True, out
