@@ -28,7 +28,8 @@ generated backup. `scripts/holdings_export.py` is the **only** writer of that fi
     .venv/bin/python scripts/holdings_export.py --apply      # write the store and the backups
 
 Exit `1` means the export refused (database unreachable or empty) — the last good file is intact and the freshness check
-still pages if it is stale. The unit that runs it is `ops/systemd/tradeai-holdings-export.{service,timer}`; **it is not
+still pages if it is stale. A refusal is a **failed unit run**, not a successful tick: the service does not mask it with
+`SuccessExitStatus`. The unit that runs it is `ops/systemd/tradeai-holdings-export.{service,timer}`; **it is not
 installed** — enabling a schedule is operator-only (AGENTS.md §17).
 
 ## Authority

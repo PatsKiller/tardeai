@@ -384,3 +384,39 @@ def test_one_unresolved_episode_pages_once_as_the_document_ages(tmp_path):
     # the clock advances (41 min old) but the CONDITION is the same unresolved episode
     second = he.maybe_alert_stale(store=store, now=NOW + timedelta(minutes=1), state_root=tmp_path, send=send)
     assert first["sent"] is True and second["sent"] is False and len(calls) == 1
+
+
+def test_a_backup_parent_swap_writes_nothing_outside(tmp_path):
+    # codex's counterexample: the backups parent is swapped for a symlink before write_backups.
+    root = tmp_path / "root"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (root / "state").symlink_to(outside)
+    with pytest.raises(he.ExportError):
+        he.write_backups("{}", root / "state" / "backups", now=NOW, root=root)
+    assert list(outside.iterdir()) == []
+
+
+def test_a_driver_connect_failure_is_an_export_error(monkeypatch):
+    import lib.cio_market_context_state as ctx
+    def boom():
+        raise RuntimeError("could not connect")
+    monkeypatch.setattr(ctx, "connect_trade_ai_readonly", boom)
+    with pytest.raises(he.ExportError):
+        he._connect()
+
+
+def test_main_always_runs_the_monitor_even_when_the_store_is_missing(tmp_path, monkeypatch):
+    captured = {}
+    def refuse(**kw):
+        raise he.ExportError("database connection failed: RuntimeError")
+    monkeypatch.setattr(he, "_connect", lambda: (_ for _ in ()).throw(he.ExportError("db down")))
+    monkeypatch.setattr(he, "maybe_alert_stale", lambda **kw: captured.update(kw) or {"sent": True})
+    rc = he.main(["--apply", "--store", str(tmp_path / "missing" / "holdings.json")])
+    assert rc == 1 and captured.get("store") is not None
+
+
+def test_the_unit_does_not_treat_a_refusal_as_success():
+    unit = (ROOT / "ops/systemd/tradeai-holdings-export.service").read_text()
+    assert "SuccessExitStatus" not in unit

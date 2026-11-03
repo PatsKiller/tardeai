@@ -413,31 +413,37 @@ def atomic_write(path: Path | str, text: str, *, mode: int = FILE_MODE, root: Pa
 
 
 # ── retention ──────────────────────────────────────────────────────────────────
-def _archive(directory: Path, path: Path) -> None:
-    """Retention moves an own snapshot into `archive/`; it never unlinks. Deletion belongs to the cleaner."""
+def _archive(root: Path, directory: Path, path: Path) -> None:
+    """Retention moves an own snapshot into `archive/`; it never unlinks and never re-derives the boundary.
+
+    `root` is the caller's original trusted state root. Directory fds are opened beneath it with
+    O_NOFOLLOW at every component, and the archive directory is created through those fds — a path-based
+    mkdir before the anchored check is exactly how a swapped parent escaped.
+    """
     target = directory / "archive"
-    target.mkdir(parents=True, exist_ok=True)
-    dest = target / path.name
-    if dest.exists():
-        dest = target / f"{path.stem}-{secrets.token_hex(3)}{path.suffix}"
-    root = directory.parent
     src_fd = _dir_beneath(root, directory, create=True)
     dst_fd = _dir_beneath(root, target, create=True)
     try:
+        dest = target / path.name
+        try:
+            os.stat(dest.name, dir_fd=dst_fd, follow_symlinks=False)
+            dest = target / f"{path.stem}-{secrets.token_hex(3)}{path.suffix}"
+        except FileNotFoundError:
+            pass
         os.replace(path.name, dest.name, src_dir_fd=src_fd, dst_dir_fd=dst_fd)
     finally:
         os.close(src_fd)
         os.close(dst_fd)
 
 
-def _prune(directory: Path, keep: int, prefix: str, *, protect: Path | None = None) -> list[Path]:
+def _prune(root: Path, directory: Path, keep: int, prefix: str, *, protect: Path | None = None) -> list[Path]:
     files = [p for p in _own_backups(directory) if p.name.startswith(prefix)]
     removed = files[:-keep] if keep > 0 else files
     removed = [p for p in removed if protect is None or p != protect]
     for path in removed:
         try:
-            _archive(directory, path)
-        except OSError:
+            _archive(root, directory, path)
+        except (OSError, ExportError):
             pass
     return removed
 
@@ -456,7 +462,7 @@ def _own_backups(directory: Path) -> list[Path]:
     return sorted(files, key=lambda p: p.name)
 
 
-def _enforce_size_cap(directory: Path, cap: int, *, protect: Path | None = None) -> list[Path]:
+def _enforce_size_cap(root: Path, directory: Path, cap: int, *, protect: Path | None = None) -> list[Path]:
     # ONLY this module's own snapshots: an unrelated *.json in the backups directory is never a candidate.
     files = sorted(_own_backups(directory), key=lambda p: p.stat().st_mtime)
     total = sum(p.stat().st_size for p in files if p.exists())
@@ -468,7 +474,7 @@ def _enforce_size_cap(directory: Path, cap: int, *, protect: Path | None = None)
             continue
         try:
             size = path.stat().st_size
-            _archive(directory, path)
+            _archive(root, directory, path)
             total -= size
             removed.append(path)
         except OSError:
@@ -476,19 +482,25 @@ def _enforce_size_cap(directory: Path, cap: int, *, protect: Path | None = None)
     return removed
 
 
-def write_backups(text: str, backups: Path, *, now: datetime,
+def write_backups(text: str, backups: Path, *, now: datetime, root: Path | None = None,
                   hourly_keep: int = DEFAULT_HOURLY_KEEP, daily_keep: int = DEFAULT_DAILY_KEEP,
                   size_cap_bytes: int = DEFAULT_SIZE_CAP_BYTES) -> dict[str, Any]:
-    backups.mkdir(parents=True, exist_ok=True)
+    """Write the own snapshots beneath the CALLER'S trusted root, never a root derived from `backups`."""
+    root = Path(root) if root is not None else backups.parent
     hourly = backups / f"holdings-hourly-{now.astimezone(timezone.utc):%Y%m%dT%H}.json"
     daily = backups / f"holdings-daily-{now.astimezone(timezone.utc):%Y%m%d}.json"
-    root = backups.parent
     atomic_write(hourly, text, root=root)
-    if not daily.exists():
+    try:
+        daily_fd = _dir_beneath(root, backups, create=True)
+        try:
+            os.stat(daily.name, dir_fd=daily_fd, follow_symlinks=False)
+        finally:
+            os.close(daily_fd)
+    except FileNotFoundError:
         atomic_write(daily, text, root=root)
-    removed = _prune(backups, hourly_keep, "holdings-hourly-", protect=hourly)
-    removed += _prune(backups, daily_keep, "holdings-daily-", protect=daily)
-    removed += _enforce_size_cap(backups, size_cap_bytes, protect=hourly)
+    removed = _prune(root, backups, hourly_keep, "holdings-hourly-", protect=hourly)
+    removed += _prune(root, backups, daily_keep, "holdings-daily-", protect=daily)
+    removed += _enforce_size_cap(root, backups, size_cap_bytes, protect=hourly)
     return {"hourly": str(hourly), "daily": str(daily), "pruned": [str(p) for p in removed]}
 
 
@@ -533,7 +545,7 @@ def export(*, conn, store: Path | str | None = None, backups: Path | str | None 
                 "holdings": len(document["holdings"]), "generated_at": document["generated_at"],
                 "sync_run_id": binding["run_id"]}
     # Backup first: if the backup cannot be written or read back, the current file is never replaced.
-    retention = write_backups(text, backups, now=now, hourly_keep=hourly_keep,
+    retention = write_backups(text, backups, now=now, root=root_hint, hourly_keep=hourly_keep,
                               daily_keep=daily_keep, size_cap_bytes=size_cap_bytes)
     if not Path(retention["hourly"]).exists() or Path(retention["hourly"]).stat().st_size == 0:
         raise ExportError("backup was not durably written; the current store was left untouched")
@@ -722,8 +734,8 @@ def main(argv: list[str] | None = None) -> int:
         alert = maybe_alert_stale(store=store, conn=conn, state_root=store.parent)
     except (ExportError, ConnectionError, OSError) as exc:
         # A refusal leaves the last good file untouched; the freshness check still pages if it is stale.
-        alert = maybe_alert_stale(store=store, conn=conn, state_root=store.parent) if store.exists() else \
-            {"status": "refused_before_store", "sent": False}
+        # A MISSING export IS the P1 condition: always run the monitor, present or not.
+        alert = maybe_alert_stale(store=store, conn=conn, state_root=store.parent)
         receipt = {"ok": False, "refused": str(exc), "refused_type": type(exc).__name__,
                    "store": str(store), "alert": alert}
         print(json.dumps(receipt, indent=1, sort_keys=True) if args.json else
@@ -742,11 +754,20 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _connect():
-    """Read-only, REPEATABLE READ session: every SELECT in one export sees one snapshot (no credential in code)."""
-    from lib.cio_market_context_state import connect_trade_ai_readonly  # type: ignore
-    conn = connect_trade_ai_readonly()
-    conn.set_session(isolation_level="REPEATABLE READ", readonly=True, autocommit=False)
-    return conn
+    """Read-only, REPEATABLE READ session; every driver failure becomes an ExportError here.
+
+    psycopg2's OperationalError is neither a ConnectionError nor an OSError, so without this the real
+    connect failure escapes the CLI uncaught and the freshness monitor never runs.
+    """
+    try:
+        from lib.cio_market_context_state import connect_trade_ai_readonly  # type: ignore
+        conn = connect_trade_ai_readonly()
+        conn.set_session(isolation_level="REPEATABLE READ", readonly=True, autocommit=False)
+        return conn
+    except ExportError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - normalized at the boundary, never swallowed
+        raise ExportError(f"database connection failed: {type(exc).__name__}") from exc
 
 
 def _close(conn) -> None:

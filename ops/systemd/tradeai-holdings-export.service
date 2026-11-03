@@ -11,9 +11,8 @@ Type=oneshot
 WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
 Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
 ExecStart=%h/trade-ai-releases/portfolio-server/CURRENT/.venv/bin/python scripts/holdings_export.py --apply
-# Exit 1 = the export refused (DB unreachable / empty result) and left the last good file in place: the run
-# itself completed and the freshness alert path will page if it stays stale. 2+ stay unit failures.
-SuccessExitStatus=1
+# Exit 1 = the export refused (DB unreachable / empty result). That is a REAL failure, not a successful
+# tick: the unit must go red so systemd/health see it, and the freshness alert pages independently.
 TimeoutStartSec=90
 Nice=10
 # NOT INSTALLED. Installation is operator-only (AGENTS.md §17) and the release owns staged units; this file
