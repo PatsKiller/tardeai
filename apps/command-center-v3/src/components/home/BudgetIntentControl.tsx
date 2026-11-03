@@ -9,7 +9,7 @@ import { useState } from 'react'
 import { RADIUS, TOKENS, TYPE } from '../../lib/designTokens'
 import type { BudgetRow } from '../../lib/homeV007'
 import {
-  BUDGET_DECIDE_PATH, basisUrl, currentBasis, futureUtcZ, humanError, intentBody, presentationCall, requestId,
+  BUDGET_DECIDE_PATH, basisUrl, currentBasis, futureUtcZ, humanError, intentBody, networkOutcomeUnknown, presentationCall, requestId,
   type IntentBody,
 } from '../../lib/budgetIntent'
 
@@ -44,6 +44,7 @@ export default function BudgetIntentControl({ row, onRecorded }: { row: BudgetRo
 
   async function readBasis() {
     const reply = await presentationCall(basisUrl(String(row.scopeId), row.key))
+    if (!reply.ok && reply.status === 503) throw new Error(humanError({ ...reply, code: reply.code || 'SOURCE_UNAVAILABLE' }))
     if (!reply.ok) throw new Error(humanError(reply))
     const basis = currentBasis(reply.data)
     if (!basis.binding) throw new Error('The basis did not carry a canonical binding. Nothing was sent.')
@@ -64,7 +65,9 @@ export default function BudgetIntentControl({ row, onRecorded }: { row: BudgetRo
       if (data.written !== false) throw new Error('The preview did not confirm that nothing would be written; not continuing.')
       setPreview({ body, storeApproved: data.store_approved === true, wouldReplay: data.would_replay === true, basisAsOf: basis.asOf })
     } catch (e) {
-      setError(String((e as Error)?.message || e))
+      setError((e as Error)?.name === 'TypeError' || /fetch|network|load failed/i.test(String((e as Error)?.message || ''))
+        ? networkOutcomeUnknown(e)
+        : String((e as Error)?.message || e))
     } finally { setBusy(false) }
   }
 
@@ -93,7 +96,11 @@ export default function BudgetIntentControl({ row, onRecorded }: { row: BudgetRo
       setPreview(null)
       onRecorded?.()
     } catch (e) {
-      setError(String((e as Error)?.message || e))
+      const text = String((e as Error)?.message || '')
+      // A dropped reply is not proof that nothing was written. Keep the preview so the retry carries the SAME
+      // request id, which the ledger replays instead of appending a second decision.
+      const lost = (e as Error)?.name === 'TypeError' || /fetch|network|load failed/i.test(text)
+      setError(lost ? networkOutcomeUnknown(e) : text)
     } finally { setBusy(false) }
   }
 

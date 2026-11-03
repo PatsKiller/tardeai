@@ -98,6 +98,7 @@ export type PresentationReply = {
 }
 
 const HUMAN: Record<string, string> = {
+  SOURCE_UNAVAILABLE: 'The canonical budget source is unavailable right now. Its earlier decisions are still listed; nothing can be recorded until it answers.',
   BUDGET_SOURCE_CHANGED: 'The measurement changed since this page loaded. Reload the basis and check the new numbers.',
   BUDGET_NOT_BREACHED: 'This budget is no longer breached, so there is nothing to record intent for.',
   INVALID_INTENTIONAL_UNTIL: 'That expiry is not a future UTC instant.',
@@ -107,6 +108,21 @@ const HUMAN: Record<string, string> = {
   CSRF_REFUSED: 'This request could not be verified. Reload the page and try again.',
   AGENT_CALLER_REFUSED: 'Only your authenticated operator session can record this.',
   STORE_APPROVAL_PENDING: 'Decision recording is awaiting the operator’s data-source sign-off.',
+  BUDGET_IDENTITY_REQUIRED: 'This row does not name exactly one canonical scope and budget.',
+  INVALID_PRESENTATION_FIELDS: 'The request carried a field this route does not accept. Nothing was sent.',
+  INVALID_PRESENTATION_ACTION: 'The request was not the reviewed budget-presentation intent.',
+  INVALID_DRY_RUN: 'The preview flag was malformed.',
+  OBJECT_BODY_REQUIRED: 'The request body was malformed.',
+  ADMIN_REQUIRED: 'Only the operator session can record this.',
+  AUTHENTICATED_READER_REQUIRED: 'Sign in as the operator to read the basis.',
+  NOT_FOUND: 'This budget-intent route is not available on the running backend yet.',
+}
+
+/** The call may have reached the server and still failed on the way back: never claim it did nothing. */
+export function networkOutcomeUnknown(error: unknown): string {
+  const message = String((error as Error)?.message || error || '')
+  if (/abort/i.test(message)) return message
+  return 'The reply never arrived, so the outcome is unknown. Retry with the same request — an identical request replays instead of writing twice.'
 }
 
 export function humanError(reply: PresentationReply): string {

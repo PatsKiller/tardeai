@@ -47,7 +47,7 @@ const cssText = bundled.outputFiles.find(f => f.path.endsWith('.css'))?.text ?? 
 const html = `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>${cssText}</style><body style="margin:0;padding:12px;background:#0b0d10;color:#e8e8e8;font:14px system-ui"><div id="root"></div><script type="module">${js.replace(/<\/script/gi, '<\\/script')}</script>`
 
 async function run(page, width, variant, plan) {
-  const seen = { gets: 0, posts: [], forbidden: [] }
+  const seen = { gets: 0, posts: [], forbidden: [], dropped: false }
   await page.route('**/*', async route => {
     const req = route.request(), url = new URL(req.url())
     if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html })
@@ -63,6 +63,7 @@ async function run(page, width, variant, plan) {
       seen.posts.push(body)
       for (const bad of ['actor', 'actual', 'limit', 'breached', 'breach']) if (bad in body) seen.forbidden.push(bad)
       if (plan.refuse) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ ok: false, error: plan.refuse }) })
+      if (plan.dropFirstWrite && body.dry_run !== true && !seen.dropped) { seen.dropped = true; return route.abort('failed') }
       if (body.dry_run === true) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, data: {
         dry_run: true, written: false, would_append: {}, would_replay: false, store_approved: plan.storeApproved !== false } }) })
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, data: {
@@ -147,6 +148,23 @@ try {
     await page.getByTestId('v7-intent-error').waitFor()
     assert.match(await page.getByTestId('v7-intent-error').innerText(), /future/i, `past expiry not refused at ${width}`)
     assert.equal(seenE.gets + seenE.posts.length, 0, `a past expiry must not reach the network at ${width}`)
+
+    // F. the reply to the real write is lost: the outcome is unknown, and the retry reuses the same request id.
+    await page.unroute('**/*')
+    const seenF = await run(page, width, 'available', { dropFirstWrite: true })
+    await page.getByTestId('v7-intent-open').click()
+    await page.getByTestId('v7-intent-until').fill(TOMORROW.slice(0, 16))
+    await page.getByTestId('v7-intent-preview').click()
+    await page.getByTestId('v7-intent-preview-panel').waitFor()
+    await page.getByTestId('v7-intent-confirm').click()
+    await page.getByTestId('v7-intent-error').waitFor()
+    assert.match(await page.getByTestId('v7-intent-error').innerText(), /outcome is unknown/i, `a dropped reply must not claim nothing was written at ${width}`)
+    assert.equal(await page.getByTestId('v7-intent-confirm').count(), 1, 'the preview must survive so the retry is the same request')
+    await page.getByTestId('v7-intent-confirm').click()
+    await page.getByTestId('v7-intent-done').waitFor()
+    const ids = seenF.posts.filter(b => b.dry_run !== true).map(b => b.request_id)
+    assert.ok(ids.length >= 2 && new Set(ids).size === 1, `the retry must reuse the previewed request id at ${width}: ${JSON.stringify(ids)}`)
+    assert.deepEqual(seenF.forbidden, [], `a measured field was sent after a retry at ${width}`)
 
     assert.deepEqual(errors, [], `page errors at ${width}`)
     results.push({ width, ok: true })

@@ -1,7 +1,7 @@
 // Budget intent requests — the body can only carry what the decide route allows.
 //   node --experimental-strip-types src/lib/budgetIntent.test.ts
 import {
-  BUDGET_DECIDE_PATH, basisUrl, currentBasis, futureUtcZ, humanError, intentBody, requestId, toUtcZ,
+  BUDGET_DECIDE_PATH, basisUrl, currentBasis, futureUtcZ, humanError, intentBody, networkOutcomeUnknown, requestId, toUtcZ,
 } from './budgetIntent.ts'
 
 declare const process: { exit(code?: number): never }
@@ -68,6 +68,12 @@ check('request ids are unique and allowed', /^[A-Za-z0-9_-]{8,80}$/.test(request
 // A binding that is not the clicked row's must never be substituted: the body carries exactly what it was given.
 const other = intentBody({ ...base, binding: { as_of: '2026-11-03T04:59:00Z', sha256: OTHER } }, NOW)
 eq('a different binding is carried as given, never merged', other.source_binding.sha256, OTHER)
+
+eq('a 503 source is explained, not called a missing binding', humanError({ ok: false, status: 503, code: 'SOURCE_UNAVAILABLE', data: null }).includes('source is unavailable'), true)
+eq('an unintegrated route says so', humanError({ ok: false, status: 404, code: 'NOT_FOUND', data: null }).includes('not available on the running backend'), true)
+eq('an invalid field is named', humanError({ ok: false, status: 400, code: 'INVALID_PRESENTATION_FIELDS', data: null }).includes('does not accept'), true)
+check('a dropped reply never claims nothing was written', networkOutcomeUnknown(new TypeError('Failed to fetch')).includes('outcome is unknown'))
+check('and names the safe retry', /same request|replays/.test(networkOutcomeUnknown(new TypeError('Failed to fetch'))))
 
 console.log(`budgetIntent: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)
