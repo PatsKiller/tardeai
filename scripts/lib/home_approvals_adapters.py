@@ -92,6 +92,9 @@ def check_rerun_ci(record: Mapping[str, Any], *, run: Runner = _run_cli,
     if str(payload.get("headSha") or "") != str(facts.get("head_sha") or ""):
         return False, "This changed: the run is no longer on the head the lead asked about. The lead will re-ask."
     wanted = [str(job) for job in (facts.get("failed_job_ids") or []) if str(job).strip()]
+    if not wanted:
+        return False, ("This request does not name the failed jobs it would re-run, so nothing will be re-run. The lead "
+                       "will re-ask.")
     if wanted:
         jobs = {str(job.get("databaseId")): job for job in (payload.get("jobs") or []) if isinstance(job, dict)}
         for job_id in wanted:
@@ -102,7 +105,10 @@ def check_rerun_ci(record: Mapping[str, Any], *, run: Runner = _run_cli,
                 return False, (f"Job {job_id} is {job.get('conclusion') or 'not failed'}, so re-running it is not what "
                                f"the lead approved. The lead will re-ask.")
     if rerun_state is not None:
-        state = _load_reruns(Path(rerun_state))
+        state, error = _load_reruns(Path(rerun_state))
+        if error:
+            return False, (f"The re-run history could not be read ({error}), so the one-re-run rule cannot be proven. "
+                           f"The lead will re-ask.")
         already = int(state.get(str(facts.get("head_sha") or ""), 0))
         if already >= 1:
             return False, ("This head has already been re-run once; a second automatic re-run is not allowed. Fix the "
@@ -110,18 +116,25 @@ def check_rerun_ci(record: Mapping[str, Any], *, run: Runner = _run_cli,
     return True, ""
 
 
-def _load_reruns(path: Path) -> dict[str, int]:
+def _load_reruns(path: Path) -> tuple[dict[str, int], str]:
+    """Read the one-re-run-per-head ledger. A missing file is zero runs; a corrupt one is an error, never zero."""
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return {str(k): int(v) for k, v in (data or {}).items()}
-    except (OSError, ValueError, TypeError):
-        return {}
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}, ""
+    except OSError as exc:
+        return {}, f"{type(exc).__name__}: {exc}"
+    try:
+        data = json.loads(text)
+        return {str(k): int(v) for k, v in (data or {}).items()}, ""
+    except (ValueError, TypeError) as exc:
+        return {}, f"corrupt re-run history: {exc}"
 
 
 def record_rerun(path: Path, head_sha: str) -> None:
     """Count a consumed re-run for a head. Called by the execute adapter after the re-run is issued."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    state = _load_reruns(path)
+    state, _error = _load_reruns(path)
     state[str(head_sha)] = state.get(str(head_sha), 0) + 1
     path.write_text(json.dumps(state, indent=1, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -189,9 +202,15 @@ def check_install_schedule(record: Mapping[str, Any], *, unit_root: Optional[Pat
     if not source:
         return False, ("This request does not name the reviewed unit file, so its text cannot be proven unchanged. "
                        "The lead will re-ask.")
-    base = Path(source_root or os.environ.get("TRADEAI_REPO_ROOT") or ".")
+    base = Path(os.path.realpath(source_root or os.environ.get("TRADEAI_REPO_ROOT") or "."))
+    candidate = Path(os.path.realpath(str(base / str(source))))
+    if not candidate.is_relative_to(base):
+        return False, ("The reviewed unit file is outside the repository it must live in, so nothing will be "
+                       "installed. The lead will re-ask.")
+    if candidate.is_symlink() or not candidate.is_file():
+        return False, "The reviewed unit file is not a plain file inside the repository, so nothing will be installed."
     try:
-        actual = hashlib.sha256((base / str(source)).read_bytes()).hexdigest()
+        actual = hashlib.sha256(candidate.read_bytes()).hexdigest()
     except OSError:
         return False, "The reviewed unit file could not be read, so nothing will be installed. The lead will re-ask."
     if actual != wanted_sha:

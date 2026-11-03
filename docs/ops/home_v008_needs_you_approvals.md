@@ -60,6 +60,17 @@ A timeout or partial failure records **what was attempted**: action type, exact 
 `timed_out_unconfirmed` with `needs_reconciliation: true` — a join timeout does not stop work that is already running, so
 the board never claims it did. A per-request execution marker means it cannot be started again.
 
+A `Deadline` is handed to every executor: `deadline.check()` must be called immediately before each external action and
+`deadline.subprocess_timeout()` bounds a child call, so nothing *starts* after expiry. A deadline cannot un-issue an effect
+already sent, which is why a timeout is recorded as unconfirmed rather than stopped.
+
+The trip through a decision is bound to the card the operator saw: the confirm sheet passes `expected_binding` (the digest
+of the rendered request) and it is compared under the transition lock — a request edited between render and click is
+refused with `card_changed`. The lock is taken **before** the record is read and the record is re-read under it, so a
+paused decision cannot resume over one that already executed. Execution additionally requires the approval row to exist in
+the ledger (`no_recorded_approval` otherwise), so a record crafted on disk cannot run. Minting `server_context()` also
+requires the login to be on `config/cc_auth.yaml`'s operator allowlist.
+
 The execution boundary re-validates everything the approval relied on: the record's schema, its closed-list type, the
 hash of its immutable approval binding, and the executor's live-fact check a second time — a record that changed after
 approval stays OPEN with `blocked_reason` and nothing runs.

@@ -59,8 +59,9 @@ def test_a_gh_failure_is_fail_closed_with_a_plain_reason():
 
 
 def test_rerun_ci_binds_to_the_run_head():
-    record = {"id": "x", "type": "rerun_ci", "facts": {"run_id": 5, "head_sha": HEAD}}
-    assert ad.check_rerun_ci(record, run=_runner({"headSha": HEAD, "status": "completed"}))[0]
+    record = {"id": "x", "type": "rerun_ci", "facts": {"run_id": 5, "head_sha": HEAD, "failed_job_ids": [7]}}
+    assert ad.check_rerun_ci(record, run=_runner({"headSha": HEAD, "status": "completed",
+                                                  "jobs": [{"databaseId": 7, "conclusion": "failure"}]}))[0]
     ok, plain = ad.check_rerun_ci(record, run=_runner({"headSha": "a" * 40, "status": "completed"}))
     assert not ok and "no longer on the head" in plain
 
@@ -80,10 +81,11 @@ def test_rerun_ci_requires_the_named_jobs_to_still_be_failed():
 
 def test_rerun_ci_allows_exactly_one_per_head(tmp_path):
     state = tmp_path / "reruns.json"
-    record = {"id": "x", "type": "rerun_ci", "facts": {"run_id": 5, "head_sha": HEAD}}
-    assert ad.check_rerun_ci(record, run=_runner({"headSha": HEAD}), rerun_state=state)[0]
+    record = {"id": "x", "type": "rerun_ci", "facts": {"run_id": 5, "head_sha": HEAD, "failed_job_ids": [7]}}
+    jobs = [{"databaseId": 7, "conclusion": "failure"}]
+    assert ad.check_rerun_ci(record, run=_runner({"headSha": HEAD, "jobs": jobs}), rerun_state=state)[0]
     ad.record_rerun(state, HEAD)
-    ok, plain = ad.check_rerun_ci(record, run=_runner({"headSha": HEAD}), rerun_state=state)
+    ok, plain = ad.check_rerun_ci(record, run=_runner({"headSha": HEAD, "jobs": jobs}), rerun_state=state)
     assert not ok and "already been re-run once" in plain
 
 
@@ -185,11 +187,34 @@ def test_an_adapter_without_wiring_can_check_but_never_act(tmp_path):
         "undo": "u", "facts": {"pr": 2504, "head_sha": HEAD},
     }, requester={"session": "cc-deepseek-5"}, now=NOW)
     executor = ad.make_executor("merge_pr", run=_runner({"state": "OPEN", "headRefOid": HEAD}))
-    ctx = ha.server_context(principal="tailnet:operator", session="op", csrf_ok=True, listener="serve_proxy")
-    result = ha.decide(store, record["id"], ctx=ctx, actor="operator", decision="approve",
+    ctx = ha.server_context(principal="tailnet:john@jwwhiting.com", session="op", csrf_ok=True, listener="serve_proxy")
+    result = ha.decide(store, record["id"], ctx=ctx, actor="john@jwwhiting.com", decision="approve",
                        now=NOW,
                        executor=executor)
     assert result["state"] == "failed"
     attempted = result["result"]["attempted"]
     assert attempted["step_reached"] == "execute_refused_no_wiring"
     assert "no reviewed wiring" in result["result"]["plain"]
+
+
+def test_rerun_ci_requires_named_failed_jobs_and_a_readable_history(tmp_path):
+    record = {"id": "x", "type": "rerun_ci", "facts": {"run_id": 5, "head_sha": HEAD}}
+    ok, plain = ad.check_rerun_ci(record, run=_runner({"headSha": HEAD}))
+    assert not ok and "does not name the failed jobs" in plain
+    corrupt = tmp_path / "reruns.json"
+    corrupt.write_text("{not json")
+    with_ids = {"id": "x", "type": "rerun_ci",
+                "facts": {"run_id": 5, "head_sha": HEAD, "failed_job_ids": [7]}}
+    ok, plain = ad.check_rerun_ci(with_ids, run=_runner({"headSha": HEAD, "jobs": [
+        {"databaseId": 7, "conclusion": "failure"}]}), rerun_state=corrupt)
+    assert not ok and "re-run history could not be read" in plain
+
+
+def test_install_schedule_refuses_a_source_outside_the_repository(tmp_path):
+    record, unit_root, registry, repo = _install_fixture(tmp_path)
+    outside = tmp_path / "outside.service"
+    outside.write_text("[Unit]\nDescription=demo\n")
+    escaped = {"facts": dict(record["facts"], source_path="../outside.service",
+                             file_sha256=hashlib.sha256(outside.read_bytes()).hexdigest())}
+    ok, plain = ad.check_install_schedule(escaped, unit_root=unit_root, registry_path=registry, source_root=repo)
+    assert not ok and "outside the repository" in plain

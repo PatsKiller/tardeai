@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import stat
+import threading
 import time
 import sys
 from datetime import datetime, timedelta, timezone
@@ -73,11 +74,11 @@ class Recorder:
         return ha.CallbackExecutor(revalidate, execute)
 
 
-def _ctx(principal="tailnet:operator", csrf_ok=True, session="operator-cc", listener="serve_proxy"):
+def _ctx(principal="tailnet:john@jwwhiting.com", csrf_ok=True, session="operator-cc", listener="serve_proxy"):
     return ha.server_context(principal=principal, session=session, csrf_ok=csrf_ok, listener=listener)
 
 
-def _decide(store, request_id, *, actor="operator", ctx=None, executor=None, decision="approve", note="", now=NOW,
+def _decide(store, request_id, *, actor="john@jwwhiting.com", ctx=None, executor=None, decision="approve", note="", now=NOW,
             timeout_s=120.0):
     return ha.decide(store, request_id, ctx=_ctx() if ctx is None else ctx, actor=actor, decision=decision,
                      note=note, now=now, executor=executor, timeout_s=timeout_s)
@@ -88,7 +89,7 @@ def test_a_plain_operator_context_cannot_be_constructed_by_a_client(tmp_path):
     store = _store(tmp_path)
     record = _ask(store)
     with pytest.raises(ha.Refused) as caught:
-        ha.OperatorContext(principal="tailnet:operator", session="x", csrf_ok=True,
+        ha.OperatorContext(principal="tailnet:john@jwwhiting.com", session="x", csrf_ok=True,
                            listener="serve_proxy", _seal=None)  # type: ignore[arg-type]
     assert caught.value.code == "server_context_required"
     assert caught.value.plain  # the card gets a sentence, not a code
@@ -100,7 +101,7 @@ def test_decide_refuses_without_a_server_context(tmp_path):
     record = _ask(store)
     for bad in (None, {"principal": "operator", "csrf_ok": True}, True):
         with pytest.raises(ha.Refused) as caught:
-            ha.decide(store, record["id"], ctx=bad, actor="operator", decision="approve", now=NOW)  # type: ignore[arg-type]
+            ha.decide(store, record["id"], ctx=bad, actor="john@jwwhiting.com", decision="approve", now=NOW)  # type: ignore[arg-type]
         assert caught.value.code == "server_context_required"
         assert caught.value.plain
     stored = store.get(record["id"])
@@ -124,9 +125,9 @@ def test_an_unverified_operator_session_or_csrf_is_refused(tmp_path):
 def test_the_requester_identity_cannot_decide_its_own_request(tmp_path):
     store, rec = _store(tmp_path), Recorder()
     # The asking identity is the operator login itself: the only way this rail is reachable once actor == principal.
-    record = ha.create(store, _payload(), requester={"session": "operator", "actor": "operator"}, now=NOW)
+    record = ha.create(store, _payload(), requester={"session": "john@jwwhiting.com", "actor": "john@jwwhiting.com"}, now=NOW)
     with pytest.raises(ha.Refused) as caught:
-        _decide(store, record["id"], actor="operator", executor=rec.executor())
+        _decide(store, record["id"], actor="john@jwwhiting.com", executor=rec.executor())
     assert caught.value.code == "approver_is_requester"
     assert rec.executed == 0
 
@@ -265,7 +266,7 @@ def test_execute_is_idempotent_by_id(tmp_path):
     store, rec = _store(tmp_path), Recorder()
     record = _ask(store)
     done = _decide(store, record["id"], executor=rec.executor())
-    again = ha.execute(store, done, actor="operator", now=NOW, executor=rec.executor())
+    again = ha.execute(store, done, actor="john@jwwhiting.com", now=NOW, executor=rec.executor())
     assert again["state"] == "executed" and rec.executed == 1
 
 
@@ -340,11 +341,11 @@ def test_a_decline_is_recorded_and_runs_nothing(tmp_path):
 def test_a_question_is_recorded_without_deciding_anything(tmp_path):
     store = _store(tmp_path)
     record = _ask(store)
-    asked = ha.question(store, record["id"], actor="operator", note="Which head is reviewed?", now=NOW)
+    asked = ha.question(store, record["id"], actor="john@jwwhiting.com", note="Which head is reviewed?", now=NOW)
     assert asked["state"] == "open" and asked["question"]["note"] == "Which head is reviewed?"
     assert json.loads(store.ledger.read_text().splitlines()[-1])["event"] == "question"
     with pytest.raises(ha.Refused) as caught:
-        ha.question(store, record["id"], actor="operator", note="  ", now=NOW)
+        ha.question(store, record["id"], actor="john@jwwhiting.com", note="  ", now=NOW)
     assert caught.value.code == "question_empty"
 
 
@@ -455,7 +456,7 @@ def test_decline_expiry_and_a_question_are_published(tmp_path):
     assert [r["event"] for r in _events(store) if r["id"] == first["id"]][-1] == "declined"
 
     second = _ask(store)
-    ha.question(store, second["id"], actor="operator", note="which head?", now=NOW)
+    ha.question(store, second["id"], actor="john@jwwhiting.com", note="which head?", now=NOW)
     assert [r["event"] for r in _events(store) if r["id"] == second["id"]][-1] == "updated"
     assert "updated" in OPEN_EVENTS
 
@@ -500,7 +501,7 @@ def test_a_record_tampered_after_approval_never_reaches_an_executor(tmp_path):
     tampered["facts"] = {"pr": 1, "head_sha": "f" * 40}
     store.put(tampered)
     with pytest.raises(ha.Refused) as caught:
-        ha.execute(store, tampered, actor="operator", now=NOW, executor=rec.executor())
+        ha.execute(store, tampered, actor="john@jwwhiting.com", now=NOW, executor=rec.executor())
     assert caught.value.code in {"binding_mismatch", "record_invalid"}
     assert rec.executed == 0
     assert store.get(record["id"])["state"] == "open"
@@ -581,7 +582,7 @@ def test_a_timed_out_action_is_unconfirmed_and_cannot_be_restarted(tmp_path):
         calls["n"] += 1
         return {"ok": True}
 
-    again = ha.execute(store, result, actor="operator", now=NOW,
+    again = ha.execute(store, result, actor="john@jwwhiting.com", now=NOW,
                        executor=ha.CallbackExecutor(lambda r: (True, ""), counting))
     assert again["state"] == "failed" and calls["n"] == 0          # settled: never restarted
     assert (store.requests_dir / f"{record['id']}.executed").exists()  # the marker that blocks a restart
@@ -600,7 +601,7 @@ def test_a_false_result_is_recorded_as_failed_with_a_digest_row(tmp_path):
 
 def test_an_agent_or_unauthenticated_listener_cannot_mint_a_context(tmp_path):
     for principal, listener in (("agent:other-worker", "serve_proxy"), ("service", "serve_proxy"),
-                                ("tailnet:operator", "cli"), ("", "serve_proxy")):
+                                ("tailnet:john@jwwhiting.com", "cli"), ("", "serve_proxy")):
         with pytest.raises(ha.Refused) as caught:
             ha.server_context(principal=principal, session="x", csrf_ok=True, listener=listener)
         assert caught.value.code == "operator_session_required"
@@ -623,3 +624,117 @@ def test_the_cli_cannot_decide_even_with_its_flags(tmp_path, capsys):
     assert code == 2
     assert json.loads(capsys.readouterr().err)["code"] == "server_context_required"
     assert store.get(record["id"])["state"] == "open"
+
+
+# ── Codex's second-round boundaries ───────────────────────────────────────────────────────────────────────
+def test_a_login_outside_the_operator_allowlist_cannot_mint_a_context():
+    with pytest.raises(ha.Refused) as caught:
+        ha.server_context(principal="tailnet:someone-else@example.com", session="x", csrf_ok=True,
+                          listener="serve_proxy")
+    assert caught.value.code == "operator_session_required"
+
+
+def test_an_executor_that_respects_the_deadline_starts_no_effect_after_it_expires(tmp_path):
+    store = _store(tmp_path)
+    effects = []
+
+    def slow(record, actor, progress, deadline):
+        progress.reached("about_to_act")
+        time.sleep(0.2)
+        deadline.check()            # the adapter's contract: check immediately before every external action
+        effects.append("executed")  # must never be reached after expiry
+        return {"ok": True}
+
+    executor = ha.CallbackExecutor(lambda r: (True, ""), slow)
+    record = _ask(store)
+    result = _decide(store, record["id"], executor=executor, timeout_s=0.05)
+    assert result["state"] == "failed" and result["result"]["outcome"] == "timed_out_unconfirmed"
+    time.sleep(0.3)                  # let the worker reach its deadline check
+    assert effects == []
+
+
+def test_the_deadline_is_handed_to_the_executor_and_reports_expiry(tmp_path):
+    store = _store(tmp_path)
+    seen = {}
+
+    def quick(record, actor, progress, deadline):
+        seen["expired"] = deadline.expired()
+        seen["remaining"] = deadline.remaining()
+        return {"ok": True}
+
+    record = _ask(store)
+    result = _decide(store, record["id"], executor=ha.CallbackExecutor(lambda r: (True, ""), quick),
+                     timeout_s=5)
+    assert result["state"] == "executed" and seen["expired"] is False and seen["remaining"] > 0
+
+
+def test_a_card_that_changed_between_render_and_click_is_refused(tmp_path):
+    store = _store(tmp_path)
+    record = _ask(store)
+    with pytest.raises(ha.Refused) as caught:
+        ha.decide(store, record["id"], ctx=_ctx(), actor="john@jwwhiting.com", decision="approve",
+                  now=NOW, expected_binding="0" * 64)
+    assert caught.value.code == "card_changed"
+    assert store.get(record["id"])["state"] == "open"
+    ok = ha.decide(store, record["id"], ctx=_ctx(), actor="john@jwwhiting.com", decision="approve", now=NOW,
+                   expected_binding=ha._binding_of(store.get(record["id"])), executor=Recorder().executor())
+    assert ok["state"] == "executed"
+
+
+def test_a_paused_decision_cannot_overwrite_a_completed_one(tmp_path):
+    """The stale-decline race: the state must be read under the lock, so a paused decision cannot resume over a win."""
+    store = _store(tmp_path)
+    record = _ask(store)
+    started = threading.Event()
+    release = threading.Event()
+
+    def revalidate(record):
+        started.set()
+        release.wait(2.0)
+        return True, ""
+
+    def execute(record, actor, progress):
+        return {"ok": True}
+
+    slow = ha.CallbackExecutor(revalidate, execute)
+    errors = []
+
+    def decider():
+        try:
+            _decide(store, record["id"], executor=slow)
+        except ha.Refused as exc:
+            errors.append(exc.code)
+
+    thread = threading.Thread(target=decider)
+    thread.start()
+    assert started.wait(2.0)
+    with pytest.raises(ha.Refused) as caught:      # the second click hits the held lock
+        _decide(store, record["id"], decision="decline", executor=Recorder().executor())
+    assert caught.value.code == "decision_in_progress"
+    release.set()
+    thread.join(3.0)
+    assert errors == []
+    stored = store.get(record["id"])
+    assert stored["state"] == "executed" and stored["decision"] == "approve"
+
+
+def test_a_record_on_disk_without_a_ledger_approval_cannot_execute(tmp_path):
+    store = _store(tmp_path)
+    record = _ask(store)
+    forged = store.get(record["id"])
+    forged.update({"state": "approved", "binding": ha._binding_of(forged), "decision": "approve",
+                   "decided_by": "john@jwwhiting.com"})
+    store.put(forged)
+    with pytest.raises(ha.Refused) as caught:
+        ha.execute(store, forged, actor="john@jwwhiting.com", now=NOW, executor=Recorder().executor())
+    assert caught.value.code == "no_recorded_approval"
+    assert store.get(record["id"])["state"] == "open"
+
+
+def test_a_question_cannot_change_a_finished_request(tmp_path):
+    store = _store(tmp_path)
+    record = _ask(store)
+    _decide(store, record["id"], executor=Recorder().executor())
+    with pytest.raises(ha.Refused) as caught:
+        ha.question(store, record["id"], actor="john@jwwhiting.com", note="why?", now=NOW)
+    assert caught.value.code == "not_open"

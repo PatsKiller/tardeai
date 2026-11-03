@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import inspect
 import hashlib
 import json
 import os
@@ -80,6 +81,34 @@ STATES = ("open", "approved", "executing", "executed", "failed", "declined", "ex
 
 DEFAULT_TTL_HOURS = 24.0
 DEFAULT_EXECUTE_TIMEOUT_S = 120.0
+
+
+class Deadline:
+    """An enforceable deadline handed to the executor.
+
+    ``check()`` raises before an effect is started once the deadline has passed, and ``subprocess_timeout()`` gives the
+    remaining budget for a subprocess call. A deadline cannot un-issue a remote effect that has already been sent — the
+    contract is that an adapter calls ``check()`` immediately before every external action, so nothing *starts* late.
+    """
+
+    def __init__(self, seconds: float) -> None:
+        self.seconds = float(seconds)
+        self.started = time.monotonic()
+
+    def remaining(self) -> float:
+        return max(0.0, self.seconds - (time.monotonic() - self.started))
+
+    def expired(self) -> bool:
+        return self.remaining() <= 0.0
+
+    def check(self) -> None:
+        if self.expired():
+            raise Refused("deadline_exceeded",
+                          "The time allowed for this action ran out before it could start, so nothing was done.")
+
+    def subprocess_timeout(self, cap: float = 60.0) -> float:
+        self.check()
+        return max(0.1, min(float(cap), self.remaining()))
 TEXT_FIELDS = ("title", "why", "rule", "what_happens", "risk", "undo")
 
 
@@ -136,11 +165,40 @@ def server_context(*, principal: str, session: str = "", csrf_ok: bool, listener
         raise Refused("operator_session_required",
                       "Only the authenticated Command Center listener can decide a request. This call came from "
                       f"“{listener or '(none)'}”, so nothing was decided.")
+    if login.lower() not in allowed_logins():
+        raise Refused("operator_session_required",
+                      "That tailnet login is not on the operator allowlist, so nothing was decided.")
     return OperatorContext(principal=f"tailnet:{login}", session=str(session or ""), csrf_ok=bool(csrf_ok),
                            listener=str(listener), _seal=_SEAL)
 
 
 SERVE_LISTENER = "serve_proxy"
+CC_AUTH_REL = Path("config/cc_auth.yaml")
+_ALLOWED_LOGINS_CACHE: Optional[frozenset[str]] = None
+
+
+def allowed_logins() -> frozenset[str]:
+    """The operator logins from config/cc_auth.yaml. Unreadable policy refuses rather than allowing everyone."""
+    global _ALLOWED_LOGINS_CACHE
+    if _ALLOWED_LOGINS_CACHE is None:
+        try:
+            import yaml
+            doc = yaml.safe_load(CC_AUTH_REL.read_text(encoding="utf-8")) or {}
+            rows = (((doc.get("cc_auth") or {}) if isinstance(doc, dict) else {}).get("allowed_logins")) or []
+            logins = frozenset(str(x).strip().lower() for x in rows if str(x).strip())
+        except (OSError, ValueError, ImportError) as exc:
+            raise Refused("operator_policy_unreadable",
+                          f"The operator login list could not be read ({exc}), so no decision can be authorised.") from exc
+        if not logins:
+            raise Refused("operator_policy_empty", "The operator login list is empty, so no decision can be authorised.")
+        _ALLOWED_LOGINS_CACHE = logins
+    return _ALLOWED_LOGINS_CACHE
+
+
+def reset_allowed_logins_cache() -> None:
+    """Tests only: forget the cached allowlist after editing the policy file."""
+    global _ALLOWED_LOGINS_CACHE
+    _ALLOWED_LOGINS_CACHE = None
 
 
 def _tailnet_login(principal: Any) -> str:
@@ -382,7 +440,7 @@ class Executor(Protocol):
     def revalidate(self, record: Mapping[str, Any], *, now: datetime) -> tuple[bool, str]: ...
 
     def execute(self, record: Mapping[str, Any], *, actor: str, now: datetime,
-                progress: Progress) -> dict[str, Any]: ...
+                progress: Progress, deadline: Deadline) -> dict[str, Any]: ...
 
 
 class RefuseAll:
@@ -393,7 +451,7 @@ class RefuseAll:
                        "The lead will wire it before offering the button.")
 
     def execute(self, record: Mapping[str, Any], *, actor: str, now: datetime,
-                progress: Progress) -> dict[str, Any]:
+                progress: Progress, deadline: Deadline) -> dict[str, Any]:
         raise Refused("no_executor", "No executor is configured for this action yet.")
 
 
@@ -408,19 +466,37 @@ class CallbackExecutor:
 
     revalidate_fn: Callable[[Mapping[str, Any]], tuple[bool, str]]
     execute_fn: Callable[..., dict[str, Any]]
+    _arity: int = field(default=0, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        # Settle the handler's arity ONCE, before anything runs. There is no TypeError retry after a call: a handler
+        # that performed its effect and then raised TypeError must never be invoked twice.
+        try:
+            count = len([p for p in inspect.signature(self.execute_fn).parameters.values()
+                         if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)])
+        except (TypeError, ValueError):
+            count = 4
+        self._arity = min(max(count, 0), 4)
 
     def revalidate(self, record: Mapping[str, Any], *, now: datetime) -> tuple[bool, str]:
         return self.revalidate_fn(record)
 
     def execute(self, record: Mapping[str, Any], *, actor: str, now: datetime,
-                progress: Progress) -> dict[str, Any]:
-        return self.execute_fn(record, actor, progress)
+                progress: Progress, deadline: Deadline) -> dict[str, Any]:
+        if self._arity >= 4:
+            return self.execute_fn(record, actor, progress, deadline)
+        if self._arity == 3:
+            return self.execute_fn(record, actor, progress)
+        if self._arity == 2:
+            return self.execute_fn(record, actor)
+        return self.execute_fn(record)
 
 
 def two_arg(fn: Callable[[Mapping[str, Any], str], dict[str, Any]]) -> Callable[..., dict[str, Any]]:
     """Adapt a (record, actor) handler to the three-argument executor signature, once, before anything runs."""
 
-    def _adapted(record: Mapping[str, Any], actor: str, progress: Progress) -> dict[str, Any]:  # noqa: ARG001
+    def _adapted(record: Mapping[str, Any], actor: str, progress: Progress,  # noqa: ARG001
+                 deadline: Deadline) -> dict[str, Any]:  # noqa: ARG001
         return fn(record, actor)
 
     return _adapted
@@ -573,6 +649,28 @@ def _acquire(path: Path, code: str, plain: str) -> None:
     os.close(fd)
 
 
+def _has_recorded_approval(store: Store, request_id: str, binding: Any) -> bool:
+    """An execution is only allowed on evidence of an approval actually written to the ledger.
+
+    A record crafted directly on disk (state approved, self-computed binding) has no such row, so it cannot execute.
+    """
+    if not binding:
+        return False
+    try:
+        lines = store.ledger.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return False
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if (row.get("event") == "approved" and row.get("id") == request_id
+                and row.get("binding") == binding and row.get("approval_source") == "operator_session+csrf"):
+            return True
+    return False
+
+
 def _release(path: Path) -> None:
     with contextlib.suppress(OSError):
         path.unlink()
@@ -604,8 +702,15 @@ def decide(
     now: Optional[datetime] = None,
     executor: Optional[Executor] = None,
     timeout_s: float = DEFAULT_EXECUTE_TIMEOUT_S,
+    expected_binding: Optional[str] = None,
 ) -> dict[str, Any]:
-    """The single decision entry point. Server-only (``ctx``), and it owns all three rails so no caller can skip them."""
+    """The single decision entry point. Server-only (``ctx``), and it owns all three rails so no caller can skip them.
+
+    The transition lock is taken **before** the record is read, and the record is re-read under it: a decision that
+    paused while another click executed must not resume against the state it saw on the way in and overwrite a terminal
+    row. ``expected_binding`` is the digest of the card the operator actually saw (B passes it from the confirm sheet);
+    it is compared under the lock, so a request edited between render and click is refused instead of executed.
+    """
     moment = _utc(now)
     context = _check_context(ctx)
     login = _tailnet_login(context.principal)
@@ -613,6 +718,20 @@ def decide(
         raise Refused("actor_not_authenticated",
                       "The name recorded for this decision must be the operator identity the server verified; this "
                       "call named someone else, so nothing was decided.")
+    decision_claim = store.requests_dir / f"{request_id}.deciding"
+    _acquire(decision_claim, "decision_in_progress",
+             "This request is already being decided, so it was not decided twice.")
+    try:
+        return _decide_locked(store, request_id, context=context, actor=actor, decision=decision, note=note,
+                              moment=moment, executor=executor, timeout_s=timeout_s,
+                              expected_binding=expected_binding)
+    finally:
+        _release(decision_claim)
+
+
+def _decide_locked(store: Store, request_id: str, *, context: OperatorContext, actor: str, decision: str,
+                   note: str, moment: datetime, executor: Optional[Executor], timeout_s: float,
+                   expected_binding: Optional[str]) -> dict[str, Any]:
     record = store.require(request_id)
     choice = str(decision or "").strip().lower()
     if choice not in ("approve", "decline"):
@@ -644,10 +763,11 @@ def decide(
                       "This request expired, so nothing was approved; the lead will ask again.")
 
     kind = _validate_record(record)
-    decision_claim = store.requests_dir / f"{request_id}.deciding"
-    _acquire(decision_claim, "decision_in_progress",
-             "This request is already being decided, so it was not decided twice.")
-    try:
+    if expected_binding and str(expected_binding) != _binding_of(record):
+        raise Refused("card_changed",
+                      "This card changed since it was shown to you, so nothing was decided. Open Home and check it "
+                      "again.")
+    if True:
         if choice == "decline":
             at = _iso(moment)
             record.update({"state": "declined", "decision": "decline", "decided_by": actor, "decided_at": at,
@@ -687,8 +807,6 @@ def decide(
         publish_event(store, record, "approved")
         return execute(store, record, actor=actor, now=moment, executor=bridge, timeout_s=timeout_s,
                        binding=binding)
-    finally:
-        _release(decision_claim)
 
 
 def execute(store: Store, record: Mapping[str, Any], *, actor: str, now: Optional[datetime] = None,
@@ -732,6 +850,12 @@ def execute(store: Store, record: Mapping[str, Any], *, actor: str, now: Optiona
                       "was executed. The lead will re-ask.")
     if current.get("state") not in ("approved", "executing"):
         raise Refused("not_approved", f"This request is {current.get('state')}, so there is nothing to execute.")
+    if not _has_recorded_approval(store, rid, current.get("binding")):
+        current.update({"state": "open", "blocked_reason":
+                        "There is no recorded operator approval for this request, so nothing was executed."})
+        store.put(current)
+        raise Refused("no_recorded_approval",
+                      "This request has no recorded operator approval in the ledger, so nothing was executed.")
 
     exec_claim = store.requests_dir / f"{rid}.executed"
     _acquire(exec_claim, "already_executing",
@@ -756,10 +880,11 @@ def execute(store: Store, record: Mapping[str, Any], *, actor: str, now: Optiona
 
     def _run() -> None:
         try:
-            box["result"] = bridge.execute(current, actor=actor, now=moment, progress=progress)
+            box["result"] = bridge.execute(current, actor=actor, now=moment, progress=progress, deadline=deadline)
         except BaseException as exc:  # noqa: BLE001 - reported through the receipt, never swallowed
             box["error"] = exc
 
+    deadline = Deadline(float(timeout_s))
     worker = threading.Thread(target=_run, name=f"home-approvals-{rid}", daemon=True)
     started = time.monotonic()
     worker.start()
@@ -823,6 +948,9 @@ def question(store: Store, request_id: str, *, actor: str, note: str, now: Optio
     if not text:
         raise Refused("question_empty", "A question needs words the lead can answer.")
     record = store.require(request_id)
+    if record.get("state") not in ("open", "approved"):
+        raise Refused("not_open",
+                      f"This request is already {record.get('state')}, so a question cannot change it.")
     record["question"] = {"at": _iso(moment), "by": str(actor or ""), "note": text}
     store.put(record)
     _append_jsonl(store.ledger, {"schema": RECEIPT_SCHEMA, "event": "question", "at": record["question"]["at"],
@@ -838,6 +966,8 @@ def expire_due(store: Store, *, now: Optional[datetime] = None) -> list[dict[str
     for record in store.all():
         if record.get("state") != "open":
             continue
+        if (store.requests_dir / f"{record['id']}.deciding").exists():
+            continue  # a decision is in flight under its lock; expiry must not race it
         try:
             if moment < _parse(record.get("expires_at")):
                 continue
