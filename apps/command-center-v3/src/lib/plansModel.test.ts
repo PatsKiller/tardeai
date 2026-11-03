@@ -1,6 +1,6 @@
 // Plans page model: the read-only registry view, in the operator's words.
 // Runs in the CC-v3 build: node --experimental-strip-types src/lib/plansModel.test.ts
-import {claimHref, planFrom, plansFrom, prUrl, statusWord, stepSummary} from './plansModel.ts'
+import {claimHref, pickedUp, planFrom, plansFrom, prUrl, statusWord, stepSummary} from './plansModel.ts'
 declare const process: {exit(code?: number): never}
 function fail(m: string): never { console.log(`  [FAIL] ${m}`); process.exit(1) }
 let n = 0
@@ -34,5 +34,14 @@ eq(claimHref({id: 'x'}), null, 'no claim')
 
 eq(planFrom({schema: 'PlanRegistryView@v1', plan: row})?.id, row.id, 'detail plan')
 eq(planFrom({schema: 'Other@v1', plan: row}), null, 'detail wrong schema')
+
+// A linked plan keeps status "approved" (the registry's link() does not move it), so ownership must come
+// from the links, not the status word.
+ok(pickedUp({...row, status: 'approved'}), 'a linked plan is picked up')
+ok(!pickedUp({...row, claim: undefined, branch: undefined, pr: undefined}), 'an unlinked plan is not picked up')
+eq(statusWord('approved', {...row, status: 'approved'}), 'Approved · picked up', 'linked approved reads picked up')
+eq(statusWord('approved', {...row, status: 'approved', claim: undefined, branch: undefined, pr: undefined}),
+   'Approved — nobody has picked it up', 'unlinked approved keeps the warning')
+eq(statusWord('approved'), 'Approved — nobody has picked it up', 'status-only call is unchanged')
 
 console.log(`plansModel: ${n} checks passed`)
