@@ -108,22 +108,33 @@ def _raw_threshold_present(policy: dict, key: str) -> bool:
 def _threshold(policy: dict, key: str) -> Optional[float]:
     """Read one T1 threshold from any of the shapes the policy may use, never a built-in number.
 
-    Accepted (first present wins): ``materiality.t1.<key>``, ``tiers.T1.<key>``,
-    ``materiality_t1_<key>``. ``None`` means "the policy does not tell us" and the caller goes loud.
-    A non-finite configured value (NaN/inf) is unusable and treated the same as absent.
+    Accepted (FIRST PRESENT PATH WINS): ``materiality.t1.<key>``, ``tiers.T1.<key>``,
+    ``materiality_t1_<key>``. An ALIAS must not hide an invalid primary (cx3 R5-F1): when the
+    first configured path is present but null/inf/unusable, that dimension is unusable and the
+    caller resolves loud — we never fall through to a later alias for a trustworthy number.
+    ``None`` therefore means "the policy does not tell us a usable value".
     """
-    candidates = []
+    present: list = []
     try:
-        candidates.append(policy.get("materiality", {}).get("t1", {}).get(key))
-        candidates.append(policy.get("tiers", {}).get("T1", {}).get(key))
-        candidates.append(policy.get(f"materiality_t1_{key}"))
+        materiality = policy.get("materiality", {})
+        if isinstance(materiality, dict):
+            primary = materiality.get("t1", {})
+            if isinstance(primary, dict) and key in primary:
+                present.append(primary[key])
+        tiers = policy.get("tiers", {})
+        if isinstance(tiers, dict):
+            alias = tiers.get("T1", {})
+            if isinstance(alias, dict) and key in alias:
+                present.append(alias[key])
+        flat = f"materiality_t1_{key}"
+        if flat in policy:
+            present.append(policy[flat])
     except (AttributeError, TypeError):
         pass
-    for value in candidates:
-        number = _finite(value)
-        if number is not None and number > 0:
-            return number
-    return None
+    if not present:
+        return None
+    number = _finite(present[0])          # the FIRST PRESENT path decides, usable or not
+    return number if number is not None and number > 0 else None
 
 
 def resolve_tier(case: dict, *, policy: Optional[dict] = None) -> tuple[str, str]:

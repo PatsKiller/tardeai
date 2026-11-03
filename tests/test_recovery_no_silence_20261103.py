@@ -29,6 +29,7 @@ COVERS = ["scripts/lib/recovery_notify.py", "scripts/telegram_alert_router.py", 
 def _isolated_recovery_ledger(tmp_path, monkeypatch):
     """Every test writes its page ledger under tmp_path, never the real data/runtime file."""
     monkeypatch.setattr(router, "_RECOVERY_T1_PAGE_PATH", tmp_path / "recovery_t1_pages.jsonl")
+    monkeypatch.setattr(router, "_RECOVERY_CLAIM_OWNERS", {}, raising=False)
 
 POLICY = {"materiality": {"t1": {"loss_usd": 10000, "weight_pct": 3.0}}}
 
@@ -376,6 +377,75 @@ def test_an_explicit_consumer_still_owns_the_bound(monkeypatch, tmp_path):
     assert router.should_send_telegram(msg, consume=True) is True
     assert router.should_send_telegram(msg) is False           # in flight: the preview says not now
     assert router.should_send_telegram(msg, consume=True) is False
+
+
+def test_an_unusable_primary_threshold_is_not_hidden_by_an_alias(monkeypatch, tmp_path):
+    """cx3 R5-F1: the first PRESENT policy path decides; an alias must not rescue a null primary."""
+    facts = dict(realized_loss_usd=-50, pre_exit_weight_pct=0.5)   # below the alias thresholds
+    primary_null = {"materiality": {"t1": {"loss_usd": None, "weight_pct": 3.0}},
+                    "tiers": {"T1": {"loss_usd": 100}}}
+    tier, why = rn.resolve_tier(_case(**facts), policy=primary_null)
+    assert tier == "T1" and "unusable" in why
+    primary_inf = {"materiality": {"t1": {"loss_usd": float("inf"), "weight_pct": 3.0}},
+                   "tiers": {"T1": {"loss_usd": 100}}}
+    assert rn.resolve_tier(_case(**facts), policy=primary_inf)[0] == "T1"
+    assert router.should_send_telegram(rn.build_message(_case(case_id="spcx-alias", **facts))) is True
+    # control: with no primary at all the alias IS the policy and may decide T2
+    alias_only = {"tiers": {"T1": {"loss_usd": 100, "weight_pct": 3.0}}}
+    assert rn.resolve_tier(_case(**facts), policy=alias_only)[0] == "T2"
+
+
+def test_a_resumed_claim_cannot_repage_after_a_peer_delivered(monkeypatch, tmp_path):
+    """cx3 R5-F2: the terminal check must run WHILE HOLDING the lock, not only before it.
+
+    Deterministic interleaving: A reads "absent" before the lock and pauses; B claims, invokes
+    the sender, records delivered and releases; A resumes on its stale read. A must not page.
+    """
+    import multiprocessing as mp
+
+    ctx = mp.get_context("fork")            # the interleaving needs the forked module state
+    msg = rn.build_message(_case(case_id="spcx-resume-race"))
+    real_state = router._recovery_state
+    q: "mp.Queue" = ctx.Queue()
+    resume = ctx.Event()
+
+    def peer_a(seed):
+        seen = {"n": 0}
+
+        def stale(day, key):
+            seen["n"] += 1
+            if seen["n"] == 1:
+                seed.put("a-read")          # the pre-lock read happened, with a stale view
+                resume.wait(15)
+                return "absent"             # resume on what it saw before the peer worked
+            return real_state(day, key)
+
+        router._recovery_state = stale
+        seed.put(("a-claimed", router.recovery_t1_claim(msg)))
+
+    proc = ctx.Process(target=peer_a, args=(q,))
+    proc.start()
+    try:
+        assert q.get(timeout=20) == "a-read"
+        assert router.recovery_t1_claim(msg) is True        # B claims
+        assert router.recovery_t1_state(msg) == "claimed"
+        router.recovery_t1_mark_delivered(msg)              # B delivers and frees the lock
+        resume.set()
+        assert q.get(timeout=20) == ("a-claimed", False), "a stale resumer re-opened a delivered case"
+    finally:
+        resume.set()
+        proc.join(20)
+
+
+def test_a_release_cannot_reopen_another_claimants_case(monkeypatch, tmp_path):
+    """cx3 R5-F2: release is bound to ownership; a process without the claim cannot free it."""
+    msg = rn.build_message(_case(case_id="spcx-owner"))
+    assert router.recovery_t1_claim(msg) is True
+    lock = router._recovery_claim_lock(router._budget_day(), router._recovery_case_key(msg))
+    router._RECOVERY_CLAIM_OWNERS.clear()            # this caller holds no claim on the case
+    router.recovery_t1_release(msg)
+    assert lock.exists()                              # the live claimant's lock is untouched
+    assert router.recovery_t1_state(msg) == "claimed"
 
 
 def test_a_failed_delivery_does_not_consume_the_day(monkeypatch, tmp_path):

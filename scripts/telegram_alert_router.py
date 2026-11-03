@@ -12,8 +12,10 @@ import logging
 import os
 import re
 import time
+import uuid
 import yaml
 from pathlib import Path
+from typing import Optional
 
 log = logging.getLogger(__name__)
 
@@ -663,6 +665,21 @@ def _recovery_claim_lock(day: str, key: str) -> Path:
     return _RECOVERY_T1_PAGE_PATH.parent / f".recovery_t1_claim.{day}.{digest}.lock"
 
 
+#: The lock-owner token this process holds per case-day. Release/deliver must not unlink a lock
+#: that belongs to another claimant (cx3 R5-F2: a stale actor must not reopen someone else's case).
+_RECOVERY_CLAIM_OWNERS: dict[str, str] = {}
+
+
+def _recovery_lock_owner(lock: Path) -> Optional[str]:
+    """The owner token recorded in a lock file, or None when it is missing/unreadable/legacy."""
+    try:
+        doc = json.loads(lock.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    owner = doc.get("owner") if isinstance(doc, dict) else None
+    return str(owner) if owner else None
+
+
 def recovery_t1_state(message: str) -> str:
     return _recovery_state(_budget_day(), _recovery_case_key(message))
 
@@ -673,17 +690,28 @@ def recovery_t1_claim(message: str) -> bool:
     Atomic across processes via O_CREAT|O_EXCL on a per-case lock; a claim left by a crash becomes
     retakeable after ``_RECOVERY_T1_CLAIM_STALE_SECONDS``. Claiming is not delivery: only
     :func:`recovery_t1_mark_delivered` consumes the day (cx-openai-2 F5a/F5b).
+
+    The terminal state is re-read WHILE HOLDING the lock (cx3 R5-F2). A process that saw "absent"
+    before a peer claimed, delivered and released would otherwise take the freed lock and page a
+    second time. The pre-lock read stays as a cheap fast path; it is never the authority.
     """
     day = _budget_day()
     key = _recovery_case_key(message)
     if _recovery_state(day, key) == "delivered":
         return False
     lock = _recovery_claim_lock(day, key)
+    owner = uuid.uuid4().hex
+    held = False
     for _attempt in (1, 2):
         try:
             lock.parent.mkdir(parents=True, exist_ok=True)
             fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            os.close(fd)
+            try:
+                os.write(fd, json.dumps({"pid": os.getpid(), "owner": owner,
+                                         "at": time.time()}).encode("utf-8"))
+            finally:
+                os.close(fd)
+            held = True
             break
         except FileExistsError:
             try:
@@ -692,12 +720,28 @@ def recovery_t1_claim(message: str) -> bool:
                 age = 0
             if age < _RECOVERY_T1_CLAIM_STALE_SECONDS:
                 return False
+            # Reclaim a stale lock ATOMICALLY: the rename can only succeed for one process, so two
+            # reclaimers cannot both walk away believing they own the case (R5-F2).
+            graveyard = lock.with_name(f"{lock.name}.stale.{os.getpid()}")
             try:
-                lock.unlink()
+                os.rename(lock, graveyard)
             except OSError:
                 return False
+            try:
+                os.unlink(graveyard)
+            except OSError:
+                pass
         except OSError:
             break  # cannot lock: fail-open, the page is loud
+    if _recovery_state(day, key) == "delivered":       # authoritative, while we hold the lock
+        if held:
+            try:
+                os.unlink(lock)
+            except OSError:
+                pass
+        return False
+    if held:
+        _RECOVERY_CLAIM_OWNERS[f"{day}\x00{key}"] = owner
     _recovery_append(day, key, "claimed")
     return True
 
@@ -705,22 +749,31 @@ def recovery_t1_claim(message: str) -> bool:
 def recovery_t1_mark_delivered(message: str) -> None:
     day = _budget_day()
     key = _recovery_case_key(message)
-    _recovery_append(day, key, "delivered")
-    try:
-        _recovery_claim_lock(day, key).unlink()
-    except OSError:
-        pass
+    _recovery_append(day, key, "delivered")            # delivered is terminal whoever sends
+    lock = _recovery_claim_lock(day, key)
+    owner = _RECOVERY_CLAIM_OWNERS.pop(f"{day}\x00{key}", None)
+    lock_owner = _recovery_lock_owner(lock)
+    if lock_owner is None or lock_owner == owner:
+        try:
+            lock.unlink()
+        except OSError:
+            pass
 
 
 def recovery_t1_release(message: str) -> None:
-    """A failed attempt releases the claim — unless another process already DELIVERED it (F5b)."""
+    """A failed attempt releases ITS claim — never another claimant's (cx3 R5-F2 / F5b)."""
     day = _budget_day()
     key = _recovery_case_key(message)
     if _recovery_state(day, key) == "delivered":
         return  # delivered is terminal; a stale resumer must not re-open the day
+    lock = _recovery_claim_lock(day, key)
+    owner = _RECOVERY_CLAIM_OWNERS.pop(f"{day}\x00{key}", None)
+    lock_owner = _recovery_lock_owner(lock)
+    if lock_owner is not None and lock_owner != owner:
+        return  # another live claimant owns this case; leave its lock and its state alone
     _recovery_append(day, key, "released")
     try:
-        _recovery_claim_lock(day, key).unlink()
+        lock.unlink()
     except OSError:
         pass
 
