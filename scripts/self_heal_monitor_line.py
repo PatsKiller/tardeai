@@ -10,7 +10,7 @@ the fixer state (data/runtime/self_heal_fixer_state.json) and the reviewed runbo
     detected 5 (last hour) · dispatched 0 · fixed 4 (last hour) · still blocked 27 · unresolved 10
     supervisor 2026-11-03T17:02:00Z: considered 5, actions 0, dispatched 0, skipped 5 (5 on daily model-call cap); model calls today 40/40
     watchers 2026-11-03T17:05:00Z: 10/10 without a gap; findings lane_health 16, health_tick 3, ...
-    verdict: DETECT alive · DECIDE starved by the daily model-call cap · FIX not scheduled (5 requests queued) — lane NOT alive end-to-end
+    verdict: NOT LIVE — DETECT alive · DECIDE starved by the daily model-call cap · FIX not scheduled (5 requests queued)
 
 Definitions (stable; do not "improve" silently):
   detected      incidents with opened_at inside the last 60 minutes
@@ -21,7 +21,8 @@ Verdict rules:
   DETECT alive       watcher receipt fresh (<= 15 min) and every watcher has no gap; else stale/gapped
   DECIDE starved     every skip in the supervisor's last cycle is "daily model-call cap"; else working
   FIX not scheduled  fix_requested jobs waiting in the fixer state (no schedule exists; 24.5 still gates the PR)
-  lane alive         detect and decide are OK and no fix queue is waiting
+  LIVE / NOT LIVE    the literal verdict: LIVE only when detect and decide are OK and no fix queue is waiting;
+                     NOT LIVE otherwise (dully, the hourly email can grep one token)
 """
 from __future__ import annotations
 
@@ -80,11 +81,15 @@ def build_block(*, index: dict, supervisor: dict, watchers: dict, calls: dict, p
     queued = sum(1 for job in (fixer.get("jobs") or {}).values() if job.get("state") == "fix_requested")
     day_cap = int((policy.get("policy") or {}).get("max_model_calls_per_day") or 40)
 
-    verdict = " · ".join([
+    alive = detect_ok and decide_ok and not queued
+    parts = [
         "DETECT alive" if detect_ok else "DETECT stale/gapped",
         "DECIDE working" if decide_ok else f"DECIDE starved by the {CAP_SKIP}",
         f"FIX not scheduled ({queued} requests queued)" if queued else "FIX no queue",
-    ]) + (" — lane alive end-to-end" if detect_ok and decide_ok and not queued else " — lane NOT alive end-to-end")
+    ]
+    # The literal verdict the hourly email relies on: LIVE only when detection is fresh, the
+    # decision cycle actually calls the model, and nothing is queued for an unscheduled fixer.
+    verdict = ("LIVE" if alive else "NOT LIVE") + " — " + " · ".join(parts)
 
     findings_text = ", ".join(f"{k} {v}" for k, v in sorted(findings.items(), key=lambda kv: -kv[1])) or "none"
     return [

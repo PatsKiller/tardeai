@@ -61,9 +61,8 @@ def test_starved_lane_reports_counts_and_the_cap():
     assert "considered 5, actions 0, dispatched 0, skipped 5 (5 on daily model-call cap)" in block[2]
     assert "model calls today 40/40" in block[2]
     assert block[3].startswith("watchers ") and "2/2 without a gap" in block[3]
-    assert "DECIDE starved by the daily model-call cap" in block[4]
-    assert "FIX not scheduled (5 requests queued)" in block[4]
-    assert block[4].endswith("lane NOT alive end-to-end")
+    assert block[4].startswith("verdict: NOT LIVE — DETECT alive · DECIDE starved by the daily model-call cap")
+    assert block[4].endswith("FIX not scheduled (5 requests queued)")
 
 
 def test_a_working_lane_says_alive_end_to_end():
@@ -72,7 +71,7 @@ def test_a_working_lane_says_alive_end_to_end():
                         policy={"policy": {"max_model_calls_per_day": 240}}, fixer=_fixer(n=0), now=NOW)
     assert "dispatched 2" in block[1]
     assert "skipped 0 (0 on daily model-call cap)" in block[2]
-    assert block[4] == ("verdict: DETECT alive · DECIDE working · FIX no queue — lane alive end-to-end")
+    assert block[4] == ("verdict: LIVE — DETECT alive · DECIDE working · FIX no queue")
 
 
 def test_a_watcher_gap_is_reported_not_hidden():
@@ -80,18 +79,18 @@ def test_a_watcher_gap_is_reported_not_hidden():
                         calls={"count": 0}, policy={"policy": {"max_model_calls_per_day": 240}},
                         fixer=_fixer(n=0), now=NOW)
     assert "1/2 without a gap" in block[3]
-    assert "DETECT stale/gapped" in block[4]
+    assert block[4].startswith("verdict: NOT LIVE — DETECT stale/gapped")
 
 
 def test_a_stale_watcher_receipt_is_not_alive():
     block = build_block(index=_index(), supervisor=_supervisor(skips=()),
                         watchers=_watchers(as_of=NOW - timedelta(hours=1)), calls={"count": 0},
                         policy={"policy": {"max_model_calls_per_day": 240}}, fixer=_fixer(n=0), now=NOW)
-    assert "DETECT stale/gapped" in block[4]
+    assert block[4].startswith("verdict: NOT LIVE — DETECT stale/gapped")
 
 
 def test_missing_inputs_still_produce_a_block():
     block = build_block(index={}, supervisor={}, watchers={}, calls={}, policy={}, fixer={}, now=NOW)
     assert "detected 0 (last hour)" in block[1] and "still blocked 0" in block[1]
     assert "model calls today ?/40" in block[2]
-    assert block[4].startswith("verdict: DETECT stale/gapped")
+    assert block[4].startswith("verdict: NOT LIVE — DETECT stale/gapped")
