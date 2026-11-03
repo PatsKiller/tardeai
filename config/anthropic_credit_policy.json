@@ -249,6 +249,17 @@
     "topic_curator"
   ],
   "activation_approved_by": "operator 2026-10-25: \"what disable enable and test call\"",
+  "emergency_process_caps": {
+    "_why": "Operator 2026-11-02 (verbatim): emergency incident clearing may use Anthropic credits on CHEAP models ('We can use Haiku, or lower model'; 'mid' = Sonnet 5.5 only when Haiku is not enough; NEVER Opus or Fable). Raise per-process caps ONLY for the incident/self-heal process, ONLY on those cheap tiers. This is NOT a global budget increase: total_cap_usd, daily_cap_usd and every other process cap are unchanged.",
+    "approved_by": "operator 2026-11-02 emergency-fix-models decision, points 1-4 (coordinator inbox 20261103T020403Z-OPERATOR-DECISION-emergency-fix-models.md)",
+    "per_process": {
+      "incident_supervisor": {
+        "bulk": "3.00",
+        "mid": "3.00"
+      }
+    },
+    "note": "Effective cap = max(the registry daily_cost_cap_usd, the value here) for the named process on that cheap tier only. Only bulk and mid may appear here; any other tier (standard/high/highest/long_form/premium) or a cheap tier remapped to an Opus/Fable model makes the policy invalid. The self-heal end of the loop runs headless Claude Code on DeepSeek (not this ledger), so it needs no entry."
+  },
   "ops_process_tiers": {
     "_why": "Operations processes pinned to a credit tier, read by anthropic_routing.tier_for after process_tiers. incident_supervisor: operator 2026-10-27 incident ledger + supervisor brief (\"Sonnet 5.5; <= $1/day; fallback OAuth grok read-only triage; never DeepSeek\"); the $1/day cap is daily_cost_cap_usd in config/llm_process_registry.json.",
     "incident_supervisor": "mid"
