@@ -257,6 +257,17 @@ def _action_took_effect(spec, tail):
     return len(acted) > 0 if isinstance(acted, list) else bool(acted)
 
 
+
+def _last_action_was_noop(rec) -> bool:
+    """The most recent runbook attempt reported that it acted on nothing."""
+    rows = [a for a in supervisor_attempts(rec)
+            if str(a.get("action") or "") not in ("triage", "triage_readonly", "fixer_dispatch")]
+    if not rows:
+        return False
+    last = max(rows, key=lambda a: str(a.get("at") or ""))
+    return bool((last.get("detail") or {}).get("no_op"))
+
+
 def fixer_request(rec: Mapping[str, Any], verdict: Mapping[str, Any], cfg: Mapping[str, Any]) -> dict:
     """An N8nCodeDefect@v1-shaped intake file for scripts/self_heal_fixer.py --incident (its own contract)."""
     src = rec.get("source") or {}
@@ -352,6 +363,27 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
         # 2. attempts cap
         if counted_attempts(rec) >= int(pol.get("max_attempts_per_incident", 3)):
             why = f"max attempts ({pol.get('max_attempts_per_incident', 3)}) reached"
+            if (apply and _last_action_was_noop(rec)
+                    and not any(a.get("action") == "fixer_dispatch" for a in supervisor_attempts(rec))):
+                # The cap was reached on runbooks that reported acting on nothing: that is a code or
+                # config defect, so it goes to the existing fixer path instead of a person (2026-11-03).
+                verdict = {"class": "code_defect",
+                           "action": "fix the code or configuration defect named in the evidence",
+                           "rationale": "runbook attempts exhausted without acting (no_op)"}
+                detail = {"provider": "cap_route", "class": "code_defect", "proposed": verdict["action"]}
+                req = fixer_request(rec, verdict, cfg)
+                reqp = d / "fixer_requests" / f"{iid}.json"
+                reqp.parent.mkdir(parents=True, exist_ok=True)
+                reqp.write_text(json.dumps(req, indent=1) + "\n", encoding="utf-8")
+                res = deps.fixer(reqp, True)
+                refs = [{"kind": "pr", "ref": str(u)} for u in res.get("prs") or []]
+                L.attempt(iid, actor=ACTOR, action="fixer_dispatch",
+                          result=f"fixer rc={res.get('rc')} admitted={res.get('admitted')} prs={res.get('prs')}",
+                          ok=res.get("rc") == 0,
+                          detail={**detail, "request": str(reqp), "fixer": res.get("summary")},
+                          fix_refs=refs or None, d=d, now=now)
+                out["dispatched"].append({"id": iid, "rc": res.get("rc"), "prs": res.get("prs")})
+                continue
             if apply:
                 rec = L.block(iid, actor=ACTOR, blocked_reason=why,
                               handoff="coordinator: read attempts[] and the evidence; fix by PR or record the operator decision", d=d, now=now)

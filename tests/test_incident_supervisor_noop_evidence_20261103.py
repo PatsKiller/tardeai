@@ -15,3 +15,20 @@ def test_a_real_act_is_not_a_no_op():
 
 def test_without_a_contract_rc_semantics_hold():
     assert S._action_took_effect({}, "not json") is True
+
+
+def _rec(*actions):
+    return {"attempts": [{"action": a, "actor": S.ACTOR, "at": f"2026-11-03T00:0{i}:00Z", "detail": d}
+                         for i, (a, d) in enumerate(actions)]}
+
+
+def test_the_last_runbook_noop_is_detected():
+    assert S._last_action_was_noop(_rec(("cron_self_heal", {"no_op": False}), ("cron_self_heal", {"no_op": True}))) is True
+
+
+def test_a_real_action_after_a_noop_is_not_a_noop():
+    assert S._last_action_was_noop(_rec(("cron_self_heal", {"no_op": True}), ("restart_unit", {"no_op": False}))) is False
+
+
+def test_triage_rows_do_not_count_as_actions():
+    assert S._last_action_was_noop(_rec(("cron_self_heal", {"no_op": True}), ("triage", {"no_op": True}))) is True
