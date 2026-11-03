@@ -81,6 +81,37 @@ def positions_rows(conn) -> list[dict[str, Any]]:
     return rows
 
 
+def run_binding(conn, rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Bind the export to one COMPLETE, PROMOTED positions_sync_runs receipt.
+
+    positions_current is only trustworthy as the output of a run that finished complete and was promoted, with
+    one row per expected account/position. A missing, partial or mixed receipt refuses the export rather than
+    replacing a full book with a partial one.
+    """
+    try:
+        cur = conn.cursor()
+        cur.execute("""SELECT run_id, finished_at, accounts_ok, position_rows
+                         FROM positions_sync_runs
+                        WHERE status = 'complete' AND promoted = TRUE
+                     ORDER BY finished_at DESC NULLS LAST LIMIT 1""")
+        row = cur.fetchone()
+    except Exception as exc:  # noqa: BLE001
+        raise ExportError(f"positions_sync_runs is unreachable: {type(exc).__name__}") from exc
+    if not row:
+        raise ExportError("no complete, promoted positions sync run to bind the export to")
+    run_id, finished_at, accounts_ok, position_rows = row
+    accounts = {r.get("account_key") for r in rows}
+    if not accounts_ok:
+        raise ExportError("the promoted run recorded no successful accounts")
+    missing = accounts - set(accounts_ok)
+    if missing:
+        raise ExportError(f"positions_current holds accounts the promoted run did not confirm: {sorted(missing)[:5]}")
+    if int(position_rows or 0) != len(rows):
+        raise ExportError(f"row count mismatch: run {run_id} wrote {position_rows}, positions_current has {len(rows)}")
+    return {"run_id": int(run_id), "finished_at": finished_at, "accounts": sorted(accounts_ok),
+            "position_rows": int(position_rows)}
+
+
 def quote_rows(conn) -> dict[str, dict[str, Any]]:
     """Latest extended-session quote per symbol (price, price time, session, prior close, day change)."""
     try:
@@ -155,8 +186,12 @@ def render_document(rows: Iterable[Mapping[str, Any]], *, generated_at: datetime
     day_change_known = False
     newest: datetime | None = None
     for row in rows:
-        qty = _number(row.get("qty")) or 0.0
+        # A partial book is worse than a refusal: a non-cash row with an unusable quantity or no market
+        # value cannot be rendered as a fact. Cash rows must still carry a value.
+        qty = _number(row.get("qty"))
         market_value = _number(row.get("broker_market_value"))
+        if qty is None or market_value is None:
+            raise ExportError(f"unusable position numerics for {row.get('account_key')}:{row.get('symbol')}")
         cost_basis = _number(row.get("cost_basis_total"))
         is_cash = bool(row.get("is_cash"))
         as_of = row.get("as_of")
@@ -182,6 +217,7 @@ def render_document(rows: Iterable[Mapping[str, Any]], *, generated_at: datetime
             "shares": qty,
             "quantity": qty,
             "cost_basis_total": cost_basis,
+            "cost_basis": cost_basis,   # served readers (value_and_pl) read this name
             "avg_cost": _number(row.get("avg_cost")),
             "market_value": market_value,
             "is_cash": is_cash,
@@ -221,14 +257,16 @@ def render_document(rows: Iterable[Mapping[str, Any]], *, generated_at: datetime
         if not is_cash and price is not None and prior is not None:
             day_change += qty * (price - prior)
             day_change_known = True
+    newest_stamp = _iso(newest) if newest is not None else None
     return {
         "schema": SCHEMA,
         "generated_at": _iso(generated_at),
+        "as_of": newest_stamp,
         "source": "positions_current",
         "gaps": gaps,
         "holdings": holdings,
         "portfolio_totals": {
-            "as_of": _iso(newest) if newest is not None else None,
+            "as_of": newest_stamp,
             "total_value": round(total_value, 2),
             "total_cash": round(total_cash, 2),
             "day_change": round(day_change, 2) if day_change_known else None,
@@ -263,19 +301,40 @@ def atomic_write(path: Path | str, text: str, *, mode: int = FILE_MODE) -> Path:
 
 
 # ── retention ──────────────────────────────────────────────────────────────────
+def _archive(directory: Path, path: Path) -> None:
+    """Retention moves an own snapshot into `archive/`; it never unlinks. Deletion belongs to the cleaner."""
+    target = directory / "archive"
+    target.mkdir(parents=True, exist_ok=True)
+    dest = target / path.name
+    if dest.exists():
+        dest = target / f"{path.stem}-{secrets.token_hex(3)}{path.suffix}"
+    os.replace(path, dest)
+
+
 def _prune(directory: Path, keep: int, prefix: str) -> list[Path]:
     files = sorted(directory.glob(f"{prefix}*.json"), key=lambda p: p.name)
     removed = files[:-keep] if keep > 0 else files
     for path in removed:
         try:
-            path.unlink()
+            _archive(directory, path)
         except OSError:
             pass
     return removed
 
 
+OWN_BACKUP_GLOBS = ("holdings-hourly-*.json", "holdings-daily-*.json")
+
+
+def _own_backups(directory: Path) -> list[Path]:
+    files: list[Path] = []
+    for pattern in OWN_BACKUP_GLOBS:
+        files.extend(directory.glob(pattern))
+    return sorted(files, key=lambda p: p.name)
+
+
 def _enforce_size_cap(directory: Path, cap: int, *, protect: Path | None = None) -> list[Path]:
-    files = sorted(directory.glob("*.json"), key=lambda p: p.stat().st_mtime)
+    # ONLY this module's own snapshots: an unrelated *.json in the backups directory is never a candidate.
+    files = sorted(_own_backups(directory), key=lambda p: p.stat().st_mtime)
     total = sum(p.stat().st_size for p in files if p.exists())
     removed: list[Path] = []
     for path in files:
@@ -285,7 +344,7 @@ def _enforce_size_cap(directory: Path, cap: int, *, protect: Path | None = None)
             continue
         try:
             size = path.stat().st_size
-            path.unlink()
+            _archive(directory, path)
             total -= size
             removed.append(path)
         except OSError:
@@ -312,14 +371,26 @@ def write_backups(text: str, backups: Path, *, now: datetime,
 def export(*, conn, store: Path | str | None = None, backups: Path | str | None = None,
            state_root: Path | str | None = None, now: datetime | None = None,
            hourly_keep: int = DEFAULT_HOURLY_KEEP, daily_keep: int = DEFAULT_DAILY_KEEP,
-           size_cap_bytes: int = DEFAULT_SIZE_CAP_BYTES) -> dict[str, Any]:
-    """Render from the DB and atomically replace the store. Never reads the store as input."""
+           size_cap_bytes: int = DEFAULT_SIZE_CAP_BYTES, dry_run: bool = False) -> dict[str, Any]:
+    """Render from the DB and atomically replace the store. Never reads the store as input.
+
+    `dry_run=True` runs the identical query/join/validation/binding path and stops before any write.
+    """
     now = now or datetime.now(timezone.utc)
     store = Path(store) if store is not None else store_path(state_root)
     backups = Path(backups) if backups is not None else store.parent / "backups"
     rows = positions_rows(conn)              # refusal happens here, before any write
     if not rows:
         raise ExportError("positions_current returned no rows; refusing to replace the store")
+    binding = run_binding(conn, rows)
+    # Refuse an aliased destination: the resolved store must stay under the resolved state root.
+    root_hint = Path(state_root).expanduser() if state_root is not None else default_state_root()
+    resolved_store, resolved_root = Path(os.path.realpath(store)), Path(os.path.realpath(root_hint))
+    if not resolved_store.is_relative_to(resolved_root):
+        raise ExportError(f"store escapes the state root: {resolved_store} not under {resolved_root}")
+    resolved_backups = Path(os.path.realpath(backups))
+    if not resolved_backups.is_relative_to(resolved_root):
+        raise ExportError(f"backups directory escapes the state root: {resolved_backups} not under {resolved_root}")
     symbols = [r.get("symbol") for r in rows]
     quotes = quote_rows(conn)
     profiles = profile_rows(conn, symbols)
@@ -327,17 +398,38 @@ def export(*, conn, store: Path | str | None = None, backups: Path | str | None 
     gaps = [g for g in (lookthrough_gap,) if g]
     document = render_document(rows, generated_at=now, quotes=quotes, profiles=profiles,
                                lookthrough=lookthrough, gaps=gaps)
+    document["sync_run_id"] = binding["run_id"]
     text = json.dumps(document, indent=1, sort_keys=True) + "\n"
-    atomic_write(store, text)
+    if dry_run:
+        return {"ok": True, "dry_run": True, "store": str(store), "bytes": len(text),
+                "holdings": len(document["holdings"]), "generated_at": document["generated_at"],
+                "sync_run_id": binding["run_id"]}
+    # Backup first: if the backup cannot be written or read back, the current file is never replaced.
     retention = write_backups(text, backups, now=now, hourly_keep=hourly_keep,
                               daily_keep=daily_keep, size_cap_bytes=size_cap_bytes)
+    if not Path(retention["hourly"]).exists() or Path(retention["hourly"]).stat().st_size == 0:
+        raise ExportError("backup was not durably written; the current store was left untouched")
+    atomic_write(store, text)
     return {"ok": True, "store": str(store), "bytes": len(text),
             "holdings": len(document["holdings"]), "generated_at": document["generated_at"],
+            "sync_run_id": binding["run_id"],
             "retention": retention}
 
 
 # ── freshness alert ───────────────────────────────────────────────────────────
 def export_age_minutes(store: Path | str, *, now: datetime) -> float | None:
+    """Age from the document's own generated_at clock (mtime only as a fallback): touching a stale file
+    must not make it read fresh."""
+    try:
+        document = json.loads(Path(store).read_text(encoding="utf-8"))
+        generated = document.get("generated_at")
+        if isinstance(generated, str) and generated:
+            born = datetime.fromisoformat(generated.replace("Z", "+00:00"))
+            if born.tzinfo is None:
+                born = born.replace(tzinfo=timezone.utc)
+            return round((now - born).total_seconds() / 60.0, 1)
+    except Exception:  # noqa: BLE001 - unreadable falls back to mtime, then to None
+        pass
     try:
         mtime = Path(store).stat().st_mtime
     except OSError:
@@ -346,8 +438,31 @@ def export_age_minutes(store: Path | str, *, now: datetime) -> float | None:
 
 
 def in_market_hours(now: datetime) -> bool:
+    """Official NYSE session bounds when the calendar is available; weekday/time only as a stated fallback."""
     et = now.astimezone(ET)
+    try:
+        from lib.cio_market_session import get_session_service  # type: ignore
+        service = get_session_service()
+        if not service.is_trading_day(et.date()):
+            return False
+        open_dt, close_dt, _early = service.official_bounds(et.date())
+        if open_dt is not None and close_dt is not None:
+            return open_dt <= et <= close_dt
+    except Exception:  # noqa: BLE001 - fall back to weekday arithmetic and say so in the alert result
+        pass
     return et.weekday() < 5 and MARKET_OPEN <= et.time() <= MARKET_CLOSE
+
+
+def consecutive_sync_failures(conn) -> int:
+    """How many of the two most recent finished sync runs failed (2 = the operator's page condition)."""
+    try:
+        cur = conn.cursor()
+        cur.execute("""SELECT status FROM positions_sync_runs
+                        WHERE finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 2""")
+        rows = [r[0] for r in cur.fetchall()]
+    except Exception:  # noqa: BLE001
+        return 0
+    return sum(1 for status in rows if status in ("failed", "partial"))
 
 
 def db_total_value(conn) -> float | None:
@@ -368,12 +483,15 @@ def maybe_alert_stale(*, store: Path | str | None = None, state_root: Path | str
     now = now or datetime.now(timezone.utc)
     store = Path(store) if store is not None else store_path(state_root)
     age = export_age_minutes(store, now=now)
+    document: dict[str, Any] = {}
     empty = True
     try:
         document = json.loads(Path(store).read_text(encoding="utf-8"))
         empty = not (document.get("holdings") or [])
     except Exception:  # noqa: BLE001 - missing/corrupt is the "not a valid export" case
         empty = True
+    sync_failures = consecutive_sync_failures(conn) if conn is not None else 0
+    sync_bad = sync_failures >= 2
     mismatch = None
     if conn is not None and not empty:
         db_total = db_total_value(conn)
@@ -381,16 +499,30 @@ def maybe_alert_stale(*, store: Path | str | None = None, state_root: Path | str
         if db_total is not None and isinstance(rendered, (int, float)):
             delta = abs(float(rendered) - db_total)
             mismatch = round(delta, 2) if delta > 1.0 else None
-    if not in_market_hours(now) and not empty and mismatch is None:
+    if not empty and mismatch is None and not sync_bad and not in_market_hours(now):
         return {"status": "outside_market_hours", "age_minutes": age, "sent": False}
-    if not empty and mismatch is None and age is not None and age <= max_age_minutes:
+    if not empty and mismatch is None and not sync_bad and age is not None and age <= max_age_minutes:
+        try:
+            (Path(store).parent / "backups" / ".alert-episode.json").unlink()
+        except OSError:
+            pass
         return {"status": "fresh", "age_minutes": age, "sent": False}
+    # Episode dedupe: one page per distinct episode, reset on recovery. Undelivered sends retry next run.
+    episode_file = Path(store).parent / "backups" / ".alert-episode.json"
+    episode = (f"{document.get('generated_at') or 'missing'}|empty={empty}|delta={mismatch}"
+               f"|sync_failures={sync_failures}|stale={age is not None and age > max_age_minutes}")
+    try:
+        if json.loads(episode_file.read_text(encoding="utf-8")).get("episode") == episode:
+            return {"status": "already_alerted", "age_minutes": age, "sent": False, "episode": episode}
+    except Exception:  # noqa: BLE001 - no prior episode
+        pass
     if send is None:
         try:
             from telegram_alert import send_telegram_outcome as send  # type: ignore
         except ModuleNotFoundError:
             from scripts.telegram_alert import send_telegram_outcome as send  # type: ignore
     why = ("the export is empty or unreadable" if empty else
+           f"{sync_failures} consecutive positions-sync runs failed" if sync_bad else
            f"totals differ from the DB by ${mismatch}" if mismatch is not None else
            f"the export is {'missing' if age is None else f'{age} min old'}")
     text = (f"*[{priority}] holdings export needs attention*\n"
@@ -400,6 +532,12 @@ def maybe_alert_stale(*, store: Path | str | None = None, state_root: Path | str
         delivered = outcome is True or (isinstance(outcome, Mapping) and outcome.get("delivered") is True)
     except Exception as exc:  # noqa: BLE001 — an alert failure must not mask the export state
         return {"status": "send_error", "age_minutes": age, "sent": False, "error_type": type(exc).__name__}
+    if delivered:
+        try:
+            episode_file.parent.mkdir(parents=True, exist_ok=True)
+            atomic_write(episode_file, json.dumps({"episode": episode, "at": _iso(now)}) + "\n")
+        except OSError:
+            pass
     return {"status": "stale_alerted", "age_minutes": age, "sent": bool(delivered)}
 
 
@@ -414,13 +552,20 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.dry_run:
-        conn = _connect()
+        # The SAME query/join/binding/validation path as --apply, stopping before any write.
+        store = Path(args.store) if args.store else store_path()
+        backups = Path(args.backups) if args.backups else store.parent / "backups"
         try:
-            rows = positions_rows(conn)
-            document = render_document(rows, generated_at=datetime.now(timezone.utc))
-        finally:
-            _close(conn)
-        print(json.dumps(document, indent=1, sort_keys=True))
+            conn = _connect()
+            try:
+                receipt = export(conn=conn, store=store, backups=backups, dry_run=True)
+            finally:
+                _close(conn)
+        except ExportError as exc:
+            print(f"holdings-export: REFUSED — {exc}", file=sys.stderr)
+            return 1
+        print(json.dumps(receipt, indent=1, sort_keys=True) if args.json else
+              f"holdings-export: dry run OK, {receipt['holdings']} rows, run {receipt['sync_run_id']}")
         return 0
 
     if not args.apply:
@@ -452,12 +597,18 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _connect():
-    """Read-only DB session from the runtime environment (no credential is written in code)."""
+    """Read-only, REPEATABLE READ session: every SELECT in one export sees one snapshot (no credential in code)."""
     from lib.cio_market_context_state import connect_trade_ai_readonly  # type: ignore
-    return connect_trade_ai_readonly()
+    conn = connect_trade_ai_readonly()
+    conn.set_session(isolation_level="REPEATABLE READ", readonly=True, autocommit=False)
+    return conn
 
 
 def _close(conn) -> None:
+    try:
+        conn.rollback()
+    except Exception:  # noqa: BLE001
+        pass
     try:
         conn.close()
     except Exception:  # noqa: BLE001

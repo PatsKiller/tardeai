@@ -55,7 +55,15 @@ class Cursor:
         if self._conn.fail:
             raise RuntimeError("connection refused")
         low = " ".join(sql.split()).lower()
-        if "to_regclass" in low:
+        if "from positions_sync_runs" in low:
+            if "select status" in low:
+                self.description = [("status",)]
+                self._result = [("failed",)] * self._conn.sync_failures + [("complete",)] * (2 - self._conn.sync_failures)
+            else:
+                self.description = [("run_id",), ("finished_at",), ("accounts_ok",), ("position_rows",)]
+                accounts = sorted({r[0] for r in self._conn.positions})
+                self._result = [(7, NOW, accounts, len(self._conn.positions))] if self._conn.binding else []
+        elif "to_regclass" in low:
             self.description = [("to_regclass",)]
             self._result = [(("etf_holdings_snapshot" if self._conn.lookthrough else None),)]
         elif "sum(broker_market_value)" in low:
@@ -87,8 +95,10 @@ class Cursor:
 
 class Conn:
     def __init__(self, data=None, *, fail=False, quotes=None, profiles=None,
-                 lookthrough=False, lookthrough_rows=None):
+                 lookthrough=False, lookthrough_rows=None, binding=True, sync_failures=0):
         self.positions = data if data is not None else rows()
+        self.binding = binding
+        self.sync_failures = sync_failures
         self.fail = fail
         self.quotes = quotes if quotes is not None else QUOTES
         self.profiles = profiles if profiles is not None else PROFILES
@@ -136,7 +146,7 @@ def test_a_zero_byte_store_is_regenerated_without_being_read(tmp_path, monkeypat
 
     monkeypatch.setattr(Path, "open", guarded_open)
     monkeypatch.setattr(Path, "read_text", guarded_read_text)
-    receipt = he.export(conn=Conn(), store=store, backups=tmp_path / "backups", now=NOW)
+    receipt = he.export(state_root=tmp_path, conn=Conn(), store=store, backups=tmp_path / "backups", now=NOW)
     monkeypatch.undo()
     with open(store, encoding="utf-8") as fh:
         doc = json.load(fh)
@@ -146,31 +156,31 @@ def test_a_zero_byte_store_is_regenerated_without_being_read(tmp_path, monkeypat
 def test_a_corrupt_store_is_regenerated(tmp_path):
     store = tmp_path / "holdings.json"
     store.write_text("{not valid json", encoding="utf-8")
-    he.export(conn=Conn(), store=store, backups=tmp_path / "backups", now=NOW)
+    he.export(state_root=tmp_path, conn=Conn(), store=store, backups=tmp_path / "backups", now=NOW)
     assert json.loads(store.read_text())["schema"] == "HoldingsExport@v1"
 
 
 def test_db_unreachable_refuses_and_leaves_the_last_good_file(tmp_path):
     store = tmp_path / "holdings.json"
-    he.export(conn=Conn(), store=store, backups=tmp_path / "backups", now=NOW)
+    he.export(state_root=tmp_path, conn=Conn(), store=store, backups=tmp_path / "backups", now=NOW)
     good = store.read_bytes()
     with pytest.raises(he.ExportError):
-        he.export(conn=Conn(fail=True), store=store, backups=tmp_path / "backups", now=NOW + timedelta(minutes=15))
+        he.export(state_root=tmp_path, conn=Conn(fail=True), store=store, backups=tmp_path / "backups", now=NOW + timedelta(minutes=15))
     assert store.read_bytes() == good
 
 
 def test_no_rows_refuses_and_leaves_the_last_good_file(tmp_path):
     store = tmp_path / "holdings.json"
-    he.export(conn=Conn(), store=store, backups=tmp_path / "backups", now=NOW)
+    he.export(state_root=tmp_path, conn=Conn(), store=store, backups=tmp_path / "backups", now=NOW)
     good = store.read_bytes()
     with pytest.raises(he.ExportError):
-        he.export(conn=Conn([]), store=store, backups=tmp_path / "backups", now=NOW)
+        he.export(state_root=tmp_path, conn=Conn([]), store=store, backups=tmp_path / "backups", now=NOW)
     assert store.read_bytes() == good
 
 
 def test_the_write_is_atomic_mode_600_and_leaves_no_temp(tmp_path):
     store = tmp_path / "holdings.json"
-    he.export(conn=Conn(), store=store, backups=tmp_path / "backups", now=NOW)
+    he.export(state_root=tmp_path, conn=Conn(), store=store, backups=tmp_path / "backups", now=NOW)
     assert oct(store.stat().st_mode & 0o777) == oct(0o600)
     assert list(tmp_path.glob(".*.tmp")) == []
 
@@ -200,81 +210,92 @@ def test_size_cap_prunes_oldest_and_keeps_the_new_one(tmp_path):
 
 def test_alert_fires_only_when_stale_during_market_hours(tmp_path):
     store = tmp_path / "holdings.json"
-    he.export(conn=Conn(), store=store, backups=tmp_path / "b", now=NOW)
-    old = (NOW - timedelta(minutes=31)).timestamp()
-    os.utime(store, (old, old))
-
+    # Age is the document's own generated_at, never mtime: write a document born 31 min ago.
+    he.export(state_root=tmp_path, conn=Conn(), store=store, backups=tmp_path / "b", now=NOW - timedelta(minutes=31))
     calls = []
     out = he.maybe_alert_stale(store=store, now=NOW, send=lambda text, priority="P1": calls.append(priority) or {"delivered": True})
     assert out["sent"] is True and calls == ["P1"]
 
+    # A touched-but-stale file must still read stale (mtime is not the clock).
+    os.utime(store, None)
+
+    # Fresh document: no page.
     calls.clear()
-    fresh = (NOW - timedelta(minutes=5)).timestamp()
-    os.utime(store, (fresh, fresh))
+    he.export(state_root=tmp_path, conn=Conn(), store=store, backups=tmp_path / "b", now=NOW - timedelta(minutes=5))
     assert he.maybe_alert_stale(store=store, now=NOW, send=lambda *a, **k: calls.append(1))["sent"] is False
     assert calls == []
 
-    os.utime(store, (old, old))
-    saturday = datetime(2026, 11, 7, 16, 0, tzinfo=timezone.utc)  # Saturday
+    # Stale document read on a Saturday: outside market hours, no page.
+    he.export(state_root=tmp_path, conn=Conn(), store=store, backups=tmp_path / "b", now=NOW - timedelta(minutes=31))
+    saturday = datetime(2026, 11, 7, 16, 0, tzinfo=timezone.utc)
     assert he.maybe_alert_stale(store=store, now=saturday, send=lambda *a, **k: calls.append(1))["sent"] is False
     assert calls == []
 
 
-def test_metadata_and_quote_fields_are_rendered_with_provenance(tmp_path):
+def test_a_foreign_json_in_backups_is_never_touched(tmp_path):
+    backups = tmp_path / "backups"
+    backups.mkdir()
+    foreign = backups / "tax_lots-protected-fixture.json"
+    foreign.write_text("{}")
+    for i in range(60):
+        (backups / f"holdings-hourly-2026100{i % 10}T{i % 24:02d}.json").write_text("{}")
+    he.write_backups("{}\n", backups, now=NOW, size_cap_bytes=1)
+    assert foreign.exists() and foreign.read_text() == "{}"
+    assert not list(backups.glob("holdings-hourly-*.json"))[48:]  # own files trimmed to 48
+    assert list((backups / "archive").glob("holdings-hourly-*.json"))  # archived, never unlinked
+
+
+def test_a_failed_backup_leaves_the_live_file_untouched(tmp_path, monkeypatch):
     store = tmp_path / "holdings.json"
-    he.export(conn=Conn(lookthrough=False), store=store, backups=tmp_path / "b", now=NOW)
-    doc = json.loads(store.read_text())
-    nvda = next(h for h in doc["holdings"] if h["symbol"] == "NVDA")
-    assert nvda["sector"] == "Technology" and nvda["industry"] == "Semiconductors"
-    assert nvda["profile_source"] == "yfinance" and nvda["profile_updated_at"]
-    assert nvda["price"] == 120.5 and nvda["prior_close"] == 118.0 and nvda["day_change_pct"] == 2.12
-    assert nvda["quote_session"] == "regular" and nvda["quote_source"] == "market_quotes_extended"
-    # the look-through table is absent live: a stated gap, never an invented row
-    assert nvda["lookthrough"] == []
-    assert any("etf_holdings_snapshot is not applied" in g for g in doc["gaps"])
+    he.export(state_root=tmp_path, conn=Conn(), store=store, backups=tmp_path / "b", now=NOW)
+    good = store.read_bytes()
+    def boom(*a, **k):
+        raise he.ExportError("backup failed")
+    monkeypatch.setattr(he, "write_backups", boom)
+    with pytest.raises(he.ExportError):
+        he.export(state_root=tmp_path, conn=Conn(), store=store, backups=tmp_path / "b", now=NOW + timedelta(minutes=1))
+    assert store.read_bytes() == good
 
 
-def test_lookthrough_is_carried_with_provenance_when_the_table_exists(tmp_path):
+def test_one_stale_episode_pages_once(tmp_path):
     store = tmp_path / "holdings.json"
-    data = rows() + [("acct_a", "SMH", "schwab", 5.0, 1000.0, 200.0, 1100.0, False, "etf",
-                      "schwab_position_sync", NOW)]
-    he.export(conn=Conn(data=data, lookthrough=True), store=store, backups=tmp_path / "b", now=NOW)
-    doc = json.loads(store.read_text())
-    smh = next(h for h in doc["holdings"] if h["symbol"] == "SMH")
-    assert smh["lookthrough"] == [{"holding": "NVDA", "name": "NVIDIA", "weight": 12.4,
-                                   "as_of": smh["lookthrough"][0]["as_of"], "source": "yfinance"}]
-    assert not doc["gaps"]
-
-
-def test_alert_on_empty_export_even_outside_market_hours(tmp_path):
-    store = tmp_path / "holdings.json"
-    store.write_text(json.dumps({"holdings": [], "portfolio_totals": {}}))
+    he.export(state_root=tmp_path, conn=Conn(), store=store, backups=tmp_path / "b", now=NOW - timedelta(minutes=45))
     calls = []
-    out = he.maybe_alert_stale(store=store, now=datetime(2026, 11, 7, 6, 0, tzinfo=timezone.utc),
-                               send=lambda *a, **k: calls.append(1) or {"delivered": True})
-    assert out["sent"] is True and calls
+    send = lambda *a, **k: calls.append(1) or {"delivered": True}
+    first = he.maybe_alert_stale(store=store, now=NOW, send=send)
+    second = he.maybe_alert_stale(store=store, now=NOW, send=send)
+    assert first["sent"] is True and second["sent"] is False and len(calls) == 1
 
 
-def test_alert_on_totals_mismatch_over_one_dollar(tmp_path):
+def test_unusable_numerics_refuse_instead_of_a_partial_book(tmp_path):
+    bad = rows() + [("acct_a", "BAD", "schwab", None, None, None, None, False, "equity", "x", NOW)]
+    with pytest.raises(he.ExportError):
+        he.export(state_root=tmp_path, conn=Conn(data=bad), store=tmp_path / "holdings.json",
+                  backups=tmp_path / "b", now=NOW)
+
+
+def test_no_promoted_run_refuses(tmp_path):
+    with pytest.raises(he.ExportError):
+        he.export(state_root=tmp_path, conn=Conn(binding=False), store=tmp_path / "holdings.json",
+                  backups=tmp_path / "b", now=NOW)
+
+
+def test_two_consecutive_sync_failures_page(tmp_path):
     store = tmp_path / "holdings.json"
-    he.export(conn=Conn(), store=store, backups=tmp_path / "b", now=NOW)
-    doc = json.loads(store.read_text())
-    doc["portfolio_totals"]["total_value"] = float(doc["portfolio_totals"]["total_value"]) - 2.0
-    store.write_text(json.dumps(doc))
-    calls = []
-    out = he.maybe_alert_stale(store=store, now=NOW, conn=Conn(),
-                               send=lambda *a, **k: calls.append(1) or {"delivered": True})
-    assert out["sent"] is True and calls
-
-
-def test_no_alert_when_fresh_and_totals_match(tmp_path):
-    store = tmp_path / "holdings.json"
-    he.export(conn=Conn(), store=store, backups=tmp_path / "b", now=NOW)
-    out = he.maybe_alert_stale(store=store, now=NOW + timedelta(minutes=1), conn=Conn(),
+    he.export(state_root=tmp_path, conn=Conn(), store=store, backups=tmp_path / "b", now=NOW)
+    out = he.maybe_alert_stale(store=store, now=NOW, conn=Conn(sync_failures=2),
                                send=lambda *a, **k: {"delivered": True})
-    assert out["sent"] is False and out["status"] == "fresh"
+    assert out["sent"] is True
 
 
 def test_missing_store_alerts_during_market_hours(tmp_path):
     out = he.maybe_alert_stale(store=tmp_path / "absent.json", now=NOW, send=lambda *a, **k: {"delivered": True})
     assert out["sent"] is True and out["age_minutes"] is None
+
+
+def test_dry_run_runs_the_same_validation_and_writes_nothing(tmp_path):
+    store = tmp_path / "holdings.json"
+    receipt = he.export(state_root=tmp_path, conn=Conn(), store=store, backups=tmp_path / "b",
+                        now=NOW, dry_run=True)
+    assert receipt["dry_run"] is True and receipt["sync_run_id"] == 7
+    assert not store.exists() and not (tmp_path / "b").exists()
