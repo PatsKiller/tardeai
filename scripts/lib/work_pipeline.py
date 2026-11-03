@@ -1558,7 +1558,7 @@ class WorkPipeline:
             "stage_label": dict(STAGE_LABEL),
             "stage_help": dict(STAGE_HELP),
             "summary": {**summarize(items),
-                        "in_flight": None if (src.get("source_gaps") or {}).get("claims") or item_limits.get("truncated") or (census or {}).get("open_truncated") else sum(bool(i["in_flight"]) for i in items),
+                        "in_flight": None if census is None or (src.get("source_gaps") or {}).get("claims") or item_limits.get("truncated") or (census or {}).get("open_truncated") else sum(bool(i["in_flight"]) for i in items),
                         "known_in_flight": sum(bool(i["in_flight"]) for i in items),
                         "needs_me": waiting.get("pending_count"), "known_needs_me": waiting.get("actionable_count")},
             "items": items,

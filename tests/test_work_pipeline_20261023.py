@@ -883,3 +883,23 @@ def test_open_census_overflow_is_named_without_extra_detail_calls(monkeypatch, c
     if overflow:
         assert any(g["source"] == "census" and "open_pr_limit_exceeded" in g["reason"]
                    for g in result["coordination"]["gaps"])
+
+
+@pytest.mark.parametrize("failed_list", ["open", "merged", "all"])
+@pytest.mark.parametrize("with_claim", [False, True])
+def test_first_census_failure_keeps_global_count_unknown_and_observed_claims(failed_list, with_claim):
+    def runner(argv):
+        if argv[:3] == ["gh", "pr", "list"]:
+            state = argv[argv.index("--state") + 1]
+            return (None, "synthetic source outage") if failed_list in (state, "all") else ("[]", None)
+        return json.dumps({"contexts": [], "sha": "a" * 40}), None
+    census = W.PrCensus(runner=runner, now=lambda: NOW)
+    census.kick(background=False)
+    pipeline = W.WorkPipeline(census=census, sources=lambda: {"claims": [claim()] if with_claim else [], "tasks": []},
+                              health=lambda: {}, now=lambda: NOW)
+    result = pipeline._build()
+    assert census.snapshot()[0] is None and result["sources"]["open_prs"] is None
+    assert result["summary"]["in_flight"] is None
+    assert result["summary"]["known_in_flight"] == int(with_claim)
+    assert len(result["items"]) == int(with_claim)
+    assert any(g["source"] == "census" for g in result["coordination"]["gaps"])
