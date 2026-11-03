@@ -135,20 +135,33 @@ def _parse_dt(value) -> datetime | None:
 
 
 def exit_price(case: Mapping[str, Any]) -> float | None:
-    """The exit price the recovery is measured against: the largest cluster exit, else the row's own field."""
+    """The exit price the recovery is measured against: the largest cluster exit, else the row's own field.
+
+    Piece A's ``RecoveryCase.to_dict()`` names the fill price ``price`` inside ``exits`` (``ExitFill.price``);
+    an older/looser row may carry ``exit_price`` there. Both are read so B consumes A's shape rather than
+    asking A to rename a field for it.
+    """
     direct = _num(case.get("exit_price") or case.get("last_exit_price"))
     if direct is not None:
         return direct
-    raw = case.get("exits_json")
     rows: Iterable[Any] = []
-    if isinstance(raw, str):
-        try:
-            rows = json.loads(raw or "[]")
-        except ValueError:
-            rows = []
-    elif isinstance(raw, (list, tuple)):
-        rows = raw
-    prices = [p for p in (_num((r or {}).get("exit_price")) for r in rows if isinstance(r, Mapping)) if p]
+    for key in ("exits", "exits_json"):
+        raw = case.get(key)
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw or "[]")
+            except ValueError:
+                raw = []
+        if isinstance(raw, (list, tuple)):
+            rows = raw
+            break
+    prices = []
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        price = _num(row.get("exit_price")) if row.get("exit_price") is not None else _num(row.get("price"))
+        if price:
+            prices.append(price)
     return max(prices) if prices else None
 
 

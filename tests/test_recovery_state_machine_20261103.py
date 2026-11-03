@@ -275,3 +275,19 @@ def test_a_pending_decision_row_is_date_open_but_still_reads_as_pending():
     gate = next(a for a in d.annotations if a["account"] == "schwab_roth_ira")
     assert gate["gate"] == "pending_operator_decision"
     assert gate["would_change_it"] == "your decision on the recovery card"
+
+
+def test_piece_a_case_shape_is_consumed_without_renaming_fields():
+    """A's RecoveryCase.to_dict() carries `exits` (ExitFill dicts with `price`) and `eligibility` as a list."""
+    a_case = {"case_key": "SPCX:acct", "symbol": "SPCX", "account": "schwab_taxable",
+              "state": "WATCHING", "materiality_tier": "T1",
+              "exits": [{"symbol": "SPCX", "price": 137.19, "shares": 200, "realized_pnl": -12770.0,
+                         "exit_date": "2026-10-30"}],
+              "eligibility": [{"account": "schwab_roth_ira", "eligible": True, "eligible_from": None,
+                               "reason": "ira eligible now"}],
+              "residual_pct_of_pre_exit": 14.3,
+              "residual_note": "200 of 1,400 shares remain after the 2026-10-30 exit (14.3%)"}
+    d = R.evaluate(a_case, snap(close=141.65), now=NOW)
+
+    assert R.exit_price(a_case) == 137.19
+    assert d.state == R.RECOVERING and d.eligible_accounts == ["schwab_roth_ira"]
