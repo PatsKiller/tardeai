@@ -405,9 +405,13 @@ def test_source_asof_is_oldest_bound_input_clock_not_arbitrary_restamp(producer)
     ctx['holdings']['holdings'][0]['broker_position_as_of_at'] = oldest.isoformat()
     out = project_summary(result, ctx['holdings'])
     assert out['publication']['status'] == 'READY' and ready(out)
-    assert out['publication']['source_as_of'] == oldest.isoformat()
+    assert datetime.fromisoformat(out['publication']['source_as_of'].replace('Z', '+00:00')) == oldest
+    assert out['publication']['source_as_of'].endswith('Z')
     assert out['publication']['source_as_of_basis'] == 'oldest_required_position_or_account_timestamp'
-    assert out['publication']['coverage'] == {'required_positions': 2, 'dated_positions': 2, 'accounts': 2, 'dated_accounts': 2}
+    # day_precision_positions is part of the coverage contract: a date-only broker clock is accepted at day
+    # precision, and the publication says how many of the dated positions rest on that evidence.
+    assert out['publication']['coverage'] == {'required_positions': 2, 'dated_positions': 2,
+                                              'day_precision_positions': 0, 'accounts': 2, 'dated_accounts': 2}
 
 
 def test_missing_required_position_clock_withholds_even_when_another_clock_is_known(producer):
@@ -438,3 +442,180 @@ def test_account_proof_requires_producer_normalized_aware_clock(producer, clock)
     summary = run()
     summary['publication']['accounts'][0]['source_as_of'] = clock
     assert not ready(summary)
+
+
+@pytest.fixture
+def actual_publication(monkeypatch):
+    import lib.data_broker  # initializes the existing read-model package only
+    # Load the real source by path even when an earlier test left an import stub.
+    for name, relative in [("lib.account_state", "scripts/lib/account_state.py"),
+                           ("lib.rotation_publication", "scripts/lib/rotation_publication.py")]:
+        spec = importlib.util.spec_from_file_location(name, ROOT / relative)
+        module = importlib.util.module_from_spec(spec)
+        monkeypatch.setitem(sys.modules, name, module)
+        spec.loader.exec_module(module)
+    return module
+
+
+def neutral_ladders():
+    return {"computed_at": "2026-11-02T20:00:00Z", "sectors": [
+        {"etf": "SYNTH", "name": "Synthetic market group", "return_1m": 0,
+         "return_3m": 1.5, "return_6m": None, "rs_raw": 0, "rs_score": 0,
+         "data_quality": 2, "order": "DO_NOT_COPY", "stop": 99}],
+        "industries": [{"sector": "Synthetic market group", "industries": [
+            {"etf": "SYNTH2", "name": "Unknown returns", "return_1m": None,
+             "return_3m": None, "return_6m": None, "rs_raw": 0, "rs_score": 50,
+             "data_quality": 0}]}],
+        "transitions": [{"symbol": "PRIVATE_POSITION", "thesis_status": "broken"}]}
+
+
+def test_neutral_groups_survive_advisory_refusal_without_transition_or_execution_fields(actual_publication):
+    now = datetime(2026, 11, 3, tzinfo=timezone.utc)
+    source = neutral_ladders()
+    snapshot = copy.deepcopy(source)
+    result = actual_publication.project_summary({"ok": False, "sector_ladders": source}, {}, now=now)
+    market = result["market_research"]
+    assert result["publication"]["status"] == "UNAVAILABLE"
+    assert result["sector_ladders"] is None
+    assert all(result[k] == [] for k in actual_publication.WITHHELD_FIELDS if k != "sector_ladders")
+    assert market["schema"] == "RotationMarketResearch@v1" and market["available"] is True
+    assert market["scope"] == "MARKET_GROUP_OBSERVATIONS"
+    assert market["computed_at"] == "2026-11-02T20:00:00Z"
+    assert market["quote_as_of"] is None and market["freshness"] == "UNKNOWN"
+    assert market["sectors"][0]["rs_score"] == 0
+    assert market["sectors"][0]["return_1m"] == 0
+    assert market["industries"][0]["industries"][0]["rs_score"] is None
+    assert market["industries"][0]["industries"][0]["quality_status"] == "UNKNOWN"
+    assert set(market["sectors"][0]) == {"etf", "name", "return_1m", "return_3m", "return_6m", "rs_raw", "rs_score", "data_quality", "quality_status"}
+    assert "PRIVATE_POSITION" not in json.dumps(market)
+    assert "transitions" not in market and source == snapshot
+
+
+def test_old_withheld_cache_reads_only_the_existing_snapshot(actual_publication, monkeypatch, tmp_path):
+    path = tmp_path / "rotation_ladders.json"
+    raw = json.dumps(neutral_ladders()).encode()
+    path.write_bytes(raw)
+    effects = []
+    adapter = types.SimpleNamespace(SNAPSHOT_PATH=path, get_rotation_ladders=lambda *a, **k: effects.append("adapter"),
+                                    _build=lambda *a, **k: effects.append("db_or_cache_write"))
+    monkeypatch.setitem(sys.modules, "lib.data_broker.rotation_ladders", adapter)
+    monkeypatch.setattr(sys.modules["lib.data_broker"], "rotation_ladders", adapter, raising=False)
+    before = path.stat().st_mtime_ns
+    out = actual_publication.project_summary({"sector_ladders": None, "ok": False}, {}, cached=True,
+                                             now=datetime(2026, 11, 3, tzinfo=timezone.utc))
+    assert out["market_research"]["available"] is True
+    assert out["market_research"]["cache"]["source"] == "stored_rotation_ladders"
+    assert out["market_research"]["cache"]["snapshot_read_only"] is True
+    assert path.read_bytes() == raw and path.stat().st_mtime_ns == before and effects == []
+    assert out["publication"]["status"] == "UNAVAILABLE"
+    assert "unbound_cache_inputs" in out["publication"]["reasons"]
+    assert out["research_rotation_ideas"] == []
+
+
+def test_neutral_projection_without_snapshot_is_honestly_unavailable(actual_publication, monkeypatch, tmp_path):
+    adapter = types.SimpleNamespace(SNAPSHOT_PATH=tmp_path / "absent.json")
+    monkeypatch.setitem(sys.modules, "lib.data_broker.rotation_ladders", adapter)
+    monkeypatch.setattr(sys.modules["lib.data_broker"], "rotation_ladders", adapter, raising=False)
+    out = actual_publication.project_summary({}, {}, now=datetime(2026, 11, 3, tzinfo=timezone.utc))
+    assert out["market_research"]["available"] is False
+    assert out["market_research"]["sectors"] == []
+    assert out["market_research"]["computed_at"] is None
+    assert out["market_research"]["quote_as_of"] is None
+
+
+def test_null_account_sync_does_not_borrow_a_display_clock(actual_publication):
+    h = document()
+    block = h["account_summaries"]["fixture_taxable"]["account_state"]
+    block["last_sync_at"] = None
+    out = actual_publication.project_summary({"ok": True, "generated_at": datetime.now(timezone.utc).isoformat()}, h)
+    assert "invalid_account_clock" in out["publication"]["reasons"]
+    assert out["publication"]["source_as_of"] is None
+    assert out["publication"]["oldest_known_source_as_of"] is not None
+    assert out["publication"]["coverage"]["dated_accounts"] == 1
+
+
+#: One day ahead, computed when the module loads. A literal date stops being "future" the moment it passes,
+#: which would silently turn this invalid-clock case into a valid one (date-dependent test, review 2026-11-03).
+FUTURE_POSITION_STAMP = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+@pytest.mark.parametrize("stamp", ["2026-11-02", "2026-11-02 ET", "2026-11-02T20:00:00", FUTURE_POSITION_STAMP])
+def test_unknown_position_proof_does_not_look_complete(actual_publication, stamp):
+    h = document()
+    h["holdings"][0]["broker_position_as_of_at"] = stamp
+    now = datetime.now(timezone.utc)
+    out = actual_publication.project_summary({"ok": True, "generated_at": now.isoformat()}, h, now=now)
+    assert "invalid_position_clock" in out["publication"]["reasons"]
+    assert out["publication"]["source_as_of"] is None
+    assert out["publication"]["coverage"]["dated_positions"] == 1
+
+
+def test_calendar_failure_withholds_advice_but_keeps_neutral_market_data(actual_publication):
+    class UnavailableCalendar:
+        def session_at(self, now):
+            raise RuntimeError("synthetic calendar unavailable")
+        def _aware(self, now):
+            raise RuntimeError("synthetic calendar unavailable")
+    now = datetime(2026, 11, 3, tzinfo=timezone.utc)
+    h = document()
+    for row in h["holdings"]:
+        row["broker_position_as_of_at"] = "2026-10-30T20:00:00Z"
+    for summary in h["account_summaries"].values():
+        summary["account_state"]["last_sync_at"] = "2026-10-30T20:00:00Z"
+    result = actual_publication.project_summary({"ok": True, "generated_at": now.isoformat(),
+                                                "sector_ladders": neutral_ladders()}, h,
+                                               now=now, market_service=UnavailableCalendar())
+    assert result["publication"]["status"] == "UNAVAILABLE"
+    assert "freshness_calendar_unavailable" in result["publication"]["reasons"]
+    assert result["research_rotation_ideas"] == []
+    assert result["market_research"]["available"] is True
+
+
+def date_only_projection(producer, now, stamp):
+    """One projection where EVERY position clock is a plain date and both sides of the comparison use ``now``.
+
+    ``date.today()`` reads the HOST zone while the staleness check reads UTC, so a host west of UTC saw the stamp
+    already 24h old and the test failed every evening for a reason it never named. One injected clock removes that.
+    Every row is re-stamped, otherwise a sibling row keeps the fixture's own clock and decides the answer instead.
+    """
+    from lib.rotation_publication import project_summary
+    run, ctx = producer
+    result = run()
+    now = now or datetime.now(timezone.utc)  # after run(): the projection's own clock must not be in the future
+    stamp = stamp or now.date().isoformat()
+    for row in ctx['holdings']['holdings']:
+        for field in ('broker_position_as_of_at', 'provider_observed_at', 'observation'):
+            row.pop(field, None)
+        row['broker_position_as_of'] = stamp
+    return project_summary(result, ctx['holdings'], now=now)
+
+
+def test_a_date_only_position_clock_is_accepted_at_day_precision_not_withheld(producer):
+    """The moomoo producer writes a plain date. Before the repair that made the book permanently UNAVAILABLE.
+
+    The clock is captured ONCE in UTC and used for both the stamp and the comparison, so the result cannot depend on
+    the host's zone (the defect cc3 reproduced with TZ=Etc/GMT+10: `date.today()` behind UTC looked 24h old).
+    """
+    from lib.rotation_publication import ready
+    out = date_only_projection(producer, None, None)
+    publication = out['publication']
+    assert ready(out), publication
+    assert publication['coverage']['day_precision_positions'] >= 1
+    # Day precision resolves to the START of that date: never a fabricated time of day.
+    assert publication['source_as_of'].endswith('T00:00:00Z')
+
+
+def test_a_date_only_clock_ages_out_once_a_session_has_been_missed(producer):
+    """The freshness claim is bounded, and here is the bound: 25h after the start-of-day instant on a trading day."""
+    out = date_only_projection(producer, datetime(2026, 11, 4, 1, 0, tzinfo=timezone.utc), '2026-11-03')
+    publication = out['publication']
+    assert publication['status'] == 'STALE', publication
+    assert 'position_evidence_stale' in publication['reasons'], publication
+
+
+def test_a_date_only_clock_on_a_non_session_day_stays_fresh_past_the_wall_clock_window(producer):
+    """The market-hours policy has no session to miss between a Saturday stamp and Sunday noon, so wall age alone does
+    not expire it. Stated as evidence so the title cannot claim an unconditional expiry."""
+    out = date_only_projection(producer, datetime(2026, 11, 8, 12, 0, tzinfo=timezone.utc), '2026-11-07')
+    publication = out['publication']
+    assert 'position_evidence_stale' not in publication['reasons'], publication

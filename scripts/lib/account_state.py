@@ -53,6 +53,8 @@ from __future__ import annotations
 
 import json
 import os
+import math
+import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -94,7 +96,7 @@ _SYSEXITS = {
 
 def _utc(dt: Optional[datetime]) -> datetime:
     dt = dt or datetime.now(timezone.utc)
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
 def parse_time(value: Any) -> Optional[datetime]:
@@ -118,6 +120,69 @@ def parse_time(value: Any) -> Optional[datetime]:
         except ValueError:
             return None
     return _utc(dt)
+
+
+def observation_instant(value: Any, *, now: Optional[datetime] = None) -> Optional[datetime]:
+    """A declared full observation instant; date facts and valuation stamps are not observations."""
+    if not isinstance(value, datetime) and not (
+        isinstance(value, str) and re.match(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}", value)
+    ):
+        return None
+    # Existing canonical normalization handles explicit ET/DST ambiguity and offsets.
+    from .cio_truth import _holdings_clock
+    try:
+        stamp = _holdings_clock(value, "observation_instant").get("as_of")
+        if not stamp:
+            return None
+        dt = datetime.fromisoformat(stamp.replace("Z", "+00:00")).astimezone(timezone.utc)
+        return dt if dt <= _utc(now) else None
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def day_precision_instant(value: Any, *, now: Optional[datetime] = None) -> Optional[datetime]:
+    """A bare calendar date as the START of that day, UTC - the oldest instant it licenses.
+
+    Never invents a time of day, and never makes day-precision evidence look fresher than it is: start-of-day is the
+    oldest instant consistent with the date, so a staleness judgement made from it errs towards stale, never fresh.
+    """
+    if not (isinstance(value, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", value.strip())):
+        return None
+    try:
+        dt = _utc(datetime.strptime(value.strip(), "%Y-%m-%d"))
+    except (TypeError, ValueError):
+        return None
+    return dt if dt <= _utc(now) else None
+
+
+def position_observation(row: dict[str, Any], *, now: Optional[datetime] = None) -> tuple[Optional[datetime], str, str]:
+    """Use declared position-provider clocks in authority order, never generic as_of/updated_at.
+
+    Returns (instant, source, precision). A date-only ``broker_position_as_of`` - what the moomoo producer writes - is
+    accepted at DAY precision instead of rejected: rejecting it made a live book permanently UNAVAILABLE, which states
+    something just as false as calling it fresh. Malformed full timestamps still return None and never fall through.
+    """
+    observed = row.get("observation") if isinstance(row.get("observation"), dict) else {}
+    fields = (("broker_position_as_of_at", row.get("broker_position_as_of_at")),
+              ("provider_observed_at", row.get("provider_observed_at")),
+              ("observation.provider_observed_at", observed.get("provider_observed_at")),
+              ("broker_position_as_of", row.get("broker_position_as_of")))
+    for source, value in fields:
+        if value not in (None, ""):
+            instant = observation_instant(value, now=now)
+            if instant is not None:
+                return instant, source, "instant"
+            if source == "broker_position_as_of":
+                day = day_precision_instant(value, now=now)
+                if day is not None:
+                    return day, source, "day"
+            # Invalid preferred evidence must not fall through to a convenient clock.
+            return None, source, ""
+    return None, "", ""
+
+
+def _iso_utc(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def age_hours(value: Any, now: Optional[datetime] = None) -> Optional[float]:
@@ -149,6 +214,8 @@ def classify_account_state(
     service_unit: str = "",
     last_run_error: str = "",
     manual_as_of: Any = None,
+    market_hours_only: bool = False,
+    market_service=None,
 ) -> dict[str, Any]:
     """Classify one account. Pure: no I/O, no clock unless `now` is omitted.
 
@@ -163,10 +230,10 @@ def classify_account_state(
     now_utc = _utc(now)
     kind = (str(sync_kind or SYNC_KIND_API)).strip().lower()
     win = _num(window_hours)
-    if win is None or win <= 0:
+    if isinstance(window_hours, bool) or win is None or not math.isfinite(win) or win <= 0:
         win = DEFAULT_SYNC_WINDOW_HOURS
-    sync_dt = parse_time(last_sync_at)
-    sync_iso = sync_dt.isoformat() if sync_dt else None
+    sync_dt = observation_instant(last_sync_at, now=now_utc)
+    sync_iso = _iso_utc(sync_dt) if sync_dt else None
     sync_age = round((now_utc - sync_dt).total_seconds() / 3600.0, 2) if sync_dt else None
 
     base = {
@@ -176,7 +243,8 @@ def classify_account_state(
         "last_sync_at": sync_iso,
         "last_sync_age_hours": sync_age,
         "service_unit": service_unit or None,
-        "classified_at": now_utc.isoformat(),
+        "classified_at": _iso_utc(now_utc),
+        "freshness_market_hours_only": market_hours_only is True,
     }
 
     if kind == SYNC_KIND_MANUAL:
@@ -184,7 +252,7 @@ def classify_account_state(
         reason = "no API for this custodian; value is a manual statement entry"
         reason += f" dated {m_dt.date().isoformat()}" if m_dt else " with NO manual_as_of recorded"
         return {**base, "state": STATE_NO_API_MANUAL, "state_reason": reason,
-                "state_as_of": m_dt.isoformat() if m_dt else None,
+                "state_as_of": _iso_utc(m_dt) if m_dt else None,
                 "manual_as_of": m_dt.date().isoformat() if m_dt else None}
 
     if service_failed is True or (last_run_error or "").strip():
@@ -199,12 +267,20 @@ def classify_account_state(
 
     if sync_dt is None:
         return {**base, "state": STATE_STALE,
-                "state_reason": ("never synced: no broker_position_as_of on any row, no sync "
-                                 "receipt, no sync clock on the summary (valuation restamps "
-                                 "do not count)"),
+                "state_reason": ("no proven sync observation: a full declared position, successful sync receipt "
+                                 "or explicit summary sync instant is missing; date-only, naive, future "
+                                 "and valuation timestamps do not establish an observation"),
                 "state_as_of": None}
 
-    if sync_age is not None and sync_age <= win:
+    from .cio_market_aware_freshness import is_stale
+    try:
+        stale = is_stale(sync_dt, now_utc, win * 3600,
+                         market_hours_only=market_hours_only is True, service=market_service)
+    except Exception as exc:  # noqa: BLE001 - calendar failure cannot preserve a LIVE label
+        return {**base, "state": STATE_STALE, "state_as_of": sync_iso,
+                "freshness_error": type(exc).__name__,
+                "state_reason": "freshness calendar unavailable; current observation cannot be certified"}
+    if not stale:
         return {**base, "state": STATE_LIVE,
                 "state_reason": f"synced {sync_age:.1f}h ago (window {win:g}h)",
                 "state_as_of": sync_iso}
@@ -338,37 +414,32 @@ def probe_service_unit(unit: str, *, runner=None) -> dict[str, Any]:
 
 # ── deriving the sync clock from the store ────────────────────────────────────
 
-#: The ONE row-level sync stamp. Broker syncs (schwab_position_sync,
-#: alpaca_live_read_sync, moomoo_live_read_sync) write it when they observe the
-#: broker's book. `as_of` / `updated_at` are NOT sync clocks: portfolio_loader.
-#: reprice_holdings restamps both to "now" on every repriced row, so reading them
-#: would make every repriced account LIVE forever — the exact lie this module
-#: exists to end.
-_ROW_SYNC_CLOCKS = ("broker_position_as_of",)
-_SUMMARY_SYNC_CLOCKS = ("synced_at", "last_sync_at", "last_import", "as_of", "reported_total_as_of")
+#: Summary sync facts are fallback observations, never valuation/as_of mirrors.
+_SUMMARY_SYNC_CLOCKS = ("synced_at", "last_sync_at", "last_import")
 
 
-def derive_last_sync(rows: list[dict[str, Any]], summary: dict[str, Any]) -> tuple[Optional[str], str]:
-    """The NEWEST broker observation stamp among the account's position rows,
-    else the summary's own sync clocks. Rows first: they are rebuilt by every
-    broker sync; account_summaries.as_of is an abandoned mirror
-    (portfolio_aggregate_contract). Valuation restamps are deliberately ignored.
+def derive_last_sync(rows: list[dict[str, Any]], summary: dict[str, Any], *,
+                     now: Optional[datetime] = None) -> tuple[Optional[str], str]:
+    """The latest declared row observation, else an explicit full summary sync instant.
+
+    This account activity clock does not certify all-row position coverage; the
+    publication guard separately requires a proven instant for every position.
     """
     best: Optional[datetime] = None
     best_src = ""
-    for r in rows or []:
-        if not isinstance(r, dict):
+    for row in rows or []:
+        if not isinstance(row, dict):
             continue
-        for k in _ROW_SYNC_CLOCKS:
-            dt = parse_time(r.get(k))
-            if dt and (best is None or dt > best):
-                best, best_src = dt, f"holdings.{k}"
+        dt, source, precision = position_observation(row, now=now)
+        if dt is not None and (best is None or dt > best):
+            best, best_src = dt, f"holdings.{source}" + (" (day precision)" if precision == "day" else "")
     if best is not None:
-        return best.isoformat(), best_src
-    for k in _SUMMARY_SYNC_CLOCKS:
-        dt = parse_time((summary or {}).get(k))
-        if dt:
-            return dt.isoformat(), f"account_summaries.{k}"
+        return _iso_utc(best), best_src
+    for source in _SUMMARY_SYNC_CLOCKS:
+        value = (summary or {}).get(source)
+        if value not in (None, ""):
+            dt = observation_instant(value, now=now)
+            return (_iso_utc(dt) if dt else None), f"account_summaries.{source}"
     return None, ""
 
 
@@ -434,10 +505,12 @@ def _classify_one(acct_key: str, summary: dict[str, Any], rows: list[dict[str, A
     sync_kind = str(cfg.get("sync_kind") or SYNC_KIND_API).strip().lower()
     service_unit = str(cfg.get("service_unit") or "").strip()
     window = _num(cfg.get("sync_window_hours")) or default_window_hours
+    if isinstance(cfg.get("sync_window_hours"), bool) or not math.isfinite(window):
+        window = default_window_hours
     manual_as_of = cfg.get("manual_as_of") or summary.get("manual_as_of") \
         or summary.get("reported_total_as_of") or summary.get("as_of")
 
-    last_sync, sync_src = derive_last_sync(rows, summary)
+    last_sync, sync_src = derive_last_sync(rows, summary, now=now)
 
     evidence: dict[str, Any] = {"last_sync_source": sync_src or None}
     service_failed: Optional[bool] = None
@@ -451,12 +524,12 @@ def _classify_one(acct_key: str, summary: dict[str, Any], rows: list[dict[str, A
             evidence["sync_receipt"] = {"ok": rec.get("ok"), "at": rec.get("at"), "error": rec.get("error")}
             if rec.get("ok") is False:
                 last_run_error = str(rec.get("error") or "sync run reported ok=false")
-            elif rec.get("ok") is True and parse_time(rec.get("at")):
+            elif rec.get("ok") is True and observation_instant(rec.get("at"), now=now):
                 # A successful run receipt is a sync clock in its own right.
-                rec_dt = parse_time(rec.get("at"))
-                cur_dt = parse_time(last_sync)
+                rec_dt = observation_instant(rec.get("at"), now=now)
+                cur_dt = observation_instant(last_sync, now=now)
                 if rec_dt and (cur_dt is None or rec_dt > cur_dt):
-                    last_sync, sync_src = rec_dt.isoformat(), "sync_receipt.at"
+                    last_sync, sync_src = _iso_utc(rec_dt), "sync_receipt.at"
                     evidence["last_sync_source"] = sync_src
         # 2) the service health receipt
         if service_unit:
@@ -477,10 +550,16 @@ def _classify_one(acct_key: str, summary: dict[str, Any], rows: list[dict[str, A
             else:
                 evidence["systemctl"] = {"failed": None, "detail": "not probed (receipt decided)"}
 
+    from .cio_domain_registry import CIODomainRegistry
+    try:
+        market_only = CIODomainRegistry.load().get("portfolio").freshness_market_hours_only is True
+    except (OSError, ValueError, KeyError, RuntimeError):
+        market_only = False  # unavailable policy cannot relax a wall-clock refusal
     block = classify_account_state(
         sync_kind=sync_kind, last_sync_at=last_sync, now=now, window_hours=window,
         service_failed=service_failed, service_detail=service_detail, service_unit=service_unit,
         last_run_error=last_run_error, manual_as_of=manual_as_of,
+        market_hours_only=market_only,
     )
     block["evidence"] = evidence
 
