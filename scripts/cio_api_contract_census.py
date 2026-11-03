@@ -553,6 +553,14 @@ def _named_code_only(text: str) -> str:
     # string, so `import ... from '../lib/r'` would end in an identifier and read as an expression.
     # Not masked, and unchanged from the legacy literal path: a regex after `)` or `}`.
     previous_ends_expression = False
+    # A line ending in a string or template literal ends an expression too: `const ratio = 'abc'` then a
+    # line-leading `/` is a division, not a regex. Omitting the quote characters swallowed a real call.
+    # A line ending in `return`/`yield`/`case`/`do`/`else` cannot: the next `/` starts a statement there.
+    # A declaration line (`import`/`export`/`type`/`interface`/`declare`/`enum`) is complete on its own,
+    # even when it ends in a quoted path, so a following `/` starts a new statement.
+    expression_end = set("_$)]}") | {"'", '"', "`"}
+    keyword_end = re.compile(r"(?:^|[^\w$])(return|yield|case|do|else)$")
+    declaration_only = re.compile(r"^(?:import|export|type|interface|declare|enum)\b")
     line_openers = []
     offset = 0
     for raw_line in text.splitlines(keepends=True):
@@ -561,10 +569,16 @@ def _named_code_only(text: str) -> str:
             if (stripped[0] == "/" and not stripped.startswith(("//", "/*"))
                     and not previous_ends_expression):
                 line_openers.append(offset + len(raw_line) - len(raw_line.lstrip()))
-            previous_ends_expression = stripped[-1].isalnum() or stripped[-1] in "_$)]}"
+            previous_ends_expression = (
+                (stripped[-1].isalnum() or stripped[-1] in expression_end)
+                and not keyword_end.search(stripped)
+                and not declaration_only.match(stripped))
         offset += len(raw_line)
     body = r"(?P<body>/(?![/*])(?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n])+/[dgimsuvy]*)"
-    regex = re.compile(r"(?:[=(,:;!&|?{\[]|=>|\breturn\s+)\s*" + body, re.M)
+    # Horizontal whitespace only: the gap must not cross a newline. An `=` on the previous line is not
+    # the start of a regex on the next one (that is a division continuation, or the line pre-pass above
+    # masks a real statement-position regex).
+    regex = re.compile(r"(?:[=(,:;!&|?{\[]|=>|\breturn[ \t]+)[ \t]*" + body, re.M)
     for literal in regex.finditer(code):
         for pos in range(literal.start("body"), literal.end("body")):
             out[pos] = " "
@@ -576,7 +590,25 @@ def _named_code_only(text: str) -> str:
                 out[pos] = " "
     code = "".join(out)
     tag = re.compile(r"<(/?)([A-Za-z][\w$.:-]*|)(?=[\s/>])[^<>]*>")
-    tags = list(tag.finditer(code))
+
+    def _tag_start(match) -> bool:
+        """A closing tag always counts; an opening one only where a JSX element can start.
+
+        `<T>` in `foo<T>(x)` is a generic call argument, not an element: taking it as an opening tag
+        paired it with a later `</T>` and blanked the real expression between them. A `<` preceded by an
+        identifier, `)`, `]` or `.` is a comparison/generic; one after `return`/`(`, `{`, `=`, `,`, `:`,
+        `?`, `=>` or another tag is an element.
+        """
+        if match.group(1):
+            return True
+        i = match.start() - 1
+        while i >= 0 and code[i] in " \t\r\n":
+            i -= 1
+        if i < 0 or code[i] in "([{=,:;?!&|>":
+            return True
+        word = re.search(r"([A-Za-z_$][\w$]*)$", code[:i + 1])
+        return bool(word and word.group(1) in ("return", "yield", "case", "default"))
+    tags = [match for match in tag.finditer(code) if _tag_start(match)]
     for index, opening in enumerate(tags):
         if opening.group(1) or opening.group().rstrip().endswith("/>"):
             continue

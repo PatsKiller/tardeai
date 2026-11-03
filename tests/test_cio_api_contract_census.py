@@ -373,3 +373,29 @@ def test_an_expression_start_regex_is_still_masked(tmp_path):
     # Dropping the `^` alternative must not un-mask a regex in a real expression-start position.
     body = "const re = /useApi(API)/\nrender(re)\n"
     assert _scan_repair_case(tmp_path, body) == []
+
+
+@pytest.mark.parametrize("operand", ["'abc'", '"abc"', "`${1}`"])
+def test_a_string_or_template_ending_line_before_a_division_keeps_the_call(tmp_path, operand):
+    # A line ending in a string/backtick still ENDS an expression, so the next line-leading `/` is a
+    # division. Treating it as a regex opener swallowed the real call (found by the docs-truth verifier).
+    body = (f"const ratio = {operand}\n"
+            "  / 2; const {data: top} = useApi(API) / ratio\nrender(top)\n")
+    found = _scan_repair_case(tmp_path, body)
+    assert [(f.route, f.bound_names) for f in found] == [("/api/v3/a", ["top"])]
+
+
+def test_a_generic_call_inside_a_jsx_expression_is_not_an_element(tmp_path):
+    # `foo<T>(x)` is a generic call, not an opening tag: pairing it with the JSX `</T>` blanked the real
+    # expression between them (found by the docs-truth verifier).
+    body = "export default function H() { return <T>{cond && foo<T>(x) && useApi(API)}</T> }\n"
+    found = _scan_repair_case(tmp_path, body)
+    assert [(f.route, f.bound_names) for f in found] == [("/api/v3/a", [])]
+
+
+@pytest.mark.parametrize("body", [
+    "function f() { return\n/useApi(API)/.test('s') }\n",
+    "const f = () =>\n  /useApi(API)/.test('s')\n",
+])
+def test_a_regex_statement_after_return_or_arrow_stays_invisible(tmp_path, body):
+    assert _scan_repair_case(tmp_path, body) == []
