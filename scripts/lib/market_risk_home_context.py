@@ -452,7 +452,20 @@ def build(
             quote_reason = quote_reason or "Canonical quote status is unavailable"
         # A price with no recorded provenance is not a measured canonical quote, and a missing source
         # is reported as "not_recorded" rather than dressed in a source string it never had.
-        conflict = quote.get("conflict") if isinstance(quote.get("conflict"), dict) else quote_conflict(rows)
+        # The fallback scans only the instant the quote was SELECTED from: an older instant's
+        # contradiction cannot demote a newer, uncontested observation (and the fact's as_of must
+        # agree with its own conflict.as_of).
+        selected_instant = stamp(qclock)
+        same_instant = (
+            [row for row in rows if stamp(row.get("as_of")) == selected_instant]
+            if selected_instant is not None
+            else []
+        )
+        conflict = (
+            quote.get("conflict")
+            if isinstance(quote.get("conflict"), dict)
+            else quote_conflict(same_instant)
+        )
         if conflict is not None:
             quote_reason = quote_reason or "Two observations of the same instant disagree"
         if not recorded_source and price is not None:
@@ -901,12 +914,31 @@ def build(
             if valid_price_clock is not None and valid_stop_clock is not None
             else None
         )
+        # Provenance is not composed out of a placeholder. A stored stop that exists with a price and a
+        # clock but whose source was never recorded cannot be published as measured: the distance would
+        # rest on an unnamed source. Only recorded names form the composite label.
+        missing_provenance = [
+            label
+            for label, name in (("the stored stop", stop_source), ("the quote", quote_source))
+            if name == "not_recorded"
+        ]
+        recorded_sources = [name for name in (stop_source, quote_source) if name != "not_recorded"]
         stop_fact = fact(
             value,
             as_of=iso(conservative) if conservative is not None else None,
-            source=stop_source + "+" + quote_source,
+            source="+".join(recorded_sources) or "not_recorded",
             now=now,
+            reason=(
+                "Provenance not recorded for " + " and ".join(missing_provenance) + " in this stop distance"
+                if missing_provenance and value is not None
+                else None
+            ),
         )
+        if missing_provenance and value is not None:
+            stop_fact["remediation"] = {
+                "key": "HOMEV007:positions.stop.provenance",
+                "action": "Record the source on the stored stop and quote; never present an unnamed source as provenance.",
+            }
         stop_fact.update(
             price_as_of=iso(valid_price_clock) if valid_price_clock is not None else None,
             stop_as_of=iso(valid_stop_clock) if valid_stop_clock is not None else None,

@@ -1076,3 +1076,37 @@ def test_the_real_join_emits_the_shaped_unavailable_block_when_the_context_is_un
     assert ctx["state"] == "unavailable" and ctx["schema"] == "HomeMarketRiskContext@v1" and ctx["symbols"] == {}
     assert ctx["gaps"][0]["remediation"]["key"] == "HOMEV007:context"
     assert ctx["read_errors"][0]["source"] == "home_v007_join"
+
+
+def test_a_stored_stop_with_no_recorded_source_is_unknown_and_indexed(mod):
+    """cc5 ground A: a stop that EXISTS with price and clock but no source is not a measured fact."""
+    joined = {
+        "book_exposure": {"rows": [{"symbol": "SYNX", "account_label": "SYN"}]},
+        "observed_stops": [{"symbol": "SYNX", "account_label": "SYN", "price": 9, "as_of": ASOF}],
+    }
+    result = mod.build(projection(), joined, now=NOW)
+    stop = result["positions"][0]["stop"]
+    assert stop["state"] == "unknown" and stop["value"] is None
+    assert "Provenance not recorded for the stored stop" in stop["reason"]
+    assert stop["source"] == "synthetic_daily_close"  # only recorded names are composed
+    assert stop["stop_source"] == "not_recorded" and stop["price_source"] == "synthetic_daily_close"
+    gap = next(g for g in result["gaps"] if g["symbol"] == "SYNX" and g["field"] == "positions.stop")
+    assert gap["remediation"]["key"] == "HOMEV007:positions.stop.provenance"
+
+
+def test_an_older_instant_conflict_does_not_demote_the_newer_selected_quote(mod):
+    """cc5 ground B: the fallback must judge only the instant the quote was selected from."""
+    older = [
+        {"symbol": "SYNX", "price": 10, "session": "regular_close", "session_date": "2032-03-09",
+         "as_of": "2032-03-09T20:00:00Z", "source": "synthetic_older_a"},
+        {"symbol": "SYNX", "price": 11, "session": "regular_close", "session_date": "2032-03-09",
+         "as_of": "2032-03-09T20:00:00Z", "source": "synthetic_older_b"},
+    ]
+    quote = mod.build(projection(), {}, quotes=older, now=NOW)["symbols"]["SYNX"]["quote"]
+    assert quote["state"] == "measured" and quote["value"] == 12
+    assert "conflict" not in quote
+    # control: a disagreement AT the selected instant is still a conflict
+    same = [{"symbol": "SYNX", "price": 12.5, "session": "regular_close", "session_date": "2032-03-09",
+             "as_of": ASOF, "source": "synthetic_second_mark"}]
+    conflict = mod.build(projection(), {}, quotes=same, now=NOW)["symbols"]["SYNX"]["quote"]
+    assert conflict["state"] == "unknown" and conflict["conflict"]["as_of"] == ASOF
