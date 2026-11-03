@@ -71,7 +71,7 @@ export type HomeV007 = {
   positions: Array<{ symbol: string; account: string | null; pctAccount: number | null; denominator: string | null; stopDistancePct: number | null; stopState: string | null }>
   risk: {
     score: number | null
-    categories: Array<{ key: string; label: string; chip: string | null; state: FactState; asOf: string | null; reason: string | null }>
+    categories: Array<{ key: string; label: string; chip: string | null; state: FactState; asOf: string | null; source: string | null; reason: string | null }>
     nextEvaluation: { at: string | null; basis: string | null } | null
   }
   hedge: { triggers: Array<{ label: string; current: number | null; threshold: number | null; met: boolean | null }>; inverse: Array<{ symbol: string; dayPct: number | null; state: FactState }> }
@@ -265,7 +265,7 @@ export function parseHomeV007(raw: unknown): HomeV007 {
       // An affirmative chip is a claim about a measurement. Without one, AND without the clock that says when it was
       // measured (DATA R3, 2026-11-03), the chip is not shown and the row reads as unknown rather than publishing "OK"
       // over a fact that carries no provenance.
-      return { key, label: str(o.label) ?? key.replace(/_/g, ' '), chip: f.state === 'measured' && f.asOf ? str(o.chip) : null, state: f.state, asOf: f.asOf, reason: f.reason }
+      return { key, label: str(o.label) ?? key.replace(/_/g, ' '), chip: f.state === 'measured' && f.asOf ? str(o.chip) : null, state: f.state, asOf: f.asOf, source: f.source, reason: f.reason }
     }),
     nextEvaluation: (() => {
       const n = rec(riskRaw.next_evaluation)

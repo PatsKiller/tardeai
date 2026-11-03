@@ -69,6 +69,8 @@ async function run(page, width, variant, plan) {
       seen.posts.push(body)
       for (const bad of ['actor', 'actual', 'limit', 'breached', 'breach']) if (bad in body) seen.forbidden.push(bad)
       if (plan.refuse) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ ok: false, error: plan.refuse }) })
+      // A 5xx on the real write: the server answered, but refused to record. No success state may appear.
+      if (plan.writeStatus && body.dry_run !== true) return route.fulfill({ status: plan.writeStatus, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'INTERNAL' }) })
       if (plan.dropFirstWrite && body.dry_run !== true && !seen.dropped) { seen.dropped = true; return route.abort('failed') }
       if (body.dry_run !== true) seen.lastWrite = body
       if (plan.appendThenStatus && body.dry_run !== true) {
@@ -111,6 +113,9 @@ try {
     assert.match(previewText, /nothing written/i, `preview must say nothing was written at ${width}`)
     assert.equal(seen.posts.length, 1, `preview must be exactly one POST at ${width}`)
     assert.equal(seen.posts[0].dry_run, true, `preview must be dry_run at ${width}`)
+    // A preview is not a success: no "intent recorded" state may exist before the reply to a real write is ok.
+    assert.equal(await page.getByTestId('v7-intent-done').count(), 0, `a preview must not show a done panel at ${width}`)
+    assert.ok(!/intent recorded/i.test(await page.locator('body').innerText()), `a preview must not claim success at ${width}`)
     await page.getByTestId('v7-intent-confirm').click()
     await page.getByTestId('v7-intent-done').waitFor()
     const done = await page.getByTestId('v7-intent-done').innerText()
@@ -203,6 +208,23 @@ try {
     await page.getByTestId('v7-intent-source-unavailable').waitFor()
     assert.match(await page.getByTestId('v7-intent-source-unavailable').innerText(), /recording is off/i, `unavailable source not disclosed at ${width}`)
     assert.equal(await page.getByTestId('v7-intent-preview-panel').count(), 0, `no preview may be offered without a current basis at ${width}`)
+
+    // I. the real write answers 500: reply.ok is false, so no success state may appear. The component's done panel is
+    //    reachable only after a successful write (or a reconciled identical request), and neither happened here.
+    await page.unroute('**/*')
+    const seenI = await run(page, width, 'available', { writeStatus: 500 })
+    await page.getByTestId('v7-intent-open').click()
+    await page.getByTestId('v7-intent-until').fill(TOMORROW.slice(0, 16))
+    await page.getByTestId('v7-intent-preview').click()
+    await page.getByTestId('v7-intent-preview-panel').waitFor()
+    assert.equal(await page.getByTestId('v7-intent-done').count(), 0, `no done panel before the write at ${width}`)
+    assert.ok(!/intent recorded/i.test(await page.locator('body').innerText()), `no success text before the write at ${width}`)
+    await page.getByTestId('v7-intent-confirm').click()
+    await page.getByTestId('v7-intent-error').waitFor()
+    assert.equal(await page.getByTestId('v7-intent-done').count(), 0, `a 500 on the write must not show a done panel at ${width}`)
+    assert.ok(!/intent recorded/i.test(await page.locator('body').innerText()), `a 500 on the write must not claim success at ${width}`)
+    assert.equal(await page.evaluate(() => window.recorded), undefined, 'nothing recorded after a failed write')
+    assert.equal(seenI.posts.filter(p => p.dry_run !== true).length, 1, `exactly one real write attempt at ${width}`)
 
     assert.deepEqual(errors, [], `page errors at ${width}`)
     results.push({ width, ok: true })

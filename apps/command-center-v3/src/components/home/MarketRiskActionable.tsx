@@ -49,7 +49,6 @@ export const ACTIONABLE_CSS = `${EXPLAIN_CSS}
 }
 @media(prefers-reduced-motion:reduce){[data-mr-actionable] details.mr-sec>summary::after{transition:none}}`
 
-const h3: CSSProperties = { display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', margin: '0 0 6px', fontSize: TYPE.base, color: TOKENS.text[2], textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }
 const sub: CSSProperties = { fontSize: TYPE.sm, color: TOKENS.text[3], marginTop: 4, lineHeight: 1.5 }
 const item: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 3, padding: '9px 12px', borderRadius: RADIUS.md, background: TOKENS.bg[0], border: `1px solid ${TOKENS.border}`, fontSize: TYPE.base + 1, lineHeight: 1.45 }
 const tap: CSSProperties = { minHeight: 44, display: 'inline-flex', alignItems: 'center', color: TOKENS.info, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }

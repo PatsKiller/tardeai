@@ -54,7 +54,7 @@ const V7 = {
   symbols: {
     DEMO: {
       quote: { state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'market_quotes:alpaca', age_seconds: 30, session: 'regular', session_date: '2026-11-02', expected_session_date: '2026-11-02', basis: 'last trade', value: { price: 49.87 } },
-      day_change: { state: 'ok', value: { usd: 0.4, pct: 0.8, reference_date: '2026-10-30' } },
+      day_change: { state: 'ok', as_of: '2026-11-02T21:00:00Z', source: 'market_data:daily_close', value: { usd: 0.4, pct: 0.8, reference_date: '2026-10-30' } },
       since_exit: { state: 'ok', value: { usd: -0.1, pct: -0.3, exit_price: 50, exit_date: '2026-10-30' } },
       analysis_references: [{ label: 'invalidation', price: 47.5, distance_usd: -2.4, distance_pct: -4.8, state: 'ok' }],
       headlines: [{ title: 'Synthetic guarded headline', source: 'feed', published_at: '2026-11-02T18:00:00Z', age_seconds: 10800 }],
@@ -66,7 +66,7 @@ const V7 = {
     STALE1: { quote: { state: 'measured', age_seconds: 5400, as_of: '2026-11-02T19:30:00Z', value: { price: 12.5 } } },
     GONE: { quote: { state: 'missing', reason: 'canonical regular-session quote not measured', remediation: 'wait for the reader' } },
   },
-  risk: { score: 61, categories: [{ category: 'tech', label: 'Technology', chip: 'STRESS', state: 'measured' }], next_evaluation: { value: '2026-11-03T14:00:00Z', state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'market_risk_evaluation_schedule', basis: 'registry declaration' } },
+  risk: { score: 61, categories: [{ category: 'tech', label: 'Technology', chip: 'STRESS', state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'risk_engine' }], next_evaluation: { value: '2026-11-03T14:00:00Z', state: 'measured', as_of: '2026-11-02T21:00:00Z', source: 'market_risk_evaluation_schedule', basis: 'registry declaration' } },
   hedge: { lagging_progress: { value: { current: 4.8, threshold: 10, met: false }, state: 'measured' }, exposure_progress: { value: { current: 1, threshold: 2, met: false }, state: 'measured' }, inverse_moves: { SH: { quote: { state: 'measured', value: 31.2 }, day_change: { state: 'measured', value: { pct: 0.58 } } } } },
   budgets: [{ budget: 'demo_taxable', actual: 21000, limit: 15000, unit: 'usd', clears_when: 'below 15000', scope_id: 'account:demo', breached: true, source_binding: { as_of: '2026-11-02T21:00:00Z', sha256: 'a'.repeat(64) }, presentation_binding: { sha256: 'b'.repeat(64) }, budget_presentation_decision: { active: true, intentional_until: '2026-11-09T05:00:00Z', actor: 'operator', receipt: 'rcpt-abcdef123', history: [{ state: 'previous' }] }, operator_decision: { state: 'available', subtype: 'market_risk_budget_presentation' } }, { budget: 'cash_reserve', actual: 1000, limit: 5000, unit: 'usd', operator_decision: { state: 'unavailable', remediation: { key: 'pending_route', action: 'pending reviewed route' } } }],
   budget_presentation_decisions: { complete: false, items: 3, history: [{ state: 'previous' }] },
@@ -128,7 +128,6 @@ try {
       assert.ok(m.v7text.includes('$49.87'), `v7 price missing at ${width}`)
       assert.ok(/\$12\.5/.test(m.v7text) && /stale/.test(m.v7text) && /90m old/.test(m.v7text), `a measured-but-old quote must show its value, the word stale and its age at ${width}: ${m.v7text.slice(0,400)}`)
       assert.ok(/price unknown/.test(m.v7text) && /not measured/.test(m.v7text), `missing case not explicit at ${width}`)
-      assert.ok(/since exit .*\$-?0\.1/.test(m.v7text) && /exited 2026-10-30/.test(m.v7text), `a measured since-exit must render its value and date at ${width}: ${m.v7text.slice(0, 400)}`)
       assert.ok(/fetched .*ET/.test(m.v7text) && /trade time unverified/.test(m.v7text), `the quote clock is labelled a fetch observation, not trade time, at ${width}: ${m.v7text.slice(0, 300)}`)
       assert.ok(/intentional until/.test(m.v7text) && /breach still stands/.test(m.v7text), `an active decision reads back beside a breach that is still true at ${width}: ${m.v7text.slice(0, 400)}`)
       assert.ok(/presentation/.test(m.v7text) && /src/.test(m.v7text), `both bindings are shown and kept distinct at ${width}`)
@@ -136,6 +135,8 @@ try {
       assert.ok(/inverse today: SH \+0\.58%/.test(m.v7text), `inverse moves render from the producer map at ${width}: ${m.v7text.slice(0, 400)}`)
       assert.ok(/next evaluation/.test(m.v7text), `a bare next-evaluation timestamp still renders at ${width}`)
       assert.ok(/intentional decision pending reviewed route \(pending_route\)/.test(m.v7text), `an unavailable decision states its remediation at ${width}`)
+      assert.ok(/Nov 2 16:00 ET · market_data:daily_close/.test(m.v7text), `a fact with a clock and source shows both in ET at ${width}: ${m.v7text.slice(0, 500)}`)
+      assert.ok(/Technology STRESS · Nov 2 16:00 ET · risk_engine/.test(m.v7text), `a risk category shows its own clock and source at ${width}: ${m.v7text.slice(0, 500)}`)
       assert.ok(/a size, an order or a stop level/.test(m.v7text), `advisory line missing at ${width}`)
       // One control is legitimate now: the operator-only intent for the row that declares a decision available.
       // Everything else in the section stays read-only, and an unavailable decision still offers nothing.

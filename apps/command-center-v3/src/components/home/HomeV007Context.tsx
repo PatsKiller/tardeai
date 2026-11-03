@@ -1,8 +1,9 @@
 // Home v007 — the additive "today's context" section.
 //
 // Self-fetching so the existing card props (and marketRisk.ts) are untouched: it reads the same
-// GET /api/v2/market-risk/latest and renders only the optional `home_v007` block. Every fact shows its own state,
-// time and source; unknown/missing/future says why; stale keeps the value with its age; not_applicable is labelled.
+// GET /api/v2/market-risk/latest and renders only the optional `home_v007` block. Every fact shows its own state, and a
+// fact that carries a clock and source shows both as plain text; unknown/missing/future says why; stale keeps the value
+// with its age; not_applicable is labelled.
 // Display only — no size, order or stop level, and no button where the contract says the decision is unavailable.
 import { useApi } from '../../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, toneVars } from '../../lib/designTokens'
@@ -27,6 +28,12 @@ function stateText(f: Fact): string | null {
   return `${label}${bits ? ` — ${bits}` : ''}`
 }
 
+/** A fact's own clock and source, as plain text after the value. Empty when the payload supplied neither. */
+function provenance(f: { asOf: string | null; source: string | null }): string {
+  const clock = f.asOf ? ` · ${fmtAsOf(f.asOf) ?? f.asOf}` : ''
+  return `${clock}${f.source ? ` · ${f.source}` : ''}`
+}
+
 function SymbolBlock({ s }: { s: SymbolContext }) {
   const q = s.quote
   const qState = stateText(q)
@@ -42,18 +49,18 @@ function SymbolBlock({ s }: { s: SymbolContext }) {
             {q.session ? ` · ${q.session}` : ''}{q.asOf ? ` · fetched ${fmtAsOf(q.asOf) ?? q.asOf}` : ''}{q.source ? ` · ${q.source}` : ''}{q.basis ? ` · ${q.basis}` : ''}{q.asOf ? ' · trade time unverified' : ''}{q.ageSeconds != null && q.ageSeconds >= 900 ? ' · stale' : ''}{q.ageSeconds != null && q.ageSeconds >= 300 ? ` · ${Math.round(q.ageSeconds / 60)}m old` : ''}
           </span>}
     </div>
-    {stateText(s.dayChange) ? <div style={dim}>day change {stateText(s.dayChange)}</div>
-      : <div style={dim}>today {money(s.dayChange.usd) ?? ''}{s.dayChange.pct != null ? ` (${pct(s.dayChange.pct)})` : ''}{s.dayChange.referenceDate ? ` vs ${s.dayChange.referenceDate} close` : ''}</div>}
-    {stateText(s.sinceExit) ? <div style={dim}>since exit {stateText(s.sinceExit)}</div>
-      : <div style={dim}>since exit {money(s.sinceExit.usd) ?? ''}{s.sinceExit.pct != null ? ` (${pct(s.sinceExit.pct)})` : ''}{s.sinceExit.exitDate ? ` · exited ${s.sinceExit.exitDate}` : ''}</div>}
+    {stateText(s.dayChange) ? <div style={dim}>day change {stateText(s.dayChange)}{provenance(s.dayChange)}</div>
+      : <div style={dim}>today {money(s.dayChange.usd) ?? ''}{s.dayChange.pct != null ? ` (${pct(s.dayChange.pct)})` : ''}{s.dayChange.referenceDate ? ` vs ${s.dayChange.referenceDate} close` : ''}{provenance(s.dayChange)}</div>}
+    {stateText(s.sinceExit) ? <div style={dim}>since exit {stateText(s.sinceExit)}{provenance(s.sinceExit)}</div>
+      : <div style={dim}>since exit {money(s.sinceExit.usd) ?? ''}{s.sinceExit.pct != null ? ` (${pct(s.sinceExit.pct)})` : ''}{s.sinceExit.exitDate ? ` · exited ${s.sinceExit.exitDate}` : ''}{provenance(s.sinceExit)}</div>}
     {s.references.length ? <div style={dim}>to trigger: {s.references.map(r => `${r.label} ${r.distancePct != null ? pct(r.distancePct) : ''}${r.distanceUsd != null ? ` (${money(r.distanceUsd)})` : ''}`).join(' · ')}</div> : null}
     {s.headlines.length ? <div style={dim}>headlines: {s.headlines.map(h => `${h.title}${h.ageSeconds != null ? ` (${Math.round(h.ageSeconds / 3600)}h)` : ''}`).join(' · ')}</div> : null}
-    {s.nextEvent.label || s.nextEvent.at ? <div style={dim}>next event {s.nextEvent.label ?? ''}{s.nextEvent.at ? ` · ${fmtAsOf(s.nextEvent.at) ?? s.nextEvent.at}` : ''}</div> : null}
-    {stateText(s.cio) ? <div style={dim}>CIO stance {stateText(s.cio)}</div>
-      : <div style={dim}>CIO stance <b>{s.cio.stance}</b>{s.cio.conviction != null ? ` · conviction ${s.cio.conviction}` : ''}{s.cio.storeLabel ? ` · ${s.cio.storeLabel}` : ''}{s.cio.ageSeconds != null ? ` · ${Math.round(s.cio.ageSeconds / 3600)}h old` : ''}{s.cio.stale ? ' · stale' : ''}</div>}
+    {s.nextEvent.label || s.nextEvent.at ? <div style={dim}>next event {s.nextEvent.label ?? ''}{s.nextEvent.at ? ` · ${fmtAsOf(s.nextEvent.at) ?? s.nextEvent.at}` : ''}{provenance(s.nextEvent)}</div> : null}
+    {stateText(s.cio) ? <div style={dim}>CIO stance {stateText(s.cio)}{provenance(s.cio)}</div>
+      : <div style={dim}>CIO stance <b>{s.cio.stance}</b>{s.cio.conviction != null ? ` · conviction ${s.cio.conviction}` : ''}{s.cio.storeLabel ? ` · ${s.cio.storeLabel}` : ''}{provenance(s.cio)}{s.cio.ageSeconds != null ? ` · ${Math.round(s.cio.ageSeconds / 3600)}h old` : ''}{s.cio.stale ? ' · stale' : ''}</div>}
     {s.marketStance.value ? <div style={dim}>market-risk stance {s.marketStance.value} (separate from CIO)</div> : null}
-    {stateText(s.volume) ? <div style={dim}>volume {stateText(s.volume)}</div>
-      : <div style={dim}>volume {s.volume.ratio}× 20-day{s.volume.notTimeAdjusted ? ' (not time-adjusted)' : ''}</div>}
+    {stateText(s.volume) ? <div style={dim}>volume {stateText(s.volume)}{provenance(s.volume)}</div>
+      : <div style={dim}>volume {s.volume.ratio}× 20-day{s.volume.notTimeAdjusted ? ' (not time-adjusted)' : ''}{provenance(s.volume)}</div>}
   </div>
 }
 
@@ -66,11 +73,11 @@ export default function HomeV007Context() {
   return <section data-testid="home-v007" style={card}>
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
       <h4 style={h4}>Today’s context</h4>
-      <span style={dim}>each line states its own time and source</span>
+      <span style={dim}>price, day change, since exit, next event, CIO stance, volume and risk categories show their clock and source when the payload supplies one; the quote clock is a fetch observation, not trade time</span>
     </div>
     {v7.symbols.map(s => <SymbolBlock key={s.symbol} s={s} />)}
     {v7.risk.categories.length ? <div style={dim}>
-      risk score {v7.risk.score ?? 'unknown'} · {v7.risk.categories.map(c => `${c.label} ${c.chip ?? c.state}`).join(' · ')}
+      risk score {v7.risk.score ?? 'unknown'} · {v7.risk.categories.map(c => `${c.label} ${c.chip ?? c.state}${provenance(c)}`).join(' · ')}
       {v7.risk.nextEvaluation?.at ? ` · next evaluation ${fmtAsOf(v7.risk.nextEvaluation.at) ?? v7.risk.nextEvaluation.at} (${v7.risk.nextEvaluation.basis ?? 'declared'})` : ''}
     </div> : null}
     {v7.hedge.triggers.length ? <div style={dim}>hedge: {v7.hedge.triggers.map(t => `${t.label} ${t.current ?? '?'} of ${t.threshold ?? '?'}${t.met === true ? ' met' : t.met === false ? ' not met' : ''}`).join(' · ')}{v7.hedge.inverse.length ? ` · inverse today: ${v7.hedge.inverse.map(i => `${i.symbol} ${i.dayPct == null ? 'unknown' : pct(i.dayPct)}`).join(' · ')}` : ''}</div> : null}

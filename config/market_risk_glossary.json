@@ -203,8 +203,8 @@
       "text": "The score's path across today's evaluations, oldest to newest, so you can see whether risk is building or easing."
     },
     "source_clock": {
-      "label": "Show source",
-      "text": "The time and source behind this section's numbers. Sections update on different clocks; a stale section is marked amber."
+      "label": "source and clock",
+      "text": "The card states each fact's source, and its time or age in ET when the payload carries a clock, as plain text. There is no show-source control, and a stale value is written out as 'stale' with its age rather than an amber section."
     }
   }
 }
