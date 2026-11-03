@@ -29,7 +29,21 @@ from pathlib import Path
 PROJ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJ / "scripts"))
 
+from lib.llm_queue_drain_policy import (  # noqa: E402 - sys.path is set above
+    drain_state,
+    drain_triggered,
+    incidents as drain_incidents,
+    requeue_batch,
+)
+
 OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+# Drain/requeue wiring. The policy (config/llm_queue_drain.json via lib.llm_queue_drain_policy) decides WHEN the
+# queue drains and WHAT every failed job's next run looks like. The runner supplies only the two stores that
+# already exist: the deep_overnight_llm_queue row and the IncidentRecord@v1 ledger. No second queue, no second
+# incident store.
+REQUEUE_KEY_META = "drain_requeue_key"
+REQUEUE_DUE_SQL = f"AND (metadata_json->>'{REQUEUE_KEY_META}' IS NULL OR queued_at <= NOW())"
 
 
 def get_db_connection():
@@ -1275,6 +1289,7 @@ def _build_balanced_queue(cur, job_types, limit, quotas, triage_sql="", triage_p
             FROM deep_overnight_llm_queue
             WHERE status = 'pending' AND job_type = %s
             {triage_sql}
+            {REQUEUE_DUE_SQL}
             ORDER BY priority_score DESC, queued_at ASC
             LIMIT %s
         """, [jtype] + triage_params + [quota])
@@ -1290,7 +1305,8 @@ def _build_balanced_queue(cur, job_types, limit, quotas, triage_sql="", triage_p
                 seen_ids.add(job["id"])
                 taken += 1
         avail_count_sql = cur.execute(
-            f"SELECT COUNT(*) FROM deep_overnight_llm_queue WHERE status='pending' AND job_type=%s {triage_sql}",
+            f"SELECT COUNT(*) FROM deep_overnight_llm_queue WHERE status='pending' AND job_type=%s "
+            f"{triage_sql} {REQUEUE_DUE_SQL}",
             [jtype] + triage_params)
         avail = cur.fetchone()[0]
         selection_log.append(f"  {jtype}: quota={quota}, available={avail}, selected={taken}")
@@ -1306,6 +1322,7 @@ def _build_balanced_queue(cur, job_types, limit, quotas, triage_sql="", triage_p
             FROM deep_overnight_llm_queue
             WHERE status = 'pending' AND id NOT IN ({placeholders})
             {triage_sql}
+            {REQUEUE_DUE_SQL}
             ORDER BY
                 CASE WHEN job_type = 'strategy_classification' THEN 1 ELSE 0 END DESC,
                 priority_score DESC, queued_at ASC
@@ -1329,6 +1346,95 @@ def _build_balanced_queue(cur, job_types, limit, quotas, triage_sql="", triage_p
         selected.sort(key=lambda r: (-dict(zip(cols, r)).get("priority_score", 0),))
 
     return selected, [desc[0] for desc in cur.description] if cur.description else [], selection_log
+
+
+def _enqueue_requeue(cur, plan):
+    """Put one failed job back on the SAME queue after the plan's configured delay.
+
+    `queued_at` is the deadline (the selection query takes a requeued row only once it is due), and the
+    plan's requeue key is written to the row's metadata_json, so enqueueing the same job+attempt a second
+    time matches the WHERE and changes nothing. Returns True only when this call made the row runnable.
+    """
+    if plan.get("action") != "requeue":
+        return False
+    key = str(plan["key"])
+    attempt = 0 if plan.get("reset_attempt") else int(plan["attempt"])
+    delay = int(plan.get("delay_s") or 0)
+    cur.execute(f"""
+        UPDATE deep_overnight_llm_queue
+        SET status = 'pending',
+            attempt_count = %s,
+            queued_at = NOW() + make_interval(secs => %s),
+            metadata_json = COALESCE(metadata_json, '{{}}'::jsonb)
+                            || jsonb_build_object('{REQUEUE_KEY_META}', %s::text),
+            updated_at = NOW()
+        WHERE id = %s
+          AND COALESCE(metadata_json->>'{REQUEUE_KEY_META}', '') <> %s
+        RETURNING id
+    """, (attempt, delay, key, plan["job_id"], key))
+    return cur.fetchone() is not None
+
+
+def _record_drain_incident(item):
+    """One incident per exhausted job through the existing IncidentRecord@v1 writer.
+
+    The policy's incident_key (``job:<id>``) is the fingerprint, so the ledger itself also refuses a second
+    open incident for the same job if this call is repeated on a later run.
+    """
+    from lib import incidents as ledger
+
+    ledger.open_incident(
+        source={"kind": "job", "job": str(item["job_id"]), "lane": "deep_overnight_llm_queue"},
+        title=f"Deep queue job {item['job_id']} exhausted its attempts",
+        where="scripts/run_deep_overnight_llm_queue.py",
+        evidence=[{"job_id": item["job_id"], "attempt": item["attempt"],
+                   "root_cause": item.get("root_cause")}],
+        owner="deep_overnight_llm_drain",
+        fingerprint=str(item["incident_key"]),
+        severity="P3",
+        actor="deep_overnight_llm_drain",
+        note="Still accounted for as failed on the queue; requeue it after the cause is fixed.",
+    )
+
+
+def apply_drain_requeue(*, total, failed, failed_jobs, enqueue, record_incident, policy=None):
+    """After a window's provider jobs complete, enter drain/retry mode only at the configured failure rate.
+
+    Below `drain_requeue.failure_rate_threshold` this returns immediately and changes nothing. At or above
+    it, every failed job is requeued on the SAME queue with the configured growing delay (idempotent per
+    requeue key); a job that has exhausted its attempts is held as failed and recorded once through the
+    existing incident writer, so it stays accounted for and requeueable after the fix. The returned
+    drain_state is taken from the failed rows, which keeps the label off "drained" whenever a job is held.
+    """
+    report = {"triggered": False, "requeued": 0, "held": 0, "incidents": 0, "state": None, "plans": []}
+    if not failed_jobs or not drain_triggered(total, failed, policy):
+        return report
+    # One descriptor per job identity: a repeated id can never become two requeues, two incidents or two state rows.
+    unique_jobs = list({job["job_id"]: job for job in failed_jobs}.values())
+    already = {job.get("requeue_key") for job in unique_jobs if job.get("requeue_key")}
+    plans = requeue_batch(unique_jobs, policy, already_queued=already)
+    requeued = sum(1 for plan in plans if plan["action"] == "requeue" and enqueue(plan))
+    held_plans = [plan for plan in plans if plan["action"] == "hold"]
+    opened = drain_incidents(plans)
+    for item in opened:
+        record_incident(item)
+    held_ids = {plan["job_id"] for plan in held_plans}
+    state_rows = [
+        {
+            "job_id": job["job_id"],
+            "status": "failed" if job["job_id"] in held_ids else job.get("status", "pending"),
+            "held": job["job_id"] in held_ids,
+        }
+        for job in unique_jobs
+    ]
+    return {
+        "triggered": True,
+        "requeued": requeued,
+        "held": len(held_plans),
+        "incidents": len(opened),
+        "state": drain_state(state_rows),
+        "plans": plans,
+    }
 
 
 def main():
@@ -1444,6 +1550,7 @@ def main():
             WHERE status = 'pending'
             {type_filter}
             {triage_sql}
+            {REQUEUE_DUE_SQL}
             ORDER BY priority_score DESC, queued_at ASC
             LIMIT %s
         """, type_params + triage_params + [args.limit])
@@ -1478,6 +1585,9 @@ def main():
     succeeded = 0
     failed = 0
     refused = 0
+    failed_jobs = {}  # job_id -> descriptor for the drain/requeue wiring when this window completes
+    attempts_at_fetch = {}  # job_id -> attempt_count before this run marked it running (charged jobs need it)
+    max_attempts = int(((drain_policy or {}).get("drain_requeue") or {}).get("max_attempts") or 3)
     consecutive_failures = 0
     max_consecutive = int((drain_policy or {}).get("max_consecutive_failures") or 0)
     cloud = args.route == "cloud" and drain_policy is not None and not args.dry_run
@@ -1570,6 +1680,7 @@ def main():
             row = queue_rows.popleft()
         job = dict(zip(columns, row))
         job_id = job["id"]
+        attempts_at_fetch[job_id] = int(job.get("attempt_count") or 0)
         released_pending.discard(job_id)
         elapsed = time.monotonic() - start_time
 
@@ -1636,6 +1747,14 @@ def main():
                 """, (str(e), job_id))
                 conn.commit()
                 failed += 1
+                _attempt = attempts_at_fetch.get(job_id, 0) + 1
+                failed_jobs[job_id] = {
+                    "job_id": job_id,
+                    "attempt": _attempt,
+                    "status": "failed" if _attempt >= max_attempts else "pending",
+                    "root_cause": str(e),
+                    "requeue_key": _job_meta(job).get(REQUEUE_KEY_META),
+                }
                 processed += 1
                 continue
 
@@ -1911,6 +2030,14 @@ def main():
             """, (f"gemma returned no text after {runtime}s", model, runtime, job_id))
             conn.commit()
             failed += 1
+            _attempt = attempts_at_fetch.get(job_id, 0) + 1
+            failed_jobs[job_id] = {
+                "job_id": job_id,
+                "attempt": _attempt,
+                "status": "failed" if _attempt >= max_attempts else "pending",
+                "root_cause": f"gemma returned no text after {runtime}s",
+                "requeue_key": _job_meta(job).get(REQUEUE_KEY_META),
+            }
             consecutive_failures += 1
             log(f"  FAILED #{job_id} — no response after {runtime}s")
             if (max_consecutive and consecutive_failures >= max_consecutive) or failure_probe:
@@ -1944,7 +2071,17 @@ def main():
             max_age_days=float((drain_policy or {}).get("strike_max_age_days") or 7))
         conn.commit()
         failed += len(charged_ids)
+        confirmed_by_id = {sid: (reason, meta) for sid, reason, meta in confirmed}
         for sid in charged_ids:
+            reason, meta = confirmed_by_id.get(sid, ("request rejected", {}))
+            _attempt = attempts_at_fetch.get(sid, 0) + 1
+            failed_jobs[sid] = {
+                "job_id": sid,
+                "attempt": _attempt,
+                "status": "failed" if _attempt >= max_attempts else "pending",
+                "root_cause": reason,
+                "requeue_key": (meta or {}).get(REQUEUE_KEY_META),
+            }
             log(f"  COUNTED #{sid} — request rejected on two runs, each confirmed by a later answer")
         for sid in struck_ids:
             log(f"  STRUCK #{sid} — request rejected, confirmed by a later answer; charged if it recurs on another run")
@@ -1982,6 +2119,22 @@ def main():
             log("  Paged the operator: the outage breaker has been open past outage_page_after_hours.")
         save_breaker(bpath, breaker)
 
+    # This window's provider jobs are complete. Below the configured failure rate this returns immediately and
+    # changes nothing; at or above it every failed job goes back on THIS queue with the configured backoff, and a
+    # job that exhausted its attempts opens one incident while staying failed/accounted for on the queue.
+    drain_report = None
+    if cloud:
+        drain_report = apply_drain_requeue(
+            total=succeeded + failed,
+            failed=failed,
+            failed_jobs=list(failed_jobs.values()),
+            enqueue=lambda plan: _enqueue_requeue(cur, plan),
+            record_incident=_record_drain_incident,
+            policy=drain_policy,
+        )
+        if drain_report["triggered"]:
+            conn.commit()
+
     total_elapsed = round((time.monotonic() - start_time) / 60, 1)
 
     # Summary
@@ -1990,6 +2143,15 @@ def main():
     log(f"  Processed:   {processed}")
     log(f"  Succeeded:   {succeeded}")
     log(f"  Failed:      {failed}")
+    if drain_report and drain_report["triggered"]:
+        # drain_state (not a hand-built label): a held failed job can never print "drained".
+        _state = drain_report["state"]
+        log(f"  Drain state: {_state['status']} (queued={_state['queued']}, retrying={_state['retrying']}, "
+            f"failed={_state['failed']}, done={_state['done']}); requeued={drain_report['requeued']}, "
+            f"held={drain_report['held']}, incidents={drain_report['incidents']}")
+        log(f"  Drain rate:  {failed}/{succeeded + failed} provider jobs failed "
+            f"({failed / max(1, succeeded + failed):.0%}, threshold "
+            f"{float(((drain_policy or {}).get('drain_requeue') or {}).get('failure_rate_threshold', 0)):.0%})")
     log(f"  Refused:     {refused} (not the job's fault; attempt not counted)")
     log(f"  Recovered:   {recovered}")
     log(f"  Total time:  {total_elapsed} min")
