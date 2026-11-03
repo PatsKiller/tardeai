@@ -31,7 +31,8 @@ Runner = Callable[[list[str]], tuple[int, str, str]]
 
 def _run_cli(argv: list[str], *, timeout_s: float = 30.0) -> tuple[int, str, str]:
     try:
-        proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout_s, shell=False, check=False)
+        proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout_s, shell=False,  # noqa: S603
+                              check=False)  # fixed argv built here (gh + numeric/JSON args), no shell, no user text
         return proc.returncode, proc.stdout, proc.stderr
     except FileNotFoundError:
         return 127, "", f"{argv[0]} is not installed"
