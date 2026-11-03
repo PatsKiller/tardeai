@@ -563,11 +563,21 @@ def evaluate(snapshot, *, now, claim_board=None):
             covered_paths.update(path for path in effective_files if any(overlaps(path, cp) for cp in found[0].get("paths", []) if isinstance(cp, str)))
         if covered_paths != set(effective_files):
             raise Refused("source_author_claim_coverage_incomplete")
-        for claim in claims:
-            # A superseded predecessor no longer holds its files; released claims already freed them.
-            if states.get(claim.get("claim_id")) in {"live", "unresolved"} and any(
-                    overlaps(p, cp) for p in effective_files for cp in claim.get("paths", []) if isinstance(cp, str)):
-                raise Refused("current_source_holder_not_released")
+        # Shared-additive custody is nonexclusive, from the same main-SHA config used by the graph.
+        # This applies only AFTER actual authors have released and covered every effective source path.
+        shared_paths = claim_shared_paths(snapshot.get("claim_shared_paths_config"))
+        try:
+            exclusive_files = [p for p in map(canonical_pattern, effective_files) if p not in shared_paths]
+            for claim in claims:
+                # A superseded predecessor no longer holds its files; released claims already freed them.
+                if not exclusive_files or states.get(claim.get("claim_id")) not in {"live", "unresolved"}:
+                    continue
+                scopes = [canonical_pattern(cp) for cp in claim.get("paths", []) if isinstance(cp, str)]
+                # Preserve the holder gate's existing exclusive overlap semantics (including fnmatch globs).
+                if any(overlaps(p, cp) for p in exclusive_files for cp in scopes if cp not in shared_paths):
+                    raise Refused("current_source_holder_not_released")
+        except ClaimError:
+            raise Refused("current_source_holder_not_released") from None
         reviews = evidence.get("reviews")
         if not isinstance(reviews, list) or not reviews:
             raise Refused("independent_reviews_missing")
