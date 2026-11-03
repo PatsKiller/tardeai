@@ -690,8 +690,13 @@ def build(
                     "source": "reentry_watch",
                     "reason": "Symbol is not on the exited-symbol watch",
                 }
+        # A malformed row is SKIPPED, never raised on: one bad element must not take the whole block down
+        # (cc2 review F1/F2, 2026-11-03 — {'book_exposure': {'rows': ['not-a-dict']}} used to raise
+        # AttributeError, and the context's own except-path rebuild re-raised it into join).
         held_symbols = {
-            str(row.get("symbol") or "").upper() for row in (joined.get("book_exposure") or {}).get("rows") or []
+            str(row.get("symbol") or "").upper()
+            for row in (joined.get("book_exposure") or {}).get("rows") or []
+            if isinstance(row, dict)
         }
         if symbol in INVERSE_DISPLAY_SYMBOLS and symbol not in held_symbols and not card:
             for field in ("cio", "cio_reason", "conviction", "market_risk_stance"):
@@ -853,7 +858,12 @@ def build(
         "no quote or day-change evidence was collected"
     )
     cap_gap_symbols = set()
+    malformed_rows: list[dict] = []
     for row in (joined.get("book_exposure") or {}).get("rows") or []:
+        if not isinstance(row, dict):
+            # A malformed row earns a typed gap, not an exception: the rest of the block is still built.
+            malformed_rows.append({"path": "book_exposure.rows", "reason": "row is not an object"})
+            continue
         symbol = str(row.get("symbol") or "").upper()
         evaluated = symbol in per_symbol
         if evaluated:
@@ -1045,6 +1055,12 @@ def build(
         for gap in (unknown_gap(field, value),)
         if gap
     )
+    for row in malformed_rows:
+        gaps.append({
+            "field": row["path"],
+            "reason": row["reason"] + " — skipped; the rest of the block is unaffected",
+            "remediation": {"key": "HOMEV007:malformed_row", "action": "Fix the producing reader so every book row is an object."},
+        })
     gaps = gaps + extra_gaps
     return {
         "schema": SCHEMA,

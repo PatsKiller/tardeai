@@ -495,18 +495,23 @@ def join(
         {"symbol": row["symbol"], "account_label": ad.account_label(row["account"]),
          "price": row["stop_price"], "as_of": row.get("captured_at"),
          "source": row.get("source"), "status": row.get("status")} for row in stops]
+    # TWO try blocks, deliberately (cc2 review F1, 2026-11-03). home_actions() builds the LEGACY v006 card
+    # (protect/hedge/rotate); home_context() only ADDS the v007 block. When both shared one try, a context
+    # failure — including the reachable one where a malformed book_exposure row raises inside the context's
+    # own rebuild and re-raises out of its finally — set actions={} and erased protect/hedge, the exact
+    # fields this PR promises must survive.
     try:
-        # home_actions feeds the context; if it fails, the block cannot be built and the shaped
-        # unavailable block is the honest answer (previously the exception escaped the join).
         actions = home_actions(projection, out, policy=policy, overnight=overnight, transitions=transitions, now=now)
-        v007 = home_context(projection, {**out, **actions, "budgets_detail": out["budgets"],
-                                        "observed_stops": observed_stops}, policy=policy,
-                            now=now, get_conn=get_conn, reader=context_reader)
-    except Exception as exc:  # noqa: BLE001 — the additive context cannot erase the v006 card
-        # An unavailable block still has to be shaped like the block it replaces: a consumer that
-        # checks only for presence must be able to tell "unavailable" from "present and empty".
+    except Exception as exc:  # noqa: BLE001 — the shaped unavailable block is the honest answer
         actions = {}
         v007 = unavailable_context(exc, now)
+    else:
+        try:
+            v007 = home_context(projection, {**out, **actions, "budgets_detail": out["budgets"],
+                                            "observed_stops": observed_stops}, policy=policy,
+                                now=now, get_conn=get_conn, reader=context_reader)
+        except Exception as exc:  # noqa: BLE001 — the additive context cannot erase the v006 card
+            v007 = unavailable_context(exc, now)
     # Final assembly is part of the join's contract. card_config() parses int/float out of operator
     # policy, and run_alerts() reads the projection: a malformed value or an alerts failure must not
     # escape as a 200 with no block, and must not discard the legacy fields already computed.

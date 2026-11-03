@@ -1237,3 +1237,16 @@ def test_an_alerts_failure_returns_the_shaped_block_and_keeps_legacy_fields(monk
     assert block["state"] == "unavailable" and block["read_errors"][0]["reason"] == "RuntimeError"
     assert "book_exposure" in out and isinstance(out["review"], list)
     assert out["alerts"] == [] and out["card_config"] == {}
+
+# ---------------------------------------------------------------- cc2 review F1/F2 (2026-11-03)
+# One malformed row must not take the block down. Before the fix, {'book_exposure': {'rows': ['not-a-dict']}}
+# raised AttributeError inside the context rebuild, which re-raised out of home_context into join and set
+# actions={} — erasing the legacy v006 protect/hedge the PR promises must survive.
+
+
+def test_a_malformed_book_row_is_a_gap_not_an_exception(mod):
+    result = mod.build(projection(), {"book_exposure": {"rows": ["not-a-dict"]}}, now=NOW)
+    assert result["state"] == "available", "the block is still built"
+    fields = [g.get("field") for g in result["gaps"]]
+    assert "book_exposure.rows" in fields, fields
+    assert any("not an object" in str(g.get("reason") or "") for g in result["gaps"])
