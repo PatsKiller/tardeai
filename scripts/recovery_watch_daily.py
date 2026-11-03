@@ -1060,6 +1060,57 @@ def _compute_allocation(sym, analyst_verdict, analyst_conf, cash_pct, heat_pct, 
 
 # ── Main entry point ─────────────────────────────────────────────────────
 
+def _recovery_state_pass():
+    """Piece B: evaluate every open recovery case at 07:30 too, through the SAME entry point the 20-minute
+    lane uses. The store belongs to piece A; an absent store is reported, never rendered as zero cases."""
+    try:
+        from lib import recovery_state as R
+    except ImportError:
+        try:
+            from scripts.lib import recovery_state as R
+        except ImportError:
+            print("  Recovery state machine: module absent (piece B not on this build)")
+            return {"store": "module_absent", "considered": 0, "changed": 0}
+    try:
+        from db_adapter import _get_conn
+        conn = _get_conn()
+    except Exception:
+        conn = None
+    store = R.store_accessor(conn, None)
+    if store is None:
+        print("  Recovery state machine: store absent (piece A not on this build) — nothing evaluated")
+        return {"store": "absent", "considered": 0, "changed": 0}
+
+    def snapshot_for(case):
+        row = _db_query("SELECT * FROM market_quotes WHERE upper(symbol)=%s ORDER BY fetched_at DESC LIMIT 1",
+                        (str(case.get("symbol") or "").upper(),), fetch="one")
+        if not row:
+            return None
+        def _f(key):
+            try:
+                value = row.get(key)
+                return float(value) if value not in (None, "") else None
+            except (TypeError, ValueError):
+                return None
+        close = _f("price") if _f("price") is not None else _f("close")
+        if close is None:
+            return None
+        snap = {"close": close}
+        for field, keys in (("rsi", ("rsi", "rsi_14")), ("rsi_prev", ("rsi_prev",)),
+                            ("sma20", ("sma20", "sma_20")), ("macd_up_sessions", ("macd_up_sessions",)),
+                            ("stop_level", ("stop_level",)), ("entry_high", ("entry_high",))):
+            for key in keys:
+                value = _f(key)
+                if value is not None:
+                    snap[field] = value
+                    break
+        return snap
+
+    out = R.run_pass(store, snapshot_for, dry_run=False)
+    print(f"  Recovery state machine: {out.get('considered', 0)} cases, {out.get('changed', 0)} state changes")
+    return out
+
+
 def main():
     print(f"[recovery_watch_daily] Starting — {datetime.now().isoformat()}")
 
@@ -1086,6 +1137,12 @@ def main():
     escalated = check_and_escalate(reviewed)
     print(f"  Escalations: {len(escalated)}")
     send_notifications(escalated)
+
+    # Step 4 (piece B): the recovery state machine, same entry point as the 20-minute lane.
+    try:
+        _recovery_state_pass()
+    except Exception as error:  # noqa: BLE001 — never break the daily review over the recovery pass
+        print(f"  Recovery state machine error: {str(error)[:200]}")
 
     # Step 4: Process any Telegram replies first
     try:

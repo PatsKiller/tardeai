@@ -169,6 +169,62 @@ def _evaluate_single_condition_alerts(ex, alerts, today: str) -> tuple[list[str]
     return lines, fired_ids
 
 
+def _recovery_snapshot(ex, case: dict) -> dict | None:
+    """The market fields the recovery state machine needs, from the one quote source.
+
+    Only the close is required. RSI/SMA20 come from the row when the quote table carries them; when it does
+    not, the engine leaves those triggers unfired and says so on the card rather than guessing a level.
+    """
+    symbol = str(case.get("symbol") or "").upper().strip()
+    if not symbol:
+        return None
+    try:
+        row = ex("SELECT * FROM market_quotes WHERE upper(symbol)=%s ORDER BY fetched_at DESC LIMIT 1",
+                 (symbol,), fetch="one")
+    except Exception:
+        return None
+    if not row:
+        return None
+    def _f(key):
+        value = row.get(key)
+        try:
+            return float(value) if value not in (None, "") else None
+        except (TypeError, ValueError):
+            return None
+    close = _f("price") if _f("price") is not None else _f("close")
+    if close is None:
+        return None
+    snap = {"close": close}
+    for field, keys in (("rsi", ("rsi", "rsi_14", "rsi14")), ("rsi_prev", ("rsi_prev",)),
+                        ("sma20", ("sma20", "sma_20")), ("macd_up_sessions", ("macd_up_sessions",)),
+                        ("stop_level", ("stop_level",)), ("entry_high", ("entry_high",))):
+        for key in keys:
+            value = _f(key)
+            if value is not None:
+                snap[field] = value
+                break
+    return snap
+
+
+def _recovery_state_pass(ex) -> dict:
+    """One pass of the recovery state machine (piece B). Reports absence honestly; never a silent skip."""
+    try:
+        from lib import recovery_state as R
+    except ImportError:
+        try:
+            from scripts.lib import recovery_state as R
+        except ImportError:
+            return {"store": "module_absent", "considered": 0, "changed": 0}
+    try:
+        _engine_db = __import__("db_adapter")._get_conn()  # the CaseStore takes a connection
+    except Exception:
+        _engine_db = None
+    store = R.store_accessor(_engine_db, None)
+    if store is None:
+        return {"store": "absent", "considered": 0, "changed": 0}
+    return R.run_pass(store, lambda c: _recovery_snapshot(ex, c), dry_run=False)
+
+
 def main() -> int:
     from db_adapter import _execute as ex, USE_DB
     if not USE_DB:
@@ -240,6 +296,12 @@ def main() -> int:
         except Exception:
             pass
 
+    try:
+        recovery = _recovery_state_pass(ex)
+    except Exception as error:  # noqa: BLE001 — a recovery pass failure never stops the alert lane
+        recovery = {"store": "error", "considered": 0, "changed": 0, "error": str(error)[:200]}
+        print(f"[watch-alerts] recovery state machine error: {recovery['error']}")
+
     print(
         f"[watch-alerts] {len(alerts)} single-condition armed · "
         f"{len(fired_ids)} fired: {fired_ids} · "
@@ -247,7 +309,9 @@ def main() -> int:
         f"{composite.get('fired') or []} · "
         f"{exit_count} full exit rows refreshed · "
         f"{resistance_count} resistance rows refreshed · "
-        f"{shared_context_count} shared context rows refreshed"
+        f"{shared_context_count} shared context rows refreshed · "
+        f"recovery store {recovery.get('store')}: {recovery.get('considered', 0)} cases, "
+        f"{recovery.get('changed', 0)} state changes"
     )
     return 0
 
