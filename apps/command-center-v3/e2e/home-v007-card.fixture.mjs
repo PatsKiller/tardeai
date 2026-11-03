@@ -17,14 +17,16 @@ fs.mkdirSync(out, { recursive: true })
 
 const bundled = await build({
   stdin: {
-    contents: `import React from 'react'; import {createRoot} from 'react-dom/client';
+    contents: `(globalThis as any).process = (globalThis as any).process || { env: {}, cwd: () => '.', platform: 'browser' };
+      import React from 'react'; import {createRoot} from 'react-dom/client';
       import {MemoryRouter} from 'react-router-dom';
       import {ActionableBody, ActionableHead, ACTIONABLE_CSS} from './src/components/home/MarketRiskActionable';
       import {GlossaryProvider} from './src/components/home/MarketRiskActions';
       import {actionableModel} from './src/lib/marketRisk';
       import './src/index.css';
       const terms = ${JSON.stringify(JSON.parse(fs.readFileSync(path.join(app, '../../config/market_risk_glossary.json'), 'utf8')).terms)};
-      const PAYLOAD = JSON.parse(PAYLOAD_JSON);
+      import {marketRiskV006} from './e2e/fixtures/marketRisk.fixture';
+      const PAYLOAD = marketRiskV006('ORANGE', 'NOT_NOW');
       const model = actionableModel(PAYLOAD);
       createRoot(document.getElementById('root')).render(
         <MemoryRouter><GlossaryProvider terms={terms}>
@@ -37,7 +39,11 @@ const bundled = await build({
     resolveDir: app, loader: 'tsx', sourcefile: 'v007-fixture.tsx',
   },
   bundle: true, write: false, outfile: 'f.js', jsx: 'automatic', platform: 'browser',
-  define: { 'process.env.NODE_ENV': '"production"', PAYLOAD_JSON: JSON.stringify(fs.readFileSync('/home/johnclaw/.cache/agent-tmp/v007/payload.json', 'utf8')) },
+  define: { 'process.env.NODE_ENV': '"production"' },
+  plugins: [{ name: 'stub-node-fs', setup(b) {
+    b.onResolve({ filter: /^node:fs$/ }, () => ({ path: 'fs-stub', namespace: 'stub' }))
+    b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export function readFileSync(){return \'{"terms":{}}\'}', loader: 'js' }))
+  } }],
 })
 const js = bundled.outputFiles.find(f => f.path.endsWith('.js')).text
 const css = bundled.outputFiles.find(f => f.path.endsWith('.css'))?.text ?? ''
