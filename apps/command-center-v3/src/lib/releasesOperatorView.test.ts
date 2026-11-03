@@ -95,7 +95,8 @@ check('a push card never claims the checks passed', !/checks passed|green/i.test
 check('a blocked push card names the blockage', /blocked/i.test(pushFacts.warning ?? ''))
 const dirtyFacts = needsYouFacts(pr({ mergeable: 'CONFLICTING', operator_actions: { required: true, eligible: ['push'], reason: null } }),
   { kind: 'push' })
-check('a conflicting push card names the conflict', /not committed|conflict/i.test(dirtyFacts.warning ?? ''))
+check('a conflicting push card names the conflict and does not forbid the upload',
+  /conflicts with newer code/i.test(dirtyFacts.warning ?? '') && /upload is still possible/i.test(dirtyFacts.warning ?? ''))
 const approveFacts = needsYouFacts(pr({ operator_actions: { required: true, eligible: ['approve'], reason: null } }), { kind: 'approve' })
 check('an approve card may say the checks passed when the payload proves it', /checks passed/i.test(approveFacts.headline))
 const approveUnproven = needsYouFacts(pr({ work: { ...pr().work, review: { state: 'MERGE', reason: null }, ci: { state: 'UNKNOWN', reason: 'no_ci_observation' } } }), { kind: 'approve' })

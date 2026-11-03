@@ -119,8 +119,10 @@ export function needsYou(prs: InFlightPr[]): InFlightPr[] {
  *  with no review and no CI. A card that asks the operator to authorize an upload must not also tell him the work is
  *  finished and green. */
 export function needsYouFacts(p: InFlightPr, action: { kind: 'approve' | 'push' }): { headline: string; warning: string | null } {
+  // F7 (cc3, 2026-11-03): DIRTY means the branch conflicts with the base, NOT uncommitted work — and a conflicting
+  // branch can still be uploaded; the conflict bites at merge time. Say exactly that.
   const warning = p.mergeable === 'CONFLICTING' || p.merge_state === 'DIRTY'
-    ? 'GitHub reports the branch has changes that are not committed, so it cannot be uploaded as it stands.'
+    ? 'GitHub reports this branch conflicts with newer code in the base. The upload is still possible; the merge will need a rebase first.'
     : p.merge_state === 'BLOCKED'
       ? 'GitHub reports this change is blocked by something it is waiting on.'
       : p.is_draft ? 'It is still a draft, so it is not ready for anyone to merge.' : null
