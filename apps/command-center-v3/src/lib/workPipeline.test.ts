@@ -111,3 +111,162 @@ t('commands: one endpoint, the actor is never in the body; split grammar', () =>
 })
 
 console.log(`workPipeline: ${n} passed`)
+
+
+// Source-bound current-flow projection; all new records below are synthetic.
+import { FLOW_STAGES, flowProjection } from './workPipelineFlow.ts'
+const FLOW_NOW = new Date('2026-11-03T02:00:00Z'), FLOW_HEAD = 'a'.repeat(40), OTHER_HEAD = 'b'.repeat(40)
+const CREATED = '2026-11-02T23:00:00Z', ENTERED = '2026-11-03T01:00:00Z'
+function flowItem(extra: Record<string, unknown> = {}) {
+  return { id: 'PR-9001', title: 'Synthetic work', stage: 'checks', owner: { session: 'fixture-session', vendor: 'fixture', coordinator: 'fixture-lead' },
+    created_at: CREATED, last_touched: '2026-11-03T01:55:00Z', stage_since: ENTERED, head_sha: FLOW_HEAD,
+    next: { actor: 'coordinator', text: 'Review current evidence', command: null }, checks: { head_sha: FLOW_HEAD, passed: 2, total: 3, failed_names: ['fixture-check'] },
+    reviews: [{ reviewer: 'fixture-reviewer', verdict: 'MERGE', head_sha: FLOW_HEAD, at: ENTERED, source: 'fixture-ledger' }],
+    stuck: { basis: 'stage' }, pr_number: 9001, pr_url: 'https://example.test/pull/9001', ...extra }
+}
+function flowEnvelope(items: unknown[], extra: Record<string, unknown> = {}) {
+  return { schema: 'WorkPipeline@v1', as_of: FLOW_NOW.toISOString(), coordination: { complete: true, source_at: FLOW_NOW.toISOString(), items,
+    stuck_after_minutes: 45, approvals: { complete: true, items: [] }, agents: [], ...extra } }
+}
+const flowN = n
+
+t('nine current stages and an explicit coordinator actor share one in-flight grouping', () => {
+  eq(FLOW_STAGES, ['requested', 'building', 'uploaded', 'pr_open', 'checks', 'review', 'approval', 'merged', 'live'])
+  const p = flowProjection(flowEnvelope([flowItem()]), FLOW_NOW)
+  eq(p.items[0].next.actor, 'coordinator'); eq(p.items[0].owner.coordinator, 'fixture-lead')
+  eq([p.items[0].ageMinutes, p.items[0].stageAgeMinutes, p.items[0].stuck], [180, 60, true])
+  eq(p.inFlight.map(x => x.id), p.groups.flatMap(g => g.items.map(x => x.id)))
+})
+t('only valid full aware instants can date a current item', () => {
+  eq(flowProjection(flowEnvelope([flowItem({ created_at: '2026-11-02T18:00:00-05:00' })]), FLOW_NOW).items[0].createdAt, '2026-11-02T23:00:00.000Z')
+  for (const bad of ['2026-11-02', '2026-11-02 23:00:00', '2026-11-04T00:00:00Z', '2026-02-30T23:00:00Z', '2026-11-02T24:00:00Z']) {
+    const it = flowProjection(flowEnvelope([flowItem({ created_at: bad })]), FLOW_NOW).items[0]
+    eq(it.createdAt, null); eq(it.ageMinutes, null); eq(it.gaps.some(g => g.startsWith('Created:')), true)
+  }
+})
+t('explicit null clocks do not borrow timing or API capture fields', () => {
+  const p = flowProjection(flowEnvelope([flowItem({ created_at: null, last_touched: null, stage_since: null, when: { created_at: CREATED, last_activity: CREATED, stage_since: CREATED } })], { source_at: null, observed_at: CREATED }), FLOW_NOW)
+  eq([p.items[0].createdAt, p.items[0].touchedAt, p.items[0].stageSince, p.sourceAt], [null, null, null, null])
+  eq(flowProjection({ items: [], as_of: CREATED }, FLOW_NOW).sourceAt, null)
+})
+t('mismatched or unbound reviews and checks never become current-head proof', () => {
+  const it = flowProjection(flowEnvelope([flowItem({ checks: { head_sha: OTHER_HEAD, passed: 3, total: 3 }, reviews: [{ reviewer: 'old', verdict: 'MERGE', head_sha: OTHER_HEAD }] })]), FLOW_NOW).items[0]
+  eq([it.checks.passed, it.checks.total, it.reviews[0].currentHead], [null, null, false])
+  const unbound = flowProjection(flowEnvelope([flowItem({ reviews: [{ reviewer: 'unbound', verdict: 'MERGE', current_head: true }] })]), FLOW_NOW).items[0]
+  eq(unbound.reviews[0].currentHead, null)
+})
+t('required check and review counts are source-owned, never assumed', () => {
+  const it = flowProjection(flowEnvelope([flowItem({ checks: { head_sha: FLOW_HEAD, state: 'GREEN' }, reviews: { required_count: 2, items: [] } })]), FLOW_NOW).items[0]
+  eq([it.checks.passed, it.checks.total, it.reviewRequired], [null, null, 2])
+})
+t('old batch and task-complete stages remain readable without claiming Review or Live', () => {
+  const a = item({ id: 'old-batch', stage: 'in_batch', rag: 'green' }), b = item({ id: 'done-task', kind: 'task', stage: 'verified', rag: 'green', finished: true })
+  const p = flowProjection({ items: [a, b], as_of: CREATED }, FLOW_NOW)
+  eq(p.items.map(x => x.stage), [null, null]); eq(p.inFlight.length, 2); eq(p.metrics.inFlight, null); eq(p.metrics.liveToday, null)
+  eq(p.items[0].events.some(e => e.label.startsWith('Legacy ')), true)
+})
+t('old holds and next-owner operator labels never populate the canonical waiting queue', () => {
+  const old = item({ id: 'old-held', stage: 'approved', rag: 'amber', next: { owner: 'operator', text: 'Unhold', command: 'legacy-command' } })
+  const p = flowProjection({ items: [old], summary: { needs_me: 99 } }, FLOW_NOW)
+  eq(p.items[0].stage, 'requested'); eq(p.items[0].next.actor, 'unknown'); eq(p.waiting, null); eq(p.metrics.waiting, null)
+})
+t('unproven Live stays unresolved; proven Live is retired by the shared membership projection', () => {
+  const unknown = flowProjection(flowEnvelope([flowItem({ stage: 'live' })]), FLOW_NOW)
+  eq(unknown.items[0].stage, null); eq(unknown.inFlight.length, 1); eq(unknown.metrics.liveToday, null)
+  const live = flowItem({ stage: 'live', merged_at: '2026-11-03T00:30:00Z', live: { served: true, verified: true, source: 'fixture-receipt', at: '2026-11-03T01:30:00Z' }, checks: { head_sha: FLOW_HEAD, passed: 3, total: 3, green_at: ENTERED } })
+  const p = flowProjection(flowEnvelope([live, flowItem({ id: 'inactive', in_flight: false })]), FLOW_NOW)
+  eq(p.inFlight.length, 0); eq([p.metrics.inFlight, p.metrics.liveToday, p.metrics.mergedToday, p.metrics.greenToLiveMinutes], [0, 1, 1, 30])
+})
+t('missing green time never fabricates zero green-to-live latency', () => {
+  const p = flowProjection(flowEnvelope([flowItem({ stage: 'live', merged_at: ENTERED, live: { served: true, verified: true, source: 'fixture-receipt', at: '2026-11-03T01:30:00Z' } })]), FLOW_NOW)
+  eq(p.metrics.greenToLiveMinutes, null)
+})
+t('missing, partial and failed collection sources never produce healthy zero metrics', () => {
+  for (const raw of [null, flowEnvelope([], { complete: false }), { ...flowEnvelope([]), sources: { census: { warning: 'synthetic census unavailable' } } }]) {
+    const p = flowProjection(raw, FLOW_NOW)
+    eq([p.metrics.inFlight, p.metrics.mergedToday, p.metrics.liveToday, p.metrics.idleAgentMinutes], [null, null, null, null]); eq(p.gaps.length > 0, true)
+  }
+})
+t('a complete empty source can report measured zeros', () => {
+  const p = flowProjection(flowEnvelope([]), FLOW_NOW)
+  eq([p.metrics.inFlight, p.metrics.stuck, p.metrics.mergedToday, p.metrics.liveToday, p.metrics.waiting, p.metrics.idleAgentMinutes], [0, 0, 0, 0, 0, 0])
+})
+t('malformed returned members yield a named gap rather than empty healthy totals', () => {
+  const p = flowProjection(flowEnvelope([null, 'bad-member']), FLOW_NOW)
+  eq(p.metrics.inFlight, null); eq(p.metrics.mergedToday, null); eq(p.gaps.some(g => g.includes('malformed member')), true)
+})
+t('canonical waiting members drive counts with partial and conflicting-source refusals', () => {
+  const member = { id: 'canonical-action', title: 'Synthetic decision', source: 'fixture-approval-queue', as_of: CREATED, head_sha: FLOW_HEAD }
+  const p = flowProjection(flowEnvelope([], { approvals: { complete: true, actionable_items: [member, member] } }), FLOW_NOW)
+  eq(p.metrics.waiting, 1); eq(p.waiting?.map(x => x.id), ['canonical-action'])
+  const partial = flowProjection(flowEnvelope([], { approvals: { complete: false, actionable_items: [member] } }), FLOW_NOW)
+  eq(partial.waiting?.length, 1); eq(partial.metrics.waiting, null)
+  const conflict = flowProjection(flowEnvelope([], { approvals: { complete: true, actionable_items: [member, { ...member, head_sha: OTHER_HEAD }] } }), FLOW_NOW)
+  eq(conflict.metrics.waiting, null); eq(conflict.waiting?.length, 0)
+})
+t('agent idle uses its own activity clock and unknown nudge counts stay unknown', () => {
+  const agent = { session: 'fixture-session', last_activity: '2026-11-03T01:45:00Z', nudges_today: 3 }
+  const p = flowProjection(flowEnvelope([], { agents: [agent] }), FLOW_NOW)
+  eq([p.agents[0].idleMinutes, p.agents[0].nudgesToday, p.metrics.idleAgentMinutes], [15, 3, 15])
+  const future = flowProjection(flowEnvelope([], { agents: [{ ...agent, last_activity: '2026-11-04T00:00:00Z', nudges_today: null }] }), FLOW_NOW)
+  eq([future.agents[0].idleMinutes, future.agents[0].nudgesToday, future.metrics.idleAgentMinutes], [null, null, null])
+})
+t('claim stale labels do not invent a configured stuck verdict', () => {
+  const p = flowProjection(flowEnvelope([flowItem({ stale: true, stuck: undefined })], { stuck_after_minutes: undefined }), FLOW_NOW)
+  eq(p.items[0].stuck, null); eq(p.metrics.stuck, null)
+})
+function aSourcePayload(extra: Record<string, unknown> = {}, bundleExtra: Record<string, unknown> = {}) {
+  const fact = (value: unknown, source = 'claim_board') => ({ value, source, as_of: ENTERED, gap: null })
+  const bundle = { owner: fact({ session: 'a-session', vendor: 'fixture', coordinator: 'a-lead' }), coordinator: fact('a-lead'), last_activity: fact('2026-11-03T01:45:00Z'), next_action: fact('Read current proof', 'claim_worklog'),
+    ci: { state: 'GREEN', head_sha: FLOW_HEAD, as_of: ENTERED, source: 'fixture-ci', workflows: [], gap: null },
+    review: { head_sha: FLOW_HEAD, state: 'MERGE', evidence_class: 'reported_review_not_approval', source: 'coordinator_ledger', gap: null, records: [{ reviewer_session: 'a-reviewer', verdict: 'MERGE', observed_at: ENTERED }] },
+    live: fact(false, 'served_release+deploy_receipt'), timeline: [{ kind: 'pr_open', as_of: CREATED, source: 'github_census', source_ref: 'github_pr:9001', head_sha: FLOW_HEAD }], ...bundleExtra }
+  const sources = Object.fromEntries(['claims', 'coordinator_ledger', 'digest_approvals', 'plans', 'releases'].map(k => [k, { source: k, as_of: ENTERED, gap: null }]))
+  return { schema: 'WorkPipeline@v1', as_of: FLOW_NOW.toISOString(), items: [{ ...item({ id: 'PR-9001', stage: 'pr_open', rag: 'amber', pr_number: 9001 }), in_flight: true, coordination: bundle }], sources: { census: { refreshed_at: ENTERED, warning: null } },
+    coordination: { schema: 'WorkPipelineSources@v1', as_of: ENTERED, captured_at: FLOW_NOW.toISOString(), sources, gaps: [], claims: [], active_claim_ids: [], ...extra } }
+}
+t('actual A fact envelopes work without a guessed coordination.items collection', () => {
+  const p = flowProjection(aSourcePayload(), FLOW_NOW), it = p.items[0]
+  eq(it.owner, { session: 'a-session', vendor: 'fixture', coordinator: 'a-lead' }); eq(it.touchedAt, '2026-11-03T01:45:00.000Z')
+  eq([it.stage, it.createdAt, it.stageSince], ['pr_open', '2026-11-02T23:00:00.000Z', null]); eq(it.next.actor, 'unknown'); eq(it.next.text, 'Read current proof')
+  eq(it.reviews[0].currentHead, true); eq(it.checks.total, null); eq(p.sourceAt, '2026-11-03T01:00:00.000Z'); eq(p.metrics.inFlight, 1)
+})
+t('A explicit inactive membership is honored without inventing Live status', () => {
+  const raw = aSourcePayload(); raw.items[0].in_flight = false; const p = flowProjection(raw, FLOW_NOW)
+  eq(p.inFlight.length, 0); eq(p.metrics.inFlight, 0)
+})
+t('A verified live fact keeps its own source clock rather than capture time', () => {
+  const p = flowProjection(aSourcePayload({}, { live: { value: true, source: 'served_release+deploy_receipt', as_of: '2026-11-03T01:30:00Z', gap: null } }), FLOW_NOW)
+  eq([p.items[0].stage, p.items[0].liveAt, p.inFlight.length], ['live', '2026-11-03T01:30:00.000Z', 0])
+})
+t('A missing source remains named and makes collection counters unknown', () => {
+  const raw = aSourcePayload({ sources: { plans: { source: 'plan_registry', gap: 'synthetic missing registry', as_of: null } }, gaps: [{ source: 'plans', reason: 'synthetic missing registry' }] })
+  const p = flowProjection(raw, FLOW_NOW); eq(p.items.length, 1); eq(p.metrics.inFlight, null); eq(p.gaps.some(g => g.includes('plans') && g.includes('missing registry')), true)
+})
+t('unsafe partial legacy shapes are never attached to the old action-card renderer', () => {
+  for (const patch of [{ where: { files: null } }, { cells: [null] }, { what: null }, { next: { text: {} } }]) {
+    const bad = { ...item({ id: 'malformed-old', stage: 'building', rag: 'amber' }), ...patch }
+    eq(flowProjection(flowEnvelope([bad]), FLOW_NOW).items[0].legacy, undefined)
+  }
+})
+t('flow projection preserves raw canonical facts and legacy action data without mutation', () => {
+  const raw = aSourcePayload(), before = JSON.stringify(raw); flowProjection(raw, FLOW_NOW); eq(JSON.stringify(raw), before)
+})
+
+
+t('submillisecond future observations cannot become observed creation or Live evidence', () => {
+  const future = '2026-11-03T02:00:00.000001Z'
+  const p = flowProjection(flowEnvelope([flowItem({ stage: 'live', created_at: future,
+    live: { verified: true, served: true, source: 'fixture-receipt', at: future } })]), FLOW_NOW)
+  eq([p.items[0].createdAt, p.items[0].stage, p.items[0].liveAt, p.inFlight.length], [null, null, null, 1])
+  const past = flowProjection(flowEnvelope([flowItem({ created_at: '2026-11-03T01:59:59.999999Z' })]), FLOW_NOW)
+  eq(past.items[0].createdAt, '2026-11-03T01:59:59.999Z')
+})
+t('A positive Live fact with an invalid observation remains named unknown rather than measured zero', () => {
+  const p = flowProjection(aSourcePayload({}, { live: { value: true, source: 'served_release+deploy_receipt',
+    as_of: '2026-11-03T02:00:00.000001Z', gap: null } }), FLOW_NOW)
+  eq(p.items[0].stage === 'live', false); eq(p.items[0].liveAt, null)
+  eq(p.items[0].gaps.some(g => g.startsWith('Live:')), true); eq(p.metrics.liveToday, null)
+})
+
+console.log(`workPipelineFlow: ${n - flowN} passed`)
