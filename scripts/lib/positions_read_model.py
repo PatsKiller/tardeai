@@ -212,15 +212,26 @@ def _resolve_run(cur, sync_run_id: Optional[int]):
 
 
 def _row_run_matches(value, run: int) -> bool:
-    """A row's own run id agrees with the document's, as an exact integer (no truncation)."""
+    """A row's own run id agrees with the document's, as an exact integer (no truncation).
+
+    A decimal STRING is accepted only when every character is an ASCII digit. `str.isdigit()`
+    also accepts superscripts ('²'.isdigit() is True) while int('²') raises ValueError, and a
+    4300+ digit string raises the same error — so this refuses rather than raises (cx-openai-2).
+    """
     if isinstance(value, bool) or value is None:
         return False
     if isinstance(value, int):
         return value == run
     if isinstance(value, float):
         return math.isfinite(value) and value == int(value) and int(value) == run
-    if isinstance(value, str) and value.strip().isdigit():
-        return int(value.strip()) == run
+    if isinstance(value, str):
+        text = value.strip()
+        if not text.isascii() or not text.isdigit():
+            return False
+        try:
+            return int(text) == run
+        except ValueError:
+            return False
     return False
 
 
@@ -321,13 +332,39 @@ def document_as_of(doc: dict) -> Optional[str]:
 
 
 _CONNECTION_ERROR_NAMES = frozenset(
-    {"OperationalError", "InterfaceError", "ConnectionException", "ConnectionError", "PoolError"}
+    {
+        # Base classes psycopg2 raises for a lost or unusable session.
+        "OperationalError",
+        "InterfaceError",
+        "ConnectionException",
+        "ConnectionError",
+        "PoolError",
+        # Leaf classes (psycopg2.errors / libpq): real connection losses whose leaf name no short
+        # list can enumerate. Membership is checked across the whole MRO, because ConnectionFailure
+        # and AdminShutdown are OperationalError subclasses — NOT OSError — and a leaf-name-only
+        # check reported them as db_state_inconsistent (cx-openai-2, 2026-11-03).
+        "ConnectionFailure",
+        "AdminShutdown",
+        "CrashShutdown",
+        "CannotConnectNow",
+        "ConnectionDoesNotExist",
+        "ConnectionRejection",
+        "SQLClientUnableToEstablishSQLConnection",
+        "TooManyConnections",
+    }
 )
 
 
 def _is_connection_failure(exc: Exception) -> bool:
-    """A lost/unavailable connection may fall back to the export; a data defect may not."""
-    return isinstance(exc, OSError) or type(exc).__name__ in _CONNECTION_ERROR_NAMES
+    """A lost/unavailable read session may fall back to the export; a data defect may not.
+
+    Loss of the read session is an infrastructure fact, not inconsistent book data: treating it
+    as a data defect is the same lie in reverse.
+    """
+    if isinstance(exc, OSError):
+        return True
+    names = {cls.__name__ for cls in type(exc).__mro__}
+    return bool(names & _CONNECTION_ERROR_NAMES)
 
 
 def _snapshot(sync_run_id: Optional[int] = None, *, conn_factory=None, export_path=None) -> dict:
@@ -407,8 +444,11 @@ def _snapshot(sync_run_id: Optional[int] = None, *, conn_factory=None, export_pa
             if expected != actual:
                 mismatched.append({"account": acct, "receipt_positions": expected, "snapshot_positions": actual})
         if mismatched:
-            return _probe_unavailable("snapshot_account_positions_mismatch", sync_run_id=run,
-                                      accounts=mismatched[:10])
+            # Diagnostic-only name: an unavailable result never carries `rows` or `accounts`
+            # (that key means book payload). Account mismatches are evidence, like invalid_rows.
+            return _probe_unavailable(
+                "snapshot_account_positions_mismatch", sync_run_id=run, invalid_accounts=mismatched[:10]
+            )
     bad = [(row["account_key"], row["symbol"], _numeric_problems(row))
            for row in rows if _numeric_problems(row)]
     if bad:

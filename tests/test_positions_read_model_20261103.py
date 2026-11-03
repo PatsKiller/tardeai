@@ -474,7 +474,9 @@ def test_receipt_account_positions_must_match_the_snapshot():
     accounts = {"schwab_taxable": {"positions": 1}, "schwab_roth_ira": {"positions": 5}}
     out = m.rows(conn_factory=lambda: _conn(receipts={641: _receipt_detail(641, 3, accounts)}))
     assert out["available"] is False and out["reason"] == "snapshot_account_positions_mismatch"
-    assert out["accounts"][0]["account"] == "schwab_roth_ira"
+    # Diagnostic-only key: an unavailable result never carries `accounts` (book payload).
+    assert "accounts" not in out and "rows" not in out
+    assert out["invalid_accounts"][0]["account"] == "schwab_roth_ira"
 
 
 def test_receipt_account_views_must_name_the_same_accounts():
@@ -598,3 +600,111 @@ def test_no_connection_still_uses_the_export(tmp_path):
         {"account": "schwab_taxable", "symbol": "AAA", "shares": 10, "market_value": 1200}]})
     out = m.rows(conn_factory=lambda: (_ for _ in ()).throw(RuntimeError("db down")), export_path=p)
     assert out["available"] is True and out["source"] == "backup" and out["sync_run_id"] == 101
+
+
+# ── cx-openai-2 RENEWED BLOCK: connection boundary, superscript run id, no book payload ─────────
+
+import psycopg2.errors as pg  # noqa: E402
+
+
+class _RaisesDuringSnapshotCursor(FakeCursor):
+    def __init__(self, exc, pointer, receipts, snapshots):
+        super().__init__(pointer, receipts, snapshots)
+        self._exc = exc
+
+    def execute(self, sql, params=None):
+        if "from position_snapshots" in " ".join(str(sql).split()).lower():
+            raise self._exc
+        return super().execute(sql, params)
+
+
+class _RaisesDuringSnapshotConn:
+    """BEGIN succeeds; the snapshot SELECT then loses the read session."""
+
+    def __init__(self, exc):
+        rows = RUN641[641]
+        detail = _detail(rows)
+        receipt = _receipt(641, len(rows), accounts_ok=sorted(detail), accounts=detail)
+        self._cur = _RaisesDuringSnapshotCursor(exc, [641], {641: receipt}, RUN641)
+
+    def cursor(self):
+        return self._cur
+
+    def rollback(self):
+        pass
+
+
+@pytest.mark.parametrize(
+    "make_exc",
+    [
+        lambda: pg.ConnectionFailure("server closed the connection unexpectedly"),
+        lambda: pg.AdminShutdown("the database system is shutting down"),
+    ],
+)
+def test_a_lost_read_session_falls_back_to_the_export(tmp_path, make_exc):
+    """F1: ConnectionFailure/AdminShutdown are OperationalError subclasses, not OSError."""
+    p = _export(tmp_path, {"sync_run_id": 641, "as_of": NOW.isoformat(), "holdings": [
+        {"account": "schwab_taxable", "symbol": "AAA", "shares": 10, "market_value": 1200.0}]})
+    out = m.rows(conn_factory=lambda: _RaisesDuringSnapshotConn(make_exc()), export_path=p)
+    assert out["available"] is True and out["source"] == "backup"
+    assert out["reason"].startswith("db_unreachable")
+
+
+def test_a_lost_read_session_without_an_export_is_unreachable_not_inconsistent(tmp_path):
+    out = m.rows(
+        conn_factory=lambda: _RaisesDuringSnapshotConn(pg.ConnectionFailure("gone")),
+        export_path=tmp_path / "missing.json",
+    )
+    assert out["available"] is False
+    assert out["reason"].startswith("db_unreachable")
+    assert out["reason"] != "db_state_inconsistent"
+
+
+def test_a_real_data_error_still_is_inconsistent_not_unreachable(tmp_path):
+    p = _export(
+        tmp_path,
+        {
+            "sync_run_id": 641,
+            "holdings": [{"account": "schwab_taxable", "symbol": "AAA", "shares": 10, "market_value": 1200}],
+        },
+    )
+    out = m.rows(conn_factory=lambda: _RaisesDuringSnapshotConn(pg.DataError("bad row")), export_path=p)
+    assert out["available"] is False and out["reason"] == "db_state_inconsistent"
+    assert out.get("source") != "backup"
+
+
+@pytest.mark.parametrize("bad_run_id", ["²", "²³", "9" * 5000])
+def test_a_non_ascii_or_oversized_row_run_id_refuses_the_export(tmp_path, bad_run_id):
+    """F2: isdigit() accepts superscripts; int() then raises. Refuse, never raise."""
+    p = _export(
+        tmp_path,
+        {
+            "sync_run_id": 641,
+            "holdings": [
+                {
+                    "account": "schwab_taxable",
+                    "symbol": "AAA",
+                    "shares": 10,
+                    "market_value": 1200.0,
+                    "sync_run_id": bad_run_id,
+                }
+            ],
+        },
+    )
+    out = m.rows(conn_factory=lambda: (_ for _ in ()).throw(RuntimeError("db down")), export_path=p)
+    assert out["available"] is False
+    assert out["reason"] == "export_row_run_mismatch"
+    assert out["invalid_rows"] == [0]
+
+
+def test_account_position_mismatch_carries_no_book_payload():
+    """F3: an unavailable result never carries `rows` or `accounts` — evidence goes in invalid_accounts."""
+    rows = RUN641[641]
+    detail = _detail(rows)
+    detail["schwab_roth_ira"]["positions"] = 5  # receipt claims five, snapshot has one
+    receipts = {641: _receipt(641, len(rows), accounts_ok=sorted(detail), accounts=detail)}
+    out = m.rows(conn_factory=lambda: FakeConn([641], receipts, RUN641))
+    assert out["available"] is False
+    assert out["reason"] == "snapshot_account_positions_mismatch"
+    assert "accounts" not in out and "rows" not in out
+    assert out["invalid_accounts"][0]["account"] == "schwab_roth_ira"
