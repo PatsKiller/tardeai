@@ -431,3 +431,18 @@ def test_a_malformed_claim_file_still_refuses(tmp_path):
     board = _board_with(tmp_path, {"broken.json": {"schema": "AgentClaim@v1"}})
     with pytest.raises(mod.Refused):
         mod.effective_claim_states([{"claim_id": "c1"}], board)
+
+
+def test_a_known_auxiliary_state_file_does_not_block_the_board(tmp_path):
+    """policy_broadcast_state.json lives in the real claims dir; it is a state file, not a claim."""
+    from lib import pr_merge_delegation as mod
+    board = _board_with(tmp_path, {"policy_broadcast_state.json": {"schema": "PolicyBroadcastState@v1", "x": 1}})
+    assert mod.effective_claim_states([{"claim_id": "c1"}], board) == {"c1": "live"}
+
+
+def test_a_claim_file_named_for_another_claim_id_still_refuses(tmp_path):
+    """The filename is part of the identity rule: a conflicting duplicate must refuse, never be deduped by preference."""
+    from lib import pr_merge_delegation as mod
+    board = _board_with(tmp_path, {"c2.json": {"schema": "AgentClaim@v1", "claim_id": "c1", "status": "active"}})
+    with pytest.raises(mod.Refused):
+        mod.effective_claim_states([{"claim_id": "c1"}], board)

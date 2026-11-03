@@ -78,6 +78,10 @@ except ImportError:  # scripts/ on sys.path (api_v2 inside portfolio_server)
     from lib.agent_file_lease import canonicalize_claim_path  # type: ignore[no-redef]
 
 SCHEMA = "AgentClaim@v1"
+#: Files that sit in the claims directory without being claims. Only these may be skipped; anything else that does not
+#: parse as an AgentClaim@v1 named by its claim_id stays unreadable, so an unknown, corrupt or conflicting file still
+#: refuses the board rather than being silently dropped.
+AUXILIARY_CLAIM_DIR_SCHEMAS = frozenset({"PolicyBroadcastState@v1"})
 BOARD_SCHEMA = "AgentClaimBoard@v1"
 CHECK_SCHEMA = "AgentClaimCheck@v1"
 HISTORY_NAME = "claims_history.jsonl"
@@ -528,6 +532,8 @@ class ClaimBoard:
                 break
             try:
                 d = json.loads(p.read_text(encoding="utf-8"))
+                if isinstance(d, dict) and d.get("schema") in AUXILIARY_CLAIM_DIR_SCHEMAS:
+                    continue  # a state file that lives here by design: not a claim and not corruption
                 if not isinstance(d, dict) or d.get("schema") != SCHEMA or d.get("claim_id") != p.stem:
                     raise ValueError("not an AgentClaim@v1 named by its claim_id")
                 d["_path"] = str(p)
