@@ -649,45 +649,18 @@ def tree_state(root, *, exclude=None):
     return out
 
 
-def _git_tracked_paths(root):
-    """Repo-relative paths of every tracked file, from git. Derived, never hand-listed."""
-    try:
-        listing = subprocess.run(["git", "-C", str(root), "ls-files", "-z"],
-                                 capture_output=True, check=True)
-    except (OSError, subprocess.SubprocessError):
-        return ()
-    return tuple(rel for rel in listing.stdout.decode("utf-8").split("\0") if rel)
-
-
-#: Resolved at import, before any test's process-forbidding fixture is installed.
-TRACKED_PATHS = _git_tracked_paths(ROOT)
-
-
-def repo_tracked_state(root, paths=None):
-    """Content of the watched files under ``root``, keyed by repo-relative path.
-
-    The read-only proof watches what ``evaluate()`` is allowed to touch: the repository's committed
-    content. The list is derived from ``git ls-files`` at import (not hand-maintained), so it cannot
-    rot as files move and cannot silently become empty.
-
-    Why not the whole checkout: the hardening shard runs gates in PARALLEL in one checkout, so a
-    whole-tree snapshot also fails on untracked runtime state another gate writes (the same defect
-    fixed for the CI observer by serialising). Scoping the watch set keeps the parallelism and makes
-    the assertion say what it means — ``evaluate`` wrote nothing it was allowed to write.
-    """
-    root = Path(root)
-    out = {}
-    for rel in (TRACKED_PATHS if paths is None else paths):
-        path = root / rel
-        if not path.is_file():
-            out[rel] = ("missing",)  # a disappearance during the call is still a change
-            continue
-        st = path.stat()
-        out[rel] = (st.st_size, st.st_mtime_ns, hashlib.sha256(path.read_bytes()).hexdigest())
-    return out
-
-
 def test_evaluate_is_readonly_and_uses_only_read_apis(mod, tmp_path, monkeypatch):
+    """No file in the checkout — tracked OR untracked — may change while ``evaluate`` runs.
+
+    The watch is the DYNAMIC whole tree (size, mtime_ns and SHA per path), not a list resolved from
+    ``git ls-files`` at import: a tracked-only list cannot see a new untracked file, and creating one
+    is exactly the kind of write a read-only proof exists to catch (codex ruling 2026-11-03, restoring
+    the original read-only contract).
+
+    Only this test's own fixture directory is excluded — ``tmp_path`` is the isolated state directory
+    the caller passes in, and its claim-dir contents have their own exact snapshot below. Every other
+    path under ``ROOT``, including new untracked files, stays watched.
+    """
     clock = Clock(T0)
     board = make_board(tmp_path, clock)
     author_id = seed_author(board)
@@ -698,7 +671,10 @@ def test_evaluate_is_readonly_and_uses_only_read_apis(mod, tmp_path, monkeypatch
     data = build_snapshot(mod, docs(board), author_claim_id=author_id)
 
     from scripts.lib import agent_claim_board as AB
-    scratch_before = repo_tracked_state(ROOT)
+    fixture_dir = Path(tmp_path).resolve()
+    scratch_before = tree_state(ROOT, exclude=fixture_dir)
+    # A read-only proof over an empty watch set proves nothing; fail loudly rather than pass by emptiness.
+    assert scratch_before, "the read-only proof must watch a nonempty checkout"
     claims_before = tree_state(board.dir)
 
     def forbidden(*args, **kwargs):
@@ -715,25 +691,38 @@ def test_evaluate_is_readonly_and_uses_only_read_apis(mod, tmp_path, monkeypatch
     result = mod.evaluate(data, now=NOW, claim_board=board)
     assert result["ok"] is True, result
     assert tree_state(board.dir) == claims_before
-    assert repo_tracked_state(ROOT) == scratch_before
+    assert tree_state(ROOT, exclude=fixture_dir) == scratch_before
 
 
-def test_the_readonly_watch_set_is_derived_nonempty_and_bites(tmp_path):
-    """A read-only proof that watches an EMPTY set proves nothing (the #2561 lesson).
+def test_the_readonly_watch_set_is_dynamic_and_sees_untracked_creation(tmp_path):
+    """A read-only proof that watches an EMPTY set, or a fixed tracked list, proves nothing.
 
-    Two properties, both required: the real watch set is derived from the repository and is not
-    empty, and a write inside that set is actually detected by the comparison.
+    Required properties, each asserted: the watch set of a real tree is nonempty; a content change, an
+    mtime-only change and a disappearance are all detected; and a NEW file the git index never saw is
+    detected too — the exact case a ``git ls-files``-derived list could not see.
     """
-    assert len(TRACKED_PATHS) > 100, "the read-only proof must watch the repository, not an empty set"
-    assert str(Path(__file__).resolve().relative_to(ROOT)) in TRACKED_PATHS, "this test file must be watched"
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    (checkout / "app.py").write_text("one\n", encoding="utf-8")
+    before = tree_state(checkout)
+    assert before, "the watch set must be nonempty"
+    assert str(checkout / "app.py") in before
 
-    (tmp_path / "app.py").write_text("one\n", encoding="utf-8")
-    before = repo_tracked_state(tmp_path, ("app.py",))
-    assert before == {"app.py": (before["app.py"][0], before["app.py"][1], before["app.py"][2])}
-    (tmp_path / "app.py").write_text("two\n", encoding="utf-8")
-    assert repo_tracked_state(tmp_path, ("app.py",)) != before, "a write must fail the comparison"
-    (tmp_path / "app.py").unlink()
-    assert repo_tracked_state(tmp_path, ("app.py",)) == {"app.py": ("missing",)}
+    (checkout / "app.py").write_text("two\n", encoding="utf-8")
+    assert tree_state(checkout) != before, "a content write must fail the comparison"
+
+    before = tree_state(checkout)
+    st = (checkout / "app.py").stat()
+    os.utime(checkout / "app.py", ns=(st.st_atime_ns, st.st_mtime_ns - 1_000_000_000))
+    assert tree_state(checkout) != before, "an mtime-only change must fail the comparison"
+
+    before = tree_state(checkout)
+    (checkout / "untracked_new.py").write_text("new\n", encoding="utf-8")
+    assert tree_state(checkout) != before, "a NEW untracked file must fail the comparison"
+
+    before = tree_state(checkout)
+    (checkout / "app.py").unlink()
+    assert tree_state(checkout) != before, "a disappearance must fail the comparison"
 
 
 # -- claim-directory contents: one known auxiliary schema is skipped, anything else still refuses -----------------
