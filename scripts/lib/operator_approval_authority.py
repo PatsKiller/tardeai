@@ -8,11 +8,15 @@ Healthy pre-30 main keeps the legacy held-PR rule without inventing a source gap
 
 from __future__ import annotations
 
+import hashlib
+import importlib.abc
+import importlib.util
 import json
 import os
 import pwd
 import re
 import stat
+import sys
 import types
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -71,15 +75,48 @@ def _installed_hooks() -> Path:
     return paths.pop()
 
 
+class _VerifiedSnapshotLoader(importlib.abc.SourceLoader):
+    """Standard module loading from the verified snapshot, with no path/cache reread."""
+
+    def __init__(self, path: Path, raw: bytes):
+        self.path, self.raw = str(path), raw
+
+    def get_filename(self, fullname: str) -> str:
+        return self.path
+
+    def get_data(self, path: str) -> bytes:
+        if path != self.path:
+            raise OSError("unverified_helper_read")
+        return self.raw
+
+    def get_code(self, fullname: str):
+        # Bypass SourceLoader's filesystem/bytecode-cache lookup. The only code
+        # source is the immutable owner-checked, current-main-matched snapshot.
+        return self.source_to_code(self.raw, self.path)
+
+
 def _module(path: Path, expected: str) -> types.ModuleType:
     raw = _read(path)
     if raw != expected.encode("utf-8"):
         raise ValueError("trusted_helper_not_current_main")
-    module = types.ModuleType("approval_authority_" + path.stem)
+    name = "approval_authority_" + path.stem + "_" + hashlib.sha256(raw).hexdigest()
+    loader = _VerifiedSnapshotLoader(path, raw)
+    spec = importlib.util.spec_from_loader(name, loader, origin=str(path))
+    if spec is None:
+        raise ValueError("trusted_helper_spec_unavailable")
+    module = importlib.util.module_from_spec(spec)
     module.__file__ = str(path)
-    # Execute only bytes already matched to the same canonical current-main blob;
-    # no import of feature-worktree code and no bytecode/cache write is needed.
-    exec(compile(raw, str(path), "exec"), module.__dict__)
+    previous, had_previous = sys.modules.get(name), name in sys.modules
+    sys.modules[name] = module  # Dataclass/annotation resolution needs standard import context.
+    try:
+        loader.exec_module(module)
+    except BaseException:
+        if sys.modules.get(name) is module:
+            if had_previous:
+                sys.modules[name] = previous
+            else:
+                sys.modules.pop(name, None)
+        raise
     return module
 
 
