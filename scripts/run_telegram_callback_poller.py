@@ -219,21 +219,46 @@ def _record_operator_reply(msg: dict, text: str, chat_id: str, *, replies_dir=No
     record = {"message_id": msg.get("message_id"), "date": msg.get("date"),
               "recorded_at": datetime.now(timezone.utc).isoformat(),
               "chat_id": chat_id, "sender_id": str(sender_id), "text": text}
+    status = _append_or_queue(record, replies_dir=replies_dir, pending_path=pending_path)
+    if status == "recorded":
+        log.info(f"operator reply recorded: {text[:40]} from chat={chat_id}")
+    elif status == "queued":
+        log.warning(f"operator reply queued for flush: {text[:40]} from chat={chat_id}")
+    else:
+        log.error(f"operator reply neither recorded nor queued: {text[:40]} from chat={chat_id}")
+    return status
+
+
+def _record_operator_outcome(msg: dict, text: str, chat_id: str, *, handled: bool,
+                             replies_dir=None, pending_path=None) -> str:
+    """The second line of a reply pair: what happened to it after classification (cx-openai-3 F3).
+
+    A handled command (``/approve …``, a Schwab ``code=`` paste, a cap change) used to commit with no
+    coordinator copy at all. The message line is written BEFORE classification, so the reply always
+    reaches the inbox; this line carries the outcome and is paired by ``message_id``. It is evidence of
+    what the operator typed and what the system did — it is never treated as authority.
+    """
+    record = {"event": "outcome", "message_id": msg.get("message_id"),
+              "recorded_at": datetime.now(timezone.utc).isoformat(), "chat_id": chat_id,
+              "handled": bool(handled), "text": text}
+    return _append_or_queue(record, replies_dir=replies_dir, pending_path=pending_path)
+
+
+def _append_or_queue(record: dict, *, replies_dir=None, pending_path=None) -> str:
+    """Inbox append first; on failure a durable queue; ``failed`` only when neither can be written."""
     line = json.dumps(record, ensure_ascii=False) + "\n"
     try:
         directory = Path(replies_dir) if replies_dir is not None else _operator_replies_dir()
         _append_private(directory / "telegram.jsonl", line)
-        log.info(f"operator reply recorded: {text[:40]} from chat={chat_id}")
         return "recorded"
     except Exception as exc:  # noqa: BLE001 — the inbox fault must not lose the reply
         log.warning(f"operator reply inbox write failed ({exc}); queueing durably")
     try:
         queue = Path(pending_path) if pending_path is not None else _operator_replies_pending_path()
         _append_private(queue, line)
-        log.warning(f"operator reply queued for flush: {text[:40]} from chat={chat_id}")
         return "queued"
     except Exception as exc:  # noqa: BLE001
-        log.error(f"operator reply neither recorded nor queued: {exc}")
+        log.error(f"operator reply queue write failed: {exc}")
         return "failed"
 
 
@@ -383,6 +408,20 @@ def poll_once(timeout=25):
             _commit_if_legacy()
             continue
 
+        # cx-openai-3 F3: the coordinator copy is written BEFORE handler classification. A handled
+        # command ("/approve …", a Schwab `code=` paste, a cap change) used to commit with NO coordinator
+        # copy at all, and an ordinary answer containing "code=" was routed away from the inbox by a
+        # pre-existing substring branch. Recording first makes the text impossible to lose; the outcome
+        # line below says what the system then did with it. This is evidence, never authority.
+        reply_status = _record_operator_reply(
+            msg, text, chat_id, allowed=allowed,
+            chat_type=(msg.get("chat") or {}).get("type"),
+            sender_id=(msg.get("from") or {}).get("id"))
+        if reply_status == "failed":
+            log.error(f"operator reply neither recorded nor queued; not advancing checkpoint for {uid}")
+            continue
+        authenticated = reply_status in ("recorded", "queued")
+
         # Route all recognized commands
         lower = text.lower()
         handled = False
@@ -468,20 +507,13 @@ def poll_once(timeout=25):
             except Exception as e:
                 log.error(f"schwab callback error: {e}")
 
-        # Free text nobody routed: record/queue the operator's reply BEFORE the checkpoint commits.
-        # cx-openai-4 (2026-11-03) proved the old order lost a reply permanently: the checkpoint had
-        # advanced, the inbox append failed, and the update was never redelivered. The same rule the
-        # inbound-persist path already applies (do not advance on a failed durable write) now governs
-        # this one: a reply that is neither recorded nor queued does not get its update committed.
-        reply_status = None
-        if not handled:
-            reply_status = _record_operator_reply(
-                msg, text, chat_id, allowed=allowed,
-                chat_type=(msg.get("chat") or {}).get("type"),
-                sender_id=(msg.get("from") or {}).get("id"))
-        if reply_status == "failed":
-            log.error(f"operator reply lost neither recorded nor queued; not advancing checkpoint for {uid}")
-            continue
+        # The outcome half of the reply pair, written before the checkpoint for the same reason: a
+        # durable record of what happened must exist even for a reply a handler consumed.
+        if authenticated:
+            outcome_status = _record_operator_outcome(msg, text, chat_id, handled=handled)
+            if outcome_status == "failed":
+                log.error(f"operator reply outcome neither recorded nor queued; not advancing checkpoint {uid}")
+                continue
 
         # Legacy path: inbound event is persisted; advance the durable
         # checkpoint so a crash or replayed poll does not re-deliver.

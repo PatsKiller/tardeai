@@ -69,16 +69,18 @@ def test_a_broken_inbox_never_raises_and_queues_durably(tmp_path):
     assert queue.read_text() == ""
 
 
-def test_the_call_site_is_the_free_text_branch_before_the_responder():
+def test_the_record_happens_before_classification_and_before_the_responder():
+    """F3: a handled command must still leave a coordinator copy, so the record precedes the branches."""
     src = (ROOT / "scripts" / "run_telegram_callback_poller.py").read_text(encoding="utf-8")
-    assert "if not handled:" in src
-    free_text = src.split("if not handled:", 1)[1]
-    record_at = free_text.index("reply_status = _record_operator_reply(")
-    responder_at = free_text.index("cio_poller_reply.maybe_answer")
-    assert record_at < responder_at  # an answer that fails to compose cannot lose the message
-    # and the record carries the SENDER, not only the room (R1)
-    assert "chat_type=(msg.get(\"chat\") or {}).get(\"type\")" in free_text
-    assert "sender_id=(msg.get(\"from\") or {}).get(\"id\")" in free_text
+    record_at = src.index("reply_status = _record_operator_reply(")
+    classify_at = src.index("# Route all recognized commands")
+    responder_at = src.index("cio_poller_reply.maybe_answer")
+    outcome_at = src.index("_record_operator_outcome(msg, text, chat_id, handled=handled)")
+    commit_at = src.index("_commit_if_legacy()", record_at)
+    assert record_at < classify_at < outcome_at < responder_at
+    assert record_at < commit_at
+    assert "chat_type=(msg.get(\"chat\") or {}).get(\"type\")" in src[record_at:classify_at]
+    assert "sender_id=(msg.get(\"from\") or {}).get(\"id\")" in src[record_at:classify_at]
 
 
 # ── R1: the ROOM is not the OPERATOR (cx-openai-4, 2026-11-03) ──────────────────────────────────────────
@@ -123,3 +125,25 @@ def test_the_record_happens_before_the_checkpoint_commit():
     assert 'if reply_status == "failed":' in region
     after = region.split('if reply_status == "failed":', 1)[1].splitlines()
     assert any(line.strip() == "continue" for line in after[:3])
+
+
+def test_an_outcome_line_pairs_with_the_message_line(tmp_path):
+    """F3: a handled command leaves a message line AND an outcome line, paired by message_id."""
+    from scripts.run_telegram_callback_poller import _record_operator_outcome
+    _record_operator_reply({"message_id": 77}, "approve the restore code=abc", "555",
+                           replies_dir=tmp_path, chat_type="private", sender_id="555")
+    _record_operator_outcome({"message_id": 77}, "approve the restore code=abc", "555", handled=True,
+                             replies_dir=tmp_path)
+    rows = [json.loads(line) for line in (tmp_path / "telegram.jsonl").read_text().splitlines()]
+    assert rows[0]["message_id"] == 77 and "event" not in rows[0]
+    assert rows[1]["event"] == "outcome" and rows[1]["message_id"] == 77 and rows[1]["handled"] is True
+    assert rows[1]["text"] == "approve the restore code=abc"
+
+
+def test_a_malformed_envelope_or_unknown_sender_is_refused_not_written(tmp_path):
+    """cx-openai-3 F2: a fallback path must not write a line with null provenance."""
+    assert _record_operator_reply({}, "hi", "555", replies_dir=tmp_path,
+                                  chat_type="private", sender_id=None) == "refused_sender"
+    assert _record_operator_reply({"message_id": 1}, "hi", "555", replies_dir=tmp_path,
+                                  chat_type="private", sender_id="999") == "refused_sender"
+    assert not (tmp_path / "telegram.jsonl").exists()
