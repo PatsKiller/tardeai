@@ -145,7 +145,10 @@ def project(pr: dict, *, git: Callable, gh, as_of: str, annotations: Callable | 
         if scope and explicit_hold:
             scope = {**scope, "operator_required": True, "next_actor": "operator", "reason": "explicit_hold_requires_resolution"}
         if scope and scope.get("complete") and scope.get("operator_required") is False:
-            return None  # Ratified delegated engineering belongs to its coordinator, not this queue.
+            if labels & merge_hold_paths.hold_labels() and not scope.get("held_classes", sorted(held)):
+                scope = {**scope, "complete": False, "gap": "HELD_LABEL_CLASS_UNRESOLVED"}
+            else:
+                return None  # Ratified delegated engineering belongs to its coordinator, not this queue.
         public = {"pr": number, "head_sha": head, "hold_classes": sorted(held),
                   "hold_labels": sorted(labels & merge_hold_paths.hold_labels()),
                   "draft": bool(pr.get("draft")), "next_action": "Independent exact-head reviews and green checks are required before operator merge."}

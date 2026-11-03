@@ -156,6 +156,7 @@ class AuthorityContext:
             "mode": self.mode,
             "reason": "legacy_held_operator_rule",
             "ratification": None,
+            "held_classes": [],
         }
         try:
             paths = sorted(set(_paths(files) + _paths(previous_paths)))
@@ -184,7 +185,9 @@ class AuthorityContext:
                 return result
             collect = getattr(helper, "collect_held_classes", None)
             if callable(collect):
-                collect(paths, self.hold_config, self.hold_helper)
+                classes, _metadata = collect(paths, self.hold_config, self.hold_helper)
+                if not isinstance(classes, list) or any(not isinstance(value, str) for value in classes):
+                    raise ValueError("trusted_helper_class_result_invalid")
             else:
                 # Earlier ratified v30 helpers expose the same pure decision through
                 # held_classes + DELEGATED_HELD_CLASSES in Host.collect.
@@ -192,9 +195,11 @@ class AuthorityContext:
                 delegated = getattr(helper, "DELEGATED_HELD_CLASSES", None)
                 if not isinstance(classes, dict) or not isinstance(delegated, (set, frozenset)):
                     raise ValueError("trusted_helper_scope_contract_unavailable")
+                result["held_classes"] = sorted(classes)
                 if not set(classes).issubset(delegated):
                     result["reason"] = "held_class_operator_owned"
                     return result
+            result["held_classes"] = sorted(classes)
             result.update(
                 operator_required=False,
                 next_actor="coordinator",

@@ -379,3 +379,16 @@ def test_authority_outage_never_reports_complete_zero_for_unclassified_work(monk
     assert data["pending_count"] is None and data["complete"] is False
     assert data["actionable_count"] == len(data["actionable_items"]) == 0
     assert data["evidence_blockers"][0]["pr"] == 2502
+
+
+
+def test_generic_held_label_requires_known_delegated_class():
+    authority = scoped_authority(False)
+    raw = {**pr(2472), "labels": [{"name": "held"}]}
+    row = source.project(raw, git=lambda *args: "ordinary.txt\n", gh=Gh(), as_of=STAMP, authority=authority)
+    assert row is not None and row["next_actor"] == "coordinator" and row["actionable"] is False
+    assert row["source_gap"] == "HELD_LABEL_CLASS_UNRESOLVED"
+    authority.classify = lambda *args, **kwargs: {"mode": "delegated", "complete": True,
+        "operator_required": False, "held_classes": ["merge_deploy_control"]}
+    assert source.project(raw, git=lambda *args: ".github/workflows/ci.yml\n", gh=Gh(), as_of=STAMP,
+                          authority=authority) is None
