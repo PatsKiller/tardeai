@@ -430,6 +430,17 @@ def _intent_send(message: str, priority: str, send_fn, *, dedupe_minutes: int | 
             return False
         route = {**route, "decision": "HOLD_UNPERSISTED_DELIVERED", "deliver": True}
     ok = bool(send_fn())
+    marker = getattr(router, "RECOVERY_T1_MARKER", "")
+    if marker and marker in message:
+        # Delivery-owned recovery bound: the claim made by route_intent is consumed only by a
+        # confirmed send; a failed attempt releases it so a retry is allowed (cx-openai-2 F5).
+        try:
+            if ok:
+                router.recovery_t1_mark_delivered(message)
+            else:
+                router.recovery_t1_release(message)
+        except Exception as exc:  # an ack fault must not change the send outcome
+            print(f"[telegram] recovery T1 ack failed: {type(exc).__name__}: {str(exc)[:120]}")
     if ok:
         router.mark_intent_sent(route)
     router.record_intent_receipt(route, delivered=ok)
@@ -627,7 +638,7 @@ def _legacy_send(
     #
     # The bool contract is unchanged -- >=36 verified boolean callers (182 across 150
     # files by the code's own count) still receive exactly what they received before.
-    return bool(
+    delivered = bool(
         _raw_send_telegram_result(
             message,
             targets,
@@ -637,6 +648,16 @@ def _legacy_send(
             **({"reply_to_message_ids": reply_to_message_ids} if reply_to_message_ids else {}),
         ).get("ok")
     )
+    try:
+        import telegram_alert_router as _router_mod
+        marker = getattr(_router_mod, "RECOVERY_T1_MARKER", "")
+        if marker and marker in message:
+            # A legacy send of a marked recovery page also acks/releases its delivery claim.
+            (_router_mod.recovery_t1_mark_delivered(message) if delivered
+             else _router_mod.recovery_t1_release(message))
+    except Exception:
+        pass
+    return delivered
 
 
 def publish_operator_message(message: str, *, bypass_router: bool = False,

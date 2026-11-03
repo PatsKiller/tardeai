@@ -77,12 +77,25 @@ def load_policy(path: Path | str | None = None) -> dict:
 
 
 def _finite(value: Any) -> Optional[float]:
-    """A usable finite number, or None. NaN/inf are NOT numbers for materiality purposes."""
+    """A usable finite number, or None. NaN/inf/huge integers are NOT numbers for materiality."""
     try:
         number = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
     return number if math.isfinite(number) else None
+
+
+def _raw_threshold_present(policy: dict, key: str) -> bool:
+    """Whether the policy mentions a threshold for this dimension at all (usable or not)."""
+    try:
+        for value in (policy.get("materiality", {}).get("t1", {}).get(key),
+                      policy.get("tiers", {}).get("T1", {}).get(key),
+                      policy.get(f"materiality_t1_{key}")):
+            if value is not None:
+                return True
+    except (AttributeError, TypeError):
+        pass
+    return False
 
 
 def _threshold(policy: dict, key: str) -> Optional[float]:
@@ -139,6 +152,12 @@ def resolve_tier(case: dict, *, policy: Optional[dict] = None) -> tuple[str, str
     t1_weight = _threshold(pol, "weight_pct")
     if t1_loss is None and t1_weight is None:
         return "T1", "policy carries no usable T1 thresholds; unknown resolves loud"
+    # A threshold that the policy DOES provide but that is unusable (inf/NaN) must not silently
+    # delete that dimension from the comparison (cx-openai-2 F2 remainder): a finite fact against a
+    # deleted dimension is unknown, and unknown is loud.
+    if (_raw_threshold_present(pol, "loss_usd") and t1_loss is None) or (
+            _raw_threshold_present(pol, "weight_pct") and t1_weight is None):
+        return "T1", "a configured T1 threshold is unusable; unknown resolves loud"
     if t1_loss is not None and loss is not None and loss >= t1_loss:
         return "T1", f"realized loss {loss:,.0f} >= config t1_loss_usd {t1_loss:,.0f}"
     if t1_weight is not None and weight is not None and weight >= t1_weight:
@@ -156,24 +175,31 @@ def resolve_tier(case: dict, *, policy: Optional[dict] = None) -> tuple[str, str
 
 
 def _money(value: Any) -> str:
-    try:
-        return f"${float(value):,.0f}"
-    except (TypeError, ValueError):
-        return "unknown"
+    number = _finite(value)
+    return "unknown" if number is None else f"${number:,.0f}"
 
 
 def _pct(value: Any) -> str:
-    try:
-        return f"{float(value):+.1f}%"
-    except (TypeError, ValueError):
-        return "unknown"
+    number = _finite(value)
+    return "unknown" if number is None else f"{number:+.1f}%"
+
+
+def case_key_for(case: dict) -> str:
+    """The stable identity of a recovery case: case id, else symbol+ACCOUNT+exit cluster.
+
+    The account is part of the identity: two accounts recovering the same symbol are two cases and
+    must each be able to page (cx-openai-2 F3 — a key without account merged them).
+    """
+    symbol = str(case.get("symbol") or "UNKNOWN").upper()
+    account = str(case.get("account") or case.get("account_key") or case.get("account_id") or "account?")
+    cluster = case.get("exit_date") or case.get("exit_cluster") or case.get("state") or "exit?"
+    return str(case.get("case_id") or case.get("case_key") or f"{symbol}:{account}:{cluster}")
 
 
 def build_message(case: dict) -> str:
-    """The operator page. First line carries the marker the router keys on."""
+    """The operator page. First line carries the marker and the stable case key."""
     sym = str(case.get("symbol") or "UNKNOWN").upper()
-    case_key = str(case.get("case_id") or case.get("case_key")
-                   or f"{sym}:{case.get('exit_date') or case.get('exit_cluster') or case.get('state') or 'unknown'}")
+    case_key = case_key_for(case)
     price = case.get("price", case.get("current_price"))
     exit_price = case.get("exit_price", case.get("avg_exit_price"))
     vs_exit = case.get("pct_vs_exit")
@@ -240,7 +266,7 @@ def notify_recovery_case(case: dict, *, policy: Optional[dict] = None,
     result["priority"] = PRIORITY_P1  # a T1 case is a page, in every branch below
     send = sender or _default_sender()
     symbol = str(case.get("symbol") or "UNKNOWN").upper()
-    key = f"recovery:{symbol}:T1:{case.get('state') or 'unknown'}"
+    key = f"recovery:{case_key_for(case)}:T1:{case.get('state') or 'unknown'}"
 
     # Lazy, fail-open batching: the v008 batching module may not be on this checkout yet.
     try:
@@ -262,7 +288,7 @@ def notify_recovery_case(case: dict, *, policy: Optional[dict] = None,
             log.warning("batch declined a T1 for a non-floor reason (%s); using the direct P1 send for %s",
                         decision.get("reason"), symbol)
         else:
-            body = batch_text(header=f"{RECOVERY_T1_MARKER} Recovery", items=[
+            body = batch_text(header=f"{RECOVERY_T1_MARKER} Recovery · case:{case_key_for(case)}", items=[
                 {"title": f"{symbol} is recovering", "detail": message.split("\n", 1)[1].strip() if "\n" in message else "",
                  "next": "Open Home to plan re-entry"}])
             ok = send(body, priority=PRIORITY_P1, dedupe_minutes=0, producer="recovery_notify")

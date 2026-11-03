@@ -40,6 +40,8 @@ _RECOVERY_CASE_RE = re.compile(r"\bcase:([A-Za-z0-9_.:-]+)")
 #: future reviewer can see the exemption was deliberate (cx-openai-2 F5).
 _RECOVERY_T1_EXEMPTIONS = ("health_repeat", "rate_limit", "daily_budget")
 _last_recovery_exemptions: list[str] = []
+#: Public alias so the transport can ack a delivered recovery page (telegram_alert._intent_send).
+RECOVERY_T1_MARKER = _RECOVERY_T1_MARKER
 
 # B2, 2026-08-31: THESE DICTS CANNOT HOLD A CROSS-INVOCATION GUARANTEE.
 #
@@ -593,37 +595,125 @@ def _recovery_case_key(message: str) -> str:
     return match.group(1) if match else build_dedupe_key(message)
 
 
-def _recovery_t1_daily_allowed(message: str, *, consume: bool) -> bool:
-    """One recovery T1 per CASE per day, from a durable ledger. A ledger fault fails OPEN (loud).
+#: A claim older than this without a delivery is abandoned (crash/timeout) and may be retaken.
+_RECOVERY_T1_CLAIM_STALE_SECONDS = 600
 
-    ``consume=False`` only answers the question (route_alert classification must not spend the day's
-    slot); the real send path calls with ``consume=True``.
+
+def _recovery_ledger_rows() -> list[dict]:
+    try:
+        raw = _RECOVERY_T1_PAGE_PATH.read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        return []
+    rows = []
+    for line in raw.splitlines():
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict) and row.get("case") and row.get("state") in ("claimed", "delivered"):
+            rows.append(row)
+    return rows
+
+
+def _recovery_state(day: str, key: str) -> str:
+    """Latest durable state for this case-day: delivered | claimed | released | absent."""
+    state = "absent"
+    for row in _recovery_ledger_rows():
+        if row.get("day") == day and row.get("case") == key:
+            state = row["state"]
+    return state
+
+
+def _recovery_append(day: str, key: str, state: str) -> None:
+    try:
+        _RECOVERY_T1_PAGE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(_RECOVERY_T1_PAGE_PATH, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"day": day, "case": key, "state": state,
+                                 "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                                 "pid": os.getpid()}, sort_keys=True) + "\n")
+    except OSError as exc:  # a ledger fault must not silence a T1
+        log.warning("recovery T1 ledger append failed (%s); the page is still allowed", exc)
+
+
+def _recovery_claim_lock(day: str, key: str) -> Path:
+    safe = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in key)[:80]
+    return _RECOVERY_T1_PAGE_PATH.parent / f".recovery_t1_claim.{day}.{safe}.lock"
+
+
+def recovery_t1_state(message: str) -> str:
+    return _recovery_state(_budget_day(), _recovery_case_key(message))
+
+
+def recovery_t1_claim(message: str) -> bool:
+    """Atomically claim today's single page for this CASE. True only for the claiming process.
+
+    Atomic across processes via O_CREAT|O_EXCL on a per-case lock; a claim left by a crash becomes
+    retakeable after ``_RECOVERY_T1_CLAIM_STALE_SECONDS``. Claiming is not delivery: only
+    :func:`recovery_t1_mark_delivered` consumes the day (cx-openai-2 F5a/F5b).
     """
     day = _budget_day()
     key = _recovery_case_key(message)
-    try:
-        doc = json.loads(_RECOVERY_T1_PAGE_PATH.read_text(encoding="utf-8"))
-        if not isinstance(doc, dict):
-            doc = {}
-    except (OSError, ValueError):
-        doc = {}
-    today = doc.get(day) if isinstance(doc.get(day), dict) else {}
-    if key in today:
+    if _recovery_state(day, key) == "delivered":
         return False
-    if not consume:
-        return True
-    today[key] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    # Keep at most three days; this is a storm bound, not an audit trail.
-    doc = {k: v for k, v in sorted(doc.items())[-2:] if isinstance(v, dict)}
-    doc[day] = today
-    try:
-        _RECOVERY_T1_PAGE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        tmp = _RECOVERY_T1_PAGE_PATH.with_suffix(".tmp")
-        tmp.write_text(json.dumps(doc, indent=1, sort_keys=True), encoding="utf-8")
-        os.replace(tmp, _RECOVERY_T1_PAGE_PATH)
-    except OSError as exc:  # a ledger fault must not silence a T1
-        log.warning("recovery T1 page ledger write failed (%s); the page is still allowed", exc)
+    lock = _recovery_claim_lock(day, key)
+    for _attempt in (1, 2):
+        try:
+            lock.parent.mkdir(parents=True, exist_ok=True)
+            fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            os.close(fd)
+            break
+        except FileExistsError:
+            try:
+                age = time.time() - lock.stat().st_mtime
+            except OSError:
+                age = 0
+            if age < _RECOVERY_T1_CLAIM_STALE_SECONDS:
+                return False
+            try:
+                lock.unlink()
+            except OSError:
+                return False
+        except OSError:
+            break  # cannot lock: fail-open, the page is loud
+    _recovery_append(day, key, "claimed")
     return True
+
+
+def recovery_t1_mark_delivered(message: str) -> None:
+    day = _budget_day()
+    key = _recovery_case_key(message)
+    _recovery_append(day, key, "delivered")
+    try:
+        _recovery_claim_lock(day, key).unlink()
+    except OSError:
+        pass
+
+
+def recovery_t1_release(message: str) -> None:
+    """A failed attempt releases the claim: the day is not consumed and a retry is allowed."""
+    day = _budget_day()
+    key = _recovery_case_key(message)
+    _recovery_append(day, key, "released")
+    try:
+        _recovery_claim_lock(day, key).unlink()
+    except OSError:
+        pass
+
+
+def _recovery_exemptions_for(message: str) -> list[str]:
+    """Only the gates that WOULD have suppressed this message, measured side-effect-free (F6)."""
+    bypassed = []
+    if _HEALTH_PATTERN.search(message) and not _health_telegram_allowed(message):
+        bypassed.append("health_repeat")
+    rules = _policy()
+    hour_key = f"{int(time.time() // 3600)}"
+    if _GO_PATTERN.search(message) and _hourly_counts.get(f"go_{hour_key}", 0) >= int(
+            rules.get("max_trade_ai_live_alerts_per_hour", 3)):
+        bypassed.append("rate_limit")
+    if _budget_count_today() >= DAILY_SEND_BUDGET:
+        bypassed.append("daily_budget")
+    return bypassed
 
 
 def should_send_telegram(message: str, *, consume: bool = True) -> bool:
@@ -632,13 +722,20 @@ def should_send_telegram(message: str, *, consume: bool = True) -> bool:
 
     if _RECOVERY_T1_MARKER in message:
         # Operator ruling 2026-11-03 (cx-openai-2 F5): a recovery T1 is exempt from health-repeat,
-        # rate-limit and daily-budget gates. Returning the right classifier level is not enough — the
-        # real legacy gates must not suppress it. The exemption is bounded explicitly by case id
-        # (one page per case per day) and named in the route result.
-        if not _recovery_t1_daily_allowed(message, consume=consume):
+        # rate-limit and daily-budget gates, and the exemption is bounded per CASE per day with a
+        # delivery-owned claim (claim now, delivered only on a confirmed send). ``consume=False`` is
+        # a read-only preview for route classification.
+        state = recovery_t1_state(message)
+        if state == "delivered":
             record_suppressed(message, "recovery_t1_daily_case_bound")
             return False
-        _last_recovery_exemptions[:] = list(_RECOVERY_T1_EXEMPTIONS)
+        if consume:
+            if not recovery_t1_claim(message):
+                record_suppressed(message, "recovery_t1_daily_case_bound")
+                return False
+        elif state == "claimed":
+            return False
+        _last_recovery_exemptions[:] = _recovery_exemptions_for(message)
         return True
 
     if level in ("P2_DASHBOARD_ONLY", "P3_LOG_ONLY"):
@@ -704,8 +801,9 @@ def route_alert(message: str) -> dict:
     send = should_send_telegram(message, consume=False)
     exemptions: list[str] = []
     if send and _RECOVERY_T1_MARKER in message:
-        # A recovery T1 is exempt from the IGNORE-escalation filter too; name the gates bypassed.
-        exemptions = list(_RECOVERY_T1_EXEMPTIONS)
+        # Only the gates that WOULD have suppressed this message (measured side-effect-free by
+        # should_send_telegram); empty when nothing would have been bypassed (cx-openai-2 F6).
+        exemptions = list(_last_recovery_exemptions)
         if _ignore_verdict_escalation(message):
             exemptions.append("ignore_escalation")
     elif send and _ignore_verdict_escalation(message):
@@ -943,9 +1041,26 @@ def route_intent(message: str, priority: str, *, dedupe_minutes: int | None = No
     if pr == INTENT_P2 and intent_in_quiet_hours(now):
         exemption = quiet_exemption_for(message_class, pr, now)
         if exemption:
+            blocked = _recovery_intent_bound(message, route)
+            if blocked is not None:
+                return blocked
             return {**route, "decision": "DELIVER", "deliver": True, "quiet_exemption": exemption}
         return {**route, "decision": "HELD_QUIET_HOURS", "deliver": False}
+    blocked = _recovery_intent_bound(message, route)
+    if blocked is not None:
+        return blocked
     return {**route, "decision": "DELIVER", "deliver": True}
+
+
+def _recovery_intent_bound(message: str, route: dict) -> dict | None:
+    """The delivery-owned per-case bound, applied where the page actually goes (cx-openai-2 F5)."""
+    if _RECOVERY_T1_MARKER not in message:
+        return None
+    if recovery_t1_claim(message):
+        return None
+    record_suppressed(message, "recovery_t1_daily_case_bound")
+    return {**route, "decision": "DEDUPED", "deliver": False, "window_minutes": 0,
+            "reason": "recovery_t1_daily_case_bound"}
 
 
 def intent_archive_report_type(route: dict) -> str:
