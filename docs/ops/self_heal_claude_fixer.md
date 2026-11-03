@@ -301,6 +301,34 @@ port; proxy allows only the listed target; the model's pytest sees no proxy/auth
 5. **First live run unverified items:** that CLI 2.1.299 reads `$CLAUDE_CONFIG_DIR/.credentials.json` and sends all
    its traffic through `HTTPS_PROXY`. If either is wrong the job fails closed (no auth / no network), never open.
 
+## 6b. A non-Anthropic provider (DeepSeek, 2026-11-03)
+
+`claude.provider` selects the model provider for a job. Absent, or `name: anthropic`, is exactly the behaviour
+above. A full block (`name`, `launcher`, `key_file`; a half block is ignored and the CLI keeps its own auth)
+runs the model on DeepSeek:
+
+- **Key transport.** This host's bubblewrap (0.11.1) has **no `--preserve-fds`**, so a key file descriptor
+  cannot be inherited into the sandbox; and a bind mount would put the key at a path the model's Bash can open.
+  Instead the fixer reads the key **on the host** (`O_NOFOLLOW`, one line, no CR/LF) and sends it as the
+  **first line of the agent's stdin**. The launcher (`scripts/lib/self_heal_deepseek_launch.py`) consumes that
+  line **before it execs the CLI**, seals the bytes in an anonymous `memfd`, and names that descriptor through
+  `CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR`. The key is never in the env, never a filesystem path, never in argv,
+  and never in the prompt the model sees.
+- **The launch chain** is `bwrap -> (egress bridge) -> launcher -> CLI`. The launcher sets
+  `ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic` and the model, drops `ANTHROPIC_API_KEY`,
+  `ANTHROPIC_AUTH_TOKEN` and `TRADEAI_DEEPSEEK_MODEL`, preserves the caller's cwd (the candidate worktree — the
+  old operator wrapper's `cd $REPO` silently moved edits to the live tree) and execs the CLI path the fixer
+  bound read-only (`TRADEAI_CLAUDE_BIN`), because that path is not on the sandbox PATH.
+- **Auth.** `provider.auth_mode` overrides `claude.auth.mode`; for DeepSeek it is `none`, so the Claude OAuth
+  file is not bound at all — one credential inside the boundary, not two.
+- **Egress.** `api.deepseek.com:443` is the only added host in `agent_sandbox.egress_allow`.
+- **Residual risk.** As with the OAuth credential above, the CLI holds the key in a readable descriptor; a
+  model-run Bash that deliberately opens `/proc/<claude-pid>/fd/<n>` could read it. Nothing puts it in the
+  prompt, the diff, the transcript or a test wrapper. The same recommendation applies: arm with a dedicated,
+  revocable key for this lane.
+- **The switch is config, not code.** No `provider` block ships until the code is reviewed and merged, the
+  §24.11 successor is active, a backup exists and a dry run is quoted (the same gate as §7).
+
 ## 7. Gating (DISARMED by default)
 
 `--apply` attempts a job only when **all** hold:

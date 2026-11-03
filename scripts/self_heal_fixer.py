@@ -340,6 +340,10 @@ class Attempt:
         self.agent_env: dict[str, str] = {}
         self.proxy_port: Optional[int] = None
         self.boundary: dict[str, Any] = {}
+        #: the model provider for THIS job (absent/"" = the Claude CLI with its own auth)
+        self.provider: dict[str, Any] = dict((cfg.get("claude") or {}).get("provider") or {})
+        #: the provider key, read on the host and handed over on the agent's stdin (never env, path or argv)
+        self.key_line: Optional[bytes] = None
 
     def python_install(self) -> list[str]:
         """The interpreter's real install prefix (a venv's python is a symlink into it; on this host /usr, on a CI
@@ -351,6 +355,37 @@ class Attempt:
         if b.get("kind") == "cli_stdin":
             return [str(b.get("bin"))]
         return [str(self.cfg["claude"]["bin"])]
+
+    def _provider_active(self) -> bool:
+        """A provider is active only with the full trio: name, launcher and key file. A half-configured block
+        keeps the CLI's own auth instead of risking the key line being read as prompt text."""
+        return (str(self.provider.get("name") or "").lower() not in ("", "anthropic")
+                and bool(self.provider.get("launcher")) and bool(self.provider.get("key_file")))
+
+    def launcher_path(self) -> str:
+        raw = str(self.provider.get("launcher") or "").replace("{repo_root}", str(self.repo))
+        return raw.replace("{home}", self.environ.get("HOME") or str(Path.home()))
+
+    def _read_provider_key(self) -> Optional[bytes]:
+        """Read the provider key on the HOST. O_NOFOLLOW: a symlink plant must not become a credential read.
+
+        The key cannot cross bwrap as an inherited descriptor here (this host's bubblewrap 0.11.1 has no
+        --preserve-fds), and a bind mount would put it at a path the model's Bash can open. So it travels as the
+        FIRST LINE of the agent's stdin: the launcher consumes that line before it execs the CLI, seals the key in
+        a memfd and names that descriptor. It is never in the env, never a path and never in argv."""
+        raw = str(self.provider.get("key_file") or "").replace("{home}", self.environ.get("HOME") or str(Path.home()))
+        if not raw:
+            return None
+        try:
+            fd = os.open(raw, os.O_RDONLY | os.O_NOFOLLOW)
+        except OSError:
+            return None
+        try:
+            data = os.read(fd, 4096)
+        finally:
+            os.close(fd)
+        data = data.strip()
+        return data if data and b"\n" not in data and b"\r" not in data else None
 
     # -- worktrees + the agent's boundary
     def setup(self) -> Optional[str]:
@@ -375,7 +410,12 @@ class Attempt:
         if self.asb.get("enabled"):
             if not os.access(str(self.asb.get("bwrap") or sb.get("bwrap", "bwrap")), os.X_OK):
                 return "agent_sandbox_unavailable"
-            binds, why = F.agent_auth_binds(self.cfg, home=home, agent_home=str(self.agent_home), probe=_probe)
+            auth_cfg = self.cfg
+            if self.provider.get("auth_mode"):
+                # A provider key replaces the CLI's own credential: bind no OAuth file for it.
+                auth_cfg = {**self.cfg, "claude": {**self.cfg["claude"], "auth": {
+                    **(self.cfg["claude"].get("auth") or {}), "mode": str(self.provider["auth_mode"])}}}
+            binds, why = F.agent_auth_binds(auth_cfg, home=home, agent_home=str(self.agent_home), probe=_probe)
             if not why.startswith("auth:"):
                 return why
             for _src, dst, _rw in binds:  # an EMPTY mount point; the credential itself is never read or copied
@@ -389,8 +429,20 @@ class Attempt:
                 agent_home=str(self.agent_home),
                 proxy_port=self.proxy_port,
             )
+            if self._provider_active():
+                if not os.access(self.launcher_path(), os.R_OK):
+                    return "provider_launcher_unavailable"
+                self.key_line = self._read_provider_key()
+                if self.key_line is None:
+                    return "provider_key_unavailable"
+                # AFTER agent_env(): these are flags, not secrets. The launcher reads the key line from stdin and
+                # names the CLI binary, which is not on the sandbox PATH.
+                self.agent_env["TRADEAI_DEEPSEEK_KEY_STDIN"] = "1"
+                self.agent_env["TRADEAI_CLAUDE_BIN"] = str(
+                    self.provider.get("cli_bin") or self.cfg["claude"]["bin"]).replace("{home}", home)
             shutil.copyfile(Path(EG.__file__), self.bindir / "self_heal_egress.py")
-            bins = sorted({os.path.realpath(b) for b in self._backend_bins()})
+            bins = sorted({os.path.realpath(b) for b in self._backend_bins()}
+                          | ({os.path.realpath(self.launcher_path())} if self._provider_active() else set()))
             self.agent_prefix = F.agent_sandbox_prefix(
                 self.cfg,
                 home=home,
@@ -443,6 +495,7 @@ class Attempt:
         git(self.repo, "worktree", "prune")
         if not keep_branch:
             git(self.repo, "branch", "-D", self.branch)
+        self.key_line = None
         for d in (self.eval_root, self.scratch, self.bindir, self.agent_home, self.egress_dir):
             shutil.rmtree(d, ignore_errors=True)
 
@@ -450,7 +503,11 @@ class Attempt:
     def agent_cmd(self, argv: list[str]) -> list[str]:
         if not self.agent_prefix:
             return argv
-        inner = [os.path.realpath(argv[0]), *argv[1:]]
+        if self._provider_active() and self.provider.get("launcher"):
+            # the launcher names the descriptor to the CLI and execs it; cwd (the candidate worktree) is preserved
+            inner = [self.py, "-I", os.path.realpath(self.launcher_path()), *argv[1:]]
+        else:
+            inner = [os.path.realpath(argv[0]), *argv[1:]]
         if self.proxy_port:
             inner = [
                 self.py,
@@ -469,6 +526,9 @@ class Attempt:
     def run_agent(self, argv: list[str], prompt: str) -> tuple[dict, Optional[dict]]:
         cmd = self.agent_cmd(argv)
         timeout = float(self.cfg["claude"]["timeout_s"])
+        if self.key_line is not None and self._provider_active():
+            # first line = the key, consumed by the launcher before the CLI starts; the rest is the prompt
+            prompt = self.key_line.decode("utf-8", "replace") + "\n" + prompt
         if self.agent_prefix and self.proxy_port:
             with EG.EgressProxy(str(self.egress_dir / "s"), self.asb.get("egress_allow") or []) as px:
                 cr = run(cmd, cwd=self.fix_wt, env=self.env, timeout=timeout, stdin=prompt)

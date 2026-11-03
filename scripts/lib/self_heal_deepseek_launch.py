@@ -23,6 +23,27 @@ import sys
 BASE_URL = "https://api.deepseek.com/anthropic"
 DEFAULT_MODEL = "deepseek-flash[1m]"
 FD_ENV = "TRADEAI_DEEPSEEK_KEY_FD"
+STDIN_ENV = "TRADEAI_DEEPSEEK_KEY_STDIN"
+
+
+def read_key_line(fd: int = 0, limit: int = 4096) -> bytes:
+    """The key is the FIRST LINE of stdin. Read byte-by-byte: a buffered reader would swallow prompt bytes."""
+    out = bytearray()
+    while len(out) <= limit:
+        b = os.read(fd, 1)
+        if not b or b == b"\n":
+            break
+        out += b
+    return bytes(out)
+
+
+def seal_key(key: bytes) -> int:
+    """Copy the key into an anonymous memfd the CLI can read by descriptor. No path, no file, no env value."""
+    fd = os.memfd_create("tradeai-deepseek-key", 0)
+    os.write(fd, key)
+    os.lseek(fd, 0, os.SEEK_SET)
+    os.set_inheritable(fd, True)
+    return fd
 
 
 def build_env(environ: dict[str, str]) -> tuple[dict[str, str], list[str]]:
@@ -34,6 +55,9 @@ def build_env(environ: dict[str, str]) -> tuple[dict[str, str], list[str]]:
         problems.append(f"{FD_ENV} is not a descriptor number")
     env["ANTHROPIC_BASE_URL"] = BASE_URL
     env["ANTHROPIC_MODEL"] = env.get("TRADEAI_DEEPSEEK_MODEL") or DEFAULT_MODEL
+    # the CLI is not on the sandbox PATH; the fixer names the exact binary it bound read-only
+    cli = env.pop("TRADEAI_CLAUDE_BIN", "") or "claude"
+    env["_TRADEAI_CLAUDE_BIN"] = cli
     if fd.isdigit():
         env["CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR"] = fd
     for k in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "TRADEAI_DEEPSEEK_MODEL"):
@@ -42,12 +66,21 @@ def build_env(environ: dict[str, str]) -> tuple[dict[str, str], list[str]]:
 
 
 def main(argv: list[str]) -> int:
-    env, problems = build_env(dict(os.environ))
+    raw = dict(os.environ)
+    if raw.get(STDIN_ENV) == "1":
+        key = read_key_line()
+        if not key:
+            print("self_heal_deepseek_launch: empty key line on stdin", file=sys.stderr)
+            return 2
+        raw[FD_ENV] = str(seal_key(key))
+        raw.pop(STDIN_ENV, None)
+    env, problems = build_env(raw)
     if problems:
         print("self_heal_deepseek_launch: " + "; ".join(problems), file=sys.stderr)
         return 2
     # cwd is inherited unchanged on purpose: the fixer runs this with the candidate worktree as cwd.
-    os.execvpe("claude", ["claude", *argv], env)
+    cli = env.pop("_TRADEAI_CLAUDE_BIN", "claude")
+    os.execvpe(cli, [cli, *argv], env)
     return 127  # execvpe only returns by raising
 
 
