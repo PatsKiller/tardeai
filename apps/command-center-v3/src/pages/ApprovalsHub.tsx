@@ -80,7 +80,8 @@ function ApprovalCard({ item, candidate = false, sourceReady = true }: { item: A
   const canAct = sourceReady && item.actionable !== false && item.stale !== true
   const showCommand = canAct && item.actionable === true && !!item.source_as_of
   const prUrl = item.pr_url && /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/.test(item.pr_url) ? item.pr_url : null
-  const releaseAction = item.governed_href && /^\/releases(?:[/?#]|$)/.test(item.governed_href) ? item.governed_href : null
+  const releaseHref = item.governed_href?.replace(/^\/releases(?=[/?#]|$)/, '/system/releases')
+  const releaseAction = releaseHref && /^\/system\/releases\/?(?:[?#].*)?$/.test(releaseHref) ? releaseHref : null
   return <article className="queue-row">
     <span className="badge">{candidate ? 'Keep / retire' : isRuleProposal(item) ? 'AI rule proposal' : KIND_LABEL[item.kind] ?? item.kind}</span>
     <div style={{ minWidth: 0 }}><h2>{item.title}</h2><p className="muted">{item.version || 'Exact document available in the reader'}</p>
