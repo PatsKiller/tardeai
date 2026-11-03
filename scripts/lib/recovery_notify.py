@@ -28,10 +28,13 @@ No write to the broker, no credential, no order: this module only builds and sen
 from __future__ import annotations
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
+
+log = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 POLICY_REL = Path("config") / "recovery_policy.yaml"
@@ -227,7 +230,9 @@ def notify_recovery_case(case: dict, *, policy: Optional[dict] = None,
                                   priority=PRIORITY_P1, floor_minutes=floor_minutes)
         if not decision.get("send"):
             # P1 is never quiet-held by nudge_decision; the only no-send reason is the repeat floor,
-            # and the last page already reached the operator. Not a silence: the case was sent before.
+            # and the last page already reached the operator. Not a silence, but it is recorded: a
+            # consumed dedupe key must never look like a successful send.
+            log.warning("recovery T1 page held by the repeat floor for %s: %s", symbol, decision.get("reason"))
             result.update({"path": "batch", "reason": f"repeat floor: {decision.get('reason')}",
                            "deduped_by_floor": True})
             return result
@@ -238,12 +243,16 @@ def notify_recovery_case(case: dict, *, policy: Optional[dict] = None,
         result.update({"path": "batch", "sent": bool(ok)})
         if ok:
             state.save(state.note([key], now))
+        else:
+            log.warning("recovery T1 page was not accepted by the transport for %s", symbol)
         return result
     except Exception:  # noqa: BLE001 — any batching problem must not silence a T1 page
         pass
 
     ok = send(message, priority=PRIORITY_P1, dedupe_minutes=floor_minutes, producer="recovery_notify")
     result.update({"path": "direct", "sent": bool(ok)})
+    if not ok:
+        log.warning("recovery T1 page was not accepted by the direct transport for %s", symbol)
     return result
 
 

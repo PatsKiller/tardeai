@@ -155,6 +155,49 @@ def test_the_marker_is_on_the_first_line():
     assert rn.RECOVERY_T1_MARKER in msg
 
 
+def test_the_marker_wins_with_an_empty_plan_and_with_tier_words():
+    """The marker is an authority signal, not gated by the tier path or by message content."""
+    for extra in ({"plan": ""}, {"plan": None}, {"plan": "T3 — small, do not page"}, {"state": "T2"}):
+        level = router.classify_alert(rn.build_message(_case(**extra)))
+        assert level == "P0_INTERRUPT", (extra, level)
+
+
+def test_a_transport_that_returns_false_is_recorded_not_treated_as_success(monkeypatch, caplog):
+    monkeypatch.setitem(sys.modules, "lib.telegram_batch", None)   # direct path
+    calls = []
+
+    def send(message, **kwargs):
+        calls.append((message, kwargs))
+        return False
+
+    caplog.set_level("WARNING", logger="scripts.lib.recovery_notify")
+    out = rn.notify_recovery_case(_case(), policy=POLICY, sender=send, state_path="/tmp/x.json")
+    assert calls and out["sent"] is False and out["suppressed"] is False and out["priority"] == "P1"
+    assert "not accepted by the direct transport" in caplog.text
+
+
+def test_a_consumed_dedupe_key_is_recorded_as_a_floor_hold(monkeypatch, caplog):
+    _fake_batch(monkeypatch)
+    monkeypatch.setattr(sys.modules["lib.telegram_batch"], "nudge_decision",
+                        lambda **kw: {"send": False, "reason": "nothing due", "keys": []})
+    send = _Sender()
+    caplog.set_level("WARNING", logger="scripts.lib.recovery_notify")
+    out = rn.notify_recovery_case(_case(), policy=POLICY, sender=send, state_path="/tmp/x.json")
+    assert out["sent"] is False and out["deduped_by_floor"] is True and send.calls == []
+    assert "held by the repeat floor" in caplog.text
+
+
+def test_a_batch_delivery_that_raises_is_loud_not_empty_success(monkeypatch):
+    """If both transports raise, the caller must see the exception — never a quiet result."""
+    _fake_batch(monkeypatch)
+
+    def boom(message, **kwargs):
+        raise RuntimeError("transport down")
+
+    with pytest.raises(RuntimeError, match="transport down"):
+        rn.notify_recovery_case(_case(), policy=POLICY, sender=boom, state_path="/tmp/x.json")
+
+
 def test_a_p1_intent_is_delivered_even_in_quiet_hours():
     """The transport contract the page relies on: P1 is never held or capped."""
     from datetime import datetime, timezone
