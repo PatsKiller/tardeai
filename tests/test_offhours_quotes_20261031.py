@@ -26,6 +26,7 @@ import ast
 import json
 import sys
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -311,6 +312,20 @@ def test_a_close_within_the_tolerance_is_measured(cfg):
     assert rows[0]["reference_basis"] == "schwab_quote_close_price_settle_same_day"
 
 
+@pytest.mark.parametrize("stored", [float("nan"), float("inf"), float("-inf"), Decimal("NaN"), 0.0, -7612.0])
+def test_an_unusable_stored_reference_is_no_reference(cfg, stored):
+    """Round-3 review of #2526: a NUMERIC column can hold NaN, and `abs(nan - ref) > tol` is False, so a NaN would
+    PASS the only corroboration guard. Non-finite and non-positive values are validated BEFORE the comparison and
+    treated as "no reference", so the row stays level-only."""
+    p = {"/ESZ26": {"assetMainType": "FUTURE", "quote": {"lastPrice": 7649.75, "closePrice": 7612.0,
+                                                          "tradeTime": _ms("2026-11-02T02:28:00-05:00"),
+                                                          "settleTime": _ms("2026-11-01T16:00:00-05:00")}}}
+    rows, skipped = oq.schwab_rows(p, _t("2026-11-02T02:30:00-05:00"), _same_day_on(cfg), reference_lookup=_ref(stored))
+    assert skipped == [] and rows[0]["symbol"] == "/ES"
+    assert rows[0]["reference_close"] is None and rows[0]["reference_date"] is None
+    assert "no independent stored reference exists" in rows[0]["level_only_reason"]
+
+
 def test_the_same_day_rule_is_off_when_the_key_is_absent(cfg):
     """Fail closed: a pinned/older config without the key must not switch the widening on."""
     legacy = {**cfg, "schwab": {k: v for k, v in cfg["schwab"].items() if k != "settle_same_day_reference"}}
@@ -393,6 +408,36 @@ def test_load_config_refuses_a_negative_tolerance(tmp_path):
                                "  same_day_reference_tolerance_pct: -1"))
     with pytest.raises(oq.ConfigError):
         oq.load_config(bad)
+
+
+@pytest.mark.parametrize("key,expected,value", [
+    ("same_day_reference_tolerance_abs", "0.05", ".nan"),
+    ("same_day_reference_tolerance_abs", "0.05", ".inf"),
+    ("same_day_reference_tolerance_pct", "0.25", ".inf"),
+])
+def test_load_config_refuses_a_non_finite_tolerance(tmp_path, key, expected, value):
+    """YAML `.nan`/`.inf` parse to floats and `nan < 0` is False, so a non-finite tolerance would make
+    `abs(reference - ref) > tol` False and silently accept ANY reference: the loader must refuse it."""
+    src = (ROOT / "config" / "market_risk_offhours_quotes.yaml").read_text()
+    bad = tmp_path / "c.yaml"
+    bad.write_text(src.replace(f"  {key}: {expected}", f"  {key}: {value}"))
+    with pytest.raises(oq.ConfigError):
+        oq.load_config(bad)
+
+
+@pytest.mark.parametrize("key", ["same_day_reference_tolerance_abs", "same_day_reference_tolerance_pct"])
+def test_a_non_finite_tolerance_cannot_corroborate_a_far_reference(cfg, key):
+    """Defence in depth for a hand-built config that skipped load_config: a non-finite tolerance must refuse the
+    corroboration, never accept a reference that is far outside any real tolerance."""
+    bad = _same_day_on(cfg)
+    bad["schwab"] = {**bad["schwab"], key: float("inf")}
+    p = {"/ESZ26": {"assetMainType": "FUTURE", "quote": {"lastPrice": 7649.75, "closePrice": 7612.0,
+                                                          "tradeTime": _ms("2026-11-02T02:28:00-05:00"),
+                                                          "settleTime": _ms("2026-11-01T16:00:00-05:00")}}}
+    rows, skipped = oq.schwab_rows(p, _t("2026-11-02T02:30:00-05:00"), bad, reference_lookup=_ref(7000.0))
+    assert skipped == [] and rows[0]["symbol"] == "/ES"
+    assert rows[0]["reference_close"] is None
+    assert "tolerance is not usable" in rows[0]["level_only_reason"]
 
 
 def test_engine_futures_proxies_are_roots_this_lane_requests(cfg):

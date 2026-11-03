@@ -99,8 +99,11 @@ def load_config(path: Path | str | None = None) -> dict[str, Any]:
         raise ConfigError(f"{p}: schwab.settle_same_day_reference must be true or false, "
                           f"not {s['settle_same_day_reference']!r}")
     for key in ("same_day_reference_tolerance_pct", "same_day_reference_tolerance_abs"):
-        if key in s and (isinstance(s[key], bool) or not isinstance(s[key], (int, float)) or s[key] < 0):
-            raise ConfigError(f"{p}: schwab.{key} must be a non-negative number, not {s[key]!r}")
+        # Finite as well as non-negative: YAML `.nan`/`.inf` parse to floats and `nan < 0` is False, so a
+        # non-finite tolerance would make `abs(reference - ref) > tol` False and silently accept any reference.
+        if key in s and (isinstance(s[key], bool) or not isinstance(s[key], (int, float))
+                         or not math.isfinite(float(s[key])) or s[key] < 0):
+            raise ConfigError(f"{p}: schwab.{key} must be a finite non-negative number, not {s[key]!r}")
     basis = s.get("dated_reference_basis") or {}
     if s.get("settle_same_day_reference") and not str(basis.get("non_equity_same_day") or "").strip():
         raise ConfigError(f"{p}: schwab.settle_same_day_reference is true but "
@@ -360,14 +363,15 @@ def dated_reference(asset: str, q: dict, reg: dict, ref_date: date,
     One bounded exception, for futures/indices only (operator 2026-11-01: "fix the futures settleTime so they
     measure"): Schwab dates a futures close to the PRINT's own session day (live: the 2026-11-01 Sunday open carried
     settleTime 2026-11-01, not the 2026-10-30 reference session), which left every overnight futures row level-only.
-    A close dated AFTER ``ref_date`` and no later than the print ITSELF is accepted when ``allow_same_day`` is set
-    (the caller sets it only for a futures/index print in an overnight/futures_open session), under its own basis
-    label (``schwab_quote_close_price_settle_same_day``): it is still the provider's last close, it is never older
-    than the reference session and never newer than the print. Equities are never widened, and
-    ``schwab.settle_same_day_reference`` switches the exception off. Because a fresh stamp does not prove a fresh
-    close (Schwab stamped 2026-11-01, a Sunday, when CME does not settle), the close is accepted only when the
-    payload's own ``lastPrice - netChange`` agrees with it within a small configured tolerance; a stale close with a
-    fresh stamp therefore stays level-only and can never page on a phantom move.
+    A close dated AFTER ``ref_date`` and no later than the print ITSELF is accepted only when ``allow_same_day`` is
+    set (the caller sets it only for a futures/index print in an overnight/futures_open session) AND an INDEPENDENT
+    stored reference for ``ref_date`` is present, finite, positive and agrees within a small configured tolerance;
+    it is then stored under its own basis label (``schwab_quote_close_price_settle_same_day``): it is still the
+    provider's last close, it is never older than the reference session and never newer than the print. Equities are
+    never widened, and ``schwab.settle_same_day_reference`` switches the exception off. Because a fresh stamp does not
+    prove a fresh close (Schwab stamped 2026-11-01, a Sunday, when CME does not settle), and because the provider
+    derives netChange FROM that same close so it can never corroborate it, a missing or unusable stored reference (or
+    one beyond tolerance) keeps the row level-only — a stale close with a fresh stamp can never page on a phantom move.
     """
     basis = s.get("dated_reference_basis") or {}
     is_equity = str(asset).upper() == "EQUITY"
@@ -397,12 +401,25 @@ def dated_reference(asset: str, q: dict, reg: dict, ref_date: date,
             # within tolerance; otherwise the row stays level-only and can never page on a stale close.
             tol = max(float(s.get("same_day_reference_tolerance_abs", 0.05)),
                       float(s.get("same_day_reference_tolerance_pct", 0.25)) / 100.0 * abs(ref))
-            if stored_reference is None:
+            # Defence in depth for a hand-built config that skipped load_config: a non-finite tolerance makes the
+            # comparison below False for every difference, so refuse to corroborate rather than accept everything.
+            if not math.isfinite(tol) or tol < 0.0:
+                return None, None, (f"{what}: the configured same-day tolerance is not usable, so the close cannot "
+                                    "be corroborated: level-only")
+            # A NUMERIC column can hold NaN. `abs(nan - ref) > tol` is False, so a NaN would PASS the corroboration
+            # guard it is supposed to fail (round-3 review, 2026-11-03). Validate the reference BEFORE comparing it:
+            # only a finite, strictly positive stored close is a usable independent reference; anything else is "no
+            # reference" and the row stays level-only.
+            try:
+                reference = float(stored_reference) if stored_reference is not None else None
+            except (TypeError, ValueError):
+                reference = None
+            if reference is None or not math.isfinite(reference) or reference <= 0.0:
                 return None, None, (f"{what}: the close {ref:g} is dated {close_date} (not {ref_date}) and no "
                                     "independent stored reference exists for that session: level-only")
-            if abs(float(stored_reference) - ref) > tol:
+            if abs(reference - ref) > tol:
                 return None, None, (f"{what}: the close {ref:g} is dated {close_date} (not {ref_date}) and differs "
-                                    f"from the independent stored reference {float(stored_reference):g} beyond {tol:g}: "
+                                    f"from the independent stored reference {reference:g} beyond {tol:g}: "
                                     "a stale close with a fresh stamp is refused")
             return ref, same_day, None
         return None, None, f"{what}: the close is dated {close_date}, not {ref_date}"
