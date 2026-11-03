@@ -1928,10 +1928,11 @@ def run_health_check(dry_run=True, verbose=False, *, now=None):
             "snapshot_id": None,
         }
 
-    # Determine if we're in market hours (ET)
-    import pytz as _ptz
+    # Determine if we're in market hours (ET). Stdlib zoneinfo, not pytz: the shard that runs the loop
+    # does not install pytz, and the loop has no reason to depend on it (same rule as _check_log_freshness).
+    from zoneinfo import ZoneInfo as _ZoneInfo
 
-    _et = _ptz.timezone("US/Eastern")
+    _et = _ZoneInfo("America/New_York")
     _now_et = now.astimezone(_et)
     _current_hour = _now_et.hour
     _is_weekday = _now_et.weekday() < 5
