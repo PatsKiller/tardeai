@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agents_policy_30_0_0",
+  "files": [
+    "tests/test_agents_policy_30_0_0.py",
+    "tests/test_pr_all_checks_standing_20261102.py",
+    "tests/test_guard_standing_policy_20261102.py",
+    "tests/test_pr_merge_delegation_20261102.py"
+  ],
+  "anchor": "AGENTS_POLICY_30_0_0",
+  "comment": [
+    "ANCHOR: AGENTS_POLICY_30_0_0 — proposed authority refuses; ratified manifests, exact-head reviews, required checks and scoped uploads are tested hermetically. No broker/live/remote mutation."
+  ]
+}
