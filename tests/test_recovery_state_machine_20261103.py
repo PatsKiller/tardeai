@@ -343,3 +343,66 @@ def test_the_reference_is_the_final_exit_not_the_max(tmp_path):
 def test_the_final_exit_follows_the_rows_own_order_when_dates_are_missing():
     row = {"exits": [{"price": 120.0}, {"price": 100.0}]}
     assert R.exit_price(row) == 100.0                   # A's exits[-1], in A's order
+
+
+# ── the PRODUCTION handoff: run_pass itself must notify (codex's scheduled-shape probe) ────────────────────
+class RecordingStore:
+    def __init__(self, cases):
+        self.cases = cases
+        self.written = []
+
+    def list(self):
+        return list(self.cases)
+
+    def set_state(self, key, state):
+        self.written.append((key, state))
+
+
+def _t1_row(exit_price=100.0, residual=1.0, pre_exit=7.0):
+    return {"case_key": "DEMO:DEMO_IRA:2030-01-10", "symbol": "DEMO", "account": "DEMO_IRA",
+            "state": "WATCHING", "materiality_tier": "T1", "realized_pnl": -5000.0,
+            "exits": [{"symbol": "DEMO", "price": exit_price, "shares": pre_exit - residual,
+                       "realized_pnl": -5000.0, "exit_date": "2030-01-10"}],
+            "eligibility": [{"account": "DEMO_IRA", "eligible": True, "eligible_from": None}],
+            "residual_pct_of_pre_exit": 14.3, "residual_note": "1 of 7 shares remain after the 2030-01-10 exit"}
+
+
+def test_the_scheduled_pass_pages_a_t1_recovering_transition():
+    """The failure codex found: run_pass wrote a T1 RECOVERING case and made ZERO notifier calls."""
+    store = RecordingStore([_t1_row()])
+    calls = []
+    out = R.run_pass(store, lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0},
+                     now=NOW, dry_run=False, notify=lambda case: calls.append(case) or {"sent": True})
+
+    assert out["store"] == "ok" and out["changed"] == 1 and out["notifier_calls"] == 1
+    assert store.written == [("DEMO:DEMO_IRA:2030-01-10", R.RECOVERING)]
+    assert calls and calls[0]["state"] == R.RECOVERING
+    assert calls[0]["exit_price"] == 100.0 and calls[0]["price"] == 102.0
+    assert out["decisions"][0]["notify"] == {"sent": True}
+
+
+def test_the_scheduled_pass_does_not_page_a_case_that_did_not_transition():
+    store = RecordingStore([{**_t1_row(), "state": "WATCHING"}])
+    calls = []
+    out = R.run_pass(store, lambda c: {"close": 90.0, "rsi": 30.0, "sma20": 130.0},
+                     now=NOW, dry_run=False, notify=lambda case: calls.append(case) or {"sent": True})
+    assert out["changed"] == 0 and out["notifier_calls"] == 0 and calls == []
+
+
+def test_a_dry_run_never_pages_or_writes():
+    store = RecordingStore([_t1_row()])
+    calls = []
+    out = R.run_pass(store, lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0},
+                     now=NOW, dry_run=True, notify=lambda case: calls.append(case) or {"sent": True})
+    assert out["notifier_calls"] == 0 and calls == [] and store.written == []
+    assert out["decisions"][0]["notify"]["reason"] == "dry_run"
+
+
+def test_a_notifier_fault_is_recorded_and_never_aborts_the_pass():
+    store = RecordingStore([_t1_row(), {**_t1_row(), "case_key": "OTHER:x", "symbol": "OTHER"}])
+    def boom(case):
+        raise RuntimeError("transport down")
+    out = R.run_pass(store, lambda c: {"close": 102.0, "rsi": 35.0, "sma20": 130.0},
+                     now=NOW, dry_run=False, notify=boom)
+    assert out["notifier_calls"] == 2 and len(store.written) == 2
+    assert out["decisions"][0]["notify"]["error"].startswith("RuntimeError")
