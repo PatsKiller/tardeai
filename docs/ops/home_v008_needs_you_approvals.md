@@ -34,7 +34,9 @@ elsewhere). A card cannot offer a button whose facts are unknown.
 
 1. **Server-only decision.** `decide()` takes an `OperatorContext` that only `server_context()` can mint (a module-private
    seal). `None`, a plain dict, `True`, or a hand-built `OperatorContext` are each refused with
-   `server_context_required`. The HTTP layer mints it after verifying the operator's session and the same-origin CSRF.
+   `server_context_required`. The factory itself accepts only a `tailnet:<login>` operator on the authenticated
+   `serve_proxy` listener, and `decide()` requires the recorded actor to *be* that login. The CLI cannot decide at all:
+   `approve`/`decline` exit with `server_context_required` because a command line cannot prove a session.
 2. **The asker is never the decider.** Refused by identity and by session.
 3. **Expiry re-asks.** A request past `expires_at` moves to `expired` with `reask_requested: true`; a click does
    nothing. Nothing is ever auto-approved.
@@ -54,7 +56,13 @@ Written before the action runs, so a failed action still leaves the decision on 
 - `coordination/digest_approvals.jsonl` — every decision and timeout
 
 A timeout or partial failure records **what was attempted**: action type, exact facts, the executor steps reached
-(`step_reached` and the ordered list), the timeout and the elapsed time. A half-completed merge is reconcilable.
+(`step_reached` and the ordered list), the timeout and the elapsed time. A timed-out action is recorded as
+`timed_out_unconfirmed` with `needs_reconciliation: true` — a join timeout does not stop work that is already running, so
+the board never claims it did. A per-request execution marker means it cannot be started again.
+
+The execution boundary re-validates everything the approval relied on: the record's schema, its closed-list type, the
+hash of its immutable approval binding, and the executor's live-fact check a second time — a record that changed after
+approval stays OPEN with `blocked_reason` and nothing runs.
 
 ## The event stream the Telegram nudge reads
 

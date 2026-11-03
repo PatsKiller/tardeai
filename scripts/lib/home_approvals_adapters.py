@@ -73,10 +73,16 @@ def check_policy_approval(record: Mapping[str, Any], *, run: Runner = _run_cli) 
     return True, ""
 
 
-def check_rerun_ci(record: Mapping[str, Any], *, run: Runner = _run_cli) -> tuple[bool, str]:
+def check_rerun_ci(record: Mapping[str, Any], *, run: Runner = _run_cli,
+                   rerun_state: Optional[Path] = None) -> tuple[bool, str]:
+    """The run must still be on the approved head, the named jobs must still be failed, and it may be re-run once.
+
+    The operator's standing order is exactly one automatic re-run per failing head per check; a request that would be a
+    second re-run is refused here rather than discovered by the lane.
+    """
     facts = record.get("facts") or {}
     run_id = str(facts.get("run_id", ""))
-    code, out, err = run(["gh", "run", "view", run_id, "--json", "headSha,status,conclusion"])
+    code, out, err = run(["gh", "run", "view", run_id, "--json", "headSha,status,conclusion,jobs"])
     if code != 0:
         return False, f"This changed, or could not be checked: {(err or out).strip()}. The lead will re-ask."
     try:
@@ -85,7 +91,39 @@ def check_rerun_ci(record: Mapping[str, Any], *, run: Runner = _run_cli) -> tupl
         return False, "gh returned something that is not JSON about the run. The lead will re-ask."
     if str(payload.get("headSha") or "") != str(facts.get("head_sha") or ""):
         return False, "This changed: the run is no longer on the head the lead asked about. The lead will re-ask."
+    wanted = [str(job) for job in (facts.get("failed_job_ids") or []) if str(job).strip()]
+    if wanted:
+        jobs = {str(job.get("databaseId")): job for job in (payload.get("jobs") or []) if isinstance(job, dict)}
+        for job_id in wanted:
+            job = jobs.get(job_id)
+            if job is None:
+                return False, f"Job {job_id} is no longer part of run {run_id}. The lead will re-ask."
+            if str(job.get("conclusion") or "") != "failure":
+                return False, (f"Job {job_id} is {job.get('conclusion') or 'not failed'}, so re-running it is not what "
+                               f"the lead approved. The lead will re-ask.")
+    if rerun_state is not None:
+        state = _load_reruns(Path(rerun_state))
+        already = int(state.get(str(facts.get("head_sha") or ""), 0))
+        if already >= 1:
+            return False, ("This head has already been re-run once; a second automatic re-run is not allowed. Fix the "
+                           "failure instead.")
     return True, ""
+
+
+def _load_reruns(path: Path) -> dict[str, int]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return {str(k): int(v) for k, v in (data or {}).items()}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def record_rerun(path: Path, head_sha: str) -> None:
+    """Count a consumed re-run for a head. Called by the execute adapter after the re-run is issued."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    state = _load_reruns(path)
+    state[str(head_sha)] = state.get(str(head_sha), 0) + 1
+    path.write_text(json.dumps(state, indent=1, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def check_stop_job(record: Mapping[str, Any], *, proc_root: Path = Path("/proc")) -> tuple[bool, str]:
@@ -117,8 +155,10 @@ def check_stop_job(record: Mapping[str, Any], *, proc_root: Path = Path("/proc")
     return True, ""
 
 
-def check_install_schedule(record: Mapping[str, Any], *, unit_root: Optional[Path] = None) -> tuple[bool, str]:
-    """The lane text must hash to what was reviewed, and the unit file must still be absent (nothing half-installed)."""
+def check_install_schedule(record: Mapping[str, Any], *, unit_root: Optional[Path] = None,
+                           registry_path: Optional[Path] = None,
+                           source_root: Optional[Path] = None) -> tuple[bool, str]:
+    """Three facts must still hold: the unit is absent, the schedule is the registry's, and the reviewed text is intact."""
     facts = record.get("facts") or {}
     root = Path(unit_root or os.environ.get("TRADEAI_UNIT_ROOT") or "/etc/systemd/system")
     lane = str(facts.get("lane_id") or "")
@@ -127,8 +167,35 @@ def check_install_schedule(record: Mapping[str, Any], *, unit_root: Optional[Pat
     unit = root / f"{lane}.service"
     if unit.exists():
         return False, f"{unit.name} already exists, so the schedule the lead approved is not the one that would land."
-    if not str(facts.get("file_sha256") or "").strip():
+    wanted_sha = str(facts.get("file_sha256") or "").strip()
+    if not wanted_sha:
         return False, "This request does not carry the hash of the unit it would install. The lead will re-ask."
+
+    registry = Path(registry_path or os.environ.get("TRADEAI_LANE_REGISTRY") or "config/lane_registry.json")
+    try:
+        lanes = json.loads(registry.read_text(encoding="utf-8")).get("lanes") or []
+    except (OSError, ValueError, AttributeError):
+        return False, ("The lane registry could not be read, so there is no way to prove the schedule is the reviewed "
+                       "one. The lead will re-ask.")
+    match = next((row for row in lanes if isinstance(row, dict) and str(row.get("lane_id")) == lane), None)
+    if match is None:
+        return False, f"Lane {lane} is not in the lane registry, so it is not a schedule the lead can approve."
+    expression = str((match.get("scheduler") or {}).get("expression") or "")
+    if expression != str(facts.get("schedule_expression") or ""):
+        return False, (f"Lane {lane}'s registered schedule is “{expression or '(none)'}”, not the one shown on the "
+                       f"card. The lead will re-ask.")
+
+    source = facts.get("source_path")
+    if not source:
+        return False, ("This request does not name the reviewed unit file, so its text cannot be proven unchanged. "
+                       "The lead will re-ask.")
+    base = Path(source_root or os.environ.get("TRADEAI_REPO_ROOT") or ".")
+    try:
+        actual = hashlib.sha256((base / str(source)).read_bytes()).hexdigest()
+    except OSError:
+        return False, "The reviewed unit file could not be read, so nothing will be installed. The lead will re-ask."
+    if actual != wanted_sha:
+        return False, "The unit text changed since it was reviewed, so it is not the schedule the lead approved."
     return True, ""
 
 

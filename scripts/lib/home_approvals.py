@@ -7,10 +7,10 @@ separate. Spec: SPEC_HOME_V008_NEEDS_YOU_APPROVALS_20261103.md.
 
 Three rails are unconditional, and each has a test:
 
-1. **Operator session + same-origin CSRF.** ``decide()`` takes ``operator_session`` and ``csrf_ok`` as keyword
-   arguments. They are *server-derived*: the only legitimate caller is the HTTP layer, after it has verified the
-   operator's session and the same-origin check. Nothing here reads them from a request body, and there is no
-   convenience path that defaults them to true.
+1. **Operator session + same-origin CSRF.** ``decide()`` takes an ``OperatorContext`` that only ``server_context()``
+   can mint, and that factory accepts only a tailnet operator identity on the authenticated serve listener. ``decide()``
+   then requires the recorded ``actor`` to *be* that verified login, so a caller cannot name the operator while holding
+   an agent identity. The command line cannot mint a context at all: a decision is only ever made by the HTTP layer.
 2. **The requester is never the approver.** Refused by identity *and* by session, so asking under one name and clicking
    under another does not work.
 3. **Expiry re-asks.** An expired request moves to ``expired`` with ``reask_requested: true``; it is never
@@ -69,7 +69,7 @@ ACTION_TYPES: dict[str, str] = {
 REQUIRED_FACTS: dict[str, tuple[str, ...]] = {
     "merge_pr": ("pr", "head_sha"),
     "rerun_ci": ("run_id", "head_sha"),
-    "grant": ("tier", "uses", "expires_at", "reason"),
+    "grant": ("grant_id", "tier", "uses", "expires_at", "reason"),
     "stop_job": ("pid", "start_time_epoch", "cmd_sha256"),
     "install_schedule": ("lane_id", "schedule_expression", "file_sha256"),
     "restore_store": ("packet_sha256",),
@@ -120,9 +120,34 @@ class OperatorContext:
 
 
 def server_context(*, principal: str, session: str = "", csrf_ok: bool, listener: str) -> OperatorContext:
-    """Mint the server-side context. Called by the Command Center API route (piece B) and by nothing else."""
-    return OperatorContext(principal=str(principal or ""), session=str(session or ""), csrf_ok=bool(csrf_ok),
-                           listener=str(listener or ""), _seal=_SEAL)
+    """Mint the server-side context. Called by the Command Center API route (piece B) and by nothing else.
+
+    The factory refuses anything that is not a verified operator request: the principal must be a tailnet identity
+    (``tailnet:<login>``), and the listener must be the authenticated serve proxy. An agent identity
+    (``agent:…``), a service token, or an unauthenticated listener cannot produce a context at all — the shape check is
+    here as well as in ``_check_context`` so a caller that skips one still meets the other.
+    """
+    login = _tailnet_login(principal)
+    if not login:
+        raise Refused("operator_session_required",
+                      "Only the operator's tailnet identity from the authenticated Command Center listener can decide a "
+                      "request. This caller is not one, so nothing was decided.")
+    if str(listener or "") != SERVE_LISTENER:
+        raise Refused("operator_session_required",
+                      "Only the authenticated Command Center listener can decide a request. This call came from "
+                      f"“{listener or '(none)'}”, so nothing was decided.")
+    return OperatorContext(principal=f"tailnet:{login}", session=str(session or ""), csrf_ok=bool(csrf_ok),
+                           listener=str(listener), _seal=_SEAL)
+
+
+SERVE_LISTENER = "serve_proxy"
+
+
+def _tailnet_login(principal: Any) -> str:
+    text = str(principal or "").strip()
+    if not text.startswith("tailnet:"):
+        return ""
+    return text.split(":", 1)[1].strip()
 
 
 def _check_context(ctx: Any) -> OperatorContext:
@@ -132,10 +157,13 @@ def _check_context(ctx: Any) -> OperatorContext:
             "An approval can only be decided by the Command Center server after it verified the operator's session. "
             "This call did not come from there, so nothing was decided.",
         )
-    if not ctx.principal:
+    if not _tailnet_login(ctx.principal):
         raise Refused("operator_session_required",
                       "A button click only counts from the operator's own logged-in Command Center session. This click "
                       "did not name one, so nothing was decided.")
+    if ctx.listener != SERVE_LISTENER:
+        raise Refused("operator_session_required",
+                      "Only the authenticated Command Center listener can decide a request, so nothing was decided.")
     if not ctx.csrf_ok:
         raise Refused("csrf_required",
                       "This request did not pass the same-origin check, so it was refused. Reload Command Center and "
@@ -248,13 +276,27 @@ class Store:
         return record
 
     def all(self) -> list[dict[str, Any]]:
-        """Every stored record. A corrupt record is an ERROR, never a silent skip: a lost decision must be visible."""
+        """Every stored record. A corrupt record or a directory that cannot be listed is an ERROR, never an empty board.
+
+        ``Path.glob`` swallows a permission error on directory iteration and yields nothing, which turns "cannot read"
+        into "nothing needs you" — the exact false all-clear this board must never show. ``os.scandir`` raises, and the
+        raise is translated into the same plain refusal the API already maps to an error state.
+        """
         if not self.requests_dir.exists():
             return []
         if not self.requests_dir.is_dir():
             raise Refused("store_unreadable", "The Needs-you store is not a directory; nothing can be shown safely.")
+        try:
+            with os.scandir(self.requests_dir) as entries:
+                paths = sorted((Path(entry.path) for entry in entries if entry.name.endswith(".json")),
+                               key=lambda p: p.name)
+        except OSError as exc:
+            raise Refused(
+                "store_unreadable",
+                "The Needs-you store could not be read, so decisions cannot be shown until it is repaired.",
+            ) from exc
         rows = []
-        for path in sorted(self.requests_dir.glob("*.json")):
+        for path in paths:
             try:
                 rows.append(json.loads(path.read_text(encoding="utf-8")))
             except (OSError, ValueError) as exc:
@@ -357,6 +399,13 @@ class RefuseAll:
 
 @dataclass
 class CallbackExecutor:
+    """Executor backed by two callables, both with fixed arities.
+
+    There is deliberately **no TypeError fallback**: catching a TypeError and retrying at another arity means a callback
+    that already performed its effect and then raised TypeError gets called a second time. Adapt a two-argument handler
+    with ``two_arg`` at construction instead, so the signature is settled before anything runs.
+    """
+
     revalidate_fn: Callable[[Mapping[str, Any]], tuple[bool, str]]
     execute_fn: Callable[..., dict[str, Any]]
 
@@ -365,11 +414,16 @@ class CallbackExecutor:
 
     def execute(self, record: Mapping[str, Any], *, actor: str, now: datetime,
                 progress: Progress) -> dict[str, Any]:
-        try:
-            return self.execute_fn(record, actor, progress)
-        except TypeError:
-            # A two-argument callback (tests, simple adapters) still works; progress stays empty.
-            return self.execute_fn(record, actor)
+        return self.execute_fn(record, actor, progress)
+
+
+def two_arg(fn: Callable[[Mapping[str, Any], str], dict[str, Any]]) -> Callable[..., dict[str, Any]]:
+    """Adapt a (record, actor) handler to the three-argument executor signature, once, before anything runs."""
+
+    def _adapted(record: Mapping[str, Any], actor: str, progress: Progress) -> dict[str, Any]:  # noqa: ARG001
+        return fn(record, actor)
+
+    return _adapted
 
 
 EXECUTORS: dict[str, Executor] = {}
@@ -438,7 +492,10 @@ def create(
         raise Refused("requester_unknown",
                       "This request does not say which session asked, so nobody could verify the approver is "
                       "someone else.")
-    rid = request_id or new_id(moment, seed=json.dumps([kind, facts, who, text["title"]], sort_keys=True))
+    rid = request_id or new_id(moment, seed=secrets.token_hex(16))
+    if store.path(rid).exists():
+        raise Refused("duplicate_request_id",
+                      "A request with this id already exists. A new request never overwrites an older decision.")
     ttl = float(payload.get("ttl_hours") or DEFAULT_TTL_HOURS)
     record = {
         "schema": SCHEMA,
@@ -500,6 +557,42 @@ def revalidate(store: Store, record: Mapping[str, Any], *, now: Optional[datetim
 
 
 # ── Decisions ────────────────────────────────────────────────────────────────────────────────────────────────
+def _binding_of(record: Mapping[str, Any]) -> str:
+    """The immutable core of a request: what was approved is these fields and nothing else."""
+    core = {key: record.get(key) for key in ("id", "type", "facts", "requester", "created_at", "expires_at")}
+    return hashlib.sha256(json.dumps(core, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def _acquire(path: Path, code: str, plain: str) -> None:
+    """Create an exclusive marker file. EEXIST means someone else already holds this transition."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    except FileExistsError as exc:
+        raise Refused(code, plain) from exc
+    os.close(fd)
+
+
+def _release(path: Path) -> None:
+    with contextlib.suppress(OSError):
+        path.unlink()
+
+
+def _validate_record(record: Mapping[str, Any]) -> str:
+    """Refuse a record whose own shape is wrong — a tampered or corrupt record never reaches an executor."""
+    if record.get("schema") != SCHEMA:
+        raise Refused("record_invalid", "This request is not in the form this board writes, so nothing was done.")
+    kind = record.get("type")
+    if kind not in ACTION_TYPES:
+        raise Refused("record_invalid",
+                      "This request names an action that is not on the closed list, so nothing was done.")
+    try:
+        _check_facts(str(kind), record.get("facts"))
+    except Refused as exc:
+        raise Refused("record_invalid", f"This request's bound facts are not valid ({exc.plain})") from exc
+    return str(kind)
+
+
 def decide(
     store: Store,
     request_id: str,
@@ -515,13 +608,18 @@ def decide(
     """The single decision entry point. Server-only (``ctx``), and it owns all three rails so no caller can skip them."""
     moment = _utc(now)
     context = _check_context(ctx)
+    login = _tailnet_login(context.principal)
+    if not actor or actor != login:
+        raise Refused("actor_not_authenticated",
+                      "The name recorded for this decision must be the operator identity the server verified; this "
+                      "call named someone else, so nothing was decided.")
     record = store.require(request_id)
     choice = str(decision or "").strip().lower()
     if choice not in ("approve", "decline"):
         raise Refused("unknown_decision", "A decision is either approve or decline.")
 
     requester = record.get("requester") or {}
-    if not actor or actor == requester.get("actor") or actor == requester.get("session"):
+    if actor == requester.get("actor") or actor == requester.get("session"):
         raise Refused("approver_is_requester",
                       "The session that asked cannot also decide: this request was created by the same identity that "
                       "clicked. The lead must re-ask it from a different session.")
@@ -545,61 +643,111 @@ def decide(
         raise Refused("request_expired",
                       "This request expired, so nothing was approved; the lead will ask again.")
 
-    if choice == "decline":
-        at = _iso(moment)
-        record.update({"state": "declined", "decision": "decline", "decided_by": actor, "decided_at": at,
-                       "decline_reason": str(note or "") or None})
-        store.put(record)
-        row = {"schema": RECEIPT_SCHEMA, "event": "declined", "at": at, "id": request_id, "actor": actor,
-               "note": str(note or "")}
-        record["receipt"] = _append_jsonl(store.ledger, row)
-        _append_jsonl(store.digest, row)
-        store.put(record)
-        publish_event(store, record, "declined")
-        return record
+    kind = _validate_record(record)
+    decision_claim = store.requests_dir / f"{request_id}.deciding"
+    _acquire(decision_claim, "decision_in_progress",
+             "This request is already being decided, so it was not decided twice.")
+    try:
+        if choice == "decline":
+            at = _iso(moment)
+            record.update({"state": "declined", "decision": "decline", "decided_by": actor, "decided_at": at,
+                           "decline_reason": str(note or "") or None})
+            store.put(record)
+            row = {"schema": RECEIPT_SCHEMA, "event": "declined", "at": at, "id": request_id, "actor": actor,
+                   "note": str(note or "")}
+            record["receipt"] = _append_jsonl(store.ledger, row)
+            _append_jsonl(store.digest, row)
+            store.put(record)
+            publish_event(store, record, "declined")
+            return record
 
-    bridge = executor or executor_for(str(record.get("type")))
-    ok, plain = bridge.revalidate(record, now=moment)
-    if not ok:
-        record["blocked_reason"] = plain or "This changed since it was asked. The lead will re-ask."
-        store.put(record)
-        _append_jsonl(store.ledger, {"schema": RECEIPT_SCHEMA, "event": "facts_moved", "at": _iso(moment),
-                                     "id": request_id, "reason": record["blocked_reason"]})
-        publish_event(store, record, "updated")
-        raise Refused("facts_moved", record["blocked_reason"])
+        bridge = executor or executor_for(kind)
+        ok, plain = bridge.revalidate(record, now=moment)
+        if not ok:
+            record["blocked_reason"] = plain or "This changed since it was asked. The lead will re-ask."
+            store.put(record)
+            _append_jsonl(store.ledger, {"schema": RECEIPT_SCHEMA, "event": "facts_moved", "at": _iso(moment),
+                                         "id": request_id, "reason": record["blocked_reason"]})
+            publish_event(store, record, "updated")
+            raise Refused("facts_moved", record["blocked_reason"])
 
-    # Receipt BEFORE the action: a failed action must still leave the decision on record.
-    receipt = _append_jsonl(store.ledger, {
-        "schema": RECEIPT_SCHEMA, "event": "approved", "at": _iso(moment), "id": request_id,
-        "type": record.get("type"), "facts": record.get("facts"), "requester": requester, "actor": actor,
-        "approver_session": context.session, "approval_source": "operator_session+csrf",
-        "request_sha256": hashlib.sha256(json.dumps(record, sort_keys=True).encode()).hexdigest(),
-    })
-    _append_jsonl(store.digest, {"schema": RECEIPT_SCHEMA, "event": "approved", "at": _iso(moment), "id": request_id,
-                                 "type": record.get("type"), "facts": record.get("facts"), "actor": actor})
-    record.update({"state": "approved", "decision": "approve", "decided_by": actor, "decided_at": _iso(moment),
-                   "receipt": receipt, "blocked_reason": None})
-    store.put(record)
-    publish_event(store, record, "approved")
-    return execute(store, record, actor=actor, now=moment, executor=bridge, timeout_s=timeout_s)
+        binding = _binding_of(record)
+        receipt = _append_jsonl(store.ledger, {
+            "schema": RECEIPT_SCHEMA, "event": "approved", "at": _iso(moment), "id": request_id,
+            "type": kind, "facts": record.get("facts"), "requester": requester, "actor": actor,
+            "approver_session": context.session, "approval_source": "operator_session+csrf",
+            "binding": binding,
+        })
+        _append_jsonl(store.digest, {"schema": RECEIPT_SCHEMA, "event": "approved", "at": _iso(moment),
+                                     "id": request_id, "type": kind, "facts": record.get("facts"), "actor": actor,
+                                     "binding": binding})
+        record.update({"state": "approved", "decision": "approve", "decided_by": actor, "decided_at": _iso(moment),
+                       "receipt": receipt, "blocked_reason": None, "binding": binding})
+        store.put(record)
+        publish_event(store, record, "approved")
+        return execute(store, record, actor=actor, now=moment, executor=bridge, timeout_s=timeout_s,
+                       binding=binding)
+    finally:
+        _release(decision_claim)
 
 
 def execute(store: Store, record: Mapping[str, Any], *, actor: str, now: Optional[datetime] = None,
-            executor: Optional[Executor] = None, timeout_s: float = DEFAULT_EXECUTE_TIMEOUT_S) -> dict[str, Any]:
-    """Run an approved action exactly once, with a hard timeout.
+            executor: Optional[Executor] = None, timeout_s: float = DEFAULT_EXECUTE_TIMEOUT_S,
+            binding: Optional[str] = None) -> dict[str, Any]:
+    """Run an approved action exactly once, at the exact facts that were approved.
 
-    Idempotent by id: a settled request returns its stored result. A timeout or a partial failure records WHAT WAS
-    ATTEMPTED — the action type, the exact bound facts, the executor steps reached, and the timeout — so a half-done
-    merge can be reconciled instead of guessed at.
+    The execution boundary re-validates everything the approval relied on: the record's schema and type must still be
+    the closed-list action that was approved, its facts must hash to the approved binding, and the executor must confirm
+    the live facts again here (not only before the decision). An exclusive per-request marker makes a second execution
+    impossible, including from a concurrent click, a resumed record, or a retried call.
+
+    A timeout does not stop work that is already running: it is recorded as ``timed_out_unconfirmed`` with
+    ``needs_reconciliation`` so a half-done action is never mistaken for a stopped one, and the marker keeps it from being
+    started a second time.
     """
     moment = _utc(now)
     current = store.require(str(record.get("id")))
-    state = current.get("state")
-    if state in ("executed", "failed", "declined", "expired", "cancelled"):
+    rid = str(current.get("id"))
+    settled = ("executed", "failed", "declined", "expired", "cancelled")
+    if current.get("state") in settled:
         return current
-    if state not in ("approved", "executing"):
-        raise Refused("not_approved", f"This request is {state}, so there is nothing to execute.")
-    bridge = executor or executor_for(str(current.get("type")))
+
+    try:
+        kind = _validate_record(current)
+    except Refused as exc:
+        current.update({"state": "open", "blocked_reason": exc.plain})
+        store.put(current)
+        raise
+    expected = binding or current.get("binding")
+    actual = _binding_of(current)
+    if not expected or expected != actual or current.get("binding") != actual:
+        current.update({"state": "open", "blocked_reason":
+                        "This changed after it was approved. The lead will re-ask."})
+        store.put(current)
+        _append_jsonl(store.ledger, {"schema": RECEIPT_SCHEMA, "event": "binding_mismatch", "at": _iso(moment),
+                                     "id": rid, "expected": expected, "actual": actual})
+        publish_event(store, current, "updated")
+        raise Refused("binding_mismatch",
+                      "The request on disk is not the one that was approved (its type or facts changed), so nothing "
+                      "was executed. The lead will re-ask.")
+    if current.get("state") not in ("approved", "executing"):
+        raise Refused("not_approved", f"This request is {current.get('state')}, so there is nothing to execute.")
+
+    exec_claim = store.requests_dir / f"{rid}.executed"
+    _acquire(exec_claim, "already_executing",
+             "This action is already running or has already run; it will not be started twice.")
+    bridge = executor or executor_for(kind)
+    ok, plain = bridge.revalidate(current, now=moment)
+    if not ok:
+        _release(exec_claim)
+        current.update({"state": "open", "blocked_reason": plain or
+                        "This changed before the action ran. The lead will re-ask."})
+        store.put(current)
+        _append_jsonl(store.ledger, {"schema": RECEIPT_SCHEMA, "event": "facts_moved", "at": _iso(moment),
+                                     "id": rid, "reason": current["blocked_reason"], "at_execution": True})
+        publish_event(store, current, "updated")
+        raise Refused("facts_moved", current["blocked_reason"])
+
     current["state"] = "executing"
     store.put(current)
 
@@ -612,13 +760,13 @@ def execute(store: Store, record: Mapping[str, Any], *, actor: str, now: Optiona
         except BaseException as exc:  # noqa: BLE001 - reported through the receipt, never swallowed
             box["error"] = exc
 
-    worker = threading.Thread(target=_run, name=f"home-approvals-{current['id']}", daemon=True)
+    worker = threading.Thread(target=_run, name=f"home-approvals-{rid}", daemon=True)
     started = time.monotonic()
     worker.start()
     worker.join(float(timeout_s))
     elapsed = round(time.monotonic() - started, 3)
     attempted = {
-        "type": current.get("type"),
+        "type": kind,
         "facts": current.get("facts"),
         "steps": list(progress.steps),
         "step_reached": progress.last(),
@@ -626,38 +774,45 @@ def execute(store: Store, record: Mapping[str, Any], *, actor: str, now: Optiona
         "elapsed_s": elapsed,
     }
 
-    if worker.is_alive():
-        current.update({"state": "failed", "result": {
-            "ok": False, "outcome": "timed_out",
-            "plain": (f"The action did not finish within {float(timeout_s):.0f}s and was left as it was; what it had "
-                      f"already done is recorded so the lead can reconcile it."),
-            "attempted": attempted,
-        }})
+    def _finish(state: str, outcome: str, plain: str, *, extra: Optional[Mapping[str, Any]] = None) -> None:
+        body = {"ok": outcome == "executed", "outcome": outcome, "plain": plain, "attempted": attempted}
+        body.update(extra or {})
+        current.update({"state": state, "result": body})
         store.put(current)
-        _append_jsonl(store.ledger, {"schema": RECEIPT_SCHEMA, "event": "timed_out", "at": _iso(moment),
-                                     "id": current["id"], "outcome": "timed_out", "attempted": attempted})
-        _append_jsonl(store.digest, {"schema": RECEIPT_SCHEMA, "event": "timed_out", "at": _iso(moment),
-                                     "id": current["id"], "outcome": "timed_out", "attempted": attempted})
+        row = {"schema": RECEIPT_SCHEMA, "event": outcome, "at": _iso(moment), "id": rid,
+               "outcome": outcome, "plain": plain, "attempted": attempted}
+        _append_jsonl(store.ledger, row)
+        _append_jsonl(store.digest, {"schema": RECEIPT_SCHEMA, "event": outcome, "at": _iso(moment), "id": rid,
+                                     "outcome": outcome})
+
+    if worker.is_alive():
+        _finish("failed", "timed_out_unconfirmed",
+                (f"The action did not confirm within {float(timeout_s):.0f}s. It may still be running, so it is marked "
+                 f"for reconciliation and will not be started again; what had already run is recorded."),
+                extra={"needs_reconciliation": True})
         return current
 
     if "error" in box:
-        exc = box["error"]
-        current.update({"state": "failed", "result": {
-            "ok": False, "outcome": "failed",
-            "plain": f"The action did not complete: {exc}",
-            "attempted": attempted,
-        }})
-        store.put(current)
-        _append_jsonl(store.ledger, {"schema": RECEIPT_SCHEMA, "event": "failed", "at": _iso(moment),
-                                     "id": current["id"], "outcome": "failed", "error": str(exc),
-                                     "attempted": attempted})
+        _finish("failed", "failed", f"The action did not complete: {box['error']}")
         return current
 
-    current.update({"state": "executed", "result": dict(box.get("result") or {})})
-    current["result"].setdefault("attempted", attempted)
-    store.put(current)
-    _append_jsonl(store.ledger, {"schema": RECEIPT_SCHEMA, "event": "executed", "at": _iso(moment),
-                                 "id": current["id"], "result": current["result"]})
+    result = box.get("result") or {}
+    if result.get("ok") is True:
+        current.update({"state": "executed", "result": {**dict(result), "outcome": "executed",
+                                                        "attempted": attempted}})
+        store.put(current)
+        row = {"schema": RECEIPT_SCHEMA, "event": "executed", "at": _iso(moment), "id": rid,
+               "outcome": "executed", "attempted": attempted}
+        _append_jsonl(store.ledger, row)
+        _append_jsonl(store.digest, {"schema": RECEIPT_SCHEMA, "event": "executed", "at": _iso(moment), "id": rid,
+                                     "outcome": "executed"})
+        return current
+    if result.get("ok") is False:
+        _finish("failed", "refused", str(result.get("plain") or "The action refused to run."))
+        return current
+    _finish("failed", "unknown_result",
+            "The action returned without saying whether it succeeded, so it is treated as failed and will not be "
+            "retried automatically.")
     return current
 
 
@@ -749,10 +904,6 @@ def main(argv: Optional[list[str]] = None) -> int:
         command.add_argument("--actor", required=True)
         command.add_argument("--session", default="")
         command.add_argument("--note", default="")
-        command.add_argument("--operator-session", action="store_true",
-                             help="set by the Command Center server from a verified operator session")
-        command.add_argument("--csrf-ok", action="store_true",
-                             help="set by the Command Center server after the same-origin check")
 
     q = sub.add_parser("question")
     q.add_argument("request_id")
@@ -788,14 +939,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         if args.cmd == "question":
             _print(question(store, args.request_id, actor=args.actor, note=args.note), as_json=args.json)
             return 0
-        context = (server_context(principal=args.actor, session=args.session, csrf_ok=args.csrf_ok,
-                                  listener="cli-operator-shell")
-                   if args.operator_session else None)
-        record = decide(store, args.request_id, ctx=context, actor=args.actor,
-                        decision="approve" if args.cmd == "approve" else "decline",
-                        note=args.note)
-        _print(record, as_json=args.json)
-        return 0
+        raise Refused("server_context_required",
+                      "A decision can only be made from the operator's logged-in Command Center session. This command "
+                      "line cannot prove one, so nothing was decided.")
     except Refused as exc:
         print(json.dumps({"ok": False, "code": exc.code, "plain": exc.plain}, sort_keys=True), file=sys.stderr)
         return 2

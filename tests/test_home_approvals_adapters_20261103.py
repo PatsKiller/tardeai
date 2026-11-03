@@ -65,6 +65,28 @@ def test_rerun_ci_binds_to_the_run_head():
     assert not ok and "no longer on the head" in plain
 
 
+def test_rerun_ci_requires_the_named_jobs_to_still_be_failed():
+    jobs = [{"databaseId": 7, "conclusion": "failure"}]
+    record = {"id": "x", "type": "rerun_ci", "facts": {"run_id": 5, "head_sha": HEAD, "failed_job_ids": [7]}}
+    assert ad.check_rerun_ci(record, run=_runner({"headSha": HEAD, "jobs": jobs}))[0]
+    ok, plain = ad.check_rerun_ci(
+        {"facts": dict(record["facts"], failed_job_ids=[8])}, run=_runner({"headSha": HEAD, "jobs": jobs}))
+    assert not ok and "no longer part of run" in plain
+    ok, plain = ad.check_rerun_ci(
+        {"facts": dict(record["facts"], failed_job_ids=[7])},
+        run=_runner({"headSha": HEAD, "jobs": [{"databaseId": 7, "conclusion": "success"}]}))
+    assert not ok and "is success" in plain
+
+
+def test_rerun_ci_allows_exactly_one_per_head(tmp_path):
+    state = tmp_path / "reruns.json"
+    record = {"id": "x", "type": "rerun_ci", "facts": {"run_id": 5, "head_sha": HEAD}}
+    assert ad.check_rerun_ci(record, run=_runner({"headSha": HEAD}), rerun_state=state)[0]
+    ad.record_rerun(state, HEAD)
+    ok, plain = ad.check_rerun_ci(record, run=_runner({"headSha": HEAD}), rerun_state=state)
+    assert not ok and "already been re-run once" in plain
+
+
 def test_stop_job_requires_the_same_pid_start_time_and_command(tmp_path):
     proc = tmp_path / "proc"
     pid_dir = proc / "4242"
@@ -92,13 +114,46 @@ def test_stop_job_requires_the_same_pid_start_time_and_command(tmp_path):
     assert not ok and "no longer running" in plain
 
 
-def test_install_schedule_refuses_when_the_unit_already_exists(tmp_path):
-    record = {"facts": {"lane_id": "tradeai-demo", "schedule_expression": "* * * * *",
-                        "file_sha256": "c" * 64}}
-    assert ad.check_install_schedule(record, unit_root=tmp_path) == (True, "")
-    (tmp_path / "tradeai-demo.service").write_text("[Unit]\n")
-    ok, plain = ad.check_install_schedule(record, unit_root=tmp_path)
+def _install_fixture(tmp_path):
+    unit_root = tmp_path / "units"
+    unit_root.mkdir()
+    repo = tmp_path / "repo"
+    (repo / "ops").mkdir(parents=True)
+    text = "[Unit]\nDescription=demo\n"
+    (repo / "ops" / "tradeai-demo.service").write_text(text)
+    sha = hashlib.sha256(text.encode()).hexdigest()
+    registry = tmp_path / "lane_registry.json"
+    registry.write_text(json.dumps({"lanes": [
+        {"lane_id": "tradeai-demo", "scheduler": {"kind": "cron", "expression": "0 6 * * *"}}]}))
+    record = {"facts": {"lane_id": "tradeai-demo", "schedule_expression": "0 6 * * *",
+                        "file_sha256": sha, "source_path": "ops/tradeai-demo.service"}}
+    return record, unit_root, registry, repo
+
+
+def test_install_schedule_checks_absence_registry_and_the_reviewed_text(tmp_path):
+    record, unit_root, registry, repo = _install_fixture(tmp_path)
+    assert ad.check_install_schedule(record, unit_root=unit_root, registry_path=registry, source_root=repo) == (True, "")
+
+    (unit_root / "tradeai-demo.service").write_text("[Unit]\n")
+    ok, plain = ad.check_install_schedule(record, unit_root=unit_root, registry_path=registry, source_root=repo)
     assert not ok and "already exists" in plain
+    (unit_root / "tradeai-demo.service").unlink()
+
+    wrong_expression = {"facts": dict(record["facts"], schedule_expression="*/5 * * * *")}
+    ok, plain = ad.check_install_schedule(wrong_expression, unit_root=unit_root, registry_path=registry, source_root=repo)
+    assert not ok and "registered schedule" in plain
+
+    changed_text = {"facts": dict(record["facts"], file_sha256="c" * 64)}
+    ok, plain = ad.check_install_schedule(changed_text, unit_root=unit_root, registry_path=registry, source_root=repo)
+    assert not ok and "changed since it was reviewed" in plain
+
+    no_source = {"facts": {k: v for k, v in record["facts"].items() if k != "source_path"}}
+    ok, plain = ad.check_install_schedule(no_source, unit_root=unit_root, registry_path=registry, source_root=repo)
+    assert not ok and "does not name the reviewed unit file" in plain
+
+    unknown_lane = {"facts": dict(record["facts"], lane_id="not-a-lane")}
+    ok, plain = ad.check_install_schedule(unknown_lane, unit_root=unit_root, registry_path=registry, source_root=repo)
+    assert not ok and "not in the lane registry" in plain
 
 
 def test_restore_refuses_unless_the_packet_is_present_exactly_once(tmp_path):
@@ -130,7 +185,7 @@ def test_an_adapter_without_wiring_can_check_but_never_act(tmp_path):
         "undo": "u", "facts": {"pr": 2504, "head_sha": HEAD},
     }, requester={"session": "cc-deepseek-5"}, now=NOW)
     executor = ad.make_executor("merge_pr", run=_runner({"state": "OPEN", "headRefOid": HEAD}))
-    ctx = ha.server_context(principal="operator", session="op", csrf_ok=True, listener="serve_proxy")
+    ctx = ha.server_context(principal="tailnet:operator", session="op", csrf_ok=True, listener="serve_proxy")
     result = ha.decide(store, record["id"], ctx=ctx, actor="operator", decision="approve",
                        now=NOW,
                        executor=executor)

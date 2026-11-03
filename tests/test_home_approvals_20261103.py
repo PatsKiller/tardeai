@@ -73,7 +73,7 @@ class Recorder:
         return ha.CallbackExecutor(revalidate, execute)
 
 
-def _ctx(principal="operator", csrf_ok=True, session="operator-cc", listener="serve_proxy"):
+def _ctx(principal="tailnet:operator", csrf_ok=True, session="operator-cc", listener="serve_proxy"):
     return ha.server_context(principal=principal, session=session, csrf_ok=csrf_ok, listener=listener)
 
 
@@ -88,8 +88,8 @@ def test_a_plain_operator_context_cannot_be_constructed_by_a_client(tmp_path):
     store = _store(tmp_path)
     record = _ask(store)
     with pytest.raises(ha.Refused) as caught:
-        ha.OperatorContext(principal="operator", session="x", csrf_ok=True,
-                           listener="client", _seal=None)  # type: ignore[arg-type]
+        ha.OperatorContext(principal="tailnet:operator", session="x", csrf_ok=True,
+                           listener="serve_proxy", _seal=None)  # type: ignore[arg-type]
     assert caught.value.code == "server_context_required"
     assert caught.value.plain  # the card gets a sentence, not a code
     assert store.get(record["id"])["state"] == "open"
@@ -123,18 +123,19 @@ def test_an_unverified_operator_session_or_csrf_is_refused(tmp_path):
 # ── Rail 2: the asker is never the decider ──────────────────────────────────────────────────────────────────
 def test_the_requester_identity_cannot_decide_its_own_request(tmp_path):
     store, rec = _store(tmp_path), Recorder()
-    record = ha.create(store, _payload(), requester={"session": "cc-deepseek-5", "actor": "cc-deepseek-5"}, now=NOW)
+    # The asking identity is the operator login itself: the only way this rail is reachable once actor == principal.
+    record = ha.create(store, _payload(), requester={"session": "operator", "actor": "operator"}, now=NOW)
     with pytest.raises(ha.Refused) as caught:
-        _decide(store, record["id"], actor="cc-deepseek-5", executor=rec.executor())
+        _decide(store, record["id"], actor="operator", executor=rec.executor())
     assert caught.value.code == "approver_is_requester"
     assert rec.executed == 0
 
 
 def test_the_requesting_session_cannot_decide_even_under_another_name(tmp_path):
     store, rec = _store(tmp_path), Recorder()
-    record = _ask(store)
+    record = ha.create(store, _payload(), requester={"session": "operator-cc"}, now=NOW)
     with pytest.raises(ha.Refused) as caught:
-        _decide(store, record["id"], actor="someone-else", ctx=_ctx(session="cc-deepseek-5"), executor=rec.executor())
+        _decide(store, record["id"], ctx=_ctx(session="operator-cc"), executor=rec.executor())
     assert caught.value.code == "approver_is_requester"
     assert rec.executed == 0
 
@@ -144,7 +145,7 @@ def test_an_empty_actor_is_refused(tmp_path):
     record = _ask(store)
     with pytest.raises(ha.Refused) as caught:
         _decide(store, record["id"], actor="", executor=rec.executor())
-    assert caught.value.code == "approver_is_requester"
+    assert caught.value.code == "actor_not_authenticated"
 
 
 # ── Rail 3: expiry re-asks, never auto-approves ────────────────────────────────────────────────────────────
@@ -192,7 +193,7 @@ def test_every_type_declares_the_facts_it_requires():
     ("merge_pr", {"pr": 1}),                                        # head missing
     ("merge_pr", {"pr": 1, "head_sha": "abc"}),                     # not a 40-hex sha
     ("rerun_ci", {"run_id": 1, "head_sha": "Z" * 40}),              # not hex
-    ("grant", {"tier": "A", "uses": 1, "expires_at": "nonsense"}),  # bad timestamp
+    ("grant", {"grant_id": "g1", "tier": "A", "uses": 1, "expires_at": "nonsense"}),  # bad timestamp
     ("stop_job", {"pid": "x", "start_time_epoch": 1, "cmd_sha256": SHA64}),
     ("install_schedule", {"lane_id": "x", "schedule_expression": "* * * * *"}),
     ("restore_store", {"packet_sha256": "short"}),
@@ -253,7 +254,7 @@ def test_an_approved_request_runs_once_and_writes_both_ledgers(tmp_path):
     digest = [json.loads(line) for line in store.digest.read_text().splitlines()]
     assert [row["event"] for row in ledger] == ["created", "approved", "executed"]
     assert digest[0]["event"] == "approved" and digest[0]["facts"] == {"pr": 2504, "head_sha": HEAD}
-    assert ledger[1]["approval_source"] == "operator_session+csrf" and ledger[1]["request_sha256"]
+    assert ledger[1]["approval_source"] == "operator_session+csrf" and ledger[1]["binding"]
     with pytest.raises(ha.Refused) as caught:
         _decide(store, record["id"], executor=rec.executor())
     assert caught.value.code == "not_open"
@@ -274,7 +275,7 @@ def test_a_failed_action_still_leaves_the_decision_on_record(tmp_path):
     def boom(record, actor):
         raise RuntimeError("gh refused the merge")
 
-    executor = ha.CallbackExecutor(lambda record: (True, ""), boom)
+    executor = ha.CallbackExecutor(lambda record: (True, ""), ha.two_arg(boom))
     record = _ask(store)
     result = _decide(store, record["id"], executor=executor)
     assert result["state"] == "failed" and "gh refused" in result["result"]["plain"]
@@ -296,17 +297,17 @@ def test_a_timeout_records_what_was_attempted(tmp_path):
     result = _decide(store, record["id"], executor=executor, timeout_s=0.05)
     assert result["state"] == "failed"
     attempted = result["result"]["attempted"]
-    assert result["result"]["outcome"] == "timed_out"
+    assert result["result"]["outcome"] == "timed_out_unconfirmed"
     assert attempted["type"] == "merge_pr"
     assert attempted["facts"] == {"pr": 2504, "head_sha": HEAD}
     assert attempted["timeout_s"] == 0.05
     assert attempted["step_reached"] == "gh_pr_merge_started"
     assert [step["step"] for step in attempted["steps"]] == ["gh_pr_merge_started"]
     ledger = [json.loads(line) for line in store.ledger.read_text().splitlines()]
-    assert ledger[-1]["event"] == "timed_out" and ledger[-1]["outcome"] == "timed_out"
+    assert ledger[-1]["event"] == "timed_out_unconfirmed" and ledger[-1]["outcome"] == "timed_out_unconfirmed"
     assert ledger[-1]["attempted"]["step_reached"] == "gh_pr_merge_started"
     digest = [json.loads(line) for line in store.digest.read_text().splitlines()]
-    assert digest[-1]["event"] == "timed_out"
+    assert digest[-1]["event"] == "timed_out_unconfirmed"
 
 
 def test_a_partial_failure_records_the_step_it_reached(tmp_path):
@@ -471,3 +472,154 @@ def test_a_moved_fact_keeps_the_request_open_on_the_stream(tmp_path):
     last = _events(store)[-1]
     assert last["event"] == "updated" and last["id"] == record["id"]
     assert last["state"] == "open"
+
+
+# ── Codex's seven paired-safety counterexamples, each closed ────────────────────────────────────────────────
+def test_a_denied_directory_is_an_error_not_an_empty_board(tmp_path):
+    store = _store(tmp_path)
+    _ask(store)
+    store.requests_dir.chmod(0o000)
+    try:
+        with pytest.raises(ha.Refused) as caught:
+            ha.list_open(store, now=NOW)
+        assert caught.value.code == "store_unreadable" and caught.value.plain
+        with pytest.raises(ha.Refused):
+            store.all()
+    finally:
+        store.requests_dir.chmod(0o700)
+
+
+def test_a_record_tampered_after_approval_never_reaches_an_executor(tmp_path):
+    store, rec = _store(tmp_path), Recorder()
+    record = _ask(store)
+    stored = store.get(record["id"])
+    stored.update({"state": "approved", "binding": ha._binding_of(stored), "decision": "approve"})
+    store.put(stored)
+    tampered = store.get(record["id"])
+    tampered["type"] = "place_order"
+    tampered["facts"] = {"pr": 1, "head_sha": "f" * 40}
+    store.put(tampered)
+    with pytest.raises(ha.Refused) as caught:
+        ha.execute(store, tampered, actor="operator", now=NOW, executor=rec.executor())
+    assert caught.value.code in {"binding_mismatch", "record_invalid"}
+    assert rec.executed == 0
+    assert store.get(record["id"])["state"] == "open"
+
+
+def test_live_facts_changing_at_the_execution_boundary_refuse_the_run(tmp_path):
+    store = _store(tmp_path)
+    calls = {"n": 0}
+
+    def revalidate(record):
+        calls["n"] += 1
+        return (True, "") if calls["n"] == 1 else (False, "The head moved while the click was being processed.")
+
+    def execute(record, actor, progress):  # pragma: no cover - must never run
+        raise AssertionError("executed despite a moved fact at the execution boundary")
+
+    executor = ha.CallbackExecutor(revalidate, execute)
+    record = _ask(store)
+    with pytest.raises(ha.Refused) as caught:
+        _decide(store, record["id"], executor=executor)
+    assert caught.value.code == "facts_moved"
+    stored = store.get(record["id"])
+    assert stored["state"] == "open" and "head moved" in stored["blocked_reason"]
+    assert calls["n"] == 2                                     # once before the decision, once at execution
+
+
+def test_a_concurrent_second_decision_is_refused(tmp_path):
+    store = _store(tmp_path)
+    record = _ask(store)
+    (store.requests_dir / f"{record['id']}.deciding").write_text("")
+    with pytest.raises(ha.Refused) as caught:
+        _decide(store, record["id"], executor=Recorder().executor())
+    assert caught.value.code == "decision_in_progress"
+    assert store.get(record["id"])["state"] == "open"
+
+
+def test_a_duplicate_request_id_cannot_reset_a_decided_request(tmp_path):
+    store = _store(tmp_path)
+    record = ha.create(store, _payload(), requester={"session": "cc-deepseek-5"}, now=NOW, request_id="apr-fixed")
+    _decide(store, record["id"], executor=Recorder().executor())
+    with pytest.raises(ha.Refused) as caught:
+        ha.create(store, _payload(), requester={"session": "cc-deepseek-5"}, now=NOW, request_id="apr-fixed")
+    assert caught.value.code == "duplicate_request_id"
+    assert store.get("apr-fixed")["state"] == "executed"
+
+
+def test_the_executor_is_never_retried_after_it_raised(tmp_path):
+    store = _store(tmp_path)
+    calls = {"n": 0}
+
+    def boom(record, actor, progress):
+        calls["n"] += 1
+        raise TypeError("raised after the effect")
+
+    record = _ask(store)
+    result = _decide(store, record["id"], executor=ha.CallbackExecutor(lambda r: (True, ""), boom))
+    assert result["state"] == "failed" and calls["n"] == 1
+
+
+def test_a_timed_out_action_is_unconfirmed_and_cannot_be_restarted(tmp_path):
+    store = _store(tmp_path)
+
+    def slow(record, actor, progress):
+        time.sleep(0.4)
+        progress.reached("late_effect")
+        return {"ok": True}
+
+    executor = ha.CallbackExecutor(lambda r: (True, ""), slow)
+    record = _ask(store)
+    result = _decide(store, record["id"], executor=executor, timeout_s=0.05)
+    assert result["state"] == "failed"
+    assert result["result"]["outcome"] == "timed_out_unconfirmed"
+    assert result["result"]["needs_reconciliation"] is True
+    assert "may still be running" in result["result"]["plain"]
+    calls = {"n": 0}
+
+    def counting(record, actor, progress):
+        calls["n"] += 1
+        return {"ok": True}
+
+    again = ha.execute(store, result, actor="operator", now=NOW,
+                       executor=ha.CallbackExecutor(lambda r: (True, ""), counting))
+    assert again["state"] == "failed" and calls["n"] == 0          # settled: never restarted
+    assert (store.requests_dir / f"{record['id']}.executed").exists()  # the marker that blocks a restart
+
+
+def test_a_false_result_is_recorded_as_failed_with_a_digest_row(tmp_path):
+    store = _store(tmp_path)
+    executor = ha.CallbackExecutor(lambda r: (True, ""),
+                                   lambda record, actor, progress: {"ok": False, "plain": "The merge was refused."})
+    record = _ask(store)
+    result = _decide(store, record["id"], executor=executor)
+    assert result["state"] == "failed" and result["result"]["outcome"] == "refused"
+    digest = [json.loads(line) for line in store.digest.read_text().splitlines()]
+    assert digest[-1]["event"] == "refused"
+
+
+def test_an_agent_or_unauthenticated_listener_cannot_mint_a_context(tmp_path):
+    for principal, listener in (("agent:other-worker", "serve_proxy"), ("service", "serve_proxy"),
+                                ("tailnet:operator", "cli"), ("", "serve_proxy")):
+        with pytest.raises(ha.Refused) as caught:
+            ha.server_context(principal=principal, session="x", csrf_ok=True, listener=listener)
+        assert caught.value.code == "operator_session_required"
+
+
+def test_the_recorded_actor_must_be_the_verified_login(tmp_path):
+    store = _store(tmp_path)
+    record = _ask(store)
+    with pytest.raises(ha.Refused) as caught:
+        _decide(store, record["id"], actor="cc-deepseek-5", executor=Recorder().executor())
+    assert caught.value.code == "actor_not_authenticated"
+    assert store.get(record["id"])["state"] == "open"
+
+
+def test_the_cli_cannot_decide_even_with_its_flags(tmp_path, capsys):
+    root = tmp_path / "state"
+    store = ha.Store(root)
+    record = _ask(store)
+    code = ha.main(["--state-root", str(root), "approve", record["id"], "--actor", "operator", "--session", "operator-cc"])
+    assert code == 2
+    assert json.loads(capsys.readouterr().err)["code"] == "server_context_required"
+    assert store.get(record["id"])["state"] == "open"
