@@ -273,16 +273,27 @@ def _as_exit_fill(symbol: str, account: str, row: dict) -> rc.ExitFill:
 
 
 def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date] = None,
-                   now: Optional[datetime] = None) -> Optional[rc.RecoveryCase]:
+                   now: Optional[datetime] = None,
+                   coverage: Optional[dict] = None) -> Optional[rc.RecoveryCase]:
     """Persist a read as the right case: refresh, extend, or a genuinely new cluster.
 
-    The defect this replaces (cx-openai-4 R5): every run handed the reader's whole history to the key, so a new exit
-    re-keyed the cluster and the same historical exit lived in both the old CLOSED case and the new one. Rules now:
+    ``coverage`` is an in/out dict the caller passes so that an ambiguity found HERE — which the reader could not
+    see, because it needs the persisted rows — still reaches the pass-level ``complete`` flag. It carries
+    ``{"incomplete": bool}``; a pair whose identity cannot be established sets it, and retains both observations
+    in the case with the gap that says they are unresolved (codex F16/I5/I12)."""
 
-    * fills already inside an existing case's range refresh THAT case, under its own id;
-    * fills past the newest case extend it, keeping the id, when it is still open;
-    * fills past a terminal case open a NEW case containing only the new fills — the old ones are never replayed.
-    """
+    def _unresolved(why: str) -> None:
+        """Record an identity we could not establish: both observations are kept, and the pass is not complete."""
+        read.gaps.append(why)
+        if coverage is not None:
+            coverage["incomplete"] = True
+
+    # The defect this replaces (cx-openai-4 R5): every run handed the reader's whole history to the key, so a new
+    # exit re-keyed the cluster and the same historical exit lived in both the old CLOSED case and the new one.
+    # Rules now:
+    #   * fills already inside an existing case's range refresh THAT case, under its own id;
+    #   * fills past the newest case extend it, keeping the id, when it is still open;
+    #   * fills past a terminal case open a NEW case containing only the new fills — the old ones are never replayed.
     fills = list(read.fills)
     if not fills:
         return None
@@ -343,7 +354,7 @@ def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date]
                                 if j not in used and f.source_id is None
                                 and abs(float(f.price) - float(row["price"])) < 1e-9), None)
                     if hit is not None:
-                        read.gaps.append(
+                        _unresolved(
                             f"the {DateKey} exit was persisted before source identity existed and was paired to a "
                             "read by exact price alone; the link is provisional, not established")
                 if hit is not None:
@@ -356,9 +367,10 @@ def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date]
                 if extra.source_id is None:
                     # With no id on the read there is nothing to prove this is a NEW exit rather than a corrected
                     # one, so it is appended on date evidence alone and the reason is stated (codex F16/I12).
-                    read.gaps.append(
-                        f"a {extra.exit_date} read fill for {symbol}/{account} carries no source identity; it is "
-                        "appended as a distinct exit on date evidence only, and that is unproven")
+                    _unresolved(
+                        f"a {extra.exit_date} read fill for {symbol}/{account} carries no source identity; the "
+                        "stored exit and this read are BOTH retained, and whether they are one corrected exit or two "
+                        "events is unresolved")
             merged.extend(fill if fill is not None else _as_exit_fill(symbol, account, row) for row, fill in pairs)
             merged.extend(extras)
         refreshed = rc.consume_fills(store, merged, cluster_key=case.cluster_key, **common)
@@ -377,10 +389,14 @@ def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date]
 
 def consume_symbol(store: rc.CaseStore, conn: Any, symbol: str, account: str, *,
                    today: Optional[date] = None, now: Optional[datetime] = None,
-                   as_of: Optional[date] = None) -> Optional[rc.RecoveryCase]:
-    """Read one symbol × account and open/refresh its case. Returns None when there is no confirmed exit."""
+                   as_of: Optional[date] = None,
+                   coverage: Optional[dict] = None) -> Optional[rc.RecoveryCase]:
+    """Read one symbol × account and open/refresh its case. Returns None when there is no confirmed exit.
+
+    ``coverage`` is the same in/out dict ``open_or_extend`` takes, so a single-symbol caller can learn that an
+    identity was unresolved instead of inferring it from gap text."""
     read = read_confirmed_exits(conn, symbol, account, as_of=as_of)
-    return open_or_extend(store, read, today=today, now=now)
+    return open_or_extend(store, read, today=today, now=now, coverage=coverage)
 
 
 _SYMBOLS_WATCH_SQL = ("SELECT DISTINCT symbol, account FROM stopped_out_watch "
@@ -446,7 +462,14 @@ def run(store: rc.CaseStore, conn: Any, *, today: Optional[date] = None,
                     failed.append(f"{symbol}/{account}: confirmed exits present, no case could be built")
                 continue
             before = {c.case_key for c in store.list()}
-            case = open_or_extend(store, read, **moments)
+            # Identity ambiguity is only discoverable against the PERSISTED rows, so coverage is collected from
+            # open_or_extend rather than decided before it (codex F16). Both observations stay in the case; the pass
+            # is not allowed to call itself complete around them.
+            coverage = {"incomplete": read.incomplete}
+            case = open_or_extend(store, read, coverage=coverage, **moments)
+            gaps.extend(f"{symbol}/{account}: {gap}" for gap in read.gaps if gap not in gaps)
+            if coverage["incomplete"]:
+                covered = False
             if case is None:
                 continue
             (refreshed if case.case_key in before else opened).append(case.case_key)

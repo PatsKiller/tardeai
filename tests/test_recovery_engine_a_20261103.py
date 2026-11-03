@@ -807,3 +807,49 @@ def test_f16_two_distinct_ids_at_the_same_price_stay_two_exits(store):
     assert len(case.exits) == 2, f"two established identities must stay two exits: {case.exits}"
     assert len({e["source_id"] for e in case.exits}) == 2, case.exits
     conn.close()
+
+
+def test_f16_the_unknown_pnl_sibling_becomes_known_when_the_same_identity_is_corrected(store):
+    """ACCEPTANCE CONDITION. An exit persisted with an UNKNOWN P&L, later corrected on the SAME identity to a known
+    -12,000, must become known (T1) — not stay UNKNOWN because an old unknown exit survives beside the new one."""
+    from lib.recovery_engine import fills_consumer as fc
+    conn = _source_db()
+    _watch(conn, "2026-10-30", 80.0, None)          # realized P&L unknown at first
+    _tx(conn, "2026-10-30", 100)
+    _positions(conn, 0)
+    conn.commit()
+    first = fc.run(store, conn, today=TODAY, now=NOW)
+    case = store.get(first["opened"][0])
+    assert case.realized_pnl is None, case.realized_pnl          # genuinely unknown, not zero
+    # The broker's own correction lands on the SAME row, which is the normal path (ON CONFLICT (dedupe_key) DO UPDATE).
+    conn.execute("UPDATE stopped_out_watch SET realized_pnl = -12000 WHERE id = 1")
+    conn.commit()
+    second = fc.run(store, conn, today=TODAY, now=NOW)
+    assert second["opened"] == [], second
+    after = store.get(case.case_key)
+    assert len(after.exits) == 1, f"a correction must not leave a stale sibling: {after.exits}"
+    assert after.realized_pnl == pytest.approx(-12000.0), after.realized_pnl
+    assert after.materiality_tier == "T1", after.materiality_tier
+    conn.close()
+
+
+def test_f16_an_identity_that_cannot_be_established_makes_the_pass_incomplete(store):
+    """ACCEPTANCE CONDITION. When identity cannot be established the pass must not call itself complete: both
+    observations are retained and the gap says the link is unresolved."""
+    from lib.recovery_engine import fills_consumer as fc
+    conn = _source_db()
+    # A sale with NO dedupe_key: the source gives this row no identity at all.
+    conn.execute("INSERT INTO trade_transactions (trade_date, action, symbol, quantity, price, account) "
+                 "VALUES ('2026-10-30','SELL','SPCX',100,80.0,'schwab_taxable')")
+    _positions(conn, 0)
+    conn.commit()
+    first = fc.run(store, conn, today=TODAY, now=NOW)
+    case = store.get(first["opened"][0])
+    assert len(case.exits) == 1 and case.exits[0]["source_id"] is None, case.exits
+    # Re-reading the same unidentified state: pairing by price is all that is left, and it proves nothing.
+    second = fc.run(store, conn, today=TODAY, now=NOW)
+    after = store.get(case.case_key)
+    assert len(after.exits) == 1, f"an unresolved pair must not duplicate the observation: {after.exits}"
+    assert second["complete"] is False, f"an unestablished identity must not report a complete pass: {second}"
+    assert any("provisional" in g or "unresolved" in g for g in second["gaps"]), second["gaps"]
+    conn.close()
