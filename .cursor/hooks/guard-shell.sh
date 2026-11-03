@@ -69,6 +69,8 @@ tier=$(classify_cmd "$cmd")
 
 STAGE=verdict
 case "$tier" in
+  classifier-unavailable) emit deny "GUARD FAULT — token classifier unavailable; command refused." \
+    "Restore the reviewed guard bundle and report the fault. Do not rephrase or bypass this refusal." ;;
   secret) emit deny "BLOCKED — secret access. All secrets live in Bitwarden; nothing credential-shaped is read from or written to this machine by an agent." \
                     "Read configuration shape from .env.example. Never print, copy, or transmit credential values, and never create credential files." ;;
   gate)   emit deny "BLOCKED — gate/interlock modification. These are audit records of the paper-trading history, not fixtures." \
