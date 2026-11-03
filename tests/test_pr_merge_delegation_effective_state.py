@@ -417,14 +417,6 @@ def _board_with(tmp_path, extra: dict, *, claim_id="c1", session="s1"):
     return ClaimBoard(claims, now=lambda: datetime(2030, 1, 7, 23, 45, tzinfo=timezone.utc))
 
 
-def test_a_known_auxiliary_state_file_does_not_block_the_board(tmp_path):
-    """policy_broadcast_state.json lives in the real claims dir and is not a claim."""
-    from lib import pr_merge_delegation as mod
-    board = _board_with(tmp_path, {"policy_broadcast_state.json": {"schema": "PolicyBroadcastState@v1", "x": 1}})
-    states = mod.effective_claim_states([{"claim_id": "c1"}], board)
-    assert states == {"c1": "live"}
-
-
 def test_an_unknown_schema_file_still_refuses_the_whole_board(tmp_path):
     """A file nobody recognises is not silently skipped: it is exactly the case the resolver must refuse."""
     from lib import pr_merge_delegation as mod

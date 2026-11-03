@@ -292,20 +292,6 @@ def validate_takeover_graph(views, board):
         raise Refused("claim_takeover_chain_invalid")
 
 
-#: Files that sit in the claims directory without being claims. Only these may be skipped; an unknown or malformed
-#: claim still refuses, because "not a claim I recognise" is not the same as "a state file that lives here".
-AUXILIARY_CLAIM_DIR_SCHEMAS = frozenset({"PolicyBroadcastState@v1"})
-
-
-def _auxiliary_metadata(path) -> bool:
-    """True only for a file that declares itself one of the known non-claim schemas."""
-    try:
-        doc = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return False
-    return isinstance(doc, dict) and doc.get("schema") in AUXILIARY_CLAIM_DIR_SCHEMAS
-
-
 def effective_claim_states(claims, board):
     """Classify snapshot claims with the canonical ``ClaimBoard.views()`` resolver.
 
@@ -324,7 +310,6 @@ def effective_claim_states(claims, board):
         return {claim.get("claim_id"): ("live" if claim.get("status") == "active" else "released")
                 for claim in claims}
     views, unreadable = board.views()
-    unreadable = [name for name in unreadable if not _auxiliary_metadata(board.dir / name)]
     if unreadable:
         raise Refused("claim_board_unavailable_or_truncated")
     validate_takeover_graph(views, board)
