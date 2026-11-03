@@ -2,10 +2,12 @@
   "schema": "CiGate@v1",
   "name": "freshness_consumers_20261103",
   "files": [
-    "tests/test_freshness_consumers_20261103.py"
+    "tests/test_freshness_consumers_20261103.py",
+    "tests/test_orchestrator_stale_check_20261103.py"
   ],
   "anchor": "FRESHNESS_CONSUMERS_20261103",
   "comment": [
-    "ANCHOR: FRESHNESS_CONSUMERS_20261103 — every freshness consumer (portfolio monitor, global alerts, morning command, ops summary, GET /api/freshness, the analyst prompt, the orchestrator pre-check) answers from ONE guarded read; a 0-byte or corrupt holdings store, a hash mismatch, or a stale/future completed_at can never render FRESH on any surface, and no runtime module outside the guard reads _freshness.json itself."
+    "ANCHOR: FRESHNESS_CONSUMERS_20261103 — every freshness consumer (portfolio monitor, global alerts, morning command, ops summary, GET /api/freshness, the analyst prompt, the orchestrator pre-check) answers from ONE guarded read; a 0-byte or corrupt holdings store, a hash mismatch, or a stale/future completed_at can never render FRESH on any surface, and no runtime module outside the guard reads _freshness.json itself.",
+    "The orchestrator's pre-run check is registered here too: R3 showed the guard verdict was gated on the manifest clock, so five clockless ok=False states warned nobody (cx-openai-2, 2026-11-03). tests/test_orchestrator_stale_check_20261103.py pins those five states."
   ]
 }
