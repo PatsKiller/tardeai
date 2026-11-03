@@ -98,9 +98,15 @@ def _version(argv0: str, runner: Runner, cwd: Path) -> str | None:
 
 # ------------------------------------------------------------------ parsers
 def parse_semgrep(out: str) -> list[dict[str, Any]]:
+    """Valid semgrep JSON -> findings. A document that carries per-file ``errors`` AND real ``results`` is parsed:
+    semgrep reports one unparseable file there while the rest of the scan found things, and rejecting the whole
+    document would discard those findings every night (and label valid JSON as invalid). Only an EMPTY result list
+    with errors is a tool failure, so a scan that could not run is never read as "zero findings"."""
     doc = json.loads(out)
-    if not isinstance(doc, dict) or not isinstance(doc.get("results"), list) or doc.get("errors"):
+    if not isinstance(doc, dict) or not isinstance(doc.get("results"), list):
         raise ValueError("semgrep output contract invalid")
+    if not doc["results"] and doc.get("errors"):
+        raise ValueError("semgrep output contract invalid: errors and no results")
     findings = []
     for row in doc["results"]:
         if not isinstance(row, dict) or not isinstance(row.get("start"), dict) or not isinstance(row.get("extra"), dict):
@@ -208,7 +214,10 @@ def run_scan(config: Mapping[str, Any], *, runner: Runner | None = None, state_d
     for name, t in tools.items():
         if t.get("status") in ("tool_missing", "error"):
             unusable.append(name)
-            carried.extend({**f, "carried": True} for f in previous_by_tool.get(name, []))
+            # Only an identifiable finding can be carried: a legacy/malformed row with no id cannot be tracked,
+            # retried or settled, and including it used to raise KeyError before any receipt or alert existed.
+            carried.extend({**f, "carried": True} for f in previous_by_tool.get(name, [])
+                           if isinstance(f, dict) and isinstance(f.get("id"), str) and f.get("id"))
     if carried:
         findings = findings + carried
     seen = {str(f.get("id")) for f in (previous.get("findings") or []) if isinstance(f, dict)}
@@ -218,10 +227,11 @@ def run_scan(config: Mapping[str, Any], *, runner: Runner | None = None, state_d
     previous_pending = previous.get("pending_alert_ids")
     if not isinstance(previous_pending, list):
         previous_pending = [] if previous.get("alerted") is True else list(seen)
-    present = {str(f["id"]) for f in findings}
+    present = {str(f["id"]) for f in findings if isinstance(f, dict) and "id" in f}
     pending = {value for value in previous_pending if isinstance(value, str) and value in present}
     pending.update(str(f["id"]) for f in new)
-    candidates = [f for f in findings if str(f["id"]) in pending and not f.get("carried")]
+    candidates = [f for f in findings
+                  if isinstance(f, dict) and "id" in f and str(f["id"]) in pending and not f.get("carried")]
     retry = [str(f["id"]) for f in candidates if str(f["id"]) in seen]
 
     def _problem_text() -> list[str]:
@@ -256,11 +266,17 @@ def run_scan(config: Mapping[str, Any], *, runner: Runner | None = None, state_d
             try:
                 outcome = send("\n".join(lines), priority=str(config.get("alert_priority", "P1")))
                 delivered = isinstance(outcome, Mapping) and outcome.get("delivered") is True
+                # One chunk/chat failing while another was accepted is NOT full delivery: settling all sent
+                # candidates would drop findings in the failed chunk forever. Retain them and retry.
+                partial = isinstance(outcome, Mapping) and outcome.get("partial_failure") is True
+                fully_delivered = delivered and not partial
                 accepted = delivered or outcome is True or (isinstance(outcome, Mapping) and outcome.get("accepted") is True)
-                notification.update(status="delivered" if delivered else "accepted_unconfirmed" if accepted else "unconfirmed",
-                                    accepted=bool(accepted), delivered=bool(delivered))
-                receipt["alerted"] = delivered
-                if delivered:
+                notification.update(
+                    status=("partial_failure" if partial else "delivered" if fully_delivered
+                            else "accepted_unconfirmed" if accepted else "unconfirmed"),
+                    accepted=bool(accepted), delivered=bool(fully_delivered))
+                receipt["alerted"] = fully_delivered
+                if fully_delivered:
                     pending.difference_update(str(f["id"]) for f in sent_candidates)
             except Exception as exc:  # noqa: BLE001 — retain retry state without private sender error text
                 notification.update(status="sender_error", error_type=type(exc).__name__)

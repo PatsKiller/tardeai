@@ -130,6 +130,48 @@ def test_findings_outside_existing_message_cap_remain_pending(mod,tmp_path):
     assert second["new"]==[] and len(second["retry"])==2 and second["pending_alert_ids"]==[]
 
 
+def test_a_corrupt_carried_finding_does_not_crash_the_malformed_night(mod,tmp_path):
+    """B1 (cc2/cc6): a legacy receipt row with no id must be ignored, not raise KeyError before any receipt."""
+    (tmp_path/"last.json").write_text(json.dumps({"findings":[{"tool":"semgrep"}],"alerted":True}))
+    result=mod.run_scan(CONFIG,runner=runner("not-json"),state_dir=tmp_path,dry_run=False,
+                        send=lambda *args,**kwargs:{"accepted":True,"delivered":True})
+    assert result["unusable"]==["semgrep"] and result["pending_alert_ids"]==[]
+    # The id-less row is IGNORED, not carried forward: an entry that cannot be identified can never be settled.
+    assert result["findings"]==[]
+    assert json.loads((tmp_path/"last.json").read_text())["unusable"]==["semgrep"]
+
+
+def test_a_partial_delivery_keeps_the_pending_ids(mod,tmp_path):
+    """B2 (cc2/cc6): delivered=true WITH partial_failure=true is not full delivery; ids must be retried."""
+    first=mod.run_scan(CONFIG,runner=runner(),state_dir=tmp_path,dry_run=False,
+                       send=lambda *args,**kwargs:{"delivered":True,"accepted":True,"partial_failure":True})
+    assert first["alerted"] is False and first["notification"]["status"]=="partial_failure"
+    assert first["pending_alert_ids"]
+    calls=[]
+    second=mod.run_scan(CONFIG,runner=runner(),state_dir=tmp_path,dry_run=False,
+                        send=lambda *args,**kwargs:(calls.append(args[0]) or {"accepted":True,"delivered":True}))
+    assert second["alerted"] is True and second["pending_alert_ids"]==[] and calls
+
+
+def test_semgrep_results_survive_per_file_errors(mod):
+    """B3 (cc2/cc6): one unparseable file must not discard the findings a valid scan did return."""
+    doc={"results":[{"check_id":"synthetic.rule","path":"synthetic.py","start":{"line":1},
+                     "extra":{"severity":"ERROR","message":"Synthetic finding"}}],
+         "errors":[{"type":"Syntax error","path":"unparseable.py"}]}
+    findings=mod.parse_semgrep(json.dumps(doc))
+    assert len(findings)==1 and findings[0]["id"].startswith("semgrep:synthetic.rule")
+    with pytest.raises(ValueError):
+        mod.parse_semgrep(json.dumps({"results":[],"errors":[{"type":"synthetic"}]}))
+
+
+def test_a_valid_semgrep_run_with_one_file_error_reports_its_findings(mod,tmp_path):
+    out=json.dumps({"results":[{"check_id":"synthetic.rule","path":"synthetic.py","start":{"line":1},
+                                "extra":{"severity":"ERROR","message":"Synthetic finding"}}],
+                    "errors":[{"type":"Syntax error","path":"unparseable.py"}]})
+    result=mod.run_scan(CONFIG,runner=runner(out),state_dir=tmp_path,dry_run=True)
+    assert result["tools"]["semgrep"]["status"]=="ran" and len(result["findings"])==1
+
+
 @pytest.mark.parametrize("delivered,expected_exit",[(False,1),(True,0)])
 def test_actual_cli_uses_structured_outcome_and_pending_exit(mod,tmp_path,monkeypatch,capsys,delivered,expected_exit):
     from types import ModuleType
