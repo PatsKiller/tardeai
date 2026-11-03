@@ -4,6 +4,7 @@ import {
   checkSentence, goingLive, jobsLine, liveNow, needsYou, needsYouAction, needsYouFacts, plainReason, plainText, stuck,
 } from './releasesOperatorView.ts'
 import type { SectionView } from './releasesSchedules.ts'
+import { normalizeRow } from './deployInFlight.ts'
 declare const process: { exit(code?: number): never }
 
 let pass = 0, fail = 0
@@ -101,6 +102,27 @@ const approveFacts = needsYouFacts(pr({ operator_actions: { required: true, elig
 check('an approve card may say the checks passed when the payload proves it', /checks passed/i.test(approveFacts.headline))
 const approveUnproven = needsYouFacts(pr({ work: { ...pr().work, review: { state: 'MERGE', reason: null }, ci: { state: 'UNKNOWN', reason: 'no_ci_observation' } } }), { kind: 'approve' })
 check('an approve card does not invent a green check', !/checks passed/i.test(approveUnproven.headline) && /incomplete/i.test(approveUnproven.headline))
+
+// cc2 review B1: the page must read GitHub's observed evidence, not the ledger's silence.
+const ghRow = normalizeRow({ number: 11, title: 't', url: 'u', head_sha: 'b'.repeat(40), branch: 'b',
+  work: { present: true, publication_state: 'published', as_of: '2026-11-03T16:00:00Z', source: 's',
+    review: { state: 'UNKNOWN', reason: 'no_review_record' }, ci: { state: 'UNKNOWN', reason: 'no_ci_observation' },
+    evidence_state: 'OBSERVED', evidence_sources: ['github_check_rollup', 'github_review_decision'],
+    github_evidence: { ci: { state: 'RED', source: 'github_check_rollup' }, review: { state: 'NONE_REQUIRED', source: 'github_review_decision' } } } })
+check('a red GitHub rollup is carried onto the row', ghRow.work.ci.state === 'RED')
+check('a red rollup reads as failed checks, not "not observed"', checkSentence(ghRow.work.ci) === 'the checks failed')
+check('no review required is not "nobody reviewed it"',
+  (checkSentence(ghRow.work.review) ?? '') === 'no review is required for this change')
+check('the served evidence state survives normalization', ghRow.work.evidence_state === 'OBSERVED'
+  && (ghRow.work.evidence_sources ?? []).join(',') === 'github_check_rollup,github_review_decision')
+const greenRow = normalizeRow({ number: 12, head_sha: 'c'.repeat(40),
+  work: { present: true, ci: { state: 'UNKNOWN' }, review: { state: 'UNKNOWN' }, evidence_state: 'OBSERVED',
+    github_evidence: { ci: { state: 'GREEN' }, review: { state: 'APPROVED' } } } })
+check('a green rollup is not reported as unobserved', checkSentence(greenRow.work.ci) === null && greenRow.work.ci.state === 'GREEN')
+const unfetched = normalizeRow({ number: 13, head_sha: 'd'.repeat(40),
+  work: { present: true, ci: { state: 'UNKNOWN' }, evidence_state: 'PARTIAL',
+    github_evidence: { ci: { state: 'UNAVAILABLE', reason: 'fetch failed' } } } })
+check('an un-fetched rollup says so and is never green', /not checked/i.test(checkSentence(unfetched.work.ci) ?? '') && unfetched.work.ci.state !== 'GREEN')
 
 console.log(`releasesOperatorView: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

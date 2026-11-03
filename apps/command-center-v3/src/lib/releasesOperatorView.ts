@@ -47,9 +47,12 @@ export function checkSentence(f: { state?: string | null; reason?: string | null
   if (f.state === 'RED') return 'the checks failed'
   if (f.state === 'PENDING') return 'the checks are still running'
   if (f.state === 'SKIPPED') return 'the checks were skipped'
-  if (f.state === 'NONE') return 'it has not been reviewed yet'
+  if (f.state === 'NONE') return /\s/.test(String(f.reason ?? '')) ? String(f.reason) : 'it has not been reviewed yet'
   if (f.state === 'UNAVAILABLE') return 'CI not checked right now'
   const st = (f as { evidence_state?: unknown }).evidence_state
+  const why = String(f.reason ?? '').trim()
+  // a served reason that is already a sentence is shown as written; a code is translated
+  if (/\s/.test(why)) return why
   return evidenceSentence(st) ?? plainReason(f.reason ?? f.gap)
 }
 

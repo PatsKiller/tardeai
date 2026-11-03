@@ -62,6 +62,12 @@ export type WorkBlock = {
   published_head: string | null
   review: Factor<ReviewState>
   ci: Factor<CiState>
+  /** GitHub's own view of this head (cc2 review B1). The coordinator ledger is often UNKNOWN; without this
+   *  the page told the operator nobody had reviewed anything on a PR whose checks were RED or GREEN. */
+  github_evidence?: { ci?: { state?: string | null; source?: string | null; reason?: string | null }
+    review?: { state?: string | null; source?: string | null; reason?: string | null } } | null
+  evidence_state?: EvidenceState | null
+  evidence_sources?: string[]
   blockers: Blocker[]
   next_action: string | null
   /** Where the next step came from (`worklog`, `claims`, `board_open_prs`, `none`). Display only. */
@@ -386,6 +392,27 @@ function normalizeBlockers(raw: unknown): Blocker[] {
   return out
 }
 
+/** GitHub's check-rollup and review-decision words, in this module's factor states. */
+const GH_CI: Record<string, string> = { GREEN: 'GREEN', RED: 'RED', PENDING: 'PENDING', UNAVAILABLE: 'UNKNOWN' }
+const GH_REVIEW: Record<string, string> = {
+  APPROVED: 'MERGE', CHANGES_REQUESTED: 'CHANGES', REVIEW_REQUIRED: 'NONE', NONE_REQUIRED: 'NONE', UNKNOWN: 'UNKNOWN',
+}
+
+/** GitHub observed this head: its verdict is the evidence, so it wins over a ledger that has no record. A ledger
+ *  verdict that IS recorded still wins, because it is a review of the change by a person on the record. */
+function withGithub<T extends { state: string; reason: string | null }>(ledger: T, gh: Record<string, unknown> | undefined,
+  mapping: Record<string, string>): T {
+  const raw = asString(gh?.state).trim().toUpperCase()
+  const mapped = mapping[raw]
+  if (!mapped) return ledger
+  if (ledger.state !== 'UNKNOWN' && ledger.state !== 'NONE') return ledger
+  const why = asString(gh?.reason).trim()
+  // GitHub's own words matter: NONE_REQUIRED means no review is REQUIRED, not that nobody looked.
+  const sentence = raw === 'NONE_REQUIRED' ? 'no review is required for this change'
+    : mapped === 'UNKNOWN' && raw === 'UNAVAILABLE' ? 'CI not checked right now' : (why || null)
+  return { ...ledger, state: mapped, reason: sentence }
+}
+
 /** One row's additive `work` block. Absent (old backend) is UNKNOWN with a reason, not a clean state. */
 export function normalizeWork(raw: unknown, rowHead: string): WorkBlock {
   // An array is object-shaped to typeof but is not a work block: treat it as absent, never as facts.
@@ -393,6 +420,8 @@ export function normalizeWork(raw: unknown, rowHead: string): WorkBlock {
     return emptyWork('work facts not in this response (backend predates the work block)')
   }
   const w = raw as Record<string, unknown>
+  const gh = (w.github_evidence && typeof w.github_evidence === 'object'
+    ? w.github_evidence as { ci?: Record<string, unknown>; review?: Record<string, unknown> } : null)
   const pub = asString(w.publication_state).trim().toLowerCase()
   const publication = (PUBLICATION as string[]).includes(pub) ? (pub as PublicationState) : 'unknown'
   return {
@@ -402,8 +431,10 @@ export function normalizeWork(raw: unknown, rowHead: string): WorkBlock {
     publication_state: publication,
     local_head: asText(w.local_head),
     published_head: asText(w.published_head),
-    review: normalizeReview(w.review, rowHead),
-    ci: normalizeFactor<CiState>(w.ci, ['GREEN', 'RED', 'PENDING', 'SKIPPED'], rowHead, 'ci'),
+    review: withGithub(normalizeReview(w.review, rowHead), gh?.review, GH_REVIEW),
+    ci: withGithub(normalizeFactor<CiState>(w.ci, ['GREEN', 'RED', 'PENDING', 'SKIPPED'], rowHead, 'ci'), gh?.ci, GH_CI),
+    github_evidence: gh, evidence_state: evidenceState(w.evidence_state),
+    evidence_sources: Array.isArray(w.evidence_sources) ? w.evidence_sources.map(String) : [],
     blockers: normalizeBlockers(w.blockers),
     next_action: asText(w.next_action),
     next_action_source: asText(w.next_action_source),
