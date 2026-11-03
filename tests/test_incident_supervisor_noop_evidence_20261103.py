@@ -63,7 +63,8 @@ def test_at_the_cap_a_noop_runbook_dispatches_the_fixer(tmp_path, monkeypatch):
             return True
         def fixer(req, apply):
             fixes.append(json.loads(Path(req).read_text()))
-            return {"rc": 0, "admitted": ["shf-1"], "prs": ["https://example.invalid/pr/1"], "summary": "ok"}
+            return {"rc": 0, "work_proven": True, "admitted": ["shf-1"],
+                    "prs": ["https://example.invalid/pr/1"], "summary": "ok"}
         return S.Deps(model=model, run=run, notify=notify, fixer=fixer)
 
     for k in range(3):

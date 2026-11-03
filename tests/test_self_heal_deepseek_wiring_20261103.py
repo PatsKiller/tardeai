@@ -232,3 +232,68 @@ def test_the_dry_run_plan_uses_the_provider_view_not_the_static_list():
     assert '"egress_allow": plan_egress' in src
     # the old inline static computation must not come back
     assert '_prov = (cfg.get("claude") or {}).get("provider") or {}' not in src
+
+
+# ---------------------------------------------------------------- the guard owns the key launcher (cc2 BLOCK, 2026-11-03)
+def test_the_launcher_itself_is_refused_by_the_fixers_diff_guard():
+    """The config comment promises the fixer refuses any diff touching its own key handling; prove the matcher."""
+    from lib import self_heal_fixer as F
+    cfg = json.loads((ROOT / "config" / "self_heal_fixer.json").read_text())
+    for rel in ("scripts/lib/self_heal_deepseek_launch.py",
+                "tests/test_self_heal_deepseek_launch_20261103.py",
+                "tests/test_self_heal_deepseek_wiring_20261103.py"):
+        assert F._match_any(rel, cfg["diff_guard"]["refuse_paths"]) is not None, rel
+    why = F.lane_refusal("any-lane", "scripts/lib/self_heal_deepseek_launch.py", cfg)
+    assert why and why.startswith("lane_refused:protected_script:"), why
+
+
+# ---------------------------------------------------------------- the model's pytest never sees the key descriptor
+def test_the_model_pytest_wrapper_closes_inherited_descriptors(tmp_path):
+    """A marker fd open in the parent must not be visible inside the model's pytest process.
+
+    ``/bin/sh`` inherits descriptors and ``env -i`` clears only the environment, so without fd hygiene the
+    CLI's key memfd survives into model-written test code. The control run proves the marker really is
+    inherited when nothing closes it, so the negative assertion is not vacuous.
+    """
+    from lib import self_heal_fixer as F
+    marker = tmp_path / "marker-fd"
+    marker.write_text("fake-key-material-not-a-secret")
+    marker_fd = os.open(marker, os.O_RDONLY)
+    out = tmp_path / "fds.json"
+    probe = tmp_path / "probe_test.py"
+    probe.write_text(
+        "import json, os\n"
+        "def _targets():\n"
+        "    seen = []\n"
+        "    for name in sorted(os.listdir('/proc/self/fd'), key=lambda s: int(s)):\n"
+        "        try:\n"
+        "            seen.append(os.readlink('/proc/self/fd/' + name))\n"
+        "        except OSError:\n"
+        "            pass\n"
+        "    return seen\n"
+        f"json.dump({{'cwd': os.getcwd(), 'targets': _targets()}}, open({str(out)!r}, 'w'))\n"
+        "def test_probe_reached_pytest():\n"
+        "    assert True\n"
+    )
+    # The cleared env must still find pytest: point PYTHONPATH at the interpreter's pytest, so this test
+    # works whether the runner's pytest is system, venv or user-site. Production passes no PYTHONPATH.
+    pytest_parent = str(Path(sys.modules["pytest"].__file__).resolve().parent.parent)
+    env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": str(tmp_path), "TMPDIR": "/tmp",
+           "PYTHONPATH": pytest_parent}
+    wrapper = tmp_path / "pytest-wrapper"
+    wrapper.write_text(F.model_pytest_wrapper(python=sys.executable, env=env, sandbox=[]))
+    wrapper.chmod(0o755)
+    try:
+        subprocess.run([sys.executable, str(probe)], cwd=str(tmp_path), env={**os.environ, **env},
+                       pass_fds=(marker_fd,), check=True, timeout=60)
+        control = json.loads(out.read_text())
+        out.unlink()
+        proc = subprocess.run([str(wrapper), str(probe)], cwd=str(tmp_path), pass_fds=(marker_fd,),
+                              capture_output=True, text=True, timeout=120)
+    finally:
+        os.close(marker_fd)
+    assert proc.returncode == 0, (proc.returncode, proc.stdout[-2000:], proc.stderr[-2000:])
+    doc = json.loads(out.read_text())
+    assert doc["cwd"] == str(tmp_path), doc
+    assert str(marker) in control["targets"], control       # non-vacuous: the shell would inherit it
+    assert str(marker) not in doc["targets"], doc

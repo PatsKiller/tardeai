@@ -14,8 +14,8 @@ For each unresolved IncidentRecord@v1 (oldest first, at most ``max_incidents_per
    answer from any provider in ``never_providers`` is discarded). Output ``{class, action, params, rationale}``.
    * ``runbook`` → the harness runs the action ONLY if it is in config/incident_runbook_actions.json, enabled, applies
      to the incident's watcher and every param matches its regex.
-   * ``code_defect`` → the §28.14 Claude Code fixer (scripts/self_heal_fixer.py) once per incident; it opens a PR and
-     never merges, releases or deploys.
+   * ``code_defect`` → the §28.14 Claude Code fixer (scripts/self_heal_fixer.py) once per EPISODE (a ``reopen``
+     starts a new episode; attempts before it are history); it opens a PR and never merges, releases or deploys.
    * ``needs_operator`` → ``blocked`` with the model's action as the handoff + one P1 through the chokepoint
      (scripts/telegram_alert.send_telegram) carrying the incident id.
    A fallback-provider answer is read-only triage: recorded, never executed.
@@ -53,6 +53,14 @@ ModelCall = Callable[[str], tuple[str, str]]
 Runner = Callable[[list, str, dict, float], tuple[int, str]]
 Notifier = Callable[[str, str], bool]
 
+#: The fixer states that prove it actually worked the job (scripts/lib/self_heal_fixer.py STATES).
+#: ``fix_requested`` is only an admission, and ``fix_failed`` / ``fix_refused`` / ``fix_interrupted``
+#: are terminal failures: none of them is proof, so they page a person instead of hiding the incident.
+WORKING_OUTCOMES = frozenset({
+    "fixing", "fix_attempting", "fix_ready_local", "fix_pr_opened", "fix_deployed",
+    "output_recovered", "incident_resolved",
+})
+
 
 @dataclass
 class Deps:
@@ -76,9 +84,12 @@ def default_model(prompt: str) -> tuple[str, str]:
 
 def default_run(argv: list, cwd: str, env: dict, timeout: float) -> tuple[int, str]:
     try:
-        p = subprocess.run(argv, cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(argv, cwd=cwd, env=env, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=timeout)
     except subprocess.TimeoutExpired:
         return 124, "timeout"
+    except UnicodeDecodeError as exc:  # a non-UTF8 byte in a tool's output must not crash the cycle
+        return 127, f"{type(exc).__name__}: {exc}"
     except OSError as exc:
         return 127, f"{type(exc).__name__}: {exc}"
     return p.returncode, ((p.stdout or "") + ("\n" + p.stderr if p.stderr else ""))[-2000:]
@@ -107,9 +118,27 @@ def supervisor_attempts(rec: Mapping[str, Any]) -> list[dict]:
     return [a for a in rec.get("attempts") or [] if a.get("actor") == ACTOR]
 
 
+def current_attempts(rec: Mapping[str, Any]) -> list[dict]:
+    """Attempts in the current EPISODE (2026-11-03).
+
+    Causal rule: a ``reopen`` event starts a new episode; attempts/dispatch rows before it are history
+    for the dispatch guard and for the attempt cap. Nothing is deleted — the old rows stay on the record.
+    """
+    rows = supervisor_attempts(rec)
+    start = L.parse_ts(rec.get("reopened_at"))
+    if start is None:
+        return rows
+    out = []
+    for a in rows:
+        t = L.parse_ts(a.get("at"))
+        if t is not None and t >= start:
+            out.append(a)
+    return out
+
+
 def counted_attempts(rec: Mapping[str, Any]) -> int:
-    """Attempts that count toward the cap: executed actions and fixer dispatches (triage-only rows do not)."""
-    return sum(1 for a in supervisor_attempts(rec) if a.get("action") not in ("triage", "triage_readonly", "refused"))
+    """Attempts that count toward the cap in THIS episode: executed actions and fixer dispatches."""
+    return sum(1 for a in current_attempts(rec) if a.get("action") not in ("triage", "triage_readonly", "refused"))
 
 
 def parse_verdict(text: str) -> Optional[dict]:
@@ -261,14 +290,29 @@ def _action_took_effect(spec, tail):
 
 
 def _last_action_was_noop(rec) -> bool:
-    """The most recent runbook attempt reported that it acted on nothing."""
-    rows = [a for a in supervisor_attempts(rec)
+    """The most recent runbook attempt in this episode reported that it acted on nothing."""
+    rows = [a for a in current_attempts(rec)
             if str(a.get("action") or "") not in ("triage", "triage_readonly", "fixer_dispatch")]
     if not rows:
         return False
     last = max(rows, key=lambda a: str(a.get("at") or ""))
     # L.attempt() merges detail into the row, so production rows carry a top-level no_op.
     return bool(last.get("no_op", (last.get("detail") or {}).get("no_op")))
+
+
+def _fresh_ok_dispatch(rec: Mapping[str, Any], policy: Mapping[str, Any], now: datetime) -> bool:
+    """Is a dispatch in THIS episode successful and still inside ``fixer_active_hours``?
+
+    Causal rule (2026-11-03): only a fresh, proven-ok dispatch may suppress evaluation; a failed or
+    stale dispatch must never hide the incident, and an older episode's dispatch is history.
+    """
+    rows = [a for a in current_attempts(rec) if a.get("action") == "fixer_dispatch"]
+    if not rows:
+        return False
+    last = max(rows, key=lambda a: str(a.get("at") or ""))
+    at = L.parse_ts(last.get("at"))
+    active_for = float(policy.get("fixer_active_hours", 12))
+    return bool(at and last.get("ok") is not False and now - at < timedelta(hours=active_for))
 
 
 def fixer_request(rec: Mapping[str, Any], verdict: Mapping[str, Any], cfg: Mapping[str, Any]) -> dict:
@@ -278,14 +322,23 @@ def fixer_request(rec: Mapping[str, Any], verdict: Mapping[str, Any], cfg: Mappi
                                                                           str(src.get("job") or src.get("watcher") or "x").lower()).strip("-")[:48]
     # Root-cause dedupe (2026-11-03): two incidents for one cause must map to ONE fix job, so the
     # signature comes from the incident fingerprint (falling back to the lane) rather than the id.
+    # Episode rule: a reopen starts a NEW episode, and the fixer keeps one job per defect_id ever.
+    # Episode 1 keeps the established incident-scoped id; a later episode gets a distinct defect_id
+    # AND a distinct signature (so the fixer's active-job dedupe and 72h retry cooldown cannot refuse
+    # the person's explicit retry). Without this a reopened incident could never be fixed again.
+    ep = int(rec.get("episode") or 1)
     sig_src = str(rec.get("fingerprint") or f"{lane}:{rec['id']}")
+    if ep > 1:
+        sig_src = f"{sig_src}|ep{ep}"
     sig = "sig-" + L.fingerprint_of(sig_src)[3:19]
+    did = f"cd-{rec['id']}" if ep == 1 else f"cd-{rec['id']}-ep{ep}"
     return {
         "_why": f"incident supervisor dispatch for {rec['id']}: {verdict.get('action')}",
         "at": L.iso(L.utcnow()),
         "code_defect": {
             "schema": "N8nCodeDefect@v1", "consumer": "claude_code_iterative_fix", "consumer_status": "pending_consumer",
-            "kind": "code_defect", "defect_id": f"cd-{rec['id']}", "lane": lane, "signature": sig, "episode": 1,
+            "kind": "code_defect", "defect_id": did, "lane": lane, "signature": sig,
+            "episode": ep,
             "failure_class": "code_error", "failure_kind": "code_error:incident",
             "evidence": {"incident_key": rec["id"], "event_type": "INCIDENT", "siem_id": None, "failed_run_id": None,
                          "evidence_pack": None, "receipt": None,
@@ -307,10 +360,20 @@ def _p1_text(rec: Mapping[str, Any], reason: str, ask: str) -> str:
             f"Why: {reason[:200]}\nNext: {ask[:300]}\n{CC_INCIDENT_URL.format(id=rec['id'])}")
 
 
-def _escalate(rec: dict, reason: str, ask: str, d: Path, deps: Deps, apply: bool, out: dict, now: datetime) -> None:
-    if rec.get("escalations"):
-        return  # once per incident
-    row = {"id": rec["id"], "reason": reason}
+def _escalate(rec: dict, reason: str, ask: str, d: Path, deps: Deps, apply: bool, out: dict, now: datetime,
+              key: Optional[str] = None) -> None:
+    """Send ONE P1 for a reason class, at most once per DELIVERED page.
+
+    Causal rule (2026-11-03): suppress only an escalation that was delivered with the SAME key. An
+    undelivered send (``delivered: False``) retries on the next evaluation, and a different reason
+    class (time box vs attempt cap vs refused scope) has its own key and still pages.
+    """
+    key = key or reason
+    for e in rec.get("escalations") or []:
+        # Rows written before keys existed carry no key: fall back to the exact reason text.
+        if e.get("delivered") is True and (e.get("key") or e.get("reason")) == key:
+            return
+    row = {"id": rec["id"], "reason": reason, "key": key}
     if not apply:
         out["would_escalate"].append(row)
         return
@@ -319,7 +382,7 @@ def _escalate(rec: dict, reason: str, ask: str, d: Path, deps: Deps, apply: bool
     except Exception as exc:  # noqa: BLE001
         delivered = False
         reason = f"{reason} (send error {type(exc).__name__})"
-    L.escalate(rec["id"], actor=ACTOR, reason=reason, delivered=delivered, d=d, now=now)
+    L.escalate(rec["id"], actor=ACTOR, reason=reason, delivered=delivered, key=key, d=d, now=now)
     out["escalated"].append({**row, "delivered": delivered})
 
 
@@ -361,13 +424,13 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
                 rec = L.block(iid, actor=ACTOR, blocked_reason=f"needs_operator: refused scope {hit!r}",
                               handoff="operator/coordinator: review the evidence; no agent may act on this scope", d=d, now=now)
             out["blocked"].append({"id": iid, "why": f"refused_scope:{hit}"})
-            _escalate(rec, f"refused scope {hit!r}", ask, d, deps, apply, out, now)
+            _escalate(rec, f"refused scope {hit!r}", ask, d, deps, apply, out, now, key="refused_scope")
             continue
-        # 2. attempts cap
+        # 2. attempts cap (counted within THIS episode: attempts before the last reopen are history)
         if counted_attempts(rec) >= int(pol.get("max_attempts_per_incident", 3)):
             why = f"max attempts ({pol.get('max_attempts_per_incident', 3)}) reached"
             if (apply and _last_action_was_noop(rec)
-                    and not any(a.get("action") == "fixer_dispatch" for a in supervisor_attempts(rec))):
+                    and not any(a.get("action") == "fixer_dispatch" for a in current_attempts(rec))):
                 # The cap was reached on runbooks that reported acting on nothing: that is a code or
                 # config defect, so it goes to the existing fixer path instead of a person (2026-11-03).
                 verdict = {"class": "code_defect",
@@ -387,29 +450,26 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
                           fix_refs=refs or None, d=d, now=now)
                 out["dispatched"].append({"id": iid, "rc": res.get("rc"), "prs": res.get("prs")})
                 continue
-            # A dispatched fix job that is still fresh owns this incident: do not page a person for the same
-            # cause while the fixer works it. Bounded by policy, so a dead fixer cannot hide forever, and a
-            # failed dispatch (ok false) goes straight to a person.
-            dispatched = [a for a in supervisor_attempts(rec) if a.get("action") == "fixer_dispatch"]
-            if dispatched:
-                last_fix = max((L.parse_ts(a.get("at")) for a in dispatched if a.get("at")), default=None)
-                active_for = float(pol.get("fixer_active_hours", 12))
-                if (last_fix and not any(a.get("ok") is False for a in dispatched)
-                        and now - last_fix < timedelta(hours=active_for)):
-                    out["skipped"].append({"id": iid, "why": "fixer job active"})
-                    continue
+            # Causal rule (2026-11-03): ONLY a fresh, proven-ok dispatch in this episode owns the
+            # incident and may suppress paging. A failed or stale dispatch (or history from an
+            # earlier episode) falls through to a person instead of hiding the incident.
+            if _fresh_ok_dispatch(rec, pol, now):
+                out["skipped"].append({"id": iid, "why": "fixer job active"})
+                continue
             if apply:
                 rec = L.block(iid, actor=ACTOR, blocked_reason=why,
                               handoff="coordinator: read attempts[] and the evidence; fix by PR or record the operator decision", d=d, now=now)
             out["blocked"].append({"id": iid, "why": why})
-            _escalate(rec, why, "Supervisor attempts exhausted; a person must take it.", d, deps, apply, out, now)
+            _escalate(rec, why, "Supervisor attempts exhausted; a person must take it.", d, deps, apply, out, now,
+                      key="max_attempts")
             continue
         # 3. time box
         if age_min >= float(pol.get("escalate_after_minutes", 60)):
             _escalate(rec, f"unresolved {int(age_min)} min", "Open the incident; the supervisor is still working it.",
-                      d, deps, apply, out, now)
-        # 4. model triage (cooldown + daily call cap)
-        last = max((L.parse_ts(a.get("at")) for a in supervisor_attempts(rec) if a.get("at")), default=None)
+                      d, deps, apply, out, now, key="time_box")
+        # 4. model triage (cooldown + daily call cap). Cooldown is per episode: a reopen is a person's
+        # explicit retry, so an old attempt must not delay it (2026-11-03).
+        last = max((L.parse_ts(a.get("at")) for a in current_attempts(rec) if a.get("at")), default=None)
         if last and now - last < timedelta(minutes=float(pol.get("model_cooldown_minutes", 30))):
             out["skipped"].append({"id": iid, "why": "cooldown"})
             continue
@@ -464,27 +524,60 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
                               "no_op": _action_took_effect(spec, tail) is False}, d=d, now=now)
             out["actions"].append({"id": iid, "action": chosen["name"], "rc": rc})
         elif verdict["class"] == "code_defect":
-            if any(a.get("action") == "fixer_dispatch" for a in supervisor_attempts(rec)):
-                out["skipped"].append({"id": iid, "why": "fixer already dispatched"})
+            # Causal dispatch rule (2026-11-03): one dispatch per episode.
+            #  * a FRESH, proven-ok dispatch owns the incident — the ONLY permitted skip;
+            #  * any other prior dispatch in this episode is failed or stale: record an attempt row
+            #    (so the model cooldown advances and nothing loops) then block + page;
+            #  * otherwise dispatch now, ALWAYS record the attempt row, block + page on a failure.
+            if _fresh_ok_dispatch(rec, pol, now):
+                # The one permitted skip: a fresh, proven-ok job owns this episode. It still writes a
+                # triage row (never counted toward the cap) so the model cooldown advances and the
+                # supervisor does not re-triage the same incident every tick.
+                L.attempt(iid, actor=ACTOR, action="triage",
+                          result="fixer job active: fresh proven dispatch owns this episode",
+                          ok=None, sets_fixing=False, detail={**detail, "fixer": "fresh_ok_dispatch"},
+                          d=d, now=now)
+                out["skipped"].append({"id": iid, "why": "fixer job active"})
+                continue
+            prior = [a for a in current_attempts(rec) if a.get("action") == "fixer_dispatch"]
+            if prior:
+                why = "prior fixer dispatch in this episode did not prove work; not redispatching"
+                L.attempt(iid, actor=ACTOR, action="triage", result=why, ok=False, sets_fixing=False,
+                          detail={**detail, "fixer": "stale_or_failed_dispatch"}, d=d, now=now)
+                rec = L.block(iid, actor=ACTOR, blocked_reason=why,
+                              handoff="coordinator: inspect the fixer job; a retry needs an operator requeue",
+                              d=d, now=now)
+                out["blocked"].append({"id": iid, "why": why})
+                _escalate(rec, why, "The fixer did not prove work; a person must take it.",
+                          d, deps, apply, out, now, key="fixer_dispatch_failed")
                 continue
             req = fixer_request(rec, verdict, cfg)
             reqp = d / "fixer_requests" / f"{iid}.json"
             reqp.parent.mkdir(parents=True, exist_ok=True)
             reqp.write_text(json.dumps(req, indent=1) + "\n", encoding="utf-8")
             res = deps.fixer(reqp, True)
+            ok = _dispatch_ok(res)
             refs = [{"kind": "pr", "ref": str(u)} for u in res.get("prs") or []]
             L.attempt(iid, actor=ACTOR, action="fixer_dispatch",
                       result=f"fixer rc={res.get('rc')} admitted={res.get('admitted')} prs={res.get('prs')}",
-                      ok=_dispatch_ok(res), detail={**detail, "request": str(reqp), "fixer": res.get("summary")},
+                      ok=ok, detail={**detail, "request": str(reqp), "fixer": res.get("summary")},
                       fix_refs=refs or None, d=d, now=now)
             out["dispatched"].append({"id": iid, "rc": res.get("rc"), "prs": res.get("prs")})
+            if not ok:
+                why = f"fixer dispatch did not prove work (rc={res.get('rc')})"
+                rec = L.block(iid, actor=ACTOR, blocked_reason=why,
+                              handoff="coordinator: inspect the fixer job; a retry needs an operator requeue",
+                              d=d, now=now)
+                out["blocked"].append({"id": iid, "why": why})
+                _escalate(rec, why, "The fixer did not prove work; a person must take it.",
+                          d, deps, apply, out, now, key="fixer_dispatch_failed")
         else:  # needs_operator
             L.attempt(iid, actor=ACTOR, action="triage", result=f"needs_operator: {verdict['action']}", ok=None,
                       sets_fixing=False, detail=detail, d=d, now=now)
             rec = L.block(iid, actor=ACTOR, blocked_reason=f"needs_operator: {verdict['rationale'][:300]}",
                           handoff=verdict["action"] or "operator decision required", d=d, now=now)
             out["blocked"].append({"id": iid, "why": "needs_operator"})
-            _escalate(rec, "needs operator", verdict["action"], d, deps, apply, out, now)
+            _escalate(rec, "needs operator", verdict["action"], d, deps, apply, out, now, key="needs_operator")
     if apply:
         p = d / "supervisor_last.json"
         p.write_text(json.dumps(out, indent=1, default=str) + "\n", encoding="utf-8")
@@ -504,37 +597,81 @@ def _dispatch_ok(res: Mapping[str, Any]) -> bool:
     return res.get("rc") == 0 and bool(proven)
 
 
+def _request_identity(req: Path) -> tuple[Optional[str], Optional[str]]:
+    """(defect_id, incident_key) named by the fix request, or (None, None) when it cannot be read.
+
+    Proof must never be inferred from the fixer's GLOBAL admission book: a stale job for a different
+    incident could otherwise prove work for this one (2026-11-03).
+    """
+    try:
+        doc = json.loads(Path(req).read_text(encoding="utf-8", errors="replace"))
+    except (OSError, ValueError, UnicodeDecodeError):
+        return None, None
+    if not isinstance(doc, dict):
+        return None, None
+    cd = doc.get("code_defect") if isinstance(doc.get("code_defect"), dict) else {}
+    ev = cd.get("evidence") if isinstance(cd.get("evidence"), dict) else {}
+    top_ev = doc.get("evidence") if isinstance(doc.get("evidence"), dict) else {}
+    did = cd.get("defect_id") or doc.get("defect_id")
+    ikey = ev.get("incident_key") or top_ev.get("incident_key")
+    return (str(did) if did else None, str(ikey) if ikey else None)
+
+
 def default_fixer_factory(cfg: Mapping[str, Any], python: str, repo_root: Path) -> Callable[[Path, bool], dict]:
     fx = cfg["policy"]["fixer"]
 
     def run_fixer(req: Path, apply: bool) -> dict:
         argv = [python, str(repo_root / fx["script"]), "--cycle", "--incident", str(req)]
         argv.append("--apply" if apply else "--dry-run")
+        defect_id, incident_key = _request_identity(req)
         try:
-            p = subprocess.run(argv, cwd=str(repo_root), capture_output=True, text=True, timeout=float(fx.get("timeout_s", 3600)))
+            p = subprocess.run(argv, cwd=str(repo_root), capture_output=True, text=True,
+                               encoding="utf-8", errors="replace",
+                               timeout=float(fx.get("timeout_s", 7500)))
         except subprocess.TimeoutExpired:
-            return {"rc": 124, "summary": "timeout"}
+            return {"rc": 124, "summary": "timeout", "work_proven": False, "admitted": [],
+                    "busy": False, "prs": []}
+        except (OSError, UnicodeDecodeError) as exc:
+            # A non-UTF8 byte or an exec failure is a failed dispatch, never a crash of the cycle.
+            return {"rc": 127, "summary": f"{type(exc).__name__}: {exc}", "work_proven": False,
+                    "admitted": [], "busy": False, "prs": []}
+        # A report with a replacement character was not valid UTF-8: we cannot trust any of it, so
+        # fail closed with rc 127 (a failed dispatch that pages) instead of reading a mangled report.
+        raw = p.stdout or ""
+        bad_decode = "�" in raw
         try:
-            doc = json.loads(p.stdout or "{}")
+            doc = json.loads(raw or "{}")
         except ValueError:
             doc = {}
-        prs = re.findall(r"https://github\.com/[^\s\"']+/pull/\d+", p.stdout or "")
-        admitted = ([a.get("job_id") for a in doc.get("admitted") or [] if isinstance(a, dict)]
-                    if isinstance(doc, dict) else None)
+        if not isinstance(doc, dict):
+            doc = {}
+        prs = re.findall(r"https://github\.com/[^\s\"']+/pull/\d+", raw)
+        admitted = [a.get("job_id") for a in doc.get("admitted") or [] if isinstance(a, dict)]
+        # Proof is scoped to THIS request (2026-11-03): only an ``admitted`` row carrying this
+        # request's defect_id (or incident key) names this incident's job; only THAT job's
+        # ``attempted`` outcome can prove work. A stale job for a different incident never counts.
+        mine: set[str] = set()
+        for row in doc.get("admitted") or []:
+            if not isinstance(row, dict) or not isinstance(row.get("job_id"), str):
+                continue
+            same = ((defect_id and str(row.get("defect_id") or "") == defect_id)
+                    or (incident_key and str(row.get("incident_key") or "") == incident_key))
+            if same:
+                mine.add(row["job_id"])
         # Admission alone is NOT proof: self_heal_fixer appends to ``admitted`` BEFORE it checks arming,
         # so a not_armed / no_backend / no_rails / not_claimed run reports an admitted job and then an
-        # ``attempted`` entry naming the refusal. Only a real attempt outcome is work. ``deduped:active``
-        # is not proof either: ``fix_requested`` counts as ACTIVE, and the five live dispatch rows show a
-        # stuck not-armed job keeps matching that signature. An unproven dispatch must page a person.
-        no_work = ("not_armed:", "no_backend:", "no_rails:", "not_claimed:", "dry_run_planned")
+        # ``attempted`` entry naming the refusal. Only a POSITIVE allowlist of working states is proof;
+        # every refusal prefix, ``dry_run_planned`` and the terminal failures page a person instead.
         outcomes: dict[str, str] = {}
-        for row in (doc.get("attempted") or []) if isinstance(doc, dict) else []:
-            if isinstance(row, dict) and isinstance(row.get("job_id"), str):
+        for row in doc.get("attempted") or []:
+            if isinstance(row, dict) and isinstance(row.get("job_id"), str) and row["job_id"] in mine:
                 outcomes[row["job_id"]] = str(row.get("outcome") or "")
-        work_proven = (isinstance(doc, dict) and not doc.get("busy")
-                       and any(outcome and not outcome.startswith(no_work) for outcome in outcomes.values()))
-        return {"rc": p.returncode, "admitted": admitted, "work_proven": work_proven,
-                "busy": bool(isinstance(doc, dict) and doc.get("busy")),
-                "prs": sorted(set(prs)), "summary": (p.stdout or p.stderr or "")[-800:]}
+        work_proven = (not bad_decode and not doc.get("busy")
+                       and any(o in WORKING_OUTCOMES for o in outcomes.values()))
+        return {"rc": 127 if bad_decode else p.returncode, "admitted": admitted, "work_proven": work_proven,
+                "busy": bool(doc.get("busy")),
+                "prs": sorted(set(prs)),
+                "summary": (f"undecodable fixer report (non-UTF8): {raw[-600:]}" if bad_decode
+                            else (raw or p.stderr or "")[-800:])}
 
     return run_fixer

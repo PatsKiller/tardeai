@@ -154,6 +154,10 @@ def _blank(ev: Mapping[str, Any]) -> dict:
         "acknowledged": None,
         "escalations": [],
         "recurrence_of": ev.get("recurrence_of"),
+        # Episode boundary (2026-11-03): a ``reopen`` event starts a new dispatch episode. Derived
+        # from the events, never stored separately; attempts before it remain history.
+        "episode": 1,
+        "reopened_at": None,
         "updated_at": ev["at"],
         "event_count": 0,
     }
@@ -195,8 +199,13 @@ def _apply(rec: dict, ev: Mapping[str, Any]) -> None:
         rec["status"] = "open"
         rec["closed_at"] = None
         rec["resolution"] = None
+        # Causal rule (2026-11-03): each reopen starts a new dispatch episode. The capability is
+        # derived from the append-only events; nothing is deleted and no new store is written.
+        rec["reopened_at"] = at
+        rec["episode"] = int(rec.get("episode") or 1) + 1
     elif kind == "escalate":
-        rec["escalations"].append({"at": at, "reason": ev.get("reason"), "delivered": ev.get("delivered")})
+        rec["escalations"].append({"at": at, "reason": ev.get("reason"), "delivered": ev.get("delivered"),
+                                   "key": ev.get("key")})
     elif kind == "ack":
         rec["acknowledged"] = {"at": at, "actor": actor, "decision_ref": ev.get("decision_ref"), "comment": ev.get("note")}
     elif kind == "close":
@@ -227,8 +236,10 @@ def fold(events: Iterable[Mapping[str, Any]]) -> dict[str, dict]:
 def read_events(d: Path) -> list[dict]:
     p = events_path(d)
     try:
-        lines = p.read_text(encoding="utf-8").splitlines()
-    except FileNotFoundError:
+        # A non-UTF8 byte in one line must not hide the whole ledger (2026-11-03): decode with
+        # replacement, never raise; a torn tail line is still skipped below, never repaired in place.
+        lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+    except (OSError, UnicodeDecodeError):
         return []
     out = []
     for line in lines:
@@ -466,10 +477,11 @@ def block(incident_id: str, *, actor: str, blocked_reason: str, handoff: str, d:
                          "blocked_reason": blocked_reason, "handoff": handoff}, d=d, now=now)
 
 
-def escalate(incident_id: str, *, actor: str, reason: str, delivered: bool, d: Optional[Path] = None,
-             now: Optional[datetime] = None) -> dict:
+def escalate(incident_id: str, *, actor: str, reason: str, delivered: bool, key: Optional[str] = None,
+             d: Optional[Path] = None, now: Optional[datetime] = None) -> dict:
+    """Record one page attempt. ``key`` is the stable reason-class key the supervisor suppresses on."""
     return append_event({"kind": "escalate", "incident_id": incident_id, "actor": actor, "reason": reason,
-                         "delivered": bool(delivered)}, d=d, now=now)
+                         "delivered": bool(delivered), "key": key}, d=d, now=now)
 
 
 def operator_ack(incident_id: str, *, decision_ref: str, comment: str = "", actor: str = "operator",

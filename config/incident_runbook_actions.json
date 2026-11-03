@@ -18,9 +18,10 @@
     "_refused_why": "section 0 classes (orders/stops/sizing, broker writes, secrets) plus the section 28.14 item 4 refused scopes (guard, policy, hooks, AGENTS.md, credentials). A match forces needs_operator; no runbook action and no fixer dispatch.",
     "fixer": {
       "script": "scripts/self_heal_fixer.py",
-      "timeout_s": 3600,
+      "timeout_s": 7500,
+      "_timeout_why": "The fixer's own budget is iteration.max_minutes=90 (5400s) plus iteration.ci_timeout_s=1800 (config/self_heal_fixer.json), so a 3600s supervisor timeout killed a legitimate long fix. 7500s = 5400 + 1800 + 300s margin: the supervisor waits for the fixer's whole budget and never changes that budget. (2026-11-03)",
       "lane_prefix": "incident-",
-      "_why": "code_defect -> the section 28.14 Claude Code fixer: one N8nCodeDefect@v1-shaped request file per incident (consumer claude_code_iterative_fix), run as `self_heal_fixer.py --cycle --incident <file>`. The fixer keeps its own arming, budget, diff guard, worktree isolation and refused paths; it opens a PR and never merges, releases or deploys. Dispatched once per incident."
+      "_why": "code_defect -> the section 28.14 Claude Code fixer: one N8nCodeDefect@v1-shaped request file per incident episode (consumer claude_code_iterative_fix), run as `self_heal_fixer.py --cycle --incident <file>`. The fixer keeps its own arming, budget, diff guard, worktree isolation and refused paths; it opens a PR and never merges, releases or deploys. Dispatched once per EPISODE: a reopen starts a new defect_id/signature so a person's requeue can get one new attempt."
     },
     "runbook_docs": {
       "deploy_failures": ["docs/ops/MERGIFY_DEPLOY_FOUNDATION.md", "docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md"],
