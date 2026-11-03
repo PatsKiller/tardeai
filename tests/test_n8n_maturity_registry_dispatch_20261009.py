@@ -583,13 +583,14 @@ N8N_NATIVE_CANARY = frozenset(
     }
 )
 #: the reviewed live_arg of each n8n-native canary row whose live run is not the script default.
-#: disk-hygiene's live run is --plan (a manifest, never a deletion).
+#: disk-hygiene's live run is the operator-approved standing apply (2026-10-31; config/disk_hygiene_rules.json
+#: standing_apply): hourly --scheduled fire, the day's full run from 04:00 ET, a pressure run above trigger_pct.
 N8N_NATIVE_CANARY_LIVE_ARG = {
     "momentum-cache-reconcile": ["--apply"],
     "n8n-comms-intent-consumer": ["--apply"],
     "active-trader-motion-watchdog": ["--apply"],
     "disk-usage-monitor": ["--apply"],
-    "disk-hygiene": ["--plan"],
+    "disk-hygiene": ["--standing", "--apply", "--scheduled"],
     # 2026-10-19 operator (after /tmp hit 97% inodes): daily /tmp plan, a manifest, never a deletion.
     "tmp-hygiene": ["--plan"],
     "registry-runtime-truth": ["--apply"],
@@ -603,6 +604,7 @@ N8N_NATIVE_CANARY_LIVE_ARG = {
 #: n8n-native canary lanes whose dry_run_arg is not the bare ["--dry-run"] (their runner requires --state-root).
 N8N_NATIVE_CANARY_DRY_RUN_ARG = {
     "conflict-resolver": ["--dry-run", "--state-root", "$STATE_ROOT"],
+    "disk-hygiene": ["--standing", "--dry-run"],
 }
 #: lane repair 2026-10-15: a systemd-timer lane at shadow (its timer keeps the real work; dispatch.cron mirrors the
 #: timer's OnCalendar). tests/test_lane_repair_ri_hermes_litmus_20261015.py pins the row and its allowlist entry.

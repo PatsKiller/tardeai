@@ -1,0 +1,86 @@
+{
+  "schema": "MarketRiskGlossary@v1",
+  "_comment": "Tap-to-explain texts for the Home market-risk card (design home/v006). One or two plain sentences each; the operator may edit them without a code change. {placeholders} are filled from config at render time (single_sector_pct from config/portfolio_risk_budget.yaml; trigger_book_pct and index_trigger_lagging_sectors from config/defense_recommendations.json inverse_etf). Advisory explanations only: no instruction, size or level.",
+  "terms": {
+    "stress": {
+      "label": "STRESS",
+      "text": "This group fell much more than it usually does and lagged SPY, over the last 5 sessions or in one day. 'Usually' is measured against the group's own past year, not a fixed percentage."
+    },
+    "weak": {
+      "label": "WEAK",
+      "text": "Falling more than usual and lagging SPY, but not as far as STRESS."
+    },
+    "resilient": {
+      "label": "RESILIENT",
+      "text": "Beating SPY by more than usual for this group, or rising while SPY falls. It says where money is going now, not that it will keep going there."
+    },
+    "holding": {
+      "label": "HOLDING",
+      "text": "Moving in line with the market: neither stressed nor clearly beating SPY."
+    },
+    "not_measured": {
+      "label": "NOT MEAS.",
+      "text": "The engine does not have enough daily closes for this group yet, so it shows no state instead of guessing. The dollars you hold are still shown."
+    },
+    "look_through": {
+      "label": "look-through",
+      "text": "A fund is counted by what it holds, not by its name: a dividend ETF that is 9% technology puts 9% of its value in Technology. A stock is counted by its sector, or by its business segments once you approve them."
+    },
+    "pct_book": {
+      "label": "% book",
+      "text": "Share of everything you own across all accounts, cash included."
+    },
+    "stressed_pct": {
+      "label": "Stressed %",
+      "text": "How much of this position sits in groups marked STRESS or WEAK, after look-through. Themes overlap sectors, so they are never added on top."
+    },
+    "usd_exposed": {
+      "label": "$ exposed",
+      "text": "Position value times its stressed share: the dollars that are in the groups being hit."
+    },
+    "pc_oi": {
+      "label": "P/C OI",
+      "text": "Put/call open interest: open put contracts divided by open call contracts on the index. Far above its usual level means traders are paying for protection."
+    },
+    "carried": {
+      "label": "CARRIED",
+      "text": "The market is closed and this reading rests on Friday's data. It is shown so you can see it, but it does not page you."
+    },
+    "shadow": {
+      "label": "SHADOW",
+      "text": "The engine is evaluated but not allowed to send alerts yet. What you see is what it would have said."
+    },
+    "stage1": {
+      "label": "Stage 1",
+      "text": "An early sign the drop may be over: a higher low, then two green closes on normal volume, with its groups no longer making new lows. Early and more likely to fail than Stage 2."
+    },
+    "stage2": {
+      "label": "Stage 2",
+      "text": "Confirmation: a close back above the 10-day or 20-day average, or above the price you were stopped out at."
+    },
+    "invalidates_below": {
+      "label": "Invalidates below",
+      "text": "The lowest close since you exited. A close under it cancels the early setup and the count starts again."
+    },
+    "budget_breach": {
+      "label": "budget breach",
+      "text": "An account is over one of your risk budgets, for example more than {single_sector_pct}% in one sector. It is a prompt to review, not an instruction."
+    },
+    "vulnerability": {
+      "label": "vulnerability",
+      "text": "A 0-100 score of how exposed the book is right now: concentration, stops close to price, positions with no stop and upcoming earnings. Higher means more exposed."
+    },
+    "hedge_verdict": {
+      "label": "Hedge needed?",
+      "text": "Read from the Defense desk. It considers an inverse-ETF hedge only when one weakening sector is at least {trigger_book_pct}% of your invested money, or {index_trigger_lagging_sectors} or more sectors are lagging."
+    },
+    "rotate_rs": {
+      "label": "vs SPY",
+      "text": "The group's return minus SPY's over the same 1 or 5 sessions: +2% means it beat SPY by 2 points. It shows where money is moving; it is not a recommendation."
+    },
+    "protect": {
+      "label": "Protect",
+      "text": "Your largest positions with something to review: a stop close to the price, no stop, or an account over a budget. Each one opens the existing review page; nothing is placed or changed from here."
+    }
+  }
+}

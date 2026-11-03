@@ -88,6 +88,30 @@ alone would have been PATCH; the higher class wins, per the version policy above
 
 ## Version banners (moved here from the top of the file by 25.0.0; history, not binding)
 
+### Moved here by 29.2.1 (superseded version's banner, verbatim)
+
+**27.0.1 is ACTIVE (PATCH) — ratification of 27.0.0 (agents delete their own scratch; a scheduled purge reclaims the rest).**
+27.0.0 was merged as PROPOSED (a defect: the ratifying commit was not pushed before the operator's `--admin` merge,
+LESSONS L0-01/L0-02); this PATCH is the §20 ratifying edit — header `Status: PROPOSED → ACTIVE`, `Effective-Date:
+2026-10-30`, banner and history row — with **no rule-text change**. Ratified by the operator 2026-10-30
+(`APPROVE_AGENTS_POLICY_27_0_0 2303`), superseding 26.2.2.
+
+### Moved here by 29.0.0 (superseded versions' banners, verbatim)
+
+**26.2.2 is ACTIVE (PATCH) — generated §7A source-of-truth table refreshed.** The two conflict-engine domains
+`conflict_ledger` and `conflict_rule_proposals` were granted by the operator (§7A/§26.6, in-session 2026-10-29) and the
+generated source-of-truth table in §7A now lists them as active; no rule-text change. Supersedes 26.2.1.
+
+**26.1.0 is PROPOSED (MAJOR) — approved work pushes itself; "designed" = a task id; emergency merge/deploy bypasses
+Mergify.** Awaiting `APPROVE_AGENTS_POLICY_26_1_0 <pr> <head_sha>` (§20). (1) §0 rule 4 / §28.15 item 8: an
+operator-approved scope is the push authorization — no separate `git-push` grant for an approved-scope fast-forward
+push of the agent's own non-`main` branch; budget and never-`main`/`release/*` still bind. (2) §28.3b: each buildable
+unit is a registered task id, never prose. (3) §25.10 / §17: held PRs merge on the operator's per-PR tap (never
+GitHub), and operator-initiated emergency merge/merge-and-deploy bypasses Mergify, SHA-bound; broker rails are never
+bypassed. **Why MAJOR:** edits §0 rule 4 and widens merge/deploy authority. §2, §2A, §7A, §23.14 and the
+broker/order/stop/sizing/secret rails are unchanged; `MBI_BEHAVIOR = 0`. Details: LESSONS L28-29/L28-30/L25-07; named
+debt OI-131/133/134. *(26.1.0 was never ratified)*
+
 ### Moved here by 28.0.0 (2026-10-31; superseded versions' banners, verbatim)
 
 **26.2.1 is ACTIVE (PATCH) — ratification of 26.2.0 (operator-delegated promote).** 26.2.0 was merged as
@@ -2171,3 +2195,12 @@ Every rule-bearing passage of AGENTS.md 25.0.1, by line range in `tests/fixtures
 | 6492-6494 | §28.15 item 8(c): hands_off_policy.py gate in PRs #2115, #2118, #2125 must key on the 21.0.0 version row. |
 | 6521-6526 | §28.16 "Status: PROPOSED in 25.0.0" — missed ratifying edit; watchers, supervisor and page shipped in #2238. |
 | 6547-6549 | §29 "Status: PROPOSED in 25.0.0 (adds obligations only)" — missed ratifying edit. |
+
+### 28.0.0 banner (moved from AGENTS.md when 28.2.0 was drafted; kept by its renumbering to 29.2.0)
+
+**28.0.0 is ACTIVE (MAJOR) — operator-delegated merge (§25.10.3).** Ratified 2026-10-31 by the operator in session
+(`APPROVE_AGENTS_POLICY_28_0_0 2334 b610eb4d2a0616644d689ca2b2b2fe5ce4e1f793`, §20). An agent never merges on its own; after the operator's explicit in-session approval naming the PR
+numbers (§28.4), or the operator's own Command Center Approvals → Merges tap, it may record the approval (verbatim,
+head-SHA bound) and apply `operator-merge`, or merge directly when the operator says not to wait for Mergify.
+**Why MAJOR:** adds a merge-approval recording authority to agents. §0 untouched; §0 rules 1–2 / §24.7 never overridable; `MBI_BEHAVIOR = 0`.
+

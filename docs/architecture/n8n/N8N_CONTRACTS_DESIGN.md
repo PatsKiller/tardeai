@@ -331,7 +331,6 @@ on refusal. Both tables live in the coordination ledger, one `BEGIN IMMEDIATE`.
   `finviz-screener-runner` declare `late_write_fenced: true` and call `effect_claim.fence_before_write()` right before
   their first target write (a no-op without `TRADEAI_EFFECT_FENCE`, so cron runs are unchanged). A failure before
   the fence is a proven pre-effect FAILED and a slot-bound retry may re-claim it.
-<<<<<<< HEAD
 - **Effect-keyed lanes that do NOT call `assert_fence` (not late-write safe):** the other 70 effect-keyed lanes in
   `config/n8n_effect_keys.json` (70 since 2026-10-29: `hermes-watchlist-scorer` joined as an inert *staged* key with its
   canary promotion, #1904, and `conflict-resolver` joined with its shadow→canary live flip, #2293, and `cio-ask-lifecycle` +

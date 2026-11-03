@@ -51,6 +51,7 @@ const SHORT_PRICE_SOURCE: Record<string, string> = {
   finviz_live: 'live',
   finviz_afterhours: 'after-hours',
   finviz_premarket: 'pre-market',
+  finviz_overnight: 'overnight',
   schwab: 'Schwab',
   market_quotes: 'quotes',
   finviz: 'Finviz',

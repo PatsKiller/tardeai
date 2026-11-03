@@ -2,14 +2,14 @@
   "schema": "DesignVersionStatus@v1",
   "page": "home",
   "version": "v002",
-  "state": "PROPOSED",
+  "state": "APPROVED",
   "title": "Home: MARKET RISK fact, Orange/Red banner with Acknowledge, contributors in Market in one look",
   "created": "2026-10-31",
   "approval": {
-    "by": null,
-    "at": null,
-    "ref": null,
-    "kind": "awaiting the operator's one-tap decision in Approvals -> Designs (design DSN-20261031-market-risk-ui); prose never counts",
+    "by": "operator",
+    "at": "2026-10-31T14:55:00Z",
+    "ref": "in-session directive (coordinator session_01GeLa7JgVXENzWSJSDhcHkF)",
+    "kind": "operator in-session words, verbatim: \"approved market-risk-ui, check again\"; \"record it from my message, keep going\". The Approvals -> Designs tap recorded nothing (defect under fix). Operator direction under AGENTS.md §20 overrides design/README.md rule 2 (prose never counts) for this one approval; the tap defect is being fixed so later approvals land in the ledger.",
     "source": [
       "docs/designs/DSN-20261031-market-risk-ui.md"
     ],
