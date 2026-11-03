@@ -438,8 +438,8 @@ def _intent_send(message: str, priority: str, send_fn, *, dedupe_minutes: int | 
         if marker and marker in message:
             try:
                 router.recovery_t1_release(message)
-            except Exception:
-                pass
+            except Exception as release_exc:  # the release fault must not mask the send fault
+                print(f"[telegram] recovery T1 release failed: {type(release_exc).__name__}")
         raise
     if marker and marker in message:
         # Delivery-owned recovery bound: the claim made by route_intent is consumed only by a
@@ -666,8 +666,8 @@ def _legacy_send(
             marker = getattr(_router_mod, "RECOVERY_T1_MARKER", "")
             if marker and marker in message:
                 _router_mod.recovery_t1_release(message)
-        except Exception:
-            pass
+        except Exception as release_exc:  # the release fault must not mask the send fault
+            print(f"[telegram] recovery T1 release failed: {type(release_exc).__name__}")
         raise
     try:
         import telegram_alert_router as _router_mod
@@ -676,8 +676,8 @@ def _legacy_send(
             # A legacy send of a marked recovery page also acks/releases its delivery claim.
             (_router_mod.recovery_t1_mark_delivered(message) if delivered
              else _router_mod.recovery_t1_release(message))
-    except Exception:
-        pass
+    except Exception as ack_exc:  # an ack fault must not change the send outcome
+        print(f"[telegram] recovery T1 ack failed: {type(ack_exc).__name__}")
     return bool(delivered)
 
 

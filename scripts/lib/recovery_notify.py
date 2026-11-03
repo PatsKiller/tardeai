@@ -342,8 +342,9 @@ def notify_recovery_case(case: dict, *, policy: Optional[dict] = None,
             else:
                 log.warning("recovery T1 page was not accepted by the transport for %s", symbol)
             return result
-    except Exception:  # noqa: BLE001 — any batching problem must not silence a T1 page
-        pass
+    except Exception as batch_exc:  # noqa: BLE001 — any batching problem must not silence a T1 page
+        log.warning("recovery batching unavailable (%s); using the direct P1 send for %s",
+                    type(batch_exc).__name__, symbol)
 
     ok = send(message, priority=PRIORITY_P1, dedupe_minutes=floor_minutes, producer="recovery_notify")
     result.update({"path": "direct", "sent": bool(ok)})
