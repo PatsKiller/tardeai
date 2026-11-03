@@ -299,3 +299,16 @@ def test_dry_run_runs_the_same_validation_and_writes_nothing(tmp_path):
                         now=NOW, dry_run=True)
     assert receipt["dry_run"] is True and receipt["sync_run_id"] == 7
     assert not store.exists() and not (tmp_path / "b").exists()
+
+
+def test_account_summaries_are_classified_and_use_the_short_alias(tmp_path):
+    data = rows() + [("schwab_roth_ira", "SCHD", "schwab", 5.0, 250.0, 50.0, 300.0, False,
+                      "etf", "schwab_position_sync", NOW - timedelta(minutes=2))]
+    store = tmp_path / "holdings.json"
+    he.export(state_root=tmp_path, conn=Conn(data=data), store=store, backups=tmp_path / "b", now=NOW)
+    doc = json.loads(store.read_text())
+    assert "schwab_roth" in doc["account_summaries"] and "schwab_roth_ira" not in doc["account_summaries"]
+    summary = doc["account_summaries"]["schwab_roth"]
+    assert summary["account_key"] == "schwab_roth_ira" and summary["state"] != "UNCLASSIFIED"
+    row = next(h for h in doc["holdings"] if h["symbol"] == "SCHD")
+    assert row["account"] == "schwab_roth" and row["account_key"] == "schwab_roth_ira"

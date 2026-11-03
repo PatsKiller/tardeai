@@ -81,6 +81,62 @@ def positions_rows(conn) -> list[dict[str, Any]]:
     return rows
 
 
+def account_aliases() -> dict[str, str]:
+    """Registry key -> the short account name served readers use (config/account_display_names.json aliases)."""
+    try:
+        config = json.loads((Path(__file__).resolve().parents[1] / "config/account_display_names.json")
+                            .read_text(encoding="utf-8"))
+        return {registry: short for short, registry in (config.get("aliases") or {}).items()}
+    except Exception:  # noqa: BLE001 - no mapping is a stated pass-through, never an invented name
+        return {}
+
+
+def build_account_summaries(rows: list[dict[str, Any]], *, generated_at: datetime,
+                            aliases: Mapping[str, str] | None = None) -> dict[str, dict[str, Any]]:
+    """Classified account_summaries through the EXISTING classifier, so the export is a usable Step 3 fallback."""
+    aliases = aliases or {}
+    try:
+        from lib.account_state import classify_account_state  # type: ignore
+    except ImportError:  # pragma: no cover - imported as scripts.<module>
+        from scripts.lib.account_state import classify_account_state  # type: ignore
+    try:
+        from lib.cio_domain_registry import CIODomainRegistry  # type: ignore
+        market_only = CIODomainRegistry.load().get("portfolio").freshness_market_hours_only is True
+    except Exception:  # noqa: BLE001
+        market_only = False
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        groups.setdefault(str(row.get("account_key")), []).append(row)
+    summaries: dict[str, dict[str, Any]] = {}
+    for key, group in groups.items():
+        stamps = []
+        total = 0.0
+        for row in group:
+            as_of = row.get("as_of")
+            if isinstance(as_of, datetime):
+                stamps.append(as_of.astimezone(timezone.utc))
+            value = _number(row.get("broker_market_value"))
+            if value is not None:
+                total += value
+        newest = max(stamps) if stamps else None
+        # `market_hours_only` arrives with #2524; call it only where the classifier accepts it so this
+        # module works on main and after that merge.
+        import inspect
+        kwargs = {"sync_kind": "api", "last_sync_at": newest, "now": generated_at}
+        if "market_hours_only" in inspect.signature(classify_account_state).parameters:
+            kwargs["market_hours_only"] = market_only
+        block = classify_account_state(**kwargs)
+        summaries[aliases.get(key, key)] = {
+            "account_key": key,
+            "state": block.get("state"),
+            "total_value": round(total, 2),
+            "source": "positions_current",
+            "account_state": {name: block.get(name) for name in
+                              ("state", "state_reason", "state_as_of", "last_sync_at", "last_sync_age_hours")},
+        }
+    return summaries
+
+
 def run_binding(conn, rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Bind the export to one COMPLETE, PROMOTED positions_sync_runs receipt.
 
@@ -175,9 +231,12 @@ def render_document(rows: Iterable[Mapping[str, Any]], *, generated_at: datetime
                     quotes: Mapping[str, Mapping[str, Any]] | None = None,
                     profiles: Mapping[str, Mapping[str, Any]] | None = None,
                     lookthrough: Mapping[str, list[dict[str, Any]]] | None = None,
-                    gaps: list[str] | None = None) -> dict[str, Any]:
+                    gaps: list[str] | None = None,
+                    account_summaries: Mapping[str, dict[str, Any]] | None = None,
+                    aliases: Mapping[str, str] | None = None) -> dict[str, Any]:
     """Pure: build the holdings document from the DB rows. No file is read."""
     quotes, profiles, lookthrough = quotes or {}, profiles or {}, lookthrough or {}
+    aliases = aliases or {}
     gaps = list(gaps or [])
     holdings: list[dict[str, Any]] = []
     total_value = 0.0
@@ -211,8 +270,9 @@ def render_document(rows: Iterable[Mapping[str, Any]], *, generated_at: datetime
         profile = profiles.get(symbol) or {}
         holdings.append({
             "symbol": symbol,
-            "account": row.get("account_key"),
-            "account_id": row.get("account_key"),
+            "account": aliases.get(str(row.get("account_key")), row.get("account_key")),
+            "account_id": aliases.get(str(row.get("account_key")), row.get("account_key")),
+            "account_key": row.get("account_key"),
             "broker": row.get("broker"),
             "shares": qty,
             "quantity": qty,
@@ -264,6 +324,7 @@ def render_document(rows: Iterable[Mapping[str, Any]], *, generated_at: datetime
         "as_of": newest_stamp,
         "source": "positions_current",
         "gaps": gaps,
+        "account_summaries": dict(account_summaries or {}),
         "holdings": holdings,
         "portfolio_totals": {
             "as_of": newest_stamp,
@@ -391,13 +452,16 @@ def export(*, conn, store: Path | str | None = None, backups: Path | str | None 
     resolved_backups = Path(os.path.realpath(backups))
     if not resolved_backups.is_relative_to(resolved_root):
         raise ExportError(f"backups directory escapes the state root: {resolved_backups} not under {resolved_root}")
+    aliases = account_aliases()
+    summaries = build_account_summaries(rows, generated_at=now, aliases=aliases)
     symbols = [r.get("symbol") for r in rows]
     quotes = quote_rows(conn)
     profiles = profile_rows(conn, symbols)
     lookthrough, lookthrough_gap = lookthrough_rows(conn, [s for s in symbols if s])
     gaps = [g for g in (lookthrough_gap,) if g]
     document = render_document(rows, generated_at=now, quotes=quotes, profiles=profiles,
-                               lookthrough=lookthrough, gaps=gaps)
+                               lookthrough=lookthrough, gaps=gaps, account_summaries=summaries,
+                               aliases=aliases)
     document["sync_run_id"] = binding["run_id"]
     text = json.dumps(document, indent=1, sort_keys=True) + "\n"
     if dry_run:
