@@ -320,7 +320,8 @@ def _default_sources(root: Path, *, keep_retire_after_hours: float = 24.0) -> di
 
     def pr_approvals(kind):
         data = _pr_snapshot(root).view()
-        return {**data, "rows": [row for row in data["rows"] if row["kind"] == kind]}
+        return {**data, "rows": [row for row in data["rows"] if row["kind"] == kind],
+                "resolved": [row for row in data.get("resolved", []) if row["kind"] == kind]}
 
     def coordinator_decisions():
         from scripts.lib import coordination_approval_source
@@ -475,7 +476,10 @@ def actionable_projection(data: dict) -> dict:
                for row in data["items"]]
     return {key: data[key] for key in ("pending_count", "known_pending_count", "complete", "gaps", "as_of")} | {
         "actionable_items": members, "actionable_count": len(members), "known_actionable_count": len(members),
-        "scope": "all_operator_approvals"}
+        "scope": "all_operator_approvals",
+        "evidence_blockers": [{k: v for k, v in row.items() if k != "document"} | {
+            "document_sha": row["document"]["document_sha"], "version": row["document"]["version"]}
+                              for row in data.get("evidence_blockers", [])]}
 
 
 def queue_summary(*, root: Path = ROOT, state_root: Path | None = None, now: datetime | None = None) -> dict:

@@ -156,6 +156,9 @@ def queue_projection(sources: dict[str, Callable[[], list[dict]]], *, decisions:
                 batch = batch.get("rows")
             if not isinstance(batch, list) or len(batch) > 500:
                 raise Refused("SOURCE_BUDGET_EXCEEDED", 503)
+            for row in batch:
+                if row.get("source_gap") and not any(gap["source"] == name for gap in gaps):
+                    gaps.append({"source": name, "reason": str(row["source_gap"])[:160]})
             rows.extend(batch)
         except Exception as exc:  # a failed source never becomes a reassuring zero
             gaps.append({"source": name, "reason": exc.code if isinstance(exc, Refused) else type(exc).__name__})
@@ -192,11 +195,13 @@ def queue_projection(sources: dict[str, Callable[[], list[dict]]], *, decisions:
     terminal = {(r["item_id"], r["document_sha"]) for r in recent}
     pending = [r for r in rows if r["requires_governed_action"] or (r["id"], r["document"]["document_sha"]) not in terminal]
     pending.sort(key=lambda r: (r.get("created_at") or "9999", r["id"]))
+    evidence = [row for row in pending if row.get("actionable") is False or row.get("next_actor", "operator") != "operator"]
+    pending = [row for row in pending if row.get("actionable") is not False and row.get("next_actor", "operator") == "operator"]
     return {"items": pending, "known_pending_count": len(pending), "pending_count": len(pending) if not gaps else None,
             "complete": not gaps, "gaps": gaps, "as_of": iso(now), "recent": recent[-30:][::-1],
             "resolved": sorted(resolved, key=lambda r: (r.get("created_at") or "9999", r["id"])),
             "keep_retire": sorted(keep_retire, key=lambda r: (r.get("created_at") or "9999", r["id"])),
-            "keep_retire_count": len(keep_retire)}
+            "keep_retire_count": len(keep_retire), "evidence_blockers": evidence}
 
 
 def writes_approved(registry: dict) -> bool:

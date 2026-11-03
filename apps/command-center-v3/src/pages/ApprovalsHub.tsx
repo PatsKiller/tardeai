@@ -41,6 +41,11 @@ function Queue() {
         {!!view?.gaps.length && <DeskGap title="Some sources need attention" reason={`${view.knownCount} known items. The full total is unavailable.`}>
           <details><summary>Source details</summary><ul>{view.gaps.map(gap => <li key={gap.source}>{gap.source.replace(/_/g, ' ')}: {gap.reason}</li>)}</ul></details>
         </DeskGap>}
+        {active === 'waiting' && !!data.evidence_blockers?.length && <section className="panel" aria-label="Needs coordinator evidence">
+          <h2>Needs coordinator evidence</h2>
+          <p>These items need updated evidence from the coordinator before a decision can be requested.</p>
+          {data.evidence_blockers.map(item => <ApprovalCard key={item.id} item={{ ...item, actionable: false }} sourceReady={false} />)}
+        </section>}
         {active === 'history' ? <section className="panel"><h2>Decision history</h2>{data.recent.length ? data.recent.map((record, i) => <article key={i} className="rule">
           <strong>{record.decision.replace(/_/g, ' ')}</strong><p>{record.actor} · {new Date(record.at).toLocaleString()}</p>
           <details><summary>Exact version and comment</summary><code>{record.document_sha}</code><p>{record.comment}</p></details>
@@ -82,6 +87,7 @@ function ApprovalCard({ item, candidate = false, sourceReady = true }: { item: A
       {candidate && <p>{item.keep_retire_reason ?? 'Review whether this older proposal is still needed.'}</p>}
       {item.next_action && <p>{item.next_action}{item.next_actor ? ` · ${item.next_actor}` : ''}</p>}
       {item.source_sha && <p className="muted" style={{ overflowWrap: 'anywhere' }}>Exact head: <code>{item.source_sha}</code></p>}
+      {item.source_gap && <p className="muted">Missing evidence: <code>{item.source_gap}</code></p>}
       {showCommand && item.policy_approval_command && <div><p>Approval line for this exact version:</p><code style={{ display: 'block', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{item.policy_approval_command}</code></div>}
       <p className="muted">Source: {item.source.replace(/_/g, ' ')}{item.source_as_of && <> · <ReadableTime value={item.source_as_of} /></>}</p>
       {prUrl && <a href={prUrl} target="_blank" rel="noreferrer">Open pull request #{item.pr}</a>}

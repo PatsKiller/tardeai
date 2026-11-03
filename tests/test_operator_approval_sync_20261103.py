@@ -46,6 +46,16 @@ class Gh:
         return self.documents.get(path), None if path in self.documents else "synthetic unavailable"
 
 
+@pytest.fixture(autouse=True)
+def synthetic_authority_for_snapshot(monkeypatch):
+    # Snapshot mechanics use complete synthetic authority. Dedicated authority tests
+    # independently exercise trusted-main and canonical operator-comment validation.
+    from scripts.lib.operator_approval_authority import AuthorityContext
+    context = AuthorityContext(BASE, STAMP, mode="legacy")
+    context.comments = lambda number: []
+    monkeypatch.setattr(source, "load_authority", lambda **kwargs: context)
+
+
 class Board:
     def __init__(self, rows):
         self.prs, self.prs_warning, self._prs_at = rows, None, 0.0
@@ -261,3 +271,83 @@ def test_new_upstream_head_disables_old_command_before_detail_refresh_is_due():
     assert "current head" in stale["gap"]
     board.prs = []
     assert snapshot.view(background=False)["rows"] == []
+
+
+
+def scoped_authority(operator_required, state="pending", version="29.3.0"):
+    return SimpleNamespace(policy_version=version, policy_sha=BASE, gap=None,
+        classify=lambda files, **kw: {"mode": "delegated", "complete": True,
+            "operator_required": operator_required, "next_actor": "operator" if operator_required else "coordinator"},
+        policy_approval=lambda **kw: {"state": state, "head_sha": kw["head_sha"],
+            "gap": "POLICY_RATIFICATION_CONTINUATION_UNVERIFIED" if state == "unknown" else None})
+
+
+def test_delegated_engineering_is_absent_but_explicit_operator_holds_remain():
+    authority = scoped_authority(False)
+    engineering = {**pr(2472), "labels": [{"name": "held"}]}
+    assert source.project(engineering, git=lambda *args: ".github/workflows/ci.yml\n", gh=Gh(), as_of=STAMP,
+                          authority=authority) is None
+    for label in ("operator-hold", "broker"):
+        row = source.project({**engineering, "labels": [{"name": label}]},
+                             git=lambda *args: ".github/workflows/ci.yml\n", gh=Gh(), as_of=STAMP, authority=authority)
+        assert row["next_actor"] == "operator" and row["actionable"] is True
+    protected = source.project(pr(2473), git=lambda *args: "protected/runtime\n", gh=Gh(), as_of=STAMP,
+                               authority=scoped_authority(True))
+    assert protected["next_actor"] == "operator"
+
+
+def test_exact_ratification_resolves_and_unknown_continuation_goes_to_coordinator(tmp_path):
+    approved = source.project(pr(), git=git, gh=Gh(), as_of=STAMP, authority=scoped_authority(True, "approved"))
+    assert approved["resolution"] == "policy_ratification_approved" and approved["actionable"] is False
+    assert "policy_approval_command" not in approved
+    unknown = source.project(pr(), git=git, gh=Gh(), as_of=STAMP, authority=scoped_authority(True, "unknown"))
+    assert unknown["next_actor"] == "coordinator" and unknown["actionable"] is False
+    assert "policy_approval_command" not in unknown
+    ctx = context(tmp_path, unknown)
+    data = api.handle(api.PREFIX + "/approvals", "GET", ctx=ctx)[1]["data"]
+    assert data["actionable_count"] == 0 and data["actionable_items"] == []
+    assert data["complete"] is False and data["pending_count"] is None
+    assert data["gaps"][0]["reason"] == "POLICY_RATIFICATION_CONTINUATION_UNVERIFIED"
+    assert data["evidence_blockers"][0]["id"] == "policy:2501"
+    assert "document" not in data["evidence_blockers"][0]
+
+
+def test_policy_proposal_older_than_trusted_active_version_is_history_only():
+    row = source.project(pr(), git=git, gh=Gh(), as_of=STAMP, authority=scoped_authority(True, version="31.0.0"))
+    assert row["resolution"] == "superseded_by_active_policy"
+    assert row["active_policy_sha"] == BASE and row["actionable"] is False
+    assert "policy_approval_command" not in row
+
+
+def test_snapshot_retains_coordinator_evidence_and_resolves_verified_policy(monkeypatch):
+    board = Board([pr()])
+    authority = scoped_authority(True, "unknown")
+    monkeypatch.setattr(source, "load_authority", lambda **kwargs: authority)
+    snapshot = source.Snapshot(board=board, git=git, gh_factory=Gh, clock=lambda: 0.0)
+    unknown = snapshot.view(background=False)
+    assert unknown["gap"] and unknown["rows"][0]["next_actor"] == "coordinator"
+    assert unknown["rows"][0]["source_gap"] == "POLICY_RATIFICATION_CONTINUATION_UNVERIFIED"
+    authority.policy_approval = lambda **kwargs: {"state": "approved"}
+    snapshot = source.Snapshot(board=board, git=git, gh_factory=Gh, clock=lambda: 0.0)
+    resolved = snapshot.view(background=False)
+    assert resolved["rows"] == [] and resolved["gap"] is None
+    assert resolved["resolved"][0]["resolution"] == "policy_ratification_approved"
+
+
+def test_rest_renames_preserve_protected_previous_paths():
+    def unavailable(*args):
+        raise OSError("synthetic missing commit")
+    gh = Gh({"repos/example/project/pulls/2501/files?per_page=100&page=1": [
+                {"filename": "ordinary.txt", "previous_filename": "protected/policy", "status": "renamed"}],
+             "repos/example/project/pulls/2501": pr()})
+    assert source.changed_files(pr(), unavailable, gh) == ["ordinary.txt", "protected/policy"]
+    gh.documents["repos/example/project/pulls/2501/files?per_page=100&page=1"] = [{"filename": "ordinary.txt", "status": "renamed"}]
+    with pytest.raises(core.Refused, match="GITHUB_PR_FILES_INVALID"):
+        source.changed_files(pr(), unavailable, gh)
+
+
+
+def test_already_active_policy_version_needs_coordinator_reconciliation():
+    row = source.project(pr(), git=git, gh=Gh(), as_of=STAMP, authority=scoped_authority(True, version="30.0.0"))
+    assert row["next_actor"] == "coordinator" and row["source_gap"] == "POLICY_VERSION_ALREADY_ACTIVE"
+    assert row["actionable"] is False and "policy_approval_command" not in row

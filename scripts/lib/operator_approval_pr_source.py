@@ -19,6 +19,7 @@ from typing import Callable
 from scripts.lib import agent_claim_lifecycle as lifecycle
 from scripts.lib import merge_hold_paths
 from scripts.lib import operator_approvals as core
+from scripts.lib.operator_approval_authority import load_context as load_authority
 
 MAX_PRS = 100
 MAX_FILES = 3000
@@ -35,14 +36,20 @@ def _read(gh, path):
 def changed_files(pr: dict, git: Callable, gh) -> list[str]:
     head, base = pr["head"]["sha"], pr["base"]["sha"]
     try:
-        names = git("diff", "--name-only", f"{base}...{head}", "--").splitlines()
+        names = git("diff", "--name-only", "--no-renames", f"{base}...{head}", "--").splitlines()
     except (subprocess.SubprocessError, OSError, core.Refused):
         names = []
         for page in range(1, MAX_FILES // 100 + 1):
             rows = _read(gh, f"repos/{gh.repo}/pulls/{int(pr['number'])}/files?per_page=100&page={page}")
-            if not isinstance(rows, list):
+            if (not isinstance(rows, list) or len(rows) > 100
+                    or any(not isinstance(r, dict) or not isinstance(r.get("filename"), str)
+                           or (r.get("status") == "renamed" and not isinstance(r.get("previous_filename"), str))
+                           for r in rows)):
                 raise core.Refused("GITHUB_PR_FILES_INVALID", 503)
-            names.extend(r["filename"] for r in rows if isinstance(r, dict) and isinstance(r.get("filename"), str))
+            for record in rows:
+                names.append(record["filename"])
+                if record.get("previous_filename"):
+                    names.append(record["previous_filename"])
             if len(rows) < 100:
                 # The files route follows a branch; bind its result back to the observed head.
                 verify_open_head(pr, gh)
@@ -76,7 +83,8 @@ def verify_open_head(pr: dict, gh) -> None:
         raise core.Refused("PR_HEAD_CHANGED", 409)
 
 
-def project(pr: dict, *, git: Callable, gh, as_of: str, annotations: Callable | None = None) -> dict | None:
+def project(pr: dict, *, git: Callable, gh, as_of: str, annotations: Callable | None = None,
+            authority=None) -> dict | None:
     """Exact-head projection; inputs may be synthetic. Closed/merged PRs never remain pending."""
     if pr.get("state") != "open" or pr.get("merged_at") or (pr.get("base") or {}).get("ref") != "main":
         return None
@@ -87,15 +95,31 @@ def project(pr: dict, *, git: Callable, gh, as_of: str, annotations: Callable | 
     labels = {r.get("name") if isinstance(r, dict) else r for r in pr.get("labels") or []}
     held = merge_hold_paths.held_classes(files)
     is_policy = "AGENTS.md" in files
-    if not is_policy and not held and not (labels & merge_hold_paths.hold_labels()):
+    scope = authority.classify(files, head_sha=head) if authority is not None else None
+    protected = bool(scope and scope.get("mode") == "delegated" and scope.get("complete")
+                     and scope.get("operator_required"))
+    if not is_policy and not held and not protected and not (labels & merge_hold_paths.hold_labels()):
         return None
     # A label alone is not exact-head approval or evidence that a PR completed.
     number = int(pr["number"])
+    same_active_version = False
     if is_policy:
         text, old = policy_text(head, git, gh), policy_text(base, git, gh)
         if text == old:
             return None
         match = re.search(r"^Policy-Version:\s*(\d+\.\d+\.\d+)\s*$", text, re.M)
+        active_version = getattr(authority, "policy_version", None)
+        if (match and isinstance(active_version, str) and re.fullmatch(r"\d+\.\d+\.\d+", active_version)
+                and getattr(authority, "gap", None) is None
+                and tuple(map(int, match[1].split("."))) < tuple(map(int, active_version.split(".")))):
+            row = core.item(ident=f"policy:{number}", kind="POLICY", title=pr.get("title") or f"Policy PR #{number}",
+                            proposed_by=(pr.get("user") or {}).get("login"), created_at=pr.get("created_at"),
+                            doc=core.document(f"Policy {match[1]} is superseded by active {active_version}.",
+                                              source_sha=head, version=match[1]), source="github_pr_snapshot", pr=number)
+            row.update(source_sha=head, source_as_of=as_of, actionable=False,
+                       resolution="superseded_by_active_policy", active_policy_sha=authority.policy_sha)
+            return row
+        same_active_version = bool(match and active_version == match[1] and getattr(authority, "gap", None) is None)
         doc = core.document(text, base_text=old, source_sha=head, version=match[1] if match else "",
                             source_verified=True)
         notes = annotations(pr, doc) if annotations else None
@@ -107,6 +131,14 @@ def project(pr: dict, *, git: Callable, gh, as_of: str, annotations: Callable | 
                         doc=doc, source="github_pr_snapshot", pr=number)
         action = "Read this exact policy version and record its approval line."
     else:
+        # These are the explicit label refusals of trusted pr_merge_delegation.Host.collect,
+        # reflected for display only. The generic legacy `held` label does not undo delegated engineering.
+        explicit_hold = labels & {"hold", "do-not-merge", "operator-hold", "broker", "broker_active_trader",
+                                  "active-trader", "active_trader", "broker-active-trader"}
+        if scope and explicit_hold:
+            scope = {**scope, "operator_required": True, "next_actor": "operator", "reason": "explicit_hold_requires_resolution"}
+        if scope and scope.get("complete") and scope.get("operator_required") is False:
+            return None  # Ratified delegated engineering belongs to its coordinator, not this queue.
         public = {"pr": number, "head_sha": head, "hold_classes": sorted(held),
                   "hold_labels": sorted(labels & merge_hold_paths.hold_labels()),
                   "draft": bool(pr.get("draft")), "next_action": "Independent exact-head reviews and green checks are required before operator merge."}
@@ -119,6 +151,40 @@ def project(pr: dict, *, git: Callable, gh, as_of: str, annotations: Callable | 
     row.update(source_sha=head, source_as_of=as_of, actionable=True, stale=False, updated_at=pr.get("updated_at"),
                pr_url=f"https://github.com/{gh.repo}/pull/{number}", next_actor="operator", next_action=action,
                source_refs=[f"github_pr:{number}:{head}"])
+    if authority is not None:
+        if is_policy:
+            if same_active_version:
+                row.update(actionable=False, next_actor="coordinator",
+                           next_action="Coordinator: reconcile this proposal with the already active policy version.",
+                           source_gap="POLICY_VERSION_ALREADY_ACTIVE")
+                row.pop("policy_approval_command", None)
+                return row
+            # An exact current token may already be recorded on GitHub before the PR merges.
+            # Merge-intent digest approvals never substitute for this policy evidence.
+            reviewed_head = None
+            # ACTIVE metadata may be a bounded activation of an already reviewed head.
+            # A mismatch asks the coordinator to verify continuation; it never asks for a new token by inference.
+            if re.search(r"^Status:\s*ACTIVE\s*$", text, re.M) and doc["version"] == "30.0.0":
+                try:
+                    manifest = json.loads(git("show", f"{head}:config/agent_standing_authority.json"))
+                    reviewed_head = (manifest.get("ratification") or {}).get("reviewed_head")
+                except (subprocess.SubprocessError, OSError, core.Refused, ValueError, AttributeError):
+                    pass
+            approval = authority.policy_approval(pr=number, head_sha=head, version=doc["version"],
+                                                  reviewed_head_sha=reviewed_head)
+            row["approval"] = approval
+            if approval.get("state") == "approved":
+                row.update(resolution="policy_ratification_approved", actionable=False)
+                row.pop("policy_approval_command", None)
+            elif approval.get("state") != "pending":
+                row.update(actionable=False, next_actor="coordinator", next_action="Coordinator: verify ratification evidence for this head.",
+                           source_gap=approval.get("gap") or "POLICY_APPROVAL_EVIDENCE_UNAVAILABLE")
+                row.pop("policy_approval_command", None)
+        else:
+            row["approval_scope"] = scope
+            if not scope.get("complete"):
+                row.update(actionable=False, next_actor="coordinator", next_action="Coordinator: verify the current approval authority.",
+                           source_gap=scope.get("gap") or "APPROVAL_AUTHORITY_SCOPE_UNPROVEN")
     return row
 
 
@@ -127,6 +193,8 @@ class Snapshot:
     def __init__(self, *, board, git, gh_factory=lifecycle.GitHubReader, annotations=None, clock=time.monotonic):
         self.board, self.git, self.gh_factory, self.annotations, self.clock = board, git, gh_factory, annotations, clock
         self.rows = None
+        self.resolved = []
+        self._failed_refresh = False
         self.warning = "PR approval details: first refresh pending"
         self.as_of = None
         self._at = None
@@ -169,24 +237,33 @@ class Snapshot:
                     continue
                 row = dict(known)
                 head = (current.get(row.get("pr"), {}).get("head") or {}).get("sha")
-                stale = bool(gap) or not fresh or head != row.get("source_sha")
+                stale = self._failed_refresh or not fresh or head != row.get("source_sha") or bool(row.get("source_gap"))
                 if stale:
-                    row.update(actionable=False, stale=True, next_action="Refresh the current PR evidence before acting.")
+                    action = row.get("next_action") if row.get("source_gap") else "Coordinator: refresh the current PR evidence before acting."
+                    row.update(actionable=False, stale=True, next_actor="coordinator", next_action=action)
                     row.pop("policy_approval_command", None)
                     gap = gap or "PR approval evidence does not match the current head"
                 rows.append(row)
-            return {"rows": rows, "gap": gap, "as_of": self.as_of}
+            return {"rows": rows, "resolved": list(self.resolved), "gap": gap, "as_of": self.as_of}
 
     def _refresh(self, prs):
-        rows, gaps = [], []
-        as_of = lifecycle._iso(core.utc_now())
+        rows, gaps, resolved = [], [], []
+        now = core.utc_now()
+        as_of = lifecycle._iso(now)
         try:
             gh = self.gh_factory()
+            authority = load_authority(git=self.git, gh=gh, now=now)
             for pr in prs[:MAX_PRS]:
                 try:
-                    row = project(pr, git=self.git, gh=gh, as_of=as_of, annotations=self.annotations)
+                    row = project(pr, git=self.git, gh=gh, as_of=as_of, annotations=self.annotations, authority=authority)
                     if row:
-                        rows.append(row)
+                        if row.get("resolution"):
+                            resolved.append(row)
+                        elif row.get("source_gap"):
+                            gaps.append(f"PR #{pr.get('number', '?')}: {row['source_gap']}")
+                            rows.append(row)
+                        else:
+                            rows.append(row)
                 except (core.Refused, subprocess.SubprocessError, OSError, ValueError, TypeError, KeyError) as exc:
                     reason = exc.code if isinstance(exc, core.Refused) else type(exc).__name__
                     gaps.append(f"PR #{pr.get('number', '?')}: {reason}")
@@ -196,11 +273,15 @@ class Snapshot:
                 # Per-PR failures keep their known item, explicitly incomplete; a confirmed
                 # closed or removed PR is absent from the successful listing and drops out.
                 failed = {int(p.split('#', 1)[1].split(':', 1)[0]) for p in gaps if p.startswith("PR #") and p.split('#', 1)[1].split(':', 1)[0].isdigit()}
-                rows.extend(r for r in self.rows or [] if r.get("pr") in failed)
-                self.rows, self.as_of = rows, as_of
+                present = {row.get("pr") for row in rows}
+                rows.extend({**r, "source_gap": "PR_APPROVAL_DETAILS_UNAVAILABLE"}
+                            for r in self.rows or [] if r.get("pr") in failed and r.get("pr") not in present)
+                self.rows, self.resolved, self.as_of = rows, resolved, as_of
+                self._failed_refresh = False
                 self.warning = "; ".join(gaps[:6]) or None
         except Exception as exc:  # background source must leave the last good queue readable
             with self._lock:
+                self._failed_refresh = True
                 self.warning = f"PR approval refresh failed ({type(exc).__name__}); last good kept"
         finally:
             with self._lock:
