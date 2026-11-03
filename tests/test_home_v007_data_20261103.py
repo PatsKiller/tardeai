@@ -1018,3 +1018,61 @@ def test_the_join_actually_returns_the_home_v007_block_it_builds(monkeypatch):
                       store={"accounts": {}}, policy={"reentry_watch": {}}, now=NOW)
     assert out["home_v007"] == sentinel
     assert out["home_v007"]["schema"] == "HomeMarketRiskContext@v1"
+
+
+def _book_store():
+    return {
+        "data_as_of": "2032-03-09",
+        "portfolio_totals": {"total_value": 300_000.0},
+        "holdings": [
+            {"symbol": "CASH", "account": "a1", "is_cash": True, "market_value": 100_000.0},
+            {"symbol": "FND", "account": "a1", "market_value": 150_000.0, "shares": 1000, "price": 150.0},
+            {"symbol": "SYNX", "account": "a2", "market_value": 40_000.0, "shares": 100, "price": 400.0},
+        ],
+    }
+
+
+class _JoinReader(StoredReader):
+    def _rows(self, sql, params=None):
+        return []
+
+
+def _real_join():
+    from scripts.lib.market_risk.policy import load_policy
+    from scripts.lib.market_risk_book_join import join
+
+    def no_db(**kwargs):
+        raise TimeoutError("hermetic: no database in this test")
+
+    return join(
+        {"state": "evaluated", "as_of": ASOF, "mode": "shadow", "categories": [], "positions": {},
+         "reentry_watch": {}},
+        now=NOW, budgets=[], get_conn=no_db, store=_book_store(), policy=load_policy(),
+        context_reader=_JoinReader(),
+    )
+
+
+def test_the_real_join_builds_a_shaped_available_block_from_a_synthetic_book():
+    """The outer join, the real producer and its store — the path cc6 found untested."""
+    ctx = _real_join()["home_v007"]
+    assert ctx["schema"] == "HomeMarketRiskContext@v1" and ctx["state"] == "available"
+    assert ctx["symbols"] and all(isinstance(v, dict) for v in ctx["symbols"].values())
+    assert all({"field", "reason", "remediation"} <= set(g) and g["reason"]
+               and isinstance(g["remediation"], dict) for g in ctx["gaps"])
+
+
+def test_the_real_join_emits_the_shaped_unavailable_block_when_the_context_is_unimportable(monkeypatch):
+    import scripts.lib.market_risk_book_join as bj
+
+    real = bj._import
+
+    def boom(name):
+        if name == "market_risk_home_context":
+            raise RuntimeError("context unavailable")
+        return real(name)
+
+    monkeypatch.setattr(bj, "_import", boom)
+    ctx = _real_join()["home_v007"]
+    assert ctx["state"] == "unavailable" and ctx["schema"] == "HomeMarketRiskContext@v1" and ctx["symbols"] == {}
+    assert ctx["gaps"][0]["remediation"]["key"] == "HOMEV007:context"
+    assert ctx["read_errors"][0]["source"] == "home_v007_join"
