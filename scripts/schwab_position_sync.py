@@ -66,19 +66,55 @@ def _total_of(h):
         return 0.0
 
 
-def _last_good_doc(path=None):
+def _store_state(path=None):
+    """Classify the holdings store WITHOUT conflating 'absent' with 'exists but unreadable'.
+
+    2026-11-03: holdings.json was 0 bytes while `_freshness.json` still said FRESH. The failure
+    class is a store that exists but cannot serve as a baseline. Distinguish the states so:
+
+      • READ diff paths may treat absent/empty/corrupt as **no snapshot** — there is nothing to
+        diff against, and saying so is honest;
+      • WRITE paths must NEVER treat empty/corrupt as **no baseline**. `validate_payload(h, None)`
+        disables the relative-drop / coverage / cash guards, so a single-account sync over a broken
+        store would silently replace the whole book. Refuse instead.
+
+    Returns ``(state, doc)``; ``doc`` is the parsed document only when ``state == "ok"``.
+    """
+    p = Path(path) if path else HOLDINGS_PATH
+    if not p.exists():
+        return "absent", None
     try:
-        p = Path(path) if path else HOLDINGS_PATH
-        if p.exists():
-            return json.loads(p.read_text())
-    except Exception:
-        pass
-    return None
+        raw = p.read_bytes()
+    except OSError:
+        return "unreadable", None
+    if not raw.strip():
+        return "empty", None
+    try:
+        doc = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return "unparseable", None
+    if not isinstance(doc, dict):
+        return "unparseable", None
+    return "ok", doc
+
+
+def _last_good_doc(path=None):
+    state, doc = _store_state(path)
+    return doc if state == "ok" else None
 
 
 def sane_payload(h, last_good=None):
-    """PRE-WRITE SANITY — same contract as canonical_assert()."""
-    last = last_good if last_good is not None else _last_good_doc()
+    """PRE-WRITE SANITY — same contract as canonical_assert().
+
+    With no explicit ``last_good``, a store that exists but is empty/corrupt is not a clean
+    slate: report NO_BASELINE rather than validate the candidate with every relative guard off.
+    """
+    if last_good is not None:
+        last = last_good
+    else:
+        state, last = _store_state()
+        if state in ("empty", "unparseable", "unreadable"):
+            return False, f"NO_BASELINE: holdings store is {state}"
     v = validate_payload(h, last)
     return v.ok, f"{v.reason_code}: {v.reason}"
 
@@ -285,7 +321,16 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
     a caller may pass its own resolved path (the guard operates entirely on that path).
     """
     HP = Path(target_path).resolve() if target_path else HOLDINGS_PATH
-    prior_doc = _last_good_doc(HP)
+    prior_state, prior_doc = _store_state(HP)
+    if prior_state in ("empty", "unparseable", "unreadable"):
+        # The store exists but cannot serve as a baseline. Refuse: validate_payload(h, None)
+        # turns off the relative-drop/coverage/cash guards, so proceeding would let a partial
+        # writer (e.g. one account's sync) replace the whole book with no comparison.
+        reason = f"NO_BASELINE: holdings store is {prior_state}"
+        _record(account_key, "rejected_no_baseline", f"[{source}] {reason}")
+        _alert(f"🛑 holdings write BLOCKED ({source}): {reason}. Prior snapshot kept (no wipe).", source)
+        return {"wrote": False, "status": "rejected_no_baseline", "reason": reason,
+                "reason_code": "NO_BASELINE", "missing_accounts": []}
     # Totals must describe the positions in THIS payload -- see reconcile_totals.
     reconcile_totals(new_holdings, source=source)
     verdict = validate_payload(new_holdings, prior_doc)
@@ -695,10 +740,22 @@ def sync_schwab_positions(account_key, dry_run=True):
 
 
 def _sync_rows(account_key, label, live, st, *, dry_run):
-    """Read holdings.json, replace this account's rows from the live positions, write (caller holds the lock)."""
-    if not HOLDINGS_PATH.exists():
-        return {"status": "no_holdings_file", "wrote": False}
-    cur = json.loads(HOLDINGS_PATH.read_text())
+    """Read holdings.json, replace this account's rows from the live positions, write (caller holds the lock).
+
+    A read diff over no snapshot is honest and harmless; a write over no baseline is not.
+    2026-11-03: a 0-byte store must never be the starting document for a read-modify-write.
+    """
+    state, cur = _store_state()
+    if state != "ok":
+        if dry_run:
+            # Read path: absent/empty/corrupt simply means there is no snapshot to diff.
+            return {"status": "no_holdings_file" if state == "absent" else "no_snapshot",
+                    "store_state": state, "broker_account": account_key,
+                    "holdings_label": label, "wrote": False}
+        # Write path: empty/corrupt is NOT 'no baseline' — refuse before the read-modify-write.
+        _record(account_key, "rejected_no_baseline", f"[schwab_position_sync] holdings store {state}")
+        return {"status": "rejected_no_baseline", "store_state": state, "broker_account": account_key,
+                "holdings_label": label, "wrote": False}
     hold = cur.get("holdings", [])
     existing_by_key = {((r.get("symbol") or "").upper(), label): r
                        for r in hold if r.get("account") == label}
