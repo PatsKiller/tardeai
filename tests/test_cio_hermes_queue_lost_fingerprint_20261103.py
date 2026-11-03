@@ -212,3 +212,66 @@ def test_one_valid_duplicate_and_two_real_losses_stays_unhealthy(tmp_path, monke
     assert "requests_lost:2" in out["firing"]
     assert out["ok"] is False
 
+
+
+# ── unreadable inputs are never healthy (lead ruling, 2026-11-03) ─────────────────────────────
+# cx-openai-2 and cc-deepseek-3 both found the same shape: a 0-byte/invalid/missing/directory input
+# reported ok=True with lost_n 0 (or no number at all). "I could not read it" is not "nothing is lost".
+DAMAGE = ("zero_byte", "invalid", "missing", "directory")
+
+
+def _damage_file(path, kind):
+    if kind == "zero_byte":
+        path.write_bytes(b"")
+    elif kind == "invalid":
+        path.write_text("{not json\nnot json either\n", encoding="utf-8")
+    elif kind == "directory":
+        if path.exists():
+            path.unlink()
+        path.mkdir()
+    # "missing": leave it absent
+
+
+@pytest.mark.parametrize("kind", DAMAGE)
+def test_an_unreadable_ledger_is_never_healthy(tmp_path, kind):
+    ledger = tmp_path / "hermes_research_requests.jsonl"
+    _damage_file(ledger, kind)
+    (tmp_path / "hermes_research_projection.json").write_text("{}", encoding="utf-8")
+    out = collect_cio_hermes_queue_health(now=NOW, path=ledger)
+    assert out["ok"] is False
+    assert out["ledger_state"] in {"empty", "invalid", "absent", "unreadable"}
+    assert f"request_ledger_unreadable:{out['ledger_state']}" in out["firing"]
+    # No number from a file we did not read.
+    assert out["lost_n"] is None and out["lost"] is None
+
+
+@pytest.mark.parametrize("kind", DAMAGE)
+def test_an_unreadable_projection_is_never_healthy(tmp_path, kind):
+    ledger = _ledger(tmp_path, {}, [_requested("res_lost", "sha256:deadbeef")])
+    proj = tmp_path / "hermes_research_projection.json"
+    if kind == "missing":
+        proj.unlink()  # _ledger wrote it; this case is the FILE absent
+    else:
+        _damage_file(proj, kind)
+    out = collect_cio_hermes_queue_health(now=NOW, path=ledger)
+    assert out["ok"] is False
+    assert out["projection_state"] in {"empty", "unparseable", "absent", "unreadable"}
+    assert f"projection_unreadable:{out['projection_state']}" in out["firing"]
+    assert out["lost_n"] is None and out["lost"] is None
+
+
+def test_the_payload_always_carries_both_read_states(tmp_path):
+    ledger = _ledger(tmp_path, {"by_research_id": {}}, [_requested("res_lost", "sha256:deadbeef")])
+    out = collect_cio_hermes_queue_health(now=NOW, path=ledger)
+    assert out["ledger_state"] == "ok" and out["projection_state"] == "ok"
+    assert out["lost_n"] == 1, "a valid empty projection plus one unowned request is still lost"
+
+
+def test_a_directory_projection_and_a_valid_ledger_report_no_count(tmp_path):
+    """The exact cc3 counterexample: directory-as-projection must not become ok=True."""
+    ledger = _ledger(tmp_path, {}, [])
+    proj = tmp_path / "hermes_research_projection.json"
+    proj.unlink()
+    proj.mkdir()
+    out = collect_cio_hermes_queue_health(now=NOW, path=ledger)
+    assert out["ok"] is False and out["projection_state"] == "unreadable"

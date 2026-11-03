@@ -98,6 +98,55 @@ def load_events(path: Path, *, since: datetime) -> list[dict[str, Any]]:
     return out
 
 
+def _ledger_state(path: Path) -> str:
+    """Classify the request ledger: ``ok | absent | empty | unreadable | invalid``.
+
+    An unreadable input is "I could not tell", never "no requests": reading it as an empty
+    ledger made a missing or corrupt file report a healthy lane with zero lost requests
+    (lead ruling, 2026-11-03, after cx-openai-2 and cc-deepseek-3 reached it independently).
+    """
+    try:
+        if path.is_dir():
+            return "unreadable"
+        raw = path.read_bytes()
+    except FileNotFoundError:
+        return "absent"
+    except OSError:
+        return "unreadable"
+    if not raw.strip():
+        return "empty"
+    for line in raw.decode("utf-8", errors="replace").splitlines():
+        if not line.strip():
+            continue
+        try:
+            if isinstance(json.loads(line), dict):
+                return "ok"
+        except (ValueError, RecursionError):
+            continue
+    return "invalid"
+
+
+def _projection_state(path: Path) -> tuple[Optional[dict[str, Any]], str]:
+    """``(document, state)`` for the projection: ok | absent | empty | unparseable | not_object | unreadable."""
+    try:
+        if path.is_dir():
+            return None, "unreadable"
+        raw = path.read_bytes()
+    except FileNotFoundError:
+        return None, "absent"
+    except OSError:
+        return None, "unreadable"
+    if not raw.strip():
+        return None, "empty"
+    try:
+        doc = json.loads(raw.decode("utf-8"))
+    except (ValueError, RecursionError):
+        return None, "unparseable"
+    if not isinstance(doc, dict):
+        return None, "not_object"
+    return doc, "ok"
+
+
 def summarise(events: Iterable[dict[str, Any]], *, now: datetime, stall_hours: float = 3.0,
               classify=None) -> dict[str, Any]:
     """Latest status per research_id, failure classes, stalled queue. Pure."""
@@ -214,19 +263,41 @@ def collect_cio_hermes_queue_health(*, now: Optional[datetime] = None, path: Opt
     fail_share = _env_float("CIO_HERMES_QUEUE_FAIL_SHARE", 0.30)
     min_outcomes = int(_env_float("CIO_HERMES_QUEUE_MIN_OUTCOMES", 5))
     stall_h = _env_float("CIO_HERMES_QUEUE_STALL_HOURS", 3.0)
-    row: dict[str, Any] = {"lane": LANE, "schema": SCHEMA, "authority": AUTHORITY,
-                           "as_of": now.replace(microsecond=0).isoformat(), "ledger": str(ledger),
-                           "ledger_present": ledger.exists(), "window_hours": window_h}
-    if not ledger.exists():
-        return {**row, "ok": True, "firing": [], "note": "request ledger absent (no CIO Hermes queue on this host)"}
+    projection = Path(os.getenv("CIO_HERMES_PROJECTION") or ledger.with_name("hermes_research_projection.json"))
+    ledger_state = _ledger_state(ledger)
+    proj_doc, projection_state = _projection_state(projection)
+    row: dict[str, Any] = {
+        "lane": LANE,
+        "schema": SCHEMA,
+        "authority": AUTHORITY,
+        "as_of": now.replace(microsecond=0).isoformat(),
+        "ledger": str(ledger),
+        "ledger_present": ledger_state != "absent",
+        "window_hours": window_h,
+        # The read state travels with the numbers: a consumer must be able to
+        # tell "zero lost" from "could not read" (lead ruling, 2026-11-03).
+        "ledger_state": ledger_state,
+        "projection": str(projection),
+        "projection_state": projection_state,
+    }
+    if ledger_state != "ok":
+        # NEVER healthy when the input could not be read, and never a count from a file we did not
+        # read: an absent/empty/corrupt ledger is "I could not tell", not "no requests".
+        return {
+            **row,
+            "ok": False,
+            "firing": [f"request_ledger_unreadable:{ledger_state}"],
+            "lost": None,
+            "lost_n": None,
+            "note": f"request ledger is {ledger_state}; no outcome or lost-request count was measured",
+        }
     events = load_events(ledger, since=now - timedelta(hours=window_h))
     s = summarise(events, now=now, stall_hours=stall_h)
     # A request the ledger recorded but the projection does not hold is invisible to the worker.
     # Measured 2026-09-14: 7 that day, lost to unlocked writers. The worker now restores those
     # under 48h on its next claim; this signal staying on means a writer still bypasses the lock.
-    projection = Path(os.getenv("CIO_HERMES_PROJECTION") or ledger.with_name("hermes_research_projection.json"))
-    try:
-        proj_doc = json.loads(projection.read_text(encoding="utf-8"))
+    if projection_state == "ok":
+        assert proj_doc is not None
         by_rid = proj_doc.get("by_research_id") or {}
         known = set(by_rid)
         # A request is NOT lost when its QUESTION is already owned by an open or completed
@@ -235,9 +306,10 @@ def collect_cio_hermes_queue_health(*, now: Optional[datetime] = None, path: Opt
         # lost while `res_cfaa3b471ead` (2.7 s earlier, same fingerprint) was in the projection.
         open_fp = {str(k): v for k, v in (proj_doc.get("by_fingerprint_open") or {}).items() if k}
         done_fp = {str(k): v for k, v in (proj_doc.get("by_fingerprint_completed") or {}).items() if k}
-    except (OSError, ValueError):
-        known = None
-        open_fp, done_fp, by_rid = {}, {}, {}
+    else:
+        # Ownership cannot be determined without the projection. Report the measured lane signals,
+        # flag the unreadable input, and publish NO lost count rather than a zero we did not read.
+        by_rid, known, open_fp, done_fp = {}, None, {}, {}
     grace = now - timedelta(minutes=10)
     lost = sorted(
         {
@@ -250,9 +322,11 @@ def collect_cio_hermes_queue_health(*, now: Optional[datetime] = None, path: Opt
             and not _question_owned(str(r.get("fingerprint") or ""), _asked_clock(r), by_rid, open_fp, done_fp)
         }
     )
-    s["lost"], s["lost_n"] = lost[:5], len(lost)
+    s["lost"], s["lost_n"] = (lost[:5], len(lost)) if known is not None else (None, None)
     outcomes = s["completed"] + s["failed"]
     firing: list[str] = []
+    if projection_state != "ok":
+        firing.append(f"projection_unreadable:{projection_state}")
     if lost:
         firing.append(f"requests_lost:{len(lost)}")
     if outcomes >= min_outcomes and s["failed"] / outcomes >= fail_share:
