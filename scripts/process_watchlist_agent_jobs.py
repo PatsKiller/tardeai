@@ -66,6 +66,7 @@ from lib.cio_agent_contract import (
 )
 from lib.hermes_discovery.symbol_validation import gate_watchlist_symbol
 from lib.agent_number_grounding import apply_number_grounding
+from lib.state_read import read_json_object
 _last_rag_sources = []  # Set by _build_prompt(), read by result saver
 _last_peer_agents = []  # Set by _get_peer_agent_notes(), read by result saver
 _batch_results_cache = {}  # {symbol: [{agent, recommendation, confidence, summary}]}
@@ -944,7 +945,7 @@ def _get_context(conn, symbol: str) -> dict:
     import psycopg2.extras
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    holdings = json.loads((STATE_DIR / "holdings.json").read_text()) if (STATE_DIR / "holdings.json").exists() else {}
+    holdings = read_json_object(STATE_DIR / "holdings.json", default={})
     pos = [h for h in holdings.get("holdings", []) if h.get("symbol") == symbol]
     from lib.account_display import ACCOUNT_FIELDS, location_facts, looks_like_number
     account_locations = [location_facts(p) for p in pos]
@@ -953,7 +954,7 @@ def _get_context(conn, symbol: str) -> dict:
         for field in (*ACCOUNT_FIELDS, "account_number"):
             if looks_like_number(str(position_snapshot.get(field) or "")):
                 position_snapshot.pop(field, None)
-    enrichment = json.loads((STATE_DIR / "ticker_enrichment_cache.json").read_text()) if (STATE_DIR / "ticker_enrichment_cache.json").exists() else {}
+    enrichment = read_json_object(STATE_DIR / "ticker_enrichment_cache.json", default={})
     e = enrichment.get(symbol, {}) if isinstance(enrichment.get(symbol), dict) else {}
 
     # Strategy card from DB
@@ -968,7 +969,7 @@ def _get_context(conn, symbol: str) -> dict:
     clean_prices, dropped_prices = _finite_price_points(prices)
 
     # Risk data
-    rm = json.loads((STATE_DIR / "risk_management.json").read_text()) if (STATE_DIR / "risk_management.json").exists() else {}
+    rm = read_json_object(STATE_DIR / "risk_management.json", default={})
     stop_data = next((p for p in rm.get("positions", []) if p.get("symbol") == symbol), {})
 
     snapshot = {
@@ -2201,7 +2202,7 @@ def _get_portfolio_context(conn, symbol: str) -> dict:
     import psycopg2.extras
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    holdings = json.loads((STATE_DIR / "holdings.json").read_text()) if (STATE_DIR / "holdings.json").exists() else {}
+    holdings = read_json_object(STATE_DIR / "holdings.json", default={})
     acct_summaries = holdings.get("account_summaries", {})
     total_portfolio = sum(info.get("total_value", 0) for info in acct_summaries.values())
 
@@ -2305,7 +2306,7 @@ def _build_dq_note(conn, symbol: str, dq_alert_count: int) -> str:
     from datetime import datetime, date
     stale = []
     try:
-        enrichment = json.loads((STATE_DIR / "ticker_enrichment_cache.json").read_text()) if (STATE_DIR / "ticker_enrichment_cache.json").exists() else {}
+        enrichment = read_json_object(STATE_DIR / "ticker_enrichment_cache.json", default={})
         e = enrichment.get(symbol) if isinstance(enrichment.get(symbol), dict) else None
         if e is None:
             stale.append("technicals/fundamentals snapshot (RSI, SMA, PE): MISSING from enrichment cache")
@@ -2361,7 +2362,7 @@ def _build_layer_status(conn) -> str:
     layers = cur.fetchall()
 
     # Get total portfolio value from holdings
-    holdings = json.loads((STATE_DIR / "holdings.json").read_text()) if (STATE_DIR / "holdings.json").exists() else {}
+    holdings = read_json_object(STATE_DIR / "holdings.json", default={})
     total_portfolio = sum(info.get("total_value", 0) for info in holdings.get("account_summaries", {}).values())
 
     # Get actual allocation per layer
