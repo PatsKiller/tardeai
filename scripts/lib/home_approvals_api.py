@@ -1,0 +1,305 @@
+"""Home v008 "Needs you" approvals — HTTP layer (piece B).
+
+This module does exactly three things: authenticate the HTTP request, call the store's single
+decision entry (``scripts/lib/home_approvals.py::decide``), and shape the response. It never
+executes an action, never writes a receipt, and never decides anything itself.
+
+Design of record: ``persistent-state/handoffs/DESIGN_HOME_V008_APPROVALS_A_B_BOUNDARY_20261103.md``
+(lead-ratified 2026-11-03).
+
+Trust rails, all enforced in A's ``decide()`` and re-checked here at the HTTP edge:
+  1. a decision counts only from the operator's logged-in Command Center session (``tailnet:<login>``
+     principal, ``serve_proxy`` listener, login in ``cc_auth`` allowed_logins) plus same-origin CSRF;
+  2. requester != approver;
+  3. every bound fact is revalidated at execution time and a moved fact refuses with a plain reason.
+
+No route here accepts a free-text command, an action type, or a fact override from the body: the only
+writable inputs are the request id in the path, the note, and the decision verb.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Callable, Iterable, Optional
+
+PREFIX = "/api/v2/home/approvals"
+QUEUE_SCHEMA = "HomeApprovalsQueue@v1"
+
+#: Status + code for every refusal this layer can produce. A's refusals are mapped onto the same set.
+REFUSALS = {
+    "NOT_OPERATOR": 403,
+    "AGENT_CALLER_REFUSED": 403,
+    "CSRF_REFUSED": 403,
+    "SELF_APPROVAL_REFUSED": 403,
+    "NOT_FOUND": 404,
+    "NOT_OPEN": 409,
+    "CHANGED": 409,
+    "EXPIRED": 410,
+    "EXECUTOR_TIMEOUT": 504,
+    "STORE_UNAVAILABLE": 503,
+    "STORE_ERROR": 500,
+    "BAD_REQUEST": 400,
+}
+
+#: A's refusal codes -> this layer's HTTP codes. A owns the decision; B only translates.
+STORE_CODES = {
+    "approver_is_requester": "SELF_APPROVAL_REFUSED",
+    "csrf_required": "CSRF_REFUSED",
+    "operator_session_required": "NOT_OPERATOR",
+    "server_context_required": "NOT_OPERATOR",
+    "facts_moved": "CHANGED",
+    "request_expired": "EXPIRED",
+    "unknown_request": "NOT_FOUND",
+    "not_open": "NOT_OPEN",
+    "not_approved": "NOT_OPEN",
+    "store_unreadable": "STORE_ERROR",
+    "facts_invalid": "BAD_REQUEST",
+    "unknown_action_type": "BAD_REQUEST",
+    "unknown_decision": "BAD_REQUEST",
+    "invalid_request_id": "BAD_REQUEST",
+    "question_empty": "BAD_REQUEST",
+    "requester_unknown": "BAD_REQUEST",
+    "no_executor": "STORE_ERROR",
+}
+
+DECISION_VERBS = {"approve": "approve", "decline": "decline"}
+
+
+@dataclass
+class Ctx:
+    """The subset of the server gate this layer needs (mirrors operator_approvals_api.Ctx)."""
+
+    principal: Callable[[], Optional[str]]
+    listener: Callable[[], Optional[str]]
+    csrf: Callable[[str, str], tuple[bool, str]]
+    allowed_logins: Iterable[str]
+    can_read: Callable[[], bool]
+    clock: Callable[[], Any]
+    session: Callable[[], str] = lambda: ""
+
+
+def _refused(code: str, reason: str) -> tuple[int, dict]:
+    return REFUSALS.get(code, 500), {"ok": False, "code": code, "reason": reason}
+
+
+def _operator(ctx: Ctx) -> Optional[str]:
+    """The operator's logged-in Command Center session, or None.
+
+    Same rule as the existing Approve/Hold/Push routes (operator_approvals_api._operator): a tailnet
+    identity, arriving through the serve proxy, whose login is allowed. An agent principal can never
+    satisfy this, which is why an agent cannot approve even if it could reach the route.
+    """
+    actor = ctx.principal() or ""
+    allowed = {str(login).strip().lower() for login in (ctx.allowed_logins or ())}
+    if actor.startswith("tailnet:") and ctx.listener() == "serve_proxy" and actor[8:].strip().lower() in allowed:
+        return actor
+    return None
+
+
+def default_ctx() -> Ctx:
+    from lib import cc_auth  # type: ignore  # the server gate's own module object/thread-local
+
+    cfg = cc_auth.load_config()
+
+    def _clock():
+        from datetime import datetime, timezone
+
+        return datetime.now(timezone.utc)
+
+    return Ctx(
+        principal=cc_auth.current_principal,
+        listener=lambda: (cc_auth.current_request_context() or {}).get("listener"),
+        csrf=lambda method, path: cc_auth.command_csrf_check(cfg, method, path),
+        allowed_logins=cfg.allowed_logins,
+        can_read=lambda: cc_auth.current_principal() == "service-token",
+        clock=_clock,
+        session=lambda: str((cc_auth.current_request_context() or {}).get("session") or ""),
+    )
+
+
+def _store_module():
+    """A's module, imported lazily so this file has no import-time dependency on the store."""
+    from lib import home_approvals  # type: ignore  # noqa: PLC0415
+
+    return home_approvals
+
+
+def _store_handle(module):
+    """The store A operates on. The state root is the persistent-state root, never a checkout path."""
+    import os
+    from pathlib import Path
+
+    root = os.environ.get("TRADEAI_STATE_ROOT") or os.environ.get("TRADEAI_PERSISTENT_STATE_ROOT")
+    if root:
+        return module.Store(Path(root))
+    try:
+        from lib.persistent_state_root import good_persistent_root  # noqa: PLC0415
+
+        return module.Store(Path(good_persistent_root()))
+    except Exception:  # noqa: BLE001 — no resolvable root is an unavailable store, never an empty board
+        raise module.Refused("store_unreadable", "The persistent-state root could not be resolved, so approvals cannot be read.")
+
+
+def _item(record: dict, now) -> dict:
+    """One card item: the record plus the derived fields the UI must not compute for itself."""
+    out = dict(record)
+    state = str(record.get("state") or "")
+    expires = _parse(record.get("expires_at"))
+    created = _parse(record.get("created_at"))
+    expired = state == "expired" or (state == "open" and expires is not None and expires <= now)
+    out["state"] = "expired" if expired else state
+    out["age_seconds"] = int((now - created).total_seconds()) if created is not None else None
+    out["expires_in_seconds"] = int((expires - now).total_seconds()) if expires is not None else None
+    open_ = out["state"] == "open" and not expired
+    out["can_act"] = bool(open_ and not record.get("blocked_reason"))
+    out["blocked_reason"] = record.get("blocked_reason")
+    out.setdefault("question", None)
+    out["reask_requested"] = bool(expired and record.get("reask_requested"))
+    out.setdefault("result", None)
+    out.setdefault("decided_at", (record.get("decision") or {}).get("at") if isinstance(record.get("decision"), dict) else None)
+    return out
+
+
+def _parse(value) -> Optional[Any]:
+    from datetime import datetime
+
+    if isinstance(value, datetime):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
+
+
+def _queue(module, store, now) -> tuple[int, dict]:
+    records = module.list_open(store, now=now) or []
+    items = [_item(record, now) for record in records]
+    return 200, {
+        "ok": True,
+        "data": {
+            "schema": QUEUE_SCHEMA,
+            "as_of": now.isoformat().replace("+00:00", "Z"),
+            "count": len(items),
+            "empty_text": "Nothing needs you",
+            "items": items,
+        },
+    }
+
+
+def _summary(module, store, now) -> tuple[int, dict]:
+    records = module.list_open(store, now=now) or []
+    urgent = 0
+    for record in records:
+        expires = _parse(record.get("expires_at"))
+        if expires is not None and (expires - now).total_seconds() <= 2 * 3600:
+            urgent += 1
+    return 200, {
+        "ok": True,
+        "data": {
+            "count": len(records),
+            "urgent_count": urgent,
+            "as_of": now.isoformat().replace("+00:00", "Z"),
+        },
+    }
+
+
+def _deliver_question(request_id: str, actor: str, note: str, now) -> bool:
+    """Hand the operator's note to the lead. A never messages anyone; delivery is B's job."""
+    import os
+    from pathlib import Path
+
+    root = os.environ.get("TRADEAI_COORDINATION_ROOT") or "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination"
+    inbox = Path(root) / "coordinator" / "inbox" / "cc-deepseek-7"
+    try:
+        inbox.mkdir(parents=True, exist_ok=True)
+        stamp = now.strftime("%Y%m%dT%H%M%SZ")
+        path = inbox / f"{stamp}-cc-deepseek-2-v008-question-{request_id}.md"
+        path.write_text(
+            f"# Operator question on approval request `{request_id}`\n\n"
+            f"**From:** {actor} (operator, via Home v008) · **At:** {now.isoformat()}\n\n{note}\n",
+            encoding="utf-8",
+        )
+        return True
+    except OSError:
+        return False
+
+
+def _store_error(exc: Exception) -> tuple[int, dict]:
+    mapped = STORE_CODES.get(str(getattr(exc, "code", "") or ""))
+    if mapped:
+        return _refused(mapped, str(getattr(exc, "reason", "") or mapped))
+    return _refused("STORE_ERROR", f"The approval store could not complete that ({type(exc).__name__}).")
+
+
+def handle(path: str, method: str, body=None, query=None, *, ctx: Optional[Ctx] = None):
+    base = (path or "").split("?", 1)[0].rstrip("/")
+    if not (base == PREFIX or base.startswith(PREFIX + "/")):
+        return None
+    ctx = ctx or default_ctx()
+    method = (method or "GET").upper()
+    sub = base[len(PREFIX):]
+
+    if method == "GET":
+        actor = _operator(ctx)
+        if actor is None and not ctx.can_read():
+            return _refused("AGENT_CALLER_REFUSED", "Sign in to the Command Center to read approvals.")
+        if sub not in ("", "/summary"):
+            return _refused("NOT_FOUND", "No such approvals route.")
+        try:
+            module = _store_module()
+            store = _store_handle(module)
+            now = ctx.clock()
+            return _summary(module, store, now) if sub == "/summary" else _queue(module, store, now)
+        except Exception as exc:  # noqa: BLE001 — an unreadable store is never an empty list
+            return _store_error(exc)
+
+    if method != "POST":
+        return 405, {"ok": False, "code": "METHOD_NOT_ALLOWED", "reason": "Approvals accept GET and POST only."}
+
+    parts = [part for part in sub.split("/") if part]
+    if len(parts) != 2:
+        return _refused("NOT_FOUND", "No such approvals route.")
+    request_id, verb = parts
+    if verb not in ("approve", "decline", "question"):
+        return _refused("NOT_FOUND", "No such approvals route.")
+
+    actor = _operator(ctx)
+    if actor is None:
+        return _refused("AGENT_CALLER_REFUSED", "Only the operator's signed-in Command Center session can decide a request.")
+    csrf_ok, why = ctx.csrf("POST", base)
+    if not csrf_ok:
+        return _refused("CSRF_REFUSED", why or "The request did not come from the Command Center page.")
+
+    note = ""
+    if isinstance(body, dict):
+        note = str(body.get("note") or "")[:2000]
+    login = actor[8:] if actor.startswith("tailnet:") else actor
+
+    try:
+        module = _store_module()
+        store = _store_handle(module)
+        now = ctx.clock()
+        # The ONLY source of this context is this route: the principal and listener were verified just above,
+        # CSRF was checked just above, and none of it is ever read from the request body.
+        operator_ctx = module.server_context(
+            principal=actor, session=ctx.session(), csrf_ok=True, listener=ctx.listener() or "",
+        )
+        if verb == "question":
+            record = module.question(store, request_id, actor=login, note=note, now=now)
+            delivered = _deliver_question(request_id, actor, note, now)
+            return 200, {"ok": True, "data": {
+                "state": (record or {}).get("state"),
+                "note_recorded": True,
+                "delivered": delivered,
+                "question": {"at": now.isoformat(), "by": actor, "note": note},
+            }}
+        return 200, {"ok": True, "data": module.decide(
+            store, request_id, ctx=operator_ctx, actor=login, decision=DECISION_VERBS[verb], note=note, now=now,
+        )}
+    except Exception as exc:  # noqa: BLE001 — A's typed refusal is the contract
+        return _store_error(exc)
+
+
+__all__ = ["PREFIX", "QUEUE_SCHEMA", "REFUSALS", "STORE_CODES", "Ctx", "default_ctx", "handle"]

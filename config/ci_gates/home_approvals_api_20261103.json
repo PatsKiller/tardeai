@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "home_approvals_api_20261103",
+  "files": [
+    "tests/test_home_approvals_api_20261103.py"
+  ],
+  "anchor": "HOME_APPROVALS_API_20261103",
+  "comment": [
+    "Home v008 Needs-you API (piece B): operator-session + CSRF, requester != approver, moved facts refuse with a plain reason, no decision entry outside the store's decide()."
+  ]
+}
