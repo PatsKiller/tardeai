@@ -332,11 +332,18 @@ def test_a_compacted_predecessor_resolves_from_the_canonical_archive(mod, tmp_pa
     assert states[holder] == "live"
 
 
-def test_an_archive_record_for_a_live_claim_refuses(mod, tmp_path):
-    """Compaction must never remove a live holder; a record that says so is inconsistent or forged."""
+@pytest.mark.parametrize("status,state", [("active", "live"), ("active", None), ("active", "banana"),
+                                          ("active", "released"), ("done", "active"), ("active", "done"),
+                                          ("abandoned", "done")])
+def test_an_archive_record_outside_the_pairs_compact_can_write_refuses(mod, tmp_path, status, state):
+    """Compaction writes only (stale,active)/(done,done)/(abandoned,abandoned). A live-at-archive, missing, unknown,
+    impossible or mismatched pair is not an official event — it is inconsistent or forged, and refuses."""
     predecessor = "20300107T234500Z-archived-a-aaaaaaaa"
     board, _ = compacted_board(tmp_path, predecessor)
-    archive_lines(board, archived_claim(predecessor, status="active", state="live"))
+    record = archived_claim(predecessor, status=status, state=state)
+    if state is None:
+        record.pop("state_at_archive")
+    archive_lines(board, record)
     with pytest.raises(mod.Refused) as exc:
         mod.effective_claim_states(docs(board), board)
     assert "claim_takeover_chain_invalid" in str(exc.value)

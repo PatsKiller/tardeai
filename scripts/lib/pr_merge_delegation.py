@@ -253,6 +253,10 @@ def claim_is_live(view, board):
 ARCHIVE_SCHEMA = "AgentClaimArchive@v1"
 #: The archive also carries operator overrides; they are not claims and never resolve a takeover target.
 ARCHIVE_NONCLAIM_SCHEMAS = frozenset({"AgentClaimOverride@v1"})
+#: What ``ClaimBoard.compact()`` can actually write, paired with the raw status it archives. ``live`` is deliberately
+#: absent: compaction must never remove a live holder, so a record that says so is inconsistent or forged. Anything
+#: outside these pairs — a missing, unknown or impossible ``state_at_archive``, or a mismatched status — refuses.
+ARCHIVE_STATE_PAIRS = frozenset({("stale", "active"), ("done", "done"), ("abandoned", "abandoned")})
 
 
 def archived_claims(board) -> dict[str, dict[str, object]]:
@@ -261,8 +265,9 @@ def archived_claims(board) -> dict[str, dict[str, object]]:
     ``ClaimBoard.compact()`` appends an ``AgentClaimArchive@v1`` wrapper around the original ``AgentClaim@v1`` and
     removes the live file. A predecessor that is gone from the views is durable history only when the archive carries
     a well-formed record whose nested claim names that same ``claim_id`` — absence alone never resolves a target, and
-    a malformed/unknown line refuses the whole ledger. A record archived while the claim was still ``live`` is
-    inconsistent (compaction must not remove a live holder) and also refuses. Read-only: the archive is never written.
+    a malformed/unknown line refuses the whole ledger. Only the ``(state_at_archive, status)`` pairs ``compact()`` can
+    write are accepted, so a record archived while the claim was still ``live`` — or one with an unknown or impossible
+    state — refuses. Read-only: the archive is never written.
     """
     path = getattr(board, "history", None)
     if path is None:
@@ -279,7 +284,7 @@ def archived_claims(board) -> dict[str, dict[str, object]]:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
         raise Refused("claim_takeover_chain_invalid") from None
-    out: dict[str, str] = {}
+    out: dict[str, dict[str, object]] = {}
     for line in text.splitlines():
         if not line.strip():
             continue
@@ -296,9 +301,10 @@ def archived_claims(board) -> dict[str, dict[str, object]]:
         if (schema != ARCHIVE_SCHEMA or not isinstance(claim, dict) or claim.get("schema") != "AgentClaim@v1"
                 or not isinstance(claim.get("claim_id"), str) or not claim["claim_id"]):
             raise Refused("claim_takeover_chain_invalid")
-        if rec.get("state_at_archive") == "live":
+        state, status = rec.get("state_at_archive"), claim.get("status")
+        if (state, status) not in ARCHIVE_STATE_PAIRS:
             raise Refused("claim_takeover_chain_invalid")
-        out[claim["claim_id"]] = {"status": claim.get("status"), "state_at_archive": rec.get("state_at_archive")}
+        out[claim["claim_id"]] = {"status": status, "state_at_archive": state}
     return out
 
 
