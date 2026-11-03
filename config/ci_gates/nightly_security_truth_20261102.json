@@ -1,0 +1,6 @@
+{
+  "schema": "CiGate@v1",
+  "name": "nightly_security_truth_20261102",
+  "files": ["tests/test_nightly_security_truth_20261102.py"],
+  "comment": ["Malformed tool output fails closed; undelivered finding alerts remain retryable; scanner and version child processes have bounded runtime. Synthetic runners and owned tiny-child fixtures only."]
+}
