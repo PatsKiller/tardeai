@@ -1317,7 +1317,11 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
     root = Path(root)
     state = root / "data" / "portfolios" / "state"
     from .portfolio_positions import load_store, store_path
-    portfolio = portfolio_for(inputs.get("holdings") if "holdings" in inputs else load_store(store_path(root)), now=now)
+    # `load_store` returns {} for a missing, empty or corrupt file and a truthy document for a readable one, so the
+    # two "no positions" cases below can be told apart. A store we could not READ is not an empty book.
+    holdings_given = "holdings" in inputs
+    holdings_doc = inputs.get("holdings") if holdings_given else load_store(store_path(root))
+    portfolio = portfolio_for(holdings_doc, now=now)
     broker = inputs.get("broker_stops") if "broker_stops" in inputs else _query_rows(
         db_query, "SELECT account,symbol,order_id,stop_price,qty,status,captured_at FROM stop_last_known")
     planned = inputs.get("planned_stops") if "planned_stops" in inputs else _read_json(state / "stops.json")
@@ -1379,7 +1383,8 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
                         # no day change per row it used to make the whole positions feed read "unavailable"
                         # (2026-11-03), hiding a complete position set behind a partial P&L.
                         **{k: portfolio[k] for k in ("source", "as_of", "stale")},
-                        "gap": None if positions else {"reason": "no positions in the canonical holdings store"},
+                        "gap": None if positions else ({"reason": "no positions in the canonical holdings store"} if holdings_doc
+                            else {"reason": "the holdings store could not be read (missing, empty or unreadable)"}),
                         "day_pl_gap": portfolio.get("gap")}
     position_section["as_of"] = portfolio["positions_as_of"]
     position_section.update(_resting_summary(counted_positions, portfolio.get("total_usd"), broker_available=broker is not None))

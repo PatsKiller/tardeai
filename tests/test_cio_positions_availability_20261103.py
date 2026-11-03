@@ -53,6 +53,22 @@ def test_an_empty_store_still_reports_positions_unavailable():
     assert positions["day_pl_gap"] is None or isinstance(positions["day_pl_gap"], dict)
 
 
+def test_an_unreadable_store_says_it_could_not_be_read(tmp_path):
+    """cc3 BLOCK F1 (2026-11-03): a 0-byte or missing store says "no positions", which is the wrong sentence for the
+    exact incident this item is about — the file could not be READ. Risk renders this reason verbatim."""
+    d = tmp_path / "data" / "portfolios" / "state"
+    d.mkdir(parents=True)
+    (d / "holdings.json").write_text("", encoding="utf-8")          # the 2026-11-03 0-byte incident
+    positions = truth.resolve(tmp_path, NOW)["positions"]
+    assert positions["rows"] == []
+    assert "could not be read" in positions["gap"]["reason"], positions["gap"]
+
+
+def test_a_missing_store_says_it_could_not_be_read(tmp_path):
+    positions = truth.resolve(tmp_path, NOW)["positions"]
+    assert "could not be read" in positions["gap"]["reason"], positions["gap"]
+
+
 def test_the_portfolio_keeps_its_own_partial_coverage_gap():
     doc = _resolve([_row("ZZAA", day_change=12.5), _row("ZZBB", 4, 25.0)])
     assert "day P&L partial" in (doc["portfolio"]["gap"] or {}).get("reason", ""), (
