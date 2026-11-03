@@ -225,48 +225,101 @@ def _real_a_rows():
     return policy_a, {"DEMO1": build("DEMO1", [100.0]), "DEMO2": build("DEMO2", [120.0, 100.0])}
 
 
-def run_ab_session(state_dir: Path, now_iso: str, out_path: Path) -> int:
-    """One A→B→C pass through the REAL router with only the raw transport faked (never the network)."""
+def _isolate_router_side_effects(root: Path) -> None:
+    """Point every router/publisher store at scratch, so the proof cannot touch repo or live state."""
+    import os
+    os.environ["TRADEAI_INTENT_RECEIPTS_PATH"] = str(root / "intent_receipts.jsonl")
+    import telegram_alert_router as R
+
+    for attr, name in (("_RECOVERY_T1_PAGE_PATH", "recovery_t1_pages.json"),
+                       ("_BUDGET_PATH", "budget.json")):
+        if hasattr(R, attr):
+            setattr(R, attr, root / name)
+    # The durable content-dedupe store used by intents (mark_sent / _durable_recently_sent).
+    for attr in ("_DURABLE_SENT_PATH", "_SENT_STORE", "_DEDUPE_PATH"):
+        if hasattr(R, attr):
+            setattr(R, attr, root / "dedupe.json")
     import telegram_alert as T
-    from lib import recovery_notify as C
+
+    T._comms_gateway_owns = lambda mc: False          # never route into the live gateway
+    try:
+        import scripts.lib.opportunity_alert as OA
+    except ImportError:
+        import lib.opportunity_alert as OA  # type: ignore
+    OA.enrich = lambda message, **kwargs: message      # no CIO-memory/DB enrichment
+    try:
+        import lib.advisory.notification_broker as NB
+        NB.wrap_send_hook = lambda *a, **k: None       # no shadow ingest
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def run_ab_session(state_dir: Path, now_iso: str, out_path: Path) -> int:
+    """The SCHEDULED adapter (run_pass) end to end: real A rows, actual policy, real C, real router.
+
+    Only the raw transport is faked, and every router/publisher store is redirected into scratch first, so this
+    can never touch the repo's runtime state or a live database (codex's isolation concern, 2026-11-03).
+    """
+    _isolate_router_side_effects(state_dir)
+    import telegram_alert as T
+    from lib import recovery_notify as C  # noqa: F401 — imported so C is on the path run_pass uses
     from lib import recovery_state as B
 
     ledger = state_dir / "raw_transport.jsonl"
     counter = {"n": 0}
 
-    def fake_raw(message, chat_ids=None, **kwargs):   # the single faked seam
+    def fake_raw(message, chat_ids=None, **kwargs):
         counter["n"] += 1
         with ledger.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps({"at": now_iso, "chars": len(message or ""),
                                  "marker": str(message or "").startswith(MARKER)}, sort_keys=True) + "\n")
         return {"ok": True, "message_ids": [1000 + counter["n"]], "held": 0}
 
-    T._raw_send_telegram_result = fake_raw          # private: the real router runs above this
+    T._raw_send_telegram_result = fake_raw
     T._token = lambda: "proof-token"
     T._chat_ids = lambda: ["555"]
 
     policy_a, rows = _real_a_rows()
     policy_b = B.load_policy(PROJECT_ROOT / "config" / "recovery_policy.yaml")
     now = datetime.fromisoformat(now_iso.replace("Z", "+00:00"))
+    snaps = {"DEMO1": {"close": 102.0, "rsi": 35.0, "rsi_prev": 34.0, "sma20": 130.0,
+                       "macd_up_sessions": 0, "catalyst_confidence": 0.0},
+             "DEMO2": {"close": 102.0, "rsi": 35.0, "rsi_prev": 34.0, "sma20": 130.0,
+                       "macd_up_sessions": 0, "catalyst_confidence": 0.0}}
+
+    class MemoryStore:
+        def __init__(self, cases):
+            self.cases = cases
+            self.writes = []
+
+        def list_open(self, *, limit=200):
+            return list(self.cases)
+
+        def update_state(self, key, **fields):
+            self.writes.append({"case_key": key, **fields})
+
+    store = MemoryStore([r for _obj, r in rows.values()])
+    out = B.run_pass(store, lambda case: snaps.get(str(case.get("symbol")), snaps["DEMO1"]),
+                     policy=policy_b, now=now, dry_run=False)
+
+    from lib.recovery_engine import cases as ac2
     receipts = {}
     for symbol, (obj, row) in rows.items():
-        snap = {"close": 102.0, "rsi": 35.0, "rsi_prev": 34.0, "sma20": 130.0, "macd_up_sessions": 0,
-                "catalyst_confidence": 0.0}
-        decision = B.evaluate(row, snap, policy_b, now=now)
-        handoff = {**row, "state": decision.state, "confidence": round(decision.confidence, 4),
-                   "next_trigger": decision.next_trigger, "price": 102.0,
-                   "exit_price": B.exit_price(row)}
-        # DEFAULT sender: the real recovery_notify -> telegram_alert -> telegram_alert_router path.
-        result = C.notify_recovery_case(handoff, now=now, state_path=state_dir / "nudge.json")
-        from lib.recovery_engine import cases as ac2
-        a_r1 = bool(ac2.reclaim_exit_trigger(obj, 102.0, policy_a))
-        receipts[symbol] = {"b_state": decision.state, "b_triggers": decision.triggers,
-                            "b_exit_ref": B.exit_price(row), "a_r1": a_r1,
-                            "notify": {k: v for k, v in result.items() if k != "message"}}
-    out_path.write_text(json.dumps({"now": now_iso, "policy_fraction_b": policy_b.get("reclaim_exit_pct"),
+        decision = next((d for d in out["decisions"] if d.get("case_key") == row.get("case_key")), {})
+        receipts[symbol] = {
+            "a_r1": bool(ac2.reclaim_exit_trigger(obj, 102.0, policy_a)),
+            "b_exit_ref": B.exit_price(row),
+            "b_state": decision.get("state"),
+            "b_triggers": decision.get("triggers"),
+            "notify": decision.get("notify"),
+        }
+    out_path.write_text(json.dumps({"now": now_iso,
                                     "policy_percent_a": policy_a.triggers.get("r1_reclaim_exit_pct"),
-                                    "receipts": receipts,
-                                    "raw_deliveries_in_session": counter["n"]}, indent=1, sort_keys=True))
+                                    "policy_fraction_b": policy_b.get("reclaim_exit_pct"),
+                                    "state_writes": len(store.writes),
+                                    "notifier_calls": out.get("notifier_calls"),
+                                    "raw_deliveries_in_session": counter["n"],
+                                    "receipts": receipts}, indent=1, sort_keys=True))
     return 0
 
 
@@ -394,15 +447,18 @@ def main(argv: list[str] | None = None) -> int:
                  and all(r["a_r1"] is True and r["b_triggers"]["R1"] is True
                          and not any(r["b_triggers"][k] for k in ("R2", "R3", "R4", "R5")) for r in r1.values())
                  and r1["DEMO2"]["b_exit_ref"] == 100.0
+                 and s1_ab["notifier_calls"] == 2 and s1_ab["state_writes"] == 2
                  and s1_ab["raw_deliveries_in_session"] == 2),
         "policy_percent_a": s1_ab["policy_percent_a"], "policy_fraction_b": s1_ab["policy_fraction_b"],
+        "notifier_calls_from_run_pass": s1_ab["notifier_calls"], "state_writes": s1_ab["state_writes"],
+        "raw_deliveries_session1": s1_ab["raw_deliveries_in_session"],
         "cases": {sym: {"a_r1": r["a_r1"], "b_state": r["b_state"], "b_exit_ref": r["b_exit_ref"],
                         "b_triggers": r["b_triggers"], "notify": r["notify"]} for sym, r in r1.items()},
-        "raw_deliveries_session1": s1_ab["raw_deliveries_in_session"],
     }
     p6 = {
-        "pass": (s2_ab["raw_deliveries_in_session"] == 0
-                 and all(r["notify"].get("deduped_by_floor") for r in r2.values())),
+        "pass": (s2_ab["notifier_calls"] == 2 and s2_ab["raw_deliveries_in_session"] == 0
+                 and all((r["notify"] or {}).get("deduped_by_floor") for r in r2.values())),
+        "notifier_calls_from_run_pass": s2_ab["notifier_calls"],
         "raw_deliveries_session2": s2_ab["raw_deliveries_in_session"],
         "receipts": {sym: r["notify"] for sym, r in r2.items()},
     }
