@@ -245,3 +245,62 @@ def test_every_flag_the_guard_shells_exists_in_the_cleaner():
     for flag in ('"--standing"', '"--dry-run"', '"--apply"', '"--only-if-above"', '"--until-target"',
                  '"--rules"', '"--report"', '"--state-root"'):
         assert flag in src, f"disk_hygiene.py no longer accepts {flag}; the guard would silently stop working"
+
+
+# ---------------------------------------------------------------- (R1) disarm during the preview
+class _DisarmDuringPreview(Calls):
+    """Answers the preview, then rewrites the rules to armed=false before the guard's next decision."""
+
+    def __init__(self, rules: Path, answers):
+        super().__init__(answers)
+        self.rules = rules
+
+    def run(self, argv, **kw):
+        proc = super().run(argv, **kw)
+        if "--dry-run" in [str(a) for a in argv]:
+            doc = json.loads(self.rules.read_text(encoding="utf-8"))
+            doc["pressure_act"]["armed"] = False
+            self.rules.write_text(json.dumps(doc, indent=1), encoding="utf-8")
+        return proc
+
+
+def test_disarming_during_the_preview_never_requests_an_apply(monkeypatch, tmp_path, capsys):
+    """P1 R1: the operator flips the switch off while the preview runs; the exec boundary must refuse."""
+    rules = _rules(tmp_path, armed=True)
+    calls = _DisarmDuringPreview(rules, [_Proc(stdout=_dry_line(12, 3 * GB), rc=0)])
+    _guard(monkeypatch, tmp_path, calls)
+    rc = g.main(["--rules", str(rules)])
+    out = json.loads(capsys.readouterr().out)
+    applies = [argv for argv in calls.argv if "--apply" in argv]
+    assert applies == [], f"an apply was constructed after a disarm: {applies}"
+    assert out["cleaner"]["decision"] == "refused_disarmed"
+    assert out["cleaner"]["error"] == "pressure_act_disarmed_before_apply"
+    assert rc == 0  # a refusal is a completed run, and the shared cleaner unit owns the exit contract
+    receipt = _receipts(tmp_path)[-1]
+    assert "pressure_act_disarmed_before_apply" in json.dumps(receipt)
+    assert receipt.get("cleaner", {}).get("decision") == "refused_disarmed"
+
+
+# ---------------------------------------------------------------- (R2) failed preview is not a plan
+def test_a_failed_preview_never_requests_an_apply(monkeypatch, tmp_path, capsys):
+    rules = _rules(tmp_path, armed=True)
+    calls = Calls([_Proc(stdout=_dry_line(12, 3 * GB), rc=1)])
+    _guard(monkeypatch, tmp_path, calls)
+    g.main(["--rules", str(rules)])
+    out = json.loads(capsys.readouterr().out)
+    assert [argv for argv in calls.argv if "--apply" in argv] == []
+    assert out["cleaner"]["decision"] == "error"
+    assert out["cleaner"]["error"] == "dry_run_failed_rc_1"
+
+
+# ---------------------------------------------------------------- (R3) a failed cleaner is not "applied"
+def test_a_failed_cleaner_is_not_reported_as_applied(monkeypatch, tmp_path, capsys):
+    rules = _rules(tmp_path, armed=True)
+    failure = json.dumps({"ok": False, "error": "rules_unreadable:JSONDecodeError"})
+    calls = Calls([_Proc(stdout=_dry_line(12, 3 * GB), rc=0), _Proc(stdout=failure, rc=1)])
+    _guard(monkeypatch, tmp_path, calls)
+    g.main(["--rules", str(rules)])
+    out = json.loads(capsys.readouterr().out)
+    assert out["cleaner"]["decision"] == "error"
+    assert out["cleaner"]["decision"] != "applied"
+    assert out["cleaner"]["error"].startswith("apply_failed_rc_1")

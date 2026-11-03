@@ -91,6 +91,7 @@ import os
 import shutil
 import subprocess
 import sys
+from typing import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -265,7 +266,7 @@ def _dry_run_quote(stdout: str) -> dict | None:
 
 
 def run_cleaner(*, rules_path: Path, state_root: str | None, trigger_pct: float, target_pct: float | None,
-                timeout: float = 3600.0) -> dict:
+                timeout: float = 3600.0, recheck_armed: Callable[[], dict] | None = None) -> dict:
     """Dry-run the reviewed cleaner, quote the selection, then apply exactly that class of item — or refuse.
 
     Deletion is the cleaner's, under its reviewed standing rules S/T/W/C/R and its own caps. This function only
@@ -295,6 +296,12 @@ def run_cleaner(*, rules_path: Path, state_root: str | None, trigger_pct: float,
     out["selection"] = {"candidates": candidates,
                         "reclaimable_bytes": totals.get("reclaimable_bytes"),
                         "reclaimable_gb": totals.get("reclaimable_gb")}
+    if plan["_rc"] != 0:
+        # A failed preview must never become a mutation request (cx-openai-4 R2): the exit status is not a detail,
+        # it is the cleaner telling us it did not complete the plan.
+        out["decision"] = "error"
+        out["error"] = f"dry_run_failed_rc_{plan['_rc']}"
+        return out
     if quote.get("outcome") == "below_threshold":
         out["decision"] = "below_threshold"
         return out
@@ -302,6 +309,21 @@ def run_cleaner(*, rules_path: Path, state_root: str | None, trigger_pct: float,
         # Refuse: the reviewed rules selected nothing. Never improvise a different rule set here.
         out["decision"] = "refused_nothing_eligible"
         return out
+    # R1: the arming switch is re-read at the LAST moment before the exec boundary. `main()` cached the
+    # activation before the preview ran; an operator who disarms during a long preview must get a refusal,
+    # not an apply. Nothing below this point may construct the mutation argv for a disarmed guard.
+    if recheck_armed is not None:
+        try:
+            now_act = recheck_armed()
+        except Exception as exc:  # noqa: BLE001 - an unreadable switch is a refusal, never an apply
+            out["decision"] = "refused_disarmed"
+            out["error"] = f"pressure_act_unreadable_before_apply:{type(exc).__name__}"
+            return out
+        if not isinstance(now_act, dict) or now_act.get("active") is not True:
+            out["decision"] = "refused_disarmed"
+            out["error"] = "pressure_act_disarmed_before_apply"
+            out["why_not_active"] = (now_act or {}).get("why_not_active") if isinstance(now_act, dict) else None
+            return out
     env = dict(os.environ)
     env.setdefault(RUN_ID_ENV, "disk_pressure_guard-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
     apply_argv = _cleaner_argv(rules_path=rules_path, state_root=state_root,
@@ -322,6 +344,13 @@ def run_cleaner(*, rules_path: Path, state_root: str | None, trigger_pct: float,
         out["decision"] = "error"
         out["error"] = res["error"] or ("apply_output_unparseable:" + (res["stderr"] or "").strip()[-200:]
                                         if res["stderr"] else "apply_output_unparseable")
+        return out
+    if res["_rc"] != 0 or applied.get("ok") is False or applied.get("error"):
+        # A cleaner that failed is not a cleaner that applied (cx-openai-4 R3): a non-zero exit or a structured
+        # failure shape must never be reported as success.
+        out["decision"] = "error"
+        out["error"] = (f"apply_failed_rc_{res['_rc']}" if res["_rc"] != 0
+                        else str(applied.get("error") or "cleaner_reported_not_ok")[:200])
         return out
     out["reclaimed_bytes"] = int(applied.get("reclaimed_bytes") or 0)
     out["reclaimed_gb"] = applied.get("reclaimed_gb")
@@ -404,6 +433,7 @@ def main(argv: list[str] | None = None) -> int:
     if over:
         if acting:
             out["cleaner"] = run_cleaner(rules_path=Path(a.rules), state_root=a.state_root, trigger_pct=a.used_pct,
+                                         recheck_armed=lambda: act_config(Path(a.rules)),
                                          target_pct=act.get("target_pct"))
         else:
             out["enforcer"] = run_enforcer(dry_run=a.dry_run)
