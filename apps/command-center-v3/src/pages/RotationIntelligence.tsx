@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import AdvisorChangesPanel from '../components/AdvisorChangesPanel'
 import RotationPublicationNotice from '../components/RotationPublicationNotice'
+import { rotationDescriptive, type RotationDescriptive } from '../lib/rotationDescriptive'
+import { fmtAsOf } from '../lib/asOfDisplay'
 import { useRotationAvailability } from '../hooks/useRotationAvailability'
 import { runRotationOversight } from '../lib/cloudLlmRun'
 import { useTerminalUi } from '../lib/terminalUi'
@@ -170,8 +172,49 @@ function DegBadge({ d }: { d?: { thesis_status?: string; deterministic?: boolean
   )
 }
 
-function SummaryCard({ label, value, color, onClick, active }: { label: string; value: React.ReactNode; color?: string; onClick?: () => void; active?: boolean }) {
-  const clickable = !!onClick
+/**
+ * Shown when the advisory is withheld: the descriptive facts the same response already carries stay
+ * readable (operator bug 2026-11-02: the page went blank). Every advisory section and action stays gated
+ * on `publication.ready`; this panel is descriptive only — no recommendation, order, size or stop.
+ */
+function RotationDescriptivePanel({ data }: { data: unknown }) {
+  const d: RotationDescriptive = rotationDescriptive(data)
+  const row: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: '2px 10px', alignItems: 'baseline', padding: '4px 0', borderTop: '1px solid var(--border-subtle)', fontSize: 11 }
+  return <section data-testid="rotation-descriptive" style={{ ...card, marginBottom: 20 }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'baseline', marginBottom: 4 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Rotation data available now</div>
+      <span style={{ flex: 1 }} />
+      <span style={{ fontSize: 10, color: 'var(--text3)' }}>{d.portfolioTotal ? `portfolio ${d.portfolioTotal}` : 'portfolio total unknown'}</span>
+    </div>
+    <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>
+      {d.asOf ? `Response generated ${fmtAsOf(d.asOf) ?? d.asOf}` : 'Response clock not stated'}
+    </div>
+    <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>
+      Descriptive facts from the same response. Advisory recommendations stay withheld until the evidence gates
+      clear; nothing here is an order, a size or a stop.
+    </div>
+    {d.gaps.length ? <div role="status" style={{ fontSize: 10, color: '#f59e0b', marginBottom: 8 }}>
+      Parts of this response could not be read: {d.gaps.join('; ')}.
+    </div> : null}
+    {d.blocks.map(b => <div key={b.key} data-testid={`rotation-descriptive-${b.key}`} style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text1)' }}>{b.title}</div>
+      <div style={{ fontSize: 9.5, color: 'var(--text3)', marginBottom: 4 }}>{b.note}</div>
+      {b.rows.length
+        ? b.rows.map((r, i) => <div key={i} style={row}>
+            <span style={{ fontWeight: 700, color: 'var(--text0)', minWidth: 90 }}>{r.label}</span>
+            <span style={{ color: 'var(--text2)' }}>{r.value}</span>
+            {r.detail ? <span style={{ color: 'var(--text3)' }}>{r.detail}</span> : null}
+          </div>)
+        : <div style={{ fontSize: 11, color: 'var(--text3)' }}>{b.empty}</div>}
+    </div>)}
+    {!d.hasAny ? <div role="status" style={{ fontSize: 11, color: 'var(--text3)' }}>
+      No descriptive rotation data came back with this response. The reasons above name what is missing — this is
+      not the same as no rotation exposure.
+    </div> : null}
+  </section>
+}
+
+function SummaryCard({ label, value, color, onClick, active }: { label: string; value: React.ReactNode; color?: string; onClick?: () => void; active?: boolean }) {  const clickable = !!onClick
   return (
     <div onClick={onClick} title={clickable ? `Show ${label}` : undefined}
       style={{ ...card, textAlign: 'center', padding: '14px 10px',
@@ -546,6 +589,7 @@ export default function RotationIntelligence() {
 
       {pageTab === 'Review' && <RotationPublicationNotice summary={data} error={summaryWarn} />}
       {pageTab === 'Review' && !publication.ready && <button disabled={!!busy} onClick={loadSummary} style={btn(!!busy)}>Refresh Summary</button>}
+      {pageTab === 'Review' && !publication.ready && <RotationDescriptivePanel data={data} />}
       {pageTab === 'Review' && publication.ready && (<>
 
       {/* B. Summary cards */}
