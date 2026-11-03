@@ -67,6 +67,15 @@ class FakeModule:
                 "message": "Merged" if decision == "approve" else "Declined", "result": record["result"],
                 "receipt": {"ledger": "x", "digest": "y"}}
 
+    def get(self, store, request_id):
+        return store.records.get(request_id)
+
+    def revalidate(self, store, record, *, now=None):
+        self.calls.append({"id": record.get("id"), "revalidate": True})
+        if record.get("moved"):
+            return False, "This changed. The lead will re-ask."
+        return True, ""
+
     def question(self, store, request_id, *, actor, note, now=None):
         if not str(note or "").strip():
             raise Refused("question_empty", "A question needs words the lead can answer.")
@@ -273,3 +282,25 @@ def test_a_store_that_cannot_be_read_is_not_an_empty_board(monkeypatch, tmp_path
     monkeypatch.setattr(api, "_store_handle", lambda module: module.store)
     status, payload = api.handle("/api/v2/home/approvals", "GET", ctx=_ctx(reader=True))
     assert status == 500 and payload["ok"] is False and payload["code"] == "STORE_ERROR"
+
+
+def test_one_request_endpoint_for_the_confirm_sheet(store):
+    status, payload = api.handle("/api/v2/home/approvals/apr-1", "GET", ctx=_ctx(reader=True))
+    assert status == 200 and payload["data"]["id"] == "apr-1"
+    assert "revalidated" not in payload["data"]
+    assert store.calls == []
+
+
+def test_revalidate_on_one_request_is_one_check_and_shows_the_refusal(store):
+    store.records["apr-1"]["moved"] = True
+    status, payload = api.handle("/api/v2/home/approvals/apr-1", "GET",
+                                 query={"revalidate": "1"}, ctx=_ctx(reader=True))
+    assert status == 200 and payload["data"]["revalidated"] is True
+    assert payload["data"]["can_act"] is False
+    assert payload["data"]["blocked_reason"] == "This changed. The lead will re-ask."
+    assert [c for c in store.calls if c.get("revalidate")] == [{"id": "apr-1", "revalidate": True}]
+
+
+def test_a_missing_request_is_404(store):
+    status, payload = api.handle("/api/v2/home/approvals/nope", "GET", ctx=_ctx(reader=True))
+    assert status == 404 and payload["code"] == "NOT_FOUND"

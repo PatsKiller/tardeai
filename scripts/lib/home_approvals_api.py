@@ -205,6 +205,27 @@ def _summary(module, store, now) -> tuple[int, dict]:
     }
 
 
+def _one(module, store, request_id: str, now, query) -> tuple[int, dict]:
+    """One request for the confirm sheet. ``?revalidate=1`` runs A's single read-only fact check.
+
+    No list route revalidates: a dashboard render must not fan out to one network check per item. The
+    confirm sheet asks for one item, so it may pay for one check and show the operator the exact
+    sentence a click would have produced.
+    """
+    record = module.get(store, request_id)
+    if record is None:
+        return _refused("NOT_FOUND", "That request does not exist.")
+    item = _item(record, now)
+    wants = isinstance(query, dict) and str(query.get("revalidate") or "").lower() in ("1", "true", "yes")
+    if wants:
+        ok, plain = module.revalidate(store, record, now=now)
+        item["revalidated"] = True
+        if not ok:
+            item["can_act"] = False
+            item["blocked_reason"] = str(plain)
+    return 200, {"ok": True, "data": item}
+
+
 def _deliver_question(request_id: str, actor: str, note: str, now) -> bool:
     """Hand the operator's note to the lead. A never messages anyone; delivery is B's job."""
     import os
@@ -255,13 +276,17 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Optional[Ctx] 
         actor = _operator(ctx)
         if actor is None and not ctx.can_read():
             return _refused("AGENT_CALLER_REFUSED", "Sign in to the Command Center to read approvals.")
-        if sub not in ("", "/summary"):
+        if sub not in ("", "/summary") and not (sub.count("/") == 1 and len(sub) > 1):
             return _refused("NOT_FOUND", "No such approvals route.")
         try:
             module = _store_module()
             store = _store_handle(module)
             now = ctx.clock()
-            return _summary(module, store, now) if sub == "/summary" else _queue(module, store, now)
+            if sub == "/summary":
+                return _summary(module, store, now)
+            if sub in ("", "/"):
+                return _queue(module, store, now)
+            return _one(module, store, sub.lstrip("/"), now, query)
         except Exception as exc:  # noqa: BLE001 — an unreadable store is never an empty list
             return _store_error(exc)
 
