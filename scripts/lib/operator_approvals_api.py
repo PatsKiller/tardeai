@@ -80,6 +80,18 @@ def _git(root: Path, *args: str) -> str:
     return _raw_git(repository, *args)
 
 
+def _queue_card(item: dict) -> dict:
+    """One queue row: the item without its whole document, plus the two fields a card needs.
+
+    ``version`` prefers the item's own readable label (``core.item(version=...)``) and falls back to the bound
+    document version. The first spelling of this dict-union let the right-hand operand win, so every label a source
+    supplied was silently replaced by ``document.version`` — for a live conflict that is ``<sha256>:<sha256>``.
+    """
+    return {k: v for k, v in item.items() if k != "document"} | {
+        "document_sha": item["document"]["document_sha"],
+        "version": item.get("version") or item["document"]["version"]}
+
+
 def policy_source(root: Path) -> tuple[str, str]:
     # Anchor history to the artifact's commit even when the canonical checkout has moved ahead.
     sha = _git(root, "log", "-1", "--format=%H", source_revision(root), "--", "AGENTS.md").strip()
@@ -344,8 +356,7 @@ def _default_sources(root: Path) -> dict:
                                  created_at=proposal.get("created_at"), source="conflict_rule_proposals",
                                  version=label,
                                  doc=core.document(json.dumps(public, indent=2, ensure_ascii=False, sort_keys=True),
-                                                   source_sha=code_sha,
-                                                   version=f"revision {proposal.get('revision')} · {proposal.get('tier') or 'tier not supplied'}"),
+                                                   source_sha=code_sha, version=label),
                                  governed_href="/conflicts/rules?proposal=" + quote(ident, safe=""),
                                  source_refs=["rule_proposals.jsonl:" + ident]))
         return out
@@ -482,12 +493,8 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = N
                 data["filtered_count"], data["offset"] = len(data["items"]), offset
                 data["items"] = data["items"][offset:offset + 50]
                 # Queue cards do not ship whole documents; the reader loads just the chosen item.
-                data["items"] = [{k: v for k, v in it.items() if k != "document"} | {
-                    "document_sha": it["document"]["document_sha"], "version": it["document"]["version"]}
-                                 for it in data["items"]]
-                data["resolved"] = [{k: v for k, v in it.items() if k != "document"} | {
-                    "document_sha": it["document"]["document_sha"], "version": it["document"]["version"]}
-                                    for it in data.get("resolved") or []]
+                data["items"] = [_queue_card(it) for it in data["items"]]
+                data["resolved"] = [_queue_card(it) for it in data.get("resolved") or []]
                 return 200, {"ok": True, "data": data}
             if sub == "/policy":
                 data = ctx.policy()

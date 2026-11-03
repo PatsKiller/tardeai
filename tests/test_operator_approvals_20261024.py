@@ -452,6 +452,23 @@ def test_w10_adapter_uses_durable_default_and_opaque_ids_with_real_watch_link(mo
     assert row["document"]["version"] == "1:" + "d" * 64
 
 
+def test_queue_card_shows_the_source_label_not_the_bound_digest():
+    """The queue renders item.version. The projection's dict-union used to let document.version win, so the label a
+    source supplied was replaced by the bound value - for a live conflict, a 64-hex sha twice - and the card said
+    "<sha>:<sha>" while the source said "open conflict · revision 3". Display only; the decision still binds
+    document_sha."""
+    doc = c.document("both sides", source_sha=SHA, version="2:" + "b" * 64)
+    labelled = c.item(ident="conflict:x", kind="CONFLICT", title="Review source disagreement", proposed_by=None,
+                      created_at=None, doc=doc, source="conflicts", version="open conflict · revision 3")
+    card = api._queue_card(labelled)
+    assert card["version"] == "open conflict · revision 3"
+    assert card["document_sha"] == doc["document_sha"] and "document" not in card
+    # An item whose source supplies no label keeps the bound version rather than losing the field.
+    plain = c.item(ident="policy:1", kind="POLICY", title="Policy amendment", proposed_by=None, created_at=None,
+                   doc=doc, source="fixture")
+    assert api._queue_card(plain)["version"] == "2:" + "b" * 64
+
+
 def test_encoded_item_ids_resolve_for_read_and_open(rig):
     """Batch 27: the reader sends encodeURIComponent(id) ("policy:42" -> "policy%3A42") and the portfolio server does
     not decode paths, so the governance API decodes the id itself; before this every real Read & decide 404'd."""

@@ -57,8 +57,12 @@ def test_unmapped_labels_are_visible_errors(label):
     ("WASH_BLOCK", "watch")])
 def test_observed_desk_labels_map_to_a_family_instead_of_a_data_error(label, stance):
     # Operator spec 2026-11-02 Part 1: "extend the shared vocabulary for every observed label (config, reviewed)".
-    # These six were arriving from live desk rows and every one became a DATA_ERROR/R8, burying the real conflicts
-    # (992 of 1013 open items). They now carry a stance; MISSING_MARKET and MISSING_PLAN deliberately stay unmapped
+    # Five of these are emitted by reentry_rules.derive_intel_state today (CURRENTLY HELD, WASH BLOCK, OVERBOUGHT WAIT,
+    # OVERSOLD REVIEW, READY TO REVIEW) and each one was arriving as unmapped vocabulary. MANAGING is a Trade AI state
+    # carried as a claim in some projections, and HOLD / MONITOR was a label the rulebook itself declared; both now
+    # carry a stance instead of raising. This does NOT move the live ledger: on 2026-11-02 its 1013 active items were
+    # 535 U1 + 457 T1 + 18 GATE + 3 NEEDS_OPERATOR, and zero R8. The 992 non-actionable items are an identity and
+    # ownership coverage gap (W1 data), not vocabulary. MISSING_MARKET and MISSING_PLAN deliberately stay unmapped
     # because "we do not know" must not read as "no action". posture() returns the stance, not the family key:
     # stand_aside maps to "watch".
     fs = run("WATCH", Input("desk", label, NOW))
