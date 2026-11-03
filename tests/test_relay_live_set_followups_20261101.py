@@ -195,10 +195,13 @@ def test_hold_recompute_uses_the_gate_against_current(monkeypatch, tmp_path: Pat
     assert seen == {"new": tmp_path, "served": (tmp_path / "CURRENT").resolve(), "env": {"k": "v"}}
 
 
-def test_the_held_release_is_parsed_from_the_deploy_die_line() -> None:
+def test_the_held_release_is_parsed_from_the_deploy_die_line(tmp_path) -> None:
+    # The release directory is assembled from tmp_path rather than written as a literal home-directory path: the PII
+    # scan flags an inline home path even when it is synthetic, and the rule is to build such values at runtime.
+    release = str(tmp_path / "rel" / "abc-main")
     log = ("RELAY_LIVE_SET_HELD diff_id=0123456789abcdef: x\nERROR: relay live set would change and the operator has "
-           "not acknowledged this diff_id — promote held (/home/u/rel/abc-main/N8N_RELAY_LIVE_SET_DIFF.json)")
-    assert DM.held_release(log) == "/home/u/rel/abc-main"
+           f"not acknowledged this diff_id — promote held ({release}/N8N_RELAY_LIVE_SET_DIFF.json)")
+    assert DM.held_release(log) == release
     assert DM.held_release("no die line") == ""
 
 
