@@ -7,6 +7,7 @@ is UNAVAILABLE with a reason, never an empty list wearing "zero". The route is G
 """
 from __future__ import annotations
 
+import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -188,3 +189,62 @@ def test_a_broken_coordination_read_degrades_only_the_envelope():
     assert d["coordination"]["gaps"] and "ledger on fire" in d["coordination"]["gaps"][0]
     row = d["prs"][0]
     assert row["work"]["ci"]["state"] == "UNKNOWN" and row["work"]["review"]["state"] == "UNKNOWN"
+
+
+# ────────────────── 2026-11-03: the DEFAULT coordination reader is the one production uses
+# Both tests above inject `coordination=`, so neither ever ran `_default_coordination` — the only reader the
+# /api/v2/ops/in-flight route has in a release. It referenced `Path` without importing it and defaulted to a
+# repo-relative state root that exists nowhere (portfolio-server/…, trade-ai-v12-rebuild/…), so every live
+# read raised NameError and the served Releases page showed UNKNOWN owner/task/review/CI for every PR, with
+# the agents panel empty. Run against the release's own module on 2026-11-03:
+#   coordination.status = UNAVAILABLE, gaps = ["NameError: name 'Path' is not defined"].
+HEAD = "d" * 40
+
+
+def _state_root_tree(tmp_path: Path) -> Path:
+    """The layout `releases_coordination.build` expects under TRADEAI_STATE_ROOT."""
+    coord = tmp_path / "data" / "coordination" / "coordinator"
+    coord.mkdir(parents=True)
+    rows = [
+        {"kind": "review_receipt_recorded", "pr_number": 2211, "head_sha": HEAD, "verdict": "BLOCK",
+         "reviewer_session": "cc3", "evidence_class": "reported_review_not_approval",
+         "observed_at": "2026-11-03T00:30:00Z"},
+        {"kind": "ci_observation", "pr_number": 2211, "head_sha": HEAD, "state": "RED",
+         "observed_at": "2026-11-03T00:40:00Z", "source": "GitHub Actions", "workflows": []},
+    ]
+    (coord / "ledger.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    (coord / "BOARD.md").write_text(
+        "# COORDINATION BOARD\n\nUpdated: 2026-11-03T00:45:00Z by **codex** (x).\n\n"
+        "## Agents\n\n| session | task now | branch / PR | next |\n|---|---|---|---|\n"
+        "| cc-deepseek-4 | Releases coordination fix | wt/x | push |\n\n## Open PRs\n",
+        encoding="utf-8")
+    claims = tmp_path / "data" / "coordination" / "claims"
+    claims.mkdir(parents=True)
+    (claims / "c0.json").write_text(json.dumps({
+        "session": "cc-deepseek-4", "branch": "wt/x", "task": "t", "status": "active",
+        "head_sha": HEAD, "heartbeat_at": "2026-11-03T00:44:00Z",
+    }), encoding="utf-8")
+    return tmp_path
+
+
+def test_the_default_coordination_reader_really_runs(tmp_path, monkeypatch):
+    """Production passes no `coordination=` argument: this is the path the operator's page depends on."""
+    root = _state_root_tree(tmp_path)
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(root))
+    rows = [{"number": 2211, "title": "t", "url": "u", "headRefOid": HEAD, "headRefName": "wt/x",
+             "isDraft": False, "labels": [], "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN"}]
+
+    d = D.build(None, now=NOW, lister=lambda repo, limit: rows)      # coordination=None — the default
+
+    assert not any("NameError" in g for g in d["coordination"]["gaps"])
+    assert d["coordination"]["status"] == "OK", d["coordination"]["gaps"]
+    assert [a["session"] for a in d["coordination"]["agents"]] == ["cc-deepseek-4"]
+    work = d["prs"][0]["work"]
+    assert work["owner"] == "cc-deepseek-4" and work["review"]["state"] == "BLOCK" and work["ci"]["state"] == "RED"
+
+
+def test_the_default_state_root_is_env_first_then_the_house_convention(monkeypatch):
+    monkeypatch.delenv("TRADEAI_STATE_ROOT", raising=False)
+    assert D._state_root() == Path.home() / "trade-ai-releases" / "persistent-state"
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", "/srv/state")
+    assert D._state_root() == Path("/srv/state")
