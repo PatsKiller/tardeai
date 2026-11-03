@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "home_v007_data_20261103",
+  "files": [
+    "tests/test_home_v007_data_20261103.py"
+  ],
+  "anchor": "HOME_V007_DATA_20261103",
+  "comment": [
+    "Approved Home v007 canonical stored-data context; pure synthetic fixtures and explicit source gaps."
+  ]
+}
