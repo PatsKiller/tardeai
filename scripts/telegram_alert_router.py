@@ -245,6 +245,14 @@ def classify_alert(message: str) -> str:
     if not message:
         return "P3_LOG_ONLY"
 
+    # A T1 recovery page can never be a dashboard row or a log line (operator P0 2026-11-03: Recovery
+    # Watch found SCHG/BAH/RTX every run since 10-01 and answered P2_DASHBOARD_ONLY + LEGACY_SHADOWED;
+    # the operator missed SPCX recovering). This check is FIRST, before the raw-JSON guard: a recovery
+    # plan/summary that quotes `{"symbol": …, "rationale": …}` would otherwise match the raw-JSON rule
+    # (the marker itself starts with `[`) and be logged only — the silence this marker exists to stop.
+    if _RECOVERY_T1_MARKER in message:
+        return "P0_INTERRUPT"
+
     # R18-DATA.1: raw machine JSON is never an operator investment page.
     try:
         try:
@@ -255,12 +263,6 @@ def classify_alert(message: str) -> str:
             return "P3_LOG_ONLY"
     except Exception:
         pass
-
-    # A T1 recovery page can never be a dashboard row or a log line (operator P0 2026-11-03: Recovery
-    # Watch found SCHG/BAH/RTX every run since 10-01 and answered P2_DASHBOARD_ONLY + LEGACY_SHADOWED;
-    # the operator missed SPCX recovering). Marker check runs before every P2/P3 pattern.
-    if _RECOVERY_T1_MARKER in message:
-        return "P0_INTERRUPT"
 
     # Stop about to fire / fired → interrupt, ahead of every digest/dashboard route (2026-10-14 SPCX incident).
     if _STOP_FIRING_PATTERN.search(message):

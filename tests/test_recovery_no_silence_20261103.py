@@ -138,6 +138,17 @@ def test_router_never_downgrades_a_t1_recovery_message():
         assert level == "P0_INTERRUPT", level
 
 
+def test_a_json_shaped_plan_cannot_demote_the_page():
+    """The marker check precedes the raw-JSON guard.
+
+    The marker starts with '[', so a recovery page whose plan/summary quotes a JSON fragment
+    (`{"symbol": ..., "rationale": ...}`) satisfied looks_like_raw_json and was P3_LOG_ONLY when the
+    raw-JSON guard ran first — the exact silence this marker exists to stop.
+    """
+    msg = rn.build_message(_case(plan='{"symbol":"SPCX","rationale":"reclaims the mean"}'))
+    assert router.classify_alert(msg) == "P0_INTERRUPT"
+
+
 def test_the_marker_is_on_the_first_line():
     msg = rn.build_message(_case())
     assert msg.splitlines()[0].startswith(rn.RECOVERY_T1_MARKER)
