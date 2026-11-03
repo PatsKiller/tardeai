@@ -41,7 +41,8 @@ def pr(number, *, text=None, held=False, title=None):
         "labels": [],
         "files": [{"path": "AGENTS.md" if held else "docs/example.md"}],
         "changedFiles": 1,
-        "statusCheckRollup": [{"name": name, "conclusion": "SUCCESS"} for name in telegram.REQUIRED_CHECKS],
+        "statusCheckRollup": [{"name": name, "status": "COMPLETED", "conclusion": "SUCCESS"}
+                              for name in telegram.REQUIRED_CHECKS],
     }
 
 
