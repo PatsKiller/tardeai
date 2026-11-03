@@ -23,13 +23,47 @@ export const ACTIONABLE_CSS = `${EXPLAIN_CSS}
  [data-mr-actionable] .mr-phone-only{display:block}
  [data-mr-actionable] td,[data-mr-actionable] th{padding:6px 3px}
  [data-mr-actionable] td:first-child{white-space:normal}
-}`
+}
+/* v007: native collapsible sections; the one-line summary is hidden while open (mockup behaviour). */
+[data-mr-actionable] details.mr-sec{background:${TOKENS.bg[1]};border:1px solid ${TOKENS.border};border-radius:${RADIUS.md};padding:0;min-width:0}
+[data-mr-actionable] details.mr-sec>summary{list-style:none;cursor:pointer;min-height:44px;padding:10px 12px;display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;font-weight:700;font-size:${TYPE.base}px;color:${TOKENS.text[2]};text-transform:uppercase;letter-spacing:.05em}
+[data-mr-actionable] details.mr-sec>summary::-webkit-details-marker{display:none}
+[data-mr-actionable] details.mr-sec>summary::after{content:"▾";margin-left:auto;color:${TOKENS.text[3]};transition:transform .15s}
+[data-mr-actionable] details.mr-sec[open]>summary{border-bottom:1px solid ${TOKENS.borderSubtle}}
+[data-mr-actionable] details.mr-sec[open]>summary::after{transform:rotate(180deg)}
+[data-mr-actionable] .mr-sec-one{font-size:${TYPE.sm}px;font-weight:400;text-transform:none;letter-spacing:0;color:${TOKENS.text[3]}}
+[data-mr-actionable] details.mr-sec[open] .mr-sec-one{display:none}
+[data-mr-actionable] .mr-sec-body{padding:10px 12px;min-width:0}
+@media(max-width:600px){
+ /* v007 phone proof: tables become stacked rows with their column label, no horizontal page scroll. */
+ [data-mr-actionable] .mr-stack{display:block;width:100%}
+ [data-mr-actionable] .mr-stack thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+ [data-mr-actionable] .mr-stack tbody,[data-mr-actionable] .mr-stack tr,[data-mr-actionable] .mr-stack td{display:block;width:100%}
+ [data-mr-actionable] .mr-stack tr{padding:8px 0;border-bottom:1px solid ${TOKENS.borderSubtle}}
+ [data-mr-actionable] .mr-stack td{border:0;padding:2px 0;text-align:left;white-space:normal;display:flex;justify-content:space-between;gap:10px}
+ [data-mr-actionable] .mr-stack td::before{content:attr(data-l);color:${TOKENS.text[3]};font-size:${TYPE.sm}px}
+ [data-mr-actionable] .mr-stack td:first-child::before{content:none}
+ [data-mr-actionable] .mr-stack td[data-l=""]::before{content:none}
+ [data-mr-actionable] .mr-stack td.mr-hide-phone{display:none}
+}
+@media(prefers-reduced-motion:reduce){[data-mr-actionable] details.mr-sec>summary::after{transition:none}}`
 
 const h3: CSSProperties = { display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', margin: '0 0 6px', fontSize: TYPE.base, color: TOKENS.text[2], textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }
 const sub: CSSProperties = { fontSize: TYPE.sm, color: TOKENS.text[3], marginTop: 4, lineHeight: 1.5 }
 const item: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 3, padding: '9px 12px', borderRadius: RADIUS.md, background: TOKENS.bg[0], border: `1px solid ${TOKENS.border}`, fontSize: TYPE.base + 1, lineHeight: 1.45 }
 const tap: CSSProperties = { minHeight: 44, display: 'inline-flex', alignItems: 'center', color: TOKENS.info, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }
 const signed = (n: number | null): CSSProperties => ({ ...numStyle, color: n == null ? TOKENS.text[3] : n < 0 ? toneVars('danger').color : toneVars('success').color })
+
+/** v007: one native collapsible per section. Nothing is removed; every section keeps its own text and clock,
+ *  and the summary shows a one-line digest that disappears once the section is open (mockup behaviour). */
+function Section({ title, one, testId, children }: { title: string; one?: string | null; testId: string; children: React.ReactNode }) {
+  return (
+    <details className="mr-sec" data-testid={testId} open>
+      <summary><span>{title}</span>{one ? <span className="mr-sec-one">{one}</span> : null}</summary>
+      <div className="mr-sec-body">{children}</div>
+    </details>
+  )
+}
 
 /** Verdict line and exposure line (inside the card's summary area, visible collapsed). */
 export function ActionableHead({ m }: { m: ActionableModel }) {
@@ -58,9 +92,10 @@ export function TopReview({ m }: { m: ActionableModel }) {
 
 function Sectors({ m }: { m: ActionableModel }) {
   return (
+    <Section title="Sectors vs SPY · your money in each" one={m.sectorsFoot} testId="mr-sectors-section">
     <div data-testid="mr-sectors">
-      <h3 style={h3}>Sectors vs SPY · your money in each (look-through <Explain term="look_through" />)</h3>
-      <table>
+      <div style={{ ...sub, marginTop: 0, marginBottom: 6 }}>look-through <Explain term="look_through" /></div>
+      <table className="mr-stack">
         <thead><tr><th>Group</th><th><span className="mr-hide-phone">1d vs SPY</span><span className="mr-phone-inline">1d</span></th><th><span className="mr-hide-phone">5d vs SPY</span><span className="mr-phone-inline">5d</span></th><th>You</th><th className="mr-hide-phone">% book <Explain term="pct_book" /></th></tr></thead>
         <tbody>
           {m.sectors.map(r => {
@@ -68,12 +103,12 @@ function Sectors({ m }: { m: ActionableModel }) {
             const bg = r.chip === 'STRESS' || r.chip === 'WEAK' ? t.bg : r.unknown && r.held ? toneVars('warning').bg : undefined
             return (
               <tr key={r.key} data-testid="mr-sector-row" data-key={r.key} data-chip={r.chip} style={{ background: bg }}>
-                <td><span data-testid="mr-sector-chip" style={{ ...chipStyle(r.tone, 'soft'), marginRight: 2 }}>{r.chip}</span><Explain term={CHIP_TERM[r.chip]} /> {r.label}{r.theme && <span style={{ color: TOKENS.text[3] }}> (theme)</span>}</td>
+                <td data-l="Group"><span data-testid="mr-sector-chip" style={{ ...chipStyle(r.tone, 'soft'), marginRight: 2 }}>{r.chip}</span><Explain term={CHIP_TERM[r.chip]} /> {r.label}{r.theme && <span style={{ color: TOKENS.text[3] }}> (theme)</span>}</td>
                 {r.unknown
                   ? <td colSpan={2} title={r.reason ?? undefined} style={{ textAlign: 'left', color: toneVars('warning').color, fontWeight: 600, whiteSpace: 'normal' }}>not measured{r.held && <span className="mr-hide-phone"> — you hold {r.usd}</span>}</td>
-                  : <><td style={signed(r.rs1n)}>{r.rs1}</td><td style={signed(r.rs5n)}>{r.rs5}</td></>}
-                <td style={numStyle}>{r.usd}</td>
-                <td className="mr-hide-phone" style={numStyle}>{r.pctBook}</td>
+                  : <><td data-l="1d vs SPY" style={signed(r.rs1n)}>{r.rs1}</td><td data-l="5d vs SPY" style={signed(r.rs5n)}>{r.rs5}</td></>}
+                <td data-l="You" style={numStyle}>{r.usd}</td>
+                <td data-l="% book" className="mr-hide-phone" style={numStyle}>{r.pctBook}</td>
               </tr>
             )
           })}
@@ -82,14 +117,15 @@ function Sectors({ m }: { m: ActionableModel }) {
       {m.foldLine && <div data-testid="mr-sectors-folded" style={{ fontSize: TYPE.base, color: TOKENS.text[2], padding: '6px 6px 0' }}>{m.foldLine}</div>}
       <div style={sub}>{m.sectorsFoot}</div>
     </div>
+    </Section>
   )
 }
 
 function Reentry({ m }: { m: ActionableModel }) {
   if (!m.reentry.length && !m.reentryMore) return null
   return (
+    <Section title="Since you were stopped out" one={m.reentryMore || `${m.reentry.length} watched exit${m.reentry.length === 1 ? '' : 's'}`} testId="mr-reentry-section">
     <div data-testid="mr-reentry">
-      <h3 style={h3}>Since you were stopped out</h3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {m.reentry.map(r => {
           const vt = toneVars(r.verdictTone)
@@ -111,41 +147,43 @@ function Reentry({ m }: { m: ActionableModel }) {
       </div>
       <div style={sub}>Signal and status only — never a size or an order.{m.reentryMore && <> <Link to="/risk?tab=market-risk" data-testid="mr-reentry-more" style={tap}>{m.reentryMore} — Risk →</Link></>}</div>
     </div>
+    </Section>
   )
 }
 
 function Positions({ m }: { m: ActionableModel }) {
   if (!m.positions.length) return null
   return (
+    <Section title="Your positions in stressed groups · by $ exposed" one={m.positionsMore || `${m.positions.length} position${m.positions.length === 1 ? '' : 's'}`} testId="mr-positions-section">
     <div data-testid="mr-positions">
-      <h3 style={h3}>Your positions in stressed groups · by $ exposed</h3>
-      <div style={{ overflowX: 'auto' }}><table>
+      <div style={{ overflowX: 'auto' }}><table className="mr-stack">
         <thead><tr><th>Symbol</th><th className="mr-hide-phone" style={{ textAlign: 'left' }}>Account</th><th>Value</th><th className="mr-hide-phone">% acct</th><th style={{ whiteSpace: 'normal' }}>Stressed <Explain term="stressed_pct" /></th><th style={{ whiteSpace: 'normal' }}>$ exposed <Explain term="usd_exposed" /></th><th>Stop</th><th className="mr-hide-phone">Stance</th></tr></thead>
         <tbody>
           {m.positions.map(p => (
             <tr key={`${p.symbol}-${p.account_label}`} data-testid="mr-position-row">
-              <td><b>{p.symbol}</b><span className="mr-phone-only" style={{ fontSize: TYPE.sm, color: TOKENS.text[3] }}>{p.account_label}</span></td>
-              <td className="mr-hide-phone" style={{ textAlign: 'left', color: TOKENS.text[2], whiteSpace: 'normal' }}>{p.account_label}</td>
-              <td style={numStyle}>{fmtUsd(p.value_usd)}</td>
-              <td className="mr-hide-phone" style={numStyle}>{p.pct_account != null ? `${p.pct_account.toFixed(1)}%` : '—'}</td>
-              <td style={numStyle}>{Math.round(p.stressed_share * 100)}%</td>
-              <td style={{ ...numStyle, fontWeight: 700 }}>{fmtUsd(p.usd_exposed)}</td>
-              <td data-testid="mr-position-stop" style={{ color: !m.stopsKnown ? TOKENS.text[3] : p.stop_distance_pct == null ? toneVars('warning').color : TOKENS.text[1], fontWeight: m.stopsKnown && p.stop_distance_pct == null ? 600 : 400 }}>{!m.stopsKnown ? 'stops unavailable' : p.stop_distance_pct == null ? 'no stop' : `${p.stop_distance_pct.toFixed(1)}% below`}</td>
-              <td className="mr-hide-phone" style={{ color: TOKENS.text[2], whiteSpace: 'normal' }}>{p.material ? (p.stance ?? 'hold') : 'residual'}</td>
+              <td data-l="Symbol"><b>{p.symbol}</b><span className="mr-phone-only" style={{ fontSize: TYPE.sm, color: TOKENS.text[3] }}>{p.account_label}</span></td>
+              <td data-l="Account" className="mr-hide-phone" style={{ textAlign: 'left', color: TOKENS.text[2], whiteSpace: 'normal' }}>{p.account_label}</td>
+              <td data-l="Value" style={numStyle}>{fmtUsd(p.value_usd)}</td>
+              <td data-l="% acct" className="mr-hide-phone" style={numStyle}>{p.pct_account != null ? `${p.pct_account.toFixed(1)}%` : '—'}</td>
+              <td data-l="Stressed" style={numStyle}>{Math.round(p.stressed_share * 100)}%</td>
+              <td data-l="$ exposed" style={{ ...numStyle, fontWeight: 700 }}>{fmtUsd(p.usd_exposed)}</td>
+              <td data-l="Stop" data-testid="mr-position-stop" style={{ color: !m.stopsKnown ? TOKENS.text[3] : p.stop_distance_pct == null ? toneVars('warning').color : TOKENS.text[1], fontWeight: m.stopsKnown && p.stop_distance_pct == null ? 600 : 400 }}>{!m.stopsKnown ? 'stops unavailable' : p.stop_distance_pct == null ? 'no stop' : `${p.stop_distance_pct.toFixed(1)}% below`}</td>
+              <td data-l="Stance" className="mr-hide-phone" style={{ color: TOKENS.text[2], whiteSpace: 'normal' }}>{p.material ? (p.stance ?? 'hold') : 'residual'}</td>
             </tr>
           ))}
         </tbody>
       </table></div>
       {m.positionsMore && <div style={sub}>{m.positionsMore}</div>}
     </div>
+    </Section>
   )
 }
 
 function Review({ m }: { m: ActionableModel }) {
   if (!m.review.length) return null
   return (
+    <Section title="Review now · ranked by $ at risk" one={`${m.review.length} item${m.review.length === 1 ? '' : 's'}`} testId="mr-review-section">
     <div data-testid="mr-review">
-      <h3 style={h3}>Review now · ranked by $ at risk</h3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {m.review.map((r, i) => (
           <div key={`${r.symbol}-${r.account_label}`} data-testid="mr-review-item" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0 8px', minHeight: 44, padding: '0 12px', borderRadius: RADIUS.md, background: TOKENS.bg[0], border: `1px solid ${TOKENS.border}`, fontSize: TYPE.base + 1 }}>
@@ -158,22 +196,26 @@ function Review({ m }: { m: ActionableModel }) {
       </div>
       <div style={sub}>Advisory only. Each link opens the existing stop review or the symbol's page. No order, size or stop level is implied.</div>
     </div>
+    </Section>
   )
 }
 
 function Budgets({ m }: { m: ActionableModel }) {
   if (!m.budgets.length && m.budgetsNote) {
     return (
+      <Section title="Budget breaches" one={m.budgetsNote} testId="mr-budgets-section">
       <div data-testid="mr-budgets">
-        <h3 style={h3}>Budget breaches <Explain term="budget_breach" /></h3>
+        <div style={{ ...sub, marginTop: 0, marginBottom: 6 }}><Explain term="budget_breach" /></div>
         <div data-testid="mr-budgets-unavailable" style={{ ...item, color: toneVars('warning').color }}>{m.budgetsNote}</div>
       </div>
+      </Section>
     )
   }
   if (!m.budgets.length) return null
   return (
+    <Section title="Budget breaches" one={`${m.budgets.length} breach${m.budgets.length === 1 ? '' : 'es'}`} testId="mr-budgets-section">
     <div data-testid="mr-budgets">
-      <h3 style={h3}>Budget breaches <Explain term="budget_breach" /></h3>
+      <div style={{ ...sub, marginTop: 0, marginBottom: 6 }}><Explain term="budget_breach" /></div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {m.budgets.map((b, i) => (
           <div key={i} data-testid="mr-budget-row" style={item}>
@@ -183,6 +225,7 @@ function Budgets({ m }: { m: ActionableModel }) {
         ))}
       </div>
     </div>
+    </Section>
   )
 }
 
@@ -194,7 +237,13 @@ export function ActionableBody({ m, why }: { m: ActionableModel; why: React.Reac
       <div data-mr-actionable="" data-testid="mr-actionable-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 460px), 1fr))', gap: '16px 20px', alignItems: 'start', paddingTop: 8 }}>
         <style>{ACTIONABLE_CSS}</style>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}><Sectors m={m} /><Reentry m={m} /></div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}><Positions m={m} />{!m.protect && <Review m={m} />}<Budgets m={m} /><Segments m={m} />{why}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+          <Positions m={m} />{!m.protect && <Review m={m} />}<Budgets m={m} />
+          {/* Protect / Hedge / Rotate live in MarketRiskActions' Segments; this file only adds the collapsible
+              wrapper so the section behaves like the rest of the card. Nothing inside is changed. */}
+          <Section title="Protect · Hedge · Rotate" one={[m.protect ? `${m.protect.items.length} protect` : null, m.hedge ? 'hedge' : null, m.rotate ? 'rotate' : null].filter(Boolean).join(' · ') || 'advisory sections'} testId="mr-advisory-section"><Segments m={m} /></Section>
+          <Section title="Why this tier" one={m.verdict} testId="mr-why-section">{why}</Section>
+        </div>
       </div>
     </GlossaryProvider>
   )
