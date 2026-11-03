@@ -435,7 +435,7 @@ def test_w10_adapter_uses_durable_default_and_opaque_ids_with_real_watch_link(mo
     def read(**kwargs):
         assert kwargs == {"limit": 200}  # code artifacts must not replace W10's canonical state root
         return {"gap": None, "total": 1, "rows": [{"id": key, "title": "Review source disagreement", "proposed_by": "conflict engine",
-            "created_at": NOW.isoformat(), "revision": 3,
+            "created_at": NOW.isoformat(), "revision": 3, "owner": "the CIO",
             "document": {"text": "Both source versions and their clear condition.", "version": "1", "source_sha": "d" * 64},
             "governed_href": "/v3/watch?conflict=" + key}]}
     module.approval_rows = read
@@ -448,7 +448,7 @@ def test_w10_adapter_uses_durable_default_and_opaque_ids_with_real_watch_link(mo
     assert parse_qs(urlparse(row["governed_href"]).query)["conflict"] == [key]
     # The queue row prints item.version; it used to be absent, so every row showed the placeholder. The bound
     # version stays the evidence digest inside document_sha; the label is the record's revision.
-    assert row["version"] == "open conflict · revision 3"
+    assert row["version"] == "open conflict · revision 3 · owner: the CIO"
     assert row["document"]["version"] == "1:" + "d" * 64
 
 

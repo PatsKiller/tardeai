@@ -324,9 +324,11 @@ def _default_sources(root: Path) -> dict:
                                   proposed_by=row.get("proposed_by"), created_at=row.get("created_at"), doc=doc,
                                   source="conflicts", governed_href="/watch?conflict=" + quote(str(row["id"]), safe=""),
                                   # The bound version is the evidence digest twice over; the row label is the
-                                  # record's revision so the reader sees something it can act on.
-                                  version=(f"open conflict · revision {row['revision']}"
-                                           if row.get("revision") is not None else "open conflict"),
+                                  # record's revision plus who must act on it, so the reader sees something it can
+                                  # act on. Owner comes from the record, outside the bound document text.
+                                  version=("open conflict · revision " + str(row["revision"])
+                                           if row.get("revision") is not None else "open conflict")
+                                          + (f" · owner: {row['owner']}" if row.get("owner") else ""),
                                   source_refs=["conflict_events:" + str(row["id"])]))
         return rows
 
