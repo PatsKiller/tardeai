@@ -238,7 +238,10 @@ def fixer_request(rec: Mapping[str, Any], verdict: Mapping[str, Any], cfg: Mappi
     src = rec.get("source") or {}
     lane = cfg["policy"]["fixer"].get("lane_prefix", "incident-") + re.sub(r"[^a-z0-9-]+", "-",
                                                                           str(src.get("job") or src.get("watcher") or "x").lower()).strip("-")[:48]
-    sig = "sig-" + L.fingerprint_of(rec["id"], rec.get("fingerprint"))[3:19]
+    # Root-cause dedupe (2026-11-03): two incidents for one cause must map to ONE fix job, so the
+    # signature comes from the incident fingerprint (falling back to the lane) rather than the id.
+    sig_src = str(rec.get("fingerprint") or f"{lane}:{rec['id']}")
+    sig = "sig-" + L.fingerprint_of(sig_src)[3:19]
     return {
         "_why": f"incident supervisor dispatch for {rec['id']}: {verdict.get('action')}",
         "at": L.iso(L.utcnow()),
