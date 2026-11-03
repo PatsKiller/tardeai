@@ -37,11 +37,10 @@ def _parse(ts: Any) -> datetime | None:
 
 def holdings_hash(doc: dict[str, Any]) -> str:
     """Same rule the orchestrator writes (portfolio_orchestrator.py:1191-1204)."""
-    rows = doc.get("holdings") or doc.get("positions") or []
     tuples = sorted(
-        (str(r.get("symbol") or ""), str(r.get("account") or ""), round(float(r.get("shares") or 0), 4))
-        for r in rows
-        if isinstance(r, dict) and float(r.get("market_value") or 0) > 100
+        (h.get("symbol", ""), h.get("account", ""), round(h.get("shares", 0) or 0, 4))
+        for h in (doc.get("holdings") or [])
+        if (h.get("market_value") or 0) > 100
     )
     return hashlib.md5(str(tuples).encode()).hexdigest()[:12]
 
@@ -79,21 +78,34 @@ def guard(state_dir: Path | str, *, now: datetime | None = None) -> dict[str, An
         return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": [f"holdings_store_unparseable:{type(exc).__name__}"]}
     if not isinstance(doc, dict):
         return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": ["holdings_store_not_an_object"]}
-    rows = doc.get("holdings") or doc.get("positions")
+    rows = doc.get("holdings")
     if not isinstance(rows, list) or not rows:
         return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": ["holdings_store_has_no_positions"]}
     for row in rows:
         if not isinstance(row, dict):
             return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": ["holdings_row_not_an_object"]}
+        symbol = row.get("symbol")
+        if not isinstance(symbol, str) or not symbol.strip():
+            # A row with no identity is not a position. `[{}]` used to pass as a healthy book.
+            return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": ["holdings_row_missing_symbol"]}
         for field in ("market_value", "value", "price", "shares", "qty"):
             if row.get(field) is None:
                 continue
-            try:
-                numeric = float(row[field])
-            except (TypeError, ValueError):
+            value = row[field]
+            # The producer hashes the parsed number (an integer stays an integer); a string or a
+            # bool is schema drift, and float(10**400) raises OverflowError. Both are unusable rows.
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
                 return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": [f"holdings_row_non_numeric:{field}"]}
+            try:
+                numeric = float(value)
+            except OverflowError:
+                return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": [f"holdings_row_overflow:{field}"]}
             if not math.isfinite(numeric):
                 return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": [f"holdings_row_non_finite:{field}"]}
+        if not any(row.get(f) is not None for f in ("market_value", "value")):
+            return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": ["holdings_row_missing_market_value"]}
+        if not any(row.get(f) is not None for f in ("shares", "qty")):
+            return {**out, "ok": False, "status": STATUS_UNAVAILABLE, "reasons": ["holdings_row_missing_quantity"]}
 
     observed = holdings_hash(doc)
     out["holdings_hash_observed"] = observed
@@ -106,7 +118,10 @@ def guard(state_dir: Path | str, *, now: datetime | None = None) -> dict[str, An
 
     expected = fresh.get("holdings_hash")
     out["holdings_hash_expected"] = expected if isinstance(expected, str) else None
-    if isinstance(expected, str) and expected and expected != observed:
+    if not isinstance(expected, str) or not expected.strip():
+        # The absence of the match evidence cannot satisfy the manifest-to-store match.
+        reasons.append("freshness_manifest_missing_holdings_hash")
+    elif expected != observed:
         reasons.append("holdings_hash_mismatch")
     completed = _parse(fresh.get("completed_at"))
     if completed is None:
