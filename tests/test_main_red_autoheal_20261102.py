@@ -554,3 +554,64 @@ def test_passing_rerun_opens_a_fix_task_naming_the_flaky_test(tmp_path):
     assert doc["main_red_autoheal"]["why"].startswith("suspected flake")
     assert "tests/test_x.py::test_y" in doc["main_red_autoheal"]["failing_test_ids"]
     assert doc["main_red_autoheal"]["run_id"] == "991"
+
+
+# ------------------------------------------- the Home v008 executor's one call (rerun_ci)
+class Progress:
+    def __init__(self):
+        self.steps = []
+
+    def reached(self, step):
+        self.steps.append(step)
+
+
+def _view(head="a" * 40, conclusion="failure", status="completed", workflow="cio-production-hardening-ci"):
+    return {"headSha": head, "conclusion": conclusion, "status": status, "workflowName": workflow}
+
+
+def test_rerun_for_request_issues_one_rerun_and_records_the_ledger(tmp_path):
+    gh = FakeGh([], views={"991": _view()})
+    progress = Progress()
+    out = mra.rerun_for_request(991, "a" * 40, config=dict(CONFIG), state_dir=tmp_path / "state",
+                                gh=gh, progress=progress)
+
+    assert out["ok"] is True and out["head_key"] == f"{'a' * 40}:cio-production-hardening-ci"
+    assert [c[2] for c in gh.reruns] == ["991"]
+    assert progress.steps == ["rerun_issued"]
+    state = json.loads((tmp_path / "state" / "state.json").read_text())
+    assert state["rerun_ledger"][out["head_key"]]["run_id"] == "991"
+    assert state["rerun_ledger"][out["head_key"]]["via"] == "approval_request"
+
+
+def test_rerun_for_request_refuses_when_the_head_moved(tmp_path):
+    gh = FakeGh([], views={"991": _view(head="b" * 40)})
+    out = mra.rerun_for_request(991, "a" * 40, config=dict(CONFIG), state_dir=tmp_path / "state", gh=gh)
+
+    assert out["ok"] is False and "changed" in out["plain"]
+    assert gh.reruns == []
+
+
+def test_rerun_for_request_refuses_a_second_time_for_the_same_head_and_check(tmp_path):
+    gh = FakeGh([], views={"991": _view(), "992": _view()})
+    first = mra.rerun_for_request(991, "a" * 40, config=dict(CONFIG), state_dir=tmp_path / "state", gh=gh)
+    second = mra.rerun_for_request(992, "a" * 40, config=dict(CONFIG), state_dir=tmp_path / "state", gh=gh)
+
+    assert first["ok"] is True and second["ok"] is False
+    assert "already had its one re-run" in second["plain"]
+    assert len(gh.reruns) == 1                      # the budget is the lane's, not the caller's
+
+
+def test_rerun_for_request_refuses_a_run_that_is_not_failing(tmp_path):
+    gh = FakeGh([], views={"991": _view(conclusion="success")})
+    out = mra.rerun_for_request(991, "a" * 40, config=dict(CONFIG), state_dir=tmp_path / "state", gh=gh)
+
+    assert out["ok"] is False and "not failing" in out["plain"]
+    assert gh.reruns == []
+
+
+def test_rerun_for_request_refuses_a_short_head_or_a_non_numeric_run(tmp_path):
+    gh = FakeGh([], views={"991": _view()})
+    short = mra.rerun_for_request(991, "abc", config=dict(CONFIG), state_dir=tmp_path / "s1", gh=gh)
+    bad = mra.rerun_for_request("not-a-run", "a" * 40, config=dict(CONFIG), state_dir=tmp_path / "s2", gh=gh)
+
+    assert short["ok"] is False and bad["ok"] is False and gh.reruns == []

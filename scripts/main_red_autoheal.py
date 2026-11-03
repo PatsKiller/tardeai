@@ -292,6 +292,79 @@ def decide(*, attempts: int, max_reruns: int, escalated: bool, flake_recorded: b
     return ACTION_PAGE_AND_DISPATCH
 
 
+def rerun_for_request(run_id, expected_head_sha: str, *, config: Optional[Mapping[str, Any]] = None,
+                      state_dir: Optional[Path] = None, gh=None, dry_run: bool = False,
+                      progress=None) -> dict:
+    """The Home v008 executor's one call into this lane (action type ``rerun_ci``).
+
+    The approval is bound to (run id, head SHA); this function re-reads the run and refuses with a plain
+    reason if the head moved or the run is not failing, then applies the SAME one-re-run-per-(head, check
+    group) ledger the scheduled lane uses and issues exactly one ``gh run rerun <id> --failed``. A second
+    failure stays REAL: the ledger blocks a third attempt from either caller.
+
+    Returns ``{"ok": bool, "plain": str, ...}``. ``progress.reached("rerun_issued")`` is called after the
+    re-run is issued so the executor's receipt records the step. Nothing here approves anything: the
+    decision belongs to the operator's session upstream; this is the action half only.
+    """
+    cfg = config if config is not None else _load_json(default_config_path())
+    if not cfg or cfg.get("schema") != CONFIG_SCHEMA:
+        return {"ok": False, "plain": "The main-red lane has no readable config, so nothing was re-run."}
+    runner = gh or _gh_runner
+    repo = str(cfg.get("repo") or "")
+    rid = str(run_id).strip()
+    head = str(expected_head_sha or "").strip().lower()
+    if not rid.isdigit():
+        return {"ok": False, "plain": "That run id is not a number GitHub could have issued."}
+    if len(head) != 40:
+        return {"ok": False, "plain": "The request does not bind a full 40-character head SHA."}
+
+    rc, out = runner(["run", "view", rid, "--repo", repo,
+                      "--json", "headSha,status,conclusion,workflowName"])
+    try:
+        view = json.loads(out or "{}")
+    except ValueError:
+        view = None
+    if rc != 0 or not isinstance(view, dict) or not view:
+        return {"ok": False, "plain": f"I could not read run {rid}, so nothing was re-run."}
+    run_head = str(view.get("headSha") or "").lower()
+    if run_head != head:
+        return {"ok": False,
+                "plain": "This changed. The run is at a different head than the one you approved; nothing was re-run."}
+    if str(view.get("status") or "") != "completed" or str(view.get("conclusion") or "") not in FAILED_CONCLUSIONS:
+        return {"ok": False, "plain": "That run is not failing, so there is nothing to re-run."}
+
+    workflow = str(view.get("workflowName") or "")
+    group = (cfg.get("page_groups") or {}).get(workflow) or workflow or rid
+    head_key = f"{run_head}:{group}"
+    path = Path(state_dir) if state_dir is not None else default_state_dir()
+    state = _load_json(path / "state.json")
+    if state.get("schema") != STATE_SCHEMA:
+        state = {"schema": STATE_SCHEMA, "runs": {}}
+    ledger: dict[str, dict] = state.setdefault("rerun_ledger", {})
+    if head_key in ledger:
+        return {"ok": False, "head_key": head_key,
+                "plain": "This head has already had its one re-run for this check; a second failure is REAL "
+                         "and will not be re-run again."}
+    if dry_run:
+        return {"ok": True, "dry_run": True, "head_key": head_key,
+                "plain": f"Would re-run the failed jobs of {rid} once."}
+
+    rc, out = runner(["run", "rerun", rid, "--repo", repo, "--failed"])
+    if rc != 0:
+        return {"ok": False, "head_key": head_key,
+                "plain": f"GitHub refused the re-run: {(out or '').strip()[:200]}"}
+    ledger[head_key] = {"run_id": rid, "at": _utcnow(), "via": "approval_request"}
+    _write_json(path / "state.json", state)
+    if progress is not None:
+        try:
+            progress.reached("rerun_issued")
+        except Exception:  # noqa: BLE001 — a progress recorder must never undo an issued re-run
+            pass
+    return {"ok": True, "head_key": head_key, "run_id": rid,
+            "plain": f"Re-ran the failed jobs of run {rid} once ({run_head[:12]}). A second failure is REAL "
+                     "and will not be re-run again."}
+
+
 def _handle_red_run(*, config, run, run_id, workflow, record, gh, state_dir, dry_run,
                     telegram, issue_writer, infra_markers, now, run_key="", run_prior_attempts=0,
                     head_key="", rerun_ledger=None) -> dict:
