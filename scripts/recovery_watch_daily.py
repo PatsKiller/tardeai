@@ -758,7 +758,7 @@ def send_notifications(escalated: list[dict]):
             body_parts.append(f"Analyst: {e['summary'][:120]}")
         if e.get("trigger"):
             body_parts.append(f"Trigger: {e['trigger'][:100]}")
-        body_parts.append(f"Next step: review at /v3/risk")
+        body_parts.append("Next step: review at /v3/risk")
         body_text = " ".join(body_parts)
 
         try:
@@ -784,7 +784,7 @@ def send_notifications(escalated: list[dict]):
         try:
             from telegram_alert import send_telegram
             lines = [
-                f"*Recovery Watch Escalation*",
+                "*Recovery Watch Escalation*",
                 f"Symbol: *{e['symbol']}*",
                 f"Verdict: {e['verdict'].replace('_', ' ').title()} ({e['confidence']*100:.0f}%)",
                 f"Escalated to: *{e['escalated_to'].title()}*",
@@ -798,7 +798,7 @@ def send_notifications(escalated: list[dict]):
                 lines.append(f"Invalidated if: {e['invalidation'][:100]}")
             if e.get("allocation"):
                 lines.append(f"Capital: {e['allocation'].replace('_', ' ')}")
-            lines.append(f"Review at: /v3/risk")
+            lines.append("Review at: /v3/risk")
             send_telegram("\n".join(lines), priority="P2", producer="recovery_watch_daily")
         except Exception as ex:
             print(f"  [recovery] Telegram send failed: {ex}")
@@ -873,8 +873,8 @@ def send_stop_reminders(reminders: list[dict]):
     lines = [f"*Stop Placement Reminder*\n{len(reminders)} position(s) without confirmed stops (${total_unprotected:,.0f} total exposure):\n"]
     for r in reminders[:8]:
         lines.append(f"• *{r['symbol']}* — ${r['market_value']:,.0f} ({r['pct']:.1f}%) — reminder #{r['reminder_num']}")
-    lines.append(f"\nReply: yes SYMBOL / no / intentional SYMBOL")
-    lines.append(f"Or review at /v3/risk")
+    lines.append("\nReply: yes SYMBOL / no / intentional SYMBOL")
+    lines.append("Or review at /v3/risk")
     msg = "\n".join(lines)
 
     try:
@@ -1005,7 +1005,7 @@ def _compute_allocation(sym, analyst_verdict, analyst_conf, cash_pct, heat_pct, 
             reasons.append("Rotation preferred over idle cash when risk posture is manageable.")
             reasons.append("Select from highest-confidence watchlist names or existing positions below target weight.")
             until = "Until capital is deployed to selected rotation target"
-            trigger = f"Watchlist candidate reaches GO or analyst marks re-entry candidate with confidence >= 70%"
+            trigger = "Watchlist candidate reaches GO or analyst marks re-entry candidate with confidence >= 70%"
         elif heat_pct > 5:
             verdict = "stay_cash"
             confidence = 0.70
@@ -1095,7 +1095,7 @@ def _recovery_state_pass():
         close = _f("price") if _f("price") is not None else _f("close")
         if close is None:
             return None
-        snap = {"close": close}
+        snap = {"close": close, "fetched_at": row.get("fetched_at")}
         for field, keys in (("rsi", ("rsi", "rsi_14")), ("rsi_prev", ("rsi_prev",)),
                             ("sma20", ("sma20", "sma_20")), ("macd_up_sessions", ("macd_up_sessions",)),
                             ("stop_level", ("stop_level",)), ("entry_high", ("entry_high",))):
