@@ -113,6 +113,189 @@ def _paths(values: Any) -> list[str]:
     return list(values)
 
 
+ACTIVATION_FILES = ("AGENTS.md", "config/agent_standing_authority.json", "docs/governance/AGENTS_HISTORY.md")
+
+
+def _once(text: str, old: str, new: str) -> str:
+    if text.count(old) != 1:
+        raise ValueError("activation_shape_unrecognized")
+    return text.replace(old, new, 1)
+
+
+def _activation_row(text: str, version: str, date: str, token: str, url: str) -> str:
+    rows = [line for line in text.splitlines() if line.startswith(f"| {version} |")]
+    if len(rows) != 1:
+        raise ValueError("activation_history_ambiguous")
+    cells = [cell.strip() for cell in rows[0].split("|")[1:-1]]
+    placeholder = f"PENDING `APPROVE_AGENTS_POLICY_{version.replace('.', '_')} <PR> <head_sha>`"
+    if len(cells) != 6 or cells[1:3] != ["PENDING", "PROPOSED"] or cells[-1] != placeholder:
+        raise ValueError("activation_history_shape_unrecognized")
+    cells[1:3], cells[-1] = [date, "ACTIVE"], f"`{token}` (operator, {url})"
+    return _once(text, rows[0], "| " + " | ".join(cells) + " |")
+
+
+def _activation_banner(text: str, version: str, supersedes: str) -> str:
+    banner = re.findall(rf"^\*\*{re.escape(version)} is PROPOSED \((MAJOR|MINOR|PATCH)\)\*\*", text, re.M)
+    if len(banner) != 1:
+        raise ValueError("activation_banner_ambiguous")
+    text = _once(text, f"**{version} is PROPOSED ({banner[0]})**", f"**{version} is ACTIVE ({banner[0]})**")
+    before = (
+        "The operator directly authorized preparation; ratification is still required. Policy and capability manifest stay\n"
+        f"PROPOSED and grant nothing until ratified and merged. **{supersedes} remains active.** Earlier banners and consolidation\n"
+        "records are in docs/governance/AGENTS_HISTORY.md; old source branches remain. No broker, secret or deploy grant."
+    )
+    after = (
+        "Ratified by the operator at the reviewed source head; this status-only edit takes effect on merge.\n"
+        "Approval and consolidation records are in docs/governance/AGENTS_HISTORY.md; old source branches remain.\n"
+        "No broker, secret or deploy grant."
+    )
+    return _once(text, before, after)
+
+
+def _unique_json(raw: str):
+    def pairs(items):
+        out = {}
+        for key, value in items:
+            if key in out:
+                raise ValueError("duplicate_manifest_key")
+            out[key] = value
+        return out
+
+    return json.loads(raw, object_pairs_hook=pairs)
+
+
+def verify_status_only_continuation(
+    *, git: Callable, reviewed_head_sha: str, head_sha: str, version: str, pr: int, comment_proof: dict
+) -> dict:
+    """Compare every changed byte with the known ratifying-edit format.
+
+    This comparator alone does not establish approval. policy_approval calls it
+    only AFTER verifying the genuine exact reviewed-head public comment. It
+    recognizes this repository's explicit activation format; unfamiliar formats
+    stay unknown. No arbitrary Status/history line is ignored, and every other
+    path must retain its reviewed tree content.
+    """
+    result = {
+        "verified": False,
+        "reviewed_head_sha": reviewed_head_sha,
+        "head_sha": head_sha,
+        "source": "exact_activation_transform",
+        "gap": "POLICY_RATIFICATION_CONTINUATION_UNVERIFIED",
+    }
+    try:
+        if (
+            not _sha(reviewed_head_sha)
+            or not _sha(head_sha)
+            or type(pr) is not int
+            or pr <= 0
+            or not isinstance(version, str)
+            or not re.fullmatch(r"\d+\.\d+\.\d+", version)
+            or comment_proof.get("reviewed_head_sha") != reviewed_head_sha
+        ):
+            return result
+        stamp = datetime.fromisoformat(comment_proof["created_at"].replace("Z", "+00:00"))
+        at, date = _at(stamp), _at(stamp)[:10]
+        url = comment_proof["url"]
+        cid = comment_proof["comment_id"]
+        if (
+            type(cid) is not int
+            or cid <= 0
+            or url
+            not in {f"https://github.com/{REPOSITORY}/{kind}/{pr}#issuecomment-{cid}" for kind in ("issues", "pull")}
+        ):
+            return result
+        git("merge-base", "--is-ancestor", reviewed_head_sha, head_sha)
+        names = git("diff", "--name-only", "--no-renames", reviewed_head_sha, head_sha, "--").splitlines()
+        if len(names) != len(ACTIVATION_FILES) or set(names) != set(ACTIVATION_FILES):
+            return result
+        before, after = {}, {}
+        for name in ACTIVATION_FILES:
+            before[name] = git("show", f"{reviewed_head_sha}:{name}")
+            after[name] = git("show", f"{head_sha}:{name}")
+            if (
+                not isinstance(before[name], str)
+                or not isinstance(after[name], str)
+                or len(before[name].encode()) > MAX_SOURCE_BYTES
+                or len(after[name].encode()) > MAX_SOURCE_BYTES
+            ):
+                return result
+        policy = before["AGENTS.md"]
+        control = re.findall(r"(?ms)^```[ \t]*\n(Policy-Version:[^\n]*\n.*?)^```[ \t]*$", policy)
+        if len(control) != 1:
+            return result
+        block = control[0]
+        policy_version = re.search(r"^Policy-Version:[ \t]*(\d+\.\d+\.\d+)[ \t]*$", block, re.M)
+        supersedes = re.search(r"^Supersedes:[ \t]*(\d+\.\d+\.\d+)[ \t]*$", block, re.M)
+        if not policy_version or policy_version[1] != version or not supersedes:
+            return result
+        active_block = block
+        for key, old, new in (("Status", "PROPOSED", "ACTIVE"), ("Effective-Date", "PENDING", date)):
+            matches = list(re.finditer(rf"^({key}:[ \t]*){old}([ \t]*)$", active_block, re.M))
+            if len(matches) != 1:
+                return result
+            match = matches[0]
+            active_block = _once(active_block, match[0], match[1] + new + match[2])
+        policy = _once(policy, block, active_block)
+        token = f"APPROVE_AGENTS_POLICY_{version.replace('.', '_')} {pr} {reviewed_head_sha}"
+        policy = _activation_row(_activation_banner(policy, version, supersedes[1]), version, date, token, url)
+        if policy != after["AGENTS.md"]:
+            return result
+        manifest = _unique_json(before["config/agent_standing_authority.json"])
+        ratification = {"approval_token": None, "pr": None, "reviewed_head": None}
+        if (
+            not isinstance(manifest, dict)
+            or manifest.get("schema") != "AgentStandingAuthority@v1"
+            or manifest.get("status") != "PROPOSED"
+            or manifest.get("ratification") != ratification
+        ):
+            return result
+        if json.dumps(manifest, ensure_ascii=True, indent=2) + "\n" != before["config/agent_standing_authority.json"]:
+            return result
+        manifest["status"] = "ACTIVE"
+        manifest["ratification"] = {"approval_token": token, "pr": pr, "reviewed_head": reviewed_head_sha}
+        if json.dumps(manifest, ensure_ascii=True, indent=2) + "\n" != after["config/agent_standing_authority.json"]:
+            return result
+        history = before["docs/governance/AGENTS_HISTORY.md"]
+        header, separator, tail = history.partition("\n## ")
+        if not separator:
+            return result
+        observed = re.findall(r"^as_of:[ \t]*(.+)$", header, re.M)
+        measured = re.findall(
+            rf"^Measured at:[ \t]*{re.escape(version)} preparation from main [0-9a-f]{{7,40}}; PROPOSED, no ratification claimed$",
+            header,
+            re.M,
+        )
+        if len(observed) != 1 or len(measured) != 1:
+            return result
+        _at(datetime.fromisoformat(observed[0].replace("Z", "+00:00")))
+        header = _once(header, observed[0], at)
+        header = _once(
+            header,
+            measured[0],
+            f"Measured at: operator ratification of reviewed source {reviewed_head_sha}; status-only edit effective on merge",
+        )
+        history = header + separator + tail
+        history = _once(
+            history,
+            "merge-watching and the approved-plan registry rule. Ratification remains one later exact-head operator act.",
+            f"merge-watching and the approved-plan registry rule. The operator ratified the reviewed source at {at}.",
+        )
+        history = _once(history, f"### {version} proposal record", f"### {version} ratification record")
+        history = _activation_row(_activation_banner(history, version, supersedes[1]), version, date, token, url)
+        if history != after["docs/governance/AGENTS_HISTORY.md"]:
+            return result
+        return {
+            **result,
+            "verified": True,
+            "gap": None,
+            "changed_paths": list(ACTIVATION_FILES),
+            "approved_at": at,
+            "effective_on_merge": True,
+        }
+    except Exception:
+        return result
+
+
 @dataclass
 class AuthorityContext:
     policy_sha: str | None
@@ -126,6 +309,7 @@ class AuthorityContext:
     hold_helper: Any = None
     hold_config: dict = field(default_factory=dict)
     gh: Any = None
+    git: Any = None
     _comment_cache: dict = field(default_factory=dict, repr=False)
 
     def comments(self, pr: int) -> list[dict]:
@@ -229,8 +413,9 @@ class AuthorityContext:
         main or the standing manifest. Existing installed authority validation is
         still mandatory before engineering scope can be delegated.
 
-        A current/reviewed head mismatch needs a verified continuation helper.
-        None exists here: return unknown, never infer another token is needed.
+        A current/reviewed head mismatch is accepted only when every changed
+        byte matches the bounded activation transform. Other deltas stay unknown;
+        this display adjudication never infers another operator token is needed.
         """
         reviewed = reviewed_head_sha or head_sha
         out = {
@@ -250,8 +435,6 @@ class AuthorityContext:
             or not re.fullmatch(r"\d+\.\d+\.\d+", version)
         ):
             return {**out, "gap": "POLICY_RATIFICATION_IDENTITY_INVALID"}
-        if reviewed != head_sha:
-            return {**out, "gap": "POLICY_RATIFICATION_CONTINUATION_UNVERIFIED"}
         token = f"APPROVE_AGENTS_POLICY_{version.replace('.', '_')} {pr} {reviewed}"
         try:
             records = self.comments(pr) if comments is None else comments
@@ -284,17 +467,37 @@ class AuthorityContext:
                 stamp = datetime.fromisoformat(created.replace("Z", "+00:00"))
                 if stamp.tzinfo is None or stamp.utcoffset() is None:
                     raise ValueError("ambiguous_matching_timestamp")
+                proof = {
+                    "comment_id": cid,
+                    "url": row["html_url"],
+                    "created_at": _at(stamp),
+                    "reviewed_head_sha": reviewed,
+                }
+                if reviewed != head_sha:
+                    continuation = verify_status_only_continuation(
+                        git=self.git,
+                        reviewed_head_sha=reviewed,
+                        head_sha=head_sha,
+                        version=version,
+                        pr=pr,
+                        comment_proof=proof,
+                    )
+                    if not continuation["verified"]:
+                        return {**out, "gap": continuation["gap"], "proof": proof}
+                    proof["continuation"] = continuation
                 return {
                     **out,
                     "state": "approved",
-                    "proof": {
-                        "comment_id": cid,
-                        "url": row["html_url"],
-                        "created_at": _at(stamp),
-                        "reviewed_head_sha": reviewed,
-                    },
+                    "state_detail": "approval_recorded",
+                    "merged": None,
+                    "live": None,
+                    "proof": proof,
                 }
-            return {**out, "state": "pending"}
+            return (
+                {**out, "state": "pending"}
+                if reviewed == head_sha
+                else {**out, "gap": "POLICY_RATIFICATION_CONTINUATION_UNVERIFIED"}
+            )
         except Exception:
             return {**out, "gap": "POLICY_RATIFICATION_EVIDENCE_INVALID"}
 
@@ -306,7 +509,7 @@ def load_context(*, git: Callable, gh, now: datetime, source_root: Path = CANONI
     ref and GitHub main must agree. Installed guard code and canonical helper
     code must exactly match that same SHA before they may classify a PR.
     """
-    context = AuthorityContext(None, _at(now), gh=gh)
+    context = AuthorityContext(None, _at(now), gh=gh, git=git)
     try:
         sha = git("rev-parse", "refs/remotes/origin/main").strip()
         remote = _github(gh, f"repos/{REPOSITORY}/commits/main")
