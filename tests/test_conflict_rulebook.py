@@ -1,5 +1,8 @@
 """Binding EXCEPTIONS_MATRIX fixtures; historical 24 tests are not acceptance."""
+import ast
 from datetime import datetime, timedelta, timezone
+import json
+from pathlib import Path
 
 import pytest
 
@@ -50,7 +53,8 @@ def test_unmapped_labels_are_visible_errors(label):
 
 @pytest.mark.parametrize("label,stance", [
     ("MANAGING", "hold"), ("CURRENTLY_HELD", "hold"), ("HOLD / MONITOR", "hold"),
-    ("OVERBOUGHT_WAIT", "watch"), ("OVERSOLD_REVIEW", "watch"), ("READY_TO_REVIEW", "watch")])
+    ("OVERBOUGHT_WAIT", "watch"), ("OVERSOLD_REVIEW", "watch"), ("READY_TO_REVIEW", "watch"),
+    ("WASH_BLOCK", "watch")])
 def test_observed_desk_labels_map_to_a_family_instead_of_a_data_error(label, stance):
     # Operator spec 2026-11-02 Part 1: "extend the shared vocabulary for every observed label (config, reviewed)".
     # These six were arriving from live desk rows and every one became a DATA_ERROR/R8, burying the real conflicts
@@ -62,13 +66,40 @@ def test_observed_desk_labels_map_to_a_family_instead_of_a_data_error(label, sta
     assert posture(label) == stance
 
 
-@pytest.mark.parametrize("label", ["MISSING_MARKET", "MISSING_PLAN"])
+@pytest.mark.parametrize("label", ["MISSING_MARKET", "MISSING_PLAN", "STALE"])
 def test_missing_input_labels_stay_visible_errors(label):
-    # Deliberate: a missing input is not a stance. Mapping it would tell the CIO "no action" when the truth is
-    # "not measured". If the operator wants these mapped, that is a rulebook decision, not a vocabulary patch.
+    # Deliberate: a missing or stale input is not a stance. Mapping it would tell the CIO "no action" when the truth
+    # is "not measured". If the operator wants these mapped, that is a rulebook decision, not a vocabulary patch.
     assert posture(label) is None
     fs = run("WATCH", Input("desk", label, NOW))
     assert [(f.kind, f.rule) for f in fs] == [("DATA_ERROR", "R8")]
+
+
+def test_every_desk_state_is_mapped_or_declared_unmapped():
+    # Drift guard: a new state added to reentry_rules.derive_intel_state must be either given a family or declared in
+    # security_stance.unmapped_labels. Silently landing as an undeclared None is how 6 labels became 992-looking
+    # vocabulary noise in the first place.
+
+
+    src = (Path(__file__).resolve().parents[1] / "scripts" / "lib" / "reentry_rules.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    states: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "derive_intel_state":
+            for inner in ast.walk(node):
+                if isinstance(inner, ast.Constant) and isinstance(inner.value, str):
+                    value = inner.value
+                    if 2 < len(value) <= 28 and value == value.strip() and "{" not in value \
+                            and value.replace(" ", "").replace("_", "").isalpha() \
+                            and value.upper() == value:
+                        states.add(value)
+    assert states, "no state literals found — the scan is broken, fix it rather than deleting this test"
+    rulebook = json.loads((Path(__file__).resolve().parents[1] / "config" / "conflict_rulebook.json")
+                          .read_text(encoding="utf-8"))
+    declared = {str(v).strip().upper().replace("-", "_").replace(" ", "_")
+                for v in rulebook["security_stance"].get("unmapped_labels", [])}
+    unmapped = sorted(s for s in states if posture(s) is None and s.replace(" ", "_").replace("-", "_") not in declared)
+    assert not unmapped, f"desk states neither mapped nor declared unmapped: {unmapped}"
 
 
 def test_missing_stance_blocks_go_and_queues_working_compared_input_producer():

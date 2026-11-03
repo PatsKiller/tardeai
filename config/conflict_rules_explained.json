@@ -100,7 +100,7 @@
       "clears": "The source uses a mapped label.",
       "owner": "The source owner",
       "limits_from": "security_stance.unmapped_labels",
-      "exact_text": "R8 vocabulary: one shared map (also used by cio_prospect_builder.posture); unmapped labels (ADD_ON_PULLBACK, RESEARCH_MORE, MORE_RESEARCH, INSUFFICIENT_DATA, \"HOLD / MONITOR\", BUY_READY, NO_ACTION, DEFER, SELL_TAXABLE) = visible DATA_ERROR.",
+      "exact_text": "R8 vocabulary: one shared map (also used by cio_prospect_builder.posture); unmapped labels (ADD_ON_PULLBACK, RESEARCH_MORE, MORE_RESEARCH, INSUFFICIENT_DATA, BUY_READY, NO_ACTION, DEFER, SELL_TAXABLE, MISSING_MARKET, MISSING_PLAN, STALE) = visible DATA_ERROR. MISSING_MARKET, MISSING_PLAN and STALE are unmapped on purpose: they say an input is absent or stale, and mapping them to a stance would read as \"no action\" when the truth is \"not measured\".",
       "code": [{"path": "scripts/lib/conflicts/profiles/vocabulary.py", "match": "def posture"}, {"path": "scripts/lib/conflicts/profiles/security.py", "match": "\"DATA_ERROR\", \"R8\""}],
       "tests": [{"path": "tests/test_conflict_rulebook.py", "name": "test_unmapped_labels_are_visible_errors"}]
     },

@@ -87,7 +87,8 @@
         "NOT_YET",
         "OVERBOUGHT_WAIT",
         "OVERSOLD_REVIEW",
-        "READY_TO_REVIEW"
+        "READY_TO_REVIEW",
+        "WASH_BLOCK"
       ],
       "reduce": [
         "TRIM",
@@ -161,7 +162,10 @@
       "BUY_READY",
       "NO_ACTION",
       "DEFER",
-      "SELL_TAXABLE"
+      "SELL_TAXABLE",
+      "MISSING_MARKET",
+      "MISSING_PLAN",
+      "STALE"
     ],
     "ordinal": {
       "ADD": 0,
