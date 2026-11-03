@@ -1321,7 +1321,13 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
     # two "no positions" cases below can be told apart. A store we could not READ is not an empty book.
     holdings_given = "holdings" in inputs
     holdings_doc = inputs.get("holdings") if holdings_given else load_store(store_path(root))
-    portfolio = portfolio_for(holdings_doc, now=now)
+    # Readable means: a JSON object whose `holdings` member is a LIST. A 0-byte file, a missing file, a corrupt file and
+    # a well-formed document of the WRONG SHAPE are all "we could not read the position store", never "empty book"
+    # (cc3 F1 + cc2 second review, 2026-11-03). `load_store` returns {} for the first three.
+    _rows = holdings_doc.get("holdings") if isinstance(holdings_doc, dict) else None
+    store_readable = isinstance(_rows, list) and all(isinstance(r, dict) for r in _rows)
+    # A malformed store must not crash the page either: project an empty set and let the gap say WHY it is empty.
+    portfolio = portfolio_for(holdings_doc if (holdings_given or store_readable) else {}, now=now)
     broker = inputs.get("broker_stops") if "broker_stops" in inputs else _query_rows(
         db_query, "SELECT account,symbol,order_id,stop_price,qty,status,captured_at FROM stop_last_known")
     planned = inputs.get("planned_stops") if "planned_stops" in inputs else _read_json(state / "stops.json")
@@ -1383,8 +1389,9 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
                         # no day change per row it used to make the whole positions feed read "unavailable"
                         # (2026-11-03), hiding a complete position set behind a partial P&L.
                         **{k: portfolio[k] for k in ("source", "as_of", "stale")},
-                        "gap": None if positions else ({"reason": "no positions in the canonical holdings store"} if holdings_doc
-                            else {"reason": "the holdings store could not be read (missing, empty or unreadable)"}),
+                        "gap": None if positions else (
+                            {"reason": "no positions in the canonical holdings store"} if (holdings_given or store_readable)
+                            else {"reason": "the holdings store could not be read (missing, empty, unparseable or the wrong shape)"}),
                         "day_pl_gap": portfolio.get("gap")}
     position_section["as_of"] = portfolio["positions_as_of"]
     position_section.update(_resting_summary(counted_positions, portfolio.get("total_usd"), broker_available=broker is not None))

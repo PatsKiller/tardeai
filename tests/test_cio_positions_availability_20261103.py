@@ -69,6 +69,30 @@ def test_a_missing_store_says_it_could_not_be_read(tmp_path):
     assert "could not be read" in positions["gap"]["reason"], positions["gap"]
 
 
+def test_a_wrong_shaped_store_is_unreadable_not_empty(tmp_path):
+    """cc2 second review (2026-11-03): valid JSON with the wrong shape is the third variant of the same lie.
+
+    A document with no `holdings` member, or one whose `holdings` is not a list, is not an empty book — we could not
+    read a position set out of it at all."""
+    d = tmp_path / "data" / "portfolios" / "state"
+    d.mkdir(parents=True)
+    for name, body in (("no holdings key", '{"positions": [], "portfolio_totals": {}}'),
+                       ("holdings is not a list", '{"holdings": "not a list"}'),
+                       ("top level is an array", '[]'),
+                       ("top level is a string", '"nope"')):
+        (d / "holdings.json").write_text(body, encoding="utf-8")
+        gap = truth.resolve(tmp_path, NOW)["positions"]["gap"]
+        assert "could not be read" in gap["reason"], (name, gap)
+
+
+def test_a_readable_empty_list_is_the_only_no_positions_case(tmp_path):
+    d = tmp_path / "data" / "portfolios" / "state"
+    d.mkdir(parents=True)
+    (d / "holdings.json").write_text('{"holdings": [], "portfolio_totals": {}}', encoding="utf-8")
+    gap = truth.resolve(tmp_path, NOW)["positions"]["gap"]
+    assert gap == {"reason": "no positions in the canonical holdings store"}, gap
+
+
 def test_the_portfolio_keeps_its_own_partial_coverage_gap():
     doc = _resolve([_row("ZZAA", day_change=12.5), _row("ZZBB", 4, 25.0)])
     assert "day P&L partial" in (doc["portfolio"]["gap"] or {}).get("reason", ""), (
