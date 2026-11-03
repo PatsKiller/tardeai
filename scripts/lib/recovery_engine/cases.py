@@ -437,6 +437,7 @@ def consume_fills(
     now: Optional[datetime] = None,
     residual_as_of: Optional[str] = None,
     gaps: Optional[Sequence[str]] = None,
+    cluster_key: Optional[str] = None,
 ) -> RecoveryCase:
     """Open or refresh the case for one symbol × account exit cluster. Idempotent for the same cluster.
 
@@ -451,7 +452,7 @@ def consume_fills(
         raise ValueError("consume_fills takes one symbol × account cluster per call")
     case = build_case(list(next(iter(by_cluster.values()))), policy=store.policy, residual_shares=residual_shares,
                       pre_exit_shares=pre_exit_shares, pre_exit_weight_pct=pre_exit_weight_pct, broker=broker,
-                      today=today, now=now, residual_as_of=residual_as_of, gaps=gaps)
+                      today=today, now=now, residual_as_of=residual_as_of, gaps=gaps, cluster_key=cluster_key)
     existing = store.get(case.case_key)
     if existing is not None:
         case.opened_at = existing.opened_at

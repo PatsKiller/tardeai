@@ -59,10 +59,10 @@ _WATCH_SQL = ("SELECT stopped_out_at, exit_price, realized_pnl, stop_price, brok
               "WHERE upper(symbol)=upper(%s) AND account=%s ORDER BY stopped_out_at")
 _WATCH_SQL_ASOF = ("SELECT stopped_out_at, exit_price, realized_pnl, stop_price, broker FROM stopped_out_watch "
                    "WHERE upper(symbol)=upper(%s) AND account=%s AND stopped_out_at < %s ORDER BY stopped_out_at")
-_TX_SQL = ("SELECT trade_date, quantity FROM trade_transactions "
+_TX_SQL = ("SELECT trade_date, quantity, price FROM trade_transactions "
            "WHERE upper(symbol)=upper(%s) AND account=%s AND upper(action) IN "
            "('SELL','SOLD','STOP','STOPPED','SELL_TO_CLOSE') ORDER BY trade_date DESC")
-_TX_SQL_ASOF = ("SELECT trade_date, quantity FROM trade_transactions "
+_TX_SQL_ASOF = ("SELECT trade_date, quantity, price FROM trade_transactions "
                 "WHERE upper(symbol)=upper(%s) AND account=%s AND upper(action) IN "
                 "('SELL','SOLD','STOP','STOPPED','SELL_TO_CLOSE') AND trade_date < %s ORDER BY trade_date DESC")
 
@@ -109,9 +109,9 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
         tx_sql, tx_params = _TX_SQL_ASOF, (symbol, account, (as_of + timedelta(days=1)).isoformat())
     tx, tx_err = _query(conn, tx_sql, tx_params)
     if tx_err:
-        gaps.append(f"trade_transactions is unavailable ({tx_err}); share counts are unknown")
-    tx_by_day: dict[date, list[float]] = {}
-    for trade_date, quantity in tx:
+        gaps.append(f"trade_transactions is unavailable ({tx_err}); the exit universe is incomplete")
+    tx_by_day: dict[date, list[tuple[float, Optional[float]]]] = {}
+    for trade_date, quantity, price in tx:
         try:
             day = _as_date(trade_date)
         except (TypeError, ValueError) as exc:
@@ -123,42 +123,52 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
             gaps.append(f"a {day} trade_transactions row for {symbol}/{account} has no usable quantity; "
                         "it is excluded")
             continue
-        tx_by_day.setdefault(day, []).append(qty)
+        tx_by_day.setdefault(day, []).append((qty, _finite(price)))
 
-    if fills:
-        # One watch exit on a day can be attributed that day's whole fill total. Two exits on the same day cannot be
-        # told apart from a day-level aggregate, so those share counts stay unknown instead of being double-counted
-        # (cx-openai-2 F4: two watch rows on one day both received the entire day's 12,000 shares).
-        per_day: dict[date, int] = {}
-        for fill in fills:
-            per_day[fill.exit_date] = per_day.get(fill.exit_date, 0) + 1
-        attributed: list[rc.ExitFill] = []
-        for fill in fills:
-            quantities = tx_by_day.get(fill.exit_date) or []
-            if not quantities:
-                gaps.append(f"no trade_transactions row for the {fill.exit_date} exit; its share count is unknown")
-                attributed.append(fill)
-            elif per_day[fill.exit_date] > 1:
-                gaps.append(f"{per_day[fill.exit_date]} exits share {fill.exit_date}; per-exit share counts cannot be "
-                            "attributed from a day-level total")
-                attributed.append(fill)
-            else:
-                attributed.append(rc.ExitFill(**{**fill.__dict__, "shares": round(sum(quantities), 6)}))
-        fills = attributed
-        if tx_by_day:
-            latest_tx = max(tx_by_day)
-            last_exit = max(f.exit_date for f in fills)
-            if latest_tx > last_exit:
-                # A fill dated after the last stop-out row: the exit list is behind the ledger, so the cluster may be
-                # incomplete. Say so rather than pretending the newer fill does not exist (cx-openai-2 F4, delayed fill).
-                gaps.append(f"trade_transactions has a {latest_tx} exit with no stopped_out_watch row; "
-                            "this cluster may be incomplete")
-    elif tx_by_day:
-        # Confirmed sells exist but no stopped_out_watch row carries their exit price. A case cannot be built from a
-        # sale without a price — and a placeholder 0.0 would make the R1 reclaim threshold zero, i.e. "recovering"
-        # always. Report the dates and build nothing for them.
-        gaps.append(f"trade_transactions has confirmed exits on {', '.join(str(d) for d in sorted(tx_by_day))} but "
-                    "stopped_out_watch has no exit price for them; no case is opened from a sale without a price")
+    # The exit universe is every confirmed exit from BOTH sources (cx-openai-4 R3). A later broker fill used to be
+    # dropped merely because it had no stopped_out_watch row, and a fill that disagreed with the watch price was
+    # silently overruled. Both are now first-class: the fill becomes its own exit, and a disagreement is a stated gap.
+    per_day: dict[date, int] = {}
+    for fill in fills:
+        per_day[fill.exit_date] = per_day.get(fill.exit_date, 0) + 1
+    attributed: list[rc.ExitFill] = []
+    for fill in fills:
+        quantities = tx_by_day.get(fill.exit_date) or []
+        if not quantities:
+            gaps.append(f"no trade_transactions row for the {fill.exit_date} exit; its share count is unknown")
+            attributed.append(fill)
+            continue
+        for qty, price in quantities:
+            if price is not None and fill.price and abs(price - fill.price) > max(0.01, 0.005 * abs(fill.price)):
+                # Keep the stop-out row's price (it is the recorded exit event) but never hide the disagreement.
+                gaps.append(f"conflicting exit prices on {fill.exit_date}: stopped_out_watch {fill.price:g} vs "
+                            f"trade_transactions {price:g}; the watch price is stored and the conflict is flagged")
+                break
+        if per_day[fill.exit_date] > 1:
+            # Two exits on one day cannot be told apart from a day-level total, so neither is handed the whole day.
+            gaps.append(f"{per_day[fill.exit_date]} exits share {fill.exit_date}; per-exit share counts cannot be "
+                        "attributed from a day-level total")
+            attributed.append(fill)
+        else:
+            attributed.append(rc.ExitFill(**{**fill.__dict__, "shares": round(sum(q for q, _ in quantities), 6)}))
+    fills = attributed
+    # Every fill dated beyond the last stop-out row is its own confirmed exit, priced from the fill itself, with the
+    # realized P&L unknown. It joins the universe instead of being dropped (cx-openai-4 R3, omitted later fill).
+    covered_days = {f.exit_date for f in fills}
+    for day in sorted(tx_by_day):
+        if day in covered_days:
+            continue
+        quantities = tx_by_day[day]
+        total_qty = round(sum(q for q, _ in quantities), 6)
+        priced = [(q, p) for q, p in quantities if p is not None]
+        if not priced:
+            gaps.append(f"the {day} exit has no usable fill price; no case is opened from a sale without a price")
+            continue
+        price = round(sum(q * p for q, p in priced) / sum(q for q, _ in priced), 6)
+        fills.append(rc.ExitFill(symbol=symbol, account=account, exit_date=day, shares=total_qty, price=price,
+                                 realized_pnl=None, source="trade_transactions"))
+        gaps.append(f"the {day} exit comes from trade_transactions with no stopped_out_watch row: its price is the "
+                    "fill price and its realized P&L is unknown")
 
     if fills and all(f.stop_price is None for f in fills):
         stops = _query(conn, "SELECT stop_price, captured_at FROM stop_last_known "
@@ -202,16 +212,62 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
                     source="broker-fills", gaps=gaps, residual_as_of=residual_as_of)
 
 
+# A case in one of these states is finished; a later exit opens a NEW case rather than extending it.
+TERMINAL_STATES = ("CLOSED", "RE_ENTERED")
+
+
+def _as_exit_fill(symbol: str, account: str, row: dict) -> rc.ExitFill:
+    return rc.ExitFill(symbol=symbol, account=account,
+                       exit_date=date.fromisoformat(str(row["date"])[:10]),
+                       shares=row.get("shares"), price=float(row["price"]),
+                       realized_pnl=row.get("realized_pnl"), stop_price=row.get("stop_price"),
+                       source=str(row.get("source") or ""))
+
+
+def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date] = None,
+                   now: Optional[datetime] = None) -> Optional[rc.RecoveryCase]:
+    """Persist a read as the right case: refresh, extend, or a genuinely new cluster.
+
+    The defect this replaces (cx-openai-4 R5): every run handed the reader's whole history to the key, so a new exit
+    re-keyed the cluster and the same historical exit lived in both the old CLOSED case and the new one. Rules now:
+
+    * fills already inside an existing case's range refresh THAT case, under its own id;
+    * fills past the newest case extend it, keeping the id, when it is still open;
+    * fills past a terminal case open a NEW case containing only the new fills — the old ones are never replayed.
+    """
+    fills = list(read.fills)
+    if not fills:
+        return None
+    symbol, account = fills[0].symbol, fills[0].account
+    existing = sorted((c for c in store.list() if c.symbol == symbol.upper() and c.account == account),
+                      key=lambda c: str(c.exits[-1]["date"]) if c.exits else "")
+    moments = {"today": today, "now": now}
+    common = {"residual_shares": read.residual_shares, "pre_exit_weight_pct": read.pre_exit_weight_pct,
+              "residual_as_of": read.residual_as_of, "gaps": read.gaps, **moments}
+    if not existing:
+        return rc.consume_fills(store, fills, **common)
+    newest = existing[-1]
+    last_date = date.fromisoformat(str(newest.exits[-1]["date"])[:10])
+    within = [f for f in fills if f.exit_date <= last_date]
+    later = [f for f in fills if f.exit_date > last_date]
+    if later and newest.state not in TERMINAL_STATES:
+        # Extend the open case without re-keying: its stored exits plus the new ones, its cluster_key unchanged.
+        merged = [_as_exit_fill(symbol, account, row) for row in newest.exits] + later
+        return rc.consume_fills(store, merged, cluster_key=newest.cluster_key, **common)
+    if later:
+        # The newest case is finished: a new case from the new exits only. Old exits are not replayed.
+        return rc.consume_fills(store, later, **common)
+    if within:
+        return rc.consume_fills(store, within, cluster_key=newest.cluster_key, **common)
+    return None
+
+
 def consume_symbol(store: rc.CaseStore, conn: Any, symbol: str, account: str, *,
                    today: Optional[date] = None, now: Optional[datetime] = None,
                    as_of: Optional[date] = None) -> Optional[rc.RecoveryCase]:
     """Read one symbol × account and open/refresh its case. Returns None when there is no confirmed exit."""
     read = read_confirmed_exits(conn, symbol, account, as_of=as_of)
-    if not read.fills:
-        return None
-    return rc.consume_fills(store, read.fills, residual_shares=read.residual_shares,
-                            pre_exit_weight_pct=read.pre_exit_weight_pct, today=today, now=now,
-                            residual_as_of=read.residual_as_of, gaps=read.gaps)
+    return open_or_extend(store, read, today=today, now=now)
 
 
 _SYMBOLS_WATCH_SQL = ("SELECT DISTINCT symbol, account FROM stopped_out_watch "
@@ -265,14 +321,11 @@ def run(store: rc.CaseStore, conn: Any, *, today: Optional[date] = None,
             gaps.extend(f"{symbol}/{account}: {gap}" for gap in read.gaps)
             if not read.fills:
                 continue
-            ordered = sorted(read.fills, key=lambda f: f.exit_date)
-            key = rc.case_key(symbol, account,
-                              f"{ordered[0].exit_date.isoformat()}..{ordered[-1].exit_date.isoformat()}")
-            existed = store.get(key) is not None
-            case = rc.consume_fills(store, read.fills, residual_shares=read.residual_shares,
-                                    pre_exit_weight_pct=read.pre_exit_weight_pct,
-                                    residual_as_of=read.residual_as_of, gaps=read.gaps, **moments)
-            (refreshed if existed else opened).append(case.case_key)
+            before = {c.case_key for c in store.list()}
+            case = open_or_extend(store, read, **moments)
+            if case is None:
+                continue
+            (refreshed if case.case_key in before else opened).append(case.case_key)
         except Exception as exc:  # noqa: BLE001 - one case's failure is isolated and reported, never hidden
             failed.append(f"{symbol}/{account}: {type(exc).__name__}: {exc}")
             gaps.append(f"{symbol}/{account}: the case could not be built ({type(exc).__name__}: {exc})")

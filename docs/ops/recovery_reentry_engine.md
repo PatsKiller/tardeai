@@ -67,7 +67,13 @@ Reading rules, each a regression test:
 - A watch row with no usable realized P&L is unknown, not a zero loss; the case's tier is UNKNOWN.
 - A watch exit with no matching fill row has an unknown share count; a day with two watch exits is not attributed a
   day-level total to each.
-- A fill dated after the last stop-out row means the cluster may be incomplete, and says so.
+- The exit universe is every confirmed exit from BOTH `stopped_out_watch` and `trade_transactions`: a later broker fill
+  is its own exit (priced from the fill, realized P&L unknown), never dropped because no stop-out row exists.
+- A fill price that disagrees with the stop-out row's price is a stated conflict; the watch price is kept and the
+  disagreement is visible, not silently overruled.
+- Clusters partition: fills inside an existing case refresh it under its own id; fills past an open case extend it
+  without changing the id; fills past a finished case open a new case containing only the new exits — no historical
+  exit ever belongs to two cases.
 - A sell with no exit price opens no case (a placeholder price would make the R1 threshold zero).
 - One damaged row is excluded and reported; it does not abort the symbol, and one bad case does not stop the pass.
 - `as_of` and `since` are honoured, so a replay does not see a later exit.

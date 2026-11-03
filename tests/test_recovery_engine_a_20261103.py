@@ -466,17 +466,34 @@ def test_f4_two_exits_on_one_day_are_not_each_given_the_whole_days_shares(store)
     conn.close()
 
 
-def test_f4_a_delayed_fill_does_not_read_as_a_complete_sale(store):
+def test_r3_a_later_confirmed_fill_joins_the_universe_instead_of_being_dropped(store):
+    """cx-openai-4 R3: a fill with no stop-out row used to vanish, so the case understated the exits."""
     conn = _source_db()
     _watch(conn, "2026-10-30", 137.19, -12770)
     _tx(conn, "2026-10-30", 1200)
-    _tx(conn, "2026-11-02", 300)                       # a fill with no stop-out row: the exit list is behind
+    _tx(conn, "2026-11-02", 300)                       # a fill with no stop-out row: it is still a confirmed exit
     _positions(conn, 200)
     from lib.recovery_engine import fills_consumer as fc
     read = fc.read_confirmed_exits(conn, "SPCX", "schwab_taxable")
+    assert [f.exit_date for f in read.fills] == [date(2026, 10, 30), date(2026, 11, 2)]
+    assert read.fills[1].shares == pytest.approx(300) and read.fills[1].price == pytest.approx(137.19)
+    assert read.fills[1].realized_pnl is None          # unknown, not a zero
     assert any("no stopped_out_watch row" in gap for gap in read.gaps)
     case = fc.consume_symbol(store, conn, "SPCX", "schwab_taxable", today=TODAY, now=NOW)
-    assert case.pre_exit_shares == pytest.approx(1400)   # 1200 sold + 200 residual, not 1500
+    assert case.pre_exit_shares == pytest.approx(500)   # 300 sold at the final exit + 200 residual
+    assert case.materiality_tier == "UNKNOWN"           # the 11-02 exit's loss is unknown, so the total is
+    conn.close()
+
+
+def test_r3_contradictory_exit_prices_are_flagged_not_silently_overruled(store):
+    conn = _source_db()
+    _watch(conn, "2026-10-30", 50.0, -1000)
+    conn.execute("INSERT INTO trade_transactions VALUES ('2026-10-30','SELL','SPCX',100,200.0,'schwab_taxable')")
+    _positions(conn, 0)
+    from lib.recovery_engine import fills_consumer as fc
+    read = fc.read_confirmed_exits(conn, "SPCX", "schwab_taxable")
+    assert any("conflicting exit prices" in gap and "50" in gap and "200" in gap for gap in read.gaps)
+    assert read.fills[0].price == pytest.approx(50.0)  # the stop-out row's price is kept, and the conflict is visible
     conn.close()
 
 
@@ -532,7 +549,11 @@ def test_f10_one_damaged_case_does_not_block_the_others(store):
     out = fc.run(store, conn, today=TODAY, now=NOW)
     assert any(key.startswith("EXMPL::") for key in out["opened"]), out
     assert any("AAAA" in gap and "excluded" in gap for gap in out["gaps"])
-    assert not any(key.startswith("AAAA::") for key in out["opened"])
+    # AAAA's damaged watch price is excluded, but its confirmed fill still carries a price, so the exit is not lost;
+    # its realized P&L is unknown and the case says so rather than guessing T3.
+    aaaa = [c for c in out["cases"] if c["symbol"] == "AAAA"]
+    assert aaaa and aaaa[0]["materiality_tier"] == "UNKNOWN"
+    assert any("realized P&L is unknown" in gap for gap in aaaa[0]["gaps"])
     conn.close()
 
 
@@ -565,4 +586,53 @@ def test_f11_a_positions_snapshot_older_than_the_exit_is_not_todays_residual(sto
     assert case.residual_shares is None
     assert case.residual_pct_of_pre_exit is None
     assert any("before the 2026-10-30 exit" in gap for gap in case.gaps)
+    conn.close()
+
+
+def test_r5_a_later_exit_does_not_replay_an_existing_closed_case(store):
+    """cx-openai-4 R5: the same historical exit used to live in the old CLOSED case AND in the new one."""
+    conn = _source_db()
+    _watch(conn, "2030-01-02", 100.0, -500)
+    _tx(conn, "2030-01-02", 100)
+    _positions(conn, 0)
+    from lib.recovery_engine import fills_consumer as fc
+    first = fc.run(store, conn, today=TODAY, now=NOW)
+    assert len(first["opened"]) == 1
+    closed_key = first["opened"][0]
+    store.set_state(closed_key, "CLOSED")
+    _watch(conn, "2030-01-10", 90.0, -300)
+    _tx(conn, "2030-01-10", 50)
+    second = fc.run(store, conn, today=TODAY, now=NOW)
+    cases = {c.case_key: c for c in store.list()}
+    assert len(cases) == 2, cases
+    new_key = next(k for k in cases if k != closed_key)
+    assert second["opened"] == [new_key]
+    assert cases[closed_key].state == "CLOSED"
+    assert cases[new_key].state == "WATCHING"
+    # each historical exit belongs to exactly one case — no overlap
+    owned = [(k, e["date"]) for k, c in cases.items() for e in c.exits]
+    dates = sorted(d for _, d in owned)
+    assert dates == ["2030-01-02", "2030-01-10"], owned
+    assert closed_key.endswith("2030-01-02..2030-01-02")
+    assert new_key.endswith("2030-01-10..2030-01-10")
+    conn.close()
+
+
+def test_r5_an_open_case_extends_without_changing_its_id(store):
+    conn = _source_db()
+    _watch(conn, "2030-01-02", 100.0, -500)
+    _tx(conn, "2030-01-02", 100)
+    _positions(conn, 0)
+    from lib.recovery_engine import fills_consumer as fc
+    first = fc.run(store, conn, today=TODAY, now=NOW)
+    key = first["opened"][0]
+    store.set_decision(key, "snoozed", note="keep me")
+    _watch(conn, "2030-01-10", 90.0, -300)
+    _tx(conn, "2030-01-10", 50)
+    second = fc.run(store, conn, today=TODAY, now=NOW)
+    assert second["opened"] == [] and second["refreshed"] == [key]
+    case = store.get(key)
+    assert [e["date"] for e in case.exits] == ["2030-01-02", "2030-01-10"]
+    assert case.operator_decision == "snoozed" and case.operator_note == "keep me"
+    assert len(store.list()) == 1
     conn.close()
