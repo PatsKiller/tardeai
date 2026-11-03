@@ -6,7 +6,7 @@
   ],
   "anchor": "TOTALS_NOTES_RECONCILED_20261103",
   "comment": [
-    "ANCHOR: TOTALS_NOTES_RECONCILED_20261103 \u2014 a totals note may not outlive the totals it describes.",
+    "ANCHOR: TOTALS_NOTES_RECONCILED_20261103 — a totals note may not outlive the totals it describes.",
     "2026-11-03: the live store carried 'day change not carried' in portfolio_totals.note beside a populated",
     "day_change, and the repricer rewrote day_change every 15 minutes without ever clearing it. _recalc_totals",
     "now drops only the text this pass falsified (provenance clauses survive) and records notes_reconciled_at."

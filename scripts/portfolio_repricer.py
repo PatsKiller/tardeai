@@ -65,7 +65,7 @@ def _utc_now_iso() -> str:
 #: A totals note is a claim about the document it was written for. This pass recomputes the day
 #: change from the rows, so a note saying the day change was not carried/measurable is describing a
 #: document that no longer exists. 2026-11-03: the live store carried
-#: "rebuilt from positions_current run 638; day change not carried" beside a populated day_change,
+#: "rebuilt by the positions_current rebuild (run 638); day change not carried" beside a populated day_change,
 #: and the repricer rewrote day_change every 15 minutes without ever clearing the note.
 _DAY_CHANGE_UNKNOWN = re.compile(
     r"\b(not carried|unavailable|not available|unknown|unmeasured|not a measured value|seeded|placeholder)\b",
@@ -80,7 +80,7 @@ _TOTALS_NOTE_KEYS = ("note", "day_change_note")
 def _reconcile_totals_notes(totals: Dict[str, Any]) -> List[str]:
     """Drop the note text this pass has just falsified, keep the text that is still true.
 
-    `note` is clause-structured ("rebuilt from positions_current run 638; day change not carried"),
+    `note` is clause-structured ("rebuilt by the positions_current rebuild (run 638); day change not carried"),
     so only the falsified clause is removed — the provenance half survives. `day_change_note` exists
     only to explain a day change that came from somewhere other than this computation, so it goes
     whole. Returns the keys that changed. No day change computed means no note can be called stale.
