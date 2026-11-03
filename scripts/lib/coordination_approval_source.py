@@ -8,6 +8,7 @@ close a decision. Public fields are allowlisted, never the raw ledger payload.
 
 AUTHORITY: READ_ONLY_ADVISORY. This adapter neither records nor applies decisions.
 """
+
 from __future__ import annotations
 
 import json
@@ -56,8 +57,7 @@ def _text(row: dict, name: str, limit: int) -> str | None:
 
 
 def _failure(reason: str) -> dict:
-    return {"rows": [], "resolved": [], "gap": reason, "as_of": None,
-            "source": SOURCE, "source_ref": LEDGER_REL}
+    return {"rows": [], "resolved": [], "gap": reason, "as_of": None, "source": SOURCE, "source_ref": LEDGER_REL}
 
 
 def load(state_root: Path, source_sha: str, now: datetime | None = None) -> dict:
@@ -123,27 +123,49 @@ def load(state_root: Path, source_sha: str, now: datetime | None = None) -> dict
         category = row.get("decision_type") or "question"
         if category not in ("question", "keep_retire"):
             return _failure("COORDINATOR_DECISION_TYPE_INVALID")
-        public = {"decision_id": ident, "title": title, "question": _text(row, "question", 1200),
-                  "why": _text(row, "why", 1200), "decision_type": category,
-                  "options": ["keep", "retire"] if category == "keep_retire" else [],
-                  "source_ref": LEDGER_REL, "as_of": at}
-        item = core.item(ident="decision:" + ident, kind="FINDING", title=title,
-                         proposed_by=_text(row, "coordinator", 100) or _text(row, "actor_session", 100),
-                         created_at=at, source=SOURCE,
-                         doc=core.document(json.dumps(public, ensure_ascii=True, sort_keys=True),
-                                           source_sha=source_sha, version=at),
-                         governed_href="/coordination?decision=" + ident,
-                         source_refs=[SOURCE + ":" + ident])
+        public = {
+            "decision_id": ident,
+            "title": title,
+            "question": _text(row, "question", 1200),
+            "why": _text(row, "why", 1200),
+            "decision_type": category,
+            "options": ["keep", "retire"] if category == "keep_retire" else [],
+            "source_ref": LEDGER_REL,
+            "as_of": at,
+        }
+        item = core.item(
+            ident="decision:" + ident,
+            kind="FINDING",
+            title=title,
+            proposed_by=_text(row, "coordinator", 100) or _text(row, "actor_session", 100),
+            created_at=at,
+            source=SOURCE,
+            doc=core.document(json.dumps(public, ensure_ascii=True, sort_keys=True), source_sha=source_sha, version=at),
+            governed_href="/coordination?decision=" + ident,
+            source_refs=[SOURCE + ":" + ident],
+        )
         # The existing coordinator owns resolution. A generic RECORD approval cannot
         # retire work or resolve a coordinator question as a side effect.
-        item.update({"decision_mode": "GOVERNED_PATH", "decision_id": ident,
-                     "decision_type": category, "options": public["options"],
-                     "as_of": at, "source_ref": LEDGER_REL, "next_actor": "operator"})
+        item.update(
+            {
+                "decision_mode": "GOVERNED_PATH",
+                "decision_id": ident,
+                "decision_type": category,
+                "options": public["options"],
+                "as_of": at,
+                "source_ref": LEDGER_REL,
+                "next_actor": "operator",
+            }
+        )
         opened[ident] = item
         resolved.pop(ident, None)
         if len(opened) + len(resolved) > MAX_ITEMS:
             return _failure("COORDINATOR_DECISION_ITEM_BUDGET_EXCEEDED")
-    return {"rows": sorted(opened.values(), key=lambda row: (row["created_at"], row["id"])),
-            "resolved": sorted(resolved.values(), key=lambda row: (row["resolved_at"], row["id"])),
-            "gap": None, "as_of": max(observed) if observed else None,
-            "source": SOURCE, "source_ref": LEDGER_REL}
+    return {
+        "rows": sorted(opened.values(), key=lambda row: (row["created_at"], row["id"])),
+        "resolved": sorted(resolved.values(), key=lambda row: (row["resolved_at"], row["id"])),
+        "gap": None,
+        "as_of": max(observed) if observed else None,
+        "source": SOURCE,
+        "source_ref": LEDGER_REL,
+    }

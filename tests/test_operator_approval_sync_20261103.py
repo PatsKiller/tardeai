@@ -1,4 +1,5 @@
 """Synthetic current-head approval source and integration regressions; no live GitHub calls."""
+
 from __future__ import annotations
 
 import base64
@@ -14,7 +15,9 @@ import pytest
 from scripts.lib import operator_approvals as core
 from scripts.lib import operator_approvals_api as api
 
-SPEC = importlib.util.spec_from_file_location("approval_sync_pr_source_test", Path(__file__).resolve().parents[1] / "scripts/lib/operator_approval_pr_source.py")
+SPEC = importlib.util.spec_from_file_location(
+    "approval_sync_pr_source_test", Path(__file__).resolve().parents[1] / "scripts/lib/operator_approval_pr_source.py"
+)
 source = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = source
 SPEC.loader.exec_module(source)
@@ -24,14 +27,25 @@ STAMP = "2032-04-12T00:10:00Z"
 
 
 def pr(number=2501):
-    return {"number": number, "state": "open", "head": {"sha": HEAD}, "base": {"sha": BASE, "ref": "main"},
-            "title": "Review current policy", "created_at": STAMP, "updated_at": STAMP, "user": {"login": "worker"}, "labels": []}
+    return {
+        "number": number,
+        "state": "open",
+        "head": {"sha": HEAD},
+        "base": {"sha": BASE, "ref": "main"},
+        "title": "Review current policy",
+        "created_at": STAMP,
+        "updated_at": STAMP,
+        "user": {"login": "worker"},
+        "labels": [],
+    }
 
 
 def git(*args):
     if args[0] == "diff":
         return "AGENTS.md\n"
-    return "Policy-Version: " + ("30.0.0" if HEAD in args[1] else "29.3.0") + "\n\n# 0 · Rules\nNever bypass a denial.\n"
+    return (
+        "Policy-Version: " + ("30.0.0" if HEAD in args[1] else "29.3.0") + "\n\n# 0 · Rules\nNever bypass a denial.\n"
+    )
 
 
 class Gh:
@@ -51,6 +65,7 @@ def synthetic_authority_for_snapshot(monkeypatch):
     # Snapshot mechanics use complete synthetic authority. Dedicated authority tests
     # independently exercise trusted-main and canonical operator-comment validation.
     from scripts.lib.operator_approval_authority import AuthorityContext
+
     context = AuthorityContext(BASE, STAMP, mode="legacy")
     context.comments = lambda number: []
     monkeypatch.setattr(source, "load_authority", lambda **kwargs: context)
@@ -77,8 +92,12 @@ def test_policy_source_offers_exact_approval_line_and_ignores_closed_work():
 
 
 def test_held_pr_stays_visible_until_observed_done_even_with_merge_label():
-    row = source.project({**pr(2472), "labels": [{"name": "operator-merge"}]},
-                         git=lambda *args: ".github/workflows/ci.yml\n", gh=Gh(), as_of=STAMP)
+    row = source.project(
+        {**pr(2472), "labels": [{"name": "operator-merge"}]},
+        git=lambda *args: ".github/workflows/ci.yml\n",
+        gh=Gh(),
+        as_of=STAMP,
+    )
     assert row["kind"] == "RELEASE" and row["decision_mode"] == "GOVERNED_PATH"
     assert row["governed_href"] == "/releases?pr=2472"
     assert row["document"]["source_sha"] == HEAD
@@ -89,12 +108,25 @@ def test_held_pr_stays_visible_until_observed_done_even_with_merge_label():
 def test_missing_local_commit_reads_exact_sha_and_rechecks_files_head():
     def unavailable(*args):
         raise core.Refused("IMMUTABLE_SOURCE_REPOSITORY_UNAVAILABLE", 503)
+
     policy = "Policy-Version: 30.0.0\n\n# Rules\nReview this change."
     old = policy.replace("30.0.0", "29.3.0")
-    gh = Gh({"repos/example/project/pulls/2501/files?per_page=100&page=1": [{"filename": "AGENTS.md"}],
-             "repos/example/project/pulls/2501": pr(),
-             f"repos/example/project/contents/AGENTS.md?ref={HEAD}": {"encoding": "base64", "content": base64.b64encode(policy.encode()).decode(), "size": len(policy)},
-             f"repos/example/project/contents/AGENTS.md?ref={BASE}": {"encoding": "base64", "content": base64.b64encode(old.encode()).decode(), "size": len(old)}})
+    gh = Gh(
+        {
+            "repos/example/project/pulls/2501/files?per_page=100&page=1": [{"filename": "AGENTS.md"}],
+            "repos/example/project/pulls/2501": pr(),
+            f"repos/example/project/contents/AGENTS.md?ref={HEAD}": {
+                "encoding": "base64",
+                "content": base64.b64encode(policy.encode()).decode(),
+                "size": len(policy),
+            },
+            f"repos/example/project/contents/AGENTS.md?ref={BASE}": {
+                "encoding": "base64",
+                "content": base64.b64encode(old.encode()).decode(),
+                "size": len(old),
+            },
+        }
+    )
     row = source.project(pr(), git=unavailable, gh=gh, as_of=STAMP)
     assert row["document"]["text"] == policy
     assert "repos/example/project/pulls/2501" in gh.calls
@@ -123,8 +155,10 @@ def test_cold_snapshot_kicks_existing_board_and_refreshes_when_upstream_arrives(
 
 def test_snapshot_factory_failure_releases_single_flight_for_retry():
     board, clock = Board([pr()]), [0.0]
+
     def broken():
         raise RuntimeError("synthetic failure")
+
     snapshot = source.Snapshot(board=board, git=git, gh_factory=broken, clock=lambda: clock[0])
     assert snapshot.view(background=False)["gap"]
     assert snapshot._running is False
@@ -133,30 +167,50 @@ def test_snapshot_factory_failure_releases_single_flight_for_retry():
 
 
 def context(tmp_path, row):
-    return api.Ctx(principal=lambda: "tailnet:operator@example.test", listener=lambda: "serve_proxy",
-                   csrf=lambda *args: (True, ""), allowed_logins=frozenset({"operator@example.test"}),
-                   sources={"synthetic": lambda: [row]}, ledger=core.DecisionLedger(tmp_path / "decisions.jsonl", approved=lambda: True, clock=lambda: NOW),
-                   policy=lambda: {}, clock=lambda: NOW, can_read=lambda: True)
+    return api.Ctx(
+        principal=lambda: "tailnet:operator@example.test",
+        listener=lambda: "serve_proxy",
+        csrf=lambda *args: (True, ""),
+        allowed_logins=frozenset({"operator@example.test"}),
+        sources={"synthetic": lambda: [row]},
+        ledger=core.DecisionLedger(tmp_path / "decisions.jsonl", approved=lambda: True, clock=lambda: NOW),
+        policy=lambda: {},
+        clock=lambda: NOW,
+        can_read=lambda: True,
+    )
 
 
 def test_current_head_rechecked_before_decision_is_persisted(tmp_path):
     row = source.project(pr(), git=git, gh=Gh(), as_of=STAMP)
     ctx = context(tmp_path, row)
     checks = []
+
     def changed(item):
         checks.append(item["document"]["source_sha"])
         raise core.Refused("PR_HEAD_CHANGED", 409)
+
     ctx.verify_current = changed
-    response = api.handle(api.PREFIX + "/approvals/policy:2501/decide", "POST",
-                          {"decision": "REJECT", "request_id": "request_123456"}, ctx=ctx)
+    response = api.handle(
+        api.PREFIX + "/approvals/policy:2501/decide",
+        "POST",
+        {"decision": "REJECT", "request_id": "request_123456"},
+        ctx=ctx,
+    )
     assert response == (409, {"ok": False, "error": "PR_HEAD_CHANGED"})
     assert checks == [HEAD] and ctx.ledger.rows() == []
 
 
-@pytest.mark.parametrize("current", [{"state": "closed", "head": {"sha": HEAD}},
-    {"state": "open", "head": {"sha": "c" * 40}}, {"state": "open", "head": {"sha": HEAD}, "merged_at": STAMP}])
+@pytest.mark.parametrize(
+    "current",
+    [
+        {"state": "closed", "head": {"sha": HEAD}},
+        {"state": "open", "head": {"sha": "c" * 40}},
+        {"state": "open", "head": {"sha": HEAD}, "merged_at": STAMP},
+    ],
+)
 def test_default_verifier_refuses_changed_closed_and_merged_heads(monkeypatch, current):
     from scripts.lib import agent_claim_lifecycle
+
     gh = Gh({"repos/example/project/pulls/2501": current})
     monkeypatch.setattr(agent_claim_lifecycle, "GitHubReader", lambda: gh)
     row = source.project(pr(), git=git, gh=Gh(), as_of=STAMP)
@@ -166,8 +220,10 @@ def test_default_verifier_refuses_changed_closed_and_merged_heads(monkeypatch, c
 
 
 def test_policy_and_held_sources_share_one_snapshot(monkeypatch, tmp_path):
-    rows = [source.project(pr(), git=git, gh=Gh(), as_of=STAMP),
-            source.project(pr(2472), git=lambda *args: ".github/workflows/ci.yml\n", gh=Gh(), as_of=STAMP)]
+    rows = [
+        source.project(pr(), git=git, gh=Gh(), as_of=STAMP),
+        source.project(pr(2472), git=lambda *args: ".github/workflows/ci.yml\n", gh=Gh(), as_of=STAMP),
+    ]
     snapshot = SimpleNamespace(view=lambda: {"rows": rows, "gap": "missing detail", "as_of": STAMP})
     monkeypatch.setitem(api._PR_SNAPSHOTS, tmp_path.resolve(), snapshot)
     sources = api._default_sources(tmp_path)
@@ -179,24 +235,37 @@ def test_policy_and_held_sources_share_one_snapshot(monkeypatch, tmp_path):
 
 def test_coordinator_source_uses_durable_state_root(monkeypatch, tmp_path):
     from scripts.lib import coordination_approval_source, lane_last_receipt
+
     monkeypatch.setattr(lane_last_receipt, "runtime_dir", lambda: tmp_path / "data/runtime")
     monkeypatch.setattr(api, "source_revision", lambda root: HEAD)
     calls = []
-    monkeypatch.setattr(coordination_approval_source, "load", lambda root, sha: calls.append((root, sha)) or {"rows": []})
+    monkeypatch.setattr(
+        coordination_approval_source, "load", lambda root, sha: calls.append((root, sha)) or {"rows": []}
+    )
     assert api._default_sources(tmp_path)["coordinator_decisions"]() == {"rows": []}
     assert calls == [(tmp_path, HEAD)]
 
 
 def test_keep_retire_is_publicly_visible_and_reader_remains_reachable(tmp_path):
-    row = core.item(ident="design:old", kind="DESIGN", title="Old proposal", proposed_by=None, created_at=None,
-                    source="fixture", doc=core.document("Proposed work", source_sha=HEAD))
+    row = core.item(
+        ident="design:old",
+        kind="DESIGN",
+        title="Old proposal",
+        proposed_by=None,
+        created_at=None,
+        source="fixture",
+        doc=core.document("Proposed work", source_sha=HEAD),
+    )
     row["decision_mode"] = "GOVERNED_PATH"
     ctx = context(tmp_path, row)
     ctx.sources = {"fixture": lambda: {"rows": [], "keep_retire": [row]}}
     status, response = api.handle(api.PREFIX + "/approvals", "GET", ctx=ctx)
     assert status == 200 and response["data"]["pending_count"] == 0
     assert "document" not in response["data"]["keep_retire"][0]
-    assert api.handle(api.PREFIX + "/approvals/design%3Aold", "GET", ctx=ctx)[1]["data"]["document"]["text"] == "Proposed work"
+    assert (
+        api.handle(api.PREFIX + "/approvals/design%3Aold", "GET", ctx=ctx)[1]["data"]["document"]["text"]
+        == "Proposed work"
+    )
     assert not ctx.ledger.path.exists()
 
 
@@ -209,10 +278,19 @@ def test_keep_retire_age_uses_elapsed_aware_time_and_configurable_threshold():
     assert api._keep_retire_reason((NOW - timedelta(hours=24)).isoformat(), now=NOW) is None
 
 
-
 def test_actionable_projection_is_document_free_and_independent_of_pagination(tmp_path):
-    rows = [core.item(ident=f"item:{i}", kind="FINDING", title=f"Question {i}", proposed_by=None, created_at=None,
-                      source="fixture", doc=core.document("Question", source_sha=HEAD)) for i in range(55)]
+    rows = [
+        core.item(
+            ident=f"item:{i}",
+            kind="FINDING",
+            title=f"Question {i}",
+            proposed_by=None,
+            created_at=None,
+            source="fixture",
+            doc=core.document("Question", source_sha=HEAD),
+        )
+        for i in range(55)
+    ]
     ctx = context(tmp_path, rows[0])
     ctx.sources = {"fixture": lambda: rows}
     status, response = api.handle(api.PREFIX + "/approvals", "GET", query={"offset": 50}, ctx=ctx)
@@ -224,13 +302,24 @@ def test_actionable_projection_is_document_free_and_independent_of_pagination(tm
     assert not ctx.ledger.path.exists()
 
 
-
 def test_shared_summary_and_paged_get_return_identical_canonical_members(monkeypatch, tmp_path):
-    rows = [core.item(ident=f"item:{i}", kind="FINDING", title=f"Question {i}", proposed_by=None, created_at=None,
-                      source="fixture", doc=core.document("Question", source_sha=HEAD)) for i in range(55)]
+    rows = [
+        core.item(
+            ident=f"item:{i}",
+            kind="FINDING",
+            title=f"Question {i}",
+            proposed_by=None,
+            created_at=None,
+            source="fixture",
+            doc=core.document("Question", source_sha=HEAD),
+        )
+        for i in range(55)
+    ]
     ctx = context(tmp_path, rows[0])
+
     def broken():
         raise core.Refused("SYNTHETIC_UNAVAILABLE", 503)
+
     ctx.sources = {"fixture": lambda: rows, "missing": broken}
     monkeypatch.setattr(api, "_default_sources", lambda root: ctx.sources.copy())
     status, response = api.handle(api.PREFIX + "/approvals", "GET", query={"offset": 50, "kind": "FINDING"}, ctx=ctx)
@@ -273,26 +362,46 @@ def test_new_upstream_head_disables_old_command_before_detail_refresh_is_due():
     assert snapshot.view(background=False)["rows"] == []
 
 
-
 def scoped_authority(operator_required, state="pending", version="29.3.0"):
-    return SimpleNamespace(policy_version=version, policy_sha=BASE, gap=None,
-        classify=lambda files, **kw: {"mode": "delegated", "complete": True,
-            "operator_required": operator_required, "next_actor": "operator" if operator_required else "coordinator"},
-        policy_approval=lambda **kw: {"state": state, "head_sha": kw["head_sha"],
-            "gap": "POLICY_RATIFICATION_CONTINUATION_UNVERIFIED" if state == "unknown" else None})
+    return SimpleNamespace(
+        policy_version=version,
+        policy_sha=BASE,
+        gap=None,
+        classify=lambda files, **kw: {
+            "mode": "delegated",
+            "complete": True,
+            "operator_required": operator_required,
+            "next_actor": "operator" if operator_required else "coordinator",
+        },
+        policy_approval=lambda **kw: {
+            "state": state,
+            "head_sha": kw["head_sha"],
+            "gap": "POLICY_RATIFICATION_CONTINUATION_UNVERIFIED" if state == "unknown" else None,
+        },
+    )
 
 
 def test_delegated_engineering_is_absent_but_explicit_operator_holds_remain():
     authority = scoped_authority(False)
     engineering = {**pr(2472), "labels": [{"name": "held"}]}
-    assert source.project(engineering, git=lambda *args: ".github/workflows/ci.yml\n", gh=Gh(), as_of=STAMP,
-                          authority=authority) is None
+    assert (
+        source.project(
+            engineering, git=lambda *args: ".github/workflows/ci.yml\n", gh=Gh(), as_of=STAMP, authority=authority
+        )
+        is None
+    )
     for label in ("operator-hold", "broker"):
-        row = source.project({**engineering, "labels": [{"name": label}]},
-                             git=lambda *args: ".github/workflows/ci.yml\n", gh=Gh(), as_of=STAMP, authority=authority)
+        row = source.project(
+            {**engineering, "labels": [{"name": label}]},
+            git=lambda *args: ".github/workflows/ci.yml\n",
+            gh=Gh(),
+            as_of=STAMP,
+            authority=authority,
+        )
         assert row["next_actor"] == "operator" and row["actionable"] is True
-    protected = source.project(pr(2473), git=lambda *args: "protected/runtime\n", gh=Gh(), as_of=STAMP,
-                               authority=scoped_authority(True))
+    protected = source.project(
+        pr(2473), git=lambda *args: "protected/runtime\n", gh=Gh(), as_of=STAMP, authority=scoped_authority(True)
+    )
     assert protected["next_actor"] == "operator"
 
 
@@ -337,14 +446,21 @@ def test_snapshot_retains_coordinator_evidence_and_resolves_verified_policy(monk
 def test_rest_renames_preserve_protected_previous_paths():
     def unavailable(*args):
         raise OSError("synthetic missing commit")
-    gh = Gh({"repos/example/project/pulls/2501/files?per_page=100&page=1": [
-                {"filename": "ordinary.txt", "previous_filename": "protected/policy", "status": "renamed"}],
-             "repos/example/project/pulls/2501": pr()})
+
+    gh = Gh(
+        {
+            "repos/example/project/pulls/2501/files?per_page=100&page=1": [
+                {"filename": "ordinary.txt", "previous_filename": "protected/policy", "status": "renamed"}
+            ],
+            "repos/example/project/pulls/2501": pr(),
+        }
+    )
     assert source.changed_files(pr(), unavailable, gh) == ["ordinary.txt", "protected/policy"]
-    gh.documents["repos/example/project/pulls/2501/files?per_page=100&page=1"] = [{"filename": "ordinary.txt", "status": "renamed"}]
+    gh.documents["repos/example/project/pulls/2501/files?per_page=100&page=1"] = [
+        {"filename": "ordinary.txt", "status": "renamed"}
+    ]
     with pytest.raises(core.Refused, match="GITHUB_PR_FILES_INVALID"):
         source.changed_files(pr(), unavailable, gh)
-
 
 
 def test_already_active_policy_version_needs_coordinator_reconciliation():
@@ -353,19 +469,24 @@ def test_already_active_policy_version_needs_coordinator_reconciliation():
     assert row["actionable"] is False and "policy_approval_command" not in row
 
 
-
 @pytest.mark.parametrize("mode", ["legacy", "delegated"])
 @pytest.mark.parametrize("label", ["hold", "do-not-merge", "operator-hold", "Hold", "BROKER"])
 def test_explicit_holds_on_ordinary_files_survive_relevance_filter(mode, label):
     authority = scoped_authority(False)
     authority.classify = lambda *args, **kwargs: {"mode": mode, "complete": True, "operator_required": mode == "legacy"}
-    row = source.project({**pr(2472), "labels": [{"name": label}]}, git=lambda *args: "ordinary.txt\n",
-                         gh=Gh(), as_of=STAMP, authority=authority)
+    row = source.project(
+        {**pr(2472), "labels": [{"name": label}]},
+        git=lambda *args: "ordinary.txt\n",
+        gh=Gh(),
+        as_of=STAMP,
+        authority=authority,
+    )
     assert row is not None and row["next_actor"] == "operator" and row["actionable"] is True
 
 
 def test_authority_outage_never_reports_complete_zero_for_unclassified_work(monkeypatch, tmp_path):
     from scripts.lib.operator_approval_authority import AuthorityContext
+
     authority = AuthorityContext(BASE, STAMP, mode="unavailable", gap="APPROVAL_AUTHORITY_SOURCE_UNAVAILABLE")
     monkeypatch.setattr(source, "load_authority", lambda **kwargs: authority)
     board = Board([pr(2502)])
@@ -381,14 +502,19 @@ def test_authority_outage_never_reports_complete_zero_for_unclassified_work(monk
     assert data["evidence_blockers"][0]["pr"] == 2502
 
 
-
 def test_generic_held_label_requires_known_delegated_class():
     authority = scoped_authority(False)
     raw = {**pr(2472), "labels": [{"name": "held"}]}
     row = source.project(raw, git=lambda *args: "ordinary.txt\n", gh=Gh(), as_of=STAMP, authority=authority)
     assert row is not None and row["next_actor"] == "coordinator" and row["actionable"] is False
     assert row["source_gap"] == "HELD_LABEL_CLASS_UNRESOLVED"
-    authority.classify = lambda *args, **kwargs: {"mode": "delegated", "complete": True,
-        "operator_required": False, "held_classes": ["merge_deploy_control"]}
-    assert source.project(raw, git=lambda *args: ".github/workflows/ci.yml\n", gh=Gh(), as_of=STAMP,
-                          authority=authority) is None
+    authority.classify = lambda *args, **kwargs: {
+        "mode": "delegated",
+        "complete": True,
+        "operator_required": False,
+        "held_classes": ["merge_deploy_control"],
+    }
+    assert (
+        source.project(raw, git=lambda *args: ".github/workflows/ci.yml\n", gh=Gh(), as_of=STAMP, authority=authority)
+        is None
+    )

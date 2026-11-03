@@ -18,7 +18,10 @@ ASOF = "2032-03-09T20:59:00Z"
 
 
 @pytest.fixture
-def mod(monkeypatch):
+def mod(monkeypatch, tmp_path):
+    monkeypatch.setenv("TRADEAI_GOVERNANCE_DIR", str(tmp_path / "governance"))
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+
     def forbidden(*args, **kwargs):
         raise AssertionError("Real external process or network forbidden")
 

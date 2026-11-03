@@ -1,4 +1,5 @@
 """Synthetic coordinator decision contracts; no live state, broker, or GitHub."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -27,8 +28,14 @@ def ledger(tmp_path, rows):
 
 
 def pending(ident="first", **extra):
-    return {"kind": "decision_needed", "decision_id": ident, "title": "Keep this proposal?",
-            "ts": "2026-11-02T20:00:00-05:00", "coordinator": "test-lead", **extra}
+    return {
+        "kind": "decision_needed",
+        "decision_id": ident,
+        "title": "Keep this proposal?",
+        "ts": "2026-11-02T20:00:00-05:00",
+        "coordinator": "test-lead",
+        **extra,
+    }
 
 
 def test_public_question_provenance_and_no_raw_payload(tmp_path):
@@ -56,8 +63,9 @@ def test_keep_retire_is_an_explicit_operator_question(tmp_path):
 
 @pytest.mark.parametrize("kind", sorted(M.TERMINAL))
 def test_only_exact_explicit_resolution_closes_question(tmp_path, kind):
-    ledger(tmp_path, [pending("one"), pending("two"),
-                      {"kind": kind, "decision_id": "one", "ts": "2026-11-03T02:00:00Z"}])
+    ledger(
+        tmp_path, [pending("one"), pending("two"), {"kind": kind, "decision_id": "one", "ts": "2026-11-03T02:00:00Z"}]
+    )
     result = M.load(tmp_path, SHA)
     assert [row["decision_id"] for row in result["rows"]] == ["two"]
     assert result["resolved"][0]["decision_id"] == "one"
@@ -65,9 +73,15 @@ def test_only_exact_explicit_resolution_closes_question(tmp_path, kind):
 
 
 def test_similar_text_directives_and_unbound_approval_do_not_resolve(tmp_path):
-    ledger(tmp_path, [pending(), {"kind": "operator_directive", "subject": "first approved"},
-                      {"kind": "approval_recorded", "subject": "first", "ts": "2026-11-03T02:00:00Z"},
-                      {"kind": "decision_resolved", "decision_id": "first-other", "ts": "2026-11-03T02:00:00Z"}])
+    ledger(
+        tmp_path,
+        [
+            pending(),
+            {"kind": "operator_directive", "subject": "first approved"},
+            {"kind": "approval_recorded", "subject": "first", "ts": "2026-11-03T02:00:00Z"},
+            {"kind": "decision_resolved", "decision_id": "first-other", "ts": "2026-11-03T02:00:00Z"},
+        ],
+    )
     assert len(M.load(tmp_path, SHA)["rows"]) == 1
 
 
@@ -78,8 +92,10 @@ def test_explicit_subject_convention_and_mismatched_ids(tmp_path):
     assert M.load(tmp_path, SHA)["gap"] == "COORDINATOR_DECISION_EVENT_INVALID"
 
 
-@pytest.mark.parametrize("updates", [{"decision_id": "../escape"}, {"ts": "2026-11-03T02:00:00"},
-                                    {"decision_type": "execute"}, {"title": None}])
+@pytest.mark.parametrize(
+    "updates",
+    [{"decision_id": "../escape"}, {"ts": "2026-11-03T02:00:00"}, {"decision_type": "execute"}, {"title": None}],
+)
 def test_invalid_explicit_decision_is_a_named_gap(tmp_path, updates):
     ledger(tmp_path, [pending(**updates)])
     result = M.load(tmp_path, SHA)
@@ -90,8 +106,14 @@ def test_invalid_explicit_decision_is_a_named_gap(tmp_path, updates):
 def test_missing_corrupt_and_empty_are_distinct(tmp_path):
     assert M.load(tmp_path, SHA)["gap"] == "COORDINATOR_DECISION_LEDGER_MISSING"
     path = ledger(tmp_path, [])
-    assert M.load(tmp_path, SHA) == {"rows": [], "resolved": [], "gap": None, "as_of": None,
-                                   "source": M.SOURCE, "source_ref": M.LEDGER_REL}
+    assert M.load(tmp_path, SHA) == {
+        "rows": [],
+        "resolved": [],
+        "gap": None,
+        "as_of": None,
+        "source": M.SOURCE,
+        "source_ref": M.LEDGER_REL,
+    }
     path.write_text(json.dumps(pending()) + "\n{broken")
     assert M.load(tmp_path, SHA)["gap"] == "COORDINATOR_DECISION_LEDGER_CORRUPT"
     ledger(tmp_path, [{"kind": []}])

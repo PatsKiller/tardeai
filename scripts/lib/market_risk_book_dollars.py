@@ -66,7 +66,7 @@ def build(
     scope, loss_sale_date)``: the loss a wash sale deferred, in dollars, when the API can read it."""
     pol = policy or {}
     rv_cfg = pol.get("home_review") or {}
-    mat = ((pol.get("positions") or {}).get("materiality") or {})
+    mat = (pol.get("positions") or {}).get("materiality") or {}
     min_mv = _f(mat.get("min_market_value", 1000.0))
     min_sh = _f(mat.get("min_shares", 1.0))
     stop_near = _f(rv_cfg.get("stop_near_pct", 5.0))
@@ -80,8 +80,12 @@ def build(
 
     heat = [h for h in projection.get("heatmap") or [] if isinstance(h, dict)]
     kinds = {h.get("key"): h.get("kind") for h in heat}
-    stressed = {h.get("key") for h in heat if h.get("state") in STRESSED_STATES and h.get("kind") in ("sector", "theme")}
-    positions = {k: v for k, v in (projection.get("positions") or {}).items() if isinstance(v, dict) and not k.startswith("_")}
+    stressed = {
+        h.get("key") for h in heat if h.get("state") in STRESSED_STATES and h.get("kind") in ("sector", "theme")
+    }
+    positions = {
+        k: v for k, v in (projection.get("positions") or {}).items() if isinstance(v, dict) and not k.startswith("_")
+    }
     residual_lt = ((projection.get("positions") or {}).get("_book") or {}).get("residual_look_through") or {}
 
     holdings = [h for h in store.get("holdings") or [] if isinstance(h, dict) and h.get("symbol")]
@@ -114,46 +118,75 @@ def build(
         for k, w in g.items():
             groups_usd[k] = groups_usd.get(k, 0.0) + mv * w
         if not g:
-            unmapped.append({"symbol": sym, "account_label": label_fn(acct), "usd": round(mv, 2),
-                             "reason": lt.get("note") or lt.get("basis") or "not in the engine's look-through"})
+            unmapped.append(
+                {
+                    "symbol": sym,
+                    "account_label": label_fn(acct),
+                    "usd": round(mv, 2),
+                    "reason": lt.get("note") or lt.get("basis") or "not in the engine's look-through",
+                }
+            )
         sh = stressed_share(g, kinds, stressed)
         px = _f(h.get("canonical_mark") or h.get("price") or h.get("current_price"))
         lvl = stop_dist.get((canon_fn(acct), sym))
         dist = round((px - lvl) / px * 100.0, 1) if lvl and px else None
         material = mv >= min_mv and _f(h.get("shares") or h.get("quantity")) >= min_sh
-        rows.append({
-            "symbol": sym, "account_label": label_fn(acct), "account_scope": opaque_account(acct),
-            "value_usd": round(mv, 2),
-            "pct_account": round(100.0 * mv / acct_tot[acct], 1) if acct_tot.get(acct) else None,
-            "stressed_share": sh, "usd_exposed": round(mv * sh, 2), "stop_distance_pct": dist,
-            "stance": rec.get("label") if material else "residual", "material": material,
-            "look_through_basis": lt.get("basis"), "groups": g,
-        })
+        rows.append(
+            {
+                "symbol": sym,
+                "account_label": label_fn(acct),
+                "account_scope": opaque_account(acct),
+                "value_usd": round(mv, 2),
+                "pct_account": round(100.0 * mv / acct_tot[acct], 1) if acct_tot.get(acct) else None,
+                "stressed_share": sh,
+                "usd_exposed": round(mv * sh, 2),
+                "stop_distance_pct": dist,
+                "stance": rec.get("label") if material else "residual",
+                "material": material,
+                "look_through_basis": lt.get("basis"),
+                "groups": g,
+            }
+        )
     rows.sort(key=lambda r: (-r["usd_exposed"], -r["value_usd"]))
     stressed_usd = round(sum(r["usd_exposed"] for r in rows), 2)
     exposed = [r for r in rows if r["usd_exposed"] > 0]
     top = exposed[0] if exposed else None
     largest = None
     if top:
-        tg = max(((k, w) for k, w in ((positions.get(top["symbol"]) or {}).get("look_through") or {}).get("groups", {}).items()
-                  if k in stressed), key=lambda kv: _f(kv[1]), default=(None, None))
+        tg = max(
+            (
+                (k, w)
+                for k, w in ((positions.get(top["symbol"]) or {}).get("look_through") or {}).get("groups", {}).items()
+                if k in stressed
+            ),
+            key=lambda kv: _f(kv[1]),
+            default=(None, None),
+        )
         largest = {"symbol": top["symbol"], "account_label": top["account_label"], "group": tg[0], "share": tg[1]}
     zero = sorted({r["symbol"] for r in rows if r["material"] and r["usd_exposed"] == 0})
     book_exposure = {
         "schema": SCHEMA,
-        "total_usd": total, "home_total_usd": home_total or None, "reconciles": reconciles,
-        "cash_usd": cash, "invested_usd": invested,
+        "total_usd": total,
+        "home_total_usd": home_total or None,
+        "reconciles": reconciles,
+        "cash_usd": cash,
+        "invested_usd": invested,
         "stressed_groups": sorted(stressed),
         "stressed_usd": stressed_usd,
         "stressed_pct_book": round(100.0 * stressed_usd / total, 2) if total else None,
         "stressed_pct_invested": round(100.0 * stressed_usd / invested, 2) if invested else None,
         "cash_pct_book": round(100.0 * cash / total, 1) if total else None,
         "largest_contributor": largest,
-        "groups": {k: {"usd": round(v, 2), "pct_book": round(100.0 * v / total, 2) if total else None}
-                   for k, v in sorted(groups_usd.items(), key=lambda kv: -kv[1])},
+        "groups": {
+            k: {"usd": round(v, 2), "pct_book": round(100.0 * v / total, 2) if total else None}
+            for k, v in sorted(groups_usd.items(), key=lambda kv: -kv[1])
+        },
         "unmapped": unmapped,
         "rows": [{k: v for k, v in r.items() if k != "groups"} for r in exposed[:max_rows]],
-        "more": {"count": max(0, len(exposed) - max_rows), "usd": round(sum(r["usd_exposed"] for r in exposed[max_rows:]), 2)},
+        "more": {
+            "count": max(0, len(exposed) - max_rows),
+            "usd": round(sum(r["usd_exposed"] for r in exposed[max_rows:]), 2),
+        },
         "zero_exposure_symbols": zero,
         "as_of": store.get("data_as_of"),
         "stops_known": stops_known,
@@ -164,13 +197,26 @@ def build(
 
     def add(r: dict[str, Any], kind: str, text: str, usd: float, to: str) -> None:
         k = (r["symbol"], r["account_scope"])
-        it = items.setdefault(k, {"symbol": r["symbol"], "account_label": r["account_label"], "kinds": [], "reasons": [],
-                                  "usd": 0.0, "to": to, "pct_account": r.get("pct_account"),
-                                  # design home/v006: the facts the Protect clauses are built from (no stop level)
-                                  "facts": {"value_usd": r["value_usd"], "pct_account": r.get("pct_account"),
-                                            "stop_distance_pct": r.get("stop_distance_pct"),
-                                            "stressed_share": r.get("stressed_share"),
-                                            "groups": r.get("groups") or {}}})
+        it = items.setdefault(
+            k,
+            {
+                "symbol": r["symbol"],
+                "account_label": r["account_label"],
+                "kinds": [],
+                "reasons": [],
+                "usd": 0.0,
+                "to": to,
+                "pct_account": r.get("pct_account"),
+                # design home/v006: the facts the Protect clauses are built from (no stop level)
+                "facts": {
+                    "value_usd": r["value_usd"],
+                    "pct_account": r.get("pct_account"),
+                    "stop_distance_pct": r.get("stop_distance_pct"),
+                    "stressed_share": r.get("stressed_share"),
+                    "groups": r.get("groups") or {},
+                },
+            },
+        )
         it["kinds"].append(kind)
         it["reasons"].append(text)
         it["usd"] = round(max(it["usd"], usd), 2)
@@ -185,17 +231,26 @@ def build(
         if stops_known and r["material"] and r["stop_distance_pct"] is None:
             add(r, "no_stop", "no stop", r["value_usd"], stop_to)
         if r["usd_exposed"] >= stressed_min:
-            add(r, "stressed_exposure", f"{round(100 * r['stressed_share'])}% in stressed groups", r["usd_exposed"], page_to)
+            add(
+                r,
+                "stressed_exposure",
+                f"{round(100 * r['stressed_share'])}% in stressed groups",
+                r["usd_exposed"],
+                page_to,
+            )
         if r["material"] and r["look_through_basis"] in ("stock_unknown", "fund_unknown", None):
             add(r, "no_lookthrough", "no look-through (sector unknown)", r["value_usd"], page_to)
-    held_keys = {(str(h["symbol"]).upper(), canon_fn(str(h.get("account")))): h for h in holdings if not h.get("is_cash")}
+    held_keys = {
+        (str(h["symbol"]).upper(), canon_fn(str(h.get("account")))): h for h in holdings if not h.get("is_cash")
+    }
     # sales after the holdings build, summed per (symbol, account) — several partial sales can close a position; the
     # ledger may sign a sale's quantity either way (review of PR 2447)
     sold_by: dict[tuple[str, str], dict[str, Any]] = {}
     for s in ledger_sells or []:
         key = (str(s.get("symbol")).upper(), canon_fn(str(s.get("account"))))
-        agg = sold_by.setdefault(key, {"symbol": key[0], "account": s.get("account"), "date": s.get("date"), "quantity": 0.0,
-                                       "known": True})
+        agg = sold_by.setdefault(
+            key, {"symbol": key[0], "account": s.get("account"), "date": s.get("date"), "quantity": 0.0, "known": True}
+        )
         q = s.get("quantity")
         if q is None:
             agg["known"] = False
@@ -207,10 +262,23 @@ def build(
         # shares; without every sold quantity the ledger cannot say)
         sold = s["quantity"] if s["known"] else 0.0
         if h and _f(h.get("shares")) > 0 and sold > 0 and sold >= _f(h.get("shares")):
-            r = next((x for x in rows if x["symbol"] == str(s["symbol"]).upper() and x["account_scope"] == opaque_account(h.get("account"))), None)
+            r = next(
+                (
+                    x
+                    for x in rows
+                    if x["symbol"] == str(s["symbol"]).upper()
+                    and x["account_scope"] == opaque_account(h.get("account"))
+                ),
+                None,
+            )
             if r:
-                add(r, "data_conflict", f"ledger says sold {s.get('date')}, holdings still show it — confirm with the broker",
-                    r["value_usd"], f"/prospectus/{r['symbol']}")
+                add(
+                    r,
+                    "data_conflict",
+                    f"ledger says sold {s.get('date')}, holdings still show it — confirm with the broker",
+                    r["value_usd"],
+                    f"/prospectus/{r['symbol']}",
+                )
     review = sorted(items.values(), key=lambda i: -i["usd"])[:max_items]
     for i in review:
         i["text"] = " · ".join(i.pop("reasons"))
@@ -248,12 +316,21 @@ def build(
             drivers += [{"name": sym, "usd": round(v, 2)} for sym, v in unprotected.get(sc, []) if sym not in known]
         drivers.sort(key=lambda d: -(d["usd"] or 0))
         actual = b.get("actual")
-        budgets.append({
-            "account_label": labels.get(sc, "one account"), "budget": b.get("budget"), "limit": b.get("limit"),
-            "actual": actual, "unit": b.get("unit") or "%",
-            "actual_usd": round(_f(actual) / 100.0 * tot, 2) if tot and actual is not None and (b.get("unit") or "%") == "%" else None,
-            "drivers": drivers,
-        })
+        budgets.append(
+            {
+                "scope_id": sc,
+                "breached": b.get("breached", True),
+                "account_label": labels.get(sc, "one account"),
+                "budget": b.get("budget"),
+                "limit": b.get("limit"),
+                "actual": actual,
+                "unit": b.get("unit") or "%",
+                "actual_usd": round(_f(actual) / 100.0 * tot, 2)
+                if tot and actual is not None and (b.get("unit") or "%") == "%"
+                else None,
+                "drivers": drivers,
+            }
+        )
 
     # Re-entry: account labels and the deferred wash-sale loss
     reentry = {}
@@ -273,5 +350,10 @@ def build(
             "held_elsewhere_labels": [labels.get(x, "one account") for x in card.get("held_elsewhere") or []],
             "wash_sale": w,
         }
-    return {"book_exposure": book_exposure, "review": review, "scope_labels": labels, "budgets": budgets,
-            "reentry": reentry}
+    return {
+        "book_exposure": book_exposure,
+        "review": review,
+        "scope_labels": labels,
+        "budgets": budgets,
+        "reentry": reentry,
+    }

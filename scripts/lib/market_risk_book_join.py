@@ -68,26 +68,103 @@ def _built_at(store: dict) -> datetime | None:
         return None
 
 
-def _assessment_budgets(projection: dict[str, Any]) -> list[dict[str, Any]]:
+def _assessment_budgets(projection: dict[str, Any], *, root=None, require_schema: bool = False) -> list[dict[str, Any]]:
     """Budget breaches WITH their numbers, read from the engine's own assessment file (local), not from the snapshot:
     the snapshot every consumer (CIO, Ask-the-CIO) reads keeps budget names only (review of #2383, M3)."""
     import json
     import os
     from pathlib import Path
 
-    root = Path(os.environ.get("TRADEAI_STATE_ROOT") or Path.home() / "trade-ai-releases" / "persistent-state")
+    root = Path(root or os.environ.get("TRADEAI_STATE_ROOT") or Path.home() / "trade-ai-releases" / "persistent-state")
     name = "shadow_latest.json" if projection.get("mode") == "shadow" else "latest.json"
     try:
-        doc = json.loads((root / "data" / "runtime" / "market_risk" / name).read_text(encoding="utf-8"))
+        path = root / "data" / "runtime" / "market_risk" / name
+        if path.stat().st_size > 4_000_000:
+            return []
+        doc = json.loads(path.read_bytes())
     except (OSError, ValueError):
         return []
-    if str(doc.get("as_of") or "") != str(projection.get("as_of") or ""):
+    if (
+        not isinstance(doc, dict)
+        or str(doc.get("as_of") or "") != str(projection.get("as_of") or "")
+        or (
+            require_schema
+            and (
+                doc.get("schema") != "MarketRiskAssessment@v1"
+                or (doc.get("mode") or "live") != (projection.get("mode") or "live")
+            )
+        )
+    ):
         return []  # a different evaluation than the one shown: never mix numbers across runs
     return [
         {**b, "scope_id": b.get("scope")}
         for b in ((doc.get("portfolio") or {}).get("budget_breaches") or [])
         if isinstance(b, dict) and b.get("breached", True)
     ]
+
+
+def budget_presentation_snapshot(*, scope_id: str, budget: str, now: datetime | None = None, root=None) -> dict:
+    """The canonical current measurement for a presentation ACK, without Home/DB hydration.
+
+    Both files must describe the SAME evaluation. The existing assessment reader
+    supplies actual/limit; the ordinary projection supplies validity and mode.
+    No ledger, holdings, quotes, broker, provider or policy writes are reachable.
+    """
+    import json
+    import os
+    from pathlib import Path
+
+    from scripts.lib import operator_approvals as approvals
+
+    approvals._budget_ident(scope_id)
+    approvals._budget_ident(budget)
+    now = now or datetime.now(timezone.utc)
+    root = Path(root or os.environ.get("TRADEAI_STATE_ROOT") or Path.home() / "trade-ai-releases" / "persistent-state")
+    projection_module = _import("market_risk_projection")
+
+    def load(rel):
+        path = root / rel
+        try:
+            if path.stat().st_size > 4_000_000:
+                return None
+            return json.loads(path.read_bytes())
+        except (OSError, ValueError):
+            return None
+
+    try:
+        projection = projection_module.build(
+            projection_module.load_snapshot(load, lambda rel: (root / rel).exists()), None, now=now
+        )
+    except (AttributeError, TypeError, ValueError, OverflowError):
+        raise approvals.Refused("BUDGET_SOURCE_UNAVAILABLE", 503) from None
+    if (
+        projection.get("state") != "evaluated"
+        or projection.get("stale") is not False
+        or projection.get("mode") not in (None, "live", "shadow")
+    ):
+        raise approvals.Refused("BUDGET_SOURCE_UNAVAILABLE", 503)
+    try:
+        matches = [
+            row
+            for row in _assessment_budgets(projection, root=root, require_schema=True)
+            if row.get("scope_id") == scope_id and row.get("budget") == budget
+        ]
+    except (AttributeError, TypeError, ValueError):
+        raise approvals.Refused("BUDGET_SOURCE_UNAVAILABLE", 503) from None
+    if len(matches) != 1:
+        raise approvals.Refused("BUDGET_SOURCE_AMBIGUOUS" if len(matches) > 1 else "BUDGET_SOURCE_UNAVAILABLE", 503)
+    row = {
+        **matches[0],
+        "unit": matches[0].get("unit") or "%",
+        "breached": matches[0].get("breached", True),
+        "source_mode": projection.get("mode") or "live",
+        "source_status": projection["state"],
+        "stale": projection["stale"],
+        "as_of": projection["as_of"],
+    }
+    row["source_binding"] = _import("market_risk_home_context").budget_source_binding(row, projection)
+    approvals._budget_current(row, scope_id, budget, now)  # Reject future/invalid sources before offering a binding.
+    return row
 
 
 def run_alerts(projection: dict[str, Any]) -> dict[str, Any] | None:
@@ -104,7 +181,11 @@ def run_alerts(projection: dict[str, Any]) -> dict[str, Any] | None:
         return None
     tier = str(projection.get("tier") or "").upper()
     try:
-        day = datetime.fromisoformat(str(projection.get("as_of")).replace("Z", "+00:00")).astimezone(ZoneInfo("America/New_York")).date()
+        day = (
+            datetime.fromisoformat(str(projection.get("as_of")).replace("Z", "+00:00"))
+            .astimezone(ZoneInfo("America/New_York"))
+            .date()
+        )
     except (TypeError, ValueError):
         return None
     env = os.environ.get("MARKET_RISK_SENT_LEDGER")
@@ -132,7 +213,9 @@ def card_config(policy: dict[str, Any]) -> dict[str, Any]:
         "recent_sessions": int(card.get("recent_sessions", 5)),
         "lookthrough_top_groups": int(rv.get("lookthrough_top_groups", 3)),
         "budget_drivers_shown": int(rv.get("budget_drivers_shown", 3)),
-        "fold_below_usd": float((((policy or {}).get("home_actions") or {}).get("sectors") or {}).get("fold_below_usd", 0)),
+        "fold_below_usd": float(
+            (((policy or {}).get("home_actions") or {}).get("sectors") or {}).get("fold_below_usd", 0)
+        ),
     }
 
 
@@ -162,7 +245,9 @@ def _home_v006_reads(conn: Any, policy: dict[str, Any], now: datetime) -> tuple[
                 "SELECT instrument, light, new_state, created_at FROM inverse_stoplight_transitions "
                 "WHERE light = 'THESIS' ORDER BY created_at DESC LIMIT 20"
             )
-            transitions = [{"instrument": r[0], "light": r[1], "new_state": r[2], "created_at": str(r[3])} for r in cur.fetchall()]
+            transitions = [
+                {"instrument": r[0], "light": r[1], "new_state": r[2], "created_at": str(r[3])} for r in cur.fetchall()
+            ]
     except Exception:  # noqa: BLE001
         transitions = []
         try:
@@ -202,22 +287,37 @@ def home_actions(
     momentum_doc = _lj("data/runtime/sector_momentum_latest.json") or {}
     momentum = momentum_doc.get("rows") or []
     try:
-        res["protect"] = ha.protect(out.get("review") or [], budgets=out.get("budgets") or [],
-                                    reentry=out.get("reentry") or {}, overnight=overnight, policy=policy)
+        res["protect"] = ha.protect(
+            out.get("review") or [],
+            budgets=out.get("budgets") or [],
+            reentry=out.get("reentry") or {},
+            overnight=overnight,
+            policy=policy,
+        )
     except Exception as exc:  # noqa: BLE001
         res["protect_error"] = f"{type(exc).__name__}: {exc}"
     try:
-        res["hedge"] = ha.hedge(stoplights=_lj("data/runtime/inverse_stoplights_latest.json"), momentum_rows=momentum,
-                                book_exposure=out.get("book_exposure") or {}, defense_cfg=defense_cfg,
-                                today=now.date(), transitions=transitions)
+        res["hedge"] = ha.hedge(
+            stoplights=_lj("data/runtime/inverse_stoplights_latest.json"),
+            momentum_rows=momentum,
+            book_exposure=out.get("book_exposure") or {},
+            defense_cfg=defense_cfg,
+            today=now.date(),
+            transitions=transitions,
+        )
         res["hedge"]["momentum_as_of"] = momentum_doc.get("generated_at")
     except Exception as exc:  # noqa: BLE001
         res["hedge_error"] = f"{type(exc).__name__}: {exc}"
     try:
-        res["rotate"] = ha.rotate(heat, leadership=projection.get("leadership"), momentum_rows=momentum,
-                                  book_groups=groups, policy=policy,
-                                  sector_groups=(projection.get("sectors") or {}).get("groups"),
-                                  as_of=(projection.get("sectors") or {}).get("as_of"))
+        res["rotate"] = ha.rotate(
+            heat,
+            leadership=projection.get("leadership"),
+            momentum_rows=momentum,
+            book_groups=groups,
+            policy=policy,
+            sector_groups=(projection.get("sectors") or {}).get("groups"),
+            as_of=(projection.get("sectors") or {}).get("as_of"),
+        )
     except Exception as exc:  # noqa: BLE001
         res["rotate_error"] = f"{type(exc).__name__}: {exc}"
     try:
@@ -247,12 +347,45 @@ def home_actions(
             if not isinstance(e, dict):
                 continue
             seg = lt.issuer_segments_for(sym, entries)
-            st[sym] = {"status": "approved" if seg else "pending", "groups": (seg or {}).get("groups"),
-                       "basis": (seg or {}).get("basis"), "as_of": e.get("as_of"), "source": e.get("source")}
+            st[sym] = {
+                "status": "approved" if seg else "pending",
+                "groups": (seg or {}).get("groups"),
+                "basis": (seg or {}).get("basis"),
+                "as_of": e.get("as_of"),
+                "source": e.get("source"),
+            }
         res["segments_status"] = st
     except Exception as exc:  # noqa: BLE001
         res["segments_status_error"] = f"{type(exc).__name__}: {exc}"
     return res
+
+
+def budget_presentation_context(result: dict, projection: dict, *, now: datetime, ledger=None) -> dict:
+    """Read the existing approved decision store; never a write or another source producer."""
+    import json
+    from pathlib import Path
+
+    from scripts.lib import operator_approvals as approvals
+    from scripts.lib.approval_package import governance_dir
+
+    rows, approved = None, False
+    try:
+        if ledger is None:
+
+            def approved_store():
+                registry = json.loads(
+                    (Path(__file__).resolve().parents[2] / "config/data_source_authority.json").read_bytes()
+                )
+                return approvals.writes_approved(registry)
+
+            ledger = approvals.DecisionLedger(governance_dir() / "operator_decisions.jsonl", approved=approved_store)
+        rows = ledger.rows()
+        approved = ledger.approved() is True
+    except (OSError, ValueError, approvals.Refused):
+        pass  # Unavailable differs from a verified empty ledger; no repair/write follows.
+    return _import("market_risk_home_context").with_budget_presentation(
+        result, projection, decision_rows=rows, store_approved=approved, now=now
+    )
 
 
 def home_context(
@@ -286,21 +419,36 @@ def home_context(
         cio_error = None
         try:
             cio_stances = _import("cio_truth").stances_for_symbols(
-                context.symbols_for(projection, joined), root=Path(__file__).resolve().parents[2],
-                db_query=lambda sql, params=None: reader._rows(sql, params or []), now=now,
-                market_closed=_import("market_risk.sessions").session_label(now) != "regular", limit=80)
+                context.symbols_for(projection, joined),
+                root=Path(__file__).resolve().parents[2],
+                db_query=lambda sql, params=None: reader._rows(sql, params or []),
+                now=now,
+                market_closed=_import("market_risk.sessions").session_label(now) != "regular",
+                limit=80,
+            )
         except Exception as exc:  # noqa: BLE001 — never substitute a different stance source
             cio_error = type(exc).__name__
         connection = getattr(reader, "_conn", None)
         if connection is not None:
             connection.rollback()  # end a read-only metadata transaction before independent quote reads
-        result = context.collect(projection, joined, reader=reader, read_rows=getattr(reader, "_rows", None),
-                                 now=now, registry=registry, cio_stances=cio_stances)
+        result = context.collect(
+            projection,
+            joined,
+            reader=reader,
+            read_rows=getattr(reader, "_rows", None),
+            now=now,
+            registry=registry,
+            cio_stances=cio_stances,
+        )
         if cio_error:
-            result["read_errors"].append({"source": "cio_truth", "reason": cio_error,
-                                          "remediation": {"key": "HOMEV007:cio_truth",
-                                                          "action": "Restore the registered CIO read model."}})
-        return result
+            result["read_errors"].append(
+                {
+                    "source": "cio_truth",
+                    "reason": cio_error,
+                    "remediation": {"key": "HOMEV007:cio_truth", "action": "Restore the registered CIO read model."},
+                }
+            )
+        return budget_presentation_context(result, projection, now=now)
     except Exception as exc:  # noqa: BLE001 — preserve known snapshot fields, expose typed source gap
         result = context.build(projection, joined, now=now)
         result["read_errors"] = [
@@ -313,7 +461,7 @@ def home_context(
                 },
             }
         ]
-        return result
+        return budget_presentation_context(result, projection, now=now)
     finally:
         if owned and reader is not None:
             reader.close()
@@ -363,8 +511,14 @@ def join(
             try:
                 lks = _import("last_known_stops")
                 stops = [
-                    {"account": r.get("account"), "symbol": r.get("symbol"), "stop_price": r.get("stop_price"),
-                     "captured_at": r.get("captured_at"), "source": r.get("source"), "status": r.get("status")}
+                    {
+                        "account": r.get("account"),
+                        "symbol": r.get("symbol"),
+                        "stop_price": r.get("stop_price"),
+                        "captured_at": r.get("captured_at"),
+                        "source": r.get("source"),
+                        "status": r.get("status"),
+                    }
                     for r in lks.load_last_known(brokers=("schwab",), now=now, conn=conn)
                 ]
             except Exception:  # noqa: BLE001 — stops unread: "stops unavailable", never "no stop"
@@ -407,17 +561,29 @@ def join(
 
     def deferred_loss(sym: str, scope: str, date: str) -> float | None:
         rows = [
-            pnl for acct, pnl in deferred_cache.get((sym.upper(), str(date)[:10]), [])
+            pnl
+            for acct, pnl in deferred_cache.get((sym.upper(), str(date)[:10]), [])
             if scope in (bd.opaque_account(acct), bd.opaque_account(ad.canonical_key(acct)))
         ]
         return round(-sum(rows), 2) if rows else None
 
-    proj_for_join = {**projection, "book": {**(projection.get("book") or {}),
-                                            "budgets": budgets if budgets is not None else _assessment_budgets(projection)}}
+    proj_for_join = {
+        **projection,
+        "book": {
+            **(projection.get("book") or {}),
+            "budgets": budgets if budgets is not None else _assessment_budgets(projection, require_schema=True),
+        },
+    }
     try:
         out = bd.build(
-            proj_for_join, store, stops=stops, policy=policy, label_fn=ad.account_label, canon_fn=ad.canonical_key,
-            ledger_sells=ledger_sells, deferred_loss=deferred_loss,
+            proj_for_join,
+            store,
+            stops=stops,
+            policy=policy,
+            label_fn=ad.account_label,
+            canon_fn=ad.canonical_key,
+            ledger_sells=ledger_sells,
+            deferred_loss=deferred_loss,
         )
     except Exception as exc:  # noqa: BLE001
         return {**projection, "book_exposure_error": f"{type(exc).__name__}: {exc}"}
@@ -425,17 +591,37 @@ def join(
     be["stops_known"] = stops is not None
     be["ledger_error"] = ledger_error
     actions = home_actions(projection, out, policy=policy, overnight=overnight, transitions=transitions, now=now)
-    observed_stops = None if stops is None else [
-        {"symbol": row["symbol"], "account_label": ad.account_label(row["account"]),
-         "price": row["stop_price"], "as_of": row.get("captured_at"),
-         "source": row.get("source"), "status": row.get("status")} for row in stops]
+    observed_stops = (
+        None
+        if stops is None
+        else [
+            {
+                "symbol": row["symbol"],
+                "account_label": ad.account_label(row["account"]),
+                "price": row["stop_price"],
+                "as_of": row.get("captured_at"),
+                "source": row.get("source"),
+                "status": row.get("status"),
+            }
+            for row in stops
+        ]
+    )
     try:
-        v007 = home_context(projection, {**out, **actions, "budgets_detail": out["budgets"],
-                                        "observed_stops": observed_stops}, policy=policy,
-                            now=now, get_conn=get_conn, reader=context_reader)
+        v007 = home_context(
+            projection,
+            {**out, **actions, "budgets_detail": out["budgets"], "observed_stops": observed_stops},
+            policy=policy,
+            now=now,
+            get_conn=get_conn,
+            reader=context_reader,
+        )
     except Exception as exc:  # noqa: BLE001 — the additive context cannot erase the v006 card
-        v007 = {"schema": "HomeMarketRiskContext@v1", "state": "unavailable", "reason": type(exc).__name__,
-                "remediation": {"key": "HOMEV007:context", "action": "Restore the additive context module."}}
+        v007 = {
+            "schema": "HomeMarketRiskContext@v1",
+            "state": "unavailable",
+            "reason": type(exc).__name__,
+            "remediation": {"key": "HOMEV007:context", "action": "Restore the additive context module."},
+        }
     return {
         "home_v007": v007,
         **projection,
