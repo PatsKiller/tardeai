@@ -114,8 +114,9 @@ def approval_rows(root=None, *, limit=100):
                                                     "sides", "state", "revision")}, ensure_ascii=False, sort_keys=True)
             version = hashlib.sha256(text.encode()).hexdigest()
             rows.append({"id": record["key"], "title": record["summary"], "proposed_by": "conflict engine",
-                         "created_at": record["opened_at"], "document": {"text": text, "version": version,
-                         "source_sha": version}, "governed_href": "/watch?conflict=" + quote(record["key"], safe="")})
+                         "created_at": record["opened_at"], "revision": record.get("revision"),
+                         "document": {"text": text, "version": version,
+                                      "source_sha": version}, "governed_href": "/watch?conflict=" + quote(record["key"], safe="")})
         gap = {"reason": "more operator conflicts available", "total": collection["total"]} if collection["total"] > len(rows) else None
         return {"rows": rows, "total": collection["total"], "gap": gap}
     except (OSError, ValueError):

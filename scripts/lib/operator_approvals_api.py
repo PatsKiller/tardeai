@@ -311,6 +311,10 @@ def _default_sources(root: Path) -> dict:
             rows.append(core.item(ident="conflict:" + core.digest(row["id"])[:32], kind="CONFLICT", title=row["title"],
                                   proposed_by=row.get("proposed_by"), created_at=row.get("created_at"), doc=doc,
                                   source="conflicts", governed_href="/watch?conflict=" + quote(str(row["id"]), safe=""),
+                                  # The bound version is the evidence digest twice over; the row label is the
+                                  # record's revision so the reader sees something it can act on.
+                                  version=(f"open conflict · revision {row['revision']}"
+                                           if row.get("revision") is not None else "open conflict"),
                                   source_refs=["conflict_events:" + str(row["id"])]))
         return rows
 
@@ -330,10 +334,15 @@ def _default_sources(root: Path) -> dict:
                                                    "never_auto_implications", "proposed_resolution", "risks",
                                                    "machine_form", "created_at")}
             provider = (proposal.get("model") or {}).get("provider")
+            # Readable queue label: "revision 2 · T4" when both are known, never "revision None".
+            tier = proposal.get("tier") or "tier not supplied"
+            label = (f"revision {proposal['revision']} · {tier}" if proposal.get("revision") is not None
+                     else str(tier))
             out.append(core.item(ident="rule-proposal:" + ident, kind="CONFLICT",
                                  title="Proposed conflict rule: " + str(proposal.get("summary") or proposal.get("plain_rule") or ident),
                                  proposed_by=f"AI rule proposer ({provider})" if provider else "AI rule proposer",
                                  created_at=proposal.get("created_at"), source="conflict_rule_proposals",
+                                 version=label,
                                  doc=core.document(json.dumps(public, indent=2, ensure_ascii=False, sort_keys=True),
                                                    source_sha=code_sha,
                                                    version=f"revision {proposal.get('revision')} · {proposal.get('tier') or 'tier not supplied'}"),

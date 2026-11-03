@@ -119,12 +119,17 @@ def document(text: str, *, source_sha: str, version: str = "", base_text: str = 
 
 def item(*, ident: str, kind: str, title: str, proposed_by: str | None, created_at: str | None,
          doc: dict, source: str, pr: int | None = None, governed_href: str | None = None,
-         source_refs: list[str] | None = None) -> dict:
+         source_refs: list[str] | None = None, version: str | None = None) -> dict:
     if kind not in KINDS or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,160}", ident):
         raise Refused("INVALID_SOURCE_ITEM", 503)
     # Only known local UI destinations; source text never supplies an executable command or arbitrary URL.
     href = governed_href if governed_href and governed_href.startswith(("/system/ops-controls", "/coordination", "/watch", "/trading?tab=Proposals", "/cio", "/conflicts/rules?proposal=")) and not governed_href.startswith("//") else None
-    return {"id": ident, "kind": kind, "title": title[:300], "proposed_by": proposed_by,
+    # The queue row prints item.version; before this it was never emitted, so every row fell back to the placeholder
+    # "Exact document available in the reader" even where the source had a readable label ("revision 1 · T4").
+    # Display only: the version a decision binds is document.version, inside document_sha, which nothing here touches.
+    label = version if version is not None else doc.get("version")
+    label = str(label).strip()[:120] if label not in (None, "") else None
+    return {"id": ident, "kind": kind, "title": title[:300], "proposed_by": proposed_by, "version": label,
             "created_at": created_at, "document": doc, "source": source, "pr": pr,
             "source_refs": list(dict.fromkeys([source + ":" + ident] + (source_refs or []))),
             "governed_href": href, "decision_mode": "GOVERNED_PATH" if kind in ("RELEASE", "SPEND", "ACTIVATE", "CONFLICT", "FINANCIAL") else "RECORD"}
