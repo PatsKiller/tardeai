@@ -223,9 +223,15 @@ def gate_annotations(case: Mapping[str, Any], snapshot: Mapping[str, Any], polic
                                    or (f"the date {until} is reached" if until else "the hold is lifted")),
             "blocks_ready": False,  # recomputed below, once we know whether ANY account is date-open
         })
-    any_eligible = any((r.get("eligible") if isinstance(r, Mapping) else bool(r)) for r in elig.values()) \
-        if elig else True  # no eligibility data: do not invent a blocker
-    if not any_eligible:
+    any_eligible = any((r.get("eligible") if isinstance(r, Mapping) else bool(r)) for r in elig.values())
+    if not elig:
+        # Missing data is not a pass. Without the account split the engine cannot know whether an account is
+        # inside a house hold, so it cannot honestly say "ready" — the case still shows, the card still appears.
+        out.append({"gate": "eligibility_unknown", "account": None, "until": None,
+                    "detail": "eligibility unknown — nothing to re-enter until the account split exists",
+                    "would_change_it": "piece A supplies the account eligibility",
+                    "blocks_ready": True})
+    elif not any_eligible:
         for row in out:
             row["blocks_ready"] = True
 
@@ -333,15 +339,16 @@ def evaluate(case: Mapping[str, Any], snapshot: Mapping[str, Any] | None,
     weights = policy.get("weights") or DEFAULT_POLICY["weights"]
     confidence = min(1.0, sum(float(weights.get(k) or 0.0) for k, fired in flags.items() if fired))
     annotations = gate_annotations(case, snapshot, policy, now)
+    # A date-open account is required for readiness; ``pending_operator_decision`` rows are date-open but the card
+    # still says "pending your decision" — the engine reports the split, it never answers whether to re-enter.
     eligible = [a for a, r in _eligibility(case).items()
                 if (r.get("eligible") if isinstance(r, Mapping) else bool(r))]
-    if not _eligibility(case):
-        eligible = [str(case.get("account") or "unknown")]
     blocked = any(a.get("blocks_ready") for a in annotations)
 
     if flags["R4"] and confidence >= float(policy.get("ready_floor") or 0.55) and eligible and not blocked:
         state, reason = RE_ENTRY_READY, "reclaims the 20-day mean with confidence over the floor"
-    elif (flags["R1"] or flags["R2"] or confidence >= float(policy.get("recovering_floor") or 0.30)) and not blocked:
+    elif flags["R1"] or flags["R2"] or confidence >= float(policy.get("recovering_floor") or 0.30):
+        # A reclaim is shown even when eligibility is unknown or every date gate is shut: the case still shows.
         state, reason = RECOVERING, "a reclaim trigger fired above the exit"
     else:
         state, reason = WATCHING, ("gates block re-entry until they lift" if blocked

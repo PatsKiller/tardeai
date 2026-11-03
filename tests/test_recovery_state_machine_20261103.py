@@ -231,3 +231,38 @@ def test_piece_a_eligibility_list_is_rendered_as_annotations():
     gate = next(a for a in d.annotations if a["account"] == "schwab_taxable")
     assert gate["until"] == "2026-11-29" and gate["blocks_ready"] is False
     assert "house hold" in gate["would_change_it"]
+
+
+def test_no_eligibility_rows_is_not_a_pass():
+    """Missing data is not permission: without the account split B cannot honestly say "ready"."""
+    d = R.evaluate(case(eligibility_json=None), snap(close=152.0), now=NOW)
+
+    assert d.state != R.RE_ENTRY_READY and d.eligible_accounts == []
+    gate = next(a for a in d.annotations if a["gate"] == "eligibility_unknown")
+    assert "nothing to re-enter until the account split exists" in gate["detail"]
+    assert gate["would_change_it"] == "piece A supplies the account eligibility"
+    assert gate["blocks_ready"] is True
+
+
+def test_a_reclaim_still_shows_when_eligibility_is_unknown():
+    """The annotation blocks readiness, not the reclaim: the card must still appear."""
+    d = R.evaluate(case(eligibility_json=None), snap(close=141.65), now=NOW)
+    assert d.state == R.RECOVERING
+
+
+def test_all_dates_closed_shows_the_reclaim_but_never_readiness():
+    closed = {"IRA": {"eligible": False, "gate": "house_hold", "until": "2026-11-27"},
+              "taxable": {"eligible": False, "gate": "wash_sale", "until": "2026-12-02"}}
+    assert R.evaluate(case(eligibility_json=closed), snap(close=141.65), now=NOW).state == R.RECOVERING
+    assert R.evaluate(case(eligibility_json=closed), snap(close=152.0), now=NOW).state != R.RE_ENTRY_READY
+
+
+def test_a_pending_decision_row_is_date_open_but_still_reads_as_pending():
+    pending = [{"account": "schwab_roth_ira", "eligible": True, "eligible_from": None,
+                "pending_operator_decision": True, "reason": "date gate open; the operator has not answered"}]
+    d = R.evaluate(case(eligibility_json=pending), snap(close=152.0), now=NOW)
+
+    assert d.state == R.RE_ENTRY_READY and d.eligible_accounts == ["schwab_roth_ira"]
+    gate = next(a for a in d.annotations if a["account"] == "schwab_roth_ira")
+    assert gate["gate"] == "pending_operator_decision"
+    assert gate["would_change_it"] == "your decision on the recovery card"
