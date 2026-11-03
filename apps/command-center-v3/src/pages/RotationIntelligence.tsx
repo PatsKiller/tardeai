@@ -189,6 +189,13 @@ function RotationDescriptivePanel({ data }: { data: unknown }) {
     <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>
       {d.asOf ? `Response generated ${fmtAsOf(d.asOf) ?? d.asOf}` : 'Response clock not stated'}
     </div>
+    {d.market ? <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>
+      {d.market.computedAt ? `Market projection computed ${fmtAsOf(d.market.computedAt) ?? d.market.computedAt}` : 'Market projection clock not stated'}
+      {' · '}
+      {d.market.quoteAsOf
+        ? `quotes as of ${fmtAsOf(d.market.quoteAsOf) ?? d.market.quoteAsOf}`
+        : `quotes ${d.market.freshness}${d.market.sourceGap ? ` — ${d.market.sourceGap}` : ''}`}
+    </div> : null}
     <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>
       Descriptive facts from the same response. Advisory recommendations stay withheld until the evidence gates
       clear; nothing here is an order, a size or a stop.

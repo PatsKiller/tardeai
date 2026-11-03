@@ -58,5 +58,31 @@ eq('top-holdings non-list is ignored', rotationDescriptive({ sector_overweights:
 eq('portfolio total zero is shown, not unknown', rotationDescriptive({ portfolio_total: 0 }).portfolioTotal, '$0')
 check('zero total still counts as data', rotationDescriptive({ portfolio_total: 0 }).hasAny)
 
+// ── neutral market projection (RotationMarketResearch@v1) ───────────────────────────────────────────────
+const mrOk = {
+  available: true, computed_at: '2026-11-02T21:52:00Z', quote_as_of: null, freshness: 'UNKNOWN', source_gap: 'quotes not stored',
+  sectors: [{ etf: 'XLB', name: 'Materials', return_1m: 2.2, return_3m: 6.2, return_6m: 9.1, rs_raw: 1.42, rs_score: 87, data_quality: 1, quality_status: 'OK' }],
+  industries: [{ sector: 'Materials', industries: [{ name: 'Chemicals', return_1m: 1.1, return_3m: 3.3, return_6m: 5.5, rs_raw: 0.9, rs_score: 61, data_quality: 1 }] }],
+}
+const m = rotationDescriptive({ market_research: mrOk })
+check('market meta present', !!m.market && m.market.available && m.market.computedAt === '2026-11-02T21:52:00Z')
+eq('quotes unknown with gap', m.market?.freshness, 'UNKNOWN')
+eq('source gap carried', m.market?.sourceGap, 'quotes not stored')
+eq('market sector row', m.blocks.find(b => b.key === 'market-sectors')?.rows[0].label, 'Materials · XLB')
+eq('returns labelled 1m/3m/6m', m.blocks.find(b => b.key === 'market-sectors')?.rows[0].value, '1m +2.2% · 3m +6.2% · 6m +9.1%')
+eq('rs line from evidence', m.blocks.find(b => b.key === 'market-sectors')?.rows[0].detail, 'raw 1.42 · score 87')
+eq('industry row', m.blocks.find(b => b.key === 'market-industries')?.rows[0].label, 'Materials · Chemicals')
+eq('market counts as data', m.hasAny, true)
+// A default score without return evidence is not proven strength.
+const mrDefault = { available: true, computed_at: '2026-11-02T21:52:00Z',
+  sectors: [{ name: 'Ghost', return_1m: null, return_3m: null, return_6m: null, rs_score: 50, data_quality: 1 }] }
+eq('no return evidence → RS UNKNOWN', rotationDescriptive({ market_research: mrDefault }).blocks.find(b => b.key === 'market-sectors')?.rows[0].detail, 'RS UNKNOWN (no return evidence)')
+const mrQ0 = { available: true, computed_at: '2026-11-02T21:52:00Z',
+  sectors: [{ name: 'Q0', return_1m: 1, return_3m: 1, return_6m: 1, rs_score: 50, data_quality: 0, quality_status: 'DEGRADED' }] }
+eq('quality 0 → RS UNKNOWN', rotationDescriptive({ market_research: mrQ0 }).blocks.find(b => b.key === 'market-sectors')?.rows[0].detail, 'RS UNKNOWN (quality degraded)')
+eq('naive computed_at is not a clock', rotationDescriptive({ market_research: { ...mrOk, computed_at: '2026-11-02 21:52' } }).market?.computedAt, null)
+check('naive clock becomes a gap', rotationDescriptive({ market_research: { ...mrOk, computed_at: '2026-11-02 21:52' } }).gaps.some(g => g.includes('computed_at')))
+eq('no market_research → null', rotationDescriptive({}).market, null)
+
 console.log(`rotationDescriptive: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)
