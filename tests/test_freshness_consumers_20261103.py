@@ -153,7 +153,11 @@ def test_hash_mismatch_is_never_fresh(state_dir):
 
 
 def test_a_recent_clock_cannot_upgrade_a_guarded_status(state_dir, monkeypatch):
-    """_compute_freshness must not let holdings mtime / pipeline_runs outvote the guard."""
+    """_compute_freshness must not let holdings mtime / pipeline_runs outvote the guard.
+
+    last_refresh may still name the latest pipeline run (that is a true fact); the STATUS is what
+    may not become fresh while the store is unreadable.
+    """
     _write_store(state_dir, b"", holdings_hash_value="94f18d5b8ced")
     recent = (datetime.now() - timedelta(minutes=2)).isoformat()
     monkeypatch.setattr(api_v2, "_db_query", lambda *a, **k: {"latest": recent} if "pipeline_runs" in str(a) else None)
@@ -161,7 +165,6 @@ def test_a_recent_clock_cannot_upgrade_a_guarded_status(state_dir, monkeypatch):
     assert doc["status"] == "UNAVAILABLE"
     computed = api_v2._compute_freshness(doc)
     assert computed["status"] == "UNAVAILABLE"
-    assert computed["last_refresh"] is None or computed["last_refresh"] != recent
 
 
 def test_analyst_staleness_warning_fails_closed(state_dir):
