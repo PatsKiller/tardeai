@@ -154,21 +154,147 @@ def test_failed_import_unregisters_new_module(authority, tmp_path, monkeypatch, 
 
 
 @pytest.mark.parametrize("previous_none", [False, True])
-def test_failed_reload_restores_previous_module_or_none_entry(authority, tmp_path, monkeypatch, previous_none):
-    source = (
-        "import builtins\n"
-        "if getattr(builtins, '_cx4_synthetic_loader_failure', False):\n"
-        "    raise RuntimeError('synthetic reload failure')\n"
-        "VALUE = 'previous verified module'\n"
-    )
+def test_failed_import_restores_prior_registry_entry(authority, tmp_path, monkeypatch, previous_none):
+    import types
+
+    source = "raise RuntimeError('synthetic import failure')\n"
     path = helper(tmp_path, "helper_previous.py", source)
-    monkeypatch.setattr(builtins, "_cx4_synthetic_loader_failure", False, raising=False)
-    previous = authority._module(path, source)
-    assert previous.VALUE == "previous verified module"
-    if previous_none:
-        sys.modules[previous.__name__] = None
-    monkeypatch.setattr(builtins, "_cx4_synthetic_loader_failure", True)
-    with pytest.raises(RuntimeError, match="synthetic reload failure"):
+    previous = None if previous_none else types.ModuleType("synthetic_previous")
+    module_from_spec = importlib.util.module_from_spec
+    names = []
+
+    def with_prior_entry(spec):
+        module = module_from_spec(spec)
+        names.append(spec.name)
+        monkeypatch.setitem(sys.modules, spec.name, previous)
+        return module
+
+    monkeypatch.setattr(importlib.util, "module_from_spec", with_prior_entry)
+    with pytest.raises(RuntimeError, match="synthetic import failure"):
         authority._module(path, source)
-    assert previous.__name__ in sys.modules
-    assert sys.modules[previous.__name__] is (None if previous_none else previous)
+    assert len(names) == 1 and names[0] in sys.modules
+    assert sys.modules[names[0]] is previous
+
+
+def test_repeated_verified_load_preserves_annotation_identity(authority, tmp_path):
+    source = (
+        "from __future__ import annotations\n"
+        "from dataclasses import dataclass\n"
+        "@dataclass\n"
+        "class Record:\n"
+        "    child: Record | None = None\n"
+    )
+    path = helper(tmp_path, "helper_identity.py", source)
+    first = authority._module(path, source)
+    second = authority._module(path, source)
+    assert second is first and second.Record is first.Record
+    assert first.Record in typing.get_args(typing.get_type_hints(first.Record)["child"])
+
+
+def test_concurrent_same_snapshot_returns_one_initialized_module(authority, tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    import dataclasses
+    import threading
+
+    entered, release, second_verified = threading.Event(), threading.Event(), threading.Event()
+    source = (
+        "from __future__ import annotations\n"
+        "import sys\n"
+        "from dataclasses import dataclass\n"
+        "from typing import ClassVar\n"
+        "CONTEXT_READY = sys.modules[__name__].__dict__ is globals()\n"
+        "@dataclass\n"
+        "class Record:\n"
+        "    label: str\n"
+        "    marker: ClassVar[int] = 7\n"
+    )
+    path = helper(tmp_path, "helper_parallel.py", source)
+    original_exec = importlib.abc.SourceLoader.exec_module
+    original_read = authority._read
+    executions = []
+
+    def observed_read(target):
+        raw = original_read(target)
+        if entered.is_set():
+            second_verified.set()
+        return raw
+
+    def controlled_exec(loader, module):
+        executions.append(module)
+        entered.set()
+        assert release.wait(3), "Synthetic module initialization was never released"
+        return original_exec(loader, module)
+
+    def load_and_observe():
+        module = authority._module(path, source)
+        return module, module.CONTEXT_READY, [field.name for field in dataclasses.fields(module.Record)]
+
+    monkeypatch.setattr(authority, "_read", observed_read)
+    monkeypatch.setattr(importlib.abc.SourceLoader, "exec_module", controlled_exec)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(load_and_observe)
+        try:
+            assert entered.wait(3)
+            second = pool.submit(load_and_observe)
+            assert second_verified.wait(3)
+        finally:
+            release.set()
+        one, ready_one, fields_one = first.result(timeout=3)
+        two, ready_two, fields_two = second.result(timeout=3)
+    assert one is two and executions == [one]
+    assert ready_one is True and ready_two is True
+    assert fields_one == fields_two == ["label"]
+
+
+def test_cache_hits_revalidate_file_safety_and_current_main_bytes(authority, tmp_path):
+    source = "VALUE = 'verified'\n"
+    path = helper(tmp_path, "helper_recheck.py", source)
+    first = authority._module(path, source)
+    path.chmod(0o666)
+    with pytest.raises(ValueError, match="unsafe"):
+        authority._module(path, source)
+    path.chmod(0o600)
+    path.write_text("VALUE = 'changed'\n")
+    with pytest.raises(ValueError, match="not_current_main"):
+        authority._module(path, source)
+    path.write_text(source)
+    assert authority._module(path, source) is first
+
+
+def test_equal_source_at_different_paths_keeps_separate_context(authority, tmp_path):
+    source = "VALUE = 7\n"
+    one = helper(tmp_path, "helper_path_one.py", source)
+    two_dir = tmp_path / "other"
+    two_dir.mkdir()
+    two = helper(two_dir, "helper_path_one.py", source)
+    first, second = authority._module(one, source), authority._module(two, source)
+    assert first is not second and first.__name__ != second.__name__
+    assert first.__file__ == str(one) and second.__file__ == str(two)
+
+
+def test_code_cache_does_not_cache_runtime_revocation_observations(authority, tmp_path):
+    source = "from pathlib import Path\ndef revoked(path):\n    return Path(path).read_text() == 'revoked'\n"
+    path = helper(tmp_path, "helper_runtime.py", source)
+    marker = tmp_path / "synthetic-revocation.txt"
+    marker.write_text("active")
+    first = authority._module(path, source)
+    assert first.revoked(marker) is False
+    marker.write_text("revoked")
+    second = authority._module(path, source)
+    assert second is first and second.revoked(marker) is True
+
+
+def test_private_verified_cache_rejects_registry_poisoning_and_new_bytes_get_new_identity(authority, tmp_path):
+    import types
+
+    source = "VALUE = 'verified'\n"
+    path = helper(tmp_path, "helper_poison.py", source)
+    first = authority._module(path, source)
+    sys.modules[first.__name__] = types.ModuleType("unverified_registry_entry")
+    assert authority._module(path, source) is first
+    assert sys.modules[first.__name__] is first and first.VALUE == "verified"
+    changed = "VALUE = 'new verified main'\n"
+    path.write_text(changed)
+    second = authority._module(path, changed)
+    assert second is not first and second.__name__ != first.__name__
+    assert second.VALUE == "new verified main" and first.VALUE == "verified"

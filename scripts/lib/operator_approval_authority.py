@@ -17,6 +17,7 @@ import pwd
 import re
 import stat
 import sys
+import threading
 import types
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -30,6 +31,8 @@ MAX_COMMENT_PAGES = 10
 MAX_PATHS = 6000
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 SOURCE = "trusted_main_approval_authority"
+_VERIFIED_MODULES: dict[str, types.ModuleType] = {}
+_MODULE_LOCK = threading.RLock()
 
 
 def _sha(value: Any) -> bool:
@@ -96,28 +99,40 @@ class _VerifiedSnapshotLoader(importlib.abc.SourceLoader):
 
 
 def _module(path: Path, expected: str) -> types.ModuleType:
+    # Validate every observation, including cache hits. Only code is cached;
+    # load_context still reads policy/manifest/comments and revocation afresh.
     raw = _read(path)
     if raw != expected.encode("utf-8"):
         raise ValueError("trusted_helper_not_current_main")
-    name = "approval_authority_" + path.stem + "_" + hashlib.sha256(raw).hexdigest()
-    loader = _VerifiedSnapshotLoader(path, raw)
-    spec = importlib.util.spec_from_loader(name, loader, origin=str(path))
-    if spec is None:
-        raise ValueError("trusted_helper_spec_unavailable")
-    module = importlib.util.module_from_spec(spec)
-    module.__file__ = str(path)
-    previous, had_previous = sys.modules.get(name), name in sys.modules
-    sys.modules[name] = module  # Dataclass/annotation resolution needs standard import context.
-    try:
-        loader.exec_module(module)
-    except BaseException:
-        if sys.modules.get(name) is module:
-            if had_previous:
-                sys.modules[name] = previous
-            else:
-                sys.modules.pop(name, None)
-        raise
-    return module
+    identity = hashlib.sha256(str(path).encode("utf-8") + b"\0" + raw).hexdigest()
+    name = "approval_authority_" + path.stem + "_" + identity
+    with _MODULE_LOCK:
+        cached = _VERIFIED_MODULES.get(name)
+        if cached is not None:
+            # A generic sys.modules entry is never authority for the cache.
+            sys.modules[name] = cached
+            return cached
+        loader = _VerifiedSnapshotLoader(path, raw)
+        spec = importlib.util.spec_from_loader(name, loader, origin=str(path))
+        if spec is None:
+            raise ValueError("trusted_helper_spec_unavailable")
+        module = importlib.util.module_from_spec(spec)
+        module.__file__ = str(path)
+        previous, had_previous = sys.modules.get(name), name in sys.modules
+        sys.modules[name] = module
+        _VERIFIED_MODULES[name] = module
+        try:
+            loader.exec_module(module)
+        except BaseException:
+            if _VERIFIED_MODULES.get(name) is module:
+                _VERIFIED_MODULES.pop(name, None)
+            if sys.modules.get(name) is module:
+                if had_previous:
+                    sys.modules[name] = previous
+                else:
+                    sys.modules.pop(name, None)
+            raise
+        return module
 
 
 def _github(gh, path: str):
