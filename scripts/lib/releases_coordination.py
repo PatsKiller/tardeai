@@ -50,7 +50,8 @@ def _iso(value: Any) -> Optional[str]:
 
 def _parse(value: Any) -> Optional[datetime]:
     try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return parsed.astimezone(timezone.utc) if parsed.tzinfo is not None else None
     except (TypeError, ValueError):
         return None
 
@@ -89,12 +90,18 @@ def _newest(values: Iterable[Optional[str]]) -> Optional[str]:
 def read_ledger(path: Path) -> tuple[list[dict[str, Any]], Optional[str]]:
     """(events, gap). Unreadable or absent is a gap, never an empty success."""
     try:
-        text = path.read_text(encoding="utf-8")
+        if path.is_symlink() or path.stat().st_size > LEDGER_MAX_BYTES:
+            return [], "ledger_unsafe_or_over_budget"
+        with path.open("rb") as handle:
+            raw = handle.read(LEDGER_MAX_BYTES + 1)
+        if len(raw) > LEDGER_MAX_BYTES:
+            return [], "ledger_over_budget"
+        text = raw.decode("utf-8")
     except FileNotFoundError:
         return [], "ledger_absent"
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:
         return [], f"ledger_unreadable:{type(exc).__name__}"
-    events = []
+    events, invalid = [], False
     for line in text.splitlines():
         line = line.strip()
         if not line:
@@ -102,10 +109,13 @@ def read_ledger(path: Path) -> tuple[list[dict[str, Any]], Optional[str]]:
         try:
             row = json.loads(line)
         except ValueError:
+            invalid = True
             continue
         if isinstance(row, dict):
             events.append(row)
-    return events, None
+        else:
+            invalid = True
+    return events, "ledger_invalid_records" if invalid else None
 
 
 def _truthy_class(row: Mapping[str, Any]) -> bool:
@@ -370,7 +380,7 @@ def read_worklog(worklog_path: Path, root: Path) -> tuple[dict[str, Any], Option
     return {"blocker": (blocker_lines[0][:300] if blocker_lines else None),
             "blockers": [b[:300] for b in blocker_lines],
             "next_action": next_action,
-            "truncated": bool(gap)}, gap
+            "truncated": bool(gap), "last_entry_at": summary.get("last_entry_at")}, gap
 
 
 def agent_rows(claims: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -417,9 +427,12 @@ def primary_claims(claims: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
 
 
 def build(ledger_path: Path, claims_dir: Path, prs: Iterable[Mapping[str, Any]], *,
-          now: Optional[datetime] = None) -> dict[str, Any]:
-    """The additive envelope plus one ``work`` object per PR row (see ``deploy_in_flight.project_pr``)."""
-    captured_at = _iso(now or datetime.now(timezone.utc))
+          now: Optional[datetime] = None, state_root: Optional[Path] = None,
+          serving: Optional[Mapping[str, Any]] = None, health: Optional[Mapping[str, Any]] = None) -> dict[str, Any]:
+    """Legacy Releases fields plus the SAME canonical fact projection used by Work pipeline."""
+    now = now or datetime.now(timezone.utc)
+    captured_at = _iso(now)
+    prs = list(prs)
     events, ledger_gap = read_ledger(ledger_path)
     claims, claims_gap = read_claims(claims_dir)
     live = agent_rows(claims)
@@ -452,19 +465,34 @@ def build(ledger_path: Path, claims_dir: Path, prs: Iterable[Mapping[str, Any]],
                    "branch_or_pr": a.get("branch")} for a in primary_claims(claims)[:20]]
     # Per-PR ownership comes from the CLAIMS (they carry the claim id the worklog is keyed by), while the
     # primary agent list above is BOARD context. Mixing the two lost the worklog lookup.
-    by_branch = {a["branch"]: a for a in live if a.get("branch")}
+    by_branch, by_number = {}, {}
+    for candidate in sorted(live, key=lambda a: _parse(a.get("as_of")) or datetime.min.replace(tzinfo=timezone.utc)):
+        try:
+            number = int(candidate.get("pr") or 0)
+        except (TypeError, ValueError):
+            number = 0
+        if number:
+            by_number[number] = candidate
+        elif candidate.get("branch"):
+            by_branch[candidate["branch"]] = candidate
 
     work: dict[int, dict[str, Any]] = {}
+    worklogs: dict[str, dict[str, Any]] = {}
     for pr in prs:
         number = int(pr.get("number") or 0)
         head = str(pr.get("head_sha") or "")
         evidence = evidence_for_pr(events, number, head)
-        owner = by_branch.get(str(pr.get("branch") or ""))
+        owner = by_number.get(number) or by_branch.get(str(pr.get("branch") or ""))
         wl = None
         if owner and owner.get("claim_id"):
             wl, wl_gap = read_worklog(claims_dir / f"{owner['claim_id']}.worklog.md", claims_dir)
             if wl_gap and wl_gap not in gaps:
                 gaps.append(wl_gap)
+            if wl_gap is None or wl_gap == "worklog_truncated":
+                worklogs[owner["claim_id"]] = {
+                    "next_step": wl.get("next_action"), "blockers": len(wl.get("blockers") or []),
+                    "last_entry_at": wl.get("last_entry_at"),
+                }
         local_head = str(owner.get("head_sha") or "") if owner else ""
         # A head difference is NOT proof of unpublished work: the claim's head is often stale (recorded
         # hours ago) while the push has since landed. Only an equal head is provable; anything else is
@@ -508,6 +536,26 @@ def build(ledger_path: Path, claims_dir: Path, prs: Iterable[Mapping[str, Any]],
             "source": "claims+coordinator_ledger" if owner and not gaps else ("claims" if owner else "none"),
         }
 
+    from scripts.lib import work_pipeline_sources as shared_sources
+    canonical_claims = [{**c, "worklog": worklogs.get(c.get("claim_id"), c.get("worklog") or {})} for c in claims]
+    if state_root is None and claims_dir.name == "claims" and claims_dir.parent.name == "coordination":
+        state_root = claims_dir.parents[2]
+    if state_root is not None:
+        # Bounded identity/receipt reads only; ancestry remains in Work's background census.
+        if serving is None:
+            from scripts.lib.agent_claim_lifecycle import ReleaseReader
+            serving = ReleaseReader().serving()
+        if health is None:
+            from scripts.lib.work_pipeline import release_health
+            health = release_health()
+        canonical = shared_sources.load(state_root, prs, canonical_claims, now, serving=serving or {}, health=health or {})
+    else:
+        canonical = shared_sources.build(
+            prs, canonical_claims, events, [], [], now, serving=serving or {}, health=health or {},
+            source_gaps={"coordinator_ledger": ledger_gap} if ledger_gap else {},
+        )
+    for number, facts in canonical["by_pr"].items():
+        work[number]["pipeline"] = facts
     as_of = _newest([a.get("as_of") for a in agents] + [e.get("observed_at") or e.get("ts") for e in events])
     return {
         "schema": SCHEMA,
@@ -518,6 +566,7 @@ def build(ledger_path: Path, claims_dir: Path, prs: Iterable[Mapping[str, Any]],
         "gaps": gaps,
         "agents": agents,
         "work": work,
+        "pipeline": canonical,
         "evidence_class": EVIDENCE_CLASS,
         "authority": "READ_ONLY_ADVISORY",
     }

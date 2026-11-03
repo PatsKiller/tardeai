@@ -411,11 +411,21 @@ class PrCensus:
                 parsed = parse_batch_body((doc or {}).get("body") if isinstance(doc, dict) else None)
                 batches[p["number"]] = {"members": [], "excluded": parsed["excluded"], "number": p["number"],
                                         "title": p["title"], "ci": None, "merged": True}  # fmt: skip
+            serving = {}
             if self.release is not None:
+                # All ancestry probes stay in this background refresh, never in a page request.
+                try:
+                    serving = self.release.serving()
+                except Exception as exc:  # noqa: BLE001 - membership remains explicitly unavailable
+                    warnings.append(f"served identity unavailable ({type(exc).__name__})")
                 for p in merged_prs:
                     if p.get("merge_sha"):
                         try:
                             p["released"] = self.release.released(str(p["merge_sha"]), p.get("merged_at"))
+                            p["served_contains"] = (
+                                self.release.ancestor(str(p["merge_sha"]), str(serving["sha"]))
+                                if serving.get("sha") else None
+                            )
                         except Exception as exc:  # noqa: BLE001 - release detection degrades, never raises
                             warnings.append(f"release detection failed ({type(exc).__name__})")
                             break
@@ -425,6 +435,7 @@ class PrCensus:
                 "batches": batches,
                 "required": required,
                 "main_sha": main_sha,
+                "serving": serving,
             }
             with self._lock:
                 self.value = value
@@ -660,9 +671,11 @@ def derive(
     # --- stage ---------------------------------------------------------------------------------------------------
     t_status = (task or {}).get("status")
     verified = False
-    if released and health and health.get("ok") and health.get("sha"):
+    if (released and health and health.get("ok") is True
+            and re.fullmatch(r"[0-9a-f]{40}", str(health.get("sha") or ""))
+            and health.get("served_sha") == health.get("sha") and (pr or {}).get("served_contains") is True):
         r_at, h_at = _parse(released.get("at")), _parse(health.get("at"))
-        verified = r_at is None or h_at is None or h_at >= r_at
+        verified = r_at is not None and h_at is not None and h_at >= r_at
     if released and verified:
         stage, rag, label = "verified", "green", "live"
         times["verified"] = (health or {}).get("at")
@@ -1220,7 +1233,11 @@ class WorkPipeline:
         health: Callable[[], dict[str, Any]] | None = None,
         ttl: float = REFRESH_S,
         now: Callable[[], datetime] = _utc_now,
+        state_root: Path | None = None,
+        coordination: Callable[..., dict[str, Any]] | None = None,
     ):
+        self.state_root = state_root
+        self.coordination = coordination
         self.claims_dir = claims_dir
         self.census = census or PrCensus(release=LC.ReleaseReader())
         self.sources = sources or self._read_sources
@@ -1251,7 +1268,9 @@ class WorkPipeline:
             from lib import work_pipeline_commands as WPC  # type: ignore[no-redef]
         tier2 = tier2_context()
         packages = open_approval_packages()
+        from scripts.lib.lane_last_receipt import runtime_dir
         return {
+            "state_root": str(self.state_root or runtime_dir().parents[1]),
             "tier2": tier2,
             "queue": WPC.read_queue(self.claims_dir or view.get("claims_dir")),
             "claims": view.get("claims") or [],
@@ -1265,7 +1284,27 @@ class WorkPipeline:
         now = self.now()
         src = self.sources()
         census, meta = self.census.snapshot()
-        health = self.health()
+        health = {**self.health(), "served_sha": ((census or {}).get("serving") or {}).get("sha")}
+        from scripts.lib import work_pipeline_sources as shared_sources
+        prs = [*((census or {}).get("open") or []), *((census or {}).get("merged") or [])]
+        try:
+            if self.coordination is not None or src.get("state_root") or self.state_root:
+                coordination = (self.coordination or shared_sources.load)(
+                    Path(self.state_root or src.get("state_root") or "."), prs, src.get("claims") or [], now,
+                    serving=(census or {}).get("serving") or {}, health=health,
+                )
+            else:
+                # Injected sources remain hermetic and must name the unconfigured joins.
+                coordination = shared_sources.build(
+                    prs, src.get("claims") or [], [], [], [], now,
+                    serving=(census or {}).get("serving") or {}, health=health,
+                    source_gaps={"coordinator_ledger": "source_not_configured",
+                                 "digest_approvals": "source_not_configured", "plans": "source_not_configured"},
+                )
+        except Exception as exc:  # noqa: BLE001 - source failures remain visible without taking the board down
+            coordination = {"schema": shared_sources.SCHEMA, "by_pr": {}, "active_claim_ids": [],
+                            "sources": {}, "as_of": None, "captured_at": _iso(now),
+                            "gaps": [{"source": "coordination", "reason": type(exc).__name__}]}
         items = build_items(
             tasks=src.get("tasks") or [],
             claims=src.get("claims") or [],
@@ -1277,6 +1316,21 @@ class WorkPipeline:
             queue=src.get("queue"),
             tier2=src.get("tier2"),
         )
+        active_ids = set(coordination.get("active_claim_ids") or [])
+        for item in items:
+            item["coordination"] = (coordination.get("by_pr") or {}).get(item.get("pr_number"))
+            owner_fact = (item["coordination"] or {}).get("owner") or {}
+            owner = owner_fact.get("value") or {}
+            if owner.get("session"):
+                item["who"] = {
+                    "kind": "agent", "label": f"{owner.get('vendor') or '?'}/{owner.get('agent') or owner['session']}",
+                    "vendor": owner.get("vendor"), "agent": owner.get("agent"), "session": owner["session"],
+                    "source": owner_fact.get("source"), "as_of": owner_fact.get("as_of"),
+                }
+            claim_ids = (item.get("how") or {}).get("claim_ids") or []
+            item["in_flight"] = not item.get("finished") and (
+                bool(item.get("pr_number")) or not claim_ids or bool(active_ids.intersection(claim_ids))
+            )
         t2 = src.get("tier2") or {}
         merged_waiting = sum(1 for i in items if i["stage"] in ("merged",))
         q = src.get("queue") or {}
@@ -1302,8 +1356,9 @@ class WorkPipeline:
             "stages": list(STAGES),
             "stage_label": dict(STAGE_LABEL),
             "stage_help": dict(STAGE_HELP),
-            "summary": summarize(items),
+            "summary": {**summarize(items), "in_flight": sum(bool(i["in_flight"]) for i in items)},
             "items": items,
+            "coordination": coordination,
             "sources": {
                 "census": meta,
                 "census_age_s": None

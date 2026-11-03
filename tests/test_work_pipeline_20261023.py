@@ -150,7 +150,8 @@ def test_merged_released_verified():
     )
     assert bad["rag"] == "red"
     v = W.derive(
-        pr={**merged, "released": rel}, health={"ok": True, "sha": "80e93c99f", "at": ago(minutes=50)}, now=NOW
+        pr={**merged, "released": rel, "served_contains": True},
+        health={"ok": True, "sha": "a" * 40, "served_sha": "a" * 40, "at": ago(minutes=50)}, now=NOW
     )
     assert v["stage"] == "verified" and v["finished"] and all(c["rag"] == "green" for c in v["cells"])
 
@@ -456,9 +457,9 @@ def test_release_health_reads_receipt(tmp_path):
 def test_claim_without_pr_is_matched_to_its_branch_pr_not_stale():
     c = claim(state="stale", hb_min=240, branch="release/batch-8-20261023")
     merged = {**open_pr(2002, branch="release/batch-8-20261023"), "state": "merged", "merged_at": ago(hours=2), "merge_sha": "80e93c99f", "ci": None,
-              "released": {"at": ago(hours=1), "sha": "80e93c99f", "basis": "served CURRENT/BUILD_SHA"}}  # fmt: skip
+              "released": {"at": ago(hours=1), "sha": "80e93c99f", "basis": "served CURRENT/BUILD_SHA"}, "served_contains": True}  # fmt: skip
     items = W.build_items(tasks=[], claims=[c], census={"open": [], "merged": [merged], "batches": {}},
-                          health={"ok": True, "sha": "80e93c99f", "at": ago(minutes=30)}, now=NOW)  # fmt: skip
+                          health={"ok": True, "sha": "a" * 40, "served_sha": "a" * 40, "at": ago(minutes=30)}, now=NOW)  # fmt: skip
     assert [i["id"] for i in items] == ["PR-2002"]
     assert items[0]["stage"] == "verified" and not items[0]["stale"] and items[0]["how"]["claim_ids"] == [c["claim_id"]]
 
@@ -506,3 +507,67 @@ def test_transient_exclusion_waits_for_batch_not_operator():
                       "excluded": {1953: "failing required checks.", 1997: "touch scripts/active_trader/**. The operator merges those."}}}  # fmt: skip
     assert W.derive(pr=open_pr(1953), batches=batches, now=NOW)["label"] == "waiting for batch"
     assert W.derive(pr=open_pr(1997), batches=batches, now=NOW)["label"] == "operator merge"
+
+
+@pytest.mark.parametrize("contains,served_sha,release_at,verified_at", [
+    (False, "a" * 40, ago(hours=1), ago(minutes=30)),
+    (None, "a" * 40, ago(hours=1), ago(minutes=30)),
+    (True, "b" * 40, ago(hours=1), ago(minutes=30)),
+    (True, "a" * 40, None, ago(minutes=30)),
+    (True, "a" * 40, ago(hours=1), None),
+    (True, "a" * 40, ago(hours=1), ago(hours=2)),
+])
+def test_historical_release_and_unrelated_health_never_prove_live(contains, served_sha, release_at, verified_at):
+    pr = {**open_pr(), "state": "merged", "merged_at": ago(hours=2),
+          "released": {"sha": "c" * 40, "at": release_at, "basis": "release_pins/old.json"},
+          "served_contains": contains}
+    data = W.derive(pr=pr, health={"ok": True, "sha": "a" * 40, "served_sha": served_sha,
+                                 "at": verified_at}, now=NOW)
+    assert data["stage"] == "released"
+    assert not data["finished"]
+    assert cell(data, "verified")["rag"] == "grey"
+
+
+def test_source_join_receives_same_census_and_preserves_aged_owner_history(tmp_path):
+    stale = claim(hb_min=25 * 60, session="synthetic-worker")
+    census = W.PrCensus(runner=lambda argv: (None, "no network"), now=lambda: NOW)
+    census.value = {"open": [], "merged": [], "serving": {"sha": "a" * 40}}
+    calls = []
+    def joined(root, prs, claims, at, **kwargs):
+        calls.append((root, prs, claims, at, kwargs))
+        return {"by_pr": {}, "active_claim_ids": [], "sources": {}, "gaps": []}
+    pipeline = W.WorkPipeline(census=census, sources=lambda: {"claims": [stale], "tasks": [], "awaiting": []},
+                              health=lambda: {"sha": "a" * 40, "ok": True}, now=lambda: NOW,
+                              state_root=tmp_path, coordination=joined)
+    data = pipeline._build()
+    assert calls[0][:4] == (tmp_path, [], [stale], NOW)
+    assert calls[0][4]["serving"]["sha"] == "a" * 40
+    assert len(data["items"]) == 1  # history is retained
+    assert data["items"][0]["in_flight"] is False
+    assert data["summary"]["in_flight"] == 0
+
+
+def test_failed_source_is_named_instead_of_suppressing_board(tmp_path):
+    def unavailable(*args, **kwargs):
+        raise OSError("private exception text")
+    pipeline = W.WorkPipeline(sources=lambda: {"claims": [], "tasks": [], "awaiting": []},
+                              health=lambda: {}, now=lambda: NOW, state_root=tmp_path, coordination=unavailable)
+    data = pipeline._build()
+    assert data["coordination"]["gaps"] == [{"source": "coordination", "reason": "OSError"}]
+    assert "private exception text" not in json.dumps(data)
+
+
+def test_displayed_work_owner_uses_latest_claim_in_shared_projection(tmp_path):
+    from scripts.lib import work_pipeline_sources as shared
+    stale = claim("20261023T140000Z-claude-11111111", hb_min=8 * 60, session="old-worker", branch="feat/2005")
+    fresh = claim("20261023T150000Z-codex-22222222", hb_min=5, session="current-worker", branch="feat/2005")
+    census = W.PrCensus(runner=lambda argv: (None, "no network"), now=lambda: NOW)
+    census.value = {"open": [open_pr()], "merged": []}
+    def joined(root, prs, claims, now, **kwargs):
+        return shared.build(prs, claims, [], [], [], now, **kwargs)
+    pipeline = W.WorkPipeline(census=census, sources=lambda: {"claims": [stale, fresh], "tasks": [], "awaiting": []},
+                              health=lambda: {}, now=lambda: NOW, state_root=tmp_path, coordination=joined)
+    item = pipeline._build()["items"][0]
+    assert item["who"]["session"] == "current-worker"
+    assert item["who"]["as_of"] == ago(minutes=5)
+    assert item["coordination"]["owner"]["value"]["session"] == item["who"]["session"]

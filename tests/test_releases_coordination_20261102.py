@@ -406,3 +406,49 @@ def test_the_board_join_uses_the_newest_claim_not_the_last_filename(tmp_path):
     for branch in ("wt/fresh-a", "wt/stale-b"):
         work = rc.build(tmp_path / "ledger.jsonl", d, [_pr(branch=branch)], now=NOW)["work"][2474]
         assert work["owner"] == "cc-deepseek-2", branch
+
+
+def test_shared_pipeline_fact_projection_matches_work_board(tmp_path):
+    from scripts.lib import work_pipeline_sources as shared
+    ledger = _ledger(tmp_path, _review(), _ci())
+    claims = _claims(tmp_path, {"claim_id": "fixture", "session": "worker-a", "vendor": "codex",
+                                "pr": 2474, "branch": "wt/x", "heartbeat_at": "2026-11-02T17:40:00Z"})
+    result = rc.build(ledger, claims, [_pr()], now=NOW)
+    expected = shared.build([_pr()], json.loads("[]"), [], [], [], NOW)
+    assert result["work"][2474]["pipeline"] is result["pipeline"]["by_pr"][2474]
+    actual = result["pipeline"]["by_pr"][2474]
+    assert actual["owner"]["value"]["session"] == "worker-a"
+    assert actual["review"]["state"] == "MERGE"
+    assert actual["ci"]["state"] == "GREEN"
+    assert expected["by_pr"][2474]["review"]["state"] == "UNKNOWN"
+    assert result["pipeline"]["as_of"] != result["captured_at"]
+
+
+def test_ledger_corruption_and_oversize_are_named_gaps(tmp_path, monkeypatch):
+    ledger = _ledger(tmp_path, _review())
+    ledger.write_bytes(ledger.read_bytes() + b"{partial record\n")
+    events, gap = rc.read_ledger(ledger)
+    assert len(events) == 1 and gap == "ledger_invalid_records"
+    monkeypatch.setattr(rc, "LEDGER_MAX_BYTES", 1)
+    assert rc.read_ledger(ledger) == ([], "ledger_unsafe_or_over_budget")
+
+
+def test_reused_branch_prefers_latest_claim_in_legacy_and_shared_owner(tmp_path):
+    claims = _claims(tmp_path,
+                     {"claim_id": "current", "session": "worker-current", "branch": "wt/x",
+                      "heartbeat_at": "2026-11-02T17:40:00Z", "status": "active"},
+                     {"claim_id": "old", "session": "worker-old", "branch": "wt/x",
+                      "heartbeat_at": "2026-11-01T17:40:00Z", "status": "active"})
+    result = rc.build(_ledger(tmp_path), claims, [_pr()], now=NOW)
+    assert result["work"][2474]["owner"] == "worker-current"
+    assert result["pipeline"]["by_pr"][2474]["owner"]["value"]["session"] == "worker-current"
+    blocker = result["pipeline"]["by_pr"][2474]["open_blocker_count"]
+    assert blocker["value"] is None and blocker["gap"] == "worklog_not_available"
+
+
+def test_claim_naming_another_pr_does_not_own_reused_branch(tmp_path):
+    claims = _claims(tmp_path, {"claim_id": "another", "session": "another-worker", "branch": "wt/x",
+                                "pr": 2475, "heartbeat_at": "2026-11-02T17:40:00Z", "status": "active"})
+    result = rc.build(_ledger(tmp_path), claims, [_pr()], now=NOW)
+    assert result["work"][2474]["owner"] == "UNKNOWN"
+    assert result["pipeline"]["by_pr"][2474]["owner"]["value"] is None
