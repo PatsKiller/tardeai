@@ -205,7 +205,7 @@ def _apply(rec: dict, ev: Mapping[str, Any]) -> None:
         rec["episode"] = int(rec.get("episode") or 1) + 1
     elif kind == "escalate":
         rec["escalations"].append({"at": at, "reason": ev.get("reason"), "delivered": ev.get("delivered"),
-                                   "key": ev.get("key")})
+                                   "key": ev.get("key"), "episode": ev.get("episode")})
     elif kind == "ack":
         rec["acknowledged"] = {"at": at, "actor": actor, "decision_ref": ev.get("decision_ref"), "comment": ev.get("note")}
     elif kind == "close":
@@ -478,10 +478,15 @@ def block(incident_id: str, *, actor: str, blocked_reason: str, handoff: str, d:
 
 
 def escalate(incident_id: str, *, actor: str, reason: str, delivered: bool, key: Optional[str] = None,
-             d: Optional[Path] = None, now: Optional[datetime] = None) -> dict:
-    """Record one page attempt. ``key`` is the stable reason-class key the supervisor suppresses on."""
+             episode: Optional[int] = None, d: Optional[Path] = None, now: Optional[datetime] = None) -> dict:
+    """Record one page attempt. ``key`` is the stable reason-class key the supervisor suppresses on.
+
+    ``episode`` scopes suppression: a page delivered in an earlier episode (before a ``reopen``) must
+    not silence the same reason class in the current episode. Older rows carry no episode and the
+    supervisor falls back to comparing their timestamp with ``reopened_at``.
+    """
     return append_event({"kind": "escalate", "incident_id": incident_id, "actor": actor, "reason": reason,
-                         "delivered": bool(delivered), "key": key}, d=d, now=now)
+                         "delivered": bool(delivered), "key": key, "episode": episode}, d=d, now=now)
 
 
 def operator_ack(incident_id: str, *, decision_ref: str, comment: str = "", actor: str = "operator",

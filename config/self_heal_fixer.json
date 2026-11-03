@@ -244,6 +244,11 @@
       "*siem*",
       "*ledger*",
       "scripts/lib/incidents.py",
+      "scripts/incident_requeue.py",
+      "scripts/lib/incident_supervisor.py",
+      "tests/test_incident_requeue_20261103.py",
+      "tests/test_incident_dispatch_evidence_20261103.py",
+      "tests/test_incident_supervisor_noop_evidence_20261103.py",
       "scripts/risk_stop_manager.py",
       "scripts/n8n_coordination_ledger.py"
     ],

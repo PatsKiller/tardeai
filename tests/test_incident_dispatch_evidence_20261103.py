@@ -17,6 +17,7 @@ The contract (2026-11-03 reviews):
 import json
 import re
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -428,3 +429,177 @@ def test_a_non_utf8_fixer_report_is_a_failed_dispatch_and_pages(tmp_path, monkey
     assert dispatch and dispatch[-1].get("ok") is False, dispatch
     m = re.search(r"rc=(-?\d+)", dispatch[-1].get("result") or "")
     assert m and int(m.group(1)) != 0, dispatch[-1]
+
+
+# ---------------------------------------------------------------- repaired state machine (2026-11-03)
+def test_the_incident_rails_and_their_gate_tests_are_refused_by_the_fixers_diff_guard():
+    """The fixer's own guard must refuse the incident rails and the tests that gate them.
+
+    Same shape as the launcher guard test (test_self_heal_deepseek_wiring_20261103): prove the MATCHER
+    refuses each path, not merely that the string sits in a config list.
+    """
+    from lib import self_heal_fixer as F
+    cfg = json.loads((ROOT / "config" / "self_heal_fixer.json").read_text())
+    for rel in ("scripts/incident_requeue.py",
+                "scripts/lib/incident_supervisor.py",
+                "tests/test_incident_requeue_20261103.py",
+                "tests/test_incident_dispatch_evidence_20261103.py",
+                "tests/test_incident_supervisor_noop_evidence_20261103.py"):
+        assert F._match_any(rel, cfg["diff_guard"]["refuse_paths"]) is not None, rel
+    for rel in ("scripts/incident_requeue.py", "scripts/lib/incident_supervisor.py"):
+        why = F.lane_refusal("any-lane", rel, cfg)
+        assert why and why.startswith("lane_refused:protected_script:"), why
+
+
+def test_an_episode_that_delivered_the_same_key_does_not_suppress_the_next_episode(tmp_path, monkeypatch):
+    """Escalation dedupe is episode-scoped: episode 1 delivered, reopen, episode 2 fails -> page again.
+
+    Revert ``_current_escalations`` to return every escalation -> no episode-2 page and the test fails.
+    """
+    cfg, rec = _setup(tmp_path, monkeypatch)
+    fake = _FixerProcess(lambda req: _report_shape(req, outcome="not_armed:no active grant"))
+    monkeypatch.setattr(S, "subprocess", fake)
+    deps1, pages1 = _deps(_factory_for(cfg))
+    out1 = _cycle(tmp_path, cfg, deps1, T0)
+
+    assert rec["id"] in [b["id"] for b in out1["blocked"]], out1
+    first = [e for e in out1["escalated"] if e["id"] == rec["id"]]
+    assert first and first[-1]["delivered"] is True, out1
+    assert len(pages1) == 1, pages1
+
+    L.append_event({"kind": "reopen", "incident_id": rec["id"], "actor": "operator",
+                    "detail": {"evidence": "the same fault recurred; a person approved one retry"}},
+                   d=tmp_path / "ledger", now=T0 + timedelta(minutes=1))
+    assert L.load_records(tmp_path / "ledger")[rec["id"]]["episode"] == 2
+
+    deps2, pages2 = _deps(_factory_for(cfg))
+    out2 = _cycle(tmp_path, cfg, deps2, T0 + timedelta(minutes=31))
+
+    second = [e for e in out2["escalated"] if e["id"] == rec["id"]]
+    assert second and second[-1]["delivered"] is True, out2
+    assert len(pages2) == 1, "episode 2 must send its own page"
+    assert [r["code_defect"]["episode"] for r in fake.requests] == [1, 2], fake.requests
+    esc = L.load_records(tmp_path / "ledger")[rec["id"]]["escalations"]
+    assert [e["delivered"] for e in esc] == [True, True], esc
+    # the SAME reason class: only episode scoping can distinguish them
+    assert esc[0]["key"] == esc[1]["key"] == "fixer_dispatch_failed", esc
+
+
+def test_a_blocked_incident_retries_only_an_undelivered_page(tmp_path, monkeypatch):
+    """A blocked incident whose last page was not delivered gets the send retried, nothing else.
+
+    Revert the delivery-only ``retries`` loop -> no second send and the test fails.
+    """
+    cfg, rec = _setup(tmp_path, monkeypatch)
+    fake = _FixerProcess(lambda req: _report_shape(req, outcome="not_armed:no active grant"))
+    monkeypatch.setattr(S, "subprocess", fake)
+    deps1, pages1 = _deps(_factory_for(cfg), notify=False)
+    out1 = _cycle(tmp_path, cfg, deps1, T0)
+
+    assert rec["id"] in [b["id"] for b in out1["blocked"]], out1
+    assert len(pages1) == 1
+    row = L.load_records(tmp_path / "ledger")[rec["id"]]
+    assert row["status"] == "blocked"
+    assert [e["delivered"] for e in _escalations(row)] == [False], _escalations(row)
+    dispatched_before = len(fake.requests)
+
+    model_calls = {"n": 0}
+
+    def no_model(_p):
+        model_calls["n"] += 1
+        raise AssertionError("a delivery retry must not re-run the model")
+
+    deps2, pages2 = _deps(_factory_for(cfg), model=no_model)
+    out2 = _cycle(tmp_path, cfg, deps2, T0 + timedelta(minutes=1))
+
+    assert len(pages2) == 1, "the undelivered page is attempted again"
+    assert rec["id"] in [e["id"] for e in out2["escalated"]], out2
+    assert out2["escalated"][-1]["delivered"] is True, out2
+    assert model_calls["n"] == 0, "the retry must not re-triage"
+    assert len(fake.requests) == dispatched_before, "the retry must not re-dispatch"
+    row = L.load_records(tmp_path / "ledger")[rec["id"]]
+    assert row["status"] == "blocked", "a delivery retry does not change the incident's state"
+    assert [e["delivered"] for e in _escalations(row)] == [False, True], _escalations(row)
+
+    deps3, pages3 = _deps(_factory_for(cfg), model=no_model)
+    _cycle(tmp_path, cfg, deps3, T0 + timedelta(minutes=2))
+    assert pages3 == [], "once delivered, there is nothing to retry"
+    assert model_calls["n"] == 0
+
+
+def _open_budget_incidents(tmp_path, n, *, tag="budget"):
+    recs = []
+    for i in range(n):
+        rec, created = L.open_incident(
+            source={"kind": "watcher", "watcher": "health_tick", "job": f"{tag}-step-{i}"},
+            title=f"health tick step {tag}-step-{i} failed (rc=2)",
+            fingerprint=f"fp-{tag}-{i}", d=tmp_path / "ledger", now=T0)
+        assert created
+        recs.append(rec)
+    return recs
+
+
+def test_a_small_cycle_budget_defers_the_overflow_and_drains_it_next_cycle(tmp_path, monkeypatch):
+    """The cycle budget dispatches what fits, defers the rest, and preserves the queue.
+
+    Revert the budget check (always return the fixer timeout) -> every incident dispatches, nothing
+    is deferred, and the timeout/budget assertions fail.
+    """
+    monkeypatch.setenv("TRADEAI_INCIDENTS_DIR", str(tmp_path / "ledger"))
+    monkeypatch.setenv("TRADEAI_PERSISTENT_STATE_ROOT", str(tmp_path / "ps"))
+    cfg = json.loads((ROOT / "config" / "incident_runbook_actions.json").read_text())
+    budget_s = 2.0
+    cfg["policy"]["cycle_budget_s"] = budget_s
+    cfg["policy"]["cycle_budget_margin_s"] = 0.0
+    cfg["policy"]["cycle_budget_floor_s"] = 0.2
+    cfg["policy"]["fixer"]["timeout_s"] = 100.0
+    recs = _open_budget_incidents(tmp_path, 3)
+
+    dispatch_calls: list[dict] = []
+
+    def slow_fixer(req, apply, timeout=None):
+        doc = json.loads(Path(req).read_text())
+        dispatch_calls.append({"id": doc["code_defect"]["evidence"]["incident_key"],
+                               "at": time.monotonic(), "timeout": timeout})
+        time.sleep(1.0)  # consume most of the cycle budget
+        return {"rc": 0, "work_proven": True, "admitted": ["shf-budget"], "prs": [], "summary": "ok"}
+
+    started = time.monotonic()
+    deps1 = S.Deps(model=_model, run=lambda *_a, **_k: (0, "ok"),
+                   notify=lambda *_a, **_k: True, fixer=slow_fixer)
+    out1 = _cycle(tmp_path, cfg, deps1, T0 + timedelta(minutes=1))
+    elapsed = time.monotonic() - started
+
+    dispatched = {d["id"] for d in out1["dispatched"]}
+    deferred = {s["id"] for s in out1["skipped"] if s.get("why") == "deferred: cycle budget"}
+    assert dispatched, out1
+    assert deferred, out1
+    assert dispatched.isdisjoint(deferred), out1
+    assert dispatched | deferred == {r["id"] for r in recs}, out1
+    assert recs[-1]["id"] in deferred, out1
+    # every dispatch receives a timeout bounded by what is left of the cycle budget
+    assert len(dispatch_calls) == len(dispatched)
+    for call in dispatch_calls:
+        assert call["timeout"] is not None, call
+        assert 0 < call["timeout"] <= budget_s, call
+        assert call["timeout"] <= budget_s - (call["at"] - started) + 0.1, call
+    # the cycle itself stays inside the budget (the fixer honours its own timeout in production)
+    assert elapsed <= budget_s + 0.6, elapsed
+
+    # Queue-drain preserved: the deferred incidents are still unresolved and dispatch next cycle.
+    second_calls: list[str] = []
+
+    def fast_fixer(req, apply, timeout=None):
+        doc = json.loads(Path(req).read_text())
+        second_calls.append(doc["code_defect"]["evidence"]["incident_key"])
+        return {"rc": 0, "work_proven": True, "admitted": ["shf-next"], "prs": [], "summary": "ok"}
+
+    deps2 = S.Deps(model=_model, run=lambda *_a, **_k: (0, "ok"),
+                   notify=lambda *_a, **_k: True, fixer=fast_fixer)
+    out2 = _cycle(tmp_path, cfg, deps2, T0 + timedelta(minutes=32))
+
+    assert set(second_calls) == deferred, (second_calls, deferred)
+    assert {d["id"] for d in out2["dispatched"]} == deferred, out2
+    rows = L.load_records(tmp_path / "ledger")
+    for iid in deferred:
+        assert rows[iid]["status"] in L.UNRESOLVED, rows[iid]["status"]

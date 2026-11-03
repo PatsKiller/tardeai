@@ -20,16 +20,24 @@ For each unresolved IncidentRecord@v1 (oldest first, at most ``max_incidents_per
      (scripts/telegram_alert.send_telegram) carrying the incident id.
    A fallback-provider answer is read-only triage: recorded, never executed.
 
+A cycle budget (``cycle_budget_s``, default 7500s, under the unit's ``TimeoutStartSec=8100``) caps each
+fixer dispatch at ``min(fixer timeout, remaining)`` and defers a dispatch when too little remains; the
+incident stays unresolved and drains on a later cycle (never silently dropped). Escalation suppression is
+per DELIVERED reason key per EPISODE, and a blocked incident whose latest page was not delivered is retried
+(delivery only, no model and no dispatch) on a later cycle.
+
 The supervisor never merges, pushes, promotes, deletes, orders, stops, sizes, writes a broker or reads a secret.
 AUTHORITY: READ_ONLY_ADVISORY for every decision; the only side effects are the allowlisted argv, the fixer dispatch
 and the P1. MBI_BEHAVIOR=0.
 """
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import re
 import subprocess
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -61,13 +69,21 @@ WORKING_OUTCOMES = frozenset({
     "output_recovered", "incident_resolved",
 })
 
+#: The supervisor unit runs ``TimeoutStartSec=8100``; ``max_incidents_per_cycle`` (5) x the fixer
+#: timeout (7500s) could run for 37,500s and systemd would kill the cycle mid-fixer. The attempt row
+#: is written only AFTER the fixer returns, so a kill loses the attempt. The cycle budget keeps the
+#: whole cycle under the unit timeout and leaves the queue to drain on later cycles (2026-11-03).
+CYCLE_BUDGET_DEFAULT_S = 7500.0
+CYCLE_BUDGET_MARGIN_S = 300.0
+CYCLE_BUDGET_FLOOR_S = 600.0
+
 
 @dataclass
 class Deps:
     model: ModelCall
     run: Runner
     notify: Notifier
-    fixer: Callable[[Path, bool], dict]
+    fixer: Callable[..., dict]
 
 
 # ---------------------------------------------------------------- defaults (side effects live here only)
@@ -360,16 +376,57 @@ def _p1_text(rec: Mapping[str, Any], reason: str, ask: str) -> str:
             f"Why: {reason[:200]}\nNext: {ask[:300]}\n{CC_INCIDENT_URL.format(id=rec['id'])}")
 
 
+def _current_escalations(rec: Mapping[str, Any]) -> list[dict]:
+    """Escalations belonging to the current episode.
+
+    A ``reopen`` starts a new episode (2026-11-03), and an escalation row is folded with the episode
+    it was written in. Episode 1's delivered page must never suppress episode 2's page for the same
+    reason class, so the delivered-row check is episode scoped. Rows written before episodes were
+    folded carry ``episode: None``; for those, compare their timestamp with ``reopened_at``. An
+    escalation with neither is treated as current only when the incident never reopened (failing to
+    suppress is the safe direction: a person sees a duplicate page instead of never seeing the reopen).
+    """
+    cur = int(rec.get("episode") or 1)
+    start = L.parse_ts(rec.get("reopened_at"))
+    out = []
+    for e in rec.get("escalations") or []:
+        ep = e.get("episode")
+        if ep is not None:
+            try:
+                if int(ep) == cur:
+                    out.append(e)
+            except (TypeError, ValueError):
+                pass
+            continue
+        if start is None:
+            out.append(e)
+            continue
+        at = L.parse_ts(e.get("at"))
+        if at is not None and at >= start:
+            out.append(e)
+    return out
+
+
+def _pending_escalation(rec: Mapping[str, Any]) -> Optional[dict]:
+    """The latest current-episode escalation when it was NOT delivered (a page to retry)."""
+    rows = _current_escalations(rec)
+    if not rows:
+        return None
+    last = rows[-1]
+    return None if last.get("delivered") is True else dict(last)
+
+
 def _escalate(rec: dict, reason: str, ask: str, d: Path, deps: Deps, apply: bool, out: dict, now: datetime,
               key: Optional[str] = None) -> None:
-    """Send ONE P1 for a reason class, at most once per DELIVERED page.
+    """Send ONE P1 for a reason class, at most once per DELIVERED page IN THIS EPISODE.
 
-    Causal rule (2026-11-03): suppress only an escalation that was delivered with the SAME key. An
-    undelivered send (``delivered: False``) retries on the next evaluation, and a different reason
-    class (time box vs attempt cap vs refused scope) has its own key and still pages.
+    Causal rule (2026-11-03): suppress only an escalation that was delivered with the SAME key in the
+    CURRENT episode (``reopen`` starts a new episode). An undelivered send (``delivered: False``)
+    retries on the next evaluation, a different reason class (time box vs attempt cap vs refused
+    scope) has its own key and still pages, and episode-1 history never hides an episode-2 page.
     """
     key = key or reason
-    for e in rec.get("escalations") or []:
+    for e in _current_escalations(rec):
         # Rows written before keys existed carry no key: fall back to the exact reason text.
         if e.get("delivered") is True and (e.get("key") or e.get("reason")) == key:
             return
@@ -382,7 +439,8 @@ def _escalate(rec: dict, reason: str, ask: str, d: Path, deps: Deps, apply: bool
     except Exception as exc:  # noqa: BLE001
         delivered = False
         reason = f"{reason} (send error {type(exc).__name__})"
-    L.escalate(rec["id"], actor=ACTOR, reason=reason, delivered=delivered, key=key, d=d, now=now)
+    L.escalate(rec["id"], actor=ACTOR, reason=reason, delivered=delivered, key=key,
+               episode=int(rec.get("episode") or 1), d=d, now=now)
     out["escalated"].append({**row, "delivered": delivered})
 
 
@@ -401,17 +459,59 @@ def _bump_calls(d: Path, now: datetime) -> None:
     p.write_text(json.dumps({"date": now.date().isoformat(), "count": n}) + "\n", encoding="utf-8")
 
 
+def _cycle_remaining_s(elapsed_s: float, budget_s: float, margin_s: float) -> float:
+    """Seconds a dispatch may still run: the cycle budget minus elapsed time and a safety margin."""
+    return budget_s - elapsed_s - margin_s
+
+
+def _call_fixer(deps: Deps, req: Path, apply: bool, timeout_s: float) -> dict:
+    """Run the fixer with this cycle's remaining budget when it accepts a ``timeout``.
+
+    The production factory takes ``timeout=`` so the cycle budget can shorten the fixer's own
+    subprocess timeout (``min(fixer.timeout_s, remaining)``). Alternate/test fixers with the
+    two-argument ``(request, apply)`` contract keep working unchanged.
+    """
+    try:
+        sig = inspect.signature(deps.fixer)
+    except (TypeError, ValueError):
+        return deps.fixer(req, apply)
+    if "timeout" in sig.parameters or any(p.kind is inspect.Parameter.VAR_KEYWORD
+                                          for p in sig.parameters.values()):
+        return deps.fixer(req, apply, timeout=timeout_s)
+    return deps.fixer(req, apply)
+
+
 def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, Any], deps: Deps, apply: bool,
           now: Optional[datetime] = None, environ: Optional[Mapping[str, str]] = None, root: Path = ROOT) -> dict:
     now = now or L.utcnow()
     pol = cfg["policy"]
     environ = os.environ if environ is None else environ
+    started = time.monotonic()
+    budget_s = float(pol.get("cycle_budget_s", CYCLE_BUDGET_DEFAULT_S))
+    margin_s = float(pol.get("cycle_budget_margin_s", CYCLE_BUDGET_MARGIN_S))
+    floor_s = float(pol.get("cycle_budget_floor_s", CYCLE_BUDGET_FLOOR_S))
+    fixer_timeout_s = float((pol.get("fixer") or {}).get("timeout_s", CYCLE_BUDGET_DEFAULT_S))
+
+    def dispatch_timeout() -> tuple[Optional[float], float]:
+        remaining = _cycle_remaining_s(time.monotonic() - started, budget_s, margin_s)
+        if remaining < floor_s:
+            return None, remaining
+        return min(fixer_timeout_s, remaining), remaining
+
     out: dict[str, Any] = {"schema": RECEIPT_SCHEMA, "as_of": L.iso(now), "mode": "apply" if apply else "dry_run",
                            "considered": [], "actions": [], "dispatched": [], "blocked": [], "escalated": [],
                            "would_escalate": [], "skipped": []}
     recs = L.load_records(d)
+    max_n = int(pol.get("max_incidents_per_cycle", 5))
     queue = sorted((r for r in recs.values() if r["status"] in L.UNRESOLVED), key=lambda r: r["opened_at"])
-    for rec in queue[: int(pol.get("max_incidents_per_cycle", 5))]:
+    # Delivery-only retries (2026-11-03): a blocking site blocks + pages in the same cycle, and the
+    # queue below only carries UNRESOLVED incidents, so a failed page on a now-blocked incident would
+    # never be retried. Retry only the send (never the model, never a dispatch) for blocked incidents
+    # whose latest current-episode escalation is undelivered. Bounded by the same per-cycle cap.
+    retries = sorted((r for r in recs.values()
+                      if r["status"] == "blocked" and _pending_escalation(r)),
+                     key=lambda r: r["opened_at"])[:max_n]
+    for rec in queue[:max_n]:
         iid = rec["id"]
         out["considered"].append(iid)
         age_min = (now - (L.parse_ts(rec["opened_at"]) or now)).total_seconds() / 60
@@ -437,11 +537,20 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
                            "action": "fix the code or configuration defect named in the evidence",
                            "rationale": "runbook attempts exhausted without acting (no_op)"}
                 detail = {"provider": "cap_route", "class": "code_defect", "proposed": verdict["action"]}
+                # Cycle budget (2026-11-03): never start a dispatch the unit timeout would kill.
+                # The attempt row is written only after the fixer returns, so a kill loses it.
+                timeout_s, remaining = dispatch_timeout()
+                if timeout_s is None:
+                    L.attempt(iid, actor=ACTOR, action="triage", result="deferred: cycle budget",
+                              ok=None, sets_fixing=False, d=d, now=now)
+                    out["skipped"].append({"id": iid, "why": "deferred: cycle budget",
+                                           "remaining_s": int(remaining)})
+                    continue
                 req = fixer_request(rec, verdict, cfg)
                 reqp = d / "fixer_requests" / f"{iid}.json"
                 reqp.parent.mkdir(parents=True, exist_ok=True)
                 reqp.write_text(json.dumps(req, indent=1) + "\n", encoding="utf-8")
-                res = deps.fixer(reqp, True)
+                res = _call_fixer(deps, reqp, True, timeout_s)
                 refs = [{"kind": "pr", "ref": str(u)} for u in res.get("prs") or []]
                 L.attempt(iid, actor=ACTOR, action="fixer_dispatch",
                           result=f"fixer rc={res.get('rc')} admitted={res.get('admitted')} prs={res.get('prs')}",
@@ -551,11 +660,21 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
                 _escalate(rec, why, "The fixer did not prove work; a person must take it.",
                           d, deps, apply, out, now, key="fixer_dispatch_failed")
                 continue
+            # Cycle budget (2026-11-03): the fixer timeout is capped at the remaining budget, and a
+            # dispatch is deferred (triage row only) when too little remains. The incident stays
+            # unresolved and drains on a later cycle; it is never silently dropped.
+            timeout_s, remaining = dispatch_timeout()
+            if timeout_s is None:
+                L.attempt(iid, actor=ACTOR, action="triage", result="deferred: cycle budget",
+                          ok=None, sets_fixing=False, d=d, now=now)
+                out["skipped"].append({"id": iid, "why": "deferred: cycle budget",
+                                       "remaining_s": int(remaining)})
+                continue
             req = fixer_request(rec, verdict, cfg)
             reqp = d / "fixer_requests" / f"{iid}.json"
             reqp.parent.mkdir(parents=True, exist_ok=True)
             reqp.write_text(json.dumps(req, indent=1) + "\n", encoding="utf-8")
-            res = deps.fixer(reqp, True)
+            res = _call_fixer(deps, reqp, True, timeout_s)
             ok = _dispatch_ok(res)
             refs = [{"kind": "pr", "ref": str(u)} for u in res.get("prs") or []]
             L.attempt(iid, actor=ACTOR, action="fixer_dispatch",
@@ -578,6 +697,20 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
                           handoff=verdict["action"] or "operator decision required", d=d, now=now)
             out["blocked"].append({"id": iid, "why": "needs_operator"})
             _escalate(rec, "needs operator", verdict["action"], d, deps, apply, out, now, key="needs_operator")
+    # Delivery-only retry (2026-11-03) for blocked incidents whose latest current-episode page was
+    # not delivered. This runs AFTER the unresolved queue and does nothing else: no model call, no
+    # runbook action, no fixer dispatch and no new block. A successful retry makes the escalation
+    # delivered, so the next cycle no longer sees it; a failed one is retried again next cycle.
+    for rec in retries:
+        pending = _pending_escalation(rec)
+        if not pending:
+            continue
+        iid = rec["id"]
+        out["considered"].append(iid)
+        key = pending.get("key") or pending.get("reason")
+        reason = pending.get("reason") or "incident blocked"
+        ask = rec.get("handoff") or "A person must take this incident."
+        _escalate(rec, reason, ask, d, deps, apply, out, now, key=key)
     if apply:
         p = d / "supervisor_last.json"
         p.write_text(json.dumps(out, indent=1, default=str) + "\n", encoding="utf-8")
@@ -617,17 +750,20 @@ def _request_identity(req: Path) -> tuple[Optional[str], Optional[str]]:
     return (str(did) if did else None, str(ikey) if ikey else None)
 
 
-def default_fixer_factory(cfg: Mapping[str, Any], python: str, repo_root: Path) -> Callable[[Path, bool], dict]:
+def default_fixer_factory(cfg: Mapping[str, Any], python: str, repo_root: Path) -> Callable[..., dict]:
     fx = cfg["policy"]["fixer"]
 
-    def run_fixer(req: Path, apply: bool) -> dict:
+    def run_fixer(req: Path, apply: bool, timeout: Optional[float] = None) -> dict:
         argv = [python, str(repo_root / fx["script"]), "--cycle", "--incident", str(req)]
         argv.append("--apply" if apply else "--dry-run")
         defect_id, incident_key = _request_identity(req)
+        # The cycle budget may shorten this below the fixer's own configured timeout:
+        # ``min(fixer.timeout_s, remaining budget)`` (2026-11-03).
+        limit_s = max(0.001, float(timeout if timeout is not None else fx.get("timeout_s", 7500)))
         try:
             p = subprocess.run(argv, cwd=str(repo_root), capture_output=True, text=True,
                                encoding="utf-8", errors="replace",
-                               timeout=float(fx.get("timeout_s", 7500)))
+                               timeout=limit_s)
         except subprocess.TimeoutExpired:
             return {"rc": 124, "summary": "timeout", "work_proven": False, "admitted": [],
                     "busy": False, "prs": []}
