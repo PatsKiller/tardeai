@@ -246,12 +246,15 @@ def collect(
                         if str(row.get("symbol") or "").upper() == quote["symbol"]
                         and stamp(row.get("fetched_at")) == stamp(quote["as_of"])
                     ]
-                    matches = [row for row in same_clock if number(row.get("price")) == number(quote.get("price"))]
-                    if len(matches) == 1:
-                        quote.update({key: matches[0].get(key) for key in ("prev_close", "volume")})
-                    elif same_clock:
-                        # The re-read found rows for this instant but none agrees with the reader's
-                        # price: two genuine marks of the same fact that contradict each other.
+                    # The rule is about DISTINCT prices at one instant, not about how many rows matched: a
+                    # duplicate ingest of the same value disagrees with nothing, while a row that differs
+                    # from the reader is a conflict even if another row happens to agree with it.
+                    marks = {
+                        round(price, 4)
+                        for price in [number(quote.get("price")), *(number(row.get("price")) for row in same_clock)]
+                        if price is not None
+                    }
+                    if len(marks) > 1:
                         quote["conflict"] = {
                             "reason": "The stored observation and the reader disagree at the same instant",
                             "as_of": iso(stamp(quote["as_of"])),
@@ -266,6 +269,10 @@ def collect(
                                 ),
                             ],
                         }
+                    elif same_clock:
+                        # Every stored row for this instant agrees with the reader; take one for the
+                        # exact-observation fields. Identical duplicates are not a conflict.
+                        quote.update({key: same_clock[0].get(key) for key in ("prev_close", "volume")})
         except Exception as exc:  # noqa: BLE001 — never use a different snapshot's volume
             failed("market_quotes_exact_observation_fields", exc)
         try:
@@ -569,9 +576,18 @@ def build(
                 "reference_session_date": prior_session,
                 "basis": "previous completed NYSE session close",
             },
-            "since_exit": fact(
-                since, as_of=qclock, source="reentry_watch.exit_price+" + source, now=now, reason=rejected_reason
-            ),
+            "since_exit": {
+                **fact(
+                    since, as_of=qclock, source="reentry_watch.exit_price+" + source, now=now, reason=rejected_reason
+                ),
+                # The distance joins two inputs with two clocks: the quote that moves, and the exit record
+                # that does not. Naming both stops an eight-day-old exit from looking sixty seconds old.
+                "price_as_of": qclock,
+                "reference_as_of": card.get("exit_date") or None,
+                "price_source": source,
+                "reference_source": "reentry_watch.exit_price",
+                "basis": "distance from the recorded exit price to the current quote; the fact is clocked by the quote",
+            },
             "analysis_references": analysis_fact,
             "cio": fact(
                 cio_value if canonical_cio.get("stance") is not None else None,
@@ -898,11 +914,25 @@ def build(
             stop_source=stop_source,
         )
         if stored_stops is not None and not matches:
+            # A successful read that found no stored stop is an absence of protection evidence, not a
+            # stop observation. Publishing it as measured with the read clock would say "observed just
+            # now" about something that was never seen, so it is unknown — while still saying plainly
+            # that the read itself succeeded, which a failed read never does.
             stop_fact = fact(
-                {"status": "not_recorded", "note": "No stored stop observed"},
-                as_of=iso(now),
+                None,
+                as_of=None,
                 source="last_known_stops_query",
                 now=now,
+                reason="No stored stop observed for this account; the read succeeded and held no record",
+            )
+            stop_fact.update(
+                observed_status="not_recorded",
+                price_as_of=iso(valid_price_clock) if valid_price_clock is not None else None,
+                stop_as_of=None,
+                price_source=quote_source,
+                stop_source="not_recorded",
+                read_as_of=iso(now),
+                basis="a successful stored-stop read with no record; this is not a stop observation",
             )
         day_change_fact = (
             per_symbol[symbol].get("day_change")

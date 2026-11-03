@@ -319,14 +319,14 @@ def home_context(
             reader.close()
 
 
-def unavailable_context(exc: Exception, now: datetime) -> dict:
-    """The shaped block emitted when the additive context itself cannot be built.
+def unavailable_block(reason: str, now: datetime, *, code: str = "unavailable") -> dict:
+    """The shaped block emitted when the additive context cannot be built.
 
     It carries the same keys as a built block so a consumer that checks for presence can tell
     "unavailable" from "present and empty", and both the gap and the read error name the same
-    remediation that would fix it.
+    remediation that would fix it. Every early return of ``join`` uses it, so the contract's
+    "state, never presence" holds on every path, not only on the exception path.
     """
-    reason = "the additive home context could not be built (" + type(exc).__name__ + ")"
     remediation = {
         "key": "HOMEV007:context",
         "action": "Restore the additive context module; no fact is shown while it is unavailable.",
@@ -339,12 +339,18 @@ def unavailable_context(exc: Exception, now: datetime) -> dict:
         "positions": [],
         "budgets": [],
         "gaps": [{"symbol": None, "field": "home_v007", "reason": reason, "remediation": dict(remediation)}],
-        "read_errors": [{"source": "home_v007_join", "reason": type(exc).__name__,
-                         "remediation": dict(remediation)}],
+        "read_errors": [{"source": "home_v007_join", "reason": code, "remediation": dict(remediation)}],
         "reason": reason,
         "remediation": remediation,
         "advisory_only": True,
     }
+
+
+def unavailable_context(exc: Exception, now: datetime) -> dict:
+    """The exception-path block; keeps the historical signature."""
+    return unavailable_block(
+        "the additive home context could not be built (" + type(exc).__name__ + ")", now, code=type(exc).__name__
+    )
 
 
 def join(
@@ -360,19 +366,42 @@ def join(
     """The projection with ``book_exposure``, ``review``, ``scope_labels``, ``budgets_detail`` and ``reentry_detail``
     added (or ``book_exposure_error`` with the reason)."""
     if projection.get("state") not in ("evaluated", "stale"):
-        return projection
+        # Every path out of this function carries the block the contract describes: absence of
+        # home_v007 is reserved for "the join did not run at all", never for a failure we know about.
+        return {
+            **projection,
+            "home_v007": unavailable_block(
+                "the market-risk projection is not evaluated or stale; the additive context was not built",
+                now or datetime.now(timezone.utc),
+                code="projection_not_evaluated",
+            ),
+        }
     now = now or datetime.now(timezone.utc)
     bd = _import("market_risk_book_dollars")
     try:
         if store is None:
             store = _import("portfolio_positions").load_store()
         if not store:
-            return {**projection, "book_exposure_error": "holdings store unreadable"}
+            return {
+                **projection,
+                "book_exposure_error": "holdings store unreadable",
+                "home_v007": unavailable_block(
+                    "the holdings store is unreadable; the additive context was not built",
+                    now, code="holdings_store_unreadable",
+                ),
+            }
         ad = _import("account_display")
         if policy is None:
             policy = _import("market_risk.policy").load_policy()
     except Exception as exc:  # noqa: BLE001
-        return {**projection, "book_exposure_error": f"{type(exc).__name__}: {exc}"}
+        return {
+            **projection,
+            "book_exposure_error": f"{type(exc).__name__}: {exc}",
+            "home_v007": unavailable_block(
+                "the holdings store or policy could not be loaded; the additive context was not built",
+                now, code=type(exc).__name__,
+            ),
+        }
     stops: list[dict[str, Any]] | None = None
     ledger_sells: list[dict[str, Any]] = []
     ledger_error: str | None = None
@@ -448,7 +477,14 @@ def join(
             ledger_sells=ledger_sells, deferred_loss=deferred_loss,
         )
     except Exception as exc:  # noqa: BLE001
-        return {**projection, "book_exposure_error": f"{type(exc).__name__}: {exc}"}
+        return {
+            **projection,
+            "book_exposure_error": f"{type(exc).__name__}: {exc}",
+            "home_v007": unavailable_block(
+                "the book exposure build failed; the additive context was not built",
+                now, code=type(exc).__name__,
+            ),
+        }
     be = out["book_exposure"]
     be["stops_known"] = stops is not None
     be["ledger_error"] = ledger_error

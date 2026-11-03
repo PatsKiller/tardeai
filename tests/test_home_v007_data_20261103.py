@@ -357,7 +357,10 @@ def test_stored_stop_distance_never_creates_or_changes_a_stop(mod):
     joined["observed_stops"] = None
     assert mod.build(projection(), joined, now=NOW)["positions"][0]["stop"]["state"] == "unknown"
     joined["observed_stops"] = []
-    assert mod.build(projection(), joined, now=NOW)["positions"][0]["stop"]["value"]["status"] == "not_recorded"
+    # A successful read with no record is an absence of evidence, not a measured stop (cc6, 2026-11-03).
+    absent = mod.build(projection(), joined, now=NOW)["positions"][0]["stop"]
+    assert absent["state"] == "unknown" and absent["observed_status"] == "not_recorded"
+    assert absent["stop_source"] == "not_recorded" and absent["read_as_of"] == "2032-03-09T21:00:00Z"
 
 
 def test_budget_source_binding_changes_with_measurement_or_source_head(mod):
@@ -907,3 +910,111 @@ def test_the_unavailable_context_envelope_can_be_told_apart_from_an_empty_one():
     assert "synthetic private diagnostic" not in str(env)
     built = module.__dict__.get("unavailable_context")
     assert callable(built)
+
+
+# --------------------------------------------------------------------------- cc6 BLOCK repairs (89663c71)
+
+
+def test_a_stored_row_that_differs_from_the_reader_is_a_conflict_even_when_another_agrees(mod):
+    """Same instant, rows 12 and 13, reader 12: one row agreeing must not hide the disagreeing one."""
+    def read(sql, params):
+        if "FROM market_quotes " in sql:
+            return [
+                {"symbol": "SYNX", "price": 12, "prev_close": 11, "volume": 200, "fetched_at": ASOF},
+                {"symbol": "SYNX", "price": 13, "prev_close": 11, "volume": 201, "fetched_at": ASOF},
+            ]
+        return []
+
+    p = projection()
+    p["reentry_watch"]["SYNX"].pop("current_quote")
+    result = mod.collect(p, {}, reader=StoredReader(), read_rows=read, now=NOW)
+    quote = result["symbols"]["SYNX"]["quote"]
+    assert quote["state"] == "unknown" and quote["price"] if "price" in quote else True
+    assert quote["conflict"]["reason"].startswith("The stored observation and the reader disagree")
+    assert [m["price"] for m in quote["conflict"]["marks"]] == [12.0, 12.0, 13.0]
+
+
+def test_identical_duplicate_rows_do_not_fabricate_a_conflict(mod):
+    """A duplicate ingest of the same value disagrees with nothing."""
+    def read(sql, params):
+        if "FROM market_quotes " in sql:
+            return [
+                {"symbol": "SYNX", "price": 12, "prev_close": 11, "volume": 200, "fetched_at": ASOF},
+                {"symbol": "SYNX", "price": 12, "prev_close": 11, "volume": 200, "fetched_at": ASOF},
+            ]
+        return []
+
+    p = projection()
+    p["reentry_watch"]["SYNX"].pop("current_quote")
+    result = mod.collect(p, {}, reader=StoredReader(), read_rows=read, now=NOW)
+    quote = result["symbols"]["SYNX"]["quote"]
+    assert quote["state"] == "measured" and "conflict" not in quote
+    # the exact-observation fields were taken from the agreeing row
+    assert result["symbols"]["SYNX"]["volume_vs_20d"]["value"]["volume"] == 200
+
+
+def test_since_exit_names_both_its_clocks(mod):
+    se = mod.build(projection(), {}, now=NOW)["symbols"]["SYNX"]["since_exit"]
+    assert se["as_of"] == ASOF and se["price_as_of"] == ASOF
+    assert se["reference_as_of"] == "2032-03-01" and se["reference_source"] == "reentry_watch.exit_price"
+    assert se["price_source"] == "synthetic_daily_close"
+
+
+def test_a_successful_read_with_no_stored_stop_names_its_clocks_and_has_no_reference(mod):
+    joined = {
+        "book_exposure": {"rows": [{"symbol": "SYNX", "account_label": "SYN"}]},
+        "observed_stops": [],
+    }
+    stop = mod.build(projection(), joined, now=NOW)["positions"][0]["stop"]
+    assert stop["state"] == "unknown" and stop["value"] is None
+    assert stop["observed_status"] == "not_recorded"
+    assert stop["stop_as_of"] is None and stop["stop_source"] == "not_recorded"
+    assert stop["price_as_of"] == ASOF and stop["read_as_of"] == "2032-03-09T21:00:00Z"
+    assert "not a stop observation" in stop["basis"]
+
+
+def test_every_join_early_return_carries_a_shaped_unavailable_block():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "book_join_under_test_early", ROOT / "scripts/lib/market_risk_book_join.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    not_evaluated = module.join({"state": "not_evaluated"}, now=NOW)
+    block = not_evaluated["home_v007"]
+    assert block["state"] == "unavailable" and block["symbols"] == {}
+    assert block["read_errors"][0]["reason"] == "projection_not_evaluated"
+    assert block["gaps"][0]["field"] == "home_v007" and block["gaps"][0]["remediation"]["key"] == "HOMEV007:context"
+    unreadable = module.join({"state": "evaluated"}, store={}, now=NOW)
+    assert unreadable["home_v007"]["state"] == "unavailable"
+    assert unreadable["home_v007"]["read_errors"][0]["reason"] == "holdings_store_unreadable"
+
+
+def test_the_join_actually_returns_the_home_v007_block_it_builds(monkeypatch):
+    """cc6 finding 6: deleting ``"home_v007"`` from ``join()``'s return must not survive the suite."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "book_join_wiring_under_test", ROOT / "scripts/lib/market_risk_book_join.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    for name in ("lib", "scripts.lib"):
+        try:
+            dollars = __import__(f"{name}.market_risk_book_dollars", fromlist=["build"])
+            break
+        except ImportError:
+            dollars = None
+    assert dollars is not None
+    sentinel = {"schema": "HomeMarketRiskContext@v1", "state": "available", "symbols": {"SYNX": {}},
+                "positions": [], "budgets": [], "gaps": [], "read_errors": []}
+    monkeypatch.setattr(module, "home_context", lambda *a, **k: dict(sentinel))
+    monkeypatch.setattr(dollars, "build", lambda *a, **k: {
+        "book_exposure": {"rows": [], "total": 0}, "review": [], "scope_labels": [], "budgets": [], "reentry": {}})
+    out = module.join({"state": "evaluated", "categories": [], "positions": {}, "reentry_watch": {}, "as_of": ASOF},
+                      store={"accounts": {}}, policy={"reentry_watch": {}}, now=NOW)
+    assert out["home_v007"] == sentinel
+    assert out["home_v007"]["schema"] == "HomeMarketRiskContext@v1"
