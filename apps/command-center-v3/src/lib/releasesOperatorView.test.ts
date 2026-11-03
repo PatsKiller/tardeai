@@ -69,5 +69,12 @@ check('a row the server did not open for approval is not the operator’s',
 check('github evidence that could not be fetched is never green',
   checkSentence({ state: 'UNAVAILABLE', reason: 'github check rollup fetch failed' }) === 'CI not checked right now')
 
+// cc3 review F3: "no record of a review" is not a stuck change — the served contract says so explicitly.
+const notRecorded = pr({ work: { ...pr().work, review: { state: 'UNKNOWN', reason: 'no_review_record' }, ci: { state: 'UNAVAILABLE', reason: 'not fetched' } } })
+check('an unreviewed change is not stuck', stuck([notRecorded]).length === 0)
+check('a change with requested changes is stuck', stuck([pr({ work: { ...pr().work, review: { state: 'CHANGES', reason: null } } })]).length === 1)
+check('a change with failed checks is stuck', stuck([pr({ work: { ...pr().work, ci: { state: 'RED', reason: null } } })]).length === 1)
+check('a named blocker is stuck', stuck([pr({ work: { ...pr().work, blockers: [{ text: 'waiting', owner: 'cc2', as_of: null }] } })]).length === 1)
+
 console.log(`releasesOperatorView: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

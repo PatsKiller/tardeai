@@ -308,5 +308,14 @@ eq('no state gives no sentence', evidenceSentence(undefined), null)
 eq('evidence PARTIAL', evidenceSentence('PARTIAL'), 'partly checked — one of the sources did not answer')
 eq('evidence TARGET_HEAD_MISSING', evidenceSentence('TARGET_HEAD_MISSING'), 'the check refers to a version that is no longer the one proposed')
 
+// cc3 review F1: normalizeRow builds an explicit object, so a served field it does not name is lost. Eligibility must
+// survive the projection, or the page falls back to a heuristic the live payload never satisfies.
+const withActions = normalizeRow({ number: 7, title: 't', url: 'u', head_sha: HEAD, branch: 'b', mergeable: 'MERGEABLE',
+  operator_actions: { required: true, eligible: ['approve', 'push'], reason: 'yours', withheld: [{ action: 'hold', why: 'no label' }] } })
+eq('operator_actions survives normalization', withActions.operator_actions?.eligible.join(','), 'approve,push')
+eq('withheld survives normalization', withActions.operator_actions?.withheld?.[0]?.why, 'no label')
+eq('a row with no actions normalizes to null', normalizeRow({ number: 8, head_sha: HEAD }).operator_actions, null)
+eq('an unknown action word is dropped', normalizeRow({ number: 9, head_sha: HEAD, operator_actions: { required: false, eligible: ['nuke'], reason: null } }).operator_actions?.eligible.length, 0)
+
 console.log(`deployInFlight: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)
