@@ -171,11 +171,16 @@ function N8nTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
 
 /** The operator view: what is live, what needs him, what is stuck and who fixes it (operator 2026-11-03). Every number
  *  carries its own clock or says in words that it has none; no code, SHA, branch or PR number appears here. */
-function OperatorView({ s, rows, agents, generatedAt, flightError, loading, now }: {
+function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, flightError, loading, now }: {
   s: Record<SectionKey, SectionView<any>>; rows: InFlightPr[]
-  agents: Array<{ agent?: string | null; task?: string | null; state?: string; as_of?: string | null }>
-  generatedAt: string | null; flightError: string | null; loading: boolean; now: number }) {
+  agents: Array<{ agent?: string | null; session?: string; task?: string | null; state?: string
+    execution_state?: string | null; as_of?: string | null; claim_as_of?: string | null }>
+  generatedAt: string | null; flightAsOf: string | null; coordAsOf: string | null
+  flightError: string | null; loading: boolean; now: number }) {
   const when = (v: string | null | undefined) => (v ? etDateTime(v) : 'unknown')
+  // Every block that shows a number says when it was counted (lead, 2026-11-03).
+  const flightClock = flightAsOf ? `checked ${when(flightAsOf)}` : 'as of unknown — the open-change source did not record when it checked'
+  const coordClock = coordAsOf ? `last agent report ${when(coordAsOf)}` : 'as of unknown — the agent list did not record when it last checked'
   const status = liveNow(s as any, generatedAt, when)
   const ask = needsYou(rows)
   const groups = goingLive(rows)
@@ -195,6 +200,7 @@ function OperatorView({ s, rows, agents, generatedAt, flightError, loading, now 
 
     <section id="rs-needs-you" data-testid="rs-needs-you" style={panel}>
       <h2 style={h2}>Needs you</h2>
+      <p style={muted}>{flightClock}</p>
       {notChecked ? <p role="status" style={{ ...muted, color: toneVars('warning').color }}>{notChecked}</p> : null}
       {ask.length === 0 ? <p style={muted}>{notChecked ? 'Nothing needs you from the sources that answered.' : 'Nothing needs you.'}</p> : ask.map(p => (
         <div key={p.number} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}`, paddingTop: 8 }}>
@@ -207,6 +213,7 @@ function OperatorView({ s, rows, agents, generatedAt, flightError, loading, now 
 
     <section data-testid="rs-going-live" style={panel}>
       <h2 style={h2}>Going live today</h2>
+      <p style={muted}>{flightClock}</p>
       {!rows.length ? <p style={muted}>{notChecked ?? 'Nothing is going live today.'}</p> : groups.map(g => (
         <div key={g.stage}>
           <h3 style={{ ...h2, fontSize: TYPE.base, marginTop: 8 }}>{g.label} · {g.rows.length}</h3>
@@ -219,6 +226,7 @@ function OperatorView({ s, rows, agents, generatedAt, flightError, loading, now 
 
     <section data-testid="rs-stuck" style={panel}>
       <h2 style={h2}>Stuck — and who fixes it</h2>
+      <p style={muted}>{flightClock}</p>
       {!blocked.length ? <p style={muted}>{rows.length || !notChecked ? 'Nothing is stuck right now.' : 'Cannot tell what is stuck — the open-change list could not be read.'}</p>
         : blocked.map(({ pr, because, whose }) => <div key={pr.number} style={{ ...muted, padding: '4px 0' }}>
           <b style={{ color: TOKENS.text[0] }}>{plainText(pr.title)}</b> — {because}. {whose} has the next step.
@@ -227,10 +235,20 @@ function OperatorView({ s, rows, agents, generatedAt, flightError, loading, now 
 
     <section data-testid="rs-agents-now" style={panel}>
       <h2 style={h2}>Agents now</h2>
+      <p style={muted}>{coordClock}</p>
       {!agents.length ? <p style={muted}>{notChecked ? 'Cannot tell who is working — the agent list could not be read. That is not the same as idle.' : 'No agent is working right now.'}</p>
-        : agents.map((a, i) => <div key={i} style={{ ...muted, padding: '2px 0', color: a.state === 'idle' ? toneVars('warning').color : TOKENS.text[1] }}>
-          {plainText(a.agent, 'An agent session')}: {plainText(a.task, 'no task named')} — {String(a.state ?? 'state not stated').replace(/_/g, ' ')}
-        </div>)}
+        : agents.map((a, i) => {
+          // cc3 review F2: BOARD agents carry no `agent` name and no `as_of`; the served facts are session,
+          // execution_state and claim_as_of. Say the activity in words and the time we can actually prove.
+          const name = plainText(a.agent ?? a.session, 'An agent session')
+          const activity = String(a.execution_state ?? a.state ?? '').trim() || 'state not stated'
+          const clock = a.claim_as_of ?? a.as_of
+          const idle = activity !== 'working'
+          return <div key={i} style={{ ...muted, padding: '2px 0', color: idle ? toneVars('warning').color : TOKENS.text[1] }}>
+            {name}: {plainText(a.task, 'no task named')} — {activity.replace(/_/g, ' ')}
+            {clock ? `, last reported ${when(clock)}` : ', no time recorded for this agent'}
+          </div>
+        })}
     </section>
 
     <section data-testid="rs-old-work" style={panel}>
@@ -241,6 +259,7 @@ function OperatorView({ s, rows, agents, generatedAt, flightError, loading, now 
 
     <section data-testid="rs-recent-releases" style={panel}>
       <h2 style={h2}>Recent releases</h2>
+      <p style={muted}>{s.history.asOf ? `history as of ${when(s.history.asOf)}` : 'as of unknown — the release history did not record when it was read'}</p>
       {!hist?.releases?.length ? <p style={muted}>Release history cannot be read right now.</p> : hist.releases.slice(0, 5).map(r => {
         const vl = verifyLabel(r)
         const verdict = /VERIFIED$/.test(vl.text) ? 'Checked working: yes.' : vl.text === 'ROLLBACK' ? 'This release was rolled back.'
@@ -289,6 +308,7 @@ export default function ReleasesSchedules() {
   return <OpsDeskFrame page="releases">
 <div className="ops-evidence-page" data-testid="releases-schedules" style={{ display: 'grid', gap: 12, minWidth: 0, maxWidth: '100%' }}>
     <OperatorView s={s} rows={flightRows} agents={flightAgents} generatedAt={api.data?.generated_at ?? null}
+      flightAsOf={flightWire?.generated_at ?? null} coordAsOf={normalizeCoordination(flightWire?.coordination).as_of}
       flightError={flightError} loading={api.loading && !api.data} now={now} />
 
     <button type="button" id="rs-engineer-toggle" data-testid="rs-engineer-toggle" aria-expanded={eng} aria-controls="rs-engineer-details"

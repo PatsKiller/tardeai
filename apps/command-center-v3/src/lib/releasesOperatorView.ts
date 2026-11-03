@@ -112,11 +112,18 @@ export function needsYou(prs: InFlightPr[]): InFlightPr[] {
 }
 
 /** Block 4: stuck, and whose step it is. The threshold is stated in the heading, never implied. */
+/** Block 4 shows only a RECORDED cause. "No record of a review" is not evidence that a change is stuck — the served
+ *  contract defines NOT_RECORDED that way — so an unreviewed ten-minute-old PR never lands here (cc3 review F3). */
 export function stuck(prs: InFlightPr[]): Array<{ pr: InFlightPr; because: string; whose: string }> {
   const out: Array<{ pr: InFlightPr; because: string; whose: string }> = []
   for (const p of prs) {
+    const review = p.work?.review
+    const ci = p.work?.ci
     const because = p.mergeable === 'CONFLICTING' ? 'conflicts with newer code'
-      : checkSentence(p.work?.review) ?? checkSentence(p.work?.ci) ?? (p.work?.blockers?.length ? 'a blocker is recorded' : null)
+      : review?.state === 'CHANGES' ? 'a reviewer asked for changes'
+      : ci?.state === 'RED' ? 'the checks failed'
+      : p.work?.blockers?.length ? 'a blocker is recorded'
+      : null
     if (!because) continue
     const whose = p.work?.next_action_source === 'claims' ? 'the agent that owns it' : 'the coordinator'
     out.push({ pr: p, because, whose })

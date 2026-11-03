@@ -161,6 +161,16 @@ export type OperatorActions = {
   withheld?: Array<{ action: string; why: string | null }>
 }
 
+function normalizeOperatorActions(raw: unknown): OperatorActions | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const eligible = Array.isArray(o.eligible) ? o.eligible.filter((a): a is 'approve' | 'hold' | 'push' =>
+    a === 'approve' || a === 'hold' || a === 'push') : []
+  const withheld = Array.isArray(o.withheld) ? o.withheld.filter((w): w is { action: string; why: string | null } =>
+    !!w && typeof w === 'object').map(w => ({ action: String((w as any).action ?? ''), why: (w as any).why ? String((w as any).why) : null })) : []
+  return { required: o.required === true, eligible, reason: o.reason ? String(o.reason) : null, withheld }
+}
+
 export type InFlightPr = {
   number: number
   title: string
@@ -422,6 +432,9 @@ export function normalizeRow(raw: unknown): InFlightPr {
     mergeable: normalizeMergeable(pr.mergeable),
     merge_state: asString(pr.merge_state ?? pr.mergeStateStatus).toUpperCase() || 'UNKNOWN',
     is_draft: pr.is_draft === true || pr.isDraft === true,
+    // cc3 review F1 (2026-11-03): this object is explicit, so every served field must be named here or it is
+    // silently lost. operator_actions was lost, so the page said 'Nothing needs you' while nine approvals waited.
+    operator_actions: normalizeOperatorActions(pr.operator_actions),
     why_held: asText(pr.why_held),
     next: (['auto-merge', 'coordinator', 'auto-rebase', 'blocked-shard-hints'] as string[]).includes(legacy) ? legacy : 'coordinator',
     work: normalizeWork(pr.work, head),
