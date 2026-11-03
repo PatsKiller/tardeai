@@ -61,3 +61,16 @@ def test_an_unreadable_open_time_says_unknown_instead_of_inventing_zero():
 def test_age_text_stays_short_enough_for_a_telegram_line(hours, text):
     from scripts.lib.conflicts.cio import age_text
     assert age_text(hours) == text
+
+
+def test_five_waiting_items_are_not_reported_as_four(tmp_path):
+    """The brief lists four names; it must say so when more are waiting."""
+    from tests.test_conflict_ledger import Subject
+    st = ledger(tmp_path)
+    subjects = [Subject("security", f"guid-{i}", f"S{i}", {"held": False, "identity_confirmed": True})
+                for i in range(5)]
+    for i, subject in enumerate(subjects):
+        st.reconcile(subject, [conflict(kind="NEEDS_OPERATOR", never_auto=True,
+                                       key=f"security:guid-{i}:U7:desk")], at=NOW, apply=True)
+    text = render_telegram(build_brief(root=tmp_path, now=NOW))
+    assert "5 waiting on you (U7)" in text and "+1 more" in text

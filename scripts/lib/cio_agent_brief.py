@@ -404,6 +404,9 @@ def render_telegram(brief: dict[str, Any]) -> str:
             grouped.setdefault(record.get("rule") or "unknown", []).append(record)
         for rule, records in sorted(grouped.items()):
             labels = ", ".join(r["subject"]["label"] for r in records[:4])
+            if len(records) > 4:
+                # The brief shows four names; saying only four when five are waiting is a quiet undercount.
+                labels += f" +{len(records) - 4} more"
             # The age is the oldest in the group. "3 waiting on you (R12)" said nothing about whether they are
             # minutes or days old, which is the difference between a queue and a backlog.
             ages = [r["age_hours"] for r in records if r.get("age_hours") is not None]
