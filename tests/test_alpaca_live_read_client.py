@@ -124,3 +124,23 @@ def test_positions_to_holdings_rows_skips_zero_qty():
     assert rows[0]["symbol"] == "QQQ"
     assert rows[0]["account"] == "alpaca_ira_live"
     assert rows[0]["source"] == "alpaca_live_read"
+
+
+def test_positions_rows_derive_day_change_from_the_broker_prior_close():
+    # Alpaca's position object carries lastday_price; the day change is the broker's own prior
+    # close, not an invented value (2026-11-03: moomoo NVDA had a price but no day change).
+    rows = sync._positions_to_holdings_rows("alpaca_taxable_live", [
+        {"symbol": "NVDA", "qty": "0.133", "current_price": "208.28", "lastday_price": "207.90"},
+    ])
+    row = rows[0]
+    assert row["prev_close"] == 207.90
+    assert row["day_change"] == round((208.28 - 207.90) * 0.133, 2)
+    assert row["day_change_pct"] == round((208.28 - 207.90) / 207.90 * 100, 4)
+
+
+def test_positions_rows_leave_day_change_unknown_without_a_prior_close():
+    rows = sync._positions_to_holdings_rows("alpaca_taxable_live", [
+        {"symbol": "ABC", "qty": "2", "current_price": "10"},
+    ])
+    assert rows[0]["prev_close"] is None
+    assert rows[0]["day_change"] is None

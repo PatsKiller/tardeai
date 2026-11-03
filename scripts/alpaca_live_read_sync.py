@@ -131,6 +131,16 @@ def _positions_to_holdings_rows(account_key: str, positions: list, *, observed_a
             avg = float(p.get("avg_entry_price") or 0)
         except (TypeError, ValueError):
             avg = 0.0
+        # Alpaca's position object carries the broker's own prior close (lastday_price), so the day
+        # change is derived from the quote source, never invented (2026-11-03: the moomoo promo row
+        # had a price but no day change, and the whole CIO card rendered "unavailable" over $27.70).
+        try:
+            lastday = float(p.get("lastday_price") or 0)
+        except (TypeError, ValueError):
+            lastday = 0.0
+        prev_close = lastday or None
+        day_change = round((price - prev_close) * qty, 2) if prev_close and price else None
+        day_change_pct = round((price - prev_close) / prev_close * 100, 4) if prev_close and price else None
         rows.append({
             "symbol": sym,
             "account": account_key,
@@ -138,6 +148,9 @@ def _positions_to_holdings_rows(account_key: str, positions: list, *, observed_a
             "quantity": qty,
             "price": price,
             "market_value": mv,
+            "prev_close": prev_close,
+            "day_change": day_change,
+            "day_change_pct": day_change_pct,
             "cost_basis": avg * qty if avg else None,
             "avg_cost": avg or None,
             "name": p.get("symbol"),
