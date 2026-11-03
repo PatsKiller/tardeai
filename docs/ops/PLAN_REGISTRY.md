@@ -28,7 +28,7 @@ Claude Code, add this to that file (merge into the existing `hooks` object):
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/plan_registry_hook.py"
+            "command": "python3 <repo-root>/scripts/plan_registry_hook.py"
           }
         ]
       }
