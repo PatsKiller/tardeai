@@ -1311,6 +1311,22 @@ class WorkPipeline:
         except ImportError:
             from lib import agent_claim_board as B  # type: ignore[no-redef]
             from lib import design_registry as DR  # type: ignore[no-redef]
+        from scripts.lib.lane_last_receipt import runtime_dir
+        from scripts.lib.releases_coordination import read_claims
+        claim_root = Path(self.claims_dir or B.default_claims_dir())
+        raw_claims, claims_gap = read_claims(claim_root)
+        if claims_gap:
+            # Do not enter legacy board/design readers after a bounded input refusal.
+            from scripts.lib import work_pipeline_sources as shared_sources
+            public = shared_sources.build([], raw_claims, [], [], [], self.now())["claims"]
+            return {
+                "state_root": str(self.state_root or runtime_dir().parents[1]),
+                "source_gaps": {"claims": claims_gap, "task_board": "claim_store_unavailable",
+                                "designs": "claim_store_unavailable", "command_queue": "claim_store_unavailable"},
+                "claims": public, "tasks": [], "awaiting": [], "tier2": {}, "queue": {},
+                "stale_hours": DEFAULT_STALE_HOURS,
+                "lifecycle": {"availability": "UNAVAILABLE", "warnings": [claims_gap]},
+            }
         view = B.board_view(self.claims_dir, include_finished=True)
         try:
             awaiting = DR.work_board().designs().get("awaiting_approval") or []
@@ -1322,10 +1338,6 @@ class WorkPipeline:
             from lib import work_pipeline_commands as WPC  # type: ignore[no-redef]
         tier2 = tier2_context()
         packages = open_approval_packages()
-        from scripts.lib.lane_last_receipt import runtime_dir
-        from scripts.lib.releases_coordination import read_claims
-        # The public board omits corrupt files; validate the input store so that omission is named.
-        _raw_claims, claims_gap = read_claims(Path(self.claims_dir or view.get("claims_dir") or B.default_claims_dir()))
         return {
             "state_root": str(self.state_root or runtime_dir().parents[1]),
             "source_gaps": {"claims": claims_gap} if claims_gap else {},
@@ -1376,6 +1388,8 @@ class WorkPipeline:
             tier2=src.get("tier2"),
         )
         try:
+            if (src.get("source_gaps") or {}).get("claims"):
+                raise ValueError("claim store unavailable")
             if self.approvals is not None or (self._owns_default_sources and src.get("state_root")):
                 from scripts.lib.operator_approvals_api import queue_summary
                 waiting = (self.approvals or queue_summary)(
@@ -1391,7 +1405,8 @@ class WorkPipeline:
             waiting = {"actionable_items": [], "actionable_count": None, "known_actionable_count": None,
                        "pending_count": None, "complete": False, "as_of": None,
                        "scope": "all_operator_approvals", "source": "operator_approvals_api.queue_summary",
-                       "gaps": [{"source": "operator_approvals", "reason": type(exc).__name__}]}
+                       "gaps": [{"source": "operator_approvals", "reason": "claim_store_unavailable"
+                                 if (src.get("source_gaps") or {}).get("claims") else type(exc).__name__}]}
         active_ids = set(coordination.get("active_claim_ids") or [])
         for item in items:
             item["coordination"] = (coordination.get("by_pr") or {}).get(item.get("pr_number"))
@@ -1432,7 +1447,9 @@ class WorkPipeline:
             "stages": list(STAGES),
             "stage_label": dict(STAGE_LABEL),
             "stage_help": dict(STAGE_HELP),
-            "summary": {**summarize(items), "in_flight": sum(bool(i["in_flight"]) for i in items),
+            "summary": {**summarize(items),
+                        "in_flight": None if (src.get("source_gaps") or {}).get("claims") else sum(bool(i["in_flight"]) for i in items),
+                        "known_in_flight": sum(bool(i["in_flight"]) for i in items),
                         "needs_me": waiting.get("pending_count"), "known_needs_me": waiting.get("actionable_count")},
             "items": items,
             "coordination": coordination,

@@ -626,3 +626,50 @@ def test_incomplete_or_missing_shared_members_never_look_like_financial_zero():
         assert data["summary"]["needs_me"] is None
         assert data["waiting_on_you"]["complete"] is False
         assert data["waiting_on_you"]["gaps"]
+
+
+def test_default_reader_refuses_unsafe_claims_before_board_design_or_approval_reads(tmp_path, monkeypatch):
+    from scripts.lib import agent_claim_board as board
+    from scripts.lib import design_registry as designs
+    from scripts.lib import releases_coordination as releases
+    calls = []
+    def bounded(root):
+        calls.append("bounded")
+        return [claim()], "claims_unsafe_or_over_budget"
+    def forbidden(*args, **kwargs):
+        raise AssertionError("unsafe legacy reader reached")
+    monkeypatch.setattr(releases, "read_claims", bounded)
+    monkeypatch.setattr(board, "board_view", forbidden)
+    monkeypatch.setattr(designs, "work_board", forbidden)
+    pipeline = W.WorkPipeline(claims_dir=tmp_path, state_root=tmp_path, health=lambda: {}, now=lambda: NOW,
+                              approvals=forbidden)
+    source = pipeline._read_sources()
+    assert calls == ["bounded"]
+    assert source["source_gaps"]["claims"] == "claims_unsafe_or_over_budget"
+    assert source["claims"][0]["session"] == claim()["session"]
+    data = pipeline._build()
+    assert data["summary"]["in_flight"] is None
+    assert data["waiting_on_you"]["pending_count"] is None
+    assert data["waiting_on_you"]["gaps"][0]["reason"] == "claim_store_unavailable"
+
+
+def test_healthy_claim_preflight_runs_before_existing_board_projection(tmp_path, monkeypatch):
+    from scripts.lib import agent_claim_board as board
+    from scripts.lib import design_registry as designs
+    from scripts.lib import releases_coordination as releases
+    calls = []
+    monkeypatch.setattr(releases, "read_claims", lambda root: (calls.append("bounded") or [], None))
+    def existing(*args, **kwargs):
+        calls.append("board")
+        return {"claims": [], "task_board": {"tasks": []}, "claims_dir": str(tmp_path)}
+    monkeypatch.setattr(board, "board_view", existing)
+    class Designs:
+        def designs(self):
+            calls.append("designs")
+            return {"awaiting_approval": []}
+    monkeypatch.setattr(designs, "work_board", lambda: Designs())
+    monkeypatch.setattr(W, "tier2_context", lambda: {})
+    monkeypatch.setattr(W, "open_approval_packages", lambda: [])
+    source = W.WorkPipeline(claims_dir=tmp_path, state_root=tmp_path, now=lambda: NOW)._read_sources()
+    assert calls == ["bounded", "board", "designs"]
+    assert source["source_gaps"] == {}
