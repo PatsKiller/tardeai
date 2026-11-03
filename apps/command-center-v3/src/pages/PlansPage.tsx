@@ -13,7 +13,7 @@ function DetailBody({plan}: {plan: PlanRow}) {
   const claim = claimHref(plan)
   return (
     <div className="pl-detail">
-      <p className="pl-status">{statusWord(plan.status)}</p>
+      <p className="pl-status">{statusWord(plan.status, plan)}</p>
       <p className="pl-meta">
         {plan.vendor ? `Registered by ${plan.vendor}` : 'Vendor unknown'}
         {plan.approved_at ? ` · approved ${plan.approved_at.slice(0, 10)}` : ''}
@@ -52,7 +52,7 @@ export default function PlansPage() {
   const detailData = planFrom(one.data)
   const plan = selectedId && detailData && detailData.id === selectedId ? detailData : null
   const waiting = rows.filter(r => r.status === 'approved' && !pickedUp(r)).length
-  const gap = index.error || one.error
+  const gap = index.error || (selectedId ? one.error : undefined)
     || (index.data && index.data.ok === false ? String(index.data.error || 'Plan store unreadable') : undefined)
   const asOf = rows.reduce<string | undefined>(
     (m, r) => (r.updated_at && (!m || String(r.updated_at) > m) ? String(r.updated_at) : m), undefined)
@@ -74,7 +74,7 @@ export default function PlansPage() {
       <DeskPage
         title="Plans"
         purpose="Every approved plan on the server for every agent: who approved it, who picked it up, what is left. Claude Code registers a plan when you leave plan mode; Codex and Cursor use scripts/plan_registry.py."
-        sources={[{id: 'plans', label: 'Plan store', gap, asOf}]}
+        sources={[{id: 'plans', label: 'Plan store', gap, asOf, clockOnly: true}]}
         decisions={[]}
         decisionGap={waiting ? `${waiting} approved plan${waiting === 1 ? '' : 's'} nobody has picked up yet.` : 'Nothing approved and unclaimed right now.'}
       >
@@ -88,7 +88,7 @@ export default function PlansPage() {
                 <button type="button" className="pl-card" onClick={() => detail.open(row.id)}>
                   <span className="pl-card-title">{row.title || row.id}</span>
                   <span className="pl-card-line">
-                    {statusWord(row.status)} · {row.vendor || 'unknown vendor'} · {stepSummary(row)}
+                    {statusWord(row.status, row)} · {row.vendor || 'unknown vendor'} · {stepSummary(row)}
                   </span>
                   <span className="pl-card-line pl-card-links">
                     {row.claim ? `claim ${row.claim}` : 'no claim'}
