@@ -69,6 +69,33 @@ const na = parseHomeV007({ symbols: { X: { since_exit: { state: 'not_applicable'
 eq('not_applicable is itself', na.symbols[0].sinceExit.state, 'not_applicable')
 eq('and is not a gap', na.gaps.length, 0)
 
+// E's budget decision contract: the canonical breach word wins, the two bindings stay distinct, an active
+// intentional decision is read back beside a breach that is still true.
+const SHA_A = 'a'.repeat(64), SHA_B = 'b'.repeat(64)
+const decided = parseHomeV007({ budgets: [{
+  budget: 'demo_taxable', actual: 21000, limit: 15000, unit: 'usd', scope_id: 'account:demo',
+  breached: true, plain_breach: true,
+  source_binding: { as_of: '2026-11-02T20:00:00Z', sha256: SHA_A },
+  presentation_binding: { sha256: SHA_B },
+  budget_presentation_decision: { active: true, intentional_until: '2026-11-09T05:00:00Z', actor: 'operator',
+    receipt: 'rcpt-123456789', history: [{ state: 'previous' }, { state: 'older' }] },
+  operator_decision: { state: 'available', subtype: 'market_risk_budget_presentation' },
+}] })
+const db = decided.budgets[0]
+eq('canonical breach is kept', db.breach, true)
+eq('scope id is kept', db.scopeId, 'account:demo')
+eq('a decision is active', db.decision.active, true)
+eq('its expiry is kept', db.decision.intentionalUntil, '2026-11-09T05:00:00Z')
+eq('its actor is kept', db.decision.actor, 'operator')
+eq('its history is counted', db.decision.history, 2)
+eq('the raw and composite bindings stay distinct', db.sourceSha !== db.presentationSha, true)
+eq('the raw binding keeps its clock', db.sourceAsOf, '2026-11-02T20:00:00Z')
+eq('an available decision is not also described as unavailable', db.operatorDecision, 'available')
+const notBreached = parseHomeV007({ budgets: [{ budget: 'b', actual: 10, limit: 100, breached: false }] })
+eq('a stated not-breached is believed over the arithmetic', notBreached.budgets[0].breach, false)
+const noDecision = parseHomeV007({ budgets: [{ budget: 'b', actual: 10, limit: 100 }] })
+eq('no decision row means not active', noDecision.budgets[0].decision.active, false)
+
 const junk = parseHomeV007({ symbols: 'nope', risk: { categories: 'x' }, budgets: {} })
 eq('malformed members do not throw', junk.symbols.length, 0)
 eq('malformed budgets are empty', junk.budgets.length, 0)

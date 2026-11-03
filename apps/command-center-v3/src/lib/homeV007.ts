@@ -46,8 +46,23 @@ export type BudgetRow = {
   unit: string | null
   clearsWhen: string | null
   breach: boolean
+  /** The canonical scope the measurement belongs to, when the payload names one. */
+  scopeId: string | null
+  /** RAW owner binding: when the numbers were measured, and the source hash they were read from. */
+  sourceAsOf: string | null
+  sourceSha: string | null
+  /** COMPOSITE binding the decision route is scoped to; display keeps it distinct from the raw binding. */
+  presentationSha: string | null
   operatorDecision: 'available' | 'unavailable'
   decisionRemediation: string | null
+  /** An operator's intentional budget decision: shown, never offered. No button exists for it. */
+  decision: {
+    active: boolean
+    intentionalUntil: string | null
+    actor: string | null
+    receipt: string | null
+    history: number
+  }
 } & Fact
 
 export type HomeV007 = {
@@ -202,13 +217,27 @@ export function parseHomeV007(raw: unknown): HomeV007 {
   const budgets: BudgetRow[] = (Array.isArray(ctx.budgets) ? ctx.budgets : []).filter(rec).slice(0, 10).map(b => {
     const o = rec(b) as Record<string, unknown>
     const od = rec(o.operator_decision)
+    const sb = rec(o.source_binding), pb = rec(o.presentation_binding)
+    const bpd = rec(o.budget_presentation_decision)
     const actual = num(o.actual), limit = num(o.limit)
     return {
       ...fact({ state: actual != null && limit != null ? 'measured' : 'unknown', as_of: str(rec(o.source_binding)?.as_of), source: 'market_risk_budgets', age_seconds: null, reason: null, remediation: null }),
       key: str(o.budget) ?? '?', label: str(o.budget)?.replace(/_/g, ' ') ?? '?', current: actual, budget: limit, unit: str(o.unit),
-      clearsWhen: str(o.clears_when), breach: actual != null && limit != null && actual > limit,
+      clearsWhen: str(o.clears_when),
+      breach: typeof o.breached === 'boolean' ? o.breached : actual != null && limit != null && actual > limit,
       operatorDecision: str(od?.state) === 'available' ? 'available' : 'unavailable',
       decisionRemediation: remediationText(od?.remediation),
+      scopeId: str(o.scope_id),
+      sourceAsOf: str(sb?.as_of),
+      sourceSha: str(sb?.sha256),
+      presentationSha: str(pb?.sha256),
+      decision: {
+        active: bool(bpd?.active),
+        intentionalUntil: str(bpd?.intentional_until),
+        actor: str(bpd?.actor),
+        receipt: str(bpd?.receipt),
+        history: Array.isArray(bpd?.history) ? bpd!.history.length : 0,
+      },
     }
   })
 

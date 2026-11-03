@@ -71,9 +71,16 @@ export default function HomeV007Context() {
       {v7.risk.nextEvaluation?.at ? ` · next evaluation ${fmtAsOf(v7.risk.nextEvaluation.at) ?? v7.risk.nextEvaluation.at} (${v7.risk.nextEvaluation.basis ?? 'declared'})` : ''}
     </div> : null}
     {v7.hedge.triggers.length ? <div style={dim}>hedge: {v7.hedge.triggers.map(t => `${t.label} ${t.current ?? '?'} of ${t.threshold ?? '?'}${t.met === true ? ' met' : t.met === false ? ' not met' : ''}`).join(' · ')}{v7.hedge.inverse.length ? ` · inverse today: ${v7.hedge.inverse.map(i => `${i.symbol} ${i.dayPct == null ? 'unknown' : pct(i.dayPct)}`).join(' · ')}` : ''}</div> : null}
-    {v7.budgets.map(b => <div key={b.key} style={dim}>
+    {v7.budgets.map(b => <div key={b.key} style={dim} data-testid={`v7-budget-${b.key}`}>
       budget {b.label}: {money(b.current) ?? 'unknown'} of {money(b.budget) ?? 'unknown'}{b.breach ? ' · breach' : ''}{b.clearsWhen ? ` · clears ${b.clearsWhen}` : ''}
-      {b.operatorDecision === 'unavailable' ? ` · intentional decision ${b.decisionRemediation ?? 'not available yet'}` : ''}
+      {b.decision.active
+        ? ` · intentional${b.decision.intentionalUntil ? ` until ${fmtAsOf(b.decision.intentionalUntil) ?? b.decision.intentionalUntil}` : ''}${b.decision.actor ? ` · ${b.decision.actor}` : ''}${b.decision.receipt ? ` · receipt ${b.decision.receipt.slice(0, 8)}` : ''}${b.breach ? ' · breach still stands' : ''}${b.decision.history ? ` · ${b.decision.history} earlier` : ''}`
+        : b.operatorDecision === 'unavailable'
+          ? ` · intentional decision ${b.decisionRemediation ?? 'not available yet'}`
+          : ' · intentional decision available to the operator'}
+      {b.sourceAsOf || b.sourceSha || b.presentationSha
+        ? ` · measured ${b.sourceAsOf ? (fmtAsOf(b.sourceAsOf) ?? b.sourceAsOf) : 'unknown'}${b.sourceSha ? ` · src ${b.sourceSha.slice(0, 8)}` : ''}${b.presentationSha ? ` · presentation ${b.presentationSha.slice(0, 8)}` : ''}`
+        : ''}
     </div>)}
     {v7.gaps.map((g, i) => <div key={i} style={dim}>gap {g.member} · {g.key}{g.reason ? ` — ${g.reason}` : ''}</div>)}
     {v7.readErrors.map((e, i) => <div key={i} style={dim}>read error {e.member} · {e.code}</div>)}
