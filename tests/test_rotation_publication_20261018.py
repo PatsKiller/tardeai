@@ -571,20 +571,51 @@ def test_calendar_failure_withholds_advice_but_keeps_neutral_market_data(actual_
     assert result["market_research"]["available"] is True
 
 
-def test_a_date_only_position_clock_is_accepted_at_day_precision_not_withheld(producer):
-    """The moomoo producer writes a plain date. Before the repair that made the book permanently UNAVAILABLE."""
-    from datetime import date
+def date_only_projection(producer, now, stamp):
+    """One projection where EVERY position clock is a plain date and both sides of the comparison use ``now``.
 
-    from lib.rotation_publication import project_summary, ready
+    ``date.today()`` reads the HOST zone while the staleness check reads UTC, so a host west of UTC saw the stamp
+    already 24h old and the test failed every evening for a reason it never named. One injected clock removes that.
+    Every row is re-stamped, otherwise a sibling row keeps the fixture's own clock and decides the answer instead.
+    """
+    from lib.rotation_publication import project_summary
     run, ctx = producer
     result = run()
-    row = ctx['holdings']['holdings'][0]
-    for field in ('broker_position_as_of_at', 'provider_observed_at', 'observation'):
-        row.pop(field, None)
-    row['broker_position_as_of'] = date.today().isoformat()
-    out = project_summary(result, ctx['holdings'])
+    now = now or datetime.now(timezone.utc)  # after run(): the projection's own clock must not be in the future
+    stamp = stamp or now.date().isoformat()
+    for row in ctx['holdings']['holdings']:
+        for field in ('broker_position_as_of_at', 'provider_observed_at', 'observation'):
+            row.pop(field, None)
+        row['broker_position_as_of'] = stamp
+    return project_summary(result, ctx['holdings'], now=now)
+
+
+def test_a_date_only_position_clock_is_accepted_at_day_precision_not_withheld(producer):
+    """The moomoo producer writes a plain date. Before the repair that made the book permanently UNAVAILABLE.
+
+    The clock is captured ONCE in UTC and used for both the stamp and the comparison, so the result cannot depend on
+    the host's zone (the defect cc3 reproduced with TZ=Etc/GMT+10: `date.today()` behind UTC looked 24h old).
+    """
+    from lib.rotation_publication import ready
+    out = date_only_projection(producer, None, None)
     publication = out['publication']
     assert ready(out), publication
     assert publication['coverage']['day_precision_positions'] >= 1
     # Day precision resolves to the START of that date: never a fabricated time of day.
     assert publication['source_as_of'].endswith('T00:00:00Z')
+
+
+def test_a_date_only_clock_ages_out_once_a_session_has_been_missed(producer):
+    """The freshness claim is bounded, and here is the bound: 25h after the start-of-day instant on a trading day."""
+    out = date_only_projection(producer, datetime(2026, 11, 4, 1, 0, tzinfo=timezone.utc), '2026-11-03')
+    publication = out['publication']
+    assert publication['status'] == 'STALE', publication
+    assert 'position_evidence_stale' in publication['reasons'], publication
+
+
+def test_a_date_only_clock_on_a_non_session_day_stays_fresh_past_the_wall_clock_window(producer):
+    """The market-hours policy has no session to miss between a Saturday stamp and Sunday noon, so wall age alone does
+    not expire it. Stated as evidence so the title cannot claim an unconditional expiry."""
+    out = date_only_projection(producer, datetime(2026, 11, 8, 12, 0, tzinfo=timezone.utc), '2026-11-07')
+    publication = out['publication']
+    assert 'position_evidence_stale' not in publication['reasons'], publication
