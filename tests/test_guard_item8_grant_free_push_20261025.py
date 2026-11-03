@@ -821,6 +821,81 @@ def test_push_shapes_classify_git_push(cmd):
     assert _classify(cmd) == "git-push"
 
 
+# =========================================================================== metadata reads and hook executability
+
+
+def _guard_module(E: Env):
+    """Load the guard copy under test by path, so a test's edits to the temp tree are the code under test."""
+    import importlib.util
+
+    path = E.tree / ".cursor" / "hooks" / "guard_push_free.py"
+    spec = importlib.util.spec_from_file_location("guard_push_free_meta_under_test", path)
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _index_stat(repo: Path) -> tuple[int, int, int]:
+    st = (repo / ".git" / "index").stat()
+    return (st.st_ino, st.st_mtime_ns, st.st_size)
+
+
+def test_metadata_reads_do_not_rewrite_the_git_index(E):
+    """A metadata check must not mutate the repo: git status refreshes (and rewrites) the index unless
+    GIT_OPTIONAL_LOCKS=0. A stale cached stat (a touched file whose content is unchanged) forces the refresh."""
+    E.claim()
+    os.utime(E.repo / "f.txt", None)  # mtime now differs from the index cache; content is unchanged
+    before = _index_stat(E.repo)
+    out = E.checker(mode="check")
+    assert out["allow"], out
+    after = _index_stat(E.repo)
+    assert after == before, f"the metadata check rewrote .git/index: {before} -> {after}"
+
+
+def test_metadata_reads_never_execute_a_repo_fsmonitor_hook(E):
+    """core.fsmonitor is repo-controlled code: a bare `git status` executes it. Metadata reads pin it off."""
+    E.claim()
+    marker = E.repo / ".git" / "fsmonitor-ran"
+    script = E.repo / ".git" / "fsmonitor-marker.sh"
+    script.write_text(f"#!/bin/sh\nprintf 'ran\\n' >> {str(marker)!r}\nexit 0\n")
+    script.chmod(0o755)
+    E.git("config", "core.fsmonitor", str(script))
+    out = E.checker(mode="check")
+    assert not marker.exists(), f"a metadata read executed the repo's core.fsmonitor: {out}"
+
+
+def test_prepush_hook_must_be_executable_in_the_worktree(E):
+    """Same blob, worktree mode 0644: the closure-hash check passes but git SILENTLY skips the hook."""
+    gpf = _guard_module(E)
+    (E.repo / ".githooks" / "pre-push").chmod(0o644)
+    with pytest.raises(gpf.Refused) as exc:
+        gpf.check_prepush(E.repo, E.main_sha())
+    assert "executable" in str(exc.value), str(exc.value)
+
+
+def test_prepush_hook_must_be_recorded_executable_on_main(E):
+    """A 100644 entry on main is not a trusted executable mode, even if the worktree file is 0755."""
+    gpf = _guard_module(E)
+    E.git("checkout", "-q", "main")
+    E.git("add", "--chmod=-x", ".githooks/pre-push")
+    E.git("commit", "-qm", "record the hook non-executable")
+    E.git("push", "-q", "origin", "main")
+    main = E.main_sha()
+    E.git("checkout", "-q", "-f", BRANCH)
+    (E.repo / ".githooks" / "pre-push").chmod(0o755)  # only the recorded mode can refuse here
+    with pytest.raises(gpf.Refused) as exc:
+        gpf.check_prepush(E.repo, main)
+    assert "100755" in str(exc.value), str(exc.value)
+
+
+def test_prepush_hook_executable_control_passes(E):
+    """Positive control: 100755 on main and 0755 in the worktree is accepted."""
+    gpf = _guard_module(E)
+    gpf.check_prepush(E.repo, E.main_sha())
+
+
 def test_policy_reader_matches_hands_off_policy_when_present():
     sys.path.insert(0, str(HOOKS))
     import importlib

@@ -532,9 +532,12 @@ class ClaimBoard:
                 break
             try:
                 d = json.loads(p.read_text(encoding="utf-8"))
-                if isinstance(d, dict) and d.get("schema") in AUXILIARY_CLAIM_DIR_SCHEMAS:
+                schema = d.get("schema") if isinstance(d, dict) else None
+                # An unhashable schema (list/object) is not a known auxiliary schema and must fall through to the
+                # malformed path below, never raise TypeError from the frozenset membership test.
+                if isinstance(schema, str) and schema in AUXILIARY_CLAIM_DIR_SCHEMAS:
                     continue  # a state file that lives here by design: not a claim and not corruption
-                if not isinstance(d, dict) or d.get("schema") != SCHEMA or d.get("claim_id") != p.stem:
+                if not isinstance(d, dict) or schema != SCHEMA or d.get("claim_id") != p.stem:
                     raise ValueError("not an AgentClaim@v1 named by its claim_id")
                 d["_path"] = str(p)
                 docs.append(d)

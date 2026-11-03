@@ -103,6 +103,9 @@ TRUSTED_ROOT = HOOKS_DIR.parents[1]
 TEST_CONFIG: Optional[Path] = None
 GIT = "/usr/bin/git"
 SAFE_PATH = "/usr/bin:/bin"
+#: Metadata reads (status/diff) must never run repo-controlled code or write the index: a repo can point
+#: core.fsmonitor at an arbitrary program that `git status` would execute, and status refreshes (rewrites) the index.
+METADATA_PINS = ("-c", "core.fsmonitor=false")
 
 #: One prefix segment, one name segment. The shell guard and bin/agent-push use the same pattern.
 BRANCH_RE = re.compile(r"^[a-z][a-z0-9-]{1,19}/[A-Za-z0-9][A-Za-z0-9._-]{2,120}$")
@@ -204,7 +207,9 @@ def refuse_dirty_env(environ: Optional[dict[str, str]] = None) -> None:
 
 
 def _clean_env(extra: Optional[dict[str, str]] = None) -> dict[str, str]:
-    env = {"PATH": SAFE_PATH, "HOME": str(passwd_home()), "LANG": "C.UTF-8", "GIT_TERMINAL_PROMPT": "0"}
+    # GIT_OPTIONAL_LOCKS=0: a metadata read (git status) must not refresh and rewrite .git/index.
+    env = {"PATH": SAFE_PATH, "HOME": str(passwd_home()), "LANG": "C.UTF-8", "GIT_TERMINAL_PROMPT": "0",
+           "GIT_OPTIONAL_LOCKS": "0"}
     env.update(extra or {})
     return env
 
@@ -370,6 +375,15 @@ def _main_blob(repo: Path, main_sha: str, rel: str) -> Optional[str]:
     return _out(repo, "rev-parse", "--verify", "--quiet", f"{main_sha}:{rel}")
 
 
+def _main_mode(repo: Path, main_sha: str, rel: str) -> Optional[str]:
+    """The mode remote main records for ``rel`` (100755/100644/120000/...), or None if unreadable."""
+    line = _out(repo, "ls-tree", main_sha, "--", rel)
+    if not line:
+        return None
+    fields = line.split("\t", 1)[0].split()
+    return fields[0] if len(fields) >= 3 else None
+
+
 def check_prepush(repo: Path, main_sha: str) -> None:
     for rel in PREPUSH_CLOSURE:
         p = repo / rel
@@ -382,6 +396,27 @@ def check_prepush(repo: Path, main_sha: str) -> None:
         if want != have:
             raise Refused(f"{rel} differs from remote main's; the pre-push budget count and secrets scan must run "
                           f"unmodified")
+        if rel == ".githooks/pre-push":
+            # The blob hash is not enough: git SILENTLY SKIPS a non-executable hook, so the budget count and
+            # secrets scan never run. Main's recorded mode is the trusted mode; the worktree file's filesystem
+            # mode is the effective one (push_pins forces core.hooksPath=<repo>/.githooks).
+            mode = _main_mode(repo, main_sha, rel)
+            if mode != "100755":
+                raise Refused(f"{rel} is recorded on remote main with mode {mode or 'unknown'}, not 100755; a "
+                              f"non-executable hook is silently skipped, so the pre-push budget count and secrets "
+                              f"scan would not run")
+            try:
+                st = p.stat()
+            except OSError as exc:
+                raise Refused(f"{rel} cannot be stat'ed ({type(exc).__name__}); its effective mode is unproven") \
+                    from None
+            if not stat.S_ISREG(st.st_mode):
+                raise Refused(f"{rel} is not a regular file in this worktree; git silently skips it, so the "
+                              f"pre-push budget count and secrets scan would not run")
+            if not st.st_mode & 0o111 or not os.access(p, os.X_OK):
+                raise Refused(f"{rel} is not executable in this worktree (mode {stat.S_IMODE(st.st_mode):o}); "
+                              f"git silently skips a non-executable hook, so the pre-push budget count and secrets "
+                              f"scan would not run")
     stdlib = set(getattr(sys, "stdlib_module_names", ())) | _SHADOW_EXTRA
     for d in SHADOW_DIRS:
         base = repo / d if d else repo
@@ -1239,11 +1274,11 @@ def evaluate(repo_arg: str, branch: str, session: Optional[str], *, bind_session
     # modified tracked files; otherwise the scan would vouch for different content than the commit pushed.
     if _out(repo, "symbolic-ref", "--quiet", "HEAD") != f"refs/heads/{branch}":
         raise Refused(f"{branch} is not the checked-out HEAD of {repo}; check it out before pushing")
-    dirty = _out(repo, "status", "--porcelain", "--untracked-files=no")
+    dirty = _out(repo, "status", "--porcelain", "--untracked-files=no", pins=METADATA_PINS)
     if dirty is None:
         raise Refused("git status failed")
     if dirty:
-        names = (_out(repo, "diff", "--name-only", "HEAD") or "").splitlines()[:5]
+        names = (_out(repo, "diff", "--name-only", "HEAD", pins=METADATA_PINS) or "").splitlines()[:5]
         raise Refused(f"the worktree has uncommitted changes to tracked files ({', '.join(names)}); commit or stash")
     canonical = str(cfg["canonical_url"])
     check_remote_config(repo, canonical)
