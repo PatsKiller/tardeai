@@ -163,7 +163,13 @@ def operator_digest(report: Mapping) -> str:
     detail = " ".join(f"{key}:{val['planned_gb']:.3f}/{val['applied_gb']:.3f}GiB" for key, val in sorted(rules.items()))
     held = report.get("held_bytes")
     held_label = f"{held / 1024**3:.3f}GiB" if isinstance(held, int) else "NOT_MEASURED"
-    return f"Disk hygiene planned/applied {detail or 'NOT_MEASURED'}; held {held_label}; removed {len(report.get('removed') or [])}; skipped {len(report.get('skipped') or [])}; refusal {report.get('refused') or 'none'}"
+    # The digest is what reaches alerts and the operator summary, so a refusal must name the check that
+    # refused (2026-11-02: `evidence_recheck_unavailable` alone hid an opaque-process recheck for two runs).
+    refused = report.get("refused") or "none"
+    why = str(report.get("refusal_detail") or "").strip().splitlines()
+    if why and refused != "none":
+        refused = f"{refused} ({why[0][:200]})"
+    return f"Disk hygiene planned/applied {detail or 'NOT_MEASURED'}; held {held_label}; removed {len(report.get('removed') or [])}; skipped {len(report.get('skipped') or [])}; refusal {refused}"
 
 
 def monitor_decision(current: Mapping, previous: Mapping, used_pct: float | None) -> dict:

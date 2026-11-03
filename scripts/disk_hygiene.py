@@ -943,6 +943,62 @@ def _resolve_opaque(processes: list[dict], proc_root: Path) -> list[dict]:
     return out
 
 
+#: Archived coordination records are history, not live references (2026-11-02).
+#:
+#: ``agent_claim.py compact`` moves an ended claim into ``claims/claims_history.jsonl`` and an ended worklog
+#: into ``claims/worklog_archive/``; both keep every absolute path they ever mentioned. Because the scan read
+#: them, archiving a claim *moved* its references instead of dropping them: ``~/.cache/rtc`` scratch stayed
+#: held by claims that had been closed for days, and the history file grew without ever releasing anything.
+#: AGENTS.md §24.13 defines the hold as "no coordination document, *live* claim or worklog"; an archived
+#: record is neither. Archives are skipped before the size accounting too, so a history that grows past
+#: ``coordination_scan_limit`` can never turn every standing apply into ``coordination_scan_limit``.
+ARCHIVED_RELATIVE_FILES = frozenset({"claims/claims_history.jsonl"})
+ARCHIVED_RELATIVE_PREFIXES = ("claims/worklog_archive/",)
+
+
+def is_archived_coordination(relative: str) -> bool:
+    """True when a coordination-root-relative POSIX path is an archival record, never a live reference."""
+    return relative in ARCHIVED_RELATIVE_FILES or relative.startswith(ARCHIVED_RELATIVE_PREFIXES)
+
+
+def scan_coordination(base: Path, now: datetime) -> dict[str, Any]:
+    """Live claims/worklogs plus the absolute paths the coordination tree references (AGENTS.md §24.13)."""
+    claims_dir, worklogs = base / "claims", base / "worklogs"
+    if not claims_dir.is_dir() or not worklogs.is_dir() or not (base / "handoffs" / "PROGRESS_LOG.md").is_file():
+        raise ValueError("coordination_incomplete")
+    live, active_ids, refs, live_logs, archived = [], set(), [], [], 0
+    files = list(base.rglob("*.json")) + list(base.rglob("*.jsonl")) + list(base.rglob("*.md"))
+    total = 0
+    for path in files:
+        if is_archived_coordination(path.relative_to(base).as_posix()):
+            archived += 1
+            continue  # history, never a live reference
+        if path.is_symlink():
+            raise ValueError("coordination_symlink")
+        size = path.stat().st_size
+        total += size
+        if size > 32 * 1024**2 or total > 128 * 1024**2:
+            raise ValueError("coordination_scan_limit")
+        text = path.read_text()
+        refs += re.findall(r"/[^\s\"'`<>|=,;)\]}]+", text)
+        if path.parent == claims_dir and path.suffix == ".json":
+            claim = json.loads(text)
+            if not isinstance(claim, dict) or not isinstance(claim.get("schema"), str):
+                raise ValueError("claim_unreadable")
+            if claim["schema"] in NON_CLAIM_SCHEMAS:
+                continue  # its paths are already in refs; it is board state, not a claim
+            if claim["schema"] != "AgentClaim@v1":
+                raise ValueError("claim_unreadable")
+            if claim.get("status") == "active":
+                live.append(claim)
+                active_ids.add(claim.get("claim_id"))
+    for path in worklogs.rglob("*.md"):
+        if any(str(cid) in path.name for cid in active_ids) or now.timestamp() - path.stat().st_mtime <= 48 * 3600:
+            live_logs += re.findall(r"/[^\s\"'`<>|=,;)\]}]+", path.read_text())
+    return {"references": sorted(set(refs)), "live_claims": live, "live_worklogs": live_logs,
+            "archived_files": archived}
+
+
 def collect_standing_evidence(rules: Mapping[str, Any], now: datetime, *, github=None, runner=None) -> dict:
     """Fresh per-run READ-ONLY collection; unavailable evidence never becomes absence.
 
@@ -1032,36 +1088,7 @@ def collect_standing_evidence(rules: Mapping[str, Any], now: datetime, *, github
 
     def coordination():
         base = _expand(str(cfg.get("coordination_root") or "~/trade-ai-releases/persistent-state/data/coordination"), rules["_home"])
-        claims_dir, worklogs = base / "claims", base / "worklogs"
-        if not claims_dir.is_dir() or not worklogs.is_dir() or not (base / "handoffs" / "PROGRESS_LOG.md").is_file():
-            raise ValueError("coordination_incomplete")
-        live, active_ids, refs, live_logs = [], set(), [], []
-        files = list(base.rglob("*.json")) + list(base.rglob("*.jsonl")) + list(base.rglob("*.md"))
-        total = 0
-        for path in files:
-            if path.is_symlink():
-                raise ValueError("coordination_symlink")
-            size = path.stat().st_size
-            total += size
-            if size > 32 * 1024**2 or total > 128 * 1024**2:
-                raise ValueError("coordination_scan_limit")
-            text = path.read_text()
-            refs += re.findall(r"/[^\s\"'`<>|=,;)\]}]+", text)
-            if path.parent == claims_dir and path.suffix == ".json":
-                claim = json.loads(text)
-                if not isinstance(claim, dict) or not isinstance(claim.get("schema"), str):
-                    raise ValueError("claim_unreadable")
-                if claim["schema"] in NON_CLAIM_SCHEMAS:
-                    continue  # its paths are already in refs; it is board state, not a claim
-                if claim["schema"] != "AgentClaim@v1":
-                    raise ValueError("claim_unreadable")
-                if claim.get("status") == "active":
-                    live.append(claim)
-                    active_ids.add(claim.get("claim_id"))
-        for path in worklogs.rglob("*.md"):
-            if any(str(cid) in path.name for cid in active_ids) or now.timestamp() - path.stat().st_mtime <= 48 * 3600:
-                live_logs += re.findall(r"/[^\s\"'`<>|=,;)\]}]+", path.read_text())
-        return {"references": sorted(set(refs)), "live_claims": live, "live_worklogs": live_logs}
+        return scan_coordination(base, now)
 
     def prs():
         reader = github
@@ -1892,6 +1919,76 @@ def disk_usage_sample(home: Path) -> dict:
         return {"used_pct": None, "measured_at": ts, "reason": "statvfs_unavailable"}
 
 
+#: The standing path re-captures the whole evidence set before EVERY removal, and one transient capture
+#: failure aborts the pass and re-holds every item not yet removed. Measured 2026-11-02 on this host:
+#: `evidence_opaque_processes` appeared in 1 capture in 40 (2.5%) — a short-lived process whose cwd/fds the
+#: kernel hides and whose ancestry cannot be read. Two consecutive 13/16-item standing runs both died on it
+#: at `evidence_recheck_unavailable`. A short bounded retry clears the transient case; the retries never
+#: weaken the guard, because absence is still proven only by a complete, fresh capture.
+EVIDENCE_RECHECK_ATTEMPTS = 3
+EVIDENCE_RECHECK_DELAY_S = 3.0
+
+
+def _clip_reason(exc: BaseException, limit: int = 200) -> str:
+    """One short line naming the check. A ``JSONDecodeError`` carries a multi-line decoder message and a
+    fragment of the offending document; that must never be pasted whole into a receipt."""
+    text = (str(exc) or "").strip()
+    return (text.splitlines()[0] if text else type(exc).__name__)[:limit]
+
+
+def _capture_evidence_with_retry(
+    rules: Mapping[str, Any], now: datetime, *, attempts=EVIDENCE_RECHECK_ATTEMPTS,
+    delay_s=EVIDENCE_RECHECK_DELAY_S, sleep=None, clock=None,
+) -> tuple[Optional[dict], Optional[dict], Optional[str], datetime]:
+    """``(doc, ctx, reason, at)`` — a capture that provably supports a removal, or the reason it does not.
+
+    One transient capture failure used to end a whole pass (measured 2026-11-02: 1 in 40). The retry is
+    bounded and never weakens the guard: every attempt must pass ``evidence_context(applying=True)``, so an
+    incomplete or opaque capture still never authorises a removal.
+
+    A retry advances the capture time by the real elapsed delay, the same way ``apply()`` derives
+    ``validation_now``: reusing the first attempt's ``now`` would record evidence as fresher than it is,
+    and switching to the wall clock would abandon the caller's time base.
+
+    ``sleep``/``clock`` resolve at call time so a test can monkeypatch ``time.sleep``.
+    """
+    sleep = sleep or time.sleep
+    clock = clock or time.monotonic
+    started = clock()
+    reason = "evidence_unavailable"
+    attempt_now = now
+    for attempt in range(max(1, int(attempts))):
+        if attempt:
+            sleep(delay_s)
+            attempt_now = now + timedelta(seconds=max(0.0, clock() - started))
+        try:
+            doc = collect_standing_evidence(rules, attempt_now)
+            return doc, SR.evidence_context(doc, attempt_now, applying=True), None, attempt_now
+        except (RulesError, ValueError) as exc:
+            reason = _clip_reason(exc)
+    return None, None, reason, attempt_now
+
+
+def capture_apply_evidence(
+    rules: Mapping[str, Any], now: datetime, **kw,
+) -> tuple[Optional[dict], Optional[str]]:
+    """The evidence *document* for a removal, retried. ``(doc, None)`` or ``(None, reason)``.
+
+    The run-start capture needs this too: a transient opaque process there refuses the pass before the item
+    loop, losing the whole run just as a per-item failure did.
+    """
+    doc, _ctx, reason, _at = _capture_evidence_with_retry(rules, now, **kw)
+    return doc, reason
+
+
+def revalidate_evidence(
+    rules: Mapping[str, Any], now: datetime, **kw,
+) -> tuple[Optional[dict], Optional[str]]:
+    """Apply-time evidence context: ``(context, None)`` on success, ``(None, reason)`` when every attempt failed."""
+    _doc, ctx, reason, _at = _capture_evidence_with_retry(rules, now, **kw)
+    return ctx, reason
+
+
 def apply(
     manifest_path: Path, rules: Mapping[str, Any], now: datetime, *, grant: Optional[str], run_id: Optional[str],
     standing: bool = False, evidence: Optional[Mapping] = None, manifest_sha256: Optional[str] = None,
@@ -1905,6 +2002,7 @@ def apply(
         "removed": [],
         "skipped": [],
         "refused": None,
+        "refusal_detail": None,
     }
     def finish():
         if standing:
@@ -2027,11 +2125,11 @@ def apply(
             if (validation_now - gen).total_seconds() > age_limit * 3600:
                 rep["refused"] = "manifest_stale_during_apply"
                 break
-            try:
-                refreshed = collect_standing_evidence(rules, validation_now)
-                ctx = SR.evidence_context(refreshed, validation_now, applying=True)
-            except (RulesError, ValueError):
+            ctx, recheck_reason = revalidate_evidence(rules, validation_now)
+            if ctx is None:
+                # Named, not swallowed: the receipt must say which check refused and why (§0 rule 8).
                 rep["refused"] = "evidence_recheck_unavailable"
+                rep["refusal_detail"] = recheck_reason
                 break
             try:
                 current_rules = load_rules(Path(rules["_path"]), home=rules["_home"])
@@ -2205,7 +2303,8 @@ def _apply_main(a: argparse.Namespace, rules: Mapping[str, Any], now: datetime, 
         pass_now = now + timedelta(seconds=time.monotonic() - clock)
         before = disk_usage_sample(rules["_home"])
         if pass_no > 1:
-            evidence = collect_standing_evidence(rules, pass_now)
+            # Retried like the run-start capture: one transient opaque process must not end the sweep.
+            evidence, evidence_error = capture_apply_evidence(rules, pass_now)
         mpath = Path(a.manifest) if a.manifest else manifest_dir(rules, state_root) / rules["manifest"]["latest_name"]
         sha = a.manifest_sha256
         if a.standing and not a.manifest and evidence_error is None:
@@ -2285,6 +2384,7 @@ def _apply_main(a: argparse.Namespace, rules: Mapping[str, Any], now: datetime, 
         script=SCRIPT,
         summary={
             "refused": rep.get("refused"),
+            "refusal_detail": rep.get("refusal_detail"),
             "removed": len(rep["removed"]),
             "skipped": len(rep["skipped"]),
             "reclaimed_bytes": rep.get("reclaimed_bytes"),
@@ -2387,6 +2487,10 @@ def main(argv: Optional[list[str]] = None) -> int:
                 evidence = json.loads(_expand(str(a.evidence_snapshot), rules["_home"]).read_text())
             except (OSError, ValueError, TypeError):
                 evidence_error = "evidence_snapshot_unreadable"
+        elif a.apply:
+            # The run-start capture gets the same bounded retry as the per-item recheck: a transient opaque
+            # process here refused the pass before the first removal and lost the whole run (2026-11-02).
+            evidence, evidence_error = capture_apply_evidence(rules, now)
         else:
             evidence = collect_standing_evidence(rules, now)
         if evidence_error and not a.apply:

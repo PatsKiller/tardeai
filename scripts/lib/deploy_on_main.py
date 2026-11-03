@@ -476,7 +476,9 @@ def main_checks_status(repo: Path, sha: str) -> tuple[str, list[str]]:
     red = [
         c
         for c in (ev.get("checks") or [])
-        if c.get("status") == "completed" and c.get("conclusion") not in ("success", None)
+        if c.get("gating", True)
+        and c.get("status") == "completed"
+        and c.get("conclusion") not in ("success", None)
     ]
     return ("red" if red else "pending"), errors[:10]
 
