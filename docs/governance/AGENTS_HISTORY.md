@@ -30,7 +30,7 @@ records are in docs/governance/AGENTS_HISTORY.md; old source branches remain. No
 
 | version | date | status | class | change | approval |
 |---|---|---|---|---|---|
-| 30.0.0 | PENDING | PROPOSED | MAJOR | Supersedes 29.3.0. Standing scoped/delegated uploads, coordinator merges and merge-watching, one approved-plan registry; §0 rule 4/§2B/§11/§17/§20/§25.10/§28.4/§28.15/§28.17; AI_WORK_POLICY §3/§9/§11/§16/§21/§27/§28 aligned. No broker, secret or deploy authority. | PENDING `APPROVE_AGENTS_POLICY_30_0_0 <PR> <head_sha>` |
+| 30.0.0 | PENDING | PROPOSED | MAJOR | Supersedes 29.3.0. Standing scoped/delegated uploads, ordinary AND held engineering merges with tests/docs and two held reviews, merge-watching, one approved-plan registry; §0 rule 4/§2B/§11/§17/§20/§25.10/§28.4/§28.15/§28.17; AI_WORK_POLICY §3/§9/§11/§16/§21/§27/§28 aligned. No broker, secret or deploy authority. | PENDING `APPROVE_AGENTS_POLICY_30_0_0 <PR> <head_sha>` |
 | 29.5.0 | PENDING | WITHDRAWN | MAJOR | Consolidated into30.0.0; no separate banner retained here. Original source c24d1f0edfd426fcb11e883be515d5ecaf79678b (#2493) and remote branch preserved. | none (withdrawn) |
 
 ### Earlier banners

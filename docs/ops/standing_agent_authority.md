@@ -65,9 +65,14 @@ coauthors, the merger, duplicate sessions, malformed or contradictory evidence n
 login is not independent identity.
 
 Required cio-hardening, agent-governance, release-readiness and ci-gate must each complete SUCCESS. Every other executed current check must be acceptable;
-optional skipped checks do not replace required checks. Missing/truncated metadata, explicit holds, active
-path holders, unsafe current/prior rename paths, broker/order/secret/branch-protection paths and delegation
-definition changes refuse. Applicable section 17 activation decisions remain separate. The weekday
+optional skipped checks do not replace required checks. Held engineering—including hook/guard/CI/merge/deploy
+source—requires two independent exact-head MERGEs, engineering_tests_completed=true and
+engineering_docs_completed=true backed by actual completed work/test evidence and updated PR/docs. Missing or false
+completion evidence refuses. Known engineering classes qualify; a new trusted held class must explicitly carry
+delegation_kind: engineering. Unresolved/malformed classification refuses. Missing/truncated metadata, explicit
+holds, active path holders and unsafe current/prior rename paths refuse. Broker/order/secret/branch-protection
+paths and policy/adapters/standing-manifest ratification remain operator-owned. Source changes never weaken
+§0/§2/§17; live activation remains a separate decision. Applicable section 17 activation decisions remain separate. The weekday
 09:30–16:15 ET freeze remains; Mergify queue windows impose no additional wait on qualified standing merges.
 
 Apply locks one PR, revalidates, fsyncs a distinct PrMergeDelegationApproval@v1 before the sole exact-head

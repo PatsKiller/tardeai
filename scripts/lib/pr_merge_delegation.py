@@ -37,50 +37,54 @@ MAX_BYTES = 2 * 1024 * 1024
 SHA = re.compile(r"[0-9a-f]{40}")
 HASH = re.compile(r"[0-9a-f]{64}")
 SESSION = re.compile(r"[A-Za-z0-9_./:-]{3,160}")
-# Immutable authority-definition floor, independent of a mutable manifest. A
-# second review never delegates edits to the code that records/recognizes approval,
-# grants a role, decides merge eligibility or installs agent enforcement. The
-# dedicated namespaces also cover new/nested hook or merge authority entrypoints.
-# Other held files (for example an ordinary reporting CI workflow) still qualify
-# through the held review floor; this is not a blanket shared-infrastructure ban.
-RESERVED = ("AGENTS.md", "AI_WORK_POLICY.md", "CLAUDE.md", "GEMINI.md", ".goosehints",
-            ".cursor/rules/*", ".github/copilot-instructions.md", ".mergify.yml",
-            ".cursor/hooks/*", ".githooks/*", "scripts/hooks/*", "scripts/githooks/*",
-            ".cursor/hooks.json", ".cursor/settings*.json", ".claude/settings*.json", ".codex/config.toml",
-            "bin/guard", "bin/agent-push", "install-guardrails.sh",
-            "scripts/install_ai_work_policy.sh", "scripts/install_git_hooks.sh",
-            "scripts/install-git-hygiene.sh", "scripts/git_hygiene_guard.sh",
-            "scripts/agent_claim_precommit.sh", "scripts/guard_*", "scripts/lib/guard*",
-            "scripts/lib/tradeai_push_budget.py", "scripts/lib/hands_off_policy.py",
-            "scripts/agent_session_start.py", "scripts/lib/agent_session_receipt.py",
-            "scripts/agent_claim.py", "scripts/lib/agent_claim_board.py",
-            "config/agent_clients.yaml", "config/agent_standing_authority.json",
-            "config/merge_hold_paths.json", "scripts/lib/merge_hold_paths.py", "config/shared_infra_paths.json",
-            "scripts/check_shared_infra_pr.py", ".github/workflows/shared-infra-review.yml",
-            "config/pr_merge_digest.json", "scripts/lib/pr_merge*.py",
-            "scripts/pr_merge*.py", "scripts/lib/pr_all_checks_green.py",
-            "scripts/request_pr_merge_approve.py", "scripts/notify_pr_merge_ready.py",
-            "scripts/agent_merge_pr.sh", "scripts/lib/mergify_queue_monitor.py",
-            "scripts/lib/work_pipeline_tier2.py", "scripts/lib/deploy_console_actions.py",
-            "scripts/lib/operator_approval*.py", "scripts/admin_write_guard.py",
-            "scripts/telegram_callback_handler.py", "scripts/api_v2.py",
-            "scripts/lib/*branch*protection*", "scripts/*branch*protection*",
-            "config/*branch*protection*", ".github/settings*",
-            "tests/test_guard_standing_policy_20261102.py",
-            "tests/test_pr_merge_delegation_20261102.py",
-            "tests/test_pr_all_checks_standing_20261102.py")
+# Ratification documents stay operator-owned. Engineering implementation of hooks,
+# checks and merge/deploy tooling is delegated only through the held two-review
+# path below; it cannot ratify or activate its own policy/manifest.
+RESERVED = ("AGENTS.md", "*/AGENTS.md", "AI_WORK_POLICY.md", "CLAUDE.md", "GEMINI.md", ".goosehints",
+            ".cursor/rules/*", ".github/copilot-instructions.md", "config/agent_standing_authority.json")
+# Source engineering that a legacy hold registry may not yet list still owes two
+# independent reviews, strict green checks and actual completion attestations.
+ENGINEERING_HELD_PATHS = {
+    "hooks_guard": (
+        ".cursor/hooks/*", ".githooks/*", "scripts/hooks/*", "scripts/githooks/*",
+        ".cursor/hooks.json", ".cursor/settings*.json", ".claude/settings*.json", ".codex/config.toml",
+        "bin/guard", "bin/agent-push", "install-guardrails.sh", "scripts/install_ai_work_policy.sh",
+        "scripts/install_git_hooks.sh", "scripts/install-git-hygiene.sh", "scripts/git_hygiene_guard.sh",
+        "scripts/agent_claim_precommit.sh", "scripts/guard_*", "scripts/lib/guard*",
+        "scripts/lib/tradeai_push_budget.py", "scripts/lib/hands_off_policy.py",
+        "scripts/agent_session_start.py", "scripts/lib/agent_session_receipt.py", "scripts/agent_claim.py",
+        "scripts/lib/agent_claim_board.py", "config/agent_clients.yaml",
+    ),
+    "merge_deploy_control": (
+        ".mergify.yml", ".github/workflows/*", "config/ci_gates/*", "config/merge_hold_paths.json",
+        "scripts/lib/merge_hold_paths.py", "config/shared_infra_paths.json", "scripts/check_shared_infra_pr.py",
+        "config/pr_merge_digest.json", "scripts/lib/pr_merge*.py", "scripts/pr_merge*.py",
+        "scripts/lib/pr_all_checks_green.py", "scripts/request_pr_merge_approve.py",
+        "scripts/notify_pr_merge_ready.py", "scripts/agent_merge_pr.sh", "scripts/lib/mergify_queue_monitor.py",
+        "scripts/lib/work_pipeline_tier2.py", "scripts/lib/deploy_console_actions.py",
+        "scripts/lib/operator_approval*.py", "scripts/admin_write_guard.py", "scripts/telegram_callback_handler.py",
+        "scripts/api_v2.py", "scripts/lib/deploy_on_main.py", "scripts/deploy_on_main_poll.py",
+        "scripts/lib/release_control.py", "scripts/*promote*.sh", "config/lane_registry.json",
+        "tests/test_guard_standing_policy_20261102.py", "tests/test_pr_merge_delegation_20261102.py",
+        "tests/test_pr_all_checks_standing_20261102.py",
+    ),
+}
 OPERATOR_ONLY = ("scripts/brokers/*", "scripts/active_trader/*", "scripts/moomoo/*", "scripts/schwab_*",
                  "scripts/lib/schwab_*", "scripts/broker_*", "scripts/lib/broker*", "scripts/*order_intent*",
                  "scripts/lib/*order_intent*", "scripts/*execution_guard*", "scripts/lib/*execution_guard*",
                  "scripts/alpaca_*stop*", "scripts/defense_execution.py", "apps/broker-admin/*",
                  "config/active_trader*", "config/secret_registry.yaml", ".env", ".env.*", "*/.env", "*/.env.*",
                  "config/*branch*protection*", ".github/settings*", "scripts/*branch*protection*",
+                 "scripts/lib/*branch*protection*",
                  "scripts/lib/trading_lock.py", "scripts/lib/trading_session_grant.py",
                  "scripts/validate_schwab_write_policy.py", "scripts/lib/cio_instrument_record.py")
-DECISION_PATHS = ("config/lane_registry.json", "config/data_source_authority.json", "config/n8n_relay_live*.json",
+DECISION_PATHS = ("config/data_source_authority.json", "config/n8n_relay_live*.json",
                   "config/n8n_live*.json", "config/*access_mode*", "config/*kill_switch*", "config/*risk_policy*")
-# New held classes are never admitted by merely adding a row to the manifest.
+# New classes require explicit engineering classification in the trusted source
+# registry. A mutable class declaration cannot relax the immutable excluded paths.
 DELEGATED_HELD_CLASSES = frozenset({"hooks_guard", "merge_deploy_control"})
+NONDELEGATED_HELD_CLASSES = frozenset({"broker_order", "broker", "order", "secrets", "credentials",
+                                     "agents_policy", "policy", "branch_protection", "mbi_behavior"})
 IDENTITY_LIMIT = "Manual coordinator mapping of real agent sessions against claims/source; not cryptographic authentication."
 
 
@@ -136,6 +140,47 @@ def hits(path, patterns):
 
 def overlaps(path, claimed):
     return path == claimed or path.startswith(claimed.rstrip("/") + "/") or claimed.startswith(path + "/") or hits(path, [claimed])
+
+
+def engineering_classes_ok(classes, metadata):
+    if not isinstance(metadata, dict):
+        return False
+    for class_id in classes:
+        if class_id in NONDELEGATED_HELD_CLASSES:
+            return False
+        if class_id not in DELEGATED_HELD_CLASSES:
+            row = metadata.get(class_id)
+            if not isinstance(row, dict) or row.get("delegation_kind") != "engineering":
+                return False
+    return True
+
+
+def collect_held_classes(paths, config, helper):
+    """Resolve actual registry classes; never infer engineering from an unknown ID."""
+    if not isinstance(config, dict) or config.get("schema") != "MergeHoldPaths@v1":
+        raise Refused("held_classification_unavailable")
+    rows = config.get("classes")
+    if not isinstance(rows, list) or not rows:
+        raise Refused("held_classification_unavailable")
+    by_id = {}
+    for row in rows:
+        if (not isinstance(row, dict) or not isinstance(row.get("id"), str) or not row["id"]
+                or row["id"] in by_id or not isinstance(row.get("globs"), list) or not row["globs"]
+                or any(not isinstance(glob, str) or not glob for glob in row["globs"])):
+            raise Refused("held_classification_unavailable")
+        if row["id"] in DELEGATED_HELD_CLASSES and "delegation_kind" in row and row["delegation_kind"] != "engineering":
+            raise Refused("held_classification_unavailable")
+        by_id[row["id"]] = row
+    matched = helper.held_classes(paths, config)
+    if not isinstance(matched, dict) or any(class_id not in by_id for class_id in matched):
+        raise Refused("held_classification_unavailable")
+    classes = sorted(set(matched) | {class_id for class_id, patterns in ENGINEERING_HELD_PATHS.items()
+                                   if any(hits(path, patterns) for path in paths)})
+    metadata = {class_id: {"delegation_kind": by_id.get(class_id, {}).get("delegation_kind")}
+                for class_id in classes if class_id not in DELEGATED_HELD_CLASSES}
+    if not engineering_classes_ok(classes, metadata):
+        raise Refused("held_class_not_delegated")
+    return classes, metadata
 
 
 def freeze(now):
@@ -295,8 +340,15 @@ def evaluate(snapshot, *, now):
                 or any(not isinstance(value, str) for value in held_classes)
                 or len(set(held_classes)) != len(held_classes) or held != bool(held_classes)):
             raise Refused("held_classification_unavailable")
-        if not set(held_classes).issubset(DELEGATED_HELD_CLASSES):
+        floor_classes = {class_id for class_id, patterns in ENGINEERING_HELD_PATHS.items()
+                         if any(hits(path, patterns) for path in effective_files)}
+        if not floor_classes.issubset(held_classes):
+            raise Refused("held_classification_unavailable")
+        if not engineering_classes_ok(held_classes, snapshot.get("held_class_metadata", {})):
             raise Refused("held_class_not_delegated")
+        if held and (evidence.get("engineering_tests_completed") is not True
+                     or evidence.get("engineering_docs_completed") is not True):
+            raise Refused("held_engineering_completion_unproven")
         required = requirements["held_reviews"] if held else requirements["ordinary_reviews"]
         if len(reviewers) < required:
             raise Refused("independent_review_count_insufficient")
@@ -304,7 +356,8 @@ def evaluate(snapshot, *, now):
                  "actor_session": actor, "coordinator": lead, "authority": authority["authority"],
                  "review_proof": proof, "registration_sha256": snapshot["registration_sha256"],
                  "source_authorship_sha256": snapshot["source_authorship_sha256"], "shared_infra": shared,
-                 "held": held, "held_classes": held_classes, "claims": [{k: c.get(k) for k in ("claim_id", "session", "status", "head_sha", "paths")} for c in claims]}
+                 "held": held, "held_classes": held_classes,
+                 "held_class_metadata": snapshot.get("held_class_metadata", {}), "claims": [{k: c.get(k) for k in ("claim_id", "session", "status", "head_sha", "paths")} for c in claims]}
         return {"ok": True, "reason": "qualified", "head_sha": head, "pr": pr["number"], "actor": lead["id"],
                 "actor_session": actor, "held": held, "required_reviews": required, "review_proof": proof,
                 "authority": authority["authority"], "fingerprint": digest(bound), "identity_limit": IDENTITY_LIMIT,
@@ -417,9 +470,8 @@ class Host:
             raise Refused("explicit_hold_requires_existing_resolution")
         if label_names & {"broker", "broker_active_trader", "active-trader", "active_trader", "broker-active-trader"}:
             raise Refused("broker_label_operator_only")
-        held_classes = sorted(hold.held_classes([*pr["files"], *pr["prior_paths"]], hold_config))
-        if not set(held_classes).issubset(DELEGATED_HELD_CLASSES):
-            raise Refused("held_class_not_delegated")
+        effective_files = [*pr["files"], *pr["prior_paths"]]
+        held_classes, held_metadata = collect_held_classes(effective_files, hold_config, hold)
         if label_names & hold.hold_labels(hold_config) and not held_classes:
             raise Refused("held_label_class_unresolved")
         held = bool(held_classes)
@@ -464,7 +516,7 @@ class Host:
                 "evidence": evidence, "review_artifacts": artifacts, "registration_sha256": hashlib.sha256(raw).hexdigest(),
                 "excluded_globs": [*authority["authority"]["reserved_paths"], *cap["excluded_globs"]]
                     if isinstance(cap, dict) and isinstance(cap.get("excluded_globs"), list) else None,
-                "held": held, "held_classes": held_classes,
+                "held": held, "held_classes": held_classes, "held_class_metadata": held_metadata,
                 "actor_session": actor_session, "shared_infra": shared,
                 "source_authorship_sha256": digest({"author": pr.get("author"), "commits": commits})}
 

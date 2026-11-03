@@ -69,7 +69,8 @@ def snapshot(mod, *, held=False, reviews=1):
                          "authors": [{"actor": "claude", "session": "author-synthetic", "claim_id": "synthetic-source"}],
                          "reviews": artifact_rows, "authors_and_coauthors_complete":True,
                          "source_authorship_sha256":mod.digest({"author":None,"commits":[{"oid":HEAD}]}),
-                         "shared_infra_isolated_reviewed":True,"authority_rails_unchanged":True},
+                         "shared_infra_isolated_reviewed":True,"authority_rails_unchanged":True,
+                         "engineering_tests_completed":True,"engineering_docs_completed":True},
             "review_artifacts": artifact_bytes, "registration_sha256": "d" * 64,
             "checks": checks, "checks_head": HEAD, "excluded_globs": ["synthetic/reserved/*"], "held": held,
             "held_classes": ["merge_deploy_control"] if held else [],
@@ -181,7 +182,7 @@ def test_missing_stale_ambiguous_evidence_refuses(mod,case):
     elif case=="raw_review":data["review_artifacts"][data["evidence"]["reviews"][0]["artifact"]]=b"{}"
     elif case=="reserved":data["pr"]["files"]=["config/agent_standing_authority.json"]
     elif case=="operator_path":data["pr"]["files"]=["scripts/brokers/synthetic.py"]
-    elif case=="decision_path":data["pr"]["files"]=["config/lane_registry.json"]
+    elif case=="decision_path":data["pr"]["files"]=["config/synthetic_access_mode.json"]
     fake=Fake(data);result=mod.run(9999,ACTOR,apply=True,adapter=fake,clock=lambda:NOW)
     assert not result["ok"] and not fake.events and not any(isinstance(c,tuple) for c in fake.calls)
 
@@ -369,39 +370,26 @@ def test_registry_role_ambiguity_never_grants_merge(mod,case):
 
 
 @pytest.mark.parametrize("path", [
-    ".cursor/hooks/new_authority.py", ".cursor/hooks/nested/new_authority.py",
-    ".githooks/pre-commit", "scripts/hooks/new_guard.py", "scripts/githooks/new-hook",
-    ".cursor/hooks.json", ".cursor/settings.json", ".claude/settings.local.json", ".codex/config.toml",
-    "config/shared_infra_paths.json",
-    "bin/guard", "bin/agent-push", "install-guardrails.sh",
-    "scripts/install_ai_work_policy.sh", "scripts/lib/guard_remote_approval.py",
-    "scripts/lib/pr_merge_digest.py", "scripts/lib/pr_merge_telegram.py",
-    "scripts/lib/pr_merge_future_authority.py", "scripts/lib/pr_all_checks_green.py",
-    "scripts/pr_merge_digest.py", "scripts/request_pr_merge_approve.py",
-    "scripts/notify_pr_merge_ready.py", "scripts/agent_merge_pr.sh",
-    "scripts/lib/work_pipeline_tier2.py", "scripts/lib/deploy_console_actions.py",
-    "scripts/lib/operator_approvals.py", "scripts/lib/operator_approvals_api.py",
-    "scripts/telegram_callback_handler.py", "scripts/api_v2.py",
-    "scripts/lib/branch_protection.py", "scripts/update_branch_protection.py",
-    "config/branch_protection.json", ".github/settings.yml",
-    "config/pr_merge_digest.json", "config/agent_clients.yaml",
+    "AGENTS.md", "nested/AGENTS.md", "AI_WORK_POLICY.md", "CLAUDE.md", "GEMINI.md", ".goosehints",
+    ".cursor/rules/00-policy.mdc", ".github/copilot-instructions.md", "config/agent_standing_authority.json",
+    "scripts/brokers/synthetic.py", "scripts/active_trader/synthetic.py", ".env", ".env.private",
+    "nested/.env.private", "config/secret_registry.yaml", "scripts/lib/branch_protection.py",
+    "scripts/update_branch_protection.py", "config/branch_protection.json", ".github/settings.yml",
     "scripts/validate_schwab_write_policy.py", "scripts/lib/cio_instrument_record.py",
-    "scripts/lib/hands_off_policy.py", "scripts/lib/tradeai_push_budget.py",
 ])
-def test_immutable_authority_floor_cannot_be_replaced_by_two_reviews(mod,path):
+def test_immutable_rails_and_policy_ratification_cannot_be_replaced_by_two_reviews(mod,path):
     data=snapshot(mod,held=True,reviews=2)
     data["excluded_globs"]=[]
     data["authority"]["authority"]["reserved_paths"]=[]
     data["pr"]["files"]=[path]
     data["claims"][1]["paths"]=[path]
-    result=mod.evaluate(data,now=NOW)
-    assert result["reason"]=="operator_only_or_delegation_definition_path"
+    assert mod.evaluate(data,now=NOW)["reason"]=="operator_only_or_delegation_definition_path"
 
 
-def test_old_authority_path_cannot_be_renamed_out_of_immutable_floor(mod):
+def test_old_policy_path_cannot_be_renamed_out_of_immutable_floor(mod):
     data=snapshot(mod,held=True,reviews=2)
     data["excluded_globs"]=[]
-    data["pr"]["prior_paths"]=["scripts/lib/pr_merge_telegram.py"]
+    data["pr"]["prior_paths"]=["AGENTS.md"]
     assert mod.evaluate(data,now=NOW)["reason"]=="operator_only_or_delegation_definition_path"
 
 
@@ -414,10 +402,10 @@ def test_meaningful_held_reporting_workflow_still_qualifies_with_two_reviews(mod
     assert mod.evaluate(data,now=NOW)["reason"]=="independent_review_count_insufficient"
 
 
-def actual_collector_fixture(mod,tmp_path,*,new_class=None,labels=(),ordinary=False,shared=False):
+def actual_collector_fixture(mod,tmp_path,*,new_class=None,class_kind=None,labels=(),ordinary=False,shared=False,changed=None,reviews=2):
     from types import SimpleNamespace
-    data=snapshot(mod,held=not ordinary,reviews=2)
-    changed="scripts/run_synthetic.sh" if shared else "scripts/synthetic_change.py" if ordinary else ".github/workflows/synthetic-report.yml"
+    data=snapshot(mod,held=not ordinary,reviews=reviews)
+    changed=changed or ("scripts/run_synthetic.sh" if shared else "scripts/synthetic_change.py" if ordinary else ".github/workflows/synthetic-report.yml")
     data["pr"]["files"]=[changed];data["claims"][1]["paths"]=[changed]
     host=mod.Host();host.state=tmp_path/"coordination"
     coord=host.state/"coordinator";claims=host.state/"claims"
@@ -429,7 +417,10 @@ def actual_collector_fixture(mod,tmp_path,*,new_class=None,labels=(),ordinary=Fa
         path=coord/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw)
     hold=load("delegation_actual_hold_classes","scripts/lib/merge_hold_paths.py")
     config=json.loads((ROOT/"config/merge_hold_paths.json").read_bytes())
-    if new_class:config["classes"].append({"id":new_class,"globs":[changed]})
+    if new_class:
+        row={"id":new_class,"globs":[changed]}
+        if class_kind is not None:row["delegation_kind"]=class_kind
+        config["classes"].append(row)
     manifest={"capabilities":{"coordinator_merge":{"ordinary_reviews":1,"held_reviews":2,"excluded_globs":[]}}}
     def git(*args):
         if args[0]=="rev-parse":return MAIN
@@ -562,3 +553,108 @@ def test_manual_completeness_and_no_weakening_attestations_are_explicit(mod,fiel
     data["pr"]["files"]=[".github/workflows/synthetic-report.yml"];data["claims"][1]["paths"]=data["pr"]["files"][:]
     data["evidence"].pop(field)
     assert not mod.evaluate(data,now=NOW)["ok"]
+
+
+ENGINEERING_EXAMPLES = [
+    ".githooks/pre-commit", ".cursor/hooks/guard_push_free.py", "scripts/lib/pr_merge_telegram.py",
+    "scripts/lib/pr_merge_delegation.py", ".github/workflows/cio-full-suite-sharded.yml", ".github/workflows/agent-governance.yml",
+    ".github/workflows/release-readiness.yml", "scripts/lib/deploy_on_main.py",
+    "scripts/lib/pr_all_checks_green.py", ".cursor/hooks/new/nested_guard.py", "config/lane_registry.json",
+    "config/ci_gates/synthetic-reporting.json", "config/agent_clients.yaml",
+]
+
+
+@pytest.mark.parametrize("path",ENGINEERING_EXAMPLES)
+@pytest.mark.parametrize("reviews",[1,2])
+def test_actual_collector_and_gate_delegate_engineering_after_two_reviews(mod,tmp_path,path,reviews):
+    host=actual_collector_fixture(mod,tmp_path,changed=path,reviews=reviews)
+    collected=host.collect(9999,ACTOR)
+    assert collected["held"] and set(collected["held_classes"]) <= mod.DELEGATED_HELD_CLASSES
+    result=mod.evaluate(collected,now=NOW)
+    assert result["ok"] is (reviews==2)
+    assert result["required_reviews"]==2 if reviews==2 else result["reason"]=="independent_review_count_insufficient"
+    assert collected["evidence"]["engineering_tests_completed"] is True
+    assert collected["evidence"]["engineering_docs_completed"] is True
+
+
+@pytest.mark.parametrize("field",["engineering_tests_completed","engineering_docs_completed"])
+@pytest.mark.parametrize("value",[None,False,"true",1,[]])
+def test_actual_engineering_completion_evidence_is_required(mod,tmp_path,field,value):
+    host=actual_collector_fixture(mod,tmp_path,changed=".cursor/hooks/guard_push_free.py")
+    collected=host.collect(9999,ACTOR);collected["evidence"][field]=value
+    assert mod.evaluate(collected,now=NOW)["reason"]=="held_engineering_completion_unproven"
+
+
+@pytest.mark.parametrize("new_class",["future_engineering_guard","operational_reporting_config"])
+def test_actual_new_explicit_engineering_class_qualifies_with_two_reviews(mod,tmp_path,new_class):
+    host=actual_collector_fixture(mod,tmp_path,new_class=new_class,class_kind="engineering",ordinary=True)
+    collected=host.collect(9999,ACTOR)
+    assert collected["held_classes"]==[new_class]
+    assert collected["held_class_metadata"][new_class]=={"delegation_kind":"engineering"}
+    assert mod.evaluate(collected,now=NOW)["ok"]
+    collected["evidence"]["reviews"].pop()
+    assert mod.evaluate(collected,now=NOW)["reason"]=="independent_review_count_insufficient"
+
+
+@pytest.mark.parametrize("kind",[None,"",True,{},["engineering"],"policy"])
+def test_actual_new_class_needs_valid_explicit_engineering_kind(mod,tmp_path,kind):
+    host=actual_collector_fixture(mod,tmp_path,new_class="future_unresolved",class_kind=kind,ordinary=True)
+    with pytest.raises(mod.Refused,match="held_class_not_delegated"):host.collect(9999,ACTOR)
+
+
+@pytest.mark.parametrize("class_id",["broker_order","secrets","agents_policy","branch_protection","mbi_behavior"])
+def test_actual_excluded_class_cannot_label_itself_engineering(mod,tmp_path,class_id):
+    host=actual_collector_fixture(mod,tmp_path,new_class=class_id,class_kind="engineering",ordinary=True)
+    with pytest.raises(mod.Refused,match="held_class"):
+        host.collect(9999,ACTOR)
+
+
+@pytest.mark.parametrize("path",["scripts/brokers/synthetic.py","config/secret_registry.yaml",
+                                "config/branch_protection.json","AGENTS.md","config/agent_standing_authority.json"])
+def test_actual_collector_cannot_delegate_immutable_rail_or_policy_self_ratification(mod,tmp_path,path):
+    host=actual_collector_fixture(mod,tmp_path,changed=path)
+    try:
+        collected=host.collect(9999,ACTOR)
+    except mod.Refused as exc:
+        assert str(exc)=="held_class_not_delegated"
+    else:
+        assert mod.evaluate(collected,now=NOW)["reason"]=="operator_only_or_delegation_definition_path"
+
+
+def test_engineering_floor_cannot_be_laundered_into_ordinary_review(mod):
+    data=snapshot(mod,reviews=1)
+    data["pr"]["files"]=[".githooks/pre-commit"];data["claims"][1]["paths"]=data["pr"]["files"][:]
+    assert mod.evaluate(data,now=NOW)["reason"]=="held_classification_unavailable"
+
+
+def test_held_completion_changes_are_rechecked_before_merge(mod):
+    driver=Fake(snapshot(mod,held=True,reviews=2))
+    def change(fake,count):
+        if count==3:fake.data["evidence"]["engineering_docs_completed"]=False
+    driver.on_collect=change
+    result=mod.run(9999,ACTOR,apply=True,adapter=driver,clock=lambda:NOW)
+    assert result["reason"]=="critical_evidence_changed"
+    assert not any(isinstance(call,tuple) for call in driver.calls)
+
+
+@pytest.mark.parametrize("field",["schema","duplicate_id","globs","known_kind"])
+def test_actual_malformed_held_registry_is_not_engineering_authority(mod,tmp_path,field):
+    host=actual_collector_fixture(mod,tmp_path);old=host.git
+    def git(*args):
+        raw=old(*args)
+        if args[0]=="show" and args[1].endswith(":config/merge_hold_paths.json"):
+            cfg=json.loads(raw)
+            if field=="schema":cfg["schema"]="unrecognized"
+            elif field=="duplicate_id":cfg["classes"].append(deepcopy(cfg["classes"][-1]))
+            elif field=="globs":cfg["classes"][-1]["globs"]="not-a-list"
+            else:cfg["classes"][-1]["delegation_kind"]=False
+            return json.dumps(cfg)
+        return raw
+    host.git=git
+    with pytest.raises(mod.Refused,match="held_classification_unavailable"):host.collect(9999,ACTOR)
+
+
+def test_required_ci_workflow_cases_are_real_source_paths():
+    for path in ENGINEERING_EXAMPLES:
+        if path.startswith(".github/workflows/"):
+            assert (ROOT/path).is_file()
