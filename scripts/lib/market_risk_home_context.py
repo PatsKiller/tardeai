@@ -17,6 +17,7 @@ from scripts.lib.market_risk import sessions
 
 SCHEMA = "HomeMarketRiskContext@v1"
 INVERSE_DISPLAY_SYMBOLS = ("SH", "PSQ", "DOG", "RWM")
+SYMBOL_EVALUATION_CAP = 80
 
 
 def number(value: Any) -> float | None:
@@ -260,13 +261,24 @@ def collect(
             )
             for row in rows:
                 symbol = str(row.get("symbol") or "").upper()
-                upcoming = str(row.get("next_earnings_date") or "")[:10]
-                events[symbol] = {
-                    "value": {"kind": "earnings", "date": upcoming}
-                    if upcoming >= now.date().isoformat()
-                    else {"kind": "none_reported"},
-                    "as_of": row.get("updated_at"),
-                }
+                recorded = str(row.get("next_earnings_date") or "").strip()[:10]
+                if recorded and recorded >= now.date().isoformat():
+                    events[symbol] = {
+                        "value": {"kind": "earnings", "date": recorded},
+                        "as_of": row.get("updated_at"),
+                    }
+                else:
+                    # An absent or past-dated calendar entry is not evidence that
+                    # no earnings exist; never turn it into a positive claim.
+                    events[symbol] = {
+                        "value": None,
+                        "as_of": row.get("updated_at"),
+                        "reason": (
+                            "Recorded next earnings date is in the past"
+                            if recorded
+                            else "Next earnings date not recorded"
+                        ),
+                    }
         except Exception as exc:  # noqa: BLE001
             failed("canonical_symbol_calendar", exc)
     result = build(
@@ -291,7 +303,9 @@ def symbols_for(projection: dict, joined: dict) -> list[str]:
         str(symbol).upper() for symbol in (projection.get("reentry_watch") or {}) if not str(symbol).startswith("_")
     )
     symbols.update(INVERSE_DISPLAY_SYMBOLS)
-    return sorted(symbol for symbol in symbols if symbol and symbol.replace(".", "").replace("-", "").isalnum())[:80]
+    return sorted(symbol for symbol in symbols if symbol and symbol.replace(".", "").replace("-", "").isalnum())[
+        :SYMBOL_EVALUATION_CAP
+    ]
 
 
 def build(
@@ -313,6 +327,7 @@ def build(
     reentry = projection.get("reentry_watch") or {}
     stances = projection.get("positions") or {}
     per_symbol = {}
+    extra_gaps = []
     for symbol in symbols_for(projection, joined):
         card = reentry.get(symbol) if isinstance(reentry.get(symbol), dict) else {}
         current = card.get("current_quote") if isinstance(card.get("current_quote"), dict) else {}
@@ -403,6 +418,9 @@ def build(
                 "state": "measured" if price is not None and number(stages.get(key)) else "unknown",
                 "price_as_of": qclock,
                 "reference_as_of": card.get("as_of") or projection.get("as_of"),
+                "reason": None
+                if price is not None and number(stages.get(key))
+                else "Recorded analysis reference is not measured",
                 "remediation": None
                 if price is not None and number(stages.get(key))
                 else {
@@ -412,6 +430,38 @@ def build(
             }
             for key in ("invalidation_level", "sma10", "sma20", "anchored_vwap")
         }
+        analysis_fact = fact(
+            references if stages and accepted else None,
+            as_of=card.get("as_of") or projection.get("as_of"),
+            source="reentry_watch.stages",
+            now=now,
+            reason=rejected_reason,
+        )
+        if analysis_fact["state"] == "measured":
+            nested_unknown = [key for key, reference in references.items() if reference["state"] != "measured"]
+            if nested_unknown:
+                measured_nested = [
+                    key for key, reference in references.items() if reference["state"] == "measured"
+                ]
+                analysis_fact["state"] = "partial" if measured_nested else "unknown"
+                analysis_fact["reason"] = (
+                    "Recorded analysis references are unmeasured for: " + ", ".join(nested_unknown)
+                )
+                analysis_fact["remediation"] = {
+                    "key": "HOMEV007:analysis_references.partial",
+                    "action": "Refresh the canonical observation or recorded analysis reference; never invent a level.",
+                }
+                if not measured_nested:
+                    analysis_fact["value"] = None
+                extra_gaps.extend(
+                    {
+                        "symbol": symbol,
+                        "field": "analysis_references." + key,
+                        "reason": references[key]["reason"],
+                        "remediation": references[key]["remediation"],
+                    }
+                    for key in nested_unknown
+                )
         stance = stances.get(symbol) if isinstance(stances.get(symbol), dict) else card
         stance_clock = stance.get("as_of") or projection.get("as_of")
         cio = {
@@ -457,13 +507,7 @@ def build(
             "since_exit": fact(
                 since, as_of=qclock, source="reentry_watch.exit_price+" + source, now=now, reason=rejected_reason
             ),
-            "analysis_references": fact(
-                references if stages and accepted else None,
-                as_of=card.get("as_of") or projection.get("as_of"),
-                source="reentry_watch.stages",
-                now=now,
-                reason=rejected_reason,
-            ),
+            "analysis_references": analysis_fact,
             "cio": fact(
                 cio_value if canonical_cio.get("stance") is not None else None,
                 as_of=cio_clock,
@@ -513,13 +557,36 @@ def build(
                 as_of=event.get("as_of") if isinstance(event, dict) else None,
                 source="canonical_symbol_calendar",
                 now=now,
+                reason=event.get("reason") if isinstance(event, dict) else None,
             ),
             "since_exit_history": [
                 {"date": row.get("date"), "close": number(row.get("close")), "source": row.get("source")}
                 for row in bars
-                if card.get("exit_date") and str(row.get("date") or "") >= str(card["exit_date"])
+                if card.get("exit_date")
+                and str(row.get("date") or "") >= str(card["exit_date"])
+                and str(row.get("date") or "") <= expected_date
             ][-60:],
         }
+        future_bars = [
+            row
+            for row in bars
+            if card.get("exit_date") and str(row.get("date") or "") > expected_date
+        ]
+        if future_bars:
+            extra_gaps.append(
+                {
+                    "symbol": symbol,
+                    "field": "since_exit_history",
+                    "reason": (
+                        f"{len(future_bars)} bar(s) dated after the evaluation session "
+                        f"{expected_date} were excluded from history"
+                    ),
+                    "remediation": {
+                        "key": "HOMEV007:since_exit_history.future_bar",
+                        "action": "Repair the canonical daily-bar source; never treat a future-dated bar as completed history.",
+                    },
+                }
+            )
         if not card:
             for field in ("since_exit", "analysis_references", "volume_vs_20d"):
                 per_symbol[symbol][field] = {
@@ -616,11 +683,25 @@ def build(
     for row in joined.get("budgets_detail") or []:
         actual, limit = number(row.get("actual")), number(row.get("limit"))
         label = str(row.get("budget") or "budget").replace("_", " ")
+        budget_fact = fact(
+            {"actual": actual, "limit": limit}
+            if actual is not None and limit is not None
+            else None,
+            as_of=projection.get("as_of"),
+            source="market_risk.budgets_detail",
+            now=now,
+        )
         budgets.append(
             {
                 **row,
                 "actual": actual,
                 "limit": limit,
+                "state": budget_fact["state"],
+                "as_of": budget_fact["as_of"],
+                "age_seconds": budget_fact["age_seconds"],
+                "source": budget_fact["source"],
+                "reason": budget_fact["reason"],
+                "remediation": budget_fact["remediation"],
                 "source_binding": budget_source_binding(row, projection),
                 "plain_breach": (
                     f"{label} is above its recorded limit"
@@ -646,9 +727,34 @@ def build(
         )
     positions = []
     stored_stops = joined.get("observed_stops")
+    cap_reason = (
+        f"Symbol is beyond the {SYMBOL_EVALUATION_CAP}-symbol evaluation cap; "
+        "no quote or day-change evidence was collected"
+    )
+    cap_gap_symbols = set()
     for row in (joined.get("book_exposure") or {}).get("rows") or []:
         symbol = str(row.get("symbol") or "").upper()
-        observation = (per_symbol.get(symbol) or {}).get("quote") or {}
+        evaluated = symbol in per_symbol
+        if evaluated:
+            observation = per_symbol[symbol].get("quote") or {}
+        else:
+            observation = fact(
+                None,
+                as_of=None,
+                source="symbols_for.evaluation_cap",
+                now=now,
+                reason=cap_reason,
+            )
+            if symbol not in cap_gap_symbols:
+                cap_gap_symbols.add(symbol)
+                extra_gaps.append(
+                    {
+                        "symbol": symbol,
+                        "field": "quote",
+                        "reason": cap_reason,
+                        "remediation": observation["remediation"],
+                    }
+                )
         price = number(observation.get("value"))
         matches = [
             stop
@@ -670,7 +776,33 @@ def build(
             if price and level and level > 0
             else None
         )
-        stop_fact = fact(value, as_of=stop.get("as_of"), source=str(stop.get("source") or "last_known_stops"), now=now)
+        price_clock = observation.get("as_of")
+        stop_clock = stop.get("as_of")
+        quote_source = str(observation.get("source") or "canonical_stored_quote")
+        stop_source = str(stop.get("source") or "last_known_stops")
+        price_clock_obj = stamp(price_clock)
+        stop_clock_obj = stamp(stop_clock)
+        valid_price_clock = price_clock_obj if price_clock_obj is not None and price_clock_obj <= now else None
+        valid_stop_clock = stop_clock_obj if stop_clock_obj is not None and stop_clock_obj <= now else None
+        # The distance joins a quote and a stored stop; its own clock is the
+        # older of the two so it never claims newer evidence than either input.
+        conservative = (
+            min(valid_price_clock, valid_stop_clock)
+            if valid_price_clock is not None and valid_stop_clock is not None
+            else None
+        )
+        stop_fact = fact(
+            value,
+            as_of=iso(conservative) if conservative is not None else None,
+            source=stop_source + "+" + quote_source,
+            now=now,
+        )
+        stop_fact.update(
+            price_as_of=iso(valid_price_clock) if valid_price_clock is not None else None,
+            stop_as_of=iso(valid_stop_clock) if valid_stop_clock is not None else None,
+            price_source=quote_source,
+            stop_source=stop_source,
+        )
         if stored_stops is not None and not matches:
             stop_fact = fact(
                 {"status": "not_recorded", "note": "No stored stop observed"},
@@ -678,13 +810,24 @@ def build(
                 source="last_known_stops_query",
                 now=now,
             )
+        day_change_fact = (
+            per_symbol[symbol].get("day_change")
+            if evaluated
+            else fact(
+                None,
+                as_of=None,
+                source="symbols_for.evaluation_cap",
+                now=now,
+                reason=cap_reason,
+            )
+        )
         positions.append(
             {
                 "symbol": symbol,
                 "account_label": row.get("account_label"),
                 "stop": stop_fact,
                 "quote": observation,
-                "day_change": (per_symbol.get(symbol) or {}).get("day_change"),
+                "day_change": day_change_fact,
                 "account_pct_basis": "position market value / same account total",
                 "pct_account": row.get("pct_account"),
             }
@@ -694,7 +837,7 @@ def build(
         for symbol, row in per_symbol.items()
         for key, value in row.items()
         if isinstance(value, dict) and value.get("state") == "unknown"
-    ]
+    ] + extra_gaps
     return {
         "schema": SCHEMA,
         "generated_at": iso(now),

@@ -5,6 +5,7 @@ ANCHOR: HOME_V007_DATA_20261103
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import importlib.util
+import os
 import socket
 import subprocess
 import sys
@@ -13,6 +14,9 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+MODULE_PATH = Path(
+    os.environ.get("HOME_V007_MODULE", str(ROOT / "scripts/lib/market_risk_home_context.py"))
+)
 NOW = datetime(2032, 3, 9, 21, 0, tzinfo=timezone.utc)
 ASOF = "2032-03-09T20:59:00Z"
 
@@ -25,9 +29,7 @@ def mod(monkeypatch):
     monkeypatch.setattr(subprocess, "run", forbidden)
     monkeypatch.setattr(subprocess, "Popen", forbidden)
     monkeypatch.setattr(socket.socket, "connect", forbidden)
-    spec = importlib.util.spec_from_file_location(
-        "home_v007_under_test", ROOT / "scripts/lib/market_risk_home_context.py"
-    )
+    spec = importlib.util.spec_from_file_location("home_v007_under_test", MODULE_PATH)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
@@ -687,3 +689,116 @@ def test_clocked_category_chip_preserves_actual_measured_state(mod, category_sta
     p["categories"] = [{"category": mod.CATEGORIES[0], "state": category_state, "as_of": ASOF}]
     row = mod.build(p, {}, now=NOW)["risk"]["categories"][0]
     assert row["state"] == "measured" and row["chip"] == chip and row["as_of"] == ASOF
+
+
+def test_null_or_past_earnings_date_is_unknown_never_a_positive_none_reported_claim(mod):
+    def read(sql, params):
+        if "FROM symbol_profiles" in sql:
+            return [
+                {"symbol": "SYNX", "next_earnings_date": None, "updated_at": ASOF},
+                {"symbol": "SH", "next_earnings_date": "2032-03-01", "updated_at": ASOF},
+                {"symbol": "PSQ", "next_earnings_date": "2032-03-12", "updated_at": ASOF},
+            ]
+        return []
+
+    result = mod.collect(projection(), {}, reader=FailedCurrentReader(), read_rows=read, now=NOW)
+    missing = result["symbols"]["SYNX"]["next_event"]
+    assert missing["state"] == "unknown" and missing["value"] is None
+    assert missing["reason"] == "Next earnings date not recorded" and missing["remediation"]["action"]
+    past = result["symbols"]["SH"]["next_event"]
+    assert past["state"] == "unknown" and past["value"] is None
+    assert past["reason"] == "Recorded next earnings date is in the past"
+    future = result["symbols"]["PSQ"]["next_event"]
+    assert future["state"] == "measured" and future["value"] == {"kind": "earnings", "date": "2032-03-12"}
+
+
+def test_stop_distance_carries_both_clocks_and_uses_the_older_clock(mod):
+    joined = {
+        "book_exposure": {"rows": [{"symbol": "SYNX", "account_label": "Synthetic account", "pct_account": 8}]},
+        "observed_stops": [
+            {
+                "symbol": "SYNX",
+                "account_label": "Synthetic account",
+                "price": 9,
+                "as_of": "2032-03-09T20:59:30Z",
+                "source": "stored_stop",
+                "status": "recorded",
+            }
+        ],
+    }
+    stop = mod.build(projection(), joined, now=NOW)["positions"][0]["stop"]
+    assert stop["value"]["distance_price"] == 3 and stop["value"]["distance_pct_of_price"] == 25
+    assert stop["as_of"] == ASOF
+    assert stop["price_as_of"] == ASOF and stop["stop_as_of"] == "2032-03-09T20:59:30Z"
+    assert "stored_stop" in stop["source"] and "synthetic_daily_close" in stop["source"]
+    assert stop["age_seconds"] == 60
+
+
+def test_book_beyond_symbol_cap_reports_fact_shaped_unknowns_and_a_gap(mod):
+    rows = [{"symbol": f"SXN{index:03d}", "account_label": "Synthetic account"} for index in range(1, 82)]
+    result = mod.build(projection(), {"book_exposure": {"rows": rows}}, now=NOW)
+    capped = [row for row in result["positions"] if row["symbol"] == "SXN081"][0]
+    assert capped["quote"]["state"] == "unknown" and capped["quote"]["value"] is None
+    assert capped["quote"]["reason"] and capped["quote"]["remediation"]["action"]
+    assert capped["day_change"]["state"] == "unknown" and capped["day_change"]["value"] is None
+    assert capped["day_change"]["reason"] and capped["day_change"]["remediation"]["action"]
+    assert any(
+        gap["symbol"] == "SXN081" and gap["field"] == "quote" and "evaluation cap" in gap["reason"]
+        for gap in result["gaps"]
+    )
+
+
+def test_future_dated_bar_is_excluded_from_since_exit_history_and_reported(mod):
+    bars = [
+        {"symbol": "SYNX", "date": "2032-03-05", "close": 10, "source": "synthetic_bars"},
+        {"symbol": "SYNX", "date": "2032-03-20", "close": 99, "source": "synthetic_bars"},
+    ]
+    result = mod.build(projection(), {}, daily_bars=bars, now=NOW)
+    dates = [row["date"] for row in result["symbols"]["SYNX"]["since_exit_history"]]
+    assert "2032-03-05" in dates and "2032-03-20" not in dates
+    gap = [
+        row
+        for row in result["gaps"]
+        if row["symbol"] == "SYNX" and row["field"] == "since_exit_history"
+    ]
+    assert gap and "excluded from history" in gap[0]["reason"] and gap[0]["remediation"]["action"]
+
+
+def test_analysis_references_aggregate_is_partial_and_nested_unknowns_are_gaps(mod):
+    result = mod.build(projection(), {}, now=NOW)
+    references = result["symbols"]["SYNX"]["analysis_references"]
+    assert references["state"] == "partial"
+    assert references["value"]["sma10"]["state"] == "measured"
+    assert references["value"]["anchored_vwap"]["state"] == "unknown"
+    assert any(
+        gap["symbol"] == "SYNX" and gap["field"] == "analysis_references.anchored_vwap"
+        for gap in result["gaps"]
+    )
+
+
+def test_budget_rows_carry_state_and_as_of_or_an_explicit_unknown(mod):
+    joined = {
+        "budgets_detail": [
+            {
+                "budget": "single_sector_pct",
+                "actual": 40,
+                "limit": 30,
+                "unit": "%",
+                "account_label": "Synthetic account",
+            },
+            {
+                "budget": "unmeasured_pct",
+                "actual": None,
+                "limit": None,
+                "unit": "%",
+                "account_label": "Synthetic account",
+            },
+        ]
+    }
+    rows = mod.build(projection(), joined, now=NOW)["budgets"]
+    measured = rows[0]
+    assert measured["state"] == "measured" and measured["as_of"] == ASOF
+    assert measured["age_seconds"] == 60 and measured["source"] == "market_risk.budgets_detail"
+    unknown = rows[1]
+    assert unknown["state"] == "unknown" and unknown["as_of"] == ASOF
+    assert unknown["reason"] and unknown["remediation"]["action"]
