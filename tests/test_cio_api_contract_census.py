@@ -297,3 +297,79 @@ def test_discarded_is_distinct_from_chained_result(tmp_path,call,used):
     found=_scan_repair_case(tmp_path,call+'\n')
     assert len(found)==1
     assert found[0].used is used
+
+
+@pytest.mark.parametrize("body", [
+    "function f(API: string): { ok: boolean } { return useApi(API) }",
+    "function f(API: string): Promise<{ok:boolean}> { return useApi(API) }",
+    "const f = (API: string): {ok:boolean} => useApi(API)",
+    "const x = { f<T>(API: T) { return useApi(API) } }",
+    "export default function H() { return <div>Docs: useApi(API) is the pattern</div> }",
+    "const documentation = /useApi(API)/",
+])
+def test_typed_shadow_jsx_text_and_regex_cannot_supply_named_consumer(tmp_path, body):
+    assert _scan_repair_case(tmp_path, body + "\n") == []
+
+
+@pytest.mark.parametrize("shadow", [
+    "function f(API: string): { ok: boolean } { return useApi(API) }",
+    "function f(API: string): Promise<{ok:boolean}> { return useApi(API) }",
+    "const f = (API: string): {ok:boolean} => useApi(API)",
+    "const x = { f<T>(API: T) { return useApi(API) } }",
+])
+def test_typed_nested_shadow_keeps_module_consumer(tmp_path, shadow):
+    found = _scan_repair_case(tmp_path, shadow + "\nconst {data: top} = useApi(API)\nrender(top)\n")
+    assert [(f.route, f.bound_names, f.used) for f in found] == [("/api/v3/a", ["top"], True)]
+
+
+@pytest.mark.parametrize("body", [
+    "export default function H() { return <div>{useApi(API)}</div> }",
+    "export default function H() { return <div>useApi(API)<span>{useApi(API)}</span>useApi(API)</div> }",
+    "function f(other: string): {ok:boolean} { return useApi(API) }",
+    "const f = (other: string): {ok:boolean} => useApi(API)",
+    "const doc = /useApi(API)/; const {data: top} = useApi(API)\nrender(top)",
+    "const label = 'useApi(API)'\nconst {data: top} = useApi(API)\nrender(top)",
+])
+def test_named_expression_remains_evidence_beside_typed_heads_or_text(tmp_path, body):
+    found = _scan_repair_case(tmp_path, body + "\n")
+    assert len(found) == 1 and found[0].route == "/api/v3/a"
+
+
+@pytest.mark.parametrize("body", [
+    "function f<T>(API: string): T extends X ? {ok: true} : {ok: false} { return useApi(API) }",
+    "function f(API: string): [a: {ok:boolean}] { return useApi(API) }",
+])
+def test_balanced_conditional_and_tuple_return_types_cannot_donate_import(tmp_path, body):
+    assert _scan_repair_case(tmp_path, body + "\n") == []
+
+
+@pytest.mark.parametrize("body, count", [
+    ("export default function H() { return <>Docs: useApi(API) is the pattern</> }", 0),
+    ("export default function H() { return <>Docs: {useApi(API)}</> }", 1),
+])
+def test_jsx_fragment_text_is_not_code_but_expression_is(tmp_path, body, count):
+    found = _scan_repair_case(tmp_path, body + "\n")
+    assert len(found) == count
+    assert all(row.route == "/api/v3/a" for row in found)
+
+
+def test_a_line_leading_division_does_not_swallow_a_real_consumer(tmp_path):
+    # cc4's regression: `_named_code_only` treated a line-leading `/` as a regex opener, so the mask ran
+    # from the division to the next `/` and blanked the real useApi call in between.
+    body = ("const total = 10\nconst count = 2\n"
+            "const ratio = total\n  / count; const {data: top} = useApi(API) / ratio\nrender(top)\n")
+    found = _scan_repair_case(tmp_path, body)
+    assert [(f.route, f.bound_names) for f in found] == [("/api/v3/a", ["top"])]
+
+
+def test_a_line_leading_regex_statement_stays_invisible(tmp_path):
+    # The other side of the same rule: a regex in statement position follows a line that cannot end an
+    # expression (here the import), so it must be masked — otherwise dropping `^` invents a consumer.
+    body = "/useApi(API)/.test('synthetic')\nrender('synthetic')\n"
+    assert _scan_repair_case(tmp_path, body) == []
+
+
+def test_an_expression_start_regex_is_still_masked(tmp_path):
+    # Dropping the `^` alternative must not un-mask a regex in a real expression-start position.
+    body = "const re = /useApi(API)/\nrender(re)\n"
+    assert _scan_repair_case(tmp_path, body) == []
