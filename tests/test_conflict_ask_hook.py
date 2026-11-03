@@ -52,3 +52,19 @@ def test_unconfigured_legacy_memory_and_private_entities_do_not_call_conflict_re
     memory = module.SpineAskMemory(conflict_reader=lambda _: (_ for _ in ()).throw(AssertionError("private entity")))
     private = EntityRef(kind="private", name="Private fixture", entity_guid="private-fixture")
     assert memory.recall(entity=private) == []
+
+
+def test_ask_rows_carry_the_conflict_age_without_inventing_one(tmp_path):
+    """Ask memory is where an answer would cite "waiting since"; the rows had no clock before."""
+    from datetime import timedelta
+
+    from scripts.lib.cio_conflicts import ask_context_rows
+
+    st = ledger(tmp_path)
+    st.reconcile(SUBJECT, [conflict(kind="NEEDS_OPERATOR", never_auto=True)], at=NOW - timedelta(hours=30),
+                 apply=True)
+    row = ask_context_rows(tmp_path, SUBJECT.id, now=NOW)[0]["current_conflicts"][0]
+    assert row["age_hours"] == 30.0
+    assert row["opened_at"].endswith("Z")
+    # A subject with no open conflict yields no rows at all — "nothing waiting", not "unknown age".
+    assert ask_context_rows(tmp_path, "guid-with-no-conflicts", now=NOW) == []
