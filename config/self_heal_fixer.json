@@ -238,7 +238,14 @@
       "pytest.ini",
       "pyproject.toml",
       "setup.cfg",
-      "tox.ini"
+      "tox.ini",
+      "config/llm_process_registry.json",
+      "config/anthropic_credit_policy.json",
+      "config/llm_routing_policy.json",
+      "scripts/lib/governed_cloud_generation.py",
+      "scripts/lib/llm_consumption.py",
+      "scripts/lib/anthropic_routing.py",
+      "scripts/telegram_alert.py"
     ],
     "append_only_paths": [
       "scripts/run_cio_hardening_ci.py"
