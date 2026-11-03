@@ -171,3 +171,17 @@ def test_monthly_review_is_capped_and_dry_by_default(tmp_path):
     (out / "review_ledger.json").write_text(json.dumps(ledger))
     plan = cli.run_review(out, run, {"ZZAU": doc}, apply=True, n=3, now=NOW, review_fn=fake)
     assert len(calls) == 1 and "monthly cap" in plan["stopped"]  # $1.90 spent + $0.45 estimate > $2
+
+
+def test_review_prompt_carries_the_section_prose_from_body_md():
+    """The writer stores prose as body_md; the prompt must not ask to audit sentences it does not hold."""
+    doc = {"symbol": "ZZDEMO", "verdict_line": "HOLD",
+           "sections": [{"id": "summary", "title": "Summary",
+                         "body_md": "The book added a small position in ZZDEMO after the pullback."}],
+           "facts": []}
+    prompt = aa.review_prompt(doc)
+    assert "The book added a small position in ZZDEMO after the pullback." in prompt
+    # The older aliases still win when a caller supplies one.
+    doc["sections"][0]["text"] = "explicit section text"
+    prompt = aa.review_prompt(doc)
+    assert "explicit section text" in prompt and "after the pullback" not in prompt

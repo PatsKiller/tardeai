@@ -849,7 +849,11 @@ def review_prompt(doc: dict, *, max_facts: int = 160, max_chars: int = 60000) ->
     """Prose-vs-facts review prompt: the written sections and the facts they may cite (no account names)."""
     facts = [{k: f.get(k) for k in ("id", "label", "value", "unit", "text", "as_of") if f.get(k) is not None}
              for f in _facts(doc)[:max_facts]]
-    sections = [{"id": s.get("id"), "title": s.get("title"), "text": s.get("text") or s.get("body")}
+    # The report writer stores prose as ``body_md`` (generate.py:210). Without it the prompt carried
+    # every section title with no sentence to audit, so the model was asked to check "every sentence"
+    # against facts while holding none of them (row-12 ticket 3, 2026-11-03).
+    sections = [{"id": s.get("id"), "title": s.get("title"),
+                 "text": s.get("text") or s.get("body") or s.get("body_md")}
                 for s in doc.get("sections") or []]
     body = json.dumps({"symbol": doc.get("symbol"), "verdict_line": doc.get("verdict_line"), "sections": sections,
                        "facts": facts}, default=str)[:max_chars]
