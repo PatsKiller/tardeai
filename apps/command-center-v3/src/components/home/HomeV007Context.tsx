@@ -7,7 +7,11 @@
 // Display only — no size, order or stop level, and no button where the contract says the decision is unavailable.
 import { useApi } from '../../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, toneVars } from '../../lib/designTokens'
-import { parseHomeV007, type Fact, type SymbolContext } from '../../lib/homeV007'
+import {
+  headlineLine, hedgeLine, marketStanceLine, nextEventLine, parseHomeV007, provenanceText, referenceLine, stateText,
+  volumeLine, type Fact, type SymbolContext,
+} from '../../lib/homeV007'
+import { offersBudgetDecision } from '../../lib/budgetIntent'
 import { fmtAsOf } from '../../lib/asOfDisplay'
 import BudgetIntentControl from './BudgetIntentControl'
 
@@ -20,19 +24,7 @@ const small: React.CSSProperties = { fontSize: TYPE.sm, color: TOKENS.text[1] }
 const money = (v: number | null) => (v == null ? null : `$${v.toLocaleString('en-US', { maximumFractionDigits: 2 })}`)
 const pct = (v: number | null) => (v == null ? null : `${v > 0 ? '+' : ''}${v.toFixed(2)}%`)
 
-function stateText(f: Fact): string | null {
-  if (f.state === 'measured') return null
-  if (f.state === 'not_applicable') return 'not applicable'
-  const label = 'unknown'
-  const bits = [f.reason, f.remediation].filter(Boolean).join(' · ')
-  return `${label}${bits ? ` — ${bits}` : ''}`
-}
-
-/** A fact's own clock and source, as plain text after the value. Empty when the payload supplied neither. */
-function provenance(f: { asOf: string | null; source: string | null }): string {
-  const clock = f.asOf ? ` · ${fmtAsOf(f.asOf) ?? f.asOf}` : ''
-  return `${clock}${f.source ? ` · ${f.source}` : ''}`
-}
+const provenance = provenanceText
 
 function SymbolBlock({ s }: { s: SymbolContext }) {
   const q = s.quote
@@ -53,14 +45,14 @@ function SymbolBlock({ s }: { s: SymbolContext }) {
       : <div style={dim}>today {money(s.dayChange.usd) ?? ''}{s.dayChange.pct != null ? ` (${pct(s.dayChange.pct)})` : ''}{s.dayChange.referenceDate ? ` vs ${s.dayChange.referenceDate} close` : ''}{provenance(s.dayChange)}</div>}
     {stateText(s.sinceExit) ? <div style={dim}>since exit {stateText(s.sinceExit)}{provenance(s.sinceExit)}</div>
       : <div style={dim}>since exit {money(s.sinceExit.usd) ?? ''}{s.sinceExit.pct != null ? ` (${pct(s.sinceExit.pct)})` : ''}{s.sinceExit.exitDate ? ` · exited ${s.sinceExit.exitDate}` : ''}{provenance(s.sinceExit)}</div>}
-    {s.references.length ? <div style={dim}>to trigger: {s.references.map(r => `${r.label} ${r.distancePct != null ? pct(r.distancePct) : ''}${r.distanceUsd != null ? ` (${money(r.distanceUsd)})` : ''}`).join(' · ')}</div> : null}
-    {s.headlines.length ? <div style={dim}>headlines: {s.headlines.map(h => `${h.title}${h.ageSeconds != null ? ` (${Math.round(h.ageSeconds / 3600)}h)` : ''}`).join(' · ')}</div> : null}
-    {s.nextEvent.label || s.nextEvent.at ? <div style={dim}>next event {s.nextEvent.label ?? ''}{s.nextEvent.at ? ` · ${fmtAsOf(s.nextEvent.at) ?? s.nextEvent.at}` : ''}{provenance(s.nextEvent)}</div> : null}
+    {stateText(s.referencesFact) ? <div style={dim} data-testid={`v7-references-${s.symbol}`}>to trigger {stateText(s.referencesFact)}{provenance(s.referencesFact)}</div> : null}
+    {s.references.map((r, i) => <div key={i} style={dim} data-testid={`v7-reference-${s.symbol}-${i}`}>{referenceLine(r)}</div>)}
+    {s.headlines.length ? <div style={dim}>headlines: {s.headlines.map(headlineLine).join(' · ')}</div> : null}
+    {(() => { const line = nextEventLine(s.nextEvent); return line ? <div style={dim} data-testid={`v7-next-event-${s.symbol}`}>{line}</div> : null })()}
     {stateText(s.cio) ? <div style={dim}>CIO stance {stateText(s.cio)}{provenance(s.cio)}</div>
-      : <div style={dim}>CIO stance <b>{s.cio.stance}</b>{s.cio.conviction != null ? ` · conviction ${s.cio.conviction}` : ''}{s.cio.storeLabel ? ` · ${s.cio.storeLabel}` : ''}{provenance(s.cio)}{s.cio.ageSeconds != null ? ` · ${Math.round(s.cio.ageSeconds / 3600)}h old` : ''}{s.cio.stale ? ' · stale' : ''}</div>}
-    {s.marketStance.value ? <div style={dim}>market-risk stance {s.marketStance.value} (separate from CIO)</div> : null}
-    {stateText(s.volume) ? <div style={dim}>volume {stateText(s.volume)}{provenance(s.volume)}</div>
-      : <div style={dim}>volume {s.volume.ratio}× 20-day{s.volume.notTimeAdjusted ? ' (not time-adjusted)' : ''}{provenance(s.volume)}</div>}
+      : <div style={dim}>CIO stance <b>{s.cio.stance}</b>{s.cio.conviction != null ? ` · conviction ${s.cio.conviction}` : ''}{provenance(s.cio)}{s.cio.stale ? ' · stale' : ''}</div>}
+    {(() => { const line = marketStanceLine(s.marketStance); return line ? <div style={dim} data-testid={`v7-stance-${s.symbol}`}>{line}</div> : null })()}
+    <div style={dim} data-testid={`v7-volume-${s.symbol}`}>{volumeLine(s.volume)}</div>
   </div>
 }
 
@@ -70,6 +62,19 @@ export default function HomeV007Context() {
   const api = useApi<{ home_v007?: unknown }>(PATH, 60_000, { priority: 'background' })
   const v7 = parseHomeV007(api.data?.home_v007)
   if (!v7.present) return null
+  // The producer's stated failure is not an empty success. It carries a reason, a remediation and the gaps that
+  // explain it; the card says so and renders no symbol body over it.
+  if (v7.unavailable) {
+    return <section data-testid="home-v007-unavailable" style={card}>
+      <h4 style={h4}>Today’s context is unavailable</h4>
+      <div style={{ ...small, color: toneVars('warning').color }} data-testid="v7-unavailable-reason">
+        {v7.blockReason ?? 'the producer marked the block unavailable without a stated reason'}
+      </div>
+      {v7.blockRemediation ? <div style={dim} data-testid="v7-unavailable-remediation">{v7.blockRemediation}</div> : null}
+      {v7.gaps.map((g, i) => <div key={i} style={dim}>gap {g.member} · {g.key}{g.reason ? ` — ${g.reason}` : ''}</div>)}
+      {v7.readErrors.map((e, i) => <div key={i} style={dim}>read error {e.member} · {e.code}</div>)}
+    </section>
+  }
   return <section data-testid="home-v007" style={card}>
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
       <h4 style={h4}>Today’s context</h4>
@@ -80,7 +85,7 @@ export default function HomeV007Context() {
       risk score {v7.risk.score ?? 'unknown'} · {v7.risk.categories.map(c => `${c.label} ${c.chip ?? c.state}${provenance(c)}`).join(' · ')}
       {v7.risk.nextEvaluation?.at ? ` · next evaluation ${fmtAsOf(v7.risk.nextEvaluation.at) ?? v7.risk.nextEvaluation.at} (${v7.risk.nextEvaluation.basis ?? 'declared'})` : ''}
     </div> : null}
-    {v7.hedge.triggers.length ? <div style={dim}>hedge: {v7.hedge.triggers.map(t => `${t.label} ${t.current ?? '?'} of ${t.threshold ?? '?'}${t.met === true ? ' met' : t.met === false ? ' not met' : ''}`).join(' · ')}{v7.hedge.inverse.length ? ` · inverse today: ${v7.hedge.inverse.map(i => `${i.symbol} ${i.dayPct == null ? 'unknown' : pct(i.dayPct)}`).join(' · ')}` : ''}</div> : null}
+    {v7.hedge.triggers.length ? <div style={dim}>hedge: {v7.hedge.triggers.map(hedgeLine).join(' · ')}{v7.hedge.inverse.length ? ` · inverse today: ${v7.hedge.inverse.map(i => `${i.symbol} ${i.dayPct == null ? 'unknown' : pct(i.dayPct)}`).join(' · ')}` : ''}</div> : null}
     {v7.budgets.map(b => <div key={b.key} style={dim} data-testid={`v7-budget-${b.key}`}>
       budget {b.label}: {b.state === 'measured'
         ? <>{money(b.current) ?? 'unknown'} of {money(b.budget) ?? 'unknown'}{b.breach ? ' · breach' : ''}{b.clearsWhen ? ` · clears ${b.clearsWhen}` : ''}</>
@@ -93,7 +98,7 @@ export default function HomeV007Context() {
       {b.sourceAsOf || b.sourceSha || b.presentationSha
         ? ` · measured ${b.sourceAsOf ? (fmtAsOf(b.sourceAsOf) ?? b.sourceAsOf) : 'unknown'}${b.sourceSha ? ` · src ${b.sourceSha.slice(0, 8)}` : ''}${b.presentationSha ? ` · presentation ${b.presentationSha.slice(0, 8)}` : ''}`
         : ''}
-      <BudgetIntentControl row={b} onRecorded={() => api.refetch()} />
+      {offersBudgetDecision(b) ? <BudgetIntentControl row={b} onRecorded={() => api.refetch()} /> : null}
     </div>)}
     {v7.decisionHistory.complete === false ? <div style={dim} data-testid="v7-decision-history-partial">decision history is incomplete{typeof v7.decisionHistory.count === 'number' ? ` · ${v7.decisionHistory.count} in the ledger` : ''} — earlier decisions may be missing</div> : null}
     {v7.gaps.map((g, i) => <div key={i} style={dim}>gap {g.member} · {g.key}{g.reason ? ` — ${g.reason}` : ''}</div>)}

@@ -1,6 +1,7 @@
 // Home v007 additive context parser — display truth rules.
 //   node --experimental-strip-types src/lib/homeV007.test.ts
-import { parseHomeV007 } from './homeV007.ts'
+import { headlineLine, marketStanceLine, nextEventLine, parseHomeV007, referenceLine, volumeLine } from './homeV007.ts'
+import { offersBudgetDecision } from './budgetIntent.ts'
 
 declare const process: { exit(code?: number): never }
 let pass = 0, fail = 0
@@ -17,12 +18,12 @@ const ok = parseHomeV007({
     quote: { state: 'ok', as_of: NOW, source: 'market_quotes:alpaca', age_seconds: 30, session: 'regular', session_date: '2026-11-02', expected_session_date: '2026-11-02', basis: 'last trade', value: { price: 49.87 } },
     day_change: { state: 'ok', value: { usd: 0.4, pct: 0.8, reference_close: 49.47, reference_date: '2026-10-30' } },
     since_exit: { state: 'ok', value: { usd: -0.1, pct: -0.3, exit_price: 50, exit_date: '2026-10-30' } },
-    cio: { state: 'measured', value: { stance: 'hold', conviction: 3, store_label: 'canonical', stale: false } },
+    cio: { state: 'measured', value: { stance: 'hold', conviction: 3, stale: false } },
     market_risk_stance: { state: 'measured', value: { stance: 'elevated' } },
-    volume_vs_20d: { state: 'ok', value: { ratio: 1.4, sample_dates: ['2026-10-01'], not_time_adjusted: true } },
+    volume_vs_20d: { state: 'measured', value: { ratio: 1.4, sample_sessions: 20, average_start_date: '2026-10-01', average_end_date: '2026-10-29', basis: 'observed session volume versus twenty prior completed-session volumes; not time-adjusted' } },
   } },
   risk: { score: 61, categories: [{ key: 'tech', label: 'Technology', chip: 'STRESS', state: 'ok', as_of: NOW }], next_evaluation: { state: 'measured', value: { at: '2026-11-03T14:00:00Z', basis: 'declared' } } },
-  hedge: { triggers: [{ label: 'Technology', current: 4.8, threshold: 10, met: false }], inverse_funds: [{ symbol: 'SH', day_pct: 0.6, state: 'ok' }] },
+  hedge: { lagging_progress: { state: 'measured', value: { current: 4, threshold: 10, unit: 'sectors', ratio: 0.4 } }, inverse_moves: { SH: { quote: { state: 'measured', value: 31.2 }, day_change: { state: 'measured', value: { pct: 0.6 } } } } },
   budgets: [{ budget: 'demo', actual: 21000, limit: 15000, unit: 'usd', clears_when: 'below 15000', source_binding: { as_of: NOW, sha256: '0'.repeat(64) }, operator_decision: { state: 'unavailable', remediation: { key: 'pending_review', action: 'pending review' } } }],
   gaps: [{ symbol: 'SPCX', field: 'cio.rationale', reason: 'store does not expose it', remediation: { key: 'ask_owner', action: 'ask owner' } }],
 })
@@ -40,9 +41,14 @@ eq('budget remediation shown', ok.budgets[0].decisionRemediation, 'pending revie
 eq('gap carried', ok.gaps[0].key, 'ask owner (ask_owner)')
 
 const stale = parseHomeV007({ symbols: { X: { quote: { state: 'stale', as_of: '2026-11-02T20:00:00Z', age_seconds: 5400, value: { price: 10 } } } } })
-eq('a stale word maps to measured and keeps its value', stale.symbols[0].quote.price, 10)
+eq('a stale word keeps its value', stale.symbols[0].quote.price, 10)
 eq('stale maps to the contract vocabulary', stale.symbols[0].quote.state, 'measured')
 eq('age is kept', stale.symbols[0].quote.ageSeconds, 5400)
+// The word must survive: folding 'stale' into 'measured' and forgetting it republishes an old price as current.
+eq('the stale word is kept verbatim', stale.symbols[0].quote.word, 'stale')
+eq('and the fact is marked stale', stale.symbols[0].quote.stale, true)
+const fresh = parseHomeV007({ symbols: { X: { quote: { state: 'measured', as_of: '2026-11-02T20:00:00Z', value: { price: 10 } } } } })
+eq('a measured fact is not stale', fresh.symbols[0].quote.stale, false)
 
 const future = parseHomeV007({ symbols: { X: { quote: { state: 'ok', as_of: '2099-01-01T00:00:00Z', value: { price: 10 } } } } })
 eq('a future clock is unknown', future.symbols[0].quote.state, 'unknown')
@@ -144,7 +150,8 @@ const producerExit = parseHomeV007({ symbols: { X: { since_exit: { state: 'measu
 eq('since exit still reads the producer distance_price key', producerExit.symbols[0].sinceExit.usd, -1.2)
 eq('since exit still reads the producer distance_pct key', producerExit.symbols[0].sinceExit.pct, -2.4)
 eq('since exit still reads the producer reference_price key', producerExit.symbols[0].sinceExit.exitPrice, 51)
-eq('the producer reference_session_date supplies the exit date', producerExit.symbols[0].sinceExit.exitDate, '2026-10-29')
+// day_change owns `reference_session_date`; since_exit does not carry it, so it must not be borrowed from there.
+eq('since exit does not borrow another fact’s session date', producerExit.symbols[0].sinceExit.exitDate, null)
 
 // B. A measured claim with no number is not a measurement: it is unknown, with a reason and no values.
 const noValueDay = parseHomeV007({ symbols: { X: { day_change: { state: 'measured', value: { usd: null, pct: null } } } } })
@@ -239,6 +246,80 @@ eq('read_errors reads the producer reason', produced2.readErrors[0].code, 'Timeo
 eq('the risk score comes from the latest history row', produced2.risk.score, 61)
 eq('the stop distance reads the producer fact', produced2.positions[0].stopDistancePct, 4.5)
 eq('the stop state reads the producer fact', produced2.positions[0].stopState, 'intact')
+
+// E. The producer states its own failure at the top level: {state:"unavailable", reason, remediation, gaps,
+// read_errors}. That must render as a stated failure, never as a present-but-empty card.
+const unavailable = parseHomeV007({
+  schema: 'HomeMarketRiskContext@v1', state: 'unavailable', generated_at: '2026-11-02T21:00:00Z',
+  symbols: {}, positions: [], budgets: [],
+  reason: 'the additive home context could not be built (TimeoutError)',
+  remediation: { key: 'HOMEV007:context', action: 'Restore the additive context module; no fact is shown while it is unavailable.' },
+  gaps: [{ symbol: null, field: 'home_v007', reason: 'the additive home context could not be built (TimeoutError)', remediation: { key: 'HOMEV007:context', action: 'Restore the additive context module' } }],
+  read_errors: [{ source: 'home_v007_join', reason: 'TimeoutError', remediation: { key: 'HOMEV007:context', action: 'Restore' } }],
+})
+eq('an unavailable block is still present', unavailable.present, true)
+eq('and is marked unavailable', unavailable.unavailable, true)
+eq('and keeps the producer state', unavailable.state, 'unavailable')
+eq('and states the reason', unavailable.blockReason, 'the additive home context could not be built (TimeoutError)')
+check('and carries the remediation', (unavailable.blockRemediation ?? '').includes('Restore the additive context module'), unavailable.blockRemediation)
+eq('an available block is not unavailable', ok.unavailable, false)
+eq('a block with no state is not unavailable', parseHomeV007({ symbols: {} }).unavailable, false)
+
+// F. `partial` is a real producer state (analysis_references at 89663c715) and must not be flattened to unknown.
+const partialRefs = parseHomeV007({ symbols: { X: { analysis_references: { state: 'partial', as_of: NOW, source: 'analysis',
+  value: { invalidation: { state: 'measured', reference_price: 47.5, distance_price: -2.4 } } } } } })
+eq('a partial collection keeps the partial word', partialRefs.symbols[0].referencesFact.state, 'partial')
+eq('while a measured nested row stays measured', partialRefs.symbols[0].references[0].state, 'measured')
+
+// G. No value-bearing line may print past the state check (three renderers bypassed it before this repair).
+const unknownRef = parseHomeV007({ symbols: { X: { analysis_references: { state: 'measured', as_of: NOW,
+  value: { invalidation: { state: 'unknown', reason: 'no prior bar' } } } } } })
+const unknownRefLine = referenceLine(unknownRef.symbols[0].references[0])
+check('an unknown reference says unknown', unknownRefLine.includes('unknown'), unknownRefLine)
+check('and carries no distance', !/%|\$/.test(unknownRefLine), unknownRefLine)
+const unknownEvent = parseHomeV007({ symbols: { X: { next_event: { state: 'unknown', reason: 'no calendar row' } } } })
+const unknownEventLine = nextEventLine(unknownEvent.symbols[0].nextEvent)
+check('an unknown next event says unknown', (unknownEventLine ?? '').includes('unknown'), unknownEventLine)
+const unknownStance = parseHomeV007({ symbols: { X: { market_risk_stance: { state: 'unknown', reason: 'reader failed' } } } })
+const unknownStanceLine = marketStanceLine(unknownStance.symbols[0].marketStance)
+check('an unknown market stance says unknown', (unknownStanceLine ?? '').includes('unknown'), unknownStanceLine)
+check('and does not claim a stance', !(unknownStanceLine ?? '').includes('separate from CIO'), unknownStanceLine)
+const knownEvent = parseHomeV007({ symbols: { X: { next_event: { state: 'measured', as_of: NOW, value: { label: 'earnings', at: '2026-11-12' } } } } })
+check('a measured next event still renders', (nextEventLine(knownEvent.symbols[0].nextEvent) ?? '').includes('earnings'), nextEventLine(knownEvent.symbols[0].nextEvent))
+
+// H. The producer's real volume basis text is what the card shows — not a flag the parser invents.
+eq('volume reads the producer basis', ok.symbols[0].volume.basis?.includes('not time-adjusted'), true)
+check('and prints it', volumeLine(ok.symbols[0].volume).includes('not time-adjusted'), volumeLine(ok.symbols[0].volume))
+eq('volume reads the producer sample size', ok.symbols[0].volume.sampleSessions, 20)
+const unknownVolume = parseHomeV007({ symbols: { X: { volume_vs_20d: { state: 'unknown', reason: 'no daily bars' } } } })
+check('an unknown volume prints no multiple', !volumeLine(unknownVolume.symbols[0].volume).includes('×'), volumeLine(unknownVolume.symbols[0].volume))
+
+// I. Headlines carry a published clock, not an age the producer never emits.
+const heads = parseHomeV007({ symbols: { X: { headlines: { state: 'measured', as_of: '2026-10-30T13:05:00Z', value: [
+  { title: 'Widgets up', source: 'wire', url: 'https://example.invalid/a', published_at: '2026-10-30T13:05:00Z', guarded: true },
+] } } } })
+eq('a headline keeps its published clock', heads.symbols[0].headlines[0].publishedAt, '2026-10-30T13:05:00Z')
+check('and the line shows it', headlineLine(heads.symbols[0].headlines[0]).includes('Oct 30 09:05 ET'), headlineLine(heads.symbols[0].headlines[0]))
+
+// J. The hedge trigger is a producer fact {current, threshold, unit} with no `met`; nothing is derived from it.
+eq('the hedge trigger reads the producer current', ok.hedge.triggers[0].current, 4)
+eq('the hedge trigger reads the producer threshold', ok.hedge.triggers[0].threshold, 10)
+eq('the hedge trigger reads the producer unit', ok.hedge.triggers[0].unit, 'sectors')
+
+// K. The operator control follows the PAYLOAD, never a build latency latch. Today the producer emits `unavailable`
+// on every row, so nothing is offered; when E releases the route and store it says `available` and the control
+// appears with no source change here. An available row with no canonical scope is still refused (the body needs it).
+const availableRow = parseHomeV007({ budgets: [{ budget: 'demo', actual: 21000, limit: 15000, scope_id: 'account:demo',
+  breached: true, operator_decision: { state: 'available' } }] }).budgets[0]
+eq('the payload says the decision is available', availableRow.operatorDecision, 'available')
+eq('and the control is offered for a scoped row', offersBudgetDecision(availableRow), true)
+const unscoped = parseHomeV007({ budgets: [{ budget: 'demo', actual: 21000, limit: 15000,
+  breached: true, operator_decision: { state: 'available' } }] }).budgets[0]
+eq('an available decision with no canonical scope offers nothing', offersBudgetDecision(unscoped), false)
+eq('and a producer-unavailable row offers nothing', offersBudgetDecision(ok.budgets[0]), false)
+const unavailableRow = parseHomeV007({ budgets: [{ budget: 'demo', actual: 21000, limit: 15000, scope_id: 'account:demo',
+  operator_decision: { state: 'unavailable', reason: 'decision subtype not verified', remediation: { key: 'k', action: 'wire the reviewed subtype' } } }] }).budgets[0]
+eq('an unavailable decision keeps the producer reason for the reader', unavailableRow.decisionRemediation, 'wire the reviewed subtype (k)')
 
 console.log(`homeV007: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

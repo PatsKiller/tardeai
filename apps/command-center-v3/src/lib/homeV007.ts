@@ -6,10 +6,18 @@
 // so rather than looking like a gap. Advisory only — no size, order or stop level.
 // Runs under node --experimental-strip-types (homeV007.test.ts).
 
-export type FactState = 'measured' | 'unknown' | 'not_applicable'
+import { fmtAsOf } from './asOfDisplay.ts'
+
+export type FactState = 'measured' | 'partial' | 'unknown' | 'not_applicable'
 
 export type Fact = {
   state: FactState
+  /**
+   * The producer's own state word, kept verbatim. A stale observation is a real measurement of a past instant, so it
+   * keeps its value — but the word must survive to the screen instead of being relabelled "measured" and forgotten.
+   */
+  word: string | null
+  stale: boolean
   asOf: string | null
   source: string | null
   ageSeconds: number | null
@@ -31,11 +39,17 @@ export type SymbolContext = {
   dayChange: { usd: number | null; pct: number | null; referenceDate: string | null } & Fact
   sinceExit: { usd: number | null; pct: number | null; exitPrice: number | null; exitDate: string | null } & Fact
   references: Array<{ label: string; price: number | null; distanceUsd: number | null; distancePct: number | null } & Fact>
-  headlines: Array<{ title: string; source: string | null; publishedAt: string | null; ageSeconds: number | null }>
+  /**
+   * The collection's own fact. `partial` is what the producer emits when some nested references are missing: the
+   * measured rows below are still true, but the set is incomplete and the card must say so.
+   */
+  referencesFact: Fact
+  headlines: Array<{ title: string; source: string | null; publishedAt: string | null }>
   nextEvent: { label: string | null; at: string | null } & Fact
-  cio: { stance: string | null; conviction: string | number | null; storeLabel: string | null; stale: boolean } & Fact
+  cio: { stance: string | null; conviction: string | number | null; stale: boolean } & Fact
   marketStance: { value: string | null; headline?: string | null } & Fact
-  volume: { ratio: number | null; sampleDates: string[]; notTimeAdjusted: boolean } & Fact
+  /** The producer's own volume basis text ("not time-adjusted"), never a flag the parser invents. */
+  volume: { ratio: number | null; basis: string | null; sampleSessions: number | null; averageStartDate: string | null; averageEndDate: string | null } & Fact
 }
 
 export type BudgetRow = {
@@ -67,6 +81,14 @@ export type BudgetRow = {
 
 export type HomeV007 = {
   present: boolean
+  /**
+   * The producer's top-level `state`. `unavailable` is a stated failure, not an empty success: the block carries a
+   * reason, a remediation, and the gaps/read errors that explain it, and the card renders that instead of a frame.
+   */
+  state: string | null
+  unavailable: boolean
+  blockReason: string | null
+  blockRemediation: string | null
   symbols: SymbolContext[]
   positions: Array<{ symbol: string; account: string | null; pctAccount: number | null; denominator: string | null; stopDistancePct: number | null; stopState: string | null }>
   risk: {
@@ -74,7 +96,7 @@ export type HomeV007 = {
     categories: Array<{ key: string; label: string; chip: string | null; state: FactState; asOf: string | null; source: string | null; reason: string | null }>
     nextEvaluation: { at: string | null; basis: string | null } | null
   }
-  hedge: { triggers: Array<{ label: string; current: number | null; threshold: number | null; met: boolean | null }>; inverse: Array<{ symbol: string; dayPct: number | null; state: FactState }> }
+  hedge: { triggers: Array<{ label: string; current: number | null; threshold: number | null; unit: string | null; group: string | null }>; inverse: Array<{ symbol: string; dayPct: number | null; state: FactState }> }
   budgets: BudgetRow[]
   /** Top-level decision ledger. ``complete: false`` means the per-row history counts are partial. */
   decisionHistory: { complete: boolean | null; count: number | null; history: number }
@@ -86,7 +108,7 @@ const rec = (v: unknown): Record<string, unknown> | null => (v !== null && typeo
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null)
 const bool = (v: unknown): boolean => v === true
-const STATES: FactState[] = ['measured', 'unknown', 'not_applicable']
+const STATES: FactState[] = ['measured', 'partial', 'unknown', 'not_applicable']
 
 function remediationText(v: unknown): string | null {
   const o = rec(v)
@@ -95,13 +117,17 @@ function remediationText(v: unknown): string | null {
 }
 
 function fact(o: Record<string, unknown> | null): Fact {
-  const rawWord = str(o?.state)?.toLowerCase()
-  // The 2506 contract emits measured | unknown | not_applicable.
+  const rawWord = str(o?.state)?.toLowerCase() ?? null
+  // The contract emits measured | partial | unknown | not_applicable. Legacy spellings (ok/missing/stale) are read,
+  // but 'stale' is NOT folded into 'measured': the value stays and the staleness is carried as its own signal.
   const raw = (rawWord === 'ok' ? 'measured' : rawWord === 'stale' ? 'measured' : rawWord === 'missing' ? 'unknown' : rawWord) as FactState | undefined
+  const stale = rawWord === 'stale' || o?.stale === true
   const asOf = str(o?.as_of)
   const future = asOf ? (() => { const t = Date.parse(asOf); return Number.isFinite(t) && t > Date.now() + 60_000 })() : false
   return {
     state: future ? 'unknown' : (raw && STATES.includes(raw) ? raw : 'unknown'),
+    word: rawWord,
+    stale,
     asOf,
     source: str(o?.source),
     ageSeconds: num(o?.age_seconds),
@@ -194,7 +220,7 @@ export function parseHomeV007(raw: unknown): HomeV007 {
   const ctx = rec(raw)
   const gaps: HomeV007['gaps'] = []
   const readErrors: HomeV007['readErrors'] = []
-  if (!ctx) return { present: false, symbols: [], positions: [], risk: { score: null, categories: [], nextEvaluation: null }, hedge: { triggers: [], inverse: [] }, budgets: [], decisionHistory: { complete: null, count: null, history: 0 }, gaps: [{ member: 'home_v007', key: 'absent', reason: 'the response carries no home_v007 block', remediation: 'wait for the additive reader' }], readErrors }
+  if (!ctx) return { present: false, state: null, unavailable: false, blockReason: null, blockRemediation: null, symbols: [], positions: [], risk: { score: null, categories: [], nextEvaluation: null }, hedge: { triggers: [], inverse: [] }, budgets: [], decisionHistory: { complete: null, count: null, history: 0 }, gaps: [{ member: 'home_v007', key: 'absent', reason: 'the response carries no home_v007 block', remediation: 'wait for the additive reader' }], readErrors }
 
   for (const g of (Array.isArray(ctx.gaps) ? ctx.gaps : [])) {
     const o = rec(g); if (o) gaps.push({ member: [str(o.symbol), str(o.field)].filter(Boolean).join('.') || '?', key: remediationText(o.remediation) ?? '?', reason: str(o.reason), remediation: remediationText(o.remediation) })
@@ -223,7 +249,9 @@ export function parseHomeV007(raw: unknown): HomeV007 {
       usd: num(seVal?.distance_price) ?? num(seVal?.usd),
       pct: num(seVal?.distance_pct) ?? num(seVal?.pct),
       exitPrice: num(seVal?.reference_price) ?? num(seVal?.exit_price),
-      exitDate: str(seVal?.exit_date) ?? str(seVal?.reference_session_date) ?? str(se?.exit_date) ?? str(se?.reference_session_date) }
+      // The producer emits `exit_date` nowhere on this fact today; `reference_session_date` belongs to `day_change`
+      // and is not borrowed here. When absent the card shows no date rather than a date from another fact.
+      exitDate: str(seVal?.exit_date) ?? str(se?.exit_date) }
     const references = refsVal
       ? Object.entries(refsVal).slice(0, 12).map(([label, v]) => {
           const o = rec(v) ?? {}
@@ -238,14 +266,17 @@ export function parseHomeV007(raw: unknown): HomeV007 {
       dayChange: noValueIsUnknown(dayChange, [dayChange.usd, dayChange.pct]),
       sinceExit: noValueIsUnknown(sinceExit, [sinceExit.usd, sinceExit.pct, sinceExit.exitPrice]),
       references,
+      referencesFact: fact(refs),
+      // The producer's headline row is {title, source, url, published_at, guarded}; it carries no age, so the card
+      // shows the article's own published clock instead of inventing an age from the query.
       headlines: Array.isArray(headVal) ? headVal.filter(rec).slice(0, 4).map(h => {
         const o = rec(h) as Record<string, unknown>
-        return { title: str(o.title) ?? '(untitled)', source: str(o.source), publishedAt: str(o.published_at), ageSeconds: num(o.age_seconds) }
+        return { title: str(o.title) ?? '(untitled)', source: str(o.source), publishedAt: str(o.published_at) }
       }) : [],
       nextEvent: { ...fact(ne), label: str(neVal?.label) ?? str(neVal?.kind), at: str(neVal?.at) ?? str(neVal?.date) },
-      cio: { ...fact(cioRaw), stance: str(cioVal?.stance), conviction: num(cioVal?.conviction) ?? str(cioVal?.conviction) ?? num(rec(s.conviction)?.value), storeLabel: str(cioVal?.store_label), stale: bool(cioVal?.stale) },
+      cio: { ...fact(cioRaw), stance: str(cioVal?.stance), conviction: num(cioVal?.conviction) ?? str(cioVal?.conviction) ?? num(rec(s.conviction)?.value), stale: bool(cioVal?.stale) || bool(cioRaw?.stale) },
       marketStance: { ...fact(st), value: str(stVal?.stance), headline: str(stVal?.headline) } as SymbolContext['marketStance'],
-      volume: { ...fact(vol), ratio: num(volVal?.ratio), sampleDates: Array.isArray(volVal?.sample_dates) ? volVal!.sample_dates.slice(0, 20).map(String) : [], notTimeAdjusted: bool(volVal?.not_time_adjusted) },
+      volume: { ...fact(vol), ratio: num(volVal?.ratio), basis: str(volVal?.basis), sampleSessions: num(volVal?.sample_sessions), averageStartDate: str(volVal?.average_start_date), averageEndDate: str(volVal?.average_end_date) },
     }
   })
 
@@ -286,7 +317,9 @@ export function parseHomeV007(raw: unknown): HomeV007 {
   const hRaw = rec(ctx.hedge) ?? {}
   const trig = (key: 'lagging_progress' | 'exposure_progress') => {
     const f = rec(hRaw[key]); const v = rec(f?.value)
-    return f ? [{ label: key === 'lagging_progress' ? 'lagging sectors' : 'exposure', current: num(v?.current), threshold: num(v?.threshold), met: typeof v?.met === 'boolean' ? v.met : null }] : []
+    // The producer's trigger value is {current, threshold, unit?, group?}; it states no `met`, and the card does not
+    // derive one — a threshold comparison belongs to the producer that owns the trigger.
+    return f ? [{ label: key === 'lagging_progress' ? 'lagging sectors' : 'exposure', current: num(v?.current), threshold: num(v?.threshold), unit: str(v?.unit), group: str(v?.group) }] : []
   }
   const hedge = {
     triggers: [...trig('lagging_progress'), ...trig('exposure_progress')],
@@ -331,5 +364,68 @@ export function parseHomeV007(raw: unknown): HomeV007 {
     history: Array.isArray(dh?.history) ? dh!.history.length : 0,
   }
 
-  return { present: true, symbols, positions, risk, hedge, budgets, decisionHistory, gaps, readErrors }
+  const blockState = str(ctx.state)?.toLowerCase() ?? null
+  return {
+    present: true,
+    state: blockState,
+    unavailable: blockState === 'unavailable',
+    blockReason: str(ctx.reason),
+    blockRemediation: remediationText(ctx.remediation),
+    symbols, positions, risk, hedge, budgets, decisionHistory, gaps, readErrors,
+  }
+}
+
+// ── Display lines ────────────────────────────────────────────────────────────────────────────────────────────────
+// Pure string builders, so the rules below are unit-tested rather than only rendered. Every value-bearing line goes
+// through `stateText`: a fact the parser marked unknown/partial/not_applicable must never print a normal-looking value.
+
+export function stateText(f: Fact): string | null {
+  if (f.state === 'measured') return null
+  if (f.state === 'not_applicable') return 'not applicable'
+  const bits = [f.reason, f.remediation].filter(Boolean).join(' · ')
+  return `${f.state === 'partial' ? 'partial' : 'unknown'}${bits ? ` — ${bits}` : ''}`
+}
+
+/** A fact's own clock, source and any declared staleness, as plain text. Empty when the payload supplied none. */
+export function provenanceText(f: { asOf: string | null; source: string | null; stale?: boolean; ageSeconds?: number | null }): string {
+  const clock = f.asOf ? ` · ${fmtAsOf(f.asOf) ?? f.asOf}` : ''
+  const stale = f.stale ? ` · stale${f.ageSeconds != null ? ` (${Math.round(f.ageSeconds / 60)}m)` : ''}` : ''
+  return `${clock}${f.source ? ` · ${f.source}` : ''}${stale}`
+}
+
+const money = (v: number | null) => (v == null ? null : `$${v.toLocaleString('en-US', { maximumFractionDigits: 2 })}`)
+const pct = (v: number | null) => (v == null ? null : `${v > 0 ? '+' : ''}${v.toFixed(2)}%`)
+
+export function referenceLine(r: SymbolContext['references'][number]): string {
+  const state = stateText(r)
+  if (state) return `to trigger ${r.label} ${state}${provenanceText(r)}`
+  return `to trigger ${r.label} ${r.distancePct != null ? pct(r.distancePct) : ''}${r.distanceUsd != null ? ` (${money(r.distanceUsd)})` : ''}${provenanceText(r)}`
+}
+
+export function nextEventLine(ne: SymbolContext['nextEvent']): string | null {
+  const state = stateText(ne)
+  if (state) return `next event ${state}${provenanceText(ne)}`
+  if (!ne.label && !ne.at) return null
+  return `next event ${ne.label ?? ''}${ne.at ? ` · ${fmtAsOf(ne.at) ?? ne.at}` : ''}${provenanceText(ne)}`
+}
+
+export function marketStanceLine(st: SymbolContext['marketStance']): string | null {
+  const state = stateText(st)
+  if (state) return `market-risk stance ${state}${provenanceText(st)}`
+  if (!st.value) return null
+  return `market-risk stance ${st.value} (separate from CIO)${provenanceText(st)}`
+}
+
+export function volumeLine(v: SymbolContext['volume']): string {
+  const state = stateText(v)
+  if (state) return `volume ${state}${provenanceText(v)}`
+  return `volume ${v.ratio ?? 'unknown'}× 20-day${v.basis ? ` · ${v.basis}` : ''}${provenanceText(v)}`
+}
+
+export function headlineLine(h: SymbolContext['headlines'][number]): string {
+  return `${h.title}${h.publishedAt ? ` · ${fmtAsOf(h.publishedAt) ?? h.publishedAt}` : ''}`
+}
+
+export function hedgeLine(t: HomeV007['hedge']['triggers'][number]): string {
+  return `${t.label} ${t.current ?? '?'} of ${t.threshold ?? '?'}${t.unit ? ` ${t.unit}` : ''}${t.group ? ` · ${t.group}` : ''}`
 }

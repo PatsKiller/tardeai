@@ -5,6 +5,22 @@
 // outside the allowlist. Preview is always `dry_run: true`; a real write needs a separate confirm with the same
 // request_id and the same canonical source binding.
 
+/**
+ * Is the operator decision offered for this budget row?
+ *
+ * The gate is the PAYLOAD, not a build constant: `operator_decision.state === "available"` is the producer's own
+ * statement (E's contract, docs/ops/home_v007_data_contract.md) that a valid current source, the approved readable
+ * decision store and the `POST /api/v2/governance/budget-presentation/decide` route are all live for this scope. While
+ * E emits `unavailable` — which it does today — nothing is offered and the card shows the producer's own reason and
+ * remediation instead. When that release lands, this control becomes live with no source change here: there is no
+ * latch that could stay false after the producer says available.
+ *
+ * The row must also name the canonical scope and the budget key, because the request body is scoped by them.
+ */
+export function offersBudgetDecision(row: { operatorDecision: 'available' | 'unavailable'; scopeId: string | null; key: string }): boolean {
+  return row.operatorDecision === 'available' && !!row.scopeId && !!row.key && row.key !== '?'
+}
+
 export const BUDGET_PRESENTATION_SUBTYPE = 'market_risk_budget_presentation'
 export const BUDGET_ACTION = 'intentional_until'
 export const BUDGET_BASIS_PATH = '/api/v2/governance/budget-presentation'
