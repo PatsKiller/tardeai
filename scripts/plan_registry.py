@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Plan registry — every approved plan persisted on the server for every agent.
+"""Plan registry — every registered plan persisted on the server for every agent.
 
-An operator-approved plan is written ONCE to
+A plan is written ONCE to
 ``${TRADEAI_STATE_ROOT}/data/coordination/plans/<plan-id>.md`` with front-matter, and its lifecycle
 is followed from there: the agent that picks it up links its claim, branch and PR; steps are ticked
-as they are done; the status moves approved -> in_progress -> done (or abandoned/stalled). Every
+as they are done; the status moves registered -> in_progress -> done (or abandoned/stalled). Every
 mutation also appends one line to the append-only ``ledger.jsonl`` beside the plans.
+
+A registration is NOT an approval: ``add`` defaults to ``status: registered`` and only an explicit
+``status="approved"`` / ``--status approved`` records that a plan was approved. The hook registers
+plans; it never claims approval.
 
 Claude Code registers plans through the PostToolUse hook on ``ExitPlanMode`` (see
 ``docs/ops/PLAN_REGISTRY.md`` for the settings snippet; the repository never edits the operator's
@@ -39,9 +43,14 @@ from typing import Any, Iterator
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = ROOT / "config" / "plan_registry.json"
-STATUSES = ("approved", "in_progress", "done", "abandoned", "stalled")
+STATUSES = ("registered", "approved", "in_progress", "done", "abandoned", "stalled")
 STALE_STATUSES = ("approved", "in_progress")
 VIEW_SCHEMA = "PlanRegistryView@v1"
+#: Fixed store-state reasons. They are served over the read-only API, so they must never carry a
+#: filesystem path or exception text.
+STORE_ABSENT_REASON = "the plan store directory does not exist"
+STORE_UNLISTABLE_REASON = "the plan store directory cannot be listed"
+UNREADABLE_FILE_REASON = "the plan file cannot be read"
 _STEP_RE = re.compile(r"^\s*[-*]\s*\[( |x|X)\]\s+(.*)$")
 #: A plan id is a single path component; anything else is refused before it reaches the filesystem.
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,80}$")
@@ -270,9 +279,9 @@ class Registry:
         return last
 
     # -- api
-    def add(self, *, title: str, author: str, vendor: str, approved_at: str,
+    def add(self, *, title: str, author: str, vendor: str, approved_at: str | None = None,
             body: str | None = None, body_path: Path | None = None, quote: str | None = None,
-            pid: str | None = None, status: str = "approved", proof: str | None = None) -> str:
+            pid: str | None = None, status: str = "registered", proof: str | None = None) -> str:
         if status not in STATUSES:
             raise ValueError(f"status {status!r} is not one of {STATUSES}")
         text = body if body is not None else (Path(body_path).read_text(encoding="utf-8") if body_path else "")
@@ -284,7 +293,12 @@ class Registry:
                 return new_id  # idempotent: the same plan is never written twice
             front = {"id": new_id, "title": title, "author_session": author,
                      "author_proof": proof or author_proof(author, root=self.root), "vendor": vendor,
-                     "approved_at": approved_at, "status": status, "updated_at": _utc()}
+                     "status": status, "updated_at": _utc()}
+            if approved_at:
+                # Never defaulted from the clock: an approval time is recorded only when the caller
+                # supplies it deliberately. Stamping a registration with its write time would read as
+                # an approval the registry never received (review 4, 2026-11-03).
+                front["approved_at"] = approved_at
             if quote:
                 front["operator_quote"] = quote
             self._write(new_id, front, text)
@@ -302,6 +316,11 @@ class Registry:
             # instead of publishing a 500 with the decode error.
             raise KeyError(f"no readable plan {pid!r} in {self.plans}") from None
         doc = parse_plan(text)
+        if not doc["front"]:
+            # parse_plan is lenient: a truncated/missing front-matter block is returned as body with
+            # an empty front. That is not a readable plan, so detail takes the same fixed 404 path as
+            # a non-UTF-8 file instead of publishing a plan with zero steps.
+            raise KeyError(f"no readable plan {pid!r} in {self.plans}")
         doc["front"].setdefault("id", pid)
         return doc
 
@@ -334,7 +353,9 @@ class Registry:
             try:
                 text = path.read_text(encoding="utf-8")
             except OSError:
-                continue  # one unreadable file must not take the whole listing down
+                # one unreadable file must not take the whole listing down, but it is a visible gap
+                rows.append(unreadable_entry(path, UNREADABLE_FILE_REASON))
+                continue
             except UnicodeDecodeError:
                 rows.append(unreadable_entry(path, "file is not valid UTF-8 text"))
                 continue
@@ -412,7 +433,8 @@ class Registry:
             m = _STEP_RE.match(line)
             if m:
                 steps.append({"done": m.group(1).lower() == "x", "text": m.group(2).strip()[:300]})
-        entry = {**{k: doc["front"].get(k) for k in ("id", "title", "author_session", "vendor", "approved_at",
+        entry = {**{k: doc["front"].get(k) for k in ("id", "title", "author_session", "author_proof",
+                                                    "vendor", "approved_at",
                                                     "operator_quote", "status", "claim", "branch", "pr",
                                                     "updated_at", "stalled_since")},
                  "id": doc["front"].get("id") or pid, "steps": steps,
@@ -421,27 +443,54 @@ class Registry:
             entry["body"] = doc["body"]
         return entry
 
+    def _store_state(self) -> dict[str, Any]:
+        """Whether the plan store can actually be listed, so a gap never renders as an empty store.
+
+        ``absent`` and ``unlistable`` carry fixed strings — no filesystem path, no exception text —
+        because they are served to every viewer over the read-only API. ``os.listdir`` is a probe
+        only: ``_iter_plans`` stays the row source, so its containment rules are unchanged.
+        """
+        try:
+            if not self.plans.is_dir():
+                return {"state": "absent", "reason": STORE_ABSENT_REASON}
+        except OSError:
+            return {"state": "absent", "reason": STORE_ABSENT_REASON}
+        try:
+            os.listdir(self.plans)
+        except OSError:
+            return {"state": "unlistable", "reason": STORE_UNLISTABLE_REASON}
+        return {"state": "ok", "reason": None}
+
     def view(self, pid: str | None = None) -> dict[str, Any]:
-        """The read-only shape served by /api/v2/plans (list, or one plan with its body)."""
+        """The read-only shape served by /api/v2/plans (list, or one plan with its body).
+
+        ``store`` and ``as_of`` are always present: a directory that was never read (absent or
+        unlistable) is reported as such instead of rendering byte-identically to a genuinely empty
+        store. ``plans`` stays ``[]`` on a gap — no row is ever fabricated.
+        """
+        store = self._store_state()
         if pid:
-            return {"schema": VIEW_SCHEMA, "plan": self._entry(pid, self.get(pid), body=True)}
+            entry = self._entry(pid, self.get(pid), body=True)
+            return {"schema": VIEW_SCHEMA, "as_of": _utc(), "store": store, "plan": entry}
         rows = []
-        for path in self._iter_plans():
-            try:
-                text = path.read_text(encoding="utf-8")
-            except OSError:
-                continue  # one unreadable entry must not take the whole Plans listing down
-            except UnicodeDecodeError:
-                rows.append(unreadable_entry(path, "file is not valid UTF-8 text"))
-                continue
-            doc = parse_plan(text)
-            if doc["front"]:
-                rows.append(self._entry(path.stem, doc, body=False))
-            else:
-                # A file the store holds but cannot parse is a gap, not a plan that never existed.
-                rows.append(unreadable_entry(path, front_matter_gap(text) or "front matter is not readable"))
+        if store["state"] == "ok":  # build the listing only after the store state is established
+            for path in self._iter_plans():
+                try:
+                    text = path.read_text(encoding="utf-8")
+                except OSError:
+                    rows.append(unreadable_entry(path, UNREADABLE_FILE_REASON))
+                    continue
+                except UnicodeDecodeError:
+                    rows.append(unreadable_entry(path, "file is not valid UTF-8 text"))
+                    continue
+                doc = parse_plan(text)
+                if doc["front"]:
+                    rows.append(self._entry(path.stem, doc, body=False))
+                else:
+                    # A file the store holds but cannot parse is a gap, not a plan that never existed.
+                    rows.append(unreadable_entry(path, front_matter_gap(text) or "front matter is not readable"))
         rows.sort(key=lambda r: str(r.get("approved_at") or ""), reverse=True)
-        return {"schema": VIEW_SCHEMA, "plans": rows}
+        return {"schema": VIEW_SCHEMA, "as_of": _utc(), "store": store, "plans": rows}
 
     def stale(self, *, now: str | None = None, apply: bool = False, hours: float | None = None) -> list[str]:
         """Approved/in-progress plans with no claim, branch or PR and no activity for N hours."""
@@ -518,6 +567,8 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--approved-at", default=None)
     a.add_argument("--quote", default=None)
     a.add_argument("--id", default=None)
+    a.add_argument("--status", choices=STATUSES, default="registered",
+                   help="registered (default) records the plan; approved claims an approval")
     a.add_argument("--json", action="store_true")
 
     sub.add_parser("status")
@@ -552,8 +603,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.cmd == "add":
             pid = r.add(title=args.title, author=args.author, vendor=args.vendor,
-                        approved_at=args.approved_at or _utc(), body=args.body,
-                        body_path=Path(args.file) if args.file else None, quote=args.quote, pid=args.id)
+                        approved_at=args.approved_at, body=args.body,
+                        body_path=Path(args.file) if args.file else None, quote=args.quote, pid=args.id,
+                        status=args.status)
             _print({"id": pid}) if args.json else print(pid)
         elif args.cmd == "status":
             counts: dict[str, int] = {s: 0 for s in STATUSES}

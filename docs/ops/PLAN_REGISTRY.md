@@ -1,8 +1,19 @@
-# Plan registry — every approved plan persisted for every agent
+# Plan registry — every registered plan persisted for every agent
 
-Operator, 2026-11-02: "build the plan registry". A plan the operator approves is written once to the
-server, with its approval provenance, and every agent — Claude Code, Codex, Cursor, any vendor — can
-find it, link its claim/branch/PR, tick its steps and follow it to done or abandoned.
+Operator, 2026-11-02: "build the plan registry". A plan is written once to the server, with its
+provenance, and every agent — Claude Code, Codex, Cursor, any vendor — can find it, link its
+claim/branch/PR, tick its steps and follow it to done or abandoned.
+
+## Status lifecycle
+
+    registered -> in_progress -> done
+                 \-> abandoned / stalled
+
+`registered` is the default and it is **not** an approval. It records only that the plan exists and
+who registered it. A plan becomes `approved` only when the caller writes it explicitly (`add
+--status approved`, or `set-status <id> approved`) — the CLI and the hook never claim approval on
+someone else's behalf. Only `approved` and `in_progress` plans are eligible for the stale scan; a
+`registered` plan is not "an approved plan nobody picked up".
 
 ## Where it lives
 
@@ -38,9 +49,10 @@ Claude Code, add this to that file (merge into the existing `hooks` object):
 }
 ```
 
-The hook reads Claude Code's JSON on stdin, takes the approved text (`tool_response.plan` first, then
-a `planFilePath` file, then `tool_input.plan`), and writes an approved plan with `vendor: claude` and
-the session id as `author_session`. A `planFilePath` is read ONLY when it is a plan-shaped document — a `*.md` / `*.markdown` / `*.txt`
+The hook reads Claude Code's JSON on stdin, takes the plan text (`tool_response.plan` first, then
+a `planFilePath` file, then `tool_input.plan`), and **registers** it with `status: registered`,
+`vendor: claude` and the session id as `author_session`. It never passes `status: approved`: an
+`ExitPlanMode` payload is evidence that a plan exists, not a claim that the operator approved it. A `planFilePath` is read ONLY when it is a plan-shaped document — a `*.md` / `*.markdown` / `*.txt`
 name that is not a dotfile and not credential-shaped (`token`, `secret`, `credential`, `password`,
 `api_key`, `.env`, `id_rsa`, `.pem`, `.key` are refused) — inside one of two directories: the plan
 store (`<state root>/data/coordination/plans`) or `~/.claude/plans`. It must be a regular,
@@ -51,11 +63,20 @@ is reported on stderr and the exit status is 0.
 ## Every other vendor: the CLI
 
     python3 scripts/plan_registry.py add --title "..." --file plan.md \
-        --author <session> --vendor codex [--quote "operator words"]
+        --author <session> --vendor codex [--quote "operator words"] \
+        [--status registered|approved|in_progress|done|abandoned|stalled]
+
+`--status` defaults to `registered`. Only pass `--status approved` when you are recording an actual
+approval; the default registration is not one.
+
+`approved_at` is never defaulted: it is recorded only when the caller passes `--approved-at` (or the
+library receives one). A registration therefore carries no approval time, and the page prints an
+approval date only for a plan whose status is `approved`. The ExitPlanMode hook records none.
 
 `author_session` is a self-declared string. Each plan also records `author_proof`: `claim:<id>` when
 that session matches a live claim on the board, otherwise `self-declared` — weigh it accordingly; it
-is not an authentication.
+is not an authentication. Both `author_proof` and `stalled_since` are served by the read-only API
+(list and detail).
     python3 scripts/plan_registry.py status
     python3 scripts/plan_registry.py list [--status approved] [--json]
     python3 scripts/plan_registry.py show <plan-id>
@@ -84,16 +105,39 @@ installing the timer is operator-only, AGENTS.md §17):
 Follow-up PR: `/api/v2/plans` (read-only list/detail from the same plan files) and a mobile-first
 Command Center "Plans" page (list -> full-screen detail, steps done/left, claim and PR links).
 
-The endpoint answers `200` with `{"ok": true, "data": {schema: "PlanRegistryView@v1", plans|plan: ...}}`.
+The endpoint answers `200` with
+`{"ok": true, "data": {"schema": "PlanRegistryView@v1", "as_of": <UTC ISO-8601>, "store": {...},
+"plans"|"plan": ...}}`. `as_of` is the time the answer was built.
+
+`store` says whether the store could actually be read, so a store that was never read can never
+render byte-identically to a genuinely empty one:
+
+```json
+{"state": "ok" | "absent" | "unlistable", "reason": null | "<fixed string>"}
+```
+
+* `ok` — the directory exists and can be listed; `reason` is `null`.
+* `absent` — `.../data/coordination/plans` does not exist or is not a directory; reason is
+  `"the plan store directory does not exist"`.
+* `unlistable` — listing the directory raised `OSError` (e.g. permissions); reason is
+  `"the plan store directory cannot be listed"`.
+
+The reason strings are fixed — they never carry a filesystem path or exception text. `plans` stays
+`[]` on a gap: no row is ever fabricated. The same `store`/`as_of` fields are present on a detail
+read.
+
 An id that fails the id rules is `400` with the fixed `{"ok": false, "error": "invalid plan id"}`; a
 valid id with no plan is `404` with `{"ok": false, "error": "plan not found"}`. Neither body echoes
 the id or an exception, because the generic dispatcher's `500` would publish both.
 
 A `*.md` file in the store whose front matter cannot be parsed (truncated, missing, or non-UTF-8) is
 still listed — as `{"status": "unreadable", "id": ..., "filename": ..., "reason": ...}` — rather than
-dropped, so the page never hides a plan the operator approved. The same row surfaces from `list()`,
-so the stale scan skips it instead of failing. Valid plans are unchanged; a detail read (`get()`, or
-`/api/v2/plans?id=`) of such a file is `404`, never a decode error.
+dropped, so the page never hides a plan the operator approved. A file listed but unreadable (`OSError`,
+e.g. an entry that is a directory) is the same kind of row, with the fixed reason
+`"the plan file cannot be read"`; one such entry never takes the listing down. The same row surfaces
+from `list()`, so the stale scan skips it instead of failing. Valid plans are unchanged; a detail read
+(`get()`, or `/api/v2/plans?id=`) of such a file is `404`, never a decode error and never a plan with
+zero steps.
 
 ## Authority
 

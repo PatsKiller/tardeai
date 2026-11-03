@@ -3,7 +3,7 @@ import {Link} from 'react-router-dom'
 import DeskPage, {DeskGap} from '../components/DeskPage'
 import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetailSheet'
 import {useApi} from '../hooks/useApi'
-import { claimHref, detailGap, planFrom, plansFrom, plansGap, prUrl, statusWord, stepSummary, waitingDecision, type PlanRow, type PlansView, pickedUp } from '../lib/plansModel'
+import { claimHref, detailGap, planFrom, plansFrom, plansGap, provenanceLabel, prUrl, stalledLine, statusWord, stepSummary, waitingDecision, type PlanRow, type PlansView, pickedUp } from '../lib/plansModel'
 import '../styles/plans.css'
 
 const INDEX = '/api/v2/plans'
@@ -11,14 +11,19 @@ const INDEX = '/api/v2/plans'
 function DetailBody({plan}: {plan: PlanRow}) {
   const pr = prUrl(plan)
   const claim = claimHref(plan)
+  const stalled = stalledLine(plan)
   return (
     <div className="pl-detail">
       <p className="pl-status">{statusWord(plan.status, plan)}</p>
       <p className="pl-meta">
         {plan.vendor ? `Registered by ${plan.vendor}` : 'Vendor unknown'}
-        {plan.approved_at ? ` · approved ${plan.approved_at.slice(0, 10)}` : ''}
+        {plan.status === 'approved' && plan.approved_at
+          ? ` · approved ${plan.approved_at.slice(0, 10)}`
+          : ''}
         {plan.updated_at ? ` · updated ${plan.updated_at.slice(0, 16).replace('T', ' ')}` : ''}
+        {stalled ? ` · ${stalled}` : ''}
       </p>
+      <p className="pl-provenance">{provenanceLabel(plan)}</p>
       {plan.operator_quote && <blockquote className="pl-quote">“{plan.operator_quote}”</blockquote>}
       <p className="pl-steps-summary">{stepSummary(plan)}</p>
       {Array.isArray(plan.steps) && plan.steps.length > 0 && (
@@ -59,8 +64,13 @@ export default function PlansPage() {
   const listKnown = !index.loading && !listGap && Boolean(index.data)
   const waiting = rows.filter(r => r.status === 'approved' && !pickedUp(r)).length
   const decisionGap = waitingDecision(waiting, {loading: index.loading, known: listKnown})
-  const asOf = rows.reduce<string | undefined>(
-    (m, r) => (r.updated_at && (!m || String(r.updated_at) > m) ? String(r.updated_at) : m), undefined)
+  // A successful empty read is a known-empty store with a receipt (`as_of`), not a freshness gap:
+  // otherwise the page would report "update time unavailable" for a store it just read. When the
+  // read failed there is no `listKnown`, so `asOf` stays undefined and the gap stands.
+  const asOf = listKnown && rows.length === 0
+    ? index.data?.as_of
+    : rows.reduce<string | undefined>(
+        (m, r) => (r.updated_at && (!m || String(r.updated_at) > m) ? String(r.updated_at) : m), undefined)
 
   const sheet = plan ? (
     detail.mobile
@@ -78,7 +88,7 @@ export default function PlansPage() {
     <>
       <DeskPage
         title="Plans"
-        purpose="Every approved plan on the server for every agent: who approved it, who picked it up, what is left. Claude Code registers a plan when you leave plan mode; Codex and Cursor use scripts/plan_registry.py."
+        purpose="Every registered plan on the server for every agent: who registered it, who picked it up, what is left. Claude Code registers a plan when you leave plan mode; Codex and Cursor use scripts/plan_registry.py."
         sources={[{id: 'plans', label: 'Plan store', gap, asOf, clockOnly: true}]}
         decisions={[]}
         decisionGap={decisionGap}

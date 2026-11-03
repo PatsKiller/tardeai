@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Claude Code PostToolUse hook: an approved ExitPlanMode plan goes into the plan registry.
+"""Claude Code PostToolUse hook: an ExitPlanMode plan is registered in the plan registry.
 
 Wired by the operator in `~/.claude/settings.json` (the snippet lives in docs/ops/PLAN_REGISTRY.md;
 the repository never edits that file). Claude Code posts one JSON document on stdin:
@@ -7,7 +7,8 @@ the repository never edits that file). Claude Code posts one JSON document on st
     {"session_id": "...", "tool_name": "ExitPlanMode", "tool_input": {"plan": "..."}}
 
 The plan text is read from ``tool_input.plan`` (falling back to a plain string ``tool_input``), and
-written as an approved plan with vendor ``claude`` and the session id as its author. The SAME plan
+written with vendor ``claude`` and the session id as its author. The status is the registry default
+(``registered``): the hook records that the plan exists, never that it was approved. The SAME plan
 produces the same plan id, so a retried hook never duplicates a plan.
 
 Never fails the tool: a registry problem is reported on stderr and the exit status is 0, because a
@@ -163,8 +164,8 @@ def main() -> int:
         return 0
     session = str(payload.get("session_id") or "unknown-session")
     try:
-        pid = pr.Registry().add(title=title_from_plan(text), body=text, author=session,
-                                vendor="claude", approved_at=pr._utc())
+        # No approved_at: the hook records that the plan exists, never when it was "approved".
+        pid = pr.Registry().add(title=title_from_plan(text), body=text, author=session, vendor="claude")
         print(f"plan_registry_hook: {pid}", file=sys.stderr)
     except Exception as exc:  # noqa: BLE001 - the hook must never block the planner
         print(f"plan_registry_hook: {type(exc).__name__}: {exc}", file=sys.stderr)

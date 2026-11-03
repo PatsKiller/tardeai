@@ -17,18 +17,47 @@ export type PlanRow = {
   steps?: PlanStep[]
   body?: string
   operator_quote?: string
+  /** `"claim:<id>"` or `"self-declared"`; absent when the server recorded nothing. */
+  author_proof?: string
+  stalled_since?: string | null
 }
 
-export type PlansView = {schema?: string; plans?: PlanRow[]; plan?: PlanRow; ok?: boolean; error?: string}
+/** The registry store's own health, separate from the payload's schema. A store that could not be
+ *  listed must never be rendered as an authoritative empty registry. */
+export type PlanStore = {state?: string; reason?: string | null}
+
+export type PlansView = {
+  schema?: string; plans?: PlanRow[]; plan?: PlanRow; ok?: boolean; error?: string
+  store?: PlanStore; as_of?: string
+}
 
 export const PLANS_SCHEMA = 'PlanRegistryView@v1'
 
 export const STATUS_WORDS: Record<string, string> = {
   approved: 'Approved — nobody has picked it up',
+  // Registration is not approval: a newly registered plan has an explicit, separate status word.
+  registered: 'Registered — approval not recorded',
   in_progress: 'In progress',
   done: 'Done',
   abandoned: 'Abandoned',
   stalled: 'Stalled — no activity',
+}
+
+/** The provenance the registry recorded. `self-declared` is not an approval, and an absent field is
+ *  not "nobody registered it" — it is simply not recorded. Never invent an approval step. */
+export function provenanceLabel(plan: PlanRow): string {
+  const proof = plan.author_proof
+  if (!proof) return 'Provenance: not recorded'
+  if (proof === 'self-declared') return 'Provenance: self-declared — no approval recorded'
+  if (proof.startsWith('claim:')) return `Provenance: claim ${proof.slice('claim:'.length)}`
+  return `Provenance: ${proof}`
+}
+
+/** The stalled clock, only when the registry recorded both the status and the instant it stalled.
+ *  A bare "stalled" status must not invent a start date. */
+export function stalledLine(plan: PlanRow): string | null {
+  if (plan.status !== 'stalled' || !plan.stalled_since) return null
+  return `Stalled since ${String(plan.stalled_since).slice(0, 10)}`
 }
 
 /** A plan is "picked up" when a claim, a branch or a PR is linked — the registry leaves the status
@@ -95,13 +124,17 @@ function schemaGap(view: PlansView): string | null {
 
 /** Why a listing cannot be treated as an empty registry, or null when it is a usable view.
  *  useApi unwraps `{ok,data}` but leaves an `{ok:false,error}` body in `data`, so both shapes are
- *  checked here: the page must never paint "No plans registered yet." from an unparsed payload. */
+ *  checked here: the page must never paint "No plans registered yet." from an unparsed payload.
+ *  A schema-valid payload can still describe a store that could not be read (`store.state` not
+ *  `"ok"`): that is a gap with the server's reason, never an authoritative empty list. */
 export function plansGap(view: PlansView | null): string | null {
   if (!view) return 'no plan registry response'
   if (view.ok === false) return String(view.error || 'Plan store unreadable')
   const schema = schemaGap(view)
   if (schema) return schema
   if (!Array.isArray(view.plans)) return 'plan registry returned no plan list'
+  const storeState = view.store?.state
+  if (storeState !== undefined && storeState !== 'ok') return String(view.store?.reason || 'the plan store could not be read')
   return null
 }
 

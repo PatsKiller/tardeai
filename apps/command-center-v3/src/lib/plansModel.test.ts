@@ -1,6 +1,6 @@
 // Plans page model: the read-only registry view, in the operator's words.
 // Runs in the CC-v3 build: node --experimental-strip-types src/lib/plansModel.test.ts
-import {claimHref, detailGap, openStepCount, pickedUp, planFrom, plansFrom, plansGap, prUrl, statusWord, stepSummary, waitingDecision, type PlanRow} from './plansModel.ts'
+import {claimHref, detailGap, openStepCount, pickedUp, planFrom, plansFrom, plansGap, provenanceLabel, prUrl, stalledLine, statusWord, stepSummary, waitingDecision, type PlanRow} from './plansModel.ts'
 declare const process: {exit(code?: number): never}
 function fail(m: string): never { console.log(`  [FAIL] ${m}`); process.exit(1) }
 let n = 0
@@ -25,6 +25,20 @@ ok(plansGap({schema: 'PlanRegistryView@v1', plans: []}) === null, 'a valid empty
 ok(plansGap({schema: 'PlanRegistryView@v1', plans: [row]}) === null, 'a valid listing has no gap')
 ok(plansGap({schema: 'PlanRegistryView@v1'}) !== null, 'a missing plan list is a gap')
 ok(plansGap(null) !== null, 'a missing response is a gap')
+// A schema-valid payload can still describe a store that could not be read. That is a gap with the
+// server's reason — never an authoritative empty registry that paints "No plans registered yet.".
+eq(plansGap({schema: 'PlanRegistryView@v1', plans: [], store: {state: 'absent', reason: 'plan store absent'}}),
+   'plan store absent', 'an absent store is a gap with its reason')
+eq(plansGap({schema: 'PlanRegistryView@v1', plans: [], store: {state: 'unlistable', reason: 'store unlistable'}}),
+   'store unlistable', 'an unlistable store is a gap with its reason')
+eq(plansGap({schema: 'PlanRegistryView@v1', plans: [], store: {state: 'unlistable', reason: null}}),
+   'the plan store could not be read', 'a store gap without a reason falls back to a fixed sentence')
+ok(plansGap({schema: 'PlanRegistryView@v1', plans: [], store: {state: 'ok'}}) === null,
+   'a healthy store keeps a valid empty listing known')
+ok(plansGap({schema: 'PlanRegistryView@v1', plans: [row]}) === null,
+   'a missing store field does not turn a valid listing into a gap')
+ok(plansGap({schema: 'PlanRegistryView@v1', plans: [], as_of: '2026-11-03T00:00:00Z'}) === null,
+   'as_of alone does not create a gap')
 eq(plansFrom({schema: 'PlanRegistryView@v1', plans: [
   {...row, id: 'old', approved_at: '2026-11-01T00:00:00Z'},
   {...row, id: 'new', approved_at: '2026-11-02T00:00:00Z'},
@@ -36,6 +50,20 @@ eq(openStepCount({steps_left: '2'} as unknown as PlanRow), null, 'openStepCount 
 eq(openStepCount({steps_left: 2} as unknown as PlanRow), 2, 'openStepCount keeps a valid count')
 eq(stepSummary({id: 'x'}), 'no steps listed', 'no steps')
 eq(stepSummary({id: 'x', status: 'unreadable'} as unknown as PlanRow), 'steps unknown', 'an unreadable plan never claims it listed no steps')
+// An unparseable plan is a known gap even when it carries zeroed counts: zero is not evidence.
+eq(stepSummary({id: 'x', status: 'unreadable', steps_done: 0, steps_left: 0} as unknown as PlanRow),
+   'steps unknown', 'an unreadable plan with zero counts is still unknown')
+ok(!stepSummary({id: 'x', status: 'unreadable', steps_done: 0, steps_left: 0} as unknown as PlanRow).includes('0 of 0'),
+   'an unreadable plan never renders "0 of 0"')
+// A detail for an unreadable id is a 404 (detailGap). The plan shape itself never claims a healthy empty sheet.
+ok(!stepSummary({id: 'x', status: 'unreadable'} as unknown as PlanRow).includes('no steps listed'),
+   'an unreadable plan never reads like a healthy plan with no steps')
+eq(stepSummary({id: 'x', status: 'registered'}), 'no steps listed', 'a healthy registered plan with no counts says so')
+ok(!stepSummary({id: 'x', status: 'registered'}).includes('0 of 0'), 'a count-less plan never renders "0 of 0"')
+// A detail payload carrying an unreadable plan is not treated as a healthy empty detail.
+const unreadableDetail = {schema: 'PlanRegistryView@v1', plan: {id: 'gone', status: 'unreadable'}}
+eq(stepSummary(planFrom(unreadableDetail) as PlanRow), 'steps unknown', 'detail unreadable plan keeps steps unknown')
+ok(detailGap(unreadableDetail, 'gone') === null, 'an unreadable plan body is still a served detail (the server 404s)')
 
 // The page must never invent progress. A count is usable only when it is a non-negative integer and
 // the other count is present; anything else renders "steps unknown", never a derived total.
@@ -55,6 +83,26 @@ eq(steps(0, 2), '0 of 2 steps done · 2 left', 'zero done with a left count is v
 eq(steps(1, 0), '1 of 1 step done · 0 left', 'singular total is grammatically valid')
 ok(statusWord('stalled').includes('no activity'), 'stalled is described')
 eq(statusWord('weird'), 'Unknown', 'unknown status')
+// Registration is not approval. A newly registered plan must never read as approved.
+eq(statusWord('registered'), 'Registered — approval not recorded', 'registered is not approval')
+ok(!statusWord('registered').includes('Approved'), 'registered never claims approval')
+ok(statusWord('registered') !== statusWord('approved'), 'registered and approved are distinct words')
+
+// Provenance is what the registry recorded, not an invented approval.
+eq(provenanceLabel({id: 'x', author_proof: 'self-declared'}),
+   'Provenance: self-declared — no approval recorded', 'self-declared provenance says no approval')
+eq(provenanceLabel({id: 'x', author_proof: 'claim:C-42'}), 'Provenance: claim C-42', 'claim provenance names the claim')
+eq(provenanceLabel({id: 'x'}), 'Provenance: not recorded', 'absent provenance is not recorded')
+ok(!provenanceLabel({id: 'x', author_proof: 'self-declared'}).includes('Approved'),
+   'self-declared provenance never claims approval')
+
+// The stalled clock appears only when the registry recorded the status AND its start.
+eq(stalledLine({id: 'x', status: 'stalled', stalled_since: '2026-10-30T12:00:00Z'}),
+   'Stalled since 2026-10-30', 'stalled with a start shows the clock')
+eq(stalledLine({id: 'x', status: 'stalled', stalled_since: null}), null, 'stalled without a start invents no date')
+eq(stalledLine({id: 'x', status: 'stalled'}), null, 'stalled with no field invents no date')
+eq(stalledLine({id: 'x', status: 'in_progress', stalled_since: '2026-10-30T12:00:00Z'}), null,
+   'a non-stalled plan shows no stalled clock')
 
 eq(prUrl(row), 'https://github.com/PatsKiller/tardeai/pull/42', 'pr url')
 eq(prUrl({id: 'x'}), null, 'no pr')

@@ -1,8 +1,8 @@
-"""Plan registry core (2026-11-02): every approved plan persisted, linkable, and trackable.
+"""Plan registry core (2026-11-02): every registered plan persisted, linkable, and trackable.
 
-Operator: "build the plan registry" — an approved plan is written once, on the server, for every
+Operator: "build the plan registry" — a plan is written once, on the server, for every
 agent (Claude Code through an ExitPlanMode hook; Codex, Cursor and others through the CLI), and its
-lifecycle is followed until it is done or abandoned.
+lifecycle is followed until it is done or abandoned. Registration is not an approval.
 """
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ def test_add_writes_the_plan_and_an_append_only_ledger_line(tmp_path):
     md = tmp_path / "data/coordination/plans" / f"{pid}.md"
     assert md.is_file()
     doc = pr.parse_plan(md.read_text())
-    assert doc["front"]["status"] == "approved"
+    assert doc["front"]["status"] == "registered"  # registration is not an approval
     assert doc["front"]["vendor"] == "claude"
     assert doc["front"]["operator_quote"] == "build the plan registry"
     assert "- [ ] step one" in doc["body"]
@@ -52,7 +52,7 @@ def test_show_list_and_link(tmp_path):
     doc = pr.parse_plan((tmp_path / "data/coordination/plans" / f"{pid}.md").read_text())
     assert doc["front"]["claim"] == "C1" and doc["front"]["pr"] == 42
     rows = r.list()
-    assert rows[0]["id"] == pid and rows[0]["status"] == "approved"
+    assert rows[0]["id"] == pid and rows[0]["status"] == "registered"
 
 
 def test_step_done_ticks_exactly_one_step(tmp_path):
@@ -84,7 +84,8 @@ def test_stale_flags_an_unlinked_old_plan_once(tmp_path):
     r = _reg(tmp_path)
     p = tmp_path / "p.md"
     p.write_text("# T\n")
-    pid = r.add(title="T", body_path=p, author="s", vendor="cursor", approved_at="2026-08-01T10:00:00Z")
+    pid = r.add(title="T", body_path=p, author="s", vendor="cursor", approved_at="2026-08-01T10:00:00Z",
+                status="approved")
     assert r.stale(now="2026-11-02T12:00:00Z", apply=True) == [pid]
     notices = sorted((tmp_path / "data/coordination/coordinator/inbox/codex").glob("*plan-stalled.md"))
     assert len(notices) == 1, notices
@@ -99,12 +100,13 @@ def test_a_linked_plan_is_never_stale(tmp_path):
     r = _reg(tmp_path)
     p = tmp_path / "p.md"
     p.write_text("# T\n")
-    pid = r.add(title="T", body_path=p, author="s", vendor="codex", approved_at="2026-08-01T10:00:00Z")
+    pid = r.add(title="T", body_path=p, author="s", vendor="codex", approved_at="2026-08-01T10:00:00Z",
+                status="approved")
     r.link(pid, pr=7)
     assert r.stale(now="2026-11-02T12:00:00Z", apply=True) == []
 
 
-def test_the_hook_writes_an_approved_plan_from_exit_plan_mode_json(tmp_path, monkeypatch):
+def test_the_hook_registers_a_plan_from_exit_plan_mode_json(tmp_path, monkeypatch):
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
     payload = {"session_id": "sess-9", "tool_name": "ExitPlanMode",
                "tool_input": {"plan": "# Hooked plan\n\n- [ ] one\n"}}
@@ -115,7 +117,7 @@ def test_the_hook_writes_an_approved_plan_from_exit_plan_mode_json(tmp_path, mon
     plans = list((tmp_path / "data/coordination/plans").glob("*.md"))
     assert len(plans) == 1
     doc = pr.parse_plan(plans[0].read_text())
-    assert doc["front"]["status"] == "approved" and doc["front"]["vendor"] == "claude"
+    assert doc["front"]["status"] == "registered" and doc["front"]["vendor"] == "claude"
     assert "Hooked plan" in doc["body"]
 
 
@@ -171,7 +173,8 @@ def test_listing_and_the_view_never_serve_a_plan_that_escapes_the_store(tmp_path
     r = _reg(tmp_path)
     p = tmp_path / "p.md"
     p.write_text("# T\n\n- [ ] a\n")
-    pid = r.add(title="T", body_path=p, author="s", vendor="claude", approved_at="2026-08-01T10:00:00Z")
+    pid = r.add(title="T", body_path=p, author="s", vendor="claude", approved_at="2026-08-01T10:00:00Z",
+                status="approved")
     inside = tmp_path / "data/coordination/plans"
     outside = tmp_path / "outside.md"
     outside.write_text("---\nid: \"evil\"\ntitle: \"Evil\"\nstatus: \"approved\"\n"
@@ -235,7 +238,8 @@ def test_stale_rechecks_linkage_inside_the_lock(tmp_path, monkeypatch):
     r = _reg(tmp_path)
     p = tmp_path / "p.md"
     p.write_text("# T\n")
-    pid = r.add(title="T", body_path=p, author="s", vendor="claude", approved_at="2026-08-01T10:00:00Z")
+    pid = r.add(title="T", body_path=p, author="s", vendor="claude", approved_at="2026-08-01T10:00:00Z",
+                status="approved")
     real_list = r.list
 
     def listed_then_linked():
@@ -422,7 +426,11 @@ def test_a_final_component_symlink_is_refused_by_nofollow(tmp_path, monkeypatch)
 
 
 def test_view_skips_an_unreadable_entry_instead_of_taking_the_listing_down(tmp_path):
-    """F1 from the core/API integration review (2026-11-02): one odd entry must not 500 /api/v2/plans."""
+    """F1 from the core/API integration review (2026-11-02): one odd entry must not 500 /api/v2/plans.
+
+    A directory named ``*.md`` is matched by the glob and reading it raises ``IsADirectoryError``;
+    it is served as an explicit unreadable row (review 3) instead of vanishing, and the valid plan
+    beside it still lists."""
     r = _reg(tmp_path)
     p = tmp_path / "p.md"
     p.write_text("# T\n\n- [ ] a\n")
@@ -430,8 +438,11 @@ def test_view_skips_an_unreadable_entry_instead_of_taking_the_listing_down(tmp_p
     inside = tmp_path / "data/coordination/plans"
     (inside / "adir.md").mkdir()  # glob matches it; read_text raises IsADirectoryError (an OSError)
     listing = r.view()
-    assert [row["id"] for row in listing["plans"]] == [pid]
-    assert [row["id"] for row in r.list()] == [pid]
+    ids = [row["id"] for row in listing["plans"]]
+    assert pid in ids and "adir" in ids, ids
+    gap = next(row for row in listing["plans"] if row["id"] == "adir")
+    assert gap["status"] == "unreadable" and gap["reason"] == "the plan file cannot be read"
+    assert sorted(row["id"] for row in r.list()) == sorted(ids)
 
 
 # ---------------------------------------------------------------- cc3 review 3 (2026-11-02) BLOCK
@@ -447,7 +458,7 @@ def test_the_plans_api_returns_the_view_for_a_valid_id(tmp_path, monkeypatch):
     assert payload["ok"] is True
     view = payload["data"]
     assert view["schema"] == "PlanRegistryView@v1"
-    assert view["plan"]["id"] == pid and view["plan"]["status"] == "approved"
+    assert view["plan"]["id"] == pid and view["plan"]["status"] == "registered"
     assert view["plan"]["body"].startswith("# T")
 
 
@@ -495,7 +506,7 @@ def test_a_truncated_plan_is_an_explicit_unreadable_row_not_a_silent_gap(tmp_pat
     assert "truncated" in gap["reason"].lower()
     # the valid plan's row keeps its normal shape
     good = next(row for row in listing["plans"] if row["id"] == pid)
-    assert good["status"] == "approved" and good["steps_left"] == 1
+    assert good["status"] == "registered" and good["steps_left"] == 1
 
 
 def test_a_plan_file_without_front_matter_is_an_unreadable_row(tmp_path):
@@ -533,12 +544,13 @@ def test_the_listing_keeps_a_non_utf8_plan_as_an_unreadable_row(tmp_path):
     gap = next(row for row in rows if row["id"] == "binary")
     assert gap["status"] == "unreadable" and gap["filename"] == "binary.md"
     assert "UTF-8" in gap["reason"]
-    assert next(row for row in rows if row["id"] == pid)["status"] == "approved"
+    assert next(row for row in rows if row["id"] == pid)["status"] == "registered"
 
 
 def test_the_stale_scan_completes_with_a_non_utf8_plan_in_the_store(tmp_path):
     r = _reg(tmp_path)
-    pid = r.add(title="T", body="x", author="s", vendor="claude", approved_at="2026-08-01T10:00:00Z")
+    pid = r.add(title="T", body="x", author="s", vendor="claude", approved_at="2026-08-01T10:00:00Z",
+                status="approved")
     inside = tmp_path / "data/coordination/plans"
     (inside / "binary.md").write_bytes(b"\xff\xfe---\nid: x\n")
     assert r.stale(now="2026-11-02T12:00:00Z", apply=True) == [pid]
@@ -574,7 +586,8 @@ def test_a_planted_inbox_symlink_is_refused_when_reporting_stale_plans(tmp_path)
     import pytest
 
     r = _reg(tmp_path)
-    pid = r.add(title="T", body="x", author="s", vendor="claude", approved_at="2026-08-01T10:00:00Z")
+    pid = r.add(title="T", body="x", author="s", vendor="claude", approved_at="2026-08-01T10:00:00Z",
+                status="approved")
     inbox = tmp_path / "data/coordination/coordinator/inbox/codex"
     inbox.parent.mkdir(parents=True, exist_ok=True)
     outside = tmp_path / "inbox-target"
@@ -596,12 +609,166 @@ def test_the_stale_scan_writes_nothing_when_nothing_is_stalled(tmp_path):
 def test_each_stale_run_writes_its_own_dated_notice(tmp_path):
     import time
     r = _reg(tmp_path)
-    a = r.add(title="A", body="x", author="s", vendor="claude", approved_at="2026-08-01T10:00:00Z")
+    a = r.add(title="A", body="x", author="s", vendor="claude", approved_at="2026-08-01T10:00:00Z",
+              status="approved")
     assert r.stale(now="2026-11-02T12:00:00Z", apply=True) == [a]
     time.sleep(0.002)  # the filename carries microseconds; distinct runs still get distinct names
-    b = r.add(title="B", body="x", author="s", vendor="claude", approved_at="2026-08-01T10:00:00Z")
+    b = r.add(title="B", body="x", author="s", vendor="claude", approved_at="2026-08-01T10:00:00Z",
+              status="approved")
     assert r.stale(now="2026-11-02T12:00:00Z", apply=True) == [b]
     notices = sorted((tmp_path / "data/coordination/coordinator/inbox/codex").glob("*plan-stalled.md"))
     assert len(notices) == 2, notices
     bodies = "\n".join(n.read_text() for n in notices)
     assert f"- {a}" in bodies and f"- {b}" in bodies
+
+
+# ---------------------------------------------------------------- review 4 (2026-11-03) BLOCK A/B/C
+def test_a_store_that_was_never_read_is_absent_not_a_genuinely_empty_store(tmp_path):
+    """BLOCK A: a nonexistent state root used to render a valid schema with `plans: []`, identical
+    to an empty store. It must say the store is absent, with a fixed reason and no path."""
+    import pytest
+
+    r = _reg(tmp_path)
+    listing = r.view()
+    assert listing["schema"] == "PlanRegistryView@v1"
+    assert listing["store"] == {"state": "absent", "reason": "the plan store directory does not exist"}
+    assert listing["plans"] == []
+    assert listing["as_of"]
+    assert str(tmp_path) not in json.dumps(listing["store"])
+    with pytest.raises(KeyError):
+        r.view("no-such-plan")  # a detail read in an absent store takes the fixed 404 path
+
+
+def test_an_unlistable_store_is_reported_and_does_not_render_empty(tmp_path):
+    """BLOCK A: a directory that exists but cannot be listed is `unlistable`, not `ok` + no rows."""
+    import os
+
+    import pytest
+
+    r = _reg(tmp_path)
+    plans = tmp_path / "data/coordination/plans"
+    plans.mkdir(parents=True)
+    if os.geteuid() == 0:
+        pytest.skip("root can list a 0o000 directory")
+    plans.chmod(0)
+    try:
+        listing = r.view()
+    finally:
+        plans.chmod(0o755)
+    assert listing["store"] == {"state": "unlistable", "reason": "the plan store directory cannot be listed"}
+    assert listing["plans"] == []
+    assert str(tmp_path) not in json.dumps(listing["store"])
+
+
+def test_an_existing_empty_store_is_ok_and_as_of_is_utc(tmp_path):
+    """BLOCK A: the honest empty answer carries `ok` and a UTC timestamp."""
+    from datetime import datetime
+
+    r = _reg(tmp_path)
+    (tmp_path / "data/coordination/plans").mkdir(parents=True)
+    listing = r.view()
+    assert listing["store"] == {"state": "ok", "reason": None}
+    assert listing["plans"] == []
+    stamp = datetime.fromisoformat(listing["as_of"].replace("Z", "+00:00"))
+    assert stamp.tzinfo is not None and stamp.utcoffset().total_seconds() == 0
+
+
+def test_an_unreadable_file_is_a_visible_gap_and_the_other_rows_still_list(tmp_path):
+    """BLOCK A: a per-file OSError used to be a silent `continue`; now it is an unreadable row."""
+    r = _reg(tmp_path)
+    p = tmp_path / "p.md"
+    p.write_text("# T\n\n- [ ] a\n")
+    pid = r.add(title="T", body_path=p, author="s", vendor="claude", approved_at="2026-11-02T10:00:00Z")
+    inside = tmp_path / "data/coordination/plans"
+    (inside / "adir.md").mkdir()  # read_text raises IsADirectoryError (an OSError)
+
+    rows = r.view()["plans"]
+    gap = next(row for row in rows if row["id"] == "adir")
+    assert gap["status"] == "unreadable" and gap["filename"] == "adir.md"
+    assert gap["reason"] == "the plan file cannot be read"
+    assert next(row for row in rows if row["id"] == pid)["status"] == "registered"
+    lrows = r.list()
+    assert next(row for row in lrows if row["id"] == "adir")["status"] == "unreadable"
+    assert next(row for row in lrows if row["id"] == pid)["status"] == "registered"
+
+
+def test_a_truncated_plan_detail_is_404_while_the_listing_shows_the_gap(tmp_path):
+    """BLOCK B: a parsed doc with empty front matter is not a plan; detail is KeyError/404, but the
+    listing keeps its unreadable row so the file is never hidden."""
+    import pytest
+
+    r = _reg(tmp_path)
+    inside = tmp_path / "data/coordination/plans"
+    inside.mkdir(parents=True, exist_ok=True)
+    (inside / "truncated-plan.md").write_text('---\nid: "truncated-plan"\ntitle: "An approved pla')
+    (inside / "bare.md").write_text("# Just a body, no front matter\n")
+
+    gap = next(row for row in r.view()["plans"] if row["id"] == "truncated-plan")
+    assert gap["status"] == "unreadable"
+    assert next(row for row in r.list() if row["id"] == "truncated-plan")["status"] == "unreadable"
+    for bad in ("truncated-plan", "bare"):
+        with pytest.raises(KeyError):
+            r.get(bad)
+        with pytest.raises(KeyError):
+            r.view(bad)
+
+
+def test_registration_is_not_an_approval_and_author_proof_is_served(tmp_path):
+    """BLOCK C: add() defaults to `registered`; author_proof is served by list and detail; an
+    explicit `--status approved` through the CLI still records a real approval."""
+    r = _reg(tmp_path)
+    pid = r.add(title="Reg", body="# R\n\n- [ ] a\n", author="s", vendor="codex")
+    front = pr.parse_plan((tmp_path / "data/coordination/plans" / f"{pid}.md").read_text())["front"]
+    assert front["status"] == "registered"
+    assert front["author_proof"] == "self-declared"
+    # A registration carries no approval time: approved_at is never defaulted from the clock.
+    assert "approved_at" not in front
+
+    row = r.view()["plans"][0]
+    assert row["status"] == "registered" and row["author_proof"] == "self-declared"
+    detail = r.view(pid)
+    assert detail["plan"]["author_proof"] == "self-declared"
+    assert detail["plan"]["approved_at"] is None
+    assert detail["store"] == {"state": "ok", "reason": None}
+    assert detail["as_of"]
+
+    proc = subprocess.run([sys.executable, str(ROOT / "scripts" / "plan_registry.py"),
+                           "--state-root", str(tmp_path), "add", "--title", "Explicitly approved",
+                           "--body", "# A\n", "--author", "s", "--vendor", "codex",
+                           "--status", "approved", "--approved-at", "2026-11-02T10:00:00Z", "--json"],
+                          capture_output=True, text=True, check=False)
+    assert proc.returncode == 0, proc.stderr
+    approved_id = json.loads(proc.stdout)["id"]
+    approved = pr.parse_plan((tmp_path / "data/coordination/plans" / f"{approved_id}.md").read_text())
+    assert approved["front"]["status"] == "approved"
+    assert approved["front"]["approved_at"] == "2026-11-02T10:00:00Z"
+
+    # The CLI must not stamp a registration with the clock either: no --approved-at, no approval time.
+    plain = subprocess.run([sys.executable, str(ROOT / "scripts" / "plan_registry.py"),
+                            "--state-root", str(tmp_path), "add", "--title", "Registered via CLI",
+                            "--body", "# B\n", "--author", "s", "--vendor", "codex", "--json"],
+                           capture_output=True, text=True, check=False)
+    assert plain.returncode == 0, plain.stderr
+    plain_id = json.loads(plain.stdout)["id"]
+    plain_front = pr.parse_plan(
+        (tmp_path / "data/coordination/plans" / f"{plain_id}.md").read_text())["front"]
+    assert plain_front["status"] == "registered"
+    assert "approved_at" not in plain_front
+
+
+def test_the_hook_registers_a_plan_without_claiming_approval(tmp_path, monkeypatch):
+    """BLOCK C: the ExitPlanMode hook registers with the default status; it never writes `approved`."""
+    import io
+
+    import plan_registry_hook as hook
+
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    payload = {"session_id": "sess-reg", "tool_name": "ExitPlanMode",
+               "tool_input": {"plan": "# Registered plan\n\n- [ ] one\n"}}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    assert hook.main() == 0
+    plans = sorted((tmp_path / "data/coordination/plans").glob("*.md"))
+    assert len(plans) == 1
+    front = pr.parse_plan(plans[0].read_text())["front"]
+    assert front["status"] == "registered" and front["vendor"] == "claude"
+    assert "approved_at" not in front  # the hook records no approval time

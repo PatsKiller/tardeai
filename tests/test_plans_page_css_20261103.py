@@ -1,9 +1,19 @@
-"""Plans page UI repairs (2026-11-03): light-theme tokens, 390 px wrapping, honest step counts.
+"""Plans page UI repairs (2026-11-03): real light/dark contrast, 390 px wrapping, honest step counts.
 
-The CC-v3 app has no tsx test harness, so this test reads the stylesheet and the view-model source
-directly. It guards two defects: white-only borders/fills that vanish in the light theme, and long
-titles or `wt/...` branches that push the card past a 390 px phone. It also pins the model's refusal
-to derive progress from a lone or invalid step count.
+The CC-v3 app has no tsx test harness, so this test reads the stylesheet, the token source and the
+view-model/page source directly.
+
+It guards four defects:
+
+* A gap in the plan store must never render as an empty registry (the page gates the empty message
+  on `!gap`, and the model turns `store.state != "ok"` into a gap with the server's reason).
+* A registered plan must not read as approved, and provenance must be visible.
+* An unreadable plan must not claim zero steps.
+* Light-theme contrast. `plans.css` used `color: inherit` and `opacity`, so contrast depended on an
+  ancestor's colour and a blend; grepping for `rgba(255,255,255` could not catch that. This test now
+  computes WCAG 2.1 relative-luminance contrast for every text token a rule names against the
+  surface that rule sits on, in BOTH themes, and structurally forbids `color: inherit` and
+  `opacity` on text.
 """
 from __future__ import annotations
 
@@ -17,6 +27,32 @@ CSS = ROOT / "apps/command-center-v3/src/styles/plans.css"
 TOKENS = ROOT / "apps/command-center-v3/src/styles/tokens.css"
 MODEL = ROOT / "apps/command-center-v3/src/lib/plansModel.ts"
 PAGE = ROOT / "apps/command-center-v3/src/pages/PlansPage.tsx"
+
+WCAG_MIN = 4.5
+TEXT_TOKEN = re.compile(r"var\(--text-[0-3]\)$")
+
+# Every selector that renders text. Each must name an explicit text token: inherited text colour is
+# exactly the defect that made the light theme unreadable.
+TEXT_SELECTORS = (
+    ".pl-card",
+    ".pl-card-title",
+    ".pl-card-line",
+    ".pl-card-links",
+    ".pl-empty",
+    ".pl-detail",
+    ".pl-status",
+    ".pl-meta",
+    ".pl-steps-summary",
+    ".pl-provenance",
+    ".pl-quote",
+    ".pl-step",
+    ".pl-step.done",
+    ".pl-links",
+    ".pl-links code",
+    ".pl-body",
+    ".pl-panel",
+    ".pl-back",
+)
 
 
 def _strip_comments(text: str) -> str:
@@ -47,11 +83,114 @@ def _decls(rules: dict[str, list[dict[str, str]]], selector: str) -> dict[str, s
     return merged
 
 
-def test_stylesheet_has_no_white_only_rgba_literals():
-    css = CSS.read_text(encoding="utf-8")
-    assert not re.search(r"rgba\(\s*255\s*,\s*255\s*,\s*255", css, re.I), (
-        "plans.css still hard-codes white; borders and fills vanish in the light theme"
+def _token_block(css: str, selector_pattern: str) -> dict[str, str]:
+    match = re.search(selector_pattern + r"\s*\{([^}]*)\}", css, flags=re.S)
+    assert match, f"token block {selector_pattern!r} not found in tokens.css"
+    return {
+        prop: value.strip()
+        for prop, value in re.findall(r"(--[A-Za-z0-9-]+)\s*:\s*([^;]+);", match.group(1))
+    }
+
+
+def _theme_tokens() -> dict[str, dict[str, str]]:
+    """The two themes named by the review: the dark root block and the explicit light block."""
+    raw = TOKENS.read_text(encoding="utf-8")
+    dark = _token_block(raw, r':root,\s*\[data-theme="dark"\]')
+    light = _token_block(raw, r'\[data-theme="light"\]')
+    return {"dark": dark, "light": light}
+
+
+def _rgb(value: str) -> tuple[float, float, float]:
+    match = re.fullmatch(r"#([0-9a-fA-F]{6})", value.strip())
+    assert match, f"cannot parse colour {value!r} as a 6-digit hex token"
+    digits = match.group(1)
+    return tuple(int(digits[i:i + 2], 16) / 255 for i in (0, 2, 4))  # type: ignore[return-value]
+
+
+def _linear(channel: float) -> float:
+    return channel / 12.92 if channel <= 0.03928 else ((channel + 0.055) / 1.055) ** 2.4
+
+
+def _luminance(rgb: tuple[float, float, float]) -> float:
+    r, g, b = (_linear(channel) for channel in rgb)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def _contrast(fg: tuple[float, float, float], bg: tuple[float, float, float]) -> float:
+    """WCAG 2.1 relative-luminance contrast ratio."""
+    a, b = _luminance(fg), _luminance(bg)
+    hi, lo = max(a, b), min(a, b)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def _backgrounds(selector: str) -> tuple[str, ...]:
+    """The surfaces a rule's text can sit on in plans.css.
+
+    Card text sits on the card fill (`--bg-2`) and its active/hover fill (`--bg-3`). Everything else
+    sits on the page surface (`--bg-0`) or the detail panel fill (`--bg-1`; on a phone the detail
+    sheet body is `--bg-0`). Checking both is stricter than picking one.
+    """
+    if selector == ".pl-card" or selector.startswith(".pl-card-"):
+        return ("bg-2", "bg-3")
+    return ("bg-0", "bg-1")
+
+
+def test_stylesheet_uses_no_colour_literals():
+    css = _strip_comments(CSS.read_text(encoding="utf-8"))
+    assert not re.search(r"#[0-9a-fA-F]{3,8}\b", css), "plans.css hard-codes a hex colour; use a token"
+    assert not re.search(r"\brgba?\(", css), "plans.css hard-codes an rgb colour; use a token"
+
+
+def test_stylesheet_has_no_inherited_text_colour():
+    css = _strip_comments(CSS.read_text(encoding="utf-8"))
+    assert not re.search(r"color\s*:\s*inherit", css, re.I), (
+        "plans.css uses `color: inherit`: contrast then depends on an ancestor colour and can fail "
+        "in the light theme"
     )
+
+
+def test_stylesheet_has_no_opacity_on_text():
+    css = _strip_comments(CSS.read_text(encoding="utf-8"))
+    assert not re.search(r"opacity\s*:", css, re.I), (
+        "plans.css uses `opacity` for de-emphasis: the blended text contrast is not a token and can "
+        "fail in the light theme; name a darker/lighter text token instead"
+    )
+
+
+def test_every_text_rule_names_an_explicit_token_colour():
+    rules = _rules(CSS.read_text(encoding="utf-8"))
+    for selector in TEXT_SELECTORS:
+        colour = _decls(rules, selector).get("color", "")
+        assert TEXT_TOKEN.match(colour), (
+            f"{selector} must name an explicit text token (got {colour!r}); inherited or blended "
+            f"text is the light-theme defect"
+        )
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_text_rules_meet_wcag_aa_on_their_surfaces(theme: str):
+    tokens = _theme_tokens()[theme]
+    rules = _rules(CSS.read_text(encoding="utf-8"))
+    checked = 0
+    for selector, blocks in rules.items():
+        for decls in blocks:
+            declared = decls.get("color")
+            if not declared:
+                continue
+            match = TEXT_TOKEN.match(declared)
+            assert match, f"{selector} color {declared!r} is not an explicit text token"
+            token_name = re.search(r"--text-[0-3]", declared)
+            assert token_name, f"{selector} color {declared!r} names no text token"
+            fg = _rgb(tokens[token_name.group(0)])
+            for bg_name in _backgrounds(selector):
+                bg = _rgb(tokens[f"--{bg_name}"])
+                ratio = _contrast(fg, bg)
+                assert ratio >= WCAG_MIN, (
+                    f"{theme}: {selector} {declared} on --{bg_name} is {ratio:.2f}:1 "
+                    f"(min {WCAG_MIN}:1)"
+                )
+                checked += 1
+    assert checked > 0, "no text-bearing rule was checked"
 
 
 def test_light_theme_rules_use_design_tokens():
@@ -62,6 +201,11 @@ def test_light_theme_rules_use_design_tokens():
     assert "var(--border-color)" in _decls(rules, ".pl-panel")["border-left"]
     for selector in (".pl-card:active", ".pl-card:hover"):
         assert _decls(rules, selector)["background"].startswith("var(--")
+
+
+def test_cards_have_no_fixed_width():
+    card = _decls(_rules(CSS.read_text(encoding="utf-8")), ".pl-card")
+    assert card.get("width") == "100%", "the card must fill its column, not carry a fixed width"
 
 
 @pytest.mark.parametrize("selector", [".pl-card-title", ".pl-card-line", ".pl-links code"])
@@ -85,14 +229,43 @@ def test_plans_page_wires_the_unknown_and_detail_gap_states():
     assert "waitingDecision(" in page
     assert "decisionGap={decisionGap}" in page
     assert "Nothing approved and unclaimed right now." not in page
-    # A listing that cannot be parsed and a detail {ok:false} both feed the page's gap.
+    # A listing that cannot be parsed, a store it could not read, and a detail {ok:false} all feed
+    # the page's gap — and the gap suppresses the empty-registry sentence.
     assert "plansGap(index.data)" in page
     assert "detailGap(one.data, selectedId)" in page
+    assert re.search(r"rows\.length === 0\s*&&\s*!gap", page), (
+        "the empty-registry message is not gated on !gap, so a store gap could paint "
+        "\"No plans registered yet.\""
+    )
+
+
+def test_plans_page_wires_provenance_stalled_and_freshness():
+    page = PAGE.read_text(encoding="utf-8")
+    assert "provenanceLabel(plan)" in page, "the detail does not render the provenance line"
+    assert "stalledLine(plan)" in page, "the detail does not render the stalled clock"
+    # A known empty read uses the server receipt instead of falling into a freshness gap.
+    assert "index.data?.as_of" in page, "the page does not use the listing as_of"
+    assert re.search(r"listKnown\s*&&\s*rows\.length === 0", page), (
+        "as_of must only stand in for a known empty listing; a failed read keeps asOf undefined"
+    )
+    # An approval date is printed only for a plan the registry actually approved: a registration
+    # carries no approved_at, and even an explicit one must not be shown as an approval.
+    assert "plan.status === 'approved' && plan.approved_at" in page, (
+        "the detail prints an approval date for a plan whose status is not approved"
+    )
+
+
+def test_plans_page_purpose_describes_registration_not_approval():
+    page = PAGE.read_text(encoding="utf-8")
+    assert "Every registered plan" in page
+    assert "Every approved plan" not in page
+    assert "who registered it, who picked it up, what is left" in page
+    assert "who approved it" not in page
 
 
 def test_model_defines_the_gap_and_waiting_helpers():
     src = MODEL.read_text(encoding="utf-8")
-    for name in ("plansGap", "detailGap", "waitingDecision"):
+    for name in ("plansGap", "detailGap", "waitingDecision", "provenanceLabel", "stalledLine"):
         assert re.search(rf"export function {name}\(", src), f"{name} is not exported"
 
 
