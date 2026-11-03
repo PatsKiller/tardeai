@@ -2408,9 +2408,10 @@ def _build_layer_status(conn) -> str:
 
     # Get actual allocation per layer
     cur.execute("SELECT layer_id, SUM(iap.annual_income) as income FROM income_asset_profiles iap GROUP BY layer_id")
-    # Need market value by layer — get from holdings
+    # Need market value by layer — get from holdings. ABSENT is allowed past the unreadable guard as
+    # an empty book (the state-read contract), so `holdings` can legitimately be None here.
     layer_values = {}
-    for h in holdings.get("holdings", []):
+    for h in holdings.get("holdings", []) if holdings else []:
         sym = h.get("symbol", "")
         mv = float(h.get("market_value", 0) or 0)
         if h.get("is_cash"):
