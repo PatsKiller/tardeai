@@ -231,3 +231,44 @@ def test_when_no_stream_exists_the_store_files_are_read(tmp_path):
     assert receipt["source"] == "store"
     assert receipt["keys"] == ["apr-a"]
     assert "asked by cc-deepseek-7" in sent.calls[0]["text"]
+
+
+def test_an_unreadable_store_record_reaches_the_operator_in_the_same_message(tmp_path):
+    """A corrupt file must never mute the other decisions, and must never be silent either (peer-agreed)."""
+    root = tmp_path / "state"
+    d = root / "needs_you" / "requests"
+    d.mkdir(parents=True)
+    (d / "apr-good.json").write_text(json.dumps({
+        "id": "apr-good", "state": "open", "title": "Merge #2518", "why": "reviewed head",
+        "requester": "cc-deepseek-7", "created_at": "2026-11-03T12:00:00Z",
+        "expires_at": "2026-11-05T12:00:00Z", "facts": {"pr": 2518}}), encoding="utf-8")
+    (d / "apr-bad.json").write_text("{not json", encoding="utf-8")
+    sent = Sent()
+    receipt = A.run(requests_path=tmp_path / "absent.jsonl", state_root=root,
+                    state_dir=tmp_path / "state2", config_path=tmp_path / "approvals_notify.json",
+                    now="2026-11-03T13:00:00Z", dry_run=False, notify=sent)
+
+    assert len(sent.calls) == 1                       # one message, not two
+    body = sent.calls[0]["text"]
+    assert "Merge #2518" in body and "1 decision could not be read" in body
+    assert receipt["unreadable_reported"] == ["apr-bad.json"]
+
+    # Inside the floor neither the decision nor the corrupt-file notice repeats.
+    again = A.run(requests_path=tmp_path / "absent.jsonl", state_root=root,
+                  state_dir=tmp_path / "state2", config_path=tmp_path / "approvals_notify.json",
+                  now="2026-11-03T14:00:00Z", dry_run=False, notify=sent)
+    assert len(sent.calls) == 1 and again["send"] is False
+
+
+def test_a_corrupt_record_alone_still_pages_once(tmp_path):
+    root = tmp_path / "state"
+    d = root / "needs_you" / "requests"
+    d.mkdir(parents=True)
+    (d / "apr-bad.json").write_text("{not json", encoding="utf-8")
+    sent = Sent()
+    A.run(requests_path=tmp_path / "absent.jsonl", state_root=root, state_dir=tmp_path / "state3",
+          config_path=tmp_path / "approvals_notify.json", now="2026-11-03T13:00:00Z",
+          dry_run=False, notify=sent)
+
+    assert len(sent.calls) == 1
+    assert sent.calls[0]["text"].startswith("1 decision could not be read")

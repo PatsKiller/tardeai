@@ -56,6 +56,7 @@ DEFAULT_STATE_ROOT = PROJ / "persistent-state"
 DEFAULT_STATE_DIR = PROJ / "data" / "runtime" / "approvals_notify"
 DEFAULT_CONFIG = PROJ / "config" / "approvals_notify.json"
 
+UNREADABLE_KEY = "__unreadable__"
 OPEN_EVENTS = {"created", "updated", "pending", "open", "requested"}
 CLOSED_EVENTS = {"resolved", "declined", "approved", "expired", "cancelled", "canceled", "done"}
 OPEN_STATUS = {"open", "pending", "requested", "awaiting_operator", "needs_you"}
@@ -191,10 +192,27 @@ def _item(req: dict) -> dict:
     return {"title": _label(req), "detail": detail, "next": "Approve or decline on Home"}
 
 
-def compose(requests: list[dict], home_url: str = "") -> str:
-    header = "1 decision needs you" if len(requests) == 1 else f"{len(requests)} decisions need you"
+def unreadable_item(unreadable: list[str]) -> dict:
+    """A store record nothing could parse, said to the operator — silence is the failure mode to kill."""
+    names = sorted(str(x) for x in unreadable)
+    n = len(names)
+    return {"title": f"{n} decision could not be read" if n == 1 else f"{n} decisions could not be read",
+            "detail": "unreadable record(s): " + ", ".join(names[:3]) + ("…" if n > 3 else ""),
+            "next": "Open Home — the card shows the error, not a green board"}
+
+
+def compose(requests: list[dict], home_url: str = "", unreadable: list[str] | None = None) -> str:
+    items = [_item(r) for r in requests]
+    if unreadable:
+        items.append(unreadable_item(unreadable))
+    if len(requests) == 1:
+        header = "1 decision needs you"
+    elif requests:
+        header = f"{len(requests)} decisions need you"
+    else:
+        header = unreadable_item(unreadable or [])["title"]
     footer = f"Open Home: {home_url}" if home_url else FOOTER_DEFAULT
-    return batch_text(header=header, items=[_item(r) for r in requests], footer=footer)
+    return batch_text(header=header, items=items, footer=footer)
 
 
 def _config(path: Path) -> dict:
@@ -234,6 +252,8 @@ def run(*, requests_path: Path = DEFAULT_REQUESTS, state_root: Path | None = Non
             source, open_now = "none", []
     state = NudgeState(Path(state_dir) / "nudge_state.json")
     keys = [str(r["id"]) for r in open_now]
+    if unreadable:
+        keys.append(UNREADABLE_KEY)
     decision = nudge_decision(keys=keys, state=state, now=now_dt, priority=priority, floor_minutes=floor)
 
     receipt = {
@@ -247,8 +267,12 @@ def run(*, requests_path: Path = DEFAULT_REQUESTS, state_root: Path | None = Non
 
     due_ids = set(decision["keys"])
     due = [r for r in open_now if str(r["id"]) in due_ids]
-    text = compose(due, home_url)
-    receipt.update({"keys": [str(r["id"]) for r in due], "message": text})
+    # The unreadable record reaches the operator in the SAME message, exactly once per floor: a corrupt
+    # file that only ever appears in a receipt is silent to the person who has to act on it.
+    shown_unreadable = sorted(unreadable) if UNREADABLE_KEY in due_ids else []
+    text = compose(due, home_url, shown_unreadable)
+    receipt.update({"keys": [str(r["id"]) for r in due] + [UNREADABLE_KEY] * bool(shown_unreadable),
+                    "unreadable_reported": shown_unreadable, "message": text})
     if dry_run:
         receipt["reason"] = "would send (dry run)"
         return receipt
