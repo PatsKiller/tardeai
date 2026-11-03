@@ -231,7 +231,13 @@ def run_scan(config: Mapping[str, Any], *, runner: Runner | None = None, state_d
             if t.get("status") == "tool_missing":
                 out.append(f"· {name}: NOT INSTALLED — {t.get('install') or 'install it'}")
             else:
-                out.append(f"· {name}: CRASHED rc={t.get('rc')} {str(t.get('stderr') or '')[:120]}")
+                # An invalid output contract is a tool error, not a crash: name it, so the operator can tell a
+                # broken scanner from a malformed payload without opening the receipt.
+                detail = str(t.get("reason") or "")
+                exc_type = str(t.get("exception_type") or "")
+                stderr = str(t.get("stderr") or "")[:120]
+                out.append(f"· {name}: NOT USABLE rc={t.get('rc')} "
+                           f"{' '.join(part for part in (detail, exc_type, stderr) if part)}".rstrip())
         return out
 
     notification = {"status": "dry_run" if dry_run else "not_required", "accepted": False, "delivered": False}

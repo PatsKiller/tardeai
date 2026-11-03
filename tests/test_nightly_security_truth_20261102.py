@@ -45,6 +45,16 @@ def test_other_tool_invalid_json_contracts_are_unusable(mod,tmp_path,tool,bad):
     assert result["tools"][tool]["status"]=="error" and result["unusable"]==[tool]
 
 
+def test_invalid_output_alert_names_the_contract_failure_not_a_crash(mod,tmp_path):
+    """The operator line must say the payload was invalid, not report a crash at rc=0."""
+    sent=[]
+    result=mod.run_scan(CONFIG,runner=runner("not-json"),state_dir=tmp_path,dry_run=False,
+                        send=lambda text,priority="P1":(sent.append(text) or {"accepted":True,"delivered":True}))
+    assert result["unusable"]==["semgrep"] and sent
+    assert "NOT USABLE" in sent[0] and "output_invalid" in sent[0] and "JSONDecodeError" in sent[0]
+    assert "CRASHED" not in sent[0]
+
+
 @pytest.mark.parametrize("outcome",[False,None,True,{"accepted":True,"delivered":False}])
 def test_unconfirmed_delivery_keeps_retry_until_actual_delivery(mod,tmp_path,outcome):
     first=mod.run_scan(CONFIG,runner=runner(),state_dir=tmp_path,dry_run=False,send=lambda *a,**kw:outcome)
