@@ -57,7 +57,8 @@ ENGINEERING_HELD_PATHS = {
     ),
     "merge_deploy_control": (
         ".mergify.yml", ".github/workflows/*", "config/ci_gates/*", "config/merge_hold_paths.json",
-        "scripts/lib/merge_hold_paths.py", "config/shared_infra_paths.json", "scripts/check_shared_infra_pr.py",
+        "scripts/lib/release_*.py", "scripts/lib/merge_hold_paths.py",
+        "config/shared_infra_paths.json", "scripts/check_shared_infra_pr.py",
         "config/pr_merge_digest.json", "scripts/lib/pr_merge*.py", "scripts/pr_merge*.py",
         "scripts/lib/pr_all_checks_green.py", "scripts/request_pr_merge_approve.py",
         "scripts/notify_pr_merge_ready.py", "scripts/agent_merge_pr.sh", "scripts/lib/mergify_queue_monitor.py",

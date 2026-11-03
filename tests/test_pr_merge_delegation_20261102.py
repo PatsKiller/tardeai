@@ -781,7 +781,7 @@ def test_manual_decision_and_no_weakening_review_required_for_every_pr(mod,field
 
 @pytest.mark.parametrize("reviews", [1, 2])
 def test_registry_keeps_release_latch_source_held_without_duplicate_literal(mod, tmp_path, reviews):
-    """The authoritative hold registry, not duplicated classifier text, protects latch source."""
+    """The authoritative registry protects latch source alongside the pure safety floor."""
     path = "scripts/lib/release_control.py"
     registry = json.loads((ROOT / "config/merge_hold_paths.json").read_bytes())
     holders = [row["id"] for row in registry["classes"] if path in row.get("globs", [])]
@@ -795,3 +795,14 @@ def test_registry_keeps_release_latch_source_held_without_duplicate_literal(mod,
         assert result["ok"] and result["required_reviews"] == 2
     else:
         assert not result["ok"] and result["reason"] == "independent_review_count_insufficient"
+
+
+def test_pure_floor_refuses_latch_source_snapshot_misclassified_as_ordinary(mod):
+    """A fabricated collector result cannot lower release-latch source to one review."""
+    data = snapshot(mod, held=False, reviews=1)
+    path = "scripts/lib/release_control.py"
+    data["pr"]["files"] = [path]
+    data["claims"][1]["paths"] = [path]
+    result = mod.evaluate(data, now=NOW)
+    assert result["ok"] is False
+    assert result["reason"] == "held_classification_unavailable"
