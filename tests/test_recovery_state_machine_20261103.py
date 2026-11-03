@@ -204,7 +204,7 @@ def test_the_reviewed_nested_policy_dialect_maps_onto_the_engine(tmp_path):
     """Piece A's config/recovery_policy.yaml is nested; B reads ITS names, never a fork of them."""
     import yaml
     doc = {"schema": "RecoveryPolicy@v1",
-           "triggers": {"r1_reclaim_exit_pct": 0.02, "r3_rsi_cross": 45, "r3_macd_histogram_sessions": 3,
+           "triggers": {"r1_reclaim_exit_pct": 2.0, "r3_rsi_cross": 45, "r3_macd_histogram_sessions": 3,
                         "r5_catalyst_min_confidence": 0.9, "decay_sessions": 30},
            "confidence": {"weights": {"r1": 0.4, "r4": 0.3}, "ready_floor": 0.6},
            "residual": {"residual_remaining_fraction": 0.1}}
@@ -212,7 +212,7 @@ def test_the_reviewed_nested_policy_dialect_maps_onto_the_engine(tmp_path):
     path.write_text(yaml.safe_dump(doc), encoding="utf-8")
 
     policy = R.load_policy(path)
-    assert policy["reclaim_exit_pct"] == 0.02 and policy["rsi_level"] == 45
+    assert policy["reclaim_exit_pct"] == 0.02 and policy["rsi_level"] == 45   # 2.0 percent -> 0.02 fraction
     assert policy["macd_up_sessions"] == 3 and policy["catalyst_min_confidence"] == 0.9
     assert policy["decay_sessions"] == 30
     assert "residual_remaining_fraction" not in policy   # the held concept is removed, not tuned
@@ -291,3 +291,55 @@ def test_piece_a_case_shape_is_consumed_without_renaming_fields():
 
     assert R.exit_price(a_case) == 137.19
     assert d.state == R.RECOVERING and d.eligible_accounts == ["schwab_roth_ira"]
+
+
+# ── A→B integration contract (codex's real-A probes, 2026-11-03) ─────────────────────────────────────────
+def test_a_percent_policy_loads_as_a_fraction_not_as_100x(tmp_path):
+    """A1: piece A writes ``r1_reclaim_exit_pct: 1.0`` meaning ONE PERCENT (exit*(1+pct/100)).
+
+    B loaded it as the fraction 1.0 = 100%, so R1 needed a doubling of the price. Fed by a REAL A-shaped row and
+    A's actual policy shape; R1 is asserted on its own with R2–R5 false so another trigger cannot hide it.
+    """
+    import yaml
+    policy_doc = {"schema": "RecoveryPolicy@v1",
+                  "triggers": {"r1_reclaim_exit_pct": 1.0, "r2_reclaim_stop": True, "r3_rsi_cross": 40,
+                               "r3_macd_histogram_sessions": 2, "r5_catalyst_min_confidence": 0.8},
+                  "confidence": {"weights": {}, "ready_floor": 0.55}}
+    path = tmp_path / "recovery_policy.yaml"
+    path.write_text(yaml.safe_dump(policy_doc), encoding="utf-8")
+    policy = R.load_policy(path)
+    assert policy["reclaim_exit_pct"] == 0.01          # 1 percent, not 1.0
+
+    a_row = {"case_key": "DEMO:ira", "symbol": "DEMO", "account": "DEMO_IRA", "state": "WATCHING",
+             "materiality_tier": "T1",
+             "exits": [{"symbol": "DEMO", "price": 100.0, "shares": 100, "realized_pnl": -5000.0,
+                        "exit_date": "2026-10-30"}]}
+    flat = {"close": 102.0, "rsi": 35.0, "rsi_prev": 34.0, "sma20": 130.0, "macd_up_sessions": 0,
+            "catalyst_confidence": 0.0}
+    d = R.evaluate(a_row, flat, policy, now=NOW)
+
+    assert d.triggers == {"R1": True, "R2": False, "R3": False, "R4": False, "R5": False}
+    assert d.state == R.RECOVERING
+
+
+def test_the_reference_is_the_final_exit_not_the_max(tmp_path):
+    """A2: A compares against ``exits[-1].price`` (the FINAL exit). B took the max, so with exits 120 then 100
+    the two sides answered oppositely at any price between them — at 102, A.R1 true and B.R1 false."""
+    a_row = {"case_key": "DEMO:ira", "symbol": "DEMO", "account": "DEMO_IRA", "state": "WATCHING",
+             "materiality_tier": "T1",
+             "exits": [{"symbol": "DEMO", "price": 120.0, "shares": 50, "realized_pnl": -1000.0,
+                        "exit_date": "2026-10-01"},
+                       {"symbol": "DEMO", "price": 100.0, "shares": 100, "realized_pnl": -5000.0,
+                        "exit_date": "2026-10-30"}]}
+    assert R.exit_price(a_row) == 100.0                 # final exit, not max 120
+
+    flat = {"close": 102.0, "rsi": 35.0, "rsi_prev": 34.0, "sma20": 130.0, "macd_up_sessions": 0,
+            "catalyst_confidence": 0.0}
+    d = R.evaluate(a_row, flat, now=NOW)                # default policy (0.01 fraction)
+    assert d.triggers == {"R1": True, "R2": False, "R3": False, "R4": False, "R5": False}
+    assert d.state == R.RECOVERING
+
+
+def test_the_final_exit_follows_the_rows_own_order_when_dates_are_missing():
+    row = {"exits": [{"price": 120.0}, {"price": 100.0}]}
+    assert R.exit_price(row) == 100.0                   # A's exits[-1], in A's order
