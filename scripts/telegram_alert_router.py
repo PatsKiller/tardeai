@@ -6,6 +6,7 @@ Pure functions + in-memory dedupe. No trades. No orders. No DB writes.
 
 Loaded by telegram_alert.py to gate outbound Telegram sends.
 """
+import fcntl
 import hashlib
 import json
 import logging
@@ -680,6 +681,27 @@ def _recovery_lock_owner(lock: Path) -> Optional[str]:
     return str(owner) if owner else None
 
 
+def _recovery_reclaim_guard():
+    """Serialise stale-lock reclamation. Returns an fd holding an flock, or None if a peer holds it.
+
+    One fixed file beside the ledger: reclamation is rare (only after a crash), it is released by the
+    kernel if the holder dies, and it is deliberately never unlinked — unlinking an flock file would
+    let a waiter lock a deleted inode while a third process locks a new one.
+    """
+    path = _RECOVERY_T1_PAGE_PATH.parent / ".recovery_t1_reclaim.lock"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT, 0o600)
+    except OSError:
+        return None
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(fd)
+        return None
+    return fd
+
+
 def recovery_t1_state(message: str) -> str:
     return _recovery_state(_budget_day(), _recovery_case_key(message))
 
@@ -720,17 +742,32 @@ def recovery_t1_claim(message: str) -> bool:
                 age = 0
             if age < _RECOVERY_T1_CLAIM_STALE_SECONDS:
                 return False
-            # Reclaim a stale lock ATOMICALLY: the rename can only succeed for one process, so two
-            # reclaimers cannot both walk away believing they own the case (R5-F2).
-            graveyard = lock.with_name(f"{lock.name}.stale.{os.getpid()}")
-            try:
-                os.rename(lock, graveyard)
-            except OSError:
+            # Stale reclamation must be GENERATION-safe (cx3 R6-F1). Renaming the pathname alone can
+            # move a lock that a peer created AFTER our stat: two processes both see the old stale
+            # lock, the first replaces it, and the second's resume renames the FRESH lock away and
+            # claims too. Reclamation is therefore serialised by an flock mutex and re-decided under
+            # it; a peer that finds another reclaimer active does not race it.
+            guard = _recovery_reclaim_guard()
+            if guard is None:
                 return False
             try:
-                os.unlink(graveyard)
-            except OSError:
-                pass
+                try:
+                    age = time.time() - lock.stat().st_mtime
+                except OSError:
+                    continue          # it vanished while we waited: try to create it again
+                if age < _RECOVERY_T1_CLAIM_STALE_SECONDS:
+                    return False      # a fresh claimant replaced it while we waited
+                graveyard = lock.with_name(f"{lock.name}.stale.{os.getpid()}.{uuid.uuid4().hex[:8]}")
+                try:
+                    os.rename(lock, graveyard)
+                except OSError:
+                    continue
+                try:
+                    os.unlink(graveyard)
+                except OSError:
+                    pass
+            finally:
+                os.close(guard)       # releases the flock
         except OSError:
             break  # cannot lock: fail-open, the page is loud
     if _recovery_state(day, key) == "delivered":       # authoritative, while we hold the lock
