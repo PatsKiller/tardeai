@@ -395,7 +395,16 @@ def build(
 
         def applicable(row: dict) -> bool:
             if row.get("session") in ("regular", "regular_close"):
-                return row.get("session_date") == expected_date
+                at = stamp(row.get("as_of"))
+                if row.get("session_date") != expected_date or at is None:
+                    return False
+                day = date.fromisoformat(expected_date)
+                # The stored observation clock must independently belong to the
+                # claimed NYSE session, including its fractional closing minute.
+                # This does not turn the ledger clock into a provider event time.
+                opening = datetime.combine(day, sessions.REGULAR_OPEN, sessions.ET)
+                closing = datetime.combine(day, sessions.close_time(day), sessions.ET) + timedelta(minutes=1)
+                return opening <= at < closing
             at = stamp(row.get("as_of"))
             return (
                 extended_start is not None
@@ -611,18 +620,20 @@ def build(
     chips = []
     for category in CATEGORIES:
         row = categories.get(category, {})
-        chip = {
-            "category": category,
-            "chip": {"CALM": "OK", "WARN": "WARN", "STRESS": "STRESS"}.get(row.get("state"), "not_measured"),
-        }
+        chip = fact(
+            row or None,
+            as_of=row.get("as_of"),
+            source="market_risk.category." + category,
+            now=now,
+            reason=(row.get("detail") or "category not measured") if row.get("state") == "UNKNOWN" else None,
+        )
         chip.update(
-            fact(
-                row or None,
-                as_of=row.get("as_of"),
-                source="market_risk.category." + category,
-                now=now,
-                reason=(row.get("detail") or "category not measured") if row.get("state") == "UNKNOWN" else None,
-            )
+            category=category,
+            chip=(
+                {"CALM": "OK", "WARN": "WARN", "STRESS": "STRESS"}.get(row.get("state"), "not_measured")
+                if chip["state"] == "measured"
+                else "not_measured"
+            ),
         )
         chips.append(chip)
     history = [

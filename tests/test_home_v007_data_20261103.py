@@ -628,3 +628,61 @@ def test_rejected_quote_cannot_supply_any_measured_price_derivative(mod, rejecti
     for field in ("day_change", "since_exit", "analysis_references", "volume_vs_20d"):
         assert row[field]["state"] == "unknown" and row[field]["value"] is None and row[field]["remediation"]
     assert result["positions"][0]["stop"]["state"] == "unknown"
+
+
+@pytest.mark.parametrize("path", ["build", "failed_reader"])
+def test_relabelled_yesterday_clock_never_becomes_current_or_supplies_derivatives(mod, path):
+    # Whole-PR reviewer R1: labels claim today, independent observation clock is yesterday.
+    now = datetime(2032, 3, 9, 19, tzinfo=timezone.utc)
+    p = projection()
+    p["reentry_watch"]["SYNX"]["current_quote"].update(
+        session="regular",
+        session_date="2032-03-09",
+        expected_session_date="2032-03-09",
+        as_of="2032-03-08T21:00:00Z",
+    )
+    result = mod.build(p, {}, now=now) if path == "build" else mod.collect(p, {}, reader=FailedCurrentReader(), now=now)
+    row = result["symbols"]["SYNX"]
+    assert row["quote"]["expected_session_date"] == "2032-03-09"
+    for field in ("quote", "day_change", "since_exit", "analysis_references", "volume_vs_20d"):
+        assert row[field]["state"] == "unknown" and row[field]["value"] is None
+        assert row[field]["reason"] and row[field]["remediation"]
+
+
+@pytest.mark.parametrize(
+    "now_text,session_day,observed,accepted",
+    [
+        ("2032-03-09T19:00:00Z", "2032-03-09", "2032-03-09T14:30:00Z", True),
+        ("2032-03-09T19:00:00Z", "2032-03-09", "2032-03-09T14:29:59Z", False),
+        ("2032-03-09T22:00:00Z", "2032-03-09", "2032-03-09T21:00:59.999999Z", True),
+        ("2032-03-09T22:00:00Z", "2032-03-09", "2032-03-09T21:01:00Z", False),
+        ("2026-11-27T19:00:00Z", "2026-11-27", "2026-11-27T18:00:59.999999Z", True),
+        ("2026-11-27T19:00:00Z", "2026-11-27", "2026-11-27T18:01:00Z", False),
+        ("2032-03-13T15:00:00Z", "2032-03-12", "2032-03-13T14:00:00Z", False),
+    ],
+)
+def test_regular_quote_observation_clock_matches_actual_calendar_window(mod, now_text, session_day, observed, accepted):
+    now = datetime.fromisoformat(now_text.replace("Z", "+00:00"))
+    p = projection()
+    p["reentry_watch"]["SYNX"]["current_quote"].update(session="regular", session_date=session_day, as_of=observed)
+    result = mod.build(p, {}, now=now)["symbols"]["SYNX"]["quote"]
+    assert (result["state"] == "measured") is accepted
+    assert result["value"] == (12 if accepted else None)
+
+
+@pytest.mark.parametrize("clock", [None, "2032-03-09T22:00:00Z", "2032-03-09T20:00:00"])
+@pytest.mark.parametrize("category_state", ["CALM", "WARN", "STRESS"])
+def test_affirmative_category_chip_requires_accepted_source_clock(mod, clock, category_state):
+    p = projection()
+    p["categories"] = [{"category": mod.CATEGORIES[0], "state": category_state, "as_of": clock}]
+    row = mod.build(p, {}, now=NOW)["risk"]["categories"][0]
+    assert row["state"] == "unknown" and row["value"] is None
+    assert row["chip"] == "not_measured" and row["remediation"]
+
+
+@pytest.mark.parametrize("category_state,chip", [("CALM", "OK"), ("WARN", "WARN"), ("STRESS", "STRESS")])
+def test_clocked_category_chip_preserves_actual_measured_state(mod, category_state, chip):
+    p = projection()
+    p["categories"] = [{"category": mod.CATEGORIES[0], "state": category_state, "as_of": ASOF}]
+    row = mod.build(p, {}, now=NOW)["risk"]["categories"][0]
+    assert row["state"] == "measured" and row["chip"] == chip and row["as_of"] == ASOF
