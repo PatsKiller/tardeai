@@ -430,13 +430,37 @@ def store_accessor(conn=None, policy: Mapping[str, Any] | None = None):
         return None
 
 
+#: States that are worth telling the operator about. A transition INTO one of these hands the case to
+#: piece C; a case that merely stays there is not re-handed (C's own floor and per-case/day bound also apply).
+PAGING_STATES = (RECOVERING, RE_ENTRY_READY)
+
+
+def _default_notify():
+    """Piece C's notifier, loaded lazily so B stays importable without it."""
+    try:
+        from lib.recovery_notify import notify_recovery_case  # noqa: PLC0415
+    except ImportError:
+        try:
+            from scripts.lib.recovery_notify import notify_recovery_case  # noqa: PLC0415
+        except ImportError:
+            return None
+    return notify_recovery_case
+
+
 def run_pass(store, snapshot_for, *, policy: Mapping[str, Any] | None = None,
-             now: datetime | None = None, dry_run: bool = True, limit: int = 200) -> dict:
-    """Evaluate every open case once. Pure per case; the only write is piece A's ``update_state``.
+             now: datetime | None = None, dry_run: bool = True, limit: int = 200,
+             notify=None, notify_states: tuple[str, ...] = PAGING_STATES) -> dict:
+    """Evaluate every open case once: write the state change AND hand a paging transition to piece C.
 
     ``snapshot_for(case)`` returns the market fields (close, sma20, rsi, rsi_prev, stop_level,
     macd_up_sessions, catalyst_confidence, catalyst_sessions_ago, entry_high) or None. A snapshot that is
     missing leaves the case's state untouched and says why — this pass never guesses a price.
+
+    ``notify`` is piece C's ``notify_recovery_case`` by default. This is the PRODUCTION handoff: codex's
+    scheduled-shape probe (2026-11-03) found the pass wrote a T1 RECOVERING case and made **zero** notifier
+    calls — a case that exists and never pages is the exact failure the row exists to fix. A transition into
+    ``PAGING_STATES`` now notifies once, after the state is durable; a notifier fault is recorded on the row
+    and never aborts the pass or the other cases.
     """
     if store is None:
         return {"store": "absent", "considered": 0, "changed": 0, "decisions": []}
@@ -451,7 +475,8 @@ def run_pass(store, snapshot_for, *, policy: Mapping[str, Any] | None = None,
     except Exception as exc:  # noqa: BLE001 — a broken store is reported, never rendered as "no cases"
         return {"store": "unreadable", "error": f"{type(exc).__name__}: {exc}", "considered": 0,
                 "changed": 0, "decisions": []}
-    decisions, changed = [], 0
+    notifier = notify if notify is not None else _default_notify()
+    decisions, changed, notifier_calls = [], 0, 0
     for case in cases:
         try:
             snapshot = snapshot_for(case) if snapshot_for else None
@@ -475,5 +500,24 @@ def run_pass(store, snapshot_for, *, policy: Mapping[str, Any] | None = None,
                                            next_trigger=decision.next_trigger)
                 except Exception as exc:  # noqa: BLE001 — one case failing never stops the pass
                     row["write_error"] = f"{type(exc).__name__}: {exc}"
-    return {"store": "ok", "considered": len(cases), "changed": changed, "decisions": decisions,
+            if decision.state in tuple(notify_states):
+                if notifier is None:
+                    row["notify"] = {"sent": False, "reason": "notifier unavailable (piece C absent)"}
+                elif dry_run:
+                    row["notify"] = {"sent": False, "reason": "dry_run"}
+                else:
+                    handoff = {**case, "state": decision.state,
+                               "confidence": round(decision.confidence, 4),
+                               "next_trigger": decision.next_trigger,
+                               "price": (snapshot or {}).get("close"),
+                               "exit_price": exit_price(case)}
+                    try:
+                        result = notifier(handoff)
+                        notifier_calls += 1
+                        row["notify"] = {k: v for k, v in (result or {}).items() if k != "message"}
+                    except Exception as exc:  # noqa: BLE001 — a notifier fault never aborts the pass
+                        notifier_calls += 1
+                        row["notify"] = {"sent": False, "error": f"{type(exc).__name__}: {exc}"}
+    return {"store": "ok", "considered": len(cases), "changed": changed, "notifier_calls": notifier_calls,
+            "decisions": decisions,
             "dry_run": bool(dry_run), "policy_source": policy.get("policy_source")}
