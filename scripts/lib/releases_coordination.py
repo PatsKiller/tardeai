@@ -534,6 +534,7 @@ def build(ledger_path: Path, claims_dir: Path, prs: Iterable[Mapping[str, Any]],
             if wl_gap is None or wl_gap == "worklog_truncated":
                 worklogs[owner["claim_id"]] = {
                     "next_step": wl.get("next_action"), "blockers": len(wl.get("blockers") or []),
+                    "blocker_text": next(iter(wl.get("blockers") or []), None),
                     "last_entry_at": wl.get("last_entry_at"),
                 }
         local_head = str(owner.get("head_sha") or "") if owner else ""

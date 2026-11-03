@@ -172,7 +172,8 @@ def ci_from_rollup(rollup: Iterable[Mapping[str, Any]] | None, required: Iterabl
     CheckRun entries carry name/status/conclusion/completedAt; StatusContext entries carry context/state. Only the
     latest entry per name counts. When ``required`` is known, only those names decide the state."""
     if rollup is None:
-        return {"state": "unknown", "failing": [], "pending": [], "total": 0, "completed_at": None}
+        return {"state": "unknown", "failing": [], "pending": [], "total": 0, "passed": None,
+                "completed_at": None, "gap": "checks_unavailable", "scope": "required" if required else "all_observed"}
     latest: dict[str, Mapping[str, Any]] = {}
     for r in rollup:
         if not isinstance(r, Mapping):
@@ -181,8 +182,9 @@ def ci_from_rollup(rollup: Iterable[Mapping[str, Any]] | None, required: Iterabl
         if not name:
             continue
         prev = latest.get(name)
-        key = str(r.get("startedAt") or r.get("completedAt") or "")
-        if prev is None or key >= str(prev.get("startedAt") or prev.get("completedAt") or ""):
+        key = _observed_at(r.get("startedAt") or r.get("createdAt") or r.get("completedAt"))
+        previous_key = _observed_at((prev or {}).get("startedAt") or (prev or {}).get("createdAt") or (prev or {}).get("completedAt"))
+        if prev is None or (key or datetime.min.replace(tzinfo=timezone.utc)) >= (previous_key or datetime.min.replace(tzinfo=timezone.utc)):
             latest[name] = r
     req = sorted(set(required or ()))
     names = [n for n in req if n in latest] if req else sorted(latest)
@@ -218,7 +220,11 @@ def ci_from_rollup(rollup: Iterable[Mapping[str, Any]] | None, required: Iterabl
         "failing": failing[:12],
         "pending": pending[:12],
         "total": len(names) + len(missing),
-        "completed_at": _max_iso(*done_at) if state == "green" else None,
+        "passed": len(names) + len(missing) - len(failing) - len(pending) if names or missing else None,
+        "completed_at": _source_time(max((stamp for value in done_at if (stamp := _observed_at(value))), default=None)) if state == "green" else None,
+        "started_at": _source_time(min((stamp for name in names if (stamp := _observed_at(latest[name].get("startedAt") or latest[name].get("createdAt")))), default=None)),
+        "scope": "required" if req else "all_observed",
+        "gap": "checks_not_observed" if state == "unknown" else None,
     }
 
 
@@ -248,19 +254,44 @@ def parse_batch_body(body: str | None) -> dict[str, Any]:
 
 
 def _norm_open_pr(p: Mapping[str, Any], required: list[str] | None) -> dict[str, Any]:
+    from scripts.lib import merge_hold_paths
+    head = p.get("headRefOid")
+    paths = [row.get("path") for row in p.get("files") or [] if isinstance(row, Mapping) and isinstance(row.get("path"), str)]
+    labels = {row.get("name") if isinstance(row, Mapping) else row for row in p.get("labels") or []}
+    held_labels = sorted(labels.intersection(merge_hold_paths.hold_labels()))
+    changed = p.get("changedFiles")
+    complete_files = (isinstance(p.get("files"), list) and isinstance(changed, int) and not isinstance(changed, bool) and changed >= 0
+                      and len(paths) == changed and len(set(paths)) == changed)
+    held_classes = sorted(merge_hold_paths.held_classes(paths))
+    exact_head = bool(re.fullmatch(r"[0-9a-f]{40}", str(head or "")))
+    quota_known = exact_head and (bool(held_labels or held_classes) or complete_files)
+    rollup = p.get("statusCheckRollup")
+    known_required = required if p.get("baseRefName") == "main" else None
+    observed_names = {str(row.get("name") or row.get("context")) for row in rollup or []
+                      if isinstance(row, Mapping) and (row.get("name") or row.get("context"))}
+    # Optional failing checks still matter; also retain required names that have not appeared.
+    all_expected = sorted(observed_names.union(known_required or []))
+    ci = ci_from_rollup(rollup, all_expected or None)
+    ci.update(head_sha=head, source="github_pr_snapshot", as_of=p.get("_checks_observed_at"),
+              scope="all_observed_and_required" if known_required else "all_observed",
+              required_contexts=known_required)
     return {
         "number": int(p.get("number") or 0),
         "title": str(p.get("title") or "")[:200],
         "url": p.get("url"),
         "branch": p.get("headRefName"),
-        "head_sha": p.get("headRefOid"),
+        "head_sha": head,
         "base": p.get("baseRefName"),
         "draft": bool(p.get("isDraft")),
         "author": ((p.get("author") or {}).get("login") if isinstance(p.get("author"), Mapping) else None),
-        "created_at": LC._norm_iso(p.get("createdAt")),
-        "updated_at": LC._norm_iso(p.get("updatedAt")),
-        "state": "open",
-        "ci": ci_from_rollup(p.get("statusCheckRollup"), required if p.get("baseRefName") == "main" else None),
+        "created_at": _source_time(p.get("createdAt")),
+        "updated_at": _source_time(p.get("updatedAt")),
+        "state": "open", "ci": ci,
+        "review_required_count": (2 if held_labels or held_classes else 1) if quota_known else None,
+        "review_required_source": "config/merge_hold_paths.json + active review floor",
+        "review_required_as_of": p.get("_checks_observed_at"),
+        "review_required_gap": None if quota_known else "complete_changed_file_snapshot_unavailable",
+        "held_classes": held_classes, "held_labels": held_labels, "changed_files_complete": complete_files,
     }
 
 
@@ -271,6 +302,7 @@ def _norm_merged_pr(p: Mapping[str, Any]) -> dict[str, Any]:
         "title": str(p.get("title") or "")[:200],
         "url": p.get("url"),
         "branch": p.get("headRefName"),
+        "head_sha": p.get("headRefOid"),
         "base": p.get("baseRefName"),
         "draft": False,
         "author": ((p.get("author") or {}).get("login") if isinstance(p.get("author"), Mapping) else None),
@@ -279,7 +311,9 @@ def _norm_merged_pr(p: Mapping[str, Any]) -> dict[str, Any]:
         "merged_at": LC._norm_iso(p.get("mergedAt")),
         "merge_sha": (mc or {}).get("oid"),
         "state": "merged",
-        "ci": None,
+        **({key: value for key, value in _norm_open_pr(p, None).items()
+            if key == "ci" or key.startswith("review_required_") or key in ("held_classes", "held_labels", "changed_files_complete")}
+           if p.get("headRefOid") else {"ci": None}),
     }
 
 
@@ -311,6 +345,7 @@ class PrCensus:
         self._running = False
         self._lock = threading.Lock()
         self._required: tuple[float, list[str] | None] | None = None
+        self._merged_details: dict[tuple[int, str], tuple[float, dict[str, Any]]] = {}
 
     def kick(self, *, background: bool = True) -> bool:
         """Start one refresh if due and none is running. Returns True when a refresh started."""
@@ -362,16 +397,30 @@ class PrCensus:
 
     def _detail(self, pr: dict[str, Any], repo: str) -> tuple[dict[str, Any], str | None]:
         # Never reuse checks carried by the list if the detail query fails.
-        clean = {k: v for k, v in pr.items() if k != "statusCheckRollup"}
+        clean = {k: v for k, v in pr.items() if k not in ("statusCheckRollup", "files", "labels", "changedFiles", "_checks_observed_at")}
         number = int(pr.get("number") or 0)
+        cache_key = (number, str(pr.get("headRefOid") or ""))
+        if pr.get("_merged"):
+            with self._lock:
+                cached = self._merged_details.get(cache_key)
+            if cached and self.clock() - cached[0] < 300.0:
+                return {**clean, **cached[1]}, None
         doc, warning = self._json(
-            ["gh", "pr", "view", str(number), "--repo", repo, "--json", "headRefOid,statusCheckRollup"]
+            ["gh", "pr", "view", str(number), "--repo", repo, "--json", "headRefOid,statusCheckRollup,files,labels,changedFiles"]
         )
         if not isinstance(doc, dict) or not isinstance(doc.get("statusCheckRollup"), list):
             return clean, f"PR #{number} checks unavailable: {warning or 'invalid detail response'}"
         if not pr.get("headRefOid") or doc.get("headRefOid") != pr["headRefOid"]:
             return clean, f"PR #{number} checks unavailable: head changed during census"
-        return {**clean, "statusCheckRollup": doc["statusCheckRollup"]}, warning
+        observed = {"statusCheckRollup": doc["statusCheckRollup"], "files": doc.get("files"),
+                    "labels": doc.get("labels"), "changedFiles": doc.get("changedFiles"),
+                    "_checks_observed_at": _source_time(self.now())}
+        if pr.get("_merged") and not warning:
+            with self._lock:
+                self._merged_details[cache_key] = (self.clock(), observed)
+                if len(self._merged_details) > MAX_ITEMS:
+                    self._merged_details.pop(next(iter(self._merged_details)))
+        return {**clean, **observed}, warning
 
     def _refresh(self) -> None:
         warnings: list[str] = []
@@ -389,7 +438,7 @@ class PrCensus:
             merged, w = self._json(
                 [
                     "gh", "pr", "list", "--repo", repo, "--state", "merged", "--limit", str(MAX_MERGED_PRS), "--json",
-                    "number,title,url,headRefName,baseRefName,author,createdAt,mergedAt,mergeCommit",
+                    "number,title,url,headRefName,headRefOid,baseRefName,author,createdAt,mergedAt,mergeCommit",
                 ]
             )  # fmt: skip
             if w:
@@ -409,7 +458,17 @@ class PrCensus:
                 if warning:
                     warnings.append(warning)
             open_prs = [_norm_open_pr(p, required) for p, _warning in enriched]
-            merged_prs = [_norm_merged_pr(p) for p in (merged or [])[:MAX_MERGED_PRS] if isinstance(p, dict)]
+            # Each detail retains its own successful observation clock.
+            merged_rows = [p for p in merged[:MAX_MERGED_PRS] if isinstance(p, dict)]
+            with ThreadPoolExecutor(max_workers=MAX_PR_DETAIL_WORKERS) as pool:
+                merged_details = list(pool.map(lambda p: self._detail({**p, "_merged": True}, repo) if p.get("headRefOid") else (p, None), merged_rows))
+            for _p, warning in merged_details:
+                if warning:
+                    warnings.append(warning)
+            merged_prs = [_norm_merged_pr(p) for p, _warning in merged_details]
+            for current_pr in merged_prs:
+                if isinstance(current_pr.get("ci"), dict):
+                    current_pr["ci"]["scope"] = "observed_at_merged_head"
             batches: dict[int, dict[str, Any]] = {}
             for p in [p for p in open_prs if BATCH_BRANCH_RE.match(str(p.get("branch") or ""))][:MAX_BATCHES]:
                 doc, w = self._json(["gh", "pr", "view", str(p["number"]), "--repo", repo, "--json", "body"])
@@ -1287,13 +1346,17 @@ class WorkPipeline:
         state_root: Path | None = None,
         coordination: Callable[..., dict[str, Any]] | None = None,
         approvals: Callable[..., dict[str, Any]] | None = None,
+        stale_claim_hours: float = 24.0,
+        stuck_after_minutes: float = 120.0,
     ):
         self.state_root = state_root
         self.coordination = coordination
         self.approvals = approvals
+        self.stale_claim_hours = stale_claim_hours
+        self.stuck_after_minutes = stuck_after_minutes
         self._owns_default_sources = sources is None
         self.claims_dir = claims_dir
-        self.census = census or PrCensus(release=LC.ReleaseReader())
+        self.census = census or PrCensus(release=LC.ReleaseReader(), min_interval_s=max(CENSUS_MIN_INTERVAL_S, 120.0))
         self.sources = sources or self._read_sources
         self.health = health or release_health
         self.now = now
@@ -1355,6 +1418,7 @@ class WorkPipeline:
         src = self.sources()
         census, meta = self.census.snapshot()
         health = {**self.health(), "served_sha": ((census or {}).get("serving") or {}).get("sha")}
+        now = self.now()  # acquisition may finish after source building began
         from scripts.lib import work_pipeline_sources as shared_sources
         prs = [*((census or {}).get("open") or []), *((census or {}).get("merged") or [])]
         try:
@@ -1362,7 +1426,7 @@ class WorkPipeline:
                 coordination = (self.coordination or shared_sources.load)(
                     Path(self.state_root or src.get("state_root") or "."), prs, src.get("claims") or [], now,
                     serving=(census or {}).get("serving") or {}, health=health,
-                    source_gaps=src.get("source_gaps") or {},
+                    source_gaps=src.get("source_gaps") or {}, stale_claim_hours=self.stale_claim_hours,
                 )
             else:
                 # Injected sources remain hermetic and must name the unconfigured joins.
@@ -1422,6 +1486,18 @@ class WorkPipeline:
             item["in_flight"] = not item.get("finished") and (
                 bool(item.get("pr_number")) or not claim_ids or bool(active_ids.intersection(claim_ids))
             )
+        from scripts.lib.work_pipeline_flow_facts import enrich
+        coordination = enrich(items, coordination, prs, waiting, now,
+                              census_as_of=meta.get("refreshed_at"), census_warning=meta.get("warning"),
+                              stuck_after_minutes=self.stuck_after_minutes)
+        coordination["agents"] = [dict(agent) for agent in coordination.get("agents") or []]
+        for agent in coordination["agents"]:
+            matches = [item for item in items if item.get("in_flight")
+                       and agent.get("session") == ((((item.get("coordination") or {}).get("owner") or {}).get("value") or {}).get("session"))]
+            if matches:
+                item = matches[0]
+                agent["item_id"] = item["id"]
+                agent["stage"] = ((item.get("coordination") or {}).get("current_stage") or {}).get("value")
         t2 = src.get("tier2") or {}
         merged_waiting = sum(1 for i in items if i["stage"] in ("merged",))
         q = src.get("queue") or {}

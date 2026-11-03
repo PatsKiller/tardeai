@@ -65,6 +65,8 @@ def write_sources(tmp_path, events=None, approvals=None):
     registry = tmp_path / M.REGISTRY_REL
     registry.parent.mkdir(parents=True, exist_ok=True)
     registry.write_text(json.dumps(registry_value()))
+    nudger = tmp_path / M.NUDGER_REL
+    nudger.write_text(json.dumps({"worker": {"changed_at": "2026-11-03T02:50:00Z", "hash": "PRIVATE-SCREEN-HASH"}}))
 
 
 def registry_value(lead="test-lead", role="lead", updated_at="2026-11-03T00:30:00Z"):
@@ -331,7 +333,7 @@ def test_naive_typed_evidence_is_a_gap_and_never_a_fresh_review():
 
 def test_missing_and_corrupt_sources_are_named_gaps(tmp_path):
     missing = M.load(tmp_path, [pr()], [], NOW)
-    assert {row["source"] for row in missing["gaps"]} == {"coordinator_ledger", "digest_approvals", "plans", "releases", "coordination_registry"}
+    assert {row["source"] for row in missing["gaps"]} == {"coordinator_ledger", "digest_approvals", "plans", "releases", "coordination_registry", "nudger_state"}
     write_sources(tmp_path)
     (tmp_path / M.LEDGER_REL).write_text("{broken")
     data = M.load(tmp_path, [pr()], [], NOW, serving={"sha": SERVED})
@@ -368,6 +370,172 @@ def test_plan_limits_corruption_and_symlink_are_named(tmp_path, monkeypatch):
     assert M.load(tmp_path, [], [], NOW)["sources"]["plans"]["gap"] == "byte_budget_exceeded"
 
 
+def test_agent_membership_and_nudge_coverage_are_separate():
+    result = build(coordination_registry=registry_value(), nudger_sessions={"different-worker": {"changed_at": "2026-11-03T02:00:00Z"}})
+    assert result["agents_complete"] is True
+    assert result["nudges_complete"] is False
+    agent = result["agents"][0]
+    assert agent["active"] is True and agent["session"] == "worker"
+    assert agent["nudges_today"] is None
+    assert agent["nudge_gap"] == "nudge_session_link_not_recorded"
+    assert agent["last_activity"] == "2026-11-03T01:00:00Z"
+    assert agent["idle_minutes"] == 120.0
+    incomplete = build(coordination_registry=registry_value(), nudger_sessions=["worker"], source_gaps={"claims": "corrupt"})
+    assert incomplete["agents_complete"] is False
+    assert incomplete["agents_status"] == "PARTIAL"
+
+
+def test_missing_active_logical_session_is_incomplete_membership():
+    result = build(claims=[claim(session=None)], coordination_registry=registry_value(), nudger_sessions=["worker"])
+    assert result["agents_complete"] is False
+    assert result["agents"] == []
+    assert result["sources"]["agent_facts"]["gap"] == "agent_session_not_recorded"
+
+
+def test_agents_deduplicate_latest_logical_claim_and_keep_activity_basis():
+    claims = [claim(claim_id="older", vendor="old", heartbeat_at="2026-11-03T00:00:00Z"),
+              claim(claim_id="newer", vendor="codex", pr=2501, stage="building",
+                    worklog={"last_entry_at": "2026-11-03T02:00:00Z", "blockers": 0})]
+    result = build(claims=claims, coordination_registry=registry_value(), nudger_sessions={
+        "worker": {"changed_at": "2026-11-03T02:59:00Z", "hash": "PRIVATE-HASH", "payload": "PRIVATE-PAYLOAD"}})
+    assert len(result["agents"]) == 1
+    agent = result["agents"][0]
+    assert agent["current_claim_id"] == "newer"
+    assert set(agent["current_claim_ids"]) == {"older", "newer"}
+    assert agent["vendor"] == "codex" and agent["pr"] == 2501
+    assert agent["coordinator"] == "test-lead"
+    assert agent["last_activity"] == "2026-11-03T02:00:00Z"
+    assert agent["activity_source"] == "claim_worklog"
+    assert agent["idle_minutes"] == 60.0  # screen changed one minute ago; not task activity
+    assert agent["screen_changed_at"] == "2026-11-03T02:59:00Z"
+    assert agent["nudges_today"] == 0
+    assert result["nudges_complete"] is True
+    assert result["sources"]["nudger_state"]["as_of"] == "2026-11-03T02:59:00Z"
+    assert "PRIVATE" not in json.dumps(result)
+
+
+def test_future_worklog_clock_does_not_inflate_last_activity():
+    result = build(claims=[claim(worklog={"last_entry_at": "2026-11-04T00:00:00Z"})],
+                   coordination_registry=registry_value(), nudger_sessions={"worker": {"changed_at": "2026-11-03T02:00:00Z"}})
+    assert result["agents"][0]["last_activity"] == "2026-11-03T01:00:00Z"
+    assert result["agents"][0]["activity_source"] == "claim_board"
+
+
+@pytest.mark.parametrize("effective", [{"_state": "done"}, {"state": "released"}, {"stage": "done"}, {"ended_at": "2026-11-03T02:00:00Z"}])
+def test_effectively_completed_claim_does_not_appear_as_active_agent(effective):
+    result = build(claims=[claim(status="active", **effective)], nudger_sessions=["worker"])
+    assert result["agents"] == []
+    assert result["agents_complete"] is True
+
+
+def test_nudges_count_exact_physical_session_on_et_day_and_exclude_future():
+    events = [
+        {"kind": "nudge", "by": "agent-nudger", "subject": "worker", "ts": "2026-11-02T04:59:00Z", "detail": "PRIVATE-DETAIL"},
+        {"kind": "nudge", "by": "agent-nudger", "subject": "worker", "ts": "2026-11-02T05:00:00Z"},
+        {"kind": "nudge", "by": "agent-nudger", "subject": "worker", "ts": "2026-11-03T02:59:00Z"},
+        {"kind": "nudge", "by": "agent-nudger", "subject": "worker", "ts": "2026-11-03T04:00:00Z"},
+        {"kind": "nudge", "by": "agent-nudger", "subject": "worker-extra", "ts": "2026-11-03T01:00:00Z"},
+        {"kind": "nudge", "by": "coordinator", "subject": "worker", "ts": "2026-11-03T01:00:00Z"},
+    ]
+    result = build(events=events, coordination_registry=registry_value(), nudger_sessions={"worker": {"changed_at": "2026-11-03T02:00:00Z"}})
+    agent = result["agents"][0]
+    assert agent["nudges_today"] == 2
+    assert len(agent["nudge_events"]) == 2
+    assert all(e["source_ref"].startswith(M.LEDGER_REL + "#event-") for e in agent["nudge_events"])
+    assert agent["nudge_day"] == "2026-11-02" and agent["nudge_timezone"] == "America/New_York"
+    assert agent["nudge_as_of"] == "2026-11-03T02:59:00Z"
+    assert "PRIVATE" not in json.dumps(result)
+
+
+def test_only_explicit_worker_session_can_link_alias_and_ambiguity_is_null():
+    tracked = {"worker": {"changed_at": "2026-11-03T02:00:00Z"}, "other": {"changed_at": "2026-11-03T02:00:00Z"}}
+    alias = build(claims=[claim(session="worker-task-alias", agent="worker")], nudger_sessions=tracked)
+    assert alias["agents"][0]["nudges_today"] is None  # no prefix or agent-name inference
+    explicit = build(claims=[claim(session="task-alias", worker_session="worker")], nudger_sessions=tracked)
+    assert explicit["agents"][0]["worker_session"] == "worker"
+    assert explicit["agents"][0]["nudges_today"] == 0
+    ambiguous = build(claims=[claim(session="worker", worker_session="other")], nudger_sessions=tracked)
+    assert ambiguous["agents"][0]["worker_session"] is None
+    assert ambiguous["agents"][0]["nudge_gap"] == "nudge_session_link_not_recorded"
+
+
+def test_nudger_state_missing_invalid_and_byte_bounds_are_named(tmp_path, monkeypatch):
+    missing = M.load(tmp_path, [], [], NOW)
+    assert missing["sources"]["nudger_state"]["gap"] == "nudger_state_missing"
+    write_sources(tmp_path)
+    path = tmp_path / M.NUDGER_REL
+    path.write_text("{broken")
+    assert M.load(tmp_path, [], [], NOW)["sources"]["nudger_state"]["gap"] == "nudger_state_corrupt"
+    path.write_text(json.dumps({"worker": {"changed_at": "2026-11-03T02:59:00"}}))
+    assert M.load(tmp_path, [], [], NOW)["sources"]["nudger_state"]["gap"] == "nudger_changed_at_invalid"
+    path.write_text(json.dumps({"worker": {"changed_at": 1793670000, "hash": "PRIVATE"}}))
+    monkeypatch.setattr(M, "MAX_NUDGER_BYTES", 8)
+    assert M.load(tmp_path, [], [], NOW)["sources"]["nudger_state"]["gap"] == "nudger_state_byte_budget_exceeded"
+
+
+def test_nudger_real_epoch_format_and_missing_ledger_do_not_fake_zero(tmp_path):
+    write_sources(tmp_path)
+    path = tmp_path / M.NUDGER_REL
+    changed = NOW.timestamp() - 600
+    path.write_text(json.dumps({"worker": {"changed_at": changed, "hash": "PRIVATE-HASH"}}))
+    result = M.load(tmp_path, [], [claim()], NOW)
+    assert result["agents"][0]["screen_changed_at"] == "2026-11-03T02:50:00Z"
+    assert result["agents"][0]["nudges_today"] == 0
+    assert result["agents_complete"] is True
+    assert result["nudges_complete"] is True
+    assert result["sources"]["nudger_state"]["as_of"] == "2026-11-03T02:50:00Z"
+    assert "PRIVATE" not in json.dumps(result)
+    missing = M.load(tmp_path, [], [claim()], NOW, source_gaps={"coordinator_ledger": "corrupt"})
+    assert missing["agents_complete"] is True
+    assert missing["nudges_complete"] is False
+    assert missing["agents"][0]["nudges_today"] is None
+    assert missing["agents"][0]["nudge_gap"] == "nudge_log_unavailable"
+
+
+def test_blocker_fact_distinguishes_known_zero_from_missing_positive_text():
+    zero = build()["by_pr"][2501]["blocker"]
+    assert zero["value"] is None and zero["gap"] is None
+    missing = build(claims=[claim(worklog={"blockers": 1, "last_entry_at": "2026-11-03T01:00:00Z"})])["by_pr"][2501]["blocker"]
+    assert missing["value"] is None and missing["gap"] == "worklog_blocker_text_not_recorded"
+
+
+def test_blocker_text_load_uses_derived_validated_worklog_and_real_clock(tmp_path):
+    write_sources(tmp_path)
+    ident = "20261103T010000Z-codex-12345678"
+    path = tmp_path / M.CLAIMS_REL / f"{ident}.worklog.md"
+    path.parent.mkdir(parents=True)
+    path.write_text("## Blockers\n- `2026-11-03T01:10:00Z` Waiting on synthetic review\n\n## Handoff\n- Next step: Ask reviewer\n")
+    c = claim(claim_id=ident, worklog={"exists": True, "blockers": 1, "path": "/never/read/arbitrary"})
+    before = path.read_bytes()
+    data = M.load(tmp_path, [pr()], [c], NOW, serving={"sha": SERVED})
+    blocker = data["by_pr"][2501]["blocker"]
+    assert "Waiting on synthetic review" in blocker["value"]
+    assert blocker["as_of"] == "2026-11-03T01:10:00Z"
+    assert blocker["gap"] is None
+    assert path.read_bytes() == before
+    assert "/never/read/arbitrary" not in json.dumps(data)
+
+
+def test_blocker_worklog_budget_and_truncation_are_named(tmp_path, monkeypatch):
+    write_sources(tmp_path)
+    first, second = "20261103T010000Z-codex-12345678", "20261103T010000Z-codex-23456789"
+    directory = tmp_path / M.CLAIMS_REL
+    directory.mkdir(parents=True)
+    for ident in [first, second]:
+        (directory / f"{ident}.worklog.md").write_text("## Blockers\n- `2026-11-03T01:10:00Z` Review needed\n")
+    claims = [claim(claim_id=ident, worklog={"blockers": 1}) for ident in [first, second]]
+    monkeypatch.setattr(M, "MAX_WORKLOG_READS", 1)
+    data = M.load(tmp_path, [pr()], claims, NOW)
+    assert data["sources"]["worklogs"]["gap"] == "worklog_read_budget_exceeded"
+    assert data["claims"][1]["worklog"]["blocker_gap"] == "worklog_read_budget_exceeded"
+    monkeypatch.setattr(M, "MAX_WORKLOG_READS", 64)
+    monkeypatch.setattr(M.coordination, "WORKLOG_TAIL_BYTES", 8)
+    data = M.load(tmp_path, [pr()], claims[:1], NOW)
+    assert data["sources"]["worklogs"]["gap"] == "worklog_truncated"
+    assert data["by_pr"][2501]["blocker"]["gap"] == "worklog_truncated"
+    assert data["claims"][0]["worklog"]["blockers"] == 1
+
+
 def test_request_path_never_invokes_membership_or_network(tmp_path):
     write_sources(tmp_path)
 
@@ -391,3 +559,20 @@ def test_request_path_never_invokes_membership_or_network(tmp_path):
     assert data["by_pr"][2501]["live"]["value"] is True
     assert reader.calls == 1
     assert {p: p.read_bytes() for p in before} == before
+
+
+def test_builder_branch_claim_is_owner_before_newer_review_only_pr_context():
+    builder = claim(claim_id="builder", session="builder", pr=2501, branch="wt/test", heartbeat_at="2026-11-03T00:00:00Z")
+    reviewer = claim(claim_id="reviewer", session="reviewer", pr=2501, branch="review/scratch", heartbeat_at="2026-11-03T02:00:00Z")
+    data = build(prs=[pr(state="open")], claims=[reviewer, builder])
+    assert data["by_pr"][2501]["owner"]["value"]["session"] == "builder"
+    assert set(data["by_pr"][2501]["claim_ids"]) == {"reviewer", "builder"}
+
+
+def test_typed_unassigned_publication_events_retain_only_bound_public_fields():
+    row = {"kind": "branch_uploaded", "subject": "claim:claim-one", "head_sha": HEAD,
+           "branch": "wt/test", "ts": "2026-11-03T02:00:00Z", "operator_quote": "PRIVATE-QUOTE", "detail": "PRIVATE-DETAIL"}
+    data = build(prs=[], events=[row])
+    assert data["work_events"][0]["claim_id"] == "claim-one"
+    assert data["work_events"][0]["head_sha"] == HEAD
+    assert "PRIVATE" not in json.dumps(data["work_events"])

@@ -553,7 +553,8 @@ def test_failed_source_is_named_instead_of_suppressing_board(tmp_path):
     pipeline = W.WorkPipeline(sources=lambda: {"claims": [], "tasks": [], "awaiting": []},
                               health=lambda: {}, now=lambda: NOW, state_root=tmp_path, coordination=unavailable)
     data = pipeline._build()
-    assert data["coordination"]["gaps"] == [{"source": "coordination", "reason": "OSError"}]
+    assert {"source": "coordination", "reason": "OSError"} in data["coordination"]["gaps"]
+    assert data["coordination"]["complete"] is False
     assert "private exception text" not in json.dumps(data)
 
 
@@ -673,3 +674,76 @@ def test_healthy_claim_preflight_runs_before_existing_board_projection(tmp_path,
     source = W.WorkPipeline(claims_dir=tmp_path, state_root=tmp_path, now=lambda: NOW)._read_sources()
     assert calls == ["bounded", "board", "designs"]
     assert source["source_gaps"] == {}
+
+
+def test_measured_check_counts_include_missing_required_context_and_preserve_latest_clock():
+    runs = [
+        {"name": "one", "status": "COMPLETED", "conclusion": "SUCCESS", "startedAt": "2026-10-23T14:00:00.900000Z", "completedAt": "2026-10-23T14:01:00Z"},
+        {"name": "one", "status": "COMPLETED", "conclusion": "FAILURE", "startedAt": "2026-10-23T15:00:00.950000+01:00", "completedAt": "2026-10-23T14:02:00Z"},
+        {"name": "two", "status": "COMPLETED", "conclusion": "SUCCESS", "completedAt": "2026-10-23T14:01:00Z"},
+    ]
+    counts = W.ci_from_rollup(runs, required=["one", "two", "missing"])
+    assert counts["passed"] == 1 and counts["total"] == 3
+    assert counts["failing"] == ["one"] and counts["pending"] == ["missing"]
+    assert counts["scope"] == "required" and counts["state"] == "failing"
+    assert W.ci_from_rollup(None)["passed"] is None
+
+
+def test_review_floor_is_exact_head_and_complete_file_metadata_not_operator_authority():
+    base = {"number": 42, "title": "Synthetic", "headRefOid": "a" * 40, "baseRefName": "main",
+            "files": [{"path": "scripts/lib/sample.py"}], "changedFiles": 1, "labels": [],
+            "statusCheckRollup": [{"name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS"}]}
+    ordinary = W._norm_open_pr(base, None)
+    assert ordinary["review_required_count"] == 1
+    assert ordinary["ci"]["head_sha"] == "a" * 40
+    assert ordinary["ci"]["passed"] == ordinary["ci"]["total"] == 1
+    held = W._norm_open_pr({**base, "files": [{"path": "AGENTS.md"}]}, None)
+    assert held["review_required_count"] == 2 and held["held_classes"]
+    assert "next_actor" not in held  # a held label/path is no operator decision
+    incomplete = W._norm_open_pr({**base, "changedFiles": 2}, None)
+    assert incomplete["review_required_count"] is None and incomplete["review_required_gap"]
+    duplicate = W._norm_open_pr({**base, "files": base["files"] * 2, "changedFiles": 2}, None)
+    assert duplicate["review_required_count"] is None
+    assert W._norm_open_pr({**base, "headRefOid": "short"}, None)["review_required_count"] is None
+
+
+def test_merged_head_retains_native_ci_metadata_without_current_required_context_substitution():
+    pr = W._norm_merged_pr({"number": 42, "headRefOid": "a" * 40, "baseRefName": "main",
+                            "mergeCommit": {"oid": "b" * 40}, "files": [], "changedFiles": 0,
+                            "statusCheckRollup": [{"name": "oldcheck", "status": "COMPLETED", "conclusion": "SUCCESS",
+                                                   "completedAt": "2026-10-23T14:00:00.123456Z"}]})
+    assert pr["head_sha"] == "a" * 40
+    assert pr["ci"]["passed"] == pr["ci"]["total"] == 1
+    assert pr["ci"]["completed_at"] == "2026-10-23T14:00:00.123456Z"
+
+
+def test_merged_detail_cache_keeps_its_observation_clock_and_expires_without_reusing_failed_green():
+    ticks, clocks, calls = [0.0], [NOW], []
+    def runner(argv):
+        calls.append(argv)
+        if ticks[0] > 300:
+            return None, "synthetic outage"
+        return json.dumps({"headRefOid": "a" * 40, "statusCheckRollup": [{"name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS"}],
+                           "files": [], "labels": [], "changedFiles": 0}), None
+    census = W.PrCensus(runner=runner, clock=lambda: ticks[0], now=lambda: clocks[0])
+    pr = {"number": 42, "headRefOid": "a" * 40, "baseRefName": "main", "_merged": True}
+    first, warning = census._detail(pr, "example/synthetic")
+    assert warning is None and first["_checks_observed_at"] == iso(NOW)
+    ticks[0], clocks[0] = 200, NOW + timedelta(minutes=3)
+    cached, warning = census._detail(pr, "example/synthetic")
+    assert len(calls) == 1 and cached["_checks_observed_at"] == first["_checks_observed_at"]
+    ticks[0] = 301
+    failed, warning = census._detail(pr, "example/synthetic")
+    assert warning and "statusCheckRollup" not in failed and "_checks_observed_at" not in failed
+    assert W._norm_open_pr(failed, None)["ci"]["state"] == "unknown"
+
+
+def test_visible_optional_failure_cannot_hide_behind_green_required_checks():
+    row = {"number": 42, "headRefOid": "a" * 40, "baseRefName": "main", "files": [], "changedFiles": 0,
+           "statusCheckRollup": [{"name": "required", "status": "COMPLETED", "conclusion": "SUCCESS"},
+                                  {"name": "optional", "status": "COMPLETED", "conclusion": "FAILURE"}]}
+    ci = W._norm_open_pr(row, ["required"])["ci"]
+    assert ci["state"] == "failing" and ci["failing"] == ["optional"]
+    assert ci["passed"] == 1 and ci["total"] == 2
+    missing = W._norm_open_pr({**row, "statusCheckRollup": row["statusCheckRollup"][:1]}, ["required", "not-run"])["ci"]
+    assert missing["state"] == "pending" and missing["pending"] == ["not-run"]
