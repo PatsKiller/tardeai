@@ -57,7 +57,9 @@ function SymbolBlock({ s }: { s: SymbolContext }) {
 }
 
 export default function HomeV007Context() {
-  const api = useApi<{ home_v007?: unknown }>(PATH, 60_000)
+  // Background priority: Home already fetches this same endpoint for the card model, so this read yields to the
+  // page's own requests instead of competing with them for the three shared slots (see useApi's fan-out note).
+  const api = useApi<{ home_v007?: unknown }>(PATH, 60_000, { priority: 'background' })
   const v7 = parseHomeV007(api.data?.home_v007)
   if (!v7.present) return null
   return <section data-testid="home-v007" style={card}>
