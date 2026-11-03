@@ -534,7 +534,12 @@ def test_null_account_sync_does_not_borrow_a_display_clock(actual_publication):
     assert out["publication"]["coverage"]["dated_accounts"] == 1
 
 
-@pytest.mark.parametrize("stamp", ["2026-11-02", "2026-11-02 ET", "2026-11-02T20:00:00", "2026-11-04T20:00:00Z"])
+#: One day ahead, computed when the module loads. A literal date stops being "future" the moment it passes,
+#: which would silently turn this invalid-clock case into a valid one (date-dependent test, review 2026-11-03).
+FUTURE_POSITION_STAMP = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+@pytest.mark.parametrize("stamp", ["2026-11-02", "2026-11-02 ET", "2026-11-02T20:00:00", FUTURE_POSITION_STAMP])
 def test_unknown_position_proof_does_not_look_complete(actual_publication, stamp):
     h = document()
     h["holdings"][0]["broker_position_as_of_at"] = stamp
