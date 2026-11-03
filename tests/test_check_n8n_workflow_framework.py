@@ -190,6 +190,9 @@ def test_every_committed_expected_output_rule_passes_m6():
         "tradeai-momentum-lifecycle-candidate",
         "momentum-cache-reconcile",
         "trade-ai-scalp-live",
+        # 2026-10-28 conflict-resolver shadow admission (W8, PR #2266): digest-bound REVIEWED body with a measured
+        # baseline; carries no expected_output rule, so it stays undeclared until a content-bound review adds one.
+        "conflict-resolver",
     }  # digest-bound REVIEWED bodies: a rule needs a fresh content-bound review
     for c in declared:
         assert F._check_expected_output(c)["status"] == F.PASS, c["id"]

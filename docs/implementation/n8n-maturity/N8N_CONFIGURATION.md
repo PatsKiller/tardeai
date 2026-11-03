@@ -122,7 +122,7 @@ assessment §4.
 | | authZ | `config/n8n_run_allowlist.json` + never-list; relay live list; `check_n8n_activation_grants.py` | E |
 | | secrets | no broker/messaging credential in n8n; `N8N_BLOCK_ENV_ACCESS_IN_NODE=true`; community packages off; pinned image | E |
 | | data protection | loopback binds (5678, 18091); relay on the docker bridge only; public API off | E (ufw for `172.19.0.1:18092` unverified) |
-| | audit trail | n8n DB role not superuser; ledger append-only | **fails** (role superuser, WS1b-12) |
+| | audit trail | n8n DB role not superuser; ledger append-only | **fails** (role superuser, WS1b-12); OPEN until operator packet `docs/ops/packets/n8n-app-role-20261027/` runs and `04_verify.sh` PASSES (P13) |
 | AI/LLM governance | prompt management | template id from `config/n8n_prompt_templates.json`; never inline | E (3 templates) |
 | | model selection / fallback | process id only; model and chain from `config/llm_process_registry.json` + `config/llm_routing_policy.json` | E |
 | | cost and tokens | per-process caps; `llm_consumption_log`; `ProviderRequestJournal@v1` | E |
@@ -159,7 +159,7 @@ assessment §4.
 | Executions mode | n8n default (`regular`, no queue mode, no concurrency limit set) | compose (no `EXECUTIONS_MODE`) |
 | Hardening | public API and Swagger off, community packages off, AI / MCP / agents / chat modules disabled (`N8N_DISABLED_MODULES`), `N8N_BLOCK_ENV_ACCESS_IN_NODE=true`, Python off, `NODES_EXCLUDE` drops execute-command, SSH, FTP, every email / Telegram / Slack / chat / messaging node, LangChain agent / tool / memory / vector-store nodes | compose |
 | Credentials in n8n | exactly one: `tradeai-run-relay` (type `httpHeaderAuth`, the relay bearer). No provider, broker, DB or messaging credential (§23.5) | W0 README |
-| DB role | `n8n` is still a **superuser** (V8 F5; §23.10 P13 `n8n_app` role open) | V8 |
+| DB role | `n8n` is still a **superuser** (V8 F5; §23.10 P13 `n8n_app` role open). Fix: operator packet `docs/ops/packets/n8n-app-role-20261027/` (00 preflight → 01 dump → 02 `n8n_app` → 03 compose switch → 04 verify = P13 receipt; 09 rollback). `n8n` stays the bootstrap superuser: PG16 refuses `NOSUPERUSER` for it; optional step 05 removes its network login instead. **OPEN** until 04 PASSES on the host | V8; packet |
 | Owner account | one owner; its password still sits in the lab `.env` by name (V8 F6, open) | V8 |
 | Backups | nightly `pg_dump` by the platform-maintenance timer to `~/trade-ai-releases/persistent-state/backups/n8n/n8n-lab-<UTC>.dump` (latest `n8n-lab-20261010T051506Z.dump`), 5 kept, restore drill passed 2026-10-07; encryption key escrowed separately; same disk (V8 W16) | V8, `ls` 2026-10-10 |
 
@@ -668,7 +668,7 @@ Set node; the DB stays lean (size drives Supabase cost). A design that would blo
 | 7 | 3 ungranted shadow activations (finviz-view-contracts, source-attribution-monitor, watch-directives-monitor) | operator: grant retroactively or unpublish |
 | 8 | `TRADEAI_N8N_RELAY_LIVE_LANES` still lists `maturity-remeasure`, whose n8n workflow was unpublished (D1) | operator `config-write` to drop it |
 | 9 | Network pin (`ipam`) | `config-write` + `service`, packet ready |
-| 10 | DB role superuser (F5), owner password in lab `.env` (F6) | operator |
+| 10 | DB role superuser (F5): packet `docs/ops/packets/n8n-app-role-20261027/` PREPARED, OPEN until its `04_verify.sh` PASSES; owner password in lab `.env` (F6) | operator (`db-write`, `config-write` + `service`) |
 | 11 | Drift check unscheduled (F7); `saveManualExecutions: true` on the 10 per-lane workflows (F4) | operator `cron` grant / replaced by dispatcher rows |
 | 12 | Container healthcheck (W6), `TZ` (W7), runner timeout (W9), log rotation (W10) | operator `config-write` |
 | 13 | Units use the dev-tree venv (W11); missing `n8n-gateway.env` + stale installed gateway unit text (W12) | operator `service` / `config-write` |

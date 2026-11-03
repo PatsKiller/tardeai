@@ -1,0 +1,67 @@
+{
+ "entries": {
+  "https://data.sec.gov/api/xbrl/companyconcept/CIK0000732717/us-gaap/RevenueFromContractWithCustomerExcludingAssessedTax.json": {
+   "bytes": 1074,
+   "file": "api_xbrl_companyconcept_CIK0000732717_us-gaap_RevenueFromContractWithCustomerExcludingAssessedTax.json.gz",
+   "gz_sha256": "9e48f9084bd49555cc9e15e8e989b9733183e7d246b8861cabc65f52b8f1f89b",
+   "recorded_at": "2026-11-01T23:44:09Z",
+   "sha256": "837fe5f08b389c3129d185f297581f39824748f5363e20c403b2ce4bd35d0aed",
+   "status": 200
+  },
+  "https://data.sec.gov/api/xbrl/companyconcept/CIK0000732717/us-gaap/RevenueFromContractWithCustomerIncludingAssessedTax.json": {
+   "bytes": 0,
+   "file": null,
+   "recorded_at": "2026-11-01T23:44:09Z",
+   "sha256": null,
+   "status": 404
+  },
+  "https://data.sec.gov/api/xbrl/companyconcept/CIK0000732717/us-gaap/Revenues.json": {
+   "bytes": 52620,
+   "file": "api_xbrl_companyconcept_CIK0000732717_us-gaap_Revenues.json.gz",
+   "gz_sha256": "1691f5d34e54b4026c575e3e117ce1e19c66d7f70035277c6b56381b6d7d04f0",
+   "recorded_at": "2026-11-01T23:44:09Z",
+   "sha256": "771d35d5a831a7606049cc770e2dfe43b02afc98aeb888fa78d606639780aaf4",
+   "status": 200
+  },
+  "https://data.sec.gov/api/xbrl/companyconcept/CIK0000732717/us-gaap/SalesRevenueNet.json": {
+   "bytes": 0,
+   "file": null,
+   "recorded_at": "2026-11-01T23:44:09Z",
+   "sha256": null,
+   "status": 404
+  },
+  "https://www.sec.gov/Archives/edgar/data/732717/000073271726000372/FilingSummary.xml": {
+   "bytes": 41452,
+   "file": "Archives_edgar_data_732717_000073271726000372_FilingSummary.xml.gz",
+   "gz_sha256": "7f86b1fee95a8a4126b832814ef271ba226d5fdc5356d6790d3a6922df17ca2b",
+   "recorded_at": "2026-11-01T23:44:09Z",
+   "sha256": "5fc806ed4fbd3b841f66deba5e9ae6871b976167bab30d56798a7b803beb52df",
+   "status": 200
+  },
+  "https://www.sec.gov/Archives/edgar/data/732717/000073271726000372/index.json": {
+   "bytes": 8110,
+   "file": "Archives_edgar_data_732717_000073271726000372_index.json.gz",
+   "gz_sha256": "3e8c43638d5b1770b358f09e7969de1d3822cc75eaa6e4a9473e59af3c17415a",
+   "recorded_at": "2026-11-01T23:44:09Z",
+   "sha256": "a1c21a4fcba22e412f59cde7324ad565d9f16ef1103337f616513751e3d6e80a",
+   "status": 200
+  },
+  "https://www.sec.gov/Archives/edgar/data/732717/000073271726000372/t-20260930_htm.xml": {
+   "bytes": 2055879,
+   "file": "Archives_edgar_data_732717_000073271726000372_t-20260930_htm.xml.gz",
+   "gz_sha256": "f0bfe39913b0ae0cccd3c1a986f1118e3c6fc7bb7467af60f79afd9b142fbbcb",
+   "recorded_at": "2026-11-01T23:44:09Z",
+   "sha256": "cd0ff44ae9b86ec0104a51a342657f7c6bb26b8e60b9ecc7543675c4508089cd",
+   "status": 200
+  },
+  "https://www.sec.gov/Archives/edgar/data/732717/000073271726000372/t-20260930_lab.xml": {
+   "bytes": 691983,
+   "file": "Archives_edgar_data_732717_000073271726000372_t-20260930_lab.xml.gz",
+   "gz_sha256": "3fea346332f105ecd07c0588fdea65e527eab53c78bba28ab6676b133f985f74",
+   "recorded_at": "2026-11-01T23:44:09Z",
+   "sha256": "750424f50c695440af3689af5e19a2b6a81a27947fc4b1953d79930e8d808a6d",
+   "status": 200
+  }
+ },
+ "schema": "EdgarFixtureManifest@v1"
+}

@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "guard_item8_grant_free_push_20261025",
+  "files": [
+    "tests/test_guard_item8_grant_free_push_20261025.py"
+  ],
+  "comment": [
+    "AGENTS.md 21.0.0 §28.15 item 8 (ratified 2026-10-25, PR #2128), redesigned after two DO-NOT-MERGE reviews of #2148.",
+    "(a) The only grant-free push is `bin/agent-push <branch>`: env refused then cleared, the trusted guard tree's",
+    "guard_push_free.py pushes <sha>:refs/heads/<branch> to the pinned canonical URL (fast-forward, dry run first, tracked",
+    "pre-push identical to main's, no hijacking config, no broker paths, within budget) under a resolved operator approval",
+    "(operator-authored PR comment or decision-ledger row) on the pusher's own claim or a coordinator assignment; hash-",
+    "chained guard-log lines. Raw git push keeps the grant path. (b) toolchain runs are never deps; installs are.",
+    "Every reviewer exploit (X1-X11, H1-H3, M1-M3, L1-L2) is a regression test here."
+  ]
+}

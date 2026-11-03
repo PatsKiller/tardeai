@@ -145,11 +145,19 @@ def test_screener_subset_runs_write_their_own_receipt_key():
         for n in ast.walk(tree)
         if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "write_lane_receipt"
     ]
-    assert len(calls) == 3
+    # Success, termination, fetch failure, deadline deferral and dependency
+    # failure must all preserve the scheduled/full versus subset boundary.
+    assert len(calls) == 5
+    expected_key = ast.dump(ast.parse("receipt_lane_id(args.screener)", mode="eval").body)
     for call in calls:
-        first = call.args[0]
-        assert isinstance(first, ast.Call) and first.func.id == "receipt_lane_id", ast.unparse(call)
-        assert ast.unparse(first.args[0]) == "args.screener"
+        assert ast.dump(call.args[0]) == expected_key, ast.unparse(call)
+    explicit_errors = {
+        keyword.value.value
+        for call in calls
+        for keyword in call.keywords
+        if keyword.arg == "error" and isinstance(keyword.value, ast.Constant)
+    }
+    assert explicit_errors == {"terminated", "fetch_failed", "deadline_deferred"}
 
 
 def test_receipt_lane_id_mapping():

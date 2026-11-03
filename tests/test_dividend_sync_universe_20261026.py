@@ -183,12 +183,48 @@ def test_fund_fallback_trailing_annual_rate(monkeypatch):
     assert sdd._fetch_yf_dividend("ZZF")["annual_dividend_per_share"] == 3.0
 
 
-def test_dry_run_is_offline_and_names_the_universe(capsys, monkeypatch):
+def test_dry_run_is_offline_and_names_the_universe(state, capsys, monkeypatch):
+    before = {str(p.relative_to(state)): p.read_bytes() for p in state.rglob("*") if p.is_file()}
     monkeypatch.setattr(sdd, "_get_conn", lambda: (_ for _ in ()).throw(AssertionError("dry run opened a DB")))
+    monkeypatch.setattr(sdd, "sync", lambda: (_ for _ in ()).throw(AssertionError("dry run reached sync")))
     assert sdd.main(["--dry-run", "--json"]) == 0
     out = capsys.readouterr().out
     plan = json.loads(out.splitlines()[0])
     assert plan["priority_cap"] == sdd.PRIORITY_CAP and "held + Watch + prospectus first" in plan["universe"]
+    after = {str(p.relative_to(state)): p.read_bytes() for p in state.rglob("*") if p.is_file()}
+    assert after == before
+
+
+def test_synthetic_sync_success_has_durable_receipt(state, monkeypatch):
+    conn = Conn(_responder())
+    monkeypatch.setattr(sdd, "_get_conn", lambda: conn)
+    monkeypatch.setattr(sdd, "_fetch_yf_dividend", lambda _symbol: {"annual_dividend_per_share": 1.0})
+    path = state / "data/runtime/sync-dividend-data_last.json"
+    assert not path.exists()
+    assert sdd.main([]) == 0
+    receipt = json.loads(path.read_text())
+    assert receipt["status"] == "ok" and receipt["exit"] == 0 and receipt["ok_at"]
+    assert receipt["summary"]["updated"] == receipt["summary"]["symbols_checked"] == len(conn.upserts())
+    assert receipt["summary"]["priority_checked"] == 5
+
+
+def test_all_provider_failures_do_not_advance_success_receipt(state, monkeypatch):
+    receipt_lib = sdd._receipt_lib()
+    receipt_lib.write_lane_receipt(sdd.LANE_ID, ok=True, exit_code=0)
+    path = state / "data/runtime/sync-dividend-data_last.json"
+    previous = json.loads(path.read_text())["ok_at"]
+    monkeypatch.setattr(sdd, "_get_conn", lambda: Conn(_responder()))
+
+    def unavailable(symbol):
+        sdd._FETCH_ERRORS.append(f"{symbol}: SyntheticUnavailable")
+        return {}
+
+    monkeypatch.setattr(sdd, "_fetch_yf_dividend", unavailable)
+    assert sdd.main([]) == 1
+    receipt = json.loads(path.read_text())
+    assert receipt["status"] == "failed" and receipt["exit"] == 1
+    assert receipt["ok_at"] == previous and receipt["summary"]["updated"] == 0
+    assert receipt["summary"]["fetch_errors"] == receipt["summary"]["symbols_checked"]
 
 
 def test_retired_providers_come_from_the_registry():
@@ -199,27 +235,54 @@ def test_retired_providers_come_from_the_registry():
         dst.trusted_row_sql("source; DROP TABLE x")
 
 
+# Explicit owned research readers only: no global source walk across protected broker/order paths.
 _READERS = ["scripts/lib/subject_dossier.py", "scripts/portfolio_alerts.py", "scripts/portfolio_dividend_calendar.py",
             "scripts/lib/hermes_discovery/coverage.py", "scripts/materialize_income_engine.py",
-            "scripts/alex_retirement_advisor.py"]
+            "scripts/alex_retirement_advisor.py", "scripts/lib/prospectus/accuracy_audit.py",
+            "scripts/lib/data_broker/street_detail.py"]
 
 
-def test_every_reader_query_filters_retired_rows():
-    """Every SELECT ... FROM ticker_dividend_data in scripts/ carries the trusted-row predicate."""
+def test_claimed_research_reader_queries_filter_retired_rows():
+    """The eight owned research readers filter retired rows; protected source is not inspected."""
+    from scripts.lib import merge_hold_paths
+
+    assert not ({"broker_order", "secrets"} & merge_hold_paths.held_classes(_READERS).keys())
     offenders = []
-    # Not queries: the predicate's own docstring; a validator that greps a source file for a query string.
-    exempt = {"scripts/lib/dividend_source_trust.py", "scripts/validate_closed_loop_intelligence.py"}
-    for path in sorted((ROOT / "scripts").rglob("*.py")):
-        if str(path.relative_to(ROOT)) in exempt:
-            continue
+    for rel in _READERS:
+        path = ROOT / rel
         text = path.read_text(encoding="utf-8", errors="replace")
+        assert "dividend_source_trust" in text, rel
         for m in re.finditer(r"FROM ticker_dividend_data\b", text):
             window = text[m.start(): m.start() + 400]
             if "_div_trusted" not in window.lower():
-                offenders.append(f"{path.relative_to(ROOT)}:{text.count(chr(10), 0, m.start()) + 1}")
+                offenders.append(f"{rel}:{text.count(chr(10), 0, m.start()) + 1}")
     assert offenders == []
-    for rel in _READERS:
-        assert "dividend_source_trust" in (ROOT / rel).read_text(encoding="utf-8"), rel
+
+
+def test_street_dividends_keeps_current_main_observation_and_filters_retired_rows():
+    """Real read-model function, injected synthetic query; never DB/provider/broker execution."""
+    import importlib.util
+
+    path = ROOT / "scripts/lib/data_broker/street_detail.py"
+    spec = importlib.util.spec_from_file_location("dividend_recovery_street_detail", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    queries = []
+    observed = "2030-01-01T12:00:00Z"
+
+    def query(sql, params, *, fetch):
+        queries.append(sql)
+        assert params == ("ZZZ",) and fetch == "all"
+        if "FROM ticker_dividend_data" in sql:
+            assert dst.TRUSTED_ROW_SQL in sql
+            return [{"ex_div_date": "2030-01-03", "updated_at": observed}]
+        return [{"ex_date": "2030-01-02", "amount": 1.5}]
+
+    result = module.dividends(query, "zzz")
+    assert result == {"history": [{"ex_date": "2030-01-02", "amount": 1.5}],
+                      "recorded_next_ex": "2030-01-03", "recorded_observed_at": observed}
+    assert len(queries) == 2
 
 
 def test_migration_marks_never_deletes():

@@ -430,3 +430,35 @@ fresh `git clone --shared` of this repo at `origin/main`: `run_cio_hardening_ci.
   and of `CLAUDE_CONFIG_DIR` auth + `HTTPS_PROXY` egress inside the agent sandbox (§6a residual 5; fails closed).
 - Swap `output_recovered` to `scripts/lib/recovery_validator.py` once it is on main (one edit, §5e).
 - Before arming: consider a dedicated, revocable Claude login for this lane (§6a residual 1).
+
+<!-- moved from AGENTS.md 25.0.1 lines 6353-6378 -->
+## Moved from AGENTS.md (25.0.1 lines 6353-6378)
+
+*Moved here by AGENTS.md 26.0.0, which keeps the binding rule and a pointer; the 25.0.1 text is preserved at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`. This is reference, not instruction: where it mentions Telegram `/approve`, `bin/guard request`, a push budget of 5 or a coordinator override, `gh pr merge`, a `release-write` grant for a deploy, or shipping with no operator input, those paths are retired or not implemented, and AGENTS.md governs.*
+
+- **1 A monitor independent of n8n.** A host timer, not n8n, so that a broken n8n cannot silence it. It watches main CI
+  after every merge, deploy outcomes, the post-release tester and the nightly sweep (§28.12 steps 9–10). *Cause (§20):
+  §28.9, "a monitor never depends on the thing it monitors"; operator 2026-10-25, "Somebody needs to monitor it."*
+- **2 Known small errors get deterministic remediations only.** There are four:
+  - one rerun of a CI job that failed on an infrastructure flake, never on a test failure;
+  - regenerating a canonical generated file with its own generator;
+  - the disk-packet re-pin;
+  - the documented stale-lock reconcile.
+
+  Each runs once per incident. A second failure goes to item 3. *Cause (§20): the recurring small errors of 2026-10-25
+  were exactly these, and each one waited on a person.*
+- **3 Every other fix is an ordinary PR.** The self-heal Claude Code fixer (`scripts/self_heal_fixer.py`) works in an
+  isolated worktree, within its budget and diff guard. It never deletes, skips or weakens a test, and its prompt quotes
+  AGENTS.md §0. It opens a normal fix PR, which passes CI and is queued like any other PR (§28.12, §25.10). The
+  fixer never merges, releases or deploys. *Cause (§20): operator, "this train should be no different than
+  submitting"; 2026-10-16, "connect into Claude Code to fix it in iterations".*
+- **4 Refused scopes go to a person.** These are refused: broker, Active Trader and MBI code; guard, policy, hooks and
+  AGENTS.md; merge and deploy tooling (§25.10); and credentials or `.env`. A failure in one of them raises an alert
+  and a coordinator task on the claim board, and gets no fix attempt. *Cause (§20): §0 rules 1–2; no change
+  qualifies its own verifier; §24.7.*
+- **5 Every action is logged.** Each detection, remediation, fix PR and outcome is recorded in an append-only fix log.
+  The log is never rewritten, only archived, never deleted. It is shown on System → Releases & schedules → Fixes.
+  *Cause (§20): operator, "a logger that tracks what was fixed".*
+- **6 Escalation.** After the configured maximum attempts for an incident, or on any refused scope, the operator gets a
+  P1 by the §28.12 step 10 path, once per incident. *Cause (§20): operator, "Any failures I need to be emailed,
+  notified, and texted" (§28.12).*

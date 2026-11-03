@@ -28,7 +28,7 @@ Alert triggers (LIVE mode  -- suppressed otherwise):
 """
 from __future__ import annotations
 
-import argparse, json, os, sys, time, subprocess
+import argparse, json, os, sys, time, subprocess, signal
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
@@ -364,10 +364,20 @@ def _build_live_alert(triggers: List[Dict], time_str: str, market: Dict,
     a trigger that raises is left out of the message and appended to ``failed`` (when given) so the caller can
     leave it un-alerted for the next cycle, instead of one bad GO killing the whole cycle's alert."""
     try:
-        spy = market.get("indices",{}).get("SPY",{}).get("change_percent",0)
-        vix = market.get("vix",{}).get("price",0)
-        b   = market.get("breadth_label","?")
-        _mkt = f"SPY {spy:+.2f}%  VIX {vix:.1f}  {b}"
+        spy_d = market.get("indices", {}).get("SPY", {})
+        spy = spy_d.get("change_percent", 0)
+        vix_d = market.get("vix", {})
+        vix = vix_d.get("price", 0)
+        b   = market.get("breadth_label", "?")
+        # P0-T9 (2026-10-31): a stale or implausible quote is said, never printed as a number ("SPY +29.30%").
+        if spy_d.get("implausible"):
+            spy_s = "SPY n/a"
+        elif spy_d.get("price_is_stale"):
+            spy_s = f"SPY prev close {float(spy_d.get('price', 0) or 0):.2f}"
+        else:
+            spy_s = f"SPY {spy:+.2f}%"
+        vix_s = "VIX n/a" if vix_d.get("implausible") else (f"VIX {vix:.1f} (prev close)" if vix_d.get("price_is_stale") else f"VIX {vix:.1f}")
+        _mkt = f"{spy_s}  {vix_s}  {b}"
     except Exception:  # noqa: BLE001 — a malformed market snapshot must not drop the alert
         _mkt = "SPY ?  VIX ?  ?"
     lines = [f"\u26a1 *Trade AI LIVE [{time_str}]*", _mkt, ""]
@@ -1086,19 +1096,81 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
 
 # "   "    Full cycle "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   
 
-def run_full_cycle(root: Path, run_label: str, date_str: str) -> None:
+def _stop_full_pipeline(proc) -> None:
+    """Stop the owned session, including children that outlive its leader."""
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        pass
+    # A leader may exit promptly while one of its children ignores SIGTERM.
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    proc.wait(timeout=5)
+
+
+def run_full_cycle(root: Path, run_label: str, date_str: str) -> int:
     cmd = [sys.executable, str(root/"scripts"/"trade_ai_orchestrator.py"),
            "--run-label", run_label, "--date", date_str, "--skip-market-check",
            "--allow-underfilled"]
     print("  [FULL] Launching complete pipeline...")
+    proc = None
+    previous_handlers = {}
+
+    def interrupted(signum, frame):
+        # Preserve an outer PipelineRun signal exception/handler when present.
+        previous = previous_handlers.get(signum)
+        if callable(previous):
+            previous(signum, frame)
+        raise SystemExit(128 + signum)
+
     try:
+        for signum in (signal.SIGTERM, signal.SIGHUP):
+            previous_handlers[signum] = signal.getsignal(signum)
+            signal.signal(signum, interrupted)
         # 45 min hard limit. Must stay above process_reaper's trade_ai_orchestrator cap (30m):
         # docs/ops/PIPELINE_TIME_SETTINGS.md, tests/test_pipeline_time_settings_20261022.py.
-        subprocess.run(cmd, env=os.environ.copy(), timeout=2700)  # 45 min hard limit
+        proc = subprocess.Popen(cmd, env=os.environ.copy(), start_new_session=True)
+        rc = proc.wait(timeout=2700)  # 45 min hard limit
     except subprocess.TimeoutExpired:
-        print("  [FULL]            Pipeline timed out after 45 min  -- killing and continuing")
+        try:
+            _stop_full_pipeline(proc)
+        except Exception as exc:
+            print(f"  [FULL] Pipeline timeout cleanup failed: {exc}")
+        else:
+            print("  [FULL] Owned pipeline process group stopped")
+        print("  [FULL] Pipeline timed out after 45 min (rc=124)")
+        return 124
     except Exception as e:
+        if proc is not None:
+            try:
+                _stop_full_pipeline(proc)
+            except Exception as exc:
+                print(f"  [FULL] Pipeline error cleanup failed: {exc}")
         print(f"  [FULL]            Pipeline error: {e}")
+        return 1
+    except BaseException:
+        if proc is not None:
+            try:
+                _stop_full_pipeline(proc)
+            except Exception as exc:
+                print(f"  [FULL] Pipeline interruption cleanup failed: {exc}")
+        raise
+    finally:
+        for signum, previous in previous_handlers.items():
+            signal.signal(signum, previous)
+    if rc == 75:
+        print("  [FULL] Pipeline already running; admission skipped (rc=75)")
+    elif rc != 0:
+        print(f"  [FULL] Pipeline failed (rc={rc})")
+    else:
+        print("  [FULL] Pipeline completed (rc=0)")
+    return rc
 
 
 # ─── News-triggered re-critique ───────────────────────────────────────────────
@@ -1270,8 +1342,13 @@ def main() -> int:
     _startup_date  = _startup_now.strftime("%Y-%m-%d")
     print(f"\n[STARTUP] {_startup_now.strftime('%H:%M:%S')}  -- immediate FULL run (label={_startup_label})")
     try:
-        run_full_cycle(root, _startup_label, _startup_date)
-        print("[STARTUP] Complete")
+        _startup_rc = run_full_cycle(root, _startup_label, _startup_date)
+        if _startup_rc == 0:
+            print("[STARTUP] Complete")
+        elif _startup_rc == 75:
+            print("[STARTUP] Skipped: a pipeline is already running (rc=75)")
+        else:
+            print(f"[STARTUP] Failed (rc={_startup_rc})")
     except Exception as _e:
         import traceback as _tb
         print(f"[STARTUP] ERROR: {_e}")

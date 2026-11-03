@@ -322,7 +322,8 @@ def test_api_inbox_registers_and_evaluates_anthropic(monkeypatch, status, contin
     fake = SimpleNamespace(aggregate=aggregate, probe_anthropic=probe,
                            **{name: unused for name in (
                                'probe_failed_units', 'probe_pr_hygiene', 'probe_desk_truth',
-                               'read_release_window_state', 'probe_macro_calendar')})
+                               'read_release_window_state', 'probe_macro_calendar',
+                               'probe_staged_units')})
     lib = ModuleType('lib')
     lib.needs_action = fake
     monkeypatch.setitem(sys.modules, 'lib', lib)

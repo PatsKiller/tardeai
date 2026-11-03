@@ -1038,6 +1038,21 @@ def test_libraries_are_wired_into_nothing():
         "scripts/deploy_on_main_poll.py",
         "config/systemd/user/tradeai-deploy-on-main.service",
         "config/systemd/user/tradeai-deploy-on-main.timer",
+        # Merge hold list (AGENTS.md §25.10 held classes, 2026-10-27): names release_control.py as a held path so a
+        # change to the STOP latch merges only by the operator. A path in a hold list is not a caller.
+        "config/merge_hold_paths.json",
+        # CI gate registration for the resume-settle tests (fix/release-stop-settle-20261028): names the test
+        # file, which names release_control. A gate list is not a caller.
+        "config/ci_gates/release_control_resume_settle_20261028.json",
+        # Shard duration hints (generated from the green full-suite run's cio-timings artifact): its keys are
+        # test-file paths, so a test named test_release_control_resume_settle_20261028.py appears as a key. A
+        # filename in a generated timing map is not a caller or a wire-in; the test file itself is allowed below.
+        "config/ci_shard_duration_hints.json",
+        # Ruff security baseline (#2488, 2026-11-02): its keys are every file the S-rules scan reads, so a
+        # Phase-2 library appears as a key with its finding counts. A file named in a lint baseline is not a
+        # caller or a wire-in — nothing imports or executes it from here. The baseline itself is still
+        # reviewed and compared against the live tree by scripts/check_ruff_security.py.
+        "config/ruff_security_baseline.json",
     }
     hits = []
     for base in ("scripts", "config", "deploy", "systemd", "n8n", "src", "bin"):

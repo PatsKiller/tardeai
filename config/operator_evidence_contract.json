@@ -193,7 +193,9 @@
       "active_trader_microstructure": "Live ~5 s book / prints / 1-min bars for the Active Trader alert engine (2026-10-05). Operator-desk intents never quote it: scalp questions read the alert journal / Active Trader feed, which already carry the evidence that decided each alert.",
       "earnings_calendar": "Alpha Vantage owner (2026-10-10, PROPOSED): the market-wide earnings calendar is inert until the operator grants the registry scope; no desk intent reads it yet. Claim it under the analyst/attention intents once the grant lands and a desk answer quotes report timing.",
       "news_sentiment": "Alpha Vantage owner (2026-10-10, PROPOSED): per-ticker news sentiment is inert until the operator grants the registry scope; catalyst_enrichment reads it, no desk intent does yet. Claim it under research/attention when a desk answer quotes sentiment.",
-      "watch_discovery": "registry class dead_feed (declared_gap_no_producer); reading it would render a dead desk as today's activity."
+      "watch_discovery": "registry class dead_feed (declared_gap_no_producer); reading it would render a dead desk as today's activity.",
+      "conflict_records": "Conflict ledger findings (data/conflicts/conflict_events.jsonl) read by the Watch / Home / Ops conflict sections and GET /api/v3/conflicts; read-only, never resolves a conflict. No operator-desk intent reads the raw ledger today; claim it under the attention intent when a desk answer quotes open conflicts.",
+      "conflict_proposals": "AI-proposed conflict rules and rulebook amendments (data/conflicts/rule_proposals.jsonl + rulebook_amendments.jsonl) read by the Conflict rules page and the Approvals Center queue; operator decisions stay on the rules page. No operator-desk intent reads proposals; claim it under the attention intent when a desk answer quotes a pending rule proposal."
     }
   }
 }

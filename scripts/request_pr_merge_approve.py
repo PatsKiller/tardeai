@@ -14,13 +14,11 @@ Usage
   .venv/bin/python scripts/request_pr_merge_approve.py --pr 2208 --native
   .venv/bin/python scripts/request_pr_merge_approve.py --pr 2208 --dry-run
 
-Default path (``--via-guard``, the chicken-egg bridge): Telegram Approve uses
-the live ``gapprove`` buttons already on CURRENT. After you tap Approve this
-script (with ``--wait``) adds the ``operator-merge`` label. No GitHub UI.
-
-After this code is promoted to CURRENT, pass ``--native`` (or set
-``PR_MERGE_TELEGRAM_VIA_GUARD=0``) so the dedicated ``prmapprove`` buttons are
-used instead.
+``--single`` default (PR #2185, Telegram guard grants retired): the dedicated
+``prmapprove`` buttons (native). The old ``--via-guard`` chicken-egg bridge asked
+for a short ``telegram`` guard grant through the ``gapprove`` buttons; that is a
+Telegram-issued guard grant, so it now refuses (``GUARD_BRIDGE_RETIRED``) before
+minting anything.
 """
 
 from __future__ import annotations
@@ -73,12 +71,12 @@ def main(argv: list[str] | None = None) -> int:
         "--via-guard",
         action="store_true",
         default=None,
-        help="Use live gapprove bridge (default until CURRENT has prmapprove)",
+        help="Use the gapprove guard bridge (retired with Telegram guard grants, PR #2185: refuses)",
     )
     p.add_argument(
         "--native",
         action="store_true",
-        help="Use prmapprove buttons (needs CURRENT promote of this PR)",
+        help="Use prmapprove buttons (the default while Telegram guard grants are retired)",
     )
     p.add_argument(
         "--wait",
@@ -95,7 +93,10 @@ def main(argv: list[str] | None = None) -> int:
 
     from scripts.lib import pr_merge_telegram as pmt
 
-    env_via = os.environ.get("PR_MERGE_TELEGRAM_VIA_GUARD", "1").strip() not in ("0", "false", "no")
+    # The guard bridge needs a Telegram guard grant; while those are retired (PR #2185) the
+    # default is the native prmapprove path. An explicit --via-guard / env=1 still asks, and refuses.
+    via_default = "0" if pmt.guard_bridge_retired() else "1"
+    env_via = os.environ.get("PR_MERGE_TELEGRAM_VIA_GUARD", via_default).strip() not in ("0", "false", "no")
     via_guard = (not args.native) and (args.via_guard if args.via_guard is not None else env_via)
 
     view = _pr_view(args.pr, args.repo)

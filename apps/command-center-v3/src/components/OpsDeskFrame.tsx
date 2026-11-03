@@ -64,7 +64,6 @@ const PAGES: Record<OpsPageKey, PageSpec> = {
     title: 'Releases & Schedules',
     purpose: 'What is released, what is scheduled to run, and whether scheduled jobs actually ran.',
     sources: [
-      { id: 'train', label: 'Deploy on main', laneIds: ['release-train-claim'] },
       { id: 'n8n', label: 'n8n dispatch', laneIds: ['n8n-pilot-dispatch'] },
     ],
   },

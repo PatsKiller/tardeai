@@ -322,95 +322,10 @@ def test_failure_workflows_become_release_errors(tmp_path):
 # ── releases_schedules_view: a missing census is loud ─────────────────────────────────────────────────────────
 
 
-def _ledger(path: Path, rows):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    c = sqlite3.connect(path)
-    c.execute(
-        "CREATE TABLE runs (run_id TEXT PRIMARY KEY, lane_id TEXT, mode TEXT, state TEXT, requested_at TEXT, "
-        "started_at TEXT, finished_at TEXT, exit_code INTEGER, receipt_json TEXT)"
-    )
-    c.executemany("INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?)", rows)
-    c.commit()
-    c.close()
-    return path
-
-
-def _registry(path: Path):
-    path.write_text(
-        json.dumps(
-            {
-                "lanes": [
-                    {
-                        "lane_id": "pr-hygiene-audit",
-                        "scheduler": {"stage": "canary"},
-                        "dispatch": {"mode": "live", "cron": ["30 6 * * *"], "tz": "America/New_York"},
-                    }
-                ]
-            }
-        )
-    )
-    return path
-
-
-def test_census_attempt_reads_last_attempt_and_next_fire(tmp_path):
-    led = _ledger(
-        tmp_path / "l.sqlite",
-        [
-            (
-                "d:pr-hygiene-audit:dry_run:20261022T0630",
-                "pr-hygiene-audit",
-                "dry_run",
-                "RUN_DONE",
-                "2026-10-22T10:30:04+00:00",
-                None,
-                "2026-10-22T10:31:04+00:00",
-                0,
-                "{}",
-            ),
-            ("x", "other-lane", "live", "RUN_DONE", "2026-10-22T20:00:00+00:00", None, None, 0, "{}"),
-        ],
-    )
-    a = R.census_attempt(led, _registry(tmp_path / "reg.json"), NOW)
-    assert a["last_attempt"]["mode"] == "dry_run" and a["last_live_attempt"] is None
-    assert a["dispatch_mode"] == "live" and a["stage"] == "canary"
-    assert a["next_fire_at"] == "2026-10-23T10:30:00+00:00"
-    msg = R.census_alert({"freshness": "UNAVAILABLE", "reason": "no_receipt"}, a)
-    assert msg.startswith("PR census MISSING") and "never written a receipt" in msg
-    assert "10/22 06:30 ET dry_run RUN_DONE (a dry run writes no receipt)" in msg
-    assert "next fire 10/23 06:30 ET (live)" in msg and "Open PRs are UNKNOWN" in msg
-
-
-def test_census_attempt_without_ledger_or_rows(tmp_path):
-    a = R.census_attempt(tmp_path / "missing.sqlite", None, NOW)
-    assert a["last_attempt"] is None and "ledger unreadable" in a["last_attempt_reason"]
-    a = R.census_attempt(_ledger(tmp_path / "l.sqlite", []), None, NOW)
-    assert a["last_attempt_reason"] == "no run of this lane in the coordination ledger"
-    assert R.census_alert({"freshness": "OK"}, a) is None
-
-
-def test_read_queue_carries_the_alert_and_never_reads_as_empty(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        R.RTV,
-        "build_queue",
-        lambda db, q: {
-            "freshness": "OK",
-            "reason": None,
-            "as_of": NOW.isoformat(),
-            "total": 0,
-            "rows": [],
-            "census": {"value": None, "as_of": None, "freshness": "UNAVAILABLE", "reason": "no_receipt"},
-        },
-    )
-    monkeypatch.setattr(R.RTV, "_receipt_titles", lambda p: {})
-    led = _ledger(
-        tmp_path / "l.sqlite",
-        [("r", "pr-hygiene-audit", "dry_run", "RUN_DONE", "2026-10-22T10:30:04+00:00", None, None, 0, "{}")],
-    )
-    f = R.read_queue(None, NOW, ledger=led, registry=_registry(tmp_path / "reg.json"))
-    assert f["freshness"] == "STALE" and f["reason"].startswith("PR census MISSING")
-    census = f["value"]["census"]
-    assert census["alert"] and census["open_prs"] is None and census["attempt"]["last_attempt"]["mode"] == "dry_run"
-    assert f["value"]["store"]["total"] == 0  # a measured zero for the store, never the open-PR count
+def test_retired_train_queue_and_census_readers_are_gone():
+    # 2026-10-27: the queue panel (release_queue store + PR census) was the retired release train's; removed with it.
+    for name in ("census_attempt", "census_alert", "read_queue", "RTV"):
+        assert not hasattr(R, name), name
 
 
 def test_default_paths_name_the_watch_receipt(tmp_path):

@@ -217,6 +217,7 @@
     "store:options_iv",
     "store:positions_store",
     "store:private_company",
+    "store:quote_extended_session",
     "store:quote_price",
     "store:research_thesis",
     "store:symbol_identity",
@@ -265,7 +266,8 @@
     "store:research_write_path_receipts",
     "store:sec_filing_events",
     "store:finviz_enrichment",
-    "store:cio_asks"
+    "store:cio_asks",
+    "store:operator_decisions"
    ]
   },
   {
@@ -322,6 +324,17 @@
     "store:conformance_gate_receipts",
     "store:maturity_scores",
     "store:platform_conformance"
+   ]
+  },
+  {
+   "id": "stores_conflicts_files",
+   "description": "Conflict-engine append-only ledgers under data/conflicts (conflict_events.jsonl, rule_proposals.jsonl)",
+   "mechanism": "NONE",
+   "coverage": "NONE",
+   "gap": "data/conflicts is resolved by resolve_durable_dir to persistent-state/data/conflicts, which is neither symlinked from the dev-tree data/ that data_offsite tars nor in PERSISTENT_TREES, so no backup reaches these ledgers. ConflictRecord is rebuilt from ConflictEvent rows and rule proposals are recomputable from the rulebook + unmatched observations, but the append history (and any operator decisions) is lost on disk loss.",
+   "covers": [
+    "store:conflict_ledger",
+    "store:conflict_rule_proposals"
    ]
   },
   {
@@ -505,6 +518,8 @@
     "unit:tradeai-memory-consolidator-shadow.service",
     "unit:tradeai-memory-shadow-project.service",
     "unit:tradeai-n8n-coordination-gateway.service",
+    "unit:tradeai-n8n-drift-watch.service",
+    "unit:tradeai-n8n-drift-watch.timer",
     "unit:tradeai-n8n-lab-watchdog.service",
     "unit:tradeai-n8n-lab-watchdog.timer",
     "unit:tradeai-n8n-run-executor.service",
@@ -512,6 +527,8 @@
     "unit:tradeai-operator-answer-quality.service",
     "unit:tradeai-operator-answer-quality.timer",
     "unit:tradeai-ops-applier.service",
+    "unit:tradeai-pipeline-repair@.service",
+    "unit:tradeai-pipeline-repair@enrichment.service.d",
     "unit:tradeai-platform-maintenance-monthly.service",
     "unit:tradeai-platform-maintenance-monthly.timer",
     "unit:tradeai-platform-maintenance-nightly.service",

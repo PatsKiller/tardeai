@@ -26,6 +26,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from scripts import check_agents_policy_state as STATE  # noqa: E402
+from tests.support.agents_policy_frozen import read_pre_26  # noqa: E402
 
 AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
 # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
@@ -252,7 +253,7 @@ def test_23_14_is_byte_identical():
 def test_claude_md_adapter_restates_no_new_rule():
     # The adapter repeats §0 verbatim, so once 5.0.0 is ratified it carries the rule 2 sentence; not a new rule.
     text = (
-        pre_20_0_0_adapter((ROOT / "CLAUDE.md").read_text(encoding="utf-8")).replace(RULE_2_EXCEPTION_5_0_0, "").replace(RULE_2_EXCEPTION_14_0_0, "")
+        pre_20_0_0_adapter(read_pre_26("CLAUDE.md")).replace(RULE_2_EXCEPTION_5_0_0, "").replace(RULE_2_EXCEPTION_14_0_0, "")
         .replace(RULE_6_EXCEPTION_15_0_0, "")
     )
     assert "n8n" not in text.lower() and "§24" not in text

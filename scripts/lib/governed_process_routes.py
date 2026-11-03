@@ -22,10 +22,13 @@ CALLER_PROCESS_MAP = {
 }
 
 CALLER_TASK_PROCESS_MAP = {
+    # 2026-11-01: the Ask-the-CIO hosted web-search source (scripts/lib/anthropic_web_search.py).
+    "web_search": {"web_search": "cio_ask_web_search"},
     "n8n_model_job": {
         "model_job": "n8n_material_digest_draft",
         "ops_summary": "n8n_ops_summary_draft",
         "lane_failure_diagnosis": "n8n_lane_failure_diagnosis",
+        "conflict_rule_proposal": "conflict_rule_proposal",
     },
     "advisory_desk": {
         "advisory_opinion": "advisory_desk_opinion",
@@ -81,7 +84,6 @@ CALLER_TASK_PROCESS_MAP["advisory_desk"].update(
         "cio_ask_critique_chatgpt": "cio_ask_critique_chatgpt",
     }
 )
-
 
 def route_for_process(process_id: str) -> tuple[str, str] | None:
     """An existing caller/task pair, or None. Never invent a route from a client ID."""
