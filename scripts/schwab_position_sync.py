@@ -64,6 +64,38 @@ def _usable_text(value) -> bool:
     return isinstance(value, str) and bool(value.strip())
 
 
+def _container_ids(obj) -> set[int]:
+    """id() of every dict/list/set reachable from obj. Mutable containers only: a bare `is` would
+    match small ints and interned strings, and refuse every baseline that shares "CASH" or 0.0.
+    JSON is acyclic, so the walk is complete; the seen-set only guards against a hand-built cycle."""
+    ids: set[int] = set()
+    stack = [obj]
+    while stack:
+        cur = stack.pop()
+        if not isinstance(cur, (dict, list, set)):
+            continue
+        if id(cur) in ids:
+            continue
+        ids.add(id(cur))
+        if isinstance(cur, dict):
+            stack.extend(cur.values())
+        else:
+            stack.extend(cur)
+    return ids
+
+
+def _shares_structure(a, b) -> bool:
+    """True when the baseline and the candidate reach the SAME mutable container anywhere.
+
+    cc3's fifth boundary (2026-11-03): the top-level check missed a nested alias —
+    `{"holdings": list(cand["holdings"])}` shares the row objects, so mutating a row in place
+    changed both sides and the relative guards compared the book with itself. The honest limit is
+    that a caller who deep-copies after mutating is indistinguishable from a legitimate equal book;
+    this closes the shared-object class that has actually occurred.
+    """
+    return bool(_container_ids(a) & _container_ids(b))
+
+
 def _baseline_usable(doc) -> tuple[bool, str]:
     """A distinct object is not proof of a USABLE baseline.
 
@@ -469,14 +501,7 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
     # mutated below, so a shallow copy is the same bypass wearing a different name (cc3 residual,
     # 2026-11-03). Deliberately identity, never equality: an equal but independent baseline is a
     # legitimate no-change write and must not be refused.
-    _shared_structure = bool(
-        isinstance(baseline, dict) and isinstance(new_holdings, dict)
-        and any(
-            baseline.get(key) is not None and baseline.get(key) is new_holdings.get(key)
-            for key in ("holdings", "positions", "portfolio_totals")
-        )
-    )
-    if baseline is not None and (baseline is new_holdings or _shared_structure):
+    if baseline is not None and (baseline is new_holdings or _shares_structure(baseline, new_holdings)):
         reason = ("BASELINE_ALIAS: the baseline shares the candidate's own objects, so the relative "
                   "coverage/cash/drop guards would compare the new book with itself")
         _record(account_key, "rejected_baseline_alias", f"[{source}] baseline is the candidate object")

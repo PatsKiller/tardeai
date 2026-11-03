@@ -318,3 +318,21 @@ def test_an_empty_caller_baseline_cannot_silence_the_coverage_guard(store):
                                      target_path=str(store), baseline={})
     assert out["wrote"] is False and out["reason_code"] == "INCOMPLETE_ACCOUNTS", out
     assert store.read_bytes() == before
+
+
+def test_a_nested_alias_is_still_the_same_bypass(store):
+    """cc3 fifth boundary: {"holdings": list(cand["holdings"])} shares the row objects."""
+    store.write_text(json.dumps(_big_book()))
+    before = store.read_bytes()
+    book = json.loads(store.read_text())
+    cand = json.loads(store.read_text())
+    for row in cand["holdings"]:
+        if row.get("is_cash") or row.get("symbol") == "CASH":
+            row["market_value"] = 0.0
+        else:
+            row["market_value"] = round((row.get("market_value") or 0) * 0.05, 2)
+    nested = {"holdings": list(cand["holdings"])}
+    nested["portfolio_totals"] = dict(cand.get("portfolio_totals") or {})
+    out = S.protected_holdings_write(cand, source="test_nested_alias", target_path=str(store), baseline=nested)
+    assert out["wrote"] is False and out["reason_code"] == "BASELINE_ALIAS", out
+    assert store.read_bytes() == before
