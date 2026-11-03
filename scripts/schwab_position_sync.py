@@ -243,6 +243,16 @@ def reconcile_totals(doc, *, source="unknown"):
     correction applied, or None.
     """
     try:
+        if isinstance(doc, dict):
+            # Provenance travels with the write: the next incident must not need an archaeology
+            # session to answer "who touched this?" (lead, 2026-11-03).
+            doc["last_writer"] = {
+                "source": source,
+                "at": _now(),
+                "total_value_reconciled": False,
+                "total_cash_reconciled": False,
+                "summaries_cash_reconciled": [],
+            }
         pos = _positions_of(doc)
         if not pos:
             return None
@@ -296,9 +306,85 @@ def reconcile_totals(doc, *, source="unknown"):
                             len(cash_rows), cash_summed)
                 except Exception:
                     pass
-        if value_correction:
-            return {**value_correction, "total_cash": cash_correction} if cash_correction else value_correction
-        return cash_correction
+        # account_summaries carry the SAME derived cash figure per account (2026-11-03: the rollover
+        # summary read 807,840.61 while its cash row was 777,390.61 after the PFE purchase, so the
+        # document disagreed with itself in two places). Only an account that already carries a
+        # `cash` field is touched: a summary that never carried cash is not this gate's to invent.
+        summary_corrections = []
+        summaries = doc.get("account_summaries")
+        if isinstance(summaries, dict) and cash_rows:
+            cash_by_account: dict[str, float] = {}
+            for p in cash_rows:
+                acct = str(p.get("account") or p.get("account_key") or "")
+                if acct:
+                    cash_by_account[acct] = cash_by_account.get(acct, 0.0) + float(p.get("market_value") or 0)
+            for acct, amount in sorted(cash_by_account.items()):
+                entry = summaries.get(acct)
+                if not isinstance(entry, dict) or "cash" not in entry:
+                    continue
+                rounded = round(amount, 2)
+                prior = entry.get("cash")
+                try:
+                    same = prior is not None and abs(float(prior) - rounded) <= 0.01
+                except (TypeError, ValueError):
+                    same = False
+                if same:
+                    continue
+                entry["cash"] = rounded
+                entry["cash_source"] = "position_rows"
+                entry["cash_reconciled_at"] = _now()
+                summary_corrections.append({"account": acct, "declared": prior, "summed": rounded,
+                                            "delta": round(rounded - float(prior or 0), 2)})
+                try:
+                    _record(source, "totals_recomputed",
+                            f"[{source}] account_summaries.{acct}.cash {prior} -> {rounded:,.2f} "
+                            f"to match its cash rows being written",
+                            None, None)
+                except Exception:
+                    pass
+
+        # A note that says a field was not carried is false once the field IS carried. The rebuild
+        # left "day change not carried" beside a populated day_change; clearing it is a proper write
+        # with provenance, never a hand edit of the store (lead, 2026-11-03).
+        note_cleared = None
+        note = totals.get("note")
+        if isinstance(note, str) and "day change not carried" in note and totals.get("day_change") is not None:
+            note_cleared = note
+            totals.pop("note", None)
+            try:
+                _record(
+                    source,
+                    "note_cleared",
+                    f"[{source}] cleared stale portfolio_totals.note while day_change is populated: {note[:160]}",
+                    None,
+                    None,
+                )
+            except Exception:
+                pass
+
+        if isinstance(doc.get("last_writer"), dict):
+            doc["last_writer"].update(
+                {
+                    "total_value_reconciled": value_correction is not None,
+                    "total_cash_reconciled": cash_correction is not None,
+                    "summaries_cash_reconciled": [c["account"] for c in summary_corrections],
+                    "note_cleared": note_cleared,
+                }
+            )
+
+        # Shape: value corrections keep their historical top-level keys. total_cash nests under
+        # `total_cash` when a value correction is also present, exactly as #2554 shipped it.
+        result: dict = dict(value_correction) if value_correction else {}
+        if cash_correction:
+            if result:
+                result["total_cash"] = cash_correction
+            else:
+                result = dict(cash_correction)
+        if summary_corrections:
+            result["summaries_cash"] = summary_corrections
+        if note_cleared:
+            result["note_cleared"] = note_cleared
+        return result or None
     except Exception:
         return None
 
