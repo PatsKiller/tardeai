@@ -5,6 +5,7 @@ No DB, no broker, no live store. A fake read-only connection exercises the SQL c
 import json
 import math
 import sys
+import types
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -12,6 +13,38 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+
+# The connection-boundary tests use the driver's REAL error hierarchy where psycopg2 is installed.
+# Some CI shards install no driver (shard 3), so reproduce psycopg2's exact MRO there:
+# ConnectionFailure/AdminShutdown -> OperationalError -> DatabaseError -> Error -> Exception,
+# and DataError -> DatabaseError. That shape is the premise under test.
+try:  # pragma: no cover - depends on the shard
+    import psycopg2.errors as pg  # noqa: F401
+except ModuleNotFoundError:  # pragma: no cover
+
+    class Error(Exception):  # noqa: A001 - mirrors psycopg2's class name
+        pass
+
+    class DatabaseError(Error):
+        pass
+
+    class OperationalError(DatabaseError):
+        pass
+
+    class ConnectionFailure(OperationalError):
+        pass
+
+    class AdminShutdown(OperationalError):
+        pass
+
+    class DataError(DatabaseError):
+        pass
+
+    pg = types.SimpleNamespace(  # type: ignore[assignment]
+        ConnectionFailure=ConnectionFailure,
+        AdminShutdown=AdminShutdown,
+        DataError=DataError,
+    )
 
 from lib import positions_read_model as m  # noqa: E402
 
@@ -603,8 +636,7 @@ def test_no_connection_still_uses_the_export(tmp_path):
 
 
 # ── cx-openai-2 RENEWED BLOCK: connection boundary, superscript run id, no book payload ─────────
-
-import psycopg2.errors as pg  # noqa: E402
+# `pg` (the real driver's error classes, or the faithful stand-in) is defined at module import.
 
 
 class _RaisesDuringSnapshotCursor(FakeCursor):
