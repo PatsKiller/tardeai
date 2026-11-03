@@ -2254,6 +2254,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/deepseek-v4-mainline-2026-08-03/SECURITY_AND_AUTHORITY_REVIEW.md` | Security and authority review — DeepSeek V4 mainline |
 | `docs/ops/deepseek-v4-mainline-2026-08-03/SERVICE_RUNTIME_OPERATOR_STEPS.md` | Service-runtime DeepSeek credential wiring (operator-approved only) |
 | `docs/ops/deepseek-v4-mainline-2026-08-03/V3_ROUTE_TEST_RESULTS.md` | V3 route/subtab maturity results |
+| `docs/ops/home_v007_data_contract.md` | Approved Home v007 additive data contract |
 | `docs/ops/incident-gate-a-canonical-store-hygiene.md` | Gate A Canonical Store Hygiene Incident |
 | `docs/ops/incidents/INCIDENT_20261023_SAFE_FLOCK_CRON_OUTAGE.md` | 2026-10-23 safe_flock cron outage |
 | `docs/ops/litmus/LITMUS_CC_ROUTES_2026-09-01.md` | Litmus slice C — Command Center routes (discovery only) |
