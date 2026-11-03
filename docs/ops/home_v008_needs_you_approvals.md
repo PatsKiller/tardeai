@@ -56,6 +56,22 @@ Written before the action runs, so a failed action still leaves the decision on 
 A timeout or partial failure records **what was attempted**: action type, exact facts, the executor steps reached
 (`step_reached` and the ordered list), the timeout and the elapsed time. A half-completed merge is reconcilable.
 
+## The event stream the Telegram nudge reads
+
+Every transition appends one `ApprovalRequestEvent@v1` row to `<state root>/approvals/requests.jsonl`, which is the file
+`scripts/approvals_notify.py` (piece D) reads:
+
+- `created` — a new request is open;
+- `approved` — published **before** the action runs, so a slow, timed-out or failed action is never re-nudged as if it
+  were still undecided;
+- `declined`, `expired` — closed;
+- `updated` — a question or a moved fact; the request stays open.
+
+`requester` is a plain session string for that lane; the richer mapping rides under `requester_detail`. A failed publish
+is suppressed — the nudge is an edge, not a gate, and it must never turn a recorded decision into an error. The card is
+still the authority on readability: `list_open()` raises on a broken record while the nudge keeps delivering the ones it
+can read and reports what it could not.
+
 ## Reading the board
 
 `list_open()` returns `[]` only when the store was readable and genuinely empty. A corrupt or unreadable record raises

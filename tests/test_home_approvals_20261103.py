@@ -408,3 +408,66 @@ def test_the_cli_refuses_to_run_without_a_state_root(monkeypatch):
     monkeypatch.delenv("TRADEAI_STATE_ROOT", raising=False)
     with pytest.raises(SystemExit):
         ha.main(["--json", "list"])
+
+
+# ── The event stream the Telegram nudge lane (piece D) reads ────────────────────────────────────────────────
+OPEN_EVENTS = {"created", "updated", "pending", "open", "requested"}          # scripts/approvals_notify.py
+CLOSED_EVENTS = {"resolved", "declined", "approved", "expired", "cancelled", "canceled", "done"}
+
+
+def _events(store: ha.Store) -> list[dict]:
+    return [json.loads(line) for line in store.events.read_text().splitlines()]
+
+
+def test_a_created_request_appears_on_the_nudge_stream_with_a_plain_requester(tmp_path):
+    store = _store(tmp_path)
+    record = _ask(store)
+    rows = _events(store)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["schema"] == "ApprovalRequestEvent@v1" and row["event"] == "created"
+    assert row["id"] == record["id"] and row["type"] == "merge_pr"
+    assert row["title"] and row["why"] and row["facts"] == {"pr": 2504, "head_sha": HEAD}
+    assert row["requester"] == "cc-deepseek-5"                      # a string, as piece D expects
+    assert row["requester_detail"]["session"] == "cc-deepseek-5"
+    assert row["expires_at"] == record["expires_at"]
+
+
+def test_the_stream_closes_a_request_once_it_is_decided(tmp_path):
+    store = _store(tmp_path)
+    record = _ask(store)
+    _decide(store, record["id"], executor=Recorder().executor())
+    events = [row["event"] for row in _events(store)]
+    assert events == ["created", "approved"]
+
+    # The same reduction piece D does: newest row per id, closed when the event is a closed event.
+    newest = {}
+    for row in _events(store):
+        newest[row["id"]] = row
+    assert newest[record["id"]]["event"] in CLOSED_EVENTS
+
+
+def test_decline_expiry_and_a_question_are_published(tmp_path):
+    store = _store(tmp_path)
+    first = _ask(store)
+    _decide(store, first["id"], decision="decline", note="no", executor=Recorder().executor())
+    assert [r["event"] for r in _events(store) if r["id"] == first["id"]][-1] == "declined"
+
+    second = _ask(store)
+    ha.question(store, second["id"], actor="operator", note="which head?", now=NOW)
+    assert [r["event"] for r in _events(store) if r["id"] == second["id"]][-1] == "updated"
+    assert "updated" in OPEN_EVENTS
+
+    third = _ask(store, ttl_hours=1)
+    ha.expire_due(store, now=NOW + timedelta(hours=3))
+    assert [r["event"] for r in _events(store) if r["id"] == third["id"]][-1] == "expired"
+
+
+def test_a_moved_fact_keeps_the_request_open_on_the_stream(tmp_path):
+    store = _store(tmp_path)
+    record = _ask(store)
+    with pytest.raises(ha.Refused):
+        _decide(store, record["id"], executor=Recorder(ok=False, plain="head moved").executor())
+    last = _events(store)[-1]
+    assert last["event"] == "updated" and last["id"] == record["id"]
+    assert last["state"] == "open"

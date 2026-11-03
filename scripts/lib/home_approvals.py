@@ -206,6 +206,16 @@ class Store:
         return Path(self.root) / "needs_you" / "requests"
 
     @property
+    def events(self) -> Path:
+        """The stream the Telegram edge (piece D, scripts/approvals_notify.py) reads.
+
+        Vocabulary agreed with that lane: open = created|updated|pending|open|requested; closed =
+        resolved|declined|approved|expired|cancelled|done. ``requester`` is a plain string there, so the event carries
+        the session string and the richer mapping under ``requester_detail``.
+        """
+        return Path(self.root) / "approvals" / "requests.jsonl"
+
+    @property
     def ledger(self) -> Path:
         return Path(self.root) / "needs_you" / "ledger.jsonl"
 
@@ -377,6 +387,31 @@ def register_executor(kind: str, executor: Executor) -> None:
 
 
 # ── Creation ───────────────────────────────────────────────────────────────────────────────────────────────────
+def publish_event(store: Store, record: Mapping[str, Any], event: str) -> None:
+    """Append one ApprovalRequestEvent@v1 row for the Telegram nudge lane. Never fails a decision.
+
+    The nudge is an edge, not a gate: a failure to write the stream must not turn a recorded decision into an error, but
+    a missing row would leave the operator un-nudged, so callers publish before the action runs.
+    """
+    row = {
+        "schema": "ApprovalRequestEvent@v1",
+        "event": str(event),
+        "id": record.get("id"),
+        "type": record.get("type"),
+        "title": record.get("title"),
+        "why": record.get("why"),
+        "rule": record.get("rule"),
+        "requester": str((record.get("requester") or {}).get("session") or ""),
+        "requester_detail": record.get("requester"),
+        "created_at": record.get("created_at"),
+        "expires_at": record.get("expires_at"),
+        "state": record.get("state"),
+        "facts": record.get("facts"),
+    }
+    with contextlib.suppress(OSError):
+        _append_jsonl(store.events, row)
+
+
 def new_id(now: Optional[datetime] = None, *, seed: str = "") -> str:
     stamp = _utc(now).strftime("%Y%m%dT%H%M%SZ")
     return f"apr-{stamp}-{hashlib.sha256(seed.encode()).hexdigest()[:8]}"
@@ -431,6 +466,7 @@ def create(
         "requester": who, "facts": facts,
     })
     store.put(record)
+    publish_event(store, record, "created")
     return record
 
 
@@ -505,6 +541,7 @@ def decide(
         store.put(record)
         _append_jsonl(store.ledger, {"schema": RECEIPT_SCHEMA, "event": "expired", "at": _iso(moment),
                                      "id": request_id, "actor": actor})
+        publish_event(store, record, "expired")
         raise Refused("request_expired",
                       "This request expired, so nothing was approved; the lead will ask again.")
 
@@ -518,6 +555,7 @@ def decide(
         record["receipt"] = _append_jsonl(store.ledger, row)
         _append_jsonl(store.digest, row)
         store.put(record)
+        publish_event(store, record, "declined")
         return record
 
     bridge = executor or executor_for(str(record.get("type")))
@@ -527,6 +565,7 @@ def decide(
         store.put(record)
         _append_jsonl(store.ledger, {"schema": RECEIPT_SCHEMA, "event": "facts_moved", "at": _iso(moment),
                                      "id": request_id, "reason": record["blocked_reason"]})
+        publish_event(store, record, "updated")
         raise Refused("facts_moved", record["blocked_reason"])
 
     # Receipt BEFORE the action: a failed action must still leave the decision on record.
@@ -541,6 +580,7 @@ def decide(
     record.update({"state": "approved", "decision": "approve", "decided_by": actor, "decided_at": _iso(moment),
                    "receipt": receipt, "blocked_reason": None})
     store.put(record)
+    publish_event(store, record, "approved")
     return execute(store, record, actor=actor, now=moment, executor=bridge, timeout_s=timeout_s)
 
 
@@ -632,6 +672,7 @@ def question(store: Store, request_id: str, *, actor: str, note: str, now: Optio
     store.put(record)
     _append_jsonl(store.ledger, {"schema": RECEIPT_SCHEMA, "event": "question", "at": record["question"]["at"],
                                  "id": request_id, "by": record["question"]["by"], "note": text})
+    publish_event(store, record, "updated")
     return record
 
 
@@ -651,6 +692,7 @@ def expire_due(store: Store, *, now: Optional[datetime] = None) -> list[dict[str
         store.put(record)
         _append_jsonl(store.ledger, {"schema": RECEIPT_SCHEMA, "event": "expired", "at": _iso(moment),
                                      "id": record["id"]})
+        publish_event(store, record, "expired")
         changed.append(record)
     return changed
 
