@@ -9,7 +9,9 @@ Hermetic: no DB, no network, no live Telegram, tmp state file only.
 """
 from __future__ import annotations
 
+import os
 import sys
+import time
 import types
 from pathlib import Path
 
@@ -747,3 +749,77 @@ def test_a_present_but_null_threshold_is_not_absent():
     out = rn.notify_recovery_case(_case(realized_loss_usd=250, pre_exit_weight_pct=1.0),
                                   policy=policy, sender=send, state_path="/tmp/x.json")
     assert out["tier"] == "T1" and send.calls, out
+
+
+# ── R7 (cx3 at a24096db9): settlement is generation-bound; a broken mutex is not contention ──────────────
+
+def test_a_paused_release_cannot_free_a_reclaimed_lock(monkeypatch, tmp_path):
+    """cx3 R7-F1: release must share the reclamation mutex and re-read the owner under it.
+
+    A (the stale claimant) pauses inside its release AFTER deciding it owns the lock. B reclaims the
+    stale lock and claims. A resumes and, at the old head, unlinks B's FRESH lock and lets C claim too
+    — two successful claims for one case-day. The control asserts exactly one.
+    """
+    import threading
+
+    import telegram_alert as ta
+    monkeypatch.setattr(router, "record_intent_receipt", lambda *a, **k: None)
+    monkeypatch.setattr(router, "mark_intent_sent", lambda *a, **k: None)
+    msg = rn.build_message(_case(case_id="spcx-r7-settle"))
+
+    assert router.recovery_t1_claim(msg) is True              # A claims
+    lock = router._recovery_claim_lock(router._budget_day(), router._recovery_case_key(msg))
+    old = time.time() - router._RECOVERY_T1_CLAIM_STALE_SECONDS - 600
+    os.utime(lock, (old, old))                                 # A's claim is now stale to everyone
+
+    a_paused, resume = threading.Event(), threading.Event()
+    real_append = router._recovery_append
+
+    def blocking_append(day, key, state):
+        real_append(day, key, state)
+        if state == "released":
+            a_paused.set()
+            resume.wait(15)
+
+    monkeypatch.setattr(router, "_recovery_append", blocking_append)
+    a = threading.Thread(target=router.recovery_t1_release, args=(msg,))
+    a.start()
+    try:
+        assert a_paused.wait(15)
+        sends = []
+        b = ta._intent_send(msg, "P1", lambda: sends.append("b") or True, dedupe_minutes=0)
+        resume.set()
+        a.join(15)
+        monkeypatch.setattr(router, "_recovery_append", real_append)
+        c = ta._intent_send(msg, "P1", lambda: sends.append("c") or True, dedupe_minutes=0)
+    finally:
+        resume.set()
+        a.join(15)
+        monkeypatch.setattr(router, "_recovery_append", real_append)
+    assert (bool(b), bool(c)) == (False, True), "a paused release freed a reclaimed lock and let a third actor page"
+    assert sends == ["c"], f"expected one delivery after the release, got {sends}"
+
+
+def test_an_unusable_reclaim_mutex_is_not_read_as_contention(monkeypatch, tmp_path):
+    """cx3 R7-F2: a broken mutex must not turn a private stale claim into an accepted duplicate.
+
+    The mutex path is made a DIRECTORY, so os.open fails with an I/O-class error. At the old head the
+    guard returned None, the claim returned False, and the page was recorded DEDUPED with zero sender
+    invocations. A broken lock file is not a peer.
+    """
+    import telegram_alert as ta
+    monkeypatch.setattr(router, "record_intent_receipt", lambda *a, **k: None)
+    monkeypatch.setattr(router, "mark_intent_sent", lambda *a, **k: None)
+    msg = rn.build_message(_case(case_id="spcx-r7-mutex"))
+    assert router.recovery_t1_claim(msg) is True
+    lock = router._recovery_claim_lock(router._budget_day(), router._recovery_case_key(msg))
+    old = time.time() - router._RECOVERY_T1_CLAIM_STALE_SECONDS - 600
+    os.utime(lock, (old, old))
+    router._RECOVERY_CLAIM_OWNERS.clear()                     # a private stale claim, no owner token
+    # Break the mutex exactly as the review did: a directory at the lock-file path.
+    mutex = router._RECOVERY_T1_PAGE_PATH.parent / ".recovery_t1_reclaim.lock"
+    mutex.mkdir()
+    sends = []
+    delivered = ta._intent_send(msg, "P1", lambda: sends.append("x") or True, dedupe_minutes=0)
+    assert delivered is True and sends == ["x"], (
+        "an unusable mutex was read as a live peer and the page was recorded as a duplicate")

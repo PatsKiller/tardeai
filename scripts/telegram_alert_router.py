@@ -682,7 +682,14 @@ def _recovery_lock_owner(lock: Path) -> Optional[str]:
 
 
 def _recovery_reclaim_guard():
-    """Serialise stale-lock reclamation. Returns an fd holding an flock, or None if a peer holds it.
+    """Serialise stale-lock reclamation and claim settlement. Returns ``(status, fd)``.
+
+    ``status`` is one of:
+    * ``ok``    — the flock is held; call ``os.close(fd)`` to release it.
+    * ``busy``  — a peer holds the mutex. Stand down; do not race it.
+    * ``error`` — the mutex could not be used at all (permission, a directory at the path, disk I/O).
+      This is NOT contention and must never be read as "a peer is handling it": the caller proceeds
+      without serialisation and logs, because a broken mutex must not silence a page (cx3 R7-F2).
 
     One fixed file beside the ledger: reclamation is rare (only after a crash), it is released by the
     kernel if the holder dies, and it is deliberately never unlinked — unlinking an flock file would
@@ -692,14 +699,20 @@ def _recovery_reclaim_guard():
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         fd = os.open(path, os.O_WRONLY | os.O_CREAT, 0o600)
-    except OSError:
-        return None
+    except OSError as exc:
+        log.warning("recovery T1 reclaim mutex unusable (%s); proceeding unserialised (fail-open)",
+                    type(exc).__name__)
+        return "error", None
     try:
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
+    except OSError as exc:
         os.close(fd)
-        return None
-    return fd
+        if isinstance(exc, BlockingIOError) or getattr(exc, "errno", None) in (11, 13):
+            return "busy", None
+        log.warning("recovery T1 reclaim mutex flock failed (%s); proceeding unserialised (fail-open)",
+                    type(exc).__name__)
+        return "error", None
+    return "ok", fd
 
 
 def recovery_t1_state(message: str) -> str:
@@ -747,9 +760,9 @@ def recovery_t1_claim(message: str) -> bool:
             # lock, the first replaces it, and the second's resume renames the FRESH lock away and
             # claims too. Reclamation is therefore serialised by an flock mutex and re-decided under
             # it; a peer that finds another reclaimer active does not race it.
-            guard = _recovery_reclaim_guard()
-            if guard is None:
-                return False
+            status, guard = _recovery_reclaim_guard()
+            if status == "busy":
+                return False      # a peer is reclaiming; do not race it (bounded duplicate)
             try:
                 try:
                     age = time.time() - lock.stat().st_mtime
@@ -767,7 +780,8 @@ def recovery_t1_claim(message: str) -> bool:
                 except OSError:
                     pass
             finally:
-                os.close(guard)       # releases the flock
+                if guard is not None:
+                    os.close(guard)   # releases the flock
         except OSError:
             break  # cannot lock: fail-open, the page is loud
     if _recovery_state(day, key) == "delivered":       # authoritative, while we hold the lock
@@ -786,33 +800,55 @@ def recovery_t1_claim(message: str) -> bool:
 def recovery_t1_mark_delivered(message: str) -> None:
     day = _budget_day()
     key = _recovery_case_key(message)
-    _recovery_append(day, key, "delivered")            # delivered is terminal whoever sends
     lock = _recovery_claim_lock(day, key)
-    owner = _RECOVERY_CLAIM_OWNERS.pop(f"{day}\x00{key}", None)
-    lock_owner = _recovery_lock_owner(lock)
-    if lock_owner is None or lock_owner == owner:
-        try:
-            lock.unlink()
-        except OSError:
-            pass
+    # Settlement is serialised with reclamation (cx3 R7-F1): without the same mutex, a reclaimer can
+    # replace our lock between the owner read and the unlink, and we would free the FRESH claimant's
+    # lock. The owner is re-read UNDER the mutex, so the decision is bound to the attempt generation.
+    status, guard = _recovery_reclaim_guard()
+    if status == "busy":
+        _RECOVERY_CLAIM_OWNERS.pop(f"{day}\x00{key}", None)
+        _recovery_append(day, key, "delivered")        # delivered is terminal whoever sends
+        return                                          # leave the live reclaimer's lock alone
+    try:
+        _recovery_append(day, key, "delivered")        # delivered is terminal whoever sends
+        owner = _RECOVERY_CLAIM_OWNERS.pop(f"{day}\x00{key}", None)
+        lock_owner = _recovery_lock_owner(lock)
+        if lock_owner is None or lock_owner == owner:
+            try:
+                lock.unlink()
+            except OSError:
+                pass
+    finally:
+        if guard is not None:
+            os.close(guard)
 
 
 def recovery_t1_release(message: str) -> None:
-    """A failed attempt releases ITS claim — never another claimant's (cx3 R5-F2 / F5b)."""
+    """A failed attempt releases ITS claim — never another claimant's (cx3 R5-F2 / R7-F1 / F5b)."""
     day = _budget_day()
     key = _recovery_case_key(message)
     if _recovery_state(day, key) == "delivered":
         return  # delivered is terminal; a stale resumer must not re-open the day
     lock = _recovery_claim_lock(day, key)
-    owner = _RECOVERY_CLAIM_OWNERS.pop(f"{day}\x00{key}", None)
-    lock_owner = _recovery_lock_owner(lock)
-    if lock_owner is not None and lock_owner != owner:
-        return  # another live claimant owns this case; leave its lock and its state alone
-    _recovery_append(day, key, "released")
+    status, guard = _recovery_reclaim_guard()
+    if status == "busy":
+        _RECOVERY_CLAIM_OWNERS.pop(f"{day}\x00{key}", None)
+        return  # a peer is reclaiming/settling this case; do not touch its lock or its state
     try:
-        lock.unlink()
-    except OSError:
-        pass
+        # Under the mutex the owner re-read is authoritative: the lock at this path IS the generation
+        # our release is settling. A stale actor that cached an older owner cannot free the fresh one.
+        owner = _RECOVERY_CLAIM_OWNERS.pop(f"{day}\x00{key}", None)
+        lock_owner = _recovery_lock_owner(lock)
+        if lock_owner is not None and lock_owner != owner:
+            return  # another live claimant owns this case; leave its lock and its state alone
+        _recovery_append(day, key, "released")
+        try:
+            lock.unlink()
+        except OSError:
+            pass
+    finally:
+        if guard is not None:
+            os.close(guard)
 
 
 def _recovery_exemptions_for(message: str) -> list[str]:
