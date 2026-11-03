@@ -6,12 +6,14 @@
     "tests/test_incident_supervisor_noop_evidence_20261103.py",
     "tests/test_self_heal_deepseek_launch_20261103.py",
     "tests/test_self_heal_deepseek_wiring_20261103.py",
-    "tests/test_incident_dispatch_evidence_20261103.py"
+    "tests/test_incident_dispatch_evidence_20261103.py",
+    "tests/test_incident_cycle_budget_20261103.py"
   ],
   "anchor": "SELFHEAL_INCIDENTS_DEEPSEEK_20261103",
   "comment": [
     "ANCHOR: SELFHEAL_INCIDENTS_DEEPSEEK_20261103 — the one-incident reopen helper refuses operator-only scopes (SIEM/ledger/credential) even when the config regex omits them; the supervisor cap route reads the real L.attempt() row shape and an unparseable tail is never a no-op; the DeepSeek key is read on the host and crosses as the first stdin line into a memfd, never env/argv/path. Hermetic: temp ledgers, fake key files, fake CLI; no network and no live state.",
     "test_self_heal_deepseek_launch_20261103.py proves the launcher contract (descriptor naming, cwd, no ANTHROPIC_AUTH_TOKEN/API_KEY, rc=2 without a descriptor) and test_self_heal_deepseek_wiring_20261103.py proves the fixer side hands the key line over and the launcher chain keeps it out of the env.",
-    "test_incident_dispatch_evidence_20261103.py: a fixer dispatch counts as work only when a job was admitted or an active job owns the signature; rc=0 from not_armed/busy/nothing-to-do must page, not hide."
+    "test_incident_dispatch_evidence_20261103.py: a fixer dispatch counts as work only when a job was admitted or an active job owns the signature; rc=0 from not_armed/busy/nothing-to-do must page, not hide.",
+    "test_incident_cycle_budget_20261103.py: the budget bounds the WHOLE cycle — a model call that cannot finish and a runbook action that cannot fit are both deferred with a non-counting triage row, the deferral does not start the model cooldown, and a spent budget never skips the deterministic refused-scope block+page. A fake clock drives the budget without sleeping."
   ]
 }
