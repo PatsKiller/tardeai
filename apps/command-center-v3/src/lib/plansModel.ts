@@ -29,8 +29,16 @@ export const STATUS_WORDS: Record<string, string> = {
   stalled: 'Stalled — no activity',
 }
 
-export function statusWord(status?: string): string {
-  return STATUS_WORDS[String(status || '')] || 'Unknown'
+/** A plan is "picked up" when a claim, a branch or a PR is linked — the registry leaves the status
+ *  at `approved` after link(), so the status alone must not claim nobody owns it. */
+export function pickedUp(plan: PlanRow): boolean {
+  return Boolean(plan.claim || plan.branch || plan.pr)
+}
+
+export function statusWord(status?: string, plan?: PlanRow): string {
+  const s = String(status || '')
+  if (s === 'approved' && plan && pickedUp(plan)) return 'Approved · picked up'
+  return STATUS_WORDS[s] || 'Unknown'
 }
 
 export function stepSummary(plan: PlanRow): string {

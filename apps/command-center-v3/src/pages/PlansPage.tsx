@@ -3,7 +3,7 @@ import {Link} from 'react-router-dom'
 import DeskPage, {DeskGap} from '../components/DeskPage'
 import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetailSheet'
 import {useApi} from '../hooks/useApi'
-import {claimHref, planFrom, plansFrom, prUrl, statusWord, stepSummary, type PlanRow, type PlansView} from '../lib/plansModel'
+import { claimHref, planFrom, plansFrom, prUrl, statusWord, stepSummary, type PlanRow, type PlansView, pickedUp } from '../lib/plansModel'
 import '../styles/plans.css'
 
 const INDEX = '/api/v2/plans'
@@ -49,9 +49,13 @@ export default function PlansPage() {
   const one = useApi<PlansView>(selectedId ? `${INDEX}?id=${encodeURIComponent(selectedId)}` : INDEX, 0,
     {enabled: Boolean(selectedId)})
   const rows = plansFrom(index.data)
-  const plan = selectedId ? planFrom(one.data) : null
-  const waiting = rows.filter(r => r.status === 'approved').length
-  const gap = index.error || (index.data && index.data.ok === false ? String(index.data.error || 'Plan store unreadable') : undefined)
+  const detailData = planFrom(one.data)
+  const plan = selectedId && detailData && detailData.id === selectedId ? detailData : null
+  const waiting = rows.filter(r => r.status === 'approved' && !pickedUp(r)).length
+  const gap = index.error || one.error
+    || (index.data && index.data.ok === false ? String(index.data.error || 'Plan store unreadable') : undefined)
+  const asOf = rows.reduce<string | undefined>(
+    (m, r) => (r.updated_at && (!m || String(r.updated_at) > m) ? String(r.updated_at) : m), undefined)
 
   const sheet = plan ? (
     detail.mobile
@@ -70,12 +74,12 @@ export default function PlansPage() {
       <DeskPage
         title="Plans"
         purpose="Every approved plan on the server for every agent: who approved it, who picked it up, what is left. Claude Code registers a plan when you leave plan mode; Codex and Cursor use scripts/plan_registry.py."
-        sources={[{id: 'plans', label: 'Plan store', gap}]}
+        sources={[{id: 'plans', label: 'Plan store', gap, asOf}]}
         decisions={[]}
         decisionGap={waiting ? `${waiting} approved plan${waiting === 1 ? '' : 's'} nobody has picked up yet.` : 'Nothing approved and unclaimed right now.'}
       >
         <div className="pl-stack">
-          <DeskGap title="Plan registry" reason={String(gap)} />
+          {gap && <DeskGap title="Plan registry" reason={String(gap)} />}
           {index.loading && <p className="pl-empty">Loading plans…</p>}
           {!index.loading && rows.length === 0 && !gap && <p className="pl-empty">No plans registered yet.</p>}
           <ul className="pl-list">
