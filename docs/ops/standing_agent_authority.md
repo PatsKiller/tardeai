@@ -106,3 +106,6 @@ commands and outcomes in the coordinator ledger. Update WORKERS.md only with cap
 
 No broker access, orders, stops, risk-policy change, credentials, deployment, production schedule activation,
 branch-protection change or self-expansion follows from this standing engineering authority.
+
+## Delegation controls and manual decision review
+The standing route refuses changes to its own verifier, ratification helper, required-check gate, held-path classifier/registry and their authority tests. Other held engineering remains eligible with two independent reviews. Every registration must include section17_review_completed=true and authority_rails_unchanged=true after the coordinator inspects actual scope, head-bound test/document evidence and applicable decisions. These are manual review attestations, not automatic semantic proof. Known operator-only configuration paths refuse even when both attestations are true. The CLI returns merged_not_deployed; the coordinator separately verifies main, CURRENT, the service cwd and the durable poller receipt before reporting Live.

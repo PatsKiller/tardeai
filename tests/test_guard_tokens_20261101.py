@@ -204,3 +204,67 @@ def test_tokenizer_mutant_is_killed(tmp_path, name):
         assert real != mutated, (name, real, mutated)
     else:
         assert want in real and want not in mutated, (name, real, mutated)
+
+# Value-taking wrappers must expose the actual command, including quoted verbs.
+WRAPPER_VALUE_FORMS = [
+    "nice -n 5", "nice -n5", "nice --adjustment 5", "nice --adjustment=5", "nice -5",
+    "xargs -n 1", "xargs -n1", "xargs --max-args 1", "xargs --max-args=1",
+    "xargs -rn1", "xargs -I{}", "xargs -i", "xargs --replace={}",
+    "xargs --replace", "xargs --eof", "xargs --max-lines",
+    "env -u SYNTHETIC", "env -uSYNTHETIC", "env --unset=SYNTHETIC", "env -i --", "env -iuSYNTHETIC",
+    "ionice -c 3", "ionice -c3", "ionice --class 3", "ionice --class=3",
+    "taskset -c 0", "taskset -c0", "taskset --cpu-list 0", "taskset --cpu-list=0", "taskset 0x1",
+    "setsid", "setsid -f", "setsid --wait",
+    "timeout -k 2 30", "timeout --kill-after=2 30", "timeout -s TERM 30", "timeout -sTERM 30",
+    "stdbuf -o L", "stdbuf -oL", "stdbuf --output=L",
+    "time -f %e", "time --format=%e", "exec -a synthetic", "nice -n5 setsid xargs -n1",
+]
+
+
+@pytest.mark.parametrize("prefix", WRAPPER_VALUE_FORMS)
+@pytest.mark.parametrize("command,tier", [
+    ('"git" push origin main', "git-push"),
+    ('"gh" issue "comment" 50 --body synthetic', "gh-write"),
+    ('"gh" api -X POST repos/synthetic/project/issues', "gh-write"),
+    ('"gh" auth token', "secret"),
+])
+def test_value_taking_wrappers_classify_real_command(prefix, command, tier):
+    text = prefix + " " + command
+    assert tier in tiers(text).split()
+    assert _classify(text) == tier
+
+
+@pytest.mark.parametrize("prefix", WRAPPER_VALUE_FORMS)
+def test_valid_wrapped_reads_stay_reads(prefix):
+    assert tiers(prefix + ' "git" status') == "none"
+    assert _classify(prefix + ' "git" status') == "none"
+
+
+@pytest.mark.parametrize("command", [
+    "nice -n", "nice --adjustment", "nice --adjustment=", "xargs -n", "xargs --max-args",
+    "ionice -c", "ionice --class=", "taskset -c", "taskset --cpu-list=",
+    "timeout -s", "timeout --kill-after", "stdbuf -o", "time --format", "exec -a",
+])
+def test_missing_wrapper_values_fail_closed(command):
+    assert tiers(command) != "none"
+    assert _classify(command) != "none"
+
+
+@pytest.mark.parametrize("option", ["-S", "--split-string", "--split-string=", "-S", "-iS"])
+@pytest.mark.parametrize("command,tier", [
+    ('"git" push origin main', "git-push"), ('"gh" issue comment 50 -b synthetic', "gh-write"),
+    ('"gh" auth token', "secret"), ('"git" status', "none"),
+])
+def test_env_split_string_exposes_the_actual_command(option, command, tier):
+    import shlex
+
+    separator = "" if option.endswith("=") or option == "-iS" else " "
+    text = "env " + option + separator + shlex.quote(command)
+    assert tiers(text) == tier
+    assert _classify(text) == tier
+
+
+@pytest.mark.parametrize("command", ["env -u", "env --unset=", "env -C", "env --chdir", "env -S", "env --split-string="])
+def test_env_missing_values_are_not_an_allow(command):
+    assert tiers(command) != "none"
+    assert _classify(command) != "none"

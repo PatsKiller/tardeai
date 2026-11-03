@@ -37,11 +37,11 @@ MAX_BYTES = 2 * 1024 * 1024
 SHA = re.compile(r"[0-9a-f]{40}")
 HASH = re.compile(r"[0-9a-f]{64}")
 SESSION = re.compile(r"[A-Za-z0-9_./:-]{3,160}")
-# Ratification documents stay operator-owned. Engineering implementation of hooks,
-# checks and merge/deploy tooling is delegated only through the held two-review
-# path below; it cannot ratify or activate its own policy/manifest.
+# Ratification and the delegation verifier/classification controls stay operator-owned.
+# Other hook, CI and merge/deploy engineering uses the held two-review path.
+DELEGATION_CONTROL_PATHS = ('scripts/lib/pr_merge_delegation.py', 'scripts/lib/pr_all_checks_green.py', 'scripts/lib/merge_hold_paths.py', 'config/merge_hold_paths.json', '.cursor/hooks/guard_standing_policy.py', 'tests/test_pr_merge_delegation_20261102.py', 'tests/test_pr_all_checks_standing_20261102.py', 'tests/test_guard_standing_policy_20261102.py')
 RESERVED = ("AGENTS.md", "*/AGENTS.md", "AI_WORK_POLICY.md", "CLAUDE.md", "GEMINI.md", ".goosehints",
-            ".cursor/rules/*", ".github/copilot-instructions.md", "config/agent_standing_authority.json")
+            ".cursor/rules/*", ".github/copilot-instructions.md", "config/agent_standing_authority.json") + DELEGATION_CONTROL_PATHS
 # Source engineering that a legacy hold registry may not yet list still owes two
 # independent reviews, strict green checks and actual completion attestations.
 ENGINEERING_HELD_PATHS = {
@@ -79,7 +79,8 @@ OPERATOR_ONLY = ("scripts/brokers/*", "scripts/active_trader/*", "scripts/moomoo
                  "scripts/lib/trading_lock.py", "scripts/lib/trading_session_grant.py",
                  "scripts/validate_schwab_write_policy.py", "scripts/lib/cio_instrument_record.py")
 DECISION_PATHS = ("config/lane_registry.json", "config/data_source_authority.json", "config/n8n_relay_live*.json",
-                  "config/n8n_live*.json", "config/*access_mode*", "config/*kill_switch*", "config/*risk_policy*")
+                  "config/n8n_live*.json", "config/*access_mode*", "config/*kill_switch*", "config/*risk_policy*",
+                  'config/operator_alert_policy.yaml', 'config/portfolio_positions.yaml', 'config/search_routing_policy.json', 'config/conflict_rulebook.json', 'config/systemd/*', 'config/disk_hygiene_rules.json', 'config/anthropic_credit_policy.json')
 # New classes require explicit engineering classification in the trusted source
 # registry. A mutable class declaration cannot relax the immutable excluded paths.
 DELEGATED_HELD_CLASSES = frozenset({"hooks_guard", "merge_deploy_control"})
@@ -271,6 +272,8 @@ def evaluate(snapshot, *, now):
             raise Refused("operator_only_or_delegation_definition_path")
         if any(hits(p, DECISION_PATHS) for p in effective_files):
             raise Refused("applicable_section17_decision_required")
+        if evidence.get("section17_review_completed") is not True:
+            raise Refused("section17_review_unproven")
         if snapshot.get("checks", {}).get("ok") is not True:
             raise Refused("exact_head_checks_not_green")
         if snapshot.get("checks_head") != head:
@@ -291,7 +294,7 @@ def evaluate(snapshot, *, now):
             raise Refused("shared_infra_classification_unavailable")
         if shared["required"] and (shared.get("ok") is not True or evidence.get("shared_infra_isolated_reviewed") is not True):
             raise Refused("shared_infra_evidence_unproven")
-        if any(path.startswith(".github/workflows/") for path in effective_files) and evidence.get("authority_rails_unchanged") is not True:
+        if evidence.get("authority_rails_unchanged") is not True:
             raise Refused("reporting_workflow_no_weakening_attestation_missing")
         authors = evidence.get("authors")
         if not isinstance(authors, list) or not authors:

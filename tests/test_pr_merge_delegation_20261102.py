@@ -69,7 +69,7 @@ def snapshot(mod, *, held=False, reviews=1):
                          "authors": [{"actor": "claude", "session": "author-synthetic", "claim_id": "synthetic-source"}],
                          "reviews": artifact_rows, "authors_and_coauthors_complete":True,
                          "source_authorship_sha256":mod.digest({"author":None,"commits":[{"oid":HEAD}]}),
-                         "shared_infra_isolated_reviewed":True,"authority_rails_unchanged":True,
+                         "shared_infra_isolated_reviewed":True,"authority_rails_unchanged":True,"section17_review_completed":True,
                          "engineering_tests_completed":True,"engineering_docs_completed":True},
             "review_artifacts": artifact_bytes, "registration_sha256": "d" * 64,
             "checks": checks, "checks_head": HEAD, "excluded_globs": ["synthetic/reserved/*"], "held": held,
@@ -558,9 +558,9 @@ def test_manual_completeness_and_no_weakening_attestations_are_explicit(mod,fiel
 
 ENGINEERING_EXAMPLES = [
     ".githooks/pre-commit", ".cursor/hooks/guard_push_free.py", "scripts/lib/pr_merge_telegram.py",
-    "scripts/lib/pr_merge_delegation.py", ".github/workflows/cio-full-suite-sharded.yml", ".github/workflows/agent-governance.yml",
+    ".github/workflows/cio-full-suite-sharded.yml", ".github/workflows/agent-governance.yml",
     ".github/workflows/release-readiness.yml", "scripts/lib/deploy_on_main.py",
-    "scripts/lib/pr_all_checks_green.py", ".cursor/hooks/new/nested_guard.py",
+    ".cursor/hooks/new/nested_guard.py",
     "config/ci_gates/synthetic-reporting.json", "config/agent_clients.yaml",
 ]
 
@@ -739,7 +739,7 @@ def test_real_current_registry_floor_resolves_but_lane_admission_needs_section17
     assert mod.evaluate(collected,now=NOW)["reason"]=="applicable_section17_decision_required"
 
 
-@pytest.mark.parametrize("path",[".githooks/pre-commit",".cursor/hooks/guard_push_free.py","scripts/lib/pr_merge_delegation.py",
+@pytest.mark.parametrize("path",[".githooks/pre-commit",".cursor/hooks/guard_push_free.py","scripts/lib/pr_merge_telegram.py",
                                 ".github/workflows/cio-full-suite-sharded.yml","scripts/lib/deploy_on_main.py"])
 def test_actual_current_manifest_and_held_helper_keep_reviewed_engineering_eligible(mod,tmp_path,path):
     host=actual_collector_fixture(mod,tmp_path,changed=path,current_manifest=True)
@@ -751,3 +751,29 @@ def test_actual_file_page_reader_retains_only_required_metadata(mod):
     host=mod.Host()
     host.gh=lambda args:[{"filename":"apps/synthetic/source.py","status":"modified","patch":"SYNTHETIC_UNUSED_PRIVATE_TEXT","contents_url":"unused"}]
     assert host.pr_file_rows(9999,1)==[{"filename":"apps/synthetic/source.py","status":"modified"}]
+
+
+@pytest.mark.parametrize("path",['scripts/lib/pr_merge_delegation.py', 'scripts/lib/pr_all_checks_green.py', 'scripts/lib/merge_hold_paths.py', 'config/merge_hold_paths.json', '.cursor/hooks/guard_standing_policy.py', 'tests/test_pr_merge_delegation_20261102.py', 'tests/test_pr_all_checks_standing_20261102.py', 'tests/test_guard_standing_policy_20261102.py'])
+def test_delegation_cannot_merge_its_own_verifier_or_classification_controls(mod,path):
+    data=snapshot(mod,held=True,reviews=2)
+    data["excluded_globs"]=[]
+    data["authority"]["authority"]["reserved_paths"]=[]
+    data["pr"]["files"]=[path]
+    data["claims"][1]["paths"]=[path]
+    assert mod.evaluate(data,now=NOW)["reason"]=="operator_only_or_delegation_definition_path"
+
+
+@pytest.mark.parametrize("path",['config/operator_alert_policy.yaml', 'config/portfolio_positions.yaml', 'config/search_routing_policy.json', 'config/conflict_rulebook.json', 'config/disk_hygiene_rules.json', 'config/anthropic_credit_policy.json', 'config/systemd/user/synthetic.service'])
+def test_explicit_section17_decision_paths_remain_outside_standing_merge(mod,path):
+    data=snapshot(mod,held=True,reviews=2)
+    data["pr"]["files"]=[path]
+    data["claims"][1]["paths"]=[path]
+    assert mod.evaluate(data,now=NOW)["reason"]=="applicable_section17_decision_required"
+
+
+@pytest.mark.parametrize("field",["section17_review_completed","authority_rails_unchanged"])
+@pytest.mark.parametrize("value",[None,False,"true",1])
+def test_manual_decision_and_no_weakening_review_required_for_every_pr(mod,field,value):
+    data=snapshot(mod)
+    data["evidence"][field]=value
+    assert not mod.evaluate(data,now=NOW)["ok"]

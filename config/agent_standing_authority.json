@@ -1,11 +1,11 @@
 {
   "schema": "AgentStandingAuthority@v1",
   "minimum_policy": "30.0.0",
-  "status": "ACTIVE",
+  "status": "PROPOSED",
   "ratification": {
-    "approval_token": "APPROVE_AGENTS_POLICY_30_0_0 2501 f582daf115f41d2e6cda9e17dfd28f2aa4308f96",
-    "pr": 2501,
-    "reviewed_head": "f582daf115f41d2e6cda9e17dfd28f2aa4308f96"
+    "approval_token": null,
+    "pr": null,
+    "reviewed_head": null
   },
   "capabilities": {
     "feature_push": {
@@ -57,7 +57,15 @@
         "scripts/lib/trading_lock.py",
         "scripts/lib/trading_session_grant.py",
         "scripts/validate_schwab_write_policy.py",
-        "scripts/lib/cio_instrument_record.py"
+        "scripts/lib/cio_instrument_record.py",
+        "scripts/lib/pr_merge_delegation.py",
+        "scripts/lib/pr_all_checks_green.py",
+        "scripts/lib/merge_hold_paths.py",
+        "config/merge_hold_paths.json",
+        ".cursor/hooks/guard_standing_policy.py",
+        "tests/test_pr_merge_delegation_20261102.py",
+        "tests/test_pr_all_checks_standing_20261102.py",
+        "tests/test_guard_standing_policy_20261102.py"
       ]
     }
   },
@@ -98,6 +106,14 @@
     "scripts/lib/trading_lock.py",
     "scripts/lib/trading_session_grant.py",
     "scripts/validate_schwab_write_policy.py",
-    "scripts/lib/cio_instrument_record.py"
+    "scripts/lib/cio_instrument_record.py",
+    "scripts/lib/pr_merge_delegation.py",
+    "scripts/lib/pr_all_checks_green.py",
+    "scripts/lib/merge_hold_paths.py",
+    "config/merge_hold_paths.json",
+    ".cursor/hooks/guard_standing_policy.py",
+    "tests/test_pr_merge_delegation_20261102.py",
+    "tests/test_pr_all_checks_standing_20261102.py",
+    "tests/test_guard_standing_policy_20261102.py"
   ]
 }

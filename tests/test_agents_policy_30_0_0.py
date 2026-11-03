@@ -56,6 +56,6 @@ def test_delegation_definitions_are_reserved_and_registry_rule_present():
     assert "config/agent_standing_authority.json" in MANIFEST["reserved_paths"]
     for path in ("scripts/lib/pr_merge_delegation.py", "scripts/lib/pr_all_checks_green.py"):
         assert path in globs
-        assert path not in MANIFEST["reserved_paths"]
+        assert path in MANIFEST["reserved_paths"]
     assert "Register each approved plan once on the server" in POLICY
     assert "§28.17" in POLICY

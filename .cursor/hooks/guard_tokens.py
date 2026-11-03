@@ -63,7 +63,7 @@ GH_WRITE = {
 GIT_VALUE_OPTS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env",
                   "--super-prefix", "--list-cmds"}
 GIT_PUSH_VERBS = {"push", "rebase", "filter-branch"}
-WRAPPERS = {"command", "exec", "nohup", "time", "xargs", "builtin", "nice", "stdbuf", "timeout"}
+WRAPPERS = {"command", "exec", "nohup", "time", "xargs", "builtin", "nice", "stdbuf", "timeout", "ionice", "taskset", "setsid"}
 SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
 _ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 _SEPARATORS = {";", "&&", "||", "|", "&", "(", ")", "<", ">", ">>", "<<", "|&", ";;", "\n", "<<<", ">&", "<&", "&>"}
@@ -71,6 +71,174 @@ _SEPARATORS = {";", "&&", "||", "|", "&", "(", ")", "<", ">", ">>", "<<", "|&", 
 
 def _is_dynamic(word: str) -> bool:
     return word.startswith("$") or "$(" in word or "`" in word or "${" in word
+
+
+# Each wrapper has its own option grammar. Skipping only words beginning with
+# "-" leaves a value (nice -n 5) in argv[0] and hides the command behind it.
+_WRAPPER_VALUE = {
+    "exec": {"a"}, "time": {"f", "o"}, "nice": {"n"},
+    "stdbuf": {"i", "o", "e"}, "timeout": {"k", "s"},
+    "ionice": {"c", "n", "p", "P", "u"},
+    "xargs": {"a", "d", "E", "I", "L", "n", "P", "s"},
+}
+_WRAPPER_LONG_VALUE = {
+    "time": {"format", "output"}, "nice": {"adjustment"},
+    "stdbuf": {"input", "output", "error"}, "timeout": {"kill-after", "signal"},
+    "ionice": {"class", "classdata", "pid", "pgid", "uid"},
+    "xargs": {"arg-file", "delimiter", "eof", "replace", "max-lines", "max-args",
+              "max-procs", "max-chars", "process-slot-var"},
+}
+_WRAPPER_FLAGS = {
+    "command": set("pVv"), "exec": set("cl"), "nohup": set(),
+    "time": set("apqv"), "nice": set(), "stdbuf": set(),
+    "timeout": set("v"), "ionice": set("t"), "taskset": set("apc"),
+    "setsid": set("cfw"), "builtin": set(), "xargs": set("0prtx"),
+}
+_WRAPPER_LONG_FLAGS = {
+    "time": {"append", "portability", "quiet", "verbose"},
+    "timeout": {"foreground", "preserve-status", "verbose"},
+    "ionice": {"ignore"}, "taskset": {"all-tasks", "pid", "cpu-list"},
+    "setsid": {"ctty", "fork", "wait"},
+    "xargs": {"null", "interactive", "no-run-if-empty", "verbose", "exit", "show-limits"},
+}
+_WRAPPER_NUMERIC = {
+    "nice": {"n", "adjustment"}, "ionice": {"c", "n", "p", "P", "u", "class", "classdata", "pid", "pgid", "uid"},
+    "xargs": {"L", "n", "P", "s", "max-lines", "max-args", "max-procs", "max-chars"},
+}
+
+
+def _wrapper_value(base: str, option: str, value: str) -> None:
+    if not value or value == "--" or _is_dynamic(value):
+        raise ValueError("missing or dynamic wrapper option value")
+    if option in _WRAPPER_NUMERIC.get(base, set()) and not re.fullmatch(r"[+-]?\d+", value):
+        raise ValueError("invalid numeric wrapper option value")
+
+
+def _wrapper_end(argv: list[str], start: int, base: str) -> int:
+    i = start
+    taskset_mask_attached = False
+    while i < len(argv):
+        word = argv[i]
+        if word == "--":
+            i += 1
+            break
+        if not word.startswith("-") or word == "-":
+            break
+        if base == "nice" and re.fullmatch(r"-\d+", word):
+            i += 1  # Historical nice -5 COMMAND spelling.
+            continue
+        if base == "taskset" and (word.startswith("-c") and len(word) > 2
+                                  or word.startswith("--cpu-list=")):
+            value = word.split("=", 1)[1] if word.startswith("--") else word[2:]
+            if not re.fullmatch(r"\d+(?:[-,:]\d+)*", value):
+                raise ValueError("invalid attached taskset mask")
+            taskset_mask_attached = True
+            i += 1
+            continue
+        if word.startswith("--"):
+            option, equal, value = word[2:].partition("=")
+            if base == "xargs" and option in {"eof", "replace", "max-lines"}:
+                if equal:
+                    _wrapper_value(base, option, value)
+            elif option in _WRAPPER_LONG_VALUE.get(base, set()):
+                if not equal:
+                    i += 1
+                    if i >= len(argv):
+                        raise ValueError("missing wrapper option value")
+                    value = argv[i]
+                _wrapper_value(base, option, value)
+            elif option not in _WRAPPER_LONG_FLAGS.get(base, set()) or equal:
+                raise ValueError("unknown wrapper option")
+        else:
+            j = 1
+            while j < len(word):
+                option = word[j]
+                # GNU xargs optional values are attached only: bare -i/-e/-l
+                # must not swallow a following command called gh or git.
+                if base == "xargs" and option in {"i", "e", "l"}:
+                    if j + 1 < len(word):
+                        _wrapper_value(base, option, word[j + 1:])
+                    break
+                if option in _WRAPPER_VALUE.get(base, set()):
+                    value = word[j + 1:]
+                    if not value:
+                        i += 1
+                        if i >= len(argv):
+                            raise ValueError("missing wrapper option value")
+                        value = argv[i]
+                    _wrapper_value(base, option, value)
+                    break
+                if option not in _WRAPPER_FLAGS.get(base, set()):
+                    raise ValueError("unknown wrapper option")
+                j += 1
+        i += 1
+    if base == "timeout":
+        if i >= len(argv) or not re.fullmatch(r"(?:\d+(?:\.\d*)?|\.\d+)[smhd]?", argv[i]):
+            raise ValueError("missing or invalid timeout duration")
+        i += 1
+    elif base == "taskset" and not taskset_mask_attached:
+        if i >= len(argv) or not re.fullmatch(r"(?:0x)?[0-9a-fA-F]+(?:[-,:][0-9a-fA-F]+)*", argv[i]):
+            raise ValueError("missing or invalid taskset mask")
+        i += 1
+    return i
+
+
+def _env_prefix(argv: list[str], start: int) -> tuple[list[str], int]:
+    i = start
+    while i < len(argv):
+        word = argv[i]
+        if _ASSIGN.match(word):
+            i += 1
+            continue
+        if word == "--":
+            return argv, i + 1
+        if word in {"-", "-i", "--ignore-environment", "-0", "--null", "--debug", "--list-signal-handling"}:
+            i += 1
+            continue
+        if not word.startswith("-"):
+            break
+        if word.startswith("--"):
+            option, equal, value = word[2:].partition("=")
+            if option in {"default-signal", "ignore-signal", "block-signal"}:
+                i += 1  # Optional value is attached with "="; it never eats the command.
+                continue
+            if option not in {"unset", "chdir", "split-string", "argv0"}:
+                raise ValueError("unknown env option")
+            consumed = 1 if equal else 2
+            if not equal:
+                if i + 1 >= len(argv):
+                    raise ValueError("missing env option value")
+                value = argv[i + 1]
+        else:
+            # -iuNAME and -iS'COMMAND ...' are legal short-option clusters.
+            rest = word[1:]
+            while rest.startswith(("i", "0")):
+                rest = rest[1:]
+            if not rest:
+                i += 1
+                continue
+            option, value = rest[0], rest[1:]
+            option = {"u": "unset", "C": "chdir", "S": "split-string", "a": "argv0"}.get(option, "")
+            if not option:
+                raise ValueError("unknown env option")
+            consumed = 1 if value else 2
+            if not value:
+                if i + 1 >= len(argv):
+                    raise ValueError("missing env option value")
+                value = argv[i + 1]
+        _wrapper_value("env", option, value)
+        if option == "split-string":
+            # GNU env has extra escape/expansion rules. Ambiguous spellings
+            # refuse rather than interpreting them as an empty/benign command.
+            if "\\" in value or "$" in value:
+                raise ValueError("ambiguous env split-string")
+            words = shlex.split(value)
+            if not words:
+                raise ValueError("empty env split-string")
+            argv = argv[:i] + words + argv[i + consumed:]
+        else:
+            i += consumed
+    return argv, i
 
 
 def _strip_prefix(argv: list[str]) -> list[str]:
@@ -82,22 +250,13 @@ def _strip_prefix(argv: list[str]) -> list[str]:
             continue
         base = os.path.basename(w)
         if base == "env":
-            i += 1
-            while i < len(argv) and (argv[i].startswith("-") or _ASSIGN.match(argv[i])):
-                if argv[i] in ("-u", "--unset", "-C", "--chdir", "-S", "--split-string") and i + 1 < len(argv):
-                    i += 1
-                i += 1
+            argv, i = _env_prefix(argv, i + 1)
             continue
         if base in WRAPPERS:
-            i += 1
-            while i < len(argv) and argv[i].startswith("-"):
-                i += 1
-            if base == "timeout" and i < len(argv):  # the duration
-                i += 1
+            i = _wrapper_end(argv, i + 1, base)
             continue
         break
     return argv[i:]
-
 
 def _gh(args: list[str], unknown_is_write: bool = True) -> set[str]:
     out: set[str] = set()
@@ -211,7 +370,10 @@ def _git_config_writes_an_alias(rest: list[str]) -> bool:
 
 
 def _simple(argv: list[str], depth: int) -> set[str]:
-    argv = _strip_prefix(argv)
+    try:
+        argv = _strip_prefix(argv)
+    except ValueError:
+        return _fail_closed(" ".join(argv)) or {"gh-write"}
     if not argv:
         return set()
     head = argv[0]
