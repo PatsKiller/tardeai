@@ -278,12 +278,23 @@ def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date]
         got = assigned[case.case_key]
         if not got:
             continue
-        # Refresh THIS case from its own stored exits, with the read's numbers for the dates it actually owns. Never
-        # merge in another cluster's fills, and never duplicate an exit that is already stored.
-        by_date = {f.exit_date.isoformat(): f for f in got}
-        merged = [by_date.pop(str(row["date"])[:10], None) or _as_exit_fill(symbol, account, row)
+        # A DATE IS NOT A FILL IDENTITY (codex F14). Two distinct exits on one day must stay two exits, and an unknown
+        # P&L must never be replaced by a different exit's number. A stored exit is refreshed only when its date is
+        # unambiguous: exactly ONE stored exit and exactly ONE read fill on it. Otherwise the stored exits are kept
+        # verbatim — no collapse by date, no duplication of the last observation.
+        by_date: dict[str, list[rc.ExitFill]] = {}
+        for fill in got:
+            by_date.setdefault(fill.exit_date.isoformat(), []).append(fill)
+        stored_by_date: dict[str, int] = {}
+        for row in case.exits:
+            key = str(row["date"])[:10]
+            stored_by_date[key] = stored_by_date.get(key, 0) + 1
+        merged = [by_date[str(row["date"])[:10]][0]
+                  if stored_by_date[str(row["date"])[:10]] == 1 and len(by_date.get(str(row["date"])[:10]) or []) == 1
+                  else _as_exit_fill(symbol, account, row)
                   for row in case.exits]
-        merged.extend(by_date.values())
+        # A read fill on a date this case does not hold at all is a genuine late arrival for the cluster.
+        merged.extend(f for key, items in by_date.items() if key not in stored_by_date for f in items)
         refreshed = rc.consume_fills(store, merged, cluster_key=case.cluster_key, **common)
         result = refreshed
     if unassigned:

@@ -679,3 +679,45 @@ def test_f13_a_confirmed_exit_that_cannot_be_priced_makes_the_pass_incomplete(st
     assert out["failed"] and "no case could be built" in out["failed"][0]
     assert any("no usable fill price" in gap for gap in out["gaps"])
     conn.close()
+
+
+def test_f14_two_distinct_same_day_exits_survive_an_unchanged_refresh(store):
+    """codex F14: a date is not a fill identity — two exits on one day must stay two exits with their own numbers."""
+    conn = _source_db()
+    _watch(conn, "2026-10-27", 80.0, -6000)
+    _watch(conn, "2026-10-27", 82.0, -200)
+    _tx(conn, "2026-10-27", 100)
+    _positions(conn, 0)
+    from lib.recovery_engine import fills_consumer as fc
+    first = fc.run(store, conn, today=TODAY, now=NOW)
+    key = first["opened"][0]
+    before = store.get(key)
+    assert sorted(e["price"] for e in before.exits) == [80.0, 82.0]
+    assert before.realized_pnl == pytest.approx(-6200)
+    assert before.materiality_tier == "T2"
+    second = fc.run(store, conn, today=TODAY, now=NOW)          # unchanged source, identical pass
+    after = store.get(key)
+    assert second["complete"] is True and second["refreshed"] == [key]
+    assert sorted(e["price"] for e in after.exits) == [80.0, 82.0]
+    assert sorted(e["realized_pnl"] for e in after.exits) == [-6000.0, -200.0]
+    assert after.realized_pnl == pytest.approx(-6200) and after.materiality_tier == "T2"
+    conn.close()
+
+
+def test_f14_an_unknown_sibling_stays_unknown_on_refresh(store):
+    """The worst outcome in this engine: an UNKNOWN converted into a confident number."""
+    conn = _source_db()
+    _watch(conn, "2026-10-27", 80.0, None)
+    _watch(conn, "2026-10-27", 82.0, -200)
+    _tx(conn, "2026-10-27", 100)
+    _positions(conn, 0)
+    from lib.recovery_engine import fills_consumer as fc
+    first = fc.run(store, conn, today=TODAY, now=NOW)
+    key = first["opened"][0]
+    assert store.get(key).realized_pnl is None and store.get(key).materiality_tier == "UNKNOWN"
+    fc.run(store, conn, today=TODAY, now=NOW)
+    after = store.get(key)
+    assert after.realized_pnl is None, "an unknown loss resolved to a number"
+    assert after.materiality_tier == "UNKNOWN"
+    assert sorted(e["realized_pnl"] for e in after.exits if e["realized_pnl"] is not None) == [-200.0]
+    conn.close()
