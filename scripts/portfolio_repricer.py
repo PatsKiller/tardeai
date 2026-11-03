@@ -61,6 +61,31 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _summary_amount(value, *, signed: bool = False) -> str:
+    """Format a total for the Before/After lines, or ``unknown`` when it is not a number.
+
+    2026-11-03: the holdings rebuild wrote ``portfolio_totals.day_change = null`` (and refreshed
+    totals from the rebuild), and the ``:+,.0f`` format string then raised ``TypeError`` on the
+    *pre-reprice* summary -- every */15 run died before ``reprice_portfolio`` ran and before any
+    write. A writer must tolerate a missing/corrupt value (spec item C): print it as unknown and
+    keep going. Non-finite floats are treated the same way.
+    """
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return "unknown"
+    if v != v or v in (float("inf"), float("-inf")):
+        return "unknown"
+    return f"${v:+,.0f}" if signed else f"${v:,.0f}"
+
+
+def _summary_line(label: str, portfolio: dict) -> str:
+    """``Before: $total | Day: $change`` with every total safe to be missing."""
+    totals = portfolio.get("portfolio_totals") or {}
+    return (f"{label}: {_summary_amount(totals.get('total_value'))} | "
+            f"Day: {_summary_amount(totals.get('day_change'), signed=True)}")
+
+
 def compute_data_as_of(holdings) -> dict:
     """The OLDEST contributing row date -- the real freshness of the data.
 
@@ -326,6 +351,65 @@ def _fetch_finviz(symbols: List[str], root: Path) -> Dict[str, Dict]:
     except Exception as e:
         print(f"  [repricer] Finviz fetch error: {e}")
     return results
+
+
+def _fetch_data_broker_quotes(symbols: List[str], root: Path, *, batch_reader=None) -> Dict[str, Dict]:
+    """Live quotes through the sanctioned data broker (2026-11-03 operator dispatch ruling).
+
+    Primary read is the ``market_quotes`` store (single writer, Alpaca-repriced) via
+    ``lib.data_broker.market_quote.get_price_batch``; its quote-only provider fallback is bounded by
+    the module itself (10 symbols per call, 5 s each). This is a read-only market-data path: no
+    order route, no credential, no account mutation.
+
+    ``batch_reader`` exists for tests. Returns the same record shape ``_fetch_finviz`` produces for
+    the fields the reprice uses, with ``prev_close`` derived from the day change exactly as the
+    Finviz adapter derives it.
+    """
+    if not symbols:
+        return {}
+    reader = batch_reader
+    if reader is None:
+        try:
+            from db_adapter import _execute, USE_DB  # noqa: PLC0415
+
+            if not USE_DB:
+                return {}
+
+            def db_query(sql, params=None, fetch="all"):
+                return _execute(sql, params, fetch=fetch)
+
+            from lib.data_broker.market_quote import get_price_batch  # noqa: PLC0415
+
+            reader = lambda syms: get_price_batch(db_query, syms, max_age_hours=0.5, skip_live=False)
+        except Exception as exc:  # noqa: BLE001 — a broker outage must not stop the strip
+            print(f"  [repricer] data-broker quotes unavailable: {exc}")
+            return {}
+    try:
+        batch = reader(symbols) or {}
+    except Exception as exc:  # noqa: BLE001
+        print(f"  [repricer] data-broker quotes error: {exc}")
+        return {}
+    out: Dict[str, Dict] = {}
+    for sym, quote in batch.items():
+        try:
+            price = float(quote.get("price"))
+        except (TypeError, ValueError):
+            continue
+        if price <= 0:
+            continue
+        try:
+            chg_pct = float(quote.get("chg_pct")) if quote.get("chg_pct") is not None else 0.0
+        except (TypeError, ValueError):
+            chg_pct = 0.0
+        prev_close = price / (1 + chg_pct / 100) if chg_pct != -100 else price
+        out[str(sym).upper()] = {
+            "price": round(price, 4),
+            "change_pct": round(chg_pct, 4),
+            "prev_close": round(prev_close, 4),
+            "volume": 0,
+            "source": str(quote.get("source") or "data_broker.market_quote"),
+        }
+    return out
 
 
 # ── Yahoo price cache fetch (Fidelity funds after 8 PM) ───────────────────────
@@ -1009,6 +1093,18 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
               f"fidelity_ira {priced_fid}/{len(sym_groups.get('fidelity_ira', []))}, "
               f"watchlist {len([s for s in sym_groups['watchlist'] if s in live_prices])}/{len(sym_groups['watchlist'])})")
 
+        # 1a. Data-broker supplement (operator dispatch ruling 2026-10-10/11-03): symbols the Finviz
+        # adapter could not price are read through the sanctioned broker path (market_quotes store,
+        # Alpaca-repriced, bounded quote-only fallback). Finviz stays the richer source; this only
+        # closes the gaps that used to fall through to days-old closes (or trip the coverage guard).
+        _missing_live = [s for s in finviz_syms if s not in live_prices]
+        if _missing_live:
+            _broker = _fetch_data_broker_quotes(_missing_live, root)
+            for _sym, _rec in _broker.items():
+                live_prices.setdefault(_sym, _rec)
+            print(f"  [repricer] Data broker: {len(_broker)}/{len(_missing_live)} Finviz gaps priced "
+                  f"(market_quotes/Alpaca, bounded)")
+
     # ── 1b. Coverage guard (2026-10-06) ───────────────────────────────────────
     # When the live fetch comes back (nearly) empty in market hours, the Yahoo/NAV fallback below would mark
     # every Schwab holding at a days-old cached close with 0% day change — 22 of 25 rows at 10-02 prices on
@@ -1295,8 +1391,7 @@ if __name__ == "__main__":
 
     portfolio = json.loads(hp.read_text(encoding="utf-8"))
     print(f"Loaded {len(portfolio.get('holdings', []))} holdings")
-    print(f"Before: ${portfolio['portfolio_totals']['total_value']:,.0f} | "
-          f"Day: ${portfolio['portfolio_totals']['day_change']:+,.0f}")
+    print(_summary_line("Before", portfolio))
 
     portfolio = reprice_portfolio(portfolio, state_dir)
     if portfolio.pop("_reprice_refused", None):
@@ -1319,8 +1414,7 @@ if __name__ == "__main__":
         except OSError as _e:
             # Never let a secondary copy failure lose the primary reprice.
             _skipped.append(f"{_target} ({_e.__class__.__name__})")
-    print(f"After:  ${portfolio['portfolio_totals']['total_value']:,.0f} | "
-          f"Day: ${portfolio['portfolio_totals']['day_change']:+,.0f}")
+    print(_summary_line("After", portfolio))
     if not _written:
         print("ERROR: no holdings.json copy could be written")
         raise SystemExit(1)
