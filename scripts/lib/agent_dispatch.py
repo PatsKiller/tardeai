@@ -562,33 +562,41 @@ def submit(
                    timeout=max(0.05, timeout))
         return (proc.stdout or "") if getattr(proc, "returncode", 1) == 0 else None
 
-    def _paste_and_enter() -> bool:
+    def _paste_and_enter(deadline: float) -> bool:
+        """Load, paste, Enter — each call bounded by the time left, so the attempt cannot outlive its window."""
+        def _left() -> float:
+            return max(0.05, min(RUN_TIMEOUT_S, deadline - monotonic()))
+
+        if deadline - monotonic() <= 0:
+            return False
         load = run(["tmux", "load-buffer", "-b", buffer_name, "-"], input=text, capture_output=True, text=True,
-                   timeout=RUN_TIMEOUT_S)
+                   timeout=_left())
         if getattr(load, "returncode", 1) != 0:
             return False
         paste = run(["tmux", "paste-buffer", "-b", buffer_name, "-t", session, "-d"],
-                    capture_output=True, text=True, timeout=RUN_TIMEOUT_S)
+                    capture_output=True, text=True, timeout=_left())
         if getattr(paste, "returncode", 1) != 0:
             return False
         sleep(0.6)  # let the compositor register the paste before Enter
+        if deadline - monotonic() <= 0:
+            return False
         enter = run(["tmux", "send-keys", "-t", session, "Enter"], capture_output=True, text=True,
-                    timeout=RUN_TIMEOUT_S)
+                    timeout=_left())
         return getattr(enter, "returncode", 1) == 0
 
     attempts = 0
     entered = False
     for attempt in (1, 2):
         attempts = attempt
-        before = _capture()
-        if not _paste_and_enter():
+        # The attempt's window opens before ANY work for it, so the pre-paste capture and the paste itself are inside
+        # the budget too — not just the confirm polls (F3 round 2, the letter of it).
+        deadline = monotonic() + busy_confirm_seconds
+        before = _capture(max(0.05, min(RUN_TIMEOUT_S, deadline - monotonic())))
+        if not _paste_and_enter(deadline):
             continue
         entered = True  # an Enter was delivered for a paste that succeeded
         before_tail = _tail(before or "")
         before_hits = len(BUSY_RE.findall(before_tail))
-        # The confirm window for THIS attempt. Each capture is given only the time left in it, and a capture that
-        # returns after it is discarded — so two 14.9s captures can no longer "confirm" busy past the deadline.
-        deadline = monotonic() + busy_confirm_seconds
         while True:
             remaining = deadline - monotonic()
             if remaining <= 0:

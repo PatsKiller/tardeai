@@ -735,3 +735,26 @@ def test_a_dispatch_recorded_at_an_old_head_does_not_spend_the_new_head_budget(t
     assert (7, "a" * 40) in counts and counts[(7, "a" * 40)] == 1
     assert (7, "b" * 40) in counts and counts[(7, "b" * 40)] == 1
     assert counts.get((7, ""), 0) == 1, "a legacy record is attributed to the empty head, never to a real one"
+
+
+def test_the_whole_attempt_is_inside_its_window():
+    """F3 round 2, the letter of it: the pre-paste capture and the paste are budgeted too, not only the polls, so one
+    attempt can never outlive busy_confirm_seconds."""
+    clock = FakeClock()
+
+    class EveryCallSlow(FakeTmux):
+        """Every tmux call takes 8s — or the timeout the caller allowed, whichever is shorter: a real subprocess is
+        killed at its timeout, so the fake must not pretend a 20s window can absorb three 8s calls."""
+
+        def __call__(self, cmd, **kw):
+            p = super().__call__(cmd, **kw)
+            clock.t += min(8.0, float(kw.get("timeout") or 8.0))
+            if cmd[:2] == ["tmux", "capture-pane"]:
+                p.stdout = "> idle"
+            return p
+
+    r = D.submit("cc-1", "go", run=EveryCallSlow(), sleep=clock.sleep, monotonic=clock, busy_confirm_seconds=20.0)
+    assert r.busy_after is False
+    # Two attempts, each opened with its own 20s window; the calls that would overrun it are cut at the timeout that
+    # was left, and the Enter is refused rather than sent into a closed window.
+    assert clock.t <= 2 * 20.0 + 2.0, f"attempts ran {clock.t:.1f}s well past two 20s windows"
