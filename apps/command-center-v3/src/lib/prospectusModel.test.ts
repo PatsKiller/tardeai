@@ -159,6 +159,13 @@ check('failure headline says the draft could not be generated', /could not be ge
 check('failure headline gives a next step', /re-run the rewrite/i.test(failedRun.text))
 eq('raw code is preserved for the title', failedRun.raw, 'GenerationFailed: OUTPUT_NOT_JSON')
 check('unknown failure still gives a next step', /re-run the rewrite/i.test(failureHeadline('SOMETHING_ELSE').text))
+// The writer's own sentence is better than any generic one, and the page contract requires it (e2e
+// prospectus.spec asserts that text for a failed row). Only machine codes are translated.
+eq('a prose failure reason is kept verbatim',
+   failureHeadline('Writer refused: too few cited facts (2 of 6 required)').text,
+   'Writer refused: too few cited facts (2 of 6 required)')
+check('a prose reason is still available as the raw title',
+      failureHeadline('Writer refused: too few cited facts (2 of 6 required)').raw.includes('too few cited facts'))
 
 console.log(`prospectusModel: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

@@ -256,6 +256,11 @@ export function failureHeadline(reason: unknown): { text: string; raw: string } 
     return { text: 'The draft could not be generated — the model allowance blocked this run. Open it to re-run after the allowance resets.', raw }
   }
   if (!raw) return { text: 'The last run failed. Open it and re-run the rewrite.', raw: '' }
+  // A reason that is already prose is the best explanation available — keep it (the e2e contract requires the
+  // writer's own words, e.g. "Writer refused: too few cited facts (2 of 6 required)", not a generic sentence).
+  const words = raw.split(/\s+/)
+  const machineCode = /^[A-Z0-9_]+$/.test(raw) || /^[A-Za-z]+(Error|Exception):/.test(raw) || words.length < 3
+  if (!machineCode) return { text: raw, raw }
   return { text: 'The last run failed, so this prospectus shows the previous version. Open it and re-run the rewrite.', raw }
 }
 
