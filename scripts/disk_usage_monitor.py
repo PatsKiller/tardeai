@@ -180,6 +180,102 @@ def transition(prev: Optional[str], cur: str) -> Optional[str]:
     return cur
 
 
+def realert_due(entry: Mapping[str, Any], cur: str, now: datetime, mon: Mapping[str, Any]) -> bool:
+    """Whether a band that has NOT changed still needs to be said again.
+
+    2026-11-04: this monitor alerted once per band CHANGE, so `/` sat at `critical` from 03:15Z for 23 hours with a
+    single alert and the operator heard nothing while the disk kept filling. A state that never re-alerts is a
+    one-shot, not monitoring: while a mount stays bad, the same band is restated every `realert_minutes`. Dedupe stays
+    by band and by interval — never by raw percent, which is what made it noisy in the first place.
+    """
+    if cur == "ok":
+        return False
+    minutes = mon.get("realert_minutes")
+    if not minutes:
+        return False
+    last = entry.get("alerted_at")
+    if not last:
+        return True  # bad now and no record of ever telling anyone
+    try:
+        last_dt = datetime.fromisoformat(str(last))
+    except ValueError:
+        return True
+    if last_dt.tzinfo is None:
+        last_dt = last_dt.replace(tzinfo=timezone.utc)
+    return (now - last_dt) >= timedelta(minutes=float(minutes))
+
+
+_INHERITED_SETTINGS = ("realert_minutes", "warn_pct", "critical_pct")
+
+
+def metric_policy(mon: Mapping[str, Any], band: Optional[Mapping[str, Any]]) -> dict[str, Any]:
+    """The effective settings for ONE band. A band inherits every inherited setting from its parent monitor and may
+    override it — it cannot MISS one.
+
+    2026-11-04 (cx-openai-4): `monitor.inodes` never carried `realert_minutes`, so the inode band alerted on first
+    entry and then said nothing for as long as it stayed bad — the same 23-hour silence this change exists to end,
+    still present on the second band. Resolving every band through this ONE function is what makes a third band
+    inherit by construction: there is no path that reads a band's own dict for these settings.
+    """
+    if not isinstance(mon, Mapping) or "realert_minutes" not in mon:
+        raise ValueError("monitor.realert_minutes is required: a band with no re-alert interval is a one-shot")
+    merged = dict(mon)
+    merged.update({k: v for k, v in dict(band or {}).items() if k in _INHERITED_SETTINGS})
+    return merged
+
+
+def _minutes_since(stamp: Any, now: datetime) -> Optional[float]:
+    """Minutes from an ISO stamp to now; None when there is no usable stamp."""
+    if not stamp:
+        return None
+    try:
+        then = datetime.fromisoformat(str(stamp))
+    except ValueError:
+        return None
+    if then.tzinfo is None:
+        then = then.replace(tzinfo=timezone.utc)
+    elapsed = (now - then).total_seconds() / 60.0
+    # A stamp in the FUTURE is a clock correction, not a reason to stay silent (cx-openai-4 R2): a run that really
+    # happened under a skewed clock left a stamp ahead of now, and treating the negative elapsed as "not due" made an
+    # ongoing critical band emit nothing for 25 hours — the exact defect this PR exists to fix. Unknown timing is
+    # reported as unknown, and every caller treats unknown as DUE.
+    return None if elapsed < 0 else elapsed
+
+
+def _minutes_since_last_alert(entry: Mapping[str, Any], now: datetime) -> Optional[float]:
+    return _minutes_since(entry.get("alerted_at"), now)
+
+
+_RANK = {"ok": 0, "warn": 1, "critical": 2}
+
+
+def alert_for(prev: Optional[str], cur: str, entry: Mapping[str, Any], now: datetime,
+              mon: Mapping[str, Any]) -> Optional[str]:
+    """One decision point, ONE clock, and a PENDING state that is not lost.
+
+    Four measured defects shaped it, all 2026-11-04:
+    * alerting only on a band CHANGE let `/` sit critical for 23 hours on a single alert;
+    * throttling only the unchanged path let an ok<->critical flap produce 96 alerts in 24 hours;
+    * letting a recovery or an escalation bypass the interval produced 65 alerts in 24 hours against a promise of 25;
+    * comparing against the PREVIOUSLY OBSERVED band DISCARDED a recovery: the run records `band = ok` every poll, so a
+      recovery throttled at +75 made every later poll look "unchanged ok" and it was never sent. The last REPORTED
+      band stayed critical and was ignored.
+
+    The comparison is therefore against the band last REPORTED (`alerted_band`), not the band last seen. Inside the
+    window nothing is said and the pending state is kept, so it goes out the moment the interval allows — delayed,
+    never discarded. The bound is unchanged: at most one alert per interval, 24 in 24 hours at the default.
+    """
+    interval = float(mon["realert_minutes"])       # metric_policy guarantees it; a band cannot miss it
+    since = _minutes_since_last_alert(entry, now)
+    if since is not None and since < interval:
+        return None                                 # inside the window: silence, and the pending state is retained
+    reported = str(entry.get("alerted_band") or "")
+    if cur == "ok":
+        # A recovery is owed only if something bad was actually reported; an all-quiet mount says nothing.
+        return "ok" if reported and reported != "ok" else None
+    return cur                                      # due, and the band is bad: say it (restated or newly reached)
+
+
 def latest_manifest(rules: Mapping[str, Any], state_root: Optional[Path]) -> Optional[dict[str, Any]]:
     try:
         p = DH.manifest_dir(rules, state_root) / rules["manifest"]["latest_name"]
@@ -601,7 +697,7 @@ def run(
             continue
         cur = band_of(m["inodes_used_pct"], ino)
         prev = (inodes_state.get(mount) or {}).get("band")
-        alert = transition(prev, cur)
+        alert = alert_for(prev, cur, inodes_state.get(mount) or {}, now, metric_policy(mon, ino))
         row: dict[str, Any] = {**m, "metric": "inodes", "band": cur, "previous_band": prev, "alert": alert}
         if alert:
             top_cfg = ino.get("top_dirs") or {}
@@ -646,7 +742,7 @@ def run(
             continue
         cur = band_of(m["used_pct"], mon)
         prev = (mounts_state.get(mount) or {}).get("band")
-        alert = transition(prev, cur)
+        alert = alert_for(prev, cur, mounts_state.get(mount) or {}, now, metric_policy(mon, mon))
         row: dict[str, Any] = {**m, "band": cur, "previous_band": prev, "alert": alert}
         if alert:
             consumers = top_consumers(rules, mon, manifest, consumer_snapshot) if consumer_snapshot is not None else []
