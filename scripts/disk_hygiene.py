@@ -1576,6 +1576,43 @@ def _abandoned_row(path: Path, lay: Mapping, original: Mapping, w_item: Mapping,
     return item
 
 
+#: A release directory held by a running process: the process keeps writing into a path name that is about to vanish, and
+#: a component that resolved it ONCE (and cached it in its own state) will happily recreate it on the next cycle —
+#: `tradeai-ops-agent` did exactly that for 12 hours on 2026-11-04. The rule therefore never skips silently: it either
+#: restarts the holder (so it re-resolves CURRENT) or it reports the holder by name.
+_UNIT_RE = re.compile(r"^([A-Za-z0-9_.@:/-]+\.service)$")
+
+
+def proc_holder_units(path: Path, *, proc_root: Path = Path("/proc")) -> list[str]:
+    """systemd units whose cwd is inside ``path`` (from ``/proc/<pid>/cgroup``); [] when none can be named.
+
+    Only the cwd is checked, not every open fd: the defect this exists for is a component *writing into* a release, and
+    a bare fd read (an open log) is not a reason to restart anything. Unreadable /proc entries are skipped, never
+    guessed — the caller treats an empty list as "cannot name the holder" and reports it rather than removing.
+    """
+    real = os.path.realpath(path)
+    units: set[str] = set()
+    try:
+        pids = [d for d in os.scandir(proc_root) if d.name.isdigit()]
+    except OSError:
+        return []
+    for entry in pids:
+        try:
+            cwd = os.readlink(proc_root / entry.name / "cwd")
+        except OSError:
+            continue
+        if not is_within(Path(cwd), Path(real)):
+            continue
+        try:
+            cgroup = (proc_root / entry.name / "cgroup").read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for line in cgroup.splitlines():
+            tail = line.rsplit("/", 1)[-1].strip()
+            if _UNIT_RE.match(tail):
+                units.add(tail)
+    return sorted(units)
+
 def _release_rows(rules: Mapping[str, Any], ctx: Mapping[str, Any], r_cfg: Mapping[str, Any], row, only: Optional[str]) -> list[dict]:
     """Rule R: the existing release selection (CURRENT, pointer targets, previous, newest N, references) on one root."""
     roots = [{**r, "keep_newest": max(int(r.get("keep_newest") or 0), int(r_cfg["keep_newest"]))}
@@ -1594,6 +1631,21 @@ def _release_rows(rules: Mapping[str, Any], ctx: Mapping[str, Any], r_cfg: Mappi
             item["reasons"].append("current_pointer_unresolved")
         if lock:
             item["reasons"].append(lock)
+        # Holder policy (operator 2026-11-04: "remove the superseded ones on every release"): a release held by a
+        # running process is either RESTARTED (so the component re-resolves CURRENT) or REPORTED by name. Silence is
+        # not an option — that is how a component kept writing into a deleted release and recreating it.
+        if "in_use_cwd" in item["reasons"]:
+            holders = proc_holder_units(path)
+            h_cfg = (r_cfg.get("holders") or {}) if isinstance(r_cfg.get("holders"), dict) else {}
+            allowed = set(h_cfg.get("restart_allowed_units") or ())
+            action = h_cfg.get("action") or "report"
+            restartable = bool(holders) and action == "restart" and set(holders) <= allowed
+            item["evidence"]["holder_units"] = holders
+            if restartable:
+                item["reasons"] = [r for r in item["reasons"] if r != "in_use_cwd"]
+                item["restart_units"] = holders
+            else:
+                item["reasons"].append("held_by_process:" + (",".join(holders) if holders else "unnamed"))
         try:
             creds = [e.name for e in os.scandir(path) if not e.is_symlink() and _credential_name(e.name, rules)]
         except OSError:
@@ -1609,6 +1661,50 @@ def _release_rows(rules: Mapping[str, Any], ctx: Mapping[str, Any], r_cfg: Mappi
     return out
 
 
+def apply_scratch_cap(rows: list[dict], t_cfg: Mapping[str, Any]) -> tuple[list[dict], dict]:
+    """Rule T budget (operator 2026-11-04, verbatim: "48 hours and 10 GB is fine, build them").
+
+    The two numbers answer different questions and can disagree, so the precedence is explicit:
+      * ``keep_younger_than_hours`` is a FLOOR — an entry newer than it is never a candidate, whatever the total is;
+      * ``max_total_gb`` is a CEILING on what rule T leaves on disk. When the floor alone reserves more than the
+        ceiling, the ceiling is NOT met by evicting young work: the pass reports ``floor_exceeds_cap`` instead, so the
+        operator sees that the number cannot be reached without touching scratch that is still in use.
+    Above the ceiling, candidates are taken OLDEST-FIRST until the projected total fits; the ones that would have to
+    stay are re-excluded with ``scratch_over_cap_kept`` (never silently dropped from the plan).
+    Pure over the rows (sizes already measured); returns (rows, summary).
+    """
+    max_gb = t_cfg.get("max_total_gb") if isinstance(t_cfg, Mapping) else None
+    if type(max_gb) not in _NUM or max_gb <= 0:
+        return rows, {}
+    cap = int(float(max_gb) * 1024**3)
+    t_rows = [r for r in rows if r.get("rule") == "T"]
+    sized = [r for r in t_rows if isinstance(r.get("size_bytes"), int)]
+    total = sum(int(r["size_bytes"]) for r in sized)
+    summary: dict[str, Any] = {"cap_bytes": cap, "total_bytes": total, "taken": 0, "kept_over_cap": 0,
+                               "floor_exceeds_cap": False}
+    if total <= cap:
+        return rows, summary
+    floor = [r for r in t_rows if not r.get("candidate")]
+    floor_bytes = sum(int(r.get("size_bytes") or 0) for r in floor)
+    candidates = sorted((r for r in t_rows if r.get("candidate")),
+                        key=lambda r: (r.get("evidence") or {}).get("last_activity") or "")
+    projected = total
+    taken: set[str] = set()
+    for r in candidates:  # oldest first
+        if projected <= cap:
+            break
+        taken.add(r["path"])
+        projected -= int(r.get("size_bytes") or 0)
+    summary["taken"] = len(taken)
+    if projected > cap:
+        summary["floor_exceeds_cap"] = True
+    for r in candidates:
+        if r["path"] not in taken:
+            r["reasons"] = list(dict.fromkeys(list(r.get("reasons") or []) + ["scratch_over_cap_kept"]))
+            r["candidate"] = False
+            summary["kept_over_cap"] += 1
+    return rows, summary
+
 def standing_plan(rules: Mapping[str, Any], now: datetime, evidence: Mapping, *, measure: bool = True) -> dict:
     try:
         ctx = SR.evidence_context(evidence, now)
@@ -1618,6 +1714,10 @@ def standing_plan(rules: Mapping[str, Any], now: datetime, evidence: Mapping, *,
     if measure:
         for item in rows:
             item["size_bytes"] = None if item["kind"] == "archive_ref" else du_bytes(Path(item["path"]), 60)
+    scratch_budget = {}
+    t_cfg = (rules.get("standing_apply") or {}).get("agent_scratch")
+    if isinstance(t_cfg, Mapping) and ("max_total_gb" in t_cfg or "keep_younger_than_hours" in t_cfg):
+        rows, scratch_budget = apply_scratch_cap(rows, t_cfg)
     items, excluded = [r for r in rows if r["candidate"]], [r for r in rows if not r["candidate"]]
     return {"schema": MANIFEST_SCHEMA, "generated_at": now.isoformat(), "host": socket.gethostname(),
             "home": str(rules["_home"]), "rules_path": rules["_path"], "rules_sha256": rules["_sha256"],
@@ -1627,7 +1727,8 @@ def standing_plan(rules: Mapping[str, Any], now: datetime, evidence: Mapping, *,
             "per_rule": SR.per_rule(items), "protected_excluded_bytes": sum(r.get("size_bytes") or 0 for r in excluded),
             "protected_excluded_unmeasured": sum(r.get("size_bytes") is None for r in excluded),
             "opaque_processes": _opaque_summary(ctx.get("opaque_processes") or []),
-            "apply_admissible": not ctx["offline"] and not ctx.get("opaque_processes")}
+            "apply_admissible": not ctx["offline"] and not ctx.get("opaque_processes"),
+            "scratch_budget": scratch_budget}
 
 
 def _opaque_summary(opaque: list) -> Optional[dict]:
@@ -1892,12 +1993,29 @@ def remove_item(item: Mapping[str, Any]) -> tuple:
     if kind in ("git_clone", "release_dir", "cache_entry", "rtc_scratch", "agent_scratch"):
         if p.is_symlink() or not p.is_dir():
             return False, "not_a_dir"
+        restarted = []
+        if kind == "release_dir" and item.get("restart_units"):
+            for unit in item["restart_units"]:
+                try:
+                    proc = subprocess.run(["systemctl", "--user", "restart", str(unit)],
+                                          capture_output=True, text=True, timeout=120)
+                    rc = proc.returncode
+                except (OSError, subprocess.SubprocessError):
+                    rc = 1
+                if rc != 0:
+                    return False, f"holder_restart_failed:{unit}:rc{rc}"
+                restarted.append(str(unit))
+            time.sleep(2)  # let the restarted units re-resolve CURRENT before the path disappears
+            still = proc_holder_units(p)
+            if still:
+                return False, "holder_restart_did_not_release:" + ",".join(still)
         if kind == "agent_scratch" and item.get("bundles"):
             failed = bundle_nested(item)
             if failed:
                 return False, failed
         shutil.rmtree(p)
-        return True, "rmtree" + (f"; bundled {len(item['bundles'])}" if kind == "agent_scratch" and item.get("bundles") else "")
+        how_extra = f"; restarted {','.join(restarted)}" if restarted else ""
+        return True, "rmtree" + how_extra + (f"; bundled {len(item['bundles'])}" if kind == "agent_scratch" and item.get("bundles") else "")
     if kind in ("release_file", "archived_dump"):
         if p.is_symlink() or not p.is_file():
             return False, "not_a_file"

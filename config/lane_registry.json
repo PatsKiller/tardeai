@@ -18156,9 +18156,10 @@
         "expression": "dispatcher",
         "match": "scripts/ops/jsonl_archive_rotate.py",
         "cadence": "45 16 * * 1-5",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W4",
-        "timezone": "America/New_York"
+        "timezone": "America/New_York",
+        "stage_since": "2026-11-04"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -18174,10 +18175,10 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "tests/test_jsonl_archive_rotate_20261023.py (split, dry run writes nothing, byte-exact archive + manifest + tripwire, concurrent O_APPEND writer loses no row, live file recreated mid-rotation merged, long-lived fd holder refused, failure merges back, recover, market-hours refusal, retention preview reads only); docs/ops/packets/jsonl-rotation-20261023/00_dry_run_20261023.txt",
       "review_by": "2026-10-30",
-      "note": "Reads the stores named in config/disk_hygiene_rules.json jsonl_retention.stores (rotate=true). A live run (after promotion) renames each store aside, archives the head to <state>/archive/file_prune/<store>/<store>.<UTC>.jsonl.gz with a sha256/line-count manifest and a RetentionArchiveTripwire@v1 record, re-installs the hot tail with renameat2 (writers reopen per write, so no row is lost), and writes data/runtime/jsonl_archive_rotate/rotate_<UTC>.json and the LaneRunReceipt. --apply refuses Mon-Fri 04:00-16:15 ET. No DB, no model, no sender, no broker. Exit 0 ok; 1 a store failed or a refusal; 75 another rotation holds the lock.",
+      "note": "Reads the stores named in config/disk_hygiene_rules.json jsonl_retention.stores (rotate=true). A live run (after promotion) renames each store aside, archives the head to <state>/archive/file_prune/<store>/<store>.<UTC>.jsonl.gz with a sha256/line-count manifest and a RetentionArchiveTripwire@v1 record, re-installs the hot tail with renameat2 (writers reopen per write, so no row is lost), and writes data/runtime/jsonl_archive_rotate/rotate_<UTC>.json and the LaneRunReceipt. --apply refuses Mon-Fri 04:00-16:15 ET. No DB, no model, no sender, no broker. Exit 0 ok; 1 a store failed or a refusal; 75 another rotation holds the lock. 2026-11-04: promoted shadow -> canary at the operator's directive ('it must rotate on a schedule, not on a human's word'): the cio accounting store reached 2.48 GB unrotated. Archive-never-delete; thresholds in config/disk_hygiene_rules.json jsonl_retention.stores.",
       "severity": "Low",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "45 16 * * 1-5"
         ],
