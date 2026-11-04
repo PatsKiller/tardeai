@@ -5,6 +5,7 @@ import ConflictLine from './conflicts/ConflictLine'
 import AnthropicCreditPanel from './AnthropicCreditPanel'
 import ConflictSheet, { useConflictSheet, type ConflictSection } from './conflicts/ConflictSheet'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
+import { schedulerTechnical, schedulerWords } from '../lib/jobsSchedulerText'
 import CountTile from './CountTile'
 import { jobsCount, jobsMissed, jobsNotMeasured, type JobsSummary } from '../lib/measuredCount'
 
@@ -98,7 +99,7 @@ export default function JobsHealth({ enabled = true }: { enabled?: boolean }) {
       <div className="jobs-health-row jobs-health-head" style={{ padding: '10px 14px', borderBottom: `1px solid ${TOKENS.border}`, fontSize: TYPE.sm, color: TOKENS.text[2] }}>{['Job', 'Runs on', 'Last run', 'Result', 'Next due', 'Why'].map(x => <span key={x}>{x}</span>)}</div>
       {data?.rows.map(row => <article key={row.lane_id} className="jobs-health-row" aria-label={row.job} style={{ padding: '12px 14px', borderBottom: `1px solid ${TOKENS.borderSubtle}`, fontSize: TYPE.base }}>
         <strong className="jobs-health-job">{row.job}</strong>
-        <div><span className="jobs-health-mobile-label">Runs on</span>{row.scheduler === 'cron' ? 'Host cron' : row.scheduler}</div>
+        <div title={schedulerTechnical(row.scheduler)}><span className="jobs-health-mobile-label">Runs on</span>{schedulerWords(row.scheduler)}</div>
         <div style={{ fontFamily: FONT.mono, fontSize: TYPE.sm }}><span className="jobs-health-mobile-label">Last run</span>{at(row.last_run_at)}</div>
         <div><span className="jobs-health-mobile-label">Result</span><span style={{ display: 'inline-block', padding: '2px 7px', borderRadius: RADIUS.sm, color: toneVars(tone(row.result)).color, background: toneVars(tone(row.result)).bg }}>{resultLabel[row.result]}</span></div>
         <div style={{ fontFamily: FONT.mono, fontSize: TYPE.sm }}><span className="jobs-health-mobile-label">Next due</span>{row.state === 'PAUSED' || row.state === 'RETIRED' || row.state === 'DISABLED' ? '—' : at(row.next_due_at)}</div>
