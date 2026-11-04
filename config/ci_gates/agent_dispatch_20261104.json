@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agent_dispatch_20261104",
+  "files": [
+    "tests/test_agent_dispatch_20261104.py"
+  ],
+  "anchor": "AGENT_DISPATCH_20261104",
+  "comment": [
+    "ANCHOR: AGENT_DISPATCH_20261104 — P0 automatic dispatcher: deterministic tmux state classification, the operator's work order (own queued/assigned row, then a review of a CLEAN PR it did not author, then merge-prep, then an unowned row, then a stale-claim chore), paste-buffer submission verified by a busy marker, the ledger line, the escalation threshold and the report-only merge pump. Hermetic: fake tmux/gh and temp dirs; no fleet, no network."
+  ]
+}

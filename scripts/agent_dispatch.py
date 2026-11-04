@@ -37,7 +37,9 @@ COORD_DEFAULT = Path(os.environ.get("TRADEAI_COORD_DIR")
 
 
 def _run(cmd: Sequence[str], **kw: Any) -> Any:
-    return subprocess.run(list(cmd), capture_output=True, text=True, **kw)
+    # Fixed argv, no shell: every caller passes a literal list (tmux/gh); this is the same shape the nudger uses,
+    # and S603 is silenced at the one call site rather than for the file.
+    return subprocess.run(list(cmd), capture_output=True, text=True, **kw)  # noqa: S603
 
 
 def tmux_sessions(run: Callable[..., Any] = _run) -> list[str]:

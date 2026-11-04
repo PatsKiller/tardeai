@@ -434,7 +434,7 @@ def submit(
     goes through a tmux buffer and is pasted, then Enter is pressed separately. Busy is the proof of submission; it
     is measured, not assumed, and one retry is allowed before the caller logs ``dispatch_failed``.
     """
-    buffer_name = "dispatch-" + hashlib.sha1(f"{session}:{text}:{time.time()}".encode()).hexdigest()[:12]
+    buffer_name = "dispatch-" + hashlib.sha256(f"{session}:{text}:{time.time()}".encode()).hexdigest()[:12]
 
     def _paste_and_enter() -> bool:
         load = run(["tmux", "load-buffer", "-b", buffer_name, "-"], input=text, capture_output=True, text=True)
