@@ -509,3 +509,20 @@ def test_a_plain_remove_item_call_never_deletes_a_release(tmp_path):
     ok, _how = H.remove_item({"path": str(release), "kind": "release_dir", "rule": "R"})
     assert ok is False, "a release was removed without an arming object"
     assert (release / "keep.txt").is_file()
+
+
+def test_a_parent_that_contains_a_release_root_is_refused_too(tmp_path):
+    """Codex 2026-11-04 (0065310b5): the catalogue tested only "candidate inside root". A parent containing a
+    configured root deletes protected children, so containment is checked BOTH ways. Fails at 0065310b5, where the
+    parent was removed."""
+    parent = tmp_path / "trade-ai-releases"
+    (parent / "portfolio-server" / "abc-main").mkdir(parents=True)
+    (parent / "portfolio-server" / "abc-main" / "keep.txt").write_text("x", encoding="utf-8")
+    old = H._RELEASE_ROOTS
+    H._RELEASE_ROOTS = (str(parent / "portfolio-server"),)
+    try:
+        ok, how = H.remove_item({"path": str(parent), "kind": "git_clone", "rule": "W"})
+    finally:
+        H._RELEASE_ROOTS = old
+    assert (ok, how) == (False, H.RELEASE_REFUSAL), how
+    assert (parent / "portfolio-server" / "abc-main" / "keep.txt").is_file()
