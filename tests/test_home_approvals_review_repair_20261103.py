@@ -460,3 +460,42 @@ def test_expiry_cannot_overwrite_a_decision_that_owns_the_transition(tmp_path):
     expired = ha.expire_due(store, now=NOW)
     assert expired == [], "expiry ran while a decision owned the transition"
     assert store.get(record["id"])["state"] == "open"
+
+
+# ── F3: a number that reaches a decision is a real, non-negative int ────────────────────────
+@pytest.mark.parametrize("bad", [True, False, 1.5, -1, -7, "12", [], {}])
+def test_malformed_authority_facts_are_refused(tmp_path, bad):
+    """int() accepted True as 1, 1.5 as 1 and "12" as 12, so corruption could name a different PR."""
+    store = _store(tmp_path)
+    with pytest.raises(ha.Refused) as caught:
+        ha.create(store, _payload(facts={"pr": bad, "head_sha": HEAD}), requester={"session": "s-1"}, now=NOW)
+    assert caught.value.code == "facts_invalid"
+    assert not list(store.requests_dir.glob("*.json"))
+
+
+def test_a_whole_non_negative_pr_still_passes(tmp_path):
+    store = _store(tmp_path)
+    assert ha.create(store, _payload(facts={"pr": 2504, "head_sha": HEAD}), requester={"session": "s-1"}, now=NOW)
+
+
+@pytest.mark.parametrize("bad_sha", [True, 123, [], {}, 1.5])
+def test_a_non_string_head_sha_is_refused(tmp_path, bad_sha):
+    store = _store(tmp_path)
+    with pytest.raises(ha.Refused) as caught:
+        ha.create(store, _payload(facts={"pr": 2504, "head_sha": bad_sha}), requester={"session": "s-1"}, now=NOW)
+    assert caught.value.code == "facts_invalid"
+
+
+@pytest.mark.parametrize("bad_kind", [True, 1, [], {}])
+def test_a_non_string_action_kind_is_refused(tmp_path, bad_kind):
+    store = _store(tmp_path)
+    with pytest.raises(ha.Refused) as caught:
+        ha.create(store, _payload(type=bad_kind), requester={"session": "s-1"}, now=NOW)
+    assert caught.value.code == "unknown_action_type"
+
+
+@pytest.mark.parametrize("bad_principal", [True, 1, [], {}, None])
+def test_a_non_string_principal_cannot_mint_a_context(bad_principal):
+    with pytest.raises(ha.Refused) as caught:
+        ha.server_context(principal=bad_principal, session="s", csrf_ok=True, listener="serve_proxy")
+    assert caught.value.code == "operator_session_required"

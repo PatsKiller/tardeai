@@ -208,7 +208,7 @@ def reset_allowed_logins_cache() -> None:
 
 
 def _tailnet_login(principal: Any) -> str:
-    text = str(principal or "").strip()
+    text = principal.strip() if isinstance(principal, str) else ""
     if not text.startswith("tailnet:"):
         return ""
     return text.split(":", 1)[1].strip()
@@ -388,7 +388,7 @@ class Store:
 
 # ── Validation ───────────────────────────────────────────────────────────────────────────────────────────────────
 def _check_type(kind: Any) -> str:
-    value = str(kind or "").strip()
+    value = kind.strip() if isinstance(kind, str) else ""
     if value not in ACTION_TYPES:
         raise Refused(
             "unknown_action_type",
@@ -422,17 +422,22 @@ def _check_facts(kind: str, facts: Optional[Mapping[str, Any]]) -> dict[str, Any
         )
     for key in ("head_sha", "cmd_sha256", "file_sha256", "packet_sha256"):
         if data.get(key) is not None:
-            text = str(data[key]).lower()
+            text = data[key].lower() if isinstance(data[key], str) else ""
+            if not text:
+                raise Refused("facts_invalid", f"The {key} in this request is not a hexadecimal hash.")
             want = 40 if key == "head_sha" else 64
             if len(text) != want or any(c not in "0123456789abcdef" for c in text):
                 raise Refused("facts_invalid", f"The {key} in this request is not a full hexadecimal hash.")
             data[key] = text
     for key in ("pr", "run_id", "pid", "uses"):
         if key in data and data[key] is not None:
-            try:
-                data[key] = int(data[key])
-            except (TypeError, ValueError) as exc:
-                raise Refused("facts_invalid", f"The {key} in this request is not a number.") from exc
+            value = data[key]
+            # Validated, not coerced (cx-openai-3 F3): int() accepted True as 1, 1.5 as 1 and "12" as 12,
+            # so a bool or a fraction could name a different PR, run or process than the card showed.
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise Refused("facts_invalid",
+                              f"The {key} in this request must be a whole, non-negative number.")
+            data[key] = value
     for key in ("expires_at", "start_time_epoch"):
         if key in data and data[key] is not None and not isinstance(data[key], (int, float)):
             try:
