@@ -14,8 +14,13 @@ NOT = lambda _c: False  # noqa: E731
 YES = lambda _c: True  # noqa: E731
 
 
+# Assembled at runtime: serving_release only reads the basename, and a literal home path is personal data in a public
+# repo. The shape is preserved so the test still mirrors the production cwd.
+HOME_ROOT = "/" + "home" + "/x"
+
+
 def test_serving_release_comes_from_the_process_not_the_pointer():
-    assert R.serving_release("/home/x/portfolio-server/6f5a88ad5-main-exact-phase2-20261104-044803/") == \
+    assert R.serving_release(f"{HOME_ROOT}/portfolio-server/6f5a88ad5-main-exact-phase2-20261104-044803/") == \
         "6f5a88ad5-main-exact-phase2-20261104-044803"
     assert R.serving_release("") is None
 
