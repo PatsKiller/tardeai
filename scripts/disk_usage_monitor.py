@@ -205,17 +205,21 @@ def realert_due(entry: Mapping[str, Any], cur: str, now: datetime, mon: Mapping[
     return (now - last_dt) >= timedelta(minutes=float(minutes))
 
 
-def _minutes_since_last_alert(entry: Mapping[str, Any], now: datetime) -> Optional[float]:
-    last = entry.get("alerted_at")
-    if not last:
+def _minutes_since(stamp: Any, now: datetime) -> Optional[float]:
+    """Minutes from an ISO stamp to now; None when there is no usable stamp."""
+    if not stamp:
         return None
     try:
-        last_dt = datetime.fromisoformat(str(last))
+        then = datetime.fromisoformat(str(stamp))
     except ValueError:
         return None
-    if last_dt.tzinfo is None:
-        last_dt = last_dt.replace(tzinfo=timezone.utc)
-    return (now - last_dt).total_seconds() / 60.0
+    if then.tzinfo is None:
+        then = then.replace(tzinfo=timezone.utc)
+    return (now - then).total_seconds() / 60.0
+
+
+def _minutes_since_last_alert(entry: Mapping[str, Any], now: datetime) -> Optional[float]:
+    return _minutes_since(entry.get("alerted_at"), now)
 
 
 _RANK = {"ok": 0, "warn": 1, "critical": 2}
@@ -243,6 +247,13 @@ def alert_for(prev: Optional[str], cur: str, entry: Mapping[str, Any], now: date
     if changed:
         if _RANK.get(cur, 0) > _RANK.get(reported, 0):
             return changed                      # above anything already reported: this is real news
+        # A RECOVERY is worth saying at once, but only if the bad band it ends actually held: a mount that flaps
+        # between bands never "recovered", it wobbled, and reporting each wobble is the storm this fixes.
+        if cur == "ok":
+            held = _minutes_since(entry.get("since"), now)
+            stability = float(mon.get("recovery_stability_minutes", 30))
+            if held is not None and held >= stability:
+                return changed
         if interval and since is not None and since < float(interval):
             return None
         return changed

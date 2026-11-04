@@ -106,3 +106,14 @@ def test_a_recovery_still_alerts_when_the_interval_has_passed():
     entry = {"band": "critical", "alerted_at": T0.isoformat()}
     assert M.alert_for("critical", "ok", entry, T0 + timedelta(minutes=61), MON) == "ok"
     assert M.alert_for("critical", "ok", entry, T0 + timedelta(minutes=5), MON) is None
+
+
+def test_a_recovery_is_reported_only_when_the_bad_band_actually_held():
+    """A mount that flaps never recovered, it wobbled: a recovery is reported immediately only if the bad band it ends
+    lasted at least recovery_stability_minutes, which is what keeps the flap bound while still telling the operator
+    about a real recovery."""
+    mon = {**MON, "recovery_stability_minutes": 30.0}
+    brief = {"band": "critical", "alerted_at": T0.isoformat(), "since": T0.isoformat()}
+    assert M.alert_for("critical", "ok", brief, T0 + timedelta(minutes=15), mon) is None      # wobble, not recovery
+    held = {"band": "critical", "alerted_at": T0.isoformat(), "since": T0.isoformat()}
+    assert M.alert_for("critical", "ok", held, T0 + timedelta(minutes=45), mon) == "ok"      # a real recovery

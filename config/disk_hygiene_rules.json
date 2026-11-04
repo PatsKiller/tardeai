@@ -381,6 +381,7 @@
     "warn_pct": 80.0,
     "critical_pct": 90.0,
     "realert_minutes": 60.0,
+    "recovery_stability_minutes": 30.0,
     "host_backstop_pct": 95.0,
     "state_name": "disk_usage_monitor_state.json",
     "producer": "disk_usage_monitor",
