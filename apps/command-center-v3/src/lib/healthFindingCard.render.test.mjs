@@ -10,7 +10,7 @@ const { HealthFindingCard, findingDetail } = await import('../components/HealthF
 let pass = 0, fail = 0
 const check = (n, c, d = '') => { if (c) { pass++; console.log(`  [PASS] ${n}`) } else { fail++; console.log(`  [FAIL] ${n} ${d}`) } }
 
-const F = { message: 'The disk hygiene job did not run', why: 'unit tradeai-disk-hygiene.service exited 1 (/home/johnclaw/scripts/x.py:44)',
+const F = { message: 'The disk hygiene job did not run', why: 'unit tradeai-disk-hygiene.service exited 1 (/opt/tradeai/scripts/x.py:44)',
   recommended_action: 'systemctl --user restart tradeai-disk-hygiene.service', severity: 'warning', category: 'jobs',
   detected_by: 'health_agent', detected_at: '2026-11-04T10:00:00Z',
   remediation: { status: 'unresolved', detail: 'rc=1 stderr=/var/log/tradeai/x.log' } }
@@ -22,7 +22,7 @@ check('the plain sentence is visible', closed.includes('The disk hygiene job did
 check('the severity and status are visible', /warning/i.test(closed) && /unresolved/.test(closed))
 check('the toggle exists and starts CLOSED', closed.includes('data-testid="health-finding-toggle"') && closed.includes('aria-expanded="false"'))
 check('the implementation detail is NOT in the closed card', !closed.includes('systemctl --user restart'))
-check('nor the file path', !closed.includes('/home/johnclaw/scripts/x.py'))
+check('nor the file path', !closed.includes('/opt/tradeai/scripts/x.py'))
 check('nor the rc/errno detail', !closed.includes('rc=1'))
 check('the card says what the toggle will show', /Why, and what to do/.test(closed))
 check('on a phone the card drops the "seen by" line', !compact.includes('Seen by') && closed.includes('Seen by'))
