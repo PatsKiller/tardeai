@@ -41,7 +41,15 @@ export function cardFeed(census: Census, rows: FeedRow[] | null | undefined): Ca
   if (!census.answered) return { kind: 'unknown', reason: census.reason ?? 'the source did not answer' }
   // An answered census that carried NO row list is still not an empty list: a missing census member is unknown.
   if (!Array.isArray(rows)) return { kind: 'unknown', reason: 'the source answered without a list of work' }
-  const items: WorkItem[] = rows.map(r => ({
+  // An "answered" census with a member we cannot read is inconsistent, not empty: a row without an id and a title would
+  // otherwise be drawn as a blank item (F1: an inconsistent member list renders unknown, not a measured list).
+  const usable = rows.filter(r => !!r && typeof r === 'object'
+    && typeof (r as FeedRow).id === 'string' && (r as FeedRow).id !== ''
+    && typeof (r as FeedRow).title === 'string')
+  if (usable.length !== rows.length) {
+    return { kind: 'unknown', reason: `${rows.length - usable.length} row(s) could not be read` }
+  }
+  const items: WorkItem[] = usable.map(r => ({
     id: r.id, title: r.title, state: workStateOf(r.state), owner: r.owner ?? null,
     eta: r.eta ?? null, updated_at: r.updated_at ?? null, source: r.source ?? null,
   }))

@@ -77,6 +77,10 @@ check('F1: a bare list with no verdict renders unknown, not six zeros', bareList
 check('F1: and it does not render a single row from that list', !bareList.includes('wh-row-'))
 const nullFeed = html({ census: ANSWERED, feed: null })
 check('F1: an answered census with NO row list is unknown, not empty', nullFeed.includes('data-state="unknown"'))
+// F1's last clause: an INCONSISTENT member list — an answered census whose list carries rows that cannot be read.
+const inconsistent = html({ census: ANSWERED, feed: [item({ id: 'ok', state: 'in_review' }), null, { id: '', title: '' }] })
+check('F1: an unreadable member renders unknown, not a blank row', inconsistent.includes('data-state="unknown"') && !inconsistent.includes('whats-happening-strip'), inconsistent.slice(0, 240))
+check('F1: and it says how many rows it could not read', /2 row\(s\) could not be read/.test(inconsistent))
 const mixed = html({ census: ANSWERED, feed: [
   { id: 'k', title: 'Known work', state: 'in_review' },
   { id: 'n', title: 'No state recorded', state: null },
