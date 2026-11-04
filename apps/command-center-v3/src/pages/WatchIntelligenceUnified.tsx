@@ -12,6 +12,7 @@ import { useApi } from '../hooks/useApi'
 import { BB, TYPE } from '../lib/watchTokens'
 import { WI_SYNOPSIS_PROVENANCE } from '../lib/surfaceFreshness'
 import { quoteFreshnessLabel, reviewStatusLabel, tradeAiStateLabel } from '../lib/watchLabels'
+import { humanizeCode } from '../lib/displayLabels'
 import {
   DECISION_KEYS, DECISION_SORTS, WatchDecisionBadges, WatchDecisionBoard, WatchDecisionFilterModal, type WatchDecision,
   scopeOf,
@@ -122,6 +123,12 @@ function stateColor(s?: string) {
 
 function ReviewBox({ title, rev }: { title: string; rev?: ReviewStatus }) {
   const complete = rev?.status === 'COMPLETE'
+  const statusCode = String(rev?.status || 'NOT_RUN').toUpperCase()
+  // P2590-R2 (cx-openai-4): the fallback claimed "NOT RUN" for every non-COMPLETE status, so an ANSWERED_PENDING_CIO
+  // card read "CIO: NOT RUN" while the table read "Answer ready · CIO decision pending" for the same input. Only a
+  // genuinely-not-run review gets the NONE/NOT_RUN wording; any other status speaks for itself and its provenance is
+  // shown only when the record has it — never invented.
+  const notRun = statusCode === 'NOT_RUN'
   const reason = rev?.reason_code || rev?.display?.reason || null
   const disposition = rev?.artifact_disposition || rev?.display?.disposition || null
   return (
@@ -145,10 +152,12 @@ function ReviewBox({ title, rev }: { title: string; rev?: ReviewStatus }) {
       ) : (
         <>
           <div style={{ fontSize: TYPE.sm, color: BB.amber, marginTop: 3, fontWeight: 800 }}>
-            {rev?.display?.label || `${title}: NOT RUN`}
+            {rev?.display?.label || (notRun ? `${title}: ${reviewStatusLabel('NOT_RUN')}` : reviewStatusLabel(statusCode))}
           </div>
           <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>
-            Provider NONE · Model NONE · Policy NO_CALL · Cost $0
+            {notRun
+              ? 'Provider NONE · Model NONE · Policy NO_CALL · Cost $0'
+              : [rev?.provider, rev?.model, rev?.policy].filter(Boolean).join(' · ')}
             {reason ? ` · ${reason}` : ''}
             {disposition ? ` · ${disposition}` : ''}
           </div>
@@ -174,9 +183,10 @@ function FreshnessChips({ c }: { c: Card }) {
             key={d.k}
             data-freshness-dim={d.k.toLowerCase()}
             data-freshness-value={d.v}
+            title={String(d.v)}
             style={{ border: `1px solid ${BB.border}`, borderRadius: 999, padding: '3px 8px', fontSize: TYPE.xs, color: BB.text3 }}
           >
-            {d.k}: {d.v}
+            {d.k}: {d.k === 'Quote' ? quoteFreshnessLabel(d.v) : humanizeCode(String(d.v))}
           </span>
         ) : null,
       )}

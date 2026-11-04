@@ -71,9 +71,13 @@ const text = (markup) => markup
   .replace(/&middot;|·/g, '·').replace(/\s+/g, ' ').trim()
 
 const cards = [
+  // P2590-R1 (cx-openai-4): the original fixtures omitted every freshness field, so the chip path that prints
+  // freshness_state was never exercised. AAA carries the ordinary field; BBB carries quote_freshness.
   { symbol: 'AAA', trade_ai_state: 'DATA_UNAVAILABLE', street_rating: 'HOLD', last: 10, day_change_pct: 1,
+    freshness_state: 'DATA_UNAVAILABLE',
     proposal_allowed: false, cio_review: { status: 'ANSWERED_PENDING_CIO' }, maria_review: { status: 'NOT_RUN' } },
   { symbol: 'BBB', trade_ai_state: 'DETERMINISTIC_FAIL', street_rating: 'BUY', last: 20, day_change_pct: -1,
+    quote_freshness: 'STALE',
     proposal_allowed: false, cio_review: { status: 'COMPLETE' }, maria_review: null },
   { symbol: 'CCC', trade_ai_state: 'SOME_NEW_CODE', street_rating: 'HOLD', last: 30, day_change_pct: 0,
     proposal_allowed: false },
@@ -122,6 +126,21 @@ for (const [surface, entry] of [['table', '/watch?tab=intelligence&view=top_idea
   check(surface, 'the element showing the state carries the raw code in its title', stateSite.test(markup), 'label rendered without its code in a title')
   if (surface === 'table') {
     check(surface, 'the CIO status cell carries its code', /<td[^>]*title="ANSWERED_PENDING_CIO"[^>]*>Answer ready/.test(markup), 'no title on the CIO status cell')
+  }
+  if (surface === 'cards') {
+    // P2590-R1: the freshness chips printed the raw code ("Quote: DATA_UNAVAILABLE") when the ordinary
+    // freshness_state field was populated. The chip must read as English and keep the code in its own attributes.
+    check(surface, 'no raw freshness code in a chip', !/Quote:\s*DATA_UNAVAILABLE|Quote:\s*STALE/.test(t), (t.match(/Quote:[^·]{0,40}/) || [''])[0])
+    check(surface, 'the quote chip reads in plain English', /Quote:\s*Unavailable/.test(t) && /Quote:\s*Stale/.test(t), (t.match(/Quote:[^·]{0,40}/g) || []).join(' | '))
+    check(surface, 'the chip keeps the raw value in its metadata',
+      /data-freshness-dim="quote"[^>]*data-freshness-value="DATA_UNAVAILABLE"/.test(markup), 'raw freshness value not kept on the chip')
+    // P2590-R2: an ANSWERED_PENDING_CIO review read "CIO: NOT RUN" in the card while the table said
+    // "Answer ready · CIO decision pending" for the same input.
+    const box = (markup.match(/<div[^>]*data-review-box[^>]*data-review-status="ANSWERED_PENDING_CIO"[\s\S]*?<\/div><\/div>/) || [''])[0]
+    check(surface, 'the pending-CIO card box exists', box.length > 0, 'no ANSWERED_PENDING_CIO review box rendered')
+    const boxText = text(box)
+    check(surface, 'the pending-CIO card box says the answer is ready', /Answer ready/.test(boxText), boxText.slice(0, 200))
+    check(surface, 'the pending-CIO card box does not claim NOT RUN', !/NOT RUN|Not run/i.test(boxText), boxText.slice(0, 200))
   }
 }
 
