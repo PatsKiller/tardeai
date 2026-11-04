@@ -5,6 +5,8 @@ import AmendmentReader from '../components/AmendmentReader'
 import { GOVERNANCE, KIND_LABEL, useGovernance, waitingSince, type ApprovalItem, type ApprovalQueue } from '../lib/operatorApprovals'
 import '../styles/operatorApprovals.css'
 import ResolvedActivations, { type QueueWithResolved } from '../components/approvals/ResolvedActivations'
+import { deriveSurfaceState, surfaceGap, type SurfaceShape } from '../lib/surfaceState'
+import { SurfaceGap, useReportSurfaceState } from '../components/SurfaceGap'
 
 const tabs = [{ id: 'waiting', label: 'Waiting on you' }, { id: 'POLICY', label: 'Policy' }, { id: 'RELEASE', label: 'Releases' },
   { id: 'SPEND', label: 'Spending caps' }, { id: 'ACTIVATE', label: 'Activations' }, { id: 'DESIGN', label: 'Designs' },
@@ -23,14 +25,26 @@ function Queue() {
   const [active] = useDeskTab(tabs)
   const [offset, setOffset] = useState(0)
   useEffect(() => setOffset(0), [active])
-  const { data, error, refresh } = useGovernance<ApprovalQueue>(`${GOVERNANCE}/approvals?offset=${offset}&kind=${active === 'waiting' || active === 'history' ? '' : active}`)
+  const { data, error, refresh, loading } = useGovernance<ApprovalQueue>(`${GOVERNANCE}/approvals?offset=${offset}&kind=${active === 'waiting' || active === 'history' ? '' : active}`)
+  // SurfaceState@v1 (BOARD row 36): the decisions line, the source row and the body banner all come from ONE state.
+  // The old code derived the decisions line from `!data` while the banner came from `error`, which is how "Loading
+  // the latest queue." ended up beside "Queue unavailable".
+  const shape: SurfaceShape<ApprovalQueue> = {
+    what: 'latest approval queue',
+    gaps: d => (d.gaps ?? []).map(g => g.source),
+    isEmpty: d => (d.items ?? []).length === 0 && (d.recent ?? []).length === 0,
+  }
+  const surface = deriveSurfaceState<ApprovalQueue>({ data, error, loading }, shape)
+  useReportSurfaceState('Approvals page', surface as never)
+  const surfaceText = surfaceGap(surface, shape)
+  const totalKnown = surface.totalKnown && data && data.pending_count !== null
   return <div className="approvals"><DeskPage title="Approvals Center" purpose="Everything waiting for your decision. Read the exact version, then decide."
-    tabs={tabs} sources={[{ id: 'approvals', label: 'Approval queue', asOf: data?.as_of,
-      gap: data?.gaps.length ? 'Some approval sources are unavailable. The total is not yet known.' : undefined }]}
-    decisionGap={data?.pending_count === null ? 'The total is unavailable until every source can be checked.' : data ? `${data.pending_count} waiting for review.` : 'Loading the latest queue.'}>
+    tabs={tabs} sources={[{ id: 'approvals', label: 'Approval queue', asOf: surface.data?.as_of,
+      gap: surface.state === 'partial' ? 'Some approval sources are unavailable. The total is not yet known.' : undefined }]}
+    decisionGap={totalKnown ? `${data!.pending_count} waiting for review.` : surfaceText ? `${surfaceText.title}. The total is not yet known.` : undefined}>
     {active => <div className="stack">
-      {error && <DeskGap title="Queue unavailable" reason={error}><button onClick={refresh}>Try again</button></DeskGap>}
-      {!data && !error && <p role="status">Loading approvals…</p>}
+      {!surface.data && <SurfaceGap state={surface} shape={shape} onRetry={refresh} />}
+      {surface.data && surface.state === 'partial' && <SurfaceGap state={surface} shape={shape} />}
       {data && <>
         {data.gaps.length > 0 && <DeskGap title="Some sources need attention" reason={`${data.known_pending_count} known items. The full total is unavailable.`}>
           <details><summary>Source details</summary><ul>{data.gaps.map(gap => <li key={gap.source}>{gap.source.replace(/_/g, ' ')}: {gap.reason}</li>)}</ul></details>
