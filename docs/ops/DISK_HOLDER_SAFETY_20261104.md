@@ -68,8 +68,9 @@ The scan is still worth having: it names the component that resolves a supersede
 
 A process that opens a descriptor **after** the last scan and `fchdir`s before the unlink is invisible to any
 external check. This is why the scheduled lane does not delete: the residual is a race, not a bug, and a lane that
-cannot state the invariant should not perform the operation. `auto_delete=true` therefore buys back the fence and the
-full scan, not a proof; an operator who arms it is accepting that residual.
+cannot state the invariant should not perform the operation. There is no arming switch that buys back the fence: the
+one-shot exception was removed after review proved a value object cannot distinguish agent intent from operator
+approval. An operator who wants a superseded release removed does it by hand, outside this lane.
 
 ## 5. Operator-facing consequences (needs a ruling, not an implementation)
 

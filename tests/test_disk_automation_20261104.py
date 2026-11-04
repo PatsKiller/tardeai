@@ -238,17 +238,21 @@ def test_the_accounting_store_is_a_rotation_target():
     assert acct["rotate"] is True and acct["hot_days"] >= 1
 
 
-def test_a_store_under_its_window_is_untouched(tmp_path):
-    """QUIET: a fresh small store is not archived — the lane must not churn a healthy file."""
-    from scripts.lib import retention_archive  # noqa: PLC0415
-    store = tmp_path / "research_call_accounting.jsonl"
-    store.write_text('{"ts": "2026-11-04T00:00:00Z", "event": "call"}\n', encoding="utf-8")
-    before = store.read_bytes()
-    # The rotate script's own planner decides; a store younger than hot_days has nothing to archive.
-    plan = retention_archive.plan_store(store, hot_days=3, min_tail_rows=1, ts_fields=("ts",)) \
-        if hasattr(retention_archive, "plan_store") else {"action": "keep"}
-    assert plan.get("action") in {"keep", "no_rows_to_archive", None} or plan.get("archive_bytes", 0) == 0
-    assert store.read_bytes() == before
+def test_the_accounting_rotation_lane_is_recorded_but_not_armed(tmp_path):
+    """DEFERRAL, not a quiet test. The earlier version of this test called a planner that does not exist and fell back
+    to a literal {"action": "keep"}, so it passed with zero calls — a green that proved nothing (W4, 2026-11-04). This
+    asserts only the fact a reader needs: the promote is recorded and disabled, so no run of it is claimed here.
+    """
+    import json as _json  # noqa: PLC0415
+    registry = _json.loads((ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))
+    lane = [r for r in registry.get("lanes", []) if r.get("lane_id") == "jsonl-archive-rotate"]
+    assert lane, "the rotation lane must be registered"
+    for row in lane:
+        sched = row.get("scheduler") or {}
+        dispatch = row.get("dispatch") or {}
+        assert sched.get("stage") == "shadow", sched
+        assert dispatch.get("mode") == "dry_run", dispatch
+        assert dispatch.get("live_arg") in (None, ""), "not armed: no live_arg"
 
 
 # ── the reviewer's scenarios, as controls ────────────────────────────────────────────────────────────
@@ -539,3 +543,40 @@ def test_the_filesystem_root_is_never_classified_as_safe(tmp_path):
     finally:
         H._RELEASE_ROOTS = old
     assert (ok, how) == (False, H.RELEASE_REFUSAL), how
+
+
+def test_a_release_root_with_a_trailing_slash_still_protects_its_children(tmp_path):
+    """W1 (whole-head review 2026-11-04): root + os.sep became '//' for a root configured as '/x/rel/', so a CHILD of
+    that root read as unprotected and remove_item returned rmtree. Fails at 5454a217c."""
+    root = tmp_path / "trade-ai-releases" / "portfolio-server"
+    child = root / "abc-main"
+    child.mkdir(parents=True)
+    (child / "keep.txt").write_text("x", encoding="utf-8")
+    old = H._RELEASE_ROOTS
+    H._RELEASE_ROOTS = (str(root) + os.sep,)          # exactly the shape load_rules used to store
+    try:
+        ok, how = H.remove_item({"path": str(child), "kind": "cache_entry", "rule": "C"})
+    finally:
+        H._RELEASE_ROOTS = old
+    assert (ok, how) == (False, H.RELEASE_REFUSAL), how
+    assert (child / "keep.txt").is_file()
+
+
+def test_the_catalogue_never_forgets_a_root_from_an_earlier_load(tmp_path, monkeypatch):
+    """W2 (whole-head review 2026-11-04): load_rules REPLACED the catalogue, so loading another home's rules made an
+    earlier home's root removable. The catalogue is a union now. Controlled at the assignment rather than by calling
+    load_rules twice (which would need two complete rules trees)."""
+    a = tmp_path / "homeA"
+    (a / "portfolio-server" / "old").mkdir(parents=True)
+    (a / "portfolio-server" / "old" / "keep.txt").write_text("x", encoding="utf-8")
+    old = H._RELEASE_ROOTS
+    try:
+        H._RELEASE_ROOTS = (str(a / "portfolio-server"),)
+        assert H._in_release_roots(a / "portfolio-server" / "old") is True
+        # the union semantics: adding a second catalogue cannot subtract the first
+        H._RELEASE_ROOTS = tuple(sorted(set(H._RELEASE_ROOTS) | {str(tmp_path / "homeB" / "rel")}))
+        ok, how = H.remove_item({"path": str(a / "portfolio-server" / "old"), "kind": "cache_entry"})
+        assert (ok, how) == (False, H.RELEASE_REFUSAL), how
+        assert (a / "portfolio-server" / "old" / "keep.txt").is_file()
+    finally:
+        H._RELEASE_ROOTS = old

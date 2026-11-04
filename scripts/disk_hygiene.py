@@ -147,8 +147,22 @@ def load_rules(path: Optional[Path] = None, *, home: Optional[Path] = None) -> d
     doc["_owned_res"] = [re.compile(s) for s in doc["git"].get("owned_remote_patterns") or []]
     rel = doc["releases"]
     doc["_release_roots"] = [{**r, "_path": x(r["path"])} for r in rel.get("roots") or []]
+    # W1 (review 2026-11-04): a root configured with a trailing slash made `root + os.sep` become "//", which no
+    # string prefix matches — so a CHILD of that root read as unprotected. Normalising is the fix; a root that cannot
+    # be normalised to an absolute path is refused as unusable rather than trusted.
+    normalised = set()
+    for r in doc["_release_roots"]:
+        raw = os.path.realpath(str(r["_path"]))
+        norm = os.path.normpath(raw)
+        if not os.path.isabs(norm) or norm.startswith("//"):
+            raise RulesError(f"release_root_not_normalisable:{raw}")
+        normalised.add(norm)
+    # W2: the catalogue is CUMULATIVE. It used to be replaced by every load_rules call, so loading rules for another
+    # home handed a caller a catalogue that no longer contained the first one's roots — a protected path became
+    # removable. A union can only ever refuse more. Limit, stated: it grows for the life of the process, and the
+    # caller must have loaded the rules that own a root at least once in that process.
     global _RELEASE_ROOTS
-    _RELEASE_ROOTS = tuple(sorted({os.path.realpath(str(r["_path"])) for r in doc["_release_roots"]}))
+    _RELEASE_ROOTS = tuple(sorted(set(_RELEASE_ROOTS) | normalised))
     doc["_pointer_dir"] = x(rel["pointer_dir"]) if rel.get("pointer_dir") else None
     doc["_cache_rules"] = [{**r, "_path": x(r["path"])} for r in doc["caches"].get("rules") or []]
     ref = doc["references"]
@@ -2182,14 +2196,17 @@ def _in_release_roots(path: Path) -> bool:
     release". Any
     overlap between the candidate and a configured root is a release-path removal.
     """
-    rp = os.path.realpath(str(path))
-    if rp == os.sep:
-        # "/" is an ancestor of EVERY absolute root, and the reverse-prefix test below cannot see it: it would ask
-        # whether root startswith "//" (codex 2026-11-04, 45543874f). A filesystem root is a release-path removal
-        # whenever any root is configured.
-        return bool(_RELEASE_ROOTS)
-    return any(rp == root or rp.startswith(root + os.sep) or root.startswith(rp + os.sep)
-               for root in _RELEASE_ROOTS)
+    def _under(child: str, parent: str) -> bool:
+        """Separator-safe containment: exact, or a child path properly under parent. `parent` is already normalised
+        (W1), so no "//" comparison is possible; "/" contains everything."""
+        if parent == os.sep:
+            return True
+        return child == parent or child.startswith(parent + os.sep)
+
+    rp = os.path.normpath(os.path.realpath(str(path)))
+    # Normalise the catalogue entries here too: a caller (or a test) may hand us a root written with a trailing slash,
+    # and containment must not depend on how the root was spelled (W1).
+    return any(_under(rp, os.path.normpath(r)) or _under(os.path.normpath(r), rp) for r in _RELEASE_ROOTS)
 
 
 def refuse_release_removals(rows: list[dict], why: str = RELEASE_REFUSAL) -> list[dict]:
