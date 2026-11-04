@@ -43,3 +43,21 @@ def test_the_exact_alias_still_routes(monkeypatch):
     monkeypatch.setattr(llm_lane, "_deepseek_model_available", lambda mid: seen.setdefault("id", mid) and True)
     llm_lane.available("deepseek-flash")
     assert seen.get("id") == "deepseek-flash", seen
+
+
+def test_the_run_manual_surface_agrees_about_the_legacy_names():
+    """cc4 (2026-11-04): the invariant covered llm_lane only, and the run-manual endpoint still accepted
+    `deepseek-v4-flash` as a WORKING lane one module away. Two surfaces disagreeing about one name is the drift this
+    test exists to stop, so it covers every surface that can select a model id. Fails before the fix."""
+    from scripts.lib import consumption_run_manual as crm
+
+    for alias in sorted(crm.LANE_TO_POLICY):
+        if alias.startswith("deepseek"):
+            try:
+                reject_legacy_model_id(alias)
+            except RegistryError as exc:
+                raise AssertionError(f"run-manual lane {alias!r} is not a registry id: {exc}") from exc
+    assert "deepseek-v4-flash" not in crm.LANE_TO_POLICY
+    assert "deepseek-v4-flash" not in crm.FLASH_LANES
+    assert crm.classify_manual_lane("deepseek-v4-flash")["ok"] is False
+    assert crm.classify_manual_lane("deepseek-flash")["ok"] is True
