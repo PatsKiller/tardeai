@@ -63,6 +63,7 @@ import fcntl
 import fnmatch
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -1587,29 +1588,61 @@ _UNIT_RE = re.compile(r"^([A-Za-z0-9_.@:/-]+\.service)$")
 class HolderScan(NamedTuple):
     """Who is inside a path, and whether the answer is complete.
 
-    ``complete`` is False when any process's cwd or cgroup could NOT be read for a reason other than the process
-    having exited. That distinction is the whole safety property (codex R1, 2026-11-04): an unreadable cgroup used to
-    collapse into "no holder", and a release with a live process inside it was deleted. A vanished process
-    (FileNotFoundError / ESRCH) is genuinely not a holder; a permission error is an unknown, and an unknown refuses.
+    Holder EXISTENCE and holder NAMING are two separate facts (codex R3a, 2026-11-04). The old scan collected only
+    cgroup names ending ``.service``, so a process holding the directory from a valid ``session-77.scope`` produced
+    ``units=(), complete=True`` — "nobody is there" — and the directory was deleted out from under it. ``holders``
+    counts the processes that reference the path at all; ``units`` names the restartable ones; ``unattributed`` names
+    the holders no unit can be restarted for, which can only ever be a refusal.
+
+    ``complete`` is False when any same-uid process could NOT be looked at for a reason other than the process having
+    exited (codex R1). A vanished process (ENOENT / ESRCH) is genuinely not a holder; a permission error is an
+    unknown, and an unknown refuses. ``complete=True`` with ``holders>0`` is still a holder, never a pass.
+
+    The scan reads the cwd AND every open descriptor (codex R3b): a directory fd opened through the old path survives
+    a rename, so a name fence alone cannot see it, and an ``fchdir`` through that descriptor puts the process back
+    inside the fenced directory. Descriptor links are read for the same reason the cwd is.
     """
 
     units: tuple[str, ...]
     complete: bool
+    holders: int = 0
+    unattributed: tuple[int, ...] = ()
 
 
 #: errno values that mean "that process is gone", not "we could not look".
 _VANISHED = (errno.ENOENT, errno.ESRCH)
 
 
-def proc_holder_units(path: Path, *, proc_root: Path = Path("/proc")) -> HolderScan:
-    """Systemd units whose cwd is inside ``path`` (from ``/proc/<pid>/cgroup``), plus completeness.
+def _link_target(link: Path) -> Optional[str]:
+    """The path a ``/proc`` symlink points at, without the kernel's `` (deleted)`` suffix. ``None`` for the
+    ``socket:[...]`` / ``pipe:[...]`` / ``anon_inode:`` forms, which cannot name a directory in any case."""
+    try:
+        target = os.readlink(link)
+    except OSError:
+        raise
+    if target.endswith(" (deleted)"):
+        target = target[: -len(" (deleted)")]
+    return target if target.startswith("/") else None
 
-    Only the cwd is checked, not every open fd: the defect this exists for is a component *writing into* a release, and
-    a bare fd read (an open log) is not a reason to restart anything. A cwd we cannot read makes the scan INCOMPLETE —
-    never empty-and-fine.
+
+def proc_holder_units(path: Path, *, proc_root: Path = Path("/proc")) -> HolderScan:
+    """Who references ``path`` — from their cwd AND their open descriptors — plus whether the answer is complete.
+
+    Two corrections over the cwd-only/.service-only scan (codex R3a/R3b, 2026-11-04):
+
+    * **Existence before naming.** A process whose cwd or descriptor is inside the path is a HOLDER whatever its
+      cgroup says. If no restartable ``.service`` unit can be named for it, it is listed in ``unattributed`` — a
+      refusal, never a "no holder" with ``complete=True``.
+    * **Descriptors count.** A directory fd opened through the old name survives an atomic rename, so the fence used
+      by :func:`remove_item` cannot see the reference, and ``fchdir`` through it puts the process back inside the
+      *fenced* directory just before ``rmtree``. Every same-uid process's ``fd`` links are therefore read too.
+
+    A process we could not look at (other than because it exited) makes the scan INCOMPLETE — never empty-and-fine.
     """
     real = os.path.realpath(path)
     units: set[str] = set()
+    unattributed: list[int] = []
+    holders = 0
     complete = True
     try:
         entries = list(os.scandir(proc_root))
@@ -1619,35 +1652,61 @@ def proc_holder_units(path: Path, *, proc_root: Path = Path("/proc")) -> HolderS
     for entry in entries:
         if not entry.name.isdigit():
             continue
+        pid_dir = proc_root / entry.name
         # Another user's process cannot hold OUR release: the release directories are 0700, so such a process cannot
         # have them as a cwd (it could not traverse into them). Skipping those by ownership is a permission fact, not a
         # guess — and without it every scan on a shared host would be "incomplete" for processes we may not inspect.
         try:
-            if os.stat(proc_root / entry.name).st_uid != me:
+            if os.stat(pid_dir).st_uid != me:
                 continue
         except OSError as exc:
             if exc.errno not in _VANISHED:
                 complete = False
             continue
+        inside = False
         try:
-            cwd = os.readlink(proc_root / entry.name / "cwd")
+            cwd = _link_target(pid_dir / "cwd")
+            inside = cwd is not None and is_within(Path(cwd), Path(real))
         except OSError as exc:
             if exc.errno not in _VANISHED:
-                complete = False
-            continue
-        if not is_within(Path(cwd), Path(real)):
-            continue
+                complete = False          # could not look: an unknown, not "outside"
+                continue
         try:
-            cgroup = (proc_root / entry.name / "cgroup").read_text(encoding="utf-8")
+            fds = os.listdir(pid_dir / "fd")
         except OSError as exc:
+            if exc.errno not in _VANISHED:
+                complete = False          # a descriptor we cannot see may be the one holding the path
+            fds = []
+        if not inside:
+            for name in fds:
+                try:
+                    target = _link_target(pid_dir / "fd" / name)
+                except OSError as exc:
+                    if exc.errno not in _VANISHED:
+                        complete = False
+                    continue
+                if target is not None and is_within(Path(target), Path(real)):
+                    inside = True
+                    break
+        if not inside:
+            continue
+        holders += 1
+        try:
+            cgroup = (pid_dir / "cgroup").read_text(encoding="utf-8")
+        except OSError:
             # Inside the path but we cannot name the unit: there IS a holder, we just cannot name it.
             complete = False
-            if exc.errno not in _VANISHED:
-                continue
+            unattributed.append(int(entry.name))
             continue
         named = {ln.rsplit("/", 1)[-1].strip() for ln in cgroup.splitlines()}
-        units |= {u for u in named if _UNIT_RE.match(u)}
-    return HolderScan(tuple(sorted(units)), complete)
+        restartable = {u for u in named if _UNIT_RE.match(u)}
+        if restartable:
+            units |= restartable
+        else:
+            # A ``session-N.scope`` holder is a real holder whose unit cannot be restarted. It must never read as
+            # "nobody is there", which is exactly what the .service-only collection did (codex R3a).
+            unattributed.append(int(entry.name))
+    return HolderScan(tuple(sorted(units)), complete, holders, tuple(sorted(unattributed)))
 
 
 def _release_rows(rules: Mapping[str, Any], ctx: Mapping[str, Any], r_cfg: Mapping[str, Any], row, only: Optional[str]) -> list[dict]:
@@ -1671,17 +1730,28 @@ def _release_rows(rules: Mapping[str, Any], ctx: Mapping[str, Any], r_cfg: Mappi
         # Holder policy (operator 2026-11-04: "remove the superseded ones on every release"): a release held by a
         # running process is either RESTARTED (so the component re-resolves CURRENT) or REPORTED by name. Silence is
         # not an option — that is how a component kept writing into a deleted release and recreating it.
+        #
+        # (a), not (b) — lead ruling 2026-11-04: POSIX has no "unlink only if nothing holds this" primitive. A retained
+        # directory fd survives every pathname fence, and quiescence cannot be ENFORCED against same-uid processes
+        # (agents included) that may open a descriptor at any instant. So the scheduled lane never removes a release:
+        # it reports the reclaimable set, and removal stays behind `release_reclaim.auto_delete`, which only an
+        # operator can arm — with a mechanism the operator has accepted. See docs/ops/DISK_HOLDER_SAFETY_20261104.md.
+        auto_delete = r_cfg.get("auto_delete") is True
         if "in_use_cwd" in item["reasons"]:
             scan = proc_holder_units(path)
             hosts: list[str] = list(scan.units)
             h_cfg = (r_cfg.get("holders") or {}) if isinstance(r_cfg.get("holders"), dict) else {}
             allowed = set(h_cfg.get("restart_allowed_units") or ())
             action = h_cfg.get("action") or "report"
-            # R1: clear in_use_cwd ONLY when the scan is COMPLETE and every holder is restartable. An incomplete scan
-            # is an unknown, and an unknown refuses — "could not determine" must never read like "nobody is there".
-            restartable = bool(scan.complete and hosts) and action == "restart" and set(hosts) <= allowed
+            # R1: clear in_use_cwd ONLY when the scan is COMPLETE and every holder is a restartable allowed unit. An
+            # incomplete scan is an unknown, and an unknown refuses. R3a: a holder with no restartable unit
+            # (``unattributed``) is a holder none the less — restarting "nothing" must never clear the reason.
+            restartable = (auto_delete and scan.complete and scan.holders > 0 and not scan.unattributed
+                           and action == "restart" and set(hosts) <= allowed)
             item["evidence"]["holder_units"] = hosts
             item["evidence"]["holder_scan_complete"] = scan.complete
+            item["evidence"]["holder_count"] = scan.holders
+            item["evidence"]["holder_unattributed_pids"] = list(scan.unattributed)
             if restartable:
                 item["reasons"] = [r for r in item["reasons"] if r != "in_use_cwd"]
                 item["restart_units"] = hosts
@@ -1689,6 +1759,11 @@ def _release_rows(rules: Mapping[str, Any], ctx: Mapping[str, Any], r_cfg: Mappi
                 if not scan.complete:
                     item["reasons"].append("holder_state_unknown")
                 item["reasons"].append("held_by_process:" + (",".join(hosts) if hosts else "unnamed"))
+        if not auto_delete:
+            # The release is RECLAIMABLE and is reported with its size; it is not removed. That is the whole point of
+            # (a): the lane can prove what is safe to *stop using*, never that a directory is unheld at the instant of
+            # unlink. `protected_excluded_bytes` and this reason carry the number to the operator digest.
+            item["reasons"].append("release_delete_refused:no_enforceable_quiescence_primitive")
         try:
             creds = [e.name for e in os.scandir(path) if not e.is_symlink() and _credential_name(e.name, rules)]
         except OSError:
@@ -1727,14 +1802,30 @@ def apply_scratch_cap(rows: list[dict], t_cfg: Mapping[str, Any]) -> tuple[list[
     floor_s = float(floor_h) * 3600.0 if type(floor_h) in _NUM and floor_h > 0 else None
     now_ts = time.time()
     def _age_s(r: Mapping[str, Any]) -> Optional[float]:
-        """Seconds old, from the field the REAL producer emits (fingerprint.activity), else idle_days."""
+        """Seconds old, from the field the REAL producer emits (fingerprint.activity), else idle_days.
+
+        A non-finite age (NaN, ±Infinity) is not an age: it is a value we cannot date a candidate by, so it returns
+        ``None`` and the row is protected exactly like a missing one (codex S2, 2026-11-04).
+        """
         act = (r.get("fingerprint") or {}).get("activity")
-        if type(act) in _NUM and act > 0:
-            return max(0.0, now_ts - float(act))
+        if type(act) in _NUM:
+            act = float(act)
+            if not math.isfinite(act):
+                return None
+            if act > 0:
+                return max(0.0, now_ts - act)
         idle = (r.get("evidence") or {}).get("idle_days")
         if type(idle) in _NUM:
-            return float(idle) * 86400.0
+            idle = float(idle)
+            if not math.isfinite(idle):
+                return None
+            if idle >= 0:
+                return idle * 86400.0
         return None
+    def _size(r: Mapping[str, Any]) -> int:
+        """A finite byte count, or 0 — never a raise on a malformed row."""
+        v = r.get("size_bytes")
+        return int(v) if type(v) is int and v > 0 else 0
     protected: set[str] = set()
     unknown_age = 0
     for r in rows:
@@ -1744,20 +1835,24 @@ def apply_scratch_cap(rows: list[dict], t_cfg: Mapping[str, Any]) -> tuple[list[
         if age is None:
             unknown_age += 1
             protected.add(r["path"])      # cannot date it → cannot evict it
+            # S2 (codex 2026-11-04): the protection must be the RETURNED eligibility bit, not only this local set —
+            # `standing_plan` filters on `candidate`, so an undatable row used to reach the manifest as executable.
+            r["reasons"] = list(dict.fromkeys(list(r.get("reasons") or []) + ["scratch_age_unknown"]))
+            r["candidate"] = False
         elif floor_s is not None and age < floor_s:
             protected.add(r["path"])
             r["reasons"] = list(dict.fromkeys(list(r.get("reasons") or []) + ["recent_activity"]))
             r["candidate"] = False
     t_rows = [r for r in rows if r.get("rule") == "T"]
-    sized = [r for r in t_rows if isinstance(r.get("size_bytes"), int)]
-    total = sum(int(r["size_bytes"]) for r in sized)
+    sized = [r for r in t_rows if type(r.get("size_bytes")) is int]
+    total = sum(_size(r) for r in sized)
     summary: dict[str, Any] = {"cap_bytes": cap, "total_bytes": total, "taken": 0, "kept_over_cap": 0,
                                "floor_exceeds_cap": False, "age_unknown_protected": unknown_age,
                                "floor_hours": floor_h if floor_s is not None else None}
     if total <= cap:
         return rows, summary
     floor = [r for r in t_rows if not r.get("candidate")]
-    floor_bytes = sum(int(r.get("size_bytes") or 0) for r in floor)
+    floor_bytes = sum(_size(r) for r in floor)
     # S1: oldest first on the age the producer actually emits — never on a field no producer writes.
     candidates = sorted((r for r in t_rows if r.get("candidate") and r["path"] not in protected),
                         key=lambda r: -(_age_s(r) or 0.0))
@@ -1767,7 +1862,7 @@ def apply_scratch_cap(rows: list[dict], t_cfg: Mapping[str, Any]) -> tuple[list[
         if projected <= cap:
             break
         taken.add(r["path"])
-        projected -= int(r.get("size_bytes") or 0)
+        projected -= _size(r)
     summary["taken"] = len(taken)
     if projected > cap:
         summary["floor_exceeds_cap"] = True
@@ -2050,13 +2145,21 @@ def executed_row(manifest_item: Mapping[str, Any], fresh: Optional[Mapping[str, 
     row was captured earlier and may predate the holder entirely, so executing it would skip both the restart and the
     post-restart check: a revalidated candidate, then the stale action. Every field the fresh row decides is taken from
     it; everything else (path, kind, rule, size) stays as the manifest recorded it.
+
+    Omission is not permission (codex R2-inverse, 2026-11-04): when the fresh row has NO `restart_units`, the action
+    fields are DROPPED, not inherited. Otherwise a unit that no longer requires a restart — because it is no longer a
+    holder — would still be restarted from the old instruction.
     """
     if not fresh:
         return dict(manifest_item)
     out = dict(manifest_item)
-    for key in ("restart_units", "evidence", "reasons", "fingerprint"):
+    for key in ("restart_units", "evidence", "reasons"):
         if key in fresh:
             out[key] = fresh[key]
+        else:
+            out.pop(key, None)
+    if "fingerprint" in fresh:          # a measurement, not an action: the manifest value is a valid fallback
+        out["fingerprint"] = fresh["fingerprint"]
     return out
 
 def remove_item(item: Mapping[str, Any]) -> tuple:
@@ -2098,8 +2201,11 @@ def remove_item(item: Mapping[str, Any]) -> tuple:
             still = proc_holder_units(p)
             if not still.complete:
                 return False, "holder_state_unknown"
-            if still.units:
-                return False, "holder_restart_did_not_release:" + ",".join(still.units)
+            if still.holders or still.units:
+                # holders, not units: a scope-held or descriptor-held process is a holder even when no unit can be
+                # named for it (codex R3a). "Nothing named" must never mean "nothing there".
+                return False, "holder_restart_did_not_release:" + (
+                    ",".join(still.units) if still.units else f"{still.holders} unnamed holder(s)")
         if kind == "release_dir":
             # R3 (codex 2026-11-04): a scan cannot prove nobody ENTERS after it. Fence the name instead: rename the
             # release aside atomically, so a process resolving the old path from now on gets ENOENT rather than
@@ -2111,13 +2217,14 @@ def remove_item(item: Mapping[str, Any]) -> tuple:
             except OSError as exc:
                 return False, f"fence_rename_failed:{type(exc).__name__}"
             after = proc_holder_units(fenced)
-            if not after.complete or after.units:
+            if not after.complete or after.holders or after.units:
                 try:
                     os.rename(fenced, p)
                 except OSError:
                     return False, "fence_holder_found_and_rename_back_failed"
                 return False, ("holder_state_unknown" if not after.complete
-                               else "holder_entered_after_check:" + ",".join(after.units))
+                               else "holder_entered_after_check:" + (
+                                   ",".join(after.units) if after.units else f"{after.holders} unnamed holder(s)"))
             p = fenced
         if kind == "agent_scratch" and item.get("bundles"):
             failed = bundle_nested(item)

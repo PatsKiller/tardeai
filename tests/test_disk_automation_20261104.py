@@ -30,8 +30,8 @@ GIB = 1024 ** 3
 # ── 1. release cleanup on promote ────────────────────────────────────────────────────────────────────
 
 
-def _fake_proc(tmp_path: Path, entries: dict[str, tuple[str, str]]) -> Path:
-    """A /proc stand-in: {pid: (cwd, cgroup-line)}."""
+def _fake_proc(tmp_path: Path, entries: dict[str, tuple[str, str]], fds: dict[str, dict[str, str]] | None = None) -> Path:
+    """A /proc stand-in: {pid: (cwd, cgroup-line)}, optionally {pid: {fd-name: link-target}}."""
     proc = tmp_path / "proc"
     proc.mkdir()
     for pid, (cwd, cg) in entries.items():
@@ -39,6 +39,11 @@ def _fake_proc(tmp_path: Path, entries: dict[str, tuple[str, str]]) -> Path:
         d.mkdir()
         os.symlink(cwd, d / "cwd")
         (d / "cgroup").write_text(cg + "\n", encoding="utf-8")
+        pid_fds = (fds or {}).get(pid) or {}
+        if pid_fds:
+            (d / "fd").mkdir()
+        for name, target in pid_fds.items():
+            os.symlink(target, d / "fd" / name)
     return proc
 
 
@@ -64,30 +69,51 @@ def test_no_holder_when_nothing_is_inside(tmp_path):
     assert scan.units == () and scan.complete is True
 
 
-def _release_rows(monkeypatch, *, holders, action, allowed, in_use=True, complete=True):
+def _release_rows(monkeypatch, *, holders, action, allowed, in_use=True, complete=True, auto_delete=False,
+                  holder_count=None, unattributed=()):
     """One release row through the real holder policy, with /proc and the evaluation stubbed."""
     rules = {"_home": Path("/home/fixture"), "_release_roots": [
         {"_path": Path("/releases"), "entry_kind": "dir", "glob": "*-*", "keep_newest": 2, "previous_served": True}],
         "_credential_globs": []}
     r_cfg = {"root": "~/releases", "keep_newest": 2, "lock_path": "~/lock",
              "holders": {"action": action, "restart_allowed_units": allowed}}
+    if auto_delete:
+        r_cfg["auto_delete"] = True
     monkeypatch.setattr(H, "served_release_targets", lambda r: {})
     monkeypatch.setattr(H, "release_lock_reason", lambda p: None)
     monkeypatch.setattr(H, "evaluate_releases",
                         lambda r, ctx: [{"kind": "release_dir", "path": "/releases/old",
                                          "reasons": ["in_use_cwd"] if in_use else [], "evidence": {}, "fingerprint": {}}])
+    count = holder_count if holder_count is not None else (len(holders) + len(unattributed) if in_use else 0)
+    # A duck-typed scan, not H.HolderScan: the SAME stub then drives the pre-fix code, so the controls below fail on
+    # BEHAVIOUR at 302b34483 (the release is selected and restarted) rather than on a constructor signature.
+    from types import SimpleNamespace  # noqa: PLC0415
     monkeypatch.setattr(H, "proc_holder_units",
-                        lambda p, proc_root=None: H.HolderScan(tuple(holders), complete))
+                        lambda p, proc_root=None: SimpleNamespace(units=tuple(holders), complete=complete,
+                                                                  holders=count, unattributed=tuple(unattributed)))
     monkeypatch.setattr(H, "_credential_name", lambda name, r: False)
     ctx = {"cwds": []}
     return H._release_rows(rules, ctx, r_cfg, lambda p, rule, kind: {"path": str(p), "rule": rule, "kind": kind,
                                                                      "reasons": [], "evidence": {}}, None)
 
 
-def test_a_restartable_holder_makes_the_release_a_candidate(monkeypatch, tmp_path):
-    """FIRE: the operator asked for removal on promote — a component we may restart does not block it."""
+def test_the_default_policy_reports_a_release_and_never_selects_it(monkeypatch):
+    """(a), lead ruling 2026-11-04: no attribute of a process tells us it will not fchdir in the next microsecond, so
+    the scheduled lane reports the reclaimable release and never deletes it. Fails at 302b34483, where the same row is
+    a candidate and the fence proceeds."""
     rows = _release_rows(monkeypatch, holders=["tradeai-ops-agent.service"], action="restart",
                          allowed=["tradeai-ops-agent.service"])
+    row = rows[0]
+    assert "release_delete_refused:no_enforceable_quiescence_primitive" in row["reasons"], row["reasons"]
+    assert not row.get("restart_units"), "no restart may be ordered when nothing is removed"
+    assert not row["reasons"].count("") and row["reasons"], "the row is refused with a reason, not silently dropped"
+
+
+def test_a_restartable_holder_makes_the_release_a_candidate(monkeypatch, tmp_path):
+    """FIRE (armed one-shot only): with `auto_delete` explicitly set by an operator, a component we may restart does
+    not block removal."""
+    rows = _release_rows(monkeypatch, holders=["tradeai-ops-agent.service"], action="restart",
+                         allowed=["tradeai-ops-agent.service"], auto_delete=True)
     row = rows[0]
     assert "in_use_cwd" not in row["reasons"], row["reasons"]
     assert row.get("restart_units") == ["tradeai-ops-agent.service"]
@@ -226,6 +252,129 @@ def test_a_store_under_its_window_is_untouched(tmp_path):
 
 
 # ── the reviewer's scenarios, as controls ────────────────────────────────────────────────────────────
+
+
+def test_a_scope_holder_is_a_holder_even_though_no_unit_can_be_restarted(tmp_path):
+    """R3a: a `session-N.scope` process inside the release used to read as `units=(), complete=True` — "nobody is
+    there" — and the release was deleted under it. Holder EXISTENCE is not holder NAMING."""
+    release = tmp_path / "releases" / "old"
+    (release / "data").mkdir(parents=True)
+    proc = _fake_proc(tmp_path, {
+        "401": (str(release / "data"), "0::/user.slice/user-1000.slice/session-77.scope"),
+    })
+    scan = H.proc_holder_units(release, proc_root=proc)
+    assert scan.units == (), "a scope cannot be restarted, so it names no unit"
+    assert scan.holders == 1, scan
+    assert scan.complete is True
+    assert scan.unattributed == (401,), "the holder we cannot name must still be reported as a holder"
+
+
+def test_a_directory_descriptor_holder_is_seen(tmp_path):
+    """R3b: a directory fd opened through the old name survives a rename, and the fence cannot see it. The scan must
+    read the descriptors, not only the cwd, or `complete=True/units=()` means "nothing there" while an fd holds it."""
+    release = tmp_path / "releases" / "old"
+    (release / "data").mkdir(parents=True)
+    proc = _fake_proc(
+        tmp_path,
+        {"402": (str(tmp_path / "elsewhere"), "0::/user.slice/x.service")},
+        fds={"402": {"7": str(release / "data")}},
+    )
+    scan = H.proc_holder_units(release, proc_root=proc)
+    assert scan.holders == 1, scan
+
+
+def test_remove_item_refuses_when_the_scan_can_only_count_the_holder(tmp_path, monkeypatch):
+    """R3a at the deletion boundary: `units=()` must not be read as "nothing holds it". The stub is a plain object so
+    the SAME stub drives 302b's code, where `.holders` is not consulted and rmtree runs. Fails at 302b34483."""
+    from types import SimpleNamespace  # noqa: PLC0415
+    release = tmp_path / "releases" / "old"
+    (release / "keep.txt").parent.mkdir(parents=True)
+    (release / "keep.txt").write_text("x", encoding="utf-8")
+    monkeypatch.setattr(H, "proc_holder_units",
+                        lambda p, proc_root=None: SimpleNamespace(units=(), complete=True, holders=1, unattributed=(4242,)))
+    ok, how = H.remove_item({"path": str(release), "kind": "release_dir", "rule": "R"})
+    assert ok is False, how
+    assert "holder" in how, how
+    assert release.is_dir() and not list(release.parent.glob("*.reclaiming-*")), "renamed back and intact"
+
+
+def test_a_scope_holder_is_never_cleared_by_a_restart(monkeypatch):
+    """Positive control (NOT a regression control — the policy already refused a nameless holder): a scope-held
+    process cannot be restarted, so it is refused AND recorded with its count, which is what makes the operator digest
+    name a holder nobody can clear."""
+    rows = _release_rows(monkeypatch, holders=[], action="restart", allowed=[],
+                         holder_count=1, unattributed=(4242,), auto_delete=True)
+    row = rows[0]
+    assert not row.get("restart_units"), row
+    assert "in_use_cwd" in row["reasons"]
+    assert "held_by_process:unnamed" in row["reasons"], row["reasons"]
+    assert row["evidence"]["holder_count"] == 1 and row["evidence"]["holder_unattributed_pids"] == [4242]
+
+
+def test_the_post_fence_scan_sees_a_descriptor_holder_under_the_new_name(tmp_path):
+    """R3b at the fence: the child's descriptor is inside the FENCED directory and its cwd is outside. A cwd-only scan
+    reads that as "nothing there" and rmtree proceeds. Fails at 302b34483, where `holders` does not exist because
+    descriptors were never read."""
+    release = tmp_path / "releases" / "old"
+    (release / "data").mkdir(parents=True)
+    fenced = release.with_name(release.name + ".reclaiming-20261104T000000Z")
+    os.rename(release, fenced)                      # the fence step, as remove_item performs it
+    proc = _fake_proc(tmp_path, {"403": (str(tmp_path / "elsewhere"), "0::/user.slice/user-1000.slice/session-77.scope")},
+                      fds={"403": {"7": str(fenced / "data")}})
+    try:
+        scan = H.proc_holder_units(fenced, proc_root=proc)
+    finally:
+        os.rename(fenced, release)                  # restored, as the refusal path must
+    assert scan.holders == 1 and scan.units == (), scan
+    assert scan.complete is True
+
+
+def test_the_cap_cannot_evict_a_row_it_cannot_date():
+    """S2: the protection must be the RETURNED eligibility bit. Fails at 302b34483, where an undatable row stays
+    candidate=True and reaches the manifest as executable."""
+    rows = [
+        {"path": "/s/unknown", "rule": "T", "kind": "agent_scratch", "size_bytes": 20 * GIB, "candidate": True,
+         "reasons": [], "evidence": {}, "fingerprint": {}},
+        _t_row("/s/old", 1 * GIB, 100),
+    ]
+    out, summary = H.apply_scratch_cap(rows, {"max_total_gb": 10, "keep_younger_than_hours": 24})
+    unknown = [r for r in out if r["path"] == "/s/unknown"][0]
+    assert unknown["candidate"] is False and "scratch_age_unknown" in unknown["reasons"], unknown
+    assert summary["age_unknown_protected"] == 1
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_the_cap_cannot_evict_a_row_with_a_nonfinite_age(bad):
+    """S2: NaN/±Infinity evade both the floor comparison and the sort key. They are not ages — they cannot be dated."""
+    rows = [
+        {"path": "/s/nan", "rule": "T", "kind": "agent_scratch", "size_bytes": 20 * GIB, "candidate": True,
+         "reasons": [], "evidence": {"idle_days": bad}, "fingerprint": {"activity": bad}},
+        _t_row("/s/old", 1 * GIB, 100),
+    ]
+    out, _ = H.apply_scratch_cap(rows, {"max_total_gb": 10, "keep_younger_than_hours": 24})
+    nan_row = [r for r in out if r["path"] == "/s/nan"][0]
+    assert nan_row["candidate"] is False and "scratch_age_unknown" in nan_row["reasons"], nan_row
+
+
+def test_a_fresh_row_without_the_action_field_drops_the_stale_one():
+    """R2-inverse: omission is not permission. A manifest restart instruction must not survive a fresh row that no
+    longer requires it. Fails at 302b34483, where the marker is inherited."""
+    manifest_row = {"path": "/releases/old", "kind": "release_dir", "rule": "R",
+                    "restart_units": ["old-holder.service"], "reasons": [], "evidence": {"holder_units": ["old-holder.service"]}}
+    fresh_row = {"path": "/releases/old", "kind": "release_dir", "rule": "R"}     # the holder is gone: no action key
+    executed = H.executed_row(manifest_row, fresh_row)
+    assert "restart_units" not in executed, executed
+    assert "evidence" not in executed and "reasons" not in executed, executed
+    assert executed["path"] == "/releases/old"
+
+
+def test_a_fresh_empty_action_list_is_honoured_as_no_action():
+    """R2-inverse, positive control: an explicit empty list means "nothing to restart" and is not confused with an
+    omitted key."""
+    executed = H.executed_row({"path": "/releases/old", "kind": "release_dir", "rule": "R",
+                               "restart_units": ["old-holder.service"]},
+                              {"path": "/releases/old", "kind": "release_dir", "rule": "R", "restart_units": []})
+    assert executed["restart_units"] == []
 
 
 def test_an_unreadable_cgroup_is_refused_not_treated_as_no_holder(tmp_path, monkeypatch):

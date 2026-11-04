@@ -2008,6 +2008,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/DIRECTIVE_WATCH_FLAG_2026-10-22.md` | `in_directive_watch` fixed at the source (2026-10-22) |
 | `docs/ops/DISK_HYGIENE.md` | Disk Hygiene |
 | `docs/ops/DISK_HYGIENE_ENFORCER_2026-09-10.md` | Disk hygiene enforcer (2026-09-10) |
+| `docs/ops/DISK_HOLDER_SAFETY_20261104.md` | Disk hygiene — why rule R reports releases instead of deleting them (2026-11-04) |
 | `docs/ops/DISK_RECOVERY_20261030.md` | Disk recovery investigation, October 30 |
 | `docs/ops/DISK_STANDING_APPLY_20261024.md` | WP-33: standing disk-hygiene source preparation |
 | `docs/ops/DISK_STANDING_CI_FOLLOWUP_20261024.md` | Disabled disk hygiene: CI follow-up |
