@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { useApi } from '../hooks/useApi'
+import { advisoryReentryPresentation } from '../lib/advisoryReason'
 import { hubTitle, hubSubtitle } from '../lib/terminalHubChrome'
 
 interface Props { onDrill?: (ctx: any) => void }
@@ -471,7 +472,9 @@ function ReentryCard({ d, row }: { d: any; row: DeskRow }) {
   if (!d || !d.available) {
     return <span style={emptyStyle}>Re-entry intelligence unavailable — {d?.reason || 'no decision-desk row'}.</span>
   }
-  const state = d.state?.value || row.reentry_state || 'unavailable'
+  // Preserve the detail card's nested reason priority; presentation never changes the source row.
+  const presentation = advisoryReentryPresentation({ reentry: d, reentry_state: row.reentry_state, reentry_reason: row.reentry_reason })
+  const state = presentation.stateLabel || d.state?.value || row.reentry_state || 'unavailable'
   return (
     <div>
       <Field label="State" value={String(state)} tone="var(--accent)" />
@@ -482,7 +485,7 @@ function ReentryCard({ d, row }: { d: any; row: DeskRow }) {
       <Field label="RSI band" value={d.rsi_band || '40–70'} />
       <Field label="Wash" value={String(d.wash_status || (d.wash_blocked ? 'BLOCKED' : 'CLEAR'))} />
       <FieldStateView label="Next action" fs={d.next_action} />
-      <Field label="Why" value={String(d.why || d.reason || row.reentry_reason || 'unavailable')} />
+      <Field label="Why" value={presentation.reason || 'unavailable'} />
       <Field label="As of" value={`${fmtWhen(d.as_of) || 'unavailable'} · ${d.freshness || ''}`} />
     </div>
   )
@@ -648,9 +651,9 @@ function classHeadline(r: DeskRow) {
     return `${setup}${last != null ? ` · ${fmtPrice(last)}` : ''}`
   }
   if (r.row_class === 'closed_journal' || r.verdict === 'RE_ENTER') {
-    const st = r.reentry?.state?.value || r.reentry_state
+    const st = advisoryReentryPresentation(r).stateLabel || r.reentry?.state?.value || r.reentry_state
     const zone = r.reentry?.entry_zone_display
-    return `${st || r.verdict}${zone ? ` · ${zone}` : ''}`
+    return `${st || r.verdict}${zone ? ` · entry zone ${zone}` : ''}`
   }
   return r.verdict
 }
@@ -965,7 +968,9 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
               const key = `${r.symbol}:${r.account || ''}:${r.advisory_row_hash || ''}`
               const open = expanded === key
               const dq = r.data_quality || {}
-              const headline = r.why_call || (r.rationale_signals || [])[0] || r.rationale || 'no rationale attached'
+              const presentation = advisoryReentryPresentation(r)
+              const stateLabel = presentation.stateLabel || r.reentry_state
+              const headline = presentation.reason || 'no rationale attached'
               return (
                 <Fragment key={key}>
                   <tr
@@ -994,8 +999,8 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
                       {r.setup_state && r.row_class === 'watchlist' && (
                         <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--accent)' }}>{r.setup_state}</div>
                       )}
-                      {r.reentry_state && (r.row_class === 'closed_journal' || r.verdict === 'RE_ENTER') && (
-                        <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--accent)' }}>{r.reentry_state}</div>
+                      {stateLabel && (r.row_class === 'closed_journal' || r.verdict === 'RE_ENTER') && (
+                        <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--accent)' }}>{stateLabel}</div>
                       )}
                     </td>
                     <td style={{ padding: '8px 10px' }}>{r.confidence != null ? Number(r.confidence).toFixed(2) : 'n/a'}</td>
@@ -1056,7 +1061,7 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
                                   <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text3)', letterSpacing: 0.3, marginBottom: 4 }}>
                                     WHY THIS CALL
                                   </div>
-                                  {r.why_call}
+                                  {headline}
                                 </div>
                               )}
                               {synthesis && (
