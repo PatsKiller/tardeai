@@ -57,29 +57,32 @@ export function quoteAge(quoteAt: unknown, now: Date = new Date()): QuoteAge {
       session: null,
     }
   }
+  // R3 (codex BLOCK at 77b94efa3a): the decision uses exact elapsed milliseconds. Rounding first let a quote 30m20s old
+  // read as "30m" and pass, and a 60-second future allowance let a clock 30s ahead read as current. Neither is in the rule
+  // the page states, so neither is in the code: any future instant is not current, and "older than 30 minutes" is a strict
+  // comparison on the real age. Rounding happens only in the words a person reads.
   const ageMs = now.getTime() - at.getTime()
-  const minutes = Math.round(ageMs / 60_000)
   const session = sessionOf(at)
   const clock = etClock(at)
-  if (ageMs < -60_000) {
+  const shown = ageMs < 60_000 ? 'under a minute' : `${Math.floor(ageMs / 60_000)} minutes`
+  if (ageMs < 0) {
     return {
       state: 'unknown', short: 'quote time is ahead · not current',
       words: `The quote claims a time of ${clock} ET, which is in the future, so it is not trusted.`,
       session,
     }
   }
-  if (minutes > QUOTE_STALE_MINUTES) {
-    const age = minutes >= 120 ? `${Math.round(minutes / 60)}h` : `${minutes}m`
+  if (ageMs > QUOTE_STALE_MINUTES * 60_000) {
     return {
-      state: 'stale', short: `quote ${age} old · not current`,
-      words: `The quote is ${minutes} minutes old (${clock} ET, ${session ?? 'session unknown'}), older than the ` +
+      state: 'stale', short: `quote ${shown} old · not current`,
+      words: `The quote is ${shown} old (${clock} ET, ${session ?? 'session unknown'}), older than the ` +
         `${QUOTE_STALE_MINUTES}-minute window, so this reward-to-risk is not a current reading.`,
       session,
     }
   }
   return {
-    state: 'current', short: `${Math.max(0, minutes)}m old · ${session ?? 'session unknown'}`,
-    words: `Quote observed ${clock} ET (${session ?? 'session unknown'}), ${Math.max(0, minutes)} minutes old.`,
+    state: 'current', short: `${shown} old · ${session ?? 'session unknown'}`,
+    words: `Quote observed ${clock} ET (${session ?? 'session unknown'}), ${shown} old.`,
     session,
   }
 }

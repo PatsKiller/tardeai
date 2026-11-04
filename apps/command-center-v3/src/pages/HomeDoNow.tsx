@@ -134,7 +134,7 @@ export default function HomeDoNow() {
   const mr = unwrapMarketRisk(mrResp)
   const { data: tradeAi } = useApi<any>('/api/v2/trade-ai/summary', 60_000)
   const { data: posture } = useApi<any>('/api/v2/defense/posture', 300_000)
-  const { data: oppTop } = useApi<any>(BEST_OPPORTUNITIES_API, 300_000)
+  const { data: oppTop, error: oppError, stale: oppStale, loading: oppLoading } = useApi<any>(BEST_OPPORTUNITIES_API, 300_000)
   const platformApi = useApi<any>('/api/v2/system/platform-health', 60_000)
   const dpApi = useApi<DeploysStatusWire>(DEPLOYS_PATHS.status, 120_000)
   const { data: command } = useApi<any>('/api/v2/command', 300_000)
@@ -166,6 +166,9 @@ export default function HomeDoNow() {
   // FQ-088: the list carries an as-of and every row a quote time. Home discarded both, so a reward-to-risk
   // computed from an old quote looked exactly like a current one.
   const oppAsOf = listAsOfWords(unwrap(oppTop)?.as_of)
+  // R1 (codex BLOCK at 77b94efa3a): a failed poll must not look current. When the refresh errors or the hook is
+  // serving a retained answer, the card says so and every row is qualified as retained.
+  const oppRetained = !oppLoading && (!!oppError || !!oppStale)
   const ph = platformHealthFrom(platformApi.data, { error: platformApi.error, loading: platformApi.loading, nowMs: now })
   const scanStale = tradeAiSurfaceFreshness(tradeAi).stale
   const setup = renderSetupCounts(tradeAi?.setup_run_summary, { stale: scanStale, staleLabel: 'STALE' })
@@ -335,12 +338,27 @@ export default function HomeDoNow() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14 }}>
         <section style={card} data-testid="home-opportunities" aria-label="Best opportunities">
           <CardHead title="Best opportunities" to={BEST_OPPORTUNITIES_PATH} linkText="View top 5" touchTarget />
+          {oppRetained ? <div data-testid="home-opportunities-retained" style={{ fontSize: TYPE.xs, fontWeight: 600, color: TOKENS.warning }}>Refresh failed — showing the last list; not current</div> : null}
           {oppAsOf ? <div data-testid="home-opportunities-as-of" style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>{oppAsOf}</div> : null}
           {opps.length === 0 && <div style={{ fontSize: TYPE.base, color: TOKENS.text[3] }}>{oppTop ? 'Nothing clears the bar right now.' : 'Loading…'}</div>}
           {opps.map((o: any) => {
             // FQ-088: the row quotes the price the R:R was computed from; an old or missing quote is marked, never
             // presented as current. Missing is not guessed from the list as-of.
             const q = quoteAge(o?.inputs_as_of?.quote)
+            // R2 (codex BLOCK): the row's quote-input clock is not reliably bound to the price the ratio used (the
+            // backend can pair an older fallback price with a newer row timestamp), so the caption names it as the
+            // INPUT clock and never claims the ratio itself is current from it. No price at all means the ratio is the
+            // plan's, not a live price.
+            const hasPrice = o?.risk_reward?.current_price != null
+            const caption = oppRetained ? 'retained · not current'
+              : !hasPrice ? 'plan-based · not a current price'
+              : `${q.short} · input clock`
+            const captionTone = oppRetained || !hasPrice || q.state !== 'current' ? TOKENS.warning : TOKENS.text[3]
+            const captionTitle = oppRetained
+              ? 'The last refresh failed, so this row is retained and not current.'
+              : !hasPrice
+                ? 'This ratio comes from the entry plan; no current price was attached to the row.'
+                : `${q.words} This is the list's quote-input clock; the price behind the ratio is not proven to come from that observation.`
             return (
             <button key={o.symbol} type="button" onClick={() => openSymbol(o.symbol)}
               title={`${o.symbol}: conviction ${o.conviction != null ? Math.round(o.conviction) : '—'} of 100 · reward-to-risk ${o.risk_reward?.rr != null ? Number(o.risk_reward.rr).toFixed(1) : '—'}× (/api/v3/opportunities, CIO opportunity ranking). Advisory only.`}
@@ -348,7 +366,7 @@ export default function HomeDoNow() {
               <span style={{ ...numStyle, fontWeight: 600 }}>{o.symbol}</span>
               <span style={{ color: TOKENS.text[2], fontSize: TYPE.sm }}>{String(o.type ?? '').replace(/_/g, ' ')}</span>
               <span style={{ ...numStyle, fontSize: TYPE.sm, textAlign: 'right', lineHeight: 1.2 }}>R:R {o.risk_reward?.rr != null ? `${Number(o.risk_reward.rr).toFixed(1)}×` : '—'}
-                <span data-testid={`home-opp-quote-${o.symbol}`} title={q.words} style={{ display: 'block', fontSize: TYPE.xs, fontWeight: 400, color: q.state === 'current' ? TOKENS.text[3] : TOKENS.warning }}>{q.short}</span>
+                <span data-testid={`home-opp-quote-${o.symbol}`} title={captionTitle} style={{ display: 'block', fontSize: TYPE.xs, fontWeight: 400, color: captionTone }}>{caption}</span>
               </span>
               <span style={{ ...numStyle, fontWeight: 600, color: TOKENS.success, textAlign: 'right' }}>{o.conviction != null ? Math.round(o.conviction) : '—'}</span>
             </button>

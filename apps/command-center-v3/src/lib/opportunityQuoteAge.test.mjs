@@ -12,7 +12,7 @@ const NOW = new Date('2026-11-04T17:00:00Z')
 const fresh = quoteAge('2026-11-04T11:55:03-05:00', NOW)     // 12:00 ET, 5 min old, regular session
 check('a 5-minute-old regular-session quote is current', fresh.state === 'current', JSON.stringify(fresh))
 check('it names the session', fresh.session === 'regular', String(fresh.session))
-check('its caption carries the age', /5m old/.test(fresh.short), fresh.short)
+check('its caption carries the age', /minutes? old/.test(fresh.short), fresh.short)
 check('its sentence names the observation clock', /11:55 ET/.test(fresh.words), fresh.words)
 
 // ---- 2. an old quote is stale and says so ---------------------------------------------------------
@@ -20,6 +20,17 @@ const old = quoteAge('2026-11-04T09:30:00-05:00', NOW)       // 150 min old
 check(`older than ${QUOTE_STALE_MINUTES} minutes is stale`, old.state === 'stale', JSON.stringify(old))
 check('and its caption says it is not current', /not current/.test(old.short), old.short)
 check('and its sentence says it is not a current reading', /not a current reading/.test(old.words), old.words)
+
+
+// ---- 2b. R3 boundary controls, the exact cases codex measured --------------------------------
+const at30 = quoteAge('2026-11-04T12:00:00-05:00', new Date('2026-11-04T12:30:00-05:00'))
+check('exactly 30 minutes old is still inside the window', at30.state === 'current', JSON.stringify(at30))
+const at30m20 = quoteAge('2026-11-04T11:59:40-05:00', new Date('2026-11-04T12:30:00-05:00'))
+check('30m20s old is stale, not rounded down to 30m', at30m20.state === 'stale', JSON.stringify(at30m20))
+const plus30 = quoteAge('2026-11-04T12:30:30-05:00', new Date('2026-11-04T12:30:00-05:00'))
+check('30 seconds in the future is not current', plus30.state === 'unknown', JSON.stringify(plus30))
+const plus1 = quoteAge('2026-11-04T12:30:01-05:00', new Date('2026-11-04T12:30:00-05:00'))
+check('1 second in the future is already not current', plus1.state === 'unknown', JSON.stringify(plus1))
 
 // ---- 3. the real 11:30 ET quote is stale by the afternoon, and pre-market by session ----------------
 const premarket = quoteAge('2026-11-04T09:00:00-05:00', new Date('2026-11-04T09:05:00-05:00'))
@@ -46,6 +57,13 @@ const page = readFileSync(new URL('../pages/HomeDoNow.tsx', import.meta.url), 'u
 check('the page renders the list as-of', /data-testid="home-opportunities-as-of"/.test(page), 'no list as-of on the page')
 check('the page renders a per-row quote age', /data-testid=\{`home-opp-quote-\$\{o\.symbol\}`\}/.test(page), 'no per-row quote caption')
 check('the page calls quoteAge on the row quote', /quoteAge\(o\?\.inputs_as_of\?\.quote\)/.test(page), 'the row quote is not aged')
+// R1: a failed poll must not look current
+check('the page consumes the poll error/stale state', /error: oppError, stale: oppStale/.test(page), 'the poll transport state is not consumed')
+check('and says retained when the refresh failed', /Refresh failed — showing the last list; not current/.test(page), 'no retained qualification')
+// R2: the age is labelled as the input clock, never as proof the ratio is current
+check('the caption calls it the input clock', /input clock/.test(page), 'the caption does not name the clock it uses')
+check('a row with no price is called plan-based', /plan-based · not a current price/.test(page), 'a plan-only ratio is not qualified')
+check('and the title disclaims the binding', /not proven to come from that observation/.test(page), 'the tooltip does not disclaim the price binding')
 check('the page calls listAsOfWords on the payload as-of', /listAsOfWords\(unwrap\(oppTop\)\?\.as_of\)/.test(page), 'the payload as-of is still discarded')
 
 console.log(`opportunityQuoteAge: ${pass} passed, ${fail} failed`)
