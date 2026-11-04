@@ -407,7 +407,7 @@ export default function ConsumptionHub() {
         </div>
         {(processMore || processesExpanded) && (
           <button type="button" onClick={() => setProcessesExpanded(v => !v)} aria-expanded={processesExpanded}
-            style={{ marginTop: 10, width: '100%', padding: '9px 12px', borderRadius: RADIUS.sm, cursor: 'pointer',
+            style={{ marginTop: 10, width: '100%', minHeight: 44, padding: '9px 12px', borderRadius: RADIUS.sm, cursor: 'pointer',
                      fontSize: 12, fontWeight: 700, color: BLUE, background: 'transparent',
                      border: '1px solid color-mix(in srgb, var(--info-color) 40%, transparent)' }}>
             {processesExpanded ? 'Show fewer processes' : processMore}
@@ -449,7 +449,7 @@ export default function ConsumptionHub() {
         )}
         {(logMore || logsExpanded) && (
           <button type="button" onClick={() => setLogsExpanded(v => !v)} aria-expanded={logsExpanded}
-            style={{ marginTop: 10, width: '100%', padding: '9px 12px', borderRadius: RADIUS.sm, cursor: 'pointer',
+            style={{ marginTop: 10, width: '100%', minHeight: 44, padding: '9px 12px', borderRadius: RADIUS.sm, cursor: 'pointer',
                      fontSize: 12, fontWeight: 700, color: BLUE, background: 'transparent',
                      border: '1px solid color-mix(in srgb, var(--info-color) 40%, transparent)' }}>
             {logsExpanded ? 'Show fewer calls' : logMore}
