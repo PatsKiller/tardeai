@@ -475,3 +475,127 @@ def test_observed_reentry_quote_carries_each_sessions_own_timestamp(hour, sessio
     utc = r.current_session_quotes(["ZZQ"], end=et(2026, 11, 4, hour, 17).astimezone(timezone.utc))["ZZQ"]
     assert local == utc and local["status"] == "available" and local["session"] == session
     assert local["as_of"] == row["fetched_at"].astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+
+def _read_only_setup_failure(mode, *, cleanup_fails):
+    original = RuntimeError("synthetic read-only initialization refused")
+    class BaseConnection:
+        closed = False
+        query_calls = 0
+
+        def cursor(self):
+            self.query_calls += 1
+            raise AssertionError("a refused connection cannot execute a query")
+
+        def close(self):
+            self.closed = True
+            if cleanup_fails:
+                raise OSError("synthetic connection cleanup failed")
+
+    if mode == "set_session":
+        class Connection(BaseConnection):
+            def set_session(self, **_kwargs):
+                raise original
+    elif mode == "read_only_setter":
+        class Connection(BaseConnection):
+            @property
+            def read_only(self):
+                return False
+
+            @read_only.setter
+            def read_only(self, _value):
+                raise original
+    elif mode == "read_only_getter":
+        class Connection(BaseConnection):
+            @property
+            def read_only(self):
+                raise original
+    else:
+        Connection = BaseConnection
+    return Connection(), original
+
+
+@pytest.mark.parametrize("mode", ["set_session", "read_only_setter", "read_only_getter", "missing_api"])
+@pytest.mark.parametrize("cleanup_fails", [False, True])
+def test_reentry_refresh_closes_connection_on_every_read_only_setup_failure(mode, cleanup_fails):
+    joiner = _observed_joiner()
+    conn, _original = _read_only_setup_failure(mode, cleanup_fails=cleanup_fails)
+    stage = {"verdict": "Confirmed", "last_close": 140.47, "invalidation_level": 134.50}
+    old = {"state": "evaluated", "reentry_watch": {"ZZQ": {"exit_price": 137.19, "stages": stage,
+           "current_quote": {"status": "available", "price": 140.47}}}}
+    out = joiner.refresh_reentry_quotes(old, now=et(2026, 11, 4, 9, 17), get_conn=lambda **_kwargs: conn)
+    quote = out["reentry_watch"]["ZZQ"]["current_quote"]
+    assert conn.closed is True, "new connection must close even before PgReader can take ownership"
+    assert conn.query_calls == 0
+    assert quote["status"] == "unavailable" and quote["price"] is None
+    assert quote["reason"] == "CURRENT_QUOTE_READER_UNAVAILABLE"
+    assert out["reentry_watch"]["ZZQ"]["stages"] == stage
+    assert old["reentry_watch"]["ZZQ"]["current_quote"]["price"] == 140.47
+
+
+@pytest.mark.parametrize("mode", ["set_session", "read_only_setter", "read_only_getter", "missing_api"])
+@pytest.mark.parametrize("cleanup_fails", [False, True])
+def test_read_only_setup_cleanup_preserves_the_original_refusal(mode, cleanup_fails):
+    joiner = _observed_joiner()
+    conn, original = _read_only_setup_failure(mode, cleanup_fails=cleanup_fails)
+    with pytest.raises(RuntimeError) as caught:
+        joiner._ro_conn(joiner.db_bounds({}), lambda **_kwargs: conn)
+    assert conn.closed is True and conn.query_calls == 0
+    if mode == "missing_api":
+        assert str(caught.value) == "connection cannot be made read-only"
+    else:
+        assert caught.value is original, "cleanup must not replace the read-only initialization exception"
+
+
+
+@pytest.mark.parametrize("mode", ["set_session", "read_only_setter", "read_only_getter", "missing_api"])
+@pytest.mark.parametrize("cleanup_fails", [False, True])
+def test_reader_cur_refusal_closes_unowned_connection_and_preserves_original(mode, cleanup_fails):
+    module = _observed_module("test_reader_cur_failure", "scripts/lib/market_risk/reader.py")
+    conn, original = _read_only_setup_failure(mode, cleanup_fails=cleanup_fails)
+    reader = module.PgReader(lambda: conn)
+    with pytest.raises(RuntimeError) as caught:
+        reader._cur()
+    assert conn.closed is True and conn.query_calls == 0
+    assert reader._conn is None
+    if mode == "missing_api":
+        assert str(caught.value) == "market_risk reader: connection cannot be made read-only; refusing to use it"
+    else:
+        assert caught.value is original
+
+
+@pytest.mark.parametrize("failure_stage", [1, 2])
+@pytest.mark.parametrize("cleanup_fails", [False, True])
+def test_reentry_refresh_closes_both_read_only_initializers(failure_stage, cleanup_fails):
+    joiner = _observed_joiner()
+    refusal = RuntimeError("synthetic initializer-stage refusal")
+    class Connection:
+        readonly_calls = 0
+        close_calls = 0
+        query_calls = 0
+
+        def set_session(self, **_kwargs):
+            self.readonly_calls += 1
+            if self.readonly_calls == failure_stage:
+                raise refusal
+
+        def cursor(self):
+            self.query_calls += 1
+            raise AssertionError("no query may run after a read-only initializer refusal")
+
+        def close(self):
+            self.close_calls += 1
+            if cleanup_fails:
+                raise OSError("synthetic cleanup refused")
+
+    conn = Connection()
+    stage = {"verdict": "Confirmed", "last_close": 140.47, "invalidation_level": 134.50}
+    old = {"state": "evaluated", "reentry_watch": {"ZZQ": {"exit_price": 137.19, "stages": stage,
+           "current_quote": {"status": "available", "price": 140.47}}}}
+    out = joiner.refresh_reentry_quotes(old, now=et(2026, 11, 4, 9, 17), get_conn=lambda **_kwargs: conn)
+    quote = out["reentry_watch"]["ZZQ"]["current_quote"]
+    assert conn.readonly_calls == failure_stage
+    assert conn.close_calls == 1 and conn.query_calls == 0
+    assert quote["status"] == "unavailable" and quote["price"] is None
+    assert out["reentry_watch"]["ZZQ"]["stages"] == stage

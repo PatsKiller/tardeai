@@ -626,8 +626,9 @@ export function actionableModel(mr: MarketRisk | null, now = Date.now()): Action
       return { date: `${parts.year}-${parts.month}-${parts.day}`, weekday: parts.weekday,
         seconds: Number(parts.hour) * 3600 + Number(parts.minute) * 60 + Number(parts.second) }
     }
-    const quoteClock = etClock(quoteAt), evaluatedClock = etClock(evaluatedAt)
-    const quoteEvidenceKnown = quote?.status === 'available' && !quote.stale && !mr.stale
+    const quoteClock = etClock(quoteAt)
+    const legacyQuote = quote?.schema === 'ReentryRegularQuote@v1'
+    const quoteEvidenceKnown = legacyQuote && quote?.status === 'available' && !quote.stale && !mr.stale
       && typeof quote.price === 'number' && Number.isFinite(quote.price) && quote.price > 0
       && quote.source === 'market_quotes:alpaca' && quote.session === 'regular'
       && typeof quote.session_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(quote.session_date)
@@ -637,22 +638,24 @@ export function actionableModel(mr: MarketRisk | null, now = Date.now()): Action
       && Number.isFinite(evaluatedAt) && quoteAt <= evaluatedAt
     // Request-time observed quote is distinct from a confirmed daily bar. Re-age retained API data too.
     const observedQuote = quote?.schema === 'ReentryObservedQuote@v1'
-    const observedAt = zoned(quote?.evaluated_at)
+    const observedAt = observedQuote ? zoned(quote?.evaluated_at) : evaluatedAt
     const wallClock = etClock(now)
     const sessionLimit = quote?.session === 'premarket' ? 120 : quote?.session === 'regular' ? 90 : quote?.session === 'afterhours' ? 240 : 0
     const sessionMatches = !!quoteClock && (quote?.session === 'premarket'
       ? quoteClock.seconds >= 4 * 3600 && quoteClock.seconds < 9.5 * 3600
-      : quote?.session === 'regular' ? quoteClock.seconds >= 9.5 * 3600 && quoteClock.seconds < 16 * 3600
+      : quote?.session === 'regular' ? quoteClock.seconds >= 9.5 * 3600 && quoteClock.seconds < 16 * 3600 + (legacyQuote ? 60 : 0)
       : quote?.session === 'afterhours' && quoteClock.seconds >= 16 * 3600 && quoteClock.seconds < 20 * 3600)
-    const observedKnown = observedQuote && quote?.status === 'available' && !quote.stale
+    // Every recognised contract goes through the SAME caller-clock proof. Unknown schemas never fall back.
+    const quoteKnown = (observedQuote || legacyQuote) && quote?.status === 'available' && !quote.stale
+      && (!legacyQuote || quoteEvidenceKnown)
       && typeof quote.price === 'number' && Number.isFinite(quote.price) && quote.price > 0
       && quote.source === 'market_quotes:alpaca' && sessionMatches
       && ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(quoteClock?.weekday ?? '')
       && quoteClock?.date === quote.session_date && quoteClock?.date === wallClock?.date
       && Number.isFinite(observedAt) && quoteAt <= observedAt && observedAt <= now
       && quoteAt <= now && (now - quoteAt) / 60_000 <= sessionLimit
-    const quoteKnown = observedKnown || (!observedQuote && quoteEvidenceKnown && quoteClock!.date === evaluatedClock?.date)
-    const priorRegularQuote = quoteEvidenceKnown && !!evaluatedClock && quoteClock!.date < evaluatedClock.date
+    const observedKnown = observedQuote && quoteKnown
+    const priorRegularQuote = quoteEvidenceKnown && !quoteKnown && quoteAt <= now
     const finite = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null
     const price = quoteKnown ? quote!.price : null
     const exitReference = finite(c.exit_price ?? st.exit_price)
@@ -660,7 +663,7 @@ export function actionableModel(mr: MarketRisk | null, now = Date.now()): Action
       ? (price! / exitReference - 1) * 100 : quoteKnown ? finite(quote!.pct_vs_exit) : null
     const vsMa = quoteKnown ? finite(quote!.pct_vs_sma20) : null
     const ma = vsMa != null ? `${fmtSignedPct(vsMa)} vs confirmed 20-day` : ''
-    const quoteLabel = observedKnown && quoteClock
+    const quoteLabel = quoteKnown && quoteClock
       ? `${quote!.session === 'premarket' ? 'pre-market' : quote!.session === 'afterhours' ? 'after-hours' : 'regular-session'} ${String(Math.floor(quoteClock.seconds / 3600)).padStart(2, '0')}:${String(Math.floor(quoteClock.seconds / 60) % 60).padStart(2, '0')} ET`
       : ''
     const invalidation = finite(st.invalidation_level)

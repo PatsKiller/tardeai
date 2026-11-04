@@ -22,7 +22,11 @@ observation time, session/date, request evaluation time and explicit freshness. 
 a streaming-live guarantee, an exchange trade timestamp or an official daily close. Confirmed stages, the
 regular-session close reader and daily bars are unchanged.
 
-The UI validates and re-ages that observation before using it. A current price below the existing invalidation
+The UI requires an explicit recognised quote schema and validates every accepted schema against the caller clock.
+Both current observations and legacy regular observations expire even if an old API assessment is retained.
+An expired legacy observation may remain labelled historical context; it cannot keep Now or CONFIRMED.
+The dedicated quote connection is closed on read-only setup failure as well as query/cleanup failure, and the original
+setup refusal is preserved if cleanup also fails. The UI re-ages the observation before using it. A current price below the existing invalidation
 level vetoes an old positive stage verdict: `INVALIDATED`, with Stage 2 no longer marked met. An unavailable/stale
 quote renders current confirmation `UNVERIFIED`; it cannot silently borrow yesterday's close or keep CONFIRMED.
 The current price and percent share the same price/reference pair. A quote failure does not erase the historical

@@ -150,13 +150,21 @@ class PgReader:
             # start after it, and the reader never commits, so its first transaction stayed read-write (data-feed
             # review of #2383). ``set_session(readonly=True)`` (psycopg2) or ``read_only`` (psycopg 3) applies before
             # the first transaction begins; a connection exposing neither is refused rather than used read-write.
-            if hasattr(conn, "set_session"):
-                conn.set_session(readonly=True)
-            elif hasattr(conn, "read_only"):
-                conn.read_only = True
-            else:
-                conn.close()
-                raise RuntimeError("market_risk reader: connection cannot be made read-only; refusing to use it")
+            try:
+                if hasattr(conn, "set_session"):
+                    conn.set_session(readonly=True)
+                elif hasattr(conn, "read_only"):
+                    conn.read_only = True
+                else:
+                    raise RuntimeError("market_risk reader: connection cannot be made read-only; refusing to use it")
+            except BaseException:
+                # Until initialization succeeds, this factory result is not owned by self._conn. In particular,
+                # a second read-only initialization may refuse after a caller's dedicated factory succeeded.
+                try:
+                    conn.close()
+                except BaseException:
+                    pass  # cleanup cannot replace the initialization refusal
+                raise
             self._conn = conn
         return self._conn.cursor()
 

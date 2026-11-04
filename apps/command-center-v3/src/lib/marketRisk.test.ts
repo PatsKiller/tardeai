@@ -189,11 +189,11 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
   assert.equal(shadowMarker(carriedNone), CARRIED_MARKER)
   assert.equal(r.now, 'unavailable', 'legacy confirmed Friday close never masquerades as Now')
   assert.equal(r.vsExit, '—', 'missing current quote cannot borrow Friday percent')
-  const currentQuote = { status: 'available', price: 12.34, source: 'market_quotes:alpaca', session: 'regular',
+  const currentQuote = { schema: 'ReentryRegularQuote@v1', status: 'available', price: 12.34, source: 'market_quotes:alpaca', session: 'regular',
     session_date: '2031-03-10', expected_session_date: '2031-03-10', as_of: '2031-03-10T20:00:59.999999Z',
     pct_vs_exit: 23.4, pct_vs_sma20: 10 }
-  const quoteRow = (quote: any, assessment = '2031-03-11T00:15:00Z') => actionableModel(unwrapMarketRisk({ ...base, as_of: assessment,
-    reentry_watch: { NEWX: { ...base.reentry_watch.NEWX, current_quote: quote } } }))!.reentry[0]
+  const quoteRow = (quote: any, assessment = '2031-03-10T20:15:00Z') => actionableModel(unwrapMarketRisk({ ...base, as_of: assessment,
+    reentry_watch: { NEWX: { ...base.reentry_watch.NEWX, current_quote: quote } } }), Date.parse(assessment))!.reentry[0]
   const freshRow = quoteRow(currentQuote)
   assert.equal(freshRow.now, '$12.34', 'Monday after-close quote wins display over confirmed Friday9.50')
   assert.equal(freshRow.vsExit, '+23.4%', 'current quote percent is kept coherent')
@@ -225,7 +225,7 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
     assert.equal(quoteRow(quote).now, 'unavailable', 'nonregular or mismatched timestamp is not Now or prior-close context')
     assert.ok(!/Last stored regular-session observation/.test(quoteRow(quote).lookThrough))
   }
-  assert.equal(quoteRow({ ...currentQuote, as_of: '2031-03-10T13:30:00Z' }).now, '$12.34', '09:30 ET is inside regular session')
+  assert.equal(quoteRow({ ...currentQuote, as_of: '2031-03-10T13:30:00Z' }, '2031-03-10T13:30:30Z').now, '$12.34', '09:30 ET is inside regular session')
   assert.equal(quoteRow({ ...currentQuote, as_of: '2031-03-10T16:00:59-04:00' }).now, '$12.34', 'explicit ET offset closing minute remains valid')
   assert.equal(quoteRow({ ...currentQuote, status: 'stale' }).now, 'stale')
   assert.equal(quoteRow({ ...currentQuote, stale: true }).now, 'stale')
@@ -263,6 +263,23 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
   assert.equal(currentRow(observed, quoteNow + 3 * 3600_000).verdict, 'Unverified',
     'retained API data is re-aged against the caller clock')
   assert.equal(currentCase.stages.verdict, 'Confirmed', 'confirmed close evidence remains immutable')
+  // External review: every accepted schema is aged against the caller, not the cached assessment.
+  for (const schema of ['ReentryRegularQuote@v1', undefined, 'UnexpectedQuote@v7']) {
+    const legacy = { ...observed, schema, session: 'regular', price: 140.47,
+      as_of: '2026-11-04T15:59:00Z', session_date: '2026-11-04', expected_session_date: '2026-11-04' }
+    for (const callerTime of ['2026-11-04T19:00:00Z', '2026-11-05T16:00:00Z']) {
+      const retained = actionableModel(unwrapMarketRisk({ ...base, as_of: '2026-11-04T16:00:00Z',
+        card_config: { recent_sessions: 30 }, reentry_watch: { NEWX: { ...currentCase, current_quote: legacy } } }),
+        Date.parse(callerTime))!.reentry[0]
+      assert.equal(retained.verdict, 'Unverified', 'retained legacy/unknown response cannot keep expired CONFIRMED')
+      assert.ok(retained.now !== '$140.47', 'retained regular quote is historical context, not Now')
+      assert.ok(retained.stage2 !== 'met')
+    }
+  }
+  for (const schema of [undefined, 'UnexpectedQuote@v7']) {
+    assert.equal(currentRow({ ...observed, schema }).verdict, 'Unverified', 'an unidentified quote contract cannot affirm recovery')
+  }
+
   console.log('marketRisk.test v005 actionable: ok')
 }
 {

@@ -50,13 +50,21 @@ def _ro_conn(bounds: dict[str, int], get_conn: Any = None):
         connect_timeout=bounds["connect_timeout_s"],
         options=f"-c statement_timeout={bounds['statement_timeout_ms']} -c lock_timeout={bounds['lock_timeout_ms']}",
     )
-    if hasattr(conn, "set_session"):
-        conn.set_session(readonly=True)
-    elif hasattr(conn, "read_only"):
-        conn.read_only = True
-    else:
-        conn.close()
-        raise RuntimeError("connection cannot be made read-only")
+    try:
+        if hasattr(conn, "set_session"):
+            conn.set_session(readonly=True)
+        elif hasattr(conn, "read_only"):
+            conn.read_only = True
+        else:
+            raise RuntimeError("connection cannot be made read-only")
+    except BaseException:
+        # Ownership has not reached PgReader/caller yet. Close this newly allocated connection even when
+        # the read-only API/getter/setter refuses; cleanup must not replace the original refusal.
+        try:
+            conn.close()
+        except BaseException:
+            pass
+        raise
     return conn
 
 
