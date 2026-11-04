@@ -35092,7 +35092,7 @@
       "owner": "agents",
       "connects_to": [
         {
-          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "name": "n8n -> relay -> gateway coordination/run -> tradeai-n8n-run-executor",
           "kind": "service",
           "direction": "calls",
           "source": "AGENTS.md section 23.3; PROPOSED: no n8n workflow exists yet for this lane"
