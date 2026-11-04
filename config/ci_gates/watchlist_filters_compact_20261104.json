@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watchlist_filters_compact_20261104",
+  "files": [
+    "apps/command-center-v3/src/lib/watchlistFiltersCompact.view.test.mjs"
+  ],
+  "anchor": "WATCHLIST_FILTERS_COMPACT_20261104",
+  "comment": [
+    "ANCHOR: WATCHLIST_FILTERS_COMPACT_20261104 — FQ-077: at phone width the filter stack collapses to one line naming how many filters are active (or that none are), so the first result is not several screens down; every filter is still present behind the toggle and desktop keeps them inline. Hermetic: reads the page source, no browser, no network."
+  ]
+}

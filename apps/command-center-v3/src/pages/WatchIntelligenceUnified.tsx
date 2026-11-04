@@ -603,6 +603,20 @@ export default function WatchIntelligenceUnified() {
         <button type="button" style={pill(layout === 'table')} onClick={() => setParam('layout', 'table')}>Table</button>
       </div>
 
+      {/* FQ-077: on a phone the filter stack is collapsed behind a one-line summary, so the first result is not several
+          screens down. Nothing is removed — every filter is still there, one tap away, and desktop keeps them inline. */}
+      {typeof window !== 'undefined' && window.matchMedia('(max-width: 760px)').matches ? (
+        <details data-testid="filters-compact" style={{ marginBottom: 10 }}>
+          <summary style={{ minHeight: 44, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: TYPE.sm, color: BB.text2 }}>
+            Filters{activeChips.length ? ` · ${activeChips.length} active` : ' · none active'}
+          </summary>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+            {activeChips.length ? activeChips.map(c => (
+              <span key={c} style={{ fontSize: TYPE.xs, border: `1px solid ${BB.border}`, borderRadius: 999, padding: '3px 8px', color: BB.text2 }}>{c}</span>
+            )) : <span style={{ fontSize: TYPE.xs, color: BB.text3 }}>No filter applied — every name in the list is shown.</span>}
+          </div>
+        </details>
+      ) : null}
       {/* 5. Active chips */}
       {activeChips.length > 0 && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
