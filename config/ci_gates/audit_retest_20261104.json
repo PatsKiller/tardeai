@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "audit_retest_20261104",
+  "files": [
+    "tests/test_audit_retest_20261104.py"
+  ],
+  "anchor": "AUDIT_RETEST_20261104",
+  "comment": [
+    "ANCHOR: AUDIT_RETEST_20261104 — piece 3 of the autoremediate loop (SPEC §2.5): the retest decision table. Serving is decided from the running process's cwd (never the CURRENT symlink), the four outcomes are retest_pass / retest_fail / fixed_but_not_serving / regressed plus retest_deferred_session for a session-specific finding, a failed retest raises severity and two failures escalate, and a previously-closed item that returns is a regression at P1. No outcome is ever called 'fixed'. Hermetic: pure functions, injected ancestry check, no git, no browser, no network."
+  ]
+}
