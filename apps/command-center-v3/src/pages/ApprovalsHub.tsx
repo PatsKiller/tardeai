@@ -43,6 +43,9 @@ function Queue() {
   const totalKnown = surface.totalKnown && q && q.pending_count !== null
   return <div className="approvals"><DeskPage title="Approvals Center" purpose="Everything waiting for your decision. Read the exact version, then decide."
     tabs={tabs} sources={[{ id: 'approvals', label: 'Approval queue', asOf: surface.data?.as_of,
+      // While the read is in flight this row has not been read, so it says so instead of manufacturing a clock gap
+      // from an `asOf` that does not exist yet (BOARD row 36).
+      pending: surface.state === 'loading',
       gap: surface.state === 'partial' ? 'Some approval sources are unavailable. The total is not yet known.' : undefined }]}
     decisionGap={totalKnown ? `${data!.pending_count} waiting for review.` : surfaceText ? `${surfaceText.title}. The total is not yet known.` : undefined}>
     {active => <div className="stack">

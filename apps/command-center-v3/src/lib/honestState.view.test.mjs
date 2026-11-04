@@ -30,7 +30,7 @@ function compile(path) {
       const list = names.split(',').map(s => s.trim()).filter(Boolean)
       const kept = list.filter(n => n !== 'useApi' && n !== 'useGovernance')
       const stubs = []
-      if (list.includes('useApi')) stubs.push('const useApi = (..._a: any[]): any => (globalThis as any).__deskFixture')
+      if (list.includes('useApi')) stubs.push('const useApi = (...a: any[]): any => { const f = (globalThis as any).__deskFixture; return typeof f === "function" ? f(String(a[0] ?? "")) : f }')
       if (list.includes('useGovernance')) stubs.push('const useGovernance = (...a: any[]): any => (globalThis as any).__govFixture(...a)')
       const imp = kept.length ? `import { ${kept.join(', ')} } from ${spec}` : ''
       return [imp, ...stubs].filter(Boolean).join('\n')
@@ -83,6 +83,18 @@ const projectionPartial = {
 }
 
 // Vocabulary that must never appear together.
+// DeskPage fetches /api/v2/desk-sources separately from the page's own payload. The harness used to serve ONE fixture to
+// every useApi call, so that fetch received the page's data and printed "Writer clocks unavailable" beside a loading
+// banner — cc3's N2. The stub now routes by URL when the fixture is a function, and this supplies the source payload:
+// a writer for every lane the page asks about, or a PENDING read while the page itself is still loading (so a loading
+// page's sources are loading too, which is the truth at that moment).
+function deskSources(url, pending) {
+  if (pending) return { data: null, error: null, loading: true, stale: false, refetch() {} }
+  const lanes = decodeURIComponent(String(url).split('lanes=')[1] ?? '').split(',').filter(Boolean)
+  return { data: { ok: true, writers: lanes.map(lane_id => ({ lane_id, last_success_at: '2030-01-01T00:00:00Z', evidence_as_of: '2030-01-01T00:00:00Z' })) },
+    error: null, loading: false, stale: false, refetch() {} }
+}
+const route = (fixture, state) => (url) => /desk-sources/.test(url) ? deskSources(url, state === 'loading') : fixture
 const LOADING = /\bLoading\b|has not answered/i
 const FAILED = /\bunavailable\b|could not be read/i
 
@@ -101,7 +113,7 @@ for (const [state, fixture] of Object.entries({
   partial: { data: projectionPartial, error: null, loading: false, refetch() {} },
   stale: { data: projection, error: 'refetch failed', loading: false, stale: true, refetch() {} },
 })) {
-  globalThis.__deskFixture = fixture
+  globalThis.__deskFixture = route(fixture, state)
   let text = ''
   try { text = render(React.createElement(DeskBoard, deskConfig)) } catch (e) {
     cases.push({ surface: '/agents', state, passed: false, failed_assertions: [`rendering threw: ${e.name}: ${e.message}`], text: '' })
@@ -134,19 +146,16 @@ for (const [state, fixture] of Object.entries({
   malformed: { data: { items: 'not-a-list', gaps: 'nope' }, error: null, loading: false, refresh() {} },
 })) {
   globalThis.__govFixture = () => fixture
+  globalThis.__deskFixture = route(fixture, state)
   let text = ''
   try { text = render(React.createElement(ApprovalsHub)) } catch (e) {
     cases.push({ surface: '/approvals', state, passed: false, failed_assertions: [`rendering threw: ${e.name}: ${e.message}`], text: '' })
     continue
   }
   caseOf('/approvals', state, text, [
-    // Scoped to THIS surface's words. The harness serves ONE fixture to every `useApi` call, so DeskPage's separate
-    // /desk-sources fetch receives the approval queue and prints its own "writer clocks" line (cc-deepseek-3 N2:
-    // a harness artifact, not a page contradiction — with a per-call fixture the page is clean). The rule that matters
-    // here is that the approval surface never calls itself unavailable while it is loading.
-    state === 'loading'
-      ? ['a loading approvals page never says the queue is unavailable', /Loading/i.test(text) && !/Queue unavailable|could not be read/i.test(text)]
-      : ['loading and failure words never co-render', !(LOADING.test(text) && FAILED.test(text))],
+    // The strict rule, restored: with per-URL routing (cc3 N2 closed) the page's own fetch no longer receives the
+    // approval queue, so loading and failure words must never co-render on the real page in ANY state.
+    ['loading and failure words never co-render', !(LOADING.test(text) && FAILED.test(text))],
     state === 'loading' ? ['a loading approvals page says loading', /Loading/i.test(text)] : ['no loading claim', true],
     state === 'error' ? ['a failed page says unavailable', /unavailable/i.test(text)] : ['no failure claim', !/Queue unavailable/i.test(text)],
     state === 'partial' ? ['a partial page shows its known rows', /Fixture item/.test(text)] : ['no partial rows', true],
