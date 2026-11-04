@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { BB, T, TYPE, RAIL, numStyle, terminalButton } from '../../lib/watchTokens'
 import { Chip } from '../TerminalChip'
-import { cadenceWords, neverRunText, scheduleWords } from '../../lib/reportCardText'
+import { cadenceWords, neverRunText, runStateOf, scheduleWords } from '../../lib/reportCardText'
 
 // Reports Desk v1 (WS-A): the Library — every report family the system already
 // produces, surfaced. Data: /api/v2/reports → report_catalog (built by the ONE
@@ -65,7 +65,7 @@ export default function ReportLibrary({ catalog }: { catalog: any }) {
                   </div>
                   {t.status === 'never-generated' && (
                     <div data-testid="report-never-run" style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>
-                      {neverRunText()} <a href="/ops/jobs" style={{ color: T.link }}>Open Ops → Jobs</a>
+                      {neverRunText(runStateOf(t))} <a href="/ops/jobs" style={{ color: T.link }}>Open Ops → Jobs</a>
                     </div>
                   )}
                   <details style={{ marginTop: 4 }}>
