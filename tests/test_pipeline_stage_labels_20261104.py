@@ -36,6 +36,21 @@ def test_the_current_stage_cell_is_marked_and_cells_keep_their_label():
     )
     assert re.search(r"aria-label=\{cellTitle\(c\)\}", SRC), "cells lost their accessible label"
     assert 'data-testid="wp-current-stage"' in SRC, "no full-width current-stage line in the component"
-    assert re.search(r"\{failedHere \? 'Failed at' : 'Now at'\}", SRC), (
-        "the line does not distinguish a failure from the current step"
+    assert "Failed at" not in SRC, (
+        "the line still infers a failure from RAG colour; the producer uses red for staleness too"
     )
+
+
+def test_the_stage_line_names_the_producers_record_and_never_a_colour_verdict():
+    # BLOCK F2 at 9ff60477c: red is used for a stale claim as well as a CI failure, so the line must carry the
+    # producer's own label and infer nothing from colour. This runs the real helper with both supported shapes.
+    import shutil
+    import subprocess
+    node = shutil.which("node")
+    assert node, "node is not on PATH: the wording behaviour cannot be verified (a skip would pass the gate)"
+    test = Path(__file__).resolve().parents[1] / "apps/command-center-v3/src/lib/pipelineStageWords.test.mjs"
+    assert test.is_file(), f"the wording test is missing: {test}"
+    proc = subprocess.run([node, "--experimental-strip-types", str(test)], capture_output=True, text=True,
+                          timeout=120, cwd=str(test.parents[3]),
+                          env={"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": "/tmp"})
+    assert proc.returncode == 0, f"the wording test failed:\n{proc.stdout}\n{proc.stderr}"

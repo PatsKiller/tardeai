@@ -14,6 +14,7 @@ import {
   filterToParams, planLabel, queuedSections, ragTone, summarize, type PipelineFilter, type PipelineItem, type PipelinePayload,
 } from '../lib/workPipeline'
 import { copyText, parseSplitParts, sendCommand, type CommandName, type CommandResult } from '../lib/workPipelineActions'
+import { currentStageWords } from '../lib/pipelineStageWords'
 import { canCreate, disabledReason, needsWords, phraseMatches, requestParams, type Tier2Action } from '../lib/workPipelineTier2'
 import { opsApi, passkeyStepUp, type OpsRequest } from '../lib/opsControls'
 
@@ -46,12 +47,10 @@ function StageCells({ it }: { it: PipelineItem }) {
   // FQ-032 (review at 64b3abc24): an 11-column strip gives each cell ~26-28 px on a 390 px phone, and the labels need
   // 39-54 px, so squeezing the label INTO the cell clipped it. The words now lead, in their own full-width line, and the
   // strip keeps the colour; the cell keeps its accessible label for anything reading the DOM.
-  const current = it.cells.find(c => c.stage === it.stage)
-  const words = current?.label || STAGE_LABEL[it.stage]
-  const failedHere = current?.rag === 'red'
+  const words = currentStageWords(it.cells, it.stage, STAGE_LABEL)
   return <>
     <div data-testid="wp-current-stage" className="wp-current-stage">
-      {failedHere ? 'Failed at' : 'Now at'}: <b>{words}</b>
+      Now at: <b>{words}</b>
     </div>
     <div data-testid="stage-cells" className="wp-stages" style={{ display: 'grid', gridTemplateColumns: 'repeat(11, minmax(0, 1fr))', gap: 3 }}>
       {it.cells.map(c => <div key={c.stage} data-stage={c.stage} data-rag={c.rag} data-current={c.stage === it.stage ? "1" : undefined} title={cellTitle(c)} aria-label={cellTitle(c)} style={cellStyle(c.rag, c.stage === it.stage)}>

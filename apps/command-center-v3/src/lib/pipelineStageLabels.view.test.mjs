@@ -19,7 +19,7 @@ if (mq) {
 }
 ok(/data-current=\{c\.stage === it\.stage \? "1" : undefined\}/.test(src), 'the current stage cell is not marked')
 ok(/data-testid="wp-current-stage"/.test(src), 'no full-width current-stage line in the component')
-ok(/\{failedHere \? 'Failed at' : 'Now at'\}/.test(src), 'the line does not distinguish a failure from the current step')
+ok(!/Failed at/.test(src), 'the line still infers a failure from RAG colour (the producer uses red for staleness too)')
 ok(/aria-label=\{cellTitle\(c\)\}/.test(src), 'cells lost their accessible label')
 if (failures.length) { console.error('FQ-032 FAILED:\n  - ' + failures.join('\n  - ')); process.exit(1) }
 console.log('FQ-032 ok: the current stage reads in words on its own line at phone width; the strip stays colour; every cell keeps its accessible label')

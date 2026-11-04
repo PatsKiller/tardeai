@@ -175,7 +175,9 @@ test('phone: the current stage reads in words at 390 and 412, and no visible cel
     await expect(line).toBeVisible()
     const box = await line.boundingBox()
     expect(box!.width).toBeGreaterThan(120)
-    await expect(line).toContainText(/(Now at|Failed at):/)
+    await expect(line).toContainText(/Now at:/)
+    // BLOCK F2: red is used for a stale claim too, so no failure verdict may be inferred from colour
+    await expect(line).not.toContainText(/Fail/)
     // whatever label IS shown must fit: a visible label wider than its cell is the defect this replaces
     const clipped = await page.evaluate(() => Array.from(document.querySelectorAll('[data-testid="stage-cells"] .wp-cell-text'))
       .filter(el => getComputedStyle(el).display !== 'none')
