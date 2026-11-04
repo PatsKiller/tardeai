@@ -1,0 +1,643 @@
+"""Recovery & Re-Entry Engine — piece B: the recovery state machine.
+
+Spec: ``persistent-state/handoffs/SPEC_RECOVERY_REENTRY_ENGINE_20261103.md`` §3.2. Operator's words behind it:
+"SpaceX is back up to 141 … Nothing has notified me to get back in."
+
+This module is PURE. It takes one ``recovery_cases`` row (piece A owns the store), a market snapshot and the
+policy, and returns the next state, the confidence, which triggers fired, the per-account gate annotations
+and the next thing that would change the answer. Nothing here writes a database, a holdings file, a plan or
+an order; the callers (``watch_alerts_eval.py`` every 20 minutes, ``recovery_watch_daily.py`` at 07:30) apply
+the result through piece A's accessor.
+
+Three rules from the spec that shape the code:
+
+* **A stop-out is an event with a follow-up, never an ending.** A case that has done nothing for 20 sessions
+  stays WATCHING (its card moves to the digest); it is never auto-closed while materiality is T2 or worse.
+* **Gates annotate; they never silence.** Wash/house-hold, RSI, the entry zone and the residual each become an
+  annotation with a *when* and a *what would change it*. A residual is a fact to display, never a disqualifier
+  (operator ruling 2026-11-03: the "held" concept is removed, not tuned). Only an account with NO date-open route
+  blocks RE_ENTRY_READY; a single failing caveat never hides the card.
+* **Recovery is a reclaim, not a pullback.** R1/R2 are reclaim triggers (exit +1%, the stop that fired); R3/R5
+  raise confidence but can never advance a state on their own; R4 (SMA20 reclaim) is the ready trigger.
+"""
+from __future__ import annotations
+
+import json
+import os
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Iterable, Mapping
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+STOPPED_OUT = "STOPPED_OUT"
+WATCHING = "WATCHING"
+RECOVERING = "RECOVERING"
+RE_ENTRY_READY = "RE_ENTRY_READY"
+RE_ENTERED = "RE_ENTERED"
+CLOSED = "CLOSED"
+SNOOZED = "SNOOZED"
+
+#: States the machine may move a case INTO. Operator-held states are never overwritten by a rule.
+OPERATOR_STATES = frozenset({CLOSED, SNOOZED, RE_ENTERED})
+MACHINE_STATES = (STOPPED_OUT, WATCHING, RECOVERING, RE_ENTRY_READY)
+
+DEFAULT_POLICY: dict[str, Any] = {
+    # R1 / R2: reclaim triggers. SPCX 141.65 vs the 137.19 exit is +3.3%, so R1 fires on the first close.
+    "reclaim_exit_pct": 0.010,
+    "stop_reclaim_enabled": True,
+    # R3: momentum. A cross up THROUGH rsi_level, or two consecutive up sessions on the MACD histogram.
+    "rsi_level": 40.0,
+    "macd_up_sessions": 2,
+    # R4: the ready trigger.
+    "sma_reclaim_period": 20,
+    # R5: a verified catalyst amplifies confidence; it is never sufficient alone.
+    "catalyst_min_confidence": 0.80,
+    "catalyst_max_sessions": 5,
+    # Confidence = sum of the fired trigger weights (clamped to 1.0).
+    "weights": {"R1": 0.35, "R2": 0.45, "R3": 0.10, "R4": 0.25, "R5": 0.15},
+    "recovering_floor": 0.30,
+    "ready_floor": 0.55,
+    # Decay: after this many sessions without a trigger the card is digest-only; the case is NOT closed.
+    "decay_sessions": 20,
+}
+
+
+def load_policy(path: str | Path | None = None) -> dict[str, Any]:
+    """The reviewed policy, with the code defaults filling any key it does not set.
+
+    An unreadable or malformed file is NOT a reason to weaken the engine silently: the defaults apply and
+    the caller is told (``policy_source``) so the receipt can say which rules actually ran.
+    """
+    policy = json.loads(json.dumps(DEFAULT_POLICY))  # deep copy
+    if path is None:
+        return {**policy, "policy_source": "defaults"}
+    try:
+        import yaml  # noqa: PLC0415 — optional at import time, required only to read the reviewed file
+
+        doc = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError, ImportError):
+        return {**policy, "policy_source": "defaults:policy_unreadable"}
+    if not isinstance(doc, Mapping):
+        return {**policy, "policy_source": "defaults:policy_not_a_mapping"}
+    merged = {**policy, **{k: v for k, v in doc.items() if not str(k).startswith("_")}}
+    # Piece A's reviewed file is nested (triggers/confidence/residual/eligibility). Read ITS dialect and map
+    # it onto the flat names the engine uses; never fork a threshold that lives in that file.
+    trig = doc.get("triggers") if isinstance(doc.get("triggers"), Mapping) else {}
+    conf = doc.get("confidence") if isinstance(doc.get("confidence"), Mapping) else {}
+    resid = doc.get("residual") if isinstance(doc.get("residual"), Mapping) else {}
+    def _pick(dst, *names, src=trig):
+        for name in names:
+            if name in src and src[name] is not None:
+                dst[name if name in dst else next(iter(dst))] = src[name]
+                return True
+        return False
+    mapping = {
+        "reclaim_exit_pct": ("r1_reclaim_exit_pct",),
+        "stop_reclaim_enabled": ("r2_reclaim_stop",),
+        "rsi_level": ("r3_rsi_cross",),
+        "macd_up_sessions": ("r3_macd_histogram_sessions",),
+        "catalyst_min_confidence": ("r5_catalyst_min_confidence",),
+        "catalyst_max_sessions": ("r5_catalyst_window_sessions",),
+        "decay_sessions": ("decay_sessions",),
+    }
+    for flat, (nested,) in mapping.items():
+        if nested in trig and trig[nested] is not None:
+            value = trig[nested]
+            if flat == "rsi_level" and isinstance(value, bool):
+                continue  # a boolean switch is not a level; keep the reviewed default
+            if nested.endswith("_pct"):
+                # Piece A's reviewed field NAMES the unit: ``r1_reclaim_exit_pct: 1.0`` means ONE PERCENT
+                # (A computes exit*(1+pct/100)). The engine's internal unit is a fraction, so the loader
+                # converts here — the silent 100x error codex's A->B probe found (2026-11-03) was a 1.0
+                # loaded as 100% and a trivial residual made "fully held".
+                try:
+                    value = float(value) / 100.0
+                except (TypeError, ValueError):
+                    continue
+            merged[flat] = value
+    if isinstance(conf.get("weights"), Mapping):
+        merged["weights"] = {**policy["weights"], **{str(k).upper(): v for k, v in conf["weights"].items()}}
+    if conf.get("ready_floor") is not None:
+        merged["ready_floor"] = conf["ready_floor"]
+    if conf.get("recovering_floor") is not None:
+        merged["recovering_floor"] = conf["recovering_floor"]
+    merged["policy_source"] = str(doc.get("schema") or "recovery_policy")
+    return merged
+
+
+def _num(value) -> float | None:
+    try:
+        if value is None or value == "":
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_dt(value) -> datetime | None:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def exit_price(case: Mapping[str, Any]) -> float | None:
+    """The exit price the recovery is measured against: the largest cluster exit, else the row's own field.
+
+    Piece A's ``RecoveryCase.to_dict()`` names the fill price ``price`` inside ``exits`` (``ExitFill.price``);
+    an older/looser row may carry ``exit_price`` there. Both are read so B consumes A's shape rather than
+    asking A to rename a field for it.
+    """
+    direct = _num(case.get("exit_price") or case.get("last_exit_price"))
+    if direct is not None:
+        return direct
+    rows: Iterable[Any] = []
+    for key in ("exits", "exits_json"):
+        raw = case.get(key)
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw or "[]")
+            except ValueError:
+                raw = []
+        if isinstance(raw, (list, tuple)):
+            rows = raw
+            break
+    # Piece A's canonical reference is the FINAL exit: its ``reclaim_exit_trigger`` compares against
+    # ``case.exits[-1].price``. B used the MAX cluster exit, so with exits 120 then 100 the two sides
+    # disagreed at any price between them (codex A->B probe, 2026-11-03). Follow the owner's semantics:
+    # the last exit in the row's own chronological order, falling back to the latest by date, and only
+    # then to any usable price.
+    usable = []
+    for index, row in enumerate(rows):
+        if not isinstance(row, Mapping):
+            continue
+        price = _num(row.get("exit_price")) if row.get("exit_price") is not None else _num(row.get("price"))
+        if not price:
+            continue
+        when = row.get("exit_date") or row.get("date")
+        usable.append((index, when, price))
+    if not usable:
+        return None
+    dates = [w for _i, w, _p in usable if w]
+    if len(dates) == len(usable):
+        ordered = sorted(usable, key=lambda item: (str(item[1]), item[0]))
+        return ordered[-1][2]
+    return usable[-1][2]
+
+
+def residual_fact(case: Mapping[str, Any]) -> dict | None:
+    """The residual as a FACT TO DISPLAY, never a silencer (operator ruling 2026-11-03).
+
+    Piece A carries ``residual_pct_of_pre_exit`` and a plain-language ``residual_note``; this module renders the
+    note and does not re-derive a percentage or decide held/not-held. The earlier "held" concept is removed, not
+    tuned: 200 of 1,200 shares is 14.3% while 200 of 1,000 is 20%, and a threshold on it suppressed SPCX either way.
+    """
+    note = str(case.get("residual_note") or "").strip()
+    pct = _num(case.get("residual_pct_of_pre_exit"))
+    residual = _num(case.get("residual_shares"))
+    if not note and pct is None and not residual:
+        return None
+    detail = note or (f"{residual:g} shares remain after the exit ({pct:g}%)" if residual and pct is not None
+                      else f"{residual:g} shares remain after the exit" if residual else f"{pct:g}% of the position remains")
+    return {"gate": "residual", "account": case.get("account"), "until": None, "detail": detail,
+            "would_change_it": "a later exit or a re-entry; this is information, not a blocker",
+            "blocks_ready": False}
+
+
+def _eligibility(case: Mapping[str, Any]) -> dict[str, Any]:
+    """Piece A emits ``[{account, eligible, eligible_from, reason}]``; an older mapping is accepted too."""
+    raw = case.get("eligibility_json") or case.get("eligibility") or {}
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw or "{}")
+        except ValueError:
+            raw = {}
+    if isinstance(raw, (list, tuple)):
+        rows = {}
+        for item in raw:
+            if not isinstance(item, Mapping) or not item.get("account"):
+                continue
+            rows[str(item["account"])] = {
+                "eligible": bool(item.get("eligible")),
+                "until": item.get("eligible_from"),
+                "gate": item.get("gate") or (None if item.get("eligible") else "house_hold"),
+                "would_change_it": item.get("would_change_it") or item.get("reason"),
+            }
+        return rows
+    return dict(raw) if isinstance(raw, Mapping) else {}
+
+
+def gate_annotations(case: Mapping[str, Any], snapshot: Mapping[str, Any], policy: Mapping[str, Any],
+                     now: datetime) -> list[dict]:
+    """Every caveat as an annotation with a *when* and a *what would change it* — never a silencer.
+
+    ``blocks_ready`` is True only when the caveat removes the last eligible account; every other caveat is
+    information the operator should see beside the recovery ("RSI 39.1 — a close above 40 lifts it").
+    """
+    out: list[dict] = []
+    elig = _eligibility(case)
+
+    # Per-account eligibility: wash sale / house hold with an explicit date.
+    for account, row in sorted(elig.items()):
+        row = row if isinstance(row, Mapping) else {"eligible": bool(row)}
+        until = row.get("until") or row.get("eligible_from")
+        if row.get("eligible"):
+            # The date gate is open; whether to re-enter is the operator's call, so the card says that and
+            # never turns an open gate into a recommendation.
+            out.append({"gate": "pending_operator_decision", "account": account, "until": None,
+                        "would_change_it": "your decision on the recovery card",
+                        "blocks_ready": False})
+            continue
+        out.append({
+            "gate": str(row.get("gate") or "house_hold"),
+            "account": account,
+            "until": until,
+            "would_change_it": str(row.get("would_change_it")
+                                   or (f"the date {until} is reached" if until else "the hold is lifted")),
+            "blocks_ready": False,  # recomputed below, once we know whether ANY account is date-open
+        })
+    any_eligible = any((r.get("eligible") if isinstance(r, Mapping) else bool(r)) for r in elig.values())
+    if not elig:
+        # Missing data is not a pass. Without the account split the engine cannot know whether an account is
+        # inside a house hold, so it cannot honestly say "ready" — the case still shows, the card still appears.
+        out.append({"gate": "eligibility_unknown", "account": None, "until": None,
+                    "detail": "eligibility unknown — nothing to re-enter until the account split exists",
+                    "would_change_it": "piece A supplies the account eligibility",
+                    "blocks_ready": True})
+    elif not any_eligible:
+        for row in out:
+            row["blocks_ready"] = True
+
+    # Residual: shown, never used to suppress (operator ruling 2026-11-03).
+    fact = residual_fact(case)
+    if fact:
+        out.append(fact)
+
+    # The entry zone: a price above it is not a blocker, only a stale plan to re-derive.
+    plan = case.get("plan_json") if isinstance(case.get("plan_json"), Mapping) else {}
+    zone_high = _num(snapshot.get("entry_high") or (plan or {}).get("entry_high"))
+    close = _num(snapshot.get("close"))
+    if zone_high and close and close > zone_high:
+        out.append({"gate": "above_entry_zone", "account": None, "until": None,
+                    "would_change_it": f"a pullback to {zone_high:.2f} or a re-derived zone",
+                    "blocks_ready": False})
+
+    # RSI: below the level is information, never a blocker while the reclaim triggers are firing.
+    rsi = _num(snapshot.get("rsi"))
+    if rsi is not None and rsi < float(policy.get("rsi_level") or 40.0):
+        out.append({"gate": "rsi_below_level", "account": None, "until": None,
+                    "would_change_it": f"RSI crosses up through {float(policy['rsi_level']):.0f}",
+                    "blocks_ready": False})
+    return out
+
+
+def _trigger_flags(case: Mapping[str, Any], snapshot: Mapping[str, Any], policy: Mapping[str, Any]) -> dict:
+    close = _num(snapshot.get("close"))
+    ep = exit_price(case)
+    stop = _num(snapshot.get("stop_level") or case.get("stop_level"))
+    sma20 = _num(snapshot.get("sma20"))
+    rsi = _num(snapshot.get("rsi"))
+    rsi_prev = _num(snapshot.get("rsi_prev"))
+    macd_up = int(snapshot.get("macd_up_sessions") or 0)
+    catalyst_conf = _num(snapshot.get("catalyst_confidence")) or 0.0
+    catalyst_age = snapshot.get("catalyst_sessions_ago")
+
+    reclaim_exit = bool(close and ep and close >= ep * (1.0 + float(policy.get("reclaim_exit_pct") or 0.01)))
+    reclaim_stop = bool(policy.get("stop_reclaim_enabled", True) and close and stop and close >= stop)
+    rsi_cross = bool(rsi is not None and rsi >= float(policy.get("rsi_level") or 40.0)
+                     and (rsi_prev is None or rsi_prev < float(policy.get("rsi_level") or 40.0)))
+    momentum = bool(rsi_cross or macd_up >= int(policy.get("macd_up_sessions") or 2))
+    sma_reclaim = bool(close and sma20 and close >= sma20)
+    catalyst = bool(catalyst_conf >= float(policy.get("catalyst_min_confidence") or 0.8)
+                    and (catalyst_age is None
+                         or int(catalyst_age) <= int(policy.get("catalyst_max_sessions") or 5)))
+    return {"R1": reclaim_exit, "R2": reclaim_stop, "R3": momentum, "R4": sma_reclaim, "R5": catalyst}
+
+
+def next_trigger(case: Mapping[str, Any], snapshot: Mapping[str, Any], policy: Mapping[str, Any],
+                 flags: Mapping[str, bool]) -> str:
+    """The one line the operator's card shows for what would change the answer."""
+    if flags.get("R4"):
+        return "already reclaiming the 20-day mean; confirm eligibility"
+    sma20 = _num(snapshot.get("sma20"))
+    close = _num(snapshot.get("close"))
+    ep = exit_price(case)
+    if not flags.get("R1") and ep and close:
+        return f"a close at {ep * (1.0 + float(policy.get('reclaim_exit_pct') or 0.01)):.2f} reclaims the exit"
+    if sma20:
+        return f"a close at {sma20:.2f} reclaims the 20-day mean"
+    if not flags.get("R3"):
+        return f"RSI crossing up through {float(policy.get('rsi_level') or 40):.0f}"
+    return "no mechanical trigger left; the next session's close"
+
+
+@dataclass
+class Decision:
+    """What the callers apply. No side effects were performed to produce it."""
+
+    state: str
+    previous_state: str
+    confidence: float
+    triggers: dict[str, bool] = field(default_factory=dict)
+    annotations: list[dict] = field(default_factory=list)
+    next_trigger: str = ""
+    changed: bool = False
+    reason: str = ""
+    eligible_accounts: list[str] = field(default_factory=list)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"state": self.state, "previous_state": self.previous_state, "confidence": round(self.confidence, 4),
+                "triggers": dict(self.triggers), "annotations": list(self.annotations),
+                "next_trigger": self.next_trigger, "changed": self.changed, "reason": self.reason,
+                "eligible_accounts": list(self.eligible_accounts)}
+
+
+def evaluate(case: Mapping[str, Any], snapshot: Mapping[str, Any] | None,
+             policy: Mapping[str, Any] | None = None, *, now: datetime | None = None) -> Decision:
+    """One case → the next state. Pure: same inputs, same answer.
+
+    An operator-held case (closed, snoozed, already re-entered) is returned untouched: a rule never overrides
+    the operator. A missing snapshot returns the case's own state with a reason, never a guess.
+    """
+    policy = policy or DEFAULT_POLICY
+    now = now or datetime.now(timezone.utc)
+    prev = str(case.get("state") or STOPPED_OUT).upper()
+    if prev in OPERATOR_STATES:
+        return Decision(state=prev, previous_state=prev, confidence=0.0, reason="operator decision holds")
+    if not snapshot:
+        return Decision(state=prev, previous_state=prev, confidence=0.0,
+                        reason="no market snapshot; state unchanged rather than guessed")
+    freshness, session = snapshot_freshness(snapshot, now=now)
+    if freshness not in FRESH_QUOTE_STATES:
+        # The guard runs on the guard's own terms, before any trigger sees the price.
+        return Decision(state=prev, previous_state=prev, confidence=0.0,
+                        reason=f"quote not current ({freshness}{', ' + str(session) if session else ''}); "
+                               "a stale or unattributed price cannot move a case")
+
+    flags = _trigger_flags(case, snapshot, policy)
+    weights = policy.get("weights") or DEFAULT_POLICY["weights"]
+    confidence = min(1.0, sum(float(weights.get(k) or 0.0) for k, fired in flags.items() if fired))
+    annotations = gate_annotations(case, snapshot, policy, now)
+    # A date-open account is required for readiness; ``pending_operator_decision`` rows are date-open but the card
+    # still says "pending your decision" — the engine reports the split, it never answers whether to re-enter.
+    eligible = [a for a, r in _eligibility(case).items()
+                if (r.get("eligible") if isinstance(r, Mapping) else bool(r))]
+    blocked = any(a.get("blocks_ready") for a in annotations)
+
+    if flags["R4"] and confidence >= float(policy.get("ready_floor") or 0.55) and eligible and not blocked:
+        state, reason = RE_ENTRY_READY, "reclaims the 20-day mean with confidence over the floor"
+    elif flags["R1"] or flags["R2"] or confidence >= float(policy.get("recovering_floor") or 0.30):
+        # A reclaim is shown even when eligibility is unknown or every date gate is shut: the case still shows.
+        state, reason = RECOVERING, "a reclaim trigger fired above the exit"
+    else:
+        state, reason = WATCHING, ("gates block re-entry until they lift" if blocked
+                                   else "no reclaim trigger yet")
+    # A case starts STOPPED_OUT on day 0; the first evaluation moves it to WATCHING or better.
+    if prev == STOPPED_OUT and state == WATCHING:
+        reason = "first evaluation after the stop-out; watching from here"
+
+    return Decision(state=state, previous_state=prev, confidence=confidence, triggers=flags,
+                    annotations=annotations,
+                    next_trigger=next_trigger(case, snapshot, policy, flags),
+                    changed=state != prev, reason=reason, eligible_accounts=eligible)
+
+
+def session_decay(case: Mapping[str, Any], policy: Mapping[str, Any] | None = None) -> dict:
+    """Is this case past the decay window? Digest-only, never auto-closed while materiality is T2 or worse."""
+    policy = policy or DEFAULT_POLICY
+    sessions = _num(case.get("sessions_since_trigger"))
+    window = int(policy.get("decay_sessions") or 20)
+    tier = str(case.get("materiality_tier") or "T3").upper()
+    decayed = bool(sessions is not None and sessions >= window)
+    return {"decayed": decayed, "digest_only": decayed,
+            "auto_close": bool(decayed and tier == "T3"),
+            "sessions_since_trigger": sessions, "decay_sessions": window, "materiality_tier": tier}
+
+
+# ── the thin caller both evaluators share (piece A owns the store) ────────────────────────────────────────
+def store_accessor(conn=None, policy: Mapping[str, Any] | None = None):
+    """Piece A's case store, or None when this build does not carry it yet.
+
+    Piece A owns the store (``lib.recovery_engine.cases.CaseStore``): ``list()`` / ``set_state(case_key, state)``.
+    A missing store is reported by the callers as "recovery store not present", never as an empty store — an
+    empty read and an absent store must not look the same.
+    """
+    if conn is None:
+        return None
+    try:
+        from lib.recovery_engine.cases import CaseStore  # noqa: PLC0415
+    except ImportError:
+        return None
+    try:
+        return CaseStore(conn, policy or load_policy())
+    except Exception:  # noqa: BLE001 — a store that cannot start is absent, and the caller says so
+        return None
+
+
+#: Quote freshness states the engine will act on. ``derive_freshness`` (scripts/lib/watch_canonical_quote.py) is
+#: the existing, session-aware authority: RTH is tight, premarket/afterhours have their own windows, a closed
+#: market holds the last print for a bounded time. Anything else — including a snapshot with NO fetch time — is
+#: not current, and a price of unknown age must not move a case (codex's scheduled stale-quote BLOCK, 2026-11-03:
+#: the guard existed, and the snapshot threw its input away).
+FRESH_QUOTE_STATES = frozenset({"CURRENT", "PREMARKET_CURRENT", "AFTER_HOURS_CURRENT"})
+
+
+def snapshot_freshness(snapshot: Mapping[str, Any] | None, *, now: datetime | None = None) -> tuple[str, str | None]:
+    """(state, session) for a snapshot's quote. Missing provenance is NOT fresh.
+
+    Delegates to the one freshness authority so the recovery lane cannot disagree with the alert lane about
+    what "current" means. An unavailable helper fails closed (UNVERIFIED).
+    """
+    if not isinstance(snapshot, Mapping):
+        return "DATA_UNAVAILABLE", None
+    fetched = snapshot.get("fetched_at") or snapshot.get("quote_at") or snapshot.get("as_of")
+    if not fetched:
+        return "DATA_UNAVAILABLE", None
+    try:
+        from lib.watch_canonical_quote import derive_freshness  # noqa: PLC0415
+    except ImportError:
+        try:
+            from scripts.lib.watch_canonical_quote import derive_freshness  # noqa: PLC0415
+        except ImportError:
+            return "UNVERIFIED", None
+    try:
+        return derive_freshness(fetched, now=now)
+    except Exception:  # noqa: BLE001 — an unreadable timestamp is not a fresh one
+        return "DATA_UNAVAILABLE", None
+
+
+#: States that are worth telling the operator about. A transition INTO one of these hands the case to
+#: piece C; a case that merely stays there is not re-handed (C's own floor and per-case/day bound also apply).
+PAGING_STATES = (RECOVERING, RE_ENTRY_READY)
+
+
+PENDING_REL = Path("data") / "runtime" / "recovery_notify_pending.json"
+
+
+def _pending_path() -> Path:
+    """Durable record of a paging transition whose delivery has not been confirmed.
+
+    A failed send used to be lost: the state advanced to RECOVERING, the next pass saw no change, and C was
+    never called again (codex's failure probe, 2026-11-03). Pending work survives across scheduled passes
+    until it is delivered or C says the tier is not pageable.
+    """
+    try:
+        from lib.persistent_state_root import resolve_durable_dir  # noqa: PLC0415
+        return resolve_durable_dir(str(PENDING_REL), PROJECT_ROOT)
+    except Exception:  # noqa: BLE001
+        return PROJECT_ROOT / PENDING_REL
+
+
+def load_pending(path: str | Path | None = None) -> dict:
+    try:
+        doc = json.loads(Path(path or _pending_path()).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return doc if isinstance(doc, dict) else {}
+
+
+def save_pending(doc: Mapping[str, Any], path: str | Path | None = None) -> None:
+    target = Path(path or _pending_path())
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        tmp.write_text(json.dumps(dict(doc), indent=1, sort_keys=True), encoding="utf-8")
+        os.replace(tmp, target)
+    except OSError:
+        pass  # a pending-store fault must never lose the page: the caller keeps it in memory this pass
+
+
+def _delivery_confirmed(result: Mapping[str, Any] | None) -> bool:
+    """Did this handoff end the need for a retry?
+
+    ``sent: true`` is delivery. ``deduped_by_floor`` means C's own ledger says this page already reached the
+    operator. A T2/T3 refusal ("not T1 …") is C's decision that the tier is not pageable — not a failure. A
+    bare ``sent: false`` (transport refused) is NOT confirmed and must stay pending.
+    """
+    if not isinstance(result, Mapping):
+        return False
+    if result.get("sent") is True or result.get("deduped_by_floor"):
+        return True
+    reason = str(result.get("reason") or "")
+    return reason.startswith("not T1")
+
+
+def _default_notify():
+    """Piece C's notifier, loaded lazily so B stays importable without it."""
+    try:
+        from lib.recovery_notify import notify_recovery_case  # noqa: PLC0415
+    except ImportError:
+        try:
+            from scripts.lib.recovery_notify import notify_recovery_case  # noqa: PLC0415
+        except ImportError:
+            return None
+    return notify_recovery_case
+
+
+def run_pass(store, snapshot_for, *, policy: Mapping[str, Any] | None = None,
+             now: datetime | None = None, dry_run: bool = True, limit: int = 200,
+             notify=None, notify_states: tuple[str, ...] = PAGING_STATES,
+             pending_path: str | Path | None = None) -> dict:
+    """Evaluate every open case once: write the state change AND hand a paging transition to piece C.
+
+    ``snapshot_for(case)`` returns the market fields (close, sma20, rsi, rsi_prev, stop_level,
+    macd_up_sessions, catalyst_confidence, catalyst_sessions_ago, entry_high) or None. A snapshot that is
+    missing leaves the case's state untouched and says why — this pass never guesses a price.
+
+    ``notify`` is piece C's ``notify_recovery_case`` by default. This is the PRODUCTION handoff: codex's
+    scheduled-shape probe (2026-11-03) found the pass wrote a T1 RECOVERING case and made **zero** notifier
+    calls — a case that exists and never pages is the exact failure the row exists to fix. A transition into
+    ``PAGING_STATES`` now notifies once, after the state is durable; a notifier fault is recorded on the row
+    and never aborts the pass or the other cases.
+    """
+    if store is None:
+        return {"store": "absent", "considered": 0, "changed": 0, "decisions": []}
+    policy = policy or load_policy()
+    now = now or datetime.now(timezone.utc)
+    try:
+        if hasattr(store, "list_open"):
+            cases = list(store.list_open(limit=limit) or [])
+        else:
+            cases = list(store.list() or [])
+        cases = [c.to_dict() if hasattr(c, "to_dict") else dict(c) for c in cases]
+    except Exception as exc:  # noqa: BLE001 — a broken store is reported, never rendered as "no cases"
+        return {"store": "unreadable", "error": f"{type(exc).__name__}: {exc}", "considered": 0,
+                "changed": 0, "decisions": []}
+    notifier = notify if notify is not None else _default_notify()
+    pending = load_pending(pending_path)
+    decisions, changed, notifier_calls = [], 0, 0
+    for case in cases:
+        try:
+            snapshot = snapshot_for(case) if snapshot_for else None
+        except Exception as exc:  # noqa: BLE001
+            snapshot = None
+            decisions.append({"case_key": case.get("case_key"), "store_error": f"{type(exc).__name__}: {exc}"})
+        decision = evaluate(case, snapshot, policy, now=now)
+        row = {"case_key": case.get("case_key"), "symbol": case.get("symbol"),
+               "snapshot": "present" if snapshot else "absent", **decision.as_dict()}
+        decisions.append(row)
+        write_ok = True
+        if decision.changed:
+            changed += 1
+            if not dry_run:
+                try:
+                    if hasattr(store, "set_state"):
+                        store.set_state(str(case.get("case_key")), decision.state)
+                    else:
+                        store.update_state(str(case.get("case_key")), state=decision.state,
+                                           state_since=now.isoformat(), annotations=decision.annotations,
+                                           confidence=round(decision.confidence, 4),
+                                           next_trigger=decision.next_trigger)
+                except Exception as exc:  # noqa: BLE001 — one case failing never stops the pass
+                    write_ok = False
+                    row["write_error"] = f"{type(exc).__name__}: {exc}"
+
+        key = str(case.get("case_key"))
+        # Lead contract (2026-11-03): notify on a TRANSITION into a paging state, or to retry pending work.
+        # A case that merely stays RECOVERING is not re-handed on every pass — C's day bound is the backstop,
+        # not the reason to call it.
+        wants_page = decision.changed and decision.state in tuple(notify_states)
+        retrying = key in pending
+        # Dispatch ONLY after the state is durable (a failed write must not page), and retry a pending
+        # delivery on later passes even when the state no longer changes.
+        if not write_ok:
+            row["notify"] = {"sent": False, "reason": "state write failed; not notifying"}
+        elif not (wants_page or retrying):
+            pass
+        elif notifier is None:
+            row["notify"] = {"sent": False, "reason": "notifier unavailable (piece C absent)"}
+        elif dry_run:
+            row["notify"] = {"sent": False, "reason": "dry_run"}
+        else:
+            handoff = {**case, "state": decision.state,
+                       "confidence": round(decision.confidence, 4),
+                       "next_trigger": decision.next_trigger,
+                       "price": (snapshot or {}).get("close"),
+                       "exit_price": exit_price(case)}
+            try:
+                result = notifier(handoff)
+                notifier_calls += 1
+                row["notify"] = {k: v for k, v in (result or {}).items() if k != "message"}
+            except Exception as exc:  # noqa: BLE001 — a notifier fault never aborts the pass
+                notifier_calls += 1
+                result = {"sent": False, "error": f"{type(exc).__name__}: {exc}"}
+                row["notify"] = result
+            if _delivery_confirmed(result):
+                pending.pop(key, None)
+            elif wants_page or retrying:
+                entry = pending.get(key) or {"first_failed_at": now.isoformat(), "attempts": 0}
+                entry["state"] = decision.state
+                entry["attempts"] = int(entry.get("attempts") or 0) + 1
+                entry["last_error"] = (result or {}).get("error") or (result or {}).get("reason") or "sent false"
+                pending[key] = entry
+                row["notify_pending"] = True
+    if not dry_run:
+        save_pending(pending, pending_path)
+    return {"store": "ok", "considered": len(cases), "changed": changed, "notifier_calls": notifier_calls,
+            "pending": len(pending), "decisions": decisions,
+            "dry_run": bool(dry_run), "policy_source": policy.get("policy_source")}
