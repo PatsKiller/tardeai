@@ -1,7 +1,7 @@
 // SurfaceState@v1 contract tests (BOARD row 36). Pure: no React, no fetch, no fixtures with real values.
 // The "must never say" half is what makes this a contract: every state's OWN wording is checked against every
 // vocabulary it is forbidden to use, so a future edit that re-introduces "unavailable" into a loading state fails here.
-import { deriveSurfaceState, surfaceGap, refreshMarker, MUST_NEVER_SAY, type SurfaceShape, type SurfaceStateName } from './surfaceState.ts'
+import { deriveSurfaceState, surfaceGap, refreshMarker, rendersData, nextSurfaceReport, MUST_NEVER_SAY, type SurfaceShape, type SurfaceStateName } from './surfaceState.ts'
 
 declare const process: { exit(code?: number): never }
 let pass = 0, fail = 0
@@ -72,6 +72,25 @@ for (const { name, s } of all) {
   const t = surfaceGap(s, shape, { lastGoodAt: '10 minutes ago' })
   check(`${name}: its own wording obeys its own "must never say" list`, t !== null && !violates(name, say(t)))
 }
+
+// ── F3: a malformed payload is unreadable, never an exception out of render ────────────────────────
+const throwingShape: SurfaceShape<Fixture> = {
+  what: 'desk projection',
+  gaps: d => (d as unknown as { gaps: string[] }).gaps.map(String),   // throws when `gaps` is not an array
+  isEmpty: d => (d as unknown as { rows: unknown[] }).rows.length === 0,
+}
+const malformed = deriveSurfaceState({ data: { gaps: 'nope' } as unknown as Fixture, loading: false }, throwingShape)
+check('a malformed payload is unreadable, not a thrown error', malformed.state === 'unreadable')
+check('and it exposes no data to render', malformed.data === null)
+
+// ── F2: one owner for the footer slot, and one predicate for "rendered data" ───────────────────────
+check('rendersData: ready renders', rendersData(deriveSurfaceState({ data: present }, shape)))
+check('rendersData: empty still rendered (the read succeeded)', rendersData(deriveSurfaceState({ data: { rows: [], gaps: [] } }, shape)))
+check('rendersData: unavailable is not rendered', !rendersData(deriveSurfaceState({ data: null, error: 'boom' }, shape)))
+check('rendersData: loading is not rendered', !rendersData(deriveSurfaceState({ data: null, loading: true }, shape)))
+check('footer: a publish takes the slot', nextSurfaceReport(null, { name: 'Agents', dataLoaded: true })?.name === 'Agents')
+check('footer: an OUTGOING page cannot erase the INCOMING page', nextSurfaceReport({ name: 'Approvals', dataLoaded: false }, null, 'Agents')?.name === 'Approvals')
+check('footer: the owner can clear its own slot', nextSurfaceReport({ name: 'Agents', dataLoaded: true }, null, 'Agents') === null)
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)
