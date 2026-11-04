@@ -577,7 +577,13 @@ def stance_from_queue_item(item: Optional[dict[str, Any]]) -> str:
     elif reentry:
         from_state = STANCE_REVIEW
     from_label = infer_stance_from_text(label)
-    return merge_stances(from_verdict, from_state, from_label)
+    # FQ-103: the order stated above is the order this function obeys. An explicit formal verdict is the only input
+    # that records what the CIO decided; prose and desk readiness may speak only when no actionable verdict was
+    # recorded. Before this, all three went through the decisive-stance merge, so a stronger word in the label
+    # ("Advisory EXIT — …") silently outranked an explicit ADD — free text deciding a position.
+    if from_verdict is not None:
+        return from_verdict
+    return merge_stances(from_state, from_label)
 
 
 def stance_for_symbol(symbol: str, queue: Optional[dict[str, Any]]) -> str:

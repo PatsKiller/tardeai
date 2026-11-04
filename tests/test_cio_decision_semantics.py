@@ -151,3 +151,41 @@ def test_build_position_decisions_aggregates_and_trims():
     assert by["V"]["current_value_usd"] == 70_000.0
     # Trim delta ≈ -10% of 70k (aggregated)
     assert by["V"]["recommended_delta_usd"] == -7_000.0
+
+
+# ── FQ-103: the docstring's order is the order the function obeys ────────────────────────────────────────────
+# An explicit formal verdict is the only input that records what the CIO decided. Free text (and desk readiness)
+# may speak only when no actionable verdict was recorded. Before this, all three went through the decisive-stance
+# merge, so a stronger word in a label outranked an explicit verdict — text deciding a position.
+
+def test_an_explicit_verdict_outranks_free_text():
+    from scripts.lib.cio_decision_semantics import stance_from_queue_item
+
+    # The case the decision-path trace measured: an explicit ADD with an EXIT in the prose became EXIT.
+    assert stance_from_queue_item(
+        {"symbol": "SYNX", "verdict": "ADD", "directive_label": "Advisory EXIT — SYNX"}
+    ) == "ADD"
+    assert stance_from_queue_item(
+        {"symbol": "SYNX", "verdict": "TRIM", "note": "ADD on a breakout, deploy here"}
+    ) == "TRIM"
+    assert stance_from_queue_item({"symbol": "SYNX", "verdict": "EXIT", "label": "HOLD for now"}) == "EXIT"
+
+
+def test_free_text_still_speaks_when_no_verdict_was_recorded():
+    from scripts.lib.cio_decision_semantics import stance_from_queue_item
+
+    assert stance_from_queue_item({"symbol": "SCHD", "directive_label": "Advisory TRIM — SCHD"}) == "TRIM"
+    assert stance_from_queue_item({"symbol": "SCHD", "label": "Advisory EXIT — SCHD"}) == "EXIT"
+
+
+def test_the_reentry_guard_survives_the_precedence_fix():
+    from scripts.lib.cio_decision_semantics import stance_from_queue_item
+
+    # A governed RE_ENTER verdict is still the only way to RE_ENTER, and it still wins over prose.
+    assert stance_from_queue_item(
+        {"symbol": "ADBE", "verdict": "RE_ENTER", "directive_label": "HOLD, wait for the trigger"}
+    ) == "RE_ENTER"
+    # Desk readiness plus a "Re-enter" label remains REVIEW — never RE_ENTER.
+    assert stance_from_queue_item(
+        {"symbol": "ADBE", "state": "READY TO REVIEW", "directive_label": "Re-enter ADBE"}
+    ) == "REVIEW"
