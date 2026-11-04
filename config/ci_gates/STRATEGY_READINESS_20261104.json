@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "STRATEGY_READINESS_20261104",
+  "files": [
+    "tests/test_desk_strategy_readiness_20261104.py"
+  ],
+  "anchor": "STRATEGY_READINESS_20261104",
+  "comment": [
+    "ANCHOR: FQ-063 - the paper-trade readiness writer moved to a nested schema",
+    "(readiness.level / readiness.closed_usable / performance.win_rate) while desks_a.strategy_payload",
+    "still read the flat one, so a file with 158 closed trades, 49.4% win rate and P1_EARLY_SIGNAL",
+    "rendered as four 'not on file' rows. The tests read the nested schema, keep the flat fallback,",
+    "progress the gate at 2,000 closed trades, and require the gate ladder to be stated when the file",
+    "is genuinely absent."
+  ]
+}

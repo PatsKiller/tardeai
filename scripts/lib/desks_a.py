@@ -443,13 +443,24 @@ def strategy_payload(*, root: Path, db_query: DbQuery | None = None, now: dateti
 
     stats, stats_gap = _read_json(root / "data" / "paper_trading" / "paper_trade_statistics_latest.json")
     stats = stats if isinstance(stats, dict) else {}
-    closed = _num(stats.get("closed_usable"))
+    # FQ-063: the readiness writer moved to a nested schema (readiness.level / readiness.closed_usable /
+    # performance.win_rate) while this projection still read the flat one, so a file full of measured
+    # values rendered as four "not on file" rows. Read the nested block first, keep the flat one for files
+    # written before the change. Never substitute a value from another source: a genuinely absent field
+    # still says so, and says what the row is waiting for.
+    _ready = stats.get("readiness") if isinstance(stats.get("readiness"), dict) else {}
+    _perf = stats.get("performance") if isinstance(stats.get("performance"), dict) else {}
+    level = _ready.get("level") if _ready else stats.get("level")
+    closed = _num(_ready.get("closed_usable") if _ready else stats.get("closed_usable"))
+    win_rate = _perf.get("win_rate") if _perf else stats.get("win_rate")
+    gate = ("4,000 closed trades (P5 live-readiness candidate)" if closed is not None and closed >= 2000
+            else "2,000 closed trades (P4 strong paper evidence)" if closed is not None
+            else "2,000 closed trades (P4 strong paper evidence), then 4,000 (P5 live-readiness candidate)")
     readiness = [
-        _row("rd-phase", "Phase", str(stats.get("level") or GAP_NOT_ON_FILE).replace("_", " ")),
+        _row("rd-phase", "Phase", str(level or GAP_NOT_ON_FILE).replace("_", " ")),
         _row("rd-closed", "Closed trades", f"{_count(closed)} / 2,000" if closed is not None else GAP_NOT_ON_FILE),
-        _row("rd-wr", "Win rate (all closed)", _pct(stats.get("win_rate"))),
-        _row("rd-gate", "Next gate", "2,000 closed trades (P4 strong paper evidence)" if closed is not None and closed < 2000
-             else "4,000 closed trades (P5 live-readiness candidate)" if closed is not None else GAP_NOT_ON_FILE),
+        _row("rd-wr", "Win rate (all closed)", _pct(win_rate)),
+        _row("rd-gate", "Next gate", gate),
     ]
 
     snaps = _select(db_query, "SELECT max(snapshot_date) AS d, count(DISTINCT strategy_id) AS n FROM strategy_performance_snapshots")
