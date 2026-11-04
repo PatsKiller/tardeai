@@ -94,6 +94,23 @@ check('the phone clamp clips its overflow, so two lines cannot paint over the ro
   assert.match(body, /-webkit-line-clamp:\s*2/, body)
   assert.doesNotMatch(body, /overflow:\s*visible/)
 })
+// P2622 scope boundary (lead, 2026-11-04): this PR is the phone wire row's layout and the clamp paint.
+// The advisory surfaces' MISSING-* state taxonomy ("MISSING MARKET" beside a known price) is a different
+// component (lib/advisoryReason.ts via reentryDecisionScorecard), owned by #2637. Prove the boundary
+// instead of asserting it: this page carries none of that vocabulary, and the row's own reason is its
+// category label and freshness label, both rendered.
+check('the page carries only its own reason vocabulary, not the advisory MISSING-* taxonomy', () => {
+  const page = readFileSync(join(app, 'src/pages/ResearchIntelligenceHub.tsx'), 'utf8')
+  const lib = readFileSync(join(app, 'src/lib/researchPhone.ts'), 'utf8')
+  for (const src of [page, lib]) {
+    assert.doesNotMatch(src, /advisoryReason|reentryDecisionScorecard/, 'the research page imports the advisory taxonomy')
+    assert.doesNotMatch(src, /MISSING[ _-](MARKET|PLAN)/, 'the research page names an advisory MISSING-* state')
+  }
+  assert.doesNotMatch(html, /MISSING[ _-](MARKET|PLAN)/, 'the compact row rendered an advisory MISSING-* state')
+  // and the reasons it does carry are present, in words: the category and the freshness label
+  assert.match(html, /Macro &amp; sectors/, 'the row does not name its category')
+  assert.match(html, /Fresh/, 'the row does not name its freshness')
+})
 // review P2622 P3: an unwrapped <details> on desktop gets a browser-inserted summary and can collapse
 // every filter with one click. Desktop must be a plain container; only a phone folds behind a summary.
 check('desktop secondary filters cannot collapse; a phone folds behind one summary', () => {
