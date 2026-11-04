@@ -40,3 +40,11 @@ def test_deferrals_do_not_inflate_the_24h_error_rate():
     health = h.evaluate_lane("research", newest_first=rows[:1], last_24h=rows, silence=False, now=NOW)
     assert health["error_rate_24h"] == 0.0, health
     assert not [f for f in health.get("firing") or [] if f.startswith("error_rate_24h")], health
+
+
+def test_a_genuine_failure_that_only_MENTIONS_the_marker_is_still_an_error():
+    """cc2's BLOCK on e821c32bb: a substring test exempted any text containing the marker."""
+    assert h.is_error_recommendation(
+        "[ERROR] lane crashed while deferring: DEFERRED_TO_OFFPEAK: was not honoured") is True
+    assert h.is_error_recommendation("[LANE_BROKEN] DEFERRED_TO_OFFPEAK helper raised") is True
+    assert h.is_error_recommendation(DEFERRED) is False      # the live anchored row still matches

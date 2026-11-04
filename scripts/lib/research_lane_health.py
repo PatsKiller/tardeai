@@ -13,6 +13,7 @@ Does not grant financial_action. Does not call LLMs.
 """
 from __future__ import annotations
 
+import re
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Optional
@@ -82,7 +83,9 @@ def is_deferred_offpeak(rec: Any) -> bool:
     2026-11-04: `[DEFERRED_TO_OFFPEAK]` rows counted as errors and produced the bogus 37.9% 24h rate that floored
     intelligence_quality at 60. Like SKIPPED_BUDGET, a deferral is a throttle, not a crash.
     """
-    return "DEFERRED_TO_OFFPEAK" in str(rec or "").strip()
+    # ANCHORED (cc2 BLOCK): the live row is "[ERROR] DEFERRED_TO_OFFPEAK: …". A substring test would also
+    # silence a genuine failure that merely MENTIONS the marker in its text, so the match starts at the head.
+    return re.match(r"^\[ERROR\]\s*DEFERRED_TO_OFFPEAK\b", str(rec or "").strip()) is not None
 
 
 def is_error_recommendation(rec: Any) -> bool:
