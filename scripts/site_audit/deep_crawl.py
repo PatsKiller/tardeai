@@ -10,8 +10,11 @@ this module's, and those decisions are tested against a fake page rather than by
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Iterable
+
+_log = logging.getLogger("site_audit.deep_crawl")
 from urllib.parse import urljoin, urlparse
 
 from site_audit.action_denylist import ACTION_WORDS, safe_to_open
@@ -128,8 +131,8 @@ def capture_page(page: Any, *, route: str, page_url: str, indices: Iterable[int]
         finally:
             try:
                 page.keyboard.press("Escape")
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as exc:  # noqa: BLE001 — closing a detail is best-effort
+                _log.debug("Escape did not close the detail: %s", exc)
     return {"route": route, "details": [d.__dict__ for d in details],
             "refused": refused,
             "links": [l.__dict__ for l in _follow_links(page, page_url=page_url, max_links=max_links)]}
@@ -160,7 +163,8 @@ def _follow_links(page: Any, *, page_url: str, max_links: int) -> list[LinkRecor
         try:
             href = node.get_attribute("href")
             label = (node.inner_text() or "").strip()[:120]
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — an anchor we cannot read is skipped, and said so
+            _log.debug("skipped an anchor without readable attributes: %s", exc)
             continue
         if not link_is_crawlable(label, href, page_url):
             continue
@@ -174,6 +178,6 @@ def _follow_links(page: Any, *, page_url: str, max_links: int) -> list[LinkRecor
         finally:
             try:
                 page.goto(page_url, wait_until="domcontentloaded", timeout=20000)
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as exc:  # noqa: BLE001 — the next link navigates anyway
+                _log.debug("could not return to %s before the next link: %s", page_url, exc)
     return records

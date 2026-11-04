@@ -35074,6 +35074,153 @@
           "notifier_priority": "P2"
         }
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "site-audit",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "n8n:NEVER_SCHEDULED",
+      "stage": "never_scheduled",
+      "review_by": "2026-12-04",
+      "purpose": {
+        "text": "Every 48 h at most: one read-only capture of every Command Center route at desktop 1440 and phone 412/390, opening detail views and following in-page links one level, never pressing an action; captures land outside the repository and an index.json records the run.",
+        "business_function": "observability",
+        "source": "SPEC_SITE_AUDIT_AUTOREMEDIATE_LOOP_20261104.md sections 2.1 and 6; config/lane_registry.json site-audit row; scripts/site_audit/lane.py MAX_GAP_HOURS :18, WINDOWS :38, session_for_week :47; scripts/site_audit/page_audit_capture.py"
+      },
+      "owner": "agents",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md section 23.3; PROPOSED: no n8n workflow exists yet for this lane"
+        },
+        {
+          "name": "$PY scripts/site_audit/page_audit_capture.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/lane_registry.json site-audit recommendation (workflow calls it with SITE_AUDIT_CAPTURE_ROOT and SITE_AUDIT_CHROME set)"
+        },
+        {
+          "name": "SITE_AUDIT_CAPTURE_ROOT (a directory outside the repository)",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/site_audit/capture_root.py: a capture root inside the repo is refused"
+        },
+        {
+          "name": "persistent-state/data/audit/page-audit-*/index.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "config/lane_registry.json site-audit output_signal (json_key generated_at)"
+        },
+        {
+          "name": "/api/v2/health (health gate before the first page)",
+          "kind": "service",
+          "direction": "read",
+          "source": "scripts/site_audit/lane.py HEALTH_PATH :21; SPEC section 2.1 live-crawl rule"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "run_produced_index",
+          "text": "a finished run wrote index.json under the capture root with a generated_at newer than the previous run's"
+        },
+        {
+          "check": "within_ceiling",
+          "text": "the gap from the previous capture is at or below 48 h and the run used the session its week rotates to (pre-market, regular, after-hours)"
+        },
+        {
+          "check": "health_gate_passed",
+          "text": "the health gate at /api/v2/health passed before the first page and every page was captured at least 4 s after the previous one"
+        },
+        {
+          "check": "no_action_pressed",
+          "text": "no approve, decline, acknowledge, refresh, run now, place, stop, apply or merge control was activated (the label and role denylist refused them)"
+        },
+        {
+          "check": "captures_outside_repo",
+          "text": "every capture path is under SITE_AUDIT_CAPTURE_ROOT and none is inside the git tree"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "the gap from the previous capture is above 48 h and at or below 96 h"
+        },
+        {
+          "check": "aborted_on_slowdown",
+          "text": "a run stopped itself on slowdown or a service restart and raised the incident instead of continuing"
+        },
+        {
+          "check": "page_error",
+          "text": "a route was classified ERROR or DEAD during the crawl"
+        }
+      ],
+      "failed": [
+        {
+          "check": "no_index",
+          "text": "a scheduled run finished without writing index.json (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "the gap from the previous capture is above 96 h (two missed cycles at the 48 h ceiling)"
+        },
+        {
+          "check": "action_pressed",
+          "text": "any control on the denylist was activated by the crawl"
+        },
+        {
+          "check": "captures_in_repo",
+          "text": "a capture was written inside the repository, which the repository being public makes a data-exposure event"
+        },
+        {
+          "check": "unknown_page_class",
+          "text": "a route could not be classified at all, so the completeness rule could not judge it"
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "class": "observability",
+        "computed_on": "2026-11-04",
+        "timeout_s": 14400,
+        "duration_degraded_above_s": 11520.0,
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 96.0,
+        "freshness_rule": "reviewed 2026-11-04: the operator ceiling is one capture every 48 h at most (SPEC section 2.1), so degraded is the first hour past it and failed is two missed cycles. The lane has never run, so duration numbers are provisional class defaults (4 h timeout, degraded above 80 percent) until the first finished run replaces them.",
+        "source": "0 finished live runs (the lane state is NEVER_SCHEDULED); expected_cadence_hours 48 from config/lane_registry.json; timeout provisional for a whole-site crawl that runs until done",
+        "runs_considered": 0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "reviewed 2026-11-04: a read-only observability lane with no operator surface of its own; its findings reach the operator through the work-item store and the Work and Site Health page, not through this lane's status",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P3"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:site-audit by scripts/n8n_siem_bridge.py; a failed status that also blocks the audit loop escalates through the audit work-item store, not here.",
+        "enforced": "not read at runtime yet: the bridge reads severity_for() and the lane is not installed"
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not installed, so no remediation catalogue entry exists; a failed capture needs a human because it may mean the Command Center is down or the browser environment changed"
+      },
+      "evidence": {
+        "receipt": "persistent-state/data/audit/page-audit-*/index.json (generated_at)",
+        "verify": [
+          "python3 -m pytest tests/test_site_audit_lane_20261104.py tests/test_site_audit_deep_crawl_20261104.py -q",
+          "jq .generated_at <the newest persistent-state/data/audit/page-audit-*/index.json>",
+          "the capture run's own log under the capture root proves what it opened"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted and keep status running; prove work with index.json and the capture directory",
+        "expected_output_basis": "expected_output derived 2026-11-04 from the one-capture-per-run rule: a run with at least one route captured writes index.json; a run that captured nothing is empty_output"
+      }
     }
   ],
   "pending_changes": {

@@ -13,6 +13,17 @@ Writes DIR/index.json (one row per page/viewport) and DIR/<slug>/<viewport>.{png
 """
 from __future__ import annotations
 
+import logging
+
+_log = logging.getLogger("site_audit.capture")
+
+# Dark-contract declaration (scripts/check_dark_contracts.py): CapturedPage/PcapSchema@v1 is written by this
+# CLI and read by the audit checks, but no scheduled caller exists yet — the site-audit n8n lane is proposed,
+# not installed (SPEC_SITE_AUDIT_AUTOREMEDIATE_LOOP_20261104 §2.1). Wiring the workflow is what removes this
+# declaration; it is not a substitute for the caller.
+NO_CONSUMER_REASON = ("the site-audit n8n lane is not installed yet (SPEC §2.1); the CLI is the entrypoint "
+                      "and tests/test_site_audit_lane_20261104.py pins it until the workflow exists")
+
 import argparse
 import os
 import json
@@ -48,7 +59,8 @@ def discover_routes(page, base: str) -> list[tuple[str, str]]:
         try:
             href = a.get_attribute("href") or ""
             label = (a.inner_text() or "").strip().split("\n")[0][:60]
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 — an unreadable anchor is skipped, and said so
+            _log.debug("skipped an anchor in route discovery: %s", exc)
             continue
         if href.startswith("/v3"):
             href = href[3:] or "/"
@@ -66,16 +78,20 @@ def server_healthy(base: str, wait_s: int = 300) -> bool:
     """Gate before every page: the live server must answer quickly. If it does not, wait up to wait_s
     (it restarts itself), and abort the sweep rather than keep loading a struggling server.
     Added 2026-11-03 after the server was SIGKILLed mid-sweep (cause unverified)."""
+    import urllib.parse
     import urllib.request
+    scheme = urllib.parse.urlparse(base).scheme
+    if scheme not in ("http", "https"):
+        raise SystemExit(f"SITE_AUDIT base must be http(s): {scheme!r}")
     deadline = time.time() + wait_s
     while time.time() < deadline:
         try:
             t0 = time.time()
-            with urllib.request.urlopen(base + "/", timeout=10) as r:
+            with urllib.request.urlopen(base + "/", timeout=10) as r:  # noqa: S310 — http(s) enforced above
                 if r.status < 500 and time.time() - t0 < 8:
                     return True
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 — a failed probe is retried until the deadline
+            _log.debug("health probe failed: %s", exc)
         time.sleep(15)
     return False
 
