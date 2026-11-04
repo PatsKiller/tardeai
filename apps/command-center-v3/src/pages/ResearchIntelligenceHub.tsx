@@ -307,6 +307,24 @@ function SoftChip({ label, color, active, onClick }: {
   )
 }
 
+/** FQ-058 secondary filters. A phone folds them behind one summary line; a desktop gets a plain
+    container. An unwrapped <details> on desktop is not inert: the browser inserts a default summary,
+    so the controls could be collapsed with one click while the copy says every control stays
+    visible (review P2622 P3, verified: the filter strip fell from 93px to 18px). */
+export function SecondaryFiltersShell({ phone, open, summary, children }: {
+  phone: boolean; open: boolean; summary: ReactNode; children: ReactNode
+}) {
+  if (!phone) {
+    return <div data-testid="ri-secondary-filters" style={{ marginBottom: 12 }}>{children}</div>
+  }
+  return (
+    <details open={open} data-testid="ri-secondary-filters" style={{ marginBottom: 12 }}>
+      <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 750, color: C.ink, padding: '4px 0' }}>{summary}</summary>
+      {children}
+    </details>
+  )
+}
+
 function Tag({ children, color }: { children: ReactNode; color?: string }) {
   const c = color || C.muted
   return (
@@ -1961,10 +1979,9 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
 
         {/* FQ-058: on a phone the secondary filters fold behind one summary line, so the prioritized
             list is reachable without several screens of chips. Desktop keeps every control visible. */}
-        <details open={secondaryFiltersOpen(phone)} data-testid="ri-secondary-filters" style={{ marginBottom: 12 }}>
-          {phone && <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 750, color: C.ink, padding: '4px 0' }}>
-            Filters{hasActiveFilters ? ' · active' : ''} — topics, search, freshness{stats.matched != null ? ` · ${stats.matched} stories` : ''}
-          </summary>}
+        <SecondaryFiltersShell phone={phone} open={secondaryFiltersOpen(phone)} summary={
+          <>Filters{hasActiveFilters ? ' · active' : ''} — topics, search, freshness{stats.matched != null ? ` · ${stats.matched} stories` : ''}</>
+        }>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
           <SoftChip label="All topics" active={!category} onClick={() => setCategory(null)} />
           {cats.map(c => (
@@ -2037,7 +2054,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
             )}
           </div>
         )}
-        </details>
+        </SecondaryFiltersShell>
       </section>
 
       {/* Filtered strip — always visible when not full desk */}

@@ -43,7 +43,7 @@ function compile(path) {
 }
 
 globalThis.__researchFixture = { data: null, error: null, loading: false }
-const { ArticleCard } = await import(compile(join(app, 'src/pages/ResearchIntelligenceHub.tsx')))
+const { ArticleCard, SecondaryFiltersShell } = await import(compile(join(app, 'src/pages/ResearchIntelligenceHub.tsx')))
 
 const item = {
   id: 'fixture-1', symbol: 'SCHD', title: 'A long research headline that must stay readable on a phone',
@@ -82,6 +82,31 @@ check('the phone rule gives the headline the row and wraps it', () => {
   const css = readFileSync(join(app, 'src/pages/W9Mobile.css'), 'utf8')
   assert.match(css, /@media \(max-width: 820px\)[\s\S]*?\.w9-page \.ri-wire-row\s*\{[^}]*grid-template-columns:\s*28px minmax\(0, 1fr\)/)
   assert.match(css, /\.ri-wire-headline[\s\S]{0,200}?white-space:\s*normal/)
+})
+// review P2622-R2: a two-line clamp only clips with hidden overflow. `overflow: visible` lets the
+// third and later lines paint over the badges line and the next row. The browser regression is
+// e2e/fq058-wire-clamp.spec.ts; this pins the rule text so a future edit cannot silently un-clip it.
+check('the phone clamp clips its overflow, so two lines cannot paint over the row', () => {
+  const css = readFileSync(join(app, 'src/pages/W9Mobile.css'), 'utf8')
+  const rule = css.slice(css.indexOf('.w9-page .ri-wire-headline'))
+  const body = rule.slice(0, rule.indexOf('}'))
+  assert.match(body, /overflow:\s*hidden\s*!important/, body)
+  assert.match(body, /-webkit-line-clamp:\s*2/, body)
+  assert.doesNotMatch(body, /overflow:\s*visible/)
+})
+// review P2622 P3: an unwrapped <details> on desktop gets a browser-inserted summary and can collapse
+// every filter with one click. Desktop must be a plain container; only a phone folds behind a summary.
+check('desktop secondary filters cannot collapse; a phone folds behind one summary', () => {
+  const shell = (phone) => renderToStaticMarkup(React.createElement(SecondaryFiltersShell, {
+    phone, open: false, summary: 'Filters',
+  }, React.createElement('span', null, 'chips')))
+  const desktop = shell(false)
+  const phone = shell(true)
+  assert.match(desktop, /<div data-testid="ri-secondary-filters"/)
+  assert.doesNotMatch(desktop, /<details/, 'desktop must not be a collapsible details element')
+  assert.match(phone, /<details/)
+  assert.match(phone, /<summary/)
+  assert.match(phone, /Filters/)
 })
 
 const out = { results, passed: results.filter(x => x.passed).length, failed: results.filter(x => !x.passed).length }
