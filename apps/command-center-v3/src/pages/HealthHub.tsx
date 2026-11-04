@@ -3,6 +3,8 @@ import { useSearchParams } from 'react-router-dom'
 import { pageTab } from '../lib/w9PageModel'
 import JobsHealth from '../components/JobsHealth'
 import { useApi } from '../hooks/useApi'
+import { HealthFindingCard } from '../components/HealthFindingCard'
+import { TYPE } from '../lib/designTokens'
 import { StateCard } from '../components/StateCard'
 import { StatusBadge } from '../components/StatusBadge'
 import CoderDispatchLedger from '../components/health/CoderDispatchLedger'
@@ -360,78 +362,36 @@ export default function HealthHub({ onDrill, jobsHealth }: Props) {
           {findings.length === 0 && <div style={{ fontSize: 11, color: 'var(--green)' }}>✓ No active findings</div>}
           {findings.map((f, i) => {
             const rem = f.remediation || {}
-            const sc = STATUS_COLOR[rem.status] || 'var(--text3)'
-            const when = rem.at || f.detected_at || ''
-            const who = rem.by
-              ? `${f.detected_by || 'health_agent'} → ${rem.by}`
-              : (f.detected_by || 'health_agent')
-            const lab: CSSProperties = {
-              fontSize: 10, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase',
-              letterSpacing: 0.3, marginBottom: 2,
-            }
+            const k = `${f.category}:${f.type}`; const st = acting[k]
             return (
-              <div key={i} onClick={onDrill ? () => onDrill({
-                title: f.message, subtitle: `${CAT_LABEL[f.category] || f.category} · ${f.severity}`,
-                endpoint: '/api/v2/health',
-                rows: [{
-                  what: f.message, why: f.why, recommended_action: f.recommended_action,
-                  action_type: f.action_type, detected_by: f.detected_by, detected_at: f.detected_at,
-                  status: rem.status, handled_by: rem.by, handled_at: rem.at, detail: rem.detail,
-                  pr_url: rem.pr_url, lane: rem.lane, evidence: f,
-                }],
-              }) : undefined}
-                style={{ padding: '10px 12px', background: 'var(--bg1)', border: '1px solid var(--border)',
-                  borderRadius: 6, marginBottom: 6, borderLeft: `3px solid ${SEV_COLOR[f.severity] || 'var(--border)'}`,
-                  cursor: onDrill ? 'pointer' : 'default' }}>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                  <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', color: SEV_COLOR[f.severity] }}>{f.severity}</span>
-                  <span style={{ fontSize: 10, color: 'var(--text3)' }}>{CAT_LABEL[f.category] || f.category}</span>
-                  <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, textTransform: 'uppercase',
-                    color: sc, background: 'var(--bg2)', padding: '2px 8px', borderRadius: 9 }}>{rem.status || 'detected'}</span>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <div style={lab}>What</div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)' }}>{f.message}</div>
-                  </div>
-                  <div>
-                    <div style={lab}>Why / root cause</div>
-                    <div style={{ fontSize: 11, color: 'var(--text2)' }}>{f.why || '—'}</div>
-                  </div>
-                  <div>
-                    <div style={lab}>Who</div>
-                    <div style={{ fontSize: 11, color: 'var(--text1)', fontFamily: 'ui-monospace, monospace' }}>{who}</div>
-                  </div>
-                  <div>
-                    <div style={lab}>When</div>
-                    <div style={{ fontSize: 11, color: 'var(--text2)' }}>{when ? fmtWhen(when) : '—'}</div>
-                  </div>
-                  <div style={{ gridColumn: 'span 2' }}>
-                    <div style={lab}>How (action)</div>
-                    <div style={{ fontSize: 11, color: 'var(--accent)' }}>{f.recommended_action || '—'}</div>
-                    {rem.detail && <div style={{ fontSize: 10, color: 'var(--text3)', fontStyle: 'italic', marginTop: 2 }}>{rem.detail}</div>}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
-                  {rem.pr_url && rem.pr_url.startsWith('http') && (
-                    <a href={rem.pr_url} onClick={e => e.stopPropagation()} style={{ color: 'var(--accent)', fontSize: 10 }}>PR ↗</a>
-                  )}
-                  {f.actionable && ['auto_retry', 'refresh', 'code_fix'].includes(f.action_type) && (() => {
-                    const k = `${f.category}:${f.type}`; const st = acting[k]
-                    const label = f.action_type === 'code_fix' ? 'Route to coder' : 'Fix now'
-                    return (
-                      <button onClick={e => remediate(f, e)} disabled={st === 'working'}
-                        title={`Manually trigger: ${f.recommended_action}`}
-                        style={{ marginLeft: 'auto', padding: '2px 10px', fontSize: 10, fontWeight: 700,
-                          borderRadius: 5, border: '1px solid var(--accent)', cursor: st === 'working' ? 'default' : 'pointer',
-                          background: st && st !== 'working' && !st.startsWith('failed') ? 'var(--green-dim)' : 'var(--accent-dim)',
-                          color: st && st.startsWith('failed') ? 'var(--red)' : 'var(--accent)' }}>
-                        {st === 'working' ? '…' : st ? st.replace('_', ' ') : label}
-                      </button>
-                    )
-                  })()}
-                </div>
-              </div>
+              <HealthFindingCard key={i} finding={f}
+                onOpen={onDrill ? () => onDrill({
+                  title: f.message, subtitle: `${CAT_LABEL[f.category] || f.category} · ${f.severity}`,
+                  endpoint: '/api/v2/health',
+                  rows: [{
+                    what: f.message, why: f.why, recommended_action: f.recommended_action,
+                    action_type: f.action_type, detected_by: f.detected_by, detected_at: f.detected_at,
+                    status: rem.status, handled_by: rem.by, handled_at: rem.at, detail: rem.detail,
+                    pr_url: rem.pr_url, lane: rem.lane, evidence: f,
+                  }],
+                }) : undefined}>
+                {rem.pr_url && rem.pr_url.startsWith('http') && (
+                  <a href={rem.pr_url} style={{ color: 'var(--accent)', fontSize: TYPE.xs }}>PR ↗</a>
+                )}
+                {f.actionable && ['auto_retry', 'refresh', 'code_fix'].includes(f.action_type) && (() => {
+                  const label = f.action_type === 'code_fix' ? 'Route to coder' : 'Fix now'
+                  return (
+                    <button onClick={e => remediate(f, e)} disabled={st === 'working'}
+                      title={`Manually trigger: ${f.recommended_action}`}
+                      style={{ marginLeft: 'auto', padding: '2px 10px', fontSize: TYPE.xs, fontWeight: 700,
+                        borderRadius: 5, border: '1px solid var(--accent)', cursor: st === 'working' ? 'default' : 'pointer',
+                        background: st && st !== 'working' && !st.startsWith('failed') ? 'var(--green-dim)' : 'var(--accent-dim)',
+                        color: st && st.startsWith('failed') ? 'var(--red)' : 'var(--accent)' }}>
+                      {st === 'working' ? '…' : st ? st.replace('_', ' ') : label}
+                    </button>
+                  )
+                })()}
+              </HealthFindingCard>
             )
           })}
         </>
