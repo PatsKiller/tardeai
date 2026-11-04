@@ -314,7 +314,7 @@ function MobilePair({ label, value, color }: { label: string; value: ReactNode; 
 }
 
 function HoldingsMobileList({
-  models, openStops, onOpenDetail, placementCount, resizeCount, rowCount,
+  models, openStops, onOpenDetail, placementCount, resizeCount, rowCount, cvdMode,
 }: {
   models: Array<{ ctx: HoldingsTableRowContext; m: ReturnType<typeof buildHoldingsRowModel> }>
   openStops: (ctx: HoldingsTableRowContext) => void
@@ -322,6 +322,7 @@ function HoldingsMobileList({
   placementCount: number
   resizeCount: number
   rowCount: number
+  cvdMode: HoldingsCvdMode
 }) {
   return (
     <div
@@ -333,8 +334,8 @@ function HoldingsMobileList({
       <div data-testid="holdings-mobile-list" role="rowgroup">
         {models.map(({ ctx: rowCtx, m }) => {
           const h = rowCtx.h
-          const dayColor = m.dayPct != null ? semanticSigned(m.dayPct, 'default') : BB.text3
-          const plColor = m.pl$ != null ? semanticSigned(m.pl$, 'default') : BB.text3
+          const dayColor = m.dayPct != null ? semanticSigned(m.dayPct, cvdMode) : BB.text3
+          const plColor = m.pl$ != null ? semanticSigned(m.pl$, cvdMode) : BB.text3
           const stopColor = stopStatusColor(m.stopStatus)
           return (
             <article
@@ -346,7 +347,7 @@ function HoldingsMobileList({
               onKeyDown={e => { if (e.key === 'Enter') onOpenDetail(rowCtx) }}
               style={{
                 padding: '10px 12px', borderBottom: `1px solid ${BB.borderSubtle}`, cursor: 'pointer',
-                borderLeft: m.needsAction ? `3px solid ${primaryActionColor(m.primaryAction.tone, 'default')}` : '3px solid transparent',
+                borderLeft: m.needsAction ? `3px solid ${primaryActionColor(m.primaryAction.tone, cvdMode)}` : '3px solid transparent',
                 background: BB.bgRow,
               }}
             >
@@ -391,9 +392,9 @@ function HoldingsMobileList({
                   style={{
                     padding: '8px 12px', fontSize: 11, fontWeight: 800, borderRadius: RADIUS.md, minHeight: 40,
                     cursor: m.protectionState === 'CASH' ? 'default' : 'pointer',
-                    border: `1px solid ${primaryActionColor(m.primaryAction.tone, 'default')}55`,
-                    background: primaryActionBg(m.primaryAction.tone, 'default'),
-                    color: primaryActionColor(m.primaryAction.tone, 'default'),
+                    border: `1px solid ${primaryActionColor(m.primaryAction.tone, cvdMode)}55`,
+                    background: primaryActionBg(m.primaryAction.tone, cvdMode),
+                    color: primaryActionColor(m.primaryAction.tone, cvdMode),
                     opacity: m.protectionState === 'CASH' ? 0.55 : 1,
                   }}
                 >
@@ -449,6 +450,7 @@ export default function HoldingsTableView({
         placementCount={placementCount}
         resizeCount={resizeCount}
         rowCount={rows.length}
+        cvdMode={cvdMode}
       />
     )
   }
