@@ -37,11 +37,11 @@ function Chip({ tone, children, tip, testId, size = 'md' }: { tone: Tone; childr
   )
 }
 
-function Row({ j, selected, onSelect }: { j: Journey; selected: boolean; onSelect: () => void }) {
+function Row({ j, selected, onSelect, compact = false }: { j: Journey; selected: boolean; onSelect: () => void; compact?: boolean }) {
   const ob = originBadge(j.origin)
   const exitTone = EXIT_TONE[j.exit_cause.kind]
   const end = j.status === 'closed' ? j.exit : j.mark
-  return (
+  const grid = (
     <div className="tradeinview-journey-row" data-testid="tj-row" data-trade-id={j.trade_id} data-symbol={j.symbol} data-status={j.status} data-origin={j.origin.kind}
       style={{ display: 'grid', gridTemplateColumns: GRID, gap: 12, padding: '12px 16px', alignItems: 'start',
         borderBottom: `1px solid ${TOKENS.borderSubtle}`, background: selected ? TOKENS.bg[2] : undefined,
@@ -67,6 +67,21 @@ function Row({ j, selected, onSelect }: { j: Journey; selected: boolean; onSelec
         <span style={{ display: 'block', color: TOKENS.text[2], fontSize: TYPE.sm, marginTop: 4 }}>{readableTimesInText(j.exit_cause.detail)}</span>
       </span>
     </div>
+  )
+  if (!compact) return grid
+  // FQ-042: on a phone the list is a set of DATED SUMMARIES, not a wall of expanded rows. Nothing is removed — entry,
+  // exit and cause stay one tap away, and the conflicts/data-gaps sections are no longer buried behind every card.
+  return (
+    <details className="tradeinview-journey-compact" data-testid="tj-row-compact" data-trade-id={j.trade_id} data-symbol={j.symbol}
+      style={{ borderBottom: `1px solid ${TOKENS.borderSubtle}`, background: selected ? TOKENS.bg[2] : undefined }}>
+      <summary style={{ display: 'flex', gap: 8, alignItems: 'baseline', padding: '10px 12px', cursor: 'pointer', minHeight: 44, listStyle: 'none' }}>
+        <span style={{ fontFamily: FONT.mono, fontWeight: 700, fontSize: TYPE.md }}>{j.symbol}</span>
+        <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>{j.entry.at ? etShort(j.entry.at).slice(0, 10) : 'date unavailable'} · {j.account_label || 'Unlabelled account'}</span>
+        <span style={{ marginLeft: 'auto', ...numStyle, fontSize: TYPE.base, color: toneVars(plTone(j.pl.amount ?? j.pl.pct)).color }}>{plText(j)}</span>
+      </summary>
+      {grid}
+    </details>
+  )
   )
 }
 
@@ -396,7 +411,7 @@ export default function TradeJourney({ payload, loading, error, embedded = false
                 <span title={TOOLTIPS.exit}>Status</span>
               </div>
               {rows.length === 0 && <div style={{ padding: 16, fontSize: TYPE.base, color: TOKENS.text[2] }}>No trades in this filter.</div>}
-              {rows.map(j => <Row key={j.trade_id} j={j} selected={sel?.trade_id === j.trade_id} onSelect={() => select(j)} />)}
+              {rows.map(j => <Row key={j.trade_id} j={j} selected={sel?.trade_id === j.trade_id} onSelect={() => select(j)} compact={phone} />)}
             </div>
           </section>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

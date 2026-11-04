@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "journal_journey_compact_20261104",
+  "files": [
+    "apps/command-center-v3/src/lib/journalJourneyCompact.view.test.mjs"
+  ],
+  "anchor": "JOURNAL_JOURNEY_COMPACT_20261104",
+  "comment": [
+    "ANCHOR: JOURNAL_JOURNEY_COMPACT_20261104 — FQ-042: on a phone the journal journey list is a set of dated summaries (symbol · date · account · P/L) with the full row behind a details toggle, so entry/exit/cause no longer repeat before the conflicts and data-gaps sections; nothing is removed and desktop keeps the fully expanded row. Hermetic: reads the page source, no browser, no network."
+  ]
+}
