@@ -212,7 +212,20 @@ _STANDALONE_CREDENTIAL_RE = re.compile(r"^(?=.*[0-9A-Z])(?=.*[a-z])[A-Za-z0-9._~
 #: case or a digit. Deleting on this shape is what erased the operator's SHAs and paths.
 _AMBIGUOUS_TOKEN_RE = re.compile(r"^(?=.*[0-9A-Z])(?=.*[a-z])[A-Za-z0-9._~+/=%\\-]{12,}$")
 
-_TRAILING_KEY_RE = re.compile(r"(?i)(?:" + "|".join(_CREDENTIAL_KEYS) + r")\s*[=:]\s*$")
+_TRAILING_KEY_RE = re.compile(
+    # A KEY BOUNDARY, not a suffix (cx-openai-3, 2026-11-04): the key must begin the message or follow a character that
+    # can only be a separator context — query/form punctuation, a brace, a quote, a slash — never a letter and never a
+    # bare space. Without this, "Please review the source code:" made the NEXT ordinary reply redacted, because `code:`
+    # is a suffix of the word "code" in prose. The key may be quoted, which is how JSON arrives split: `{"code": `.
+    r"(?:^|[?&;{,/'\"(])"
+    r"[\"']?"
+    r"(?:" + "|".join(_CREDENTIAL_KEYS) + r")"
+    r"[\"']?\s*[=:]\s*$",
+    re.I,
+)
+#: The marker a row carries when its value was redacted because the PRECEDING message named a credential key. The
+#: context is never persisted as text — only this marker — so a restart or a queue flush cannot carry a raw credential.
+REDACTION_CONTEXT = "split_paste_predecessor"
 
 
 _CREDENTIAL_PARAM_RE = re.compile(
@@ -359,6 +372,8 @@ def _append_or_queue(record: dict, *, replies_dir=None, pending_path=None, previ
         # message after a restart, a fresh chat, or a queue flush — the split-paste rule has no evidence to work from.
         # The value is NOT deleted on a guess (that is what erased the operator's SHAs and paths); it is stored and
         # MARKED, so the ambiguity is visible in the record instead of silent.
+        if redacted != raw and previous_text and _TRAILING_KEY_RE.search(str(previous_text).strip()):
+            record = {**record, "redaction_context": REDACTION_CONTEXT}
         if redacted == raw and previous_text is None and _AMBIGUOUS_TOKEN_RE.match(raw.strip()):
             record = {**record, "redaction_incomplete": True}
         record = {**record, "text": redacted}

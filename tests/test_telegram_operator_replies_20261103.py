@@ -476,3 +476,51 @@ def test_with_no_previous_message_the_ambiguity_is_recorded_not_guessed(tmp_path
     assert _append_or_queue({"message_id": 12, "text": "AbCdEf1234567890XyZq"}, replies_dir=tmp_path) == "recorded"
     row = _json.loads((tmp_path / "telegram.jsonl").read_text().splitlines()[0])
     assert row["text"] == "AbCdEf1234567890XyZq" and row.get("redaction_incomplete") is True, row
+
+
+def test_an_innocent_colon_does_not_redact_the_next_reply(tmp_path, monkeypatch):
+    """R5-F2: the trailing-key matcher had no key boundary, so 'Please review the source code:' (and 'The field is
+    zipcode:', 'The field is status code:') made the NEXT ordinary reply [redacted]. Fails at eb11cd3af62ae."""
+    commits, records, _ = _drive_updates(
+        monkeypatch, tmp_path,
+        [_msg(931, 9, text="Please review the source code:"), _msg(932, 10, text="503 retry only; do not deploy")],
+        inbox_blocked=False, queue_blocked=False, atomic=True)
+    assert commits == [931, 932]
+    assert "503 retry only; do not deploy" in "\n".join(records)
+
+
+def test_a_json_split_paste_is_protected(tmp_path, monkeypatch):
+    """The opposite gap: '{"code": ' did not match at all, so that split paste stayed unprotected even once context
+    was supplied. Fails at eb11cd3af62ae."""
+    value = "AbCdEf1234567890XyZq"
+    commits, records, _ = _drive_updates(
+        monkeypatch, tmp_path,
+        [_msg(941, 11, text='{"code": '), _msg(942, 12, text=value)],
+        inbox_blocked=False, queue_blocked=False, atomic=True)
+    assert commits == [941, 942]
+    assert value not in "\n".join(records)
+
+
+def test_the_six_identifiers_still_pass_through_the_real_poll_path(tmp_path, monkeypatch):
+    """Tightening a matcher is how the identifier loss reopens: the six facts cx3 listed must survive poll_once."""
+    facts = ["0123456789abcdef0123456789abcdef01234567", "d41d8cd98f00b204e9800998ecf8427e",
+             "docs/designs/DSN-20261104-operator-replies.md", "UmVjb3ZlcnktcmV2aWV3LTI1Nzk=.txt",
+             "v2026.11.04-recovery-round-4", "review-2579-fix-poller-redaction"]
+    updates = [_msg(950 + i, 20 + i, text=f) for i, f in enumerate(facts)]
+    commits, records, _ = _drive_updates(monkeypatch, tmp_path, updates,
+                                         inbox_blocked=False, queue_blocked=False, atomic=True)
+    blob = "\n".join(records)
+    for f in facts:
+        assert f in blob, f
+    assert "[redacted]" not in blob
+
+
+def test_a_split_paste_row_carries_a_marker_not_the_credential(tmp_path):
+    """The context is never persisted as text: a redacted continuation row is marked, so a restart or a queue flush
+    carries no raw credential. Tested at the durable record."""
+    import json as _json  # noqa: PLC0415
+    from scripts.run_telegram_callback_poller import _append_or_queue, REDACTION_CONTEXT
+    assert _append_or_queue({"message_id": 13, "text": "AbCdEf1234567890XyZq"}, replies_dir=tmp_path,
+                            previous_text="127.0.0.1?code=") == "recorded"
+    row = _json.loads((tmp_path / "telegram.jsonl").read_text().splitlines()[0])
+    assert row["text"] == "[redacted]" and row.get("redaction_context") == REDACTION_CONTEXT, row
