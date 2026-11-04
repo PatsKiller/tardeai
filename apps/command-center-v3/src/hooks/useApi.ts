@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { TransportState } from '../lib/observationEnvelope.ts'
-import { classifyStatus, classifyError, countsAsConnectionFailure } from '../lib/httpOutcome'
+import { classifyStatus, classifyError, countsAsConnectionFailure, type Outcome } from '../lib/httpOutcome'
 
 // ── Global connection health ─────────────────────────────────────────────────────────────────────────
 // useApi consumers register/clear when they enter/leave a failed state, so a single top-level indicator
@@ -147,7 +147,9 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
   // interval does not quietly re-issue a request that cannot succeed. Only an
   // explicit operator action — refetch() — clears it.
   const terminalRef = useRef<string | null>(null)
-  const [authState, setAuthState] = useState<'OK' | 'UNAUTHORIZED' | 'FORBIDDEN' | null>(null)
+  const [authState, setAuthState] = useState<'OK' | 'UNAUTHORIZED' | 'FORBIDDEN' | 'IDENTITY_REQUIRED' | null>(null)
+  // The classified failure, so a page can render the honest sentence instead of re-deriving one from a string.
+  const [outcome, setOutcome] = useState<Outcome | null>(null)
 
   const refetch = useCallback(() => {
     // The explicit credential-refresh contract: an operator asking again is the
@@ -274,10 +276,20 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
           // terminal: no retry, no backoff ladder, no reconnect banner. The
           // last-good body is kept (dropping it would be a second lie) but the
           // stale flag is NEVER cleared — nothing just got fresher.
-          const outcome = classifyStatus(r.status, r.headers)
+          // The status line cannot distinguish "you are not permitted" from "you did not say who you are";
+          // the refusal code can. Read it without consuming the body the caller may still want.
+          let refusalCode: string | null = null
+          try {
+            const body = await r.clone().json()
+            refusalCode = typeof body?.error === 'string' ? body.error
+              : typeof body?.code === 'string' ? body.code : null
+          } catch { /* not JSON, or already consumed: an unknown code keeps the conservative reading */ }
+          const outcome = classifyStatus(r.status, r.headers, Date.now(), refusalCode)
           if (cancelled) return
+          setOutcome(outcome)
           setError(outcome.message)
-          if (outcome.kind === 'UNAUTHORIZED' || outcome.kind === 'FORBIDDEN') {
+          if (outcome.kind === 'UNAUTHORIZED' || outcome.kind === 'FORBIDDEN'
+              || outcome.kind === 'IDENTITY_REQUIRED') {
             setAuthState(outcome.kind)
           }
           if (dataRef.current != null) {
@@ -372,5 +384,5 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
     }
   }, [path, intervalMs, tick, enabled, background])
 
-  return { data, loading, refreshing, error, stale, receivedAt, transport, authState, refetch }
+  return { data, loading, refreshing, error, stale, receivedAt, transport, authState, outcome, refetch }
 }

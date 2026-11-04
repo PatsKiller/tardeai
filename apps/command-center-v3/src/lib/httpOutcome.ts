@@ -22,6 +22,7 @@ export type OutcomeClass =
   | 'NOT_MODIFIED'
   | 'UNAUTHORIZED'
   | 'FORBIDDEN'
+  | 'IDENTITY_REQUIRED'
   | 'CLIENT_ERROR'
   | 'RATE_LIMITED'
   | 'TIMEOUT'
@@ -68,10 +69,17 @@ export function parseRetryAfter(value: string | null | undefined, nowMs: number 
 }
 
 /** Classify an HTTP status. `headers` is optional so this stays testable. */
+/** The refusal codes the serve proxy returns when the request carried no operator identity.
+ *  They are NOT permission denials: the caller may be perfectly entitled, it just did not present who it is,
+ *  and signing in through Tailscale resolves it. Rendering them as "not permitted" is a lie the operator
+ *  cannot act on (BOARD row 35). */
+const IDENTITY_CODES = new Set(['AGENT_CALLER_REFUSED', 'UNAUTHENTICATED', 'IDENTITY_NOT_PRESENTED'])
+
 export function classifyStatus(
   status: number,
   headers?: { get(name: string): string | null } | null,
   nowMs: number = Date.now(),
+  errorCode?: string | null,
 ): Outcome {
   const retryAfterMs = parseRetryAfter(headers?.get('Retry-After') ?? null, nowMs)
   const base = { status, retryAfterMs }
@@ -89,6 +97,13 @@ export function classifyStatus(
       keepLastGood: true }
   }
   if (status === 403) {
+    // A 403 has TWO meanings and the status line cannot tell them apart. The refusal code can.
+    const code = String(errorCode ?? '').trim().toUpperCase()
+    if (IDENTITY_CODES.has(code)) {
+      return { ...base, kind: 'IDENTITY_REQUIRED', terminal: true, retryable: false,
+        message: 'your identity was not presented — sign in through Tailscale, then reload; waiting will not fix this',
+        keepLastGood: true }
+    }
     return { ...base, kind: 'FORBIDDEN', terminal: true, retryable: false,
       message: 'forbidden — this operator is not permitted this surface; this will not resolve by waiting',
       keepLastGood: true }

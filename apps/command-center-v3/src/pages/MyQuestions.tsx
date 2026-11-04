@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import { OutcomeNotice } from '../components/OutcomeNotice'
 import { FONT, RADIUS, TOKENS, TYPE, chipStyle } from '../lib/designTokens'
 import {
   ASK_PATHS, CHANNEL_LABEL, TOOLTIPS, currentVersion, entityLabel, filterSummaries, isPending, relativeAge,
@@ -95,7 +96,9 @@ export default function MyQuestions() {
         </div>
         {themeGap && <div data-testid="mq-theme-gap" style={{ fontSize: TYPE.xs, color: TOKENS.text[2], marginBottom: 6 }}>Theme grouping unavailable — {themeGap.reason}</div>}
         {list.loading && !rows.length && <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>Loading…</div>}
-        {list.error && <div style={{ fontSize: TYPE.sm, color: TOKENS.danger }}>Could not load questions: {list.error}</div>}
+        {list.error && (list.outcome
+          ? <OutcomeNotice outcome={list.outcome} prefix="Could not load questions" />
+          : <div style={{ fontSize: TYPE.sm, color: TOKENS.danger }}>Could not load questions: {list.error}</div>)}
         {list.stale && <div role="status" style={{ fontSize: TYPE.sm, color: TOKENS.warning }}>Questions refresh unavailable — showing saved questions.</div>}
         {!list.loading && !rows.length && !list.error && (
           <div data-testid="mq-empty" style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>No questions yet. Use the Ask the CIO bar above (⌘K), or message the CIO bot on Telegram.</div>
