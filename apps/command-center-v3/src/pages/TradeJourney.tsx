@@ -82,7 +82,6 @@ function Row({ j, selected, onSelect, compact = false }: { j: Journey; selected:
       {grid}
     </details>
   )
-  )
 }
 
 function PriceBand({ c }: { c: Chart }) {
