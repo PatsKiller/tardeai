@@ -88,7 +88,14 @@ def test_apply_types_the_fixed_prompt_and_writes_one_ledger_line(tmp_path, monke
     monkeypatch.setattr(N, "list_sessions", lambda c, run=None: ["cc-deepseek-6"])
     monkeypatch.setattr(N, "capture", lambda s, run=None: IDLE)
     typed = []
-    monkeypatch.setattr(N, "send", lambda s, t, run=None, sleep=None: typed.append((s, t)))
+
+    def send_ok(s, t, run=None, sleep=None):
+        # P2 (2026-11-04): send() now reports whether tmux confirmed the keystroke, and a nudge is counted only when
+        # it did. The stub returns True because this test is about the typing path, not about a failed send.
+        typed.append((s, t))
+        return True
+
+    monkeypatch.setattr(N, "send", send_ok)
     state = tmp_path / "state.json"
     state.write_text(json.dumps({"cc-deepseek-6": seen(IDLE, 1000.0 - 300)}))
     rc = N.main(["--apply", "--state", str(state), "--ledger", str(tmp_path / "ledger.jsonl"),

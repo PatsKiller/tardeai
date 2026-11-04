@@ -34958,6 +34958,10 @@
         {
           "check": "cron_twin_alive",
           "text": "the live crontab entry keeps its own log line; the lane is shadow and is not the thing doing the work"
+        },
+        {
+          "check": "output_produced",
+          "text": "a LIVE run writes LaneRunReceipt@v2 with produced_count equal to the nudges it actually typed (a refused tmux send is never counted), and the executor's output verdict reads it"
         }
       ],
       "degraded": [
@@ -34990,6 +34994,10 @@
         {
           "check": "dry_run_wrote",
           "text": "a dry_run changed the state file, the ledger or any tmux pane"
+        },
+        {
+          "check": "empty_output",
+          "text": "a LIVE run ends with produced_count 0 and no allowed empty_reason, so the executor turns the exit-0 run into RUN_FAILED empty_output"
         }
       ],
       "baseline": {

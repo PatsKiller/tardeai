@@ -122,10 +122,17 @@ def capture(session: str, run=subprocess.run) -> str:
     return run(["tmux", "capture-pane", "-p", "-t", session], capture_output=True, text=True).stdout
 
 
-def send(session: str, text: str, run=subprocess.run, sleep=time.sleep) -> None:
-    run(["tmux", "send-keys", "-t", session, "-l", text], capture_output=True, text=True)
+def send(session: str, text: str, run=subprocess.run, sleep=time.sleep) -> bool:
+    """Type text then Enter. Returns True ONLY when both `tmux` calls exited 0 (F3 review, 2026-11-04).
+
+    A non-zero rc used to be discarded, so a dead tmux pane produced a ledger line and an inflated produced_count —
+    a nudge that never happened, counted as one that did."""
+    typed = run(["tmux", "send-keys", "-t", session, "-l", text], capture_output=True, text=True)
+    if getattr(typed, "returncode", 1) != 0:
+        return False
     sleep(0.4)
-    run(["tmux", "send-keys", "-t", session, "Enter"], capture_output=True, text=True)
+    sent = run(["tmux", "send-keys", "-t", session, "Enter"], capture_output=True, text=True)
+    return getattr(sent, "returncode", 1) == 0
 
 
 def ledger_line(session: str, detail: str, cfg: dict) -> str:
@@ -148,6 +155,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--ledger")
     ap.add_argument("--coord-dir", help="directory named in the heartbeat prompt (WORKERS.md/BOARD.md)")
     a = ap.parse_args(argv)
+    started_at = datetime.now(timezone.utc).isoformat()
     cfg = load_cfg(a.config)
     coord = a.coord_dir or os.environ.get("TRADEAI_COORD_DIR") or str(Path.home() / "trade-ai-releases"
                                                                      / "persistent-state" / "data" / "coordination"
@@ -166,6 +174,7 @@ def main(argv: list[str] | None = None) -> int:
     out, plan = [], []
     sessions = list_sessions(cfg)
     wanted = 0
+    failed = 0
     for s in sessions:
         rec = state.get(s, {})
         d = decide(capture(s), rec, now, cfg)
@@ -179,17 +188,24 @@ def main(argv: list[str] | None = None) -> int:
             wanted += 1
             plan.append(ledger_line(s, detail, cfg))          # shown as "would:" — nothing is typed or written
         elif action == "RESUME":
-            send(s, RESUME, run=subprocess.run)
-            rec["nudged_at"] = now
+            if send(s, RESUME, run=subprocess.run):
+                rec["nudged_at"] = now
+            else:
+                failed += 1
         elif action == "ENTER":
             # tmux resolves from PATH on purpose; the session name passed the config regex and the refusal list
-            subprocess.run(["tmux", "send-keys", "-t", s, "Enter"],  # noqa: S603, S607
-                           capture_output=True, text=True)
-            rec["nudged_at"] = now
+            entered = subprocess.run(["tmux", "send-keys", "-t", s, "Enter"],  # noqa: S603, S607
+                                     capture_output=True, text=True)
+            if getattr(entered, "returncode", 1) == 0:
+                rec["nudged_at"] = now
+            else:
+                failed += 1
         else:
-            send(s, PROMPT.format(coord=coord), run=subprocess.run)
-            rec["nudged_at"] = now
-        if detail is not None and a.apply:
+            if send(s, PROMPT.format(coord=coord), run=subprocess.run):
+                rec["nudged_at"] = now
+            else:
+                failed += 1
+        if detail is not None and a.apply and rec.get("nudged_at") == now:
             wanted += 1
             ledger_path.parent.mkdir(parents=True, exist_ok=True)
             with open(ledger_path, "a", encoding="utf-8") as fh:
@@ -212,10 +228,27 @@ def main(argv: list[str] | None = None) -> int:
         from scripts.lib.lane_output import emit as _emit_lane_output, output_block as _lane_output_block
     except ImportError:  # scripts/ on sys.path (cron / direct execution)
         from lib.lane_output import emit as _emit_lane_output, output_block as _lane_output_block  # type: ignore
-    produced = wanted   # dry: what it WOULD type; live: what it typed. `attempted` is the sessions inspected.
+    produced = wanted   # dry: what it WOULD type; live: what it TYPED (a refused tmux send is not a nudge).
+    skipped = {"send_failed": failed} if failed else {}
     block = _lane_output_block(produced=produced, attempted=len(sessions), unit="agent nudges typed",
-                               empty_reason=None if produced else "nothing_due")
-    _emit_lane_output("agent_nudge", "live" if a.apply else "dry_run", block)
+                               skipped=skipped, empty_reason=None if produced else "nothing_due")
+    _emit_lane_output("agent_nudge", "live" if a.apply else "dry_run", block, started_at=started_at)
+    if a.apply:
+        # A LIVE run writes LaneRunReceipt@v2 plus the immutable per-attempt receipt that
+        # scripts/n8n_run_executor.py::apply_output_verdict reads. Without it the contract's rule is declared and never
+        # evaluated (the `declared_not_enforced` path) — a rule that only fails in a test. Never written in dry run:
+        # a dry run has no receipt by definition (`dry_run_exempt`).
+        try:
+            try:
+                from scripts.lib.lane_last_receipt import write_lane_receipt as _write_receipt
+            except ImportError:  # scripts/ on sys.path
+                from lib.lane_last_receipt import write_lane_receipt as _write_receipt  # type: ignore
+            _write_receipt("agent_nudge", ok=True, started_at=started_at, script="scripts/agent_nudger.py",
+                           produced_count=produced, attempted_count=len(sessions), skipped_reasons=skipped,
+                           empty_reason=None if produced else "nothing_due",
+                           summary={"sessions": len(sessions), "send_failed": failed})
+        except Exception as exc:  # noqa: BLE001 -- the run's own result comes first
+            print(f"[agent_nudge] lane receipt write failed: {type(exc).__name__}", file=sys.stderr)
     return 0
 
 

@@ -166,3 +166,95 @@ def test_the_lane_emits_the_count_the_contract_reads(monkeypatch, capsys, tmp_pa
     assert block["attempted_count"] == 2
     assert block["unit"] == "agent nudges typed"
     assert block["produced_count"] or block["empty_reason"] == "nothing_due"
+
+
+# ── A: the rule is CONNECTED to the executor, not merely declared (review 2026-11-04) ───────────────
+
+
+def _shipped_entry():
+    lanes = json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text(encoding="utf-8"))["lanes"]
+    return [e for e in lanes if e.get("lane_id") == LANE][0]
+
+
+def test_the_shipped_entry_asks_the_executor_to_enforce_the_rule():
+    """Without output_receipt v2 the executor answers declared_not_enforced before it reads the rule at all."""
+    assert _shipped_entry().get("output_receipt") == "v2"
+
+
+def _live_attempt(tmp_path, monkeypatch, *, produced: int, empty_reason):
+    """Write the attempt receipt the lane writes on a live run, then return the executor's own receipt for it."""
+    from scripts.lib import lane_last_receipt as LR  # noqa: PLC0415
+
+    run_id, sha = "run-fixture-1", "a" * 40
+    monkeypatch.setenv(LR.RUN_ID_ENV, run_id)
+    monkeypatch.setenv(LR.RUN_MODE_ENV, "live")
+    monkeypatch.setenv(LR.CODE_SHA_ENV, sha)
+    monkeypatch.setenv(LR.RUN_ATTEMPT_ENV, "1")
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    # A future start would be "after" the receipt's own clock: the window must bracket the write, as a real run's does.
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+    started = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+    path = LR.receipt_path(LANE, tmp_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    LR.write_lane_receipt(LANE, ok=True, started_at=started, path=path, produced_count=produced,
+                          attempted_count=2, skipped_reasons={}, empty_reason=empty_reason,
+                          script="scripts/agent_nudger.py")
+    # The verdict binds the receipt's own clock to the executor's attempt window, so build the window from the file
+    # just written: a synthetic 2030 window makes a real receipt look "outside the attempt" (receipt_time_invalid).
+    written = json.loads(path.read_text(encoding="utf-8"))
+    receipt = {"state": "RUN_DONE", "run_id": run_id, "attempt": 1, "code_sha": sha,
+               "started_at": started, "finished_at": written["finished_at"]}
+    return receipt, started
+
+
+def test_the_executor_evaluates_the_rule_and_allows_an_honest_empty(tmp_path, monkeypatch):
+    import n8n_run_executor as X  # noqa: PLC0415
+
+    receipt, _ = _live_attempt(tmp_path, monkeypatch, produced=0, empty_reason="nothing_due")
+    # The PRODUCTION rule source, parsed by the executor's own parser — not a hand-built dict.
+    outputs = X.expected_outputs_source(ROOT / "config" / "n8n_health_contracts.json")
+    out = X.apply_output_verdict(dict(receipt), outputs, lane_id=LANE, mode="live",
+                                 state_root=tmp_path, entry=_shipped_entry())
+    assert out["output_verdict"]["verdict"] != "declared_not_enforced", out["output_verdict"]
+    assert out["output_verdict"]["verdict"] == "empty_allowed", out["output_verdict"]
+    assert out["state"] == "RUN_DONE"
+
+
+def test_the_executor_REFUSES_a_live_run_that_typed_nothing_for_no_stated_reason(tmp_path, monkeypatch):
+    """The control: exit 0 with nothing produced and no allowed reason is RUN_FAILED, not success."""
+    import n8n_run_executor as X  # noqa: PLC0415
+
+    receipt, _ = _live_attempt(tmp_path, monkeypatch, produced=0, empty_reason=None)
+    # The PRODUCTION rule source, parsed by the executor's own parser — not a hand-built dict.
+    outputs = X.expected_outputs_source(ROOT / "config" / "n8n_health_contracts.json")
+    out = X.apply_output_verdict(dict(receipt), outputs, lane_id=LANE, mode="live",
+                                 state_root=tmp_path, entry=_shipped_entry())
+    assert out["output_verdict"]["verdict"] == "empty_violation", out["output_verdict"]
+    assert out["state"] == "RUN_FAILED" and out["reason"] == "empty_output", out
+
+
+# ── C: a refused keystroke is not a nudge ───────────────────────────────────────────────────────────
+
+
+def test_a_failed_tmux_send_is_not_counted_as_a_nudge(monkeypatch, capsys, tmp_path):
+    import agent_nudger as N  # noqa: PLC0415
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    monkeypatch.setattr(N, "list_sessions", lambda cfg: ["fixture-session"])
+    monkeypatch.setattr(N, "capture", lambda s: "❯ \n  ? for shortcuts")
+    # Every tmux call fails: the pane is gone. The run must record a skipped reason, not a nudge.
+    monkeypatch.setattr(N.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=1))
+    monkeypatch.setattr(N.time, "sleep", lambda s: None)
+    # An idle session is only nudged once it is known and quiet: seed state so decide() votes NUDGE.
+    import hashlib  # noqa: PLC0415
+    screen = "❯ \n  ? for shortcuts"
+    state = {"fixture-session": {"hash": hashlib.sha256(N.tail_of(screen).encode()).hexdigest(),
+                                 "changed_at": 0, "nudged_at": 0}}
+    (tmp_path / "s.json").write_text(json.dumps(state), encoding="utf-8")
+    rc = N.main(["--apply", "--state", str(tmp_path / "s.json"), "--ledger", str(tmp_path / "l.jsonl")])
+    assert rc == 0
+    err = capsys.readouterr().err
+    block = json.loads([ln for ln in err.splitlines() if ln.startswith("LANE_OUTPUT ")][0][len("LANE_OUTPUT "):])
+    assert block["produced_count"] == 0, block
+    assert block["skipped_reasons"].get("send_failed") == 1, block
+    assert not (tmp_path / "l.jsonl").exists() or (tmp_path / "l.jsonl").read_text() == ""
