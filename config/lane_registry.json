@@ -19058,6 +19058,7 @@
       "expected_cadence_hours": 0.0833,
       "state": "PAUSED",
       "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "cc3 and cx-openai-2 both blocked 7df0f53ce on 2026-11-04 with the same proof: evaluate_lane against the real evaluator returns last_output_at null and verdict SILENT for this row, while creating the state file flips it to LIVE, so the state.json mtime is the only thing that can ever make it healthy; scripts/agent_nudger.py writes that file only under --apply and the lanes only runnable mode is --dry-run.",
       "review_by": "2026-11-18",
       "state_reason": "Shadow only. The dispatcher runs this lane with --dry-run, which writes no state, so an ACTIVE file_mtime signal on state.json could never advance: _scheduler_present would be true (the shadow run fires) while the output signal stayed null, and the SLA fallback would emit a false NO_OUTPUT every cycle (cc3/cx-openai-2, 2026-11-04). The signal below names the artifact a LIVE run advances; it does not advance in shadow, which is why the row is PAUSED rather than ACTIVE.",
       "output_signal": {
