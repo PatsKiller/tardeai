@@ -105,6 +105,18 @@ function DirectiveDrawer({ id, onClose }: { id: number; onClose: () => void }) {
   )
 }
 
+// FQ-080: the main list printed engine vocabulary — `cio` / `advisory` chips, lower-case filter buttons and a raw
+// CIRCULATING/COLD surface-health enum. These name the same facts in operator words; the raw value stays in the
+// title so nothing is lost (operator page audit, FQ-080).
+const DESK_LABEL: Record<string, string> = { cio: 'CIO desk', advisory: 'Advisory desk', defense: 'Defense desk' }
+const deskLabel = (v: unknown) => DESK_LABEL[String(v || '').toLowerCase()] || (v ? String(v) : 'Unattributed desk')
+const loopLabel = (v: unknown) => {
+  const s = String(v || '').toUpperCase()
+  if (s === 'CIRCULATING') return 'Loop circulating'
+  if (s === 'COLD') return 'Loop cold'
+  return v ? String(v) : 'Loop health unknown'
+}
+
 export default function WatchpoolHub({ onDrill, embedded }: Props) {
   const [params, setParams] = useSearchParams()
   const [terminalUi] = useTerminalUi()
@@ -252,7 +264,7 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
           </Chip>
           {twHealth && (
             <Chip kind="state" tone={twHealth === 'CIRCULATING' ? 'green' : twHealth === 'COLD' ? 'slate' : 'amber'}
-              title="two-way loop health">{twHealth}</Chip>
+              title={`two-way loop health: ${String(twHealth)}`}>{loopLabel(twHealth)}</Chip>
           )}
           {twReverse && (
             <span style={{ fontSize: TYPE.xs, color: BB.text3 }}>
@@ -271,7 +283,7 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
                 background: deskFilter === f ? BB.amberDim : BB.bgShift,
                 color: deskFilter === f ? BB.amber : BB.text2,
                 border: `1px solid ${deskFilter === f ? BB.amber : BB.border}`,
-              }}>{f}</button>
+              }}>{f === 'all' ? 'All desks' : deskLabel(f)}</button>
           ))}
         </div>
         {deskSuggestions.length === 0 ? (
@@ -294,7 +306,7 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
                     endpoint: `/api/v2/watch/provenance/${h.symbol}`,
                     rows: [h],
                   })}>{h.symbol}</b>
-                <Chip kind="metric">{h.surfaced_by}</Chip>
+                <Chip kind="metric" title={`surfaced by ${String(h.surfaced_by || "unknown")}`}>{deskLabel(h.surfaced_by)}</Chip>
                 <span style={{ fontSize: TYPE.xs, color: BB.text2, flex: '1 1 160px' }}>
                   {h.label || h.directive_label || `directive #${h.directive_id}`}
                 </span>
