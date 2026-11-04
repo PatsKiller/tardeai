@@ -18,6 +18,12 @@ check(stateBadgeWords('BROKER_OBSERVED') === 'AUTO-LINKED FROM SCHWAB READ-ONLY'
 check(stateBadgeWords('EXCEPTION') === 'EXCEPTION', 'a plain state was rewritten')
 check(/not approval/i.test(stateScopeTitle('READY')), 'the READY tooltip does not say it is not approval')
 check(/Schwab/.test(stateScopeTitle('BROKER_OBSERVED')), 'the broker-linked tooltip lost its source')
+// codex B3 (2026-11-04): an exception or an unrecorded state must not inherit "your ticket is complete".
+check(!/complete to review/i.test(stateScopeTitle('EXCEPTION')), 'an EXCEPTION draft is described as complete to review')
+check(/exception/i.test(stateScopeTitle('EXCEPTION')), 'an EXCEPTION draft does not say it has an exception')
+check(!/is complete to review/i.test(stateScopeTitle(null)), 'an unrecorded state claims the ticket is complete')
+check(/cannot say/.test(stateScopeTitle(undefined)), 'an unrecorded state does not say the page cannot judge it')
+check(!/is complete to review/i.test(stateScopeTitle('SOMETHING_ELSE')) && /not complete/i.test(stateScopeTitle('SOMETHING_ELSE')), 'an unknown state claims the ticket is complete')
 
 check(decisionWords('GO', 'PROPOSAL') === 'GO · advisory', 'GO does not say it is advisory')
 check(decisionWords('WAIT', 'PROPOSAL') === 'WAIT · advisory', 'WAIT does not say it is advisory')

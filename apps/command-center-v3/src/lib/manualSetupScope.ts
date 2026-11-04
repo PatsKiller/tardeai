@@ -15,8 +15,21 @@ export function stateBadgeWords(state: string | null | undefined): string {
 
 export function stateScopeTitle(state: string | null | undefined): string {
   const s = String(state || '').toUpperCase()
-  if (s === 'BROKER_OBSERVED') return 'This position was read from your Schwab account (read-only). Nothing was placed from here.'
-  return 'Draft readiness only: this says your ticket is complete to review. It is not approval and nothing has been sent.'
+  if (s === 'BROKER_OBSERVED') {
+    return 'Linked from matching Schwab activity (read-only). Nothing was placed from here and this is not approval.'
+  }
+  if (s === 'READY' || s === 'GENERATED') {
+    return 'Draft readiness only: this says your ticket is complete to review. It is not approval and nothing has been sent.'
+  }
+  // codex B3 (2026-11-04): EXCEPTION and an unrecorded state used to inherit the completeness sentence.
+  // An incomplete or unknown row must say so, in the same plain words the badge uses.
+  if (s === 'EXCEPTION') {
+    return 'This draft has an exception, so it is not ready to review. It is not approval and nothing has been sent.'
+  }
+  if (!s) {
+    return 'No state is recorded for this draft, so this page cannot say the ticket is complete. Nothing has been sent.'
+  }
+  return `This draft is ${s.toLowerCase()}, not complete to review. It is not approval and nothing has been sent.`
 }
 
 export function decisionWords(decision: string | null | undefined, source: string | null | undefined): string {

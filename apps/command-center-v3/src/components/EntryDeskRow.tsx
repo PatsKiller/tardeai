@@ -236,6 +236,7 @@ export default function EntryDeskRow({
               {warns.map((w, i) => <div key={i} style={{ fontSize: 9, color: w.color, fontWeight: 700 }}>⚠ {w.text}</div>)}
             </div>
           )}
+          {expanded && (<>
           {ladder && (
             <div style={{ marginTop: 7, background: 'rgba(15,23,42,.48)', border: '1px solid var(--border)', borderRadius: 7, padding: '6px 8px' }}>
               <div style={{ fontSize: 8, color: C.dim, fontWeight: 900, textTransform: 'uppercase' }}>
@@ -264,6 +265,7 @@ export default function EntryDeskRow({
               {tech.action}
             </div>
           )}
+          </>)}
         </div>
 
         {expanded && <div>
