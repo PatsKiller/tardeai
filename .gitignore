@@ -215,3 +215,8 @@ apps/command-center-v3/build-meta.json
 
 # UI audit screenshots (PNGs live in Drive/CI artifacts; only manifest.json is committed)
 apps/command-center-v3/e2e/screenshots/ui-audit/**/*.png
+
+# Site-audit captures hold real portfolio values; they never enter the repo (SPEC_SITE_AUDIT… §6).
+**/page-audit-*/
+**/site-audit-capture/
+**/audit-captures/

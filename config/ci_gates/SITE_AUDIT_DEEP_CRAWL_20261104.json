@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "SITE_AUDIT_DEEP_CRAWL_20261104",
+  "files": [
+    "tests/test_site_audit_deep_crawl_20261104.py"
+  ],
+  "anchor": "SITE_AUDIT_DEEP_CRAWL_20261104",
+  "comment": [
+    "ANCHOR: SPEC §6 (operator 2026-11-04): the crawl opens detail views and follows in-page links one",
+    "level, and still never presses an action. Tests pin the label/role denylist, the weekly-rotating detail budget",
+    "(all rows on Home and top lists, 20 elsewhere), the completeness rule (a top-list card missing a technical or",
+    "the CIO thesis is P1), and the structural rule that a capture root inside the repo is refused and ignored."
+  ]
+}

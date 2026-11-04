@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""Page audit, pass 1 (capture, no AI) — operator directive 2026-11-03 19:10 ET.
+
+Visits every Command Center v3 page found in the LIVE navigation (plus the known hub tabs from
+scripts/cc_v3_playwright_audit.py), one at a time, read-only, and saves per page and viewport:
+  screenshot (full page), visible text of the main area, console errors, failed requests,
+  /api/ calls with status and duration, and load time.
+Viewports: desktop 1440x900, phone 412x915, phone 390x844.
+Never clicks anything except hub TAB buttons named in HUB_TABS (navigation only). Never submits.
+
+Usage: page_audit_capture.py [--out DIR] [--base URL] [--pause SECONDS] [--limit N]
+Writes DIR/index.json (one row per page/viewport) and DIR/<slug>/<viewport>.{png,txt,json}.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[2]  # repo-relative once this file lives in scripts/site_audit
+sys.path.insert(0, str(REPO / "scripts"))
+try:
+    from cc_v3_playwright_audit import HUB_TABS, NAV_ROUTES  # known routes and tabs
+except Exception:  # pragma: no cover
+    HUB_TABS, NAV_ROUTES = {}, []
+
+VIEWPORTS = {"desktop": (1440, 900), "phone412": (412, 915), "phone390": (390, 844)}
+EXEC = "/home/johnclaw/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome"
+ACTION_WORDS = re.compile(r"approve|decline|acknowledge|submit|delete|cancel|place|buy|sell|refresh|retry|apply|merge|install|arm|stop", re.I)
+
+
+def slug(route: str) -> str:
+    s = route.strip("/").replace("/", "_") or "home"
+    return re.sub(r"[^A-Za-z0-9_.-]", "-", s)[:80]
+
+
+def discover_routes(page, base: str) -> list[tuple[str, str]]:
+    page.goto(base + "/", wait_until="networkidle", timeout=45000)
+    page.wait_for_timeout(1500)
+    found = {}
+    for a in page.locator("a[href]").all():
+        try:
+            href = a.get_attribute("href") or ""
+            label = (a.inner_text() or "").strip().split("\n")[0][:60]
+        except Exception:
+            continue
+        if href.startswith("/v3"):
+            href = href[3:] or "/"
+        if not href.startswith("/") or href.startswith("//") or "#" in href or "?" in href:
+            continue
+        if href.startswith("/api"):
+            continue
+        found.setdefault(href, label or href)
+    for r, label in NAV_ROUTES:
+        found.setdefault(r, label)
+    return sorted(found.items())
+
+
+def server_healthy(base: str, wait_s: int = 300) -> bool:
+    """Gate before every page: the live server must answer quickly. If it does not, wait up to wait_s
+    (it restarts itself), and abort the sweep rather than keep loading a struggling server.
+    Added 2026-11-03 after the server was SIGKILLed mid-sweep (cause unverified)."""
+    import urllib.request
+    deadline = time.time() + wait_s
+    while time.time() < deadline:
+        try:
+            t0 = time.time()
+            with urllib.request.urlopen(base + "/", timeout=10) as r:
+                if r.status < 500 and time.time() - t0 < 8:
+                    return True
+        except Exception:
+            pass
+        time.sleep(15)
+    return False
+
+
+def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: list[str]) -> dict:
+    api, failed, console = [], [], []
+    starts = {}
+    page.on("request", lambda r: starts.__setitem__(r, time.time()) if "/api/" in r.url else None)
+    def on_resp(resp):
+        if "/api/" in resp.url:
+            t0 = starts.get(resp.request)
+            api.append({"url": resp.url.split("7777")[-1][:160], "status": resp.status,
+                        "ms": round((time.time() - t0) * 1000) if t0 else None})
+        if resp.status >= 400:
+            failed.append({"url": resp.url.split("7777")[-1][:160], "status": resp.status})
+    page.on("response", on_resp)
+    page.on("requestfailed", lambda r: failed.append({"url": r.url.split("7777")[-1][:160], "status": "failed", "error": (r.failure or "")[:80]}))
+    page.on("console", lambda m: console.append(m.text[:200]) if m.type == "error" else None)
+    page.on("pageerror", lambda e: console.append(f"PAGEERROR: {str(e)[:200]}"))
+
+    d = out / slug(route)
+    d.mkdir(parents=True, exist_ok=True)
+    row = {"route": route, "label": label, "viewport": vp, "url": base + route}
+    t0 = time.time()
+    try:
+        resp = page.goto(base + route, wait_until="domcontentloaded", timeout=45000)
+        try:
+            page.wait_for_load_state("networkidle", timeout=20000)
+        except Exception:
+            row["networkidle_timeout"] = True
+        page.wait_for_timeout(1500)
+        row["status"] = resp.status if resp else None
+        row["final_url"] = page.url
+        row["load_ms"] = round((time.time() - t0) * 1000)
+        main = page.locator("main").first
+        text = main.inner_text() if main.count() else page.inner_text("body")
+        (d / f"{vp}.txt").write_text(text)
+        row["text_chars"] = len(text)
+        row["blank_suspect"] = len(text.strip()) < 80
+        low = text.lower()
+        row["flags"] = sorted({w for w in ("loading", "unavailable", "stale", "unknown", "error", "failed", "withheld", "not found", "—")
+                               if w in low})
+        row["h_scroll"] = page.evaluate("document.documentElement.scrollWidth > window.innerWidth + 1")
+        page.screenshot(path=str(d / f"{vp}.png"), full_page=True)
+        if vp == "desktop":
+            for tab in tabs:
+                if ACTION_WORDS.search(tab):
+                    continue
+                trow = {"tab": tab}
+                try:
+                    btn = page.get_by_role("button", name=tab, exact=True)
+                    if btn.count() == 0:
+                        trow["missing"] = True
+                    else:
+                        btn.first.click(timeout=5000)
+                        page.wait_for_timeout(1500)
+                        tt = main.inner_text() if main.count() else page.inner_text("body")
+                        tslug = re.sub(r"[^A-Za-z0-9]+", "-", tab)
+                        (d / f"tab-{tslug}.txt").write_text(tt)
+                        page.screenshot(path=str(d / f"tab-{tslug}.png"), full_page=True)
+                        trow["text_chars"] = len(tt)
+                        trow["blank_suspect"] = len(tt.strip()) < 60
+                except Exception as e:
+                    trow["error"] = str(e)[:150]
+                row.setdefault("tabs", []).append(trow)
+    except Exception as e:
+        row["error"] = str(e)[:300]
+    row["console_errors"] = console[:20]
+    row["failed_requests"] = failed[:30]
+    row["api_calls"] = api[:80]
+    row["slow_api"] = [a for a in api if (a.get("ms") or 0) > 3000]
+    (d / f"{vp}.json").write_text(json.dumps(row, indent=1))
+    return row
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--base", default="http://127.0.0.1:7777/v3")
+    ap.add_argument("--out", default=None)
+    ap.add_argument("--pause", type=float, default=4.0)
+    ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--only-failed-from", default=None, help="index.json of an earlier run: recapture only its error rows")
+    a = ap.parse_args()
+    a.only = None
+    if a.only_failed_from:
+        prev = json.load(open(a.only_failed_from))
+        a.only = {(r["viewport"], r["route"]) for r in prev["index"] if r.get("error")}
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%MZ")
+    from site_audit.capture_root import DEFAULT_CAPTURE_ROOT, assert_capture_root
+    out = assert_capture_root(a.out or (DEFAULT_CAPTURE_ROOT / f"page-audit-{stamp}"), repo_root=REPO)
+    out.mkdir(parents=True, exist_ok=True)
+    from playwright.sync_api import sync_playwright
+    rows = []
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True, executable_path=EXEC)
+        ctx = browser.new_context(viewport={"width": 1440, "height": 900})
+        page = ctx.new_page()
+        routes = discover_routes(page, a.base)
+        ctx.close()
+        if a.limit:
+            routes = routes[: a.limit]
+        print(f"{len(routes)} routes discovered", flush=True)
+        for vp, (w, h) in VIEWPORTS.items():
+            ctx = browser.new_context(viewport={"width": w, "height": h},
+                                      is_mobile=vp != "desktop", has_touch=vp != "desktop")
+            for route, label in routes:
+                if a.only and (vp, route) not in a.only:
+                    continue
+                if not server_healthy(a.base):
+                    print("ABORT: server not healthy for 5 minutes; stopping the sweep", flush=True)
+                    rows.append({"route": route, "viewport": vp, "error": "aborted: server unhealthy"})
+                    break
+                page = ctx.new_page()
+                r = capture(page, a.base, route, label, vp, out, HUB_TABS.get(route, []))
+                page.close()
+                rows.append(r)
+                print(f"{vp:8} {route:40} {'ERR ' + r['error'][:60] if r.get('error') else ('BLANK? ' if r.get('blank_suspect') else 'ok')}"
+                      f" fail={len(r.get('failed_requests', []))} console={len(r.get('console_errors', []))}", flush=True)
+                time.sleep(a.pause)
+            ctx.close()
+        browser.close()
+    summary = {"schema": "PageAuditCapture@v1", "captured_at": stamp, "base": a.base, "routes": len(routes),
+               "rows": len(rows), "errors": sum(1 for r in rows if r.get("error")),
+               "blank_suspects": sum(1 for r in rows if r.get("blank_suspect")),
+               "with_failed_requests": sum(1 for r in rows if r.get("failed_requests")),
+               "with_console_errors": sum(1 for r in rows if r.get("console_errors")),
+               "h_scroll_phone": [r["route"] for r in rows if r.get("h_scroll") and r["viewport"] != "desktop"],
+               "index": [{k: r.get(k) for k in ("route", "label", "viewport", "status", "load_ms", "text_chars",
+                                                "blank_suspect", "flags", "h_scroll", "error")}
+                         | {"failed": len(r.get("failed_requests", [])), "console": len(r.get("console_errors", [])),
+                            "slow_api": len(r.get("slow_api", []))} for r in rows]}
+    (out / "index.json").write_text(json.dumps(summary, indent=1))
+    print(json.dumps({k: v for k, v in summary.items() if k != "index"}, indent=1))
+    print(f"OUT {out}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
