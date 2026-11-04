@@ -619,8 +619,9 @@ def main() -> int:
     for r in (to_alert if a.apply else to_alert[:1]):
         reviews[r["symbol"]] = prepare_packet_inputs(r, evidence_of[id(r)], apply=a.apply)
     if a.apply:
-        for _key, r in results.items():
-            sym = r.get("symbol") or str(_key).split("|", 1)[0]
+        for sym, r in results.items():
+            # The key is the bare symbol for an unscoped row, SYMBOL|ACCOUNT otherwise (FQ-096).
+            sym = r.get("symbol") or str(sym).split("|", 1)[0]
             if prior.get(sym) != r["state"]:
                 alert = r in to_alert
                 cur.execute("""INSERT INTO cio_entry_states (symbol, state, prior_state, alerted, details)
