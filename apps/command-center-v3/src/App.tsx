@@ -1,5 +1,5 @@
 import { OpportunityModalProvider } from './components/opportunity/OpportunityContext'
-import { useEffect, useState } from 'react'
+import { useCallback, useContext, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
 import { useConnectionHealth, signalApiRecover, retryApiConnection } from './hooks/useApi'
 import { initialProbeState, onProbeResult } from './lib/reconnectProbe'
@@ -75,6 +75,8 @@ import {
 import SurfaceModeBanner from './components/truth/SurfaceModeBanner'
 import RouteErrorBoundary from './components/truth/RouteErrorBoundary'
 import { compareServedBuild, LOADED_BUILD } from './lib/buildIdentity'
+import { SurfacePublishContext, SurfaceReportContext, type SurfaceStateReport } from './components/SurfaceGap'
+import { footerQualifier, surfaceReportReducer } from './lib/surfaceState'
 
 
 function BuildMarker() {
@@ -112,12 +114,13 @@ function BuildMarker() {
     }
   }, [])
   const comparison = compareServedBuild(LOADED_BUILD, served)
-  return <span data-testid="cc-loaded-build" data-source-sha={LOADED_BUILD.sourceSha ?? 'UNAVAILABLE'}>
-    {/* Says "app shell" on purpose (audit D-P2-pages-1 / approvals.data#1): this line describes the loaded
-        front-end bundle only. Reading it as "Loaded bundle … matches served artifact" on a page that also says
-        "Queue unavailable" told the operator the opposite of what the page was reporting. */}
+  // BOARD row 36, rule 7: this line is a fact about the BUNDLE, never about the page's data. A page whose data did
+  // not load must not sit under a bare "matches served artifact" — that reads as "everything is fine".
+  const surface = useContext(SurfaceReportContext)
+  const qualifier = footerQualifier(surface)
+  return <span data-testid="cc-loaded-build" data-source-sha={LOADED_BUILD.sourceSha ?? 'UNAVAILABLE'} data-surface-loaded={surface ? String(surface.dataLoaded) : 'unknown'}>
     App shell: {LOADED_BUILD.uiVersion ?? 'UNAVAILABLE'} · built {LOADED_BUILD.builtAt ?? 'UNAVAILABLE'} · source {LOADED_BUILD.sourceSha?.slice(0, 12) ?? 'UNAVAILABLE'}
-    {' · '}{comparison === 'SAME' ? 'shell matches served artifact (page data is separate)' : comparison === 'UNAVAILABLE' ? 'served shell comparison UNAVAILABLE' : <>
+    {' · '}{comparison === 'SAME' ? `shell matches served artifact (page data is separate)${qualifier}` : comparison === 'UNAVAILABLE' ? 'served shell comparison UNAVAILABLE' : <>
       newer or different artifact available · <button type="button" onClick={() => window.location.reload()}>Reload Command Center</button>
     </>}
   </span>
@@ -227,8 +230,20 @@ function GoProposalDeepLink() {
 
 function Shell() {
   const [drill, setDrill] = useState<DrillContext | null>(null)
+  // The active page publishes its SurfaceState here so the build footer can say "this page's data did not load"
+  // instead of leaving "matches served artifact" to be read as an all-clear (BOARD row 36, rule 7).
+  const [surfaceReport, setSurfaceReport] = useState<SurfaceStateReport | null>(null)
+  // Ownership: a clearing null is accepted only when it comes from the surface that currently owns the slot, so the
+  // outgoing page of a route change cannot erase the incoming page's state (F2 review, 2026-11-04).
+  // STABLE IDENTITY, EMPTY DEPS (cc-deepseek-3 B1): the publisher must not change when the report does. The reducer
+  // also returns the previous state object when the report says the same thing, so a repeat publish is a React no-op.
+  const publishSurfaceState = useCallback((next: SurfaceStateReport | null, clearingFrom?: string) => {
+    setSurfaceReport(prev => surfaceReportReducer(prev, next, clearingFrom))
+  }, [])
   return (
     <OpportunityModalProvider>
+    <SurfacePublishContext.Provider value={publishSurfaceState}>
+    <SurfaceReportContext.Provider value={surfaceReport}>
     <div className="app-shell cc-terminal-ui" style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg0)', color: 'var(--text0)' }}>
       <SchwabReauthBanner />
       <FinvizCookieBanner />
@@ -322,6 +337,8 @@ function Shell() {
       </div>
       <DetailDrawer ctx={drill} onClose={() => setDrill(null)} />
     </div>
+    </SurfaceReportContext.Provider>
+    </SurfacePublishContext.Provider>
     </OpportunityModalProvider>
   )
 }
