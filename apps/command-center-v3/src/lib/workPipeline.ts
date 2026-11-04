@@ -19,12 +19,12 @@ export const STAGE_LABEL: Record<PipelineStage, string> = {
  *
  *  The pipeline speaks eleven codes; a non-developer reads five stages. `backlog` is not one of the spec's five:
  *  proposed/approved/queued work is not "going live today", so it is kept out of that list and shown on its own. */
-export const OPERATOR_STAGES = ['backlog', 'building', 'review', 'ready', 'merging', 'live'] as const
+export const OPERATOR_STAGES = ['backlog', 'building', 'review', 'ready', 'merging', 'awaiting', 'live'] as const
 export type OperatorStage = (typeof OPERATOR_STAGES)[number]
 
 export const OPERATOR_STAGE_LABEL: Record<OperatorStage, string> = {
   backlog: 'Not started', building: 'Being built', review: 'Waiting for review', ready: 'Ready',
-  merging: 'Merging in the batch', live: 'Live',
+  merging: 'Merging in the batch', awaiting: 'Merged, waiting to go live', live: 'Live',
 }
 
 export const OPERATOR_STAGE_MEANING: Record<OperatorStage, string> = {
@@ -33,12 +33,16 @@ export const OPERATOR_STAGE_MEANING: Record<OperatorStage, string> = {
   review: 'A change is written and is being checked before it can merge.',
   ready: 'Checked and waiting for the merge step.',
   merging: 'In the batch that merges and releases at the set time.',
-  live: 'Merged and, where recorded, verified running.',
+  awaiting: 'The code is merged, but nothing yet proves it is the version actually running.',
+  live: 'Merged AND evidenced as the version serving — not merely merged.',
 }
 
+/** `merged` is NOT `live` (codex R5, #2541). A merged change carries no activation evidence by definition: only the
+ *  serving release identity proves a version is running, and merging merely puts it in the tree. Only `released` (the
+ *  producer's own publication_state "live") and `verified` may claim the Live group. */
 const OPERATOR_STAGE_OF: Record<PipelineStage, OperatorStage> = {
   proposed: 'backlog', approved: 'ready', queued: 'backlog', claimed: 'building', building: 'building',
-  pr_open: 'review', ci: 'review', in_batch: 'merging', merged: 'live', released: 'live', verified: 'live',
+  pr_open: 'review', ci: 'review', in_batch: 'merging', merged: 'awaiting', released: 'live', verified: 'live',
 }
 
 /** Which of the operator's groups an item belongs to. An unknown code is never guessed into "Live". */

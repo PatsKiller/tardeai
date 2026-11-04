@@ -1,7 +1,8 @@
 // Releases & Schedules operator view: plain words, honest clocks, no machine identifiers.
 // Runs in the CC-v3 build:  node --experimental-strip-types src/lib/releasesOperatorView.test.ts
 import {
-  checkSentence, goingLive, jobsLine, liveNow, needsYou, needsYouAction, needsYouFacts, plainReason, plainText, stuck,
+  checkSentence, engineerPanelProps, goingLive, jobsLine, liveNow, needsYou, needsYouAction, needsYouFacts,
+  plainReason, plainText, stuck,
 } from './releasesOperatorView.ts'
 import type { SectionView } from './releasesSchedules.ts'
 import { normalizeRow } from './deployInFlight.ts'
@@ -123,6 +124,44 @@ const unfetched = normalizeRow({ number: 13, head_sha: 'd'.repeat(40),
   work: { present: true, ci: { state: 'UNKNOWN' }, evidence_state: 'PARTIAL',
     github_evidence: { ci: { state: 'UNAVAILABLE', reason: 'fetch failed' } } } })
 check('an un-fetched rollup says so and is never green', /not checked/i.test(checkSentence(unfetched.work.ci) ?? '') && unfetched.work.ci.state !== 'GREEN')
+
+
+// ---- codex R6 (#2541): a file path and a database-style identifier are machine diagnostics, not plain English
+check('an absolute path is not printed', !/\/home\//.test(plainText('/home/example/project source_table_name')))
+check('a snake_case identifier is not printed', !/source_table_name/.test(plainText('/home/example/project source_table_name')))
+check('ordinary prose survives the cleaner', plainText('per item on hold') === 'per item on hold')
+
+// ---- codex R2 (#2541): a RETAINED value is not a verified current one
+const servingSections = (over: Record<string, unknown>, state = 'OK') => ({
+  serving: sec({ release_name: 'rel-a', since: '2026-11-03T14:00:00Z', pins_agree: true, ...over }, { state: state as any }),
+  next_release: sec({ is_serving: true }),
+  release_errors: sec({ rows: [] }),
+})
+const staleLive = liveNow(servingSections({}, 'STALE') as any, '2026-11-03T15:00:00Z', when)
+check('a stale serving reading is never "All good"', staleLive.tone !== 'success' && /older than 5 minutes/.test(staleLive.detail))
+const pinClash = liveNow(servingSections({ pins_agree: false }) as any, '2026-11-03T15:00:00Z', when)
+check('a pin disagreement is never "All good"', pinClash.tone !== 'success' && /disagrees/.test(pinClash.detail))
+const noNext = liveNow({ ...servingSections({}), next_release: { ...sec(null), state: 'UNAVAILABLE', value: null } } as any, '2026-11-03T15:00:00Z', when)
+check('an unreadable "what is next" is unknown, not "nothing is waiting"', !/Nothing is waiting/.test(noNext.detail) && /could not be read/.test(noNext.detail))
+const noErrors = liveNow({ ...servingSections({}), release_errors: { ...sec(null), state: 'UNAVAILABLE', value: null } } as any, '2026-11-03T15:00:00Z', when)
+check('an unreadable release-error source is unknown', !/Nothing is waiting/.test(noErrors.detail) && noErrors.tone !== 'success')
+const allGood = liveNow(servingSections({}) as any, '2026-11-03T15:00:00Z', when)
+check('a clean current reading is still "All good"', allGood.tone === 'success' && /Nothing is waiting/.test(allGood.detail))
+
+// ---- codex R5 (#2541): merged is NOT live; only activation evidence may claim Live
+const mergedRow = pr({ work: { ...pr().work, publication_state: 'merged' } })
+const liveRow = pr({ work: { ...pr().work, publication_state: 'live' } })
+const mergedGroups = goingLive([mergedRow])
+check('a merged change is not shown as Live', !mergedGroups.some(g => g.stage === 'live'))
+check('a merged change says it is waiting to go live', mergedGroups.some(g => g.label === 'Merged, waiting to go live'))
+const liveGroups = goingLive([liveRow])
+check('a change the producer reports live still groups as Live', liveGroups.some(g => g.stage === 'live'))
+
+// ---- codex R3 (#2541): closed means closed, in the attribute AND the computed style
+const closed = engineerPanelProps(false)
+const opened = engineerPanelProps(true)
+check('a closed engineer panel is hidden', closed.hidden === true && closed.style.display === 'none')
+check('an open engineer panel is laid out', opened.hidden === false && opened.style.display === 'grid')
 
 console.log(`releasesOperatorView: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

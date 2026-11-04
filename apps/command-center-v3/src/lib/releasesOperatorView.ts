@@ -10,6 +10,17 @@ import type { SectionView } from './releasesSchedules.ts'
 
 export type Tone = 'success' | 'warning' | 'danger' | 'neutral'
 
+/** Props for the engineer panel, so "closed" cannot be contradicted by an inline style (codex R3, #2541).
+ *
+ *  The panel used to carry `hidden` AND an unconditional `display: 'grid'`. An inline display beats the hidden
+ *  attribute's UA rule, so the panel was laid out while its toggle said CLOSED (`aria-expanded=false`, computed
+ *  display=grid, 868 px of content at 1440 px and 1220 px at 390 px). One function now decides both, so there is no
+ *  second place to disagree with the first.
+ */
+export function engineerPanelProps(open: boolean): { hidden: boolean; style: { display: 'grid' | 'none' } } {
+  return { hidden: !open, style: { display: open ? 'grid' : 'none' } }
+}
+
 /** Strip machine identifiers out of a sentence a person has to read. Never returns an empty string. */
 export function plainText(raw: unknown, fallback = 'an unnamed change'): string {
   const s = String(raw ?? '').trim()
@@ -18,6 +29,11 @@ export function plainText(raw: unknown, fallback = 'an unnamed change'): string 
     .replace(/(?:PR[-\s]?#?\d+|#\d+)/gi, 'the change')
     .replace(/\b[0-9a-f]{7,40}\b/gi, '')
     .replace(/\b(?:feat|fix|wt|release|hotfix)\/[A-Za-z0-9._/-]+/g, 'the work')
+    // codex R6 (#2541): a file path and a database-style identifier are machine diagnostics. The operator asked for
+    // plain English, so they are named as what they are instead of printed. Both patterns need a name-like shape so
+    // ordinary prose ("per item", "on hold") is untouched.
+    .replace(/(?:^|\s)(?:~|\/)[\w./-]*[\w/]/g, ' a file location')
+    .replace(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+){1,}\b/g, ' an internal name')
     .replace(/\s{2,}/g, ' ')
     .trim()
   return cleaned || fallback
@@ -70,23 +86,34 @@ export function liveNow(sections: Record<string, SectionView<any>>, generatedAt:
     return { tone: 'warning', headline: 'Cannot tell what is live right now', clock,
       detail: `${plainReason(serving?.reason, 'the release source could not be read')}. This is not an all-clear.` }
   }
-  const sv = serving.value as { release_name?: string | null; since?: string | null }
+  const sv = serving.value as { release_name?: string | null; since?: string | null; pins_agree?: boolean | null }
   const name = sv.release_name && !/[0-9a-f]{7,}/i.test(sv.release_name) ? plainText(sv.release_name, 'the current release') : 'the current release'
   const since = sv.since ? ` since ${when(sv.since)}` : ''
+  // codex R2 (#2541): a RETAINED value is not a verified current one. A stale reading, a pin disagreement, and an
+  // unreadable neighbouring source must each stop the summary from claiming "All good" — the page may say what it
+  // knows, never more.
   const problems: string[] = []
-  if (errors?.state === 'OK' && Array.isArray(errors.value?.rows) && errors.value.rows.length) problems.push(`${errors.value.rows.length} release error(s) recorded`)
-  if (next?.state === 'OK' && next.value?.is_serving !== true) problems.push('the newest change is not live yet')
+  const unknowns: string[] = []
+  if (serving.state === 'STALE') problems.push('this reading is older than 5 minutes, so what is running may have changed')
+  if (sv.pins_agree === false) problems.push('what is actually running disagrees with the recorded current release')
+  if (!errors || errors.state !== 'OK') unknowns.push('whether any release failed could not be read')
+  else if (Array.isArray(errors.value?.rows) && errors.value.rows.length) problems.push(`${errors.value.rows.length} release error(s) recorded`)
+  if (!next || next.state !== 'OK') unknowns.push('whether anything newer is waiting could not be read')
+  else if (next.value?.is_serving !== true) problems.push('the newest change is not live yet')
+  const detail = problems.length ? `${problems.join(' · ')}.`
+    : unknowns.length ? `Nothing known is wrong. ${unknowns.join(' · ')}.`
+      : `Nothing is waiting to go live.${since}`
   return {
-    tone: problems.length ? 'warning' : 'success',
+    tone: problems.length || unknowns.length ? 'warning' : 'success',
     headline: `Live now: ${name}`,
-    detail: problems.length ? `${problems.join(' · ')}.` : `Nothing is waiting to go live.${since}`,
+    detail,
     clock,
   }
 }
 
 export type StageGroup = { stage: OperatorStage; label: string; rows: InFlightPr[] }
 
-const GROUP_ORDER: OperatorStage[] = ['building', 'review', 'ready', 'merging', 'live']
+const GROUP_ORDER: OperatorStage[] = ['building', 'review', 'ready', 'merging', 'awaiting', 'live']
 
 /** Block 3: open changes grouped by what is actually happening to them. Unknown facts fall into the earliest group. */
 export function goingLive(prs: InFlightPr[]): StageGroup[] {
@@ -99,7 +126,7 @@ export function goingLive(prs: InFlightPr[]): StageGroup[] {
   return GROUP_ORDER.filter(g => by.has(g)).map(stage => ({
     stage, rows: by.get(stage)!,
     label: { backlog: 'Not started', building: 'Being built', review: 'Waiting for review', ready: 'Ready',
-      merging: 'Merging in the next window', live: 'Live' }[stage],
+      merging: 'Merging in the next window', awaiting: 'Merged, waiting to go live', live: 'Live' }[stage],
   }))
 }
 

@@ -14,13 +14,13 @@ import { Chip, ChipRow } from '../components/primitives'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import {
   ciLabel, ciTone, countOrUnavailable, etDateTime, etTime, freshnessTone, kpiDisplay, prList, RELEASES_SCHEDULES_PATH,
-  sectionView, stageTone, verifyLabel,
+  sectionView, stageTone, verifyLabel, verifyVerdict,
   type LedgerToday, type NextRelease, type ReleaseError, type ReleaseRow, type ReleasesSchedulesWire,
   type SectionKey, type SectionView, type Serving, type Timeline, type TimelineRow,
 } from '../lib/releasesSchedules'
 import OpsDeskFrame from '../components/OpsDeskFrame'
 import { IN_FLIGHT_PATH, normalizeCoordination, normalizeRows, type DeployInFlightWire, type InFlightPr } from '../lib/deployInFlight'
-import { goingLive, jobsLine, liveNow, needsYou, needsYouAction, needsYouFacts, plainText, stuck } from '../lib/releasesOperatorView'
+import { engineerPanelProps, goingLive, jobsLine, liveNow, needsYou, needsYouAction, needsYouFacts, plainText, stuck } from '../lib/releasesOperatorView'
 
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 14, minWidth: 0, display: 'grid', gap: 8 }
 const h2: CSSProperties = { margin: 0, fontSize: TYPE.md, fontWeight: 800, color: TOKENS.text[0] }
@@ -171,13 +171,18 @@ function N8nTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
 
 /** The operator view: what is live, what needs him, what is stuck and who fixes it (operator 2026-11-03). Every number
  *  carries its own clock or says in words that it has none; no code, SHA, branch or PR number appears here. */
-function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, flightError, loading, now }: {
+function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, flightError, loading, now,
+  flightLoading, flightStale, coordStatus }: {
   s: Record<SectionKey, SectionView<any>>; rows: InFlightPr[]
   agents: Array<{ agent?: string | null; session?: string; task?: string | null; state?: string
     execution_state?: string | null; as_of?: string | null; claim_as_of?: string | null }>
   generatedAt: string | null; flightAsOf: string | null; coordAsOf: string | null
-  flightError: string | null; loading: boolean; now: number }) {
-  const when = (v: string | null | undefined) => (v ? etDateTime(v) : 'unknown')
+  flightError: string | null; loading: boolean; now: number
+  // codex R4 (#2541): an empty list means nothing ONLY when the source actually answered. These three carry the
+  // source's own state into the render, so an unanswered or stale request can never print "nothing" / "no agent".
+  flightLoading: boolean; flightStale: boolean; coordStatus: 'OK' | 'PARTIAL' | 'UNAVAILABLE' }) {
+  // An unparseable stamp is unknown, never an em-dash standing in for a time (codex R6).
+  const when = (v: string | null | undefined) => { if (!v) return 'unknown'; const t = etDateTime(v); return t === '—' ? 'unknown' : t }
   // Every block that shows a number says when it was counted (lead, 2026-11-03).
   const flightClock = flightAsOf ? `checked ${when(flightAsOf)}` : 'as of unknown — the open-change source did not record when it checked'
   const coordClock = coordAsOf ? `last agent report ${when(coordAsOf)}` : 'as of unknown — the agent list did not record when it last checked'
@@ -188,7 +193,15 @@ function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, fli
   const td = s.n8n_today
   const jobs = jobsLine(td as any, when)
   const hist = s.history.value as { releases: ReleaseRow[]; receipts_total: number } | null
-  const notChecked = flightError ? `The open-change list could not be read (${flightError}); anything below is from the sources that answered, and this is not an all-clear.` : null
+  const notChecked = flightError ? `The open-change list could not be read (${plainText(flightError, 'no reason given')}); anything below is from the sources that answered, and this is not an all-clear.` : null
+  // One sentence per SOURCE STATE, reused by every list. Nothing here claims a measured zero unless the source
+  // answered and the answer was empty (codex R4).
+  const flightUnknown = flightLoading && !rows.length ? 'Still asking the open-change source — this is not an answer yet.'
+    : flightStale && !rows.length ? `The open-change list is stale${flightAsOf ? ` (checked ${when(flightAsOf)})` : ''}, so an empty list here is not proof that nothing is open.`
+      : null
+  const agentsUnknown = coordStatus !== 'OK'
+    ? 'Cannot tell who is working — the agent list did not answer. That is not the same as nobody working.'
+    : null
   return <div data-testid="rs-operator-view" style={{ display: 'grid', gap: 12, minWidth: 0 }}>
     <section data-testid="rs-what-is-live" style={{ ...panel, gap: 6 }}>
       <ChipRow><Chip tone={status.tone} variant="solid">{status.tone === 'success' ? 'All good' : status.tone === 'danger' ? 'Needs attention' : 'Watch'}</Chip></ChipRow>
@@ -202,7 +215,7 @@ function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, fli
       <h2 style={h2}>Needs you</h2>
       <p style={muted}>{flightClock}</p>
       {notChecked ? <p role="status" style={{ ...muted, color: toneVars('warning').color }}>{notChecked}</p> : null}
-      {ask.length === 0 ? <p style={muted}>{notChecked ? 'Nothing needs you from the sources that answered.' : 'Nothing needs you.'}</p> : ask.map(p => (
+      {ask.length === 0 ? <p style={muted}>{flightUnknown ? flightUnknown : notChecked ? 'Nothing needs you from the sources that answered.' : 'Nothing needs you.'}</p> : ask.map(p => (
         <div key={p.number} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}`, paddingTop: 8 }}>
           <div style={{ fontSize: TYPE.base, color: TOKENS.text[0], fontWeight: 700 }}>{plainText(p.title)}</div>
           <div style={muted}>{plainText(p.work?.owner ?? p.work?.board_owner, 'The agent that wrote it')}: {plainText(p.work?.current_task, 'the work is described only under Details for engineers')}.</div>
@@ -218,7 +231,7 @@ function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, fli
     <section data-testid="rs-going-live" style={panel}>
       <h2 style={h2}>Going live today</h2>
       <p style={muted}>{flightClock}</p>
-      {!rows.length ? <p style={muted}>{notChecked ?? 'Nothing is going live today.'}</p> : groups.map(g => (
+      {!rows.length ? <p style={muted}>{flightUnknown ?? notChecked ?? 'Nothing is going live today.'}</p> : groups.map(g => (
         <div key={g.stage}>
           <h3 style={{ ...h2, fontSize: TYPE.base, marginTop: 8 }}>{g.label} · {g.rows.length}</h3>
           {g.rows.map(p => <div key={p.number} style={{ ...muted, padding: '4px 0' }}>
@@ -231,7 +244,7 @@ function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, fli
     <section data-testid="rs-stuck" style={panel}>
       <h2 style={h2}>Stuck — and who fixes it</h2>
       <p style={muted}>{flightClock}</p>
-      {!blocked.length ? <p style={muted}>{rows.length || !notChecked ? 'Nothing is stuck right now.' : 'Cannot tell what is stuck — the open-change list could not be read.'}</p>
+      {!blocked.length ? <p style={muted}>{rows.length ? 'Nothing is stuck right now.' : (flightUnknown ?? notChecked ?? 'Nothing is stuck right now.')}</p>
         : blocked.map(({ pr, because, whose }) => <div key={pr.number} style={{ ...muted, padding: '4px 0' }}>
           <b style={{ color: TOKENS.text[0] }}>{plainText(pr.title)}</b> — {because}. {whose} has the next step.
         </div>)}
@@ -240,7 +253,7 @@ function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, fli
     <section data-testid="rs-agents-now" style={panel}>
       <h2 style={h2}>Agents now</h2>
       <p style={muted}>{coordClock}</p>
-      {!agents.length ? <p style={muted}>{notChecked ? 'Cannot tell who is working — the agent list could not be read. That is not the same as idle.' : 'No agent is working right now.'}</p>
+      {!agents.length ? <p style={muted}>{agentsUnknown ?? 'No agent is working right now.'}</p>
         : agents.map((a, i) => {
           // cc3 review F2: BOARD agents carry no `agent` name and no `as_of`; the served facts are session,
           // execution_state and claim_as_of. Say the activity in words and the time we can actually prove.
@@ -265,9 +278,14 @@ function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, fli
       <h2 style={h2}>Recent releases</h2>
       <p style={muted}>{s.history.asOf ? `history as of ${when(s.history.asOf)}` : 'as of unknown — the release history did not record when it was read'}</p>
       {!hist?.releases?.length ? <p style={muted}>Release history cannot be read right now.</p> : hist.releases.slice(0, 5).map(r => {
-        const vl = verifyLabel(r)
-        const verdict = /VERIFIED$/.test(vl.text) ? 'Checked working: yes.' : vl.text === 'ROLLBACK' ? 'This release was rolled back.'
-          : /NOT VERIFIED/.test(vl.text) ? 'Checked working: no.' : 'Checked working: not recorded — the receipt was replaced by a later release.'
+        // codex R1 (#2541): read the STRUCTURED verdict. The previous code tested the label with /VERIFIED$/, and
+        // "NOT VERIFIED" ends with "VERIFIED" — so a failed check rendered as "Checked working: yes."
+        const verdict = {
+          verified: 'Checked working: yes.',
+          not_verified: 'Checked working: no — the release did not pass its own check.',
+          rollback: 'This release was rolled back.',
+          not_recorded: 'Checked working: not recorded — the receipt was replaced by a later release.',
+        }[verifyVerdict(r)]
         return <div key={r.receipt} style={{ ...muted, padding: '4px 0' }}>
           <b style={{ color: TOKENS.text[0] }}>{etDateTime(r.at)}</b> — {verdict}
           {' '}The recorded changes are not named in words on this page.
@@ -293,8 +311,16 @@ export default function ReleasesSchedules() {
   const tab: TabKey = params.get('tab') === 'jobs' ? 'jobs' : params.get('tab') === 'n8n' ? 'n8n' : 'deploys'
   const api = useApi<ReleasesSchedulesWire>(RELEASES_SCHEDULES_PATH, 60_000, { enabled: tab !== 'jobs' })
   // Operator view first (operator 2026-11-03). The developer content stays, behind a toggle, closed by default.
-  const eng = params.get('engineer') === '1' || tab !== 'deploys'
-  const setEng = (open: boolean) => { const n = new URLSearchParams(params); if (open) n.set('engineer', '1'); else n.delete('engineer'); setParams(n, { replace: true }) }
+  // codex R3 (#2541): the section carried `hidden` AND an inline `display:grid`, and an inline display beats the
+  // hidden attribute — so the engineer panel was laid out while its toggle said CLOSED. The toggle also forced the
+  // panel open on non-deploy tabs with no way to close it. An explicit choice now wins over the tab default.
+  const [engChoice, setEngChoice] = useState<boolean | null>(null)
+  const eng = engChoice ?? (params.get('engineer') === '1' || tab !== 'deploys')
+  const setEng = (open: boolean) => {
+    setEngChoice(open)
+    const n = new URLSearchParams(params); if (open) n.set('engineer', '1'); else n.delete('engineer')
+    setParams(n, { replace: true })
+  }
   const flight = useApi<DeployInFlightWire>(IN_FLIGHT_PATH, 60_000)
   const flightWire = ((flight.data as { data?: DeployInFlightWire } | DeployInFlightWire | null) as any)?.data ?? flight.data
   const flightRows: InFlightPr[] = flightWire && Array.isArray(flightWire.prs) ? normalizeRows(flightWire.prs).rows : []
@@ -313,7 +339,9 @@ export default function ReleasesSchedules() {
 <div className="ops-evidence-page" data-testid="releases-schedules" style={{ display: 'grid', gap: 12, minWidth: 0, maxWidth: '100%' }}>
     <OperatorView s={s} rows={flightRows} agents={flightAgents} generatedAt={api.data?.generated_at ?? null}
       flightAsOf={flightWire?.generated_at ?? null} coordAsOf={normalizeCoordination(flightWire?.coordination).as_of}
-      flightError={flightError} loading={api.loading && !api.data} now={now} />
+      flightError={flightError} loading={api.loading && !api.data} now={now}
+      flightLoading={!!flight.loading && !flightWire} flightStale={!!flight.stale}
+      coordStatus={normalizeCoordination(flightWire?.coordination).status} />
 
     <button type="button" id="rs-engineer-toggle" data-testid="rs-engineer-toggle" aria-expanded={eng} aria-controls="rs-engineer-details"
       onClick={() => setEng(!eng)}
@@ -333,7 +361,8 @@ export default function ReleasesSchedules() {
     </nav>
     </div>
 
-    <section id="rs-engineer-details" aria-labelledby="rs-engineer-toggle" hidden={!eng} style={{ display: 'grid', gap: 12, minWidth: 0 }}>
+    <section id="rs-engineer-details" aria-labelledby="rs-engineer-toggle" {...engineerPanelProps(eng)}
+      style={{ ...engineerPanelProps(eng).style, gap: 12, minWidth: 0 }}>
     <div style={{ ...panel, gap: 4 }}>
       <p style={muted}>Serving pin · last promote · deploy STOP · Mergify queue (external) · n8n schedules. Read-only; nothing here merges, promotes or schedules.</p>
       <ChipRow>

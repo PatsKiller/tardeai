@@ -119,11 +119,23 @@ export function prList(prs: number[] | null | undefined, reason: string | null |
   return prs.length > max ? `${shown} +${prs.length - max} more` : shown
 }
 
-export function verifyLabel(r: ReleaseRow): { text: string; tone: Tone } {
-  if (r.mode === 'rollback') return { text: 'ROLLBACK', tone: 'warning' }
-  if (!r.verify) return { text: r.serving ? 'SERVING · verify not retained' : 'verify not retained', tone: r.serving ? 'success' : 'neutral' }
+/** The structured verdict behind the label. Callers must use THIS, never the label text: "NOT VERIFIED" ends with
+ *  "VERIFIED", so a suffix test on the sentence reads a FAILED verification as a passed one (codex R1, #2541). */
+export type VerifyVerdict = 'verified' | 'not_verified' | 'rollback' | 'not_recorded'
+export function verifyVerdict(r: ReleaseRow): VerifyVerdict {
+  if (r.mode === 'rollback') return 'rollback'
+  if (!r.verify) return 'not_recorded'
   const ok = r.verify.ok === true && !r.verify.rolled_back && !(r.verify.readback_errors ?? []).length
-  return { text: ok ? (r.serving ? 'LIVE · VERIFIED' : 'VERIFIED') : 'NOT VERIFIED', tone: ok ? 'success' : 'danger' }
+  return ok ? 'verified' : 'not_verified'
+}
+
+export function verifyLabel(r: ReleaseRow): { text: string; tone: Tone } {
+  const verdict = verifyVerdict(r)
+  if (verdict === 'rollback') return { text: 'ROLLBACK', tone: 'warning' }
+  if (verdict === 'not_recorded') return { text: r.serving ? 'SERVING · verify not retained' : 'verify not retained', tone: r.serving ? 'success' : 'neutral' }
+  return verdict === 'verified'
+    ? { text: r.serving ? 'LIVE · VERIFIED' : 'VERIFIED', tone: 'success' }
+    : { text: 'NOT VERIFIED', tone: 'danger' }
 }
 
 export function lastRunText(r: TimelineRow): string {

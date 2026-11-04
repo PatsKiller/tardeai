@@ -114,7 +114,8 @@ t('commands: one endpoint, the actor is never in the body; split grammar', () =>
 // unknown code is never guessed into "Live".
 eq(operatorStage({ stage: 'building' }), 'building'); eq(operatorStage({ stage: 'pr_open' }), 'review')
 eq(operatorStage({ stage: 'ci' }), 'review'); eq(operatorStage({ stage: 'in_batch' }), 'merging')
-eq(operatorStage({ stage: 'merged' }), 'live'); eq(operatorStage({ stage: 'verified' }), 'live')
+// codex R5 (#2541): `merged` is NOT `live` — only the serving release identity proves a version is running.
+eq(operatorStage({ stage: 'merged' }), 'awaiting'); eq(operatorStage({ stage: 'verified' }), 'live')
 eq(operatorStage({ stage: 'queued' }), 'backlog'); eq(operatorStage({ stage: 'approved' }), 'ready')
 eq(operatorStage({ stage: 'something_new' }), null); eq(operatorStage({}), null)
 eq(OPERATOR_STAGES.includes(operatorStage({ stage: 'released' }) as any), true)
