@@ -95,6 +95,10 @@ def sampled_openers(openers: Iterable[dict[str, Any]], indices: Iterable[int]) -
     return [rows[i] for i in sorted({int(i) for i in indices if 0 <= int(i) < len(rows)})]
 
 
+#: The controls discovery treats as detail openers. One definition, used to find them and to click them.
+OPENER_SELECTOR = "[data-testid$='-row'], [role='button'][aria-label^='Open ']"
+
+
 DETAIL_SELECTORS = ("[role='dialog']", "[data-testid$='-sheet']", "[data-testid$='-detail']", "[data-testid$='-modal']")
 
 
@@ -195,7 +199,7 @@ def capture_page(page: Any, *, route: str, page_url: str, indices: Iterable[int]
 def _discover_openers(page: Any) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     try:
-        nodes = page.query_selector_all("[data-testid$='-row'], [role='button'][aria-label^='Open ']")
+        nodes = page.query_selector_all(OPENER_SELECTOR)
     except Exception:  # noqa: BLE001
         nodes = []
     for i, node in enumerate(nodes):
@@ -203,7 +207,10 @@ def _discover_openers(page: Any) -> list[dict[str, Any]]:
             label = node.get_attribute("aria-label") or node.inner_text() or ""
         except Exception:  # noqa: BLE001
             label = ""
-        out.append({"index": i, "label": label[:120], "role": "button", "selector": f"[data-open={i}]"})
+        # codex R3 (2026-11-04): the old selector was fabricated ([data-open=N]) and matched nothing, so
+        # a real click could never land. This is the same selector discovery used, pinned to the node.
+        out.append({"index": i, "label": label[:120], "role": "button",
+                    "selector": f"{OPENER_SELECTOR} >> nth={i}"})
     return out
 
 

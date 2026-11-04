@@ -96,7 +96,7 @@ def server_healthy(base: str, wait_s: int = 300) -> bool:
     return False
 
 
-def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: list[str]) -> dict:
+def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: list[str], *, deep: bool = True) -> dict:
     api, failed, console = [], [], []
     starts = {}
     page.on("request", lambda r: starts.__setitem__(r, time.time()) if "/api/" in r.url else None)
@@ -168,6 +168,22 @@ def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: l
     row["api_calls"] = api[:80]
     row["slow_api"] = [a for a in api if (a.get("ms") or 0) > 3000]
     (d / f"{vp}.json").write_text(json.dumps(row, indent=1))
+    # codex R3 (2026-11-04): the CLI captured screenshots and never invoked the deep crawl, so no detail
+    # was ever opened and no completeness check ever ran. The crawl and its evidence are now part of the
+    # capture, on the same page and viewport, under the pinned detail budget.
+    if deep:
+        from site_audit import deep_crawl, detail_budget
+        openers = deep_crawl._discover_openers(page)
+        week = int(time.strftime("%V"))
+        indices = detail_budget.selected_indices(len(openers), page=route, week_index=week)
+        detail = deep_crawl.capture_page(page, route=route, page_url=base + route, indices=indices,
+                                         out_dir=d, openers=openers)
+        (d / f"{vp}-details.json").write_text(json.dumps(detail, indent=1))
+        row["details_sampled"] = len(indices)
+        row["details_opened"] = sum(1 for x in detail["details"] if x.get("opened"))
+        row["details_refused"] = [x.get("selector") or x.get("label") for x in detail["refused"]]
+        row["links_followed"] = len(detail["links"])
+        row["links_dead"] = sum(1 for x in detail["links"] if x.get("outcome") not in (None, "OK"))
     return row
 
 
@@ -193,6 +209,7 @@ def main() -> int:
     ap.add_argument("--pause", type=float, default=4.0)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--only-failed-from", default=None, help="index.json of an earlier run: recapture only its error rows")
+    ap.add_argument("--no-deep", action="store_true", help="screenshots only; skip opening sampled details and following links")
     a = ap.parse_args()
     a.only = None
     if a.only_failed_from:
@@ -222,7 +239,7 @@ def main() -> int:
                     rows.append({"route": route, "viewport": vp, "error": "aborted: server unhealthy"})
                     break
                 page = ctx.new_page()
-                r = capture(page, a.base, route, label, vp, out, HUB_TABS.get(route, []))
+                r = capture(page, a.base, route, label, vp, out, HUB_TABS.get(route, []), deep=not a.no_deep)
                 page.close()
                 rows.append(r)
                 print(f"{vp:8} {route:40} {'ERR ' + r['error'][:60] if r.get('error') else ('BLANK? ' if r.get('blank_suspect') else 'ok')}"
