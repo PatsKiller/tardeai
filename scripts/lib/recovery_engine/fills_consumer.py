@@ -526,7 +526,24 @@ def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date]
             merged = [_as_exit_fill(symbol, account, row) for row in newest.exits] + unassigned
             result = rc.consume_fills(store, merged, cluster_key=newest.cluster_key, **common)
         else:
-            # The newest case is finished (or the fill predates every case): a new case from the new exits only.
+            # A FORK IS NEVER SILENT (cc-deepseek-2 identity BLOCK, 2026-11-04).
+            #
+            # A fill that predates every stored case opens a second case from that fill alone. Measured with identical
+            # data and only the arrival order differing: 10-30 observed before the first pass and 10-14 arriving after
+            # it produced TWO cases for ONE stop episode — two residuals, two eligibility answers, two chances at a T1
+            # page — and both reported ``complete: True`` with ``gaps: []``.
+            #
+            # The engine cannot prove whether such a fill is an earlier arrival of the SAME episode or a genuinely
+            # separate earlier one, and a date-proximity heuristic is exactly the class this module refuses to invent.
+            # So the case is still created — the observation is real and dropping it would be worse — and the fork is
+            # stated durably: the pass reports incomplete, and the gap names both halves.
+            predating = [f for f in unassigned if ranges and f.exit_date < ranges[0][1]]
+            if predating:
+                earliest = ranges[0][0]
+                _unresolved(
+                    f"{len(predating)} exit(s) for {symbol}/{account} predate every stored case (earliest is "
+                    f"{earliest.case_key}); a second case is opened from them, and whether the two are ONE stop "
+                    "episode observed out of order or two separate episodes is unresolved")
             result = rc.consume_fills(store, unassigned, **common)
     return result
 

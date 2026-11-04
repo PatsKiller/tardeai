@@ -1153,3 +1153,73 @@ def test_two_different_provider_uids_stay_two_even_when_every_detail_matches(sto
     assert len(case.exits) == 2, f"two established identities must stay two: {case.exits}"
     assert len({e["source_id"] for e in case.exits}) == 2, case.exits
     conn.close()
+
+
+# ── cc-deepseek-2 identity BLOCK (2026-11-04): a fork is never silent ──────────────────────────────────────
+def _read(fills):
+    from lib.recovery_engine import fills_consumer as fc
+    return fc.ExitRead(fills=list(fills), residual_shares=200, pre_exit_weight_pct=2.25, source="fixture", gaps=[])
+
+
+def _arrival_scenario(store):
+    """One stop episode, delivered in two passes, with the LATE fill earlier than the one already stored.
+
+    Identical data to the single-pass case; only the arrival order differs. cc2 measured two cases, both reporting
+    complete: True with no gap — one episode, two residuals, two eligibility answers, two chances at a T1 page.
+    """
+    from lib.recovery_engine import fills_consumer as fc
+    a = rc.ExitFill("SPCX", "schwab_taxable", date(2026, 10, 30), 1200, 137.19, -12770, stop_price=137.0,
+                    source_id="stopped_out_watch:1")
+    b = rc.ExitFill("SPCX", "schwab_taxable", date(2026, 10, 14), 600, 151.50, -8171, stop_price=152.0,
+                    source_id="stopped_out_watch:2")
+    first = {"incomplete": False}
+    fc.open_or_extend(store, _read([a]), today=TODAY, now=NOW, coverage=first)
+    second = {"incomplete": False}
+    case = fc.open_or_extend(store, _read([a, b]), today=TODAY, now=NOW, coverage=second)
+    return first, second, case
+
+
+def test_an_exit_arriving_after_a_later_one_never_reports_a_clean_pass(store):
+    """The BLOCK itself: the fork must not be silent.
+
+    The engine cannot prove whether the late, earlier-dated fill is the same episode observed out of order or a
+    genuinely separate earlier one, and a date-proximity guess is the class this module refuses to invent. So the
+    observation is kept AND the pass is told it is incomplete, with a gap naming the case the fork points at.
+    """
+    first, second, case = _arrival_scenario(store)
+    assert first["incomplete"] is False
+    assert second["incomplete"] is True, "two halves of one episode must never pass as complete"
+    gaps = [g for g in case.gaps if "predate every stored case" in g]
+    assert gaps, case.gaps
+    assert "unresolved" in gaps[0]
+    # both observations survive: the earlier exit is not dropped to keep the count tidy
+    assert len(store.list()) == 2
+    assert sum(len(c.exits) for c in store.list()) == 2
+
+
+def test_the_same_episode_delivered_in_one_pass_is_one_clean_case(store):
+    """The control for the control: the SAME data, arriving together, is one case and a complete pass."""
+    from lib.recovery_engine import fills_consumer as fc
+    a = rc.ExitFill("SPCX", "schwab_taxable", date(2026, 10, 30), 1200, 137.19, -12770, stop_price=137.0,
+                    source_id="stopped_out_watch:1")
+    b = rc.ExitFill("SPCX", "schwab_taxable", date(2026, 10, 14), 600, 151.50, -8171, stop_price=152.0,
+                    source_id="stopped_out_watch:2")
+    cov = {"incomplete": False}
+    fc.open_or_extend(store, _read([b, a]), today=TODAY, now=NOW, coverage=cov)
+    assert cov["incomplete"] is False
+    assert len(store.list()) == 1
+    assert len(store.list()[0].exits) == 2
+
+
+def test_a_later_episode_after_a_terminal_case_is_not_flagged_as_a_fork(store):
+    """A genuinely new, LATER exit is not a fork: the flag must fire only for fills that predate every case."""
+    from lib.recovery_engine import fills_consumer as fc
+    old = rc.ExitFill("SPCX", "schwab_taxable", date(2026, 10, 30), 1200, 137.19, -12770, stop_price=137.0,
+                      source_id="stopped_out_watch:1")
+    cov = {"incomplete": False}
+    fc.open_or_extend(store, _read([old]), today=TODAY, now=NOW, coverage=cov)
+    later = rc.ExitFill("SPCX", "schwab_taxable", date(2026, 11, 2), 300, 139.97, -500, stop_price=140.0,
+                        source_id="stopped_out_watch:9")
+    cov2 = {"incomplete": False}
+    fc.open_or_extend(store, _read([old, later]), today=TODAY, now=NOW, coverage=cov2)
+    assert not [g for g in store.list()[-1].gaps if "predate every stored case" in g], store.list()[-1].gaps
