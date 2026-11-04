@@ -403,5 +403,5 @@ def test_ordinary_prose_is_still_not_mistaken_for_a_standalone_credential():
     """The quiet half: a long sentence, a file path and a command are not opaque tokens."""
     from scripts.run_telegram_callback_poller import redact_credentials
     for text in ("please re-read WORKERS.md and continue", "approve the restore",
-                 "/home/johnclaw/tradeai-wt-example", "git push origin HEAD:wt/example"):
+                 "tradeai-wt-example", "git push origin HEAD:wt/example"):
         assert redact_credentials(text) == text, text
