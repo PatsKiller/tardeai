@@ -1,35 +1,49 @@
 """FQ-075: the watchlist row states its state in plain words, never in screaming policy codes.
 
-Registered as the CI gate's file, so the shard runner (pytest) executes it. It mirrors
-``apps/command-center-v3/src/lib/watchlistPlainWords.view.test.mjs`` assertion for assertion; that file stays for a
-developer running it directly with node.
+Registered as the CI gate's file, so the shard runner (pytest) executes it. It does not grep the page source:
+it **runs** ``apps/command-center-v3/src/lib/watchlistPlainWords.view.test.mjs``, which renders the real
+``WatchlistIntelligenceBoard`` through React server rendering with a fixture payload and asserts the words the row
+actually prints.
 
-Hermetic: reads the page source. No browser, no network, no data.
+Why the change (codex P2605-R1 on #2605): the first version of this file searched the source for helper names and
+map literals. Two deliberately broken copies of the component — the JSX call replaced by the raw code, and the
+unknown-code fallback returning the key — left the whole suite GREEN while the page rendered ``NOT_SCHEDULED`` in
+every review box. A gate that stays green when the thing it protects is removed is decoration. The render test is
+RED under both mutations and GREEN on the committed component; the gate now sits on the behaviour, not on the text.
+
+Hermetic: node, the committed component, a synthetic fixture. No browser, no network, no API, no data.
 
 ANCHOR: WATCHLIST_PLAIN_WORDS_20261104
 """
-import re
+import shutil
+import subprocess
 from pathlib import Path
 
-SRC = (Path(__file__).resolve().parents[1]
-       / "apps/command-center-v3/src/pages/WatchlistIntelligenceBoard.tsx").read_text(encoding="utf-8")
+ROOT = Path(__file__).resolve().parents[1]
+RENDER = ROOT / "apps/command-center-v3/src/lib/watchlistPlainWords.view.test.mjs"
+MARKER = "FQ-075 ok:"
 
 
-def test_the_raw_code_line_no_longer_renders():
-    assert not re.search(r"Provider NONE · Model NONE · Policy NO_CALL", SRC), (
-        "the raw code line still renders verbatim"
+def test_the_rendered_row_speaks_plain_words():
+    """Render the component and assert the words it prints (a .mjs cannot be collected, so run it)."""
+    assert RENDER.is_file(), f"the render test is missing: {RENDER}"
+    node = shutil.which("node")
+    assert node, "node is not on PATH — the render test cannot run, so the gate proves nothing"
+    proc = subprocess.run(
+        [node, "--experimental-strip-types", str(RENDER)],
+        cwd=str(ROOT), capture_output=True, text=True, timeout=300,
     )
+    tail = (proc.stdout + proc.stderr)[-3000:]
+    assert proc.returncode == 0, f"the rendered row failed FQ-075:\n{tail}"
+    assert MARKER in proc.stdout, f"the render test did not report its verdict:\n{tail}"
 
 
-def test_plain_wording_for_no_provider_and_not_scheduled():
-    assert "No provider or model assigned" in SRC, 'plain wording for "no provider/model" missing'
-    assert "not scheduled" in SRC, 'plain wording for "not scheduled" missing'
+def test_the_gate_file_is_the_one_this_test_registers():
+    """A gate whose registered file is not this one would leave the render test unrun in CI."""
+    import json
 
-
-def test_unknown_codes_are_decoded_not_shouted():
-    assert "export function plainReason" in SRC, "no plainReason mapping — an unknown code would still shout"
-    match = re.search(r"const PLAIN_REASON: Record<string, string> = \{(.*?)\}", SRC, re.S)
-    assert match, "PLAIN_REASON map missing"
-    body = match.group(1)
-    assert re.search(r"NOT_SCHEDULED: 'not scheduled'", body), "NOT_SCHEDULED not mapped"
-    assert re.search(r"NO_CALL: 'no external call'", body), "NO_CALL not mapped"
+    gate = ROOT / "config/ci_gates/watchlist_plain_words_20261104.json"
+    doc = json.loads(gate.read_text(encoding="utf-8"))
+    assert doc["name"] == gate.stem, "the gate name must equal its file stem"
+    assert doc["files"] == ["tests/test_watchlist_plain_words_20261104.py"], doc["files"]
+    assert "WATCHLIST_PLAIN_WORDS_20261104" in " ".join(doc.get("comment") or [])
