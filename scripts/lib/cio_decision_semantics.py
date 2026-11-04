@@ -30,6 +30,11 @@ ACTIONABLE_STANCES = frozenset({
     STANCE_EXIT, STANCE_TRIM, STANCE_RE_ENTER, STANCE_ADD,
 })
 
+#: Every stance a queue item can RECORD as a verdict. HOLD and REVIEW are included on purpose (FQ-103): an explicit
+#: HOLD is a decision, not a missing value, so free text cannot overrule it. Only an absent, empty, placeholder or
+#: unrecognised verdict lets the desk state and then the label speak.
+RECORDED_STANCES = ACTIONABLE_STANCES | {STANCE_HOLD, STANCE_REVIEW}
+
 # Higher = more decisive / overrides weaker desk noise.
 STANCE_PRECEDENCE: dict[str, int] = {
     STANCE_EXIT: 50,
@@ -560,6 +565,10 @@ def reentry_state_from_desk(state: Any = None, verdict: Any = None) -> Optional[
 def stance_from_queue_item(item: Optional[dict[str, Any]]) -> str:
     """Stance for one queue item: explicit verdict > state > directive label.
 
+    "Verdict" means any recorded verdict, HOLD and REVIEW included — an explicit HOLD is a decision, not an
+    absence, and prose has zero authority over it. Absent, empty, placeholder ("—", "N/A", "UNKNOWN") and
+    unrecognised verdict values are not verdicts, so the state and then the label are consulted.
+
     Desk readiness states (READY TO REVIEW / NEAR ENTRY / OVERSOLD REVIEW) map to
     REVIEW — ready to review is not ready to buy. Only an explicit RE_ENTER
     verdict produces STANCE_RE_ENTER.
@@ -569,7 +578,7 @@ def stance_from_queue_item(item: Optional[dict[str, Any]]) -> str:
     verdict = str(item.get("verdict") or "").upper().strip() or None
     state = str(item.get("state") or "").upper().strip() or None
     label = item.get("directive_label") or item.get("label") or item.get("note")
-    from_verdict = verdict if verdict in ACTIONABLE_STANCES else None
+    from_verdict = verdict if verdict in RECORDED_STANCES else None
     from_state = None
     reentry = reentry_state_from_desk(state, verdict)
     if reentry == "RE_ENTER":

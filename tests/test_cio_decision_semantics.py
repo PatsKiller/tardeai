@@ -189,3 +189,28 @@ def test_the_reentry_guard_survives_the_precedence_fix():
     assert stance_from_queue_item(
         {"symbol": "ADBE", "state": "READY TO REVIEW", "directive_label": "Re-enter ADBE"}
     ) == "REVIEW"
+
+
+def test_hold_and_review_are_explicit_verdicts_too():
+    from scripts.lib.cio_decision_semantics import stance_from_queue_item
+
+    # cc2's BLOCK at b5b61888: HOLD and REVIEW are recorded verdicts, not absences — an explicit HOLD is a decision
+    # that prose cannot overrule. These two were the smallest repair the audit contract asked for.
+    assert stance_from_queue_item(
+        {"symbol": "SYNX", "verdict": "HOLD", "directive_label": "Advisory EXIT — SYNX"}
+    ) == "HOLD"
+    assert stance_from_queue_item(
+        {"symbol": "SYNX", "verdict": "REVIEW", "directive_label": "Advisory ADD — SYNX"}
+    ) == "REVIEW"
+    # and an explicit HOLD outranks a typed desk state, as the contract order says.
+    assert stance_from_queue_item({"symbol": "SYNX", "verdict": "HOLD", "state": "NEAR ENTRY"}) == "HOLD"
+
+
+def test_placeholder_verdicts_are_not_verdicts():
+    from scripts.lib.cio_decision_semantics import stance_from_queue_item
+
+    # Only a real recorded value counts. An empty/placeholder/unrecognised value is a gap, so the label still speaks.
+    for blank in ("", "—", "-", "N/A", "UNKNOWN", "SOMETHING_NEW"):
+        assert stance_from_queue_item(
+            {"symbol": "SCHD", "verdict": blank, "directive_label": "Advisory TRIM — SCHD"}
+        ) == "TRIM", blank
