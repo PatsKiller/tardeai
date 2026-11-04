@@ -9,6 +9,22 @@
 #    pinned canonical URL, fast-forward only, after a dry run, and records hash-chained lines in the guard log.
 #    The Cursor shell guard admits this form only when this file is byte-identical to the guard tree's copy.
 #
+#    WHAT A GREEN GRANT-FREE RUN PROVES — AND DOES NOT (FQ-102, 2026-11-04)
+#    A green run proves the guard ADMITTED the branch: strict name, checked-out HEAD, clean tracked tree, pinned
+#    remote config, policy on remote main, fast-forward, per-branch budget, no broker-active-trader paths, and an
+#    approved plan. It does NOT prove the pre-push hooks passed. The guard's own preflight is a dry-run push that
+#    skips hooks (the installed guard tree runs `git push --dry-run --no-verify`), while the real push runs them.
+#    A secrets-scan or push-budget refusal therefore appears only a moment later, when the real push runs the
+#    hooks. That refusal is the hook working — fix the diff or the budget; it is not a guard bug, and re-running
+#    the same command will refuse the same way.
+#
+#    TWO GUARD COPIES EXIST (same class as the nudger, 2026-11-04): the copy that RUNS is the trusted tree
+#    ~/.cursor/hooks.json names (tradeai-wt-cursor-guardrails); the copy in THIS repo (.cursor/hooks/) is the
+#    reviewed source and the one the tests exercise. They are not identical — the repo copy's preflight is
+#    metadata-only and performs no push at all, the installed copy performs the --no-verify dry run above.
+#    The installed copy is canonical for behaviour, the repo copy for the intended contract; a change to one
+#    does not change the other, and installing a repo change is an operator action.
+#
 # 2. Operator grant (unchanged):   bin/guard grant git-push --for 30m --uses 10 --reason "..."
 #                                  bin/agent-push -u origin HEAD
 #    Any other argument list. Sets TRADEAI_REMOTE_PUSH_AUTHORIZED for the pre-push hook.
