@@ -701,13 +701,24 @@ def _canonical_actor(value: Any) -> str:
     login) — one identity, two strings, separation check silent (cx-openai-3 F1, 2026-11-03).
     """
     text = str(value or "").strip()
-    if text.lower().startswith("tailnet:"):
-        text = text.split(":", 1)[1]
+    # The prefix test is on the stripped text, so the remainder must be stripped AGAIN: a value like
+    # "tailnet: operator@x" (prefix plus a space) used to carry a leading space into the comparison
+    # and canonicalise to a different identity than the one it names (cx-openai-3 R1, 2026-11-03).
+    while text.lower().startswith("tailnet:"):
+        text = text.split(":", 1)[1].strip()
     return text.casefold()
 
 
 def _validate_record(record: Mapping[str, Any]) -> str:
     """Refuse a record whose own shape is wrong — a tampered or corrupt record never reaches an executor."""
+    requester = record.get("requester")
+    if not isinstance(requester, Mapping) or not str(requester.get("session") or "").strip():
+        # Without a requester there is no "who asked", so requester != approver cannot be evaluated and
+        # the same operator could approve a request whose requester block was deleted or emptied
+        # (cx-openai-3 R2, 2026-11-03). A request is only a request if it says who asked.
+        raise Refused("record_invalid",
+                      "This request does not record who asked, so the approver cannot be shown to be someone "
+                      "else; nothing was done.")
     if record.get("schema") != SCHEMA:
         raise Refused("record_invalid", "This request is not in the form this board writes, so nothing was done.")
     kind = record.get("type")
@@ -769,6 +780,10 @@ def _decide_locked(store: Store, request_id: str, *, context: OperatorContext, a
     choice = str(decision or "").strip().lower()
     if choice not in ("approve", "decline"):
         raise Refused("unknown_decision", "A decision is either approve or decline.")
+    # Validate BEFORE the identity check: a record with no requester cannot be evaluated for
+    # requester != approver at all, so it must be refused as a corrupt record rather than skipped
+    # past by whichever comparison happens to come first (cx-openai-3 R2, 2026-11-03).
+    _validate_record(record)
 
     requester = record.get("requester") or {}
     approver_identity = _canonical_actor(actor)

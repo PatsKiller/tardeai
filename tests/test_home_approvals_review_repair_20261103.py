@@ -280,3 +280,53 @@ def test_the_stale_question_interleaving_cannot_overwrite_a_decision(tmp_path, m
     if outcome.get("decide") == "ran":
         assert final["state"] == "executed"
         assert "question_refused" in outcome, "the losing question must refuse, not silently write"
+
+
+# ── R1 / R2: identity handling on the approval boundary (cx-openai-3, second round) ─────────
+def test_a_transport_prefix_with_a_space_is_still_the_same_identity(tmp_path):
+    """R1: `_canonical_actor` stripped before removing `tailnet:`, not after, so a prefix plus a space
+    survived as a leading space and named a different identity than the one it was."""
+    store = _store(tmp_path)
+    record = _ask(store, requester={"session": "cc-deepseek-5", "actor": f"tailnet: {LOGIN}"})
+    counter = Counter()
+    with pytest.raises(ha.Refused) as caught:
+        ha.decide(store, record["id"], ctx=_ctx(), actor=LOGIN, decision="approve", now=NOW,
+                  executor=counter.executor())
+    assert caught.value.code == "approver_is_requester"
+    assert counter.executed == 0 and counter.revalidated == 0
+    assert store.get(record["id"])["state"] == "open"
+
+
+def test_the_canonicaliser_agrees_across_spellings():
+    login = LOGIN.casefold()
+    for spelling in (LOGIN, f" tailnet:{LOGIN} ", f"tailnet: {LOGIN}", f"TAILNET:{LOGIN.upper()}",
+                     f"tailnet:tailnet:{LOGIN}"):
+        assert ha._canonical_actor(spelling) == login, spelling
+
+
+@pytest.mark.parametrize("requester", ["absent", "empty", "sessionless"])
+def test_a_request_that_does_not_say_who_asked_is_refused(tmp_path, requester):
+    """R2: deleting or emptying the requester block made requester != approver unevaluable, and the
+    same operator could then approve their own request."""
+    store = _store(tmp_path)
+    record = _ask(store, requester={"session": "cc-deepseek-5", "actor": f"tailnet:{LOGIN}"})
+    path = store.requests_dir / f"{record['id']}.json"
+    doc = json.loads(path.read_text())
+    if requester == "absent":
+        doc.pop("requester", None)
+    elif requester == "empty":
+        doc["requester"] = {}
+    else:
+        doc["requester"] = {"actor": f"tailnet:{LOGIN}"}
+    path.write_text(json.dumps(doc))
+
+    with pytest.raises(ha.Refused) as caught:
+        ha.list_open(store, now=NOW)
+    assert caught.value.code == "store_unreadable", "a corrupt request must not render as an empty board"
+
+    counter = Counter()
+    with pytest.raises(ha.Refused) as caught:
+        ha.decide(store, record["id"], ctx=_ctx(), actor=LOGIN, decision="approve", now=NOW,
+                  executor=counter.executor())
+    assert caught.value.code == "record_invalid"
+    assert counter.executed == 0 and counter.revalidated == 0
