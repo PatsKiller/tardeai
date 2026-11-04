@@ -1,7 +1,7 @@
 // SurfaceState@v1 contract tests (BOARD row 36). Pure: no React, no fetch, no fixtures with real values.
 // The "must never say" half is what makes this a contract: every state's OWN wording is checked against every
 // vocabulary it is forbidden to use, so a future edit that re-introduces "unavailable" into a loading state fails here.
-import { deriveSurfaceState, surfaceGap, refreshMarker, rendersData, nextSurfaceReport, MUST_NEVER_SAY, type SurfaceShape, type SurfaceStateName } from './surfaceState.ts'
+import { deriveSurfaceState, surfaceGap, refreshMarker, rendersData, nextSurfaceReport, footerQualifier, MUST_NEVER_SAY, type SurfaceShape, type SurfaceStateName } from './surfaceState.ts'
 
 declare const process: { exit(code?: number): never }
 let pass = 0, fail = 0
@@ -91,6 +91,15 @@ check('rendersData: loading is not rendered', !rendersData(deriveSurfaceState({ 
 check('footer: a publish takes the slot', nextSurfaceReport(null, { name: 'Agents', dataLoaded: true })?.name === 'Agents')
 check('footer: an OUTGOING page cannot erase the INCOMING page', nextSurfaceReport({ name: 'Approvals', dataLoaded: false }, null, 'Agents')?.name === 'Approvals')
 check('footer: the owner can clear its own slot', nextSurfaceReport({ name: 'Agents', dataLoaded: true }, null, 'Agents') === null)
+
+// ── Rule 7: the build line is a fact about the BUNDLE, and must say when the page's data did not load ─────
+// Without the qualifier, "matches served artifact" sits as an all-clear above a page that failed — the same
+// false-healthy class as the two contradictions. Pure, so it is tested without rendering the shell.
+check('qualifier: no report yet adds nothing', footerQualifier(null) === '')
+check('qualifier: a page that rendered its data adds nothing', footerQualifier({ name: 'Agents', dataLoaded: true }) === '')
+const q = footerQualifier({ name: 'Approvals', dataLoaded: false })
+check('qualifier: a page that did not render its data is named', q.includes('Approvals') && q.includes('data did not load'))
+check('qualifier: it never claims the page is fine', !/unavailable|loading|\bok\b/i.test(q))
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)
