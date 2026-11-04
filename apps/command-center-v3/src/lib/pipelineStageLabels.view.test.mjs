@@ -17,6 +17,10 @@ if (mq) {
   ok(/\.wp-current-stage \{ display: block/.test(block), 'the phone has no full-width current-stage line')
   ok(/\.wp-stages > div \{ height: 22px !important; \}/.test(block), 'stage bars lost their phone height')
 }
+// FQ-032 (cc-deepseek-3 R1 at e983b7d7): display:block inside the phone query is the element's default, so without a
+// base rule the line rendered at 1440 too and every desktop card stated the stage twice.
+const outside = src.split(/@media \(max-width: \d+px\)/)[0]
+ok(/\.wp-current-stage \{ display: none/.test(outside), 'no base rule hides the current-stage line above the phone width')
 ok(/data-current=\{c\.stage === it\.stage \? "1" : undefined\}/.test(src), 'the current stage cell is not marked')
 ok(/data-testid="wp-current-stage"/.test(src), 'no full-width current-stage line in the component')
 ok(!/Failed at/.test(src), 'the line still infers a failure from RAG colour (the producer uses red for staleness too)')

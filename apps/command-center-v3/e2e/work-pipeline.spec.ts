@@ -146,6 +146,21 @@ test('copy command writes the exact command client-side, no server write', async
   expect(posts).toEqual([])
 })
 
+test('desktop 1440: the phone-only current-stage line is not rendered', async ({ page }) => {
+  // FQ-032 (cc-deepseek-3 R1 at e983b7d7): the line carried no base display rule, so outside the phone media query it
+  // fell back to block and every desktop card stated the stage twice. The phone assertions cannot see that; the
+  // desktop page is where the operator reads the pipeline outside the audit's phone captures.
+  const posts: Post[] = []; const seen: string[] = []
+  await mockApi(page, posts, seen)
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.goto('/v3/coordination')
+  await expect(page.getByTestId('work-pipeline')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByTestId('wp-current-stage').first()).toBeHidden()
+  const visible = await page.evaluate(() => Array.from(document.querySelectorAll('[data-testid="wp-current-stage"]'))
+    .filter(el => getComputedStyle(el as HTMLElement).display !== 'none').length)
+  expect(visible).toBe(0)
+})
+
 test('phone width 412: no horizontal scroll, cards stack', async ({ page }) => {
   const posts: Post[] = []; const seen: string[] = []
   await mockApi(page, posts, seen)

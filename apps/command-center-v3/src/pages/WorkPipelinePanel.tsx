@@ -287,6 +287,10 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
       .wp-card-grid { grid-template-columns: minmax(0, 1.4fr) minmax(0, 2fr); }
       .wp-strip { grid-template-columns: repeat(14, minmax(0, 1fr)); }
       .wp-queue { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      /* FQ-032 (cc-deepseek-3 R1 at e983b7d7): the current-stage line is PHONE-ONLY. Without a base rule the div is
+         block by default — the media-query rule only restated the default — so every desktop card stated the stage
+         twice: once in this line, once in the strip's own current-cell label. */
+      .wp-current-stage { display: none; font-size: 12px; }
       @media (max-width: 760px) {
         .wp-card-grid { grid-template-columns: minmax(0, 1fr); }
         .wp-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }

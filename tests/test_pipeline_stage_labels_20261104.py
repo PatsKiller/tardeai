@@ -30,6 +30,16 @@ def test_the_phone_names_the_current_stage_on_its_own_line():
     assert re.search(r"\.wp-current-stage \{ display: block", block), "no full-width current-stage line on the phone"
 
 
+def test_the_current_stage_line_is_phone_only():
+    """cc-deepseek-3 R1 at e983b7d7: the style block set display:block only INSIDE the phone media query, which is
+    the element's default — so the line also rendered at 1440 and every desktop card stated the stage twice. The
+    assertion must look OUTSIDE the phone block, where the phone assertions cannot."""
+    outside = re.split(r"@media \(max-width: \d+px\)", SRC)[0]
+    assert re.search(r"\.wp-current-stage \{ display: none", outside), (
+        "no base rule hides the current-stage line above the phone width — it renders on the desktop too"
+    )
+
+
 def test_the_current_stage_cell_is_marked_and_cells_keep_their_label():
     assert re.search(r'data-current=\{c\.stage === it\.stage \? "1" : undefined\}', SRC), (
         "the current stage cell is not marked"
