@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_stance_age_20261104",
+  "files": [
+    "apps/command-center-v3/src/lib/cioStanceAge.test.ts"
+  ],
+  "anchor": "CIO_STANCE_AGE_20261104",
+  "comment": [
+    "ANCHOR: CIO_STANCE_AGE_20261104 — FQ-098: a CIO stance carries the date of its evidence; a stance older than 14 days is NAMED stale with that date and the words 'not current advice', an undated stance is 'unverified', and the Home and W7 panels render the labelled line instead of a bare 'CIO TRIM'. Hermetic: pure function, fixed clock, no browser, no network."
+  ]
+}
