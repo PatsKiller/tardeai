@@ -17,7 +17,11 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from lib import research_lane_health as h  # noqa: E402
 
 NOW = datetime(2026, 11, 4, 12, 0, tzinfo=timezone.utc)
-DEFERRED = "[DEFERRED_TO_OFFPEAK]: job-1 on research (off-peak) — queued as rq-9, runs after 2026-11-04T23:00"
+# VERBATIM from the live store (hermes_external_research id 68345, created_at 2026-11-03 20:42:37-05, len 190,
+# left(recommendation,70) = "[ERROR] DEFERRED_TO_OFFPEAK: hermes_external_research on deepseek-flash …"):
+# the lane writes the deferral as an [ERROR]-prefixed row, NOT as "[DEFERRED_TO_OFFPEAK]".
+DEFERRED = ("[ERROR] DEFERRED_TO_OFFPEAK: hermes_external_research on deepseek-flash (off-peak) "
+            "\u2014 queued as rq-9, runs after 2026-11-03T23:00:00-05:00")
 
 
 def _row(rec, minutes):
@@ -25,6 +29,7 @@ def _row(rec, minutes):
 
 
 def test_a_deferral_is_not_an_error_recommendation():
+    assert DEFERRED.startswith("[") and "DEFERRED_TO_OFFPEAK" in DEFERRED, "the live row takes the bracket branch"
     assert h.is_error_recommendation(DEFERRED) is False
     assert h.is_error_recommendation("[SKIPPED_BUDGET] cap") is False   # unchanged
     assert h.is_error_recommendation("[LANE_BROKEN] boom") is True      # unchanged
