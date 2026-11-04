@@ -152,7 +152,21 @@ export default function HomeDoNow() {
   const ytdChg: number | null = (ytdPreferDisp && ytd?.display_change != null ? ytd.display_change : ytd?.change) ?? null
   const ytdPct: number | null = (ytdPreferDisp && ytd?.display_change_pct != null ? ytd.display_change_pct : ytd?.change_pct) ?? null
   const vix = tradeAi?.vix
-  const regimeLabel: string = String(regime?.regime_label ?? '').replace(/_/g, ' ')
+  // FQ-085: /api/v2/risk-regime/latest is a BrokerReadEnvelope — the regime itself is inside `data`, and the clock
+  // (as_of / age_hours / stale) sits BESIDE it. Reading the envelope as if it were the regime dropped both: the label
+  // fell back to "unknown" and a stale snapshot would have looked current.
+  const regimeData: any = (regime as any)?.data ?? regime
+  const regimeLabel: string = String(regimeData?.regime_label ?? '').replace(/_/g, ' ')
+  const regimeStale: boolean = Boolean((regime as any)?.stale) || Boolean(regimeData?.stale_data)
+  const regimeAgeH: number | null = typeof (regime as any)?.age_hours === 'number' ? (regime as any).age_hours : null
+  const regimeAsOf: string | null = typeof (regime as any)?.as_of === 'string' ? (regime as any).as_of : null
+  const regimeText: string = !regime
+    ? 'unknown'
+    : !regimeLabel
+      ? 'not reported'
+      : regimeStale
+        ? `${regimeLabel} (stale${regimeAgeH != null ? `, ${regimeAgeH.toFixed(1)} h old` : ''})`
+        : regimeLabel
   const postureRows: any[] = posture?.momentum?.rows || []
   const lagging = postureRows.filter((r: any) => r.state === 'LAGGING')
   const leading = postureRows.filter((r: any) => r.state === 'LEADING')
@@ -351,7 +365,8 @@ export default function HomeDoNow() {
           <Link to="/risk?tab=market-risk" data-testid="home-market-risk-link" style={{ fontSize: TYPE.sm, color: TOKENS.info, textDecoration: 'none', minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>Market risk →</Link>
           <div style={{ fontSize: TYPE.base, lineHeight: 1.6, color: TOKENS.text[1], borderTop: `1px solid ${TOKENS.borderSubtle}`, paddingTop: 8 }}
             title="Regime: /api/v2/risk-regime/latest. Sectors and hedge: /api/v2/defense/posture (momentum rows, hedge_state). 'You hold' is the sector's share of your book from the same posture rows.">
-            <span data-testid="home-market">Regime <b style={{ color: TOKENS.text[0] }}>{regimeLabel || 'unknown'}</b>{vix != null ? `, VIX ${vix}` : ''}.</span>
+            <span data-testid="home-market" data-regime-stale={String(regimeStale)} title={regimeAsOf ? `regime as_of ${regimeAsOf}${regimeAgeH != null ? ` (${regimeAgeH.toFixed(1)} h old)` : ''}` : 'regime clock not reported'}>
+              Regime <b style={{ color: regimeStale ? TOKENS.text[2] : TOKENS.text[0] }}>{regimeText}</b>{vix != null ? `, VIX ${vix}` : ''}.</span>
             {postureRows.length > 0 && <> Sectors: {leading.length} leading, {lagging.length} lagging{lagging.length ? <> (<b>{lagging.map((r: any) => `${String(r.sector).toLowerCase()}${r.book_pct != null ? `, you hold ${r.book_pct}%` : ''}`).slice(0, 3).join('; ')}</b>)</> : ''}.</>}
             {posture?.hedge_state?.line ? <> Hedge: {posture.hedge_state.line}.</> : null}
             {posture?.inverse_stoplights?.line ? <> {posture.inverse_stoplights.line}.</> : null}
