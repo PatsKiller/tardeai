@@ -2,7 +2,8 @@
   "schema": "CiGate@v1",
   "name": "SITE_AUDIT_DEEP_CRAWL_20261104",
   "files": [
-    "tests/test_site_audit_deep_crawl_20261104.py"
+    "tests/test_site_audit_deep_crawl_20261104.py",
+    "tests/test_site_audit_deep_crawl_step_20261104.py"
   ],
   "anchor": "SITE_AUDIT_DEEP_CRAWL_20261104",
   "comment": [
