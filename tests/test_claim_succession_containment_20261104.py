@@ -77,18 +77,20 @@ def test_partial_or_unrelated_overlap_is_not_succession(mine, theirs):
 # --------------------------------------------------------------------------------------------- the board
 
 
-def test_a_shared_file_does_not_record_a_predecessor(tmp_path):
-    """RED at HEAD: the new claim inherited the stale claim because they share one file."""
+def test_a_shared_file_records_an_overlap_link_never_a_succession(tmp_path):
+    """The link is still recorded — the state resolver needs it — but it says what it is: shared ancestry."""
     predecessor = _stale_predecessor(tmp_path, [SHARED, OTHER])
     doc, _ = _claim_now(tmp_path, [SHARED])  # the newcomer holds ONLY the shared file
-    assert doc["takeover_of"] == [], f"unexpected succession of {predecessor}"
+    assert [e["claim_id"] for e in doc["takeover_of"]] == [predecessor]
+    assert [e["kind"] for e in doc["takeover_of"]] == ["overlap"], "a shared file was recorded as a succession"
 
 
 def test_full_containment_still_records_the_predecessor(tmp_path):
     predecessor = _stale_predecessor(tmp_path, [SHARED, OTHER])
     doc, _ = _claim_now(tmp_path, [SHARED, OTHER, THIRD])
     assert [entry["claim_id"] for entry in doc["takeover_of"]] == [predecessor]
-    assert set(doc["takeover_of"][0]) == {"claim_id", "vendor", "session", "agent", "branch", "heartbeat_at"}
+    assert doc["takeover_of"][0]["kind"] == "containment", "full succession was not tagged containment"
+    assert set(doc["takeover_of"][0]) == {"claim_id", "vendor", "session", "agent", "branch", "heartbeat_at", "kind"}
 
 
 def test_explicit_takeover_records_a_deliberate_partial_succession(tmp_path):
@@ -126,10 +128,13 @@ def test_explicit_and_mechanical_targets_are_deduplicated(tmp_path):
 
 
 def test_two_claims_on_one_shared_file_are_siblings_not_a_chain(tmp_path):
-    """The measured #2614 shape: one session, two live claims, one shared file, no invented succession."""
+    """The measured #2614 shape: one session, two live claims, one shared file — both links are `overlap`, so the merge
+    gate sees siblings and does not refuse every merge."""
     _stale_predecessor(tmp_path, [SHARED, OTHER])
     board = _board(tmp_path, lambda: NOW)
     first = board.claim(vendor="claude", session="session-x", agent=None, task="first", paths=[SHARED])
     second = board.claim(vendor="claude", session="session-x", agent=None, task="second", paths=[SHARED])
-    assert first["takeover_of"] == []
-    assert second["takeover_of"] == []
+    assert [e["kind"] for e in first["takeover_of"]] == ["overlap"]
+    assert [e["kind"] for e in second["takeover_of"]] == ["overlap"]
+    from scripts.lib import pr_merge_delegation as D
+    D.validate_takeover_graph(board.views()[0], board)   # siblings, not rivals: no refusal

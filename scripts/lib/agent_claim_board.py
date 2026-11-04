@@ -788,7 +788,11 @@ class ClaimBoard:
         # Containment, not overlap. A predecessor is whoever held nothing this claim does not hold; two agents
         # touching one shared file are siblings, and recording one as the other's predecessor invents a chain
         # that later refuses every merge. Partial succession stays deliberate: ``claim --takeover <id>``.
-        def _record(v: "ClaimView") -> dict[str, Any]:
+        def _record(v: "ClaimView", kind: str) -> dict[str, Any]:
+            # ``kind`` is the provenance of the link, and it is what the merge gate judges ambiguity by:
+            #   containment - this claim holds everything the predecessor held (a real succession);
+            #   explicit    - the operator of this claim named the predecessor with --takeover;
+            #   overlap     - they merely share a path (siblings; history only, never a claim of succession).
             return {
                 "claim_id": v.claim_id,
                 "vendor": v.doc.get("vendor"),
@@ -796,6 +800,7 @@ class ClaimBoard:
                 "agent": v.doc.get("agent"),
                 "branch": v.doc.get("branch"),
                 "heartbeat_at": v.doc.get("heartbeat_at"),
+                "kind": kind,
             }
 
         by_id = {v.claim_id: v for v in views}
@@ -804,8 +809,11 @@ class ClaimBoard:
         for v in views:
             if v.state != "stale" or v.doc.get("session") == session:
                 continue
-            if claim_covers(canon, v.doc.get("paths") or []):
-                takeover.append(_record(v))
+            if overlapping_pairs(canon, v.doc.get("paths") or []):
+                # Record every overlapping stale claim again — the state resolver depends on it — but say what the
+                # link IS. Two agents touching one shared file are siblings, not a chain.
+                kind = "containment" if claim_covers(canon, v.doc.get("paths") or []) else "overlap"
+                takeover.append(_record(v, kind))
                 recorded.add(v.claim_id)
         for target_id in dict.fromkeys(takeover_ids or ()):
             target = by_id.get(str(target_id))
@@ -820,7 +828,7 @@ class ClaimBoard:
                 )
             if not overlapping_pairs(canon, target.doc.get("paths") or []):
                 raise ClaimError(f"takeover target {target_id} shares none of this claim's paths")
-            takeover.append(_record(target))
+            takeover.append(_record(target, "explicit"))
             recorded.add(target.claim_id)
 
         now = self.now()
