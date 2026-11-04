@@ -13,6 +13,7 @@ import PrivateProxyCard from '../components/PrivateProxyCard'
 import HermesDecisionLinksPanel from '../components/HermesDecisionLinksPanel'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
+import { countText, stagingTableLabel } from '../lib/hermesPlainLanguage'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const FLEETS = ['Research Fleet', 'Momentum Scalp Swarm'] as const
@@ -443,8 +444,8 @@ export default function HermesHub({ onDrill }: Props) {
               <>Paper phase 4.4→4.5 · policy-enforcing stop lifecycle · {scalpSwarm?.pending_approvals ?? 0} pending approvals
                 · heat {scalpSwarm?.portfolio_heat?.aggregate_open_risk_pct ?? '—'}%</>
             ) : (
-              <>Staging → promote → RAG pipeline · {health?.rag_pipeline?.coverage_pct ?? 0}% RAG coverage
-                · {staging.hermes_research_intelligence ?? 0} intelligence rows
+              <>Research flow: staged → promoted → searchable · {health?.rag_pipeline?.coverage_pct ?? 0}% searchable
+                · {countText(staging.hermes_research_intelligence)} research rows
                 {killSwitch && <span style={{ color: '#ef4444', marginLeft: 8 }}>KILL SWITCH ACTIVE</span>}</>
             )}
           </div>
@@ -634,17 +635,19 @@ export default function HermesHub({ onDrill }: Props) {
           <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Staging Counts</div>
             {Object.entries(staging).map(([k, v]: [string, any]) => (
-              <div key={k} onClick={() => onDrill({ title: k.replace(/_/g, ' '), subtitle: `${v} rows`, endpoint: '/api/v2/hermes/health', rows: [{ table: k, count: v }] })}
+              // FQ-039: plain label here, the table it counts in the drill row and the hover title.
+              <div key={k} onClick={() => onDrill({ title: stagingTableLabel(k), subtitle: `${v} rows`, endpoint: '/api/v2/hermes/health', rows: [{ table: k, count: v }] })}
+                title={k}
                 style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11 }}>
-                <span style={{ color: 'var(--text2)', fontFamily: 'monospace' }}>{k.replace('hermes_', '')}</span>
-                <span style={{ fontWeight: 600, color: v > 0 ? '#60a5fa' : 'var(--text3)' }}>{v}</span>
+                <span style={{ color: 'var(--text2)' }}>{stagingTableLabel(k)}</span>
+                <span style={{ fontWeight: 600, color: v > 0 ? '#60a5fa' : 'var(--text3)' }}>{countText(v)}</span>
               </div>
             ))}
             <div style={{ display: 'flex', gap: 12, marginTop: 10, fontSize: 10 }}>
               <span style={{ color: autonomous ? '#22c55e' : 'var(--text3)' }}>Autonomous: {autonomous ? 'ON' : 'OFF'}</span>
               <span style={{ color: killSwitch ? '#ef4444' : 'var(--text3)' }}>Kill switch: {killSwitch ? 'ACTIVE' : 'OFF'}</span>
             </div>
-            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Source: /api/v2/hermes/health</div>
+            <details style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}><summary style={{ cursor: 'pointer' }}>Where these numbers come from</summary><div style={{ fontFamily: 'monospace' }}>Source: /api/v2/hermes/health</div></details>
           </div>
 
           {/* Autonomous closure loops */}
@@ -652,11 +655,12 @@ export default function HermesHub({ onDrill }: Props) {
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Autonomous closure loops</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 11 }}>
               {[
-                ['Backlog staged', String((backlog?.items ?? []).filter((i: any) => i.status === 'staged').length || staging.hermes_research_backlog || 0), 'hermes_backlog_drain.py drains → backlog_resolution'],
-                ['Embed queue', `${health?.embedding_queue?.pending ?? 0} pending · ${health?.embedding_queue?.failed ?? 0} failed (auto-retry)`, 'Coordinator resets failed → pending each tick'],
-                ['RAG coverage', `${health?.rag_pipeline?.embedded ?? 0}/${health?.rag_pipeline?.promoted ?? 0} promoted embedded (${health?.rag_pipeline?.coverage_pct ?? 0}%)${health?.rag_pipeline?.embedded_total != null ? ` · ${health.rag_pipeline.embedded_total} research embeddings incl. archived` : ''}`, 'backfill_promoted + embedding worker'],
-                ['Source auto-approval', `${sourcesData?.stats?.news_active ?? 0}/${sourcesData?.stats?.news_total ?? 0} news active · ${sourcesData?.stats?.vetting_pending ?? 0} queued`, 'hermes_source_auto_approval.py — no operator step'],
-                ['24/7 Research Curator', 'Shared critique snapshot + API', 'research_critique_latest.json + /api/v2/hermes/research-critique consumed by Trade AI processes'],
+                // FQ-039: plain sentence on the row; the script/endpoint that does the work is in the disclosure below.
+                ['Backlog staged', String((backlog?.items ?? []).filter((i: any) => i.status === 'staged').length || staging.hermes_research_backlog || 0), 'Staged research is drained into a resolution record.'],
+                ['Embed queue', `${health?.embedding_queue?.pending ?? 0} pending · ${health?.embedding_queue?.failed ?? 0} failed (auto-retry)`, 'Failed items are reset to pending every tick.'],
+                ['RAG coverage', `${health?.rag_pipeline?.embedded ?? 0} of ${health?.rag_pipeline?.promoted ?? 0} promoted rows are searchable (${health?.rag_pipeline?.coverage_pct ?? 0}%)${health?.rag_pipeline?.embedded_total != null ? ` · ${health.rag_pipeline.embedded_total.toLocaleString('en-US')} embeddings in total, archived included` : ''}`, 'Promoted rows are backfilled, then the embedding worker indexes them.'],
+                ['Source auto-approval', `${sourcesData?.stats?.news_active ?? 0} of ${sourcesData?.stats?.news_total ?? 0} news sources active · ${sourcesData?.stats?.vetting_pending ?? 0} queued`, 'Approved sources need no operator step.'],
+                ['24/7 Research Curator', 'Shared critique snapshot + API', 'Trade AI processes read the stored critique snapshot.'],
               ].map(([k, v, hint]) => (
                 <div key={k} style={{ padding: '5px 6px', borderBottom: '1px solid var(--border)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -666,6 +670,16 @@ export default function HermesHub({ onDrill }: Props) {
                   <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 2 }}>{hint}</div>
                 </div>
               ))}
+              <details style={{ marginTop: 4, fontSize: 9, color: 'var(--text3)' }}>
+                <summary style={{ cursor: 'pointer' }}>What runs each of these</summary>
+                <div style={{ marginTop: 4, fontFamily: 'monospace', lineHeight: 1.6 }}>
+                  <div>hermes_backlog_drain.py drains → backlog_resolution</div>
+                  <div>Coordinator resets failed → pending each tick</div>
+                  <div>backfill_promoted + embedding worker</div>
+                  <div>hermes_source_auto_approval.py — no operator step</div>
+                  <div>research_critique_latest.json + /api/v2/hermes/research-critique consumed by Trade AI processes</div>
+                </div>
+              </details>
             </div>
             {(sourcesData?.auto_approval?.activated?.length ?? 0) > 0 && (
               <div style={{ marginTop: 10, fontSize: 9, color: 'var(--text3)' }}>
@@ -689,7 +703,7 @@ export default function HermesHub({ onDrill }: Props) {
                 {(choices.total ?? 0) === 0 && <div style={{ color: 'var(--text3)', fontSize: 11 }}>Insufficient data — no operator choices recorded yet</div>}
               </>
             ) : <div style={{ color: 'var(--text3)', fontSize: 11 }}>Loading...</div>}
-            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Source: /api/v2/hermes/advisory-choices</div>
+            <details style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}><summary style={{ cursor: 'pointer' }}>Where these numbers come from</summary><div style={{ fontFamily: 'monospace' }}>Source: /api/v2/hermes/advisory-choices</div></details>
           </div>
 
           {/* Discovery engines — research producers beyond the 7 core contract agents */}

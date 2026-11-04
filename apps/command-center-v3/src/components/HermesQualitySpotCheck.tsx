@@ -4,6 +4,7 @@
  */
 import { useApi } from '../hooks/useApi'
 import { BB, T, TYPE } from '../lib/watchTokens'
+import { countText, findingTypeLabel, severityLabel } from '../lib/hermesPlainLanguage'
 
 type Props = {
   onDrill?: (ctx: { title: string; subtitle: string; endpoint: string; rows: any[] }) => void
@@ -70,9 +71,9 @@ export default function HermesQualitySpotCheck({ onDrill }: Props) {
       </div>
 
       <div style={{ fontSize: TYPE.xs, color: 'var(--text2)', marginBottom: 8 }}>
-        Staging: research rows <b style={{ color: 'var(--text1)' }}>{researchN}</b>
-        {' · '}findings <b style={{ color: 'var(--text1)' }}>{findingsN}</b>
-        {' · '}open in view <b style={{ color: 'var(--text1)' }}>{openCount || recent.length}</b>
+        Research so far: <b style={{ color: 'var(--text1)' }}>{countText(researchN)}</b> rows
+        {' · '}<b style={{ color: 'var(--text1)' }}>{countText(findingsN)}</b> quality findings
+        {' · '}<b style={{ color: 'var(--text1)' }}>{countText(openCount || recent.length)}</b> still need attention
       </div>
 
       {recent.length === 0 ? (
@@ -92,8 +93,8 @@ export default function HermesQualitySpotCheck({ onDrill }: Props) {
               cursor: onDrill ? 'pointer' : 'default', fontSize: TYPE.sm,
             }}
           >
-            <span style={{ color: sevColor(f.severity), fontWeight: 700 }}>{f.severity ?? '—'}</span>
-            <span style={{ marginLeft: 8, color: 'var(--text0)' }}>{f.finding_type ?? ''}</span>
+            <span style={{ color: sevColor(f.severity), fontWeight: 700 }}>{severityLabel(f.severity)}</span>
+            <span style={{ marginLeft: 8, color: 'var(--text0)' }} title={f.finding_type ? `Finding type: ${f.finding_type}` : undefined}>· {findingTypeLabel(f.finding_type)}</span>
             {f.symbol && <span style={{ marginLeft: 8, color: T.link, fontFamily: 'monospace' }}>{f.symbol}</span>}
             <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginTop: 2, lineHeight: 1.4 }}>
               {String(f.description || f.recommended_action || '').slice(0, 160)}
@@ -104,8 +105,23 @@ export default function HermesQualitySpotCheck({ onDrill }: Props) {
       )}
 
       <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginTop: 10 }}>
-        Sources: /api/v2/hermes/pipeline-quality · /api/v2/hermes/health.
-        Operator checklist: (1) kill switch off (2) loop timer armed (3) no critical open findings (4) do not enable hermes-gateway.service.
+        Operator checklist: (1) kill switch off (2) loop timer armed (3) no critical open findings (4) leave the Hermes
+        gateway disabled.
+        {/* FQ-039: the endpoints and the unit name stay available, behind a disclosure, not in the reading line. */}
+        <details style={{ marginTop: 4 }}>
+          <summary style={{ cursor: 'pointer' }}>Where these numbers come from</summary>
+          <div style={{ marginTop: 4, fontFamily: 'monospace' }}>
+            Sources: /api/v2/hermes/pipeline-quality · /api/v2/hermes/health · do not enable
+            hermes-gateway.service.
+          </div>
+          {recent.length > 0 && (
+            <div style={{ marginTop: 4, fontFamily: 'monospace' }}>
+              {/* FQ-039: the raw finding type of every row above, so a support question can name the exact key
+                  without it being the label the operator reads. */}
+              Raw finding types: {Array.from(new Set(recent.map((f: any) => String(f.finding_type ?? 'unknown')))).join(' · ')}
+            </div>
+          )}
+        </details>
       </div>
     </div>
   )
