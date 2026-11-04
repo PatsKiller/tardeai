@@ -67,7 +67,9 @@ const rows = [
     data_quality: { evidence_count: 3, quality: 'OK' }, why_call: 'Hold: income sleeve, no new equity ticket.' },
 ]
 globalThis.__apiFixture = (url) => {
-  if (url.includes('/api/v3/advisory')) return { data: { rows, banners: [], timestamps: {}, desk_health: {}, by_class: {}, metadata: {} }, loading: false, error: null }
+  const banners = [{ id: 'DATA_CONFLICT', severity: 'warn', title: 'Two marks disagree for SPCX', detail: 'Mark 132.99 vs model 141.65' },
+                   { id: 'PLAUSIBILITY_OK', severity: 'info', title: 'Distribution within bounds', detail: 'weights sum to 100%' }]
+  if (url.includes('/api/v3/advisory')) return { data: { rows, banners, timestamps: {}, desk_health: { overall: 'DESK_DEGRADED' }, by_class: {}, metadata: {} }, loading: false, error: null }
   return { data: null, loading: false, error: null }
 }
 
@@ -98,6 +100,21 @@ check('the card shows the decision fields the table hid', () => {
 check('the card offers the full-screen detail entry', () => {
   const html = render(true)
   assert.match(html, /Open full details/)
+})
+
+// FQ-016 — the state vocabulary is a sentence, with the code kept in the tooltip.
+check('state codes are not the page text', () => {
+  const html = render(true)
+  const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
+  for (const raw of ['READ_ONLY_ADVISORY', 'DATA_CONFLICT', 'DESK_DEGRADED', 'PLAUSIBILITY_OK', 'LOTS_OK']) {
+    assert.ok(!new RegExp(`(^|[^A-Z_])${raw}([^A-Z_]|$)`).test(text), `raw code ${raw} is in the reading text`)
+  }
+  assert.match(text, /Read-only advice/)
+})
+
+check('the raw code survives in the tooltip', () => {
+  const html = render(true)
+  assert.match(html, /title="READ_ONLY_ADVISORY"/)
 })
 
 check('desktop still gets the table', () => {

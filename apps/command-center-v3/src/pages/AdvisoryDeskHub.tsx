@@ -145,6 +145,35 @@ const BANNER_ACTION: Record<string, string> = {
   DATA_CONFLICT: 'Do not act on conflicted marks — ACTION SUPPRESSED until prices/MV reconcile.',
 }
 
+/** FQ-016 (2026-11-04): the page printed state codes as its primary text. Each code gets the sentence a reader needs;
+ *  the code itself stays in the element's `title` so a support question can still name it exactly. */
+const STATE_LABEL: Record<string, string> = {
+  OK: 'Desk is current',
+  FAILED: 'The desk did not build',
+  UNKNOWN: 'Desk state unknown',
+  VALIDATION_FAIL: 'Validation failed',
+  DESK_STALE: 'This snapshot is old',
+  DESK_PARTIAL: 'Parts of the desk are incomplete',
+  DESK_DEGRADED: 'Some inputs are degraded',
+  DESK_UNKNOWN: 'Desk state unknown',
+  PLAUSIBILITY_OK: 'Distribution looks sane',
+  PLAUSIBILITY_FAIL: 'Distribution out of bounds',
+  LOTS_OK: 'Lot data trusted',
+  UNTRUSTED_LOTS: 'Some lot data is not trusted',
+  LLM_ON: 'Flash/Pro opinions are active',
+  LLM_DRY: 'Flash/Pro opinions have not been generated',
+  LLM_OFF: 'Flash/Pro opinions are switched off',
+  INVARIANTS_OK: 'No external reality failures',
+  INVARIANT_VIOLATIONS: 'Rows held at insufficient data',
+  DATA_CONFLICT: 'Conflicting marks',
+  READ_ONLY_ADVISORY: 'Read-only advice',
+}
+function stateLabel(code: unknown): string {
+  const k = String(code ?? '').trim().toUpperCase()
+  if (!k) return 'State not reported'
+  return STATE_LABEL[k] ?? k.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase())
+}
+
 const MATERIALITY_FLOOR = 500
 const CLASSES = ['all', 'holding', 'watchlist', 'watchlist_hub', 'closed_journal', 'allocation'] as const
 const WATCH_FILTERS = [
@@ -742,7 +771,7 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
                                     borderRadius: 6, padding: '8px 10px', marginBottom: 10,
                                     color: 'var(--red)', fontSize: 12, fontWeight: 700,
                                   }}>
-                                    DATA CONFLICT — ACTION SUPPRESSED
+                                    Conflicting marks — action suppressed
                                     <div style={{ fontWeight: 500, marginTop: 4, color: 'var(--text2)', fontSize: 11, lineHeight: 1.4 }}>
                                       {conflicts.filter(c => c !== 'DATA CONFLICT — ACTION SUPPRESSED').join(' · ') || 'Mark / MV / target denominators disagree.'}
                                     </div>
@@ -839,9 +868,9 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
     <div style={{ padding: '16px 24px', maxWidth: 1360 }}>
       <div style={hubTitle()}>📋 Advisory Desk</div>
       <div style={hubSubtitle()}>
-        READ_ONLY_ADVISORY · class-aware facts · watch intelligence · re-entry · durable memory
-        <span style={{ color: qualityTone(overall) || 'var(--text3)', marginLeft: 16, fontWeight: 700 }}>
-          {overall}
+        <span title="READ_ONLY_ADVISORY">Read-only advice</span> · class-aware facts · watch intelligence · re-entry · durable memory
+        <span title={String(overall)} style={{ color: qualityTone(overall) || 'var(--text3)', marginLeft: 16, fontWeight: 700 }}>
+          {stateLabel(overall)}
         </span>
         {data?.desk_cache_age_seconds != null && (
           <span style={{ color: 'var(--text3)', marginLeft: 10 }}>
@@ -893,7 +922,7 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
           {running ? 'Running…' : 'Run now'}
         </button>
         <span style={{ fontSize: 12, color: 'var(--text3)' }}>
-          Paid Flash + Pro · READ_ONLY_ADVISORY · no broker writes
+          Paid Flash + Pro · <span title="READ_ONLY_ADVISORY">read-only advice</span> · no broker writes
         </span>
         {(runMsg || runNow.error || runNow.finished_at) && (
           <span style={{ fontSize: 12, color: runNow.state === 'error' ? 'var(--red)' : 'var(--text2)' }}>
@@ -922,7 +951,7 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
               padding: '10px 12px',
             }}
           >
-            <div style={{ fontSize: 11, color: SEV_FG[b.severity] || 'var(--text3)', fontWeight: 600 }}>{b.id}</div>
+            <div title={b.id} style={{ fontSize: 11, color: SEV_FG[b.severity] || 'var(--text3)', fontWeight: 600 }}>{stateLabel(b.id)}</div>
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginTop: 2 }}>{b.title}</div>
             <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 4 }}>{b.detail}</div>
             {BANNER_ACTION[b.id] && (
@@ -1046,8 +1075,8 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
                     <span>{r.row_class}</span>
                     <span>conf {r.confidence != null ? Number(r.confidence).toFixed(2) : 'n/a'}</span>
                     <span>{classHeadline(r)}</span>
-                    <span style={{ color: dq.action_suppressed ? 'var(--red)' : 'var(--text3)' }}>
-                      ev {dq.evidence_count ?? 0}{dq.gap_count ? ` · gaps ${dq.gap_count}` : ''}{dq.action_suppressed ? ' · DATA CONFLICT' : dq.quality ? ` · ${dq.quality}` : ''}
+                    <span title={dq.action_suppressed ? 'DATA_CONFLICT — ACTION SUPPRESSED' : undefined} style={{ color: dq.action_suppressed ? 'var(--red)' : 'var(--text3)' }}>
+                      ev {dq.evidence_count ?? 0}{dq.gap_count ? ` · gaps ${dq.gap_count}` : ''}{dq.action_suppressed ? ' · conflicting marks' : dq.quality ? ` · ${dq.quality}` : ''}
                     </span>
                   </span>
                   <span style={{ fontSize: 11, color: 'var(--text3)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{headline}</span>
