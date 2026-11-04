@@ -302,11 +302,20 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
                 <span style={{ fontSize: TYPE.xs, color: BB.text3 }}>
                   {String(h.surfaced_at || '').slice(0, 16).replace('T', ' ')}
                 </span>
+                {/* FQ-079: an unavailable suggestion rendered a greyed Promote with no reason — a control that did
+                    nothing and no sentence saying why. The button stays (nothing removed); the reason is visible. */}
+                {!h.directive_id && (
+                  <span data-testid="wp-promote-unavailable" style={{ marginLeft: 'auto', fontSize: TYPE.xs, color: BB.text3 }}>
+                    Cannot promote — this suggestion carries no directive to promote; the desk has not staged one yet
+                  </span>
+                )}
                 <button
                   disabled={busy || !h.directive_id}
                   onClick={() => promote(h.symbol, h.directive_id, h.surfaced_by)}
-                  style={{ ...terminalButton('primary'), marginLeft: 'auto', opacity: busy ? 0.5 : 1, cursor: busy ? 'wait' : 'pointer' }}
-                  title="Operator one-tap promote — still advisory; scalp firewall applies"
+                  style={{ ...terminalButton('primary'), marginLeft: h.directive_id ? 'auto' : 8, opacity: busy || !h.directive_id ? 0.5 : 1, cursor: busy ? 'wait' : h.directive_id ? 'pointer' : 'not-allowed' }}
+                  title={h.directive_id
+                    ? 'Operator one-tap promote — still advisory; scalp firewall applies'
+                    : 'Unavailable: this suggestion has no directive, so there is nothing to promote'}
                 >Promote</button>
               </div>
             ))}
