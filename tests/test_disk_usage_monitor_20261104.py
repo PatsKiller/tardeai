@@ -7,6 +7,8 @@ stays quiet.
 """
 import json
 import sys
+
+import pytest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -117,3 +119,22 @@ def test_a_recovery_is_reported_only_when_the_bad_band_actually_held():
     assert M.alert_for("critical", "ok", brief, T0 + timedelta(minutes=15), mon) is None      # wobble, not recovery
     held = {"band": "critical", "alerted_at": T0.isoformat(), "since": T0.isoformat()}
     assert M.alert_for("critical", "ok", held, T0 + timedelta(minutes=45), mon) == "ok"      # a real recovery
+
+
+def test_the_inode_band_inherits_the_realert_interval_and_cannot_miss_it():
+    """cx-openai-4: monitor.inodes never carried realert_minutes, so the inode band alerted once and then stayed silent
+    for as long as it was bad — the 23-hour silence this PR exists to end, still present on the second band. Every band
+    now resolves through metric_policy, so a band inherits and a THIRD band cannot be added missing it."""
+    cfg = json.loads((ROOT / "config" / "disk_hygiene_rules.json").read_text(encoding="utf-8"))["monitor"]
+    ino = cfg["inodes"]
+    assert "realert_minutes" not in ino, "the defect was a setting absent from the band; inheritance is the fix"
+    resolved = M.metric_policy(cfg, ino)
+    assert resolved["realert_minutes"] == cfg["realert_minutes"]
+    # and the inode band therefore re-alerts on the interval instead of going quiet
+    entry = {"band": "critical", "alerted_at": T0.isoformat()}
+    assert M.alert_for("critical", "critical", entry, T0 + timedelta(minutes=61), resolved) == "critical"
+    assert M.alert_for("critical", "critical", entry, T0 + timedelta(minutes=30), resolved) is None
+    # a band invented tomorrow inherits by construction
+    assert M.metric_policy(cfg, {"warn_pct": 50.0})["realert_minutes"] == cfg["realert_minutes"]
+    with pytest.raises(ValueError):
+        M.metric_policy({}, {})          # a parent with no interval cannot silently produce a one-shot band

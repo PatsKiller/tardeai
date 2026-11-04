@@ -522,7 +522,8 @@ def test_inode_bands_alert_once_per_change_and_apart_from_the_byte_bands(mon):
         ("disk_usage_warn", "Disk /tmp INODES WARN: at or above 80% inodes used"),
         ("disk_usage_warn", "Disk /tmp WARN: at or above 80% used"),
         ("disk_usage_critical", "Disk /tmp INODES CRITICAL: at or above 90% inodes used"),
-        ("disk_usage_recovered", "Disk /tmp INODES recovered: below 80% inodes used"),
+        # 2026-11-04: the inode band lasted 15 minutes before recovering, shorter than recovery_stability_minutes (30),
+        # so it is reported as a wobble rather than a recovery — the rule that keeps a flapping band from storming.
         ("disk_usage_recovered", "Disk /tmp recovered: below 80% used"),
     ]
     state = json.loads((mon.tw.state / "data/runtime/disk_usage_monitor_state.json").read_text())

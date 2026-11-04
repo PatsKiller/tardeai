@@ -205,6 +205,25 @@ def realert_due(entry: Mapping[str, Any], cur: str, now: datetime, mon: Mapping[
     return (now - last_dt) >= timedelta(minutes=float(minutes))
 
 
+_INHERITED_SETTINGS = ("realert_minutes", "recovery_stability_minutes", "warn_pct", "critical_pct")
+
+
+def metric_policy(mon: Mapping[str, Any], band: Optional[Mapping[str, Any]]) -> dict[str, Any]:
+    """The effective settings for ONE band. A band inherits every inherited setting from its parent monitor and may
+    override it — it cannot MISS one.
+
+    2026-11-04 (cx-openai-4): `monitor.inodes` never carried `realert_minutes`, so the inode band alerted on first
+    entry and then said nothing for as long as it stayed bad — the same 23-hour silence this change exists to end,
+    still present on the second band. Resolving every band through this ONE function is what makes a third band
+    inherit by construction: there is no path that reads a band's own dict for these settings.
+    """
+    if not isinstance(mon, Mapping) or "realert_minutes" not in mon:
+        raise ValueError("monitor.realert_minutes is required: a band with no re-alert interval is a one-shot")
+    merged = dict(mon)
+    merged.update({k: v for k, v in dict(band or {}).items() if k in _INHERITED_SETTINGS})
+    return merged
+
+
 def _minutes_since(stamp: Any, now: datetime) -> Optional[float]:
     """Minutes from an ISO stamp to now; None when there is no usable stamp."""
     if not stamp:
@@ -684,7 +703,7 @@ def run(
             continue
         cur = band_of(m["inodes_used_pct"], ino)
         prev = (inodes_state.get(mount) or {}).get("band")
-        alert = alert_for(prev, cur, inodes_state.get(mount) or {}, now, ino)
+        alert = alert_for(prev, cur, inodes_state.get(mount) or {}, now, metric_policy(mon, ino))
         row: dict[str, Any] = {**m, "metric": "inodes", "band": cur, "previous_band": prev, "alert": alert}
         if alert:
             top_cfg = ino.get("top_dirs") or {}
@@ -729,7 +748,7 @@ def run(
             continue
         cur = band_of(m["used_pct"], mon)
         prev = (mounts_state.get(mount) or {}).get("band")
-        alert = alert_for(prev, cur, mounts_state.get(mount) or {}, now, mon)
+        alert = alert_for(prev, cur, mounts_state.get(mount) or {}, now, metric_policy(mon, mon))
         row: dict[str, Any] = {**m, "band": cur, "previous_band": prev, "alert": alert}
         if alert:
             consumers = top_consumers(rules, mon, manifest, consumer_snapshot) if consumer_snapshot is not None else []
