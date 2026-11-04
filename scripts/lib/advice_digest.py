@@ -599,7 +599,11 @@ def render(slot: str, sections: dict[str, list[dict]], held: list[dict], facts: 
         lines: list[str] = []
         for kind, titles in sorted(by_kind.items(), key=lambda kv: -len(kv[1]))[:8]:
             causes = [t for t in titles if t]
-            distinct = list(dict.fromkeys(causes))
+            # RANKED BY FREQUENCY, not by first appearance (cc2, 2026-11-04): first-seen headlined a single deferral
+            # ahead of a provider-failure batch only because it arrived first, so the line named the least
+            # representative cause in the group.
+            counts = Counter(causes)
+            distinct = [t for t, _n in counts.most_common()]
             head = f"• {esc(kind)} ×{len(titles)}"
             if distinct:
                 head += f" — {esc(distinct[0][:70])}"

@@ -45,3 +45,14 @@ def test_two_causes_in_one_kind_are_both_named():
 def test_a_row_with_no_title_says_so_rather_than_going_silent():
     out = _render([_row("")])
     assert "no cause recorded" in out, out
+
+
+def test_the_headline_names_the_MOST_COMMON_cause_not_the_first_seen():
+    """cc2 (2026-11-04): the first-seen cause headlined the group, so one deferral appearing first could name the batch
+    ahead of three provider failures. The line must rank by frequency."""
+    rows = [_row("DeepSeek DEFERRED_TO_OFFPEAK: queued")]
+    rows += [_row("DeepSeek provider unavailable: critical failure")] * 3
+    out = _render(rows)
+    # only the ranked head is rendered; the minority cause is folded into the (+N) tail
+    assert "×4 — DeepSeek provider unavailable" in out, out
+    assert "(+1 other cause)" in out, out
