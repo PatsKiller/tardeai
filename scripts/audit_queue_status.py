@@ -28,11 +28,21 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+#: The queue lives in the coordination tree beside the releases, never inside the repo. Resolved from HOME so no
+#: user's home directory is written into the source; AUDIT_FIX_QUEUE_PATH overrides it.
 DEFAULT_QUEUE = Path(
-    "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/coordinator/AUDIT_FIX_QUEUE.json"
+    os.environ.get("AUDIT_FIX_QUEUE_PATH")
+    or Path.home() / "trade-ai-releases" / "persistent-state" / "data" / "coordination" / "coordinator"
+    / "AUDIT_FIX_QUEUE.json"
 )
 
 SCHEMA = "AuditFixQueueStatusSync@v1"
+#: The dark-contract declaration: this CLI is run on demand (and may be put on a timer by the coordinator). It reads
+#: GitHub and writes only the coordination queue, and only when asked with --apply.
+SCHEDULED_ENTRYPOINT = (
+    "NONE — unscheduled by design; operator/coordinator-run CLI. Scheduling is operator-only (AGENTS.md §17). "
+    "Reads `gh pr list`; writes AUDIT_FIX_QUEUE.json only with --apply, after a backup."
+)
 AUTHOR = "audit_queue_status.py"
 
 #: Rows in these states are observations and may move. Everything else is a decision and is left alone.
@@ -48,7 +58,8 @@ def gh_pr_list(runner: Callable[[list[str]], str] | None = None, *, limit: int =
     """Every PR we might need to look at, one call. ``runner`` is injectable for tests."""
     argv = ["gh", "pr", "list", "--state", "all", "--limit", str(limit), "--json", PR_FIELDS]
     if runner is None:
-        out = subprocess.run(argv, capture_output=True, text=True, timeout=120)
+        # A fixed argv with no shell: the only variable is the limit, an int we format ourselves.
+        out = subprocess.run(argv, capture_output=True, text=True, timeout=120, check=False)  # noqa: S603, S607
         if out.returncode != 0:
             raise RuntimeError(f"gh pr list failed ({out.returncode}): {out.stderr[:300]}")
         text = out.stdout
@@ -151,7 +162,7 @@ def _backup(path: Path) -> Path:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Sync AUDIT_FIX_QUEUE.json status from open/merged/closed PRs.")
-    ap.add_argument("--queue", default=os.environ.get("AUDIT_FIX_QUEUE_PATH") or str(DEFAULT_QUEUE))
+    ap.add_argument("--queue", default=str(DEFAULT_QUEUE))
     ap.add_argument("--apply", action="store_true", help="write the queue (default is a dry run)")
     ap.add_argument("--json", action="store_true", help="print the report as JSON")
     args = ap.parse_args(argv)

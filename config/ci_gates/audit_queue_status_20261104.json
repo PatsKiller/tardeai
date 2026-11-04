@@ -6,7 +6,7 @@
   ],
   "anchor": "AUDIT_QUEUE_STATUS_20261104",
   "comment": [
-    "ANCHOR: AUDIT_QUEUE_STATUS_20261104 — the audit fix queue's status field follows GitHub rather than memory",
+    "ANCHOR: AUDIT_QUEUE_STATUS_20261104 — AuditFixQueueStatusSync@v1. the audit fix queue's status field follows GitHub rather than memory",
     "(AuditFixQueueStatusRules@v1, authored cc-deepseek-3, adopted 2026-11-04). An open PR naming a row moves it to",
     "fix_in_review with its head; a merged PR marks it delivered with the merge commit; a PR closed without merging parks",
     "it. HELD_*, delivered, parked and closed_* rows are decisions and are never overwritten. Dry run by default;",
