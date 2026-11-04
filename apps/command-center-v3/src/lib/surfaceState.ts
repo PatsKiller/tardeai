@@ -97,13 +97,17 @@ export function deriveSurfaceState<T>(reading: SurfaceReading<T>, shape: Surface
     if (reading.loading) return { ...base, state: 'loading', refreshing: false }
     return unreadable()
   }
+  // N5 (cc-deepseek-3): a FAILED fresh read outranks what the retained payload looks like. Checked after `empty` and
+  // `partial`, a stale read whose last-good payload was empty derived `empty` — the page said "Nothing on file" and
+  // never said the refresh failed, which hides a failure rather than crying wolf. The gaps are kept, so a stale
+  // surface that is also partial still reports totalKnown false.
+  if (reading.stale) return { ...base, state: 'stale', data, gaps, totalKnown: gaps.length === 0 }
   if (gaps.length) return { ...base, state: 'partial', data, gaps, totalKnown: false }
   if (shape.isEmpty) {
     const e = extract(d => shape.isEmpty!(d))
     if (!e.ok) return unreadable()
     if (e.value) return { ...base, state: 'empty', data }
   }
-  if (reading.stale) return { ...base, state: 'stale', data }
   return { ...base, state: 'ready', data }
 }
 
@@ -150,7 +154,9 @@ export function surfaceGap<T>(s: SurfaceState<T>, shape: SurfaceShape<T>, opts: 
     case 'partial':
       return {
         title: `Some sources for the ${what} are unavailable`,
-        reason: `${s.gaps.length} source${s.gaps.length === 1 ? '' : 's'} did not answer (${s.gaps.join(', ')}). The total is not yet known — the rows below are what did answer.`,
+        // N3 (cc-deepseek-3): the envelope's gaps are already sentences, so "(releases did not answer)" beside a
+        // count read as "1 source did not answer (releases did not answer)". The count and the names are now one clause.
+        reason: `${s.gaps.length} source${s.gaps.length === 1 ? '' : 's'} did not answer: ${s.gaps.join('; ')}. The total is not yet known — the rows below are what did answer.`,
         action: 'none',
       }
     case 'empty':
@@ -196,4 +202,23 @@ export function nextSurfaceReport(prev: SurfaceReport | null, incoming: SurfaceR
 export function footerQualifier(surface: SurfaceReport | null): string {
   if (!surface || surface.dataLoaded) return ''
   return ` · ${surface.name} data did not load`
+}
+
+/** Two reports say the same thing. Identity is NOT content: a fresh object with the same two fields is a no-op. */
+export function sameSurfaceReport(a: SurfaceReport | null, b: SurfaceReport | null): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  return a.name === b.name && a.dataLoaded === b.dataLoaded
+}
+
+/**
+ * The shell's publish reducer, pure and identity-preserving (cc-deepseek-3 B1, 2026-11-04).
+ *
+ * `nextSurfaceReport` answers WHICH report should stand; this answers whether the state has to change at all. Returning
+ * `prev` when the report says the same thing is what makes a repeat publish a React no-op — without it every publish
+ * produced a new object, a new state, a new context value and another render, and the page never settled.
+ */
+export function surfaceReportReducer(prev: SurfaceReport | null, incoming: SurfaceReport | null, clearingFrom?: string): SurfaceReport | null {
+  const resolved = nextSurfaceReport(prev, incoming, clearingFrom)
+  return sameSurfaceReport(prev, resolved) ? prev : resolved
 }

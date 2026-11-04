@@ -35,7 +35,7 @@ function Queue() {
     isEmpty: d => (d.items ?? []).length === 0 && (d.recent ?? []).length === 0,
   }
   const surface = deriveSurfaceState<ApprovalQueue>({ data, error, loading }, shape)
-  useReportSurfaceState('Approvals page', surface as never)
+  useReportSurfaceState('Approvals page', surface)
   const surfaceText = surfaceGap(surface, shape)
   // The rendered payload: the state's own data, narrowed once, so nothing below can read a payload the contract
   // refused to hand us (an unreadable/malformed payload has already been turned into a banner by the time we get here).
@@ -49,9 +49,15 @@ function Queue() {
       {!surface.data && <SurfaceGap state={surface} shape={shape} onRetry={refresh} />}
       {surface.data && surface.state === 'partial' && <SurfaceGap state={surface} shape={shape} />}
       {q && <>
-        {(q.gaps ?? []).length > 0 && <DeskGap title="Some sources need attention" reason={`${q.known_pending_count} known items. The full total is unavailable.`}>
-          <details><summary>Source details</summary><ul>{(q.gaps ?? []).map(gap => <li key={gap.source}>{gap.source.replace(/_/g, ' ')}: {gap.reason}</li>)}</ul></details>
-        </DeskGap>}
+        {/* N4 (cc-deepseek-3): when the surface is partial the banner above already says a source did not answer and
+            that the total is unknown; this block repeated the same fact in different words ("Some sources need
+            attention … known items"). Two sentences for one fact is the contradiction class this page is being fixed
+            for, so on partial only the per-source DETAILS remain, with no second headline. */}
+        {(q.gaps ?? []).length > 0 && (surface.state === 'partial'
+          ? <details><summary>Source details</summary><ul>{(q.gaps ?? []).map(gap => <li key={gap.source}>{gap.source.replace(/_/g, ' ')}: {gap.reason}</li>)}</ul></details>
+          : <DeskGap title="Some sources need attention" reason={`${q.known_pending_count} known items. The full total is unavailable.`}>
+              <details><summary>Source details</summary><ul>{(q.gaps ?? []).map(gap => <li key={gap.source}>{gap.source.replace(/_/g, ' ')}: {gap.reason}</li>)}</ul></details>
+            </DeskGap>)}
         {active === 'history' ? <section className="panel"><h2>Decision history</h2>{q.recent.length ? q.recent.map((record, i) => <article key={i} className="rule">
           <strong>{record.decision.replace(/_/g, ' ')}</strong><p>{record.actor} · {new Date(record.at).toLocaleString()}</p>
           <details><summary>Exact version and comment</summary><code>{record.document_sha}</code><p>{record.comment}</p></details>

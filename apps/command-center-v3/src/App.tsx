@@ -1,5 +1,5 @@
 import { OpportunityModalProvider } from './components/opportunity/OpportunityContext'
-import { useContext, useEffect, useMemo, useState } from 'react'
+import { useCallback, useContext, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
 import { useConnectionHealth, signalApiRecover, retryApiConnection } from './hooks/useApi'
 import { initialProbeState, onProbeResult } from './lib/reconnectProbe'
@@ -75,8 +75,8 @@ import {
 import SurfaceModeBanner from './components/truth/SurfaceModeBanner'
 import RouteErrorBoundary from './components/truth/RouteErrorBoundary'
 import { compareServedBuild, LOADED_BUILD } from './lib/buildIdentity'
-import { SurfaceStateContext, type SurfaceStateReport } from './components/SurfaceGap'
-import { footerQualifier, nextSurfaceReport } from './lib/surfaceState'
+import { SurfacePublishContext, SurfaceReportContext, type SurfaceStateReport } from './components/SurfaceGap'
+import { footerQualifier, surfaceReportReducer } from './lib/surfaceState'
 
 
 function BuildMarker() {
@@ -116,7 +116,7 @@ function BuildMarker() {
   const comparison = compareServedBuild(LOADED_BUILD, served)
   // BOARD row 36, rule 7: this line is a fact about the BUNDLE, never about the page's data. A page whose data did
   // not load must not sit under a bare "matches served artifact" — that reads as "everything is fine".
-  const { report: surface } = useContext(SurfaceStateContext)
+  const surface = useContext(SurfaceReportContext)
   const qualifier = footerQualifier(surface)
   return <span data-testid="cc-loaded-build" data-source-sha={LOADED_BUILD.sourceSha ?? 'UNAVAILABLE'} data-surface-loaded={surface ? String(surface.dataLoaded) : 'unknown'}>
     Loaded bundle: {LOADED_BUILD.uiVersion ?? 'UNAVAILABLE'} · built {LOADED_BUILD.builtAt ?? 'UNAVAILABLE'} · source {LOADED_BUILD.sourceSha?.slice(0, 12) ?? 'UNAVAILABLE'}
@@ -235,13 +235,15 @@ function Shell() {
   const [surfaceReport, setSurfaceReport] = useState<SurfaceStateReport | null>(null)
   // Ownership: a clearing null is accepted only when it comes from the surface that currently owns the slot, so the
   // outgoing page of a route change cannot erase the incoming page's state (F2 review, 2026-11-04).
-  const surfaceChannel = useMemo(() => ({
-    report: surfaceReport,
-    publish: (next: SurfaceStateReport | null, clearingFrom?: string) => setSurfaceReport(prev => nextSurfaceReport(prev, next, clearingFrom)),
-  }), [surfaceReport])
+  // STABLE IDENTITY, EMPTY DEPS (cc-deepseek-3 B1): the publisher must not change when the report does. The reducer
+  // also returns the previous state object when the report says the same thing, so a repeat publish is a React no-op.
+  const publishSurfaceState = useCallback((next: SurfaceStateReport | null, clearingFrom?: string) => {
+    setSurfaceReport(prev => surfaceReportReducer(prev, next, clearingFrom))
+  }, [])
   return (
     <OpportunityModalProvider>
-    <SurfaceStateContext.Provider value={surfaceChannel}>
+    <SurfacePublishContext.Provider value={publishSurfaceState}>
+    <SurfaceReportContext.Provider value={surfaceReport}>
     <div className="app-shell cc-terminal-ui" style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg0)', color: 'var(--text0)' }}>
       <SchwabReauthBanner />
       <FinvizCookieBanner />
@@ -335,7 +337,8 @@ function Shell() {
       </div>
       <DetailDrawer ctx={drill} onClose={() => setDrill(null)} />
     </div>
-    </SurfaceStateContext.Provider>
+    </SurfaceReportContext.Provider>
+    </SurfacePublishContext.Provider>
     </OpportunityModalProvider>
   )
 }

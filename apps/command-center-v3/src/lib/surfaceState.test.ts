@@ -1,13 +1,13 @@
 // SurfaceState@v1 contract tests (BOARD row 36). Pure: no React, no fetch, no fixtures with real values.
 // The "must never say" half is what makes this a contract: every state's OWN wording is checked against every
 // vocabulary it is forbidden to use, so a future edit that re-introduces "unavailable" into a loading state fails here.
-import { deriveSurfaceState, surfaceGap, refreshMarker, rendersData, nextSurfaceReport, footerQualifier, MUST_NEVER_SAY, type SurfaceShape, type SurfaceStateName } from './surfaceState.ts'
+import { deriveSurfaceState, surfaceGap, refreshMarker, rendersData, nextSurfaceReport, footerQualifier, sameSurfaceReport, surfaceReportReducer, MUST_NEVER_SAY, type SurfaceShape, type SurfaceStateName } from './surfaceState.ts'
 
 declare const process: { exit(code?: number): never }
 let pass = 0, fail = 0
-function check(name: string, condition: boolean) {
+function check(name: string, condition: boolean, detail?: string) {
   if (condition) { pass++; console.log(`  [PASS] ${name}`) }
-  else { fail++; console.log(`  [FAIL] ${name}`) }
+  else { fail++; console.log(`  [FAIL] ${name}${detail ? ` — ${detail}` : ''}`) }
 }
 
 type Row = { id: string }
@@ -101,5 +101,44 @@ const q = footerQualifier({ name: 'Approvals', dataLoaded: false })
 check('qualifier: a page that did not render its data is named', q.includes('Approvals') && q.includes('data did not load'))
 check('qualifier: it never claims the page is fine', !/unavailable|loading|\bok\b/i.test(q))
 
-console.log(`\n${pass} passed, ${fail} failed`)
-if (fail > 0) process.exit(1)
+// ── B1 (cc-deepseek-3): the footer channel must SETTLE, not re-render for ever ────────────────────────────
+// Measured on the branch: 255,468 renders in 2.5 s on /agents and /approvals. Cause: the provider's value object
+// changed identity on every publish, so `publish` did too, so both effects in the hook re-ran on every render —
+// publish -> state change -> new publish -> effects -> publish. This is the mechanism as a pure state machine: a
+// render derives `publish` (old wiring: fresh per state, the useMemo([state]) bug; new wiring: one stable function),
+// runs both effects, and re-renders only if the state object actually changed.
+type Report = { name: string; dataLoaded: boolean }
+function simulate(wiring: 'old' | 'new', maxRenders = 200): { renders: number; publishes: number } {
+  let state: Report | null = null
+  let publishes = 0
+  let renders = 0
+  let lastPublish: ((r: Report | null, clearingFrom?: string) => void) | null = null
+  while (renders < maxRenders) {
+    renders++
+    // A render's publisher. Old wiring: memoised on the state, so a new function per state. New wiring: stable.
+    const publish = wiring === 'old'
+      ? (next: Report | null, clearingFrom?: string) => { publishes++; state = nextSurfaceReport(state, next, clearingFrom) }
+      : (next: Report | null, clearingFrom?: string) => { publishes++; state = surfaceReportReducer(state, next, clearingFrom) }
+    const depsChanged = wiring === 'new' ? lastPublish === null : publish !== lastPublish
+    lastPublish = publish
+    if (!depsChanged) break                       // React does not re-run effects whose deps did not change
+    const before: Report | null = state
+    publish(null, 'Agents')                        // effect 2's cleanup fires first on a dependency change
+    publish({ name: 'Agents', dataLoaded: true })  // effect 1 re-publishes (a fresh object literal, as the hook does)
+    if (state === before) break                    // no state change: React has nothing to re-render
+  }
+  return { renders, publishes }
+}
+const looped = simulate('old')
+const settled = simulate('new')
+check('B1: the old wiring loops instead of settling', looped.renders >= 200, `${looped.renders} renders`)
+check('B1: the stable publisher settles within two renders', settled.renders === 2, `${settled.renders} renders`)
+check('B1: and a settled channel publishes only twice', settled.publishes === 2, `${settled.publishes} publishes`)
+// The reducer half: a repeat publish of the same report must not create a new state object.
+const first = surfaceReportReducer(null, { name: 'Agents', dataLoaded: true })
+const again = surfaceReportReducer(first, { name: 'Agents', dataLoaded: true })
+check('B1: an unchanged report keeps the same state object', again === first)
+const changed = surfaceReportReducer(first, { name: 'Agents', dataLoaded: false })
+check('B1: a changed report replaces the state object', changed !== first && changed?.dataLoaded === false)
+check('sameSurfaceReport: null and a report differ', !sameSurfaceReport(null, { name: 'Agents', dataLoaded: true }))
+check('sameSurfaceReport: equal content is equal, even across objects', sameSurfaceReport({ name: 'A', dataLoaded: true }, { name: 'A', dataLoaded: true }))
