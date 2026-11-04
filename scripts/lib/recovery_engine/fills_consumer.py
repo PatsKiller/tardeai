@@ -68,6 +68,12 @@ def _query(conn: Any, sql: str, params: tuple = ()) -> tuple[list[tuple], Option
     except Exception as exc:  # noqa: BLE001 - reported as a gap by the caller
         return [], f"{type(exc).__name__}: {exc}"
 
+#: Every unresolved-identity reason written by this module carries this prefix. The reason travels in the case's own
+#: `gaps` column, which is already persisted, so the ambiguity survives the pass that found it and is re-emitted by
+#: every later pass until the case is resolved. The prefix is what tells a durable identity ambiguity apart from an
+#: ordinary "this read failed" note, which must NOT stick.
+IDENTITY_UNRESOLVED_PREFIX = "IDENTITY-UNRESOLVED: "
+
 
 # Literal statements only (ruff S608): every variant a caller can choose is written out in full here, so no SQL text
 # is ever assembled from a runtime variable.
@@ -289,8 +295,14 @@ def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date]
     in the case with the gap that says they are unresolved (codex F16/I5/I12)."""
 
     def _unresolved(why: str) -> None:
-        """Record an identity we could not establish: both observations are kept, and the pass is not complete."""
-        read.gaps.append(why)
+        """Record an identity we could not establish: both observations are kept, and the pass is not complete.
+
+        The reason is written with a stable prefix so it is DURABLE: it is persisted with the case row (the gaps column
+        already travels with the row) and re-emitted on every later pass until the case can be resolved. An ambiguity
+        that is reported once and forgotten on the next pass is the worst shape — correct once, silently confident
+        after (codex narrow BLOCK, 2026-11-04).
+        """
+        read.gaps.append(IDENTITY_UNRESOLVED_PREFIX + why)
         if coverage is not None:
             coverage["incomplete"] = True
 
@@ -356,6 +368,15 @@ def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date]
     result: Optional[rc.RecoveryCase] = None
     for case, _low, _high in ranges:
         got = assigned[case.case_key]
+        # STAY UNRESOLVED UNTIL RESOLVED. A durable identity ambiguity recorded on this row is re-stated on every pass,
+        # whether or not this particular read would rediscover it. Without this the ambiguity was recomputed from each
+        # read, so a third pass that happened to pair the observations reported complete=True with gaps=[] — correct
+        # once, silently confident after (codex narrow BLOCK, 2026-11-04).
+        for prior_gap in [g for g in (case.gaps or []) if str(g).startswith(IDENTITY_UNRESOLVED_PREFIX)]:
+            if prior_gap not in read.gaps:
+                read.gaps.append(prior_gap)
+            if coverage is not None:
+                coverage["incomplete"] = True
         if not got:
             # codex I12 at ce917: this early return bypassed reconciliation coverage entirely, so a case the read did
             # not cover passed as "nothing to do". A source that stops reporting an observation is NOT evidence the

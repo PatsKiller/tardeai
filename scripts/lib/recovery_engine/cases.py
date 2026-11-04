@@ -174,6 +174,10 @@ class RecoveryCase:
     residual_as_of: Optional[str] = None            # the snapshot clock behind residual_shares, when the store says
     gaps: list[str] = field(default_factory=list)   # what could not be read; travels with the row, not just the pass
     operator_note: Optional[str] = None             # preserved across refreshes (cx-openai-2 F7)
+    #: Identities this case could NOT establish, kept on the ROW so the ambiguity survives a pass. A defect that is
+    #: reported once and then forgotten on the next pass is the worst shape: correct once, silently confident after.
+    #: Entries persist across refreshes and are re-reported every pass until the case can actually be resolved.
+    identity_unresolved: list[dict[str, Any]] = field(default_factory=list)
 
     def eligibility_line(self) -> str:
         return " · ".join(e.line() for e in self.eligibility)

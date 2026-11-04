@@ -998,3 +998,47 @@ def test_i1_a_quantity_correction_on_the_same_trade_row_is_unresolved_not_two_me
     assert second["complete"] is False, f"a provisional link must not pass as complete: {second}"
     assert any(("provisional" in g or "identity" in g or "composite" in g) for g in second["gaps"]), second["gaps"]
     conn.close()
+
+
+def test_i12_an_ambiguous_identity_stays_unresolved_across_three_passes(store):
+    """codex narrow BLOCK, the shape that forgets. A tx-only member exists; a watch observation of the same exit then
+    arrives and the pass correctly reports the undeclared cross-source ambiguity. On the NEXT pass nothing new happens
+    to detect — the observations already pair — and the head reported complete=True with gaps=[]. The property is STAY
+    UNRESOLVED UNTIL RESOLVED: every later identical pass must say the same thing."""
+    from lib.recovery_engine import fills_consumer as fc
+    conn = _source_db()
+    conn.execute("INSERT INTO trade_transactions (trade_date, action, symbol, quantity, price, account, dedupe_key) "
+                 "VALUES ('2026-10-30','SELL','SPCX',100,80.0,'schwab_taxable','k1')")
+    _positions(conn, 0)
+    conn.commit()
+    fc.run(store, conn, today=TODAY, now=NOW)          # pass 1: tx-only member
+    _watch(conn, "2026-10-30", 80.0, -200.0)           # the watch lane now sees the same exit
+    conn.commit()
+    seen = []
+    for _ in range(3):                                  # passes 2, 3, 4 must all say unresolved
+        out = fc.run(store, conn, today=TODAY, now=NOW)
+        seen.append(out["complete"])
+    assert seen == [False, False, False], f"the ambiguity was forgotten on a later pass: {seen}"
+    case = store.get(out["cases"][0]["case_key"])
+    assert any("IDENTITY-UNRESOLVED" in g for g in case.gaps), f"no durable record on the row: {case.gaps}"
+    conn.close()
+
+
+def test_i12_an_existing_case_keeps_reporting_unresolved_when_closed_and_reentered(store):
+    """The same durable ambiguity must survive the case changing state: open, closed, re-entered."""
+    from lib.recovery_engine import fills_consumer as fc
+    conn = _source_db()
+    conn.execute("INSERT INTO trade_transactions (trade_date, action, symbol, quantity, price, account, dedupe_key) "
+                 "VALUES ('2026-10-30','SELL','SPCX',100,80.0,'schwab_taxable','k1')")
+    _positions(conn, 0)
+    conn.commit()
+    first = fc.run(store, conn, today=TODAY, now=NOW)
+    key = first["cases"][0]["case_key"]
+    _watch(conn, "2026-10-30", 80.0, -200.0)
+    conn.commit()
+    assert fc.run(store, conn, today=TODAY, now=NOW)["complete"] is False
+    for state in ("CLOSED", "RE_ENTERED", "CLOSED"):
+        store.set_state(key, state)
+        out = fc.run(store, conn, today=TODAY, now=NOW)
+        assert out["complete"] is False, f"a {state} case forgot its unresolved identity: {out}"
+    conn.close()
