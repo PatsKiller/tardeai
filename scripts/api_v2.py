@@ -48073,7 +48073,6 @@ def _hermes_discovery_inbox_list(query=None):
         for k in _HDI_META_FIELDS:
             clean[k] = _json_clean(meta.get(k))
         clean["domain_promotion_paths"] = _hdi_promotion_paths(meta.get("research_domain"))
-        _hdi_plain_health(clean, meta)
         out.append(clean)
     return {
         "advisory_only": True,
@@ -48097,28 +48096,9 @@ def _hermes_discovery_inbox_detail(candidate_id):
         return None
     audit = [_hdi_clean_row(a) for a in row.pop("audit", [])]
     out = _hdi_clean_row(row)
-    _hdi_plain_health(out, _hdi_meta_dict(row))
     out["audit"] = audit
     out["advisory_only"] = True
     return out
-
-
-def _hdi_plain_health(clean: dict, meta: dict) -> None:
-    """FQ-059: a system-health candidate reads as what broke and what it costs; the health checker's own
-    sentence stays in ``technical`` (and in ``meta``/``evidence``). Anything that is not that shape is untouched."""
-    if str(clean.get("candidate_type") or "").upper() != "TOPIC_CANDIDATE":
-        return
-    try:
-        import sys as _s
-
-        _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
-        from lib.hermes_discovery.plain_text import plain_health_candidate as _plain
-    except Exception:  # noqa: BLE001 — wording is never allowed to break the payload
-        return
-    got = _plain(clean.get("label"), clean.get("summary"), meta if isinstance(meta, dict) else None)
-    if not got:
-        return
-    clean["label"], clean["summary"], clean["technical"] = got["label"], got["summary"], got["technical"]
 
 
 _HDI_DECISION_ACTIONS = {

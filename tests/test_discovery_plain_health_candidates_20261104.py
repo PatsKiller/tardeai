@@ -105,3 +105,39 @@ def test_the_producer_keeps_the_raw_sentence_in_evidence_and_meta(monkeypatch):
     note = (p["evidence"] or [{}])[0].get("note", "")
     assert "proposal_enrichment" in note and "ERROR" in note
     assert p["meta"].get("component") == "proposal_enrichment"
+
+
+# ── the read path (list/detail) ──────────────────────────────────────────────────────────────────────────────────
+
+
+def test_the_inbox_read_path_rewrites_a_stored_health_candidate():
+    """Candidates 4408/4409 were written before this change; the read path must fix them without a producer run."""
+    from lib.hermes_discovery import inbox as INBOX
+
+    row = {"id": 4409, "candidate_type": "TOPIC_CANDIDATE", "status": "DISCOVERED",
+           "label": LIVE_LABEL, "summary": LIVE_SUMMARY,
+           "meta_json": '{"finding_class": "health_check_failure", "component": "proposal_enrichment"}'}
+    out = INBOX._plain_view(dict(row))
+    assert "proposal enrichment" in out["label"]
+    assert "success_timestamp_in_future" not in out["summary"]
+    assert "success_timestamp_in_future" in out["technical"]
+    # the stored row object itself is not mutated
+    assert row["label"] == LIVE_LABEL
+
+
+def test_the_inbox_read_path_leaves_other_candidates_untouched():
+    from lib.hermes_discovery import inbox as INBOX
+
+    row = {"candidate_type": "TOPIC_CANDIDATE", "label": "Holdings coverage: positions without stops",
+           "summary": "10 held position(s) without stop protection", "meta_json": "{}"}
+    assert INBOX._plain_view(dict(row)) == row
+    other = {"candidate_type": "TREND_CANDIDATE", "label": LIVE_LABEL, "summary": LIVE_SUMMARY}
+    assert INBOX._plain_view(dict(other)) == other
+
+
+def test_a_broken_meta_json_cannot_break_the_read():
+    from lib.hermes_discovery import inbox as INBOX
+
+    row = {"candidate_type": "TOPIC_CANDIDATE", "label": LIVE_LABEL, "summary": LIVE_SUMMARY, "meta_json": "{"}
+    out = INBOX._plain_view(dict(row))
+    assert out["label"] == LIVE_LABEL  # unchanged, not an exception
