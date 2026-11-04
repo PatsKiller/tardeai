@@ -123,6 +123,31 @@ check('desktop still gets the table', () => {
   assert.ok(!html.includes('data-advisory-cards'))
 })
 
+// FQ-003 — one effective freshness, and the page says which snapshot governs.
+check('a current feed beside stale rows shows the stricter state and explains it', () => {
+  const fixture = { rows, banners: [], timestamps: { watch: '2026-11-04T13:30:04Z', watch_freshness: 'CURRENT' },
+    desk_health: {}, by_class: {}, metadata: {},
+    dependency_clocks: { watch_intelligence: { freshness: 'STALE', age_seconds: 5443200, source_as_of: '2026-09-02T16:21:21Z' } } }
+  globalThis.__apiFixture = (url) => url.includes('/api/v3/advisory')
+    ? { data: fixture, loading: false, error: null } : { data: null, loading: false, error: null }
+  const html = render(true)
+  const t = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
+  assert.match(html, /data-testid="watch-clock-note"/)
+  assert.match(t, /the watch feed is current while the watch rows themselves are stale/i)
+  assert.match(t, /the rows govern any advice/i)
+})
+
+check('when the two agree there is no note and the state is that state', () => {
+  const fixture = { rows, banners: [], timestamps: { watch: '2026-11-04T13:30:04Z', watch_freshness: 'CURRENT' },
+    desk_health: {}, by_class: {}, metadata: {},
+    dependency_clocks: { watch_intelligence: { freshness: 'CURRENT', age_seconds: 60 } } }
+  globalThis.__apiFixture = (url) => url.includes('/api/v3/advisory')
+    ? { data: fixture, loading: false, error: null } : { data: null, loading: false, error: null }
+  const html = render(true)
+  assert.ok(!html.includes('watch-clock-note'), 'a note appeared when the clocks agree')
+})
+
+
 const results = []
 for (const c of cases) {
   try { c.fn(); results.push({ name: c.name, passed: true }) }

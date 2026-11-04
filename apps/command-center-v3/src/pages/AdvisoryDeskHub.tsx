@@ -174,6 +174,18 @@ function stateLabel(code: unknown): string {
   return STATE_LABEL[k] ?? k.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase())
 }
 
+/** FQ-003 (2026-11-04): the compact strip and the dependency board name the same input and could disagree — the strip
+ *  said CURRENT while the board said STALE. The effective state is the worse of the two; when they differ, the page
+ *  says which snapshot each is and which one governs. */
+const FRESHNESS_RANK: Record<string, number> = { CURRENT: 0, FRESH: 0, STALE: 1, EXPIRED: 2, UNKNOWN: 3 }
+function worseFreshness(a: unknown, b: unknown): string {
+  const x = String(a ?? '').toUpperCase()
+  const y = String(b ?? '').toUpperCase()
+  if (!x) return y
+  if (!y) return x
+  return (FRESHNESS_RANK[x] ?? 3) >= (FRESHNESS_RANK[y] ?? 3) ? x : y
+}
+
 const MATERIALITY_FLOOR = 500
 const CLASSES = ['all', 'holding', 'watchlist', 'watchlist_hub', 'closed_journal', 'allocation'] as const
 const WATCH_FILTERS = [
@@ -863,6 +875,12 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
   if (error) return <div style={{ padding: 32, color: 'var(--red)' }}>Advisory data unavailable: {String(error)}</div>
 
   const overall = String(health.overall || data?.desk_freshness_state || 'UNKNOWN')
+  // FQ-003: the strip's watch feed and the board's watch-rows clock are different snapshots of the same input.
+  const watchRowsClock = data?.dependency_clocks?.watch_intelligence
+  const watchFeedFresh = String(ts.watch_freshness || '').toUpperCase()
+  const watchRowsFresh = String(watchRowsClock?.freshness || '').toUpperCase()
+  const watchEffective = worseFreshness(watchFeedFresh, watchRowsFresh)
+  const watchDiffers = Boolean(watchFeedFresh && watchRowsFresh && watchFeedFresh !== watchRowsFresh)
 
   return (
     <div style={{ padding: '16px 24px', maxWidth: 1360 }}>
@@ -882,13 +900,20 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '10px 0 12px' }}>
         <Stamp label="FACTS AS OF" at={ts.facts} fresh={ts.facts_freshness} />
         <PriceClockStamp pc={priceClock} />
-        <Stamp label="WATCH INTEL" at={ts.watch} fresh={ts.watch_freshness} />
+        <Stamp label="WATCH INTEL" at={ts.watch} fresh={watchEffective || ts.watch_freshness} />
         <Stamp label="RE-ENTRY" at={ts.reentry} fresh={ts.reentry_freshness} />
         <Stamp label="SENSES" at={ts.senses} fresh={ts.senses_freshness} />
         <Stamp label="MEMORY" at={ts.memory} fresh={ts.memory_freshness} />
         <Stamp label="FLASH OPINION" at={ts.flash} fresh={ts.flash_freshness} />
         <Stamp label="PRO SYNTHESIS" at={ts.synthesis} fresh={ts.synthesis_freshness} />
       </div>
+      {watchDiffers && (
+        <div data-testid="watch-clock-note" style={{ margin: '-4px 0 12px', fontSize: 11, color: 'var(--amber)', lineHeight: 1.4 }}>
+          Watch intel: the watch feed is <b>{watchFeedFresh.toLowerCase()}</b> while the watch rows themselves are{' '}
+          <b>{watchRowsFresh.toLowerCase()}</b>{watchRowsClock?.age_seconds != null ? ` (${fmtDur(watchRowsClock.age_seconds)} old)` : ''} —
+          the rows govern any advice about a name; the feed only says the re-entry snapshot refreshed.
+        </div>
+      )}
       <DependencyClockBoard clocks={data?.dependency_clocks} refresh={data?.dependency_refresh} />
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', margin: '0 0 14px' }}>
