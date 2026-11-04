@@ -75,8 +75,15 @@ export function LevelsLine({ l }: { l?: any }) {
 /** Investment entry messages need an identified instrument before they can invite a decision.
  * General operational messages and inbound notes may legitimately have no ticker. */
 export function messageIdentity(e: any): { symbols: string[]; incomplete: boolean } {
-  const symbols = Array.isArray(e?.symbols)
-    ? e.symbols.filter((s: unknown): s is string => typeof s === 'string' && /[\p{L}\p{N}]/u.test(s)).map((s: string) => s.trim()) : []
+  const usableSymbol = (value: unknown): value is string => typeof value === 'string' && /[\p{L}\p{N}]/u.test(value)
+  const parsed = Array.isArray(e?.symbols) ? e.symbols.filter(usableSymbol).map((s: string) => s.trim()) : []
+  // symbols[] is parsed from message prose, independently of the producer's explicit instrument identity. A body
+  // without a ticker can therefore have symbols=[] AND a known entity_refs.symbol. Use that canonical field when
+  // no parsed symbols are usable; never extract a ticker from subject_key/prose or change the event's actionability.
+  const refs = e?.entity_refs
+  const explicit = refs && typeof refs === 'object' && !Array.isArray(refs)
+    && Object.prototype.hasOwnProperty.call(refs, 'symbol') && usableSymbol(refs.symbol) ? refs.symbol.trim() : null
+  const symbols: string[] = parsed.length ? parsed : explicit ? [explicit] : []
   const entry = ['reward', 'high_conviction_opportunity', 're_entry', 'watchlist_candidate'].includes(e?.category)
     || /\b(?:review entry|high conviction entry)\b/i.test(`${e?.action_hint || ''} ${e?.headline || e?.short_summary || ''}`)
   return { symbols, incomplete: e?.direction !== 'INBOUND' && entry && symbols.length === 0 }

@@ -40,5 +40,62 @@ for (const e of [ {...base,symbols:['AAA']}, {...base,symbols:[' ','AAA']},
     catch(error){failed++;console.error(`FAIL identified or general message drawer=${drawer}: ${error.message.split('\n')[0]}`)}
   }
 }
+// Native capture: from_alert_event -> CommunicationEvent.to_row -> classify with config/comms_categories.yaml
+// -> update_params action binding -> communications_portal._project_hub. The body has no ticker, so the parsed
+// list is empty while the producer's explicit identity survives. Only render-consumed projected fields retained.
+const canonicalProjection = {
+  "event_id": "synthetic-canonical-entry",
+  "direction": "OUTBOUND",
+  "entity_refs": {
+    "symbol": "SYNX"
+  },
+  "subject_key": "alert:cio_entry_alert:SYNX",
+  "symbols": [],
+  "category": "high_conviction_opportunity",
+  "priority": "high",
+  "priority_score": 77.0,
+  "actionable": true,
+  "action_hint": "Review entry",
+  "headline": "HIGH CONVICTION ENTRY",
+  "sanitized_body": "HIGH CONVICTION ENTRY\nBuy ready inside entry zone."
+}
+for (const symbols of [[], undefined, null, [' '], ['—'], 'SYNX']) for (const drawer of [false,true]) {
+  try {
+    const html=render({...canonicalProjection,symbols},drawer)
+    assert.match(html,/data-symbol-link="SYNX"/)
+    assert.doesNotMatch(html,/Incomplete message|subject is missing/i)
+    assert.match(html,/▶/)
+    assert.match(html,/Review entry/)
+    passed++
+  } catch(error) {failed++;console.error(`FAIL canonical identity symbols=${JSON.stringify(symbols)} drawer=${drawer}: ${error.message.split('\n')[0]}`)}
+}
+// Identity presence does not grant actionability or manufacture opportunity/quote facts.
+for (const drawer of [false,true]) for (const controls of [{actionable:false}, {action_hint:null}]) {
+  try {
+    const html=render({...canonicalProjection,...controls},drawer)
+    assert.match(html,/data-symbol-link="SYNX"/)
+    assert.doesNotMatch(html,/Incomplete message|subject is missing/i)
+    if (controls.actionable === false) assert.doesNotMatch(html,/▶/)
+    if (controls.action_hint === null) assert.doesNotMatch(html,/▶\s*Review entry/)
+    assert.equal(html,render({...canonicalProjection,...controls,symbols:['SYNX']},drawer))
+    assert.doesNotMatch(html,/\$10\.00|>80<|80\/100/)
+    passed++
+  } catch(error) {failed++;console.error(`FAIL canonical identity cannot enable an action drawer=${drawer}: ${error.message.split('\n')[0]}`)}
+}
+// A subject key or prose may mention a ticker without establishing a canonical symbol. Malformed structured refs
+// must not manufacture identity; a valid parsed symbol still works when optional structured refs are malformed.
+for (const entity_refs of [undefined,null,[],{}, {symbol:[]},{symbol:42},{symbol:' '},{symbol:'—'}]) {
+  for (const drawer of [false,true]) {
+    try {
+      const missing=render({...canonicalProjection,entity_refs,headline:'HIGH CONVICTION ENTRY SYNX'},drawer)
+      assert.match(missing,/Incomplete message/)
+      assert.doesNotMatch(missing,/data-symbol-link="SYNX"|▶/)
+      const known=render({...canonicalProjection,entity_refs,symbols:['SYNX']},drawer)
+      assert.match(known,/data-symbol-link="SYNX"/)
+      assert.doesNotMatch(known,/Incomplete message/)
+      passed++
+    } catch(error) {failed++;console.error(`FAIL identity boundary refs=${JSON.stringify(entity_refs)} drawer=${drawer}: ${error.message.split('\n')[0]}`)}
+  }
+}
 console.log(`commsFeedCard actual renders: ${passed} passed, ${failed} failed`)
 process.exitCode=failed?1:0
