@@ -98,7 +98,16 @@ IDENTITY_LIMIT = "Manual coordinator mapping of real agent sessions against clai
 
 
 class Refused(RuntimeError):
-    """A fixed safe reason code; no stderr or raw artifact contents."""
+    """A fixed safe reason code; no stderr or raw artifact contents.
+
+    ``detail`` carries bounded identifiers only — claim ids and repo paths — so a refusal can name what it
+    found without changing ``str(exc)``, which stays exactly the reason code every consumer and test reads.
+    """
+
+    def __init__(self, code, detail=None):
+        super().__init__(code)
+        self.code = code
+        self.detail = detail
 
 
 def digest(value):
@@ -386,7 +395,7 @@ def validate_takeover_graph(views, board, shared_config=None):
     # Shared ancestry alone is not a declaration of exclusive succession.
     shared = claim_shared_paths(shared_config)
     scopes = {}
-    for sources in claimants.values():
+    for target, sources in claimants.items():
         if len(sources) < 2:
             continue
         ordered = sorted(sources)
@@ -404,8 +413,16 @@ def validate_takeover_graph(views, board, shared_config=None):
                 scopes[source] = [path for path in canonical if path not in shared]
             for index, left in enumerate(ordered):
                 for right in ordered[index + 1:]:
-                    if any(patterns_overlap(a, b) for a in scopes[left] for b in scopes[right]):
-                        raise Refused("claim_takeover_chain_invalid")
+                    overlap = sorted({a for a in scopes[left] for b in scopes[right] if patterns_overlap(a, b)})
+                    if overlap:
+                        # The reason code stays fixed and anonymous to a test; the bounded detail names
+                        # the pair a human has to sequence, so the refusal is actionable without a read.
+                        raise Refused("claim_takeover_chain_invalid", {
+                            "class": "live_takeover_siblings_overlap",
+                            "claims": [left, right],
+                            "predecessors": [target],
+                            "paths": overlap[:5],
+                        })
         except (ClaimError, TypeError, ValueError, re.error):
             raise Refused("claim_takeover_chain_invalid") from None
 
@@ -627,7 +644,8 @@ def evaluate(snapshot, *, now, claim_board=None):
                 "authority": authority["authority"], "fingerprint": digest(bound), "identity_limit": IDENTITY_LIMIT,
                 "would_merge": ["gh", "pr", "merge", str(pr["number"]), "--repo", REPO, "--squash", "--match-head-commit", head]}
     except (Refused, KeyError, TypeError, ValueError, AttributeError) as exc:
-        return {"ok": False, "reason": str(exc) if isinstance(exc, Refused) else "critical_evidence_invalid", "would_merge": None}
+        return {"ok": False, "reason": str(exc) if isinstance(exc, Refused) else "critical_evidence_invalid",
+                "detail": exc.detail if isinstance(exc, Refused) else None, "would_merge": None}
 
 
 class Host:
@@ -890,7 +908,7 @@ def plan(pr, actor_session, *, adapter=None, now=None):
             raise Refused("requested_pr_identity_mismatch")
         return evaluate(snapshot, now=now or datetime.now(timezone.utc))
     except Refused as exc:
-        return {"ok": False, "reason": str(exc), "would_merge": None}
+        return {"ok": False, "reason": str(exc), "detail": exc.detail, "would_merge": None}
     except (ValueError, TypeError, KeyError, AttributeError):
         return {"ok": False, "reason": "critical_evidence_unavailable", "would_merge": None}
 
