@@ -147,6 +147,8 @@ def load_rules(path: Optional[Path] = None, *, home: Optional[Path] = None) -> d
     doc["_owned_res"] = [re.compile(s) for s in doc["git"].get("owned_remote_patterns") or []]
     rel = doc["releases"]
     doc["_release_roots"] = [{**r, "_path": x(r["path"])} for r in rel.get("roots") or []]
+    global _RELEASE_ROOTS
+    _RELEASE_ROOTS = tuple(sorted({os.path.realpath(str(r["_path"])) for r in doc["_release_roots"]}))
     doc["_pointer_dir"] = x(rel["pointer_dir"]) if rel.get("pointer_dir") else None
     doc["_cache_rules"] = [{**r, "_path": x(r["path"])} for r in doc["caches"].get("rules") or []]
     ref = doc["references"]
@@ -1741,8 +1743,7 @@ def _release_rows(rules: Mapping[str, Any], ctx: Mapping[str, Any], r_cfg: Mappi
         # See docs/ops/DISK_HOLDER_SAFETY_20261104.md.
         # Arming is an OBJECT for one path, never a config value: a boolean would let a scheduled lane carry the same
         # permission as a human one-shot (codex 2026-11-04). Without a matching object the row cannot be a candidate.
-        armed_here = (isinstance(armed, ReleaseArming)
-                      and os.path.realpath(armed.path) == os.path.realpath(str(path)))
+        armed_here = _refuse_unless_armed(path, "release_dir", armed) is None
         if "in_use_cwd" in item["reasons"]:
             scan = proc_holder_units(path)
             hosts: list[str] = list(scan.units)
@@ -2175,36 +2176,93 @@ RELEASE_REFUSAL = "release_delete_refused:no_enforceable_quiescence_primitive"
 
 @dataclass(frozen=True)
 class ReleaseArming:
-    """A ONE-SHOT operator authorisation to remove exactly ONE release directory (codex 2026-11-04).
+    """A ONE-SHOT operator authorisation to remove exactly ONE release directory, bound to its IDENTITY.
 
-    Deliberately not a flag. A boolean in configuration is settable by any scheduled lane, so "operator-armed" and
-    "scheduled" would be the same thing with different words; the lead's option (a) would then be decoration. This is
-    a value object: it can only be built by :func:`parse_release_arming` from an operator-authored file that names one
-    path and the instant it was approved, and :func:`remove_item` refuses anything that is not an instance matching
-    the item's own path. A caller cannot reach the deletion path by setting anything.
+    Codex 2026-11-04 (cd1c2038f): a path is not an identity. Arming `/rel/old` and then recreating a release there
+    deletes the new incarnation; arming a path that is a symlink deletes whatever it points at; and a directly
+    constructed object mints authority with no file behind it. So the object is a parsed ARTEFACT, not a token: it
+    carries the device, inode and ctime it was approved against, and `remove_item` re-checks those against `lstat` at
+    the moment of removal. A recreated directory has a different inode; a retargeted symlink is refused outright.
     """
-
     path: str
     approved_by: str
     approved_at: str
+    dev: int
+    ino: int
+    ctime_ns: int
     schema: str = "ReleaseArming@v1"
 
 
-_ARMING_FIELDS = ("schema", "path", "approved_by", "approved_at")
+_ARMING_FIELDS = ("schema", "path", "approved_by", "approved_at", "dev", "ino", "ctime_ns")
+#: An authorisation older than this is not an authorisation: it was signed for a state of the disk that is gone.
+ARMING_MAX_AGE_H = 24.0
 
 
-def parse_release_arming(arming_file: Path) -> ReleaseArming:
+def _armed_identity(path: Path) -> tuple[int, int, int]:
+    st = os.lstat(path)
+    return st.st_dev, st.st_ino, st.st_ctime_ns
+
+
+def parse_release_arming(arming_file: Path, *, now: Optional[datetime] = None) -> ReleaseArming:
     """Read an operator-authored arming file. Raises on anything that is not a complete, well-formed authorisation."""
     doc = json.loads(Path(arming_file).read_text(encoding="utf-8"))
     if not isinstance(doc, Mapping) or doc.get("schema") != "ReleaseArming@v1":
         raise ValueError("arming_schema")
-    missing = [k for k in _ARMING_FIELDS if not str(doc.get(k) or "").strip()]
+    missing = [k for k in _ARMING_FIELDS if doc.get(k) in (None, "")]
     if missing:
         raise ValueError("arming_missing:" + ",".join(missing))
-    if not os.path.isabs(str(doc["path"])):
+    target = Path(str(doc["path"]))
+    if not target.is_absolute():
         raise ValueError("arming_path_not_absolute")
-    return ReleaseArming(path=str(doc["path"]), approved_by=str(doc["approved_by"]),
-                         approved_at=str(doc["approved_at"]))
+    if target.is_symlink() or os.path.realpath(str(target)) != str(target):
+        raise ValueError("arming_path_not_canonical_or_symlink")
+    if not target.is_dir():
+        raise ValueError("arming_path_not_a_dir")
+    try:
+        approved = datetime.fromisoformat(str(doc["approved_at"]).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("arming_approved_at_not_iso8601") from exc
+    if approved.tzinfo is None:
+        raise ValueError("arming_approved_at_no_timezone")
+    age_h = ((now or datetime.now(timezone.utc)) - approved).total_seconds() / 3600.0
+    if age_h < -0.25:
+        raise ValueError("arming_approved_in_the_future")
+    if age_h > ARMING_MAX_AGE_H:
+        raise ValueError("arming_expired")
+    dev, ino, ctime_ns = _armed_identity(target)
+    # The identity must be the one the approver SAW: a file that records a different inode was not written by a human
+    # looking at this directory, and a file that omits them cannot be checked at all.
+    for key, actual in (("dev", dev), ("ino", ino), ("ctime_ns", ctime_ns)):
+        if int(doc[key]) != actual:
+            raise ValueError("arming_identity_mismatch:" + key)
+    return ReleaseArming(path=str(target), approved_by=str(doc["approved_by"]), approved_at=str(doc["approved_at"]),
+                         dev=dev, ino=ino, ctime_ns=ctime_ns)
+
+
+#: Populated by load_rules: every configured release root, resolved. The gate keys on LOCATION, not on `kind`, so a
+#: manifest that names a release with kind=git_clone (or any other kind) is refused just the same (codex 2026-11-04).
+_RELEASE_ROOTS: tuple[str, ...] = ()
+
+
+def _in_release_roots(path: Path) -> bool:
+    rp = os.path.realpath(str(path))
+    return any(rp == root or rp.startswith(root + os.sep) for root in _RELEASE_ROOTS)
+
+
+def _refuse_unless_armed(p: Path, kind: str, arming: Optional["ReleaseArming"]) -> Optional[str]:
+    """The arming gate's single decision, shared by every gated path."""
+    if not (kind == "release_dir" or _in_release_roots(p)):
+        return None
+    if not isinstance(arming, ReleaseArming):
+        return RELEASE_REFUSAL
+    if os.path.islink(str(p)) or os.path.realpath(arming.path) != os.path.realpath(str(p)):
+        return RELEASE_REFUSAL + ":path_mismatch"
+    try:
+        if _armed_identity(p) != (arming.dev, arming.ino, arming.ctime_ns):
+            return RELEASE_REFUSAL + ":identity_mismatch"      # a NEW incarnation at the same path
+    except OSError:
+        return RELEASE_REFUSAL + ":identity_unreadable"
+    return None
 
 
 def refuse_release_removals(rows: list[dict], why: str = RELEASE_REFUSAL) -> list[dict]:
@@ -2221,12 +2279,9 @@ def remove_item(item: Mapping[str, Any], *, arming: Optional["ReleaseArming"] = 
     """(ok, how) or, for rule C, (ok, how, {archive_ref, archive_sha}) so the receipt names the restore point."""
     p = Path(item["path"])
     kind = item["kind"]
-    if kind == "release_dir":
-        # THE arming gate. Reached from the scheduled apply, from a legacy manifest, from a test helper — from anywhere
-        # — a release is refused unless the caller holds an arming object that names THIS path. `True`, a dict or a
-        # config key cannot satisfy this: only parse_release_arming() constructs the type, and only for one path.
-        if not isinstance(arming, ReleaseArming) or os.path.realpath(arming.path) != os.path.realpath(str(p)):
-            return False, RELEASE_REFUSAL
+    why = _refuse_unless_armed(p, kind, arming)
+    if why:
+        return False, why
     if kind == "abandoned_worktree":
         why = closeout_guard(item)
         if why:

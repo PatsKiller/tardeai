@@ -69,9 +69,21 @@ def test_no_holder_when_nothing_is_inside(tmp_path):
     assert scan.units == () and scan.complete is True
 
 
-def _arming(path="/releases/old"):
-    """The only way to authorise one release: a value object naming that path."""
-    return H.ReleaseArming(path=path, approved_by="operator", approved_at="2026-11-04T00:00:00Z")
+def _arming(path, tmp_path):
+    """The only way to authorise one release: parse an operator file bound to the directory's identity."""
+    target = Path(path)
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+    except (PermissionError, OSError):
+        # A fabricated root like /releases cannot be created; arm a mirror under the test's own tmp dir instead.
+        target = Path(tmp_path) / "mirror" / Path(path).name
+        target.mkdir(parents=True, exist_ok=True)
+    st = target.lstat()
+    f = Path(tmp_path) / f"arming-{target.name}-{st.st_ino}.json"
+    f.write_text(json.dumps({"schema": "ReleaseArming@v1", "path": str(target), "approved_by": "operator",
+                             "approved_at": "2026-11-04T00:00:00Z", "dev": st.st_dev, "ino": st.st_ino,
+                             "ctime_ns": st.st_ctime_ns}), encoding="utf-8")
+    return H.parse_release_arming(f, now=__import__("datetime").datetime(2026, 11, 4, 1, tzinfo=__import__("datetime").timezone.utc))
 
 
 def _release_rows(monkeypatch, *, holders, action, allowed, in_use=True, complete=True, armed=None,
@@ -85,8 +97,9 @@ def _release_rows(monkeypatch, *, holders, action, allowed, in_use=True, complet
 
     monkeypatch.setattr(H, "served_release_targets", lambda r: {})
     monkeypatch.setattr(H, "release_lock_reason", lambda p: None)
+    row_path = armed.path if armed is not None else "/releases/old"
     monkeypatch.setattr(H, "evaluate_releases",
-                        lambda r, ctx: [{"kind": "release_dir", "path": "/releases/old",
+                        lambda r, ctx: [{"kind": "release_dir", "path": row_path,
                                          "reasons": ["in_use_cwd"] if in_use else [], "evidence": {}, "fingerprint": {}}])
     count = holder_count if holder_count is not None else (len(holders) + len(unattributed) if in_use else 0)
     # A duck-typed scan, not H.HolderScan: the SAME stub then drives the pre-fix code, so the controls below fail on
@@ -114,10 +127,11 @@ def test_the_default_policy_reports_a_release_and_never_selects_it(monkeypatch):
 
 
 def test_a_restartable_holder_makes_the_release_a_candidate(monkeypatch, tmp_path):
+    _arming_tmp = tmp_path
     """FIRE (armed one-shot only): holding a ReleaseArming for this path, a component we may restart does not block
     removal."""
     rows = _release_rows(monkeypatch, holders=["tradeai-ops-agent.service"], action="restart",
-                         allowed=["tradeai-ops-agent.service"], armed=_arming())
+                         allowed=["tradeai-ops-agent.service"], armed=_arming("/releases/old", _arming_tmp))
     row = rows[0]
     assert "in_use_cwd" not in row["reasons"], row["reasons"]
     assert row.get("restart_units") == ["tradeai-ops-agent.service"]
@@ -296,18 +310,19 @@ def test_remove_item_refuses_when_the_scan_can_only_count_the_holder(tmp_path, m
     (release / "keep.txt").write_text("x", encoding="utf-8")
     monkeypatch.setattr(H, "proc_holder_units",
                         lambda p, proc_root=None: SimpleNamespace(units=(), complete=True, holders=1, unattributed=(4242,)))
-    ok, how = H.remove_item({"path": str(release), "kind": "release_dir", "rule": "R"}, arming=_arming(str(release)))
+    ok, how = H.remove_item({"path": str(release), "kind": "release_dir", "rule": "R"}, arming=_arming(str(release), tmp_path))
     assert ok is False, how
     assert "holder" in how, how
     assert release.is_dir() and not list(release.parent.glob("*.reclaiming-*")), "renamed back and intact"
 
 
-def test_a_scope_holder_is_never_cleared_by_a_restart(monkeypatch):
+def test_a_scope_holder_is_never_cleared_by_a_restart(monkeypatch, tmp_path):
+    _arming_tmp = tmp_path
     """Positive control (NOT a regression control — the policy already refused a nameless holder): a scope-held
     process cannot be restarted, so it is refused AND recorded with its count, which is what makes the operator digest
     name a holder nobody can clear."""
     rows = _release_rows(monkeypatch, holders=[], action="restart", allowed=[],
-                         holder_count=1, unattributed=(4242,), armed=_arming())
+                         holder_count=1, unattributed=(4242,), armed=_arming("/releases/old", _arming_tmp))
     row = rows[0]
     assert not row.get("restart_units"), row
     assert "in_use_cwd" in row["reasons"]
@@ -471,7 +486,7 @@ def test_a_holder_that_appears_at_removal_time_stops_the_removal(tmp_path):
     (release / "keep.txt").write_text("x", encoding="utf-8")
     child = _sp.Popen([_sys.executable, "-c", "import time; time.sleep(30)"], cwd=str(release / "data"))
     try:
-        ok, how = H.remove_item({"path": str(release), "kind": "release_dir", "rule": "R"}, arming=_arming(str(release)))
+        ok, how = H.remove_item({"path": str(release), "kind": "release_dir", "rule": "R"}, arming=_arming(str(release), tmp_path))
     finally:
         child.kill(); child.wait()
     assert ok is False, how
@@ -508,9 +523,9 @@ def test_a_boolean_or_a_foreign_arming_object_is_not_arming(tmp_path):
     (release / "keep.txt").parent.mkdir(parents=True)
     (release / "keep.txt").write_text("x", encoding="utf-8")
     item = {"path": str(release), "kind": "release_dir", "rule": "R"}
-    for bogus in (True, {"path": str(release)}, _arming("/releases/somewhere-else")):
+    for bogus in (True, {"path": str(release)}, _arming("/releases/somewhere-else", tmp_path)):
         ok, how = H.remove_item(item, arming=bogus)
-        assert (ok, how) == (False, H.RELEASE_REFUSAL), (bogus, how)
+        assert ok is False and how.startswith("release_delete_refused"), (bogus, how)
     assert (release / "keep.txt").is_file()
 
 
@@ -519,13 +534,21 @@ def test_an_arming_file_must_name_its_path_and_its_approver(tmp_path):
     release = tmp_path / "releases" / "old"
     release.mkdir(parents=True)
     good = tmp_path / "arming.json"
-    good.write_text(json.dumps({"schema": "ReleaseArming@v1", "path": str(release),
-                                "approved_by": "operator", "approved_at": "2026-11-04T00:00:00Z"}), encoding="utf-8")
-    arm = H.parse_release_arming(good)
+    st = release.lstat()
+    good.write_text(json.dumps({"schema": "ReleaseArming@v1", "path": str(release), "approved_by": "operator",
+                                "approved_at": "2026-11-04T00:00:00Z", "dev": st.st_dev, "ino": st.st_ino,
+                                "ctime_ns": st.st_ctime_ns}), encoding="utf-8")
+    arm = H.parse_release_arming(good, now=__import__("datetime").datetime(2026, 11, 4, 1, tzinfo=__import__("datetime").timezone.utc))
     assert isinstance(arm, H.ReleaseArming) and os.path.realpath(arm.path) == os.path.realpath(str(release))
+    st = release.lstat()
+    ident = {"dev": st.st_dev, "ino": st.st_ino, "ctime_ns": st.st_ctime_ns}
     for broken in ({"schema": "ReleaseArming@v1", "path": str(release), "approved_by": ""},
                    {"schema": "other", "path": str(release), "approved_by": "x", "approved_at": "y"},
-                   {"schema": "ReleaseArming@v1", "path": "relative/path", "approved_by": "x", "approved_at": "y"}):
+                   {"schema": "ReleaseArming@v1", "path": "relative/path", "approved_by": "x", "approved_at": "y"},
+                   {"schema": "ReleaseArming@v1", "path": str(release), "approved_by": "x",
+                    "approved_at": "1900-01-01T00:00:00Z", **ident},          # an impossible approval instant
+                   {"schema": "ReleaseArming@v1", "path": str(release), "approved_by": "x",
+                    "approved_at": "2026-11-04T00:00:00Z", **{**ident, "ino": st.st_ino + 1}}):   # wrong identity
         bad = tmp_path / "bad.json"
         bad.write_text(json.dumps(broken), encoding="utf-8")
         with pytest.raises(ValueError):
