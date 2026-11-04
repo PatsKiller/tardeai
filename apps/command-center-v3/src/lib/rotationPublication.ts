@@ -88,20 +88,20 @@ export type RotationBlocker = { code: string; label: string; what: string; next:
 
 const REASON_DETAIL: Record<string, { what: string; next: string }> = {
   account_stale: {
-    what: 'The account balances this review reads are older than its 15-minute window.',
-    next: 'It clears when the next account sync writes a newer balance timestamp; then press Refresh Summary.',
+    what: 'The account source itself reports this account as stale, so the review will not use it.',
+    next: 'It clears only when the account source stops reporting stale and reports the account live again; then press Refresh Summary. Waiting for this page’s clock will not clear it.',
   },
   account_evidence_stale: {
-    what: 'The account balances this review reads are older than its 15-minute window.',
-    next: 'It clears when the next account sync writes newer balance evidence; then press Refresh Summary.',
+    what: 'The account balances this review reads are older than the freshness window the account source declares for this account — that window follows the sync interval and market hours.',
+    next: 'It clears when the next account sync writes newer balances and their age is inside that declared window; then press Refresh Summary.',
   },
   account_unavailable: {
-    what: 'The account data this review reads is unavailable, so it cannot tell which holdings are eligible to rotate.',
-    next: 'It clears when the account sync returns a balance; then press Refresh Summary. If the source stays down, Risk → Exposure names the failed source.',
+    what: 'The account source reports this account as not live, so the review cannot use its balances to tell which holdings are eligible to rotate.',
+    next: 'It clears when the account source reports the account live again; then press Refresh Summary. If it stays unavailable, Risk → Exposure names the failed source.',
   },
   account_evidence_unavailable: {
-    what: 'The account data this review reads is unavailable, so it cannot tell which holdings are eligible to rotate.',
-    next: 'It clears when the account sync returns balance evidence; then press Refresh Summary. If the source stays down, Risk → Exposure names the failed source.',
+    what: 'The account source reports no usable balance evidence for this account, so the review cannot tell which holdings are eligible to rotate.',
+    next: 'It clears when the account source returns balance evidence; then press Refresh Summary. If it stays unavailable, Risk → Exposure names the failed source.',
   },
   position_unavailable: {
     what: 'The position data this review reads is unavailable, so it cannot judge what a rotation would change.',
@@ -112,12 +112,12 @@ const REASON_DETAIL: Record<string, { what: string; next: string }> = {
     next: 'It clears when the position sync returns evidence; then press Refresh Summary. If the source stays down, Risk → Exposure names the failed source.',
   },
   position_evidence_stale: {
-    what: 'The position quantities this review reads are older than its 15-minute window.',
-    next: 'It clears when the next position sync writes newer evidence; then press Refresh Summary.',
+    what: 'The position quantities this review reads are older than the freshness window the account source declares — that window follows the sync interval and market hours.',
+    next: 'It clears when the next position sync writes newer evidence and its age is inside that declared window; then press Refresh Summary.',
   },
   unsupported_stop_claim: {
-    what: 'The stop price this review read could not be matched to a recorded stop, so it cannot judge what a rotation would leave unprotected.',
-    next: 'It clears when the stop record is refreshed so it covers the position. If it does not, review that position in Risk → Recovery.',
+    what: 'A reduce-or-close suggestion is waiting, but the position’s own evidence does not show a stop-distance deterioration that would support acting.',
+    next: 'It clears when that evidence shows the deterioration the suggestion relies on — a deterministic stop-distance degradation with the thesis triggered, at danger or at warning — or when the suggestion is withdrawn; then press Refresh Summary.',
   },
   publication_expired: {
     what: 'The last validation of these sources is older than 15 minutes.',

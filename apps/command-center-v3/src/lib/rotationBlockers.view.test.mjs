@@ -61,14 +61,28 @@ const withheld = renderToStaticMarkup(React.createElement(Notice, {
 }))
 
 check('every blocker names the evidence that must update', () => {
-  assert.match(withheld, /The account balances this review reads are older than its 15-minute window\./)
-  assert.match(withheld, /The position quantities this review reads are older than its 15-minute window\./)
-  assert.match(withheld, /could not be matched to a recorded stop/)
+  assert.match(withheld, /The account source itself reports this account as stale, so the review will not use it\./)
+  assert.match(withheld, /The position quantities this review reads are older than the freshness window the account source declares/)
+  assert.match(withheld, /does not show a stop-distance deterioration that would support acting/)
 })
 check('every blocker names the next step', () => {
-  assert.match(withheld, /It clears when the next account sync writes a newer balance timestamp; then press Refresh Summary\./)
-  assert.match(withheld, /It clears when the next position sync writes newer evidence; then press Refresh Summary\./)
-  assert.match(withheld, /review that position in Risk → Recovery\./)
+  assert.match(withheld, /Waiting for this page’s clock will not clear it\./)
+  assert.match(withheld, /It clears when the next position sync writes newer evidence and its age is inside that declared window; then press Refresh Summary\./)
+  assert.match(withheld, /a deterministic stop-distance degradation with the thesis triggered, at danger or at warning/)
+})
+check('the account-evidence window is the declared one, never a fixed 15 minutes', () => {
+  const declared = renderToStaticMarkup(React.createElement(Notice, { summary: summary('STALE', ['account_evidence_stale']) }))
+  const visible = declared.replace(/<details[\s\S]*?<\/details>/g, '')
+  assert.match(visible, /freshness window the account source declares/)
+  assert.match(visible, /follows the sync interval and market hours/)
+  assert.doesNotMatch(visible, /15-minute/)
+})
+check('the copy does not claim what the producer does not establish (P2622-style P2s)', () => {
+  const visible = withheld.replace(/<details[\s\S]*?<\/details>/g, '')
+  // The account/position windows come from the account state's sync_window_hours, not a fixed 15 minutes.
+  assert.doesNotMatch(visible, /15-minute window/)
+  // unsupported_stop_claim is a stop-DISTANCE degradation predicate, not a missing/recorded stop.
+  assert.doesNotMatch(visible, /recorded stop|matched to a stop|covers the position/)
 })
 check('blockers are listed, not only chipped', () => {
   assert.match(withheld, /data-testid="rotation-blocker-next"/)
@@ -90,9 +104,16 @@ check('a ready advisory renders no blocker list', () => {
 check('the live producer reason account_unavailable explains the missing evidence', () => {
   const live = renderToStaticMarkup(React.createElement(Notice, { summary: summary('UNAVAILABLE', ['account_unavailable', 'unsupported_stop_claim']) }))
   const visible = live.replace(/<details[\s\S]*?<\/details>/g, '')
-  assert.match(visible, /The account data this review reads is unavailable, so it cannot tell which holdings are eligible to rotate\./)
-  assert.match(visible, /It clears when the account sync returns a balance; then press Refresh Summary\./)
+  assert.match(visible, /The account source reports this account as not live, so the review cannot use its balances to tell which holdings are eligible to rotate\./)
+  assert.match(visible, /It clears when the account source reports the account live again; then press Refresh Summary\./)
   assert.doesNotMatch(visible, /account_unavailable/)
+})
+check('an explicit producer STALE refusal is not described as an elapsed-time window', () => {
+  const stale = renderToStaticMarkup(React.createElement(Notice, { summary: summary('STALE', ['account_stale']) }))
+  const visible = stale.replace(/<details[\s\S]*?<\/details>/g, '')
+  assert.match(visible, /The account source itself reports this account as stale, so the review will not use it\./)
+  assert.match(visible, /Waiting for this page’s clock will not clear it\./)
+  assert.doesNotMatch(visible, /15-minute/)
 })
 
 const out = { results, passed: results.filter(x => x.passed).length, failed: results.filter(x => !x.passed).length }
