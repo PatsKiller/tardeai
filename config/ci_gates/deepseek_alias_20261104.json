@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "deepseek_alias_20261104",
+  "files": [
+    "tests/test_llm_lane_alias_registry_20261104.py"
+  ],
+  "anchor": "DEEPSEEK_ALIAS_20261104",
+  "comment": [
+    "ANCHOR: DEEPSEEK_ALIAS_20261104 — every DeepSeek lane alias that can select a model must be an id the model registry accepts; the legacy v4 ids are removed from the routing set and stay reachable only as typed-error aliases. Hermetic: imports only, no network, no provider call (the probe is stubbed)."
+  ]
+}
