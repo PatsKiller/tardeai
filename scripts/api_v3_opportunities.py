@@ -227,20 +227,31 @@ def _store():
     return CIOOpportunityStore()
 
 
+def _ranking_context(symbols):
+    from lib.data_broker.opportunity_eligibility import read_contexts
+    return read_contexts(symbols, db_query=_db_query)
+
+
 def get_list(query: dict | None = None) -> dict[str, Any]:
     from lib.data_broker import opportunity as op
 
+    from lib.data_broker.opportunity_eligibility import qualify, sort_qualified
+
+    top = str((query or {}).get("preset") or "").lower() == "top5"
     q = op.apply_preset(dict(query or {}))
     proj = _store().read_projection()
-    items = list((proj.get("items") or {}).values())
-    matched = [a for a in items if op.passes(a, q)]
+    raw = list((proj.get("items") or {}).values())
+    items, ranking = qualify(raw, _ranking_context([a["symbol"] for a in raw]), op.load_config())
+    research_query = {k: v for k, v in q.items() if k != "min_coverage"}
+    research = sort_qualified([a for a in items if not a["top_eligibility"]["eligible"] and op.passes(a, research_query)], "conviction")
+    matched = [a for a in items if op.passes(a, q) and (not top or a["top_eligibility"]["eligible"])]
     sort = str(q.get("sort") or "conviction")
-    ranked = op.sort_items(matched, sort)
+    ranked = sort_qualified(matched, sort)
     try:
         limit = int(q.get("limit") or q.get("page_size") or 50)
     except (TypeError, ValueError):
         limit = 50
-    limit = max(1, min(200, limit))
+    limit = max(1, min(5 if top else 200, limit))
     try:
         page = max(1, int(q.get("page") or 1))
     except (TypeError, ValueError):
@@ -255,7 +266,10 @@ def get_list(query: dict | None = None) -> dict[str, Any]:
         "schema": "OpportunityList@v1",
         "as_of": proj.get("as_of"),
         "run_id": proj.get("run_id"),
-        "curated_by": "cio_opportunity_curator → CIO memory",
+        "curated_by": None,
+        "ranked_by": "Automated factor score; CIO research required for top status",
+        "top_list": ranking,
+        "research_candidates": research[:5] if top else [],
         "store": STORE,
         "universe": len(items),
         "total": len(matched),
@@ -403,7 +417,7 @@ def get_detail(symbol: str) -> dict[str, Any]:
             "macd_histogram_direction": ind.get("macd_histogram_direction"),
             "sma_20": st.get("sma_20") or ind.get("sma_20"),
             "sma_50": st.get("sma_50") or ind.get("sma_50"),
-            "sma_200": st.get("sma_200"),
+            "sma_200": st.get("sma_200") or ind.get("sma_200"),
             "ma_alignment": st.get("ma_alignment") or ind.get("alignment"),
             "atr": ind.get("atr"),
             "as_of": _iso((ctx.get("as_of") or {}).get("indicators")),

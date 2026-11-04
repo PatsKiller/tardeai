@@ -251,3 +251,44 @@ def test_wiring():
     assert "OpportunityModalProvider" in app
     for f in ("components/opportunity/OpportunityModal.tsx", "pages/OpportunitiesHub.tsx", "components/primitives/Modal.tsx"):
         assert (ROOT / "apps/command-center-v3/src" / f).exists()
+
+
+# FQ-114: API ranking must require actual named technical inputs and dated CIO research, independently of a
+# high re-normalized factor score. The list API is exercised, not a new helper's self-reported eligibility flag.
+@pytest.mark.parametrize("case", ["no_thesis", "no_technicals", "partial_coverage", "red_entry", "orange_entry", "ready"])
+def test_top_list_qualification_at_actual_api(monkeypatch, case):
+    import scripts.api_v3_opportunities as api
+
+    now = datetime.now(timezone.utc).isoformat()
+    assessment = {
+        "symbol": "SYNQ", "rank": 1, "conviction": 96.0, "coverage": 0.9, "type": "new_position",
+        "stance": "WATCH", "risk_reward": {"rr": 4.0}, "factors": {"technical": {"score": 100}},
+    }
+    technical = {"rsi": 55.0, "macd_signal": "bullish", "sma_20": 100.0, "sma_50": 99.0, "sma_200": 95.0}
+    thesis = {"summary": "Synthetic CIO research", "stance": "WATCH", "status": "active",
+              "published_ts": now, "thesis_id": "symbol_synq", "thesis_version": "symbol_synq@v1"}
+    if case == "no_thesis":
+        thesis = None
+    if case == "no_technicals":
+        technical = {}  # composite technical score remains100: it is not proof of RSI/MACD/MA availability
+    if case == "partial_coverage":
+        assessment["coverage"] = 0.79
+    tier = {"red_entry": "RED", "orange_entry": "ORANGE"}.get(case, "GREEN")
+    context = {"technical": {"SYNQ": technical}, "theses": {"SYNQ": thesis},
+               "market_risk": {"state": "evaluated", "tier": tier, "as_of": now}}
+    class Store:
+        def read_projection(self):
+            return {"as_of": now, "items": {"SYNQ": assessment}}
+    monkeypatch.setattr(api, "_store", Store)
+    monkeypatch.setattr(api, "_ranking_context", lambda *args, **kwargs: context, raising=False)
+    result = api.get_list({"preset": "top5", "min_coverage": "0.1"})
+    assert [r["symbol"] for r in result["items"]] == (["SYNQ"] if case == "ready" else [])
+    if case != "ready":
+        below = result.get("research_candidates") or []
+        assert [r["symbol"] for r in below] == ["SYNQ"], "retain the research name below the top band"
+        assert below[0]["rank"] is None
+        assert below[0]["top_eligibility"]["eligible"] is False
+        assert below[0]["top_eligibility"]["reason"]
+    else:
+        assert result["items"][0]["cio_review"]["as_of"]
+        assert result["items"][0]["cio_review"]["stance"] == "WATCH"
