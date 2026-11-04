@@ -302,11 +302,19 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
                 <span style={{ fontSize: TYPE.xs, color: BB.text3 }}>
                   {String(h.surfaced_at || '').slice(0, 16).replace('T', ' ')}
                 </span>
-                {/* FQ-079: an unavailable suggestion rendered a greyed Promote with no reason — a control that did
-                    nothing and no sentence saying why. The button stays (nothing removed); the reason is visible. */}
+                {/* FQ-079 (codex P2660-R1): TWO different unavailability facts were being conflated. The audit's
+                    observed condition is an UNAVAILABLE comparison badge beside a working Promote on a suggestion that
+                    DOES have a directive; my first pass only explained the missing-directive case. Both are explained
+                    now, and neither disables the control or changes eligibility. */}
+                {h.directive_id && h.divergence === 'UNAVAILABLE' && (
+                  <span data-testid="wp-promote-unavailable" style={{ marginLeft: 'auto', fontSize: TYPE.xs, color: BB.text3 }}>
+                    Comparison evidence unavailable — the desk could not compare this against your book here, so read the
+                    evidence before promoting; Promote still attaches this suggestion to your watchlist
+                  </span>
+                )}
                 {!h.directive_id && (
                   <span data-testid="wp-promote-unavailable" style={{ marginLeft: 'auto', fontSize: TYPE.xs, color: BB.text3 }}>
-                    Cannot promote — this suggestion carries no directive to promote; the desk has not staged one yet
+                    Cannot promote — no directive is attached to this suggestion, so there is nothing for Promote to act on
                   </span>
                 )}
                 <button
