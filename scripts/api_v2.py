@@ -30892,6 +30892,9 @@ def _home_do_now(query=None):
         "deploy": lambda: _deploy_events({"status": "open", "days": "14"}),
         # positions_store reader batch #3 (operator 2026-10-22, "approve all" item G): the one held reader.
         "held": _home_held,
+        # FQ-097 (operator 2026-11-04): the CIO's own verdict per (symbol, account) — the same capital plan the
+        # CIO desk renders. Do-now stop items print it and add none of their own.
+        "cio": _cio_capital_plan,
     }
     out = _hdn.build(probes)
     _HOME_DO_NOW_CACHE["v"] = (_t.monotonic(), out)

@@ -11,6 +11,8 @@ Top risks, Platform). It is a READ projection over sources that already exist; i
   desk_truth    needs_action.probe_desk_truth (lane receipts, files)     no WORKING stop findings (held-exit-coverage)
   proposals     paper_trade_proposals COUNT (read-only, this module)     pending paper proposals
   deploy        api_v2._deploy_events (open post-sale redeploys)         redeploy decisions
+  cio           api_v2._cio_capital_plan (position_decisions)             the CIO's verdict per (symbol, account):
+                                                                          the only course of action a stop item shows
 
 Each item: ``{id, category: protect|decide|fix, severity: P0..P3, title, why, action: {label, where}, money_at_risk_usd,
 money_basis, sources[], since, evidence}``. ``id`` is the dedupe key: the same fact from two sources (a symbol with no
@@ -72,6 +74,7 @@ STALE_AFTER_S = {
     "proposals": 300,
     "deploy": 3600,
     "held": 259200,  # positions_store reader batch #3: the held reader carries its own stale verdict (used below)
+    "cio": 900,  # the CIO capital plan: its own as_of is when the plan was computed
 }
 
 # Inbox SQL row limits (api_v2._inbox): a count equal to its limit is a floor, never a total.
@@ -258,9 +261,70 @@ def held_filter(held: Any) -> tuple[Optional[set[str]], str, Optional[str]]:
     return None, f"the holdings file via data_broker.risk_snapshot (fallback: {reason})", reason
 
 
-def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any = None) -> tuple[list[dict], dict]:
+def cio_verdict_index(payload: Any) -> dict[tuple[str, Optional[str]], dict[str, Any]]:
+    """The CIO's own verdict per (symbol, account) from its capital plan.
+
+    FQ-097 (operator 2026-11-04): a Do-now stop item must render the CIO verdict for that (symbol, account) and
+    introduce none of its own. This reads the same `position_decisions` the CIO desk renders — no second opinion is
+    computed here. Raises SourceUnavailable rather than returning an empty map, so "no verdict on record" and
+    "the plan could not be read" can never be confused.
+    """
+    p = _unwrap(payload)
+    rows = p.get("position_decisions") if isinstance(p, dict) else None
+    if not isinstance(rows, list):
+        raise SourceUnavailable("CIO capital plan has no position_decisions list")
+    out: dict[tuple[str, Optional[str]], dict[str, Any]] = {}
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        sym = str(r.get("symbol") or "").strip().upper()
+        if not sym:
+            continue
+        verdict = {
+            "stance": r.get("cio_stance") or r.get("action") or r.get("stance"),
+            "why": r.get("why_now"),
+            "funding": r.get("funding"),
+            "as_of": r.get("as_of") or p.get("as_of") or p.get("computed_at"),
+        }
+        accounts = r.get("accounts") if isinstance(r.get("accounts"), list) else []
+        accounts = [a for a in accounts if a] or ([r.get("account")] if r.get("account") else [])
+        for a in accounts:
+            out[(sym, str(a))] = verdict
+        if not accounts:
+            out.setdefault((sym, None), verdict)
+    return out
+
+
+def cio_clause(index: Optional[dict], symbol: str, accounts: Any, as_of: Optional[str] = None) -> str:
+    """One sentence naming the CIO verdict for each account, or saying there is none.
+
+    ``index is None`` means the CIO source could not be read: say that, never a verdict of our own.
+    """
+    sym = str(symbol or "").upper()
+    if index is None:
+        return "The CIO verdict for this position could not be read (capital plan unavailable)."
+    accts = [a for a in (accounts or []) if a]
+    if not accts:
+        accts = [None]
+    seen: list[str] = []
+    when = ""
+    for a in accts:
+        v = index.get((sym, str(a) if a else None)) or index.get((sym, None))
+        label = _acct_name(a) if a else "account unknown"
+        if v and v.get("stance"):
+            seen.append(f"{label}: {v['stance']}")
+            when = when or str(v.get("as_of") or as_of or "")
+        else:
+            seen.append(f"{label}: no CIO verdict on record")
+    text = "CIO verdict" + (f" ({when})" if when else "") + " — " + "; ".join(seen)
+    return text + "."
+
+
+def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any = None,
+              cio: Any = None) -> tuple[list[dict], dict]:
     """Protect items from the risk snapshot (+ working-stop coverage when measured). Returns (items, numbers).
-    ``held`` is the positions_store reader batch #3 answer (watch_domains.held_positions(surface=HOME_SURFACE))."""
+    ``held`` is the positions_store reader batch #3 answer (watch_domains.held_positions(surface=HOME_SURFACE)).
+    ``cio`` is the verdict index (cio_verdict_index) or None when the capital plan could not be read."""
     if not isinstance(snapshot, dict) or not isinstance(snapshot.get("positions"), list):
         raise SourceUnavailable("risk snapshot has no positions list")
     as_of = snapshot.get("computed_at")
@@ -325,7 +389,8 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
                     "protect",
                     "P0",
                     f"{sym} is below its stop",
-                    f"Price is through the stop on record ({accts}). Verify the broker executed it.",
+                    f"Price is through the stop on record ({accts}). "
+                    f"{cio_clause(cio, sym, r['accounts'], as_of)}",
                     f"Review {sym}",
                     f"{R_RISK}?symbol={sym}",
                     "risk",
@@ -342,7 +407,8 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
                     "protect",
                     "P2",
                     f"{sym} stop {r['near']:.1f}% away",
-                    f"Stop on record is within {NEAR_STOP_PCT:g}% of price ({accts}).",
+                    f"Stop on record is within {NEAR_STOP_PCT:g}% of price ({accts}). "
+                    f"{cio_clause(cio, sym, r['accounts'], as_of)}",
                     f"Open {sym}",
                     f"{R_RISK}?symbol={sym}",
                     "risk",
@@ -401,7 +467,8 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
                 "protect",
                 "P1",
                 f"{sym} {_usd(v)} has no stop",
-                f"{accts}{share}{day_txt}. Basis: {basis}.",
+                f"{accts}{share}{day_txt}. Basis: {basis}. "
+                f"{cio_clause(cio, sym, r.get('accounts'), as_of if src != 'desk_truth' else cov.get('as_of'))}",
                 f"Review {sym}",
                 f"{R_RISK}?symbol={sym}",
                 src,
@@ -545,7 +612,7 @@ def rule_needs_action(p: Any, now: datetime) -> list[dict]:
     return out
 
 
-def rule_inbox(p: Any, now: datetime) -> list[dict]:
+def rule_inbox(p: Any, now: datetime, cio: Any = None) -> list[dict]:
     p = _unwrap(p)
     if not isinstance(p, dict) or not isinstance(p.get("items"), list):
         raise SourceUnavailable("inbox payload has no items list")
@@ -562,7 +629,8 @@ def rule_inbox(p: Any, now: datetime) -> list[dict]:
                 "protect",
                 "P0",
                 f"{sym} stop alert",
-                f"Stop alert in the last 2 days: {str(latest.get('detail') or '')[:120]}. Verify at the broker.",
+                f"Stop alert in the last 2 days: {str(latest.get('detail') or '')[:120]}. "
+                f"{cio_clause(cio, sym, [latest.get('account')] if latest.get('account') else None, latest.get('at'))}",
                 f"Review {sym}",
                 f"{R_RISK}?symbol={sym}",
                 "inbox",
@@ -779,6 +847,8 @@ def source_meta(name: str, payload: Any, now: datetime, read_at: datetime) -> di
         as_of, basis = p.get("as_of"), "payload.as_of"
     elif name == "risk" and isinstance(p, dict):
         as_of, basis = p.get("computed_at"), "risk_snapshot.computed_at"
+    elif name == "cio" and isinstance(p, dict):
+        as_of, basis = p.get("as_of") or p.get("computed_at"), "capital_plan.as_of"
     elif name == "held" and isinstance(p, dict):
         as_of, basis = p.get("as_of"), f"held.{p.get('source') or 'unavailable'}"
     elif name == "desk_truth" and isinstance(p, dict):
@@ -870,6 +940,13 @@ def build(
             sources["desk_truth"]["coverage"] = {k: coverage.get(k) for k in ("measured", "verdict", "reason")}
         except Exception as exc:  # noqa: BLE001
             sources["desk_truth"].update(status="UNAVAILABLE", error=str(exc)[:200])
+    cio_index: Optional[dict] = None
+    if "cio" in sources and sources["cio"].get("status") == "OK":
+        try:
+            cio_index = cio_verdict_index(payloads.get("cio"))
+            sources["cio"]["verdicts"] = len(cio_index)
+        except Exception as exc:  # noqa: BLE001 — a malformed plan is UNAVAILABLE, never "no verdicts"
+            sources["cio"].update(status="UNAVAILABLE", error=str(exc)[:200])
     if "risk" in payloads:
 
         def _risk() -> list[dict]:
@@ -879,6 +956,7 @@ def build(
                 coverage,
                 now,
                 held=payloads["held"] if "held" in payloads else ("unavailable" if "held" in sources else None),
+                cio=cio_index,
             )
             numbers = {**numbers, "status": "OK", "stale": sources["risk"].get("stale", False)}
             return got
@@ -888,7 +966,7 @@ def build(
     # proposals before inbox: on a merge the first title of equal severity wins, and the count belongs to proposals.
     run("proposals", lambda: rule_proposals(payloads["proposals"], now))
     run("deploy", lambda: rule_deploy(payloads["deploy"], now))
-    run("inbox", lambda: rule_inbox(payloads["inbox"], now))
+    run("inbox", lambda: rule_inbox(payloads["inbox"], now, cio_index))
 
     for name, s in sources.items():
         if s.get("status") == "UNAVAILABLE":
