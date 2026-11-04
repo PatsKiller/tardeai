@@ -3,7 +3,8 @@ import { useApi } from '../hooks/useApi'
 import { useNavigate } from 'react-router-dom'
 import { fmt$ } from '../lib/format'
 import { formatPricingTime, pricingStampLine } from '../lib/pricingStamp'
-import { shortPriceStamp, tradingTileValue, vixProvenance } from '../lib/displayLabels'
+import { shortPriceStamp, tradingTileValue } from '../lib/displayLabels'
+import { vixFreshness } from '../lib/vixFreshness'
 import { dateOnlyPart, fmtAsOf } from '../lib/asOfDisplay'
 import { runLabel } from '../lib/homeLabels'
 import { overviewSurfaceFreshness, tradeAiSurfaceFreshness } from '../lib/surfaceFreshness'
@@ -333,6 +334,7 @@ export default function MetricStrip({ onDrill }: Props) {
   const vix = tradeAi?.vix
   const vixSource = tradeAi?.vix_source
   const vixObsTime = tradeAi?.vix_observation_time
+  const vixReading = vixFreshness(vix, vixSource, vixObsTime)
   const approvals = overview?.pending_approvals ?? overview?.approvals_count
   const priceStamp = pricingStampLine(overview?.pricing ?? { last_repriced: overview?.last_repriced, reprice_source: overview?.reprice_source })
   // Canonical quote-selection projection (cc-header-truth-v2 Phase 2 B). The
@@ -515,13 +517,15 @@ export default function MetricStrip({ onDrill }: Props) {
         rows: regime ? [{ regime_label: regime.regime_label, confidence: regime.confidence, volatility_state: regime.volatility_state, trend_state: regime.trend_state, breadth_state: regime.breadth_state, summary: regime.summary }] : [] },
     },
     {
-      label: 'VIX', value: vix != null ? Number(vix).toFixed(1) : '—',
-      // P3 2026-10-23: "trade_ai_run_summary · 02:21" (a UTC clock) → "scanner · 17:30 run". The raw
-      // source and the observation stamp stay in the tooltip and the drill.
-      asOfNote: showQuietProvenance ? vixProvenance(vixSource, tradeAi?.run_label, vixObsTime ? fmtAsOf(vixObsTime, { timeOnly: true }) : null) : null,
+      // FQ-086 / HQ-02: the colour follows the NUMBER only when the reading is FRESH. A value carried from a stale or
+      // failed transport, or one with no observation time at all, keeps its number but loses the confident colour and
+      // says why - the regime/SETUPS clock is not evidence about VIX.
+      label: 'VIX', value: vixReading.value ?? '—',
+      asOfNote: showQuietProvenance ? vixReading.label : null,
       minWidth: 110, maxWidth: 160,
-      color: vix == null ? 'var(--text3)' : vix >= 25 ? BB.red : vix >= 18 ? BB.amber : BB.green,
-      tip: `CBOE Volatility Index. Green <18 (low fear), amber 18-25 (elevated), red ≥25 (high fear).${vixSource ? ` · source ${vixSource}` : ''}${vixObsTime ? ` · observed ${String(vixObsTime).slice(0, 19).replace('T', ' ')}` : ''}`,
+      color: !vixReading.current ? 'var(--text3)'
+        : (Number(vixReading.value) >= 25 ? BB.red : Number(vixReading.value) >= 18 ? BB.amber : BB.green),
+      tip: `CBOE Volatility Index. Colour is shown only for a current reading (green <18, amber 18-25, red ≥25). ${vixReading.label}`,
       drill: { title: 'VIX', subtitle: `Volatility index · source ${vixSource ?? 'unknown'}${vixObsTime ? ` · observed ${vixObsTime}` : ''}`, endpoint: '/api/v2/trade-ai',
         rows: tradeAi ? [{ vix: tradeAi.vix, vix_source: tradeAi.vix_source, vix_observation_time: tradeAi.vix_observation_time, market_regime: tradeAi.market_regime, run_label: tradeAi.run_label }] : [] },
     },
