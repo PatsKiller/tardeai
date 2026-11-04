@@ -14,10 +14,12 @@ export function OutcomeNotice({ outcome, prefix }: { outcome: Outcome; prefix?: 
     fontSize: TYPE.sm,
     color: identity ? 'var(--amber)' : TOKENS.danger,
     margin: 0,
+    overflowWrap: 'anywhere',
   }
   return (
     <div role={identity ? 'alert' : 'status'} data-outcome={outcome.kind} style={style}>
       {prefix ? `${prefix}: ` : ''}{outcome.message}
+      {outcome.detail && <div data-testid="outcome-detail" style={{ marginTop: 6 }}>{outcome.detail}</div>}
     </div>
   )
 }

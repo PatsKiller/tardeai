@@ -39,7 +39,7 @@ check('the identity state carries its own machine marker',
 check('an identity refusal is actionable: it names the remedy', /sign in/i.test(identityHtml))
 check('the refusal does not claim the identity was absent', !/identity was not presented/i.test(identityHtml), identityHtml)
 check('it says a signed-in caller may still be refused (the agent case)', /already signed in/i.test(identityHtml), identityHtml)
-check('it names the caller class rather than blaming the sign-in', /not available to this caller/i.test(identityHtml), identityHtml)
+check('it explains that the connection was not accepted rather than blaming sign-in', /connection is not accepted for operator access/i.test(identityHtml), identityHtml)
 
 // A 401 keeps its own meaning, and 200/404 are unchanged by this mapping
 check('401 is still UNAUTHORIZED', classifyStatus(401, null, NOW, 'AGENT_CALLER_REFUSED').kind === 'UNAUTHORIZED')

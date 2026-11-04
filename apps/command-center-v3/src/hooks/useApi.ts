@@ -242,11 +242,15 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
           setStale(false)
           setReceivedAt(new Date().toISOString())
           setTransport('RETAINED')
+          setOutcome(null)
+          setAuthState('OK')
           clearFailing()
           retries = 0
           return
         }
         if (r.status === 503) {
+          setOutcome(null)
+          setAuthState(null)
           // server_busy — keep last-good data and soft-retry WITHOUT raising the global
           // reconnect banner. Counting 503 toward "failing feeds" made the amber bar stick
           // whenever heavy endpoints briefly saturated the semaphore (10 feeds × 503).
@@ -279,18 +283,22 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
           // The status line cannot distinguish "you are not permitted" from "you did not say who you are";
           // the refusal code can. Read it without consuming the body the caller may still want.
           let refusalCode: string | null = null
+          let refusalDetail: string | null = null
           try {
             const body = await r.clone().json()
+            refusalDetail = typeof body?.detail === 'string' ? body.detail : null
             refusalCode = typeof body?.error === 'string' ? body.error
               : typeof body?.code === 'string' ? body.code : null
           } catch { /* not JSON, or already consumed: an unknown code keeps the conservative reading */ }
-          const outcome = classifyStatus(r.status, r.headers, Date.now(), refusalCode)
+          const outcome = classifyStatus(r.status, r.headers, Date.now(), refusalCode, refusalDetail)
           if (cancelled) return
           setOutcome(outcome)
           setError(outcome.message)
           if (outcome.kind === 'UNAUTHORIZED' || outcome.kind === 'FORBIDDEN'
               || outcome.kind === 'IDENTITY_REQUIRED') {
             setAuthState(outcome.kind)
+          } else {
+            setAuthState(null)
           }
           if (dataRef.current != null) {
             setStale(true)
@@ -328,6 +336,7 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
         dataRef.current = next
         setData(next)
         setError(null)
+        setOutcome(null)
         setStale(false)
         setReceivedAt(new Date().toISOString())
         setTransport('OK')
@@ -336,6 +345,8 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
       } catch (e: any) {
         if (cancelled) return
         const outcome = classifyError(e)
+        setAuthState(null)
+        setOutcome(outcome)
         setError(outcome.message)
         // Keep last-good data; flag it stale so the UI can show a 'reconnecting' hint instead of
         // collapsing to zeros. Only mark stale when we actually have prior data to keep showing.
