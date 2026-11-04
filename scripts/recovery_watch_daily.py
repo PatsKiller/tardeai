@@ -25,10 +25,14 @@ Re-entry Classification (2026-05-11):
     - Aggressiveness reduced only on confirmed stop-outs
 """
 from __future__ import annotations
+import hashlib
 import json
 import os
+import re
+import subprocess
 import sys
-from datetime import date, datetime
+import uuid
+from datetime import date, datetime, timezone
 from pathlib import Path
 from decimal import Decimal
 
@@ -1060,55 +1064,202 @@ def _compute_allocation(sym, analyst_verdict, analyst_conf, cash_pct, heat_pct, 
 
 # ── Main entry point ─────────────────────────────────────────────────────
 
-def main():
-    print(f"[recovery_watch_daily] Starting — {datetime.now().isoformat()}")
+RECEIPT_SCHEMA = "RecoveryWatchRunReceipt@v1"
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _iso(moment: datetime) -> str:
+    return moment.astimezone(timezone.utc).isoformat()
+
+
+def receipt_dir() -> Path:
+    """Where run receipts live. RECOVERY_WATCH_RECEIPT_DIR exists for tests and for a caller that wants them
+    somewhere else; it never changes what the run does."""
+    override = os.environ.get("RECOVERY_WATCH_RECEIPT_DIR")
+    return Path(override) if override else PROJECT_ROOT / "data" / "runtime" / "recovery_watch_receipts"
+
+
+def source_identity(script: Path | None = None) -> dict:
+    """The concrete code this invocation is running, recorded without asking CURRENT what it was.
+
+    CURRENT is a pointer *now*; it cannot prove what an earlier run executed. The script's own digest always
+    works, a release directory name (`<40-hex>-<label>`) binds it to a served tree when it runs from one, and
+    git HEAD is recorded when a checkout is available. Anything unavailable stays None — never guessed.
+    """
+    path = Path(script or __file__).resolve()
+    out: dict = {"script": str(path), "script_sha256": None, "release_sha": None, "git_head": None}
+    try:
+        out["script_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        pass
+    for parent in path.parents:
+        match = re.fullmatch(r"([0-9a-f]{40})-.+", parent.name or "")
+        if match:
+            out["release_sha"] = match.group(1)
+            break
+    try:
+        head = subprocess.run(
+            ["git", "-C", str(PROJECT_ROOT), "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if head.returncode == 0 and re.fullmatch(r"[0-9a-f]{40}\s*", head.stdout or ""):
+            out["git_head"] = head.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return out
+
+
+def write_run_receipt(payload: dict, directory: Path | None = None) -> Path:
+    """Write one receipt atomically and return its path. Never partial: a crash leaves no half-written file."""
+    directory = Path(directory) if directory else receipt_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    target = directory / f"{payload['started_at'].replace(':', '').replace('-', '')}-{payload['invocation_id']}.json"
+    temporary = target.with_suffix(".json.tmp")
+    with open(temporary, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=1, sort_keys=True, default=str)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, target)
+    return target
+
+
+def _summarise(result) -> object:
+    if isinstance(result, (int, float, str, bool)) or result is None:
+        return result if not isinstance(result, str) else result[:200]
+    if isinstance(result, (list, tuple)):
+        return {"count": len(result)}
+    if isinstance(result, dict):
+        return {k: result[k] for k in list(result)[:8]}
+    return str(result)[:200]
+
+
+def _run_step(steps: list, name: str, fn, *args, **kwargs):
+    """Run one step and record its outcome. A failure is recorded and then re-raised: the receipt must show the
+    failure, and the process must still exit non-zero (rule 8 — exit 0 is not evidence of work)."""
+    started = _utc_now()
+    try:
+        result = fn(*args, **kwargs)
+    except BaseException as exc:  # recorded before it propagates
+        steps.append({"name": name, "outcome": "failed", "started_at": _iso(started),
+                      "finished_at": _iso(_utc_now()), "error": f"{type(exc).__name__}: {exc}"[:500]})
+        raise
+    steps.append({"name": name, "outcome": "ok", "started_at": _iso(started),
+                  "finished_at": _iso(_utc_now()), "output": _summarise(result)})
+    return result
+
+
+def _run(started: datetime, invocation_id: str, steps: list):
+    print(f"[recovery_watch_daily] Starting — {_iso(started)} (invocation {invocation_id})")
 
     # Step 1: Detect new stop-outs (with exit classification)
-    new_stopouts = detect_new_stopouts()
-    created = create_watch_records(new_stopouts)
+    new_stopouts = _run_step(steps, "detect_new_stopouts", detect_new_stopouts)
+    created = _run_step(steps, "create_watch_records", create_watch_records, new_stopouts)
     true_stops = sum(1 for s in new_stopouts if s.get("explicit_stop_out"))
     relists = sum(1 for s in new_stopouts if s.get("relisted_without_stop_out"))
     print(f"  New events detected: {len(new_stopouts)} (true stop-outs: {true_stops}, relists: {relists}), records created: {created}")
 
     # Step 1b: Detect relist events for existing watch items
-    relist_events = detect_relist_events()
+    relist_events = _run_step(steps, "detect_relist_events", detect_relist_events)
     if relist_events:
         print(f"  Relist events detected and reclassified: {relist_events}")
 
     # Step 2: Review all active items (with exit classification context)
-    reviewed = review_active_items()
+    reviewed = _run_step(steps, "review_active_items", review_active_items)
     print(f"  Active items reviewed: {len(reviewed)}")
     for r in reviewed:
         change = f" (was {r['old_verdict']})" if r['old_verdict'] != r['verdict'] else ""
         print(f"    {r['symbol']}: {r['verdict']} ({r['confidence']*100:.0f}%){change}")
 
     # Step 3: Escalate + notify
-    escalated = check_and_escalate(reviewed)
+    escalated = _run_step(steps, "check_and_escalate", check_and_escalate, reviewed)
     print(f"  Escalations: {len(escalated)}")
-    send_notifications(escalated)
+    _run_step(steps, "send_notifications", send_notifications, escalated)
 
     # Step 4: Process any Telegram replies first
     try:
         from telegram_reply_processor import process_replies
-        reply_count = process_replies()
+        reply_count = _run_step(steps, "process_telegram_replies", process_replies)
         print(f"  Telegram replies processed: {reply_count}")
     except Exception as e:
+        # Optional step: recorded as skipped, not as a failure of the run.
+        steps.append({"name": "process_telegram_replies", "outcome": "skipped", "error": str(e)[:500],
+                      "started_at": _iso(_utc_now()), "finished_at": _iso(_utc_now())})
         print(f"  Telegram reply processing skipped: {e}")
 
     # Step 5: Stop confirmation scan (after processing replies)
-    reminders = scan_unconfirmed_stops()
+    reminders = _run_step(steps, "scan_unconfirmed_stops", scan_unconfirmed_stops)
     print(f"  Stop reminders: {len(reminders)}")
-    send_stop_reminders(reminders)
+    _run_step(steps, "send_stop_reminders", send_stop_reminders, reminders)
 
     # Step 5: Temp allocation recommendations
-    alloc_updated = compute_temp_allocations()
+    alloc_updated = _run_step(steps, "compute_temp_allocations", compute_temp_allocations)
     print(f"  Temp allocation recommendations updated: {alloc_updated}")
 
-    print(f"[recovery_watch_daily] Complete — {datetime.now().isoformat()}")
+    print(f"[recovery_watch_daily] Complete — {_iso(_utc_now())}")
     return {"new_stopouts": len(new_stopouts), "true_stopouts": true_stops,
             "relists_detected": relists, "relist_reclassifications": relist_events,
             "created": created, "reviewed": len(reviewed), "escalated": len(escalated),
             "stop_reminders": len(reminders), "alloc_updated": alloc_updated}
+
+
+def _log_reconciliation() -> dict:
+    """The two log names, measured rather than assumed (FQ-117).
+
+    The installed unit writes `logs/recovery-watch.log` (hyphen); an older crontab line wrote
+    `logs/recovery_watch.log` (underscore) and is retired in the live crontab but still present, commented, in
+    `config/crontab_backup.txt`. Consumers (lane registry output_signal, api_v2) read the hyphen file. Recording
+    both here means a reader never has to trust a name: whichever exists is listed with its clock and size.
+    """
+    out = {}
+    for name in ("recovery-watch.log", "recovery_watch.log"):
+        path = PROJECT_ROOT / "logs" / name
+        try:
+            stat = path.stat()
+            out[name] = {"present": True, "bytes": stat.st_size,
+                         "mtime": _iso(datetime.fromtimestamp(stat.st_mtime, timezone.utc))}
+        except OSError:
+            out[name] = {"present": False}
+    return out
+
+
+def main():
+    """Run the lane and always leave a receipt — including when a step fails.
+
+    The receipt is the evidence: exit 0 alone is not proof of useful work (AGENTS rule 8).
+    """
+    started = _utc_now()
+    invocation_id = uuid.uuid4().hex
+    steps: list[dict] = []
+    summary = None
+    error = None
+    try:
+        summary = _run(started, invocation_id, steps)
+        return summary
+    except BaseException as exc:
+        error = f"{type(exc).__name__}: {exc}"[:500]
+        raise
+    finally:
+        receipt = {
+            "schema": RECEIPT_SCHEMA,
+            "invocation_id": invocation_id,
+            "started_at": _iso(started),
+            "finished_at": _iso(_utc_now()),
+            "source": source_identity(),
+            "steps": steps,
+            "outcome": "failed" if error else "ok",
+            "error": error,
+            "summary": summary,
+            "exit_code": 1 if error else 0,
+            "logs": _log_reconciliation(),
+        }
+        try:
+            path = write_run_receipt(receipt)
+            print(f"  Run receipt: {path}")
+        except OSError as exc:  # a receipt that cannot be written must be loud, never silent
+            print(f"  Run receipt NOT written: {exc}", file=sys.stderr)
 
 
 if __name__ == "__main__":
