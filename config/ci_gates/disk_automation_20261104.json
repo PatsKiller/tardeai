@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "disk_automation_20261104",
+  "files": [
+    "tests/test_disk_automation_20261104.py"
+  ],
+  "anchor": "DISK_AUTOMATION_20261104",
+  "comment": [
+    "ANCHOR: DISK_AUTOMATION_20261104 — the three disk behaviours the operator named on 2026-11-04, each with a firing case and a quiet case: a release held by a running process is restarted (so it re-resolves CURRENT) or reported by name, never skipped silently; agent scratch keeps a 48 h floor and a 10 GB ceiling evicting oldest-first, and never crosses the floor to meet the ceiling; the jsonl-archive-rotate lane is promoted to canary/live so the CIO accounting store rotates on its schedule. Hermetic: fake /proc, pure row fixtures, committed config files; no real deletion, no systemctl call, no network."
+  ]
+}
