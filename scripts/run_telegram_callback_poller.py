@@ -335,12 +335,15 @@ def _record_operator_reply(msg: dict, text: str, chat_id: str, *, previous_text:
               "recorded_at": datetime.now(timezone.utc).isoformat(),
               "chat_id": chat_id, "sender_id": str(sender_id), "text": text}  # redacted at the _append_or_queue boundary
     status = _append_or_queue(record, replies_dir=replies_dir, pending_path=pending_path, previous_text=previous_text)
+    # R6-F1 (cx-openai-3, 2026-11-04): the LOG must be derived from the SAME sanitised text as the row. These three
+    # lines rendered the original, so a correctly redacted continuation was stored safely and then logged in full.
+    safe = _log_text(redact_credentials(str(text), previous_text), 40)
     if status == "recorded":
-        log.info(f"operator reply recorded: {_log_text(text, 40)} from chat={chat_id}")
+        log.info(f"operator reply recorded: {safe} from chat={chat_id}")
     elif status == "queued":
-        log.warning(f"operator reply queued for flush: {_log_text(text, 40)} from chat={chat_id}")
+        log.warning(f"operator reply queued for flush: {safe} from chat={chat_id}")
     else:
-        log.error(f"operator reply neither recorded nor queued: {_log_text(text, 40)} from chat={chat_id}")
+        log.error(f"operator reply neither recorded nor queued: {safe} from chat={chat_id}")
     return status
 
 
@@ -493,6 +496,9 @@ def poll_once(timeout=25):
         early_chat = str((early_msg.get("chat") or {}).get("id", ""))
         early_text = (early_msg.get("text") or "").strip()
         this_prev = last_text_by_chat.get(early_chat)
+        # The safe rendering of this update's text, from the SAME context and the SAME function as its rows. Every log
+        # line below uses it; the raw text is kept only for ephemeral handler processing.
+        safe_text = redact_credentials(early_text, this_prev)
         reply_status = None
         if early_chat and early_text and early_chat in allowed:
             reply_status = _record_operator_reply(
@@ -705,19 +711,19 @@ def poll_once(timeout=25):
                     if ans.get("delivered") is False:
                         log.error(
                             f"reply NOT delivered (status={ans.get('delivery_status')}): "
-                            f"{_log_text(text, 40)} from chat={chat_id}"
+                            f"{_log_text(safe_text, 40)} from chat={chat_id}"
                         )
                     else:
-                        log.info(f"replied: {_log_text(text, 40)} from chat={chat_id}")
+                        log.info(f"replied: {_log_text(safe_text, 40)} from chat={chat_id}")
                 elif ans.get("reason") not in ("flag_off", "not_allowlisted"):
-                    log.info(f"reply skipped ({ans.get('reason')}): {_log_text(text, 40)}")
+                    log.info(f"reply skipped ({ans.get('reason')}): {_log_text(safe_text, 40)}")
             except Exception as e:
                 # A responder fault must never stall the poll loop.
                 log.error(f"cio reply error: {e}")
 
         if handled:
             processed += 1
-            log.info(f"command: {_log_text(text, 40)} from chat={chat_id}")
+            log.info(f"command: {_log_text(safe_text, 40)} from chat={chat_id}")
 
     return processed
 
@@ -1493,7 +1499,7 @@ def _handle_schwab_callback(msg, text, chat_id):
     """Operator pasted a Schwab OAuth redirect URL containing ?code=.
     Auto-extract the code, exchange for a token, and reply with status."""
     message_id = msg.get("message_id")
-    log.info(f"schwab callback from chat={chat_id}: {_log_text(text, 80)}...")
+    log.info(f"schwab callback from chat={chat_id}: {_log_text(redact_credentials(text), 80)}...")
 
     # Extract the full redirect URL (the user may have pasted extra text)
     import re as _re

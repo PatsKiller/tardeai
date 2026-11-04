@@ -364,7 +364,12 @@ def test_f1_no_log_site_slices_raw_operator_text():
     from pathlib import Path as _P
     source = (_P(__file__).resolve().parents[1] / "scripts" / "run_telegram_callback_poller.py").read_text()
     assert "text[:40]" not in source and "text[:80]" not in source, "raw operator text reaches a log slice"
-    assert source.count("_log_text(") >= 8, "every log site that echoes operator text must use _log_text"
+    # R6-F1: a log line that echoes operator text must render the SANITISED text, from the same context as its rows —
+    # `_log_text(...)` or `redact_credentials(...)`. A raw `{text` interpolation is the defect.
+    for line in source.splitlines():
+        if "log." in line and "{text" in line:
+            raise AssertionError(f"raw operator text reaches a log line: {line.strip()}")
+    assert source.count("_log_text(") >= 7, "every log site that echoes operator text must use _log_text"
 
 
 # ── the two remaining P1s at aec6fe0d7 (2026-11-04) ───────────────────────────────────────────────────
@@ -534,3 +539,16 @@ def test_the_incomplete_redaction_marker_has_a_consumer(tmp_path, caplog):
     with caplog.at_level(_logging.WARNING):
         assert _append_or_queue({"message_id": 14, "text": "AbCdEf1234567890XyZq"}, replies_dir=tmp_path) == "recorded"
     assert any("UNVERIFIED-REDACTION" in r.message for r in caplog.records), [r.message for r in caplog.records]
+
+
+def test_the_split_paste_does_not_reach_the_ACTUAL_LOG(tmp_path, monkeypatch, caplog):
+    """R6-F1 (cx-openai-3, 2026-11-04): the rows were correct and the log printed the raw value. A test that inspects
+    only the rows passed at 31f82894be20; this one asserts on the captured log."""
+    import logging as _logging  # noqa: PLC0415
+    value = "AbCdEf1234567890XyZq"
+    with caplog.at_level(_logging.INFO):
+        _drive_updates(monkeypatch, tmp_path,
+                       [_msg(961, 30, text='{"code": '), _msg(962, 31, text=value)],
+                       inbox_blocked=False, queue_blocked=False, atomic=True)
+    logged = "\n".join(r.getMessage() for r in caplog.records)
+    assert value not in logged, logged
