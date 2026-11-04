@@ -7,6 +7,7 @@ function of the data handed in, and these tests exercise the order (a)…(e), th
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from datetime import datetime, timedelta, timezone
@@ -398,8 +399,8 @@ def test_the_module_writes_only_its_own_two_files():
 def test_at_most_two_reviewers_per_pr():
     pr = D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False)
     common = dict(queue=[], claims=[], prs=[pr], verdicts={}, author_of={7: "cc-4"}, coord="/c", now=NOW)
-    assert D.select_work("cc-8", review_counts={7: 2}, **common) is None, "a third reviewer is not work"
-    a = D.select_work("cc-8", review_counts={7: 1}, **common)
+    assert D.select_work("cc-8", review_counts={(7, "h" * 40): 2}, **common) is None, "a third reviewer is not work"
+    a = D.select_work("cc-8", review_counts={(7, "h" * 40): 1}, **common)
     assert a and a.kind == "review", "the second reviewer slot is work"
 
 
@@ -408,10 +409,10 @@ def test_existing_verdicts_count_towards_the_cap():
     # one BLOCK already filed at this head: that is one reviewer spent, so one slot remains
     v = {(7, "h" * 40): [{"verdict": "BLOCK", "reviewer": "cc-9"}]}
     a = D.select_work("cc-8", queue=[], claims=[], prs=[pr], verdicts=v, author_of={7: "cc-4"}, coord="/c",
-                      now=NOW, review_counts={7: 1})
+                      now=NOW, review_counts={(7, "h" * 40): 1})
     assert a is not None
     assert D.select_work("cc-8", queue=[], claims=[], prs=[pr], verdicts=v, author_of={7: "cc-4"}, coord="/c",
-                         now=NOW, review_counts={7: 2}) is None
+                         now=NOW, review_counts={(7, "h" * 40): 2}) is None
 
 
 def test_newest_pr_is_offered_before_an_ancient_one():
@@ -434,7 +435,7 @@ def test_a_block_verdict_counts_towards_the_reviewer_cap():
     pr = D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False)
     v = {(7, "h" * 40): [{"verdict": "BLOCK", "reviewer": "cc-1"}, {"verdict": "BLOCK", "reviewer": "cc-2"}]}
     a = D.select_work("cc-8", queue=[], claims=[], prs=[pr], verdicts=v, author_of={7: "cc-4"}, coord="/c",
-                      now=NOW, review_counts={7: 2})
+                      now=NOW, review_counts={(7, "h" * 40): 2})
     assert a is None
 
 
@@ -476,7 +477,7 @@ def test_a_review_is_not_re_sent_across_cycles():
     pr = D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False)
     common = dict(queue=[], claims=[], prs=[pr], verdicts={}, author_of={7: "cc-4"}, coord="/c", now=NOW)
     # cycle 2: the ledger says cycle 1 already sent cc-8 this PR and it went busy
-    a = D.select_work("cc-8", prior_review_sessions={7: {"cc-8"}}, review_counts={7: 1}, **common)
+    a = D.select_work("cc-8", prior_review_sessions={(7, "h" * 40): {"cc-8"}}, review_counts={(7, "h" * 40): 1}, **common)
     assert a is None, "a reviewer already sent this PR must not be re-sent it every five minutes"
 
 
@@ -484,20 +485,20 @@ def test_two_cycles_of_sending_cannot_exceed_the_two_reviewer_cap():
     pr = D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False)
     common = dict(queue=[], claims=[], prs=[pr], verdicts={}, author_of={7: "cc-4"}, coord="/c", now=NOW)
     # cycle 1 sent two reviewers who went busy; the cap is spent even though no verdict exists yet
-    a = D.select_work("cc-9", prior_review_sessions={7: {"cc-1", "cc-2"}}, review_counts={7: 2}, **common)
+    a = D.select_work("cc-9", prior_review_sessions={(7, "h" * 40): {"cc-1", "cc-2"}}, review_counts={(7, "h" * 40): 2}, **common)
     assert a is None
 
 
 def test_prior_review_dispatches_reads_only_completed_review_lines(tmp_path):
     ledger = tmp_path / "dispatch_ledger.jsonl"
     ledger.write_text("\n".join([
-        json.dumps({"kind": "review", "target": "7", "session": "cc-1", "busy_after_30s": True}),
-        json.dumps({"kind": "review", "target": "7", "session": "cc-2", "busy_after_30s": False}),  # never landed
-        json.dumps({"kind": "queue", "target": "7", "session": "cc-3", "busy_after_30s": True}),     # not a review
+        json.dumps({"kind": "review", "target": "7", "target_head": "h" * 40, "session": "cc-1", "busy_after_30s": True}),
+        json.dumps({"kind": "review", "target": "7", "target_head": "h" * 40, "session": "cc-2", "busy_after_30s": False}),  # never landed
+        json.dumps({"kind": "queue", "target": "7", "target_head": "h" * 40, "session": "cc-3", "busy_after_30s": True}),     # not a review
         "{not json",
     ]) + "\n", encoding="utf-8")
     sessions, counts = CLI.prior_review_dispatches(ledger)
-    assert sessions == {7: {"cc-1"}} and counts == {7: 1}
+    assert sessions == {(7, "h" * 40): {"cc-1"}} and counts == {(7, "h" * 40): 1}
 
 
 # ── 11. cx-openai-3's six findings (F1–F6) — the regressions that would have caught them ──────────────────────
@@ -584,3 +585,153 @@ def test_an_author_who_released_their_claim_is_still_the_author():
     assert authors == {7: "cc-4"}
     assert D.select_work("cc-4", queue=[], claims=claims, prs=prs, verdicts={}, author_of=authors,
                          coord="/c", now=NOW) is None
+
+
+# ── 12. cx-openai-3's round 2 (F2/F3/F4) — the regressions that would have caught them ────────────────────────
+
+
+def test_a_hardlink_to_a_protected_input_is_refused_by_inode(tmp_path):
+    """F2 round 2: a path STRING is not an identity. `ln MERGE_READY.md queue.json` makes writing the report
+    truncate the queue, and the resolved path of the output looks perfectly innocent."""
+    queue = tmp_path / "AUDIT_FIX_QUEUE.json"
+    queue.write_text('{"items": [1, 2, 3]}\n', encoding="utf-8")
+    report = tmp_path / "MERGE_READY.md"
+    os.link(queue, report)
+    assert os.stat(report).st_ino == os.stat(queue).st_ino
+    with pytest.raises(D.DispatchError) as exc:
+        D.safe_output_path(report, coord=tmp_path, protected=[queue])
+    assert "hardlink" in str(exc.value)
+    assert queue.read_text(encoding="utf-8") == '{"items": [1, 2, 3]}\n', "the queue must be untouched"
+
+
+def test_a_hardlinked_ledger_cannot_append_to_a_claim(tmp_path):
+    """F2 round 2: the same inode check protects a claims directory, so the lane cannot append to a claim."""
+    claims = tmp_path / "claims"
+    claims.mkdir()
+    claim_file = claims / "20261104T000000Z-claude-dead.json"
+    claim_file.write_text('{"claim_id": "dead"}\n', encoding="utf-8")
+    ledger = tmp_path / "dispatch_ledger.jsonl"
+    os.link(claim_file, ledger)
+    with pytest.raises(D.DispatchError) as exc:
+        D.safe_output_path(ledger, coord=tmp_path, protected=[claims])
+    assert "hardlink" in str(exc.value)
+    assert claim_file.read_text(encoding="utf-8") == '{"claim_id": "dead"}\n'
+
+
+def test_an_unsafe_output_is_refused_before_a_single_keystroke(tmp_path, monkeypatch):
+    """F2 round 2: validation happened AFTER the send loop, so a misconfigured --ledger pasted the fleet first
+    (send_before_refusal=True). A refusal must cost zero sends."""
+    coord = tmp_path / "coord"
+    (coord / "inbox").mkdir(parents=True)
+    queue = coord / "AUDIT_FIX_QUEUE.json"
+    queue.write_text('{"items": []}\n', encoding="utf-8")
+    monkeypatch.setattr(CLI.D, "select_work",
+                        lambda *a, **k: D.Assignment("cc-8", "review", "9999", "Dispatcher: do a thing", "forced"))
+
+    sent = []
+
+    def run(cmd, **kw):
+        class P:
+            returncode = 0
+            stdout = ""
+        if cmd[:2] == ["tmux", "ls"]:
+            P.stdout = "cc-deepseek-8\n"
+        if cmd[:2] == ["tmux", "capture-pane"]:
+            P.stdout = "> \n"
+        if any(x in cmd for x in ("load-buffer", "paste-buffer", "send-keys")):
+            sent.append(list(cmd))
+        return P()
+
+    with pytest.raises(D.DispatchError):
+        CLI.run_cycle(apply=True, coord=coord, queue_path=queue, claims_dir=coord / "claims",
+                      ledger_path=queue, limit=1, run=run, sleep=lambda s: None)
+    assert sent == [], f"the refusal must come before any keystroke, but these were sent: {sent}"
+
+
+def test_a_slow_capture_cannot_confirm_busy_after_the_deadline():
+    """F3 round 2: two 14.9s captures used to "confirm" busy at 36.4s inside a 30s window, because each capture got
+    a fresh RUN_TIMEOUT_S and a result that arrived after the deadline was still believed."""
+    clock = FakeClock()
+    seen = {"n": 0}
+
+    class LateBusy(FakeTmux):
+        """Capture 1 is the pre-paste look, capture 2 the first poll, capture 3 the busy one — but it lands late."""
+
+        def __call__(self, cmd, **kw):
+            p = super().__call__(cmd, **kw)
+            if cmd[:2] == ["tmux", "capture-pane"]:
+                seen["n"] += 1
+                if seen["n"] >= 3:
+                    clock.t += 20.0   # this capture returns after the deadline
+                    p.stdout = "· Working (2s · esc to interrupt)\na busy line"
+                else:
+                    clock.t += 14.9
+                    p.stdout = "> idle"
+            return p
+
+    r = D.submit("cc-1", "go", run=LateBusy(), sleep=clock.sleep, monotonic=clock, busy_confirm_seconds=30.0)
+    assert r.busy_after is False, "a busy capture that arrives after the deadline must not confirm anything"
+    assert clock.t > 30.0, "sanity: the late capture really did land past the window"
+
+
+def test_a_busy_marker_that_predates_the_paste_is_not_evidence():
+    """F3 round 2: a changed tail containing an OLD busy marker read as success. The marker must be new."""
+    clock = FakeClock()
+    state = {"n": 0}
+
+    class Drift(FakeTmux):
+        def __call__(self, cmd, **kw):
+            p = super().__call__(cmd, **kw)
+            if cmd[:2] == ["tmux", "capture-pane"]:
+                state["n"] += 1
+                p.stdout = ("· Working (999s · esc to interrupt)\n"     # the SAME old spinner both times
+                            + ("status line " + str(state["n"])))
+            return p
+
+    r = D.submit("cc-1", "go", run=Drift(), sleep=clock.sleep, monotonic=clock, busy_confirm_seconds=10.0)
+    assert r.busy_after is False, "an old marker plus unrelated tail drift is not evidence of this dispatch"
+
+
+def test_a_failed_paste_is_not_a_submission():
+    """F3 round 2: when both load-buffer calls fail, submitted was True because it was `attempts > 0`."""
+    class Dead(FakeTmux):
+        def __call__(self, cmd, **kw):
+            p = super().__call__(cmd, **kw)
+            if cmd[:2] == ["tmux", "load-buffer"]:
+                p.returncode = 1
+            return p
+
+    r = D.submit("cc-1", "go", run=Dead(), sleep=lambda s: None, monotonic=FakeClock(), busy_confirm_seconds=5.0)
+    assert r.submitted is False, "nothing was pasted, so nothing was submitted"
+    assert r.busy_after is False and r.attempts == 2
+
+
+def test_the_review_cap_is_head_specific():
+    """F4 round 2: a dispatch recorded against an OLD head neither spends the new head's budget nor bars that
+    reviewer from reviewing the new revision."""
+    old_head, new_head = "a" * 40, "b" * 40
+    pr = D.PullRequest(7, new_head, "wt/x", "CLEAN", False)
+    common = dict(queue=[], claims=[], prs=[pr], verdicts={}, author_of={7: "cc-4"}, coord="/c", now=NOW)
+    a = D.select_work("cc-8", prior_review_sessions={(7, old_head): {"cc-8", "cc-9"}},
+                      review_counts={(7, old_head): 2}, **common)
+    assert a is not None and a.kind == "review", "the new head has its own two-reviewer budget"
+    b = D.select_work("cc-8", prior_review_sessions={(7, new_head): {"cc-8"}},
+                      review_counts={(7, new_head): 1}, **common)
+    assert b is None, "the same reviewer is not re-sent the SAME head"
+
+
+def test_a_dispatch_recorded_at_an_old_head_does_not_spend_the_new_head_budget(tmp_path):
+    """F4 round 2 at the ledger boundary: prior_review_dispatches keys by (pr, head)."""
+    ledger = tmp_path / "dispatch_ledger.jsonl"
+    ledger.write_text("\n".join([
+        json.dumps({"kind": "review", "target": "7", "target_head": "a" * 40, "session": "cc-1",
+                    "busy_after_30s": True}),
+        json.dumps({"kind": "review", "target": "7", "target_head": "b" * 40, "session": "cc-2",
+                    "busy_after_30s": True}),
+        json.dumps({"kind": "review", "target": "7", "session": "cc-3", "busy_after_30s": True}),  # legacy: no head
+    ]) + "\n", encoding="utf-8")
+    sessions, counts = CLI.prior_review_dispatches(ledger)
+    assert counts == {("7", "a" * 40): 1} or counts.get((7, "a" * 40)) == 1
+    assert (7, "a" * 40) in counts and counts[(7, "a" * 40)] == 1
+    assert (7, "b" * 40) in counts and counts[(7, "b" * 40)] == 1
+    assert counts.get((7, ""), 0) == 1, "a legacy record is attributed to the empty head, never to a real one"

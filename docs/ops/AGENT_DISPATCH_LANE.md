@@ -41,12 +41,25 @@ already mid-action.
 
 ## The rails are tested, not asserted
 
-`tests/test_agent_dispatch_20261104.py` (35 checks) covers: busy beats everything; unsent input is not idle; a failed
+`tests/test_agent_dispatch_20261104.py` (57 checks) covers: busy beats everything; unsent input is not idle; a failed
 capture is blind; only `queued`/`assigned` are work; `takeable_at` and another session's live claim hold a row; the
 selection order (a)…(e) including "never your own PR" and "a MERGE at head needs no second reviewer"; the merge pump
 separating ready from one-step and refusing an author's own MERGE; the submit path pasting (never `send-keys -l`),
 retrying once, and logging `dispatch_failed`; the idle alert threshold; the two-reviewer cap and the newest-PR-first order; and that **a dry run creates no files** while
 an apply writes only the ledger and its two report files.
+
+Four of those are written as invariants rather than as behaviour, because each was a real defect found by review at a
+later head:
+
+- **Identity, not spelling.** Every output path is checked twice — by resolved path *and* by inode — so a hardlink
+  (`ln MERGE_READY.md AUDIT_FIX_QUEUE.json`) is refused instead of truncating the queue. All three output identities
+  are settled *before the first keystroke*, so a misconfigured `--ledger` costs zero sends, not a fleet-wide paste
+  followed by a refusal.
+- **New evidence only.** A busy marker must be absent from the pre-paste tail (or more frequent in the new one) and
+  the tail must have changed; a capture that returns after the confirm deadline is discarded, not believed.
+- **`submitted` means an Enter was delivered** after a paste that succeeded — never "an attempt was made".
+- **The reviewer cap is per head.** History is keyed by `(pr, head sha)`: verdicts and dispatches recorded against an
+  older head neither spend the new head's budget nor bar that reviewer from reviewing the new revision.
 
 ## How to read the ledger
 

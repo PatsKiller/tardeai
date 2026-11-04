@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import subprocess
 import time
@@ -351,13 +352,17 @@ def select_work(session: str, *, queue: Sequence[dict[str, Any]], claims: Sequen
                 prs: Sequence[PullRequest], verdicts: dict[tuple[int, str], list[dict[str, Any]]],
                 author_of: dict[int, str], coord: str, now: datetime | None = None,
                 reviewed_pairs: set[tuple[int, str]] | None = None,
-                review_counts: dict[int, int] | None = None,
+                review_counts: dict[tuple[int, str], int] | None = None,
                 taken: dict[tuple[str, str], int] | None = None,
-                prior_review_sessions: dict[int, set[str]] | None = None) -> Assignment | None:
+                prior_review_sessions: dict[tuple[int, str], set[str]] | None = None) -> Assignment | None:
     """The one next thing for this session, in the operator's order (a)…(e). None means "nothing to do".
 
     `reviewed_pairs` is (pr number, reviewer session) pairs already dispatched this cycle, so two sessions are not
     sent the same PR by the same scan.
+
+    F4 round 2 (cx-openai-3): the review-history cap is HEAD-SPECIFIC. A dispatch recorded against an older head must
+    neither spend the two-reviewer budget at the new head nor bar that reviewer from reviewing the new revision — the
+    revision is new work, and the old verdicts belong to the old tree.
     """
     reviewed = reviewed_pairs or set()
     counts = review_counts or {}
@@ -389,10 +394,10 @@ def select_work(session: str, *, queue: Sequence[dict[str, Any]], claims: Sequen
             continue
         if (pr.number, session) in reviewed:
             continue
-        if counts.get(pr.number, 0) >= MAX_REVIEWERS_PER_PR:
+        if counts.get((pr.number, pr.head_sha), 0) >= MAX_REVIEWERS_PER_PR:
             continue
-        if session in prior.get(pr.number, set()):
-            continue  # an earlier cycle already sent this reviewer this PR
+        if session in prior.get((pr.number, pr.head_sha), set()):
+            continue  # an earlier cycle already sent this reviewer THIS head
         if not free("review", str(pr.number)):
             continue
         verdicts_here = verdicts.get((pr.number, pr.head_sha), [])
@@ -451,33 +456,76 @@ class SubmitResult:
     detail: str
 
 
+def _protected_files(protected: Sequence[Path]) -> list[Path]:
+    """The protected inputs as FILES, so an alias can be compared by inode rather than by path string.
+
+    F2 round 2 (cx-openai-3): a path-string check is defeated by a hardlink — ``ln MERGE_READY.md queue.json`` gives
+    two names and ONE inode, so the resolved path of the output is innocent while writing it truncates the queue.
+    """
+    out: list[Path] = []
+    for p in protected:
+        p = Path(p)
+        if p.is_dir():
+            # Direct children and one level down (the fleet's claims/inbox layouts); bounded so a huge tree cannot
+            # turn one dispatch cycle into a filesystem walk.
+            for child in sorted(p.iterdir())[:5000] if p.exists() else []:
+                out.append(child)
+                if child.is_dir() and not child.is_symlink():
+                    try:
+                        out.extend(sorted(child.iterdir())[:5000])
+                    except OSError:
+                        continue
+        else:
+            out.append(p)
+    return out
+
+
+def _inode(path: Path) -> tuple[int, int] | None:
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return None
+    return (st.st_dev, st.st_ino)
+
+
 def safe_output_path(target: Path, *, coord: Path, protected: Sequence[Path] = ()) -> Path:
     """Refuse an output path that could write one of the lane's own inputs (F2).
 
     The dispatcher writes exactly three files. If any of them resolves to the queue, a claims directory, the review
-    evidence or the coordinator's inbox — through a symlink, a "../" path or a typo — a bug in this lane would edit
-    the very records it is supposed to read. Refuse before sending or writing; a refusal is a refusal, never a
-    best-effort write.
+    evidence or the coordinator's inbox — through a symlink, a "../" path, a typo OR A HARDLINK — a bug in this lane
+    would edit the very records it is supposed to read. Refuse before sending or writing; a refusal is a refusal,
+    never a best-effort write.
     """
     target = Path(target)
     if target.is_symlink():
         raise DispatchError(f"refusing to write {target}: it is a symlink")
     real = target.resolve(strict=False)
-    forbidden = [Path(p).resolve(strict=False) for p in protected]
-    forbidden += [(Path(coord) / name).resolve(strict=False)
-                  for name in ("AUDIT_FIX_QUEUE.json", "inbox", "review-evidence", "claims")]
+    inputs = [Path(p) for p in protected]
+    inputs += [Path(coord) / name for name in ("AUDIT_FIX_QUEUE.json", "inbox", "review-evidence", "claims")]
+    forbidden = [p.resolve(strict=False) for p in inputs]
     for bad in forbidden:
         if real == bad or bad in real.parents:
             raise DispatchError(f"refusing to write {target}: resolves inside a protected input ({bad})")
+    # Identity, not spelling: if the output already exists and shares an inode with an input, it IS that input.
+    have = _inode(real)
+    if have is not None:
+        for candidate in _protected_files(inputs):
+            if _inode(candidate) == have:
+                raise DispatchError(f"refusing to write {target}: it is the same file as the protected input "
+                                    f"{candidate} (hardlink alias)")
     parent = real.parent
     if parent.exists() and parent.is_symlink():
         raise DispatchError(f"refusing to write {target}: its directory is a symlink out of the tree")
     return real
 
 
+def _tail(screen: str, limit: int = 1200) -> str:
+    """The last ``limit`` characters of what the pane is actually showing (blank lines dropped)."""
+    return "\n".join(ln for ln in (screen or "").splitlines() if ln.strip())[-limit:]
+
+
 def _tail_hash(screen: str) -> str:
-    tail = "\n".join(ln for ln in (screen or "").splitlines() if ln.strip())[-1200:]
-    return hashlib.sha256(tail.encode()).hexdigest()
+    return hashlib.sha256(_tail(screen).encode()).hexdigest()
 
 
 def submit(
@@ -495,19 +543,23 @@ def submit(
     Multi-line text sent with ``send-keys -l`` silently does not submit (the fleet's well-known trap), so the text
     goes through a tmux buffer, is pasted, and Enter is pressed separately.
 
-    Two properties the reviewer required (F3), because a submit that "confirms" the wrong thing is worse than none:
-    * **wall-clock bounded** — every wait is measured with a monotonic clock against a deadline, and every subprocess
-      call carries its own timeout, so a wedged tmux cannot extend a cycle past its budget;
-    * **evidence is new** — the pane is captured before the paste and again after Enter, and busy only counts when the
-      capture both carries a busy marker and differs from the pre-paste capture. A pane that was already busy (a
-      stale spinner) is therefore not mistaken for the result of this dispatch.
+    Three properties the reviewer required (F3, round 2), because a submit that "confirms" the wrong thing is worse
+    than none:
+    * **bounded by the remaining budget** — each capture's own subprocess timeout is the time left before the
+      deadline, not a fresh ``RUN_TIMEOUT_S``; a capture that returns after the deadline is DISCARDED, so two slow
+      captures can never "confirm" busy at 36s inside a 30s window;
+    * **the busy evidence is new** — a busy marker that was already in the pane before the paste is not evidence of
+      this dispatch: the marker must be absent from the pre-paste tail, or more frequent in the new tail, AND the
+      tail must have changed;
+    * **``submitted`` is what actually happened** — it means an Enter was delivered after a paste that succeeded.
+      Two failed ``load-buffer`` calls now report ``submitted=False`` instead of True-by-attempt.
     One retry, then the caller logs ``dispatch_failed``.
     """
     buffer_name = "dispatch-" + hashlib.sha256(f"{session}:{text}:{time.time()}".encode()).hexdigest()[:12]
 
-    def _capture() -> str | None:
+    def _capture(timeout: float = RUN_TIMEOUT_S) -> str | None:
         proc = run(["tmux", "capture-pane", "-p", "-t", session], capture_output=True, text=True,
-                   timeout=RUN_TIMEOUT_S)
+                   timeout=max(0.05, timeout))
         return (proc.stdout or "") if getattr(proc, "returncode", 1) == 0 else None
 
     def _paste_and_enter() -> bool:
@@ -525,20 +577,36 @@ def submit(
         return getattr(enter, "returncode", 1) == 0
 
     attempts = 0
+    entered = False
     for attempt in (1, 2):
         attempts = attempt
         before = _capture()
         if not _paste_and_enter():
             continue
+        entered = True  # an Enter was delivered for a paste that succeeded
+        before_tail = _tail(before or "")
+        before_hits = len(BUSY_RE.findall(before_tail))
+        # The confirm window for THIS attempt. Each capture is given only the time left in it, and a capture that
+        # returns after it is discarded — so two 14.9s captures can no longer "confirm" busy past the deadline.
         deadline = monotonic() + busy_confirm_seconds
-        while monotonic() < deadline:
-            sleep(min(poll_every, max(0.0, deadline - monotonic())))
-            screen = _capture()
+        while True:
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                break
+            sleep(min(poll_every, remaining))
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                break
+            screen = _capture(min(RUN_TIMEOUT_S, remaining))
             if screen is None:
                 continue
-            if BUSY_RE.search(screen) and _tail_hash(screen) != _tail_hash(before or ""):
+            if monotonic() > deadline:
+                continue  # a late capture cannot confirm a window that has already closed
+            tail = _tail(screen)
+            hits = len(BUSY_RE.findall(tail))
+            if hits and tail != before_tail and (before_hits == 0 or hits > before_hits):
                 return SubmitResult(True, True, attempts, "busy confirmed on a new capture after the paste")
-    return SubmitResult(attempts > 0, False, attempts, "no new busy marker within the confirm window")
+    return SubmitResult(entered, False, attempts, "no new busy marker within the confirm window")
 
 
 def ledger_line(*, session: str, assignment: Assignment, result: SubmitResult, cycle_id: str, ts: str | None = None,

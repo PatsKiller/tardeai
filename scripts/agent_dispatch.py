@@ -70,15 +70,20 @@ def load_json(path: Path) -> Any:
         return None
 
 
-def prior_review_dispatches(ledger_path: Path) -> tuple[dict[int, set[str]], dict[int, int]]:
+def prior_review_dispatches(ledger_path: Path) -> tuple[dict[tuple[int, str], set[str]], dict[tuple[int, str], int]]:
     """What earlier cycles already handed out, read from the dispatcher's own ledger.
 
     Without this, a PR that stays CLEAN for three cycles collects two new reviewers per cycle — six sessions on one
     PR before the first verdict lands. The ledger is the only state this lane keeps (rails: it writes nothing else).
-    Returns ({pr: {reviewer sessions}}, {pr: dispatched-reviewer count}).
+
+    F4 round 2 (cx-openai-3): keyed by (pr number, HEAD SHA), not by PR number. A dispatch against an older head must
+    not spend the budget at the new head, and must not bar that reviewer from reviewing the new revision. Records
+    written before heads were recorded (no ``target_head``) are attributed to the empty head, which matches nothing
+    and therefore neither spends the cap nor blocks a reviewer.
+    Returns ({(pr, head): {reviewer sessions}}, {(pr, head): dispatched-reviewer count}).
     """
-    sessions: dict[int, set[str]] = {}
-    counts: dict[int, int] = {}
+    sessions: dict[tuple[int, str], set[str]] = {}
+    counts: dict[tuple[int, str], int] = {}
     try:
         lines = Path(ledger_path).read_text(encoding="utf-8").splitlines()
     except OSError:
@@ -91,11 +96,11 @@ def prior_review_dispatches(ledger_path: Path) -> tuple[dict[int, set[str]], dic
         if not isinstance(rec, dict) or rec.get("kind") != "review" or not rec.get("busy_after_30s"):
             continue
         try:
-            pr = int(rec.get("target"))
+            key = (int(rec.get("target")), str(rec.get("target_head") or ""))
         except (TypeError, ValueError):
             continue
-        sessions.setdefault(pr, set()).add(str(rec.get("session") or ""))
-        counts[pr] = len(sessions[pr])
+        sessions.setdefault(key, set()).add(str(rec.get("session") or ""))
+        counts[key] = len(sessions[key])
     return sessions, counts
 
 
@@ -184,7 +189,7 @@ def run_cycle(*, apply: bool, coord: Path, queue_path: Path, claims_dir: Path, l
     reviewed: set[tuple[int, str]] = set()
     taken: dict[tuple[str, str], int] = {}
     prior_sessions, prior_counts = prior_review_dispatches(ledger_path)
-    review_counts: dict[int, int] = {}
+    review_counts: dict[tuple[int, str], int] = {}
     for (pr_no, head), entries in verdicts.items():
         pr = next((p for p in prs if p.number == pr_no and p.head_sha == head), None)
         if pr is None:
@@ -192,8 +197,8 @@ def run_cycle(*, apply: bool, coord: Path, queue_path: Path, claims_dir: Path, l
         # F4: BLOCK is a verdict too — a PR with two blocks already at this head does not get a third reviewer.
         reviewers = {e["reviewer"] for e in entries
                      if e["verdict"] in ("MERGE", "BLOCK") and e["reviewer"] and e["reviewer"] != authors.get(pr_no, "")}
-        # verdicts already filed + reviewers an earlier cycle already sent (and who went busy) both spend the cap
-        review_counts[pr_no] = len(reviewers | prior_sessions.get(pr_no, set()))
+        # verdicts already filed + reviewers an earlier cycle already sent to THIS head both spend the cap
+        review_counts[(pr_no, head)] = len(reviewers | prior_sessions.get((pr_no, head), set()))
     for pane in panes:
         if not pane.idle:
             continue
@@ -207,7 +212,8 @@ def run_cycle(*, apply: bool, coord: Path, queue_path: Path, claims_dir: Path, l
             taken[(a.kind, a.target)] = taken.get((a.kind, a.target), 0) + 1
             if a.kind == "review":
                 reviewed.add((int(a.target), pane.session))
-                review_counts[int(a.target)] = review_counts.get(int(a.target), 0) + 1
+                head = next((p.head_sha for p in prs if str(p.number) == a.target), "")
+                review_counts[(int(a.target), head)] = review_counts.get((int(a.target), head), 0) + 1
 
     ready = D.merge_ready(prs, verdicts, claims, authors)
     idle_minutes = [(p.session, 0.0) for p in panes if p.idle]  # a cycle has no memory; the alert uses dwell from state
@@ -223,6 +229,12 @@ def run_cycle(*, apply: bool, coord: Path, queue_path: Path, claims_dir: Path, l
         result["idle_alert_md"] = alerts
         return result
 
+    # F2 round 2 (cx-openai-3): every output identity is decided BEFORE the first keystroke. A refusal must cost
+    # zero sends; validating after the loop meant a misconfigured --ledger still submitted to the whole fleet first.
+    ledger_target = D.safe_output_path(ledger_path, coord=coord, protected=[queue_path, claims_dir])
+    merge_ready_target = D.safe_output_path(coord / "MERGE_READY.md", coord=coord, protected=[queue_path, claims_dir])
+    alert_target = D.safe_output_path(coord / "DISPATCH_IDLE_ALERT.md", coord=coord, protected=[queue_path, claims_dir])
+
     lines: list[str] = []
     for a in assignments:
         r = D.submit(a.session, a.instruction, run=run, sleep=sleep)
@@ -232,9 +244,6 @@ def run_cycle(*, apply: bool, coord: Path, queue_path: Path, claims_dir: Path, l
         line = D.ledger_line(session=a.session, assignment=a, result=r, cycle_id=cycle_id, target_head=head)
         lines.append(line)
         result["ledger"].append(json.loads(line))
-    ledger_target = D.safe_output_path(ledger_path, coord=coord, protected=[queue_path, claims_dir])
-    merge_ready_target = D.safe_output_path(coord / "MERGE_READY.md", coord=coord, protected=[queue_path, claims_dir])
-    alert_target = D.safe_output_path(coord / "DISPATCH_IDLE_ALERT.md", coord=coord, protected=[queue_path, claims_dir])
     if lines:
         ledger_target.parent.mkdir(parents=True, exist_ok=True)
         with ledger_target.open("a", encoding="utf-8") as fh:
