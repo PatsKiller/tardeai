@@ -187,7 +187,7 @@ export function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAs
     execution_state?: string | null; as_of?: string | null; claim_as_of?: string | null }>
   generatedAt: string | null; flightAsOf: string | null; coordAsOf: string | null
   flightError: string | null; loading: boolean; now: number
-  // codex R4 (#2541): an empty list means nothing ONLY when the source actually answered. These three carry the
+  // codex R4 (PR 2541): an empty list means nothing ONLY when the source actually answered. These three carry the
   // source's own state into the render, so an unanswered or stale request can never print "nothing" / "no agent".
   flightLoading: boolean; flightStale: boolean; flightAnswered: boolean
   coordStatus: 'OK' | 'PARTIAL' | 'UNAVAILABLE' }) {
@@ -306,7 +306,7 @@ export function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAs
       <h2 style={h2}>Recent releases</h2>
       <p style={muted}>{s.history.asOf ? `history as of ${when(s.history.asOf)}` : 'as of unknown — the release history did not record when it was read'}</p>
       {!hist?.releases?.length ? <p style={muted}>Release history cannot be read right now.</p> : hist.releases.slice(0, 5).map(r => {
-        // codex R1 (#2541): read the STRUCTURED verdict. The previous code tested the label with /VERIFIED$/, and
+        // codex R1 (PR 2541): read the STRUCTURED verdict. The previous code tested the label with /VERIFIED$/, and
         // "NOT VERIFIED" ends with "VERIFIED" — so a failed check rendered as "Checked working: yes."
         const verdict = {
           verified: 'Checked working: yes.',
@@ -339,7 +339,7 @@ export default function ReleasesSchedules() {
   const tab: TabKey = params.get('tab') === 'jobs' ? 'jobs' : params.get('tab') === 'n8n' ? 'n8n' : 'deploys'
   const api = useApi<ReleasesSchedulesWire>(RELEASES_SCHEDULES_PATH, 60_000, { enabled: tab !== 'jobs' })
   // Operator view first (operator 2026-11-03). The developer content stays, behind a toggle, closed by default.
-  // codex R3 (#2541): the section carried `hidden` AND an inline `display:grid`, and an inline display beats the
+  // codex R3 (PR 2541): the section carried `hidden` AND an inline `display:grid`, and an inline display beats the
   // hidden attribute — so the engineer panel was laid out while its toggle said CLOSED. The toggle also forced the
   // panel open on non-deploy tabs with no way to close it. An explicit choice now wins over the tab default.
   const [engChoice, setEngChoice] = useState<boolean | null>(null)
