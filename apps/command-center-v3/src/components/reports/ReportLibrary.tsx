@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { BB, T, TYPE, RAIL, numStyle, terminalButton } from '../../lib/watchTokens'
 import { Chip } from '../TerminalChip'
 import { cadenceWords, neverRunText, runStateOf, scheduleWords } from '../../lib/reportCardText'
@@ -65,7 +66,7 @@ export default function ReportLibrary({ catalog }: { catalog: any }) {
                   </div>
                   {t.status === 'never-generated' && (
                     <div data-testid="report-never-run" style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>
-                      {neverRunText(runStateOf(t))} <a href="/ops/jobs" style={{ color: T.link }}>Open Ops → Jobs</a>
+                      {neverRunText(runStateOf(t))} <Link to="/ops/jobs" style={{ color: T.link }}>Open Ops → Jobs</Link>
                     </div>
                   )}
                   <details style={{ marginTop: 4 }}>
