@@ -20,11 +20,21 @@ def test_the_row_has_a_compact_mode():
 
 
 def test_the_compact_row_is_a_dated_summary_with_details_on_demand():
-    assert 'data-testid="tj-row-compact"' in SRC, "no compact summary row rendered"
-    assert re.search(r'<details[^>]*data-testid="tj-row-compact"', SRC), (
+    assert re.search(r'<details[^>]*data-testid="tj-row"', SRC), (
         "the compact row is not a details/summary (no details-on-demand)"
     )
     assert "<summary" in SRC, "no summary line in the compact row"
+
+
+def test_the_compact_summary_keeps_a_real_tappable_primary_action():
+    # The phone proof locates the primary action through [data-testid="tj-row"], which in compact mode is the details;
+    # a collapsed grid is not tappable, so the summary must carry the button.
+    assert re.search(r'<summary[\s\S]{0,600}data-testid="tj-open-journey"', SRC), (
+        "the compact summary has no tappable primary action"
+    )
+    assert re.search(r"data-testid=\{compact \? 'tj-row-full' : 'tj-row'\}", SRC), (
+        "exactly one node per journey must answer to tj-row"
+    )
 
 
 def test_the_list_passes_compact_on_a_phone():

@@ -41,8 +41,11 @@ function Row({ j, selected, onSelect, compact = false }: { j: Journey; selected:
   const ob = originBadge(j.origin)
   const exitTone = EXIT_TONE[j.exit_cause.kind]
   const end = j.status === 'closed' ? j.exit : j.mark
+  // FQ-042: in compact mode the outer <details> carries the row identity (tj-row), because the phone proof locates the
+  // primary action through it and the full row is inside a closed disclosure. The grid keeps its own id so exactly one
+  // node answers to `tj-row` per journey.
   const grid = (
-    <div className="tradeinview-journey-row" data-testid="tj-row" data-trade-id={j.trade_id} data-symbol={j.symbol} data-status={j.status} data-origin={j.origin.kind}
+    <div className="tradeinview-journey-row" data-testid={compact ? 'tj-row-full' : 'tj-row'} data-trade-id={j.trade_id} data-symbol={j.symbol} data-status={j.status} data-origin={j.origin.kind}
       style={{ display: 'grid', gridTemplateColumns: GRID, gap: 12, padding: '12px 16px', alignItems: 'start',
         borderBottom: `1px solid ${TOKENS.borderSubtle}`, background: selected ? TOKENS.bg[2] : undefined,
         borderLeft: `3px solid ${selected ? TOKENS.info : 'transparent'}` }}>
@@ -72,10 +75,17 @@ function Row({ j, selected, onSelect, compact = false }: { j: Journey; selected:
   // FQ-042: on a phone the list is a set of DATED SUMMARIES, not a wall of expanded rows. Nothing is removed — entry,
   // exit and cause stay one tap away, and the conflicts/data-gaps sections are no longer buried behind every card.
   return (
-    <details className="tradeinview-journey-compact" data-testid="tj-row-compact" data-trade-id={j.trade_id} data-symbol={j.symbol}
+    <details className="tradeinview-journey-compact" data-testid="tj-row" data-trade-id={j.trade_id} data-symbol={j.symbol} data-status={j.status} data-origin={j.origin.kind}
       style={{ borderBottom: `1px solid ${TOKENS.borderSubtle}`, background: selected ? TOKENS.bg[2] : undefined }}>
       <summary style={{ display: 'flex', gap: 8, alignItems: 'baseline', padding: '10px 12px', cursor: 'pointer', minHeight: 44, listStyle: 'none' }}>
-        <span style={{ fontFamily: FONT.mono, fontWeight: 700, fontSize: TYPE.md }}>{j.symbol}</span>
+        {/* The primary action stays a real, tappable button on the summary so the phone proof's tap target is visible;
+            it opens the journey detail without toggling the disclosure. */}
+        <button className="tradeinview-open-journey" data-testid="tj-open-journey" type="button" aria-pressed={selected}
+          title={`Open the ${j.symbol} journey`}
+          onClick={event => { event.preventDefault(); event.stopPropagation(); onSelect() }}
+          style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', color: TOKENS.text[0], fontFamily: FONT.mono, fontWeight: 700, fontSize: TYPE.md, minHeight: 44, minWidth: 44 }}>
+          {j.symbol}
+        </button>
         <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>{j.entry.at ? etShort(j.entry.at).slice(0, 10) : 'date unavailable'} · {j.account_label || 'Unlabelled account'}</span>
         <span style={{ marginLeft: 'auto', ...numStyle, fontSize: TYPE.base, color: toneVars(plTone(j.pl.amount ?? j.pl.pct)).color }}>{plText(j)}</span>
       </summary>
