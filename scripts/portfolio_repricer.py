@@ -969,11 +969,19 @@ def _recalc_totals(portfolio: Dict) -> None:
     # Which of those contributions were REAL (cc-deepseek-5 R1): the sum above coerces every None to 0, so a
     # book where nothing could be measured still yields a numeric 0.0. The counts are recorded on the totals so
     # the note reconciliation can tell "we measured zero" from "we measured nothing".
-    _day_change_rows = list(holdings) + [
-        row for _closed_rows in (portfolio.get("closed_today") or {}).values()
+    #
+    # Count EXACTLY the rows the sum above consumed — `ah` is `account == acct_key and not is_loan` (line 876)
+    # and `closed_today` is read per account key. Counting every holding instead would let a loan row or a row
+    # filed under an account with no summary report "measured" while the total it stands beside was entirely
+    # coerced, which is the same over-clear one level down.
+    _dc_rows = [h for h in holdings if not h.get("is_loan") and h.get("account") in account_summaries]
+    _dc_rows += [
+        row
+        for _acct_key, _closed_rows in (portfolio.get("closed_today") or {}).items()
+        if _acct_key in account_summaries
         for row in (_closed_rows or []) if isinstance(row, dict)
     ]
-    _dc_coverage = _day_change_coverage(_day_change_rows)
+    _dc_coverage = _day_change_coverage(_dc_rows)
 
     # Sanity: reject if total changed > 25% from previous (likely data corruption)
     prev_total = portfolio.get("portfolio_totals", {}).get("total_value", 0) or 0

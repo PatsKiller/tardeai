@@ -156,6 +156,27 @@ def test_a_partly_measured_book_clears_and_states_what_was_not(book):
     assert "day_change_note" not in totals
 
 
+def test_a_measured_row_the_total_never_summed_does_not_clear_the_note(book):
+    """Third case, found by hunting my own repair after cc5's block.
+
+    ``gd`` sums per ACCOUNT (`ah` = that account's non-loan rows), not every holding. A measured day change on a
+    loan row, or on a row filed under an account with no summary, is real but is NOT part of the number the note
+    describes — counting it as "we measured something" would clear the note one level down, beside a total that
+    was still built entirely from coerced zeros."""
+    for row in book["holdings"]:
+        row.pop("day_change", None)
+    book["holdings"].append({"symbol": "LOANX", "account": "schwab_taxable", "is_loan": True,
+                             "market_value": 0.0, "day_change": 5.0})
+    book["holdings"].append({"symbol": "ORPHAN", "account": "not_in_summaries",
+                             "market_value": 0.0, "day_change": 5.0})
+    _recalc_totals(book)
+    totals = book["portfolio_totals"]
+    assert totals["day_change_measured_rows"] == 0, "a row the sum never consumed was counted as a measurement"
+    assert totals["note"] == LIVE_NOTE
+    assert totals["day_change_note"] == LIVE_DAY_CHANGE_NOTE
+    assert "notes_reconciled_at" not in totals
+
+
 def test_a_note_that_is_entirely_stale_is_removed_not_emptied(book):
     book["portfolio_totals"]["note"] = "day change not carried"
     _recalc_totals(book)
