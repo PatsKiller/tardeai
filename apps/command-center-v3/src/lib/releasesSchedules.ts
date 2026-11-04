@@ -120,7 +120,7 @@ export function prList(prs: number[] | null | undefined, reason: string | null |
 }
 
 /** The structured verdict behind the label. Callers must use THIS, never the label text: "NOT VERIFIED" ends with
- *  "VERIFIED", so a suffix test on the sentence reads a FAILED verification as a passed one (codex R1, #2541). */
+ *  "VERIFIED", so a suffix test on the sentence reads a FAILED verification as a passed one (codex R1, PR 2541). */
 export type VerifyVerdict = 'verified' | 'not_verified' | 'rollback' | 'not_recorded'
 export function verifyVerdict(r: ReleaseRow): VerifyVerdict {
   if (r.mode === 'rollback') return 'rollback'

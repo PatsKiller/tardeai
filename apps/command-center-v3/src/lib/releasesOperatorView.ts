@@ -10,7 +10,7 @@ import type { SectionView } from './releasesSchedules.ts'
 
 export type Tone = 'success' | 'warning' | 'danger' | 'neutral'
 
-/** Props for the engineer panel, so "closed" cannot be contradicted by an inline style (codex R3, #2541).
+/** Props for the engineer panel, so "closed" cannot be contradicted by an inline style (codex R3, PR 2541).
  *
  *  The panel used to carry `hidden` AND an unconditional `display: 'grid'`. An inline display beats the hidden
  *  attribute's UA rule, so the panel was laid out while its toggle said CLOSED (`aria-expanded=false`, computed
@@ -29,7 +29,7 @@ export function plainText(raw: unknown, fallback = 'an unnamed change'): string 
     .replace(/(?:PR[-\s]?#?\d+|#\d+)/gi, 'the change')
     .replace(/\b[0-9a-f]{7,40}\b/gi, '')
     .replace(/\b(?:feat|fix|wt|release|hotfix)\/[A-Za-z0-9._/-]+/g, 'the work')
-    // codex R6 (#2541): a file path and a database-style identifier are machine diagnostics. The operator asked for
+    // codex R6 (PR 2541): a file path and a database-style identifier are machine diagnostics. The operator asked for
     // plain English, so they are named as what they are instead of printed. Both patterns need a name-like shape so
     // ordinary prose ("per item", "on hold") is untouched.
     .replace(/(?:^|\s)(?:~|\/)[\w./-]*[\w/]/g, ' a file location')
@@ -89,7 +89,7 @@ export function liveNow(sections: Record<string, SectionView<any>>, generatedAt:
   const sv = serving.value as { release_name?: string | null; since?: string | null; pins_agree?: boolean | null }
   const name = sv.release_name && !/[0-9a-f]{7,}/i.test(sv.release_name) ? plainText(sv.release_name, 'the current release') : 'the current release'
   const since = sv.since ? ` since ${when(sv.since)}` : ''
-  // codex R2 (#2541): a RETAINED value is not a verified current one. A stale reading, a pin disagreement, and an
+  // codex R2 (PR 2541): a RETAINED value is not a verified current one. A stale reading, a pin disagreement, and an
   // unreadable neighbouring source must each stop the summary from claiming "All good" — the page may say what it
   // knows, never more.
   const problems: string[] = []
@@ -111,7 +111,7 @@ export function liveNow(sections: Record<string, SectionView<any>>, generatedAt:
   }
 }
 
-/** Merged-but-not-live, derived from the RELEASE data rather than from a list of open PRs (codex R5, #2541).
+/** Merged-but-not-live, derived from the RELEASE data rather than from a list of open PRs (codex R5, PR 2541).
  *
  *  The page only receives OPEN pull requests, so a change that has MERGED but is not yet the version running cannot
  *  appear at all — the page could say "Nothing is going live today" while exactly that was true. The evidence for the
@@ -155,7 +155,7 @@ export function mergedWaiting(
     detail: `The version running is ${running}; code merged after that has not been promoted yet.${merged}${prs}` }
 }
 
-/** What the open-change source itself is doing, in one sentence, for lists that DO have rows (codex R4, #2541).
+/** What the open-change source itself is doing, in one sentence, for lists that DO have rows (codex R4, PR 2541).
  *
  *  A stale or still-loading list that happens to be non-empty used to render exactly like a current one: only the
  *  empty case said anything about the source. Rows under a stale reading are historical, and the sentence has to be
@@ -170,7 +170,7 @@ export function flightFreshnessNote(input: { loading?: boolean; stale?: boolean;
   return null
 }
 
-/** The coordination source's own state (codex R4, #2541). PARTIAL is not UNAVAILABLE and neither is "nobody working":
+/** The coordination source's own state (codex R4, PR 2541). PARTIAL is not UNAVAILABLE and neither is "nobody working":
  *  a partly-answered list proves nothing about the agents it did not mention. */
 export function coordinationNote(status: 'OK' | 'PARTIAL' | 'UNAVAILABLE'): string | null {
   if (status === 'OK') return null
@@ -191,7 +191,7 @@ export function agentStateSentence(state: string | null | undefined): { text: st
   return { text: `reported as ${s.replace(/_/g, ' ')}`, idle: null }
 }
 
-// ── THE GENERAL PROPERTY (codex third read, #2541) ───────────────────────────────────────────────────────────
+// ── THE GENERAL PROPERTY (codex third read, PR 2541) ───────────────────────────────────────────────────────────
 //
 // Three rounds of this page produced the same defect in different clothes: the page had LESS information than it
 // needed to be decisive, and rendered decisiveness anyway. "Unknown source" → an empty list. "Agent list did not

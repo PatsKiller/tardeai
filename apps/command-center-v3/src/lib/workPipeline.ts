@@ -37,7 +37,7 @@ export const OPERATOR_STAGE_MEANING: Record<OperatorStage, string> = {
   live: 'Merged AND evidenced as the version serving — not merely merged.',
 }
 
-/** `merged` is NOT `live` (codex R5, #2541). A merged change carries no activation evidence by definition: only the
+/** `merged` is NOT `live` (codex R5, PR 2541). A merged change carries no activation evidence by definition: only the
  *  serving release identity proves a version is running, and merging merely puts it in the tree. Only `released` (the
  *  producer's own publication_state "live") and `verified` may claim the Live group. */
 const OPERATOR_STAGE_OF: Record<PipelineStage, OperatorStage> = {
