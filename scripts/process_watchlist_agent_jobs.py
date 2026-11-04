@@ -66,6 +66,7 @@ from lib.cio_agent_contract import (
 )
 from lib.hermes_discovery.symbol_validation import gate_watchlist_symbol
 from lib.agent_number_grounding import apply_number_grounding
+from lib.state_read import object_rows, read_holdings_state, read_json_object
 _last_rag_sources = []  # Set by _build_prompt(), read by result saver
 _last_peer_agents = []  # Set by _get_peer_agent_notes(), read by result saver
 _batch_results_cache = {}  # {symbol: [{agent, recommendation, confidence, summary}]}
@@ -944,8 +945,12 @@ def _get_context(conn, symbol: str) -> dict:
     import psycopg2.extras
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    holdings = json.loads((STATE_DIR / "holdings.json").read_text()) if (STATE_DIR / "holdings.json").exists() else {}
-    pos = [h for h in holdings.get("holdings", []) if h.get("symbol") == symbol]
+    holdings, holdings_state = read_holdings_state(STATE_DIR / "holdings.json")
+    holdings_rows = holdings["holdings"] if holdings else []
+    # ABSENT is the one state whose honest answer is "no positions" (there is no snapshot at
+    # all). A file that exists but is empty/corrupt/wrong-shaped is UNKNOWN, never an empty book.
+    holdings_known = holdings is not None or holdings_state == "absent"
+    pos = [h for h in holdings_rows if h.get("symbol") == symbol]
     from lib.account_display import ACCOUNT_FIELDS, location_facts, looks_like_number
     account_locations = [location_facts(p) for p in pos]
     position_snapshot = {**pos[0], **account_locations[0]} if pos else None
@@ -953,7 +958,7 @@ def _get_context(conn, symbol: str) -> dict:
         for field in (*ACCOUNT_FIELDS, "account_number"):
             if looks_like_number(str(position_snapshot.get(field) or "")):
                 position_snapshot.pop(field, None)
-    enrichment = json.loads((STATE_DIR / "ticker_enrichment_cache.json").read_text()) if (STATE_DIR / "ticker_enrichment_cache.json").exists() else {}
+    enrichment = read_json_object(STATE_DIR / "ticker_enrichment_cache.json", default={})
     e = enrichment.get(symbol, {}) if isinstance(enrichment.get(symbol), dict) else {}
 
     # Strategy card from DB
@@ -968,13 +973,19 @@ def _get_context(conn, symbol: str) -> dict:
     clean_prices, dropped_prices = _finite_price_points(prices)
 
     # Risk data
-    rm = json.loads((STATE_DIR / "risk_management.json").read_text()) if (STATE_DIR / "risk_management.json").exists() else {}
-    stop_data = next((p for p in rm.get("positions", []) if p.get("symbol") == symbol), {})
+    rm = read_json_object(STATE_DIR / "risk_management.json", default={})
+    rm_rows = object_rows(rm.get("positions"))
+    stop_data = next((p for p in (rm_rows or []) if p.get("symbol") == symbol), {})
 
     snapshot = {
         "symbol": symbol,
         "position": position_snapshot,
         "position_accounts": account_locations,
+        # Availability travels with the facts: an unreadable/damaged holdings snapshot is
+        # UNKNOWN, never an empty book (cx-openai-2 review, 2026-11-03).
+        "holdings_state": holdings_state,
+        "positions_available": holdings_known,
+        "risk_positions_available": rm_rows is not None,
         "enrichment": {k: e.get(k) for k in ["rsi", "beta", "sector", "industry", "sma20_pct", "sma50_pct", "sma200_pct", "atr", "pe", "forward_pe", "company"]} if e else {},
         "strategy_card": dict(sc) if sc else None,
         "recent_prices": clean_prices,
@@ -985,7 +996,14 @@ def _get_context(conn, symbol: str) -> dict:
     }
 
     ctx = f"Symbol: {symbol}\n"
-    if pos:
+    if not holdings_known:
+        # Do NOT assert non-ownership from an unreadable snapshot: "0 shares" is a fact the
+        # file never supplied. The analyst must treat holdings as unknown, not as absent.
+        ctx += (
+            f"Position: UNKNOWN — the holdings snapshot is unavailable ({holdings_state}). "
+            "Do not state that this symbol is held or not held; do not treat other sources as stale on that basis.\n"
+        )
+    elif pos:
         p = pos[0]
         ctx += f"Position: ${p.get('market_value', 0):,.0f}, {p.get('shares', 0):.1f} shares, {p.get('portfolio_pct', 0):.1f}% allocation, account: {account_locations[0]['account_name']}\n"
     else:
@@ -2201,11 +2219,17 @@ def _get_portfolio_context(conn, symbol: str) -> dict:
     import psycopg2.extras
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    holdings = json.loads((STATE_DIR / "holdings.json").read_text()) if (STATE_DIR / "holdings.json").exists() else {}
-    acct_summaries = holdings.get("account_summaries", {})
-    total_portfolio = sum(info.get("total_value", 0) for info in acct_summaries.values())
+    holdings, holdings_state = read_holdings_state(STATE_DIR / "holdings.json")
+    holdings_known = holdings is not None or holdings_state == "absent"
+    holdings_rows = holdings["holdings"] if holdings else []
+    acct_summaries = holdings.get("account_summaries") if holdings else None
+    if not isinstance(acct_summaries, dict):
+        acct_summaries = {}
+    total_portfolio = sum(
+        info.get("total_value", 0) for info in acct_summaries.values() if isinstance(info, dict)
+    )
 
-    sym_holdings = [h for h in holdings.get("holdings", []) if h.get("symbol") == symbol]
+    sym_holdings = [h for h in holdings_rows if h.get("symbol") == symbol]
     total_shares = sum(float(h.get("shares", 0) or 0) for h in sym_holdings)
     total_mv = sum(float(h.get("market_value", 0) or 0) for h in sym_holdings)
     weight = round(total_mv / total_portfolio * 100, 2) if total_portfolio > 0 else 0
@@ -2281,14 +2305,19 @@ def _get_portfolio_context(conn, symbol: str) -> dict:
         "total_shares": total_shares,
         "total_value": total_mv,
         "portfolio_weight": weight,
+        # Availability travels with the numbers: an unreadable/damaged holdings snapshot is
+        # UNKNOWN. The zeros above are only placeholders for the prompt formatter, never facts
+        # (cx-openai-2 review, 2026-11-03).
+        "positions_available": holdings_known,
+        "holdings_state": holdings_state,
         "accounts": accounts,
         "strategy_type": strategy_type,
         "recent_alerts": [dict(a) for a in recent_alerts],
         "has_active_alerts": len(recent_alerts) > 0,
         "has_stop_triggered": any(a["alert_type"] == "stop_triggered" for a in recent_alerts),
         "data_quality_issues": dq_issues,
-        "position_tiny": weight < 0.5,
-        "position_small": weight < 2.0,
+        "position_tiny": holdings_known and weight < 0.5,
+        "position_small": holdings_known and weight < 2.0,
         "income": income_ctx,
         "total_portfolio_income": total_income,
         "income_target": float(income_goals.get("target_income", 55000)) if income_goals else 55000,
@@ -2305,7 +2334,7 @@ def _build_dq_note(conn, symbol: str, dq_alert_count: int) -> str:
     from datetime import datetime, date
     stale = []
     try:
-        enrichment = json.loads((STATE_DIR / "ticker_enrichment_cache.json").read_text()) if (STATE_DIR / "ticker_enrichment_cache.json").exists() else {}
+        enrichment = read_json_object(STATE_DIR / "ticker_enrichment_cache.json", default={})
         e = enrichment.get(symbol) if isinstance(enrichment.get(symbol), dict) else None
         if e is None:
             stale.append("technicals/fundamentals snapshot (RSI, SMA, PE): MISSING from enrichment cache")
@@ -2361,14 +2390,28 @@ def _build_layer_status(conn) -> str:
     layers = cur.fetchall()
 
     # Get total portfolio value from holdings
-    holdings = json.loads((STATE_DIR / "holdings.json").read_text()) if (STATE_DIR / "holdings.json").exists() else {}
-    total_portfolio = sum(info.get("total_value", 0) for info in holdings.get("account_summaries", {}).values())
+    holdings, holdings_state = read_holdings_state(STATE_DIR / "holdings.json")
+    if holdings is None and holdings_state != "absent":
+        # No readable snapshot: allocation is UNKNOWN. Reporting 0.0% against every target would
+        # render a damaged file as an UNDERWEIGHT/IN RANGE book (cx-openai-2 review, 2026-11-03).
+        cur.close()
+        return (
+            f"  Layer allocation: UNKNOWN — holdings snapshot unavailable ({holdings_state}); "
+            "targets cannot be scored this run."
+        )
+    acct_summaries = holdings.get("account_summaries") if holdings else None
+    if not isinstance(acct_summaries, dict):
+        acct_summaries = {}
+    total_portfolio = sum(
+        info.get("total_value", 0) for info in acct_summaries.values() if isinstance(info, dict)
+    )
 
     # Get actual allocation per layer
     cur.execute("SELECT layer_id, SUM(iap.annual_income) as income FROM income_asset_profiles iap GROUP BY layer_id")
-    # Need market value by layer — get from holdings
+    # Need market value by layer — get from holdings. ABSENT is allowed past the unreadable guard as
+    # an empty book (the state-read contract), so `holdings` can legitimately be None here.
     layer_values = {}
-    for h in holdings.get("holdings", []):
+    for h in holdings.get("holdings", []) if holdings else []:
         sym = h.get("symbol", "")
         mv = float(h.get("market_value", 0) or 0)
         if h.get("is_cash"):
@@ -2488,17 +2531,26 @@ def run_synthesis(conn, symbol: str, lanes=None, manual_trigger: bool = False, d
     context = _get_context(conn, symbol)
 
     # Build portfolio position summary
-    position_summary = f"""
+    if port_ctx["positions_available"]:
+        position_summary = f"""
 PORTFOLIO POSITION:
 Total shares: {port_ctx['total_shares']:.1f}
 Total value: ${port_ctx['total_value']:,.0f}
 Portfolio weight: {port_ctx['portfolio_weight']:.1f}%
 Accounts: {', '.join(f"{a['type']} ({a['shares']:.0f} sh, ${a['value']:,.0f})" for a in port_ctx['accounts'])}
 """
-    if port_ctx["total_shares"] == 0:
-        position_summary += "NOT CURRENTLY HELD (0 shares in any account) — this block is live holdings ground-truth; any analyst narrative describing an existing position is stale.\n"
-    elif port_ctx["position_tiny"]:
-        position_summary += "NOTE: Position is <0.5% of portfolio — actions have minimal impact.\n"
+        if port_ctx["total_shares"] == 0:
+            position_summary += "NOT CURRENTLY HELD (0 shares in any account) — this block is live holdings ground-truth; any analyst narrative describing an existing position is stale.\n"
+        elif port_ctx["position_tiny"]:
+            position_summary += "NOTE: Position is <0.5% of portfolio — actions have minimal impact.\n"
+    else:
+        # An unreadable snapshot is UNKNOWN, not an empty book: the synthesis must not tell the
+        # model the position is absent, and must not quote the placeholder zeros as facts.
+        position_summary = (
+            "\nPORTFOLIO POSITION: UNKNOWN — the holdings snapshot is unavailable "
+            f"({port_ctx['holdings_state']}). Do not state that this symbol is held or not held; "
+            "treat any holdings claim, including zero shares, as unverified.\n"
+        )
 
     # Income context
     income_context = ""

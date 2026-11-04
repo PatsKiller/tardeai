@@ -53,13 +53,25 @@ def _get_conn():
 
 
 def _get_holdings_symbols():
-    """Get portfolio symbols from holdings.json."""
+    """Get portfolio symbols from holdings.json.
+
+    0 bytes / corrupt / wrong-shaped is "no snapshot", not a crash: this lane ingests social
+    rows and needs the symbol list only as OPTIONAL context. 2026-11-03: a 0-byte store raised
+    JSONDecodeError here at 10:30. This consumer therefore continues with an empty list — it
+    does not assert an empty book. The portfolio consumers render the same state as UNKNOWN
+    (process_watchlist_agent_jobs._get_context / _get_portfolio_context / _build_layer_status).
+    """
+    from lib.state_read import object_rows, read_holdings_state
+
     f = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
-    if not f.exists():
+    data, _state = read_holdings_state(f)
+    if data is None:
         return []
-    data = json.loads(f.read_text())
-    return [h["symbol"] for h in data.get("holdings", [])
-            if h.get("symbol") and not h.get("is_cash") and not h.get("is_fund")]
+    return [
+        h["symbol"]
+        for h in object_rows(data.get("holdings")) or []
+        if h.get("symbol") and not h.get("is_cash") and not h.get("is_fund")
+    ]
 
 
 def ingest_stocktwits(symbols: list) -> dict:
