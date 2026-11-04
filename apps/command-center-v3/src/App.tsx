@@ -76,7 +76,7 @@ import SurfaceModeBanner from './components/truth/SurfaceModeBanner'
 import RouteErrorBoundary from './components/truth/RouteErrorBoundary'
 import { compareServedBuild, LOADED_BUILD } from './lib/buildIdentity'
 import { SurfaceStateContext, type SurfaceStateReport } from './components/SurfaceGap'
-import { nextSurfaceReport } from './lib/surfaceState'
+import { footerQualifier, nextSurfaceReport } from './lib/surfaceState'
 
 
 function BuildMarker() {
@@ -117,7 +117,7 @@ function BuildMarker() {
   // BOARD row 36, rule 7: this line is a fact about the BUNDLE, never about the page's data. A page whose data did
   // not load must not sit under a bare "matches served artifact" — that reads as "everything is fine".
   const { report: surface } = useContext(SurfaceStateContext)
-  const qualifier = surface && !surface.dataLoaded ? ` · ${surface.name} data did not load` : ''
+  const qualifier = footerQualifier(surface)
   return <span data-testid="cc-loaded-build" data-source-sha={LOADED_BUILD.sourceSha ?? 'UNAVAILABLE'} data-surface-loaded={surface ? String(surface.dataLoaded) : 'unknown'}>
     Loaded bundle: {LOADED_BUILD.uiVersion ?? 'UNAVAILABLE'} · built {LOADED_BUILD.builtAt ?? 'UNAVAILABLE'} · source {LOADED_BUILD.sourceSha?.slice(0, 12) ?? 'UNAVAILABLE'}
     {' · '}{comparison === 'SAME' ? `matches served artifact${qualifier}` : comparison === 'UNAVAILABLE' ? 'served build comparison UNAVAILABLE' : <>

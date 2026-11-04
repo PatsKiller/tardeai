@@ -187,3 +187,13 @@ export function nextSurfaceReport(prev: SurfaceReport | null, incoming: SurfaceR
   if (incoming !== null) return incoming
   return prev && clearingFrom && prev.name === clearingFrom ? null : prev
 }
+
+/**
+ * Rule 7, as one function: the build line is a fact about the BUNDLE, so a page whose data did not render must not sit
+ * under a bare "matches served artifact" — that reads as an all-clear. Pure so the qualifier is testable without
+ * rendering the shell (the same reason `nextSurfaceReport` is pure). Empty string = nothing to add.
+ */
+export function footerQualifier(surface: SurfaceReport | null): string {
+  if (!surface || surface.dataLoaded) return ''
+  return ` · ${surface.name} data did not load`
+}
