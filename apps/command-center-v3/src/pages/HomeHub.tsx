@@ -2,7 +2,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { accountName, accountsBadge } from '../lib/accountLabels'
 import HomeDecision from '../components/decision/HomeDecision'
 import { Collapsible } from '../components/primitives/Collapsible'
-import { makeEnvelope, retainObservation, stateLabel, stateAriaLabel, formatBusinessDate, freshnessFromOverviewObservation } from '../lib/observationEnvelope.ts'
+import { makeEnvelope, retainObservation, stateLabel, stateAriaLabel, formatBusinessDate, freshnessFromOverviewObservation, moneyQualifier, observationAgeHours } from '../lib/observationEnvelope.ts'
 import { useApi } from '../hooks/useApi'
 import { renderSetupCounts } from '../lib/setupRunSummary'
 import { paperWinRate, journalWinRate } from '../lib/homeWinRate'
@@ -172,6 +172,10 @@ function HomeClassic({ onDrill }: Props) {
   })()
 
   const freshnessChip = stateLabel(freshnessEnvelope.transport, freshnessEnvelope.freshness)
+  // FQ-087: the money number in the subtitle carries its own qualifier, so a failed or retained
+  // refresh can never leave a bare dollar figure reading as fresh.
+  const moneyNote = moneyQualifier(freshnessEnvelope.transport,
+    observationAgeHours(freshnessEnvelope, Date.now()), 24)
 
   const tiles = [
     { label: 'PORTFOLIO', value: pv != null ? fmt$(pv, 0) : '—', sub: todayChg != null ? `${todayChg >= 0 ? '+' : ''}${fmt$(todayChg, 0)} today` : '', color: 'var(--text0)',
@@ -193,7 +197,7 @@ function HomeClassic({ onDrill }: Props) {
       <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={hubTitle()}>Home</div>
-          <div style={hubSubtitle(terminalUi)}>{overviewLoading ? <Skel w={180} h={12} /> : <>{fmt$(pv ?? 0, 0)} · <span title={'overview.position_count: non-cash holdings over $100 (all accounts). Risk Hub counts risk-tracked positions and Portfolio counts every holding row per account, so the numbers differ by scope (observation.position_counts).'}>{overview?.position_count ?? 0} positions over $100</span> · command router</>}</div>
+          <div style={hubSubtitle(terminalUi)}>{overviewLoading ? <Skel w={180} h={12} /> : <>{fmt$(pv ?? 0, 0)}{moneyNote && <span data-testid="home-money-qualifier" style={{ color: 'var(--amber)', marginLeft: 6 }}>· {moneyNote}</span>} · <span title={'overview.position_count: non-cash holdings over $100 (all accounts). Risk Hub counts risk-tracked positions and Portfolio counts every holding row per account, so the numbers differ by scope (observation.position_counts).'}>{overview?.position_count ?? 0} positions over $100</span> · command router</>}</div>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <Link to="/" data-testid="new-home-link" style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', textDecoration: 'none' }}>New Home (Do now) →</Link>

@@ -367,3 +367,37 @@ export function stateAriaLabel(
   }
   return spoken[l] ?? l
 }
+
+/**
+ * FQ-087 (HQ-03): the qualifier a MONEY or POSITION value must carry next to it.
+ *
+ * The page-level chip already combines transport with data freshness, but a money number printed on its
+ * own (portfolio value, account YTD) read as fresh whenever the data clock was recent — including after a
+ * refresh that failed and was served from the retained last-good body. A failed, retained, fallback,
+ * partial or unknown transport therefore always yields a qualifier; a clean transport yields one only when
+ * the data itself has aged past the threshold. `null` means genuinely fresh, and nothing else.
+ */
+export function transportQualifier(transport: TransportState): string | null {
+  switch (transport) {
+    case 'ERROR': return 'refresh failed — last known value'
+    case 'RETAINED': return 'not refreshed — last known value'
+    case 'FALLBACK': return 'from a fallback source'
+    case 'PARTIAL': return 'partial data'
+    case 'UNKNOWN': return 'freshness unknown'
+    default: return null
+  }
+}
+
+export function ageQualifier(ageHours: number | null | undefined, thresholdHours: number): string | null {
+  if (ageHours == null || !Number.isFinite(ageHours) || ageHours < thresholdHours) return null
+  const shown = ageHours < 48 ? `${Math.round(ageHours)}h` : `${Math.round(ageHours / 24)}d`
+  return `stale — ${shown} old`
+}
+
+export function moneyQualifier(
+  transport: TransportState,
+  ageHours: number | null | undefined,
+  thresholdHours = 24,
+): string | null {
+  return transportQualifier(transport) ?? ageQualifier(ageHours, thresholdHours)
+}
