@@ -670,7 +670,7 @@ export default function HermesHub({ onDrill }: Props) {
                   <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 2 }}>{hint}</div>
                 </div>
               ))}
-              <details style={{ marginTop: 4, fontSize: 9, color: 'var(--text3)' }}>
+              <details style={{ marginTop: 4, fontSize: 10, color: 'var(--text3)' }}>
                 <summary style={{ cursor: 'pointer' }}>What runs each of these</summary>
                 <div style={{ marginTop: 4, fontFamily: 'monospace', lineHeight: 1.6 }}>
                   <div>hermes_backlog_drain.py drains → backlog_resolution</div>
