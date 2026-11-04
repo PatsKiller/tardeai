@@ -9,6 +9,14 @@ WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
 ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/portfolio_server.py
 Restart=on-failure
 RestartSec=5
+# Memory guard — operator-set 2026-11-04 (MemoryHigh 2.5 GiB = 2684354560, MemoryMax 3.0 GiB = 3221225472).
+# MemoryHigh makes the kernel reclaim instead of freezing every thread; MemoryMax is the hard OOM kill that
+# Restart=on-failure then recovers from. Raised from 1.5G/2G because a +480 MB peak from two concurrent CIO
+# compositions pushed the process against the 2 GB cap. The live host carries these values only as
+# `systemctl --user set-property --runtime` drop-ins, which do not survive a reboot — this is the durable
+# declaration, and the reason the numbers are what they are.
+MemoryHigh=2.5G
+MemoryMax=3G
 StandardOutput=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/portfolio_server.log
 StandardError=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/portfolio_server.log
 Environment=HOME=/home/johnclaw
