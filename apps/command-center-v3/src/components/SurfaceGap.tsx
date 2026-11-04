@@ -21,15 +21,27 @@ export function SurfaceGap<T>({ state, shape, onRetry }: { state: SurfaceState<T
 /** The shell footer reads this: true only when the active surface's data actually rendered. */
 export type SurfaceStateReport = { name: string; dataLoaded: boolean }
 export type SurfaceStateChannel = { report: SurfaceStateReport | null; publish: (r: SurfaceStateReport | null, clearingFrom?: string) => void }
-export const SurfaceStateContext = createContext<SurfaceStateChannel>({ report: null, publish: () => {} })
+
+/**
+ * TWO contexts, not one (cc-deepseek-3 B1, 2026-11-04). A single `{report, publish}` value object changes identity on
+ * every publish, so `publish` changed identity too, both effects below re-ran on every render, and the page looped
+ * forever (255,468 renders in 2.5 s, "Maximum update depth exceeded" — measured). The value the footer reads and the
+ * function a page calls are now carried separately: the publisher is stable for the life of the shell, so a publish
+ * cannot re-arm the effects that call it.
+ */
+export const SurfaceReportContext = createContext<SurfaceStateReport | null>(null)
+export const SurfacePublishContext = createContext<SurfaceStateChannel['publish']>(() => {})
 
 /**
  * Publish a surface's state to the footer. `dataLoaded` comes from `rendersData`, the SAME predicate the page uses, so
  * the shell and the page cannot hold different opinions about one render (F2 review, 2026-11-04). Unmount clears the
  * slot only if this surface still owns it — a route change must not let the outgoing page erase the incoming one.
+ *
+ * `publish` MUST be identity-stable (the shell memoises it with no dependencies). It is in both dependency lists on
+ * purpose: if it ever stops being stable, this hook loops, which is exactly the bug the split exists to prevent.
  */
 export function useReportSurfaceState(name: string, state: SurfaceState<unknown> | null): void {
-  const { publish } = useContext(SurfaceStateContext)
+  const publish = useContext(SurfacePublishContext)
   const loaded = rendersData(state)
   const key = `${name}:${state?.state ?? 'none'}:${loaded}`
   useEffect(() => { publish({ name, dataLoaded: loaded }) }, [publish, key, name, loaded])

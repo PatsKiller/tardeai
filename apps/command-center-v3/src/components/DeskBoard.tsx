@@ -90,7 +90,7 @@ export default function DeskBoard({ desk, title, purpose, tabs, tabAliases, clas
     usable: d => !!d && typeof d === 'object' && 'tabs' in d,
   }
   const surface = deriveSurfaceState<DeskProjection>({ data, error, loading, refreshing, stale }, shape)
-  useReportSurfaceState(`${title} page`, surface as never)
+  useReportSurfaceState(`${title} page`, surface)
   const projection = surface.data
   const surfaceText = surfaceGap(surface, shape)
   // F1 (review, 2026-11-04): the invariant is enforced HERE, in the renderer the operator sees, not only in the

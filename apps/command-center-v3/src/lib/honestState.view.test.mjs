@@ -125,7 +125,9 @@ for (const [state, fixture] of Object.entries({
 
 // /approvals
 for (const [state, fixture] of Object.entries({
-  loading: { data: null, error: null, refresh() {} },
+  // N1 (cc-deepseek-3): this fixture omitted `loading: true`, so the case derived UNREADABLE and the assertions
+  // passed without ever exercising the loading wording. It now loads.
+  loading: { data: null, error: null, loading: true, refresh() {} },
   error: { data: null, error: 'The latest evidence is unavailable. Please try again.', refresh() {} },
   partial: { data: { ...queuePartial }, error: null, refresh() {} },
   ready: { data: queue, error: null, refresh() {} },
@@ -138,7 +140,14 @@ for (const [state, fixture] of Object.entries({
     continue
   }
   caseOf('/approvals', state, text, [
-    ['loading and failure words never co-render', !(LOADING.test(text) && FAILED.test(text))],
+    // Scoped to THIS surface's words. The harness serves ONE fixture to every `useApi` call, so DeskPage's separate
+    // /desk-sources fetch receives the approval queue and prints its own "writer clocks" line (cc-deepseek-3 N2:
+    // a harness artifact, not a page contradiction — with a per-call fixture the page is clean). The rule that matters
+    // here is that the approval surface never calls itself unavailable while it is loading.
+    state === 'loading'
+      ? ['a loading approvals page never says the queue is unavailable', /Loading/i.test(text) && !/Queue unavailable|could not be read/i.test(text)]
+      : ['loading and failure words never co-render', !(LOADING.test(text) && FAILED.test(text))],
+    state === 'loading' ? ['a loading approvals page says loading', /Loading/i.test(text)] : ['no loading claim', true],
     state === 'error' ? ['a failed page says unavailable', /unavailable/i.test(text)] : ['no failure claim', !/Queue unavailable/i.test(text)],
     state === 'partial' ? ['a partial page shows its known rows', /Fixture item/.test(text)] : ['no partial rows', true],
     state === 'partial' ? ['a partial page never shows a complete-looking total', !/\b1 waiting for review\b/.test(text)] : ['no complete total', true],
@@ -148,6 +157,19 @@ for (const [state, fixture] of Object.entries({
     state === 'malformed' ? ['a malformed payload never claims a complete total', !/\b1 waiting for review\b/.test(text)] : ['no total from nothing', true],
   ])
 }
+
+// B1 wiring pins (cc-deepseek-3): the shell's publisher must be memoised with NO dependencies and the report and the
+// publisher must be separate providers — a single value object rebuilt from the report is what made `publish` change
+// identity on every publish and looped /agents (255,468 renders in 2.5 s). Read from the source, because the pure model
+// test can only prove the mechanism, not that the shell uses it.
+const appSource = readFileSync(join(app, 'src/App.tsx'), 'utf8')
+cases.push({
+  surface: '/shell', state: 'wiring', passed:
+    /const publishSurfaceState = useCallback\([\s\S]*?\}, \[\]\)/.test(appSource) &&
+    !/useMemo\(\(\) => \(\{\s*report/.test(appSource) &&
+    /SurfacePublishContext\.Provider/.test(appSource) && /SurfaceReportContext\.Provider/.test(appSource),
+  failed_assertions: [], text: '',
+})
 
 const out = { schema: 'HonestStateView@v1', cases, passed: cases.filter(c => c.passed).length, failed: cases.filter(c => !c.passed).length }
 console.log(JSON.stringify(out, null, 1))
