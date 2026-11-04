@@ -20,6 +20,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
+NO_CONSUMER_REASON = (
+    "FQ-095 (P0, SPEC_ONE_POSITION_VERDICT_20261104 §1b): the verdict record and its store exist so the CIO memory is "
+    "durable FIRST; the surfaces that will consume it (Home, Risk, home_do_now) are the next change and cannot be "
+    "wired until the producing site is decided — cio_truth.stance_for is keyed by security_guid with no account, so "
+    "attaching a per-(symbol, account) verdict there would invent or drop the account. Zero live consumers is correct "
+    "until that decision lands, not a silent dark contract."
+)
+
 SCHEMA = "PositionVerdict@v1"
 
 #: The one producer. A surface that computes its own verdict may not write here — that is the rule, not a default.
