@@ -44,7 +44,7 @@ function cellStyle(rag: PipelineItem['rag'], current: boolean): CSSProperties {
 
 function StageCells({ it }: { it: PipelineItem }) {
   return <div data-testid="stage-cells" className="wp-stages" style={{ display: 'grid', gridTemplateColumns: 'repeat(11, minmax(0, 1fr))', gap: 3 }}>
-    {it.cells.map(c => <div key={c.stage} data-stage={c.stage} data-rag={c.rag} title={cellTitle(c)} aria-label={cellTitle(c)} style={cellStyle(c.rag, c.stage === it.stage)}>
+    {it.cells.map(c => <div key={c.stage} data-stage={c.stage} data-rag={c.rag} data-current={c.stage === it.stage ? "1" : undefined} title={cellTitle(c)} aria-label={cellTitle(c)} style={cellStyle(c.rag, c.stage === it.stage)}>
       <span className="wp-cell-text">{c.stage === it.stage && c.label ? c.label : STAGE_LABEL[c.stage]}</span>
     </div>)}
   </div>
@@ -281,8 +281,12 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
         .wp-card-grid { grid-template-columns: minmax(0, 1fr); }
         .wp-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
         .wp-queue { grid-template-columns: minmax(0, 1fr); }
-        .wp-stages > div { height: 14px !important; }
-        .wp-cell-text { display: none; }
+        /* FQ-032: the strip stays as colour, but the CURRENT stage is named in words on the phone — the bars
+           alone told an operator nothing. The cell text is kept (not hidden) on the current cell only; the rest
+           stay compact so the strip still fits. */
+        .wp-stages > div { height: 22px !important; }
+        .wp-cell-text { display: none; font-size: 10px; }
+        .wp-stages > div[data-current="1"] .wp-cell-text { display: inline; }
       }
     `}</style>
     <div style={panel}>
