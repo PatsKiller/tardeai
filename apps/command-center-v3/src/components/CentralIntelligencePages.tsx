@@ -8,6 +8,7 @@ import type { DrillContext } from './DetailDrawer'
 import { EnsembleValidationInline } from './EnsembleValidationCard'
 import SynthesizedReportCard from './SynthesizedReportCard'
 import type { ReportCardItem } from './SynthesizedReportCard'
+import { IntelImplicationRow } from './IntelImplicationRow'
 
 const TEXT0 = '#f8fafc'
 const TEXT2 = '#cbd5e1'
@@ -347,7 +348,8 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={panel}>
           <div style={{ color: TEXT0, fontWeight: 900, marginBottom: 8 }}>Decision implications</div>
-          {displayFiltered.slice(0, 8).map(it => <div key={it.id} style={{ borderBottom: '1px solid rgba(148,163,184,.13)', padding: '7px 0' }}><div style={{ color: sevColor(it.severity), fontSize: 10, fontWeight: 900 }}>{it.action ?? 'review'}</div><div style={{ color: TEXT2, fontSize: 11 }}>{it.symbol ? `${it.symbol}: ` : ''}{it.title}</div><div style={{ color: MUTED, fontSize: 9, marginTop: 2 }}>{nextStep(it)}</div></div>)}
+          {displayFiltered.slice(0, 8).map(it => <IntelImplicationRow key={it.id} item={it} nextStep={nextStep(it)}
+            onOpen={onDrill ? () => onDrill({ title: it.title, subtitle: `${it.type} · ${it.source}`, endpoint: '/api/v2/intelligence', rows: [{ source: it.source, type: it.type, symbol: it.symbol, confidence: it.confidence, freshness_h: it.freshnessH, model: it.model, lane: it.lane, action: it.action, summary: it.summary, record: it.raw }] }) : undefined} />)}
         </div>
         <div style={panel}>
           <div style={{ color: TEXT0, fontWeight: 900, marginBottom: 8 }}>Source health</div>
