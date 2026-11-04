@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { useProAnalystMap } from '../components/ProAnalystPill'
 import { deriveTradeAiRating, normalizeAnalystRating, ratingLabel, ratingRank, type ManualTosRating } from '../lib/manualTosRating'
-import { currentRowDetailMode } from '../lib/rowDetailMode'
+import { currentRowDetailMode, nextDetailState } from '../lib/rowDetailMode'
 import { RADIUS } from '../lib/designTokens'
 import { cioBlocksEntry, diligenceFromWatchlistItem, hasAgentMaturity, isActionable } from '../lib/watchlistDiligence'
 import EntryDeskRow, { type TechGrade } from '../components/EntryDeskRow'
@@ -462,9 +462,10 @@ export default function ManualTosDesk({ focusSymbol }: DeskProps = {}) {
             onToggle={() => {
               const key = `${r.source}-${r.id}`
               // codex B2 (2026-11-04): the phone control said "Hide details" and set the SAME key, so it
-              // was a no-op and the sheet never closed. It now toggles: open this row, or close it.
-              if (currentRowDetailMode() === 'sheet') setSheetKey(prev => (prev === key ? null : key))
-              else setOpenRows(o => ({ ...o, [key]: !o[key] }))
+              // was a no-op and the sheet never closed. nextDetailState toggles instead of re-setting.
+              const mode = currentRowDetailMode()
+              if (mode === 'sheet') setSheetKey(prev => nextDetailState('sheet', prev, key, openRows).sheetKey)
+              else setOpenRows(o => nextDetailState('inline', sheetKey, key, o).openFlags)
             }}
             onSetField={setField}
             onCopyMsg={setMsg}

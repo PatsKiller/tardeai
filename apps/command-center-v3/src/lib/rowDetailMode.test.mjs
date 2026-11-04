@@ -24,3 +24,12 @@ check(/keep the inline path|openRows/.test(desk), 'the inline path was removed i
 
 if (failed) { console.error(`rowDetailMode: ${failed} failure(s)`); process.exit(1) }
 console.log('rowDetailMode: ok')
+
+// codex B2 (2026-11-04): pressing the phone detail control on the OPEN sheet must CLOSE it.
+import { nextDetailState } from './rowDetailMode.ts'
+const closed = nextDetailState('sheet', 'WATCHLIST-1', 'WATCHLIST-1', {})
+check(closed.sheetKey === null, 'phone Hide details left the sheet open (it re-set the same key)')
+const opened = nextDetailState('sheet', null, 'WATCHLIST-2', {})
+check(opened.sheetKey === 'WATCHLIST-2', 'phone Show details did not open the row')
+const inline = nextDetailState('inline', null, 'WATCHLIST-1', { 'WATCHLIST-1': true })
+check(inline.openFlags['WATCHLIST-1'] === false, 'the inline control did not collapse the open row')

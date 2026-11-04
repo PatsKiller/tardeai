@@ -13,3 +13,15 @@ export function currentRowDetailMode(): 'sheet' | 'inline' {
   if (typeof window === 'undefined') return 'inline'   // server render: no sheet, nothing hidden
   return rowDetailMode(window.innerWidth)
 }
+
+/** codex B2: what the detail control must do when it is pressed.
+ *
+ * On a phone the ticket is one sheet. Pressing the control on the OPEN row must close that sheet (null);
+ * pressing it on any other row opens that row. In inline mode it toggles the row's own open flag.
+ * Extracted so the decision is testable without a browser, and used by the page's real handler.
+ */
+export function nextDetailState(mode: 'sheet' | 'inline', currentSheetKey: string | null, rowKey: string,
+                               openFlags: Record<string, boolean>): { sheetKey: string | null; openFlags: Record<string, boolean> } {
+  if (mode === 'sheet') return { sheetKey: currentSheetKey === rowKey ? null : rowKey, openFlags }
+  return { sheetKey: currentSheetKey, openFlags: { ...openFlags, [rowKey]: !openFlags[rowKey] } }
+}
