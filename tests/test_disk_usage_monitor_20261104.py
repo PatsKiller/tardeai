@@ -148,6 +148,63 @@ def test_a_warn_to_critical_escalation_is_said_at_once():
     assert said == [(0, "warn"), (15, "critical")], f"the escalation must be said at once and not repeated: {said}"
 
 
+def _alert_schedule(pattern, minutes_per_tick, mon):
+    """Every alert the real decision function emits, with the band it reported and the band reported before it."""
+    entry, out, t = {}, [], T0
+    for band in pattern:
+        reported_before = entry.get("alerted_band")
+        decision = M.alert_for(entry.get("band"), band, entry, t, mon)
+        if decision:
+            out.append((t, band, reported_before))
+            entry["alerted_at"] = t.isoformat()
+            entry["alerted_band"] = band
+        entry["band"] = band
+        t += timedelta(minutes=minutes_per_tick)
+    return out
+
+
+def test_every_alert_is_interval_spaced_or_an_escalation_and_nothing_else():
+    """THE BOUND AS A PROPERTY, on every cycle shape rather than on a ceiling a table happens to meet.
+
+    cc-deepseek-5's re-read found the ceiling claim false on the three-band cycles the earlier table omitted. A ceiling
+    is the wrong artefact for that reason: it is only true for the patterns someone thought to write down. The property
+    is checkable on every series, and it is what the code actually guarantees:
+
+      between any two consecutive alerts, either
+        (a) at least `realert_minutes` has passed since the previous alert, OR
+        (b) the second is a WARN -> CRITICAL escalation, which is said at once by design.
+
+    Nothing else may produce an alert. That is why a fast three-band cycle costs more than 25 in 24 h and still cannot
+    storm: each extra alert is an escalation, and an escalation needs the band to have been REPORTED as warn again,
+    which needs a reported recovery, which is itself interval-gated.
+    """
+    ticks = 24 * 4
+    interval = float(MON["realert_minutes"])
+    cycles = {
+        "ok<->critical": ["ok", "critical"],
+        "warn<->critical": ["warn", "critical"],
+        "critical,critical,ok": ["critical", "critical", "ok"],
+        "warn,critical,ok (3-cycle)": ["warn", "critical", "ok"],
+        "ok,critical,warn (3-cycle)": ["ok", "critical", "warn"],
+        "critical,warn,ok (3-cycle)": ["critical", "warn", "ok"],
+        "warn,ok,critical (3-cycle)": ["warn", "ok", "critical"],
+        "warn,critical,ok,critical (4-cycle)": ["warn", "critical", "ok", "critical"],
+    }
+    violations = []
+    for name, cycle in cycles.items():
+        sched = _alert_schedule([cycle[i % len(cycle)] for i in range(ticks)], 15, MON)
+        for (t1, _b1, _r1), (t2, b2, reported_before) in zip(sched, sched[1:]):
+            gap = (t2 - t1).total_seconds() / 60.0
+            if gap + 1e-9 >= interval:
+                continue
+            if reported_before == "warn" and b2 == "critical":
+                continue                                    # the one named exception
+            violations.append((name, t1.isoformat(), t2.isoformat(), gap, reported_before, b2))
+        # the first alert of a series is always allowed: nobody has ever been told
+        assert sched, f"{name} produced no alert at all"
+    assert not violations, f"alerts that are neither interval-spaced nor escalations: {violations}"
+
+
 def test_the_escalation_bypass_bound_is_MEASURED_on_every_cycle_shape():
     """What the bypass actually costs, on every cycle a mount can produce — not only the shape that flatters it.
 
