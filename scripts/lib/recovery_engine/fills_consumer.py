@@ -381,6 +381,29 @@ def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date]
                     f"a {extra.exit_date} read fill for {symbol}/{account} carries no source identity; the "
                     "stored exit and this read are BOTH retained, and whether they are one corrected exit or two "
                     "events is unresolved")
+        # CROSS-SOURCE AMBIGUITY (codex I7 class block). A `trade_transactions` member and a `stopped_out_watch` member
+        # can describe the SAME economic exit, and NOTHING in the data declares a crosswalk: the watch writer records
+        # symbol/account/stopped_out_at/exit_price/stop_price/broker, the transaction writer records
+        # trade_date/action/symbol/quantity/price/dedupe_key — they share no key in either direction. So when a case
+        # would end up holding observations from two sources for the same exit date, that is an UNRESOLVED identity,
+        # not two confident members: both are retained and the pass is incomplete. We do not invent a mapping, and we
+        # do not merge them into one number.
+        def _source_of(value: Any) -> str:
+            sid = value.get("source_id") if isinstance(value, dict) else getattr(value, "source_id", None)
+            return str(sid).split(":", 1)[0] if sid else ""
+
+        unpaired = [row for row, fill in pairs if fill is None]
+        for extra in extras:
+            extra_src = _source_of(extra)
+            if not extra_src:
+                continue
+            clash = next((row for row in unpaired if _source_of(row) and _source_of(row) != extra_src
+                          and str(row["date"])[:10] == extra.exit_date.isoformat()), None)
+            if clash is not None:
+                _unresolved(
+                    f"the {extra.exit_date} exit for {symbol}/{account} is observed by {extra_src} and by "
+                    f"{_source_of(clash)}, and no declared crosswalk links the two sources; both observations are "
+                    "retained and whether they are ONE economic exit or two is unresolved")
         merged.extend(fill if fill is not None else _as_exit_fill(symbol, account, row) for row, fill in pairs)
         merged.extend(extras)
         refreshed = rc.consume_fills(store, merged, cluster_key=case.cluster_key, **common)

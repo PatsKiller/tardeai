@@ -878,3 +878,28 @@ def test_f16_a_date_correction_on_the_same_id_updates_the_member_not_a_second_on
     assert after.exits[0]["source_id"] == "stopped_out_watch:1", after.exits
     assert after.realized_pnl == pytest.approx(-200.0), after.realized_pnl
     conn.close()
+
+
+def test_f16_cross_source_same_event_is_unresolved_not_two_confident_members(store):
+    """codex I7 class BLOCK. A tx-only event persists as one member; later the watch lane records an observation for
+    the same exit. There is NO declared crosswalk between trade_transactions and stopped_out_watch, so the honest
+    answer is an explicit unresolved record with both observations retained — never two confident members and never a
+    quiet complete pass."""
+    from lib.recovery_engine import fills_consumer as fc
+    conn = _source_db()
+    conn.execute("INSERT INTO trade_transactions (trade_date, action, symbol, quantity, price, account, dedupe_key) "
+                 "VALUES ('2026-10-30','SELL','SPCX',100,80.0,'schwab_taxable','k1')")
+    _positions(conn, 0)
+    conn.commit()
+    first = fc.run(store, conn, today=TODAY, now=NOW)
+    case = store.get(first["opened"][0])
+    assert len(case.exits) == 1 and case.exits[0]["source"] == "trade_transactions", case.exits
+    # The watch lane now records the same exit that the transaction already described.
+    _watch(conn, "2026-10-30", 80.0, -200.0)
+    conn.commit()
+    second = fc.run(store, conn, today=TODAY, now=NOW)
+    after = store.get(case.case_key)
+    assert len(after.exits) == 2, f"both observations must be retained: {after.exits}"
+    assert second["complete"] is False, f"an undeclared cross-source link must not report a complete pass: {second}"
+    assert any("crosswalk" in g for g in second["gaps"]), second["gaps"]
+    conn.close()
