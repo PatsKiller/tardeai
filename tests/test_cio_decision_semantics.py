@@ -151,3 +151,70 @@ def test_build_position_decisions_aggregates_and_trims():
     assert by["V"]["current_value_usd"] == 70_000.0
     # Trim delta ≈ -10% of 70k (aggregated)
     assert by["V"]["recommended_delta_usd"] == -7_000.0
+
+
+# ── FQ-104 (first increment): every account's own opinion survives the collapse ──────────────────────────────
+# The aggregate still chooses one decisive stance for the primary table — that cutover is FQ-104 proper — but the
+# record no longer discards what each account actually said. `accounts[]` is provenance for one opinion; this is
+# the opinion itself, per (symbol, account).
+
+def test_per_account_opinions_survive_an_opposing_aggregate():
+    from scripts.lib.cio_decision_semantics import aggregate_position_decisions
+
+    rows = [
+        {"symbol": "V", "account": "schwab_rollover_ira", "current_value_usd": 40_000.0,
+         "recommended_delta_usd": 0.0, "cio_stance": "HOLD", "why_now": "tax lot loss carried"},
+        {"symbol": "V", "account": "schwab_taxable", "current_value_usd": 30_000.0,
+         "recommended_delta_usd": -3_000.0, "cio_stance": "TRIM", "why_now": "concentration > cap"},
+    ]
+    row = aggregate_position_decisions(rows, portfolio_value=500_000.0)[0]
+
+    # The aggregate answer is unchanged: the decisive stance still wins for the primary table.
+    assert row["cio_stance"] == "TRIM"
+    assert row["current_value_usd"] == 70_000.0
+
+    # Both accounts' opinions are preserved, with their own stance, value and delta — not the winner's.
+    by_acct = {o["account"]: o for o in row["per_account"]}
+    assert set(by_acct) == {"schwab_rollover_ira", "schwab_taxable"}
+    assert by_acct["schwab_rollover_ira"]["cio_stance"] == "HOLD"
+    assert by_acct["schwab_rollover_ira"]["recommended_delta_usd"] == 0.0
+    assert by_acct["schwab_taxable"]["cio_stance"] == "TRIM"
+    assert by_acct["schwab_taxable"]["recommended_delta_usd"] == -3_000.0
+    # Largest account first, and the primary-account field still names it.
+    assert [o["account"] for o in row["per_account"]][0] == "schwab_rollover_ira"
+    assert row["account"] == "schwab_rollover_ira"
+
+
+def test_one_account_appearing_twice_merges_only_with_itself():
+    from scripts.lib.cio_decision_semantics import aggregate_position_decisions
+
+    rows = [
+        {"symbol": "V", "account": "a", "current_value_usd": 10_000.0, "recommended_delta_usd": 0.0,
+         "cio_stance": "HOLD", "why_now": None},
+        {"symbol": "V", "account": "a", "current_value_usd": 5_000.0, "recommended_delta_usd": 0.0,
+         "cio_stance": "ADD", "why_now": None},
+        {"symbol": "V", "account": "b", "current_value_usd": 20_000.0, "recommended_delta_usd": 0.0,
+         "cio_stance": "HOLD", "why_now": None},
+    ]
+    row = aggregate_position_decisions(rows, portfolio_value=100_000.0)[0]
+    by_acct = {o["account"]: o for o in row["per_account"]}
+    assert len(row["per_account"]) == 2, "one entry per account, not per input row"
+    assert by_acct["a"]["cio_stance"] == "ADD"          # merged within the account only
+    assert by_acct["a"]["current_value_usd"] == 15_000.0
+    assert by_acct["b"]["cio_stance"] == "HOLD"         # the other account is untouched
+
+
+def test_per_account_does_not_change_the_decision_identity():
+    from scripts.lib.cio_decision_semantics import aggregate_position_decisions, canonical_decision_digests
+
+    rows = [
+        {"symbol": "V", "account": "a", "current_value_usd": 40_000.0, "recommended_delta_usd": 0.0,
+         "cio_stance": "HOLD", "why_now": "x"},
+        {"symbol": "V", "account": "b", "current_value_usd": 30_000.0, "recommended_delta_usd": -3_000.0,
+         "cio_stance": "TRIM", "why_now": "y"},
+    ]
+    row = aggregate_position_decisions(rows, portfolio_value=500_000.0)[0]
+    without = {k: v for k, v in row.items() if k != "per_account"}
+    same = canonical_decision_digests("V", row["cio_stance"], row["recommended_delta_usd"], without)
+    assert row["decision_input_digest"] == same["input"]
+    assert row["decision_evidence_digest"] == same["evidence"]
