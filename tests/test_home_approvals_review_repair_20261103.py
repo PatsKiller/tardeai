@@ -397,3 +397,66 @@ def test_a_differently_padded_session_is_still_a_different_identity(tmp_path):
     out = ha.decide(store, record["id"], ctx=_ctx(session="session-b"), actor=LOGIN, decision="approve",
                     now=NOW, executor=counter.executor())
     assert out["state"] == "executed" and counter.executed == 1
+
+
+# ── the class: validate the TYPE, never coerce (cx-openai-3, fourth round) ──────────────────
+@pytest.mark.parametrize("bad_actor", [True, 1, [], {}, 1.5])
+def test_a_non_string_requester_actor_is_a_corrupt_record(tmp_path, bad_actor):
+    """The coercion was fixed on session and left on actor; this is the same rule applied there."""
+    store = _store(tmp_path)
+    record = _ask(store, requester={"session": "cc-deepseek-5", "actor": f"tailnet:{LOGIN}"})
+    path = store.requests_dir / f"{record['id']}.json"
+    doc = json.loads(path.read_text())
+    doc["requester"]["actor"] = bad_actor
+    path.write_text(json.dumps(doc))
+    with pytest.raises(ha.Refused) as caught:
+        ha.list_open(store, now=NOW)
+    assert caught.value.code == "store_unreadable"
+    with pytest.raises(ha.Refused) as caught:
+        ha.decide(store, record["id"], ctx=_ctx(), actor=LOGIN, decision="approve", now=NOW,
+                  executor=Counter().executor())
+    assert caught.value.code == "record_invalid"
+
+
+@pytest.mark.parametrize("bad_claim", [True, 1, [], {}])
+def test_create_refuses_a_non_string_claim_or_vendor(tmp_path, bad_claim):
+    store = _store(tmp_path)
+    with pytest.raises(ha.Refused) as caught:
+        ha.create(store, _payload(), requester={"session": "s-1", "claim": bad_claim}, now=NOW)
+    assert caught.value.code == "requester_unknown"
+
+
+def test_the_canonicaliser_never_invents_an_identity():
+    """A non-string must not canonicalise to a string that could match someone."""
+    for value in (True, 1, [], {}, None, 1.5):
+        assert ha._canonical_actor(value) == "", value
+
+
+@pytest.mark.parametrize("csrf", ["false", "0", [False], {"ok": False}, 0, 1, None])
+def test_a_typed_csrf_boundary_rejects_anything_but_a_bool(csrf):
+    """The word "false" is not permission. Only a real False/True from the listener is a decision."""
+    with pytest.raises(ha.Refused) as caught:
+        ha.server_context(principal=PRINCIPAL, session="operator-cc", csrf_ok=csrf, listener="serve_proxy")
+    assert caught.value.code == "operator_session_required"
+
+
+def test_a_real_bool_still_mints_a_context(tmp_path):
+    assert ha.server_context(principal=PRINCIPAL, session="s", csrf_ok=True, listener="serve_proxy")
+    # False is a legal boolean; it is refused where it matters — at the decision — rather than at minting.
+    store = _store(tmp_path)
+    record = _ask(store)
+    with pytest.raises(ha.Refused) as caught:
+        ha.decide(store, record["id"], ctx=ha.server_context(principal=PRINCIPAL, session="ops", csrf_ok=False,
+                                                             listener="serve_proxy"),
+                  actor=LOGIN, decision="approve", now=NOW, executor=Counter().executor())
+    assert caught.value.code == "csrf_required"
+
+
+def test_expiry_cannot_overwrite_a_decision_that_owns_the_transition(tmp_path):
+    """F2: expire_due checked the marker without taking it, then wrote a stale open snapshot."""
+    store = _store(tmp_path)
+    record = _ask(store)
+    (store.requests_dir / f"{record['id']}.deciding").write_text("")
+    expired = ha.expire_due(store, now=NOW)
+    assert expired == [], "expiry ran while a decision owned the transition"
+    assert store.get(record["id"])["state"] == "open"

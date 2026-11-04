@@ -161,7 +161,11 @@ def server_context(*, principal: str, session: str = "", csrf_ok: bool, listener
         raise Refused("operator_session_required",
                       "Only the operator's tailnet identity from the authenticated Command Center listener can decide a "
                       "request. This caller is not one, so nothing was decided.")
-    if str(listener or "") != SERVE_LISTENER:
+    if not isinstance(csrf_ok, bool):
+        # A typed boundary that accepts the word "false" as permission is not a boundary (cx-openai-3).
+        raise Refused("operator_session_required",
+                      "The CSRF result must be a real boolean from the authenticated listener; nothing was decided.")
+    if not isinstance(listener, str) or listener != SERVE_LISTENER:
         raise Refused("operator_session_required",
                       "Only the authenticated Command Center listener can decide a request. This call came from "
                       f"“{listener or '(none)'}”, so nothing was decided.")
@@ -171,7 +175,7 @@ def server_context(*, principal: str, session: str = "", csrf_ok: bool, listener
     # The SAME normalisation create() applies to a requester session: a padded session must not look
     # like two identities across the two paths (cx-openai-4 R3, 2026-11-04).
     return OperatorContext(principal=f"tailnet:{login}", session=_session_text(session) or "", csrf_ok=bool(csrf_ok),
-                           listener=str(listener), _seal=_SEAL)
+                           listener=listener, _seal=_SEAL)
 
 
 SERVE_LISTENER = "serve_proxy"
@@ -579,9 +583,9 @@ def create(
     facts = _check_facts(kind, payload.get("facts"))
     who = requester if isinstance(requester, Mapping) else {"session": requester}
     who = {"session": _session_text(who.get("session")),
-           "claim": (str(who.get("claim")).strip() if who.get("claim") else None),
-           "actor": (str(who.get("actor")).strip() if who.get("actor") else None),
-           "vendor": (str(who.get("vendor")).strip() if who.get("vendor") else None)}
+           "claim": _optional_text(who.get("claim"), field="claim"),
+           "actor": _optional_text(who.get("actor"), field="actor"),
+           "vendor": _optional_text(who.get("vendor"), field="vendor")}
     if not who["session"]:
         raise Refused("requester_unknown",
                       "This request does not say which session asked, so nobody could verify the approver is "
@@ -694,6 +698,31 @@ def _release(path: Path) -> None:
         path.unlink()
 
 
+def _identity_text(value: Any) -> Optional[str]:
+    """A value that reaches a comparison or a permission decision must BE a string, not become one.
+
+    ``str(x)`` turns every corrupt value into a plausible identity — True into "True", 1 into "1",
+    [] into "[]" — and a comparison against one of those silently stops firing. This is the one rule:
+    callers validate the type and refuse anything else; nothing in this module coerces an
+    identity-shaped field (cx-openai-3 F1, 2026-11-04, applying the principle to the whole class).
+    """
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text or None
+
+
+def _optional_text(value: Any, *, field: str) -> Optional[str]:
+    """An optional free-text field: absent is None, a string is stripped, anything else is refused."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise Refused("requester_unknown",
+                      f"The requester's {field} must be text, so nobody could tell who asked; nothing was done.")
+    text = value.strip()
+    return text or None
+
+
 def _session_text(value: Any) -> Optional[str]:
     """The one way a session becomes an identity: a real string, stripped. Nothing else is an identity.
 
@@ -718,7 +747,9 @@ def _canonical_actor(value: Any) -> str:
     ``operator@x`` and approve as ``OPERATOR@x`` (or approve a ``tailnet:``-prefixed requester under the bare
     login) — one identity, two strings, separation check silent (cx-openai-3 F1, 2026-11-03).
     """
-    text = str(value or "").strip()
+    if not isinstance(value, str):
+        return ""   # not an identity; callers validate the type before comparing (see _identity_text)
+    text = value.strip()
     # The prefix test is on the stripped text, so the remainder must be stripped AGAIN: a value like
     # "tailnet: operator@x" (prefix plus a space) used to carry a leading space into the comparison
     # and canonicalise to a different identity than the one it names (cx-openai-3 R1, 2026-11-03).
@@ -737,6 +768,13 @@ def _validate_record(record: Mapping[str, Any]) -> str:
         raise Refused("record_invalid",
                       "This request does not record who asked, so the approver cannot be shown to be someone "
                       "else; nothing was done.")
+    actor = requester.get("actor")
+    if actor is not None and _identity_text(actor) is None:
+        # The actor is compared against the approver; a non-string here cannot be compared, so it is
+        # corruption rather than a strange spelling (cx-openai-3 F1).
+        raise Refused("record_invalid",
+                      "This request records a requester that is not a text identity, so the approver cannot be "
+                      "shown to be someone else; nothing was done.")
     if record.get("schema") != SCHEMA:
         raise Refused("record_invalid", "This request is not in the form this board writes, so nothing was done.")
     kind = record.get("type")
@@ -805,7 +843,7 @@ def _decide_locked(store: Store, request_id: str, *, context: OperatorContext, a
 
     requester = record.get("requester") or {}
     approver_identity = _canonical_actor(actor)
-    requester_actor = _canonical_actor(requester.get("actor")) if requester.get("actor") else ""
+    requester_actor = _canonical_actor(requester.get("actor"))      # "" when the record has none
     requester_session = _session_text(requester.get("session")) or ""
     if (requester_actor and approver_identity == requester_actor) or \
             (requester_session and approver_identity == _canonical_actor(requester_session)):
@@ -1061,22 +1099,37 @@ def expire_due(store: Store, *, now: Optional[datetime] = None) -> list[dict[str
     """Mark open requests past their deadline expired (re-ask). Never approves anything."""
     moment = _utc(now)
     changed = []
-    for record in store.all():
-        if record.get("state") != "open":
+    for row in store.all():
+        rid = str(row.get("id") or "")
+        if not rid:
             continue
-        if (store.requests_dir / f"{record['id']}.deciding").exists():
-            continue  # a decision is in flight under its lock; expiry must not race it
+        # Checking the marker is not taking it (cx-openai-3 F2): between "no marker" and the write, a
+        # decide() could complete and this loop would then overwrite a CONFIRMED action with a stale
+        # open snapshot. Expiry is a transition like decide() and question(): take the same per-request
+        # marker, re-read under it, and re-decide on the state that is actually there.
+        store.path(rid)
+        claim = store.requests_dir / f"{rid}.deciding"
         try:
-            if moment < _parse(record.get("expires_at")):
+            _acquire(claim, "decision_in_progress", "this request is being decided")
+        except Refused:
+            continue  # a decision owns the transition; expiry must not race it
+        try:
+            record = store.get(rid)
+            if not isinstance(record, dict) or record.get("state") != "open":
                 continue
-        except (TypeError, ValueError):
-            pass
-        record.update({"state": "expired", "reask_requested": True})
-        store.put(record)
-        _append_jsonl(store.ledger, {"schema": RECEIPT_SCHEMA, "event": "expired", "at": _iso(moment),
-                                     "id": record["id"]})
-        publish_event(store, record, "expired")
-        changed.append(record)
+            try:
+                if moment < _parse(record.get("expires_at")):
+                    continue
+            except (TypeError, ValueError):
+                pass
+            record.update({"state": "expired", "reask_requested": True})
+            store.put(record)
+            _append_jsonl(store.ledger, {"schema": RECEIPT_SCHEMA, "event": "expired", "at": _iso(moment),
+                                         "id": rid})
+            publish_event(store, record, "expired")
+            changed.append(record)
+        finally:
+            _release(claim)
     return changed
 
 
