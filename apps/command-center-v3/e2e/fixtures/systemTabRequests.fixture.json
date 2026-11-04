@@ -17,7 +17,8 @@
     ],
     "Crons": [
       "/api/v2/jobs-health",
-      "/api/v2/system/cron-compression"
+      "/api/v2/system/cron-compression",
+      "/api/v2/consumption/overview"
     ],
     "SIEM": [
       "/api/v2/system/siem"
@@ -28,7 +29,8 @@
     "Queue": [],
     "Jobs": [
       "/api/v2/jobs-health",
-      "/api/v2/queue/summary"
+      "/api/v2/queue/summary",
+      "/api/v2/consumption/overview"
     ],
     "Admin": [
       "/api/v2/atm/config",
@@ -269,6 +271,21 @@
             "market_hours_only": false
           }
         ]
+      }
+    },
+    "/api/v2/consumption/overview": {
+      "overview": {
+        "anthropic": {
+          "status": "UNAVAILABLE",
+          "as_of": "2032-04-12T14:31:00Z",
+          "routing_order": [],
+          "credit": {},
+          "usage": {},
+          "models": {},
+          "fallback_count": 0,
+          "ledger_coverage": "synthetic_unavailable",
+          "note": "Synthetic fixture; provider not measured."
+        }
       }
     }
   },
