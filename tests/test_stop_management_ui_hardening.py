@@ -162,7 +162,11 @@ def test_15_build_marker_visible_for_deployment_verification():
     assert "ui_version" in identity
     assert "__ANALYST_UI_VERSION__" in identity and "__CC_BUNDLE_SOURCE_SHA__" in identity
     assert "LOADED_BUILD" in src and "compareServedBuild(LOADED_BUILD, served)" in src
-    assert "build-meta" in src and "Loaded bundle:" in src
+    # The visible identity now names the front-end shell explicitly (audit D-P2-pages-1 / approvals.data#1):
+    # "Loaded bundle … matches served artifact" appeared on the same page as "Queue unavailable" and read as
+    # though the page data were fine. The deployment-verification intent is unchanged: identity plus comparison.
+    assert "build-meta" in src and "App shell:" in src
+    assert "shell matches served artifact" in src
 
 
 def test_17_click_preflight_validates_before_2fa_and_manual():

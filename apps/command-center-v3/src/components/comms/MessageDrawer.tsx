@@ -5,7 +5,7 @@ import { Fragment, useEffect, type ReactNode } from 'react'
 import { RADIUS, numStyle } from '../../lib/designTokens'
 import { SymbolLink } from '../opportunity/OpportunityContext'
 import { FAMILY_ICON, familyFor, familyStyle, type Family } from '../decision/DecisionParts'
-import { PriceTag, alertType, catalystOf } from '../decision/FeedCards'
+import { PriceTag, alertType, catalystOf, messageIdentity } from '../decision/FeedCards'
 import { ItemBadges, ttlLabel } from './CommsHubParts'
 
 const MUTED = 'var(--text3)'
@@ -94,9 +94,9 @@ export function MessageDrawer({ e, id, onClose, onAction }: {
     return () => window.removeEventListener('keydown', k)
   }, [onClose])
 
-  const fam: Family = familyFor(e?.priority, e?.category)
+  const { symbols: syms, incomplete } = messageIdentity(e)
+  const fam: Family = incomplete ? 'neutral' : familyFor(e?.priority, e?.category)
   const st = familyStyle(fam)
-  const syms: string[] = e?.symbols || []
   const l = e?.levels || {}
   const a = e?.analyst
   const px = e?.market?.price
@@ -114,13 +114,14 @@ export function MessageDrawer({ e, id, onClose, onAction }: {
             <span style={{ fontSize: 20 }}>{FAMILY_ICON[fam]}</span>
             {syms.length > 0 && <span style={{ fontSize: 24, fontWeight: 900, color: TEXT }}><SymbolLink symbol={syms[0]} />{syms.length > 1 && <span style={{ fontSize: 12, color: MUTED }}> +{syms.slice(1).join(', ')}</span>}</span>}
             {syms.length > 0 && <PriceTag m={e?.market} />}
-            <span style={{ fontSize: 15, fontWeight: 800, color: st.color }}>{alertType(e?.headline || e?.short_summary, syms)}</span>
+            <span style={{ fontSize: 15, fontWeight: 800, color: st.color }}>{incomplete ? 'Incomplete message' : alertType(e?.headline || e?.short_summary, syms)}</span>
             <span style={{ flex: 1 }} />
             <span style={{ fontSize: 12, color: MUTED }}>{ttlLabel(e?.ttl_remaining_s, e?.legal_hold)}</span>
             <button type="button" autoFocus onClick={onClose} aria-label="Back to messages" style={{ minHeight: 44, minWidth: 44, fontSize: 12, border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT2, cursor: 'pointer', padding: '3px 10px', borderRadius: RADIUS.sm }}>Back</button>
           </div>
-          {e?.actionable && e?.action_hint && <div style={{ fontSize: 15, fontWeight: 700, color: TEXT, marginTop: 4 }}>▶ {e.action_hint}</div>}
-          <div style={{ marginTop: 6 }}><ItemBadges e={e || {}} />{acked && <span style={{ fontSize: 11, color: 'var(--success-color)', marginLeft: 6 }}>✓ acknowledged{e?.acknowledged_by ? ` by ${e.acknowledged_by}` : ''}</span>}{e?.legal_hold && <span style={{ fontSize: 11, color: 'var(--info-color)', marginLeft: 6 }}>📌 kept until released</span>}</div>
+          {incomplete && <p role="note" style={{ color: 'var(--warning-color)' }}>The subject is missing. Entry review is unavailable; the original message is preserved below.</p>}
+          {!incomplete && e?.actionable && e?.action_hint && <div style={{ fontSize: 15, fontWeight: 700, color: TEXT, marginTop: 4 }}>▶ {e.action_hint}</div>}
+          <div style={{ marginTop: 6 }}><ItemBadges e={{ ...e, actionable: !incomplete && e?.actionable }} />{acked && <span style={{ fontSize: 11, color: 'var(--success-color)', marginLeft: 6 }}>✓ acknowledged{e?.acknowledged_by ? ` by ${e.acknowledged_by}` : ''}</span>}{e?.legal_hold && <span style={{ fontSize: 11, color: 'var(--info-color)', marginLeft: 6 }}>📌 kept until released</span>}</div>
         </div>
 
         {/* body */}
@@ -128,7 +129,7 @@ export function MessageDrawer({ e, id, onClose, onAction }: {
           {!e && <div style={{ color: MUTED }}>Loading message {id}…</div>}
           {e && (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, marginBottom: 12 }}>
+              {!incomplete && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, marginBottom: 12 }}>
                 {(l.entry_zone?.[0] != null || l.entry_ref != null) && (
                   <Fact label="Entry" tip="CIO entry zone for this setup; the line below compares it with the live quote" value={l.entry_zone?.[0] != null ? `${usd(l.entry_zone[0])}–${usd(l.entry_zone[1])}` : usd(l.entry_ref)} sub={px != null && l.entry_zone?.[0] != null ? (px >= l.entry_zone[0] && px <= l.entry_zone[1] ? 'price is inside the zone' : px > l.entry_zone[1] ? 'price is above the zone' : 'price is below the zone') : undefined} />
                 )}
@@ -143,7 +144,7 @@ export function MessageDrawer({ e, id, onClose, onAction }: {
                     {a.target_low != null && <div>range {usd(a.target_low)}–{usd(a.target_high)}</div>}
                     <div style={{ color: a.stale ? 'var(--warning-color)' : MUTED }}>as of {a.as_of ? new Date(a.as_of).toLocaleDateString() : '—'}{a.stale ? ' · stale' : ''}</div>
                   </> : 'no Street coverage on file'} />
-              </div>
+              </div>}
               {catalyst && <div style={{ fontSize: 13, color: TEXT, marginBottom: 12 }}><span style={{ color: MUTED, fontWeight: 700 }}>Catalyst </span>{catalyst}</div>}
 
               <div style={{ fontSize: 10, color: MUTED, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 6 }}>Full message</div>
@@ -156,6 +157,7 @@ export function MessageDrawer({ e, id, onClose, onAction }: {
                 <div style={{ lineHeight: 1.7, marginTop: 6 }}>
                   {[
                     ['Message priority', e.priority_score ?? '—'],
+                    ['Recorded action', e.action_hint || 'none recorded'],
                     ['Confidence · Risk · Reward · Time sensitivity', [e.confidence, e.risk_score, e.reward_score, e.time_sensitivity].map((v: any) => (v == null ? '—' : Number(v).toFixed(2))).join(' · ')],
                     ['Status', e.lifecycle_status || '—'],
                     ['Expires', `${fmtWhen(e.expires_at)}${e.retain_until ? ` · kept until ${fmtWhen(e.retain_until)}` : ''}`],

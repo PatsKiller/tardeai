@@ -100,6 +100,7 @@ export default function CommunicationsHub() {
   const [offset, setOffset] = useState(0)
   const [filterOpen, setFilterOpen] = useState(false)
   const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [selecting, setSelecting] = useState(false)
   const [pending, setPending] = useState<PendingAction | null>(null)
   const PAGE = 100
 
@@ -211,7 +212,7 @@ export default function CommunicationsHub() {
 
   return (
     <div className="w2-comms" style={{ maxWidth: 1280 }}>
-      <style>{`@media(max-width:820px){.w2-comms button,.w2-comms select,.w2-comms input{min-height:44px;min-width:44px}.w2-comms [data-testid="comms-drawer"]{width:100%!important;border-left:0!important}.w2-comms table{table-layout:fixed;width:100%}.w2-comms td{overflow-wrap:anywhere}}`}</style>
+      <style>{`@media(max-width:820px){.w2-comms button,.w2-comms select,.w2-comms input{min-height:44px;min-width:44px}.w2-comms [data-testid="comms-drawer"]{width:100%!important;border-left:0!important}.w2-comms table{table-layout:fixed;width:100%}.w2-comms td{overflow-wrap:anywhere}.app-main .w2-comms [data-feed-card][data-selectable="false"]{grid-template-columns:minmax(0,1fr) auto!important}.app-main .w2-comms [data-feed-card][data-selectable="true"]{grid-template-columns:44px minmax(0,1fr) auto!important}.w2-comms .comms-card-facts{display:none}}`}</style>
       <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={hubTitle()}>Communications</div>
@@ -238,6 +239,12 @@ export default function CommunicationsHub() {
         </div>
       </div>
 
+      <details style={{ marginTop: 12, marginBottom: 12 }}>
+        <summary style={{ minHeight: 44, cursor: 'pointer', color: healthKnown && !(deliveryHealth.failed ?? 0) && !(deliveryHealth.unsettled ?? 0) ? TEXT2 : AMBER }}>
+          Delivery status · {healthKnown ? `${countText(deliveryHealth.failed)} failed · ${countText(deliveryHealth.unsettled)} awaiting confirmation` : deliveryHealth.state === 'LOADING' ? 'loading' : 'unavailable'}
+          {deliveryHealth.telegramFailed24h != null && deliveryHealth.telegramFailed24h > 0 ? ` · ${deliveryHealth.telegramFailed24h} Telegram send failures in 24h` : ''}
+          {deliveryHealth.state === 'STALE' ? ' · older evidence' : ''}
+        </summary>
       {/* P0 — delivery health strip: ownership + un-settled/failed counts are the
           operator's "is anything not reaching me?" signal. */}
       <div
@@ -303,13 +310,20 @@ export default function CommunicationsHub() {
         )}
       </div>
 
+      </details>
+
       <AdminConfirmModal action={pending} onClose={() => setPending(null)} onDone={() => { setPicked(new Set()); refetchEvents?.(); refetchBoard?.() }} />
       <CommsFilterModal open={filterOpen} initial={hubFilters} meta={eventsPayload} onApply={(f) => { setHubFilters(f); setOffset(0) }} onClose={() => setFilterOpen(false)} />
 
       {tab === 'events' && hubMode && (
         <div>
-          <BoardCards board={board} onPick={applyPreset} />
+          <details data-testid="comms-priority-summary" style={{ marginBottom: 12 }}>
+            <summary style={{ minHeight: 44, cursor: 'pointer', color: TEXT2 }}>Priority summaries · {board?.live ?? '—'} live messages · {board?.actionable ?? '—'} marked for review</summary>
+            <BoardCards board={board} onPick={applyPreset} />
+          </details>
           <div className="cc-panel" style={hubPanel(terminalUi)}>
+            <details data-testid="comms-quick-filters">
+              <summary style={{ minHeight: 44, cursor: 'pointer', color: TEXT2 }}>Categories and re-entry filters{hubFilters.category || hubFilters.reentry_status ? ' · active' : ''}</summary>
             {/* Re-entry focus + category chips + sort + filters */}
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
               <span style={{ fontSize: 10, color: TOKENS.success, fontWeight: 800 }}>RE-ENTRY</span>
@@ -337,20 +351,21 @@ export default function CommunicationsHub() {
                 )
               })}
             </div>
+            </details>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
               <span style={{ fontSize: 10, color: MUTED, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase' }}>
                 Feed ({eventsPayload?.total ?? 0})
               </span>
               <input value={hubFilters.q || ''} onChange={(e) => { const v = e.target.value; setHubFilters((p) => { const x = { ...p }; if (v) x.q = v; else delete x.q; return x }); setOffset(0) }}
-                placeholder="Search messages, symbols, sources" style={{ fontSize: 10, padding: '3px 8px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, borderRadius: RADIUS.sm, color: TEXT, minWidth: 220 }} />
+                aria-label="Search messages" placeholder="Search messages, symbols, sources" style={{ fontSize: 10, padding: '3px 8px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, borderRadius: RADIUS.sm, color: TEXT, minWidth: 220 }} />
               <button type="button" onClick={() => setFilterOpen(true)} style={{ fontSize: 10, padding: '3px 10px', border: `1px solid ${TOKENS.info}`, background: tint(TOKENS.info), color: TEXT, cursor: 'pointer', fontWeight: 700 }}>
                 Filters{Object.keys(hubFilters).length ? ` (${Object.keys(hubFilters).length})` : ''}
               </button>
               {Object.keys(hubFilters).length > 0 && (
                 <button type="button" onClick={() => applyPreset({})} style={{ fontSize: 10, padding: '3px 8px', border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer' }}>Clear</button>
               )}
-              <span style={{ fontSize: 10, color: MUTED }}>sort</span>
-              <select value={sort} onChange={(e) => { setSort(e.target.value); setOffset(0) }} style={{ fontSize: 10, padding: '3px 6px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, color: TEXT }}>
+              <label htmlFor="comms-sort" style={{ fontSize: 10, color: MUTED }}>Sort</label>
+              <select id="comms-sort" value={sort} onChange={(e) => { setSort(e.target.value); setOffset(0) }} style={{ fontSize: 10, padding: '3px 6px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, color: TEXT }}>
                 {[['conviction', 'CIO conviction'], ['priority_score', 'Priority score'], ['confidence', 'Confidence'], ['risk_score', 'Risk'], ['reward_score', 'Reward'], ['time_sensitivity', 'Time sensitivity'], ['expires_at', 'Expiry'], ['actionable_since', 'Became actionable'], ['created_at', 'Newest']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
               <button type="button" onClick={() => setOrder((o) => (o === 'desc' ? 'asc' : 'desc'))} style={{ fontSize: 10, padding: '3px 6px', border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT2, cursor: 'pointer' }}>{order === 'desc' ? '↓' : '↑'}</button>
@@ -366,15 +381,16 @@ export default function CommunicationsHub() {
                 <button type="button" onClick={() => setPicked(new Set())} style={{ fontSize: 10, padding: '2px 8px', border: 'none', background: 'transparent', color: MUTED, cursor: 'pointer' }}>clear</button>
               </div>
             )}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: 10, color: MUTED }}>
+            <button type="button" aria-pressed={selecting} onClick={() => { setSelecting(!selecting); setPicked(new Set()) }} style={{ minHeight: 44, border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT2, cursor: 'pointer', marginBottom: 8 }}>{selecting ? 'Done selecting' : 'Select messages'}</button>
+            {selecting && <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: 10, color: MUTED }}>
               <input type="checkbox" checked={events.length > 0 && events.every((e) => picked.has(e.event_id))}
                 onChange={(ev) => setPicked(ev.target.checked ? new Set(events.map((e) => e.event_id)) : new Set())} aria-label="select all" />
-              select all on this page · click a card for the full message, scores and source
-            </div>
+              Select all on this page
+            </div>}
             <div data-testid="comms-feed-cards" style={{ display: 'grid', gap: 6 }}>
               {events.length === 0 && !eventsLoading && <div style={{ padding: 12, color: MUTED }}>Nothing matches these filters.</div>}
               {events.map((e) => (
-                <FeedCard key={e.event_id} e={e} selected={e.event_id === selectedId} picked={picked.has(e.event_id)}
+                <FeedCard key={e.event_id} e={e} selected={e.event_id === selectedId} picked={picked.has(e.event_id)} selectable={selecting}
                   onPick={() => setPicked((p) => { const n = new Set(p); if (n.has(e.event_id)) n.delete(e.event_id); else n.add(e.event_id); return n })}
                   onOpen={() => setSelectedId(e.event_id)} />
               ))}

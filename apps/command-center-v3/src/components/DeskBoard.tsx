@@ -85,11 +85,19 @@ export default function DeskBoard({ desk, title, purpose, tabs, tabAliases, clas
     : undefined
   return <div data-testid={testId}>
     <DeskPage title={title} purpose={purpose} tabs={tabs} tabAliases={tabAliases} sources={sources}
-      decisions={projection?.decisions} decisionGap={projection ? projection.decision_gap ?? 'No open decisions on file for this desk.' : 'The desk projection has not answered.'}>
+      decisions={projection?.decisions} decisionGap={projection
+        ? projection.decision_gap ?? 'No open decisions on file for this desk.'
+        : loading ? 'Waiting for the desk projection.' : 'The desk projection has not answered.'}>
       {(active: string) => <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {!projection && <DeskGap title={`${title} unavailable`} reason={error ? 'The desk projection could not be read. Nothing below is current.' : 'Loading the desk projection.'}>
-          {error && <button type="button" onClick={refetch} style={{ minHeight: 44, width: '100%', marginTop: 8 }}>Retry</button>}
-        </DeskGap>}
+        {/* Three distinct states (audit D-P2-pages-1 / agents.ux#2, approvals.ux#1): a page that is still
+            loading must never also call itself unavailable, and a settled failure must always offer Retry. */}
+        {!projection && (loading
+          ? <DeskGap title={`Loading the ${title} desk`} reason="Fetching the desk projection. Nothing below is current yet." />
+          : <DeskGap title={`${title} unavailable`} reason={error
+              ? 'The desk projection could not be read. Nothing below is current.'
+              : 'The desk projection returned no usable data. Nothing below is current.'}>
+              <button type="button" onClick={refetch} style={{ minHeight: 44, width: '100%', marginTop: 8 }}>Retry</button>
+            </DeskGap>)}
         {projection && (projection.tabs[active]?.panels?.length
           ? <DeskPanels panels={projection.tabs[active].panels} onOpen={(p, r) => open(`${p}:${r}`)} />
           : <DeskGap title="Nothing on file for this view" reason="The projection returned no panels for this tab." />)}

@@ -113,8 +113,11 @@ function BuildMarker() {
   }, [])
   const comparison = compareServedBuild(LOADED_BUILD, served)
   return <span data-testid="cc-loaded-build" data-source-sha={LOADED_BUILD.sourceSha ?? 'UNAVAILABLE'}>
-    Loaded bundle: {LOADED_BUILD.uiVersion ?? 'UNAVAILABLE'} · built {LOADED_BUILD.builtAt ?? 'UNAVAILABLE'} · source {LOADED_BUILD.sourceSha?.slice(0, 12) ?? 'UNAVAILABLE'}
-    {' · '}{comparison === 'SAME' ? 'matches served artifact' : comparison === 'UNAVAILABLE' ? 'served build comparison UNAVAILABLE' : <>
+    {/* Says "app shell" on purpose (audit D-P2-pages-1 / approvals.data#1): this line describes the loaded
+        front-end bundle only. Reading it as "Loaded bundle … matches served artifact" on a page that also says
+        "Queue unavailable" told the operator the opposite of what the page was reporting. */}
+    App shell: {LOADED_BUILD.uiVersion ?? 'UNAVAILABLE'} · built {LOADED_BUILD.builtAt ?? 'UNAVAILABLE'} · source {LOADED_BUILD.sourceSha?.slice(0, 12) ?? 'UNAVAILABLE'}
+    {' · '}{comparison === 'SAME' ? 'shell matches served artifact (page data is separate)' : comparison === 'UNAVAILABLE' ? 'served shell comparison UNAVAILABLE' : <>
       newer or different artifact available · <button type="button" onClick={() => window.location.reload()}>Reload Command Center</button>
     </>}
   </span>

@@ -27,7 +27,7 @@ function Queue() {
   return <div className="approvals"><DeskPage title="Approvals Center" purpose="Everything waiting for your decision. Read the exact version, then decide."
     tabs={tabs} sources={[{ id: 'approvals', label: 'Approval queue', asOf: data?.as_of,
       gap: data?.gaps.length ? 'Some approval sources are unavailable. The total is not yet known.' : undefined }]}
-    decisionGap={data?.pending_count === null ? 'The total is unavailable until every source can be checked.' : data ? `${data.pending_count} waiting for review.` : 'Loading the latest queue.'}>
+    decisionGap={error ? 'The approval queue is unavailable. Use Try again below to reload it.' : data?.pending_count === null ? 'The total is unavailable until every source can be checked.' : data ? `${data.pending_count} waiting for review.` : 'Loading the latest queue.'}>
     {active => <div className="stack">
       {error && <DeskGap title="Queue unavailable" reason={error}><button onClick={refresh}>Try again</button></DeskGap>}
       {!data && !error && <p role="status">Loading approvals…</p>}
