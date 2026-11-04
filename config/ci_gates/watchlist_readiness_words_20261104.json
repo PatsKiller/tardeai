@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watchlist_readiness_words_20261104",
+  "files": [
+    "apps/command-center-v3/src/lib/watchlistReadinessWords.view.test.mjs"
+  ],
+  "anchor": "WATCHLIST_READINESS_WORDS_20261104",
+  "comment": [
+    "ANCHOR: WATCHLIST_READINESS_WORDS_20261104 — FQ-078: research cards state freshness/readiness in plain words in the main reading flow (up to date, up to date after the close, not current — the last read is older than the window, unavailable — no recent read succeeded); the raw enum and provider internals stay in the provenance panel behind its toggle, so nothing is lost. Unknown codes are de-coded rather than shown raw. Hermetic: reads the component source, no browser, no network."
+  ]
+}

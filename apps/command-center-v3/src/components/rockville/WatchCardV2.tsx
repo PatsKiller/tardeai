@@ -87,6 +87,21 @@ function fmtChg(pct?: number | null) {
   return `${sign}${n.toFixed(2)}%`
 }
 
+// FQ-078: the main reading flow speaks words, not provider codes. The raw enum stays available in the provenance panel
+// (which is behind a toggle), so nothing is lost for a developer.
+const FRESHNESS_WORDS: Record<string, string> = {
+  CURRENT: 'up to date',
+  AFTER_HOURS_CURRENT: 'up to date after the close',
+  PREMARKET_CURRENT: 'up to date before the open',
+  STALE: 'not current — the last successful read is older than the window',
+  DATA_UNAVAILABLE: 'unavailable — no recent read succeeded',
+}
+export function freshnessWords(state?: string | null): string {
+  const key = String(state || '').trim().toUpperCase()
+  if (!key) return FRESHNESS_WORDS.DATA_UNAVAILABLE
+  return FRESHNESS_WORDS[key] ?? key.toLowerCase().replace(/_/g, ' ')
+}
+
 function freshnessColor(fs?: string | null): string {
   if (!fs || fs === 'DATA_UNAVAILABLE') return BB.red
   if (fs === 'STALE') return BB.amber
@@ -178,7 +193,7 @@ export default function WatchCardV2({
             style={{ fontSize: TYPE.xs, color: freshnessColor(freshnessState), marginTop: 2, fontWeight: 700 }}
             data-provenance-line
           >
-            {freshnessState || 'DATA_UNAVAILABLE'}
+            {freshnessWords(freshnessState)}
             {marketSession ? ` · ${marketSession}` : ''}
             {marketState ? ` · mkt ${marketState}` : ''}
           </div>
