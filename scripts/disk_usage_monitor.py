@@ -180,6 +180,37 @@ def transition(prev: Optional[str], cur: str) -> Optional[str]:
     return cur
 
 
+def realert_due(entry: Mapping[str, Any], cur: str, now: datetime, mon: Mapping[str, Any]) -> bool:
+    """Whether a band that has NOT changed still needs to be said again.
+
+    2026-11-04: this monitor alerted once per band CHANGE, so `/` sat at `critical` from 03:15Z for 23 hours with a
+    single alert and the operator heard nothing while the disk kept filling. A state that never re-alerts is a
+    one-shot, not monitoring: while a mount stays bad, the same band is restated every `realert_minutes`. Dedupe stays
+    by band and by interval — never by raw percent, which is what made it noisy in the first place.
+    """
+    if cur == "ok":
+        return False
+    minutes = mon.get("realert_minutes")
+    if not minutes:
+        return False
+    last = entry.get("alerted_at")
+    if not last:
+        return True  # bad now and no record of ever telling anyone
+    try:
+        last_dt = datetime.fromisoformat(str(last))
+    except ValueError:
+        return True
+    if last_dt.tzinfo is None:
+        last_dt = last_dt.replace(tzinfo=timezone.utc)
+    return (now - last_dt) >= timedelta(minutes=float(minutes))
+
+
+def alert_for(prev: Optional[str], cur: str, entry: Mapping[str, Any], now: datetime,
+              mon: Mapping[str, Any]) -> Optional[str]:
+    """One decision point: a band CHANGE always alerts; an UNCHANGED bad band re-alerts once the interval is due."""
+    return transition(prev, cur) or (cur if realert_due(entry, cur, now, mon) else None)
+
+
 def latest_manifest(rules: Mapping[str, Any], state_root: Optional[Path]) -> Optional[dict[str, Any]]:
     try:
         p = DH.manifest_dir(rules, state_root) / rules["manifest"]["latest_name"]
@@ -601,7 +632,7 @@ def run(
             continue
         cur = band_of(m["inodes_used_pct"], ino)
         prev = (inodes_state.get(mount) or {}).get("band")
-        alert = transition(prev, cur)
+        alert = alert_for(prev, cur, inodes_state.get(mount) or {}, now, ino)
         row: dict[str, Any] = {**m, "metric": "inodes", "band": cur, "previous_band": prev, "alert": alert}
         if alert:
             top_cfg = ino.get("top_dirs") or {}
@@ -646,7 +677,7 @@ def run(
             continue
         cur = band_of(m["used_pct"], mon)
         prev = (mounts_state.get(mount) or {}).get("band")
-        alert = transition(prev, cur)
+        alert = alert_for(prev, cur, mounts_state.get(mount) or {}, now, mon)
         row: dict[str, Any] = {**m, "band": cur, "previous_band": prev, "alert": alert}
         if alert:
             consumers = top_consumers(rules, mon, manifest, consumer_snapshot) if consumer_snapshot is not None else []
