@@ -162,18 +162,26 @@ def test_the_floor_is_never_crossed_to_meet_the_cap():
     assert summary["taken"] == 1          # the only old one, and the pass still reports it cannot reach 10 GB
 
 
-# ── 3. the rotation lane is live ─────────────────────────────────────────────────────────────────────
+# ── 3. rotation: the store is a target; the promotion is DEFERRED, and says why ─────────────────────
 
 
-def test_the_rotation_lane_can_actually_rotate():
-    """FIRE: the lane is promoted and carries a live argv, so the schedule rotates instead of dry-running."""
+def test_the_rotation_lane_stays_shadow_until_its_enable_gate_opens():
+    """The lane cannot rotate yet, by design, and this test records the two reasons rather than a passing absence.
+
+    Promoting it in this PR turned six CI jobs red, all of them pins of a reviewed decision:
+    `jsonl-archive-rotate` must stay shadow/dry_run with no live argv while `jsonl_retention.enabled` is false
+    (tests/test_w8_legacy_shadow_config_20261024.py, test_stale_n8n_set_rebuild_20261024.py,
+    test_canary_wave1_20261011.py). The enable flag lives in config/disk_hygiene_rules.json, which another live claim
+    holds. So the promotion travels with that flag, in its own packet, not here.
+    """
+    rules = json.loads((ROOT / "config" / "disk_hygiene_rules.json").read_text(encoding="utf-8"))
+    assert rules["jsonl_retention"]["enabled"] is False, "if this flipped, the promotion packet is overdue"
     rows = json.loads((ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))["lanes"]
     row = [r for r in rows if r["lane_id"] == "jsonl-archive-rotate"][0]
-    assert row["scheduler"]["stage"] == "canary" and row["dispatch"]["mode"] == "live"
+    assert row["scheduler"]["stage"] == "shadow" and row["dispatch"]["mode"] == "dry_run"
     allow = json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text(encoding="utf-8"))["lanes"]
     entry = [e for e in allow if e["lane_id"] == "jsonl-archive-rotate"][0]
-    assert entry["live_arg"] == ["--apply"]
-    assert entry["dry_run_arg"] == ["--dry-run"]
+    assert entry["live_arg"] is None and entry["dry_run_arg"] == ["--dry-run"]
 
 
 def test_the_accounting_store_is_a_rotation_target():

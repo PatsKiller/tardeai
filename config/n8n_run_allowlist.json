@@ -4369,9 +4369,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": [
-        "--apply"
-      ],
+      "live_arg": null,
       "lock": "/tmp/tradeai_jsonl_archive_rotate.lock",
       "lock_kind": "flock",
       "timeout_s": 1800,

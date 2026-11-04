@@ -1997,7 +1997,7 @@ def remove_item(item: Mapping[str, Any]) -> tuple:
         if kind == "release_dir" and item.get("restart_units"):
             for unit in item["restart_units"]:
                 try:
-                    proc = subprocess.run(["systemctl", "--user", "restart", str(unit)],
+                    proc = subprocess.run(["systemctl", "--user", "restart", str(unit)],  # noqa: S603, S607
                                           capture_output=True, text=True, timeout=120)
                     rc = proc.returncode
                 except (OSError, subprocess.SubprocessError):

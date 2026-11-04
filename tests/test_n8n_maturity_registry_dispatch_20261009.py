@@ -538,8 +538,9 @@ N8N_NATIVE_SHADOW = frozenset(
         "holdings-drift-monitor",
         "options-desk-staleness-monitor",
         "held-exit-coverage-monitor",
-        # 2026-10-23 operator "approved": JSONL archive rotation, n8n-native hygiene lane, weekdays 16:45 ET.
-        # 2026-11-04 promoted shadow -> canary (N8N_NATIVE_CANARY): the schedule must rotate, not a human.
+        # 2026-10-23 operator "approved": JSONL archive rotation, n8n-native hygiene lane,
+        # weekdays 16:45 ET dry_run (tests/test_jsonl_archive_rotate_20261023.py).
+        "jsonl-archive-rotate",
         # 2026-10-26 operator "Yahoo Finance feed … switched on: yes": yfinance snapshot owner lane, n8n-native
         # ingest, weekdays 05:40 ET dry_run (tests/test_yfinance_info_snapshot_lane_20261026.py).
         "yfinance-info-snapshot",
@@ -569,9 +570,6 @@ N8N_NATIVE_CANARY = frozenset(
         "pr-hygiene-audit",
         # 2026-10-25 operator "turn on everything": cio-prospect-shadow shadow -> canary, live_arg --write-shadow.
         *_CPC.LIVE,
-        # 2026-11-04 operator directive: the append-only JSONL rotation must run on a schedule, not on a human's word
-        # (the cio accounting store reached 2.48 GB unrotated). Archive-never-delete; it deletes nothing.
-        "jsonl-archive-rotate",
         # 2026-10-26 operator "switch it from test mode to live": macro-calendar-refresh shadow -> canary, live_arg [].
         *_MCC.LIVE,
         # 2026-10-29 Ask lifecycle + material-events shadow -> canary (DSN-20261026-ask-hourly P1-T4): live_arg [] (the
@@ -589,8 +587,6 @@ N8N_NATIVE_CANARY = frozenset(
 #: standing_apply): hourly --scheduled fire, the day's full run from 04:00 ET, a pressure run above trigger_pct.
 N8N_NATIVE_CANARY_LIVE_ARG = {
     "momentum-cache-reconcile": ["--apply"],
-    # 2026-11-04: rotation writes the archive and the manifest; --dry-run stays the shadow/preview mode.
-    "jsonl-archive-rotate": ["--apply"],
     "n8n-comms-intent-consumer": ["--apply"],
     "active-trader-motion-watchdog": ["--apply"],
     "disk-usage-monitor": ["--apply"],
