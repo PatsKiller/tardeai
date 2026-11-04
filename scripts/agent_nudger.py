@@ -28,11 +28,11 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-#: This module is a scheduled entrypoint with no importer, so the dark-contract gate (scripts/check_dark_contracts.py)
-#: needs it declared rather than probed from the machine's crontab. Two callers exist: the host crontab line that has
-#: run the coordinator copy every 5 minutes since 2026-11-02, and the n8n lane `agent_nudge`
-#: (config/lane_registry.json) at scheduler.stage shadow, which runs this file as a dry run only.
-SCHEDULED_ENTRYPOINT = "cron: */5 * * * * (live, host) + n8n lane agent_nudge (shadow, dry run; config/lane_registry.json)"
+#: The n8n lane `agent_nudge` (config/lane_registry.json, stage shadow, dry run only) is this file's scheduled
+#: entrypoint. The host cron that has run since 2026-11-02 invokes the COORDINATOR-side copy, not this one — cc3
+#: (2026-11-04) blocked an earlier declaration that claimed it — and this file must not be added to a host cron:
+#: promoting the lane past shadow is an operator decision.
+SCHEDULED_ENTRYPOINT = "n8n lane agent_nudge (config/lane_registry.json), stage shadow, dry run only; no host cron runs this file"
 
 SCHEMA = "NudgerConfig@v1"
 DEFAULT_REFUSED = r"(?i)(broker|place_order|\borders?\b|execution|\bmbi\b|alpaca|schwab|moomoo)"
