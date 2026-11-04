@@ -126,9 +126,19 @@ def _load_reruns(path: Path) -> tuple[dict[str, int], str]:
         return {}, f"{type(exc).__name__}: {exc}"
     try:
         data = json.loads(text)
-        return {str(k): int(v) for k, v in (data or {}).items()}, ""
-    except (ValueError, TypeError) as exc:
+    except ValueError as exc:
         return {}, f"corrupt re-run history: {exc}"
+    # Valid JSON is not a valid ledger: [] / null / false used to read as "zero re-runs", and a
+    # negative counter passed int() — both turned a corrupt history into proof of the one-re-run rule
+    # (cx-openai-3 F5, 2026-11-03).
+    if not isinstance(data, dict):
+        return {}, f"corrupt re-run history: expected an object, got {type(data).__name__}"
+    counts: dict[str, int] = {}
+    for key, value in data.items():
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            return {}, f"corrupt re-run history: counter for {key!r} is not a non-negative integer"
+        counts[str(key)] = value
+    return counts, ""
 
 
 def record_rerun(path: Path, head_sha: str) -> None:

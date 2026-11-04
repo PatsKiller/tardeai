@@ -361,6 +361,22 @@ class Store:
                 raise Refused("store_unreadable",
                               f"The Needs-you store has an unreadable record ({path.name}); decisions cannot be "
                               f"shown until it is repaired.") from exc
+            if not isinstance(rows[-1], dict):
+                raise Refused("store_unreadable",
+                              f"The Needs-you store has a record that is not an object ({path.name}); decisions "
+                              f"cannot be shown until it is repaired.")
+            # A syntactically valid record with no schema/type/state is not evidence of an empty board:
+            # it was filtered out of every projection and a decision disappeared silently (cx-openai-3 F2).
+            try:
+                _validate_record(rows[-1])
+            except Refused as exc:
+                raise Refused("store_unreadable",
+                              f"The Needs-you store has a corrupt record ({path.name}: {exc.plain}); decisions "
+                              f"cannot be shown until it is repaired.") from exc
+            if rows[-1].get("state") not in STATES:
+                raise Refused("store_unreadable",
+                              f"The Needs-you store has a record in an unknown state ({path.name}); decisions "
+                              f"cannot be shown until it is repaired.")
         return rows
 
 
@@ -676,6 +692,20 @@ def _release(path: Path) -> None:
         path.unlink()
 
 
+def _canonical_actor(value: Any) -> str:
+    """One identity representation, so case or a transport prefix cannot split one operator into two.
+
+    Authentication admits a login case-insensitively and stamps the context as ``tailnet:<login>``, while the
+    requester's actor may be stored with either spelling. Comparing raw strings let the same operator ask as
+    ``operator@x`` and approve as ``OPERATOR@x`` (or approve a ``tailnet:``-prefixed requester under the bare
+    login) — one identity, two strings, separation check silent (cx-openai-3 F1, 2026-11-03).
+    """
+    text = str(value or "").strip()
+    if text.lower().startswith("tailnet:"):
+        text = text.split(":", 1)[1]
+    return text.casefold()
+
+
 def _validate_record(record: Mapping[str, Any]) -> str:
     """Refuse a record whose own shape is wrong — a tampered or corrupt record never reaches an executor."""
     if record.get("schema") != SCHEMA:
@@ -718,6 +748,9 @@ def decide(
         raise Refused("actor_not_authenticated",
                       "The name recorded for this decision must be the operator identity the server verified; this "
                       "call named someone else, so nothing was decided.")
+    # The id is validated before any path is built from it: a traversal-shaped id used to reach a
+    # lock path containing ".." before being refused (cx-openai-3, 2026-11-03).
+    store.path(request_id)
     decision_claim = store.requests_dir / f"{request_id}.deciding"
     _acquire(decision_claim, "decision_in_progress",
              "This request is already being decided, so it was not decided twice.")
@@ -738,11 +771,15 @@ def _decide_locked(store: Store, request_id: str, *, context: OperatorContext, a
         raise Refused("unknown_decision", "A decision is either approve or decline.")
 
     requester = record.get("requester") or {}
-    if actor == requester.get("actor") or actor == requester.get("session"):
+    approver_identity = _canonical_actor(actor)
+    requester_actor = _canonical_actor(requester.get("actor")) if requester.get("actor") else ""
+    requester_session = str(requester.get("session") or "")
+    if (requester_actor and approver_identity == requester_actor) or \
+            (requester_session and approver_identity == _canonical_actor(requester_session)):
         raise Refused("approver_is_requester",
                       "The session that asked cannot also decide: this request was created by the same identity that "
                       "clicked. The lead must re-ask it from a different session.")
-    if context.session and context.session == requester.get("session"):
+    if context.session and requester_session and str(context.session) == requester_session:
         raise Refused("approver_is_requester",
                       "The session that created this request cannot decide it. The lead must re-ask it from a "
                       "different session.")
@@ -861,7 +898,20 @@ def execute(store: Store, record: Mapping[str, Any], *, actor: str, now: Optiona
     _acquire(exec_claim, "already_executing",
              "This action is already running or has already run; it will not be started twice.")
     bridge = executor or executor_for(kind)
-    ok, plain = bridge.revalidate(current, now=moment)
+    try:
+        ok, plain = bridge.revalidate(current, now=moment)
+    except Exception as exc:  # noqa: BLE001 — any pre-effect failure must not strand the marker
+        # The marker is ours and the action never started: record it, release the claim and let the
+        # caller retry. Leaving it behind made a corrected retry impossible (cx-openai-3 F3).
+        _release(exec_claim)
+        current.update({"blocked_reason": "The action could not be revalidated before it ran, so it was not started. "
+                                          "It stays approved and can be retried."})
+        store.put(current)
+        _append_jsonl(store.ledger, {"schema": RECEIPT_SCHEMA, "event": "revalidation_failed", "at": _iso(moment),
+                                     "id": rid, "reason": current["blocked_reason"],
+                                     "error_type": type(exc).__name__, "at_execution": True})
+        publish_event(store, current, "updated")
+        raise Refused("revalidation_failed", current["blocked_reason"]) from exc
     if not ok:
         _release(exec_claim)
         current.update({"state": "open", "blocked_reason": plain or
@@ -947,16 +997,26 @@ def question(store: Store, request_id: str, *, actor: str, note: str, now: Optio
     text = str(note or "").strip()
     if not text:
         raise Refused("question_empty", "A question needs words the lead can answer.")
-    record = store.require(request_id)
-    if record.get("state") not in ("open", "approved"):
-        raise Refused("not_open",
-                      f"This request is already {record.get('state')}, so a question cannot change it.")
-    record["question"] = {"at": _iso(moment), "by": str(actor or ""), "note": text}
-    store.put(record)
-    _append_jsonl(store.ledger, {"schema": RECEIPT_SCHEMA, "event": "question", "at": record["question"]["at"],
-                                 "id": request_id, "by": record["question"]["by"], "note": text})
-    publish_event(store, record, "updated")
-    return record
+    # A question is a transition over the same record: without the lock and a re-read, a concurrent
+    # decide() that reached a terminal state was overwritten with this stale open snapshot
+    # (cx-openai-3 F4).
+    store.path(request_id)
+    question_claim = store.requests_dir / f"{request_id}.questioning"
+    _acquire(question_claim, "question_in_progress",
+             "Another update to this request is in progress, so the question was not recorded.")
+    try:
+        record = store.require(request_id)
+        if record.get("state") not in ("open", "approved"):
+            raise Refused("not_open",
+                          f"This request is already {record.get('state')}, so a question cannot change it.")
+        record["question"] = {"at": _iso(moment), "by": str(actor or ""), "note": text}
+        store.put(record)
+        _append_jsonl(store.ledger, {"schema": RECEIPT_SCHEMA, "event": "question", "at": record["question"]["at"],
+                                     "id": request_id, "by": record["question"]["by"], "note": text})
+        publish_event(store, record, "updated")
+        return record
+    finally:
+        _release(question_claim)
 
 
 def expire_due(store: Store, *, now: Optional[datetime] = None) -> list[dict[str, Any]]:

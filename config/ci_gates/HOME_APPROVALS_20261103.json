@@ -3,13 +3,19 @@
   "name": "HOME_APPROVALS_20261103",
   "files": [
     "tests/test_home_approvals_20261103.py",
-    "tests/test_home_approvals_adapters_20261103.py"
+    "tests/test_home_approvals_adapters_20261103.py",
+    "tests/test_home_approvals_review_repair_20261103.py"
   ],
   "anchor": "HOME_APPROVALS_20261103",
   "comment": [
     "ANCHOR: HOME_APPROVALS_20261103 — Home v008 \"Needs you\": the request store, the closed 7-type action list,",
     "server-only decide() (sealed OperatorContext, tailnet listener, actor binding), click-time revalidation,",
     "immutable approval binding, exclusive per-request execution markers, timeout/partial attempted receipts,",
-    "the nudge event stream, and read-only fact adapters. Hermetic: tmp state root, fake runners, fake /proc tree."
+    "the nudge event stream, and read-only fact adapters. Hermetic: tmp state root, fake runners, fake /proc tree.",
+    "The cx-openai-3 whole-head grounds at a9ffe5be5 are pinned here: canonical approver identity (case and",
+    "the tailnet: prefix), per-record validation before any projection filters (a corrupt record is store_unreadable,",
+    "never an empty board), marker settlement when revalidation raises before the action starts, question() as a",
+    "locked transition re-read, request-id validation before any lock path, and a re-run ledger that refuses",
+    "malformed counters instead of reading them as zero."
   ]
 }
