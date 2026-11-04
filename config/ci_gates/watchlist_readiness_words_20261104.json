@@ -2,10 +2,10 @@
   "schema": "CiGate@v1",
   "name": "watchlist_readiness_words_20261104",
   "files": [
-    "apps/command-center-v3/src/lib/watchlistReadinessWords.view.test.mjs"
+    "tests/test_watchlist_readiness_words_20261104.py"
   ],
   "anchor": "WATCHLIST_READINESS_WORDS_20261104",
   "comment": [
-    "ANCHOR: WATCHLIST_READINESS_WORDS_20261104 — FQ-078: research cards state freshness/readiness in plain words in the main reading flow (up to date, up to date after the close, not current — the last read is older than the window, unavailable — no recent read succeeded); the raw enum and provider internals stay in the provenance panel behind its toggle, so nothing is lost. Unknown codes are de-coded rather than shown raw. Hermetic: reads the component source, no browser, no network."
+    "ANCHOR: WATCHLIST_READINESS_WORDS_20261104 — FQ-078: a research card's freshness reads in plain words (\"up to date\", \"up to date after the close\", \"unavailable — no recent read succeeded\") instead of the raw enum, while the provenance panel keeps the exact code for a developer. Pytest-collectable so the CI shard runner executes it (a .mjs file cannot be collected); apps/command-center-v3/src/lib/watchlistReadinessWords.view.test.mjs mirrors it for a node run."
   ]
 }
