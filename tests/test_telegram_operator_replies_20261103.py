@@ -524,3 +524,13 @@ def test_a_split_paste_row_carries_a_marker_not_the_credential(tmp_path):
                             previous_text="127.0.0.1?code=") == "recorded"
     row = _json.loads((tmp_path / "telegram.jsonl").read_text().splitlines()[0])
     assert row["text"] == "[redacted]" and row.get("redaction_context") == REDACTION_CONTEXT, row
+
+
+def test_the_incomplete_redaction_marker_has_a_consumer(tmp_path, caplog):
+    """cc5 (2026-11-04): a flag nothing reads is 'stored silently' renamed. The poller log is the operator surface, so
+    the warning must actually be emitted for a row that carries the marker."""
+    import logging as _logging  # noqa: PLC0415
+    from scripts.run_telegram_callback_poller import _append_or_queue
+    with caplog.at_level(_logging.WARNING):
+        assert _append_or_queue({"message_id": 14, "text": "AbCdEf1234567890XyZq"}, replies_dir=tmp_path) == "recorded"
+    assert any("UNVERIFIED-REDACTION" in r.message for r in caplog.records), [r.message for r in caplog.records]

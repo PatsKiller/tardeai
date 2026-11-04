@@ -376,6 +376,13 @@ def _append_or_queue(record: dict, *, replies_dir=None, pending_path=None, previ
             record = {**record, "redaction_context": REDACTION_CONTEXT}
         if redacted == raw and previous_text is None and _AMBIGUOUS_TOKEN_RE.match(raw.strip()):
             record = {**record, "redaction_incomplete": True}
+        if record.get("redaction_incomplete"):
+            # THE CONSUMER (cc5, 2026-11-04): a marker nothing reads is the "stored silently" defect renamed. This is
+            # the poller log — the surface an operator and incident evidence actually read — and it says what is true:
+            # the value was kept because the text carried no evidence that it was a credential.
+            log.warning("operator reply stored UNVERIFIED-REDACTION: no preceding key, value left intact "
+                        f"(chat={record.get('chat_id')}, message={record.get('message_id')}); "
+                        "review it if it may be a credential")
         record = {**record, "text": redacted}
     line = json.dumps(record, ensure_ascii=False) + "\n"
     try:
