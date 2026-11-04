@@ -1101,7 +1101,7 @@ def source_identity(script: Path | None = None) -> dict:
             out["release_sha"] = match.group(1)
             break
     try:
-        head = subprocess.run(
+        head = subprocess.run(  # noqa: S603, S607 — fixed argv, resolved PATH, no shell
             ["git", "-C", str(PROJECT_ROOT), "rev-parse", "HEAD"],
             capture_output=True, text=True, timeout=5,
         )
