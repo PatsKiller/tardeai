@@ -42,7 +42,8 @@ _PM_TOLERANCE_PCT = 0.05   # two surfaces may differ by a rounding cent, not by 
 
 
 def _finding(check: str, symbol: Optional[str], severity: str, what: str, why: str, evidence: dict) -> dict:
-    assert severity in ("P1", "P2", "P3"), severity
+    if severity not in ("P1", "P2", "P3"):
+        raise ValueError(f"severity must be P1/P2/P3, got {severity!r}")
     return {"check": check, "symbol": symbol, "severity": severity, "what": what, "why": why, "evidence": evidence}
 
 
