@@ -257,17 +257,17 @@ let current
 require('../hooks/useApi.ts').useApi=url=>url.startsWith('/api/v3/data-broker/watch-universe')||url.startsWith('/api/v3/opportunities')
  ?{data:current,loading:false,error:null,refetch(){}}:{data:null,loading:false,error:null,refetch(){}}
 const {default:Hub,TopOpportunitiesWidget}=require('../pages/OpportunitiesHub.tsx')
-const render=Component=>renderToStaticMarkup(React.createElement(MemoryRouter,{initialEntries:['/watch?tab=opportunities&preset=top5']},React.createElement(Component)))
+const render=(Component,filtered=false)=>renderToStaticMarkup(React.createElement(MemoryRouter,{initialEntries:['/watch?tab=opportunities&preset=top5'+(filtered?'&type=new_position':'')]},React.createElement(Component)))
 let passed=0,failed=0
-for(const [name,fixture]of Object.entries(fixtures))for(const [label,Component]of[['hub',Hub],['widget',TopOpportunitiesWidget]]){
+for(const [name,fixture]of Object.entries(fixtures))for(const [label,Component]of[['hub',Hub],['filtered-hub',Hub],['widget',TopOpportunitiesWidget]]){
  try{
-  current=fixture;const html=render(Component)
+  current=fixture;const html=render(Component,label==='filtered-hub')
   assert.doesNotMatch(html,/curated by the CIO/i)
   assert.match(html,/SYNQ/)
   if(name==='ready'){
    assert.doesNotMatch(html,/data-research-symbol="SYNQ"/)
    assert.match(html,/CIO|reviewed/)
-   if(label==='hub')assert.match(html,/data-cio-reviewed-as-of/)
+   if(label.endsWith('hub'))assert.match(html,/data-cio-reviewed-as-of/)
   }else{
    assert.match(html,/data-research-symbol="SYNQ"/)
    assert.match(html,/Read full record/)

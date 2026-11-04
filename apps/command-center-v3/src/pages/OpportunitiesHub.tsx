@@ -96,7 +96,7 @@ export default function OpportunitiesHub() {
   const setExpanded = (symbol: string | null) => { if (phone.mobile) { if (symbol) phone.open(symbol); else phone.close() } else setDesktopExpanded(symbol) }
   const [note, setNote] = useState('')
   const q = useMemo(() => opportunitiesQuery(sp), [sp])
-  const homeBest = isHomeBestOpportunities(sp)
+  const homeBest = isHomeBestOpportunities(sp) || sp.get('preset')?.toLowerCase() === 'top5'
   const { data, loading, error } = useApi<any>(withQuery('/api/v3/data-broker/watch-universe', q), 120_000)
   const body = unwrapAny<any>(data)
   const supplied: ListRow[] = Array.isArray(body?.items) ? body.items : []

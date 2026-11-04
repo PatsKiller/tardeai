@@ -238,7 +238,7 @@ def qualify(
         row.update(
             {
                 "research_rank": row.get("rank"),
-                "automated_stance": row.get("stance"),
+                "automated_stance": row.get("curator_stance", row.get("stance")),
                 "rank": None,
                 "stance": stance if reviewed else None,
                 "cio_review": {
