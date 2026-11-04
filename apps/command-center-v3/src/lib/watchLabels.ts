@@ -46,25 +46,7 @@ const QUOTE_FRESHNESS: Record<string, string> = {
   DATA_UNAVAILABLE: 'Unavailable',
 }
 
-//: Words that must not become Title Case when a code is humanised.
-const KEEP: Record<string, string> = {
-  cio: 'CIO', ai: 'AI', rsi: 'RSI', macd: 'MACD', hwm: 'HWM', pnl: 'P&L', rr: 'R:R', iv: 'IV', dte: 'DTE',
-}
-
-/** `DETERMINISTIC_FAIL` → "Deterministic fail"; `some_new_code` → "Some new code". Never returns '' for a code. */
-export function humanizeCode(raw: unknown): string {
-  const s = String(raw ?? '').trim()
-  if (!s) return ''
-  return s
-    .split(/[_\-\s]+/)
-    .filter(Boolean)
-    .map((w, i) => {
-      const lw = w.toLowerCase()
-      if (KEEP[lw]) return KEEP[lw]
-      return i === 0 ? lw.charAt(0).toUpperCase() + lw.slice(1) : lw
-    })
-    .join(' ')
-}
+import { humanizeCode } from './displayLabels'
 
 /** The Trade AI state as a sentence fragment. Unknown codes are humanised, never dropped or guessed. */
 export function tradeAiStateLabel(raw: unknown): string {
