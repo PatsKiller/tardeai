@@ -13,6 +13,7 @@ import './W9Mobile.css'
 import './WatchLayout.css'
 import { Fragment, useMemo, useState, type CSSProperties } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import ReadableTime from '../components/ReadableTime'
 import { BEST_OPPORTUNITIES_API, BEST_OPPORTUNITIES_PATH, OPPORTUNITY_QUERY_KEYS, isHomeBestOpportunities, opportunitiesQuery } from '../lib/bestOpportunities'
 import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetailSheet'
 import { useApi } from '../hooks/useApi'
@@ -32,9 +33,34 @@ const TEXT = 'var(--text0)'
 const TEXT2 = 'var(--text2)'
 const BORDER = 'var(--border)'
 
+// Render the producer's qualification receipt; no thresholds or verdicts are calculated in the browser.
+const topQualified = (row: any) => row?.top_eligibility?.eligible === true
+function researchRows(body: any, withheld: any[] = []): any[] {
+  const rows = [...(Array.isArray(body?.research_candidates) ? body.research_candidates : []), ...withheld]
+  return [...new Map(rows.filter(row => typeof row?.symbol === 'string').map(row => [row.symbol, row])).values()]
+}
+function ResearchCandidates({ rows, onOpen }: { rows: any[]; onOpen: (symbol: string) => void }) {
+  if (!rows.length) return null
+  return <section aria-label="Unreviewed research outside the top list" data-unreviewed-research style={{ marginTop: 14 }}>
+    <h3 style={{ fontSize: TYPE.md, color: TEXT2, margin: '0 0 6px' }}>Research only — outside the top list</h3>
+    {rows.map(row => <article key={row.symbol} data-research-symbol={row.symbol} style={{ borderTop: `1px solid ${BORDER}`, padding: '8px 0', minWidth: 0 }}>
+      <strong>{row.symbol}</strong>
+      <span style={{ marginLeft: 8, color: MUTED }}>Research score {row.conviction != null ? Math.round(row.conviction) : 'not measured'}</span>
+      <p role="note" style={{ margin: '4px 0', color: TOKENS.warning, overflowWrap: 'anywhere' }}>
+        {row.top_eligibility?.reason || 'Qualification for the top list has not been verified.'}
+      </p>
+      {row.cio_review?.reviewed && <div style={{ color: TEXT2, fontSize: TYPE.sm }}>
+        CIO stance {String(row.cio_review.stance)} · reviewed <ReadableTime value={row.cio_review.as_of} />
+      </div>}
+      <button type="button" onClick={() => onOpen(row.symbol)} style={{ minHeight: 44, cursor: 'pointer', color: TEXT, background: 'transparent', border: 0, padding: 0 }}>Read full record →</button>
+    </article>)}
+    <Link to="/watch?tab=opportunities" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, color: TEXT2 }}>Full research list →</Link>
+  </section>
+}
+
 const PRESETS: [string, string, string][] = [
   ['reentry', 'Re-entry', 'Formerly held names first (most recent sell first), then everything the curator types re-entry.'],
-  ['top5', 'Top 5 high-conviction', 'The five names with the highest curator conviction.'],
+  ['top5', 'Top 5 reviewed opportunities', 'Dated CIO research and technical coverage are required before a name can enter this list.'],
   ['new', 'New positions', 'New position ideas from the curator.'],
   ['add_on', 'Add-on', 'Ideas to add to a currently held name.'],
   ['exit', 'Exit candidates', 'Names the curator marked for exit review.'],
@@ -55,7 +81,7 @@ const td: CSSProperties = { padding: '2px 6px', whiteSpace: 'nowrap' }
 const HEAD: [string, string][] = [
   ['★', `Your watchlist. ${MINE_TIPS.starOff}`],
   ['#', 'Rank in the curator ranking (conviction order).'], ['Symbol', 'Ticker · company · position status.'],
-  ['Conv', 'CIO conviction 0–100.'], ['Type · stance', 'Opportunity type and stance as Watch shows them (a sold name is Re-entry; the curator value is in the detail).'],
+  ['Score', 'Automated factor score, 0–100. A top rank also requires technical coverage and dated CIO research.'], ['Type · stance', 'Opportunity type and stance as Watch shows them (a sold name is Re-entry; the curator value is in the detail).'],
   ['Risk / Reward · R:R', 'Risk % to invalidation / reward % to the primary target · reward-to-risk ratio.'],
   ['Upside', 'Analyst mean target vs price.'], ['Last trade', 'Formerly held: P/L %, P/L $, R and exit cause of the last round trip.'],
   ['Re-entry', 'Formerly held: Re-Entry Desk readiness, distance to the zone, the zone and the reclaim level.'], ['Price', 'Current price.'],
@@ -73,7 +99,9 @@ export default function OpportunitiesHub() {
   const homeBest = isHomeBestOpportunities(sp)
   const { data, loading, error } = useApi<any>(withQuery('/api/v3/data-broker/watch-universe', q), 120_000)
   const body = unwrapAny<any>(data)
-  const items: ListRow[] = body?.items || []
+  const supplied: ListRow[] = Array.isArray(body?.items) ? body.items : []
+  const items = homeBest ? supplied.filter(topQualified) : supplied
+  const research = researchRows(body, homeBest ? supplied.filter(row => !topQualified(row)) : [])
   const set = (patch: Record<string, string>) => {
     const next = new URLSearchParams(sp)
     for (const [k, v] of Object.entries(patch)) { if (v) next.set(k, v); else next.delete(k) }
@@ -89,7 +117,7 @@ export default function OpportunitiesHub() {
                             <span>Technical <b style={{ color: TEXT }}>{condLabel((a as any).technical_condition)}</b></span>
                             <span>Sector <b style={{ color: TEXT }}>{(a as any).sector || '—'}</b></span>
                             <span>Coverage <b style={{ color: TEXT }}>{Math.round(((a as any).coverage || 0) * 100)}%</b></span>
-                            <span title="The curator's recorded classification; differences from held-position evidence appear below.">Curator: {typeLabel((a as any).curator_type)} · {String((a as any).curator_stance || '—')} · {String((a as any).curator_position_status || '—')}</span>
+                            <span title="Original automated classification retained for comparison, not a CIO research decision.">Automated assessment: {typeLabel((a as any).curator_type || (a as any).type)} · {String((a as any).automated_stance || (a as any).curator_stance || '—')} · research rank {String((a as any).research_rank ?? '—')}</span>
                             {phone.mobile ? <Link className="mobile-detail-primary" onClick={() => window.scrollTo(0, 0)} to={`/watch/intelligence/${encodeURIComponent(a.symbol)}`}>Open full record →</Link> : <button type="button" onClick={e => { e.stopPropagation(); open(a.symbol) }} style={{ ...sel, cursor: 'pointer' }}>Open full record</button>}
                           </div>
                           {(a as any).ownership_note && <div style={{ color: TOKENS.warning, marginTop: 3 }}>⚠ {(a as any).ownership_note}</div>}
@@ -114,9 +142,9 @@ export default function OpportunitiesHub() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', margin: '4px 0' }}>
         <div style={{ fontSize: TYPE.base, color: TEXT2 }} title="Research names scored by the CIO curator. Filters apply to this ranking.">
           {homeBest
-            ? <><b style={{ color: TEXT }}>{body ? items.length : '—'}</b> shown · Best opportunities · highest conviction</>
+            ? <><b style={{ color: TEXT }}>{body ? items.length : '—'}</b> shown · Best opportunities · reviewed research</>
             : <><b style={{ color: TEXT }}>{body?.total ?? '—'}</b> of {body?.universe ?? '—'} · Full universe (research)</>}
-          {body?.as_of ? <span style={{ color: MUTED }}> · curated by the CIO {new Date(body.as_of).toLocaleString()}</span> : null}
+          {body?.as_of ? <span style={{ color: MUTED }}> · ranking snapshot <ReadableTime value={body.as_of} /></span> : null}
           {body?.held?.source ? <span style={{ color: MUTED }} title="Held / formerly held come from the broker-synced Watch held reader."> · held: {String(body.held.source).split('.')[0]}{body.held.stale ? ' (stale)' : ''}</span> : null}
         </div>
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -168,6 +196,9 @@ export default function OpportunitiesHub() {
       {body && !body.as_of && <div style={{ color: TOKENS.warning, fontSize: TYPE.base, marginBottom: 6 }}>The CIO curator has not run yet — no curated ranking in CIO memory.</div>}
       {body && items.length === 0 && body.as_of && <div style={{ color: TOKENS.warning, fontSize: TYPE.base }}>Nothing matches these filters.</div>}
 
+      {body && <p role="status" data-top-list-notice style={{ color: TOKENS.warning, fontSize: TYPE.base, overflowWrap: 'anywhere' }}>
+        {body.top_list?.notice || 'Qualification for the top list is unavailable; these records remain research only.'}
+      </p>}
       {items.length > 0 && (
         <div className="watch-universe-panel">
           <table className="watch-universe-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: TYPE.base }} data-opportunity-table>
@@ -187,7 +218,7 @@ export default function OpportunitiesHub() {
                       onKeyDown={e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setExpanded(isOpen ? null : a.symbol) } }}
                       style={{ cursor: 'pointer', borderBottom: `1px solid ${BORDER}`, background: isOpen ? 'var(--bg2)' : undefined }}>
                       <td className="watch-universe-star" data-label="Watchlist" style={{ ...td, width: 22 }}><StarToggle symbol={a.symbol} on={!!a.mine} surface="watch.full_universe" size="sm" onChanged={setNote} /></td>
-                      <td data-label="Rank" style={{ ...td, ...numStyle, color: TEXT2 }}>{(a as any).rank ?? '—'}</td>
+                      <td data-label="Rank" style={{ ...td, ...numStyle, color: TEXT2 }}>{topQualified(a) ? (a as any).rank ?? '—' : 'Unreviewed'}</td>
                       <td className="watch-universe-symbol" data-label="Symbol" style={{ ...td, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }} title={(a as any).company || ''}>
                         <b style={{ fontFamily: 'var(--font-mono)' }}>{a.symbol}</b>
                         <span style={{ fontSize: TYPE.xs, color: MUTED }}> {(a as any).company || ''}</span>
@@ -197,9 +228,13 @@ export default function OpportunitiesHub() {
                           <span><b>Stage</b> {a.stage?.replace(/_/g, ' ') || 'Not supplied'}</span>
                         </span>
                       </td>
-                      <td data-label="Conviction" style={{ ...td, ...numStyle, fontWeight: 900, color: convictionColor(a.conviction) }}>{a.conviction != null ? Math.round(a.conviction) : '—'}</td>
+                      <td data-label="Research score" style={{ ...td, ...numStyle, fontWeight: 900, color: convictionColor(a.conviction) }}>{a.conviction != null ? Math.round(a.conviction) : '—'}</td>
                       <td data-label="Type · stance" style={{ ...td, color: TEXT2 }} title={(a as any).ownership_note || (a as any).stance_rationale || ''}>
-                        {typeLabel((a as any).type)} · <b style={{ color: TEXT }}>{String(a.stance || '—').replace('_', '-')}</b>
+                        {topQualified(a) ? typeLabel((a as any).type) : 'Research only'} · <b style={{ color: TEXT }}>{(a as any).cio_review?.reviewed ? String((a as any).cio_review.stance) : 'CIO review pending'}</b>
+                        <span style={{ display: 'block', whiteSpace: 'normal', maxWidth: 280, overflowWrap: 'anywhere', fontSize: TYPE.sm }}>
+                          {(a as any).top_eligibility?.reason || 'Qualification for the top list has not been verified.'}
+                        </span>
+                        {(a as any).cio_review?.reviewed && <span data-cio-reviewed-as-of style={{ display: 'block', whiteSpace: 'normal', fontSize: TYPE.sm }}>CIO reviewed <ReadableTime value={(a as any).cio_review.as_of} /></span>}
                         {(a as any).ownership_note ? <span style={{ color: TOKENS.warning }}> ⚠</span> : null}
                       </td>
                       <td data-label="Risk / Reward · R:R" style={{ ...td, ...numStyle }} title={rr.rr_flag || ''}>{riskRewardCell(rr)}</td>
@@ -229,6 +264,7 @@ export default function OpportunitiesHub() {
           )}
         </div>
       )}
+      <ResearchCandidates rows={research} onOpen={open} />
       {phone.mobile && expanded && <MobileDetailSheet title={`${expanded} record`} onBack={phone.close}>
         {items.find(a => a.symbol === expanded) ? (() => { const row = items.find(a => a.symbol === expanded)!; return <>
           <h2 tabIndex={-1} data-detail-focus>{row.symbol}</h2>
@@ -246,24 +282,29 @@ export function TopOpportunitiesWidget() {
   const open = useOpenSymbol()
   const { data } = useApi<any>(BEST_OPPORTUNITIES_API, 300_000)
   const body = data?.data && data.data.items ? data.data : data
-  const items: any[] = body?.items || []
+  const supplied: any[] = Array.isArray(body?.items) ? body.items : []
+  const items = supplied.filter(topQualified)
+  const research = researchRows(body, supplied.filter(row => !topQualified(row)))
   return (
     <div data-top-opportunities style={{ border: `1px solid ${BORDER}`, borderRadius: RADIUS.lg, padding: 14, background: 'var(--bg1)', marginTop: 14 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
-        <div style={{ fontSize: 11, fontWeight: 800, color: TEXT2, textTransform: 'uppercase', letterSpacing: '.06em' }}>Top opportunities · conviction ≥80 · R:R ≥2</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, color: TEXT2, textTransform: 'uppercase', letterSpacing: '.06em' }}>Top opportunities · reviewed data required</div>
         <Link to={BEST_OPPORTUNITIES_PATH} aria-label="View best opportunities" style={{ fontSize: 11, color: MUTED, minHeight: 44, minWidth: 44, display: 'inline-flex', alignItems: 'center' }}>View top 5 →</Link>
       </div>
-      {items.length === 0 && <div style={{ fontSize: 11, color: MUTED }}>{body?.as_of ? 'Nothing clears the bar right now.' : 'Waiting for the first CIO curation run.'}</div>}
+      {body && <p role="status" style={{ color: TOKENS.warning, overflowWrap: 'anywhere', fontSize: TYPE.sm }}>{body.top_list?.notice || 'Qualification for the top list is unavailable.'}</p>}
+      {items.length === 0 && <div style={{ fontSize: 11, color: MUTED }}>{body?.top_list ? 'No reviewed name clears the bar right now.' : body ? 'Top list not verified; research records remain below.' : 'Waiting for the ranking snapshot.'}</div>}
       {items.map((a: any) => (
-        <div key={a.symbol} onClick={() => open(a.symbol)} style={{ display: 'grid', gridTemplateColumns: '28px 70px 1fr 60px 60px 70px', gap: 8, alignItems: 'center', padding: '5px 0', borderTop: `1px solid ${BORDER}`, cursor: 'pointer', fontSize: 12 }}>
+        <button key={a.symbol} type="button" data-top-opportunity-row={a.symbol} onClick={() => open(a.symbol)} style={{ display: 'flex', flexWrap: 'wrap', width: '100%', background: 'transparent', color: TEXT, textAlign: 'left', border: 0, gap: 8, alignItems: 'center', padding: '5px 0', borderTop: `1px solid ${BORDER}`, cursor: 'pointer', fontSize: TYPE.sm }}>
           <span style={{ ...numStyle, color: MUTED }}>#{a.rank}</span>
           <b style={{ fontFamily: 'var(--font-mono)' }}>{a.symbol}</b>
-          <span style={{ color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{typeLabel(a.type)} · {condLabel(a.technical_condition)}</span>
+          <span style={{ color: MUTED, overflowWrap: 'anywhere' }}>{typeLabel(a.type)} · CIO {String(a.cio_review?.stance)}</span>
           <span style={{ ...numStyle, fontWeight: 900, color: convictionColor(a.conviction) }}>{Math.round(a.conviction)}</span>
           <span style={{ ...numStyle }}>{(a.risk_reward || {}).rr != null ? `${Number(a.risk_reward.rr).toFixed(1)}x` : '—'}</span>
           <span style={{ ...numStyle, color: TOKENS.success }}>{pct(a.upside_pct, 0)}</span>
-        </div>
+          <span style={{ flexBasis: '100%', color: MUTED }}>CIO reviewed <ReadableTime value={a.cio_review?.as_of} /></span>
+        </button>
       ))}
+      <ResearchCandidates rows={research} onOpen={open} />
     </div>
   )
 }

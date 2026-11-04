@@ -227,23 +227,28 @@ def _store():
     return CIOOpportunityStore()
 
 
-def _ranking_context(symbols):
+def _ranking_context(symbols, technical_symbols=None):
     from lib.data_broker.opportunity_eligibility import read_contexts
-    return read_contexts(symbols, db_query=_db_query)
+
+    return read_contexts(symbols, db_query=_db_query, technical_symbols=technical_symbols)
 
 
 def get_list(query: dict | None = None) -> dict[str, Any]:
     from lib.data_broker import opportunity as op
 
-    from lib.data_broker.opportunity_eligibility import qualify, sort_qualified
+    from lib.data_broker.opportunity_eligibility import qualify, sort_qualified, technical_candidates
 
     top = str((query or {}).get("preset") or "").lower() == "top5"
     q = op.apply_preset(dict(query or {}))
     proj = _store().read_projection()
     raw = list((proj.get("items") or {}).values())
-    items, ranking = qualify(raw, _ranking_context([a["symbol"] for a in raw]), op.load_config())
+    cfg = op.load_config()
+    inputs = _ranking_context([a["symbol"] for a in raw], technical_candidates(raw, cfg, q))
+    items, ranking = qualify(raw, inputs, cfg)
     research_query = {k: v for k, v in q.items() if k != "min_coverage"}
-    research = sort_qualified([a for a in items if not a["top_eligibility"]["eligible"] and op.passes(a, research_query)], "conviction")
+    research = sort_qualified(
+        [a for a in items if not a["top_eligibility"]["eligible"] and op.passes(a, research_query)], "conviction"
+    )
     matched = [a for a in items if op.passes(a, q) and (not top or a["top_eligibility"]["eligible"])]
     sort = str(q.get("sort") or "conviction")
     ranked = sort_qualified(matched, sort)

@@ -255,35 +255,137 @@ def test_wiring():
 
 # FQ-114: API ranking must require actual named technical inputs and dated CIO research, independently of a
 # high re-normalized factor score. The list API is exercised, not a new helper's self-reported eligibility flag.
-@pytest.mark.parametrize("case", ["no_thesis", "no_technicals", "partial_coverage", "red_entry", "orange_entry", "ready"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        "no_thesis",
+        "no_technicals",
+        "partial_coverage",
+        "red_entry",
+        "orange_entry",
+        "red_existing_add",
+        "orange_existing_buy",
+        "ready",
+        "coverage_floor",
+        "zero_rsi",
+        "red_existing_hold",
+        "no_rsi",
+        "no_macd_signal",
+        "no_sma_20",
+        "no_sma_50",
+        "no_sma_200",
+        "nan_rsi",
+        "infinite_average",
+        "nan_coverage",
+        "bool_coverage",
+        "empty_summary",
+        "empty_stance",
+        "no_date",
+        "invalid_date",
+        "naive_date",
+        "future_date",
+        "inactive_thesis",
+        "unknown_risk",
+        "stale_risk",
+        "future_risk",
+        "technical_read_failed",
+    ],
+)
 def test_top_list_qualification_at_actual_api(monkeypatch, case):
+    import importlib.util
     import scripts.api_v3_opportunities as api
 
+    name = "lib.data_broker.opportunity_eligibility"
+    spec = importlib.util.spec_from_file_location(name, ROOT / "scripts/lib/data_broker/opportunity_eligibility.py")
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, name, module)
+    spec.loader.exec_module(module)
     now = datetime.now(timezone.utc).isoformat()
-    assessment = {
-        "symbol": "SYNQ", "rank": 1, "conviction": 96.0, "coverage": 0.9, "type": "new_position",
-        "stance": "WATCH", "risk_reward": {"rr": 4.0}, "factors": {"technical": {"score": 100}},
-    }
+    # Native assessment: high composite technical scores and momentum can exist without named RSI/MACD inputs.
+    inputs = ctx(
+        hermes={"technical_momentum": {"score": 100}, "setup_quality": {"score": 100}},
+        stats={"change_1w_pct": 20, "change_1m_pct": 30, "relative_volume": 2},
+        analyst={"target_mean": 150, "analyst_count": 20, "recommendation_mean": 1},
+        ladder={"suggested_entry": 100, "invalidation_level": 90, "plan_target": 150, "targets": []},
+    )
+    assessment = op.assess("SYNQ", inputs)
+    assessment["rank"] = 1
+    assert assessment["conviction"] >= 80 and assessment["coverage"] >= 0.8
     technical = {"rsi": 55.0, "macd_signal": "bullish", "sma_20": 100.0, "sma_50": 99.0, "sma_200": 95.0}
-    thesis = {"summary": "Synthetic CIO research", "stance": "WATCH", "status": "active",
-              "published_ts": now, "thesis_id": "symbol_synq", "thesis_version": "symbol_synq@v1"}
+    thesis = {
+        "summary": "Synthetic CIO research",
+        "stance": "WATCH",
+        "status": "active",
+        "published_ts": now,
+        "thesis_id": "symbol_synq",
+        "thesis_version": "symbol_synq@v1",
+    }
     if case == "no_thesis":
         thesis = None
     if case == "no_technicals":
         technical = {}  # composite technical score remains100: it is not proof of RSI/MACD/MA availability
     if case == "partial_coverage":
         assessment["coverage"] = 0.79
-    tier = {"red_entry": "RED", "orange_entry": "ORANGE"}.get(case, "GREEN")
-    context = {"technical": {"SYNQ": technical}, "theses": {"SYNQ": thesis},
-               "market_risk": {"state": "evaluated", "tier": tier, "as_of": now}}
+    if case in ("red_existing_add", "orange_existing_buy"):
+        assessment["type"] = "existing"
+        thesis["stance"] = "ADD" if case == "red_existing_add" else "BUY"
+    if case.startswith("no_") and case[3:] in technical:
+        technical.pop(case[3:])
+    if case == "nan_rsi":
+        technical["rsi"] = float("nan")
+    if case == "zero_rsi":
+        technical["rsi"] = 0
+    if case == "infinite_average":
+        technical["sma_200"] = float("inf")
+    if case in ("coverage_floor", "nan_coverage", "bool_coverage"):
+        assessment["coverage"] = {"coverage_floor": 0.8, "nan_coverage": float("nan"), "bool_coverage": True}[case]
+    if case in (
+        "empty_summary",
+        "empty_stance",
+        "no_date",
+        "invalid_date",
+        "naive_date",
+        "future_date",
+        "inactive_thesis",
+    ):
+        field, value = {
+            "empty_summary": ("summary", "  "),
+            "empty_stance": ("stance", "UNKNOWN"),
+            "no_date": ("published_ts", None),
+            "invalid_date": ("published_ts", "bad clock"),
+            "naive_date": ("published_ts", "2026-11-01T10:00:00"),
+            "future_date": ("published_ts", (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()),
+            "inactive_thesis": ("status", "draft"),
+        }[case]
+        thesis[field] = value
+    if case == "red_existing_hold":
+        assessment["type"] = "existing"
+        thesis["stance"] = "HOLD"
+    tier = "RED" if case.startswith("red_") else "ORANGE" if case.startswith("orange_") else "GREEN"
+    context = {
+        "technical": {"SYNQ": technical},
+        "theses": {"SYNQ": thesis},
+        "market_risk": {"state": "evaluated", "tier": tier, "as_of": now},
+    }
+    if case == "unknown_risk":
+        context["market_risk"] = {}
+    if case == "stale_risk":
+        context["market_risk"]["as_of"] = (datetime.now(timezone.utc) - timedelta(hours=5)).isoformat()
+    if case == "future_risk":
+        context["market_risk"]["as_of"] = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    if case == "technical_read_failed":
+        context["errors"] = {"technical": "Technical inputs could not be read"}
+
     class Store:
         def read_projection(self):
             return {"as_of": now, "items": {"SYNQ": assessment}}
+
     monkeypatch.setattr(api, "_store", Store)
     monkeypatch.setattr(api, "_ranking_context", lambda *args, **kwargs: context, raising=False)
     result = api.get_list({"preset": "top5", "min_coverage": "0.1"})
-    assert [r["symbol"] for r in result["items"]] == (["SYNQ"] if case == "ready" else [])
-    if case != "ready":
+    accepted = case in ("ready", "coverage_floor", "zero_rsi", "red_existing_hold")
+    assert [r["symbol"] for r in result["items"]] == (["SYNQ"] if accepted else [])
+    if not accepted:
         below = result.get("research_candidates") or []
         assert [r["symbol"] for r in below] == ["SYNQ"], "retain the research name below the top band"
         assert below[0]["rank"] is None
@@ -291,4 +393,80 @@ def test_top_list_qualification_at_actual_api(monkeypatch, case):
         assert below[0]["top_eligibility"]["reason"]
     else:
         assert result["items"][0]["cio_review"]["as_of"]
-        assert result["items"][0]["cio_review"]["stance"] == "WATCH"
+        assert result["items"][0]["cio_review"]["stance"] == ("HOLD" if case == "red_existing_hold" else "WATCH")
+
+
+def test_top_evidence_reads_native_thesis_head_and_batches_only_reviewed_candidates(tmp_path, monkeypatch):
+    import importlib.util
+    from scripts.lib.cio_theses import CIOThesisStore
+    import scripts.lib.cio_market_context_state as market
+
+    name = "lib.data_broker.opportunity_eligibility"
+    spec = importlib.util.spec_from_file_location(name, ROOT / "scripts/lib/data_broker/opportunity_eligibility.py")
+    eligibility = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, name, eligibility)
+    spec.loader.exec_module(eligibility)
+    now = datetime.now(timezone.utc).isoformat()
+    current, versions = {}, {}
+    # Native projection fold is pure: no constructor, publisher, notifier or DB is invoked.
+    CIOThesisStore._apply_event(
+        None,
+        current,
+        versions,
+        {
+            "event_type": "THESIS_VERSION_PUBLISHED",
+            "thesis_id": "symbol_synq",
+            "occurred_at": now,
+            "payload": {
+                "version": 1,
+                "summary": "Synthetic current CIO thesis",
+                "stance": "WATCH",
+                "published_ts": now,
+            },
+        },
+    )
+    projection = tmp_path / "data/cio/cio_theses_projection.json"
+    projection.parent.mkdir(parents=True)
+    projection.write_text(json.dumps({"current": current, "versions": versions, "updated_ts": now}), encoding="utf-8")
+    calls = []
+
+    def select(sql, params=None, **kwargs):
+        assert sql.lstrip().upper().startswith("SELECT")
+        assert params == (["SYNQ"],), "an unreviewed universe member must not trigger technical/bar reads"
+        calls.append(sql)
+        if "indicator_confluence_cache" in sql:
+            return [
+                {
+                    "s": "SYNQ",
+                    "computed_at": now,
+                    "full_result": {
+                        "signals": {
+                            "rsi": {"value": 55},
+                            "macd": {"signal": "bullish"},
+                            "sma": {"details": {"sma_20": 100, "sma_50": 99, "sma_200": 95}},
+                        }
+                    },
+                }
+            ]
+        if "ticker_prices" in sql:
+            return [{"s": "SYNQ", "close_price": 100 + n / 10, "price_date": "2026-10-01"} for n in range(220)]
+        return []
+
+    roots = []
+
+    def risk(root):
+        roots.append(root)
+        return {"state": "evaluated", "tier": "GREEN", "as_of": now}
+
+    monkeypatch.setattr(market, "load_market_risk_projection", risk)
+    monkeypatch.setattr(
+        CIOThesisStore, "__init__", lambda *a, **k: pytest.fail("read path invoked write/rebuild-capable store")
+    )
+    context = eligibility.read_contexts(["SYNQ", "UNREVIEWED"], db_query=select, root=tmp_path)
+    assert len(calls) == 3 and roots == [tmp_path]
+    assert context["theses"]["SYNQ"]["thesis_version"] == "symbol_synq@v1"
+    assert context["technical"]["SYNQ"]["rsi"] == 55 and context["technical"]["SYNQ"]["sma_200"] > 0
+    assert context["technical_state"]["UNREVIEWED"] == "not_checked"
+    missing_root = tmp_path / "unavailable"
+    heads, error = eligibility.read_theses(["SYNQ"], missing_root)
+    assert heads == {} and error and not missing_root.exists(), "read failure must not create/rebuild a store"
