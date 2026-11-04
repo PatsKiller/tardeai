@@ -14,5 +14,10 @@ check('both disclosure controls exist', buttons.length === 2, buttons.length)
 const targets = buttons.filter(b => lines.slice(b.i, b.i + 4).join(' ').includes('minHeight: 44'))
 check('every disclosure control is a 44px target', targets.length === buttons.length, `${targets.length}/${buttons.length}`)
 check('the controls are labelled for assistive tech', buttons.every(b => lines.slice(b.i, b.i + 3).join(' ').includes('type="button"')), buttons.length)
+// The "Technical detail" disclosure is also a control, and the one that reveals the raw diagnosis.
+const summaries = lines.map((l, i) => ({ l, i })).filter(b => b.l.includes('<summary'))
+check('the detail disclosure exists', summaries.length === 1, summaries.length)
+check('the detail disclosure is a 44px target',
+  summaries.every(b => lines.slice(b.i, b.i + 4).join(' ').includes('minHeight: 44')), summaries.length)
 console.log(`\nconsumptionPresentation.view: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

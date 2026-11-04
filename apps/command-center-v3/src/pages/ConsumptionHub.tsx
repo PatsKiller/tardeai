@@ -440,7 +440,10 @@ export default function ConsumptionHub() {
                     belong to diagnosis, so they sit behind the disclosure below, not here. */}
                 <div style={{ color: TEXT, fontWeight: 700, marginTop: 2 }}>{callPrimaryText(l)}</div>
                 <details style={{ marginTop: 4 }}>
-                  <summary style={{ cursor: 'pointer', fontSize: 10, color: MUTED }}>Technical detail</summary>
+                  {/* FQ-031: this is the control that reveals the diagnosis, so it is a real tap
+                      target too — 44px, not the 14px a 10px summary line gives on a phone. */}
+                  <summary style={{ cursor: 'pointer', fontSize: 11, color: MUTED, minHeight: 44,
+                                    display: 'flex', alignItems: 'center' }}>Technical detail</summary>
                   <pre style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 10, color: MUTED, fontFamily: 'inherit' }}>{callDetailText(l)}</pre>
                 </details>
               </div>
