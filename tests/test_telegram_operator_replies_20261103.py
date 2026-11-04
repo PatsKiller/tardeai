@@ -162,7 +162,11 @@ def test_an_outcome_line_pairs_with_the_message_line(tmp_path):
     rows = [json.loads(line) for line in (tmp_path / "telegram.jsonl").read_text().splitlines()]
     assert rows[0]["message_id"] == 77 and "event" not in rows[0]
     assert rows[1]["event"] == "outcome" and rows[1]["message_id"] == 77 and rows[1]["handled"] is True
-    assert rows[1]["text"] == "approve the restore code=abc"
+    # 2026-11-04 (#2533 follow-up): the value of a credential-bearing parameter is redacted at the write boundary,
+    # in BOTH lines of the pair. This assertion used to pin the raw value to the inbox — i.e. it encoded the leak.
+    assert rows[1]["text"] == "approve the restore code=[redacted]"
+    assert rows[0]["text"] == "approve the restore code=[redacted]"
+    assert "code=abc" not in (tmp_path / "telegram.jsonl").read_text()
 
 
 def test_a_malformed_envelope_or_unknown_sender_is_refused_not_written(tmp_path):
@@ -245,3 +249,30 @@ def test_a_failed_handoff_stops_the_batch_so_a_later_update_cannot_stride_over_i
                                               inbox_blocked=True, queue_blocked=True, atomic=False)
     assert commits == []
     assert records == [] and queued == ""
+
+
+# ── credential redaction at the persistence boundary (2026-11-04, #2533 follow-up) ────────────────────
+
+
+def test_a_pasted_oauth_redirect_is_redacted_everywhere_it_is_written(tmp_path):
+    """The handler still receives the raw text; the inbox and the queue never see the code."""
+    from scripts.run_telegram_callback_poller import _record_operator_reply, _record_operator_outcome, redact_credentials
+    paste = "127.0.0.1?code=S3CR3T-oauth-code&state=abc"
+    raw = "https://" + paste
+    assert _record_operator_reply({"message_id": 91}, raw, "555", replies_dir=tmp_path, allowed={"555"},
+                                  chat_type="private", sender_id="555") == "recorded"
+    _record_operator_outcome({"message_id": 91}, raw, "555", handled=True, replies_dir=tmp_path)
+    written = (tmp_path / "telegram.jsonl").read_text()
+    assert "S3CR3T-oauth-code" not in written, written
+    assert "code=[redacted]" in written and "state=abc" in written   # the value goes, the rest of the URL stays
+    assert redact_credentials(raw).endswith("code=[redacted]&state=abc")
+
+
+def test_redaction_is_narrow_and_never_mangles_ordinary_prose():
+    from scripts.run_telegram_callback_poller import redact_credentials
+    for text in ("the code= path is under review", "token budget is 240", "approve the restore",
+                 "please re-read WORKERS.md and continue"):
+        assert redact_credentials(text) == text
+    # the credential parameters we claim to catch, case-insensitively, in a query string or a form paste
+    for key in ("code", "access_token", "refresh_token", "id_token", "api_key", "client_secret", "password", "token"):
+        assert redact_credentials(f"{key}=VALUE123") == f"{key}=[redacted]"

@@ -12,7 +12,7 @@ Uses flock to prevent duplicate instances.
 Paper mode only. No live trading.
 """
 
-import json, logging, os, sys, time
+import json, logging, os, re, sys, time
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -185,6 +185,28 @@ def _append_private(path: Path, line: str) -> None:
         fh.write(line)
 
 
+#: Parameter names whose VALUE is a credential when an operator pastes a callback URL or a form into Telegram.
+#: The Schwab OAuth redirect the handler accepts is ``127.0.0.1?code=...``; the same shape covers the others.
+_CREDENTIAL_PARAM_RE = re.compile(
+    r"(?i)\b(code|access_token|refresh_token|id_token|api_key|apikey|client_secret|password|token)=([^&\s]+)"
+)
+
+
+def redact_credentials(text: str) -> str:
+    """Replace the VALUE of a credential-bearing parameter, keeping the key and the rest of the message.
+
+    The poller must act on the operator's raw text — a Schwab ``?code=`` paste is completed, not redacted, on its way
+    into the OAuth exchange — but the inbox is append-only and long-lived, and the log is copied into incident
+    evidence. A credential written to either outlives the exchange it authorised, so redaction happens exactly at the
+    record/log boundary and nowhere earlier (BOARD #2533 follow-up, 2026-11-04).
+
+    Deliberately narrow: only ``key=value`` pairs whose key is a known credential parameter are touched, so ordinary
+    prose ("the code= path", "token budget") keeps its text and a long paste is not mangled.
+    """
+    if not text:
+        return text
+    return _CREDENTIAL_PARAM_RE.sub(lambda m: f"{m.group(1)}=[redacted]", text)
+
 def _record_operator_reply(msg: dict, text: str, chat_id: str, *, replies_dir=None,
                            allowed=None, chat_type=None, sender_id=None,
                            pending_path=None) -> str:
@@ -232,14 +254,14 @@ def _record_operator_reply(msg: dict, text: str, chat_id: str, *, replies_dir=No
         return "refused_sender"
     record = {"message_id": msg.get("message_id"), "date": msg.get("date"),
               "recorded_at": datetime.now(timezone.utc).isoformat(),
-              "chat_id": chat_id, "sender_id": str(sender_id), "text": text}
+              "chat_id": chat_id, "sender_id": str(sender_id), "text": text}  # redacted at the _append_or_queue boundary
     status = _append_or_queue(record, replies_dir=replies_dir, pending_path=pending_path)
     if status == "recorded":
-        log.info(f"operator reply recorded: {text[:40]} from chat={chat_id}")
+        log.info(f"operator reply recorded: {redact_credentials(text)[:40]} from chat={chat_id}")
     elif status == "queued":
-        log.warning(f"operator reply queued for flush: {text[:40]} from chat={chat_id}")
+        log.warning(f"operator reply queued for flush: {redact_credentials(text)[:40]} from chat={chat_id}")
     else:
-        log.error(f"operator reply neither recorded nor queued: {text[:40]} from chat={chat_id}")
+        log.error(f"operator reply neither recorded nor queued: {redact_credentials(text)[:40]} from chat={chat_id}")
     return status
 
 
@@ -259,7 +281,13 @@ def _record_operator_outcome(msg: dict, text: str, chat_id: str, *, handled: boo
 
 
 def _append_or_queue(record: dict, *, replies_dir=None, pending_path=None) -> str:
-    """Inbox append first; on failure a durable queue; ``failed`` only when neither can be written."""
+    """Inbox append first; on failure a durable queue; ``failed`` only when neither can be written.
+
+    THE redaction boundary: every record passes through here, both lines of a reply pair included, so a credential
+    cannot reach the inbox or the durable queue by a path that forgot to call the redactor.
+    """
+    if isinstance(record.get("text"), str):
+        record = {**record, "text": redact_credentials(record["text"])}
     line = json.dumps(record, ensure_ascii=False) + "\n"
     try:
         directory = Path(replies_dir) if replies_dir is not None else _operator_replies_dir()
