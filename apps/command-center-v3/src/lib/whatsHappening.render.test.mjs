@@ -71,6 +71,10 @@ check('served states are mapped to the operator vocabulary', /In review/.test(an
 const noCensus = html({})
 check('F1: NO census renders unknown, never six zeros', noCensus.includes('data-state="unknown"') && !noCensus.includes('whats-happening-strip'))
 check('F1: no census explains itself', /Cannot tell what is happening/.test(noCensus))
+// F1 in the reviewer's own words: a BARE LIST with no verdict. This is the exact shape that produced six zeros.
+const bareList = html({ feed: EIGHT })
+check('F1: a bare list with no verdict renders unknown, not six zeros', bareList.includes('data-state="unknown"') && !bareList.includes('whats-happening-strip'), bareList.slice(0, 220))
+check('F1: and it does not render a single row from that list', !bareList.includes('wh-row-'))
 const nullFeed = html({ census: ANSWERED, feed: null })
 check('F1: an answered census with NO row list is unknown, not empty', nullFeed.includes('data-state="unknown"'))
 const mixed = html({ census: ANSWERED, feed: [
