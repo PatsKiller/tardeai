@@ -35,3 +35,32 @@ write-free worker dry-run. No provider request, credential read, live policy
 write, activation or pending-job drain is performed. The coordinator's measured
 633 pending jobs and error count remain investigation inputs, not proof of a
 new successful production review.
+
+## The joint dispatch-authority invariant (2026-11-04)
+
+One function — `watch_review_policy_ledger.dispatch_authority` — covers BOTH
+boundaries that drifted apart twice in production: the runtime's registry
+resolution and the persisted parent approval. Before any dispatch, from either
+`create_execution_authorization` or `validate_execution_authorization`:
+
+1. the record exists, is ACTIVE, not revoked, **and has not expired** — the
+   clock outranks the status string, because a live record read ACTIVE while
+   `expires_at` was already a day in the past (`POLICY_EXPIRED`);
+2. the role's logical policy resolves through the canonical registry to exactly
+   one model id, and a caller-supplied model that is not that id is refused
+   (`MODEL_NOT_REGISTRY_CURRENT`) rather than substituted;
+3. the record names that exact model and that logical policy in its member
+   lists (`MODEL_MISMATCH`, `POLICY_MISMATCH`) — approval is explicit, never
+   inferred from a range, prefix or alias;
+4. the record carries an `authority_approval` digest over its authority-bearing
+   fields (`authority_digest`), written only by `persist_policy`. Renaming an
+   allowed model in the JSON in place changes the digest and grants nothing
+   (`AUTHORITY_CHANGED_SINCE_APPROVAL`); the operator installer is the approval
+   event. A child authorization records the digest it was issued under, so a
+   parent edited after issue invalidates it at consume time.
+
+Every refusal is a named, typed reason and no path returns a pass for an
+unapproved model: the lanes fail closed by construction. `scripts/install_watch_review_policy.py --operator-id <id>`
+is the only supported way to renew or widen the record; it reports the
+approval digest it wrote. Renewing an expired parent is an operator decision
+(D24), never an automatic migration.
