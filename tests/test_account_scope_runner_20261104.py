@@ -158,3 +158,20 @@ def test_E_the_served_projection_decides_held_from_the_store(monkeypatch):
     assert row["status"] == rs.READY, f"the served projection rendered {row['status']} for an IRA row"
     assert row["held"] is False
     assert row["held_accounts"] == ["schwab_individual"]
+
+
+def test_F_the_send_and_sample_paths_find_a_scoped_row_by_symbol(state):
+    """cx-openai-4 R2: the alert/save/sample lookups must not KeyError on a SYN|account row."""
+    holdings = [{"symbol": "SPCX", "account": "schwab_individual", "shares": 12}]
+    for account in ("schwab_ira", "schwab_individual"):   # A-only residual, then a genuinely held account
+        state([_row("SPCX", account)], holdings)
+        ev = runner.gather(ScriptedCursor(symbols=["SPCX"]))
+        assert list(ev) == [f"SPCX|{account}"]
+        result = ces.evaluate(ev[f"SPCX|{account}"])
+
+        # The three call sites in main() that only know the result (they used to do evidence["SPCX"]).
+        entry = runner.evidence_for(ev, result["symbol"])
+        assert entry is ev[f"SPCX|{account}"]
+        # And the follow-up path, which only knows the recorded symbol.
+        assert runner.evidence_for(ev, "SPCX") is ev[f"SPCX|{account}"]
+        assert runner.evidence_for(ev, "NOPE") == {}

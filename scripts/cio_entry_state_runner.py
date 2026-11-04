@@ -412,6 +412,24 @@ def record_review(cur, review: dict, result: dict) -> None:
                                  "result": result, "status": review.get("status")}, default=str) + "\n")
 
 
+def evidence_for(evidence: dict, symbol: str) -> dict:
+    """The evidence row for a symbol: the bare key, else the first scoped row (SYMBOL|ACCOUNT).
+
+    FQ-096 R2 (cx-openai-4, 2026-11-04): gather() keys a stated-account row as SYN|acct, so any
+    symbol-only lookup raises KeyError or silently reads {}. Call sites that only know a symbol use this;
+    call sites that hold the result object use evidence_of[id(result)] so they get the EXACT row.
+    """
+    sym = str(symbol or "").upper().strip()
+    if not sym:
+        return {}
+    if sym in evidence:
+        return evidence[sym]
+    for key, value in evidence.items():
+        if str(key).upper().startswith(sym + "|"):
+            return value
+    return {}
+
+
 def follow_up_pending_reviews(cur, evidence: dict) -> list[dict]:
     """Retry queued live reviews inside the wait window; page a follow-up when one lands."""
     if not REVIEW_PENDING.exists():
@@ -433,7 +451,7 @@ def follow_up_pending_reviews(cur, evidence: dict) -> list[dict]:
         if age_min > _review_wait_minutes():
             out.append({"symbol": sym, "follow_up": "expired"})
             continue
-        ev = dict(evidence.get(sym) or {})
+        ev = dict(evidence_for(evidence, sym) or {})
         review = prepare_packet_inputs(r["result"], ev, apply=True)
         if review.get("status") == "OK":
             from lib.buy_ready_cio_review import INSERT_SQL, decision_row
@@ -654,8 +672,9 @@ def main() -> int:
                 record_review(cur, reviews[r["symbol"]], r)
         conn.commit()
         for r in to_alert:
-            sent.append({"symbol": r["symbol"], "state": r["state"], **send_alerts(r, evidence[r["symbol"]])})
-            save_packet(r, evidence[r["symbol"]])
+            evidence_row = evidence_of.get(id(r)) or evidence_for(evidence, r["symbol"])
+            sent.append({"symbol": r["symbol"], "state": r["state"], **send_alerts(r, evidence_row)})
+            save_packet(r, evidence_row)
         follow_ups = follow_up_pending_reviews(cur, evidence)
         conn.commit()
         if follow_ups:
@@ -690,7 +709,8 @@ def main() -> int:
         report["reviews"] = {k: {"status": v.get("status"), "mode": v.get("mode")} for k, v in reviews.items()}
     if not a.apply and to_alert:
         report["sample_operator_message"] = stamp_cio_stance(
-            ces.render_operator(to_alert[0], evidence[to_alert[0]["symbol"]]), [to_alert[0]["symbol"]])
+            ces.render_operator(to_alert[0], evidence_of.get(id(to_alert[0])) or evidence_for(evidence, to_alert[0]["symbol"])),
+            [to_alert[0]["symbol"]])
     print(json.dumps(report, indent=2, default=str))
     return 0
 
