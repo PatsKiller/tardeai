@@ -196,7 +196,7 @@ export default function WatchIntelligenceUnified() {
   const sector = qsGet(sp, 'sector', '')
   const sort = qsGet(sp, 'sort', 'watch_rank')
   const page = qsGet(sp, 'page', '1')
-  const layout = qsGet(sp, 'layout', 'grid')
+  const layoutParam = qsGet(sp, 'layout', '')
   const starredOnly = qsGet(sp, 'starred', '') === '1'
   const heldOnly = qsGet(sp, 'held', '') === '1'
   const origin = qsGet(sp, 'origin', '')
@@ -271,6 +271,9 @@ export default function WatchIntelligenceUnified() {
   const quality = body?.data_quality || { status: body?.data_quality_status }
 
   const phone = useMobilePageDetail()
+  // FQ-073: a phone opens on compact scan rows — one name per line — and the full reading view is the existing
+  // full-screen sheet the row opens. An explicit ?layout= still wins, and desktop keeps the grid.
+  const layout = layoutParam || (phone.mobile ? 'compact' : 'grid')
   const [desktopSelected, setDesktopSelected] = useState<string | null>(null)
   const selected = phone.mobile ? phone.id : desktopSelected
   const setSelected = (symbol: string) => { if (phone.mobile) phone.open(symbol); else setDesktopSelected(symbol) }
@@ -599,6 +602,7 @@ export default function WatchIntelligenceUnified() {
         </select>
         <button type="button" style={pill(starredOnly)} onClick={() => setParam('starred', starredOnly ? '' : '1')}>★ Starred only</button>
         <button type="button" style={pill(heldOnly)} onClick={() => setParam('held', heldOnly ? '' : '1')}>Held only</button>
+        <button type="button" style={pill(layout === 'compact')} onClick={() => setParam('layout', 'compact')}>Compact</button>
         <button type="button" style={pill(layout === 'grid')} onClick={() => setParam('layout', 'grid')}>Grid</button>
         <button type="button" style={pill(layout === 'table')} onClick={() => setParam('layout', 'table')}>Table</button>
       </div>
@@ -624,8 +628,40 @@ export default function WatchIntelligenceUnified() {
       )}
 
       {/* 6. Cards + inspector */}
-      <div className="w9-classic-grid" style={{ display: 'grid', gridTemplateColumns: layout === 'table' ? '1fr' : 'minmax(0,1.5fr) minmax(300px,.85fr)', gap: 12, alignItems: 'start' }}>
-        {layout === 'table' ? (
+      <div className="w9-classic-grid" style={{ display: 'grid', gridTemplateColumns: layout === 'table' || layout === 'compact' ? '1fr' : 'minmax(0,1.5fr) minmax(300px,.85fr)', gap: 12, alignItems: 'start' }}>
+        {layout === 'compact' ? (
+          // FQ-073: a scan list. One row per name — what it is, what the engine currently says, what it costs —
+          // and every row opens the full-screen reading view (the same sheet the cards use).
+          <div data-compact-list style={{ background: BB.bgPanel, border: `1px solid ${BB.border}`, borderRadius: 12, overflow: 'hidden' }}>
+            {cards.map(c => (
+              <div
+                key={c.symbol}
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelected(c.symbol)}
+                onKeyDown={e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setSelected(c.symbol) } }}
+                data-compact-row
+                data-intelligence-card
+                data-symbol={c.symbol}
+                data-trade-ai-state={c.trade_ai_state}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 48, padding: '8px 12px', borderBottom: `1px solid ${BB.border}`, cursor: 'pointer' }}
+              >
+                <span style={{ fontWeight: 900, fontSize: TYPE.base, minWidth: 58 }}>
+                  {c.symbol}{c.starred ? <span style={{ color: BB.amber, marginLeft: 4 }}>★</span> : null}{c.held ? <span style={{ color: BB.green, marginLeft: 4, fontSize: TYPE.xs }}>H</span> : null}
+                </span>
+                <span title={c.trade_ai_state ? `Trade AI state: ${c.trade_ai_state}` : 'Trade AI state not reported'}
+                  style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: TYPE.sm, color: stateColor(c.trade_ai_state) }}>
+                  {c.decision?.category_label || (c.decision?.category ? c.decision.category.replace(/_/g, ' ') : 'No decision on record')}
+                </span>
+                <span style={{ textAlign: 'right', fontSize: TYPE.sm, fontWeight: 800, whiteSpace: 'nowrap' }}>
+                  {money(c.last)}
+                  <span style={{ marginLeft: 6, color: Number(c.day_change_pct) >= 0 ? BB.green : BB.red }}>{pct(c.day_change_pct)}</span>
+                </span>
+                <span aria-hidden style={{ color: BB.text3, fontSize: TYPE.base }}>›</span>
+              </div>
+            ))}
+          </div>
+        ) : layout === 'table' ? (
           <table style={{ width: '100%', borderCollapse: 'collapse', background: BB.bgPanel, border: `1px solid ${BB.border}`, borderRadius: 12 }}>
             <thead>
               <tr>
@@ -793,7 +829,7 @@ export default function WatchIntelligenceUnified() {
           </div>
         )}
 
-        {layout !== 'table' && !phone.mobile && (
+        {layout === 'grid' && !phone.mobile && (
           <aside className="w9-classic-inspector" style={{ background: BB.bgPanel, border: `1px solid ${BB.border}`, borderRadius: 12, position: 'sticky', top: 12 }} data-intelligence-inspector>
             {inspector}
           </aside>
