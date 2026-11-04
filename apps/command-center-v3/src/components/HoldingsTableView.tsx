@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import CountryFlag from './CountryFlag'
 import HoldingReportLinks from './HoldingReportLinks'
 import { StopKindPill } from './StopKindPill'
@@ -16,6 +16,7 @@ import {
 } from '../lib/holdingsTerminalTokens'
 import { holdingReportEligible } from '../lib/reportLinks'
 import { ShareDriftPill } from './ShareReconciliationModal'
+import { useNarrowViewport } from '../hooks/useNarrowViewport'
 import { RADIUS } from '../lib/designTokens'
 import { LevelLines, type LevelMap } from '../lib/supportResistance'
 
@@ -301,29 +302,6 @@ function FundLine({ h, fv }: { h: any; fv?: any }) {
       {pb && <>P/B <span style={{ color: BB.text2, fontWeight: 700 }}>{pb}</span></>}
     </div>
   )
-}
-
-/**
- * FQ-049 (audit 2026-11-04): below ~760px the 15-column grid cannot fit, and the page delivered
- * column headings stacked above an unlabelled run of values. On a narrow viewport each holding is a
- * card whose values sit beside their own labels. The desktop grid is unchanged.
- */
-function useNarrowViewport(maxWidth = 760): boolean {
-  const query = `(max-width: ${maxWidth}px)`
-  const [narrow, setNarrow] = useState(
-    () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? window.matchMedia(query).matches
-      : false,
-  )
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
-    const mq = window.matchMedia(query)
-    const onChange = () => setNarrow(mq.matches)
-    onChange()
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [query])
-  return narrow
 }
 
 function MobilePair({ label, value, color }: { label: string; value: ReactNode; color?: string }) {

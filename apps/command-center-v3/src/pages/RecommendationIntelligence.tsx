@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubPanel } from '../lib/terminalHubChrome'
+import { useNarrowViewport } from '../hooks/useNarrowViewport'
+import { humanizeIdentifier } from '../lib/displayLabels'
+import { componentLabel } from '../lib/operatorLanguage'
 
 type SrcPerf = { source?: string; closed_trades?: number; wins?: number; win_rate_pct?: number; avg_return_pct?: number; total_pnl?: number; avg_hold_days?: number }
 type StratPerf = { strategy?: string; resolved?: number; wins?: number; win_rate_pct?: number; avg_return_pct?: number }
@@ -53,11 +56,24 @@ function SummaryCard({ label, value, color, terminalUi }: { label: string; value
 }
 function SrcTag({ s }: { s?: string }) {
   const c = SRC_COLOR[s || ''] ?? '#6b7280'
-  return <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: `${c}1f`, color: c, border: `1px solid ${c}44` }}>{s}</span>
+  // FQ-055: the chip used to print the raw key (hermes_research, claude_challenger). The face is
+  // operator words; the key stays in the title.
+  return <span title={s} style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: `${c}1f`, color: c, border: `1px solid ${c}44` }}>{componentLabel(s)}</span>
+}
+
+/** One labelled value in a phone row (FQ-054: values sit beside their own labels). */
+function Field({ label, value, color }: { label: string; value: React.ReactNode; color?: string }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: 10, color: 'var(--text3)' }}>{label}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: color ?? 'var(--text1)', overflowWrap: 'anywhere' }}>{value}</div>
+    </div>
+  )
 }
 
 export default function RecommendationIntelligence() {
   const [terminalUi] = useTerminalUi()
+  const narrow = useNarrowViewport()
   const card = terminalUi ? hubPanel(terminalUi) : legacyCard
   const [d, setD] = useState<Summary | null>(null)
   const [warn, setWarn] = useState('')
@@ -187,7 +203,26 @@ export default function RecommendationIntelligence() {
       <section style={{ marginBottom: 20 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Return by Origin Source</div>
         <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Realized outcomes of closed trades, attributed to the source that originally introduced the ticker. This is which recommendation sources actually make money.</div>
-        {perf.length === 0 ? <div style={{ ...card, fontSize: 11, color: 'var(--text3)' }}>No closed trades with attributable origin yet.</div> : (
+        {perf.length === 0 ? <div style={{ ...card, fontSize: 11, color: 'var(--text3)' }}>No closed trades with attributable origin yet.</div> : narrow ? (
+          /* FQ-054: the six-column table clipped its right-hand columns on a phone. Each source is
+             a labelled row instead, so every value keeps its own heading. */
+          <div style={{ ...card, padding: 4 }} data-testid="rec-source-perf-mobile">
+            {perf.map((s, i) => (
+              <div key={i} style={{ padding: '8px 10px', borderTop: i ? '1px solid var(--border)' : undefined }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <SrcTag s={s.source} />
+                  <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text2)' }}>{s.closed_trades} trades</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginTop: 6 }}>
+                  <Field label="Source win rate" value={s.win_rate_pct == null ? '—' : `${s.win_rate_pct}%`} color={(s.win_rate_pct ?? 0) >= 50 ? 'var(--green)' : 'var(--red)'} />
+                  <Field label="Avg return" value={pct(s.avg_return_pct)} color={rcol(s.avg_return_pct)} />
+                  <Field label="Total P&L" value={usd(s.total_pnl)} color={rcol(s.total_pnl)} />
+                  <Field label="Avg hold" value={s.avg_hold_days == null ? '—' : `${s.avg_hold_days}d`} />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
           <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
               <thead><tr style={{ background: 'var(--bg2)', color: 'var(--text3)', fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.4 }}>
@@ -232,7 +267,7 @@ export default function RecommendationIntelligence() {
           <div style={{ ...card }}>
             {strat.length === 0 ? <div style={{ fontSize: 11, color: 'var(--text3)' }}>No resolved strategy outcomes yet.</div> : strat.map((s, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 0', fontSize: 11 }}>
-                <span style={{ flex: 1, color: 'var(--text1)', fontFamily: 'monospace', fontSize: 10.5 }}>{s.strategy}</span>
+                <span title={s.strategy} style={{ flex: 1, minWidth: 0, color: 'var(--text1)', fontSize: 11, overflowWrap: 'anywhere' }}>{humanizeIdentifier(s.strategy)}</span>
                 <span style={{ width: 60, textAlign: 'right', color: (s.win_rate_pct ?? 0) >= 50 ? '#22c55e' : '#ef4444', fontWeight: 700 }}>{s.win_rate_pct == null ? '—' : `${s.win_rate_pct}%`}</span>
                 <span style={{ width: 60, textAlign: 'right', color: rcol(s.avg_return_pct) }}>{pct(s.avg_return_pct)}</span>
                 <span style={{ width: 40, textAlign: 'right', color: 'var(--text3)', fontSize: 10 }}>n{s.resolved}</span>
@@ -262,6 +297,26 @@ export default function RecommendationIntelligence() {
             <span style={{ fontSize: 10, color: 'var(--text3)' }}>{openPos.length} held · {openPos.filter(p => p.origin).length} with detected origin · total unrealized <b style={{ color: rcol(openPos.reduce((a, p) => a + (p.unrealized_pnl ?? 0), 0)) }}>{usd(openPos.reduce((a, p) => a + (p.unrealized_pnl ?? 0), 0))}</b></span>
           </div>
           <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Currently-held real positions in the "monitored till sale" phase — cost basis from your buys, current price, unrealized P&amp;L, held-since, and the auto-detected recommendation origin. Click to trace lineage.</div>
+          {narrow ? (
+            /* FQ-054: eight columns clip on a phone. Each held position is a labelled row. */
+            <div style={{ ...card, padding: 4 }} data-testid="rec-open-positions-mobile">
+              {openPos.filter(p => matchOrigin(p.origin)).slice(0, 60).map((p, i) => (
+                <div key={i} onClick={() => lookup(p.symbol)} style={{ padding: '8px 10px', borderTop: i ? '1px solid var(--border)' : undefined, cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 13, color: 'var(--text0)' }}>{p.symbol}</span>
+                    {p.origin ? <SrcTag s={p.origin} /> : <span style={{ fontSize: 10, color: 'var(--text3)' }}>Direct / manual</span>}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginTop: 6 }}>
+                    <Field label="Shares" value={p.shares != null ? (p.shares % 1 === 0 ? p.shares : p.shares.toFixed(2)) : '—'} />
+                    <Field label="Avg cost" value={p.avg_cost != null ? `$${p.avg_cost.toFixed(2)}` : '—'} />
+                    <Field label="Current" value={p.current_price != null ? `$${p.current_price.toFixed(2)}` : '—'} />
+                    <Field label="Unrealized" value={`${pct(p.unrealized_pnl_pct)} · ${usd(p.unrealized_pnl)}`} color={rcol(p.unrealized_pnl)} />
+                    <Field label="Held since" value={p.held_since ? String(p.held_since).slice(0, 10) : '—'} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
           <div style={{ ...card, padding: 4, overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
               <thead><tr style={{ color: 'var(--text3)', textAlign: 'right' }}>
@@ -287,6 +342,7 @@ export default function RecommendationIntelligence() {
               </tbody>
             </table>
           </div>
+          )}
         </section>
       )}
 
@@ -301,6 +357,31 @@ export default function RecommendationIntelligence() {
           </label>
         </div>
         <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Each real sold position auto-linked to the recommendation origin that introduced it (watchlist / proposal / screener / research / directive) → entry → exit P&amp;L · R · hold → its journal review. No manual tagging. Click a row to trace full lineage.</div>
+        {narrow ? (
+          /* FQ-054: ten columns clip on a phone. Each closed position is a labelled row. */
+          <div style={{ ...card, padding: 4 }} data-testid="rec-lifecycle-mobile">
+            {life.filter(p => (!lifeOnlyOrigin || p.origin) && matchOrigin(p.origin)).slice(0, 120).map((p, i) => (
+              <div key={i} onClick={() => lookup(p.symbol)} style={{ padding: '8px 10px', borderTop: i ? '1px solid var(--border)' : undefined, cursor: 'pointer' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 13, color: 'var(--text0)' }}>{p.symbol}</span>
+                  {p.origin ? <SrcTag s={p.origin} /> : <span style={{ fontSize: 10, color: 'var(--text3)' }}>Direct / manual</span>}
+                  {p.journaled && <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--green)', fontWeight: 700 }}>Journaled</span>}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginTop: 6 }}>
+                  <Field label="Bought" value={p.buy_price != null ? `$${p.buy_price.toFixed(2)}` : '—'} />
+                  <Field label="Sold" value={p.sell_price != null ? `$${p.sell_price.toFixed(2)}` : '—'} />
+                  <Field label="Return" value={pct(p.pnl_pct)} color={rcol(p.pnl_pct)} />
+                  <Field label="P&L" value={usd(p.pnl)} color={rcol(p.pnl)} />
+                  <Field label="R multiple" value={p.r_multiple != null ? `${p.r_multiple.toFixed(2)}R` : '—'} color={rcol(p.r_multiple)} />
+                  <Field label="Held" value={p.hold_days != null ? `${p.hold_days}d` : '—'} />
+                  <Field label="Strategy" value={p.strategy_id ? humanizeIdentifier(p.strategy_id) : '—'} />
+                  <Field label="Journal" value={p.journaled ? (p.journal?.realized_r != null ? `${p.journal.realized_r}R` : 'Reviewed') : 'Not reviewed'} />
+                </div>
+              </div>
+            ))}
+            {life.length === 0 && <div style={{ textAlign: 'center', padding: 18, color: 'var(--text3)' }}>No closed positions yet.</div>}
+          </div>
+        ) : (
         <div style={{ ...card, padding: 4, overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
             <thead><tr style={{ color: 'var(--text3)', textAlign: 'right' }}>
@@ -323,7 +404,7 @@ export default function RecommendationIntelligence() {
                   <td style={{ padding: '6px 8px', color: rcol(p.pnl) }}>{usd(p.pnl)}</td>
                   <td style={{ padding: '6px 8px', color: rcol(p.r_multiple) }}>{p.r_multiple != null ? `${p.r_multiple.toFixed(2)}R` : '—'}</td>
                   <td style={{ padding: '6px 8px', color: 'var(--text3)' }}>{p.hold_days != null ? `${p.hold_days}d` : '—'}</td>
-                  <td style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text3)', fontSize: 10 }}>{p.strategy_id || '—'}</td>
+                  <td title={p.strategy_id || ''} style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text3)', fontSize: 10 }}>{p.strategy_id ? humanizeIdentifier(p.strategy_id) : '—'}</td>
                   <td style={{ padding: '6px 8px' }}>{p.journaled ? <span style={{ color: '#22c55e', fontWeight: 700 }} title={p.journal?.lesson || ''}>✓{p.journal?.realized_r != null ? ` ${p.journal.realized_r}R` : ''}</span> : <span style={{ color: 'var(--text3)' }}>—</span>}</td>
                 </tr>
               ))}
@@ -331,6 +412,7 @@ export default function RecommendationIntelligence() {
             </tbody>
           </table>
         </div>
+        )}
       </section>
 
       {/* Multi-source tickers */}
