@@ -15,19 +15,20 @@ const cell: CSSProperties = { display: 'grid', gap: 2, padding: '8px 10px', bord
 const rowStyle: CSSProperties = { display: 'grid', gap: 4, padding: '10px 0', borderTop: `1px solid ${TOKENS.borderSubtle}`, minWidth: 0 }
 
 export type WhatsHappeningCardProps = {
-  /** the source verdict (inFlightCensus from PR 2592) and the rows it governs — the card never gets a bare list */
-  census?: Census
+  /** the source verdict (inFlightCensus). REQUIRED: there is no bare-list entry point, because a list without a
+   *  verdict is exactly how six zeros came to look like a measurement (F1). */
+  census: Census
   feed?: FeedRow[] | null
-  items?: WorkItem[]
   /** true at 390/412 px: the table DROPS eta / last-update / source rather than squashing them. */
   compact?: boolean
   seeEverythingHref?: string
 }
 
-export function WhatsHappeningCard({ census, feed, items: rawItems, compact = false,
+export function WhatsHappeningCard({ census, feed, compact = false,
   seeEverythingHref = '/ops/whats-happening' }: WhatsHappeningCardProps): ReactNode {
-  // UNKNOWN IS A FIRST-CLASS OUTCOME: with a census, the card renders the reason, never an empty confident card.
-  const resolved = census ? cardFeed(census, feed) : { kind: 'rows' as const, items: rawItems ?? [] }
+  // UNKNOWN IS A FIRST-CLASS OUTCOME and the only fallback: no census, or a census that did not answer, or an
+  // answered census with no row list — every one of those renders the reason, never an empty confident card.
+  const resolved = cardFeed(census ?? { answered: false, reason: 'no source verdict was supplied' }, feed)
   if (resolved.kind === 'unknown') {
     return (
       <section data-testid="whats-happening" data-state="unknown" style={card}>
@@ -60,6 +61,12 @@ export function WhatsHappeningCard({ census, feed, items: rawItems, compact = fa
           )
         })}
       </div>
+
+      {resolved.unknown > 0 && (
+        <p data-testid="wh-unknown-note" style={{ margin: 0, fontSize: TYPE.sm, color: TOKENS.text[1] }}>
+          {resolved.unknown} row{resolved.unknown === 1 ? '' : 's'} recorded no state, so {resolved.unknown === 1 ? 'it is' : 'they are'} not counted above.
+        </p>
+      )}
 
       <div data-testid="whats-happening-rows">
         {rows.map(item => {

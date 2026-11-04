@@ -12,7 +12,9 @@
 //
 // Pure projection: no React, no network. The component renders it; the test renders the component.
 
-export type WorkState = 'in_progress' | 'verifying' | 'in_review' | 'waiting_on_you' | 'done' | 'p0'
+import type { Tone } from './designTokens'
+
+export type WorkState = 'in_progress' | 'verifying' | 'in_review' | 'waiting_on_you' | 'done' | 'p0' | 'unknown'
 
 /** The operator's words for each state. Never a status code. */
 export const STATE_LABEL: Record<WorkState, string> = {
@@ -22,16 +24,18 @@ export const STATE_LABEL: Record<WorkState, string> = {
   waiting_on_you: 'Waiting on you',
   done: 'Done',
   p0: 'P0',
+  unknown: 'Not recorded',
 }
 
 /** The designTokens tone each state uses — the mapping IS the operator's condition, in one place. */
-export const STATE_TONE: Record<WorkState, 'info' | 'ai' | 'warning' | 'elevated' | 'success' | 'danger'> = {
+export const STATE_TONE: Record<WorkState, Tone> = {
   in_progress: 'info',
   verifying: 'ai',
   in_review: 'warning',
   waiting_on_you: 'elevated',
   done: 'success',
   p0: 'danger',
+  unknown: 'neutral',   // a row with no recorded state is quiet, not coloured like work in progress
 }
 
 export type WorkItem = {
@@ -50,12 +54,13 @@ export const COUNTER_ORDER: WorkState[] = ['in_progress', 'verifying', 'in_revie
 
 export function counters(items: WorkItem[]): Array<{ state: WorkState; label: string; count: number }> {
   const c: Record<string, number> = {}
-  for (const i of items) c[i.state] = (c[i.state] ?? 0) + 1
+  // An UNKNOWN row is not evidence of activity: it is left out of the six counters entirely (F2).
+  for (const i of items) { if (i.state !== 'unknown') c[i.state] = (c[i.state] ?? 0) + 1 }
   return COUNTER_ORDER.map(state => ({ state, label: STATE_LABEL[state], count: c[state] ?? 0 }))
 }
 
 /** At most eight rows, P0 first, then "waiting on you", then the rest — the operator's own urgency order. */
-const RANK: Record<WorkState, number> = { p0: 0, waiting_on_you: 1, in_review: 2, verifying: 3, in_progress: 4, done: 5 }
+const RANK: Record<WorkState, number> = { p0: 0, waiting_on_you: 1, in_review: 2, verifying: 3, in_progress: 4, unknown: 5, done: 6 }
 
 export function topRows(items: WorkItem[], max = 8): WorkItem[] {
   return [...items]

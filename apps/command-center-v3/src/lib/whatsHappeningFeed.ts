@@ -18,6 +18,7 @@ export type FeedRow = {
 
 /** The state vocabulary the card shows, and the words a served row uses for each. Anything unlisted is in progress. */
 const STATE_OF: Record<string, WorkState> = {
+  // An unlisted or MISSING state is unknown, never "in progress": the source established no activity (F2).
   p0: 'p0', incident: 'p0', blocked_p0: 'p0',
   running: 'in_progress', working: 'in_progress', claimed: 'in_progress', building: 'in_progress',
   ci: 'verifying', verifying: 'verifying', checking: 'verifying',
@@ -28,19 +29,27 @@ const STATE_OF: Record<string, WorkState> = {
 
 export function workStateOf(state: string | null | undefined): WorkState {
   const k = String(state ?? '').trim().toLowerCase()
-  return STATE_OF[k] ?? 'in_progress'
+  return STATE_OF[k] ?? 'unknown'      // null, idle, stale and anything unlisted are UNKNOWN, not activity
 }
 
 /** What the card renders. `unknown` is a first-class outcome: the caller shows the reason, never an empty card. */
 export type CardFeed =
-  | { kind: 'rows'; items: WorkItem[] }
+  | { kind: 'rows'; items: WorkItem[]; unknown: number }
   | { kind: 'unknown'; reason: string }
 
 export function cardFeed(census: Census, rows: FeedRow[] | null | undefined): CardFeed {
   if (!census.answered) return { kind: 'unknown', reason: census.reason ?? 'the source did not answer' }
-  const items: WorkItem[] = (rows ?? []).map(r => ({
+  // An answered census that carried NO row list is still not an empty list: a missing census member is unknown.
+  if (!Array.isArray(rows)) return { kind: 'unknown', reason: 'the source answered without a list of work' }
+  const items: WorkItem[] = rows.map(r => ({
     id: r.id, title: r.title, state: workStateOf(r.state), owner: r.owner ?? null,
     eta: r.eta ?? null, updated_at: r.updated_at ?? null, source: r.source ?? null,
   }))
-  return { kind: 'rows', items }
+  // A list where NOT ONE row carries a state is not a list of six zeroes: nothing was established, so the card says so
+  // rather than rendering a confident strip (F1: a bare list must never look like a measurement).
+  const unknown = items.filter(i => i.state === 'unknown').length
+  if (items.length > 0 && unknown === items.length) {
+    return { kind: 'unknown', reason: 'the source listed work but no row recorded a state' }
+  }
+  return { kind: 'rows', items, unknown }
 }
