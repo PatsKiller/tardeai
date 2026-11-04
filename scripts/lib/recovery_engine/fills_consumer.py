@@ -308,6 +308,17 @@ def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date]
     # Partition by OWNERSHIP, not by "everything up to the newest row's last date" (cx-openai-2 F12). A fill belongs to
     # the existing case whose date range contains it; only fills belonging to no case are new. Without this, a third
     # unchanged pass refreshed the newest case with an OLDER case's fills and the same exit ended up in two rows.
+    # MEMBERSHIP IS DECIDED BY IDENTITY, THEN BY DATE (codex class block 2026-11-03). Date used to run first in both
+    # places — ownership here and per-day pairing below — so a source correction that moved a DATE (10-27 -> 10-28) on
+    # the same id fell outside its member's range and became a second member carrying the same id: -200 became -400
+    # with complete=True, gaps=[]. Identity now claims the member before any date is consulted; date ownership only
+    # places fills that no established identity already owns.
+    stored_by_id: dict[str, rc.RecoveryCase] = {}
+    for case in existing:
+        for row in case.exits:
+            sid = row.get("source_id")
+            if sid is not None and sid not in stored_by_id:
+                stored_by_id[str(sid)] = case
     ranges: list[tuple[rc.RecoveryCase, date, date]] = []
     for case in existing:
         dates = sorted(date.fromisoformat(str(e["date"])[:10]) for e in case.exits)
@@ -315,7 +326,9 @@ def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date]
     assigned: dict[str, list[rc.ExitFill]] = {case.case_key: [] for case, _, _ in ranges}
     unassigned: list[rc.ExitFill] = []
     for fill in fills:
-        owner = next((case for case, low, high in ranges if low <= fill.exit_date <= high), None)
+        owner = stored_by_id.get(str(fill.source_id)) if fill.source_id is not None else None
+        if owner is None:
+            owner = next((case for case, low, high in ranges if low <= fill.exit_date <= high), None)
         if owner is None:
             unassigned.append(fill)
         else:
@@ -325,54 +338,51 @@ def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date]
         got = assigned[case.case_key]
         if not got:
             continue
-        # A DATE IS NOT A FILL IDENTITY (codex F14). Two distinct exits on one day must stay two exits, and an unknown
-        # P&L must never be replaced by a different exit's number. A stored exit is refreshed only when its date is
-        # unambiguous: exactly ONE stored exit and exactly ONE read fill on it. Otherwise the stored exits are kept
-        # verbatim — no collapse by date, no duplication of the last observation.
-        by_date: dict[str, list[rc.ExitFill]] = {}
-        for fill in got:
-            by_date.setdefault(fill.exit_date.isoformat(), []).append(fill)
+        # A DATE IS NOT A FILL IDENTITY (codex F14), and a date is not a membership rule either (class block
+        # 2026-11-03). Pair across the WHOLE case by identity first, so a correction that moves the date on the same id
+        # updates that member instead of forming a second one. Date+price is only the fallback for rows persisted
+        # before the field — there is no date-specific special case here, date is simply last.
+        stored = list(case.exits)
+        reads = list(got)
+        used: set[int] = set()
+        pairs: list[tuple[dict, Optional[rc.ExitFill]]] = []
+        for row in stored:
+            sid = row.get("source_id")
+            hit = None
+            if sid is not None:
+                hit = next((j for j, f in enumerate(reads) if j not in used and f.source_id is not None
+                            and str(f.source_id) == str(sid)), None)
+            if hit is not None:
+                used.add(hit)
+            pairs.append((row, reads[hit] if hit is not None else None))
+        # Legacy rows (persisted before the field): exact price on the SAME DATE, and the link names itself provisional.
+        for idx, (row, fill) in enumerate(pairs):
+            if fill is not None or row.get("source_id") is not None:
+                continue
+            day = str(row["date"])[:10]
+            hit = next((j for j, f in enumerate(reads)
+                        if j not in used and f.source_id is None and f.exit_date.isoformat() == day
+                        and abs(float(f.price) - float(row["price"])) < 1e-9), None)
+            if hit is not None:
+                used.add(hit)
+                pairs[idx] = (row, reads[hit])
+                _unresolved(
+                    f"the {day} exit was persisted before source identity existed and was paired to a read by exact "
+                    "price alone; the link is provisional, not established")
         merged: list[rc.ExitFill] = []
-        for DateKey in {str(row["date"])[:10] for row in case.exits} | set(by_date):
-            stored = [row for row in case.exits if str(row["date"])[:10] == DateKey]
-            reads = list(by_date.get(DateKey) or [])
-            used: set[int] = set()
-            # IDENTITY FIRST (codex F16). A persisted exit and a read fill that carry the same source id are the SAME
-            # event whatever their price, P&L or share count now say, so a correction refreshes the member instead of
-            # appending a second one. Price is the fallback for rows that predate the field, and it is labelled.
-            pairs: list[tuple[dict, Optional[rc.ExitFill]]] = []
-            for row in stored:
-                stored_id = row.get("source_id")
-                if stored_id is not None:
-                    # An identified stored row never pairs by price: an equal price is not evidence of sameness.
-                    hit = next((j for j, f in enumerate(reads)
-                                if j not in used and f.source_id == stored_id), None)
-                else:
-                    # A LEGACY row has no identity to match, so the old exact-price pairing stands — as a fallback
-                    # that names itself, never as proof. Codex I12: it may not silently claim a complete match.
-                    hit = next((j for j, f in enumerate(reads)
-                                if j not in used and f.source_id is None
-                                and abs(float(f.price) - float(row["price"])) < 1e-9), None)
-                    if hit is not None:
-                        _unresolved(
-                            f"the {DateKey} exit was persisted before source identity existed and was paired to a "
-                            "read by exact price alone; the link is provisional, not established")
-                if hit is not None:
-                    used.add(hit)
-                pairs.append((row, reads[hit] if hit is not None else None))
-            # A read fill paired to nobody is a DISTINCT exit this case has not persisted — a late arrival, not an
-            # ambiguity to be dropped (codex F15). It is appended, so the case never reads a fill and discards it.
-            extras = [f for j, f in enumerate(reads) if j not in used]
-            for extra in extras:
-                if extra.source_id is None:
-                    # With no id on the read there is nothing to prove this is a NEW exit rather than a corrected
-                    # one, so it is appended on date evidence alone and the reason is stated (codex F16/I12).
-                    _unresolved(
-                        f"a {extra.exit_date} read fill for {symbol}/{account} carries no source identity; the "
-                        "stored exit and this read are BOTH retained, and whether they are one corrected exit or two "
-                        "events is unresolved")
-            merged.extend(fill if fill is not None else _as_exit_fill(symbol, account, row) for row, fill in pairs)
-            merged.extend(extras)
+        # A read fill paired to nobody is a DISTINCT exit this case has not persisted — a late arrival, not an
+        # ambiguity to be dropped (codex F15). It is appended, so the case never reads a fill and discards it.
+        extras = [f for j, f in enumerate(reads) if j not in used]
+        for extra in extras:
+            if extra.source_id is None:
+                # With no id on the read there is nothing to prove this is a NEW exit rather than a corrected
+                # one, so it is appended on date evidence alone and the reason is stated (codex F16/I12).
+                _unresolved(
+                    f"a {extra.exit_date} read fill for {symbol}/{account} carries no source identity; the "
+                    "stored exit and this read are BOTH retained, and whether they are one corrected exit or two "
+                    "events is unresolved")
+        merged.extend(fill if fill is not None else _as_exit_fill(symbol, account, row) for row, fill in pairs)
+        merged.extend(extras)
         refreshed = rc.consume_fills(store, merged, cluster_key=case.cluster_key, **common)
         result = refreshed
     if unassigned:

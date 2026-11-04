@@ -853,3 +853,28 @@ def test_f16_an_identity_that_cannot_be_established_makes_the_pass_incomplete(st
     assert second["complete"] is False, f"an unestablished identity must not report a complete pass: {second}"
     assert any("provisional" in g or "unresolved" in g for g in second["gaps"]), second["gaps"]
     conn.close()
+
+
+def test_f16_a_date_correction_on_the_same_id_updates_the_member_not_a_second_one(store):
+    """codex's class BLOCK at b982142ee. The SAME source id with its DATE corrected (10-27 -> 10-28) used to become
+    two persisted members both carrying that id: -200 became -400 with complete=True, gaps=[]. Membership is now
+    resolved by identity before any date is consulted, so a date correction updates the member it belongs to."""
+    from lib.recovery_engine import fills_consumer as fc
+    conn = _source_db()
+    _watch(conn, "2026-10-27", 80.0, -200.0)     # id 1; no trade row, so only the watch source speaks
+    _positions(conn, 0)
+    conn.commit()
+    first = fc.run(store, conn, today=TODAY, now=NOW)
+    case = store.get(first["opened"][0])
+    assert len(case.exits) == 1 and case.exits[0]["date"] == "2026-10-27", case.exits
+    # The broker corrects the DATE on the same row: no INSERT, same id.
+    conn.execute("UPDATE stopped_out_watch SET stopped_out_at = '2026-10-28' WHERE id = 1")
+    conn.commit()
+    second = fc.run(store, conn, today=TODAY, now=NOW)
+    assert second["opened"] == [], second
+    after = store.get(case.case_key)
+    assert len(after.exits) == 1, f"a corrected date must update the member, never mint a second: {after.exits}"
+    assert after.exits[0]["date"] == "2026-10-28", after.exits
+    assert after.exits[0]["source_id"] == "stopped_out_watch:1", after.exits
+    assert after.realized_pnl == pytest.approx(-200.0), after.realized_pnl
+    conn.close()
