@@ -250,9 +250,11 @@ def alert_for(prev: Optional[str], cur: str, entry: Mapping[str, Any], now: date
     It is narrow on purpose, and the narrowness is what keeps the bound: the bypass needs `alerted_band == "warn"`
     exactly, and delivering it sets `alerted_band = "critical"`, so every later critical is a REPEAT and stays
     interval-gated, and a re-cross after a recovery is interval-gated too because only a *reported* recovery can set
-    the band back. Measured over 24 h at 15-minute polls: 24-25 alerts on every pattern the suite exercises, against
-    the stated bound of 25 — one extra alert per warn->critical cycle, and a cycle needs a recovery that is itself
-    interval-gated.
+    the band back. Measured over 24 h at 15-minute polls: 24-25 on two- and four-band cycles, and **up to 33 on a
+    three-band cycle** (`warn,critical,ok` repeating every 45 minutes), because such a cycle pays a warn, an escalation
+    and a recovery every 90 minutes and neither the escalation nor the recovery may be suppressed. That is the stated
+    ceiling and the reason for it (cc-deepseek-5's re-read, 2026-11-04); a promise of 25 on every shape would require
+    dropping one of those two guarantees.
 
     `prev` is kept for call-site symmetry and is deliberately NOT consulted: only the last REPORTED band decides.
     """
