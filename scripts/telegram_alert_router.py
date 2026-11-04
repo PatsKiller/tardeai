@@ -932,7 +932,17 @@ def should_send_telegram(message: str, *, consume: bool = False) -> bool:
             if not recovery_t1_claim(message):
                 record_suppressed(message, "recovery_t1_daily_case_bound")
                 return False
-        elif state == "claimed":
+            # Between the claim and the caller's release handler there were fallible steps — the
+            # exemptions read is one (a malformed budget file raises here) — and a raise left the case
+            # claimed and locked with no provider call and no release, so a corrected retry could never
+            # page again (cx-openai-3 F1, 2026-11-04). Anything that fails after the claim releases it.
+            try:
+                _last_recovery_exemptions[:] = _recovery_exemptions_for(message)
+            except BaseException:
+                recovery_t1_release(message)
+                raise
+            return True
+        if state == "claimed":
             return False
         _last_recovery_exemptions[:] = _recovery_exemptions_for(message)
         return True

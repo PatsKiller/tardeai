@@ -162,3 +162,24 @@ def test_two_threads_serialise_their_settles(tmp_path):
     assert len(results) == 2
     key = f"{router._budget_day()}\x00{router._recovery_case_key(msg)}"
     assert key not in router._RECOVERY_CLAIM_OWNERS or router._RECOVERY_CLAIM_OWNERS[key] is None
+
+
+# ── F1: a failure after the claim must not leak it (cx-openai-3, 2026-11-04) ─────────────────
+def test_a_raise_after_the_claim_releases_it_so_the_retry_can_page(monkeypatch, tmp_path):
+    """A malformed budget file raised after recovery_t1_claim and before transport: the case stayed
+    claimed and locked with zero provider calls, and fixing the file did not help."""
+    msg = rn.build_message(_case(case_id="spcx-post-claim-raise"))
+    real = router._recovery_exemptions_for
+
+    def boom(_message):
+        raise ValueError("malformed budget file")
+
+    monkeypatch.setattr(router, "_recovery_exemptions_for", boom)
+    with pytest.raises(ValueError):
+        router.should_send_telegram(msg, consume=True)
+
+    monkeypatch.setattr(router, "_recovery_exemptions_for", real)
+    lock = router._recovery_claim_lock(router._budget_day(), router._recovery_case_key(msg))
+    assert not lock.exists(), "the claim leaked when the post-claim path raised"
+    assert router.recovery_t1_state(msg) != "claimed"
+    assert router.should_send_telegram(msg, consume=True) is True, "the corrected retry must be able to page"
