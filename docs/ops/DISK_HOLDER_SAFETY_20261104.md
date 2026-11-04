@@ -1,9 +1,10 @@
 # Disk hygiene — why rule R reports releases instead of deleting them (2026-11-04)
 
 **Decision (a), lead ruling 2026-11-04, taken after codex's R3a/R3b block on `302b34483`:** the scheduled lane never
-removes a release directory. It reports the reclaimable set, with bytes. Removal requires a `ReleaseArming` object that
-names exactly one path, parsed from an operator-authored file — never a config key, so "armed" cannot be expressed as a
-scheduled deletion.
+removes a release directory, through any path, under any mode, with any file present. It reports the reclaimable set,
+with bytes. There is NO one-shot exception: a value object can bind to a target's metadata, but it cannot distinguish
+agent intent from operator approval, because the process that can read the target can also write the approval. A
+constrained namespace is not an authority boundary.
 
 This document records the argument, the mechanism that replaced the fence's claim, and the residual that no code in
 this repository can close.
@@ -56,10 +57,9 @@ this host. The honest disposition is (a): refuse, and report.
   bytes stay in the manifest's `excluded` set, so the operator digest still shows what the lane would free.
 * The LEGACY `plan()` path runs the same refusal (`refuse_release_removals`), because it used to select releases
   itself — the default report path being safe said nothing about the old entrypoint (codex 2026-11-04).
-* `remove_item` refuses any `release_dir` unless the caller holds a `ReleaseArming` whose path is that item's path.
-  `True`, a dict or a config value cannot satisfy it: only `parse_release_arming()` builds the type, from a file with
-  `schema: ReleaseArming@v1`, an absolute `path`, an `approved_by` and an `approved_at`. This is what makes "operator
-  armed" structurally different from "scheduled": no scheduled lane can hold the object.
+* `remove_item` refuses EVERY release, unconditionally: `kind == "release_dir"`, `rule == "R"`, a path inside a
+  configured release root — under any other `kind` — and, fail-closed, any directory removal when the release
+  namespace was never loaded (`_RELEASE_ROOTS` empty). There is no arming argument and no callable deletion helper.
 
 The scan is still worth having: it names the component that resolves a superseded release (the 12-hour
 `tradeai-ops-agent` resurrection), and it refuses the deletion boundary if the operator ever arms it.

@@ -1712,8 +1712,7 @@ def proc_holder_units(path: Path, *, proc_root: Path = Path("/proc")) -> HolderS
     return HolderScan(tuple(sorted(units)), complete, holders, tuple(sorted(unattributed)))
 
 
-def _release_rows(rules: Mapping[str, Any], ctx: Mapping[str, Any], r_cfg: Mapping[str, Any], row, only: Optional[str],
-                  armed: Optional[ReleaseArming] = None) -> list[dict]:
+def _release_rows(rules: Mapping[str, Any], ctx: Mapping[str, Any], r_cfg: Mapping[str, Any], row, only: Optional[str]) -> list[dict]:
     """Rule R: the existing release selection (CURRENT, pointer targets, previous, newest N, references) on one root."""
     roots = [{**r, "keep_newest": max(int(r.get("keep_newest") or 0), int(r_cfg["keep_newest"]))}
              for r in rules["_release_roots"] if r["_path"] == _expand(r_cfg["root"], rules["_home"])]
@@ -1738,12 +1737,9 @@ def _release_rows(rules: Mapping[str, Any], ctx: Mapping[str, Any], r_cfg: Mappi
         # (a), not (b) — lead ruling 2026-11-04: POSIX has no "unlink only if nothing holds this" primitive. A retained
         # directory fd survives every pathname fence, and quiescence cannot be ENFORCED against same-uid processes
         # (agents included) that may open a descriptor at any instant. So the scheduled lane never removes a release:
-        # it reports the reclaimable set, and removal needs a ReleaseArming object naming ONE path — never a config
-        # value, so a scheduled lane cannot carry the permission a human one-shot has.
-        # See docs/ops/DISK_HOLDER_SAFETY_20261104.md.
-        # Arming is an OBJECT for one path, never a config value: a boolean would let a scheduled lane carry the same
-        # permission as a human one-shot (codex 2026-11-04). Without a matching object the row cannot be a candidate.
-        armed_here = _refuse_unless_armed(path, "release_dir", armed) is None
+        # it reports the reclaimable set, and NOTHING removes a release — the one-shot exception is gone (codex
+        # 2026-11-04: observed target metadata is not operator permission). See docs/ops/DISK_HOLDER_SAFETY_20261104.md.
+        armed_here = False      # a release is never removed: see remove_item (codex 2026-11-04)
         if "in_use_cwd" in item["reasons"]:
             scan = proc_holder_units(path)
             hosts: list[str] = list(scan.units)
@@ -2173,72 +2169,6 @@ def executed_row(manifest_item: Mapping[str, Any], fresh: Optional[Mapping[str, 
 #: The reason every release row carries. Named once so the policy, the legacy plan and the tests cannot drift apart.
 RELEASE_REFUSAL = "release_delete_refused:no_enforceable_quiescence_primitive"
 
-
-@dataclass(frozen=True)
-class ReleaseArming:
-    """A ONE-SHOT operator authorisation to remove exactly ONE release directory, bound to its IDENTITY.
-
-    Codex 2026-11-04 (cd1c2038f): a path is not an identity. Arming `/rel/old` and then recreating a release there
-    deletes the new incarnation; arming a path that is a symlink deletes whatever it points at; and a directly
-    constructed object mints authority with no file behind it. So the object is a parsed ARTEFACT, not a token: it
-    carries the device, inode and ctime it was approved against, and `remove_item` re-checks those against `lstat` at
-    the moment of removal. A recreated directory has a different inode; a retargeted symlink is refused outright.
-    """
-    path: str
-    approved_by: str
-    approved_at: str
-    dev: int
-    ino: int
-    ctime_ns: int
-    schema: str = "ReleaseArming@v1"
-
-
-_ARMING_FIELDS = ("schema", "path", "approved_by", "approved_at", "dev", "ino", "ctime_ns")
-#: An authorisation older than this is not an authorisation: it was signed for a state of the disk that is gone.
-ARMING_MAX_AGE_H = 24.0
-
-
-def _armed_identity(path: Path) -> tuple[int, int, int]:
-    st = os.lstat(path)
-    return st.st_dev, st.st_ino, st.st_ctime_ns
-
-
-def parse_release_arming(arming_file: Path, *, now: Optional[datetime] = None) -> ReleaseArming:
-    """Read an operator-authored arming file. Raises on anything that is not a complete, well-formed authorisation."""
-    doc = json.loads(Path(arming_file).read_text(encoding="utf-8"))
-    if not isinstance(doc, Mapping) or doc.get("schema") != "ReleaseArming@v1":
-        raise ValueError("arming_schema")
-    missing = [k for k in _ARMING_FIELDS if doc.get(k) in (None, "")]
-    if missing:
-        raise ValueError("arming_missing:" + ",".join(missing))
-    target = Path(str(doc["path"]))
-    if not target.is_absolute():
-        raise ValueError("arming_path_not_absolute")
-    if target.is_symlink() or os.path.realpath(str(target)) != str(target):
-        raise ValueError("arming_path_not_canonical_or_symlink")
-    if not target.is_dir():
-        raise ValueError("arming_path_not_a_dir")
-    try:
-        approved = datetime.fromisoformat(str(doc["approved_at"]).replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise ValueError("arming_approved_at_not_iso8601") from exc
-    if approved.tzinfo is None:
-        raise ValueError("arming_approved_at_no_timezone")
-    age_h = ((now or datetime.now(timezone.utc)) - approved).total_seconds() / 3600.0
-    if age_h < -0.25:
-        raise ValueError("arming_approved_in_the_future")
-    if age_h > ARMING_MAX_AGE_H:
-        raise ValueError("arming_expired")
-    dev, ino, ctime_ns = _armed_identity(target)
-    # The identity must be the one the approver SAW: a file that records a different inode was not written by a human
-    # looking at this directory, and a file that omits them cannot be checked at all.
-    for key, actual in (("dev", dev), ("ino", ino), ("ctime_ns", ctime_ns)):
-        if int(doc[key]) != actual:
-            raise ValueError("arming_identity_mismatch:" + key)
-    return ReleaseArming(path=str(target), approved_by=str(doc["approved_by"]), approved_at=str(doc["approved_at"]),
-                         dev=dev, ino=ino, ctime_ns=ctime_ns)
-
-
 #: Populated by load_rules: every configured release root, resolved. The gate keys on LOCATION, not on `kind`, so a
 #: manifest that names a release with kind=git_clone (or any other kind) is refused just the same (codex 2026-11-04).
 _RELEASE_ROOTS: tuple[str, ...] = ()
@@ -2247,22 +2177,6 @@ _RELEASE_ROOTS: tuple[str, ...] = ()
 def _in_release_roots(path: Path) -> bool:
     rp = os.path.realpath(str(path))
     return any(rp == root or rp.startswith(root + os.sep) for root in _RELEASE_ROOTS)
-
-
-def _refuse_unless_armed(p: Path, kind: str, arming: Optional["ReleaseArming"]) -> Optional[str]:
-    """The arming gate's single decision, shared by every gated path."""
-    if not (kind == "release_dir" or _in_release_roots(p)):
-        return None
-    if not isinstance(arming, ReleaseArming):
-        return RELEASE_REFUSAL
-    if os.path.islink(str(p)) or os.path.realpath(arming.path) != os.path.realpath(str(p)):
-        return RELEASE_REFUSAL + ":path_mismatch"
-    try:
-        if _armed_identity(p) != (arming.dev, arming.ino, arming.ctime_ns):
-            return RELEASE_REFUSAL + ":identity_mismatch"      # a NEW incarnation at the same path
-    except OSError:
-        return RELEASE_REFUSAL + ":identity_unreadable"
-    return None
 
 
 def refuse_release_removals(rows: list[dict], why: str = RELEASE_REFUSAL) -> list[dict]:
@@ -2275,13 +2189,17 @@ def refuse_release_removals(rows: list[dict], why: str = RELEASE_REFUSAL) -> lis
     return rows
 
 
-def remove_item(item: Mapping[str, Any], *, arming: Optional["ReleaseArming"] = None) -> tuple:
+def remove_item(item: Mapping[str, Any]) -> tuple:
     """(ok, how) or, for rule C, (ok, how, {archive_ref, archive_sha}) so the receipt names the restore point."""
     p = Path(item["path"])
     kind = item["kind"]
-    why = _refuse_unless_armed(p, kind, arming)
-    if why:
-        return False, why
+    # NO ARMING EXCEPTION (codex 2026-11-04, 48ecc1f). Metadata cannot make a one-shot safe: a directly constructed
+    # object, an agent-authored file with a plausible date, and a stale arming replayed at a recreated path all authorise
+    # a deletion that cannot be proved unheld. So the exception is removed rather than tightened. Keyed on LOCATION, so
+    # a release named with any other `kind`, and a direct caller whose rules were never loaded (empty catalogue), are
+    # refused too.
+    if kind == "release_dir" or item.get("rule") == "R" or _in_release_roots(p) or not _RELEASE_ROOTS:
+        return False, RELEASE_REFUSAL
     if kind == "abandoned_worktree":
         why = closeout_guard(item)
         if why:
