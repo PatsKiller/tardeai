@@ -270,3 +270,28 @@ def test_every_apply_entrypoint_routes_through_the_locking_run():
     assert "return run(rules=rules, state_root=state_root, ledger=ledger" in src
     assert "with _state_lock(state_path):" in src
     assert "_run_locked(" in src
+
+
+def test_the_lock_is_scoped_to_the_state_identity_not_to_the_process_or_the_run(tmp_path):
+    """cx-openai-2's requirement, self-reviewed: the lock must serialise writers of ONE state and must NOT become a
+    global outage. The lock file is derived from the state file, so two different state roots — a second lane, a
+    rehearsal, a test root — never block each other."""
+    a = tmp_path / "rootA" / "data" / "runtime" / "disk_usage_monitor_state.json"
+    b = tmp_path / "rootB" / "data" / "runtime" / "disk_usage_monitor_state.json"
+    assert a.with_name(a.name + ".lock") != b.with_name(b.name + ".lock"), "different state roots must not share a lock"
+
+    held, waited = threading.Event(), []
+
+    def hold(p):
+        with M._state_lock(p):
+            held.set()
+            time.sleep(0.4)
+
+    t = threading.Thread(target=hold, args=(a,))
+    t.start()
+    assert held.wait(2.0), "the holder never took the lock"
+    started = time.monotonic()
+    with M._state_lock(b):                     # a DIFFERENT state root: must not wait for the holder
+        waited.append(time.monotonic() - started)
+    t.join()
+    assert waited[0] < 0.2, f"a different state root waited {waited[0]:.2f}s — the lock is scoped too widely"
