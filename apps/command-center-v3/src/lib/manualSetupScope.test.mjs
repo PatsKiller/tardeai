@@ -33,5 +33,16 @@ const desk = readFileSync(join(HERE, '../pages/ManualTosDesk.tsx'), 'utf8')
 check(/manual-desk-scope-legend/.test(desk), 'the desk has no one-line legend saying what READY means and that nothing here places an order')
 check(/not approval/i.test(desk), 'the legend does not say READY is not approval')
 
+// FQ-043: the same page's phone length. The desk renders a compact shortlist and the full ticket
+// opens on demand; every control must still exist in the component (nothing removed).
+check(/\{expanded && <div/g.test(row) && (row.match(/\{expanded && <div/g) || []).length >= 2,
+  'the sizing and action columns are not gated behind the expanded state')
+check(/entry-desk-details-toggle/.test(row), 'the row has no way to open its details')
+check(/Copy setup/.test(row) && /Copy Schwab tickets/.test(row) && /Broker queue/.test(row),
+  'a control was removed from the row instead of being moved behind the details toggle')
+check(/data-testid="manual-desk-scope-legend"/.test(desk), 'the compact desk lost the scope legend')
+check(/expanded=\{!!openRows\[/.test(desk), 'the desk does not control which rows are expanded')
+check(/onToggle=\{/.test(desk), 'the desk does not pass a toggle to the row')
+
 if (failed) { console.error(`manualSetupScope: ${failed} failure(s)`); process.exit(1) }
 console.log('manualSetupScope: ok')

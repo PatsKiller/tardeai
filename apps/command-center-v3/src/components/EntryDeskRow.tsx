@@ -91,10 +91,15 @@ type Props = {
   onPromote: (r: SetupRow, proposalId?: number) => void
   promoteBusy?: boolean
   focused?: boolean
+  /** FQ-043: the desk renders a compact shortlist; the full ticket is one tap away. */
+  expanded?: boolean
+  onToggle?: () => void
 }
 
 export default function EntryDeskRow({
   r, state, hit, account, streetTarget, tech, accounts, accountMap, onSetField, onCopyMsg, onPromote, promoteBusy, focused,
+  expanded = true,
+  onToggle,
 }: Props) {
   const rating = deriveTradeAiRating(r)
   const sz = sizing(r, account)
@@ -167,7 +172,7 @@ export default function EntryDeskRow({
         boxShadow: focused ? '0 0 0 1px rgba(96,165,250,.25)' : undefined,
       }}
     >
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.35fr) minmax(0,1fr) auto', gap: 12, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: expanded ? 'minmax(0,1.35fr) minmax(0,1fr) auto' : 'minmax(0,1fr)', gap: 12, alignItems: 'start' }}>
         <div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 9, color: badgeColor(r.source), fontWeight: 900 }}>{r.source}</span>
@@ -210,6 +215,12 @@ export default function EntryDeskRow({
           )}
           {r.reason && <div style={{ marginTop: 4, fontSize: 9, color: C.dim, lineHeight: 1.4 }}>{String(r.reason).slice(0, 200)}</div>}
           <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, ...mono }}>{setupLine(r)}</div>
+          {onToggle && (
+            <button type="button" onClick={onToggle} data-testid="entry-desk-details-toggle"
+              style={{ marginTop: 6, fontSize: 10, padding: '3px 9px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: C.blue, cursor: 'pointer' }}>
+              {expanded ? 'Hide details ▴' : 'Show details ▾ (sizing, diligence, copy, broker queue)'}
+            </button>
+          )}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 7, fontSize: 9 }}>
             {r.entryPrice != null && (r.protective
               ? <span data-testid="entry-desk-protective" style={{ color: C.red }}>protective {r.side} {r.entryType.replace(/_/g, ' ')} {r.trailPct != null ? `trail ${r.trailPct}%` : r.entryPrice.toFixed(2)}</span>
@@ -254,7 +265,7 @@ export default function EntryDeskRow({
           )}
         </div>
 
-        <div>
+        {expanded && <div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px', gap: 8, marginBottom: 7 }}>
             <select value={r.account} onChange={e => onSetField(r.id, { account: e.target.value })} style={inputStyle}>
               {['ANY', ...accounts.filter(a => a !== 'ANY')].filter((v, i, arr) => arr.indexOf(v) === i).map(a => (
@@ -276,9 +287,9 @@ export default function EntryDeskRow({
             <div style={metricBox}><div style={{ fontSize: 8, color: C.dim }}>Risk / R:R</div><div style={{ fontSize: 11, fontWeight: 800, color: sz.rr && sz.rr >= 2 ? C.green : C.amber }}>{money(sz.risk)} / {sz.rr ? sz.rr.toFixed(2) : '—'}</div></div>
           </div>
           <div style={{ marginTop: 6, fontSize: 9, color: C.dim }}>Sizing is read-only — does not place orders.</div>
-        </div>
+        </div>}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end', minWidth: 148 }}>
+        {expanded && <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end', minWidth: 148 }}>
           <button onClick={() => doCopy(setupLine(r), 'setup')} style={btn('#1d4ed8')}>Copy setup</button>
           <button
             title="Copy Schwab ticket drafts — no API submit"
@@ -302,7 +313,7 @@ export default function EntryDeskRow({
               {promoteBusy ? '…' : '→ Broker queue'}
             </button>
           )}
-        </div>
+        </div>}
       </div>
 
       {ackOpen && (

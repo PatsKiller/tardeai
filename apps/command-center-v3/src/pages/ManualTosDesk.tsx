@@ -184,6 +184,9 @@ function rowState(r: SetupRow, local: LocalState, activity: any[]): SetupState {
 type DeskProps = { focusSymbol?: string }
 
 export default function ManualTosDesk({ focusSymbol }: DeskProps = {}) {
+  // FQ-043: the phone page was 250k px tall because every candidate expanded in full.
+  // The desk lists a compact shortlist; the full ticket opens on demand and nothing is removed.
+  const [openRows, setOpenRows] = useState<Record<string, boolean>>({})
   const { data: draftsR, refetch } = useApi<any>('/api/v2/broker-orders/drafts?broker=schwab', 30_000)
   const { data: activityR } = useApi<any>('/api/v2/broker-orders/activity', 30_000)
   const { data: proposalsR } = useApi<any>('/api/v2/paper-proposals', 60_000)
@@ -449,6 +452,8 @@ export default function ManualTosDesk({ focusSymbol }: DeskProps = {}) {
             tech={techGrades[r.symbol]}
             accounts={accountKeys}
             accountMap={accountMap}
+            expanded={!!openRows[`${r.source}-${r.id}`]}
+            onToggle={() => setOpenRows(o => ({ ...o, [`${r.source}-${r.id}`]: !o[`${r.source}-${r.id}`] }))}
             onSetField={setField}
             onCopyMsg={setMsg}
             onPromote={handlePromote}
