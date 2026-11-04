@@ -1,3 +1,11 @@
+---
+id: DSN-20261104-position-verdict-schema
+title: PositionVerdict@v1 on disk — the CIO's per-(symbol, account) durable verdict record
+status: IN_PROGRESS
+approval: none yet — FQ-095 (P0), SPEC_ONE_POSITION_VERDICT_20261104 §1b; the surface wiring is an operator decision because it changes which module produces a verdict
+source: persistent-state/handoffs/SPEC_ONE_POSITION_VERDICT_20261104.md
+summary: Fix the on-disk shape of the CIO position verdict so every surface renders one record instead of computing five answers, with history keyed by symbol and account.
+---
 # DSN-20261104 — PositionVerdict@v1 on disk (for readers: cc4 store, cc3 surface)
 
 FQ-095 / SPEC_ONE_POSITION_VERDICT_20261104 §1b. Written so a consumer can read the store without reading the code.
