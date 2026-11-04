@@ -205,10 +205,51 @@ def realert_due(entry: Mapping[str, Any], cur: str, now: datetime, mon: Mapping[
     return (now - last_dt) >= timedelta(minutes=float(minutes))
 
 
+def _minutes_since_last_alert(entry: Mapping[str, Any], now: datetime) -> Optional[float]:
+    last = entry.get("alerted_at")
+    if not last:
+        return None
+    try:
+        last_dt = datetime.fromisoformat(str(last))
+    except ValueError:
+        return None
+    if last_dt.tzinfo is None:
+        last_dt = last_dt.replace(tzinfo=timezone.utc)
+    return (now - last_dt).total_seconds() / 60.0
+
+
+_RANK = {"ok": 0, "warn": 1, "critical": 2}
+
+
 def alert_for(prev: Optional[str], cur: str, entry: Mapping[str, Any], now: datetime,
               mon: Mapping[str, Any]) -> Optional[str]:
-    """One decision point: a band CHANGE always alerts; an UNCHANGED bad band re-alerts once the interval is due."""
-    return transition(prev, cur) or (cur if realert_due(entry, cur, now, mon) else None)
+    """One decision point, bounded on EVERY path.
+
+    Two measured defects shaped it, both 2026-11-04:
+    * alerting only on a band CHANGE let `/` sit critical for 23 hours on a single alert;
+    * the first repair throttled the unchanged path only, so the transition path bypassed it — an ok<->critical band
+      flipping every 15 minutes produced 96 alerts in 24 hours (97 for warn<->critical), while the config text claimed
+      dedupe by band and interval.
+
+    The rule: a genuinely NEW escalation — a band above anything already reported for this mount — alerts at once,
+    because that is news and delaying it is the failure we started from. Everything else (a repeat, a recovery, a
+    non-escalating change, or an unchanged bad band) waits for `realert_minutes`. Any pattern therefore lands on at
+    most one alert per interval: 24/day at the 60-minute default, stated rather than discovered.
+    """
+    interval = mon.get("realert_minutes")
+    changed = transition(prev, cur)
+    since = _minutes_since_last_alert(entry, now)
+    reported = str(entry.get("alerted_band") or "ok")
+    if changed:
+        if _RANK.get(cur, 0) > _RANK.get(reported, 0):
+            return changed                      # above anything already reported: this is real news
+        if interval and since is not None and since < float(interval):
+            return None
+        return changed
+    # Unchanged. Only a BAD band is restated, and only once the interval is due.
+    if cur == "ok" or not interval:
+        return None
+    return cur if since is None or since >= float(interval) else None
 
 
 def latest_manifest(rules: Mapping[str, Any], state_root: Optional[Path]) -> Optional[dict[str, Any]]:
