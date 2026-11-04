@@ -25880,6 +25880,30 @@
       "flags": [
         "UNVERIFIED_OUTPUT"
       ]
+    },
+    {
+      "lane_id": "site-audit",
+      "owner": "agents",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "site-audit",
+        "match": "PROPOSED - NOT INSTALLED: no n8n workflow exists yet for this lane"
+      },
+      "expected_cadence_hours": 48,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-11-04",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "persistent-state/data/audit/page-audit-*/index.json",
+        "key": "generated_at"
+      },
+      "value_class": "observability",
+      "rationalization": "SPEC_SITE_AUDIT_AUTOREMEDIATE_LOOP_20261104.md: one capture lane for the whole Command Center, every 48 h at most, rotating market session weekly; replaces ad-hoc screenshot runs.",
+      "recommendation": "Install as an n8n workflow (operator rule: new schedules are n8n, never cron). The workflow calls scripts/site_audit/page_audit_capture.py with SITE_AUDIT_CAPTURE_ROOT and SITE_AUDIT_CHROME set, obeys the health gate, 4 s pacing, one browser, and aborts on slowdown or restart.",
+      "note": "Lane definition lives in scripts/site_audit/lane.py (windows, 48 h ceiling, weekly session rotation) and is enforced by tests/test_site_audit_lane_20261104.py. The spec's Mon/Wed/Fri 06:30 ET + Sun 21:00 ET cannot satisfy its own 48 h ceiling (Fri 06:30 -> Sun 21:00 is 62.5 h); Saturday 06:30 ET is added as the bridge. Captures stay outside the repo.",
+      "reason_confidence": "ESTABLISHED",
+      "state_reason": "SPEC_SITE_AUDIT_AUTOREMEDIATE_LOOP_20261104.md §2.1 (operator 2026-11-04): one capture every 48 h at most, session rotating weekly, never cron. Not installed yet: no n8n workflow exists, and the registry edit is operator-merged (AGENTS §17). Lane arithmetic and the 48 h ceiling are in scripts/site_audit/lane.py with tests; the spec's named slots alone leave a 62.5 h gap, so a Saturday 06:30 ET run bridges it.",
+      "reason_evidence": "persistent-state/handoffs/SPEC_SITE_AUDIT_AUTOREMEDIATE_LOOP_20261104.md §2.1 and §6; scripts/site_audit/lane.py (WINDOWS, MAX_GAP_HOURS, session rotation); tests/test_site_audit_lane_20261104.py (largest gap over a year <= 48 h); scripts/site_audit/deep_crawl.py and tests/test_site_audit_deep_crawl_step_20261104.py; no n8n workflow exists yet (`site-audit` absent from n8n) - state NEVER_SCHEDULED until installed."
     }
   ],
   "freshness_contracts": [
