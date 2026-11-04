@@ -6,6 +6,11 @@ rejects both as LEGACY ids (`reject_legacy_model_id` raises), and `scripts/lib/c
 accepted `deepseek-v4-flash` as a working lane. A name one surface routes and another refuses is the
 drift this test pins down.
 
+SCOPE: these two alias tables only — not every model selector or persisted authorization. The exact
+refusal reason codes (LANE_NOT_ALLOWED vs POLICY_NOT_ALLOWED) and generate()'s ambiguous-vs-unknown
+distinction are NOT asserted here; the suite asserts removal, refusal (ok is False), and that the
+canonical alias still routes.
+
 The evidence is the MUTATION, not a count: restoring the removed alias lines makes
 `test_the_run_manual_surface_agrees_about_the_legacy_names` fail with the registry's own error text
 (1 failed, 3 passed) — the test bites exactly when the fix is gone.

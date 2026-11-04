@@ -6,6 +6,6 @@
   ],
   "anchor": "DEEPSEEK_ALIAS_20261104",
   "comment": [
-    "ANCHOR: DEEPSEEK_ALIAS_20261104 — the legacy DeepSeek v4 ids are removed from both surfaces that could select a model id: the llm_lane routing set and the run-manual endpoint's lane map (LANE_TO_POLICY / FLASH_LANES). In llm_lane they are no longer accepted at all (`deepseek-v4` alone raises the typed ambiguous-lane error; the two full v4 names are simply unknown, not typed-error aliases); on the run-manual endpoint `deepseek-v4-flash` is refused as LANE_NOT_ALLOWED and `deepseek-v4-pro` as POLICY_NOT_ALLOWED. The invariant test checks the lane map against the registry and asserts those behavioural outcomes. Hermetic: imports only, no network, no provider call (the probe is stubbed)."
+    "DEEPSEEK_ALIAS_20261104 — rejects retired v4 names in the llm_lane routing set and the run-manual alias tables. The suite checks DeepSeek-prefixed entries in _DEEPSEEK_LANES and LANE_TO_POLICY with reject_legacy_model_id, asserts removal of the named legacy entries, checks v4-flash availability is false and run-manual v4-flash is refused, and checks the canonical alias remains accepted with its availability probe stubbed. Scope: these two alias surfaces; not every model selector or persisted authorization. Exact refusal reason codes and generate() error distinctions are not asserted by this gate."
   ]
 }
