@@ -60,6 +60,21 @@ PROMPT = ("Heartbeat (automatic, operator mandate): re-read {coord}/WORKERS.md (
           "item. Coordinators: also send the next instruction to every idle worker. Only if there is truly nothing: "
           "write one line 'idle: <reason>' to {coord}/inbox/<lead>/ and stop.")
 
+#: FQ-093 (lead dispatch, 2026-11-04): a generic "go read the board" heartbeat makes an idle session spend a turn
+#: finding out what to do, and most stop after that turn. The nudger now names the row instead: the session's first
+#: `queued` item in the audit fix queue, with its page, check and acceptance. A missing or half-written queue file
+#: falls back to the generic heartbeat — the nudger must never fail because another process is rewriting the queue.
+QUEUE_DEFAULT = str(Path.home() / "trade-ai-releases" / "persistent-state" / "data" / "coordination"
+                    / "coordinator" / "AUDIT_FIX_QUEUE.json")
+
+ROW_PROMPT = ("Heartbeat (automatic, operator mandate). Your next queue row is {id}{sev} — {page}{check}.\n"
+              "Acceptance: {acceptance}\n"
+              "Work it now: claim the files, fix the root cause, produce red-then-green evidence, then report the head "
+              "sha to {coord}/inbox/<lead>/ and take your next row. If it no longer reproduces at the current head, "
+              "close it as no_longer_reproduces with the measurement that shows it gone. Only if there is truly "
+              "nothing: write one line 'idle: <reason>' to {coord}/inbox/<lead>/ and stop.")
+
+
 
 def load_cfg(path: str | None) -> dict:
     cfg = dict(DEFAULTS)
@@ -87,6 +102,64 @@ def refused_session(name: str, cfg: dict) -> bool:
 
 def tail_of(screen: str, lines: int = 12) -> str:
     return "\n".join([ln for ln in screen.splitlines() if ln.strip()][-lines:])
+
+
+def queue_row_for_session(session: str, queue_path: str | None = None) -> dict | None:
+    """The session's first `queued` row in the audit fix queue, or None.
+
+    Pure and total: an unreadable, half-written or unexpected file yields None, never an exception. The queue lists
+    rows in priority order, so "first" is the row the session should work next — no re-sorting here.
+    """
+    path = Path(queue_path or os.environ.get("TRADEAI_AUDIT_QUEUE") or QUEUE_DEFAULT)
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    items = doc.get("items") if isinstance(doc, dict) else doc
+    if not isinstance(items, list):
+        return None
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("owner") or "") != session:
+            continue
+        if str(item.get("status") or "") != "queued":
+            continue
+        return item
+    return None
+
+
+def acceptance_text(row: dict | None) -> str:
+    """Acceptance as one line: the dict's what/expected/actual (and evidence) or the raw string."""
+    acceptance = (row or {}).get("acceptance")
+    if isinstance(acceptance, dict):
+        parts = []
+        for key in ("what", "expected", "actual", "evidence"):
+            value = str(acceptance.get(key) or "").strip()
+            if value:
+                parts.append(f"{key.capitalize()}: {value}")
+        return " ".join(parts)
+    return str(acceptance or "").strip()
+
+
+def _cap(text: str, limit: int = 600) -> str:
+    """tmux types this in one keystroke burst; a very long row is truncated and the file named instead."""
+    return text if len(text) <= limit else text[:limit].rstrip() + " … (full row in AUDIT_FIX_QUEUE.json)"
+
+
+def row_prompt(row: dict, coord: str) -> str:
+    """The nudge text for one queue row. Single line breaks only: `send()` types it then presses Enter."""
+    rid = str(row.get("id") or "row")
+    severity = str(row.get("severity") or "").strip()
+    return ROW_PROMPT.format(
+        id=rid,
+        sev=f" [{severity}]" if severity else "",
+        page=str(row.get("page") or "no page"),
+        check=f" · check {row['check']}" if row.get("check") else "",
+        acceptance=_cap(acceptance_text(row)) or "the row's expected result (see AUDIT_FIX_QUEUE.json)",
+        coord=coord,
+    )
+
 
 
 def decide(screen: str, rec: dict, now: float, cfg: dict) -> dict:
@@ -164,6 +237,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--state")
     ap.add_argument("--ledger")
     ap.add_argument("--coord-dir", help="directory named in the heartbeat prompt (WORKERS.md/BOARD.md)")
+    ap.add_argument("--queue", help="audit fix queue JSON whose rows are named in the nudge "
+                                    f"(default: $TRADEAI_AUDIT_QUEUE or {QUEUE_DEFAULT})")
     a = ap.parse_args(argv)
     started_at = datetime.now(timezone.utc).isoformat()
     cfg = load_cfg(a.config)
@@ -199,9 +274,13 @@ def main(argv: list[str] | None = None) -> int:
         inspected += 1
         d = decide(screen, rec, now, cfg)
         action = d["action"]
+        # FQ-093: name the session's next queue row in the nudge instead of a generic "go read the board".
+        row = queue_row_for_session(s, a.queue) if action == "NUDGE" else None
+        nudge_text = row_prompt(row, coord) if row else PROMPT.format(coord=coord)
+        row_note = (f"next queue row {row.get('id')} ({row.get('page')})" if row else "no queued row for this session")
         detail = {"RESUME": "vendor error on screen; resume prompt sent",
                   "ENTER": "unsent text in the input box; Enter pressed",
-                  "NUDGE": f"idle {d['idle_for']:.0f} min, no busy marker; heartbeat prompt sent"}.get(action)
+                  "NUDGE": f"idle {d['idle_for']:.0f} min, no busy marker; nudge sent · {row_note}"}.get(action)
         if detail is None:
             pass
         elif not a.apply:
@@ -221,7 +300,7 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 failed += 1
         else:
-            if send(s, PROMPT.format(coord=coord), run=subprocess.run):
+            if send(s, nudge_text, run=subprocess.run):
                 rec["nudged_at"] = now
             else:
                 failed += 1
