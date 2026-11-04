@@ -188,10 +188,10 @@ def test_a_concurrent_transition_blocks_the_question(tmp_path):
     """The lock the fix takes is the same shape decide() uses: a held marker refuses, it never overwrites."""
     store = _store(tmp_path)
     record = _ask(store, requester={"session": "agent-x"})
-    (store.requests_dir / f"{record['id']}.questioning").write_text("")
+    (store.requests_dir / f"{record['id']}.deciding").write_text("")
     with pytest.raises(ha.Refused) as caught:
         ha.question(store, record["id"], actor=LOGIN, note="why this?", now=NOW)
-    assert caught.value.code == "question_in_progress"
+    assert caught.value.code == "transition_in_progress"
 
 
 # ── request id: validated before any lock path is built ──────────────────────────────────────
@@ -223,3 +223,60 @@ def test_a_well_formed_rerun_history_still_reads(tmp_path):
 def test_a_missing_history_is_zero_runs_not_an_error(tmp_path):
     counts, error = ada._load_reruns(tmp_path / "absent.json")
     assert counts == {} and error == ""
+
+
+# ── F4, the reviewer's own interleaving: reproduce it, not just the marker ───────────────────
+def test_the_stale_question_interleaving_cannot_overwrite_a_decision(tmp_path, monkeypatch):
+    """cx-openai-3's probe shape: question pauses after its read; decide+execute complete; question resumes.
+
+    On the frozen head before this repair the question took a private marker, so the decision ran
+    through and the resumed question wrote its stale open snapshot over a terminal row. With one
+    shared transition marker the resumed question must either be refused or re-read the terminal
+    state — never write the snapshot it read on the way in.
+    """
+    import threading
+
+    store = _store(tmp_path)
+    record = _ask(store, requester={"session": "agent-x"})
+    rid = record["id"]
+    gate_ready = threading.Event()
+    release_gate = threading.Event()
+    outcome = {}
+
+    real_require = store.require
+
+    def pausing_require(request_id):
+        got = real_require(request_id)
+        if threading.current_thread().name == "question-thread":
+            gate_ready.set()
+            release_gate.wait(5)
+        return got
+
+    monkeypatch.setattr(store, "require", pausing_require)
+
+    def run_question():
+        try:
+            outcome["question"] = ha.question(store, rid, actor=LOGIN, note="why?", now=NOW)
+        except ha.Refused as exc:
+            outcome["question_refused"] = exc.code
+
+    thread = threading.Thread(target=run_question, name="question-thread")
+    thread.start()
+    assert gate_ready.wait(5), "the question thread never reached its read"
+
+    try:
+        ha.decide(store, rid, ctx=_ctx(), actor=LOGIN, decision="approve", now=NOW,
+                  executor=Counter().executor())
+        outcome["decide"] = "ran"
+    except ha.Refused as exc:
+        outcome["decide_refused"] = exc.code
+    release_gate.set()
+    thread.join(5)
+
+    final = real_require(rid)
+    assert not (final["state"] == "open" and "question" in final and outcome.get("decide") == "ran"), (
+        f"a stale question snapshot overwrote the decision: {outcome} / state={final['state']}")
+    assert final["state"] in ("open", "executed"), final["state"]
+    if outcome.get("decide") == "ran":
+        assert final["state"] == "executed"
+        assert "question_refused" in outcome, "the losing question must refuse, not silently write"

@@ -1001,9 +1001,13 @@ def question(store: Store, request_id: str, *, actor: str, note: str, now: Optio
     # decide() that reached a terminal state was overwritten with this stale open snapshot
     # (cx-openai-3 F4).
     store.path(request_id)
-    question_claim = store.requests_dir / f"{request_id}.questioning"
-    _acquire(question_claim, "question_in_progress",
-             "Another update to this request is in progress, so the question was not recorded.")
+    # The SAME per-request transition marker decide() takes. A private ".questioning" marker only
+    # serialised two questions against each other: a decision could still run to a terminal state
+    # while a question was in flight and the question then wrote its stale open snapshot over it
+    # (cx-openai-3 F4, still reproducing at 5486baeae). One marker, one transition owner at a time.
+    question_claim = store.requests_dir / f"{request_id}.deciding"
+    _acquire(question_claim, "transition_in_progress",
+             "This request is being decided right now, so the question was not recorded.")
     try:
         record = store.require(request_id)
         if record.get("state") not in ("open", "approved"):
