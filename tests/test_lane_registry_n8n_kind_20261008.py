@@ -366,6 +366,11 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         # 2026-10-26 prospectus-build: n8n-native report dispatcher row at shadow, every 15 min (windows 17:45 / 07:00 ET) dry_run
         # (no host line; tests/test_prospectus_build_lane_20261026.py).
         "prospectus-build",
+        # 2026-11-03 agent_nudge (board item 16, P2 of docs/ops/NUDGER_N8N_MIGRATION_PROPOSAL_20261103.md): the
+        # nudger's n8n-native dispatcher row at shadow, every 5 min, dispatch dry_run. No host line is retired: the
+        # live crontab entry keeps typing throughout P2, and the stage clamp turns a requested live run into a dry
+        # run (tests/test_agent_nudger_p2_20261103.py).
+        "agent_nudge",
         "heartbeat-watch",
         "momentum-lifecycle-monitor",
         "momentum-cache-reconcile",
