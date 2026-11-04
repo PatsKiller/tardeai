@@ -424,6 +424,19 @@ def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date]
                     f"the {extra.exit_date} exit for {symbol}/{account} is observed by {extra_src} and by "
                     f"{_source_of(clash)}, and no declared crosswalk links the two sources; both observations are "
                     "retained and whether they are ONE economic exit or two is unresolved")
+            # LEGACY -> IDENTIFIED (codex I12). A member persisted BEFORE identity existed has no source_id, so an
+            # identified read of the same exit cannot be matched to it by identity — and there is no evidence to migrate
+            # it with. Neither date nor price proves the link (that heuristic is what F14-F17 kept re-creating), so the
+            # pair stays unresolved: both observations retained, pass incomplete, no migration invented.
+            if extra.source_id is not None:
+                legacy = next((row for row in unpaired if not _source_of(row)
+                               and str(row["date"])[:10] == extra.exit_date.isoformat()), None)
+                if legacy is not None:
+                    _unresolved(
+                        f"a {extra.exit_date} member for {symbol}/{account} was persisted before source identity "
+                        f"existed and an IDENTIFIED read ({extra.source_id}) now describes that same exit date; no "
+                        "evidence links them, so both observations are retained and whether they are ONE economic "
+                        "exit or two is unresolved")
         merged.extend(fill if fill is not None else _as_exit_fill(symbol, account, row) for row, fill in pairs)
         merged.extend(extras)
         refreshed = rc.consume_fills(store, merged, cluster_key=case.cluster_key, **common)

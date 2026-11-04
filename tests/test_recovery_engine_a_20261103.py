@@ -943,3 +943,29 @@ def test_i12_an_existing_case_the_read_did_not_cover_is_not_silently_unchecked(s
     second = fc.run(store, conn, today=TODAY, now=NOW)
     assert second["complete"] is False, f"an uncovered existing case must not pass as checked: {second}"
     conn.close()
+
+
+def test_i12_a_legacy_member_and_an_identified_read_of_the_same_exit_are_unresolved(store):
+    """codex I12 legacy -> identified. A member PERSISTED before identity existed (no source_id) plus an identified read
+    of the same exit became TWO members and -400 instead of -200, reporting complete=True. There is no evidence linking
+    them, so the pair is UNRESOLVED: both observations retained, the pass incomplete, no link guessed by date or price."""
+    import dataclasses
+    from lib.recovery_engine import fills_consumer as fc
+    conn = _source_db()
+    _watch(conn, "2026-10-30", 80.0, -200.0)
+    _positions(conn, 0)
+    conn.commit()
+    first = fc.run(store, conn, today=TODAY, now=NOW)
+    case = store.get(first["opened"][0])
+    assert len(case.exits) == 1 and case.exits[0]["source_id"] == "stopped_out_watch:1", case.exits
+    # Rewrite the stored case as a store written BEFORE identity existed: same facts, no id.
+    legacy = [{k: v for k, v in e.items() if k != "source_id"} for e in case.exits]
+    store.upsert(dataclasses.replace(case, exits=legacy))
+    assert store.get(case.case_key).exits[0].get("source_id") is None
+    # An IDENTIFIED read of the same exit now arrives.
+    second = fc.run(store, conn, today=TODAY, now=NOW)
+    after = store.get(case.case_key)
+    assert len(after.exits) == 2, f"both observations must be retained: {after.exits}"
+    assert second["complete"] is False, f"an unproven legacy link must not pass as complete: {second}"
+    assert any("persisted before source identity existed" in g for g in second["gaps"]), second["gaps"]
+    conn.close()
