@@ -1,12 +1,12 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      30.0.1
+Policy-Version:      30.1.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              ACTIVE
-Effective-Date:      2026-11-03
-Last-Reviewed:       2026-11-03T22:40:00Z
+Status:              PROPOSED
+Effective-Date:      PENDING
+Last-Reviewed:       2026-11-04T17:00:00Z
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
 Supersedes:          30.0.0
@@ -2469,6 +2469,22 @@ Procedures: `docs/ops/AGENT_CLAIM_BOARD.md`, `docs/ops/DELIVERY_LIFECYCLE.md`, `
 
 - **No new temp data under `/tmp`;** use `$HOME`. *Cause: 2026-10-22 — `/tmp` at 99% (LESSONS L28-02).*
 
+## 28.2a The stash stack is repository-wide — an agent never uses `git stash`
+
+- **`git stash` is not scoped to a worktree.** Every worktree of this repository shares one stack, so `git stash pop`
+  takes whatever is on top — which may be another agent's entry pushed seconds earlier — and applies it into your
+  tree. Worse, `git stash push -- <path>` *saves nothing and says nothing* when the path is already committed, so the
+  `pop` that follows silently takes someone else's work.
+  *Cause: 2026-11-04 — an agent proved a red with `stash push`/`pop` in two worktrees; both pushes were no-ops on clean
+  paths, both pops applied another agent's WIP, and one original entry was consumed beyond identification. The stack
+  already carried the same accident from 2026-10-26 (`stash@{6}`).*
+- **Never run `git stash push`, `pop`, `apply`, `drop`, `clear` or `save` here**, in any worktree, for any reason.
+- **Prove red worktree-locally instead.** Copy the file (`cp <path> /tmp/<name>`), mutate, run, restore; or read
+  another revision with `git show <rev>:<path>`; or temporarily revert with `git checkout <rev> -- <path>` and restore
+  with `git checkout HEAD -- <path>`. None of these can touch another agent's state.
+- **Foreign uncommitted changes in your worktree are not yours to resolve.** Do not commit, revert, clean or stash
+  them: stop, record each path with its `git hash-object` and mtime, and report to the lead with the worktree path.
+
 ## 28.3 Multi-agent, multi-vendor coordination and the claim board
 
 - **Look, then claim, then build.** Check open PRs, branches, the board and the last handoff; claim with
@@ -2673,6 +2689,7 @@ One row per version; the full rows, every banner and every ratifying edit are in
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 30.1.0 | 2026-11-04 | PROPOSED | MINOR | Adds §28.2a: the git stash stack is repository-wide across all worktrees, so an agent never runs `git stash push/pop/apply/drop/clear/save`; red proofs use a worktree-local method (cp to /tmp, `git show <rev>:<path>`, or `git checkout <rev> -- <path>` then `git checkout HEAD -- <path>`), and foreign uncommitted changes are reported, never resolved by the finder. Adds an obligation only; §0, §2, §17 and role authority untouched. Cause: 2026-11-04 incident (cc-deepseek-6 popped two foreign stashes; one entry consumed beyond identification; the same accident is recorded at `stash@{6}` from 2026-10-26). | PENDING — held-class operator merge (§25.10); no authority change |
 | 30.0.1 | 2026-11-03 | ACTIVE | PATCH | Documents the standing merge route's checkout coupling: the canonical checkout's HEAD must equal `origin/main` and GitHub `main`, so each merge needs a checkout refresh before the next, and nothing invokes the helper on a schedule. No authority change. | PATCH — rides APPROVE_AGENTS_POLICY_30_0_0; no authority change; operator ratifies at merge |
 | 30.0.0 | 2026-11-03 | ACTIVE | MAJOR | Supersedes 29.3.0. Standing scoped/delegated uploads, ordinary AND held engineering merges with tests/docs and two held reviews, merge-watching, one approved-plan registry; §0 rule 4/§2B/§11/§17/§20/§25.10/§28.4/§28.15/§28.17; AI_WORK_POLICY §3/§9/§11/§16/§21/§27/§28 aligned. No broker, secret or deploy authority. | `APPROVE_AGENTS_POLICY_30_0_0 2501 995e86f9abf961a37c58ae2667b0b6f6eef1c9af` (operator, https://github.com/PatsKiller/tardeai/pull/2501#issuecomment-6594072975) |
 | 29.4.0 | 2026-11-01 | WITHDRAWN | MINOR | Supersedes 29.3.0 (#2453; this content was drafted as 29.3.0 in #2450/#2451). Operator chose MINOR (2026-11-01, "minor"). §28.15 item 8 gains the standing push approval: an operator `APPROVE_PUSH_STANDING <glob> until <YYYY-MM-DD>` comment on the standing-approval issue meets the approved-plan step for the pusher's own live claim on a branch the glob covers (prefixes wt/ feat/ fix/ chore/ docs/ only; never main, master, release/*, train/*; expiry required, at most 45 days; `REVOKE_PUSH_STANDING` in any markup voids earlier ones; one operator issue, duplicates refuse; a close voids earlier comments for good; edited operator comments refuse; fenced, indented and HTML-commented lines ignored; only close-and-reopen of the same issue voids then restores; dates UTC; live only once main is 29.4.0+ ACTIVE; `gh issue create/edit/reopen/close`, `gh alias set` and `gh api` field writes are `gh-write` and `gh auth token` is `secret`, classified from shell tokens (`guard_tokens.py`), so quoting and flag placement cannot evade them). Hardened after the #2450 and #2451 security reviews (LESSONS L28-31). All other push checks unchanged. Operator 2026-11-01: "Yes, draft stand and approval." | none (withdrawn) |
