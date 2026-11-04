@@ -16,6 +16,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .account_display import canonical_key, account_label, location_facts
+from .stop_session_evidence import stop_observation_freshness
 
 
 def _number(value) -> float | None:
@@ -363,7 +364,18 @@ def stop_for(account: str, symbol: str, *, broker_rows=None, planned=None, now=N
                 break
     meta = _evidence("stop_last_known" if row else "stops.json", at, now,
                      reason="stop state not recorded" if state == "unknown" else None)
+    observation = stop_observation_freshness(at, now=now) if row else None
+    observed_state = state
     note = None
+    if observation is not None:
+        meta.update(as_of=observation["as_of"], stale=observation["status"] != "FRESH")
+        if meta["stale"]:
+            meta["gap"] = {"reason": observation["reason"]}
+            if state in ("active", "pending_activation"):
+                # Preserve the recorded state separately; an old observation
+                # cannot establish current protection or an active-stop count.
+                state = "unknown"
+                note = observation["reason"]
     if state == "filled":
         seen = _when(row.get("captured_at"))
         seen_label = _et_label(seen) if seen else "an unrecorded time"
@@ -386,7 +398,8 @@ def stop_for(account: str, symbol: str, *, broker_rows=None, planned=None, now=N
     return {"account_id": account, "account_label": account_label(account), "symbol": symbol,
             "stop_price": sp, "stop_source": source, "stop_state": state,
             "stop_status_raw": row.get("status"), "stop_captured_at": meta["as_of"],
-            "broker_protected": state == "active" and sp is not None and sp > 0,
+            "broker_protected": state == "active" and not meta["stale"] and sp is not None and sp > 0,
+            "stop_state_observed": observed_state, "stop_observation": observation,
             "stop_qty": _number(row.get("qty")), "order_id": row.get("order_id"),
             "stop_note": note, "stop_history": history, **meta}
 
@@ -1337,7 +1350,7 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
     counts = {state: sum(p["stop_state"] == state for p in counted_positions) for state in ("active", "pending_activation", "filled")}
     stop_rows = [{k: p.get(k) for k in ("account_id", "account_label", "symbol", "stop_price", "stop_source", "stop_state",
                                       "stop_captured_at", "broker_protected", "stop_qty", "stop_evidence", "stop_note",
-                                      "stop_history")} for p in positions]
+                                      "stop_history", "stop_state_observed", "stop_observation")} for p in positions]
     stops = {"rows": stop_rows, "active_count": counts["active"], "pending_count": counts["pending_activation"],
              "filled_count": counts["filled"], "unprotected_count": sum(not p["broker_protected"] for p in counted_positions),
              "position_count": portfolio["position_count"],
@@ -1367,6 +1380,10 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
         p["counted"] = any(p is c for c in counted_positions)
         p["stop_category"] = _stop_category(p)
     protected_loss = round(sum(losses), 2) if portfolio["holdings"] and broker is not None and all(v is not None for v in losses) else None
+    uncertain_observation = any(p.get("stop_observation") is not None
+                                and p["stop_observation"]["status"] != "FRESH" for p in counted_positions)
+    if uncertain_observation:
+        protected_loss = None  # Unknown evidence must not become a zero-risk figure.
     unprotected_mv = _sum_known([p for p in positions if not p["broker_protected"]], "market_value") if portfolio["holdings"] and broker is not None else None
     position_section = {"rows": positions, "loss_at_stop_usd": protected_loss,
                         "portfolio_heat_pct": round(protected_loss / portfolio["total_usd"] * 100, 3)
@@ -1376,6 +1393,8 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
                         **{k: portfolio[k] for k in ("source", "as_of", "stale", "gap")}}
     position_section["as_of"] = portfolio["positions_as_of"]
     position_section.update(_resting_summary(counted_positions, portfolio.get("total_usd"), broker_available=broker is not None))
+    if uncertain_observation:
+        position_section.update(loss_at_resting_stops_usd=None, resting_heat_pct=None)
     by_symbol = {}
     for p in positions:
         by_symbol[p["symbol"]] = by_symbol.get(p["symbol"], 0) + (_number(p.get("market_value")) or 0)
