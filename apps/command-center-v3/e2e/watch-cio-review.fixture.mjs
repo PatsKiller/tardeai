@@ -61,6 +61,14 @@ try {
       const req = route.request(), url = new URL(req.url())
       if (url.origin !== 'http://watch-cio-fixture.test') { traffic.external.push(url.href); return route.abort() }
       const json = (data, status = 200) => route.fulfill({status, contentType: 'application/json', body: JSON.stringify(data)})
+      // Ask-the-CIO is asked FIRST (CioReview.useCioReview → askCio → POST /api/v2/cio/ask), then the review request is
+      // queued. The fixture predates that flow and aborted the ask, so the card rendered "Failed to fetch" and every
+      // assertion after it failed. Stub it with the shape askCioApi unwraps.
+      if (req.method() === 'POST' && url.pathname === '/api/v2/cio/ask') {
+        const body = req.postDataJSON() || {}
+        traffic.posts.push({path: url.pathname, body})
+        return json({ok: true, ask_id: 'ask_fixture', thread_id: 'thr_fixture', answer_text: 'Fixture answer.', thread: null})
+      }
       const m = url.pathname.match(/^\/api\/v3\/opportunities\/([A-Z]+)\/review-request$/)
       if (req.method() === 'POST' && m) {
         traffic.posts.push({path: url.pathname, body: req.postDataJSON()})
@@ -111,17 +119,23 @@ try {
     await expect(ask).toHaveCount(1); await expect(ask).toHaveText('Ask the CIO to review')
     await page.screenshot({path: path.join(output, `watch-cio-${surface}-blocked-sheet-${width}.png`), animations: 'disabled'})
     await tap(ask)
-    await expect(dialog.getByTestId('watch-cio-message')).toContainText('Already asked — Blocked: waiting for evidence')
-    assert.equal(traffic.posts.length, 1); assert.match(traffic.posts[0].body.note, /no CIO view/)
+    // The ask runs first and answers; the request that was already open is reported as a queue note beside it.
+    await expect(dialog.getByTestId('watch-cio-message')).toHaveText('Answered')
+    await expect(dialog.getByTestId('watch-ask-queue')).toContainText('Already asked — Blocked: waiting for evidence')
+    const asks = traffic.posts.filter(p => p.path === '/api/v2/cio/ask')
+    const requests = traffic.posts.filter(p => p.path.endsWith('/review-request'))
+    assert.equal(asks.length, 1, 'exactly one ask'); assert.equal(requests.length, 1, 'exactly one review request')
+    assert.match(requests[0].body.note, /no CIO view/)
     await tap(dialog.getByRole('button', {name: '← Back'})); await expect(page.getByRole('dialog')).toHaveCount(0)
 
     // QUE: never asked → one tap on the row asks and the record shows "Queued".
     await tap(card('QUE').getByTestId('watch-step'))
     dialog = page.getByRole('dialog', {name: sheetName('QUE')})
     await inView(dialog); await inView(dialog.getByRole('button', {name: '← Back'}))
-    await expect(dialog.getByTestId('watch-cio-message')).toHaveText('CIO review queued.')
+    await expect(dialog.getByTestId('watch-cio-message')).toHaveText('Answered')
+    await expect(dialog.getByTestId('watch-ask-queue')).toHaveText('CIO review queued.')
     await expect(dialog.getByTestId('watch-review-state')).toContainText('Queued for the CIO')
-    assert.equal(traffic.posts.length, 2); assert.equal(traffic.posts[1].path, '/api/v3/opportunities/QUE/review-request')
+    assert.equal(traffic.posts.length, 4); assert.equal(traffic.posts[3].path, '/api/v3/opportunities/QUE/review-request')
     await page.screenshot({path: path.join(output, `watch-cio-${surface}-queued-sheet-${width}.png`), animations: 'disabled'})
     await tap(dialog.getByRole('button', {name: '← Back'})); await expect(page.getByRole('dialog')).toHaveCount(0)
     await expect(card('QUE').getByTestId('watch-row-review-state')).toContainText('Queued for the CIO')
@@ -132,8 +146,8 @@ try {
     await inView(dialog)
     await expect(dialog.getByTestId('watch-detail-conflicts')).toContainText('Trade AI deterministic fail')
     await expect(dialog.getByTestId('watch-ask-cio')).toHaveCount(1)
-    await expect(dialog.getByTestId('watch-detail-conflicts').getByTestId('watch-cio-message')).toHaveText('CIO review queued.')
-    assert.equal(traffic.posts.length, 3); assert.match(traffic.posts[2].body.note, /Trade AI deterministic fail/)
+    await expect(dialog.getByTestId('watch-detail-conflicts').getByTestId('watch-ask-queue')).toHaveText('CIO review queued.')
+    assert.equal(traffic.posts.length, 6); assert.match(traffic.posts[5].body.note, /Trade AI deterministic fail/)
     await noHorizontal()
     await page.screenshot({path: path.join(output, `watch-cio-${surface}-flag-sheet-${width}.png`), animations: 'disabled'})
     await tap(dialog.getByRole('button', {name: '← Back'}))
