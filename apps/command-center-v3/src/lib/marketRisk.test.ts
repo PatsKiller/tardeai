@@ -229,6 +229,40 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
   assert.equal(quoteRow({ ...currentQuote, as_of: '2031-03-10T16:00:59-04:00' }).now, '$12.34', 'explicit ET offset closing minute remains valid')
   assert.equal(quoteRow({ ...currentQuote, status: 'stale' }).now, 'stale')
   assert.equal(quoteRow({ ...currentQuote, stale: true }).now, 'stale')
+  // Operator P1: public quote/threshold numbers, synthetic case/account; a prior close is not Now.
+  const quoteNow = Date.parse('2026-11-04T14:17:00Z')
+  const observed = { schema: 'ReentryObservedQuote@v1', status: 'available', price: 132.99,
+    source: 'market_quotes:alpaca', session: 'premarket', session_date: '2026-11-04',
+    evaluated_at: '2026-11-04T14:17:00Z', as_of: '2026-11-04T14:00:04Z',
+    pct_vs_exit: (132.99 / 137.19 - 1) * 100 }
+  const currentCase = { ...base.reentry_watch.NEWX, exit_date: '2026-10-30', exit_price: 137.19,
+    stages: { ...base.reentry_watch.NEWX.stages, verdict: 'Confirmed', last_close: 140.47,
+      last_date: '2026-11-03', invalidation_level: 134.50, stage2: { met: true, conditions: [] } } }
+  const currentRow = (quote: any, now = quoteNow) => (actionableModel as any)(unwrapMarketRisk({ ...base,
+    as_of: '2026-11-04T14:15:00Z', card_config: { recent_sessions: 30 },
+    reentry_watch: { NEWX: { ...currentCase, current_quote: quote } } }), now).reentry[0]
+  const invalidated = currentRow(observed)
+  assert.equal(invalidated.verdict.toUpperCase(), 'INVALIDATED', 'current quote below invalidation overrides yesterday CONFIRMED')
+  assert.equal(invalidated.now, '$132.99')
+  assert.equal(invalidated.vsExit, '−3.1%')
+  assert.equal(invalidated.quoteLabel, 'pre-market 09:00 ET')
+  assert.match(invalidated.stage2, /not met.*invalidat/i)
+  assert.equal(`now ${invalidated.now} (${invalidated.vsExit} vs exit) · ${invalidated.quoteLabel}`,
+    'now $132.99 (−3.1% vs exit) · pre-market 09:00 ET')
+  for (const quote of [null, { ...observed, status: 'unavailable', reason: 'QUOTE_READER_UNAVAILABLE' },
+    { ...observed, status: 'stale' }, { ...observed, as_of: '2026-11-03T14:00:04Z' },
+    { ...observed, as_of: '2026-11-04T14:18:00Z' }, { ...observed, source: 'unapproved' },
+    { ...observed, price: Infinity }, { ...observed, session: 'regular' }]) {
+    const missing = currentRow(quote)
+    assert.equal(missing.verdict, 'Unverified', 'quote failure cannot preserve a positive stale confirmation')
+    assert.ok(missing.now !== '$140.47', 'never relabel yesterday as Now')
+    assert.ok(missing.stage2 !== 'met', 'unverified current price cannot keep Stage 2 met')
+  }
+  assert.equal(currentRow({ ...observed, price: 134.50, pct_vs_exit: -2 }).verdict, 'Confirmed',
+    'below is strict; exactly at the invalidation does not invent a breach')
+  assert.equal(currentRow(observed, quoteNow + 3 * 3600_000).verdict, 'Unverified',
+    'retained API data is re-aged against the caller clock')
+  assert.equal(currentCase.stages.verdict, 'Confirmed', 'confirmed close evidence remains immutable')
   console.log('marketRisk.test v005 actionable: ok')
 }
 {

@@ -334,3 +334,144 @@ def test_earnings_calendar_reports_both_next_and_last_dates():
     r, _ = make({"FROM symbol_profiles": (cols, rows)})
     ev = r.earnings_calendar(start=et(2026, 10, 27, 0), end=et(2026, 10, 31, 0))
     assert [(e["symbol"], e["kind"], e["date"]) for e in ev] == [("AMZN", "last", "2026-10-29")]
+
+
+# Stored observation for the current Home card is separate from regular-session bar evidence.
+def _observed_module(name, relative):
+    # Fresh by-path loads prevent an earlier test's empty module stub from becoming the producer under test.
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(name, Path(__file__).resolve().parents[1] / relative)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _observed_reader(routes):
+    module = _observed_module("test_observed_reentry_reader", "scripts/lib/market_risk/reader.py")
+    conn = FakeConn(routes)
+    return module.PgReader(lambda: conn), conn
+
+
+def _observed_joiner():
+    return _observed_module("test_observed_reentry_join", "scripts/lib/market_risk_book_join.py")
+
+
+def test_observed_reentry_quote_uses_premarket_source_without_changing_regular_bar():
+    stamp = datetime(2026, 11, 4, 14, 0, 4, tzinfo=timezone.utc)
+    row = {"symbol": "ZZQ", "source": "alpaca", "price": Decimal("132.99"), "fetched_at": stamp}
+    r, conn = _observed_reader({"FROM market_quotes WHERE source": (["symbol", "source", "price", "fetched_at"], [row])})
+    quote = r.current_session_quotes(["ZZQ"], end=et(2026, 11, 4, 9, 17))["ZZQ"]
+    assert quote["schema"] == "ReentryObservedQuote@v1"
+    assert quote["status"] == "available" and quote["price"] == 132.99
+    assert quote["session"] == "premarket" and quote["session_date"] == "2026-11-04"
+    assert quote["source"] == "market_quotes:alpaca" and quote["as_of"] == "2026-11-04T14:00:04Z"
+    assert quote["evaluated_at"] == "2026-11-04T14:17:00Z"
+    assert conn.readonly is True and len(conn.log) == 1
+
+
+@pytest.mark.parametrize("overrides,status", [
+    ({"fetched_at": datetime(2026, 11, 4, 14, 18, tzinfo=timezone.utc)}, "unavailable"),
+    ({"fetched_at": datetime(2026, 11, 4, 11, 0, tzinfo=timezone.utc)}, "stale"),
+    ({"fetched_at": datetime(2026, 11, 4, 14, 0)}, "unavailable"),
+    ({"source": "another-provider"}, "unavailable"),
+    ({"price": float("inf")}, "unavailable"),
+    ({"price": float("nan")}, "unavailable"),
+    ({"price": True}, "unavailable"),
+    ({"price": "132.99"}, "unavailable"),
+    ({"price": -1}, "unavailable"),
+])
+def test_observed_reentry_quote_fails_closed(overrides, status):
+    row = {"symbol": "ZZQ", "source": "alpaca", "price": 132.99,
+           "fetched_at": datetime(2026, 11, 4, 14, 0, 4, tzinfo=timezone.utc), **overrides}
+    r, _conn = _observed_reader({"FROM market_quotes WHERE source": (["symbol", "source", "price", "fetched_at"], [row])})
+    quote = r.current_session_quotes(["ZZQ"], end=et(2026, 11, 4, 9, 17))["ZZQ"]
+    assert quote["status"] == status and quote["status"] != "available"
+
+
+def test_reentry_api_quote_refresh_keeps_historical_stage_but_exposes_invalidation_price():
+    refresh_reentry_quotes = _observed_joiner().refresh_reentry_quotes
+    stage = {"verdict": "Confirmed", "last_close": 140.47, "last_date": "2026-11-03",
+             "invalidation_level": 134.50, "sma20": 150.0}
+    projection = {"state": "evaluated", "as_of": "2026-11-03T21:00:00Z", "reentry_watch": {
+        "ZZQ": {"exit_price": 137.19, "stages": stage,
+                "current_quote": {"status": "available", "price": 140.47}}, "_contract": "ignored"}}
+    calls = []
+    def quote_reader(symbols, *, end):
+        calls.append((symbols, end))
+        return {"ZZQ": {"schema": "ReentryObservedQuote@v1", "status": "available", "price": 132.99,
+                        "session": "premarket", "session_date": "2026-11-04", "source": "market_quotes:alpaca",
+                        "as_of": "2026-11-04T14:00:04Z", "evaluated_at": "2026-11-04T14:17:00Z"}}
+    out = refresh_reentry_quotes(projection, now=et(2026, 11, 4, 9, 17), quote_reader=quote_reader)
+    quote = out["reentry_watch"]["ZZQ"]["current_quote"]
+    assert calls[0][0] == ["ZZQ"] and len(calls) == 1
+    assert quote["price"] == 132.99 < stage["invalidation_level"]
+    assert quote["pct_vs_exit"] == pytest.approx(-3.061447627)
+    assert out["reentry_watch"]["ZZQ"]["stages"] == stage
+    assert projection["reentry_watch"]["ZZQ"]["current_quote"]["price"] == 140.47
+    assert out["quote_checked_at"] == "2026-11-04T14:17:00Z"
+
+
+def test_reentry_api_refresh_failure_never_keeps_yesterdays_quote():
+    refresh_reentry_quotes = _observed_joiner().refresh_reentry_quotes
+    stage = {"verdict": "Confirmed", "last_close": 140.47, "invalidation_level": 134.50}
+    old = {"state": "evaluated", "reentry_watch": {"ZZQ": {"stages": stage,
+           "current_quote": {"status": "available", "price": 140.47}}}}
+    def broken_reader(*_args, **_kwargs):
+        raise OSError("synthetic read refused")
+    out = refresh_reentry_quotes(old, now=et(2026, 11, 4, 9, 17), quote_reader=broken_reader)
+    quote = out["reentry_watch"]["ZZQ"]["current_quote"]
+    assert quote["status"] == "unavailable" and quote["price"] is None
+    assert quote["reason"] == "CURRENT_QUOTE_READER_UNAVAILABLE"
+    assert out["reentry_watch"]["ZZQ"]["stages"] == stage
+
+
+def test_reentry_join_refreshes_quote_even_when_holdings_are_unreadable(monkeypatch):
+    joiner = _observed_joiner()
+    stage = {"verdict": "Confirmed", "last_close": 140.47, "invalidation_level": 134.50}
+    projection = {"state": "stale", "as_of": "2026-11-03T21:00:00Z",
+                  "reentry_watch": {"ZZQ": {"exit_price": 137.19, "stages": stage}}}
+    row = {"symbol": "ZZQ", "source": "alpaca", "price": 132.99,
+           "fetched_at": datetime(2026, 11, 4, 14, 0, 4, tzinfo=timezone.utc)}
+    conn = FakeConn({"FROM market_quotes WHERE source": (["symbol", "source", "price", "fetched_at"], [row])})
+    monkeypatch.setattr(joiner, "_import", lambda _name: object())
+    out = joiner.join(projection, now=et(2026, 11, 4, 9, 17), store={}, get_conn=lambda **_kwargs: conn)
+    assert out["book_exposure_error"] == "holdings store unreadable"
+    assert out["reentry_watch"]["ZZQ"]["current_quote"]["price"] == 132.99
+    assert out["reentry_watch"]["ZZQ"]["stages"] == stage
+    assert conn.closed is True and conn.readonly is True
+    assert len(conn.log) == 1
+
+
+
+def test_reentry_api_quote_close_failure_is_explicit_unknown():
+    refresh_reentry_quotes = _observed_joiner().refresh_reentry_quotes
+    class CloseFailure(FakeConn):
+        def close(self):
+            self.closed = True
+            raise OSError("synthetic close failure")
+    row = {"symbol": "ZZQ", "source": "alpaca", "price": 132.99,
+           "fetched_at": datetime(2026, 11, 4, 14, 0, 4, tzinfo=timezone.utc)}
+    conn = CloseFailure({"FROM market_quotes WHERE source": (["symbol", "source", "price", "fetched_at"], [row])})
+    old = {"state": "evaluated", "reentry_watch": {"ZZQ": {"exit_price": 137.19,
+           "current_quote": {"status": "available", "price": 140.47}}}}
+    out = refresh_reentry_quotes(old, now=et(2026, 11, 4, 9, 17), get_conn=lambda **_kwargs: conn)
+    quote = out["reentry_watch"]["ZZQ"]["current_quote"]
+    assert quote["status"] == "unavailable" and quote["price"] is None
+    assert quote["reason"] == "CURRENT_QUOTE_READER_UNAVAILABLE"
+    assert conn.closed is True
+
+
+
+@pytest.mark.parametrize("hour,session", [(6, "premarket"), (10, "regular"), (18, "afterhours")])
+def test_observed_reentry_quote_carries_each_sessions_own_timestamp(hour, session):
+    row = {"symbol": "ZZQ", "source": "alpaca", "price": 12.5,
+           "fetched_at": et(2026, 11, 4, hour)}
+    r, _conn = _observed_reader({"FROM market_quotes WHERE source": (["symbol", "source", "price", "fetched_at"], [row])})
+    local = r.current_session_quotes(["ZZQ"], end=et(2026, 11, 4, hour, 17))["ZZQ"]
+    utc = r.current_session_quotes(["ZZQ"], end=et(2026, 11, 4, hour, 17).astimezone(timezone.utc))["ZZQ"]
+    assert local == utc and local["status"] == "available" and local["session"] == session
+    assert local["as_of"] == row["fetched_at"].astimezone(timezone.utc).isoformat().replace("+00:00", "Z")

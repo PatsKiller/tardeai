@@ -234,6 +234,55 @@ class PgReader:
             out[sym].update(status="available", price=float(price), as_of=ts.isoformat().replace("+00:00", "Z"), reason=None)
         return out
 
+    def current_session_quotes(self, symbols: Iterable[str], *, end: datetime) -> dict[str, dict[str, Any]]:
+        """Newest stored observation, with its own session and freshness, never a confirmed daily bar.
+
+        This is the same Alpaca market_quotes ledger used by the decision desk. It does not call a provider;
+        fetched_at is an observation clock, not an exchange trade timestamp. The regular-session close reader
+        remains separate so a pre-market observation cannot alter historical stage evidence.
+        """
+        from scripts.lib.watch_canonical_quote import derive_freshness
+
+        end = _aware(end).astimezone(timezone.utc)
+        checked = end.isoformat().replace("+00:00", "Z")
+        syms = sorted({str(s).strip().upper() for s in symbols if str(s).strip()})
+        out = {sym: {"schema": "ReentryObservedQuote@v1", "status": "unavailable", "price": None,
+                     "source": "market_quotes:alpaca", "session": None, "session_date": None,
+                     "as_of": None, "evaluated_at": checked, "basis": "latest_stored_quote_observation",
+                     "reason": "NO_CURRENT_QUOTE"} for sym in syms}
+        if not syms:
+            return out
+        rows = self._rows(
+            "SELECT DISTINCT ON (symbol) symbol, source, price, fetched_at FROM market_quotes WHERE source = %s "
+            "AND symbol = ANY(%s) AND fetched_at <= %s ORDER BY symbol, fetched_at DESC",
+            [QUOTE_SOURCE_FOR_CLOSES, syms, end],
+        )
+        seen: set[str] = set()
+        for row in rows:
+            sym = str(row.get("symbol") or "").strip().upper()
+            ts, price = row.get("fetched_at"), row.get("price")
+            if sym not in out or sym in seen or row.get("source") != QUOTE_SOURCE_FOR_CLOSES:
+                continue
+            if not isinstance(ts, datetime) or ts.tzinfo is None:
+                continue
+            ts = ts.astimezone(timezone.utc)
+            if ts > end:
+                continue  # defend the contract independently of the SQL/filter in a replay reader
+            seen.add(sym)
+            if (isinstance(price, bool) or not isinstance(price, (int, float, Decimal))
+                    or not math.isfinite(float(price)) or float(price) <= 0):
+                out[sym]["reason"] = "INVALID_QUOTE"
+                continue
+            freshness, session = derive_freshness(ts, now=end)
+            available = freshness in {"CURRENT", "PREMARKET_CURRENT", "AFTER_HOURS_CURRENT"}
+            out[sym].update(
+                status="available" if available else "stale", price=float(price),
+                session=session, session_date=ts.astimezone(ET).date().isoformat(),
+                as_of=ts.isoformat().replace("+00:00", "Z"), stale=not available,
+                reason=None if available else "QUOTE_STALE",
+            )
+        return out
+
     def extended_quotes(self, symbols: Iterable[str], *, start: datetime, end: datetime) -> list[dict[str, Any]]:
         """Pre-market / after-hours / overnight / Sunday futures-open prints from their own store (never market_quotes,
         the latest-quote ledger). A row is returned only when its bar had ended AND it had been inserted by ``end``
