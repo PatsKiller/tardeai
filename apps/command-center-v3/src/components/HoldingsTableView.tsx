@@ -314,15 +314,18 @@ function MobilePair({ label, value, color }: { label: string; value: ReactNode; 
 }
 
 function HoldingsMobileList({
-  models, openStops, onOpenDetail, placementCount, resizeCount, rowCount, cvdMode,
+  models, openStops, onOpenDetail, placementCount, resizeCount, verificationCount, rowCount, cvdMode, focusKey,
 }: {
   models: Array<{ ctx: HoldingsTableRowContext; m: ReturnType<typeof buildHoldingsRowModel> }>
   openStops: (ctx: HoldingsTableRowContext) => void
   onOpenDetail: (ctx: HoldingsTableRowContext) => void
   placementCount: number
   resizeCount: number
+  verificationCount: number
   rowCount: number
   cvdMode: HoldingsCvdMode
+  /** Deep links (`#hold-SYM-acct`) and focusHolding() look the row up by this key. */
+  focusKey?: string | null
 }) {
   return (
     <div
@@ -334,12 +337,16 @@ function HoldingsMobileList({
       <div data-testid="holdings-mobile-list" role="rowgroup">
         {models.map(({ ctx: rowCtx, m }) => {
           const h = rowCtx.h
+          const focused = focusKey === m.key.replace(':', '-')
+          const needsVerify = m.needsVerification || m.protectionState === 'UNVERIFIABLE'
           const dayColor = m.dayPct != null ? semanticSigned(m.dayPct, cvdMode) : BB.text3
           const plColor = m.pl$ != null ? semanticSigned(m.pl$, cvdMode) : BB.text3
           const stopColor = stopStatusColor(m.stopStatus)
           return (
             <article
               key={m.key}
+              // Same id as the desktop row: deep links and focusHolding() resolve it by getElementById.
+              id={`hold-${h.symbol}-${h.account}`}
               role="row"
               aria-label={`${m.symbol} ${m.accountLabel}`}
               tabIndex={0}
@@ -348,7 +355,9 @@ function HoldingsMobileList({
               style={{
                 padding: '10px 12px', borderBottom: `1px solid ${BB.borderSubtle}`, cursor: 'pointer',
                 borderLeft: m.needsAction ? `3px solid ${primaryActionColor(m.primaryAction.tone, cvdMode)}` : '3px solid transparent',
-                background: BB.bgRow,
+                background: focused ? BB.bgRowFocus : BB.bgRow,
+                outline: focused ? `2px solid ${BB.amber}55` : 'none',
+                scrollMarginTop: 8,
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
@@ -356,6 +365,15 @@ function HoldingsMobileList({
                 <span style={{ fontFamily: BB.mono, fontWeight: 800, fontSize: 14, color: BB.blue }}>{m.symbol}</span>
                 {m.name && (
                   <span style={{ fontSize: 10, color: BB.text3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</span>
+                )}
+                {needsVerify && (
+                  <span
+                    data-testid="holdings-stop-verify-badge"
+                    title="The broker read is incomplete — verify the stop before placing another."
+                    style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, padding: '2px 6px', borderRadius: RADIUS.sm, color: BB.amberAlt, background: 'rgba(245,158,11,0.16)' }}
+                  >
+                    Verify stop
+                  </span>
                 )}
               </div>
               <div style={{ fontSize: 10, color: BB.text3, marginTop: 2 }}>
@@ -414,6 +432,10 @@ function HoldingsMobileList({
         {resizeCount > 0 && (
           <span data-testid="holdings-resize-count" style={{ color: BB.amberAlt, fontWeight: 700 }}>▸ {resizeCount} need stop resize</span>
         )}
+        {/* The desktop footer carries this count; the phone footer must not drop it. */}
+        {verificationCount > 0 && (
+          <span data-testid="holdings-verification-count" style={{ color: BB.amberAlt, fontWeight: 700 }}>▸ {verificationCount} verification required</span>
+        )}
       </div>
     </div>
   )
@@ -449,8 +471,10 @@ export default function HoldingsTableView({
         onOpenDetail={onOpenDetail}
         placementCount={placementCount}
         resizeCount={resizeCount}
+        verificationCount={verificationCount}
         rowCount={rows.length}
         cvdMode={cvdMode}
+        focusKey={focusKey}
       />
     )
   }

@@ -91,6 +91,7 @@ function nextText(it: ProspectusIndexItem): string {
 // ── List ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 function StatTiles({ idx, phone }: { idx: ProspectusIndex | null; phone: boolean }) {
+  const loaded = idx != null
   const t = totals(idx)
   const b = budgetView(idx?.budget)
   const n = idx?.items?.length ?? 0
@@ -106,10 +107,14 @@ function StatTiles({ idx, phone }: { idx: ProspectusIndex | null; phone: boolean
         title={[idx?.budget?.error, idx?.budget?.status].filter(Boolean).join(' · ') || 'Anthropic credit for prospectus writing'}
       >
         <div className="psp-tile-k">{phone ? 'Credit' : 'Anthropic credit'}</div>
-        <div className="psp-stat-v psp-stat-credit-v">{b.credit.measured ? `${b.remaining}${phone ? '' : ' left'}` : b.credit.headline}</div>
-        {b.credit.measured && !phone && <div className="psp-tile-sub" data-testid="prospectus-budget-today">today {b.used} of {b.cap} cap</div>}
-        {b.credit.measured && !phone && b.fill != null && <span className="psp-meter" aria-hidden="true"><span className={`psp-meter-fill psp-bg-${b.tone}`} style={{ width: `${Math.round(b.fill * 100)}%` }} /></span>}
-        {!b.credit.measured && <div className="psp-tile-sub" data-testid="prospectus-budget-reason">{b.credit.reason}</div>}
+        {/* While the index has not loaded there is no snapshot to describe: say nothing rather than
+            assert "Not measured", which reads as a fact about the credit when it is a fact about the request. */}
+        <div className="psp-stat-v psp-stat-credit-v">
+          {!loaded ? '…' : b.credit.measured ? `${b.remaining}${phone ? '' : ' left'}` : b.credit.headline}
+        </div>
+        {loaded && b.credit.measured && !phone && <div className="psp-tile-sub" data-testid="prospectus-budget-today">today {b.used} of {b.cap} cap</div>}
+        {loaded && b.credit.measured && !phone && b.fill != null && <span className="psp-meter" aria-hidden="true"><span className={`psp-meter-fill psp-bg-${b.tone}`} style={{ width: `${Math.round(b.fill * 100)}%` }} /></span>}
+        {loaded && !b.credit.measured && <div className="psp-tile-sub" data-testid="prospectus-budget-reason">{b.credit.reason}</div>}
       </div>
       <span className="psp-sr-totals" data-testid="prospectus-total-failed" hidden>{t.failed}</span>
     </div>

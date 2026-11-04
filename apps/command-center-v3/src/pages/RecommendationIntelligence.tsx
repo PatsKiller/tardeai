@@ -144,6 +144,9 @@ export default function RecommendationIntelligence() {
     return Object.entries(counts).sort((a, b) => b[1] - a[1])
   }, [life, openPos])
   const matchOrigin = (o?: string) => !fOrigin || (o || 'direct/manual') === fOrigin
+  // Self-review 2026-11-04: the phone card keyed its empty state on `life.length`, so a filter that matched
+  // nothing rendered a blank bordered card with no words in it.
+  const visibleLife = life.filter(p => (!lifeOnlyOrigin || p.origin) && matchOrigin(p.origin))
 
   return (
     <div style={{ padding: 4 }}>
@@ -360,7 +363,7 @@ export default function RecommendationIntelligence() {
         {narrow ? (
           /* FQ-054: ten columns clip on a phone. Each closed position is a labelled row. */
           <div style={{ ...card, padding: 4 }} data-testid="rec-lifecycle-mobile">
-            {life.filter(p => (!lifeOnlyOrigin || p.origin) && matchOrigin(p.origin)).slice(0, 120).map((p, i) => (
+            {visibleLife.slice(0, 120).map((p, i) => (
               <div key={i} onClick={() => lookup(p.symbol)} style={{ padding: '8px 10px', borderTop: i ? '1px solid var(--border)' : undefined, cursor: 'pointer' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 13, color: 'var(--text0)' }}>{p.symbol}</span>
@@ -379,7 +382,11 @@ export default function RecommendationIntelligence() {
                 </div>
               </div>
             ))}
-            {life.length === 0 && <div style={{ textAlign: 'center', padding: 18, color: 'var(--text3)' }}>No closed positions yet.</div>}
+            {visibleLife.length === 0 && (
+              <div style={{ textAlign: 'center', padding: 18, color: 'var(--text3)' }}>
+                {life.length === 0 ? 'No closed positions yet.' : 'No closed position matches this filter.'}
+              </div>
+            )}
           </div>
         ) : (
         <div style={{ ...card, padding: 4, overflowX: 'auto' }}>

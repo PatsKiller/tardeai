@@ -3,6 +3,7 @@
  * Colors: CSS variables only (design-token guard).
  */
 import { useEffect, useState, type CSSProperties } from 'react'
+import { compareServedBuild, LOADED_BUILD } from '../lib/buildIdentity'
 
 export interface PortfolioDeskHealthProps {
   holdingsCount: number
@@ -65,6 +66,10 @@ export default function PortfolioDeskHealth(props: PortfolioDeskHealthProps) {
   const uiVer = meta?.ui_version || (metaErr ? 'build unknown' : '…')
   // "3.14+mw1ddvr8" → "3.14": the per-build stamp is a cache-buster, not an operator fact.
   const baseVersion = meta?.ui_version ? String(meta.ui_version).split('+')[0] : null
+  // The face must be able to CHANGE when the browser is running an old bundle, or the chip's own
+  // instruction ("Reload UI if it does not match the expected deploy") can never fire. Comparing the
+  // loaded bundle with the served build gives that without putting a hash on the face.
+  const buildComparison = compareServedBuild(LOADED_BUILD, meta)
 
   const hardReload = () => {
     try {
@@ -140,6 +145,7 @@ export default function PortfolioDeskHealth(props: PortfolioDeskHealthProps) {
         {/* FQ-050: the face was "3.14+mw1ddvr8 · 1f1ba5832a06" — a version stamp plus a commit hash.
             The face is now the release version; the hashes are one tap away. */}
         {baseVersion ? `Build ${baseVersion}` : uiVer}
+        {buildComparison === 'DIFFERENT' ? ' · update available' : ''}
       </button>
       {showBuild && (
         <div
@@ -147,6 +153,7 @@ export default function PortfolioDeskHealth(props: PortfolioDeskHealthProps) {
           style={{ flexBasis: '100%', fontSize: 10, color: MUTED, fontFamily: 'ui-monospace, monospace', lineHeight: 1.5, overflowWrap: 'anywhere' }}
         >
           <div>UI version: {meta?.ui_version || 'unavailable'}</div>
+          <div>Loaded bundle: {LOADED_BUILD.uiVersion || 'unavailable'}</div>
           <div>Source commit: {sha ? `${meta?.source_commit}` : 'unavailable'}</div>
           {meta?.built_at && <div>Built: {meta.built_at}</div>}
           {metaErr && <div>Build identity could not be read.</div>}

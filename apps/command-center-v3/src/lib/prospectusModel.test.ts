@@ -146,6 +146,11 @@ check('credit denied says why', /credit check was refused/i.test(creditDenied.cr
 const creditOk = budgetView({ credit_remaining_usd: 41.2, today_used_usd: 3, daily_cap_usd: 10 })
 eq('measured credit unchanged', [creditOk.remaining, creditOk.credit.measured], ['$41.20', true])
 eq('missing credit is "not measured"', creditState(null).headline, 'Not measured')
+// A payload can say UNAVAILABLE with no error text; reading only `error` reported "Not measured" when the
+// source refused to answer (self-review 2026-11-04).
+eq('status UNAVAILABLE without an error is unavailable', creditState({ credit_remaining_usd: null, status: 'UNAVAILABLE' }).headline, 'Unavailable')
+eq('status ERROR without an error is unavailable', creditState({ credit_remaining_usd: null, status: 'ERROR' }).headline, 'Unavailable')
+eq('null budget is not measured', creditState(null).headline, 'Not measured')
 
 // FQ-053: failed rows printed "GenerationFailed: OUTPUT_NOT_JSON".
 const failedRun = failureHeadline('GenerationFailed: OUTPUT_NOT_JSON')

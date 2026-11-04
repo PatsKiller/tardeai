@@ -210,7 +210,10 @@ export function creditState(b: ProspectusBudget | null | undefined): { measured:
   const rem = toNumber(b?.credit_remaining_usd)
   if (rem != null) return { measured: true, headline: '', reason: '' }
   const err = String(b?.error || '')
-  if (err) {
+  const status = String(b?.status || '').toUpperCase()
+  // The server's own verdict counts too: a payload can say UNAVAILABLE with no error text, and reading only
+  // `error` would then report "Not measured" when the source in fact refused to answer (self-review, 2026-11-04).
+  if (err || status === 'UNAVAILABLE' || status === 'ERROR') {
     return {
       measured: false,
       headline: 'Unavailable',

@@ -23,6 +23,9 @@ eq('identifier inside prose', sentenceIdentifiers('Schwab journal ingest has no 
 eq('no identifiers means no change', sentenceIdentifiers('Operator review and monitor.'), 'Operator review and monitor.')
 eq('trailing punctuation kept', sentenceIdentifiers('check pullback_macd_reversal,'), 'check Pullback MACD Reversal,')
 eq('hyphenated English is not an identifier', sentenceIdentifiers('A well-known after-hours read.'), 'A well-known after-hours read.')
+eq('parenthesised identifier', sentenceIdentifiers('flagged (data_source_stale) at 14:02'), 'flagged (Data source stale) at 14:02')
+eq('quoted identifier', sentenceIdentifiers("component 'buy_ready' degraded"), "component 'Ready to buy' degraded")
+eq('bracketed identifier', sentenceIdentifiers('[market_regime] changed'), '[Market Regime] changed')
 eq('kebab ids are labels, not prose', sentenceIdentifiers('source swing-breakout failed'), 'source swing-breakout failed')
 
 // A dash must say which absence it is.

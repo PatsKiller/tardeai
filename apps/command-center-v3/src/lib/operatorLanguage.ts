@@ -47,9 +47,19 @@ const KNOWN: Record<string, string> = {
 const SNAKE = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/i
 const KEBAB = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$/i
 
-function splitTrailing(token: string): [string, string] {
-  const m = token.match(/^(.*?)([.,;:!?)\]]*)$/)
-  return m ? [m[1], m[2]] : [token, '']
+const LEADING = /^[('"\[{‘“]*/ 
+const TRAILING = /[.,;:!?)\]}'”’]*$/
+
+/**
+ * Split a word into the bare token and the punctuation around it, so `(data_source_stale)` and
+ * `'buy_ready'` are still recognised as identifiers (review finding, 2026-11-04: only trailing
+ * punctuation was stripped before, so the common wrapped forms leaked through untranslated).
+ */
+function splitToken(token: string): [string, string, string] {
+  const lead = token.match(LEADING)?.[0] ?? ''
+  const rest = token.slice(lead.length)
+  const trail = rest.match(TRAILING)?.[0] ?? ''
+  return [lead, rest.slice(0, rest.length - trail.length), trail]
 }
 
 /** One identifier segment → operator words. `data_source_stale` → "Data source stale". */
@@ -85,9 +95,9 @@ export function sentenceIdentifiers(raw: unknown): string {
   const s = String(raw)
   if (!s) return ''
   return s.replace(/\S+/g, word => {
-    const [core, trailing] = splitTrailing(word)
+    const [lead, core, trail] = splitToken(word)
     if (!SNAKE.test(core) || !looksLikeIdentifier(core)) return word
-    return one(core) + trailing
+    return lead + one(core) + trail
   })
 }
 
