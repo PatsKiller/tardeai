@@ -37,9 +37,18 @@ COORD_DEFAULT = Path(os.environ.get("TRADEAI_COORD_DIR")
 
 
 def _run(cmd: Sequence[str], **kw: Any) -> Any:
-    # Fixed argv, no shell: every caller passes a literal list (tmux/gh); this is the same shape the nudger uses,
-    # and S603 is silenced at the one call site rather than for the file.
-    return subprocess.run(list(cmd), capture_output=True, text=True, **kw)  # noqa: S603
+    """The default adapter. Fixed argv, no shell; S603 is silenced here, at the one call site.
+
+    F1 (cx-openai-3): this used to pass ``capture_output``/``text`` positionally-by-keyword *and* accept them from the
+    caller, so every caller that supplied them — which is every tmux call in ``submit`` — raised
+    ``TypeError: subprocess.run() got multiple values for keyword argument 'capture_output'`` at the first
+    ``load-buffer``. The lane would have crashed on its first real dispatch. Defaults are now set with
+    ``setdefault`` so a caller may pass either, and every call is time-bounded.
+    """
+    kw.setdefault("capture_output", True)
+    kw.setdefault("text", True)
+    kw.setdefault("timeout", D.RUN_TIMEOUT_S)
+    return subprocess.run(list(cmd), **kw)  # noqa: S603
 
 
 def tmux_sessions(run: Callable[..., Any] = _run) -> list[str]:
@@ -140,10 +149,16 @@ def open_prs(run: Callable[..., Any] = _run, with_commits: bool = True) -> list[
 
 
 def author_sessions(prs: Sequence[D.PullRequest], claims: Sequence[D.Claim]) -> dict[int, str]:
-    """Who authored each PR: the session holding the active claim on its head branch. Not a guess — a lookup."""
+    """Who authored each PR: the session whose claim names its head branch — in ANY status.
+
+    F5 (cx-openai-3): limiting this to active claims meant a session that had *finished* and released its claim looked
+    like "no author", and the dispatcher would happily send it its own PR to review. A done or stale claim still
+    records authorship, so every status counts; the newest claim on the branch wins. When nothing resolves the author
+    stays empty and ``select_work`` refuses to assign a reviewer (fail closed).
+    """
     by_branch: dict[str, str] = {}
-    for c in sorted(claims, key=lambda c: c.age_h):
-        if c.status == "active" and c.branch:
+    for c in sorted(claims, key=lambda c: c.age_h):  # newest heartbeat first
+        if c.branch and c.session:
             by_branch.setdefault(c.branch, c.session)
     return {pr.number: by_branch.get(pr.head_ref, "") for pr in prs}
 
@@ -174,7 +189,9 @@ def run_cycle(*, apply: bool, coord: Path, queue_path: Path, claims_dir: Path, l
         pr = next((p for p in prs if p.number == pr_no and p.head_sha == head), None)
         if pr is None:
             continue
-        reviewers = {e["reviewer"] for e in entries if e["verdict"] == "MERGE" and e["reviewer"] != authors.get(pr_no, "")}
+        # F4: BLOCK is a verdict too — a PR with two blocks already at this head does not get a third reviewer.
+        reviewers = {e["reviewer"] for e in entries
+                     if e["verdict"] in ("MERGE", "BLOCK") and e["reviewer"] and e["reviewer"] != authors.get(pr_no, "")}
         # verdicts already filed + reviewers an earlier cycle already sent (and who went busy) both spend the cap
         review_counts[pr_no] = len(reviewers | prior_sessions.get(pr_no, set()))
     for pane in panes:
@@ -215,15 +232,18 @@ def run_cycle(*, apply: bool, coord: Path, queue_path: Path, claims_dir: Path, l
         line = D.ledger_line(session=a.session, assignment=a, result=r, cycle_id=cycle_id, target_head=head)
         lines.append(line)
         result["ledger"].append(json.loads(line))
+    ledger_target = D.safe_output_path(ledger_path, coord=coord, protected=[queue_path, claims_dir])
+    merge_ready_target = D.safe_output_path(coord / "MERGE_READY.md", coord=coord, protected=[queue_path, claims_dir])
+    alert_target = D.safe_output_path(coord / "DISPATCH_IDLE_ALERT.md", coord=coord, protected=[queue_path, claims_dir])
     if lines:
-        ledger_path.parent.mkdir(parents=True, exist_ok=True)
-        with ledger_path.open("a", encoding="utf-8") as fh:
+        ledger_target.parent.mkdir(parents=True, exist_ok=True)
+        with ledger_target.open("a", encoding="utf-8") as fh:
             for line in lines:
                 fh.write(line + "\n")
 
-    (coord / "MERGE_READY.md").write_text(D.render_merge_ready(ready, generated_at=generated_at), encoding="utf-8")
+    merge_ready_target.write_text(D.render_merge_ready(ready, generated_at=generated_at), encoding="utf-8")
     if alerts:
-        (coord / "DISPATCH_IDLE_ALERT.md").write_text(alerts, encoding="utf-8")
+        alert_target.write_text(alerts, encoding="utf-8")
     return result
 
 

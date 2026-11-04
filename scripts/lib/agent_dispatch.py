@@ -50,6 +50,12 @@ IDLE_ESCALATE_MINUTES = 15.0
 BUSY_CONFIRM_SECONDS = 30.0
 #: Most reviewers one PR may have at one head (independent verdicts already filed + handed out this cycle).
 MAX_REVIEWERS_PER_PR = 2
+#: Nothing in this lane may hang: every subprocess call and every wait is bounded (F3).
+RUN_TIMEOUT_S = 15.0
+
+
+class DispatchError(RuntimeError):
+    """A refusal this lane makes on purpose (unsafe output path, unknown author, …)."""
 
 
 def now_utc() -> datetime:
@@ -235,13 +241,18 @@ def merge_ready(prs: Sequence[PullRequest], verdicts: dict[tuple[int, str], list
     for pr in prs:
         if not pr.clean:
             continue
-        merges = [e for e in verdicts.get((pr.number, pr.head_sha), []) if e["verdict"] == "MERGE"]
+        here = verdicts.get((pr.number, pr.head_sha), [])
+        blocks = [e for e in here if e["verdict"] == "BLOCK" and e["reviewer"] and e["reviewer"] != author_of.get(pr.number, "")]
+        merges = [e for e in here if e["verdict"] == "MERGE"]
         merges = [e for e in merges if e["reviewer"] and e["reviewer"] != author_of.get(pr.number, "")]
         claim = by_branch.get(pr.head_ref)
         claim_current = bool(claim and claim.head_sha and claim.head_sha in pr.shas)
         base = {"pr": pr.number, "head": pr.head_sha, "branch": pr.head_ref,
                 "author": author_of.get(pr.number, ""), "merge_state": pr.merge_state}
-        if merges and claim_current:
+        if blocks:
+            one_step.append({**base, "step": "a BLOCK verdict stands at this head — resolve it, then re-review",
+                             "verdicts": [e["reviewer"] for e in blocks]})
+        elif merges and claim_current:
             ready.append({**base, "verdicts": [e["reviewer"] for e in merges]})
         elif merges and not claim_current:
             one_step.append({**base, "step": "author must re-stamp the claim's head_sha to this head",
@@ -369,7 +380,12 @@ def select_work(session: str, *, queue: Sequence[dict[str, Any]], claims: Sequen
     # Newest activity first: a live PR is the work, and an ancient CLEAN PR is the triage list (board row 26), not
     # somewhere to spend five sessions. At most MAX_REVIEWERS_PER_PR independent reviewers per head.
     for pr in sorted(prs, key=lambda p: (p.updated_at or "", p.number), reverse=True):
-        if not pr.clean or author_of.get(pr.number) == session:
+        if not pr.clean:
+            continue
+        author = author_of.get(pr.number) or ""
+        if not author:
+            continue  # F5: an unknown author means independence cannot be shown — fail closed, assign nobody
+        if author == session:
             continue
         if (pr.number, session) in reviewed:
             continue
@@ -435,6 +451,35 @@ class SubmitResult:
     detail: str
 
 
+def safe_output_path(target: Path, *, coord: Path, protected: Sequence[Path] = ()) -> Path:
+    """Refuse an output path that could write one of the lane's own inputs (F2).
+
+    The dispatcher writes exactly three files. If any of them resolves to the queue, a claims directory, the review
+    evidence or the coordinator's inbox — through a symlink, a "../" path or a typo — a bug in this lane would edit
+    the very records it is supposed to read. Refuse before sending or writing; a refusal is a refusal, never a
+    best-effort write.
+    """
+    target = Path(target)
+    if target.is_symlink():
+        raise DispatchError(f"refusing to write {target}: it is a symlink")
+    real = target.resolve(strict=False)
+    forbidden = [Path(p).resolve(strict=False) for p in protected]
+    forbidden += [(Path(coord) / name).resolve(strict=False)
+                  for name in ("AUDIT_FIX_QUEUE.json", "inbox", "review-evidence", "claims")]
+    for bad in forbidden:
+        if real == bad or bad in real.parents:
+            raise DispatchError(f"refusing to write {target}: resolves inside a protected input ({bad})")
+    parent = real.parent
+    if parent.exists() and parent.is_symlink():
+        raise DispatchError(f"refusing to write {target}: its directory is a symlink out of the tree")
+    return real
+
+
+def _tail_hash(screen: str) -> str:
+    tail = "\n".join(ln for ln in (screen or "").splitlines() if ln.strip())[-1200:]
+    return hashlib.sha256(tail.encode()).hexdigest()
+
+
 def submit(
     session: str,
     text: str,
@@ -443,45 +488,57 @@ def submit(
     sleep: Callable[[float], None] = time.sleep,
     busy_confirm_seconds: float = BUSY_CONFIRM_SECONDS,
     poll_every: float = 3.0,
+    monotonic: Callable[[], float] = time.monotonic,
 ) -> SubmitResult:
-    """Paste and submit one instruction, then prove the pane went busy.
+    """Paste and submit one instruction, then prove THIS paste made the pane busy.
 
     Multi-line text sent with ``send-keys -l`` silently does not submit (the fleet's well-known trap), so the text
-    goes through a tmux buffer and is pasted, then Enter is pressed separately. Busy is the proof of submission; it
-    is measured, not assumed, and one retry is allowed before the caller logs ``dispatch_failed``.
+    goes through a tmux buffer, is pasted, and Enter is pressed separately.
+
+    Two properties the reviewer required (F3), because a submit that "confirms" the wrong thing is worse than none:
+    * **wall-clock bounded** — every wait is measured with a monotonic clock against a deadline, and every subprocess
+      call carries its own timeout, so a wedged tmux cannot extend a cycle past its budget;
+    * **evidence is new** — the pane is captured before the paste and again after Enter, and busy only counts when the
+      capture both carries a busy marker and differs from the pre-paste capture. A pane that was already busy (a
+      stale spinner) is therefore not mistaken for the result of this dispatch.
+    One retry, then the caller logs ``dispatch_failed``.
     """
     buffer_name = "dispatch-" + hashlib.sha256(f"{session}:{text}:{time.time()}".encode()).hexdigest()[:12]
 
+    def _capture() -> str | None:
+        proc = run(["tmux", "capture-pane", "-p", "-t", session], capture_output=True, text=True,
+                   timeout=RUN_TIMEOUT_S)
+        return (proc.stdout or "") if getattr(proc, "returncode", 1) == 0 else None
+
     def _paste_and_enter() -> bool:
-        load = run(["tmux", "load-buffer", "-b", buffer_name, "-"], input=text, capture_output=True, text=True)
+        load = run(["tmux", "load-buffer", "-b", buffer_name, "-"], input=text, capture_output=True, text=True,
+                   timeout=RUN_TIMEOUT_S)
         if getattr(load, "returncode", 1) != 0:
             return False
         paste = run(["tmux", "paste-buffer", "-b", buffer_name, "-t", session, "-d"],
-                    capture_output=True, text=True)
+                    capture_output=True, text=True, timeout=RUN_TIMEOUT_S)
         if getattr(paste, "returncode", 1) != 0:
             return False
         sleep(0.6)  # let the compositor register the paste before Enter
-        enter = run(["tmux", "send-keys", "-t", session, "Enter"], capture_output=True, text=True)
+        enter = run(["tmux", "send-keys", "-t", session, "Enter"], capture_output=True, text=True,
+                    timeout=RUN_TIMEOUT_S)
         return getattr(enter, "returncode", 1) == 0
-
-    def _busy() -> bool:
-        screen = run(["tmux", "capture-pane", "-p", "-t", session], capture_output=True, text=True)
-        if getattr(screen, "returncode", 1) != 0:
-            return False
-        return BUSY_RE.search(screen.stdout or "") is not None
 
     attempts = 0
     for attempt in (1, 2):
         attempts = attempt
+        before = _capture()
         if not _paste_and_enter():
             continue
-        waited = 0.0
-        while waited < busy_confirm_seconds:
-            sleep(poll_every)
-            waited += poll_every
-            if _busy():
-                return SubmitResult(True, True, attempts, f"busy confirmed after {waited:.0f}s")
-    return SubmitResult(attempts > 0, False, attempts, "no busy marker within the confirm window")
+        deadline = monotonic() + busy_confirm_seconds
+        while monotonic() < deadline:
+            sleep(min(poll_every, max(0.0, deadline - monotonic())))
+            screen = _capture()
+            if screen is None:
+                continue
+            if BUSY_RE.search(screen) and _tail_hash(screen) != _tail_hash(before or ""):
+                return SubmitResult(True, True, attempts, "busy confirmed on a new capture after the paste")
+    return SubmitResult(attempts > 0, False, attempts, "no new busy marker within the confirm window")
 
 
 def ledger_line(*, session: str, assignment: Assignment, result: SubmitResult, cycle_id: str, ts: str | None = None,

@@ -199,12 +199,16 @@ def test_merge_pump_names_the_one_step():
 
 
 class FakeTmux:
-    """Records the exact tmux calls and lets a test decide when the pane looks busy."""
+    """Records the exact tmux calls and models the pane: idle before the paste, busy and different after it.
 
-    def __init__(self, busy_on_poll: int = 1):
+    cx-openai-3's F3 requires the busy evidence to be NEW — a pane that was already busy must not count — so this
+    fake only shows the busy marker once a paste has happened, and changes the screen then.
+    """
+
+    def __init__(self, busy_after_paste: bool = True):
         self.calls: list[list[str]] = []
-        self.busy_on_poll = busy_on_poll
-        self.polls = 0
+        self.pasted = False
+        self.busy_after_paste = busy_after_paste
 
     def __call__(self, cmd, **kw):
         self.calls.append(list(cmd))
@@ -212,26 +216,57 @@ class FakeTmux:
             returncode = 0
             stdout = ""
             stderr = ""
+        if cmd[:2] == ["tmux", "paste-buffer"]:
+            self.pasted = True
         if cmd[:2] == ["tmux", "capture-pane"]:
-            self.polls += 1
-            P.stdout = "· Working (2s · esc to interrupt)" if self.polls >= self.busy_on_poll else "❯ "
+            if self.pasted and self.busy_after_paste:
+                P.stdout = "· Working (2s · esc to interrupt)\n> Dispatcher: review PR #7"
+            else:
+                P.stdout = "❯ \n  ? for shortcuts"
         return P
 
 
+class FakeClock:
+    """A monotonic clock that advances exactly as much as the code sleeps — so the deadline is real but instant."""
+
+    def __init__(self):
+        self.t = 0.0
+
+    def __call__(self) -> float:
+        return self.t
+
+    def sleep(self, s: float) -> None:
+        self.t += max(0.0, s)
+
+
 def test_submit_pastes_then_enters_and_proves_busy():
-    fake = FakeTmux(busy_on_poll=1)
-    sleeps: list[float] = []
-    r = D.submit("cc-1", "line one\nline two", run=fake, sleep=sleeps.append, poll_every=3.0)
-    verbs = [c[1] for c in fake.calls if c[:2] == ["tmux", c[1]] or True]
-    assert ["tmux", "load-buffer"][0:2] in [c[0:2] for c in fake.calls]
+    fake, clock = FakeTmux(), FakeClock()
+    r = D.submit("cc-1", "line one\nline two", run=fake, sleep=clock.sleep, poll_every=3.0, monotonic=clock)
+    assert any(c[:2] == ["tmux", "load-buffer"] for c in fake.calls)
     assert any(c[:2] == ["tmux", "paste-buffer"] for c in fake.calls), "text must be pasted, not send-keyed"
     assert not any(c[:3] == ["tmux", "send-keys", "-l"] for c in fake.calls), "send-keys -l is the silent-no-submit trap"
     assert r.submitted and r.busy_after and r.attempts == 1
+    assert "after the paste" in r.detail
+
+
+def test_a_pane_that_was_already_busy_is_not_evidence_of_this_dispatch():
+    """F3: busy must be NEW. A stale spinner that never changes must not confirm a dispatch."""
+    class StuckBusy(FakeTmux):
+        def __call__(self, cmd, **kw):
+            p = super().__call__(cmd, **kw)
+            if cmd[:2] == ["tmux", "capture-pane"]:
+                p.stdout = "· Working (999s · esc to interrupt)"   # always busy, never changing
+            return p
+    clock = FakeClock()
+    r = D.submit("cc-1", "do it", run=StuckBusy(), sleep=clock.sleep, poll_every=3.0, busy_confirm_seconds=6.0,
+                 monotonic=clock)
+    assert not r.busy_after and r.attempts == 2
 
 
 def test_submit_retries_once_then_reports_dispatch_failed():
-    fake = FakeTmux(busy_on_poll=10_000)  # never busy
-    r = D.submit("cc-1", "do the thing", run=fake, sleep=lambda _s: None, busy_confirm_seconds=6.0, poll_every=3.0)
+    fake, clock = FakeTmux(busy_after_paste=False), FakeClock()   # never goes busy
+    r = D.submit("cc-1", "do the thing", run=fake, sleep=clock.sleep, busy_confirm_seconds=6.0, poll_every=3.0,
+                 monotonic=clock)
     assert not r.busy_after and r.attempts == 2, "one retry, then stop — no third"
     line = json.loads(D.ledger_line(session="cc-1", assignment=D.Assignment("cc-1", "queue", "FQ-1", "x", "w"),
                                     result=r, cycle_id="cyc-1"))
@@ -342,10 +377,14 @@ def test_busy_sessions_are_not_touched(tmp_path):
 
 
 def test_the_module_writes_only_its_own_two_files():
+    """Rails, stated as a source property: the only report files it names are the two it owns, and both writes go
+    through the protected-path guard (F2)."""
     src = (ROOT / "scripts" / "agent_dispatch.py").read_text(encoding="utf-8")
-    targets = set(re.findall(r"\(\s*coord\s*/\s*\"([A-Za-z_.]+)\"\s*\)\.write_text", src))
-    assert targets == {"MERGE_READY.md", "DISPATCH_IDLE_ALERT.md"}, targets
-    ledger_targets = re.findall(r"ledger_path[^\n]*open\(\"a\"", src)
+    named = set(re.findall(r'"(MERGE_READY\.md|DISPATCH_IDLE_ALERT\.md)"', src))
+    assert named == {"MERGE_READY.md", "DISPATCH_IDLE_ALERT.md"}, named
+    assert src.count("D.safe_output_path(") >= 3, "every write target must pass through the guard"
+    assert "pr_merge_delegation" not in src and "gh pr merge" not in src and "git push" not in src
+    ledger_targets = re.findall(r"ledger_target[^\n]*open\(\"a\"", src)
     assert ledger_targets, "the ledger append must be visible in the source"
     for forbidden in ("pr_merge_delegation", "git push", "gh pr merge", "setex", "write_text" ):
         if forbidden == "write_text":
@@ -378,8 +417,35 @@ def test_existing_verdicts_count_towards_the_cap():
 def test_newest_pr_is_offered_before_an_ancient_one():
     old = D.PullRequest(100, "a" * 40, "wt/old", "CLEAN", False, updated_at="2026-10-20T00:00:00Z")
     new = D.PullRequest(200, "b" * 40, "wt/new", "CLEAN", False, updated_at="2026-11-04T17:00:00Z")
-    a = D.select_work("cc-8", queue=[], claims=[], prs=[old, new], verdicts={}, author_of={}, coord="/c", now=NOW)
+    a = D.select_work("cc-8", queue=[], claims=[], prs=[old, new], verdicts={},
+                      author_of={100: "cc-1", 200: "cc-2"}, coord="/c", now=NOW)
     assert a.target == "200", "a live PR is reviewed before the October triage list"
+
+
+def test_a_pr_with_an_unknown_author_is_never_assigned_a_reviewer():
+    """F5: independence must be provable. No author resolved means nobody may review it."""
+    pr = D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False)
+    a = D.select_work("cc-8", queue=[], claims=[], prs=[pr], verdicts={}, author_of={}, coord="/c", now=NOW)
+    assert a is None
+
+
+def test_a_block_verdict_counts_towards_the_reviewer_cap():
+    """F4: BLOCK is a verdict too — a PR with two blocks at this head is not given a third reviewer."""
+    pr = D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False)
+    v = {(7, "h" * 40): [{"verdict": "BLOCK", "reviewer": "cc-1"}, {"verdict": "BLOCK", "reviewer": "cc-2"}]}
+    a = D.select_work("cc-8", queue=[], claims=[], prs=[pr], verdicts=v, author_of={7: "cc-4"}, coord="/c",
+                      now=NOW, review_counts={7: 2})
+    assert a is None
+
+
+def test_an_exact_head_block_is_never_reported_ready():
+    """F6: the pump must not call a blocked PR ready, even if a MERGE also sits at that head."""
+    pr = D.PullRequest(11, "h" * 40, "wt/x", "CLEAN", False, commit_shas=("h" * 40,))
+    claims = [claim(session="cc-4", branch="wt/x", head="h" * 40)]
+    v = {(11, "h" * 40): [{"verdict": "MERGE", "reviewer": "cc-9"}, {"verdict": "BLOCK", "reviewer": "cc-2"}]}
+    out = D.merge_ready([pr], v, claims, {11: "cc-4"})
+    assert out["ready"] == []
+    assert "BLOCK" in out["one_step"][0]["step"]
 
 
 # ── 10. one target per cycle, and no re-sending a review across cycles (found in the 18:53Z dry run) ───────────
@@ -432,3 +498,89 @@ def test_prior_review_dispatches_reads_only_completed_review_lines(tmp_path):
     ]) + "\n", encoding="utf-8")
     sessions, counts = CLI.prior_review_dispatches(ledger)
     assert sessions == {7: {"cc-1"}} and counts == {7: 1}
+
+
+# ── 11. cx-openai-3's six findings (F1–F6) — the regressions that would have caught them ──────────────────────
+
+
+def test_the_default_adapter_accepts_the_arguments_every_caller_passes():
+    """F1 — the single most important gap: the native adapter, not a stand-in.
+
+    `submit` calls the adapter with capture_output/text; the adapter used to pass them too, so the first real
+    `load-buffer` raised TypeError: multiple values for keyword argument 'capture_output'. Every earlier test replaced
+    the whole adapter, which is exactly why none of them saw it.
+    """
+    proc = CLI._run([sys.executable, "-c", "print('ok')"], capture_output=True, text=True)
+    assert proc.returncode == 0 and proc.stdout.strip() == "ok"
+
+
+def test_the_real_submit_path_works_end_to_end_with_the_native_adapter(monkeypatch):
+    """F1 again, one level up: the genuine `submit` + genuine `_run`, with only subprocess.run stubbed at the edge."""
+    calls: list[list[str]] = []
+    pasted = {"done": False}
+
+    class P:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(cmd, **kw):
+        calls.append(list(cmd))
+        if cmd[:2] == ["tmux", "paste-buffer"]:
+            pasted["done"] = True
+        if cmd[:2] == ["tmux", "capture-pane"]:
+            p = P()
+            p.stdout = ("· Working (1s · esc to interrupt)\n> dispatched" if pasted["done"]
+                        else "❯ \n  ? for shortcuts")
+            return p
+        return P()
+
+    monkeypatch.setattr(CLI.subprocess, "run", fake_run)
+    clock = FakeClock()
+    r = D.submit("cc-1", "do the thing", run=CLI._run, sleep=clock.sleep, poll_every=3.0, monotonic=clock)
+    assert r.submitted and r.busy_after, r.detail
+    assert any(c[:2] == ["tmux", "load-buffer"] for c in calls)
+
+
+def test_an_output_path_that_aliases_an_input_is_refused(tmp_path):
+    """F2 — the lane must not be able to write its own inputs, even through a symlink."""
+    coord = tmp_path / "coordinator"
+    (coord / "inbox").mkdir(parents=True)
+    (coord / "AUDIT_FIX_QUEUE.json").write_text("{}", encoding="utf-8")
+    # 1. pointing the ledger at the queue
+    try:
+        D.safe_output_path(coord / "AUDIT_FIX_QUEUE.json", coord=coord)
+        raise AssertionError("writing the queue was allowed")
+    except D.DispatchError:
+        pass
+    # 2. a symlink under the coordinator that points at the inbox
+    link = coord / "MERGE_READY.md"
+    link.symlink_to(coord / "inbox" / "somewhere.md")
+    try:
+        D.safe_output_path(link, coord=coord)
+        raise AssertionError("writing through a symlink was allowed")
+    except D.DispatchError:
+        pass
+    # 3. the legitimate path still works once the symlink is gone
+    link.unlink()
+    assert D.safe_output_path(coord / "MERGE_READY.md", coord=coord) == (coord / "MERGE_READY.md").resolve()
+
+
+def test_the_busy_confirmation_is_wall_clock_bounded():
+    """F3 — a pane that never goes busy must exhaust a deadline, not loop forever."""
+    clock = FakeClock()
+    fake = FakeTmux(busy_after_paste=False)
+    started = clock()
+    r = D.submit("cc-1", "x", run=fake, sleep=clock.sleep, busy_confirm_seconds=30.0, poll_every=5.0, monotonic=clock)
+    assert not r.busy_after and r.attempts == 2
+    assert clock() - started <= 2 * 30.0 + 5.0, "the two attempts must fit inside their two deadlines"
+
+
+def test_an_author_who_released_their_claim_is_still_the_author():
+    """F5 — authorship survives a released claim, so a finished author is never sent its own review."""
+    prs = [D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False)]
+    claims = [claim(cid="c-old", session="cc-4", branch="wt/x", status="done", age=3.0)]
+    authors = CLI.author_sessions(prs, claims)
+    assert authors == {7: "cc-4"}
+    assert D.select_work("cc-4", queue=[], claims=claims, prs=prs, verdicts={}, author_of=authors,
+                         coord="/c", now=NOW) is None
