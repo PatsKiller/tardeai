@@ -93,3 +93,36 @@ export function listAsOfWords(asOf: unknown): string | null {
   if (Number.isNaN(at.getTime())) return null
   return `Opportunity list as of ${etClock(at)} ET`
 }
+
+/**
+ * What the Best-opportunities card is allowed to say, from four transport facts and a row count.
+ *
+ * R1 (cc-deepseek-8 BLOCK at f44f21fbe): the first version announced "showing the last list" whenever the poll had
+ * failed — and on a FAILED FIRST LOAD there is no last list. The card said a retained list was on screen while the
+ * screen was empty, and the empty state said "Loading…" over a request that had already failed. Both are freshness
+ * claims the data does not support, which is the class this page exists to stop; so the composition lives here, where
+ * it can be tested, instead of in three inline ternaries.
+ */
+export type OpportunitiesCardState = {
+  /** the poll failed or is retained AND there are rows: the rows may be shown, qualified */
+  retained: boolean
+  /** the retained banner's sentence, or '' when no banner is shown */
+  retainedText: string
+  /** the sentence for an empty card, or '' when the card has rows */
+  emptyText: string
+}
+
+export function opportunitiesCardState(a: {
+  loading: boolean; error: boolean; stale: boolean; itemCount: number; listLoaded: boolean
+}): OpportunitiesCardState {
+  const failed = !a.loading && (a.error || a.stale)
+  const rows = Number.isFinite(a.itemCount) && a.itemCount > 0
+  return {
+    retained: failed && rows,
+    retainedText: failed && rows ? 'Refresh failed — showing the last list; not current' : '',
+    // A failed load is not an empty result, and it is not still loading: say which one it is.
+    emptyText: rows ? ''
+      : failed ? 'The list could not be loaded — this is a failed request, not an empty list.'
+      : a.listLoaded ? 'Nothing clears the bar right now.' : 'Loading…',
+  }
+}

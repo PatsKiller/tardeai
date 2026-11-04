@@ -14,7 +14,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { BEST_OPPORTUNITIES_API, BEST_OPPORTUNITIES_PATH } from '../lib/bestOpportunities'
-import { listAsOfWords, quoteAge } from '../lib/opportunityQuoteAge'
+import { listAsOfWords, opportunitiesCardState, quoteAge } from '../lib/opportunityQuoteAge'
 import { useApi } from '../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars, type Tone } from '../lib/designTokens'
 import {
@@ -166,9 +166,13 @@ export default function HomeDoNow() {
   // FQ-088: the list carries an as-of and every row a quote time. Home discarded both, so a reward-to-risk
   // computed from an old quote looked exactly like a current one.
   const oppAsOf = listAsOfWords(unwrap(oppTop)?.as_of)
-  // R1 (codex BLOCK at 77b94efa3a): a failed poll must not look current. When the refresh errors or the hook is
-  // serving a retained answer, the card says so and every row is qualified as retained.
-  const oppRetained = !oppLoading && (!!oppError || !!oppStale)
+  // R1 (codex BLOCK at 77b94efa3a, then cc-deepseek-8 at f44f21fbe): a failed poll must not look current — and a
+  // failed FIRST load has no last list to retain, so it must not claim one, and it is not still loading either.
+  // The composition is a tested function; the page renders its sentences and never invents its own.
+  const oppState = opportunitiesCardState({
+    loading: !!oppLoading, error: !!oppError, stale: !!oppStale, itemCount: opps.length, listLoaded: !!oppTop,
+  })
+  const oppRetained = oppState.retained
   const ph = platformHealthFrom(platformApi.data, { error: platformApi.error, loading: platformApi.loading, nowMs: now })
   const scanStale = tradeAiSurfaceFreshness(tradeAi).stale
   const setup = renderSetupCounts(tradeAi?.setup_run_summary, { stale: scanStale, staleLabel: 'STALE' })
@@ -338,9 +342,9 @@ export default function HomeDoNow() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14 }}>
         <section style={card} data-testid="home-opportunities" aria-label="Best opportunities">
           <CardHead title="Best opportunities" to={BEST_OPPORTUNITIES_PATH} linkText="View top 5" touchTarget />
-          {oppRetained ? <div data-testid="home-opportunities-retained" style={{ fontSize: TYPE.xs, fontWeight: 600, color: TOKENS.warning }}>Refresh failed — showing the last list; not current</div> : null}
+          {oppState.retainedText ? <div data-testid="home-opportunities-retained" style={{ fontSize: TYPE.xs, fontWeight: 600, color: TOKENS.warning }}>{oppState.retainedText}</div> : null}
           {oppAsOf ? <div data-testid="home-opportunities-as-of" style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>{oppAsOf}</div> : null}
-          {opps.length === 0 && <div style={{ fontSize: TYPE.base, color: TOKENS.text[3] }}>{oppTop ? 'Nothing clears the bar right now.' : 'Loading…'}</div>}
+          {oppState.emptyText ? <div data-testid="home-opportunities-empty" style={{ fontSize: TYPE.base, color: TOKENS.text[3] }}>{oppState.emptyText}</div> : null}
           {opps.map((o: any) => {
             // FQ-088: the row quotes the price the R:R was computed from; an old or missing quote is marked, never
             // presented as current. Missing is not guessed from the list as-of.

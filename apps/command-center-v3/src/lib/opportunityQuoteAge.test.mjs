@@ -1,6 +1,6 @@
 // FQ-088 (HQ-04): the list as-of and the row's quote age/session are consumed, and a stale or missing quote is never
 // presented as current. Behavioural: the helper is imported and called, not read as text.
-import { listAsOfWords, quoteAge, QUOTE_STALE_MINUTES } from './opportunityQuoteAge.ts'
+import { listAsOfWords, opportunitiesCardState, quoteAge, QUOTE_STALE_MINUTES } from './opportunityQuoteAge.ts'
 
 let pass = 0, fail = 0
 const check = (n, c, d = '') => { if (c) { pass++; console.log(`  [PASS] ${n}`) } else { fail++; console.log(`  [FAIL] ${n} ${d}`) } }
@@ -57,14 +57,49 @@ const page = readFileSync(new URL('../pages/HomeDoNow.tsx', import.meta.url), 'u
 check('the page renders the list as-of', /data-testid="home-opportunities-as-of"/.test(page), 'no list as-of on the page')
 check('the page renders a per-row quote age', /data-testid=\{`home-opp-quote-\$\{o\.symbol\}`\}/.test(page), 'no per-row quote caption')
 check('the page calls quoteAge on the row quote', /quoteAge\(o\?\.inputs_as_of\?\.quote\)/.test(page), 'the row quote is not aged')
-// R1: a failed poll must not look current
-check('the page consumes the poll error/stale state', /error: oppError, stale: oppStale/.test(page), 'the poll transport state is not consumed')
-check('and says retained when the refresh failed', /Refresh failed — showing the last list; not current/.test(page), 'no retained qualification')
+// R1: a failed poll must not look current, and a failed FIRST load must not claim a list it does not have
+check('the page feeds the poll transport state into the tested composition',
+  /opportunitiesCardState\(\{[\s\S]{0,200}?error: !!oppError, stale: !!oppStale/.test(page), 'the poll transport state is not consumed')
+check('and renders the composition\'s own retained sentence',
+  /oppState\.retainedText/.test(page), 'the page invents its own retained wording instead of rendering the tested one')
+check('and renders the composition\'s own empty-state sentence',
+  /oppState\.emptyText/.test(page), 'the page invents its own empty-state wording instead of rendering the tested one')
 // R2: the age is labelled as the input clock, never as proof the ratio is current
 check('the caption calls it the input clock', /input clock/.test(page), 'the caption does not name the clock it uses')
 check('a row with no price is called plan-based', /plan-based · not a current price/.test(page), 'a plan-only ratio is not qualified')
 check('and the title disclaims the binding', /not proven to come from that observation/.test(page), 'the tooltip does not disclaim the price binding')
 check('the page calls listAsOfWords on the payload as-of', /listAsOfWords\(unwrap\(oppTop\)\?\.as_of\)/.test(page), 'the payload as-of is still discarded')
+
+// ---- 7. what the card may SAY on each transport state (cc-deepseek-8 R1 at f44f21fbe) --------------
+// Behavioural, not string-presence: these are the compositions that produced the false statement.
+const failedFirstLoad = opportunitiesCardState({ loading: false, error: true, stale: false, itemCount: 0, listLoaded: false })
+check('a failed FIRST load claims no retained list', failedFirstLoad.retained === false && failedFirstLoad.retainedText === '',
+  JSON.stringify(failedFirstLoad))
+check('a failed first load says the request failed, not "Loading…"',
+  failedFirstLoad.emptyText.includes('could not be loaded') && !/Loading/.test(failedFirstLoad.emptyText),
+  failedFirstLoad.emptyText)
+check('and it never claims the bar is empty', !/Nothing clears/.test(failedFirstLoad.emptyText), failedFirstLoad.emptyText)
+
+const staleFirstLoad = opportunitiesCardState({ loading: false, error: false, stale: true, itemCount: 0, listLoaded: false })
+check('a retained-but-empty answer is a failure, not an empty list', staleFirstLoad.emptyText === failedFirstLoad.emptyText,
+  staleFirstLoad.emptyText)
+
+const failedWithRows = opportunitiesCardState({ loading: false, error: true, stale: false, itemCount: 3, listLoaded: true })
+check('a failed REFRESH with rows says retained', failedWithRows.retained === true && /showing the last list/.test(failedWithRows.retainedText),
+  JSON.stringify(failedWithRows))
+check('and shows no empty-state sentence', failedWithRows.emptyText === '', failedWithRows.emptyText)
+
+const loading = opportunitiesCardState({ loading: true, error: false, stale: false, itemCount: 0, listLoaded: false })
+check('a first load in flight says Loading', loading.emptyText === 'Loading…' && loading.retained === false, JSON.stringify(loading))
+
+const loadedEmpty = opportunitiesCardState({ loading: false, error: false, stale: false, itemCount: 0, listLoaded: true })
+check('a loaded empty list says so, with no failure and no loading', loadedEmpty.emptyText === 'Nothing clears the bar right now.',
+  loadedEmpty.emptyText)
+
+const healthy = opportunitiesCardState({ loading: false, error: false, stale: false, itemCount: 2, listLoaded: true })
+check('a healthy list says nothing at all', healthy.retained === false && healthy.retainedText === '' && healthy.emptyText === '',
+  JSON.stringify(healthy))
+
 
 console.log(`opportunityQuoteAge: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
