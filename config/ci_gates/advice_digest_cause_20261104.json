@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "advice_digest_cause_20261104",
+  "files": [
+    "tests/test_advice_digest_cause_20261104.py"
+  ],
+  "anchor": "ADVICE_DIGEST_CAUSE_20261104",
+  "comment": [
+    "ANCHOR: ADVICE_DIGEST_CAUSE_20261104 — the OTHER UPDATES block renders the CAUSE it counted, not only the count: the most common non-empty title per report type, plus how many distinct causes were folded in beside it, and an explicit 'no cause recorded' rather than silence. The counterfactual is the test: a deferred lane and a provider-failure lane must produce different digests. Hermetic: pure renderer input, no DB, no Telegram."
+  ]
+}
