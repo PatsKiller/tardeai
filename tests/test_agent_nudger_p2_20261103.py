@@ -118,11 +118,17 @@ def test_the_clamp_assertion_is_not_vacuous():
     assert got["effective_mode"] == "live" and got["clamped"] is False
 
 
-def test_the_script_still_defaults_to_dry_and_refuses_two_modes_at_once():
+def test_the_script_still_defaults_to_dry_and_refuses_two_modes_at_once(monkeypatch, tmp_path):
+    """HERMETIC (B3, cc3 2026-11-04). The earlier version called main(["--dry-run","--state","/dev/null"]) and asserted
+    rc 0 without stubbing the tmux transport: it passed only because the developer host has a live tmux server, and it
+    began failing in CI the moment the F2 semantics correctly returned 2 for a discovery failure. The rc-0 claim is now
+    made with a stubbed, WORKING transport; the discovery-failure behaviour has its own test below.
+    """
     import agent_nudger as N  # noqa: E402
 
+    monkeypatch.setattr(N, "list_sessions", lambda cfg: ([], True))
     # --dry-run is accepted and means exactly what the bare command means.
-    assert N.main(["--dry-run", "--state", "/dev/null"]) == 0
+    assert N.main(["--dry-run", "--state", str(tmp_path / "s.json")]) == 0
     # --apply and --dry-run together are an operator mistake, not a silent choice.
     try:
         N.main(["--apply", "--dry-run"])
@@ -130,6 +136,16 @@ def test_the_script_still_defaults_to_dry_and_refuses_two_modes_at_once():
         assert exc.code == 2
     else:  # pragma: no cover
         raise AssertionError("--apply --dry-run must be refused")
+
+
+def test_a_failing_transport_is_documented_to_settle_non_zero(monkeypatch, tmp_path):
+    """The other half of the same claim, asserted on its own: with discovery failing (which is what a host without a
+    tmux server gives), the default dry run settles 2, not 0."""
+    import agent_nudger as N  # noqa: E402
+
+    monkeypatch.setattr(N, "list_sessions", lambda cfg: ([], False))
+    assert N.main(["--dry-run", "--state", str(tmp_path / "s.json"),
+                   "--ledger", str(tmp_path / "l.jsonl")]) == 2
 
 
 # ── expected output: the contract's rule must be executable, not decorative (F2/P2) ─────────────────
