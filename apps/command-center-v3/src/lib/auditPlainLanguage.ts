@@ -1,5 +1,6 @@
 /**
- * Operator-facing words for internal gap/diagnostic strings (operator page audit 2026-11-04, FQ-061).
+ * Operator-facing words for internal gap/diagnostic strings (operator page audit 2026-11-04, FQ-061;
+ * review of PR 2619 at c266e340 by cx-openai-4, P2 R1/R2).
  *
  * Pages used to print a producer's own reason verbatim, e.g. on /risk:
  *   "Conflict check unavailable: conflict engine accepted source not yet integrated"
@@ -7,6 +8,14 @@
  * that says WHAT could not be checked and HOW that limits the figures on screen, and keeps the raw
  * producer string as `raw` so the caller can place it behind a technical-detail toggle (nothing is
  * removed — AGENTS.md §9.5, audit brief Rule 2).
+ *
+ * R1: this banner is shared by every /risk tab — Market risk and Correlation draw their figures from
+ * separate, independently supplied projections. So no sentence here may state the basis of "the risk
+ * figures below"; it can only speak for the conflict cross-check itself.
+ *
+ * R2: a missing or unreadable conflict section proves that its results were not provided or could not
+ * be read. It does not prove the engine did not execute — these helpers read produced records and never
+ * invoke the engine — so "did not run" is reserved for a producer reason that says so.
  */
 
 export type PlainGap = { text: string; raw: string | null }
@@ -15,7 +24,7 @@ export type PlainGap = { text: string; raw: string | null }
 const GAP_TEXT: Array<[RegExp, string]> = [
   [
     /accepted source not yet integrated/i,
-    'Cross-checks could not run: the comparison source is not connected yet. The risk figures below use stops and positions only, so overlapping positions and conflicting signals are not counted.',
+    'Cross-checks are incomplete: the comparison source is not connected yet, so overlapping positions and conflicting signals are not counted.',
   ],
   [
     /more conflict records available/i,
@@ -23,13 +32,16 @@ const GAP_TEXT: Array<[RegExp, string]> = [
   ],
   [
     /conflict section not supplied/i,
-    'Cross-checks did not run on this page. The figures below may omit overlapping positions or conflicting signals.',
+    'Cross-check results were not provided for this page, so these figures may omit overlapping positions or conflicting signals.',
   ],
   [
     /engine result not supplied/i,
-    'Cross-checks did not run on this page. The figures below may omit overlapping positions or conflicting signals.',
+    'Cross-check results were not provided for this page, so these figures may omit overlapping positions or conflicting signals.',
   ],
 ]
+
+const COULD_NOT_READ =
+  'Cross-check results could not be read, so these figures may omit overlapping positions or conflicting signals.'
 
 /**
  * `plainConflictGap(reason)` → one operator sentence plus the raw producer string (null when there
@@ -38,15 +50,7 @@ const GAP_TEXT: Array<[RegExp, string]> = [
  */
 export function plainConflictGap(reason: unknown): PlainGap {
   const raw = typeof reason === 'string' && reason.trim() ? reason.trim() : null
-  if (!raw) {
-    return {
-      text: 'Cross-checks did not run, so these figures may omit overlapping positions or conflicting signals.',
-      raw: null,
-    }
-  }
+  if (!raw) return { text: COULD_NOT_READ, raw: null }
   const hit = GAP_TEXT.find(([pattern]) => pattern.test(raw))
-  return {
-    text: hit?.[1] ?? 'Cross-checks could not run, so these figures may omit overlapping positions or conflicting signals.',
-    raw,
-  }
+  return { text: hit?.[1] ?? COULD_NOT_READ, raw }
 }

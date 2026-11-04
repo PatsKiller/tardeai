@@ -49,8 +49,31 @@ const raw = 'conflict engine accepted source not yet integrated'
 const html = render({ findings: [], headline: null, gap: { reason: raw } })
 
 check('says what could not be checked and how it limits the risk figures', () => {
-  assert.match(visible(html), /Cross-checks could not run: the comparison source is not connected yet\./)
-  assert.match(visible(html), /The risk figures below use stops and positions only, so overlapping positions and conflicting signals are not counted\./)
+  assert.match(visible(html), /Cross-checks are incomplete: the comparison source is not connected yet,/)
+  assert.match(visible(html), /overlapping positions and conflicting signals are not counted\./)
+})
+// review of PR 2619 R1 (cx-openai-4): the banner is shared by every /risk tab, and Market risk /
+// Correlation draw from independently supplied projections. It must not state the basis of "the figures
+// below" for them.
+check('never states the basis of the other tabs’ figures', () => {
+  for (const reason of [raw, 'conflict section not supplied', 'engine result not supplied', 'conflict ledger unavailable or invalid', '']) {
+    const text = visible(render({ findings: [], headline: null, gap: reason ? { reason } : {} }))
+    assert.doesNotMatch(text, /stops and positions only/i, `invented basis for a shared banner: ${text}`)
+    assert.doesNotMatch(text, /the risk figures below use/i, `claims the basis of other tabs' figures: ${text}`)
+  }
+})
+// review of PR 2619 R2 (cx-openai-4): missing/unreadable records prove the results were not provided or
+// could not be read — they do not prove the engine did not execute. These helpers read produced records.
+check('missing or unreadable results are not reported as an execution outcome', () => {
+  const shapes = ['conflict section not supplied', 'engine result not supplied', 'conflict ledger unavailable or invalid']
+  for (const reason of shapes) {
+    const text = visible(render({ findings: [], headline: null, gap: { reason } }))
+    assert.doesNotMatch(text, /did not run|could not run/i, `claims an execution outcome it cannot see: ${text}`)
+    assert.match(text, /not provided|could not be read/, `does not say the results were unavailable: ${text}`)
+  }
+  const none = visible(render({ findings: [], headline: null, gap: {} }))
+  assert.doesNotMatch(none, /did not run|could not run/i, `no reason claims an execution outcome: ${none}`)
+  assert.match(none, /Cross-check results could not be read/)
 })
 check('does not present the producer string as the explanation', () => {
   assert.doesNotMatch(visible(html), /conflict engine accepted source not yet integrated/)
@@ -61,12 +84,12 @@ check('keeps the raw producer string behind a technical-detail toggle', () => {
 })
 check('an unknown producer reason still gets the consequence sentence', () => {
   const unknown = render({ findings: [], headline: null, gap: { reason: 'some_new_producer_state' } })
-  assert.match(visible(unknown), /Cross-checks could not run, so these figures may omit overlapping positions or conflicting signals\./)
+  assert.match(visible(unknown), /Cross-check results could not be read, so these figures may omit overlapping positions or conflicting signals\./)
   assert.match(unknown, /<details[^>]*>[\s\S]*some_new_producer_state[\s\S]*?<\/details>/)
 })
 check('a supplied reason is optional: no reason still explains the limit', () => {
   const none = render({ findings: [], headline: null, gap: {} })
-  assert.match(visible(none), /Cross-checks did not run, so these figures may omit overlapping positions or conflicting signals\./)
+  assert.match(visible(none), /Cross-check results could not be read, so these figures may omit overlapping positions or conflicting signals\./)
   assert.doesNotMatch(none, /<details/)
 })
 
