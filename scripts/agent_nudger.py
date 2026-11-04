@@ -28,8 +28,13 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-#: The dark-contract gate needs a scheduled entrypoint declared rather than probed from the machine's crontab.
-SCHEDULED_ENTRYPOINT = "cron: */5 * * * * (live, host) — the coordinator copy this file was ported from"
+#: NOTHING SCHEDULES THIS FILE AT THIS HEAD (cc3, 2026-11-04). P1 is source only: this module is a port of a
+#: coordinator-side script that runs from a host timer, and that timer does not invoke this file. The n8n lane entry
+#: that would schedule it is P2 (#2575), stacked on this branch, and arming it is an operator decision. Declaring a
+#: live cron here would assert a surface the module does not have — the gate reads the VALUE for exactly that reason
+#: (``declares_not_installed``), so say the truth instead: not installed, and do not schedule it without a lane
+#: registry entry, an allowlist entry and the operator's word.
+SCHEDULED_ENTRYPOINT = "proposal only — not installed, and not schedulable until the n8n lane (P2, #2575) lands"
 
 #: This module declares ``NudgerConfig@v1`` and is its only reader until the n8n lane lands: the lane entry that makes
 #: it a consumer of a scheduled lane is P2 (#2575), which is stacked on this branch. Declared rather than invented.
