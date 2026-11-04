@@ -39,7 +39,7 @@ function compile(path) {
   if (memo.has(path)) return memo.get(path)
   let source = readFileSync(path, 'utf8').replace(
     /import \{ useApi \} from ['"][^'"]+['"]/,
-    'const useApi = (..._args: any[]): any => ({ data: null, loading: false, error: null })',
+    'const useApi = (..._args: any[]): any => (String(_args[0] ?? "").includes("desk-sources") && (globalThis as any).__deskWriterFixture) ? { data: (globalThis as any).__deskWriterFixture, loading: false, error: null } : { data: null, loading: false, error: null }',
   )
   let js = ts.transpileModule(source, {
     compilerOptions: { jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
@@ -104,6 +104,23 @@ check('desktop is unchanged: clocks first, no disclosure', () => {
   const t = text(html)
   assert.ok(idx(t, 'Source clocks') < idx(t, 'Decide: re-hedge'), 'desktop order changed')
   assert.ok(!html.includes('data-testid="desk-source-clocks"'), 'desktop grew a disclosure')
+})
+
+// FQ-023 — the source clocks speak in the operator's words, not the writer's.
+check('writer jargon is gone and the lane is named in words', () => {
+  // render with a populated writer so the block is exercised (fixture hook covers the desk-sources call)
+  globalThis.__deskWriterFixture = { ok: true, data: { writers: [{ lane_id: 'schwab-position-sync', state: 'ACTIVE',
+    last_success_at: null, evidence_as_of: null, reason: 'No successful run is recorded in the available execution evidence.' }] } }
+  PHONE = false
+  const props = { title: 'Defense', purpose: 'p', tabs: [], sources: [{ id: 'holdings', label: 'Holdings', laneIds: ['schwab-position-sync'] }],
+    children: React.createElement('div', null, 'x') }
+  const html = renderToStaticMarkup(React.createElement(MemoryRouter, { initialEntries: ['/v3/defense'] }, React.createElement(DeskPage, props)))
+  const t = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
+  assert.doesNotMatch(t, /Writer ACTIVE/, 'raw writer state is still the label')
+  assert.doesNotMatch(t, /Last successful run:/, 'raw writer label is still printed')
+  assert.match(t, /Schwab position sync is running/, 'the lane is not named in words')
+  assert.match(t, /cannot be confirmed current/, 'the consequence is not stated')
+  assert.match(html, /title="schwab-position-sync"/, 'the raw lane id is not kept')
 })
 
 const results = []

@@ -20,6 +20,21 @@ export type DeskSource = {
   clockOnly?: boolean
 }
 export type DeskDecision = { id: string; title: string; detail?: string; href?: string }
+/** FQ-023 (2026-11-04): the panel printed the writer's own vocabulary — "Writer ACTIVE", "Writer · 2", "Last successful
+ *  run: not measured". That is the producer's state, not the operator's. These two helpers say what the writer is and
+ *  what it costs when it has not run; the raw lane id and state stay in the element's title. */
+const WRITER_STATE: Record<string, string> = {
+  ACTIVE: 'running', PAUSED: 'paused', RETIRED: 'retired', NONE: 'not set up', ERROR: 'failing', STALE: 'overdue',
+}
+export function writerStateLabel(state: string | null | undefined): string {
+  const k = String(state ?? '').trim().toUpperCase()
+  return WRITER_STATE[k] ?? (k ? k.replace(/_/g, ' ').toLowerCase() : 'state not reported')
+}
+export function laneName(laneId: string | null | undefined): string {
+  const text = String(laneId ?? '').replace(/[-_]+/g, ' ').trim()
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : 'an unnamed source'
+}
+
 export type DeskWriter = {
   lane_id: string
   state: 'ACTIVE' | 'PAUSED' | 'RETIRED' | 'NONE' | null
@@ -144,13 +159,20 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
             <strong>{source.label}</strong><div data-testid="desk-source-age" style={{ color: gap ? BB.amber : BB.text2, marginTop: 6 }}>{age.hours !== undefined ? `Updated ${age.text}` : sentence(age.text)}</div>
             {source.asOf && <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>As of <ReadableTime value={source.asOf} testId="desk-source-as-of" /></div>}
             {source.note && <div data-testid="desk-source-note" style={{ fontSize: TYPE.base, color: BB.text2, marginTop: 6 }}>{source.note}</div>}
-            {sourceWriters.length === 0 && !source.clockOnly && <p style={{ color: BB.amber, fontSize: TYPE.base }}>Writer not identified for this source.</p>}
-            {sourceWriters.map((writer, index) => <div key={source.laneIds![index]} style={{ borderTop: `1px solid ${BB.border}`, paddingTop: 8, marginTop: 8, fontSize: TYPE.base }}>
-              <div style={{ color: writer?.state === 'ACTIVE' ? BB.text2 : BB.amber }}>Writer {writer?.state ?? (loading ? 'loading' : 'state unavailable')}{sourceWriters.length > 1 ? ` · ${index + 1}` : ''}</div>
-              <div>Last successful run: {writer?.last_success_at ? clock(writer.last_success_at, now).text : 'not measured'}</div>
+            {sourceWriters.length === 0 && !source.clockOnly && <p style={{ color: BB.amber, fontSize: TYPE.base }}>This source does not say which part of the system updates it.</p>}
+            {sourceWriters.map((writer, index) => <div key={source.laneIds![index]} data-testid="desk-source-writer" title={source.laneIds![index]} style={{ borderTop: `1px solid ${BB.border}`, paddingTop: 8, marginTop: 8, fontSize: TYPE.base }}>
+              <div style={{ color: writer?.state === 'ACTIVE' ? BB.text2 : BB.amber }}>
+                {laneName(source.laneIds![index])} is {writer ? writerStateLabel(writer.state) : (loading ? 'being checked' : 'not reporting a state')}
+                {writer?.last_success_at ? ` · last succeeded ${clock(writer.last_success_at, now).text}` : ''}
+              </div>
+              {!writer?.last_success_at && (
+                <div style={{ color: BB.amber, marginTop: 2 }}>
+                  {loading ? 'Checking whether it has ever run.' : `No successful run is recorded, so ${source.label} cannot be confirmed current.`}
+                </div>
+              )}
               {writer?.last_success_at && <div style={{ color: BB.text3, fontSize: TYPE.sm }}>At <ReadableTime value={writer.last_success_at} /></div>}
               {writer?.evidence_as_of && <div style={{ color: BB.text3, fontSize: TYPE.sm }}>Evidence captured: {clock(writer.evidence_as_of, now).text}</div>}
-              {(writer?.reason || !writer) && <div style={{ color: BB.amber, marginTop: 4 }}>{writer?.reason ?? (loading ? 'Loading execution evidence.' : 'Execution evidence is unavailable for this writer.')}</div>}
+              {writer?.reason && !writer?.last_success_at && <div style={{ color: BB.text3, marginTop: 2, fontSize: TYPE.sm }}>{writer.reason}</div>}
             </div>)}
             {gap && <div role="note" style={{ color: BB.amber, borderTop: `1px dashed ${BB.border}`, paddingTop: 8, marginTop: 8, fontSize: TYPE.base }}>{gap}</div>}
           </article>
