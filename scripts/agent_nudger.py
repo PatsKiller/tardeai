@@ -131,7 +131,12 @@ def ledger_line(session: str, detail: str, cfg: dict) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Agent nudger (P1, shadow-safe): dry run is the default.")
-    ap.add_argument("--apply", action="store_true", help="type into tmux (default: dry run)")
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--apply", action="store_true", help="type into tmux (default: dry run)")
+    #: Explicit dry-run flag (P2). The n8n executor's shadow step requires a NON-EMPTY dry_run_arg
+    #: (scripts/lib/lane_dispatch.py, "the shadow step needs a real dry run"), so the lane names its
+    #: dry run rather than relying on the bare-command default. Behaviour is identical to no flag.
+    mode.add_argument("--dry-run", action="store_true", help="explicit dry run (the default; required as the lane's dry_run_arg)")
     ap.add_argument("--config")
     ap.add_argument("--state")
     ap.add_argument("--ledger")
