@@ -18,8 +18,10 @@ export function SurfaceGap<T>({ state, shape, onRetry }: { state: SurfaceState<T
   </DeskGap>
 }
 
+import type { SurfaceReport } from '../lib/surfaceState'
+
 /** The shell footer reads this: true only when the active surface's data actually rendered. */
-export type SurfaceStateReport = { name: string; dataLoaded: boolean }
+export type SurfaceStateReport = SurfaceReport
 
 /**
  * TWO contexts, not one (cc-deepseek-3 B1, 2026-11-04). A single `{report, publish}` value object changes identity on
@@ -44,7 +46,8 @@ export function useReportSurfaceState(name: string, state: SurfaceState<unknown>
   const publish = useContext(SurfacePublishContext)
   const loaded = rendersData(state)
   const key = `${name}:${state?.state ?? 'none'}:${loaded}`
-  useEffect(() => { publish({ name, dataLoaded: loaded }) }, [publish, key, name, loaded])
+  const stateName = state?.state ?? null
+  useEffect(() => { publish({ name, dataLoaded: loaded, state: stateName }) }, [publish, key, name, loaded, stateName])
   // Clearing names the surface doing the clearing, so the provider can ignore a stale unmount from a page that no
   // longer owns the slot (F2 review, 2026-11-04).
   useEffect(() => () => publish(null, name), [publish, name])

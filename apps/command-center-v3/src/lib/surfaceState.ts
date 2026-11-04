@@ -183,7 +183,9 @@ export function refreshMarker<T>(s: SurfaceState<T>, shape: SurfaceShape<T>): Su
 }
 
 /** Who owns the footer's surface slot. Pure, so the ownership rule is testable without rendering the shell (F2). */
-export type SurfaceReport = { name: string; dataLoaded: boolean }
+// `state` is carried so the footer can tell a page that is STILL LOADING from one whose read failed (N10): both have
+// dataLoaded false, and calling a normal load "data did not load" is the cry-wolf class this PR exists to end.
+export type SurfaceReport = { name: string; dataLoaded: boolean; state?: SurfaceStateName | null }
 
 /**
  * The next footer report given the current one and an incoming publish. A `null` (unmount) clears the slot ONLY when
@@ -201,6 +203,9 @@ export function nextSurfaceReport(prev: SurfaceReport | null, incoming: SurfaceR
  */
 export function footerQualifier(surface: SurfaceReport | null): string {
   if (!surface || surface.dataLoaded) return ''
+  // A read still in flight has not failed. Saying "data did not load" while the page says "Loading …" would be the
+  // same false-failure claim the page banners were fixed to stop (cc-deepseek-3 N10).
+  if (surface.state === 'loading') return ` · ${surface.name} is still loading`
   return ` · ${surface.name} data did not load`
 }
 
@@ -208,7 +213,7 @@ export function footerQualifier(surface: SurfaceReport | null): string {
 export function sameSurfaceReport(a: SurfaceReport | null, b: SurfaceReport | null): boolean {
   if (a === b) return true
   if (!a || !b) return false
-  return a.name === b.name && a.dataLoaded === b.dataLoaded
+  return a.name === b.name && a.dataLoaded === b.dataLoaded && (a.state ?? null) === (b.state ?? null)
 }
 
 /**

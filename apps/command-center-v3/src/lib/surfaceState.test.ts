@@ -100,6 +100,10 @@ check('qualifier: a page that rendered its data adds nothing', footerQualifier({
 const q = footerQualifier({ name: 'Approvals', dataLoaded: false })
 check('qualifier: a page that did not render its data is named', q.includes('Approvals') && q.includes('data did not load'))
 check('qualifier: it never claims the page is fine', !/unavailable|loading|\bok\b/i.test(q))
+// N10 (cc-deepseek-3): a page whose read is still IN FLIGHT has not failed, so the footer must not say it did.
+const loadingQ = footerQualifier({ name: 'Agents', dataLoaded: false, state: 'loading' })
+check('qualifier: a loading page is not reported as failed', !/did not load/.test(loadingQ) && /still loading/.test(loadingQ))
+check('qualifier: a failed page is still reported as failed', /did not load/.test(footerQualifier({ name: 'Agents', dataLoaded: false, state: 'unavailable' })))
 
 // ── B1 (cc-deepseek-3): the footer channel must SETTLE, not re-render for ever ────────────────────────────
 // Measured on the branch: 255,468 renders in 2.5 s on /agents and /approvals. Cause: the provider's value object
@@ -142,3 +146,6 @@ const changed = surfaceReportReducer(first, { name: 'Agents', dataLoaded: false 
 check('B1: a changed report replaces the state object', changed !== first && changed?.dataLoaded === false)
 check('sameSurfaceReport: null and a report differ', !sameSurfaceReport(null, { name: 'Agents', dataLoaded: true }))
 check('sameSurfaceReport: equal content is equal, even across objects', sameSurfaceReport({ name: 'A', dataLoaded: true }, { name: 'A', dataLoaded: true }))
+
+console.log(`\n${pass} passed, ${fail} failed`)
+if (fail > 0) process.exit(1)
