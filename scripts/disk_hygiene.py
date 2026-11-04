@@ -2178,7 +2178,8 @@ def _in_release_roots(path: Path) -> bool:
     """Containment in BOTH directions (codex 2026-11-04, 0065310b5).
 
     A candidate inside a release root obviously touches releases. So does a candidate that CONTAINS one: removing
-    `/home/x/trade-ai-releases` deletes every release under it, and a one-way test reads that as "not a release". Any
+    the directory ABOVE the configured roots deletes every release under it, and a one-way test reads that as "not a
+    release". Any
     overlap between the candidate and a configured root is a release-path removal.
     """
     rp = os.path.realpath(str(path))
