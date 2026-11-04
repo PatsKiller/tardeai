@@ -2,10 +2,10 @@
   "schema": "CiGate@v1",
   "name": "opportunity_quote_age_20261104",
   "files": [
-    "apps/command-center-v3/src/lib/opportunityQuoteAge.test.mjs"
+    "tests/test_opportunity_quote_age_20261104.py"
   ],
   "anchor": "OPPORTUNITY_QUOTE_AGE_20261104",
   "comment": [
-    "ANCHOR: OPPORTUNITY_QUOTE_AGE_20261104 — FQ-088 (HQ-04): Home's Best opportunities consumes the list as-of and each row's quote observation. A quote older than 30 minutes, in the future, missing or unreadable is never presented as current; the caption and sentence say the age and session, and an absent list as-of renders nothing rather than a stamp. Hermetic: the helper is imported and called, and the page is checked for the two data-testids that consume it."
+    "ANCHOR: OPPORTUNITY_QUOTE_AGE_20261104 — FQ-088 (HQ-04): Home's Best opportunities consumes the list as-of and each row's quote observation. A quote older than 30 minutes, in the future, missing or unreadable is never presented as current; the caption and sentence say the age and session, and an absent list as-of renders nothing rather than a stamp. Pytest-collectable so the shard runner executes it (a .mjs file cannot be collected); the gate test RUNS apps/command-center-v3/src/lib/opportunityQuoteAge.test.mjs with node rather than mirroring it."
   ]
 }
