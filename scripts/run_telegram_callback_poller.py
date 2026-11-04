@@ -195,12 +195,18 @@ _CREDENTIAL_KEYS = ("code", "access_token", "refresh_token", "id_token", "api_ke
 # end of the message. Prose keeps its text — "the code: path is under review" has a value followed by a space, which is
 # a sentence, not a token. A long token-bodied run is redacted even mid-sentence. Residual, documented: a SHORT secret
 # followed by a space in ordinary prose is not distinguishable from a word by shape alone.
+"""A whole message that is a single opaque token: no whitespace, token characters only, at least 24 of them, and it
+carries a digit or mixed case (prose words and short words are not credentials)."""
+_STANDALONE_CREDENTIAL_RE = re.compile(r"^(?=.*[0-9A-Z])(?=.*[a-z])[A-Za-z0-9._~+/=%\\-]{24,}$")
+
+
 _CREDENTIAL_PARAM_RE = re.compile(
     r"(?i)"
     r"(?P<key>(?P<kq>[\"']?)\b(?:" + "|".join(_CREDENTIAL_KEYS) + r")\b(?P=kq))"
     r"(?P<sep>\s*[=:]\s*)"
     r"(?:"
-    r"(?P<quote>[\"'])(?P<valq>[^\"']*)(?P=quote)"                       # JSON / quoted form
+    r"(?P<dq>\"(?:[^\"\\]|\\.)*\")"                                   # double-quoted, JSON escapes ok
+    r"|(?P<sq>'(?:[^'\\]|\\.)*')"                                     # single-quoted, own delimiter only
     r"|(?P<val>[^\s&,}\])]+)(?=[&,}\])\"'#]|$)"                        # a token, bounded by a delimiter or the end
     r"|(?P<long>[A-Za-z0-9._~+/=%\-]{20,})"                               # a long secret embedded mid-sentence
     r")"
@@ -221,9 +227,16 @@ def redact_credentials(text: str) -> str:
     if not text:
         return text
     def _keep(m: "re.Match[str]") -> str:
-        quote = m.group("quote") or ""
+        dq, sq = m.group("dq"), m.group("sq")
+        quote = '"' if dq else ("'" if sq else "")
         return f"{m.group('key')}{m.group('sep')}{quote}[redacted]{quote}"
-    return _CREDENTIAL_PARAM_RE.sub(_keep, text)
+    redacted = _CREDENTIAL_PARAM_RE.sub(_keep, text)
+    if _STANDALONE_CREDENTIAL_RE.match(redacted.strip()):
+        # F3, second half (cc5 2026-11-04): when the transport splits a paste, the value arrives as its OWN message
+        # with no key to match on. A whole message that is one long opaque token is not prose, and it is not safe to
+        # keep: it is the half of the credential the keyed rule cannot see.
+        return "[redacted]"
+    return redacted
 
 
 def _log_text(text: str, limit: int) -> str:
