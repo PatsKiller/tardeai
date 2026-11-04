@@ -991,7 +991,10 @@ def test_i1_a_quantity_correction_on_the_same_trade_row_is_unresolved_not_two_me
     conn.commit()
     second = fc.run(store, conn, today=TODAY, now=NOW)
     after = store.get(case.case_key)
-    assert len(after.exits) == 2, f"both observations must be retained: {after.exits}"
-    assert second["complete"] is False, f"a quantity-moved composite key must not pass as complete: {second}"
-    assert any(("identity" in g or "composite" in g or "quantity" in g) for g in second["gaps"]), second["gaps"]
+    # With no provider identity reachable for this source, the observation stays unidentified: it is reconciled to the
+    # stored member ONLY by the labelled date+price fallback, so there is no duplicate — and the pass must say so
+    # rather than call itself complete, because the link is not established (codex I1 / contract I12).
+    assert len(after.exits) == 1, f"a non-identity source must not duplicate the observation: {after.exits}"
+    assert second["complete"] is False, f"a provisional link must not pass as complete: {second}"
+    assert any(("provisional" in g or "identity" in g or "composite" in g) for g in second["gaps"]), second["gaps"]
     conn.close()

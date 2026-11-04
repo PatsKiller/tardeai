@@ -78,10 +78,15 @@ _WATCH_SQL = ("SELECT id, stopped_out_at, exit_price, realized_pnl, stop_price, 
               "WHERE upper(symbol)=upper(%s) AND account=%s ORDER BY stopped_out_at")
 _WATCH_SQL_ASOF = ("SELECT id, stopped_out_at, exit_price, realized_pnl, stop_price, broker FROM stopped_out_watch "
                    "WHERE upper(symbol)=upper(%s) AND account=%s AND stopped_out_at < %s ORDER BY stopped_out_at")
-_TX_SQL = ("SELECT dedupe_key, trade_date, quantity, price FROM trade_transactions "
+# A trade_transactions row has NO provider identity available to this reader. The table's columns (written by both
+# ingesters) are trade_date, action, symbol, quantity, price, amount, fees, description, account, import_source,
+# dedupe_key, trade_time; `id` is a local row counter. The provider's own uid lives ONLY inside `dedupe_key`, whose
+# format embeds the MUTABLE quantity — so the composite is not an identity, and splitting it would be a delimiter
+# guess. Nothing here selects it as one: these rows stay explicitly unidentified, which the caller reports.
+_TX_SQL = ("SELECT trade_date, quantity, price FROM trade_transactions "
            "WHERE upper(symbol)=upper(%s) AND account=%s AND upper(action) IN "
            "('SELL','SOLD','STOP','STOPPED','SELL_TO_CLOSE') ORDER BY trade_date DESC")
-_TX_SQL_ASOF = ("SELECT dedupe_key, trade_date, quantity, price FROM trade_transactions "
+_TX_SQL_ASOF = ("SELECT trade_date, quantity, price FROM trade_transactions "
                 "WHERE upper(symbol)=upper(%s) AND account=%s AND upper(action) IN "
                 "('SELL','SOLD','STOP','STOPPED','SELL_TO_CLOSE') AND trade_date < %s ORDER BY trade_date DESC")
 
@@ -152,7 +157,7 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
         gaps.append(f"trade_transactions is unavailable ({tx_err}); the exit universe is incomplete")
         incomplete = True
     tx_by_day: dict[date, list[tuple[float, Optional[float], Optional[str]]]] = {}
-    for trade_key, trade_date, quantity, price in tx:
+    for trade_date, quantity, price in tx:
         try:
             day = _as_date(trade_date)
         except (TypeError, ValueError) as exc:
@@ -166,7 +171,10 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
                         "it is excluded")
             incomplete = True
             continue
-        tx_by_day.setdefault(day, []).append((qty, _finite(price), _identity("trade_transactions", trade_key)))
+        # No provider identity is reachable for this source, so the observation carries none. It is NOT given the
+        # composite key: that key contains the mutable quantity, so using it would make a quantity correction look like
+        # a new event (codex I1).
+        tx_by_day.setdefault(day, []).append((qty, _finite(price), None))
 
     # The exit universe is every confirmed exit from BOTH sources (cx-openai-4 R3). A later broker fill used to be
     # dropped merely because it had no stopped_out_watch row, and a fill that disagreed with the watch price was
@@ -209,12 +217,10 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
             incomplete = True
             continue
         price = round(sum(q * p for q, p in priced) / sum(q for q, _ in priced), 6)
-        # A day whose whole exit is ONE source row inherits that row's identity. A day that aggregates several rows
-        # has no single identity, so it stays unidentified rather than borrowing one (codex F16).
-        day_ids = {sid for _, _, sid in quantities if sid is not None}
-        day_id = next(iter(day_ids)) if len(quantities) == 1 and len(day_ids) == 1 else None
+        # This source exposes no provider identity for its rows, so the fill carries none whatever the day's row count
+        # (see _TX_SQL). Callers report the resulting ambiguity instead of the reader inventing an identity (codex I1).
         fills.append(rc.ExitFill(symbol=symbol, account=account, exit_date=day, shares=total_qty, price=price,
-                                 realized_pnl=None, source="trade_transactions", source_id=day_id))
+                                 realized_pnl=None, source="trade_transactions", source_id=None))
         gaps.append(f"the {day} exit comes from trade_transactions with no stopped_out_watch row: its price is the "
                     "fill price and its realized P&L is unknown")
 
@@ -409,6 +415,15 @@ def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date]
         # not two confident members: both are retained and the pass is incomplete. We do not invent a mapping, and we
         # do not merge them into one number.
         def _source_of(value: Any) -> str:
+            # The row's own `source` field ("stopped_out_watch" / "trade_transactions"), not its id: trade_transactions
+            # rows carry no provider identity at all (see _TX_SQL), so an id-based name would be empty exactly where
+            # the cross-source question matters most.
+            if isinstance(value, dict):
+                name = value.get("source")
+            else:
+                name = getattr(value, "source", None)
+            if name:
+                return str(name)
             sid = value.get("source_id") if isinstance(value, dict) else getattr(value, "source_id", None)
             return str(sid).split(":", 1)[0] if sid else ""
 
@@ -442,7 +457,9 @@ def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date]
                         "different composite keys; that key includes the quantity, so a corrected quantity and a second "
                         "sale cannot be told apart without a provider uid — both are retained and the pair is unresolved")
             if extra.source_id is not None:
-                legacy = next((row for row in unpaired if not _source_of(row)
+                # A stored member with no source_id is unidentified whatever its `source` name says, so the identity
+                # test here is the id itself, not the source label.
+                legacy = next((row for row in unpaired if not (row.get("source_id") or "")
                                and str(row["date"])[:10] == extra.exit_date.isoformat()), None)
                 if legacy is not None:
                     _unresolved(
