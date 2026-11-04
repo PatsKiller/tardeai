@@ -25,9 +25,9 @@ def test_the_first_alert_is_immediate_and_every_later_one_respects_the_clock():
     """ONE clock governs everything. The first thing ever said about a mount is immediate (nobody has been told), and
     after that an escalation, a recovery and a repeat all wait for the interval (cx-openai-4 R3)."""
     assert M.alert_for(None, "critical", {}, T0, MON) == "critical"          # first ever
-    fresh = {"alerted_at": (T0 - timedelta(minutes=61)).isoformat()}
+    fresh = {"alerted_at": (T0 - timedelta(minutes=61)).isoformat(), "alerted_band": "warn"}
     assert M.alert_for("warn", "critical", fresh, T0, MON) == "critical"     # interval passed: escalation is said
-    inside = {"alerted_at": T0.isoformat()}
+    inside = {"alerted_at": T0.isoformat(), "alerted_band": "warn"}
     assert M.alert_for("warn", "critical", inside, T0, MON) is None          # inside the window: silence
     assert M.alert_for("critical", "ok", inside, T0, MON) is None            # recovery too
     assert M.alert_for("critical", "ok", fresh, T0, MON) == "ok"             # after the interval: recovery said
@@ -109,7 +109,7 @@ def test_a_steady_critical_band_still_re_alerts_on_the_interval():
 
 
 def test_a_recovery_still_alerts_when_the_interval_has_passed():
-    entry = {"band": "critical", "alerted_at": T0.isoformat()}
+    entry = {"band": "critical", "alerted_at": T0.isoformat(), "alerted_band": "critical"}
     assert M.alert_for("critical", "ok", entry, T0 + timedelta(minutes=61), MON) == "ok"
     assert M.alert_for("critical", "ok", entry, T0 + timedelta(minutes=5), MON) is None
 
@@ -118,7 +118,8 @@ def test_a_recovery_is_interval_gated_like_every_other_alert():
     """The bound is only true if NOTHING bypasses the clock: a recovery inside the window is silent, and it is said
     once the interval has passed (cx-openai-4 R3: an immediate recovery reset the clock and the next critical then
     escalated above it, producing 65 alerts in 24 hours against a promise of 25)."""
-    entry = {"band": "critical", "alerted_at": T0.isoformat(), "since": T0.isoformat()}
+    entry = {"band": "critical", "alerted_at": T0.isoformat(), "alerted_band": "critical",
+             "since": T0.isoformat()}
     assert M.alert_for("critical", "ok", entry, T0 + timedelta(minutes=15), MON) is None
     assert M.alert_for("critical", "ok", entry, T0 + timedelta(minutes=61), MON) == "ok"
 
@@ -165,7 +166,7 @@ def test_a_steady_critical_band_still_re_alerts_on_the_interval():
 
 
 def test_a_recovery_still_alerts_when_the_interval_has_passed():
-    entry = {"band": "critical", "alerted_at": T0.isoformat()}
+    entry = {"band": "critical", "alerted_at": T0.isoformat(), "alerted_band": "critical"}
     assert M.alert_for("critical", "ok", entry, T0 + timedelta(minutes=61), MON) == "ok"
     assert M.alert_for("critical", "ok", entry, T0 + timedelta(minutes=5), MON) is None
 
@@ -187,3 +188,39 @@ def test_a_future_stamp_is_a_clock_correction_not_a_silence():
     entry = {"band": "critical", "alerted_at": ahead, "since": ahead}
     assert M.alert_for("critical", "critical", entry, T0, MON) == "critical"
     assert M.alert_for("critical", "critical", entry, T0 + timedelta(minutes=60), MON) == "critical"
+
+
+def _drive(pairs, mon):
+    """Drive the real decision over (minute, band) pairs, updating state exactly as the run does: the observed band,
+    the time the band began, and - only when an alert is actually sent - alerted_at and alerted_band."""
+    entry, said = {}, []
+    for minute, band in pairs:
+        t = T0 + timedelta(minutes=minute)
+        decision = M.alert_for(entry.get("band"), band, entry, t, mon)
+        if entry.get("band") != band:
+            entry["since"] = t.isoformat()
+        entry["band"] = band
+        if decision:
+            said.append((minute, decision))
+            entry["alerted_at"] = t.isoformat()
+            entry["alerted_band"] = band
+    return said
+
+
+def test_a_recovery_inside_the_window_is_delayed_not_discarded():
+    """cx-openai-4 R4: critical at 0 and 60, healthy from 75. The recovery is throttled at 75 — correctly — but the run
+    records the observed band as ok, so every later poll used to look "unchanged ok" and the recovery was DISCARDED:
+    no recovered intent at 120 or 180, every receipt ok. The last REPORTED band stays critical and must still be owed."""
+    pairs = [(0, "critical"), (60, "critical"), (75, "ok"), (120, "ok"), (180, "ok")]
+    said = _drive(pairs, MON)
+    assert said == [(0, "critical"), (60, "critical"), (120, "ok")], f"the recovery must be delayed, not lost: {said}"
+
+
+def test_a_recovery_is_retained_for_the_inode_metric_too():
+    """The same real-run fixture through the INODE policy: one decision function, so the second metric cannot behave
+    differently (cx-openai-4 asked for both)."""
+    cfg = json.loads((ROOT / "config" / "disk_hygiene_rules.json").read_text(encoding="utf-8"))["monitor"]
+    ino = M.metric_policy(cfg, cfg["inodes"])
+    pairs = [(0, "critical"), (60, "critical"), (75, "ok"), (120, "ok"), (180, "ok")]
+    said = _drive(pairs, ino)
+    assert said == [(0, "critical"), (60, "critical"), (120, "ok")], said

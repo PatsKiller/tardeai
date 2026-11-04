@@ -251,28 +251,29 @@ _RANK = {"ok": 0, "warn": 1, "critical": 2}
 
 def alert_for(prev: Optional[str], cur: str, entry: Mapping[str, Any], now: datetime,
               mon: Mapping[str, Any]) -> Optional[str]:
-    """One decision point, ONE clock, no bypasses.
+    """One decision point, ONE clock, and a PENDING state that is not lost.
 
-    Three measured defects shaped it, all 2026-11-04:
+    Four measured defects shaped it, all 2026-11-04:
     * alerting only on a band CHANGE let `/` sit critical for 23 hours on a single alert;
     * throttling only the unchanged path let an ok<->critical flap produce 96 alerts in 24 hours;
-    * letting a recovery or an escalation alert immediately let a bad/healthy cycle (95,95,50 every 15 minutes)
-      produce 65 alerts in 24 hours against a promise of 25 — the recovery reset the clock and the next critical then
-      "escalated" above the band it had just reported.
+    * letting a recovery or an escalation bypass the interval produced 65 alerts in 24 hours against a promise of 25;
+    * comparing against the PREVIOUSLY OBSERVED band DISCARDED a recovery: the run records `band = ok` every poll, so a
+      recovery throttled at +75 made every later poll look "unchanged ok" and it was never sent. The last REPORTED
+      band stayed critical and was ignored.
 
-    So every alert now shares ONE clock: nothing is said until `realert_minutes` has passed since the last alert, and
-    nothing at all is said inside that window — not an escalation, not a recovery, not a repeat. The single exception
-    is the first thing ever said about a mount. That is what makes the stated bound true by construction: at most one
-    alert per interval, 24 in 24 hours at the 60-minute default, whatever the band does.
+    The comparison is therefore against the band last REPORTED (`alerted_band`), not the band last seen. Inside the
+    window nothing is said and the pending state is kept, so it goes out the moment the interval allows — delayed,
+    never discarded. The bound is unchanged: at most one alert per interval, 24 in 24 hours at the default.
     """
     interval = float(mon["realert_minutes"])       # metric_policy guarantees it; a band cannot miss it
-    changed = transition(prev, cur)
     since = _minutes_since_last_alert(entry, now)
     if since is not None and since < interval:
-        return None                                 # inside the window: silence, whatever the band did
-    if changed:
-        return changed
-    return cur if cur != "ok" else None             # an unchanged BAD band is restated; an unchanged ok one is not
+        return None                                 # inside the window: silence, and the pending state is retained
+    reported = str(entry.get("alerted_band") or "")
+    if cur == "ok":
+        # A recovery is owed only if something bad was actually reported; an all-quiet mount says nothing.
+        return "ok" if reported and reported != "ok" else None
+    return cur                                      # due, and the band is bad: say it (restated or newly reached)
 
 
 def latest_manifest(rules: Mapping[str, Any], state_root: Optional[Path]) -> Optional[dict[str, Any]]:
