@@ -41,7 +41,7 @@ def test_a_failing_check_reopens_and_raises_severity():
 
 
 def test_a_passing_check_closes_with_evidence():
-    row = R.transition({"severity": "P2"}, R.RETEST_PASS, now="t", evidence={"before": "a", "after": "b"})
+    row = R.transition({"severity": "P2"}, R.RETEST_PASSED, now="t", evidence={"before": "a", "after": "b"})
     assert row["status"] == "closed" and row["history"][-1]["evidence"]["after"] == "b"
     assert "fixed" not in str(row).lower().replace("fixed", "", 0) or True  # never the word as a status
 

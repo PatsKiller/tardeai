@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Callable, Iterable, Mapping, Optional
 
 #: The four results the loop distinguishes. There is deliberately no "fixed".
-RETEST_PASS = "retest_pass"
+RETEST_PASSED = "retest_pass"
 RETEST_FAIL = "retest_fail"
 FIXED_NOT_SERVING = "fixed_but_not_serving"
 REGRESSED = "regressed"
@@ -45,14 +45,14 @@ def decide(*, item_status: str, fix_commit: str | None, is_ancestor: Callable[[s
         # a previously-closed item is re-checked by the 14-day scan
         if check_expected is False:
             return REGRESSED
-        return RETEST_PASS if check_expected else DEFERRED_SESSION
+        return RETEST_PASSED if check_expected else DEFERRED_SESSION
     if not fix_commit or not is_serving(fix_commit, is_ancestor=is_ancestor):
         return FIXED_NOT_SERVING
     if session_required and session_now != session_required:
         return DEFERRED_SESSION
     if check_expected is None:
         return DEFERRED_SESSION
-    return RETEST_PASS if check_expected else RETEST_FAIL
+    return RETEST_PASSED if check_expected else RETEST_FAIL
 
 
 def transition(item: Mapping, outcome: str, *, now: str, evidence: Mapping) -> dict:
@@ -62,7 +62,7 @@ def transition(item: Mapping, outcome: str, *, now: str, evidence: Mapping) -> d
     out.setdefault("history", [])
     if isinstance(out["history"], list):
         out["history"] = list(out["history"]) + [{"at": now, "outcome": outcome, "evidence": dict(evidence)}]
-    if outcome == RETEST_PASS:
+    if outcome == RETEST_PASSED:
         out["status"] = "closed"
     elif outcome == RETEST_FAIL:
         out["status"] = "reopened"
