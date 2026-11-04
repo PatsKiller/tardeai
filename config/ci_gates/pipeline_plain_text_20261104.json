@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "pipeline_plain_text_20261104",
+  "files": [
+    "apps/command-center-v3/src/lib/pipelinePlainText.view.test.mjs"
+  ],
+  "anchor": "PIPELINE_PLAIN_TEXT_20261104",
+  "comment": [
+    "ANCHOR: PIPELINE_PLAIN_TEXT_20261104 — FQ-033: the work pipeline leads in words. The raw checkout path, the census shell error and a refused action's service text are rendered under a closed Technical disclosure instead of inline, the plain sentences name what happened, and every value is still rendered (nothing removed). Hermetic: reads the panel source, no browser, no network, no data."
+  ]
+}
