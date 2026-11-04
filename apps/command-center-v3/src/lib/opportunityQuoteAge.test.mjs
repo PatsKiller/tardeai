@@ -69,6 +69,11 @@ check('the caption calls it the input clock', /input clock/.test(page), 'the cap
 check('a row with no price is called plan-based', /plan-based · not a current price/.test(page), 'a plan-only ratio is not qualified')
 check('and the title disclaims the binding', /not proven to come from that observation/.test(page), 'the tooltip does not disclaim the price binding')
 check('the page calls listAsOfWords on the payload as-of', /listAsOfWords\(unwrap\(oppTop\)\?\.as_of\)/.test(page), 'the payload as-of is still discarded')
+// FQ-114 wiring: the page must take its rows from the receipt helper, never from the raw items list.
+check('the page selects top candidates through the receipt helper', /topEligibleRows\(oppBody\)/.test(page),
+  'the page still takes every row, receipt or not')
+check('the page renders the producer qualification sentence', /home-opportunities-qualification/.test(page),
+  'the producer risk/qualification sentence is not rendered')
 
 // ---- 7. what the card may SAY on each transport state (cc-deepseek-8 R1 at f44f21fbe) --------------
 // Behavioural, not string-presence: these are the compositions that produced the false statement.
@@ -92,9 +97,36 @@ check('and shows no empty-state sentence', failedWithRows.emptyText === '', fail
 const loading = opportunitiesCardState({ loading: true, error: false, stale: false, itemCount: 0, listLoaded: false })
 check('a first load in flight says Loading', loading.emptyText === 'Loading…' && loading.retained === false, JSON.stringify(loading))
 
-const loadedEmpty = opportunitiesCardState({ loading: false, error: false, stale: false, itemCount: 0, listLoaded: true })
-check('a loaded empty list says so, with no failure and no loading', loadedEmpty.emptyText === 'Nothing clears the bar right now.',
-  loadedEmpty.emptyText)
+const loadedEmpty = opportunitiesCardState({ loading: false, error: false, stale: false, itemCount: 0, listLoaded: true, qualificationPresent: true })
+check('a loaded empty list with the producer receipt says no candidate clears the bar',
+  loadedEmpty.emptyText === 'No reviewed name clears the bar right now.', loadedEmpty.emptyText)
+
+const loadedNoReceipt = opportunitiesCardState({ loading: false, error: false, stale: false, itemCount: 0, listLoaded: true })
+check('an empty list WITHOUT the producer receipt says the qualification is unavailable, not that none qualifies',
+  loadedNoReceipt.emptyText === 'Top list qualification unavailable; open the research list.', loadedNoReceipt.emptyText)
+
+// ---- 8. FQ-114: the producer, not the page, decides who is a top candidate -------------------------
+import { topEligibleRows, topListNotice } from './bestOpportunities.ts'
+const legacy = { items: [{ symbol: 'AAA', conviction: 90 }, { symbol: 'BBB', conviction: 80 }] }
+check('a legacy response (no receipt) yields NO top candidate', topEligibleRows(legacy).length === 0,
+  JSON.stringify(topEligibleRows(legacy)))
+const mixed = { items: [
+  { symbol: 'AAA', top_eligibility: { eligible: true } },
+  { symbol: 'BBB', top_eligibility: { eligible: false } },
+  { symbol: 'CCC' },
+  { symbol: 'DDD', top_eligibility: { eligible: true } },
+] }
+check('only rows the producer marked eligible are shown', JSON.stringify(topEligibleRows(mixed).map(r => r.symbol)) === '["AAA","DDD"]',
+  JSON.stringify(topEligibleRows(mixed).map(r => r.symbol)))
+for (const junk of [null, undefined, {}, { items: 5 }, { items: [null, 'x'] }]) {
+  check(`a malformed body (${JSON.stringify(junk)}) yields no candidate`, topEligibleRows(junk).length === 0, JSON.stringify(junk))
+}
+check('the producer risk sentence is carried verbatim',
+  topListNotice({ top_list: { notice: 'Risk hold: RED regime — no new long.' } }) === 'Risk hold: RED regime — no new long.',
+  String(topListNotice({ top_list: { notice: 'Risk hold: RED regime — no new long.' } })))
+check('no notice stays silent rather than inventing an unavailable line',
+  topListNotice({ items: [] }) === null && topListNotice({ top_list: { notice: '   ' } }) === null)
+
 
 const healthy = opportunitiesCardState({ loading: false, error: false, stale: false, itemCount: 2, listLoaded: true })
 check('a healthy list says nothing at all', healthy.retained === false && healthy.retainedText === '' && healthy.emptyText === '',

@@ -114,15 +114,20 @@ export type OpportunitiesCardState = {
 
 export function opportunitiesCardState(a: {
   loading: boolean; error: boolean; stale: boolean; itemCount: number; listLoaded: boolean
+  /** FQ-114: the producer sent its `top_list` receipt, so an empty list means "no candidate", not "unavailable" */
+  qualificationPresent?: boolean
 }): OpportunitiesCardState {
   const failed = !a.loading && (a.error || a.stale)
   const rows = Number.isFinite(a.itemCount) && a.itemCount > 0
   return {
     retained: failed && rows,
     retainedText: failed && rows ? 'Refresh failed — showing the last list; not current' : '',
-    // A failed load is not an empty result, and it is not still loading: say which one it is.
+    // A failed load is not an empty result, and it is not still loading: say which one it is. Then, with a list that
+    // answered, an empty card says which of the two empties it is — no candidate, or no qualification to judge by.
     emptyText: rows ? ''
       : failed ? 'The list could not be loaded — this is a failed request, not an empty list.'
-      : a.listLoaded ? 'Nothing clears the bar right now.' : 'Loading…',
+      : !a.listLoaded ? 'Loading…'
+      : a.qualificationPresent ? 'No reviewed name clears the bar right now.'
+      : 'Top list qualification unavailable; open the research list.',
   }
 }
