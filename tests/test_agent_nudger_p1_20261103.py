@@ -64,14 +64,14 @@ def test_refused_sessions_are_never_listed_or_captured():
 
     def run(argv, **kw):
         calls.append(argv)
-        return type("R", (), {"stdout": "cc-deepseek-broker\ncc-deepseek-6\ncodex\n"})()
-    assert N.list_sessions(cfg(), run=run) == ["cc-deepseek-6"]
+        return type("R", (), {"stdout": "cc-deepseek-broker\ncc-deepseek-6\ncodex\n", "returncode": 0})()
+    assert N.list_sessions(cfg(), run=run) == (["cc-deepseek-6"], True)
     assert calls and calls[0][:3] == ["tmux", "ls", "-F"]
 
 
 def test_dry_run_writes_nothing_and_types_nothing(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(N, "list_sessions", lambda c, run=None: ["cc-deepseek-6"])
-    monkeypatch.setattr(N, "capture", lambda s, run=None: IDLE)
+    monkeypatch.setattr(N, "list_sessions", lambda c, run=None: (["cc-deepseek-6"], True))
+    monkeypatch.setattr(N, "capture", lambda s, run=None: (IDLE, True))
     typed = []
     monkeypatch.setattr(N, "send", lambda s, t, run=None, sleep=None: typed.append((s, t)))
     state = tmp_path / "state.json"
@@ -85,8 +85,8 @@ def test_dry_run_writes_nothing_and_types_nothing(tmp_path, monkeypatch, capsys)
 
 
 def test_apply_types_the_fixed_prompt_and_writes_one_ledger_line(tmp_path, monkeypatch):
-    monkeypatch.setattr(N, "list_sessions", lambda c, run=None: ["cc-deepseek-6"])
-    monkeypatch.setattr(N, "capture", lambda s, run=None: IDLE)
+    monkeypatch.setattr(N, "list_sessions", lambda c, run=None: (["cc-deepseek-6"], True))
+    monkeypatch.setattr(N, "capture", lambda s, run=None: (IDLE, True))
     typed = []
 
     def send_ok(s, t, run=None, sleep=None):

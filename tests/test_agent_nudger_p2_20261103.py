@@ -152,8 +152,8 @@ def test_the_lane_emits_the_count_the_contract_reads(monkeypatch, capsys, tmp_pa
     """The rule reads produced_count from LANE_OUTPUT on stderr; a rule no run can satisfy is not a rule."""
     import agent_nudger as N  # noqa: PLC0415
 
-    monkeypatch.setattr(N, "list_sessions", lambda cfg: ["fixture-session-a", "fixture-session-b"])
-    monkeypatch.setattr(N, "capture", lambda s: "❯ \n  ? for shortcuts")
+    monkeypatch.setattr(N, "list_sessions", lambda cfg: (["fixture-session-a", "fixture-session-b"], True))
+    monkeypatch.setattr(N, "capture", lambda s: ("❯ \n  ? for shortcuts", True))
     rc = N.main(["--dry-run", "--state", str(tmp_path / "s.json"), "--ledger", str(tmp_path / "l.jsonl")])
     assert rc == 0
     captured = capsys.readouterr()
@@ -240,8 +240,8 @@ def test_a_failed_tmux_send_is_not_counted_as_a_nudge(monkeypatch, capsys, tmp_p
     import agent_nudger as N  # noqa: PLC0415
     from types import SimpleNamespace  # noqa: PLC0415
 
-    monkeypatch.setattr(N, "list_sessions", lambda cfg: ["fixture-session"])
-    monkeypatch.setattr(N, "capture", lambda s: "❯ \n  ? for shortcuts")
+    monkeypatch.setattr(N, "list_sessions", lambda cfg: (["fixture-session"], True))
+    monkeypatch.setattr(N, "capture", lambda s: ("❯ \n  ? for shortcuts", True))
     # Every tmux call fails: the pane is gone. The run must record a skipped reason, not a nudge.
     monkeypatch.setattr(N.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=1))
     monkeypatch.setattr(N.time, "sleep", lambda s: None)
@@ -258,3 +258,55 @@ def test_a_failed_tmux_send_is_not_counted_as_a_nudge(monkeypatch, capsys, tmp_p
     assert block["produced_count"] == 0, block
     assert block["skipped_reasons"].get("send_failed") == 1, block
     assert not (tmp_path / "l.jsonl").exists() or (tmp_path / "l.jsonl").read_text() == ""
+
+
+# ── F1 (cc3, 2026-11-04): a failure to OBSERVE is not a decision about the session ────────────────────
+
+
+def _run_with(returncodes):
+    """A fake tmux: `tmux ls` then one capture per session. Returns (fake, calls)."""
+    from types import SimpleNamespace
+    calls = []
+    def run(argv, **kw):
+        calls.append(argv)
+        rc = returncodes.get(argv[1], 0)
+        out = "cx-openai\n" if argv[1] == "ls" and rc == 0 else ""
+        return SimpleNamespace(returncode=rc, stdout=out, stderr="")
+    return run, calls
+
+
+def test_a_failed_capture_is_reported_as_dependency_unavailable_not_as_idle(tmp_path, monkeypatch, capsys):
+    """F1: at 392134248c29 a capture failure (rc=1, empty stdout) became `wait idle=0m`, produced 0 and
+    empty_reason nothing_due — a blind run indistinguishable from a quiet one."""
+    import json as _json
+
+    import agent_nudger as N  # noqa: PLC0415
+    run, calls = _run_with({"capture-pane": 1})
+    real_ls, real_cap = N.list_sessions, N.capture
+    monkeypatch.setattr(N, "list_sessions", lambda cfg: real_ls(cfg, run=run))
+    monkeypatch.setattr(N, "capture", lambda sess: real_cap(sess, run=run))
+    monkeypatch.setattr(N.time, "sleep", lambda s: None)
+    assert N.main(["--dry-run", "--state", str(tmp_path / "s.json"),
+                   "--ledger", str(tmp_path / "l.jsonl"), "--coord-dir", str(tmp_path)]) == 0
+    err = capsys.readouterr().err
+    block = _json.loads([ln for ln in err.splitlines() if ln.startswith("LANE_OUTPUT ")][0].split(" ", 1)[1])
+    assert "dependency_unavailable" in block["skipped_reasons"], block
+    assert block["attempted_count"] == 0, "a session whose capture failed was counted as inspected"
+    assert block["empty_reason"] == "dependency_unavailable", block
+
+
+def test_a_failed_tmux_ls_is_not_the_same_run_as_no_sessions(tmp_path, monkeypatch, capsys):
+    """F1: at 392134248c29 `tmux ls` rc=1 produced attempted 0 / nothing_due, the same evidence as a quiet machine."""
+    import json as _json
+
+    import agent_nudger as N  # noqa: PLC0415
+    run, _ = _run_with({"ls": 1})
+    real_ls, real_cap = N.list_sessions, N.capture
+    monkeypatch.setattr(N, "list_sessions", lambda cfg: real_ls(cfg, run=run))
+    monkeypatch.setattr(N, "capture", lambda sess: real_cap(sess, run=run))
+    monkeypatch.setattr(N.time, "sleep", lambda s: None)
+    assert N.main(["--dry-run", "--state", str(tmp_path / "s.json"),
+                   "--ledger", str(tmp_path / "l.jsonl"), "--coord-dir", str(tmp_path)]) == 0
+    err = capsys.readouterr().err
+    block = _json.loads([ln for ln in err.splitlines() if ln.startswith("LANE_OUTPUT ")][0].split(" ", 1)[1])
+    assert "dependency_unavailable" in block["skipped_reasons"] and block["empty_reason"] == "dependency_unavailable", block

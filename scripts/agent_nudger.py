@@ -112,14 +112,24 @@ def decide(screen: str, rec: dict, now: float, cfg: dict) -> dict:
             "stalled": stalled, "unsent": unsent, "tail": tail}
 
 
-def list_sessions(cfg: dict, run=subprocess.run) -> list[str]:
-    out = run(["tmux", "ls", "-F", "#S"], capture_output=True, text=True).stdout
+def list_sessions(cfg: dict, run=subprocess.run) -> tuple[list[str], bool]:
+    """(sessions, ok). `ok` is False when `tmux ls` itself failed (F1, cc3 2026-11-04).
+
+    A failed discovery must not read as "no sessions": a broken tmux server and a quiet machine produced the same
+    attempted_count 0 / empty_reason nothing_due, so the evidence could not tell "blind" from "quiet".
+    """
+    proc = run(["tmux", "ls", "-F", "#S"], capture_output=True, text=True)
+    ok = getattr(proc, "returncode", 1) == 0
+    out = proc.stdout or ""
     return [s for s in out.split() if re.search(str(cfg["session_regex"]), s)
-            and s not in (cfg.get("exclude") or []) and not refused_session(s, cfg)]
+            and s not in (cfg.get("exclude") or []) and not refused_session(s, cfg)], ok
 
 
-def capture(session: str, run=subprocess.run) -> str:
-    return run(["tmux", "capture-pane", "-p", "-t", session], capture_output=True, text=True).stdout
+def capture(session: str, run=subprocess.run) -> tuple[str, bool]:
+    """(screen, ok). A failed capture must never become a DECISION about the session: an empty screen has no busy
+    marker, so the old code turned a broken pane into "idle" and then into nothing_due (F1, cc3 2026-11-04)."""
+    proc = run(["tmux", "capture-pane", "-p", "-t", session], capture_output=True, text=True)
+    return (proc.stdout or ""), getattr(proc, "returncode", 1) == 0
 
 
 def send(session: str, text: str, run=subprocess.run, sleep=time.sleep) -> bool:
@@ -172,12 +182,22 @@ def main(argv: list[str] | None = None) -> int:
         state = {}
     now = time.time()
     out, plan = [], []
-    sessions = list_sessions(cfg)
+    sessions, discovery_ok = list_sessions(cfg)
     wanted = 0
     failed = 0
+    blind = 0
+    inspected = 0
     for s in sessions:
         rec = state.get(s, {})
-        d = decide(capture(s), rec, now, cfg)
+        screen, observed = capture(s)
+        if not observed:
+            # Not inspected, not counted, and not turned into a verdict. The session stays in state untouched so the
+            # next healthy run decides with the same evidence plus whatever the pane shows then.
+            blind += 1
+            out.append(f"{s:16} {'BLIND':8} capture failed; not inspected")
+            continue
+        inspected += 1
+        d = decide(screen, rec, now, cfg)
         action = d["action"]
         detail = {"RESUME": "vendor error on screen; resume prompt sent",
                   "ENTER": "unsent text in the input box; Enter pressed",
@@ -230,8 +250,15 @@ def main(argv: list[str] | None = None) -> int:
         from lib.lane_output import emit as _emit_lane_output, output_block as _lane_output_block  # type: ignore
     produced = wanted   # dry: what it WOULD type; live: what it TYPED (a refused tmux send is not a nudge).
     skipped = {"send_failed": failed} if failed else {}
-    block = _lane_output_block(produced=produced, attempted=len(sessions), unit="agent nudges typed",
-                               skipped=skipped, empty_reason=None if produced else "nothing_due")
+    if not discovery_ok or blind:
+        # The contract lists dependency_unavailable among its fatal skip reasons; before this the producer could never
+        # emit it, so the rule and the code disagreed. A blind run says so instead of reporting a quiet one.
+        skipped["dependency_unavailable"] = 1 if not discovery_ok else blind
+        empty_reason = "dependency_unavailable" if not produced else None
+    else:
+        empty_reason = None if produced else "nothing_due"
+    block = _lane_output_block(produced=produced, attempted=inspected, unit="agent nudges typed",
+                               skipped=skipped, empty_reason=empty_reason)
     _emit_lane_output("agent_nudge", "live" if a.apply else "dry_run", block, started_at=started_at)
     if a.apply:
         # A LIVE run writes LaneRunReceipt@v2 plus the immutable per-attempt receipt that
@@ -245,7 +272,7 @@ def main(argv: list[str] | None = None) -> int:
                 from lib.lane_last_receipt import write_lane_receipt as _write_receipt  # type: ignore
             _write_receipt("agent_nudge", ok=True, started_at=started_at, script="scripts/agent_nudger.py",
                            produced_count=produced, attempted_count=len(sessions), skipped_reasons=skipped,
-                           empty_reason=None if produced else "nothing_due",
+                           empty_reason=empty_reason,
                            summary={"sessions": len(sessions), "send_failed": failed})
         except Exception as exc:  # noqa: BLE001 -- the run's own result comes first
             print(f"[agent_nudge] lane receipt write failed: {type(exc).__name__}", file=sys.stderr)
