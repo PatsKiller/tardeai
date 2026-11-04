@@ -30,13 +30,18 @@ LIVE_BASIS_NOTE = ("aggregate basis/P&L left NULL: 2 non-cash row(s) have no sou
 
 @pytest.fixture()
 def book():
-    """A two-account book carrying the live document's note text verbatim."""
+    """A two-account book carrying the live document's note text verbatim.
+
+    The rows carry REAL day changes (cc-deepseek-5 R1): the original fixture left them out, so the only reason
+    the totals held a number was the ``or 0`` coercion — which is precisely the state in which this pass must
+    NOT clear the note. Clearing is tested on a book that actually measured something."""
     return {
         "as_of": "2026-11-03",
         "holdings": [
-            {"symbol": "CASH", "account": "schwab_taxable", "is_cash": True, "market_value": 1_000.00},
+            {"symbol": "CASH", "account": "schwab_taxable", "is_cash": True, "market_value": 1_000.00,
+             "day_change": 0.0},
             {"symbol": "SCHD", "account": "schwab_taxable", "shares": 10.0,
-             "market_value": 900.00, "cost_basis": 800.00},
+             "market_value": 900.00, "cost_basis": 800.00, "day_change": -12.50},
         ],
         "portfolio_totals": {
             "note": LIVE_NOTE,
@@ -47,6 +52,20 @@ def book():
         },
         "account_summaries": {"schwab_taxable": {}},
     }
+
+
+@pytest.fixture()
+def unmeasured_book(book):
+    """The same book with no usable prior close on any row: the operator's own wording, still true.
+
+    A deep copy, not the fixture's own rows: both fixtures are built before the test body runs, so mutating the
+    shared list would empty the measured book as well."""
+    import copy
+
+    doc = copy.deepcopy(book)
+    for row in doc["holdings"]:
+        row.pop("day_change", None)
+    return doc
 
 
 def test_the_stale_clause_does_not_outlive_the_recompute(book):
@@ -94,9 +113,47 @@ def test_the_clearing_is_recorded_when_it_happens(book):
 def test_a_pass_that_did_not_compute_a_day_change_clears_nothing(day_change):
     """The rule is 'the note is falsified by what we just wrote'. No computed value, no claim."""
     totals = {"note": LIVE_NOTE, "day_change_note": LIVE_DAY_CHANGE_NOTE, "day_change": day_change}
-    assert _reconcile_totals_notes(totals) == []
+    assert _reconcile_totals_notes(totals, day_change_measured_rows=1) == []
     assert totals["note"] == LIVE_NOTE
     assert totals["day_change_note"] == LIVE_DAY_CHANGE_NOTE
+
+
+def test_a_total_built_entirely_from_coerced_zeros_clears_nothing(unmeasured_book):
+    """cc-deepseek-5 R1, the mirror of the bug this PR exists to fix.
+
+    ``_recalc_totals`` sums ``h.get("day_change") or 0``, so a book where NOTHING could be measured still
+    produces ``day_change: 0.0`` — a number that looks computed. The blocked head cleared both notes in that
+    same pass, deleting the one sentence that said the zero was not a measurement. The operator then read a
+    confident 0.0 with no explanation: the false-healthy class, inverted."""
+    _recalc_totals(unmeasured_book)
+    totals = unmeasured_book["portfolio_totals"]
+    assert totals["day_change"] == 0.0, "the sum still coerces; that is the condition under test"
+    assert totals["day_change_measured_rows"] == 0
+    assert totals["note"] == LIVE_NOTE, "a note that is still TRUE was deleted"
+    assert totals["day_change_note"] == LIVE_DAY_CHANGE_NOTE, "the explanation of the 0.0 was deleted"
+    assert "notes_reconciled_at" not in totals, "nothing was falsified, so nothing may be recorded"
+
+
+def test_the_totals_say_how_the_day_change_was_arrived_at(book, unmeasured_book):
+    """The fact the decision stands on travels on the document, not only in the branch that reads it."""
+    _recalc_totals(book)
+    assert book["portfolio_totals"]["day_change_measured_rows"] == 2
+    assert book["portfolio_totals"]["day_change_unmeasured_rows"] == 0
+    _recalc_totals(unmeasured_book)
+    assert unmeasured_book["portfolio_totals"]["day_change_measured_rows"] == 0
+    assert unmeasured_book["portfolio_totals"]["day_change_unmeasured_rows"] == 2
+
+
+def test_a_partly_measured_book_clears_and_states_what_was_not(book):
+    """One real value is a measurement: the note's claim ("nothing was carried") is false. The row that could
+    not be read still shows up in the count, so the total is not presented as complete."""
+    book["holdings"][0].pop("day_change")          # the cash row has no prior close; SCHD's -12.50 remains real
+    _recalc_totals(book)
+    totals = book["portfolio_totals"]
+    assert totals["day_change_measured_rows"] == 1
+    assert totals["day_change_unmeasured_rows"] == 1
+    assert "not carried" not in str(totals.get("note") or "")
+    assert "day_change_note" not in totals
 
 
 def test_a_note_that_is_entirely_stale_is_removed_not_emptied(book):

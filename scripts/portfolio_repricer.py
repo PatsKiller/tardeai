@@ -77,16 +77,44 @@ _DAY_CHANGE_MENTION = re.compile(r"\bday[ _-]?change\b", re.IGNORECASE)
 _TOTALS_NOTE_KEYS = ("note", "day_change_note")
 
 
-def _reconcile_totals_notes(totals: Dict[str, Any]) -> List[str]:
+def _day_change_coverage(rows) -> Dict[str, int]:
+    """How many rows carried a REAL day change, and how many could not be measured.
+
+    A coerced zero is not a measurement (cc-deepseek-5 R1, 2026-11-04). The totals sum
+    ``h.get("day_change") or 0``, so a holding with no prior close — or fills that do not reconcile —
+    contributes 0 and the total looks computed while nothing was measured. The counts travel on the
+    totals so the note decision stands on a recorded fact instead of on the sum's type.
+    """
+    measured = unmeasured = 0
+    for row in rows:
+        value = row.get("day_change") if isinstance(row, dict) else None
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            unmeasured += 1
+        else:
+            measured += 1
+    return {"day_change_measured_rows": measured, "day_change_unmeasured_rows": unmeasured}
+
+
+def _reconcile_totals_notes(totals: Dict[str, Any], *, day_change_measured_rows: int) -> List[str]:
     """Drop the note text this pass has just falsified, keep the text that is still true.
 
     `note` is clause-structured ("rebuilt by the positions_current rebuild (run 638); day change not carried"),
     so only the falsified clause is removed — the provenance half survives. `day_change_note` exists
     only to explain a day change that came from somewhere other than this computation, so it goes
-    whole. Returns the keys that changed. No day change computed means no note can be called stale.
+    whole. Returns the keys that changed.
+
+    No day change computed means no note can be called stale — and neither does a day change that is a
+    NUMBER ONLY BECAUSE the rows were coerced: when no holding contributed a measured value the total is a
+    confident-looking zero and the note describing exactly that is still TRUE. Clearing it there was the
+    mirror of the original bug: a note that outlived its fact became a note deleted while its fact stands
+    (cc-deepseek-5 R1). ``day_change_measured_rows`` is that fact, and it is required, not defaulted.
     """
     day_change = totals.get("day_change")
     if isinstance(day_change, bool) or not isinstance(day_change, (int, float)):
+        return []
+    if int(day_change_measured_rows or 0) <= 0:
+        # Every contribution was a coerced zero. The number beside the note is 0.0 and the note says that is
+        # not a measurement — both remain true, so nothing here is falsified.
         return []
     changed: List[str] = []
     for key in _TOTALS_NOTE_KEYS:
@@ -938,6 +966,14 @@ def _recalc_totals(portfolio: Dict) -> None:
     excluded_mv    = round(gt - gv, 2)
     excluded_count = len(valid) - len(valid_with_cost)
     gd    = sum((acct.get("day_change") or 0) for acct in account_summaries.values())
+    # Which of those contributions were REAL (cc-deepseek-5 R1): the sum above coerces every None to 0, so a
+    # book where nothing could be measured still yields a numeric 0.0. The counts are recorded on the totals so
+    # the note reconciliation can tell "we measured zero" from "we measured nothing".
+    _day_change_rows = list(holdings) + [
+        row for _closed_rows in (portfolio.get("closed_today") or {}).values()
+        for row in (_closed_rows or []) if isinstance(row, dict)
+    ]
+    _dc_coverage = _day_change_coverage(_day_change_rows)
 
     # Sanity: reject if total changed > 25% from previous (likely data corruption)
     prev_total = portfolio.get("portfolio_totals", {}).get("total_value", 0) or 0
@@ -973,13 +1009,18 @@ def _recalc_totals(portfolio: Dict) -> None:
         "excluded_count":     excluded_count,
         "day_change":         round(gd, 2),
         "day_change_pct":     round((gd / (gt - gd) * 100) if (gt - gd) else 0, 4),
+        # How the day change was arrived at: rows that carried a real number vs rows coerced to 0. A total with
+        # zero measured rows is not a measurement, and the note says so.
+        **_dc_coverage,
         "total_cash":            _total_cash,
         "total_cash_source":     "position_rows",
         "total_cash_written_at": _utc_now_iso(),
     })
     # The totals above are now this pass's; any note text asserting the day change was not carried
-    # or not measured describes the document we just replaced.
-    _reconcile_totals_notes(portfolio["portfolio_totals"])
+    # or not measured describes the document we just replaced — unless nothing was measured, in which
+    # case the note is still true and the reconciliation keeps it.
+    _reconcile_totals_notes(portfolio["portfolio_totals"],
+                            day_change_measured_rows=_dc_coverage["day_change_measured_rows"])
 
     for h in holdings:
         mv = h.get("market_value") or 0
