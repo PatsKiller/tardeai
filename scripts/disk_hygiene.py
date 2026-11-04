@@ -58,6 +58,7 @@ only matched, never opened).
 from __future__ import annotations
 
 import argparse
+import errno
 import fcntl
 import fnmatch
 import hashlib
@@ -72,7 +73,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Optional
+from typing import Any, Iterable, Mapping, NamedTuple, Optional
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -1583,35 +1584,71 @@ def _abandoned_row(path: Path, lay: Mapping, original: Mapping, w_item: Mapping,
 _UNIT_RE = re.compile(r"^([A-Za-z0-9_.@:/-]+\.service)$")
 
 
-def proc_holder_units(path: Path, *, proc_root: Path = Path("/proc")) -> list[str]:
-    """systemd units whose cwd is inside ``path`` (from ``/proc/<pid>/cgroup``); [] when none can be named.
+class HolderScan(NamedTuple):
+    """Who is inside a path, and whether the answer is complete.
+
+    ``complete`` is False when any process's cwd or cgroup could NOT be read for a reason other than the process
+    having exited. That distinction is the whole safety property (codex R1, 2026-11-04): an unreadable cgroup used to
+    collapse into "no holder", and a release with a live process inside it was deleted. A vanished process
+    (FileNotFoundError / ESRCH) is genuinely not a holder; a permission error is an unknown, and an unknown refuses.
+    """
+
+    units: tuple[str, ...]
+    complete: bool
+
+
+#: errno values that mean "that process is gone", not "we could not look".
+_VANISHED = (errno.ENOENT, errno.ESRCH)
+
+
+def proc_holder_units(path: Path, *, proc_root: Path = Path("/proc")) -> HolderScan:
+    """Systemd units whose cwd is inside ``path`` (from ``/proc/<pid>/cgroup``), plus completeness.
 
     Only the cwd is checked, not every open fd: the defect this exists for is a component *writing into* a release, and
-    a bare fd read (an open log) is not a reason to restart anything. Unreadable /proc entries are skipped, never
-    guessed — the caller treats an empty list as "cannot name the holder" and reports it rather than removing.
+    a bare fd read (an open log) is not a reason to restart anything. A cwd we cannot read makes the scan INCOMPLETE —
+    never empty-and-fine.
     """
     real = os.path.realpath(path)
     units: set[str] = set()
+    complete = True
     try:
-        pids = [d for d in os.scandir(proc_root) if d.name.isdigit()]
+        entries = list(os.scandir(proc_root))
     except OSError:
-        return []
-    for entry in pids:
+        return HolderScan((), False)
+    me = os.geteuid()
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        # Another user's process cannot hold OUR release: the release directories are 0700, so such a process cannot
+        # have them as a cwd (it could not traverse into them). Skipping those by ownership is a permission fact, not a
+        # guess — and without it every scan on a shared host would be "incomplete" for processes we may not inspect.
+        try:
+            if os.stat(proc_root / entry.name).st_uid != me:
+                continue
+        except OSError as exc:
+            if exc.errno not in _VANISHED:
+                complete = False
+            continue
         try:
             cwd = os.readlink(proc_root / entry.name / "cwd")
-        except OSError:
+        except OSError as exc:
+            if exc.errno not in _VANISHED:
+                complete = False
             continue
         if not is_within(Path(cwd), Path(real)):
             continue
         try:
             cgroup = (proc_root / entry.name / "cgroup").read_text(encoding="utf-8")
-        except OSError:
+        except OSError as exc:
+            # Inside the path but we cannot name the unit: there IS a holder, we just cannot name it.
+            complete = False
+            if exc.errno not in _VANISHED:
+                continue
             continue
-        for line in cgroup.splitlines():
-            tail = line.rsplit("/", 1)[-1].strip()
-            if _UNIT_RE.match(tail):
-                units.add(tail)
-    return sorted(units)
+        named = {ln.rsplit("/", 1)[-1].strip() for ln in cgroup.splitlines()}
+        units |= {u for u in named if _UNIT_RE.match(u)}
+    return HolderScan(tuple(sorted(units)), complete)
+
 
 def _release_rows(rules: Mapping[str, Any], ctx: Mapping[str, Any], r_cfg: Mapping[str, Any], row, only: Optional[str]) -> list[dict]:
     """Rule R: the existing release selection (CURRENT, pointer targets, previous, newest N, references) on one root."""
@@ -1635,17 +1672,23 @@ def _release_rows(rules: Mapping[str, Any], ctx: Mapping[str, Any], r_cfg: Mappi
         # running process is either RESTARTED (so the component re-resolves CURRENT) or REPORTED by name. Silence is
         # not an option — that is how a component kept writing into a deleted release and recreating it.
         if "in_use_cwd" in item["reasons"]:
-            holders = proc_holder_units(path)
+            scan = proc_holder_units(path)
+            hosts: list[str] = list(scan.units)
             h_cfg = (r_cfg.get("holders") or {}) if isinstance(r_cfg.get("holders"), dict) else {}
             allowed = set(h_cfg.get("restart_allowed_units") or ())
             action = h_cfg.get("action") or "report"
-            restartable = bool(holders) and action == "restart" and set(holders) <= allowed
-            item["evidence"]["holder_units"] = holders
+            # R1: clear in_use_cwd ONLY when the scan is COMPLETE and every holder is restartable. An incomplete scan
+            # is an unknown, and an unknown refuses — "could not determine" must never read like "nobody is there".
+            restartable = bool(scan.complete and hosts) and action == "restart" and set(hosts) <= allowed
+            item["evidence"]["holder_units"] = hosts
+            item["evidence"]["holder_scan_complete"] = scan.complete
             if restartable:
                 item["reasons"] = [r for r in item["reasons"] if r != "in_use_cwd"]
-                item["restart_units"] = holders
+                item["restart_units"] = hosts
             else:
-                item["reasons"].append("held_by_process:" + (",".join(holders) if holders else "unnamed"))
+                if not scan.complete:
+                    item["reasons"].append("holder_state_unknown")
+                item["reasons"].append("held_by_process:" + (",".join(hosts) if hosts else "unnamed"))
         try:
             creds = [e.name for e in os.scandir(path) if not e.is_symlink() and _credential_name(e.name, rules)]
         except OSError:
@@ -1677,17 +1720,47 @@ def apply_scratch_cap(rows: list[dict], t_cfg: Mapping[str, Any]) -> tuple[list[
     if type(max_gb) not in _NUM or max_gb <= 0:
         return rows, {}
     cap = int(float(max_gb) * 1024**3)
+    # S5 (codex 2026-11-04): the cap must READ the floor rather than trust the candidates it is handed. A row whose
+    # age is inside keep_younger_than_hours is protected even if an upstream change made it a candidate — the floor is
+    # the operator's ruling (D16: 24 h), and a cap that never looks at time cannot enforce it.
+    floor_h = t_cfg.get("keep_younger_than_hours")
+    floor_s = float(floor_h) * 3600.0 if type(floor_h) in _NUM and floor_h > 0 else None
+    now_ts = time.time()
+    def _age_s(r: Mapping[str, Any]) -> Optional[float]:
+        """Seconds old, from the field the REAL producer emits (fingerprint.activity), else idle_days."""
+        act = (r.get("fingerprint") or {}).get("activity")
+        if type(act) in _NUM and act > 0:
+            return max(0.0, now_ts - float(act))
+        idle = (r.get("evidence") or {}).get("idle_days")
+        if type(idle) in _NUM:
+            return float(idle) * 86400.0
+        return None
+    protected: set[str] = set()
+    unknown_age = 0
+    for r in rows:
+        if r.get("rule") != "T":
+            continue
+        age = _age_s(r)
+        if age is None:
+            unknown_age += 1
+            protected.add(r["path"])      # cannot date it → cannot evict it
+        elif floor_s is not None and age < floor_s:
+            protected.add(r["path"])
+            r["reasons"] = list(dict.fromkeys(list(r.get("reasons") or []) + ["recent_activity"]))
+            r["candidate"] = False
     t_rows = [r for r in rows if r.get("rule") == "T"]
     sized = [r for r in t_rows if isinstance(r.get("size_bytes"), int)]
     total = sum(int(r["size_bytes"]) for r in sized)
     summary: dict[str, Any] = {"cap_bytes": cap, "total_bytes": total, "taken": 0, "kept_over_cap": 0,
-                               "floor_exceeds_cap": False}
+                               "floor_exceeds_cap": False, "age_unknown_protected": unknown_age,
+                               "floor_hours": floor_h if floor_s is not None else None}
     if total <= cap:
         return rows, summary
     floor = [r for r in t_rows if not r.get("candidate")]
     floor_bytes = sum(int(r.get("size_bytes") or 0) for r in floor)
-    candidates = sorted((r for r in t_rows if r.get("candidate")),
-                        key=lambda r: (r.get("evidence") or {}).get("last_activity") or "")
+    # S1: oldest first on the age the producer actually emits — never on a field no producer writes.
+    candidates = sorted((r for r in t_rows if r.get("candidate") and r["path"] not in protected),
+                        key=lambda r: -(_age_s(r) or 0.0))
     projected = total
     taken: set[str] = set()
     for r in candidates:  # oldest first
@@ -1970,6 +2043,22 @@ def closeout_guard(item: Mapping[str, Any], now: Optional[float] = None) -> Opti
     return None
 
 
+def executed_row(manifest_item: Mapping[str, Any], fresh: Optional[Mapping[str, Any]]) -> dict:
+    """The row that is ACTUALLY executed after revalidation (codex R2, 2026-11-04).
+
+    The fresh row carries the holder decision made against CURRENT evidence — `restart_units` above all. The manifest
+    row was captured earlier and may predate the holder entirely, so executing it would skip both the restart and the
+    post-restart check: a revalidated candidate, then the stale action. Every field the fresh row decides is taken from
+    it; everything else (path, kind, rule, size) stays as the manifest recorded it.
+    """
+    if not fresh:
+        return dict(manifest_item)
+    out = dict(manifest_item)
+    for key in ("restart_units", "evidence", "reasons", "fingerprint"):
+        if key in fresh:
+            out[key] = fresh[key]
+    return out
+
 def remove_item(item: Mapping[str, Any]) -> tuple:
     """(ok, how) or, for rule C, (ok, how, {archive_ref, archive_sha}) so the receipt names the restore point."""
     p = Path(item["path"])
@@ -2007,8 +2096,29 @@ def remove_item(item: Mapping[str, Any]) -> tuple:
                 restarted.append(str(unit))
             time.sleep(2)  # let the restarted units re-resolve CURRENT before the path disappears
             still = proc_holder_units(p)
-            if still:
-                return False, "holder_restart_did_not_release:" + ",".join(still)
+            if not still.complete:
+                return False, "holder_state_unknown"
+            if still.units:
+                return False, "holder_restart_did_not_release:" + ",".join(still.units)
+        if kind == "release_dir":
+            # R3 (codex 2026-11-04): a scan cannot prove nobody ENTERS after it. Fence the name instead: rename the
+            # release aside atomically, so a process resolving the old path from now on gets ENOENT rather than
+            # writing into a directory that is about to be unlinked; then re-scan under the new name and only then
+            # remove. A holder found in the re-scan is renamed back and refused.
+            fenced = p.with_name(p.name + ".reclaiming-" + time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()))
+            try:
+                os.rename(p, fenced)
+            except OSError as exc:
+                return False, f"fence_rename_failed:{type(exc).__name__}"
+            after = proc_holder_units(fenced)
+            if not after.complete or after.units:
+                try:
+                    os.rename(fenced, p)
+                except OSError:
+                    return False, "fence_holder_found_and_rename_back_failed"
+                return False, ("holder_state_unknown" if not after.complete
+                               else "holder_entered_after_check:" + ",".join(after.units))
+            p = fenced
         if kind == "agent_scratch" and item.get("bundles"):
             failed = bundle_nested(item)
             if failed:
@@ -2273,6 +2383,9 @@ def apply(
                 rep["refused"] = "standing_revalidation_unavailable"
                 break
             ok = bool(fresh and fresh["candidate"] and fresh.get("fingerprint") == item.get("fingerprint"))
+            if ok:
+                # R2 (codex 2026-11-04): the thing we validate must be the thing we execute.
+                item = executed_row(item, fresh)
             why = "standing_revalidation_failed"
             if ok:
                 size = du_bytes(Path(item["path"]), 60)

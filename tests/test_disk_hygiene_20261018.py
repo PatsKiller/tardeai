@@ -484,7 +484,12 @@ def test_apply_refuses_a_stale_manifest(world):
     assert _last_apply(world)["refused"] == "manifest_stale" and wt.exists()
 
 
-def test_apply_removes_worktrees_with_git_worktree_remove_and_clones_and_releases(world):
+def test_apply_removes_worktrees_with_git_worktree_remove_and_clones_and_releases(world, monkeypatch):
+    # The holder scan reads the REAL /proc, and a test process may run under a sandbox where other processes' cwds are
+    # unreadable — which the planner now (correctly) treats as "cannot determine" and refuses. This test is about
+    # release/worktree removal, not about /proc, so the scan is stubbed to the complete-empty answer it would get on a
+    # normal host with no holder.
+    monkeypatch.setattr(DH, "proc_holder_units", lambda path, proc_root=None: DH.HolderScan((), True))
     wt, clone = world.worktree("wt-clean"), world.clone("tradeai-clone-ok")
     rel = _releases(world)
     world.plan()
