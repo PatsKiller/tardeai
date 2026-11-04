@@ -969,3 +969,29 @@ def test_i12_a_legacy_member_and_an_identified_read_of_the_same_exit_are_unresol
     assert second["complete"] is False, f"an unproven legacy link must not pass as complete: {second}"
     assert any("persisted before source identity existed" in g for g in second["gaps"]), second["gaps"]
     conn.close()
+
+
+def test_i1_a_quantity_correction_on_the_same_trade_row_is_unresolved_not_two_members(store):
+    """codex I1 provider-key BLOCK. dedupe_key is date|action|symbol|quantity|account|uid, so a quantity correction
+    necessarily produces a NEW key: one trade row corrected 5.000 -> 7.000 became TWO persisted members (5 and 7)
+    with complete=True. The composite is not an identity, and no provider uid is exposed as a field to use instead —
+    so the honest result is both observations retained and the pass reported incomplete, with no delimiter guess."""
+    from lib.recovery_engine import fills_consumer as fc
+    conn = _source_db()
+    conn.execute("INSERT INTO trade_transactions (trade_date, action, symbol, quantity, price, account, dedupe_key) "
+                 "VALUES ('2026-10-30','SELL','SPCX',5.0,80.0,'schwab_taxable','2026-10-30|SELL|SPCX|5.000|schwab_taxable|uid1')")
+    _positions(conn, 0)
+    conn.commit()
+    first = fc.run(store, conn, today=TODAY, now=NOW)
+    case = store.get(first["opened"][0])
+    assert len(case.exits) == 1 and case.exits[0]["source"] == "trade_transactions", case.exits
+    # The provider corrects the quantity in place; the composite key changes with it.
+    conn.execute("UPDATE trade_transactions SET quantity = 7.0, "
+                 "dedupe_key = '2026-10-30|SELL|SPCX|7.000|schwab_taxable|uid1'")
+    conn.commit()
+    second = fc.run(store, conn, today=TODAY, now=NOW)
+    after = store.get(case.case_key)
+    assert len(after.exits) == 2, f"both observations must be retained: {after.exits}"
+    assert second["complete"] is False, f"a quantity-moved composite key must not pass as complete: {second}"
+    assert any(("identity" in g or "composite" in g or "quantity" in g) for g in second["gaps"]), second["gaps"]
+    conn.close()

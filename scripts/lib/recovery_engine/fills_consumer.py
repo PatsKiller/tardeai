@@ -428,6 +428,19 @@ def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date]
             # identified read of the same exit cannot be matched to it by identity — and there is no evidence to migrate
             # it with. Neither date nor price proves the link (that heuristic is what F14-F17 kept re-creating), so the
             # pair stays unresolved: both observations retained, pass incomplete, no migration invented.
+            # PROVIDER-KEY (codex I1). trade_transactions.dedupe_key is date|action|symbol|QUANTITY|account|uid, so a
+            # quantity correction necessarily changes the key, and the provider uid inside it is not exposed as a field
+            # (there is no uid column). Splitting the composite would be a delimiter guess, which is how F17 is born, so
+            # it is not done: two observations from that source with different keys on one date are retained and the
+            # pair is reported unresolved — a corrected quantity and a second sale are indistinguishable here.
+            if extra_src == "trade_transactions":
+                same_source = next((row for row in unpaired if _source_of(row) == extra_src
+                                    and str(row["date"])[:10] == extra.exit_date.isoformat()), None)
+                if same_source is not None:
+                    _unresolved(
+                        f"the {extra.exit_date} exit for {symbol}/{account} carries two {extra_src} observations with "
+                        "different composite keys; that key includes the quantity, so a corrected quantity and a second "
+                        "sale cannot be told apart without a provider uid — both are retained and the pair is unresolved")
             if extra.source_id is not None:
                 legacy = next((row for row in unpaired if not _source_of(row)
                                and str(row["date"])[:10] == extra.exit_date.isoformat()), None)
