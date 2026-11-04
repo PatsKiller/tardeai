@@ -205,7 +205,7 @@ def realert_due(entry: Mapping[str, Any], cur: str, now: datetime, mon: Mapping[
     return (now - last_dt) >= timedelta(minutes=float(minutes))
 
 
-_INHERITED_SETTINGS = ("realert_minutes", "recovery_stability_minutes", "warn_pct", "critical_pct")
+_INHERITED_SETTINGS = ("realert_minutes", "warn_pct", "critical_pct")
 
 
 def metric_policy(mon: Mapping[str, Any], band: Optional[Mapping[str, Any]]) -> dict[str, Any]:
@@ -234,7 +234,12 @@ def _minutes_since(stamp: Any, now: datetime) -> Optional[float]:
         return None
     if then.tzinfo is None:
         then = then.replace(tzinfo=timezone.utc)
-    return (now - then).total_seconds() / 60.0
+    elapsed = (now - then).total_seconds() / 60.0
+    # A stamp in the FUTURE is a clock correction, not a reason to stay silent (cx-openai-4 R2): a run that really
+    # happened under a skewed clock left a stamp ahead of now, and treating the negative elapsed as "not due" made an
+    # ongoing critical band emit nothing for 25 hours — the exact defect this PR exists to fix. Unknown timing is
+    # reported as unknown, and every caller treats unknown as DUE.
+    return None if elapsed < 0 else elapsed
 
 
 def _minutes_since_last_alert(entry: Mapping[str, Any], now: datetime) -> Optional[float]:
@@ -246,40 +251,28 @@ _RANK = {"ok": 0, "warn": 1, "critical": 2}
 
 def alert_for(prev: Optional[str], cur: str, entry: Mapping[str, Any], now: datetime,
               mon: Mapping[str, Any]) -> Optional[str]:
-    """One decision point, bounded on EVERY path.
+    """One decision point, ONE clock, no bypasses.
 
-    Two measured defects shaped it, both 2026-11-04:
+    Three measured defects shaped it, all 2026-11-04:
     * alerting only on a band CHANGE let `/` sit critical for 23 hours on a single alert;
-    * the first repair throttled the unchanged path only, so the transition path bypassed it — an ok<->critical band
-      flipping every 15 minutes produced 96 alerts in 24 hours (97 for warn<->critical), while the config text claimed
-      dedupe by band and interval.
+    * throttling only the unchanged path let an ok<->critical flap produce 96 alerts in 24 hours;
+    * letting a recovery or an escalation alert immediately let a bad/healthy cycle (95,95,50 every 15 minutes)
+      produce 65 alerts in 24 hours against a promise of 25 — the recovery reset the clock and the next critical then
+      "escalated" above the band it had just reported.
 
-    The rule: a genuinely NEW escalation — a band above anything already reported for this mount — alerts at once,
-    because that is news and delaying it is the failure we started from. Everything else (a repeat, a recovery, a
-    non-escalating change, or an unchanged bad band) waits for `realert_minutes`. Any pattern therefore lands on at
-    most one alert per interval: 24/day at the 60-minute default, stated rather than discovered.
+    So every alert now shares ONE clock: nothing is said until `realert_minutes` has passed since the last alert, and
+    nothing at all is said inside that window — not an escalation, not a recovery, not a repeat. The single exception
+    is the first thing ever said about a mount. That is what makes the stated bound true by construction: at most one
+    alert per interval, 24 in 24 hours at the 60-minute default, whatever the band does.
     """
-    interval = mon.get("realert_minutes")
+    interval = float(mon["realert_minutes"])       # metric_policy guarantees it; a band cannot miss it
     changed = transition(prev, cur)
     since = _minutes_since_last_alert(entry, now)
-    reported = str(entry.get("alerted_band") or "ok")
+    if since is not None and since < interval:
+        return None                                 # inside the window: silence, whatever the band did
     if changed:
-        if _RANK.get(cur, 0) > _RANK.get(reported, 0):
-            return changed                      # above anything already reported: this is real news
-        # A RECOVERY is worth saying at once, but only if the bad band it ends actually held: a mount that flaps
-        # between bands never "recovered", it wobbled, and reporting each wobble is the storm this fixes.
-        if cur == "ok":
-            held = _minutes_since(entry.get("since"), now)
-            stability = float(mon.get("recovery_stability_minutes", 30))
-            if held is not None and held >= stability:
-                return changed
-        if interval and since is not None and since < float(interval):
-            return None
         return changed
-    # Unchanged. Only a BAD band is restated, and only once the interval is due.
-    if cur == "ok" or not interval:
-        return None
-    return cur if since is None or since >= float(interval) else None
+    return cur if cur != "ok" else None             # an unchanged BAD band is restated; an unchanged ok one is not
 
 
 def latest_manifest(rules: Mapping[str, Any], state_root: Optional[Path]) -> Optional[dict[str, Any]]:

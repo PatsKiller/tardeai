@@ -373,7 +373,7 @@
     }
   },
   "monitor": {
-    "_why": "scripts/disk_usage_monitor.py, n8n lane disk-usage-monitor (*/15). Band = ok | warn | critical by df-style used% (used / (used + available)). Alerts are throttled on EVERY path by realert_minutes: the first thing ever said about a mount is immediate, and after that a band change (severity increase, recovery or repeat) and an unchanged bad band ALL wait for the interval. 2026-11-04: (/ sat critical 23 hours on one alert because only CHANGES alerted; the first repair then throttled only the unchanged path, and an ok<->critical flap every 15 min produced 96 alerts in 24h). Bound (measured): one alert per interval per mount PLUS the single initial escalation - 25 in 24 hours at the 60-minute default, whether the band is steady, flapping ok<->critical (24 measured) or flapping warn<->critical (25 measured). Dedupe is by band and interval, never by raw percent. Inodes (operator 2026-10-19, after /tmp hit 97% inodes with bytes free): every mount is also banded by inode use% (statvfs f_files / f_ffree) with its own thresholds; dedupe is per (mount, metric) band.",
+    "_why": "scripts/disk_usage_monitor.py, n8n lane disk-usage-monitor (*/15). Band = ok | warn | critical by df-style used% (used / (used + available)). Alerts are throttled on EVERY path by realert_minutes: the first thing ever said about a mount is immediate, and after that a band change (severity increase, recovery or repeat) and an unchanged bad band ALL wait for the interval. 2026-11-04: (/ sat critical 23 hours on one alert because only CHANGES alerted; the first repair then throttled only the unchanged path, and an ok<->critical flap every 15 min produced 96 alerts in 24h). Bound: ONE clock governs every alert. Nothing is said until realert_minutes has passed since the last alert - not an escalation, not a recovery, not a repeat; the only exception is the first thing ever said about a mount. That makes the bound true by construction: at most one alert per interval, 24 in 24 hours at the 60-minute default, whatever the band does. The cost is stated: an escalation can wait up to one interval. Dedupe is by band and interval, never by raw percent. Inodes (operator 2026-10-19, after /tmp hit 97% inodes with bytes free): every mount is also banded by inode use% (statvfs f_files / f_ffree) with its own thresholds; dedupe is per (mount, metric) band.",
     "mounts": [
       "/",
       "/tmp"
@@ -381,7 +381,6 @@
     "warn_pct": 80.0,
     "critical_pct": 90.0,
     "realert_minutes": 60.0,
-    "recovery_stability_minutes": 30.0,
     "host_backstop_pct": 95.0,
     "state_name": "disk_usage_monitor_state.json",
     "producer": "disk_usage_monitor",

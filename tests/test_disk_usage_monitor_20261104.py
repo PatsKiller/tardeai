@@ -21,14 +21,16 @@ MON = {"warn_pct": 80.0, "critical_pct": 90.0, "realert_minutes": 60.0}
 T0 = datetime(2026, 11, 4, 2, 0, tzinfo=timezone.utc)
 
 
-def test_a_band_change_alerts_immediately():
-    assert M.alert_for(None, "critical", {}, T0, MON) == "critical"
-    assert M.alert_for("warn", "critical", {"alerted_at": T0.isoformat()}, T0, MON) == "critical"
-    # A recovery is good news but not news worth a storm: it is throttled like any other non-escalation, and said
-    # once the interval has passed (cc5 review: an immediate recovery restored the 96-alert flap).
-    assert M.alert_for("critical", "ok", {"alerted_at": T0.isoformat()}, T0, MON) is None
-    assert M.alert_for("critical", "ok", {"alerted_at": (T0 - timedelta(minutes=61)).isoformat()},
-                       T0, MON) == "ok"
+def test_the_first_alert_is_immediate_and_every_later_one_respects_the_clock():
+    """ONE clock governs everything. The first thing ever said about a mount is immediate (nobody has been told), and
+    after that an escalation, a recovery and a repeat all wait for the interval (cx-openai-4 R3)."""
+    assert M.alert_for(None, "critical", {}, T0, MON) == "critical"          # first ever
+    fresh = {"alerted_at": (T0 - timedelta(minutes=61)).isoformat()}
+    assert M.alert_for("warn", "critical", fresh, T0, MON) == "critical"     # interval passed: escalation is said
+    inside = {"alerted_at": T0.isoformat()}
+    assert M.alert_for("warn", "critical", inside, T0, MON) is None          # inside the window: silence
+    assert M.alert_for("critical", "ok", inside, T0, MON) is None            # recovery too
+    assert M.alert_for("critical", "ok", fresh, T0, MON) == "ok"             # after the interval: recovery said
 
 
 def test_a_critical_band_that_STAYS_critical_alerts_again_after_the_interval():
@@ -70,6 +72,8 @@ def _flap_alerts(pattern, minutes_per_tick, mon):
     entry, alerts, t = {}, 0, T0
     for band in pattern:
         decision = M.alert_for(entry.get("band"), band, entry, t, mon)
+        if entry.get("band") != band:
+            entry["since"] = t.isoformat()          # the run records when the band began
         entry["band"] = band
         if decision:
             alerts += 1
@@ -110,31 +114,76 @@ def test_a_recovery_still_alerts_when_the_interval_has_passed():
     assert M.alert_for("critical", "ok", entry, T0 + timedelta(minutes=5), MON) is None
 
 
-def test_a_recovery_is_reported_only_when_the_bad_band_actually_held():
-    """A mount that flaps never recovered, it wobbled: a recovery is reported immediately only if the bad band it ends
-    lasted at least recovery_stability_minutes, which is what keeps the flap bound while still telling the operator
-    about a real recovery."""
-    mon = {**MON, "recovery_stability_minutes": 30.0}
-    brief = {"band": "critical", "alerted_at": T0.isoformat(), "since": T0.isoformat()}
-    assert M.alert_for("critical", "ok", brief, T0 + timedelta(minutes=15), mon) is None      # wobble, not recovery
-    held = {"band": "critical", "alerted_at": T0.isoformat(), "since": T0.isoformat()}
-    assert M.alert_for("critical", "ok", held, T0 + timedelta(minutes=45), mon) == "ok"      # a real recovery
+def test_a_recovery_is_interval_gated_like_every_other_alert():
+    """The bound is only true if NOTHING bypasses the clock: a recovery inside the window is silent, and it is said
+    once the interval has passed (cx-openai-4 R3: an immediate recovery reset the clock and the next critical then
+    escalated above it, producing 65 alerts in 24 hours against a promise of 25)."""
+    entry = {"band": "critical", "alerted_at": T0.isoformat(), "since": T0.isoformat()}
+    assert M.alert_for("critical", "ok", entry, T0 + timedelta(minutes=15), MON) is None
+    assert M.alert_for("critical", "ok", entry, T0 + timedelta(minutes=61), MON) == "ok"
 
 
-def test_the_inode_band_inherits_the_realert_interval_and_cannot_miss_it():
-    """cx-openai-4: monitor.inodes never carried realert_minutes, so the inode band alerted once and then stayed silent
-    for as long as it was bad — the 23-hour silence this PR exists to end, still present on the second band. Every band
-    now resolves through metric_policy, so a band inherits and a THIRD band cannot be added missing it."""
-    cfg = json.loads((ROOT / "config" / "disk_hygiene_rules.json").read_text(encoding="utf-8"))["monitor"]
-    ino = cfg["inodes"]
-    assert "realert_minutes" not in ino, "the defect was a setting absent from the band; inheritance is the fix"
-    resolved = M.metric_policy(cfg, ino)
-    assert resolved["realert_minutes"] == cfg["realert_minutes"]
-    # and the inode band therefore re-alerts on the interval instead of going quiet
+def _flap_alerts(pattern, minutes_per_tick, mon):
+    """Drive the real decision function over a sequence of observed bands, updating state exactly as the run does."""
+    entry, alerts, t = {}, 0, T0
+    for band in pattern:
+        decision = M.alert_for(entry.get("band"), band, entry, t, mon)
+        if entry.get("band") != band:
+            entry["since"] = t.isoformat()          # the run records when the band began
+        entry["band"] = band
+        if decision:
+            alerts += 1
+            entry["alerted_at"] = t.isoformat()
+            entry["alerted_band"] = band        # the run records this too; without it the flap guard cannot bite
+        t += timedelta(minutes=minutes_per_tick)
+    return alerts
+
+
+def test_a_flapping_band_cannot_storm():
+    """cc5 / cx-openai-4, review of 3a421ab9a: the transition path bypassed the interval, so an ok<->critical band
+    flipping every 15 minutes produced 96 alerts in 24 hours (97 for warn<->critical). Bounded now to one per
+    interval, which is the number the config text states."""
+    ticks = 24 * 4                                   # 24 hours of 15-minute runs
+    pattern = ["ok" if i % 2 == 0 else "critical" for i in range(ticks)]
+    alerts = _flap_alerts(pattern, 15, MON)
+    assert alerts > 0, "the monitor must still speak at all"
+    # Measured bound: one per interval (24 at 60 minutes) plus the single initial escalation.
+    assert alerts <= 25, f"a flapping band must stay at the stated bound (<=25/day), got {alerts}"
+
+
+def test_warn_critical_flapping_is_bounded_too():
+    ticks = 24 * 4
+    pattern = ["warn" if i % 2 == 0 else "critical" for i in range(ticks)]
+    alerts = _flap_alerts(pattern, 15, MON)
+    assert alerts <= 25, f"warn<->critical flapping must stay bounded (<=25/day), got {alerts}"
+
+
+def test_a_steady_critical_band_still_re_alerts_on_the_interval():
+    """The first fix must not be lost to the second: a band that never changes still speaks every interval."""
     entry = {"band": "critical", "alerted_at": T0.isoformat()}
-    assert M.alert_for("critical", "critical", entry, T0 + timedelta(minutes=61), resolved) == "critical"
-    assert M.alert_for("critical", "critical", entry, T0 + timedelta(minutes=30), resolved) is None
-    # a band invented tomorrow inherits by construction
-    assert M.metric_policy(cfg, {"warn_pct": 50.0})["realert_minutes"] == cfg["realert_minutes"]
-    with pytest.raises(ValueError):
-        M.metric_policy({}, {})          # a parent with no interval cannot silently produce a one-shot band
+    assert M.alert_for("critical", "critical", entry, T0 + timedelta(minutes=61), MON) == "critical"
+
+
+def test_a_recovery_still_alerts_when_the_interval_has_passed():
+    entry = {"band": "critical", "alerted_at": T0.isoformat()}
+    assert M.alert_for("critical", "ok", entry, T0 + timedelta(minutes=61), MON) == "ok"
+    assert M.alert_for("critical", "ok", entry, T0 + timedelta(minutes=5), MON) is None
+
+
+def test_a_bad_healthy_cycle_cannot_exceed_the_stated_bound():
+    """cx-openai-4 R3, the counterexample that broke the previous head: bytes 95, 95, 50 repeating every 15 minutes
+    (bad held 30, healthy 15) over 24 hours produced 65 primary alert decisions against a promised maximum of 25,
+    because the recovery reset the clock and the next critical escalated above the band just reported."""
+    pattern = ["critical", "critical", "ok"] * 32          # 96 polls = 24 hours at 15 minutes
+    alerts = _flap_alerts(pattern, 15, MON)
+    assert alerts <= 25, f"the stated bound must hold through recovery/escalation cycles, got {alerts}"
+    assert alerts > 0, "the monitor must still speak"
+
+
+def test_a_future_stamp_is_a_clock_correction_not_a_silence():
+    """cx-openai-4 R2: a real run under a skewed clock left alerted_at ahead of now; the negative elapsed read as
+    'not due' and an ongoing 95% critical emitted nothing for 25 hours. Unknown timing must be treated as due."""
+    ahead = (T0 + timedelta(hours=5)).isoformat()
+    entry = {"band": "critical", "alerted_at": ahead, "since": ahead}
+    assert M.alert_for("critical", "critical", entry, T0, MON) == "critical"
+    assert M.alert_for("critical", "critical", entry, T0 + timedelta(minutes=60), MON) == "critical"

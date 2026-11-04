@@ -613,8 +613,11 @@ def test_monitor_alerts_once_per_band_change_never_per_percent(mon):
     assert mon.run(91.0) == 0
     assert mon.run(70.0) == 0
     kinds = [(d, k) for d, k, *_ in mon.intents()]
+    # ONE clock (2026-11-04, cx-openai-4 R3): the critical at +30 minutes falls inside the interval opened by the
+    # warn, so it is not said then — the price of a hard bound of one alert per interval is that an escalation can
+    # wait up to one interval, and the next run at +60 says critical if it is still critical.
     assert kinds == [("host", "disk_usage_warn"), ("host", "disk_hygiene_alert"),
-                     ("host", "disk_usage_critical"), ("host", "disk_usage_recovered")]
+                     ("host", "disk_usage_recovered")]
     subjects = [s for _, _, s, _, _ in mon.intents()]
     assert subjects[0] == "Disk / WARN: at or above 80% used" and "%" not in subjects[0].split("80")[0]
     assert all(w == "host.disk_usage_monitor" for *_, w in mon.intents())
