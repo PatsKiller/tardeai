@@ -13,6 +13,7 @@ ok(/<summary/.test(src), 'no summary line in the compact row')
 // the phone proof locates the primary action through [data-testid="tj-row"], so the summary must carry a real button
 ok(/<summary[\s\S]{0,600}data-testid="tj-open-journey"/.test(src), 'the compact summary has no tappable primary action')
 ok(/data-testid=\{compact \? 'tj-row-full' : 'tj-row'\}/.test(src), 'exactly one node per journey must answer to tj-row')
+ok(/data-testid=\{compact \? 'tj-open-journey-full' : 'tj-open-journey'\}/.test(src), 'exactly one node per journey must answer to tj-open-journey')
 ok(/compact=\{phone\}/.test(src), 'the list does not pass compact on phone')
 // nothing removed: the full row still renders inside the toggle
 ok(/const grid = \(\s*<div className="tradeinview-journey-row"/.test(src), 'the original full row was not preserved')

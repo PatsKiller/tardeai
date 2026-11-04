@@ -50,7 +50,7 @@ function Row({ j, selected, onSelect, compact = false }: { j: Journey; selected:
         borderBottom: `1px solid ${TOKENS.borderSubtle}`, background: selected ? TOKENS.bg[2] : undefined,
         borderLeft: `3px solid ${selected ? TOKENS.info : 'transparent'}` }}>
       <span className="tradeinview-mobile-symbol" style={{ fontFamily: FONT.mono, fontWeight: 700, fontSize: TYPE.md }}>{j.symbol}</span>
-      <button className="tradeinview-open-journey" data-testid="tj-open-journey" type="button" onClick={onSelect} aria-pressed={selected} title={`Open the ${j.symbol} journey`}
+      <button className="tradeinview-open-journey" data-testid={compact ? 'tj-open-journey-full' : 'tj-open-journey'} type="button" onClick={onSelect} aria-pressed={selected} title={`Open the ${j.symbol} journey`}
         style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', color: TOKENS.text[0], fontFamily: FONT.mono, fontWeight: 700, fontSize: TYPE.md, minHeight: 36 }}>
         <span className="tradeinview-desktop-symbol">{j.symbol}</span><span className="tradeinview-mobile-action">Journey →</span>
       </button>

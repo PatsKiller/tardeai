@@ -35,6 +35,9 @@ def test_the_compact_summary_keeps_a_real_tappable_primary_action():
     assert re.search(r"data-testid=\{compact \? 'tj-row-full' : 'tj-row'\}", SRC), (
         "exactly one node per journey must answer to tj-row"
     )
+    assert re.search(r"data-testid=\{compact \? 'tj-open-journey-full' : 'tj-open-journey'\}", SRC), (
+        "exactly one node per journey must answer to tj-open-journey (two broke the phone proof)"
+    )
 
 
 def test_the_list_passes_compact_on_a_phone():
