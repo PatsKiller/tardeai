@@ -1287,6 +1287,32 @@
       ],
       "_writer_note": "Tables position_snapshots (append-only), positions_current, position_lots, realized_lots, positions_sync_runs \u2014 migrations/2026_10_06_positions_store_phase1.sql. One writer, enforced by tests/test_positions_store_phase1_20261006.py. A run is promoted to positions_current only when every required account (the three Schwab accounts) read OK. Readers: none in phase 1 (shadow); phase 3 moves readers to it in four operator-approved batches, each listed in approved_readers with its grant. Batch #1 (operator 2026-10-22): the Watch held flag (watch_domains.held_positions, surface watch).",
       "approved_readers": [
+      {
+        "batch": 7,
+        "reader": "scripts/holdings_export.py",
+        "files": [
+          "scripts/holdings_export.py"
+        ],
+        "tables": [
+          "positions_current",
+          "positions_sync_runs"
+        ],
+        "surfaces": [
+          "backup"
+        ],
+        "facts": "the complete positions document for the generated backup: qty, cost basis, average cost, broker market value, cash flag, asset type, per-row as_of and sync_run_id",
+        "consumers": [
+          "scripts/holdings_export.py"
+        ],
+        "switch": "not switched on: the systemd unit is not installed; the export runs only when invoked",
+        "freshness_guard": "run_binding() refuses unless every row belongs to one complete and promoted positions_sync_runs receipt whose accounts match the rows both ways",
+        "approval": {
+          "approved_by": "operator",
+          "approved_on": "2026-11-03",
+          "reference": "Operator decision 2026-11-03: the DB is the holdings source of truth and holdings.json becomes a generated backup (handoffs/SPEC_POSITIONS_DB_SOURCE_OF_TRUTH_20261103.md, Step 1: 'one writer, holdings_export, renders holdings.json FROM the DB after each positions sync')",
+          "scope": "Phase-3 reader batch #7: Step 1's generated-backup writer reads positions_current only to render holdings.json and its own backups; readers are not switched by it"
+        }
+      },
         {
           "batch": 1,
           "reader": "scripts/lib/data_broker/watch_domains.py::held_positions",
