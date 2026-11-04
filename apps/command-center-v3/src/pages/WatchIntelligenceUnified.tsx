@@ -10,6 +10,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetailSheet'
 import { useApi } from '../hooks/useApi'
 import { BB, TYPE } from '../lib/watchTokens'
+import { RADIUS } from '../lib/designTokens'
 import { WI_SYNOPSIS_PROVENANCE } from '../lib/surfaceFreshness'
 import {
   DECISION_KEYS, DECISION_SORTS, WatchDecisionBadges, WatchDecisionBoard, WatchDecisionFilterModal, type WatchDecision,
@@ -632,7 +633,7 @@ export default function WatchIntelligenceUnified() {
         {layout === 'compact' ? (
           // FQ-073: a scan list. One row per name — what it is, what the engine currently says, what it costs —
           // and every row opens the full-screen reading view (the same sheet the cards use).
-          <div data-compact-list style={{ background: BB.bgPanel, border: `1px solid ${BB.border}`, borderRadius: 12, overflow: 'hidden' }}>
+          <div data-compact-list style={{ background: BB.bgPanel, border: `1px solid ${BB.border}`, borderRadius: RADIUS.md, overflow: 'hidden' }}>
             {cards.map(c => (
               <div
                 key={c.symbol}
