@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, type ReactNode } from 'react'
+import { createContext, useContext, useEffect } from 'react'
 import { DeskGap } from './DeskPage'
 import { refreshMarker, rendersData, surfaceGap, type SurfaceShape, type SurfaceState } from '../lib/surfaceState'
 
@@ -20,7 +20,6 @@ export function SurfaceGap<T>({ state, shape, onRetry }: { state: SurfaceState<T
 
 /** The shell footer reads this: true only when the active surface's data actually rendered. */
 export type SurfaceStateReport = { name: string; dataLoaded: boolean }
-export type SurfaceStateChannel = { report: SurfaceStateReport | null; publish: (r: SurfaceStateReport | null, clearingFrom?: string) => void }
 
 /**
  * TWO contexts, not one (cc-deepseek-3 B1, 2026-11-04). A single `{report, publish}` value object changes identity on
@@ -30,7 +29,8 @@ export type SurfaceStateChannel = { report: SurfaceStateReport | null; publish: 
  * cannot re-arm the effects that call it.
  */
 export const SurfaceReportContext = createContext<SurfaceStateReport | null>(null)
-export const SurfacePublishContext = createContext<SurfaceStateChannel['publish']>(() => {})
+export type SurfacePublisher = (r: SurfaceStateReport | null, clearingFrom?: string) => void
+export const SurfacePublishContext = createContext<SurfacePublisher>(() => {})
 
 /**
  * Publish a surface's state to the footer. `dataLoaded` comes from `rendersData`, the SAME predicate the page uses, so
@@ -49,6 +49,3 @@ export function useReportSurfaceState(name: string, state: SurfaceState<unknown>
   // longer owns the slot (F2 review, 2026-11-04).
   useEffect(() => () => publish(null, name), [publish, name])
 }
-
-/** Rendered by DeskPage-adjacent surfaces that do not own a full page frame. */
-export function SurfaceNote({ children }: { children: ReactNode }) { return <div role="note">{children}</div> }
