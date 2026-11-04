@@ -1,0 +1,181 @@
+// Releases & Schedules, operator view (operator 2026-11-03: "its ok not clear and actionable for a non developer").
+// Pure projection over the two payloads the page already fetches — GET /api/v2/ops/releases-schedules and
+// GET /api/v2/ops/in-flight. It invents no facts: every function either derives a sentence from a served value or
+// says in words that the value is missing and why. No code, no SHA, no branch, no PR number reaches the default view.
+import type { InFlightPr } from './deployInFlight.ts'
+import { evidenceSentence } from './deployInFlight.ts'
+import { operatorStage, type OperatorStage } from './workPipeline.ts'
+import { prPipelineStage } from './deployInFlight.ts'
+import type { SectionView } from './releasesSchedules.ts'
+
+export type Tone = 'success' | 'warning' | 'danger' | 'neutral'
+
+/** Strip machine identifiers out of a sentence a person has to read. Never returns an empty string. */
+export function plainText(raw: unknown, fallback = 'an unnamed change'): string {
+  const s = String(raw ?? '').trim()
+  if (!s) return fallback
+  const cleaned = s
+    .replace(/(?:PR[-\s]?#?\d+|#\d+)/gi, 'the change')
+    .replace(/\b[0-9a-f]{7,40}\b/gi, '')
+    .replace(/\b(?:feat|fix|wt|release|hotfix)\/[A-Za-z0-9._/-]+/g, 'the work')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+  return cleaned || fallback
+}
+
+/** The operator's words for a reason code the payload carries. Unknown codes are shown as a plain statement about
+ *  the source, never as the raw identifier. */
+const REASON_SENTENCE: Record<string, string> = {
+  no_review_record: 'nobody has recorded a review for this version yet',
+  no_ci_observation: 'the checks for this version have not been observed',
+  stale_review_for_other_head: 'the review on record is for an older version of this change',
+  stale_ci_for_other_head: 'the check result on record is for an older version of this change',
+  target_head_missing: 'the version the check refers to is no longer the one proposed',
+  coordination_unavailable: 'the record of reviews and checks could not be read',
+  head_changed: 'the change moved on after it was checked',
+}
+export function plainReason(code: unknown, fallback = 'the source did not say why'): string {
+  const key = String(code ?? '').trim()
+  return REASON_SENTENCE[key] ?? (key ? `the source says: ${key.replace(/_/g, ' ')}` : fallback)
+}
+
+/** One sentence for a review/CI factor, or null when there is something worth saying about it. */
+export function checkSentence(f: { state?: string | null; reason?: string | null; gap?: string | null } | null | undefined): string | null {
+  if (!f) return null
+  if (f.state === 'MERGE' || f.state === 'GREEN') return null
+  if (f.state === 'CHANGES') return 'a reviewer asked for changes'
+  if (f.state === 'RED') return 'the checks failed'
+  if (f.state === 'PENDING') return 'the checks are still running'
+  if (f.state === 'SKIPPED') return 'the checks were skipped'
+  if (f.state === 'NONE') return /\s/.test(String(f.reason ?? '')) ? String(f.reason) : 'it has not been reviewed yet'
+  if (f.state === 'UNAVAILABLE') return 'CI not checked right now'
+  const st = (f as { evidence_state?: unknown }).evidence_state
+  const why = String(f.reason ?? '').trim()
+  // a served reason that is already a sentence is shown as written; a code is translated
+  if (/\s/.test(why)) return why
+  return evidenceSentence(st) ?? plainReason(f.reason ?? f.gap)
+}
+
+export type StatusLine = { tone: Tone; headline: string; detail: string; clock: string }
+
+const CLOCK_MISSING = 'as of unknown — the source did not record when it checked'
+
+/** Block 1: what is live, in one line, with its own clock. Never green when a contributing section is unavailable. */
+export function liveNow(sections: Record<string, SectionView<any>>, generatedAt: string | null | undefined, when: (v: string | null | undefined) => string): StatusLine {
+  const serving = sections.serving
+  const next = sections.next_release
+  const errors = sections.release_errors
+  const clock = serving?.asOf ? `Checked ${when(serving.asOf)}` : generatedAt ? `Checked ${when(generatedAt)}` : CLOCK_MISSING
+  if (!serving || serving.state === 'UNAVAILABLE' || !serving.value) {
+    return { tone: 'warning', headline: 'Cannot tell what is live right now', clock,
+      detail: `${plainReason(serving?.reason, 'the release source could not be read')}. This is not an all-clear.` }
+  }
+  const sv = serving.value as { release_name?: string | null; since?: string | null }
+  const name = sv.release_name && !/[0-9a-f]{7,}/i.test(sv.release_name) ? plainText(sv.release_name, 'the current release') : 'the current release'
+  const since = sv.since ? ` since ${when(sv.since)}` : ''
+  const problems: string[] = []
+  if (errors?.state === 'OK' && Array.isArray(errors.value?.rows) && errors.value.rows.length) problems.push(`${errors.value.rows.length} release error(s) recorded`)
+  if (next?.state === 'OK' && next.value?.is_serving !== true) problems.push('the newest change is not live yet')
+  return {
+    tone: problems.length ? 'warning' : 'success',
+    headline: `Live now: ${name}`,
+    detail: problems.length ? `${problems.join(' · ')}.` : `Nothing is waiting to go live.${since}`,
+    clock,
+  }
+}
+
+export type StageGroup = { stage: OperatorStage; label: string; rows: InFlightPr[] }
+
+const GROUP_ORDER: OperatorStage[] = ['building', 'review', 'ready', 'merging', 'live']
+
+/** Block 3: open changes grouped by what is actually happening to them. Unknown facts fall into the earliest group. */
+export function goingLive(prs: InFlightPr[]): StageGroup[] {
+  const by = new Map<OperatorStage, InFlightPr[]>()
+  for (const pr of prs) {
+    const op = operatorStage({ stage: prPipelineStage(pr) })
+    if (!op) continue
+    by.set(op, [...(by.get(op) ?? []), pr])
+  }
+  return GROUP_ORDER.filter(g => by.has(g)).map(stage => ({
+    stage, rows: by.get(stage)!,
+    label: { backlog: 'Not started', building: 'Being built', review: 'Waiting for review', ready: 'Ready',
+      merging: 'Merging in the next window', live: 'Live' }[stage],
+  }))
+}
+
+/** Block 2: only the changes where the OPERATOR is the one who must act. */
+/** Block 2: every row the SERVER marks as needing the operator — approvals AND the push-budget/authorization
+ *  decisions the spec names. cc3 review F5: filtering on 'approve' alone hid ten such rows the server had flagged. */
+export function needsYou(prs: InFlightPr[]): InFlightPr[] {
+  return prs.filter(p => {
+    const actions = p.operator_actions
+    if (actions) return actions.required === true || (actions.eligible ?? []).includes('approve')
+    return !p.is_draft && p.mergeable !== 'CONFLICTING' && !p.has_operator_merge
+      && p.work?.review?.state === 'MERGE' && p.work?.ci?.state === 'GREEN'
+  })
+}
+
+/** The facts a Needs-you card is allowed to state, derived per action from the served row.
+ *
+ *  cc3 review F6 (2026-11-03): the card said "<agent> finished it and the checks passed" unconditionally, and the
+ *  push-budget cards the server flags are exactly the rows where that is false — drafts, DIRTY and BLOCKED branches
+ *  with no review and no CI. A card that asks the operator to authorize an upload must not also tell him the work is
+ *  finished and green. */
+export function needsYouFacts(p: InFlightPr, action: { kind: 'approve' | 'push' }): { headline: string; warning: string | null } {
+  // F7 (cc3, 2026-11-03): DIRTY means the branch conflicts with the base, NOT uncommitted work — and a conflicting
+  // branch can still be uploaded; the conflict bites at merge time. Say exactly that.
+  const warning = p.mergeable === 'CONFLICTING' || p.merge_state === 'DIRTY'
+    ? 'GitHub reports this branch conflicts with newer code in the base. The upload is still possible; the merge will need a rebase first.'
+    : p.merge_state === 'BLOCKED'
+      ? 'GitHub reports this change is blocked by something it is waiting on.'
+      : p.is_draft ? 'It is still a draft, so it is not ready for anyone to merge.' : null
+  if (action.kind === 'approve') {
+    const proven = p.work?.review?.state === 'MERGE' && p.work?.ci?.state === 'GREEN'
+    return { headline: proven ? 'A reviewer approved it and its checks passed.'
+      : 'The server says this change is ready for your approval; its own record of the check is incomplete.',
+    warning }
+  }
+  return { headline: 'This branch holds work that has not been uploaded yet; the agent is waiting for your authorization.',
+    warning }
+}
+
+/** The one action a Needs-you card offers, and the words for it. Never offers an action the server did not list. */
+export function needsYouAction(p: InFlightPr): { kind: 'approve' | 'push'; label: string; effect: string } {
+  const eligible = p.operator_actions?.eligible ?? []
+  if (eligible.includes('approve')) {
+    return { kind: 'approve', label: 'Open the change and approve it →',
+      effect: 'If you say yes, it is queued for the next merge window; the host still has to promote it before it is live.' }
+  }
+  return { kind: 'push', label: 'Authorize the upload for this branch →',
+    effect: 'If you say yes, one fast-forward upload is allowed, bound to this exact version. Force-push stays refused.' }
+}
+
+/** Block 4: stuck, and whose step it is. The threshold is stated in the heading, never implied. */
+/** Block 4 shows only a RECORDED cause. "No record of a review" is not evidence that a change is stuck — the served
+ *  contract defines NOT_RECORDED that way — so an unreviewed ten-minute-old PR never lands here (cc3 review F3). */
+export function stuck(prs: InFlightPr[]): Array<{ pr: InFlightPr; because: string; whose: string }> {
+  const out: Array<{ pr: InFlightPr; because: string; whose: string }> = []
+  for (const p of prs) {
+    const review = p.work?.review
+    const ci = p.work?.ci
+    const because = p.mergeable === 'CONFLICTING' ? 'conflicts with newer code'
+      : review?.state === 'CHANGES' ? 'a reviewer asked for changes'
+      : ci?.state === 'RED' ? 'the checks failed'
+      : p.work?.blockers?.length ? 'a blocker is recorded'
+      : null
+    if (!because) continue
+    const whose = p.work?.next_action_source === 'claims' ? 'the agent that owns it' : 'the coordinator'
+    out.push({ pr: p, because, whose })
+  }
+  return out
+}
+
+/** Block 8: the jobs sentence and its clock. A number never appears without one. */
+export function jobsLine(ledger: SectionView<any> | undefined, when: (v: string | null | undefined) => string): { text: string; clock: string; tone: Tone } {
+  const clock = ledger?.asOf ? `counted ${when(ledger.asOf)}` : CLOCK_MISSING
+  const td = ledger?.state === 'OK' ? ledger.value : null
+  if (!td) return { text: 'Scheduled job health cannot be read — this is not the same as zero runs.', clock, tone: 'warning' }
+  const waits = td.dead_letters?.available ? `${Number(td.dead_letters.unreleased ?? 0).toLocaleString('en-US')} failed runs waiting to be cleared` : 'the number of failed runs waiting is not available'
+  return { tone: Number(td.errors_total ?? 0) || Number(td.dead_letters?.unreleased ?? 0) ? 'warning' : 'success',
+    text: `${Number(td.total ?? 0).toLocaleString('en-US')} runs today: ${Number(td.errors_total ?? 0)} errors, ${waits}.`, clock }
+}
