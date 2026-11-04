@@ -493,6 +493,16 @@ def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date]
         refreshed = rc.consume_fills(store, merged, cluster_key=case.cluster_key, **common)
         result = refreshed
     if unassigned:
+        # CENTRAL MEMBER COVERAGE (codex F1 at eac2895b2). The durable prefix can only retain an ambiguity that was
+        # discovered on the pass that found it; an observation arriving through THIS path — which extends an open case
+        # or opens a new one — never passed through the in-case pairing, so an unidentified one was stored silently and
+        # the pass reported complete=true. Batching must not change completeness: exactly the same source delivered
+        # all at once reported incomplete, while arriving piecemeal it did not.
+        unidentified = [f for f in unassigned if f.source_id is None]
+        if unidentified:
+            _unresolved(
+                f"{len(unidentified)} of {len(unassigned)} observation(s) extending or opening the {symbol}/{account} "
+                "case carry no source identity; which economic events they are cannot be established from the source")
         newest, _low, newest_last = ranges[-1]
         if unassigned[0].exit_date > newest_last and newest.state not in TERMINAL_STATES:
             # Extend the open case without re-keying: its stored exits plus the new ones, its cluster_key unchanged.

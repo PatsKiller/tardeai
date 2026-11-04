@@ -1042,3 +1042,33 @@ def test_i12_an_existing_case_keeps_reporting_unresolved_when_closed_and_reenter
         out = fc.run(store, conn, today=TODAY, now=NOW)
         assert out["complete"] is False, f"a {state} case forgot its unresolved identity: {out}"
     conn.close()
+
+
+@pytest.mark.parametrize("state", [None, "CLOSED", "RE_ENTERED"])
+def test_f1_a_later_unidentified_arrival_is_reported_in_every_case_state(store, state):
+    """codex F1 at eac2895b2: an identified exit first, then a LATER transaction-only exit with no identity and no
+    watch row, arriving through the unassigned path (extend an open case, or open a new one). The arrival pass reported
+    complete=true with no identity diagnostic, across OPEN, CLOSED and RE_ENTERED; the same final source delivered all
+    at once reported false. Batching must not change completeness."""
+    from lib.recovery_engine import fills_consumer as fc
+    conn = _source_db()
+    _watch(conn, "2026-10-27", 80.0, -200.0)
+    _positions(conn, 0)
+    conn.commit()
+    first = fc.run(store, conn, today=TODAY, now=NOW)
+    key = first["cases"][0]["case_key"]
+    assert first["complete"] is True, first["gaps"]
+    if state:
+        store.set_state(key, state)
+    # the later exit: transaction-only, no watch row, and this source exposes no identity for its rows
+    conn.execute("INSERT INTO trade_transactions (trade_date, action, symbol, quantity, price, account) "
+                 "VALUES ('2026-11-02','SELL','SPCX',50,81.0,'schwab_taxable')")
+    conn.commit()
+    second = fc.run(store, conn, today=TODAY, now=NOW)
+    assert second["complete"] is False, (
+        f"{state or 'OPEN'}: a later unidentified arrival passed as complete: {second['gaps']}")
+    assert any("identity" in g for g in second["gaps"]), second["gaps"]
+    # and it stays that way on an unchanged third pass
+    third = fc.run(store, conn, today=TODAY, now=NOW)
+    assert third["complete"] is False, third["gaps"]
+    conn.close()
