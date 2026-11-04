@@ -474,8 +474,15 @@ def poll_once(timeout=25):
     allowed = _allowed_chats()
     processed = 0
 
-    #: The previous operator message per chat, in arrival order: the evidence the split-paste rule needs.
-    last_text_by_chat: dict[str, str] = {}
+    #: The previous AUTHENTICATED OPERATOR message, keyed by (room, sender). Identity, not room: a refused group member
+    #: must never become the operator's redaction context (R6-F2, cx3 2026-11-04 — an outsider's refused '{"code": '
+    #: redacted the operator's next reply, and an outsider's refused ordinary text CLEARED a real credential
+    #: predecessor). Advanced only after authentication succeeds.
+    #:
+    #: RESET, stated plainly: this map lives for ONE poll. There is no durable loader, so a split paste that straddles
+    #: two polls — and every first message after a restart — has no context; those rows are stored with
+    #: `redaction_incomplete` and the unverified-redaction warning. Context survival is not claimed.
+    last_text_by_operator: dict[tuple[str, str], str] = {}
     for update in results:
         uid = update.get("update_id")
         this_prev: str | None = None      # the previous message in THIS chat, for the split-paste rule
@@ -495,7 +502,8 @@ def poll_once(timeout=25):
         early_msg = update.get("message") or {}
         early_chat = str((early_msg.get("chat") or {}).get("id", ""))
         early_text = (early_msg.get("text") or "").strip()
-        this_prev = last_text_by_chat.get(early_chat)
+        early_sender = str((early_msg.get("from") or {}).get("id") or "")
+        this_prev = last_text_by_operator.get((early_chat, early_sender))
         # The safe rendering of this update's text, from the SAME context and the SAME function as its rows. Every log
         # line below uses it; the raw text is kept only for ephemeral handler processing.
         safe_text = redact_credentials(early_text, this_prev)
@@ -506,7 +514,10 @@ def poll_once(timeout=25):
                 chat_type=(early_msg.get("chat") or {}).get("type"),
                 sender_id=(early_msg.get("from") or {}).get("id"),
                 previous_text=this_prev)
-            last_text_by_chat[early_chat] = early_text
+            if reply_status in ("recorded", "queued"):
+                # ONLY an authenticated operator event advances the context: refused_sender / refused_chat /
+                # refused_room / blank / failed never do (R6-F2).
+                last_text_by_operator[(early_chat, early_sender)] = early_text
             if reply_status == "failed":
                 log.error(f"operator reply neither recorded nor queued; stopping the batch before any "
                           f"checkpoint (update {uid})")

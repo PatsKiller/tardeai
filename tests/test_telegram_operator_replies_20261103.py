@@ -552,3 +552,29 @@ def test_the_split_paste_does_not_reach_the_ACTUAL_LOG(tmp_path, monkeypatch, ca
                        inbox_blocked=False, queue_blocked=False, atomic=True)
     logged = "\n".join(r.getMessage() for r in caplog.records)
     assert value not in logged, logged
+
+
+def test_a_refused_group_member_cannot_set_or_clear_the_operator_context(tmp_path, monkeypatch):
+    """R6-F2 (cx3, 2026-11-04): the context was keyed by ROOM and advanced after the record attempt regardless of
+    authentication, so an outsider in an allowlisted supergroup could (1) make the operator's next reply [redacted] and
+    (2) clear a real credential predecessor and let the credential through raw. Fails at 0b60520c7cda."""
+    value = "AbCdEf1234567890XyZq"
+    # (1) outsider's refused key prefix must NOT become the operator's predecessor
+    _c, records, _q = _drive_updates(
+        monkeypatch, tmp_path,
+        [_msg(971, 40, text='{"code": ', sender="999"),
+         _msg(972, 41, text="503 retry only; do not deploy", sender="555")],
+        inbox_blocked=False, queue_blocked=False, atomic=True)
+    blob = "\n".join(records)
+    assert "503 retry only; do not deploy" in blob, blob
+
+    # (2) outsider's refused ordinary text must NOT clear the operator's key-bearing predecessor
+    tmp2 = tmp_path / "second"
+    tmp2.mkdir()
+    _c2, records2, _q2 = _drive_updates(
+        monkeypatch, tmp2,
+        [_msg(973, 42, text='{"code": ', sender="555"),
+         _msg(974, 43, text="hello there", sender="999"),
+         _msg(975, 44, text=value, sender="555")],
+        inbox_blocked=False, queue_blocked=False, atomic=True)
+    assert value not in "\n".join(records2), "\n".join(records2)
