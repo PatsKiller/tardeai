@@ -1223,3 +1223,38 @@ def test_a_later_episode_after_a_terminal_case_is_not_flagged_as_a_fork(store):
     cov2 = {"incomplete": False}
     fc.open_or_extend(store, _read([old, later]), today=TODAY, now=NOW, coverage=cov2)
     assert not [g for g in store.list()[-1].gaps if "predate every stored case" in g], store.list()[-1].gaps
+
+
+# ── FQ-099: an exit carries its ACCOUNT, so a per-account wash window is computable ────────────────────────
+def test_every_persisted_exit_carries_its_account(store):
+    """A wash-sale window is per ACCOUNT (IRC §1091). The case row carried the account; the EXITS did not, so a
+    consumer rebuilding an exit from a stored case got account=None and could not compute a per-account window at all."""
+    case = rc.consume_fills(store, _spcx_fills(), residual_shares=200, pre_exit_weight_pct=2.25, today=TODAY, now=NOW)
+    accounts = {e.get("account") for e in case.exits}
+    assert accounts == {"schwab_taxable"}, case.exits
+    # and it survives a round-trip through the store, which is how a later pass reads it
+    again = store.get(case.case_key)
+    assert {e.get("account") for e in again.exits} == {"schwab_taxable"}, again.exits
+
+
+def test_two_accounts_keep_their_own_exit_accounts(store):
+    """The negative control: nothing collapses two accounts onto one, which is what a wash window would do if the
+    account were taken from the case rather than the exit."""
+    a = rc.consume_fills(store, _spcx_fills(), residual_shares=200, pre_exit_weight_pct=2.25, today=TODAY, now=NOW)
+    ira = [rc.ExitFill(f.symbol, "schwab_roth_ira", f.exit_date, f.shares, f.price, f.realized_pnl,
+                       stop_price=f.stop_price) for f in _spcx_fills()]
+    b = rc.consume_fills(store, ira, residual_shares=200, pre_exit_weight_pct=2.25, today=TODAY, now=NOW)
+    assert {e["account"] for e in a.exits} == {"schwab_taxable"}
+    assert {e["account"] for e in b.exits} == {"schwab_roth_ira"}
+
+
+def test_a_per_account_wash_window_is_computable_from_the_persisted_rows(store):
+    """The point of the fix: take the stored exits and ask the ONE wash-sale implementation a per-account question."""
+    from lib.wash_sale import classify, window_until  # noqa: PLC0415
+    case = rc.consume_fills(store, _spcx_fills(), residual_shares=200, pre_exit_weight_pct=2.25, today=TODAY, now=NOW)
+    last = case.exits[-1]
+    assert last["account"] == "schwab_taxable"
+    verdict = classify(last_taxable_sell_date=last["date"], realized_gain=last["realized_pnl"],
+                       evidence="exit-fills")
+    assert isinstance(verdict, dict) and verdict.get("kind"), verdict
+    assert window_until(last["date"]) is not None

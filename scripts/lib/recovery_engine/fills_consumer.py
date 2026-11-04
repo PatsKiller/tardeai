@@ -294,7 +294,9 @@ TERMINAL_STATES = ("CLOSED", "RE_ENTERED")
 
 
 def _as_exit_fill(symbol: str, account: str, row: dict) -> rc.ExitFill:
-    return rc.ExitFill(symbol=symbol, account=account,
+    # The row's own account wins: a persisted exit carries the account it happened in, and falling back to the
+    # caller's would silently relabel a legacy row (FQ-099).
+    return rc.ExitFill(symbol=symbol, account=str(row.get("account") or account),
                        exit_date=date.fromisoformat(str(row["date"])[:10]),
                        shares=row.get("shares"), price=float(row["price"]),
                        realized_pnl=row.get("realized_pnl"), stop_price=row.get("stop_price"),

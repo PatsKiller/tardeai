@@ -385,6 +385,10 @@ def build_case(
         carried.append("realized P&L is unknown for at least one exit in this cluster")
     exits = [
         {"date": f.exit_date.isoformat(),
+         # FQ-099: the ACCOUNT travels with the exit. Without it a consumer rebuilding an exit from a stored case
+         # gets account=None, and a per-account wash-sale window (IRC §1091 is per account) cannot be computed at
+         # all — the case's account is not enough, because a window is asked per EXIT.
+         "account": f.account,
          "shares": (_finite(f.shares) if f.shares is not None else None),
          "price": float(f.price),
          "realized_pnl": _finite(f.realized_pnl), "stop_price": f.stop_price, "source": f.source,
