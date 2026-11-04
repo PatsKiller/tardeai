@@ -21,6 +21,9 @@ const req=createRequire(path.join(deps,'package.json'));
     return new Response(JSON.stringify(status===200?data:{retry_after_sec:60}),{status,headers:{'Content-Type':'application/json'}});
   }},scenario==='unavailable'?503:200);
   await page.addScriptTag({content:outputFiles[0].text});await page.waitForFunction(()=>window.summaryCalls.length>=1);await page.waitForTimeout(150);
+  // FQ-027 keeps delivery aggregates in an explicit disclosure so the feed remains near the top on a phone.
+  // Exercise that real control before asserting its retained contents; keep every aggregate/state assertion.
+  await page.locator('summary').filter({hasText:/^Delivery status/}).click();
   if(scenario==='retained'||scenario==='recovery'){
    await page.evaluate(()=>{window.nextStatus=503;window.dispatchEvent(new Event('cc-v3-api-recover'))});await page.waitForFunction(()=>window.summaryCalls.length>=2);await page.waitForTimeout(150);
    if(scenario==='recovery'){await page.evaluate(()=>{window.nextStatus=200;window.dispatchEvent(new Event('cc-v3-api-recover'))});await page.waitForFunction(()=>window.summaryCalls.length>=3);await page.waitForTimeout(150);}
