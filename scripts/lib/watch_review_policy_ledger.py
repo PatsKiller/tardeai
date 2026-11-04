@@ -383,6 +383,10 @@ def policy_expiry_verdict(policy: dict[str, Any] | None, *, now: datetime | None
     This is the single place the expiry fact is read (2026-11-04, property B): a status field is a claim written by
     whoever edited the file — the live Maria/CIO record read ACTIVE while its ``expires_at`` was already a day past —
     so the clock is checked FIRST and outranks the status string everywhere.
+
+    EXPIRY IS MANDATORY, AND UNPARSEABLE MEANS REFUSED (property D): a record whose expiry is missing, empty, null or
+    not a parseable timestamp cannot demonstrate that it is current, and an inability to prove must never resolve to
+    permission. Do not "fix" this by returning OK on a parse error.
     """
     try:
         exp = datetime.fromisoformat(str((policy or {})["expires_at"]).replace("Z", "+00:00"))

@@ -14,11 +14,18 @@ What is pinned here:
 
 The mutation table is the acceptance criterion (cc5, 2026-11-04). Removing any one property from the implementation
 must make tests fail, and the numbers are: delete the `allowed_models` membership check -> 2 failed; delete the expiry
-check in `validate_policy` -> 4 failed; delete the approval-digest comparison -> 2 failed. Property B (expiry outranks
-the status string) was the one whose removal left every test green, because the expiry rule had been written twice and
-one copy masked the other; it now lives in `policy_expiry_verdict`/`validate_policy` only, and
+check in `validate_policy` -> 4 failed; delete the approval-digest comparison -> 2 failed; make an unparseable expiry
+return OK -> 4 failed. Property B (expiry outranks the status string) was the one whose removal left every test green,
+because the expiry rule had been written twice and one copy masked the other; it now lives in
+`policy_expiry_verdict`/`validate_policy` only, and
 `test_an_expired_record_that_is_otherwise_perfect_cannot_authorise` plus `test_expiry_outranks_the_status_string` are the
 two that go red if it is removed or reordered.
+
+Property D: **expiry is mandatory and unparseable means refused.** A record whose `expires_at` is missing, empty, null
+or not a timestamp cannot demonstrate that it is current, and inability to prove never resolves to permission —
+`POLICY_EXPIRES_AT_INVALID` is a refusal, and
+`test_an_expiry_that_cannot_be_read_is_refused_not_treated_as_current` is the test that goes red if anyone changes it
+back to a pass.
 """
 from __future__ import annotations
 
@@ -61,6 +68,35 @@ def _legacy_record(**overrides):
 def _write(record):
     (L.POLICIES_DIR).mkdir(parents=True, exist_ok=True)
     (L.POLICIES_DIR / f"{record['authorization_policy_id']}.json").write_text(__import__("json").dumps(record))
+
+
+@pytest.mark.parametrize("label,mutate", [
+    ("malformed", lambda p: p.update(expires_at="not-a-date")),
+    ("empty", lambda p: p.update(expires_at="")),
+    ("null", lambda p: p.update(expires_at=None)),
+    ("missing", lambda p: p.pop("expires_at")),
+])
+def test_an_expiry_that_cannot_be_read_is_refused_not_treated_as_current(ledger, label, mutate, monkeypatch):
+    """Property D: expiry is MANDATORY, and unparseable means REFUSED.
+
+    An authority record whose expiry cannot be read cannot demonstrate that it is current, and inability to prove must
+    never resolve to permission. The record here is otherwise perfect — canonical model, matching policy, an approval
+    digest computed over exactly this record — so the parse is the only thing refusing it. Flip the parse failure to
+    ``return True, "OK"`` and this test goes red in all four shapes (dispatch would authorise and a child
+    authorization would be written).
+    """
+    pol = ledger.build_intended_policy(operator_id="operator")
+    mutate(pol)
+    ledger.persist_policy(pol)                       # approval digest matches this record exactly
+    record = ledger.load_policy(POLICY_ID)
+    assert ledger.validate_policy(record) == (False, "POLICY_EXPIRES_AT_INVALID"), label
+    assert ledger.dispatch_authority("maria", record=record)[:2] == (False, "POLICY_EXPIRES_AT_INVALID"), label
+    write = mock.Mock(side_effect=AssertionError("must refuse before any write"))
+    monkeypatch.setattr(ledger, "_atomic_write", write)
+    with pytest.raises(PermissionError, match="POLICY_EXPIRES_AT_INVALID"):
+        ledger.create_execution_authorization(policy_id=POLICY_ID, symbol="FIXTURE", agent_id="maria",
+                                              input_snapshot_id="snap", input_hash="h", trigger_reason="fixture")
+    write.assert_not_called()
 
 
 def test_an_expired_record_that_is_otherwise_perfect_cannot_authorise(ledger, monkeypatch):

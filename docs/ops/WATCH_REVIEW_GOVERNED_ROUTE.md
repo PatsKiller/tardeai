@@ -48,7 +48,11 @@ resolution and the persisted parent approval. Before any dispatch, from either
    a live record read ACTIVE while `expires_at` was already a day in the past,
    so expiry is reported first, `POLICY_EXPIRED`). Status and revocation are
    checked after it; a record that is not ACTIVE is still refused, never
-   merely downgraded;
+   merely downgraded. **Expiry is mandatory and unparseable means refused**:
+   a missing, empty, null or non-timestamp `expires_at` is
+   `POLICY_EXPIRES_AT_INVALID`, because a record that cannot demonstrate that
+   it is current cannot authorise — inability to prove never resolves to
+   permission;
 2. the role's logical policy resolves through the canonical registry to exactly
    one model id, and a caller-supplied model that is not that id is refused
    (`MODEL_NOT_REGISTRY_CURRENT`) rather than substituted;
