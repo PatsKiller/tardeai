@@ -361,3 +361,47 @@ def test_f1_no_log_site_slices_raw_operator_text():
     source = (_P(__file__).resolve().parents[1] / "scripts" / "run_telegram_callback_poller.py").read_text()
     assert "text[:40]" not in source and "text[:80]" not in source, "raw operator text reaches a log slice"
     assert source.count("_log_text(") >= 8, "every log site that echoes operator text must use _log_text"
+
+
+# ── the two remaining P1s at aec6fe0d7 (2026-11-04) ───────────────────────────────────────────────────
+
+
+def test_a_quoted_value_containing_its_own_other_quote_is_fully_redacted(tmp_path):
+    """R2-F1 (cx3): `:203` rejected EITHER quote inside a quoted value, so a JSON password containing an apostrophe
+    survived byte-for-byte. Fails at aec6fe0d7."""
+    from scripts.run_telegram_callback_poller import _append_or_queue, redact_credentials
+    raw = '{"password": "SYNTHETIC can\'t conceal tail"}'
+    assert "conceal tail" not in redact_credentials(raw)
+    assert _append_or_queue({"message_id": 7, "text": raw}, replies_dir=tmp_path) == "recorded"
+    written = (tmp_path / "telegram.jsonl").read_text()
+    assert "conceal tail" not in written, written
+
+
+def test_a_json_escaped_quote_inside_a_value_does_not_leak_the_tail(tmp_path):
+    """R2-F1: `json.dumps` produces an escaped quote inside the value; the redaction used to emit
+    `{"code": "[redacted]"TAIL-REMAINS"}` and the suffix survived every sink. Fails at aec6fe0d7."""
+    import json as _json  # noqa: PLC0415
+    from scripts.run_telegram_callback_poller import _append_or_queue, redact_credentials
+    raw = _json.dumps({"code": 'a"bTAIL-REMAINS'})
+    assert "TAIL-REMAINS" not in redact_credentials(raw), redact_credentials(raw)
+    assert _append_or_queue({"message_id": 8, "text": raw}, replies_dir=tmp_path) == "recorded"
+    assert "TAIL-REMAINS" not in (tmp_path / "telegram.jsonl").read_text()
+
+
+def test_a_credential_arriving_as_its_own_message_is_redacted(tmp_path):
+    """R1 (cc5): the second half of F3. When the transport splits a paste, the value arrives as its own message with
+    no key. It used to be stored and logged raw. Fails at aec6fe0d7."""
+    from scripts.run_telegram_callback_poller import _append_or_queue
+    standalone = "S3CR3T0oauth0CODE09911continued"
+    assert _append_or_queue({"message_id": 9, "text": standalone}, replies_dir=tmp_path) == "recorded"
+    written = (tmp_path / "telegram.jsonl").read_text()
+    assert "S3CR3T0oauth0CODE09911" not in written, written
+    assert "[redacted]" in written
+
+
+def test_ordinary_prose_is_still_not_mistaken_for_a_standalone_credential():
+    """The quiet half: a long sentence, a file path and a command are not opaque tokens."""
+    from scripts.run_telegram_callback_poller import redact_credentials
+    for text in ("please re-read WORKERS.md and continue", "approve the restore",
+                 "/home/johnclaw/tradeai-wt-example", "git push origin HEAD:wt/example"):
+        assert redact_credentials(text) == text, text
