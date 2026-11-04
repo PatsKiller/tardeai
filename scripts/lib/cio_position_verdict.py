@@ -133,3 +133,18 @@ def build_verdict(*, symbol, account, action, state, stage, confidence, trigger,
     if missing:
         raise ValueError(f"a position verdict needs {', '.join(missing)}")
     return payload
+
+
+UNAVAILABLE = "CIO verdict unavailable"
+
+
+def render_for_surface(store: "VerdictStore", symbol: str, account: str) -> dict[str, Any]:
+    """What a surface shows for this (symbol, account): the CIO's record, or the explicit absence of one.
+
+    §1b rule 1: a surface that cannot get the CIO record says so. It never falls back to computing a verdict of
+    its own, which is how five surfaces came to disagree about the same position.
+    """
+    record = store.current(symbol, account)
+    if record is not None:
+        return {"available": True, "verdict": record}
+    return {"available": False, "reason": UNAVAILABLE, "symbol": symbol, "account": account}

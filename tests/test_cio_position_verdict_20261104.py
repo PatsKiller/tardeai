@@ -110,3 +110,17 @@ def test_the_producer_assembles_a_verdict_and_refuses_an_unjustified_one():
         args[missing] = []
         with pytest.raises(ValueError, match=missing):
             V.build_verdict(**args)
+
+
+def test_a_surface_shows_the_record_or_says_unavailable_and_never_its_own(tmp_path):
+    """§1b rule 1: the surface renders the CIO record, or states its absence — it does not compute one."""
+    store = V.VerdictStore(tmp_path / "v.jsonl", producer="cio_truth")
+
+    empty = V.render_for_surface(store, "SPCX", "schwab_individual")
+    assert empty["available"] is False and empty["reason"] == V.UNAVAILABLE
+    assert "verdict" not in empty
+
+    store.record(verdict())
+    shown = V.render_for_surface(store, "SPCX", "schwab_individual")
+    assert shown["available"] is True and shown["verdict"]["action"] == "HOLD"
+    assert V.render_for_surface(store, "SPCX", "schwab_rollover_ira")["available"] is False
