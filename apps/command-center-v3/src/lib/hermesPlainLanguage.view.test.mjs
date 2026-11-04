@@ -141,6 +141,40 @@ check('an unknown open count says so instead of borrowing the history length', {
   assert.doesNotMatch(t, /still need attention/)
 })
 
+// ── FQ-039 R3 (codex P2607-R3): "no open findings" is a claim about the queue, not about an empty slice ────────
+
+const resolvedOnly = { id: 9, finding_type: 'unsupported_thesis', severity: 'info', status: 'resolved',
+  description: 'industry Gold — composite 60.6 (review)' }
+
+check('a positive count with an empty open list is a gap, never a global no-open', { ...pq, open_count: 7, open_findings: [], findings: [resolvedOnly], ...health }, () => {
+  const raw = render({ ...pq, open_count: 7, open_findings: [], findings: [resolvedOnly], ...health })
+  const t = readingText(raw)
+  assert.match(t, /7 still need attention/, 'the authoritative positive count disappeared')
+  assert.doesNotMatch(t, /No open findings/, 'an empty open slice was reported as a global absence')
+  assert.doesNotMatch(t, /showing the most recent resolved ones/)
+  assert.match(raw, /data-testid="quality-history-gap"/, 'the gap between the count and the slice is not named')
+  assert.match(t, /came back empty/)
+})
+
+check('an unreported count never claims that nothing is open', { ...pq, open_count: undefined, open_findings: undefined, findings: [resolvedOnly], ...health }, () => {
+  const raw = render({ ...pq, open_count: undefined, open_findings: undefined, findings: [resolvedOnly], ...health })
+  const t = readingText(raw)
+  assert.match(t, /open count not reported/)
+  assert.doesNotMatch(t, /No open findings/, 'an unknown count was rendered as a global absence')
+  assert.doesNotMatch(t, /showing the most recent resolved ones/)
+  assert.match(raw, /data-testid="quality-history-unknown"/)
+})
+
+check('a matched zero still reads as nothing open, with history captioned', { ...pq, open_count: 0, open_findings: [], findings: [resolvedOnly], ...health }, () => {
+  const raw = render({ ...pq, open_count: 0, open_findings: [], findings: [resolvedOnly], ...health })
+  const t = readingText(raw)
+  assert.match(t, /nothing open/)
+  assert.match(raw, /data-testid="quality-history-caption"/)
+  assert.match(t, /showing the most recent resolved ones/)
+  assert.doesNotMatch(raw, /data-testid="quality-history-gap"/)
+  assert.doesNotMatch(raw, /data-testid="quality-history-unknown"/)
+})
+
 // ── FQ-039 R2 (codex P2607-R2): an inherited property name is an unknown key, not a crash ─────────────────────
 
 for (const evil of ['__proto__', 'constructor', 'toString']) {

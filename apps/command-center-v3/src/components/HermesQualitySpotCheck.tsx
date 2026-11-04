@@ -38,6 +38,16 @@ export default function HermesQualitySpotCheck({ onDrill }: Props) {
   const findingsTotal: number = typeof pq?.total === 'number' ? pq.total : findings.length
   const showingOpen = open.length > 0
   const recent = (showingOpen ? open : findings).slice(0, 8)
+  // FQ-039 R3 (codex P2607-R3): "no open findings" is a claim about the whole queue, and only the producer's own
+  // count can support it. A positive count with an empty returned slice is a gap between two reads — the count and
+  // the rows are three separate reads on the server — and an unreported count is unknown. Both describe what the
+  // list below actually is instead of asserting an absence they cannot see.
+  const historyCaption: { testid: string; text: string } | null = showingOpen ? null
+    : openCount === 0
+      ? { testid: 'quality-history-caption', text: 'No open findings — showing the most recent resolved ones.' }
+      : openCount != null
+        ? { testid: 'quality-history-gap', text: `The count says ${countText(openCount)} still need attention, but the open list came back empty — the findings below are the most recent ones, not the open set.` }
+        : { testid: 'quality-history-unknown', text: 'The open count was not reported, so the list below is the most recent findings — this is not proof that nothing is open.' }
   const crit = recent.filter(f => String(f.severity || '').toLowerCase() === 'critical').length
   const warn = recent.filter(f => String(f.severity || '').toLowerCase() === 'warning').length
 
@@ -91,9 +101,9 @@ export default function HermesQualitySpotCheck({ onDrill }: Props) {
         <>
         {/* FQ-039 R1: when nothing is open, say that the list below is history — never let resolved findings read as
             outstanding work. */}
-        {!showingOpen && (
-          <div data-testid="quality-history-caption" style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginBottom: 4 }}>
-            No open findings — showing the most recent resolved ones.
+        {historyCaption && (
+          <div data-testid={historyCaption.testid} style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginBottom: 4 }}>
+            {historyCaption.text}
           </div>
         )}
         {recent.map((f, i) => (
