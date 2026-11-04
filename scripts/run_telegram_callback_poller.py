@@ -218,8 +218,11 @@ def _record_operator_reply(msg: dict, text: str, chat_id: str, *, replies_dir=No
     Two defects cx-openai-4 found on 2026-11-03 shaped this:
 
     * **The room is not the operator (R1).** Being in the allowlisted chat used to be enough, so any member
-      of an allowed supergroup could type as the operator. The reply path now requires a PRIVATE chat whose
-      ``from.id`` equals the chat id — an unknown or group sender is refused, never recorded.
+      of an allowed supergroup could type as the operator. The reply path now requires the SENDER to be an
+      operator user id — ``market_risk_ack_telegram.operator_from_ids`` (``TRADEAI_OPERATOR_FROM_IDS`` when set,
+      else the positive/private allowlisted ids). A group id is never an operator, and a message with no
+      ``from`` is refused rather than trusted; either way it is never recorded. The chat must also be
+      allowlisted (``refused_chat``), but the room alone authenticates nobody.
     * **A failed write must not lose the reply (R2).** The caller commits the update checkpoint only after
       this returns; on an inbox failure the record goes to a durable pending queue and is flushed later. If
       even that fails the status is ``failed`` and the caller must NOT advance the checkpoint, so Telegram
@@ -375,7 +378,6 @@ def poll_once(timeout=25):
     allowed = _allowed_chats()
     processed = 0
 
-    reply_handoff_failed = False
     for update in results:
         uid = update.get("update_id")
 
@@ -403,7 +405,7 @@ def poll_once(timeout=25):
             if reply_status == "failed":
                 log.error(f"operator reply neither recorded nor queued; stopping the batch before any "
                           f"checkpoint (update {uid})")
-                reply_handoff_failed = True
+                # the batch stops; the caller must not advance the checkpoint (R2b)
                 break
 
         # (the early coordinator copy lives above this point, before any checkpoint can commit)
@@ -572,7 +574,7 @@ def poll_once(timeout=25):
             outcome_status = _record_operator_outcome(msg, text, chat_id, handled=handled)
             if outcome_status == "failed":
                 log.error(f"operator reply outcome neither recorded nor queued; stopping the batch (update {uid})")
-                reply_handoff_failed = True
+                # same contract as the message line: a lost outcome is not a reason to keep going
                 break
 
         # Legacy path: inbound event is persisted; advance the durable

@@ -276,3 +276,32 @@ def test_redaction_is_narrow_and_never_mangles_ordinary_prose():
     # the credential parameters we claim to catch, case-insensitively, in a query string or a form paste
     for key in ("code", "access_token", "refresh_token", "id_token", "api_key", "client_secret", "password", "token"):
         assert redact_credentials(f"{key}=VALUE123") == f"{key}=[redacted]"
+
+
+# ── behavioural F3: the pair is produced by the real poll loop, not by calling the writers directly ──
+
+
+def test_a_command_through_poll_once_leaves_a_paired_outcome_line(tmp_path, monkeypatch):
+    """The source-text test asserts the call site exists; this drives it. A handled command must leave BOTH lines,
+    paired by message_id, with the outcome saying it was handled — and only then may the checkpoint advance."""
+    from scripts import run_telegram_callback_poller as P
+    handled_calls = []
+    monkeypatch.setattr(P, "_handle_proposal_command", lambda msg, text, chat_id: handled_calls.append(text))
+    commits, records, _ = _drive_updates(monkeypatch, tmp_path,
+                                         [_msg(910, 5, text="/ptapprove 42")],
+                                         inbox_blocked=False, queue_blocked=False, atomic=True)
+    rows = [json.loads(line) for line in records]
+    assert len(rows) == 2, rows
+    assert rows[0]["message_id"] == 5 and "event" not in rows[0]
+    assert rows[1]["event"] == "outcome" and rows[1]["message_id"] == 5 and rows[1]["handled"] is True
+    assert handled_calls == ["/ptapprove 42"]
+    assert commits == [910]          # the durable checkpoint advanced only after the pair was written
+
+
+def test_a_plain_message_through_poll_once_is_recorded_as_not_handled(tmp_path, monkeypatch):
+    commits, records, _ = _drive_updates(monkeypatch, tmp_path, [_msg(911, 6, text="please re-read WORKERS.md")],
+                                         inbox_blocked=False, queue_blocked=False, atomic=True)
+    rows = [json.loads(line) for line in records]
+    assert rows[0]["text"] == "please re-read WORKERS.md" and "event" not in rows[0]
+    assert rows[1]["event"] == "outcome" and rows[1]["handled"] is False
+    assert commits == [911]
