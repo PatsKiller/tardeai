@@ -48,7 +48,8 @@ for (const width of [1440, 412, 390]) for (const spec of PAGES) {
     await expect(heading).toBeVisible()
     const clocks = page.getByRole('region', { name: 'Source clocks' })
     await expect(clocks).toBeVisible()
-    await expect(clocks).toContainText('Writer ACTIVE')
+    // FQ-051: the card reads "Refreshing"; the writer's own state code is inside Diagnostics.
+    await expect(clocks).toContainText('Refreshing')
     await expect(clocks).toContainText('Last successful run')
     const decisions = page.getByRole('region', { name: 'Decisions for you' })
     await expect(decisions.getByRole('link', { name: /Approvals waiting on you/ })).toHaveAttribute('href', /\/approvals$/)

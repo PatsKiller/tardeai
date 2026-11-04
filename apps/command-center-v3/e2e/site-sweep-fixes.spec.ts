@@ -192,7 +192,7 @@ test.describe('phone: DeskPage clocks + analyst report confirm', () => {
       const { posts, other } = await serveBundle(page)
       await page.goto(ORIGIN + '/v3/home')
       const clocks = page.getByRole('region', { name: 'Source clocks' })
-      await expect(clocks.getByText('Writer ACTIVE').first()).toBeVisible()
+      await expect(clocks.getByText('Refreshing').first()).toBeVisible()
       expect(await rawIsoTexts(clocks)).toEqual([])
       await expect(clocks).not.toContainText(/Updated update/i)
       const cio = clocks.locator('article', { hasText: 'CIO record' })
