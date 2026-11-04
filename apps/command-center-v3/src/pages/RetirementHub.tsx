@@ -121,7 +121,11 @@ export default function RetirementHub({ onDrill }: Props) {
               <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
                 <Metric label="Window" value={`${golden.start_year}–${golden.end_year}`} />
                 <Metric label="Annual conversion" value={fmt$(golden.annual_conversion ?? 0, 0)} color="#f59e0b" />
-                <Metric label="Bracket ceiling" value={golden.bracket_ceiling ?? '—'} />
+                {/* FQ-082: a bare '—' stood in for an unknown bracket ceiling with no explanation (operator page audit). */}
+                <Metric label="Bracket ceiling" value={golden.bracket_ceiling ?? 'Not set'}
+                  note={golden.bracket_ceiling == null
+                    ? 'No bracket ceiling is set for this window, so a conversion has no upper limit to work to — set one in the plan or the conversion is unbounded.'
+                    : undefined} />
               </div>
             ) : <div style={{ fontSize: 11, color: 'var(--text3)' }}>No window configured.</div>}
             <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 10, lineHeight: 1.5 }}>
@@ -237,11 +241,13 @@ export default function RetirementHub({ onDrill }: Props) {
   )
 }
 
-function Metric({ label, value, color = 'var(--text0)' }: { label: string; value: any; color?: string }) {
+function Metric({ label, value, color = 'var(--text0)', note }: { label: string; value: any; color?: string; note?: string }) {
   return (
     <div>
       <div style={{ fontSize: 8.5, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 800 }}>{label}</div>
       <div style={{ fontSize: 15, fontWeight: 900, color, marginTop: 2 }}>{value || '—'}</div>
+      {/* FQ-082: an unexplained placeholder is a silence; the note says what the value means when it is absent. */}
+      {note && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2, maxWidth: 260, lineHeight: 1.4 }}>{note}</div>}
     </div>
   )
 }
