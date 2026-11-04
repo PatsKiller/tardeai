@@ -171,7 +171,7 @@ function N8nTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
 
 /** The operator view: what is live, what needs him, what is stuck and who fixes it (operator 2026-11-03). Every number
  *  carries its own clock or says in words that it has none; no code, SHA, branch or PR number appears here. */
-function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, flightError, loading, now,
+export function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, flightError, loading, now,
   flightLoading, flightStale, flightAnswered, coordStatus }: {
   s: Record<SectionKey, SectionView<any>>; rows: InFlightPr[]
   agents: Array<{ agent?: string | null; session?: string; task?: string | null; state?: string
@@ -206,7 +206,8 @@ function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, fli
   const flightNote = flightSrc.state === 'current' ? null : flightSrc.note   // above rows that ARE shown
   const agentsNote = agents.length && coordSrc.state !== 'current' ? coordSrc.note : null
   // codex R5: merged-but-not-live comes from the RELEASE payload, never from the open-PR list.
-  const waiting = mergedWaiting(s.next_release.value as any, s.serving.value as any, when)
+  const nextFresh = s.next_release?.state === 'OK'
+  const waiting = mergedWaiting(nextFresh ? (s.next_release.value as any) : null, s.serving.value as any, when)
   return <div data-testid="rs-operator-view" style={{ display: 'grid', gap: 12, minWidth: 0 }}>
     <section data-testid="rs-what-is-live" style={{ ...panel, gap: 6 }}>
       <ChipRow><Chip tone={status.tone} variant="solid">{status.tone === 'success' ? 'All good' : status.tone === 'danger' ? 'Needs attention' : 'Watch'}</Chip></ChipRow>
@@ -358,7 +359,8 @@ export default function ReleasesSchedules() {
     <OperatorView s={s} rows={flightRows} agents={flightAgents} generatedAt={api.data?.generated_at ?? null}
       flightAsOf={flightWire?.generated_at ?? null} coordAsOf={normalizeCoordination(flightWire?.coordination).as_of}
       flightError={flightError} loading={api.loading && !api.data} now={now}
-      flightLoading={!!flight.loading && !flightWire} flightStale={!!flight.stale} flightAnswered={!!flightWire}
+      flightLoading={!!flight.loading && !flightWire} flightStale={!!flight.stale}
+      flightAnswered={!!flightWire && Array.isArray((flightWire as any).prs)}
       coordStatus={normalizeCoordination(flightWire?.coordination).status} />
 
     <button type="button" id="rs-engineer-toggle" data-testid="rs-engineer-toggle" aria-expanded={eng} aria-controls="rs-engineer-details"
