@@ -2,10 +2,10 @@
   "schema": "CiGate@v1",
   "name": "watchlist_plain_words_20261104",
   "files": [
-    "apps/command-center-v3/src/lib/watchlistPlainWords.view.test.mjs"
+    "tests/test_watchlist_plain_words_20261104.py"
   ],
   "anchor": "WATCHLIST_PLAIN_WORDS_20261104",
   "comment": [
-    "ANCHOR: WATCHLIST_PLAIN_WORDS_20261104 — FQ-075: watchlist rows state their state in plain words (\"No provider or model assigned · no external call · no cost yet\", \"not scheduled\") instead of screaming policy/scheduling codes; an unknown reason code is shown de-coded (lower-case words), never raw. Nothing is removed. Hermetic: reads the page source, no browser, no network."
+    "ANCHOR: WATCHLIST_PLAIN_WORDS_20261104 — FQ-075: watchlist rows state their state in plain words \"No provider or model assigned · no external call · no cost yet\", \"not scheduled\" instead of screaming policy/scheduling codes; an unknown reason code is shown de-coded (lower-case words), never raw. Nothing is removed. Pytest-collectable so the CI shard runner executes it (a .mjs file cannot be collected); apps/command-center-v3/src/lib/watchlistPlainWords.view.test.mjs mirrors it for a node run."
   ]
 }
