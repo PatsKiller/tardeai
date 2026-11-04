@@ -4616,9 +4616,15 @@
     },
     {
       "lane_id": "agent_nudge",
-      "env_names": [],
+      "env_names": [
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_COORD_DIR",
+        "TRADEAI_NUDGER_LEDGER",
+        "TRADEAI_NUDGER_STATE"
+      ],
       "env_allowlist_mode": "enforce",
-      "env_evidence": "scripts/agent_nudger.py imports only the standard library and shells out to `tmux ls|capture-pane|send-keys`. It reads no environment variable that a live value would matter for: the state, ledger, config and coordination paths come from TRADEAI_STATE_ROOT (a base name) or explicit flags, and HOME/PATH are base names. An empty list therefore declares, rather than hides, that this lane needs nothing beyond the executor's base set.",
+      "env_evidence": "scripts/agent_nudger.py: the literal reads are TRADEAI_STATE_ROOT (state default), TRADEAI_NUDGER_STATE and TRADEAI_NUDGER_LEDGER (per-file overrides) and TRADEAI_COORD_DIR (the coordinator dir named in the prompt); the safe_flock wrapper adds PROJECT_ROOT and SAFE_FLOCK_LOG_DIR, and HOME/PATH come from the executor's base set. Standard library only, no .env loader, no DB, no network. Five declared names, all literals at module scope.",
       "source": "Board item 16 / P2 of docs/ops/NUDGER_N8N_MIGRATION_PROPOSAL_20261103.md (2026-11-03). SHADOW ONLY: scheduler.stage shadow in config/lane_registry.json, dispatch.mode dry_run, live_arg present but unreachable until the stage is flipped by an operator-approved PR (the stage clamp in scripts/lib/lane_stage_clamp.py forces dry_run whatever is requested). The live host timer keeps doing the real work throughout P2; this lane only records what it would have done. The script's own default is dry run and --dry-run names it explicitly, because the dispatcher's shadow step requires a non-empty dry_run_arg.",
       "command": [
         "$PY",
