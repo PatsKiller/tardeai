@@ -273,7 +273,7 @@ def cio_verdict_index(payload: Any) -> dict[tuple[str, Optional[str]], dict[str,
     rows = p.get("position_decisions") if isinstance(p, dict) else None
     if not isinstance(rows, list):
         raise SourceUnavailable("CIO capital plan has no position_decisions list")
-    out: dict[tuple[str, Optional[str]], dict[str, Any]] = {}
+    out: dict[str, dict[Any, dict[str, Any]]] = {"by_account": {}, "aggregate": {}}
     for r in rows:
         if not isinstance(r, dict):
             continue
@@ -284,14 +284,20 @@ def cio_verdict_index(payload: Any) -> dict[tuple[str, Optional[str]], dict[str,
             "stance": r.get("cio_stance") or r.get("action") or r.get("stance"),
             "why": r.get("why_now"),
             "funding": r.get("funding"),
-            "as_of": r.get("as_of") or p.get("as_of") or p.get("computed_at"),
+            # The decision's OWN evidence clock. The plan envelope says when the plan was built; using it here stamped
+            # a decision made in 2029 as if it were made now (cx-openai-2, P1 FAIL 3). No fallback.
+            "as_of": (r.get("decision_generated_at") or r.get("decided_at") or r.get("evidence_as_of")
+                      or r.get("decision_as_of") or r.get("as_of")),
         }
         accounts = r.get("accounts") if isinstance(r.get("accounts"), list) else []
         accounts = [a for a in accounts if a] or ([r.get("account")] if r.get("account") else [])
-        for a in accounts:
-            out[(sym, str(a))] = verdict
-        if not accounts:
-            out.setdefault((sym, None), verdict)
+        if len(accounts) == 1:
+            # Only an explicitly single-account decision is that account's verdict.
+            out["by_account"][(sym, str(accounts[0]))] = verdict
+        else:
+            # A decision covering several accounts, or none, is an aggregate: it is NOT any one account's verdict, and
+            # copying it onto each account is the cross-account bleed the operator ruled out (FAIL 2).
+            out["aggregate"].setdefault(sym, verdict)
     return out
 
 
@@ -299,25 +305,34 @@ def cio_clause(index: Optional[dict], symbol: str, accounts: Any, as_of: Optiona
     """One sentence naming the CIO verdict for each account, or saying there is none.
 
     ``index is None`` means the CIO source could not be read: say that, never a verdict of our own.
+    Only an explicit per-account verdict is ever attributed to an account. A decision that covers several accounts or
+    none is reported as an aggregate and is never presented as this account's verdict.
     """
     sym = str(symbol or "").upper()
     if index is None:
         return "The CIO verdict for this position could not be read (capital plan unavailable)."
+    by_account = index.get("by_account") or {}
+    aggregate = (index.get("aggregate") or {}).get(sym)
     accts = [a for a in (accounts or []) if a]
     if not accts:
         accts = [None]
     seen: list[str] = []
     when = ""
     for a in accts:
-        v = index.get((sym, str(a) if a else None)) or index.get((sym, None))
+        v = by_account.get((sym, str(a))) if a else None
         label = _acct_name(a) if a else "account unknown"
         if v and v.get("stance"):
             seen.append(f"{label}: {v['stance']}")
-            when = when or str(v.get("as_of") or as_of or "")
+            when = when or str(v.get("as_of") or "")
         else:
-            seen.append(f"{label}: no CIO verdict on record")
-    text = "CIO verdict" + (f" ({when})" if when else "") + " — " + "; ".join(seen)
-    return text + "."
+            seen.append(f"{label}: no per-account CIO verdict on record")
+    text = "CIO verdict" + (f" ({when})" if when else " (decision time not recorded)") + " — " + "; ".join(seen) + "."
+    if aggregate and aggregate.get("stance") and not any(by_account.get((sym, str(a))) for a in accts if a):
+        # Named as the plan's aggregate, explicitly NOT any account's verdict.
+        agg_when = f" ({aggregate['as_of']})" if aggregate.get("as_of") else " (time not recorded)"
+        text += (f" The plan carries an aggregate {aggregate['stance']}{agg_when}"
+                 " that is not attributable to an account.")
+    return text
 
 
 def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any = None,
@@ -493,7 +508,7 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
                 "P1",
                 f"{len(no_stop)} position{'s' if len(no_stop) != 1 else ''} with no stop",
                 f"{shown} · {_usd(unprot_value)} in total. Basis: {basis}.",
-                "Set stops",
+                "Open risk",
                 R_RISK,
                 src,
                 money=unprot_value,
@@ -944,7 +959,22 @@ def build(
     if "cio" in sources and sources["cio"].get("status") == "OK":
         try:
             cio_index = cio_verdict_index(payloads.get("cio"))
-            sources["cio"]["verdicts"] = len(cio_index)
+            sources["cio"]["verdicts"] = len(cio_index["by_account"])
+            sources["cio"]["aggregate_verdicts"] = len(cio_index["aggregate"])
+            clocks = [str(v.get("as_of")) for v in cio_index["by_account"].values() if v.get("as_of")]
+            if clocks:
+                oldest = min(clocks)
+                sources["cio"]["evidence_as_of"] = oldest
+                t_old = _parse(oldest)
+                if t_old is not None:
+                    age = (now - t_old).total_seconds()
+                    if age > STALE_AFTER_S.get("cio", 900):
+                        sources["cio"]["evidence_stale"] = True
+                        sources["cio"]["stale"] = True
+                    elif age < -300:
+                        # Evidence dated in the future cannot be trusted as fresh either.
+                        sources["cio"]["evidence_as_of_future"] = True
+                        sources["cio"]["stale"] = True
         except Exception as exc:  # noqa: BLE001 — a malformed plan is UNAVAILABLE, never "no verdicts"
             sources["cio"].update(status="UNAVAILABLE", error=str(exc)[:200])
     if "risk" in payloads:

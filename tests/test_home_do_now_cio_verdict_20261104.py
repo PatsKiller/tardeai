@@ -107,7 +107,7 @@ def test_two_accounts_each_get_their_own_verdict():
 
 def test_no_cio_verdict_is_stated_as_absent_not_replaced():
     why = _why(_build(_risk(_pos("SPCX")), _plan([])), "stop:SPCX")
-    assert "no CIO verdict on record" in why
+    assert "no per-account CIO verdict on record" in why
     for stance in ("TRIM", "HOLD", "BUY", "SELL", "EXIT"):
         assert stance not in why, (stance, why)
 
@@ -115,7 +115,7 @@ def test_no_cio_verdict_is_stated_as_absent_not_replaced():
 def test_unreadable_plan_is_said_differently_from_a_missing_verdict():
     why = _why(_build(_risk(_pos("SPCX")), H.SourceUnavailable("plan unreadable")), "stop:SPCX")
     assert "could not be read" in why
-    assert "no CIO verdict on record" not in why
+    assert "no per-account CIO verdict" not in why
 
 
 def test_a_malformed_plan_is_unavailable_not_an_empty_verdict_list():
@@ -157,3 +157,54 @@ def test_the_cio_source_uses_the_plans_own_as_of():
     assert src["status"] == "OK"
     assert src["as_of"] == PLAN_AS_OF
     assert src["as_of_basis"] == "capital_plan.as_of"
+
+
+# ── cx-openai-2 re-review at 89d938197: three semantic defects ─────────────────────────────────────────────────
+
+
+def test_the_projection_never_authors_an_instruction():
+    """The surface renders; it does not tell the operator what to do. "Set stops" was ours, not the CIO's."""
+    out = _build(_risk(_pos("SPCX", stop=None, triggered=False, value=50_000.0)), _plan([]))
+    labels = [i["action"]["label"] for i in out["items"]]
+    assert labels, "no items built"
+    for label in labels:
+        assert "set stops" not in label.lower(), label
+
+
+def test_an_accountless_verdict_is_never_presented_as_an_accounts_verdict():
+    """An unscoped TRIM must not become "Demo IRA: TRIM" — that is the cross-account bleed the operator ruled out."""
+    plan = _plan([{"symbol": "SPCX", "cio_stance": "TRIM", "why_now": "Advisory TRIM", "as_of": PLAN_AS_OF}])
+    why = _why(_build(_risk(_pos("SPCX", account="schwab_taxable")), plan), "stop:SPCX")
+    assert "Schwab Individual: TRIM" not in why, why
+    assert "no per-account CIO verdict on record" in why, why
+    assert "aggregate TRIM" in why, why          # named as the plan's aggregate, not as this account's
+    assert "not attributable to an account" in why, why
+
+
+def test_a_multi_account_verdict_is_an_aggregate_not_a_clone():
+    risk = _risk(_pos("SPCX", account="schwab_taxable"), _pos("SPCX", value=5_000.0, account="moomoo"))
+    plan = _plan([{"symbol": "SPCX", "accounts": ["schwab_taxable", "moomoo"], "cio_stance": "TRIM"}])
+    why = _why(_build(risk, plan), "stop:SPCX")
+    assert "Schwab Individual: TRIM" not in why and "Moomoo: TRIM" not in why, why
+    assert "aggregate TRIM" in why, why
+
+
+def test_old_decision_evidence_is_not_stamped_with_the_plans_clock():
+    """A decision made long before the plan was built keeps its own time, and the source says the evidence is old."""
+    old = "2025-08-01T12:00:00+00:00"
+    plan = _plan([{"symbol": "SPCX", "account": "schwab_taxable", "cio_stance": "TRIM", "decision_generated_at": old}],
+                 as_of=PLAN_AS_OF)
+    out = _build(_risk(_pos("SPCX")), plan)
+    why = _why(out, "stop:SPCX")
+    assert old in why, why
+    assert PLAN_AS_OF not in why, why
+    assert out["sources"]["cio"]["evidence_as_of"] == old
+    assert out["sources"]["cio"]["stale"] is True
+    assert out["sources"]["cio"]["evidence_stale"] is True
+
+
+def test_a_verdict_with_no_clock_says_so_rather_than_borrowing_one():
+    plan = _plan([{"symbol": "SPCX", "account": "schwab_taxable", "cio_stance": "TRIM"}])
+    why = _why(_build(_risk(_pos("SPCX")), plan), "stop:SPCX")
+    assert "TRIM" in why and PLAN_AS_OF not in why, why
+    assert "decision time not recorded" in why, why
