@@ -112,8 +112,12 @@ def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: l
     page.on("console", lambda m: console.append(m.text[:200]) if m.type == "error" else None)
     page.on("pageerror", lambda e: console.append(f"PAGEERROR: {str(e)[:200]}"))
 
+    from site_audit.capture_root import assert_inside_root
     d = out / slug(route)
     d.mkdir(parents=True, exist_ok=True)
+    # codex R1 (2026-11-04): a pre-existing symlink here can point inside the checkout. Resolve the
+    # directory and refuse before the first byte is written, so a capture can never enter the repo.
+    d = assert_inside_root(d, out)
     row = {"route": route, "label": label, "viewport": vp, "url": base + route}
     t0 = time.time()
     try:
@@ -167,6 +171,21 @@ def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: l
     return row
 
 
+def resolve_output_dir(out_arg: str | None, stamp: str, *, repo_root: Path | str | None = None) -> Path:
+    """The capture directory, refused unless it resolves outside the checkout.
+
+    codex R1 (2026-11-04): `--out` used to skip the boundary entirely, so an argument could place a
+    capture inside the public repository. Both branches now go through the same resolved-path check,
+    and this function exists so the guarantee can be probed without launching a browser.
+    """
+    from site_audit.capture_root import assert_capture_root, configured_capture_root
+    root = repo_root if repo_root is not None else REPO
+    out = (assert_capture_root(out_arg, repo_root=root) if out_arg
+           else configured_capture_root(repo_root=root) / f"page-audit-{stamp}")
+    out.mkdir(parents=True, exist_ok=True)
+    return assert_capture_root(out, repo_root=root)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default="http://127.0.0.1:7777/v3")
@@ -180,9 +199,7 @@ def main() -> int:
         prev = json.load(open(a.only_failed_from))
         a.only = {(r["viewport"], r["route"]) for r in prev["index"] if r.get("error")}
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%MZ")
-    from site_audit.capture_root import configured_capture_root
-    out = Path(a.out) if a.out else (configured_capture_root(repo_root=REPO) / f"page-audit-{stamp}")
-    out.mkdir(parents=True, exist_ok=True)
+    out = resolve_output_dir(a.out, stamp)
     from playwright.sync_api import sync_playwright
     rows = []
     with sync_playwright() as p:

@@ -4,7 +4,8 @@
   "files": [
     "tests/test_site_audit_deep_crawl_20261104.py",
     "tests/test_site_audit_deep_crawl_step_20261104.py",
-    "tests/test_site_audit_lane_20261104.py"
+    "tests/test_site_audit_lane_20261104.py",
+    "tests/test_site_audit_guarantees_20261104.py"
   ],
   "anchor": "SITE_AUDIT_DEEP_CRAWL_20261104",
   "comment": [
@@ -12,6 +13,8 @@
     "level, and still never presses an action. Tests pin the label/role denylist, the weekly-rotating detail budget",
     "(all rows on Home and top lists, 20 elsewhere), the completeness rule (a top-list card missing a technical or",
     "the CIO thesis is P1), the structural rule that a capture root inside the repo is refused and ignored,",
-    "and the lane: Mon/Wed/Fri/Sat 06:30 ET + Sun 21:00 ET, a 48 h ceiling proven over a year, and a session rotation that covers every week."
+    "and the lane: Mon/Wed/Fri/Sat 06:30 ET + Sun 21:00 ET, a 48 h ceiling proven over a year, and a session rotation that covers every week.",
+    "The guarantee probes are executed, not greps: a live Approve target is refused before click, and a",
+    "symlinked page directory or an --out inside the checkout is refused before a byte is written (codex R1/R2)."
   ]
 }

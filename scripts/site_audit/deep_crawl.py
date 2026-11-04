@@ -95,6 +95,45 @@ def sampled_openers(openers: Iterable[dict[str, Any]], indices: Iterable[int]) -
     return [rows[i] for i in sorted({int(i) for i in indices if 0 <= int(i) < len(rows)})]
 
 
+DETAIL_SELECTORS = ("[role='dialog']", "[data-testid$='-sheet']", "[data-testid$='-detail']", "[data-testid$='-modal']")
+
+
+def _live_label_role(target: Any) -> tuple[str, str] | None:
+    """The label and role of the element that will ACTUALLY be clicked, or None when unreadable.
+
+    codex R2 (2026-11-04): the plan-time guard checked metadata supplied by discovery. A selector can
+    resolve to a different node — or the discovery itself can be wrong — and the synthetic Approve button
+    was activated. The guard is therefore re-run on the live element immediately before the click, and an
+    element whose label/role cannot be read is refused rather than clicked to find out.
+    """
+    try:
+        role = str(target.get_attribute("role") or "").strip().lower()
+        tag = str(target.evaluate("e => e.tagName.toLowerCase()") or "").strip().lower()
+        if not role:
+            if tag == "button":
+                role = "button"
+            elif tag == "a":
+                role = "link"
+            elif tag in ("input", "summary"):
+                role = "button"
+        label = target.get_attribute("aria-label") or target.inner_text() or ""
+        return str(label).strip(), role
+    except Exception as exc:  # noqa: BLE001 — unreadable target is refused, never clicked
+        _log.debug("could not read the click target: %s", exc)
+        return None
+
+
+def _detail_is_open(page: Any) -> bool:
+    for sel in DETAIL_SELECTORS:
+        try:
+            if page.locator(sel).first.is_visible(timeout=500):
+                return True
+        except Exception as exc:  # noqa: BLE001 — an absent selector is a normal "not open"
+            _log.debug("detail selector %s was not visible: %s", sel, exc)
+            continue
+    return False
+
+
 def crawl_plan(openers: Iterable[dict[str, Any]], indices: Iterable[int]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Split sampled openers into what may be opened and what is refused, with a reason. Never silent."""
     allowed: list[dict[str, Any]] = []
@@ -123,9 +162,24 @@ def capture_page(page: Any, *, route: str, page_url: str, indices: Iterable[int]
         rec = DetailRecord(opener=str(item.get("selector") or item.get("label") or ""), label=str(item.get("label") or ""), opened=False)
         try:
             locator = page.locator(str(item.get("selector") or ""))
-            locator.first.click(timeout=5000)
+            target = locator.first
+            live = _live_label_role(target)
+            if live is None:
+                details.append(DetailRecord(**{**rec.__dict__, "skipped_reason": "unreadable click target — refused"}))
+                refused.append({**item, "reason": "the target's label/role could not be read; not clicked"})
+                continue
+            live_label, live_role = live
+            if not safe_to_open(live_label, live_role):
+                details.append(DetailRecord(**{**rec.__dict__, "label": live_label,
+                                               "skipped_reason": f"refused at click time: {live_role} {live_label!r}"}))
+                refused.append({**item, "label": live_label, "role": live_role,
+                                "reason": "the live element carries an action label — §6 never presses an action"})
+                continue
+            target.click(timeout=5000)
             page.wait_for_timeout(400)
-            details.append(DetailRecord(**{**rec.__dict__, "opened": True}))
+            opened = _detail_is_open(page)
+            details.append(DetailRecord(**{**rec.__dict__, "label": live_label or rec.label, "opened": opened,
+                                           "skipped_reason": None if opened else "clicked but no detail appeared"}))
         except Exception as exc:  # noqa: BLE001 — an opener that does not open is a finding, not a crash
             details.append(DetailRecord(**{**rec.__dict__, "skipped_reason": f"{type(exc).__name__}"}))
         finally:

@@ -43,3 +43,17 @@ def configured_capture_root(*, repo_root: Path | str) -> Path:
     if not raw:
         raise CaptureRootRefused(f"{CAPTURE_ROOT_ENV} is not set: the capture root is configuration, not code")
     return assert_capture_root(raw, repo_root=repo_root)
+
+
+def assert_inside_root(path: Path | str, root: Path | str) -> Path:
+    """Return the resolved path, or refuse when it left the capture root.
+
+    The root check alone is not enough (codex R1, 2026-11-04): a per-page directory can already exist as a symlink
+    whose target is inside the checkout, and `--out` used to skip the root check entirely. Both are refused here, on
+    the RESOLVED path, so a symlinked descendant cannot smuggle a capture into the repository.
+    """
+    resolved = Path(path).expanduser().resolve()
+    base = Path(root).expanduser().resolve()
+    if resolved != base and base not in resolved.parents:
+        raise CaptureRootRefused(f"capture path {resolved} is outside the capture root {base}")
+    return resolved

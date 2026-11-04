@@ -51,8 +51,26 @@ class FakePage:
             def first(self):
                 return self
 
+            # The guard runs on the live element (codex R2): these fakes expose the same surface.
+            def get_attribute(self, name):
+                if name == "role":
+                    return "button"
+                if name == "aria-label":
+                    return selector.lstrip("#").replace("-", " ").title() if selector != "#unlabelled" else None
+                return None
+
+            def inner_text(self):
+                return "" if selector == "#unlabelled" else selector.lstrip("#").replace("-", " ").title()
+
+            def evaluate(self, _js):
+                return "button"
+
             def click(self, timeout=None):
                 page.clicks.append(selector)
+
+            def is_visible(self, timeout=None):
+                # A safe click opens a dialog in this fake; a refused one never runs.
+                return True
 
         return _L()
 
