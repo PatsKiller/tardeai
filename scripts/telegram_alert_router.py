@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import re
+import contextvars
 import time
 import uuid
 import yaml
@@ -669,6 +670,25 @@ def _recovery_claim_lock(day: str, key: str) -> Path:
 #: The lock-owner token this process holds per case-day. Release/deliver must not unlink a lock
 #: that belongs to another claimant (cx3 R5-F2: a stale actor must not reopen someone else's case).
 _RECOVERY_CLAIM_OWNERS: dict[str, str] = {}
+#: The attempt this execution is acting for. The owner map is keyed by case/day, so a reclaimed
+#: attempt overwrites the token and a STALE attempt's settle used to pop the NEWEST one and release
+#: a page another attempt is delivering (cx3 R8-F2). A settle now proves it owns the generation it is
+#: settling by comparing this token, not by trusting the map's current value.
+_RECOVERY_ATTEMPT: "contextvars.ContextVar[str | None]" = contextvars.ContextVar(
+    "recovery_attempt_owner", default=None)
+
+
+def _recovery_attempt_matches(day: str, key: str) -> bool:
+    """True when this execution's attempt token is the one the map currently holds.
+
+    No token (a caller outside the claim path) keeps the pre-fix behaviour rather than becoming a
+    silent no-op: the map value is then the only evidence available.
+    """
+    attempt = _RECOVERY_ATTEMPT.get()
+    if attempt is None:
+        return True
+    current = _RECOVERY_CLAIM_OWNERS.get(f"{day}\x00{key}")
+    return current == attempt
 
 
 def _recovery_lock_owner(lock: Path) -> Optional[str]:
@@ -703,16 +723,26 @@ def _recovery_reclaim_guard():
         log.warning("recovery T1 reclaim mutex unusable (%s); proceeding unserialised (fail-open)",
                     type(exc).__name__)
         return "error", None
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError as exc:
-        os.close(fd)
-        if isinstance(exc, BlockingIOError) or getattr(exc, "errno", None) in (11, 13):
-            return "busy", None
-        log.warning("recovery T1 reclaim mutex flock failed (%s); proceeding unserialised (fail-open)",
-                    type(exc).__name__)
-        return "error", None
-    return "ok", fd
+    # Bounded blocking wait (cx3 R8-F1): failing instantly on a GLOBAL mutex let an unrelated case's
+    # contention abandon THIS case's settlement, and the corrected retry was then deduped for the
+    # whole lease. Wait for the mutex; a real timeout still returns "busy" so the caller can fall
+    # back to its owner-check-and-release path instead of dropping the release.
+    deadline = time.monotonic() + max(0.0, float(os.environ.get("TRADEAI_RECOVERY_MUTEX_WAIT_S", "2.0")))
+    while True:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return "ok", fd
+        except OSError as exc:
+            if not (isinstance(exc, BlockingIOError) or getattr(exc, "errno", None) in (11, 13)):
+                os.close(fd)
+                log.warning("recovery T1 reclaim mutex flock failed (%s); proceeding unserialised (fail-open)",
+                            type(exc).__name__)
+                return "error", None
+            if time.monotonic() >= deadline:
+                os.close(fd)
+                return "busy", None
+            time.sleep(0.01)
+    return "ok", fd  # unreachable: the loop returns on every path
 
 
 def recovery_t1_state(message: str) -> str:
@@ -793,6 +823,9 @@ def recovery_t1_claim(message: str) -> bool:
         return False
     if held:
         _RECOVERY_CLAIM_OWNERS[f"{day}\x00{key}"] = owner
+        # Bind this execution to the generation it just created, so a later settle can prove it is
+        # settling ITS attempt rather than whichever attempt is newest when it happens to run.
+        _RECOVERY_ATTEMPT.set(owner)
     _recovery_append(day, key, "claimed")
     return True
 
@@ -806,11 +839,14 @@ def recovery_t1_mark_delivered(message: str) -> None:
     # lock. The owner is re-read UNDER the mutex, so the decision is bound to the attempt generation.
     status, guard = _recovery_reclaim_guard()
     if status == "busy":
-        _RECOVERY_CLAIM_OWNERS.pop(f"{day}\x00{key}", None)
-        _recovery_append(day, key, "delivered")        # delivered is terminal whoever sends
-        return                                          # leave the live reclaimer's lock alone
+        # A GLOBAL mutex held by an unrelated case is not evidence that this case is being handled
+        # (cx3 R8-F1). The delivery is recorded either way — delivered is terminal — and the lock is
+        # only unlinked below after the owner check, which is safe without the mutex.
+        log.warning("recovery T1 reclaim mutex timed out; settling delivered unserialised")
     try:
         _recovery_append(day, key, "delivered")        # delivered is terminal whoever sends
+        if not _recovery_attempt_matches(day, key):
+            return                                      # a stale attempt must not settle the new one
         owner = _RECOVERY_CLAIM_OWNERS.pop(f"{day}\x00{key}", None)
         lock_owner = _recovery_lock_owner(lock)
         if lock_owner is None or lock_owner == owner:
@@ -832,11 +868,15 @@ def recovery_t1_release(message: str) -> None:
     lock = _recovery_claim_lock(day, key)
     status, guard = _recovery_reclaim_guard()
     if status == "busy":
-        _RECOVERY_CLAIM_OWNERS.pop(f"{day}\x00{key}", None)
-        return  # a peer is reclaiming/settling this case; do not touch its lock or its state
+        # The mutex is global; an unrelated case can hold it. Falling back to the owner-check below
+        # releases THIS case (a narrow race is strictly better than a never-delivered case), instead
+        # of abandoning the release and letting the retry be deduped for the whole lease (cx3 R8-F1).
+        log.warning("recovery T1 reclaim mutex timed out; releasing unserialised")
     try:
         # Under the mutex the owner re-read is authoritative: the lock at this path IS the generation
         # our release is settling. A stale actor that cached an older owner cannot free the fresh one.
+        if not _recovery_attempt_matches(day, key):
+            return  # this settle belongs to an older attempt; leave the current claim alone
         owner = _RECOVERY_CLAIM_OWNERS.pop(f"{day}\x00{key}", None)
         lock_owner = _recovery_lock_owner(lock)
         if lock_owner is not None and lock_owner != owner:
