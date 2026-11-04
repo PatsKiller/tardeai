@@ -124,7 +124,15 @@ export type CoordinationBlock = {
 export function prPipelineStage(pr: Pick<InFlightPr, 'has_operator_merge' | 'is_draft' | 'mergeable' | 'work'>): PipelineStage {
   const pub = pr.work?.publication_state
   if (pub === 'merged' || pub === 'live') return pub === 'merged' ? 'merged' : 'released'
-  if (pr.has_operator_merge) return 'in_batch'
+  // F2 (cx-openai-2): an operator approval is NOT a promise that the change will merge. It used to return 'in_batch'
+  // here, so a row the operator had approved but whose checks were RED (or that conflicted, or was still a draft)
+  // said "Merging in the next window" in one panel and "the checks failed" in another. Approval alone is a fact about
+  // the operator; whether it can merge is a fact about the change.
+  if (pr.has_operator_merge) {
+    const ready = !pr.is_draft && pr.mergeable !== 'CONFLICTING'
+      && pr.work?.review?.state === 'MERGE' && pr.work?.ci?.state === 'GREEN'
+    return ready ? 'in_batch' : 'approved'
+  }
   if (pr.is_draft || pub === 'local_only') return 'building'
   if (pr.mergeable === 'CONFLICTING') return 'pr_open'
   const review = pr.work?.review?.state

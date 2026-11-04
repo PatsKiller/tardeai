@@ -175,9 +175,37 @@ function N8nTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
  *  \`{}\` is an invalid response, not an empty one (codex round five): deriving this with \`!!wire\` made an
  *  invalid census render as "Nothing needs you" / "Nothing is stuck". The page calls THIS, and the test feeds
  *  \`{}\` through it rather than handing a pre-computed false to the child. */
+export const IN_FLIGHT_SCHEMA = 'DeployInFlight@v2'
+
+/** F1 (cx-openai-2): is this response a CENSUS the page may draw conclusions from?
+ *
+ *  It used to ask only "is there a prs array". A response can carry every field and still be a census the page must
+ *  not reason over: an unsupported schema, a wire that says STALE or UNAVAILABLE, a status that is not OK, rows the
+ *  normalizer DROPPED, or clocks in the past. Any of those makes completeness UNKNOWN — never empty.
+ *
+ *  ONE derivation, used by the operator view and the engineer board, so the two cannot disagree about one response.
+ */
+export function inFlightCensus(wire: unknown, transport: { stale?: boolean } = {}): {
+  answered: boolean; reason: string | null
+} {
+  const w = wire as { schema?: string; freshness?: string; status?: string; prs?: unknown;
+    generated_at?: string; coordination?: { status?: string } } | null | undefined
+  if (!w) return { answered: false, reason: 'no response' }
+  if (w.schema !== IN_FLIGHT_SCHEMA) return { answered: false, reason: `unsupported schema ${w.schema ?? 'none'}` }
+  const fresh = String(w.freshness ?? '').toUpperCase()
+  if (fresh && fresh !== 'OK') return { answered: false, reason: `the source says ${fresh.toLowerCase()}` }
+  const status = String(w.status ?? '').toUpperCase()
+  if (status && status !== 'OK' && status !== 'PARTIAL') return { answered: false, reason: `the source status is ${status.toLowerCase()}` }
+  if (transport.stale) return { answered: false, reason: 'the response is out of date' }
+  if (!Array.isArray(w.prs)) return { answered: false, reason: 'the response carries no usable list' }
+  const norm = normalizeRows(w.prs as unknown[])
+  if (norm.dropped) return { answered: false, reason: `${norm.dropped} row(s) could not be read` }
+  return { answered: true, reason: null }
+}
+
+/** Backwards-compatible thin wrapper: the boolean half of the same derivation. */
 export function flightAnswered(wire: unknown): boolean {
-  const w = wire as { prs?: unknown } | null | undefined
-  return !!w && Array.isArray(w.prs)
+  return inFlightCensus(wire).answered
 }
 
 export function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, flightError, loading, now,
@@ -239,8 +267,8 @@ export function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAs
           {needsYouFacts(p, needsYouAction(p)).warning
             ? <div style={{ ...muted, color: toneVars('warning').color }}>{needsYouFacts(p, needsYouAction(p)).warning}</div> : null}
           <div style={muted}>{needsYouAction(p).effect}</div>
-          <a href={needsYouAction(p).kind === 'approve' ? p.url : '/system/releases?engineer=1'}
-            style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', color: TOKENS.primary }}>{needsYouAction(p).label}</a>
+          <Link to={needsYouAction(p).kind === 'approve' ? p.url : '/system/releases?engineer=1'}
+            style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', color: TOKENS.primary }}>{needsYouAction(p).label}</Link>
         </div>))}
     </section>
 
@@ -299,7 +327,7 @@ export function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAs
     <section data-testid="rs-old-work" style={panel}>
       <h2 style={h2}>Old work</h2>
       <p style={muted}>The daily pull-request audit is not counted on this page, so no number is shown here rather than a guess.</p>
-      <a href="/coordination?rag=red" style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', color: TOKENS.primary }}>See the blocked and red work →</a>
+      <Link to="/coordination?rag=red" style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', color: TOKENS.primary }}>See the blocked and red work →</Link>
     </section>
 
     <section data-testid="rs-recent-releases" style={panel}>
@@ -369,7 +397,7 @@ export default function ReleasesSchedules() {
       flightAsOf={flightWire?.generated_at ?? null} coordAsOf={normalizeCoordination(flightWire?.coordination).as_of}
       flightError={flightError} loading={api.loading && !api.data} now={now}
       flightLoading={!!flight.loading && !flightWire} flightStale={!!flight.stale}
-      flightAnswered={flightAnswered(flightWire)}
+      flightAnswered={inFlightCensus(flightWire, { stale: !!flight.stale }).answered}
       coordStatus={normalizeCoordination(flightWire?.coordination).status} />
 
     <button type="button" id="rs-engineer-toggle" data-testid="rs-engineer-toggle" aria-expanded={eng} aria-controls="rs-engineer-details"

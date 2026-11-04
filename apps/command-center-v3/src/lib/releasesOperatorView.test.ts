@@ -242,5 +242,18 @@ check('known-merged + unknown census says it cannot tell whether an open change 
 check('no merged work + unknown census still says it cannot tell',
   goingLiveSentence(stuckStale, { known: true, waiting: false }) !== PANEL_NONE.going_live)
 
+
+// ---- F2 (cx-openai-2): an approval is not a promise that the change will merge
+const approvedRed = { number: 7, title: 't', url: 'u', head_sha: 'a'.repeat(40), head_sha_short: 'a',
+  branch: 'wt/x', has_operator_merge: true, mergeable: 'MERGEABLE', merge_state: 'CLEAN', is_draft: false,
+  why_held: null, next: 'auto-merge',
+  work: { present: true, owner: 'cc4', current_task: 't', publication_state: 'published', local_head: null,
+    published_head: null, review: { state: 'MERGE', reason: null }, ci: { state: 'RED', reason: null },
+    blockers: [], next_action: null, next_action_source: null, board_owner: null, as_of: '2026-11-04T14:00:00Z',
+    source: 's', reason: null } }
+const g = goingLive([approvedRed as any])
+check('approved-but-red is NOT shown as merging', !g.some(x => x.stage === 'merging'))
+check('approved-but-red says something honest', g.length === 1 && g[0].label !== 'Merging in the next window')
+
 console.log(`releasesOperatorView: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

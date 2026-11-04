@@ -9,7 +9,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router-dom'
 import React from 'react'
 
-const { OperatorView, flightAnswered } = await import('../pages/ReleasesSchedules.tsx')
+const { OperatorView, flightAnswered, inFlightCensus } = await import('../pages/ReleasesSchedules.tsx')
 
 let pass = 0, fail = 0
 const check = (name, cond, detail = '') => {
@@ -84,12 +84,19 @@ check('stale census: the page does not say nothing is stuck', !staleStuck.includ
 check('an invalid {} payload is NOT an answered census', flightAnswered({}) === false)
 check('a payload without prs is not answered', flightAnswered({ status: 'OK' }) === false)
 check('null is not answered', flightAnswered(null) === false)
-check('a payload WITH prs is answered (even when empty)', flightAnswered({ prs: [] }) === true)
+// F1: a census needs a supported schema and a fresh wire — a bare prs[] is not enough any more
+const VALID = { schema: 'DeployInFlight@v2', freshness: 'OK', status: 'OK', prs: [] }
+check('a validated empty census IS answered', flightAnswered(VALID) === true)
+check('an unsupported schema is NOT a census', flightAnswered({ ...VALID, schema: 'Unexpected@v9' }).valueOf() === false)
+check('a STALE wire is NOT a census', flightAnswered({ ...VALID, freshness: 'STALE' }) === false)
+check('an UNAVAILABLE wire is NOT a census', flightAnswered({ ...VALID, freshness: 'UNAVAILABLE' }) === false)
+check('a dropped member makes completeness UNKNOWN', inFlightCensus({ ...VALID, prs: [null] }).answered === false)
+check('a bare prs list is not a census', flightAnswered({ prs: [] }) === false)
 const viaInvalid = render({ flightAnswered: flightAnswered({}) })
 check('{} through the real derivation renders "cannot tell", never "nothing needs you"',
   viaInvalid.includes('Cannot tell') && !viaInvalid.includes('Nothing needs you.'))
 check('{} through the real derivation never says nothing is stuck', !viaInvalid.includes('Nothing is stuck right now.'))
-const viaEmpty = render({ flightAnswered: flightAnswered({ prs: [] }) })
+const viaEmpty = render({ flightAnswered: flightAnswered(VALID) })
 check('an empty prs list through the real derivation may say nothing needs you',
   viaEmpty.includes('Nothing needs you.'))
 
