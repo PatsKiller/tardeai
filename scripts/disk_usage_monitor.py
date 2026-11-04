@@ -39,12 +39,14 @@ MBI_BEHAVIOR = 0. No broker, no network, no Telegram import, no DB.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import json
 import os
 import re
 import sys
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping, Optional
@@ -646,6 +648,30 @@ def standing_hygiene_status(rules: Mapping, state_root: Optional[Path], previous
     return result
 
 
+@contextmanager
+def _state_lock(state_path: Path):
+    """Serialise the WHOLE read / decide / queue / write transition for this state identity.
+
+    cx-openai-2 (2026-11-04): two supported `--apply` processes could interleave, and atomic replacement only prevents
+    TORN json — it does not prevent a read-modify-write from overwriting a snapshot written by another process in
+    between. A run paused between its read and its write erased a `critical` band another run had just reported, so the
+    recovery was never emitted. The n8n wrapper flocks its own launcher; the documented direct CLI and the exported
+    run() take no lock, so they can race each other and the wrapped job.
+
+    The lock is keyed to the state FILE, so every entrypoint that writes this state takes the same lock — a new caller
+    inherits it by writing the same state, not by remembering to ask. Wall-clock time is never used to order writers:
+    a legitimate clock rollback is supported and must keep working.
+    """
+    lock_path = state_path.with_name(state_path.name + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "a+", encoding="utf-8") as fh:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+
 def run(
     *,
     rules: Mapping[str, Any],
@@ -655,12 +681,28 @@ def run(
     now: datetime,
     wall_start: Optional[datetime] = None,
 ) -> int:
+    """Every apply path goes through here, so it takes the state lock before reading the snapshot."""
+    state_path = R.runtime_dir(state_root) / rules["monitor"]["state_name"]
+    with _state_lock(state_path):
+        return _run_locked(rules=rules, state_root=state_root, ledger=ledger, apply=apply, now=now,
+                           wall_start=wall_start, state_path=state_path)
+
+
+def _run_locked(
+    *,
+    rules: Mapping[str, Any],
+    state_root: Optional[Path],
+    ledger: Optional[Path],
+    apply: bool,
+    now: datetime,
+    wall_start: Optional[datetime] = None,
+    state_path: Path,
+) -> int:
     run_started = time.monotonic()
     # the receipt's started_at is the real start (the executor binds it to the attempt window); `now` is the
     # logical clock for bands and idle math and may be injected
     wall_start = wall_start or datetime.now(timezone.utc)
     mon = rules["monitor"]
-    state_path = R.runtime_dir(state_root) / mon["state_name"]
     try:
         state = json.loads(state_path.read_text(encoding="utf-8"))
         if state.get("schema") != STATE_SCHEMA:

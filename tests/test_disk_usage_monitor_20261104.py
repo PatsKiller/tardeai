@@ -7,6 +7,8 @@ stays quiet.
 """
 import json
 import sys
+import time
+import threading
 
 import pytest
 from datetime import datetime, timedelta, timezone
@@ -224,3 +226,47 @@ def test_a_recovery_is_retained_for_the_inode_metric_too():
     pairs = [(0, "critical"), (60, "critical"), (75, "ok"), (120, "ok"), (180, "ok")]
     said = _drive(pairs, ino)
     assert said == [(0, "critical"), (60, "critical"), (120, "ok")], said
+
+
+def test_the_state_lock_serialises_two_apply_runs_and_is_keyed_to_the_state_file(tmp_path):
+    """cx-openai-2 R5, the lost-update: run A reads the snapshot, run B reports a critical band, A's stale write
+    replaces the whole file and erases B's reported band, so the recovery is never emitted. atomic_json_store prevents
+    TORN json, not a lost read-modify-write. This drives the real lock with two bodies that pause inside their
+    read/write window: without the lock their windows overlap and the later write wins; with it, the second body only
+    starts once the first has finished, so nothing written in between can be lost.
+
+    Scope, stated honestly: this proves the SERIALISATION property and that the lock is keyed to the state file. The
+    full two-OS-process reproduction is cx-openai-2's artifact, not this test."""
+    state = tmp_path / "disk_usage_monitor_state.json"
+    state.write_text('{"reported": "seed"}')
+    order, started = [], []
+
+    def body(name, pause, wrote):
+        with M._state_lock(state):                      # the same lock every apply entrypoint takes
+            started.append(name)
+            current = json.loads(state.read_text())     # read
+            time.sleep(pause)                           # decide/queue window
+            current["reported"] = wrote                # write
+            state.write_text(json.dumps(current))
+            order.append(name)
+
+    a = threading.Thread(target=body, args=("A", 0.25, "healthy"))
+    a.start()
+    deadline = time.monotonic() + 2.0
+    while "A" not in started and time.monotonic() < deadline:   # A is inside its window first
+        time.sleep(0.01)
+    b = threading.Thread(target=body, args=("B", 0.0, "critical"))
+    b.start()
+    a.join()
+    b.join()
+
+    assert order == ["A", "B"], f"the second body must wait for the first: {order}"
+    assert json.loads(state.read_text())["reported"] == "critical", "B's reported band was lost"
+
+
+def test_every_apply_entrypoint_routes_through_the_locking_run():
+    """A new caller inherits the lock by going through run(); main() must not reach the body directly."""
+    src = (ROOT / "scripts" / "disk_usage_monitor.py").read_text(encoding="utf-8")
+    assert "return run(rules=rules, state_root=state_root, ledger=ledger" in src
+    assert "with _state_lock(state_path):" in src
+    assert "_run_locked(" in src
