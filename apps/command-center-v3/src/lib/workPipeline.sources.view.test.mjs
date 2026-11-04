@@ -3,8 +3,9 @@
 // The operator's complaint (2026-11-04): a frozen "Last successful run", a census that died, and "231 QUEUED with no
 // owners". This renders the real panel and asserts: each coordination source shows its own as_of; a failed source says
 // which file and when it last succeeded; the queued count is split by who owns it. Fails without the payload wiring.
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
 import { join, dirname, resolve } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
@@ -20,7 +21,14 @@ globalThis.window = globalThis.window ?? {
   innerWidth: 1400, scrollTo() {}, location: { search: '' },
 }
 
+// Compiled modules are written to real files, not data: URLs. A data: URL embeds every module it imports, so a
+// page-level component's graph is re-encoded once per level: one React "useLayoutEffect does nothing on the server"
+// warning then carried a ~1 MB single-line stack into the CI log and the surface-agreement job (which runs the whole
+// `npm run build` chain under a 20-minute cap) was cancelled twice at 20m. File modules keep every stack line short.
 const memo = new Map()
+const moduleDir = mkdtempSync(join(tmpdir(), 'workpipeline-sources-view-'))
+process.on('exit', () => { try { rmSync(moduleDir, { recursive: true, force: true }) } catch {} })
+let moduleSeq = 0
 function compile(path) {
   if (memo.has(path)) return memo.get(path)
   let source = readFileSync(path, 'utf8')
@@ -47,7 +55,9 @@ function compile(path) {
     }
     return `from ${JSON.stringify(compile(target))}`
   })
-  const url = `data:text/javascript;base64,${Buffer.from(js).toString('base64')}`
+  const file = join(moduleDir, `module-${moduleSeq++}.mjs`)
+  writeFileSync(file, js)
+  const url = pathToFileURL(file).href
   memo.set(path, url)
   return url
 }
@@ -79,8 +89,15 @@ globalThis.__apiFixture = (url) => (String(url).includes('/coordination/pipeline
   : { data: null, loading: false, error: null })
 
 const { default: Panel } = await import(compile(join(app, 'src/pages/WorkPipelinePanel.tsx')))
-const markup = renderToStaticMarkup(React.createElement(MemoryRouter, { initialEntries: ['/coordination?tab=pipeline'] },
-  React.createElement(Panel)))
+// The server renderer warns once per useLayoutEffect in any component it walks; that warning is a property of
+// rendering on the server, not of this panel, and its stack is the only reason this test used to log megabytes.
+const realError = console.error
+console.error = (...args) => { if (String(args[0]).includes('useLayoutEffect does nothing on the server')) return; realError(...args) }
+let markup
+try {
+  markup = renderToStaticMarkup(React.createElement(MemoryRouter, { initialEntries: ['/coordination?tab=pipeline'] },
+    React.createElement(Panel)))
+} finally { console.error = realError }
 const text = markup.replace(/<[^>]+>/g, ' ').replace(/&#x27;/g, "'").replace(/&amp;/g, '&').replace(/&quot;/g, '"')
   .replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/\s+/g, ' ').trim()
 
