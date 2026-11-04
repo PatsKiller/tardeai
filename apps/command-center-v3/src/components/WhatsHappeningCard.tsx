@@ -4,6 +4,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars } from '../lib/designTokens'
 import { columns, counters, STATE_LABEL, STATE_TONE, topRows, type WorkItem } from '../lib/whatsHappening'
+import { cardFeed, type Census, type FeedRow } from '../lib/whatsHappeningFeed'
 
 const card: CSSProperties = {
   background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.lg,
@@ -14,13 +15,33 @@ const cell: CSSProperties = { display: 'grid', gap: 2, padding: '8px 10px', bord
 const rowStyle: CSSProperties = { display: 'grid', gap: 4, padding: '10px 0', borderTop: `1px solid ${TOKENS.borderSubtle}`, minWidth: 0 }
 
 export type WhatsHappeningCardProps = {
-  items: WorkItem[]
+  /** the source verdict (inFlightCensus from PR 2592) and the rows it governs — the card never gets a bare list */
+  census?: Census
+  feed?: FeedRow[] | null
+  items?: WorkItem[]
   /** true at 390/412 px: the table DROPS eta / last-update / source rather than squashing them. */
   compact?: boolean
   seeEverythingHref?: string
 }
 
-export function WhatsHappeningCard({ items, compact = false, seeEverythingHref = '/ops/whats-happening' }: WhatsHappeningCardProps): ReactNode {
+export function WhatsHappeningCard({ census, feed, items: rawItems, compact = false,
+  seeEverythingHref = '/ops/whats-happening' }: WhatsHappeningCardProps): ReactNode {
+  // UNKNOWN IS A FIRST-CLASS OUTCOME: with a census, the card renders the reason, never an empty confident card.
+  const resolved = census ? cardFeed(census, feed) : { kind: 'rows' as const, items: rawItems ?? [] }
+  if (resolved.kind === 'unknown') {
+    return (
+      <section data-testid="whats-happening" data-state="unknown" style={card}>
+        <h2 style={{ margin: 0, fontSize: TYPE.lg, fontWeight: 800, color: TOKENS.text[0] }}>What&rsquo;s happening</h2>
+        <p style={{ margin: 0, fontSize: TYPE.base, color: TOKENS.text[1] }}>
+          Cannot tell what is happening — {resolved.reason}. That is not the same as nothing happening.
+        </p>
+        <Link to={seeEverythingHref} style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', color: TOKENS.primary, fontWeight: 700, fontSize: TYPE.sm }}>
+          See everything →
+        </Link>
+      </section>
+    )
+  }
+  const items = resolved.items
   const cells = counters(items)
   const rows = topRows(items)
   const cols = columns(compact)

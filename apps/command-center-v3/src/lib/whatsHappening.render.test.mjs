@@ -48,5 +48,18 @@ check('counters total equals the item count', counters(EIGHT).reduce((a, c) => a
 check('topRows caps at eight', topRows(EIGHT, 8).length === 8)
 check('labels are the operator words', STATE_LABEL.waiting_on_you === 'Waiting on you')
 
+
+// ---- the census verdict (F1 of #2592) drives the card: UNKNOWN is rendered, never an empty confident card ----
+const unknownCard = html({ census: { answered: false, reason: 'the source says stale' }, feed: [] })
+check('an unanswered census renders the reason, not a confident empty', /Cannot tell what is happening/.test(unknownCard) && /stale/.test(unknownCard))
+check('an unanswered census renders the unknown marker', unknownCard.includes('data-state="unknown"'))
+check('an unanswered census renders no counter strip', !unknownCard.includes('whats-happening-strip'))
+check('an unanswered census still offers See everything', /See everything/.test(unknownCard))
+const answeredCard = html({ census: { answered: true, reason: null }, feed: [
+  { id: 'a', title: 'A row', state: 'pr_open', owner: 'cc4' },
+  { id: 'b', title: 'Another', state: 'merged', owner: 'cc6' }] })
+check('an answered census renders rows', answeredCard.includes('wh-row-a') && answeredCard.includes('wh-row-b'))
+check('served states are mapped to the operator vocabulary', /In review/.test(answeredCard) && /Done/.test(answeredCard))
+
 console.log(`whatsHappening.render: ${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)
