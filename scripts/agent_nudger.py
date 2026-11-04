@@ -28,6 +28,14 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+#: The dark-contract gate needs a scheduled entrypoint declared rather than probed from the machine's crontab.
+SCHEDULED_ENTRYPOINT = "cron: */5 * * * * (live, host) — the coordinator copy this file was ported from"
+
+#: This module declares ``NudgerConfig@v1`` and is its only reader until the n8n lane lands: the lane entry that makes
+#: it a consumer of a scheduled lane is P2 (#2575), which is stacked on this branch. Declared rather than invented.
+NO_CONSUMER_REASON = ("P1 is source only: scripts/agent_nudger.py reads config/agent_nudger.json itself, and the n8n "
+                      "lane entry that consumes it as a scheduled lane is P2 (#2575), stacked on this branch")
+
 SCHEMA = "NudgerConfig@v1"
 DEFAULT_REFUSED = r"(?i)(broker|place_order|\borders?\b|execution|\bmbi\b|alpaca|schwab|moomoo)"
 
