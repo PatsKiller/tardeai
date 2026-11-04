@@ -6,9 +6,12 @@ refused here, the ignore rules exist for accidental in-repo roots, and a test as
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
-DEFAULT_CAPTURE_ROOT = Path("/home/johnclaw/trade-ai-releases/persistent-state/data/audit")
+#: The capture root is CONFIGURATION, not code: the checkout is public, and a personal path is identifying data.
+#: It is supplied by the lane (SITE_AUDIT_CAPTURE_ROOT) and must resolve outside the repository.
+CAPTURE_ROOT_ENV = "SITE_AUDIT_CAPTURE_ROOT"
 
 #: Names an in-repo capture directory can take; .gitignore carries the same patterns.
 IN_REPO_CAPTURE_HINTS = ("page-audit-", "site-audit-capture", "audit-captures")
@@ -32,3 +35,11 @@ def assert_capture_root(path: Path | str, *, repo_root: Path | str) -> Path:
 def looks_like_capture(path: Path | str) -> bool:
     text = str(path)
     return any(hint in text for hint in IN_REPO_CAPTURE_HINTS)
+
+
+def configured_capture_root(*, repo_root: Path | str) -> Path:
+    """The root named by the lane's environment, refused if unset or inside the checkout."""
+    raw = os.getenv(CAPTURE_ROOT_ENV, "").strip()
+    if not raw:
+        raise CaptureRootRefused(f"{CAPTURE_ROOT_ENV} is not set: the capture root is configuration, not code")
+    return assert_capture_root(raw, repo_root=repo_root)

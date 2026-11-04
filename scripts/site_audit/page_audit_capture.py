@@ -14,6 +14,7 @@ Writes DIR/index.json (one row per page/viewport) and DIR/<slug>/<viewport>.{png
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import re
 import sys
@@ -29,7 +30,8 @@ except Exception:  # pragma: no cover
     HUB_TABS, NAV_ROUTES = {}, []
 
 VIEWPORTS = {"desktop": (1440, 900), "phone412": (412, 915), "phone390": (390, 844)}
-EXEC = "/home/johnclaw/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome"
+#: The browser binary is configuration too (SITE_AUDIT_CHROME), never a personal path in a public repo.
+EXEC = os.getenv("SITE_AUDIT_CHROME", "")
 ACTION_WORDS = re.compile(r"approve|decline|acknowledge|submit|delete|cancel|place|buy|sell|refresh|retry|apply|merge|install|arm|stop", re.I)
 
 
@@ -162,8 +164,8 @@ def main() -> int:
         prev = json.load(open(a.only_failed_from))
         a.only = {(r["viewport"], r["route"]) for r in prev["index"] if r.get("error")}
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%MZ")
-    from site_audit.capture_root import DEFAULT_CAPTURE_ROOT, assert_capture_root
-    out = assert_capture_root(a.out or (DEFAULT_CAPTURE_ROOT / f"page-audit-{stamp}"), repo_root=REPO)
+    from site_audit.capture_root import configured_capture_root
+    out = Path(a.out) if a.out else (configured_capture_root(repo_root=REPO) / f"page-audit-{stamp}")
     out.mkdir(parents=True, exist_ok=True)
     from playwright.sync_api import sync_playwright
     rows = []

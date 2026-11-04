@@ -15,7 +15,8 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from site_audit.action_denylist import is_forbidden_action, safe_to_open  # noqa: E402
-from site_audit.capture_root import CaptureRootRefused, assert_capture_root, DEFAULT_CAPTURE_ROOT  # noqa: E402
+from site_audit.capture_root import (CaptureRootRefused, assert_capture_root,  # noqa: E402
+                                     configured_capture_root, CAPTURE_ROOT_ENV)
 from site_audit.completeness import card_severity, thesis_as_of_missing, P1, P2  # noqa: E402
 from site_audit.detail_budget import DETAILS_PER_PAGE, selected_indices, weeks_to_cover  # noqa: E402
 
@@ -87,8 +88,7 @@ def test_a_thesis_without_an_as_of_is_flagged():
 
 
 # ── captures never enter the repo ──────────────────────────────────────────────────────────────────────────────
-def test_a_capture_root_inside_the_repo_is_refused(tmp_path):
-    assert DEFAULT_CAPTURE_ROOT.resolve().parent != ROOT
+def test_a_capture_root_inside_the_repo_is_refused():
     try:
         assert_capture_root(ROOT / "page-audit-x", repo_root=ROOT)
     except CaptureRootRefused:
@@ -97,9 +97,32 @@ def test_a_capture_root_inside_the_repo_is_refused(tmp_path):
         raise AssertionError("an in-repo capture root was accepted")
 
 
-def test_the_default_capture_root_is_outside_the_repo_and_ignored():
-    resolved = assert_capture_root(DEFAULT_CAPTURE_ROOT / "page-audit-20261104T0000Z", repo_root=ROOT)
+def test_the_capture_root_is_configuration_outside_the_repo(tmp_path, monkeypatch):
+    # Unset: refused, with the variable named — the lane supplies it, the code does not guess.
+    monkeypatch.delenv(CAPTURE_ROOT_ENV, raising=False)
+    try:
+        configured_capture_root(repo_root=ROOT)
+    except CaptureRootRefused as exc:
+        assert CAPTURE_ROOT_ENV in str(exc)
+    else:
+        raise AssertionError("a capture root was accepted without configuration")
+
+    outside = tmp_path / "audit"
+    monkeypatch.setenv(CAPTURE_ROOT_ENV, str(outside))
+    resolved = configured_capture_root(repo_root=ROOT)
     assert ROOT not in resolved.parents
+
+    # ...and a configured root inside the checkout is still refused.
+    monkeypatch.setenv(CAPTURE_ROOT_ENV, str(ROOT / "page-audit-x"))
+    try:
+        configured_capture_root(repo_root=ROOT)
+    except CaptureRootRefused:
+        pass
+    else:
+        raise AssertionError("a configured in-repo capture root was accepted")
+
+
+def test_capture_artifacts_are_ignored_by_git():
     for sample in ("page-audit-20261104T0000Z/index.json", "x/site-audit-capture/a.png", "audit-captures/b.txt"):
         out = subprocess.run(["git", "-C", str(ROOT), "check-ignore", "-q", sample])
         assert out.returncode == 0, f"{sample} is not ignored"
@@ -108,4 +131,4 @@ def test_the_default_capture_root_is_outside_the_repo_and_ignored():
 def test_the_imported_capture_script_cannot_write_into_the_repo():
     src = (ROOT / "scripts" / "site_audit" / "page_audit_capture.py").read_text()
     assert 'REPO = Path(__file__).resolve().parents[2]' in src
-    assert "assert_capture_root(" in src
+    assert "configured_capture_root(" in src
