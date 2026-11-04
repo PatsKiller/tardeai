@@ -330,3 +330,70 @@ def test_a_request_that_does_not_say_who_asked_is_refused(tmp_path, requester):
                   executor=counter.executor())
     assert caught.value.code == "record_invalid"
     assert counter.executed == 0 and counter.revalidated == 0
+
+
+# ── R4 / R3: the session-identity class (cx-openai-4, second round) ─────────────────────────
+@pytest.mark.parametrize("bad_session", [True, False, 1, 0, [], ["s"], {}, {"s": 1}, 1.5, None])
+def test_a_non_string_requester_session_is_a_corrupt_record(tmp_path, bad_session):
+    """R4: str() coercion turned JSON true/1/[]/{} into identities that never match the approver, so
+    approver_is_requester stopped firing and an operator could approve their own request."""
+    store = _store(tmp_path)
+    record = _ask(store, requester={"session": "cc-deepseek-5", "actor": f"tailnet:{LOGIN}"})
+    path = store.requests_dir / f"{record['id']}.json"
+    doc = json.loads(path.read_text())
+    doc["requester"]["session"] = bad_session
+    path.write_text(json.dumps(doc))
+
+    with pytest.raises(ha.Refused) as caught:
+        ha.list_open(store, now=NOW)
+    assert caught.value.code == "store_unreadable"
+
+    counter = Counter()
+    with pytest.raises(ha.Refused) as caught:
+        ha.decide(store, record["id"], ctx=_ctx(), actor=LOGIN, decision="approve", now=NOW,
+                  executor=counter.executor())
+    assert caught.value.code == "record_invalid"
+    assert counter.executed == 0 and counter.revalidated == 0
+
+
+def test_create_refuses_a_non_string_requester_session(tmp_path):
+    store = _store(tmp_path)
+    with pytest.raises(ha.Refused) as caught:
+        ha.create(store, _payload(), requester={"session": True}, now=NOW)
+    assert caught.value.code == "requester_unknown"
+    assert not list(store.requests_dir.glob("*.json"))
+
+
+def test_the_session_rule_is_one_function():
+    """The class guard: identity must come from _session_text, never from str() of an arbitrary value."""
+    for value in (True, 1, [], {}, 1.5, None, "   "):
+        assert ha._session_text(value) is None, value
+    assert ha._session_text("  op-1  ") == "op-1"
+
+
+def test_create_and_server_context_normalise_a_padded_session_identically(tmp_path):
+    """R3: the two paths normalised differently, so one padded session looked like two identities."""
+    store = _store(tmp_path)
+    padded = "  operator-session-7  "
+    record = _ask(store, requester={"session": padded})
+    assert record["requester"]["session"] == "operator-session-7"
+
+    context = ha.server_context(principal=PRINCIPAL, session=padded, csrf_ok=True, listener="serve_proxy")
+    assert context.session == "operator-session-7"
+
+    counter = Counter()
+    with pytest.raises(ha.Refused) as caught:
+        ha.decide(store, record["id"], ctx=context, actor=LOGIN, decision="approve", now=NOW,
+                  executor=counter.executor())
+    assert caught.value.code == "approver_is_requester", "the same padded session must be the same identity"
+    assert counter.executed == 0
+
+
+def test_a_differently_padded_session_is_still_a_different_identity(tmp_path):
+    """The control for the other direction: normalisation must not collapse real differences."""
+    store = _store(tmp_path)
+    record = _ask(store, requester={"session": "  session-a  "})
+    counter = Counter()
+    out = ha.decide(store, record["id"], ctx=_ctx(session="session-b"), actor=LOGIN, decision="approve",
+                    now=NOW, executor=counter.executor())
+    assert out["state"] == "executed" and counter.executed == 1

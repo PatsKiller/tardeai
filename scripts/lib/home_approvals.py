@@ -168,7 +168,9 @@ def server_context(*, principal: str, session: str = "", csrf_ok: bool, listener
     if login.lower() not in allowed_logins():
         raise Refused("operator_session_required",
                       "That tailnet login is not on the operator allowlist, so nothing was decided.")
-    return OperatorContext(principal=f"tailnet:{login}", session=str(session or ""), csrf_ok=bool(csrf_ok),
+    # The SAME normalisation create() applies to a requester session: a padded session must not look
+    # like two identities across the two paths (cx-openai-4 R3, 2026-11-04).
+    return OperatorContext(principal=f"tailnet:{login}", session=_session_text(session) or "", csrf_ok=bool(csrf_ok),
                            listener=str(listener), _seal=_SEAL)
 
 
@@ -575,8 +577,8 @@ def create(
     kind = _check_type(payload.get("type"))
     text = _check_text(payload)
     facts = _check_facts(kind, payload.get("facts"))
-    who = requester if isinstance(requester, Mapping) else {"session": str(requester)}
-    who = {"session": str(who.get("session") or "").strip(),
+    who = requester if isinstance(requester, Mapping) else {"session": requester}
+    who = {"session": _session_text(who.get("session")),
            "claim": (str(who.get("claim")).strip() if who.get("claim") else None),
            "actor": (str(who.get("actor")).strip() if who.get("actor") else None),
            "vendor": (str(who.get("vendor")).strip() if who.get("vendor") else None)}
@@ -692,6 +694,22 @@ def _release(path: Path) -> None:
         path.unlink()
 
 
+def _session_text(value: Any) -> Optional[str]:
+    """The one way a session becomes an identity: a real string, stripped. Nothing else is an identity.
+
+    A session is compared against the approver's identity, so coercing it turns corruption into a fake
+    identity: ``str(True)`` is "True", ``str(1)`` is "1", ``str([])`` is "[]" — none of which match the
+    approver, so ``approver_is_requester`` silently stops firing and an operator can approve their own
+    request by corrupting the field (cx-openai-4 R4, 2026-11-04). Rejecting non-strings outright is the
+    class fix: comparing ``str()`` forms more cleverly would leave the next shape to be found.
+    Returns the stripped string, or None when the value is not a usable string identity.
+    """
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text or None
+
+
 def _canonical_actor(value: Any) -> str:
     """One identity representation, so case or a transport prefix cannot split one operator into two.
 
@@ -712,7 +730,7 @@ def _canonical_actor(value: Any) -> str:
 def _validate_record(record: Mapping[str, Any]) -> str:
     """Refuse a record whose own shape is wrong — a tampered or corrupt record never reaches an executor."""
     requester = record.get("requester")
-    if not isinstance(requester, Mapping) or not str(requester.get("session") or "").strip():
+    if not isinstance(requester, Mapping) or _session_text(requester.get("session")) is None:
         # Without a requester there is no "who asked", so requester != approver cannot be evaluated and
         # the same operator could approve a request whose requester block was deleted or emptied
         # (cx-openai-3 R2, 2026-11-03). A request is only a request if it says who asked.
@@ -788,13 +806,14 @@ def _decide_locked(store: Store, request_id: str, *, context: OperatorContext, a
     requester = record.get("requester") or {}
     approver_identity = _canonical_actor(actor)
     requester_actor = _canonical_actor(requester.get("actor")) if requester.get("actor") else ""
-    requester_session = str(requester.get("session") or "")
+    requester_session = _session_text(requester.get("session")) or ""
     if (requester_actor and approver_identity == requester_actor) or \
             (requester_session and approver_identity == _canonical_actor(requester_session)):
         raise Refused("approver_is_requester",
                       "The session that asked cannot also decide: this request was created by the same identity that "
                       "clicked. The lead must re-ask it from a different session.")
-    if context.session and requester_session and str(context.session) == requester_session:
+    approver_session = _session_text(context.session) or ""
+    if approver_session and requester_session and approver_session == requester_session:
         raise Refused("approver_is_requester",
                       "The session that created this request cannot decide it. The lead must re-ask it from a "
                       "different session.")
