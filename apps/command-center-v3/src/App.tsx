@@ -76,6 +76,7 @@ import SurfaceModeBanner from './components/truth/SurfaceModeBanner'
 import RouteErrorBoundary from './components/truth/RouteErrorBoundary'
 import { compareServedBuild, LOADED_BUILD } from './lib/buildIdentity'
 import { SurfaceStateContext, type SurfaceStateReport } from './components/SurfaceGap'
+import { nextSurfaceReport } from './lib/surfaceState'
 
 
 function BuildMarker() {
@@ -232,7 +233,12 @@ function Shell() {
   // The active page publishes its SurfaceState here so the build footer can say "this page's data did not load"
   // instead of leaving "matches served artifact" to be read as an all-clear (BOARD row 36, rule 7).
   const [surfaceReport, setSurfaceReport] = useState<SurfaceStateReport | null>(null)
-  const surfaceChannel = useMemo(() => ({ report: surfaceReport, publish: setSurfaceReport }), [surfaceReport])
+  // Ownership: a clearing null is accepted only when it comes from the surface that currently owns the slot, so the
+  // outgoing page of a route change cannot erase the incoming page's state (F2 review, 2026-11-04).
+  const surfaceChannel = useMemo(() => ({
+    report: surfaceReport,
+    publish: (next: SurfaceStateReport | null, clearingFrom?: string) => setSurfaceReport(prev => nextSurfaceReport(prev, next, clearingFrom)),
+  }), [surfaceReport])
   return (
     <OpportunityModalProvider>
     <SurfaceStateContext.Provider value={surfaceChannel}>
