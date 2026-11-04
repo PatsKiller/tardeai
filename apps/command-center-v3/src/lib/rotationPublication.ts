@@ -76,3 +76,81 @@ const REASON_CHIPS: Record<string, string> = {
 export function rotationReasonChips(value: RotationAvailability): string[] {
   return [...new Set(value.reasons.map(x => REASON_CHIPS[x] ?? x.replace(/_/g, ' ')))]
 }
+
+/**
+ * What each withheld reason means in operator terms, which evidence has to update, and the one next
+ * step that clears it (operator audit 2026-11-04, FQ-062). The chip row alone told the operator that
+ * three things were wrong but not what to do; `Refresh Summary` was the only affordance on the page.
+ * A reason this table does not know still gets a next step and keeps its raw code in `raw` (shown
+ * inside a details toggle by the notice), never as the operator's only explanation.
+ */
+export type RotationBlocker = { code: string; label: string; what: string; next: string; raw: string }
+
+const REASON_DETAIL: Record<string, { what: string; next: string }> = {
+  account_stale: {
+    what: 'The account balances this review reads are older than its 15-minute window.',
+    next: 'It clears when the next account sync writes a newer balance timestamp; then press Refresh Summary.',
+  },
+  account_evidence_stale: {
+    what: 'The account balances this review reads are older than its 15-minute window.',
+    next: 'It clears when the next account sync writes newer balance evidence; then press Refresh Summary.',
+  },
+  position_evidence_stale: {
+    what: 'The position quantities this review reads are older than its 15-minute window.',
+    next: 'It clears when the next position sync writes newer evidence; then press Refresh Summary.',
+  },
+  unsupported_stop_claim: {
+    what: 'The stop price this review read could not be matched to a recorded stop, so it cannot judge what a rotation would leave unprotected.',
+    next: 'It clears when the stop record is refreshed so it covers the position. If it does not, review that position in Risk → Recovery.',
+  },
+  publication_expired: {
+    what: 'The last validation of these sources is older than 15 minutes.',
+    next: 'Press Refresh Summary to validate the current sources again.',
+  },
+  conflicting_account_state: {
+    what: 'Two account records disagree about an account this review uses.',
+    next: 'It stays withheld until the account sources agree; re-run the account sync, then press Refresh Summary.',
+  },
+  request_failed: {
+    what: 'The latest request for the rotation review failed, so there is no current answer.',
+    next: 'Press Refresh Summary. If it fails again, the failure is recorded under Jobs → failures.',
+  },
+  missing_publication_evidence: {
+    what: 'The server did not supply the evidence that says which sources this review used and when they were read.',
+    next: 'Press Refresh Summary. If it persists, the review producer is not publishing its evidence; report it with this code.',
+  },
+  missing_input: {
+    what: 'A required source for the review is missing.',
+    next: 'Wait for the missing source to update, then press Refresh Summary.',
+  },
+  malformed_publication: {
+    what: 'The review’s evidence record could not be read, so the page cannot vouch for the advice.',
+    next: 'Press Refresh Summary. If it persists, report it with this code.',
+  },
+  incomplete_publication: {
+    what: 'The review’s evidence record is missing part of its source coverage, so the page cannot vouch for the advice.',
+    next: 'Press Refresh Summary once all accounts and positions have a source timestamp.',
+  },
+  invalid_publication_clock: {
+    what: 'A source timestamp for this review is in the future or otherwise impossible, so freshness cannot be trusted.',
+    next: 'Wait for the next sync to write a valid timestamp, then press Refresh Summary.',
+  },
+}
+
+export function rotationBlockerExplanations(value: RotationAvailability): RotationBlocker[] {
+  const seen = new Set<string>()
+  return value.reasons.filter(code => {
+    if (seen.has(code)) return false
+    seen.add(code)
+    return true
+  }).map(code => {
+    const known = REASON_DETAIL[code]
+    return {
+      code,
+      label: REASON_CHIPS[code] ?? code.replace(/_/g, ' '),
+      what: known?.what ?? 'This condition is not one the page can explain yet.',
+      next: known?.next ?? 'Press Refresh Summary after the sources update. If it persists, report it with the code shown under technical detail.',
+      raw: code,
+    }
+  })
+}
