@@ -864,7 +864,7 @@ function ActionStrip({
   )
 }
 
-function ArticleCard({
+export function ArticleCard({
   item, catMeta, featured, view, onOpen, onFeedback, onStage, onThemeClick, staging,
 }: {
   item: Item
@@ -921,13 +921,14 @@ function ArticleCard({
   if (view === 'compact') {
     return (
       <div
+        className="ri-wire-row"
         onClick={onOpen}
         role="button"
         tabIndex={0}
         onKeyDown={e => { if (e.key === 'Enter') onOpen() }}
         style={{
           display: 'grid',
-          gridTemplateColumns: '28px 1fr auto auto',
+          gridTemplateColumns: '28px minmax(0, 1fr) auto',
           gap: 12, alignItems: 'center',
           padding: '11px 14px',
           borderBottom: `1px solid ${C.line}`,
@@ -938,8 +939,8 @@ function ArticleCard({
         <button type="button" onClick={toggleStar} style={iconBtn(item.starred ? C.star : C.soft)}>
           {item.starred ? '★' : '☆'}
         </button>
-        <div style={{ minWidth: 0 }}>
-          <div style={{
+        <div className="ri-wire-title" style={{ minWidth: 0 }}>
+          <div className="ri-wire-headline" style={{
             fontSize: 13, fontWeight: 700, color: C.ink,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
@@ -947,7 +948,7 @@ function ArticleCard({
             {item.title}
           </div>
           {item.lede && (
-            <div style={{
+            <div className="ri-wire-lede" style={{
               fontSize: 11.5, color: C.muted, marginTop: 2,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
@@ -955,8 +956,10 @@ function ArticleCard({
             </div>
           )}
         </div>
-        <Tag color={catColor}>{catMeta[primary]?.label || primary}</Tag>
-        <FreshnessDot tier={item.freshness_tier} label={item.freshness_label} asOf={item.created_at} />
+        <div className="ri-wire-meta" style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+          <Tag color={catColor}>{catMeta[primary]?.label || primary}</Tag>
+          <FreshnessDot tier={item.freshness_tier} label={item.freshness_label} asOf={item.created_at} />
+        </div>
       </div>
     )
   }
