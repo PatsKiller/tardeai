@@ -5,6 +5,8 @@ import { RADIUS } from '../lib/designTokens'
 import DeskPage, { DeskGap, type DeskDecision, type DeskSource, type DeskTab } from './DeskPage'
 import W7DetailSheet, { useW7Detail } from './W7DetailSheet'
 import { useApi } from '../hooks/useApi'
+import { deriveSurfaceState, surfaceGap, type SurfaceShape } from '../lib/surfaceState'
+import { SurfaceGap, useReportSurfaceState } from './SurfaceGap'
 
 /**
  * Boards 1–4 render a server projection (`/api/v2/desks/<desk>`). Every label and
@@ -73,23 +75,35 @@ export type DeskBoardConfig = {
 
 /** One desk page: the board-0 frame around the server projection, one tab at a time. */
 export default function DeskBoard({ desk, title, purpose, tabs, tabAliases, classicHref, testId, extras }: DeskBoardConfig) {
-  const { data, error, loading, refetch } = useApi<DeskProjection>(`/api/v2/desks/${desk}`, 300_000)
+  const { data, error, loading, refreshing, refetch } = useApi<DeskProjection>(`/api/v2/desks/${desk}`, 300_000)
   const { selected, open, close } = useW7Detail()
-  const projection = data && typeof data === 'object' && 'tabs' in data ? data : null
+  // SurfaceState@v1 (BOARD row 36): ONE state decides every word this page prints about its data. `!projection` is
+  // never used as a synonym for "unavailable" again — that is what put "Agents unavailable" beside "Loading the
+  // desk projection." on the operator's screen.
+  const shape: SurfaceShape<DeskProjection> = {
+    what: `${title} projection`,
+    // The server names its own gaps; an envelope that cannot say is treated as complete only because it is complete.
+    gaps: d => (d && typeof d === 'object' && Array.isArray(d.errors) ? d.errors : []),
+    isEmpty: d => Object.values((d && d.tabs) || {}).every(t => (t?.panels ?? []).every(p => (p.rows ?? []).length === 0)),
+    usable: d => !!d && typeof d === 'object' && 'tabs' in d,
+  }
+  const surface = deriveSurfaceState<DeskProjection>({ data, error, loading, refreshing }, shape)
+  useReportSurfaceState(`${title} page`, surface as never)
+  const projection = surface.data
+  const surfaceText = surfaceGap(surface, shape)
   const sources: DeskSource[] = projection
     ? projection.sources.map(s => ({ id: s.id, label: s.label, asOf: s.as_of, laneIds: s.lane_ids, maxAgeHours: s.max_age_hours, gap: s.gap ?? undefined }))
-    : [{ id: 'projection', label: `${title} projection`, gap: loading ? 'Loading the desk projection.' : 'The desk projection has not answered.' }]
+    : [{ id: 'projection', label: `${title} projection`, pending: true, gap: surfaceText ? `${surfaceText.title} ${surfaceText.reason}` : undefined }]
   const [panelId, rowId] = (selected ?? '').split(':')
   const detailRow = projection && selected
     ? Object.values(projection.tabs).flatMap(t => t.panels).find(p => p.id === panelId)?.rows.find(r => r.id === rowId)
     : undefined
   return <div data-testid={testId}>
     <DeskPage title={title} purpose={purpose} tabs={tabs} tabAliases={tabAliases} sources={sources}
-      decisions={projection?.decisions} decisionGap={projection ? projection.decision_gap ?? 'No open decisions on file for this desk.' : 'The desk projection has not answered.'}>
+      decisions={projection?.decisions} decisionGap={projection ? projection.decision_gap ?? 'No open decisions on file for this desk.' : surfaceText ? surfaceText.title : 'The desk projection has not answered.'}>
       {(active: string) => <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {!projection && <DeskGap title={`${title} unavailable`} reason={error ? 'The desk projection could not be read. Nothing below is current.' : 'Loading the desk projection.'}>
-          {error && <button type="button" onClick={refetch} style={{ minHeight: 44, width: '100%', marginTop: 8 }}>Retry</button>}
-        </DeskGap>}
+        {!projection && <SurfaceGap state={surface} shape={shape} onRetry={refetch} />}
+        {projection && surface.state === 'partial' && <SurfaceGap state={surface} shape={shape} />}
         {projection && (projection.tabs[active]?.panels?.length
           ? <DeskPanels panels={projection.tabs[active].panels} onOpen={(p, r) => open(`${p}:${r}`)} />
           : <DeskGap title="Nothing on file for this view" reason="The projection returned no panels for this tab." />)}
