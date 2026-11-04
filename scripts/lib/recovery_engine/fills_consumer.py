@@ -89,10 +89,10 @@ _WATCH_SQL_ASOF = ("SELECT id, stopped_out_at, exit_price, realized_pnl, stop_pr
 # dedupe_key, trade_time; `id` is a local row counter. The provider's own uid lives ONLY inside `dedupe_key`, whose
 # format embeds the MUTABLE quantity — so the composite is not an identity, and splitting it would be a delimiter
 # guess. Nothing here selects it as one: these rows stay explicitly unidentified, which the caller reports.
-_TX_SQL = ("SELECT trade_date, quantity, price FROM trade_transactions "
+_TX_SQL = ("SELECT provider_uid, trade_date, quantity, price FROM trade_transactions "
            "WHERE upper(symbol)=upper(%s) AND account=%s AND upper(action) IN "
            "('SELL','SOLD','STOP','STOPPED','SELL_TO_CLOSE') ORDER BY trade_date DESC")
-_TX_SQL_ASOF = ("SELECT trade_date, quantity, price FROM trade_transactions "
+_TX_SQL_ASOF = ("SELECT provider_uid, trade_date, quantity, price FROM trade_transactions "
                 "WHERE upper(symbol)=upper(%s) AND account=%s AND upper(action) IN "
                 "('SELL','SOLD','STOP','STOPPED','SELL_TO_CLOSE') AND trade_date < %s ORDER BY trade_date DESC")
 
@@ -163,7 +163,11 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
         gaps.append(f"trade_transactions is unavailable ({tx_err}); the exit universe is incomplete")
         incomplete = True
     tx_by_day: dict[date, list[tuple[float, Optional[float], Optional[str]]]] = {}
-    for trade_date, quantity, price in tx:
+    #: Rows that carry the broker's own reference become their OWN observations, keyed by that reference. They are not
+    #: folded into a day total: two rows with two different references are two economic events even when every visible
+    #: detail matches, and a corrected row keeps its reference across price, share and date changes.
+    identified: list[rc.ExitFill] = []
+    for provider_uid, trade_date, quantity, price in tx:
         try:
             day = _as_date(trade_date)
         except (TypeError, ValueError) as exc:
@@ -177,10 +181,15 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
                         "it is excluded")
             incomplete = True
             continue
-        # No provider identity is reachable for this source, so the observation carries none. It is NOT given the
-        # composite key: that key contains the mutable quantity, so using it would make a quantity correction look like
-        # a new event (codex I1).
-        tx_by_day.setdefault(day, []).append((qty, _finite(price), None))
+        # The broker's reference IS the identity. NULL means the provider supplied none — a fact, not a missing value —
+        # and such a row stays unidentified: never the composite key (it embeds the mutable quantity), never date,
+        # price or arrival order.
+        source_id = _identity("trade_transactions", provider_uid)
+        tx_by_day.setdefault(day, []).append((qty, _finite(price), source_id))
+        if source_id is not None:
+            identified.append(rc.ExitFill(symbol=symbol, account=account, exit_date=day, shares=qty,
+                                          price=_finite(price), realized_pnl=None,
+                                          source="trade_transactions", source_id=source_id))
 
     # The exit universe is every confirmed exit from BOTH sources (cx-openai-4 R3). A later broker fill used to be
     # dropped merely because it had no stopped_out_watch row, and a fill that disagreed with the watch price was
@@ -212,23 +221,31 @@ def read_confirmed_exits(conn: Any, symbol: str, account: str, *, as_of: Optiona
     # Every fill dated beyond the last stop-out row is its own confirmed exit, priced from the fill itself, with the
     # realized P&L unknown. It joins the universe instead of being dropped (cx-openai-4 R3, omitted later fill).
     covered_days = {f.exit_date for f in fills}
+    identified_days = {f.exit_date for f in identified}
     for day in sorted(tx_by_day):
         if day in covered_days:
             continue
-        quantities = tx_by_day[day]
-        total_qty = round(sum(q for q, _, _ in quantities), 6)
-        priced = [(q, p) for q, p, _ in quantities if p is not None]
+        # Rows that carry the broker's reference are already their own observations. Only the UNIDENTIFIED rows of the
+        # day are aggregated, and only they can be aggregated: without an identity nothing distinguishes them.
+        quantities = [(q, p) for q, p, sid in tx_by_day[day] if sid is None]
+        if not quantities:
+            continue
+        total_qty = round(sum(q for q, _ in quantities), 6)
+        priced = [(q, p) for q, p in quantities if p is not None]
         if not priced:
             gaps.append(f"the {day} exit has no usable fill price; no case is opened from a sale without a price")
             incomplete = True
             continue
         price = round(sum(q * p for q, p in priced) / sum(q for q, _ in priced), 6)
-        # This source exposes no provider identity for its rows, so the fill carries none whatever the day's row count
-        # (see _TX_SQL). Callers report the resulting ambiguity instead of the reader inventing an identity (codex I1).
+        # These rows carry no provider reference, so the fill carries none: callers report the ambiguity instead of the
+        # reader inventing an identity (codex I1).
         fills.append(rc.ExitFill(symbol=symbol, account=account, exit_date=day, shares=total_qty, price=price,
                                  realized_pnl=None, source="trade_transactions", source_id=None))
         gaps.append(f"the {day} exit comes from trade_transactions with no stopped_out_watch row: its price is the "
                     "fill price and its realized P&L is unknown")
+
+    # Identified observations join the universe as themselves — one member per broker reference.
+    fills.extend(identified)
 
     if fills and all(f.stop_price is None for f in fills):
         stops = _query(conn, "SELECT stop_price, captured_at FROM stop_last_known "

@@ -238,7 +238,7 @@ def _live_shaped_db():
         CREATE TABLE stopped_out_watch (stopped_out_at TEXT, exit_price REAL, realized_pnl REAL, stop_price REAL,
                                         broker TEXT, symbol TEXT, account TEXT, is_active INTEGER, id INTEGER PRIMARY KEY AUTOINCREMENT);
         CREATE TABLE trade_transactions (trade_date TEXT, action TEXT, symbol TEXT, quantity REAL, price REAL,
-                                         account TEXT, dedupe_key TEXT);
+                                         account TEXT, dedupe_key TEXT, provider_uid TEXT);
         CREATE TABLE stop_last_known (broker TEXT, account TEXT, symbol TEXT, stop_price REAL, captured_at TEXT);
         CREATE TABLE positions_current (account_key TEXT, symbol TEXT, qty REAL);
     """)
@@ -321,7 +321,7 @@ def test_an_unreadable_positions_store_is_unknown_not_zero(tmp_path, store):
         CREATE TABLE stopped_out_watch (stopped_out_at TEXT, exit_price REAL, realized_pnl REAL, stop_price REAL,
                                         broker TEXT, symbol TEXT, account TEXT, is_active INTEGER, id INTEGER PRIMARY KEY AUTOINCREMENT);
         CREATE TABLE trade_transactions (trade_date TEXT, action TEXT, symbol TEXT, quantity REAL, price REAL,
-                                         account TEXT, dedupe_key TEXT);
+                                         account TEXT, dedupe_key TEXT, provider_uid TEXT);
         CREATE TABLE stop_last_known (broker TEXT, account TEXT, symbol TEXT, stop_price REAL, captured_at TEXT);
         CREATE TABLE positions_current (account_key TEXT, symbol TEXT, qty REAL);
     """)
@@ -378,7 +378,7 @@ def _source_db() -> sqlite3.Connection:
         CREATE TABLE stopped_out_watch (stopped_out_at TEXT, exit_price REAL, realized_pnl REAL, stop_price REAL,
                                         broker TEXT, symbol TEXT, account TEXT, is_active INTEGER, id INTEGER PRIMARY KEY AUTOINCREMENT);
         CREATE TABLE trade_transactions (trade_date TEXT, action TEXT, symbol TEXT, quantity REAL, price REAL,
-                                         account TEXT, dedupe_key TEXT);
+                                         account TEXT, dedupe_key TEXT, provider_uid TEXT);
         CREATE TABLE stop_last_known (broker TEXT, account TEXT, symbol TEXT, stop_price REAL, captured_at TEXT);
         CREATE TABLE positions_current (account_key TEXT, symbol TEXT, qty REAL);
         CREATE TABLE positions_sync_runs (run_id INTEGER PRIMARY KEY, finished_at TEXT, status TEXT, promoted INTEGER);
@@ -1071,4 +1071,85 @@ def test_f1_a_later_unidentified_arrival_is_reported_in_every_case_state(store, 
     # and it stays that way on an unchanged third pass
     third = fc.run(store, conn, today=TODAY, now=NOW)
     assert third["complete"] is False, third["gaps"]
+    conn.close()
+
+
+# ── the broker reference becomes an identity (operator 2026-11-04) ───────────────────────────────────────────
+def _tx_uid(conn, day, qty, price, uid, symbol="SPCX", account="schwab_taxable"):
+    conn.execute("INSERT INTO trade_transactions (trade_date, action, symbol, quantity, price, account, provider_uid) "
+                 "VALUES (?,?,?,?,?,?,?)", (day, "SELL", symbol, qty, price, account, uid))
+
+
+def test_a_provider_uid_resolves_a_price_correction_to_one_member(store):
+    """With a real broker reference the correction is an IDENTITY match: one member, and the pass is complete because
+    the identity is established — not an unresolved provisional pairing."""
+    from lib.recovery_engine import fills_consumer as fc
+    conn = _source_db()
+    _tx_uid(conn, "2026-10-30", 100, 80.0, "uid-1")
+    _positions(conn, 0)
+    conn.commit()
+    first = fc.run(store, conn, today=TODAY, now=NOW)
+    case = store.get(first["opened"][0])
+    assert case.exits[0]["source_id"] == "trade_transactions:uid-1", case.exits
+    assert first["complete"] is True, first["gaps"]
+    conn.execute("UPDATE trade_transactions SET price = 82.0 WHERE provider_uid = 'uid-1'")
+    conn.commit()
+    second = fc.run(store, conn, today=TODAY, now=NOW)
+    after = store.get(case.case_key)
+    assert len(after.exits) == 1, f"an identified correction must never mint a member: {after.exits}"
+    assert after.exits[0]["price"] == 82.0, after.exits
+    assert second["complete"] is True, second["gaps"]
+    conn.close()
+
+
+def test_a_provider_uid_resolves_a_share_and_a_date_correction(store):
+    from lib.recovery_engine import fills_consumer as fc
+    conn = _source_db()
+    _tx_uid(conn, "2026-10-30", 100, 80.0, "uid-2")
+    _positions(conn, 0)
+    conn.commit()
+    first = fc.run(store, conn, today=TODAY, now=NOW)
+    key = first["opened"][0]
+    conn.execute("UPDATE trade_transactions SET quantity = 120 WHERE provider_uid = 'uid-2'")
+    conn.commit()
+    fc.run(store, conn, today=TODAY, now=NOW)
+    conn.execute("UPDATE trade_transactions SET trade_date = '2026-11-02' WHERE provider_uid = 'uid-2'")
+    conn.commit()
+    third = fc.run(store, conn, today=TODAY, now=NOW)
+    after = store.get(key)
+    assert len(after.exits) == 1, f"share and date corrections are the same member: {after.exits}"
+    assert after.exits[0]["shares"] == 120, after.exits
+    assert after.exits[0]["date"] == "2026-11-02", after.exits
+    assert third["complete"] is True, third["gaps"]
+    conn.close()
+
+
+def test_a_transaction_with_no_provider_uid_is_unresolved_and_never_guessed(store):
+    """NULL provider_uid is a fact, not a missing value: no date/price/arrival/composite fallback, ever."""
+    from lib.recovery_engine import fills_consumer as fc
+    conn = _source_db()
+    conn.execute("INSERT INTO trade_transactions (trade_date, action, symbol, quantity, price, account) "
+                 "VALUES ('2026-10-30','SELL','SPCX',100,80.0,'schwab_taxable')")
+    _positions(conn, 0)
+    conn.commit()
+    out = fc.run(store, conn, today=TODAY, now=NOW)
+    case = store.get(out["opened"][0])
+    assert case.exits[0]["source_id"] is None, case.exits
+    assert out["complete"] is False, out
+    assert any("identity" in g for g in out["gaps"]), out["gaps"]
+    conn.close()
+
+
+def test_two_different_provider_uids_stay_two_even_when_every_detail_matches(store):
+    """The over-correction control: identity, not equality, decides."""
+    from lib.recovery_engine import fills_consumer as fc
+    conn = _source_db()
+    _tx_uid(conn, "2026-10-30", 100, 80.0, "uid-a")
+    _tx_uid(conn, "2026-10-30", 100, 80.0, "uid-b")
+    _positions(conn, 0)
+    conn.commit()
+    out = fc.run(store, conn, today=TODAY, now=NOW)
+    case = store.get(out["opened"][0])
+    assert len(case.exits) == 2, f"two established identities must stay two: {case.exits}"
+    assert len({e["source_id"] for e in case.exits}) == 2, case.exits
     conn.close()
