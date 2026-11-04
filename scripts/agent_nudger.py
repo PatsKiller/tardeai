@@ -260,6 +260,7 @@ def main(argv: list[str] | None = None) -> int:
     block = _lane_output_block(produced=produced, attempted=inspected, unit="agent nudges typed",
                                skipped=skipped, empty_reason=empty_reason)
     _emit_lane_output("agent_nudge", "live" if a.apply else "dry_run", block, started_at=started_at)
+    degraded = (not discovery_ok) or blind
     if a.apply:
         # A LIVE run writes LaneRunReceipt@v2 plus the immutable per-attempt receipt that
         # scripts/n8n_run_executor.py::apply_output_verdict reads. Without it the contract's rule is declared and never
@@ -270,13 +271,18 @@ def main(argv: list[str] | None = None) -> int:
                 from scripts.lib.lane_last_receipt import write_lane_receipt as _write_receipt
             except ImportError:  # scripts/ on sys.path
                 from lib.lane_last_receipt import write_lane_receipt as _write_receipt  # type: ignore
-            _write_receipt("agent_nudge", ok=True, started_at=started_at, script="scripts/agent_nudger.py",
+            # A blind run is NOT ok (F2, cc3/cx-openai-2 2026-11-04): the producer said dependency_unavailable and the
+            # settlement must agree with it.
+            _write_receipt("agent_nudge", ok=not degraded, started_at=started_at, script="scripts/agent_nudger.py",
                            produced_count=produced, attempted_count=len(sessions), skipped_reasons=skipped,
                            empty_reason=empty_reason,
                            summary={"sessions": len(sessions), "send_failed": failed})
         except Exception as exc:  # noqa: BLE001 -- the run's own result comes first
             print(f"[agent_nudge] lane receipt write failed: {type(exc).__name__}", file=sys.stderr)
-    return 0
+    # F2 (cc3 + cx-openai-2, 2026-11-04): exit 0 said RUN_DONE even when the producer had just reported
+    # dependency_unavailable — the executor settled a blind run as a successful shadow run. A run that could not
+    # OBSERVE did not succeed. 2 is the lane's "ran, could not observe" code; a genuine quiet run stays 0.
+    return 2 if degraded else 0
 
 
 if __name__ == "__main__":

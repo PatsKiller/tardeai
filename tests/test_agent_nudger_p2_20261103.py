@@ -287,7 +287,7 @@ def test_a_failed_capture_is_reported_as_dependency_unavailable_not_as_idle(tmp_
     monkeypatch.setattr(N, "capture", lambda sess: real_cap(sess, run=run))
     monkeypatch.setattr(N.time, "sleep", lambda s: None)
     assert N.main(["--dry-run", "--state", str(tmp_path / "s.json"),
-                   "--ledger", str(tmp_path / "l.jsonl"), "--coord-dir", str(tmp_path)]) == 0
+                   "--ledger", str(tmp_path / "l.jsonl"), "--coord-dir", str(tmp_path)]) == 2
     err = capsys.readouterr().err
     block = _json.loads([ln for ln in err.splitlines() if ln.startswith("LANE_OUTPUT ")][0].split(" ", 1)[1])
     assert "dependency_unavailable" in block["skipped_reasons"], block
@@ -306,7 +306,31 @@ def test_a_failed_tmux_ls_is_not_the_same_run_as_no_sessions(tmp_path, monkeypat
     monkeypatch.setattr(N, "capture", lambda sess: real_cap(sess, run=run))
     monkeypatch.setattr(N.time, "sleep", lambda s: None)
     assert N.main(["--dry-run", "--state", str(tmp_path / "s.json"),
-                   "--ledger", str(tmp_path / "l.jsonl"), "--coord-dir", str(tmp_path)]) == 0
+                   "--ledger", str(tmp_path / "l.jsonl"), "--coord-dir", str(tmp_path)]) == 2
     err = capsys.readouterr().err
     block = _json.loads([ln for ln in err.splitlines() if ln.startswith("LANE_OUTPUT ")][0].split(" ", 1)[1])
     assert "dependency_unavailable" in block["skipped_reasons"] and block["empty_reason"] == "dependency_unavailable", block
+
+
+def test_a_blind_run_settles_as_degraded_not_as_a_successful_shadow_run(monkeypatch, capsys, tmp_path):
+    """F2 (cc3 + cx-openai-2, 2026-11-04): main() returned 0 unconditionally, so a run whose producer said
+    dependency_unavailable still settled RUN_DONE and no consumer saw a failure. Fails at 7df0f53ce."""
+    import agent_nudger as N  # noqa: PLC0415
+    monkeypatch.setattr(N, "list_sessions", lambda cfg: ([], True))
+    assert N.main(["--dry-run", "--state", str(tmp_path / "s.json"),
+                   "--ledger", str(tmp_path / "l.jsonl")]) == 0          # genuinely quiet stays 0
+    monkeypatch.setattr(N, "list_sessions", lambda cfg: ([], False))   # tmux ls failed
+    assert N.main(["--dry-run", "--state", str(tmp_path / "s2.json"),
+                   "--ledger", str(tmp_path / "l2.jsonl")]) == 2         # blind is not a success
+
+
+def test_the_registry_row_claims_no_signal_the_shadow_lane_cannot_produce(monkeypatch, tmp_path):
+    """F1 (cc3, 2026-11-04): the row was ACTIVE with a file_mtime signal on a file only --apply writes, so the shadow
+    lane could never advance it and every cycle reported a false SILENT. Fails at 7df0f53ce."""
+    import json as _json  # noqa: PLC0415
+    from pathlib import Path as _P  # noqa: PLC0415
+    doc = _json.loads((_P(__file__).resolve().parents[1] / "config" / "lane_registry.json").read_text())
+    row = [r for r in doc["lanes"] if r.get("lane_id") == "agent_nudge"][0]
+    assert row["state"] != "ACTIVE", "an ACTIVE row must be able to produce its own health signal"
+    sig = row.get("output_signal") or {}
+    assert not (sig.get("kind") == "file_mtime" and "state.json" in str(sig.get("path"))), sig
