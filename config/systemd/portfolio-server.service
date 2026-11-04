@@ -10,11 +10,15 @@ ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/pyt
 Restart=on-failure
 RestartSec=5
 # Memory guard — operator-set 2026-11-04 (MemoryHigh 2.5 GiB = 2684354560, MemoryMax 3.0 GiB = 3221225472).
-# MemoryHigh makes the kernel reclaim instead of freezing every thread; MemoryMax is the hard OOM kill that
-# Restart=on-failure then recovers from. Raised from 1.5G/2G because a +480 MB peak from two concurrent CIO
-# compositions pushed the process against the 2 GB cap. The live host carries these values only as
-# `systemctl --user set-property --runtime` drop-ins, which do not survive a reboot — this is the durable
-# declaration, and the reason the numbers are what they are.
+# MemoryHigh makes the kernel reclaim instead of freezing every thread; MemoryMax is the hard OOM kill.
+# Raised from 1.5G/2G after a peak that pressed the process against the 2 GB cap. The raise is safe because the
+# composition path is single-flight: concurrent polls share one build under _MEMORY_VIEW_LOCK and a TTL cache keyed
+# on the store signature and limit (scripts/api_v3_maturity.py), so memory follows one composition at a time rather
+# than one per request — the cap is one-at-a-time, not the raise itself.
+# Recovery on the live host is Restart=always (drop-in zz-restart-always.conf); this unit still declares
+# Restart=on-failure below — that divergence is recorded here, not silently inherited.
+# The live host also carries both limits as `systemctl --user set-property --runtime` drop-ins, which do not
+# survive a reboot; this file is the durable declaration, and the reason the numbers are what they are.
 MemoryHigh=2.5G
 MemoryMax=3G
 StandardOutput=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/portfolio_server.log
