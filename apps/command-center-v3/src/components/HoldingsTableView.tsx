@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import CountryFlag from './CountryFlag'
 import HoldingReportLinks from './HoldingReportLinks'
 import { StopKindPill } from './StopKindPill'
@@ -16,6 +16,7 @@ import {
 } from '../lib/holdingsTerminalTokens'
 import { holdingReportEligible } from '../lib/reportLinks'
 import { ShareDriftPill } from './ShareReconciliationModal'
+import { RADIUS } from '../lib/designTokens'
 import { LevelLines, type LevelMap } from '../lib/supportResistance'
 
 const LLM_LANE: Record<string, { label: string; c: string }> = {
@@ -303,6 +304,143 @@ function FundLine({ h, fv }: { h: any; fv?: any }) {
 }
 
 /**
+ * FQ-049 (audit 2026-11-04): below ~760px the 15-column grid cannot fit, and the page delivered
+ * column headings stacked above an unlabelled run of values. On a narrow viewport each holding is a
+ * card whose values sit beside their own labels. The desktop grid is unchanged.
+ */
+function useNarrowViewport(maxWidth = 760): boolean {
+  const query = `(max-width: ${maxWidth}px)`
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia(query).matches
+      : false,
+  )
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    const mq = window.matchMedia(query)
+    const onChange = () => setNarrow(mq.matches)
+    onChange()
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [query])
+  return narrow
+}
+
+function MobilePair({ label, value, color }: { label: string; value: ReactNode; color?: string }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: BB.text3, textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</div>
+      <div style={{ fontSize: 12.5, fontWeight: 700, color: color ?? BB.text1, fontFamily: BB.mono, overflowWrap: 'anywhere' }}>{value}</div>
+    </div>
+  )
+}
+
+function HoldingsMobileList({
+  models, openStops, onOpenDetail, placementCount, resizeCount, rowCount,
+}: {
+  models: Array<{ ctx: HoldingsTableRowContext; m: ReturnType<typeof buildHoldingsRowModel> }>
+  openStops: (ctx: HoldingsTableRowContext) => void
+  onOpenDetail: (ctx: HoldingsTableRowContext) => void
+  placementCount: number
+  resizeCount: number
+  rowCount: number
+}) {
+  return (
+    <div
+      data-testid="holdings-table"
+      role="table"
+      aria-label="Portfolio holdings"
+      style={{ background: BB.bg, border: `1px solid ${BB.border}`, borderRadius: RADIUS.lg, overflow: 'hidden' }}
+    >
+      <div data-testid="holdings-mobile-list" role="rowgroup">
+        {models.map(({ ctx: rowCtx, m }) => {
+          const h = rowCtx.h
+          const dayColor = m.dayPct != null ? semanticSigned(m.dayPct, 'default') : BB.text3
+          const plColor = m.pl$ != null ? semanticSigned(m.pl$, 'default') : BB.text3
+          const stopColor = stopStatusColor(m.stopStatus)
+          return (
+            <article
+              key={m.key}
+              role="row"
+              aria-label={`${m.symbol} ${m.accountLabel}`}
+              tabIndex={0}
+              onClick={() => onOpenDetail(rowCtx)}
+              onKeyDown={e => { if (e.key === 'Enter') onOpenDetail(rowCtx) }}
+              style={{
+                padding: '10px 12px', borderBottom: `1px solid ${BB.borderSubtle}`, cursor: 'pointer',
+                borderLeft: m.needsAction ? `3px solid ${primaryActionColor(m.primaryAction.tone, 'default')}` : '3px solid transparent',
+                background: BB.bgRow,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                <CountryFlag symbol={h.symbol} country={h.country} countryName={h.country_name} size={16} />
+                <span style={{ fontFamily: BB.mono, fontWeight: 800, fontSize: 14, color: BB.blue }}>{m.symbol}</span>
+                {m.name && (
+                  <span style={{ fontSize: 10, color: BB.text3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</span>
+                )}
+              </div>
+              <div style={{ fontSize: 10, color: BB.text3, marginTop: 2 }}>
+                {m.accountLabel}{m.shares != null ? ` · ${m.shares} shares` : ''}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginTop: 8 }}>
+                <MobilePair label="Value" value={fmt$(m.marketValue, 0)} />
+                <MobilePair label="Today" value={m.dayPct != null ? `${m.dayPct >= 0 ? '+' : ''}${m.dayPct.toFixed(2)}%` : '—'} color={dayColor} />
+                <MobilePair
+                  label="P&L"
+                  value={m.pl$ != null ? `${m.pl$ >= 0 ? '+' : ''}${fmt$(m.pl$, 0)}${m.plPct != null ? ` (${m.plPct >= 0 ? '+' : ''}${m.plPct.toFixed(1)}%)` : ''}` : '—'}
+                  color={plColor}
+                />
+                <MobilePair label="Weight" value={m.portfolioPct != null ? `${m.portfolioPct.toFixed(1)}%` : '—'} />
+                <MobilePair label="Price / cost" value={`${m.price != null ? `$${m.price.toFixed(2)}` : '—'} / ${m.cost != null ? `$${m.cost.toFixed(2)}` : '—'}`} />
+                <MobilePair
+                  label="RSI"
+                  value={m.rsi != null ? `${Math.round(m.rsi)}${m.rsiStatus ? ` · ${m.rsiStatus}` : ''}` : '—'}
+                />
+              </div>
+              <div style={{ marginTop: 8, fontSize: 11, lineHeight: 1.4, color: m.needsAction ? BB.amberAlt : BB.text2 }}>
+                <b style={{ color: stopColor, textTransform: 'uppercase', fontSize: 10, letterSpacing: 0.3 }}>{m.stopLabel}</b>
+                {m.liveStopPrice != null ? <span style={{ fontFamily: BB.mono }}> ${m.liveStopPrice.toFixed(2)}</span> : null}
+                <span> · {m.stopInstruction}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                <button
+                  type="button"
+                  data-testid={`hold-action-${m.symbol}-${m.account}`}
+                  data-protection-state={m.protectionState}
+                  title={m.primaryActionTooltip}
+                  disabled={m.protectionState === 'CASH'}
+                  onClick={e => { e.stopPropagation(); if (m.protectionState !== 'CASH') openStops(rowCtx) }}
+                  style={{
+                    padding: '8px 12px', fontSize: 11, fontWeight: 800, borderRadius: RADIUS.md, minHeight: 40,
+                    cursor: m.protectionState === 'CASH' ? 'default' : 'pointer',
+                    border: `1px solid ${primaryActionColor(m.primaryAction.tone, 'default')}55`,
+                    background: primaryActionBg(m.primaryAction.tone, 'default'),
+                    color: primaryActionColor(m.primaryAction.tone, 'default'),
+                    opacity: m.protectionState === 'CASH' ? 0.55 : 1,
+                  }}
+                >
+                  {m.primaryAction.label}
+                </button>
+                <span style={{ fontSize: 10, color: BB.text3 }}>Tap the card for the full holding</span>
+              </div>
+            </article>
+          )
+        })}
+      </div>
+      <div style={{ fontSize: 10, color: BB.text3, padding: '8px 12px', borderTop: `1px solid ${BB.border}`, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <span data-testid="holdings-row-count">{rowCount} positions</span>
+        {placementCount > 0 && (
+          <span data-testid="holdings-placement-count" style={{ color: BB.amberAlt, fontWeight: 700 }}>▸ {placementCount} need stop placement</span>
+        )}
+        {resizeCount > 0 && (
+          <span data-testid="holdings-resize-count" style={{ color: BB.amberAlt, fontWeight: 700 }}>▸ {resizeCount} need stop resize</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
  * Bloomberg-style holdings table: tall rows, full account names + brand pills,
  * dual-line money cells, RSI/VOL badges, news + earnings, stop + action.
  */
@@ -310,6 +448,7 @@ export default function HoldingsTableView({
   rows, resistanceMap = {}, focusKey, cvdMode = 'default', onOpenDetail, onOpenStops, onPrimaryAction, onShareDrift,
 }: Props) {
   const [hoverKey, setHoverKey] = useState<string | null>(null)
+  const narrow = useNarrowViewport()
   const openStops = onOpenStops || onPrimaryAction || onOpenDetail
   const models = rows.map(r => ({
     ctx: r,
@@ -322,6 +461,19 @@ export default function HoldingsTableView({
   const resizeCount = models.filter(x => x.m.needsAction && x.m.protectionState === 'PROTECTED').length
   const verificationCount = models.filter(x => x.m.needsVerification || x.m.protectionState === 'UNVERIFIABLE').length
   const actionableCount = placementCount + resizeCount
+
+  if (narrow) {
+    return (
+      <HoldingsMobileList
+        models={models}
+        openStops={openStops}
+        onOpenDetail={onOpenDetail}
+        placementCount={placementCount}
+        resizeCount={resizeCount}
+        rowCount={rows.length}
+      />
+    )
+  }
 
   return (
     <div

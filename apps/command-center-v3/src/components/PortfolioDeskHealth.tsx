@@ -39,6 +39,7 @@ export default function PortfolioDeskHealth(props: PortfolioDeskHealthProps) {
   } = props
   const [meta, setMeta] = useState<BuildMeta | null>(null)
   const [metaErr, setMetaErr] = useState(false)
+  const [showBuild, setShowBuild] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -62,6 +63,8 @@ export default function PortfolioDeskHealth(props: PortfolioDeskHealthProps) {
     : 'fetch time unknown'
   const sha = meta?.source_commit ? meta.source_commit.slice(0, 12) : null
   const uiVer = meta?.ui_version || (metaErr ? 'build unknown' : '…')
+  // "3.14+mw1ddvr8" → "3.14": the per-build stamp is a cache-buster, not an operator fact.
+  const baseVersion = meta?.ui_version ? String(meta.ui_version).split('+')[0] : null
 
   const hardReload = () => {
     try {
@@ -108,24 +111,47 @@ export default function PortfolioDeskHealth(props: PortfolioDeskHealthProps) {
         </span>
       )}
       {priceStamp && (
-        <span title={priceStamp} style={{ ...chip(MUTED), maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {priceStamp.slice(0, 42)}{priceStamp.length > 42 ? '…' : ''}
+        // FQ-050: the stamp used to be cut at 42 characters, so a phone read "Prices 19:30 ET · Finviz
+        // after-hours · tec…" with no way to see the rest. It now wraps in full; the raw source keys
+        // are operator words (lib/pricingStamp.priceSourceLabel) and the whole line is the title.
+        <span
+          data-testid="desk-health-price-stamp"
+          title={priceStamp}
+          style={{ ...chip(MUTED), maxWidth: '100%', whiteSpace: 'normal', overflowWrap: 'anywhere', lineHeight: 1.35 }}
+        >
+          {priceStamp}
         </span>
       )}
       <span style={{ flex: 1, minWidth: 8 }} />
-      <span
+      <button
+        type="button"
         data-testid="desk-health-build"
+        aria-expanded={showBuild}
+        onClick={() => setShowBuild(v => !v)}
         title={[
           meta?.ui_version && `UI ${meta.ui_version}`,
           sha && `source_commit ${meta?.source_commit}`,
           meta?.built_at && `built ${meta.built_at}`,
           meta?.release_notes,
-          'Click Reload UI if this chip does not match the expected deploy.',
+          'Click to show the build identity. Reload UI if it does not match the expected deploy.',
         ].filter(Boolean).join('\n')}
-        style={{ ...chip(PURPLE), color: PURPLE }}
+        style={{ ...chip(PURPLE), color: PURPLE, cursor: 'pointer' }}
       >
-        {sha ? `${uiVer} · ${sha}` : uiVer}
-      </span>
+        {/* FQ-050: the face was "3.14+mw1ddvr8 · 1f1ba5832a06" — a version stamp plus a commit hash.
+            The face is now the release version; the hashes are one tap away. */}
+        {baseVersion ? `Build ${baseVersion}` : uiVer}
+      </button>
+      {showBuild && (
+        <div
+          data-testid="desk-health-build-details"
+          style={{ flexBasis: '100%', fontSize: 10, color: MUTED, fontFamily: 'ui-monospace, monospace', lineHeight: 1.5, overflowWrap: 'anywhere' }}
+        >
+          <div>UI version: {meta?.ui_version || 'unavailable'}</div>
+          <div>Source commit: {sha ? `${meta?.source_commit}` : 'unavailable'}</div>
+          {meta?.built_at && <div>Built: {meta.built_at}</div>}
+          {metaErr && <div>Build identity could not be read.</div>}
+        </div>
+      )}
       {onExportCsv && (
         <button
           type="button"
