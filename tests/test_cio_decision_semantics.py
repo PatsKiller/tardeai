@@ -218,3 +218,29 @@ def test_per_account_does_not_change_the_decision_identity():
     same = canonical_decision_digests("V", row["cio_stance"], row["recommended_delta_usd"], without)
     assert row["decision_input_digest"] == same["input"]
     assert row["decision_evidence_digest"] == same["evidence"]
+
+
+def test_an_accounts_label_agrees_with_its_own_decision():
+    """codex BLOCK at 852bf45c5: HOLD then ADD on one account left `stance: "Hold"` beside `cio_stance: "ADD"`.
+
+    The enum-only assertions in the tests above passed on that broken code, which is the point of the finding: a
+    summary line that disagrees with its own decision is a lie even when the decision is right.
+    """
+    from scripts.lib.cio_decision_semantics import aggregate_position_decisions, professional_stance
+
+    rows = [
+        {"symbol": "V", "account": "a", "current_value_usd": 10_000.0, "recommended_delta_usd": 0.0,
+         "cio_stance": "HOLD", "why_now": None},
+        {"symbol": "V", "account": "a", "current_value_usd": 5_000.0, "recommended_delta_usd": 0.0,
+         "cio_stance": "ADD", "why_now": None},
+    ]
+    row = aggregate_position_decisions(rows, portfolio_value=100_000.0)[0]
+    entry = row["per_account"][0]
+
+    assert entry["cio_stance"] == "ADD"                      # the decision
+    assert entry["stance"] == professional_stance("ADD")     # the label — this is the assertion that was missing
+    assert entry["stance"] != professional_stance("HOLD")    # and it is not the first row's label
+    # The invariant, applied to every account on every row: the label is derived from the enum, never carried.
+    for agg in aggregate_position_decisions(rows, portfolio_value=100_000.0):
+        for opinion in agg["per_account"]:
+            assert opinion["stance"] == professional_stance(opinion["cio_stance"])

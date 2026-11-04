@@ -819,12 +819,16 @@ def aggregate_position_decisions(
             prev = agg["_acct_opinions"].get(acct)
             agg["_acct_opinions"][acct] = (
                 _acct_opinion(acct, stance, value, delta, why) if prev is None else {
-                    **prev,
-                    "cio_stance": merge_stances(prev["cio_stance"], stance),
-                    "current_value_usd": round(float(prev["current_value_usd"]) + value, 2),
-                    "recommended_delta_usd": round(float(prev["recommended_delta_usd"]) + delta, 2),
-                    "why_now": prev.get("why_now") or why,
-                }
+                    # codex BLOCK at 852bf45c5: the FIRST row's display label was carried through, so an account that
+                    # went HOLD then ADD kept `stance: "Hold"` beside `cio_stance: "ADD"` — the label lied about the
+                    # decision, which is exactly the shape this row fixes one level up. Both are now derived from the
+                    # merged enum; neither is carried.
+                    **{**prev,
+                       "cio_stance": merge_stances(prev["cio_stance"], stance),
+                       "stance": professional_stance(merge_stances(prev["cio_stance"], stance)),
+                       "current_value_usd": round(float(prev["current_value_usd"]) + value, 2),
+                       "recommended_delta_usd": round(float(prev["recommended_delta_usd"]) + delta, 2),
+                       "why_now": prev.get("why_now") or why}}
             )
         # Prefer non-neutral why_now
         if why and _NEUTRAL_WHY not in str(why).lower():
