@@ -155,9 +155,11 @@ export default function OpsIncidents() {
                     <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                       <Chip tone={m.status.tone}>{m.status.label}</Chip>
                       <Chip tone={m.priority.tone}>{m.priority.code}</Chip>
-                      {/* the phone drops the identifier subtitle; it stays in the detail, and the age stays here */}
-                      {sheet.mobile ? null : <span style={muted}>{m.meta}{r.fix_refs?.length ? ` · ${refLink(r.fix_refs[0]).label}` : ''}</span>}
-                      {sheet.mobile && r.fix_refs?.length ? <span style={muted}>{refLink(r.fix_refs[0]).label}</span> : null}
+                      {/* the phone drops the SOURCE identifier, never the age: how old this is decides whether the
+                          operator can act on it at all (cx-openai-4 R2 on PR 2628) */}
+                      {sheet.mobile
+                        ? <span style={muted}>{m.age}{r.fix_refs?.length ? ` · ${refLink(r.fix_refs[0]).label}` : ''}</span>
+                        : <span style={muted}>{m.meta}{r.fix_refs?.length ? ` · ${refLink(r.fix_refs[0]).label}` : ''}</span>}
                     </span>
                     {/* NEXT — who acts, in one sentence (FQ-045) */}
                     <span data-testid={`incident-next-${r.id}`}

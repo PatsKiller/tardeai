@@ -78,5 +78,21 @@ check('the row carries the priority', row.priority.code === 'P1')
 check('the row carries the next action', row.nextAction === 'Needs a person. Next: re-auth the drive lane', row.nextAction)
 check('the row meta has no identifier underscores', !row.meta.includes('_'), row.meta)
 
+
+// ---- cx-openai-4's two findings at 52e815c12 (R1 qualification, R2 phone age) -------------------------------------
+const QUAL = plainTitle('Data service healthy (NOT VERIFIED)')
+check('R1: a qualification stays in the sentence', /NOT VERIFIED/.test(QUAL.headline), QUAL.headline)
+check('R1: and is not treated as machine detail', !/NOT VERIFIED/.test(QUAL.rawDetail ?? ''), String(QUAL.rawDetail))
+const UNV = plainTitle('Feed reachable (UNVERIFIED)')
+check('R1: UNVERIFIED is a qualification too', /UNVERIFIED/.test(UNV.headline), UNV.headline)
+check('R1: an assignment in brackets still moves to the detail', (plainTitle('Disk check ran (rc=1)').rawDetail ?? '') === 'rc=1')
+const compactRow = rowModel({ ...base, status: 'open', title: 't' }, { age: '1 h 30 min', source: 'watcher · lane_health' })
+check('R2: the row model carries the age on its own', compactRow.age === '1 h 30 min', compactRow.age)
+
+// the phone branch of the page must render the age, not drop the whole meta line
+import { readFileSync } from 'node:fs'
+const pageSrc = readFileSync(new URL('../pages/OpsIncidents.tsx', import.meta.url), 'utf8')
+check('R2: the phone branch renders the age', /sheet\.mobile[\s\S]{0,120}m\.age/.test(pageSrc), 'no m.age in the mobile branch')
+
 console.log(`incidentRow: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

@@ -25,16 +25,24 @@ export type IncidentRowModel = {
   priority: { code: string; tone: Tone }
   /** what happens next and who, in one sentence — the field the phone row exists for */
   nextAction: string
-  /** age and where it came from; a phone row drops this and the detail keeps it */
+  /** age and where it came from; a desk row shows both */
   meta: string
+  /** the age alone — a phone drops the source identifier but NEVER the age (cx-openai-4 R2 on PR 2628) */
+  age: string
 }
 
 const ALL_CAPS = /\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g
 const SNAKE = /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g
 const CAMEL = /\b[a-z]+(?:[A-Z][a-z0-9]+)+\b/g
 const DOTTED = /\b[a-z][a-z0-9]*(?:\.[a-z0-9]+)+\b/g
-/** A parenthetical is machine detail when it carries an assignment, a path, a PR number or a bare code. */
-const MACHINE_PAREN = /\(([^()]*(?:[=/#]|\b[A-Z]{3,}\b|\d+\s*[a-zA-Z]+\s*=)[^()]*)\)/g
+/** A parenthetical is machine detail when it carries an assignment, a path or a PR number.
+ *
+ *  NOT every ALL_CAPS parenthetical is machine detail: "(NOT VERIFIED)" is a QUALIFICATION on the sentence beside it.
+ *  Lifting it turned "Data service healthy (NOT VERIFIED)" into "Data service healthy" on the row - a healthy claim the
+ *  source did not make (cx-openai-4 R1 on PR 2628). A qualification stays in the sentence; only assignments, paths and
+ *  references move to the detail. */
+const QUALIFICATION = /\b(NOT|UN)\s?VERIFIED\b|\bUNVERIFIED\b|\bUNKNOWN\b|\bSTALE\b|\bESTIMATED?\b|\bPARTIAL\b|\bUNCONFIRMED\b/i
+const MACHINE_PAREN = /\(([^()]*(?:[=/#])[^()]*)\)/g
 /** A trailing run of `key=value` measurements — `, 24h=58,thesis_sustained=11` — is machine detail, not a sentence. */
 const METRIC_TAIL = /((?:[,;]\s*[A-Za-z0-9_.]+\s*=\s*[^,;]+)+)\s*$/
 
@@ -66,7 +74,8 @@ export function plainTitle(title: string | null | undefined): { headline: string
     lifted.push(words(tail.replace(/^[,;]\s*/, '').replace(/[,;]/g, ', ')))
     return ''
   })
-  const withoutParens = withoutMetrics.replace(MACHINE_PAREN, (_m, inner: string) => {
+  const withoutParens = withoutMetrics.replace(MACHINE_PAREN, (m, inner: string) => {
+    if (QUALIFICATION.test(inner)) return m   // a qualification is part of the sentence, not machine detail
     lifted.push(words(inner))
     return ''
   })
@@ -115,5 +124,6 @@ export function rowModel(i: Incident, opts: { age: string; source: string }): In
     priority: priorityOf(i),
     nextAction: nextActionOf(i),
     meta: `${opts.age} · ${plainWords(opts.source)}`,
+    age: opts.age,
   }
 }
