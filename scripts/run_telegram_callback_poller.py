@@ -216,38 +216,44 @@ _CREDENTIAL_PARAM_RE = re.compile(
     r"(?P<key>(?P<kq>[\"']?)\b(?:" + "|".join(_CREDENTIAL_KEYS) + r")\b(?P=kq))"
     r"(?P<sep>\s*[=:]\s*)"
     r"(?:"
-    r"(?P<dq>\"(?:[^\"\\]|\\.)*\")"                                   # double-quoted, JSON escapes ok
-    r"|(?P<sq>'(?:[^'\\]|\\.)*')"                                     # single-quoted, own delimiter only
-    r"|(?P<val>[^\s&,}\])]+)(?=[&,}\])\"'#]|$)"                        # a token, bounded by a delimiter or the end
-    r"|(?P<long>[A-Za-z0-9._~+/=%\-]{20,})"                               # a long secret embedded mid-sentence
+    r"(?P<dq>\"(?:[^\"\\]|\\.)*\")"                        # double-quoted, JSON escapes ok
+    r"|(?P<sq>'(?:[^'\\]|\\.)*')"                              # single-quoted, own delimiter only
+    r"|(?P<val>[^\s&,}\])]+)"                                    # bare value: ends at whitespace or a delimiter
     r")"
 )
 
 
 def redact_credentials(text: str, previous: str | None = None) -> str:
-    """Replace the VALUE of a credential-bearing parameter, keeping the key and the rest of the message.
+    """Redact the VALUE of a credential-bearing parameter. Two rules, both keyed — never shape.
 
-    The poller must act on the operator's raw text — a Schwab ``?code=`` paste is completed, not redacted, on its way
-    into the OAuth exchange — but the inbox is append-only and long-lived, and the log is copied into incident
-    evidence. A credential written to either outlives the exchange it authorised, so redaction happens exactly at the
-    record/log boundary and nowhere earlier (BOARD #2533 follow-up, 2026-11-04).
+    WHY KEYED, NOT SHAPE (cc5 + cx-openai-3, 2026-11-04, after both reviews pulled in opposite directions): a
+    length/shape heuristic fails in BOTH directions at once. A 24-character floor let a 20-character Schwab
+    authorization code through; lowering it silently erased a 40-character SHA, a 32-character hash, a design-doc path,
+    a base64 filename and a version string — facts the operator was ANSWERING a question with. There is no length that
+    satisfies both, because length is not the evidence. A credential is identified by the thing that names it: the key.
 
-    Deliberately narrow: only ``key=value`` pairs whose key is a known credential parameter are touched, so ordinary
-    prose ("the code= path", "token budget") keeps its text and a long paste is not mangled.
+    1. **Same message.** `key=` / `key:` — `code`, `access_token`, `refresh_token`, `id_token`, `api_key`, `apikey`,
+       `client_secret`, `password`, `token` — the value ends at whitespace or a delimiter, so `password=synth123
+       thanks` and `code=synth123 please retry` redact and the rest of the sentence survives. Quoted values keep their
+       own delimiter and JSON escapes.
+    2. **Split paste.** If the PREVIOUS message in the same chat ended with a credential key and separator
+       (`…code=`, `…token:`), THIS message is that value, whatever its length. The preceding key is the evidence; a
+       value alone carries none.
+
+    RESIDUAL, at its real width: a credential value pasted in a message that neither follows a key-bearing message nor
+    names its own key is NOT redacted — nothing in the text identifies it, and guessing by shape is what erased the
+    operator's SHAs and paths. Ambiguity is resolved in favour of keeping the operator's words, and the value is never
+    silently deleted.
     """
     if not text:
         return text
+
     def _keep(m: "re.Match[str]") -> str:
-        dq, sq = m.group("dq"), m.group("sq")
-        quote = '"' if dq else ("'" if sq else "")
+        quote = '"' if m.group("dq") else ("'" if m.group("sq") else "")
         return f"{m.group('key')}{m.group('sep')}{quote}[redacted]{quote}"
+
     redacted = _CREDENTIAL_PARAM_RE.sub(_keep, text)
-    body = redacted.strip()
-    split_paste = bool(previous and _TRAILING_KEY_RE.search(previous.strip())) and " " not in body and bool(body)
-    if split_paste or _STANDALONE_CREDENTIAL_RE.match(body):
-        # F3, second half (cc5 2026-11-04): when the transport splits a paste, the value arrives as its OWN message
-        # with no key to match on. A whole message that is one long opaque token is not prose, and it is not safe to
-        # keep: it is the half of the credential the keyed rule cannot see.
+    if previous and _TRAILING_KEY_RE.search(str(previous).strip()) and redacted.strip():
         return "[redacted]"
     return redacted
 

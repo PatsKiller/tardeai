@@ -270,9 +270,11 @@ def test_a_pasted_oauth_redirect_is_redacted_everywhere_it_is_written(tmp_path):
 
 def test_redaction_is_narrow_and_never_mangles_ordinary_prose():
     from scripts.run_telegram_callback_poller import redact_credentials
-    for text in ("the code= path is under review", "token budget is 240", "approve the restore",
-                 "please re-read WORKERS.md and continue"):
+    # "the code= path …" NOW redacts "path": a keyed value ends at whitespace by design, which is what makes
+    # `password=synth123 thanks` and `code=synth123 please retry` safe. Prose that names no credential key is untouched.
+    for text in ("token budget is 240", "approve the restore", "please re-read WORKERS.md and continue"):
         assert redact_credentials(text) == text
+    assert redact_credentials("the code= path is under review") == "the code= [redacted] is under review"
     # the credential parameters we claim to catch, case-insensitively, in a query string or a form paste
     for key in ("code", "access_token", "refresh_token", "id_token", "api_key", "client_secret", "password", "token"):
         assert redact_credentials(f"{key}=VALUE123") == f"{key}=[redacted]"
@@ -341,9 +343,11 @@ def test_f2_every_encoding_is_redacted_at_the_inbox_and_the_queue(tmp_path, name
 def test_f2_ordinary_prose_keeps_its_text():
     """The narrowness that makes the redactor usable: the operator's own words survive."""
     from scripts.run_telegram_callback_poller import redact_credentials
-    for text in ("the code: path is under review", "the code= path is under review", "the token budget grew",
-                 "approve the restore", "please re-read WORKERS.md and continue"):
+    for text in ("the token budget grew", "approve the restore", "please re-read WORKERS.md and continue"):
         assert redact_credentials(text) == text, text
+    # a keyed value ends at whitespace, so naming a key costs the next word — the documented price of catching
+    # `code=synth123 please retry`
+    assert redact_credentials("the code: path is under review") == "the code: [redacted] is under review"
 
 
 def test_f3_a_credential_straddling_the_truncation_point_leaves_no_fragment():
@@ -393,7 +397,8 @@ def test_a_credential_arriving_as_its_own_message_is_redacted(tmp_path):
     no key. It used to be stored and logged raw. Fails at aec6fe0d7."""
     from scripts.run_telegram_callback_poller import _append_or_queue
     standalone = "S3CR3T0oauth0CODE09911continued"
-    assert _append_or_queue({"message_id": 9, "text": standalone}, replies_dir=tmp_path) == "recorded"
+    assert _append_or_queue({"message_id": 9, "text": standalone}, replies_dir=tmp_path,
+                            previous_text="127.0.0.1?code=") == "recorded"
     written = (tmp_path / "telegram.jsonl").read_text()
     assert "S3CR3T0oauth0CODE09911" not in written, written
     assert "[redacted]" in written
@@ -411,10 +416,12 @@ def test_a_split_paste_value_under_24_chars_is_redacted(tmp_path):
     """cc5 (2026-11-04): the standalone floor was 24 and the R1 reproducer is 20 characters — a plausible Schwab
     authorization code. Fails at 48a6d44cceb2."""
     from scripts.run_telegram_callback_poller import _record_operator_reply
+    from scripts.run_telegram_callback_poller import _append_or_queue
     value = "AbCdEf1234567890XyZq"
     assert len(value) == 20
-    assert _record_operator_reply({"message_id": 11}, value, "555", replies_dir=tmp_path,
-                                  allowed={"555"}, chat_type="private", sender_id="555") == "recorded"
+    # the value alone carries no evidence; the PREVIOUS message ending in `code=` does (cc5's case, closed by context)
+    assert _append_or_queue({"message_id": 11, "text": value}, replies_dir=tmp_path,
+                            previous_text="https://127.0.0.1/?code=") == "recorded"
     written = (tmp_path / "telegram.jsonl").read_text()
     assert value not in written, written
 
@@ -425,3 +432,17 @@ def test_a_value_after_a_key_bearing_message_is_redacted_at_any_length(tmp_path)
     from scripts.run_telegram_callback_poller import redact_credentials
     assert redact_credentials("AbCd", previous="127.0.0.1?code=") == "[redacted]"
     assert redact_credentials("AbCd", previous="please approve the restore") == "AbCd"
+
+
+def test_a_fact_the_operator_is_answering_with_is_never_redacted(tmp_path):
+    """cx-openai-3 (2026-11-04): the shape heuristic erased SHAs, hashes, paths, filenames and version strings — the
+    operator's actual answer — silently, with no warning. Nothing without a credential key is a credential now.
+    Fails at 48a6d44cc."""
+    from scripts.run_telegram_callback_poller import redact_credentials
+    for fact in ("0123456789abcdef0123456789abcdef01234567",
+                 "d41d8cd98f00b204e9800998ecf8427e",
+                 "docs/designs/DSN-20261104-operator-replies.md",
+                 "UmVjb3ZlcnktcmV2aWV3LTI1Nzk=.txt",
+                 "v2026.11.04-recovery-round-4",
+                 "review-2579-fix-poller-redaction"):
+        assert redact_credentials(fact) == fact, fact
