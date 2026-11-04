@@ -306,10 +306,10 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
                     observed condition is an UNAVAILABLE comparison badge beside a working Promote on a suggestion that
                     DOES have a directive; my first pass only explained the missing-directive case. Both are explained
                     now, and neither disables the control or changes eligibility. */}
-                {h.directive_id && h.divergence === 'UNAVAILABLE' && (
+                {h.directive_id && String(h.divergence || '').toUpperCase() === 'UNAVAILABLE' && (
                   <span data-testid="wp-promote-unavailable" style={{ marginLeft: 'auto', fontSize: TYPE.xs, color: BB.text3 }}>
-                    Comparison evidence unavailable — the desk could not compare this against your book here, so read the
-                    evidence before promoting; Promote still attaches this suggestion to your watchlist
+                    Street comparison unavailable — no professional-analyst view is attached to this suggestion yet, so
+                    there is nothing to compare the desk's read against; Promote still attaches it to your watchlist
                   </span>
                 )}
                 {!h.directive_id && (

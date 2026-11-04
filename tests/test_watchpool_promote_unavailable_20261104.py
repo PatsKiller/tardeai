@@ -16,10 +16,14 @@ SRC = (Path(__file__).resolve().parents[1] / "apps/command-center-v3/src/pages/W
 
 
 def test_the_unavailable_comparison_is_explained_when_a_directive_exists():
-    assert "h.directive_id && h.divergence === 'UNAVAILABLE'" in SRC, (
-        "the id-present / UNAVAILABLE row must have its own explanation branch"
+    # cx-openai-2 F1: the producer emits lowercase 'unavailable' (directive_promotion.get_divergence_status);
+    # site_payload_reads passes it through without normalisation, so the check must be case-insensitive.
+    assert "String(h.divergence || '').toUpperCase() === 'UNAVAILABLE'" in SRC, (
+        "the id-present / UNAVAILABLE check must normalise case, or the producer's lowercase value slips through"
     )
-    assert "Comparison evidence unavailable" in SRC
+    assert "Street comparison unavailable" in SRC
+    # cx-openai-2 F2: the field is the internal-vs-Street divergence, not a portfolio/book comparison.
+    assert "against your book" not in SRC, "the explanation must not call the Street divergence a book comparison"
 
 
 def test_the_missing_directive_case_is_still_explained():
