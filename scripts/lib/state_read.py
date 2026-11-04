@@ -22,13 +22,17 @@ import json
 from pathlib import Path
 from typing import Any, Optional
 
+#: Every state this module's readers can return. ``read_json_state`` returns all of them except
+#: ``invalid_shape``, which ``read_holdings_state`` adds for a document whose consumer shape is wrong — a
+#: consumer switching on ``STATES`` must not assume every member comes from the byte reader.
 STATES = ("ok", "absent", "empty", "unparseable", "not_object", "unreadable", "invalid_shape")
 
 
 def read_json_state(path: Path | str) -> tuple[Optional[dict], str]:
     """``(document, state)`` from one bounded read; the document only when state is ``ok``.
 
-    ``state`` is one of ``ok | absent | empty | unparseable | not_object | unreadable``.
+    ``state`` is one of ``ok | absent | empty | unparseable | not_object | unreadable``. ``invalid_shape`` is
+    never returned here: it is a consumer-shape verdict and belongs to ``read_holdings_state``.
     """
     p = Path(path)
     try:
@@ -64,17 +68,36 @@ def object_rows(value: Any) -> Optional[list[dict]]:
     return value
 
 
-def read_holdings_state(path: Path | str) -> tuple[Optional[dict], str]:
-    """A holdings document whose ``holdings`` member is a list of mappings, or ``(None, why)``.
+def _readable_row(row: dict) -> bool:
+    """A holdings row the consumers can actually read: it names a security.
 
-    ``state`` is the read state, or ``invalid_shape`` when the file parsed but its consumer
-    shape is wrong (``holdings`` null, a mapping, or containing scalar rows). Callers must
-    render an unavailable snapshot, never an empty book, when the document is ``None``.
+    ``symbol`` is the one field every consumer keys a position by (the prompt's "Position: …" line, the layer
+    scan, the symbol list social_ingest builds). A row without it cannot answer "what do I hold", so a book
+    containing one is not a shorter book — it is a document this module cannot read, and the destructive
+    direction it must never allow is that unreadable rows render as an empty position ("NOT CURRENTLY HELD").
+    The live store names a symbol on every row, cash rows included (``"symbol": "CASH", "is_cash": true``), so
+    this demands no shape the writer does not already produce.
+    """
+    symbol = row.get("symbol")
+    return isinstance(symbol, str) and bool(symbol.strip())
+
+
+def read_holdings_state(path: Path | str) -> tuple[Optional[dict], str]:
+    """A holdings document whose ``holdings`` member is a list of readable mappings, or ``(None, why)``.
+
+    ``state`` is the read state, or ``invalid_shape`` when the file parsed but its consumer shape is wrong:
+    ``holdings`` null, a mapping, scalar rows, or a row that names no symbol (``_readable_row``). A foreign
+    document such as ``{"holdings": [{"ticker": "AAA"}]}`` is exactly that last case — it used to read ``ok``,
+    and the consumer then asserted "NOT CURRENTLY HELD". Callers must render an unavailable snapshot, never an
+    empty book, when the document is ``None``.
     """
     doc, state = read_json_state(path)
     if state != "ok" or doc is None:
         return None, state
-    if object_rows(doc.get("holdings")) is None:
+    rows = object_rows(doc.get("holdings"))
+    if rows is None:
+        return None, "invalid_shape"
+    if any(not _readable_row(row) for row in rows):
         return None, "invalid_shape"
     return doc, "ok"
 

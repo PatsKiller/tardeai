@@ -85,7 +85,6 @@ def test_social_ingest_symbols_filters_cash_and_funds(tmp_path, monkeypatch):
                     {"symbol": "AAA"},
                     {"symbol": "CASH", "is_cash": True},
                     {"symbol": "FUNDX", "is_fund": True},
-                    {"symbol": ""},
                 ]
             }
         )
@@ -94,10 +93,29 @@ def test_social_ingest_symbols_filters_cash_and_funds(tmp_path, monkeypatch):
     assert si._get_holdings_symbols() == ["AAA"]
 
 
+def test_a_blank_symbol_row_is_an_unreadable_book_not_a_row_to_filter(tmp_path, monkeypatch):
+    """cc-deepseek-6, #2545 P2-2. This used to be a *filtered* row: ``{"symbol": ""}`` was dropped and the rest of
+    the book was returned, so a document whose rows the consumer cannot read produced a confident shorter book.
+    A row that names no security is not a holding to skip — it makes the document one this reader cannot read."""
+    import social_ingest as si
+
+    state_dir = tmp_path / "data" / "portfolios" / "state"
+    state_dir.mkdir(parents=True)
+    (state_dir / "holdings.json").write_text(json.dumps({"holdings": [{"symbol": "AAA"}, {"symbol": ""}]}))
+    monkeypatch.setattr(si, "PROJECT_ROOT", tmp_path)
+    assert si.holdings_universe() == ([], "invalid_shape")
+
+
 # ── cx-openai-2 BLOCK at 85a573e6c: consumer shape (F1), unknown not empty (F2), decoder (F3) ──
 
 DAMAGED_RAW = (b"", b"{not json", b"\xff\xfe\x00", b"[1,2]", b"null", b"   \n")
-WRONG_SHAPE = ('{"holdings": null}', '{"holdings": {"AAA": {}}}', '{"holdings": [1]}')
+#: Shapes that parse but are not a book this module can read. The last two are cx-deepseek-6's #2545 P2-2: a
+#: foreign document (rows keyed by a field the consumers never read) used to read ``ok``, and the analyst prompt
+#: then asserted "NOT CURRENTLY HELD" from it — a confident ownership claim derived from rows nobody could read.
+WRONG_SHAPE = ('{"holdings": null}', '{"holdings": {"AAA": {}}}', '{"holdings": [1]}',
+               '{"holdings": [{"ticker": "AAA"}]}',
+               '{"holdings": [{"symbol": "AAA"}, {"ticker": "BBB"}]}',
+               '{"holdings": [{"symbol": "   "}]}')
 
 
 class _Cursor:
@@ -151,6 +169,40 @@ def test_holdings_state_distinguishes_damage_from_an_empty_book(tmp_path):
     assert sr.read_holdings_state(p) == (None, "empty")
 
 
+def test_a_document_whose_rows_name_no_security_is_invalid_shape(tmp_path):
+    """cc-deepseek-6, #2545 P2-2. Measured at 8e44863458f7: ``{"holdings": [{"ticker": "AAA"}]}`` returned ``ok``,
+    so ``holdings_known`` was True with an empty position set and the consumer rendered "NOT CURRENTLY HELD (0
+    shares in any account)". A row the consumers cannot key a position by is not a holding, and a book is only
+    readable when every row in it is."""
+    p = tmp_path / "holdings.json"
+    cases = {
+        '{"holdings": [{"ticker": "AAA"}]}': "invalid_shape",                    # a foreign document
+        '{"holdings": [{"symbol": "AAA"}, {"ticker": "BBB"}]}': "invalid_shape",  # one unreadable row poisons the book
+        '{"holdings": [{"symbol": ""}]}': "invalid_shape",                        # a blank name is not a name
+        '{"holdings": [{"symbol": "  "}]}': "invalid_shape",
+        '{"holdings": [{"symbol": 42}]}': "invalid_shape",                         # a number is not a ticker
+        '{"holdings": [{"symbol": "AAA"}]}': "ok",
+        '{"holdings": [{"symbol": "CASH", "is_cash": true}]}': "ok",               # the live cash-row shape
+        '{"holdings": []}': "ok",
+    }
+    for raw, expected in cases.items():
+        p.write_text(raw)
+        doc, state = sr.read_holdings_state(p)
+        assert state == expected, f"{raw}: got {state!r}, expected {expected!r}"
+        assert (doc is not None) == (expected == "ok")
+
+
+def test_states_is_the_union_and_the_docstring_says_which_reader_owns_invalid_shape():
+    """P3: ``STATES`` is the union of this module's readers. ``invalid_shape`` is a consumer-shape verdict from
+    ``read_holdings_state``; ``read_json_state`` never returns it, and both docstrings now say so, so a consumer
+    switching on ``STATES`` is not surprised by a member the byte reader cannot produce."""
+    assert "invalid_shape" in sr.STATES
+    reader_doc = sr.read_json_state.__doc__ or ""
+    assert "never returned here" in reader_doc and "belongs to ``read_holdings_state``" in reader_doc
+    holdings_doc = sr.read_holdings_state.__doc__ or ""
+    assert "``invalid_shape``" in holdings_doc
+
+
 def test_decoder_int_limit_is_unparseable_not_a_crash(tmp_path):
     """F3: a ~5KB object with a 5000-digit integer raises ValueError from the decoder."""
     p = tmp_path / "big.json"
@@ -178,6 +230,64 @@ def test_context_renders_unknown_never_not_held(wl, tmp_path, raw):
     assert "UNKNOWN" in out["text"]
     assert out["snapshot"]["positions_available"] is False
     assert out["snapshot"]["holdings_state"] != "ok"
+
+
+def test_social_ingest_carries_the_holdings_state_into_the_lane_receipt(tmp_path, monkeypatch):
+    """cc-deepseek-6, #2545 P2-1. The lane discarded the state, so a 0-byte or unparseable store produced a run
+    indistinguishable from a healthy one whose book held no qualifying symbol (the header calls an empty symbol
+    list a successful poll). The state now travels into the receipt, and the lane still succeeds: the symbol list
+    is optional context. Driven through ``main()``, asserted on the summary handed to the receipt writer."""
+    import types
+
+    import social_ingest as si
+
+    state_dir = tmp_path / "data" / "portfolios" / "state"
+    state_dir.mkdir(parents=True)
+    (state_dir / "holdings.json").write_bytes(b"")
+    monkeypatch.setattr(si, "PROJECT_ROOT", tmp_path)
+
+    stubbed = types.ModuleType("pipeline_registry")
+    stubbed.run_start = lambda *a, **k: None
+    stubbed.run_complete = lambda *a, **k: None
+    stubbed.run_fail = lambda *a, **k: None
+    monkeypatch.setitem(sys.modules, "pipeline_registry", stubbed)
+
+    written = {}
+
+    class _Receipt:
+        def now_iso(self):
+            return "2026-11-04T00:00:00+00:00"
+
+        def write_lane_receipt(self, lane, **kwargs):
+            written["lane"] = lane
+            written["summary"] = kwargs.get("summary")
+            return "/tmp/receipt.json"
+
+        def dry_run_report(self, *a, **k):  # pragma: no cover - not reached
+            raise AssertionError("a real run must not write a dry-run report")
+
+    monkeypatch.setattr(si, "_receipt_lib", lambda: _Receipt())
+    monkeypatch.setattr(si, "ingest_stocktwits", lambda syms: {"inserted": 0, "skipped": 0, "errors": []})
+    monkeypatch.setattr(si, "ingest_stocktwits_discovery", lambda: {"inserted": 0, "skipped": 0, "errors": []})
+    monkeypatch.setattr(si, "ingest_reddit_with_discovery", lambda: {"inserted": 0, "skipped": 0, "errors": []})
+
+    assert si.main(["--source", "all"]) == 0
+    assert written["lane"] == "social-ingest-all"
+    assert written["summary"]["holdings_state"] == "empty"
+    assert written["summary"]["holdings_damaged"] is True
+    assert written["summary"]["source"] == "all"
+    assert written["summary"]["rows_produced"] == 0
+
+
+def test_social_ingest_reports_a_healthy_read_as_ok(tmp_path, monkeypatch):
+    """The control in the other direction: a healthy store must not be flagged as damaged."""
+    import social_ingest as si
+
+    state_dir = tmp_path / "data" / "portfolios" / "state"
+    state_dir.mkdir(parents=True)
+    (state_dir / "holdings.json").write_text(json.dumps({"holdings": [{"symbol": "AAA"}]}))
+    monkeypatch.setattr(si, "PROJECT_ROOT", tmp_path)
+    assert si.holdings_universe() == (["AAA"], "ok")
 
 
 @pytest.mark.parametrize("doc", WRONG_SHAPE)
