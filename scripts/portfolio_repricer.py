@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -59,6 +60,57 @@ _CASH_SYMBOLS = frozenset({
 def _utc_now_iso() -> str:
     from datetime import timezone
     return datetime.now(timezone.utc).isoformat()
+
+
+#: A totals note is a claim about the document it was written for. This pass recomputes the day
+#: change from the rows, so a note saying the day change was not carried/measurable is describing a
+#: document that no longer exists. 2026-11-03: the live store carried
+#: "rebuilt by the positions_current rebuild (run 638); day change not carried" beside a populated day_change,
+#: and the repricer rewrote day_change every 15 minutes without ever clearing the note.
+_DAY_CHANGE_UNKNOWN = re.compile(
+    r"\b(not carried|unavailable|not available|unknown|unmeasured|not a measured value|seeded|placeholder)\b",
+    re.IGNORECASE,
+)
+_DAY_CHANGE_MENTION = re.compile(r"\bday[ _-]?change\b", re.IGNORECASE)
+#: Only these two describe the totals; `basis_note` describes basis coverage and stays untouched
+#: while `basis_complete` is false.
+_TOTALS_NOTE_KEYS = ("note", "day_change_note")
+
+
+def _reconcile_totals_notes(totals: Dict[str, Any]) -> List[str]:
+    """Drop the note text this pass has just falsified, keep the text that is still true.
+
+    `note` is clause-structured ("rebuilt by the positions_current rebuild (run 638); day change not carried"),
+    so only the falsified clause is removed — the provenance half survives. `day_change_note` exists
+    only to explain a day change that came from somewhere other than this computation, so it goes
+    whole. Returns the keys that changed. No day change computed means no note can be called stale.
+    """
+    day_change = totals.get("day_change")
+    if isinstance(day_change, bool) or not isinstance(day_change, (int, float)):
+        return []
+    changed: List[str] = []
+    for key in _TOTALS_NOTE_KEYS:
+        text = totals.get(key)
+        if not isinstance(text, str) or not text.strip():
+            continue
+        if key == "day_change_note":
+            if _DAY_CHANGE_UNKNOWN.search(text):
+                totals.pop(key, None)
+                changed.append(key)
+            continue
+        kept = [clause for clause in text.split(";")
+                if not (_DAY_CHANGE_MENTION.search(clause) and _DAY_CHANGE_UNKNOWN.search(clause))]
+        if len(kept) == len(text.split(";")):
+            continue
+        replacement = ";".join(clause.strip() for clause in kept if clause.strip())
+        if replacement:
+            totals[key] = replacement
+        else:
+            totals.pop(key, None)
+        changed.append(key)
+    if changed:
+        totals["notes_reconciled_at"] = _utc_now_iso()
+    return changed
 
 
 def compute_data_as_of(holdings) -> dict:
@@ -925,6 +977,9 @@ def _recalc_totals(portfolio: Dict) -> None:
         "total_cash_source":     "position_rows",
         "total_cash_written_at": _utc_now_iso(),
     })
+    # The totals above are now this pass's; any note text asserting the day change was not carried
+    # or not measured describes the document we just replaced.
+    _reconcile_totals_notes(portfolio["portfolio_totals"])
 
     for h in holdings:
         mv = h.get("market_value") or 0
