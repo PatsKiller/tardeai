@@ -5,7 +5,7 @@
 // "auto-rebase"), a review/CI receipt for an older head shown as current, local-only work shown as published,
 // and an old backend (no `work` / no `coordination`) pretending to have facts.
 import {
-  IN_FLIGHT_SCHEMA, IN_FLIGHT_SCHEMA_V2, KNOWN_SCHEMAS, agentStateTone, ciLabel2, draftLabel, executionState, nextActionFor,
+  IN_FLIGHT_SCHEMA, IN_FLIGHT_SCHEMA_V2, KNOWN_SCHEMAS, agentStateTone, ciLabel2, draftLabel, evidenceSentence, evidenceState, executionState, nextActionFor,
   normalizeCoordination, normalizeFactor, normalizeMergeable, normalizeReview, normalizeRow, normalizeRows, normalizeWork, publicationLabel,
   reviewLabel, rowFacts, shortSha, type CiState, type ReviewState,
 } from './deployInFlight.ts'
@@ -300,6 +300,28 @@ const evilWire = normalizeRows([{ number: 4001, head_sha: HEAD, title: 't', work
 eq('the board payload still projects its row', evilWire.rows.length, 1)
 eq('with the review UNKNOWN', evilWire.rows[0].work.review.state, 'UNKNOWN')
 
+// ---- row 05: "UNKNOWN" on every PR was four different situations wearing one word. Each now has a sentence, and a
+// state we do not recognise stays unrecognised instead of becoming a pass.
+eq('evidence OBSERVED', evidenceSentence('OBSERVED'), 'checked')
+eq('evidence STALE_OTHER_HEAD', evidenceSentence('STALE_OTHER_HEAD'), 'checked, but for an older version of the change')
+eq('evidence NOT_RECORDED', evidenceSentence('NOT_RECORDED'), 'no check is recorded')
+eq('evidence SOURCE_UNAVAILABLE', evidenceSentence('SOURCE_UNAVAILABLE'), 'the record of the check could not be read')
+eq('evidence state is case-insensitive', evidenceState('observed'), 'OBSERVED')
+eq('an unrecognised evidence state stays null', evidenceState('WAT'), null)
+eq('no state gives no sentence', evidenceSentence(undefined), null)
+
+// cc3's served contract adds two states to the vocabulary; both must read as words, never as a pass.
+eq('evidence PARTIAL', evidenceSentence('PARTIAL'), 'partly checked — one of the sources did not answer')
+eq('evidence TARGET_HEAD_MISSING', evidenceSentence('TARGET_HEAD_MISSING'), 'the check refers to a version that is no longer the one proposed')
+
+// cc3 review F1: normalizeRow builds an explicit object, so a served field it does not name is lost. Eligibility must
+// survive the projection, or the page falls back to a heuristic the live payload never satisfies.
+const withActions = normalizeRow({ number: 7, title: 't', url: 'u', head_sha: HEAD, branch: 'b', mergeable: 'MERGEABLE',
+  operator_actions: { required: true, eligible: ['approve', 'push'], reason: 'yours', withheld: [{ action: 'hold', why: 'no label' }] } })
+eq('operator_actions survives normalization', withActions.operator_actions?.eligible.join(','), 'approve,push')
+eq('withheld survives normalization', withActions.operator_actions?.withheld?.[0]?.why, 'no label')
+eq('a row with no actions normalizes to null', normalizeRow({ number: 8, head_sha: HEAD }).operator_actions, null)
+eq('an unknown action word is dropped', normalizeRow({ number: 9, head_sha: HEAD, operator_actions: { required: false, eligible: ['nuke'], reason: null } }).operator_actions?.eligible.length, 0)
 // ---- cx-openai-4's three P1s on #2517 (2026-11-03): each was a PASS displayed where the truth is unknown or blocked.
 // R3: clocks compared as text let an older MERGE beat a newer BLOCK.
 const r3 = normalizeReview({ head_sha: HEAD, source: 'ledger', verdicts: [
