@@ -53,10 +53,23 @@ def held_for(held: dict[str, set[str]], symbol: str, account: str | None) -> boo
         return False
     acct = str(account or "").strip()
     if not acct or acct == SCOPE_UNSCOPED:
-        return True
+        # An unscoped reader is not told "held": that is what let one account's residual block
+        # another account's decision. It gets held_in() and decides, or asks which account.
+        return True if len(accounts) == 1 and SCOPE_UNSCOPED in accounts else False
     return acct in accounts
 
 
 def held_in(held: dict[str, set[str]], symbol: str) -> list[str]:
     """The accounts holding this symbol, sorted — for the reader, not for a cross-account block."""
     return sorted((held.get(str(symbol or "").upper().strip()) or set()))
+
+def evidence_key(symbol: Any, account: Any) -> str:
+    """The key an evidence row is stored under: the bare symbol when unscoped, ``SYMBOL|ACCOUNT`` otherwise.
+
+    FQ-096 clearing condition (reviewer handoff 2026-11-04): two rows for the same symbol in different
+    accounts must remain separate. A symbol-only key silently overwrote the second row, which is the same
+    cross-account collapse in a different place.
+    """
+    sym = str(symbol or "").upper().strip()
+    acct = str(account or "").strip()
+    return sym if (not acct or acct == SCOPE_UNSCOPED) else f"{sym}|{acct}"

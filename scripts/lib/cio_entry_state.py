@@ -141,6 +141,10 @@ def evaluate(ev: dict, *, today: date | None = None) -> dict:
         "quality_state": ev.get("quality_state"), "cio_action": cio_action or None,
         "market_cap_label": (ev.get("market_cap_label") or {}).get("code"),
         "catalyst": ev.get("catalyst"), "plan_source": ev.get("plan_source"), "held": bool(ev.get("held")),
+        # FQ-096: the account this evaluation is about, and where the symbol is actually held. The
+        # record carries both so a reader can see the scope instead of trusting a symbol-wide boolean.
+        "account": ev.get("account"),
+        "held_accounts": list(ev.get("held_accounts") or []),
         "earnings_in_days": earn_days,
     }
 

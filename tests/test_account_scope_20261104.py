@@ -61,9 +61,11 @@ def test_an_individual_residual_never_holds_an_ira():
 
 
 def test_an_unscoped_reader_is_told_the_accounts_not_just_true():
+    # Clearing condition (#2603 reviewers, 2026-11-04): an unscoped reader must NOT be told "held".
+    # That symbol-wide boolean is the cross-account block. It gets the accounts and decides, or asks.
     held = held_accounts(HOLDINGS)
-    assert held_for(held, "SPCX", None) is True          # held somewhere: do not claim it is free
-    assert held_in(held, "SPCX") == ["schwab_individual"]  # ...and name where
+    assert held_for(held, "SPCX", None) is False
+    assert held_in(held, "SPCX") == ["schwab_individual"]  # ...and it is told where
 
 
 def test_account_of_never_returns_all_accounts():
@@ -73,8 +75,11 @@ def test_account_of_never_returns_all_accounts():
 
 
 def test_the_entry_state_runner_uses_the_per_account_view():
+    # A cheap textual guard only. The behaviour is pinned by
+    # tests/test_account_scope_runner_20261104.py, which calls gather() with a scripted cursor; that
+    # file is what fails if the wiring regresses, and it is what a reviewer should read.
     src = (ROOT / "scripts" / "cio_entry_state_runner.py").read_text()
-    assert "held_for(held, sym, _acct)" in src, "the runner still blocks on a symbol-wide held set"
+    assert "held_for(held, sym, _acct or None)" in src, "the runner still blocks on a symbol-wide held set"
     assert 'e["held_accounts"]' in src, "the runner does not record which accounts hold the symbol"
 
 

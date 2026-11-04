@@ -105,21 +105,28 @@ def _after_open(ts) -> bool:
 
 def gather(cur) -> dict[str, dict]:
     """symbol → evidence dict for cio_entry_state.evaluate."""
+    from lib.account_scope import account_of, evidence_key, held_accounts, held_for, held_in
     ev: dict[str, dict] = {}
     desk = _load_json(DESK_PATH, {})
     for r in desk.get("rows") or []:
         sym = str(r.get("symbol") or "").upper()
         if not sym:
             continue
-        ev[sym] = {"symbol": sym, "price": r.get("price"), "quote_age_h": r.get("price_age_h"),
-                   "entry_low": r.get("entry_low"), "entry_high": r.get("entry_high"), "stop": r.get("stop"),
-                   "target": r.get("target"), "atr": r.get("atr"), "wash_blocked": r.get("wash_blocked"),
-                   "held": r.get("held"), "earnings_date": r.get("earnings_date"), "rsi": r.get("rsi"),
-                   "catalyst": (r.get("catalyst") or {}).get("headline") if isinstance(r.get("catalyst"), dict) else None,
-                   "plan_source": "reentry_desk"}
+        # FQ-096: an account the source states is carried, and two rows for the same symbol in
+        # different accounts stay separate rows rather than the second overwriting the first.
+        _acct = str(r.get("account") or "").strip()
+        _e: dict = {"symbol": sym, "price": r.get("price"), "quote_age_h": r.get("price_age_h"),
+                    "entry_low": r.get("entry_low"), "entry_high": r.get("entry_high"), "stop": r.get("stop"),
+                    "target": r.get("target"), "atr": r.get("atr"), "wash_blocked": r.get("wash_blocked"),
+                    "held": r.get("held"), "earnings_date": r.get("earnings_date"), "rsi": r.get("rsi"),
+                    "catalyst": (r.get("catalyst") or {}).get("headline") if isinstance(r.get("catalyst"), dict) else None,
+                    "plan_source": "reentry_desk"}
+        if _acct:
+            _e["account"] = _acct
+        ev[evidence_key(sym, _acct)] = _e
     cur.execute("""SELECT upper(symbol) s FROM watchlist_items WHERE status='active'
                    UNION SELECT upper(symbol) FROM paper_trade_proposals WHERE status='PENDING'""")
-    tracked = {row[0] for row in cur.fetchall()} | set(ev)
+    tracked = {row[0] for row in cur.fetchall()} | {e.get("symbol") for e in ev.values() if e.get("symbol")}
     # Swing entry alerts have ONE sender (operator 2026-10-19): watchlist_entry_planner persists its
     # alert-eligible near-entry/ready plans and this runner pages them (lib.entry_alert_context).
     from lib.entry_alert_context import planner_plan_symbols, single_sender_enabled
@@ -160,7 +167,6 @@ def gather(cur) -> dict[str, dict]:
     # FQ-096 / SPEC §1b rule 3: holdings are keyed by (symbol, account). A residual in one account
     # must not read as "held everywhere" and block a re-entry in another; the accounts are named so
     # the reader (and the CIO verdict record) can see the scope instead of a symbol-wide boolean.
-    from lib.account_scope import held_accounts, held_for, held_in
     held = held_accounts(holdings)
     try:
         import watch_packet_quality as pq
@@ -169,63 +175,74 @@ def gather(cur) -> dict[str, dict]:
     from lib.finviz_csv import enrichment_market_cap_billions
 
     for sym in syms:
-        e = ev.setdefault(sym, {"symbol": sym, "plan_source": None})
-        if e.get("plan_source") is None:
-            if sym in plans and (plans[sym][0] is not None or plans[sym][1] is not None):
-                lo, hi, st, tg, created = plans[sym]
-                e.update(entry_low=lo, entry_high=hi, stop=st, target=tg, plan_source="entry_plan",
-                         plan_age_h=_age_h(created), plan_after_move=_after_open(created))
-            elif sym in cards and cards[sym][0] is not None:
-                ideal, zl, zh, st, tg, _, card_age_h = cards[sym]
-                # A strategy card is rewritten by its own job; it is never a re-plan after a move.
-                e.update(entry_low=zl or ideal, entry_high=zh or ideal, stop=st, target=tg, plan_source="strategy_card",
-                         plan_age_h=card_age_h, plan_after_move=False)
-        if sym in quotes:
-            px, age_h, chg = quotes[sym]
-            if e.get("price") is None:
-                e["price"], e["quote_age_h"] = px, age_h
-            e["change_pct"] = chg
-        if not e.get("catalyst") and sym in cards:
-            e["catalyst"] = cards[sym][5]
-        e["cio_action"] = cio.get(sym)
-        # The card's "Review:" line: the latest CIO decision, named (an entry_review row is a review; any
-        # other decision is the CIO's stance on record). The runner's own fresh review overrides it.
-        for k, v in cio_review_fields(cio_rows.get(sym)).items():
-            e.setdefault(k, v)
-        _acct = str(e.get("account") or "").strip()
-        e["held_accounts"] = held_in(held, sym)
-        e["held"] = bool(e.get("held")) or held_for(held, sym, _acct)
-        if e["held"] and _acct and _acct not in e["held_accounts"]:
-            # A strategy/plan row may carry a scope that disagrees with the holding rows; that is a
-            # fact to surface, not a reason to widen the block.
-            e.setdefault("held_scope_note", f"position recorded under {', '.join(e['held_accounts'])}")
-        if sym in profiles:
-            # Conditional on purpose: symbol_profiles covers ~3,136 symbols, fewer than
-            # the tracked set, and a blank identity line under a BUY READY call is worse
-            # than no line at all.
-            desc, sector, industry = profiles[sym]
-            e["company"], e["sector"], e["industry"] = desc, sector, industry
-        pk = packets.get(sym)
-        if pk is not None and pq is not None:
-            e["quality_state"] = pq.packet_gate(pk).get("quality")
-            e.setdefault("earnings_date", ((pk.get("event_state") or {}).get("earnings") or {}).get("date"))
-        e["market_cap_label"] = cap_label(
-            None if (b := enrichment_market_cap_billions(enrichment.get(sym) or {})) is None else b * 1000.0)
-        # P8 thesis/structure inputs from house enrichment (never invent).
-        enr = enrichment.get(sym) or {}
-        if isinstance(enr, dict):
-            if e.get("pe") is None and enr.get("pe") is not None:
-                e["pe"] = enr.get("pe")
-            if e.get("forward_pe") is None and enr.get("forward_pe") is not None:
-                e["forward_pe"] = enr.get("forward_pe")
-            if e.get("peg") is None and enr.get("peg") is not None:
-                e["peg"] = enr.get("peg")
-            if e.get("atr") is None and enr.get("atr") is not None:
-                e["atr"] = enr.get("atr")
-            if not e.get("sector") and enr.get("sector"):
-                e["sector"] = enr.get("sector")
-            if not e.get("industry") and enr.get("industry"):
-                e["industry"] = enr.get("industry")
+        entries = [x for x in ev.values() if x.get("symbol") == sym]
+        if not entries:
+            entries = [ev.setdefault(sym, {"symbol": sym, "plan_source": None})]
+        for e in entries:
+            if e.get("plan_source") is None:
+                if sym in plans and (plans[sym][0] is not None or plans[sym][1] is not None):
+                    lo, hi, st, tg, created = plans[sym]
+                    e.update(entry_low=lo, entry_high=hi, stop=st, target=tg, plan_source="entry_plan",
+                             plan_age_h=_age_h(created), plan_after_move=_after_open(created))
+                elif sym in cards and cards[sym][0] is not None:
+                    ideal, zl, zh, st, tg, _, card_age_h = cards[sym]
+                    # A strategy card is rewritten by its own job; it is never a re-plan after a move.
+                    e.update(entry_low=zl or ideal, entry_high=zh or ideal, stop=st, target=tg, plan_source="strategy_card",
+                             plan_age_h=card_age_h, plan_after_move=False)
+            if sym in quotes:
+                px, age_h, chg = quotes[sym]
+                if e.get("price") is None:
+                    e["price"], e["quote_age_h"] = px, age_h
+                e["change_pct"] = chg
+            if not e.get("catalyst") and sym in cards:
+                e["catalyst"] = cards[sym][5]
+            e["cio_action"] = cio.get(sym)
+            # The card's "Review:" line: the latest CIO decision, named (an entry_review row is a review; any
+            # other decision is the CIO's stance on record). The runner's own fresh review overrides it.
+            for k, v in cio_review_fields(cio_rows.get(sym)).items():
+                e.setdefault(k, v)
+            # Account/packet merge BEFORE the held lookup: a packet that names the account is part of
+            # the evidence about which account this row is for (reviewer clearing condition, 2026-11-04).
+            pk = packets.get(sym)
+            if isinstance(pk, dict) and not str(e.get("account") or "").strip():
+                _pa = str(pk.get("account") or pk.get("account_key") or "").strip()
+                if _pa:
+                    e["account"] = _pa
+            if pk is not None and pq is not None:
+                e["quality_state"] = pq.packet_gate(pk).get("quality")
+                e.setdefault("earnings_date", ((pk.get("event_state") or {}).get("earnings") or {}).get("date"))
+            _acct = str(e.get("account") or "").strip()
+            e["held_accounts"] = held_in(held, sym)
+            # Held is a fact about one account. An unscoped row does not inherit a symbol-wide hold:
+            # it reports where the position is and leaves the decision to the account that owns it.
+            e["held"] = bool(e.get("held")) or held_for(held, sym, _acct or None)
+            if _acct and _acct not in e["held_accounts"] and e["held_accounts"]:
+                # A plan row may carry a scope that disagrees with the holding rows; that is a fact
+                # to surface, not a reason to widen the block.
+                e.setdefault("held_scope_note", f"position recorded under {', '.join(e['held_accounts'])}")
+            if sym in profiles:
+                # Conditional on purpose: symbol_profiles covers ~3,136 symbols, fewer than
+                # the tracked set, and a blank identity line under a BUY READY call is worse
+                # than no line at all.
+                desc, sector, industry = profiles[sym]
+                e["company"], e["sector"], e["industry"] = desc, sector, industry
+            e["market_cap_label"] = cap_label(
+                None if (b := enrichment_market_cap_billions(enrichment.get(sym) or {})) is None else b * 1000.0)
+            # P8 thesis/structure inputs from house enrichment (never invent).
+            enr = enrichment.get(sym) or {}
+            if isinstance(enr, dict):
+                if e.get("pe") is None and enr.get("pe") is not None:
+                    e["pe"] = enr.get("pe")
+                if e.get("forward_pe") is None and enr.get("forward_pe") is not None:
+                    e["forward_pe"] = enr.get("forward_pe")
+                if e.get("peg") is None and enr.get("peg") is not None:
+                    e["peg"] = enr.get("peg")
+                if e.get("atr") is None and enr.get("atr") is not None:
+                    e["atr"] = enr.get("atr")
+                if not e.get("sector") and enr.get("sector"):
+                    e["sector"] = enr.get("sector")
+                if not e.get("industry") and enr.get("industry"):
+                    e["industry"] = enr.get("industry")
     return ev
 
 
@@ -572,7 +589,12 @@ def main() -> int:
         cur.execute(DDL)
         conn.commit()
     evidence = gather(cur)
-    results = {sym: ces.evaluate(e) for sym, e in evidence.items()}
+    results: dict[str, dict] = {}
+    evidence_of: dict[int, dict] = {}
+    for _key, _e in evidence.items():
+        _r = ces.evaluate(_e)
+        results[_key] = _r
+        evidence_of[id(_r)] = _e
     try:
         prior = last_states(cur)
     except Exception:
@@ -595,9 +617,10 @@ def main() -> int:
     # M5 09-24: options alternatives + portfolio facts + CIO review before any render
     # (render_cio is also the cio_decisions rationale written below).
     for r in (to_alert if a.apply else to_alert[:1]):
-        reviews[r["symbol"]] = prepare_packet_inputs(r, evidence[r["symbol"]], apply=a.apply)
+        reviews[r["symbol"]] = prepare_packet_inputs(r, evidence_of[id(r)], apply=a.apply)
     if a.apply:
-        for sym, r in results.items():
+        for _key, r in results.items():
+            sym = r.get("symbol") or str(_key).split("|", 1)[0]
             if prior.get(sym) != r["state"]:
                 alert = r in to_alert
                 cur.execute("""INSERT INTO cio_entry_states (symbol, state, prior_state, alerted, details)
@@ -616,7 +639,7 @@ def main() -> int:
                                                       status, agent_votes)
                            VALUES (%s,%s,%s,%s,'entry',%s,%s,'safe',true,%s,'proposed','{}')""",
                         (did, r["symbol"], r.get("plan_source"), r["state"], "high" if r["state"] == "BUY_READY" else "medium",
-                         None, ces.render_cio(r, evidence[r["symbol"]])[:500]))
+                         None, ces.render_cio(r, evidence_of[id(r)])[:500]))
         conn.commit()
         for r in digest:
             # recorded as alerted so the digest names do not come back one by one later today

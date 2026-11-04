@@ -685,7 +685,8 @@ OBSERVED = "OBSERVED"
 INFERRED = "INFERRED"
 
 
-def reentry_row_status(row: dict[str, Any], *, stale_hours: float = 6.0) -> dict[str, Any]:
+def reentry_row_status(row: dict[str, Any], *, stale_hours: float = 6.0,
+                       holdings_doc: dict[str, Any] | None = None) -> dict[str, Any]:
     """One canonical status for one row, with the reason and the gates behind it.
 
     The served desk carries `gates`, `held` and `wash_blocked` but no status at
@@ -698,8 +699,21 @@ def reentry_row_status(row: dict[str, Any], *, stale_hours: float = 6.0) -> dict
     passed = [g.get("id") or g.get("label") for g in gates if isinstance(g, dict) and g.get("pass") is True]
     age = row.get("price_age_h")
 
-    if row.get("held"):
-        status, reason = HELD, "already held; a re-entry does not apply"
+    # FQ-096 clearing condition (reviewer handoff 2026-11-04): where this surface decides HELD, it
+    # must use account-specific evidence, not a symbol-wide boolean. With the holdings passed in, the
+    # row's own account decides; the accounts that do hold the symbol are named either way.
+    held = bool(row.get("held"))
+    held_accounts_named: list[str] = []
+    if holdings_doc is not None:
+        from lib.account_scope import held_accounts as _held_accounts, held_for as _held_for
+        _held = _held_accounts(holdings_doc)
+        _sym = str(row.get("symbol") or "").upper().strip()
+        held_accounts_named = sorted(_held.get(_sym) or [])
+        _acct = str(row.get("account") or "").strip()
+        held = _held_for(_held, _sym, _acct or None)
+
+    if held:
+        status, reason = HELD, "already held in this account; a re-entry does not apply"
     elif row.get("wash_blocked"):
         status, reason = WASH_BLOCKED, f"wash-sale window until {row.get('wash_until')}"
     elif not gates:
@@ -734,7 +748,10 @@ def reentry_row_status(row: dict[str, Any], *, stale_hours: float = 6.0) -> dict
             "indicator_source": row.get("indicator_source"),
         },
         "observation_class": OBSERVED,
-        "held": bool(row.get("held")),
+        "held": held,
+        # The accounts that hold the symbol, so an unscoped reader can say where the position is
+        # instead of blocking a decision with a symbol-wide boolean.
+        "held_accounts": held_accounts_named,
     }
 
 
