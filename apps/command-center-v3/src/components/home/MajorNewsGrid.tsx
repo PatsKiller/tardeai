@@ -18,6 +18,17 @@ function rel(ts?: string): string {
   return `${Math.round(h / 24)}d ago`
 }
 
+/** A day percent that was not reported is null — never zero. `+0.00%` is a measurement; "not reported" is not. */
+function pctOf(v: any): number | null {
+  if (v === null || v === undefined || v === '') return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+function pctText(p: number | null): string {
+  return p == null ? '—' : `${p >= 0 ? '+' : ''}${p.toFixed(2)}%`
+}
+
 function domain(u?: string): string {
   try { return new URL(u || '').hostname.replace(/^www\./, '') } catch { return '' }
 }
@@ -38,7 +49,14 @@ export default function MajorNewsGrid() {
       else by.set(r.symbol, { ...r })
     }
     return [...by.values()]
-      .sort((a, b) => Math.abs(b.day_change_pct ?? 0) - Math.abs(a.day_change_pct ?? 0))
+      .sort((a, b) => {
+        const pa = pctOf(a.day_change_pct)
+        const pb = pctOf(b.day_change_pct)
+        if (pa == null && pb == null) return String(a.symbol).localeCompare(String(b.symbol))
+        if (pa == null) return 1
+        if (pb == null) return -1
+        return Math.abs(pb) - Math.abs(pa)
+      })
       .slice(0, 24)
   })()
   // which cells actually HAVE guarded headlines — marked BEFORE the click
@@ -52,28 +70,33 @@ export default function MajorNewsGrid() {
       <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 6, flexWrap: 'wrap' }}>
         <span style={{ fontSize: TYPE.xs, fontWeight: 800, letterSpacing: '.06em', color: BB.text2 }}>MAJOR NEWS</span>
         <span style={{ fontSize: 8.5, fontWeight: 700, color: BB.text3, textTransform: 'uppercase' }}>· your names by |day %| · badge = guarded headlines · dim = none in 72h</span>
+        {/* FQ-090: the book's own clock, said out loud. A date-only as_of is not an intraday quote time. */}
+        <span data-testid="major-news-asof" title={book?.as_of ? `book-map as_of ${book.as_of}` : 'book-map reported no as_of'}
+          style={{ fontSize: 10, fontWeight: 700, color: BB.text3 }}>
+          · {book?.as_of ? `as of ${String(book.as_of).slice(0, 10)}${String(book.as_of).length <= 10 ? ' · no intraday quote time' : ''}` : 'quote time not reported'}
+        </span>
         <span style={{ flex: 1 }} />
         <a href={`${FQDN}/v3/reports?mode=archive`} style={{ fontSize: TYPE.xs, fontWeight: 700, color: T.link, textDecoration: 'none' }}>All news →</a>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(86px, 1fr))', gap: 4 }}>
         {rows.map((r: any) => {
-          const p = Number(r.day_change_pct ?? 0)
-          const big = Math.abs(p) >= 2
+          const p = pctOf(r.day_change_pct)
+          const big = p != null && Math.abs(p) >= 2
           const n = counts[r.symbol] ?? null
           const hasNews = (n ?? 0) > 0
           return (
             <button key={r.symbol} onClick={() => setSym(r.symbol)}
-              title={`${r.symbol} · day ${r.day_change >= 0 ? '+' : ''}$${Math.round(r.day_change).toLocaleString()}${n != null ? ` · ${n} guarded headline${n === 1 ? '' : 's'} 72h` : ''}`}
+              title={`${r.symbol} · day ${p == null ? 'change not reported' : `${(r.day_change ?? 0) >= 0 ? '+' : ''}$${Math.round(r.day_change ?? 0).toLocaleString()}`}${n != null ? ` · ${n} guarded headline${n === 1 ? '' : 's'} 72h` : ''}`}
               style={{
                 display: 'flex', justifyContent: 'space-between', gap: 4, alignItems: 'baseline',
                 padding: '5px 7px', borderRadius: 2, cursor: 'pointer',
-                background: heatRamp(p), border: big ? `1.5px solid ${p >= 0 ? BB.green : BB.red}` : `1px solid ${BB.borderHair}`,
+                background: heatRamp(p), border: big ? `1.5px solid ${(p as number) >= 0 ? BB.green : BB.red}` : `1px solid ${BB.borderHair}`,
                 opacity: n != null && !hasNews ? 0.55 : 1,
               }}>
               <span style={{ ...numStyle, fontSize: TYPE.xs, fontWeight: 800, color: '#fff' }}>
                 {r.symbol}{hasNews && <span style={{ fontSize: 8, fontWeight: 800, marginLeft: 3, color: '#fff', background: 'rgba(255,255,255,.25)', borderRadius: 2, padding: '0 3px' }}>{n}</span>}
               </span>
-              <span style={{ ...numStyle, fontSize: 9, fontWeight: 700, color: '#fff' }}>{p >= 0 ? '+' : ''}{p.toFixed(2)}%</span>
+              <span data-day-pct={p == null ? 'not-reported' : p.toFixed(2)} style={{ ...numStyle, fontSize: 9, fontWeight: 700, color: p == null ? BB.text3 : '#fff' }}>{pctText(p)}</span>
             </button>
           )
         })}
@@ -84,11 +107,12 @@ export default function MajorNewsGrid() {
           <div onClick={e => e.stopPropagation()} style={{ width: 560, maxWidth: '92vw', maxHeight: '80vh', overflowY: 'auto', background: BB.bg, border: `1px solid ${BB.border}`, borderRadius: 2, padding: 16 }}>
             {(() => {
               const row = rows.find((r: any) => r.symbol === sym)
-              const p = Number(row?.day_change_pct ?? 0)
+              const p = pctOf(row?.day_change_pct)
               return (
                 <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', marginBottom: 10 }}>
                   <span style={{ ...numStyle, fontSize: TYPE.lg, fontWeight: 800, color: BB.text1 }}>{sym}</span>
-                  <span style={{ ...numStyle, fontSize: TYPE.base, fontWeight: 700, color: p >= 0 ? BB.green : BB.red }}>{p >= 0 ? '+' : ''}{p.toFixed(2)}%</span>
+                  <span style={{ ...numStyle, fontSize: TYPE.base, fontWeight: 700, color: p == null ? BB.text3 : p >= 0 ? BB.green : BB.red }}>{pctText(p)}</span>
+                  {p == null && <span style={{ fontSize: TYPE.xs, color: BB.text3 }}>day change not reported</span>}
                   {row && <span style={{ fontSize: 9, fontWeight: 800, color: BB.green }}>● HELD</span>}
                   <span style={{ flex: 1 }} />
                   <button onClick={() => setSym(null)} style={{ fontSize: TYPE.sm, color: BB.text3, background: 'transparent', border: 'none', cursor: 'pointer' }}>✕</button>
