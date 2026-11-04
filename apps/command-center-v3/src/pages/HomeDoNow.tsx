@@ -173,8 +173,14 @@ export default function HomeDoNow() {
   // R1 (codex BLOCK at 77b94efa3a, then cc-deepseek-8 at f44f21fbe): a failed poll must not look current — and a
   // failed FIRST load has no last list to retain, so it must not claim one, and it is not still loading either.
   // The composition is a tested function; the page renders its sentences and never invents its own.
+  // P2651-R4 (codex at c50f1110): a truthy body is not a successful read. `ok:false` is a source error, and an object
+  // with no `items` ARRAY has told us nothing about the list — none of the three may be presented as "no candidate",
+  // and none of them is still loading.
+  const oppItemsValid = !!oppBody && Array.isArray(oppBody.items)
+  const oppSourceError = !!oppBody && (oppBody.ok === false || !oppItemsValid)
   const oppState = opportunitiesCardState({
-    loading: !!oppLoading, error: !!oppError, stale: !!oppStale, itemCount: opps.length, listLoaded: !!oppTop,
+    loading: !!oppLoading, error: !!oppError, stale: !!oppStale, itemCount: opps.length,
+    listLoaded: oppItemsValid && !oppSourceError, sourceError: oppSourceError,
     qualificationPresent: !!(oppBody && oppBody.top_list),
   })
   const oppRetained = oppState.retained

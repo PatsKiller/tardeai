@@ -105,6 +105,29 @@ const loadedNoReceipt = opportunitiesCardState({ loading: false, error: false, s
 check('an empty list WITHOUT the producer receipt says the qualification is unavailable, not that none qualifies',
   loadedNoReceipt.emptyText === 'Top list qualification unavailable; open the research list.', loadedNoReceipt.emptyText)
 
+// ---- 9. cx-openai-4 R1: a timestamp with no zone is not a timestamp we may read (AGENTS.md §5) ----------
+for (const unzoned of ['2026-11-04T17:00:00', '2026-11-04T17:00:00.000', '2026-11-04', '2026-11-04 17:00:00']) {
+  const q = quoteAge(unzoned, NOW)
+  check(`an unzoned timestamp (${unzoned}) is unknown, never read as the host's local clock`, q.state === 'unknown', JSON.stringify(q))
+  check(`and its list as-of is not invented (${unzoned})`, listAsOfWords(unzoned) === null, String(listAsOfWords(unzoned)))
+}
+check('the same instant WITH a zone is still read',
+  quoteAge('2026-11-04T17:00:00Z', NOW).state === 'current' && listAsOfWords('2026-11-04T17:00:00Z') !== null,
+  JSON.stringify(quoteAge('2026-11-04T17:00:00Z', NOW)))
+check('a numeric offset counts as a named zone',
+  quoteAge('2026-11-04T12:00:00-05:00', NOW).state === 'current', JSON.stringify(quoteAge('2026-11-04T12:00:00-05:00', NOW)))
+check('a Date object carries its own instant and is accepted', quoteAge(new Date('2026-11-04T17:00:00Z'), NOW).state === 'current')
+
+// ---- 10. codex P2651-R4: a truthy body is not a successful read -------------------------------------
+const srcErr = opportunitiesCardState({ loading: false, error: false, stale: false, itemCount: 0, listLoaded: false, sourceError: true, qualificationPresent: true })
+check('ok:false is a source error, never "nothing clears the bar"',
+  srcErr.emptyText.includes('source error') && !/Nothing clears|No reviewed name/.test(srcErr.emptyText), srcErr.emptyText)
+const malformed = opportunitiesCardState({ loading: false, error: false, stale: false, itemCount: 0, listLoaded: false, sourceError: true })
+check('a body with no items array is a source error, not a perpetual Loading',
+  malformed.emptyText.includes('source error') && !/Loading/.test(malformed.emptyText), malformed.emptyText)
+const answeredEmpty = opportunitiesCardState({ loading: false, error: false, stale: false, itemCount: 0, listLoaded: true, qualificationPresent: false })
+check('a real answer with no receipt says the qualification is unavailable', /qualification unavailable/.test(answeredEmpty.emptyText), answeredEmpty.emptyText)
+
 // ---- 8. FQ-114: the producer, not the page, decides who is a top candidate -------------------------
 import { topEligibleRows, topListNotice } from './bestOpportunities.ts'
 const legacy = { items: [{ symbol: 'AAA', conviction: 90 }, { symbol: 'BBB', conviction: 80 }] }

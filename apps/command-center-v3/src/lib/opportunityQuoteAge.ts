@@ -44,12 +44,26 @@ function etClock(at: Date): string {
 }
 
 /**
+ * A timestamp we may act on, or an invalid Date. A string must say WHICH clock it is on — `Z` or a numeric offset —
+ * because `new Date('2026-11-04T17:00:00')` silently reads the host's local zone, and an ET reading derived from that
+ * is a guess about a clock the producer never named (cx-openai-4 R1 at c50f1110, AGENTS.md §5: never infer identity or
+ * time). A `Date` object already carries its instant, so it is accepted as-is.
+ */
+const ZONED = /(?:Z|[+-]\d{2}:?\d{2})$/i
+function parseStamped(value: unknown): Date {
+  if (value instanceof Date) return value
+  if (typeof value !== 'string') return new Date(NaN)
+  const text = value.trim()
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(text) || !ZONED.test(text)) return new Date(NaN)
+  return new Date(text)
+}
+
+/**
  * `quoteAge(rowAsOf, quoteAt, now)` — the row's own as-of is accepted as a fallback for the quote time, and only a
- * readable, non-future timestamp inside the window counts as current.
+ * readable, zoned, non-future timestamp inside the window counts as current.
  */
 export function quoteAge(quoteAt: unknown, now: Date = new Date()): QuoteAge {
-  const raw = typeof quoteAt === 'string' || quoteAt instanceof Date ? quoteAt : null
-  const at = raw == null ? new Date(NaN) : new Date(raw as string | Date)
+  const at = parseStamped(quoteAt)
   if (Number.isNaN(at.getTime())) {
     return {
       state: 'unknown', short: 'no list-time quote · not current',
@@ -87,9 +101,9 @@ export function quoteAge(quoteAt: unknown, now: Date = new Date()): QuoteAge {
   }
 }
 
-/** The list's own as-of, in words, or null when the payload did not carry one. */
+/** The list's own as-of, in words, or null when the payload did not carry a ZONED one (never guessed, §5). */
 export function listAsOfWords(asOf: unknown): string | null {
-  const at = typeof asOf === 'string' ? new Date(asOf) : asOf instanceof Date ? asOf : new Date(NaN)
+  const at = parseStamped(asOf)
   if (Number.isNaN(at.getTime())) return null
   return `Opportunity list as of ${etClock(at)} ET`
 }
@@ -113,7 +127,11 @@ export type OpportunitiesCardState = {
 }
 
 export function opportunitiesCardState(a: {
-  loading: boolean; error: boolean; stale: boolean; itemCount: number; listLoaded: boolean
+  loading: boolean; error: boolean; stale: boolean; itemCount: number
+  /** the response arrived, carried a real `items` ARRAY and did not report a source error */
+  listLoaded: boolean
+  /** P2651-R4 (codex at c50f1110): the producer answered `ok:false` — a source error, which is not an empty list */
+  sourceError?: boolean
   /** FQ-114: the producer sent its `top_list` receipt, so an empty list means "no candidate", not "unavailable" */
   qualificationPresent?: boolean
 }): OpportunitiesCardState {
@@ -126,6 +144,7 @@ export function opportunitiesCardState(a: {
     // answered, an empty card says which of the two empties it is — no candidate, or no qualification to judge by.
     emptyText: rows ? ''
       : failed ? 'The list could not be loaded — this is a failed request, not an empty list.'
+      : a.sourceError ? 'The list could not be read from its source — this is a source error, not an empty list.'
       : !a.listLoaded ? 'Loading…'
       : a.qualificationPresent ? 'No reviewed name clears the bar right now.'
       : 'Top list qualification unavailable; open the research list.',
