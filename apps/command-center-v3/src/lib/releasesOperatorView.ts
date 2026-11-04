@@ -111,6 +111,86 @@ export function liveNow(sections: Record<string, SectionView<any>>, generatedAt:
   }
 }
 
+/** Merged-but-not-live, derived from the RELEASE data rather than from a list of open PRs (codex R5, #2541).
+ *
+ *  The page only receives OPEN pull requests, so a change that has MERGED but is not yet the version running cannot
+ *  appear at all — the page could say "Nothing is going live today" while exactly that was true. The evidence for the
+ *  real state is already in this payload and needs no PR feed: the serving release identity, and main HEAD with its
+ *  commit count ahead of that release. `is_serving` is the producer's own comparison of those two, and the engine is
+ *  not allowed to reinterpret it — it is only translated.
+ *
+ *  `waiting` is what the page keys its "nothing is going live" sentence on: when true, that sentence must not appear.
+ */
+export type MergedWaiting = { waiting: boolean; headline: string; detail: string; tone: Tone }
+
+export function mergedWaiting(
+  next: { is_serving?: boolean | null; commits_ahead?: number | null; subject?: string | null
+    committed_at?: string | null; prs_since_serving?: number[] | null; prs_reason?: string | null } | null | undefined,
+  serving: { release_name?: string | null; since?: string | null } | null | undefined,
+  when: (v: string | null | undefined) => string,
+): MergedWaiting {
+  if (!next || typeof next.is_serving !== 'boolean') {
+    return { waiting: false, tone: 'warning',
+      headline: 'Whether merged work is still waiting cannot be read',
+      detail: 'The page could not compare what is merged with what is running, so treat "nothing is going live" as unknown rather than as an all-clear.' }
+  }
+  // A release NAME is a build hash plus a suffix; showing it here would put a SHA in the operator block, and
+  // stripping the hash leaves a fragment. The fact that identifies the running version without code is WHEN it started
+  // serving — which is exactly the activation evidence R5 asks for.
+  const running = serving?.since ? `the release that has been serving since ${when(serving.since)}`
+    : 'the release that is serving now'
+  if (next.is_serving) {
+    return { waiting: false, tone: 'success',
+      headline: 'Main is the version that is running',
+      detail: `Nothing merged is waiting to be promoted. The version running is ${running}.` }
+  }
+  const ahead = next.commits_ahead
+  const count = typeof ahead === 'number' && ahead > 0
+    ? `${ahead} merged change${ahead === 1 ? '' : 's'} ${ahead === 1 ? 'is' : 'are'} not live yet`
+    : 'A merge is not live yet'
+  const merged = next.committed_at ? ` The newest of them was merged ${when(next.committed_at)}.` : ''
+  const prs = Array.isArray(next.prs_since_serving) && next.prs_since_serving.length
+    ? ` They came in through ${next.prs_since_serving.length} change${next.prs_since_serving.length === 1 ? '' : 's'}.` : ''
+  return { waiting: true, tone: 'warning', headline: count,
+    detail: `The version running is ${running}; code merged after that has not been promoted yet.${merged}${prs}` }
+}
+
+/** What the open-change source itself is doing, in one sentence, for lists that DO have rows (codex R4, #2541).
+ *
+ *  A stale or still-loading list that happens to be non-empty used to render exactly like a current one: only the
+ *  empty case said anything about the source. Rows under a stale reading are historical, and the sentence has to be
+ *  there before them, not only in their absence.
+ */
+export function flightFreshnessNote(input: { loading?: boolean; stale?: boolean; asOf?: string | null },
+                                     when: (v: string | null | undefined) => string): string | null {
+  if (input.loading) return 'The open-change list is still being read; what is shown is from the previous answer.'
+  if (input.stale) {
+    return `The open-change list is out of date${input.asOf ? ` (last read ${when(input.asOf)})` : ''}; the rows below may have moved since.`
+  }
+  return null
+}
+
+/** The coordination source's own state (codex R4, #2541). PARTIAL is not UNAVAILABLE and neither is "nobody working":
+ *  a partly-answered list proves nothing about the agents it did not mention. */
+export function coordinationNote(status: 'OK' | 'PARTIAL' | 'UNAVAILABLE'): string | null {
+  if (status === 'OK') return null
+  if (status === 'PARTIAL') return 'The agent list only partly answered, so an agent missing from it is not shown to be idle.'
+  return 'Cannot tell who is working — the agent list did not answer. That is not the same as nobody working.'
+}
+
+/** One agent's state in words, and whether it is safe for the page to colour it as idle.
+ *  `null` means the page does not know — which is not the same as idle, and must not be drawn as such. */
+export function agentStateSentence(state: string | null | undefined): { text: string; idle: boolean | null } {
+  const s = String(state ?? '').trim().toLowerCase()
+  if (!s) return { text: 'its state was not recorded', idle: null }
+  if (s === 'working' || s === 'building' || s === 'running') return { text: 'working now', idle: false }
+  if (s === 'idle' || s === 'free') return { text: 'idle', idle: true }
+  if (s === 'blocked') return { text: 'blocked on something', idle: true }
+  if (s === 'waiting') return { text: 'waiting its turn', idle: true }
+  if (s === 'stale') return { text: 'its last report is out of date', idle: null }
+  return { text: `reported as ${s.replace(/_/g, ' ')}`, idle: null }
+}
+
 export type StageGroup = { stage: OperatorStage; label: string; rows: InFlightPr[] }
 
 const GROUP_ORDER: OperatorStage[] = ['building', 'review', 'ready', 'merging', 'awaiting', 'live']

@@ -1,8 +1,8 @@
 // Releases & Schedules operator view: plain words, honest clocks, no machine identifiers.
 // Runs in the CC-v3 build:  node --experimental-strip-types src/lib/releasesOperatorView.test.ts
 import {
-  checkSentence, engineerPanelProps, goingLive, jobsLine, liveNow, needsYou, needsYouAction, needsYouFacts,
-  plainReason, plainText, stuck,
+  agentStateSentence, checkSentence, coordinationNote, engineerPanelProps, flightFreshnessNote, goingLive, jobsLine,
+  liveNow, mergedWaiting, needsYou, needsYouAction, needsYouFacts, plainReason, plainText, stuck,
 } from './releasesOperatorView.ts'
 import type { SectionView } from './releasesSchedules.ts'
 import { normalizeRow } from './deployInFlight.ts'
@@ -162,6 +162,34 @@ const closed = engineerPanelProps(false)
 const opened = engineerPanelProps(true)
 check('a closed engineer panel is hidden', closed.hidden === true && closed.style.display === 'none')
 check('an open engineer panel is laid out', opened.hidden === false && opened.style.display === 'grid')
+
+
+// ---- codex R5 (#2541): merged-but-not-live is derived from RELEASE data, not from a list of open pull requests
+const nextAhead = { is_serving: false, commits_ahead: 2, committed_at: '2026-11-04T09:00:00Z',
+  prs_since_serving: [2550, 2564], prs_reason: null, subject: 'x', sha: 's', short_sha: 's' }
+const servingNow = { release_name: '056c4b2ca-main-exact', since: '2026-11-04T08:26:02Z' }
+const ahead = mergedWaiting(nextAhead as any, servingNow as any, when)
+check('merged-ahead-of-deploy is representable with no PR feed', ahead.waiting === true && /2 merged changes/.test(ahead.headline))
+check('it dates the version that IS running', /has been serving since/.test(ahead.detail) && !/[0-9a-f]{7,}/i.test(ahead.detail))
+check('it says the merged code is not running yet', /has not been promoted yet/.test(ahead.detail))
+const current = mergedWaiting({ ...nextAhead, is_serving: true, commits_ahead: 0 } as any, servingNow as any, when)
+check('main being the running version is not "waiting"', current.waiting === false && /is the version that is running/.test(current.headline))
+const unreadable = mergedWaiting(null, servingNow as any, when)
+check('an unreadable comparison is unknown, never an all-clear', unreadable.waiting === false && unreadable.tone === 'warning' && /cannot be read/i.test(unreadable.headline))
+const single = mergedWaiting({ ...nextAhead, commits_ahead: 1 } as any, servingNow as any, when)
+check('one change is singular', /1 merged change is not live yet/.test(single.headline))
+
+// ---- codex R4 (#2541): the source's own state, for lists that DO have rows
+check('a current list needs no note', flightFreshnessNote({}, when) === null)
+check('a stale non-empty list says so', /out of date/.test(flightFreshnessNote({ stale: true, asOf: '2026-11-04T09:00:00Z' }, when) ?? ''))
+check('a still-loading list says so', /still being read/.test(flightFreshnessNote({ loading: true }, when) ?? ''))
+check('a partly-answered agent list is not "nobody working"', /only partly answered/.test(coordinationNote('PARTIAL') ?? ''))
+check('an unanswered agent list says unknown', /did not answer/.test(coordinationNote('UNAVAILABLE') ?? ''))
+check('a healthy agent list needs no note', coordinationNote('OK') === null)
+check('an unrecorded agent state is NOT idle', agentStateSentence('').idle === null && agentStateSentence(undefined).idle === null)
+check('an unrecognised agent state is NOT idle', agentStateSentence('pondering').idle === null)
+check('working is not idle, and idle is', agentStateSentence('working').idle === false && agentStateSentence('idle').idle === true)
+check('a stale agent report is unknown, not idle', agentStateSentence('stale').idle === null)
 
 console.log(`releasesOperatorView: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

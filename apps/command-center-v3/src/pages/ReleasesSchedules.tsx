@@ -20,7 +20,7 @@ import {
 } from '../lib/releasesSchedules'
 import OpsDeskFrame from '../components/OpsDeskFrame'
 import { IN_FLIGHT_PATH, normalizeCoordination, normalizeRows, type DeployInFlightWire, type InFlightPr } from '../lib/deployInFlight'
-import { engineerPanelProps, goingLive, jobsLine, liveNow, needsYou, needsYouAction, needsYouFacts, plainText, stuck } from '../lib/releasesOperatorView'
+import { agentStateSentence, coordinationNote, engineerPanelProps, flightFreshnessNote, goingLive, jobsLine, liveNow, mergedWaiting, needsYou, needsYouAction, needsYouFacts, plainText, stuck } from '../lib/releasesOperatorView'
 
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 14, minWidth: 0, display: 'grid', gap: 8 }
 const h2: CSSProperties = { margin: 0, fontSize: TYPE.md, fontWeight: 800, color: TOKENS.text[0] }
@@ -199,9 +199,12 @@ function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, fli
   const flightUnknown = flightLoading && !rows.length ? 'Still asking the open-change source — this is not an answer yet.'
     : flightStale && !rows.length ? `The open-change list is stale${flightAsOf ? ` (checked ${when(flightAsOf)})` : ''}, so an empty list here is not proof that nothing is open.`
       : null
-  const agentsUnknown = coordStatus !== 'OK'
-    ? 'Cannot tell who is working — the agent list did not answer. That is not the same as nobody working.'
-    : null
+  const agentsUnknown = coordStatus !== 'OK' && !agents.length ? coordinationNote(coordStatus) : null
+  const agentsNote = coordStatus !== 'OK' && agents.length ? coordinationNote(coordStatus) : null
+  // Rows that ARE shown under a stale or still-loading read say so above themselves, not only when they are absent.
+  const flightNote = flightFreshnessNote({ loading: flightLoading, stale: flightStale, asOf: flightAsOf }, when)
+  // codex R5: merged-but-not-live comes from the RELEASE payload, never from the open-PR list.
+  const waiting = mergedWaiting(s.next_release.value as any, s.serving.value as any, when)
   return <div data-testid="rs-operator-view" style={{ display: 'grid', gap: 12, minWidth: 0 }}>
     <section data-testid="rs-what-is-live" style={{ ...panel, gap: 6 }}>
       <ChipRow><Chip tone={status.tone} variant="solid">{status.tone === 'success' ? 'All good' : status.tone === 'danger' ? 'Needs attention' : 'Watch'}</Chip></ChipRow>
@@ -215,6 +218,7 @@ function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, fli
       <h2 style={h2}>Needs you</h2>
       <p style={muted}>{flightClock}</p>
       {notChecked ? <p role="status" style={{ ...muted, color: toneVars('warning').color }}>{notChecked}</p> : null}
+      {flightNote && !notChecked ? <p role="status" style={{ ...muted, color: toneVars('warning').color }}>{flightNote}</p> : null}
       {ask.length === 0 ? <p style={muted}>{flightUnknown ? flightUnknown : notChecked ? 'Nothing needs you from the sources that answered.' : 'Nothing needs you.'}</p> : ask.map(p => (
         <div key={p.number} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}`, paddingTop: 8 }}>
           <div style={{ fontSize: TYPE.base, color: TOKENS.text[0], fontWeight: 700 }}>{plainText(p.title)}</div>
@@ -231,7 +235,16 @@ function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, fli
     <section data-testid="rs-going-live" style={panel}>
       <h2 style={h2}>Going live today</h2>
       <p style={muted}>{flightClock}</p>
-      {!rows.length ? <p style={muted}>{flightUnknown ?? notChecked ?? 'Nothing is going live today.'}</p> : groups.map(g => (
+      {flightNote ? <p role="status" style={{ ...muted, color: toneVars('warning').color }}>{flightNote}</p> : null}
+      {/* codex R5: this section is fed by RELEASE data as well as open changes, so a merge that is not live yet is
+          representable even when the open-change list is empty or unreadable. */}
+      {waiting.waiting || waiting.tone !== 'success'
+        ? <div data-testid="rs-merged-not-live" style={{ borderTop: `1px solid ${TOKENS.borderSubtle}`, paddingTop: 8 }}>
+            <div style={{ fontSize: TYPE.base, color: TOKENS.text[0], fontWeight: 700 }}>{waiting.headline}</div>
+            <div style={{ ...muted, color: waiting.tone === 'warning' ? toneVars('warning').color : TOKENS.text[1] }}>{waiting.detail}</div>
+          </div> : null}
+      {!rows.length ? <p style={muted}>{waiting.waiting ? 'No open change is waiting to merge; the merged work above is what is waiting to go live.'
+        : (flightUnknown ?? notChecked ?? 'Nothing is going live today.')}</p> : groups.map(g => (
         <div key={g.stage}>
           <h3 style={{ ...h2, fontSize: TYPE.base, marginTop: 8 }}>{g.label} · {g.rows.length}</h3>
           {g.rows.map(p => <div key={p.number} style={{ ...muted, padding: '4px 0' }}>
@@ -253,16 +266,19 @@ function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, fli
     <section data-testid="rs-agents-now" style={panel}>
       <h2 style={h2}>Agents now</h2>
       <p style={muted}>{coordClock}</p>
+      {agentsNote ? <p role="status" style={{ ...muted, color: toneVars('warning').color }}>{agentsNote}</p> : null}
       {!agents.length ? <p style={muted}>{agentsUnknown ?? 'No agent is working right now.'}</p>
         : agents.map((a, i) => {
           // cc3 review F2: BOARD agents carry no `agent` name and no `as_of`; the served facts are session,
           // execution_state and claim_as_of. Say the activity in words and the time we can actually prove.
           const name = plainText(a.agent ?? a.session, 'An agent session')
-          const activity = String(a.execution_state ?? a.state ?? '').trim() || 'state not stated'
+          // codex R4: an unrecorded or unrecognised state is NOT idle. Only a state the page can actually read is
+          // coloured; "we do not know" renders as unknown, in the neutral tone.
+          const activity = agentStateSentence(a.execution_state ?? a.state)
           const clock = a.claim_as_of ?? a.as_of
-          const idle = activity !== 'working'
-          return <div key={i} style={{ ...muted, padding: '2px 0', color: idle ? toneVars('warning').color : TOKENS.text[1] }}>
-            {name}: {plainText(a.task, 'no task named')} — {activity.replace(/_/g, ' ')}
+          return <div key={i} style={{ ...muted, padding: '2px 0', color: activity.idle === true ? toneVars('warning').color
+            : activity.idle === null ? toneVars('neutral').color : TOKENS.text[1] }}>
+            {name}: {plainText(a.task, 'no task named')} — {activity.text}
             {clock ? `, last reported ${when(clock)}` : ', no time recorded for this agent'}
           </div>
         })}
