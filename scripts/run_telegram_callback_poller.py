@@ -193,11 +193,22 @@ _CREDENTIAL_KEYS = ("code", "access_token", "refresh_token", "id_token", "api_ke
 # `code: …` all reached the log and the inbox verbatim. The key may now be quoted (JSON), the separator is `=` OR `:`,
 # and a bare value is recognised as a credential when it is a TOKEN: it ends at a delimiter (`& , } ] ) " ' #`) or the
 # end of the message. Prose keeps its text — "the code: path is under review" has a value followed by a space, which is
-# a sentence, not a token. A long token-bodied run is redacted even mid-sentence. Residual, documented: a SHORT secret
-# followed by a space in ordinary prose is not distinguishable from a word by shape alone.
+# a sentence, not a token. A long token-bodied run is redacted even mid-sentence, and a whole message that is one
+# whitespace-free token of 12+ characters (mixed case or a digit) is redacted whole.
+#
+# RESIDUAL, stated at its real width (cc5, 2026-11-04): a credential is NOT redacted when it arrives inside a longer
+# message that contains a SPACE — `code=<value>` mid-sentence is caught, but a bare value pasted with any surrounding
+# prose ("here it is AbCdEf… right?"), or a whitespace-free value of fewer than 12 characters with no keyed rule and
+# no preceding key-bearing message, survives. Length is a proxy; the context rule (previous message ends with a key
+# and separator) is the real evidence, and it catches a split paste at any length.
 """A whole message that is a single opaque token: no whitespace, token characters only, at least 24 of them, and it
 carries a digit or mixed case (prose words and short words are not credentials)."""
-_STANDALONE_CREDENTIAL_RE = re.compile(r"^(?=.*[0-9A-Z])(?=.*[a-z])[A-Za-z0-9._~+/=%\\-]{24,}$")
+_STANDALONE_CREDENTIAL_RE = re.compile(r"^(?=.*[0-9A-Z])(?=.*[a-z])[A-Za-z0-9._~+/=%\\-]{12,}$")
+
+#: A message that ENDS with a credential key and separator (…code=, …token:). The next message in the same chat is then
+#: that value, whatever its length — Schwab authorization codes are commonly 20-30 characters, and a floor is a proxy
+#: for evidence we actually have (cc5, 2026-11-04).
+_TRAILING_KEY_RE = re.compile(r"(?i)(?:" + "|".join(_CREDENTIAL_KEYS) + r")\s*[=:]\s*$")
 
 
 _CREDENTIAL_PARAM_RE = re.compile(
@@ -213,7 +224,7 @@ _CREDENTIAL_PARAM_RE = re.compile(
 )
 
 
-def redact_credentials(text: str) -> str:
+def redact_credentials(text: str, previous: str | None = None) -> str:
     """Replace the VALUE of a credential-bearing parameter, keeping the key and the rest of the message.
 
     The poller must act on the operator's raw text — a Schwab ``?code=`` paste is completed, not redacted, on its way
@@ -231,7 +242,9 @@ def redact_credentials(text: str) -> str:
         quote = '"' if dq else ("'" if sq else "")
         return f"{m.group('key')}{m.group('sep')}{quote}[redacted]{quote}"
     redacted = _CREDENTIAL_PARAM_RE.sub(_keep, text)
-    if _STANDALONE_CREDENTIAL_RE.match(redacted.strip()):
+    body = redacted.strip()
+    split_paste = bool(previous and _TRAILING_KEY_RE.search(previous.strip())) and " " not in body and bool(body)
+    if split_paste or _STANDALONE_CREDENTIAL_RE.match(body):
         # F3, second half (cc5 2026-11-04): when the transport splits a paste, the value arrives as its OWN message
         # with no key to match on. A whole message that is one long opaque token is not prose, and it is not safe to
         # keep: it is the half of the credential the keyed rule cannot see.
@@ -323,14 +336,14 @@ def _record_operator_outcome(msg: dict, text: str, chat_id: str, *, handled: boo
     return _append_or_queue(record, replies_dir=replies_dir, pending_path=pending_path)
 
 
-def _append_or_queue(record: dict, *, replies_dir=None, pending_path=None) -> str:
+def _append_or_queue(record: dict, *, replies_dir=None, pending_path=None, previous_text: str | None = None) -> str:
     """Inbox append first; on failure a durable queue; ``failed`` only when neither can be written.
 
     THE redaction boundary: every record passes through here, both lines of a reply pair included, so a credential
     cannot reach the inbox or the durable queue by a path that forgot to call the redactor.
     """
     if isinstance(record.get("text"), str):
-        record = {**record, "text": redact_credentials(record["text"])}
+        record = {**record, "text": redact_credentials(record["text"], previous_text)}
     line = json.dumps(record, ensure_ascii=False) + "\n"
     try:
         directory = Path(replies_dir) if replies_dir is not None else _operator_replies_dir()

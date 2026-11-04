@@ -405,3 +405,23 @@ def test_ordinary_prose_is_still_not_mistaken_for_a_standalone_credential():
     for text in ("please re-read WORKERS.md and continue", "approve the restore",
                  "tradeai-wt-example", "git push origin HEAD:wt/example"):
         assert redact_credentials(text) == text, text
+
+
+def test_a_split_paste_value_under_24_chars_is_redacted(tmp_path):
+    """cc5 (2026-11-04): the standalone floor was 24 and the R1 reproducer is 20 characters — a plausible Schwab
+    authorization code. Fails at 48a6d44cceb2."""
+    from scripts.run_telegram_callback_poller import _record_operator_reply
+    value = "AbCdEf1234567890XyZq"
+    assert len(value) == 20
+    assert _record_operator_reply({"message_id": 11}, value, "555", replies_dir=tmp_path,
+                                  allowed={"555"}, chat_type="private", sender_id="555") == "recorded"
+    written = (tmp_path / "telegram.jsonl").read_text()
+    assert value not in written, written
+
+
+def test_a_value_after_a_key_bearing_message_is_redacted_at_any_length(tmp_path):
+    """The context rule: the evidence for a split paste is the PREVIOUS message ending in a key and separator, not the
+    value's length. Fails at 48a6d44cceb2."""
+    from scripts.run_telegram_callback_poller import redact_credentials
+    assert redact_credentials("AbCd", previous="127.0.0.1?code=") == "[redacted]"
+    assert redact_credentials("AbCd", previous="please approve the restore") == "AbCd"
