@@ -142,9 +142,12 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
           const staleSource = source.maxAgeHours !== undefined && age.hours !== undefined && age.hours > source.maxAgeHours
           const gap = source.gap || age.gap || (staleSource ? 'This source is older than the freshness window for this view.' : null)
           if (source.pending) {
+            // The clock was never read, so its gap is not this row's text: `gap` above already folded in `age.gap`
+            // ("Update time unavailable") from an `asOf` that does not exist yet, and printing it beside a loading
+            // banner is the same co-render the surface contract forbids (cc-deepseek-3 N2 / BOARD row 36).
             return <article key={source.id} style={{ ...panel, padding: 12 }}>
               <strong>{source.label}</strong>
-              <div data-testid="desk-source-pending" style={{ color: BB.amber, marginTop: 6 }}>{gap ?? 'Not read yet.'}</div>
+              <div data-testid="desk-source-pending" style={{ color: BB.amber, marginTop: 6 }}>{source.gap ?? 'Not read yet.'}</div>
             </article>
           }
           return <article key={source.id} style={{ ...panel, padding: 12 }}>
