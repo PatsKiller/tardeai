@@ -391,7 +391,11 @@ def compute_desk_health(
     elif fact_freshness == FRESH_UNAVAILABLE:
         overall = FAILED
         reason = "deterministic facts unavailable"
-    elif source_completeness in (PARTIAL, DEGRADED) or watch_freshness in (FRESH_STALE, FRESH_UNAVAILABLE) or reentry_freshness in (FRESH_STALE, FRESH_UNAVAILABLE):
+    # cx-openai-2 F3: UNKNOWN is a non-healthy state. Missing quote evidence must never raise the desk's
+    # overall health (it did: UNAVAILABLE -> UNKNOWN moved PARTIAL to HEALTHY).
+    elif (source_completeness in (PARTIAL, DEGRADED)
+          or watch_freshness in (FRESH_STALE, FRESH_UNAVAILABLE, FRESH_UNKNOWN)
+          or reentry_freshness in (FRESH_STALE, FRESH_UNAVAILABLE, FRESH_UNKNOWN)):
         overall = PARTIAL
         reason = "one or more source families incomplete or stale"
     elif opinion_freshness in (FRESH_STALE, FRESH_EXPIRED):

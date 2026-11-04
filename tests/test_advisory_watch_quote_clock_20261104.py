@@ -42,6 +42,35 @@ def test_no_joined_quote_is_unknown_and_never_a_snapshot_time(monkeypatch):
     assert out["snapshot_as_of"] == now.isoformat(), "the generated time must stay available, qualified"
 
 
+def _health(watch_freshness):
+    return A.compute_desk_health(
+        structural_ok=True, plausibility_pass=True, fact_freshness=A.FRESH_CURRENT,
+        source_completeness=A.HEALTHY, opinion_freshness=A.FRESH_CURRENT,
+        reentry_freshness=A.FRESH_CURRENT, memory_health=A.HEALTHY,
+        holdings_source_freshness=A.FRESH_CURRENT, watch_freshness=watch_freshness,
+    )["overall"]
+
+
+def test_missing_quote_evidence_cannot_promote_health(monkeypatch):
+    """cx-openai-2 F3: UNKNOWN must not be healthier than the UNAVAILABLE it replaced.
+
+    With one requested card, no price_as_of and no snapshot clock, the join reports UNKNOWN. Feeding that into the
+    real desk-health classifier must not yield HEALTHY — before the fix it did, and the overall desk went from
+    PARTIAL at the previous head to HEALTHY at this one.
+    """
+    now = datetime.now(timezone.utc)
+    _stub(monkeypatch, [{"symbol": "NVDA"}], now.isoformat())
+    join = A.join_watch_intelligence(["NVDA"])
+    assert join["freshness"] == A.FRESH_UNKNOWN
+    health = _health(join["freshness"])
+    assert health != A.HEALTHY, "missing quote evidence promoted the desk to healthy"
+    assert health == _health(A.FRESH_UNAVAILABLE), "UNKNOWN must degrade exactly as UNAVAILABLE does"
+
+
+def test_a_current_quote_alone_does_not_block_health():
+    assert _health(A.FRESH_CURRENT) == A.HEALTHY
+
+
 def test_a_joined_quote_still_sets_the_clock(monkeypatch):
     now = datetime.now(timezone.utc)
     _stub(monkeypatch, [{"symbol": "NVDA", "price_as_of": (now - timedelta(minutes=5)).isoformat()}], now.isoformat())
