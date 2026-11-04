@@ -58,7 +58,10 @@ _DEEPSEEK_LANES = frozenset({
     "deepseek-flash",
     # 2026-11-04: "deepseek-v4-flash" and "deepseek-v4-pro" were removed. They are LEGACY ids in
     # lib/llm_model_registry (rejected by reject_legacy_model_id), and accepting them here made a lane
-    # whose id the registry refuses reachable from this tree — the deepseek lane's 37.9% error rate.
+    # whose id the registry refuses reachable from this tree. (The earlier claim that this caused a 37.9% lane
+    # error rate was REFUTED on 2026-11-04: the 50 rows behind that number are all DEFERRED_TO_OFFPEAK deferrals,
+    # not errors. The defect below is real on its own terms — a lane name one surface accepts and another refuses —
+    # and is proven by mutation, not by that number.)
     "fast",
     "fast_think",
     "pro",

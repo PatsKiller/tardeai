@@ -1,10 +1,18 @@
 """Every DeepSeek lane alias must survive the model registry's id check.
 
-2026-11-04: the `deepseek` research lane ran a 37.9% error rate / streak of 50 on
-`RegistryError: legacy DeepSeek model id rejected: 'deepseek-v4-flash'`. The alias list in
-scripts/llm_lane.py still accepted a model id that scripts/lib/llm_model_registry.py refuses, so the
-failure was reachable from the tree we run. An alias list that drifts from the registry is the defect;
-this test is the invariant that stops the next rename reproducing it.
+2026-11-04: two surfaces disagreed about one model name. `scripts/llm_lane.py` accepted
+`deepseek-v4-flash` and `deepseek-v4-pro` as lane aliases while `scripts/lib/llm_model_registry.py`
+rejects both as LEGACY ids (`reject_legacy_model_id` raises), and `scripts/lib/consumption_run_manual.py`
+accepted `deepseek-v4-flash` as a working lane. A name one surface routes and another refuses is the
+drift this test pins down.
+
+The evidence is the MUTATION, not a count: restoring the removed alias lines makes
+`test_the_run_manual_surface_agrees_about_the_legacy_names` fail with the registry's own error text
+(1 failed, 3 passed) — the test bites exactly when the fix is gone.
+
+Corrected 2026-11-04: an earlier version of this docstring cited a 37.9% / streak-50 lane error rate.
+That number is REFUTED — all 50 rows are DEFERRED_TO_OFFPEAK deferrals, not errors — and no claim here
+depends on it.
 """
 from __future__ import annotations
 
