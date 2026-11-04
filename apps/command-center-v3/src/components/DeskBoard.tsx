@@ -5,7 +5,7 @@ import { RADIUS } from '../lib/designTokens'
 import DeskPage, { DeskGap, type DeskDecision, type DeskSource, type DeskTab } from './DeskPage'
 import W7DetailSheet, { useW7Detail } from './W7DetailSheet'
 import { useApi } from '../hooks/useApi'
-import { deriveSurfaceState, surfaceGap, type SurfaceShape } from '../lib/surfaceState'
+import { deriveSurfaceState, isRecord, isText, isOptionalText, isTextList, surfaceGap, type SurfaceShape } from '../lib/surfaceState'
 import { SurfaceGap, useReportSurfaceState } from './SurfaceGap'
 
 /**
@@ -28,6 +28,59 @@ export type DeskProjection = {
   decision_gap?: string | null
   tabs: Record<string, { panels: DeskPanel[] }>
   errors?: string[]
+}
+
+// Validate the complete render boundary before any .map(), text child or selected detail can consume it.
+// Extractor try/catch alone cannot protect the later render callbacks.
+function isDeskDecision(value: unknown): boolean {
+  return isRecord(value) && isText(value.id) && isText(value.title) && isOptionalText(value.detail)
+    && isOptionalText(value.href) && (value.diagnostics == null || (isRecord(value.diagnostics)
+      && isText(value.diagnostics.title) && isOptionalText(value.diagnostics.detail)))
+}
+function isDeskRow(value: unknown): boolean {
+  if (!isRecord(value) || !isText(value.id) || !isText(value.label) || !isText(value.value)
+    || !isOptionalText(value.href) || !isOptionalText(value.tone)) return false
+  const detail = value.detail
+  return detail == null || (isRecord(detail) && isText(detail.title) && Array.isArray(detail.fields)
+    && detail.fields.every(f => isRecord(f) && isText(f.label) && isText(f.value))
+    && isOptionalText(detail.source) && isOptionalText(detail.href) && isOptionalText(detail.href_label))
+}
+function isDeskProjection(value: unknown): value is DeskProjection {
+  if (!isRecord(value) || (value.ok !== undefined && value.ok !== true) || !isText(value.desk) || !isText(value.as_of)
+    || !isOptionalText(value.decision_gap) || !Array.isArray(value.sources) || !Array.isArray(value.decisions)
+    || !isRecord(value.tabs) || (value.errors !== undefined && !isTextList(value.errors))) return false
+  return value.sources.every(s => isRecord(s) && isText(s.id) && isText(s.label) && isOptionalText(s.as_of)
+    && isTextList(s.lane_ids) && isOptionalText(s.gap) && (s.max_age_hours === undefined
+      || (typeof s.max_age_hours === 'number' && Number.isFinite(s.max_age_hours) && s.max_age_hours >= 0)))
+    && value.decisions.every(isDeskDecision)
+    && Object.values(value.tabs).every(tab => isRecord(tab) && Array.isArray(tab.panels)
+      && tab.panels.every(p => isRecord(p) && isText(p.id) && isText(p.title) && isOptionalText(p.sub)
+        && isOptionalText(p.gap) && isOptionalText(p.empty) && (p.span === undefined || [1, 2, 3].includes(p.span))
+        && Array.isArray(p.rows) && p.rows.every(isDeskRow)))
+}
+// The current agents producer uses gap for this one INFORMATIONAL note too. Exclude only that exact known ABI
+// value at its source; every other source gap, including a failed registry read, means coverage is unknown.
+function isRegistryClockNote(desk: string, source: DeskProjection['sources'][number]): boolean {
+  return desk === 'agents' && source.id === 'summary'
+    && source.gap === 'Lane counts come from config/lane_registry.json; it carries no update time.'
+}
+function projectionGaps(data: DeskProjection): string[] {
+  const gaps = new Map((data.errors ?? []).map(gap => [gap, gap]))
+  // agents_payload's failed reads are in sources[].gap, not errors[]. Keep other desks on their existing ABI.
+  if (data.desk === 'agents') {
+    for (const source of data.sources) {
+      if (source.gap && !isRegistryClockNote(data.desk, source)) gaps.set(source.gap, `${source.label}: ${source.gap}`)
+    }
+    // Cases/promotions and admission-log coverage can have a panel gap without a matching source entry. Count
+    // those too, deduplicating shared source/panel failures. These two exact producer notes describe known data,
+    // not an unread source: insufficient calibration samples and recorded errors in successfully read run journals.
+    for (const tab of Object.values(data.tabs)) for (const panel of tab.panels) {
+      if (!panel.gap || (panel.id === 'calibration' && panel.gap === 'No agent has enough resolved outcomes for a Brier score.')
+        || (panel.id === 'timeline' && /^\d+ of the \d+ newest runs recorded a model error\.$/.test(panel.gap))) continue
+      if (!gaps.has(panel.gap)) gaps.set(panel.gap, `${panel.title}: ${panel.gap}`)
+    }
+  }
+  return [...gaps.values()]
 }
 
 const TONE: Record<string, string> = { good: BB.green, warn: BB.amber, bad: BB.red, info: T.link }
@@ -84,10 +137,10 @@ export default function DeskBoard({ desk, title, purpose, tabs, tabAliases, clas
   // desk projection." on the operator's screen.
   const shape: SurfaceShape<DeskProjection> = {
     what: `${title} page data`,
-    // The server names its own gaps; an envelope that cannot say is treated as complete only because it is complete.
-    gaps: d => (d && typeof d === 'object' && Array.isArray(d.errors) ? d.errors : []),
-    isEmpty: d => Object.values((d && d.tabs) || {}).every(t => (t?.panels ?? []).every(p => (p.rows ?? []).length === 0)),
-    usable: d => !!d && typeof d === 'object' && 'tabs' in d,
+    // Read the producer's source-level completeness contract, even when errors[] is empty.
+    gaps: projectionGaps,
+    isEmpty: d => Object.values(d.tabs).every(t => t.panels.every(p => p.rows.length === 0)),
+    usable: isDeskProjection,
   }
   const surface = deriveSurfaceState<DeskProjection>({ data, error, loading, refreshing, stale }, shape)
   useReportSurfaceState(`${title} page`, surface)
@@ -116,8 +169,7 @@ export default function DeskBoard({ desk, title, purpose, tabs, tabAliases, clas
         diagnostics: { title: decision.title, detail: decision.detail },
       } : decision)} decisionGap={decisionLine}>
       {(active: string) => <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {!projection && <SurfaceGap state={surface} shape={shape} onRetry={refetch} />}
-        {projection && (surface.state === 'partial' || surface.state === 'stale') && <SurfaceGap state={surface} shape={shape} onRetry={refetch} />}
+        <SurfaceGap state={surface} shape={shape} onRetry={refetch} />
         {projection && (projection.tabs[active]?.panels?.length
           ? <DeskPanels panels={projection.tabs[active].panels} onOpen={(p, r) => open(`${p}:${r}`)} totalUnknown={!surface.totalKnown} />
           : <DeskGap title="Nothing on file for this view" reason="The projection returned no panels for this tab." />)}

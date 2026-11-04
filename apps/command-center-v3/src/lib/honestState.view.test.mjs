@@ -7,6 +7,7 @@
 //
 // No live server, no network, no portfolio values: synthetic rows only.
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { readFileSync, existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join, dirname, resolve } from 'node:path'
@@ -72,15 +73,62 @@ const queue = {
   pending_count: 1, known_pending_count: 1, complete: true, gaps: [], as_of: '2030-01-01T00:00:00Z', recent: [], filtered_count: 1, offset: 0,
 }
 const queuePartial = { ...queue, pending_count: null, known_pending_count: 1, complete: false, gaps: [{ source: 'releases', reason: 'did not answer' }] }
-// A desk projection whose envelope says one source did not answer, with no decisions and an empty tab: this is the
-// shape where a renderer that defaults to "No open decisions on file" / "No rows on file" claims completeness it
-// does not have (reviewer F1, 2026-11-04).
-const projectionPartial = {
-  ...projection,
-  errors: ['releases did not answer'],
-  decisions: [], decision_gap: null,
-  tabs: { runtime: { panels: [{ id: 'p', title: 'Panel', rows: [], empty: null }] } },
+// Generate the REAL agents_payload ABI using synthetic private files and an injected DB callback. No live data,
+// connection or provider. In particular, failed reads go in sources[].gap while top-level errors stays empty.
+const realAgentPayloads = JSON.parse(execFileSync('python3', ['-c', String.raw`
+import importlib.util, json, sys, tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+spec = importlib.util.spec_from_file_location('agents_view_fixture', Path(sys.argv[1]) / 'scripts/lib/desks_a.py')
+producer = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = producer
+spec.loader.exec_module(producer)
+root = Path(tempfile.mkdtemp(prefix='agents-view-'))
+healthy = root / 'healthy'
+stamp = '2030-01-01T00:00:00Z'
+files = {
+ 'runtime/advisory_kb_lessons.jsonl': json.dumps({'ts': stamp, 'title': 'Synthetic lesson'}) + '\n',
+ 'cio/aif_memory.jsonl': json.dumps({'memory_id': 'synthetic', 'status': 'ACTIVE', 'created_at': stamp}) + '\n',
+ 'cio/aif_memory_admissions.jsonl': '', 'cio/cio_production_cases.jsonl': '', 'cio/maturity_promotions.json': '{}',
 }
+def write_tree(tree, omit=None):
+ for name, content in files.items():
+  if name == omit: continue
+  path = tree / 'data' / name
+  path.parent.mkdir(parents=True, exist_ok=True)
+  path.write_bytes(content.encode())
+ (tree / 'data/runtime/agent_runtime_journals').mkdir(parents=True)
+write_tree(healthy)
+panel_missing = root / 'panel-missing'
+write_tree(panel_missing, 'cio/cio_production_cases.jsonl')
+model_note = root / 'model-note'
+write_tree(model_note)
+journal = model_note / 'data/runtime/agent_runtime_journals/synthetic/run.jsonl'
+journal.parent.mkdir(parents=True)
+journal.write_bytes((json.dumps({'ts': stamp, 'agent_id': 'synthetic', 'run_id': 'fixture', 'job_type': 'synthetic',
+                                'model_error': 'Synthetic recorded model error'}) + '\n').encode())
+states = {lane: 'ACTIVE' for lanes in producer.AGENTS_LANES.values() for lane in lanes}
+def query(sql, *args, **kwargs):
+ if 'agent_calibration_windows' in sql: return []
+ return [{'completed': 0, 'failed': 0, 'queued': 0, 'processing': 0, 'total': 0, 'n': 0, 'newest': stamp}]
+def refused(*args, **kwargs):
+ raise RuntimeError('synthetic DB read refused')
+def payload(tree, db, lane_states):
+ return producer.agents_payload(root=tree, data_root=tree, db_query=db, states=lane_states,
+                               now=datetime(2030, 1, 1, tzinfo=timezone.utc))
+def low_sample(sql, *args, **kwargs):
+ if 'agent_calibration_windows' in sql:
+  return [{'agent_name': 'synthetic', 'brier_score': 0.1, 'low_sample_size': True, 'created_at': stamp}]
+ return query(sql, *args, **kwargs)
+print(json.dumps({'partial': payload(healthy, refused, states), 'healthy': payload(healthy, query, states),
+                  'missing': payload(root / 'missing', refused, states), 'registry': payload(healthy, query, {}),
+                  'panelMissing': payload(panel_missing, query, states), 'calibrationNote': payload(healthy, low_sample, states),
+                  'modelNote': payload(model_note, query, states)}))
+`, resolve(app, '../..')], { encoding: 'utf8', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } }))
+assert.deepEqual(realAgentPayloads.partial.errors, [])
+assert.ok(realAgentPayloads.partial.sources.some(s => s.id === 'pipeline' && s.gap === 'Agent jobs could not be read.'))
+assert.equal(realAgentPayloads.healthy.sources.filter(s => s.gap).length, 1)
+const projectionPartial = realAgentPayloads.partial
 
 // Vocabulary that must never appear together.
 // DeskPage fetches /api/v2/desk-sources separately from the page's own payload. The harness used to serve ONE fixture to
@@ -165,6 +213,82 @@ for (const [state, fixture] of Object.entries({
     state === 'malformed' ? ['a malformed payload says it could not be read', /could not be read/i.test(text)] : ['no unreadable claim', true],
     state === 'malformed' ? ['a malformed payload never claims a complete total', !/\b1 waiting for review\b/.test(text)] : ['no total from nothing', true],
   ])
+}
+
+// F1: actual producer failures override its generic no-decision sentence. A healthy producer's registry-clock
+// note remains visible without making every healthy read permanently partial.
+for (const [name, payload] of Object.entries(realAgentPayloads)) {
+  globalThis.__deskFixture = route({data:payload,error:null,loading:false,refetch(){}}, 'ready')
+  try {
+    const text = render(React.createElement(DeskBoard, deskConfig))
+    const partial = ['partial', 'missing', 'registry', 'panelMissing'].includes(name)
+    caseOf('/agents', `producer-${name}`, text, [
+      ['source failures make coverage unknown', partial ? /not complete|total is not yet known/i.test(text) : !/not complete|total is not yet known/i.test(text)],
+      ['unknown coverage cannot claim no open decisions', !partial || !/No writer or data decisions are open/i.test(text)],
+      ['known rows survive failed reads', /Jobs completed/.test(text)],
+      ['informational clock note retained', name === 'registry' || /carries no update time/.test(text)],
+    ])
+  } catch(e) {cases.push({surface:'/agents',state:`producer-${name}`,passed:false,failed_assertions:[e.message],text:''})}
+}
+
+globalThis.__govFixture = () => ({data:{...queue,pending_count:null,complete:false,gaps:[]},error:null,loading:false,refresh(){}})
+globalThis.__deskFixture = route({data:null,error:null,loading:false}, 'ready')
+const unexplainedPartial = render(React.createElement(ApprovalsHub))
+caseOf('/approvals', 'incomplete-without-gap-reason', unexplainedPartial, [
+  ['explicit incomplete coverage is never empty/complete', /total is not yet known/i.test(unexplainedPartial) && !/waiting for review/.test(unexplainedPartial)],
+])
+
+globalThis.__deskFixture = route({data:projection,error:null,loading:false,refreshing:true,refetch(){}}, 'ready')
+const refreshingText = render(React.createElement(DeskBoard, deskConfig))
+caseOf('/agents', 'refreshing-retains-rows', refreshingText, [
+  ['ready refresh has a visible updating marker', /Updating the Agents page data/.test(refreshingText)],
+  ['refresh retains known rows without initial-loading wording', /Fixture row/.test(refreshingText) && !/Loading the/.test(refreshingText)],
+])
+
+// F2: mutate one structural field at a time, leaving the other fields valid. Exercise downstream rendering,
+// React text children and numeric totals, rather than only a protected gaps extractor.
+const malformedDesk = [
+ ['sources missing', d => {delete d.sources}], ['sources object', d => {d.sources={}}],
+ ['source null', d => {d.sources=[null]}], ['source lanes object', d => {d.sources[0].lane_ids={}}],
+ ['source label object', d => {d.sources[0].label={}}], ['source gap object', d => {d.sources[0].gap={}}],
+ ['decisions missing', d => {delete d.decisions}], ['decisions null', d => {d.decisions=null}],
+ ['decision null', d => {d.decisions=[null]}], ['decision title object', d => {d.decisions=[{id:'x',title:{}}]}],
+ ['tabs null', d => {d.tabs=null}], ['tab null', d => {d.tabs.runtime=null}],
+ ['panels missing', d => {d.tabs.runtime={}}], ['panel null', d => {d.tabs.runtime.panels=[null]}],
+ ['rows object', d => {d.tabs.runtime.panels[0].rows={}}], ['row null', d => {d.tabs.runtime.panels[0].rows=[null]}],
+ ['row value object', d => {d.tabs.runtime.panels[0].rows[0].value={}}],
+ ['detail fields object', d => {d.tabs.runtime.panels[0].rows[0].detail={title:'Detail',fields:{}}}],
+ ['errors object', d => {d.errors={}}],
+]
+const malformedQueue = [
+ ['items missing', d => {delete d.items}], ['items object', d => {d.items={}}],
+ ['item null', d => {d.items=[null]}], ['item title object', d => {d.items[0].title={}}],
+ ['item href object', d => {d.items[0].governed_href={}}],
+ ['recent missing', d => {delete d.recent}], ['recent null', d => {d.recent=null}],
+ ['history decision missing', d => {d.recent=[{actor:'synthetic',at:'2030-01-01T00:00:00Z'}]}],
+ ['gaps missing', d => {delete d.gaps}], ['gap null', d => {d.gaps=[null]}],
+ ['gap source object', d => {d.gaps=[{source:{},reason:'synthetic'}]}],
+ ['pending missing', d => {delete d.pending_count}], ['pending string', d => {d.pending_count='1'}],
+ ['pending NaN', d => {d.pending_count=NaN}], ['pending Infinity', d => {d.pending_count=Infinity}],
+ ['pending negative', d => {d.pending_count=-1}], ['known total missing', d => {delete d.known_pending_count}],
+ ['filtered total object', d => {d.filtered_count={}}], ['complete missing', d => {delete d.complete}],
+ ['resolved object', d => {d.resolved={}}], ['resolved malformed', d => {d.resolved=[{title:{}}]}],
+]
+for (const [surface, base, mutations, Component, props] of [
+  ['/agents', projection, malformedDesk, DeskBoard, deskConfig],
+  ['/approvals', queue, malformedQueue, ApprovalsHub, {}],
+]) for (const [name, mutate] of mutations) {
+  const payload = structuredClone(base); mutate(payload)
+  const fixture = {data:payload,error:null,loading:false,refetch(){},refresh(){}}
+  globalThis.__deskFixture = route(fixture, 'ready'); globalThis.__govFixture = () => fixture
+  try {
+    const text = render(React.createElement(Component, props))
+    caseOf(surface, `malformed-${name}`, text, [
+      ['malformed boundary is unreadable', /not in a usable shape/.test(text)],
+      ['malformed boundary has no empty-result or count claim', !/waiting for review|No open decisions on file|No items in this view/.test(text)],
+      ['malformed boundary offers recovery', /Try again/.test(text)],
+    ])
+  } catch(e) {cases.push({surface,state:`malformed-${name}`,passed:false,failed_assertions:[`render threw: ${e.message}`],text:''})}
 }
 
 // B1 wiring pins (cc-deepseek-3): the shell's publisher must be memoised with NO dependencies and the report and the

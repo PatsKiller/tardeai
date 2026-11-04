@@ -9,7 +9,10 @@ import { BigNumberCard, FAMILY_ICON, familyFor, familyStyle, type Family } from 
 /** "🚨 STOP HEALTH — 3 alert(s) (1 urgent)" → "STOP HEALTH": the alert TYPE, without emoji, ticker or counts. */
 export function alertType(headline?: string | null, symbols: string[] = []): string {
   let h = String(headline || '').replace(/^[^A-Za-z$]+/, '')
-  for (const s of symbols) h = h.replace(new RegExp(`\\$?\\b${s}\\b`, 'g'), '')
+  for (const s of symbols) {
+    const literal = s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    h = h.replace(new RegExp(`\\$?\\b${literal}\\b`, 'g'), '')
+  }
   h = h.split(/\s[—–-]\s|·|:/)[0] || h
   return h.replace(/\s+/g, ' ').trim().slice(0, 48).toUpperCase() || '—'
 }
@@ -73,7 +76,7 @@ export function LevelsLine({ l }: { l?: any }) {
  * General operational messages and inbound notes may legitimately have no ticker. */
 export function messageIdentity(e: any): { symbols: string[]; incomplete: boolean } {
   const symbols = Array.isArray(e?.symbols)
-    ? e.symbols.filter((s: unknown): s is string => typeof s === 'string' && !!s.trim()).map((s: string) => s.trim()) : []
+    ? e.symbols.filter((s: unknown): s is string => typeof s === 'string' && /[\p{L}\p{N}]/u.test(s)).map((s: string) => s.trim()) : []
   const entry = ['reward', 'high_conviction_opportunity', 're_entry', 'watchlist_candidate'].includes(e?.category)
     || /\b(?:review entry|high conviction entry)\b/i.test(`${e?.action_hint || ''} ${e?.headline || e?.short_summary || ''}`)
   return { symbols, incomplete: e?.direction !== 'INBOUND' && entry && symbols.length === 0 }

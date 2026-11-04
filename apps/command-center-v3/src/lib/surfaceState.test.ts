@@ -104,6 +104,8 @@ check('qualifier: it never claims the page is fine', !/unavailable|loading|\bok\
 const loadingQ = footerQualifier({ name: 'Agents', dataLoaded: false, state: 'loading' })
 check('qualifier: a loading page is not reported as failed', !/did not load/.test(loadingQ) && /still loading/.test(loadingQ))
 check('qualifier: a failed page is still reported as failed', /did not load/.test(footerQualifier({ name: 'Agents', dataLoaded: false, state: 'unavailable' })))
+check('qualifier: partial data is named incomplete', /incomplete/.test(footerQualifier({name:'Agents',dataLoaded:true,state:'partial'})))
+check('qualifier: stale data is named historical', /last good/.test(footerQualifier({name:'Agents',dataLoaded:true,state:'stale'})))
 
 // ── B1 (cc-deepseek-3): the footer channel must SETTLE, not re-render for ever ────────────────────────────
 // Measured on the branch: 255,468 renders in 2.5 s on /agents and /approvals. Cause: the provider's value object

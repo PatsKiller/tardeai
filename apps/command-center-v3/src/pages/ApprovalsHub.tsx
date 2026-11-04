@@ -5,7 +5,7 @@ import AmendmentReader from '../components/AmendmentReader'
 import { GOVERNANCE, KIND_LABEL, useGovernance, waitingSince, type ApprovalItem, type ApprovalQueue } from '../lib/operatorApprovals'
 import '../styles/operatorApprovals.css'
 import ResolvedActivations, { type QueueWithResolved } from '../components/approvals/ResolvedActivations'
-import { deriveSurfaceState, surfaceGap, type SurfaceShape } from '../lib/surfaceState'
+import { deriveSurfaceState, isRecord, isText, isOptionalText, isTextList, isCount, surfaceGap, type SurfaceShape } from '../lib/surfaceState'
 import { SurfaceGap, useReportSurfaceState } from '../components/SurfaceGap'
 
 const tabs = [{ id: 'waiting', label: 'Waiting on you' }, { id: 'POLICY', label: 'Policy' }, { id: 'RELEASE', label: 'Releases' },
@@ -14,6 +14,24 @@ const tabs = [{ id: 'waiting', label: 'Waiting on you' }, { id: 'POLICY', label:
 
 /** W10 AI-proposed conflict rule: the server only emits this local, allow-listed destination. */
 const isRuleProposal = (item: ApprovalItem) => item.source === 'conflict_rule_proposals' && !!item.governed_href?.startsWith('/conflicts/rules?proposal=')
+
+function isQueueItem(value: unknown): boolean {
+  return isRecord(value) && isText(value.id) && isText(value.title) && isText(value.kind)
+    && ['source', 'version', 'proposed_by', 'created_at', 'governed_href', 'decision_mode'].every(key => isOptionalText(value[key]))
+}
+function isQueue(value: unknown): value is ApprovalQueue {
+  if (!isRecord(value) || !Array.isArray(value.items) || !value.items.every(isQueueItem)
+    || !Array.isArray(value.recent) || !value.recent.every(r => isRecord(r) && isText(r.decision) && isText(r.at)
+      && ['actor', 'document_sha', 'comment'].every(key => isOptionalText(r[key])))
+    || !Array.isArray(value.gaps) || !value.gaps.every(g => isRecord(g) && isText(g.source) && isText(g.reason))
+    || typeof value.complete !== 'boolean' || !isText(value.as_of) || !isCount(value.known_pending_count)
+    || !isCount(value.filtered_count) || !isCount(value.offset)
+    || !(isCount(value.pending_count) || (value.pending_count === null && !value.complete))) return false
+  // Resolved activations are rendered on demand; validate them before that interaction can expose bad data too.
+  return value.resolved === undefined || (Array.isArray(value.resolved) && value.resolved.every(item =>
+    isQueueItem(item) && (item.reconcile == null || (isRecord(item.reconcile) && isText(item.reconcile.state)
+      && isText(item.reconcile.reason) && isTextList(item.reconcile.evidence) && isOptionalText(item.reconcile.note)))))
+}
 
 export default function ApprovalsHub() {
   const { id } = useParams()
@@ -31,8 +49,9 @@ function Queue() {
   // the latest queue." ended up beside "Queue unavailable".
   const shape: SurfaceShape<ApprovalQueue> = {
     what: 'latest approval queue',
-    gaps: d => (d.gaps ?? []).map(g => g.source),
-    isEmpty: d => (d.items ?? []).length === 0 && (d.recent ?? []).length === 0,
+    usable: isQueue,
+    gaps: d => d.gaps.length ? d.gaps.map(g => g.source) : d.complete ? [] : ['Approval coverage is incomplete'],
+    isEmpty: d => d.items.length === 0 && d.recent.length === 0,
   }
   const surface = deriveSurfaceState<ApprovalQueue>({ data, error, loading }, shape)
   useReportSurfaceState('Approvals page', surface)
@@ -47,7 +66,7 @@ function Queue() {
       // from an `asOf` that does not exist yet (BOARD row 36).
       pending: surface.state === 'loading',
       gap: surface.state === 'partial' ? 'Some approval sources are unavailable. The total is not yet known.' : undefined }]}
-    decisionGap={totalKnown ? `${data!.pending_count} waiting for review.` : surfaceText ? `${surfaceText.title}. The total is not yet known.` : undefined}>
+    decisionGap={totalKnown ? `${q!.pending_count} waiting for review.` : surfaceText ? `${surfaceText.title}. The total is not yet known.` : undefined}>
     {active => <div className="stack">
       {!surface.data && <SurfaceGap state={surface} shape={shape} onRetry={refresh} />}
       {surface.data && surface.state === 'partial' && <SurfaceGap state={surface} shape={shape} />}
@@ -78,7 +97,7 @@ function Queue() {
             {!q.items.some(item => active === 'waiting' || item.kind === active) && <p>No items in this view. {q.complete ? '' : 'Some sources are still unavailable.'}</p>}
             <div className="toolbar"><button disabled={!offset} onClick={() => setOffset(Math.max(0, offset - 50))}>Previous</button>
               <button disabled={offset + 50 >= q.filtered_count} onClick={() => setOffset(offset + 50)}>Next</button></div>
-            {(active === 'ACTIVATE' || active === 'waiting') && <ResolvedActivations items={(data as QueueWithResolved).resolved} />}
+            {(active === 'ACTIVATE' || active === 'waiting') && <ResolvedActivations items={(q as QueueWithResolved).resolved} />}
           </section>
           <aside className="stack"><section className="panel"><h2>How a decision is recorded</h2><p>Your authenticated tailnet identity, the exact version you read, and the time are recorded together. Agents can propose and read; they cannot decide.</p></section>
             <section className="panel"><h2>Decided recently</h2>{q.recent.slice(0, 5).map((record, i) => <p key={i}>{record.decision.replace(/_/g, ' ')} · {new Date(record.at).toLocaleDateString()}</p>)}

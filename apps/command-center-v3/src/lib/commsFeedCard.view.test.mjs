@@ -19,7 +19,7 @@ const base = {event_id:'synthetic-entry', category:'high_conviction_opportunity'
 const render = (e, drawer=false) => renderToStaticMarkup(React.createElement(drawer ? MessageDrawer : FeedCard,
   {e, id:e.event_id, selected:false, picked:false, onPick(){}, onOpen(){}, onClose(){}, onAction(){}}))
 let passed=0, failed=0
-for (const symbols of [undefined, [], null, [''], ['  '], [null], [42], 'AAA']) {
+for (const symbols of [undefined, [], null, [''], ['  '], [null], [42], 'AAA', ['—'], ['['], ['...'], ['?!']]) {
   for (const drawer of [false,true]) {
     try {
       const html=render({...base,symbols},drawer)
@@ -32,10 +32,13 @@ for (const symbols of [undefined, [], null, [''], ['  '], [null], [42], 'AAA']) 
   }
 }
 for (const e of [ {...base,symbols:['AAA']}, {...base,symbols:[' ','AAA']},
+  ...['BRK.B','RDS-A','^SYNTH','SYNTH=F','SYNTH[Q]','SYNTH[','0700.HK'].map(symbol => ({...base,symbols:[symbol]})),
   {...base,category:'operational_issue',headline:'Service warning',action_hint:'Inspect service',symbols:[]},
   {...base,direction:'INBOUND',symbols:[]} ]) {
-  try {const html=render(e);assert.doesNotMatch(html,/Incomplete message/);assert.match(html,/▶/);passed++}
-  catch(error){failed++;console.error(`FAIL identified or general message: ${error.message.split('\n')[0]}`)}
+  for(const drawer of [false,true]) {
+    try {const html=render(e,drawer);assert.doesNotMatch(html,/Incomplete message/);assert.match(html,/▶/);passed++}
+    catch(error){failed++;console.error(`FAIL identified or general message drawer=${drawer}: ${error.message.split('\n')[0]}`)}
+  }
 }
 console.log(`commsFeedCard actual renders: ${passed} passed, ${failed} failed`)
 process.exitCode=failed?1:0

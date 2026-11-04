@@ -13,6 +13,15 @@
  * Pure: no React, no I/O, no clock (a caller passes what the hook already knows).
  */
 
+/** Runtime payload checks shared by the two consumers; TypeScript types do not validate a server response. */
+export function isRecord(value: unknown): value is Record<string, any> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+export const isText = (value: unknown): value is string => typeof value === 'string'
+export const isOptionalText = (value: unknown): boolean => value == null || isText(value)
+export const isTextList = (value: unknown): value is string[] => Array.isArray(value) && value.every(isText)
+export const isCount = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+
 /** Exactly one of these is true for a surface's data region at any moment. */
 export type SurfaceStateName =
   | 'loading'      // first read in flight, nothing retained
@@ -202,7 +211,10 @@ export function nextSurfaceReport(prev: SurfaceReport | null, incoming: SurfaceR
  * rendering the shell (the same reason `nextSurfaceReport` is pure). Empty string = nothing to add.
  */
 export function footerQualifier(surface: SurfaceReport | null): string {
-  if (!surface || surface.dataLoaded) return ''
+  if (!surface) return ''
+  if (surface.state === 'partial') return ` · ${surface.name} data is incomplete`
+  if (surface.state === 'stale') return ` · ${surface.name} is showing the last good data`
+  if (surface.dataLoaded) return ''
   // A read still in flight has not failed. Saying "data did not load" while the page says "Loading …" would be the
   // same false-failure claim the page banners were fixed to stop (cc-deepseek-3 N10).
   if (surface.state === 'loading') return ` · ${surface.name} is still loading`
