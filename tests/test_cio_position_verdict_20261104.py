@@ -92,3 +92,21 @@ def test_an_aggregate_is_not_a_verdict(tmp_path):
     store = V.VerdictStore(tmp_path / "v.jsonl", producer="cio_truth")
     with pytest.raises(ValueError, match="account"):
         store.record({**verdict(), "account": "ALL_ACCOUNTS"})
+
+
+def test_the_producer_assembles_a_verdict_and_refuses_an_unjustified_one():
+    """The CIO's own builder: a payload cannot be assembled without evidence, tax constraint or alternatives."""
+    built = V.build_verdict(symbol="SPCX", account="schwab_individual", action="HOLD", state="stopped_out",
+                            stage="watching", confidence=0.7, trigger="second stop-out", narrative="watching",
+                            as_of=NOW.isoformat(), evidence=[{"source": "fills", "ref": "f1"}],
+                            tax_constraint={"wash_sale_window_days": 30}, alternatives=[{"action": "EXIT"}])
+    assert set(V.REQUIRED_FIELDS) <= set(built) and built["account"] == "schwab_individual"
+
+    for missing in ("evidence", "tax_constraint", "alternatives"):
+        args = dict(symbol="SPCX", account="schwab_individual", action="HOLD", state="stopped_out",
+                    stage="watching", confidence=0.7, trigger="t", narrative="n", as_of=NOW.isoformat(),
+                    evidence=[{"source": "fills", "ref": "f1"}], tax_constraint={"w": 30},
+                    alternatives=[{"action": "EXIT"}])
+        args[missing] = []
+        with pytest.raises(ValueError, match=missing):
+            V.build_verdict(**args)

@@ -87,7 +87,7 @@ class VerdictStore:
         if self.producer != CIO_PRODUCER:
             raise NotCIOProducer(f"only {CIO_PRODUCER!r} may produce a position verdict; {self.producer!r} may "
                                  "render it, never write it")
-        missing = [field for field in REQUIRED_FIELDS if payload.get(field) in (None, "", [])]
+        missing = [field for field in REQUIRED_FIELDS if not payload.get(field)]
         if missing:
             raise ValueError(f"a position verdict needs {', '.join(missing)}")
         account = str(payload["account"])
@@ -113,3 +113,23 @@ class VerdictStore:
             handle.flush()
             os.fsync(handle.fileno())
         return record
+
+
+def build_verdict(*, symbol, account, action, state, stage, confidence, trigger, narrative, as_of, evidence,
+                  tax_constraint, alternatives) -> dict[str, Any]:
+    """Assemble the payload the CIO records. Pure: no IO, so the producer cannot write a verdict it cannot justify.
+
+    The CIO supplies the decision; this only refuses to hand back a payload that is missing what §1b requires —
+    evidence, the per-account tax constraint, and the alternatives that were rejected. Every surface still RENDERS
+    the record; none of them may call this.
+    """
+    payload = {
+        "symbol": str(symbol), "account": str(account), "action": action, "state": state, "stage": stage,
+        "confidence": confidence, "trigger": trigger, "narrative": narrative, "as_of": str(as_of),
+        "evidence": list(evidence or []), "tax_constraint": dict(tax_constraint or {}),
+        "alternatives": list(alternatives or []),
+    }
+    missing = [field for field in REQUIRED_FIELDS if not payload.get(field)]
+    if missing:
+        raise ValueError(f"a position verdict needs {', '.join(missing)}")
+    return payload
