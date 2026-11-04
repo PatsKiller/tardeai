@@ -164,7 +164,9 @@ def main(argv: list[str] | None = None) -> int:
         state = {}
     now = time.time()
     out, plan = [], []
-    for s in list_sessions(cfg):
+    sessions = list_sessions(cfg)
+    wanted = 0
+    for s in sessions:
         rec = state.get(s, {})
         d = decide(capture(s), rec, now, cfg)
         action = d["action"]
@@ -174,6 +176,7 @@ def main(argv: list[str] | None = None) -> int:
         if detail is None:
             pass
         elif not a.apply:
+            wanted += 1
             plan.append(ledger_line(s, detail, cfg))          # shown as "would:" — nothing is typed or written
         elif action == "RESUME":
             send(s, RESUME, run=subprocess.run)
@@ -187,6 +190,7 @@ def main(argv: list[str] | None = None) -> int:
             send(s, PROMPT.format(coord=coord), run=subprocess.run)
             rec["nudged_at"] = now
         if detail is not None and a.apply:
+            wanted += 1
             ledger_path.parent.mkdir(parents=True, exist_ok=True)
             with open(ledger_path, "a", encoding="utf-8") as fh:
                 fh.write(ledger_line(s, detail, cfg) + "\n")
@@ -201,6 +205,17 @@ def main(argv: list[str] | None = None) -> int:
     if not a.apply:
         for ln in plan:
             print("would: " + ln)
+    # LaneOutput@v1 (scripts/lib/lane_output.py): ONE bounded line on stderr in every mode, so the executor can bind a
+    # run to what it produced and the contract's expected_output rule has something executable to read. A dry run
+    # reports what it WOULD have typed; `nothing_due` is the honest empty reason when no session needed a nudge.
+    try:
+        from scripts.lib.lane_output import emit as _emit_lane_output, output_block as _lane_output_block
+    except ImportError:  # scripts/ on sys.path (cron / direct execution)
+        from lib.lane_output import emit as _emit_lane_output, output_block as _lane_output_block  # type: ignore
+    produced = wanted   # dry: what it WOULD type; live: what it typed. `attempted` is the sessions inspected.
+    block = _lane_output_block(produced=produced, attempted=len(sessions), unit="agent nudges typed",
+                               empty_reason=None if produced else "nothing_due")
+    _emit_lane_output("agent_nudge", "live" if a.apply else "dry_run", block)
     return 0
 
 

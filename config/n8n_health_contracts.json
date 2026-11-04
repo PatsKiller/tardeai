@@ -35035,6 +35035,36 @@
         "reviewed_by": "cc-deepseek-6 (author) — P2 shadow registration; independent review required before the stage flip",
         "status": "REVIEWED",
         "note": "REVIEWED here means the contract is complete and consistent with the allowlist and the registry row; it is not the operator approval for a live stage, which is a separate decision."
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "agent nudges typed",
+        "rule": "empty_allowed",
+        "min_produced": 0,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "unconfigured",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "nothing_due"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "stderr LANE_OUTPUT produced_count (LaneOutput@v1, emitted by scripts/agent_nudger.py in EVERY mode; a dry run reports what it would have typed)"
+          },
+          {
+            "kind": "ledger_row",
+            "ref": "$STATE_ROOT/data/coordination/agent_nudger/ledger.jsonl — one line per typed nudge; a LIVE run's produced_count must equal the lines its own window appended"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
       }
     }
   ],

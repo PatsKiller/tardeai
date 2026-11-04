@@ -130,3 +130,39 @@ def test_the_script_still_defaults_to_dry_and_refuses_two_modes_at_once():
         assert exc.code == 2
     else:  # pragma: no cover
         raise AssertionError("--apply --dry-run must be refused")
+
+
+# ── expected output: the contract's rule must be executable, not decorative (F2/P2) ─────────────────
+
+
+def test_the_contract_declares_a_valid_executable_expected_output_rule():
+    contracts = json.loads((ROOT / "config" / "n8n_health_contracts.json").read_text(encoding="utf-8"))["contracts"]
+    c = [x for x in contracts if x.get("id") == LANE][0]
+    eo = c.get("expected_output")
+    assert isinstance(eo, dict), "a shadow lane's contract must carry an expected_output rule"
+    from scripts.lib.n8n_output_verdict import validate_expected_output  # noqa: PLC0415
+
+    assert validate_expected_output(eo) == []
+    assert eo["rule"] == "empty_allowed" and eo["produced_field"] == "produced_count"
+    assert eo["empty_allowed_reasons"] == ["nothing_due"]
+    assert eo["on_violation"]["run_state"] == "RUN_FAILED"
+
+
+def test_the_lane_emits_the_count_the_contract_reads(monkeypatch, capsys, tmp_path):
+    """The rule reads produced_count from LANE_OUTPUT on stderr; a rule no run can satisfy is not a rule."""
+    import agent_nudger as N  # noqa: PLC0415
+
+    monkeypatch.setattr(N, "list_sessions", lambda cfg: ["fixture-session-a", "fixture-session-b"])
+    monkeypatch.setattr(N, "capture", lambda s: "❯ \n  ? for shortcuts")
+    rc = N.main(["--dry-run", "--state", str(tmp_path / "s.json"), "--ledger", str(tmp_path / "l.jsonl")])
+    assert rc == 0
+    captured = capsys.readouterr()
+    lines = [ln for ln in captured.err.splitlines() if ln.startswith("LANE_OUTPUT ")]
+    assert len(lines) == 1, captured.err
+    block = json.loads(lines[0][len("LANE_OUTPUT "):])
+    assert block["schema"] == "LaneOutput@v1" and block["lane_id"] == LANE
+    # Dry run: produced == the "would:" lines it printed, and attempted == the sessions it inspected.
+    assert block["produced_count"] == captured.out.count("would: ")
+    assert block["attempted_count"] == 2
+    assert block["unit"] == "agent nudges typed"
+    assert block["produced_count"] or block["empty_reason"] == "nothing_due"
