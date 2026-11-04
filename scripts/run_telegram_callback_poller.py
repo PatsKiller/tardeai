@@ -208,6 +208,10 @@ _STANDALONE_CREDENTIAL_RE = re.compile(r"^(?=.*[0-9A-Z])(?=.*[a-z])[A-Za-z0-9._~
 #: A message that ENDS with a credential key and separator (…code=, …token:). The next message in the same chat is then
 #: that value, whatever its length — Schwab authorization codes are commonly 20-30 characters, and a floor is a proxy
 #: for evidence we actually have (cc5, 2026-11-04).
+#: Used ONLY to mark an ambiguous record (`redaction_incomplete`), never to delete: a whitespace-free token with mixed
+#: case or a digit. Deleting on this shape is what erased the operator's SHAs and paths.
+_AMBIGUOUS_TOKEN_RE = re.compile(r"^(?=.*[0-9A-Z])(?=.*[a-z])[A-Za-z0-9._~+/=%\\-]{12,}$")
+
 _TRAILING_KEY_RE = re.compile(r"(?i)(?:" + "|".join(_CREDENTIAL_KEYS) + r")\s*[=:]\s*$")
 
 
@@ -266,7 +270,7 @@ def _log_text(text: str, limit: int) -> str:
     """
     return redact_credentials(text)[:limit]
 
-def _record_operator_reply(msg: dict, text: str, chat_id: str, *, replies_dir=None,
+def _record_operator_reply(msg: dict, text: str, chat_id: str, *, previous_text: str | None = None, replies_dir=None,
                            allowed=None, chat_type=None, sender_id=None,
                            pending_path=None) -> str:
     """Append one plain-text operator message to the coordinator inbox; never raise.
@@ -317,7 +321,7 @@ def _record_operator_reply(msg: dict, text: str, chat_id: str, *, replies_dir=No
     record = {"message_id": msg.get("message_id"), "date": msg.get("date"),
               "recorded_at": datetime.now(timezone.utc).isoformat(),
               "chat_id": chat_id, "sender_id": str(sender_id), "text": text}  # redacted at the _append_or_queue boundary
-    status = _append_or_queue(record, replies_dir=replies_dir, pending_path=pending_path)
+    status = _append_or_queue(record, replies_dir=replies_dir, pending_path=pending_path, previous_text=previous_text)
     if status == "recorded":
         log.info(f"operator reply recorded: {_log_text(text, 40)} from chat={chat_id}")
     elif status == "queued":
@@ -328,7 +332,7 @@ def _record_operator_reply(msg: dict, text: str, chat_id: str, *, replies_dir=No
 
 
 def _record_operator_outcome(msg: dict, text: str, chat_id: str, *, handled: bool,
-                             replies_dir=None, pending_path=None) -> str:
+                             previous_text: str | None = None, replies_dir=None, pending_path=None) -> str:
     """The second line of a reply pair: what happened to it after classification (cx-openai-3 F3).
 
     A handled command (``/approve …``, a Schwab ``code=`` paste, a cap change) used to commit with no
@@ -339,7 +343,7 @@ def _record_operator_outcome(msg: dict, text: str, chat_id: str, *, handled: boo
     record = {"event": "outcome", "message_id": msg.get("message_id"),
               "recorded_at": datetime.now(timezone.utc).isoformat(), "chat_id": chat_id,
               "handled": bool(handled), "text": text}
-    return _append_or_queue(record, replies_dir=replies_dir, pending_path=pending_path)
+    return _append_or_queue(record, replies_dir=replies_dir, pending_path=pending_path, previous_text=previous_text)
 
 
 def _append_or_queue(record: dict, *, replies_dir=None, pending_path=None, previous_text: str | None = None) -> str:
@@ -349,7 +353,15 @@ def _append_or_queue(record: dict, *, replies_dir=None, pending_path=None, previ
     cannot reach the inbox or the durable queue by a path that forgot to call the redactor.
     """
     if isinstance(record.get("text"), str):
-        record = {**record, "text": redact_credentials(record["text"], previous_text)}
+        raw = record["text"]
+        redacted = redact_credentials(raw, previous_text)
+        # FALLBACK, named rather than discovered (cc5 2026-11-04): with no previous message in this chat — the first
+        # message after a restart, a fresh chat, or a queue flush — the split-paste rule has no evidence to work from.
+        # The value is NOT deleted on a guess (that is what erased the operator's SHAs and paths); it is stored and
+        # MARKED, so the ambiguity is visible in the record instead of silent.
+        if redacted == raw and previous_text is None and _AMBIGUOUS_TOKEN_RE.match(raw.strip()):
+            record = {**record, "redaction_incomplete": True}
+        record = {**record, "text": redacted}
     line = json.dumps(record, ensure_ascii=False) + "\n"
     try:
         directory = Path(replies_dir) if replies_dir is not None else _operator_replies_dir()
@@ -437,8 +449,11 @@ def poll_once(timeout=25):
     allowed = _allowed_chats()
     processed = 0
 
+    #: The previous operator message per chat, in arrival order: the evidence the split-paste rule needs.
+    last_text_by_chat: dict[str, str] = {}
     for update in results:
         uid = update.get("update_id")
+        this_prev: str | None = None      # the previous message in THIS chat, for the split-paste rule
 
         if inbound is not None:
             # Replay denial: skip updates already committed by a prior poll. The claim is taken BEFORE the
@@ -455,12 +470,15 @@ def poll_once(timeout=25):
         early_msg = update.get("message") or {}
         early_chat = str((early_msg.get("chat") or {}).get("id", ""))
         early_text = (early_msg.get("text") or "").strip()
+        this_prev = last_text_by_chat.get(early_chat)
         reply_status = None
         if early_chat and early_text and early_chat in allowed:
             reply_status = _record_operator_reply(
                 early_msg, early_text, early_chat, allowed=allowed,
                 chat_type=(early_msg.get("chat") or {}).get("type"),
-                sender_id=(early_msg.get("from") or {}).get("id"))
+                sender_id=(early_msg.get("from") or {}).get("id"),
+                previous_text=this_prev)
+            last_text_by_chat[early_chat] = early_text
             if reply_status == "failed":
                 log.error(f"operator reply neither recorded nor queued; stopping the batch before any "
                           f"checkpoint (update {uid})")
@@ -630,7 +648,10 @@ def poll_once(timeout=25):
         # The outcome half of the reply pair, written before the checkpoint for the same reason: a
         # durable record of what happened must exist even for a reply a handler consumed.
         if authenticated:
-            outcome_status = _record_operator_outcome(msg, text, chat_id, handled=handled)
+            # The outcome line belongs to THIS message, so it uses the same previous message the message line did —
+            # not the map after it was advanced (that would make the outcome its own predecessor).
+            outcome_status = _record_operator_outcome(msg, text, chat_id, handled=handled,
+                                                     previous_text=this_prev)
             if outcome_status == "failed":
                 log.error(f"operator reply outcome neither recorded nor queued; stopping the batch (update {uid})")
                 # same contract as the message line: a lost outcome is not a reason to keep going

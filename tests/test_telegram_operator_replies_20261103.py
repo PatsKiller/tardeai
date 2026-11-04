@@ -83,7 +83,7 @@ def test_the_record_happens_before_classification_and_before_the_responder():
     record_at = src.index("reply_status = _record_operator_reply(")
     classify_at = src.index("# Route all recognized commands")
     responder_at = src.index("cio_poller_reply.maybe_answer")
-    outcome_at = src.index("_record_operator_outcome(msg, text, chat_id, handled=handled)")
+    outcome_at = src.index("_record_operator_outcome(msg, text, chat_id, handled=handled")
     commit_at = src.index("_commit_if_legacy()", record_at)
     assert record_at < classify_at < outcome_at < responder_at
     assert record_at < commit_at
@@ -446,3 +446,33 @@ def test_a_fact_the_operator_is_answering_with_is_never_redacted(tmp_path):
                  "v2026.11.04-recovery-round-4",
                  "review-2579-fix-poller-redaction"):
         assert redact_credentials(fact) == fact, fact
+
+
+# ── the rule must be WIRED, not merely correct (cc5, 2026-11-04) ─────────────────────────────────────
+
+
+def test_a_split_paste_through_the_REAL_poll_path_never_reaches_the_inbox(tmp_path, monkeypatch):
+    """The control is the poller's own entry point, not _append_or_queue with a keyword the tests invented.
+
+    Two updates in one poll: the first ends with `code=`, the second is the 20-character value a transport split off.
+    At 67b219277b5a the keyword existed but no call site passed it, so the bare token was stored and logged.
+    """
+    value = "AbCdEf1234567890XyZq"
+    commits, records, queued = _drive_updates(
+        monkeypatch, tmp_path,
+        [_msg(921, 7, text="127.0.0.1?code="), _msg(922, 8, text=value)],
+        inbox_blocked=False, queue_blocked=False, atomic=True)
+    assert commits == [921, 922]
+    blob = "\n".join(records) + "\n" + (queued or "")
+    assert value not in blob, blob
+    assert "[redacted]" in blob
+
+
+def test_with_no_previous_message_the_ambiguity_is_recorded_not_guessed(tmp_path):
+    """The fallback, named: a first message after a restart has no context to consult. The value is stored (deleting on
+    a guess is what erased the operator's SHAs) and the record SAYS it was not fully redacted."""
+    from scripts.run_telegram_callback_poller import _append_or_queue
+    import json as _json  # noqa: PLC0415
+    assert _append_or_queue({"message_id": 12, "text": "AbCdEf1234567890XyZq"}, replies_dir=tmp_path) == "recorded"
+    row = _json.loads((tmp_path / "telegram.jsonl").read_text().splitlines()[0])
+    assert row["text"] == "AbCdEf1234567890XyZq" and row.get("redaction_incomplete") is True, row
