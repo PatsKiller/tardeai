@@ -65,7 +65,13 @@ const FIXTURE = {
   desk_health: { dimensions: { WATCH_INTELLIGENCE_FRESHNESS: 'CURRENT' } },
   timestamps_note: null,
   price_clock: { freshness: 'CURRENT', as_of: '2026-11-04 09:59:00 ET' },
-  rows: [], row_count: 0, by_class: {}, metadata: {}, portfolio_analytics: {}, performance: {},
+  rows: [{
+    symbol: 'ADBE', account: 'schwab_ira', row_class: 'closed_journal', verdict: 'RE_ENTER',
+    reentry_state: 'MISSING MARKET',
+    reentry_reason: 'Quote present but RSI missing from indicator_confluence_cache — run indicator_cache_refresh for exited symbols.',
+    why_call: 'Quote present but RSI missing from indicator_confluence_cache — run indicator_cache_refresh for exited symbols.',
+    reentry: { state: { value: 'MISSING MARKET' }, price: { state: 'AVAILABLE', value: 248.85 }, rsi: { state: 'DATA_UNAVAILABLE', value: null } },
+  }], row_count: 1, by_class: {}, metadata: {}, portfolio_analytics: {}, performance: {},
   banners: [], desk_sources: {}, verdict_counts: {}, synthesis: '',
 }
 
@@ -92,6 +98,16 @@ check(/review evidence/i.test(governance), 'the governance paragraph does not po
 check(!/actually consumed|what the advice consumed/i.test(governance),
   'the governance paragraph still claims the clock records what the advice consumed')
 check(/source or event time/i.test(governance), 'the opening clause still claims a last-observation receipt rather than a source/event time')
+
+// FQ-002 (UI half, from cx-openai-3's handed-off helper): the real page must not print the producer
+// identifier or call a present quote a missing market. This is the page render, not the helper unit test.
+// The audit's finding is the ROW, not every tooltip on the page (the Run-now button legitimately names a
+// refresh job in its developer tooltip). Scope the assertions to the rendered ADBE row.
+const rowHtml = (html.match(/<tr[\s\S]*?ADBE[\s\S]*?<\/tr>/) || [''])[0]
+check(rowHtml.length > 0, 'the ADBE row did not render')
+check(!/indicator_confluence_cache|indicator_cache_refresh/.test(rowHtml), 'the row still prints an internal identifier')
+check(!/MISSING MARKET/.test(rowHtml), 'the row still calls a present quote MISSING MARKET')
+check(/RSI unavailable|Market evidence incomplete|Quote unavailable/.test(rowHtml), 'the row does not say which evidence is missing')
 
 if (failed) { console.error(`advisoryClocks.view: ${failed} failure(s)`); process.exit(1) }
 console.log('advisoryClocks.view: ok')
