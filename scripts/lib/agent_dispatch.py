@@ -340,7 +340,9 @@ def select_work(session: str, *, queue: Sequence[dict[str, Any]], claims: Sequen
                 prs: Sequence[PullRequest], verdicts: dict[tuple[int, str], list[dict[str, Any]]],
                 author_of: dict[int, str], coord: str, now: datetime | None = None,
                 reviewed_pairs: set[tuple[int, str]] | None = None,
-                review_counts: dict[int, int] | None = None) -> Assignment | None:
+                review_counts: dict[int, int] | None = None,
+                taken: dict[tuple[str, str], int] | None = None,
+                prior_review_sessions: dict[int, set[str]] | None = None) -> Assignment | None:
     """The one next thing for this session, in the operator's order (a)…(e). None means "nothing to do".
 
     `reviewed_pairs` is (pr number, reviewer session) pairs already dispatched this cycle, so two sessions are not
@@ -348,12 +350,18 @@ def select_work(session: str, *, queue: Sequence[dict[str, Any]], claims: Sequen
     """
     reviewed = reviewed_pairs or set()
     counts = review_counts or {}
+    handed = taken if taken is not None else {}
+    prior = prior_review_sessions or {}
     ref = now or now_utc()
+
+    def free(kind: str, target: str, *, allow: int = 1) -> bool:
+        """Has this cycle already given this target away `allow` times?"""
+        return handed.get((kind, target), 0) < allow
 
     # (a) its own workable rows, in queue order (the queue lists them in priority order)
     for row in queue:
         ok, _why = row_workable(row, session, claims, now=ref)
-        if ok:
+        if ok and free("queue", str(row.get("id"))):
             return Assignment(session, "queue", str(row.get("id")),
                               _row_instruction(session, row, coord), "own queued row")
 
@@ -366,6 +374,10 @@ def select_work(session: str, *, queue: Sequence[dict[str, Any]], claims: Sequen
         if (pr.number, session) in reviewed:
             continue
         if counts.get(pr.number, 0) >= MAX_REVIEWERS_PER_PR:
+            continue
+        if session in prior.get(pr.number, set()):
+            continue  # an earlier cycle already sent this reviewer this PR
+        if not free("review", str(pr.number)):
             continue
         verdicts_here = verdicts.get((pr.number, pr.head_sha), [])
         if any(v["verdict"] == "MERGE" for v in verdicts_here):
@@ -383,7 +395,7 @@ def select_work(session: str, *, queue: Sequence[dict[str, Any]], claims: Sequen
         if not any(v["verdict"] == "MERGE" for v in verdicts.get((pr.number, pr.head_sha), [])):
             continue
         claim = next((c for c in claims if c.branch == pr.head_ref and c.status == "active"), None)
-        if claim and claim.head_sha and claim.head_sha not in pr.shas:
+        if claim and claim.head_sha and claim.head_sha not in pr.shas and free("merge_prep", str(pr.number)):
             return Assignment(session, "merge_prep", str(pr.number),
                               _merge_prep_instruction(session, pr, claim, coord),
                               "MERGE verdict at head but the author claim carries a different head")
@@ -394,6 +406,8 @@ def select_work(session: str, *, queue: Sequence[dict[str, Any]], claims: Sequen
             continue
         if str(row.get("status") or "") not in WORK_STATUSES:
             continue
+        if not free("unowned_queue", str(row.get("id"))):
+            continue
         return Assignment(session, "unowned_queue", str(row.get("id")),
                           f"Dispatcher: unowned queue row {row.get('id')} — {row.get('page') or ''}. Claim it "
                           f"(agent_claim.py claim, then set owner via your report), fix it with red-then-green "
@@ -402,7 +416,9 @@ def select_work(session: str, *, queue: Sequence[dict[str, Any]], claims: Sequen
     # (e) a chore: a stale claim that no live session is progressing
     stale = [c for c in claims if c.status == "active" and c.age_h > CLAIM_LIVE_HOURS]
     if stale:
-        claim = max(stale, key=lambda c: c.age_h)
+        claim = next((c for c in sorted(stale, key=lambda c: -c.age_h) if free("chore", c.claim_id)), None)
+        if claim is None:
+            return None
         return Assignment(session, "chore", claim.claim_id, _chore_instruction(session, claim, coord),
                           f"claim is {claim.age_h:.1f}h stale")
     return None
@@ -468,7 +484,8 @@ def submit(
     return SubmitResult(attempts > 0, False, attempts, "no busy marker within the confirm window")
 
 
-def ledger_line(*, session: str, assignment: Assignment, result: SubmitResult, cycle_id: str, ts: str | None = None) -> str:
+def ledger_line(*, session: str, assignment: Assignment, result: SubmitResult, cycle_id: str, ts: str | None = None,
+                target_head: str = "") -> str:
     record = {
         "schema": SCHEMA + "#Dispatch",
         "ts": ts or _iso(),
@@ -477,6 +494,7 @@ def ledger_line(*, session: str, assignment: Assignment, result: SubmitResult, c
         "kind": assignment.kind,
         "target": assignment.target,
         "sent_sha256": hashlib.sha256(assignment.instruction.encode()).hexdigest(),
+        "target_head": target_head,
         "submitted": bool(result.submitted),
         "busy_after_30s": bool(result.busy_after),
         "attempts": result.attempts,

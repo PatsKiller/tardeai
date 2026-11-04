@@ -380,3 +380,55 @@ def test_newest_pr_is_offered_before_an_ancient_one():
     new = D.PullRequest(200, "b" * 40, "wt/new", "CLEAN", False, updated_at="2026-11-04T17:00:00Z")
     a = D.select_work("cc-8", queue=[], claims=[], prs=[old, new], verdicts={}, author_of={}, coord="/c", now=NOW)
     assert a.target == "200", "a live PR is reviewed before the October triage list"
+
+
+# ── 10. one target per cycle, and no re-sending a review across cycles (found in the 18:53Z dry run) ───────────
+
+
+def test_two_idle_sessions_never_get_the_same_chore():
+    stale = [claim(cid="c-old", session="cc-4", age=9.0)]
+    common = dict(queue=[], claims=stale, prs=[], verdicts={}, author_of={}, coord="/c", now=NOW)
+    taken: dict[tuple[str, str], int] = {}
+    first = D.select_work("cc-1", taken=taken, **common)
+    assert first and first.kind == "chore" and first.target == "c-old"
+    taken[(first.kind, first.target)] = 1
+    second = D.select_work("cc-2", taken=taken, **common)
+    assert second is None, "the same stale claim must not be handed to a second session in one cycle"
+
+
+def test_an_unowned_row_goes_to_one_session_only():
+    q = [row(rid="FQ-U", owner="")]
+    common = dict(queue=q, claims=[], prs=[], verdicts={}, author_of={}, coord="/c", now=NOW)
+    taken: dict[tuple[str, str], int] = {}
+    first = D.select_work("cc-1", taken=taken, **common)
+    assert first and first.target == "FQ-U"
+    taken[(first.kind, first.target)] = 1
+    assert D.select_work("cc-2", taken=taken, **common) is None
+
+
+def test_a_review_is_not_re_sent_across_cycles():
+    pr = D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False)
+    common = dict(queue=[], claims=[], prs=[pr], verdicts={}, author_of={7: "cc-4"}, coord="/c", now=NOW)
+    # cycle 2: the ledger says cycle 1 already sent cc-8 this PR and it went busy
+    a = D.select_work("cc-8", prior_review_sessions={7: {"cc-8"}}, review_counts={7: 1}, **common)
+    assert a is None, "a reviewer already sent this PR must not be re-sent it every five minutes"
+
+
+def test_two_cycles_of_sending_cannot_exceed_the_two_reviewer_cap():
+    pr = D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False)
+    common = dict(queue=[], claims=[], prs=[pr], verdicts={}, author_of={7: "cc-4"}, coord="/c", now=NOW)
+    # cycle 1 sent two reviewers who went busy; the cap is spent even though no verdict exists yet
+    a = D.select_work("cc-9", prior_review_sessions={7: {"cc-1", "cc-2"}}, review_counts={7: 2}, **common)
+    assert a is None
+
+
+def test_prior_review_dispatches_reads_only_completed_review_lines(tmp_path):
+    ledger = tmp_path / "dispatch_ledger.jsonl"
+    ledger.write_text("\n".join([
+        json.dumps({"kind": "review", "target": "7", "session": "cc-1", "busy_after_30s": True}),
+        json.dumps({"kind": "review", "target": "7", "session": "cc-2", "busy_after_30s": False}),  # never landed
+        json.dumps({"kind": "queue", "target": "7", "session": "cc-3", "busy_after_30s": True}),     # not a review
+        "{not json",
+    ]) + "\n", encoding="utf-8")
+    sessions, counts = CLI.prior_review_dispatches(ledger)
+    assert sessions == {7: {"cc-1"}} and counts == {7: 1}

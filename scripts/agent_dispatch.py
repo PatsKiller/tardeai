@@ -61,6 +61,35 @@ def load_json(path: Path) -> Any:
         return None
 
 
+def prior_review_dispatches(ledger_path: Path) -> tuple[dict[int, set[str]], dict[int, int]]:
+    """What earlier cycles already handed out, read from the dispatcher's own ledger.
+
+    Without this, a PR that stays CLEAN for three cycles collects two new reviewers per cycle — six sessions on one
+    PR before the first verdict lands. The ledger is the only state this lane keeps (rails: it writes nothing else).
+    Returns ({pr: {reviewer sessions}}, {pr: dispatched-reviewer count}).
+    """
+    sessions: dict[int, set[str]] = {}
+    counts: dict[int, int] = {}
+    try:
+        lines = Path(ledger_path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return sessions, counts
+    for line in lines:
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(rec, dict) or rec.get("kind") != "review" or not rec.get("busy_after_30s"):
+            continue
+        try:
+            pr = int(rec.get("target"))
+        except (TypeError, ValueError):
+            continue
+        sessions.setdefault(pr, set()).add(str(rec.get("session") or ""))
+        counts[pr] = len(sessions[pr])
+    return sessions, counts
+
+
 def load_queue(path: Path) -> list[dict[str, Any]]:
     doc = load_json(path)
     items = doc.get("items") if isinstance(doc, dict) else doc
@@ -138,22 +167,27 @@ def run_cycle(*, apply: bool, coord: Path, queue_path: Path, claims_dir: Path, l
 
     assignments: list[D.Assignment] = []
     reviewed: set[tuple[int, str]] = set()
+    taken: dict[tuple[str, str], int] = {}
+    prior_sessions, prior_counts = prior_review_dispatches(ledger_path)
     review_counts: dict[int, int] = {}
     for (pr_no, head), entries in verdicts.items():
         pr = next((p for p in prs if p.number == pr_no and p.head_sha == head), None)
         if pr is None:
             continue
         reviewers = {e["reviewer"] for e in entries if e["verdict"] == "MERGE" and e["reviewer"] != authors.get(pr_no, "")}
-        review_counts[pr_no] = len(reviewers)
+        # verdicts already filed + reviewers an earlier cycle already sent (and who went busy) both spend the cap
+        review_counts[pr_no] = len(reviewers | prior_sessions.get(pr_no, set()))
     for pane in panes:
         if not pane.idle:
             continue
         if limit is not None and len(assignments) >= limit:
             break
         a = D.select_work(pane.session, queue=queue, claims=claims, prs=prs, verdicts=verdicts,
-                          author_of=authors, coord=str(coord), reviewed_pairs=reviewed, review_counts=review_counts)
+                          author_of=authors, coord=str(coord), reviewed_pairs=reviewed, review_counts=review_counts,
+                          taken=taken, prior_review_sessions=prior_sessions)
         if a:
             assignments.append(a)
+            taken[(a.kind, a.target)] = taken.get((a.kind, a.target), 0) + 1
             if a.kind == "review":
                 reviewed.add((int(a.target), pane.session))
                 review_counts[int(a.target)] = review_counts.get(int(a.target), 0) + 1
@@ -175,7 +209,10 @@ def run_cycle(*, apply: bool, coord: Path, queue_path: Path, claims_dir: Path, l
     lines: list[str] = []
     for a in assignments:
         r = D.submit(a.session, a.instruction, run=run, sleep=sleep)
-        line = D.ledger_line(session=a.session, assignment=a, result=r, cycle_id=cycle_id)
+        head = ""
+        if a.kind in ("review", "merge_prep"):
+            head = next((p.head_sha for p in prs if str(p.number) == a.target), "")
+        line = D.ledger_line(session=a.session, assignment=a, result=r, cycle_id=cycle_id, target_head=head)
         lines.append(line)
         result["ledger"].append(json.loads(line))
     if lines:
