@@ -23,7 +23,7 @@ import {
 import { CiteText, FootnoteProvider } from '../components/prospectus/Citations'
 import { StreetBlocks, ValidationBadge } from '../components/prospectus/StreetBlocks'
 import {
-  SECTION_TONE, SUMMARY_SECTION, budgetView, cleanProse, detailPath, detailState, displayName, filePath, filterItems,
+  SECTION_TONE, SUMMARY_SECTION, budgetView, cleanProse, detailPath, detailState, displayName, failureHeadline, filePath, filterItems,
   footnotes, indexPath, isFundDoc, mdBlocks, modelLabel, normSymbol, orderedSections, pageRoute, presentationOf,
   refreshPath, rowStatus, scopeCounts, statusOf, streetTables, toNumber, totals, whenEt,
   type ProspectusDoc, type ProspectusIndex, type ProspectusIndexItem, type ProspectusSection, type ScopeFilter,
@@ -75,8 +75,9 @@ function StatusChip({ it, testId = 'prospectus-status' }: { it: Pick<ProspectusI
 }
 
 function verdictText(it: ProspectusIndexItem): string {
+  // FQ-053: a failed row used to print the parser code ("GenerationFailed: OUTPUT_NOT_JSON").
   const st = statusOf(it.status)
-  if (st === 'failed') return it.failure_reason || 'Last run failed'
+  if (st === 'failed') return failureHeadline(it.failure_reason).text
   if (it.verdict_line) return it.verdict_line
   return st === 'missing' ? 'Not written yet — queued' : st === 'queued' ? 'Queued for writing' : st === 'running' ? 'Writing now…' : ''
 }
@@ -97,11 +98,18 @@ function StatTiles({ idx, phone }: { idx: ProspectusIndex | null; phone: boolean
     <div className="psp-stats" data-testid="prospectus-strip">
       <div className="psp-stat" data-testid="prospectus-total-ready"><div className="psp-tile-k">Ready</div><div className="psp-stat-v psp-tone-success">{t.ready + t.partial} / {n}</div></div>
       <div className="psp-stat" data-testid="prospectus-total-queued"><div className="psp-tile-k">Queued</div><div className="psp-stat-v psp-tone-info">{t.queued + t.running}</div></div>
-      <div className="psp-stat psp-stat-credit" data-testid="prospectus-budget" title="Anthropic credit for prospectus writing">
+      {/* FQ-052: a bare dash said nothing. When the credit is not measured the tile names the state
+          and the reason, and the same words show on the phone. The raw service error is the title. */}
+      <div
+        className="psp-stat psp-stat-credit"
+        data-testid="prospectus-budget"
+        title={[idx?.budget?.error, idx?.budget?.status].filter(Boolean).join(' · ') || 'Anthropic credit for prospectus writing'}
+      >
         <div className="psp-tile-k">{phone ? 'Credit' : 'Anthropic credit'}</div>
-        <div className="psp-stat-v psp-stat-credit-v">{b.remaining}{phone ? '' : ' left'}</div>
-        {!phone && <div className="psp-tile-sub" data-testid="prospectus-budget-today">today {b.used} of {b.cap} cap</div>}
-        {!phone && b.fill != null && <span className="psp-meter" aria-hidden="true"><span className={`psp-meter-fill psp-bg-${b.tone}`} style={{ width: `${Math.round(b.fill * 100)}%` }} /></span>}
+        <div className="psp-stat-v psp-stat-credit-v">{b.credit.measured ? `${b.remaining}${phone ? '' : ' left'}` : b.credit.headline}</div>
+        {b.credit.measured && !phone && <div className="psp-tile-sub" data-testid="prospectus-budget-today">today {b.used} of {b.cap} cap</div>}
+        {b.credit.measured && !phone && b.fill != null && <span className="psp-meter" aria-hidden="true"><span className={`psp-meter-fill psp-bg-${b.tone}`} style={{ width: `${Math.round(b.fill * 100)}%` }} /></span>}
+        {!b.credit.measured && <div className="psp-tile-sub" data-testid="prospectus-budget-reason">{b.credit.reason}</div>}
       </div>
       <span className="psp-sr-totals" data-testid="prospectus-total-failed" hidden>{t.failed}</span>
     </div>
@@ -118,7 +126,7 @@ function DesktopTable({ rows, linkSearch }: { rows: ProspectusIndexItem[]; linkS
         <Link key={it.symbol} role="row" to={{ pathname: pageRoute(it.symbol), search: linkSearch }} className="psp-tbl-row"
           data-testid="prospectus-row" data-symbol={it.symbol} data-status={statusOf(it.status)}>
           <div role="cell"><div className="psp-sym">{it.symbol}</div><div className="psp-name">{it.name || ''}</div></div>
-          <div role="cell" className="psp-verdict" data-testid="prospectus-verdict">{verdictText(it)}</div>
+          <div role="cell" className="psp-verdict" data-testid="prospectus-verdict" title={statusOf(it.status) === 'failed' ? failureHeadline(it.failure_reason).raw : undefined}>{verdictText(it)}</div>
           <div role="cell"><TypeChip scope={it.scope} /></div>
           <div role="cell"><ModelChip model={it.model} /></div>
           <div role="cell" className="psp-date">{it.generated_at ? whenEt(it.generated_at) : '—'}</div>
@@ -137,7 +145,7 @@ function PhoneCards({ rows, linkSearch }: { rows: ProspectusIndexItem[]; linkSea
         <li key={it.symbol}>
           <Link to={{ pathname: pageRoute(it.symbol), search: linkSearch }} className="psp-row" data-testid="prospectus-row" data-symbol={it.symbol} data-status={statusOf(it.status)}>
             <div className="psp-row-top"><span className="psp-sym">{it.symbol}</span><StatusChip it={it} />{it.stale && <span data-testid="prospectus-stale" hidden>stale</span>}</div>
-            <div className="psp-verdict" data-testid="prospectus-verdict">{verdictText(it)}</div>
+            <div className="psp-verdict" data-testid="prospectus-verdict" title={statusOf(it.status) === 'failed' ? failureHeadline(it.failure_reason).raw : undefined}>{verdictText(it)}</div>
             <div className="psp-date">{[it.scope === 'holding' ? 'Holding' : 'Watch', modelLabel(it.model).tier !== 'none' ? modelLabel(it.model).label : null, it.generated_at ? whenEt(it.generated_at).replace(/ \d\d:\d\d ET$/, '') : null].filter(Boolean).join(' · ')}<span data-testid="prospectus-model" hidden>{modelLabel(it.model).label}</span></div>
           </Link>
         </li>
