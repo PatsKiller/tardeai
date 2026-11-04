@@ -25,3 +25,20 @@ export function decisionWords(decision: string | null | undefined, source: strin
   if (d === 'GO' || d === 'WAIT') return d + advisory
   return String(source || '').toUpperCase() === 'WATCHLIST' ? 'WATCHLIST ADVISORY' : 'DECISION PENDING' + advisory
 }
+
+/** FQ-044: the TECH badge is a technical grade, never a decision; say so where the eye lands. */
+export function techScopeTitle(grade: string | null | undefined): string {
+  const g = String(grade || '').toUpperCase()
+  return g
+    ? 'Technical grade only — it is not a decision, an approval or an order. Nothing here places an order.'
+    : 'No technical grade is recorded for this row.'
+}
+
+/** FQ-044: an absent rating is "not on file", not a bare UNKNOWN that reads like a system fault. */
+export function ratingScopeWords(label: string | null | undefined): string {
+  const text = String(label || '').trim()
+  if (!text || text.toUpperCase() === 'UNKNOWN') return 'not on file'
+  return text
+}
+
+export const RATING_SCOPE_TITLE = 'An opinion about the security — not permission to trade and not an order.'

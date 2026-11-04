@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { stateBadgeWords, stateScopeTitle, decisionWords } from './manualSetupScope.ts'
+import { stateBadgeWords, stateScopeTitle, decisionWords, techScopeTitle, ratingScopeWords } from './manualSetupScope.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 let failed = 0
@@ -43,6 +43,15 @@ check(/Copy setup/.test(row) && /Copy Schwab tickets/.test(row) && /Broker queue
 check(/data-testid="manual-desk-scope-legend"/.test(desk), 'the compact desk lost the scope legend')
 check(/expanded=\{!!openRows\[/.test(desk), 'the desk does not control which rows are expanded')
 check(/onToggle=\{/.test(desk), 'the desk does not pass a toggle to the row')
+
+// FQ-044 (second pass): TECH and the rating carry their scope too — a technical grade is not a decision,
+// and an absent rating is 'not on file' rather than a bare UNKNOWN that reads like a fault.
+check(/not a decision/.test(techScopeTitle('TECH_OK')), 'the TECH badge does not say it is not a decision')
+check(/No technical grade/.test(techScopeTitle('')), 'a missing technical grade has no explanation')
+check(ratingScopeWords('Unknown') === 'not on file', 'an unknown rating still renders as UNKNOWN')
+check(ratingScopeWords('Buy') === 'Buy', 'a known rating was rewritten')
+check(/techScopeTitle\(/.test(row), 'EntryDeskRow does not scope the TECH badge')
+check(/ratingScopeWords\(ratingLabel\(rating\.rating\)\)/.test(row), 'EntryDeskRow does not scope the rating label')
 
 if (failed) { console.error(`manualSetupScope: ${failed} failure(s)`); process.exit(1) }
 console.log('manualSetupScope: ok')

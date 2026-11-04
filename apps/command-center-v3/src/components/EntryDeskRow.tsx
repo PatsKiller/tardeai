@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { deriveTradeAiRating, ratingLabel } from '../lib/manualTosRating'
 import { RADIUS } from '../lib/designTokens'
-import { decisionWords, stateBadgeWords, stateScopeTitle } from '../lib/manualSetupScope'
+import { RATING_SCOPE_TITLE, decisionWords, ratingScopeWords, stateBadgeWords, stateScopeTitle, techScopeTitle } from '../lib/manualSetupScope'
 import { exitLadder as ladderCalc, planWarnings as warningsCalc, MONITOR_RULES } from '../lib/exitLadder'
 import { schwabTicketsFromLadder, ticketsText } from '../lib/schwabTickets'
 import { protectiveStopLine } from '../lib/draftOrderView'
@@ -185,7 +185,7 @@ export default function EntryDeskRow({
             </span>
             {tech?.technical_grade && (
               <span
-                title={tech.narrative_snip || tech.action || ''}
+                title={`${techScopeTitle(tech.technical_grade)}\n${tech.narrative_snip || tech.action || ''}`}
                 style={{
                   fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 4,
                   color: techAccent(tech.technical_grade),
@@ -200,7 +200,7 @@ export default function EntryDeskRow({
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 6, fontSize: 9 }}>
             <span style={{ color: C.amber }} title="The desk's advisory verdict — not an order instruction">{decisionWords(r.decision, r.source)}</span>
             <span style={{ color: analystColor(r) }}>
-              {rating.source === 'analyst' ? 'analyst' : 'Trade AI rating'} {ratingLabel(rating.rating)}
+              <span title={RATING_SCOPE_TITLE}>{rating.source === 'analyst' ? 'analyst' : 'Trade AI rating'} {ratingScopeWords(ratingLabel(rating.rating))}</span>
             </span>
             {r.analystCount != null && <span style={{ color: C.dim }}>{r.analystCount} analysts</span>}
             {r.analystUpside != null && (
