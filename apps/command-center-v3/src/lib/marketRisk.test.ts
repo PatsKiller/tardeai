@@ -215,6 +215,11 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
     assert.ok(!/Price unavailable|Price stale/.test(prior.lookThrough), 'normal prior close is not a system failure')
     assert.equal(prior.verdict, 'Still falling')
   }
+  // FQ-094: with no verdict from the CIO, the card states that — it used to invent "Still falling".
+  const noVerdict = actionableModel(unwrapMarketRisk({ ...base,
+    reentry_watch: { NEWX: { symbol: 'NEWX', exit_date: '2031-03-07', exit_price: 10, stages: { last_close: 9.5, pct_vs_exit: -5 } } } }))!.reentry[0]
+  assert.equal(noVerdict.verdict, 'no CIO verdict on record', 'a missing verdict is stated, never inferred from the price series')
+  assert.ok(noVerdict.verdictTone !== 'danger', 'an absent verdict is not coloured as a bearish one')
   for (const quote of [
     { ...currentQuote, as_of: '2031-03-10T13:29:59Z' }, // before 09:30 after DST
     { ...currentQuote, as_of: '2031-03-10T20:01:00Z' }, // after 16:00 closing minute
