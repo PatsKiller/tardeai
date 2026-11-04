@@ -9,7 +9,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router-dom'
 import React from 'react'
 
-const { OperatorView } = await import('../pages/ReleasesSchedules.tsx')
+const { OperatorView, flightAnswered } = await import('../pages/ReleasesSchedules.tsx')
 
 let pass = 0, fail = 0
 const check = (name, cond, detail = '') => {
@@ -76,6 +76,22 @@ check('stale agents: it says it cannot tell who is working', /Cannot tell who is
 // stale open-change rows must not certify "nothing is stuck"
 const staleStuck = render({ flightStale: true, rows: [] })
 check('stale census: the page does not say nothing is stuck', !staleStuck.includes(noneStuck))
+
+
+// ── THE SOURCE BOUNDARY (codex round five): feed {} through the PAGE'S OWN derivation, not a pre-computed false ──
+// The previous case handed `flightAnswered: false` to the child, so reverting the derivation to `!!wire` left the
+// suite green. The payload shapes below go through the function the page actually calls.
+check('an invalid {} payload is NOT an answered census', flightAnswered({}) === false)
+check('a payload without prs is not answered', flightAnswered({ status: 'OK' }) === false)
+check('null is not answered', flightAnswered(null) === false)
+check('a payload WITH prs is answered (even when empty)', flightAnswered({ prs: [] }) === true)
+const viaInvalid = render({ flightAnswered: flightAnswered({}) })
+check('{} through the real derivation renders "cannot tell", never "nothing needs you"',
+  viaInvalid.includes('Cannot tell') && !viaInvalid.includes('Nothing needs you.'))
+check('{} through the real derivation never says nothing is stuck', !viaInvalid.includes('Nothing is stuck right now.'))
+const viaEmpty = render({ flightAnswered: flightAnswered({ prs: [] }) })
+check('an empty prs list through the real derivation may say nothing needs you',
+  viaEmpty.includes('Nothing needs you.'))
 
 console.log(`releasesOperatorView.render: ${pass} passed, ${fail} failed`)
 process.exit(fail > 0 ? 1 : 0)

@@ -171,6 +171,15 @@ function N8nTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
 
 /** The operator view: what is live, what needs him, what is stuck and who fixes it (operator 2026-11-03). Every number
  *  carries its own clock or says in words that it has none; no code, SHA, branch or PR number appears here. */
+/** Is the in-flight payload an ANSWERED census? Only a payload that actually carries the \`prs\` array is.
+ *  \`{}\` is an invalid response, not an empty one (codex round five): deriving this with \`!!wire\` made an
+ *  invalid census render as "Nothing needs you" / "Nothing is stuck". The page calls THIS, and the test feeds
+ *  \`{}\` through it rather than handing a pre-computed false to the child. */
+export function flightAnswered(wire: unknown): boolean {
+  const w = wire as { prs?: unknown } | null | undefined
+  return !!w && Array.isArray(w.prs)
+}
+
 export function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, flightError, loading, now,
   flightLoading, flightStale, flightAnswered, coordStatus }: {
   s: Record<SectionKey, SectionView<any>>; rows: InFlightPr[]
@@ -360,7 +369,7 @@ export default function ReleasesSchedules() {
       flightAsOf={flightWire?.generated_at ?? null} coordAsOf={normalizeCoordination(flightWire?.coordination).as_of}
       flightError={flightError} loading={api.loading && !api.data} now={now}
       flightLoading={!!flight.loading && !flightWire} flightStale={!!flight.stale}
-      flightAnswered={!!flightWire && Array.isArray((flightWire as any).prs)}
+      flightAnswered={flightAnswered(flightWire)}
       coordStatus={normalizeCoordination(flightWire?.coordination).status} />
 
     <button type="button" id="rs-engineer-toggle" data-testid="rs-engineer-toggle" aria-expanded={eng} aria-controls="rs-engineer-details"
