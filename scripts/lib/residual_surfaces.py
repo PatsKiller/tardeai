@@ -23,6 +23,8 @@ RAG and LLM prose are evidence here, never canonical financial truth.
 
 from __future__ import annotations
 
+from lib.account_scope import SCOPE_UNSCOPED
+
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
@@ -722,7 +724,8 @@ def reentry_row_status(row: dict[str, Any], *, stale_hours: float = 6.0) -> dict
         ],
         "gates_failed": failed,
         "gates_passed": passed,
-        "account_scope": row.get("account") or "ALL_ACCOUNTS",
+        # FQ-096 / SPEC §1b rule 3: a row without an account is UNSCOPED, never "all accounts".
+        "account_scope": str(row.get("account") or "").strip() or SCOPE_UNSCOPED,
         "source_observations": {
             "price_as_of": row.get("price_as_of"),
             "price_source": row.get("price_source"),

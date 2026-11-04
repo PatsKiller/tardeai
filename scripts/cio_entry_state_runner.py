@@ -157,7 +157,11 @@ def gather(cur) -> dict[str, dict]:
     packets = {row[0]: row[1] or {} for row in cur.fetchall()}
     enrichment = _load_json(STATE_DIR / "ticker_enrichment_cache.json", {})
     holdings = _load_json(STATE_DIR / "holdings.json", {})
-    held = {str(h.get("symbol") or "").upper() for h in holdings.get("holdings") or [] if not h.get("is_cash")}
+    # FQ-096 / SPEC §1b rule 3: holdings are keyed by (symbol, account). A residual in one account
+    # must not read as "held everywhere" and block a re-entry in another; the accounts are named so
+    # the reader (and the CIO verdict record) can see the scope instead of a symbol-wide boolean.
+    from lib.account_scope import held_accounts, held_for, held_in
+    held = held_accounts(holdings)
     try:
         import watch_packet_quality as pq
     except Exception:
@@ -188,7 +192,13 @@ def gather(cur) -> dict[str, dict]:
         # other decision is the CIO's stance on record). The runner's own fresh review overrides it.
         for k, v in cio_review_fields(cio_rows.get(sym)).items():
             e.setdefault(k, v)
-        e["held"] = bool(e.get("held")) or sym in held
+        _acct = str(e.get("account") or "").strip()
+        e["held_accounts"] = held_in(held, sym)
+        e["held"] = bool(e.get("held")) or held_for(held, sym, _acct)
+        if e["held"] and _acct and _acct not in e["held_accounts"]:
+            # A strategy/plan row may carry a scope that disagrees with the holding rows; that is a
+            # fact to surface, not a reason to widen the block.
+            e.setdefault("held_scope_note", f"position recorded under {', '.join(e['held_accounts'])}")
         if sym in profiles:
             # Conditional on purpose: symbol_profiles covers ~3,136 symbols, fewer than
             # the tracked set, and a blank identity line under a BUY READY call is worse
