@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "LANE_HEALTH_DEFERRAL_20261104",
+  "files": [
+    "tests/test_research_lane_health_deferral_20261104.py"
+  ],
+  "anchor": "LANE_HEALTH_DEFERRAL_20261104",
+  "comment": [
+    "ANCHOR: LANE_HEALTH_DEFERRAL_20261104 — scripts/lib/research_lane_health.py: a run parked for the off-peak",
+    "lane must not be counted as a lane error. The live row is '[ERROR] DEFERRED_TO_OFFPEAK: ...'",
+    "(hermes_external_research id 68345), which took the bracket branch of is_error_recommendation and stayed in the",
+    "24h error-rate denominator. The test proves the exemption is anchored (a genuine failure that merely mentions",
+    "the marker is still an error) and that the rate is not inflated by deferrals."
+  ]
+}
