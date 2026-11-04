@@ -82,8 +82,11 @@ check(/WATCH QUOTES/.test(html), 'the compact watch stamp is not labelled WATCH 
 check(/WATCH REVIEWS/.test(html), 'the watch dependency clock is not labelled WATCH REVIEWS (it measures the newest review completion)')
 // 3. And the old collision must be gone: one label must not be a substring of the other's idea.
 check(!/WATCH INTEL<\/div>/.test(html), 'the compact stamp still says WATCH INTEL, which reads as the same input as the review clock')
-// 4. The page must say which one governs the advice.
-check(/dependency clock governs/i.test(html), 'the page does not say which clock governs the advice')
+// 4. The page must say only what the fields prove: a producer's data time, not proof of consumption.
+check(/own data time/i.test(html), 'the page does not say the clock is the producer\'s own data time')
+check(!/actually consumed|what the advice consumed/i.test(html),
+  'the page still claims the clock records what the advice consumed — the clock is a producer time, not consumption')
+check(/review evidence/i.test(html), 'the page does not say where to look for what an earlier synthesis used')
 
 if (failed) { console.error(`advisoryClocks.view: ${failed} failure(s)`); process.exit(1) }
 console.log('advisoryClocks.view: ok')

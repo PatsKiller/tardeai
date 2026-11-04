@@ -783,12 +783,13 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
         <Stamp label="FLASH OPINION" at={ts.flash} fresh={ts.flash_freshness} />
         <Stamp label="PRO SYNTHESIS" at={ts.synthesis} fresh={ts.synthesis_freshness} />
       </div>
-      {/* FQ-003: the stamps say when each surface was last observed; the clocks below say how old the
-          inputs the advice consumed actually are. They can legitimately disagree, and when they do the
-          dependency clock governs the advice — say so, rather than letting two labels contradict. */}
+      {/* FQ-003: the stamps say when each surface was last observed; each dependency clock is the
+          producer's own data time for a source the desk draws on. They can legitimately disagree, and
+          the clocks are NOT a record of what an earlier synthesis consumed — say only what they prove. */}
       <div data-testid="advisory-clock-governance" style={{ fontSize: 10.5, color: 'var(--text3)', margin: '0 0 8px' }}>
-        Stamps show when each surface was last observed. The dependency clocks below show the data time of
-        what the advice actually consumed — where the two disagree, the dependency clock governs the advice.
+        Stamps show when each surface was last observed. Each dependency clock below shows the producer's
+        own data time for a source the desk draws on — they are not a record of what an earlier synthesis
+        used; for that, consult the review evidence.
       </div>
       <DependencyClockBoard clocks={data?.dependency_clocks} refresh={data?.dependency_refresh} />
 
