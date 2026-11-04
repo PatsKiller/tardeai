@@ -73,6 +73,18 @@ function expiryText(d: WatchDecision) {
   return ''
 }
 
+/** A hint that asks for a look, not an execution. Only the projection's own "Review …" wording qualifies:
+ *  anything else is left exactly as it was. */
+export function reviewPrompt(d: { action_hint?: string | null }): boolean {
+  return /^review\b/i.test(String(d.action_hint || '').trim())
+}
+
+/** "Review entry" → ": entry"; no hint → "". */
+export function reviewIdea(d: { action_hint?: string | null }): string {
+  const idea = String(d.action_hint || '').replace(/^review\s*/i, '').trim()
+  return idea ? `: ${idea}` : ''
+}
+
 /** One line of decision badges + score bars + TTL — sits inside the existing card's chip row (no layout change). */
 export function WatchDecisionBadges({ d }: { d?: WatchDecision | null }) {
   if (!d) return null
@@ -86,7 +98,14 @@ export function WatchDecisionBadges({ d }: { d?: WatchDecision | null }) {
       {d.reentry_status && <Badge text={`Re-entry: ${d.reentry_status}`} color={REENTRY_COLOR[d.reentry_status] || MUTED} />}
       {d.status && <Badge text={STATUS_LABEL[d.status] || labelOf(d.status)} color={STATUS_COLOR[d.status] || MUTED}
         title={d.evidence_at ? `evidence ${new Date(d.evidence_at).toLocaleString()}${when ? ` · expires ${when}` : ''}` : 'no evidence inside the freshness window'} />}
-      {d.actionable && <Badge text={d.action_hint ? `▶ ${d.action_hint}` : '▶ Actionable'} color={TOKENS.success} />}
+      {/* FQ-074: a review prompt is not an order. "▶ Review entry" beside a card whose posture says
+          "Watching for confirmation — no executable ticket" reads as two answers to one question. A hint that
+          starts with "Review" is, by definition, an invitation to look — it gets its own neutral chip and a title
+          that says so; a genuinely executable action keeps the green badge. */}
+      {d.actionable && (reviewPrompt(d)
+        ? <Badge text={`Review prompt${reviewIdea(d)} — not an order`} color={TOKENS.warning}
+            title={`Research review prompt${d.action_hint ? ` (${d.action_hint})` : ''} — nothing is executable from here; the position decision is separate`} />
+        : <Badge text={d.action_hint ? `▶ ${d.action_hint}` : '▶ Actionable'} color={TOKENS.success} />)}
       {!d.actionable && d.actionable_blocked_by && (
         <Badge text={`Not actionable — Trade AI ${d.actionable_blocked_by.replace(/_/g, ' ')}`} color={TOKENS.danger}
           title="A deterministic fail / block / avoid is never actionable, whatever the plan or re-entry desk says" />
