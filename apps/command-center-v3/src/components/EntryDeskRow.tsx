@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { deriveTradeAiRating, ratingLabel } from '../lib/manualTosRating'
+import { decisionWords, stateBadgeWords, stateScopeTitle } from '../lib/manualSetupScope'
 import { exitLadder as ladderCalc, planWarnings as warningsCalc, MONITOR_RULES } from '../lib/exitLadder'
 import { schwabTicketsFromLadder, ticketsText } from '../lib/schwabTickets'
 import { protectiveStopLine } from '../lib/draftOrderView'
@@ -42,11 +43,6 @@ function badgeColor(source: SourceKind) {
 }
 function statusColor(state: SetupState) {
   return state === 'BROKER_OBSERVED' ? C.green : state === 'GENERATED' ? C.blue : state === 'EXCEPTION' ? C.red : C.dim
-}
-function decisionText(r: SetupRow) {
-  const d = String(r.decision ?? '').toUpperCase()
-  if (d === 'GO' || d === 'WAIT') return d
-  return r.source === 'WATCHLIST' ? 'WATCHLIST ADVISORY' : 'DECISION PENDING'
 }
 function setupLine(r: SetupRow) {
   // a protective stop draft reads as what it is: SELL … STOP … (side/type from the draft, lib/draftOrderView)
@@ -177,8 +173,9 @@ export default function EntryDeskRow({
             <span style={{ fontSize: 9, color: badgeColor(r.source), fontWeight: 900 }}>{r.source}</span>
             <span style={{ fontSize: 17, fontWeight: 900, ...mono }}>{r.symbol}</span>
             {r.company && <span style={{ fontSize: 10, color: C.dim }}>{r.company}</span>}
-            <span style={{ fontSize: 9, color: statusColor(state), background: `${statusColor(state)}22`, padding: '2px 7px', borderRadius: 4 }}>
-              {state === 'BROKER_OBSERVED' ? 'AUTO-LINKED FROM SCHWAB READ-ONLY' : state}
+            <span title={stateScopeTitle(state)}
+              style={{ fontSize: 9, color: statusColor(state), background: `${statusColor(state)}22`, padding: '2px 7px', borderRadius: 4 }}>
+              {stateBadgeWords(state)}
             </span>
             {tech?.technical_grade && (
               <span
@@ -195,7 +192,7 @@ export default function EntryDeskRow({
             )}
           </div>
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 6, fontSize: 9 }}>
-            <span style={{ color: C.amber }}>{decisionText(r)}</span>
+            <span style={{ color: C.amber }} title="The desk's advisory verdict — not an order instruction">{decisionWords(r.decision, r.source)}</span>
             <span style={{ color: analystColor(r) }}>
               {rating.source === 'analyst' ? 'analyst' : 'Trade AI rating'} {ratingLabel(rating.rating)}
             </span>

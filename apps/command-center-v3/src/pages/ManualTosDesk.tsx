@@ -428,6 +428,13 @@ export default function ManualTosDesk({ focusSymbol }: DeskProps = {}) {
         </div>
       )}
 
+      {visible.length > 0 && (
+        <div data-testid="manual-desk-scope-legend" style={{ fontSize: 10, color: C.dim, margin: '0 0 8px', lineHeight: 1.4 }}>
+          <b>READY</b> means your draft is complete to review — <b>not approval</b>. <b>TECH</b> is the technical grade,
+          <b> DECISION</b> is the advisory verdict. Nothing on this desk places an order.
+        </div>
+      )}
+
       {visible.map(({ r, state, hit }) => {
         const street = num(paMap[r.symbol]?.target)
         const account = r.account === 'ANY' ? null : accountMap[r.account] ?? null
