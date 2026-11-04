@@ -257,6 +257,15 @@ body { font-family: var(--sans); background: var(--bg0); color: var(--text0); }
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
 }
+/* FQ-041: at phone width the tab row must WRAP instead of scrolling the last tab off the edge.
+   The base rule keeps overflow-x:auto for wide viewports, where a single line is deliberate. */
+@media (max-width: 420px) {
+  .hub-tabs {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    padding-bottom: 0;
+  }
+}
 .hub-tabs > button,
 .hub-tabs > a {
   flex-shrink: 0;

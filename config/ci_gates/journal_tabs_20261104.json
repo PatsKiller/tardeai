@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "journal_tabs_20261104",
+  "files": [
+    "apps/command-center-v3/src/lib/journalTabs.view.test.mjs"
+  ],
+  "anchor": "JOURNAL_TABS_20261104",
+  "comment": [
+    "ANCHOR: JOURNAL_TABS_20261104 — FQ-041: at phone width the journal tab row WRAPS (flex-wrap: wrap, overflow-x: visible) instead of scrolling the last tab off the edge; the base rule keeps its horizontal scroller for wide viewports, and all 15 tab labels remain rendered (nothing removed). Hermetic: reads the stylesheet and the page source, no browser, no network."
+  ]
+}
