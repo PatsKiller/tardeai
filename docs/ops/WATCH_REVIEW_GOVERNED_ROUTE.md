@@ -43,9 +43,12 @@ boundaries that drifted apart twice in production: the runtime's registry
 resolution and the persisted parent approval. Before any dispatch, from either
 `create_execution_authorization` or `validate_execution_authorization`:
 
-1. the record exists, is ACTIVE, not revoked, **and has not expired** — the
-   clock outranks the status string, because a live record read ACTIVE while
-   `expires_at` was already a day in the past (`POLICY_EXPIRED`);
+1. the record exists and **has not expired** — the clock outranks the status
+   string (`validate_policy` checks `expires_at` before `authorization_status`;
+   a live record read ACTIVE while `expires_at` was already a day in the past,
+   so expiry is reported first, `POLICY_EXPIRED`). Status and revocation are
+   checked after it; a record that is not ACTIVE is still refused, never
+   merely downgraded;
 2. the role's logical policy resolves through the canonical registry to exactly
    one model id, and a caller-supplied model that is not that id is refused
    (`MODEL_NOT_REGISTRY_CURRENT`) rather than substituted;

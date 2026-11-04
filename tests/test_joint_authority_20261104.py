@@ -11,6 +11,14 @@ What is pinned here:
 * an expired record cannot authorise, whatever its status string says, and expiry is reported ahead of everything;
 * renaming an allowed model in the record does not widen authority (the approval digest no longer matches);
 * every refusal is a named reason and nothing is written or dispatched.
+
+The mutation table is the acceptance criterion (cc5, 2026-11-04). Removing any one property from the implementation
+must make tests fail, and the numbers are: delete the `allowed_models` membership check -> 2 failed; delete the expiry
+check in `validate_policy` -> 4 failed; delete the approval-digest comparison -> 2 failed. Property B (expiry outranks
+the status string) was the one whose removal left every test green, because the expiry rule had been written twice and
+one copy masked the other; it now lives in `policy_expiry_verdict`/`validate_policy` only, and
+`test_an_expired_record_that_is_otherwise_perfect_cannot_authorise` plus `test_expiry_outranks_the_status_string` are the
+two that go red if it is removed or reordered.
 """
 from __future__ import annotations
 
@@ -53,6 +61,36 @@ def _legacy_record(**overrides):
 def _write(record):
     (L.POLICIES_DIR).mkdir(parents=True, exist_ok=True)
     (L.POLICIES_DIR / f"{record['authorization_policy_id']}.json").write_text(__import__("json").dumps(record))
+
+
+def test_an_expired_record_that_is_otherwise_perfect_cannot_authorise(ledger, monkeypatch):
+    """Property B, the discriminating case: everything else about this record is valid — canonical model, matching
+    policy, a live approval digest — and only the clock refuses it. Delete the expiry check and this test goes red
+    (the dispatch would return OK and the child authorization would be written)."""
+    ledger.persist_policy(ledger.build_intended_policy(operator_id="operator"))
+    later = datetime.now(timezone.utc) + timedelta(days=120)     # past the 90-day expiry
+    monkeypatch.setattr(ledger, "_now", lambda: later)
+    ok, reason, _ = ledger.dispatch_authority("maria", record=ledger.load_policy(POLICY_ID))
+    assert (ok, reason) == (False, "POLICY_EXPIRED")
+    with pytest.raises(PermissionError, match="POLICY_EXPIRED"):
+        ledger.create_execution_authorization(policy_id=POLICY_ID, symbol="FIXTURE", agent_id="maria",
+                                              input_snapshot_id="snap", input_hash="h", trigger_reason="fixture")
+
+
+def test_expiry_outranks_the_status_string(ledger):
+    """Property B, the ordering half: an expired record reports EXPIRY even when its status string says something
+    else, while an unexpired record still reports its status. Reorder the check behind the status (the pre-2026-11-04
+    order) and the first assertion goes red."""
+    past = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    expired = ledger.build_intended_policy(operator_id="fixture")
+    expired.update(expires_at=past, authorization_status="REVOKED", revoked_at=past)
+    assert ledger.validate_policy(expired) == (False, "POLICY_EXPIRED")
+    assert ledger.dispatch_authority("maria", record=expired)[:2] == (False, "POLICY_EXPIRED")
+    # Control: the same status on a record that is still inside its window reports the status, so the assertion above
+    # is about ORDER, not about the status being ignored.
+    live = ledger.build_intended_policy(operator_id="fixture")
+    live.update(authorization_status="REVOKED", revoked_at="2026-01-01T00:00:00+00:00")
+    assert ledger.validate_policy(live) == (False, "POLICY_STATUS_REVOKED")
 
 
 def test_a_legacy_allowed_model_list_refuses_with_a_named_reason(ledger):

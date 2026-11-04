@@ -377,21 +377,37 @@ def list_policies() -> list[dict[str, Any]]:
     return out
 
 
-def validate_policy(policy: dict[str, Any] | None) -> tuple[bool, str]:
+def policy_expiry_verdict(policy: dict[str, Any] | None, *, now: datetime | None = None) -> tuple[bool, str]:
+    """Is the record still inside its own validity window? A parsed clock, never a status string.
+
+    This is the single place the expiry fact is read (2026-11-04, property B): a status field is a claim written by
+    whoever edited the file — the live Maria/CIO record read ACTIVE while its ``expires_at`` was already a day past —
+    so the clock is checked FIRST and outranks the status string everywhere.
+    """
+    try:
+        exp = datetime.fromisoformat(str((policy or {})["expires_at"]).replace("Z", "+00:00"))
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        if (now or _now()) > exp:
+            return False, "POLICY_EXPIRED"
+    except Exception:
+        return False, "POLICY_EXPIRES_AT_INVALID"
+    return True, "OK"
+
+
+def validate_policy(policy: dict[str, Any] | None, *, now: datetime | None = None) -> tuple[bool, str]:
     if not policy:
         return False, "MISSING_POLICY"
+    # EXPIRY OUTRANKS THE STATUS STRING (property B). Reversed from the pre-2026-11-04 order, where a record whose
+    # status said REVOKED/DRAFT reported that string and its expired clock was never consulted; and stated here, in
+    # the one validation function every caller shares, rather than duplicated in the dispatch gate.
+    ok, reason = policy_expiry_verdict(policy, now=now)
+    if not ok:
+        return False, reason
     if policy.get("authorization_status") != "ACTIVE":
         return False, f"POLICY_STATUS_{policy.get('authorization_status')}"
     if policy.get("revoked_at"):
         return False, "POLICY_REVOKED"
-    try:
-        exp = datetime.fromisoformat(str(policy["expires_at"]).replace("Z", "+00:00"))
-        if exp.tzinfo is None:
-            exp = exp.replace(tzinfo=timezone.utc)
-        if _now() > exp:
-            return False, "POLICY_EXPIRED"
-    except Exception:
-        return False, "POLICY_EXPIRES_AT_INVALID"
     if policy.get("fallback_allowed") is True:
         return False, "FALLBACK_FORBIDDEN"
     if policy.get("containment_required"):
@@ -450,16 +466,9 @@ def dispatch_authority(
     pol = record if record is not None else load_policy(policy_id)
     if not pol:
         return False, "MISSING_POLICY", None
-    # Expiry outranks the status string (the exact disagreement found in the live record on 2026-11-04).
-    try:
-        exp = datetime.fromisoformat(str(pol["expires_at"]).replace("Z", "+00:00"))
-        if exp.tzinfo is None:
-            exp = exp.replace(tzinfo=timezone.utc)
-        if (now or _now()) > exp:
-            return False, "POLICY_EXPIRED", pol
-    except Exception:
-        return False, "POLICY_EXPIRES_AT_INVALID", pol
-    ok, reason = validate_policy(pol)
+    # One expiry order for every caller: validate_policy checks the clock BEFORE the status string (property B),
+    # so there is no second copy of this rule here to drift from it.
+    ok, reason = validate_policy(pol, now=now)
     if not ok:
         return False, reason, pol
     try:
