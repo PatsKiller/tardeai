@@ -112,12 +112,22 @@ function BuildMarker() {
     }
   }, [])
   const comparison = compareServedBuild(LOADED_BUILD, served)
-  return <span data-testid="cc-loaded-build" data-source-sha={LOADED_BUILD.sourceSha ?? 'UNAVAILABLE'}>
-    Loaded bundle: {LOADED_BUILD.uiVersion ?? 'UNAVAILABLE'} · built {LOADED_BUILD.builtAt ?? 'UNAVAILABLE'} · source {LOADED_BUILD.sourceSha?.slice(0, 12) ?? 'UNAVAILABLE'}
-    {' · '}{comparison === 'SAME' ? 'matches served artifact' : comparison === 'UNAVAILABLE' ? 'served build comparison UNAVAILABLE' : <>
+  // FQ-081: build identifiers were printed in the normal footer. They now live under a disclosure, and the one
+  // thing that must stay in plain sight — 'a newer build is available, reload' — is rendered OUTSIDE the toggle so
+  // hiding the identifiers cannot hide the action.
+  const needsReload = comparison !== 'SAME' && comparison !== 'UNAVAILABLE'
+  return <>
+    {needsReload && <span data-testid="cc-build-reload-needed" style={{ marginRight: 8 }}>
       newer or different artifact available · <button type="button" onClick={() => window.location.reload()}>Reload Command Center</button>
-    </>}
-  </span>
+    </span>}
+    <details data-testid="cc-build-details">
+      <summary style={{ cursor: 'pointer' }}>Build version</summary>
+      <span data-testid="cc-loaded-build" data-source-sha={LOADED_BUILD.sourceSha ?? 'UNAVAILABLE'}>
+        Loaded bundle: {LOADED_BUILD.uiVersion ?? 'UNAVAILABLE'} · built {LOADED_BUILD.builtAt ?? 'UNAVAILABLE'} · source {LOADED_BUILD.sourceSha?.slice(0, 12) ?? 'UNAVAILABLE'}
+        {' · '}{comparison === 'SAME' ? 'matches served artifact' : comparison === 'UNAVAILABLE' ? 'served build comparison UNAVAILABLE' : 'newer or different artifact available'}
+      </span>
+    </details>
+  </>
 }
 
 function ReconnectingBar() {
