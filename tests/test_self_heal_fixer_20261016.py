@@ -269,6 +269,22 @@ def test_ci_registration_is_append_only_inside_gates():
     assert "append_only:outside_gates_list" in _codes(_guard(ns, st, out_u, ci))
 
 
+def test_gate_registration_is_exactly_one_json_file_and_nothing_else():
+    """§24.16's text says the guard refuses CI-gate paths, but F12 registration IS adding a gate file. The carve-out
+    is kept and made exact: one JSON file directly inside config/ci_gates/, named for its gate (cx-openai-2 F2).
+    Anything else in that tree is not a registration and hits the refuse list."""
+    gate = '{"schema": "CiGate@v1", "name": "x", "files": ["tests/test_x.py"]}'
+    u = ("diff --git a/config/ci_gates/x.json b/config/ci_gates/x.json\nnew file mode 100644\n"
+         "+++ b/config/ci_gates/x.json\n@@ -0,0 +1,1 @@\n+" + gate + "\n")
+    # Registration is allowed: no HARD refusal (a soft no_regression_test is separate and legitimate).
+    assert [r for r in _guard("A\tconfig/ci_gates/x.json\n", "1\t0\tconfig/ci_gates/x.json\n", u) if r["hard"]] == []
+    for bad in ("config/ci_gates/sub/x.json", "config/ci_gates/x.txt", "config/ci_gates/.json"):
+        assert "protected_path" in _codes(_guard("A\t" + bad + "\n", "1\t0\t" + bad + "\n", u)), bad
+    # modifying an existing gate is never a registration
+    assert "append_only:gate_file_changed" in _codes(
+        _guard("M\tconfig/ci_gates/x.json\n", "1\t1\tconfig/ci_gates/x.json\n", u))
+
+
 def test_soft_refusals_go_back_as_feedback():
     r = _guard("M\tscripts/lane.py\n", "1\t1\tscripts/lane.py\n", "")
     assert _codes(r) == {"no_regression_test"} and not r[0]["hard"]
@@ -572,10 +588,16 @@ FAKE_GH = r"""#!/bin/sh
 # origin (or, when gh_head_override exists, a different head: the branch moved after the push).
 here="$(dirname "$0")"
 echo "$@" >> "$here/gh_calls.txt"
+if [ "$1" = "label" ] && [ "$2" = "list" ]; then
+  if [ -f "$here/gh_label_missing" ]; then printf '[]\n'; else printf '[{"name": "self-heal-fix"}]\n'; fi
+  exit 0
+fi
 if [ "$2" = "view" ]; then
   if [ -f "$here/gh_head_override" ]; then sha="$(cat "$here/gh_head_override")";
   else sha="$(git ls-remote origin "refs/heads/$(cat "$here/gh_head_branch")" | cut -f1)"; fi
-  printf '{"headRefOid": "%s"}\n' "$sha"
+  draft=true; [ -f "$here/gh_pr_ready" ] && draft=false
+  labels='[{"name": "self-heal-fix"}]'; [ -f "$here/gh_pr_unlabelled" ] && labels='[]'
+  printf '{"headRefOid": "%s", "isDraft": %s, "labels": %s}\n' "$sha" "$draft" "$labels"
   exit 0
 fi
 while [ $# -gt 0 ]; do [ "$1" = "--head" ] && echo "$2" > "$here/gh_head_branch"; shift; done
@@ -774,9 +796,27 @@ def test_success_with_amendment_pushes_one_branch_and_opens_labelled_pr(sandbox)
     assert job["state"] == F.FIX_PR_OPENED and job["pr_number"] == 4242
     assert job["branch"] in _sh("git", "-C", str(sandbox["origin"]), "branch", "--list")
     gh = (sandbox["bin"] / "gh_calls.txt").read_text()
-    assert "pr create" in gh and "--label self-heal-fix" in gh and "--base main" in gh
+    assert "pr create" in gh and "--label self-heal-fix" in gh and "--base main" in gh and "--draft" in gh
     assert "merge" not in gh  # never merges
     assert not F.is_healed(job)
+
+
+def test_a_missing_label_fails_the_job_visibly_and_opens_no_pr(sandbox):
+    """§24.16 says ONE DRAFT PR labelled self-heal-fix per fix job. If the label cannot be applied the lane must fail
+    visibly, not silently retry without it and ship an unlabelled ready-for-review PR (cx-openai-2 F1)."""
+    (sandbox["bin"] / "gh_label_missing").write_text("")
+    job, _ = _run_cycle(sandbox, "fix", agents_marker=True)
+    assert job["state"] == F.FIX_REFUSED, job
+    assert job["reason"] == "pr_label_unavailable:self-heal-fix", job["reason"]
+    assert "pr create" not in (sandbox["bin"] / "gh_calls.txt").read_text()
+
+
+def test_a_ready_for_review_pr_is_refused_not_accepted(sandbox):
+    """The create can succeed while the PR is not a draft. §24.16 says draft, so that is refused, not accepted."""
+    (sandbox["bin"] / "gh_pr_ready").write_text("")
+    job, _ = _run_cycle(sandbox, "fix", agents_marker=True)
+    assert job["state"] == F.FIX_REFUSED, job
+    assert job["reason"] == "pr_not_draft", job["reason"]
 
 
 def test_previous_output_is_fed_back_and_two_step_fix_passes(sandbox):

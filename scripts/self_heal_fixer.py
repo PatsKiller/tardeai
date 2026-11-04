@@ -889,29 +889,51 @@ class Attempt:
             "--body-file",
             str(body_path),
         ]
-        pr = run(base_args + ["--label", self.cfg["repo"]["pr_label"]], cwd=self.fix_wt, env=env, timeout=120)
-        label = True
-        if pr["rc"] != 0:
-            label = False
-            pr = run(base_args, cwd=self.fix_wt, env=env, timeout=120)
+        # AGENTS.md §24.16 (approved text): ONE **draft** PR labelled `pr_label` per fix job. The old path created a
+        # ready-for-review PR and, when the label could not be applied, silently retried WITHOUT it — so the lane
+        # could ship a non-draft, unlabelled PR that the policy text says cannot exist (cx-openai-2 F1, lead-verified).
+        # The label is now a PRECONDITION, checked before anything is created: if the repository does not carry it the
+        # job fails visibly rather than shipping something the operator did not authorise.
+        label = str(self.cfg["repo"]["pr_label"])
+        listed = run(["gh", "label", "list", "--limit", "200", "--json", "name"],
+                     cwd=self.fix_wt, env=env, timeout=60)
+        try:
+            known_labels = {str(x.get("name")) for x in json.loads(listed["out"] or "[]") if isinstance(x, dict)}
+        except ValueError:
+            known_labels = set()
+        if listed["rc"] != 0 or label not in known_labels:
+            # Visible failure, and no PR exists to be merged by mistake.
+            return {"ok": False, "why": f"pr_label_unavailable:{label}", "pushed": True, "policy_breach": True}
+        pr = run(base_args + ["--draft", "--label", label], cwd=self.fix_wt, env=env, timeout=120)
         if pr["rc"] != 0:
             return {"ok": False, "why": f"pr_create_failed:{pr['err'][-300:]}", "pushed": True}
         url = pr["out"].strip().splitlines()[-1] if pr["out"].strip() else ""
         num = url.rstrip("/").rsplit("/", 1)[-1]
-        out = {"ok": True, "pr_url": url, "pr_number": int(num) if num.isdigit() else None, "labelled": label}
-        # the PR head MUST be the evaluated commit
+        out = {"ok": True, "pr_url": url, "pr_number": int(num) if num.isdigit() else None, "labelled": True}
+        # Verify what actually exists rather than trusting the exit code: the head MUST be the evaluated commit, and
+        # the PR MUST really be a draft carrying the label (a create can succeed while either is wrong).
         view = run(
-            ["gh", "pr", "view", url or self.branch, "--json", "headRefOid"], cwd=self.fix_wt, env=env, timeout=60
+            ["gh", "pr", "view", url or self.branch, "--json", "headRefOid,isDraft,labels"],
+            cwd=self.fix_wt, env=env, timeout=60,
         )
         try:
-            head = str(json.loads(view["out"] or "{}").get("headRefOid") or "")
+            meta = json.loads(view["out"] or "{}")
         except ValueError:
-            head = ""
+            meta = {}
+        head = str(meta.get("headRefOid") or "")
         out["pr_head"] = head
+        out["draft"] = bool(meta.get("isDraft"))
+        actual_labels = {str(x.get("name")) for x in (meta.get("labels") or []) if isinstance(x, dict)}
+        if not out["draft"]:
+            # §24.16 says draft; a ready PR here is a policy breach, not a cosmetic difference.
+            out.update(ok=False, why="pr_not_draft", pushed=True, draft_missing=True, policy_breach=True)
+        if label not in actual_labels:
+            out.update(ok=False, why=out.get("why") or f"pr_label_missing:{label}", pushed=True,
+                       label_missing=True, policy_breach=True)
         if head != commit:
             out.update(
                 ok=False,
-                why=f"pr_head_mismatch:{head[:12] or 'unreadable'}!={commit[:12]}",
+                why=out.get("why") or f"pr_head_mismatch:{head[:12] or 'unreadable'}!={commit[:12]}",
                 pushed=True,
                 head_mismatch=True,
             )
@@ -1036,6 +1058,19 @@ def attempt_job(
                     updated_at=now().isoformat(),
                 )
             elif pr.get("head_mismatch"):
+                F.transition(
+                    job,
+                    F.FIX_REFUSED,
+                    now(),
+                    reason=pr["why"],
+                    pr_url=pr.get("pr_url"),
+                    pr_number=pr.get("pr_number"),
+                    pr_head=pr.get("pr_head"),
+                    updated_at=now().isoformat(),
+                )
+            elif pr.get("policy_breach"):
+                # §24.16 requires ONE draft PR labelled pr_label. Anything else is refused, not "ready local":
+                # the work is fine, but the lane may not ship a PR the approved text forbids.
                 F.transition(
                     job,
                     F.FIX_REFUSED,
