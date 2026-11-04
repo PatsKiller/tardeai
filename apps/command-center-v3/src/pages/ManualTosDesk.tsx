@@ -3,6 +3,7 @@ import { useApi } from '../hooks/useApi'
 import { useProAnalystMap } from '../components/ProAnalystPill'
 import { deriveTradeAiRating, normalizeAnalystRating, ratingLabel, ratingRank, type ManualTosRating } from '../lib/manualTosRating'
 import { currentRowDetailMode } from '../lib/rowDetailMode'
+import { RADIUS } from '../lib/designTokens'
 import { cioBlocksEntry, diligenceFromWatchlistItem, hasAgentMaturity, isActionable } from '../lib/watchlistDiligence'
 import EntryDeskRow, { type TechGrade } from '../components/EntryDeskRow'
 import EntryDeskDiligenceStrip, { type WatchlistDiligence } from '../components/EntryDeskDiligenceStrip'
@@ -477,7 +478,7 @@ export default function ManualTosDesk({ focusSymbol }: DeskProps = {}) {
             data-testid="manual-desk-detail-sheet"
             style={{ position: 'fixed', inset: 0, zIndex: 1500, background: 'var(--bg0)', overflowY: 'auto', padding: 12 }}>
             <button type="button" onClick={() => setSheetKey(null)}
-              style={{ minHeight: 44, marginBottom: 8, padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg1)', color: C.blue }}>
+              style={{ minHeight: 44, marginBottom: 8, padding: '8px 16px', borderRadius: RADIUS.sm, border: '1px solid var(--border)', background: 'var(--bg1)', color: C.blue }}>
               ← Back to the shortlist
             </button>
             {row}
