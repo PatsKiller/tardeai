@@ -72,6 +72,7 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, NamedTuple, Optional
@@ -1709,7 +1710,8 @@ def proc_holder_units(path: Path, *, proc_root: Path = Path("/proc")) -> HolderS
     return HolderScan(tuple(sorted(units)), complete, holders, tuple(sorted(unattributed)))
 
 
-def _release_rows(rules: Mapping[str, Any], ctx: Mapping[str, Any], r_cfg: Mapping[str, Any], row, only: Optional[str]) -> list[dict]:
+def _release_rows(rules: Mapping[str, Any], ctx: Mapping[str, Any], r_cfg: Mapping[str, Any], row, only: Optional[str],
+                  armed: Optional[ReleaseArming] = None) -> list[dict]:
     """Rule R: the existing release selection (CURRENT, pointer targets, previous, newest N, references) on one root."""
     roots = [{**r, "keep_newest": max(int(r.get("keep_newest") or 0), int(r_cfg["keep_newest"]))}
              for r in rules["_release_roots"] if r["_path"] == _expand(r_cfg["root"], rules["_home"])]
@@ -1734,9 +1736,13 @@ def _release_rows(rules: Mapping[str, Any], ctx: Mapping[str, Any], r_cfg: Mappi
         # (a), not (b) — lead ruling 2026-11-04: POSIX has no "unlink only if nothing holds this" primitive. A retained
         # directory fd survives every pathname fence, and quiescence cannot be ENFORCED against same-uid processes
         # (agents included) that may open a descriptor at any instant. So the scheduled lane never removes a release:
-        # it reports the reclaimable set, and removal stays behind `release_reclaim.auto_delete`, which only an
-        # operator can arm — with a mechanism the operator has accepted. See docs/ops/DISK_HOLDER_SAFETY_20261104.md.
-        auto_delete = r_cfg.get("auto_delete") is True
+        # it reports the reclaimable set, and removal needs a ReleaseArming object naming ONE path — never a config
+        # value, so a scheduled lane cannot carry the permission a human one-shot has.
+        # See docs/ops/DISK_HOLDER_SAFETY_20261104.md.
+        # Arming is an OBJECT for one path, never a config value: a boolean would let a scheduled lane carry the same
+        # permission as a human one-shot (codex 2026-11-04). Without a matching object the row cannot be a candidate.
+        armed_here = (isinstance(armed, ReleaseArming)
+                      and os.path.realpath(armed.path) == os.path.realpath(str(path)))
         if "in_use_cwd" in item["reasons"]:
             scan = proc_holder_units(path)
             hosts: list[str] = list(scan.units)
@@ -1746,7 +1752,7 @@ def _release_rows(rules: Mapping[str, Any], ctx: Mapping[str, Any], r_cfg: Mappi
             # R1: clear in_use_cwd ONLY when the scan is COMPLETE and every holder is a restartable allowed unit. An
             # incomplete scan is an unknown, and an unknown refuses. R3a: a holder with no restartable unit
             # (``unattributed``) is a holder none the less — restarting "nothing" must never clear the reason.
-            restartable = (auto_delete and scan.complete and scan.holders > 0 and not scan.unattributed
+            restartable = (armed_here and scan.complete and scan.holders > 0 and not scan.unattributed
                            and action == "restart" and set(hosts) <= allowed)
             item["evidence"]["holder_units"] = hosts
             item["evidence"]["holder_scan_complete"] = scan.complete
@@ -1759,11 +1765,11 @@ def _release_rows(rules: Mapping[str, Any], ctx: Mapping[str, Any], r_cfg: Mappi
                 if not scan.complete:
                     item["reasons"].append("holder_state_unknown")
                 item["reasons"].append("held_by_process:" + (",".join(hosts) if hosts else "unnamed"))
-        if not auto_delete:
+        if not armed_here:
             # The release is RECLAIMABLE and is reported with its size; it is not removed. That is the whole point of
             # (a): the lane can prove what is safe to *stop using*, never that a directory is unheld at the instant of
             # unlink. `protected_excluded_bytes` and this reason carry the number to the operator digest.
-            item["reasons"].append("release_delete_refused:no_enforceable_quiescence_primitive")
+            item["reasons"].append(RELEASE_REFUSAL)
         try:
             creds = [e.name for e in os.scandir(path) if not e.is_symlink() and _credential_name(e.name, rules)]
         except OSError:
@@ -1937,6 +1943,7 @@ def plan(rules: Mapping[str, Any], now: datetime, *, measure: bool = True) -> di
             sizes = dict(zip(map(str, targets), pool.map(lambda p: du_bytes(p, to), targets)))
         for r in results + report_only:
             r["size_bytes"] = sizes.get(r["path"])
+    refuse_release_removals(results)          # the legacy apply path must not carry an executable release either
     for r in results:
         r["id"] = _item_id(r["path"])
     items = [r for r in results if r.get("candidate")]
@@ -2162,10 +2169,64 @@ def executed_row(manifest_item: Mapping[str, Any], fresh: Optional[Mapping[str, 
         out["fingerprint"] = fresh["fingerprint"]
     return out
 
-def remove_item(item: Mapping[str, Any]) -> tuple:
+#: The reason every release row carries. Named once so the policy, the legacy plan and the tests cannot drift apart.
+RELEASE_REFUSAL = "release_delete_refused:no_enforceable_quiescence_primitive"
+
+
+@dataclass(frozen=True)
+class ReleaseArming:
+    """A ONE-SHOT operator authorisation to remove exactly ONE release directory (codex 2026-11-04).
+
+    Deliberately not a flag. A boolean in configuration is settable by any scheduled lane, so "operator-armed" and
+    "scheduled" would be the same thing with different words; the lead's option (a) would then be decoration. This is
+    a value object: it can only be built by :func:`parse_release_arming` from an operator-authored file that names one
+    path and the instant it was approved, and :func:`remove_item` refuses anything that is not an instance matching
+    the item's own path. A caller cannot reach the deletion path by setting anything.
+    """
+
+    path: str
+    approved_by: str
+    approved_at: str
+    schema: str = "ReleaseArming@v1"
+
+
+_ARMING_FIELDS = ("schema", "path", "approved_by", "approved_at")
+
+
+def parse_release_arming(arming_file: Path) -> ReleaseArming:
+    """Read an operator-authored arming file. Raises on anything that is not a complete, well-formed authorisation."""
+    doc = json.loads(Path(arming_file).read_text(encoding="utf-8"))
+    if not isinstance(doc, Mapping) or doc.get("schema") != "ReleaseArming@v1":
+        raise ValueError("arming_schema")
+    missing = [k for k in _ARMING_FIELDS if not str(doc.get(k) or "").strip()]
+    if missing:
+        raise ValueError("arming_missing:" + ",".join(missing))
+    if not os.path.isabs(str(doc["path"])):
+        raise ValueError("arming_path_not_absolute")
+    return ReleaseArming(path=str(doc["path"]), approved_by=str(doc["approved_by"]),
+                         approved_at=str(doc["approved_at"]))
+
+
+def refuse_release_removals(rows: list[dict], why: str = RELEASE_REFUSAL) -> list[dict]:
+    """Mark every selected release row ineligible. The legacy ``plan()`` path uses this: a manifest it writes must
+    not carry an executable release row either (codex 2026-11-04, public legacy apply path)."""
+    for r in rows:
+        if r.get("kind") == "release_dir" and r.get("candidate"):
+            r["candidate"] = False
+            r["reasons"] = list(dict.fromkeys(list(r.get("reasons") or []) + [why]))
+    return rows
+
+
+def remove_item(item: Mapping[str, Any], *, arming: Optional["ReleaseArming"] = None) -> tuple:
     """(ok, how) or, for rule C, (ok, how, {archive_ref, archive_sha}) so the receipt names the restore point."""
     p = Path(item["path"])
     kind = item["kind"]
+    if kind == "release_dir":
+        # THE arming gate. Reached from the scheduled apply, from a legacy manifest, from a test helper — from anywhere
+        # — a release is refused unless the caller holds an arming object that names THIS path. `True`, a dict or a
+        # config key cannot satisfy this: only parse_release_arming() constructs the type, and only for one path.
+        if not isinstance(arming, ReleaseArming) or os.path.realpath(arming.path) != os.path.realpath(str(p)):
+            return False, RELEASE_REFUSAL
     if kind == "abandoned_worktree":
         why = closeout_guard(item)
         if why:

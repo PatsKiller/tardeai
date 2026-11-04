@@ -1,8 +1,9 @@
 # Disk hygiene — why rule R reports releases instead of deleting them (2026-11-04)
 
 **Decision (a), lead ruling 2026-11-04, taken after codex's R3a/R3b block on `302b34483`:** the scheduled lane never
-removes a release directory. It reports the reclaimable set, with bytes, and removal stays behind
-`standing_apply.release_reclaim.auto_delete`, which is absent (⇒ `false`) and can only be armed by the operator.
+removes a release directory. It reports the reclaimable set, with bytes. Removal requires a `ReleaseArming` object that
+names exactly one path, parsed from an operator-authored file — never a config key, so "armed" cannot be expressed as a
+scheduled deletion.
 
 This document records the argument, the mechanism that replaced the fence's claim, and the residual that no code in
 this repository can close.
@@ -51,9 +52,14 @@ this host. The honest disposition is (a): refuse, and report.
 * `remove_item` refuses when `holders` is non-zero — not only when `units` is non-empty — both after a restart and
   after the fence rename.
 * `_release_rows` marks every release row `candidate=False` with
-  `release_delete_refused:no_enforceable_quiescence_primitive` unless `release_reclaim.auto_delete` is explicitly
-  `true`; it never orders a restart when it is not removing. The bytes stay in the manifest's `excluded` set, so the
-  operator digest still shows what the lane would free.
+  `release_delete_refused:no_enforceable_quiescence_primitive`; it never orders a restart when it is not removing. The
+  bytes stay in the manifest's `excluded` set, so the operator digest still shows what the lane would free.
+* The LEGACY `plan()` path runs the same refusal (`refuse_release_removals`), because it used to select releases
+  itself — the default report path being safe said nothing about the old entrypoint (codex 2026-11-04).
+* `remove_item` refuses any `release_dir` unless the caller holds a `ReleaseArming` whose path is that item's path.
+  `True`, a dict or a config value cannot satisfy it: only `parse_release_arming()` builds the type, from a file with
+  `schema: ReleaseArming@v1`, an absolute `path`, an `approved_by` and an `approved_at`. This is what makes "operator
+  armed" structurally different from "scheduled": no scheduled lane can hold the object.
 
 The scan is still worth having: it names the component that resolves a superseded release (the 12-hour
 `tradeai-ops-agent` resurrection), and it refuses the deletion boundary if the operator ever arms it.

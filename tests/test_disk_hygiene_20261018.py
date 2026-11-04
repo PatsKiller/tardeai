@@ -356,10 +356,21 @@ def _releases(world: World) -> list[Path]:
 
 
 def test_releases_keep_current_previous_served_and_the_newest_n(world):
+    """The SELECTION is unchanged; the DISPOSITION is not.
+
+    A superseded release is still selected — rel[0] and rel[1] are the ones beyond CURRENT + previous + the newest N —
+    but since 2026-11-04 (operator decision (a), codex R3a/R3b) the lane reports them and never removes them. So they
+    appear in `excluded` carrying RELEASE_REFUSAL and their measured size, and `items` is empty for rule R. What the
+    keep rules decide is asserted exactly as before: this test would still catch a keep-count drift.
+    """
     rel = _releases(world)
     world.plan()
-    cand = {r["path"] for r in world.manifest()["items"] if r["rule"] == "R"}
-    assert cand == {str(rel[0]), str(rel[1])}
+    man = world.manifest()
+    assert {r["path"] for r in man["items"] if r["rule"] == "R"} == set()
+    excluded_r = {r["path"]: r for r in man["excluded"] if r["rule"] == "R"}
+    assert {str(rel[0]), str(rel[1])} <= set(excluded_r)
+    for p in (rel[0], rel[1]):
+        assert DH.RELEASE_REFUSAL in excluded_r[str(p)]["reasons"], excluded_r[str(p)]["reasons"]
     assert "previous_served" in _reasons(world, rel[2])
     assert {"pointer_symlink", "protected"} & _reasons(world, rel[3])
     assert _reasons(world, rel[4]) == {"keep_newest"} and _reasons(world, rel[5]) == {"keep_newest"}
@@ -495,9 +506,13 @@ def test_apply_removes_worktrees_with_git_worktree_remove_and_clones_and_release
     world.plan()
     assert _apply(world, **{DH.GRANT_ENV: "g1"}) == 0
     rep = _last_apply(world)
-    assert {r["path"] for r in rep["removed"]} == {str(wt), str(clone), str(rel[0]), str(rel[1])}
+    # Worktrees and clones are still removed. The releases are NOT: since 2026-11-04 the plan does not select them and
+    # remove_item refuses a release without a ReleaseArming object naming that path — so neither is in `removed`, and
+    # every selected release directory is still on disk.
+    assert {r["path"] for r in rep["removed"]} == {str(wt), str(clone)}
     assert {r["how"] for r in rep["removed"] if r["kind"] == "git_worktree"} == {"git worktree remove; prune"}
-    assert not wt.exists() and not clone.exists() and not rel[0].exists() and rel[2].exists() and rel[3].exists()
+    assert not wt.exists() and not clone.exists()
+    assert all(r.exists() for r in rel), "a release was removed without an arming object"
     assert str(wt) not in sh("git", "worktree", "list", "--porcelain", cwd=world.dev)  # no stale registration
     assert rep["reclaimed_bytes"] == sum(r["bytes"] for r in rep["removed"]) and rep["grant"] == "g1"
     assert world.dev.exists()
