@@ -499,3 +499,60 @@ def test_a_non_string_principal_cannot_mint_a_context(bad_principal):
     with pytest.raises(ha.Refused) as caught:
         ha.server_context(principal=bad_principal, session="s", csrf_ok=True, listener="serve_proxy")
     assert caught.value.code == "operator_session_required"
+
+
+# ── the fifth round: usable canonical identity, the direct retry, typed facts ────────────────
+@pytest.mark.parametrize("bad_actor", ["tailnet:", " tailnet: ", "TAILNET:   ", "tailnet:tailnet:"])
+def test_a_present_actor_with_no_usable_identity_cannot_create(tmp_path, bad_actor):
+    store = _store(tmp_path)
+    with pytest.raises(ha.Refused) as caught:
+        ha.create(store, _payload(), requester={"session": "s-1", "actor": bad_actor}, now=NOW)
+    assert caught.value.code == "requester_unknown"
+    assert not list(store.requests_dir.glob("*.json"))
+
+
+@pytest.mark.parametrize("bad_actor", ["tailnet:", " tailnet: ", "TAILNET:   "])
+def test_a_stored_actor_with_no_usable_identity_is_corrupt(tmp_path, bad_actor):
+    store = _store(tmp_path)
+    record = _ask(store, requester={"session": "s-1", "actor": f"tailnet:{LOGIN}"})
+    path = store.requests_dir / f"{record['id']}.json"
+    doc = json.loads(path.read_text())
+    doc["requester"]["actor"] = bad_actor
+    path.write_text(json.dumps(doc))
+    with pytest.raises(ha.Refused) as caught:
+        ha.list_open(store, now=NOW)
+    assert caught.value.code == "store_unreadable"
+
+
+def test_a_direct_execute_retry_takes_the_transition_marker(tmp_path):
+    """F2: the direct retry completed while question() held nothing, and the question overwrote executed/ok."""
+    store = _store(tmp_path)
+    record = _ask(store, requester={"session": "agent-x"})
+    counter = Counter()
+    ha.decide(store, record["id"], ctx=_ctx(), actor=LOGIN, decision="approve", now=NOW,
+              executor=counter.executor())
+    stored = store.require(record["id"])
+    assert stored["state"] == "executed"
+    (store.requests_dir / f"{record['id']}.deciding").write_text("")
+    with pytest.raises(ha.Refused) as caught:
+        ha.execute(store, stored, actor=LOGIN, now=NOW, executor=counter.executor())
+    assert caught.value.code == "transition_in_progress"
+
+
+@pytest.mark.parametrize("bad_ts", [True, False, float("nan"), float("inf"), float("-inf")])
+def test_a_malformed_expiry_is_refused(tmp_path, bad_ts):
+    store = _store(tmp_path)
+    with pytest.raises(ha.Refused) as caught:
+        ha.create(store, _payload(type="restore_store",
+                                  facts={"packet_sha256": "a" * 64, "expires_at": bad_ts}),
+                  requester={"session": "s-1"}, now=NOW)
+    assert caught.value.code == "facts_invalid"
+
+
+def test_a_string_of_job_ids_is_refused(tmp_path):
+    store = _store(tmp_path)
+    with pytest.raises(ha.Refused) as caught:
+        ha.create(store, _payload(type="rerun_ci", facts={"pr": 1, "head_sha": HEAD, "run_id": 1,
+                                                          "failed_job_ids": "17"}),
+                  requester={"session": "s-1"}, now=NOW)
+    assert caught.value.code == "facts_invalid"

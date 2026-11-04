@@ -41,6 +41,7 @@ import contextlib
 import inspect
 import hashlib
 import json
+import math
 import os
 import secrets
 import sys
@@ -439,11 +440,18 @@ def _check_facts(kind: str, facts: Optional[Mapping[str, Any]]) -> dict[str, Any
                               f"The {key} in this request must be a whole, non-negative number.")
             data[key] = value
     for key in ("expires_at", "start_time_epoch"):
-        if key in data and data[key] is not None and not isinstance(data[key], (int, float)):
-            try:
-                _parse(data[key])
-            except (TypeError, ValueError) as exc:
-                raise Refused("facts_invalid", f"The {key} in this request is not a timestamp.") from exc
+        if key in data and data[key] is not None:
+            value = data[key]
+            # Typed and finite (cx-openai-3 F3): bool/NaN/+inf/-inf are int/float subclasses or floats that
+            # compared in strange ways, so True or inf could stand in for a deadline.
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+                try:
+                    _parse(value) if isinstance(value, str) else (_ for _ in ()).throw(TypeError())
+                except (TypeError, ValueError) as exc:
+                    raise Refused("facts_invalid", f"The {key} in this request is not a timestamp.") from exc
+    for key in ("failed_job_ids", "job_ids", "prs", "paths"):
+        if key in data and data[key] is not None and not isinstance(data[key], (list, tuple)):
+            raise Refused("facts_invalid", f"The {key} in this request must be a list, not a single value.")
     return data
 
 
@@ -591,6 +599,10 @@ def create(
            "claim": _optional_text(who.get("claim"), field="claim"),
            "actor": _optional_text(who.get("actor"), field="actor"),
            "vendor": _optional_text(who.get("vendor"), field="vendor")}
+    if who["actor"] is not None:
+        _required_actor(who["actor"], code="requester_unknown",
+                        plain="The requester's actor names no operator identity, so nobody could show the approver "
+                              "is someone else; nothing was done.")
     if not who["session"]:
         raise Refused("requester_unknown",
                       "This request does not say which session asked, so nobody could verify the approver is "
@@ -763,6 +775,20 @@ def _canonical_actor(value: Any) -> str:
     return text.casefold()
 
 
+def _required_actor(value: Any, *, code: str, plain: str) -> str:
+    """A present actor must canonicalise to a non-empty identity; a bare/blank prefix is not one.
+
+    ``"tailnet:"``, ``" tailnet: "`` and ``"TAILNET:   "`` are non-empty strings that canonicalise to "".
+    Treating that as "no actor" skipped the separation check entirely, so the same operator could reach an
+    executed decision with one effect (cx-openai-3 F1, 2026-11-04). Malformed-present is refused, never
+    mapped to optional-absent.
+    """
+    canonical = _canonical_actor(value)
+    if not canonical:
+        raise Refused(code, plain)
+    return canonical
+
+
 def _validate_record(record: Mapping[str, Any]) -> str:
     """Refuse a record whose own shape is wrong — a tampered or corrupt record never reaches an executor."""
     requester = record.get("requester")
@@ -774,7 +800,7 @@ def _validate_record(record: Mapping[str, Any]) -> str:
                       "This request does not record who asked, so the approver cannot be shown to be someone "
                       "else; nothing was done.")
     actor = requester.get("actor")
-    if actor is not None and _identity_text(actor) is None:
+    if actor is not None and (_identity_text(actor) is None or not _canonical_actor(actor)):
         # The actor is compared against the approver; a non-string here cannot be compared, so it is
         # corruption rather than a strange spelling (cx-openai-3 F1).
         raise Refused("record_invalid",
@@ -919,14 +945,42 @@ def _decide_locked(store: Store, request_id: str, *, context: OperatorContext, a
                        "receipt": receipt, "blocked_reason": None, "binding": binding})
         store.put(record)
         publish_event(store, record, "approved")
-        return execute(store, record, actor=actor, now=moment, executor=bridge, timeout_s=timeout_s,
+        return execute(store, record, actor=actor, now=moment, executor=bridge, timeout_s=timeout_s, _transition_held=True,
                        binding=binding)
 
 
 def execute(store: Store, record: Mapping[str, Any], *, actor: str, now: Optional[datetime] = None,
+            _transition_held: bool = False,
             executor: Optional[Executor] = None, timeout_s: float = DEFAULT_EXECUTE_TIMEOUT_S,
             binding: Optional[str] = None) -> dict[str, Any]:
+    """Take the per-request transition marker (unless the caller already owns it) and run the action."""
+    if _transition_held:
+        return _execute_locked(store, record, actor=actor, now=now, executor=executor, timeout_s=timeout_s,
+                               binding=binding)
+    rid = str(record.get("id") or "")
+    store.path(rid)
+    claim = store.requests_dir / f"{rid}.deciding"
+    _acquire(claim, "transition_in_progress",
+             "This request is being decided or answered right now, so the action was not started.")
+    try:
+        fresh = store.get(rid)
+        if not isinstance(fresh, dict):
+            raise Refused("unknown_request", "There is no such request on the Needs-you board.")
+        return _execute_locked(store, fresh, actor=actor, now=now, executor=executor, timeout_s=timeout_s,
+                               binding=binding)
+    finally:
+        _release(claim)
+
+
+def _execute_locked(store: Store, record: Mapping[str, Any], *, actor: str, now: Optional[datetime] = None,
+                    executor: Optional[Executor] = None, timeout_s: float = DEFAULT_EXECUTE_TIMEOUT_S,
+                    binding: Optional[str] = None) -> dict[str, Any]:
     """Run an approved action exactly once, at the exact facts that were approved.
+
+    ``_transition_held`` is set by ``decide()``, which already owns the per-request transition marker; a
+    DIRECT retry takes the marker itself. Without that, a retry could complete while a question() was
+    writing its stale snapshot, and the question would then overwrite executed/ok with approved/null
+    (cx-openai-3 F2, 2026-11-04).
 
     The execution boundary re-validates everything the approval relied on: the record's schema and type must still be
     the closed-list action that was approved, its facts must hash to the approved binding, and the executor must confirm
