@@ -35,7 +35,9 @@ function compile(path) {
       const imp = kept.length ? `import { ${kept.join(', ')} } from ${spec}` : ''
       return [imp, ...stubs].filter(Boolean).join('\n')
     })
-  let js = ts.transpileModule(source, { compilerOptions: { jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, removeComments: true } }).outputText
+  // `.ts` is transpiled WITHOUT JSX: `jsx: ReactJSX` makes a generic arrow (`<R>(x: R) => ...`) parse as a JSX tag.
+  const jsx = path.endsWith('.tsx') ? ts.JsxEmit.ReactJSX : ts.JsxEmit.None
+  let js = ts.transpileModule(source, { compilerOptions: { jsx, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, removeComments: true } }).outputText
   js = js.replace(/from ["']([^"']+)["']/g, (whole, spec) => {
     if (!spec.startsWith('.')) return `from ${JSON.stringify(pathToFileURL(require.resolve(spec)).href)}`
     let target = resolve(dirname(path), spec)
@@ -70,6 +72,15 @@ const queue = {
   pending_count: 1, known_pending_count: 1, complete: true, gaps: [], as_of: '2030-01-01T00:00:00Z', recent: [], filtered_count: 1, offset: 0,
 }
 const queuePartial = { ...queue, pending_count: null, known_pending_count: 1, complete: false, gaps: [{ source: 'releases', reason: 'did not answer' }] }
+// A desk projection whose envelope says one source did not answer, with no decisions and an empty tab: this is the
+// shape where a renderer that defaults to "No open decisions on file" / "No rows on file" claims completeness it
+// does not have (reviewer F1, 2026-11-04).
+const projectionPartial = {
+  ...projection,
+  errors: ['releases did not answer'],
+  decisions: [], decision_gap: null,
+  tabs: { runtime: { panels: [{ id: 'p', title: 'Panel', rows: [], empty: null }] } },
+}
 
 // Vocabulary that must never appear together.
 const LOADING = /\bLoading\b|has not answered/i
@@ -87,14 +98,28 @@ for (const [state, fixture] of Object.entries({
   loading: { data: null, error: null, loading: true, refetch() {} },
   error: { data: null, error: 'HTTP 503 from the desk projection', loading: false, refetch() {} },
   ready: { data: projection, error: null, loading: false, refetch() {} },
+  partial: { data: projectionPartial, error: null, loading: false, refetch() {} },
+  stale: { data: projection, error: 'refetch failed', loading: false, stale: true, refetch() {} },
 })) {
   globalThis.__deskFixture = fixture
-  const text = render(React.createElement(DeskBoard, deskConfig))
+  let text = ''
+  try { text = render(React.createElement(DeskBoard, deskConfig)) } catch (e) {
+    cases.push({ surface: '/agents', state, passed: false, failed_assertions: [`rendering threw: ${e.name}: ${e.message}`], text: '' })
+    continue
+  }
   caseOf('/agents', state, text, [
     ['loading and failure words never co-render', !(LOADING.test(text) && FAILED.test(text))],
     state === 'loading' ? ['a loading page says loading', /Loading/i.test(text)] : ['no loading claim', true],
     state === 'error' ? ['a failed page says unavailable exactly as a failure', /unavailable/i.test(text)] : ['no failure claim', !/Agents unavailable/i.test(text)],
-    state === 'ready' ? ['a ready page renders its rows', /Fixture row/.test(text)] : ['no rows before data', !/Fixture row/.test(text)],
+    (state === 'ready' || state === 'stale') ? ['a page with data renders its rows', /Fixture row/.test(text)] : ['no rows before data', !/Fixture row/.test(text)],
+    // F1: while the envelope says sources are missing, the renderer may not print a complete-looking line.
+    state === 'partial' ? ['partial never claims "No open decisions on file"', !/No open decisions on file/i.test(text)] : ['no false empty claim', true],
+    state === 'partial' ? ['partial never claims "No rows on file"', !/No rows on file/i.test(text)] : ['no false panel empty', true],
+    state === 'partial' ? ['partial says a source did not answer', /did not answer/i.test(text)] : ['no gap claim', true],
+    state === 'partial' ? ['partial says the list is not complete', /not complete/i.test(text)] : ['no completeness claim', true],
+    // F2 retained-data path: last-good data must be labelled, never shown as current.
+    state === 'stale' ? ['a stale page labels the retained data', /last good/i.test(text)] : ['no stale label when not stale', true],
+    state === 'stale' ? ['a stale page still renders its rows', /Fixture row/.test(text)] : ['rows only when expected', true],
   ])
 }
 
@@ -104,15 +129,23 @@ for (const [state, fixture] of Object.entries({
   error: { data: null, error: 'The latest evidence is unavailable. Please try again.', refresh() {} },
   partial: { data: { ...queuePartial }, error: null, refresh() {} },
   ready: { data: queue, error: null, refresh() {} },
+  malformed: { data: { items: 'not-a-list', gaps: 'nope' }, error: null, loading: false, refresh() {} },
 })) {
   globalThis.__govFixture = () => fixture
-  const text = render(React.createElement(ApprovalsHub))
+  let text = ''
+  try { text = render(React.createElement(ApprovalsHub)) } catch (e) {
+    cases.push({ surface: '/approvals', state, passed: false, failed_assertions: [`rendering threw: ${e.name}: ${e.message}`], text: '' })
+    continue
+  }
   caseOf('/approvals', state, text, [
     ['loading and failure words never co-render', !(LOADING.test(text) && FAILED.test(text))],
     state === 'error' ? ['a failed page says unavailable', /unavailable/i.test(text)] : ['no failure claim', !/Queue unavailable/i.test(text)],
     state === 'partial' ? ['a partial page shows its known rows', /Fixture item/.test(text)] : ['no partial rows', true],
     state === 'partial' ? ['a partial page never shows a complete-looking total', !/\b1 waiting for review\b/.test(text)] : ['no complete total', true],
     state === 'partial' ? ['a partial page says the total is unknown', /not yet known|unavailable/i.test(text)] : ['no total claim', true],
+    // F3: a malformed payload renders as unreadable; it must not throw (the render call above would have thrown).
+    state === 'malformed' ? ['a malformed payload says it could not be read', /could not be read/i.test(text)] : ['no unreadable claim', true],
+    state === 'malformed' ? ['a malformed payload never claims a complete total', !/\b1 waiting for review\b/.test(text)] : ['no total from nothing', true],
   ])
 }
 

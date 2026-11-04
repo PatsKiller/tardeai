@@ -73,20 +73,48 @@ export function deriveSurfaceState<T>(reading: SurfaceReading<T>, shape: Surface
   const data = reading.data ?? null
   const refreshing = reading.refreshing === true
   const hasData = data !== null && data !== undefined
-  const gaps = hasData && shape.gaps ? [...shape.gaps(data as T)] : []
   const base = { data: null as T | null, gaps: [] as readonly string[], totalKnown: true, refreshing }
-  if (hasData && shape.usable && !shape.usable(data as T)) {
-    return { ...base, state: 'unreadable', refreshing: false }
+  const unreadable = (): SurfaceState<T> => ({ ...base, state: 'unreadable', refreshing: false })
+  // F3 (review, 2026-11-04): a caller's extractor assumes a shape. If the payload is malformed, the extractor THROWS —
+  // and a contract that crashes instead of reporting "could not be read" is not a contract. A throw is therefore the
+  // UNREADABLE state, never a silent fallback (a fallback would report "no gaps" about a payload we could not read)
+  // and never an exception out of render.
+  const extract = <R>(fn: (d: T) => R): { ok: true; value: R } | { ok: false } => {
+    try { return { ok: true, value: fn(data as T) } } catch { return { ok: false } }
+  }
+  if (hasData && shape.usable) {
+    const u = extract(d => shape.usable!(d))
+    if (!u.ok || !u.value) return unreadable()
+  }
+  let gaps: string[] = []
+  if (hasData && shape.gaps) {
+    const g = extract(d => [...shape.gaps!(d)])
+    if (!g.ok) return unreadable()
+    gaps = g.value
   }
   if (!hasData) {
     if (reading.error) return { ...base, state: 'unavailable', refreshing: false }
     if (reading.loading) return { ...base, state: 'loading', refreshing: false }
-    return { ...base, state: 'unreadable', refreshing: false }
+    return unreadable()
   }
   if (gaps.length) return { ...base, state: 'partial', data, gaps, totalKnown: false }
-  if (shape.isEmpty && shape.isEmpty(data as T)) return { ...base, state: 'empty', data }
+  if (shape.isEmpty) {
+    const e = extract(d => shape.isEmpty!(d))
+    if (!e.ok) return unreadable()
+    if (e.value) return { ...base, state: 'empty', data }
+  }
   if (reading.stale) return { ...base, state: 'stale', data }
   return { ...base, state: 'ready', data }
+}
+
+/**
+ * Did the surface render data the operator can read? `empty` counts: the read succeeded and said so. `partial` counts:
+ * some sources answered and the gaps are named. This is the ONE predicate the footer uses, so the shell and the page
+ * cannot hold different opinions about the same render (F2 review, 2026-11-04).
+ */
+export function rendersData(state: SurfaceState<unknown> | null): boolean {
+  if (!state) return false
+  return state.state === 'ready' || state.state === 'partial' || state.state === 'stale' || state.state === 'empty'
 }
 
 /** The words a state may use, and — the testable half — the vocabulary it may never use. */
@@ -146,4 +174,16 @@ export function surfaceGap<T>(s: SurfaceState<T>, shape: SurfaceShape<T>, opts: 
 export function refreshMarker<T>(s: SurfaceState<T>, shape: SurfaceShape<T>): SurfaceGapText | null {
   if (!s.refreshing) return null
   return { title: `Updating the ${shape.what}…`, reason: 'Showing the last read while a fresh one arrives.', action: 'none' }
+}
+
+/** Who owns the footer's surface slot. Pure, so the ownership rule is testable without rendering the shell (F2). */
+export type SurfaceReport = { name: string; dataLoaded: boolean }
+
+/**
+ * The next footer report given the current one and an incoming publish. A `null` (unmount) clears the slot ONLY when
+ * the outgoing surface is the one that owns it; otherwise the incoming page's state survives a route change.
+ */
+export function nextSurfaceReport(prev: SurfaceReport | null, incoming: SurfaceReport | null, clearingFrom?: string): SurfaceReport | null {
+  if (incoming !== null) return incoming
+  return prev && clearingFrom && prev.name === clearingFrom ? null : prev
 }
