@@ -755,6 +755,21 @@ def reentry_row_status(row: dict[str, Any], *, stale_hours: float = 6.0,
     }
 
 
+def _holdings_for_scope() -> dict[str, Any]:
+    """The served position store, read through the loader the Command Center uses.
+
+    FQ-096 clearing condition (reviewer cc-deepseek-9, 2026-11-04): the HELD decision must be made per
+    account on the PRODUCTION path, not only in tests. The projection serves exactly what this returns,
+    so the store has to be read here; reading it nowhere made the account-aware rule unreachable.
+    An unreadable store returns {} and the row's own field stands, which is the pre-existing behaviour.
+    """
+    try:
+        from lib.portfolio_positions import load_store  # type: ignore
+        return load_store() or {}
+    except Exception:
+        return {}
+
+
 def reentry_projection(
     payload: dict[str, Any] | None,
     *,
@@ -781,7 +796,12 @@ def reentry_projection(
 
     criteria = payload.get("criteria") or {}
     stale_hours = float(criteria.get("stale_hours") or 6.0)
-    out = [reentry_row_status(r, stale_hours=stale_hours) for r in rows if isinstance(r, dict)]
+    holdings_doc = _holdings_for_scope()
+    out = [
+        reentry_row_status(r, stale_hours=stale_hours, holdings_doc=holdings_doc)
+        if holdings_doc else reentry_row_status(r, stale_hours=stale_hours)
+        for r in rows if isinstance(r, dict)
+    ]
     counts: dict[str, int] = {}
     for r in out:
         counts[r["status"]] = counts.get(r["status"], 0) + 1

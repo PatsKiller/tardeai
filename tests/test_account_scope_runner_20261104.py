@@ -142,3 +142,19 @@ def test_D_the_reentry_surface_does_not_borrow_another_accounts_residual(state):
     held_row = dict(row, account="schwab_individual")
     assert rs.reentry_row_status(held_row, holdings_doc=holdings)["status"] == rs.HELD
     assert rs.reentry_row_status(held_row, holdings_doc={"holdings": []})["status"] == rs.READY
+
+
+def test_E_the_served_projection_decides_held_from_the_store(monkeypatch):
+    """The production projection (what api_v2 serves) must not fall back to the desk's symbol-wide boolean."""
+    holdings = {"holdings": [{"symbol": "SPCX", "account": "schwab_individual", "shares": 12}]}
+    monkeypatch.setattr(rs, "_holdings_for_scope", lambda: holdings)
+    payload = {
+        "rows": [{"symbol": "SPCX", "account": "schwab_ira", "held": True,
+                  "gates": [{"id": "price_fresh", "pass": True}], "price_age_h": 0.2}],
+        "criteria": {"stale_hours": 6.0},
+    }
+    served = rs.reentry_projection(payload)
+    row = served["rows"][0]
+    assert row["status"] == rs.READY, f"the served projection rendered {row['status']} for an IRA row"
+    assert row["held"] is False
+    assert row["held_accounts"] == ["schwab_individual"]
