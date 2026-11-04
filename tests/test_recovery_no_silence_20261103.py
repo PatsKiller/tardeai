@@ -414,13 +414,13 @@ def test_a_resumed_claim_cannot_repage_after_a_peer_delivered(monkeypatch, tmp_p
     def peer_a(seed):
         seen = {"n": 0}
 
-        def stale(day, key):
+        def stale(day, key, material=None):
             seen["n"] += 1
             if seen["n"] == 1:
                 seed.put("a-read")          # the pre-lock read happened, with a stale view
                 resume.wait(15)
                 return "absent"             # resume on what it saw before the peer worked
-            return real_state(day, key)
+            return real_state(day, key, material)
 
         router._recovery_state = stale
         seed.put(("a-claimed", router.recovery_t1_claim(msg)))
@@ -775,7 +775,7 @@ def test_a_paused_release_cannot_free_a_reclaimed_lock(monkeypatch, tmp_path):
     a_paused, resume = threading.Event(), threading.Event()
     real_append = router._recovery_append
 
-    def blocking_append(day, key, state):
+    def blocking_append(day, key, state, **kwargs):
         real_append(day, key, state)
         if state == "released":
             a_paused.set()

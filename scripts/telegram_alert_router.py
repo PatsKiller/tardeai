@@ -614,8 +614,21 @@ def _recovery_case_key(message: str) -> str:
     return parsed if parsed else build_dedupe_key(message)
 
 
+def _recovery_material(message: str) -> Optional[str]:
+    """The producer's material digest carried on the page, or None for a legacy page without one."""
+    match = _RECOVERY_MATERIAL_RE.search(message or "")
+    return match.group(1) if match else None
+
+
 #: A claim older than this without a delivery is abandoned (crash/timeout) and may be retaken.
 _RECOVERY_T1_CLAIM_STALE_SECONDS = 600
+
+#: The repeat rule is one page per case per day. A LATER MATERIAL CHANGE may page ONCE more, so a
+#: genuine update is never swallowed by a bound that only meant to stop repeats. Anything beyond that
+#: (or any repeat) is recorded DURABLY in the recovery ledger — a refusal is never silent again
+#: (cc6 BLOCK 2026-11-04: the bound was silent in both halves).
+_RECOVERY_T1_MAX_DELIVERED_PAGES_PER_CASE_DAY = 2
+_RECOVERY_MATERIAL_RE = re.compile(r"\bmaterial:([0-9a-f]{8,64})\b")
 
 
 def _recovery_ledger_rows() -> list[dict]:
@@ -636,11 +649,20 @@ def _recovery_ledger_rows() -> list[dict]:
     return rows
 
 
-def _recovery_state(day: str, key: str) -> str:
-    """State for this case-day. DELIVERED is terminal: no later row can un-deliver it (F5b)."""
+def _recovery_state(day: str, key: str, material: Optional[str] = None) -> str:
+    """State for this case-day, scoped to one material digest when the page carries one.
+
+    DELIVERED is terminal for the material it delivered: no later row can un-deliver it (F5b), and a
+    page carrying a DIFFERENT material is a new fact rather than a repeat, so it is not blocked by that
+    delivered row. A legacy row with no material matches any material (conservative: it delivered an
+    unidentified page, so the repeat rule still applies).
+    """
     state = "absent"
     for row in _recovery_ledger_rows():
         if row.get("day") != day or row.get("case") != key:
+            continue
+        row_material = row.get("material")
+        if material is not None and row_material and str(row_material) != material:
             continue
         if row["state"] == "delivered":
             return "delivered"
@@ -648,14 +670,63 @@ def _recovery_state(day: str, key: str) -> str:
     return state
 
 
-def _recovery_append(day: str, key: str, state: str) -> None:
+def _recovery_delivered_materials(day: str, key: str) -> list:
+    """The material digests (None for legacy rows) this case-day has actually paged."""
+    out = []
+    for row in _recovery_ledger_rows():
+        if row.get("day") != day or row.get("case") != key or row.get("state") != "delivered":
+            continue
+        material = row.get("material")
+        out.append(str(material) if material else None)
+    return out
+
+
+def _recovery_claimed_material(day: str, key: str) -> Optional[str]:
+    """The material of the attempt currently in flight, "" for a legacy claim, None when none is."""
+    latest = None
+    for row in _recovery_ledger_rows():
+        if row.get("day") != day or row.get("case") != key:
+            continue
+        latest = row
+    if latest is None or latest.get("state") != "claimed":
+        return None
+    material = latest.get("material")
+    return str(material) if material else ""
+
+
+def _recovery_bound_reason(message: str) -> str:
+    """Why this page cannot go out now — repeat, the material-change cap, or an attempt in flight."""
+    day = _budget_day()
+    key = _recovery_case_key(message)
+    material = _recovery_material(message)
+    if _recovery_state(day, key, material) == "delivered":
+        return "recovery_t1_daily_case_bound"
+    delivered = {m for m in _recovery_delivered_materials(day, key) if m}
+    if (material and material not in delivered
+            and len(delivered) >= _RECOVERY_T1_MAX_DELIVERED_PAGES_PER_CASE_DAY):
+        return "recovery_t1_material_change_cap"
+    claimed_material = _recovery_claimed_material(day, key)
+    if claimed_material is not None and material and claimed_material and material != claimed_material:
+        # NEW information during the in-flight window: say so, even though this attempt cannot page.
+        return "recovery_t1_material_change_in_flight"
+    # A repeat, or an attempt still in flight for the same material: the case-day bound is the reason
+    # (the vocabulary downstream already keys on). The durable row still carries the material digest.
+    return "recovery_t1_daily_case_bound"
+
+
+def _recovery_append(day: str, key: str, state: str, *, material: Optional[str] = None,
+                     reason: Optional[str] = None) -> None:
+    row = {"day": day, "case": key, "state": state,
+           "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "pid": os.getpid()}
+    if material:
+        row["material"] = str(material)
+    if reason:
+        row["reason"] = str(reason)
     try:
         _RECOVERY_T1_PAGE_PATH.parent.mkdir(parents=True, exist_ok=True)
         fd = os.open(_RECOVERY_T1_PAGE_PATH, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
         with os.fdopen(fd, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps({"day": day, "case": key, "state": state,
-                                 "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                                 "pid": os.getpid()}, sort_keys=True) + "\n")
+            fh.write(json.dumps(row, sort_keys=True) + "\n")
     except OSError as exc:  # a ledger fault must not silence a T1
         log.warning("recovery T1 ledger append failed (%s); the page is still allowed", exc)
 
@@ -746,7 +817,7 @@ def _recovery_reclaim_guard():
 
 
 def recovery_t1_state(message: str) -> str:
-    return _recovery_state(_budget_day(), _recovery_case_key(message))
+    return _recovery_state(_budget_day(), _recovery_case_key(message), _recovery_material(message))
 
 
 def recovery_t1_claim(message: str) -> bool:
@@ -762,7 +833,8 @@ def recovery_t1_claim(message: str) -> bool:
     """
     day = _budget_day()
     key = _recovery_case_key(message)
-    if _recovery_state(day, key) == "delivered":
+    material = _recovery_material(message)
+    if _recovery_state(day, key, material) == "delivered":
         return False
     lock = _recovery_claim_lock(day, key)
     owner = uuid.uuid4().hex
@@ -814,7 +886,18 @@ def recovery_t1_claim(message: str) -> bool:
                     os.close(guard)   # releases the flock
         except OSError:
             break  # cannot lock: fail-open, the page is loud
-    if _recovery_state(day, key) == "delivered":       # authoritative, while we hold the lock
+    if _recovery_state(day, key, material) == "delivered":       # authoritative, while we hold the lock
+        if held:
+            try:
+                os.unlink(lock)
+            except OSError:
+                pass
+        return False
+    # A materially different page is new information, not a repeat: it may use the remaining page
+    # allowance for this case-day. Past the allowance the caller RECORDS the refusal durably.
+    delivered_materials = {m for m in _recovery_delivered_materials(day, key) if m}
+    if (material and material not in delivered_materials
+            and len(delivered_materials) >= _RECOVERY_T1_MAX_DELIVERED_PAGES_PER_CASE_DAY):
         if held:
             try:
                 os.unlink(lock)
@@ -826,13 +909,14 @@ def recovery_t1_claim(message: str) -> bool:
         # Bind this execution to the generation it just created, so a later settle can prove it is
         # settling ITS attempt rather than whichever attempt is newest when it happens to run.
         _RECOVERY_ATTEMPT.set(owner)
-    _recovery_append(day, key, "claimed")
+    _recovery_append(day, key, "claimed", material=material)
     return True
 
 
 def recovery_t1_mark_delivered(message: str) -> None:
     day = _budget_day()
     key = _recovery_case_key(message)
+    material = _recovery_material(message)
     lock = _recovery_claim_lock(day, key)
     # Settlement is serialised with reclamation (cx3 R7-F1): without the same mutex, a reclaimer can
     # replace our lock between the owner read and the unlink, and we would free the FRESH claimant's
@@ -844,7 +928,7 @@ def recovery_t1_mark_delivered(message: str) -> None:
         # only unlinked below after the owner check, which is safe without the mutex.
         log.warning("recovery T1 reclaim mutex timed out; settling delivered unserialised")
     try:
-        _recovery_append(day, key, "delivered")        # delivered is terminal whoever sends
+        _recovery_append(day, key, "delivered", material=material)   # terminal for THIS material
         if not _recovery_attempt_matches(day, key):
             return                                      # a stale attempt must not settle the new one
         owner = _RECOVERY_CLAIM_OWNERS.pop(f"{day}\x00{key}", None)
@@ -863,8 +947,9 @@ def recovery_t1_release(message: str) -> None:
     """A failed attempt releases ITS claim — never another claimant's (cx3 R5-F2 / R7-F1 / F5b)."""
     day = _budget_day()
     key = _recovery_case_key(message)
-    if _recovery_state(day, key) == "delivered":
-        return  # delivered is terminal; a stale resumer must not re-open the day
+    material = _recovery_material(message)
+    if _recovery_state(day, key, material) == "delivered":
+        return  # delivered is terminal for this material; a stale resumer must not re-open the day
     lock = _recovery_claim_lock(day, key)
     status, guard = _recovery_reclaim_guard()
     if status == "busy":
@@ -881,7 +966,7 @@ def recovery_t1_release(message: str) -> None:
         lock_owner = _recovery_lock_owner(lock)
         if lock_owner is not None and lock_owner != owner:
             return  # another live claimant owns this case; leave its lock and its state alone
-        _recovery_append(day, key, "released")
+        _recovery_append(day, key, "released", material=material)
         try:
             lock.unlink()
         except OSError:
@@ -926,11 +1011,13 @@ def should_send_telegram(message: str, *, consume: bool = False) -> bool:
         # the message to the intent path, which claims atomically at the point of delivery.
         state = recovery_t1_state(message)
         if state == "delivered":
-            record_suppressed(message, "recovery_t1_daily_case_bound")
+            record_suppressed(message, _recovery_bound_reason(message))
             return False
         if consume:
             if not recovery_t1_claim(message):
-                record_suppressed(message, "recovery_t1_daily_case_bound")
+                # A materially different event is recorded with its own reason (and pages on the next
+                # attempt when nothing is in flight); a repeat keeps the plain case-day reason.
+                record_suppressed(message, _recovery_bound_reason(message))
                 return False
             # Between the claim and the caller's release handler there were fallible steps — the
             # exemptions read is one (a malformed budget file raises here) — and a raise left the case
@@ -943,6 +1030,9 @@ def should_send_telegram(message: str, *, consume: bool = False) -> bool:
                 raise
             return True
         if state == "claimed":
+            # A PREVIEW used to return False here with no record at all: during the in-flight window
+            # a materially different event vanished with neither a page nor a trace (cc6 BLOCK P2).
+            record_suppressed(message, _recovery_bound_reason(message))
             return False
         _last_recovery_exemptions[:] = _recovery_exemptions_for(message)
         return True
@@ -985,7 +1075,13 @@ def peek_should_send(message: str) -> bool:
 
 
 def record_suppressed(message: str, reason: str):
-    """Record a suppressed alert for audit purposes."""
+    """Record a suppressed alert for audit purposes.
+
+    For a recovery T1 the record is DURABLE as well: the case-day bound used to leave only an
+    in-memory line, so a later material change inside the same case and day vanished with nothing to
+    find (cc6 BLOCK 2026-11-04). The ledger row is state ``suppressed`` with the material digest and
+    the machine reason; the in-memory list is kept for the existing tooling.
+    """
     _suppression_log.append({
         "ts": time.time(),
         "reason": reason,
@@ -994,6 +1090,13 @@ def record_suppressed(message: str, reason: str):
     })
     if len(_suppression_log) > 500:
         _suppression_log.pop(0)
+    if _RECOVERY_T1_MARKER in message:
+        try:
+            _recovery_append(_budget_day(), _recovery_case_key(message), "suppressed",
+                             material=_recovery_material(message), reason=reason)
+        except Exception as exc:  # noqa: BLE001 — a durable-record fault must not change routing
+            log.warning("recovery T1 suppression record failed (%s); routing is unchanged",
+                        type(exc).__name__)
 
 
 def get_suppression_log() -> list:
@@ -1278,9 +1381,10 @@ def _recovery_intent_bound(message: str, route: dict) -> dict | None:
         return None
     if recovery_t1_claim(message):
         return None
-    record_suppressed(message, "recovery_t1_daily_case_bound")
+    reason = _recovery_bound_reason(message)
+    record_suppressed(message, reason)
     return {**route, "decision": "DEDUPED", "deliver": False, "window_minutes": 0,
-            "reason": "recovery_t1_daily_case_bound"}
+            "reason": reason}
 
 
 def intent_archive_report_type(route: dict) -> str:

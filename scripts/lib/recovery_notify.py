@@ -28,6 +28,7 @@ No write to the broker, no credential, no order: this module only builds and sen
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import logging
 import math
@@ -240,6 +241,27 @@ def parse_case_token(text: str) -> Optional[str]:
         return None
 
 
+#: The facts a page is ABOUT, as opposed to what it happens to read this minute. A price or a
+#: confidence moves between runs without changing the decision; the state, the trigger, the plan,
+#: the eligibility and the loss are what a later run may genuinely update. The router uses this
+#: digest to tell a repeat of what the operator already saw from a new material change in the same
+#: case and day (BOARD 16 follow-up, cc6 BLOCK 2026-11-04).
+MATERIAL_FIELDS = (
+    "symbol", "account", "account_key", "account_id", "case_id", "case_key",
+    "exit_date", "exit_cluster", "state", "verdict", "next_trigger", "trigger",
+    "eligibility", "plan", "summary", "size_to_restore", "realized_loss_usd",
+    "exit_price", "avg_exit_price", "materiality_tier", "tier",
+)
+
+
+def material_digest(case: dict) -> str:
+    """A stable digest of the case's material facts. Volatile price/confidence are deliberately out."""
+    if not isinstance(case, dict):
+        return ""
+    core = {key: case.get(key) for key in MATERIAL_FIELDS}
+    return hashlib.sha256(json.dumps(core, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:16]
+
+
 def build_message(case: dict) -> str:
     """The operator page. First line carries the marker and the stable case key."""
     sym = str(case.get("symbol") or "UNKNOWN").upper()
@@ -247,7 +269,11 @@ def build_message(case: dict) -> str:
     price = case.get("price", case.get("current_price"))
     exit_price = case.get("exit_price", case.get("avg_exit_price"))
     vs_exit = case.get("pct_vs_exit")
-    lines = [f"{RECOVERY_T1_MARKER} Recovery: {sym} · case:{case_token_for(case_key)}"]
+    digest = material_digest(case)
+    token = case_token_for(case_key)
+    # The material digest rides on the first line so the router (which only sees text) can tell a
+    # repeat from a later material change in the same case and day without re-deriving case fields.
+    lines = [f"{RECOVERY_T1_MARKER} Recovery: {sym} · case:{token}" + (f" · material:{digest}" if digest else "")]
     facts = []
     if price is not None:
         facts.append(f"now {_money(price)}")
@@ -310,7 +336,11 @@ def notify_recovery_case(case: dict, *, policy: Optional[dict] = None,
     result["priority"] = PRIORITY_P1  # a T1 case is a page, in every branch below
     send = sender or _default_sender()
     symbol = str(case.get("symbol") or "UNKNOWN").upper()
-    key = f"recovery:{case_key_for(case)}:T1:{case.get('state') or 'unknown'}"
+    # The repeat floor is per MATERIAL, not per case-state: a material change (a new trigger, a new
+    # eligibility, a changed plan) must reach the router's bound, which decides repeat vs new
+    # information and records the refusal durably (cc6 BLOCK 2026-11-04).
+    digest = material_digest(case)
+    key = f"recovery:{case_key_for(case)}:T1:{case.get('state') or 'unknown'}" + (f":{digest}" if digest else "")
 
     # Lazy, fail-open batching: the v008 batching module may not be on this checkout yet.
     try:
@@ -332,7 +362,10 @@ def notify_recovery_case(case: dict, *, policy: Optional[dict] = None,
             log.warning("batch declined a T1 for a non-floor reason (%s); using the direct P1 send for %s",
                         decision.get("reason"), symbol)
         else:
-            body = batch_text(header=f"{RECOVERY_T1_MARKER} Recovery · case:{case_token_for(case_key_for(case))}", items=[
+            header = f"{RECOVERY_T1_MARKER} Recovery · case:{case_token_for(case_key_for(case))}"
+            if digest:
+                header += f" · material:{digest}"
+            body = batch_text(header=header, items=[
                 {"title": f"{symbol} is recovering", "detail": message.split("\n", 1)[1].strip() if "\n" in message else "",
                  "next": "Open Home to plan re-entry"}])
             ok = send(body, priority=PRIORITY_P1, dedupe_minutes=0, producer="recovery_notify")
@@ -353,5 +386,5 @@ def notify_recovery_case(case: dict, *, policy: Optional[dict] = None,
     return result
 
 
-__all__ = ["RECOVERY_T1_MARKER", "TIERS", "DEFAULT_REPEAT_FLOOR_MINUTES",
-           "load_policy", "resolve_tier", "build_message", "notify_recovery_case"]
+__all__ = ["RECOVERY_T1_MARKER", "TIERS", "DEFAULT_REPEAT_FLOOR_MINUTES", "MATERIAL_FIELDS",
+           "material_digest", "load_policy", "resolve_tier", "build_message", "notify_recovery_case"]
