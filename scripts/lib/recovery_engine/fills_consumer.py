@@ -304,6 +304,15 @@ def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date]
     common = {"residual_shares": read.residual_shares, "pre_exit_weight_pct": read.pre_exit_weight_pct,
               "residual_as_of": read.residual_as_of, "gaps": read.gaps, **moments}
     if not existing:
+        # codex I12 at ce917: a case CREATED from an observation with no source identity used to report complete=True
+        # with no identity diagnostic — the P&L and stop gaps were honest, the identity gap was silent. Unknown identity
+        # must be stated, never a quiet gap-free sum: the case is still created (the observation is real) but the pass
+        # is told it cannot establish which economic events these are.
+        unidentified_count = sum(1 for f in fills if f.source_id is None)
+        if unidentified_count:
+            _unresolved(
+                f"{unidentified_count} of {len(fills)} observation(s) behind the new {symbol}/{account} case carry "
+                "no source identity; which economic events they are cannot be established from the source")
         return rc.consume_fills(store, fills, **common)
     # Partition by OWNERSHIP, not by "everything up to the newest row's last date" (cx-openai-2 F12). A fill belongs to
     # the existing case whose date range contains it; only fills belonging to no case are new. Without this, a third
@@ -322,6 +331,11 @@ def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date]
     ranges: list[tuple[rc.RecoveryCase, date, date]] = []
     for case in existing:
         dates = sorted(date.fromisoformat(str(e["date"])[:10]) for e in case.exits)
+        if not dates:
+            # codex I12: a stored case with no members is not "nothing to reconcile" — it cannot be confirmed at all,
+            # and passing over it silently is how "empty" comes to mean "checked".
+            _unresolved(f"the case {case.case_key} is stored with no members; it cannot be confirmed by any read")
+            continue
         ranges.append((case, dates[0], dates[-1]))
     assigned: dict[str, list[rc.ExitFill]] = {case.case_key: [] for case, _, _ in ranges}
     unassigned: list[rc.ExitFill] = []
@@ -337,6 +351,12 @@ def open_or_extend(store: rc.CaseStore, read: ExitRead, *, today: Optional[date]
     for case, _low, _high in ranges:
         got = assigned[case.case_key]
         if not got:
+            # codex I12 at ce917: this early return bypassed reconciliation coverage entirely, so a case the read did
+            # not cover passed as "nothing to do". A source that stops reporting an observation is NOT evidence the
+            # exit was deleted (contract I6/I11): the member is unconfirmed, and the pass must say so.
+            _unresolved(
+                f"the case {case.case_key} exists but this read produced no observation for it; its "
+                f"{len(case.exits)} stored member(s) are unconfirmed in this pass, and no disappearance is claimed")
             continue
         # A DATE IS NOT A FILL IDENTITY (codex F14), and a date is not a membership rule either (class block
         # 2026-11-03). Pair across the WHOLE case by identity first, so a correction that moves the date on the same id

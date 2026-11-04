@@ -903,3 +903,43 @@ def test_f16_cross_source_same_event_is_unresolved_not_two_confident_members(sto
     assert second["complete"] is False, f"an undeclared cross-source link must not report a complete pass: {second}"
     assert any("crosswalk" in g for g in second["gaps"]), second["gaps"]
     conn.close()
+
+
+def test_i12_creation_without_a_source_identity_is_reported_not_silent(store):
+    """codex I12 at ce917: the FIRST creation of a case from an observation with no source identity reported
+    complete=True with no identity diagnostic. The P&L and stop gaps were already honest; the identity gap was not.
+    Unknown identity must be stated, never a quiet gap-free sum."""
+    from lib.recovery_engine import fills_consumer as fc
+    conn = _source_db()
+    # A sale whose dedupe_key is NULL: the source gives this observation no identity at all.
+    conn.execute("INSERT INTO trade_transactions (trade_date, action, symbol, quantity, price, account) "
+                 "VALUES ('2026-10-30','SELL','SPCX',100,80.0,'schwab_taxable')")
+    _positions(conn, 0)
+    conn.commit()
+    out = fc.run(store, conn, today=TODAY, now=NOW)
+    assert out["opened"], out
+    assert out["complete"] is False, f"an unidentifiable creation must not report a complete pass: {out}"
+    assert any("identity" in g for g in out["gaps"]), out["gaps"]
+    conn.close()
+
+
+def test_i12_an_existing_case_the_read_did_not_cover_is_not_silently_unchecked(store):
+    """codex I12 at ce917: a case that exists but receives no observation took an early return that bypassed coverage
+    accounting, so 'empty' silently meant 'unchecked'. A missing source observation is not evidence of deletion — it
+    is unconfirmed, and the pass must say so."""
+    from lib.recovery_engine import fills_consumer as fc
+    conn = _source_db()
+    _watch(conn, "2026-10-27", 80.0, -200.0)      # id 1 -> the case's only member
+    _positions(conn, 0)
+    conn.commit()
+    first = fc.run(store, conn, today=TODAY, now=NOW)
+    case = store.get(first["opened"][0])
+    assert len(case.exits) == 1, case.exits
+    # That observation is gone from the source, and the symbol is still enumerated by a later transaction.
+    conn.execute("DELETE FROM stopped_out_watch")
+    conn.execute("INSERT INTO trade_transactions (trade_date, action, symbol, quantity, price, account, dedupe_key) "
+                 "VALUES ('2026-10-30','SELL','SPCX',50,81.0,'schwab_taxable','k2')")
+    conn.commit()
+    second = fc.run(store, conn, today=TODAY, now=NOW)
+    assert second["complete"] is False, f"an uncovered existing case must not pass as checked: {second}"
+    conn.close()
