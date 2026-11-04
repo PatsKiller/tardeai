@@ -24,14 +24,17 @@ T0 = datetime(2026, 11, 4, 2, 0, tzinfo=timezone.utc)
 
 
 def test_the_first_alert_is_immediate_and_every_later_one_respects_the_clock():
-    """ONE clock governs everything. The first thing ever said about a mount is immediate (nobody has been told), and
-    after that an escalation, a recovery and a repeat all wait for the interval (cx-openai-4 R3)."""
+    """ONE clock governs repeats and recoveries. The first thing ever said about a mount is immediate (nobody has been
+    told); a repeat and a recovery then wait for the interval (cx-openai-4 R3).
+
+    WARN -> CRITICAL is the ONE named exception and it is pinned in its own tests below. This test previously asserted
+    that an escalation inside the window was silent — the defect restated as a control (cc-deepseek-2 R6)."""
     assert M.alert_for(None, "critical", {}, T0, MON) == "critical"          # first ever
     fresh = {"alerted_at": (T0 - timedelta(minutes=61)).isoformat(), "alerted_band": "warn"}
     assert M.alert_for("warn", "critical", fresh, T0, MON) == "critical"     # interval passed: escalation is said
     inside = {"alerted_at": T0.isoformat(), "alerted_band": "warn"}
-    assert M.alert_for("warn", "critical", inside, T0, MON) is None          # inside the window: silence
-    assert M.alert_for("critical", "ok", inside, T0, MON) is None            # recovery too
+    assert M.alert_for("warn", "critical", inside, T0, MON) == "critical"    # ESCALATION: never held
+    assert M.alert_for("critical", "ok", inside, T0, MON) is None            # recovery still waits
     assert M.alert_for("critical", "ok", fresh, T0, MON) == "ok"             # after the interval: recovery said
 
 
@@ -126,51 +129,41 @@ def test_a_recovery_is_interval_gated_like_every_other_alert():
     assert M.alert_for("critical", "ok", entry, T0 + timedelta(minutes=61), MON) == "ok"
 
 
-def _flap_alerts(pattern, minutes_per_tick, mon):
-    """Drive the real decision function over a sequence of observed bands, updating state exactly as the run does."""
-    entry, alerts, t = {}, 0, T0
-    for band in pattern:
-        decision = M.alert_for(entry.get("band"), band, entry, t, mon)
-        if entry.get("band") != band:
-            entry["since"] = t.isoformat()          # the run records when the band began
-        entry["band"] = band
+def test_a_warn_to_critical_escalation_is_said_at_once():
+    """cc-deepseek-2 R6, the BLOCK. With one clock and no exception, a mount reported WARN at 85% that crossed 90% at
+    the next poll said NOTHING for a full interval — 45 minutes at the shipped 15-minute poll and 60-minute interval,
+    long enough for the mount to reach 100%, and the ledger this lane writes lives on that mount.
+
+    This is the test an earlier head did not have: the escalation is delivered at +15, and the two critical polls after
+    it are REPEATS inside the window and stay silent."""
+    entry, said = {}, []
+    for minute, band in ((0, "warn"), (15, "critical"), (30, "critical"), (45, "critical")):
+        t = T0 + timedelta(minutes=minute)
+        decision = M.alert_for(entry.get("band"), band, entry, t, MON)
         if decision:
-            alerts += 1
+            said.append((minute, decision))
             entry["alerted_at"] = t.isoformat()
-            entry["alerted_band"] = band        # the run records this too; without it the flap guard cannot bite
-        t += timedelta(minutes=minutes_per_tick)
-    return alerts
+            entry["alerted_band"] = band
+        entry["band"] = band
+    assert said == [(0, "warn"), (15, "critical")], f"the escalation must be said at once and not repeated: {said}"
 
 
-def test_a_flapping_band_cannot_storm():
-    """cc5 / cx-openai-4, review of 3a421ab9a: the transition path bypassed the interval, so an ok<->critical band
-    flipping every 15 minutes produced 96 alerts in 24 hours (97 for warn<->critical). Bounded now to one per
-    interval, which is the number the config text states."""
-    ticks = 24 * 4                                   # 24 hours of 15-minute runs
-    pattern = ["ok" if i % 2 == 0 else "critical" for i in range(ticks)]
-    alerts = _flap_alerts(pattern, 15, MON)
-    assert alerts > 0, "the monitor must still speak at all"
-    # Measured bound: one per interval (24 at 60 minutes) plus the single initial escalation.
-    assert alerts <= 25, f"a flapping band must stay at the stated bound (<=25/day), got {alerts}"
-
-
-def test_warn_critical_flapping_is_bounded_too():
-    ticks = 24 * 4
-    pattern = ["warn" if i % 2 == 0 else "critical" for i in range(ticks)]
-    alerts = _flap_alerts(pattern, 15, MON)
-    assert alerts <= 25, f"warn<->critical flapping must stay bounded (<=25/day), got {alerts}"
-
-
-def test_a_steady_critical_band_still_re_alerts_on_the_interval():
-    """The first fix must not be lost to the second: a band that never changes still speaks every interval."""
-    entry = {"band": "critical", "alerted_at": T0.isoformat()}
-    assert M.alert_for("critical", "critical", entry, T0 + timedelta(minutes=61), MON) == "critical"
-
-
-def test_a_recovery_still_alerts_when_the_interval_has_passed():
-    entry = {"band": "critical", "alerted_at": T0.isoformat(), "alerted_band": "critical"}
-    assert M.alert_for("critical", "ok", entry, T0 + timedelta(minutes=61), MON) == "ok"
-    assert M.alert_for("critical", "ok", entry, T0 + timedelta(minutes=5), MON) is None
+def test_the_escalation_bypass_stays_inside_the_stated_bound():
+    """The bypass is narrow on purpose: it needs `alerted_band == "warn"` exactly, and delivering it sets
+    `alerted_band = "critical"`, so every later critical is a repeat and every re-cross after a recovery is
+    interval-gated (a recovery can only set the band back if it was itself reported). One extra alert per
+    warn->critical cycle. Measured against this PR's own stated bound of 25 in 24 hours."""
+    ticks = 24 * 4          # 24 hours at a 15-minute poll
+    patterns = {
+        "warn<->critical every 15m": ["warn" if i % 2 == 0 else "critical" for i in range(ticks)],
+        "critical,critical,ok x32": ["critical", "critical", "ok"] * 32,
+        "warn then critical for 23h45": ["warn"] + ["critical"] * (ticks - 1),
+        "warn,critical,ok,critical repeating": ["warn", "critical", "ok", "critical"] * (ticks // 4),
+    }
+    measured = {name: _flap_alerts(p, 15, MON) for name, p in patterns.items()}
+    over = {name: n for name, n in measured.items() if n > 25}
+    assert not over, f"the escalation bypass must not break the stated bound: {over} (all: {measured})"
+    assert all(n > 0 for n in measured.values()), f"the monitor must still speak on every pattern: {measured}"
 
 
 def test_a_bad_healthy_cycle_cannot_exceed_the_stated_bound():

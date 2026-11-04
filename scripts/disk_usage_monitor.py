@@ -182,31 +182,6 @@ def transition(prev: Optional[str], cur: str) -> Optional[str]:
     return cur
 
 
-def realert_due(entry: Mapping[str, Any], cur: str, now: datetime, mon: Mapping[str, Any]) -> bool:
-    """Whether a band that has NOT changed still needs to be said again.
-
-    2026-11-04: this monitor alerted once per band CHANGE, so `/` sat at `critical` from 03:15Z for 23 hours with a
-    single alert and the operator heard nothing while the disk kept filling. A state that never re-alerts is a
-    one-shot, not monitoring: while a mount stays bad, the same band is restated every `realert_minutes`. Dedupe stays
-    by band and by interval — never by raw percent, which is what made it noisy in the first place.
-    """
-    if cur == "ok":
-        return False
-    minutes = mon.get("realert_minutes")
-    if not minutes:
-        return False
-    last = entry.get("alerted_at")
-    if not last:
-        return True  # bad now and no record of ever telling anyone
-    try:
-        last_dt = datetime.fromisoformat(str(last))
-    except ValueError:
-        return True
-    if last_dt.tzinfo is None:
-        last_dt = last_dt.replace(tzinfo=timezone.utc)
-    return (now - last_dt) >= timedelta(minutes=float(minutes))
-
-
 _INHERITED_SETTINGS = ("realert_minutes", "warn_pct", "critical_pct")
 
 
@@ -248,30 +223,46 @@ def _minutes_since_last_alert(entry: Mapping[str, Any], now: datetime) -> Option
     return _minutes_since(entry.get("alerted_at"), now)
 
 
-_RANK = {"ok": 0, "warn": 1, "critical": 2}
-
-
 def alert_for(prev: Optional[str], cur: str, entry: Mapping[str, Any], now: datetime,
               mon: Mapping[str, Any]) -> Optional[str]:
-    """One decision point, ONE clock, and a PENDING state that is not lost.
+    """One decision point, ONE clock, ONE named exception, and a PENDING state that is not lost.
 
     Four measured defects shaped it, all 2026-11-04:
     * alerting only on a band CHANGE let `/` sit critical for 23 hours on a single alert;
     * throttling only the unchanged path let an ok<->critical flap produce 96 alerts in 24 hours;
-    * letting a recovery or an escalation bypass the interval produced 65 alerts in 24 hours against a promise of 25;
+    * letting a recovery OR ANY severity increase bypass the interval produced 65 alerts in 24 hours against a promise
+      of 25 (`critical,critical,ok` repeated: each recovery reset the clock, so the next critical called itself an
+      escalation);
     * comparing against the PREVIOUSLY OBSERVED band DISCARDED a recovery: the run records `band = ok` every poll, so a
       recovery throttled at +75 made every later poll look "unchanged ok" and it was never sent. The last REPORTED
       band stayed critical and was ignored.
 
-    The comparison is therefore against the band last REPORTED (`alerted_band`), not the band last seen. Inside the
-    window nothing is said and the pending state is kept, so it goes out the moment the interval allows — delayed,
-    never discarded. The bound is unchanged: at most one alert per interval, 24 in 24 hours at the default.
+    The comparison is against the band last REPORTED (`alerted_band`), not the band last seen. Inside the window
+    nothing is said and the pending state is kept, so it goes out the moment the interval allows — delayed, never
+    discarded.
+
+    WARN -> CRITICAL IS THE ONE EXCEPTION (cc-deepseek-2's measurement, cx-openai-4 R6). A blanket interval made the
+    escalation itself silent: a mount at 85% is reported WARN, crosses 90% at the next poll, and the operator heard
+    nothing for a full interval — 45 minutes at the shipped 15-minute poll and 60-minute interval, long enough for the
+    mount to reach 100%, and the ledger this lane writes lives on that mount. "You were told it is bad, now it is
+    worse" is not a restatement and must not wait.
+
+    It is narrow on purpose, and the narrowness is what keeps the bound: the bypass needs `alerted_band == "warn"`
+    exactly, and delivering it sets `alerted_band = "critical"`, so every later critical is a REPEAT and stays
+    interval-gated, and a re-cross after a recovery is interval-gated too because only a *reported* recovery can set
+    the band back. Measured over 24 h at 15-minute polls: 24-25 alerts on every pattern the suite exercises, against
+    the stated bound of 25 — one extra alert per warn->critical cycle, and a cycle needs a recovery that is itself
+    interval-gated.
+
+    `prev` is kept for call-site symmetry and is deliberately NOT consulted: only the last REPORTED band decides.
     """
     interval = float(mon["realert_minutes"])       # metric_policy guarantees it; a band cannot miss it
+    reported = str(entry.get("alerted_band") or "")
+    if reported == "warn" and cur == "critical":
+        return cur      # escalation: said now, not at the end of the window (see above; bounded by construction)
     since = _minutes_since_last_alert(entry, now)
     if since is not None and since < interval:
         return None                                 # inside the window: silence, and the pending state is retained
-    reported = str(entry.get("alerted_band") or "")
     if cur == "ok":
         # A recovery is owed only if something bad was actually reported; an all-quiet mount says nothing.
         return "ok" if reported and reported != "ok" else None
@@ -936,7 +927,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     try:
         rules = DH.load_rules(Path(a.rules) if a.rules else None, home=Path(a.home) if a.home else None)
         mon = rules["monitor"]
-        for key in ("mounts", "warn_pct", "critical_pct", "state_name", "producer", "intent_domain", "intent_kinds"):
+        # `realert_minutes` is required at RUNTIME by metric_policy, so it is required at STARTUP too: otherwise a
+        # rules file missing it passes validation and then dies inside the mount loop with a traceback, exit 1, no
+        # JSON error line, no receipt and no state write (cc-deepseek-2 R6). Refuse it before the lane runs.
+        for key in ("mounts", "warn_pct", "critical_pct", "realert_minutes", "state_name", "producer",
+                    "intent_domain", "intent_kinds"):
             if key not in mon:
                 raise DH.RulesError(f"rules_missing:monitor.{key}")
         if not float(mon["warn_pct"]) < float(mon["critical_pct"]):
