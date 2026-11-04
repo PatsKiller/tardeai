@@ -17,6 +17,15 @@ const require = createRequire(join(app, 'package.json'))
 const ts = require('typescript')
 const React = require('react')
 const { renderToStaticMarkup } = require('react-dom/server')
+// The server renderer emits one `useLayoutEffect does nothing on the server` warning per component — expected in SSR,
+// and each stack line embeds a multi-megabyte `data:` module URL. Unfiltered, these three files wrote ~16 MB per build
+// and swamped the CI log (row 38 / page-fixtures 2026-11-04). Drop exactly that warning; everything else still prints.
+const __origConsoleError = console.error
+console.error = (...args) => {
+  if (String(args[0] ?? '').includes('useLayoutEffect does nothing on the server')) return
+  __origConsoleError(...args)
+}
+
 const { MemoryRouter } = require('react-router-dom')
 
 // The page's mobile-detail hook reads matchMedia in a useState initializer. A server render has no window; the
