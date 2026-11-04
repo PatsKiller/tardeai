@@ -1,8 +1,9 @@
 // Releases & Schedules operator view: plain words, honest clocks, no machine identifiers.
 // Runs in the CC-v3 build:  node --experimental-strip-types src/lib/releasesOperatorView.test.ts
 import {
-  agentStateSentence, checkSentence, coordinationNote, engineerPanelProps, flightFreshnessNote, goingLive, jobsLine,
-  liveNow, mergedWaiting, needsYou, needsYouAction, needsYouFacts, plainReason, plainText, stuck,
+  agentStateSentence, checkSentence, coordinationNote, coordinationSource, engineerPanelProps, flightFreshnessNote,
+  flightSource, goingLive, goingLiveSentence, jobsLine, liveNow, mergedWaiting, needsYou, needsYouAction,
+  needsYouFacts, PANEL_NONE, panelSentence, plainReason, plainText, stuck, type Panel,
 } from './releasesOperatorView.ts'
 import type { SectionView } from './releasesSchedules.ts'
 import { normalizeRow } from './deployInFlight.ts'
@@ -190,6 +191,56 @@ check('an unrecorded agent state is NOT idle', agentStateSentence('').idle === n
 check('an unrecognised agent state is NOT idle', agentStateSentence('pondering').idle === null)
 check('working is not idle, and idle is', agentStateSentence('working').idle === false && agentStateSentence('idle').idle === true)
 check('a stale agent report is unknown, not idle', agentStateSentence('stale').idle === null)
+
+
+// ---- THE GENERAL PROPERTY (codex third read, #2541): every panel can say "I do not know", and does whenever its
+//      inputs are insufficient. The table below is the whole rule: for each panel x each insufficient source state,
+//      the panel must NOT claim "none", and the claim is allowed only on a current source.
+const INSUFFICIENT = [
+  { name: 'loading',     src: flightSource({ loading: true }, when) },
+  { name: 'no answer',   src: flightSource({}, when) },
+  { name: 'errored',     src: flightSource({ answered: true, error: 'boom' }, when) },
+  { name: 'stale empty', src: flightSource({ stale: true }, when) },
+  { name: 'stale rows',  src: flightSource({ answered: true, stale: true }, when) },
+]
+const PANELS: Panel[] = ['needs_you', 'going_live', 'stuck', 'agents']
+for (const panel of PANELS) {
+  for (const { name, src } of INSUFFICIENT) {
+    const sentence = panelSentence(panel, src)
+    check(`${panel}: a ${name} source never claims "none"`, sentence !== PANEL_NONE[panel])
+    check(`${panel}: a ${name} source says it cannot tell`, /^Cannot tell /.test(sentence))
+  }
+  check(`${panel}: a CURRENT source may claim "none"`,
+    panelSentence(panel, flightSource({ answered: true }, when)) === PANEL_NONE[panel])
+}
+
+// the three counterexamples codex measured, as source-level facts
+const coordStale = coordinationSource({ status: 'OK', answered: true, stale: true }, when)
+check('cached coordination with status OK is not current when the response is stale', coordStale.canAssertEmpty === false)
+check('a stale agent list does not say nobody is working', panelSentence('agents', coordStale) !== PANEL_NONE.agents)
+const coordPartial = coordinationSource({ status: 'PARTIAL', answered: true }, when)
+check('a partly answered agent list does not say nobody is working', panelSentence('agents', coordPartial) !== PANEL_NONE.agents)
+const coordMissing = coordinationSource({ status: null }, when)
+check('a missing coordination block does not say nobody is working', panelSentence('agents', coordMissing) !== PANEL_NONE.agents)
+const stuckStale = flightSource({ answered: true, stale: true }, when)
+check('a stale open-change list does not say nothing is stuck', panelSentence('stuck', stuckStale) !== PANEL_NONE.stuck)
+check('an unreadable open-change source does not say nothing needs you',
+  panelSentence('needs_you', flightSource({ answered: true, error: 'x' }, when)) !== PANEL_NONE.needs_you)
+
+// R5 contradiction: known merged work + unknown open-change census must not produce an empty-census claim
+const knownWaiting = { known: true, waiting: true }
+const unknownComparison = { known: false, waiting: false }
+const currentFlight = flightSource({ answered: true }, when)
+check('an unknown comparison never renders "nothing is going live"',
+  goingLiveSentence(currentFlight, unknownComparison) !== PANEL_NONE.going_live)
+check('an unknown comparison says the comparison could not be read',
+  /could not be read/.test(goingLiveSentence(currentFlight, unknownComparison)))
+check('known-merged + current empty census is allowed to say no open change is waiting',
+  /No open change is waiting to merge/.test(goingLiveSentence(currentFlight, knownWaiting)))
+check('known-merged + unknown census says it cannot tell whether an open change is waiting',
+  /cannot tell whether an open change is also waiting/.test(goingLiveSentence(stuckStale, knownWaiting)))
+check('no merged work + unknown census still says it cannot tell',
+  goingLiveSentence(stuckStale, { known: true, waiting: false }) !== PANEL_NONE.going_live)
 
 console.log(`releasesOperatorView: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

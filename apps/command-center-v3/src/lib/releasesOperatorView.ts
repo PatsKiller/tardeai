@@ -121,7 +121,7 @@ export function liveNow(sections: Record<string, SectionView<any>>, generatedAt:
  *
  *  `waiting` is what the page keys its "nothing is going live" sentence on: when true, that sentence must not appear.
  */
-export type MergedWaiting = { waiting: boolean; headline: string; detail: string; tone: Tone }
+export type MergedWaiting = { known: boolean; waiting: boolean; headline: string; detail: string; tone: Tone }
 
 export function mergedWaiting(
   next: { is_serving?: boolean | null; commits_ahead?: number | null; subject?: string | null
@@ -130,7 +130,7 @@ export function mergedWaiting(
   when: (v: string | null | undefined) => string,
 ): MergedWaiting {
   if (!next || typeof next.is_serving !== 'boolean') {
-    return { waiting: false, tone: 'warning',
+    return { known: false, waiting: false, tone: 'warning',
       headline: 'Whether merged work is still waiting cannot be read',
       detail: 'The page could not compare what is merged with what is running, so treat "nothing is going live" as unknown rather than as an all-clear.' }
   }
@@ -140,7 +140,7 @@ export function mergedWaiting(
   const running = serving?.since ? `the release that has been serving since ${when(serving.since)}`
     : 'the release that is serving now'
   if (next.is_serving) {
-    return { waiting: false, tone: 'success',
+    return { known: true, waiting: false, tone: 'success',
       headline: 'Main is the version that is running',
       detail: `Nothing merged is waiting to be promoted. The version running is ${running}.` }
   }
@@ -151,7 +151,7 @@ export function mergedWaiting(
   const merged = next.committed_at ? ` The newest of them was merged ${when(next.committed_at)}.` : ''
   const prs = Array.isArray(next.prs_since_serving) && next.prs_since_serving.length
     ? ` They came in through ${next.prs_since_serving.length} change${next.prs_since_serving.length === 1 ? '' : 's'}.` : ''
-  return { waiting: true, tone: 'warning', headline: count,
+  return { known: true, waiting: true, tone: 'warning', headline: count,
     detail: `The version running is ${running}; code merged after that has not been promoted yet.${merged}${prs}` }
 }
 
@@ -189,6 +189,99 @@ export function agentStateSentence(state: string | null | undefined): { text: st
   if (s === 'waiting') return { text: 'waiting its turn', idle: true }
   if (s === 'stale') return { text: 'its last report is out of date', idle: null }
   return { text: `reported as ${s.replace(/_/g, ' ')}`, idle: null }
+}
+
+// ── THE GENERAL PROPERTY (codex third read, #2541) ───────────────────────────────────────────────────────────
+//
+// Three rounds of this page produced the same defect in different clothes: the page had LESS information than it
+// needed to be decisive, and rendered decisiveness anyway. "Unknown source" → an empty list. "Agent list did not
+// answer" → "No agent is working". "Comparison unavailable" → a verdict. Two special cases were fixed; the class did
+// not go away, because each fix taught one panel a trick instead of changing the rule.
+//
+// The rule: a panel may assert "none" ONLY when its own source is CURRENT — answered, fresh, and not errored. In every
+// other state it says what it does not know and why. One source's positive answer never certifies another source's
+// emptiness, and a known fact about one question (merged work is waiting) never certifies an empty census of another
+// (nothing is waiting to merge).
+
+export type SourceState = 'current' | 'stale' | 'loading' | 'unavailable' | 'unknown'
+export type SourceOpinion = { state: SourceState; canAssertEmpty: boolean; note: string }
+
+const SOURCE_REASON: Record<Exclude<SourceState, 'current'>, string> = {
+  stale: 'the list on record is out of date',
+  loading: 'it is still being read',
+  unavailable: 'it could not be read',
+  unknown: 'no answer was recorded',
+}
+
+/** What the open-change (in-flight) source can support. `answered` is "a response object exists at all" — a page with
+ *  no data, no error and no loading flag is UNKNOWN, not empty. */
+export function flightSource(input: { answered?: boolean; loading?: boolean; stale?: boolean; error?: string | null },
+                             when: (v: string | null | undefined) => string, asOf?: string | null): SourceOpinion {
+  const clock = asOf ? ` (last read ${when(asOf)})` : ''
+  if (input.error) return { state: 'unavailable', canAssertEmpty: false,
+    note: `The open-change list could not be read${clock}, so an empty list here is not proof that nothing is open.` }
+  if (input.loading && !input.answered) return { state: 'loading', canAssertEmpty: false,
+    note: 'Still asking the open-change source — this is not an answer yet.' }
+  if (input.stale && !input.answered) return { state: 'stale', canAssertEmpty: false,
+    note: `The open-change list on record is out of date${clock}, so an empty list here is not proof that nothing is open.` }
+  if (!input.answered) return { state: 'unknown', canAssertEmpty: false,
+    note: 'Nothing has been read from the open-change source yet, so an empty list here is not proof that nothing is open.' }
+  if (input.stale) return { state: 'stale', canAssertEmpty: false,
+    note: `The open-change list is out of date${clock}; what is shown may have moved since.` }
+  return { state: 'current', canAssertEmpty: true, note: '' }
+}
+
+/** What the agent-list (coordination) source can support. It inherits the whole response's staleness: a cached
+ *  response whose coordination block still says OK is NOT a current answer (codex third read, counterexample 1). */
+export function coordinationSource(input: { status: 'OK' | 'PARTIAL' | 'UNAVAILABLE' | null | undefined
+  answered?: boolean; stale?: boolean }, when: (v: string | null | undefined) => string,
+  asOf?: string | null): SourceOpinion {
+  const clock = asOf ? ` (last report ${when(asOf)})` : ''
+  if (!input.answered || input.status === 'UNAVAILABLE' || !input.status) {
+    return { state: 'unavailable', canAssertEmpty: false,
+      note: 'Cannot tell who is working — the agent list did not answer. That is not the same as nobody working.' }
+  }
+  if (input.stale) return { state: 'stale', canAssertEmpty: false,
+    note: `The agent list is out of date${clock}, so an agent missing from it is not shown to be idle.` }
+  if (input.status === 'PARTIAL') return { state: 'stale', canAssertEmpty: false,
+    note: 'The agent list only partly answered, so an agent missing from it is not shown to be idle.' }
+  return { state: 'current', canAssertEmpty: true, note: '' }
+}
+
+export type Panel = 'needs_you' | 'going_live' | 'stuck' | 'agents'
+
+/** What an EMPTY panel says. `none` only on a current source; otherwise the panel states its own ignorance. */
+export const PANEL_NONE: Record<Panel, string> = {
+  needs_you: 'Nothing needs you.',
+  going_live: 'Nothing is going live today.',
+  stuck: 'Nothing is stuck right now.',
+  agents: 'No agent is working right now.',
+}
+
+export function panelSentence(panel: Panel, source: SourceOpinion): string {
+  if (source.canAssertEmpty) return PANEL_NONE[panel]
+  const reason = SOURCE_REASON[(source.state === 'current' ? 'unknown' : source.state)]
+  const subject = panel === 'agents' ? 'who is working' : panel === 'stuck' ? 'what is stuck'
+    : panel === 'needs_you' ? 'whether anything needs you' : 'what is going live'
+  return `Cannot tell ${subject} — ${reason}. That is not the same as ${panel === 'agents' ? 'nobody working'
+    : panel === 'stuck' ? 'nothing being stuck' : panel === 'needs_you' ? 'nothing needing you' : 'nothing going live'}.`
+}
+
+/** The Going-live panel has TWO sources: the open-change census and the merged-vs-serving comparison. The "nothing is
+ *  going live" claim needs BOTH to be decisive; if either is unknown the panel says so, and a known "merged work is
+ *  waiting" does not license an empty-census claim (codex third read, counterexamples 3 and 5). */
+export function goingLiveSentence(flight: SourceOpinion,
+                                  comparison: { known: boolean; waiting: boolean }): string {
+  if (!comparison.known) {
+    return 'Cannot tell what is going live — whether merged work is still waiting to be promoted could not be read. '
+      + 'That is not the same as nothing going live.'
+  }
+  if (comparison.waiting) {
+    return flight.canAssertEmpty
+      ? 'No open change is waiting to merge; the merged work above is what is waiting to go live.'
+      : 'The merged work above is waiting to go live. This page cannot tell whether an open change is also waiting.'
+  }
+  return panelSentence('going_live', flight)
 }
 
 export type StageGroup = { stage: OperatorStage; label: string; rows: InFlightPr[] }

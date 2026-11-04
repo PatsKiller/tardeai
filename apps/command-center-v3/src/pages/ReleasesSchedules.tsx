@@ -20,7 +20,7 @@ import {
 } from '../lib/releasesSchedules'
 import OpsDeskFrame from '../components/OpsDeskFrame'
 import { IN_FLIGHT_PATH, normalizeCoordination, normalizeRows, type DeployInFlightWire, type InFlightPr } from '../lib/deployInFlight'
-import { agentStateSentence, coordinationNote, engineerPanelProps, flightFreshnessNote, goingLive, jobsLine, liveNow, mergedWaiting, needsYou, needsYouAction, needsYouFacts, plainText, stuck } from '../lib/releasesOperatorView'
+import { agentStateSentence, coordinationSource, engineerPanelProps, flightSource, goingLive, goingLiveSentence, jobsLine, liveNow, mergedWaiting, needsYou, needsYouAction, needsYouFacts, panelSentence, plainText, stuck } from '../lib/releasesOperatorView'
 
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 14, minWidth: 0, display: 'grid', gap: 8 }
 const h2: CSSProperties = { margin: 0, fontSize: TYPE.md, fontWeight: 800, color: TOKENS.text[0] }
@@ -172,7 +172,7 @@ function N8nTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
 /** The operator view: what is live, what needs him, what is stuck and who fixes it (operator 2026-11-03). Every number
  *  carries its own clock or says in words that it has none; no code, SHA, branch or PR number appears here. */
 function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, flightError, loading, now,
-  flightLoading, flightStale, coordStatus }: {
+  flightLoading, flightStale, flightAnswered, coordStatus }: {
   s: Record<SectionKey, SectionView<any>>; rows: InFlightPr[]
   agents: Array<{ agent?: string | null; session?: string; task?: string | null; state?: string
     execution_state?: string | null; as_of?: string | null; claim_as_of?: string | null }>
@@ -180,7 +180,8 @@ function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, fli
   flightError: string | null; loading: boolean; now: number
   // codex R4 (#2541): an empty list means nothing ONLY when the source actually answered. These three carry the
   // source's own state into the render, so an unanswered or stale request can never print "nothing" / "no agent".
-  flightLoading: boolean; flightStale: boolean; coordStatus: 'OK' | 'PARTIAL' | 'UNAVAILABLE' }) {
+  flightLoading: boolean; flightStale: boolean; flightAnswered: boolean
+  coordStatus: 'OK' | 'PARTIAL' | 'UNAVAILABLE' }) {
   // An unparseable stamp is unknown, never an em-dash standing in for a time (codex R6).
   const when = (v: string | null | undefined) => { if (!v) return 'unknown'; const t = etDateTime(v); return t === '—' ? 'unknown' : t }
   // Every block that shows a number says when it was counted (lead, 2026-11-03).
@@ -196,13 +197,14 @@ function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, fli
   const notChecked = flightError ? `The open-change list could not be read (${plainText(flightError, 'no reason given')}); anything below is from the sources that answered, and this is not an all-clear.` : null
   // One sentence per SOURCE STATE, reused by every list. Nothing here claims a measured zero unless the source
   // answered and the answer was empty (codex R4).
-  const flightUnknown = flightLoading && !rows.length ? 'Still asking the open-change source — this is not an answer yet.'
-    : flightStale && !rows.length ? `The open-change list is stale${flightAsOf ? ` (checked ${when(flightAsOf)})` : ''}, so an empty list here is not proof that nothing is open.`
-      : null
-  const agentsUnknown = coordStatus !== 'OK' && !agents.length ? coordinationNote(coordStatus) : null
-  const agentsNote = coordStatus !== 'OK' && agents.length ? coordinationNote(coordStatus) : null
-  // Rows that ARE shown under a stale or still-loading read say so above themselves, not only when they are absent.
-  const flightNote = flightFreshnessNote({ loading: flightLoading, stale: flightStale, asOf: flightAsOf }, when)
+  // THE GENERAL PROPERTY (codex third read): every panel derives its own source state, and may assert "none" only
+  // when that source is current. No panel inherits another's confidence, and no list decides emptiness ad hoc.
+  const flightSrc = flightSource({ answered: flightAnswered, loading: flightLoading, stale: flightStale,
+    error: flightError }, when, flightAsOf)
+  const coordSrc = coordinationSource({ status: coordStatus, answered: coordStatus != null,
+    stale: flightStale }, when, coordAsOf)
+  const flightNote = flightSrc.state === 'current' ? null : flightSrc.note   // above rows that ARE shown
+  const agentsNote = agents.length && coordSrc.state !== 'current' ? coordSrc.note : null
   // codex R5: merged-but-not-live comes from the RELEASE payload, never from the open-PR list.
   const waiting = mergedWaiting(s.next_release.value as any, s.serving.value as any, when)
   return <div data-testid="rs-operator-view" style={{ display: 'grid', gap: 12, minWidth: 0 }}>
@@ -219,7 +221,7 @@ function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, fli
       <p style={muted}>{flightClock}</p>
       {notChecked ? <p role="status" style={{ ...muted, color: toneVars('warning').color }}>{notChecked}</p> : null}
       {flightNote && !notChecked ? <p role="status" style={{ ...muted, color: toneVars('warning').color }}>{flightNote}</p> : null}
-      {ask.length === 0 ? <p style={muted}>{flightUnknown ? flightUnknown : notChecked ? 'Nothing needs you from the sources that answered.' : 'Nothing needs you.'}</p> : ask.map(p => (
+      {ask.length === 0 ? <p style={muted}>{panelSentence('needs_you', flightSrc)}</p> : ask.map(p => (
         <div key={p.number} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}`, paddingTop: 8 }}>
           <div style={{ fontSize: TYPE.base, color: TOKENS.text[0], fontWeight: 700 }}>{plainText(p.title)}</div>
           <div style={muted}>{plainText(p.work?.owner ?? p.work?.board_owner, 'The agent that wrote it')}: {plainText(p.work?.current_task, 'the work is described only under Details for engineers')}.</div>
@@ -243,8 +245,7 @@ function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, fli
             <div style={{ fontSize: TYPE.base, color: TOKENS.text[0], fontWeight: 700 }}>{waiting.headline}</div>
             <div style={{ ...muted, color: waiting.tone === 'warning' ? toneVars('warning').color : TOKENS.text[1] }}>{waiting.detail}</div>
           </div> : null}
-      {!rows.length ? <p style={muted}>{waiting.waiting ? 'No open change is waiting to merge; the merged work above is what is waiting to go live.'
-        : (flightUnknown ?? notChecked ?? 'Nothing is going live today.')}</p> : groups.map(g => (
+      {!rows.length ? <p style={muted}>{goingLiveSentence(flightSrc, waiting)}</p> : groups.map(g => (
         <div key={g.stage}>
           <h3 style={{ ...h2, fontSize: TYPE.base, marginTop: 8 }}>{g.label} · {g.rows.length}</h3>
           {g.rows.map(p => <div key={p.number} style={{ ...muted, padding: '4px 0' }}>
@@ -257,7 +258,8 @@ function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, fli
     <section data-testid="rs-stuck" style={panel}>
       <h2 style={h2}>Stuck — and who fixes it</h2>
       <p style={muted}>{flightClock}</p>
-      {!blocked.length ? <p style={muted}>{rows.length ? 'Nothing is stuck right now.' : (flightUnknown ?? notChecked ?? 'Nothing is stuck right now.')}</p>
+      {flightNote ? <p role="status" style={{ ...muted, color: toneVars('warning').color }}>{flightNote}</p> : null}
+      {!blocked.length ? <p style={muted}>{panelSentence('stuck', flightSrc)}</p>
         : blocked.map(({ pr, because, whose }) => <div key={pr.number} style={{ ...muted, padding: '4px 0' }}>
           <b style={{ color: TOKENS.text[0] }}>{plainText(pr.title)}</b> — {because}. {whose} has the next step.
         </div>)}
@@ -267,7 +269,7 @@ function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, fli
       <h2 style={h2}>Agents now</h2>
       <p style={muted}>{coordClock}</p>
       {agentsNote ? <p role="status" style={{ ...muted, color: toneVars('warning').color }}>{agentsNote}</p> : null}
-      {!agents.length ? <p style={muted}>{agentsUnknown ?? 'No agent is working right now.'}</p>
+      {!agents.length ? <p style={muted}>{panelSentence('agents', coordSrc)}</p>
         : agents.map((a, i) => {
           // cc3 review F2: BOARD agents carry no `agent` name and no `as_of`; the served facts are session,
           // execution_state and claim_as_of. Say the activity in words and the time we can actually prove.
@@ -356,7 +358,7 @@ export default function ReleasesSchedules() {
     <OperatorView s={s} rows={flightRows} agents={flightAgents} generatedAt={api.data?.generated_at ?? null}
       flightAsOf={flightWire?.generated_at ?? null} coordAsOf={normalizeCoordination(flightWire?.coordination).as_of}
       flightError={flightError} loading={api.loading && !api.data} now={now}
-      flightLoading={!!flight.loading && !flightWire} flightStale={!!flight.stale}
+      flightLoading={!!flight.loading && !flightWire} flightStale={!!flight.stale} flightAnswered={!!flightWire}
       coordStatus={normalizeCoordination(flightWire?.coordination).status} />
 
     <button type="button" id="rs-engineer-toggle" data-testid="rs-engineer-toggle" aria-expanded={eng} aria-controls="rs-engineer-details"
