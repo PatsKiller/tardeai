@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watchlist_unavailable_reasons_20261104",
+  "files": [
+    "apps/command-center-v3/src/lib/watchlistUnavailableReasons.view.test.mjs"
+  ],
+  "anchor": "WATCHLIST_UNAVAILABLE_REASONS_20261104",
+  "comment": [
+    "ANCHOR: WATCHLIST_UNAVAILABLE_REASONS_20261104 — FQ-076: the four disabled filters state their reason in visible text (not only a title tooltip a phone never shows) and an unknown next-review time reads 'not scheduled — no review time has been set for this name' instead of a bare dash. Nothing is removed; the disabled controls stay. Hermetic: reads the page source, no browser, no network."
+  ]
+}

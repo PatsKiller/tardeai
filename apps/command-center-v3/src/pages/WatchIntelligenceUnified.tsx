@@ -584,7 +584,12 @@ export default function WatchIntelligenceUnified() {
           <option value="">Origin</option>
           <option value="screener_find">Screener find</option>
         </select>
-        {/* Typed unavailable controls — disabled with explanation */}
+        {/* FQ-076: the reason for the disabled filters is now VISIBLE, not only in a title tooltip a phone never shows. */}
+        <span data-testid="filters-unavailable-reason" style={{ fontSize: TYPE.xs, color: BB.text3, flexBasis: '100%' }}>
+          Four filters are off until the broker provider lands — catalyst and earnings windows, relative-strength band and
+          valuation band. Everything else on this page works without it.
+        </span>
+        {/* Typed unavailable controls — disabled, with the reason stated above and in the title */}
         <select disabled style={{ ...inputStyle, opacity: 0.55 }} title="typed unavailable until broker provider lands" data-filter="catalyst_window">
           <option>Catalyst window (unavailable)</option>
         </select>
@@ -767,7 +772,8 @@ export default function WatchIntelligenceUnified() {
                   </div>
                   <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>
                     <b style={{ color: BB.text2 }}>Next review:</b>{' '}
-                    {(c as any).next_review_at || (c as any).next_review_condition || c.next_review_time || '—'}
+                    {(c as any).next_review_at || (c as any).next_review_condition || c.next_review_time
+                      || 'not scheduled — no review time has been set for this name'}
                   </div>
                   {c.primary_risk && <div style={{ fontSize: TYPE.xs, color: BB.red, marginTop: 6 }}>Risk: {c.primary_risk}</div>}
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, gap: 8 }}>
