@@ -7,11 +7,11 @@
   ],
   "anchor": "HOME_DO_NOW_20261022",
   "comment": [
-    "ANCHOR: HOME_DO_NOW_20261022 \u2014 operator-approved Home redesign: one 'Do now' queue (protect / decide / fix) replaces",
+    "ANCHOR: HOME_DO_NOW_20261022 — operator-approved Home redesign: one 'Do now' queue (protect / decide / fix) replaces",
     "Needs action, Requires attention, Operator inbox, Top risks and Platform. GET /api/v2/home/do-now is the data-broker",
     "projection home_do_now (HomeDoNow@v1): needs-action, inbox, risk snapshot, held-exit-coverage receipt, pending",
     "proposals and redeploys merged by id, sorted money at risk first, every source with as_of / basis / age / stale; an",
     "unreadable source is an item. No broker read, no write. Hermetic: in-memory payloads and a fake db_query.",
-    "FQ-097 (2026-11-04): a stop item renders the CIO verdict for that (symbol, account) from the capital plan and adds none of its own \u2014 the cio source, the verdict index and the four stop shapes."
+    "FQ-097 (2026-11-04): a stop item renders the CIO verdict for that (symbol, account) from the capital plan and adds none of its own — the cio source, the verdict index and the four stop shapes."
   ]
 }
