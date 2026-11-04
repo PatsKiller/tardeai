@@ -1219,19 +1219,7 @@ def _default_coord_dir() -> Path:
     return Path(good_persistent_root()) / COORD_DIR_REL
 
 
-def _source_as_of(path: Path, name: str, now: datetime) -> str | None:
-    """The source's own clock when it publishes one, else its file mtime. Never a mtime pretending to be a run."""
-    keys = SOURCE_AS_OF_KEYS.get(name, ())
-    if keys and path.suffix == ".json":
-        try:
-            doc = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            doc = None
-        if isinstance(doc, dict):
-            for key in keys:
-                got = LC._norm_iso(doc.get(key))
-                if got:
-                    return got
+def _mtime_iso(path: Path) -> str | None:
     try:
         return _iso(datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc))
     except OSError:
@@ -1242,8 +1230,12 @@ def read_coordination_sources(*, coord_dir: Path | None = None, last_success: Ma
                               now: datetime | None = None) -> dict[str, dict[str, Any]]:
     """{name: {label, path, ok, as_of, last_success_at, error}} for BOARD, operator decisions and the audit queue.
 
-    ``last_success`` is the caller's persisted map (name -> iso) so a failure can say WHEN it last worked rather than
-    only that it does not now. Never raises: an unreadable source is a reported fact.
+    A source is OK only when it was READ and, for JSON, PARSED into the shape this reader expects. A corrupt, truncated,
+    empty, wrong-shaped or read-denied file is ``ok: False`` with an error that names the file, and its ``as_of`` stays
+    None — mtime is a clock for a source that was read, never a substitute for one that could not be (review R1,
+    2026-11-04: a corrupt file with a fresh mtime rendered "as of now").
+
+    ``last_success`` is the caller's persisted, unwrapped map (name -> iso) so a failure says WHEN it last worked.
     """
     now = now or _utc_now()
     base = Path(coord_dir) if coord_dir is not None else _default_coord_dir()
@@ -1254,26 +1246,61 @@ def read_coordination_sources(*, coord_dir: Path | None = None, last_success: Ma
         row: dict[str, Any] = {"label": SOURCE_LABEL[name], "path": str(path), "ok": False, "as_of": None,
                                "last_success_at": prior.get(name), "error": None}
         try:
-            size = path.stat().st_size
-            if size <= 0:
-                raise OSError("empty file")
-            row["as_of"] = _source_as_of(path, name, now)
-            row["ok"] = True
-            row["last_success_at"] = row["as_of"] or row["last_success_at"]
+            raw = path.read_bytes()
         except FileNotFoundError:
             row["error"] = f"{filename} not found"
+            out[name] = row
+            continue
+        except PermissionError:
+            row["error"] = f"{filename} read denied"
+            out[name] = row
+            continue
         except OSError as exc:
             row["error"] = f"{filename} unreadable ({exc.strerror or exc})"
+            out[name] = row
+            continue
+        if not raw.strip():
+            row["error"] = f"{filename} is empty"
+            out[name] = row
+            continue
+        as_of: str | None = None
+        if path.suffix == ".json":
+            try:
+                doc = json.loads(raw.decode("utf-8"))
+            except (ValueError, UnicodeDecodeError):
+                row["error"] = f"{filename} is not valid JSON"
+                out[name] = row
+                continue
+            if not isinstance(doc, dict):
+                row["error"] = f"{filename} has the wrong shape (expected an object)"
+                out[name] = row
+                continue
+            for key in SOURCE_AS_OF_KEYS.get(name, ()):
+                got = LC._norm_iso(doc.get(key))
+                if got:
+                    as_of = got
+                    break
+        row["ok"] = True
+        row["as_of"] = as_of or _mtime_iso(path)
+        row["last_success_at"] = row["as_of"]
         out[name] = row
     return out
 
 
 def _load_source_state(path: Path) -> dict[str, Any]:
+    """The persisted name -> last-success map. The file is an envelope (``{"schema", "last_success", "updated_at"}``);
+    reading it without unwrapping returned the envelope itself, so the first failure lost the history it exists to show
+    (review R2, 2026-11-04). A legacy flat map is still accepted."""
     try:
         doc = json.loads(path.read_text(encoding="utf-8"))
-        return doc if isinstance(doc, dict) else {}
     except (OSError, ValueError):
         return {}
+    if not isinstance(doc, dict):
+        return {}
+    inner = doc.get("last_success")
+    if isinstance(inner, dict):
+        return {k: v for k, v in inner.items() if isinstance(v, str) and v}
+    return {k: v for k, v in doc.items() if isinstance(v, str) and v}
 
 
 def _save_source_state(path: Path, readers: Mapping[str, Mapping[str, Any]]) -> None:
