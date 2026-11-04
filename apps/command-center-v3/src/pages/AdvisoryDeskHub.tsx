@@ -1,6 +1,8 @@
 import { Fragment, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { useApi } from '../hooks/useApi'
 import { hubTitle, hubSubtitle } from '../lib/terminalHubChrome'
+import { MobileDetailSheet, useMobilePageDetail } from '../components/MobileDetailSheet'
+import { RADIUS } from '../lib/designTokens'
 
 interface Props { onDrill?: (ctx: any) => void }
 
@@ -658,6 +660,7 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
   const [cls, setCls] = useState<(typeof CLASSES)[number]>('all')
   const [watchFilter, setWatchFilter] = useState<string>('all')
   const [expanded, setExpanded] = useState<string | null>(null)
+  const phone = useMobilePageDetail()
   const [feedbackMsg, setFeedbackMsg] = useState<string>('')
   const [showRemnants, setShowRemnants] = useState(false)
   const [runMsg, setRunMsg] = useState('')
@@ -707,6 +710,83 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
     .filter(r => r.row_class === 'holding' && (r.market_value ?? 0) < MATERIALITY_FLOOR)
     .map(r => r.symbol)
     .filter((s, i, a) => s && a.indexOf(s) === i)
+
+  // FQ-015 (2026-11-04): the advisory table is 1150 px wide and clipped on a phone, so the decision columns
+  // (state, confidence, now, quality, why) were unreadable. The row's detail is one renderer, used by the table's
+  // inline expansion on a wide screen and by the full-screen sheet on a phone — one source, not two.
+  const rowKey = (r: DeskRow) => `${r.symbol}:${r.account || ''}:${r.advisory_row_hash || ''}`
+  const renderRowDetail = (r: DeskRow) => {
+    const dq = r.data_quality || {}
+                            const facts = r.expand?.canonical_financial_facts || r.canonical_financial_facts
+                            const fieldStates = r.expand?.field_states || r.field_states
+                            const prov = r.expand?.advisory_provenance || r.advisory_provenance
+                            const wi = r.expand?.watch_intelligence || r.watch_intelligence
+                            const re = r.expand?.reentry || r.reentry
+                            const durable = r.expand?.durable_memory || r.durable_memory
+                            const senses = r.expand?.financial_senses || r.financial_senses
+                            const conflicts: string[] = [
+                              ...((dq.conflicts as string[]) || []),
+                              ...((facts?.conflicts as string[]) || []),
+                              ...((prov?.conflicts as string[]) || []),
+                            ].filter((c, i, a) => c && a.indexOf(c) === i)
+                            const suppressed = Boolean(dq.action_suppressed || facts?.action_suppressed || prov?.action_suppressed || conflicts.length)
+                            const synthesis = prov?.opinion_synthesis
+                            const holdingish = r.row_class === 'holding'
+                            const watchish = r.row_class === 'watchlist'
+                            const reish = r.row_class === 'closed_journal' || r.verdict === 'RE_ENTER'
+                            return (
+                              <>
+                                {suppressed && (
+                                  <div style={{
+                                    background: 'var(--red-ghost)', border: '1px solid var(--red)',
+                                    borderRadius: 6, padding: '8px 10px', marginBottom: 10,
+                                    color: 'var(--red)', fontSize: 12, fontWeight: 700,
+                                  }}>
+                                    DATA CONFLICT — ACTION SUPPRESSED
+                                    <div style={{ fontWeight: 500, marginTop: 4, color: 'var(--text2)', fontSize: 11, lineHeight: 1.4 }}>
+                                      {conflicts.filter(c => c !== 'DATA CONFLICT — ACTION SUPPRESSED').join(' · ') || 'Mark / MV / target denominators disagree.'}
+                                    </div>
+                                  </div>
+                                )}
+                                {r.why_call && (
+                                  <div style={{
+                                    background: 'var(--bg)', border: '1px solid var(--border)',
+                                    borderRadius: 6, padding: '8px 10px', marginBottom: 10,
+                                    fontSize: 12, color: 'var(--text)', lineHeight: 1.4,
+                                  }}>
+                                    <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text3)', letterSpacing: 0.3, marginBottom: 4 }}>
+                                      WHY THIS CALL
+                                    </div>
+                                    {r.why_call}
+                                  </div>
+                                )}
+                                {synthesis && (
+                                  <div style={{
+                                    background: 'var(--bg)', border: '1px solid var(--border)',
+                                    borderRadius: 6, padding: '8px 10px', marginBottom: 10,
+                                    fontSize: 12, color: 'var(--text)', lineHeight: 1.4,
+                                  }}>
+                                    <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text3)', letterSpacing: 0.3, marginBottom: 4 }}>OPINION SYNTHESIS</div>
+                                    {synthesis}
+                                  </div>
+                                )}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+                                  {watchish && cardWrap('Watch intelligence', <WatchIntelCard d={wi} setup={r.setup_state} />)}
+                                  {reish && cardWrap('Re-entry', <ReentryCard d={re} row={r} />)}
+                                  {cardWrap('Current financial facts', <CurrentFinancialFactsCard d={facts} fieldStates={fieldStates} />)}
+                                  {holdingish && cardWrap('Lots', <LotsCard d={r.expand?.lots} fieldStates={fieldStates} />)}
+                                  {holdingish && cardWrap('Price action', <PriceActionCard d={r.expand?.price_action} />)}
+                                  {holdingish && cardWrap('Analyst', <AnalystCard d={r.expand?.analyst} />)}
+                                  {cardWrap('Memory', <MemoryCard d={r.expand?.memory} durable={durable} />)}
+                                  {cardWrap('Financial senses', <SensesCard d={senses} />)}
+                                  {cardWrap('Opinion', <OpinionCard d={r.expand?.opinion} label={ts.synthesis_label === 'PRIOR SYNTHESIS' ? 'PRIOR SYNTHESIS — not current desk synthesis' : undefined} />)}
+                                  {cardWrap('Instrument', <InstrumentCard d={r.expand?.instrument} />)}
+                                  {cardWrap('Evidence', <EvidenceCard items={r.expand?.evidence_items || []} />)}
+                                </div>
+                              </>
+                            )
+
+  }
 
   async function postFeedback(kind: 'rate' | 'ack' | 'snooze', row: DeskRow, extra?: Record<string, string>) {
     try {
@@ -940,6 +1020,44 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
         </div>
       )}
 
+      <div data-advisory-table-wrap style={{ overflowX: phone.mobile ? 'visible' : 'auto', border: '1px solid var(--border)', borderRadius: RADIUS.md }}>
+        {phone.mobile ? (
+          // FQ-015: one card per advisory row on a phone. Every decision field the table shows is here, and the row's
+          // whole detail opens full-screen — no horizontal scrolling to find the verdict, the confidence or the why.
+          <div data-advisory-cards style={{ display: 'grid', gap: 8, padding: 8 }}>
+            {visibleRows.map((r) => {
+              const key = rowKey(r)
+              const dq = r.data_quality || {}
+              const headline = r.why_call || (r.rationale_signals || [])[0] || r.rationale || 'no rationale attached'
+              return (
+                <button key={key} type="button" data-testid={`card-${r.symbol}`} onClick={() => phone.open(key)}
+                  style={{ textAlign: 'left', minHeight: 48, width: '100%', maxWidth: '100%', padding: 10, borderRadius: RADIUS.md,
+                    border: '1px solid var(--border)', background: 'var(--bg)', cursor: 'pointer', display: 'grid', gap: 4,
+                    minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                  <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline', minWidth: 0 }}>
+                    <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--text)' }}>{r.symbol}
+                      {r.account ? <span style={{ fontWeight: 400, fontSize: 10, color: 'var(--text3)', marginLeft: 6 }}>{r.account}</span> : null}
+                    </span>
+                    <span style={{ fontWeight: 800, color: VERDICT_COLOR[r.verdict] || 'var(--text)' }}>{r.verdict}
+                      {r.verdict_suppressed ? <span style={{ color: 'var(--red)', marginLeft: 4 }}>SUPPRESSED</span> : null}
+                    </span>
+                  </span>
+                  <span style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 11, color: 'var(--text2)', minWidth: 0 }}>
+                    <span>{r.row_class}</span>
+                    <span>conf {r.confidence != null ? Number(r.confidence).toFixed(2) : 'n/a'}</span>
+                    <span>{classHeadline(r)}</span>
+                    <span style={{ color: dq.action_suppressed ? 'var(--red)' : 'var(--text3)' }}>
+                      ev {dq.evidence_count ?? 0}{dq.gap_count ? ` · gaps ${dq.gap_count}` : ''}{dq.action_suppressed ? ' · DATA CONFLICT' : dq.quality ? ` · ${dq.quality}` : ''}
+                    </span>
+                  </span>
+                  <span style={{ fontSize: 11, color: 'var(--text3)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{headline}</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)' }}>Open full details →</span>
+                </button>
+              )
+            })}
+            {visibleRows.length === 0 && <div style={{ padding: 16, color: 'var(--text3)', textAlign: 'center' }}>No rows in this class / filter.</div>}
+          </div>
+        ) : (
       <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead>
@@ -1004,76 +1122,7 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
                   {open && (
                     <tr style={{ background: 'var(--bg2)' }}>
                       <td colSpan={8} style={{ padding: 14 }}>
-                        {(() => {
-                          const facts = r.expand?.canonical_financial_facts || r.canonical_financial_facts
-                          const fieldStates = r.expand?.field_states || r.field_states
-                          const prov = r.expand?.advisory_provenance || r.advisory_provenance
-                          const wi = r.expand?.watch_intelligence || r.watch_intelligence
-                          const re = r.expand?.reentry || r.reentry
-                          const durable = r.expand?.durable_memory || r.durable_memory
-                          const senses = r.expand?.financial_senses || r.financial_senses
-                          const conflicts: string[] = [
-                            ...((dq.conflicts as string[]) || []),
-                            ...((facts?.conflicts as string[]) || []),
-                            ...((prov?.conflicts as string[]) || []),
-                          ].filter((c, i, a) => c && a.indexOf(c) === i)
-                          const suppressed = Boolean(dq.action_suppressed || facts?.action_suppressed || prov?.action_suppressed || conflicts.length)
-                          const synthesis = prov?.opinion_synthesis
-                          const holdingish = r.row_class === 'holding'
-                          const watchish = r.row_class === 'watchlist'
-                          const reish = r.row_class === 'closed_journal' || r.verdict === 'RE_ENTER'
-                          return (
-                            <>
-                              {suppressed && (
-                                <div style={{
-                                  background: 'var(--red-ghost)', border: '1px solid var(--red)',
-                                  borderRadius: 6, padding: '8px 10px', marginBottom: 10,
-                                  color: 'var(--red)', fontSize: 12, fontWeight: 700,
-                                }}>
-                                  DATA CONFLICT — ACTION SUPPRESSED
-                                  <div style={{ fontWeight: 500, marginTop: 4, color: 'var(--text2)', fontSize: 11, lineHeight: 1.4 }}>
-                                    {conflicts.filter(c => c !== 'DATA CONFLICT — ACTION SUPPRESSED').join(' · ') || 'Mark / MV / target denominators disagree.'}
-                                  </div>
-                                </div>
-                              )}
-                              {r.why_call && (
-                                <div style={{
-                                  background: 'var(--bg)', border: '1px solid var(--border)',
-                                  borderRadius: 6, padding: '8px 10px', marginBottom: 10,
-                                  fontSize: 12, color: 'var(--text)', lineHeight: 1.4,
-                                }}>
-                                  <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text3)', letterSpacing: 0.3, marginBottom: 4 }}>
-                                    WHY THIS CALL
-                                  </div>
-                                  {r.why_call}
-                                </div>
-                              )}
-                              {synthesis && (
-                                <div style={{
-                                  background: 'var(--bg)', border: '1px solid var(--border)',
-                                  borderRadius: 6, padding: '8px 10px', marginBottom: 10,
-                                  fontSize: 12, color: 'var(--text)', lineHeight: 1.4,
-                                }}>
-                                  <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text3)', letterSpacing: 0.3, marginBottom: 4 }}>OPINION SYNTHESIS</div>
-                                  {synthesis}
-                                </div>
-                              )}
-                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
-                                {watchish && cardWrap('Watch intelligence', <WatchIntelCard d={wi} setup={r.setup_state} />)}
-                                {reish && cardWrap('Re-entry', <ReentryCard d={re} row={r} />)}
-                                {cardWrap('Current financial facts', <CurrentFinancialFactsCard d={facts} fieldStates={fieldStates} />)}
-                                {holdingish && cardWrap('Lots', <LotsCard d={r.expand?.lots} fieldStates={fieldStates} />)}
-                                {holdingish && cardWrap('Price action', <PriceActionCard d={r.expand?.price_action} />)}
-                                {holdingish && cardWrap('Analyst', <AnalystCard d={r.expand?.analyst} />)}
-                                {cardWrap('Memory', <MemoryCard d={r.expand?.memory} durable={durable} />)}
-                                {cardWrap('Financial senses', <SensesCard d={senses} />)}
-                                {cardWrap('Opinion', <OpinionCard d={r.expand?.opinion} label={ts.synthesis_label === 'PRIOR SYNTHESIS' ? 'PRIOR SYNTHESIS — not current desk synthesis' : undefined} />)}
-                                {cardWrap('Instrument', <InstrumentCard d={r.expand?.instrument} />)}
-                                {cardWrap('Evidence', <EvidenceCard items={r.expand?.evidence_items || []} />)}
-                              </div>
-                            </>
-                          )
-                        })()}
+                        {renderRowDetail(r)}
                         <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                           <button type="button" style={btnStyle} onClick={(e) => { e.stopPropagation(); postFeedback('ack', r) }}>Ack</button>
                           <button type="button" style={btnStyle} onClick={(e) => { e.stopPropagation(); postFeedback('snooze', r) }}>Snooze</button>
@@ -1101,6 +1150,17 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
           </tbody>
         </table>
       </div>
+        )}
+      </div>
+
+      {phone.mobile && (() => {
+        const row = visibleRows.find((x) => rowKey(x) === phone.id)
+        return row ? (
+          <MobileDetailSheet title={`${row.symbol} advisory detail`} onBack={phone.close}>
+            {renderRowDetail(row)}
+          </MobileDetailSheet>
+        ) : null
+      })()}
     </div>
   )
 }
