@@ -305,3 +305,59 @@ def test_a_plain_message_through_poll_once_is_recorded_as_not_handled(tmp_path, 
     assert rows[0]["text"] == "please re-read WORKERS.md" and "event" not in rows[0]
     assert rows[1]["event"] == "outcome" and rows[1]["handled"] is False
     assert commits == [911]
+
+
+# ── cx-openai-2 F1/F2/F3 (2026-11-04): every sink, every encoding, no split fragment ──────────────────
+
+_SECRET = "S3CR3T-oauth-CODE-9911"
+_FORMS = [
+    ("query", f"127.0.0.1?code={_SECRET}&state=abc"),
+    ("json", '{"code": "%s"}' % _SECRET),
+    ("json_compact", '"code":"%s"' % _SECRET),
+    ("json_single_quotes", "{'code': '%s'}" % _SECRET),
+    ("spaced_equals", f"code = {_SECRET}"),
+    ("colon", f"code: {_SECRET}"),
+    ("form", f"code={_SECRET}&state=abc"),
+    ("other_key", f"client_secret={_SECRET}"),
+]
+
+
+@pytest.mark.parametrize("name,paste", _FORMS, ids=[f[0] for f in _FORMS])
+def test_f2_every_encoding_is_redacted_at_the_inbox_and_the_queue(tmp_path, name, paste):
+    """F2, through the REAL sin, not the helper: the inbox line and the queued line must both be clean."""
+    from scripts.run_telegram_callback_poller import _append_or_queue
+    assert _append_or_queue({"message_id": 1, "text": paste}, replies_dir=tmp_path) == "recorded"
+    written = (tmp_path / "telegram.jsonl").read_text()
+    assert _SECRET not in written, (name, written)
+    assert "[redacted]" in written, (name, written)
+    # the durable queue takes the same line: a failed inbox write must not be the weak sink
+    queue = tmp_path / "pending" / "queue.jsonl"
+    assert _append_or_queue({"message_id": 2, "text": paste},
+                            replies_dir=tmp_path / "blocked", pending_path=queue) in ("recorded", "queued")
+    for line in queue.read_text().splitlines() if queue.exists() else []:
+        assert _SECRET not in line, (name, line)
+
+
+def test_f2_ordinary_prose_keeps_its_text():
+    """The narrowness that makes the redactor usable: the operator's own words survive."""
+    from scripts.run_telegram_callback_poller import redact_credentials
+    for text in ("the code: path is under review", "the code= path is under review", "the token budget grew",
+                 "approve the restore", "please re-read WORKERS.md and continue"):
+        assert redact_credentials(text) == text, text
+
+
+def test_f3_a_credential_straddling_the_truncation_point_leaves_no_fragment():
+    """F3: truncating before redacting cut the secret in half and kept the half. Redact, then truncate."""
+    from scripts.run_telegram_callback_poller import _log_text
+    paste = "x" * 8 + f"?code={_SECRET}"          # the credential sits INSIDE the 40-character window
+    shown = _log_text(paste, 40)
+    assert _SECRET[:3] not in shown, shown          # not even a prefix of the value survives
+    assert "[red" in shown, shown                   # the marker itself may be cut by the limit; the value may not
+
+
+def test_f1_no_log_site_slices_raw_operator_text():
+    """F1: a source guard for the whole file — a fifth log site added later must use _log_text, not a raw slice."""
+    from pathlib import Path as _P
+    source = (_P(__file__).resolve().parents[1] / "scripts" / "run_telegram_callback_poller.py").read_text()
+    assert "text[:40]" not in source and "text[:80]" not in source, "raw operator text reaches a log slice"
+    assert source.count("_log_text(") >= 8, "every log site that echoes operator text must use _log_text"

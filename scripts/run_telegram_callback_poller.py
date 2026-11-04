@@ -187,8 +187,23 @@ def _append_private(path: Path, line: str) -> None:
 
 #: Parameter names whose VALUE is a credential when an operator pastes a callback URL or a form into Telegram.
 #: The Schwab OAuth redirect the handler accepts is ``127.0.0.1?code=...``; the same shape covers the others.
+_CREDENTIAL_KEYS = ("code", "access_token", "refresh_token", "id_token", "api_key", "apikey", "client_secret",
+                    "password", "token")
+# F2 (cx-openai-2, 2026-11-04): `key=value` was the only shape covered, so `"code": "…"` (JSON), `code = …` and
+# `code: …` all reached the log and the inbox verbatim. The key may now be quoted (JSON), the separator is `=` OR `:`,
+# and a bare value is recognised as a credential when it is a TOKEN: it ends at a delimiter (`& , } ] ) " ' #`) or the
+# end of the message. Prose keeps its text — "the code: path is under review" has a value followed by a space, which is
+# a sentence, not a token. A long token-bodied run is redacted even mid-sentence. Residual, documented: a SHORT secret
+# followed by a space in ordinary prose is not distinguishable from a word by shape alone.
 _CREDENTIAL_PARAM_RE = re.compile(
-    r"(?i)\b(code|access_token|refresh_token|id_token|api_key|apikey|client_secret|password|token)=([^&\s]+)"
+    r"(?i)"
+    r"(?P<key>(?P<kq>[\"']?)\b(?:" + "|".join(_CREDENTIAL_KEYS) + r")\b(?P=kq))"
+    r"(?P<sep>\s*[=:]\s*)"
+    r"(?:"
+    r"(?P<quote>[\"'])(?P<valq>[^\"']*)(?P=quote)"                       # JSON / quoted form
+    r"|(?P<val>[^\s&,}\])]+)(?=[&,}\])\"'#]|$)"                        # a token, bounded by a delimiter or the end
+    r"|(?P<long>[A-Za-z0-9._~+/=%\-]{20,})"                               # a long secret embedded mid-sentence
+    r")"
 )
 
 
@@ -205,7 +220,19 @@ def redact_credentials(text: str) -> str:
     """
     if not text:
         return text
-    return _CREDENTIAL_PARAM_RE.sub(lambda m: f"{m.group(1)}=[redacted]", text)
+    def _keep(m: "re.Match[str]") -> str:
+        quote = m.group("quote") or ""
+        return f"{m.group('key')}{m.group('sep')}{quote}[redacted]{quote}"
+    return _CREDENTIAL_PARAM_RE.sub(_keep, text)
+
+
+def _log_text(text: str, limit: int) -> str:
+    """Redact, THEN truncate (F3, cx-openai-2 2026-11-04).
+
+    Truncating first cuts a credential at the boundary and leaves its first half in the log: a fragment no secret
+    scanner matches and a reader still reads. Every log site that echoes operator text uses this.
+    """
+    return redact_credentials(text)[:limit]
 
 def _record_operator_reply(msg: dict, text: str, chat_id: str, *, replies_dir=None,
                            allowed=None, chat_type=None, sender_id=None,
@@ -260,11 +287,11 @@ def _record_operator_reply(msg: dict, text: str, chat_id: str, *, replies_dir=No
               "chat_id": chat_id, "sender_id": str(sender_id), "text": text}  # redacted at the _append_or_queue boundary
     status = _append_or_queue(record, replies_dir=replies_dir, pending_path=pending_path)
     if status == "recorded":
-        log.info(f"operator reply recorded: {redact_credentials(text)[:40]} from chat={chat_id}")
+        log.info(f"operator reply recorded: {_log_text(text, 40)} from chat={chat_id}")
     elif status == "queued":
-        log.warning(f"operator reply queued for flush: {redact_credentials(text)[:40]} from chat={chat_id}")
+        log.warning(f"operator reply queued for flush: {_log_text(text, 40)} from chat={chat_id}")
     else:
-        log.error(f"operator reply neither recorded nor queued: {redact_credentials(text)[:40]} from chat={chat_id}")
+        log.error(f"operator reply neither recorded nor queued: {_log_text(text, 40)} from chat={chat_id}")
     return status
 
 
@@ -602,19 +629,20 @@ def poll_once(timeout=25):
                     processed += 1
                     if ans.get("delivered") is False:
                         log.error(
-                            f"reply NOT delivered (status={ans.get('delivery_status')}): {text[:40]} from chat={chat_id}"
+                            f"reply NOT delivered (status={ans.get('delivery_status')}): "
+                            f"{_log_text(text, 40)} from chat={chat_id}"
                         )
                     else:
-                        log.info(f"replied: {text[:40]} from chat={chat_id}")
+                        log.info(f"replied: {_log_text(text, 40)} from chat={chat_id}")
                 elif ans.get("reason") not in ("flag_off", "not_allowlisted"):
-                    log.info(f"reply skipped ({ans.get('reason')}): {text[:40]}")
+                    log.info(f"reply skipped ({ans.get('reason')}): {_log_text(text, 40)}")
             except Exception as e:
                 # A responder fault must never stall the poll loop.
                 log.error(f"cio reply error: {e}")
 
         if handled:
             processed += 1
-            log.info(f"command: {text[:40]} from chat={chat_id}")
+            log.info(f"command: {_log_text(text, 40)} from chat={chat_id}")
 
     return processed
 
@@ -1390,7 +1418,7 @@ def _handle_schwab_callback(msg, text, chat_id):
     """Operator pasted a Schwab OAuth redirect URL containing ?code=.
     Auto-extract the code, exchange for a token, and reply with status."""
     message_id = msg.get("message_id")
-    log.info(f"schwab callback from chat={chat_id}: {text[:80]}...")
+    log.info(f"schwab callback from chat={chat_id}: {_log_text(text, 80)}...")
 
     # Extract the full redirect URL (the user may have pasted extra text)
     import re as _re
