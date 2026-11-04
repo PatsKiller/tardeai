@@ -175,6 +175,18 @@ check('a matched zero still reads as nothing open, with history captioned', { ..
   assert.doesNotMatch(raw, /data-testid="quality-history-unknown"/)
 })
 
+// P2607-R3 sibling (codex at 698d1cba5): a missing count with an EXPLICIT empty returned slice is still unknown —
+// the slice is what came back, not how much is open, so it must never be read as a zero.
+check('a missing count with an explicit empty open slice is unknown, not zero', { ...pq, open_count: undefined, open_findings: [], findings: [resolvedOnly], ...health }, () => {
+  const raw = render({ ...pq, open_count: undefined, open_findings: [], findings: [resolvedOnly], ...health })
+  const t = readingText(raw)
+  assert.doesNotMatch(t, /nothing open/, 'an empty slice was counted as a known zero')
+  assert.doesNotMatch(t, /No open findings/, 'an empty slice was reported as a global absence')
+  assert.match(t, /open count not reported/)
+  assert.match(raw, /data-testid="quality-history-unknown"/)
+  assert.doesNotMatch(raw, /data-testid="quality-history-caption"/)
+})
+
 // ── FQ-039 R2 (codex P2607-R2): an inherited property name is an unknown key, not a crash ─────────────────────
 
 for (const evil of ['__proto__', 'constructor', 'toString']) {

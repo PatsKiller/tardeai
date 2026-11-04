@@ -33,8 +33,11 @@ export default function HermesQualitySpotCheck({ onDrill }: Props) {
   // FQ-039 R1 (codex, P2607-R1): `open_count` is the producer's own count and 0 is a legitimate answer. The old
   // expression `openCount || recent.length` replaced a known zero with the length of the historical list, and the
   // sentence around it called that "still need attention" — resolved history misclassified as open work.
+  // P2607-R3 sibling (codex at 698d1cba5): the producer's own count is the only evidence about the whole queue. A
+  // returned slice is what the reader gets to see, not how much is open — an explicit `open_findings: []` with no count
+  // is a slice that came back empty, not proof that nothing is open, so it must not be counted as a zero.
   const openKnown: boolean = typeof pq?.open_count === 'number'
-  const openCount: number | null = openKnown ? (pq.open_count as number) : (Array.isArray(pq?.open_findings) ? pq.open_findings.length : null)
+  const openCount: number | null = openKnown ? (pq.open_count as number) : null
   const findingsTotal: number = typeof pq?.total === 'number' ? pq.total : findings.length
   const showingOpen = open.length > 0
   const recent = (showingOpen ? open : findings).slice(0, 8)
