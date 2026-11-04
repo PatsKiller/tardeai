@@ -42,7 +42,19 @@ const DOTTED = /\b[a-z][a-z0-9]*(?:\.[a-z0-9]+)+\b/g
  *  source did not make (cx-openai-4 R1 on PR 2628). A qualification stays in the sentence; only assignments, paths and
  *  references move to the detail. */
 const QUALIFICATION = /\b(NOT|UN)\s?VERIFIED\b|\bUNVERIFIED\b|\bUNKNOWN\b|\bSTALE\b|\bESTIMATED?\b|\bPARTIAL\b|\bUNCONFIRMED\b/i
-const MACHINE_PAREN = /\(([^()]*(?:[=/#])[^()]*)\)/g
+
+/** ONE segment of a parenthetical is machine detail only when it is an assignment, a path or a reference.
+ *
+ *  This is deliberately not a vocabulary list (cx-openai-4, second review of PR 2628): a whitelist of qualification
+ *  WORDS still let "(rc=1; UNAVAILABLE)" lift its qualification, because the `=` anywhere in the bracket made the whole
+ *  bracket a machine candidate. The test is now structural — a bracket is machine detail only if EVERY segment is
+ *  machine-shaped, so "(rc=1; NOT READY)" stays in the sentence whatever words the source chooses next. */
+const MACHINE_SEGMENT = /^\s*(?:[A-Za-z0-9_.\-]+\s*=\s*\S+|#?\d+|[\w.\-]+\/[\w./\-]*)\s*$/
+function allMachine(inner: string): boolean {
+  const segments = inner.split(/[;,]|\s{2,}/).map(x => x.trim()).filter(Boolean)
+  return segments.length > 0 && segments.every(seg => MACHINE_SEGMENT.test(seg))
+}
+const MACHINE_PAREN = /\(([^()]*)\)/g
 /** A trailing run of `key=value` measurements — `, 24h=58,thesis_sustained=11` — is machine detail, not a sentence. */
 const METRIC_TAIL = /((?:[,;]\s*[A-Za-z0-9_.]+\s*=\s*[^,;]+)+)\s*$/
 
@@ -75,7 +87,8 @@ export function plainTitle(title: string | null | undefined): { headline: string
     return ''
   })
   const withoutParens = withoutMetrics.replace(MACHINE_PAREN, (m, inner: string) => {
-    if (QUALIFICATION.test(inner)) return m   // a qualification is part of the sentence, not machine detail
+    // Two ways a bracket stays in the sentence: it carries a qualification, or it carries ANY prose at all.
+    if (QUALIFICATION.test(inner) || !allMachine(inner)) return m
     lifted.push(words(inner))
     return ''
   })

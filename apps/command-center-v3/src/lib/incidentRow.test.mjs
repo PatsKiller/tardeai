@@ -94,5 +94,26 @@ import { readFileSync } from 'node:fs'
 const pageSrc = readFileSync(new URL('../pages/OpsIncidents.tsx', import.meta.url), 'utf8')
 check('R2: the phone branch renders the age', /sheet\.mobile[\s\S]{0,120}m\.age/.test(pageSrc), 'no m.age in the mobile branch')
 
+
+// ---- cx-openai-4's second review (43cd0cbae): ORDER-INDEPENDENT mixed cases, no word list ------------------------
+const MIXED = [
+  'Data service healthy (rc=1; UNAVAILABLE)',
+  'Data service healthy (UNAVAILABLE; rc=1)',
+  'Data service healthy (rc=1; NOT READY)',
+  'Data service healthy (NOT READY; rc=1)',
+  'Data service healthy (rc=1; NO VALID READ)',
+  'Data service healthy (rc=1; SOMETHING NEW ENTIRELY)',
+]
+for (const t of MIXED) {
+  const m = plainTitle(t)
+  const qual = t.slice(t.indexOf('(')).replace(/[()]/g, '').split(';').map(x => x.trim()).filter(x => !/=/.test(x)).join(' ')
+  check(`a mixed bracket keeps its qualification: ${t}`, m.headline.includes(qual), m.headline)
+  check(`and does not lift prose into the detail: ${t}`, !(m.rawDetail ?? '').includes(qual), String(m.rawDetail))
+}
+const pureMachine = plainTitle('Disk check ran (rc=1)')
+check('a bracket that is nothing but machine detail is still lifted', pureMachine.headline === 'Disk check ran' && (pureMachine.rawDetail ?? '') === 'rc=1', `${pureMachine.headline} | ${pureMachine.rawDetail}`)
+const pureRef = plainTitle('Merged in (#2236)')
+check('a bare reference is still machine detail', !/2236/.test(pureRef.headline), pureRef.headline)
+
 console.log(`incidentRow: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
