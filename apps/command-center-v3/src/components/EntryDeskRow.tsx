@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { deriveTradeAiRating, ratingLabel } from '../lib/manualTosRating'
+import { RADIUS } from '../lib/designTokens'
 import { decisionWords, stateBadgeWords, stateScopeTitle } from '../lib/manualSetupScope'
 import { exitLadder as ladderCalc, planWarnings as warningsCalc, MONITOR_RULES } from '../lib/exitLadder'
 import { schwabTicketsFromLadder, ticketsText } from '../lib/schwabTickets'
@@ -217,7 +218,7 @@ export default function EntryDeskRow({
           <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, ...mono }}>{setupLine(r)}</div>
           {onToggle && (
             <button type="button" onClick={onToggle} data-testid="entry-desk-details-toggle"
-              style={{ marginTop: 6, fontSize: 10, padding: '3px 9px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: C.blue, cursor: 'pointer' }}>
+              style={{ marginTop: 6, fontSize: 10, padding: '3px 9px', borderRadius: RADIUS.sm, border: '1px solid var(--border)', background: 'transparent', color: C.blue, cursor: 'pointer' }}>
               {expanded ? 'Hide details ▴' : 'Show details ▾ (sizing, diligence, copy, broker queue)'}
             </button>
           )}
