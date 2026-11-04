@@ -95,6 +95,22 @@ const REASON_DETAIL: Record<string, { what: string; next: string }> = {
     what: 'The account balances this review reads are older than its 15-minute window.',
     next: 'It clears when the next account sync writes newer balance evidence; then press Refresh Summary.',
   },
+  account_unavailable: {
+    what: 'The account data this review reads is unavailable, so it cannot tell which holdings are eligible to rotate.',
+    next: 'It clears when the account sync returns a balance; then press Refresh Summary. If the source stays down, Risk → Exposure names the failed source.',
+  },
+  account_evidence_unavailable: {
+    what: 'The account data this review reads is unavailable, so it cannot tell which holdings are eligible to rotate.',
+    next: 'It clears when the account sync returns balance evidence; then press Refresh Summary. If the source stays down, Risk → Exposure names the failed source.',
+  },
+  position_unavailable: {
+    what: 'The position data this review reads is unavailable, so it cannot judge what a rotation would change.',
+    next: 'It clears when the position sync returns; then press Refresh Summary. If the source stays down, Risk → Exposure names the failed source.',
+  },
+  position_evidence_unavailable: {
+    what: 'The position evidence this review reads is unavailable, so it cannot judge what a rotation would change.',
+    next: 'It clears when the position sync returns evidence; then press Refresh Summary. If the source stays down, Risk → Exposure names the failed source.',
+  },
   position_evidence_stale: {
     what: 'The position quantities this review reads are older than its 15-minute window.',
     next: 'It clears when the next position sync writes newer evidence; then press Refresh Summary.',

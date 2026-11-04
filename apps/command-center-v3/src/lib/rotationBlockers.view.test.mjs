@@ -87,6 +87,13 @@ check('a ready advisory renders no blocker list', () => {
   const ready = renderToStaticMarkup(React.createElement(Notice, { summary: summary('READY', []) }))
   assert.doesNotMatch(ready, /rotation-blocker-next/)
 })
+check('the live producer reason account_unavailable explains the missing evidence', () => {
+  const live = renderToStaticMarkup(React.createElement(Notice, { summary: summary('UNAVAILABLE', ['account_unavailable', 'unsupported_stop_claim']) }))
+  const visible = live.replace(/<details[\s\S]*?<\/details>/g, '')
+  assert.match(visible, /The account data this review reads is unavailable, so it cannot tell which holdings are eligible to rotate\./)
+  assert.match(visible, /It clears when the account sync returns a balance; then press Refresh Summary\./)
+  assert.doesNotMatch(visible, /account_unavailable/)
+})
 
 const out = { results, passed: results.filter(x => x.passed).length, failed: results.filter(x => !x.passed).length }
 console.log(JSON.stringify(out, null, 2))
