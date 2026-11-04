@@ -587,9 +587,28 @@ def render(slot: str, sections: dict[str, list[dict]], held: list[dict], facts: 
         blocks.append("━━━━━━━━━━━━━━━━━━\n🛠 <b>LANE HEALTH (P2)</b> · " + str(len(health)) + "\n" + "\n".join(lines))
     rows = other.get("rows") or []
     if rows:
-        kinds = Counter((r[2] or "other") for r in rows)
-        blocks.append("━━━━━━━━━━━━━━━━━━\n🗂 <b>OTHER UPDATES</b> · " + str(len(rows)) + "\n" + "\n".join(
-            f"• {esc(k)} ×{n}" for k, n in kinds.most_common(8)))
+        # A count alone is invariant to WHY (codex, 2026-11-04): eighteen rows reading "notification_intent_p3:
+        # research_lane_health ×18" render identically whether the lane was DEFERRED for off-peak or BROKEN by a
+        # provider failure, so the operator could not act on it. The digest now names the cause it counted: the most
+        # common non-empty title for the kind, and how many distinct causes were folded in beside it.
+        by_kind: dict[str, list[str]] = {}
+        for r in rows:
+            kind = (r[2] or "other")
+            title = str(r[3] or "").strip() if len(r) > 3 else ""
+            by_kind.setdefault(kind, []).append(title)
+        lines: list[str] = []
+        for kind, titles in sorted(by_kind.items(), key=lambda kv: -len(kv[1]))[:8]:
+            causes = [t for t in titles if t]
+            distinct = list(dict.fromkeys(causes))
+            head = f"• {esc(kind)} ×{len(titles)}"
+            if distinct:
+                head += f" — {esc(distinct[0][:70])}"
+                if len(distinct) > 1:
+                    head += f" <i>(+{len(distinct) - 1} other cause{'s' if len(distinct) > 2 else ''})</i>"
+            elif titles and not causes:
+                head += " — <i>no cause recorded</i>"
+            lines.append(head)
+        blocks.append("━━━━━━━━━━━━━━━━━━\n🗂 <b>OTHER UPDATES</b> · " + str(len(rows)) + "\n" + "\n".join(lines))
     blocks.append("<i>Advisory only — nothing is ordered. Scalp alerts, approvals and stop/protection alerts still "
                   "arrive immediately.</i>")
     limit = int(cfg.get("max_message_chars") or 3800)
