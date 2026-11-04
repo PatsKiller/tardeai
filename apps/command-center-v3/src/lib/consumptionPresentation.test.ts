@@ -1,0 +1,75 @@
+// FQ-030 / FQ-031 (/consumption): a phone page led by spend and failed calls, with the process
+// registry and call log collapsed; internal identifiers stay one disclosure away.
+// Runs in the CC-v3 build:  node --experimental-strip-types src/lib/consumptionPresentation.test.ts
+import {
+  DESK_LOG_PREVIEW, DESK_PROCESS_PREVIEW, PHONE_LOG_PREVIEW, PHONE_PROCESS_PREVIEW,
+  callDetailText, callPrimaryText, failedCalls, hiddenLabel, previewRows,
+} from './consumptionPresentation.ts'
+declare const process: { exit(code?: number): never }
+let pass = 0, fail = 0
+function check(name: string, cond: boolean, got?: unknown) {
+  if (cond) { pass++; console.log(`  [PASS] ${name}`) } else { fail++; console.log(`  [FAIL] ${name}${got !== undefined ? ` — got ${JSON.stringify(got)}` : ''}`) }
+}
+const eq = (name: string, got: unknown, want: unknown) => check(name, got === want, got)
+
+const log = (id: number, success: boolean, extra: Record<string, unknown> = {}) => ({
+  id, created_at: '2026-11-04T10:20:13-05:00', model_lane: 'deepseek-flash',
+  process_id: 'local_llm_compat', process_name: 'Local-LLM compatibility shim (Flash)',
+  task_summary: 'You are an institutional prop desk analyst. Analyze this paper trade proposal.',
+  trigger_mode: 'automated', success, ...extra,
+})
+
+// --- FQ-030: the page must lead with failed calls ---------------------------------------
+eq('no failures', failedCalls([log(1, true), log(2, true)]).length, 0)
+eq('two failures', failedCalls([log(1, false), log(2, true), log(3, false)]).length, 2)
+check('failed calls keep their order', failedCalls([log(9, false), log(4, false)]).map(l => l.id).join() === '9,4')
+
+// --- FQ-030: registry and log collapse instead of rendering everything -------------------
+eq('phone process preview is smaller than desktop', PHONE_PROCESS_PREVIEW < DESK_PROCESS_PREVIEW, true)
+eq('phone log preview is smaller than desktop', PHONE_LOG_PREVIEW < DESK_LOG_PREVIEW, true)
+
+const rows = Array.from({ length: 20 }, (_, i) => i)
+const collapsed = previewRows(rows, false, 6)
+eq('collapsed shows only the preview', collapsed.shown.length, 6)
+eq('collapsed reports what is hidden', collapsed.hidden, 14)
+eq('collapsed keeps the first rows in order', collapsed.shown.join(), '0,1,2,3,4,5')
+const expanded = previewRows(rows, true, 6)
+eq('expanded shows everything', expanded.shown.length, 20)
+eq('expanded hides nothing', expanded.hidden, 0)
+eq('a short list is never truncated', previewRows([1, 2], false, 6).hidden, 0)
+
+// --- FQ-030: the control says how much is still hidden ----------------------------------
+eq('collapsed label counts the rest', hiddenLabel('processes', 14, false), 'Show all — 14 more processes')
+eq('expanded label is gone', hiddenLabel('processes', 0, true), '')
+eq('nothing hidden means no control', hiddenLabel('processes', 0, false), '')
+
+// --- FQ-031: internal identifiers become readable, and stay available for diagnosis -----
+// These two raw values are real, taken from /api/v2/consumption/logs on 105df180e.
+const composite = log(169102, true, {
+  process_name: 'Watchlist Maria Flash Narrative',
+  task_summary: 'agent_flash:agent_narrative:agent_narrative:NVDA:social_scalp_scanner',
+})
+const compositeLine = callPrimaryText(composite)
+check('a ticker survives the rewrite', compositeLine.includes('NVDA'), compositeLine)
+check('the work is described in words', compositeLine.includes('Social scalp scanner'), compositeLine)
+check('the internal key is gone from the reader line', !compositeLine.includes('agent_narrative'), compositeLine)
+
+const counts = log(169099, true, { task_summary: 'system:1557chars; system:385chars; user:18987chars' })
+check('a size breakdown is not passed off as a summary', callPrimaryText(counts).includes('request text only'), callPrimaryText(counts))
+
+const snake = log(169101, true, { task_summary: 'hermes_external_research' })
+check('a bare task key is humanised', callPrimaryText(snake).includes('Hermes external research'), callPrimaryText(snake))
+
+const row = log(169060, true)
+const primary = callPrimaryText(row)
+check('primary line names the process readably', primary.includes('Local-LLM compatibility shim (Flash)'), primary)
+check('primary line does NOT expose the process id', !primary.includes('local_llm_compat'), primary)
+check('a long request is a preview, not the whole prompt', primary.length < 200, primary.length)
+
+const detail = callDetailText(composite)
+check('detail carries the process id for diagnosis', detail.includes('local_llm_compat'), detail)
+check('detail keeps the raw key the reader no longer sees', detail.includes('agent_narrative'), detail)
+check('a row with no process id still yields a detail string', callDetailText(log(1, true, { process_id: '' })).length > 0)
+
+console.log(`\n${pass} passed, ${fail} failed`)
+if (fail) process.exit(1)
