@@ -42,8 +42,34 @@ def test_a_failing_check_reopens_and_raises_severity():
 
 def test_a_passing_check_closes_with_evidence():
     row = R.transition({"severity": "P2"}, R.RETEST_PASSED, now="t", evidence={"before": "a", "after": "b"})
-    assert row["status"] == "closed" and row["history"][-1]["evidence"]["after"] == "b"
-    assert "fixed" not in str(row).lower().replace("fixed", "", 0) or True  # never the word as a status
+    assert row["status"] == "closed"
+    assert row["history"][-1] == {"at": "t", "outcome": R.RETEST_PASSED, "evidence": {"before": "a", "after": "b"}}
+    # the outcome constant is the contract: it must never be the word "fixed" (review R3 — this used to end in "or True")
+    assert R.RETEST_PASSED == "retest_pass" and R.RETEST_PASSED.lower() != "fixed"
+
+
+def test_a_wrong_session_result_cannot_close_or_regress_a_session_specific_item():
+    # R1: a regular-session result does not re-prove a premarket finding, in either direction
+    for expected in (True, False, None):
+        out = R.decide(item_status="closed", fix_commit="abc", is_ancestor=YES, session_required="premarket",
+                       session_now="regular", check_expected=expected)
+        assert out == R.DEFERRED_SESSION, (expected, out)
+    # a genuine same-session failure is still a regression
+    assert R.decide(item_status="closed", fix_commit="abc", is_ancestor=YES, session_required="premarket",
+                    session_now="premarket", check_expected=False) == R.REGRESSED
+
+
+def test_a_transition_with_unreadable_history_fails_closed():
+    # R2: an item may not be closed (or reopened) when the history it claims to append to cannot be read
+    for bad in ("not-a-list", {"a": 1}, 7):
+        try:
+            R.transition({"severity": "P2", "history": bad}, R.RETEST_PASSED, now="t", evidence={"after": "b"})
+        except ValueError:
+            continue
+        raise AssertionError(f"a transition closed an item whose history was {bad!r}")
+    # a missing history is created, not refused
+    row = R.transition({"severity": "P2"}, R.RETEST_PASSED, now="t", evidence={"after": "b"})
+    assert row["status"] == "closed" and len(row["history"]) == 1
 
 
 def test_a_previous_close_that_returns_is_a_regression_at_p1():

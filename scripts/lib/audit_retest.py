@@ -42,10 +42,16 @@ def decide(*, item_status: str, fix_commit: str | None, is_ancestor: Callable[[s
            check_expected: bool | None) -> str:
     """The outcome for one retest. ``check_expected`` is None when the check was not run (not serving / wrong session)."""
     if item_status == "closed":
-        # a previously-closed item is re-checked by the 14-day scan
+        # A previously-closed item is re-checked by the 14-day scan. A session-specific finding is only re-proved by a
+        # result from the SAME session: a regular-session pass cannot prove a premarket finding returned, and calling
+        # that a REGRESSED/closed would be a false diagnosis (review R1, 2026-11-04).
+        if session_required and session_now != session_required:
+            return DEFERRED_SESSION
+        if check_expected is None:
+            return DEFERRED_SESSION
         if check_expected is False:
             return REGRESSED
-        return RETEST_PASSED if check_expected else DEFERRED_SESSION
+        return RETEST_PASSED
     if not fix_commit or not is_serving(fix_commit, is_ancestor=is_ancestor):
         return FIXED_NOT_SERVING
     if session_required and session_now != session_required:
@@ -59,9 +65,14 @@ def transition(item: Mapping, outcome: str, *, now: str, evidence: Mapping) -> d
     """The state change an outcome implies (§2.6). Never writes the word "fixed"."""
     out = dict(item)
     sev = str(item.get("severity") or "P2")
-    out.setdefault("history", [])
-    if isinstance(out["history"], list):
-        out["history"] = list(out["history"]) + [{"at": now, "outcome": outcome, "evidence": dict(evidence)}]
+    history = out.get("history")
+    if history is None:
+        history = []
+    if not isinstance(history, list):
+        # An unreadable history cannot record the event this transition is about to claim, so the transition fails
+        # closed rather than marking a finding closed (or reopened) with no evidence behind it (review R2, 2026-11-04).
+        raise ValueError("history is unreadable; the transition cannot record its evidence")
+    out["history"] = list(history) + [{"at": now, "outcome": outcome, "evidence": dict(evidence)}]
     if outcome == RETEST_PASSED:
         out["status"] = "closed"
     elif outcome == RETEST_FAIL:
