@@ -6,6 +6,7 @@ import { lanePolicyColor, lanePolicyHint, PROCESS_LANE_POLICIES, runManualCloud 
 import { useOAuthLanes, laneReady } from '../hooks/useOAuthLanes'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubPanel } from '../lib/terminalHubChrome'
+import { fmtAsOf } from '../lib/asOfDisplay'
 import SpendPanel from '../components/SpendPanel'
 import AnthropicCreditPanel from '../components/AnthropicCreditPanel'
 import LlmRoutingModal from '../components/LlmRoutingModal'
@@ -335,7 +336,10 @@ export default function ConsumptionHub() {
                   </td>
                   <td data-label="30d calls" style={{ color: TEXT }}>{p.calls_30d ?? '—'}{p.calls_today ? ` (${p.calls_today} today)` : ''}</td>
                   <td data-label="Relative units" style={{ color: TEXT }}>{p.relative_units_30d == null ? '—' : p.relative_units_30d.toFixed(1)}</td>
-                  <td data-label="Last used" style={{ color: MUTED, fontSize: 10 }}>{p.last_used ? new Date(p.last_used).toLocaleString() : '—'}</td>
+                  {/* FQ-029: an unlabelled toLocaleString() gave a time in whatever zone the browser chose.
+                      fmtAsOf is the house formatter: a zoned stamp renders as "Nov 4 09:53 ET", and the exact
+                      stamp stays one hover away in the title. */}
+                  <td data-label="Last used" style={{ color: MUTED, fontSize: 10 }} title={p.last_used ?? undefined}>{p.last_used ? (fmtAsOf(p.last_used) ?? p.last_used) : '—'}</td>
                   <td data-label="Actions" style={{ whiteSpace: 'nowrap' }}>
                     <button disabled={busy === p.process_id || p.mode === 'automated'}
                       onClick={() => void setMode(p.process_id, 'automated')}
@@ -372,7 +376,8 @@ export default function ConsumptionHub() {
             {logs.map(l => (
               <div key={l.id} style={{ padding: '8px 10px', borderRadius: 6, background: 'var(--bg2)', border: '1px solid var(--border)', fontSize: 11 }}>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <span style={{ color: MUTED }}>{new Date(l.created_at).toLocaleString()}</span>
+                  {/* FQ-029: same fix on the call log — a zoned ET stamp, exact value in the title. */}
+                  <span style={{ color: MUTED }} title={l.created_at ?? undefined}>{fmtAsOf(l.created_at) ?? l.created_at}</span>
                   <span style={{ fontWeight: 800, color: l.model_lane === 'grok' ? 'var(--info-color)' : (l.model_lane === 'chatgpt' ? 'var(--success-color)' : (l.model_lane?.startsWith('deepseek') ? 'var(--ai-color)' : MUTED)) }}>{l.model_lane}</span>
                   <span style={{ color: TEXT, fontWeight: 700 }}>{l.process_name}</span>
                   <span style={{ color: l.trigger_mode === 'manual' ? AMBER : MUTED, fontSize: 10 }}>{l.trigger_mode}</span>
