@@ -2182,6 +2182,11 @@ def _in_release_roots(path: Path) -> bool:
     overlap between the candidate and a configured root is a release-path removal.
     """
     rp = os.path.realpath(str(path))
+    if rp == os.sep:
+        # "/" is an ancestor of EVERY absolute root, and the reverse-prefix test below cannot see it: it would ask
+        # whether root startswith "//" (codex 2026-11-04, 45543874f). A filesystem root is a release-path removal
+        # whenever any root is configured.
+        return bool(_RELEASE_ROOTS)
     return any(rp == root or rp.startswith(root + os.sep) or root.startswith(rp + os.sep)
                for root in _RELEASE_ROOTS)
 

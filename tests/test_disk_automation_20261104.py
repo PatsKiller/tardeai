@@ -526,3 +526,16 @@ def test_a_parent_that_contains_a_release_root_is_refused_too(tmp_path):
         H._RELEASE_ROOTS = old
     assert (ok, how) == (False, H.RELEASE_REFUSAL), how
     assert (parent / "portfolio-server" / "abc-main" / "keep.txt").is_file()
+
+
+def test_the_filesystem_root_is_never_classified_as_safe(tmp_path):
+    """Codex 2026-11-04 (45543874f): `_in_release_roots(Path("/"))` was False because the reverse-prefix test becomes
+    "//". "/" contains every configured root, so it is a release-path removal whenever one exists. Fails at 45543874f."""
+    old = H._RELEASE_ROOTS
+    H._RELEASE_ROOTS = (str(tmp_path / "trade-ai-releases" / "portfolio-server"),)
+    try:
+        assert H._in_release_roots(Path("/")) is True
+        ok, how = H.remove_item({"path": "/", "kind": "cache_entry"})
+    finally:
+        H._RELEASE_ROOTS = old
+    assert (ok, how) == (False, H.RELEASE_REFUSAL), how
