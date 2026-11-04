@@ -102,7 +102,14 @@ export default function JobsHealth({ enabled = true }: { enabled?: boolean }) {
       <div className="jobs-health-row jobs-health-head" style={{ padding: '10px 14px', borderBottom: `1px solid ${TOKENS.border}`, fontSize: TYPE.sm, color: TOKENS.text[2] }}>{['Job', 'Runs on', 'Last run', 'Result', 'Next due', 'Why'].map(x => <span key={x}>{x}</span>)}</div>
       {data?.rows.map(row => <article key={row.lane_id} className="jobs-health-row" aria-label={row.job} style={{ padding: '12px 14px', borderBottom: `1px solid ${TOKENS.borderSubtle}`, fontSize: TYPE.base }}>
         <strong className="jobs-health-job">{row.job}</strong>
-        <div title={schedulerTechnical(row.scheduler)}><span className="jobs-health-mobile-label">Runs on</span>{schedulerWords(row.scheduler)}</div>
+        <div>
+          <span className="jobs-health-mobile-label">Runs on</span>{schedulerWords(row.scheduler)}
+          {/* cx-openai-3 F1: a title is hover-only. <details> is focusable and taps open on a phone. */}
+          <details data-testid="jobs-scheduler-technical" style={{ marginTop: 2 }}>
+            <summary style={{ fontSize: TYPE.sm, color: TOKENS.info, cursor: 'pointer' }}>Technical</summary>
+            <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2], paddingTop: 2 }}>{schedulerTechnical(row.scheduler)}</div>
+          </details>
+        </div>
         <div style={{ fontFamily: FONT.mono, fontSize: TYPE.sm }}><span className="jobs-health-mobile-label">Last run</span>{at(row.last_run_at)}</div>
         <div><span className="jobs-health-mobile-label">Result</span><span style={{ display: 'inline-block', padding: '2px 7px', borderRadius: RADIUS.sm, color: toneVars(tone(row.result)).color, background: toneVars(tone(row.result)).bg }}>{resultLabel[row.result]}</span></div>
         <div style={{ fontFamily: FONT.mono, fontSize: TYPE.sm }}><span className="jobs-health-mobile-label">Next due</span>{row.state === 'PAUSED' || row.state === 'RETIRED' || row.state === 'DISABLED' ? '—' : at(row.next_due_at)}</div>
