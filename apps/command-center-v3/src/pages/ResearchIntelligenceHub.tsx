@@ -2226,7 +2226,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
                 {wireItems.length < displayItems.length && (
                   <button type="button" onClick={() => setShowAllWire(true)} style={{
                     marginTop: 10, minHeight: 44, width: '100%', fontSize: 12.5, fontWeight: 750, cursor: 'pointer',
-                    borderRadius: 10, border: `1px solid ${C.lineStrong}`, background: 'transparent', color: C.ink,
+                    border: `1px solid ${C.lineStrong}`, background: 'transparent', color: C.ink,
                   }}>
                     Show all {displayItems.length} stories
                   </button>
