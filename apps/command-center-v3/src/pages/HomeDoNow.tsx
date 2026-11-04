@@ -14,6 +14,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { BEST_OPPORTUNITIES_API, BEST_OPPORTUNITIES_PATH } from '../lib/bestOpportunities'
+import { listAsOfWords, quoteAge } from '../lib/opportunityQuoteAge'
 import { useApi } from '../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars, type Tone } from '../lib/designTokens'
 import {
@@ -162,6 +163,9 @@ export default function HomeDoNow() {
   const cash = cashPct(overview)
   const n = dn.numbers
   const opps: any[] = (unwrap(oppTop)?.items || []).slice(0, 5)
+  // FQ-088: the list carries an as-of and every row a quote time. Home discarded both, so a reward-to-risk
+  // computed from an old quote looked exactly like a current one.
+  const oppAsOf = listAsOfWords(unwrap(oppTop)?.as_of)
   const ph = platformHealthFrom(platformApi.data, { error: platformApi.error, loading: platformApi.loading, nowMs: now })
   const scanStale = tradeAiSurfaceFreshness(tradeAi).stale
   const setup = renderSetupCounts(tradeAi?.setup_run_summary, { stale: scanStale, staleLabel: 'STALE' })
@@ -331,17 +335,25 @@ export default function HomeDoNow() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14 }}>
         <section style={card} data-testid="home-opportunities" aria-label="Best opportunities">
           <CardHead title="Best opportunities" to={BEST_OPPORTUNITIES_PATH} linkText="View top 5" touchTarget />
+          {oppAsOf ? <div data-testid="home-opportunities-as-of" style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>{oppAsOf}</div> : null}
           {opps.length === 0 && <div style={{ fontSize: TYPE.base, color: TOKENS.text[3] }}>{oppTop ? 'Nothing clears the bar right now.' : 'Loading…'}</div>}
-          {opps.map((o: any) => (
+          {opps.map((o: any) => {
+            // FQ-088: the row quotes the price the R:R was computed from; an old or missing quote is marked, never
+            // presented as current. Missing is not guessed from the list as-of.
+            const q = quoteAge(o?.inputs_as_of?.quote)
+            return (
             <button key={o.symbol} type="button" onClick={() => openSymbol(o.symbol)}
               title={`${o.symbol}: conviction ${o.conviction != null ? Math.round(o.conviction) : '—'} of 100 · reward-to-risk ${o.risk_reward?.rr != null ? Number(o.risk_reward.rr).toFixed(1) : '—'}× (/api/v3/opportunities, CIO opportunity ranking). Advisory only.`}
               style={{ display: 'grid', gridTemplateColumns: '60px minmax(0, 1fr) 64px 36px', gap: 8, alignItems: 'center', fontSize: TYPE.base, padding: '4px 0', borderBottom: `1px solid ${TOKENS.borderSubtle}`, background: 'none', border: 'none', color: TOKENS.text[0], cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
               <span style={{ ...numStyle, fontWeight: 600 }}>{o.symbol}</span>
               <span style={{ color: TOKENS.text[2], fontSize: TYPE.sm }}>{String(o.type ?? '').replace(/_/g, ' ')}</span>
-              <span style={{ ...numStyle, fontSize: TYPE.sm, textAlign: 'right' }}>R:R {o.risk_reward?.rr != null ? `${Number(o.risk_reward.rr).toFixed(1)}×` : '—'}</span>
+              <span style={{ ...numStyle, fontSize: TYPE.sm, textAlign: 'right', lineHeight: 1.2 }}>R:R {o.risk_reward?.rr != null ? `${Number(o.risk_reward.rr).toFixed(1)}×` : '—'}
+                <span data-testid={`home-opp-quote-${o.symbol}`} title={q.words} style={{ display: 'block', fontSize: TYPE.xs, fontWeight: 400, color: q.state === 'current' ? TOKENS.text[3] : TOKENS.warning }}>{q.short}</span>
+              </span>
               <span style={{ ...numStyle, fontWeight: 600, color: TOKENS.success, textAlign: 'right' }}>{o.conviction != null ? Math.round(o.conviction) : '—'}</span>
             </button>
-          ))}
+            )
+          })}
         </section>
 
         <section style={card} data-testid="home-market-card" aria-label="Market in one look">
