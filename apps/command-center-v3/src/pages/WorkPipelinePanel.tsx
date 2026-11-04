@@ -43,11 +43,22 @@ function cellStyle(rag: PipelineItem['rag'], current: boolean): CSSProperties {
 }
 
 function StageCells({ it }: { it: PipelineItem }) {
-  return <div data-testid="stage-cells" className="wp-stages" style={{ display: 'grid', gridTemplateColumns: 'repeat(11, minmax(0, 1fr))', gap: 3 }}>
-    {it.cells.map(c => <div key={c.stage} data-stage={c.stage} data-rag={c.rag} data-current={c.stage === it.stage ? "1" : undefined} title={cellTitle(c)} aria-label={cellTitle(c)} style={cellStyle(c.rag, c.stage === it.stage)}>
-      <span className="wp-cell-text">{c.stage === it.stage && c.label ? c.label : STAGE_LABEL[c.stage]}</span>
-    </div>)}
-  </div>
+  // FQ-032 (review at 64b3abc24): an 11-column strip gives each cell ~26-28 px on a 390 px phone, and the labels need
+  // 39-54 px, so squeezing the label INTO the cell clipped it. The words now lead, in their own full-width line, and the
+  // strip keeps the colour; the cell keeps its accessible label for anything reading the DOM.
+  const current = it.cells.find(c => c.stage === it.stage)
+  const words = current?.label || STAGE_LABEL[it.stage]
+  const failedHere = current?.rag === 'red'
+  return <>
+    <div data-testid="wp-current-stage" className="wp-current-stage">
+      {failedHere ? 'Failed at' : 'Now at'}: <b>{words}</b>
+    </div>
+    <div data-testid="stage-cells" className="wp-stages" style={{ display: 'grid', gridTemplateColumns: 'repeat(11, minmax(0, 1fr))', gap: 3 }}>
+      {it.cells.map(c => <div key={c.stage} data-stage={c.stage} data-rag={c.rag} data-current={c.stage === it.stage ? "1" : undefined} title={cellTitle(c)} aria-label={cellTitle(c)} style={cellStyle(c.rag, c.stage === it.stage)}>
+        <span className="wp-cell-text">{c.stage === it.stage && c.label ? c.label : STAGE_LABEL[c.stage]}</span>
+      </div>)}
+    </div>
+  </>
 }
 
 /** Tier 2: one Ops → Controls request per act — create, then a fresh passkey assertion + the typed phrase, then approve;
@@ -285,8 +296,8 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
            alone told an operator nothing. The cell text is kept (not hidden) on the current cell only; the rest
            stay compact so the strip still fits. */
         .wp-stages > div { height: 22px !important; }
-        .wp-cell-text { display: none; font-size: 10px; }
-        .wp-stages > div[data-current="1"] .wp-cell-text { display: inline; }
+        .wp-cell-text { display: none; }
+        .wp-current-stage { display: block; font-size: 12px; }
       }
     `}</style>
     <div style={panel}>

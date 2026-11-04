@@ -20,15 +20,14 @@ def _phone_block() -> str:
     return match.group(2)
 
 
-def test_the_phone_no_longer_hides_every_stage_label():
+def test_the_phone_names_the_current_stage_on_its_own_line():
+    # Review at 64b3abc24 measured the cells at 26-28 px on a 390 px phone while the labels need 39-54 px, so a label
+    # inside the cell clipped. The words now lead on a full-width line and the strip keeps the colour.
     block = _phone_block()
-    assert not re.search(r"\.wp-cell-text \{ display: none; \}", block), "phone still hides every stage label"
-    assert re.search(r'data-current="1"\]\s*\.wp-cell-text \{ display: inline', block), (
-        "the current stage label is not shown on the phone"
+    assert not re.search(r'data-current="1"\]\s*\.wp-cell-text \{ display: inline', block), (
+        "the phone still squeezes a label into a cell that cannot fit it"
     )
-    assert re.search(r"\.wp-stages > div \{ height: 22px !important; \}", block), (
-        "stage bars are not tall enough to carry a label"
-    )
+    assert re.search(r"\.wp-current-stage \{ display: block", block), "no full-width current-stage line on the phone"
 
 
 def test_the_current_stage_cell_is_marked_and_cells_keep_their_label():
@@ -36,3 +35,7 @@ def test_the_current_stage_cell_is_marked_and_cells_keep_their_label():
         "the current stage cell is not marked"
     )
     assert re.search(r"aria-label=\{cellTitle\(c\)\}", SRC), "cells lost their accessible label"
+    assert 'data-testid="wp-current-stage"' in SRC, "no full-width current-stage line in the component"
+    assert re.search(r"\{failedHere \? 'Failed at' : 'Now at'\}", SRC), (
+        "the line does not distinguish a failure from the current step"
+    )
