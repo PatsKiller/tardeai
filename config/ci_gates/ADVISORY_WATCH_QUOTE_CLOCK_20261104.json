@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ADVISORY_WATCH_QUOTE_CLOCK_20261104",
+  "files": [
+    "tests/test_advisory_watch_quote_clock_20261104.py"
+  ],
+  "anchor": "ADVISORY_WATCH_QUOTE_CLOCK_20261104",
+  "comment": [
+    "ANCHOR: cx-openai-3 F2 on #2593 - join_watch_intelligence fell back to the snapshot generated_at",
+    "when no quote was joined, so WATCH QUOTES read CURRENT with zero quote timestamps. With no joined quote the",
+    "freshness is UNKNOWN and the stamp says so; the generated time is kept as snapshot_as_of."
+  ]
+}

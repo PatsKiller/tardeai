@@ -82,11 +82,16 @@ check(/WATCH QUOTES/.test(html), 'the compact watch stamp is not labelled WATCH 
 check(/WATCH REVIEWS/.test(html), 'the watch dependency clock is not labelled WATCH REVIEWS (it measures the newest review completion)')
 // 3. And the old collision must be gone: one label must not be a substring of the other's idea.
 check(!/WATCH INTEL<\/div>/.test(html), 'the compact stamp still says WATCH INTEL, which reads as the same input as the review clock')
-// 4. The page must say only what the fields prove: a producer's data time, not proof of consumption.
-check(/own data time/i.test(html), 'the page does not say the clock is the producer\'s own data time')
-check(!/actually consumed|what the advice consumed/i.test(html),
-  'the page still claims the clock records what the advice consumed — the clock is a producer time, not consumption')
-check(/review evidence/i.test(html), 'the page does not say where to look for what an earlier synthesis used')
+// 4. The governance paragraph must say only what the fields prove — and the assertion is scoped to THAT
+//    element (cx-openai-3: /own data time/i also matched the unchanged DependencyClockBoard title, so the
+//    paragraph could be gutted while the test still passed).
+const governance = (html.match(/<div data-testid="advisory-clock-governance"[^>]*>([\s\S]*?)<\/div>/) || [])[1] || ''
+check(governance.length > 0, 'the governance paragraph is not rendered')
+check(/own data time/i.test(governance), 'the governance paragraph does not say the clock is the producer\'s own data time')
+check(/review evidence/i.test(governance), 'the governance paragraph does not point at the review evidence')
+check(!/actually consumed|what the advice consumed/i.test(governance),
+  'the governance paragraph still claims the clock records what the advice consumed')
+check(/source or event time/i.test(governance), 'the opening clause still claims a last-observation receipt rather than a source/event time')
 
 if (failed) { console.error(`advisoryClocks.view: ${failed} failure(s)`); process.exit(1) }
 console.log('advisoryClocks.view: ok')

@@ -787,7 +787,7 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
           producer's own data time for a source the desk draws on. They can legitimately disagree, and
           the clocks are NOT a record of what an earlier synthesis consumed — say only what they prove. */}
       <div data-testid="advisory-clock-governance" style={{ fontSize: 10.5, color: 'var(--text3)', margin: '0 0 8px' }}>
-        Stamps show when each surface was last observed. Each dependency clock below shows the producer's
+        Stamps show each surface's own source or event time. Each dependency clock below shows the producer's
         own data time for a source the desk draws on — they are not a record of what an earlier synthesis
         used; for that, consult the review evidence.
       </div>

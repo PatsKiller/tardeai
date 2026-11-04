@@ -32,6 +32,8 @@ FRESH_STALE = "STALE"
 FRESH_EXPIRED = "EXPIRED"
 FRESH_UNAVAILABLE = "UNAVAILABLE"
 FRESH_NO_PRODUCER = "NO_PRODUCER"
+#: cx-openai-3 F2: no quote clock was joined, so freshness is not merely unavailable — it is unknown.
+FRESH_UNKNOWN = "UNKNOWN"
 
 HEALTHY = "HEALTHY"
 DEGRADED = "DEGRADED"
@@ -575,10 +577,16 @@ def join_watch_intelligence(symbols: list[str]) -> dict[str, Any]:
         ts = parse_ts(t)
         if ts and (newest is None or ts > parse_ts(newest)):  # type: ignore[operator]
             newest = t
+    # cx-openai-3 (F2, 2026-11-04): a snapshot's generated time is NOT a quote clock. With no joined
+    # quote timestamp the freshness is UNKNOWN and the stamp must say so; the generated time is kept
+    # beside it as `snapshot_as_of` so the page can qualify it rather than pass it off as a quote time.
     return {
         "contract": contract,
-        "as_of": newest or as_of,
-        "freshness": classify_freshness(newest or as_of, stale_s=WATCH_STALE_S, expired_s=FACTS_EXPIRED_S),
+        "as_of": newest,
+        "snapshot_as_of": as_of,
+        "freshness": (classify_freshness(newest, stale_s=WATCH_STALE_S, expired_s=FACTS_EXPIRED_S)
+                      if newest is not None else FRESH_UNKNOWN),
+        "freshness_basis": "newest joined quote" if newest is not None else "no joined quote timestamp",
         "error": error,
         "items": items,
         "coverage": sum(1 for it in items.values() if it.get("ok")),
