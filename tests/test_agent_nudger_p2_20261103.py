@@ -74,7 +74,9 @@ def test_the_entry_points_at_the_repo_script_with_a_real_dry_run_arg():
     assert e["command"][1] == "scripts/agent_nudger.py"
     assert e["dry_run_arg"] == ["--dry-run"], (
         "the dispatcher's shadow step requires a NON-EMPTY dry_run_arg (lane_dispatch.dispatch_eligible)")
-    assert e["live_arg"] == ["--apply"]
+    # While the row is shadow there is NO live argv at all, so no fire can type even if the stage clamp were
+    # bypassed. The stage-flip PR sets ["--apply"] and brings its own test.
+    assert e["live_arg"] is None
     assert e["lock"].startswith("/") and not e["lock"].endswith(".dryrun")
     assert e["timeout_s"] == 120
     assert e["market_gate"] is False
