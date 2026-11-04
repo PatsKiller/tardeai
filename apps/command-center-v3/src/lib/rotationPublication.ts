@@ -54,7 +54,7 @@ export function rotationAvailability(summary: unknown, error?: unknown, now = Da
 
 const REASONS: Record<string, string> = {
   request_failed: 'The latest request failed.', account_stale: 'Account data is stale.',
-  account_evidence_stale: 'Account data is stale.', publication_expired: 'The last validation is stale.',
+  account_evidence_stale: 'Account data is stale.', publication_expired: 'The publication is stale.',
   position_evidence_stale: 'Position evidence is stale.', unsupported_stop_claim: 'The claimed stop evidence is not supported.',
   conflicting_account_state: 'Account status records disagree.',
   missing_publication_evidence: 'Current source verification is unavailable.',
@@ -67,7 +67,7 @@ export function rotationAvailabilityMessage(value: RotationAvailability): string
 // form above stays in the tooltip; an unknown code is shown as its own words rather than hidden.
 const REASON_CHIPS: Record<string, string> = {
   request_failed: 'request failed', account_stale: 'account data stale', account_evidence_stale: 'account data stale',
-  position_evidence_stale: 'position evidence stale', publication_expired: 'validation stale',
+  position_evidence_stale: 'position evidence stale', publication_expired: 'publication stale',
   unsupported_stop_claim: 'stop claim unsupported', conflicting_account_state: 'account records disagree',
   missing_publication_evidence: 'verification unavailable', missing_input: 'input missing',
   malformed_publication: 'malformed publication', incomplete_publication: 'publication incomplete',
@@ -120,8 +120,8 @@ const REASON_DETAIL: Record<string, { what: string; next: string }> = {
     next: 'It clears when that evidence shows the deterioration the suggestion relies on — a deterministic stop-distance degradation with the thesis triggered, at danger or at warning — or when the suggestion is withdrawn; then press Refresh Summary.',
   },
   publication_expired: {
-    what: 'The last validation of these sources is older than 15 minutes.',
-    next: 'Press Refresh Summary to validate the current sources again.',
+    what: 'This review is withheld because the publication behind it is outside its freshness limit — either the source validation, or the producer output it was built from, is older than 15 minutes, or the producer itself marked the result stale.',
+    next: 'It clears when the producer writes newer output and the sources are validated inside that window; then press Refresh Summary.',
   },
   conflicting_account_state: {
     what: 'Two account records disagree about an account this review uses.',

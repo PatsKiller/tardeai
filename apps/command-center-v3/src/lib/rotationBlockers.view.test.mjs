@@ -116,6 +116,35 @@ check('an explicit producer STALE refusal is not described as an elapsed-time wi
   assert.doesNotMatch(visible, /15-minute/)
 })
 
+// review of PR 2617 F3 (cx-openai-3): `publication_expired` fires on ANY of an old checked_at, an old
+// cache_generated_at, or an explicit stale marker, so the sentence must describe the whole refusal and
+// must never assert that the validation clock is the stale one.
+function expired(overrides = {}) {
+  const s = summary('STALE', ['publication_expired'])
+  return { ...s, publication: { ...s.publication, ...overrides } }
+}
+check('a fresh validation with old producer output is not explained as an old validation', () => {
+  const now = Date.now()
+  const html = renderToStaticMarkup(React.createElement(Notice, {
+    summary: expired({
+      checked_at: new Date(now - 60_000).toISOString(),
+      cache_generated_at: new Date(now - 20 * 60_000).toISOString(),
+    }),
+  }))
+  const visible = html.replace(/<details[\s\S]*?<\/details>/g, '')
+  assert.match(visible, /either the source validation, or the producer output it was built from, is older than 15 minutes/)
+  assert.doesNotMatch(visible, /The last validation of these sources is older than 15 minutes\./)
+})
+check('an explicit producer stale marker is not explained as an old validation', () => {
+  const now = Date.now()
+  const html = renderToStaticMarkup(React.createElement(Notice, {
+    summary: expired({ checked_at: new Date(now - 60_000).toISOString(), cache_generated_at: new Date(now - 60_000).toISOString(), stale: true }),
+  }))
+  const visible = html.replace(/<details[\s\S]*?<\/details>/g, '')
+  assert.match(visible, /or the producer itself marked the result stale/)
+  assert.doesNotMatch(visible, /The last validation of these sources is older than 15 minutes\./)
+})
+
 const out = { results, passed: results.filter(x => x.passed).length, failed: results.filter(x => !x.passed).length }
 console.log(JSON.stringify(out, null, 2))
 if (out.failed) process.exit(1)
