@@ -521,9 +521,11 @@ def test_inode_bands_alert_once_per_change_and_apart_from_the_byte_bands(mon):
     assert got == [
         ("disk_usage_warn", "Disk /tmp INODES WARN: at or above 80% inodes used"),
         ("disk_usage_warn", "Disk /tmp WARN: at or above 80% used"),
-        ("disk_usage_critical", "Disk /tmp INODES CRITICAL: at or above 90% inodes used"),
+        # ONE clock (2026-11-04, cx-openai-4 R3): the inode CRITICAL and the byte recovery both fall inside intervals
+        # already opened, so they are not said then — a hard bound of one alert per interval costs up to one interval
+        # of delay on an escalation. The bands stay separate, which is what this test is for; the inode recovery is
+        # the one that lands after its own interval has passed.
         ("disk_usage_recovered", "Disk /tmp INODES recovered: below 80% inodes used"),
-        ("disk_usage_recovered", "Disk /tmp recovered: below 80% used"),
     ]
     state = json.loads((mon.tw.state / "data/runtime/disk_usage_monitor_state.json").read_text())
     assert state["inodes"][r]["band"] == "ok" and state["mounts"][r]["band"] == "ok"
