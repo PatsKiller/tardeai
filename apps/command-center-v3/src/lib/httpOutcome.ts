@@ -101,7 +101,11 @@ export function classifyStatus(
     const code = String(errorCode ?? '').trim().toUpperCase()
     if (IDENTITY_CODES.has(code)) {
       return { ...base, kind: 'IDENTITY_REQUIRED', terminal: true, retryable: false,
-        message: 'your identity was not presented — sign in through Tailscale, then reload; waiting will not fix this',
+        // AGENT_CALLER_REFUSED is a POLICY refusal, not proof that nobody signed in: the serve proxy allows the
+        // operator's tailnet identity and refuses agents, n8n and the service token whatever they present. Saying
+        // "your identity was not presented" would be a true-looking instruction the caller cannot act on (cc2).
+        message: 'this surface answers only your own tailnet identity — sign in through Tailscale as the operator, '
+          + 'then reload. If you are already signed in, this surface is not available to this caller.',
         keepLastGood: true }
     }
     return { ...base, kind: 'FORBIDDEN', terminal: true, retryable: false,
