@@ -358,6 +358,10 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
     n8n_native_lanes = {
         # 2026-10-23 cio-ask-research: n8n-native report dispatcher row at shadow, hourly 07:20-21:20 dry_run
         # (no host line; tests/test_cio_ask_research_lane_20261023.py).
+        # 2026-11-04 D11: operator-approved shadow dry-cycle lane, dispatcher-addressed with its own workflow_id;
+        # the allowlist row declares dry_run_arg --cycle and live_arg null, so a live request is refused as data.
+        # The host lane self-heal-fixer stays PAUSED/KEEP_ON_CRON.
+        "self-heal-fixer-shadow",
         "cio-ask-research",
         # Hourly Ask/source polling lanes: n8n-native, no host schedule is retired. 2026-10-29 live flip: shadow ->
         # canary, dispatch live, live_arg [] (the --once / --once --events-only script default is the live run).

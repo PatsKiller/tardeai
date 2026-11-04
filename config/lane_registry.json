@@ -25838,6 +25838,27 @@
       "flags": [
         "UNVERIFIED_OUTPUT"
       ]
+    },
+    {
+      "lane_id": "self-heal-fixer-shadow",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "workflow_id": "self-heal-fixer-shadow",
+        "match": "self-heal-fixer-shadow",
+        "cadence": "30 9-18 * * 1-5",
+        "timezone": "America/New_York",
+        "stage": "shadow"
+      },
+      "expected_cadence_hours": 1,
+      "state": "ACTIVE",
+      "state_since": "2026-11-04",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/self_heal_fixer_shadow/receipt.json"
+      },
+      "note": "D11 shadow dry-cycle lane, operator-approved 2026-11-04. n8n runs the fixer's dry cycle only: the allowlist row declares dry_run_arg --cycle and live_arg null, so a live request is refused as data. stage is hand-maintained and nothing in code promotes it; promotion is a registry PR. The host lane self-heal-fixer stays PAUSED / KEEP_ON_CRON and its own row is untouched. A green n8n execution is process evidence, not proof: the receipt is the proof."
     }
   ],
   "freshness_contracts": [
