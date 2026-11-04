@@ -116,6 +116,43 @@ check('the counts still read as counts', { ...pq, ...health }, () => {
   assert.match(text, /30,980|30980/, 'findings count disappeared')
 })
 
+// ── FQ-039 R1 (codex P2607-R1): a known zero is a count, not a missing value ─────────────────────────────────
+
+check('a known open_count of zero is rendered as nothing open', { ...pq, open_count: 0, open_findings: [], ...health }, () => {
+  const t = readingText(render({ ...pq, open_count: 0, open_findings: [], ...health }))
+  assert.match(t, /nothing open/)
+  assert.doesNotMatch(t, /still need attention/)
+})
+
+check('resolved history is labelled as history, not as open work', {}, () => {
+  const resolvedOnly = { ...pq, open_count: 0, open_findings: [],
+    findings: [{ id: 9, finding_type: 'unsupported_thesis', severity: 'info', status: 'resolved',
+                 description: 'industry Gold — composite 60.6 (review)' }], ...health }
+  const raw = render(resolvedOnly)
+  assert.match(raw, /data-testid="quality-history-caption"/)
+  const t = readingText(raw)
+  assert.match(t, /showing the most recent resolved ones/)
+  assert.match(t, /Thesis not yet supported by evidence/)
+})
+
+check('an unknown open count says so instead of borrowing the history length', { ...pq, open_count: undefined, open_findings: undefined, ...health }, () => {
+  const t = readingText(render({ ...pq, open_count: undefined, open_findings: undefined, ...health }))
+  assert.match(t, /open count not reported/)
+  assert.doesNotMatch(t, /still need attention/)
+})
+
+// ── FQ-039 R2 (codex P2607-R2): an inherited property name is an unknown key, not a crash ─────────────────────
+
+for (const evil of ['__proto__', 'constructor', 'toString']) {
+  check(`an unknown type named ${evil} renders as words, not a crash`, { ...pq, open_count: 1, open_findings: [
+    { id: 7, finding_type: evil, severity: 'info', status: 'open', description: 'producer sent an inherited name' }], ...health }, () => {
+    const raw = render({ ...pq, open_count: 1, open_findings: [
+      { id: 7, finding_type: evil, severity: 'info', status: 'open', description: 'producer sent an inherited name' }], ...health })
+    const t = readingText(raw)
+    assert.match(t, /Proto|Constructor|ToString|Object prototype/i, `no humanised label for ${evil}: ${t.slice(0, 200)}`)
+  })
+}
+
 // The staging table names live in HermesHub's overview, which pulls reactflow and the router; that
 // page is covered by a source guard plus the label unit test rather than an SSR render.
 const hub = readFileSync(join(app, 'src/pages/HermesHub.tsx'), 'utf8')

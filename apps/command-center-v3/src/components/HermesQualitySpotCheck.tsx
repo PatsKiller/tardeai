@@ -30,9 +30,14 @@ export default function HermesQualitySpotCheck({ onDrill }: Props) {
     return st !== 'resolved' && st !== 'closed' && st !== 'archived'
   }
   const open = (Array.isArray(pq?.open_findings) ? pq.open_findings : findings.filter(isOpen)) as any[]
-  const openCount: number = typeof pq?.open_count === 'number' ? pq.open_count : open.length
+  // FQ-039 R1 (codex, P2607-R1): `open_count` is the producer's own count and 0 is a legitimate answer. The old
+  // expression `openCount || recent.length` replaced a known zero with the length of the historical list, and the
+  // sentence around it called that "still need attention" — resolved history misclassified as open work.
+  const openKnown: boolean = typeof pq?.open_count === 'number'
+  const openCount: number | null = openKnown ? (pq.open_count as number) : (Array.isArray(pq?.open_findings) ? pq.open_findings.length : null)
   const findingsTotal: number = typeof pq?.total === 'number' ? pq.total : findings.length
-  const recent = (open.length ? open : findings).slice(0, 8)
+  const showingOpen = open.length > 0
+  const recent = (showingOpen ? open : findings).slice(0, 8)
   const crit = recent.filter(f => String(f.severity || '').toLowerCase() === 'critical').length
   const warn = recent.filter(f => String(f.severity || '').toLowerCase() === 'warning').length
 
@@ -72,14 +77,26 @@ export default function HermesQualitySpotCheck({ onDrill }: Props) {
 
       <div style={{ fontSize: TYPE.xs, color: 'var(--text2)', marginBottom: 8 }}>
         Research so far: <b style={{ color: 'var(--text1)' }}>{countText(researchN)}</b> rows
-        {' · '}<b style={{ color: 'var(--text1)' }}>{countText(findingsN)}</b> quality findings
-        {' · '}<b style={{ color: 'var(--text1)' }}>{countText(openCount || recent.length)}</b> still need attention
+        {' · '}<b style={{ color: 'var(--text1)' }}>{countText(findingsN)}</b> quality findings recorded
+        {openCount === 0
+          ? <>{' · '}<b style={{ color: 'var(--text1)' }}>nothing open</b></>
+          : openCount != null
+            ? <>{' · '}<b style={{ color: 'var(--text1)' }}>{countText(openCount)}</b> still need attention</>
+            : <>{' · '}<b style={{ color: 'var(--text1)' }}>open count not reported</b></>}
       </div>
 
       {recent.length === 0 ? (
         <div style={{ color: 'var(--text3)', fontSize: TYPE.sm, padding: '6px 0' }}>No pipeline-quality findings loaded.</div>
       ) : (
-        recent.map((f, i) => (
+        <>
+        {/* FQ-039 R1: when nothing is open, say that the list below is history — never let resolved findings read as
+            outstanding work. */}
+        {!showingOpen && (
+          <div data-testid="quality-history-caption" style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginBottom: 4 }}>
+            No open findings — showing the most recent resolved ones.
+          </div>
+        )}
+        {recent.map((f, i) => (
           <div
             key={f.id ?? i}
             onClick={() => onDrill?.({
@@ -101,7 +118,8 @@ export default function HermesQualitySpotCheck({ onDrill }: Props) {
               {String(f.description || '').length > 160 ? '…' : ''}
             </div>
           </div>
-        ))
+        ))}
+        </>
       )}
 
       <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginTop: 10 }}>
