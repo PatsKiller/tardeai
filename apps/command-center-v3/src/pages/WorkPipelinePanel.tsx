@@ -136,14 +136,18 @@ function ItemCard({ it, onAct, busy, onWorklog, onRefresh }: {
     <div className="wp-card-grid" style={{ display: 'grid', gap: '6px 14px' }}>
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: TYPE.md, fontWeight: 650, color: TOKENS.text[0], overflowWrap: 'anywhere' }}>{it.what.title || it.id}</div>
-        <div style={{ ...mono, color: TOKENS.text[2], display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {it.what.priority ? <div style={{ ...small }}>P{it.what.priority}</div> : null}
+        {/* FQ-033: the id, the design id and the batch are identifiers, not the sentence an operator reads first.
+            They stay on the card, one tap away, and nothing is removed. */}
+        <Technical label="Technical: item id, design id and batch">
           <span>{it.id}</span>
-          {it.what.design_id ? <span>{it.what.design_id}</span> : null}
-          {it.what.priority ? <span>P{it.what.priority}</span> : null}
-          {it.batch && !it.is_batch ? <span>batch PR {it.batch}</span> : null}
-        </div>
+          {it.what.design_id ? <> · <span>{it.what.design_id}</span></> : null}
+          {it.batch && !it.is_batch ? <> · <span>batch PR {it.batch}</span></> : null}
+        </Technical>
         <dl style={{ display: 'grid', gridTemplateColumns: '48px minmax(0, 1fr)', gap: '2px 6px', margin: '4px 0 0' }}>
-          <dt style={dt}>Who</dt><dd style={dd} data-testid="who">{it.who.label}{it.who.session ? <span style={{ ...small, fontFamily: FONT.mono }}> · {it.who.session}</span> : null}</dd>
+          <dt style={dt}>Who</dt><dd style={dd} data-testid="who">{it.who.label}
+            {it.who.session ? <Technical label="Technical: agent session">{it.who.session}</Technical> : null}
+          </dd>
           <dt style={dt}>When</dt><dd style={dd} data-testid="when">started {et(it.when.started)} · last activity {et(it.when.last_activity)} · <b>{ageLabel(it.when.stage_age_minutes)} in {STAGE_LABEL[it.stage]}</b></dd>
         </dl>
       </div>

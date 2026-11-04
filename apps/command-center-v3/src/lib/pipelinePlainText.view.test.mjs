@@ -36,7 +36,13 @@ ok(!/refused: \$\{r\.error/.test(src), 'the raw service error is still concatena
 ok(/technical: raw \|\| undefined/.test(src), 'the raw service text is not carried in the technical field')
 ok(/busy\.technical \? <Technical/.test(src), 'the technical text is not rendered as a disclosure')
 
-// 4. Nothing removed: the values are still in the panel.
+// 4. Identifiers are not the sentence the operator reads first.
+ok(/<Technical label="Technical: item id, design id and batch">[\s\S]{0,400}<span>\{it\.id\}<\/span>/.test(src),
+   'the item id / design id / batch are not under Technical')
+ok(/<Technical label="Technical: agent session">\{it\.who\.session\}<\/Technical>/.test(src),
+   'the raw agent session id is still inline')
+
+// 5. Nothing removed: the values are still in the panel.
 ok((src.match(/it\.where\.worktree/g) || []).length >= 2, 'the checkout path value was removed, not moved')
 ok((src.match(/census\??\.warning/g) || []).length >= 2, 'the census warning value was removed, not moved')
 

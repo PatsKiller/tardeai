@@ -52,9 +52,20 @@ def test_a_refused_action_leads_with_a_sentence():
     assert "busy.technical ? <Technical" in SRC, "the technical text is not rendered as a disclosure"
 
 
+def test_identifiers_are_not_the_first_thing_read():
+    assert re.search(
+        r'<Technical label="Technical: item id, design id and batch">[\s\S]{0,400}<span>\{it\.id\}</span>', SRC
+    ), "the item id / design id / batch are not under Technical"
+    assert re.search(r'<Technical label="Technical: agent session">\{it\.who\.session\}</Technical>', SRC), (
+        "the raw agent session id is still inline"
+    )
+
+
 def test_nothing_was_removed():
     assert len(re.findall(r"it\.where\.worktree", SRC)) >= 2, "the checkout path value was removed, not moved"
     assert len(re.findall(r"census\??\.warning", SRC)) >= 2, "the census warning value was removed, not moved"
+    assert "{it.id}" in SRC, "the item id was removed, not moved"
+    assert "it.who.session" in SRC, "the agent session was removed, not moved"
 
 
 def test_the_phone_layout_still_exists_and_hides_nothing_technical():
