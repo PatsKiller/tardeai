@@ -157,13 +157,22 @@ class PgReader:
                     conn.read_only = True
                 else:
                     raise RuntimeError("market_risk reader: connection cannot be made read-only; refusing to use it")
-            except BaseException:
+            except BaseException as refusal:
                 # Until initialization succeeds, this factory result is not owned by self._conn. In particular,
                 # a second read-only initialization may refuse after a caller's dedicated factory succeeded.
                 try:
                     conn.close()
-                except BaseException:
-                    pass  # cleanup cannot replace the initialization refusal
+                except BaseException as cleanup_error:
+                    try:
+                        logging.getLogger(__name__).warning(
+                            "read-only connection cleanup failed (%s); retaining initialization refusal",
+                            type(cleanup_error).__name__,
+                        )
+                    finally:
+                        try:
+                            refusal.add_note(f"read-only initialization cleanup failed: {type(cleanup_error).__name__}")
+                        finally:
+                            raise refusal from None  # even a failed diagnostic must preserve the original refusal
                 raise
             self._conn = conn
         return self._conn.cursor()

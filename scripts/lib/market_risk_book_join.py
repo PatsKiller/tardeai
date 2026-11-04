@@ -8,6 +8,7 @@ card, never the projection. Nothing is written.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -57,13 +58,22 @@ def _ro_conn(bounds: dict[str, int], get_conn: Any = None):
             conn.read_only = True
         else:
             raise RuntimeError("connection cannot be made read-only")
-    except BaseException:
+    except BaseException as refusal:
         # Ownership has not reached PgReader/caller yet. Close this newly allocated connection even when
         # the read-only API/getter/setter refuses; cleanup must not replace the original refusal.
         try:
             conn.close()
-        except BaseException:
-            pass
+        except BaseException as cleanup_error:
+            try:
+                logging.getLogger(__name__).warning(
+                    "read-only connection cleanup failed (%s); retaining initialization refusal",
+                    type(cleanup_error).__name__,
+                )
+            finally:
+                try:
+                    refusal.add_note(f"read-only initialization cleanup failed: {type(cleanup_error).__name__}")
+                finally:
+                    raise refusal from None  # even a failed diagnostic must preserve the original refusal
         raise
     return conn
 

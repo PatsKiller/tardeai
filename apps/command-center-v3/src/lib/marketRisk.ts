@@ -667,9 +667,14 @@ export function actionableModel(mr: MarketRisk | null, now = Date.now()): Action
       ? `${quote!.session === 'premarket' ? 'pre-market' : quote!.session === 'afterhours' ? 'after-hours' : 'regular-session'} ${String(Math.floor(quoteClock.seconds / 3600)).padStart(2, '0')}:${String(Math.floor(quoteClock.seconds / 60) % 60).padStart(2, '0')} ET`
       : ''
     const invalidation = finite(st.invalidation_level)
-    const invalidated = quoteKnown && invalidation != null && price! < invalidation
+    const invalidationKnown = invalidation != null && invalidation > 0
+    const invalidated = quoteKnown && invalidationKnown && price! < invalidation
     const historicalPositive = st.verdict === 'Confirmed' || !!st.stage2?.met
-    const currentVerdict = invalidated ? 'Invalidated' : !quoteKnown && historicalPositive ? 'Unverified' : st.verdict ?? 'Still falling'
+    // The interim negative veto cannot affirm a historical positive when its existing floor is unknown.
+    const missingInvalidation = historicalPositive && !invalidationKnown
+    const currentVerdict = invalidated ? 'Invalidated' : historicalPositive && (!quoteKnown || !invalidationKnown) ? 'Unverified' : st.verdict ?? 'Still falling'
+    const invalidationEvidence = missingInvalidation
+      ? ' · Invalidation level unavailable — current confirmation is unverified' : ''
     const priceEvidence = observedQuote
       ? observedKnown ? `Latest stored quote · ${quoteLabel} · ${quote!.source} · observation time; not a confirmed close`
         : `Current quote ${quote?.status === 'stale' ? 'stale' : 'unavailable'} — current recovery is unverified`
@@ -687,9 +692,9 @@ export function actionableModel(mr: MarketRisk | null, now = Date.now()): Action
       verdict: currentVerdict, verdictTone: invalidated ? 'danger' : currentVerdict === 'Unverified' ? 'warning' : VERDICT_TONE[currentVerdict] ?? 'neutral',
       stage1: `${st.stage1?.met ?? 0} of ${st.stage1?.of ?? st.stage1?.conditions?.length ?? 0}`,
       waiting: unmet1.length ? unmet1.join(', ') : 'all met',
-      invalidates: fmtPrice(st.invalidation_level),
-      stage2: invalidated ? 'not met — invalidated by the current quote' : !quoteKnown && st.stage2?.met ? 'not verified — current quote unavailable' : st.stage2?.met ? 'met' : unmet2.length ? unmet2.join(' or ') : 'not measured',
-      wash, earnings, lookThrough: `${priceEvidence} · ${ltLine}${st.last_date ? ` · stage closes through ${shortDay(st.last_date)}` : ''}`,
+      invalidates: fmtPrice(invalidationKnown ? invalidation : null),
+      stage2: invalidated ? 'not met — invalidated by the current quote' : missingInvalidation ? 'not verified — invalidation level unavailable' : !quoteKnown && st.stage2?.met ? 'not verified — current quote unavailable' : st.stage2?.met ? 'met' : unmet2.length ? unmet2.join(' or ') : 'not measured',
+      wash, earnings, lookThrough: `${priceEvidence}${invalidationEvidence} · ${ltLine}${st.last_date ? ` · stage closes through ${shortDay(st.last_date)}` : ''}`,
     }
   })
   const firstOld = cards.filter(([, c]) => !isRecent(c))

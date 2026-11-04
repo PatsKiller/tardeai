@@ -260,6 +260,31 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
   }
   assert.equal(currentRow({ ...observed, price: 134.50, pct_vs_exit: -2 }).verdict, 'Confirmed',
     'below is strict; exactly at the invalidation does not invent a breach')
+  // External F1: a current quote cannot confirm recovery without a usable existing invalidation floor.
+  const malformedFloors: [string, unknown][] = [
+    ['missing', undefined], ['null', null], ['NaN', NaN], ['zero', 0], ['negative', -1],
+    ['true', true], ['false', false], ['string', '134.50'], ['Infinity', Infinity], ['negative Infinity', -Infinity],
+  ]
+  const floorRows = malformedFloors.map(([name, floor]) => {
+    const historicalStages: any = { ...currentCase.stages, invalidation_level: floor }
+    if (name === 'missing') delete historicalStages.invalidation_level
+    const historyBefore = JSON.stringify(historicalStages)
+    const row = actionableModel(unwrapMarketRisk({ ...base, as_of: '2026-11-04T14:15:00Z',
+      card_config: { recent_sessions: 30 }, reentry_watch: { NEWX: { ...currentCase,
+        stages: historicalStages, current_quote: { ...observed, price: 140.47 } } } }), quoteNow)!.reentry[0]
+    assert.equal(JSON.stringify(historicalStages), historyBefore, `${name}: historical stages stay unchanged`)
+    return { name, row }
+  })
+  assert.deepEqual(floorRows.map(({ name, row }) => [name, row.verdict, row.stage2]),
+    malformedFloors.map(([name]) => [name, 'Unverified', 'not verified — invalidation level unavailable']))
+  for (const { name, row } of floorRows) {
+    assert.equal(row.now, '$140.47', `${name}: keep the valid current quote visible`)
+    assert.equal(row.invalidates, '—', `${name}: never coerce or fabricate an invalidation floor`)
+    assert.match(row.lookThrough, /invalidation level unavailable.*current confirmation.*unverified/i,
+      `${name}: explain exactly why current confirmation is not verified`)
+  }
+  assert.equal(currentRow({ ...observed, price: 140.47 }).verdict, 'Confirmed',
+    'a finite positive existing floor preserves a valid current confirmation')
   assert.equal(currentRow(observed, quoteNow + 3 * 3600_000).verdict, 'Unverified',
     'retained API data is re-aged against the caller clock')
   assert.equal(currentCase.stages.verdict, 'Confirmed', 'confirmed close evidence remains immutable')

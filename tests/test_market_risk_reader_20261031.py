@@ -599,3 +599,52 @@ def test_reentry_refresh_closes_both_read_only_initializers(failure_stage, clean
     assert conn.close_calls == 1 and conn.query_calls == 0
     assert quote["status"] == "unavailable" and quote["price"] is None
     assert out["reentry_watch"]["ZZQ"]["stages"] == stage
+
+
+
+def _cleanup_recording_module(owner):
+    if owner == "join":
+        return _observed_joiner()
+    return _observed_module("test_cleanup_recording_reader", "scripts/lib/market_risk/reader.py")
+
+
+def _call_refused_initializer(owner, module, conn):
+    if owner == "join":
+        module._ro_conn(module.db_bounds({}), lambda **_kwargs: conn)
+    else:
+        module.PgReader(lambda: conn)._cur()
+
+
+@pytest.mark.parametrize("owner", ["join", "reader"])
+def test_cleanup_failure_is_recorded_without_error_values(owner, caplog):
+    import logging
+    module = _cleanup_recording_module(owner)
+    conn, original = _read_only_setup_failure("set_session", cleanup_fails=True)
+    with caplog.at_level(logging.WARNING, logger=module.__name__):
+        with pytest.raises(RuntimeError) as caught:
+            _call_refused_initializer(owner, module, conn)
+    assert caught.value is original and conn.closed is True and conn.query_calls == 0
+    notes = " ".join(getattr(original, "__notes__", []))
+    messages = " ".join(record.getMessage() for record in caplog.records if record.name == module.__name__)
+    assert "OSError" in notes and "OSError" in messages
+    assert "synthetic connection cleanup failed" not in notes + messages
+    assert "synthetic read-only initialization refused" not in notes + messages
+
+
+@pytest.mark.parametrize("owner", ["join", "reader"])
+@pytest.mark.parametrize("recording_failure", ["warning", "note", "both"])
+def test_cleanup_recording_failure_cannot_replace_original_refusal(owner, recording_failure, monkeypatch):
+    import logging
+    module = _cleanup_recording_module(owner)
+    conn, original = _read_only_setup_failure("set_session", cleanup_fails=True)
+    def recording_refused(*_args, **_kwargs):
+        raise OSError("synthetic diagnostic recorder failed")
+    if recording_failure in {"warning", "both"}:
+        monkeypatch.setattr(logging.getLogger(module.__name__), "warning", recording_refused)
+    if recording_failure in {"note", "both"}:
+        original.add_note = recording_refused
+    with pytest.raises(RuntimeError) as caught:
+        _call_refused_initializer(owner, module, conn)
+    assert caught.value is original and conn.closed is True and conn.query_calls == 0
+    if recording_failure == "warning":
+        assert "OSError" in " ".join(original.__notes__)

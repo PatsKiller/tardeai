@@ -25,11 +25,14 @@ regular-session close reader and daily bars are unchanged.
 The UI requires an explicit recognised quote schema and validates every accepted schema against the caller clock.
 Both current observations and legacy regular observations expire even if an old API assessment is retained.
 An expired legacy observation may remain labelled historical context; it cannot keep Now or CONFIRMED.
-The dedicated quote connection is closed on read-only setup failure as well as query/cleanup failure, and the original
-setup refusal is preserved if cleanup also fails. The UI re-ages the observation before using it. A current price below the existing invalidation
+Both read-only setup boundaries own and close the new connection on setup failure, and the original refusal is
+preserved if cleanup or diagnostic recording also fails. Cleanup diagnostics record error types only; no security
+baseline or suppression change is used. The UI re-ages the observation before using it. A current price below the existing invalidation
 level vetoes an old positive stage verdict: `INVALIDATED`, with Stage 2 no longer marked met. An unavailable/stale
 quote renders current confirmation `UNVERIFIED`; it cannot silently borrow yesterday's close or keep CONFIRMED.
-The current price and percent share the same price/reference pair. A quote failure does not erase the historical
+A positive current display also requires an existing finite positive invalidation level. If that prerequisite is
+missing or malformed, the quote can still be shown but confirmation is UNVERIFIED with the missing-floor reason;
+no level is invented and no historical stage is changed. The current price and percent share the same price/reference pair. A quote failure does not erase the historical
 bar evidence or write a trading decision.
 
 The operator-requested public-price regression uses a synthetic symbol/account: exit 137.19, invalidation 134.50,
