@@ -213,11 +213,13 @@ def test_canonical_adapter_joins_exact_observation_fields_and_guarded_news(mod):
     queries = []
 
     def read(sql, params):
-        assert sql.startswith("SELECT ") and not any(word in sql for word in ("INSERT ", "UPDATE ", "DELETE "))
+        assert sql.lstrip().startswith("SELECT ") and not any(
+            word in sql for word in ("INSERT ", "UPDATE ", "DELETE ")
+        )
         queries.append(sql)
         if "FROM market_quotes " in sql:
             return [{"symbol": "SYNX", "price": 12, "prev_close": 11, "volume": 200, "fetched_at": ASOF}]
-        if "FROM news_articles " in sql:
+        if "FROM news_articles" in sql:
             return [
                 {
                     "symbol": "SYNX",
@@ -331,6 +333,40 @@ def test_canonical_cio_identity_age_and_source_are_distinct_from_risk_advice(mod
     assert row["market_risk_stance"]["value"]["stance"] == "RE_ENTER_IF"
     canonical["SYNX"]["identity_status"] = "UNRESOLVED"
     assert mod.build(p, {}, cio_stances=canonical, now=NOW)["symbols"]["SYNX"]["cio"]["state"] == "unknown"
+
+
+def test_missing_material_input_clock_keeps_cio_facts_unknown(mod):
+    """CX1: the assembly clock is not an observation of the stance; a missing material clock stays unknown."""
+    from scripts.lib import cio_truth
+
+    # Drive the real registered stance reader: no inputs_as_of and no evidence component clocks.
+    stance = cio_truth.stance_for(
+        "GUID-SYNX",
+        projection={
+            "as_of": ASOF,
+            "source": {"kind": "shadow"},
+            "prospects": [
+                {
+                    "security_guid": "GUID-SYNX",
+                    "symbol": "SYNX",
+                    "stance": "WATCH",
+                    "conviction": 71,
+                    "as_of": ASOF,
+                    "revision": 1,
+                }
+            ],
+        },
+        now=NOW,
+    )
+    assert stance["inputs_as_of"] is None and stance["input_time_gap"]
+    stance["identity_status"] = "CONFIRMED"  # what stances_for_symbols adds for a resolved GUID
+    row = mod.build(projection(), {}, cio_stances={"SYNX": stance}, now=NOW)["symbols"]["SYNX"]
+    for field in ("cio", "conviction"):
+        assert row[field]["state"] == "unknown"
+        assert row[field]["value"] is None
+        # The record's assembly as_of (one minute before NOW) never becomes the evidence clock.
+        assert row[field]["as_of"] is None and row[field]["age_seconds"] is None
+    assert "material input" in row["cio"]["reason"]
 
 
 def test_stored_stop_distance_never_creates_or_changes_a_stop(mod):
@@ -845,7 +881,7 @@ def test_headlines_are_clocked_by_the_newest_headline_not_the_query(mod):
         pass
 
     def read(sql, params):
-        if "FROM news_articles " in sql:
+        if "FROM news_articles" in sql:
             return [{"symbol": "SYNX", "title": "SYNX announces synthetic product update",
                      "published_at": "2032-03-06T22:00:00Z", "source": "synthetic", "source_url": "u"}]
         return []
@@ -859,6 +895,40 @@ def test_headlines_are_clocked_by_the_newest_headline_not_the_query(mod):
     missing = empty["symbols"]["SYNX"]["headlines"]
     assert missing["state"] == "unknown" and missing["as_of"] is None and missing["value"] is None
     assert "source clock" in missing["reason"]
+
+
+def test_headlines_come_through_the_registered_catalyst_projection(mod):
+    """CX2: never a second news_articles read; the projection owns not_news_sql() and title de-duplication."""
+    rows = [
+        {"symbol": "SYNX", "title": "SYNX stock price, news, quote and history", "summary": "",
+         "source": "listing", "source_url": "https://example.invalid/quote", "published_at": ASOF},
+        {"symbol": "SYNX", "title": "SYNX announces synthetic product update - Feed One", "summary": "",
+         "source": "one", "source_url": "https://example.invalid/one", "published_at": "2032-03-09T20:58:00Z"},
+        {"symbol": "SYNX", "title": "SYNX announces synthetic product update", "summary": "",
+         "source": "two", "source_url": "https://example.invalid/two", "published_at": "2032-03-09T20:57:00Z"},
+    ]
+    queries = []
+
+    def read(sql, params):
+        if "FROM news_articles" not in sql:
+            return []
+        queries.append((sql, params))
+        kept = list(rows)
+        # Emulate the canonical not_news_sql() predicate the caller actually sends.
+        if "stock price, news, quote" in sql:
+            kept = [row for row in kept if "stock price, news, quote" not in row["title"]]
+        return kept
+
+    p = projection()
+    p["reentry_watch"]["SYNX"].pop("current_quote")
+    headlines = mod.collect(p, {}, reader=StoredReader(), read_rows=read, now=NOW)["symbols"]["SYNX"]["headlines"]
+    assert len(queries) == 1, "one news read through the registered projection"
+    sql, params = queries[0]
+    assert "stock price, news, quote" in sql, "the canonical not_news_sql() exclusions are in the read path"
+    assert params[1] == NOW - timedelta(hours=72) and params[2] == NOW, "the observation window is explicit"
+    # The quote page is excluded and the two feeds' same title collapses to the newest one.
+    assert [row["title"] for row in headlines["value"]] == ["SYNX announces synthetic product update - Feed One"]
+    assert headlines["state"] == "measured" and headlines["value"][0]["guarded"] is True
 
 
 def test_two_observations_of_the_same_instant_are_a_conflict_not_a_silent_pick(mod):
