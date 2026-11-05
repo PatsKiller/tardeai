@@ -94,7 +94,13 @@ def test_a_complete_reviewed_health_contract_exists():
     assert H.validate_contract(contract) == []
     assert H.unknown_fields(contract) == []
     assert contract["review"]["status"] == "REVIEWED"
-    assert contract["review"]["reviewed_by"].strip() and contract["review"]["reviewed_on"]
+    assert contract["review"]["authored_by"].strip() and contract["review"]["reviewed_on"]
+    # cx-openai D52 triage: an author's completeness check is not a review. The independent reviewer is recorded
+    # separately and must stay recorded — dropping it is what made the old record claim a review it never had.
+    assert contract["review"]["independently_reviewed_by"].strip(), (
+        "the contract is REVIEWED without an independent reviewer on record")
+    assert "cx-openai-4" in contract["review"]["independently_reviewed_by"], (
+        "the independent reviewer is no longer named")
     assert contract["evidence"]["receipt"] == _row()["output_signal"]["path"]
     from scripts.lib.n8n_output_verdict import validate_expected_output
 

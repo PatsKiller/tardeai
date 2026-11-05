@@ -35279,9 +35279,10 @@
       "review_by": "2026-12-05",
       "review": {
         "reviewed_on": "2026-11-05",
-        "reviewed_by": "cc-deepseek-4-s3 (author) - contract completeness review for a shadow registration; independent review is required before any stage flip",
+        "authored_by": "cc-deepseek-4-s3 (author) - contract completeness review for a shadow registration",
+        "independently_reviewed_by": "cx-openai-4, 2026-11-05T22:34:23Z - CONTRACT-ONLY DELTA PASS at 63ec09d42. Record-only review (wholehead=false, no quorum vote, no operator approval, no stage flip): three real --cycle cases plus new native record assertions, 2 PASS on the new record and 2 FAIL on the old one. Evidence data/audit/cx4-2577-contract-delta-20261105T223225Z/CONTRACT-ONLY.md. The H1/H2 findings (healthy predicate, expected-output wording) are closed by that measurement.",
         "status": "REVIEWED",
-        "note": "REVIEWED here means the contract is complete and consistent with the allowlist and the registry row; it is not the operator approval for a live stage, which is a separate decision. It closes the codex-cloud P1 at cec50be3b (MISSING_CONTRACT self-heal-fixer-shadow)."
+        "note": "REVIEWED now means two things are true: the contract is complete and consistent with the allowlist and the registry row (author check), and a session that did not author it has reviewed it (cx-openai-4, 2026-11-05T22:34:23Z, delta pass at 63ec09d42). It is still not the operator approval for a live stage, which remains a separate decision, and no stage flip is implied. It closes the codex-cloud P1 at cec50be3b (MISSING_CONTRACT self-heal-fixer-shadow) and the D52 triage item about calling an author-completeness check a review."
       },
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
