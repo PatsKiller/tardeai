@@ -1342,5 +1342,95 @@ def main():
             print(f"  Run receipt NOT finalised: {exc}", file=sys.stderr)
 
 
+def latest_receipt(directory: Path | None = None) -> dict | None:
+    """The newest run receipt, parsed; None when the lane has never run.
+
+    Read-only: never writes, never creates the directory, never runs the lane. It exists so a caller (operator,
+    monitor, the 2026-11-05 recovery measurement) can answer "did the last run do useful work" from the durable
+    record instead of inferring it from a log file's mtime — the gap the measurement named: "log Complete ≠
+    useful-work receipt".
+    """
+    folder = Path(directory) if directory else receipt_dir()
+    try:
+        files = sorted(folder.glob("*.json"), key=lambda f: f.stat().st_mtime)
+    except OSError:
+        return None
+    for path in reversed(files):
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue  # a torn file is skipped, never guessed at
+        if isinstance(doc, dict) and doc.get("schema") == RECEIPT_SCHEMA:
+            doc["_path"] = str(path)
+            return doc
+    return None
+
+
+def source_binding(record: dict | None) -> dict:
+    """Bind a recorded run to the code that actually executed it — or say honestly that it cannot be bound.
+
+    A receipt written from ``portfolio-server/CURRENT`` records the script's sha256, the release directory's
+    40-hex name and git HEAD (``source_identity``). A later release replaces that tree, so the question a reader
+    has is not "what is CURRENT now" but "what did THIS run execute". This answers it by re-hashing the recorded
+    path: equal means the same bytes are still there (``bound``), different means a later release replaced them
+    (``changed``, with both digests), missing means the tree is gone (``absent``). A record with no digest at all —
+    any run from before the receipt existed — is ``unknown``, and is never guessed.
+    """
+    src = dict((record or {}).get("source") or {})
+    out = {"state": "unknown", "release_sha": src.get("release_sha"), "git_head": src.get("git_head"),
+           "script": src.get("script"), "script_sha256": src.get("script_sha256"),
+           "observed_sha256": None, "detail": "no source digest was recorded, so the executed code cannot be bound"}
+    path = Path(str(src.get("script") or "")) if src.get("script") else None
+    if path is None or not src.get("script_sha256"):
+        return out
+    try:
+        out["observed_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        out.update(state="absent", detail="the recorded script path no longer exists; the release that ran is gone")
+        return out
+    if out["observed_sha256"] == src.get("script_sha256"):
+        out.update(state="bound", detail="the recorded script is still the file at that path, byte for byte")
+    else:
+        out.update(state="changed",
+                   detail="a later release replaced the script at that path; the recorded digest is the one that ran")
+    return out
+
+
+def receipt_status(directory: Path | None = None) -> dict:
+    """A bounded verdict on the last run: outcome, failed steps, what it produced, and the code that ran it."""
+    doc = latest_receipt(directory)
+    if doc is None:
+        return {"schema": "RecoveryWatchStatus@v1", "receipt": None, "ran": False, "useful_work_verified": False,
+                "detail": "no run receipt found; the lane has not run, or its receipts are elsewhere"}
+    steps = [s for s in doc.get("steps") or [] if isinstance(s, dict)]
+    failed = [str(s.get("name")) for s in steps if s.get("ok") is False or (s.get("failed") or 0) > 0]
+    summary = doc.get("summary") or {}
+    useful = bool(summary) and doc.get("outcome") == "ok" and not failed
+    return {
+        "schema": "RecoveryWatchStatus@v1",
+        "receipt": doc.get("_path"),
+        "ran": True,
+        "invocation_id": doc.get("invocation_id"),
+        "started_at": doc.get("started_at"),
+        "finished_at": doc.get("finished_at"),
+        "outcome": doc.get("outcome"),
+        "steps_ok": len(steps) - len(failed),
+        "steps_failed": failed,
+        "summary": summary,
+        "source": doc.get("source"),
+        "source_binding": source_binding(doc),
+        "logs": doc.get("logs"),
+        "useful_work_verified": useful,
+        "detail": ("the last run finished and every step reported ok"
+                   if useful else
+                   f"the last run is {doc.get('outcome')!r}"
+                   + (f" with failed steps: {', '.join(failed)}" if failed else "")),
+    }
+
+
 if __name__ == "__main__":
+    if "--receipt-status" in sys.argv[1:]:
+        status = receipt_status()
+        print(json.dumps(status, indent=1, sort_keys=True, default=str))
+        raise SystemExit(0 if status.get("useful_work_verified") else 3)
     main()

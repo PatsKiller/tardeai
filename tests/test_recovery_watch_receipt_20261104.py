@@ -9,6 +9,7 @@ ANCHOR: RECOVERY_WATCH_RUN_RECEIPT_20261104
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -198,3 +199,73 @@ def test_the_directory_is_fsynced_after_the_rename(stubbed, monkeypatch, tmp_pat
     target.mkdir()
     R.write_run_receipt({"schema": "x", "invocation_id": "abc", "started_at": "2026-11-04T00:00:00+00:00"}, target)
     assert len(fsynced) >= 2, "only the file was fsynced; the directory entry was never published durably"
+
+
+# ── FQ-117 (codex P0 recovery measurement, 2026-11-05): "log Complete ≠ useful-work receipt" and the
+#    "historical executed release UNKNOWN" gap. These read the durable record, never the log's mtime. ──
+
+
+def _write(stubbed, doc) -> None:
+    import json as _json
+    stubbed.mkdir(parents=True, exist_ok=True)
+    (stubbed / "r.json").write_text(_json.dumps(doc))
+
+
+def _receipt(stubbed, **over) -> dict:
+    doc = {"schema": "RecoveryWatchRunReceipt@v1", "invocation_id": "abc123", "started_at": "2026-11-05T06:00:00+00:00",
+           "finished_at": "2026-11-05T06:01:00+00:00", "outcome": "ok", "error": None,
+           "steps": [{"name": "detect_new_stopouts", "ok": True}, {"name": "create_watch_records", "ok": True}],
+           "summary": {"new_stopouts": 2}, "source": {"script": str(R.__file__),
+                                                     "script_sha256": hashlib.sha256(Path(R.__file__).read_bytes()).hexdigest()},
+           "logs": {}}
+    doc.update(over)
+    return doc
+
+
+def test_status_is_useful_only_when_the_last_run_finished_and_every_step_ok(stubbed):
+    import json as _json
+    _write(stubbed, _receipt(stubbed))
+    status = R.receipt_status(stubbed)
+    assert status["ran"] is True and status["useful_work_verified"] is True
+    assert status["steps_failed"] == [] and status["summary"] == {"new_stopouts": 2}
+    assert status["source_binding"]["state"] in ("bound", "changed")
+
+
+def test_status_refuses_to_call_a_failed_step_useful(stubbed):
+    import json as _json
+    doc = _receipt(stubbed, steps=[{"name": "detect_new_stopouts", "ok": True},
+                                   {"name": "check_and_escalate", "ok": False, "failed": 1}])
+    _write(stubbed, doc)
+    status = R.receipt_status(stubbed)
+    assert status["useful_work_verified"] is False
+    assert status["steps_failed"] == ["check_and_escalate"]
+
+
+def test_status_on_an_incomplete_run_is_not_useful_and_says_so(stubbed):
+    import json as _json
+    _write(stubbed, _receipt(stubbed, outcome="incomplete", summary=None))
+    status = R.receipt_status(stubbed)
+    assert status["useful_work_verified"] is False and status["outcome"] == "incomplete"
+
+
+def test_no_receipt_is_reported_rather_than_invented(stubbed):
+    status = R.receipt_status(stubbed)
+    assert status["ran"] is False and status["useful_work_verified"] is False
+    assert "no run receipt" in status["detail"]
+
+
+def test_source_binding_marks_a_pre_receipt_run_unknown_never_guessed():
+    assert R.source_binding({"source": {}})["state"] == "unknown"
+    assert R.source_binding(None)["state"] == "unknown"
+
+
+def test_source_binding_separates_bound_changed_and_absent(tmp_path):
+    script = tmp_path / "run.py"
+    script.write_text("print('one')\n")
+    digest = __import__("hashlib").sha256(script.read_bytes()).hexdigest()
+    assert R.source_binding({"source": {"script": str(script), "script_sha256": digest}})["state"] == "bound"
+    script.write_text("print('a later release')\n")
+    changed = R.source_binding({"source": {"script": str(script), "script_sha256": digest}})
+    assert changed["state"] == "changed" and changed["script_sha256"] == digest
+    assert changed["observed_sha256"] != digest
+    assert R.source_binding({"source": {"script": str(tmp_path / "gone.py"), "script_sha256": digest}})["state"] == "absent"
