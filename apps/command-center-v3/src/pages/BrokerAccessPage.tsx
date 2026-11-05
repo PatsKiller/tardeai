@@ -154,7 +154,7 @@ export default function BrokerAccessPage() {
           return [accountName(t.account_key), <StateChip state={t.state} />, t.days_left ?? '—', et(t.true_expiry), et(t.last_login),
             failed ? `Login failed${t.last_failed_event?.at ? ` ${et(t.last_failed_event.at)}` : ''}` : '—',
             <span>
-              <span>{plainState(t.state).words}.</span>
+              <span>{plainState(t.state, t.reason).words}.</span>
               <Diagnostics rows={[
                 { label: 'Reported state', value: s(t.state) },
                 { label: 'Reason code', value: s(t.reason) },
@@ -179,7 +179,7 @@ export default function BrokerAccessPage() {
       <div style={{ display: 'grid', gap: 8, minWidth: 0 }}>
         {(d?.brokers || []).map(b => {
           const m = brokerRowSentence(b)
-          const plain = plainState(b.state)
+          const plain = plainState(b.state, b.reason)
           return <div key={b.id} data-testid={`broker-row-${b.id}`} style={{ display: 'grid', gap: 6, padding: 10, minWidth: 0,
             background: TOKENS.bg[2], border: `1px solid ${TOKENS.borderSubtle}`, borderRadius: RADIUS.md }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>

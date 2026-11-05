@@ -36,6 +36,14 @@ const PLAIN: Record<BrokerStateName, { words: string; meaning: string; nextStep:
     nextStep: 'Renew the login from the re-login section on this page, then check this row again.' },
 }
 
+// The proactive renewal window. It is NOT one of the state codes (the backend still says NEEDS_REAUTH), so it lives
+// beside PLAIN rather than inside the Record keyed by state name.
+// Codex cloud P2 (2026-11-05): broker_access.py emits NEEDS_REAUTH for "renewal window: 0.5 days to true expiry" while
+// the token is still valid and reads still work; calling that "Login expired" told the operator reads had stopped.
+const RENEWAL_DUE = { words: 'Renewal due', tone: 'warning' as Tone,
+  meaning: 'The login still works; it is inside its renewal window, so reads continue until it lapses.',
+  nextStep: 'Renew the login from the re-login section on this page before the window closes.' }
+
 const UNKNOWN = {
   words: 'Unknown state', tone: 'warning' as Tone,
   meaning: 'This page has no meaning recorded for the reported state, so it is not reported as working.',
@@ -44,7 +52,19 @@ const UNKNOWN = {
 
 const clean = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim()
 
-export function plainState(state: string | null | undefined): { words: string; meaning: string; nextStep: string; tone: Tone } {
+/**
+ * True when NEEDS_REAUTH is the proactive renewal window rather than a credential that is gone. The backend says so in
+ * the reason it emits, and anything that states the credential is already lost outranks the window wording.
+ */
+export function isProactiveRenewal(state: string | null | undefined, reason: string | null | undefined): boolean {
+  if (clean(state).toUpperCase() !== 'NEEDS_REAUTH') return false
+  const r = clean(reason).toLowerCase()
+  if (!r.includes('renewal window')) return false
+  return !/expired|degraded|no token|no refresh token|auth failure/.test(r)
+}
+
+export function plainState(state: string | null | undefined, reason?: string | null): { words: string; meaning: string; nextStep: string; tone: Tone } {
+  if (isProactiveRenewal(state, reason ?? null)) return RENEWAL_DUE
   const k = clean(state).toUpperCase() as BrokerStateName
   return PLAIN[k] ?? UNKNOWN
 }
@@ -75,7 +95,7 @@ export function operatorLogSummary(steps: Step[] | null | undefined): string {
 }
 
 export function brokerRowSentence(row: RowInput): { headline: string; nextStep: string } {
-  const p = plainState(row.state)
+  const p = plainState(row.state, row.reason)
   const label = clean(row.label) || 'This connection'
   return {
     headline: `${label}: ${p.words}. ${p.meaning} ${lastReadSentence(row.operator_log_step)}`,
