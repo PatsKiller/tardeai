@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
@@ -37,6 +38,8 @@ class DetailRecord:
     severity: str | None = None
     #: The element actually pressed when it was not the discovered node itself (a row's own detail button).
     pressed: str | None = None
+    #: A plain-words note for a detail that opened but could not be graded (e.g. its contents were unreadable).
+    notes: str | None = None
 
 
 @dataclass
@@ -99,10 +102,33 @@ def sampled_openers(openers: Iterable[dict[str, Any]], indices: Iterable[int]) -
 
 
 #: The controls discovery treats as detail openers. One definition, used to find them and to click them.
-OPENER_SELECTOR = "[data-testid$='-row'], [role='button'][aria-label^='Open ']"
+#:
+#: cx-cloud CX3 on #2648: the old selector found row CONTAINERS (``div[data-testid='ta-row']``) and only buttons that
+#: carried an explicit ``role='button'`` AND a label beginning "Open ". The product's own detail controls are native
+#: ``<button>`` elements without a role attribute ("Show analysis for NVDA", "Open AI analysis", "View record"), so
+#: they matched nothing and the pages received no detail coverage. Native buttons are discovered here; a container is
+#: still discovered, but it is never pressed directly — `_safe_detail_child()` presses the container's own named
+#: opener through the same fail-closed click boundary, so widening discovery does not widen what may be clicked.
+OPENER_SELECTOR = ", ".join((
+    "button[aria-label^='Open ']",
+    "button[aria-label^='Show ']",
+    "button[aria-label^='View ']",
+    "[role='button'][aria-label^='Open ']",
+    "[role='button'][aria-label^='Show ']",
+    "[role='button'][aria-label^='View ']",
+    "button:text-matches('^\\s*(Open|View|Show|Details)\\b', 'i')",
+    "[data-testid$='-row']",
+))
 
 
-DETAIL_SELECTORS = ("[role='dialog']", "[data-testid$='-sheet']", "[data-testid$='-detail']", "[data-testid$='-modal']")
+#: Surfaces that are an inline detail rather than a dialog/sheet. The Trade AI analysis panel is ALWAYS mounted: it
+#: shows "Click a symbol or catalyst…" as a placeholder. It is therefore evidence only when it names the symbol the
+#: crawler actually selected — see `_visible_detail()`.
+INLINE_DETAIL_SELECTORS = ("[data-testid='ta-analysis']", "[aria-label='Catalyst analysis']")
+
+DETAIL_SELECTORS = INLINE_DETAIL_SELECTORS + (
+    "[role='dialog']", "[data-testid$='-sheet']", "[data-testid$='-detail']", "[data-testid$='-modal']",
+)
 
 
 def _live_label_role(target: Any) -> tuple[str, str] | None:
@@ -130,15 +156,58 @@ def _live_label_role(target: Any) -> tuple[str, str] | None:
         return None
 
 
-def _detail_is_open(page: Any) -> bool:
+#: The words in an opener label that are not the symbol. "Show analysis for NVDA" -> NVDA.
+_LABEL_NOISE = {"OPEN", "SHOW", "VIEW", "DETAIL", "DETAILS", "ANALYSIS", "RECORD", "FOR", "THE", "AND", "AI", "CIO"}
+
+
+def _expected_symbol(target: Any = None, label: str = "") -> str | None:
+    """The symbol a pressed opener is about, when the DOM says so.
+
+    Used to confirm that an inline panel (which is mounted even before a selection) actually switched to the row the
+    crawler pressed. `data-symbol` on the row is authoritative; otherwise a ticker-shaped token in the accessible
+    label is used. No guess is better than a wrong one: an unknown symbol means the inline panel is not counted.
+    """
+    if target is not None:
+        try:
+            symbol = str(target.get_attribute("data-symbol") or "").strip()
+        except Exception as exc:  # noqa: BLE001 — an unreadable attribute is simply no hint
+            _log.debug("could not read data-symbol from the opener: %s", exc)
+            symbol = ""
+        if symbol:
+            return symbol.upper()
+    for token in re.findall(r"\b[A-Z]{1,6}\b", str(label or "")):
+        if token not in _LABEL_NOISE:
+            return token
+    return None
+
+
+def _visible_detail(page: Any, expected_symbol: str | None = None) -> tuple[str, Any] | None:
+    """(selector, locator) for the visible detail that is evidence for THIS click.
+
+    A dialog/sheet/detail/modal is evidence as soon as it is visible. An inline panel is only evidence when it names
+    the selected symbol: the Trade AI panel is always in the DOM with a "Click a symbol…" placeholder, so counting its
+    mere visibility would report `opened: true` for a click that did nothing (cx-cloud CX7 on #2648).
+    """
     for sel in DETAIL_SELECTORS:
         try:
-            if page.locator(sel).first.is_visible(timeout=500):
-                return True
+            loc = page.locator(sel).first
+            if not loc.is_visible(timeout=500):
+                continue
+            if sel in INLINE_DETAIL_SELECTORS:
+                if not expected_symbol:
+                    continue
+                text = loc.inner_text() or ""
+                if expected_symbol.lower() not in text.lower():
+                    continue
+            return sel, loc
         except Exception as exc:  # noqa: BLE001 — an absent selector is a normal "not open"
             _log.debug("detail selector %s was not visible: %s", sel, exc)
             continue
-    return False
+    return None
+
+
+def _detail_is_open(page: Any, expected_symbol: str | None = None) -> bool:
+    return _visible_detail(page, expected_symbol) is not None
 
 
 #: Accessible names that read as "this opens something": the only children of a container the crawler will press.
@@ -147,8 +216,34 @@ def _detail_is_open(page: Any) -> bool:
 OPENER_NAME = re.compile(r"^\s*(open|show|view|expand|see|review)\b|\bdetails?\b", re.I)
 
 
-def _capture_detail(page: Any, *, out_dir: Any = None, prefix: str = "", ordinal: int = 0) -> dict[str, Any] | None:
-    """Persist what the opened detail actually says, BEFORE it is closed.
+def _detail_links(locator: Any) -> list[tuple[str, str]]:
+    """Anchors inside an open detail, snapshotted while it is still open.
+
+    cx-cloud CX2 on #2648: `_follow_links()` ran after every detail had been closed, so a link rendered only inside a
+    detail (a "View the filing", "Open the record" row) was never seen. The href and accessible name are read here,
+    before Escape, and followed afterwards by URL.
+    """
+    out: list[tuple[str, str]] = []
+    try:
+        nodes = locator.query_selector_all("a[href]")
+    except Exception as exc:  # noqa: BLE001 — no anchors is normal
+        _log.debug("could not enumerate links inside the detail: %s", exc)
+        return out
+    for node in nodes[:40]:
+        try:
+            href = node.get_attribute("href")
+            label = " ".join(part for part in ((node.get_attribute("aria-label") or "").strip(),
+                                               (node.inner_text() or "").strip()) if part)
+            if href:
+                out.append((str(href), label))
+        except Exception as exc:  # noqa: BLE001 — an unreadable anchor is skipped
+            _log.debug("skipped an anchor inside the detail: %s", exc)
+    return out
+
+
+def _capture_detail(page: Any, *, out_dir: Any = None, prefix: str = "", ordinal: int = 0,
+                    expected_symbol: str | None = None) -> dict[str, Any] | None:
+    """Persist and GRADE what the opened detail actually says, BEFORE it is closed.
 
     cx-openai-4 R3 on #2648. The crawl clicked an opener, saw that a detail had appeared, pressed Escape and recorded
     only `opened: true`. The detail's text — the whole reason for opening it, and the input to the pass-2 checks —
@@ -156,37 +251,53 @@ def _capture_detail(page: Any, *, out_dir: Any = None, prefix: str = "", ordinal
     found that marker in no saved artifact. The text (and a screenshot, when there is somewhere to put it) is written
     now while the detail is open, and its sha256 goes into the record, so a later pass can prove which text it graded
     without trusting the crawl's own account of itself.
+
+    cx-cloud CX2 on #2648, the half that was still open: capturing was not enough. `severity` stayed null and `fields`
+    held only file metadata, so a detail missing its technical evidence or CIO thesis produced exactly the same
+    successful record as a complete one. The captured text is now run through the SAME completeness rule the
+    cross-checks use (`completeness.assess_detail_text`), and the severity/gaps travel with the record. Links inside
+    the open detail are snapshotted too (cx-cloud CX2's link clause).
     """
     import hashlib
 
-    for sel in DETAIL_SELECTORS:
-        try:
-            loc = page.locator(sel).first
-            if not loc.is_visible(timeout=500):
-                continue
-            text = loc.inner_text() or ""
-        except Exception as exc:  # noqa: BLE001 — an unreadable detail is reported, not silently "opened"
-            _log.debug("could not read the opened detail (%s): %s", sel, exc)
-            continue
-        record: dict[str, Any] = {"detail_selector": sel, "chars": len(text),
-                                  "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(), "text": text}
-        if out_dir is not None:
-            from pathlib import Path as _Path
+    from site_audit.completeness import assess_detail_text
 
-            from site_audit.capture_root import assert_leaf_inside_root
-            stem = f"{prefix}detail-{ordinal}"
-            leaf = assert_leaf_inside_root(_Path(out_dir) / f"{stem}.txt", out_dir)
-            leaf.write_text(text)
-            record["file"] = leaf.name
-            record.pop("text")  # the file is the evidence; the record names it and its digest
-            try:
-                shot = assert_leaf_inside_root(_Path(out_dir) / f"{stem}.png", out_dir)
-                page.screenshot(path=str(shot), full_page=True)
-                record["screenshot"] = shot.name
-            except Exception as exc:  # noqa: BLE001 — a screenshot is extra evidence, not the contract
-                _log.debug("could not screenshot the opened detail: %s", exc)
-        return record
-    return None
+    found = _visible_detail(page, expected_symbol)
+    if found is None:
+        return None
+    sel, loc = found
+    try:
+        text = loc.inner_text() or ""
+    except Exception as exc:  # noqa: BLE001 — an unreadable detail is reported, not silently "opened"
+        _log.debug("could not read the opened detail (%s): %s", sel, exc)
+        return None
+    assessment = assess_detail_text(text)
+    record: dict[str, Any] = {"detail_selector": sel, "chars": len(text),
+                              "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(), "text": text,
+                              "evidence_kind": "inline" if sel in INLINE_DETAIL_SELECTORS else "surface",
+                              "completeness": assessment}
+    if sel in INLINE_DETAIL_SELECTORS:
+        # It qualified by naming `expected_symbol` in `_visible_detail()`, so this is a checked fact, not a hope.
+        record["represents_selected"] = expected_symbol
+    links = _detail_links(loc)
+    if links:
+        record["links"] = [{"href": href, "label": label[:120]} for href, label in links]
+    if out_dir is not None:
+        from pathlib import Path as _Path
+
+        from site_audit.capture_root import assert_leaf_inside_root
+        stem = f"{prefix}detail-{ordinal}"
+        leaf = assert_leaf_inside_root(_Path(out_dir) / f"{stem}.txt", out_dir)
+        leaf.write_text(text)
+        record["file"] = leaf.name
+        record.pop("text")  # the file is the evidence; the record names it and its digest
+        try:
+            shot = assert_leaf_inside_root(_Path(out_dir) / f"{stem}.png", out_dir)
+            page.screenshot(path=str(shot), full_page=True)
+            record["screenshot"] = shot.name
+        except Exception as exc:  # noqa: BLE001 — a screenshot is extra evidence, not the contract
+            _log.debug("could not screenshot the opened detail: %s", exc)
+    return record
 
 
 def _safe_detail_child(target: Any) -> tuple[Any, str, str] | None:
@@ -246,6 +357,8 @@ def capture_page(page: Any, *, route: str, page_url: str, indices: Iterable[int]
     items = list(openers) if openers is not None else _discover_openers(page)
     allowed, refused = crawl_plan(items, indices)
     details: list[DetailRecord] = []
+    #: Links snapshotted inside a detail while it was open, followed after it closes (cx-cloud CX2 on #2648).
+    detail_links: list[tuple[str, str]] = []
     for ordinal, item in enumerate(allowed):
         rec = DetailRecord(opener=str(item.get("selector") or item.get("label") or ""), label=str(item.get("label") or ""), opened=False)
         try:
@@ -276,14 +389,31 @@ def capture_page(page: Any, *, route: str, page_url: str, indices: Iterable[int]
                     continue
                 pressed, pressed_label, _child_role = child
                 via = f"row container {live_role!r}; pressed its own detail button {pressed_label!r}"
+            expected = _expected_symbol(pressed, pressed_label or rec.label)
             pressed.click(timeout=5000)
             page.wait_for_timeout(400)
-            opened = _detail_is_open(page)
+            opened = _detail_is_open(page, expected)
             # cx-openai-4 R3 on #2648: the evidence is taken while the detail is open — after Escape it is gone.
-            evidence = _capture_detail(page, out_dir=out_dir, prefix=prefix, ordinal=ordinal) if opened else None
+            # cx-cloud CX2 on #2648: it is also GRADED while it is open, so "opened" and "complete" are different facts.
+            evidence = (_capture_detail(page, out_dir=out_dir, prefix=prefix, ordinal=ordinal,
+                                        expected_symbol=expected) if opened else None)
+            severity, notes = None, None
+            if evidence:
+                completeness = evidence.get("completeness") or {}
+                severity = completeness.get("severity")
+                if completeness.get("evaluated") is False:
+                    notes = "captured, but the text did not read as a symbol card, so it was not graded"
+            elif opened:
+                severity = "P1"
+                notes = "a detail was visible but its contents could not be read"
             details.append(DetailRecord(**{**rec.__dict__, "label": pressed_label or rec.label, "opened": opened,
                                            "pressed": via, "fields": [evidence] if evidence else [],
+                                           "severity": severity, "notes": notes,
                                            "skipped_reason": None if opened else "clicked but no detail appeared"}))
+            for link in (evidence or {}).get("links") or []:
+                href = link.get("href")
+                if href:
+                    detail_links.append((str(href), str(link.get("label") or "")))
         except Exception as exc:  # noqa: BLE001 — an opener that does not open is a finding, not a crash
             details.append(DetailRecord(**{**rec.__dict__, "skipped_reason": f"{type(exc).__name__}"}))
         finally:
@@ -293,7 +423,8 @@ def capture_page(page: Any, *, route: str, page_url: str, indices: Iterable[int]
                 _log.debug("Escape did not close the detail: %s", exc)
     return {"route": route, "details": [d.__dict__ for d in details],
             "refused": refused,
-            "links": [l.__dict__ for l in _follow_links(page, page_url=page_url, max_links=max_links)]}
+            "links": [l.__dict__ for l in _follow_links(page, page_url=page_url, max_links=max_links,
+                                                        extra_links=detail_links)]}
 
 
 def _discover_openers(page: Any) -> list[dict[str, Any]]:
@@ -308,22 +439,65 @@ def _discover_openers(page: Any) -> list[dict[str, Any]]:
             # cx-openai-4 R9 on #2648: the plan used to claim every discovered node was a button. A table row is
             # discovered here and its live role is `row`, so the plan described a control that does not exist —
             # and the click boundary, reading the truth, refused it while the plan said it was fine.
+            #
+            # cx-cloud CX3 on #2648: the plan must also be truthful for NATIVE buttons, which carry no role
+            # attribute at all. Their tag says what they are; a container says `div`/`article`/`row` and stays a
+            # container, handled by `_safe_detail_child()` rather than pressed directly.
             role = (node.get_attribute("role") or "").strip().lower()
+            if not role:
+                try:
+                    tag = str(node.evaluate("e => e.tagName.toLowerCase()") or "").strip().lower()
+                except Exception:  # noqa: BLE001 — an unreadable tag is an unknown role, which is refused
+                    tag = ""
+                role = {"button": "button", "a": "link", "summary": "button", "input": "button"}.get(tag, "")
         except Exception:  # noqa: BLE001
             label, role = "", ""
         # codex R3 (2026-11-04): the old selector was fabricated ([data-open=N]) and matched nothing, so
         # a real click could never land. This is the same selector discovery used, pinned to the node.
-        out.append({"index": i, "label": label[:120], "role": role or "button",
+        out.append({"index": i, "label": label[:120], "role": role or "none",
                     "selector": f"{OPENER_SELECTOR} >> nth={i}"})
     return out
 
 
-def _follow_links(page: Any, *, page_url: str, max_links: int) -> list[LinkRecord]:
+#: How long a followed link's destination gets to render content before it is judged. Bounded on purpose: the crawl
+#: must not hang on a page whose API never answers, and a shell read too early is exactly the false "ok" CX8 named.
+LINK_SETTLE_MS = 6000
+
+
+def _bounded_body_text(page: Any, *, settle_ms: int = LINK_SETTLE_MS) -> str:
+    """The destination's rendered text, read after a bounded readiness wait.
+
+    cx-cloud CX8 on #2648: `goto(wait_until="domcontentloaded")` then an immediate `inner_text("body")` read the
+    React shell — or a "Loading…" line — before the page's `useApi` data arrived, so an API error or a permission
+    failure on the destination was classified `ok`. The wait is bounded (a fixed budget, never "until network idle
+    forever"), it stops at the first non-empty body, and it degrades to a plain read on a test double that has no
+    waiting surface.
+    """
+    deadline = time.monotonic() + max(0, settle_ms) / 1000.0
+    wait = getattr(page, "wait_for_timeout", None)
+    text = ""
+    while True:
+        try:
+            text = page.inner_text("body") or ""
+        except Exception as exc:  # noqa: BLE001 — an unreadable body is judged by the caller as ERROR
+            _log.debug("could not read the destination body: %s", exc)
+            text = ""
+        if text.strip() or wait is None or time.monotonic() >= deadline:
+            return text
+        try:
+            wait(250)
+        except Exception as exc:  # noqa: BLE001 — a fake/closed page cannot wait; return what we have
+            _log.debug("destination readiness wait unavailable: %s", exc)
+            return text
+
+
+def _follow_links(page: Any, *, page_url: str, max_links: int,
+                  extra_links: Iterable[tuple[str, str]] = ()) -> list[LinkRecord]:
     records: list[LinkRecord] = []
     try:
         anchors = page.query_selector_all("a[href]")
     except Exception:  # noqa: BLE001
-        return records
+        anchors = []
     # cx-openai-4 R5 on #2648: the handles were retained ACROSS navigations. The first goto detaches every
     # remaining anchor, so reading the second one raised and the loop skipped it — two allowed links produced one
     # record, silently. Snapshot what is needed (href, label) BEFORE leaving the page; a handle is then never used
@@ -334,20 +508,32 @@ def _follow_links(page: Any, *, page_url: str, max_links: int) -> list[LinkRecor
     # character 120 was never seen. The label judged here is the link's FULL accessible name — aria-label plus the
     # whole text — and the truncation is applied only to what is recorded.
     snapshot: list[tuple[str | None, str, str]] = []
+    seen: set[str] = set()
+
+    def _add(href: Any, full: str) -> None:
+        key = str(href or "").strip()
+        if not key or key in seen:
+            return
+        seen.add(key)
+        snapshot.append((key, full, full[:120]))
+
     for node in anchors[:max_links]:
         try:
             full = " ".join(part for part in ((node.get_attribute("aria-label") or "").strip(),
                                               (node.inner_text() or "").strip()) if part)
-            snapshot.append((node.get_attribute("href"), full, full[:120]))
+            _add(node.get_attribute("href"), full)
         except Exception as exc:  # noqa: BLE001 — an anchor we cannot read is skipped, and said so
             _log.debug("skipped an anchor without readable attributes: %s", exc)
+    # cx-cloud CX2 on #2648: links that existed only inside an open detail are followed by their snapshotted href.
+    for href, label in list(extra_links)[:40]:
+        _add(href, str(label or ""))
     for href, full_label, label in snapshot:
         if not link_is_crawlable(full_label, href, page_url):
             continue
         try:
             resp = page.goto(urljoin(page_url, str(href)), wait_until="domcontentloaded", timeout=20000)
             status = getattr(resp, "status", None) if resp is not None else None
-            text = page.inner_text("body")
+            text = _bounded_body_text(page)
             records.append(LinkRecord(href=str(href), label=label, outcome=classify_target(status, text), status=status))
         except Exception:  # noqa: BLE001
             records.append(LinkRecord(href=str(href), label=label, outcome=DEAD, status=None))

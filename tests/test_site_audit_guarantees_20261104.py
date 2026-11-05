@@ -273,6 +273,22 @@ def test_R7_the_health_gate_probes_the_declared_api_contract():
     assert HEALTH_PATH == "/api/v2/health"
     assert HEALTH_PATH_FOR("http://host:7777") == "http://host:7777/api/v2/health"
     assert HEALTH_PATH_FOR("http://host:7777/") == "http://host:7777/api/v2/health"
+    # cx-cloud CX1 on #2648: the CLI's default base is the /v3 FRONTEND mount; the health route lives on the origin.
+    assert HEALTH_PATH_FOR("http://127.0.0.1:7777/v3") == "http://127.0.0.1:7777/api/v2/health"
+    assert HEALTH_PATH_FOR("http://127.0.0.1:7777/v3/") == "http://127.0.0.1:7777/api/v2/health"
+    assert "/v3/" not in HEALTH_PATH_FOR("http://127.0.0.1:7777/v3")
+
+
+def test_CX4_the_live_gate_runs_before_route_discovery():
+    """cx-cloud CX4 on #2648: the old entry point navigated the app before any §28.8 check."""
+    from site_audit.page_audit_capture import live_access_refusal
+
+    assert live_access_refusal("http://127.0.0.1:8123/v3") is None, "a fixture/replay backend was refused"
+
+    src = (ROOT / "scripts/site_audit/page_audit_capture.py").read_text()
+    gate = src.index("refusal = live_access_refusal(a.base)")
+    discovery = src.index("discover_routes(page, a.base)")
+    assert gate < discovery, "the live-access gate runs after route discovery"
 
 
 def test_R7_the_pause_cannot_be_configured_below_the_floor():
@@ -339,3 +355,14 @@ def test_R6_the_viewport_receipt_is_written_after_the_deep_facts():
     deep_at = src.index("if deep:")
     receipt_at = src.index('f"{vp}.json"')
     assert receipt_at > deep_at, "the viewport receipt is written before the deep crawl runs"
+
+
+# ── CX6 (cx-cloud): each hub tab is crawled while it is mounted ─────────────────────────────────────────────────
+def test_CX6_a_hub_tab_is_deep_crawled_before_the_next_one_is_selected():
+    """`TradingHub` mounts `OptionsHub` only while Options is selected; a crawl after the loop missed it entirely."""
+    src = (ROOT / "scripts/site_audit/page_audit_capture.py").read_text()
+    loop = src[src.index("for tab in tabs:"):src.index("row[\"console_errors\"]")]
+    assert "_deep_into(trow" in loop, "the deep crawl is not run inside the hub-tab loop"
+    assert 'f"{vp}-tab-{tslug}-"' in loop, "a tab crawl does not use tab-specific evidence filenames"
+    # ...and a viewport that ran no tab crawl still crawls its route once.
+    assert "_deep_into(row" in src

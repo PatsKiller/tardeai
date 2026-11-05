@@ -83,8 +83,18 @@ MIN_PAUSE_S = 4.0
 
 
 def HEALTH_PATH_FOR(base: str) -> str:
-    """The health URL for one base. Kept as a function so a test can pin it without a server."""
-    return base.rstrip("/") + HEALTH_PATH
+    """The health URL for one base, resolved against the SERVER ORIGIN.
+
+    cx-cloud CX1 on #2648: the CLI's default base is ``http://127.0.0.1:7777/v3`` — the frontend's mount point.
+    Appending the API path to it produced ``/v3/api/v2/health``, which `scripts/portfolio_server.py` answers with the
+    SPA fallback (HTML, status 200), so the gate could report a healthy server while the API was down and every page
+    capture would then fail or read stale data. The health route lives at the origin, not under the frontend base.
+    """
+    import urllib.parse
+    parsed = urllib.parse.urlparse(str(base or ""))
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise SystemExit(f"SITE_AUDIT base must be an http(s) URL with a host: {base!r}")
+    return f"{parsed.scheme}://{parsed.netloc}{HEALTH_PATH}"
 
 
 def effective_pause(requested: float | None) -> float:
@@ -94,6 +104,19 @@ def effective_pause(requested: float | None) -> float:
     except (TypeError, ValueError):
         value = MIN_PAUSE_S
     return max(MIN_PAUSE_S, value)
+
+
+def live_access_refusal(base: str) -> str | None:
+    """The §28.8 reason this base must not be crawled now, or None.
+
+    cx-cloud CX4 on #2648: with the default live base, invoking the CLI during 04:00–16:15 ET on a market day sent
+    browser traffic through `discover_routes` before any check. `lane.live_access_violation()` is the one rule (market
+    calendar + wall clock + the after-close acknowledgement); a fixture/replay backend on another loopback port is
+    permitted, which is how the in-session and test runs work. This wrapper exists so the CLI's gate can be probed
+    without a browser.
+    """
+    from site_audit import lane
+    return lane.live_access_violation(base)
 
 
 def server_healthy(base: str, wait_s: int = 300) -> bool:
@@ -111,10 +134,22 @@ def server_healthy(base: str, wait_s: int = 300) -> bool:
             t0 = time.time()
             # cx-openai-4 R7 on #2648: the contract names /api/v2/health, not the v3 frontend root —
             # probing "/" only proves the page server is up, not that the API a capture reads is healthy.
+            # cx-cloud CX1 on #2648: the URL is resolved on the ORIGIN (`HEALTH_PATH_FOR`), and the answer must be
+            # JSON. An HTML body here is the SPA fallback answering for a route the API did not handle, which is
+            # exactly the "healthy frontend, dead API" state this gate exists to refuse.
             with urllib.request.urlopen(HEALTH_PATH_FOR(base), timeout=10) as r:  # noqa: S310 — http(s) enforced
-
-                if r.status < 500 and time.time() - t0 < 8:
-                    return True
+                body = r.read(4096)
+                if r.status >= 500 or time.time() - t0 >= 8:
+                    continue
+                if "html" in str(r.headers.get("content-type") or "").lower():
+                    _log.warning("health probe answered HTML (SPA fallback?) — not healthy: %s", r.url)
+                    continue
+                try:
+                    json.loads(body.decode("utf-8", "replace") or "null")
+                except (ValueError, TypeError):
+                    _log.warning("health probe answered non-JSON — not healthy: %s", r.url)
+                    continue
+                return True
         except Exception as exc:  # noqa: BLE001 — a failed probe is retried until the deadline
             _log.debug("health probe failed: %s", exc)
         time.sleep(15)
@@ -161,6 +196,30 @@ def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: l
     # codex R1 (2026-11-04): a pre-existing symlink here can point inside the checkout. Resolve the
     # directory and refuse before the first byte is written, so a capture can never enter the repo.
     d = assert_inside_root(d, out)
+
+    #: One entry per deep crawl actually run on this viewport (one per hub tab on desktop, else one for the route).
+    deep_runs: list[tuple[dict, list[int]]] = []
+
+    def _deep_into(holder: dict, prefix: str) -> None:
+        """Deep-crawl the page AS IT IS NOW and record tab-specific evidence filenames.
+
+        cx-cloud CX6 on #2648: the crawl ran once, after the hub-tab loop, so it examined whichever tab was selected
+        last. `TradingHub` mounts `OptionsHub` only while Options is selected, so Options details and links received no
+        deep coverage at all. Running it inside each successful tab visit (with `desktop-tab-<tab>-` prefixes) covers
+        every tab that was screenshotted; a phone capture, which never switches tabs, still crawls its route once.
+        """
+        from site_audit import deep_crawl, detail_budget, lane
+        openers = deep_crawl._discover_openers(page)
+        # cx-openai-4 R4 on #2648: the ISO week was the sampling step, so all five runs of a week re-opened the same
+        # twenty rows and a long table's remaining rows were never reached. The step is the scheduled RUN.
+        run_index = lane.run_slot(datetime.now(timezone.utc))
+        indices = detail_budget.selected_indices(len(openers), page=route, run_index=run_index)
+        detail = deep_crawl.capture_page(page, route=route, page_url=base + route, indices=indices,
+                                         out_dir=d, openers=openers, prefix=prefix)
+        assert_leaf_inside_root(d / f"{prefix}details.json", out).write_text(json.dumps(detail, indent=1))
+        holder.update(deep_counters(detail, indices))
+        deep_runs.append((detail, indices))
+
     row = {"route": route, "label": label, "viewport": vp, "url": base + route}
     t0 = time.time()
     try:
@@ -201,6 +260,9 @@ def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: l
                         page.screenshot(path=str(assert_leaf_inside_root(d / f"tab-{tslug}.png", out)), full_page=True)
                         trow["text_chars"] = len(tt)
                         trow["blank_suspect"] = len(tt.strip()) < 60
+                        # cx-cloud CX6 on #2648: crawl THIS tab before switching away, under tab-specific names.
+                        if deep:
+                            _deep_into(trow, f"{vp}-tab-{tslug}-")
                 except Exception as e:
                     trow["error"] = str(e)[:150]
                 row.setdefault("tabs", []).append(trow)
@@ -216,17 +278,15 @@ def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: l
     # codex R3 (2026-11-04): the CLI captured screenshots and never invoked the deep crawl, so no detail
     # was ever opened and no completeness check ever ran. The crawl and its evidence are now part of the
     # capture, on the same page and viewport, under the pinned detail budget.
+    # cx-cloud CX6 on #2648: desktop tabs are crawled inside the loop above. A viewport that ran no tab crawl
+    # (phone, or a route with no hub tabs) crawls the route once, exactly as before.
     if deep:
-        from site_audit import deep_crawl, detail_budget, lane
-        openers = deep_crawl._discover_openers(page)
-        # cx-openai-4 R4 on #2648: the ISO week was the sampling step, so all five runs of a week re-opened the same
-        # twenty rows and a long table's remaining rows were never reached. The step is the scheduled RUN.
-        run_index = lane.run_slot(datetime.now(timezone.utc))
-        indices = detail_budget.selected_indices(len(openers), page=route, run_index=run_index)
-        detail = deep_crawl.capture_page(page, route=route, page_url=base + route, indices=indices,
-                                         out_dir=d, openers=openers, prefix=f"{vp}-")
-        assert_leaf_inside_root(d / f"{vp}-details.json", out).write_text(json.dumps(detail, indent=1))
-        row.update(deep_counters(detail, indices))
+        if not deep_runs:
+            _deep_into(row, f"{vp}-")
+        merged = {"details": [d for det, _ in deep_runs for d in det.get("details") or []],
+                  "refused": [r for det, _ in deep_runs for r in det.get("refused") or []],
+                  "links": [l for det, _ in deep_runs for l in det.get("links") or []]}
+        row.update(deep_counters(merged, [i for _, idx in deep_runs for i in idx]))
     assert_leaf_inside_root(d / f"{vp}.json", out).write_text(json.dumps(row, indent=1))
     return row
 
@@ -312,6 +372,12 @@ def main() -> int:
     if a.only_failed_from:
         prev = json.load(open(a.only_failed_from))
         a.only = {(r["viewport"], r["route"]) for r in prev["index"] if r.get("error")}
+    # cx-cloud CX4 on #2648: BEFORE route discovery (which navigates the app) or a health probe, refuse a live crawl
+    # inside the §28.8 window and require the operator's after-close acknowledgement outside it. Fixtures/replay pass.
+    refusal = live_access_refusal(a.base)
+    if refusal:
+        print(f"REFUSED: {refusal}", file=sys.stderr, flush=True)
+        return 2
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%MZ")
     out = resolve_output_dir(a.out, stamp)
     from playwright.sync_api import sync_playwright
@@ -332,6 +398,13 @@ def main() -> int:
             for route, label in routes:
                 if a.only and (vp, route) not in a.only:
                     continue
+                # A sweep can cross 04:00 ET. Re-check the boundary before every page, not only at startup.
+                refusal = live_access_refusal(a.base)
+                if refusal:
+                    print(f"ABORT: {refusal}", flush=True)
+                    rows.append({"route": route, "viewport": vp, "error": f"aborted: {refusal}"})
+                    aborted = True
+                    break
                 if not server_healthy(a.base):
                     # cx-openai-4 R7: `break` left the ROUTE loop and the next viewport carried on, so an
                     # aborted sweep kept capturing. The contract says stop the whole invocation.

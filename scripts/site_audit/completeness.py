@@ -7,6 +7,7 @@ opportunities, Home top 5) missing a technical or with no CIO thesis is P1.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Iterable
 
 REQUIRED_SYMBOL_FIELDS = (
@@ -19,6 +20,92 @@ CIO_FIELDS = ("cio_stance", "cio_thesis")
 
 P1 = "P1"
 P2 = "P2"
+
+#: How each required field is named in the rendered detail a crawl captures. Matching is word-bounded and
+#: case-insensitive; several product surfaces spell the same field differently ("SMA50" / "SMA 50" / "50-day").
+FIELD_LABELS: dict[str, tuple[str, ...]] = {
+    "price": ("price", "last price", "mark price", "current price"),
+    "rsi": ("rsi",),
+    "macd": ("macd",),
+    "sma_20": ("sma20", "sma 20", "sma_20", "sma(20)", "20-day sma", "20d sma"),
+    "sma_50": ("sma50", "sma 50", "sma_50", "sma(50)", "50-day sma", "50d sma"),
+    "sma_200": ("sma200", "sma 200", "sma_200", "sma(200)", "200-day sma", "200d sma"),
+    "support_1": ("support 1", "support1", "support_1"),
+    "support_2": ("support 2", "support2", "support_2"),
+    "resistance_1": ("resistance 1", "resistance1", "resistance_1"),
+    "resistance_2": ("resistance 2", "resistance2", "resistance_2"),
+    "trend": ("trend",),
+}
+
+#: A value the surface itself says is absent. A bare "-" is NOT here: MACD's value is often negative.
+_ABSENT = re.compile(
+    r"^\s*(?:[:=·]\s*)?(?:—|–|n/?a\b|none\b|unknown\b|unavailable\b|not available\b|not served\b|"
+    r"missing\b|pending\b|loading\b|no data\b)",
+    re.I,
+)
+_CIO = re.compile(r"\b(?:cio\s+(?:stance|thesis)|stance|thesis)\b", re.I)
+_AS_OF = re.compile(r"\b(?:as[_ ]of|dated)\b", re.I)
+
+
+def _label_present(text: str, labels: Iterable[str]) -> bool:
+    """The label appears with a value beside it (same line, or the line below a label-only cell)."""
+    for label in labels:
+        m = re.search(rf"(?<![A-Za-z0-9]){re.escape(label)}(?![A-Za-z0-9])", text, re.I)
+        if not m:
+            continue
+        rest = text[m.end():]
+        line, _, tail = rest.partition("\n")
+        candidate = line if line.strip() else tail.split("\n", 1)[0]
+        if not candidate.strip():
+            return True  # the label is present and the surface printed nothing beside it
+        if _ABSENT.match(candidate):
+            return False
+        return True
+    return False
+
+
+def detail_text_to_card(text: str) -> dict[str, Any]:
+    """A card dict parsed from the rendered text of an opened detail.
+
+    The crawl captures text, not the component's props, so this reads the labels the product surfaces print.
+    It is deliberately conservative about what counts as present: a label whose value is "—" / "n/a" /
+    "unavailable" is a gap, and a label with no value beside it is still a stated field (the surface decided to
+    print it). A text with no recognizable card label yields an empty dict, which `assess_detail_text()` refuses
+    to grade rather than turning every proposal/options detail into a missing-technicals finding.
+    """
+    body = str(text or "")
+    card: dict[str, Any] = {}
+    for name, labels in FIELD_LABELS.items():
+        if _label_present(body, labels):
+            card[name] = "present"
+    if _CIO.search(body):
+        card["cio_stance"] = "present"
+        if _AS_OF.search(body):
+            card["cio_as_of"] = "present"
+    return card
+
+
+def assess_detail_text(text: str, *, top_list: bool = False) -> dict[str, Any]:
+    """Evaluate a captured detail's text with the same completeness rule as a card.
+
+    Returns ``{"evaluated", "severity", "gaps", "card"}``. ``evaluated`` is False when the text is not
+    recognizable as a symbol card, so a detail of a different kind is not graded against symbol fields.
+
+    The check exists because cx-cloud found that the crawl recorded "opened: true" for every detail and the same
+    successful record whether the detail carried its technical evidence and CIO thesis or not. The captured text is
+    the input now, and the severity travels with the detail record.
+    """
+    card = detail_text_to_card(text)
+    if not str(text or "").strip():
+        # A detail that opened and rendered nothing is not "unevaluable": it is broken, whatever kind it is.
+        return {"evaluated": True, "severity": P1,
+                "gaps": [{"field": "detail_text", "reason": "the detail opened but rendered no text"}], "card": card}
+    recognised = sum(1 for name in REQUIRED_SYMBOL_FIELDS if _present(card.get(name)))
+    has_cio = any(_present(card.get(k)) for k in CIO_FIELDS)
+    if recognised < 2 and not has_cio:
+        return {"evaluated": False, "severity": None, "gaps": [], "card": card}
+    severity, gaps = card_severity(card, top_list=top_list)
+    return {"evaluated": True, "severity": severity, "gaps": gaps, "card": card}
 
 
 def _present(value: Any) -> bool:

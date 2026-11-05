@@ -294,14 +294,18 @@ def test_a_row_whose_children_are_not_openers_is_still_refused():
 class _Detail:
     """The opened detail: visible, and saying something unique that must survive the close."""
 
-    def __init__(self, text):
+    def __init__(self, text, links=None):
         self.text = text
+        self.links = links or []
 
     def is_visible(self, timeout=None):
         return True
 
     def inner_text(self):
         return self.text
+
+    def query_selector_all(self, sel):
+        return self.links if sel.startswith("a") else []
 
 
 class _Opener:
@@ -325,10 +329,10 @@ class _Opener:
 class DetailPage:
     """One safe opener; the detail selectors resolve to a visible node carrying a unique marker."""
 
-    def __init__(self, opener_label, detail_text):
+    def __init__(self, opener_label, detail_text, detail_links=None):
         self.opener = _Opener(opener_label)
-        self.detail = _Detail(detail_text)
-        self.screenshots = []
+        self.detail = _Detail(detail_text, links=detail_links)
+        self.screenshots, self.gotos = [], []
 
     def locator(self, sel):
         node = self.detail if (sel.startswith("[role='dialog']") or sel.startswith("[data-testid$=")) else self.opener
@@ -350,6 +354,16 @@ class DetailPage:
 
     def query_selector_all(self, _sel):
         return []
+
+    def goto(self, url, wait_until=None, timeout=None):
+        self.gotos.append(url)
+
+        class _Resp:
+            status = 200
+        return _Resp()
+
+    def inner_text(self, _sel):
+        return "destination body"
 
     def screenshot(self, path=None, full_page=False):
         self.screenshots.append(path)
@@ -375,3 +389,174 @@ def test_the_opened_detail_is_persisted_before_it_is_closed(tmp_path):
     saved = tmp_path / "desktop-detail-0.txt"
     assert saved.read_text() == marker, "the opened detail's text was not written before Escape"
     assert page.screenshots == [str(tmp_path / "desktop-detail-0.png")]
+
+
+# ── cx-cloud CX2 on #2648: the captured text is EVALUATED, not just saved ────────────────────────────────────────
+def _card_text(*, cio=True):
+    lines = ["NVDA", "Price 248.85", "RSI 54.2", "MACD 1.1", "SMA 20 240.0", "SMA 50 230.0", "SMA 200 210.0",
+             "Support 1 240.0", "Support 2 230.0", "Resistance 1 252.0", "Resistance 2 260.0", "Trend up"]
+    if cio:
+        lines += ["CIO stance HOLD", "As of 2026-11-04"]
+    return "\n".join(lines)
+
+
+def test_a_detail_missing_its_cio_thesis_no_longer_produces_a_complete_record():
+    """The finding's last clause: the same successful record used to be written with or without the evidence."""
+    openers = [{"label": "Show analysis for NVDA", "role": "button", "selector": "#open-nvda"}]
+    good = capture_page(DetailPage("Show analysis for NVDA", _card_text(cio=True)),
+                        route="/trading", page_url=PAGE_URL, indices=[0], out_dir=None, openers=openers)
+    bad = capture_page(DetailPage("Show analysis for NVDA", _card_text(cio=False)),
+                       route="/trading", page_url=PAGE_URL, indices=[0], out_dir=None, openers=openers)
+
+    good_rec, bad_rec = good["details"][0], bad["details"][0]
+    assert good_rec["severity"] is None, good_rec
+    assert bad_rec["severity"] == "P1", bad_rec
+    assessment = bad_rec["fields"][0]["completeness"]
+    assert assessment["evaluated"] is True
+    assert any(g["field"] == "cio_stance_or_thesis" for g in assessment["gaps"]), assessment
+
+
+def test_a_blank_detail_is_not_a_complete_record():
+    page = DetailPage("Show details", "")
+    out = capture_page(page, route="/x", page_url=PAGE_URL, indices=[0], out_dir=None,
+                       openers=[{"label": "Show details", "role": "button", "selector": "#open"}])
+    assert out["details"][0]["opened"] is True
+    assert out["details"][0]["severity"] == "P1"
+
+
+# ── cx-cloud CX7 on #2648: the inline analysis panel is evidence only for the selected row ──────────────────────
+class _PanelPage:
+    """The Trade AI panel: always mounted, visible, and showing whatever text it was given."""
+
+    def __init__(self, text):
+        self.panel = _Detail(text)
+
+    def locator(self, sel):
+        if sel in ("[data-testid='ta-analysis']", "[aria-label='Catalyst analysis']"):
+            node = self.panel
+        else:
+            raise LookupError(sel)  # no dialog/sheet on this page
+
+        class _L:
+            @property
+            def first(self):
+                return node
+
+        return _L()
+
+
+def test_the_inline_panel_is_evidence_only_when_it_names_the_selected_row():
+    import site_audit.deep_crawl as dc
+
+    placeholder = _PanelPage("Click a symbol or catalyst to see the AI analysis.")
+    assert dc._detail_is_open(placeholder, "NVDA") is False, "the always-mounted placeholder read as an opened detail"
+    assert dc._detail_is_open(placeholder, None) is False
+
+    selected = _PanelPage("NVDA\nHOLD\ncatalyst verified")
+    assert dc._detail_is_open(selected, "NVDA") is True
+    assert dc._detail_is_open(selected, "MSFT") is False, "a stale panel for another row read as this click's evidence"
+    assert dc._detail_is_open(selected, None) is False
+
+
+def test_the_inline_panel_is_recorded_with_the_symbol_it_represents():
+    import site_audit.deep_crawl as dc
+
+    page = _PanelPage("NVDA\nHOLD\ncatalyst verified")
+    record = dc._capture_detail(page, out_dir=None, expected_symbol="NVDA")
+    assert record is not None
+    assert record["evidence_kind"] == "inline"
+    assert record["represents_selected"] == "NVDA"
+
+
+# ── cx-cloud CX2 (links clause) + CX8 (readiness) ───────────────────────────────────────────────────────────────
+class _AnchorNode:
+    def __init__(self, href, label):
+        self._href, self._label = href, label
+
+    def get_attribute(self, name):
+        if name == "href":
+            return self._href
+        if name == "aria-label":
+            return self._label
+        return None
+
+    def inner_text(self):
+        return ""
+
+
+def test_a_link_exposed_only_inside_a_detail_is_still_followed():
+    page = DetailPage("Show details for NVDA", "NVDA detail",
+                      detail_links=[_AnchorNode("/v3/filings/NVDA", "Open the filing")])
+    out = capture_page(page, route="/x", page_url=PAGE_URL, indices=[0], out_dir=None,
+                       openers=[{"label": "Show details for NVDA", "role": "button", "selector": "#open"}])
+    assert any(l["href"] == "/v3/filings/NVDA" for l in out["links"]), out["links"]
+
+
+class _SlowLinkPage:
+    """A destination whose body is empty for the first two reads; the readiness wait must not judge it early."""
+
+    def __init__(self):
+        self.reads = self.waits = 0
+
+    def query_selector_all(self, sel):
+        return [_AnchorNode("/v3/slow", "Show details")] if sel.startswith("a") else []
+
+    def goto(self, url, wait_until=None, timeout=None):
+        class _Resp:
+            status = 200
+        return _Resp()
+
+    def inner_text(self, _sel):
+        self.reads += 1
+        return "" if self.reads < 3 else "destination content"
+
+    def wait_for_timeout(self, _ms):
+        self.waits += 1
+
+
+def test_a_slow_destination_is_waited_for_before_being_classified():
+    page = _SlowLinkPage()
+    records = __import__("site_audit.deep_crawl", fromlist=["_follow_links"])._follow_links(
+        page, page_url=PAGE_URL, max_links=5)
+    assert records and records[0].outcome == OK, records
+    assert page.waits >= 1, "the destination was judged before it rendered anything"
+
+
+# ── cx-cloud CX3 on #2648: native detail buttons are discovered, and still guarded at click time ────────────────
+class _NativeButton:
+    def __init__(self, label):
+        self._label = label
+
+    def get_attribute(self, name):
+        if name == "role":
+            return None                 # a native <button> carries no role attribute
+        if name == "aria-label":
+            return self._label
+        return None
+
+    def inner_text(self):
+        return ""
+
+    def evaluate(self, _js):
+        return "button"
+
+
+class _DiscoveryPage:
+    def __init__(self, nodes):
+        self.nodes = nodes
+
+    def query_selector_all(self, _sel):
+        return self.nodes
+
+
+def test_native_detail_buttons_are_discovered_by_their_tag():
+    import site_audit.deep_crawl as dc
+
+    assert "button[aria-label^='Show ']" in dc.OPENER_SELECTOR
+    assert "button[aria-label^='Open ']" in dc.OPENER_SELECTOR
+    assert "text-matches" in dc.OPENER_SELECTOR, "a native button with visible text and no aria-label was not discoverable"
+
+    got = dc._discover_openers(_DiscoveryPage([_NativeButton("Show analysis for NVDA"),
+                                               _NativeButton("Open AI analysis")]))
+    assert [g["role"] for g in got] == ["button", "button"], got
+    assert [g["label"] for g in got] == ["Show analysis for NVDA", "Open AI analysis"]

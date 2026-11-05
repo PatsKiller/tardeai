@@ -72,8 +72,9 @@ def test_every_row_is_covered_inside_one_week_of_runs():
 
 def test_consecutive_scheduled_runs_get_consecutive_indices():
     """The rotation step is the RUN, not the ISO week: two runs in one week must not sample the same rows."""
-    monday = datetime(2026, 11, 2, tzinfo=timezone.utc)
-    slots = [run_slot(m) for m in windows_between(monday, monday + timedelta(days=7))]
+    # Sunday 2026-11-01 .. the following Sunday: exactly the week's five scheduled starts (Sun 21:00, Mon/Wed/Fri/Sat 17:30).
+    start = datetime(2026, 11, 1, tzinfo=timezone.utc)
+    slots = [run_slot(m) for m in windows_between(start, start + timedelta(days=7))]
     assert len(slots) == 5
     assert slots == list(range(slots[0], slots[0] + 5)), slots
     first = selected_indices(55, page="samples_opens", run_index=slots[0])
@@ -116,6 +117,49 @@ def test_an_explained_gap_away_from_a_top_list_is_p2_and_an_unexplained_one_is_p
 def test_a_thesis_without_an_as_of_is_flagged():
     assert thesis_as_of_missing({**COMPLETE, "cio_as_of": None}) is True
     assert thesis_as_of_missing(COMPLETE) is False
+
+
+# ── the captured detail TEXT is graded by the same rule (cx-cloud CX2 on #2648) ─────────────────────────────────
+def test_detail_text_is_parsed_into_the_card_the_checks_grade():
+    from site_audit.completeness import assess_detail_text
+
+    text = "\n".join([
+        "NVDA", "Price 248.85", "RSI 54.2", "MACD 1.1", "SMA 20 240.0", "SMA 50 230.0", "SMA 200 210.0",
+        "Support 1 240.0", "Support 2 230.0", "Resistance 1 252.0", "Resistance 2 260.0", "Trend up",
+        "CIO stance HOLD", "As of 2026-11-04",
+    ])
+    got = assess_detail_text(text)
+    assert got["evaluated"] is True and got["severity"] is None, got
+
+    without_cio = assess_detail_text(text.replace("CIO stance HOLD\nAs of 2026-11-04", ""))
+    assert without_cio["evaluated"] is True and without_cio["severity"] == P1
+    assert any(g["field"] == "cio_stance_or_thesis" for g in without_cio["gaps"]), without_cio
+
+
+def test_a_value_the_surface_marks_absent_is_a_gap_not_evidence():
+    from site_audit.completeness import assess_detail_text
+
+    text = "NVDA\nPrice —\nRSI n/a\nMACD 1.1\nTrend up\nCIO stance HOLD\nAs of 2026-11-04"
+    got = assess_detail_text(text)
+    fields = {g["field"] for g in got["gaps"]}
+    assert {"price", "rsi"} <= fields, got
+    assert "macd" not in fields, got
+
+
+def test_a_detail_that_is_not_a_symbol_card_is_not_graded():
+    """A proposal/options detail must not become a "missing technicals" finding."""
+    from site_audit.completeness import assess_detail_text
+
+    got = assess_detail_text("Proposal 41\nApprove or decline\nRequested by Maria")
+    assert got["evaluated"] is False and got["severity"] is None and got["gaps"] == [], got
+
+
+def test_a_blank_detail_is_a_p1_not_an_ungraded_unknown():
+    from site_audit.completeness import assess_detail_text
+
+    got = assess_detail_text("   \n")
+    assert got["evaluated"] is True and got["severity"] == P1
+    assert got["gaps"][0]["field"] == "detail_text"
 
 
 # ── captures never enter the repo ──────────────────────────────────────────────────────────────────────────────
