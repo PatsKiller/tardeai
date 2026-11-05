@@ -238,3 +238,6 @@ def test_a_long_login_trigger_is_shortened_and_the_link_is_never_cut(monkeypatch
     text = ct.format_text(long, link_base=FAKE_LINK_BASE)
     assert "https://cc-fixture.ts.net/v3/system/schwab-reauth" in text
     assert len(text) <= ct.MAX_TEXT_CHARS
+
+
+ANCHOR = 'CRITICAL_TEXTS_20261104'  # config/ci_gates/critical_texts_20261104.json names this file

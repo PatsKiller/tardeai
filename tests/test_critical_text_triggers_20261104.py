@@ -107,3 +107,6 @@ def test_replay_the_spcx_card_produces_the_specified_sentence_shape():
     text = format_text(ev)
     assert text.startswith("ACT NOW SPCX (Roth) ext-hrs 131.20, stop 130.00 inactive till 9:30.")
     assert text.endswith("CC Risk") and len(text) <= 160
+
+
+ANCHOR = 'CRITICAL_TEXTS_20261104'  # config/ci_gates/critical_texts_20261104.json names this file
