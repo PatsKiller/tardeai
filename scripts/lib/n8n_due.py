@@ -412,11 +412,26 @@ class RelayLiveLanesMissing(DueConfigError):
 def parse_relay_live_lanes(environ: Mapping[str, str]) -> frozenset[str]:
     """The live-lane list the gateway and the relay both use.
 
-    The key must be present. An empty value is an explicit empty list. A missing key raises.
+    Before AGENTS.md 20.4.0 is ACTIVE: the key must be present, an empty value is an explicit empty list, a missing
+    key raises. From 20.4.0 ACTIVE the list is the release's rendered registry list minus the pause overrides, with
+    the key as the fallback when the render is missing or stale (scripts/lib/n8n_relay_live_lanes.py resolve()).
     """
-    if LIVE_LANES_ENV not in environ:
+    try:
+        from lib import n8n_relay_live_lanes as _rll
+    except ImportError:
+        from scripts.lib import n8n_relay_live_lanes as _rll  # type: ignore[no-redef]
+    lanes = _rll.resolve(environ)["lanes"]
+    if lanes is None:
         raise RelayLiveLanesMissing(f"{LIVE_LANES_ENV} is unset")
-    return frozenset(part for part in str(environ.get(LIVE_LANES_ENV) or "").split() if part)
+    return lanes
+
+
+def relay_live_lanes_present(environ: Mapping[str, str]) -> bool:
+    try:
+        parse_relay_live_lanes(environ)
+    except RelayLiveLanesMissing:
+        return False
+    return True
 
 
 def _relay_dispatch_mode(lane_id: str, mode: str, entry: Mapping) -> tuple[str, Optional[str]]:
@@ -510,7 +525,7 @@ def _eligible_lanes(rows: list[dict], entries: Mapping[str, Mapping], policies: 
             errors.append(_err(lane, "after_unknown_lane", f"after {bad_after}"))
             continue
         errors.extend(_after_errors(lane, block, by_id, entries))
-        if block.mode == "live" and LIVE_LANES_ENV not in os.environ:
+        if block.mode == "live" and not relay_live_lanes_present(os.environ):
             errors.append(_err(
                 lane, "relay_live_lanes_missing",
                 f"{LIVE_LANES_ENV} is unset; refusing to downgrade a live lane to dry_run",

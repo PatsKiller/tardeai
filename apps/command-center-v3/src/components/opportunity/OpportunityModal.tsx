@@ -6,6 +6,7 @@ import { useState, type CSSProperties, type ReactNode } from 'react'
 import { useApi } from '../../hooks/useApi'
 import { RADIUS, TOKENS, numStyle } from '../../lib/designTokens'
 import Modal from '../primitives/Modal'
+import ProspectusLink from '../prospectus/ProspectusLink'
 import OpportunityChart, { type ChartLevel } from './OpportunityChart'
 import { big, condLabel, convictionColor, money, num, pct, STANCE_COLOR, typeLabel, vol } from './format'
 
@@ -179,6 +180,7 @@ export default function OpportunityModal({ symbol, onClose }: { symbol: string; 
         <Pill text={condLabel(a.technical_condition)} color={TOKENS.neutral} />
         {a.cap_band && <Pill text={`${a.cap_band} cap · ${big(a.market_cap_usd)}`} color={TOKENS.neutral} />}
         {(prof.sector || a.sector) && <span style={{ fontSize: 11, color: MUTED }}>{prof.sector || a.sector}{prof.industry ? ` · ${prof.industry}` : ''}</span>}
+        <ProspectusLink symbol={symbol} testId="opportunity-prospectus-link" />
       </div>
       {d && <ActionBar symbol={symbol} a={a} watch={d.watchlist} review={d.cio_review} onDone={refetch} />}
     </div>

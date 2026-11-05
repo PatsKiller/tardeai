@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "prospectus_news_20261027",
+  "files": [
+    "tests/test_prospectus_news_20261027.py"
+  ],
+  "anchor": "PROSPECTUS_NEWS_20261027",
+  "comment": [
+    "ANCHOR: PROSPECTUS_NEWS_20261027 — prospectus news methodology: deterministic relevance gate (ticker collisions, 48h syndication dedupe, catalyst grade >= medium), Haiku classifier and Sonnet CIO note (Anthropic credit only, stubbed in tests), impact thesis/breaker/stop -> one news rewrite per symbol per day, Since-this-report API field, collision facts rejected by the quality gate."
+  ]
+}

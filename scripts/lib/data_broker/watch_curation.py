@@ -400,6 +400,62 @@ def my_rows(
     return rows
 
 
+def eligible_opportunities(opps, row_for, *, now):
+    """Shared eligibility BEFORE ranking; malformed/expired records cannot use a slot."""
+    eligible = {}
+    for sym, opp in opps.items():
+        row = row_for(sym)
+        raw = row.get("expires_at")
+        expiry = _ts(raw)
+        if raw and expiry is None:
+            continue
+        if (
+            row.get("lane") == "expired"
+            or str(row.get("stage", "")).lower() in {"expired", "invalidated", "invalid"}
+            or (expiry and expiry <= now)
+        ):
+            continue
+        eligible[sym] = opp
+    return eligible
+
+
+def read_suggestion_targets(*, root, now, max_n=30):
+    """Production-only in-process reuse of the existing read-only CC broker.
+
+    A disposable/offline root must supply its own injected selector. This entry
+    never falls through from a fixture to default production stores.
+    """
+    from pathlib import Path
+    from scripts.lib.canonical_store_registry import production_state_root
+    from scripts.lib.site_payload_reads import read_curation
+
+    expected = Path(production_state_root()).resolve()
+    if Path(root).resolve() != expected:
+        raise ValueError("suggestion_target_state_root_mismatch")
+    # Source-root data must also point at that state, rather than a checkout's
+    # unrelated copies of the stores used by the established broker readers.
+    from lib import watchlist_intelligence
+
+    if (watchlist_intelligence.PROJECT_ROOT / "data/cio").resolve() != (expected / "data/cio").resolve():
+        raise ValueError("suggestion_broker_store_root_unproven")
+    out = read_curation({"view": "suggests", "n": min(30, max_n), "limit": 30, "fresh": "1"})
+    suggests = out.get("suggests") or {}
+    rows = suggests.get("rows") or []
+    if out.get("ok") is not True or out.get("provider_calls", 0) != 0 or suggests.get("payload_gap"):
+        raise ValueError("suggestion_broker_selection_unavailable")
+    ranking = out.get("ranking") or {}
+    if suggests.get("dismissed_status") != "ok":
+        raise ValueError("suggestion_dismissal_source_unavailable")
+    if not isinstance(ranking.get("count"), int) or ranking["count"] <= 0 or _ts(ranking.get("as_of")) is None:
+        raise ValueError("suggestion_ranking_source_unavailable")
+    if out.get("held", {}).get("source") in {None, "unavailable"}:
+        raise ValueError("suggestion_held_source_unavailable")
+    expected_n = min(int(suggests.get("eligible") or 0), min(30, max_n))
+    if len(rows) != expected_n:
+        raise ValueError("suggestion_broker_selection_incomplete")
+    return [r["symbol"] for r in rows]
+
+
 def build_curation(
     g: dict[str, Any],
     *,
@@ -568,8 +624,14 @@ def list_watch_curation(query: Optional[dict[str, Any]] = None, *, now: Optional
     q = query or {}
     g = gather(q)
     dismissed, status = read_dismissed()
-    out = build_curation(g, n=q.get("n") or DEFAULT_N, dismissed=dismissed, dismissed_status=status, filters=q,
-                         now=now or datetime.now(timezone.utc))
+    out = build_curation(
+        g,
+        n=q.get("n") or DEFAULT_N,
+        dismissed=dismissed,
+        dismissed_status=status,
+        filters=q,
+        now=now or datetime.now(timezone.utc),
+    )
     out["data_broker"] = {
         "package": "scripts/lib/data_broker",
         "projection": "watch_curation",

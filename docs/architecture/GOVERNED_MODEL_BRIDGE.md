@@ -246,3 +246,46 @@ and the scheduled-work window never applies to it.
 - a `config/llm_process_registry.json` row with caps and `default_mode`;
 - `sync_cio_process_caps.py`;
 - a bridge restart.
+
+<!-- moved from AGENTS.md 25.0.1 lines 1038-1061 -->
+## Moved from AGENTS.md (25.0.1 lines 1038-1061)
+
+*Moved here by AGENTS.md 26.0.0, which keeps the binding rule and a pointer; the 25.0.1 text is preserved at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`. This is reference, not instruction: where it mentions Telegram `/approve`, `bin/guard request`, a push budget of 5 or a coordinator override, `gh pr merge`, a `release-write` grant for a deploy, or shipping with no operator input, those paths are retired or not implemented, and AGENTS.md governs.*
+
+## Moved from AGENTS.md §7 (26.0.0): changing a cap with /caps
+
+### Changing an LLM spend cap — `/caps` on Telegram
+
+**There is no Command Center admin page for these**, and that absence is what caused the drift
+below. `lib/llm_cap_admin` + the poller's `/caps` command are the operator surface.
+
+```
+/caps                                   list every process cap, with drift flagged
+/cap <process_id> <requests> [dollars]  set one
+```
+
+- **Writes the registry AND the database in one call.** It is not possible to update only one,
+  because that is the failure it exists to prevent: on 2026-09-06 a hand-written `UPDATE` left
+  `config/llm_process_registry.json` saying `200 / $0.30` while the database said `100000 / $1.25`,
+  and `sync_cio_process_caps.py` is scheduled nowhere so nothing would have caught it.
+- **Database first**, then the registry. A registry promising a cap the bridge is not enforcing is
+  worse than the reverse — the operator would believe a limit that does not exist.
+- **Ceilings hold even for the operator** (`MAX_REQUESTS`, `MAX_DOLLARS`). A cap is only worth
+  having if it holds when someone is in a hurry, and that is exactly when caps get raised. Raising
+  the ceilings is a code change and a review.
+- **Drift is reported, never silently reconciled.** Picking a winner is how the wrong number
+  becomes authoritative.
+- **The GLOBAL cap is NOT settable here.** `LLM_GLOBAL_DAILY_USD_CAP` lives in the bridge's
+  environment; changing it needs `systemctl --user set-environment` (or `.env`, which is
+  never-grantable) **and** a bridge restart. The reply says so, so nobody believes they changed it.
+
+<!-- moved from AGENTS.md 25.0.1 lines 1871-1875 -->
+## Moved from AGENTS.md (25.0.1 lines 1871-1875)
+
+*Moved here by AGENTS.md 26.0.0, which keeps the binding rule and a pointer; the 25.0.1 text is preserved at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`. This is reference, not instruction: where it mentions Telegram `/approve`, `bin/guard request`, a push budget of 5 or a coordinator override, `gh pr merge`, a `release-write` grant for a deploy, or shipping with no operator input, those paths are retired or not implemented, and AGENTS.md governs.*
+
+- **The READ_ONLY guard refuses advice, not facts.**
+  - `assert_no_execution_language` masks third-party labels first ("Strong Sell", "institutional buy", "sought to buy").
+  - Stance is still refused ("would change to a buy").
+  - The bridge backend rewrites a refused draft once, still guarded.
+  - Never loosen `_EXEC_RE` to pass advice through.

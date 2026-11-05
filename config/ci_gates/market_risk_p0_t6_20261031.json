@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_p0_t6_20261031",
+  "files": [
+    "tests/test_options_flow_alert_20261031.py"
+  ],
+  "anchor": "MARKET_RISK_P0_T6_20261031",
+  "comment": [
+    "ANCHOR: MARKET_RISK_P0_T6_20261031 — index options-flow detector on the system's own put/call snapshots",
+    "(2026-10-30 RCA finding 4: QQQ put/call volume 0.96 -> 3.31 at 10:00 ET on 10-29, unread). Pins the 10-29",
+    "fixture (QQQ STRESS, SPY WARN, P1 in session), calm day silent, short history UNKNOWN, absolute volume floor,",
+    "dry run sends nothing, send failure surfaced, policy carries every threshold. Hermetic: fake cursor, stubs."
+  ]
+}

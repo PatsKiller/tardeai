@@ -31,6 +31,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _SCRIPTS = Path(__file__).resolve().parent
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
+from lib.watchlist_deadline import (
+    DEFERRED_EXIT, MIN_START_S, DrainBudget, DrainDeadlineExpired, bounded_timeout,
+)
 # Direct worker invocations do not always inherit the server's environment.
 # Resolve the governed host cap before importing/calling the Flash lane so the
 # canonical cap file is honored without silently inventing a default.
@@ -63,6 +66,7 @@ from lib.cio_agent_contract import (
 )
 from lib.hermes_discovery.symbol_validation import gate_watchlist_symbol
 from lib.agent_number_grounding import apply_number_grounding
+from lib.state_read import object_rows, read_holdings_state, read_json_object
 _last_rag_sources = []  # Set by _build_prompt(), read by result saver
 _last_peer_agents = []  # Set by _get_peer_agent_notes(), read by result saver
 _batch_results_cache = {}  # {symbol: [{agent, recommendation, confidence, summary}]}
@@ -93,7 +97,7 @@ def _bridge_text(process_id: str, prompt: str, max_tokens: int) -> str:
     """ONE governed-bridge request; raises BridgeRouteRefused (never another provider)."""
     from lib.llm_bridge_route import require_text_via_bridge
 
-    return require_text_via_bridge(process_id, _strip_local_tokens(prompt), timeout_s=180, max_tokens=max_tokens)
+    return require_text_via_bridge(process_id, _strip_local_tokens(prompt), timeout_s=bounded_timeout(180), max_tokens=max_tokens)
 
 # Agent name normalization (risk_agent/tax_agent → risk/tax for maturity tracking)
 AGENT_TO_MATURITY = {
@@ -133,7 +137,7 @@ def _get_conn():
     # causing "SSL connection has been closed unexpectedly" on the post-LLM INSERT.
     return psycopg2.connect(
         host="localhost", dbname="trade_ai", user="trade_ai", password=pw,
-        sslmode="disable", connect_timeout=10, application_name="process_watchlist_agent_jobs",
+        sslmode="disable", connect_timeout=max(1, int(bounded_timeout(10))), application_name="process_watchlist_agent_jobs",
         keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=5,
     )
 
@@ -423,7 +427,7 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
                         process_id=process_id,
                         task_summary=f"{agent or 'maria'} {task_type} {_CURRENT_JOB_SYMBOL or ''}".strip(),
                         manual_trigger=manual,
-                        timeout=120,
+                        timeout=bounded_timeout(120),
                         metadata={
                             "symbol": _CURRENT_JOB_SYMBOL,
                             "agent": "legacy_watch_research",
@@ -553,7 +557,7 @@ def _synthesis_llm(prompt: str, max_tokens: int = 2000) -> str:
     try:
         import llm_lane
         if llm_lane.available("grok"):
-            gout = llm_lane.generate(_strip_local_tokens(prompt), lane="grok", timeout=120)
+            gout = llm_lane.generate(_strip_local_tokens(prompt), lane="grok", timeout=bounded_timeout(120))
             if gout and not str(gout).startswith("LLM error") and not _is_refusal(gout):
                 _llm._last_model = "grok-3-mini"; _llm._last_provider = "grok-oauth"; _llm._last_cost = 0
                 _llm._fallback_reason = "FLASH_SOFT_FAILURE_OR_EMPTY"
@@ -677,7 +681,7 @@ def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_tri
     deepseek_status = None
 
     def _gen_oauth(lane: str, timeout: int):
-        kw = dict(lane=lane, timeout=timeout)
+        kw = dict(lane=lane, timeout=bounded_timeout(timeout))
         if pid:
             return llm_lane.generate(
                 cloud_prompt, process_id=pid, task_summary=f"{task} {lane}",
@@ -686,7 +690,7 @@ def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_tri
 
     def _gen_flash(timeout: int):
         return llm_lane.generate(
-            cloud_prompt, lane="deepseek-flash", timeout=timeout, max_tokens=max_tokens,
+            cloud_prompt, lane="deepseek-flash", timeout=bounded_timeout(timeout), max_tokens=max_tokens,
             process_id=flash_pid, task_summary=f"{task} deepseek-flash",
             manual_trigger=manual_trigger)
 
@@ -941,8 +945,12 @@ def _get_context(conn, symbol: str) -> dict:
     import psycopg2.extras
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    holdings = json.loads((STATE_DIR / "holdings.json").read_text()) if (STATE_DIR / "holdings.json").exists() else {}
-    pos = [h for h in holdings.get("holdings", []) if h.get("symbol") == symbol]
+    holdings, holdings_state = read_holdings_state(STATE_DIR / "holdings.json")
+    holdings_rows = holdings["holdings"] if holdings else []
+    # ABSENT is the one state whose honest answer is "no positions" (there is no snapshot at
+    # all). A file that exists but is empty/corrupt/wrong-shaped is UNKNOWN, never an empty book.
+    holdings_known = holdings is not None or holdings_state == "absent"
+    pos = [h for h in holdings_rows if h.get("symbol") == symbol]
     from lib.account_display import ACCOUNT_FIELDS, location_facts, looks_like_number
     account_locations = [location_facts(p) for p in pos]
     position_snapshot = {**pos[0], **account_locations[0]} if pos else None
@@ -950,7 +958,7 @@ def _get_context(conn, symbol: str) -> dict:
         for field in (*ACCOUNT_FIELDS, "account_number"):
             if looks_like_number(str(position_snapshot.get(field) or "")):
                 position_snapshot.pop(field, None)
-    enrichment = json.loads((STATE_DIR / "ticker_enrichment_cache.json").read_text()) if (STATE_DIR / "ticker_enrichment_cache.json").exists() else {}
+    enrichment = read_json_object(STATE_DIR / "ticker_enrichment_cache.json", default={})
     e = enrichment.get(symbol, {}) if isinstance(enrichment.get(symbol), dict) else {}
 
     # Strategy card from DB
@@ -965,13 +973,19 @@ def _get_context(conn, symbol: str) -> dict:
     clean_prices, dropped_prices = _finite_price_points(prices)
 
     # Risk data
-    rm = json.loads((STATE_DIR / "risk_management.json").read_text()) if (STATE_DIR / "risk_management.json").exists() else {}
-    stop_data = next((p for p in rm.get("positions", []) if p.get("symbol") == symbol), {})
+    rm = read_json_object(STATE_DIR / "risk_management.json", default={})
+    rm_rows = object_rows(rm.get("positions"))
+    stop_data = next((p for p in (rm_rows or []) if p.get("symbol") == symbol), {})
 
     snapshot = {
         "symbol": symbol,
         "position": position_snapshot,
         "position_accounts": account_locations,
+        # Availability travels with the facts: an unreadable/damaged holdings snapshot is
+        # UNKNOWN, never an empty book (cx-openai-2 review, 2026-11-03).
+        "holdings_state": holdings_state,
+        "positions_available": holdings_known,
+        "risk_positions_available": rm_rows is not None,
         "enrichment": {k: e.get(k) for k in ["rsi", "beta", "sector", "industry", "sma20_pct", "sma50_pct", "sma200_pct", "atr", "pe", "forward_pe", "company"]} if e else {},
         "strategy_card": dict(sc) if sc else None,
         "recent_prices": clean_prices,
@@ -982,7 +996,14 @@ def _get_context(conn, symbol: str) -> dict:
     }
 
     ctx = f"Symbol: {symbol}\n"
-    if pos:
+    if not holdings_known:
+        # Do NOT assert non-ownership from an unreadable snapshot: "0 shares" is a fact the
+        # file never supplied. The analyst must treat holdings as unknown, not as absent.
+        ctx += (
+            f"Position: UNKNOWN — the holdings snapshot is unavailable ({holdings_state}). "
+            "Do not state that this symbol is held or not held; do not treat other sources as stale on that basis.\n"
+        )
+    elif pos:
         p = pos[0]
         ctx += f"Position: ${p.get('market_value', 0):,.0f}, {p.get('shares', 0):.1f} shares, {p.get('portfolio_pct', 0):.1f}% allocation, account: {account_locations[0]['account_name']}\n"
     else:
@@ -2198,11 +2219,17 @@ def _get_portfolio_context(conn, symbol: str) -> dict:
     import psycopg2.extras
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    holdings = json.loads((STATE_DIR / "holdings.json").read_text()) if (STATE_DIR / "holdings.json").exists() else {}
-    acct_summaries = holdings.get("account_summaries", {})
-    total_portfolio = sum(info.get("total_value", 0) for info in acct_summaries.values())
+    holdings, holdings_state = read_holdings_state(STATE_DIR / "holdings.json")
+    holdings_known = holdings is not None or holdings_state == "absent"
+    holdings_rows = holdings["holdings"] if holdings else []
+    acct_summaries = holdings.get("account_summaries") if holdings else None
+    if not isinstance(acct_summaries, dict):
+        acct_summaries = {}
+    total_portfolio = sum(
+        info.get("total_value", 0) for info in acct_summaries.values() if isinstance(info, dict)
+    )
 
-    sym_holdings = [h for h in holdings.get("holdings", []) if h.get("symbol") == symbol]
+    sym_holdings = [h for h in holdings_rows if h.get("symbol") == symbol]
     total_shares = sum(float(h.get("shares", 0) or 0) for h in sym_holdings)
     total_mv = sum(float(h.get("market_value", 0) or 0) for h in sym_holdings)
     weight = round(total_mv / total_portfolio * 100, 2) if total_portfolio > 0 else 0
@@ -2278,14 +2305,19 @@ def _get_portfolio_context(conn, symbol: str) -> dict:
         "total_shares": total_shares,
         "total_value": total_mv,
         "portfolio_weight": weight,
+        # Availability travels with the numbers: an unreadable/damaged holdings snapshot is
+        # UNKNOWN. The zeros above are only placeholders for the prompt formatter, never facts
+        # (cx-openai-2 review, 2026-11-03).
+        "positions_available": holdings_known,
+        "holdings_state": holdings_state,
         "accounts": accounts,
         "strategy_type": strategy_type,
         "recent_alerts": [dict(a) for a in recent_alerts],
         "has_active_alerts": len(recent_alerts) > 0,
         "has_stop_triggered": any(a["alert_type"] == "stop_triggered" for a in recent_alerts),
         "data_quality_issues": dq_issues,
-        "position_tiny": weight < 0.5,
-        "position_small": weight < 2.0,
+        "position_tiny": holdings_known and weight < 0.5,
+        "position_small": holdings_known and weight < 2.0,
         "income": income_ctx,
         "total_portfolio_income": total_income,
         "income_target": float(income_goals.get("target_income", 55000)) if income_goals else 55000,
@@ -2302,7 +2334,7 @@ def _build_dq_note(conn, symbol: str, dq_alert_count: int) -> str:
     from datetime import datetime, date
     stale = []
     try:
-        enrichment = json.loads((STATE_DIR / "ticker_enrichment_cache.json").read_text()) if (STATE_DIR / "ticker_enrichment_cache.json").exists() else {}
+        enrichment = read_json_object(STATE_DIR / "ticker_enrichment_cache.json", default={})
         e = enrichment.get(symbol) if isinstance(enrichment.get(symbol), dict) else None
         if e is None:
             stale.append("technicals/fundamentals snapshot (RSI, SMA, PE): MISSING from enrichment cache")
@@ -2358,14 +2390,28 @@ def _build_layer_status(conn) -> str:
     layers = cur.fetchall()
 
     # Get total portfolio value from holdings
-    holdings = json.loads((STATE_DIR / "holdings.json").read_text()) if (STATE_DIR / "holdings.json").exists() else {}
-    total_portfolio = sum(info.get("total_value", 0) for info in holdings.get("account_summaries", {}).values())
+    holdings, holdings_state = read_holdings_state(STATE_DIR / "holdings.json")
+    if holdings is None and holdings_state != "absent":
+        # No readable snapshot: allocation is UNKNOWN. Reporting 0.0% against every target would
+        # render a damaged file as an UNDERWEIGHT/IN RANGE book (cx-openai-2 review, 2026-11-03).
+        cur.close()
+        return (
+            f"  Layer allocation: UNKNOWN — holdings snapshot unavailable ({holdings_state}); "
+            "targets cannot be scored this run."
+        )
+    acct_summaries = holdings.get("account_summaries") if holdings else None
+    if not isinstance(acct_summaries, dict):
+        acct_summaries = {}
+    total_portfolio = sum(
+        info.get("total_value", 0) for info in acct_summaries.values() if isinstance(info, dict)
+    )
 
     # Get actual allocation per layer
     cur.execute("SELECT layer_id, SUM(iap.annual_income) as income FROM income_asset_profiles iap GROUP BY layer_id")
-    # Need market value by layer — get from holdings
+    # Need market value by layer — get from holdings. ABSENT is allowed past the unreadable guard as
+    # an empty book (the state-read contract), so `holdings` can legitimately be None here.
     layer_values = {}
-    for h in holdings.get("holdings", []):
+    for h in holdings.get("holdings", []) if holdings else []:
         sym = h.get("symbol", "")
         mv = float(h.get("market_value", 0) or 0)
         if h.get("is_cash"):
@@ -2421,7 +2467,7 @@ def _select_synthesis_rows(rows, *, per_agent=None, char_budget=None):
     return kept, len(rows or []) - len(kept)
 
 
-def run_synthesis(conn, symbol: str, lanes=None, manual_trigger: bool = False, dry_run: bool = False):
+def run_synthesis(conn, symbol: str, lanes=None, manual_trigger: bool = False, dry_run: bool = False, *, _drain_progress=None):
     """Run strategy-aware final synthesis combining all analyst narratives.
 
     dry_run: build prompt + run OAuth/local lanes but do not persist synthesis or maturity."""
@@ -2445,7 +2491,11 @@ def run_synthesis(conn, symbol: str, lanes=None, manual_trigger: bool = False, d
 
     # Mark synthesis as processing (skipped on dry_run — no maturity side effects)
     if not dry_run:
-        cur.execute("UPDATE watchlist_analysis_maturity SET final_synthesis_status='processing', updated_at=now() WHERE symbol=%s", (symbol,))
+        cur.execute("UPDATE watchlist_analysis_maturity SET final_synthesis_status='processing', updated_at=now() "
+                    "WHERE symbol=%s RETURNING updated_at", (symbol,))
+        claim = cur.fetchone()
+        if _drain_progress is not None and claim:
+            _drain_progress["synthesis_claimed_at"] = claim["updated_at"]
         conn.commit()
 
     # Get portfolio context and strategy weights
@@ -2481,17 +2531,26 @@ def run_synthesis(conn, symbol: str, lanes=None, manual_trigger: bool = False, d
     context = _get_context(conn, symbol)
 
     # Build portfolio position summary
-    position_summary = f"""
+    if port_ctx["positions_available"]:
+        position_summary = f"""
 PORTFOLIO POSITION:
 Total shares: {port_ctx['total_shares']:.1f}
 Total value: ${port_ctx['total_value']:,.0f}
 Portfolio weight: {port_ctx['portfolio_weight']:.1f}%
 Accounts: {', '.join(f"{a['type']} ({a['shares']:.0f} sh, ${a['value']:,.0f})" for a in port_ctx['accounts'])}
 """
-    if port_ctx["total_shares"] == 0:
-        position_summary += "NOT CURRENTLY HELD (0 shares in any account) — this block is live holdings ground-truth; any analyst narrative describing an existing position is stale.\n"
-    elif port_ctx["position_tiny"]:
-        position_summary += "NOTE: Position is <0.5% of portfolio — actions have minimal impact.\n"
+        if port_ctx["total_shares"] == 0:
+            position_summary += "NOT CURRENTLY HELD (0 shares in any account) — this block is live holdings ground-truth; any analyst narrative describing an existing position is stale.\n"
+        elif port_ctx["position_tiny"]:
+            position_summary += "NOTE: Position is <0.5% of portfolio — actions have minimal impact.\n"
+    else:
+        # An unreadable snapshot is UNKNOWN, not an empty book: the synthesis must not tell the
+        # model the position is absent, and must not quote the placeholder zeros as facts.
+        position_summary = (
+            "\nPORTFOLIO POSITION: UNKNOWN — the holdings snapshot is unavailable "
+            f"({port_ctx['holdings_state']}). Do not state that this symbol is held or not held; "
+            "treat any holdings claim, including zero shares, as unverified.\n"
+        )
 
     # Income context
     income_context = ""
@@ -2979,8 +3038,100 @@ def requeue_deferred_llm_retries(cur) -> list:
     return cur.fetchall()
 
 
-def process_jobs(limit: int = 10):
+def _resume_deadline_claim(progress):
+    """Leave interrupted ownership eligible for the next ordinary drain."""
+    if progress.get("connection") is None:
+        return
+    with DrainBudget.for_cleanup().enforce():
+        _resume_deadline_claim_impl(progress)
+
+
+def _resume_deadline_claim_impl(progress):
+    conn = progress.get("connection")
+    try:
+        conn.rollback()
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        conn = _get_conn()
+        progress["connection"] = conn
+    cur = conn.cursor()
+    # A blocked cleanup must still leave the caller's hard kill margin intact.
+    # Preserve a tighter inherited role/session cap; zero means unbounded.
+    for name, ceiling in (("statement_timeout", "5 seconds"), ("lock_timeout", "1 second")):
+        cur.execute(
+            "SELECT set_config(%s, (EXTRACT(EPOCH FROM LEAST("
+            "NULLIF(current_setting(%s)::interval, interval '0'), %s::interval)) * 1000)::bigint::text, true)",
+            (name, name, ceiling),
+        )
+    job = progress.get("active_job")
+    if job and job.get("_drain_started_at") is not None:
+        cur.execute(
+            "UPDATE watchlist_agent_jobs SET status='queued', started_at=NULL, completed_at=NULL, "
+            "note=COALESCE(note,'') || ' [deadline:resumable]' "
+            "WHERE id=%s AND status='processing' AND started_at=%s RETURNING id",
+            (job["id"], job["_drain_started_at"]),
+        )
+        if cur.fetchone():
+            _update_maturity(conn, job["symbol"], job["requested_agent"], "queued")
+    if progress.get("synthesis_symbol") and progress.get("synthesis_claimed_at") is not None:
+        cur.execute(
+            "UPDATE watchlist_analysis_maturity SET final_synthesis_status='pending', updated_at=now() "
+            "WHERE symbol=%s AND final_synthesis_status='processing' AND updated_at=%s",
+            (progress["synthesis_symbol"], progress["synthesis_claimed_at"]),
+        )
+    conn.commit()
+    cur.close()
+
+
+def process_jobs(limit: int = 10, *, auto_queue: bool = False):
+    """Drain inside an optional caller deadline, preserving unfinished jobs."""
+    budget = DrainBudget.from_environment()
+    progress = {"connection": None, "active_job": None, "synthesis_symbol": None, "synthesis_claimed_at": None,
+                "selected": None, "next_index": 0, "completed": 0}
+    reached, cleanup_error = False, None
+    try:
+        with budget.enforce():
+            budget.check(MIN_START_S)
+            if auto_queue:
+                _auto_queue_new_symbols()
+                budget.check(MIN_START_S)
+                effective = _effective_job_limit(limit)
+                if effective != limit:
+                    print(f"[watchlist-agent] Queue depth >100 — raised limit {limit}→{effective}")
+                limit = effective
+            _process_jobs_impl(limit, _progress=progress, _budget=budget)
+    except DrainDeadlineExpired:
+        reached = True
+        # The alarm/HTTP wrappers have unwound; the caller reserved cleanup time.
+        try:
+            _resume_deadline_claim(progress)
+        except (Exception, DrainDeadlineExpired) as exc:
+            cleanup_error = type(exc).__name__
+    finally:
+        if progress.get("connection") is not None:
+            try:
+                progress["connection"].close()
+            except Exception:
+                pass
+    selected = progress["selected"]
+    deferred = None if selected is None else max(0, selected - progress["next_index"])
+    summary = {"schema": "WatchlistDrain@v1", "outcome": "DEFERRED" if reached else "DRAINED",
+               "ok": not reached, "selected": selected, "completed": progress["completed"],
+               "deferred": deferred if reached else 0, "deadline_reached": reached,
+               "synthesis_deferred": bool(reached and progress.get("synthesis_symbol")),
+               "cleanup_error": cleanup_error, "exit_code": 1 if cleanup_error else DEFERRED_EXIT if reached else 0}
+    process_jobs.last_outcome = summary
+    if reached:
+        print("[watchlist-agent] " + json.dumps(summary, sort_keys=True))
+    return progress["completed"]
+
+
+def _process_jobs_impl(limit: int = 10, *, _progress, _budget):
     conn = _get_conn()
+    _progress["connection"] = conn
     cur = conn.cursor()
     import psycopg2.extras
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -3046,11 +3197,12 @@ def process_jobs(limit: int = 10):
         ORDER BY {sla_case}, {prio_case}, priority, created_at LIMIT %s""",
                 (*scope_params, *sla_p, *prio_p, limit))
     jobs = cur.fetchall()
+    _progress["selected"] = len(jobs)
 
     if not jobs:
         print("[watchlist-agent] No queued jobs")
         # Still check for symbols ready for synthesis
-        _check_pending_synthesis(conn)
+        _check_pending_synthesis(conn, _progress=_progress, _budget=_budget)
         conn.close()
         return 0
 
@@ -3064,7 +3216,9 @@ def process_jobs(limit: int = 10):
     if wait_syms:
         print(f"[watchlist-agent] WAIT setups (priority only, not OAuth-preempt): {', '.join(sorted(wait_syms))}")
 
-    for job in jobs:
+    for index, job in enumerate(jobs):
+        _progress.update(next_index=index, active_job=None, synthesis_symbol=None, synthesis_claimed_at=None)
+        _budget.check(MIN_START_S)
         job_id = job["id"]
         symbol = job["symbol"]
         agent = job["requested_agent"]
@@ -3111,9 +3265,20 @@ def process_jobs(limit: int = 10):
 
         # Apply escalation policy if not already set
         _apply_escalation_policy(conn, symbol)
+        _budget.check(MIN_START_S)
 
-        # Mark processing
-        cur.execute("UPDATE watchlist_agent_jobs SET status='processing', started_at=now() WHERE id=%s", (job_id,))
+        # A selected row may have been claimed since selection. Retain the
+        # committed claim timestamp so deadline cleanup cannot requeue a peer.
+        owned_job = dict(job)
+        _progress["active_job"] = owned_job
+        cur.execute("UPDATE watchlist_agent_jobs SET status='processing', started_at=now() "
+                    "WHERE id=%s AND status='queued' RETURNING started_at", (job_id,))
+        claim = cur.fetchone()
+        if not claim:
+            conn.rollback()
+            _progress["active_job"] = None
+            continue
+        owned_job["_drain_started_at"] = claim["started_at"]
         _update_maturity(conn, symbol, agent, "processing")
         cur.execute("INSERT INTO watchlist_events (event_type, symbol, agent, status, message) VALUES ('processing', %s, %s, 'processing', %s)",
                     (symbol, agent, f"Started {agent} {request_type}"))
@@ -3180,6 +3345,8 @@ def process_jobs(limit: int = 10):
 
         # LLM/embed can run 90s+ — refresh DB before any writes.
         conn = _refresh_conn(conn)
+        _progress["connection"] = conn
+        _budget.check(0.5)
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
         retry = classify_llm_failure(raw, job.get("note")) if (not raw or raw.startswith("LLM error")) else None
@@ -3422,13 +3589,16 @@ def process_jobs(limit: int = 10):
                     (symbol, agent, f"{parsed['recommendation']} conf={parsed['confidence']:.0%} codes={parsed['reason_codes']}"))
         conn.commit()
         completed += 1
+        _progress.update(completed=completed, active_job=None, next_index=index + 1)
         print(f"  ✓ {symbol} ({agent}): {parsed['recommendation']} conf={parsed['confidence']:.0%}")
 
         # Check if synthesis is now ready
         if _check_synthesis_ready(conn, symbol):
+            _budget.check(MIN_START_S)
+            _progress["synthesis_symbol"] = symbol
             print(f"  → {symbol}: All required reviews complete, running synthesis...")
             try:
-                run_synthesis(conn, symbol)
+                run_synthesis(conn, symbol, _drain_progress=_progress)
                 # Run safety assessment immediately after synthesis
                 try:
                     from synthesis_safety import assess_synthesis_safety, persist_safety
@@ -3465,16 +3635,19 @@ def process_jobs(limit: int = 10):
                     except Exception as _me2:
                         print(f"  [recover] {symbol}: fresh-conn mark ALSO failed: "
                               f"{type(_me2).__name__}: {_me2}")
+            _progress["synthesis_symbol"] = None
 
     # Also check for any other symbols that became ready for synthesis
-    _check_pending_synthesis(conn)
+    _progress["active_job"] = None
+    _progress["next_index"] = len(jobs)
+    _check_pending_synthesis(conn, _progress=_progress, _budget=_budget)
 
     conn.close()
     print(f"[watchlist-agent] Done: {completed}/{len(jobs)} completed")
     return completed
 
 
-def _check_pending_synthesis(conn):
+def _check_pending_synthesis(conn, *, _progress=None, _budget=None):
     """Check all symbols that have all required reviews done but no synthesis yet."""
     import psycopg2.extras
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -3487,15 +3660,22 @@ def _check_pending_synthesis(conn):
     cur.close()
 
     for sym in ready:
+        if _budget is not None:
+            _budget.check(MIN_START_S)
+        if _progress is not None:
+            _progress["synthesis_symbol"] = sym
+            _progress["synthesis_claimed_at"] = None
         print(f"  → {sym}: Pending synthesis detected, running...")
         try:
-            run_synthesis(conn, sym)
+            run_synthesis(conn, sym, _drain_progress=_progress)
             from synthesis_safety import assess_synthesis_safety, persist_safety
             safety = assess_synthesis_safety(sym)
             persist_safety(sym, safety)
             print(f"  ⛨ {sym}: Safety={safety['decision_safety']}")
         except Exception as e:
             print(f"  ✗ {sym}: Synthesis failed: {e}")
+        if _progress is not None:
+            _progress["synthesis_symbol"] = None
 
 
 def auto_queue_valid_symbols(rows, *, limit: int = 5, validate=None) -> list:
@@ -3783,11 +3963,9 @@ if __name__ == "__main__":
 
             reset_run_budget()
             with PipelineRun("process_watchlist_agent_jobs") as _run:
-                _auto_queue_new_symbols()  # Check for new symbols first
-                effective = _effective_job_limit(args.limit)
-                if effective != args.limit:
-                    print(f"[watchlist-agent] Queue depth >100 — raised limit {args.limit}→{effective}")
-                process_jobs(effective)
+                process_jobs(args.limit, auto_queue=True)
+                if process_jobs.last_outcome["deadline_reached"]:
+                    _sys.exit(process_jobs.last_outcome["exit_code"])
     except OverlapError as e:
         print(f"[watchlist-agent] {e} — exit {OVERLAP_EXIT} (no provider calls)")
         _sys.exit(OVERLAP_EXIT)

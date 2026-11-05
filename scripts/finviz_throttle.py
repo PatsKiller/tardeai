@@ -140,14 +140,30 @@ def _write(d):
         pass
 
 
-def acquire(timeout=300):
-    """Block until a global Finviz request slot is free. Returns wait time actually slept."""
+def acquire(timeout=300, *, deadline_monotonic=None):
+    """Wait for a global slot. A caller deadline refuses work instead of failing open.
+
+    Legacy callers retain their existing timeout behaviour. Bounded refreshes pass
+    an absolute monotonic deadline, including time waiting for the state lock.
+    """
     start = time.time()
     _LOCK.parent.mkdir(parents=True, exist_ok=True)
     slept = 0.0
     while True:
+        if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:
+            raise TimeoutError("Finviz request deferred: caller deadline exhausted")
         with open(_LOCK, "a+") as lf:
-            fcntl.flock(lf, fcntl.LOCK_EX)
+            try:
+                flags = fcntl.LOCK_EX | (fcntl.LOCK_NB if deadline_monotonic is not None else 0)
+                fcntl.flock(lf, flags)
+            except BlockingIOError:
+                remaining = deadline_monotonic - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("Finviz request deferred: throttle lock deadline exhausted")
+                wait = min(0.05, remaining)
+                time.sleep(wait)
+                slept += wait
+                continue
             try:
                 st = _read()
                 now = time.time()
@@ -163,7 +179,13 @@ def acquire(timeout=300):
                 wait = min(ready_at - now, 10.0)
             finally:
                 fcntl.flock(lf, fcntl.LOCK_UN)
+        if deadline_monotonic is not None:
+            remaining = deadline_monotonic - time.monotonic()
+            if wait >= remaining:
+                raise TimeoutError("Finviz request deferred: cooldown exceeds caller deadline")
         if time.time() - start + wait > timeout:
+            if deadline_monotonic is not None:
+                raise TimeoutError("Finviz request deferred: throttle wait budget exhausted")
             return slept  # fail-open after timeout: better a request than a dead pipeline
         time.sleep(wait)
         slept += wait

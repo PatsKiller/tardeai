@@ -115,6 +115,7 @@ remain on the classic page.
 | Open intents and execution | link to classic | execution subsystem out of scope (§0 rule 2) | — |
 | Your book rows, value, stop state and source, distance | `book.rows` | `cio_truth.resolve().positions.rows` and stops (stop_last_known before stops.json) | CIO record |
 | Positions without an active broker stop, unprotected value | `bk-unprot`, `bk-heat` | `resolve().stops.unprotected_count`, `positions.unprotected_value_usd` | CIO record |
+| (2026-10-25 stop desks) Positions / value with no broker stop, pending, filled awaiting sync, state not recorded | `bk-unprot`, `bk-heat`, `bk-pending`, `bk-filled`, `bk-unknown` | `resolve().positions.stop_breakdown.{none,planned,pending_activation,filled,unknown}` (counted positions); falls back to the rows above when absent | CIO record |
 | Hedged share of book, most exposed (beta), defensive score | `bk-hedged`, `bk-exposed`, detail fields | **not measured**: no writer computes them for held names | — |
 | Inverse-ETF stoplights | `stoplights.rows` | `data/runtime/inverse_stoplights_latest.json` `candidates[].lights.*.state/reason` | `defense-inverse-stoplights` |
 | Short side ideas | `short.rows` | recommendations `groups.short_side[]` | `defense-recommendations` |

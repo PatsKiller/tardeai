@@ -48,7 +48,7 @@ def _constitution() -> list:
         f"Core registry (operator-owned): core positions NEVER full-exit — trim cap {rc['core']['max_trim_pct']}%, patient {rc['core']['reentry_window_days']}-session re-entry, cleanup-exempt.",
         f"Trim composite: factor base {rc['trim_composite']['base_by_factor_count']} +GG state +concentration(cap {rc['trim_composite']['concentration_cap_pp']}pp) +stop context; bounds {rc['trim_composite']['bounds_pct']}.",
         f"Taxable shorts: SF<{rc['taxable_short']['max_short_float_pct']}%, ≥${rc['taxable_short']['min_price']}, stop≤{rc['taxable_short']['max_stop_distance_pct']}%, ≤{rc['taxable_short']['size_cap_pct_of_book']}% book, never held symbols.",
-        "Wash-sale: 31d deterministic warning (any-account; IRA repurchase permanent), basis-blind until Cost Basis export, never suppresses rollback alerts.",
+        "Wash-sale: sale date + 30 calendar days, loss sales in taxable accounts only (canonical scripts/lib/wash_sale.py; any-account buys gated; IRA repurchase permanent), unknown basis treated as a potential loss, never suppresses rollback alerts.",
         "All groups SHADOW until the Jul 30-31 promote review; Telegram advisory-class suppressed until then.",
         "Accounts: Rollover IRA / Roth IRA (no shorts; inverse ETF + CC ok) · Taxable (margin verified, shorts advisory-only) · Alpaca Paper (shadow twins).",
     ]

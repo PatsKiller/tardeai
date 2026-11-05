@@ -277,7 +277,7 @@ def test_worker_entry_exits_on_import_failure_pattern():
     assert "exit_if_contained_worker_entry" in src
     # containment import failure branch before argparse/PipelineRun
     assert "cannot import containment helper" in src
-    assert src.index("exit_if_contained_worker_entry") < src.index("process_jobs(effective)")
+    assert src.index("exit_if_contained_worker_entry") < src.index("process_jobs(args.limit, auto_queue=True)")
 
 
 def test_inactive_allows_worker(cont, monkeypatch):

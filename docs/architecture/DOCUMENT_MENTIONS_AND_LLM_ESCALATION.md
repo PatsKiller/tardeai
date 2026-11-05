@@ -187,3 +187,44 @@ Same standard as the rest of this subsystem — measured, not asserted:
 - escalation: a firing test that the operator is notified **before** a second paid lane is
   entered, and that the run stops rather than proceeding
 - coverage: reported as a number that can only improve, like `alarm_firing_baseline.txt`
+
+<!-- moved from AGENTS.md 25.0.1 lines 948-980 -->
+## Moved from AGENTS.md (25.0.1 lines 948-980)
+
+*Moved here by AGENTS.md 26.0.0, which keeps the binding rule and a pointer; the 25.0.1 text is preserved at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`. This is reference, not instruction: where it mentions Telegram `/approve`, `bin/guard request`, a push budget of 5 or a coordinator override, `gh pr merge`, a `release-write` grant for a deploy, or shipping with no operator input, those paths are retired or not implemented, and AGENTS.md governs.*
+
+## Moved from AGENTS.md §7 (26.0.0): roles, coverage and sources with no prose
+
+### Document mentions — subject vs. passing reference
+
+`document_mentions`, one row per **(document, issuer, role)**. Tagging by the row's `symbol`
+column alone was one tag per document and never read the body: **58% of tagged news articles
+mention other tickers.**
+
+    "Morgan Stanley estimates Apple foldable iPhone could generate…"
+
+mentions `MS` and `NDAQ`; the article is **about Apple**. Morgan Stanley is the *source of the
+estimate*. Recording all three as subjects attaches the article to issuers it is not about, and
+every join inherits it. **`role='mentioned'` is not a lesser tag** — "every document mentioning
+this issuer" is a legitimate query; it must simply not be confused with "about".
+
+**Deterministic decides the role wherever it can, and refuses where it cannot:**
+
+| case | role |
+|---|---|
+| exactly one mention | that one is `subject` |
+| a mention equals the row's own `symbol` | that one `subject`, rest `mentioned` |
+| several mentions, none is the filed symbol | **undecided — never guessed** |
+
+Measured over 400 documents per store, the deterministic rules decide **94–97%**. The undecided
+remainder is the model's residual, it is COUNTED, and `role_source` (`deterministic` / `model` /
+`operator`) is mandatory — without it a model's guess and a fact are indistinguishable a month
+later and the model cannot be re-audited separately.
+
+Live coverage (2026-09-06): `news_articles` 13,578 · `catalyst_events` 11,006 ·
+`hermes_external_research` 6,910 · `research_insights` 5,539 · `sec_form4` 3,561.
+
+**Sources with no prose.** `sec_form4` rows are transactions ("P", "S"), not text. Scanning the
+body found 0 mentions in 300 rows and called them all unmentioned, which is false — the filing IS
+about that issuer. Such sources use `subject_is_own_symbol`. `filer_name` is **never** scanned: a
+director is a person, and a person's name must not resolve to a company.

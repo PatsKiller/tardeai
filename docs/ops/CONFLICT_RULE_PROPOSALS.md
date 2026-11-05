@@ -179,6 +179,9 @@ One grouped intent per pass for pending proposals not yet announced (`notified` 
 `rule_proposals_pending`, DIGEST → P2 needs-action). Never one per row, never a send from the lane. Until the route row
 exists the attempt is recorded `notify_failed intent_unrouted` and retried next pass.
 
+Pending proposals also appear in the Approvals Center queue as `CONFLICT` items linking to
+`/conflicts/rules?proposal=<id>`; decisions stay on the Conflict rules page (docs/ops/APPROVALS_CENTER_20261024.md).
+
 ## 7. Stores
 
 `data/conflicts/rule_proposals.jsonl` — `RuleProposalEvent@v1` (`unmatched_observed`, `proposal_created`,

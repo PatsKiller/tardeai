@@ -314,33 +314,19 @@ def _snapshot_trend_point(snap: dict[str, Any], ts: datetime) -> dict[str, Any]:
 def load_outcome_bus_trend(days: int = 30) -> dict[str, Any]:
     """Daily outcome-bus trend from current file + history snapshots (latest per UTC day)."""
     days = max(1, min(int(days), 90))
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
-    snapshots: list[tuple[datetime, dict[str, Any]]] = []
-    current = read_outcome_bus()
-    if current:
-        ts = _parse_generated_at(current.get("generated_at"))
-        if ts and ts >= cutoff:
-            snapshots.append((ts, current))
+    # A 22 MB snapshot per file made the old full scan 57 s (route sweep 2026-11-01). The index parses each file at
+    # most once and stores only the trend point; see scripts/lib/hermes_trend_index.py.
+    from ..hermes_trend_index import daily_points
 
-    if HISTORY_DIR.exists():
-        for path in HISTORY_DIR.glob("outcome_bus_*.json"):
-            try:
-                snap = json.loads(path.read_text(encoding="utf-8"))
-            except Exception:
-                continue
-            ts = _parse_generated_at(snap.get("generated_at"))
-            if ts and ts >= cutoff:
-                snapshots.append((ts, snap))
-
-    by_day: dict[str, tuple[datetime, dict[str, Any]]] = {}
-    for ts, snap in snapshots:
-        day = ts.strftime("%Y-%m-%d")
-        cur = by_day.get(day)
-        if cur is None or ts > cur[0]:
-            by_day[day] = (ts, snap)
-
-    series = [_snapshot_trend_point(snap, ts) for day, (ts, snap) in sorted(by_day.items())]
+    series = daily_points(
+        history_dir=HISTORY_DIR,
+        prefix="outcome_bus_",
+        days=days,
+        point=_snapshot_trend_point,
+        index_path=HISTORY_DIR.parent / "trend_index" / "outcome_bus.json",
+        current=OUTCOME_BUS_PATH,
+    )
     promo = [s["hit_rate_promotions"] for s in series if s.get("hit_rate_promotions") is not None]
     symbols = [s["symbols_in_bus"] for s in series if s.get("symbols_in_bus") is not None]
     eff_scores = [s["resource_efficiency_score"] for s in series if s.get("resource_efficiency_score") is not None]

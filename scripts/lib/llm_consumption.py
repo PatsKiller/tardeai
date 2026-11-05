@@ -304,6 +304,9 @@ def get_process_config(process_id: str) -> dict:
         "daily_cost_cap_usd": reg_p.get("daily_cost_cap_usd"),
         "notes": reg_p.get("description"),
         "registered": True,
+        "anthropic_first": reg_p.get("anthropic_first") is True,
+        "reasoning_tier": reg_p.get("reasoning_tier"),
+        "local_only": reg_p.get("local_only") is True,
         "max_input_tokens": reg_p.get("max_input_tokens"),
         "max_output_tokens": reg_p.get("max_output_tokens"),
         "tools_allowed": bool(reg_p.get("tools_allowed", False)),
@@ -454,6 +457,10 @@ def ledger_paid_usd_today(process_id: str | None = None, *, cur=None) -> float:
                 """
                 SELECT COALESCE(SUM(
                     CASE
+                      WHEN metadata_json->>'funding_source' = 'anthropic_promotional_credit' THEN 0
+                      WHEN metadata_json->>'paid_component_usd' IS NOT NULL
+                        AND status IN ('reserved', 'settled')
+                        THEN (metadata_json->>'paid_component_usd')::numeric
                       WHEN status = 'reserved' THEN projected_usd
                       WHEN status = 'settled' THEN COALESCE(actual_usd, projected_usd)
                       ELSE 0
@@ -469,6 +476,10 @@ def ledger_paid_usd_today(process_id: str | None = None, *, cur=None) -> float:
                 """
                 SELECT COALESCE(SUM(
                     CASE
+                      WHEN metadata_json->>'funding_source' = 'anthropic_promotional_credit' THEN 0
+                      WHEN metadata_json->>'paid_component_usd' IS NOT NULL
+                        AND status IN ('reserved', 'settled')
+                        THEN (metadata_json->>'paid_component_usd')::numeric
                       WHEN status = 'reserved' THEN projected_usd
                       WHEN status = 'settled' THEN COALESCE(actual_usd, projected_usd)
                       ELSE 0
@@ -519,7 +530,10 @@ def recover_stale_reservations(*, max_age_minutes: int = 30, cur=None) -> int:
         """
         UPDATE llm_cost_reservations
         SET status='settled',
-            actual_usd=COALESCE(actual_usd, projected_usd)
+            actual_usd=COALESCE(actual_usd, projected_usd),
+            metadata_json=CASE WHEN metadata_json ? 'promotion_id'
+                THEN metadata_json || jsonb_build_object('funding_settled_at',created_at)
+                ELSE metadata_json END
         WHERE status='reserved'
           AND created_at < NOW() - (%s * INTERVAL '1 minute')
         """,
@@ -716,7 +730,7 @@ def over_daily_cap(process_id: str, *, extra: int = 0) -> bool:
     return calls_today(process_id) + max(0, int(extra or 0)) >= cap_n
 
 
-def should_call(process_id: str, lane: str, *, manual_trigger: bool = False) -> dict:
+def should_call(process_id: str, lane: str, *, manual_trigger: bool = False, _anthropic_route: bool = False) -> dict:
     """Decision only — does not call the model. Unknown processes: deny."""
     cfg = get_process_config(process_id)
     lane = (lane or "").strip().lower()
@@ -730,6 +744,9 @@ def should_call(process_id: str, lane: str, *, manual_trigger: bool = False) -> 
                 "process_id": process_id}
     allowed_list = list(cfg.get("allowed_lanes") or [])
     allowed = lane in allowed_list or lane.upper() in {x.upper() for x in allowed_list}
+    if not allowed and _anthropic_route and lane in {"anthropic", "grok", "chatgpt"}:
+        from . import anthropic_routing as promo
+        allowed = promo.eligible(process_id, cfg)
     if not allowed:
         return {
             "allow": False,
@@ -948,6 +965,120 @@ def reserve_projected_cost(
         raise
 
 
+def credit_daily_cap_usd(cp: dict, now: datetime):
+    """The promotional credit's UTC-day cap at ``now``.
+
+    Same rule as ``anthropic_credit.CreditBook.daily_cap``: an active
+    ``daily_cap_overrides`` row (``from`` <= day < ``until``) replaces the base
+    ``daily_cap_usd``; the last matching row wins. The durable DB backstop must
+    agree with the credit journal, or an approved override pauses at the base cap.
+    """
+    from datetime import date
+    from decimal import Decimal, InvalidOperation
+
+    try:
+        cap = Decimal(str(cp["daily_cap_usd"]))
+        day = now.astimezone(timezone.utc).date()
+        for row in cp.get("daily_cap_overrides") or []:
+            if date.fromisoformat(str(row["from"])) <= day < date.fromisoformat(str(row["until"])):
+                cap = Decimal(str(row["usd"]))
+    except (KeyError, TypeError, ValueError, InvalidOperation, AttributeError) as exc:
+        raise RuntimeError("CREDIT_CONFIGURATION_INVALID") from exc
+    return cap
+
+
+def reprice_reservation(
+    reservation_id: int, process_id: str, projected_usd: float, *,
+    process_config: dict, global_cap: float | None,
+    funding_source: str, paid_component_usd: float,
+    credit_policy: dict | None = None,
+) -> None:
+    """Reauthorize the SAME request slot before switching provider/funding.
+
+    Promotional credit does not enlarge the paid global cap. The process cap
+    applies independently to promotional and paid spend. A paid fallback is checked under the original
+    global lock before any request can reach that provider.
+    """
+    import math
+
+    from decimal import Decimal, ROUND_CEILING
+    projected, paid = float(projected_usd), float(paid_component_usd)
+    if projected > paid:
+        projected = float(Decimal(str(projected_usd)).quantize(Decimal("0.000001"), rounding=ROUND_CEILING))
+    if not all(math.isfinite(v) and v >= 0 for v in (projected, paid)) or paid > projected:
+        raise RuntimeError("COST_CONFIGURATION_INVALID: reservation projection")
+    if funding_source not in {"anthropic_promotional_credit", "paid", "mixed"}:
+        raise RuntimeError("COST_CONFIGURATION_INVALID: funding source")
+    if not cost_persistence_available():
+        raise RuntimeError("COST_PERSISTENCE_UNAVAILABLE")
+    conn = _conn()
+    cur = conn.cursor()
+    try:
+        ns, key = _ledger_lock_keys(process_id)
+        cur.execute("SELECT pg_advisory_xact_lock(%s)", (ns,))
+        cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", (ns, key))
+        cur.execute("SELECT process_id, projected_usd, status, metadata_json FROM llm_cost_reservations WHERE id=%s FOR UPDATE",
+                    (int(reservation_id),))
+        row = cur.fetchone()
+        if not row or row[0] != process_id or row[2] != "reserved":
+            raise RuntimeError("RESERVATION_BINDING_INVALID")
+        old = float(row[1] or 0)
+        meta = row[3] or {}
+        if isinstance(meta, str):
+            meta = json.loads(meta)
+        old_paid = (0.0 if meta.get("funding_source") == "anthropic_promotional_credit"
+                    else float(meta.get("paid_component_usd", old)))
+        spent = ledger_paid_usd_today(process_id, cur=cur) - old_paid
+        if spent + paid > float(process_config["daily_cost_cap_usd"]):
+            raise RuntimeError("COST_CAP_EXCEEDED: process cap")
+        credit = projected - paid
+        if credit > 0:
+            cp = credit_policy or {}
+            if not cp.get("promotion_id") or cp.get("enabled") is not True:
+                raise RuntimeError("CREDIT_CONFIGURATION_INVALID")
+            cur.execute("""SELECT
+                COALESCE(SUM(GREATEST((CASE WHEN status='reserved' THEN projected_usd ELSE actual_usd END)
+                    - COALESCE((metadata_json->>'paid_component_usd')::numeric,0),0)),0),
+                COALESCE(SUM(GREATEST((CASE WHEN status='reserved' THEN projected_usd ELSE actual_usd END)
+                    - COALESCE((metadata_json->>'paid_component_usd')::numeric,0),0))
+                    FILTER (WHERE
+                        (COALESCE((metadata_json->>'funding_settled_at')::timestamptz,created_at) AT TIME ZONE 'UTC')::date
+                        = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date),0)
+                FROM llm_cost_reservations WHERE status IN ('reserved','settled')
+                AND metadata_json->>'promotion_id'=%s AND id<>%s""",
+                (cp["promotion_id"], int(reservation_id)))
+            used_total, used_day = cur.fetchone()
+            addition = Decimal(str(projected)) - Decimal(str(paid_component_usd))
+            if Decimal(str(used_total)) + addition > Decimal(str(cp["total_cap_usd"])):
+                raise RuntimeError("CREDIT_EXHAUSTED: durable total cap")
+            if Decimal(str(used_day)) + addition > credit_daily_cap_usd(cp, datetime.now(timezone.utc)):
+                raise RuntimeError("CREDIT_PAUSED_TODAY: durable UTC cap")
+            old_credit = (max(Decimal(0), Decimal(str(old)) - Decimal(str(old_paid)))
+                          if meta.get("promotion_id") == cp["promotion_id"] else Decimal(0))
+            if Decimal(str(projected_usd)) - Decimal(str(paid_component_usd)) > old_credit:
+                cur.execute("SELECT CURRENT_TIMESTAMP >= %s::timestamptz", (cp["expires_at"],))
+                if cur.fetchone()[0]:
+                    raise RuntimeError("CREDIT_EXPIRED: database clock")
+            meta["promotion_id"] = cp["promotion_id"]
+        if paid > 0:
+            if global_cap is None or float(global_cap) <= 0:
+                raise RuntimeError("COST_CONFIGURATION_INVALID: paid global cap required")
+            from scripts.lib.llm_lane_reservation import available_under_global_cap, load_lane_floors
+            available = available_under_global_cap(
+                process_id=process_id, global_cap=float(global_cap),
+                spent_globally=ledger_paid_usd_today(None, cur=cur) - old_paid,
+                floors=load_lane_floors(), spent_by_lane=lambda lane: ledger_paid_usd_today(lane, cur=cur))
+            if paid > available:
+                raise RuntimeError("COST_CAP_EXCEEDED: global cap")
+        meta.update(funding_source=funding_source, paid_component_usd=paid)
+        cur.execute("UPDATE llm_cost_reservations SET projected_usd=%s, metadata_json=%s WHERE id=%s",
+                    (projected, json.dumps(meta, default=str), int(reservation_id)))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
+
 def settle_reservation(
     reservation_id: int | None,
     actual_usd: float | None,
@@ -955,6 +1086,7 @@ def settle_reservation(
     ok: bool,
     billable_attempt: bool = False,
     projected_fallback: float | None = None,
+    paid_component_usd: float | None = None,
 ) -> None:
     """Settle or release a reservation.
 
@@ -992,11 +1124,18 @@ def settle_reservation(
         else:
             status = "released"
             actual = 0.0
+        if paid_component_usd is not None:
+            from decimal import Decimal, ROUND_CEILING
+            actual = float(Decimal(str(actual)).quantize(Decimal("0.000001"), rounding=ROUND_CEILING))
         cur.execute(
             """UPDATE llm_cost_reservations
                SET actual_usd=%s, status=%s WHERE id=%s""",
             (actual, status, int(reservation_id)),
         )
+        if paid_component_usd is not None:
+            cur.execute("UPDATE llm_cost_reservations SET metadata_json=metadata_json || %s::jsonb WHERE id=%s",
+                        (json.dumps({"paid_component_usd": paid_component_usd,
+                                     "funding_settled_at": datetime.now(timezone.utc).isoformat()}), int(reservation_id)))
         _conn().commit()
     except Exception:
         try:
@@ -1095,6 +1234,7 @@ def gate_and_generate(
     max_tokens: int = 2048,
     policy: str | None = None,
     return_provenance: bool = False,
+    _anthropic_route: bool = False,
 ):
     """Check process mode + cost caps; call llm_lane with DeepSeek kwargs; log full provenance.
 
@@ -1117,7 +1257,8 @@ def gate_and_generate(
             "fast", "fast_think", "pro", "pro_think", "pro_max"
         ) else lane
 
-    decision = should_call(process_id, lane, manual_trigger=manual_trigger)
+    decision = should_call(process_id, lane, manual_trigger=manual_trigger,
+                           **({"_anthropic_route": True} if _anthropic_route else {}))
     if not decision.get("allow"):
         if decision.get("reason") == "manual_mode":
             raise ManualRequired(process_id, lane, task_summary or summarize_prompt(prompt), prompt[:500])
@@ -1151,10 +1292,29 @@ def gate_and_generate(
             from scripts.lib.model_chooser import apply as _choose_apply  # type: ignore
         _use_lane, _choice = _choose_apply(process_id, lane, purpose=task_summary, site="gate_and_generate")
         meta["model_chooser"] = {k: _choice.get(k) for k in ("lane", "policy", "model", "mode", "disagree", "reason")}
-        if _use_lane and _use_lane != lane:
+        if _use_lane and _use_lane != lane and not _anthropic_route:
             lane = _use_lane
     except Exception:  # noqa: BLE001
         pass
+
+    from lib import anthropic_routing as promo
+    _promo_cfg = get_process_config(process_id)
+    if (not _anthropic_route and promo.anthropic_only(process_id)
+            and (meta.get("provider_pinned") or model is not None or not promo.active(process_id, _promo_cfg))):
+        # Anthropic-only jobs (operator 2026-10-26) never take the caller's legacy lane:
+        # an unusable credit is a typed refusal the caller turns into a queued job.
+        raise RuntimeError("ANTHROPIC_CREDIT_UNAVAILABLE: anthropic-only process; queue and retry")
+    if not _anthropic_route and not meta.get("provider_pinned") and model is None and promo.active(process_id, _promo_cfg):
+        return promo.generate_in_process(prompt, process_id=process_id, cfg=_promo_cfg, options={
+            "task_summary": task_summary, "manual_trigger": manual_trigger, "timeout": timeout,
+            "metadata": meta, "operator_confirmed": operator_confirmed, "response_json": response_json,
+            "output_schema_id": output_schema_id, "max_tokens": max_tokens,
+            "return_provenance": return_provenance,
+            "requested_policy": policy or (lane.upper() if lane.upper() in {"FAST", "FAST_THINK", "PRO", "PRO_THINK", "PRO_MAX"} else None),
+        })
+    is_anthropic_lane = lane == "anthropic" and _anthropic_route and promo.eligible(process_id, _promo_cfg)
+    if lane == "anthropic" and not is_anthropic_lane:
+        raise RuntimeError("POLICY_NOT_ALLOWED: promotional adapter requires governed routing")
 
     is_deepseek_lane = lane.startswith("deepseek") or lane in (
         "fast", "fast_think", "pro", "pro_think", "pro_max",
@@ -1204,7 +1364,16 @@ def gate_and_generate(
     effective_in = None
     model_id = model
 
-    if is_deepseek_lane:
+    if is_anthropic_lane:
+        from lib.consumption_run_manual import validate_paid_cap_config
+        validate_paid_cap_config(cfg, require_global=False)
+        effective_out = min(effective_out, int(cfg.get("max_output_tokens") or effective_out))
+        effective_in = int(cfg["max_input_tokens"]) if cfg.get("max_input_tokens") else None
+        reservation_id = reserve_projected_cost(process_id, 0, model_id=model_id, process_config=cfg,
+            metadata={"funding_source": "anthropic_promotional_credit", "paid_component_usd": 0})
+        _funding = promo.FundingContext(process_id, cfg, reservation_id, global_cap=None,
+                                       cost_ceiling=None, mode="in_process")
+    elif is_deepseek_lane:
         if not cost_persistence_available():
             raise RuntimeError("COST_PERSISTENCE_UNAVAILABLE: paid execution blocked")
         from lib.consumption_run_manual import (
@@ -1292,9 +1461,12 @@ def gate_and_generate(
     else:
         gcap_raw = os.environ.get("LLM_GLOBAL_DAILY_USD_CAP")
         gcap = float(gcap_raw) if gcap_raw not in (None, "") else None
-        cap = check_cost_cap(process_id, projected_usd=0.0, global_cap=gcap)
+        cap = check_cost_cap(process_id, projected_usd=0.0, global_cap=None if _anthropic_route else gcap)
         if not cap.get("allow"):
             raise RuntimeError(f"COST_CAP_EXCEEDED: {cap}")
+        if _anthropic_route and lane in {"grok", "chatgpt"} and promo.credit_admitted(cfg):
+            reservation_id = reserve_projected_cost(process_id, 0, process_config=cfg, global_cap=None,
+                metadata={"funding_source": "oauth_subscription", "paid_component_usd": 0})
 
     if lane in ("grok", "chatgpt") and not lane_available(lane):
         raise RuntimeError(f"{lane} OAuth lane unavailable — check grok-oauth-proxy / chatgpt-oauth-proxy")
@@ -1337,14 +1509,39 @@ def gate_and_generate(
                     )
                 except Exception:
                     pass
-            result = llm_lane.generate(
-                prompt, lane=lane, timeout=timeout, model=model, _skip_consumption=True,
-                operator_confirmed=operator_confirmed or bool(meta.get("operator_cost_confirmed")),
-                response_json=response_json or bool(output_schema_id),
-                metadata=meta, return_provenance=True,
-                max_tokens=effective_out,
-                process_id=process_id,
-            )
+            if is_anthropic_lane:
+                import uuid
+                with promo.funding_context(_funding):
+                    response = promo.transport().generate(
+                        [{"role": "user", "content": prompt}], model_id,
+                        max_tokens=effective_out, max_input_tokens=effective_in,
+                        client_request_id=uuid.uuid4().hex, process_id=process_id,
+                        process_cap=cfg["daily_cost_cap_usd"], deadline_s=timeout,
+                        credit_tier=meta.get("credit_tier"), operator_confirmed=operator_confirmed,
+                        thinking="enabled" if meta.get("credit_tier") in set(
+                            promo.load_policy().get("thinking_tiers") or ("high", "highest")) else "disabled")
+                result = (response["choices"][0]["message"]["content"], response)
+                text, prov = result
+                from lib import bridge_agent_preconditions as _gate
+                refusal = _gate.output_refusal(process_id, response, _gate.registry_row(process_id))
+                if refusal:
+                    from lib.anthropic_transport import AnthropicError
+                    raise AnthropicError("OUTPUT_INVALID", request_sent=True, possibly_billable=True)
+                if response_json or output_schema_id:
+                    try:
+                        json.loads(result[0])
+                    except (ValueError, TypeError) as invalid:
+                        from lib.anthropic_transport import AnthropicError
+                        raise AnthropicError("OUTPUT_INVALID", request_sent=True, possibly_billable=True) from invalid
+            else:
+                result = llm_lane.generate(
+                    prompt, lane=lane, timeout=timeout, model=model, _skip_consumption=True,
+                    operator_confirmed=operator_confirmed or bool(meta.get("operator_cost_confirmed")),
+                    response_json=response_json or bool(output_schema_id),
+                    metadata=meta, return_provenance=True,
+                    max_tokens=effective_out,
+                    process_id=process_id,
+                )
         if isinstance(result, tuple):
             text, prov = result[0], (result[1] or {})
         else:
@@ -1363,10 +1560,14 @@ def gate_and_generate(
         # timeout/network after send → possibly_billable True → settle projected
         billable_attempt = bool(
             getattr(e, "possibly_billable", False) or getattr(e, "request_sent", False)
+            or (is_anthropic_lane and _funding.credit_total > 0)
         )
         if getattr(e, "estimated_cost_usd", None) is not None:
             # stash for settle below via local
             meta["_exc_estimated_cost_usd"] = e.estimated_cost_usd
+        if _anthropic_route and lane in {"grok", "chatgpt"}:
+            from lib.anthropic_transport import AnthropicError
+            raise AnthropicError("OAUTH_PROVIDER_UNAVAILABLE") from e
         raise
     finally:
         usage = prov.get("usage") or {}
@@ -1376,14 +1577,15 @@ def gate_and_generate(
         actual_cost = tradeai.get("estimated_cost_usd") if is_deepseek else None
         if actual_cost is None and meta.get("_exc_estimated_cost_usd") is not None:
             actual_cost = meta.get("_exc_estimated_cost_usd")
-        if is_deepseek_lane and reservation_id is not None:
-            settle_cost = float(actual_cost) if actual_cost is not None else None
+        if (is_deepseek_lane or is_anthropic_lane or (_anthropic_route and lane in {"grok", "chatgpt"})) and reservation_id is not None:
+            settle_cost = float(_funding.credit_total) if is_anthropic_lane else (float(actual_cost) if actual_cost is not None else None)
             settle_reservation(
                 reservation_id,
                 settle_cost,
                 ok=ok,
                 billable_attempt=billable_attempt,
                 projected_fallback=projected,
+                **({"paid_component_usd": 0.0} if is_anthropic_lane else {}),
             )
         try:
             log_call(
@@ -1475,7 +1677,14 @@ def overview(*, days: int = 30) -> dict:
     top = [{"process_id": r[0], "process_name": r[1], "calls": int(r[2]),
             "relative_units": float(r[3] or 0), "last_used": str(r[4]) if r[4] else None}
            for r in cur.fetchall()]
-    return {"by_lane": by_lane, "top_processes": top, "generated_at": datetime.now(timezone.utc).isoformat()}
+    from .anthropic_monitoring import snapshot as anthropic_snapshot, unavailable_snapshot
+    from .anthropic_routing import state_root
+    try:
+        anthropic = anthropic_snapshot(state_root())
+    except Exception:  # noqa: BLE001 -- additive monitor cannot break the native report
+        anthropic = unavailable_snapshot()
+    return {"by_lane": by_lane, "top_processes": top, "generated_at": datetime.now(timezone.utc).isoformat(),
+            "anthropic": anthropic}
 
 
 def list_processes() -> list[dict]:

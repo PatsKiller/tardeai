@@ -1,0 +1,7 @@
+{
+  "schema": "MarketContextPolicy@v1",
+  "_comment": "2026-10-31 (DSN-20261031-market-risk-engine-P0-T9). Plausibility bounds for the market header that every scalp alert, the 04:00/07:00 pre-open briefs and the dashboards print. 2026-10-27 the scalp header said 'SPY +29.30%' because scripts/market_context.py multiplied Yahoo's already-percent change field by 100 for any move under 1.0 (RCA finding 10). A quote whose move exceeds these bounds is marked implausible and rendered as n/a, never as a number. Read by scripts/market_context.py. Changed only by reviewed PR.",
+  "max_plausible_index_move_pct": 15.0,
+  "max_plausible_sector_move_pct": 20.0,
+  "max_plausible_vix_move_pct": 80.0
+}

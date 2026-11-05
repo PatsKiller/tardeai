@@ -190,7 +190,12 @@ def main(argv=None):
     now = datetime.now(timezone.utc)
     run_id = os.environ.get("TRADEAI_RUN_ID")
     try:
-        bundles = fixture_inputs(args.input_file) if args.input_file else collect_inputs(args.state_root, now)
+        if args.input_file:
+            bundles = fixture_inputs(args.input_file)
+        else:
+            # R9 wash windows, R10 option positions, R12 pending fills — read-only stored-state producers.
+            from scripts.lib.conflicts.producers import attach as attach_producers
+            bundles, _ = attach_producers(collect_inputs(args.state_root, now), now=now, root=args.state_root)
         from scripts.lib.conflicts.cio import memory_writer
         result = run(args.state_root, bundles, now=now, shadow=args.shadow,
                      run_id=run_id,

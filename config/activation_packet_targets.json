@@ -1,0 +1,85 @@
+{
+  "schema": "ActivationPacketTargets@v1",
+  "comment": [
+    "Approvals > Activations reconciliation (scripts/lib/activation_reconcile.py). Per governance packet under docs/ops/packets/<id>/: live_when = checkable facts that mean the packet was applied (lane registry row values, n8n live list membership, a commit in the served release); policy_base = the AGENTS.md version a policy package was built on (a different served version supersedes it).",
+    "Every check true -> Resolved: Already live. policy_base moved -> Resolved: Superseded. Otherwise the packet stays waiting and the queue names the failing check. Packets not listed stay waiting with 'no activation target declared'. Resolved packets are shown behind a toggle, never deleted.",
+    "Optional per packet: title, proposed_by (override when the README and its commit name nobody), note (shown with the evidence)."
+  ],
+  "packets": {
+    "agents-20-2-20261023": {
+      "policy_base": "20.1.0",
+      "note": "WP-15 package: package.json base_policy 20.1.0; AGENTS.md 20.2.0 was later ratified with different content (§28.9-§28.11)."
+    },
+    "agents-21-20261023-wp16": {
+      "policy_base": "20.1.0",
+      "note": "WP-16 package: BASE_MANIFEST pins 20.1.0; AGENTS.md 21.0.0 was later ratified with different content (§28.13-§28.15), without §29."
+    },
+    "archive-offbox-20261021": {
+      "live_when": [
+        {
+          "lane": "archive-offbox-sync",
+          "state": "ACTIVE"
+        }
+      ]
+    },
+    "continuous-from-current-20261023": {
+      "live_when": [
+        {
+          "lane": "tradeai-continuous",
+          "state": "ACTIVE"
+        }
+      ]
+    },
+    "hermes-learning-cutover-20261015": {
+      "live_when": [
+        {
+          "lane": "hermes-learning-outcome-grader",
+          "state": "ACTIVE",
+          "scheduler": "n8n"
+        },
+        {
+          "lane": "hermes-learning-outcome-learning",
+          "state": "ACTIVE",
+          "scheduler": "n8n"
+        },
+        {
+          "lane": "hermes-learning-config-governor",
+          "state": "ACTIVE",
+          "scheduler": "n8n"
+        },
+        {
+          "lane": "hermes-learning-tag-engine",
+          "state": "ACTIVE",
+          "scheduler": "n8n"
+        },
+        {
+          "lane": "hermes-learning-autonomous-self-tune",
+          "state": "ACTIVE",
+          "scheduler": "n8n"
+        }
+      ],
+      "note": "The learn-stage steps run on the n8n fabric (registry-runtime-truth 2026-10-19)."
+    },
+    "hermes-scorer-canary-20261021": {
+      "live_when": [
+        {
+          "lane": "hermes-watchlist-scorer",
+          "state": "ACTIVE",
+          "dispatch_mode": "live"
+        }
+      ]
+    },
+    "tmp-hygiene-auto-apply-20261022": {
+      "live_when": [
+        {
+          "lane": "tmp-hygiene-apply",
+          "state": "ACTIVE"
+        },
+        {
+          "lane": "tmp-hygiene-pressure",
+          "state": "ACTIVE"
+        }
+      ]
+    }
+  }
+}

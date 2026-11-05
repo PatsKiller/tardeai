@@ -620,7 +620,8 @@ def test_role_verify_and_rollback_never_drop(tmp_path, capsys):
 
 # ── the import guard reports each element ────────────────────────────────────────────────────────────────────────
 
-WF = "docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-release-train.json"
+# 2026-10-27: was the retired release-train workflow (archived with the train); any fabric workflow exercises the guard.
+WF = "docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-run-lane.json"
 
 
 def test_import_guard_does_not_trust_fresh_host_probe_file_claim(tmp_path, capsys):

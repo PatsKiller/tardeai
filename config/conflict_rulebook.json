@@ -1,9 +1,14 @@
 {
   "schema": "ConflictRulebook@v1",
   "version": 2,
-  "status": "PROPOSED",
-  "approval": null,
-  "live_enabled": false,
+  "status": "APPROVED",
+  "approval": {
+    "approved_by": "operator",
+    "approved_on": "2026-10-28",
+    "reference": "Operator 2026-10-28 in-session, verbatim: \"No, I need total turn key. I authorize you to put those switches on now.\"",
+    "scope": "Activate the one conflict engine and rulebook (AGENTS.md §28.10): safety > fact > policy > deterministic_gate > operator_decision > cio_decision > curator > opinion. Conflicting states are still shown; the owner decides real conflicts with a recorded reason; safety/protection/policy findings are never auto-resolved."
+  },
+  "live_enabled": true,
   "source": "coordinator conflict-resolution-20261024/reference, 2026-10-24",
   "never_auto": [
     "safety",

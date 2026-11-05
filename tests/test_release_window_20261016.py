@@ -33,15 +33,15 @@ def grant(reason=GOOD_REASON, uses=3, expires_in=7200, gid="g-window-1200"):
 
 def green(sha=HEAD):
     return {"ok": True, "candidate_sha": sha, "errors": [], "checks": [
-        {"path": ".github/workflows/cio-production-hardening-ci.yml", "status": "completed", "conclusion": "success"},
+        {"path": ".github/workflows/cio-full-suite-sharded.yml", "status": "completed", "conclusion": "success"},
         {"path": ".github/workflows/agent-governance.yml", "status": "completed", "conclusion": "success"},
         # 2026-10-21 release train: all three branch-protection contexts must be success (train_ci_verdict).
         {"path": ".github/workflows/release-readiness.yml", "status": "completed", "conclusion": "success"}]}
 
 
 def pending(sha=HEAD):
-    return {"ok": False, "candidate_sha": sha, "errors": ["not_successful:.github/workflows/cio-production-hardening-ci.yml"],
-            "checks": [{"path": ".github/workflows/cio-production-hardening-ci.yml", "status": "in_progress",
+    return {"ok": False, "candidate_sha": sha, "errors": ["not_successful:.github/workflows/cio-full-suite-sharded.yml"],
+            "checks": [{"path": ".github/workflows/cio-full-suite-sharded.yml", "status": "in_progress",
                         "conclusion": None}]}
 
 

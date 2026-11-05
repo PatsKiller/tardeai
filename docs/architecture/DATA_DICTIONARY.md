@@ -29,6 +29,7 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 | Entity | Domain | Status | Authoritative store | Single writer | Refresh lane | Freshness SLA | Readers |
 |---|---|---|---|---|---|---|---|
 | CIO prospect — the per-security truth | **cio_prospect** | APPROVED | `cio_prospect` (table) | `scripts/lib/cio_instrument_record.py` | n8n_shadow_then_live: cio-opportunity-curator, cio-entry-state (dispatcher rows; shadow -> canary -> cutover under AGENTS.md §23.21) | stage/conviction 30 min in market hours; thesis 24 h; every field carries evidence_at and expires_at and renders its age | Home, Watch, Trade AI, Options, Open Trades, Telegram, Proposals, Re-entry |
+| LLM operational credit | **anthropic_promotional_credit** | APPROVED | `runtime/provider_cost/anthropic_credit.jsonl` (file) | `scripts/lib/anthropic_credit.py` | event: llm-provider-health | Each request is authorized before dispatch; provider-health projection refreshed on existing monitor cadence; no call on unreadable/corrupt evidence | LLM Spend, Health, Agent Runtime, daily digest |
 | Security identity | **security_identity** | PROPOSED | `runtime/identity_registry.json` (file) | `scripts/lib/identity_registry.py` | n8n: catalyst-graph, identity-sweep-stage0, mint-identity-registry | 24 h; a symbol without a CONFIRMED GUID renders 'identity unresolved', never a placeholder | Home, Watch, Trade AI, Options, Open Trades, Telegram, Proposals, Re-entry |
 | Positions, cash and cost basis | **positions_store** | PROPOSED | `positions_current` (table) | `scripts/positions_sync.py` | host: positions-sync · n8n never-list → host | 30 min in market hours (positions_sync.stale_after_minutes_market) | Home, Open Trades, Re-entry, Options, Telegram, Proposals |
 | Transactions and lots | **transactions** | PROPOSED | `trade_transactions` (table) | UNCONSOLIDATED → `scripts/schwab_transaction_ingest.py` (exists) | host: schwab-transaction-ingest-at-3-18-33-48-9-16 · n8n never-list → host | 15 min in market hours; lots with each positions run | Open Trades, Re-entry, Home, TradeInView (Journeys entry fills; Ledger synced chip = max(created_at) of schwab_api rows, read-only, scripts/lib/data_broker/trade_journey.py) |
@@ -45,9 +46,14 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 | Alerts | **alert_events** | PROPOSED | `alert_events` (table) | UNCONSOLIDATED → `scripts/alert_event_writer.py` (exists (wire it; AGENTS.md §13.5 — do not build a second)) | event: the producing lanes | event-driven | Home, Watch, Open Trades, Telegram |
 | Operator messages | **comms_intents** | PROPOSED | `communication_events` (table) | UNCONSOLIDATED → `scripts/lib/comms/client.py` (exists) | host: n8n-comms-intent-consumer (canary) orchestrates; the gateway sends · n8n never-list → host | P1 immediate; P2 held 22:00-07:00 ET to the digest | Telegram, Home |
 | Operator settings and controls | **operator_settings** | PROPOSED | `operator_settings` (table) | UNCONSOLIDATED → `scripts/ops/operator_controls_applier.py` (to_build) | host: operator-controls-applier (to build) · n8n never-list → host | applied in the applier run that follows the operator's confirmed action; history append-only (one row per change: who, when, factor, old and new value) | Ops, Home |
-| Operator document reviews, decisions and rule feedback | **operator_decisions** | PROPOSED | `governance/operator_decisions.jsonl` (file) | `scripts/lib/operator_approvals.py` | host: operator document review · n8n never-list → host | Read the current exact source document before every ledger append; text or commit drift invalidates the review. | Approvals Center, Rulebook, CIO approval truth projection, agents (read only) |
-| Site-wide conflict lifecycle | **conflict_ledger** | PROPOSED | `data/conflicts/conflict_events.jsonl` (file) | `scripts/lib/conflicts/ledger.py` | n8n_shadow_then_live: conflict-resolver | 30 min while scheduled; no produced evidence means a gap | Watch, Home, CIO, Risk, Advisory, Ops Jobs and health, Approvals, CIO brief, Ask the CIO, Telegram digest |
-| AI-proposed conflict rules and operator-approved rulebook amendments | **conflict_rule_proposals** | PROPOSED | `data/conflicts/rule_proposals.jsonl` (file) | `scripts/lib/conflicts/proposals.py` | n8n_shadow_then_live: conflict-rule-proposals | a pending proposal is announced once (grouped P2); no produced evidence means a gap | Conflict rules page, GET /api/v3/conflicts/proposals, conflict-resolver (effective rulebook) |
+| Market breadth | **market_breadth_daily** | PROPOSED | `market_breadth_daily` (table) | UNCONSOLIDATED → `scripts/lib/writers/market_breadth_writer.py` (to_build (0 writers measured 2026-10-31; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)) | host: market-breadth-daily | 20 h; a missing close-of-day row is a gap by 06:30 ET | Risk, Home, CIO, CIO brief, Telegram |
+| Market risk | **market_risk_snapshots** | PROPOSED | `market_risk_snapshots` (table) | UNCONSOLIDATED → `scripts/market_risk_evaluate.py` (to_build (0 writers measured 2026-10-31; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)) | host: market-risk-evaluate | 30 min 04:00-20:00 ET on market days; stale renders with its age, never as current | Home, Risk, CIO, CIO brief, Ask the CIO, Telegram |
+| Market internals | **market_internals_intraday** | PROPOSED | `market_internals_intraday` (table) | UNCONSOLIDATED → `scripts/lib/writers/market_internals_writer.py` (to_build (0 writers measured 2026-10-31; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)) | host: market-internals-intraday | 30 min during regular hours; nothing expected outside them | Risk, Home, CIO, Telegram |
+| Institutional positioning | **institutional_flow_daily** | PROPOSED | `institutional_flow_daily` (table) | UNCONSOLIDATED → `scripts/lib/writers/institutional_flow_writer.py` (to_build (0 writers measured 2026-10-31; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)) | host: institutional-flow-daily | 30 h for daily series; 8 days for the weekly series, each stamped with its own as_of | Risk, CIO, CIO brief, Telegram |
+| Options positioning | **option_chain_strikes** | PROPOSED | `option_chain_strikes` (table) | `scripts/options_chain_snapshot.py` | host: options-chain-snapshot | 8 h on market days; the 10:00 row is expected by 10:15 ET | Risk, CIO, Telegram |
+| ETF look-through | **etf_holdings_snapshot** | PROPOSED | `etf_holdings_snapshot` (table) | UNCONSOLIDATED → `scripts/lib/writers/etf_holdings_writer.py` (to_build (0 writers measured 2026-10-31; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)) | host: etf-holdings-weekly | 8 days; a held ETF with no snapshot is a gap the Risk page says so about | Risk, Home, CIO, Telegram |
+| Market risk escalation | **market_risk_episodes** | PROPOSED | `market_risk_episodes` (table) | UNCONSOLIDATED → `scripts/lib/market_risk/escalation.py` (to_build (0 writers measured 2026-10-31; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)) | event: market-risk-evaluate | event-driven; an OPEN Red with no repeat receipt for 75 min is the stalled-escalation page | Home, Risk, Approvals, Telegram |
+| Issuer revenue segment | **issuer_segments** | PROPOSED | `issuer_segments` (table) | UNCONSOLIDATED → `scripts/lib/writers/issuer_segments_writer.py` (to_build (0 writers measured 2026-11-01; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)) | n8n: issuer-segments-refresh | re-pulled within one business day of each new 10-Q/10-K; older than issuer_segments.stale_after_days (120) is used and marked stale; older than issuer_segments.hard_stale_days falls back to the symbol_profiles sector with a visible flag | Home, Risk, Market risk engine (look-through, risk budget) |
 
 ## Entity by entity
 
@@ -76,6 +82,19 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 | `cio/cio_investment_brief.json` (file) | derived | operator product rendered from cio_prospect (CIOOperatorProduct@v1) | — |
 | `watchlist_research_cards` (table) | retiring | private per-desk research (NO SILOS defect); contribute into the spine; archive + tripwire | — |
 | `advisor_recommendations` (table) | retiring | dead since 2026-07-20; archive + tripwire | — |
+
+### Anthropic promotional-credit authorization evidence — `anthropic_promotional_credit` (APPROVED)
+
+**Granted:** operator 2026-10-25 — Operator in this session: "what disable enable and test call", following deployed PR #2181. Authorizes the promotional router and its required append-only credit authorization journal. This records activation intent, not a successful authentication/canary or backup proof.
+
+- **Facts:** credit authorization, actual usage settlement, ambiguous holds, provider fallback reasons
+- **Store of record:** `runtime/provider_cost/anthropic_credit.jsonl` (file)
+- **Single writer:** `scripts/lib/anthropic_credit.py`
+- **Cadence:** before each governed promotional request; settle after usage; existing llm-provider-health observations · stale after 0.25 h
+- **Freshness SLA:** Each request is authorized before dispatch; provider-health projection refreshed on existing monitor cadence; no call on unreadable/corrupt evidence
+- **Refresh lane:** event: llm-provider-health — Existing provider-health lane and application dispatch; no new schedule or activation
+- **Read path (projection):** `none`
+- **Readers:** LLM Spend, Health, Agent Runtime, daily digest
 
 ### Identity registry (GUIDs) — `security_identity` (PROPOSED)
 
@@ -383,52 +402,116 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 - **Read path (projection):** `operator_settings` — to_build
 - **Readers:** Ops, Home
 
-### Approvals Center operator decision ledger — `operator_decisions` (PROPOSED)
+### Market breadth, daily (S&P 500 and Nasdaq-100) — `market_breadth_daily` (PROPOSED)
 
-**Operator decision (§17):** Review and grant this store separately. Build approval grants no pending policy, grant, activation, backup or source decision. Production ledger writes remain refused until this exact store/writer row has operator approval.
+**Operator decision (§17):** Grant market_breadth_daily as the one breadth store (design §1, P1-T1/P1-T5). Operator grant given 2026-10-31 (verbatim above); the row is promoted into domains[] with its approval block by the writer PR, when the writer file exists (AGENTS.md §7A: registry row first, writer second).
 
-- **Facts:** exact document reviewed, operator decision, per-change read marker, rule feedback, evidence-backed enforcement audit proposals (no decisions)
-- **Store of record:** `governance/operator_decisions.jsonl` (file)
-- **Single writer:** `scripts/lib/operator_approvals.py`
-- **Cadence:** event-driven authenticated operator review and separately governed audit proposals · stale after 720 h
-- **Freshness SLA:** Read the current exact source document before every ledger append; text or commit drift invalidates the review.
-- **Refresh lane:** host: operator document review · n8n never-list → host — Authenticated operator review is a manual host request, not a scheduled lane. A separately admitted host enforcement audit may append proposal events only; it never makes a decision. This proposal admits or schedules nothing.
-- **Read path (projection):** `scripts/lib/operator_approvals_api.py::queue_summary`
-- **Readers:** Approvals Center, Rulebook, CIO approval truth projection, agents (read only)
+- **Facts:** pct above 20/50/200-DMA, 52-week new highs/lows, advance/decline, McClellan oscillator and summation
+- **Store of record:** `market_breadth_daily` (table) — market_breadth_daily: does not exist yet (measured 2026-10-31); created by the writer PR named in writer_target
+- **Single writer:** UNCONSOLIDATED → `scripts/lib/writers/market_breadth_writer.py` (to_build (0 writers measured 2026-10-31; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)) — P1-T5 writer: index membership from the Finviz screener export (by header), daily bars from Alpaca; one writer.
+- **Cadence:** 16:45 Mon-Fri + 06:20 prior-day finalization (lane market-breadth-daily, proposed) · stale after 20 h
+- **Freshness SLA:** 20 h; a missing close-of-day row is a gap by 06:30 ET
+- **Refresh lane:** host: market-breadth-daily — schedule is §11 item 2 of the design (operator), not installed by this PR
+- **Read path (projection):** `market_breadth` — to_build
+- **Readers:** Risk, Home, CIO, CIO brief, Telegram
+- **Measured 2026-10-31 (repo scan: no table, no writer, no reader):** 0 writer file(s) of the store
 
-### Conflict ledger and decisions — `conflict_ledger` (PROPOSED)
+### Market Risk Engine evaluations (tier, score, categories, probabilities) — `market_risk_snapshots` (PROPOSED)
 
-**Operator decision (§17):** Operator-approved build direction; row promotion and runtime writer activation remain explicit owner/operator acts.
+**Operator decision (§17):** Grant market_risk_snapshots as the one store of engine evaluations (design §1, P2-T1). Operator grant given 2026-10-31 (verbatim above); the row is promoted into domains[] with its approval block by the writer PR, when the writer file exists (AGENTS.md §7A: registry row first, writer second).
 
-- **Facts:** finding, lifecycle, owner decision, source supersession
-- **Store of record:** `data/conflicts/conflict_events.jsonl` (file)
-- **Single writer:** `scripts/lib/conflicts/ledger.py`
-- **Cadence:** event changes; conflict-resolver shadow cadence separately owned by W8 · stale after 0.5 h
-- **Freshness SLA:** 30 min while scheduled; no produced evidence means a gap
-- **Refresh lane:** n8n_shadow_then_live: conflict-resolver — W8 owns inactive declaration/admission; no live flip by W10
-- **Read path (projection):** `scripts.lib.conflicts.api.records_section`
-- **Readers:** Watch, Home, CIO, Risk, Advisory, Ops Jobs and health, Approvals, CIO brief, Ask the CIO, Telegram digest
+- **Facts:** tier, score 0-100, category states, confirming categories, probabilities, top-5 contributors, as_of per input
+- **Store of record:** `market_risk_snapshots` (table) — market_risk_snapshots: does not exist yet (measured 2026-10-31); created by the writer PR named in writer_target
+- **Single writer:** UNCONSOLIDATED → `scripts/market_risk_evaluate.py` (to_build (0 writers measured 2026-10-31; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)) — P2-T1 writer; advisory only (MBI_BEHAVIOR = 0: no size, order or stop value is ever a field). PR #2321 ships the read-side projection module scripts/lib/market_risk_projection.py that serves this table once it exists.
+- **Cadence:** */15 04:00-20:00 Mon-Fri + Sun 18:30 ET (lane market-risk-evaluate, proposed) · stale after 0.5 h
+- **Freshness SLA:** 30 min 04:00-20:00 ET on market days; stale renders with its age, never as current
+- **Refresh lane:** host: market-risk-evaluate — schedule is §11 item 2 of the design (operator), not installed by this PR
+- **Read path (projection):** `market_risk` — to_build
+- **Readers:** Home, Risk, CIO, CIO brief, Ask the CIO, Telegram
+- **Measured 2026-10-31 (repo scan: no table, no writer, no reader):** 0 writer file(s) of the store
 
-| Copy | Role | How | Page/API files reading it (measured) |
-|---|---|---|---|
-| `conflict_events` (table) | derived | gated PG dual write only after operator migration; immutable event_id idempotency | — |
+### Intraday market internals (A/D, up/down volume, TRIN, NH/NL) — `market_internals_intraday` (PROPOSED)
 
-### Conflict rule proposals and rulebook amendments — `conflict_rule_proposals` (PROPOSED)
+**Operator decision (§17):** Grant market_internals_intraday as the one intraday-internals store (design §1, P1-T8). Operator grant given 2026-10-31 (verbatim above); the row is promoted into domains[] with its approval block by the writer PR, when the writer file exists (AGENTS.md §7A: registry row first, writer second).
 
-**Operator decision (§17):** Row promotion and decision-writer activation (config/conflict_rule_proposals.json decision_writes_enabled) remain explicit operator acts.
+- **Facts:** advancers/decliners, up/down volume, TRIN, cumulative A/D, intraday new highs/lows, volume breadth
+- **Store of record:** `market_internals_intraday` (table) — market_internals_intraday: does not exist yet (measured 2026-10-31); created by the writer PR named in writer_target
+- **Single writer:** UNCONSOLIDATED → `scripts/lib/writers/market_internals_writer.py` (to_build (0 writers measured 2026-10-31; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)) — P1-T8 writer: one batched Alpaca snapshot request per run over the two index universes; $TICK is exchange data the providers do not carry (no_coverage: say_so until a source is granted).
+- **Cadence:** */15 09:30-16:00 Mon-Fri (lane market-internals-intraday, proposed) · stale after 0.5 h
+- **Freshness SLA:** 30 min during regular hours; nothing expected outside them
+- **Refresh lane:** host: market-internals-intraday — schedule is §11 item 2 of the design (operator), not installed by this PR
+- **Read path (projection):** `market_internals` — to_build
+- **Readers:** Risk, Home, CIO, Telegram
+- **Measured 2026-10-31 (repo scan: no table, no writer, no reader):** 0 writer file(s) of the store
 
-- **Facts:** unmatched conflict pattern, AI rule proposal, operator proposal decision, rulebook amendment
-- **Store of record:** `data/conflicts/rule_proposals.jsonl` (file)
-- **Single writer:** `scripts/lib/conflicts/proposals.py`
-- **Cadence:** conflict-resolver shadow runs (unmatched observations); conflict-rule-proposals lane (proposals); operator decisions · stale after 24 h
-- **Freshness SLA:** a pending proposal is announced once (grouped P2); no produced evidence means a gap
-- **Refresh lane:** n8n_shadow_then_live: conflict-rule-proposals — schedule lands in a separate [shared-infra] PR (lane_registry / n8n_run_allowlist / host_comms_intent_routes are sha-pinned by docs/ops/packets/disk-standing-apply-20261024)
-- **Read path (projection):** `scripts.lib.conflicts.proposals.collection`
-- **Readers:** Conflict rules page, GET /api/v3/conflicts/proposals, conflict-resolver (effective rulebook)
+### Institutional flow (DIX/GEX, CFTC COT, ICI fund flows, ETF share deltas) — `institutional_flow_daily` (PROPOSED)
 
-| Copy | Role | How | Page/API files reading it (measured) |
-|---|---|---|---|
-| `data/conflicts/rulebook_amendments.jsonl` (file) | derived | hash-chained RulebookAmendment@v1 appended only by an operator approval through proposals.decide; base config/conflict_rulebook.json and its matrix_sha256 are never rewritten | — |
+**Operator decision (§17):** Grant institutional_flow_daily as the one institutional-positioning store (design §1, P1-T7). Operator grant given 2026-10-31 (verbatim above); the row is promoted into domains[] with its approval block by the writer PR, when the writer file exists (AGENTS.md §7A: registry row first, writer second).
+
+- **Facts:** dark pool index, gamma exposure, COT net positioning (ES, NQ, VIX), weekly fund flows, ETF shares-outstanding delta
+- **Store of record:** `institutional_flow_daily` (table) — institutional_flow_daily: does not exist yet (measured 2026-10-31); created by the writer PR named in writer_target
+- **Single writer:** UNCONSOLIDATED → `scripts/lib/writers/institutional_flow_writer.py` (to_build (0 writers measured 2026-10-31; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)) — P1-T7 writer. Providers squeezemetrics, cftc and ici are granted in providers[] by this PR; the paid block/sweep feed is declared not funded (providers.options_flow_paid). Backup is [] on purpose: no second provider answers the same question.
+- **Cadence:** 17:30 Mon-Fri (DIX/GEX, ETF deltas) + Fri 15:45 ET (CFTC COT) + Wed (ICI weekly) (lane institutional-flow-daily, proposed) · stale after 30 h
+- **Freshness SLA:** 30 h for daily series; 8 days for the weekly series, each stamped with its own as_of
+- **Refresh lane:** host: institutional-flow-daily — schedule is §11 item 2 of the design (operator), not installed by this PR
+- **Read path (projection):** `institutional_flow` — to_build
+- **Readers:** Risk, CIO, CIO brief, Telegram
+- **Measured 2026-10-31 (repo scan: no table, no writer, no reader):** 0 writer file(s) of the store
+
+### Per-strike option chain aggregates (OI, gamma/delta exposure by strike) — `option_chain_strikes` (PROPOSED)
+
+**Operator decision (§17):** Grant option_chain_strikes as the one per-strike store, written by the existing chain snapshot job (design §1, P1-T7). Operator grant given 2026-10-31 (verbatim above); the row is promoted into domains[] with its approval block by the writer PR, when the writer file exists (AGENTS.md §7A: registry row first, writer second).
+
+- **Facts:** per-strike open interest, per-strike volume, dealer gamma exposure (approximation, provenance D), dealer delta exposure (approximation, provenance D)
+- **Store of record:** `option_chain_strikes` (table) — option_chain_strikes: does not exist yet (measured 2026-10-31); created by the writer PR named in writer_target
+- **Single writer:** `scripts/options_chain_snapshot.py` — P1-T7: computed from the Schwab chain the snapshot already pulls (scripts/options_chain_snapshot.py); GEX/DEX are labelled approximations. No new broker call; a read the existing job already makes.
+- **Cadence:** 10:00 and 17:35 Mon-Fri with the existing chain snapshot (+09:45 and 15:30 proposed) · stale after 8 h
+- **Freshness SLA:** 8 h on market days; the 10:00 row is expected by 10:15 ET
+- **Refresh lane:** host: options-chain-snapshot — the existing options chain snapshot job writes this table in the same run; adding the 09:45/15:30 runs is §11 item 2 (operator)
+- **Read path (projection):** `option_strikes` — to_build
+- **Readers:** Risk, CIO, Telegram
+- **Measured 2026-10-31 (repo scan: no table, no writer, no reader):** 0 writer file(s) of the store
+
+### ETF top-holdings snapshots for held and watched ETFs — `etf_holdings_snapshot` (PROPOSED)
+
+**Operator decision (§17):** Grant etf_holdings_snapshot as the one ETF look-through store (design §1, P1-T9). Operator grant given 2026-10-31 (verbatim above); the row is promoted into domains[] with its approval block by the writer PR, when the writer file exists (AGENTS.md §7A: registry row first, writer second).
+
+- **Facts:** top-25 holdings per ETF, holding weight, as_of of the fund data
+- **Store of record:** `etf_holdings_snapshot` (table) — etf_holdings_snapshot: does not exist yet (measured 2026-10-31); created by the writer PR named in writer_target
+- **Single writer:** UNCONSOLIDATED → `scripts/lib/writers/etf_holdings_writer.py` (to_build (0 writers measured 2026-10-31; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)) — P1-T9 writer: yfinance fund data (provider already granted). Fund names only; never a position size (§2A).
+- **Cadence:** Sun 19:00 ET weekly + on a new ETF position (lane etf-holdings-weekly, proposed) · stale after 192 h
+- **Freshness SLA:** 8 days; a held ETF with no snapshot is a gap the Risk page says so about
+- **Refresh lane:** host: etf-holdings-weekly — schedule is §11 item 2 of the design (operator), not installed by this PR
+- **Read path (projection):** `etf_holdings` — to_build
+- **Readers:** Risk, Home, CIO, Telegram
+- **Measured 2026-10-31 (repo scan: no table, no writer, no reader):** 0 writer file(s) of the store
+
+### Market-risk episodes (OPEN → ACKED → RESOLVED), sends and acknowledgments — `market_risk_episodes` (PROPOSED)
+
+**Operator decision (§17):** Grant market_risk_episodes as the one escalation-state store (design §5, P3-T7). Operator grant given 2026-10-31 (verbatim above); the row is promoted into domains[] with its approval block by the writer PR, when the writer file exists (AGENTS.md §7A: registry row first, writer second).
+
+- **Facts:** episode id, tier, opened_at, acknowledged_at, resolved_at, send and ack receipts
+- **Store of record:** `market_risk_episodes` (table) — market_risk_episodes: does not exist yet (measured 2026-10-31); created by the writer PR named in writer_target
+- **Single writer:** UNCONSOLIDATED → `scripts/lib/market_risk/escalation.py` (to_build (0 writers measured 2026-10-31; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)) — P3-T7 writer. The acknowledgment is a safe-direction operator control (§11 item 8, §27.3): one click; it silences repeats and nothing else.
+- **Cadence:** event-driven (tier transitions, repeats, ACK RED reply, Risk-page Acknowledge) · stale after 24 h
+- **Freshness SLA:** event-driven; an OPEN Red with no repeat receipt for 75 min is the stalled-escalation page
+- **Refresh lane:** event: market-risk-evaluate — written by the evaluate lane and the ack route; no second scheduler
+- **Read path (projection):** `market_risk_episodes` — to_build
+- **Readers:** Home, Risk, Approvals, Telegram
+- **Measured 2026-10-31 (repo scan: no table, no writer, no reader):** 0 writer file(s) of the store
+
+### Issuer segment look-through: revenue share per reported segment, mapped to market-risk groups — `issuer_segments` (PROPOSED)
+
+**Operator decision (§17):** Grant (1) the issuer_segments domain (table issuer_segments, single writer scripts/lib/writers/issuer_segments_writer.py, lane issuer-segments-refresh) and (2) the sec_edgar provider scope widened to xbrl_segments. With the grant, refreshed filing splits apply automatically; only operator overrides in config/issuer_segments.json need approval.
+
+- **Facts:** issuer, period, as_of, source accession and URL, segment, revenue share, mapped group, basis, confidence
+- **Store of record:** `issuer_segments` (table) — issuer_segments: does not exist yet (measured 2026-11-01); one row per (issuer_guid, accession, segment_member, line). Created by the writer PR (design DSN-20261101-issuer-segment-lookthrough Phase 2). Operator overrides stay in config/issuer_segments.json (status APPROVED, git-reviewed) and are read beside the table, never copied into it.
+- **Single writer:** UNCONSOLIDATED → `scripts/lib/writers/issuer_segments_writer.py` (to_build (0 writers measured 2026-11-01; the schema has no 'granted, not yet built' state, so UNCONSOLIDATED + writer_target is the honest encoding)) — Single writer. Inputs: SEC EDGAR filing archives (XBRL instance *_htm.xml of 10-K/10-Q; S-1/424B HTML tables for recent IPOs), the deterministic map config/issuer_segment_map.json, and validated offline classifier results (basis model_classified, verbatim filing quote + confidence) from the governed model-job path. The scoring path (scripts/lib/market_risk/lookthrough.py, risk_budget.py) only reads; no model is called there.
+- **Cadence:** event-driven: a new 10-K / 10-Q / S-1 / 424B accession for a covered issuer in sec_filing_events triggers one pull; weekly coverage sweep Sunday 07:30 ET for issuers newly held, watched or held through funds · stale after 2880 h
+- **Freshness SLA:** re-pulled within one business day of each new 10-Q/10-K; older than issuer_segments.stale_after_days (120) is used and marked stale; older than issuer_segments.hard_stale_days falls back to the symbol_profiles sector with a visible flag
+- **Refresh lane:** n8n: issuer-segments-refresh — new lane, scheduled only after the lane grant; triggered off sec_filing_events, no second EDGAR poller
+- **Read path (projection):** `issuer_segments` — to_build
+- **Readers:** Home, Risk, Market risk engine (look-through, risk budget)
 
 ## Field level
 
@@ -496,7 +579,7 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 
 These carry no dictionary block yet; their store, writer and read path are in [`docs/SOURCE_OF_TRUTH.md`](../SOURCE_OF_TRUTH.md). A domain marked superseded becomes a derived copy when the superseding row is granted.
 
-`quote_price`, `symbol_identity`, `analyst_opinion`, `catalyst_news`, `technicals`, `sector_momentum`, `industry_momentum`, `market_regime`, `earnings_date`, `holdings_accounts` (superseded by `positions_store` on grant), `options_iv`, `research_thesis`, `watch_directives`, `watch_discovery` (superseded by `watchlist_membership` on grant), `web_search`, `private_company`, `dividends`, `macro`, `fundamentals`, `agent_opinion`, `agent_debate`, `ai_reports`, `redeploy_analytics`, `inverse_stoplights`, `data_gaps`, `operator_conversation`, `intelligence_memory_contexts`, `intelligence_retrieval_receipts`, `supervisor_heartbeats`, `approval_packages`, `platform_conformance`, `intelligence_gir_projection`, `supervisor_breaches`, `research_write_path_receipts`, `edge_fanout_work_items`, `intelligence_research_index`, `sec_filing_events`, `agent_checkpoints`, `lesson_promotions`, `contradiction_verdicts`, `agent_registry`, `model_chooser_receipts`, `supervisor_ladder_receipts`, `maturity_scores`, `conformance_gate_receipts`, `supervisor_recoveries`, `capital_plan_decisions`, `cio_operator_artifacts`, `counterfactual_ledger`, `active_trader_microstructure`, `opportunity_assessment` (superseded by `cio_prospect` on grant), `finviz_enrichment`, `scalp_list`, `social_posts`, `yfinance_info_snapshot`, `earnings_calendar`, `news_sentiment`, `cio_asks`
+`quote_price`, `symbol_identity`, `analyst_opinion`, `catalyst_news`, `technicals`, `sector_momentum`, `industry_momentum`, `market_regime`, `earnings_date`, `holdings_accounts` (superseded by `positions_store` on grant), `options_iv`, `research_thesis`, `watch_directives`, `watch_discovery` (superseded by `watchlist_membership` on grant), `web_search`, `private_company`, `dividends`, `macro`, `fundamentals`, `agent_opinion`, `agent_debate`, `ai_reports`, `redeploy_analytics`, `inverse_stoplights`, `data_gaps`, `operator_conversation`, `intelligence_memory_contexts`, `intelligence_retrieval_receipts`, `supervisor_heartbeats`, `approval_packages`, `platform_conformance`, `intelligence_gir_projection`, `supervisor_breaches`, `research_write_path_receipts`, `edge_fanout_work_items`, `intelligence_research_index`, `sec_filing_events`, `agent_checkpoints`, `lesson_promotions`, `contradiction_verdicts`, `agent_registry`, `model_chooser_receipts`, `supervisor_ladder_receipts`, `maturity_scores`, `conformance_gate_receipts`, `supervisor_recoveries`, `capital_plan_decisions`, `cio_operator_artifacts`, `counterfactual_ledger`, `active_trader_microstructure`, `opportunity_assessment` (superseded by `cio_prospect` on grant), `finviz_enrichment`, `scalp_list`, `social_posts`, `yfinance_info_snapshot`, `earnings_calendar`, `news_sentiment`, `cio_asks`, `operator_decisions`, `conflict_ledger`, `conflict_rule_proposals`, `quote_extended_session`
 
 ## Surfaces scanned for copy reads
 

@@ -1,0 +1,12 @@
+# RETIRED 2026-10-27: per-PR prompts replaced by tradeai-pr-merge-digest.timer. Do not install.
+[Unit]
+Description=Trade AI — Telegram-notify merge-ready PRs (operator-merge go-signal)
+Documentation=docs/ops/AGENT_MERGIFY_HANDOFF.md
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=PYTHONUNBUFFERED=1
+# Install is operator-only (§17). Timer runs notify_pr_merge_ready --apply.
+ExecStart=%h/trade-ai-releases/portfolio-server/CURRENT/.venv/bin/python scripts/notify_pr_merge_ready.py --apply --json
+Nice=10

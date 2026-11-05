@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "codeql_removal_20261102",
+  "files": [
+    "tests/test_codeql_removal_20261102.py"
+  ],
+  "anchor": "CODEQL_REMOVAL_20261102",
+  "comment": [
+    "ANCHOR: CODEQL_REMOVAL_20261102 — CodeQL removed (operator 2026-11-02); the promote gate never requires it, every test workflow still does, and Mergify merges in the noon and 17:30 windows. Hermetic."
+  ]
+}

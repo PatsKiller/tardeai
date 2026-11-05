@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "prospectus_data_defects_20261026",
+  "files": [
+    "tests/test_prospectus_data_defects_20261026.py"
+  ],
+  "anchor": "PROSPECTUS_DATA_DEFECTS_20261026",
+  "comment": [
+    "ANCHOR: PROSPECTUS_DATA_DEFECTS_20261026 — data defects seen in a live Ticker Prospectus (2026-10-26), fixed at the source: Finviz market cap ($M) printed as $B; SEC 'what changed' printed a raw dict; a pre-listing price bar produced impossible beta/volatility/1Y low/YTD (series guard: isolated bars excluded, breaks cut the series, short clean series print 'not reliable (reason)'); correlation to the book leaves the subject out; one canonical CIO conviction (CIO prospect record); ETF peers by category map, never the alphabetical Finviz ETF cohort; only real issuer earnings calls as transcripts; dry-run classifier for scripts/ops/quarantine_bad_price_bars.py. Synthetic tickers; no DB, token store or network."
+  ]
+}

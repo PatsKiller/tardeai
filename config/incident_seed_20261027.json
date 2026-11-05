@@ -1,0 +1,77 @@
+{
+  "schema": "IncidentSeed@v1",
+  "_why": "Operator 2026-10-27 brief item 5: the ledger starts with history. The three known incidents of 2026-10-26/27, opened at their first evidence and marked fixed with refs. Applied once by `scripts/incident.py seed --file config/incident_seed_20261027.json --apply` (idempotent: a fingerprint already in the ledger is skipped). Fix refs name OPEN PRs where the fix is not yet merged; the ledger records what fixed it, the PR's own state says whether it is live.",
+  "incidents": [
+    {
+      "fingerprint": "seed-20261027-deploy-poller-failures",
+      "opened_at": "2026-10-26T19:50:01Z",
+      "fixed_at": "2026-10-27T13:40:42Z",
+      "source": {
+        "kind": "deploy",
+        "job": "deploy-on-main"
+      },
+      "severity": "P1",
+      "title": "deploy_on_main poller: 388 deploy_failed receipts 2026-10-26 19:50Z to 2026-10-27 13:36Z (release grant binding expired; promote refused)",
+      "where": "tradeai-deploy-on-main.timer → scripts/deploy_on_main_poll.py → cio_phase2_exact_main_deploy.sh",
+      "evidence": [
+        "receipt:data/runtime/deploy_on_main/20261026T195001Z_poller_deploy_failed.json",
+        "receipt:data/runtime/deploy_on_main/20261027T133601Z_poller_deploy_failed.json",
+        "receipt:data/runtime/deploy_on_main/latest.json"
+      ],
+      "fix_refs": [
+        {
+          "kind": "pr",
+          "ref": "2232"
+        }
+      ],
+      "note": "Promote on the armed deploy delegation instead of a per-SHA grant; one P1 per failure streak (#2232). First verified promote after the streak: 20261027T134042Z."
+    },
+    {
+      "fingerprint": "seed-20261027-comms-editor-suppressed-deploy-alerts",
+      "opened_at": "2026-10-26T19:50:01Z",
+      "fixed_at": "2026-10-27T13:51:26Z",
+      "source": {
+        "kind": "deploy",
+        "job": "comms-editor"
+      },
+      "severity": "P1",
+      "title": "comms editor suppressed 386 deploy-failure alerts overnight: fingerprint stripped the SHAs so every alert looked like a duplicate",
+      "where": "scripts/lib/comms_editor.py fingerprint() (hex/timestamp normalisation) ← scripts/delivery_failure_alerts.py",
+      "evidence": [
+        "doc:scripts/lib/comms_editor.py fingerprint _NORMALIZERS <hex>",
+        "receipt:data/runtime/delivery_failure_alerts/latest.json"
+      ],
+      "fix_refs": [
+        {
+          "kind": "pr",
+          "ref": "2232"
+        }
+      ],
+      "note": "One P1 per failure streak with a streak-specific fingerprint (#2232). The incident ledger ids (INC-YYMMDD-<non-hex>) survive that normalisation by construction."
+    },
+    {
+      "fingerprint": "seed-20261027-canonical-checkout-agent-work",
+      "opened_at": "2026-10-27T03:18:00Z",
+      "fixed_at": "2026-10-27T13:30:00Z",
+      "source": {
+        "kind": "agent",
+        "job": "canonical-checkout"
+      },
+      "severity": "P2",
+      "title": "agent work left uncommitted in the canonical checkout (rulebook chapters) made deploy_on_main refuse checkout alignment (checkout_dirty)",
+      "where": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+      "evidence": [
+        "receipt:data/runtime/deploy_on_main/20261027T031800Z_poller_deploy_failed.json",
+        "receipt:data/runtime/deploy_on_main/20261027T133000Z_poller_deploy_failed.json",
+        "doc:scripts/lib/deploy_on_main.py _align_checkout checkout_dirty"
+      ],
+      "fix_refs": [
+        {
+          "kind": "pr",
+          "ref": "2231"
+        }
+      ],
+      "note": "The work was rescued onto its own branch and PR (#2231, rulebook chapters). #2232 adds preserve-and-proceed (patch + tagged stash, never discards) for the next occurrence."
+    }
+  ]
+}

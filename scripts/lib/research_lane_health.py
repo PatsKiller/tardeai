@@ -13,6 +13,7 @@ Does not grant financial_action. Does not call LLMs.
 """
 from __future__ import annotations
 
+import re
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Optional
@@ -76,6 +77,17 @@ def is_skipped_budget(rec: Any) -> bool:
     return str(rec or "").strip().startswith(SKIPPED_BUDGET_PREFIX)
 
 
+def is_deferred_offpeak(rec: Any) -> bool:
+    """A run parked for the off-peak lane (llm_deferral). It was never attempted, so it is not a lane error.
+
+    2026-11-04: `[DEFERRED_TO_OFFPEAK]` rows counted as errors and produced the bogus 37.9% 24h rate that floored
+    intelligence_quality at 60. Like SKIPPED_BUDGET, a deferral is a throttle, not a crash.
+    """
+    # ANCHORED (cc2 BLOCK): the live row is "[ERROR] DEFERRED_TO_OFFPEAK: …". A substring test would also
+    # silence a genuine failure that merely MENTIONS the marker in its text, so the match starts at the head.
+    return re.match(r"^\[ERROR\]\s*DEFERRED_TO_OFFPEAK\b", str(rec or "").strip()) is not None
+
+
 def is_error_recommendation(rec: Any) -> bool:
     """RAW lane-broken: empty OR bracket-prefixed, excluding SKIPPED_BUDGET.
 
@@ -85,7 +97,7 @@ def is_error_recommendation(rec: Any) -> bool:
     s = str(rec or "").strip()
     if not s:
         return True
-    if is_skipped_budget(s):
+    if is_skipped_budget(s) or is_deferred_offpeak(s):
         return False
     return s.startswith("[")
 
@@ -150,7 +162,9 @@ def evaluate_lane(
     ok_24h = non_error_count(last_24h)
     skip_24h = skipped_budget_count(last_24h)
     attempts_24h = len(last_24h)
-    err_24h = max(0, attempts_24h - ok_24h - skip_24h)
+    defer_24h = sum(1 for r in last_24h if is_deferred_offpeak(r.get("recommendation")
+                                                               if isinstance(r, dict) else r))
+    err_24h = max(0, attempts_24h - ok_24h - skip_24h - defer_24h)
     judged = ok_24h + err_24h  # exclude throttle from lane-broken rate
     rate = round(100.0 * err_24h / judged, 1) if judged else 0.0
     last_any = newest_first[0].get("created_at") if newest_first else None
@@ -376,7 +390,7 @@ def collect_coverage_stall(
     return rec
 
 
-def collect_report(*, now: Optional[datetime] = None) -> dict[str, Any]:
+def collect_report(*, now: Optional[datetime] = None, cio_ask_health_reader=None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     since = now - timedelta(hours=silence_hours())
     lanes: list[dict[str, Any]] = []
@@ -461,6 +475,17 @@ def collect_report(*, now: Optional[datetime] = None) -> dict[str, Any]:
         except Exception:
             from cio_hermes_queue_health import collect_cio_hermes_queue_health  # type: ignore
         lanes.append(collect_cio_hermes_queue_health(now=now))
+    # Ask lifecycle: transport success cannot stand in for hourly checks,
+    # memory synchronization, canonical readback or delivery. The injectable
+    # reader lets integration tests exercise registration without any host IO.
+    if cio_ask_health_reader is None:
+        from scripts.lib.cio_ask_lifecycle_health import collect_cio_ask_lifecycle_health
+        cio_ask_health_reader = collect_cio_ask_lifecycle_health
+    try:
+        lanes.append(cio_ask_health_reader(now=now))
+    except Exception:
+        from scripts.lib.cio_ask_lifecycle_health import unavailable
+        lanes.append(unavailable(now=now, code="collector_unavailable"))
     firing = [r for r in lanes if not r["ok"]]
     return {
         "schema": SCHEMA,

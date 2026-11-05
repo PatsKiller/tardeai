@@ -90,7 +90,9 @@ test.describe('phone: batch-28 gaps', () => {
       await page.goto(origin + '/v3/journal?tab=journeys')
       const chip = page.getByTestId('tj-chip-ledger_sync')
       await chip.scrollIntoViewIfNeeded()
-      await expect(chip).toContainText('Ledger synced 2026-11-04T16:48:02+00:00')
+      // Readable ET on the chip (site sweep 2026-10-25); the exact stored stamp stays in the tooltip.
+      await expect(chip).toContainText('Ledger synced Nov 4 11:48 ET')
+      await expect(chip).toHaveAttribute('title', /as of 2026-11-04T16:48:02\+00:00/)
       await expect(page.getByTestId('tj-chip-ledger_sync-source')).toHaveText(/ledger row write/)
       await expect(chip).not.toContainText('Not measured')
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)

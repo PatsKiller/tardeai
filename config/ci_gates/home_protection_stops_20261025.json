@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "home_protection_stops_20261025",
+  "files": [
+    "tests/test_cio_truth_stop_clock_20261025.py"
+  ],
+  "comment": [
+    "Home Protection: stop clock from broker reads only, stale gap per broker_stops contract, filled stop awaiting holdings sync."
+  ]
+}
