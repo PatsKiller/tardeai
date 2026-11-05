@@ -12,6 +12,7 @@
  *  Protection uses the categorized CIO positions read model, shared with Risk; summary performance uses overview/performance.
  *  The previous Home stays reachable at ?view=classic for one release. */
 import { useEffect, useState, type ReactNode } from 'react'
+import { regimeState, regimeClockTitle } from '../lib/homeRegime'
 import { Link } from 'react-router-dom'
 import { BEST_OPPORTUNITIES_API, BEST_OPPORTUNITIES_PATH } from '../lib/bestOpportunities'
 import { useApi } from '../hooks/useApi'
@@ -127,7 +128,10 @@ export default function HomeDoNow() {
   const cioApi = useApi<any>('/api/v2/cio/pages', 60_000)
   const { data: overview, loading: ovLoading, stale: overviewStale, error: overviewError } = useApi<any>('/api/v2/overview', 60_000)
   const { data: perf } = useApi<any>('/api/v2/portfolio/performance', 120_000)
-  const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
+  // The clock lives BESIDE `data` in the response ({ok, data: <regime row>, as_of, age_hours, stale, ...}). useApi
+  // unwraps `data`, so the clock must be read from the envelope it now exposes — reading `regime.stale` could only
+  // ever be undefined, which is how a 9.4 h stale snapshot rendered as fresh (cc-deepseek-5's BLOCK on #2642).
+  const { data: regime, envelope: regimeEnv } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
   // Design home/v002: the Market Risk Engine projection (tier, score, contributors, episode). Honest not_evaluated until P2.
   const { data: mrResp, loading: mrLoading } = useApi<any>('/api/v2/market-risk/latest', 60_000)
   const mr = unwrapMarketRisk(mrResp)
@@ -155,18 +159,12 @@ export default function HomeDoNow() {
   // FQ-085: /api/v2/risk-regime/latest is a BrokerReadEnvelope — the regime itself is inside `data`, and the clock
   // (as_of / age_hours / stale) sits BESIDE it. Reading the envelope as if it were the regime dropped both: the label
   // fell back to "unknown" and a stale snapshot would have looked current.
-  const regimeData: any = (regime as any)?.data ?? regime
-  const regimeLabel: string = String(regimeData?.regime_label ?? '').replace(/_/g, ' ')
-  const regimeStale: boolean = Boolean((regime as any)?.stale) || Boolean(regimeData?.stale_data)
-  const regimeAgeH: number | null = typeof (regime as any)?.age_hours === 'number' ? (regime as any).age_hours : null
-  const regimeAsOf: string | null = typeof (regime as any)?.as_of === 'string' ? (regime as any).as_of : null
-  const regimeText: string = !regime
-    ? 'unknown'
-    : !regimeLabel
-      ? 'not reported'
-      : regimeStale
-        ? `${regimeLabel} (stale${regimeAgeH != null ? `, ${regimeAgeH.toFixed(1)} h old` : ''})`
-        : regimeLabel
+  const regimeInfo = regimeState(regime, regimeEnv)
+  const regimeLabel = regimeInfo.label
+  const regimeStale = regimeInfo.stale
+  const regimeAgeH = regimeInfo.ageHours
+  const regimeAsOf = regimeInfo.asOf
+  const regimeText = regimeInfo.text
   const postureRows: any[] = posture?.momentum?.rows || []
   const lagging = postureRows.filter((r: any) => r.state === 'LAGGING')
   const leading = postureRows.filter((r: any) => r.state === 'LEADING')
@@ -365,7 +363,7 @@ export default function HomeDoNow() {
           <Link to="/risk?tab=market-risk" data-testid="home-market-risk-link" style={{ fontSize: TYPE.sm, color: TOKENS.info, textDecoration: 'none', minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>Market risk →</Link>
           <div style={{ fontSize: TYPE.base, lineHeight: 1.6, color: TOKENS.text[1], borderTop: `1px solid ${TOKENS.borderSubtle}`, paddingTop: 8 }}
             title="Regime: /api/v2/risk-regime/latest. Sectors and hedge: /api/v2/defense/posture (momentum rows, hedge_state). 'You hold' is the sector's share of your book from the same posture rows.">
-            <span data-testid="home-market" data-regime-stale={String(regimeStale)} title={regimeAsOf ? `regime as_of ${regimeAsOf}${regimeAgeH != null ? ` (${regimeAgeH.toFixed(1)} h old)` : ''}` : 'regime clock not reported'}>
+            <span data-testid="home-market" data-regime-stale={String(regimeStale)} title={regimeClockTitle(regimeInfo)}>
               Regime <b style={{ color: regimeStale ? TOKENS.text[2] : TOKENS.text[0] }}>{regimeText}</b>{vix != null ? `, VIX ${vix}` : ''}.</span>
             {postureRows.length > 0 && <> Sectors: {leading.length} leading, {lagging.length} lagging{lagging.length ? <> (<b>{lagging.map((r: any) => `${String(r.sector).toLowerCase()}${r.book_pct != null ? `, you hold ${r.book_pct}%` : ''}`).slice(0, 3).join('; ')}</b>)</> : ''}.</>}
             {posture?.hedge_state?.line ? <> Hedge: {posture.hedge_state.line}.</> : null}

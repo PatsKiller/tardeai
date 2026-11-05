@@ -128,6 +128,10 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
   const enabled = options?.enabled !== false
   const background = options?.priority === 'background'
   const [data, setData] = useState<T | null>(null)
+  // The whole JSON body, unwrap included. `data` is the payload only, so anything the server puts BESIDE it — a clock
+  // like as_of / age_hours / stale on /api/v2/risk-regime/latest — is otherwise lost before any component sees it
+  // (cc-deepseek-5's BLOCK on #2642, 2026-11-05). Additive: every existing consumer still reads `data`.
+  const [envelope, setEnvelope] = useState<any>(null)
   const [loading, setLoading] = useState(enabled)
   const [refreshing, setRefreshing] = useState(false) // manual refetch in flight (keeps last data)
   const [error, setError] = useState<string | null>(null)
@@ -315,6 +319,7 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
         const next = json.ok !== undefined ? (json.data ?? json) : json
         dataRef.current = next
         setData(next)
+        setEnvelope(json && typeof json === 'object' ? json : null)
         setError(null)
         setStale(false)
         setReceivedAt(new Date().toISOString())
@@ -372,5 +377,5 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
     }
   }, [path, intervalMs, tick, enabled, background])
 
-  return { data, loading, refreshing, error, stale, receivedAt, transport, authState, refetch }
+  return { data, envelope, loading, refreshing, error, stale, receivedAt, transport, authState, refetch }
 }

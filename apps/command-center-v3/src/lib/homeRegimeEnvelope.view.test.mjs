@@ -1,74 +1,86 @@
-// FQ-085 (HQ-01) — the Home REGIME line reads the broker envelope that carries it, and never presents a stale or
-// absent regime as current.
+// FQ-085 (HQ-01) — the Home REGIME line reads the clock that sits BESIDE the row in the broker envelope.
 //
-// Live at release 105df180e, `/api/v2/risk-regime/latest` returns a BrokerReadEnvelope:
-//   { ok, data: { regime_label: 'risk_off', … }, as_of, age_hours: 5.53, stale: false, stale_after_hours }
-// `HomeDoNow.tsx` read `regime?.regime_label`, which is inside `data`, so the line fell back to "unknown" and the
-// clock beside `data` was never read. This pins the repaired read: label from `data`, the envelope's clock surfaced,
-// and a stale or missing clock never rendered as a current verdict.
+// The wire is { ok, data: { regime_label: 'risk_off', … }, as_of, age_hours, stale, stale_after_hours }.
+// `useApi` unwraps `data`, so the page receives the ROW and nothing else unless it asks for the envelope too.
+//
+// This file previously extracted the derivation block out of HomeDoNow.tsx and evaluated it with the WHOLE wire body
+// as its `regime` argument — which is why it stayed green while the page itself could never see `stale` (cc-deepseek-5's
+// BLOCK on #2642, verified by driving the real unwrap). So it now does two things: it drives the REAL module with the
+// shapes the hook actually delivers, and it checks the page asks for the envelope at all.
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { join, dirname, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { regimeState, regimeClockTitle } from './homeRegime.ts'
 
 const app = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const page = readFileSync(join(app, 'src/pages/HomeDoNow.tsx'), 'utf8')
-
-// The derivation lives inline in the component (it needs no new module); these checks read that exact expression
-// block out of the source and evaluate it against the live shapes, so the test cannot drift from the page.
-function regimeBlock() {
-  const start = page.indexOf('const regimeData: any =')
-  assert.ok(start > 0, 'the regime derivation is gone from HomeDoNow.tsx')
-  const end = page.indexOf('const regimeText', start)
-  const stop = page.indexOf('\n', page.indexOf(": regimeLabel", end))
-  assert.ok(end > start && stop > end, 'the regime derivation block is malformed')
-  return page.slice(start, stop)
-}
-
-// The block is TypeScript; transpile it exactly as the build would, then evaluate it.
-const ts = (await import('node:module')).createRequire(join(app, 'package.json'))('typescript')
-const compiled = ts.transpileModule(regimeBlock(), {
-  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
-}).outputText
-// eslint-disable-next-line no-new-func
-const derive = new Function('regime', `${compiled}\nreturn { regimeLabel, regimeStale, regimeAgeH, regimeAsOf, regimeText }`)
-
-const live = {
+const wire = {
   ok: true,
   data: { regime_label: 'risk_off', confidence: 0.67, stale_data: false },
   as_of: '2026-11-04T10:52:08.078825+00:00', age_hours: 5.53, stale: false, stale_after_hours: 12,
 }
+// What useApi hands a component: `data` unwrapped, plus the envelope it now also exposes.
+const row = wire.data
 
 const cases = []
-function check(name, fn) { cases.push({ name, fn }) }
+const check = (name, fn) => cases.push({ name, fn })
 
-check('the label is read from inside the envelope', () => {
-  assert.equal(derive(live).regimeText, 'risk off')
+check('the label is read from the row the hook delivers', () => {
+  assert.equal(regimeState(row, wire).text, 'risk off')
 })
 
 check('the envelope clock is carried, not discarded', () => {
-  const got = derive(live)
-  assert.equal(got.regimeAgeH, 5.53)
-  assert.equal(got.regimeAsOf, live.as_of)
-  assert.equal(got.regimeStale, false)
+  const got = regimeState(row, wire)
+  assert.equal(got.ageHours, 5.53)
+  assert.equal(got.asOf, wire.as_of)
+  assert.equal(got.stale, false)
 })
 
 check('a stale envelope is never presented as current', () => {
-  const got = derive({ ...live, stale: true, age_hours: 9.4 })
-  assert.equal(got.regimeText, 'risk off (stale, 9.4 h old)')
-  assert.equal(got.regimeStale, true)
+  const got = regimeState(row, { ...wire, stale: true, age_hours: 9.4 })
+  assert.equal(got.text, 'risk off (stale, 9.4 h old)')
+  assert.equal(got.stale, true)
 })
 
-check("the snapshot's own stale flag counts too", () => {
-  assert.equal(derive({ ...live, data: { ...live.data, stale_data: true } }).regimeText, 'risk off (stale, 5.5 h old)')
+check('a stale envelope with no age still says stale', () => {
+  const got = regimeState(row, { ...wire, stale: true, age_hours: undefined })
+  assert.equal(got.text, 'risk off (stale)')
 })
 
-check('a missing label says so instead of "unknown"', () => {
-  assert.equal(derive({ ...live, data: {} }).regimeText, 'not reported')
+check("the row's own stale_data flag still counts", () => {
+  assert.equal(regimeState({ ...row, stale_data: true }, wire).stale, true)
 })
 
-check('no payload at all still reads "unknown"', () => {
-  assert.equal(derive(undefined).regimeText, 'unknown')
+check('the envelope outranks a row that says nothing', () => {
+  assert.equal(regimeState({ ...row, stale: false }, { ...wire, stale: true }).stale, true)
+})
+
+check('no regime at all reads unknown, not fresh', () => {
+  assert.equal(regimeState(null, null).text, 'unknown')
+})
+
+check('a row with no label is reported, not guessed', () => {
+  assert.equal(regimeState({ confidence: 0.4 }, wire).text, 'not reported')
+})
+
+check('a missing clock is stated as missing, never as current', () => {
+  const got = regimeState(row, { ok: true, data: row })
+  assert.equal(got.asOf, null)
+  assert.equal(regimeClockTitle(got), 'regime clock not reported')
+})
+
+check('the clock title carries the stamp and the age when they exist', () => {
+  assert.match(regimeClockTitle(regimeState(row, wire)), /regime as_of .* \(5\.5 h old\)/)
+})
+
+// The wiring half: the page must ASK for the envelope. Without this the helper is correct and unused.
+check('HomeDoNow destructures the envelope from useApi and passes it', () => {
+  const page = readFileSync(join(app, 'src/pages/HomeDoNow.tsx'), 'utf8')
+  // Comments may NAME the old shape (they explain why it was wrong); only executable lines count.
+  const code = page.split('\n').filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n')
+  assert.match(page, /envelope: regimeEnv/, 'the page does not ask useApi for the envelope')
+  assert.match(page, /regimeState\(regime, regimeEnv\)/, 'the page does not pass the envelope to regimeState')
+  assert.ok(!/regime\s*\??\.\s*stale/.test(code), 'the page still reads the clock off the unwrapped row')
 })
 
 const results = []
