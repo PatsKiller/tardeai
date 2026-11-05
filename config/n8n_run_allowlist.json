@@ -4619,13 +4619,14 @@
       "env_names": [
         "PROJECT_ROOT",
         "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_AUDIT_QUEUE",
         "TRADEAI_COORD_DIR",
         "TRADEAI_NUDGER_LEDGER",
         "TRADEAI_NUDGER_STATE",
         "TRADEAI_PERSISTENT_STATE_ROOT"
       ],
       "env_allowlist_mode": "enforce",
-      "env_evidence": "scripts/agent_nudger.py: the literal reads are TRADEAI_STATE_ROOT (state default), TRADEAI_NUDGER_STATE and TRADEAI_NUDGER_LEDGER (per-file overrides) and TRADEAI_COORD_DIR (the coordinator dir named in the prompt); the safe_flock wrapper adds PROJECT_ROOT and SAFE_FLOCK_LOG_DIR, and HOME/PATH come from the executor's base set. Standard library only, no .env loader, no DB, no network. Five declared names, all literals at module scope. A LIVE run also writes its LaneRunReceipt@v2 through scripts/lib/lane_last_receipt.py, whose state-root resolution reads TRADEAI_PERSISTENT_STATE_ROOT.",
+      "env_evidence": "scripts/agent_nudger.py: the literal reads are TRADEAI_STATE_ROOT (state default), TRADEAI_NUDGER_STATE and TRADEAI_NUDGER_LEDGER (per-file overrides), TRADEAI_COORD_DIR (the coordinator dir named in the prompt) and TRADEAI_AUDIT_QUEUE (the queue file the next row is drawn from, read at load_queue — the only way to point a run at a non-default queue); the safe_flock wrapper adds PROJECT_ROOT and SAFE_FLOCK_LOG_DIR, and HOME/PATH come from the executor's base set. Standard library only, no .env loader, no DB, no network. Seven declared names, all literals at module scope. A LIVE run also writes its LaneRunReceipt@v2 through scripts/lib/lane_last_receipt.py, whose state-root resolution reads TRADEAI_PERSISTENT_STATE_ROOT.",
       "source": "Board item 16 / P2 of docs/ops/NUDGER_N8N_MIGRATION_PROPOSAL_20261103.md (2026-11-03). output_receipt v2: a LIVE run writes LaneRunReceipt@v2 and the immutable per-attempt receipt, which is what scripts/n8n_run_executor.py::apply_output_verdict evaluates — without this key the declared rule is skipped as declared_not_enforced. SHADOW ONLY: scheduler.stage shadow in config/lane_registry.json, dispatch.mode dry_run, live_arg is null: while the row is shadow there is NO live argv at all, so no fire can type even if the stage clamp were bypassed; the stage-flip PR sets live_arg to --apply and its own test (the stage clamp in scripts/lib/lane_stage_clamp.py forces dry_run whatever is requested). The live host timer keeps doing the real work throughout P2; this lane only records what it would have done. The script's own default is dry run and --dry-run names it explicitly, because the dispatcher's shadow step requires a non-empty dry_run_arg.",
       "command": [
         "$PY",
