@@ -169,11 +169,13 @@ def _evaluate_single_condition_alerts(ex, alerts, today: str) -> tuple[list[str]
     return lines, fired_ids
 
 
-def _recovery_snapshot(ex, case: dict) -> dict | None:
-    """The market fields the recovery state machine needs, from the one quote source.
+def _recovery_snapshot(ex, case: dict, technical_by_symbol: dict | None = None) -> dict | None:
+    """The market fields the recovery state machine needs, from their registered sources.
 
-    Only the close is required. RSI/SMA20 come from the row when the quote table carries them; when it does
-    not, the engine leaves those triggers unfired and says so on the card rather than guessing a level.
+    The close and its OWN timestamp come from the quote ledger (``market_quotes``); the technical input that
+    carries R4 — SMA20 — comes from the registered technical projection (``recovery_state.technical_inputs``). The quote
+    table has no sma20 column and its only writer cannot write one, so searching that row for the level is how
+    R4 stayed permanently false. An absent projection leaves R4 unfired; the engine says so rather than guessing.
     """
     symbol = str(case.get("symbol") or "").upper().strip()
     if not symbol:
@@ -183,29 +185,15 @@ def _recovery_snapshot(ex, case: dict) -> dict | None:
                  (symbol,), fetch="one")
     except Exception:
         return None
-    if not row:
-        return None
-    def _f(key):
-        value = row.get(key)
-        try:
-            return float(value) if value not in (None, "") else None
-        except (TypeError, ValueError):
-            return None
-    close = _f("price") if _f("price") is not None else _f("close")
-    if close is None:
-        return None
-    # The quote's OWN timestamp travels with the price: the state machine refuses a price of unknown or stale
-    # age, and _quote_is_current is the existing judgement of what "current" means.
-    snap = {"close": close, "fetched_at": row.get("fetched_at")}
-    for field, keys in (("rsi", ("rsi", "rsi_14", "rsi14")), ("rsi_prev", ("rsi_prev",)),
-                        ("sma20", ("sma20", "sma_20")), ("macd_up_sessions", ("macd_up_sessions",)),
-                        ("stop_level", ("stop_level",)), ("entry_high", ("entry_high",))):
-        for key in keys:
-            value = _f(key)
-            if value is not None:
-                snap[field] = value
-                break
-    return snap
+    try:
+        from lib import recovery_state as _R
+    except ImportError:
+        from scripts.lib import recovery_state as _R  # type: ignore
+    if technical_by_symbol is None:
+        # A caller that has no batch (a single-case probe): one projection read, still the registered source.
+        technical_by_symbol = _R.technical_inputs([symbol])
+    technical = technical_by_symbol.get(symbol) if isinstance(technical_by_symbol, dict) else None
+    return _R.quote_snapshot(row, technical)
 
 
 def _recovery_state_pass(ex) -> dict:
@@ -224,7 +212,13 @@ def _recovery_state_pass(ex) -> dict:
     store = R.store_accessor(_engine_db, None)
     if store is None:
         return {"store": "absent", "considered": 0, "changed": 0}
-    return R.run_pass(store, lambda c: _recovery_snapshot(ex, c), dry_run=False)
+    # ONE read-only listing just for the symbols: the technical projection is then a single batch call.
+    try:
+        rows = store.list_open(limit=200) if hasattr(store, "list_open") else store.list()
+    except Exception:
+        rows = []
+    technical_by_symbol = R.technical_inputs(R.technical_symbols(rows))
+    return R.run_pass(store, lambda c: _recovery_snapshot(ex, c, technical_by_symbol), dry_run=False)
 
 
 def main() -> int:

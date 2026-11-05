@@ -900,3 +900,176 @@ def test_a_valid_fresh_reclaim_still_reaches_ready():
 
     assert d.triggers == {"R1": True, "R2": True, "R3": True, "R4": True, "R5": False}
     assert d.state == R.RE_ENTRY_READY
+
+
+# ── CX1: SMA20 comes from the registered technical projection, not the quote ledger ───────────────────────
+_QUOTE_ROW = {"price": 102.0, "fetched_at": NOW.isoformat()}     # market_quotes has no sma20 column
+
+
+def _fake_projection(monkeypatch, by_symbol):
+    import lib.data_broker.indicator_snapshot as IS
+    seen = []
+
+    def fake(symbols):
+        seen.append(list(symbols))
+        return {"by_symbol": dict(by_symbol)}
+
+    monkeypatch.setattr(IS, "get_indicator_snapshot", fake)
+    return seen
+
+
+def test_sma20_is_read_from_the_registered_technical_projection(monkeypatch):
+    """CX1: the quote ledger's only writer cannot write sma20, so R4 was permanently false. The level must
+    come from the data-broker projection that actually carries it (catalog id ``indicator_snapshot``)."""
+    import watch_alerts_eval as W
+
+    _fake_projection(monkeypatch, {"DEMO": {"sma_20": 99.0}})
+    ex = lambda sql, params=None, fetch="all": dict(_QUOTE_ROW)   # noqa: E731
+    snapshot = W._recovery_snapshot(ex, {"symbol": "demo"})
+
+    assert snapshot["close"] == 102.0 and snapshot["fetched_at"] == _QUOTE_ROW["fetched_at"]
+    assert snapshot["sma20"] == 99.0
+    # The point of the level: with it, a fresh close above the 20-day mean reaches the ready state.
+    d = R.evaluate(_t1_row(), snapshot, now=NOW)
+    assert d.triggers["R4"] is True
+    assert d.state == R.RE_ENTRY_READY
+
+
+def test_an_absent_technical_projection_leaves_sma20_unset_rather_than_guessing(monkeypatch):
+    import watch_alerts_eval as W
+
+    _fake_projection(monkeypatch, {})
+    ex = lambda sql, params=None, fetch="all": dict(_QUOTE_ROW)   # noqa: E731
+    snapshot = W._recovery_snapshot(ex, {"symbol": "DEMO"})
+
+    assert "sma20" not in snapshot
+    assert R.evaluate(_t1_row(), snapshot, now=NOW).triggers["R4"] is False
+
+
+def test_the_daily_adapter_reads_sma20_from_the_same_projection(monkeypatch):
+    """Both scheduled adapters search the quote row; both must read the technical projection (CX1)."""
+    import db_adapter
+    import recovery_watch_daily as D
+
+    _fake_projection(monkeypatch, {"DEMO": {"sma_20": 99.0}})
+    monkeypatch.setattr(db_adapter, "_get_conn", lambda: None)
+    monkeypatch.setattr(D, "_db_query", lambda sql, params=None, fetch="all": dict(_QUOTE_ROW))
+    monkeypatch.setattr(R, "store_accessor", lambda conn, policy: RecordingStore([_t1_row()]))
+
+    captured = {}
+
+    def fake_run_pass(store, snapshot_for, **kwargs):
+        captured["snapshot"] = snapshot_for(_t1_row())
+        return {"considered": 1, "changed": 0}
+
+    monkeypatch.setattr(R, "run_pass", fake_run_pass)
+    D._recovery_state_pass()
+
+    assert captured["snapshot"]["sma20"] == 99.0
+    assert captured["snapshot"]["close"] == 102.0
+
+
+# ── CX2: a fresh but unusable close must not clear a pending retry ────────────────────────────────────────
+@pytest.mark.parametrize("bad", [float("inf"), float("nan"), 0, -1.0, None, "not-a-number"])
+def test_a_pending_retry_with_a_fresh_but_unusable_close_never_pages(tmp_path, bad):
+    """CX2: evaluate() refused the close but the dispatch gate did not, so a retry paged on inf/NaN/zero and
+    cleared the obligation. The gate now applies the same test and KEEPS the responsibility."""
+    pending = tmp_path / "pending.json"
+    _seed_pending(pending)
+    calls = []
+    snapshot = {"close": bad, "sma20": 99.0, "fetched_at": NOW.isoformat()}
+
+    out = R.run_pass(RecordingStore([{**_t1_row(), "state": R.RECOVERING}]), lambda c: dict(snapshot),
+                     now=NOW, dry_run=False, notify=lambda c: calls.append(c) or {"sent": True},
+                     pending_path=pending)
+
+    assert calls == [] and out["notifier_calls"] == 0
+    assert "market input unavailable" in out["decisions"][0]["notify"]["reason"]
+    assert _DEMO_KEY in json.loads(pending.read_text(encoding="utf-8")), "the obligation must survive"
+    assert out["decisions"][0]["notify_pending"] is True
+
+
+# ── CX3: the retry gate must judge the DURABLE operator decision, re-read at dispatch ─────────────────────
+_RECOVERING_SNAP = {"close": 102.0, "sma20": 130.0, "fetched_at": NOW.isoformat()}   # reclaim, but not R4
+
+
+class _FlippingStore:
+    """The operator closes the case during snapshot retrieval, AFTER list() returned it as RECOVERING."""
+
+    def __init__(self):
+        self.row = {**_t1_row(), "state": R.RECOVERING, "operator_decision": "none"}
+
+    def list(self):
+        return [dict(self.row)]          # the detached case this pass read
+
+    def set_state(self, key, state, *, expect):   # pragma: no cover - an unchanged case runs no CAS
+        raise AssertionError("an unchanged RECOVERING case must not write a state")
+
+
+def test_an_operator_close_after_listing_stops_a_pending_retry(tmp_path):
+    """CX3: retrying an unchanged RECOVERING case runs no compare-and-set, so the gate paged the detached case
+    and ignored the operator's later CLOSED decision. The durable row is now re-read before dispatch."""
+    pending = tmp_path / "pending.json"
+    _seed_pending(pending)
+    store = _FlippingStore()
+    calls = []
+
+    def snapshot_for(case):
+        store.row["state"] = R.CLOSED
+        store.row["operator_decision"] = "closed"
+        return dict(_RECOVERING_SNAP)
+
+    out = R.run_pass(store, snapshot_for, now=NOW, dry_run=False,
+                     notify=lambda c: calls.append(c) or {"sent": True}, pending_path=pending)
+
+    assert calls == [] and out["notifier_calls"] == 0
+    assert out["changed"] == 0, "the case never transitioned; this was a retry"
+    assert "operator decision holds" in out["decisions"][0]["notify"]["reason"]
+    assert json.loads(pending.read_text(encoding="utf-8")) == {}, "the operator's decision settles the page"
+
+
+def test_the_dispatch_reread_uses_the_store_getter_when_it_has_one(tmp_path):
+    """Piece A's CaseStore exposes ``get(key)``; the revalidation must use it, not a stale listing."""
+    pending = tmp_path / "pending.json"
+    _seed_pending(pending)
+    calls = []
+
+    class _GetterStore:
+        def __init__(self):
+            self.listed = {**_t1_row(), "state": R.RECOVERING, "operator_decision": "none"}
+            self.durable = {**self.listed, "state": R.SNOOZED, "operator_decision": "snoozed"}
+
+        def list(self):
+            return [dict(self.listed)]
+
+        def get(self, key):
+            return dict(self.durable) if key == _DEMO_KEY else None
+
+        def set_state(self, key, state, *, expect):   # pragma: no cover - no transition to write
+            raise AssertionError("an unchanged RECOVERING case must not write a state")
+
+    out = R.run_pass(_GetterStore(), lambda c: dict(_RECOVERING_SNAP), now=NOW, dry_run=False,
+                     notify=lambda c: calls.append(c) or {"sent": True}, pending_path=pending)
+
+    assert calls == [] and out["notifier_calls"] == 0
+    assert "operator decision holds" in out["decisions"][0]["notify"]["reason"]
+    assert json.loads(pending.read_text(encoding="utf-8")) == {}
+
+
+def test_an_unreadable_store_re_read_keeps_the_obligation_and_never_pages(tmp_path):
+    """A store that cannot be re-read is not evidence the operator settled the page: keep the responsibility."""
+    pending = tmp_path / "pending.json"
+    _seed_pending(pending)
+    calls = []
+
+    class _BrokenGetterStore(RecordingStore):
+        def get(self, key):
+            raise OSError("connection reset")
+
+    out = R.run_pass(_BrokenGetterStore([{**_t1_row(), "state": R.RECOVERING}]),
+                     lambda c: dict(_RECOVERING_SNAP), now=NOW, dry_run=False,
+                     notify=lambda c: calls.append(c) or {"sent": True}, pending_path=pending)
+
+    assert calls == [] and out["notifier_calls"] == 0
+    assert "could not be re-read" in out["decisions"][0]["notify"]["reason"]
+    assert _DEMO_KEY in json.loads(pending.read_text(encoding="utf-8"))

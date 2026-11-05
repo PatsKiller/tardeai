@@ -1119,30 +1119,19 @@ def _recovery_state_pass():
         print("  Recovery state machine: store absent (piece A not on this build) — nothing evaluated")
         return {"store": "absent", "considered": 0, "changed": 0}
 
+    # The technical inputs come from the registered projection (catalog id ``indicator_snapshot``); the quote
+    # ledger carries no SMA20, which is why R4 — the only ready trigger — could never fire from it.
+    try:
+        rows = store.list_open(limit=200) if hasattr(store, "list_open") else store.list()
+    except Exception:
+        rows = []
+    technical = R.technical_inputs(R.technical_symbols(rows))   # ONE batch read; never one cache rebuild per case
+
     def snapshot_for(case):
+        symbol = str(case.get("symbol") or "").upper()
         row = _db_query("SELECT * FROM market_quotes WHERE upper(symbol)=%s ORDER BY fetched_at DESC LIMIT 1",
-                        (str(case.get("symbol") or "").upper(),), fetch="one")
-        if not row:
-            return None
-        def _f(key):
-            try:
-                value = row.get(key)
-                return float(value) if value not in (None, "") else None
-            except (TypeError, ValueError):
-                return None
-        close = _f("price") if _f("price") is not None else _f("close")
-        if close is None:
-            return None
-        snap = {"close": close, "fetched_at": row.get("fetched_at")}
-        for field, keys in (("rsi", ("rsi", "rsi_14")), ("rsi_prev", ("rsi_prev",)),
-                            ("sma20", ("sma20", "sma_20")), ("macd_up_sessions", ("macd_up_sessions",)),
-                            ("stop_level", ("stop_level",)), ("entry_high", ("entry_high",))):
-            for key in keys:
-                value = _f(key)
-                if value is not None:
-                    snap[field] = value
-                    break
-        return snap
+                        (symbol,), fetch="one")
+        return R.quote_snapshot(row, technical.get(symbol))
 
     out = R.run_pass(store, snapshot_for, dry_run=False)
     print(f"  Recovery state machine: {out.get('considered', 0)} cases, {out.get('changed', 0)} state changes")

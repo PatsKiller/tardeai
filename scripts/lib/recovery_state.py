@@ -629,6 +629,86 @@ def store_accessor(conn=None, policy: Mapping[str, Any] | None = None):
         return None
 
 
+# ── the market inputs both scheduled adapters assemble ────────────────────────────────────────────────────
+def technical_symbols(rows) -> list[str]:
+    """The upper-case symbols in a store listing, for ONE batch technical read."""
+    out = []
+    for row in rows or []:
+        if hasattr(row, "to_dict"):
+            row = row.to_dict()
+        try:
+            symbol = str(row.get("symbol") or "").upper().strip()
+        except AttributeError:
+            continue
+        if symbol and symbol not in out:
+            out.append(symbol)
+    return sorted(out)
+
+
+def technical_inputs(symbols) -> dict[str, dict]:
+    """The registered technical projection for these symbols, keyed by upper-case symbol.
+
+    ``market_quotes`` is an append-only QUOTE ledger: its one writer
+    (``scripts/lib/writers/market_quotes_writer.py``) accepts no ``sma20``/``sma_20`` column, so R4 — the SMA20
+    reclaim, the only trigger that can make a case RE_ENTRY_READY — could never fire while both scheduled
+    adapters searched that row for the level. The level comes from its registered projection instead: data-broker
+    catalog id ``indicator_snapshot`` (domain ``technicals``), per ``AGENTS.md`` §24.3.
+
+    ONE batch call, so a pass does not rebuild (and overwrite) the projection's shared cache once per case. A
+    projection that is absent or unreadable is an empty map: R4 stays unfired, never guessed. Only a field whose
+    trigger semantics the projection can honestly support is exposed; RSI is not copied because R3 is a CROSS
+    through the level and a level with no previous reading would manufacture a cross on every pass.
+    """
+    wanted: list[str] = []
+    for value in symbols or []:
+        symbol = str(value or "").upper().strip()
+        if symbol and symbol not in wanted:
+            wanted.append(symbol)
+    wanted.sort()
+    if not wanted:
+        return {}
+    try:
+        from lib.data_broker.indicator_snapshot import get_indicator_snapshot  # noqa: PLC0415
+    except ImportError:
+        try:
+            from scripts.lib.data_broker.indicator_snapshot import (  # type: ignore[no-redef]  # noqa: PLC0415
+                get_indicator_snapshot,
+            )
+        except ImportError:
+            return {}
+    try:
+        snapshot = get_indicator_snapshot(wanted) or {}
+    except Exception:  # noqa: BLE001 — a broken projection is an absent input, not a pass-through failure
+        return {}
+    by_symbol = snapshot.get("by_symbol") if isinstance(snapshot, Mapping) else None
+    if not isinstance(by_symbol, Mapping):
+        return {}
+    return {str(key).upper(): value for key, value in by_symbol.items() if isinstance(value, Mapping)}
+
+
+def quote_snapshot(quote_row: Mapping[str, Any] | None, technical: Mapping[str, Any] | None = None) -> dict | None:
+    """The snapshot the state machine consumes: the quote's close, its OWN timestamp, plus the projection's SMA20.
+
+    Only the close is required; a row without a usable price returns None so the state machine leaves the case
+    untouched and says why, rather than inventing a price. The timestamp travels with the price because the
+    engine refuses a price of unknown or stale age.
+    """
+    if not isinstance(quote_row, Mapping):
+        return None
+    raw_close = quote_row.get("price")
+    if raw_close in (None, ""):
+        raw_close = quote_row.get("close")   # legacy rows name the last price ``close``
+    close = _price(raw_close)
+    if close is None:
+        return None
+    snap: dict[str, Any] = {"close": close, "fetched_at": quote_row.get("fetched_at")}
+    if isinstance(technical, Mapping):
+        sma20 = _price(technical.get("sma_20"))
+        if sma20 is not None:
+            snap["sma20"] = sma20
+    return snap
+
+
 #: Quote freshness states the engine will act on. ``derive_freshness`` (scripts/lib/watch_canonical_quote.py) is
 #: the existing, session-aware authority: RTH is tight, premarket/afterhours have their own windows, a closed
 #: market holds the last print for a bounded time. Anything else — including a snapshot with NO fetch time — is
@@ -839,8 +919,10 @@ def _dispatch_gate(case: Mapping[str, Any], snapshot: Mapping[str, Any] | None, 
     """The last check before piece C: (send, reason, settle_pending).
 
     Applied to RETRIES as well as new transitions (F3 on #2557). An operator-held case never pages and its
-    obligation is settled; a non-pageable state settles a stale obligation; a quote that is not current does
-    not page and KEEPS the obligation, so it survives honestly until a usable quote exists.
+    obligation is settled; a non-pageable state settles a stale obligation; a quote that is not current, or
+    whose close is not a usable price, does not page and KEEPS the obligation, so it survives honestly until a
+    usable quote exists. ``evaluate()`` already refuses such a close; without the same test here a pending
+    retry paged on ``inf``/NaN/zero/missing data and cleared the obligation (cx-cloud CX2 on #2557).
     """
     operator_decision = str(case.get("operator_decision") or "none").strip().lower()
     if decision.state in OPERATOR_STATES or operator_decision in OPERATOR_DECISION_STATES:
@@ -852,7 +934,82 @@ def _dispatch_gate(case: Mapping[str, Any], snapshot: Mapping[str, Any] | None, 
         suffix = f", {session}" if session else ""
         return False, (f"quote not current ({freshness}{suffix}); retry responsibility retained until a usable "
                        "quote exists"), False
+    quote_problem = _quote_problem(snapshot)
+    if quote_problem:
+        return False, (f"market input unavailable ({quote_problem}); retry responsibility retained until a usable "
+                       "price supports evaluation"), False
     return True, "", False
+
+
+def _as_case_dict(row) -> dict | None:
+    """One store row as a plain dict, or None when it cannot be read as one."""
+    if row is None:
+        return None
+    if hasattr(row, "to_dict"):
+        try:
+            row = row.to_dict()
+        except Exception:  # noqa: BLE001 — an unreadable row is reported as unreadable, never guessed
+            return None
+    try:
+        return dict(row)
+    except (TypeError, ValueError):
+        return None
+
+
+def _reread_durable(store, case: Mapping[str, Any], *, limit: int = 200) -> tuple[dict | None, str | None]:
+    """Re-read this case's DURABLE row at dispatch time: ``(row, None)`` or ``(None, problem)``.
+
+    The row the pass listed is a detached object; an operator decision taken after ``list()`` never reaches it.
+    ``evaluate()`` already refuses a held case, but a retry of an unchanged RECOVERING case runs no
+    compare-and-set, so the held row was paged from the stale copy (cx-cloud CX3 on #2557). A store getter is
+    preferred; otherwise the pass's own listing is re-read. ``(None, None)`` means the store no longer carries
+    the case at all — an open-only listing omits a closed/snoozed row, and either way there is nothing to page.
+
+    ``(None, reason)`` means the row could not be re-read: the caller must not page and must KEEP the retry
+    responsibility, so an unreadable store never silently drops a page.
+    """
+    key = str(case.get("case_key") or "").strip()
+    if not key:
+        return None, "the case carries no case_key, so its durable row cannot be re-read"
+    getter = getattr(store, "get", None)
+    if callable(getter):
+        try:
+            row = getter(key)
+        except TypeError:
+            pass  # a getter this module cannot call: fall through to the listing the pass itself used
+        except Exception as exc:  # noqa: BLE001 — reported as unreadable, never as "no row"
+            return None, f"{type(exc).__name__}: {exc}"
+        else:
+            return _as_case_dict(row), None
+    try:
+        if hasattr(store, "list_open"):
+            rows = store.list_open(limit=limit)
+        else:
+            rows = store.list()
+    except Exception as exc:  # noqa: BLE001
+        return None, f"{type(exc).__name__}: {exc}"
+    for row in rows or []:
+        current = _as_case_dict(row)
+        if current is not None and str(current.get("case_key") or "") == key:
+            return current, None
+    return None, None
+
+
+def _durable_moved(case: Mapping[str, Any], durable: Mapping[str, Any], decision: Decision,
+                   state_written: bool) -> bool:
+    """Did the row move between the listing and dispatch, beyond the state this pass itself wrote?
+
+    Only the state and the operator decision can invalidate a page; a version/residual/plan change cannot.
+    When this pass's compare-and-set applied, its own new state is the expected one.
+    """
+    expected_state = str(decision.state).upper() if state_written else str(case.get("state") or STOPPED_OUT).upper()
+    if str(durable.get("state") or STOPPED_OUT).upper() != expected_state:
+        return True
+
+    def _operator_decision(row: Mapping[str, Any]) -> str:
+        return str(row.get("operator_decision") or "none").strip().lower()
+
+    return _operator_decision(durable) != _operator_decision(case)
 
 
 def _drop_pending(key: str, pending_path, row: dict, pending: dict) -> None:
@@ -884,7 +1041,8 @@ def run_pass(store, snapshot_for, *, policy: Mapping[str, Any] | None = None,
        write makes the transition invisible. If it cannot be persisted, the state is not advanced, so the
        transition stays visible and the next pass tries again.
     2. **Compare-and-set the state** against the row this pass read. A miss changes nothing and pages nothing.
-    3. **Revalidate at dispatch** — operator decision and quote freshness — for retries as well as transitions.
+    3. **Revalidate at dispatch** — re-read the DURABLE row, then check operator decision, quote freshness and
+       the usability of the close — for retries as well as transitions.
     4. **Send, then clear** the obligation on confirmed delivery; a failure keeps it for the next pass.
     """
     if store is None:
@@ -924,6 +1082,7 @@ def run_pass(store, snapshot_for, *, policy: Mapping[str, Any] | None = None,
         wants_page = bool(decision.changed and decision.state in tuple(notify_states))
         retrying = key in pending
         write_ok = True
+        state_written = False
 
         # (1) Retry responsibility is durable BEFORE the state change can hide the transition.
         responsibility_ok = True
@@ -952,6 +1111,7 @@ def run_pass(store, snapshot_for, *, policy: Mapping[str, Any] | None = None,
                 applied, status, refusal = _cas_write(store, case, decision, now)
                 if applied:
                     changed += 1
+                    state_written = True
                 else:
                     write_ok = False
                     row["write_error"] = refusal or status
@@ -968,7 +1128,32 @@ def run_pass(store, snapshot_for, *, policy: Mapping[str, Any] | None = None,
             row["notify"] = {"sent": False, "reason": f"state write did not apply ({row.get('write_error')}); "
                                                       "not notifying"}
             continue
-        send, gate_reason, settle = _dispatch_gate(case, snapshot, decision, now, tuple(notify_states))
+        # (3) Re-read the DURABLE row: the gate must judge the operator's current decision, not the detached
+        # case this pass listed. An unreadable store keeps the obligation; a row that moved for any reason this
+        # pass did not itself write defers to the next pass rather than paging a stale decision.
+        durable, reread_problem = _reread_durable(store, case, limit=limit)
+        if reread_problem:
+            if key in pending:
+                row["notify_pending"] = True
+            row["notify"] = {"sent": False,
+                             "reason": f"durable case could not be re-read ({reread_problem}); no page and the "
+                                       "retry responsibility is retained"}
+            continue
+        if durable is None:
+            # The store no longer carries this case (a closed/snoozed row drops out of an open-only listing):
+            # there is nothing left to page, so the obligation settles here.
+            if not dry_run:
+                _drop_pending(key, pending_path, row, pending)
+            row["notify"] = {"sent": False,
+                             "reason": "the case is no longer in the durable store; pending obligation settled"}
+            continue
+        send, gate_reason, settle = _dispatch_gate(durable, snapshot, decision, now, tuple(notify_states))
+        if send and _durable_moved(case, durable, decision, state_written):
+            send = False
+            settle = False
+            gate_reason = ("the durable row changed after this pass listed it (state or operator decision); "
+                           "nothing dispatched and the retry responsibility is retained, so the next pass "
+                           "evaluates the current row")
         if not send:
             if settle and not dry_run:
                 _drop_pending(key, pending_path, row, pending)
@@ -985,7 +1170,7 @@ def run_pass(store, snapshot_for, *, policy: Mapping[str, Any] | None = None,
             row["notify"] = {"sent": False, "reason": "notifier unavailable (piece C absent); retry "
                                                       "responsibility retained"}
             continue
-        handoff = {**case, "state": decision.state,
+        handoff = {**case, **durable, "state": decision.state,
                    "confidence": round(decision.confidence, 4),
                    "next_trigger": decision.next_trigger,
                    "price": (snapshot or {}).get("close"),
