@@ -20,7 +20,7 @@ SCHEMA = "AuthoritativeStoreGuard@v1"
 STATUS_OK = "OK"
 STATUS_STALE = "STALE"
 STATUS_UNAVAILABLE = "UNAVAILABLE"
-MAX_AGE_HOURS = 36.0
+MAX_AGE_HOURS = 26.0  # consumer surfaces historically treated >26h as stale; do not loosen
 FUTURE_TOLERANCE = timedelta(minutes=5)
 REMEDIATION = "/ops#holdings-recovery"
 

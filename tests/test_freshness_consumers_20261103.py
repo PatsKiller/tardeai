@@ -172,6 +172,22 @@ def test_a_recent_clock_cannot_upgrade_a_guarded_status(state_dir, monkeypatch):
     assert computed["status"] == "UNAVAILABLE"
 
 
+
+def test_thirty_hour_clock_is_stale_not_fresh(state_dir):
+    """Regression for the 36h loosening: a 30h-old pipeline was FRESH under the widened guard.
+
+    Surfaces historically computed stale from age >26h. Republishing the write-time 'fresh'
+    whenever the store guard passed, with MAX_AGE_HOURS=36, made GET /api/freshness and the
+    analysis prompt both silent about a 30h-old book (claude-lead BLOCK @ 498c31821).
+    """
+    _write_store(state_dir, {"holdings": [HEALTHY_ROW]}, completed_at=NOW - timedelta(hours=30))
+    _code, payload = portfolio_server.freshness_payload(state_dir)
+    assert payload["status"] == "STALE" or payload["status"].lower() == "stale", payload
+    assert payload["age_hours"] is not None and payload["age_hours"] > 26
+    warning = portfolio_ai_analyst._freshness_warning_for(state_dir)
+    assert "STALENESS WARNING" in warning
+
+
 def test_analyst_staleness_warning_fails_closed(state_dir):
     _write_store(state_dir, b"", holdings_hash_value="94f18d5b8ced")
     warning = portfolio_ai_analyst._freshness_warning_for(state_dir)
