@@ -54,7 +54,8 @@ systemd_state() {
 }
 
 # Evidence before any kill (n8nmat reliability 2026-10-09): every SIGKILL since 10-05
-# landed on a process at its MemoryHigh (1.5G peak in the systemd "Consumed" line),
+# landed on a process at its MemoryHigh (peak in the systemd "Consumed" line; the cap was 1.5G then and is
+# 2.5G since the operator raised it on 2026-11-04 — read the live value, not this comment),
 # where the kernel throttles reclaim and the whole process stalls. Record the cgroup
 # memory state so the next kill says whether that is what froze it.
 cgroup_evidence() {
