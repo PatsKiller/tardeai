@@ -27,7 +27,13 @@ check(!/is complete to review/i.test(stateScopeTitle('SOMETHING_ELSE')) && /not 
 
 check(decisionWords('GO', 'PROPOSAL') === 'GO · advisory', 'GO does not say it is advisory')
 check(decisionWords('WAIT', 'PROPOSAL') === 'WAIT · advisory', 'WAIT does not say it is advisory')
-check(/advisory/.test(decisionWords(null, 'DRAFT')), 'DECISION PENDING does not say it is advisory')
+// cc-deepseek-8 F1 (2026-11-05): the producer's vocabulary is GO/WAIT/AVOID (scripts/api_v2.py:10925).
+// AVOID was swallowed and rendered "DECISION PENDING", so a decided row read as undecided - the exact
+// inversion of what this PR exists to prevent. One assertion per branch so the three cannot collapse.
+check(decisionWords('AVOID', 'scalp') === 'AVOID · advisory', 'a decided AVOID scalp row reads as undecided')
+check(decisionWords('AVOID', 'WATCHLIST') === 'AVOID · advisory', 'a recorded AVOID on a watchlist row loses its decision word')
+check(decisionWords(null, 'scalp') === 'DECISION NOT RECORDED', 'an absent decision does not say the decision is unrecorded')
+check(decisionWords(null, 'scalp') !== decisionWords('AVOID', 'scalp'), 'an absent decision is indistinguishable from a recorded AVOID')
 check(decisionWords(null, 'WATCHLIST') === 'WATCHLIST ADVISORY', 'the watchlist advisory label changed')
 
 const row = readFileSync(join(HERE, '../components/EntryDeskRow.tsx'), 'utf8')

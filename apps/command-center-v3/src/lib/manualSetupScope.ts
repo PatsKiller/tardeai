@@ -33,10 +33,16 @@ export function stateScopeTitle(state: string | null | undefined): string {
 }
 
 export function decisionWords(decision: string | null | undefined, source: string | null | undefined): string {
-  const d = String(decision ?? '').toUpperCase()
+  const d = String(decision ?? '').trim().toUpperCase()
   const advisory = ' · advisory'
-  if (d === 'GO' || d === 'WAIT') return d + advisory
-  return String(source || '').toUpperCase() === 'WATCHLIST' ? 'WATCHLIST ADVISORY' : 'DECISION PENDING' + advisory
+  // cc-deepseek-8 F1 (2026-11-05): ANY recorded decision renders as its own word. The producer emits
+  // GO/WAIT/AVOID (scripts/api_v2.py:10925); recognising only GO/WAIT turned a decided AVOID row into
+  // "DECISION PENDING", which told the operator the opposite of what the engine decided. Keeping the
+  // branch generic means a later word cannot be swallowed the same way.
+  if (d) return d + advisory
+  // Only a genuinely absent decision is "not recorded". A watchlist row with no decision keeps its own
+  // source label instead of claiming a decision is pending; the two used to render identically.
+  return String(source || '').trim().toUpperCase() === 'WATCHLIST' ? 'WATCHLIST ADVISORY' : 'DECISION NOT RECORDED'
 }
 
 /** FQ-044: the TECH badge is a technical grade, never a decision; say so where the eye lands. */
