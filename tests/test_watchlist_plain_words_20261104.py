@@ -2,8 +2,10 @@
 
 Registered as the CI gate's file, so the shard runner (pytest) executes it. It does not grep the page source:
 it **runs** ``apps/command-center-v3/src/lib/watchlistPlainWords.view.test.mjs``, which renders the real
-``WatchlistIntelligenceBoard`` through React server rendering with a fixture payload and asserts the words the row
-actually prints.
+``WatchIntelligenceUnified`` page — the surface ``/watchlist`` redirects to — through React server rendering with a
+fixture payload and asserts the words the row actually prints. It also enforces that the retired
+``WatchlistIntelligenceBoard`` shadow page is imported by nothing, so the fix cannot be mistaken for one that
+landed in a file no route renders.
 
 Why the change (codex P2605-R1 on #2605): the first version of this file searched the source for helper names and
 map literals. Two deliberately broken copies of the component — the JSX call replaced by the raw code, and the

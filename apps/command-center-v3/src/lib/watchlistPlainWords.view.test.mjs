@@ -12,6 +12,16 @@ import { createRequire } from 'node:module'
 import { join, dirname, resolve } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
+// Server rendering emits one `useLayoutEffect does nothing on the server` warning per component, and each
+// stack line embeds a multi-megabyte `data:` module URL: rendering this page unfiltered wrote 2.7 MB to
+// stderr per run, and this file is in the build line. The three sibling page-render tests drop exactly this
+// warning (retirement.metric documents the same fix); everything else still prints.
+const __origConsoleError = console.error
+console.error = (...args) => {
+  if (String(args[0] ?? '').includes('useLayoutEffect does nothing on the server')) return
+  __origConsoleError(...args)
+}
+
 const app = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const require = createRequire(join(app, 'package.json'))
 const ts = require('typescript')
@@ -91,6 +101,31 @@ const text = html.replace(/<[^>]+>/g, ' ').replace(/&#x27;/g, "'").replace(/\s+/
 
 const failures = []
 const ok = (c, m) => { if (!c) failures.push(m) }
+
+// 0. the retirement is ENFORCED, not just stated. `WatchlistIntelligenceBoard.tsx` is a shadow page that
+// nothing mounts, and /watchlist redirects to the unified Watch surface. A comment saying so would be the
+// same defect one level down — so if anyone mounts it again, this fails and they have to make the decision
+// deliberately (and move these assertions with the plain words).
+function sourceFiles(dir) {
+  const out = []
+  for (const name of require('node:fs').readdirSync(dir)) {
+    const p = join(dir, name)
+    const st = require('node:fs').statSync(p)
+    if (st.isDirectory()) out.push(...sourceFiles(p))
+    else if (/\.(ts|tsx|mjs|js)$/.test(name) && !/\.test\.|\.spec\./.test(name)) out.push(p)
+  }
+  return out
+}
+const srcRoot = join(app, 'src')
+const importers = sourceFiles(srcRoot)
+  .filter(p => !p.endsWith('WatchlistIntelligenceBoard.tsx'))
+  .filter(p => /WatchlistIntelligenceBoard/.test(readFileSync(p, 'utf8')))
+ok(importers.length === 0,
+  `WatchlistIntelligenceBoard is imported by ${importers.length} non-test file(s): ${importers.map(p => p.slice(app.length + 1)).join(', ')} — `
+  + 'if it is being mounted again, move the FQ-075 plain-word assertions onto the new surface and update this guard deliberately')
+const appSrc = readFileSync(join(srcRoot, 'App.tsx'), 'utf8')
+ok(/<Route path="watchlist"[\s\S]{0,220}Navigate to="\/watch\?tab=intelligence/.test(appSrc),
+  '/watchlist no longer redirects to /watch?tab=intelligence — the live surface this gate renders may have moved')
 
 // 1. the words the live /watchlist page must print — literal expectations, not the helper's own output
 ok(text.includes('not scheduled'), 'a known code (NOT_SCHEDULED) did not render as "not scheduled"')
