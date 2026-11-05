@@ -592,7 +592,13 @@ def stance_from_queue_item(item: Optional[dict[str, Any]]) -> str:
     # ("Advisory EXIT — …") silently outranked an explicit ADD — free text deciding a position.
     if from_verdict is not None:
         return from_verdict
-    return merge_stances(from_state, from_label)
+    # FQ-103 R1 (cc-deepseek-6 at 8b7da7bee): with no recorded verdict, the desk STATE is consulted before the label,
+    # which is the order this docstring states. Merging the two through `merge_stances` let the stronger word win, so a
+    # label reading "Advisory EXIT" turned a READY TO REVIEW desk into EXIT — free text deciding a position one level
+    # below the verdict guard. The label now speaks only when the desk state says nothing.
+    if from_state is not None:
+        return from_state
+    return from_label or STANCE_HOLD
 
 
 def stance_for_symbol(symbol: str, queue: Optional[dict[str, Any]]) -> str:

@@ -214,3 +214,24 @@ def test_placeholder_verdicts_are_not_verdicts():
         assert stance_from_queue_item(
             {"symbol": "SCHD", "verdict": blank, "directive_label": "Advisory TRIM — SCHD"}
         ) == "TRIM", blank
+
+
+def test_a_desk_state_outranks_prose_when_no_verdict_is_recorded():
+    """cc-deepseek-6 at 8b7da7bee: the docstring's order is verdict > state > label, and the code obeyed only the first.
+
+    With no recorded verdict the two lower inputs went through `merge_stances`, which keeps the STRONGER stance — so a
+    label reading "Advisory EXIT" turned a READY TO REVIEW desk into EXIT. Free text deciding a position is exactly
+    what FQ-103 exists to stop, one level below the verdict guard.
+    """
+    from scripts.lib.cio_decision_semantics import stance_from_queue_item
+
+    for state in ("READY TO REVIEW", "NEAR ENTRY", "OVERSOLD REVIEW"):
+        assert stance_from_queue_item({"symbol": "ADBE", "state": state,
+                                       "directive_label": "Advisory EXIT — ADBE"}) == "REVIEW", state
+        assert stance_from_queue_item({"symbol": "ADBE", "state": state,
+                                       "directive_label": "Exit now"}) == "REVIEW", state
+    # The label still speaks when the desk state says nothing at all — prose is the last resort, not a banned input.
+    assert stance_from_queue_item({"symbol": "ADBE", "directive_label": "Advisory EXIT — ADBE"}) == "EXIT"
+    # And a recorded verdict is untouched by any of this.
+    assert stance_from_queue_item({"symbol": "ADBE", "verdict": "ADD",
+                                   "state": "READY TO REVIEW", "directive_label": "Advisory EXIT"}) == "ADD"
