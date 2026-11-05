@@ -182,6 +182,36 @@ def test_a_grouped_row_marks_only_the_value_the_surface_actually_printed():
     assert not {"support_1", "resistance_1", "resistance_2", "sma_20", "sma_200"} & gaps, got
 
 
+def test_a_label_suffix_is_not_a_value_and_a_missing_grouped_value_is_a_gap():
+    """Triage on #2648 at c5af7039a: "RSI (14) —" and "Support 1 / 2 — / …" were graded complete.
+
+    The label's own parenthetical suffix must be consumed as part of the label before the value is judged, and a
+    grouped row is decided by the value in each POSITION: the loose per-field alias must not mark the whole row
+    present when the first position says "—".
+    """
+    from site_audit.completeness import assess_detail_text
+
+    text = "\n".join([
+        "NVDA", "Current price $248.85", "RSI (14) —", "MACD 1.1", "Trend Bullish",
+        "Support 1 / 2 — / $232.00",
+        "Resistance 1 / 2 — / $260.00",
+        "20 / 50 / 200-day $245.00 / $238.00 / $210.00",
+        "CIO thesis Hold until margins improve", "As of 2026-11-04",
+    ])
+    got = assess_detail_text(text)
+    gaps = {g["field"] for g in got["gaps"]}
+    assert {"rsi", "support_1", "resistance_1"} <= gaps, got
+    assert not {"support_2", "resistance_2", "sma_20", "sma_50", "sma_200"} & gaps, got
+    assert got["severity"] is not None, got
+
+    # The same shapes WITH values are still evidence: the parenthetical and the grouped positions are labels, not values.
+    good = assess_detail_text(
+        text.replace("RSI (14) —", "RSI (14) 54.2")
+            .replace("Support 1 / 2 —", "Support 1 / 2 $240.00")
+            .replace("Resistance 1 / 2 —", "Resistance 1 / 2 $252.00"))
+    assert good["severity"] is None and good["gaps"] == [], good
+
+
 def test_a_detail_that_is_not_a_symbol_card_is_not_graded():
     """A proposal/options detail must not become a "missing technicals" finding."""
     from site_audit.completeness import assess_detail_text

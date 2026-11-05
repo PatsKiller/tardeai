@@ -59,9 +59,14 @@ _AS_OF = re.compile(r"\b(?:as[_ ]of|dated)\b", re.I)
 
 
 def _label_present(text: str, labels: Iterable[str]) -> bool:
-    """The label appears with a value beside it (same line, or the line below a label-only cell)."""
+    """The label appears with a value beside it (same line, or the line below a label-only cell).
+
+    The `(… )` suffix the product prints as part of a label — `RSI (14)` — is consumed WITH the label. Leaving it
+    after the match made `(14)` look like the value, so `RSI (14) —` was graded present (triage at c5af7039a).
+    """
     for label in labels:
-        m = re.search(rf"(?<![A-Za-z0-9]){re.escape(label)}(?![A-Za-z0-9])", text, re.I)
+        m = re.search(rf"(?<![A-Za-z0-9]){re.escape(label)}(?:\s*\([^)\n]{{0,24}}\))?(?![A-Za-z0-9])",
+                      text, re.I)
         if not m:
             continue
         rest = text[m.end():]
@@ -104,11 +109,19 @@ def detail_text_to_card(text: str) -> dict[str, Any]:
     """
     body = str(text or "")
     card: dict[str, Any] = {}
-    for name, labels in FIELD_LABELS.items():
-        if _label_present(body, labels):
-            card[name] = "present"
+    #: A grouped row is a LABEL with several value positions. Its fields are decided only by the positional parser:
+    #: the loose per-field alias ("support 1") would otherwise match the label and read the "/ 2" as a value, so
+    #: `Support 1 / 2 — / $232` was graded complete (triage at c5af7039a).
+    grouped: set[str] = set()
     for pattern, names in GROUPED_FIELDS:
-        for name in _grouped_present(body, pattern, names):
+        if pattern.search(body):
+            grouped.update(names)
+            for name in _grouped_present(body, pattern, names):
+                card[name] = "present"
+    for name, labels in FIELD_LABELS.items():
+        if name in grouped:
+            continue
+        if _label_present(body, labels):
             card[name] = "present"
     if _CIO.search(body):
         card["cio_stance"] = "present"
