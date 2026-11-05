@@ -146,6 +146,42 @@ def test_a_value_the_surface_marks_absent_is_a_gap_not_evidence():
     assert "macd" not in fields, got
 
 
+def test_the_grouped_technical_rows_the_product_renders_are_parsed():
+    """cx-cloud CX7 on #2648: OpportunityModal prints three fields in one row, and the parser saw only the first."""
+    from site_audit.completeness import assess_detail_text
+
+    text = "\n".join([
+        "NVDA", "Current price $248.85", "RSI (14) 54.2", "MACD 1.1 · hist up", "Trend Bullish",
+        "Support 1 / 2 $240.00 / $232.00",
+        "Resistance 1 / 2 $252.00 / $260.00",
+        "20 / 50 / 200-day $245.00 / $238.00 / $210.00",
+        "CIO thesis Hold until margins improve", "As of 2026-11-04",
+    ])
+    got = assess_detail_text(text)
+    assert got["evaluated"] is True, got
+    assert got["severity"] is None, got
+    for name in ("support_1", "support_2", "resistance_1", "resistance_2",
+                 "sma_20", "sma_50", "sma_200"):
+        assert got["card"].get(name) == "present", (name, got["card"])
+
+
+def test_a_grouped_row_marks_only_the_value_the_surface_actually_printed():
+    """A slash-separated "—" is that one field's gap, not evidence for the whole row."""
+    from site_audit.completeness import assess_detail_text
+
+    text = "\n".join([
+        "NVDA", "Current price $248.85", "RSI (14) 54.2", "MACD 1.1", "Trend Bullish",
+        "Support 1 / 2 $240.00 / —",
+        "Resistance 1 / 2 $252.00 / $260.00",
+        "20 / 50 / 200-day $245.00 / — / $210.00",
+        "CIO thesis Hold until margins improve", "As of 2026-11-04",
+    ])
+    got = assess_detail_text(text)
+    gaps = {g["field"] for g in got["gaps"]}
+    assert {"support_2", "sma_50"} <= gaps, got
+    assert not {"support_1", "resistance_1", "resistance_2", "sma_20", "sma_200"} & gaps, got
+
+
 def test_a_detail_that_is_not_a_symbol_card_is_not_graded():
     """A proposal/options detail must not become a "missing technicals" finding."""
     from site_audit.completeness import assess_detail_text

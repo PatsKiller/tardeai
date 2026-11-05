@@ -37,6 +37,17 @@ FIELD_LABELS: dict[str, tuple[str, ...]] = {
     "trend": ("trend",),
 }
 
+#: Some product surfaces put several fields in ONE row, with the values slash-separated. `OpportunityModal` renders
+#: ``Support 1 / 2   $12.00 / $11.00``, ``Resistance 1 / 2   …`` and ``20 / 50 / 200-day   $… / $… / $…``.
+#: The per-field aliases above can only see the first value in such a row, so the second and third are parsed by
+#: position here. cx-cloud CX7 on #2648: a healthy opportunity detail was graded P1 because four fields the page
+#: did print were invisible to the parser.
+GROUPED_FIELDS: tuple[tuple[re.Pattern[str], tuple[str, ...]], ...] = (
+    (re.compile(r"support\s+1\s*/\s*2\b", re.I), ("support_1", "support_2")),
+    (re.compile(r"resistance\s+1\s*/\s*2\b", re.I), ("resistance_1", "resistance_2")),
+    (re.compile(r"20\s*/\s*50\s*/\s*200\s*-?\s*day\b", re.I), ("sma_20", "sma_50", "sma_200")),
+)
+
 #: A value the surface itself says is absent. A bare "-" is NOT here: MACD's value is often negative.
 _ABSENT = re.compile(
     r"^\s*(?:[:=·]\s*)?(?:—|–|n/?a\b|none\b|unknown\b|unavailable\b|not available\b|not served\b|"
@@ -64,6 +75,24 @@ def _label_present(text: str, labels: Iterable[str]) -> bool:
     return False
 
 
+def _grouped_present(text: str, pattern: re.Pattern[str], names: tuple[str, ...]) -> Iterable[str]:
+    """The fields of one grouped row whose OWN value is printed (not "—" / "n/a").
+
+    `Row` renders its label and value side by side, so Playwright's `inner_text` usually keeps them on one line:
+    ``Support 1 / 2   $12.00 / $11.00``. A block layout that puts the value on the following line is accepted too.
+    """
+    for m in pattern.finditer(text):
+        rest = text[m.end():]
+        line, _, tail = rest.partition("\n")
+        candidate = line.strip() or tail.split("\n", 1)[0].strip()
+        values = [part.strip() for part in candidate.split("/")]
+        if len(values) < len(names):
+            continue  # not the row shape this parser knows; the per-field aliases still apply
+        for name, value in zip(names, values):
+            if value and not _ABSENT.match(value):
+                yield name
+
+
 def detail_text_to_card(text: str) -> dict[str, Any]:
     """A card dict parsed from the rendered text of an opened detail.
 
@@ -77,6 +106,9 @@ def detail_text_to_card(text: str) -> dict[str, Any]:
     card: dict[str, Any] = {}
     for name, labels in FIELD_LABELS.items():
         if _label_present(body, labels):
+            card[name] = "present"
+    for pattern, names in GROUPED_FIELDS:
+        for name in _grouped_present(body, pattern, names):
             card[name] = "present"
     if _CIO.search(body):
         card["cio_stance"] = "present"

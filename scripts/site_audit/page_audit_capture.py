@@ -156,6 +156,16 @@ def server_healthy(base: str, wait_s: int = 300) -> bool:
     return False
 
 
+def note_http_status(sweep: dict | None, *, status, url: str = "") -> str | None:
+    """The one 5xx rule for navigation and API responses (AGENTS §28.8: stop at the first 5xx).
+
+    Both the response handler and the page's own navigation feed this, so a 503 is an abort wherever it is seen —
+    not just in the link follower. The first reason wins and `main()` checks it after every page.
+    """
+    from site_audit.deep_crawl import note_sweep_status
+    return note_sweep_status(sweep, status=status, url=url)
+
+
 def deep_counters(detail: dict, indices: list[int]) -> dict:
     """The row's deep-crawl facts, counted against the SHARED outcome constant.
 
@@ -174,8 +184,10 @@ def deep_counters(detail: dict, indices: list[int]) -> dict:
     }
 
 
-def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: list[str], *, deep: bool = True) -> dict:
+def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: list[str], *,
+            deep: bool = True, sweep: dict | None = None) -> dict:
     api, failed, console = [], [], []
+    sweep = sweep if sweep is not None else {}
     starts = {}
     page.on("request", lambda r: starts.__setitem__(r, time.time()) if "/api/" in r.url else None)
     def on_resp(resp):
@@ -185,6 +197,8 @@ def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: l
                         "ms": round((time.time() - t0) * 1000) if t0 else None})
         if resp.status >= 400:
             failed.append({"url": resp.url.split("7777")[-1][:160], "status": resp.status})
+        # cx-cloud CX5 on #2648: an API 5xx is the §28.8 stop condition too, not just a failed-request row.
+        note_http_status(sweep, status=resp.status, url=resp.url)
     page.on("response", on_resp)
     page.on("requestfailed", lambda r: failed.append({"url": r.url.split("7777")[-1][:160], "status": "failed", "error": (r.failure or "")[:80]}))
     page.on("console", lambda m: console.append(m.text[:200]) if m.type == "error" else None)
@@ -209,13 +223,15 @@ def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: l
         every tab that was screenshotted; a phone capture, which never switches tabs, still crawls its route once.
         """
         from site_audit import deep_crawl, detail_budget, lane
+        if sweep.get("abort"):
+            return  # cx-cloud CX5 on #2648: a 5xx already stopped this sweep; open nothing else
         openers = deep_crawl._discover_openers(page)
         # cx-openai-4 R4 on #2648: the ISO week was the sampling step, so all five runs of a week re-opened the same
         # twenty rows and a long table's remaining rows were never reached. The step is the scheduled RUN.
         run_index = lane.run_slot(datetime.now(timezone.utc))
         indices = detail_budget.selected_indices(len(openers), page=route, run_index=run_index)
         detail = deep_crawl.capture_page(page, route=route, page_url=base + route, indices=indices,
-                                         out_dir=d, openers=openers, prefix=prefix)
+                                         out_dir=d, openers=openers, prefix=prefix, sweep=sweep)
         assert_leaf_inside_root(d / f"{prefix}details.json", out).write_text(json.dumps(detail, indent=1))
         holder.update(deep_counters(detail, indices))
         deep_runs.append((detail, indices))
@@ -224,6 +240,7 @@ def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: l
     t0 = time.time()
     try:
         resp = page.goto(base + route, wait_until="domcontentloaded", timeout=45000)
+        note_http_status(sweep, status=getattr(resp, "status", None), url=base + route)
         try:
             page.wait_for_load_state("networkidle", timeout=20000)
         except Exception:
@@ -242,7 +259,8 @@ def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: l
                                if w in low})
         row["h_scroll"] = page.evaluate("document.documentElement.scrollWidth > window.innerWidth + 1")
         page.screenshot(path=str(assert_leaf_inside_root(d / f"{vp}.png", out)), full_page=True)
-        if vp == "desktop":
+        if vp == "desktop" and not sweep.get("abort"):
+            # cx-cloud CX5 on #2648: a 5xx already stopped the sweep; do not click tabs (more load) on that server.
             for tab in tabs:
                 if ACTION_WORDS.search(tab):
                     continue
@@ -281,12 +299,14 @@ def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: l
     # cx-cloud CX6 on #2648: desktop tabs are crawled inside the loop above. A viewport that ran no tab crawl
     # (phone, or a route with no hub tabs) crawls the route once, exactly as before.
     if deep:
-        if not deep_runs:
+        if not deep_runs and not sweep.get("abort"):
             _deep_into(row, f"{vp}-")
         merged = {"details": [d for det, _ in deep_runs for d in det.get("details") or []],
                   "refused": [r for det, _ in deep_runs for r in det.get("refused") or []],
                   "links": [l for det, _ in deep_runs for l in det.get("links") or []]}
         row.update(deep_counters(merged, [i for _, idx in deep_runs for i in idx]))
+    if sweep.get("abort"):
+        row["sweep_abort"] = sweep["abort"]
     assert_leaf_inside_root(d / f"{vp}.json", out).write_text(json.dumps(row, indent=1))
     return row
 
@@ -316,15 +336,18 @@ LATEST_SCHEMA = "PageAuditCaptureLatest@v1"
 LATEST_NAME = "page-audit-latest.json"
 
 
-def build_summary(rows: list[dict], *, stamp: str, base: str, routes) -> dict:
+def build_summary(rows: list[dict], *, stamp: str, base: str, routes, completed: bool = True) -> dict:
     """One run's receipt: a row per page/viewport, plus the run's own timestamp.
 
     `generated_at` is the key the lane's output signal observes. `captured_at` is kept beside it because the
     receipts already written under PageAuditCapture@v1 carry that spelling; both name the same instant, so a reader
     keyed on either sees a finished run rather than a silent lane.
+
+    `completed` is False for an attempt that stopped early. The attempt still gets its own receipt, but it must not
+    advance the successful-run pointer (cx-cloud CX6 on #2648; AGENTS §28.9 defines health as the last successful run).
     """
     return {
-        "schema": SUMMARY_SCHEMA, "generated_at": stamp, "captured_at": stamp, "base": base,
+        "schema": SUMMARY_SCHEMA, "generated_at": stamp, "captured_at": stamp, "completed": completed, "base": base,
         "routes": len(routes), "rows": len(rows),
         "errors": sum(1 for r in rows if r.get("error")),
         "blank_suspects": sum(1 for r in rows if r.get("blank_suspect")),
@@ -338,11 +361,17 @@ def build_summary(rows: list[dict], *, stamp: str, base: str, routes) -> dict:
     }
 
 
-def write_receipts(out: Path, rows: list[dict], *, stamp: str, base: str, routes) -> dict:
-    """Write the run's `index.json` and the pointer the lane is observed through. Returns the summary.
+def write_receipts(out: Path, rows: list[dict], *, stamp: str, base: str, routes,
+                   completed: bool = True) -> dict:
+    """Write the run's `index.json` and, only on a completed sweep, the pointer the lane is observed through.
 
     Both writes go through the R2 leaf guard, and the pointer is a plain leaf beside the dated capture
     directories — never a symlink, never inside the checkout.
+
+    cx-cloud CX6 on #2648: the pointer used to be written by EVERY attempt, including one aborted at the first
+    health gate, so `generated_at` stayed fresh while full-site coverage stopped. The attempt keeps its own dated
+    receipt and `index.json`; only a sweep that reached the end advances the successful-run pointer. An aborted run
+    therefore leaves the previous good pointer untouched (or absent, if there has never been a good run).
 
     Measured on this head before the change: `main()` referenced `assert_leaf_inside_root` without importing it in
     its own scope (the only import lived inside `capture()`), so a completed crawl raised NameError here and wrote
@@ -350,12 +379,13 @@ def write_receipts(out: Path, rows: list[dict], *, stamp: str, base: str, routes
     trusting the call site.
     """
     from site_audit.capture_root import assert_leaf_inside_root
-    summary = build_summary(rows, stamp=stamp, base=base, routes=routes)
+    summary = build_summary(rows, stamp=stamp, base=base, routes=routes, completed=completed)
     assert_leaf_inside_root(out / "index.json", out).write_text(json.dumps(summary, indent=1))
-    latest = {"schema": LATEST_SCHEMA, "generated_at": stamp, "capture_dir": out.name,
-              "rows": summary["rows"], "errors": summary["errors"],
-              "blank_suspects": summary["blank_suspects"]}
-    assert_leaf_inside_root(out.parent / LATEST_NAME, out.parent).write_text(json.dumps(latest, indent=1))
+    if completed:
+        latest = {"schema": LATEST_SCHEMA, "generated_at": stamp, "capture_dir": out.name, "completed": True,
+                  "rows": summary["rows"], "errors": summary["errors"],
+                  "blank_suspects": summary["blank_suspects"]}
+        assert_leaf_inside_root(out.parent / LATEST_NAME, out.parent).write_text(json.dumps(latest, indent=1))
     return summary
 
 
@@ -392,6 +422,8 @@ def main() -> int:
             routes = routes[: a.limit]
         print(f"{len(routes)} routes discovered", flush=True)
         aborted = False
+        #: Invocation-wide abort state: a 5xx anywhere (navigation or API response) stops the whole sweep.
+        sweep: dict = {}
         for vp, (w, h) in VIEWPORTS.items():
             ctx = browser.new_context(viewport={"width": w, "height": h},
                                       is_mobile=vp != "desktop", has_touch=vp != "desktop")
@@ -413,20 +445,28 @@ def main() -> int:
                     aborted = True
                     break
                 page = ctx.new_page()
-                r = capture(page, a.base, route, label, vp, out, HUB_TABS.get(route, []), deep=not a.no_deep)
+                r = capture(page, a.base, route, label, vp, out, HUB_TABS.get(route, []),
+                            deep=not a.no_deep, sweep=sweep)
                 page.close()
                 rows.append(r)
                 print(f"{vp:8} {route:40} {'ERR ' + r['error'][:60] if r.get('error') else ('BLANK? ' if r.get('blank_suspect') else 'ok')}"
                       f" fail={len(r.get('failed_requests', []))} console={len(r.get('console_errors', []))}", flush=True)
+                if sweep.get("abort"):
+                    # cx-cloud CX5 on #2648: AGENTS §28.8 says stop at the FIRST 5xx. A 503 on a linked
+                    # destination or an API call ends the invocation; nothing else is loaded.
+                    print(f"ABORT: {sweep['abort']}; stopping the sweep", flush=True)
+                    aborted = True
+                    break
                 time.sleep(effective_pause(a.pause))
             ctx.close()
             if aborted:
                 break
         browser.close()
-    summary = write_receipts(out, rows, stamp=stamp, base=a.base, routes=routes)
+    summary = write_receipts(out, rows, stamp=stamp, base=a.base, routes=routes, completed=not aborted)
     print(json.dumps({k: v for k, v in summary.items() if k != "index"}, indent=1))
     print(f"OUT {out}")
-    return 0
+    # An aborted sweep is not a successful run: exit non-zero so an n8n caller cannot read a green step (rule 8).
+    return 0 if not aborted else 1
 
 
 if __name__ == "__main__":

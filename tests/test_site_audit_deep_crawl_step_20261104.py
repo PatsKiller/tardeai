@@ -522,6 +522,56 @@ def test_a_slow_destination_is_waited_for_before_being_classified():
     assert page.waits >= 1, "the destination was judged before it rendered anything"
 
 
+# ── cx-cloud CX5 on #2648: stop at the FIRST 5xx (AGENTS §28.8) ────────────────────────────────────────────────
+class _FiveHundredLinkPage:
+    """Two crawlable links: the first answers 503, and the second must never be requested."""
+
+    def __init__(self):
+        self.gotos = []
+
+    def query_selector_all(self, sel):
+        if not sel.startswith("a"):
+            return []
+        return [_AnchorNode("/v3/broken", "Show details"),
+                _AnchorNode("/v3/after", "Show details")]
+
+    def goto(self, url, wait_until=None, timeout=None):
+        self.gotos.append(url)
+
+        class _Resp:
+            status = 503 if url.endswith("/v3/broken") else 200
+        return _Resp()
+
+    def inner_text(self, _sel):
+        return "destination content"
+
+
+def test_the_first_5xx_stops_the_sweep_and_suppresses_the_return_navigation():
+    """cx-cloud CX5 on #2648: a 503 is an abort, not a dead link to walk past."""
+    import site_audit.deep_crawl as dc
+
+    page = _FiveHundredLinkPage()
+    sweep: dict = {}
+    records = dc._follow_links(page, page_url=PAGE_URL, max_links=5, sweep=sweep)
+
+    assert [r.href for r in records] == ["/v3/broken"], records
+    assert records[0].status == 503
+    assert sweep.get("abort") and "503" in sweep["abort"], sweep
+    assert page.gotos == ["http://127.0.0.1:7777/v3/broken"], page.gotos
+
+
+def test_a_5xx_api_response_aborts_the_sweep_too():
+    """The capture response handler feeds the same rule: an API 5xx is a stop condition, not just a failed row."""
+    from site_audit.page_audit_capture import note_http_status
+
+    sweep: dict = {}
+    first = note_http_status(sweep, status=503, url="/api/v2/x")
+    assert first and sweep["abort"] == first
+    assert note_http_status(sweep, status=500, url="/api/v2/y") == first, "the first 5xx must win"
+    assert note_http_status(sweep, status=200, url="/api/v2/ok") is None
+    assert note_http_status({}, status=404, url="/api/v2/missing") is None
+
+
 # ── cx-cloud CX3 on #2648: native detail buttons are discovered, and still guarded at click time ────────────────
 class _NativeButton:
     def __init__(self, label):

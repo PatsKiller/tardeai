@@ -311,6 +311,14 @@ def test_R7_an_abort_stops_the_whole_sweep_not_just_one_route():
     assert "if aborted:" in loop and loop.count("break") >= 2, loop
 
 
+def test_CX6_an_aborted_sweep_does_not_advance_the_successful_run_pointer():
+    """cx-cloud CX6 on #2648: the receipt writer is told whether the sweep completed; main must pass that fact."""
+    src = (ROOT / "scripts/site_audit/page_audit_capture.py").read_text()
+    assert "completed=not aborted" in src, "main() advances the successful-run pointer after an aborted sweep"
+    assert "if completed:" in src, "write_receipts() writes the pointer unconditionally"
+    assert "return 0 if not aborted else 1" in src, "an aborted sweep still exits zero"
+
+
 # ── R3 (cx-openai-4): completeness must include the CIO clock, in the function that decides completeness ──────
 def _complete_card(**extra):
     """A card that satisfies every required symbol field, so only the CIO clock can make it incomplete."""

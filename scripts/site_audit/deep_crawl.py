@@ -28,6 +28,25 @@ IN_PAGE_LINK_WORDS = ("→", "open ", "view ", "details", "review ", "see ")
 OK, BLANK, NOT_PERMITTED, DEAD, ERROR = "ok", "blank", "not_permitted", "dead", "error"
 
 
+def note_sweep_status(sweep: dict[str, Any] | None, *, status: Any, url: str = "") -> str | None:
+    """Record a 5xx so the WHOLE sweep stops (AGENTS §28.8: "stop at the first 5xx").
+
+    `sweep` is a small dict shared by every page of one invocation. The first 5xx wins, and callers must check it
+    before the next navigation: a 503 means the server is struggling, so continuing to load it is exactly what the
+    boundary forbids. Returns the abort reason (also stored on `sweep`), or None when this is not a 5xx.
+    """
+    if sweep is None or status is None:
+        return None
+    try:
+        code = int(status)
+    except (TypeError, ValueError):
+        return None
+    if code < 500:
+        return None
+    sweep.setdefault("abort", f"HTTP {code} from {url or 'a navigation or API response'}")
+    return sweep["abort"]
+
+
 @dataclass
 class DetailRecord:
     opener: str
@@ -347,12 +366,15 @@ def crawl_plan(openers: Iterable[dict[str, Any]], indices: Iterable[int]) -> tup
 
 def capture_page(page: Any, *, route: str, page_url: str, indices: Iterable[int], out_dir: Any,
                  openers: Iterable[dict[str, Any]] | None = None, max_links: int = 40,
-                 prefix: str = "") -> dict[str, Any]:
+                 prefix: str = "", sweep: dict[str, Any] | None = None) -> dict[str, Any]:
     """Open the sampled details, then follow in-page links one level.
 
     `page` is a Playwright page. Opener discovery is passed in when the caller already has it (tests, or a component
     that knows its own rows); otherwise rows and cards carrying a button/role are collected from the document.
     `prefix` names this viewport's evidence files (several viewports share one page directory).
+
+    `sweep` is the invocation-wide abort state (see `note_sweep_status`). A 5xx observed by a link navigation, or by
+    the caller's API response handler, stops the remaining openers here and the remaining links in `_follow_links`.
     """
     items = list(openers) if openers is not None else _discover_openers(page)
     allowed, refused = crawl_plan(items, indices)
@@ -360,6 +382,8 @@ def capture_page(page: Any, *, route: str, page_url: str, indices: Iterable[int]
     #: Links snapshotted inside a detail while it was open, followed after it closes (cx-cloud CX2 on #2648).
     detail_links: list[tuple[str, str]] = []
     for ordinal, item in enumerate(allowed):
+        if sweep is not None and sweep.get("abort"):
+            break  # cx-cloud CX5 on #2648: do not keep opening details on a server that already returned 5xx
         rec = DetailRecord(opener=str(item.get("selector") or item.get("label") or ""), label=str(item.get("label") or ""), opened=False)
         try:
             locator = page.locator(str(item.get("selector") or ""))
@@ -422,9 +446,9 @@ def capture_page(page: Any, *, route: str, page_url: str, indices: Iterable[int]
             except Exception as exc:  # noqa: BLE001 — closing a detail is best-effort
                 _log.debug("Escape did not close the detail: %s", exc)
     return {"route": route, "details": [d.__dict__ for d in details],
-            "refused": refused,
+            "refused": refused, "aborted": (sweep or {}).get("abort"),
             "links": [l.__dict__ for l in _follow_links(page, page_url=page_url, max_links=max_links,
-                                                        extra_links=detail_links)]}
+                                                        extra_links=detail_links, sweep=sweep)]}
 
 
 def _discover_openers(page: Any) -> list[dict[str, Any]]:
@@ -492,7 +516,8 @@ def _bounded_body_text(page: Any, *, settle_ms: int = LINK_SETTLE_MS) -> str:
 
 
 def _follow_links(page: Any, *, page_url: str, max_links: int,
-                  extra_links: Iterable[tuple[str, str]] = ()) -> list[LinkRecord]:
+                  extra_links: Iterable[tuple[str, str]] = (),
+                  sweep: dict[str, Any] | None = None) -> list[LinkRecord]:
     records: list[LinkRecord] = []
     try:
         anchors = page.query_selector_all("a[href]")
@@ -528,6 +553,8 @@ def _follow_links(page: Any, *, page_url: str, max_links: int,
     for href, label in list(extra_links)[:40]:
         _add(href, str(label or ""))
     for href, full_label, label in snapshot:
+        if sweep is not None and sweep.get("abort"):
+            break  # cx-cloud CX5 on #2648: a previous destination already 5xx'd — stop loading the server
         if not link_is_crawlable(full_label, href, page_url):
             continue
         try:
@@ -535,11 +562,16 @@ def _follow_links(page: Any, *, page_url: str, max_links: int,
             status = getattr(resp, "status", None) if resp is not None else None
             text = _bounded_body_text(page)
             records.append(LinkRecord(href=str(href), label=label, outcome=classify_target(status, text), status=status))
+            # cx-cloud CX5 on #2648: a 5xx is not merely a dead link — AGENTS §28.8 says stop at the FIRST one.
+            note_sweep_status(sweep, status=status, url=str(href))
         except Exception:  # noqa: BLE001
             records.append(LinkRecord(href=str(href), label=label, outcome=DEAD, status=None))
         finally:
-            try:
-                page.goto(page_url, wait_until="domcontentloaded", timeout=20000)
-            except Exception as exc:  # noqa: BLE001 — the next link navigates anyway
-                _log.debug("could not return to %s before the next link: %s", page_url, exc)
+            # The return navigation is suppressed once the sweep has aborted: navigating back would be one more
+            # request to the server the boundary says to leave alone.
+            if sweep is None or not sweep.get("abort"):
+                try:
+                    page.goto(page_url, wait_until="domcontentloaded", timeout=20000)
+                except Exception as exc:  # noqa: BLE001 — the next link navigates anyway
+                    _log.debug("could not return to %s before the next link: %s", page_url, exc)
     return records

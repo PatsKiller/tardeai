@@ -115,6 +115,35 @@ def test_the_declared_signal_is_the_receipt_the_cli_actually_writes(tmp_path, mo
     assert LATEST_NAME == declared.name
 
 
+def test_an_aborted_attempt_keeps_the_last_successful_pointer(tmp_path):
+    """cx-cloud CX6 on #2648: AGENTS §28.9 defines health as the LAST SUCCESSFUL run, not the last attempt.
+
+    An attempt that stopped at the health gate still gets its own dated receipt, but the pointer the lane is observed
+    through must stay at the last completed sweep. Otherwise every aborted run refreshes `generated_at` while
+    full-site coverage has stopped.
+    """
+    import json
+
+    from site_audit.page_audit_capture import LATEST_NAME, write_receipts
+
+    good = tmp_path / "data" / "audit" / "page-audit-20261105T2130Z"
+    good.mkdir(parents=True)
+    write_receipts(good, [], stamp="20261105T2130Z", base="http://127.0.0.1:8123/v3", routes=[])
+    pointer = good.parent / LATEST_NAME
+    assert json.loads(pointer.read_text(encoding="utf-8"))["generated_at"] == "20261105T2130Z"
+
+    aborted = good.parent / "page-audit-20261105T2200Z"
+    aborted.mkdir(parents=True)
+    summary = write_receipts(aborted, [{"route": "/", "viewport": "desktop", "error": "aborted: server unhealthy"}],
+                             stamp="20261105T2200Z", base="http://127.0.0.1:8123/v3", routes=[("/", "Home")],
+                             completed=False)
+
+    assert summary["completed"] is False
+    assert (aborted / "index.json").is_file(), "the attempt receipt must still be kept"
+    assert json.loads(pointer.read_text(encoding="utf-8"))["generated_at"] == "20261105T2130Z", \
+        "an aborted sweep advanced the successful-run signal"
+
+
 # ── the §28.8 live-access gate (cx-cloud CX4 on #2648) ───────────────────────────────────────────────────────────
 def test_a_live_base_is_refused_inside_the_boundary_and_needs_an_ack_outside_it():
     mid_market = datetime(2026, 11, 5, 15, 0, tzinfo=timezone.utc)   # 10:00 ET, Thursday, a market day
