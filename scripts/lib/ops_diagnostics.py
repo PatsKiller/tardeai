@@ -101,13 +101,19 @@ def _spool(diagnostic: dict) -> None:
             fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
             try:
                 fh.seek(0)
-                for line in fh:
+                existing = fh.read()
+                for line in existing.splitlines():
                     try:
                         row = json.loads(line)
                     except ValueError:
                         continue
                     if isinstance(row, dict) and spool_key(row) == key:
                         return
+                # Terminate an interrupted final record before appending. Without this the broken
+                # fragment stays glued to the next entry, so the spool never becomes readable again
+                # and every diagnostic written after the crash is lost with it.
+                if existing and not existing.endswith("\n"):
+                    fh.write("\n")
                 fh.write(json.dumps(dict(diagnostic), sort_keys=True, default=str) + "\n")
                 fh.flush()
                 os.fsync(fh.fileno())
@@ -148,12 +154,23 @@ def drain(deliver_one: Callable[[dict], bool], *, channels: Optional[Iterable[st
         with path.open("r", encoding="utf-8") as fh:
             fcntl.flock(fh.fileno(), fcntl.LOCK_SH)
             try:
-                rows = [json.loads(line) for line in fh if line.strip()]
+                raw = fh.read()
             finally:
                 fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
-    except (OSError, ValueError) as exc:
+    except OSError as exc:
         log.warning("diagnostic spool %s unreadable: %s: %s", path, type(exc).__name__, exc)
         return 0
+    # Per line, not all-or-nothing. A disk-full write leaves a partial FINAL record, and a single
+    # json.loads over the whole file then delivered NOTHING — every intact diagnostic behind one
+    # truncated fragment. That is the exact failure this PR exists to stop, in the outbox itself.
+    rows = []
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except ValueError:
+            continue
 
     delivered: list[str] = []
     for row in rows:

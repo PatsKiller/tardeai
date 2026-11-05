@@ -627,6 +627,22 @@ def run_once(
         return 0
 
     root = Path(state_root) if state_root is not None else _default_state_root(env)
+
+    if not dry_run:
+        # Deliver what the sender-less processes (governed bridge, provider-health check) spooled.
+        # This runs HERE, before subject selection and before any early return: a run that finds
+        # nothing due is still a run, and an hourly wake with no candidates must not hold a credit
+        # outage hostage until the first busy hour. A rejected row stays spooled for the next run.
+        try:
+            from scripts.lib import ops_notify_owner  # noqa: PLC0415
+
+            drained = ops_notify_owner.drain()
+            if drained:
+                _emit({"script": "run_persistent_wake", "outcome": "spool_drained", "delivered": drained})
+        except Exception as exc:  # a broken outbox must not stop the wake review
+            _emit({"script": "run_persistent_wake", "outcome": "spool_drain_failed",
+                   "detail": f"{type(exc).__name__}: {exc}"})
+
     if memory_backend is None:
         mem_path = env.get(DEFAULT_MEMORY_ENV) or ""
         if mem_path:
@@ -709,20 +725,6 @@ def run_once(
             "limit": limit,
         })
         return 0
-
-    if not dry_run:
-        # Deliver what the sender-less processes (governed bridge, provider-health check) spooled. A
-        # rejected row stays spooled, so a transport blip delays an alert instead of losing it.
-        try:
-            from scripts.lib import ops_notify_owner  # noqa: PLC0415
-
-            drained = ops_notify_owner.drain()
-            if drained:
-                print(json.dumps({"script": "run_persistent_wake", "outcome": "spool_drained",
-                                  "delivered": drained}, sort_keys=True), flush=True)
-        except Exception as exc:  # a broken outbox must not stop the wake review
-            print(json.dumps({"script": "run_persistent_wake", "outcome": "spool_drain_failed",
-                              "detail": f"{type(exc).__name__}: {exc}"}, sort_keys=True), flush=True)
 
     rc = 0
     for sg, cand in work:

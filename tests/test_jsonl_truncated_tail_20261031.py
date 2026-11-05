@@ -381,3 +381,54 @@ def test_a_dry_run_sends_nothing_and_reports_what_it_would_have_sent(tmp_path, s
 
 
 ANCHOR = 'JSONL_TRUNCATED_TAIL_20261031'  # config/ci_gates/jsonl_truncated_tail_20261031.json names this file
+
+
+def test_one_truncated_spool_record_does_not_lose_the_intact_ones(monkeypatch, tmp_path):
+    """A disk-full write leaves a partial final record; the intact ones must still be delivered."""
+    spool = _spool_env(monkeypatch, tmp_path)
+    spool.parent.mkdir(parents=True, exist_ok=True)
+    good_one = {"channel": "store_damage", "path": "/a", "day": "2026-11-05", "message": "STORE DAMAGE a"}
+    good_two = {"channel": "credit_refusal", "code": "CREDIT_UNAVAILABLE", "day": "2026-11-05", "message": "LANE OFF"}
+    spool.write_text(json.dumps(good_one) + "\n" + json.dumps(good_two) + "\n" + '{"channel": "store_dam')
+    delivered = []
+    assert ops_diagnostics.drain(lambda row: delivered.append(row["message"]) or True) == 2
+    assert delivered == ["STORE DAMAGE a", "LANE OFF"]
+    assert ops_diagnostics.spooled() == []
+
+
+def test_a_write_after_an_interrupted_record_restores_drainability(monkeypatch, tmp_path):
+    spool = _spool_env(monkeypatch, tmp_path)
+    spool.parent.mkdir(parents=True, exist_ok=True)
+    spool.write_text('{"channel": "store_dam')  # interrupted mid-record
+    ops_diagnostics.unregister("store_damage")
+    try:
+        assert jsonl_tail.report(tmp_path / "wakes.jsonl", 3, action="skipped") is False
+    finally:
+        ops_notify_owner.install()
+    rows = ops_diagnostics.spooled()
+    assert len(rows) == 1 and rows[0]["channel"] == "store_damage", rows
+
+
+def test_the_wake_runner_drains_the_spool_even_when_nothing_is_due(monkeypatch, tmp_path, sent):
+    """An hourly run that selects no subject is still a run: a credit outage must not wait for a busy hour."""
+    _spool_env(monkeypatch, tmp_path)
+    jsonl_tail._alerted.clear()
+    ops_diagnostics.unregister("store_damage")
+    try:
+        jsonl_tail.report(tmp_path / "damaged.jsonl", 3, action="skipped")
+    finally:
+        ops_notify_owner.install()
+    assert len(ops_diagnostics.spooled()) == 1
+    sent.clear()
+
+    import run_persistent_wake as rpw
+
+    rpw.run_once(
+        agent_id="cio",
+        dry_run=False,
+        env={"PERSISTENT_WAKE_ENABLED": "1", "PERSISTENT_WAKE_SCHEDULE_ENABLED": "1"},
+        state_root=tmp_path / "state",
+        research_objects=[], receipts=[], material_changes=[], operator_turns=[],
+    )
+    assert sent and "STORE DAMAGE" in sent[0]["message"], sent
+    assert ops_diagnostics.spooled() == []
