@@ -49,14 +49,30 @@ def _conn(conn: Any = None, connect: Optional[Any] = None) -> Any:
 #: caller may override it.
 DEFAULT_ROUTE_MODE = "IMMEDIATE"
 
+#: `occurrence_id` is deliberately NULL unless the caller supplies one (review finding F2 on PR 2680). The column is a
+#: foreign key to `alert_occurrences(occurrence_id)`, and that table's delivery row carries two legacy single-channel
+#: invariants a three-channel fan-out cannot satisfy:
+#:
+#:   * `UNIQUE (occurrence_id, attempt_seq)` -- one row per attempt, so the same occurrence cannot hold a Telegram row,
+#:     an email row and a text row all at attempt_seq 1;
+#:   * `alert_deliveries_one_sent_per_occurrence_uq` -- `UNIQUE (occurrence_id) WHERE delivery_status = 'sent'` -- at
+#:     most ONE sent row per occurrence, which is exactly what a CRITICAL fan-out must violate three times.
+#:
+#: So writing an occurrence here would turn every CRITICAL alert into a constraint violation, and the channel identity
+#: lives in `channel` instead. The invariant worth having is one SENT per (occurrence, channel); that is a schema change
+#: on the outbox the operator owns, not something a receipt writer may smuggle in.
+
 
 def record(alert_id: str, receipts: list[dict[str, Any]], *, conn: Any = None, connect: Optional[Any] = None,
            incident_id: str | None = None, attempt_seq: int = 1,
-           route_mode: str = DEFAULT_ROUTE_MODE) -> dict[str, Any]:
+           route_mode: str = DEFAULT_ROUTE_MODE, occurrence_id: int | None = None) -> dict[str, Any]:
     """Write one row per channel. Returns what was written, or why nothing could be.
 
     Each receipt is the shape ``critical_channels.Receipt.as_dict()`` returns:
     ``{"channel", "status", "reason", "provider_receipt"}``.
+
+    ``occurrence_id`` is accepted so a single-channel caller can join the outbox's own invariants; leave it None for a
+    multi-channel fan-out (see the note above DEFAULT_ROUTE_MODE for why).
     """
     ident = str(alert_id or "").strip()
     if not ident:
@@ -77,9 +93,9 @@ def record(alert_id: str, receipts: list[dict[str, Any]], *, conn: Any = None, c
         for r in receipts:
             cur.execute(
                 "INSERT INTO alert_notification_deliveries "
-                "(alert_id, incident_id, attempt_seq, route_mode, channel, delivery_status, delivery_reason, "
-                " provider_receipt, rendered_message) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                (ident, incident_id, attempt_seq, route_mode, str(r.get("channel") or ""),
+                "(occurrence_id, alert_id, incident_id, attempt_seq, route_mode, channel, delivery_status, "
+                " delivery_reason, provider_receipt, rendered_message) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (occurrence_id, ident, incident_id, attempt_seq, route_mode, str(r.get("channel") or ""),
                  STATUS_MAP[str(r["status"])], r.get("reason"), r.get("provider_receipt"), None),
             )
             written += 1

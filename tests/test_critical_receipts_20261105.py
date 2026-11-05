@@ -122,6 +122,32 @@ def test_an_empty_receipt_list_writes_nothing_and_is_not_an_error():
     assert out["ok"] is True and out["written"] == 0
 
 
+def test_the_occurrence_is_passed_through_when_a_caller_knows_it():
+    conn = FakeConn()
+    CR.record("evt-1", RECEIPTS[:1], conn=conn, occurrence_id=77)
+    assert _by_column(*conn.executed[0])["occurrence_id"] == 77
+
+
+def test_a_multi_channel_set_writes_no_occurrence_because_the_table_allows_only_one_sent_row():
+    """Review finding F2 on PR 2680, answered with the DDL rather than a shrug.
+
+    `alert_deliveries_one_sent_per_occurrence_uq` is UNIQUE (occurrence_id) WHERE delivery_status='sent', and the table
+    carries UNIQUE (occurrence_id, attempt_seq). A CRITICAL event sends three channels, so binding an occurrence here
+    would raise on the second channel and again on the third. The column stays NULL and the channel identity lives in
+    `channel`; the invariant that would help — one SENT per (occurrence, channel) — is an outbox schema change for the
+    operator, not something this writer may do.
+    """
+    ddl = (ROOT / "migrations/2026_07_28_alert_notification_outbox.sql").read_text(encoding="utf-8")
+    index = ddl.split("alert_deliveries_one_sent_per_occurrence_uq", 1)[1].split(";", 1)[0]
+    assert "ON alert_notification_deliveries (occurrence_id)" in index and "delivery_status = 'sent'" in index, index
+    assert "UNIQUE (occurrence_id, attempt_seq)" in ddl
+
+    conn = FakeConn()
+    CR.record("evt-1", RECEIPTS, conn=conn)
+    for sql, params in conn.executed:
+        assert _by_column(sql, params)["occurrence_id"] is None
+
+
 def test_every_not_null_column_without_a_default_is_bound_by_the_insert():
     """The fake connection cannot see the schema — that is how `route_mode` was missed.
 
