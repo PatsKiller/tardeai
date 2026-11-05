@@ -875,3 +875,88 @@ def test_candidate_finite_fields_cannot_overflow_the_measured_book_aggregate(sto
     )
     print("AGGREGATE_OVERFLOW", declared, out, "store_bytes_changed", store.read_bytes() != before)
     assert out["wrote"] is False and store.read_bytes() == before
+
+
+
+# D52 R1: a finite declared reference is not independent measured aggregate evidence.
+@pytest.mark.parametrize("origin", ["caller", "backup", "store"])
+@pytest.mark.parametrize("field", ["total_value", "portfolio_totals"])
+@pytest.mark.parametrize("declared", [1, -1])
+def test_inconsistent_declared_reference_cannot_hide_measured_loss(store, origin, field, declared):
+    store.write_text(json.dumps(_candidate_numeric_book()))
+    baseline = _candidate_numeric_book()
+    baseline[field] = {"total_value": declared} if field == "portfolio_totals" else declared
+    frozen_reference = json.dumps(baseline, sort_keys=True)
+    candidate = _candidate_numeric_book()
+    for row in candidate["holdings"]:
+        if not row["is_cash"]:
+            row["market_value"] *= 0.01
+            row["price"] *= 0.01
+    kwargs = {}
+    if origin == "caller":
+        kwargs["baseline"] = baseline
+    elif origin == "backup":
+        store.write_bytes(b"")
+        _backup(store, baseline)
+    else:
+        store.write_text(json.dumps(baseline))
+    before = store.read_bytes()
+    out = S.protected_holdings_write(candidate, target_path=str(store), source="test_declared_reference", **kwargs)
+    print("REFERENCE_AGGREGATE", origin, field, declared, out, "store_bytes_changed", store.read_bytes() != before)
+    assert out["wrote"] is False and store.read_bytes() == before
+    assert json.dumps(baseline, sort_keys=True) == frozen_reference
+
+
+@pytest.mark.parametrize("field", ["total_value", "portfolio_totals"])
+def test_finite_declared_reference_cannot_conceal_overflowing_measured_sum(field):
+    baseline = _candidate_numeric_book()
+    for row in baseline["holdings"]:
+        if not row["is_cash"]:
+            row["market_value"] = 1e308
+            row["price"] = 1e308
+    baseline[field] = {"total_value": 96000} if field == "portfolio_totals" else 96000
+    frozen_reference = json.dumps(baseline, sort_keys=True)
+    assert S._baseline_usable(baseline)[0] is False
+    assert json.dumps(baseline, sort_keys=True) == frozen_reference
+
+
+def test_independent_measured_reference_still_refuses_loss_with_cash_unchanged(store):
+    store.write_text(json.dumps(_candidate_numeric_book()))
+    candidate = _candidate_numeric_book()
+    for row in candidate["holdings"]:
+        if not row["is_cash"]:
+            row["market_value"] *= 0.01
+            row["price"] *= 0.01
+    before = store.read_bytes()
+    out = S.protected_holdings_write(
+        candidate, baseline=_candidate_numeric_book(), target_path=str(store), source="test_measured_reference"
+    )
+    assert not out["wrote"] and out["reason_code"] == "CATASTROPHIC_DROP" and store.read_bytes() == before
+
+
+@pytest.mark.parametrize("origin", ["caller", "store", "backup"])
+def test_incoherent_reference_preserves_a_healthy_fallback_recovery(store, origin):
+    healthy = _candidate_numeric_book()
+    invalid = _candidate_numeric_book()
+    invalid["total_value"] = 1
+    original = json.dumps(invalid, sort_keys=True)
+    kwargs = {}
+    if origin == "caller":
+        store.write_text(json.dumps(healthy))
+        kwargs["baseline"] = invalid
+        expected_source = "store"
+    else:
+        store.write_bytes(b"" if origin == "backup" else json.dumps(invalid).encode())
+        good = store.with_name(store.name + ".bak-good")
+        good.write_text(json.dumps(healthy))
+        stamp = time.time() - 3600
+        os.utime(good, (stamp, stamp))
+        if origin == "backup":
+            _backup(store, invalid)
+        expected_source = "backup:" + good.name
+    out = S.protected_holdings_write(
+        _candidate_numeric_book(), target_path=str(store), source="test_reference_fallback", **kwargs
+    )
+    assert out["wrote"] is True and out["baseline_source"] == expected_source
+    assert json.loads(store.read_bytes())["holdings"] == healthy["holdings"]
+    assert json.dumps(invalid, sort_keys=True) == original

@@ -221,6 +221,16 @@ def _baseline_usable(doc) -> tuple[bool, str]:
             return False, "baseline failed payload validation"
         if not math.isfinite(verdict.total) or not math.isfinite(verdict.cash_total):
             return False, "baseline aggregates are not finite"
+        summed = verdict.details.get("summed_market_value")
+        declared = [doc.get("total_value"), (doc.get("portfolio_totals") or {}).get("total_value")]
+        # Use the existing reconcile_totals two-decimal/one-cent criterion, without changing it.
+        coherent = math.isfinite(summed) and all(
+            abs(round(summed, 2) - float(value)) <= 0.01
+            for value in declared
+            if value is not None
+        )
+        if not coherent:
+            return False, "baseline measured aggregate is non-finite or its declared totals disagree"
     except (TypeError, ValueError, OverflowError, AttributeError):
         return False, "baseline numerical validation is unusable"
     return True, ""
