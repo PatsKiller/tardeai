@@ -9,6 +9,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { Chip } from '../components/primitives'
 import { RADIUS, TOKENS, TYPE, FONT, toneVars } from '../lib/designTokens'
+import { censusSituation } from '../lib/pipelineCensusText'
 import {
   PIPELINE_STAGES, PRESETS, STAGE_LABEL, ageLabel, cardActions, cellTitle, filterFromParams, filterItems, filterOptions,
   filterToParams, planLabel, queuedSections, ragTone, summarize, type PipelineFilter, type PipelineItem, type PipelinePayload,
@@ -299,6 +300,9 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
 
   const served = api.data?.sources?.served
   const census = api.data?.sources?.census
+  // FQ-033 (cc-deepseek-8 R1 at 75251580): `census.warning` is set before the first refresh and by PARTIAL warnings
+  // after a successful one, so it cannot be read as "the refresh failed". The sentence comes from the tested helper.
+  const censusView = censusSituation({ refreshedAt: census?.refreshed_at, warning: census?.warning })
   return <section data-testid="work-pipeline" style={{ display: 'grid', gap: 12, minWidth: 0 }}>
     <style>{`
       .wp-card-grid { grid-template-columns: minmax(0, 1.4fr) minmax(0, 2fr); }
@@ -329,8 +333,8 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
           <div style={small} data-testid="pipeline-sources">
             One row per work item (task, PR or design phase). As of {et(api.data?.as_of)} · PR census {census?.refreshed_at ? `${api.data?.sources?.census_age_s ?? '?'} s old` : 'pending'} (refreshed at most once a minute)
             {served?.sha ? ` · served ${String(served.sha).slice(0, 9)} health ${served.ok ? 'ok' : served.ok === false ? 'FAILED' : 'unknown'}` : ''}
-            {census?.warning ? <span style={{ color: TOKENS.warning }}> · PR census could not refresh — the last good copy is shown</span> : null}
-            {census?.warning ? <Technical label="Technical: why the census could not refresh">{census.warning}</Technical> : null}
+            {censusView.text ? <span style={{ color: TOKENS.warning }}> · {censusView.text}</span> : null}
+            {census?.warning ? <Technical label="Technical: the census report">{census.warning}</Technical> : null}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', ...small }}>
