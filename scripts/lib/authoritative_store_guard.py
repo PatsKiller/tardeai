@@ -20,7 +20,7 @@ SCHEMA = "AuthoritativeStoreGuard@v1"
 STATUS_OK = "OK"
 STATUS_STALE = "STALE"
 STATUS_UNAVAILABLE = "UNAVAILABLE"
-MAX_AGE_HOURS = 36.0
+MAX_AGE_HOURS = 26.0  # consumer surfaces historically treated >26h as stale; do not loosen
 FUTURE_TOLERANCE = timedelta(minutes=5)
 REMEDIATION = "/ops#holdings-recovery"
 
@@ -63,7 +63,48 @@ def effective_status(manifest_status: Any, guard: dict[str, Any]) -> str:
     return str(manifest_status or "unknown")
 
 
-def guard(state_dir: Path | str, *, now: datetime | None = None) -> dict[str, Any]:
+def guarded_manifest(state_dir: Path | str, *, now: datetime | None = None) -> dict[str, Any]:
+    """The ONE read path for ``_freshness.json``: the manifest with the store guard applied.
+
+    A manifest proves a producer ran; it does not prove the store it describes is readable.
+    Every consumer that publishes, displays or acts on freshness reads the manifest through
+    here, so a 0-byte/corrupt holdings.json (or a manifest whose hash/clock no longer matches
+    it) cannot render FRESH on any surface. The returned document carries the manifest's own
+    fields, a guarded ``status`` and the full ``guard`` verdict.
+
+    The manifest is read EXACTLY ONCE and that same parsed document is what the guard validates.
+    Reading metadata and then asking the guard to re-read could attach an ok verdict to a
+    different (replaced) manifest — a later write would then be published under an earlier
+    verdict (cx-openai-4 R2, 2026-11-03).
+    """
+    sd = Path(state_dir)
+    doc: dict[str, Any] = {}
+    try:
+        text = (sd / "_freshness.json").read_text(encoding="utf-8")
+        if text.strip():
+            parsed = json.loads(text)
+            if isinstance(parsed, dict):
+                doc = parsed
+    except (OSError, UnicodeError, ValueError):
+        doc = {}
+    verdict = guard(sd, now=now, manifest_doc=doc or None, manifest_read=True)
+    doc["status"] = effective_status(doc.get("status"), verdict)
+    doc["guard"] = verdict
+    return doc
+
+
+def guard(
+    state_dir: Path | str,
+    *,
+    now: datetime | None = None,
+    manifest_doc: dict[str, Any] | None = None,
+    manifest_read: bool = False,
+) -> dict[str, Any]:
+    """The store guard. ``manifest_read=True`` validates ``manifest_doc`` instead of re-reading.
+
+    A reader that already parsed the manifest (``guarded_manifest``) passes it in, so the verdict and
+    the published metadata describe one snapshot. A direct caller keeps the read-once behaviour.
+    """
     now = now or datetime.now(timezone.utc)
     sd = Path(state_dir)
     # The store is read through the ONE approved accessor: this module reports the state it found,
@@ -126,10 +167,14 @@ def guard(state_dir: Path | str, *, now: datetime | None = None) -> dict[str, An
         return {**out, "ok": False, "status": STATUS_UNAVAILABLE,
                 "reasons": [f"holdings_hash_uncomputable:{type(exc).__name__}"]}
     out["holdings_hash_observed"] = observed
-    try:
-        fresh = json.loads(manifest.read_text(encoding="utf-8"))
-    except (OSError, ValueError, UnicodeError):
-        fresh = None
+    if manifest_read:
+        # The caller parsed the manifest once; validate THAT document, never a second read.
+        fresh = manifest_doc if isinstance(manifest_doc, dict) else None
+    else:
+        try:
+            fresh = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, ValueError, UnicodeError):
+            fresh = None
     if not isinstance(fresh, dict):
         return {**out, "ok": False, "status": STATUS_STALE, "reasons": ["freshness_manifest_absent_or_invalid"]}
 
@@ -156,4 +201,12 @@ def guard(state_dir: Path | str, *, now: datetime | None = None) -> dict[str, An
     return {**out, "ok": True, "status": STATUS_OK, "reasons": []}
 
 
-__all__ = ["SCHEMA", "MAX_AGE_HOURS", "REMEDIATION", "holdings_hash", "guard", "effective_status"]
+__all__ = [
+    "SCHEMA",
+    "MAX_AGE_HOURS",
+    "REMEDIATION",
+    "holdings_hash",
+    "guard",
+    "effective_status",
+    "guarded_manifest",
+]

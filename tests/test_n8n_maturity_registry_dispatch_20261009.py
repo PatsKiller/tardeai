@@ -544,6 +544,10 @@ N8N_NATIVE_SHADOW = frozenset(
         # 2026-10-26 operator "Yahoo Finance feed … switched on: yes": yfinance snapshot owner lane, n8n-native
         # ingest, weekdays 05:40 ET dry_run (tests/test_yfinance_info_snapshot_lane_20261026.py).
         "yfinance-info-snapshot",
+        # 2026-11-03 board item 16 (nudger → n8n, P2): n8n-native dispatcher row at shadow, every 5 min, dispatch
+        # dry_run. The live host crontab entry keeps doing the typing; the stage clamp makes a requested live run a
+        # dry run (tests/test_agent_nudger_p2_20261103.py).
+        "agent_nudge",
     }
 )
 #: 2026-10-17 + n8n-comms-intent-consumer (operator D2 "Queue reader first"; tests/support/comms_intent_consumer_live.py).
