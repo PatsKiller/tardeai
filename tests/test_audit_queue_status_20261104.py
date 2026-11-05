@@ -489,6 +489,22 @@ def test_a_multi_row_closing_declaration_claims_every_row_it_governs():
     assert status == {"FQ-021": "delivered", "FQ-022": "delivered"}, rep["changes"]
 
 
+def test_a_row_local_negation_disclaims_only_the_row_it_names():
+    """cx-openai triage on f0ae3822f: "Closes FQ-021, not FQ-022." claims FQ-021 and must NOT claim FQ-022."""
+    assert S.rows_claimed_by(pr(2700, branch="wt/elsewhere", body="Closes FQ-021, not FQ-022.")) == {"FQ-021"}
+    assert S.rows_claimed_by(pr(2700, branch="wt/elsewhere",
+                                body="Closes FQ-021, FQ-023 and not FQ-022.")) == {"FQ-021", "FQ-023"}
+    assert S.rows_claimed_by(pr(2700, branch="wt/elsewhere",
+                                body="Closes FQ-021 and FQ-022.")) == {"FQ-021", "FQ-022"}
+
+
+def test_a_row_local_negation_does_not_park_or_deliver_the_disclaimed_row():
+    rep = S.sync(queue(row("FQ-022", status="fix_in_review", pr=2600)),
+                 [pr(2600, state="MERGED", branch="wt/elsewhere", body="Closes FQ-021, not FQ-022.", merge="a" * 40)],
+                 now=NOW)
+    assert rep["changed"] == 0, rep["changes"]
+
+
 def test_a_multi_row_declaration_still_negates_the_row_it_disclaims():
     """CX1 remedy: the later rows are claimed without losing the per-row negation check."""
     cand = pr(2622, branch="wt/elsewhere", body="Closes FQ-021 and FQ-022; not closing FQ-033.")

@@ -153,6 +153,8 @@ _NEGATION = re.compile(r"\b(?:not|never|no longer|cannot|isn't|aren't|won't|does
 #: CX1). A row named in prose ("this supersedes the old FQ-045 approach") has no declaration verb before it, so it is
 #: a MENTION and may not move a row that already has a PR — the 2026-11-05 review (#2640 F1) found a passing mention
 #: parking a row whose real PR was open.
+#: A negation between a declaration verb and a row disclaims only that row: "Closes FQ-021, not FQ-022."
+_NOT_BEFORE_ROW = re.compile(r"\b(?:not|except|excluding)\b", re.IGNORECASE)
 _DECLARES_VERB = re.compile(
     r"\b(?:clos(?:e|es|ed|ing)|fix(?:es|ed|ing)?|resolv(?:e|es|ed|ing)|implement(?:s|ed|ing)?|address(?:es|ed|ing)?"
     r"|deliver(?:s|ed|ing)?|does|owns?)\b",
@@ -212,6 +214,22 @@ def _negated_rows(clause: str) -> set[str]:
     return out
 
 
+def _disclaimed_rows(pr: dict[str, Any]) -> set[str]:
+    '''Rows this PR explicitly says it is NOT closing, at row level: "Closes FQ-021, not FQ-022."'''
+    out: set[str] = set()
+    for clause in _clauses(str(pr.get("body") or "")):
+        for m in _ROW_IN_BODY.finditer(clause):
+            if _NOT_BEFORE_ROW.search(clause[_row_or_verb_start(clause, m.start()):m.start()]):
+                out.add(f"FQ-{m.group(1)}")
+    return out
+
+
+def _row_or_verb_start(clause: str, row_start: int) -> int:
+    """Start of the segment governing this row: after the last declaration verb before it."""
+    verbs = [v for v in _ACTION.finditer(clause) if v.start() < row_start]
+    return verbs[-1].end() if verbs else 0
+
+
 def rows_named_by(pr: dict[str, Any]) -> set[str]:
     """Which queue rows a PR names at all. A row named only in "not closing FQ-0NN" is not named."""
     out: set[str] = set()
@@ -245,6 +263,11 @@ def rows_claimed_by(pr: dict[str, Any]) -> set[str]:
                 continue  # no verb before the row: this is a mention, not a declaration
             i = governing[-1]
             if negated[i] or not _DECLARES_VERB.fullmatch(verbs[i].group(0)):
+                continue
+            # Row-local negation (cx-openai triage on f0ae3822f): a list can disclaim one of its own rows —
+            # "Closes FQ-021, not FQ-022." The verb is not negated, so the marker between the verb and THIS row
+            # is what decides: a negation there means the declaration does not govern this row.
+            if _NOT_BEFORE_ROW.search(clause[verbs[i].end():m.start()]):
                 continue
             out.add(f"FQ-{m.group(1)}")
     for m in _ROW_IN_BRANCH.finditer(str(pr.get("headRefName") or "")):
@@ -324,6 +347,9 @@ def choose_pr(item: dict[str, Any], candidates: list[dict[str, Any]]) -> dict[st
         pool = claimed
     elif owned is not None:
         pool = [p for p in candidates if _as_pr_number(p.get("number")) == owned]
+        # ...but a recorded PR whose own text DISCLAIMS the row is a statement, not silence: it may not close or
+        # park a row it says it is not closing (cx-openai triage on f0ae3822f).
+        pool = [p for p in pool if row not in _disclaimed_rows(p)]
     else:
         return None
     if not pool:
@@ -363,7 +389,10 @@ def sync(queue: dict[str, Any], prs: Iterable[dict[str, Any]], *, now: str | Non
         recorded = _as_pr_number(item.get("pr"))
         if recorded is not None and recorded not in {_as_pr_number(p.get("number")) for p in candidates}:
             recorded_pr = by_number.get(recorded)
-            if recorded_pr is not None:
+            # ...unless that PR's own text DISCLAIMS the row ("Closes FQ-021, not FQ-022."). A body that stopped
+            # naming the row is silence; a body that names it under a negation is a statement, and the recorded
+            # association cannot close or park a row the PR says it is not closing (cx-openai triage, f0ae3822f).
+            if recorded_pr is not None and str(item.get("id")) not in _disclaimed_rows(recorded_pr):
                 candidates.append(recorded_pr)
         pr = choose_pr(item, candidates)
         delta = plan(item, pr, now)
