@@ -21,6 +21,8 @@ export type ImplicationModel = {
   conclusion: string
   /** where the conclusion came from, so a reader can tell an action from a summary */
   conclusionKind: 'action' | 'thesis'
+  /** true when the visible conclusion is a bounded prefix of the source; the whole text is behind the toggle */
+  conclusionClamped: boolean
   /** every field that is machine vocabulary; empty when the source gave none */
   identifiers: Array<[string, string]>
   /** confidence and age, or an explicit "not recorded" */
@@ -33,12 +35,66 @@ export type ImplicationModel = {
 
 const clean = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim()
 
-/** The first sentence, and only the first: a sentence the source actually wrote. */
-export function firstSentence(text: string | null | undefined): string {
+/** The visible conclusion is bounded: a very long sentence must not become the wall of text this row replaced. */
+export const MAX_CONCLUSION_WORDS = 32
+/** A boundary that would leave fewer words than this is a fragment, not a sentence worth showing. */
+export const MIN_SENTENCE_WORDS = 3
+
+const wordCount = (s: string) => (s.match(/[^\s]+/g) ?? []).length
+
+function clampToWords(s: string, maxWords = MAX_CONCLUSION_WORDS): string {
+  const words = s.split(' ')
+  return words.length <= maxWords ? s : words.slice(0, maxWords).join(' ')
+}
+
+// Ordinary research-prose abbreviations whose period is not a sentence end. Compared without the final period.
+const ABBREVIATIONS = new Set([
+  'vs', 'e.g', 'i.e', 'u.s', 'u.k', 'dr', 'mr', 'mrs', 'ms', 'prof', 'inc', 'corp', 'co', 'ltd', 'jr', 'sr',
+  'st', 'no', 'approx', 'fig', 'figs', 'al', 'est', 'min', 'max', 'dept', 'gov', 'sen', 'rep', 'gen', 'col',
+  'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec',
+])
+
+/** True when the period at `i` closes an abbreviation or a single initial rather than a sentence. */
+function isAbbreviationAt(s: string, i: number): boolean {
+  const m = /([A-Za-z](?:[A-Za-z.]*))\.$/.exec(s.slice(0, i + 1))
+  if (!m) return false
+  const token = m[1].toLowerCase()
+  return ABBREVIATIONS.has(token) || /^[a-z]$/.test(token)
+}
+
+type FirstSentenceResult = { text: string; clamped: boolean }
+
+/**
+ * The first sentence, and only the first — bounded to MAX_CONCLUSION_WORDS so the row stays one glance.
+ * A sentence end must close a word ("3.5" never qualifies), be followed by the start of a new sentence, and
+ * not close an abbreviation ("vs.", "U.S.", "e.g.", "Dr."). A boundary that leaves a fragment is refused.
+ */
+function firstSentenceDetail(text: string | null | undefined): FirstSentenceResult {
   const s = clean(text)
-  if (!s) return ''
-  const m = /^(.+?[.!?])(\s|$)/.exec(s)
-  return m ? m[1] : s
+  if (!s) return { text: '', clamped: false }
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]
+    if (ch !== '.' && ch !== '!' && ch !== '?') continue
+    // A terminator must end a word: whitespace or end-of-string follows ("3.5" is never a sentence end).
+    if (i + 1 < s.length && !/\s/.test(s[i + 1])) continue
+    // ...and the next sentence must begin (a capital, a digit, or an opening quote), or the text must end.
+    const rest = s.slice(i + 1).trimStart()
+    if (rest && !/^["'“‘(\[]?[A-Z0-9]/.test(rest)) continue
+    // "vs.", "U.S.", "e.g.", "Dr." and "J." do not end the sentence even when a capital follows.
+    if (ch === '.' && isAbbreviationAt(s, i)) continue
+    const candidate = s.slice(0, i + 1).trim()
+    // A boundary that leaves a fragment is not a sentence: fall back to the bounded first words of the source.
+    if (wordCount(candidate) < MIN_SENTENCE_WORDS) break
+    const bounded = clampToWords(candidate)
+    return { text: bounded, clamped: bounded.length < candidate.length }
+  }
+  const bounded = clampToWords(s)
+  return { text: bounded, clamped: bounded.length < s.length }
+}
+
+/** The first sentence, and only the first: a sentence the source actually wrote, bounded for the row. */
+export function firstSentence(text: string | null | undefined): string {
+  return firstSentenceDetail(text).text
 }
 
 function ageWords(hours: number | null | undefined): string {
@@ -57,15 +113,16 @@ export function uncertaintyText(c: number | null | undefined, freshnessH: number
 
 export function implicationModel(it: ImplicationSource, nextStep: string): ImplicationModel {
   const action = clean(it.action)
-  const first = firstSentence(it.title)
+  const first = firstSentenceDetail(it.title)
   const identifiers: Array<[string, string]> = []
   if (clean(it.model)) identifiers.push(['Model', clean(it.model)])
   if (clean(it.lane)) identifiers.push(['Lane', clean(it.lane)])
   if (clean(it.source)) identifiers.push(['Source', clean(it.source)])
   if (clean(it.type)) identifiers.push(['Type', clean(it.type)])
   return {
-    conclusion: action || first || 'The source gave no conclusion.',
+    conclusion: action || first.text || 'The source gave no conclusion.',
     conclusionKind: action ? 'action' : 'thesis',
+    conclusionClamped: !action && first.clamped,
     identifiers,
     uncertainty: uncertaintyText(it.confidence, it.freshnessH),
     nextStep: clean(nextStep),

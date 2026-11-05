@@ -2,7 +2,7 @@
 //
 // FQ-040: the Decision implications panel showed the whole thesis at 9–11 px with estimated-error metadata beside it.
 // The row now leads with a conclusion, then how sure the source is, then the next step — and the thesis is one tap away.
-import { firstSentence, implicationModel, rowTitle, uncertaintyText } from './intelImplication.ts'
+import { MAX_CONCLUSION_WORDS, firstSentence, implicationModel, rowTitle, uncertaintyText } from './intelImplication.ts'
 
 let pass = 0, fail = 0
 const check = (n, c, d = '') => { if (c) { pass++; console.log(`  [PASS] ${n}`) } else { fail++; console.log(`  [FAIL] ${n} ${d}`) } }
@@ -28,7 +28,39 @@ const thesisOnly = implicationModel({ ...LONG, action: null }, 'x')
 check('with no action, the conclusion is the first sentence only', thesisOnly.conclusion === firstSentence(THESIS), thesisOnly.conclusion)
 check('the first sentence is the source\'s own words, not a summary', THESIS.startsWith(thesisOnly.conclusion))
 check('and it is marked as a thesis, not an action', thesisOnly.conclusionKind === 'thesis')
+check('a short thesis is not marked clamped', thesisOnly.conclusionClamped === false)
 check('the long case really is shorter than the thesis', thesisOnly.conclusion.length < THESIS.length / 2)
+check('the conclusion carries the sentence\'s verb, not just a prefix', thesisOnly.conclusion.includes('is tracking'))
+
+// ---- R1: an abbreviation is not a sentence end (cc-deepseek-8) ------------------------------------------------
+check('vs. does not cut the conclusion',
+  firstSentence('NVDA revenue is tracking 8% above consensus vs. 5% last quarter. Risk is China.')
+    === 'NVDA revenue is tracking 8% above consensus vs. 5% last quarter.')
+check('Dr. does not reduce the conclusion to a title',
+  firstSentence('Dr. Chen notes demand is strong. Nothing else.') === 'Dr. Chen notes demand is strong.')
+check('U.S. does not cut the conclusion at the country',
+  firstSentence('The U.S. export rule is the risk. Nothing has priced it.') === 'The U.S. export rule is the risk.')
+check('e.g. does not cut the conclusion',
+  firstSentence('NVDA beats consensus e.g. by 8%. Risk remains.') === 'NVDA beats consensus e.g. by 8%.')
+check('a decimal still does not split (the guard is not traded away)',
+  firstSentence('Revenue grew 3.5% year over year') === 'Revenue grew 3.5% year over year')
+check('a real sentence boundary still splits',
+  firstSentence('Q3 beat: revenue up 12% and margins held. Margin cut the next quarter.')
+    === 'Q3 beat: revenue up 12% and margins held.')
+check('a boundary that leaves a fragment is refused, not shown alone',
+  firstSentence('Q3 beat. Revenue rose 12%.') !== 'Q3 beat.'
+    && firstSentence('Q3 beat. Revenue rose 12%.').startsWith('Q3 beat.'))
+
+// ---- R2: a terminator-free thesis is bounded, and the expansion keeps the whole text ---------------------------
+const WALL = 'NVDA ' + 'beat consensus by eight percent on three independent supply checks '.repeat(10)
+  + 'and nothing has priced the China export rule'
+const wallConclusion = firstSentence(WALL)
+check('a terminator-free thesis is clamped to a bounded number of words',
+  wallConclusion.split(' ').length <= MAX_CONCLUSION_WORDS)
+check('the clamp is still the source\'s own prefix', WALL.startsWith(wallConclusion))
+const wallModel = implicationModel({ ...LONG, action: null, title: WALL }, 'x')
+check('the model says the conclusion was clamped', wallModel.conclusionClamped === true)
+check('the full thesis is kept for the expansion', wallModel.headline === WALL)
 
 // ---- nothing is invented when a field is missing ---------------------------------------------------------------
 const bare = implicationModel({ id: 'i2', source: '', type: '', title: '', action: null, confidence: null, freshnessH: null }, 'Do something.')

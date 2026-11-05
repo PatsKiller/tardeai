@@ -26,7 +26,7 @@ export function IntelImplicationRow({ item, nextStep, onOpen }: IntelImplication
   return (
     <div data-testid="intel-implication" data-verdict={m.conclusionKind} style={rowStyle}>
       <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', minWidth: 0 }}>
-        <span data-testid="intel-implication-conclusion" style={text(TYPE.sm, tone, 800)}>{rowTitle(m, item.symbol)}</span>
+        <span data-testid="intel-implication-conclusion" style={text(TYPE.sm, tone, 800)}>{rowTitle(m, item.symbol)}{m.conclusionClamped ? '…' : ''}</span>
       </div>
       <span data-testid="intel-implication-uncertainty" style={text(TYPE.xs, TOKENS.text[2], 700)}>{m.uncertainty}</span>
       <span data-testid="intel-implication-next" style={text(TYPE.sm, TOKENS.text[1])}>{m.nextStep}</span>
