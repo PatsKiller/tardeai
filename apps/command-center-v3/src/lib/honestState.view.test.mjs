@@ -167,18 +167,12 @@ for (const [state, fixture] of Object.entries({
   ])
 }
 
-// B1 wiring pins (cc-deepseek-3): the shell's publisher must be memoised with NO dependencies and the report and the
-// publisher must be separate providers — a single value object rebuilt from the report is what made `publish` change
-// identity on every publish and looped /agents (255,468 renders in 2.5 s). Read from the source, because the pure model
-// test can only prove the mechanism, not that the shell uses it.
-const appSource = readFileSync(join(app, 'src/App.tsx'), 'utf8')
-cases.push({
-  surface: '/shell', state: 'wiring', passed:
-    /const publishSurfaceState = useCallback\([\s\S]*?\}, \[\]\)/.test(appSource) &&
-    !/useMemo\(\(\) => \(\{\s*report/.test(appSource) &&
-    /SurfacePublishContext\.Provider/.test(appSource) && /SurfaceReportContext\.Provider/.test(appSource),
-  failed_assertions: [], text: '',
-})
+// B1 wiring (cc-deepseek-3) is proven by BEHAVIOUR, not by reading this repo's source as text: finding P1
+// (codex-cloud, 2026-11-05) rejected the regex pins that used to live here. `surfaceStatePublish.browser.test.mjs`
+// mounts the REAL SurfaceStateProvider, the REAL useReportSurfaceState hook and the REAL BuildMarker footer in
+// Chromium, lets the effect run, and asserts the published report reaches the footer. It runs in the existing
+// Chromium-installing workflow (.github/workflows/cio-truth-gates-ui-validation.yml), because node's SSR renderer
+// cannot run effects and this build step has no browser.
 
 const out = { schema: 'HonestStateView@v1', cases, passed: cases.filter(c => c.passed).length, failed: cases.filter(c => !c.passed).length }
 console.log(JSON.stringify(out, null, 1))

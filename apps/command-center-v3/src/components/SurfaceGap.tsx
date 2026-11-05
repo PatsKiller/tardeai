@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { DeskGap } from './DeskPage'
-import { refreshMarker, rendersData, surfaceGap, type SurfaceShape, type SurfaceState } from '../lib/surfaceState'
+import { refreshMarker, rendersData, surfaceGap, surfaceReportReducer, type SurfaceShape, type SurfaceState } from '../lib/surfaceState'
 
 /**
  * The one banner every damaged surface renders, plus the shell's view of the active surface's state.
@@ -51,4 +51,22 @@ export function useReportSurfaceState(name: string, state: SurfaceState<unknown>
   // Clearing names the surface doing the clearing, so the provider can ignore a stale unmount from a page that no
   // longer owns the slot (F2 review, 2026-11-04).
   useEffect(() => () => publish(null, name), [publish, name])
+}
+
+/**
+ * The shell's report slot. Extracted from `Shell` so the real publisher can be MOUNTED in a test (finding P1,
+ * 2026-11-05: the wiring used to be asserted by reading App.tsx as text). This is the exact provider pair `Shell`
+ * renders — `publish` is memoised with NO dependencies so a publish cannot re-arm the effect that calls it, and the
+ * reducer preserves identity for an unchanged report, so a repeat publish is a React no-op.
+ */
+export function SurfaceStateProvider({ children }: { children: ReactNode }) {
+  const [report, setReport] = useState<SurfaceStateReport | null>(null)
+  const publish = useCallback((next: SurfaceStateReport | null, clearingFrom?: string) => {
+    setReport(prev => surfaceReportReducer(prev, next, clearingFrom))
+  }, [])
+  return (
+    <SurfacePublishContext.Provider value={publish}>
+      <SurfaceReportContext.Provider value={report}>{children}</SurfaceReportContext.Provider>
+    </SurfacePublishContext.Provider>
+  )
 }

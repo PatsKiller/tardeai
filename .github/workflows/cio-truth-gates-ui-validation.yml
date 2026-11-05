@@ -33,6 +33,9 @@ on:
       - 'apps/command-center-v3/src/components/intelligence/IntelligenceRotationTab.tsx'
       - 'apps/command-center-v3/src/components/RotationPublicationNotice.tsx'
       - 'apps/command-center-v3/src/lib/rotation*'
+      - 'apps/command-center-v3/src/lib/surfaceState*'
+      - 'apps/command-center-v3/src/components/SurfaceGap.tsx'
+      - 'apps/command-center-v3/src/components/BuildMarker.tsx'
       - '.github/workflows/cio-truth-gates-ui-validation.yml'
   workflow_dispatch:
 
@@ -71,6 +74,8 @@ jobs:
           COMMS_REVIEW_ROOT: ${{ github.workspace }}
           COMMS_REVIEW_RESULT: /tmp/comms-delivery-health.json
         run: node src/lib/commsDeliveryHealth.browser.test.cjs
+      - name: SurfaceState publisher mounted-behaviour contract (actual provider, hook and footer)
+        run: node src/lib/surfaceStatePublish.browser.test.mjs ../.. /tmp/surface-state-publish.json
       - name: Build UI
         run: npm run build
       - name: Start preview
@@ -103,4 +108,5 @@ jobs:
             /tmp/cio-truth-gates-ui-preview.log
             /tmp/rotation-retained-error.json
             /tmp/comms-delivery-health.json
+            /tmp/surface-state-publish.json
           if-no-files-found: warn
