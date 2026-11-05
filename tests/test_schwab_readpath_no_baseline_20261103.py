@@ -42,6 +42,8 @@ def store(tmp_path, monkeypatch):
     monkeypatch.setattr(S, "HOLDINGS_PATH", hp)
     monkeypatch.setattr(S, "_record", lambda *a, **k: None)
     monkeypatch.setattr(S, "_alert", lambda *a, **k: None)
+    monkeypatch.setattr(S, "_conn", lambda: pytest.fail("offline guard test reached a database"))
+    monkeypatch.setattr(S, "check_basis_divergence", lambda *a, **k: [])
     # Every post-write hook is a fake: no DB, no broker, no other store.
     monkeypatch.setitem(sys.modules, "holdings_change_trigger",
                         types.SimpleNamespace(check_and_enqueue=lambda **k: {}))
@@ -536,3 +538,194 @@ def test_caller_baselines_accept_plain_json_containers_only(part):
     else:
         baseline["holdings"][0] = CustomDict(baseline["holdings"][0])
     assert S._baseline_usable(baseline)[0] is False
+
+
+
+# D51 C1/C2: reference evidence and candidate traversal must have one honest graph view.
+def _tiny_book():
+    doc = _book()
+    for row in doc["holdings"]:
+        row["market_value"] *= 0.01
+        row["price"] *= 0.01
+    return doc
+
+
+class _HiddenValues(dict):
+    def values(self):
+        return ()
+
+
+@pytest.mark.parametrize("part", ["root", "rows", "row", "metadata"])
+def test_candidate_custom_graph_cannot_conceal_a_shared_reference(store, part):
+    store.write_text(json.dumps(_book()))
+    before = store.read_bytes()
+    baseline = _tiny_book()
+    candidate = {"holdings": baseline["holdings"]}
+    if part == "root":
+        candidate = _HiddenValues(candidate)
+    elif part == "rows":
+        class HiddenRows(list):
+            def __iter__(self):
+                return iter(())
+        candidate["holdings"] = HiddenRows(candidate["holdings"])
+    elif part == "row":
+        candidate["holdings"] = [_HiddenValues(row) for row in baseline["holdings"]]
+    else:
+        candidate["metadata"] = _HiddenValues(alias=baseline["holdings"])
+    out = S.protected_holdings_write(candidate, baseline=baseline, target_path=str(store), source="test_candidate_graph")
+    print("CANDIDATE_GRAPH", part, out, "store_bytes_changed", store.read_bytes() != before)
+    assert out["wrote"] is False and store.read_bytes() == before
+
+
+@pytest.mark.parametrize("side", ["candidate", "baseline"])
+@pytest.mark.parametrize("kind", ["cycle", "custom_root", "custom_row", "custom_list", "nonstring_key", "set", "nonfinite"])
+def test_non_json_graphs_are_rejected_without_reaching_candidate_reconciliation(store, monkeypatch, side, kind):
+    store.write_text(json.dumps(_book()))
+    before = store.read_bytes()
+    candidate, baseline = _tiny_book(), _book()
+    doc = candidate if side == "candidate" else baseline
+    if kind == "cycle":
+        doc["metadata"] = doc
+    elif kind == "custom_root":
+        doc = _HiddenValues(doc)
+    elif kind == "custom_row":
+        doc["holdings"][0] = _HiddenValues(doc["holdings"][0])
+    elif kind == "custom_list":
+        class CustomList(list):
+            pass
+        doc["holdings"] = CustomList(doc["holdings"])
+    elif kind == "nonstring_key":
+        doc[1] = "not a JSON key"
+    elif kind == "set":
+        doc["metadata"] = {1}
+    else:
+        doc["metadata"] = float("nan")
+    assert S._plain_json_data(doc) is False
+    if side == "candidate":
+        candidate = doc
+        monkeypatch.setattr(S, "reconcile_totals", lambda *a, **k: pytest.fail("invalid candidate reached mutation"))
+    else:
+        baseline = doc
+    out = S.protected_holdings_write(candidate, baseline=baseline, target_path=str(store), source="test_invalid_graph")
+    assert out["wrote"] is False and store.read_bytes() == before
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf"), "NaN", "Infinity", "broken", True, None])
+def test_unusable_caller_values_cannot_disable_actual_relative_guards(store, value):
+    store.write_text(json.dumps(_book()))
+    before = store.read_bytes()
+    baseline = _book()
+    for row in baseline["holdings"]:
+        row["market_value"] = value
+    assert S._baseline_usable(baseline)[0] is False
+    out = S.protected_holdings_write(_tiny_book(), baseline=baseline, target_path=str(store), source="test_bad_reference")
+    print("BAD_CALLER_REFERENCE", repr(value), out, "store_bytes_changed", store.read_bytes() != before)
+    assert out["wrote"] is False and store.read_bytes() == before
+
+
+@pytest.mark.parametrize("backup", [{"holdings": [{}]},
+                                    {"holdings": [{"symbol": "AAA", "account": "schwab_taxable", "market_value": "broken"}]},
+                                    {"holdings": [{"symbol": "AAA", "account": "schwab_taxable"}]},
+                                    {"holdings": [{"symbol": "AAA", "account": "schwab_taxable", "market_value": True}]},
+                                    {"holdings": [{"symbol": "AAA", "account": "schwab_taxable", "market_value": "NaN"}]}])
+def test_unusable_fresh_backup_never_authorizes_replacement(store, backup):
+    store.write_bytes(b"")
+    _backup(store, backup)
+    out = S.protected_holdings_write(_tiny_book(), target_path=str(store), source="test_bad_backup")
+    print("BAD_BACKUP_REFERENCE", out, "store_bytes_changed", store.read_bytes() != b"")
+    assert out["wrote"] is False and out["reason_code"] == "NO_BASELINE" and store.read_bytes() == b""
+
+
+def test_explicit_validator_rejection_is_not_a_backup_fallback(store, monkeypatch):
+    store.write_bytes(b"")
+    _backup(store, _book())
+    monkeypatch.setattr(S, "validate_payload", lambda *a: types.SimpleNamespace(ok=False))
+    assert S._baseline_from_backups() == (None, None)
+    out = S.protected_holdings_write(_tiny_book(), target_path=str(store), source="test_rejected_backup")
+    assert out["wrote"] is False and out["reason_code"] == "NO_BASELINE" and store.read_bytes() == b""
+
+
+def test_invalid_caller_reference_keeps_independent_store_available(store):
+    store.write_text(json.dumps(_book()))
+    caller = _book()
+    caller["holdings"][0]["market_value"] = float("nan")
+    out = S.protected_holdings_write(_book(), baseline=caller, target_path=str(store), source="test_store_fallback")
+    assert out["wrote"] is True and out["baseline_source"] == "store"
+
+
+def test_invalid_newer_backup_does_not_hide_an_older_usable_recent_reference(store):
+    store.write_bytes(b"")
+    good = store.with_name(store.name + ".bak-good")
+    good.write_text(json.dumps(_book()))
+    stamp = time.time() - 3600
+    os.utime(good, (stamp, stamp))
+    _backup(store, {"holdings": [{}]})
+    out = S.protected_holdings_write(_book(), target_path=str(store), source="test_good_backup_fallback")
+    assert out["wrote"] is True and out["baseline_source"] == "backup:" + good.name
+
+
+def test_unusable_store_measurements_need_a_genuine_backup_for_recovery(store):
+    invalid = _book()
+    for row in invalid["holdings"]:
+        row["market_value"] = float("nan")
+    store.write_text(json.dumps(invalid))
+    before = store.read_bytes()
+    out = S.protected_holdings_write(_tiny_book(), target_path=str(store), source="test_nonfinite_store")
+    assert out["wrote"] is False and out["reason_code"] == "NO_BASELINE" and store.read_bytes() == before
+    _backup(store, _book())
+    out = S.protected_holdings_write(_book(), target_path=str(store), source="test_store_recovery")
+    assert out["wrote"] is True and out["baseline_source"].startswith("backup:")
+
+
+def test_known_zero_and_numeric_string_reference_measurements_remain_usable():
+    baseline = _book()
+    baseline["holdings"][0]["market_value"] = 0.0
+    baseline["holdings"][1]["market_value"] = "20000.0"
+    assert S._baseline_usable(baseline)[0] is True
+
+
+
+@pytest.mark.parametrize("field", ["total_value", "portfolio_totals"])
+@pytest.mark.parametrize("value", ["NaN", "Infinity", "broken", True])
+def test_unusable_declared_reference_total_cannot_hide_equity_collapse(store, field, value):
+    store.write_text(json.dumps(_book()))
+    before = store.read_bytes()
+    baseline, candidate = _book(), _book()
+    baseline[field] = {"total_value": value} if field == "portfolio_totals" else value
+    for row in candidate["holdings"]:
+        if not row["is_cash"]:
+            row["market_value"] *= 0.01
+            row["price"] *= 0.01
+    out = S.protected_holdings_write(candidate, baseline=baseline, target_path=str(store), source="test_bad_declared_reference")
+    assert out["wrote"] is False and out["reason_code"] == "CATASTROPHIC_DROP" and store.read_bytes() == before
+
+
+@pytest.mark.parametrize("shape", ["zero", "account_id", "value_alias"])
+def test_existing_measured_reference_shapes_do_not_acquire_a_new_policy_floor(shape):
+    baseline = _book()
+    for row in baseline["holdings"]:
+        if shape == "zero":
+            row["market_value"] = 0.0
+            row["price"] = 0.0
+        elif shape == "account_id":
+            row.pop("account")
+        else:
+            row["value"] = row.pop("market_value")
+    assert S._baseline_usable(baseline)[0] is True
+
+
+
+@pytest.mark.parametrize("kind", ["aggregate_overflow", "integer_overflow", "identityless_member"])
+def test_unusable_reference_falls_back_without_blocking_an_equal_healthy_write(store, kind):
+    store.write_text(json.dumps(_book()))
+    baseline = _book()
+    if kind == "aggregate_overflow":
+        for row in baseline["holdings"]:
+            row["market_value"] = 1e308
+    elif kind == "integer_overflow":
+        baseline["holdings"][0]["market_value"] = 10**400
+    else:
+        baseline["holdings"][0].pop("account")
+        baseline["holdings"][0].pop("account_id")
+    out = S.protected_holdings_write(_book(), baseline=baseline, target_path=str(store), source="test_usable_store_kept")
+    assert out["wrote"] is True and out["baseline_source"] == "store"

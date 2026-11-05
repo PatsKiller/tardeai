@@ -18,6 +18,7 @@ are fully functional and proven by simulation now.
 """
 from __future__ import annotations
 import copy
+import math
 import json, os, sys, tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -97,7 +98,7 @@ def _shares_structure(a, b) -> bool:
 
 
 def _plain_json_data(doc) -> bool:
-    """Baseline evidence must have one graph view: plain JSON, without custom accessors.
+    """Candidate/reference data must have one finite JSON graph view, without custom accessors.
 
     A dict subclass can expose candidate rows from a slot through get(), while values()
     hides that alias from the graph walk. Check exact container/scalar types before any
@@ -108,6 +109,8 @@ def _plain_json_data(doc) -> bool:
     while stack:
         value, leaving = stack.pop()
         kind = type(value)
+        if kind is float and not math.isfinite(value):
+            return False
         if kind in (str, int, float, bool, type(None)):
             continue
         if kind not in (dict, list):
@@ -126,6 +129,42 @@ def _plain_json_data(doc) -> bool:
             stack.extend((child, False) for child in value.values())
         else:
             stack.extend((child, False) for child in value)
+    return True
+
+
+def _reference_numbers_usable(doc) -> bool:
+    """Reference rows need explicit finite measurements, never missing values coerced to zero.
+
+    Numeric strings remain accepted by the existing validator; booleans are not money or
+    quantities. Zero and legitimate signed values remain measurements, without a new floor.
+    """
+    rows = _positions_of(doc)
+    numbers = []
+    for row in rows:
+        measured = row.get("market_value")
+        if measured is None:
+            measured = row.get("value")
+        if measured is None:
+            return False
+        numbers.append(measured)
+        numbers.extend(row[key] for key in ("market_value", "value", "price", "shares", "qty")
+                       if key in row and row[key] is not None)
+    totals = doc.get("portfolio_totals")
+    if totals is not None:
+        if type(totals) is not dict:
+            return False
+        if totals.get("total_value") is not None:
+            numbers.append(totals["total_value"])
+    if doc.get("total_value") is not None:
+        numbers.append(doc["total_value"])
+    for number in numbers:
+        if isinstance(number, bool):
+            return False
+        try:
+            if not math.isfinite(float(number)):
+                return False
+        except (TypeError, ValueError, OverflowError):
+            return False
     return True
 
 
@@ -150,10 +189,20 @@ def _baseline_usable(doc) -> tuple[bool, str]:
         row for row in rows
         if isinstance(row, dict)
         and _usable_text(row.get("symbol"))
-        and _usable_text(row.get("account") or row.get("account_key"))
+        and _usable_text(row.get("account") or row.get("account_id") or row.get("account_key"))
     ]
-    if not identified:
-        return False, "baseline has no positions with an account and symbol"
+    if len(identified) != len(rows):
+        return False, "baseline contains positions without an account and symbol"
+    if not _reference_numbers_usable(doc):
+        return False, "baseline lacks finite numerical position evidence"
+    try:
+        verdict = validate_payload(doc, None)
+        if not verdict.ok:
+            return False, "baseline failed payload validation"
+        if not math.isfinite(verdict.total) or not math.isfinite(verdict.cash_total):
+            return False, "baseline aggregates are not finite"
+    except (TypeError, ValueError, OverflowError, AttributeError):
+        return False, "baseline numerical validation is unusable"
     return True, ""
 
 
@@ -296,7 +345,7 @@ def _no_baseline_reason(state, path=None):
 
 
 def _baseline_from_backups(path=None, *, max_age_hours=None):
-    """Newest structurally usable, sufficiently RECENT backup as ``(doc, path)``, else ``(None, None)``.
+    """Newest finite, validator-accepted, sufficiently RECENT reference as ``(doc, path)``, else ``(None, None)``.
 
     2026-11-03 (operator execution-engineering grant): when the live store is empty/corrupt the
     WRITE path must still have a baseline — the restored candidate or a backup — so
@@ -311,7 +360,6 @@ def _baseline_from_backups(path=None, *, max_age_hours=None):
     """
     limit = _baseline_max_age_hours() if max_age_hours is None else float(max_age_hours)
     now_ts = datetime.now(timezone.utc).timestamp()
-    fallback = None
     for f in _backup_candidates(path):
         try:
             age_hours = (now_ts - f.stat().st_mtime) / 3600.0
@@ -320,13 +368,10 @@ def _baseline_from_backups(path=None, *, max_age_hours=None):
         if age_hours > limit:
             continue                      # too old to be a baseline: a stale book is not a recovery
         state, doc = _store_state(f)
-        if state != "ok" or not _positions_of(doc):
+        if state != "ok" or not _baseline_usable(doc)[0]:
             continue
-        if validate_payload(doc, None).ok:
-            return doc, f
-        if fallback is None:
-            fallback = (doc, f)
-    return fallback if fallback else (None, None)
+        return doc, f
+    return None, None
 
 
 def sane_payload(h, last_good=None):
@@ -613,6 +658,14 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
     a caller may pass its own resolved path (the guard operates entirely on that path).
     """
     HP = Path(target_path).resolve() if target_path else HOLDINGS_PATH
+    # Admission precedes alias traversal and all candidate mutation: both graph views must
+    # be non-overridable, finite JSON. A custom candidate can otherwise hide shared rows.
+    if not _plain_json_data(new_holdings):
+        reason = "SCHEMA_INVALID: candidate contains non-JSON containers, cycles or non-finite values"
+        _record(account_key, "rejected_sanity", f"[{source}] {reason}")
+        _alert(f"🛑 holdings write BLOCKED ({source}): {reason}. Prior snapshot kept (no wipe).", source)
+        return {"wrote": False, "status": "rejected_sanity", "reason": reason,
+                "reason_code": "SCHEMA_INVALID", "missing_accounts": [], "baseline_source": None}
     # A guard whose precondition can be violated by its caller is decorative (cc-deepseek-3 review,
     # 2026-11-03). If the caller hands us the candidate as its own baseline, every relative check
     # compares the new book with itself and the cash/drop guards can never fire. Refuse here, in the
