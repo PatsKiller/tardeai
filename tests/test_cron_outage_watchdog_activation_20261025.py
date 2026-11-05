@@ -179,3 +179,140 @@ def test_ack_refuses_unknown_key_or_missing_reason(tmp_path, monkeypatch, extra)
     state = _ack_world(tmp_path, monkeypatch, *extra, "--apply-ack")
     assert watchdog.main() != 0
     assert not (state / watchdog.ACKS).exists()
+
+
+# ── a fire during the lane's own run is IN PROGRESS, not missed (2026-11-03, ingest false positive) ──────
+def started(job, at, **extra):
+    return {"component": job, "job_id": job, "event_type": "started", "exit_code": None,
+            "mode": "business", "ts": at, **extra}
+
+
+WRAPPED = lane(scheduler={"kind": "cron", "expression": "7,22,37,52 * * * *",
+                          "match": "scripts/options_tick.py",
+                          "command_text": "bash scripts/safe_flock.sh /tmp/options_tick.lock python x.py"})
+JOB = "options_tick"
+
+
+def assess_runs(events):
+    return evaluate({"lanes": [WRAPPED]}, events, {}, now=NOW, trading_day=lambda at: True)
+
+
+def test_a_fire_inside_the_lane_s_own_run_is_in_progress_not_missed():
+    """23-minute runs on a 15-minute cadence: the in-between fire has no success because the run is still
+    going. Counting it missed re-opens the incident every cycle (external-market-data-ingest, 2026-11-03)."""
+    # The snapshot is taken WHILE the run is still going (the real 18:21Z receipt): the previous run
+    # completed at 22:45, this one started at 22:50 and has not finished by 23:18.
+    events = [completed(JOB, "2026-10-24T22:45:00-04:00"),
+              started(JOB, "2026-10-24T22:50:00-04:00")]
+    row = assess_runs(events)["rows"][0]
+
+    assert row["status"] == "OK" and row["missed_fires"] == 0
+    assert row["in_progress_fires"] == 2
+
+
+def test_without_the_run_window_the_same_history_is_still_missed():
+    row = assess_runs([completed(JOB, "2026-10-24T22:45:00-04:00")])["rows"][0]
+
+    assert row["status"] == "MISSED_RUNS" and row["missed_fires"] == 2
+    assert row["in_progress_fires"] == 0
+
+
+def test_a_launch_two_seconds_after_the_fire_still_covers_it():
+    events = [completed(JOB, "2026-10-24T22:45:00-04:00"),
+              started(JOB, "2026-10-24T23:07:02-04:00")]
+    row = assess_runs(events)["rows"][0]
+
+    assert row["missed_fires"] == 1 and row["in_progress_fires"] == 1 and row["status"] == "OK"
+
+
+def failed(job, at):
+    return {"component": job, "job_id": job, "event_type": "completed", "exit_code": 1, "mode": "business", "ts": at}
+
+
+def test_a_run_older_than_the_limit_is_a_stall_and_does_not_cover_the_fire():
+    """A hung run must still alert: something started more than 60 minutes before the fire is not progress.
+
+    The window must still be OPEN for this to exercise ``IN_PROGRESS_LIMIT_SECONDS``: a closed window never
+    covers a fire, so a closed one would pass whatever the limit says (claude-lead BLOCK on #2553).
+    """
+    events = [completed(JOB, "2026-10-24T21:30:00-04:00"),
+              started(JOB, "2026-10-24T21:45:00-04:00")]  # open at NOW; 67/82 min before the 22:52 and 23:07 fires
+    row = assess_runs(events)["rows"][0]
+
+    assert row["status"] == "MISSED_RUNS" and row["missed_fires"] == 2 and row["in_progress_fires"] == 0
+
+
+def test_the_in_progress_limit_is_a_boundary_not_a_formality():
+    """One fire inside the 60-minute limit and one beyond it, from the same open run: 1 in progress, 1 missed."""
+    events = [completed(JOB, "2026-10-24T21:45:00-04:00"),
+              started(JOB, "2026-10-24T22:05:00-04:00")]  # 22:52 fire = 47 min in; 23:07 fire = 62 min in
+    row = assess_runs(events)["rows"][0]
+
+    assert row["missed_fires"] == 1 and row["in_progress_fires"] == 1 and row["status"] == "OK"
+
+
+def test_a_failed_run_cannot_cover_the_fire_that_launched_it():
+    """claude-lead BLOCK on #2553: two fires, each with its own run exiting 1 after a minute, used to give
+    status OK / missed_fires 0 — a lane failing every run would never alert."""
+    events = [completed(JOB, "2026-10-24T21:45:00-04:00"),
+              started(JOB, "2026-10-24T22:52:00-04:00"), failed(JOB, "2026-10-24T22:53:00-04:00"),
+              started(JOB, "2026-10-24T23:07:00-04:00"), failed(JOB, "2026-10-24T23:08:00-04:00")]
+    row = assess_runs(events)["rows"][0]
+
+    assert row["status"] == "MISSED_RUNS" and row["missed_fires"] == 2 and row["in_progress_fires"] == 0
+
+
+def test_a_successful_run_that_ends_after_the_fire_still_covers_it():
+    """The fire the run was serving is not late once that run has completed successfully."""
+    events = [completed(JOB, "2026-10-24T21:45:00-04:00"),
+              started(JOB, "2026-10-24T22:52:00-04:00"), completed(JOB, "2026-10-24T23:10:00-04:00")]
+    row = assess_runs(events)["rows"][0]
+
+    assert row["missed_fires"] == 0 and row["status"] == "OK"
+
+
+def test_another_job_s_run_window_never_covers_this_lane():
+    events = [completed(JOB, "2026-10-24T22:45:00-04:00"),
+              started("drive_sync", "2026-10-24T22:50:00-04:00"),
+              completed("drive_sync", "2026-10-24T23:12:00-04:00")]
+    row = assess_runs(events)["rows"][0]
+
+    assert row["status"] == "MISSED_RUNS"
+
+
+def test_a_dry_run_window_cannot_cover_the_fire():
+    """cc-deepseek-5 BLOCK on #2553: a dry run does no lane work, so an open dry-run window must not make a
+    dead lane report OK. Cutovers run dry runs routinely, which is when that lie would be worst."""
+    events = [completed(JOB, "2026-10-24T22:45:00-04:00"),
+              started(JOB, "2026-10-24T22:50:00-04:00", mode="dry_run")]
+    row = assess_runs(events)["rows"][0]
+
+    assert row["status"] == "MISSED_RUNS" and row["missed_fires"] == 2 and row["in_progress_fires"] == 0
+
+
+def test_a_preflight_window_cannot_cover_the_fire():
+    events = [completed(JOB, "2026-10-24T22:45:00-04:00"),
+              started(JOB, "2026-10-24T22:50:00-04:00", mode="preflight")]
+    row = assess_runs(events)["rows"][0]
+
+    assert row["status"] == "MISSED_RUNS" and row["in_progress_fires"] == 0
+
+
+def test_a_legacy_dry_run_command_cannot_cover_the_fire():
+    """Legacy events carry no mode; the command is then the only evidence, exactly as ``business_success`` reads it."""
+    events = [completed(JOB, "2026-10-24T22:45:00-04:00"),
+              {**started(JOB, "2026-10-24T22:50:00-04:00"), "mode": None,
+               "command": "bash scripts/safe_flock.sh /tmp/options_tick.lock python x.py --dry-run"}]
+    row = assess_runs(events)["rows"][0]
+
+    assert row["status"] == "MISSED_RUNS" and row["in_progress_fires"] == 0
+
+
+def test_a_legacy_business_command_still_covers_the_fire():
+    """The legacy form that proves business execution keeps working: no mode, a command with no dry-run flag."""
+    events = [completed(JOB, "2026-10-24T22:45:00-04:00"),
+              {**started(JOB, "2026-10-24T22:50:00-04:00"), "mode": None,
+               "command": "bash scripts/safe_flock.sh /tmp/options_tick.lock python x.py --apply"}]
+    row = assess_runs(events)["rows"][0]
+
+    assert row["status"] == "OK" and row["in_progress_fires"] == 2 and row["missed_fires"] == 0
