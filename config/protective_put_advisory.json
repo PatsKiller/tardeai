@@ -1,0 +1,23 @@
+{
+  "schema": "ProtectivePutAdvisoryConfig@v1",
+  "enabled": true,
+  "_why": "D32 SPEC section 5 (operator APPROVED 2026-11-04 ~18:15 ET): for single-stock positions above a size threshold with an earnings or known event window, the CIO may suggest a protective put or a collar with cost and floor. Advisory only: the system never places, sizes, stops or cancels an order (AGENTS.md rule 1, MBI_BEHAVIOR = 0). Values are config, not hard-coded, so the operator can tune the threshold and the window without a code change.",
+  "min_position_pct_of_book": 2.0,
+  "event_window_days_before": 10,
+  "event_window_days_after": 2,
+  "put_floor_pct_below_spot": 10.0,
+  "collar_cap_pct_above_spot": 15.0,
+  "estimated_cost_pct_of_position": 2.5,
+  "min_days_to_expiry": 7,
+  "max_days_to_expiry": 60,
+  "exclude_symbols": [
+    "CASH"
+  ],
+  "notes": {
+    "threshold": "A position at or above this share of the book is worth hedging; below it the premium is not worth the commission.",
+    "event_window": "The same 10-before/2-after shape the earnings vertical registry uses; days_to_event is negative after the event.",
+    "floor": "When the position carries a broker stop, the put strike targets the stop (the position is already defended there). Otherwise the strike targets spot minus the configured percent.",
+    "cost": "With an option chain the premium is the quoted ask; without one the cost is a LABELED estimate (estimated_cost_pct_of_position of the position value) and cost_is_estimate is true. A floor price from a quote is only reported when a real strike was chosen.",
+    "never_placed": "No configuration value can make this lane place, size or cancel anything; the module has no broker import path and every suggestion carries placed_by_system: false."
+  }
+}
