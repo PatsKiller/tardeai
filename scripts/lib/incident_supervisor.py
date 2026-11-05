@@ -333,6 +333,26 @@ def _last_action_was_noop(rec) -> bool:
     return bool(last.get("no_op", (last.get("detail") or {}).get("no_op")))
 
 
+def disk_incident_route(rec: Mapping[str, Any], cfg: Mapping[str, Any]) -> Optional[dict]:
+    """Which configured disk lane this incident came from, or None.
+
+    Matched EXACTLY (case-insensitive) against the structured source fields — job, lane, watcher — never the free-text
+    title, so an incident that merely mentions a disk is not swept in. Operator 2026-11-03 (disk permanent-fix item 4):
+    a disk incident is never parked as needs_operator; the fixer lane owns it.
+    """
+    route = ((cfg.get("policy") or {}).get("disk_incident_routes")) or {}
+    if not isinstance(route, dict):
+        return None
+    src = rec.get("source") or {}
+    jobs = {str(x).strip().lower() for x in route.get("jobs") or [] if str(x).strip()}
+    watchers = {str(x).strip().lower() for x in route.get("watchers") or [] if str(x).strip()}
+    hit_job = sorted({str(src.get(k) or "").strip().lower() for k in ("job", "lane")} & jobs)
+    hit_watcher = sorted({str(src.get("watcher") or "").strip().lower()} & watchers)
+    if not (hit_job or hit_watcher):
+        return None
+    return {"job": hit_job, "watcher": hit_watcher, "class": "code_defect"}
+
+
 def _fresh_ok_dispatch(rec: Mapping[str, Any], policy: Mapping[str, Any], now: datetime) -> bool:
     """Is a dispatch in THIS episode successful and still inside ``fixer_active_hours``?
 
@@ -661,47 +681,66 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
         if last and now - last < timedelta(minutes=float(pol.get("model_cooldown_minutes", 30))):
             out["skipped"].append({"id": iid, "why": "cooldown"})
             continue
-        if _calls_today(d, now) >= int(pol.get("max_model_calls_per_day", 40)):
-            out["skipped"].append({"id": iid, "why": "daily model-call cap"})
-            continue
         # Cycle budget (2026-11-03): never start a model call the unit timeout could kill. The gate
         # sits after every cheap/deterministic path and before build_prompt/model.
         remaining = spendable_s()
         if remaining < model_timeout_s:
             _defer_budget(iid, "before model", d=d, now=now, apply=apply, out=out, remaining_s=remaining)
             continue
-        prompt = build_prompt(rec, cfg, evidence=evidence_excerpt(rec, state_root), runbooks=runbook_excerpt(rec, cfg, root))
-        if not apply:
-            out["skipped"].append({"id": iid, "why": "dry_run: would call model", "prompt_chars": len(prompt)})
+        # 3b. DISK INCIDENT — deterministic, BEFORE any model call (operator 2026-11-03, item 4: "the incident
+        # supervisor must never park a disk incident as 'needs a person'; it dispatches the fixer"). Placed after
+        # every cheap rail (refused scope, attempts cap, time box, cooldown, call cap, cycle budget) and before
+        # build_prompt, so no model call can happen first and no model answer can change the class. The dispatch
+        # itself is the existing hardened code_defect branch below — this only forces the classification.
+        disk = disk_incident_route(rec, cfg)
+        if disk and not apply:
+            # A dry run never dispatches: it reports what it would have done and moves on.
+            out["skipped"].append({"id": iid, "why": "dry_run: would dispatch the fixer", "route": "disk_incident"})
             continue
-        _bump_calls(d, now)
-        try:
-            text, provider = deps.model(prompt)
-        except Exception as exc:  # noqa: BLE001 — a refused/failed call is recorded, the time box still escalates
-            L.attempt(iid, actor=ACTOR, action="triage", result=f"model unavailable: {str(exc)[:200]}", ok=False,
-                      sets_fixing=False, d=d, now=now)
-            out["skipped"].append({"id": iid, "why": "model_error"})
-            continue
-        provider = str(provider or "").lower()
-        if any(p in provider for p in pol.get("never_providers") or []):
-            L.attempt(iid, actor=ACTOR, action="triage", result=f"answer from refused provider {provider} discarded",
-                      ok=False, sets_fixing=False, d=d, now=now)
-            out["skipped"].append({"id": iid, "why": f"refused_provider:{provider}"})
-            continue
-        verdict = parse_verdict(text)
-        if not verdict:
-            L.attempt(iid, actor=ACTOR, action="triage", result="unparseable model output", ok=False,
-                      sets_fixing=False, detail={"provider": provider}, d=d, now=now)
-            out["skipped"].append({"id": iid, "why": "unparseable"})
-            continue
-        detail = {"provider": provider, "class": verdict["class"], "proposed": verdict["action"],
-                  "rationale": verdict["rationale"]}
-        acts = any(p in provider for p in pol.get("act_on_providers") or ["anthropic"])
-        if not acts:
-            L.attempt(iid, actor=ACTOR, action="triage_readonly", result=f"{verdict['class']}: {verdict['action']}",
-                      ok=None, sets_fixing=False, detail=detail, d=d, now=now)
-            out["skipped"].append({"id": iid, "why": f"readonly_provider:{provider}"})
-            continue
+        if disk:
+            verdict = {"class": "code_defect",
+                       "action": f"fix the disk incident: {str(rec.get('title') or '')[:200]}",
+                       "params": {}, "rationale": "disk incident routed to the fixer lane (operator 2026-11-03)"}
+            detail = {"provider": "deterministic", "class": "code_defect", "route": "disk_incident",
+                      "matched": disk, "proposed": verdict["action"]}
+        else:
+            # The daily model-call cap is a MODEL gate (cx-openai-3 F3): it must never park a deterministic disk
+            # incident, which needs no model at all. It lives here, on the only branch that spends calls.
+            if _calls_today(d, now) >= int(pol.get("max_model_calls_per_day", 40)):
+                out["skipped"].append({"id": iid, "why": "daily model-call cap"})
+                continue
+            prompt = build_prompt(rec, cfg, evidence=evidence_excerpt(rec, state_root), runbooks=runbook_excerpt(rec, cfg, root))
+            if not apply:
+                out["skipped"].append({"id": iid, "why": "dry_run: would call model", "prompt_chars": len(prompt)})
+                continue
+            _bump_calls(d, now)
+            try:
+                text, provider = deps.model(prompt)
+            except Exception as exc:  # noqa: BLE001 — a refused/failed call is recorded, the time box still escalates
+                L.attempt(iid, actor=ACTOR, action="triage", result=f"model unavailable: {str(exc)[:200]}", ok=False,
+                          sets_fixing=False, d=d, now=now)
+                out["skipped"].append({"id": iid, "why": "model_error"})
+                continue
+            provider = str(provider or "").lower()
+            if any(p in provider for p in pol.get("never_providers") or []):
+                L.attempt(iid, actor=ACTOR, action="triage", result=f"answer from refused provider {provider} discarded",
+                          ok=False, sets_fixing=False, d=d, now=now)
+                out["skipped"].append({"id": iid, "why": f"refused_provider:{provider}"})
+                continue
+            verdict = parse_verdict(text)
+            if not verdict:
+                L.attempt(iid, actor=ACTOR, action="triage", result="unparseable model output", ok=False,
+                          sets_fixing=False, detail={"provider": provider}, d=d, now=now)
+                out["skipped"].append({"id": iid, "why": "unparseable"})
+                continue
+            detail = {"provider": provider, "class": verdict["class"], "proposed": verdict["action"],
+                      "rationale": verdict["rationale"]}
+            acts = any(p in provider for p in pol.get("act_on_providers") or ["anthropic"])
+            if not acts:
+                L.attempt(iid, actor=ACTOR, action="triage_readonly", result=f"{verdict['class']}: {verdict['action']}",
+                          ok=None, sets_fixing=False, detail=detail, d=d, now=now)
+                out["skipped"].append({"id": iid, "why": f"readonly_provider:{provider}"})
+                continue
         if verdict["class"] == "runbook":
             chosen, why = validate_action(verdict, rec, cfg)
             if not chosen:

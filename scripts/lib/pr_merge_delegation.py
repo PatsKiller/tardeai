@@ -29,9 +29,11 @@ import sys
 from zoneinfo import ZoneInfo
 
 try:  # repo root on sys.path
-    from scripts.lib.agent_claim_board import ClaimBoard
+    from scripts.lib.agent_claim_board import (
+        ClaimBoard, ClaimError, canonical_pattern, patterns_overlap, _segment_regex as claim_segment_regex)
 except ImportError:  # scripts/ on sys.path
-    from lib.agent_claim_board import ClaimBoard  # type: ignore[no-redef]
+    from lib.agent_claim_board import (  # type: ignore[no-redef]
+        ClaimBoard, ClaimError, canonical_pattern, patterns_overlap, _segment_regex as claim_segment_regex)
 
 REPO = "PatsKiller/tardeai"
 TRUSTED_REPO = Path(pwd.getpwuid(os.getuid()).pw_dir) / "trade-ai-v12-rebuild/trade-ai-v12-rebuild"
@@ -253,6 +255,39 @@ def claim_is_live(view, board):
 ARCHIVE_SCHEMA = "AgentClaimArchive@v1"
 #: The archive also carries operator overrides; they are not claims and never resolve a takeover target.
 ARCHIVE_NONCLAIM_SCHEMAS = frozenset({"AgentClaimOverride@v1"})
+#: FQ-136 / D39 (operator 2026-11-05). A takeover target that is in neither the live views nor the canonical archive is
+#: still a hard refusal — EXCEPT when the target's own claim id dates it before this cutoff, i.e. 2026-10-26 exclusive.
+#: The archive has no coverage for 2026-10-23..2026-10-25 (70 distinct targets, measured 2026-11-05), so those documents
+#: are gone rather than lost; a missing target dated on or after the cutoff may still exist and is still refused.
+#: Deliberately a narrow, dated exception: it does not relax cycles, malformed links, live-claimant overlap, archive
+#: validation, review counts, claims, holds or checks, and it never resolves a target to a claim — the target stays
+#: unknown and unverified, which is why the release is logged rather than silent.
+UNKNOWN_TAKEOVER_CUTOFF = datetime(2026, 10, 26, tzinfo=timezone.utc)
+#: ``YYYYMMDDThhmmssZ-<vendor>-<hex>`` is the only claim-id shape this repository writes. Anything else is not datable
+#: and therefore cannot earn the exception.
+CLAIM_ID_STAMP = re.compile(r"^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z-")
+
+
+def claim_id_datetime(claim_id: str) -> datetime | None:
+    """The UTC instant encoded in a claim id, or ``None`` when the id is not in the canonical dated form."""
+    match = CLAIM_ID_STAMP.match(claim_id)
+    if match is None:
+        return None
+    try:
+        year, month, day, hour, minute, second = (int(part) for part in match.groups())
+        return datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def takeover_target_unknown_is_acceptable(target: str) -> bool:
+    """True when a target nobody can account for predates the archive's coverage (FQ-136).
+
+    Only a datable target strictly before ``UNKNOWN_TAKEOVER_CUTOFF`` qualifies. An undatable id, or one dated on/after
+    the cutoff, is not acceptable and the caller keeps refusing it.
+    """
+    stamp = claim_id_datetime(target)
+    return stamp is not None and stamp < UNKNOWN_TAKEOVER_CUTOFF
 #: What ``ClaimBoard.compact()`` can actually write, paired with the raw status it archives. ``live`` is deliberately
 #: absent: compaction must never remove a live holder, so a record that says so is inconsistent or forged. Anything
 #: outside these pairs — a missing, unknown or impossible ``state_at_archive``, or a mismatched status — refuses.
@@ -317,11 +352,30 @@ def archived_claims(board) -> dict[str, dict[str, object]]:
     return out
 
 
-def validate_takeover_graph(views, board):
+def claim_shared_paths(config):
+    """Exact shared-additive scopes from Host's main-SHA blob, never an env override."""
+    if not isinstance(config, dict) or config.get("schema") != "AgentClaimSharedPaths@v1":
+        return frozenset()
+    rows = config.get("paths")
+    if not isinstance(rows, list):
+        return frozenset()
+    shared = set()
+    for row in rows:
+        try:
+            path = canonical_pattern(row["path"])
+        except (ClaimError, KeyError, TypeError, ValueError):
+            continue
+        if not any(char in path for char in "*?["):
+            shared.add(path)
+    return frozenset(shared)
+
+
+def validate_takeover_graph(views, board, shared_config=None):
     """Refuse a takeover graph that is ambiguous or unreadable.
 
-    Chain-invalid: cycles, unknown targets, duplicate/malformed entries, and two *currently live* claimants naming the
-    same predecessor. A released (or otherwise non-live) claimant naming the same predecessor as a live one is durable
+    Chain-invalid: cycles, unknown targets, duplicate/malformed entries, and currently live claimants naming the
+    same predecessor whose exclusive path scopes overlap (or cannot be read). Disjoint live siblings are valid:
+    the board records inherited links mechanically. A released or non-live sibling is durable
     history, not ambiguity — and a predecessor that compaction removed from the views is durable history only when the
     canonical archive records it as released; a target nobody can account for still refuses.
     """
@@ -332,13 +386,19 @@ def validate_takeover_graph(views, board):
         if targets:
             edges[view.claim_id] = targets
     archived: dict[str, dict[str, object]] | None = None
-    for targets in edges.values():
+    unknown_takeover_targets: list[tuple[str, str]] = []
+    for source, targets in edges.items():
         for target in targets:
             if target in by_id:
                 continue
             if archived is None:
                 archived = archived_claims(board)
             if target not in archived:
+                # FQ-136 / D39: a target dated before the archive's coverage is UNKNOWN, not invalid. It is never
+                # resolved to a claim — the edge stays unverifiable — so the release is recorded, attributably.
+                if takeover_target_unknown_is_acceptable(target):
+                    unknown_takeover_targets.append((source, target))
+                    continue
                 raise Refused("claim_takeover_chain_invalid")
     colour = {}
 
@@ -354,6 +414,14 @@ def validate_takeover_graph(views, board):
     for node in edges:
         if colour.get(node) is None:
             visit(node)
+    # FQ-136: released, but never silent. One line per unknown edge, on stderr so the CLI's JSON stdout stays parseable.
+    for source, target in unknown_takeover_targets:
+        print(
+            f"pr_merge_delegation: warning: takeover target {target} (named by {source}) is in neither the live board "
+            f"nor the archive and predates {UNKNOWN_TAKEOVER_CUTOFF.date().isoformat()}; treated as UNKNOWN, not invalid "
+            "(FQ-136/D39)",
+            file=sys.stderr,
+        )
     live = {view.claim_id: claim_is_live(view, board) for view in views}
     claimants = {}
     for source, targets in edges.items():
@@ -361,11 +429,35 @@ def validate_takeover_graph(views, board):
             continue
         for target in targets:
             claimants.setdefault(target, set()).add(source)
-    if any(len(sources) > 1 for sources in claimants.values()):
-        raise Refused("claim_takeover_chain_invalid")
+    # _claim_locked mechanically records EVERY overlapping stale predecessor.
+    # Shared ancestry alone is not a declaration of exclusive succession.
+    shared = claim_shared_paths(shared_config)
+    scopes = {}
+    for sources in claimants.values():
+        if len(sources) < 2:
+            continue
+        ordered = sorted(sources)
+        try:
+            for source in ordered:
+                if source in scopes:
+                    continue
+                raw = by_id[source].doc.get("paths")
+                if not isinstance(raw, list) or not raw:
+                    raise Refused("claim_takeover_chain_invalid")
+                canonical = [canonical_pattern(path) for path in raw]
+                for path in canonical:
+                    for segment in path.split("/"):
+                        claim_segment_regex(segment)  # validate before disjoint prefixes can short-circuit
+                scopes[source] = [path for path in canonical if path not in shared]
+            for index, left in enumerate(ordered):
+                for right in ordered[index + 1:]:
+                    if any(patterns_overlap(a, b) for a in scopes[left] for b in scopes[right]):
+                        raise Refused("claim_takeover_chain_invalid")
+        except (ClaimError, TypeError, ValueError, re.error):
+            raise Refused("claim_takeover_chain_invalid") from None
 
 
-def effective_claim_states(claims, board):
+def effective_claim_states(claims, board, shared_config=None):
     """Classify snapshot claims with the canonical ``ClaimBoard.views()`` resolver.
 
     released   : raw status in {done, abandoned}
@@ -385,7 +477,7 @@ def effective_claim_states(claims, board):
     views, unreadable = board.views()
     if unreadable:
         raise Refused("claim_board_unavailable_or_truncated")
-    validate_takeover_graph(views, board)
+    validate_takeover_graph(views, board, shared_config)
     by_id = {view.claim_id: view for view in views}
     live = {view.claim_id: claim_is_live(view, board) for view in views}
     named = set()
@@ -444,7 +536,7 @@ def evaluate(snapshot, *, now, claim_board=None):
         board = claim_board if claim_board is not None else snapshot.get("claim_board")
         if board is None and snapshot.get("claim_board_dir"):
             board = ClaimBoard(snapshot["claim_board_dir"], now=lambda: now)
-        states = effective_claim_states(claims, board)
+        states = effective_claim_states(claims, board, snapshot.get("claim_shared_paths_config"))
         actor_candidates = [c for c in claims if c.get("session") == actor
                             and c.get("vendor") == lead.get("vendor") and any(
                                 isinstance(p, str) and p.endswith("coordination/coordinator/coordinators.json") for p in c.get("paths", []))]
@@ -518,11 +610,21 @@ def evaluate(snapshot, *, now, claim_board=None):
             covered_paths.update(path for path in effective_files if any(overlaps(path, cp) for cp in found[0].get("paths", []) if isinstance(cp, str)))
         if covered_paths != set(effective_files):
             raise Refused("source_author_claim_coverage_incomplete")
-        for claim in claims:
-            # A superseded predecessor no longer holds its files; released claims already freed them.
-            if states.get(claim.get("claim_id")) in {"live", "unresolved"} and any(
-                    overlaps(p, cp) for p in effective_files for cp in claim.get("paths", []) if isinstance(cp, str)):
-                raise Refused("current_source_holder_not_released")
+        # Shared-additive custody is nonexclusive, from the same main-SHA config used by the graph.
+        # This applies only AFTER actual authors have released and covered every effective source path.
+        shared_paths = claim_shared_paths(snapshot.get("claim_shared_paths_config"))
+        try:
+            exclusive_files = [p for p in map(canonical_pattern, effective_files) if p not in shared_paths]
+            for claim in claims:
+                # A superseded predecessor no longer holds its files; released claims already freed them.
+                if not exclusive_files or states.get(claim.get("claim_id")) not in {"live", "unresolved"}:
+                    continue
+                scopes = [canonical_pattern(cp) for cp in claim.get("paths", []) if isinstance(cp, str)]
+                # Preserve the holder gate's existing exclusive overlap semantics (including fnmatch globs).
+                if any(overlaps(p, cp) for p in exclusive_files for cp in scopes if cp not in shared_paths):
+                    raise Refused("current_source_holder_not_released")
+        except ClaimError:
+            raise Refused("current_source_holder_not_released") from None
         reviews = evidence.get("reviews")
         if not isinstance(reviews, list) or not reviews:
             raise Refused("independent_reviews_missing")
@@ -723,6 +825,7 @@ class Host:
         for path in paths:
             claims.append(json_read(path))
         claim_board_dir = self.state / "claims"
+        claim_shared_config = json.loads(self.git("show", f"{sha}:config/agent_claim_shared_paths.json"))
         shared_config = json.loads(self.git("show", f"{sha}:config/shared_infra_paths.json"))
         patterns = shared_config.get("paths")
         if not isinstance(patterns, list) or any(not isinstance(pattern, str) for pattern in patterns):
@@ -746,7 +849,7 @@ class Host:
                     if isinstance(cap, dict) and isinstance(cap.get("excluded_globs"), list) else None,
                 "held": held, "held_classes": held_classes, "held_class_metadata": held_metadata,
                 "actor_session": actor_session, "shared_infra": shared,
-                "claim_board_dir": str(claim_board_dir),
+                "claim_board_dir": str(claim_board_dir), "claim_shared_paths_config": claim_shared_config,
                 "source_authorship_sha256": digest({"author": pr.get("author"), "commits": commits})}
 
     def ledger_path(self, pr):

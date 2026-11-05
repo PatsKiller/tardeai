@@ -29,6 +29,15 @@ COVERS = ["scripts/run_deep_overnight_llm_queue.py"]
 
 
 @pytest.fixture(autouse=True)
+def _no_real_incident_ledger(monkeypatch):
+    """The drain wiring records exhausted jobs in the real IncidentRecord@v1 ledger in production. These tests
+    exercise main() with high failure rates, so the incident writer is stubbed: no host-state write."""
+    import run_deep_overnight_llm_queue as _drain
+
+    monkeypatch.setattr(_drain, "_record_drain_incident", lambda item: None)
+
+
+@pytest.fixture(autouse=True)
 def _isolated_breaker(tmp_path, monkeypatch):
     """Each test gets its own persisted breaker file (round 3: the breaker survives across runs by design)."""
     path = tmp_path / "breaker.json"

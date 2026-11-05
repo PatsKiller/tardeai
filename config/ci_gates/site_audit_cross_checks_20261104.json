@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "site_audit_cross_checks_20261104",
+  "files": [
+    "tests/test_site_audit_cross_checks_20261104.py"
+  ],
+  "anchor": "SITE_AUDIT_CROSS_CHECKS_20261104",
+  "comment": [
+    "ANCHOR: SITE_AUDIT_CROSS_CHECKS_20261104 — mandates SiteAuditCrossChecks@v1, the checks the site crawl cannot make on its own",
+    "(SPEC_SITE_AUDIT_AUTOREMEDIATE_LOOP_20261104 piece 5, plus the §6 amendment): now-price against the served quote,",
+    "verdict against its price, one figure across surfaces, and per-card completeness — a TOP-list card missing a",
+    "technical or a CIO thesis with an as_of is P1. The crawl and these checks share REQUIRED_TECHNICAL and TOP_LISTS so",
+    "'complete' has one definition. Pure: dicts in, findings out."
+  ]
+}
