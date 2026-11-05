@@ -4,21 +4,31 @@
 half-written. The credit book then refused every Anthropic call (CREDIT_UNAVAILABLE) with no log and no alert for
 30+ hours, and the hourly persistent wake died on JSONDecodeError. Corruption anywhere else still fails loudly.
 Fixtures only: synthetic policy, temp dirs, Telegram stubbed.
+
+The storage/credit helpers carry no sender (planner-lane reach); this suite injects the notification owner and a
+fake transport so both delivery failure classes are exercised without a real send.
 """
 
 from __future__ import annotations
 
 import json
+import sys
+import types
 from datetime import datetime, timezone
 
 import pytest
 
 from scripts.lib import anthropic_routing as routing
 from scripts.lib import jsonl_tail
+from scripts.lib import ops_diagnostics, ops_notify_owner
 from scripts.lib.anthropic_credit import CreditBook, CreditDenied
 from scripts.lib.persistent_wake_store import JsonlStore
 
-COVERS = ["scripts/lib/jsonl_tail.py", "scripts/lib/anthropic_routing.py"]
+COVERS = [
+    "scripts/lib/jsonl_tail.py",
+    "scripts/lib/anthropic_routing.py",
+    "scripts/lib/ops_notify_owner.py",
+]
 
 NOW = datetime(2026, 10, 25, 12, tzinfo=timezone.utc)
 HAIKU, OPUS = "claude-haiku-5-5", "claude-opus-5-5"
@@ -60,6 +70,7 @@ def sent(monkeypatch):
     import telegram_alert
 
     monkeypatch.setattr(telegram_alert, "send_telegram", fake_send)
+    ops_notify_owner.install()  # the already-authorised owner registers lazily-resolved delivery
     jsonl_tail._alerted.clear()
     routing._refusal_alerted.clear()
     return calls
@@ -75,6 +86,31 @@ def test_truncated_tail_detection_is_narrow():
     assert jsonl_tail.truncated_tail(b'{"a":\n{"b":2}\n') is None  # interior damage is not a tail
     assert jsonl_tail.truncated_tail(b"") is None
     assert jsonl_tail.truncated_tail(b"broken") is None  # whole-file garbage is not a tail
+
+
+# ── F2: every damaged fragment survives, even at one frozen second ──────────────────────────────────
+
+
+def test_two_repairs_in_one_frozen_second_retain_both_fragments(tmp_path, monkeypatch, sent):
+    monkeypatch.setattr(jsonl_tail, "time", types.SimpleNamespace(time=lambda: 1_700_000_000))
+    store = JsonlStore(tmp_path)
+    store.append_unique("wakes", "wake_id", {"wake_id": "w0"})
+
+    with open(store.path("wakes"), "ab") as fh:
+        fh.write(b'{"wake_id": "damage-one"')
+    assert store.count("wakes") == 1
+    store.append_unique("wakes", "wake_id", {"wake_id": "w1"})  # repair archives fragment one
+
+    with open(store.path("wakes"), "ab") as fh:
+        fh.write(b'{"wake_id": "damage-two"')
+    store.append_unique("wakes", "wake_id", {"wake_id": "w2"})  # same frozen second; must not overwrite
+
+    archives = sorted(tmp_path.glob("wakes.jsonl.corrupt-tail-*"))
+    assert len(archives) == 2, [p.name for p in archives]
+    assert len({p.name for p in archives}) == 2
+    fragments = b"".join(p.read_bytes() for p in archives)
+    assert b"damage-one" in fragments and b"damage-two" in fragments
+    assert store.count("wakes") == 3
 
 
 # ── the Anthropic credit book ───────────────────────────────────────────────────────────────────────
@@ -130,6 +166,118 @@ def test_wake_store_interior_corruption_still_raises(tmp_path, sent):
     store.path("wakes").write_text('{"wake_id": "w0"}\n{"wake_id": \n{"wake_id": "w2"}\n')
     with pytest.raises(json.JSONDecodeError):
         store.count("wakes")
+
+
+# ── F4: an unavailable diagnostic transport never blocks wake recovery ───────────────────────────────
+
+
+def test_unavailable_sender_transport_never_blocks_wake_recovery(tmp_path, monkeypatch):
+    store = JsonlStore(tmp_path)
+    with open(store.path("wakes"), "ab") as fh:
+        fh.write(b'{"wake_id": "w0"}\n{"agent_id": "cio", "corr')  # valid prefix + truncated tail
+    ops_notify_owner.install()
+    jsonl_tail._alerted.clear()
+    # Both historical sender layouts unavailable: the diagnostic must fail visibly, not raise.
+    monkeypatch.setitem(sys.modules, "telegram_alert", None)
+    monkeypatch.setitem(sys.modules, "scripts.telegram_alert", None)
+    assert store.count("wakes") == 1
+    assert store.get("wakes", "wake_id", "w0")["wake_id"] == "w0"
+
+
+# ── F3: dedupe binds to CONFIRMED delivery; a failure stays retryable ────────────────────────────────
+
+
+def test_tail_rejected_delivery_stays_retryable_then_dedupes(tmp_path):
+    path = tmp_path / "wakes.jsonl"
+    calls = []
+
+    def reject(diag):
+        calls.append("reject")
+        return False
+
+    def accept(diag):
+        calls.append("accept")
+        return True
+
+    jsonl_tail._alerted.clear()
+    assert jsonl_tail.report(path, 4, action="skipped", notify=reject) is False
+    assert jsonl_tail.report(path, 4, action="skipped", notify=accept) is True
+    assert calls == ["reject", "accept"]  # the rejection did not suppress the retry
+    assert jsonl_tail.report(path, 4, action="skipped", notify=accept) is False  # now deduped
+    assert calls == ["reject", "accept"]
+
+
+def test_tail_raising_delivery_stays_retryable_then_dedupes(tmp_path):
+    path = tmp_path / "wakes.jsonl"
+    calls = []
+
+    def boom(diag):
+        calls.append("raise")
+        raise RuntimeError("transport down")
+
+    def accept(diag):
+        calls.append("accept")
+        return True
+
+    jsonl_tail._alerted.clear()
+    assert jsonl_tail.report(path, 4, action="skipped", notify=boom) is False
+    assert jsonl_tail.report(path, 4, action="skipped", notify=accept) is True
+    assert calls == ["raise", "accept"]
+    assert jsonl_tail.report(path, 4, action="skipped", notify=accept) is False
+
+
+def test_routing_rejected_delivery_stays_retryable_then_dedupes():
+    calls = []
+
+    def reject(diag):
+        calls.append("reject")
+        return False
+
+    def accept(diag):
+        calls.append("accept")
+        return True
+
+    routing._refusal_alerted.clear()
+    assert routing._report_credit_refusal("CREDIT_UNAVAILABLE", where="route", notify=reject) is False
+    assert routing._report_credit_refusal("CREDIT_UNAVAILABLE", where="route", notify=accept) is True
+    assert calls == ["reject", "accept"]
+    assert routing._report_credit_refusal("CREDIT_UNAVAILABLE", where="route", notify=accept) is False
+    assert calls == ["reject", "accept"]
+
+
+def test_routing_raising_delivery_stays_retryable_then_dedupes():
+    calls = []
+
+    def boom(diag):
+        calls.append("raise")
+        raise RuntimeError("transport down")
+
+    def accept(diag):
+        calls.append("accept")
+        return True
+
+    routing._refusal_alerted.clear()
+    assert routing._report_credit_refusal("CREDIT_UNAVAILABLE", where="route", notify=boom) is False
+    assert routing._report_credit_refusal("CREDIT_UNAVAILABLE", where="route", notify=accept) is True
+    assert calls == ["raise", "accept"]
+    assert routing._report_credit_refusal("CREDIT_UNAVAILABLE", where="route", notify=accept) is False
+
+
+def test_absent_owner_is_not_delivered_and_remains_retryable(tmp_path):
+    path = tmp_path / "wakes.jsonl"
+    jsonl_tail._alerted.clear()
+    ops_diagnostics.unregister("store_damage")
+    try:
+        assert jsonl_tail.report(path, 3, action="skipped") is False
+        assert jsonl_tail.report(path, 3, action="skipped") is False  # absence is not success
+    finally:
+        calls = []
+        ops_diagnostics.register("store_damage", lambda diag: calls.append(diag) or True)
+        try:
+            assert jsonl_tail.report(path, 3, action="skipped") is True
+        finally:
+            ops_notify_owner.install()
+    assert len(calls) == 1
 
 
 # ── routing no longer swallows a broken credit book ─────────────────────────────────────────────────

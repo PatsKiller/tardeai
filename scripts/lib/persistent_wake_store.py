@@ -16,6 +16,16 @@ try:
 except ImportError:  # pragma: no cover - flat import layout
     import jsonl_tail  # type: ignore[no-redef]
 
+try:
+    from . import ops_notify_owner
+except ImportError:  # pragma: no cover - flat import layout
+    import ops_notify_owner  # type: ignore[no-redef]
+
+# The wake consumer is an already-authorised notification owner: register it so a store-damage
+# diagnostic from jsonl_tail reaches the operator. The planner never imports this module, so the
+# sender stays out of the advisory lane's reach (AGENTS.md §23.20).
+ops_notify_owner.install()
+
 
 class JsonlStore:
     def __init__(self, root: Path | str):

@@ -11,42 +11,62 @@ from pathlib import Path
 from typing import Any
 import logging
 
+try:
+    from . import ops_diagnostics
+except ImportError:  # pragma: no cover - flat import layout
+    import ops_diagnostics  # type: ignore[no-redef]
+
 log = logging.getLogger(__name__)
 
 # Refusals that mean the credit book itself is broken (not an ordinary cap or pause). Each is logged on every call
-# and alerted once per UTC day per reason: on 2026-10-30 a half-written journal line made every Anthropic call fall
+# and reported once per UTC day per reason: on 2026-10-30 a half-written journal line made every Anthropic call fall
 # back to grok with no log line and no alert for 30+ hours.
 _BROKEN_BOOK_CODES = frozenset({"CREDIT_UNAVAILABLE", "CREDIT_CONFIGURATION_INVALID", "COST_PERSISTENCE_UNAVAILABLE"})
+CHANNEL = "credit_refusal"
 _refusal_alerted: set[tuple[str, str]] = set()
 
 
-def _report_credit_refusal(code: str, *, where: str) -> bool:
-    """Log every Anthropic credit refusal; P2-alert broken-book refusals once per reason per UTC day."""
+def _credit_refusal_diagnostic(code: str, *, where: str, now: datetime | None = None) -> dict:
+    """A structured operator diagnostic for one broken credit book (no sender, no side effects)."""
+    day = (now or datetime.now(timezone.utc)).strftime("%Y-%m-%d")
+    return {
+        "schema": "CreditRefusalDiagnostic@v1",
+        "channel": CHANNEL,
+        "severity": "P2",
+        "priority": "P2",
+        "producer": "anthropic_routing",
+        "message_class": "ops_integrity",
+        "dedupe_minutes": 1440,
+        "code": str(code),
+        "where": str(where),
+        "day": day,
+        "message": (
+            f"⚠️ *ANTHROPIC LANE OFF* — {code}\n"
+            f"Every Anthropic call is refused by the credit book ({where}) and falls back to the next lane. "
+            "Check data/runtime/provider_cost/anthropic_credit.jsonl and the credit policy."
+        ),
+    }
+
+
+def _report_credit_refusal(code: str, *, where: str, notify=None) -> bool:
+    """Log every Anthropic credit refusal; emit a P2 diagnostic once per reason per UTC day.
+
+    Send authority (AGENTS.md §23.20): this module is inside the advisory planner lane's import reach, so
+    it must not send. The diagnostic goes to ``ops_diagnostics``; the already-authorised notification
+    owner delivers it. Returns True only when delivery is CONFIRMED, so a rejected/raising/absent
+    delivery leaves the refusal retryable.
+    """
     if code not in _BROKEN_BOOK_CODES:
         log.info("anthropic credit refusal %s (%s); falling back", code, where)
         return False
     log.warning("anthropic credit book unavailable: %s (%s); falling back to the next lane", code, where)
-    key = (code, datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+    diagnostic = _credit_refusal_diagnostic(code, where=where)
+    key = (code, diagnostic["day"])
     if key in _refusal_alerted:
         return False
-    _refusal_alerted.add(key)
-    try:
-        from telegram_alert import send_telegram
-    except ImportError:
-        from scripts.telegram_alert import send_telegram  # type: ignore[no-redef]
-    try:
-        send_telegram(
-            f"⚠️ *ANTHROPIC LANE OFF* — {code}\n"
-            f"Every Anthropic call is refused by the credit book ({where}) and falls back to the next lane. "
-            "Check data/runtime/provider_cost/anthropic_credit.jsonl and the credit policy.",
-            priority="P2",
-            dedupe_minutes=1440,
-            producer="anthropic_routing",
-            message_class="ops_integrity",
-        )
-    except Exception as exc:  # visible, never fatal to routing
-        log.warning("anthropic credit refusal alert not sent: %s: %s", type(exc).__name__, exc)
+    if not ops_diagnostics.deliver(CHANNEL, diagnostic, notify=notify):
         return False
+    _refusal_alerted.add(key)
     return True
 
 from .anthropic_credit import CreditBook, CreditDenied, amount
