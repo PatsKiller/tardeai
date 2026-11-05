@@ -21,7 +21,9 @@ Definitions (stable; do not "improve" silently):
                 another day is 0, matching incident_supervisor._calls_today
   blocked       records with status blocked; unresolved = the index summary's unresolved count
 Verdict rules:
-  DETECT alive       watcher receipt fresh (0 <= age <= 15 min) and every watcher has no gap; else stale/gapped
+  DETECT alive       watcher receipt fresh (0 <= age <= 15 min) and every watcher enabled with no
+                     gap; a switched-off watcher is reported as DETECT disabled (it is not evidence
+                     of health, however fresh the receipt), ahead of stale/gapped
   DECIDE working     supervisor receipt fresh (0 <= age <= 30 min; the timer runs every 10 min),
                      no skip in the last cycle is a failed triage (model_error/unparseable), and
                      not every skip is "daily model-call cap"; else stale/failing/starved
@@ -194,20 +196,32 @@ def build_block(
     else:
         watcher_rows = watchers.get("watchers") or {}
         watcher_at_text = watchers.get("as_of", "?")
-        gaps = [name for name, row in watcher_rows.items() if isinstance(row, dict) and row.get("gap")]
+        # incident_watchers.run records a switched-off watcher as {"enabled": False} (no findings,
+        # no gap); a watcher that did run carries no "enabled" key at all. A disabled lane never
+        # ran, so it is neither "without a gap" nor evidence of health, however fresh the receipt.
+        disabled = [name for name, row in watcher_rows.items() if isinstance(row, dict) and row.get("enabled") is False]
+        gaps = [
+            name
+            for name, row in watcher_rows.items()
+            if name not in disabled and isinstance(row, dict) and row.get("gap")
+        ]
         findings = {
             name: row.get("findings", 0)
             for name, row in watcher_rows.items()
             if isinstance(row, dict) and row.get("findings")
         }
         findings_text = ", ".join(f"{k} {v}" for k, v in sorted(findings.items(), key=lambda kv: -kv[1])) or "none"
+        running = len(watcher_rows) - len(gaps) - len(disabled)
+        disabled_text = f", {len(disabled)} disabled" if disabled else ""
         watchers_line = (
-            f"watchers {watcher_at_text}: {len(watcher_rows) - len(gaps)}/{len(watcher_rows)} "
-            f"without a gap; findings {findings_text}"
+            f"watchers {watcher_at_text}: {running}/{len(watcher_rows)} "
+            f"without a gap{disabled_text}; findings {findings_text}"
         )
         age = _age_minutes(watchers.get("as_of"), now)
         if age is None:
             detect_part = "DETECT unknown (watchers_last.json unreadable: 'as_of' is not a timestamp)"
+        elif disabled:
+            detect_part = f"DETECT disabled ({len(disabled)} of {len(watcher_rows)} watchers switched off)"
         elif age < 0:
             detect_part = f"DETECT future-dated (watcher receipt {abs(age):.0f} min ahead — clock skew)"
         elif age > WATCHER_FRESH_MIN:

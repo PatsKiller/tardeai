@@ -295,3 +295,32 @@ def test_a_stale_counter_date_is_not_today():
     block = _ok(calls={"date": "2026-11-02", "count": 40})
     assert "model calls today 0/240" in block[2]
     assert "40/240" not in block[2]
+
+
+# ── Triage KEEP_BLOCK at 800c8e2b5: a switched-off watcher is not evidence of health ─────────
+
+
+def test_a_disabled_watcher_is_not_detect_alive():
+    """incident_watchers.run writes {"enabled": False} and no findings/gap for a switched-off lane.
+
+    The DETECT branch tested only gaps and freshness, so a fresh receipt full of disabled lanes
+    read DETECT alive and contributed to a false LIVE.
+    """
+    watchers = _watchers()
+    watchers["watchers"]["lane_health"] = {"enabled": False}
+    block = _ok(watchers=watchers)
+    assert "DETECT disabled" in block[4]
+    assert "1 of 2 watchers switched off" in block[4]
+    assert "DETECT alive" not in block[4]
+    assert block[4].startswith("verdict: NOT LIVE")
+    assert "1/2 without a gap, 1 disabled" in block[3]
+
+
+def test_a_disabled_and_stale_watcher_reads_as_disabled_not_stale():
+    """The two facts stay distinct: disabled wins over the freshness failure it would also cause."""
+    watchers = _watchers(as_of=NOW - timedelta(hours=1))
+    watchers["watchers"]["lane_health"] = {"enabled": False}
+    block = _ok(watchers=watchers)
+    assert "DETECT disabled" in block[4]
+    assert "DETECT stale" not in block[4]
+    assert block[4].startswith("verdict: NOT LIVE")
