@@ -17,7 +17,8 @@ One tick (``scripts/post_release_tester.py``, every 10 minutes on the host):
 
 Receipts: ``<state root>/data/runtime/post_release_tester/last_{api,light,nightly}.json`` (PostReleaseTest@v1) and
 ``runs/<run_id>.json``; ``state.json`` remembers what was tested. ``status`` is PASSED, FAILED, DEFERRED (memory gate
-or market window) or UNAVAILABLE (sweeper not installed). scripts/delivery_failure_alerts.py pages on FAILED.
+or market window) or UNAVAILABLE (sweeper not installed). A FAILED receipt is not paged from here: alert delivery is
+owned by critical-texts (#2678/#2680) (operator D42, 2026-11-05).
 
 Dry run prints the plan and runs nothing. MBI_BEHAVIOR = 0. Authority: READ_ONLY_ADVISORY (no restart, no rollback).
 """

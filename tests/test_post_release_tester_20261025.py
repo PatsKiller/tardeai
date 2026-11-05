@@ -16,7 +16,6 @@ for _p in (str(ROOT), str(ROOT / "scripts")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from scripts.lib import delivery_failure_alerts as DFA  # noqa: E402
 from scripts.lib import post_release_tester as PRT  # noqa: E402
 
 SHA = "c" * 40
@@ -205,16 +204,12 @@ def test_dry_run_runs_nothing(tmp_path):
     assert r["planned"] == ["api", "light"] and calls == [] and sw.calls == [] and not env.dir.exists()
 
 
-def test_failed_tester_receipt_is_paged_by_the_alert_lane(tmp_path):
+def test_a_failed_api_check_writes_a_durable_failed_receipt(tmp_path):
+    """The alert half is gone (operator D42); what this lane owes is a receipt a reader can act on."""
     env, _ = _env(tmp_path, SAT_NOON, http=lambda u: (500, b""))
-    PRT.tick(env, live=True, force=["api"])
-    ctx = DFA.Context(
-        state_root=env.state_root,
-        release_state_dir=tmp_path / "rw",
-        deploy_state_dir=tmp_path / "x",
-        now=SAT_NOON,
-        config=DFA.load_config(),
-        systemd_timers=lambda: [],
-    )
-    inc = DFA.detect_post_release(ctx)
-    assert len(inc) == 1 and inc[0].line.startswith(f"post-release api check FAILED on {SHA[:9]}")
+    r = PRT.tick(env, live=True, force=["api"])
+    assert r["results"]["api"]["status"] == "FAILED"
+    receipt = json.loads((env.dir / "last_api.json").read_text())
+    assert receipt["schema"] == "PostReleaseTest@v1" and receipt["status"] == "FAILED"
+    assert receipt["release_sha"] == SHA
+    assert receipt["checks"] and any(c["ok"] is False for c in receipt["checks"])

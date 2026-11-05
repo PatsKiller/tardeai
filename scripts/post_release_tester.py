@@ -5,8 +5,9 @@
     python3 scripts/post_release_tester.py --live         # run what is due; write receipts
     python3 scripts/post_release_tester.py --live --force api   # run one phase now (api | light | nightly)
 
-Phases, windows, the memory gate and receipts: scripts/lib/post_release_tester.py. A FAILED receipt is paged by
-scripts/delivery_failure_alerts.py. Exit 0 = ran; 1 = a phase FAILED; 2 = usage/config error.
+Phases, windows, the memory gate and receipts: scripts/lib/post_release_tester.py. A FAILED receipt is durable and
+readable, but this lane does not page: operator alert delivery is owned by critical-texts (#2678/#2680) (operator D42,
+2026-11-05). Exit 0 = ran; 1 = a phase FAILED; 2 = usage/config error.
 MBI_BEHAVIOR = 0. Authority: READ_ONLY_ADVISORY (GET only; never restarts, rolls back or writes the server).
 """
 
