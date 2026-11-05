@@ -165,19 +165,34 @@ def refresh_ticker(conn, inc, dry_run=False):
     return event_type.lower()
 
 
+def _ping_ok(conn) -> bool:
+    """True only if the connection can actually execute a statement right now.
+
+    2026-11-03: ``conn.closed`` stays 0 when the SERVER closes the socket (the same
+    trap db_adapter documents). A closed flag is not proof of a usable connection;
+    an executed statement is. The ping runs inside the current transaction, so an
+    aborted transaction is detected here too.
+    """
+    try:
+        if conn is None or conn.closed:
+            return False
+        conn.cursor().execute("SELECT 1")
+        return True
+    except Exception:  # noqa: BLE001 — any failure means "not usable"
+        return False
+
+
 def _ensure_conn(conn):
-    """Return conn if still open, else a fresh connection.
+    """Return a connection that can execute, else a fresh one.
 
     The catalyst-refresh loop makes slow network calls (up to 30 symbols × 7 news
     providers) while the scan-refresh transaction is held open. The server's idle
     guard can terminate that held-open connection, so the final commit() raised
-    `psycopg2.InterfaceError: connection already closed`. Reconnect on demand.
+    `psycopg2.OperationalError: SSL connection has been closed unexpectedly` even
+    though ``conn.closed`` was still 0. Ping, then reconnect on failure.
     """
-    try:
-        if conn is not None and not conn.closed:
-            return conn
-    except Exception:
-        pass
+    if _ping_ok(conn):
+        return conn
     return get_conn()
 
 
@@ -189,10 +204,9 @@ def _conn_closed(conn) -> bool:
 
 
 def _ensure_conn_checked(conn):
-    """(connection, reopened): ``_ensure_conn`` plus whether it had to open a new one."""
-    if not _conn_closed(conn):
-        return conn, False
-    return _ensure_conn(conn), True
+    """(connection, reopened): a usable connection plus whether it had to be replaced."""
+    fresh = _ensure_conn(conn)
+    return fresh, fresh is not conn
 
 
 def _safe_rollback(conn) -> None:
@@ -333,6 +347,12 @@ def _run(args):
                             result.get("catalyst_verified", False),
                             inc_id,
                         ])
+                        if args.apply:
+                            # Commit per symbol. 2026-11-03: two symbols were updated in one
+                            # transaction that sat idle across slow HTTP calls, the server closed
+                            # the socket, and the final commit lost BOTH updates. A per-symbol
+                            # commit bounds a drop to the single in-flight symbol.
+                            conn.commit()
                         catalyst_refreshed += 1
                         log.info("  Catalyst refreshed: %s verified=%s",
                                  sym, result.get("catalyst_verified"))
@@ -343,8 +363,10 @@ def _run(args):
         except Exception as e:
             log.warning("Catalyst refresh pass failed: %s", e)
 
-        # Reconnect if the server idle-guard closed the connection during the slow
-        # catalyst HTTP loop, then commit the catalyst updates.
+        # Per-symbol commits already persisted the catalyst updates above; this reconnect
+        # only ensures the closing rollback/commit runs on a usable connection. A replaced
+        # connection here means the last symbol's commit was logged as failed — nothing is
+        # silently pending, because no update is held open across the loop.
         conn = _ensure_conn(conn)
         if args.apply:
             conn.commit()

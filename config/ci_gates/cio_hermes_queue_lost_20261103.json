@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_hermes_queue_lost_20261103",
+  "files": [
+    "tests/test_cio_hermes_queue_lost_fingerprint_20261103.py"
+  ],
+  "anchor": "CIO_HERMES_QUEUE_LOST_20261103",
+  "comment": [
+    "ANCHOR: CIO_HERMES_QUEUE_LOST_20261103 — a HERMES_RESEARCH_REQUESTED row is only 'lost' when neither its research_id nor its question fingerprint is owned by the projection; a same-question duplicate of a running/completed entry is not a lost request."
+  ]
+}
