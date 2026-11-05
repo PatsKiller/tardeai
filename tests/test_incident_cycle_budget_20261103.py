@@ -188,7 +188,7 @@ def test_refused_scope_still_blocks_and_pages_when_the_budget_is_spent(tmp_path,
 
     clock = fresh_clock()
     deps = S.Deps(model=code_defect, run=lambda *a, **k: (0, "ok"),
-                  notify=lambda text, producer: pages.append((text, producer)) or True,
+                  notify=lambda text, producer, priority="P2": pages.append((text, producer)) or True,
                   fixer=slow_fixer)
     out = run_cycle(ledger, tmp_path, deps, T0 + timedelta(seconds=2), clock)
 
