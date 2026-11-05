@@ -478,3 +478,48 @@ def test_disabling_the_bound_is_explicit(store):
     os.utime(bak, (old, old))
     assert S._baseline_from_backups()[0] is None
     assert S._baseline_from_backups(max_age_hours=float("inf"))[0] is not None
+
+
+# D49 / sixth shared-object boundary: custom accessors cannot stand in for JSON evidence.
+
+class _SlotBook(dict):
+    __slots__ = ("rows",)
+
+    def __init__(self, rows):
+        super().__init__()
+        self.rows = rows
+
+    def get(self, key, default=None):
+        return self.rows if key == "holdings" else super().get(key, default)
+
+
+def test_slot_backed_caller_baseline_cannot_disable_the_drop_guard(store):
+    store.write_text(json.dumps(_big_book()))
+    before = store.read_bytes()
+    candidate = json.loads(before)
+    baseline = _SlotBook(candidate["holdings"])
+    candidate["holdings"][3]["market_value"] = 1000.0
+
+    out = S.protected_holdings_write(candidate, source="test_slot_alias",
+                                     target_path=str(store), baseline=baseline)
+
+    assert out["wrote"] is False and out["reason_code"] == "CATASTROPHIC_DROP", out
+    assert store.read_bytes() == before, "custom caller accessors must not replace independent store evidence"
+
+
+@pytest.mark.parametrize("part", ["book", "rows", "row"])
+def test_caller_baselines_accept_plain_json_containers_only(part):
+    class CustomDict(dict):
+        pass
+
+    class CustomList(list):
+        pass
+
+    baseline = _book()
+    if part == "book":
+        baseline = CustomDict(baseline)
+    elif part == "rows":
+        baseline["holdings"] = CustomList(baseline["holdings"])
+    else:
+        baseline["holdings"][0] = CustomDict(baseline["holdings"][0])
+    assert S._baseline_usable(baseline)[0] is False

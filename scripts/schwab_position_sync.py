@@ -96,6 +96,39 @@ def _shares_structure(a, b) -> bool:
     return bool(_container_ids(a) & _container_ids(b))
 
 
+def _plain_json_data(doc) -> bool:
+    """Baseline evidence must have one graph view: plain JSON, without custom accessors.
+
+    A dict subclass can expose candidate rows from a slot through get(), while values()
+    hides that alias from the graph walk. Check exact container/scalar types before any
+    accessor or alias traversal. Cycles are not JSON; repeated independent branches are OK.
+    """
+    active: set[int] = set()
+    stack = [(doc, False)]
+    while stack:
+        value, leaving = stack.pop()
+        kind = type(value)
+        if kind in (str, int, float, bool, type(None)):
+            continue
+        if kind not in (dict, list):
+            return False
+        identity = id(value)
+        if leaving:
+            active.remove(identity)
+            continue
+        if identity in active:
+            return False
+        active.add(identity)
+        stack.append((value, True))
+        if kind is dict:
+            if any(type(key) is not str for key in value):
+                return False
+            stack.extend((child, False) for child in value.values())
+        else:
+            stack.extend((child, False) for child in value)
+    return True
+
+
 def _baseline_usable(doc) -> tuple[bool, str]:
     """A distinct object is not proof of a USABLE baseline.
 
@@ -104,8 +137,10 @@ def _baseline_usable(doc) -> tuple[bool, str]:
     and catastrophic-drop guards entirely. An unusable baseline must be replaced (backup) or refused,
     never used to silence the relative guards.
     """
-    if not isinstance(doc, dict):
-        return False, "baseline is not an object"
+    if type(doc) is not dict:
+        return False, "baseline is not a plain JSON object"
+    if not _plain_json_data(doc):
+        return False, "baseline contains non-JSON containers or values"
     rows = doc.get("holdings")
     if rows is None:
         rows = doc.get("positions")
@@ -586,7 +621,8 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
     # mutated below, so a shallow copy is the same bypass wearing a different name (cc3 residual,
     # 2026-11-03). Deliberately identity, never equality: an equal but independent baseline is a
     # legitimate no-change write and must not be refused.
-    if baseline is not None and (baseline is new_holdings or _shares_structure(baseline, new_holdings)):
+    if baseline is not None and (baseline is new_holdings or (
+            _plain_json_data(baseline) and _shares_structure(baseline, new_holdings))):
         reason = ("BASELINE_ALIAS: the baseline shares the candidate's own objects, so the relative "
                   "coverage/cash/drop guards would compare the new book with itself")
         _record(account_key, "rejected_baseline_alias", f"[{source}] baseline is the candidate object")
