@@ -81,7 +81,7 @@ MIN_GRANT_USES = 2            # prepare + promote each consume one use (release_
 # cio-hardening, agent-governance, release-readiness). release_grant_preflight.REQUIRED_PUSH_WORKFLOWS names only
 # the first two, so its `ok` can be true while release-readiness is missing or still running.
 REQUIRED_TRAIN_WORKFLOWS = (
-    ".github/workflows/cio-production-hardening-ci.yml",
+    ".github/workflows/cio-full-suite-sharded.yml",
     ".github/workflows/agent-governance.yml",
     ".github/workflows/release-readiness.yml",
 )
@@ -93,7 +93,10 @@ NEEDS_ACTION_PATH = "/api/v2/needs-action"
 # Outcome -> notification-intent priority. STOP_CI_PENDING, NO_CHANGE and DISARMED are routine: the next window
 # picks the train up, so they page nobody (the receipt and Needs-action still show them).
 ALERT_PRIORITY = {"ROLLBACK_FAILED": "P1", "ROLLED_BACK": "P1", "STOP_PREPARE_FAILED": "P1",
-                  "STOP_CI_NOT_GREEN": "P2", "STOP_MAIN_MOVED": "P2"}
+                  "STOP_CI_NOT_GREEN": "P2", "STOP_MAIN_MOVED": "P2", "STOP_RELAY_LIVE_SET_HELD": "P2"}
+#: 2026-11-01: promote refused by scripts/relay_live_set_gate.py (live-set change not acknowledged by the operator).
+#: Nothing was activated, so this is a hold, not a rollback; the gate already paged once for the diff_id.
+_RELAY_HELD_RE = re.compile(r"RELAY_LIVE_SET_HELD diff_id=([0-9a-f]{16})")
 MIN_GRANT_REMAINING_S = 15 * 60
 
 # Policy switches. A grant naming more than one window (a daily or standing grant) is outside AGENTS §24.8
@@ -144,7 +147,7 @@ UNITS = tuple(os.environ.get(
 
 EXIT_OK, EXIT_REFUSED, EXIT_STOPPED, EXIT_ROLLED_BACK, EXIT_ROLLBACK_FAILED = 0, 2, 3, 4, 5
 TERMINAL = {"RELEASED", "NO_CHANGE", "STOP_CI_NOT_GREEN", "STOP_CI_PENDING", "STOP_MAIN_MOVED",
-            "STOP_PREPARE_FAILED", "ROLLED_BACK", "ROLLBACK_FAILED"}
+            "STOP_PREPARE_FAILED", "ROLLED_BACK", "ROLLBACK_FAILED", "STOP_RELAY_LIVE_SET_HELD"}
 
 
 def utc_iso(ts: float) -> str:
@@ -798,6 +801,11 @@ class Runner:
         rec["rollback_target"] = str(prev)
         rc, out = self.host.run_deploy(["promote", str(prepared)], env)
         rec["promote"] = {"rc": rc, "tail": "\n".join([ln for ln in out.splitlines() if ln.strip()][-6:])}
+        held = _RELAY_HELD_RE.search(out or "")
+        if rc != 0 and held and self.host.current_release() == prev:
+            rec["promote"]["relay_live_set_diff_id"] = held.group(1)
+            rec["outcome"] = "STOP_RELAY_LIVE_SET_HELD"
+            return self._stop(w, rec, EXIT_STOPPED, latch=False)
         # ── verify ──
         checks = self._verify(prepared, sha, before, promote_rc=rc)
         rec["verification"] = checks

@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "llm_queue_drain_20261103",
+  "files": [
+    "tests/test_llm_queue_drain_requeue_20261103.py",
+    "tests/test_llm_queue_drain_wiring_20261103.py",
+    "tests/test_selfheal_credit_attribution_cap_tiers_20261103.py"
+  ],
+  "anchor": "LLM_QUEUE_DRAIN_20261103",
+  "comment": [
+    "ANCHOR: LLM_QUEUE_DRAIN_20261103 — the overnight queue requeues failed provider jobs on a growing delay instead of dropping them, gives each exhausted job exactly one deduplicated incident, and makes credit ledger rows name the process that spent them. The requeue rule, the one-incident rule and the emergency cheap-tier caps are config (config/llm_queue_drain.json, config/anthropic_credit_policy.json); the code reads them.",
+    "Registered so the gate file set stays complete: tests/test_ci_test_coverage_gate.py refuses a test file that no gate lists (ci_self_guards / shard 7)."
+  ]
+}

@@ -278,7 +278,8 @@ class AnthropicTransport:
     def _tier(self, model: str) -> str:
         return next((tier for tier, value in self.policy.get("models", {}).items() if value == model), "standard")
 
-    def _payload(self, messages: list[dict], model: str, max_tokens: int, thinking: str) -> dict[str, Any]:
+    def _payload(self, messages: list[dict], model: str, max_tokens: int, thinking: str,
+                 tools: list[dict] | None = None) -> dict[str, Any]:
         system, conversation = [], []
         for message in messages:
             role, content = message.get("role"), message.get("content")
@@ -297,6 +298,11 @@ class AnthropicTransport:
             system[-1]["cache_control"] = {"type": "ephemeral"}
             payload["system"] = system
         payload.update(_reasoning_settings(model, thinking, self.policy))
+        if tools:
+            # Server tools (e.g. Anthropic-hosted web_search) execute on Anthropic's side; the
+            # response carries their result blocks. Only processes named in the credit policy's
+            # tools_processes may reach this path (see generate()).
+            payload["tools"] = list(tools)
         return payload
 
     @_credit_refusals
@@ -309,7 +315,11 @@ class AnthropicTransport:
             raise AnthropicError("NOT_CONFIGURED")
         if self.record_usage is None or self.reserve_process is None or self.record_attempt is None:
             raise AnthropicError("GOVERNANCE_UNAVAILABLE")
-        if tools:
+        tools = list(tools or [])
+        # Tools stay refused by default. The credit policy may name the only processes allowed a
+        # tool-bearing call (2026-11-01: cio_ask_web_search for the hosted web_search tool); an
+        # unreadable or absent list keeps every other process refused.
+        if tools and process_id not in set(self.policy.get("tools_processes") or []):
             raise AnthropicError("TOOLS_UNSUPPORTED")
         model = str(model or "")
         premium = {self.policy.get("models", {}).get("premium")} - {None}
@@ -321,7 +331,7 @@ class AnthropicTransport:
         if credit_tier and self.policy["models"].get(credit_tier) != model:
             raise AnthropicError("TIER_MODEL_MISMATCH")
         prices = self._prices(model)
-        payload = self._payload(messages, model, max_tokens, thinking)
+        payload = self._payload(messages, model, max_tokens, thinking, tools=tools)
         deadline = self.monotonic() + max(0, float(deadline_s))
         try:
             status = self.book.snapshot(now=self.now())["status"]
@@ -400,7 +410,11 @@ class AnthropicTransport:
                                  "estimated_cost_usd": None if ambiguous else float(actual),
                                  "cost_basis": "provider_usage_x_registry_snapshot",
                                  "credit_usage_unknown": ambiguous, "request_sent": True,
-                                 "provider_request_id": body.get("id"), "funding_source": "anthropic_promotional_credit"}}
+                                 "provider_request_id": body.get("id"), "funding_source": "anthropic_promotional_credit",
+                                 # Raw provider blocks: a server tool's results (web_search_tool_result)
+                                 # and citations are not representable in choices[].message.content.
+                                 # Additive; every existing caller ignores it.
+                                 "content_blocks": body.get("content")}}
         except BaseException as exc:
             actual = None if (result_received or getattr(exc, "possibly_billable", False)
                               or (request_started and not isinstance(exc, AnthropicError))) else Decimal(0)

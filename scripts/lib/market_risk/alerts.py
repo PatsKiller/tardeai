@@ -66,6 +66,24 @@ def render(a: dict[str, Any], *, max_contributors: int = 5, repeat: dict[str, An
     if a.get("confirming") is not None:
         head += f" · {a.get('confirming')} of 9 categories confirm"
     lines.append(head)
+    shock = a.get("shock_type") or {}
+    if shock.get("headline"):
+        lines.append(str(shock["headline"]))
+    from scripts.lib.market_risk import sectors as _sectors
+
+    sec_line = _sectors.card_line(a.get("sectors"))
+    if sec_line:
+        lines.append(sec_line)
+    flagged = [
+        p
+        for k, p in (a.get("positions") or {}).items()
+        if not str(k).startswith("_") and isinstance(p, dict) and p.get("stance") not in (None, "HOLD")
+    ]
+    meta = (a.get("positions") or {}).get("_book") or {}
+    if meta.get("residuals_ignored"):
+        lines.append(f"residuals ignored: {meta['residuals_ignored']}")
+    for p in flagged[:6]:
+        lines.append(f"{p['symbol']}: CIO {p['label']} — {'; '.join(p.get('reasons') or [])[:160]}")
     up = a.get("uplift") or None
     if up:
         why = "; ".join(str(r) for r in (up.get("reasons") or [])) or (
@@ -142,6 +160,12 @@ def intent_for(assessment: dict[str, Any], prior: dict[str, Any] | None, policy:
     cfg = policy.get("alerts") or {}
     tier = str(assessment.get("tier") or "NONE").upper()
     was = str((prior or {}).get("tier") or "NONE").upper()
+    if ((prior or {}).get("hysteresis") or {}).get("carried_only") and not (
+        (assessment.get("hysteresis") or {}).get("carried_only")
+    ):
+        # a fresh observation now supports the tier the operator was never alerted on: a normal transition from
+        # nothing, with the tier's own priority (PR 2431)
+        was = "NONE"
     if tier == was:
         return None
     if _rank(tier) > _rank(was):
@@ -158,6 +182,15 @@ def intent_for(assessment: dict[str, Any], prior: dict[str, Any] | None, policy:
             key, transition = "deescalated", f"down_from_{was.lower()}"
     pri = (cfg.get("priority") or {}).get(key, "P2")
     dedupe = int((cfg.get("dedupe_minutes") or {}).get(key, 240))
+    hy = assessment.get("hysteresis") or {}
+    if hy.get("carried_only"):
+        # the tier rests only on data carried across a closure: one informational card per tier, never P1/P2
+        pri = str(cfg.get("bootstrap_priority") or "P3")
+        transition = f"carried_{tier.lower()}"
+    elif hy.get("bootstrap") or not prior:
+        # a first reading (no prior tier) never pages P1, whatever the tier (review of PR 2425 round 4, finding 2)
+        pri = str(cfg.get("bootstrap_priority") or "P3")
+        transition = f"first_reading_{tier.lower()}"
     as_of = assessment.get("as_of")
     try:
         session_date = datetime.fromisoformat(str(as_of).replace("Z", "+00:00")).astimezone(ET).date().isoformat()
@@ -165,7 +198,7 @@ def intent_for(assessment: dict[str, Any], prior: dict[str, Any] | None, policy:
         session_date = "unknown"
     return {
         "priority": pri,
-        "dedupe_minutes": 0 if tier == "RED" else dedupe,
+        "dedupe_minutes": 0 if tier == "RED" and pri == "P1" else dedupe,
         "dedupe_key": f"market_risk:{tier}:{session_date}:{transition}",
         "tier": tier,
         "transition": transition,

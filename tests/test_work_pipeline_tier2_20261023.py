@@ -145,21 +145,24 @@ def test_contract_reviewed_only_for_draft_lanes(env):
 
 
 class FakeGh:
-    def __init__(self, conclusions, head=SHA):
+    def __init__(self, conclusions, head=SHA, required=None):
         self.conclusions = conclusions
         self.head = head
         self.merged = False
         self.calls = []
+        # Branch protection's required list. Defaults to every check, i.e. "all required";
+        # pass a shorter list to model a red check that branch protection does not require.
+        self.required = required if required is not None else sorted(conclusions)
 
     def __call__(self, argv, stdin=None):
         self.calls.append(list(argv))
         if argv[:4] == ["gh", "api", "--method", "GET"]:
             path = argv[4]
             if path.endswith("/protection/required_status_checks"):
-                return 0, json.dumps({"contexts": sorted(self.conclusions)}), ""
+                return 0, json.dumps({"contexts": sorted(self.required)}), ""
             if "/check-runs" in path:
                 runs = [
-                    {"name": n, "conclusion": c, "started_at": "2026-10-23T15:00:00Z"}
+                    {"name": n, "conclusion": c, "status": "completed", "started_at": "2026-10-23T15:00:00Z"}
                     for n, c in self.conclusions.items()
                 ]
                 return 0, json.dumps({"check_runs": runs}), ""
@@ -185,6 +188,20 @@ def test_merge_pr_requires_exact_success_then_merges_with_head_match(env):
     risky(env, "pipeline.merge_pr", {"pr": 1997, "head_sha": SHA})
     out = run_applier(env)
     assert out[0]["outcome"] == "APPLIED" and gh.merged
+
+
+def test_merge_pr_refuses_a_red_check_that_is_not_required(env):
+    """The 2026-11-01 regression: `secret-scan` was red, was not in the required list, and #2465 merged."""
+    setup_pipeline(env, merge_pr_enabled=True)
+    gh = FakeGh({"ci-gate": "success", "secret-scan": "failure"}, required=["ci-gate"])
+    env.hosts.runner = gh
+    risky(env, "pipeline.merge_pr", {"pr": 1997, "head_sha": SHA})
+    out = run_applier(env)
+    assert out[0]["outcome"] == "REFUSED" and out[0]["code"] == "CHECKS_NOT_GREEN"
+    assert not any(c[:3] == ["gh", "pr", "merge"] for c in gh.calls)
+    gh.conclusions["secret-scan"] = "success"
+    risky(env, "pipeline.merge_pr", {"pr": 1997, "head_sha": SHA})
+    assert run_applier(env)[0]["outcome"] == "APPLIED" and gh.merged
 
 
 def test_merge_pr_refuses_moved_head(env):
