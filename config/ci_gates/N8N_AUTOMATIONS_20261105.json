@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "N8N_AUTOMATIONS_20261105",
+  "files": [
+    "tests/test_n8n_automations_20261105.py"
+  ],
+  "anchor": "N8N_AUTOMATIONS_20261105",
+  "comment": [
+    "ANCHOR: N8N_AUTOMATIONS_20261105 - the read-only projection behind the Command Center Automations page",
+    "(design automations/v001, APPROVED on coordinator ledger entry 3480). Pins: psql booleans read as t/f, the error",
+    "message resolved through n8n's flattened execution_data indices, a lock skip classified as skipped and never as a",
+    "failure (FQ-129), week-over-week deltas null with a reason until the 23:59 ET snapshot exists, an unreadable source",
+    "returning null rather than zero, and the query guard refusing anything that is not a SELECT."
+  ]
+}

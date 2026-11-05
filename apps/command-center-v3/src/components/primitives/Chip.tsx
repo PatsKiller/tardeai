@@ -1,5 +1,5 @@
 /** Chip (PR2, 2026-09-27) — the one pill/badge/chip. Colour comes from `tone` only. */
-import type { CSSProperties, MouseEvent, ReactNode } from 'react'
+import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import { chipStyle, type Tone } from '../../lib/designTokens'
 import { MetricGuide } from './Tooltip'
 import type { MetricGuideKey } from '../../lib/metricGuide'
@@ -19,6 +19,11 @@ export function Chip({ tone = 'neutral', variant = 'soft', size = 'sm', icon, gu
     <span
       title={guideKey ? undefined : title}
       onClick={onClick}
+      // cx-openai-3's F7 at 25b3348e: the chip announced itself as a button and then ignored the keyboard. Enter and
+      // Space do what a pointer does, which is what role="button" promises.
+      onKeyDown={onClick ? (e: KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e as unknown as MouseEvent) }
+      } : undefined}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
       style={{ ...chipStyle(tone, variant, size), cursor: onClick ? 'pointer' : 'default', ...style }}

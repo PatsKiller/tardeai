@@ -5,6 +5,7 @@ const READ_PATHS = Object.freeze({
   events: '/api/v2/coordination/events?projection_version=2&limit=200',
   runs: '/api/v2/coordination/events?projection_version=2&source=runs&limit=40',
   outbox: '/api/v2/coordination/outbox?projection_version=2&hours=24',
+  automations: '/api/v2/n8n/automations',
 })
 export type ProjectionRead = keyof typeof READ_PATHS
 
