@@ -233,10 +233,17 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
 
     # 1 — Load
     from portfolio_loader import load_all_portfolios, save_state
-    from portfolio_repricer import reprice_portfolio
+    from portfolio_repricer import reprice_portfolio, RepriceRefused
     print("\n[1/10] Loading portfolios...")
     portfolio = load_all_portfolios(str(root))
-    portfolio = reprice_portfolio(portfolio, state_dir)
+    try:
+        portfolio = reprice_portfolio(portfolio, state_dir)
+    except RepriceRefused as _refused:
+        # FQ-2532-R (cc-deepseek-9 P2 on #2689): the abort is INTENDED. A refused reprice means the book cannot be
+        # valued; steps 2-10 would then build analytics and reports on stale marks, and :279 save_state would publish
+        # them. Stopping at step 1 leaves the last good document on disk untouched, which is the whole guarantee.
+        print(f"  [orchestrator] reprice refused: {_refused} — aborting before any save")
+        raise
     # Compute cost basis from transaction history
     try:
         from collections import defaultdict as _dd
