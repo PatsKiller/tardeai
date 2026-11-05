@@ -36792,6 +36792,10 @@ def _capital_plan_compact():
                 {
                     "symbol": d.get("symbol"),
                     "stance": d.get("cio_stance"),
+                    # FQ-098 (cc-deepseek-9 F2 at b1b38341): the stance's own generation time travels WITH the stance, so
+                    # a board can say how old the call is. Without it every rendered stance read "no evidence date —
+                    # treat as unverified", a false claim in the opposite direction. Never a page-build clock.
+                    "stance_as_of": d.get("decision_generated_at") or d.get("as_of") or d.get("generated_at"),
                     "recommended_delta_usd": d.get("recommended_delta_usd"),
                     "tax_account_constraint": d.get("tax_account_constraint"),
                     "actionable": d.get("actionable"),
