@@ -28,18 +28,11 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-#: NOTHING SCHEDULES THIS FILE AT THIS HEAD (cc3, 2026-11-04). P1 is source only: this module is a port of a
-#: coordinator-side script that runs from a host timer, and that timer does not invoke this file. The n8n lane entry
-#: that would schedule it is P2 (#2575), stacked on this branch, and arming it is an operator decision. Declaring a
-#: live cron here would assert a surface the module does not have — the gate reads the VALUE for exactly that reason
-#: (``declares_not_installed``), so say the truth instead: not installed, and do not schedule it without a lane
-#: registry entry, an allowlist entry and the operator's word.
-SCHEDULED_ENTRYPOINT = "proposal only — not installed, and not schedulable until the n8n lane (P2, #2575) lands"
-
-#: This module declares ``NudgerConfig@v1`` and is its only reader until the n8n lane lands: the lane entry that makes
-#: it a consumer of a scheduled lane is P2 (#2575), which is stacked on this branch. Declared rather than invented.
-NO_CONSUMER_REASON = ("P1 is source only: scripts/agent_nudger.py reads config/agent_nudger.json itself, and the n8n "
-                      "lane entry that consumes it as a scheduled lane is P2 (#2575), stacked on this branch")
+#: The n8n lane `agent_nudge` (config/lane_registry.json, stage shadow, dry run only) is this file's scheduled
+#: entrypoint. The host cron that has run since 2026-11-02 invokes the COORDINATOR-side copy, not this one — cc3
+#: (2026-11-04) blocked an earlier declaration that claimed it — and this file must not be added to a host cron:
+#: promoting the lane past shadow is an operator decision.
+SCHEDULED_ENTRYPOINT = "n8n lane agent_nudge (config/lane_registry.json), stage shadow, dry run only; no host cron runs this file"
 
 SCHEMA = "NudgerConfig@v1"
 DEFAULT_REFUSED = r"(?i)(broker|place_order|\borders?\b|execution|\bmbi\b|alpaca|schwab|moomoo)"
@@ -119,20 +112,37 @@ def decide(screen: str, rec: dict, now: float, cfg: dict) -> dict:
             "stalled": stalled, "unsent": unsent, "tail": tail}
 
 
-def list_sessions(cfg: dict, run=subprocess.run) -> list[str]:
-    out = run(["tmux", "ls", "-F", "#S"], capture_output=True, text=True).stdout
+def list_sessions(cfg: dict, run=subprocess.run) -> tuple[list[str], bool]:
+    """(sessions, ok). `ok` is False when `tmux ls` itself failed (F1, cc3 2026-11-04).
+
+    A failed discovery must not read as "no sessions": a broken tmux server and a quiet machine produced the same
+    attempted_count 0 / empty_reason nothing_due, so the evidence could not tell "blind" from "quiet".
+    """
+    proc = run(["tmux", "ls", "-F", "#S"], capture_output=True, text=True)
+    ok = getattr(proc, "returncode", 1) == 0
+    out = proc.stdout or ""
     return [s for s in out.split() if re.search(str(cfg["session_regex"]), s)
-            and s not in (cfg.get("exclude") or []) and not refused_session(s, cfg)]
+            and s not in (cfg.get("exclude") or []) and not refused_session(s, cfg)], ok
 
 
-def capture(session: str, run=subprocess.run) -> str:
-    return run(["tmux", "capture-pane", "-p", "-t", session], capture_output=True, text=True).stdout
+def capture(session: str, run=subprocess.run) -> tuple[str, bool]:
+    """(screen, ok). A failed capture must never become a DECISION about the session: an empty screen has no busy
+    marker, so the old code turned a broken pane into "idle" and then into nothing_due (F1, cc3 2026-11-04)."""
+    proc = run(["tmux", "capture-pane", "-p", "-t", session], capture_output=True, text=True)
+    return (proc.stdout or ""), getattr(proc, "returncode", 1) == 0
 
 
-def send(session: str, text: str, run=subprocess.run, sleep=time.sleep) -> None:
-    run(["tmux", "send-keys", "-t", session, "-l", text], capture_output=True, text=True)
+def send(session: str, text: str, run=subprocess.run, sleep=time.sleep) -> bool:
+    """Type text then Enter. Returns True ONLY when both `tmux` calls exited 0 (F3 review, 2026-11-04).
+
+    A non-zero rc used to be discarded, so a dead tmux pane produced a ledger line and an inflated produced_count —
+    a nudge that never happened, counted as one that did."""
+    typed = run(["tmux", "send-keys", "-t", session, "-l", text], capture_output=True, text=True)
+    if getattr(typed, "returncode", 1) != 0:
+        return False
     sleep(0.4)
-    run(["tmux", "send-keys", "-t", session, "Enter"], capture_output=True, text=True)
+    sent = run(["tmux", "send-keys", "-t", session, "Enter"], capture_output=True, text=True)
+    return getattr(sent, "returncode", 1) == 0
 
 
 def ledger_line(session: str, detail: str, cfg: dict) -> str:
@@ -144,12 +154,18 @@ def ledger_line(session: str, detail: str, cfg: dict) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Agent nudger (P1, shadow-safe): dry run is the default.")
-    ap.add_argument("--apply", action="store_true", help="type into tmux (default: dry run)")
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--apply", action="store_true", help="type into tmux (default: dry run)")
+    #: Explicit dry-run flag (P2). The n8n executor's shadow step requires a NON-EMPTY dry_run_arg
+    #: (scripts/lib/lane_dispatch.py, "the shadow step needs a real dry run"), so the lane names its
+    #: dry run rather than relying on the bare-command default. Behaviour is identical to no flag.
+    mode.add_argument("--dry-run", action="store_true", help="explicit dry run (the default; required as the lane's dry_run_arg)")
     ap.add_argument("--config")
     ap.add_argument("--state")
     ap.add_argument("--ledger")
     ap.add_argument("--coord-dir", help="directory named in the heartbeat prompt (WORKERS.md/BOARD.md)")
     a = ap.parse_args(argv)
+    started_at = datetime.now(timezone.utc).isoformat()
     cfg = load_cfg(a.config)
     coord = a.coord_dir or os.environ.get("TRADEAI_COORD_DIR") or str(Path.home() / "trade-ai-releases"
                                                                      / "persistent-state" / "data" / "coordination"
@@ -166,9 +182,22 @@ def main(argv: list[str] | None = None) -> int:
         state = {}
     now = time.time()
     out, plan = [], []
-    for s in list_sessions(cfg):
+    sessions, discovery_ok = list_sessions(cfg)
+    wanted = 0
+    failed = 0
+    blind = 0
+    inspected = 0
+    for s in sessions:
         rec = state.get(s, {})
-        d = decide(capture(s), rec, now, cfg)
+        screen, observed = capture(s)
+        if not observed:
+            # Not inspected, not counted, and not turned into a verdict. The session stays in state untouched so the
+            # next healthy run decides with the same evidence plus whatever the pane shows then.
+            blind += 1
+            out.append(f"{s:16} {'BLIND':8} capture failed; not inspected")
+            continue
+        inspected += 1
+        d = decide(screen, rec, now, cfg)
         action = d["action"]
         detail = {"RESUME": "vendor error on screen; resume prompt sent",
                   "ENTER": "unsent text in the input box; Enter pressed",
@@ -176,19 +205,28 @@ def main(argv: list[str] | None = None) -> int:
         if detail is None:
             pass
         elif not a.apply:
+            wanted += 1
             plan.append(ledger_line(s, detail, cfg))          # shown as "would:" — nothing is typed or written
         elif action == "RESUME":
-            send(s, RESUME, run=subprocess.run)
-            rec["nudged_at"] = now
+            if send(s, RESUME, run=subprocess.run):
+                rec["nudged_at"] = now
+            else:
+                failed += 1
         elif action == "ENTER":
             # tmux resolves from PATH on purpose; the session name passed the config regex and the refusal list
-            subprocess.run(["tmux", "send-keys", "-t", s, "Enter"],  # noqa: S603, S607
-                           capture_output=True, text=True)
-            rec["nudged_at"] = now
+            entered = subprocess.run(["tmux", "send-keys", "-t", s, "Enter"],  # noqa: S603, S607
+                                     capture_output=True, text=True)
+            if getattr(entered, "returncode", 1) == 0:
+                rec["nudged_at"] = now
+            else:
+                failed += 1
         else:
-            send(s, PROMPT.format(coord=coord), run=subprocess.run)
-            rec["nudged_at"] = now
-        if detail is not None and a.apply:
+            if send(s, PROMPT.format(coord=coord), run=subprocess.run):
+                rec["nudged_at"] = now
+            else:
+                failed += 1
+        if detail is not None and a.apply and rec.get("nudged_at") == now:
+            wanted += 1
             ledger_path.parent.mkdir(parents=True, exist_ok=True)
             with open(ledger_path, "a", encoding="utf-8") as fh:
                 fh.write(ledger_line(s, detail, cfg) + "\n")
@@ -203,7 +241,48 @@ def main(argv: list[str] | None = None) -> int:
     if not a.apply:
         for ln in plan:
             print("would: " + ln)
-    return 0
+    # LaneOutput@v1 (scripts/lib/lane_output.py): ONE bounded line on stderr in every mode, so the executor can bind a
+    # run to what it produced and the contract's expected_output rule has something executable to read. A dry run
+    # reports what it WOULD have typed; `nothing_due` is the honest empty reason when no session needed a nudge.
+    try:
+        from scripts.lib.lane_output import emit as _emit_lane_output, output_block as _lane_output_block
+    except ImportError:  # scripts/ on sys.path (cron / direct execution)
+        from lib.lane_output import emit as _emit_lane_output, output_block as _lane_output_block  # type: ignore
+    produced = wanted   # dry: what it WOULD type; live: what it TYPED (a refused tmux send is not a nudge).
+    skipped = {"send_failed": failed} if failed else {}
+    if not discovery_ok or blind:
+        # The contract lists dependency_unavailable among its fatal skip reasons; before this the producer could never
+        # emit it, so the rule and the code disagreed. A blind run says so instead of reporting a quiet one.
+        skipped["dependency_unavailable"] = 1 if not discovery_ok else blind
+        empty_reason = "dependency_unavailable" if not produced else None
+    else:
+        empty_reason = None if produced else "nothing_due"
+    block = _lane_output_block(produced=produced, attempted=inspected, unit="agent nudges typed",
+                               skipped=skipped, empty_reason=empty_reason)
+    _emit_lane_output("agent_nudge", "live" if a.apply else "dry_run", block, started_at=started_at)
+    degraded = (not discovery_ok) or blind
+    if a.apply:
+        # A LIVE run writes LaneRunReceipt@v2 plus the immutable per-attempt receipt that
+        # scripts/n8n_run_executor.py::apply_output_verdict reads. Without it the contract's rule is declared and never
+        # evaluated (the `declared_not_enforced` path) — a rule that only fails in a test. Never written in dry run:
+        # a dry run has no receipt by definition (`dry_run_exempt`).
+        try:
+            try:
+                from scripts.lib.lane_last_receipt import write_lane_receipt as _write_receipt
+            except ImportError:  # scripts/ on sys.path
+                from lib.lane_last_receipt import write_lane_receipt as _write_receipt  # type: ignore
+            # A blind run is NOT ok (F2, cc3/cx-openai-2 2026-11-04): the producer said dependency_unavailable and the
+            # settlement must agree with it.
+            _write_receipt("agent_nudge", ok=not degraded, started_at=started_at, script="scripts/agent_nudger.py",
+                           produced_count=produced, attempted_count=len(sessions), skipped_reasons=skipped,
+                           empty_reason=empty_reason,
+                           summary={"sessions": len(sessions), "send_failed": failed})
+        except Exception as exc:  # noqa: BLE001 -- the run's own result comes first
+            print(f"[agent_nudge] lane receipt write failed: {type(exc).__name__}", file=sys.stderr)
+    # F2 (cc3 + cx-openai-2, 2026-11-04): exit 0 said RUN_DONE even when the producer had just reported
+    # dependency_unavailable — the executor settled a blind run as a successful shadow run. A run that could not
+    # OBSERVE did not succeed. 2 is the lane's "ran, could not observe" code; a genuine quiet run stays 0.
+    return 2 if degraded else 0
 
 
 if __name__ == "__main__":
