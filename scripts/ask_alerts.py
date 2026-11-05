@@ -82,8 +82,11 @@ def add_alert(question: str, context: dict | None = None) -> dict:
     # marker must stay optional — "hits 150" was a price alert before the thousands fix, and requiring "$"
     # turned an operator's previously supported ask into a refused create (codex-cloud review of #2528).
     # Only a positive finite price is a target; a question with no number still has none.
+    # The `(?<![\w$])` guard (codex-cloud round 2 on #2528) stops the optional marker from turning a
+    # DIGIT INSIDE A NAME into the target: "alert me when L3Harris hits $150" matched the 3 in
+    # L3Harris and produced 3.0. A number embedded in a word is not a price.
     target = None
-    m = re.search(r"(?:\$\s*)?(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{1,6}(?:\.\d+)?)", question)
+    m = re.search(r"(?<![\w$])(?:\$\s*)?(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{1,6}(?:\.\d+)?)", question)
     if m:
         try:
             value = float(m.group(1).replace(",", ""))

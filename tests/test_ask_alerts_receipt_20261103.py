@@ -356,3 +356,15 @@ def test_the_ask_alert_route_maps_a_refused_intent_to_400(monkeypatch):
     status, payload = api_v2.handle("/api/v2/portfolio/ask-alert", method="POST", body={"question": "news about ACME"})
     assert status == 400, (status, payload)
     assert payload["ok"] is False and "cannot evaluate" in payload["error"], payload
+
+
+def test_a_digit_inside_a_company_name_is_not_a_price_target(lane, tmp_path):
+    """codex-cloud round 2 on #2528: making the "$" optional let the first digit ANYWHERE match.
+
+    "alert me when L3Harris hits $150" produced target 3.0 (the 3 in L3Harris) instead of 150.0, so an
+    operator asking for a $150 alert got one at $3. A number embedded in a word is not a price.
+    """
+    lane.STORE = tmp_path / "store" / "ask_alerts.json"
+    ctx = {"positions": [{"symbol": "LHX", "name": "L3Harris", "held": True, "private": False}]}
+    alert = lane.add_alert("alert me when L3Harris hits $150", ctx)
+    assert alert["kind"] == "price" and alert["target_price"] == 150.0, alert
