@@ -126,3 +126,18 @@ def test_the_coverage_refusal_does_not_depend_on_a_schwab_account(monkeypatch, t
         "with zero live coverage and no Schwab account the reprice must refuse, not price from a stale close"
     )
     assert "coverage" in str(out.get("_reprice_refused")).lower()
+
+
+def test_the_drift_guard_is_what_refuses_a_priced_but_zero_total(monkeypatch, tmp_path):
+    """The drift guard's own behavioural case, with every other refusal out of the way: the account summary is
+    present and numeric, the holding is *priced* (market_value 0.0, not None), and the recomputed total is 0 while
+    the document says the book was worth something. Only the guard can refuse this, so reverting `gt <= 0` to the old
+    `gt > 0` makes this test red (mutation-checked)."""
+    holdings = [{"account": "acct_a", "symbol": "ABC", "shares": 0, "market_value": 0.0, "price": 0.0,
+                 "day_change": 0.0, "cost_basis": 900.0}]
+    out = _run(monkeypatch, tmp_path,
+               _portfolio(holdings, {"acct_a": {"total_value": 1_000_000.0, "day_change": 1.0}},
+                          prev_total=1_000_000.0))
+    assert out.get("_reprice_refused"), "a positive book that recomputes to zero must refuse"
+    assert "collapsed" in str(out.get("_reprice_refused")).lower(), out.get("_reprice_refused")
+    assert (out.get("portfolio_totals") or {}).get("total_value") == 1_000_000.0

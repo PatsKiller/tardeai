@@ -61,6 +61,18 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _refuse_reprice(portfolio: Dict, reason: str) -> None:
+    """Refuse this pass through the mechanism ``__main__`` already honours.
+
+    ``portfolio_repricer.__main__`` pops ``_reprice_refused`` and takes ``SystemExit(3)`` without rewriting the
+    document, so a refused pass leaves the last good marks standing. A refusal is the right answer whenever this
+    pass cannot tell what the portfolio is worth: a missing input is UNKNOWN, and a guessed zero is worse than an
+    unknown because every reader of the document then believes the book is worth nothing.
+    """
+    portfolio["_reprice_refused"] = reason
+    print(f"  [repricer] ⛔ REFUSED: {reason}")
+
+
 def compute_data_as_of(holdings) -> dict:
     """The OLDEST contributing row date -- the real freshness of the data.
 
@@ -758,9 +770,18 @@ def _annotate_canonical_quotes(holdings: List[Dict]) -> None:
 
 # ── Recalculate totals ─────────────────────────────────────────────────────────
 def _recalc_totals(portfolio: Dict) -> None:
-    """Recalculate account summaries and portfolio totals from updated holdings."""
+    """Recalculate account summaries and portfolio totals from updated holdings.
+
+    2026-11-05 (FQ-2532-R): a total this pass cannot compute is UNKNOWN, never zero. ``account_summaries`` is the
+    authority for the portfolio total; with none of them the sums below are 0 for want of input, not because the
+    book is worth nothing — and the drift guard further down could not see a zero, because it required ``gt > 0``.
+    The one collapse it could not catch was therefore the 100% one. Refusing here keeps the last good marks.
+    """
     holdings = portfolio.get("holdings", [])
     account_summaries = portfolio.get("account_summaries", {})
+    if not isinstance(account_summaries, dict) or not account_summaries:
+        _refuse_reprice(portfolio, "no account summaries: the portfolio total is unknown, not zero")
+        return
 
     def _choose_fund_anchor(ah):
         """401k proprietary fund codes — residual lands on largest plan holding."""
@@ -794,6 +815,11 @@ def _recalc_totals(portfolio: Dict) -> None:
 
     for acct_key, acct in account_summaries.items():
         ah = [h for h in holdings if h.get("account") == acct_key and not h.get("is_loan")]
+        # FQ-2532-R: holdings present but none of them priced is an UNPRICED account, not an account worth zero.
+        # Overwriting its total with the `or 0` sum below is how one missing market_value became a portfolio-wide 0.
+        if ah and all(h.get("market_value") is None for h in ah):
+            _refuse_reprice(portfolio, f"account {acct_key}: every holding row is unpriced, so its total is unknown, not zero")
+            return
         derived_total = round(sum(h.get("market_value") or 0 for h in ah), 2)
         reported_total = float(acct.get("reported_total_value") or 0)
         source = str(acct.get("source", "")).lower()
@@ -889,7 +915,14 @@ def _recalc_totals(portfolio: Dict) -> None:
 
     # Sanity: reject if total changed > 25% from previous (likely data corruption)
     prev_total = portfolio.get("portfolio_totals", {}).get("total_value", 0) or 0
-    if prev_total > 0 and gt > 0:
+    if prev_total > 0 and gt <= 0:
+        # FQ-2532-R: this is the guard's most important case, not the one it may skip. A fall from a positive total
+        # to zero is 100% drift, and the old `gt > 0` condition meant the only collapse it could never catch was the
+        # total one. Refuse the pass outright: keeping a stale total while rewriting repriced holdings would still
+        # publish a document whose numbers disagree with each other.
+        _refuse_reprice(portfolio, f"total collapsed to ${gt:,.0f} from ${prev_total:,.0f} (100% drift); refusing the write")
+        return
+    if prev_total > 0:
         drift_pct = abs(gt - prev_total) / prev_total * 100
         if drift_pct > 25:
             print(f"  [repricer] ⛔ TOTAL SANITY FAIL: ${prev_total:,.0f} → ${gt:,.0f} ({drift_pct:.1f}% drift)")
@@ -984,6 +1017,13 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
 
     print(f"  [repricer] {now_str} ({_price_session(now)})")
 
+    # FQ-2532-R: account summaries are the authority for the portfolio total. Without them there is nothing to
+    # price into, and the totals pass would sum an empty map to 0 — an unknown published as a zero. Refuse before
+    # spending a single provider call, and name what is missing.
+    if not isinstance(portfolio.get("account_summaries"), dict) or not portfolio.get("account_summaries"):
+        _refuse_reprice(portfolio, "no account summaries: the portfolio total is unknown, not zero")
+        return portfolio
+
     sym_groups = _get_all_symbols(portfolio, root)
     finviz_syms  = sym_groups["finviz"]    # Schwab portfolio + watchlist
     fidelity_syms = sym_groups["fidelity"] # Fidelity proprietary
@@ -1014,14 +1054,29 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
     # every Schwab holding at a days-old cached close with 0% day change — 22 of 25 rows at 10-02 prices on
     # 2026-10-06 (12:01, 13:01, 14:00 ET). Refuse instead: leave the holdings untouched so the last good marks
     # stand, and say so. config/portfolio_positions.yaml positions.reprice_min_live_coverage.
-    _schwab = sym_groups.get("schwab") or []
-    if _schwab:  # every session: an all-night run must not fall back to days-old closes either
-        _cov = len([s for s in _schwab if s in live_prices]) / len(_schwab)
+    # FQ-2532-R (2026-11-05): the refusal used to be gated on Schwab symbols existing, so an all-alpaca or all-moomoo
+    # book had no coverage guard at all and would be repriced from days-old closes. Measure every held tradeable
+    # equity instead — a book with no Schwab rows is exactly the book that needed this and never got it.
+    # ...measured over positions that actually carry a quantity: a zero-share row needs no live mark, and a book that is
+    # genuinely worth zero must still be able to price and write (a guard that refuses everything is not a guard).
+    _needs_quote: set = set()
+    for _h in portfolio.get("holdings") or []:
+        _sym = _tradeable_equity_symbol(_h)
+        if not _sym:
+            continue
+        try:
+            _shares = abs(float(_h.get("shares") or 0))
+        except (TypeError, ValueError):
+            _shares = 0.0
+        if _shares > 0:
+            _needs_quote.add(_sym)
+    _needs_quote = sorted(_needs_quote)
+    if _needs_quote:  # every session: an all-night run must not fall back to days-old closes either
+        _cov = len([s for s in _needs_quote if s in live_prices]) / len(_needs_quote)
         _min = _min_live_coverage(root)
         if _cov < _min:
-            portfolio["_reprice_refused"] = (f"live coverage {_cov:.0%} < {_min:.0%} of held symbols at {now_str}; "
-                                             "holdings left at their last good marks")
-            print(f"  [repricer] ⛔ REFUSED: {portfolio['_reprice_refused']}")
+            _refuse_reprice(portfolio, (f"live coverage {_cov:.0%} < {_min:.0%} of held symbols at {now_str}; "
+                                        "holdings left at their last good marks"))
             return portfolio
 
     # ── 2. Delta-write to quote cache ──────────────────────────────────────────
