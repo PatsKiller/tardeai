@@ -12,7 +12,7 @@
     "kind": "operator in-session words, verbatim: \"why don't you create the design? I approve the design. And you leave the design and markup for Codex. I like your markups better.\" Recorded by claude (observer) under AGENTS.md section 20, as for v002/v004/v005/v006; the Approvals -> Designs tap did not record a ledger decision.",
     "source": [
       "persistent-state/handoffs/SPEC_HOME_MARKET_RISK_CARD_V7_20261102.md",
-      "persistent-state/data/design/pages/home/v007/APPROVAL.json"
+      "persistent-state/data/design/pages/home → v007/APPROVAL.json"
     ],
     "ledger": null
   },

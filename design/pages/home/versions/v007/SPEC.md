@@ -6,7 +6,7 @@ Source of the request: `persistent-state/handoffs/SPEC_HOME_MARKET_RISK_CARD_V7_
 design and markup for Codex. I like your markups better."*
 
 **Design of record:** the approved mockup in the private store,
-`persistent-state/data/design/pages/home/v007/mockups/HomeV007MarketRisk.html`
+`persistent-state/data/design/pages/home → v007/mockups/HomeV007MarketRisk.html`
 (sha256 `afca9e470ea560cb129aa7af002cc805851b9df6b62d9dba879283e967cb491b`, 34,537 bytes; operator review link
 <https://claude.ai/artifact/4dG8NHVfxscDxR36q3L2cQ>). **Where this document and that mockup differ, the mockup wins** —
 this file is the written transcription the build cites, with placeholder values only (the repo is public; rule 7).
