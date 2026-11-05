@@ -7,10 +7,16 @@
 // as its `regime` argument — which is why it stayed green while the page itself could never see `stale` (cc-deepseek-5's
 // BLOCK on #2642, verified by driving the real unwrap). So it now does two things: it drives the REAL module with the
 // shapes the hook actually delivers, and it checks the page asks for the envelope at all.
+//
+// cc-deepseek-5's DELTA BLOCK at 651e1c6d added the rendered half: the old check named "never as current" asserted only
+// the hover title, so a clockless body kept rendering a bright "current" line (data-regime-stale="false", plain label)
+// with the admission hidden in the tooltip. The checks below bind the same fields the element binds — the attribute,
+// the tone and the visible text — so a silent "current" verdict fails here, not only in a reviewer's drive.
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { TOKENS } from './designTokens.ts'
 import { regimeState, regimeClockTitle } from './homeRegime.ts'
 
 const app = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -21,6 +27,19 @@ const wire = {
 }
 // What useApi hands a component: `data` unwrapped, plus the envelope it now also exposes.
 const row = wire.data
+// A body that carries the row and NOTHING about the clock (the shape the author's own fixture and this suite build).
+const clockless = { ok: true, data: row }
+
+// The page's `home-market` span, mirrored field for field from HomeDoNow.tsx:
+//   <span data-testid="home-market" data-regime-stale={String(regimeStale)} title={regimeClockTitle(regimeInfo)}>
+//     Regime <b style={{ color: regimeStale ? TOKENS.text[2] : TOKENS.text[0] }}>{regimeText}</b>…
+// The wiring check below pins these expressions to the real page, so this projection cannot drift away from it.
+const rendered = (info) => ({
+  staleAttr: String(info.stale),
+  visibleText: info.text,
+  tone: info.stale ? TOKENS.text[2] : TOKENS.text[0],
+  title: regimeClockTitle(info),
+})
 
 const cases = []
 const check = (name, fn) => cases.push({ name, fn })
@@ -36,10 +55,24 @@ check('the envelope clock is carried, not discarded', () => {
   assert.equal(got.stale, false)
 })
 
+check('a fresh clock renders as current: attribute false, plain label, bright tone', () => {
+  const v = rendered(regimeState(row, wire))
+  assert.equal(v.staleAttr, 'false')
+  assert.equal(v.visibleText, 'risk off')
+  assert.equal(v.tone, TOKENS.text[0])
+})
+
 check('a stale envelope is never presented as current', () => {
   const got = regimeState(row, { ...wire, stale: true, age_hours: 9.4 })
   assert.equal(got.text, 'risk off (stale, 9.4 h old)')
   assert.equal(got.stale, true)
+})
+
+check('a stale clock renders stale: attribute true, age on the line, dim tone', () => {
+  const v = rendered(regimeState(row, { ...wire, stale: true, age_hours: 9.4 }))
+  assert.equal(v.staleAttr, 'true')
+  assert.equal(v.visibleText, 'risk off (stale, 9.4 h old)')
+  assert.equal(v.tone, TOKENS.text[2])
 })
 
 check('a stale envelope with no age still says stale', () => {
@@ -64,9 +97,22 @@ check('a row with no label is reported, not guessed', () => {
 })
 
 check('a missing clock is stated as missing, never as current', () => {
-  const got = regimeState(row, { ok: true, data: row })
+  const got = regimeState(row, clockless)
   assert.equal(got.asOf, null)
   assert.equal(regimeClockTitle(got), 'regime clock not reported')
+  // The BLOCK: the tooltip was the only signal. The RENDERED state must be the not-current one too.
+  const v = rendered(got)
+  assert.equal(v.staleAttr, 'true', 'the rendered attribute still says current')
+  assert.equal(v.tone, TOKENS.text[2], 'the rendered tone is still the fresh/bright one')
+  assert.equal(v.visibleText, 'risk off (clock not reported)', 'the line does not say the clock is missing')
+  assert.ok(v.visibleText.includes('clock not reported'), 'the missing clock reaches the tooltip only')
+})
+
+check('a body with the clock explicitly present but no stamp is a report, not a gap', () => {
+  // Absence is what must not read as current; an explicit boolean `stale: false` IS a report of current.
+  const v = rendered(regimeState(row, { ok: true, data: row, stale: false }))
+  assert.equal(v.staleAttr, 'false')
+  assert.equal(v.visibleText, 'risk off')
 })
 
 check('the clock title carries the stamp and the age when they exist', () => {
@@ -81,6 +127,10 @@ check('HomeDoNow destructures the envelope from useApi and passes it', () => {
   assert.match(page, /envelope: regimeEnv/, 'the page does not ask useApi for the envelope')
   assert.match(page, /regimeState\(regime, regimeEnv\)/, 'the page does not pass the envelope to regimeState')
   assert.ok(!/regime\s*\??\.\s*stale/.test(code), 'the page still reads the clock off the unwrapped row')
+  // The rendered-state projection above mirrors these exact bindings; pin them so it cannot drift.
+  assert.match(page, /data-regime-stale=\{String\(regimeStale\)\}/, 'the page does not bind the stale attribute')
+  assert.match(page, /color: regimeStale \? TOKENS\.text\[2\] : TOKENS\.text\[0\]/, 'the page does not dim a non-current regime')
+  assert.match(page, /\{regimeText\}/, 'the page does not print the regime text on the line')
 })
 
 const results = []

@@ -9,7 +9,7 @@
 export type RegimeState = {
   /** the regime label in words, '' when the row carries none */
   label: string
-  /** true only when the envelope (or the row's own stale_data) says stale */
+  /** true when the envelope (or the row's own stale_data) says stale, or when no clock was reported at all */
   stale: boolean
   /** the envelope's age in hours, null when it carried none */
   ageHours: number | null
@@ -24,17 +24,27 @@ export function regimeState(regime: any, envelope: any): RegimeState {
   // The envelope is the authoritative clock; the row is the fallback for shapes that carry the clock inline.
   const clock: any = envelope ?? regime
   const label = String(row?.regime_label ?? '').replace(/_/g, ' ')
-  const stale = Boolean(clock?.stale) || Boolean(row?.stale_data)
+  // A clock is REPORTED only when the body states one explicitly. A body that carries the row but none of these has
+  // told us nothing about freshness, and silence must never flatten into a plausible "current" verdict (the repo's
+  // producer-flattens-failure trap): a clockless body carrying a row is not current. An absent row stays `unknown`.
+  const clockReported =
+    typeof clock?.stale === 'boolean' ||
+    typeof clock?.age_hours === 'number' ||
+    typeof clock?.as_of === 'string'
+  const clockless = Boolean(regime) && !clockReported
+  const staleByBody = Boolean(clock?.stale) || Boolean(row?.stale_data)
   const ageHours = typeof clock?.age_hours === 'number' ? clock.age_hours : null
   const asOf = typeof clock?.as_of === 'string' ? clock.as_of : null
   const text = !regime
     ? 'unknown'
     : !label
       ? 'not reported'
-      : stale
+      : staleByBody
         ? `${label} (stale${ageHours != null ? `, ${ageHours.toFixed(1)} h old` : ''})`
-        : label
-  return { label, stale, ageHours, asOf, text }
+        : clockless
+          ? `${label} (clock not reported)`
+          : label
+  return { label, stale: staleByBody || clockless, ageHours, asOf, text }
 }
 
 /** The element's title: the clock when the envelope carried one, an explicit admission when it did not. */
