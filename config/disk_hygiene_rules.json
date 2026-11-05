@@ -373,13 +373,14 @@
     }
   },
   "monitor": {
-    "_why": "scripts/disk_usage_monitor.py, n8n lane disk-usage-monitor (*/15). Band = ok | warn | critical by df-style used% (used / (used + available)). One host comms intent per band CHANGE (dedupe by band, never by raw percent). Inodes (operator 2026-10-19, after /tmp hit 97% inodes with bytes free): every mount is also banded by inode use% (statvfs f_files / f_ffree) with its own thresholds; dedupe is per (mount, metric) band.",
+    "_why": "scripts/disk_usage_monitor.py, n8n lane disk-usage-monitor (*/15). Band = ok | warn | critical by df-style used% (used / (used + available)). Alerts are throttled on EVERY path by realert_minutes: the first thing ever said about a mount is immediate, and after that a band change (severity increase, recovery or repeat) and an unchanged bad band ALL wait for the interval. 2026-11-04: (/ sat critical 23 hours on one alert because only CHANGES alerted; the first repair then throttled only the unchanged path, and an ok<->critical flap every 15 min produced 96 alerts in 24h). Bound: one clock governs every alert, with ONE named exception - a WARN -> CRITICAL escalation is said at once, because a mount at 85% can reach 100% inside an interval and the ledger lives on that mount (cc-deepseek-2 block, 2026-11-04). Everything else (repeats and recoveries) waits for realert_minutes; the first thing ever said about a mount is immediate. Measured 24-hour ceilings at the 60-minute default and 15-minute polls: 24-25 alerts on two-band cycles (ok<->critical, warn<->critical) and on four-band cycles, and up to 33 on a three-band cycle (warn,critical,ok repeating every 45 minutes) - such a cycle carries a warn, an escalation and a recovery, and neither the escalation nor the recovery may be suppressed. A hard 25 on every shape would require dropping one of those two guarantees (cc-deepseek-5 re-read, 2026-11-04). Dedupe is by band and interval, never by raw percent. Inodes (operator 2026-10-19, after /tmp hit 97% inodes with bytes free): every mount is also banded by inode use% (statvfs f_files / f_ffree) with its own thresholds; dedupe is per (mount, metric) band.",
     "mounts": [
       "/",
       "/tmp"
     ],
     "warn_pct": 80.0,
     "critical_pct": 90.0,
+    "realert_minutes": 60.0,
     "host_backstop_pct": 95.0,
     "state_name": "disk_usage_monitor_state.json",
     "producer": "disk_usage_monitor",
@@ -522,6 +523,13 @@
     },
     "max_gb_per_run": 40,
     "byte_unit": "GiB"
+  },
+  "pressure_act": {
+    "_why": "Operator switch for scripts/disk_pressure_guard.py: when armed, the 85% pressure guard TRIGGERS this cleaner (--standing dry run -> quoted selection -> --apply) instead of only reporting, which is the operator's 2026-11-03 disk permanent-fix item 3 ('Make the pressure guard ACT at 85%: it triggers the cleaner, not just a report'). Read fail-closed by scripts/disk_pressure_guard.py:act_config(): anything other than the literal true is DISARMED. Acting additionally requires standing_apply.enabled is true and standing_apply.approval.status APPROVED, so the cleaner's existing kill switch still binds. Default OFF: shipped disarmed; no agent arms it.",
+    "armed": false,
+    "armed_by": null,
+    "armed_at": null,
+    "_owner": "operator only (AGENTS.md §17): arming changes what runs unattended at 85% used, so it is proposed and the operator sets it"
   },
   "jsonl_retention": {
     "_why": "JSONL rotation + retention (2026-10-23). Rotation (scripts/ops/jsonl_archive_rotate.py) moves the closed history of an append-only JSONL store to <id>/<id>.<UTC>.jsonl.gz under the file-prune archive root (scripts/lib/retention_archive.file_archive_root) (byte-exact, sha256 + line-count manifest, RetentionArchiveTripwire@v1 record) and keeps a hot tail of hot_days (at least min_tail_rows rows) in place; writers reopen per write (O_APPEND), so the store is renamed aside and the tail re-installed with renameat2(RENAME_NOREPLACE), and rows appended meanwhile are merged, never lost. Retention: retention_days and max_archive_bytes define which archive segments are selected (jsonl_archive_rotate.py --retention-preview, read-only). REMOVAL IS NOT AUTOMATED: no code path removes a segment; enabled=false; persistent-state stays on the hard never-touch list of scripts/disk_hygiene.py, and AGENTS.md §24.12 keeps stores and archives out of the automated-deletion scope until an amendment names this rule. Changing this block is a reviewed config change (§24.12).",
