@@ -20,6 +20,7 @@ Pure where it matters: every decision below is a function of data handed in, so 
 """
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 import os
@@ -191,6 +192,7 @@ class PullRequest:
     draft: bool
     commit_shas: tuple[str, ...] = ()
     updated_at: str = ""
+    files: tuple[str, ...] = ()
 
     @property
     def clean(self) -> bool:
@@ -233,6 +235,37 @@ def verdicts_at_head(artifacts: Iterable[dict[str, Any]]) -> dict[tuple[int, str
     return index
 
 
+AUTHORITY_PATH = Path(__file__).resolve().parents[2] / "config" / "agent_standing_authority.json"
+
+
+def review_requirements(path: Path | None = None) -> tuple[int, int, tuple[str, ...]]:
+    """``(ordinary_reviews, held_reviews, excluded_globs)`` from the standing authority.
+
+    claude-lead's review of this head: ``merge_ready`` called a held PR Ready on ONE MERGE while the config says
+    ``held_reviews: 2``, and the review picker then skipped it because it already had a MERGE — so a held PR could never
+    collect its second reviewer. The numbers belong to the operator's file, not to this module: unreadable config falls
+    back to the published defaults rather than silently lowering the bar.
+    """
+    try:
+        doc = json.loads(Path(path or AUTHORITY_PATH).read_text(encoding="utf-8"))
+        block = (doc.get("capabilities") or {}).get("coordinator_merge") or {}
+        ordinary = int(block.get("ordinary_reviews", 1))
+        held = int(block.get("held_reviews", 2))
+        globs = tuple(str(g) for g in (block.get("excluded_globs") or ()))
+        return max(1, ordinary), max(1, held), globs
+    except (OSError, ValueError, TypeError):
+        return 1, 2, ()
+
+
+def required_reviews(files: Sequence[str], requirements: tuple[int, int, tuple[str, ...]] | None = None) -> tuple[int, bool]:
+    """``(how many independent MERGEs, is it held)`` for one change; an unreadable file list is HELD (fail closed)."""
+    ordinary, held, globs = requirements or review_requirements()
+    if not files:
+        return held, True
+    touched = any(fnmatch.fnmatchcase(f, g) for f in files for g in globs)
+    return (held, True) if touched else (ordinary, False)
+
+
 def merge_ready(prs: Sequence[PullRequest], verdicts: dict[tuple[int, str], list[dict[str, Any]]],
                 claims: Sequence[Claim], author_of: dict[int, str]) -> dict[str, list[dict[str, Any]]]:
     """Split the open PRs into {ready, one_step}. Report only — the lead's helper remains the only merger."""
@@ -246,6 +279,8 @@ def merge_ready(prs: Sequence[PullRequest], verdicts: dict[tuple[int, str], list
         blocks = [e for e in here if e["verdict"] == "BLOCK" and e["reviewer"] and e["reviewer"] != author_of.get(pr.number, "")]
         merges = [e for e in here if e["verdict"] == "MERGE"]
         merges = [e for e in merges if e["reviewer"] and e["reviewer"] != author_of.get(pr.number, "")]
+        need, held = required_reviews(pr.files)
+        reviewers = {e["reviewer"] for e in merges}
         claim = by_branch.get(pr.head_ref)
         claim_current = bool(claim and claim.head_sha and claim.head_sha in pr.shas)
         base = {"pr": pr.number, "head": pr.head_sha, "branch": pr.head_ref,
@@ -253,6 +288,10 @@ def merge_ready(prs: Sequence[PullRequest], verdicts: dict[tuple[int, str], list
         if blocks:
             one_step.append({**base, "step": "a BLOCK verdict stands at this head — resolve it, then re-review",
                              "verdicts": [e["reviewer"] for e in blocks]})
+        elif reviewers and len(reviewers) < need:
+            one_step.append({**base, "step": f"needs {need} independent MERGE verdicts"
+                                              f"{' (held path)' if held else ''} — {len(reviewers)} at this head",
+                             "verdicts": sorted(reviewers), "held": held, "needed": need})
         elif merges and claim_current:
             ready.append({**base, "verdicts": [e["reviewer"] for e in merges]})
         elif merges and not claim_current:
@@ -401,8 +440,10 @@ def select_work(session: str, *, queue: Sequence[dict[str, Any]], claims: Sequen
         if not free("review", str(pr.number)):
             continue
         verdicts_here = verdicts.get((pr.number, pr.head_sha), [])
-        if any(v["verdict"] == "MERGE" for v in verdicts_here):
-            continue
+        need, _held = required_reviews(pr.files)
+        merges_here = {v["reviewer"] for v in verdicts_here if v["verdict"] == "MERGE" and v["reviewer"]}
+        if len(merges_here) >= need:
+            continue  # the bar is met; a held PR with one MERGE still needs its second reviewer
         others = [v for v in verdicts_here if v["verdict"] == "BLOCK" and v["reviewer"] == session]
         if others:
             continue

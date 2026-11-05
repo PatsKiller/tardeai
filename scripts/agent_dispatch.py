@@ -126,7 +126,7 @@ def load_review_artifacts(coord: Path) -> list[dict[str, Any]]:
 def open_prs(run: Callable[..., Any] = _run, with_commits: bool = True) -> list[D.PullRequest]:
     """Open PRs from `gh`. Commit SHAs are fetched only for CLEAN candidates (they are the merge-prep evidence)."""
     proc = run(["gh", "pr", "list", "--state", "open", "--limit", "200", "--json",
-                "number,headRefName,headRefOid,mergeStateStatus,isDraft,updatedAt"])
+                "number,headRefName,headRefOid,mergeStateStatus,isDraft,updatedAt,files"])
     if getattr(proc, "returncode", 1) != 0:
         return []
     try:
@@ -140,7 +140,9 @@ def open_prs(run: Callable[..., Any] = _run, with_commits: bool = True) -> list[
         pr = D.PullRequest(number=int(r["number"]), head_sha=str(r.get("headRefOid") or ""),
                            head_ref=str(r.get("headRefName") or ""),
                            merge_state=str(r.get("mergeStateStatus") or ""), draft=bool(r.get("isDraft")),
-                           updated_at=str(r.get("updatedAt") or ""))
+                           updated_at=str(r.get("updatedAt") or ""),
+                           files=tuple(str(f.get("path")) for f in (r.get("files") or [])
+                                       if isinstance(f, dict) and f.get("path")))
         if with_commits and pr.clean:
             c = run(["gh", "pr", "view", str(pr.number), "--json", "commits"])
             if getattr(c, "returncode", 1) == 0:
@@ -169,6 +171,45 @@ def author_sessions(prs: Sequence[D.PullRequest], claims: Sequence[D.Claim]) -> 
 
 
 # ── the cycle ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+IDLE_STATE_NAME = "dispatch_idle_state.json"
+
+
+def idle_minutes_from_state(panes: Sequence[D.PaneState], path: Path, now_iso: str) -> list[tuple[str, float]]:
+    """(session, idle minutes) from a persisted idle streak — so the 15-minute escalation can actually fire.
+
+    claude-lead's review of this head: the alert was built from a literal ``0.0``, against a 15-minute threshold, so
+    ``DISPATCH_IDLE_ALERT.md`` could never be written no matter how long the fleet sat idle. A cycle has no memory of its
+    own, so the streak is kept in a small state file keyed by session: first seen idle inside the current streak, dropped
+    the moment the pane is not idle. An unreadable state file is an empty one (a missing streak is not a wrong streak).
+    """
+    now = datetime.fromisoformat(now_iso.replace("Z", "+00:00"))
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(state, dict):
+            state = {}
+    except (OSError, ValueError):
+        state = {}
+    out: list[tuple[str, float]] = []
+    updated: dict[str, str] = {}
+    for pane in panes:
+        if not pane.idle:
+            continue  # not idle now: its streak is over, so it does not survive into the next write
+        since = state.get(pane.session)
+        try:
+            started = datetime.fromisoformat(str(since).replace("Z", "+00:00")) if since else None
+        except ValueError:
+            started = None
+        if started is None or started > now:
+            started = now
+        updated[pane.session] = started.isoformat(timespec="seconds").replace("+00:00", "Z")
+        out.append((pane.session, (now - started).total_seconds() / 60.0))
+    idle_minutes_from_state.last = updated  # type: ignore[attr-defined]
+    return out
+
+
+idle_minutes_from_state.last = {}  # type: ignore[attr-defined]
 
 
 def run_cycle(*, apply: bool, coord: Path, queue_path: Path, claims_dir: Path, ledger_path: Path,
@@ -216,7 +257,7 @@ def run_cycle(*, apply: bool, coord: Path, queue_path: Path, claims_dir: Path, l
                 review_counts[(int(a.target), head)] = review_counts.get((int(a.target), head), 0) + 1
 
     ready = D.merge_ready(prs, verdicts, claims, authors)
-    idle_minutes = [(p.session, 0.0) for p in panes if p.idle]  # a cycle has no memory; the alert uses dwell from state
+    idle_minutes = idle_minutes_from_state(panes, coord / "dispatch_idle_state.json", generated_at)
     alerts = D.idle_alert(idle_minutes, generated_at=generated_at) if (not assignments and panes) else None
 
     plan = D.plan_lines(assignments, panes, dispatchable=False)
@@ -250,6 +291,9 @@ def run_cycle(*, apply: bool, coord: Path, queue_path: Path, claims_dir: Path, l
             for line in lines:
                 fh.write(line + "\n")
 
+    idle_state_target = D.safe_output_path(coord / IDLE_STATE_NAME, coord=coord, protected=[queue_path, claims_dir])
+    idle_state_target.write_text(json.dumps(getattr(idle_minutes_from_state, "last", {}), indent=1, sort_keys=True) + "\n",
+                                 encoding="utf-8")
     merge_ready_target.write_text(D.render_merge_ready(ready, generated_at=generated_at), encoding="utf-8")
     if alerts:
         alert_target.write_text(alerts, encoding="utf-8")

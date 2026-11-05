@@ -118,10 +118,24 @@ def test_never_assigns_a_review_of_your_own_pr():
     assert D.select_work("cc-8", queue=[], claims=[], prs=[pr], verdicts={}, author_of={7: "cc-8"}, coord="/c", now=NOW) is None
 
 
-def test_a_pr_with_a_merge_verdict_at_head_needs_no_second_review():
-    pr = D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False)
+def test_an_ordinary_pr_with_a_merge_verdict_at_head_needs_no_second_review():
+    pr = D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False, files=("apps/command-center-v3/src/pages/Home.tsx",))
     v = {(7, "h" * 40): [{"verdict": "MERGE", "reviewer": "cc-9"}]}
     assert D.select_work("cc-8", queue=[], claims=[], prs=[pr], verdicts=v, author_of={7: "cc-4"}, coord="/c", now=NOW) is None
+
+
+def test_a_held_pr_with_one_merge_verdict_still_needs_its_second_reviewer():
+    """claude-lead's F1 on #2650: the picker skipped any PR with a MERGE, so a held PR never got its second reviewer."""
+    pr = D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False, files=("AGENTS.md",))
+    v = {(7, "h" * 40): [{"verdict": "MERGE", "reviewer": "cc-9"}]}
+    a = D.select_work("cc-8", queue=[], claims=[], prs=[pr], verdicts=v, author_of={7: "cc-4"}, coord="/c", now=NOW)
+    assert a is not None and a.kind == "review" and a.target == "7"
+
+
+def test_an_unlisted_pr_fails_closed_and_needs_the_held_bar():
+    """No file list means "cannot prove it is ordinary", so the higher bar applies."""
+    pr = D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False)
+    assert D.required_reviews(pr.files) == (2, True)
 
 
 def test_a_dirty_or_draft_pr_is_not_review_work():
@@ -173,13 +187,23 @@ def test_verdicts_are_read_from_both_artifact_shapes():
 
 
 def test_merge_pump_separates_ready_from_one_step_and_never_merges():
-    pr = D.PullRequest(11, "h" * 40, "wt/x", "CLEAN", False, commit_shas=("h" * 40,))
+    pr = D.PullRequest(11, "h" * 40, "wt/x", "CLEAN", False, commit_shas=("h" * 40,),
+                       files=("apps/command-center-v3/src/pages/Home.tsx",))
     claims = [claim(session="cc-4", branch="wt/x", head="h" * 40)]
     v = {(11, "h" * 40): [{"verdict": "MERGE", "reviewer": "cc-9"}]}
     out = D.merge_ready([pr], v, claims, {11: "cc-4"})
     assert [r["pr"] for r in out["ready"]] == [11] and out["one_step"] == []
     text = D.render_merge_ready(out, generated_at="now")
     assert "report only" in text and "#11" in text
+
+
+def test_a_held_pr_with_one_merge_verdict_is_one_step_away_never_ready():
+    pr = D.PullRequest(12, "h" * 40, "wt/y", "CLEAN", False, commit_shas=("h" * 40,), files=("AGENTS.md",))
+    claims = [claim(session="cc-4", branch="wt/y", head="h" * 40)]
+    v = {(12, "h" * 40): [{"verdict": "MERGE", "reviewer": "cc-9"}]}
+    out = D.merge_ready([pr], v, claims, {12: "cc-4"})
+    assert out["ready"] == [], "a held path needs two independent MERGEs"
+    assert out["one_step"] and "needs 2 independent MERGE verdicts" in out["one_step"][0]["step"]
 
 
 def test_a_merge_verdict_from_the_author_is_not_independent():
@@ -364,7 +388,9 @@ def test_apply_writes_the_ledger_and_merge_ready_only(tmp_path):
     assert sent, "the instruction was pasted"
     # Rails: nothing else of the fleet's was written.
     written = {p.name for p in paths["coord"].rglob("*") if p.is_file()}
-    assert written <= {"AUDIT_FIX_QUEUE.json", "dispatch_ledger.jsonl", "MERGE_READY.md"}, written
+    # The idle streak is written so DISPATCH_IDLE_ALERT can fire on a later cycle (claude-lead's F1 on #2650).
+    assert written <= {"AUDIT_FIX_QUEUE.json", "dispatch_ledger.jsonl", "MERGE_READY.md",
+                       "dispatch_idle_state.json"}, written
 
 
 def test_busy_sessions_are_not_touched(tmp_path):
