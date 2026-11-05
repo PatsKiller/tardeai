@@ -185,3 +185,51 @@ def test_review_prompt_carries_the_section_prose_from_body_md():
     doc["sections"][0]["text"] = "explicit section text"
     prompt = aa.review_prompt(doc)
     assert "explicit section text" in prompt and "after the pullback" not in prompt
+
+
+def test_review_prompt_redacts_account_names_before_egress():
+    """The review prompt goes to an external model: prose that can name an account must not cross."""
+    from scripts.lib.account_display import account_label
+    name = account_label("schwab_rollover_ira")
+    doc = {"symbol": "ZZDEMO", "verdict_line": f"The {name} still holds ZZDEMO.",
+           "sections": [{"id": "summary", "title": "Summary",
+                         "body_md": f"The {name} added 100 shares of ZZDEMO after the pullback."}],
+           "facts": [{"id": "F1", "label": f"Position ({name})", "value": 100}]}
+    prompt = aa.review_prompt(doc)
+    assert name not in prompt and "Rollover IRA" not in prompt
+    # Only the account identity is withheld; the sentence the auditor is asked to check survives.
+    assert "added 100 shares of ZZDEMO after the pullback" in prompt
+    assert "still holds ZZDEMO" in prompt
+    # The same guard covers the older aliases, so no caller can route prose around it.
+    doc["sections"][0]["text"] = f"The {name} trimmed the position."
+    prompt = aa.review_prompt(doc)
+    assert name not in prompt and "trimmed the position" in prompt
+
+
+def test_review_prompt_redacts_an_account_missing_from_the_registry():
+    """A name the writer saw in its own facts is redacted even when the display registry does not list it."""
+    doc = {"symbol": "ZZDEMO",
+           "sections": [{"id": "summary", "title": "Summary",
+                         "body_md": "The Zzsecret Holdings IRA added 100 shares of ZZDEMO after the pullback. "
+                                    "The Zzlongsource Stop Account holds the stop."}],
+           "facts": [{"id": "F1", "label": "My open position (Zzsecret Holdings IRA): shares", "value": 100},
+                     {"id": "F2", "label": "Recorded protective stop level (Zzlongsource Stop Account, "
+                                            "stop_last_known / stops.json (cio_truth.stop_for), awaiting_stop_condition)",
+                      "value": 50}],
+           "blocks": {"my_history": {"open_lots": [{"account": "Zzsecret Holdings IRA", "shares": 100}]}}}
+    prompt = aa.review_prompt(doc)
+    assert "Zzsecret Holdings IRA" not in prompt
+    assert "Zzlongsource Stop Account" not in prompt  # the long stop label is parsed too
+    assert "added 100 shares of ZZDEMO after the pullback" in prompt
+
+
+def test_review_prompt_withholds_prose_when_account_redaction_is_unavailable(monkeypatch):
+    """No registry terms means no way to tell safe prose from account prose: withhold it (fail closed)."""
+    monkeypatch.setattr(aa, "_account_redaction_terms", lambda doc: ())
+    doc = {"symbol": "ZZDEMO", "verdict_line": "The synthetic account still holds ZZDEMO.",
+           "sections": [{"id": "summary", "title": "Summary",
+                         "body_md": "The synthetic account added 100 shares of ZZDEMO."}],
+           "facts": [{"id": "F1", "label": "Position (synthetic account)", "value": 100}]}
+    prompt = aa.review_prompt(doc)
+    assert "synthetic account" not in prompt
+    assert '"value": 100' in prompt  # the numbers-only read still works

@@ -88,6 +88,39 @@ def labels_map(keys: Iterable[Any] | None = None) -> dict[str, str]:
     return {str(k): account_label(k) for k in keys if str(k or "").strip()}
 
 
+def _humanized(key: Any) -> set[str]:
+    s = str(key or "").strip().lower().replace("-", "_")
+    return {s, s.replace("_", " ")} if s else set()
+
+
+def redaction_terms() -> tuple[str, ...]:
+    """Every string that can name a configured account, longest first, for an egress guard.
+
+    Prose sent to an external model must not carry account identity. The terms are the display
+    label, the registry name, the account key and its aliases (and their humanized forms), the
+    broker (a broker alone can identify the one account held there), and the label with its broker
+    prefix stripped when what remains is still distinctive ("Rollover IRA", "Roth IRA").
+    """
+    cfg = _load()
+    terms: set[str] = set()
+    for key, entry in (cfg.get("names") or {}).items():
+        entry = entry if isinstance(entry, Mapping) else {}
+        label = account_label(key)
+        terms.add(str(key))
+        terms.add(label)
+        for field_name in ("name", "registry_name", "broker"):
+            if entry.get(field_name):
+                terms.add(str(entry[field_name]))
+        terms.update(_humanized(key))
+        bits = label.split()
+        if len(bits) >= 3:
+            terms.add(" ".join(bits[1:]))
+    for alias in cfg.get("aliases") or {}:
+        terms.add(str(alias))
+        terms.update(_humanized(alias))
+    return tuple(sorted((t.strip() for t in terms if str(t).strip()), key=len, reverse=True))
+
+
 def row_account(row: Mapping[str, Any]) -> str:
     for f in ACCOUNT_FIELDS:
         v = row.get(f) if isinstance(row, Mapping) else None

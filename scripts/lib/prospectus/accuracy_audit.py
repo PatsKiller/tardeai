@@ -845,18 +845,107 @@ def sample_for_review(results: list[dict], docs: dict[str, dict], *, n: int = RE
     return [r["symbol"] for r in ranked if r.get("symbol") in docs and (docs[r["symbol"]].get("sections"))][:n]
 
 
+_ACCOUNT_PLACEHOLDER = "[account]"
+#: Fact/block shapes that carry an account name in a string rather than an ``account`` key.
+_ACCOUNT_IN_TEXT = (
+    re.compile(r"My open position \((.+?)\)"),
+    re.compile(r"Recorded protective stop level \((.+?), "),
+    re.compile(r"Distance from last close to stop % \((.+)\)"),
+    re.compile(r"Journal trade: .*? \((.+)\)"),
+    re.compile(r"Trip \d+ \((.+?)(?:, |\):)"),
+    re.compile(r"Stop filled at [^(]*\((.+?)\)"),
+)
+
+
+def _doc_account_terms(doc: dict) -> set[str]:
+    """Account names the document itself carries (facts and blocks), keyed or in a known label shape.
+
+    The writer only learned an account name from the facts it was given, and those facts are stored in
+    this document. Harvesting them means an account missing from the display registry is still redacted.
+    """
+    out: set[str] = set()
+
+    def walk(node: Any, key: str = "") -> None:
+        if isinstance(node, dict):
+            for k, v in node.items():
+                walk(v, k)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v, key)
+        elif isinstance(node, str):
+            s = node.strip()
+            if not s:
+                return
+            if (key in ("account", "account_name", "account_label") or key == "accounts") and len(s) <= 80:
+                out.add(s)
+            for rx in _ACCOUNT_IN_TEXT:
+                m = rx.search(s)
+                if m:
+                    out.add(m.group(1).strip())
+
+    walk(doc)
+    for f in _facts(doc):
+        if str(f.get("label") or "") == "Accounts holding":
+            out.update(part.strip() for part in str(f.get("text") or "").split(","))
+    return {t for t in out if t}
+
+
+def _account_redaction_terms(doc: dict) -> tuple[str, ...]:
+    """Every account identity term for this document, longest first. Empty = registry unknown (fail closed).
+
+    The display registry is the house source of account names; the document's own facts are added so a
+    name the writer saw is redacted even when the registry does not (yet) list that account.
+    """
+    try:
+        registry = set(_imp("scripts.lib.account_display", "lib.account_display").redaction_terms())
+    except Exception:  # noqa: BLE001 - an unreadable registry must fail closed, never open
+        return ()
+    if not registry:
+        return ()  # registry present but empty/unreadable: no way to be sure, so withhold prose
+    return tuple(sorted(registry | _doc_account_terms(doc), key=len, reverse=True))
+
+
+def _redact_accounts(value: Any, pattern: Optional[re.Pattern]) -> Any:
+    """Recursively replace every configured account name in ``value`` with a neutral placeholder."""
+    if pattern is None:
+        return value
+    if isinstance(value, str):
+        return pattern.sub(_ACCOUNT_PLACEHOLDER, value)
+    if isinstance(value, list):
+        return [_redact_accounts(v, pattern) for v in value]
+    if isinstance(value, dict):
+        return {k: _redact_accounts(v, pattern) for k, v in value.items()}
+    return value
+
+
 def review_prompt(doc: dict, *, max_facts: int = 160, max_chars: int = 60000) -> str:
-    """Prose-vs-facts review prompt: the written sections and the facts they may cite (no account names)."""
-    facts = [{k: f.get(k) for k in ("id", "label", "value", "unit", "text", "as_of") if f.get(k) is not None}
-             for f in _facts(doc)[:max_facts]]
-    # The report writer stores prose as ``body_md`` (generate.py:210). Without it the prompt carried
-    # every section title with no sentence to audit, so the model was asked to check "every sentence"
-    # against facts while holding none of them (row-12 ticket 3, 2026-11-03).
-    sections = [{"id": s.get("id"), "title": s.get("title"),
-                 "text": s.get("text") or s.get("body") or s.get("body_md")}
-                for s in doc.get("sections") or []]
-    body = json.dumps({"symbol": doc.get("symbol"), "verdict_line": doc.get("verdict_line"), "sections": sections,
-                       "facts": facts}, default=str)[:max_chars]
+    """Prose-vs-facts review prompt: the written sections and the facts they may cite (no account names).
+
+    The prompt is sent to an external model, so account identity is redacted **here**, at the egress
+    boundary, whatever field the prose arrived in (``text``, ``body`` or ``body_md``) and whoever
+    supplied it. If the account registry cannot be read the prose is withheld rather than sent.
+    """
+    terms = _account_redaction_terms(doc)
+    pattern = re.compile(r"(?<!\w)(?:" + "|".join(re.escape(t) for t in terms) + r")(?!\w)", re.I) if terms else None
+    if pattern is None:
+        # Fail closed: without the registry nothing can tell prose that names an account from prose
+        # that does not, so no prose leaves the host (the facts still support a numbers-only read).
+        facts = [{k: f.get(k) for k in ("id", "value", "unit", "as_of") if f.get(k) is not None}
+                 for f in _facts(doc)[:max_facts]]
+        sections = [{"id": s.get("id"), "text": None} for s in doc.get("sections") or []]
+        verdict_line = None
+    else:
+        facts = [{k: f.get(k) for k in ("id", "label", "value", "unit", "text", "as_of") if f.get(k) is not None}
+                 for f in _facts(doc)[:max_facts]]
+        # The report writer stores prose as ``body_md`` (generate.py:210). Without it the prompt carried
+        # every section title with no sentence to audit, so the model was asked to check "every sentence"
+        # against facts while holding none of them (row-12 ticket 3, 2026-11-03).
+        sections = [{"id": s.get("id"), "title": s.get("title"),
+                     "text": s.get("text") or s.get("body") or s.get("body_md")}
+                    for s in doc.get("sections") or []]
+        verdict_line = doc.get("verdict_line")
+    body = json.dumps(_redact_accounts({"symbol": doc.get("symbol"), "verdict_line": verdict_line,
+                                        "sections": sections, "facts": facts}, pattern), default=str)[:max_chars]
     return ("You are auditing a research report for accuracy against its own cited facts. Read every sentence. "
             "List each statement whose number, date, direction or claim is not supported by the facts, contradicts "
             "another section, or overstates certainty. Return JSON only: {\"issues\": [{\"section\": str, "
