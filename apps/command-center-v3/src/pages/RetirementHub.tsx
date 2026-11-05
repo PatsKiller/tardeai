@@ -135,7 +135,12 @@ export default function RetirementHub({ onDrill }: Props) {
               <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
                 <Metric label="Window" value={`${golden.start_year}–${golden.end_year}`} />
                 <Metric label="Annual conversion" value={fmt$(golden.annual_conversion ?? 0, 0)} color="#f59e0b" />
-                <Metric label="Bracket ceiling" value={golden.bracket_ceiling} />
+                {/* FQ-082: a bare placeholder stood in for an unknown bracket ceiling with no explanation (operator
+                    page audit). The producer sends "" for an unset ceiling, not null, so both shapes mean "not set". */}
+                <Metric label="Bracket ceiling" value={golden.bracket_ceiling}
+                  note={golden.bracket_ceiling === '' || golden.bracket_ceiling == null
+                    ? 'No bracket ceiling has been recorded for this window, so the conversion shown here has not been checked against one. Set a ceiling in the plan to enable that check.'
+                    : undefined} />
               </div>
             ) : <div style={{ fontSize: 11, color: 'var(--text3)' }}>No window configured.</div>}
             <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 10, lineHeight: 1.5 }}>
@@ -251,7 +256,7 @@ export default function RetirementHub({ onDrill }: Props) {
   )
 }
 
-function Metric({ label, value, color = 'var(--text0)' }: { label: string; value: any; color?: string }) {
+function Metric({ label, value, color = 'var(--text0)', note }: { label: string; value: any; color?: string; note?: string }) {
   // A bare em-dash says nothing (BOARD row 38): is it unknown, zero, or not applicable? Say which, and never collapse a
   // real 0 into the missing case — `value || '—'` turned a zero yield into "no data".
   const missing = value === null || value === undefined || value === ''
@@ -260,6 +265,8 @@ function Metric({ label, value, color = 'var(--text0)' }: { label: string; value
       <div style={{ fontSize: 8.5, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 800 }}>{label}</div>
       <div style={{ fontSize: missing ? 11 : 15, fontWeight: missing ? 600 : 900, fontStyle: missing ? 'italic' : 'normal',
         color: missing ? 'var(--text3)' : color, marginTop: 2 }}>{missing ? 'not reported' : value}</div>
+      {/* FQ-082: an unexplained placeholder is a silence; the note says what the value means when it is absent. */}
+      {note && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2, maxWidth: 260, lineHeight: 1.4 }}>{note}</div>}
     </div>
   )
 }
