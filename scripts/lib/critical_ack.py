@@ -1,9 +1,10 @@
 """FQ-143 / D32 §6: one acknowledgement stops the repeats, on every channel.
 
 The operator's words: "acknowledge once ... and the repeats stop on all channels." The mechanism half-exists already —
-`alert_incidents.acknowledged_at` and `acknowledged_by` are in the schema, and `alert_dedupe` refuses to escalate while
-`acknowledged_at` is set (`scripts/alert_dedupe.py:138-140`) — but **nothing in the tree ever writes them**. This module is
-that writer, and nothing else: it does not decide what is critical, does not send, and does not touch a delivery row.
+`alert_incidents.acknowledged_at` and `acknowledged_by` are in the schema, and `alert_dedupe.should_notify` now stays
+quiet for an acknowledged condition that has not changed (while still notifying on an escalation) — but **nothing in the
+tree ever writes them**. This module is that writer, and nothing else: it does not decide what is critical, does not
+send, and does not touch a delivery row.
 
 Two rules it keeps:
 
@@ -99,7 +100,8 @@ def acknowledge(incident_id: str, by: str, *, conn: Any = None, connect: Optiona
 def stops_repeats(incident: dict[str, Any]) -> bool:
     """Whether the dedupe/escalation path will now stay quiet for this incident.
 
-    Kept next to the writer so the two cannot drift: the rule the reader applies (`alert_dedupe.py:138-140`) is exactly
-    "acknowledged_at is set".
+    Kept next to the writer so the two cannot drift: `alert_dedupe.should_notify` stays quiet for an acknowledged
+    condition that has not changed, and notifies again when it escalates. An acknowledgement is what makes that quiet
+    branch reachable.
     """
     return incident.get("acknowledged_at") is not None

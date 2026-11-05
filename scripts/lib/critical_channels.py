@@ -13,6 +13,8 @@ Rules this module keeps:
     is a receipt against the channel that needed it, never a reason to skip the channels that were configured correctly;
   * a Telegram message counts only when the transport returns a message id; a Communications Editor hold or duplicate is
     recorded as skipped, because it reached nobody;
+  * the Critical chat is sent through `telegram_alert.send_telegram` — the communications chokepoint that writes the
+    ledger row and routes the alert as a declared P1 intent — never through the raw transport directly;
   * every send returns a per-channel receipt, including the ones that did not send, and no receipt carries an address;
   * senders are injected, so the tests exercise the fan-out without a network, a token or a mailbox.
 
@@ -100,35 +102,79 @@ def _default_email_sender(to: str, subject: str, body: str) -> str | None:
     return "gog-accepted" if result in (True, None) else str(result)
 
 
-def _default_telegram_sender(chat_id: str, text: str) -> str | None:
-    """The Critical chat, through the one approved Bot API owner.
+def _telegram_alert_module() -> Any:
+    """``telegram_alert``, the one communications chokepoint for operator Telegram.
 
-    ``telegram_transport.send_message`` is keyword-only and requires the bot token explicitly — calling it positionally
-    raises TypeError, which would have made every Critical-chat delivery a failed receipt for the one channel that exists
-    because the normal Telegram is flooded.
+    ``scripts/`` is on the lanes' import path, so the bare import is the same module object the lanes load; the
+    ``scripts.`` package import is the same object when this module is imported from the repository root.
     """
-    import os
+    try:
+        from scripts import telegram_alert
+    except ImportError:  # scripts/ on sys.path in the lanes
+        import telegram_alert  # type: ignore[no-redef]
+    return telegram_alert
 
-    from telegram_transport import send_message  # local import: the approved Telegram owner
 
-    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
-    if not token:
-        raise RuntimeError("telegram_token_not_configured")
-    result = send_message(token=token, chat_id=chat_id, text=text)
-    if isinstance(result, dict):
-        if result.get("ok") is False:
+def _held_reason(telegram_alert: Any) -> str:
+    """The Communications Editor's own hold reason for the send that just happened, or ``held``.
+
+    Pure decoration on an already-known hold: the reason is a fixed token and never the message body. Any failure to
+    read it degrades to ``held``, never to a delivery.
+    """
+    try:
+        held = telegram_alert.last_held_chunks() or []
+    except Exception:  # noqa: BLE001 — a missing reason never turns a hold into a send
+        return "held"
+    for row in held:
+        reason = _safe_token((row or {}).get("reason")) if isinstance(row, dict) else "held"
+        if reason:
+            return reason
+    return "held"
+
+
+def _default_telegram_sender(chat_id: str, text: str) -> str | None:
+    """The Critical chat, through the one approved communications chokepoint.
+
+    codex P1: this used to call ``telegram_transport.send_message`` directly. That bypassed ``telegram_alert.send_telegram``
+    — no row in the communications ledger (the single view the operator audits), no declared P1 notification intent (so an
+    actionable alert could sit in the Communications Editor or a digest like any ordinary message), and no record of what
+    the router decided.
+
+    The message-id discipline is kept, not traded away. ``send_telegram``'s boolean means "accepted" (delivered, deduped
+    or digested), never "a message reached the operator", so the call's typed outcome decides the receipt: only
+    DELIVERED **with a provider message id** is a delivery; a hold is ``ChannelSuppressed`` (the receipt vocabulary's
+    ``skipped``) carrying the editor's own reason; an outcome with no id is a failure. The chokepoint *does* express a
+    hold — ``delivery_outcome()`` returns ``HELD`` and ``last_held_chunks()`` names why — so nothing is downgraded here.
+    """
+    ta = _telegram_alert_module()
+    outcome = ta.send_telegram_outcome(
+        text,
+        chat_ids=[chat_id],
+        message_class="operator_alert",
+        priority="P1",
+        producer="critical_channels",
+    )
+    status = str(outcome.get("status") or "").upper()
+    ids = [str(mid) for mid in (outcome.get("message_ids") or []) if str(mid).strip()]
+    if status == "DELIVERED" and ids:
+        return ids[0]
+    if status == "HELD":
+        raise ChannelSuppressed(f"telegram_suppressed:{_held_reason(ta)}")
+    if status == "ROUTED":
+        # No transport attempt was made in this process. When the platform took responsibility the message was deduped
+        # (already sent) or owned and delivered by the communications gateway, which does not hand this module a provider
+        # id; it is reported as not delivered here, never as sent. When it accepted nothing, that is a failure.
+        if not outcome.get("accepted"):
             raise RuntimeError("telegram_send_refused")
-        # The transport's success shape carries `message_id` at the top level. A held or deduplicated message is
-        # `{"ok": True, "message_id": None, "suppressed": ...}` — ok and nothing sent — so ok alone is never a receipt.
-        message_id = result.get("message_id")
-        if message_id in (None, "", 0) and isinstance(result.get("result"), dict):
-            message_id = result["result"].get("message_id")
-        if message_id in (None, "", 0):
-            if result.get("suppressed") is not None or "suppressed" in result:
-                raise ChannelSuppressed(f"telegram_suppressed:{_safe_token(result.get('suppressed'))}")
-            raise RuntimeError("telegram_message_id_missing")
-        return str(message_id)
-    return str(result) if result is not None else None
+        decision = _safe_token(str((ta.last_intent_route() or {}).get("decision") or "").lower(), "delivery_unverified")
+        raise ChannelSuppressed(f"telegram_routed:{decision}")
+    if status == "UNCONFIGURED":
+        raise RuntimeError("telegram_token_not_configured")
+    if status == "UNCONFIRMED":
+        raise RuntimeError("telegram_message_id_missing")
+    if status == "DISABLED":
+        raise RuntimeError("telegram_disabled")
+    raise RuntimeError("telegram_send_refused")
 
 
 def _confirms(provider: Any) -> bool:

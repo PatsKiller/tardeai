@@ -150,49 +150,49 @@ def test_no_receipt_carries_an_address(monkeypatch):
 
 # ── the default senders: the tests above inject senders, which is exactly why two broken signatures shipped once ─────────
 
-def test_the_default_telegram_sender_passes_the_token_by_keyword(monkeypatch):
-    """`telegram_transport.send_message` is keyword-only and needs a token; a positional call raises TypeError."""
-    calls = {}
-    mod = type(sys)("telegram_transport")
+def _chokepoint(monkeypatch, *, outcome, route=None, held=None):
+    """Stub ``telegram_alert``'s chokepoint entry and return the kwargs the default sender hands it."""
+    from scripts import telegram_alert as ta
 
-    def send_message(*args, **kwargs):
-        assert args == (), f"positional call would raise TypeError: {args}"
-        calls.update(kwargs)
-        return {"ok": True, "result": {"message_id": 4242}}
+    seen: dict = {}
 
-    mod.send_message = send_message
-    monkeypatch.setitem(sys.modules, "telegram_transport", mod)
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token-fixture")
-    receipt = cc._default_telegram_sender("chat-fixture", "hello")
-    assert calls["token"] == "token-fixture" and calls["chat_id"] == "chat-fixture" and calls["text"] == "hello"
-    assert receipt == "4242"
+    def send_telegram_outcome(text, **kwargs):
+        seen["text"] = text
+        seen.update(kwargs)
+        return outcome
+
+    monkeypatch.setattr(ta, "send_telegram_outcome", send_telegram_outcome)
+    monkeypatch.setattr(ta, "last_intent_route", lambda: dict(route or {}))
+    monkeypatch.setattr(ta, "last_held_chunks", lambda: list(held or []))
+    return seen
+
+
+def test_the_default_telegram_sender_goes_through_the_communications_chokepoint(monkeypatch):
+    """codex P1: a direct `telegram_transport.send_message` call wrote no communications ledger row and routed no P1
+    intent. The default sender must enter through `telegram_alert`, the one path that does both."""
+    seen = _chokepoint(monkeypatch, outcome={"status": "DELIVERED", "delivered": True, "accepted": True,
+                                             "message_ids": ["4242"]})
+    assert cc._default_telegram_sender("chat-fixture", "hello") == "4242"
+    assert seen["text"] == "hello"
+    assert seen["chat_ids"] == ["chat-fixture"], "the Critical chat, not the default chat"
+    assert seen["priority"] == "P1", "an actionable Critical alert is a P1 notification, never an ordinary held message"
+    assert seen["message_class"] == "operator_alert"
+    assert seen["producer"] == "critical_channels"
 
 
 def test_the_default_telegram_sender_refuses_without_a_token(monkeypatch):
-    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    _chokepoint(monkeypatch, outcome={"status": "UNCONFIGURED", "delivered": False, "accepted": False,
+                                      "message_ids": []})
     with pytest.raises(RuntimeError) as exc:
         cc._default_telegram_sender("chat-fixture", "hello")
     assert str(exc.value) == "telegram_token_not_configured"
 
 
-def _fake_transport(monkeypatch, result):
-    mod = type(sys)("telegram_transport")
-    mod.send_message = lambda **kwargs: result
-    monkeypatch.setitem(sys.modules, "telegram_transport", mod)
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token-fixture")
-
-
-def test_the_default_telegram_sender_reads_the_transports_top_level_message_id(monkeypatch):
-    """The real transport returns `message_id` at the top level, not under `result`; reading only `result` turned every
-    real success into the bare string "ok" (no id) and every hold into a false success."""
-    _fake_transport(monkeypatch, {"ok": True, "status_code": 200, "response": {"result": {"message_id": 77}},
-                                  "edited": False, "message_id": 77})
-    assert cc._default_telegram_sender("chat-fixture", "hello") == "77"
-
-
 def test_the_default_telegram_sender_refuses_a_hold_instead_of_returning_ok(monkeypatch):
-    _fake_transport(monkeypatch, {"ok": True, "status_code": 200, "response": {}, "edited": False,
-                                  "message_id": None, "suppressed": "duplicate"})
+    """The chokepoint reports a Communications Editor hold as HELD with no id. The editor's own reason is kept, and a
+    hold is never a delivery."""
+    _chokepoint(monkeypatch, outcome={"status": "HELD", "delivered": False, "accepted": True, "message_ids": []},
+                held=[{"chat_id": "chat-fixture", "chunk": 0, "reason": "duplicate"}])
     with pytest.raises(cc.ChannelSuppressed) as exc:
         cc._default_telegram_sender("chat-fixture", "hello")
     assert str(exc.value) == "telegram_suppressed:duplicate"
@@ -200,11 +200,57 @@ def test_the_default_telegram_sender_refuses_a_hold_instead_of_returning_ok(monk
 
 def test_the_default_telegram_sender_refuses_an_ok_with_no_message_id(monkeypatch):
     """ok is not a receipt. Without a message id there is no evidence anything was sent, so it is a failure."""
-    _fake_transport(monkeypatch, {"ok": True, "status_code": 200, "response": {}, "edited": False,
-                                  "message_id": None})
+    _chokepoint(monkeypatch, outcome={"status": "UNCONFIRMED", "delivered": False, "accepted": True,
+                                      "message_ids": []})
     with pytest.raises(RuntimeError) as exc:
         cc._default_telegram_sender("chat-fixture", "hello")
     assert str(exc.value) == "telegram_message_id_missing"
+
+
+def test_a_deduped_or_gateway_routed_message_is_skipped_not_sent(monkeypatch):
+    """ROUTED means no transport attempt in this process. It is not a delivery, so it never becomes a sent receipt."""
+    _chokepoint(monkeypatch, outcome={"status": "ROUTED", "delivered": False, "accepted": True, "message_ids": []},
+                route={"decision": "DEDUPED"})
+    with pytest.raises(cc.ChannelSuppressed) as exc:
+        cc._default_telegram_sender("chat-fixture", "hello")
+    assert str(exc.value) == "telegram_routed:deduped"
+    # and a routed path that accepted nothing is a failure, not a deliberate skip
+    _chokepoint(monkeypatch, outcome={"status": "ROUTED", "delivered": False, "accepted": False, "message_ids": []})
+    with pytest.raises(RuntimeError) as exc:
+        cc._default_telegram_sender("chat-fixture", "hello")
+    assert str(exc.value) == "telegram_send_refused"
+
+
+def test_the_real_chokepoint_records_the_send_in_the_communications_ledger(monkeypatch):
+    """The wiring behind the test above: with the real ``send_telegram``, the default sender's send reaches
+    ``_best_effort_comms_publish`` (the communication_events writer) and still returns the provider message id."""
+    from scripts import telegram_alert as ta
+
+    ledger = []
+
+    def fake_publish(message, **kwargs):
+        ledger.append((message, kwargs))
+        return {"ok": True, "errors": [], "status": "SENT", "settled": 1, "provider_message_id": "4242"}
+
+    def fake_raw(message, chat_ids=None, **_kwargs):
+        ta._LAST_MESSAGE_IDS.clear()
+        ta._LAST_MESSAGE_IDS.extend(["4242"])
+        ta._record_attempt(ok=True, reason=None, message_ids=1, held=0, chunks=1)
+        return {"ok": True, "message_ids": ["4242"], "chat_ids": [str(c) for c in (chat_ids or [])], "held": []}
+
+    monkeypatch.setattr(ta, "_enabled", lambda: True)
+    monkeypatch.setattr(ta, "_comms_gateway_owns", lambda _message_class: False)
+    monkeypatch.setattr(ta, "_intent_send", lambda message, priority, send_fn, **_kwargs: send_fn())
+    monkeypatch.setattr(ta, "_raw_send_telegram_result", fake_raw)
+    monkeypatch.setattr(ta, "_best_effort_comms_publish", fake_publish)
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token-fixture")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat-fixture")
+
+    assert cc._default_telegram_sender("chat-fixture", "CRITICAL — test") == "4242"
+    assert len(ledger) == 1, "the chokepoint must publish the send to the communications ledger"
+    message, kwargs = ledger[0]
+    assert message == "CRITICAL — test"
+    assert kwargs["message_class"] == "operator_alert" and kwargs["delivered"] is True
 
 
 def test_the_default_email_sender_gives_the_recipient_to_the_adapter_that_takes_one(monkeypatch):
