@@ -9,6 +9,7 @@ Risk gate is fail-closed for all paper trade operations.
 """
 import json
 import logging
+import os
 import sys
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
