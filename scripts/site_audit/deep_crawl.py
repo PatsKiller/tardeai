@@ -225,13 +225,17 @@ def _follow_links(page: Any, *, page_url: str, max_links: int) -> list[LinkRecor
         anchors = page.query_selector_all("a[href]")
     except Exception:  # noqa: BLE001
         return records
+    # cx-openai-4 R5 on #2648: the handles were retained ACROSS navigations. The first goto detaches every
+    # remaining anchor, so reading the second one raised and the loop skipped it — two allowed links produced one
+    # record, silently. Snapshot what is needed (href, label) BEFORE leaving the page; a handle is then never used
+    # after a navigation, and every allowed link gets a result.
+    snapshot: list[tuple[str | None, str]] = []
     for node in anchors[:max_links]:
         try:
-            href = node.get_attribute("href")
-            label = (node.inner_text() or "").strip()[:120]
+            snapshot.append((node.get_attribute("href"), (node.inner_text() or "").strip()[:120]))
         except Exception as exc:  # noqa: BLE001 — an anchor we cannot read is skipped, and said so
             _log.debug("skipped an anchor without readable attributes: %s", exc)
-            continue
+    for href, label in snapshot:
         if not link_is_crawlable(label, href, page_url):
             continue
         try:

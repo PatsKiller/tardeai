@@ -216,3 +216,51 @@ def test_every_leaf_write_in_the_capture_module_goes_through_the_guard():
     assert writes, "no writes found — did the module move?"
     unguarded = [ln.strip() for ln in writes if "assert_leaf_inside_root" not in ln]
     assert not unguarded, unguarded
+
+
+# ── R5 (cx-openai-4): a handle retained across a navigation is a link that never gets a result ────────────────
+class _DetachingAnchor:
+    """A real Playwright ElementHandle after a navigation: every read raises."""
+
+    def __init__(self, href, label, page):
+        self._href, self._label, self._page = href, label, page
+
+    def _check(self):
+        if self._page.navigations:
+            raise RuntimeError("Element is not attached to the Document")
+
+    def get_attribute(self, name):
+        self._check()
+        return self._href if name == "href" else None
+
+    def inner_text(self):
+        self._check()
+        return self._label
+
+
+class _LinkPage:
+    def __init__(self, anchors):
+        self.navigations = 0
+        self._anchors = anchors
+
+    def query_selector_all(self, _sel):
+        return [_DetachingAnchor(h, l, self) for h, l in self._anchors]
+
+    def goto(self, url, **_kw):
+        self.navigations += 1
+
+        class R:
+            status = 200
+        return R()
+
+    def inner_text(self, _sel):
+        return "a body"
+
+
+def test_R5_every_allowed_link_gets_a_result_even_after_a_navigation(monkeypatch):
+    from site_audit import deep_crawl
+
+    page = _LinkPage([("/v3/a", "Show details"), ("/v3/b", "Open chart")])
+    records = deep_crawl._follow_links(page, page_url="http://host/v3", max_links=5)
+    assert [r.href for r in records] == ["/v3/a", "/v3/b"], [r.href for r in records]
+    assert all(r.outcome for r in records)
