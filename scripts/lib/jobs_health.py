@@ -290,9 +290,12 @@ def _systemd_gap(lane: dict, units: dict, census: dict | None) -> str | None:
         return "schedule_census_stale"
     if condition == CENSUS_OK:
         coverage = str((census or {}).get("coverage") or "").strip().upper()
-        # No stated coverage is treated as a complete capture: the artifact is fresh and parsed.
-        return ("schedule_census_incomplete" if coverage and coverage != "COMPLETE"
-                else "schedule_unit_not_installed")
+        # A fresh, parsed artifact that never stated its coverage cannot tell us whether this unit was looked for.
+        # Treating absent coverage as complete made the page assert "not installed" from a census that never claimed
+        # to cover the host; only an explicit COMPLETE may support that claim (review 2026-11-02, D51 money-adjacent).
+        if coverage != "COMPLETE":
+            return "schedule_census_incomplete"
+        return "schedule_unit_not_installed"
     return "schedule_census_unavailable"
 
 

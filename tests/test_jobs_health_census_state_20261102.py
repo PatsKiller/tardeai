@@ -84,6 +84,16 @@ def test_an_unmeasured_census_never_claims_the_unit_is_not_installed(tmp_path):
     assert row["evidence_gap"] == "schedule_census_incomplete"
 
 
+def test_a_census_that_never_states_its_coverage_cannot_claim_the_unit_is_not_installed(tmp_path):
+    # A fresh, parsed artifact with no coverage key is not a complete capture. Before this test it fell through to
+    # schedule_unit_not_installed, whose reason asserts the host census is complete and lacks the unit — a definite
+    # claim the artifact never supported (D51 review, 2026-11-02).
+    write_census(tmp_path, units={}, coverage=None)
+    row, _ = row_for(tmp_path, lane())
+    assert row["evidence_gap"] == "schedule_census_incomplete"
+    assert "unknown" in row["cause"]
+
+
 def test_a_partial_census_that_misses_the_unit_is_incomplete_not_absent(tmp_path):
     write_census(tmp_path, units={"other.timer": {}}, coverage="PARTIAL")
     row, _ = row_for(tmp_path, lane())
