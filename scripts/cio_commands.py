@@ -25,6 +25,20 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
+try:
+    from lib.day_change_display import format_day_change_pct as _format_day_change_pct
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.day_change_display import format_day_change_pct as _format_day_change_pct
+
+
+def _portfolio_day_line(source: dict, *, label: str = "   Day: ") -> str:
+    """The portfolio day line, with ``unknown`` as a word and never an omitted line.
+
+    Omitting the line when the change was missing read as a flat day; formatting a
+    measured 0.00 still prints ``+0.0%`` (codex-cloud P2 on #2588).
+    """
+    return f"{label}{_format_day_change_pct(source.get('day_change_pct'), places=1)}"
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()[:19]
@@ -99,7 +113,7 @@ def cmd_status() -> str:
     portfolio = domains.get("portfolio", {})
     if portfolio.get("state") == "AVAILABLE":
         lines.append(f"   Total: ${portfolio.get('total_value', 0):,.0f}" if portfolio.get("total_value") else "   Total: N/A")
-        lines.append(f"   Day: {portfolio.get('day_change_pct', 0):+.1f}%" if portfolio.get('day_change_pct') else "")
+        lines.append(_portfolio_day_line(portfolio))
 
     risk = domains.get("risk", {})
     if risk.get("state") == "AVAILABLE":
@@ -184,7 +198,7 @@ def cmd_portfolio() -> str:
     if pf.get("state") == "AVAILABLE":
         lines.append(f"   Total Value: ${pf.get('total_value', 0):,.0f}" if pf.get("total_value") else "   Total: N/A")
         lines.append(f"   Holdings: {pf.get('holdings_count', 0)}")
-        lines.append(f"   Day Change: {pf.get('day_change_pct', 0):+.1f}%" if pf.get('day_change_pct') else "")
+        lines.append(_portfolio_day_line(pf, label="   Day Change: "))
     if risk.get("state") == "AVAILABLE":
         lines.append(f"   Portfolio Heat: {risk.get('portfolio_heat_pct', 0):.1f}%" if risk.get('portfolio_heat_pct') else "")
         lines.append(f"   Stops Active: {risk.get('stops_active', 0)}")

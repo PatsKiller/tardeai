@@ -54,7 +54,7 @@ const today     = new Date().toISOString().slice(0,10);
 const totalVal  = pt.total_value  || 0;
 const totalGain = pt.total_gain   || 0;
 const gainPct   = pt.total_gain_pct || 0;
-const dayChg    = pt.day_change   || 0;
+const dayChg    = (typeof pt.day_change === 'number' && Number.isFinite(pt.day_change)) ? pt.day_change : null;
 const annualDiv = divs.total_annual || divs.total_annual_income || 0;
 const monthlyDiv= annualDiv / 12;
 const betaVal   = pt.weighted_beta || 0.381;
@@ -300,7 +300,7 @@ children.push(kpiTable([
   ['Critical Flags',              `${hiFlags.length} HIGH · ${warnFlags.length} WARN`, hiFlags.length > 0 ? C.red : C.green],
   ['Tax Loss Harvest Opportunities', String((taxLots.harvest_candidates || []).length || 0)],
   ['Rebalancing Orders',          `${rebalOrders.length} orders`],
-  ['Today P&L',                   (dayChg >= 0 ? '+' : '') + fmtUSD(dayChg), dayChg >= 0 ? C.green : C.red],
+  ['Today P&L',                   dayChg === null ? 'unknown' : (dayChg >= 0 ? '+' : '') + fmtUSD(dayChg), dayChg === null ? C.amber : (dayChg >= 0 ? C.green : C.red)],
 ]));
 children.push(spacer());
 children.push(...aiBlock('AI Executive Summary', aiExec, runTypeLabel));

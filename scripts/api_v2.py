@@ -69,6 +69,10 @@ try:  # one short human name per account, never an account number (operator 2026
     from lib import account_display as _acct_disp  # noqa: E402
 except ImportError:  # pragma: no cover - imported as scripts.<module>
     from scripts.lib import account_display as _acct_disp  # noqa: E402
+try:  # an unmeasured day change renders as the word unknown, never 0 and never a crash
+    from lib.day_change_display import format_day_change_pct as _format_day_change_pct  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.day_change_display import format_day_change_pct as _format_day_change_pct  # noqa: E402
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 # Dev tree often owns the venv while portfolio-server runs from a release stamp
 # that has scripts/ but no .venv (Fix-now Errno 2 on live/.venv/bin/python).
@@ -4797,7 +4801,7 @@ def portfolio_holdings():
                 "market_value": _mv,
                 "portfolio_pct": _ppct or 0,
                 "day_change": _day_chg,
-                "day_change_pct": _day_pct if _day_pct is not None else 0,
+                "day_change_pct": _day_pct,
                 "sector": e_cache.get("sector") or t_snap.get("sector") or p.get("sector_type", ""),
                 "signal": sig_map.get(sym, "") or t_snap.get("tech_grade", ""),
                 "yield_pct": div_map.get(sym),
@@ -6559,7 +6563,7 @@ def _aegis_chat_context():
     _h = _load_json(STATE_DIR / "holdings.json") or {}
     _pt = _h.get("portfolio_totals", {})
     _pv = _pt.get("total_value", 0)
-    _heat = _pt.get("day_change_pct", 0)
+    # An unmeasured heat is UNKNOWN (rendered below), not a flat 0%.
     # Risk data for stop count
     _risk = _load_json(STATE_DIR / "risk_management.json") or {}
     _ov_ctx = _get_stop_overrides()
@@ -6567,9 +6571,7 @@ def _aegis_chat_context():
         [p for p in _risk.get("positions", []) if p.get("status") == "TRIGGERED" and p.get("symbol") not in _ov_ctx]
     )
     _unprotected = len([p for p in _risk.get("positions", []) if not p.get("has_stop") and not p.get("stop_price")])
-    _live_summary = (
-        f"Portfolio ${_pv:,.0f}. Heat {_heat:.1f}%. {_triggered} stops triggered, {_unprotected} unprotected."
-    )
+    _live_summary = f"Portfolio ${_pv:,.0f}. Heat {_format_day_change_pct(_pt.get('day_change_pct'))}. {_triggered} stops triggered, {_unprotected} unprotected."
     # Also get Aegis brief for additional context
     summary = _db_query(
         "SELECT what_changed FROM aegis_portfolio_briefs WHERE brief_type='summary' ORDER BY observed_at DESC LIMIT 1",
@@ -8976,7 +8978,10 @@ def ai_ask(body: dict):
     # Build portfolio context from current data
     h = _load_json(STATE_DIR / "holdings.json") or {}
     totals = h.get("portfolio_totals", {})
-    portfolio_ctx = f"Portfolio: ${totals.get('total_value', 0):,.0f}. Heat: {totals.get('day_change_pct', 0):.2f}%. "
+    portfolio_ctx = (
+        f"Portfolio: ${totals.get('total_value', 0):,.0f}. "
+        f"Heat: {_format_day_change_pct(totals.get('day_change_pct'))}. "
+    )
     prompt = f"You are a portfolio analyst. Answer concisely based on this context:\n{portfolio_ctx}{context}\n\nQuestion: {question}"
     try:
         import llm_lane
@@ -16470,7 +16475,9 @@ def _portfolio_book_map(query=None):
         "cash_total": _book_cash_total(holdings),
         "securities_only": True,
         "total_value": round(sum(x["value"] for x in rows if not x.get("unpriced")), 2),
-        "total_day_change": round(sum(x["day_change"] for x in rows), 2),
+        # Shaped rows have already had the finviz/broker fallbacks applied, so this is a
+        # numeric aggregate by contract; a day that could not be measured has no row figure.
+        "total_day_change": round(sum(x.get("day_change") or 0 for x in rows), 2),
         "__etag__": etag,
     }
     _BOOK_MAP_MEMO.update(etag=etag, data=out)
