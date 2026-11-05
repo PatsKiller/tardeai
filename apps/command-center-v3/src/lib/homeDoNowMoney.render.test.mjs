@@ -66,7 +66,7 @@ const fixture = () => ({
   portfolio_value: 18473.25, today_change: -18.75, today_pct: -0.1, position_count: 7,
   pipeline_status: 'fresh', pipeline_completed: freshClock, last_repriced: freshClock,
   observation: { surface_status: 'FRESH', envelopes: { holdings: {
-    observed_at: freshClock, freshness: { status: 'FRESH', observed_at_utc: freshClock },
+    observed_at: freshClock, freshness: { status: 'FRESH', observed_at_utc: freshClock, threshold_hours: 24 },
   } } },
 })
 globalThis.__homeFixture = (path) => ({
@@ -147,6 +147,182 @@ for (const valueCase of [
     `classic/${valueCase.name}: subtitle must distinguish unknown money from known zero`)
   check(valueCase.countKnown ? /· 0 positions over \$100/.test(header) : /· — positions over \$100/.test(header),
     `classic/${valueCase.name}: subtitle must distinguish unknown count from known zero`)
+}
+
+// FIRST cloud CX1/CX2: real CanonicalObservation@v1 fields from compute_freshness(),
+// including its strict > cutoff boundary, legitimate zero, and repricer raw-ET clock.
+// All clocks and amounts are independent synthetic data; no runtime stores are read.
+const producerCases = [
+  {
+    "name": "changed-cutoff",
+    "now": "2030-01-12T15:00:00+00:00",
+    "raw": "2030-01-11T09:00:00+00:00",
+    "freshness": {
+      "status": "FRESH",
+      "age_seconds": 108000.0,
+      "age_hours": 30.0,
+      "threshold_hours": 48,
+      "reason": "fresh:within_threshold",
+      "precision": "instant",
+      "observed_at_utc": "2030-01-11T09:00:00+00:00",
+      "evaluated_at_utc": "2030-01-12T15:00:00+00:00"
+    },
+    "qualified": false
+  },
+  {
+    "name": "cutoff-boundary",
+    "now": "2030-01-12T15:00:00+00:00",
+    "raw": "2030-01-10T15:00:00+00:00",
+    "freshness": {
+      "status": "FRESH",
+      "age_seconds": 172800.0,
+      "age_hours": 48.0,
+      "threshold_hours": 48,
+      "reason": "fresh:within_threshold",
+      "precision": "instant",
+      "observed_at_utc": "2030-01-10T15:00:00+00:00",
+      "evaluated_at_utc": "2030-01-12T15:00:00+00:00"
+    },
+    "qualified": false
+  },
+  {
+    "name": "over-cutoff",
+    "now": "2030-01-12T15:00:00+00:00",
+    "raw": "2030-01-10T14:59:59+00:00",
+    "freshness": {
+      "status": "STALE",
+      "age_seconds": 172801.0,
+      "age_hours": 48.0,
+      "threshold_hours": 48,
+      "reason": "stale:over_threshold",
+      "precision": "instant",
+      "observed_at_utc": "2030-01-10T14:59:59+00:00",
+      "evaluated_at_utc": "2030-01-12T15:00:00+00:00"
+    },
+    "qualified": true
+  },
+  {
+    "name": "zero-cutoff-boundary",
+    "now": "2030-01-12T15:00:00+00:00",
+    "raw": "2030-01-12T15:00:00+00:00",
+    "freshness": {
+      "status": "FRESH",
+      "age_seconds": 0.0,
+      "age_hours": 0.0,
+      "threshold_hours": 0,
+      "reason": "fresh:within_threshold",
+      "precision": "instant",
+      "observed_at_utc": "2030-01-12T15:00:00+00:00",
+      "evaluated_at_utc": "2030-01-12T15:00:00+00:00"
+    },
+    "qualified": false
+  },
+  {
+    "name": "zero-cutoff-old",
+    "now": "2030-01-12T15:00:00+00:00",
+    "raw": "2030-01-12T14:59:59+00:00",
+    "freshness": {
+      "status": "STALE",
+      "age_seconds": 1.0,
+      "age_hours": 0.0,
+      "threshold_hours": 0,
+      "reason": "stale:over_threshold",
+      "precision": "instant",
+      "observed_at_utc": "2030-01-12T14:59:59+00:00",
+      "evaluated_at_utc": "2030-01-12T15:00:00+00:00"
+    },
+    "qualified": true
+  },
+  {
+    "name": "no-agreed-cutoff",
+    "now": "2030-01-12T15:00:00+00:00",
+    "raw": "2030-01-12T15:00:00+00:00",
+    "freshness": {
+      "status": "UNKNOWN",
+      "age_seconds": 0.0,
+      "age_hours": 0.0,
+      "threshold_hours": null,
+      "reason": "not_fresh:no_agreed_threshold",
+      "precision": "instant",
+      "observed_at_utc": "2030-01-12T15:00:00+00:00",
+      "evaluated_at_utc": "2030-01-12T15:00:00+00:00"
+    },
+    "qualified": true
+  },
+  {
+    "name": "repricer-raw-ET",
+    "now": "2030-01-12T15:00:00+00:00",
+    "raw": "2030-01-12 09:59:00 ET",
+    "freshness": {
+      "status": "FRESH",
+      "age_seconds": 60.0,
+      "age_hours": 0.017,
+      "threshold_hours": 48,
+      "reason": "fresh:within_threshold",
+      "precision": "instant",
+      "observed_at_utc": "2030-01-12T14:59:00+00:00",
+      "evaluated_at_utc": "2030-01-12T15:00:00+00:00"
+    },
+    "qualified": false
+  }
+]
+const renderMoneyQualifier = (surface) => {
+  const Comp = surface === 'primary' ? HomeDoNow : HomeHub
+  const html = renderToStaticMarkup(React.createElement(MemoryRouter,
+    { initialEntries: [surface === 'primary' ? '/' : '/?view=classic'] },
+    React.createElement(Comp, { onDrill() {} })))
+  return html.match(/data-testid="home-money-qualifier"[^>]*>([^<]*)<\/span>/)?.[1] ?? null
+}
+for (const valueCase of producerCases) {
+  overview = fixture()
+  globalThis.__transport = 'OK'
+  const now = Date.parse(valueCase.now)
+  Date.now = () => now
+  const env = overview.observation.envelopes.holdings
+  overview.last_repriced = overview.pipeline_completed = env.observed_at = valueCase.raw
+  env.freshness = { ...valueCase.freshness }
+  overview.observation.surface_status = valueCase.freshness.status
+  for (const surface of ['primary', 'classic']) {
+    const qualifier = renderMoneyQualifier(surface)
+    check(!!qualifier === valueCase.qualified,
+      `${surface}/${valueCase.name}: producer cutoff/normalized clock must control qualification (got ${qualifier})`)
+  }
+  const state = positionsFreshness(overview, now, 'OK')
+  check(state.stale === valueCase.qualified && !!state.qualifier === valueCase.qualified,
+    `${valueCase.name}: positions state must agree with producer threshold`)
+  check(state.ageS === valueCase.freshness.age_seconds, `${valueCase.name}: actual normalized observation age`)
+  if (valueCase.name === 'changed-cutoff') check(state.tip.includes('48 h') && !state.tip.includes('24 h'),
+    'changed cutoff: tooltip names supplied policy, not a frontend default')
+}
+// Corrupt/incomplete metadata must not invent an agreed cutoff or silently accept a boolean.
+for (const cutoffCase of [
+  { name: 'missing', cutoff: undefined }, { name: 'null', cutoff: null },
+  { name: 'boolean', cutoff: true }, { name: 'numeric-string', cutoff: '48' },
+  { name: 'malformed', cutoff: 'later' }, { name: 'negative', cutoff: -1 },
+  { name: 'nonfinite', cutoff: Infinity }, { name: 'nan', cutoff: NaN },
+]) {
+  const now = Date.parse('2030-01-12T15:00:00Z')
+  Date.now = () => now
+  overview = fixture()
+  const env = overview.observation.envelopes.holdings
+  const stamp = new Date(now).toISOString()
+  overview.last_repriced = overview.pipeline_completed = env.observed_at = env.freshness.observed_at_utc = stamp
+  env.freshness.threshold_hours = cutoffCase.cutoff
+  for (const surface of ['primary', 'classic']) check(!!renderMoneyQualifier(surface),
+    `${surface}/${cutoffCase.name}: unusable cutoff must qualify money`)
+  const state = positionsFreshness(overview, now, 'OK')
+  check(state.stale && !!state.qualifier, `${cutoffCase.name}: unusable cutoff cannot claim positions fresh`)
+}
+// Keep the existing market-hours 30 min SLA even when the backend file cutoff is longer.
+Date.now = () => NOW
+overview = fixture()
+{
+  const env = overview.observation.envelopes.holdings
+  env.freshness.threshold_hours = 48
+  const stamp = new Date(NOW - 31 * 60000).toISOString()
+  overview.last_repriced = overview.pipeline_completed = env.observed_at = env.freshness.observed_at_utc = stamp
+  check(!!renderMoneyQualifier('primary'), 'market-hours 30 min positions SLA remains effective')
+  check(!renderMoneyQualifier('classic'), 'Classic preserves its existing file-freshness scope')
 }
 
 console.log(JSON.stringify({ suite: 'homeDoNowMoney.render', passed, failed }))

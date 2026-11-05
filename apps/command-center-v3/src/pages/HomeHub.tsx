@@ -2,7 +2,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { accountName, accountsBadge } from '../lib/accountLabels'
 import HomeDecision from '../components/decision/HomeDecision'
 import { Collapsible } from '../components/primitives/Collapsible'
-import { makeEnvelope, retainObservation, stateLabel, stateAriaLabel, formatBusinessDate, freshnessFromOverviewObservation, moneyQualifier, observationAgeHours } from '../lib/observationEnvelope.ts'
+import { makeEnvelope, retainObservation, stateLabel, stateAriaLabel, formatBusinessDate, freshnessFromOverviewObservation, observationAgeHours } from '../lib/observationEnvelope.ts'
 import { useApi } from '../hooks/useApi'
 import { renderSetupCounts } from '../lib/setupRunSummary'
 import { paperWinRate, journalWinRate } from '../lib/homeWinRate'
@@ -25,6 +25,7 @@ import { healthFindingCta } from '../lib/healthCta'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubPanel } from '../lib/terminalHubChrome'
 import HomeDoNow from './HomeDoNow'
+import { holdingsMoneyQualifier } from '../lib/homeDoNow.ts'
 import { factLine, unwrapMarketRisk } from '../lib/marketRisk'
 import { TOKENS, toneVars } from '../lib/designTokens'
 
@@ -155,7 +156,7 @@ function HomeClassic({ onDrill }: Props) {
       sourceLabel: '/api/v2/overview.observation.surface_status',
       value: pipelineStatus ?? null,
       businessDate: holdingsEnv?.business_date ?? dataAsOf ?? null,
-      observedAt: holdingsEnv?.observed_at ?? lastRepriced ?? null,
+      observedAt: holdingsEnv?.freshness?.observed_at_utc ?? holdingsEnv?.observed_at ?? lastRepriced ?? null,
       lastRefreshAt: pipelineCompleted ?? null,
       receivedAt: overviewReceivedAt ?? null,
       transport: overviewTransport,
@@ -174,8 +175,8 @@ function HomeClassic({ onDrill }: Props) {
   const freshnessChip = stateLabel(freshnessEnvelope.transport, freshnessEnvelope.freshness)
   // FQ-087: the money number in the subtitle carries its own qualifier, so a failed or retained
   // refresh can never leave a bare dollar figure reading as fresh.
-  const moneyNote = moneyQualifier(freshnessEnvelope.transport,
-    observationAgeHours(freshnessEnvelope, Date.now()), 24, freshnessEnvelope.freshness)
+  const moneyNote = holdingsMoneyQualifier(overview, freshnessEnvelope.transport,
+    observationAgeHours(freshnessEnvelope, Date.now()), freshnessEnvelope.freshness)
 
   const tiles = [
     { label: 'PORTFOLIO', value: pv != null ? fmt$(pv, 0) : '—', sub: todayChg != null ? `${todayChg >= 0 ? '+' : ''}${fmt$(todayChg, 0)} today` : '', color: 'var(--text0)',

@@ -9,7 +9,7 @@
 import { accountName as accountLabelName, rowAccountKey } from './accountLabels.ts'
 import { STOP_CATEGORY_LABEL, stopCategory } from './stopDisplay.ts'
 import { readableTimesInText } from './readableTime.ts'
-import { moneyQualifier, freshnessFromOverviewObservation, type TransportState } from './observationEnvelope.ts'
+import { moneyQualifier, freshnessFromOverviewObservation, type TransportState, type FreshnessStatus } from './observationEnvelope.ts'
 
 export type Severity = 'P0' | 'P1' | 'P2' | 'P3'
 export type Category = 'protect' | 'decide' | 'fix'
@@ -285,6 +285,23 @@ export function parseObservedTime(raw: string): number {
   return NaN
 }
 
+/** Operator-owned file cutoff carried by CanonicalObservation; absence is not a default. */
+export function holdingsFreshnessThreshold(overview: any): number | null {
+  const value = overview?.observation?.envelopes?.holdings?.freshness?.threshold_hours
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
+}
+
+/** Home follows the producer's strict > boundary, including a legitimate zero-hour cutoff.
+ * Other observation consumers retain their existing ageQualifier contract. */
+export function holdingsMoneyQualifier(overview: any, transport: TransportState, ageHours: number | null,
+  freshness: FreshnessStatus): string | null {
+  const threshold = holdingsFreshnessThreshold(overview)
+  const sourceFreshness = threshold == null ? 'UNKNOWN' : freshness
+  if (transport === 'OK' && sourceFreshness === 'FRESH' && threshold != null &&
+    ageHours != null && Number.isFinite(ageHours) && ageHours >= 0 && ageHours <= threshold) return null
+  return moneyQualifier(transport, ageHours, threshold ?? NaN, sourceFreshness)
+}
+
 export interface PositionsFreshness { stale: boolean; ageS: number | null; label: string; tip: string; qualifier: string | null }
 
 /** The header badge. Source: /api/v2/overview observation.envelopes.holdings (holdings.json). STALE when the server
@@ -299,18 +316,25 @@ export function positionsFreshness(overview: any, nowMs: number, transport: Tran
   const ageS = Number.isFinite(t) && Number.isFinite(nowMs) && nowMs >= t ? (nowMs - t) / 1000 : null
   const reportedFreshness = freshnessFromOverviewObservation(overview?.observation, 'FRESH')
   const market = inMarketHours(nowMs)
-  const overSla = ageS != null && (market ? ageS > POSITIONS_SLA_MARKET_S : ageS >= 24 * 3600)
+  const thresholdHours = holdingsFreshnessThreshold(overview)
+  const overFileThreshold = ageS != null && thresholdHours != null && ageS > thresholdHours * 3600
+  const overMarketSla = ageS != null && market && ageS > POSITIONS_SLA_MARKET_S
+  const overSla = overFileThreshold || overMarketSla
   const transportBad = transport !== 'OK'
-  const sourceFreshness = overSla && reportedFreshness === 'FRESH' ? 'STALE' : reportedFreshness
+  const sourceFreshness = thresholdHours == null ? 'UNKNOWN'
+    : overSla && reportedFreshness === 'FRESH' ? 'STALE' : reportedFreshness
   const stale = transportBad || ageS == null || sourceFreshness !== 'FRESH'
   const why = transportBad ? `the last refresh did not complete cleanly (${transport.toLowerCase()})`
     : ageS == null ? 'no observation time on the holdings envelope'
+    : thresholdHours == null ? 'holdings freshness threshold unavailable'
     : reportedFreshness !== 'FRESH' ? `source freshness ${reportedFreshness.toLowerCase()}`
-    : overSla ? (market ? 'older than the 30 min market-hours SLA' : 'older than the 24 h file threshold') : market ? 'within the 30 min market-hours SLA' : 'market closed; the 24 h file threshold applies'
+    : overMarketSla ? 'older than the 30 min market-hours SLA'
+    : overFileThreshold ? `older than the ${thresholdHours} h file threshold`
+    : market ? 'within the 30 min market-hours SLA' : `market closed; the ${thresholdHours} h file threshold applies`
   return {
     stale, ageS,
     label: `Positions ${ageLabel(ageS)} old${stale ? ' · STALE' : ''}`,
-    qualifier: moneyQualifier(transport, ageS == null ? null : ageS / 3600, 24, sourceFreshness),
+    qualifier: holdingsMoneyQualifier(overview, transport, ageS == null ? null : ageS / 3600, sourceFreshness),
     tip: `Holdings observed ${observed ?? 'UNKNOWN'} (holdings.json via /api/v2/overview; positions_current is not yet approved for Home). ${why}.`,
   }
 }

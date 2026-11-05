@@ -23,7 +23,7 @@ for (const age of [NaN, Infinity, -1]) check(!!ageQualifier(age, 24), 'an unusab
 for (const state of ['STALE', 'UNKNOWN']) check(!!moneyQualifier('OK', 0.1, 24, state), 'source refusal cannot be hidden by a recent clock')
 
 const home = readFileSync(join(HERE, '../pages/HomeHub.tsx'), 'utf8')
-check(/moneyQualifier\(/.test(home), 'HomeHub does not qualify its money value with transport + age')
+check(/holdingsMoneyQualifier\(overview,/.test(home), 'HomeHub does not qualify its money value with the holdings contract + transport + age')
 check(/observationAgeHours\(/.test(home), 'HomeHub does not use the data clock for the qualifier')
 check(/moneyNote/.test(home), 'HomeHub computes no money note to render')
 
