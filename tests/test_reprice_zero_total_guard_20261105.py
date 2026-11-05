@@ -112,3 +112,17 @@ def test_the_drift_guard_evaluates_at_zero():
     assert "prev_total > 0 and gt > 0" not in src, (
         "the drift guard still skips the gt == 0 case, which is the whole collapse this change exists to refuse"
     )
+
+
+def test_the_coverage_refusal_does_not_depend_on_a_schwab_account(monkeypatch, tmp_path):
+    """Scope item 3: the only live-coverage refusal used to be gated on `sym_groups["schwab"]`, so an all-alpaca or
+    all-moomoo book had no coverage guard at all. The guard must measure every held tradeable equity."""
+    holdings = [{"account": "alpaca_taxable_live", "symbol": "ABC", "shares": 10,
+                 "market_value": 1000.0, "price": 100.0, "day_change": 5.0, "cost_basis": 900.0}]
+    out = _run(monkeypatch, tmp_path,
+               _portfolio(holdings, {"alpaca_taxable_live": {"total_value": 1000.0, "day_change": 5.0}},
+                          prev_total=1000.0))
+    assert out.get("_reprice_refused"), (
+        "with zero live coverage and no Schwab account the reprice must refuse, not price from a stale close"
+    )
+    assert "coverage" in str(out.get("_reprice_refused")).lower()
