@@ -1,0 +1,15 @@
+{
+ "schema": "NudgerConfig@v1",
+ "_why": "P1 of the nudger→n8n migration (docs/ops/NUDGER_N8N_MIGRATION_PROPOSAL_20261103.md). The values are the coordinator-side agent_nudger.py defaults, ported verbatim; refused_regex is UNIONED with the script's built-in broker/order/execution list, so an empty value here cannot widen the door. Nothing reads this file until a lane is added to config/n8n_run_allowlist.json after review.",
+ "session_regex": "^(cc-deepseek|cc-anthropic|cx-|cu-|codex$)",
+ "exclude": ["codex"],
+ "idle_minutes": 4,
+ "min_gap_minutes": 10,
+ "busy_regex": "esc to interrupt|Working \\(|Thinking|Generating|Running…|to interrupt\\)",
+ "stall_regex": "model is at capacity|try a different model|Overloaded|overloaded_error|API Error: 5\\d\\d|rate limit",
+ "stall_gap_minutes": 3,
+ "unsent_regex": "^\\s*[❯›] (?!Ask Codex to do anything)(\\S.*)$",
+ "refused_regex": "",
+ "ledger_kind": "nudge",
+ "ledger_by": "agent-nudger"
+}
