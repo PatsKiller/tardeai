@@ -7,7 +7,7 @@ ADVISORY/READ-ONLY (external Yahoo fetch). Yahoo analyst targets are the authori
 proposals + today GO/WAIT scalp + active watchlist, persisting via the existing
 save_yahoo_analyst_targets_history. Skips ETF/fund-like symbols (no analyst coverage). No trades/scoring change.
 
-  python3 scripts/pro_analyst_fetch.py [--max 80] [--dry-run]
+  python3 scripts/pro_analyst_fetch.py [--max 80] [--dry-run] [--no-extended] [--extended-max 120]
 
 --dry-run builds the universe on a READ ONLY session and stops: no yfinance call, no
 yahoo_analyst_targets_history write, no data_source_health report (AGENTS.md §6).
@@ -39,6 +39,15 @@ DUE_AFTER_HOURS = 20
 # Priority tiers (lower = first). The SQL universe query returns each symbol with its best tier.
 TIER_HELD, TIER_ACTIONABLE, TIER_DIRECTIVE = 0, 1, 2
 TIER_NEVER_COVERED, TIER_NOT_DUE = 3, 4
+# Extended capture (2026-10-27, prospectus institutional blocks): for held + actionable symbols the same Yahoo call
+# also records the analyst action log, EPS / revenue consensus, EPS trend and revisions, earnings history / dates and
+# the recommendation trend into the SAME row's ``data.extended`` (same writer, same store, same provider; read through
+# data_broker.street_detail). Bounded: EXTENDED_MAX symbols per run, a circuit breaker after
+# EXTENDED_BREAKER consecutive rate-limit errors, ``--no-extended`` turns it off.
+EXTENDED_MAX = 120
+EXTENDED_BREAKER = 3
+EXTENDED_ATTRS = (("upgrades_downgrades", 40), ("earnings_history", 8), ("eps_trend", 6), ("eps_revisions", 6),
+                  ("earnings_estimate", 6), ("revenue_estimate", 6), ("recommendations", 6))
 
 
 def _aware(ts):
@@ -78,10 +87,69 @@ def prioritize(tiers: dict, last_fetched: dict, now=None, today: str = "") -> li
     return sorted(tiers, key=key)
 
 
+def _plain(v):
+    """A JSON-safe scalar: timestamps → ISO, NaN/inf → None, numpy numbers → float/int."""
+    if v is None:
+        return None
+    if hasattr(v, "isoformat"):
+        try:
+            return v.isoformat()
+        except Exception:  # noqa: BLE001
+            return str(v)
+    if isinstance(v, (bool, int, str)):
+        return v
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return str(v)
+    return None if f != f or f in (float("inf"), float("-inf")) else (int(f) if f.is_integer() and abs(f) < 2**53 and not isinstance(v, float) else f)
+
+
+def frame_records(df, limit: int) -> list:
+    """A pandas frame (or None) → up to ``limit`` plain dict rows, the index kept as ``index``."""
+    if df is None or not hasattr(df, "reset_index") or getattr(df, "empty", True):
+        return []
+    idx_name = df.index.name or "index"
+    out = []
+    for rec in df.reset_index().head(limit).to_dict("records"):
+        row = {str(k): _plain(v) for k, v in rec.items()}
+        if idx_name != "index" and idx_name in row:
+            row["index"] = row.pop(idx_name)
+        out.append(row)
+    return out
+
+
+def extended_snapshot(tk, *, attrs=EXTENDED_ATTRS) -> dict:
+    """The extended analyst capture for one yfinance Ticker. Each attribute fails on its own into ``errors``;
+    ``rate_limited`` is True when any error was a rate limit (the caller's circuit breaker counts it)."""
+    out, errors, limited = {"schema": "YahooAnalystExtended@v1"}, {}, False
+    for name, limit in attrs:
+        try:
+            df = getattr(tk, name)
+            if name == "upgrades_downgrades" and df is not None and not getattr(df, "empty", True):
+                df = df.sort_index(ascending=False)
+            out[name] = frame_records(df, limit)
+        except Exception as e:  # noqa: BLE001 - recorded per attribute
+            msg = str(e)[:120]
+            errors[name] = msg
+            limited = limited or "rate" in msg.lower() or "too many" in msg.lower()
+    try:
+        out["earnings_dates"] = frame_records(tk.get_earnings_dates(limit=12), 12)
+    except Exception as e:  # noqa: BLE001
+        errors["earnings_dates"] = str(e)[:120]
+        limited = limited or "too many" in str(e).lower()
+    out["errors"] = errors
+    out["captured_at"] = datetime.now(timezone.utc).isoformat()
+    out["rate_limited"] = limited
+    return out
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else list(argv)
     mx = int(argv[argv.index("--max") + 1]) if "--max" in argv else 80
     dry_run = "--dry-run" in argv
+    ext_on = "--no-extended" not in argv
+    ext_max = int(argv[argv.index("--extended-max") + 1]) if "--extended-max" in argv else EXTENDED_MAX
     c = psycopg2.connect(host=os.getenv("DB_HOST", "localhost"), port=os.getenv("DB_PORT", "5432"),
                          dbname=os.getenv("DB_NAME", "trade_ai"), user=os.getenv("DB_USER", "trade_ai"),
                          password=os.getenv("DB_PASSWORD"))
@@ -145,7 +213,9 @@ def main(argv=None):
                           "directive_in_batch": sum(1 for s in _sel if tiers[s] == TIER_DIRECTIVE),
                           "oldest_fetch_in_batch": min((str(last_fetched[s]) for s in _sel if s in last_fetched),
                                                        default=None),
-                          "never_fetched_in_batch": sum(1 for s in _sel if s not in last_fetched)},
+                          "never_fetched_in_batch": sum(1 for s in _sel if s not in last_fetched),
+                          "would_capture_extended": min(ext_max, sum(1 for s in _sel if tiers[s] <= TIER_ACTIONABLE))
+                          if ext_on else 0},
                          indent=2))
         return 0
 
@@ -158,10 +228,12 @@ def main(argv=None):
     import time as _t
     date_str = datetime.now().strftime("%Y-%m-%d")
     payload, no_cov, errors = [], [], 0
+    ext_done, ext_streak, ext_stopped = 0, 0, False
     for s in syms[:mx]:
         _t.sleep(1.5)  # politeness — yfinance rate-limits bulk requests
         try:
-            info = yf.Ticker(s).info
+            tk = yf.Ticker(s)
+            info = tk.info
             tm = info.get("targetMeanPrice")
             nop = info.get("numberOfAnalystOpinions")
             if tm is None and not nop:
@@ -172,6 +244,12 @@ def main(argv=None):
                             "recommendation_mean": info.get("recommendationMean"),
                             "recommendation_key": info.get("recommendationKey"),
                             "number_of_analyst_opinions": nop})
+            if ext_on and not ext_stopped and ext_done < ext_max and tiers.get(s, TIER_DIRECTIVE) <= TIER_ACTIONABLE:
+                ext = extended_snapshot(tk)
+                ext_done += 1
+                ext_streak = ext_streak + 1 if ext.get("rate_limited") else 0
+                ext_stopped = ext_streak >= EXTENDED_BREAKER
+                payload[-1]["extended"] = ext
         except Exception as e:
             no_cov.append(s); errors += 1; last_exc = str(e)[:160]
     if payload:
@@ -194,6 +272,7 @@ def main(argv=None):
                           error=f"0/{attempted} symbols returned analyst coverage ({errors} errors)")
     except Exception:
         pass
+    print(json.dumps({"extended_captured": ext_done, "extended_stopped_on_rate_limit": ext_stopped}))
     print(json.dumps({"fetched_with_coverage": len(payload), "no_analyst_coverage": len(no_cov),
                       "no_coverage_sample": no_cov[:10]}, indent=2))
     attempted = len(syms[:mx])

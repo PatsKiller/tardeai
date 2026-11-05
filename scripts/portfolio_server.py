@@ -359,7 +359,8 @@ def _reconstruct_personal_as_of(target_date: str) -> dict:
     Returns: {ok, data, as_of, fields_changed, fields_no_data} on success
              {ok: False, error: str} on failure
     """
-    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    if str(PROJECT_ROOT / "scripts") not in sys.path:  # once: unguarded inserts grew sys.path per request (2026-10-25)
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
     try:
         from db_adapter import USE_DB, get_personal_snapshot_at_date
     except Exception as e:
@@ -503,7 +504,8 @@ def _handle_personal_history(handler, field_name: str):
     }
 
     # Query Postgres for history
-    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    if str(PROJECT_ROOT / "scripts") not in sys.path:  # once: unguarded inserts grew sys.path per request (2026-10-25)
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
     try:
         from db_adapter import USE_DB, get_personal_field_history
     except Exception as e:
@@ -625,7 +627,8 @@ def _handle_personal_write(handler, raw_body: bytes):
 
         # Phase P1: Dual-write changes to personal_history table (non-blocking)
         try:
-            sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            if str(PROJECT_ROOT / "scripts") not in sys.path:  # once: unguarded inserts grew sys.path per request (2026-10-25)
+                sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
             from db_adapter import USE_DB, save_personal_history_entry
             if USE_DB:
                 for change in changes:
@@ -1878,6 +1881,24 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         # working fine when handle() was called in-process. They had never been
         # exercised — the migration behind them was unapplied until today.
         # api_v2.handle() routes on the FULL path, so one prefix match serves both.
+        # Ticker Prospectus (2026-10-26): JSON reads + file downloads streamed from disk (scripts/lib/prospectus_api.py).
+        if path == "/api/v2/prospectus" or path.startswith("/api/v2/prospectus/"):
+            try:
+                from lib import prospectus_api as _pa  # type: ignore
+            except ImportError:  # pragma: no cover - flat layout
+                from scripts.lib import prospectus_api as _pa  # type: ignore
+            try:
+                _pa_out = _pa.handle(path, "GET", None, parse_qs(parsed.query) if parsed.query else {})
+                if isinstance(_pa_out, _pa.FileResult):
+                    _pa.stream_file(self, _pa_out)
+                    return
+                if _pa_out is not None:
+                    json_response(self, _pa_out[0], _pa_out[1])
+                    return
+            except Exception as _pae:
+                json_response(self, 500, {"ok": False, "error": type(_pae).__name__})
+                return
+
         if path.startswith(("/api/v2/", "/api/v3/")):
             try:
                 import time as _time
@@ -1896,7 +1917,8 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                     _v2_status, _v2_body = _v2_result
                     if path.startswith("/api/v2/hermes"):
                         try:
-                            sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+                            if str(PROJECT_ROOT / "scripts" / "lib") not in sys.path:  # once: unguarded inserts grew sys.path per request (2026-10-25)
+                                sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
                             from lib.hermes_logging.request_logger import log_hermes_request
                             log_hermes_request(
                                 path,
@@ -2490,6 +2512,21 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         # v2/v3 API POST dispatch — see the GET dispatch note above.
         # POST /api/v3/alerts/settings and /api/v3/alerts/test-send live in
         # api_v2.handle()'s POST branch and were unreachable for the same reason.
+        # Ticker Prospectus refresh: queues a rewrite; operator tailnet identity only (scripts/lib/prospectus_api.py).
+        if path.startswith("/api/v2/prospectus/"):
+            try:
+                try:
+                    from lib import prospectus_api as _pa  # type: ignore
+                except ImportError:  # pragma: no cover - flat layout
+                    from scripts.lib import prospectus_api as _pa  # type: ignore
+                _pa_out = _pa.handle(path, "POST", body, None)
+                if _pa_out is not None and not isinstance(_pa_out, _pa.FileResult):
+                    json_response(self, _pa_out[0], _pa_out[1])
+                    return
+            except Exception as _pae:
+                json_response(self, 500, {"ok": False, "error": type(_pae).__name__})
+                return
+
         if path.startswith(("/api/v2/", "/api/v3/")):
             try:
                 import time as _time
@@ -2501,7 +2538,8 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                     _v2_status, _v2_body = _v2_result
                     if path.startswith("/api/v2/hermes"):
                         try:
-                            sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+                            if str(PROJECT_ROOT / "scripts" / "lib") not in sys.path:  # once: unguarded inserts grew sys.path per request (2026-10-25)
+                                sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
                             from lib.hermes_logging.request_logger import log_hermes_request
                             log_hermes_request(
                                 path,
@@ -2653,7 +2691,8 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             try:
                 from lib.n8n_cc_wave_c import legacy_run_refuse
             except ImportError:
-                sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                if str(PROJECT_ROOT / "scripts") not in sys.path:  # once: unguarded inserts grew sys.path per request (2026-10-25)
+                    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
                 from lib.n8n_cc_wave_c import legacy_run_refuse  # type: ignore
             status, result = legacy_run_refuse(path)
             if path == "/api/run-pipeline" and status >= 400:

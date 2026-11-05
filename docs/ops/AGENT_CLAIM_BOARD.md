@@ -408,3 +408,39 @@ it. Merging these files is mechanical, so they are now a **shared-additive** cla
   worktree is on a main that has this change, do not list shared paths in your claim; the new gate does not need
   them listed.
 - Tests: `tests/test_agent_claim_shared_paths_20261023.py` (CI gate `config/ci_gates/agent_claim_shared_paths_20261023.json`).
+
+## 16. Policy freshness: every agent works under the AGENTS.md on origin/main (2026-10-28)
+
+Operator, 2026-10-28: "How can we force every agent to, before they start, to look at the latest copy of the
+agents.md and not a cache copy? … How do the agents automatically know to check in to see if there's a new one?"
+
+- **One check, `scripts/lib/policy_freshness.py`.** It fetches origin/main (best effort, `TRADEAI_POLICY_FETCH_TIMEOUT_S`,
+  default 6 s) and compares the blob id of this worktree's `AGENTS.md` (or a pushed commit's) with
+  `origin/main:AGENTS.md`, and parses both `Policy-Version`s. No version is hard-coded.
+  - `OK`: same blob, or the branch edits AGENTS.md on top of main's current copy (its merge-base with origin/main holds
+    main's blob: ahead, not behind) with a Policy-Version not lower than main's.
+  - `STALE`: anything else, including a lower or unreadable version on such a branch (a downgrade is never exempt). Message: `STALE_POLICY: your AGENTS.md is X, origin/main is Y; work from fresh origin/main
+    (scripts/new-worktree.sh) and re-read §0`.
+  - `UNKNOWN`: no origin/main, no AGENTS.md on a side, git failed. **A warning, never a pass**: printed, and work
+    continues.
+  - Offline: the fetch failed, so it compares with the last-fetched origin/main and says when that was.
+- **Where it gates.** `agent_claim.py claim` / `claim --add` / `next` / `take` / `takeover --claim` refuse STALE (exit 1); the pre-commit
+  gate (`scripts/agent_claim_precommit.sh`) and `.githooks/pre-push` refuse STALE before any grant or budget use;
+  `scripts/check_agents_policy_state.py` (agent-governance CI) fails a PR whose head Policy-Version is behind the base
+  branch tip's (a PR that changes the version passes only upward; an unreadable version fails). Nothing overrides
+  STALE: `TRADEAI_CLAIM_OVERRIDE` bypasses only the claim-coverage check after the freshness check has passed, the
+  claim CLI's test skip is an in-process module attribute reachable only inside pytest, and
+  `TRADEAI_POLICY_FETCH_TIMEOUT_S` has a 3 s floor so it cannot force offline mode. The fix is a rebase or a fresh
+  worktree.
+- **What a claim records.** `policy_version`, `policy_blob` (the AGENTS.md blob id) and `policy_check` (OK, UNKNOWN or
+  `skipped_test`); `heartbeat` refreshes version and blob from the worktree.
+- **Version-change broadcast** (`scripts/lib/policy_version_broadcast.py`, run by `scripts/deploy_on_main_poll.py`
+  after each poll; live only on the host timer's `--apply`): when origin/main's Policy-Version changes, every open
+  claim that recorded another version gets `policy_changed/<claim_id>.json`, `status` prints `POLICY CHANGED`, and the
+  operator gets one Telegram line per version through the system send path:
+  `AGENTS.md X is live; N open claims were on Y and have been told`. The first run only records a baseline. State:
+  `policy_broadcast_state.json`. Dry run: `python3 scripts/lib/policy_version_broadcast.py --dry-run`.
+- **Session start (advisory).** `scripts/agent_session_start.sh` prints the freshness line first, STALE loudly; the
+  Cursor start rule (`docs/ops/agent_start/cursor-rule.md`) runs the same command.
+- Tests: `tests/test_policy_freshness_20261028.py`, `tests/test_policy_freshness_gates_20261028.py` (CI gate
+  `config/ci_gates/policy_freshness_20261028.json`).

@@ -1,0 +1,190 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "cio",
+  "version": "v000",
+  "state": "BASELINE",
+  "title": "As built 2026-10-25: read-only live capture at 1440, 412, 390",
+  "created": "2026-10-25",
+  "approval": null,
+  "spec": null,
+  "capture": {
+    "base": "production (loopback)",
+    "started_at": "2026-10-25T19:03:28.481Z",
+    "finished_at": "2026-10-25T19:26:32.992Z",
+    "widths": [
+      1440,
+      412,
+      390
+    ],
+    "tab_count": 5,
+    "tab_labels": "private: capture/index.json in the page's private folder",
+    "reader_identity": "none",
+    "max_server_memory_bytes": 1012539392,
+    "shell_refusals": [
+      "403 /api/v2/cio/asks/tracked AGENT_CALLER_REFUSED"
+    ],
+    "blocked_writes": 0,
+    "errors": 0
+  },
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/cio",
+    "note": "Private, never committed: live screenshots show real holdings. Paths are relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v000/capture/cio-default-1440.png",
+        "sha256": "dd8861d53670adc672f4b4eea9d0cb7fab084c0ecd123b668fa14ab7dfc89167",
+        "bytes": 170630,
+        "role": "capture",
+        "width": 1440,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/cio-default-390.png",
+        "sha256": "ab619232c5ae3e2c8c47a285a1abf8e5faa5152732a71329bf2ab749cb525473",
+        "bytes": 68468,
+        "role": "capture",
+        "width": 390,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/cio-default-412.png",
+        "sha256": "e5bab8801ef06e5e5c302baa1b9a94deff202ecd557598103b1e1528ef21558f",
+        "bytes": 69517,
+        "role": "capture",
+        "width": 412,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/cio-t01-1440.png",
+        "sha256": "dd8861d53670adc672f4b4eea9d0cb7fab084c0ecd123b668fa14ab7dfc89167",
+        "bytes": 170630,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/cio-t01-390.png",
+        "sha256": "116cd7db4aa1058fea05b47a779241fc9833ce770d6ce1f981c77c7a6f201a74",
+        "bytes": 67104,
+        "role": "capture",
+        "width": 390,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/cio-t01-412.png",
+        "sha256": "0e7d0879ebafbf90d6972c1918ffbadab9beffe6836ec6d6a12206017b2a1fd2",
+        "bytes": 75312,
+        "role": "capture",
+        "width": 412,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/cio-t02-1440.png",
+        "sha256": "055008fbe002ebb36a0be5fdca67197e99c1d83b77409b71006690413e4410f8",
+        "bytes": 173226,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/cio-t02-390.png",
+        "sha256": "34a31c982772142b65eb439341936a633e5f2ef8b6d8ccf407f5dd27989b12c8",
+        "bytes": 56467,
+        "role": "capture",
+        "width": 390,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/cio-t02-412.png",
+        "sha256": "1c5f8773e8114b088695c44ef10bd422cec3c5ac1df88c3b8a92c6e0c6af009c",
+        "bytes": 63551,
+        "role": "capture",
+        "width": 412,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/cio-t03-1440.png",
+        "sha256": "659343d7caae6cf5fa0ef51ec2d5dc3e80432e351527ca60ee530e3b4fa886cc",
+        "bytes": 201037,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/cio-t03-390.png",
+        "sha256": "e93a2e23f376805c08eea725be927d31fe2c232f9019dab78981b9ff2f111683",
+        "bytes": 42987,
+        "role": "capture",
+        "width": 390,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/cio-t03-412.png",
+        "sha256": "d5d30f5d2e8d91e2426daf1be8705bffdfb7ce23464560733ec1b4073e3c6229",
+        "bytes": 44959,
+        "role": "capture",
+        "width": 412,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/cio-t04-1440.png",
+        "sha256": "19a86fb27b91aa45dcca80c738fe10bced56c26051268b4e52a8255fc07314a4",
+        "bytes": 175989,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/cio-t04-390.png",
+        "sha256": "3d08a6eb33dd4ffce6196a50ebd7205f48c33600f706edd137ae16b3ce75646c",
+        "bytes": 66003,
+        "role": "capture",
+        "width": 390,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/cio-t04-412.png",
+        "sha256": "38323fd397e21798a98ab0a03dc9ad6cbb6868213deb21d92a78593893e16647",
+        "bytes": 78568,
+        "role": "capture",
+        "width": 412,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/cio-t05-1440.png",
+        "sha256": "0f666e3d0244cc5e299becb6836cbe5f05c8d7bbc3c82a92350a45ed79b23d66",
+        "bytes": 155347,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t05"
+      },
+      {
+        "path": "v000/capture/cio-t05-390.png",
+        "sha256": "9632aacb7f27c04630371f116e72093633ecae5be432be05d77d74b63f59b504",
+        "bytes": 32722,
+        "role": "capture",
+        "width": 390,
+        "tab": "t05"
+      },
+      {
+        "path": "v000/capture/cio-t05-412.png",
+        "sha256": "7aa472ba85f91834f00f3f2188512e23ca6966d8aeca22bca62ffb492b3a0af3",
+        "bytes": 37832,
+        "role": "capture",
+        "width": 412,
+        "tab": "t05"
+      }
+    ]
+  },
+  "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "prs": [],
+  "verified": null,
+  "history": [
+    {
+      "state": "BASELINE",
+      "at": "2026-10-25",
+      "by": "agent:design-capture",
+      "note": "v000 as built: read-only capture, GET only"
+    }
+  ]
+}

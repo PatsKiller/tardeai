@@ -10,6 +10,7 @@ Usage:
     python3 scripts/finviz_screener_runner.py --dry-run [--json]
 """
 import argparse
+import math
 import json, os, re, sys, time, urllib.request, urllib.error
 from datetime import datetime
 from pathlib import Path
@@ -26,6 +27,8 @@ def _fv_acquire(*args, **kwargs):
     try:
         from finviz_throttle import acquire
     except Exception:
+        if kwargs.get("deadline_monotonic") is not None:
+            raise _DeadlineExpired("Finviz deadline throttle unavailable")
         return 0.0
     return acquire(*args, **kwargs)
 
@@ -42,14 +45,41 @@ class _RateLimited(Exception):
     """Raised on HTTP 429 after a global cooldown was recorded — caller must NOT retry/fall back."""
 
 
-def _http_get(url: str, headers: dict, timeout: int = 15) -> str:
+class _DeadlineExpired(TimeoutError):
+    """A bounded refresh must defer this screener without a fallback request."""
+
+
+class _ScreenerFetchFailed(RuntimeError):
+    """No verified source response; this is not an empty screener result."""
+
+
+def _remaining_s(deadline_monotonic):
+    if deadline_monotonic is None:
+        return None
+    remaining = deadline_monotonic - time.monotonic()
+    if remaining <= 0:
+        raise _DeadlineExpired("Finviz caller deadline exhausted")
+    return remaining
+
+
+def _http_get(url: str, headers: dict, timeout: int = 15, *, deadline_monotonic=None) -> str:
     """GET through the global Finviz throttle. Spaces every request across all processes; on HTTP 429
     records a global cooldown (so EVERY Finviz consumer backs off) and raises _RateLimited."""
-    _fv_acquire()  # blocks until a global slot is free, honoring any active cooldown
+    remaining = _remaining_s(deadline_monotonic)
+    if remaining is None:
+        _fv_acquire()
+    else:
+        try:
+            _fv_acquire(timeout=remaining, deadline_monotonic=deadline_monotonic)
+        except TimeoutError as exc:
+            raise _DeadlineExpired("Finviz throttle deferred by caller deadline") from exc
+        timeout = min(timeout, _remaining_s(deadline_monotonic))
     try:
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.read().decode("utf-8", errors="replace")
+            content = resp.read().decode("utf-8", errors="replace")
+            _remaining_s(deadline_monotonic)
+            return content
     except urllib.error.HTTPError as e:
         if e.code == 429:
             retry_after = None
@@ -112,32 +142,41 @@ def _append_auth_token(url: str, token: str) -> str:
 
 def _csv_has_tickers(content: str) -> list:
     """Tickers from a Finviz export, read by the 'Ticker' header (not column 1)."""
+    return _parse_screener_csv(content)[1]
+
+
+def _parse_screener_csv(content: str) -> tuple[bool, list]:
+    """Distinguish a header-only empty export from login/error/malformed data."""
     import csv
     import io
 
     tickers = []
     body = (content or "").lstrip("﻿").strip()
     if not body:
-        return tickers
+        return False, tickers
     reader = csv.DictReader(io.StringIO(body))
     if "Ticker" not in [h.strip() for h in (reader.fieldnames or [])]:
-        return tickers
+        return False, tickers
+    rows = 0
     for rec in reader:
+        rows += 1
         ticker = str({(k or "").strip(): v for k, v in rec.items()}.get("Ticker") or "").strip()
         if re.match(r'^[A-Z]{1,6}$', ticker):
             tickers.append(ticker)
-    return tickers
+    return bool(tickers) or rows == 0, tickers
 
 
-def _fetch_screener_tickers(url: str, cookie: str, token: str = "") -> list:
+def _fetch_screener_tickers(url: str, cookie: str, token: str = "", *, deadline_monotonic=None) -> list:
     """Fetch tickers from a Finviz screener URL. Returns list of ticker strings."""
     tickers = []
     rate_limited = False
+    verified_csv = False
     export_url = url.replace("/screener.ashx?", "/export?").replace("elite.finviz.com", "elite.finviz.com")
     if "elite.finviz.com" not in export_url:
         export_url = export_url.replace("finviz.com", "elite.finviz.com")
 
     def _try_csv(export: str, *, use_cookie: bool) -> list:
+        nonlocal verified_csv
         headers = {
             "User-Agent": "Mozilla/5.0",
             "Referer": "https://elite.finviz.com/screener.ashx",
@@ -145,18 +184,26 @@ def _fetch_screener_tickers(url: str, cookie: str, token: str = "") -> list:
         if use_cookie and cookie:
             headers["Cookie"] = cookie
         fetch_url = _append_auth_token(export, token) if (not use_cookie and token) else export
-        content = _http_get(fetch_url, headers)
-        return _csv_has_tickers(content)
+        kw = {"deadline_monotonic": deadline_monotonic} if deadline_monotonic is not None else {}
+        content = _http_get(fetch_url, headers, **kw)
+        verified_csv, found = _parse_screener_csv(content)
+        return found
 
     try:
         if cookie:
             tickers = _try_csv(export_url, use_cookie=True)
+            if verified_csv and deadline_monotonic is not None:
+                return tickers
         if not tickers and token:
             if cookie:
                 print("  [screener] Cookie CSV empty — retrying export with FINVIZ_API_TOKEN")
             else:
                 print("  [screener] No FINVIZ_COOKIE — using FINVIZ_API_TOKEN")
             tickers = _try_csv(export_url, use_cookie=False)
+            if verified_csv and deadline_monotonic is not None:
+                return tickers
+    except _DeadlineExpired:
+        raise
     except _RateLimited:
         rate_limited = True
         print("  [screener] Fetch error: HTTP 429 — global cooldown set, skipping HTML fallback")
@@ -165,6 +212,10 @@ def _fetch_screener_tickers(url: str, cookie: str, token: str = "") -> list:
         if token and not tickers:
             try:
                 tickers = _try_csv(export_url, use_cookie=False)
+                if verified_csv and deadline_monotonic is not None:
+                    return tickers
+            except _DeadlineExpired:
+                raise
             except _RateLimited:
                 rate_limited = True
             except Exception as e2:
@@ -174,17 +225,22 @@ def _fetch_screener_tickers(url: str, cookie: str, token: str = "") -> list:
     # just hammer the rate limit again and prolong the cooldown).
     if not tickers and not rate_limited:
         try:
+            kw = {"deadline_monotonic": deadline_monotonic} if deadline_monotonic is not None else {}
             html = _http_get(url, {
                 "User-Agent": "Mozilla/5.0",
                 "Cookie": cookie if cookie else "",
-            })
+            }, **kw)
             ticker_pattern = re.findall(r'quote\.ashx\?t=([A-Z]{1,6})', html)
             tickers = list(dict.fromkeys(ticker_pattern))
+        except _DeadlineExpired:
+            raise
         except _RateLimited:
             print("  [screener] HTML fallback skipped — HTTP 429 (global cooldown set)")
         except Exception as e:
             print(f"  [screener] HTML fallback error: {e}")
 
+    if deadline_monotonic is not None and not tickers:
+        raise _ScreenerFetchFailed("No verified Finviz export or ticker results; refresh remains pending")
     return tickers
 
 
@@ -275,7 +331,7 @@ def _fence_before_first_write() -> None:
     _FENCE_PASSED = True
 
 
-def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
+def run_screener(screener_id: str = None, dry_run: bool = False, *, deadline_monotonic=None) -> dict:
     """Run one or all screeners. Returns discovery summary."""
     # The former dry run fetched paid Finviz data and read credentials before
     # suppressing only INSERTs. This source plan cannot reach those effects.
@@ -284,6 +340,7 @@ def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
               " classify new symbols, refresh membership and write receipts; counts NOT_MEASURED")
         return {"mode": "dry_run", "screener_id": screener_id,
                 "screeners_run": None, "total_new_tickers": None, "results": []}
+    _remaining_s(deadline_monotonic)
     import psycopg2.extras
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -312,7 +369,14 @@ def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
         url = s["finviz_url"]
 
         print(f"  [{sid}] Fetching {s['display_name']}...")
-        tickers = _fetch_screener_tickers(url, cookie, token)
+        try:
+            _remaining_s(deadline_monotonic)
+            kw = {"deadline_monotonic": deadline_monotonic} if deadline_monotonic is not None else {}
+            tickers = _fetch_screener_tickers(url, cookie, token, **kw)
+            _remaining_s(deadline_monotonic)
+        except (_DeadlineExpired, _ScreenerFetchFailed):
+            conn.rollback()
+            raise
         # HTTP can outlive PG idle_session_timeout — never reuse a dead handle.
         conn = _refresh_conn(conn)
         try:
@@ -499,8 +563,14 @@ def main(argv=None) -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--run", action="store_true", help="legacy explicit run flag; bare invocation also runs")
     parser.add_argument("--screener")
+    parser.add_argument("--deadline-seconds", type=float, default=None,
+                        help="Cooperative work budget below the caller's existing hard timeout")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
+    if args.deadline_seconds is not None and (not math.isfinite(args.deadline_seconds) or args.deadline_seconds <= 0):
+        parser.error("--deadline-seconds must be finite and positive")
+    args.deadline_monotonic = (time.monotonic() + args.deadline_seconds
+                               if args.deadline_seconds is not None else None)
     if args.dry_run:
         result = run_screener(screener_id=args.screener, dry_run=True)
         if args.json:
@@ -556,7 +626,9 @@ def _run_tracked(args, started, _run_id) -> int:
         run_complete = run_fail = lambda *a, **k: None
 
     try:
-        result = run_screener(screener_id=args.screener, dry_run=False)
+        deadline = getattr(args, "deadline_monotonic", None)
+        kw = {"deadline_monotonic": deadline} if deadline is not None else {}
+        result = run_screener(screener_id=args.screener, dry_run=False, **kw)
 
         if args.json:
             print(json.dumps(result, indent=2, default=str))
@@ -565,19 +637,50 @@ def _run_tracked(args, started, _run_id) -> int:
                 if r["new_tickers"] > 0:
                     print(f"  {r['screener_id']:>25}: {r['total_found']} found, {r['new_tickers']} NEW → {r['sample'][:5]}")
 
+        complete = not (result.get("membership_failures") or result.get("db_write_failures"))
+        if deadline is not None and not result.get("results"):
+            complete = False  # inactive/missing screener is not a completed refresh
+        exit_code = 1 if deadline is not None and not complete else 0
         try:
             if _run_id:
-                total_new = sum(r.get('new_tickers', 0) for r in result.get('results', []))
-                run_complete(_run_id, rows_processed=total_new)
+                if exit_code:
+                    run_fail(_run_id, "Finviz refresh incomplete: no verified completion or DB write failed")
+                else:
+                    total_new = sum(r.get('new_tickers', 0) for r in result.get('results', []))
+                    run_complete(_run_id, rows_processed=total_new)
         except Exception:
             pass
-        complete = not (result.get("membership_failures") or result.get("db_write_failures"))
-        write_lane_receipt(receipt_lane_id(args.screener), ok=complete, exit_code=0,
+        write_lane_receipt(receipt_lane_id(args.screener), ok=complete, exit_code=exit_code,
                            started_at=started, script="finviz_screener_runner.py",
                            summary={key: result.get(key) for key in
                                     ("screeners_run", "total_new_tickers", "membership_failures", "db_write_failures")},
                            output=lane_output(result))
-        return 0
+        return exit_code
+    except _ScreenerFetchFailed:
+        write_lane_receipt(receipt_lane_id(args.screener), ok=False, exit_code=1,
+                           started_at=started, script="finviz_screener_runner.py",
+                           error="fetch_failed",
+                           output={"produced_count": 0, "attempted_count": 1,
+                                   "skipped_reasons": {"fetch_failed": 1}})
+        if _run_id:
+            try:
+                run_fail(_run_id, "Finviz screener failed: no verified source response")
+            except Exception:
+                pass
+        return 1
+    except _DeadlineExpired:
+        write_lane_receipt(receipt_lane_id(args.screener), ok=False, exit_code=124,
+                           started_at=started, script="finviz_screener_runner.py",
+                           error="deadline_deferred",
+                           output={"produced_count": 0, "attempted_count": 1,
+                                   "skipped_reasons": {"deadline_deferred": 1}})
+        if _run_id:
+            try:
+                run_fail(_run_id, "Finviz screener deferred: caller deadline exhausted")
+            except Exception:
+                pass
+        print("[screener] Deferred: caller deadline exhausted; refresh will resume", file=sys.stderr)
+        return 124
     except Exception as _e:
         write_lane_receipt(receipt_lane_id(args.screener), ok=False, exit_code=1,
                            started_at=started, script="finviz_screener_runner.py",

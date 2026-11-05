@@ -641,27 +641,32 @@ def analytics(cur):
     return a
 
 
-def lifecycle_performance(cur, limit=300):
+def lifecycle_performance(cur, limit=300, symbol=None):
     """Auto-detected position lifecycle for REAL closed trades (trade_closed): origin
     (watchlist / proposal / screener / research / directive ...) → purchase → sale (P&L · R · hold) →
     journal. Joins rec_ticker_attribution (the discovery origin) + journal_trade_reviews (the review) to
-    each sold position by symbol / account / close-date — no manual tagging. Read-only, advisory."""
+    each sold position by symbol / account / close-date — no manual tagging. Read-only, advisory.
+
+    ``symbol`` (optional) restricts every read to one ticker — the Ticker Prospectus "My history" block reuses
+    this exact lifecycle per symbol (2026-10-26); without it the output is unchanged."""
+    sym_sql, sym_args = ("AND upper(symbol) = %s", (str(symbol).upper(),)) if symbol else ("", ())
     DOWNSTREAM = ('execution', 'holding', 'rotation')      # not discovery origins
     SRC_LABEL = {"scan": "screener", "hermes_research": "research", "cio_decision": "cio"}
     # earliest DISCOVERY origin per symbol
     cur.execute("""SELECT DISTINCT ON (upper(symbol)) upper(symbol), source_type, first_seen_at
-                   FROM rec_ticker_attribution WHERE source_type NOT IN %s
-                   ORDER BY upper(symbol), first_seen_at ASC""", (DOWNSTREAM,))
+                   FROM rec_ticker_attribution WHERE source_type NOT IN %s """ + sym_sql + """
+                   ORDER BY upper(symbol), first_seen_at ASC""", (DOWNSTREAM,) + sym_args)
     origin = {r[0]: r[1] for r in cur.fetchall()}
-    cur.execute("SELECT upper(symbol), bool_or(executed) FROM rec_ticker_attribution GROUP BY 1")
+    cur.execute("SELECT upper(symbol), bool_or(executed) FROM rec_ticker_attribution WHERE true " + sym_sql
+                + " GROUP BY 1", sym_args)
     execd = {r[0]: r[1] for r in cur.fetchall()}
     # journal reviews, grouped by symbol (matched to a trade by account + close-date below)
     jrev = {}
-    cur.execute("""SELECT upper(symbol), account, closed_date, realized_r, lesson_learned, setup_family
-                   FROM journal_trade_reviews""")
-    for sym, acct, cdate, rr, lesson, fam in cur.fetchall():
+    cur.execute("""SELECT upper(symbol), account, closed_date, realized_r, lesson_learned, setup_family, exit_type
+                   FROM journal_trade_reviews WHERE true """ + sym_sql, sym_args)
+    for sym, acct, cdate, rr, lesson, fam, exit_type in cur.fetchall():
         jrev.setdefault(sym, []).append({"account": acct, "closed_date": cdate, "realized_r": rr,
-                                         "lesson": lesson, "setup_family": fam})
+                                         "lesson": lesson, "setup_family": fam, "exit_type": exit_type})
     # spine: real closed (sold) trades. EXCLUDE data artifacts that don't belong in recommendation
     # lineage (2026-06-20): (a) raw broker CUSIPs that never resolved to a ticker (symbol !~ A-Z{1,5}),
     # (b) legacy pre-system holdings with implausibly long holds (>5yr) — e.g. an 18-yr Visa lot showing
@@ -669,8 +674,8 @@ def lifecycle_performance(cur, limit=300):
     cur.execute("""SELECT id, upper(symbol), account, open_date, close_date, shares, buy_price, sell_price,
                           pnl, pnl_pct, r_multiple, hold_days, setup, strategy_id
                    FROM trade_closed
-                   WHERE symbol ~ '^[A-Za-z]{1,5}$' AND (hold_days IS NULL OR hold_days <= 1825)
-                   ORDER BY close_date DESC NULLS LAST, id DESC LIMIT %s""", (limit,))
+                   WHERE symbol ~ '^[A-Za-z]{1,5}$' AND (hold_days IS NULL OR hold_days <= 1825) """ + sym_sql + """
+                   ORDER BY close_date DESC NULLS LAST, id DESC LIMIT %s""", sym_args + (limit,))
     out = []
     for (tid, sym, acct, od, cd, sh, bp, sp, pnl, pnlpct, rmult, hold, setup, strat) in cur.fetchall():
         org = origin.get(sym)
@@ -702,7 +707,8 @@ def lifecycle_performance(cur, limit=300):
             "setup": setup or (jr.get("setup_family") if jr else None),
             "strategy_id": strat, "journaled": jr is not None,
             "journal": ({"realized_r": float(jr["realized_r"]) if jr.get("realized_r") is not None else None,
-                         "lesson": jr.get("lesson"), "setup_family": jr.get("setup_family")} if jr else None),
+                         "lesson": jr.get("lesson"), "setup_family": jr.get("setup_family"),
+                         "exit_type": jr.get("exit_type")} if jr else None),
         })
     return out
 

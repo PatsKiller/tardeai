@@ -462,7 +462,8 @@ def test_template_tier_must_be_known():
 
 
 def test_n8n_processes_are_listed_and_route_oauth_first():
-    assert N8N_PROCESSES == ["n8n_lane_failure_diagnosis", "n8n_material_digest_draft", "n8n_ops_summary_draft"]
+    assert N8N_PROCESSES == ["conflict_rule_proposal", "n8n_lane_failure_diagnosis", "n8n_material_digest_draft",
+                             "n8n_ops_summary_draft"]
     for pid in N8N_PROCESSES + FABRIC_PROCESSES:
         row = ROUTING[pid]
         assert [row[k]["provider"] for k in ("primary", "secondary", "fallback")] == ["grok", "chatgpt", "deepseek"]

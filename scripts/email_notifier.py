@@ -42,8 +42,12 @@ def _get_keyring_password():
     return os.environ.get("GOG_KEYRING_PASSWORD", "")
 
 
-def send_email(subject, body, to=None):
-    """Send a plain-text email via gog gmail send."""
+def send_email(subject, body, to=None, attachments=None):
+    """Send a plain-text email via gog gmail send.
+
+    ``attachments``: optional file paths, each passed as one ``--attach`` (gog flag, repeatable). A path that is not
+    a file fails the send (returns False) rather than silently dropping a promised attachment.
+    """
     to = to or OPERATOR_EMAIL
     try:  # FQDN/v3 normalization chokepoint (rewrite internal IPs + legacy /v2/ dashboard links)
         from notification_url_builder import publicize_message
@@ -60,6 +64,13 @@ def send_email(subject, body, to=None):
         log.error("gog CLI not found (checked PATH, ~/.local/bin, /usr/local/bin) — skipping email")
         return False
 
+    attach_args = []
+    for path in attachments or ():
+        if not Path(path).is_file():
+            log.error(f"Email attachment missing: {path} — not sending")
+            return False
+        attach_args += ["--attach", str(path)]
+
     # Put gog's own directory on PATH too, so anything it shells out to resolves under cron.
     env = {**os.environ, "GOG_KEYRING_PASSWORD": pw,
            "PATH": os.pathsep.join([str(Path(gog).parent), os.environ.get("PATH", "/usr/bin:/bin")])}
@@ -69,8 +80,8 @@ def send_email(subject, body, to=None):
              "--to", to,
              "-a", GOG_ACCOUNT,
              "--subject", subject,
-             "--body", body],
-            env=env, capture_output=True, text=True, timeout=15,
+             "--body", body] + attach_args,
+            env=env, capture_output=True, text=True, timeout=120 if attach_args else 15,
         )
         if r.returncode == 0:
             log.info(f"Email sent: {subject[:50]}")

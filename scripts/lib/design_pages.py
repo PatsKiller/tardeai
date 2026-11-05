@@ -125,6 +125,10 @@ def validate_status(page: str, version: str, status, *, spec_exists: bool) -> li
             errs.append(f"{where}: {f['path']}: sha256 must be 64 lowercase hex")
         if f.get("role") not in ROLES:
             errs.append(f"{where}: {f['path']}: unknown role {f.get('role')!r}")
+        if f.get("role") == "capture" and f.get("width") not in (1440, 412, 390):
+            errs.append(f"{where}: {f['path']}: a capture names its width (1440, 412 or 390)")
+        if state == "BASELINE" and f.get("role") != "capture":
+            errs.append(f"{where}: {f['path']}: a BASELINE version holds only captures")
         if f["path"] in seen:
             errs.append(f"{where}: {f['path']}: listed twice")
         seen.add(f["path"])

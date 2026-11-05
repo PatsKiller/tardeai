@@ -804,7 +804,7 @@ def lifecycle_for(sym: str, inputs: dict[str, dict[str, Any]], *, is_held: bool,
             rsi=ind.get("rsi"), entry_zone=rk.get("entry_zone") or ([latest["entry_low"], latest["entry_high"]]
                                                                     if latest else None),
             resistance=None, conviction=(opp or {}).get("conviction"),
-            thesis_status=(thesis or {}).get("status"), now=now)
+            thesis_status=(thesis or {}).get("status"), now=now, account=rt.get("account"))
         stage, stage_phase = lcm.stage_phase_for(exit_at, now)
         stance = "WATCH"
         why = {"source": "schwab_round_trips", "event": "exit_fill", "round_trip_key": rt.get("round_trip_key"),

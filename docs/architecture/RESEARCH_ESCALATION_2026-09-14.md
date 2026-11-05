@@ -297,3 +297,14 @@ digraph circle_state {
 - **Registry:** `config/data_source_authority.json` — `domains[*].on_gap`, `providers.brave.budget`, `domains.web_search.backup` / `spill_on`.
 - **Receipts:** `data/cio/gap_resolution_receipts.jsonl`, `data/runtime/search_budget.json`, `data/runtime/brave_router_health.json`.
 - **Related docs:** `docs/GAP_RESOLUTION.md`, `docs/OPERATOR_REPLY_ROUTING.md`, `docs/architecture/DOCUMENT_MENTIONS_AND_LLM_ESCALATION.md`.
+
+<!-- moved from AGENTS.md 25.0.1 lines 1834-1838 -->
+## Moved from AGENTS.md (25.0.1 lines 1834-1838)
+
+*Moved here by AGENTS.md 26.0.0, which keeps the binding rule and a pointer; the 25.0.1 text is preserved at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`. This is reference, not instruction: where it mentions Telegram `/approve`, `bin/guard request`, a push budget of 5 or a coordinator override, `gh pr merge`, a `release-write` grant for a deploy, or shipping with no operator input, those paths are retired or not implemented, and AGENTS.md governs.*
+
+- **A caller refused by `CALLER_DAILY_CAP` is now answered by the free provider instead of being lost**
+    (PR #1045, live `a91d7b3ba`). This is a *separate governed call* through `scripts/lib/free_search.py`, not a
+    spill: it takes its own ledger unit before the request, refunds a request that never happened, and amends the
+    refusal receipt's `spilled_to` once a lane answers. It runs only behind `RESEARCH_FREE_FALLBACK=1`.
+    Measured before: 129 denial receipts, one caller, every one `spilled_to: null` — refused, then asked of nobody.
