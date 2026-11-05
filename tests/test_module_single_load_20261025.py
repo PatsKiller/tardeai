@@ -81,6 +81,19 @@ _TREE = {
     "scripts/lib/slowsame/child.py": "V = 1\n",
     "scripts/lib/slowlong/__init__.py": "import time\ntime.sleep(1.0)\nfrom lib.slowlong.child import V\nREADY = True\n",
     "scripts/lib/slowlong/child.py": "V = 1\n",
+    # an owner whose __init__ raises while an alias waiter is inside exec_module
+    "scripts/lib/failpkg/__init__.py": "import time\nEARLY = 1\ntime.sleep(0.4)\nraise RuntimeError('owner init failed')\n",
+    "scripts/lib/failpkg/child.py": "V = 1\n",
+    # the same, but the second (fresh) execution completes: the waiter may return that complete copy
+    "scripts/lib/flaky/__init__.py": (
+        "import builtins, time\nEARLY = 1\n"
+        "if not getattr(builtins, '_FLAKY_FAILED', False):\n"
+        "    builtins._FLAKY_FAILED = True\n"
+        "    time.sleep(0.4)\n"
+        "    raise RuntimeError('transient owner init failure')\n"
+        "READY = True\n"
+    ),
+    "scripts/lib/flaky/child.py": "V = 1\n",
 }
 
 _SYNTH = r"""
@@ -219,6 +232,63 @@ def test_wait_timeout_runs_the_normal_import_not_a_half_initialized_package(synt
     out = _run(_THREADS, str(synthetic_root), "slowlong", "0.2")
     assert out["errs"] == [] and out["ready_at_import"] is True and out["ready"]
     assert out["same"] is False  # a separate copy, exactly as without the finder
+
+
+_THREADS_FAIL = r"""
+import importlib, json, sys, threading, time
+root, pkg = sys.argv[1], sys.argv[2]
+sys.path[:0] = [root + "/shim", root + "/scripts"]
+import module_single_load
+from module_single_load import install, duplicate_modules
+import lib
+install(root + "/scripts")
+got = {}
+def a():
+    try:
+        importlib.import_module("lib." + pkg)
+        got["owner"] = "completed"
+    except BaseException as exc:
+        got["owner"] = type(exc).__name__
+def b():
+    time.sleep(0.1)  # lib.<pkg>'s __init__ is mid-flight in thread a
+    try:
+        m = importlib.import_module("scripts.lib." + pkg)
+        got["waiter"] = "returned"
+        got["ready"] = getattr(m, "READY", "<missing>")
+        got["partial"] = hasattr(m, "EARLY") and not hasattr(m, "READY")
+    except BaseException as exc:
+        got["waiter"] = type(exc).__name__
+        got["waiter_msg"] = str(exc)
+ts = [threading.Thread(target=a), threading.Thread(target=b)]
+[t.start() for t in ts]; [t.join() for t in ts]
+print(json.dumps({
+    "owner": got.get("owner"), "waiter": got.get("waiter"), "waiter_msg": got.get("waiter_msg"),
+    "ready": got.get("ready"), "partial": got.get("partial"),
+    "canonical_left": "lib." + pkg in sys.modules, "alias_left": "scripts.lib." + pkg in sys.modules,
+    "dups": len(duplicate_modules(root + "/scripts")),
+}))
+"""
+
+
+def test_owner_failure_is_not_handed_to_an_alias_waiter(synthetic_root):
+    """Regression: thread a's lib.failpkg __init__ raises EARLY then raises, while thread b is inside
+    exec_module for scripts.lib.failpkg. CPython clears spec._initializing in a finally on failure too, so b
+    must not read that as success and return the owner's half-initialised object: it re-runs the import and
+    raises the owner's error."""
+    out = _run(_THREADS_FAIL, str(synthetic_root), "failpkg")
+    assert out["owner"] == "RuntimeError"
+    assert out["waiter"] == "RuntimeError" and "owner init failed" in out["waiter_msg"]
+    assert out["partial"] is not True
+    assert out["canonical_left"] is False and out["alias_left"] is False and out["dups"] == 0
+
+
+def test_owner_failure_whose_second_run_succeeds_returns_a_complete_copy(synthetic_root):
+    """Same race, but the fresh execution completes: the waiter returns a fully-initialised module, never the
+    owner's partial one (EARLY set, READY missing)."""
+    out = _run(_THREADS_FAIL, str(synthetic_root), "flaky")
+    assert out["owner"] == "RuntimeError"
+    assert out["waiter"] == "returned" and out["ready"] is True and out["partial"] is False
+    assert out["dups"] == 0
 
 
 _POPS = r"""

@@ -20,6 +20,8 @@ object instead of executing the file again. Every other import proceeds as befor
   ``__init__`` imports its own submodules under the other spelling is aliased (same-name semantics);
   if another thread is running that ``__init__``, the import waits for it to finish. If that thread is
   waiting on this one, or the wait times out, the import runs normally (a separate copy, as today);
+  if that ``__init__`` raises, the import runs normally too and raises (or returns a fresh, complete
+  copy), never the owner's half-initialised package;
 - a module whose own name was popped from ``sys.modules`` (api_v2's reload self-heal) is never revived
   through another spelling: the next import executes the file fresh;
 - any unexpected error inside the finder steps aside and the normal import runs.
@@ -173,6 +175,19 @@ class _AliasLoader(importlib.abc.Loader):
                 self._load_copy()
                 return
             time.sleep(0.005)
+        # The owner stopped initialising, but that alone does not mean it succeeded: CPython clears
+        # spec._initializing in a ``finally`` on success AND on failure, and on failure it also removes the
+        # canonical module from sys.modules. Only when the canonical entry is still this exact object did the
+        # owner finish; otherwise the object is half-initialised (earlier names bound, the rest missing) and
+        # must never be returned. Run the normal import instead: it either completes a fresh copy or raises
+        # the owner's error, exactly as an import of that module without a second spelling would.
+        if not self._owner_completed(module):
+            self._load_copy()
+
+    def _owner_completed(self, module) -> bool:
+        """Did the thread that ran the canonical ``__init__`` finish successfully with this object?"""
+        name = getattr(self._spec, "name", None)
+        return bool(name) and sys.modules.get(name) is module
 
     def _load_copy(self) -> None:
         """The import without the finder: execute the file as a separate module under this spelling.
