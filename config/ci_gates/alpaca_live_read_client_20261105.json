@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "alpaca_live_read_client_20261105",
+  "files": [
+    "tests/test_alpaca_live_read_client.py"
+  ],
+  "comment": [
+    "Alpaca live read: GET-only transport, and a merge that replaces only its own account's rows",
+    "while carrying the broker's own prior close into the day change. The merge is where a",
+    "broker-sourced number could land on the wrong account's book, so this is a safety suite, not",
+    "a formatting one (2026-11-05)."
+  ]
+}

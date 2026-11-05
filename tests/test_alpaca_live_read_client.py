@@ -58,6 +58,10 @@ def test_merge_empty_noop_no_prior(tmp_path, monkeypatch):
     }
     hp.write_text(json.dumps(payload))
     monkeypatch.setattr(sync, "HOLDINGS_PATH", hp)
+    # The merge resolves its write target through _holdings_targets() (the served-copy
+    # dual-write, WAVE G1), not HOLDINGS_PATH. Patch the resolver the code actually uses,
+    # or this test reads a real store instead of the tmp file it seeded.
+    monkeypatch.setattr(sync, "_holdings_targets", lambda: [hp])
 
     with mock.patch("holdings_guard.protected_holdings_write") as phw:
         res = sync._merge_account_into_holdings("alpaca_taxable_live", [], dry_run=False)
@@ -82,6 +86,9 @@ def test_merge_replaces_only_target_account(tmp_path, monkeypatch):
     }
     hp.write_text(json.dumps(payload))
     monkeypatch.setattr(sync, "HOLDINGS_PATH", hp)
+    # Same reason as test_merge_empty_noop_no_prior: the merge uses _holdings_targets(),
+    # so an unpatched resolver makes this safety test run against a live store.
+    monkeypatch.setattr(sync, "_holdings_targets", lambda: [hp])
 
     new_rows = [{
         "symbol": "TSLA", "account": "alpaca_taxable_live",
@@ -144,3 +151,12 @@ def test_positions_rows_leave_day_change_unknown_without_a_prior_close():
     ])
     assert rows[0]["prev_close"] is None
     assert rows[0]["day_change"] is None
+
+
+def test_this_file_is_run_by_hardening_ci():
+    """A green suite no gate runs is not evidence. F2, 2026-11-05: this file was unregistered."""
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from scripts.lib import ci_gates
+
+    assert "tests/test_alpaca_live_read_client.py" in ci_gates.registry_text(ROOT)
