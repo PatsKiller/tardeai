@@ -79,10 +79,40 @@ def test_a_wrong_shaped_store_is_unreadable_not_empty(tmp_path):
     for name, body in (("no holdings key", '{"positions": [], "portfolio_totals": {}}'),
                        ("holdings is not a list", '{"holdings": "not a list"}'),
                        ("top level is an array", '[]'),
-                       ("top level is a string", '"nope"')):
+                       ("top level is a string", '"nope"'),
+                       # claude-lead review (2026-11-05): a list of non-object rows is the same lie as a
+                       # non-list, and `portfolio_for` would raise on it if it were handed through.
+                       ("holdings holds non-object rows", '{"holdings": [1, "row"]}')):
         (d / "holdings.json").write_text(body, encoding="utf-8")
         gap = truth.resolve(tmp_path, NOW)["positions"]["gap"]
         assert "could not be read" in gap["reason"], (name, gap)
+
+
+def test_caller_supplied_non_object_rows_and_none_are_unreadable_not_a_crash():
+    """The `holdings` input path (tests/replay) bypasses `load_store`, so it must check the shape too.
+
+    Before the guard, `inputs={"holdings": None}` reached `portfolio_for(None)` (AttributeError) and a list of
+    non-object rows reached `row.get(...)` — a 500 on the Risk page, and the wrong sentence either way."""
+    for supplied in (None, {"holdings": [1, "row"]}, [], "not a document"):
+        positions = truth.resolve(root=".", now=NOW, inputs={"holdings": supplied, "do_now": None})["positions"]
+        assert positions["rows"] == [], supplied
+        assert "could not be read" in positions["gap"]["reason"], (supplied, positions["gap"])
+
+
+def test_a_day_pl_gap_is_not_a_clock_gap():
+    """claude-lead review (2026-11-05): `positions.day_pl_gap` used to be the PORTFOLIO's gap, which also carries
+    holdings-value and clock reasons. A full day-change set over a document with no clock is AVAILABLE positions
+    with a clock gap on the aggregate — it is not a day-P&L coverage gap, and saying so would assert a cause the
+    positions section did not measure."""
+    rows = [_row("ZZAA", day_change=1.0), _row("ZZBB", day_change=-2.0)]
+    doc = truth.resolve(root=".", now=NOW,
+                        inputs={"holdings": {"holdings": rows}, "do_now": None})  # readable shape, no clocks
+    positions = doc["positions"]
+    assert positions["gap"] is None, "a readable position set is available"
+    assert "clock" in (doc["portfolio"]["gap"] or {}).get("reason", ""), (
+        "the aggregate's own clock gap must still travel on the portfolio", doc["portfolio"]["gap"])
+    assert positions["day_pl_gap"] is None, (
+        "a clock gap is not a day-P&L coverage gap", positions["day_pl_gap"])
 
 
 def test_a_readable_empty_list_is_the_only_no_positions_case(tmp_path):
