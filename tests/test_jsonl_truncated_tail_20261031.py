@@ -458,3 +458,25 @@ def test_a_select_only_run_sends_nothing_and_keeps_the_spool(monkeypatch, tmp_pa
     )
     assert sent == [], sent
     assert len(ops_diagnostics.spooled()) == 1, "a select-only run consumed the outbox"
+
+
+def test_a_diagnostic_the_owner_rejects_is_spooled_not_lost(monkeypatch, tmp_path):
+    """A rejected send during store recovery is final: the tail is already archived, so nobody re-reads it."""
+    _spool_env(monkeypatch, tmp_path)
+    jsonl_tail._alerted.clear()
+    calls = []
+    ops_diagnostics.register("store_damage", lambda diag: calls.append(diag) or False)
+    try:
+        assert jsonl_tail.report(tmp_path / "wakes.jsonl", 3, action="skipped") is False
+    finally:
+        ops_notify_owner.install()
+    assert len(calls) == 1                     # the owner was asked
+    rows = ops_diagnostics.spooled()
+    assert len(rows) == 1 and rows[0]["channel"] == "store_damage", rows
+    delivered = []
+    ops_diagnostics.unregister("store_damage")
+    try:
+        assert ops_diagnostics.drain(lambda r: delivered.append(r["path"]) or True) == 1
+    finally:
+        ops_notify_owner.install()
+    assert delivered == [str(tmp_path / "wakes.jsonl")]

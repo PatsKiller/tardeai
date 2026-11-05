@@ -243,10 +243,15 @@ def emit(channel: str, diagnostic: dict) -> bool:
         _spool({**dict(diagnostic), "channel": str(channel)})
         return False
     try:
-        return bool(notifier(dict(diagnostic)))
+        if bool(notifier(dict(diagnostic))):
+            return True
     except Exception as exc:  # an unavailable transport must never take the caller down
         log.warning("diagnostic channel %s delivery failed: %s: %s", channel, type(exc).__name__, exc)
-        return False
+    # An owner that REJECTS is as final as no owner at all: the caller may keep retrying, but a store
+    # recovery has already archived and truncated the damaged tail, so that read will never happen
+    # again. Retain the event so the next drain delivers it instead of losing it silently.
+    _spool({**dict(diagnostic), "channel": str(channel)})
+    return False
 
 
 def deliver(channel: str, diagnostic: dict, *, notify: Optional[Callable[[dict], bool]] = None) -> bool:
