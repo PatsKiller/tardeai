@@ -10,7 +10,7 @@ const root = resolve(process.argv[2] ?? join(dirname(fileURLToPath(import.meta.u
 const app = join(root, 'apps/command-center-v3')
 const require = createRequire(join(app, 'package.json'))
 const { build } = require('esbuild')
-const { chromium } = require('@playwright/test')
+const { chromium, expect } = require('@playwright/test')
 const bundle = await build({
   stdin: {
     contents: `
@@ -82,6 +82,13 @@ try {
       const status = scenario.startsWith('401') ? 401 : scenario.startsWith('403') ? 403 : scenario === '304 revalidation' ? 304 : 503
       await page.evaluate(value => { window.nextStatus = value }, status)
       await page.evaluate(() => window.refetchRotation())
+      if (status !== 304) {
+        // Refusal decoding awaits the response body, which can settle after the
+        // fixture's timer flush. Observe the real withheld state before reading
+        // the text; keep every fail-closed and terminal-poll assertion below.
+        await expect(page.getByTestId('rotation-publication-notice'))
+          .toHaveAttribute('data-rotation-status', /^(UNAVAILABLE|STALE)$/)
+      }
       let text = await page.locator('body').innerText()
       const fixtureTime = await page.evaluate(() => window.fixtureTime)
       if (status === 304) {

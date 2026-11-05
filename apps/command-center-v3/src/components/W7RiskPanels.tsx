@@ -7,7 +7,7 @@ import W7DetailSheet, { useW7Detail } from './W7DetailSheet'
 import { STOP_CATEGORY_LABEL, STOP_CATEGORY_TONE, stopCategory, stopDistancePct, stopLossUsd, symbolList, type StopCategory } from '../lib/stopDisplay'
 import { toneVars } from '../lib/designTokens'
 import { ShadowTag } from './home/MarketRiskBanner'
-import { shadowMarker, bannerVisible, episodeLine, fmtPct, pointsSum, shortTime, tierTone, unwrapMarketRisk, type MarketRisk } from '../lib/marketRisk'
+import { shadowMarker, bannerVisible, budgetLabel, episodeLine, fmtPct, pointsSum, shortTime, tierTone, unwrapMarketRisk, type MarketRisk } from '../lib/marketRisk'
 
 const stateLabel: Record<string, string> = { active: 'Active', pending_activation: 'Pending activation', pending: 'Pending activation', filled: 'Filled', none: 'None' }
 const sourceLabel: Record<string, string> = { broker: 'Broker resting', broker_resting: 'Broker resting', planned: 'Planned', none: 'None', confirmed: 'Operator confirmed' }
@@ -186,21 +186,48 @@ export function W7RiskMarketRisk({ data, mr: resp, error }: { data: any, mr: any
     </W7Panel>}
 
     {mr && mr.categories.length > 0 && <W7Panel title="Nine categories" testId="risk-market-risk-categories">
-      {mr.categories.map((c, i) => <div key={i} data-testid="risk-market-risk-category" style={row}><span>{c.name}{c.detail ? <span style={{ color: TOKENS.text[2] }}> · {c.detail}</span> : null}{c.weight != null && c.weight < 1 && c.state !== 'UNKNOWN' ? <span style={{ color: TOKENS.text[3] }}> · weight {c.weight}</span> : null}</span>{chip(c.state)}</div>)}
+      {mr.categories.map((c, i) => {
+        if (!c || typeof c !== 'object') return <W7Gap key={i}>Category evidence could not be read; its state is unavailable.</W7Gap>
+        const category = c as typeof c & { score?: number | null; category?: string }
+        const name = (typeof c.name === 'string' && c.name.trim()) || (typeof category.category === 'string' && category.category.replace(/_/g, ' ')) || 'Category name unavailable'
+        const score = typeof category.score === 'number' && Number.isFinite(category.score) ? category.score : null
+        return <div key={i} data-testid="risk-market-risk-category" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '10px 0', borderTop: `1px solid ${TOKENS.borderSubtle}`, minWidth: 0 }}>
+          {/* Keep the name and state in one header: the global phone rule collapses inline grids. */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <span style={{ fontWeight: 700 }}>{name}</span>{chip(c.state || 'UNKNOWN')}
+          </div>
+          {c.detail && <div style={{ color: TOKENS.text[2], fontSize: TYPE.base, overflowWrap: 'anywhere' }}>{c.detail}</div>}
+          {score != null && <div style={{ color: TOKENS.text[3], fontSize: TYPE.sm }}>Category score {score}/100{c.state === 'CALM' && score > 0 ? ' — below this category’s warning level.' : ''}</div>}
+          {c.weight != null && c.weight < 1 && c.state !== 'UNKNOWN' && <div style={{ color: TOKENS.text[3], fontSize: TYPE.sm }}>Weight {c.weight}</div>}
+        </div>
+      })}
       <p style={{ margin: '6px 0 0', fontSize: TYPE.sm, color: TOKENS.text[3] }}>UNKNOWN = a source not read since its stale window; never counted as calm.</p>
     </W7Panel>}
 
-    {mr?.book?.budgets?.length ? <W7Panel title="Your book vs budget" testId="risk-market-risk-book">
-      {mr.book.budgets.map((b, i) => {
-        const ratio = b.limit > 0 ? b.actual / b.limit : 0
-        const t = b.breached || ratio >= 1 ? 'danger' : ratio >= 0.9 ? 'warning' : 'success'
-        return <div key={i} data-testid="risk-market-risk-budget" style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '6px 0', borderTop: `1px solid ${TOKENS.borderSubtle}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: TYPE.base }}><span>{b.budget}</span><span style={{ ...mono, color: toneVars(t).color }}>{b.actual}{b.unit ?? '%'} / {b.limit}{b.unit ?? '%'}</span></div>
-          <div style={{ height: 8, borderRadius: RADIUS.sm, background: TOKENS.bg[3] }}><div style={{ width: `${Math.min(100, Math.round(ratio * 100))}%`, height: 8, borderRadius: RADIUS.sm, background: toneVars(t).color }} /></div>
+    {mr && <W7Panel title="Your book vs budget" testId="risk-market-risk-book">
+      {/* book.budgets contains names only; budgets_detail is the numeric account-scoped API join Home uses. */}
+      {(mr.budgets_detail ?? []).map((b, i) => {
+        if (!b || typeof b !== 'object') return <W7Gap key={i}>A budget row could not be read; its numbers are unavailable.</W7Gap>
+        const actual = typeof b.actual === 'number' && Number.isFinite(b.actual) ? b.actual : null
+        const limit = typeof b.limit === 'number' && Number.isFinite(b.limit) ? b.limit : null
+        const ratio = actual != null && limit != null && limit > 0 ? actual / limit : null
+        const t = ratio == null ? 'warning' : ratio >= 1 ? 'danger' : ratio >= 0.9 ? 'warning' : 'success'
+        const unit = b.unit || '%'
+        const account = (typeof b.account_label === 'string' && b.account_label.trim()) || 'Account scope unavailable'
+        const name = budgetLabel(b.budget)
+        return <div key={i} data-testid="risk-market-risk-budget" style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '10px 0', borderTop: `1px solid ${TOKENS.borderSubtle}` }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 8, fontSize: TYPE.base }}>
+            <span><b>{account}</b> · {name}</span>
+            <span style={{ ...mono, color: toneVars(t).color }}>{actual == null ? 'Actual unavailable' : `${actual}${unit}`} / {limit == null ? 'Limit unavailable' : `${limit}${unit} limit`}</span>
+          </div>
+          {ratio != null ? <div role="img" aria-label={`${account} ${name}: ${actual}${unit} against ${limit}${unit} limit`} data-testid="risk-market-budget-bar" style={{ height: 8, borderRadius: RADIUS.sm, background: TOKENS.bg[3] }}>
+            <div style={{ width: `${Math.max(0, Math.min(100, ratio * 100))}%`, height: 8, borderRadius: RADIUS.sm, background: toneVars(t).color }} />
+          </div> : <div style={{ color: TOKENS.text[2], fontSize: TYPE.sm }}>{limit === 0 ? 'This limit is zero; a percentage bar is not defined.' : 'A bar is unavailable until both numbers and a positive limit are supplied.'}</div>}
         </div>
       })}
-      {mr.book.positions?.length ? <p style={{ margin: '8px 0 0', fontSize: TYPE.base, color: TOKENS.text[2] }}>Driving positions: {mr.book.positions.map(p => `${p.symbol}${p.stop_distance_pct != null ? ` stop ${fmtPct(p.stop_distance_pct / 100)} below` : ''}${p.note ? ` (${p.note})` : ''}`).join(' · ')}. Symbols and stop distance only; the limits are yours.</p> : null}
-    </W7Panel> : null}
+      {!mr.budgets_detail?.length && <W7Gap>Budget numbers unavailable{mr.book?.budgets?.length ? ` for the named breaches: ${mr.book.budgets.map(b => budgetLabel(b.budget)).join(', ')}` : ''}.</W7Gap>}
+      {mr.book?.positions?.length ? <p style={{ margin: '8px 0 0', fontSize: TYPE.base, color: TOKENS.text[2] }}>Driving positions: {mr.book.positions.map(p => `${p.symbol}${p.stop_distance_pct != null ? ` stop ${fmtPct(p.stop_distance_pct / 100)} below` : ''}${p.note ? ` (${p.note})` : ''}`).join(' · ')}. Symbols and stop distance only; the limits are yours.</p> : null}
+    </W7Panel>}
 
     {mr?.probabilities?.length ? <W7Panel title="Probabilities" testId="risk-market-risk-probabilities">
       <div style={{ overflowX: 'auto' }}>

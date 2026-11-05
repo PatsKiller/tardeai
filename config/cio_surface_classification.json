@@ -1334,6 +1334,13 @@
       "classification": "NOT_OPERATOR_RELEVANT",
       "reason": "Engineering health projection of hourly/material trigger identity, immutable host receipts, canonical Ask check clocks, memory acknowledgement and outbox delivery. research_lane_health folds its conditions into the existing health heartbeat. It diagnoses whether the research pipeline ran; it introduces no CIO research, policy, evidence conclusion or investment decision. Operator question/answer content remains on the existing Ask thread projection.",
       "owner_hint": "scripts/lib/cio_ask_lifecycle_health.py::collect_cio_ask_lifecycle_health"
+    },
+    {
+      "name": "schema:PositionVerdict@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Durable per-(symbol, account) CIO memory: position_verdicts.jsonl is where cio_truth records what it decided, with the evidence, the rejected alternatives and the tax constraint behind it. Surfaces render it through render_for_surface() — the stored line is an input to those surfaces, not an operator artifact of its own, and nothing is hidden by classifying the record here.",
+      "owner_hint": "scripts/lib/cio_position_verdict.py"
     }
   ]
 }

@@ -199,6 +199,14 @@ def test_pending_tranches_list_lane_ids_without_commands_and_the_never_list_is_s
     assert "broker" in DOC["never"] and "sm-render" in DOC["never"]
 
 
+def test_a_runnable_lane_is_not_also_recorded_as_blocked():
+    """One file, one answer. The executor runs a `lanes` entry; n8n_lane_disposition.py and
+    reconcile_migration_inventory.py read `blocked_reasons` and report a lane found there as blocked. A lane in
+    both tells those tools the lane is not runnable while the gateway will start it (PR #2684 F2)."""
+    both = sorted(set(LANES) & set(DOC["blocked_reasons"]))
+    assert not both, both
+
+
 def test_n3_sender_free_report_and_suggestions_have_receipts():
     assert {"generate-analyst-daily-digest", "desk-suggestions-digest"} <= LANES.keys()
     assert LANES["generate-analyst-daily-digest"]["dry_run_arg"] == ["--dry-run"]

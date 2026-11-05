@@ -111,6 +111,38 @@
       "output_signal": "data/runtime/job_coverage_monitor_last.json"
     },
     {
+      "lane_id": "rotation-rebalance-digest",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "TRADEAI_N8N_COORDINATION_LEDGER",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "rotation_rebalance_digest.py --dry-run returns before any DB/network/sender import or file write (lane disposition 2026-10-15, MIGRATE_N8N); the live path imports telegram_alert (send) and reads the rotation summary over the local Command Center API via lib.cc_client; no env name is read literally in this file, so the list below is the DB/project set its live imports resolve.",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file (tmpfs or disk) into the child, so the import closure (~1,090 modules via db_adapter/lane_registry) is not bounded by literal reads; report until that loader is bounded.",
+      "source": "0 18 * * 0; flock -n /tmp/rotation_digest.lock $PY scripts/rotation_rebalance_digest.py (crontab L503); --dry-run is an offline plan and wins over live flags",
+      "command": [
+        "$PY",
+        "scripts/rotation_rebalance_digest.py"
+      ],
+      "lock": "/tmp/rotation_digest.lock",
+      "lock_kind": "flock",
+      "timeout_s": 900,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [],
+      "market_gate": false,
+      "output_signal": null
+    },
+    {
       "lane_id": "source-attribution-monitor",
       "env_names": [
         "DB_HOST",
@@ -4662,7 +4694,6 @@
     "ops-weekly-learning-report": "External OpenClaw script sends Telegram and has no durable receipt.",
     "system-rollup-snapshot": "Default action sends Telegram and refreshes reporting catalog. 2026-10-09 ops lanes: still blocked — scripts/system_rollup_snapshot.py has no --dry-run and its default run sends Telegram (:114-115), so no allowlist entry can be added without changing its code, which the rollup + embedding fix PR owns. The shadow workflow pair already exists under generated/pending/ (N3); add the entry (dry_run_arg once the script has one; send moved out) in or after that PR.",
     "generate-weekly-docx": "Default action sends Telegram; dated report has no stable per-run receipt.",
-    "rotation-rebalance-digest": "Default action seeds research and sends Telegram; no stable receipt.",
     "expected-services-audit": "Live service includes --alert; do not silently remove the sender from the existing lane.",
     "data-source-health-audit": "Live audit is an alerting lane; command and shared lock require a separate sender-free contract.",
     "served-copy-split-audit": "Live service includes --alert; exact cron/unit sender must remain host-owned.",
@@ -4740,10 +4771,9 @@
       "material-change-digest",
       "alert-daily-digest",
       "ops-daily-digest",
-      "ops-weekly-learning-report",
       "system-rollup-snapshot",
-      "generate-weekly-docx",
-      "rotation-rebalance-digest"
+      "ops-weekly-learning-report",
+      "generate-weekly-docx"
     ],
     "N4": [
       "expected-services-audit",

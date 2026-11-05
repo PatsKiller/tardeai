@@ -178,6 +178,14 @@
    "wave": "M1",
    "evidence": "shadow wave LD-W1 (PR #1761): offline --dry-run + LaneRunReceipt added in this wave; class report; import closure is the script alone",
    "duplicate_of": ""
+  },
+  "rotation-rebalance-digest": {
+   "disposition": "MIGRATE_N8N",
+   "target": "n8n-orchestrated sender -> host send chokepoint (send-intent)",
+   "target_shape": "leaf_lane",
+   "wave": "CD3",
+   "evidence": "operator directive 2026-10-15 (N8N Cutover Decision): STAY_HOST rationale not accepted as a blocker; superseded (was: allowlist blocked_reasons: Default action seeds research and sends Telegram; no stable receipt.)",
+   "duplicate_of": ""
   }
  }
 }
