@@ -230,22 +230,30 @@ def test_ci_gate_and_build_registration():
 
     doc = json.loads((ROOT / "config" / "ci_gates" / "work_board_designs_20261023.json").read_text())
     ci_gates.validate(doc, stem="work_board_designs_20261023")
-    pkg = json.loads((ROOT / "apps" / "command-center-v3" / "package.json").read_text())
-def _registered_by_discovery(pkg_text: str, rel: str) -> bool:
-    """A test is registered when the build runs the discovery runner AND the file is discoverable and not dormant.
+    assert "src/lib/workBoard.test.ts" in _app_test_runner_list()
+
+
+def _app_test_runner_list() -> set[str]:
+    """What the app's own discovery runner will actually run.
 
     2026-11-05: the build line no longer names ~100 test files (that single line was the four-PR collision); it runs
-    scripts/run-tests.mjs, which discovers src/**/*.test.ts|.mjs. Naming the file in the build is no longer a form of
-    registration, so this guard requires the runner, the file on disk, and the file absent from the dormant list.
+    ``scripts/run-tests.mjs``, which discovers ``src/**/*.test.ts|.mjs`` minus ``scripts/tests.dormant.json``. Naming a
+    file in the build was only ever a proxy for "it runs in CI", so the guard now asks the runner itself: the runner is
+    the build step, and this file is in its run list. It cannot drift from the runner's rule because it does not restate
+    it, and it fails loudly if the runner is removed or node is unavailable rather than passing on a stale string.
     """
-    from pathlib import Path as _P
-    import json as _json
-    if "scripts/run-tests.mjs" not in pkg_text:
-        return False
-    app = _P(__file__).resolve().parents[1] / "apps" / "command-center-v3"
-    if not (app / rel).is_file():
-        return False
-    dormant = _json.loads((app / "scripts" / "tests.dormant.json").read_text())["files"]
-    return rel not in dormant
+    import shutil
+    import subprocess
 
-    assert _registered_by_discovery(pkg["scripts"]["build"], "src/lib/workBoard.test.ts")
+    app = ROOT / "apps" / "command-center-v3"
+    build = json.loads((app / "package.json").read_text())["scripts"]["build"]
+    assert "node scripts/run-tests.mjs" in build, (
+        "the app build no longer runs the discovery test runner (node scripts/run-tests.mjs): a test is registered by "
+        "being discovered, so this guard has nothing to check until the build step is restored"
+    )
+    node = shutil.which("node")
+    assert node, "node is required to ask the app runner which tests it discovers"
+    out = subprocess.run([node, "scripts/run-tests.mjs", "--list"], cwd=app,
+                         capture_output=True, text=True, timeout=120)
+    assert out.returncode == 0, f"run-tests.mjs --list failed: {out.stderr[-500:]}"
+    return set(json.loads(out.stdout)["run"])
