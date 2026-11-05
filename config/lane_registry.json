@@ -5411,6 +5411,7 @@
         "kind": "n8n",
         "expression": "c0d4c7845e5c4fcc",
         "match": "crontab_snapshot.txt.tmp",
+        "stage": "cutover",
         "cadence": "*/20 * * * *"
       },
       "expected_cadence_hours": 0.34,
@@ -6438,6 +6439,7 @@
         "kind": "n8n",
         "expression": "078e8fcbea0c5020",
         "match": "scripts/n8n_pilot_dispatch.py",
+        "stage": "cutover",
         "cadence": "*/15 * * * *"
       },
       "expected_cadence_hours": 0.25,
@@ -6471,6 +6473,7 @@
         "kind": "n8n",
         "expression": "722fac0e043ea5c4",
         "match": "scripts/n8n_incident_fanin.py",
+        "stage": "cutover",
         "cadence": "*/5 * * * *"
       },
       "expected_cadence_hours": 0.1,
@@ -7529,6 +7532,7 @@
         "kind": "n8n",
         "expression": "21fd15d5f8a4c4da",
         "match": "scripts/n8n_research_intake_consumer.py",
+        "stage": "cutover",
         "cadence": "*/15 * * * *"
       },
       "expected_cadence_hours": 0.25,
