@@ -7469,6 +7469,11 @@ def _ops_audit():
 
 def ops_summary():
     fresh = _load_json(STATE_DIR / "_freshness.json") or {}
+    # The manifest proves a producer ran; it does not prove the store it describes
+    # is healthy. A 0-byte holdings.json must never render FRESH from cached metadata.
+    from lib.authoritative_store_guard import effective_status as _effective_status, guard as _holdings_guard
+
+    _store_guard = _holdings_guard(STATE_DIR)
     health_rows = (
         _db_query(
             """
@@ -7484,7 +7489,8 @@ def ops_summary():
 
     return {
         "pipeline": {
-            "status": fresh.get("status", "unknown"),
+            "status": _effective_status(fresh.get("status", "unknown"), _store_guard),
+            "authoritative_store": _store_guard,
             "completed_at": fresh.get("completed_at", ""),
             "duration_seconds": fresh.get("pipeline_duration_seconds", 0),
             "steps": fresh.get("steps_completed", 0),
@@ -17913,8 +17919,6 @@ def _ticket_review_run(body):
     # Explicit single-lane metered Flash is allowed; Pro/policies needing confirmation are not.
     metered_flash = {"deepseek-flash", "fast", "fast_think"}
     blocked_paid = {
-        "deepseek-v4-flash",
-        "deepseek-v4-pro",
         "deepseek-pro",
         "deepseek-v4",
         "pro",
@@ -36788,6 +36792,10 @@ def _capital_plan_compact():
                 {
                     "symbol": d.get("symbol"),
                     "stance": d.get("cio_stance"),
+                    # FQ-098 (cc-deepseek-9 F2 at b1b38341): the stance's own generation time travels WITH the stance, so
+                    # a board can say how old the call is. Without it every rendered stance read "no evidence date —
+                    # treat as unverified", a false claim in the opposite direction. Never a page-build clock.
+                    "stance_as_of": d.get("decision_generated_at") or d.get("as_of") or d.get("generated_at"),
                     "recommended_delta_usd": d.get("recommended_delta_usd"),
                     "tax_account_constraint": d.get("tax_account_constraint"),
                     "actionable": d.get("actionable"),

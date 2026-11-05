@@ -78,6 +78,10 @@ except ImportError:  # scripts/ on sys.path (api_v2 inside portfolio_server)
     from lib.agent_file_lease import canonicalize_claim_path  # type: ignore[no-redef]
 
 SCHEMA = "AgentClaim@v1"
+#: Files that sit in the claims directory without being claims. Only these may be skipped; anything else that does not
+#: parse as an AgentClaim@v1 named by its claim_id stays unreadable, so an unknown, corrupt or conflicting file still
+#: refuses the board rather than being silently dropped.
+AUXILIARY_CLAIM_DIR_SCHEMAS = frozenset({"PolicyBroadcastState@v1"})
 BOARD_SCHEMA = "AgentClaimBoard@v1"
 CHECK_SCHEMA = "AgentClaimCheck@v1"
 HISTORY_NAME = "claims_history.jsonl"
@@ -528,7 +532,12 @@ class ClaimBoard:
                 break
             try:
                 d = json.loads(p.read_text(encoding="utf-8"))
-                if not isinstance(d, dict) or d.get("schema") != SCHEMA or d.get("claim_id") != p.stem:
+                schema = d.get("schema") if isinstance(d, dict) else None
+                # An unhashable schema (list/object) is not a known auxiliary schema and must fall through to the
+                # malformed path below, never raise TypeError from the frozenset membership test.
+                if isinstance(schema, str) and schema in AUXILIARY_CLAIM_DIR_SCHEMAS:
+                    continue  # a state file that lives here by design: not a claim and not corruption
+                if not isinstance(d, dict) or schema != SCHEMA or d.get("claim_id") != p.stem:
                     raise ValueError("not an AgentClaim@v1 named by its claim_id")
                 d["_path"] = str(p)
                 docs.append(d)
@@ -623,13 +632,22 @@ class ClaimBoard:
         branch: str | None = None,
         views: list[ClaimView] | None = None,
         exclude_ids: Iterable[str] = (),
+        include_stale: bool = False,
     ) -> list[dict[str, Any]]:
-        """Live claims of OTHER sessions/branches that overlap ``paths``."""
+        """Live claims of OTHER sessions/branches that overlap ``paths``.
+
+        ``include_stale=True`` also returns claims the board has marked stale that still hold their files.
+        A caller that only gates a write (``check``, ``claim``) wants the default: a stale claim does not
+        block. A caller that answers "who do I talk to, and what may I take over" (``ask``) must see them, or
+        it reports "nobody holds this" about a path someone else still claims.
+        """
         mine = [canonical_pattern(p) for p in paths]
         skip = set(exclude_ids)
         out = []
         for v in views if views is not None else self.views()[0]:
-            if not v.blocking or v.claim_id in skip or self._is_mine(v.doc, session, branch):
+            holds_files = (v.state in {"live", "stale"} and v.lifecycle.get("locks_held", True) is not False
+                           if include_stale else v.blocking)
+            if not holds_files or v.claim_id in skip or self._is_mine(v.doc, session, branch):
                 continue
             pairs = overlapping_pairs(mine, v.doc.get("paths") or [])
             if pairs:
@@ -1366,6 +1384,9 @@ def conflict_row(v: ClaimView, pairs: list[tuple[str, str]]) -> dict[str, Any]:
         "pr": d.get("pr"),
         "started_at": d.get("started_at"),
         "heartbeat_at": d.get("heartbeat_at"),
+        # The board's own verdict on the claim. Callers must not recompute staleness from the heartbeat:
+        # rounding a rounded age is how `ask` came to call a live claim stale.
+        "state": v.state,
         "overlaps": [{"path": a, "held": b} for a, b in pairs],
     }
 
