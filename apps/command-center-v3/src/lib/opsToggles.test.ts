@@ -20,7 +20,8 @@ const state = (over: Partial<OpsControlsState> = {}): OpsControlsState => ({
   policy: { state: 'ACTIVE' }, store: { state: 'OK' }, applier: { state: 'OK' },
   factors: { webauthn_library: 'available', hmac_key: 'present', totp: 'enrolled', passkeys_active: 1 }, kinds: [],
   jobs: { state: 'OK' }, grants: { state: 'OK' }, data_approvals: { state: 'OK' } as OpsControlsState['data_approvals'],
-  release_train: { state: 'OK' }, passkeys: [], audit: { state: 'OK' }, requests: [],
+  // #2240 removed the retired release train and replaced it with the deploy latch section.
+  deploy: { state: 'OK' }, passkeys: [], audit: { state: 'OK' }, requests: [],
   n8n: { state: 'OK', rows: [
     { lane_id: 'zeta', on_live_list: true }, { lane_id: 'cio-prospect-shadow', on_live_list: false, stage: 'canary' },
     { lane_id: 'alpha', on_live_list: true }, { lane_id: 'conflict-resolver', on_live_list: false },
