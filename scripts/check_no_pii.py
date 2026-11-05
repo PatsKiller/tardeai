@@ -465,6 +465,8 @@ _HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 
 def _target(rng: str) -> str:
     """The new side of a range, for reading added blobs (A..B, A...B, or a single rev meaning rev..HEAD)."""
+    if rng == "--cached":
+        return ""  # the index: "git show :<path>" is the staged content, including a newly added file
     for sep in ("...", ".."):
         if sep in rng:
             return rng.split(sep, 1)[1] or "HEAD"
@@ -619,6 +621,11 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Fail on personal or identifying data in the repository")
     mode = ap.add_mutually_exclusive_group(required=True)
     mode.add_argument("--range", dest="rng", help="git range, e.g. origin/main...HEAD; ADDED lines only")
+    mode.add_argument(
+        "--staged",
+        action="store_true",
+        help="staged changes against HEAD (the pre-commit gate); ADDED lines only",
+    )
     mode.add_argument("--tree", action="store_true", help="every tracked file, against the ratchet baseline")
     mode.add_argument("--baseline-guard", metavar="REF", help="fail if the baseline file raises a count vs REF")
     ap.add_argument("--repo", default=str(ROOT))
@@ -653,6 +660,9 @@ def main(argv: list[str] | None = None) -> int:
         deny = load_deny_patterns(repo)
         if args.rng:
             findings, markers = scan_range(repo, args.rng, deny, verifier)
+        elif args.staged:
+            # The index against HEAD: exactly what this commit would add.
+            findings, markers = scan_range(repo, "--cached", deny, verifier)
         else:
             findings = scan_tree(repo, deny, verifier)
     except ScanError as exc:
@@ -660,13 +670,13 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     findings.sort(key=lambda f: (f.path, f.line, f.category))
 
-    if args.rng:
+    if args.rng or args.staged:
         by_cat = {k: sum(1 for f in findings if f.category == k) for k in CATEGORIES}
         if args.json:
             _dump(
                 {
-                    "mode": "range",
-                    "range": args.rng,
+                    "mode": "range" if args.rng else "staged",
+                    "range": args.rng or "--cached",
                     "ok": not findings,
                     "counts": by_cat,
                     "allow_markers_added": markers,
@@ -688,7 +698,10 @@ def main(argv: list[str] | None = None) -> int:
                 "it at runtime; no inline marker silences a finding."
             )
         else:
-            print(f"check_no_pii: OK -- no personal or identifying data added in {args.rng}")
+            print(
+                f"check_no_pii: OK -- no personal or identifying data added in "
+                f"{args.rng or 'the staged changes (--cached)'}"
+            )
         if markers:
             print(f"check_no_pii: NOTE -- {markers} added line(s) carry an inline allow marker; none is honoured.")
         return 1 if findings else 0

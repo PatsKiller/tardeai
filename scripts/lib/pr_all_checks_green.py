@@ -33,6 +33,8 @@ from typing import Any, Callable, Iterable, Mapping
 OK_CONCLUSIONS = frozenset({"success", "neutral"})
 SKIPPED_CONCLUSION = "skipped"
 NO_RUNS_REASON = "no check runs on the head"
+NO_EXECUTED_RUNS_REASON = "no completed non-skipped check runs on the head"
+MERGE_REQUIRED_CHECKS = ("cio-hardening", "agent-governance", "release-readiness", "ci-gate")
 #: Keep the failing list readable in a Telegram page or an error detail.
 DESCRIBE_LIMIT = 300
 
@@ -114,12 +116,12 @@ def evaluate(check_runs: CheckRuns, *, allow_empty: bool = False) -> dict[str, A
         else:
             failing.append(f"{label}: {conclusion or 'no conclusion'}")
     return {
-        "ok": not failing,
+        "ok": not failing and bool(passing),
         "passing": passing,
         "failing": failing,
         "skipped": skipped,
         "checked": len(latest),
-        "reason": None,
+        "reason": NO_EXECUTED_RUNS_REASON if not failing and not passing else None,
     }
 
 
@@ -151,7 +153,13 @@ def normalize_rollup(rollup: Iterable[Mapping[str, Any]] | None) -> list[dict[st
             # `state`. Treating a conclusion-only CheckRun as pending made every fixture look red.
             status = "completed" if conclusion else "queued"
         run = {"name": name, "status": status, "conclusion": conclusion,
-               "started_at": str(row.get("startedAt") or row.get("started_at") or "")}
+               "started_at": str(row.get("startedAt") or row.get("started_at") or ""),
+               "_status_explicit": isinstance(row.get("status"), str) and bool(row["status"].strip())}
+        # Retain supplied REST identities as well as workflow names: equal job names
+        # from different suites must not overwrite one another in the shared reducer.
+        for field in ("check_suite", "check_suite_id"):
+            if row.get(field) is not None:
+                run[field] = row[field]
         workflow = row.get("workflowName") or row.get("workflow")
         if workflow:
             run["workflowName"] = str(workflow)
@@ -170,6 +178,82 @@ def evaluate_rollup(rollup: Iterable[Mapping[str, Any]] | None, *, allow_empty: 
     if len(rows) >= ROLLUP_LIMIT:
         result["ok"] = False
         result["reason"] = f"rollup reached its {ROLLUP_LIMIT}-row limit; every check could not be proven"
+    return result
+
+
+def evaluate_merge_rollup(
+    rollup: Iterable[Mapping[str, Any]] | None, *, required: Iterable[str] = MERGE_REQUIRED_CHECKS,
+) -> dict[str, Any]:
+    """Standing merge gate: all four main Actions checks genuinely completed SUCCESS.
+
+    Overrides may add requirements, never remove the mandatory four. Optional legacy
+    StatusContexts retain normal rollup semantics, but an inferred status cannot prove
+    a required Actions run completed. This grades evidence only; it grants no merge.
+    """
+    def invalid(reason: str) -> dict[str, Any]:
+        result = evaluate_rollup([])
+        result.update(ok=False, reason=reason, required=list(MERGE_REQUIRED_CHECKS), required_success=[],
+                      missing_required=list(MERGE_REQUIRED_CHECKS), required_not_success=[])
+        return result
+
+    if isinstance(required, (str, bytes, Mapping)):
+        return invalid("invalid required check configuration")
+    try:
+        names = tuple(required)
+    except TypeError:
+        return invalid("invalid required check configuration")
+    if (not all(isinstance(name, str) and name and name == name.strip() for name in names)
+            or len(set(names)) != len(names) or not set(MERGE_REQUIRED_CHECKS).issubset(names)):
+        return invalid("required checks may add to, never omit or duplicate, the mandatory four")
+    if isinstance(rollup, (str, bytes, Mapping)):
+        return invalid("malformed check rollup: expected rows")
+    try:
+        rows = list(rollup) if rollup is not None else []
+    except TypeError:
+        return invalid("malformed check rollup: expected rows")
+    for index, row in enumerate(rows):
+        if not isinstance(row, Mapping):
+            return invalid(f"malformed check rollup row {index}")
+        name = row.get("name") or row.get("context")
+        if not isinstance(name, str) or not name.strip():
+            return invalid(f"check rollup row {index} has no valid name")
+        for field in ("status", "conclusion", "state", "startedAt", "started_at", "workflowName", "workflow"):
+            if row.get(field) is not None and not isinstance(row[field], str):
+                return invalid(f"check rollup row {index} has invalid {field}")
+        suite = row.get("check_suite")
+        suite_id = suite.get("id") if isinstance(suite, Mapping) else row.get("check_suite_id")
+        if suite is not None and (not isinstance(suite, Mapping) or suite_id is None):
+            return invalid(f"check rollup row {index} has invalid check suite")
+        if suite_id is not None and (isinstance(suite_id, bool) or not isinstance(suite_id, (str, int))):
+            return invalid(f"check rollup row {index} has invalid check suite identity")
+
+    result = evaluate_rollup(rows)  # Retains the existing fail-closed rollup-limit rule.
+    latest = _latest_per_name(normalize_rollup(rows))
+    success: list[str] = []
+    missing: list[str] = []
+    not_success: list[str] = []
+    for name in names:
+        contexts = [(key, run) for key, run in latest.items() if key[0] == name]
+        if not contexts:
+            missing.append(name)
+            continue
+        bad = []
+        for (context_name, suite), run in contexts:
+            if (run.get("status") != "completed" or run.get("conclusion") != "success"
+                    or run.get("_status_explicit") is not True):
+                why = "missing explicit completed status" if run.get("_status_explicit") is not True else f"{run.get('status')} {run.get('conclusion') or 'no conclusion'}"
+                bad.append(f"{_label(context_name, suite)}: {why}")
+        if bad:
+            not_success.extend(bad)
+        else:
+            success.append(name)
+    result.update(required=list(names), required_success=success, missing_required=missing,
+                  required_not_success=not_success)
+    if missing or not_success:
+        result["ok"] = False
+        result["failing"].extend(f"required {name}: missing" for name in missing)
+        result["failing"].extend(f"required {detail}" for detail in not_success)
+        result["reason"] = result.get("reason") or "required merge checks are missing or not completed SUCCESS"
     return result
 
 
