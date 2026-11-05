@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import hashlib
 import json
 import os
 import re
@@ -109,9 +110,24 @@ class CleanupError(ValueError):
 # ── identity ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 
+SLUG_MAX = 24
+
+
 def slug(value: Any) -> str:
+    """A stable directory name for a task or session identity.
+
+    D52 triage on #2302: truncating to 24 characters merged distinct tasks into one directory —
+    ``disk-governance-process-worker-a`` and ``disk-governance-process-worker-b`` both became
+    ``disk-governance-process-`` — so completing EITHER task authorized deleting the other's live scratch. A name
+    that fits stays exactly as it was (existing scratch keeps its path); a longer name carries a short digest of
+    the FULL normalized name, so two long identities can never share a directory.
+    """
     s = _SLUG_RE.sub("-", str(value or "").strip().lower()).strip("-")
-    return (s or "unknown")[:24]
+    s = s or "unknown"
+    if len(s) <= SLUG_MAX:
+        return s
+    digest = hashlib.sha256(s.encode("utf-8")).hexdigest()[:8]
+    return f"{s[:SLUG_MAX - 9]}-{digest}"
 
 
 def env_session(env: Optional[Mapping[str, str]] = None) -> Optional[str]:

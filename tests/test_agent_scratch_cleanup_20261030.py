@@ -760,3 +760,38 @@ def test_d52_completion_is_revalidated_immediately_before_removal(tmp_path, monk
     report = json.loads(capsys.readouterr().out)
     assert candidate.exists() and not report["removed_count"], report
     assert report["removed"][0]["how"] == "skip:completion_revalidation_refused", report
+
+
+# ── D52 triage on #2302: a deletable scratch namespace must be collision-resistant ────────────────────────────────
+
+
+def test_two_long_task_names_do_not_share_a_scratch_directory():
+    """Both `disk-governance-process-worker-a` and `-b` normalised to `disk-governance-process-`, so completing one
+    task authorized deleting the other's live scratch. Distinct identities must be distinct directories."""
+    mod = _load()
+    a = mod.slug("disk-governance-process-worker-a")
+    b = mod.slug("disk-governance-process-worker-b")
+    assert a != b, (a, b)
+    for value in (a, b):
+        assert len(value) <= 24, value
+        assert value == value.strip("-") and value
+
+
+def test_a_short_task_name_keeps_its_existing_path():
+    mod = _load()
+    assert mod.slug("mytask") == "mytask"
+    assert mod.slug("") == "unknown"
+
+
+def test_one_tasks_completion_cannot_reach_the_other_tasks_directory(tmp_path):
+    mod = _load()
+    home = tmp_path / "home"
+    base = home / ".cache" / "agent-tmp"
+    (base / mod.slug("disk-governance-process-worker-a")).mkdir(parents=True)
+    other = base / mod.slug("disk-governance-process-worker-b")
+    other.mkdir()
+    completed, problem = mod.completion_evidence(
+        other, home=home, claims_dir=tmp_path / "claims",
+        task="disk-governance-process-worker-a", session="synthetic-session", claim=None)
+    assert completed == [], completed
+    assert problem == "task_completion_namespace_mismatch", problem
