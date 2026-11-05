@@ -272,15 +272,15 @@ def run_cycle(*, apply: bool, coord: Path, queue_path: Path, claims_dir: Path, l
 
     # F2 round 2 (cx-openai-3): every output identity is decided BEFORE the first keystroke. A refusal must cost
     # zero sends; validating after the loop meant a misconfigured --ledger still submitted to the whole fleet first.
-    ledger_target = D.safe_output_path(ledger_path, coord=coord, protected=[queue_path, claims_dir])
-    merge_ready_target = D.safe_output_path(coord / "MERGE_READY.md", coord=coord, protected=[queue_path, claims_dir])
-    alert_target = D.safe_output_path(coord / "DISPATCH_IDLE_ALERT.md", coord=coord, protected=[queue_path, claims_dir])
+    ledger_target = D.prepare_output(ledger_path, coord=coord, protected=[queue_path, claims_dir])
+    merge_ready_target = D.prepare_output(coord / "MERGE_READY.md", coord=coord, protected=[queue_path, claims_dir])
+    alert_target = D.prepare_output(coord / "DISPATCH_IDLE_ALERT.md", coord=coord, protected=[queue_path, claims_dir])
 
     # R6 (codex at fffe2c9cb): a receipt is written as soon as it exists. Buffering every line until the last
     # submission returned meant one failing session discarded the already-delivered receipts, which is the opposite of
     # what an audit trail is for. An exception from a transport is recorded as a failed dispatch, never propagated.
     lines: list[str] = []
-    ledger_target.parent.mkdir(parents=True, exist_ok=True)
+    ledger_target.path.parent.mkdir(parents=True, exist_ok=True)
     with D.open_output(ledger_target, append=True) as ledger_fh:
         for a in assignments:
             try:
@@ -296,7 +296,7 @@ def run_cycle(*, apply: bool, coord: Path, queue_path: Path, claims_dir: Path, l
             ledger_fh.write(line + "\n")
             ledger_fh.flush()
 
-    idle_state_target = D.safe_output_path(coord / IDLE_STATE_NAME, coord=coord, protected=[queue_path, claims_dir])
+    idle_state_target = D.prepare_output(coord / IDLE_STATE_NAME, coord=coord, protected=[queue_path, claims_dir])
     with D.open_output(idle_state_target) as fh:
         fh.write(json.dumps(getattr(idle_minutes_from_state, "last", {}), indent=1, sort_keys=True) + "\n")
     with D.open_output(merge_ready_target) as fh:

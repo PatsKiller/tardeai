@@ -517,7 +517,9 @@ def test_the_module_writes_only_its_own_two_files():
     src = (ROOT / "scripts" / "agent_dispatch.py").read_text(encoding="utf-8")
     named = set(re.findall(r'"(MERGE_READY\.md|DISPATCH_IDLE_ALERT\.md)"', src))
     assert named == {"MERGE_READY.md", "DISPATCH_IDLE_ALERT.md"}, named
-    assert src.count("D.safe_output_path(") >= 3, "every write target must pass through the guard"
+    # R1: every target is prepared (identities recorded) and then opened through the checked handle.
+    assert src.count("D.prepare_output(") >= 3, "every write target must pass through the guard"
+    assert "D.safe_output_path(" not in src, "the bare precheck must not be used as if it were a fence"
     assert "pr_merge_delegation" not in src and "gh pr merge" not in src and "git push" not in src
     # R1 (codex at fffe2c9cb): the write itself goes through the identity-checked handle, not a bare open("a").
     assert re.search(r"open_output\(ledger_target, append=True\)", src), "the ledger append must be visible in the source"
@@ -796,6 +798,39 @@ def test_open_output_refuses_a_symlink_swapped_in_after_the_precheck(tmp_path):
     with pytest.raises(D.DispatchError):
         D.open_output(checked)
     assert queue.read_text(encoding="utf-8") == '{"items": [1, 2, 3]}\n', "the queue must be untouched"
+
+
+def test_open_output_refuses_a_directory_replaced_after_the_check(tmp_path):
+    """R1's residual, closed: the file name is resolved inside the directory INODE that was validated, so replacing
+    the directory between the check and the write cannot redirect the report into the queue."""
+    coord = tmp_path / "coord"
+    (coord / "inbox").mkdir(parents=True)
+    queue = coord / "AUDIT_FIX_QUEUE.json"
+    queue.write_text('{"items": []}\n', encoding="utf-8")
+    out = coord / "MERGE_READY.md"
+    checked = D.prepare_output(out, coord=coord, protected=[queue])
+    # now swap the whole directory for a symlink pointing at the protected inbox
+    moved = tmp_path / "coord-moved"
+    coord.rename(moved)
+    coord.symlink_to(moved / "inbox")
+    with pytest.raises(D.DispatchError):
+        D.open_output(checked)
+    assert not any((moved / "inbox").iterdir()), "nothing may be written through the swapped directory"
+
+
+def test_open_output_refuses_a_file_replaced_after_the_check(tmp_path):
+    """R1: if the output existed at check time and is a different inode at write time, it is not our file any more."""
+    coord = tmp_path / "coord"
+    coord.mkdir()
+    out = coord / "MERGE_READY.md"
+    out.write_text("old report\n", encoding="utf-8")
+    checked = D.prepare_output(out, coord=coord)
+    out.unlink()
+    out.write_text("impostor\n", encoding="utf-8")      # a NEW inode at the same path
+    with pytest.raises(D.DispatchError) as exc:
+        D.open_output(checked)
+    assert "replaced after the check" in str(exc.value)
+    assert out.read_text(encoding="utf-8") == "impostor\n", "the replacement must not be truncated either"
 
 
 def test_open_output_refuses_a_hardlink_alias_at_any_depth(tmp_path):

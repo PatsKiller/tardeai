@@ -620,27 +620,71 @@ def _tracked(path: Path) -> bool:
     return ls.returncode == 0
 
 
-def open_output(target: Path, *, append: bool = False):
+@dataclass
+class CheckedOutput:
+    """An output path plus the identities it had WHEN IT WAS CHECKED.
+
+    Holding the parent's device/inode is what makes the later open a check on the real object rather than on a string:
+    the write resolves the file name inside the directory inode we validated, not inside whatever that path names a
+    moment later.
+    """
+    path: Path
+    parent_inode: tuple[int, int] | None
+    file_inode: tuple[int, int] | None
+
+
+def prepare_output(target: Path, *, coord: Path, protected: Sequence[Path] = ()) -> CheckedOutput:
+    """``safe_output_path`` plus the identities needed to verify the same object at write time."""
+    real = safe_output_path(target, coord=coord, protected=protected)
+    parent_inode = _inode(real.parent)
+    file_inode = _inode(real) if real.exists() else None
+    return CheckedOutput(real, parent_inode, file_inode)
+
+
+def open_output(target: Path | CheckedOutput, *, append: bool = False):
     """Open one of this lane's own outputs through an identity-checked handle (R1, codex at fffe2c9cb).
 
     ``safe_output_path`` is a precheck, and a precheck is not a fence: the file can be replaced between the check and
     the write (codex swapped MERGE_READY.md for a symlink into the queue during the first send and the report truncated
-    the queue). The write therefore opens without following symlinks, and a file with more than one link is refused
-    outright — that catches a hardlink alias at ANY depth, where the precheck only walks two.
+    the queue). Three checks run on the object actually being written:
 
-    Callers get a text handle; the checks happened on the very inode that will be written.
+    * the parent directory is opened first and compared with the identity recorded when the path was checked, and the
+      file name is resolved relative to THAT directory handle — so swapping the directory entry afterwards redirects
+      nothing;
+    * ``O_NOFOLLOW`` refuses a symlink, and a link count above 1 refuses a hardlink alias at ANY depth (the precheck
+      only walks two);
+    * no ``O_TRUNC`` until those checks pass — truncation is a write, and an alias opened with ``O_TRUNC`` would empty
+      the protected file before the refusal.
+
+    Passing a plain path still works (the identity checks then only cover symlink and link count); passing the
+    ``CheckedOutput`` is what makes the parent and file identities binding.
     """
+    checked = target if isinstance(target, CheckedOutput) else CheckedOutput(Path(target), None, None)
+    path = checked.path
     # No O_TRUNC: truncation is a WRITE, and the whole point is to inspect the handle before any byte changes. A
     # hardlink alias opened with O_TRUNC would empty the protected file first and refuse afterwards.
     flags = os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | (os.O_APPEND if append else 0)
     try:
-        fd = os.open(str(target), flags, 0o644)
+        dir_fd = os.open(str(path.parent), os.O_RDONLY | os.O_DIRECTORY)
     except OSError as exc:
-        raise DispatchError(f"refusing to write {target}: {exc}") from exc
+        raise DispatchError(f"refusing to write {path}: cannot open its directory ({exc})") from exc
+    try:
+        if checked.parent_inode is not None:
+            have = os.fstat(dir_fd)
+            if (have.st_dev, have.st_ino) != checked.parent_inode:
+                raise DispatchError(f"refusing to write {path}: its directory was replaced after the check")
+        try:
+            fd = os.open(path.name, flags, 0o644, dir_fd=dir_fd)
+        except OSError as exc:
+            raise DispatchError(f"refusing to write {path}: {exc}") from exc
+    finally:
+        os.close(dir_fd)
     try:
         st = os.fstat(fd)
         if st.st_nlink != 1:
-            raise DispatchError(f"refusing to write {target}: it has {st.st_nlink} links (an alias of another file)")
+            raise DispatchError(f"refusing to write {path}: it has {st.st_nlink} links (an alias of another file)")
+        if checked.file_inode is not None and (st.st_dev, st.st_ino) != checked.file_inode:
+            raise DispatchError(f"refusing to write {path}: the file was replaced after the check")
         if not append:
             os.ftruncate(fd, 0)  # now that the inode is known to be ours alone
         return os.fdopen(fd, "a" if append else "w", encoding="utf-8")
