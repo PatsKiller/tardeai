@@ -18,6 +18,7 @@ Agents never place, change or cancel an order, and nothing here does: it sends w
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -98,26 +99,55 @@ CC_REAUTH_PATH = "/v3/system/schwab-reauth"
 LINK_CLASSES = frozenset({"B4_schwab_login_expiring"})
 LINK_BASE_ENV = "TRADEAI_CC_LINK_BASE"
 LINK_HOST_SUFFIX = ".ts.net"
+# Any URL-shaped token, so a link smuggled through a producer's wording is caught where the operator would read it
+# (the rendered trigger/action), not only on the dedicated `link`/`link_base` fields.
+_URL_IN_TEXT = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*://|\bwww\.", re.IGNORECASE)
 
 
 def critical_link(base: Any) -> str:
     """The one-tap reauth URL: https, tailnet host, no dev port. Anything else is refused, never repaired."""
-    import os
     from urllib.parse import urlsplit
 
     raw = " ".join(str(base or "").split())
     if not raw:
         raise CriticalTextError(f"{sorted(LINK_CLASSES)[0]} needs the Command Center link base ({LINK_BASE_ENV})")
-    parts = urlsplit(raw)
+    try:
+        parts = urlsplit(raw)
+        port = parts.port  # raises ValueError for a non-numeric/out-of-range port
+    except ValueError as exc:
+        # A malformed base is a policy refusal, not a crash: send_critical_text catches CriticalTextError only.
+        raise CriticalTextError(f"the reauth link base is not a valid URL ({exc})") from exc
     if parts.scheme != "https":
         raise CriticalTextError(f"the reauth link must be https, not {parts.scheme or 'no scheme'!r}")
-    if parts.port not in (None, 443):
+    if port not in (None, 443):
         # Covers the :7777 dev port and every other explicit port in one rule.
-        raise CriticalTextError(f"the reauth link must not carry a port ({parts.port}), including :7777")
+        raise CriticalTextError(f"the reauth link must not carry a port ({port}), including :7777")
     host = (parts.hostname or "").rstrip(".")
     if not host.endswith(LINK_HOST_SUFFIX):
         raise CriticalTextError(f"the reauth link must be the tailnet host ({LINK_HOST_SUFFIX}), not {host or 'no host'!r}")
     return f"https://{host}{CC_REAUTH_PATH}"
+
+
+def _with_trigger(head: str, trigger: str, action: str, tail: str) -> str:
+    """``head <trigger>. Suggest <action>.`` + tail, shortening the TRIGGER only — never the action or the tail.
+
+    ``head``/``action``/``tail`` are fixed: the caller has already refused when they cannot fit. A trigger with no
+    spaces cannot be cut on a word boundary, so it is cut hard (plus an ellipsis) rather than dropped silently; when
+    there is no room left at all it is omitted, leaving the action and any link intact.
+    """
+    fixed = f"{head}. Suggest {action}."
+    room = MAX_TEXT_CHARS - len(fixed) - len(tail) - 2  # -2 leaves one spare for the ellipsis and one for a space
+    if len(trigger) <= room:
+        sentence = f"{head} {trigger}. Suggest {action}." + tail
+    elif room < 2:
+        sentence = fixed + tail
+    else:
+        piece = trigger[:room]
+        if " " in piece:
+            piece = piece.rsplit(" ", 1)[0]
+        piece = piece.rstrip(" ,.;") + "…"
+        sentence = f"{head} {piece}. Suggest {action}." + tail
+    return sentence.replace("..", ".")  # a trigger that ends in "." must not become ".. Suggest"
 
 
 def format_text(event: dict[str, Any], *, link_base: Any = None) -> str:
@@ -137,43 +167,49 @@ def format_text(event: dict[str, Any], *, link_base: Any = None) -> str:
     if not action:
         raise CriticalTextError("a critical text needs one suggested action")
     head = f"ACT NOW {symbol}" + (f" ({account})" if account else "")
-    link = ""
     if alert_class in LINK_CLASSES:
         # D35 B4: the login text is useless without the one-tap page, so the link is required and is never truncated.
         # A producer may hand in the finished page (critical_producers._b4 sets ``link``); it is normalised through the
         # same validation, so a prebuilt URL can be a convenience but never a way around the https/tailnet/no-port rule.
         link = critical_link(link_base or os.environ.get(LINK_BASE_ENV) or event.get("link_base")
                              or event.get("link"))
-    elif event.get("link") or event.get("link_base"):
-        raise CriticalTextError(f"{alert_class or 'this class'} may not carry a link; only {sorted(LINK_CLASSES)} do")
-    body = f"{head} {trigger}.".rstrip(".") + f". Suggest {action}."
-    body = body.replace("..", ".")
-    if link and link not in action:
-        # Room is reserved for the URL before the trigger is shortened: a cut-off reauth link would be worse than none.
-        # When the producer's action already carries the link (as critical_producers._b4 does), it is not said twice.
+    else:
+        if event.get("link") or event.get("link_base"):
+            raise CriticalTextError(f"{alert_class or 'this class'} may not carry a link; only {sorted(LINK_CLASSES)} do")
+        # The invariant is about the sentence the operator reads, not only the two fields it was stored in.
+        if _URL_IN_TEXT.search(f"{head} {trigger} {action}"):
+            raise CriticalTextError(f"{alert_class or 'this class'} may not carry a link; only {sorted(LINK_CLASSES)} do")
+        link = ""
+
+    refuse_link = "the reauth link does not fit in one 160-character text"
+    if link:
+        if link in trigger:
+            # The URL sits in the trigger; shortening it would cut the link, so fit whole or refuse.
+            sentence = f"{head} {trigger}. Suggest {action}."
+            if len(sentence) + len(" CC Risk") > MAX_TEXT_CHARS:
+                raise CriticalTextError(refuse_link)
+            return (sentence + " CC Risk").replace("..", ".")
+        if link in action:
+            # The producer's sentence already carries the finished URL: never repeat it, and never shorten the action.
+            # If even ``head + action + CC Risk`` cannot fit, refuse — a cut URL is worse than no text.
+            tail = " CC Risk"
+            if len(f"{head}. Suggest {action}.") + len(tail) > MAX_TEXT_CHARS:
+                raise CriticalTextError(refuse_link)
+            return _with_trigger(head, trigger, action, tail)
+        # Append the URL, reserving its room before the trigger is shortened. The action must survive whole; if the
+        # action plus the link cannot fit, refuse rather than slice the sentence (and possibly the link) to 160.
         tail = f" Log in: {link} CC Risk"
-        if len(tail) >= MAX_TEXT_CHARS - len(head):
-            raise CriticalTextError("the reauth link does not fit in one 160-character text")
-        room = MAX_TEXT_CHARS - len(tail)
-        if len(body) > room:
-            body = body[:room].rstrip(" ,.;")
-            body = body.rsplit(" ", 1)[0].rstrip(" ,.;") + "…"
-        return f"{body}{tail}"
-    tail = " CC Risk"
-    if len(body) + len(tail) <= MAX_TEXT_CHARS:
-        return body + tail
-    # The action is what tells the operator what to do, so it survives; the trigger is what gets shortened.
-    # A trigger with no spaces cannot be cut on a word boundary, so it is cut hard rather than leaving the
-    # text as "ACT NOW SPCX… CC Risk" with neither the number nor the action in it (review, 2026-11-05).
+        if len(f"{head}. Suggest {action}.") + len(tail) > MAX_TEXT_CHARS:
+            raise CriticalTextError(refuse_link)
+        return _with_trigger(head, trigger, action, tail)
+
+    # No link: the action survives and the trigger is shortened first. If even the action cannot fit, a cut action is
+    # the only honest option left (there is no URL to break, and dropping the alert would be worse).
     fixed = f"{head}. Suggest {action}."
-    room = MAX_TEXT_CHARS - len(tail) - len(fixed) - 2
-    if room < 4:
+    tail = " CC Risk"
+    if len(fixed) + len(tail) > MAX_TEXT_CHARS:
         return (fixed + tail)[:MAX_TEXT_CHARS]
-    piece = trigger if len(trigger) <= room else trigger[:room]
-    if len(trigger) > room and " " in piece:
-        piece = piece.rsplit(" ", 1)[0]
-    cut = piece.rstrip(" ,.;") + ("…" if len(trigger) > room else "")
-    return f"{head} {cut}. Suggest {action}." + tail
+    return _with_trigger(head, trigger, action, tail)
 
 
 def _load_state(path: Path) -> dict[str, Any]:

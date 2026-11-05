@@ -263,3 +263,87 @@ def test_a_producer_supplied_link_gets_no_validation_exemption():
                                     action="Re-authorise"))
     with pytest.raises(ct.CriticalTextError):
         ct.format_text(_login_event(link="http://cc-fixture.ts.net/v3/system/schwab-reauth", action="Re-authorise"))
+
+
+# ── Findings from the whole-head review of c417f3776 (2026-11-05) ─────────────────────────────────────
+URL = "https://cc-fixture.ts.net/v3/system/schwab-reauth"
+
+
+def _b4_producer_event(renewal_wording: str) -> dict:
+    """The exact shape critical_producers._b4 builds: `Schwab login expiring — {quote}: {url}`."""
+    return _login_event(trigger="Schwab login expires in 12h",
+                        action=f"Schwab login expiring — {renewal_wording}: {URL}", link=URL)
+
+
+def test_an_over_long_producer_sentence_is_refused_not_truncated(monkeypatch):
+    """F1: a 62-character renewal_wording (action 137 chars) used to be sliced to 160, cutting the URL and sending it."""
+    monkeypatch.delenv(ct.LINK_BASE_ENV, raising=False)
+    ev = _b4_producer_event("r" * 62)
+    assert len(ev["action"]) == 137                     # the exact shape the reviewer drove
+    with pytest.raises(ct.CriticalTextError):
+        ct.format_text(ev)
+    with pytest.raises(ct.CriticalTextError):
+        # A plain over-long action with the link embedded is the same defect, not wording-specific.
+        ct.format_text(_login_event(link=URL, action="Schwab login expiring: " + "y" * 130 + " " + URL))
+
+
+def test_an_over_long_producer_sentence_sends_nothing_and_says_why(monkeypatch, tmp_path):
+    """F1 through the public entry point: no broken link leaves the building, and the refusal names the reason."""
+    monkeypatch.delenv(ct.LINK_BASE_ENV, raising=False)
+    contact = tmp_path / "operator_contact.json"
+    contact.write_text(json.dumps({"critical_sms_email_gateways": FAKE_LINES}), encoding="utf-8")
+    config = tmp_path / "critical_text_classes.json"
+    config.write_text(json.dumps({"classes": {"B4_schwab_login_expiring": {"enabled": True}},
+                                  "max_per_hour": 10, "dedupe_hours": 12}), encoding="utf-8")
+    send, calls = recorder()
+    result = ct.send_critical_text(_b4_producer_event("r" * 62), sender=send, contact_path=contact,
+                                   config_path=config, state_path=tmp_path / "s.json", now=NOW)
+    assert result["sent"] is False and "does not fit" in result["reason"]
+    assert calls == []
+
+
+def test_a_link_in_the_rendered_text_is_refused_for_every_other_class(monkeypatch):
+    """F3: only B4 may carry a link, checked on the sentence the operator reads, not just the link fields."""
+    monkeypatch.delenv(ct.LINK_BASE_ENV, raising=False)
+    for field in ("action", "trigger"):
+        with pytest.raises(ct.CriticalTextError):
+            ct.format_text(event(**{field: "open http://evil.example/?token=SECRET"}))
+    with pytest.raises(ct.CriticalTextError):
+        ct.format_text(event(action="see www.evil.example now"))
+    with pytest.raises(ct.CriticalTextError):
+        ct.format_text(event(action="visit ftp://evil.example/x"))
+    # A plain number/decimal is not a URL and still formats.
+    assert "Suggest EXT limit sell 130.90." in ct.format_text(event())
+
+
+def test_a_malformed_link_base_is_a_named_refusal_not_a_bare_valueerror(monkeypatch, tmp_path):
+    """F4: urlsplit/`.port` can raise ValueError; the channel's contract is an explicit policy refusal."""
+    monkeypatch.delenv(ct.LINK_BASE_ENV, raising=False)
+    for base in ("https://cc-fixture.ts.net:abc", "https://[::1", "https://cc-fixture.ts.net:99999"):
+        with pytest.raises(ct.CriticalTextError):
+            ct.critical_link(base)
+
+    contact = tmp_path / "operator_contact.json"
+    contact.write_text(json.dumps({"critical_sms_email_gateways": FAKE_LINES}), encoding="utf-8")
+    config = tmp_path / "critical_text_classes.json"
+    config.write_text(json.dumps({"classes": {"B4_schwab_login_expiring": {"enabled": True}},
+                                  "max_per_hour": 10, "dedupe_hours": 12}), encoding="utf-8")
+    send, calls = recorder()
+    result = ct.send_critical_text(_login_event(link_base="https://cc-fixture.ts.net:abc"),
+                                   sender=send, contact_path=contact, config_path=config,
+                                   state_path=tmp_path / "s.json", now=NOW)
+    assert result["sent"] is False and "not a valid URL" in result["reason"]
+    assert calls == []
+
+
+def test_the_append_path_shortens_the_trigger_not_the_action(monkeypatch):
+    """F5: with a long trigger and a link_base, the old path sliced the body and lost/cut the action."""
+    monkeypatch.delenv(ct.LINK_BASE_ENV, raising=False)
+    action = "Re-authorise and sign in again"
+    long_trigger = "the Schwab refresh token expires in twelve hours " + "and the stop checks go blind " * 4
+    text = ct.format_text(_login_event(trigger=long_trigger, action=action), link_base=FAKE_LINK_BASE)
+    assert f"Suggest {action}." in text                 # the action survives whole
+    assert URL in text                                  # the link survives whole
+    assert text.endswith("CC Risk")
+    assert len(text) <= ct.MAX_TEXT_CHARS
+

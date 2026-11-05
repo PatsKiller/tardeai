@@ -7,7 +7,7 @@
   ],
   "anchor": "CRITICAL_TEXTS_20261104",
   "comment": [
-    "ANCHOR: CRITICAL_TEXTS_20261104 \u2014 SPEC_CRITICAL_TEXT_ACTION_ALERTS_20261104 (Part A + D35): the critical-text channel's",
+    "ANCHOR: CRITICAL_TEXTS_20261104 — SPEC_CRITICAL_TEXT_ACTION_ALERTS_20261104 (Part A + D35): the critical-text channel's",
     "allowlist, Fi email-to-text fan-out, <=160-character formatter, dedupe, the hourly cap counted in TEXTS (events x lines),",
     "and the B4 one-tap reauth link (https, tailnet host, no port, never truncated).",
     "Hermetic: fake addresses only, every send is a recording stub, temp contact/config/state paths; no live send."
