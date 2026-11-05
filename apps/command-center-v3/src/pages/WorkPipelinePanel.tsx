@@ -61,7 +61,7 @@ function StageCells({ it }: { it: PipelineItem }) {
       Now at: <b>{words}</b>
     </div>
     <div data-testid="stage-cells" className="wp-stages" style={{ display: 'grid', gridTemplateColumns: 'repeat(11, minmax(0, 1fr))', gap: 3 }}>
-      {it.cells.map(c => <div key={c.stage} data-stage={c.stage} data-rag={c.rag} data-current={c.stage === it.stage ? "1" : undefined} title={cellTitle(c)} aria-label={cellTitle(c)} style={cellStyle(c.rag, c.stage === it.stage)}>
+      {it.cells.map(c => <div key={c.stage} data-stage={c.stage} data-rag={c.rag} title={cellTitle(c)} aria-label={cellTitle(c)} style={cellStyle(c.rag, c.stage === it.stage)}>
         <span className="wp-cell-text">{c.stage === it.stage && c.label ? c.label : STAGE_LABEL[c.stage]}</span>
       </div>)}
     </div>
@@ -313,8 +313,10 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
         .wp-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
         .wp-queue { grid-template-columns: minmax(0, 1fr); }
         /* FQ-032: the strip stays as colour, but the CURRENT stage is named in words on the phone — the bars
-           alone told an operator nothing. The cell text is kept (not hidden) on the current cell only; the rest
-           stay compact so the strip still fits. */
+           alone told an operator nothing. Every in-cell label is hidden here, the current cell included: an
+           11-column strip gives each cell 22 px and the labels need 39-54 px, so any label drawn inside a cell
+           clips. The current stage is named by the full-width line above instead, and each cell keeps its
+           aria-label and title for anything reading the DOM (cc-deepseek-5 review at c5a25828c). */
         .wp-stages > div { height: 22px !important; }
         .wp-cell-text { display: none; }
         .wp-current-stage { display: block; font-size: 12px; }

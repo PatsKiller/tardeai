@@ -24,8 +24,14 @@ def test_the_phone_names_the_current_stage_on_its_own_line():
     # Review at 64b3abc24 measured the cells at 26-28 px on a 390 px phone while the labels need 39-54 px, so a label
     # inside the cell clipped. The words now lead on a full-width line and the strip keeps the colour.
     block = _phone_block()
-    assert not re.search(r'data-current="1"\]\s*\.wp-cell-text \{ display: inline', block), (
-        "the phone still squeezes a label into a cell that cannot fit it"
+    # cc-deepseek-5 review at c5a25828c: asserting only the ABSENCE of one exact selector let a plain
+    # `.wp-cell-text { display: inline; }` — every label back in a 22 px bar, the original bug — pass. Assert the
+    # hiding itself, which is what the operator gets.
+    assert re.search(r"\.wp-cell-text \{ display: none", block), (
+        "the phone does not hide the in-cell label, so every label is drawn in a 22 px bar and clips"
+    )
+    assert not re.search(r"\.wp-cell-text \{[^}]*display: (inline|block)", block), (
+        "the phone re-shows the in-cell label in a cell too small to fit it"
     )
     assert re.search(r"\.wp-current-stage \{ display: block", block), "no full-width current-stage line on the phone"
 
@@ -40,10 +46,9 @@ def test_the_current_stage_line_is_phone_only():
     )
 
 
-def test_the_current_stage_cell_is_marked_and_cells_keep_their_label():
-    assert re.search(r'data-current=\{c\.stage === it\.stage \? "1" : undefined\}', SRC), (
-        "the current stage cell is not marked"
-    )
+def test_cells_keep_their_label():
+    # cc-deepseek-5 review at c5a25828c: `data-current` was emitted and asserted but no rule or code read it, so the
+    # assertion proved a marker nothing consumed. The attribute is gone; what a cell must keep is its accessible label.
     assert re.search(r"aria-label=\{cellTitle\(c\)\}", SRC), "cells lost their accessible label"
     assert 'data-testid="wp-current-stage"' in SRC, "no full-width current-stage line in the component"
     assert "Failed at" not in SRC, (
