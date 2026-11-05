@@ -456,3 +456,39 @@ class TestShellBodySafety:
             assert "send_operator_alert.py" in text, f"{rel} does not use the safe sender"
             # absolute project path + venv, so cron's cwd cannot break imports
             assert '"$PROJ/' in text or '"$PY"' in text, f"{rel} lacks absolute paths"
+
+
+# ---- cx-openai D52 triage on #2680: a material change invalidates the operator's acknowledgement ----------------
+def test_a_material_change_is_exactly_the_set_of_change_signals():
+    """The ack is cleared on `material` reasons and kept on an ordinary repeat, so the two must be the same set."""
+    from alert_occurrence_store import MATERIAL_REASONS
+    import alert_dedupe as D
+
+    assert D.NOTIFY_SEVERITY_INCREASED in MATERIAL_REASONS
+    assert D.NOTIFY_ACTION_REQUIRED in MATERIAL_REASONS
+    assert D.NOTIFY_STATE_VERSION in MATERIAL_REASONS
+    assert D.NOTIFY_RECURRED_AFTER_RESOLUTION in MATERIAL_REASONS
+    assert D.NOTIFY_WINDOW_ELAPSED not in MATERIAL_REASONS, "an ordinary repeat must not clear the acknowledgement"
+    assert D.SUPPRESS_ACKNOWLEDGED not in MATERIAL_REASONS
+    assert D.NOTIFY_FIRST_OCCURRENCE not in MATERIAL_REASONS
+
+
+def test_persisting_an_occurrence_clears_a_stale_acknowledgement_on_material_change():
+    """The defect triage found: `record_occurrence` advanced severity/state but left `acknowledged_at`, so the NEXT
+    occurrence reloaded the old acknowledgement and was suppressed - the operator stopped hearing about an incident
+    as it got worse. This pins the statement that clears it, and that the material flag is what drives it.
+    """
+    import inspect
+    import re
+
+    import alert_occurrence_store as store
+
+    src = inspect.getsource(store.record_occurrence)
+    update = src[src.index("UPDATE alert_incidents"):src.index("alert_notification_deliveries")]
+    assert re.search(r"acknowledged_at\s*=\s*CASE WHEN %s THEN NULL", update), (
+        "the incident update does not clear the acknowledgement on a material change"
+    )
+    assert re.search(r"acknowledged_by\s*=\s*CASE WHEN %s THEN NULL", update), (
+        "the acknowledgement's author is left behind after a material change"
+    )
+    assert "material" in src[src.index("material = "):src.index("material = ") + 80], src[:200]
