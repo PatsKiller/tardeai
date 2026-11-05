@@ -579,7 +579,8 @@ const DEPENDENCY_ORDER: Array<[string, string]> = [
   ['advisory_synthesis', 'ADVISORY SYNTHESIS'],
   ['technicals', 'TECHNICALS'],
   ['prices', 'PRICES'],
-  ['watch_intelligence', 'WATCH INTELLIGENCE'],
+  // FQ-003: this clock measures the newest review COMPLETION, not the watch snapshot's quote time.
+  ['watch_intelligence', 'WATCH REVIEWS'],
   ['reentry', 'RE-ENTRY'],
   ['analyst_data', 'ANALYST DATA'],
   ['research', 'RESEARCH'],
@@ -773,12 +774,22 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '10px 0 12px' }}>
         <Stamp label="FACTS AS OF" at={ts.facts} fresh={ts.facts_freshness} />
         <PriceClockStamp pc={priceClock} />
-        <Stamp label="WATCH INTEL" at={ts.watch} fresh={ts.watch_freshness} />
+        {/* FQ-003: this stamp is the newest watch QUOTE joined into the cards; the dependency clock
+            below measures when the watch REVIEWS last completed. Different facts, named apart. */}
+        <Stamp label="WATCH QUOTES" at={ts.watch} fresh={ts.watch_freshness} />
         <Stamp label="RE-ENTRY" at={ts.reentry} fresh={ts.reentry_freshness} />
         <Stamp label="SENSES" at={ts.senses} fresh={ts.senses_freshness} />
         <Stamp label="MEMORY" at={ts.memory} fresh={ts.memory_freshness} />
         <Stamp label="FLASH OPINION" at={ts.flash} fresh={ts.flash_freshness} />
         <Stamp label="PRO SYNTHESIS" at={ts.synthesis} fresh={ts.synthesis_freshness} />
+      </div>
+      {/* FQ-003: the stamps say when each surface was last observed; each dependency clock is the
+          producer's own data time for a source the desk draws on. They can legitimately disagree, and
+          the clocks are NOT a record of what an earlier synthesis consumed — say only what they prove. */}
+      <div data-testid="advisory-clock-governance" style={{ fontSize: 10.5, color: 'var(--text3)', margin: '0 0 8px' }}>
+        Stamps show each surface's own source or event time. Each dependency clock below shows the producer's
+        own data time for a source the desk draws on — they are not a record of what an earlier synthesis
+        used; for that, consult the review evidence.
       </div>
       <DependencyClockBoard clocks={data?.dependency_clocks} refresh={data?.dependency_refresh} />
 
