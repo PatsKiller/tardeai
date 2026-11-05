@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "REPRICER_SUMMARY_NONE_20261103",
+  "files": [
+    "tests/test_repricer_summary_none_20261103.py"
+  ],
+  "anchor": "REPRICER_SUMMARY_NONE_20261103",
+  "comment": [
+    "ANCHOR: REPRICER_SUMMARY_NONE_20261103 - the 11:00 ET run on 2026-11-03 died at the pre-reprice summary",
+    "line: portfolio_totals.day_change was null after the holdings rebuild and the :+,.0f format raised",
+    "TypeError BEFORE reprice_portfolio ran or any write happened, so every */15 run did nothing. These tests",
+    "pin the tolerant summary path (None/NaN/inf/strings print 'unknown' instead of raising) at the real call",
+    "site, including the exact null that stopped the lane."
+  ]
+}
