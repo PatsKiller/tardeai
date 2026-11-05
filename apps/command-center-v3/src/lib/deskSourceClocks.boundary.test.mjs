@@ -1,32 +1,91 @@
-// node --experimental-strip-types src/lib/deskSourceClocks.boundary.test.mjs
-//
-// FQ-051 (second half): the Source clocks panels printed the writer's own vocabulary — "Writer ACTIVE", "Writer RETIRED",
-// "Last successful run: not measured", "Evidence captured: …" — in the normal view. The reader needs one fact: is this
-// source still being refreshed. The mechanics stay on the card, in a Diagnostics disclosure.
-import { readFileSync } from 'node:fs'
+// Render the real DeskPage: declarations and JSX comments cannot prove what the operator sees.
+import assert from 'node:assert/strict'
+import { readFileSync, existsSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
-let pass = 0, fail = 0
-const check = (n, c, d = '') => { if (c) { pass++; console.log(`  [PASS] ${n}`) } else { fail++; console.log(`  [FAIL] ${n} ${d}`) } }
+const app = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
+const require = createRequire(join(app, 'package.json'))
+const ts = require('typescript')
+const React = require('react')
+const { renderToStaticMarkup } = require('react-dom/server')
+const { MemoryRouter } = require('react-router-dom')
+const reportError = console.error
+console.error = (...args) => {
+  if (!String(args[0] ?? '').includes('useLayoutEffect does nothing on the server')) reportError(...args)
+}
+globalThis.window = { matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
+  location: { origin: 'http://localhost:4173', pathname: '/v3/defense', search: '', hash: '' },
+  addEventListener() {}, removeEventListener() {} }
+globalThis.document = { documentElement: { style: {} }, body: { style: {} },
+  addEventListener() {}, removeEventListener() {}, querySelector: () => null, querySelectorAll: () => [] }
+Date.now = () => Date.parse('2026-11-05T21:00:00Z')
 
-const src = readFileSync(new URL('../components/DeskPage.tsx', import.meta.url), 'utf8')
-// the visible half: from the word mapping through to the disclosure that follows it
-const blockStart = src.lastIndexOf('const st = writer?.state', src.indexOf('data-testid="source-writer-diagnostics"'))
-const block = src.slice(blockStart, src.indexOf('data-testid="source-writer-diagnostics"'))
+const memo = new Map()
+function compile(path) {
+  if (memo.has(path)) return memo.get(path)
+  const source = readFileSync(path, 'utf8').replace(/import \{ useApi \} from ['"][^'"]+['"]/, 'const useApi = () => (globalThis as any).__deskWriterFixture')
+  let js = ts.transpileModule(source, { compilerOptions: {
+    jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext,
+  } }).outputText.replace(/import\s+['"][^'"]+\.css['"];?/g, '')
+  js = js.replace(/from ["']([^"']+)["']/g, (_whole, spec) => {
+    if (!spec.startsWith('.')) return `from ${JSON.stringify(pathToFileURL(require.resolve(spec)).href)}`
+    let target = resolve(dirname(path), spec)
+    if (!existsSync(target)) target = ['.ts', '.tsx', '.js'].map(s => target + s).find(existsSync)
+    assert.ok(target, `Missing component fixture dependency: ${spec}`)
+    return `from ${JSON.stringify(compile(target))}`
+  })
+  const url = `data:text/javascript;base64,${Buffer.from(js).toString('base64')}`
+  memo.set(path, url)
+  return url
+}
+const { default: DeskPage } = await import(compile(join(app, 'src/components/DeskPage.tsx')))
+export const text = html => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+export const markup = html => html.replace(/<!--[\s\S]*?-->/g, '')
+export function diagnosticsOf(html) {
+  return markup(html).match(/<details\b[^>]*data-testid="source-writer-diagnostics"[\s\S]*?<\/details>/)?.[0] ?? ''
+}
+export function primaryOf(html) {
+  return text(markup(html).match(/<div\b[^>]*data-testid="source-writer-state"[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? '')
+}
+export function renderWriter(state, { loading = false, lastSuccess = null, reason = 'No successful run is recorded in the available execution evidence.', missing = false } = {}) {
+  const writers = missing ? [] : [{ lane_id: 'synthetic-source-lane', state, last_success_at: lastSuccess,
+    evidence_as_of: '2026-11-05T20:59:00Z', reason }]
+  globalThis.__deskWriterFixture = { data: { ok: true, data: { writers } }, loading, error: null, stale: false, refetch() {} }
+  return renderToStaticMarkup(React.createElement(MemoryRouter, { initialEntries: ['/v3/defense'] },
+    React.createElement(DeskPage, { title: 'Synthetic desk', purpose: 'Synthetic source evidence',
+      sources: [{ id: 'fixture', label: 'Synthetic source', asOf: '2026-11-05T20:58:00Z', laneIds: ['synthetic-source-lane'] }],
+      children: React.createElement('div', null, 'Synthetic desk content') })))
+}
 
-// The mapping itself moved to lib/deskWriterState.ts so every declared state is provable without rendering the page
-// (see deskWriterState.test.mjs). What this file can still prove is that the panel actually delegates to it.
-check('the writer state reads as words from the shared mapping', /writerStateWords\(st, loading\)/.test(block), block.slice(0, 160))
-check('and not as the writer\'s code', !/\{writer\?\.state\}|Writer \{/.test(block), block.slice(0, 160))
-check('the mechanics sit in a Diagnostics disclosure', /<details[^>]*data-testid="source-writer-diagnostics"/.test(src))
-const diagStart = src.indexOf('data-testid="source-writer-diagnostics"')
-const diagEnd = src.indexOf('</details>', diagStart)
-const diag = src.slice(diagStart, diagEnd)
-check('the last-run clock is inside the disclosure', /Last successful run:/.test(diag))
-check('the evidence capture is inside the disclosure', /Evidence captured:/.test(diag))
-check('the raw state code is inside the disclosure', /Writer state:/.test(diag))
-check('none of them are left in the visible part', !/Last successful run:|Evidence captured:/.test(block), block.slice(-160))
-const words = readFileSync(new URL('./deskWriterState.ts', import.meta.url), 'utf8')
-check('the consequence is still visible when the writer is not active', /not refreshing this source/.test(words))
-
-console.log(`deskSourceClocks.boundary: ${pass} passed, ${fail} failed`)
-if (fail) process.exit(1)
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  let passed = 0, failed = 0
+  function check(name, fn) {
+    try { fn(); passed++; console.log(`[PASS] ${name}`) }
+    catch (error) { failed++; console.log(`[FAIL] ${name}: ${error.message}`) }
+  }
+  const html = renderWriter('ACTIVE', { lastSuccess: '2026-11-05T19:00:00Z', reason: 'Synthetic current qualification.' })
+  const diag = diagnosticsOf(html)
+  const primary = text(markup(html).replace(/<details\b[\s\S]*?<\/details>/g, ''))
+  check('fixture renders a nonempty real source and desk', () => assert.match(primary, /Synthetic source.*Synthetic desk content/))
+  check('Diagnostics is a real closed disclosure', () => {
+    assert.ok(diag, 'Diagnostics disclosure missing')
+    const tag = diag.match(/^<details\b(?:[^"'<>]|"[^"]*"|'[^']*')*>/)?.[0]
+    assert.ok(tag, 'Diagnostics opening tag missing')
+    assert.doesNotMatch(tag.replace(/"[^"]*"|'[^']*'/g, ''), /\sopen(?=[\s=/>])/i)
+    assert.match(text(diag), /Diagnostics/)
+  })
+  check('last successful run remains inside Diagnostics', () => { assert.match(text(diag), /Last successful run:/); assert.doesNotMatch(primary, /Last successful run:/) })
+  check('evidence capture remains inside Diagnostics', () => { assert.match(text(diag), /Evidence captured:/); assert.doesNotMatch(primary, /Evidence captured:/) })
+  check('raw state remains inside Diagnostics', () => { assert.match(text(diag), /Writer state: ACTIVE/); assert.doesNotMatch(primary, /Writer state:/) })
+  check('current reason survives alongside an older success', () => assert.match(text(diag), /Synthetic current qualification\./))
+  check('paused consequence is primary text', () => assert.equal(primaryOf(renderWriter('PAUSED')), 'Paused — not refreshing this source'))
+  check('missing writer stays unavailable with evidence explanation', () => {
+    const missing = renderWriter(null, { missing: true })
+    assert.equal(primaryOf(missing), 'State unavailable')
+    assert.match(text(diagnosticsOf(missing)), /Execution evidence is unavailable for this writer\./)
+  })
+  console.log(JSON.stringify({ suite: 'deskSourceClocks.boundary', passed, failed }))
+  if (failed) process.exitCode = 1
+}
