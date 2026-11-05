@@ -91,15 +91,36 @@ check('compact layout renders one scan row per name', () => {
 
 check('the row carries the decision category and the money, not the long card sections', () => {
   const html = render('/watch?tab=intelligence&view=top_ideas&layout=compact')
-  assert.match(html, /High Conviction Opportunity/)
-  assert.match(html, /\$10\.50/)
-  assert.doesNotMatch(html, /data-review-box/, 'the compact row rendered the review box')
+  // The claim is about the ROW. Scoped to the list, not the page: the reading view beside it is allowed to have the
+  // review boxes — that is what it is for.
+  const list = html.slice(html.indexOf('data-compact-list'), html.indexOf('data-intelligence-inspector'))
+  assert.match(list, /High Conviction Opportunity/)
+  assert.match(list, /\$10\.50/)
+  assert.doesNotMatch(list, /data-review-box/, 'the compact row rendered the review box')
 })
 
-check('the row opens the full reading view', () => {
+// FQ-132 (cx-openai-3 at 234248492): the case here used to assert `role="button" … data-compact-row`, which passed
+// while the rendered page had no reading view at all — a compact row selected a name and put nothing on the screen.
+// These are rendered assertions: they read the markup that reaches the operator, and each one fails on the old page.
+const inspector = (html) => {
+  const at = html.indexOf('data-intelligence-inspector')
+  return at === -1 ? '' : html.slice(at)
+}
+
+check('a compact row opens the reading view on the page', () => {
   const html = render('/watch?tab=intelligence&view=top_ideas&layout=compact')
-  assert.match(html, /role="button"[^>]*data-compact-row/)
+  assert.match(inspector(html), /WHAT THE COMPANY DOES/, 'compact rendered no reading view: no detail panel is on the page')
 })
+
+check('the reading view shows the chosen name, not the first card', () => {
+  const html = render('/watch?tab=intelligence&view=top_ideas&layout=compact&detail=BBB')
+  const panel = inspector(html)
+  assert.match(panel, /Beta Industrials/, 'the selected row did not fill the reading view')
+  assert.doesNotMatch(panel, /Alpha Holdings/, 'the reading view kept the first card instead of the selected one')
+})
+// What this pair proves and what it does not: the page renders a reading view in compact, and the selection is the
+// URL-backed `detail` entry the row's click sets, so a chosen name fills it. It does not simulate the click itself —
+// that handler is one line (`setSelected` → the `detail` param) and the rendered contract above is what it produces.
 
 check('the raw Trade AI code is not the row text — it is the tooltip', () => {
   const html = render('/watch?tab=intelligence&view=top_ideas&layout=compact')

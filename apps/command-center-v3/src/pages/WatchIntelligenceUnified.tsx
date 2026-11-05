@@ -275,9 +275,13 @@ export default function WatchIntelligenceUnified() {
   // FQ-073: a phone opens on compact scan rows — one name per line — and the full reading view is the existing
   // full-screen sheet the row opens. An explicit ?layout= still wins, and desktop keeps the grid.
   const layout = layoutParam || (phone.mobile ? 'compact' : 'grid')
-  const [desktopSelected, setDesktopSelected] = useState<string | null>(null)
+  // FQ-132 (cx-openai-3 at 234248492): the desktop selection was local state, so a compact row's reading view could
+  // not be reached at all once the inspector was reserved for the grid, and nothing about the selected state could be
+  // rendered or linked. It is the `detail` param now — the same entry the phone sheet uses — so a row opens a reading
+  // view that survives Back, reload and a shared link, and a render can prove which name is being read.
+  const desktopSelected = qsGet(sp, 'detail', '') || null
   const selected = phone.mobile ? phone.id : desktopSelected
-  const setSelected = (symbol: string) => { if (phone.mobile) phone.open(symbol); else setDesktopSelected(symbol) }
+  const setSelected = (symbol: string) => { if (phone.mobile) phone.open(symbol); else setParam('detail', symbol) }
   const sel = cards.find(c => c.symbol === selected) || (phone.mobile ? undefined : cards[0])
   // WAIT cards say "SET CONDITION ALERT"; this wires that instruction to the same POST /api/v2/watch/alerts flow the
   // Re-Entry pages use (2026-10-22 audit: the instruction had no button).
@@ -629,7 +633,7 @@ export default function WatchIntelligenceUnified() {
       )}
 
       {/* 6. Cards + inspector */}
-      <div className="w9-classic-grid" style={{ display: 'grid', gridTemplateColumns: layout === 'table' || layout === 'compact' ? '1fr' : 'minmax(0,1.5fr) minmax(300px,.85fr)', gap: 12, alignItems: 'start' }}>
+      <div className="w9-classic-grid" style={{ display: 'grid', gridTemplateColumns: layout === 'table' || (layout === 'compact' && phone.mobile) ? '1fr' : 'minmax(0,1.5fr) minmax(300px,.85fr)', gap: 12, alignItems: 'start' }}>
         {layout === 'compact' ? (
           // FQ-073: a scan list. One row per name — what it is, what the engine currently says, what it costs —
           // and every row opens the full-screen reading view (the same sheet the cards use).
@@ -830,7 +834,9 @@ export default function WatchIntelligenceUnified() {
           </div>
         )}
 
-        {layout === 'grid' && !phone.mobile && (
+        {/* FQ-132: compact needs the reading view on a desktop too — a row that selects a name and renders nothing is
+            not one tap from the reading view, it is a dead end. Phones keep the full-screen sheet instead. */}
+        {layout !== 'table' && !phone.mobile && (
           <aside className="w9-classic-inspector" style={{ background: BB.bgPanel, border: `1px solid ${BB.border}`, borderRadius: 12, position: 'sticky', top: 12 }} data-intelligence-inspector>
             {inspector}
           </aside>
