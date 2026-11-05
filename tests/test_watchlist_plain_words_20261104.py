@@ -1,19 +1,16 @@
-"""FQ-075: the watchlist row states its state in plain words, never in screaming policy codes.
+"""FQ-075, retirement half: the shadow watchlist board stays unmounted and both the route and the file say so.
 
-Registered as the CI gate's file, so the shard runner (pytest) executes it. It does not grep the page source:
-it **runs** ``apps/command-center-v3/src/lib/watchlistPlainWords.view.test.mjs``, which renders the real
-``WatchIntelligenceUnified`` page — the surface ``/watchlist`` redirects to — through React server rendering with a
-fixture payload and asserts the words the row actually prints. It also enforces that the retired
-``WatchlistIntelligenceBoard`` shadow page is imported by nothing, so the fix cannot be mistaken for one that
-landed in a file no route renders.
+Registered as the CI gate's file, so the shard runner (pytest) executes it. A ``.mjs`` cannot be collected, so this
+test **runs** ``apps/command-center-v3/src/lib/watchlistPlainWords.view.test.mjs``, which scans the tree for importers
+of ``WatchlistIntelligenceBoard`` and reads the route and the file's own header.
 
-Why the change (codex P2605-R1 on #2605): the first version of this file searched the source for helper names and
-map literals. Two deliberately broken copies of the component — the JSX call replaced by the raw code, and the
-unknown-code fallback returning the key — left the whole suite GREEN while the page rendered ``NOT_SCHEDULED`` in
-every review box. A gate that stays green when the thing it protects is removed is decoration. The render test is
-RED under both mutations and GREEN on the committed component; the gate now sits on the behaviour, not on the text.
+The plain-words half of this PR moved: the same wording landed on the live surface in FQ-078 (PR 2611,
+cc-deepseek-4) — the component that actually renders ``/watchlist`` — so this gate no longer asserts it. Asserting it in
+two places would duplicate that PR's gate and fail on any head that does not carry it. What remains here has no other
+owner: cc-deepseek-3's original finding was that the fix had landed in a file no route renders, and a comment alone
+does not stop that recurring — this gate does.
 
-Hermetic: node, the committed component, a synthetic fixture. No browser, no network, no API, no data.
+Hermetic: node, the committed sources. No browser, no network, no API, no data.
 
 ANCHOR: WATCHLIST_PLAIN_WORDS_20261104
 """

@@ -3,8 +3,9 @@
  *
  * `/watchlist` is a compatibility redirect to `/watch?tab=intelligence&view=top_ideas` (App.tsx, where the
  * comment reads "Legacy watchlist/screener nav → primary Intelligence (not the old card wall)"), and the
- * surface that serves that URL is `WatchIntelligenceUnified.tsx`. The FQ-075 plain-word wording lives there
- * now; this file is kept for reference under the never-delete rule and must not be read as a fix.
+ * surface that serves that URL is `WatchIntelligenceUnified.tsx`. The plain-word wording the retired page never
+ * received now lives there, landed by FQ-078 (PR 2611, cc-deepseek-4) in the component that renders it; this file
+ * is kept for reference under the never-delete rule and must not be read as a fix.
  *
  * `watchlistPlainWords.view.test.mjs` enforces the retirement: it fails if any non-test module imports this
  * component, so mounting it again is a deliberate act that moves the gate with it.
