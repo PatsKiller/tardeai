@@ -37,6 +37,10 @@ export default function MyQuestions() {
   const [refreshes, setRefreshes] = useState<Refreshes>({})
   const refreshing = useRef(new Set<string>())
   const [pending, setPending] = useState(false)
+  // "Check access again" must re-arm the selected thread's own useApi request too: a caller refusal
+  // latches a TERMINAL failure there, and re-arming only the list/grouping leaves a recovered thread
+  // reading "Thread unavailable" while the guidance that explained it is withdrawn.
+  const [accessRetry, setAccessRetry] = useState(0)
   const list = useApi<unknown>(ASK_PATHS.list, pending ? 5_000 : 30_000)
   const rows = useMemo(() => sortSummaries(unwrap<{ threads: ThreadSummary[] }>(list.data)?.threads ?? []), [list.data])
   useEffect(() => { setPending(rows.some(row => isPending(row.status))) }, [rows])
@@ -103,7 +107,7 @@ export default function MyQuestions() {
         {accessBlocked && <div data-testid="mq-access-recovery" style={{ fontSize: TYPE.sm, marginTop: 12, overflowWrap: 'anywhere' }}>
           <p>Questions are blocked in this session. Open your usual Command Center address while signed in to Tailscale with your operator account.
             If access is still refused, request access help and include the technical details below.</p>
-          <button type="button" style={btn} disabled={list.refreshing} onClick={() => { list.refetch(); groupedApi.refetch() }}>Check access again</button>
+          <button type="button" style={btn} disabled={list.refreshing} onClick={() => { setAccessRetry(n => n + 1); list.refetch(); groupedApi.refetch() }}>Check access again</button>
           <details style={{ marginTop: 8 }}>
             <summary style={{ minHeight: 44, paddingTop: 12, boxSizing: 'border-box', cursor: 'pointer' }}>Technical details</summary>
             <div>HTTP {list.outcome?.status ?? 'unknown'} · {list.outcome?.errorCode ?? list.authState}</div>
@@ -138,7 +142,7 @@ export default function MyQuestions() {
         </ul></>}
       </section>
       <section style={{ flex: '3 1 520px', minWidth: 0 }}>
-        {threadId ? <ThreadView key={threadId} threadId={threadId} groupBy={gb} grouped={grouped} refreshes={refreshes} onRefresh={refreshResearch} onChanged={() => { list.refetch(); groupedApi.refetch() }} /> : (
+        {threadId ? <ThreadView key={`${threadId}:${accessRetry}`} threadId={threadId} groupBy={gb} grouped={grouped} refreshes={refreshes} onRefresh={refreshResearch} onChanged={() => { list.refetch(); groupedApi.refetch() }} /> : (
           <div style={{ ...card, fontSize: TYPE.base, color: TOKENS.text[2] }}>{list.error && !rows.length
             ? 'Questions could not be loaded. Follow the guidance above, then check again.'
             : 'Pick a question to see its thread, answers, sources and what it is tracking.'}</div>
