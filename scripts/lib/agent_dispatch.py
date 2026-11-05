@@ -323,6 +323,8 @@ def verdicts_at_head(artifacts: Iterable[dict[str, Any]]) -> dict[tuple[int, str
             # replace prior true values; another head or a standalone review cannot lend an attestation.
             completion[(pr, head)] = {
                 "engineering_completion_head": head,
+                "section17_completion_head": head,
+                "section17_review_completed": art.get("section17_review_completed") is True,
                 "engineering_tests_completed": art.get("engineering_tests_completed") is True,
                 "engineering_docs_completed": art.get("engineering_docs_completed") is True,
             }
@@ -541,6 +543,11 @@ def merge_ready(
                 for e in merges
             ):
                 step = "held engineering completion unproven — register tests and documentation at this exact head"
+            elif not any(
+                e.get("section17_completion_head") == pr.head_sha and e.get("section17_review_completed") is True
+                for e in merges
+            ):
+                step = "section-17 review unproven — register completed authority-boundary review at this exact head"
             else:
                 ready.append({**base, "verdicts": sorted(reviewers)})
                 continue

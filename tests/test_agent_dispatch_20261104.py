@@ -332,7 +332,16 @@ def test_merge_pump_separates_ready_from_one_step_and_never_merges():
         files=("apps/command-center-v3/src/pages/Home.tsx",),
     )
     claims = [claim(session="cc-4", branch="wt/x", head="h" * 40, status="done", paths=pr.files)]
-    v = {(11, "h" * 40): [{"verdict": "MERGE", "reviewer": "cc-9"}]}
+    v = {
+        (11, "h" * 40): [
+            {
+                "verdict": "MERGE",
+                "reviewer": "cc-9",
+                "section17_completion_head": pr.head_sha,
+                "section17_review_completed": True,
+            }
+        ]
+    }
     out = D.merge_ready([pr], v, claims, {11: "cc-4"})
     assert [r["pr"] for r in out["ready"]] == [11] and out["one_step"] == []
     text = D.render_merge_ready(out, generated_at="now")
@@ -1741,7 +1750,16 @@ def test_d49_green_complete_ordinary_pr_is_ready_with_cloud_review():
         )
         is None
     )
-    verdicts = {(7, pr.head_sha): [{"verdict": "MERGE", "reviewer": "independent"}]}
+    verdicts = {
+        (7, pr.head_sha): [
+            {
+                "verdict": "MERGE",
+                "reviewer": "independent",
+                "section17_completion_head": pr.head_sha,
+                "section17_review_completed": True,
+            }
+        ]
+    }
     assert len(D.merge_ready([pr], verdicts, claims, {7: "author"})["ready"]) == 1
 
 
@@ -1982,6 +2000,8 @@ def test_d51_cx4_registered_reference_is_loaded_without_guessed_sibling(tmp_path
             "verdict": "MERGE",
             "reviewer": "independent",
             "engineering_completion_head": "a" * 40,
+            "section17_completion_head": "a" * 40,
+            "section17_review_completed": True,
             "engineering_tests_completed": False,
             "engineering_docs_completed": False,
         }
@@ -2016,7 +2036,16 @@ def test_d51_cx4_invalid_registration_refuses_before_any_send(tmp_path, fault):
 @pytest.mark.parametrize("status", ["done", "released"])
 def test_d51_cx5_released_author_coverage_is_ready_and_active_is_not(status):
     pr = _complete_pr(7, "a" * 40, "wt/synthetic", "CLEAN", False, files=("src/synthetic.py",))
-    verdicts = {(7, pr.head_sha): [{"verdict": "MERGE", "reviewer": "independent"}]}
+    verdicts = {
+        (7, pr.head_sha): [
+            {
+                "verdict": "MERGE",
+                "reviewer": "independent",
+                "section17_completion_head": pr.head_sha,
+                "section17_review_completed": True,
+            }
+        ]
+    }
     released = claim(session="author", branch=pr.head_ref, head=pr.head_sha, status=status, paths=pr.files)
     # Canonical ClaimBoard writes done; released was an invented positive fixture, never a producer status.
     assert [item["pr"] for item in D.merge_ready([pr], verdicts, [released], {7: "author"})["ready"]] == (
@@ -2341,7 +2370,16 @@ def test_cloud3_cx4_incomplete_rename_evidence_refuses_review_and_readiness(faul
     assert not pr.review_eligible
     assert not D.merge_ready(
         [pr],
-        {(7, pr.head_sha): [{"reviewer": "peer", "verdict": "MERGE"}]},
+        {
+            (7, pr.head_sha): [
+                {
+                    "reviewer": "peer",
+                    "verdict": "MERGE",
+                    "section17_completion_head": pr.head_sha,
+                    "section17_review_completed": True,
+                }
+            ]
+        },
         [claim(session="author", branch=pr.head_ref, head=pr.head_sha, status="done", paths=pr.files)],
         {7: "author"},
     )["ready"]
@@ -2355,7 +2393,17 @@ def _cloud3_renamed_pr():
 
 def test_cloud3_cx4_rename_requires_both_custody_and_engineering_completion():
     pr = _cloud3_renamed_pr()
-    reviews = {(7, pr.head_sha): [{"reviewer": r, "verdict": "MERGE"} for r in ("peer", "second")]}
+    reviews = {
+        (7, pr.head_sha): [
+            {
+                "reviewer": r,
+                "verdict": "MERGE",
+                "section17_completion_head": pr.head_sha,
+                "section17_review_completed": True,
+            }
+            for r in ("peer", "second")
+        ]
+    }
     released = claim(session="author", branch=pr.head_ref, head=pr.head_sha, status="done", paths=pr.files)
     assert not D.merge_ready([pr], reviews, [released], {7: "author"})["ready"]
     released.paths.append(".githooks/pre-push")
@@ -2427,7 +2475,16 @@ def test_cloud3_cx5_age_alone_never_releases_overlapping_active_custody(age):
     pr = ordinary_pr()
     released = claim(session="author", branch=pr.head_ref, head=pr.head_sha, status="done", paths=pr.files)
     stale = claim(cid="foreign", paths=pr.files, age=age)
-    reviews = {(7, pr.head_sha): [{"reviewer": "peer", "verdict": "MERGE"}]}
+    reviews = {
+        (7, pr.head_sha): [
+            {
+                "reviewer": "peer",
+                "verdict": "MERGE",
+                "section17_completion_head": pr.head_sha,
+                "section17_review_completed": True,
+            }
+        ]
+    }
     result = D.merge_ready([pr], reviews, [released, stale], {7: "author"})
     assert not result["ready"]
     assert "not released" in result["one_step"][0]["step"]
@@ -2440,7 +2497,16 @@ def test_cloud3_cx5_validly_superseded_predecessor_is_nonblocking():
     )
     stale = claim(cid="foreign", paths=pr.files, age=3)
     released.takeover_of = ({"claim_id": "foreign"},)
-    reviews = {(7, pr.head_sha): [{"reviewer": "peer", "verdict": "MERGE"}]}
+    reviews = {
+        (7, pr.head_sha): [
+            {
+                "reviewer": "peer",
+                "verdict": "MERGE",
+                "section17_completion_head": pr.head_sha,
+                "section17_review_completed": True,
+            }
+        ]
+    }
     assert D.merge_ready([pr], reviews, [released, stale], {7: "author"})["ready"]
 
 
@@ -2454,7 +2520,16 @@ def test_cloud3_cx5_invalid_or_live_predecessor_never_releases_custody(fault):
     released.takeover_of = ({"claim_id": "absent" if fault == "missing_target" else "foreign"},)
     if fault == "cycle":
         stale.takeover_of = ({"claim_id": "successor"},)
-    reviews = {(7, pr.head_sha): [{"reviewer": "peer", "verdict": "MERGE"}]}
+    reviews = {
+        (7, pr.head_sha): [
+            {
+                "reviewer": "peer",
+                "verdict": "MERGE",
+                "section17_completion_head": pr.head_sha,
+                "section17_review_completed": True,
+            }
+        ]
+    }
     assert not D.merge_ready([pr], reviews, [released, stale], {7: "author"})["ready"]
 
 
@@ -2514,7 +2589,16 @@ def test_cloud3_cx5_original_takeover_links_survive_disk_loading(tmp_path):
         }
         (directory / f"{cid}.json").write_text(json.dumps(doc))
     claims = D.load_claims(directory, now=NOW)
-    reviews = {(7, pr.head_sha): [{"reviewer": "peer", "verdict": "MERGE"}]}
+    reviews = {
+        (7, pr.head_sha): [
+            {
+                "reviewer": "peer",
+                "verdict": "MERGE",
+                "section17_completion_head": pr.head_sha,
+                "section17_review_completed": True,
+            }
+        ]
+    }
     assert D.merge_ready([pr], reviews, claims, {7: "author"})["ready"]
     doc["takeover_of"] = []
     (directory / "successor.json").write_text(json.dumps(doc))
@@ -2530,7 +2614,16 @@ def test_cloud3_cx5_released_successor_cannot_resolve_conflicting_live_siblings(
     left = claim(cid="left", paths=pr.files)
     right = claim(cid="right", paths=pr.files)
     left.takeover_of = right.takeover_of = ({"claim_id": "predecessor"},)
-    reviews = {(7, pr.head_sha): [{"reviewer": "peer", "verdict": "MERGE"}]}
+    reviews = {
+        (7, pr.head_sha): [
+            {
+                "reviewer": "peer",
+                "verdict": "MERGE",
+                "section17_completion_head": pr.head_sha,
+                "section17_review_completed": True,
+            }
+        ]
+    }
     assert not D.merge_ready([pr], reviews, [released, stale, left, right], {7: "author"})["ready"]
 
 
@@ -2549,5 +2642,108 @@ def test_cloud3_cx5_duplicate_snapshot_identity_fails_closed():
     pr = ordinary_pr()
     released = claim(cid="same", session="author", branch=pr.head_ref, head=pr.head_sha, status="done", paths=pr.files)
     other = claim(cid="same", paths=pr.files, age=3)
-    reviews = {(7, pr.head_sha): [{"reviewer": "peer", "verdict": "MERGE"}]}
+    reviews = {
+        (7, pr.head_sha): [
+            {
+                "reviewer": "peer",
+                "verdict": "MERGE",
+                "section17_completion_head": pr.head_sha,
+                "section17_review_completed": True,
+            }
+        ]
+    }
     assert not D.merge_ready([pr], reviews, [released, other], {7: "author"})["ready"]
+
+
+# D52 named item only: a section-17 attestation is canonical, boolean and bound to this head.
+def _section17_cycle(tmp_path, value, *, other_head_true=False):
+    import hashlib
+
+    paths = make_tree(
+        tmp_path,
+        panes={},
+        queue=[],
+        claims=[
+            {
+                "claim_id": "source",
+                "session": "author",
+                "branch": "wt/synthetic",
+                "status": "done",
+                "heartbeat_at": iso(NOW),
+                "head_sha": "a" * 40,
+                "paths": ["src/synthetic.py"],
+            }
+        ],
+    )
+    doc = _d51_registered_review(paths["coord"])
+    if value == "missing":
+        doc.pop("section17_review_completed")
+    else:
+        doc["section17_review_completed"] = value
+    target = paths["coord"] / "review-evidence" / f"7-{'a' * 40}.json"
+    target.write_text(json.dumps(doc))
+    if other_head_true:
+        old = json.loads(json.dumps(doc))
+        old.update(head_sha="b" * 40, section17_review_completed=True)
+        raw = f"Adversarial-review: MERGE reviewer=independent head={'b' * 40}\n".encode()
+        (paths["coord"] / "proofs" / "old-review.artifact").write_bytes(raw)
+        old["reviews"][0].update(
+            head_sha="b" * 40, artifact="proofs/old-review.artifact", artifact_sha256=hashlib.sha256(raw).hexdigest()
+        )
+        (paths["coord"] / "review-evidence" / f"7-{'b' * 40}.json").write_text(json.dumps(old))
+    rows = [
+        {
+            "number": 7,
+            "headRefName": "wt/synthetic",
+            "headRefOid": "a" * 40,
+            "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "changedFiles": 1,
+            "files": [{"path": "src/synthetic.py"}],
+            "statusCheckRollup": _d51_checks(),
+        }
+    ]
+    before = {str(p): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    out = CLI.run_cycle(
+        apply=False,
+        coord=paths["coord"],
+        queue_path=paths["queue"],
+        claims_dir=paths["claims"],
+        ledger_path=paths["ledger"],
+        run=fake_runner({}, rows),
+    )
+    assert before == {str(p): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    assert not out["assignments"] and not out["ledger"]
+    return out, doc
+
+
+@pytest.mark.parametrize("value", ["missing", False, None, "true", 1])
+def test_section17_real_collector_report_refuses_missing_false_or_untyped(value, tmp_path):
+    out, _doc = _section17_cycle(tmp_path, value)
+    assert not out["merge_ready"]["ready"]
+    assert "section-17" in out["merge_ready"]["one_step"][0]["step"]
+    assert "## Ready to merge (0)" in out["merge_ready_md"]
+
+
+def test_section17_real_collector_other_head_true_does_not_lend_completion(tmp_path):
+    out, _doc = _section17_cycle(tmp_path, "missing", other_head_true=True)
+    assert not out["merge_ready"]["ready"]
+    assert "section-17" in out["merge_ready"]["one_step"][0]["step"]
+
+
+def test_section17_real_collector_exact_head_true_preserves_ready_positive(tmp_path):
+    out, _doc = _section17_cycle(tmp_path, True)
+    assert [r["pr"] for r in out["merge_ready"]["ready"]] == [7]
+    assert "## Ready to merge (1)" in out["merge_ready_md"]
+
+
+def test_section17_latest_exact_head_false_replaces_true(tmp_path):
+    pr, claims, _indexed, doc = _cloud2_held_ready_fixture(
+        tmp_path, {"engineering_tests_completed": True, "engineering_docs_completed": True}
+    )
+    latest = {**doc, "section17_review_completed": False}
+    true_index = D.verdicts_at_head([doc])
+    false_index = D.verdicts_at_head([doc, latest])
+    assert D.merge_ready([pr], true_index, claims, {7: "author"})["ready"]
+    out = D.merge_ready([pr], false_index, claims, {7: "author"})
+    assert not out["ready"] and "section-17" in out["one_step"][0]["step"]
