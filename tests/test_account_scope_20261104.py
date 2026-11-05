@@ -140,3 +140,25 @@ def test_unknown_or_account_less_evidence_is_never_affirmative_absence():
 def test_the_canonical_observation_module_no_longer_defaults_to_all_accounts():
     src = (ROOT / "scripts" / "lib" / "canonical_observation.py").read_text()
     assert 'account_scope: str = "ALL_ACCOUNTS"' not in src
+
+
+def test_account_aliases_are_canonicalized_before_ownership():
+    """codex-cloud P1 (account_scope:123): two spellings of one account must decide ownership once.
+
+    config/account_display_names.json declares ``schwab_roth`` -> ``schwab_roth_ira`` (and others).
+    A literal set-membership test turned a genuinely held position into a new-position review.
+    """
+    held = held_accounts({"holdings": [{"symbol": "SPCX", "account": "schwab_roth", "shares": 1}]})
+    assert held_for(held, "SPCX", "schwab_roth_ira") is True, (
+        "the alias spelling missed the holding row — the account is the same account")
+    assert resolve_held(held, "SPCX", "schwab_roth_ira") == (True, HELD_CONFIRMED)
+
+    # ...and the reverse spelling (holdings canonical, candidate aliased).
+    canonical = held_accounts({"holdings": [{"symbol": "SPCX", "account": "schwab_roth_ira", "shares": 1}]})
+    assert held_for(canonical, "SPCX", "schwab_roth") is True
+
+    # A different account stays a different account.
+    assert held_for(held, "SPCX", "schwab_ira") is False
+    assert held_for(held, "SPCX", "schwab_individual") is False
+    # held_in still names where the position is, in the spelling the source used.
+    assert held_in(held, "SPCX") == ["schwab_roth"]

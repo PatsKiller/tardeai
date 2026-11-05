@@ -58,8 +58,28 @@ def _age_minutes(path: Path) -> Optional[float]:
         return None
 
 
-def build_portfolio_facts(symbol: str, *, paths: Optional[dict[str, Path]] = None) -> dict[str, Any]:
+def _canonical_account(raw: Any) -> str:
+    try:
+        try:
+            from lib.account_scope import canonical_account
+        except ImportError:
+            from scripts.lib.account_scope import canonical_account  # type: ignore[no-redef]
+        return canonical_account(raw)
+    except Exception:  # noqa: BLE001 — an account key is compared, never invented
+        return str(raw or "").strip()
+
+
+def build_portfolio_facts(symbol: str, *, account: Optional[str] = None,
+                          paths: Optional[dict[str, Path]] = None) -> dict[str, Any]:
+    """Facts for ``symbol``, scoped to ``account`` when one is named.
+
+    FQ-096 / SPEC §1b rule 3: ownership is a fact about (symbol, account). A symbol-wide ``mine``
+    made an Individual residual read as an IRA position — the packet then said "add decision
+    required" for an account that owns none of it (codex-cloud P2, 2026-11-05). Concentration
+    figures follow the same scoped holding; the whole-book denominator is unchanged.
+    """
     sym = str(symbol or "").upper().strip()
+    acct = _canonical_account(account)
     p = dict(DEFAULT_PATHS)
     p.update(paths or {})
     flags: list[str] = []
@@ -70,11 +90,13 @@ def build_portfolio_facts(symbol: str, *, paths: Optional[dict[str, Path]] = Non
     total_mv = sum(_f(h.get("market_value")) or 0.0 for h in rows)
     invested_mv = sum(_f(h.get("market_value")) or 0.0 for h in rows if not h.get("is_cash"))
     cash_mv = sum(_f(h.get("market_value")) or 0.0 for h in rows if h.get("is_cash"))
-    mine = [h for h in rows if str(h.get("symbol") or "").upper() == sym and not h.get("is_cash")]
+    all_mine = [h for h in rows if str(h.get("symbol") or "").upper() == sym and not h.get("is_cash")]
+    mine = [h for h in all_mine
+            if not acct or _canonical_account(h.get("account")) == acct]
     name_mv = sum(_f(h.get("market_value")) or 0.0 for h in mine)
     held_units = sum(_f(h.get("shares")) or 0.0 for h in mine)
     by_account = [{"account": h.get("account"), "held_units": _f(h.get("shares")),
-                   "market_value": _f(h.get("market_value"))} for h in mine]
+                   "market_value": _f(h.get("market_value"))} for h in all_mine]
     if not rows:
         unknowns.append("holdings unavailable")
 
@@ -139,6 +161,8 @@ def build_portfolio_facts(symbol: str, *, paths: Optional[dict[str, Path]] = Non
         "schema": SCHEMA,
         "status": "OK" if rows else "UNAVAILABLE",
         "symbol": sym,
+        "account": acct or None,
+        "account_scoped": bool(acct),
         "held": held,
         "held_units_total": round(held_units, 4) if held else 0.0,
         "held_by_account": by_account,

@@ -396,3 +396,164 @@ def test_N_the_served_projection_marks_an_unreadable_store_unknown(monkeypatch):
     row = served["rows"][0]
     assert row["status"] == rs.UNKNOWN_STATUS, row
     assert row["held_evidence"] == "UNKNOWN"
+
+
+# ── codex-cloud BLOCK at fbe0582bf (P1 aliases, P2 unknown ownership, P2 packet scope, P2 re-key) ──────
+
+
+def _plan_evidence(**kw):
+    ev = {"symbol": "SPCX", "account": "schwab_ira", "price": 100.0, "quote_age_h": 0.2,
+          "entry_low": 95.0, "entry_high": 105.0, "stop": 90.0, "target": 140.0,
+          "held": False, "held_evidence": "SCOPE_UNKNOWN", "plan_source": "reentry_desk"}
+    ev.update(kw)
+    return ev
+
+
+def test_O_unknown_ownership_blocks_the_entry_call():
+    """codex-cloud P2 (account_scope:122): an unknown holding account must not become 'New position'.
+
+    The state was BUY_READY, so the Telegram card rendered a green new-position review for a symbol
+    that may already be owned. Unknown ownership cannot back an entry call.
+    """
+    result = ces.evaluate(_plan_evidence())
+    assert result["state"] == "BLOCKED", f"unknown ownership still produced {result['state']}"
+    assert "ownership" in (result["first_hard_block"] or "").lower(), result
+    assert "BUY READY" not in ces.render_operator(result, _plan_evidence())
+
+    # An unreadable holdings source is unknown too.
+    assert ces.evaluate(_plan_evidence(held_evidence="UNKNOWN"))["state"] == "BLOCKED"
+
+    # Positive control: a confirmed-absent position is still an ordinary new-position call.
+    assert ces.evaluate(_plan_evidence(held_evidence="CONFIRMED"))["state"] == "BUY_READY"
+
+    # A row whose own inherited fact says held is not blocked by the ownership guard.
+    assert ces.evaluate(_plan_evidence(held=True, held_evidence="SCOPE_UNKNOWN"))["state"] == "BUY_READY"
+
+
+def test_P_the_telegram_card_never_reads_unknown_ownership_as_a_new_position(monkeypatch):
+    """codex-cloud P2: the formatter honoured only the boolean, so unknown rendered as 'New position'."""
+    from lib import telegram_cards
+    from lib.telegram_rich import cio_entry_alert
+    base = {"symbol": "SPCX", "state": "BUY_READY", "held": False, "held_evidence": "SCOPE_UNKNOWN",
+            "price": 100.0, "entry_low": 95.0, "entry_high": 105.0, "stop": 90.0, "target": 140.0,
+            "rr": 2.33, "rr_at_ideal_entry": 2.33, "rr_at_current_price": 2.33, "cio_review_id": "rv-1"}
+    msg = cio_entry_alert(dict(base))
+    text = msg.render()["text"]
+    assert "New position" not in text, text
+    assert "OWNERSHIP UNVERIFIED" in text, text
+    assert "Position status unavailable" in text, text
+    assert msg.marker != "🟢", f"unknown ownership rendered as a green ready: {msg.marker}"
+
+    # Confirmed absence keeps the affirmative new-position reading.
+    ok = cio_entry_alert({**base, "held_evidence": "CONFIRMED"})
+    assert "HIGH CONVICTION ENTRY" in ok.render()["text"]
+
+    # The fallback (non-card) layout names the position too; it must not say New position.
+    import importlib
+    for mod in (telegram_cards, importlib.import_module("scripts.lib.telegram_cards")):
+        monkeypatch.setattr(mod, "enabled", lambda *a, **kw: False)
+    fallback = cio_entry_alert(dict(base)).render()["text"]
+    assert "New position" not in fallback and "Position status unavailable" in fallback, fallback
+    confirmed = cio_entry_alert({**base, "held_evidence": "CONFIRMED"}).render()["text"]
+    assert "New position" in confirmed, confirmed
+
+
+def _book_paths(tmp_path):
+    holdings = {"holdings": [
+        {"symbol": "SPCX", "account": "schwab_individual", "shares": 12, "market_value": 1200.0},
+        {"symbol": "CASH", "account": "schwab_ira", "is_cash": True, "market_value": 500.0},
+    ]}
+    paths = {}
+    for name, obj in (("holdings", holdings), ("correlation", {}),
+                      ("options_monitor", {}), ("ips", {"constraints": {}})):
+        f = tmp_path / f"{name}.json"
+        f.write_text(json.dumps(obj))
+        paths[name] = f
+    return paths
+
+
+def test_Q_portfolio_facts_are_scoped_to_the_candidate_account(tmp_path):
+    """codex-cloud P2 (cio_options_fluency:1003): an IRA packet must not inherit an Individual hold."""
+    from lib import buy_ready_portfolio_facts as bpf
+    paths = _book_paths(tmp_path)
+
+    ira = bpf.build_portfolio_facts("SPCX", account="schwab_ira", paths=paths)
+    assert ira["held"] is False, "an Individual holding was counted as an IRA position"
+    assert not ira["held_units_total"], ira
+    assert ira["held_by_account"], "the reader lost where the symbol actually is"
+
+    ind = bpf.build_portfolio_facts("SPCX", account="schwab_individual", paths=paths)
+    assert ind["held"] is True and ind["held_units_total"] == 12.0
+    # The declared alias is the same account.
+    assert bpf.build_portfolio_facts("SPCX", account="schwab_taxable", paths=paths)["held"] is True
+
+
+def test_Q2_the_packet_uses_scoped_ownership_for_a_named_account(tmp_path, monkeypatch):
+    """codex-cloud P2: the packet's ownership_context/decision_action must follow the account."""
+    from lib import cio_options_fluency
+    from lib import buy_ready_portfolio_facts as bpf
+    port = bpf.build_portfolio_facts("SPCX", account="schwab_ira", paths=_book_paths(tmp_path))
+    result = {"symbol": "SPCX", "account": "schwab_ira", "state": "BUY_READY", "price": 100.0,
+              "entry_low": 95.0, "entry_high": 105.0, "stop": 90.0, "target": 140.0, "held": False}
+    packet = cio_options_fluency.build_buy_ready_packet(
+        result, {"held": False, "portfolio_facts": port},
+        desk={"by_symbol": {}}, goals=[], enrichment={})
+    assert packet["ownership_context"]["held"] is False, packet["ownership_context"]
+    assert packet["decision_action"] == "REVIEW_NEW_POSITION", packet["decision_action"]
+
+    # A symbol-wide facts blob attached by an older caller cannot decide a named account either.
+    symbol_wide = {"status": "OK", "held": True, "held_units_total": 12.0, "name_market_value": 1200.0}
+    monkeypatch.setattr(cio_options_fluency, "_load_portfolio_facts",
+                        lambda sym, account=None: {"status": "OK", "held": False, "account": account})
+    packet = cio_options_fluency.build_buy_ready_packet(
+        result, {"held": False, "portfolio_facts": symbol_wide},
+        desk={"by_symbol": {}}, goals=[], enrichment={})
+    assert packet["ownership_context"]["held"] is False, packet["ownership_context"]
+    assert packet["decision_action"] == "REVIEW_NEW_POSITION", packet["decision_action"]
+
+
+def test_R_prepare_packet_inputs_scopes_portfolio_facts_to_the_row(monkeypatch):
+    """codex-cloud P2: the runner's own build must pass the candidate account."""
+    from lib import buy_ready_portfolio_facts as bpf
+    from lib import buy_ready_options_alternatives as boa
+    from lib import buy_ready_cio_review as bcr
+    calls = {}
+
+    def fake_facts(sym, *, account=None, **kw):
+        calls["sym"], calls["account"] = sym, account
+        return {"status": "OK", "held": False, "account": account}
+
+    monkeypatch.setattr(bpf, "build_portfolio_facts", fake_facts)
+    monkeypatch.setattr(boa, "live_alternatives", lambda plan, **kw: {"status": "OPTIONS_ALT_NONE"})
+    monkeypatch.setattr(bcr, "review_packet", lambda packet, review_mode=None: {"status": "OK"})
+    ev = {}
+    runner.prepare_packet_inputs(
+        {"symbol": "SPCX", "account": "schwab_ira", "state": "BUY_READY"}, ev, apply=False)
+    assert calls == {"sym": "SPCX", "account": "schwab_ira"}, calls
+
+
+def test_S_a_packet_supplied_account_rekeys_the_evidence_row(state):
+    """codex-cloud P2 (runner:232): an inherited account must move the row to its scoped key.
+
+    Left under the bare symbol, evidence_for(symbol, account) returned {} for pending-review retries
+    and changed_symbols compared a bare key against scoped prior states, re-reporting every run.
+    """
+    state([_row("SPCX")], [{"symbol": "SPCX", "account": "schwab_ira", "shares": 5}])
+    cur = ScriptedCursor(symbols=["SPCX"], packets={"SPCX": {"account": "schwab_ira"}})
+    ev = runner.gather(cur)
+    assert "SPCX" not in ev, f"the row stayed under the bare symbol: {list(ev)}"
+    assert "SPCX|schwab_ira" in ev, list(ev)
+    e = ev["SPCX|schwab_ira"]
+    assert e["account"] == "schwab_ira"
+    assert runner.evidence_for(ev, "SPCX", "schwab_ira") is e
+    assert runner.changed_symbols({"SPCX|schwab_ira": {**e, "state": "BUY_READY"}},
+                                  {"SPCX|schwab_ira": "BUY_READY"}) == []
+
+
+def test_T_a_packet_account_joining_a_scoped_desk_row_keeps_one_row(state):
+    """The re-key must not overwrite a row that already names the same account."""
+    state([_row("SPCX"), _row("SPCX", "schwab_ira")], [])
+    cur = ScriptedCursor(symbols=["SPCX"], packets={"SPCX": {"account": "schwab_ira"}})
+    ev = runner.gather(cur)
+    assert sorted(k for k in ev if k.startswith("SPCX")) == ["SPCX|schwab_ira"], list(ev)
+    assert ev["SPCX|schwab_ira"]["account"] == "schwab_ira"

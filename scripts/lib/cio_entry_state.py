@@ -110,6 +110,15 @@ def evaluate(ev: dict, *, today: date | None = None) -> dict:
         blocked.append(f"CIO decision is {cio_action}")
     if ev.get("wash_blocked"):
         blocked.append("wash-sale window")
+    # Unknown ownership is not "not held" (codex-cloud P2, account_scope:122). When the holdings
+    # evidence cannot name this account, an entry call would render an affirmative new position for
+    # a name the book may already own, so it cannot back BUY_READY. A row whose own inherited fact
+    # says held is unaffected: its conservative answer is already "existing position".
+    held_evidence = str(ev.get("held_evidence") or "").upper()
+    if not ev.get("held") and held_evidence == "UNKNOWN":
+        blocked.append("holdings could not be read — ownership unknown")
+    elif not ev.get("held") and held_evidence == "SCOPE_UNKNOWN":
+        blocked.append("a holding for this symbol names no account — ownership for this account unknown")
     if price is not None and stop is not None and price <= stop:
         blocked.append("price is at or below the plan stop")
     earn_days = _days_until(ev.get("earnings_date"), today)

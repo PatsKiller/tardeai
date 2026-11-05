@@ -40,6 +40,27 @@ def held_accounts(holdings_doc: dict[str, Any] | None) -> dict[str, set[str]]:
     return out
 
 
+def canonical_account(raw: Any) -> str:
+    """The declared key for an account spelling; unknown spellings pass through unchanged.
+
+    ``config/account_display_names.json`` declares aliases (``schwab_roth`` -> ``schwab_roth_ira``,
+    ``schwab_individual`` -> ``schwab_taxable``) and ``account_display.canonical_key`` resolves them.
+    Ownership is a question about an ACCOUNT, so both the holding row and the candidate must be
+    canonicalized before membership is tested (codex-cloud P1 at account_scope:123, 2026-11-05).
+    """
+    text = str(raw or "").strip()
+    if not text or text == SCOPE_UNSCOPED:
+        return text
+    try:
+        try:
+            from lib.account_display import canonical_key
+        except ImportError:  # imported as scripts.lib.*
+            from scripts.lib.account_display import canonical_key  # type: ignore[no-redef]
+        return canonical_key(text) or text
+    except Exception:  # noqa: BLE001 — a missing display config never changes an account's identity
+        return text
+
+
 def held_for(held: dict[str, set[str]], symbol: str, account: str | None) -> bool:
     """Is this symbol held — **in this account** when one is stated, in **any** account otherwise?
 
@@ -58,7 +79,8 @@ def held_for(held: dict[str, set[str]], symbol: str, account: str | None) -> boo
     acct = str(account or "").strip()
     if not acct or acct == SCOPE_UNSCOPED:
         return True   # held somewhere; held_in() names where, and a scoped reader narrows it
-    return acct in accounts
+    wanted = canonical_account(acct)
+    return any(canonical_account(a) == wanted for a in accounts)
 
 
 def held_in(held: dict[str, set[str]], symbol: str) -> list[str]:
@@ -120,7 +142,8 @@ def resolve_held(
         return base or held_for(held, sym, None), HELD_CONFIRMED
     if account_identity_unknown(held, sym):
         return base, HELD_SCOPE_UNKNOWN
-    return acct in (held.get(sym) or set()), HELD_CONFIRMED
+    # Canonicalized membership: the holding row and the candidate may spell one account two ways.
+    return held_for(held, sym, acct), HELD_CONFIRMED
 
 
 def evidence_key(symbol: Any, account: Any) -> str:

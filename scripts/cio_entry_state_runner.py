@@ -98,6 +98,31 @@ def _load_json_checked(path: Path) -> tuple[Any, bool]:
         return None, False
 
 
+def _adopt_account(ev: dict, e: dict, sym: str, account: str) -> None:
+    """Move an unscoped evidence row under its scoped key once an account is known.
+
+    A decision packet may name the account for a row the desk left unscoped. Leaving that row under
+    the bare symbol split one account's evidence into two keys: the scoped readers missed it and the
+    bare key never matched a scoped prior state (codex-cloud P2 at runner:232, 2026-11-05). When a
+    row for the same account already exists, the later facts are filled in rather than one row
+    overwriting the other.
+    """
+    from lib.account_scope import evidence_key
+    if not account or ev.get(sym) is not e:
+        return  # already scoped, or this dict is not the bare-symbol row
+    want = evidence_key(sym, account)
+    if want == sym:
+        return
+    existing = ev.get(want)
+    if existing is not None and existing is not e:
+        for key, value in e.items():
+            existing.setdefault(key, value)
+        del ev[sym]
+        return
+    del ev[sym]
+    ev[want] = e
+
+
 def _age_h(ts) -> float | None:
     if ts is None or not hasattr(ts, "timestamp"):
         return None
@@ -120,6 +145,7 @@ def gather(cur) -> dict[str, dict]:
     """symbol → evidence dict for cio_entry_state.evaluate."""
     from lib.account_scope import (
         account_of,
+        canonical_account,
         evidence_key,
         held_accounts,
         held_in,
@@ -230,6 +256,10 @@ def gather(cur) -> dict[str, dict]:
                 _pa = str(pk.get("account") or pk.get("account_key") or "").strip()
                 if _pa:
                     e["account"] = _pa
+            # Once the account is known the row belongs under its scoped key: downstream readers
+            # (evidence_for(symbol, account), changed_symbols vs scoped prior states) look there
+            # (codex-cloud P2 at runner:232, 2026-11-05).
+            _adopt_account(ev, e, sym, str(e.get("account") or "").strip())
             if pk is not None and pq is not None:
                 e["quality_state"] = pq.packet_gate(pk).get("quality")
                 e.setdefault("earnings_date", ((pk.get("event_state") or {}).get("earnings") or {}).get("date"))
@@ -241,9 +271,10 @@ def gather(cur) -> dict[str, dict]:
             # account-less holdings evidence stays UNKNOWN / SCOPE_UNKNOWN, never "not held".
             e["held"], e["held_evidence"] = resolve_held(
                 held, sym, _acct, inherited=e.get("held"), evidence_known=holdings_known)
-            if _acct and _acct not in e["held_accounts"] and e["held_accounts"]:
+            if _acct and e["held_accounts"] and canonical_account(_acct) not in {
+                    canonical_account(a) for a in e["held_accounts"]}:
                 # A plan row may carry a scope that disagrees with the holding rows; that is a fact
-                # to surface, not a reason to widen the block.
+                # to surface, not a reason to widen the block. Aliases of one account do not disagree.
                 e.setdefault("held_scope_note", f"position recorded under {', '.join(e['held_accounts'])}")
             if sym in profiles:
                 # Conditional on purpose: symbol_profiles covers ~3,136 symbols, fewer than
@@ -441,8 +472,11 @@ def prepare_packet_inputs(result: dict, ev: dict, *, apply: bool) -> dict:
     from lib.buy_ready_cio_review import review_packet
     from lib.cio_options_fluency import build_buy_ready_packet
     sym = str(result.get("symbol") or "").upper()
+    acct = str(result.get("account") or ev.get("account") or "").strip() or None
     try:
-        ev["portfolio_facts"] = build_portfolio_facts(sym)
+        # Ownership is a fact about (symbol, account): symbol-wide facts would OR another account's
+        # holding into this row's packet (codex-cloud P2 at cio_options_fluency:1003, 2026-11-05).
+        ev["portfolio_facts"] = build_portfolio_facts(sym, account=acct)
     except Exception as exc:  # noqa: BLE001
         ev["portfolio_facts"] = {"status": "UNAVAILABLE", "error": type(exc).__name__, "flags": []}
     plan = {k: result.get(k) for k in ("symbol", "price", "entry_low", "entry_high", "stop", "target")}
