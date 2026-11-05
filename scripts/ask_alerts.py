@@ -229,10 +229,13 @@ def main(argv=None):
         write_lane_receipt("ask-alerts", ok=False, exit_code=1, started_at=started,
                            error=type(exc).__name__)
         raise
-    write_lane_receipt("ask-alerts", ok=True, exit_code=0, started_at=started,
-                       summary={"checked": a.check,
-                                "fired": len(result["fired"]) if a.check else 0,
-                                "listed": 0 if a.check else len(result)})
+    # The receipt is the lane's health claim: it says the evaluator ran and what it found. `--list` runs
+    # NO evaluation, so writing ok=True here cleared a failed evaluator receipt without checking a single
+    # alert (D52 triage KEEP_BLOCK on #2528, scripts/ask_alerts.py:232). Only an evaluating run may claim
+    # the lane is healthy; a listing leaves the last real evaluation's receipt untouched.
+    if a.check:
+        write_lane_receipt("ask-alerts", ok=True, exit_code=0, started_at=started,
+                           summary={"checked": True, "fired": len(result["fired"]), "listed": 0})
     return 0
 
 

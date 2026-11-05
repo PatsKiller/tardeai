@@ -368,3 +368,25 @@ def test_a_digit_inside_a_company_name_is_not_a_price_target(lane, tmp_path):
     ctx = {"positions": [{"symbol": "LHX", "name": "L3Harris", "held": True, "private": False}]}
     alert = lane.add_alert("alert me when L3Harris hits $150", ctx)
     assert alert["kind"] == "price" and alert["target_price"] == 150.0, alert
+
+
+def test_a_list_run_does_not_clear_a_failed_evaluator_receipt(tmp_path, lane):
+    """D52 triage KEEP_BLOCK #2528: `--list` wrote ok=True with checked=False.
+
+    It evaluated no alert, yet it overwrote the lane receipt, so a failed evaluator was silently
+    replaced by a healthy-looking one by a read-only listing. Only an evaluating run may claim health.
+    """
+    def _boom():
+        raise RuntimeError("evaluator unavailable")
+
+    lane.check_alerts = _boom
+    with pytest.raises(RuntimeError):
+        lane.main(["--check"])
+    failed = json.loads(_receipt(tmp_path).read_text())
+    assert failed["status"] != "ok", failed
+
+    lane.list_alerts = lambda: [{"symbol": "AAA", "target_price": 1.0}]
+    assert lane.main(["--list"]) == 0
+    after = json.loads(_receipt(tmp_path).read_text())
+    assert after == failed, (
+        "a listing must leave the evaluator's failed receipt untouched, not clear it")
