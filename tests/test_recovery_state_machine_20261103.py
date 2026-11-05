@@ -125,6 +125,52 @@ def test_momentum_alone_is_not_enough_either():
     assert d.triggers["R3"] is True and d.state == R.WATCHING
 
 
+def test_a_confidence_only_recovery_never_claims_a_reclaim_fired():
+    """The SENTENCE was the untested thing, which is why it survived review.
+
+    The two tests above pass because R3 alone (0.10) and R5 alone (0.15) cannot clear `recovering_floor` (0.30) —
+    arithmetic, not a guard. Lower the floor and momentum plus a catalyst reach RECOVERING with no reclaim at all.
+    The old code answered that with "a reclaim trigger fired above the exit", which was simply false. It now names
+    what happened.
+    """
+    policy = {**R.DEFAULT_POLICY, "recovering_floor": 0.20}
+    quiet = snap(close=137.00, rsi=42.0, rsi_prev=36.0, sma20=151.62, macd_up_sessions=0,
+                 catalyst_confidence=0.88, catalyst_sessions_ago=1)
+    d = R.evaluate(case(), quiet, policy=policy, now=NOW)
+
+    assert d.triggers == {"R1": False, "R2": False, "R3": True, "R4": False, "R5": True}
+    assert d.state == R.RECOVERING, "the card still has to show the case"
+    assert "reclaim fired" not in d.reason.lower(), f"a confidence-only recovery claimed a reclaim: {d.reason!r}"
+    assert d.reason == "confidence 0.25 crossed the floor without a reclaim", d.reason
+
+
+def test_a_reclaim_names_which_trigger_fired():
+    """The other half: when a reclaim DID happen, the sentence says which one, so the two cases are distinguishable."""
+    r4_and_momentum = snap(close=100.0, rsi=42.0, rsi_prev=36.0, sma20=95.0, macd_up_sessions=0,
+                           catalyst_confidence=0.0)
+    d = R.evaluate(case(), r4_and_momentum, now=NOW)
+    assert d.triggers["R4"] is True and d.state == R.RECOVERING
+    assert d.reason == "a reclaim fired (R4); confidence 0.35", d.reason
+
+    # 141.65 is above both the +1% exit reclaim and the 138.00 stop, so the sentence must name BOTH, not just the first.
+    r1 = R.evaluate(case(), snap(close=141.65, rsi=39.1, rsi_prev=36.0, sma20=151.62), now=NOW)
+    assert r1.triggers["R1"] is True
+    assert "reclaim fired (R1+R2)" in r1.reason, r1.reason
+
+
+def test_the_run_pass_reports_the_decay_window_on_every_row():
+    """`session_decay` was tested and called by nothing — a documented policy that had quietly stopped running."""
+    class _Store:
+        def list_open(self, limit=200):
+            return [case()]
+
+    out = R.run_pass(_Store(), lambda c: snap(close=141.65), now=NOW, dry_run=True, notify=lambda *a, **k: None)
+    row = out["decisions"][0]
+    assert row["decay"]["decay_sessions"] == 20
+    assert row["decay"]["sessions_since_trigger"] is None      # no invented session count
+    assert set(row["decay"]) >= {"decayed", "digest_only", "auto_close"}
+
+
 def test_the_rsi_cross_up_through_the_level_is_the_momentum_trigger():
     below = snap(rsi=39.5, rsi_prev=38.0, macd_up_sessions=0)
     above = snap(rsi=41.0, rsi_prev=38.0, macd_up_sessions=0)

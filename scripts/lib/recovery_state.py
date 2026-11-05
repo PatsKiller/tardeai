@@ -17,8 +17,12 @@ Three rules from the spec that shape the code:
   annotation with a *when* and a *what would change it*. A residual is a fact to display, never a disqualifier
   (operator ruling 2026-11-03: the "held" concept is removed, not tuned). Only an account with NO date-open route
   blocks RE_ENTRY_READY; a single failing caveat never hides the card.
-* **Recovery is a reclaim, not a pullback.** R1/R2 are reclaim triggers (exit +1%, the stop that fired); R3/R5
-  raise confidence but can never advance a state on their own; R4 (SMA20 reclaim) is the ready trigger.
+* **Recovery is a reclaim, not a pullback.** R1/R2 are reclaim triggers (exit +1%, the stop that fired); R4 (SMA20
+  reclaim) is the ready trigger. R3/R5 raise confidence and are *not* reclaims. Under the default weights they cannot
+  reach `recovering_floor` on their own (0.10+0.15 = 0.25 < 0.30) — but that is arithmetic, not a guard: a policy that
+  reweights them or lowers the floor will move a case to RECOVERING with no reclaim. When it does, the reason now says
+  "without a reclaim", so the card never claims one fired. (This sentence used to claim they "can never advance a state
+  on their own", which held only for the default numbers and was never enforced anywhere.)
 """
 from __future__ import annotations
 
@@ -87,12 +91,6 @@ def load_policy(path: str | Path | None = None) -> dict[str, Any]:
     trig = doc.get("triggers") if isinstance(doc.get("triggers"), Mapping) else {}
     conf = doc.get("confidence") if isinstance(doc.get("confidence"), Mapping) else {}
     resid = doc.get("residual") if isinstance(doc.get("residual"), Mapping) else {}
-    def _pick(dst, *names, src=trig):
-        for name in names:
-            if name in src and src[name] is not None:
-                dst[name if name in dst else next(iter(dst))] = src[name]
-                return True
-        return False
     mapping = {
         "reclaim_exit_pct": ("r1_reclaim_exit_pct",),
         "stop_reclaim_enabled": ("r2_reclaim_stop",),
@@ -389,11 +387,18 @@ def evaluate(case: Mapping[str, Any], snapshot: Mapping[str, Any] | None,
                 if (r.get("eligible") if isinstance(r, Mapping) else bool(r))]
     blocked = any(a.get("blocks_ready") for a in annotations)
 
+    reclaim = flags["R1"] or flags["R2"] or flags["R4"]
     if flags["R4"] and confidence >= float(policy.get("ready_floor") or 0.55) and eligible and not blocked:
         state, reason = RE_ENTRY_READY, "reclaims the 20-day mean with confidence over the floor"
-    elif flags["R1"] or flags["R2"] or confidence >= float(policy.get("recovering_floor") or 0.30):
+    elif reclaim and confidence >= float(policy.get("recovering_floor") or 0.30):
         # A reclaim is shown even when eligibility is unknown or every date gate is shut: the case still shows.
-        state, reason = RECOVERING, "a reclaim trigger fired above the exit"
+        # The reason names what actually fired, so the card cannot claim a reclaim that did not happen.
+        which = "+".join(k for k in ("R1", "R2", "R4") if flags[k])
+        state, reason = RECOVERING, f"a reclaim fired ({which}); confidence {confidence:.2f}"
+    elif confidence >= float(policy.get("recovering_floor") or 0.30):
+        # R3/R5 raise confidence but are not reclaims. Reaching RECOVERING on confidence alone is allowed — the
+        # card still has to show the case — but the sentence must not assert a reclaim that never fired.
+        state, reason = RECOVERING, f"confidence {confidence:.2f} crossed the floor without a reclaim"
     else:
         state, reason = WATCHING, ("gates block re-entry until they lift" if blocked
                                    else "no reclaim trigger yet")
@@ -579,7 +584,11 @@ def run_pass(store, snapshot_for, *, policy: Mapping[str, Any] | None = None,
             decisions.append({"case_key": case.get("case_key"), "store_error": f"{type(exc).__name__}: {exc}"})
         decision = evaluate(case, snapshot, policy, now=now)
         row = {"case_key": case.get("case_key"), "symbol": case.get("symbol"),
-               "snapshot": "present" if snapshot else "absent", **decision.as_dict()}
+               "snapshot": "present" if snapshot else "absent", **decision.as_dict(),
+               # Read-only: reports the decay window on the row. It never closes a case, and materiality T2 or
+               # worse keeps it digest-only. Without this the rule was tested and called by nothing, which is
+               # how a documented policy quietly stops being a policy.
+               "decay": session_decay(case, policy)}
         decisions.append(row)
         write_ok = True
         if decision.changed:
