@@ -217,9 +217,15 @@ def _classify_exit_event(sym, acct, current_price, stop_price, live_data, risk_d
     }
 
 
-def create_watch_records(new_stopouts: list[dict]) -> int:
-    """Insert new stopped_out_watch records with exit classification."""
+def create_watch_records(new_stopouts: list[dict]) -> dict:
+    """Insert new stopped_out_watch records with exit classification.
+
+    Returns `{created, attempted, failed, ok, error}`. A row whose insert fails is counted and reported: the caller
+    must not treat "the function returned" as "the inserts worked" (FQ-117 R1).
+    """
     created = 0
+    failed = 0
+    first_error = None
     for s in new_stopouts:
         exit_type = s.get("exit_type", "unclassified")
         explicit_stop = s.get("explicit_stop_out", False)
@@ -260,8 +266,11 @@ def create_watch_records(new_stopouts: list[dict]) -> int:
             if relisted or market_recon:
                 print(f"    {s['symbol']}: classified as {exit_type} (not a true stop-out)")
         except Exception as e:
+            failed += 1
+            first_error = first_error or f"{type(e).__name__}: {e}"
             print(f"  [recovery] Failed to create watch for {s['symbol']}: {e}")
-    return created
+    return {"created": created, "attempted": len(new_stopouts), "failed": failed,
+            "ok": failed == 0, "error": first_error}
 
 
 # ── Step 1b: Detect relist events ───────────────────────────────────────
@@ -744,10 +753,13 @@ def check_and_escalate(reviewed: list[dict]) -> list[dict]:
     return escalated
 
 
-def send_notifications(escalated: list[dict]):
-    """Send Telegram + log notification for each escalation."""
+def send_notifications(escalated: list[dict]) -> dict:
+    """Send Telegram + log notification for each escalation. Reports delivery failures (FQ-117 R1)."""
+    sent = 0
+    failed = 0
+    first_error = None
     if not escalated:
-        return
+        return {"sent": 0, "failed": 0, "ok": True, "error": None}
 
     from db_adapter import save_notification_log_entry
 
@@ -804,8 +816,12 @@ def send_notifications(escalated: list[dict]):
                 lines.append(f"Capital: {e['allocation'].replace('_', ' ')}")
             lines.append(f"Review at: /v3/risk")
             send_telegram("\n".join(lines), priority="P2", producer="recovery_watch_daily")
+            sent += 1
         except Exception as ex:
+            failed += 1
+            first_error = first_error or f"{type(ex).__name__}: {ex}"
             print(f"  [recovery] Telegram send failed: {ex}")
+    return {"sent": sent, "failed": failed, "ok": failed == 0, "error": first_error}
 
 
 # ── Step 4: Stop placement confirmation scan ────────────────────────────
@@ -863,15 +879,16 @@ def scan_unconfirmed_stops() -> list[dict]:
     return reminders
 
 
-def send_stop_reminders(reminders: list[dict]):
-    """Send Telegram reminder for unconfirmed stops."""
+def send_stop_reminders(reminders: list[dict]) -> dict:
+    """Send Telegram reminder for unconfirmed stops. Reports delivery failures (FQ-117 R1)."""
     if not reminders:
-        return
+        return {"sent": 0, "failed": 0, "ok": True, "error": None}
     try:
         from telegram_alert import send_telegram
         from db_adapter import save_notification_log_entry
-    except ImportError:
-        return
+    except ImportError as exc:
+        return {"sent": 0, "failed": len(reminders), "ok": False,
+                "error": f"notification transport unavailable: {type(exc).__name__}: {exc}"}
 
     total_unprotected = sum(r['market_value'] for r in reminders)
     lines = [f"*Stop Placement Reminder*\n{len(reminders)} position(s) without confirmed stops (${total_unprotected:,.0f} total exposure):\n"]
@@ -898,8 +915,11 @@ def send_stop_reminders(reminders: list[dict]):
             "status": "sent", "dedupe_key": f"stop_remind_{date.today()}",
             "sent_at": datetime.now(), "error": None,
         })
+        return {"sent": len(reminders), "failed": 0, "ok": True, "error": None}
     except Exception as ex:
         print(f"  [recovery] Stop reminder notification_log failed: {ex}")
+        return {"sent": 0, "failed": len(reminders), "ok": False,
+                "error": f"{type(ex).__name__}: {ex}"[:300]}
 
 
 # ── Step 5: Post-stop temporary allocation advisor ───────────────────────
@@ -1125,6 +1145,17 @@ def write_run_receipt(payload: dict, directory: Path | None = None) -> Path:
         handle.flush()
         os.fsync(handle.fileno())
     os.replace(temporary, target)
+    # Fsync the DIRECTORY too: fsyncing the file proves the bytes, not that the name was published.
+    try:
+        dir_fd = os.open(str(directory), os.O_RDONLY)
+    except OSError:
+        return target
+    try:
+        os.fsync(dir_fd)
+    except OSError:
+        pass
+    finally:
+        os.close(dir_fd)
     return target
 
 
@@ -1138,9 +1169,32 @@ def _summarise(result) -> object:
     return str(result)[:200]
 
 
+class StepFailed(RuntimeError):
+    """A step returned normally but reported that its own work failed.
+
+    cx-openai-2's R1 on #2674: `create_watch_records` catches a failed insert and returns a count, so treating
+    "the function returned" as success certified a failed mutation as ok. A step now says what happened; a normal
+    return that reports failure is a failure.
+    """
+
+
+def _step_failure(result) -> str | None:
+    """What a step's own return value says about failure. `None` means "it really worked"."""
+    if isinstance(result, dict):
+        if result.get("ok") is False:
+            return str(result.get("error") or "step reported failure")[:300]
+        failed = result.get("failed")
+        if isinstance(failed, int) and failed > 0:
+            return f"{failed} operation(s) failed" + (f": {result.get('error')}" if result.get("error") else "")
+    return None
+
+
 def _run_step(steps: list, name: str, fn, *args, **kwargs):
-    """Run one step and record its outcome. A failure is recorded and then re-raised: the receipt must show the
-    failure, and the process must still exit non-zero (rule 8 — exit 0 is not evidence of work)."""
+    """Run one step and record what actually happened, then propagate any failure.
+
+    Two failure shapes, both recorded and both fatal: an exception, and a normal return whose own report says the
+    work failed. Exit 0 is not evidence of work (AGENTS rule 8).
+    """
     started = _utc_now()
     try:
         result = fn(*args, **kwargs)
@@ -1148,6 +1202,11 @@ def _run_step(steps: list, name: str, fn, *args, **kwargs):
         steps.append({"name": name, "outcome": "failed", "started_at": _iso(started),
                       "finished_at": _iso(_utc_now()), "error": f"{type(exc).__name__}: {exc}"[:500]})
         raise
+    failure = _step_failure(result)
+    if failure:
+        steps.append({"name": name, "outcome": "failed", "started_at": _iso(started),
+                      "finished_at": _iso(_utc_now()), "error": failure, "output": _summarise(result)})
+        raise StepFailed(f"{name}: {failure}")
     steps.append({"name": name, "outcome": "ok", "started_at": _iso(started),
                   "finished_at": _iso(_utc_now()), "output": _summarise(result)})
     return result
@@ -1161,7 +1220,8 @@ def _run(started: datetime, invocation_id: str, steps: list):
     created = _run_step(steps, "create_watch_records", create_watch_records, new_stopouts)
     true_stops = sum(1 for s in new_stopouts if s.get("explicit_stop_out"))
     relists = sum(1 for s in new_stopouts if s.get("relisted_without_stop_out"))
-    print(f"  New events detected: {len(new_stopouts)} (true stop-outs: {true_stops}, relists: {relists}), records created: {created}")
+    print(f"  New events detected: {len(new_stopouts)} (true stop-outs: {true_stops}, relists: {relists}), "
+          f"records created: {created['created'] if isinstance(created, dict) else created}")
 
     # Step 1b: Detect relist events for existing watch items
     relist_events = _run_step(steps, "detect_relist_events", detect_relist_events)
@@ -1228,13 +1288,36 @@ def _log_reconciliation() -> dict:
 
 
 def main():
-    """Run the lane and always leave a receipt — including when a step fails.
+    """Run the lane and always leave a receipt — including when it dies mid-run.
 
-    The receipt is the evidence: exit 0 alone is not proof of useful work (AGENTS rule 8).
+    cx-openai-2's R2 on #2674: the receipt used to be written after all the work, so a crash left no evidence and a
+    write failure left the workload running unrecorded. The invocation is now durable BEFORE any mutable work: if it
+    cannot be recorded, the lane does not run. The same file is finalised afterwards, so a hard kill leaves the
+    started record with `outcome: "incomplete"` — evidence that a run began and never reported.
     """
     started = _utc_now()
     invocation_id = uuid.uuid4().hex
     steps: list[dict] = []
+    receipt = {
+        "schema": RECEIPT_SCHEMA,
+        "invocation_id": invocation_id,
+        "started_at": _iso(started),
+        "finished_at": None,
+        "source": source_identity(),
+        "steps": steps,
+        "outcome": "incomplete",
+        "error": None,
+        "summary": None,
+        "exit_code": None,
+        "logs": _log_reconciliation(),
+    }
+    try:
+        path = write_run_receipt(receipt)
+    except OSError as exc:  # no durable start record -> no mutable work
+        print(f"[recovery_watch_daily] refusing to run: run receipt cannot be written: {exc}", file=sys.stderr)
+        raise RuntimeError(f"run receipt not writable: {exc}") from exc
+    print(f"  Run receipt (started): {path}")
+
     summary = None
     error = None
     try:
@@ -1244,24 +1327,19 @@ def main():
         error = f"{type(exc).__name__}: {exc}"[:500]
         raise
     finally:
-        receipt = {
-            "schema": RECEIPT_SCHEMA,
-            "invocation_id": invocation_id,
-            "started_at": _iso(started),
-            "finished_at": _iso(_utc_now()),
-            "source": source_identity(),
-            "steps": steps,
-            "outcome": "failed" if error else "ok",
-            "error": error,
-            "summary": summary,
-            "exit_code": 1 if error else 0,
-            "logs": _log_reconciliation(),
-        }
+        receipt.update(
+            finished_at=_iso(_utc_now()),
+            steps=steps,
+            outcome="failed" if error else "ok",
+            error=error,
+            summary=summary,
+            exit_code=1 if error else 0,
+            logs=_log_reconciliation(),
+        )
         try:
-            path = write_run_receipt(receipt)
-            print(f"  Run receipt: {path}")
-        except OSError as exc:  # a receipt that cannot be written must be loud, never silent
-            print(f"  Run receipt NOT written: {exc}", file=sys.stderr)
+            write_run_receipt(receipt)
+        except OSError as exc:  # the started record stays; say why it could not be finalised
+            print(f"  Run receipt NOT finalised: {exc}", file=sys.stderr)
 
 
 if __name__ == "__main__":

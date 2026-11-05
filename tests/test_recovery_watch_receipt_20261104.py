@@ -10,6 +10,7 @@ ANCHOR: RECOVERY_WATCH_RUN_RECEIPT_20261104
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from datetime import datetime
@@ -21,6 +22,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import recovery_watch_daily as R  # noqa: E402
+
+#: Captured before any fixture stubs it, so a test can drive the REAL record builder against a failing writer.
+REAL_CREATE_WATCH_RECORDS = R.create_watch_records
 
 
 @pytest.fixture
@@ -108,3 +112,89 @@ def test_the_receipt_names_both_log_files_with_their_clock(stubbed):
 def test_receipt_write_is_atomic(stubbed):
     R.main()
     assert not list(stubbed.glob("*.tmp")), "a temporary file survived the write"
+
+
+# ── FQ-117 R1/R2 (cx-openai-2 BLOCK at b80f0af9b) ───────────────────────────────────────────────────────────
+# A receipt must distinguish "successful zero work" from "failed persistence", and the invocation must be durable
+# BEFORE any mutable work — a crash has to leave evidence that a run began.
+
+def test_failed_persistence_is_not_certified_as_success(stubbed, monkeypatch):
+    """R1: `create_watch_records` swallows a failed insert and returns a count. A normal return was called ok."""
+    calls = {"work": 0}
+    monkeypatch.setattr(R, "detect_new_stopouts", lambda: [{"symbol": "SPCX", "account": "a", "exit_price": 1.0,
+                                                            "stop_price": 2.0, "explicit_stop_out": True}])
+    def boom(*a, **k):
+        calls["work"] += 1
+        raise RuntimeError("synthetic insert failure")
+    monkeypatch.setattr(R, "_db_write", boom)
+    monkeypatch.setattr(R, "create_watch_records", REAL_CREATE_WATCH_RECORDS)   # the real builder, not the stub
+
+    with pytest.raises(R.StepFailed):
+        R.main()
+
+    receipt = _only_receipt(stubbed)
+    assert calls["work"] == 1, "the insert was never attempted"
+    assert receipt["outcome"] == "failed" and receipt["exit_code"] == 1
+    step = [s for s in receipt["steps"] if s["name"] == "create_watch_records"][0]
+    assert step["outcome"] == "failed"
+    assert "synthetic insert failure" in (step["error"] or ""), step["error"]
+    assert step["output"].get("failed") == 1 and step["output"].get("ok") is False
+
+
+def test_the_invocation_is_durable_before_any_work_runs(stubbed, monkeypatch):
+    """R2: the started record exists before the first step touches anything."""
+    seen = {}
+    def first_step():
+        receipts = sorted(stubbed.glob("*.json"))
+        seen["receipts_at_start"] = [p.name for p in receipts]
+        seen["outcome_at_start"] = json.loads(receipts[0].read_text())["outcome"] if receipts else None
+        return []
+    monkeypatch.setattr(R, "detect_new_stopouts", first_step)
+    R.main()
+    assert len(seen["receipts_at_start"]) == 1, "no durable record existed when the first step ran"
+    assert seen["outcome_at_start"] == "incomplete", "the started record must not claim a finished outcome"
+
+
+def test_a_hard_death_leaves_the_started_record_behind(stubbed, monkeypatch):
+    """R2: a process that dies mid-run leaves evidence that it began. os._exit in a child, as the reviewer did."""
+    import subprocess
+    script = (
+        "import os, sys; sys.path.insert(0, %r);"
+        "import recovery_watch_daily as R;"
+        "R.detect_new_stopouts = lambda: os._exit(23);"
+        "R.main()" % str(ROOT / "scripts")
+    )
+    env = {**os.environ, "RECOVERY_WATCH_RECEIPT_DIR": str(stubbed)}
+    proc = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, env=env, timeout=60)
+    assert proc.returncode == 23, proc.stderr[-500:]
+    receipt = _only_receipt(stubbed)
+    assert receipt["outcome"] == "incomplete"
+    assert receipt["finished_at"] is None and receipt["exit_code"] is None
+
+
+def test_an_unwritable_receipt_directory_means_the_lane_does_not_run(stubbed, monkeypatch, tmp_path):
+    """R2: if the invocation cannot be recorded, no mutable work happens."""
+    blocker = tmp_path / "blocked"
+    blocker.write_text("not a directory")
+    monkeypatch.setenv("RECOVERY_WATCH_RECEIPT_DIR", str(blocker))
+    ran = {"step": False}
+    def any_step():
+        ran["step"] = True
+        return []
+    for name in ("detect_new_stopouts", "detect_relist_events", "review_active_items",
+                 "scan_unconfirmed_stops", "compute_temp_allocations"):
+        monkeypatch.setattr(R, name, any_step)
+    with pytest.raises(RuntimeError):
+        R.main()
+    assert ran["step"] is False, "the workload ran even though the invocation could not be recorded"
+
+
+def test_the_directory_is_fsynced_after_the_rename(stubbed, monkeypatch, tmp_path):
+    """R2: fsyncing the file proves the bytes, not that the name was published."""
+    fsynced = []
+    real = os.fsync
+    monkeypatch.setattr(os, "fsync", lambda fd: (fsynced.append(fd), real(fd))[1])
+    target = tmp_path / "receipts"
+    target.mkdir()
+    R.write_run_receipt({"schema": "x", "invocation_id": "abc", "started_at": "2026-11-04T00:00:00+00:00"}, target)
+    assert len(fsynced) >= 2, "only the file was fsynced; the directory entry was never published durably"
