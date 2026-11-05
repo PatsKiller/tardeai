@@ -36,7 +36,11 @@ LEGACY_PREDICATES = {
 }
 OLD_READER_SOURCE = 'def load_inventory(probe: core.Probe, rel: str = INVENTORY_REL) -> "tuple[Optional[dict], Optional[str]]":\n    doc = probe.json(probe.proj / rel)\n    if not isinstance(doc, dict):\n        return None, f"inventory {rel} missing or not JSON"\n    if doc.get("schema") != INVENTORY_SCHEMA:\n        return None, f"inventory schema {doc.get(\'schema\')!r} != {INVENTORY_SCHEMA}"\n    if not isinstance(doc.get("mechanisms"), list) or not doc["mechanisms"]:\n        return None, "inventory has no mechanisms"\n    return doc, None'
 OLD_READER_SHA256 = "9911ef7cf0c0b9d5565336c103abda10c453f8a682de02c62a772a7f8ea150b8"
-UNRELATED44_SHA256 = "3bfd96937beb6a361ed52c6c23badb450ccc309f0d9c85d63c184c412e211786"
+# Bumped from 3bfd9693… (2026-11-03, #2540). Exactly ONE of the 44 entries changed: `disk_pressure_guard`, this
+# PR's subject — its name and success predicate now describe what the guard actually does (pages; acts through the
+# reviewed cleaner only when armed), instead of claiming it reclaims space itself. No other mechanism differs; a
+# blind repin would hide that, a stale pin would keep a false statement in the inventory.
+UNRELATED44_SHA256 = "8d78bf1365a26ce20d11d363b2c3914821458d394dee109f7cfa6bebdee83620"
 
 
 def inventory():

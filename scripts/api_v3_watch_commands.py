@@ -149,7 +149,11 @@ def post_suggest_decision(action: str, body: dict | None = None, *, db_execute=N
     if not symbol or not _re.fullmatch(r"[A-Z0-9.\-^/]{1,12}", symbol):
         return {"ok": False, "error": "SYMBOL_REQUIRED", "provider_calls": 0}
     reason = str(body.get("reason") or "").strip()[:300] or None
-    by = _principal() or (str(by)[:64] if by else "") or "unauthenticated"
+    # `by` used to read itself here (`_principal() or (str(by)[:64] if by else "")`), which raised
+    # UnboundLocalError on every unauthenticated call — the decision was lost rather than recorded as
+    # "unauthenticated" (proved 2026-11-03 by calling it with no principal).
+    principal = _principal()
+    by = (str(principal)[:64] if principal else "") or "unauthenticated"
     payload = {"by": by, "reason": reason, "surface": "watch.system_suggests",
                "universe_rank": body.get("universe_rank") if isinstance(body.get("universe_rank"), int) else None,
                "conviction": body.get("conviction") if isinstance(body.get("conviction"), (int, float)) else None}
