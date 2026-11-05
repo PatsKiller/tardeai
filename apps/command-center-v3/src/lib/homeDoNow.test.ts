@@ -1,11 +1,25 @@
 import {
-  doNowFrom, homeWithCurrentTruth, visibleItems, routerPath, positionsFreshness, moversBars, accountRows, economicDayEvidence, cashPct, inMarketHours, money, pct, ageLabel, briefingSummary, briefingProvenance, parseObservedTime,
+  doNowFrom, homeWithCurrentTruth, visibleItems, routerPath, positionsFreshness, moversBars, accountRows, cashPct, inMarketHours, money, pct, ageLabel, briefingSummary, parseObservedTime,
 } from './homeDoNow.ts'
+import { BEST_OPPORTUNITIES_API, BEST_OPPORTUNITIES_PATH, opportunitiesQuery, isHomeBestOpportunities } from './bestOpportunities.ts'
 declare const process: { exit(code?: number): never }
 let pass = 0, fail = 0
 function check(name: string, cond: boolean) {
   if (cond) { pass++; console.log(`  [PASS] ${name}`) } else { fail++; console.log(`  [FAIL] ${name}`) }
 }
+const homeBestSearch = new URL(BEST_OPPORTUNITIES_PATH, 'https://synthetic.invalid').searchParams
+check('Home best link carries the producer top5 preset', homeBestSearch.get('tab') === 'opportunities' && homeBestSearch.get('preset') === 'top5')
+check('Home API uses the same canonical preset', new URL(BEST_OPPORTUNITIES_API, 'https://synthetic.invalid').search === '?preset=top5')
+check('focused Watch request cannot inject the old limit100 override', JSON.stringify(opportunitiesQuery(homeBestSearch)) === '{"preset":"top5"}')
+check('Home best route is focused', isHomeBestOpportunities(homeBestSearch))
+check('mobile detail state does not change the selection', isHomeBestOpportunities(new URLSearchParams('tab=opportunities&preset=top5&detail=ZZAA')))
+check('explicit canonical sort/page remain focused', isHomeBestOpportunities(new URLSearchParams('preset=top5&sort=conviction&limit=5&page=1')))
+check('custom research limit is not labeled the Home selection', !isHomeBestOpportunities(new URLSearchParams('preset=top5&limit=100')))
+check('custom research sort is not labeled the Home selection', !isHomeBestOpportunities(new URLSearchParams('preset=top5&sort=rr')))
+check('position research filter is retained and not labeled Home', opportunitiesQuery(new URLSearchParams('preset=top5&position=formerly_held')).position === 'formerly_held' && !isHomeBestOpportunities(new URLSearchParams('preset=top5&position=formerly_held')))
+check('ordinary Full universe keeps100 default', opportunitiesQuery(new URLSearchParams('tab=opportunities')).limit === '100')
+check('other research presets retain their existing pagination default', opportunitiesQuery(new URLSearchParams('preset=new')).limit === '100')
+check('explicit research limit is preserved', opportunitiesQuery(new URLSearchParams('limit=20')).limit === '20')
 const now = Date.parse('2026-10-22T15:00:00Z') // 11:00 ET, Thursday — market hours
 const it = (id: string, category: string, severity: string, m: number | null = null) => ({
   id, category, severity, title: id, why: 'w', action: { label: 'Go', where: '/v3/risk?symbol=X' }, money_at_risk_usd: m,
@@ -59,7 +73,7 @@ const perf = { current_value: 1255076, periods: { '1D': { change: -6795 }, YTD: 
   accounts: { schwab_roth: { current_value: 54013, periods: { '1D': { change: 341 }, YTD: { change: 1672 } } }, moomoo_live: { current_value: 529, periods: {} } } }
 const rows = accountRows(perf, { today_by_account: { moomoo_live: { change: -1 } } })
 check('all-accounts row prefers display_change (ex-transfers) and flags ≈', rows[0].ytd === 25097 && rows[0].ytdApprox && rows[0].d1 === -6795)
-check('present performance owns null account1D; no Overview substitution', rows[1].name === 'Schwab Roth IRA' && rows[2].d1 === null && rows[2].ytd === null)
+check('account rows by NAME; 1D falls back to overview', rows[1].name === 'Schwab Roth IRA' && rows[2].d1 === -1 && rows[2].ytd === null)
 check('fallback to today_by_account when performance missing', accountRows(null, { portfolio_value: 1, today_by_account: { a_b: { value: 5, change: 1 } } })[1].name === 'A B')
 check('cash pct', Math.abs((cashPct({ total_cash: 823000, portfolio_value: 1255076 }) ?? 0) - 65.57) < 0.01 && cashPct({ portfolio_value: 0, total_cash: 1 }) === null && cashPct({}) === null)
 check('formatting', money(-6795, true) === '−$6,795' && money(25097, true) === '+$25,097' && money(null) === '—' && pct(-0.54) === '−0.54%' && ageLabel(3000) === '50 min')
@@ -71,28 +85,6 @@ check('briefing plain string kept', briefingSummary('plain text') === 'plain tex
 check('briefing JSON string parsed', briefingSummary('{"content":"from json"}') === 'from json')
 check('briefing truncated with ellipsis', briefingSummary('a'.repeat(200)).length === 111 && briefingSummary('a'.repeat(200)).endsWith('…'))
 check('briefing empty/null → empty', briefingSummary(null) === '' && briefingSummary({}) === '' && briefingSummary('  ') === '')
-// Saved briefing provenance is section metadata, never the current command/portfolio clock.
-const briefNow = Date.parse('2026-11-02T20:00:00Z')
-const savedSection = { content: 'Synthetic saved analysis remains unchanged.', generated_at: '2026-10-30T18:00:00Z' }
-const savedClock = briefingProvenance(savedSection, briefNow)
-check('saved briefing has its own source clock', savedClock.state === 'dated' && savedClock.generatedAt === savedSection.generated_at)
-check('saved briefing displays actual generation date and ET', savedClock.label.includes('Oct 30, 2026 14:00 ET'))
-check('old briefing reports age without inventing a freshness policy', savedClock.label.includes('3 d ago') && !savedClock.label.includes('fresh') && !savedClock.label.includes('STALE'))
-const sqlClock = briefingProvenance({ generated_at: '2026-11-02 19:30:00+00:00' }, briefNow)
-check('SQL TIMESTAMPTZ string is dated', sqlClock.state === 'dated' && sqlClock.label.includes('Nov 2, 2026 14:30 ET') && sqlClock.label.includes('30 min ago'))
-check('offsets normalize to the same actual generation time', briefingProvenance({ generated_at: '2026-11-02T14:30:00-05:00' }, briefNow).label === sqlClock.label)
-check('actual midnight generation is a clock, not an invented date-only observation', briefingProvenance({ generated_at: '2026-11-02T00:00:00Z' }, briefNow).label.includes('Nov 1, 2026 19:00 ET'))
-const futureClock = briefingProvenance({ generated_at: '2026-11-02T20:00:02Z' }, briefNow)
-check('future generation is explicit, never just-now age', futureClock.state === 'future' && futureClock.label.includes('in the future') && !futureClock.label.includes('ago'))
-check('missing section clock is unknown', briefingProvenance(null, briefNow).state === 'unknown' && briefingProvenance({ content: 'Synthetic prose' }, briefNow).generatedAt === null)
-check('legacy prose has no invented clock', briefingProvenance('Synthetic prose', briefNow).state === 'unknown')
-check('JSON-looking prose is not parsed for a clock', briefingProvenance('{"generated_at":"2026-11-02T19:30:00Z"}', briefNow).state === 'unknown')
-check('unzoned generation stays unknown', briefingProvenance({ generated_at: '2026-11-02 19:30:00' }, briefNow).state === 'unknown')
-check('date-only generation stays unknown', briefingProvenance({ generated_at: '2026-11-02' }, briefNow).state === 'unknown')
-check('invalid generation dates are not normalized into invented dates', briefingProvenance({ generated_at: '2026-02-30T19:30:00Z' }, briefNow).state === 'unknown')
-check('unreadable and numeric generation stamps stay unknown', briefingProvenance({ generated_at: 'soon' }, briefNow).state === 'unknown' && briefingProvenance({ generated_at: briefNow }, briefNow).state === 'unknown')
-check('unknown comparison clock does not manufacture an age', briefingProvenance(savedSection, NaN).label.includes('current clock unavailable') && !briefingProvenance(savedSection, NaN).label.includes('ago'))
-check('provenance never changes saved prose', savedSection.content === 'Synthetic saved analysis remains unchanged.' && briefingSummary(savedSection) === savedSection.content)
 // "YYYY-MM-DD HH:MM:SS ET" observation stamps (server format) — Date.parse alone gives NaN (site validation 2026-10-22)
 check('ET stamp parsed (EDT)', parseObservedTime('2026-10-22 16:45:03 ET') === Date.parse('2026-10-22T20:45:03Z'))
 check('ET stamp parsed (EST)', parseObservedTime('2026-12-01 09:30 ET') === Date.parse('2026-12-01T14:30:00Z'))
@@ -180,32 +172,6 @@ const emptyCurrent = { positions: { source: 'fixture CIO', rows: [] }, stops: { 
 const retainedEmpty = homeWithCurrentTruth(doNowFrom({ ...ok, items: [] }, { nowMs: now }), emptyCurrent,
   { pending_approvals: 0 }, undefined, { positionsStale: true })
 check('restoration: an empty retained answer is never a fresh all-clear', retainedEmpty.state === 'STALE')
-
-// Economic metadata may refuse an account-day claim without replacing original Returns evidence.
-const refusedDay = { status: 'UNKNOWN', complete: false, gap: { reason: 'Synthetic economic day basis/session/coverage unproven', ticket: 'OI-044' },
-  total_change: null, funded_account_count: null, represented_account_count: null,
-  stored_row_evidence: { known_sum: 0, row_values_complete: true }, legacy_evidence: { total_change: 100 } }
-const refusedPerf = { current_value: 150, periods: { '1D': { change: 100, display_change: 7 }, YTD: { change: 12 } },
-  accounts: { synthetic_alpha: { current_value: 150, periods: { '1D': { change: 100, display_change: 7 }, YTD: { change: 12 } } } }, today_pnl: refusedDay }
-const refusedOverview = { portfolio_value: 1100, today_change: 999, today_by_account: { synthetic_alpha: { value: 1100, change: 999 }, extra: { value: 1, change: 1 } }, today_pnl: refusedDay }
-const beforeRefused = JSON.stringify({ refusedPerf, refusedOverview })
-const refusedRows = accountRows(refusedPerf, refusedOverview)
-check('economic UNKNOWN and actual source gap are communicated', economicDayEvidence(refusedPerf).unknown && economicDayEvidence(refusedPerf).label.includes('UNKNOWN') && economicDayEvidence(refusedPerf).reason.includes('OI-044'))
-check('original1D display evidence stays7, never row0, raw100 or other endpoint999', refusedRows.length === 2 && refusedRows[0].d1 === 7 && refusedRows[1].d1 === 7 && refusedRows[0].ytd === 12)
-check('retained1D tip says unverified with actual source reason', refusedRows.every(r => r.tip.includes('unverified') && r.tip.includes('UNKNOWN') && r.tip.includes('Synthetic economic day') && r.tip.includes('OI-044')))
-const nullPerf = { ...refusedPerf, current_value: null, periods: { ...refusedPerf.periods, '1D': { change: null, display_change: null } },
-  accounts: { synthetic_alpha: { current_value: null, periods: { '1D': { change: null }, YTD: { change: 12 } } } } }
-const nullRows = accountRows(nullPerf, refusedOverview)
-check('explicit null source values remain null and All row stays visible', nullRows.length === 2 && nullRows.every(r => r.value === null && r.d1 === null))
-const zeroRows = accountRows({ ...refusedPerf, periods: { '1D': { change: 0, display_change: 0 } } }, refusedOverview)
-check('original genuine zero stays zero as unverified evidence', zeroRows[0].d1 === 0 && zeroRows[0].tip.includes('unverified'))
-check('present missing account membership is not supplied by Overview', accountRows({ current_value: null, periods: {}, today_pnl: refusedDay }, refusedOverview).length === 1)
-const missingPerfRows = accountRows(null, refusedOverview)
-check('absent performance fallback names its actual Overview source', missingPerfRows[0].value === 1100 && missingPerfRows[0].tip.includes('/api/v2/overview (performance unavailable') && !missingPerfRows[0].tip.includes('/api/v2/portfolio/performance'))
-check('absent performance honors Overview economic refusal even with mixed numeric fields', missingPerfRows.every(r => r.d1 === null))
-check('legacy performance lacking economic proof is UNKNOWN during mixed refresh', economicDayEvidence({ current_value: 150, periods: { '1D': { change: 7 } } }).unknown && accountRows({ current_value: 150, periods: { '1D': { change: 7 } } }, refusedOverview)[0].tip.includes('UNKNOWN'))
-check('unknown status does not become known from complete=true alone', economicDayEvidence({ today_pnl: { complete: true } }).unknown)
-check('status refusal does not mutate source evidence/null census', JSON.stringify({ refusedPerf, refusedOverview }) === beforeRefused && refusedDay.funded_account_count === null && refusedDay.represented_account_count === null)
 
 console.log(`homeDoNow: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

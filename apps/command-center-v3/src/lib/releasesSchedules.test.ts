@@ -60,3 +60,22 @@ assert.equal(ciLabel({ state: 'SUCCESS', reason: null, age_s: 9000, stale: true 
 assert.equal(ciLabel({ state: 'UNAVAILABLE', reason: 'no receipt' }), 'UNAVAILABLE')
 assert.equal(ciTone('FAILURE'), 'danger'); assert.equal(ciTone('PENDING'), 'info'); assert.equal(ciTone('UNAVAILABLE'), 'warning')
 assert.equal(ciTone('SUCCESS'), 'success')
+
+// n8n failure is a data gap, not a zero: a capture-fresh response whose source failed stays UNAVAILABLE.
+const n8nDown: ReleasesSchedulesWire = {
+  ...wire,
+  n8n_today: { value: null, as_of: '2026-10-22T18:59:00Z', freshness: 'UNAVAILABLE', source: 'sqlite:n8n_coordination_ledger', reason: 'OperationalError: unable to open database file' },
+}
+const down = sectionView<{ total: number }>(n8nDown, 'n8n_today', { nowMs: NOW })
+assert.equal(down.state, 'UNAVAILABLE')
+assert.equal(down.value, null)                                  // never 0
+assert.match(down.label, /OperationalError/)                   // the real cause, not a capture age
+assert.ok(!/^OK/.test(down.label))                             // the label never claims a fresh OK
+
+// A section's as_of is the SOURCE's own time (last run, last release), not the read time: an OK section whose
+// as_of is hours old is NOT downgraded. Staleness comes from the source's freshness or the capture time.
+const quiet: ReleasesSchedulesWire = { ...wire, n8n_today: { ...wire.n8n_today!, as_of: '2026-10-22T13:00:00Z' } }
+assert.equal(sectionView(quiet, 'n8n_today', { nowMs: NOW }).state, 'OK')
+
+// An undated capture is not current: the response cannot be called OK when generated_at is missing.
+assert.equal(sectionView({ ...wire, generated_at: undefined }, 'serving', { nowMs: NOW }).state, 'STALE')
