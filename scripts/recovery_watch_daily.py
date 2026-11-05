@@ -25,10 +25,14 @@ Re-entry Classification (2026-05-11):
     - Aggressiveness reduced only on confirmed stop-outs
 """
 from __future__ import annotations
+import hashlib
 import json
 import os
+import re
+import subprocess
 import sys
-from datetime import date, datetime
+import uuid
+from datetime import date, datetime, timezone
 from pathlib import Path
 from decimal import Decimal
 
@@ -213,9 +217,15 @@ def _classify_exit_event(sym, acct, current_price, stop_price, live_data, risk_d
     }
 
 
-def create_watch_records(new_stopouts: list[dict]) -> int:
-    """Insert new stopped_out_watch records with exit classification."""
+def create_watch_records(new_stopouts: list[dict]) -> dict:
+    """Insert new stopped_out_watch records with exit classification.
+
+    Returns `{created, attempted, failed, ok, error}`. A row whose insert fails is counted and reported: the caller
+    must not treat "the function returned" as "the inserts worked" (FQ-117 R1).
+    """
     created = 0
+    failed = 0
+    first_error = None
     for s in new_stopouts:
         exit_type = s.get("exit_type", "unclassified")
         explicit_stop = s.get("explicit_stop_out", False)
@@ -256,8 +266,11 @@ def create_watch_records(new_stopouts: list[dict]) -> int:
             if relisted or market_recon:
                 print(f"    {s['symbol']}: classified as {exit_type} (not a true stop-out)")
         except Exception as e:
+            failed += 1
+            first_error = first_error or f"{type(e).__name__}: {e}"
             print(f"  [recovery] Failed to create watch for {s['symbol']}: {e}")
-    return created
+    return {"created": created, "attempted": len(new_stopouts), "failed": failed,
+            "ok": failed == 0, "error": first_error}
 
 
 # ── Step 1b: Detect relist events ───────────────────────────────────────
@@ -740,10 +753,13 @@ def check_and_escalate(reviewed: list[dict]) -> list[dict]:
     return escalated
 
 
-def send_notifications(escalated: list[dict]):
-    """Send Telegram + log notification for each escalation."""
+def send_notifications(escalated: list[dict]) -> dict:
+    """Send Telegram + log notification for each escalation. Reports delivery failures (FQ-117 R1)."""
+    sent = 0
+    failed = 0
+    first_error = None
     if not escalated:
-        return
+        return {"sent": 0, "failed": 0, "ok": True, "error": None}
 
     from db_adapter import save_notification_log_entry
 
@@ -800,8 +816,12 @@ def send_notifications(escalated: list[dict]):
                 lines.append(f"Capital: {e['allocation'].replace('_', ' ')}")
             lines.append(f"Review at: /v3/risk")
             send_telegram("\n".join(lines), priority="P2", producer="recovery_watch_daily")
+            sent += 1
         except Exception as ex:
+            failed += 1
+            first_error = first_error or f"{type(ex).__name__}: {ex}"
             print(f"  [recovery] Telegram send failed: {ex}")
+    return {"sent": sent, "failed": failed, "ok": failed == 0, "error": first_error}
 
 
 # ── Step 4: Stop placement confirmation scan ────────────────────────────
@@ -859,15 +879,22 @@ def scan_unconfirmed_stops() -> list[dict]:
     return reminders
 
 
-def send_stop_reminders(reminders: list[dict]):
-    """Send Telegram reminder for unconfirmed stops."""
+def send_stop_reminders(reminders: list[dict]) -> dict:
+    """Send Telegram reminder for unconfirmed stops. Reports delivery failures (FQ-117 R1).
+
+    The report is built from what actually left the host, not from what was attempted: a Telegram
+    send that raises counts as failed and makes `ok` False, and the audit row it leaves behind says
+    so too. Otherwise the run receipt would certify that the operator was paged when nothing went
+    out — the exact class of defect this lane exists to make impossible (review F1 on #2674).
+    """
     if not reminders:
-        return
+        return {"sent": 0, "failed": 0, "ok": True, "error": None}
     try:
         from telegram_alert import send_telegram
         from db_adapter import save_notification_log_entry
-    except ImportError:
-        return
+    except ImportError as exc:
+        return {"sent": 0, "failed": len(reminders), "ok": False,
+                "error": f"notification transport unavailable: {type(exc).__name__}: {exc}"}
 
     total_unprotected = sum(r['market_value'] for r in reminders)
     lines = [f"*Stop Placement Reminder*\n{len(reminders)} position(s) without confirmed stops (${total_unprotected:,.0f} total exposure):\n"]
@@ -877,9 +904,15 @@ def send_stop_reminders(reminders: list[dict]):
     lines.append(f"Or review at /v3/risk")
     msg = "\n".join(lines)
 
+    sent = 0
+    failed = 0
+    first_error = None
     try:
         send_telegram(msg, priority="P1", dedupe_minutes=0, producer="recovery_watch_daily")
+        sent = len(reminders)
     except Exception as ex:
+        failed = len(reminders)
+        first_error = f"{type(ex).__name__}: {ex}"[:300]
         print(f"  [recovery] Stop reminder Telegram failed: {ex}")
 
     try:
@@ -891,11 +924,16 @@ def send_stop_reminders(reminders: list[dict]):
             "body_summary": msg[:500],
             "recommendation_ids": None, "escalation_ids": None, "observation_ids": None,
             "payload": json.dumps(reminders[:10], default=str),
-            "status": "sent", "dedupe_key": f"stop_remind_{date.today()}",
-            "sent_at": datetime.now(), "error": None,
+            "status": "sent" if sent else "failed", "dedupe_key": f"stop_remind_{date.today()}",
+            "sent_at": datetime.now(), "error": None if sent else first_error,
         })
     except Exception as ex:
+        # The page went out (or did not) — either way the audit row is now a second failure, and a
+        # delivered page with no audit row is still not a clean run.
+        failed = failed or 1
+        first_error = first_error or f"{type(ex).__name__}: {ex}"[:300]
         print(f"  [recovery] Stop reminder notification_log failed: {ex}")
+    return {"sent": sent, "failed": failed, "ok": failed == 0, "error": first_error}
 
 
 # ── Step 5: Post-stop temporary allocation advisor ───────────────────────
@@ -1060,56 +1098,366 @@ def _compute_allocation(sym, analyst_verdict, analyst_conf, cash_pct, heat_pct, 
 
 # ── Main entry point ─────────────────────────────────────────────────────
 
-def main():
-    print(f"[recovery_watch_daily] Starting — {datetime.now().isoformat()}")
+RECEIPT_SCHEMA = "RecoveryWatchRunReceipt@v1"
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _iso(moment: datetime) -> str:
+    return moment.astimezone(timezone.utc).isoformat()
+
+
+def receipt_dir() -> Path:
+    """Where run receipts live. RECOVERY_WATCH_RECEIPT_DIR exists for tests and for a caller that wants them
+    somewhere else; it never changes what the run does."""
+    override = os.environ.get("RECOVERY_WATCH_RECEIPT_DIR")
+    return Path(override) if override else PROJECT_ROOT / "data" / "runtime" / "recovery_watch_receipts"
+
+
+def source_identity(script: Path | None = None) -> dict:
+    """The concrete code this invocation is running, recorded without asking CURRENT what it was.
+
+    CURRENT is a pointer *now*; it cannot prove what an earlier run executed. The script's own digest always
+    works, a release directory name (`<40-hex>-<label>`) binds it to a served tree when it runs from one, and
+    git HEAD is recorded when a checkout is available. Anything unavailable stays None — never guessed.
+    """
+    path = Path(script or __file__).resolve()
+    out: dict = {"script": str(path), "script_sha256": None, "release_sha": None, "git_head": None}
+    try:
+        out["script_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        pass
+    for parent in path.parents:
+        match = re.fullmatch(r"([0-9a-f]{40})-.+", parent.name or "")
+        if match:
+            out["release_sha"] = match.group(1)
+            break
+    try:
+        # Read-only, fixed argv, no shell: the only thing this can run is `git rev-parse HEAD`.
+        # ruff anchors S607 at the executable argument, so the suppression sits on that line, not the call.
+        head = subprocess.run(  # noqa: S603
+            ["git", "-C", str(PROJECT_ROOT), "rev-parse", "HEAD"],  # noqa: S607
+            capture_output=True, text=True, timeout=5,
+        )
+        if head.returncode == 0 and re.fullmatch(r"[0-9a-f]{40}\s*", head.stdout or ""):
+            out["git_head"] = head.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return out
+
+
+def write_run_receipt(payload: dict, directory: Path | None = None) -> Path:
+    """Write one receipt atomically and return its path. Never partial: a crash leaves no half-written file."""
+    directory = Path(directory) if directory else receipt_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    target = directory / f"{payload['started_at'].replace(':', '').replace('-', '')}-{payload['invocation_id']}.json"
+    temporary = target.with_suffix(".json.tmp")
+    with open(temporary, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=1, sort_keys=True, default=str)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, target)
+    # Fsync the DIRECTORY too: fsyncing the file proves the bytes, not that the name was published.
+    try:
+        dir_fd = os.open(str(directory), os.O_RDONLY)
+    except OSError as exc:
+        # Never silent: the receipt must not claim a durability it did not get (review F3 on #2674).
+        print(f"  [recovery] receipt directory fsync skipped (cannot open {directory}): {exc}", file=sys.stderr)
+        return target
+    try:
+        os.fsync(dir_fd)
+    except OSError as exc:
+        print(f"  [recovery] receipt directory fsync failed: {exc}", file=sys.stderr)
+    finally:
+        os.close(dir_fd)
+    return target
+
+
+def _summarise(result) -> object:
+    if isinstance(result, (int, float, str, bool)) or result is None:
+        return result if not isinstance(result, str) else result[:200]
+    if isinstance(result, (list, tuple)):
+        return {"count": len(result)}
+    if isinstance(result, dict):
+        return {k: result[k] for k in list(result)[:8]}
+    return str(result)[:200]
+
+
+class StepFailed(RuntimeError):
+    """A step returned normally but reported that its own work failed.
+
+    cx-openai-2's R1 on #2674: `create_watch_records` catches a failed insert and returns a count, so treating
+    "the function returned" as success certified a failed mutation as ok. A step now says what happened; a normal
+    return that reports failure is a failure.
+    """
+
+
+def _step_failure(result) -> str | None:
+    """What a step's own return value says about failure. `None` means "it really worked"."""
+    if isinstance(result, dict):
+        if result.get("ok") is False:
+            return str(result.get("error") or "step reported failure")[:300]
+        failed = result.get("failed")
+        if isinstance(failed, int) and failed > 0:
+            return f"{failed} operation(s) failed" + (f": {result.get('error')}" if result.get("error") else "")
+    return None
+
+
+def _run_step(steps: list, name: str, fn, *args, **kwargs):
+    """Run one step and record what actually happened, then propagate any failure.
+
+    Two failure shapes, both recorded and both fatal: an exception, and a normal return whose own report says the
+    work failed. Exit 0 is not evidence of work (AGENTS rule 8).
+    """
+    started = _utc_now()
+    try:
+        result = fn(*args, **kwargs)
+    except BaseException as exc:  # recorded before it propagates
+        steps.append({"name": name, "outcome": "failed", "started_at": _iso(started),
+                      "finished_at": _iso(_utc_now()), "error": f"{type(exc).__name__}: {exc}"[:500]})
+        raise
+    failure = _step_failure(result)
+    if failure:
+        steps.append({"name": name, "outcome": "failed", "started_at": _iso(started),
+                      "finished_at": _iso(_utc_now()), "error": failure, "output": _summarise(result)})
+        raise StepFailed(f"{name}: {failure}")
+    steps.append({"name": name, "outcome": "ok", "started_at": _iso(started),
+                  "finished_at": _iso(_utc_now()), "output": _summarise(result)})
+    return result
+
+
+def _run(started: datetime, invocation_id: str, steps: list):
+    print(f"[recovery_watch_daily] Starting — {_iso(started)} (invocation {invocation_id})")
 
     # Step 1: Detect new stop-outs (with exit classification)
-    new_stopouts = detect_new_stopouts()
-    created = create_watch_records(new_stopouts)
+    new_stopouts = _run_step(steps, "detect_new_stopouts", detect_new_stopouts)
+    created = _run_step(steps, "create_watch_records", create_watch_records, new_stopouts)
     true_stops = sum(1 for s in new_stopouts if s.get("explicit_stop_out"))
     relists = sum(1 for s in new_stopouts if s.get("relisted_without_stop_out"))
-    print(f"  New events detected: {len(new_stopouts)} (true stop-outs: {true_stops}, relists: {relists}), records created: {created}")
+    print(f"  New events detected: {len(new_stopouts)} (true stop-outs: {true_stops}, relists: {relists}), "
+          f"records created: {created['created'] if isinstance(created, dict) else created}")
 
     # Step 1b: Detect relist events for existing watch items
-    relist_events = detect_relist_events()
+    relist_events = _run_step(steps, "detect_relist_events", detect_relist_events)
     if relist_events:
         print(f"  Relist events detected and reclassified: {relist_events}")
 
     # Step 2: Review all active items (with exit classification context)
-    reviewed = review_active_items()
+    reviewed = _run_step(steps, "review_active_items", review_active_items)
     print(f"  Active items reviewed: {len(reviewed)}")
     for r in reviewed:
         change = f" (was {r['old_verdict']})" if r['old_verdict'] != r['verdict'] else ""
         print(f"    {r['symbol']}: {r['verdict']} ({r['confidence']*100:.0f}%){change}")
 
     # Step 3: Escalate + notify
-    escalated = check_and_escalate(reviewed)
+    escalated = _run_step(steps, "check_and_escalate", check_and_escalate, reviewed)
     print(f"  Escalations: {len(escalated)}")
-    send_notifications(escalated)
+    _run_step(steps, "send_notifications", send_notifications, escalated)
 
     # Step 4: Process any Telegram replies first
     try:
         from telegram_reply_processor import process_replies
-        reply_count = process_replies()
-        print(f"  Telegram replies processed: {reply_count}")
-    except Exception as e:
+    except ImportError as e:
+        # Optional step: only *unavailability* is a skip. A step that ran and failed keeps the single
+        # `failed` row _run_step already wrote — appending a contradictory `skipped` row for the same
+        # step told a reader both things at once (review F2 on #2674).
+        steps.append({"name": "process_telegram_replies", "outcome": "skipped", "error": str(e)[:500],
+                      "started_at": _iso(_utc_now()), "finished_at": _iso(_utc_now())})
         print(f"  Telegram reply processing skipped: {e}")
+    else:
+        try:
+            reply_count = _run_step(steps, "process_telegram_replies", process_replies)
+            print(f"  Telegram replies processed: {reply_count}")
+        except Exception as e:
+            # The step is optional, so the run continues; the receipt still says one step failed.
+            print(f"  Telegram reply processing failed (optional step, run continues): {e}")
 
     # Step 5: Stop confirmation scan (after processing replies)
-    reminders = scan_unconfirmed_stops()
+    reminders = _run_step(steps, "scan_unconfirmed_stops", scan_unconfirmed_stops)
     print(f"  Stop reminders: {len(reminders)}")
-    send_stop_reminders(reminders)
+    _run_step(steps, "send_stop_reminders", send_stop_reminders, reminders)
 
     # Step 5: Temp allocation recommendations
-    alloc_updated = compute_temp_allocations()
+    alloc_updated = _run_step(steps, "compute_temp_allocations", compute_temp_allocations)
     print(f"  Temp allocation recommendations updated: {alloc_updated}")
 
-    print(f"[recovery_watch_daily] Complete — {datetime.now().isoformat()}")
+    print(f"[recovery_watch_daily] Complete — {_iso(_utc_now())}")
     return {"new_stopouts": len(new_stopouts), "true_stopouts": true_stops,
             "relists_detected": relists, "relist_reclassifications": relist_events,
             "created": created, "reviewed": len(reviewed), "escalated": len(escalated),
             "stop_reminders": len(reminders), "alloc_updated": alloc_updated}
 
 
+def _log_reconciliation() -> dict:
+    """The two log names, measured rather than assumed (FQ-117).
+
+    The installed unit writes `logs/recovery-watch.log` (hyphen); an older crontab line wrote
+    `logs/recovery_watch.log` (underscore) and is retired in the live crontab but still present, commented, in
+    `config/crontab_backup.txt`. Consumers (lane registry output_signal, api_v2) read the hyphen file. Recording
+    both here means a reader never has to trust a name: whichever exists is listed with its clock and size.
+    """
+    out = {}
+    for name in ("recovery-watch.log", "recovery_watch.log"):
+        path = PROJECT_ROOT / "logs" / name
+        try:
+            stat = path.stat()
+            out[name] = {"present": True, "bytes": stat.st_size,
+                         "mtime": _iso(datetime.fromtimestamp(stat.st_mtime, timezone.utc))}
+        except OSError:
+            out[name] = {"present": False}
+    return out
+
+
+def main():
+    """Run the lane and always leave a receipt — including when it dies mid-run.
+
+    cx-openai-2's R2 on #2674: the receipt used to be written after all the work, so a crash left no evidence and a
+    write failure left the workload running unrecorded. The invocation is now durable BEFORE any mutable work: if it
+    cannot be recorded, the lane does not run. The same file is finalised afterwards, so a hard kill leaves the
+    started record with `outcome: "incomplete"` — evidence that a run began and never reported.
+    """
+    started = _utc_now()
+    invocation_id = uuid.uuid4().hex
+    steps: list[dict] = []
+    receipt = {
+        "schema": RECEIPT_SCHEMA,
+        "invocation_id": invocation_id,
+        "started_at": _iso(started),
+        "finished_at": None,
+        "source": source_identity(),
+        "steps": steps,
+        "outcome": "incomplete",
+        "error": None,
+        "summary": None,
+        "exit_code": None,
+        "logs": _log_reconciliation(),
+    }
+    try:
+        path = write_run_receipt(receipt)
+    except OSError as exc:  # no durable start record -> no mutable work
+        print(f"[recovery_watch_daily] refusing to run: run receipt cannot be written: {exc}", file=sys.stderr)
+        raise RuntimeError(f"run receipt not writable: {exc}") from exc
+    print(f"  Run receipt (started): {path}")
+
+    summary = None
+    error = None
+    try:
+        summary = _run(started, invocation_id, steps)
+        return summary
+    except BaseException as exc:
+        error = f"{type(exc).__name__}: {exc}"[:500]
+        raise
+    finally:
+        receipt.update(
+            finished_at=_iso(_utc_now()),
+            steps=steps,
+            outcome="failed" if error else "ok",
+            error=error,
+            summary=summary,
+            exit_code=1 if error else 0,
+            logs=_log_reconciliation(),
+        )
+        try:
+            write_run_receipt(receipt)
+        except OSError as exc:  # the started record stays; say why it could not be finalised
+            print(f"  Run receipt NOT finalised: {exc}", file=sys.stderr)
+
+
+def latest_receipt(directory: Path | None = None) -> dict | None:
+    """The newest run receipt, parsed; None when the lane has never run.
+
+    Read-only: never writes, never creates the directory, never runs the lane. It exists so a caller (operator,
+    monitor, the 2026-11-05 recovery measurement) can answer "did the last run do useful work" from the durable
+    record instead of inferring it from a log file's mtime — the gap the measurement named: "log Complete ≠
+    useful-work receipt".
+    """
+    folder = Path(directory) if directory else receipt_dir()
+    try:
+        files = sorted(folder.glob("*.json"), key=lambda f: f.stat().st_mtime)
+    except OSError:
+        return None
+    for path in reversed(files):
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue  # a torn file is skipped, never guessed at
+        if isinstance(doc, dict) and doc.get("schema") == RECEIPT_SCHEMA:
+            doc["_path"] = str(path)
+            return doc
+    return None
+
+
+def source_binding(record: dict | None) -> dict:
+    """Bind a recorded run to the code that actually executed it — or say honestly that it cannot be bound.
+
+    A receipt written from ``portfolio-server/CURRENT`` records the script's sha256, the release directory's
+    40-hex name and git HEAD (``source_identity``). A later release replaces that tree, so the question a reader
+    has is not "what is CURRENT now" but "what did THIS run execute". This answers it by re-hashing the recorded
+    path: equal means the same bytes are still there (``bound``), different means a later release replaced them
+    (``changed``, with both digests), missing means the tree is gone (``absent``). A record with no digest at all —
+    any run from before the receipt existed — is ``unknown``, and is never guessed.
+    """
+    src = dict((record or {}).get("source") or {})
+    out = {"state": "unknown", "release_sha": src.get("release_sha"), "git_head": src.get("git_head"),
+           "script": src.get("script"), "script_sha256": src.get("script_sha256"),
+           "observed_sha256": None, "detail": "no source digest was recorded, so the executed code cannot be bound"}
+    path = Path(str(src.get("script") or "")) if src.get("script") else None
+    if path is None or not src.get("script_sha256"):
+        return out
+    try:
+        out["observed_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        out.update(state="absent", detail="the recorded script path no longer exists; the release that ran is gone")
+        return out
+    if out["observed_sha256"] == src.get("script_sha256"):
+        out.update(state="bound", detail="the recorded script is still the file at that path, byte for byte")
+    else:
+        out.update(state="changed",
+                   detail="a later release replaced the script at that path; the recorded digest is the one that ran")
+    return out
+
+
+def receipt_status(directory: Path | None = None) -> dict:
+    """A bounded verdict on the last run: outcome, failed steps, what it produced, and the code that ran it."""
+    doc = latest_receipt(directory)
+    if doc is None:
+        return {"schema": "RecoveryWatchStatus@v1", "receipt": None, "ran": False, "useful_work_verified": False,
+                "detail": "no run receipt found; the lane has not run, or its receipts are elsewhere"}
+    steps = [s for s in doc.get("steps") or [] if isinstance(s, dict)]
+    # The runner records `outcome`; synthetic rows and callers may use `ok`. Read both, or a real
+    # receipt with a failed step is certified "useful" — the same lie in the reporting layer.
+    failed = [str(s.get("name")) for s in steps
+              if s.get("ok") is False or s.get("outcome") in ("failed", "error")
+              or (isinstance(s.get("failed"), int) and s["failed"] > 0)]
+    summary = doc.get("summary") or {}
+    useful = bool(summary) and doc.get("outcome") == "ok" and not failed
+    return {
+        "schema": "RecoveryWatchStatus@v1",
+        "receipt": doc.get("_path"),
+        "ran": True,
+        "invocation_id": doc.get("invocation_id"),
+        "started_at": doc.get("started_at"),
+        "finished_at": doc.get("finished_at"),
+        "outcome": doc.get("outcome"),
+        "steps_ok": len(steps) - len(failed),
+        "steps_failed": failed,
+        "summary": summary,
+        "source": doc.get("source"),
+        "source_binding": source_binding(doc),
+        "logs": doc.get("logs"),
+        "useful_work_verified": useful,
+        "detail": ("the last run finished and every step reported ok"
+                   if useful else
+                   f"the last run is {doc.get('outcome')!r}"
+                   + (f" with failed steps: {', '.join(failed)}" if failed else "")),
+    }
+
+
 if __name__ == "__main__":
+    if "--receipt-status" in sys.argv[1:]:
+        status = receipt_status()
+        print(json.dumps(status, indent=1, sort_keys=True, default=str))
+        raise SystemExit(0 if status.get("useful_work_verified") else 3)
     main()
