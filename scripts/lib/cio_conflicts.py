@@ -60,6 +60,10 @@ def ask_context_rows(root, security_guid, *, now=None):
         row["age_hours"] = round(seconds / 3600, 1) if seconds is not None and seconds >= 0 else None
         rows.append(row)
     summary = "; ".join(f"{r['state']}: {r['summary']} — clears when {r['clears_when']}" for r in rows)
-    return [{"at": max(r["updated_at"] for r in rows), "kind": "conflict.current", "summary": summary,
-             "ref": f"conflicts:{security_guid}:" + str(max(r["revision"] for r in rows)),
+    # Same honesty rule as opened_at: an unreadable clock is absent, never a fabricated value (and never a
+    # TypeError). Only rows whose updated_at / revision were actually recorded can set the summary clock.
+    updated = [r["updated_at"] for r in rows if r.get("updated_at") is not None]
+    revisions = [r["revision"] for r in rows if isinstance(r.get("revision"), (int, float))]
+    return [{"at": max(updated) if updated else None, "kind": "conflict.current", "summary": summary,
+             "ref": f"conflicts:{security_guid}:" + (str(max(revisions)) if revisions else "unknown"),
              "source": "conflict_events.jsonl", "current_conflicts": rows, "gap": None}]

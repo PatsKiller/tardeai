@@ -300,7 +300,11 @@ def main(argv: list[str] | None = None) -> int:
         if receipt is None:
             out["ok"] = False
             out["error"] = "receipt_write_failed"
-        out["wrote"] = [SHADOW_REL, COMPARE_REL, RECEIPT_REL]
+            # The shadow and comparison files above did land, but the receipt did not: never advertise a file
+            # this run did not write. The exit code still fails the lane (0 if out["ok"] else 1).
+            out["wrote"] = [SHADOW_REL, COMPARE_REL]
+        else:
+            out["wrote"] = [SHADOW_REL, COMPARE_REL, RECEIPT_REL]
     else:
         out["wrote"] = [p for p in (args.out, args.report_md) if p]
         out["would_write"] = [SHADOW_REL, COMPARE_REL, RECEIPT_REL]

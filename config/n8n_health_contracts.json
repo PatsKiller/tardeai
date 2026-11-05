@@ -34923,6 +34923,7 @@
       "prepared_on": "2026-10-28",
       "prepared_by": "worker",
       "scope": "Structural DRAFT only; W10 owner and operator review provenance are required before config admission.",
+      "reviewer_fields_note": "The contract-level reviewer/reviewed_at name adversarial-review-2368, the author of the 2026-10-31 amendment. The 2026-10-28 cursor-independent review above remains the record for the substance of the rest of the body. The amendment's contract_body_sha256 binds the whole operative body (the review block is excluded), not only the added expected_output rule.",
       "amendments": [
         {
           "on": "2026-10-31",

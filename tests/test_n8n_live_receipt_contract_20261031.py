@@ -123,3 +123,25 @@ def test_prospect_shadow_live_run_writes_a_verifiable_attempt_receipt(tmp_path, 
     assert verdict["verdict"] == "produced", verdict
     last = json.loads((tmp_path / "data/runtime/cio-prospect-shadow_last.json").read_text())
     assert last["produced_count"] == 3 and last["summary"]["conflicts"] == 1
+
+
+def test_prospect_shadow_receipt_failure_never_reports_a_receipt_it_did_not_write(tmp_path, monkeypatch, capsys):
+    """A failed receipt write must not advertise the receipt path in the JSON report."""
+    doc = {"counts": {"prospects": 3, "conflicts": 1}, "store_status": {"mode": "shadow"}, "prospects": []}
+    monkeypatch.setattr(shadow, "persist_company_facts", lambda *a, **k: {"written": 0}, raising=False)
+    monkeypatch.setattr(shadow.builder, "build", lambda *a, **k: doc)
+    monkeypatch.setattr(shadow.builder, "compare", lambda *a, **k: {"summary": {}})
+    monkeypatch.setattr(shadow, "summary", lambda d: {"prospects": d["counts"]["prospects"]})
+    monkeypatch.setattr(shadow, "_watch_list", lambda *_: ([], "fixture"))
+    # The writer returns None on failure; the lane must not claim it wrote the receipt.
+    import scripts.lib.lane_last_receipt as lane_receipt
+    monkeypatch.setattr(lane_receipt, "write_lane_receipt", lambda *a, **k: None)
+
+    rc = shadow.main(["--write-shadow", "--state-root", str(tmp_path)])
+    out = json.loads(capsys.readouterr().out)
+
+    assert rc == 1
+    assert out["ok"] is False
+    assert out["error"] == "receipt_write_failed"
+    assert shadow.RECEIPT_REL not in out["wrote"]
+    assert out["wrote"] == [shadow.SHADOW_REL, shadow.COMPARE_REL]

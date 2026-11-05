@@ -129,7 +129,9 @@ def item(*, ident: str, kind: str, title: str, proposed_by: str | None, created_
     # Display only: the version a decision binds is document.version, inside document_sha, which nothing here touches.
     label = version if version is not None else doc.get("version")
     label = str(label).strip()[:120] if label not in (None, "") else None
-    return {"id": ident, "kind": kind, "title": title[:300], "proposed_by": proposed_by, "version": label,
+    # Display label only: a decision binds document.version inside document_sha, never this field.
+    return {"id": ident, "kind": kind, "title": title[:300], "proposed_by": proposed_by,
+            "version": label,  # display label only; the decision binds document.version inside document_sha
             "created_at": created_at, "document": doc, "source": source, "pr": pr,
             "source_refs": list(dict.fromkeys([source + ":" + ident] + (source_refs or []))),
             "governed_href": href, "decision_mode": "GOVERNED_PATH" if kind in ("RELEASE", "SPEND", "ACTIVATE", "CONFLICT", "FINANCIAL") else "RECORD"}
