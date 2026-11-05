@@ -9,7 +9,9 @@ Served by scripts/api_v2.py:
 
 The ONLY writer of that store is scripts/coordinator.py (flock + atomic replace). GETs here never create a
 directory, never lock, never write; a missing store reads as an empty view with ``registry_present: false``.
-A torn ledger tail is skipped, never repaired. AUTHORITY: READ_ONLY_ADVISORY.
+An existing store that cannot be decoded reports ``registry_error`` (and ``registry_unreadable: true``) instead
+of publishing an authoritative-looking empty view. A torn ledger tail is skipped, never repaired.
+AUTHORITY: READ_ONLY_ADVISORY.
 """
 from __future__ import annotations
 
@@ -20,11 +22,11 @@ from typing import Any
 try:  # scripts/ on sys.path (api_v2)
     from coordinator import (VENDORS, board_path, coordinator_state, coord_root, inbox_counts, notebook,
                              pending_checks, pending_decisions, read_events, read_registry, registry_path,
-                             registry_problems, state_root)
+                             registry_problem, registry_problems, state_root)
 except ImportError:  # imported as scripts.lib.coordination_view
     from scripts.coordinator import (VENDORS, board_path, coordinator_state, coord_root, inbox_counts, notebook,
                                      pending_checks, pending_decisions, read_events, read_registry, registry_path,
-                                     registry_problems, state_root)
+                                     registry_problem, registry_problems, state_root)
 
 PREFIX = "/api/v2/coordination"
 SCHEMA_VIEW = "CoordinationCoordinatorsView@v1"
@@ -79,6 +81,9 @@ def agents_view(root) -> list[dict[str, Any]]:
 
 
 def coordinators_view(root) -> dict[str, Any]:
+    # A present-but-undecodable registry must not be published as "no coordinators appointed": the read stays
+    # tolerant so the view can render, but the decode failure is carried beside the (empty) value.
+    problem = registry_problem(root)
     reg = read_registry(root)
     events = read_events(root)
     stale = float(reg.get("stale_after_minutes") or 30)
@@ -96,10 +101,12 @@ def coordinators_view(root) -> dict[str, Any]:
         "store": str(coord_root(root)),
         "registry_path": str(registry_path(root)),
         "registry_present": registry_path(root).exists(),
+        "registry_error": problem,
+        "registry_unreadable": problem is not None,
         "stale_after_minutes": stale,
         "lead": reg.get("lead"),  # the banner's field, never re-derived here
         "registry_problems": problems,
-        "divergent": bool(rows) and bool(problems),
+        "divergent": problem is not None or (bool(rows) and bool(problems)),
         "updated_at": reg.get("updated_at"),
         "updated_by": reg.get("updated_by"),
         "coordinators": rows,

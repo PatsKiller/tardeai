@@ -49,6 +49,9 @@ export type CoordinatorsPayload = {
   generated_at?: string
   store?: string
   registry_present?: boolean
+  registry_error?: string | null
+  registry_unreadable?: boolean
+  divergent?: boolean
   stale_after_minutes?: number
   lead?: string | null
   coordinators?: CoordinatorRow[]
@@ -71,6 +74,19 @@ export type BoardPayload = {
   pending_checks?: CheckRow[]
   pending_decisions?: CheckRow[]
   inbox?: Record<string, number>
+}
+
+/**
+ * The join line only belongs to the identity currently selected. useApi retains the previous response while a new
+ * path loads, so checking the id's syntax alone could show (and copy) a line for the previous vendor or id.
+ */
+export function joinLineForSelection(
+  data: { id?: string; vendor?: string; line?: string | null } | null | undefined,
+  id: string,
+  vendor: string,
+): string {
+  if (!data || data.id !== id || data.vendor !== vendor) return ''
+  return data.line || ''
 }
 
 export function stateTone(state?: string): Tone {

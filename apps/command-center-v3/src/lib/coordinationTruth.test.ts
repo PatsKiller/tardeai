@@ -4,6 +4,7 @@ const assert = {
   match(value: string, pattern: RegExp) { if (!pattern.test(value)) throw new Error(`expected ${value} to match ${pattern}`) },
 }
 import { projectCoordination } from './coordinationEvents.ts'
+import { joinLineForSelection } from './coordinators.ts'
 const NOW = Date.parse('2026-10-18T16:00:00Z')
 const missing = projectCoordination(null, { nowMs: NOW, transport: 'ERROR' })
 assert.equal(missing.counts.waiting, null, 'missing backend cannot count zero waiting work')
@@ -31,3 +32,12 @@ for (const status of ['UNAVAILABLE', 'STALE', 'OK']) {
   assert.equal(projectCoordination(payload, { nowMs: NOW }).lastGoodAgeMinutes, null, `${status} explicit null is never a last-good capture`)
   assert.equal(projectCoordination(payload, { nowMs: NOW, error: true }).lastGoodAgeMinutes, null, `${status} explicit null is never retained last-good on API error`)
 }
+
+// CX6 @ 911fbac5b: useApi keeps the previous payload while the new path loads, so a line may only be shown when
+// the response names the currently selected id AND vendor.
+const joinPayload = { id: 'codex-a', vendor: 'codex', line: 'join codex-a' }
+assert.equal(joinLineForSelection(joinPayload, 'codex-a', 'codex'), 'join codex-a', 'the selected identity shows its line')
+assert.equal(joinLineForSelection(joinPayload, 'codex-b', 'codex'), '', 'another id never shows the previous line')
+assert.equal(joinLineForSelection(joinPayload, 'codex-a', 'cursor'), '', 'another vendor never shows the previous line')
+assert.equal(joinLineForSelection(null, 'codex-a', 'codex'), '', 'no response shows nothing')
+assert.equal(joinLineForSelection(undefined, 'codex-a', 'codex'), '', 'a missing response shows nothing')

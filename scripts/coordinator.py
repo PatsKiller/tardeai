@@ -185,9 +185,20 @@ def _atomic_write(path: Path, text: str) -> None:
 
 
 def append_event(root: Path, event: dict[str, Any]) -> None:
-    """Append one validated ledger line. Caller holds the lock."""
-    line = json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n"
-    with ledger_path(root).open("a", encoding="utf-8") as f:
+    """Append one validated ledger line. Caller holds the lock.
+
+    A crash can leave the last line unterminated. Appending straight onto it glues the new event to
+    the fragment, and ``read_events`` then discards BOTH lines, silently losing the event a successful
+    command just reported. Terminate the damaged fragment first: its bytes stay exactly as written
+    (skipped as an unparseable line) and the new event gets a line of its own.
+    """
+    line = (json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+    with ledger_path(root).open("a+b") as f:
+        f.seek(0, os.SEEK_END)
+        if f.tell():
+            f.seek(-1, os.SEEK_END)
+            if f.read(1) != b"\n":
+                f.write(b"\n")
         f.write(line)
         f.flush()
         os.fsync(f.fileno())
@@ -538,15 +549,25 @@ def agent_state(activity: int | None, now: float | None = None) -> str:
 
 def cmd_snapshot(args) -> int:
     root = state_root(args.state_root)
-    reg = read_registry(root)
-    raw = args.sessions or ",".join(reg.get("snapshot_sessions") or DEFAULT_SNAPSHOT_SESSIONS)
-    patterns = [p.strip() for p in str(raw).split(",") if p.strip()]
-    lines = max(1, min(500, int(args.lines or 40)))
-    tmux = args.tmux_bin or "tmux"
-    started = time.time()
-    captured: list[dict[str, Any]] = []
-    with locked(root):
-        for name, activity in snapshot_targets(tmux_sessions(tmux), patterns):
+    dry_run = bool(getattr(args, "dry_run", False))
+    with (nullcontext() if dry_run else locked(root)):
+        # Snapshot writes agent files into the coordination store, so an existing registry it cannot
+        # read is refused exactly like every other writer's.
+        reg = read_registry(root, strict=True)
+        raw = args.sessions or ",".join(reg.get("snapshot_sessions") or DEFAULT_SNAPSHOT_SESSIONS)
+        patterns = [p.strip() for p in str(raw).split(",") if p.strip()]
+        lines = max(1, min(500, int(args.lines or 40)))
+        tmux = args.tmux_bin or "tmux"
+        started = time.time()
+        rows = snapshot_targets(tmux_sessions(tmux), patterns)
+        if dry_run:
+            print(json.dumps({"schema": "CoordinatorSnapshotPlan@v1", "dry_run": True, "patterns": patterns,
+                              "would_capture": [{"session": name, "state": agent_state(activity, started),
+                                                 "path": str(agents_dir(root) / f"{_safe(name)}.txt")}
+                                                for name, activity in rows]}, indent=1))
+            return 0
+        captured: list[dict[str, Any]] = []
+        for name, activity in rows:
             rc, text = _tmux(tmux, "capture-pane", "-p", "-t", name, "-S", f"-{lines}")
             if rc != 0:
                 continue
@@ -1014,7 +1035,7 @@ def cmd_appoint(args) -> int:
         print(f"error: --role must be one of {', '.join(ROLES)}", file=sys.stderr)
         return 2
     root = state_root(args.state_root)
-    with locked(root):
+    with (nullcontext() if getattr(args, "dry_run", False) else locked(root)):
         reg = read_registry(root, strict=True)
         err = coherence_error(reg, allow_absent_lead=True)
         if err:
@@ -1046,10 +1067,22 @@ def cmd_appoint(args) -> int:
                 print(f"error: {other.get('id')} is already lead; stand it down first (exactly one lead)",
                       file=sys.stderr)
                 return 2
+        stamp = now_iso()
         entry = {"id": tid, "vendor": args.vendor, "session": args.session or None,
                  "where": args.where or None, "territories": territories, "role": args.role,
-                 "appointed_by": "operator", "appointed_quote": quote, "appointed_at": now_iso(),
-                 "last_heartbeat": now_iso(), "status": "active"}
+                 "appointed_by": "operator", "appointed_quote": quote, "appointed_at": stamp,
+                 "last_heartbeat": stamp, "status": "active"}
+        if getattr(args, "dry_run", False):
+            print(json.dumps({"schema": "CoordinatorAppointPlan@v1", "dry_run": True, "entry": entry,
+                              "territories": territories,
+                              "ledger_events": [
+                                  {"kind": "appoint", "subject": tid,
+                                   "detail": f"{args.vendor} as {args.role}: {', '.join(territories)}",
+                                   "operator_quote": quote},
+                                  {"kind": "heartbeat", "subject": tid, "detail": "initial"}],
+                              "registry_path": str(registry_path(root)),
+                              "board_path": str(board_path(root))}, indent=1))
+            return 0
         reg["coordinators"] = [c for c in reg["coordinators"] if str(c.get("id")) != tid] + [entry]
         sync_lead(reg)
         touch(reg, quote=quote)
@@ -1103,7 +1136,7 @@ def cmd_stand_down(args) -> int:
 
 def cmd_heartbeat(args) -> int:
     root = state_root(args.state_root)
-    with locked(root):
+    with (nullcontext() if getattr(args, "dry_run", False) else locked(root)):
         reg = read_registry(root, strict=True)
         c = find(reg, _safe(args.id))
         if not c:
@@ -1112,31 +1145,47 @@ def cmd_heartbeat(args) -> int:
         if str(c.get("status")) == "stood_down":
             print(f"error: {args.id} is stood down; the operator alone re-appoints", file=sys.stderr)
             return 2
-        c["last_heartbeat"] = now_iso()
+        stamp = now_iso()
+        event = {"schema": SCHEMA_EVENT, "ts": stamp, "coordinator": c["id"], "territory": None,
+                 "kind": "heartbeat", "subject": c["id"], "detail": None}
+        if getattr(args, "dry_run", False):
+            print(json.dumps({"schema": "CoordinatorHeartbeatPlan@v1", "dry_run": True, "id": c["id"],
+                              "heartbeat_at": stamp, "ledger_event": event,
+                              "registry_path": str(registry_path(root))}, indent=1))
+            return 0
+        c["last_heartbeat"] = stamp
         c["status"] = "active"
-        reg["as_of"] = now_iso()
+        reg["as_of"] = stamp
         _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
-        append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": c["id"], "territory": None,
-                            "kind": "heartbeat", "subject": c["id"], "detail": None})
+        append_event(root, event)
         _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
-    print(f"{args.id} heartbeat {now_iso()}")
+    print(f"{args.id} heartbeat {stamp}")
     return 0
 
 
 def cmd_assign(args) -> int:
     root = state_root(args.state_root)
-    with locked(root):
+    with (nullcontext() if getattr(args, "dry_run", False) else locked(root)):
         reg = read_registry(root, strict=True)
         tid = _safe(args.territory)
         known = set(reg["territories"]) | {t for c in reg["coordinators"] for t in (c.get("territories") or [])}
         if tid not in known:
             print(f"error: unknown territory {args.territory!r}; known: {', '.join(sorted(known))}", file=sys.stderr)
             return 2
+        event = {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": args.coordinator, "territory": tid,
+                 "kind": "assign", "subject": str(args.subject), "detail": f"territory {tid}"}
+        if getattr(args, "dry_run", False):
+            after = dict(reg["assignments"])
+            after[str(args.subject)] = tid
+            print(json.dumps({"schema": "CoordinatorAssignPlan@v1", "dry_run": True,
+                              "subject": str(args.subject), "territory": tid,
+                              "assignments_after": after, "ledger_event": event,
+                              "registry_path": str(registry_path(root))}, indent=1))
+            return 0
         reg["assignments"][str(args.subject)] = tid
         reg["as_of"] = now_iso()
         _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
-        append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": args.coordinator, "territory": tid,
-                            "kind": "assign", "subject": str(args.subject), "detail": f"territory {tid}"})
+        append_event(root, event)
         _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
     print(f"{args.subject} -> {tid}")
     return 0
@@ -1162,11 +1211,16 @@ def cmd_event(args) -> int:
         print(f"error: refused: '{args.kind}' belongs to its own verb; the generic event cannot state it",
               file=sys.stderr)
         return 2
-    with locked(root):
+    with (nullcontext() if getattr(args, "dry_run", False) else locked(root)):
         reg = read_registry(root, strict=True)  # refuse before appending to a store we cannot read
-        append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": args.coordinator,
-                            "territory": args.territory, "kind": str(args.kind), "subject": args.subject,
-                            "detail": args.detail, "operator_quote": args.quote})
+        event = {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": args.coordinator,
+                 "territory": args.territory, "kind": str(args.kind), "subject": args.subject,
+                 "detail": args.detail, "operator_quote": args.quote}
+        if getattr(args, "dry_run", False):
+            print(json.dumps({"schema": "CoordinatorEventPlan@v1", "dry_run": True, "ledger_event": event,
+                              "board_path": str(board_path(root))}, indent=1))
+            return 0
+        append_event(root, event)
         _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
     print(f"event {args.kind} recorded")
     return 0
@@ -1174,31 +1228,34 @@ def cmd_event(args) -> int:
 
 def cmd_check(args) -> int:
     root = state_root(args.state_root)
-    with locked(root):
+    with (nullcontext() if getattr(args, "dry_run", False) else locked(root)):
         reg = read_registry(root, strict=True)
         events = read_events(root)
         subject, sha = str(args.subject), str(args.sha or "")
+        kind = "check_request" if args.action == "request" else f"check_{args.action}"
         if args.action == "request":
-            append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": args.by, "territory": None,
-                                "kind": "check_request", "subject": subject, "sha": sha,
-                                "detail": args.reason or None})
-            _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
-            print(f"check requested: {subject} @ {sha[:12]} by {args.by}")
+            event = {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": args.by, "territory": None,
+                     "kind": kind, "subject": subject, "sha": sha, "detail": args.reason or None}
+        else:
+            req = next((e for e in reversed(events) if str(e.get("kind")) == "check_request"
+                        and str(e.get("subject")) == subject and str(e.get("sha") or "") == sha), None)
+            if not req:
+                print(f"error: no check_request for {subject} @ {sha[:12]}", file=sys.stderr)
+                return 2
+            if str(req.get("coordinator")) == str(args.by):
+                print("error: the check must come from a DIFFERENT active coordinator", file=sys.stderr)
+                return 2
+            if args.by not in active_ids(reg):
+                print(f"error: {args.by} is not an active coordinator", file=sys.stderr)
+                return 2
+            event = {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": args.by, "territory": None,
+                     "kind": kind, "subject": subject, "sha": sha, "detail": args.reason or None}
+        if getattr(args, "dry_run", False):
+            print(json.dumps({"schema": "CoordinatorCheckPlan@v1", "dry_run": True, "action": args.action,
+                              "subject": subject, "sha": sha, "by": args.by, "ledger_event": event,
+                              "board_path": str(board_path(root))}, indent=1))
             return 0
-        req = next((e for e in reversed(events) if str(e.get("kind")) == "check_request"
-                    and str(e.get("subject")) == subject and str(e.get("sha") or "") == sha), None)
-        if not req:
-            print(f"error: no check_request for {subject} @ {sha[:12]}", file=sys.stderr)
-            return 2
-        if str(req.get("coordinator")) == str(args.by):
-            print("error: the check must come from a DIFFERENT active coordinator", file=sys.stderr)
-            return 2
-        if args.by not in active_ids(reg):
-            print(f"error: {args.by} is not an active coordinator", file=sys.stderr)
-            return 2
-        append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": args.by, "territory": None,
-                            "kind": f"check_{args.action}", "subject": subject, "sha": sha,
-                            "detail": args.reason or None})
+        append_event(root, event)
         _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
     print(f"check {args.action}: {subject} @ {sha[:12]} by {args.by}")
     return 0
@@ -1221,13 +1278,22 @@ def cmd_inbox(args) -> int:
         if not (body or "").strip():
             print("error: --text or --file with content is required", file=sys.stderr)
             return 2
-        with locked(root):
+        dry_run = bool(getattr(args, "dry_run", False))
+        with (nullcontext() if dry_run else locked(root)):
+            read_registry(root, strict=True)  # an inbox send writes the store: a damaged registry refuses it
             d = inbox_dir(root, _safe(args.to))
-            d.mkdir(parents=True, exist_ok=True)
             p = d / f"{_stamp()}-{uuid.uuid4().hex[:8]}-{sender}.md"  # unique even for two sends in the same second
-            _atomic_write(p, (body or "").rstrip() + "\n")
-            append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": sender, "territory": None,
-                                "kind": "inbox_send", "subject": _safe(args.to), "detail": p.name})
+            text = (body or "").rstrip() + "\n"
+            event = {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": sender, "territory": None,
+                     "kind": "inbox_send", "subject": _safe(args.to), "detail": p.name}
+            if dry_run:
+                print(json.dumps({"schema": "CoordinatorInboxSendPlan@v1", "dry_run": True,
+                                  "to": _safe(args.to), "from": sender, "path": str(p),
+                                  "bytes": len(text.encode("utf-8")), "ledger_event": event}, indent=1))
+                return 0
+            d.mkdir(parents=True, exist_ok=True)
+            _atomic_write(p, text)
+            append_event(root, event)
         print(p)
         return 0
     cid = _safe(args.id or "")
@@ -1235,8 +1301,11 @@ def cmd_inbox(args) -> int:
         print("error: --id is required", file=sys.stderr)
         return 2
     d = inbox_dir(root, cid)
+    dry_run = bool(getattr(args, "dry_run", False))
+    keep = bool(getattr(args, "keep", False)) or dry_run
     moved = 0
-    with locked(root):
+    with (nullcontext() if dry_run else locked(root)):
+        read_registry(root, strict=True)  # a read that moves files writes the store: refuse a damaged registry
         try:
             items = sorted(f for f in d.iterdir() if f.is_file() and not f.is_symlink())
         except OSError:
@@ -1251,7 +1320,7 @@ def cmd_inbox(args) -> int:
                 print(f.read_text(encoding="utf-8").rstrip())
             except OSError:
                 print("(unreadable)")
-            if not args.keep:
+            if not keep:
                 # Listing and moving happen under the same lock: another reader that moved the file first must
                 # not turn this into an uncaught FileNotFoundError.
                 try:
@@ -1260,7 +1329,9 @@ def cmd_inbox(args) -> int:
                     moved += 1
                 except OSError:
                     continue
-    if not args.keep:
+    if dry_run:
+        print(f"(dry run: {len(items)} item(s) would move to {d / 'read'}; nothing written)")
+    elif not args.keep:
         print(f"({moved} item(s) moved to {d / 'read'})")
     return 0
 
@@ -1314,9 +1385,19 @@ def cmd_handoff(args) -> int:
 
 def cmd_board(args) -> int:
     root = state_root(args.state_root)
-    with locked(root):
+    with (nullcontext() if getattr(args, "dry_run", False) else locked(root)):
         reg = read_registry(root, strict=True)
-        _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
+        text = render_board(root, reg, read_events(root))
+        if getattr(args, "dry_run", False):
+            p = board_path(root)
+            try:
+                current = p.read_text(encoding="utf-8")
+            except OSError:
+                current = None
+            print(json.dumps({"schema": "CoordinatorBoardPlan@v1", "dry_run": True, "board_path": str(p),
+                              "bytes": len(text.encode("utf-8")), "would_change": text != current}, indent=1))
+            return 0
+        _atomic_write(board_path(root), text)
     p = board_path(root)
     if args.json:
         print(json.dumps({"schema": "CoordinationBoard@v1", "path": str(p), "text": p.read_text(encoding="utf-8")}))
@@ -1371,6 +1452,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--territories", required=True)
     p.add_argument("--role", required=True)
     p.add_argument("--quote", required=True)
+    p.add_argument("--dry-run", action="store_true", help="validate and show the intended writes; write nothing")
     p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("stand-down", parents=[CLOCK_PARSER], help="operator: stand a coordinator down (--quote required)")
@@ -1381,11 +1463,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("heartbeat", parents=[CLOCK_PARSER], help="record liveness")
     p.add_argument("--id", required=True)
+    p.add_argument("--dry-run", action="store_true", help="validate and show the intended writes; write nothing")
     p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("assign", parents=[CLOCK_PARSER], help="assign an agent or pr:<n> to a territory")
     p.add_argument("subject")
     p.add_argument("territory")
+    p.add_argument("--dry-run", action="store_true", help="validate and show the intended writes; write nothing")
     common(p)
 
     p = sub.add_parser("event", parents=[CLOCK_PARSER], help="append a ledger event (write-ahead)")
@@ -1394,6 +1478,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--detail", default=None)
     p.add_argument("--territory", default=None)
     p.add_argument("--quote", default=None)
+    p.add_argument("--dry-run", action="store_true", help="validate and show the intended writes; write nothing")
     common(p)
 
     p = sub.add_parser("check", parents=[CLOCK_PARSER], help="two-coordinator check: request | ok | block")
@@ -1402,6 +1487,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--sha", default="")
     p.add_argument("--by", required=True)
     p.add_argument("--reason", default=None)
+    p.add_argument("--dry-run", action="store_true", help="validate and show the intended writes; write nothing")
     p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("inbox", parents=[CLOCK_PARSER], help="send a report to a coordinator, or read (and move) its inbox")
@@ -1412,6 +1498,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--file", default=None)
     p.add_argument("--id", default=None)
     p.add_argument("--keep", action="store_true", help="read without moving to read/")
+    p.add_argument("--dry-run", action="store_true", help="show what would be sent or moved; write nothing")
     p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("handoff", parents=[CLOCK_PARSER], help="operator: hand territories and the lead role over (--quote required)")
@@ -1422,6 +1509,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("board", parents=[CLOCK_PARSER], help="regenerate BOARD.md")
+    p.add_argument("--dry-run", action="store_true", help="show the board that would be written; write nothing")
     p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("give", parents=[CLOCK_PARSER], help="operator: give a territory (or 'all') to a coordinator")
@@ -1473,6 +1561,7 @@ def build_parser() -> argparse.ArgumentParser:
                                                     f"(default {'/'.join(DEFAULT_SNAPSHOT_SESSIONS)})")
     p.add_argument("--lines", type=int, default=40)
     p.add_argument("--tmux-bin", default="tmux")
+    p.add_argument("--dry-run", action="store_true", help="list the sessions and files it would capture; write nothing")
     p.add_argument("--json", action="store_true")
 
     p = sub.add_parser("whoami", parents=[CLOCK_PARSER], help="which coordinator and territory is this session")

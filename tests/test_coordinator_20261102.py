@@ -961,6 +961,9 @@ def test_appoint_still_accepts_a_territory_nobody_holds(tmp_path):
     ["event", "note", "--subject", "x"],
     ["check", "request", "pr:1", "--by", "codex-a"],
     ["board"],
+    ["snapshot", "--tmux-bin", "/nonexistent/tmux"],
+    ["inbox", "send", "--to", "codex-a", "--from", "x", "--text", "hi"],
+    ["inbox", "read", "--id", "codex-a"],
 ])
 def test_a_malformed_registry_refuses_every_mutation_and_keeps_its_bytes(tmp_path, verb):
     """CX2 @ a9668e01c: malformed JSON used to read as a new store and be overwritten."""
@@ -1011,3 +1014,97 @@ def test_a_handoff_to_the_same_coordinator_is_refused(tmp_path):
     assert registry(tmp_path)["coordinators"][0]["territories"] == ["release"]
     handoffs = _fixture_dir(tmp_path) / "handoffs"
     assert not handoffs.exists() or not list(handoffs.iterdir())
+
+
+# ── D52 round 1 2026-11-05: the codex-cloud BLOCK at 911fbac5b (CX4 dry-run, CX5 torn tail, CX7 view) ──
+
+
+def _store_bytes(root: Path) -> tuple:
+    d = _fixture_dir(root)
+
+    def read(p: Path):
+        try:
+            return p.read_bytes()
+        except OSError:
+            return None
+
+    return (read(d / "coordinators.json"), read(d / "ledger.jsonl"), read(d / "BOARD.md"))
+
+
+def _store_files(root: Path) -> list[str]:
+    base = root / "data"
+    return sorted(str(p) for p in base.rglob("*")) if base.exists() else []
+
+
+def test_a_torn_ledger_tail_does_not_swallow_the_next_event(tmp_path):
+    """CX5 @ 911fbac5b: append glued the next event onto a crash-left fragment, so read_events lost both."""
+    assert appoint(tmp_path, "claude-lead", "lead", "release") == 0
+    led = _fixture_dir(tmp_path) / "ledger.jsonl"
+    torn = b'{"schema":"CoordinatorEvent@v1","ts":"2026-11-05T'
+    with led.open("ab") as f:
+        f.write(torn)
+    assert run(tmp_path, "check", "request", "pr:2492", "--by", "claude-lead") == 0
+    raw = led.read_bytes()
+    assert torn + b"\n" in raw  # damaged bytes preserved and terminated, never rewritten
+    events = C.read_events(tmp_path)
+    assert [e.get("kind") for e in C.pending_checks(events)] == ["check_request"]
+    assert any(e.get("subject") == "pr:2492" and e.get("kind") == "check_request" for e in events)
+
+
+def test_appoint_dry_run_on_an_absent_root_creates_absolutely_nothing(tmp_path, capsys):
+    assert run(tmp_path, "appoint", "--id", "codex-a", "--vendor", "codex", "--role", "member",
+               "--territories", "agents", "--quote", "q", "--dry-run") == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["schema"] == "CoordinatorAppointPlan@v1" and out["dry_run"] is True
+    assert out["entry"]["id"] == "codex-a"
+    assert not (tmp_path / "data").exists()
+
+
+@pytest.mark.parametrize("verb,schema", [
+    (["heartbeat", "--id", "claude-lead"], "CoordinatorHeartbeatPlan@v1"),
+    (["assign", "pr:2492", "release"], "CoordinatorAssignPlan@v1"),
+    (["event", "note", "--subject", "pr:2492"], "CoordinatorEventPlan@v1"),
+    (["check", "request", "pr:2492", "--by", "claude-lead"], "CoordinatorCheckPlan@v1"),
+    (["board"], "CoordinatorBoardPlan@v1"),
+    (["snapshot", "--tmux-bin", "/nonexistent/tmux"], "CoordinatorSnapshotPlan@v1"),
+    (["inbox", "send", "--to", "codex-a", "--from", "claude-lead", "--text", "hi"],
+     "CoordinatorInboxSendPlan@v1"),
+])
+def test_a_store_writer_dry_run_reports_its_plan_and_writes_nothing(tmp_path, capsys, verb, schema):
+    """CX4 @ 911fbac5b: durable writers had no side-effect-free preview."""
+    assert appoint(tmp_path, "claude-lead", "lead", "release") == 0
+    assert run(tmp_path, "add", "codex-a", "--vendor", "codex", "--quote", "q") == 0
+    before, files = _store_bytes(tmp_path), _store_files(tmp_path)
+    capsys.readouterr()
+    assert run(tmp_path, *verb, "--dry-run") == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["schema"] == schema and out["dry_run"] is True
+    assert _store_bytes(tmp_path) == before and _store_files(tmp_path) == files
+
+
+def test_inbox_read_dry_run_lists_without_moving(tmp_path, capsys):
+    assert appoint(tmp_path, "codex-a", "member", "agents") == 0
+    assert run(tmp_path, "inbox", "send", "--to", "codex-a", "--from", "claude-lead", "--text", "hold") == 0
+    box = _fixture_dir(tmp_path) / "inbox" / "codex-a"
+    before = sorted(p.name for p in box.iterdir() if p.is_file())
+    capsys.readouterr()
+    assert run(tmp_path, "inbox", "read", "--id", "codex-a", "--dry-run") == 0
+    out = capsys.readouterr().out
+    assert "hold" in out and "dry run" in out
+    assert sorted(p.name for p in box.iterdir() if p.is_file()) == before
+    assert not (box / "read").exists()
+
+
+def test_the_view_surfaces_an_unreadable_registry_instead_of_an_empty_one(tmp_path, monkeypatch):
+    """CX7 @ 911fbac5b: an undecodable registry rendered as 'No coordinators appointed'."""
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    d = _fixture_dir(tmp_path)
+    d.mkdir(parents=True)
+    (d / "coordinators.json").write_text(BAD_REGISTRY, encoding="utf-8")
+    view = V.coordinators_view(tmp_path)
+    assert view["registry_present"] is True and view["registry_unreadable"] is True
+    assert "cannot be decoded" in view["registry_error"]
+    assert view["coordinators"] == [] and view["divergent"] is True
+    absent = V.coordinators_view(tmp_path / "no-store")
+    assert absent["registry_present"] is False and absent["registry_error"] is None
+    assert absent["registry_unreadable"] is False and absent["divergent"] is False

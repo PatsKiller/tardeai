@@ -7,7 +7,7 @@ import { createPortal } from 'react-dom'
 import { MobileDetailSheet } from './MobileDetailSheet'
 import { useApi } from '../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, FONT } from '../lib/designTokens'
-import { heartbeatLabel, stateLabel, type CoordinatorRow } from '../lib/coordinators'
+import { heartbeatLabel, joinLineForSelection, stateLabel, type CoordinatorRow } from '../lib/coordinators'
 
 const VENDORS = [
   { key: 'claude', label: 'Claude Code' },
@@ -68,8 +68,11 @@ function Body({ coordinators, onClose }: { coordinators: CoordinatorRow[]; onClo
   const idOk = ID_RE.test(id)
   const url = `/api/v2/coordination/join-command?id=${encodeURIComponent(id)}&vendor=${encodeURIComponent(vendor)}`
   const api = useApi<JoinPayload>(url, 15_000, { enabled: idOk })
-  const line = idOk ? (api.data?.line || '') : ''
-  const templateAt = api.data?.template_modified_at
+  // useApi keeps the previous payload while the new request loads: only a response that names THIS id and vendor
+  // may be shown or copied. A slow or failed request must never leave the old coordinator's line on screen.
+  const matchesSelection = !!api.data && api.data.id === id && api.data.vendor === vendor
+  const line = idOk ? joinLineForSelection(api.data, id, vendor) : ''
+  const templateAt = matchesSelection ? api.data?.template_modified_at : undefined
 
   const pickVendor = (key: string) => {
     setVendor(key)
@@ -111,7 +114,7 @@ function Body({ coordinators, onClose }: { coordinators: CoordinatorRow[]; onClo
 
       <div style={{ display: 'grid', gap: 6 }}>
         <div style={label}>join line — copy and paste to the new session</div>
-        {api.data?.template_present === false ? (
+        {matchesSelection && api.data?.template_present === false ? (
           <div role="alert" style={{ fontSize: TYPE.sm, color: TOKENS.text[2], background: TOKENS.bg[2], padding: '8px 10px', borderRadius: RADIUS.sm }}>
             The join template is missing. The operator creates{' '}
             <code>{api.data?.template_path || 'persistent-state/data/coordination/coordinator/join_command.template'}</code>.

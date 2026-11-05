@@ -84,7 +84,11 @@ export default function CoordinatorsPanel() {
             cursor: 'pointer', fontSize: TYPE.sm, fontWeight: 800,
           }}>Add a coordinator</button>
         </div>
-        {d?.registry_present === false ? (
+        {d?.registry_error ? (
+          <div role="alert" data-testid="coordinators-registry-error" style={{ marginTop: 8, padding: '8px 10px', borderRadius: RADIUS.sm, fontSize: TYPE.sm, color: TOKENS.danger, background: TOKENS.bg[2] }}>
+            Coordinator registry unreadable — ownership cannot be shown. {d.registry_error}
+          </div>
+        ) : d?.registry_present === false ? (
           <div role="alert" style={{ marginTop: 8, padding: '8px 10px', borderRadius: RADIUS.sm, fontSize: TYPE.sm, color: TOKENS.text[2], background: TOKENS.bg[2] }}>
             No coordinator registry yet. The operator appoints with <code>scripts/coordinator.py appoint --id … --quote “…”</code>.
           </div>
@@ -98,7 +102,7 @@ export default function CoordinatorsPanel() {
           <Chip tone={decisions.length ? 'warning' : 'neutral'} title="waiting on the operator">waiting on you {decisions.length}</Chip>
         </ChipRow>
         <div style={{ display: 'grid', gap: 10, marginTop: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}>
-          {rows.length ? rows.map(c => <Card key={String(c.id)} c={c} />) : (
+          {rows.length ? rows.map(c => <Card key={String(c.id)} c={c} />) : d?.registry_error ? null : (
             <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>No coordinators appointed.</div>
           )}
         </div>
