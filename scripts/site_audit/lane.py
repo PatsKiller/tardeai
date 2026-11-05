@@ -84,3 +84,22 @@ def largest_gap_hours(start: datetime, end: datetime) -> float:
     if len(runs) < 2:
         return 0.0
     return max(gap_hours(a, b) for a, b in zip(runs, runs[1:]))
+
+
+#: Monday of the week the lane was specified; run slots are counted from here so the counter is stable across weeks.
+RUN_EPOCH = datetime(2026, 1, 5, tzinfo=timezone.utc)
+
+
+def run_slot(moment: datetime) -> int:
+    """A counter that advances by exactly one at each scheduled run.
+
+    cx-openai-4 R4 on #2648: detail sampling rotated on the ISO week, so the five runs in a week all re-opened the same
+    twenty rows and the rest of a long table was never reached — while before the first window of a week a run and its
+    predecessor got the same index. Coverage is a property of RUNS, so the rotation counts runs.
+    """
+    moment = moment.astimezone(timezone.utc)
+    year, week, _ = moment.isocalendar()
+    week_start = datetime.fromisocalendar(year, week, 1).replace(tzinfo=timezone.utc)
+    runs_this_week = len(windows_between(week_start, moment + timedelta(seconds=1)))
+    weeks_since_epoch = (week_start - RUN_EPOCH).days // 7
+    return weeks_since_epoch * len(WINDOWS) + runs_this_week

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -18,7 +19,9 @@ from site_audit.action_denylist import is_forbidden_action, safe_to_open  # noqa
 from site_audit.capture_root import (CaptureRootRefused, assert_capture_root,  # noqa: E402
                                      configured_capture_root, CAPTURE_ROOT_ENV)
 from site_audit.completeness import card_severity, thesis_as_of_missing, P1, P2  # noqa: E402
-from site_audit.detail_budget import DETAILS_PER_PAGE, selected_indices, weeks_to_cover  # noqa: E402
+from site_audit.detail_budget import (DETAILS_PER_PAGE, page_kind, runs_to_cover,  # noqa: E402
+                                      selected_indices)
+from site_audit.lane import run_slot, windows_between  # noqa: E402
 
 # ── never press an action ──────────────────────────────────────────────────────────────────────────────────────
 def test_actions_are_refused_by_label_and_role():
@@ -39,20 +42,48 @@ def test_an_unlabelled_button_is_never_pressed():
     assert is_forbidden_action(None, "button") is True
 
 
-# ── sampling budget with weekly coverage ───────────────────────────────────────────────────────────────────────
+# ── sampling budget with per-run coverage ──────────────────────────────────────────────────────────────────────
 def test_top_lists_take_every_row_and_others_rotate():
-    assert selected_indices(7, page="home", week_index=0) == list(range(7))
-    assert selected_indices(7, page="best_opportunities", week_index=5) == list(range(7))
+    assert selected_indices(7, page="home", run_index=0) == list(range(7))
+    assert selected_indices(7, page="best_opportunities", run_index=5) == list(range(7))
 
     rows = 55
-    weeks = [set(selected_indices(rows, page="watch", week_index=w)) for w in range(weeks_to_cover(rows))]
-    assert all(len(w) == DETAILS_PER_PAGE for w in weeks)
-    assert set().union(*weeks) == set(range(rows)), "the weekly rotation never covers every row"
+    runs = [set(selected_indices(rows, page="watch", run_index=r)) for r in range(runs_to_cover(rows))]
+    assert all(len(r) == DETAILS_PER_PAGE for r in runs)
+    assert set().union(*runs) == set(range(rows)), "the rotation never covers every row"
+
+
+def test_the_real_home_route_is_a_top_list_not_a_capped_page():
+    """cx-openai-4 R4 on #2648: the caller passes "/", and only the bare alias "home" was recognised."""
+    for route in ("/", "", "/v3", "/v3/", "home", "/home?tab=1"):
+        assert page_kind(route) == "home", route
+        assert selected_indices(55, page=route, run_index=3) == list(range(55)), route
+    assert page_kind("/samples/opens") == "samples_opens"
+    assert len(selected_indices(55, page="/samples/opens", run_index=0)) == DETAILS_PER_PAGE
+
+
+def test_every_row_is_covered_inside_one_week_of_runs():
+    """Five scheduled runs a week; a 20-row budget must reach every row of a 55-row table within them."""
+    assert runs_to_cover(55) == 3
+    assert runs_to_cover(55) <= 5
+    covered = set().union(*(set(selected_indices(55, page="samples_opens", run_index=r)) for r in range(5)))
+    assert covered == set(range(55))
+
+
+def test_consecutive_scheduled_runs_get_consecutive_indices():
+    """The rotation step is the RUN, not the ISO week: two runs in one week must not sample the same rows."""
+    monday = datetime(2026, 11, 2, tzinfo=timezone.utc)
+    slots = [run_slot(m) for m in windows_between(monday, monday + timedelta(days=7))]
+    assert len(slots) == 5
+    assert slots == list(range(slots[0], slots[0] + 5)), slots
+    first = selected_indices(55, page="samples_opens", run_index=slots[0])
+    second = selected_indices(55, page="samples_opens", run_index=slots[1])
+    assert not set(first) & set(second), "two runs in the same week opened the same rows"
 
 
 def test_an_empty_list_costs_nothing():
-    assert selected_indices(0, page="watch", week_index=3) == []
-    assert weeks_to_cover(0) == 0
+    assert selected_indices(0, page="watch", run_index=3) == []
+    assert runs_to_cover(0) == 0
 
 
 # ── completeness, with the top-list P1 rule ────────────────────────────────────────────────────────────────────

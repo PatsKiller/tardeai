@@ -217,10 +217,12 @@ def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: l
     # was ever opened and no completeness check ever ran. The crawl and its evidence are now part of the
     # capture, on the same page and viewport, under the pinned detail budget.
     if deep:
-        from site_audit import deep_crawl, detail_budget
+        from site_audit import deep_crawl, detail_budget, lane
         openers = deep_crawl._discover_openers(page)
-        week = int(time.strftime("%V"))
-        indices = detail_budget.selected_indices(len(openers), page=route, week_index=week)
+        # cx-openai-4 R4 on #2648: the ISO week was the sampling step, so all five runs of a week re-opened the same
+        # twenty rows and a long table's remaining rows were never reached. The step is the scheduled RUN.
+        run_index = lane.run_slot(datetime.now(timezone.utc))
+        indices = detail_budget.selected_indices(len(openers), page=route, run_index=run_index)
         detail = deep_crawl.capture_page(page, route=route, page_url=base + route, indices=indices,
                                          out_dir=d, openers=openers)
         assert_leaf_inside_root(d / f"{vp}-details.json", out).write_text(json.dumps(detail, indent=1))
