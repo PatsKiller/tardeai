@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "hermes_discovery_plain_text_20261104",
+  "files": [
+    "tests/test_discovery_plain_health_candidates_20261104.py"
+  ],
+  "anchor": "HERMES_DISCOVERY_PLAIN_TEXT_20261104",
+  "comment": [
+    "ANCHOR: HERMES_DISCOVERY_PLAIN_TEXT_20261104 — FQ-059 (operator 2026-11-04). A system_ops discovery candidate",
+    "names the failing task and its consequence in plain English; the health checker's own sentence is preserved as",
+    "`technical` on the candidate, in meta.technical and in the evidence note, and is rendered in the Discovery",
+    "Inbox card's 'Technical detail' disclosure. Any candidate that is not that shape is returned untouched.",
+    "Hermetic: no database, no network."
+  ]
+}

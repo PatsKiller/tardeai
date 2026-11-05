@@ -32,6 +32,27 @@ check('detail extraction keeps every field', (() => { const d = findingDetail(F)
 check('the card carries a machine severity marker', closed.includes('data-severity="warning"'))
 check('no hex literal is rendered', !/#[0-9a-fA-F]{3,8}\b/.test(closed))
 
+// ---- the WHEN: the card promises (what broke, how bad, who has it, when) in its own header, so a month-old
+// finding must not be indistinguishable from one detected today (cc-deepseek-3 / cc-deepseek-5 / cc-deepseek-8 F1).
+check('the card shows when the finding was detected', closed.includes('Nov 4') && /05:00 ET/.test(closed),
+  'no detected time in the visible card')
+const older = renderToStaticMarkup(React.createElement(HealthFindingCard,
+  { finding: { message: 'The disk hygiene job did not run', detected_at: '2026-10-01T12:00:00Z' } }))
+const newer = renderToStaticMarkup(React.createElement(HealthFindingCard,
+  { finding: { message: 'The disk hygiene job did not run', detected_at: '2026-11-05T12:00:00Z' } }))
+check('a month-old finding is distinguishable from one detected today',
+  older !== newer && /Oct 1/.test(older) && /Nov 5/.test(newer), 'October and today render identical')
+const handled = renderToStaticMarkup(React.createElement(HealthFindingCard,
+  { finding: { message: 'x', detected_at: '2026-11-04T10:00:00Z', remediation: { at: '2026-11-05T12:00:00Z' } } }))
+check('the handled time wins over the detected time', /Nov 5/.test(handled) && !/Nov 4/.test(handled),
+  'remediation.at is not preferred')
+
+// ---- the header category is a visible label, not a producer code (cc-deepseek-5 F3); the raw code may stay in a title.
+const labelled = renderToStaticMarkup(React.createElement(HealthFindingCard,
+  { finding: { message: 'x', category: 'retirement_planning' }, categoryLabel: 'Retirement' }))
+check('the header shows the human category label, not the raw code',
+  labelled.includes('>Retirement<') && !labelled.includes('>retirement_planning<'), 'raw category code rendered')
+
 
 // ---- the mount contract: the /health hub owns the drill-down and the action buttons, the card must keep both ----
 const mountable = renderToStaticMarkup(React.createElement(HealthFindingCard, { finding: F, onOpen: () => {} },

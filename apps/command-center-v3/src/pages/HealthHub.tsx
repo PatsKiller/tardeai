@@ -14,6 +14,7 @@ import OpsAutonomyDashboard from './OpsAutonomyDashboard'
 import { AutonomyLoopPanel, DailyIntelligencePanel, MemoryPanel } from './MaturityPanels'
 import type { DrillContext } from '../components/DetailDrawer'
 import { useTerminalUi } from '../lib/terminalUi'
+import { humanizeCode } from '../lib/displayLabels'
 import { hubTitle, hubSubtitle, hubTab, hubPanel } from '../lib/terminalHubChrome'
 import OpsDeskFrame from '../components/OpsDeskFrame'
 
@@ -364,7 +365,7 @@ export default function HealthHub({ onDrill, jobsHealth }: Props) {
             const rem = f.remediation || {}
             const k = `${f.category}:${f.type}`; const st = acting[k]
             return (
-              <HealthFindingCard key={i} finding={f}
+              <HealthFindingCard key={i} finding={f} categoryLabel={CAT_LABEL[f.category] || humanizeCode(f.category)}
                 onOpen={onDrill ? () => onDrill({
                   title: f.message, subtitle: `${CAT_LABEL[f.category] || f.category} · ${f.severity}`,
                   endpoint: '/api/v2/health',
@@ -421,7 +422,7 @@ export default function HealthHub({ onDrill, jobsHealth }: Props) {
               <div key={kind} title={`Preference: ${(r.preference || []).join(' → ')}`}
                 style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 11, padding: '5px 10px',
                   background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 4, marginBottom: 3 }}>
-                <span style={{ width: 110, flexShrink: 0, color: 'var(--text2)', fontWeight: 700 }}>{kind.replace(/_/g, ' ')}</span>
+                <span style={{ width: 110, flexShrink: 0, color: 'var(--text2)', fontWeight: 700 }} title={kind}>{humanizeCode(kind)}</span>
                 <span style={{ color: 'var(--text3)' }}>→</span>
                 <span style={{ color: r.active ? 'var(--green)' : 'var(--red)', fontWeight: 700, width: 150, flexShrink: 0 }}>
                   {r.active || 'none available'}

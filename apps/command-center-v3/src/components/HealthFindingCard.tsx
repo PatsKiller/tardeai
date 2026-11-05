@@ -5,6 +5,8 @@
 // with what a person needs (what broke, how bad, who has it, when) and the implementation detail is one tap away.
 import { useState, type CSSProperties, type ReactNode } from 'react'
 import { RADIUS, TOKENS, TYPE } from '../lib/designTokens'
+import { fmtAsOf } from '../lib/asOfDisplay'
+import { humanizeCode } from '../lib/displayLabels'
 
 const SEV_COLOR: Record<string, string> = {
   critical: TOKENS.danger, warning: TOKENS.warning, info: TOKENS.text[2],
@@ -29,9 +31,17 @@ export function findingDetail(f: HealthFinding): { why: string | null; action: s
   return { why: clean(f.why), action: clean(f.recommended_action), detail: clean(rem.detail) }
 }
 
-export function HealthFindingCard({ finding, compact = false, onOpen, children }: {
+/** When it broke (or was last handled): the fourth fact the card's own header promises, so it is always visible. */
+export function findingWhen(f: HealthFinding): string | null {
+  const raw = String((f.remediation || {}).at || f.detected_at || '').trim()
+  return raw || null
+}
+
+export function HealthFindingCard({ finding, compact = false, categoryLabel, onOpen, children }: {
   finding: HealthFinding
   compact?: boolean
+  /** the page's human category label (CAT_LABEL); absent falls back to humanising the producer code */
+  categoryLabel?: string | null
   /** the page's drill-down (the /health hub opens its drawer with this); absent means the card is read-only */
   onOpen?: () => void
   /** the page's own action buttons — kept at the call site because they own the remediate state, never forked here */
@@ -42,6 +52,8 @@ export function HealthFindingCard({ finding, compact = false, onOpen, children }
   const sev = String(finding.severity ?? 'info').toLowerCase()
   const detail = findingDetail(finding)
   const hasDetail = Boolean(detail.why || detail.action || detail.detail)
+  const whenRaw = findingWhen(finding)
+  const categoryText = String(categoryLabel ?? humanizeCode(finding.category))
   return (
     <div data-testid="health-finding" data-severity={sev} data-openable={onOpen ? 'true' : 'false'}
       onClick={onOpen}
@@ -50,7 +62,9 @@ export function HealthFindingCard({ finding, compact = false, onOpen, children }
         cursor: onOpen ? 'pointer' : 'default' }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
         <span style={{ fontSize: TYPE.xs, fontWeight: 800, textTransform: 'uppercase', color: SEV_COLOR[sev] || TOKENS.text[2] }}>{sev}</span>
-        <span style={{ fontSize: TYPE.xs, color: TOKENS.text[2] }}>{String(finding.category ?? '')}</span>
+        <span style={{ fontSize: TYPE.xs, color: TOKENS.text[2] }} title={String(finding.category ?? '')}>{categoryText}</span>
+        {/* WHEN — always visible, like severity and category; the raw stamp stays in the tooltip */}
+        {whenRaw ? <span style={{ fontSize: TYPE.xs, color: TOKENS.text[2] }} title={whenRaw}>{fmtAsOf(whenRaw)}</span> : null}
         <span style={{ marginLeft: 'auto', fontSize: TYPE.xs, fontWeight: 800, color: TOKENS.text[1] }}>
           {String(rem.status ?? 'detected').replace(/_/g, ' ')}
         </span>
