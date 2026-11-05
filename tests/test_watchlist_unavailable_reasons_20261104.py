@@ -6,8 +6,10 @@ it has ``node`` but no ``node_modules``, so running a render test from here fail
 before it looks at the page. That would be permanently red for the environment rather than for the page.
 
 So the render runs where the packages are — the frontend ``build`` chain in ``apps/command-center-v3/package.json``
-(``npm ci`` then every ``.view.test.mjs``) — and this file guards the registration: if the build step disappears, this
-gate fails, and the page loses its proof. That is the pattern #2611 landed for the same reason.
+(``npm ci``, then ``node scripts/run-tests.mjs``, which runs every discovered test under ``src/``) — and this file
+guards the coverage: if the file stops being discovered (or becomes dormant), this gate fails and the page loses its
+proof. It does not pin the retired explicit step: discovery runs the file because it exists, and naming it again would
+run it twice (cc-deepseek-9's BLOCK at a5ab0a0e1; the same defect #2676 removed).
 
 What the render asserts (``apps/command-center-v3/src/lib/watchlistUnavailableReasons.view.test.mjs``): the four-filter
 reason and four named controls on the actual page. Missing generic next-review fields say the producer has not provided
@@ -20,22 +22,28 @@ ANCHOR: WATCHLIST_UNAVAILABLE_REASONS_20261104
 """
 
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-RENDER_STEP = "node src/lib/watchlistUnavailableReasons.view.test.mjs"
 RENDER = ROOT / "apps/command-center-v3/src/lib/watchlistUnavailableReasons.view.test.mjs"
 
 
 def test_the_build_chain_runs_the_render_test():
-    """The proof runs in the job that has `npm ci`; this asserts the step is still there."""
+    """The proof runs in the job that has `npm ci`. Since #2676 the build discovers tests instead of naming them, so
+    coverage here means: the runner is in the build chain, this file matches its discovery pattern, and it is not
+    dormant. Asserting the old explicit step would pin a mechanism main retired — and re-adding that step would run
+    this test twice."""
     assert RENDER.is_file(), f"the render test is missing: {RENDER}"
-    pkg = json.loads((ROOT / "apps/command-center-v3/package.json").read_text(encoding="utf-8"))
-    steps = [step.strip() for step in pkg["scripts"]["build"].split("&&")]
-    assert RENDER_STEP in steps, (
-        "the frontend build chain no longer runs the FQ-076 render test — the page has lost its proof; "
-        "re-add it before `tsc && vite build`"
-    )
+    app = ROOT / "apps/command-center-v3"
+    pkg = json.loads((app / "package.json").read_text(encoding="utf-8"))
+    assert "scripts/run-tests.mjs" in pkg["scripts"]["build"], (
+        "the frontend build chain no longer runs the discovered test set — the page has lost its proof")
+    assert re.search(r"\.test\.(ts|mjs|js|tsx|jsx)$", RENDER.name), (
+        f"{RENDER.name} does not match the runner's discovery pattern, so it would never run")
+    rel = str(RENDER.relative_to(app))
+    dormant = json.loads((app / "scripts/tests.dormant.json").read_text(encoding="utf-8")).get("files") or {}
+    assert rel not in dormant, f"the render test is dormant ({rel}); discovery will not run it"
 
 
 def test_the_gate_file_is_the_one_this_test_registers():
