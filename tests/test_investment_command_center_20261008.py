@@ -470,3 +470,42 @@ def test_top_evidence_reads_native_thesis_head_and_batches_only_reviewed_candida
     missing_root = tmp_path / "unavailable"
     heads, error = eligibility.read_theses(["SYNQ"], missing_root)
     assert heads == {} and error and not missing_root.exists(), "read failure must not create/rebuild a store"
+
+
+@pytest.mark.parametrize("reviewed", [False, True])
+def test_research_stance_filter_and_facet_keep_the_published_meaning(monkeypatch, reviewed):
+    """PR2657 F2: eligibility must not erase curator stance from list filters/facets."""
+    import importlib.util
+    import scripts.api_v3_opportunities as api
+
+    name = "lib.data_broker.opportunity_eligibility"
+    spec = importlib.util.spec_from_file_location(name, ROOT / "scripts/lib/data_broker/opportunity_eligibility.py")
+    eligibility = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, name, eligibility)
+    spec.loader.exec_module(eligibility)
+    now = datetime.now(timezone.utc).isoformat()
+    assessment = {"symbol": "SYNQ", "conviction": 90, "coverage": 1.0,
+                  "risk_reward": {"rr": 3.0}, "stance": "ADD", "curator_stance": "ADD", "type": "existing"}
+    context = {
+        "technical": {"SYNQ": {"rsi": 55, "macd_signal": "bullish", "sma_20": 100,
+                               "sma_50": 99, "sma_200": 95}},
+        "theses": {"SYNQ": {"summary": "Synthetic CIO research", "stance": "HOLD", "status": "active",
+                             "published_ts": now}} if reviewed else {},
+        "market_risk": {"state": "evaluated", "tier": "GREEN", "as_of": now},
+    }
+
+    class Store:
+        def read_projection(self):
+            return {"as_of": now, "items": {"SYNQ": assessment}}
+
+    monkeypatch.setattr(api, "_store", Store)
+    monkeypatch.setattr(api, "_ranking_context", lambda *args, **kwargs: context)
+    unfiltered = api.get_list({})
+    assert unfiltered["facets"]["stance"] == {"ADD": 1}
+    filtered = api.get_list({"stance": "ADD"})
+    assert [r["symbol"] for r in filtered["items"]] == ["SYNQ"]
+    row = filtered["items"][0]
+    assert row["stance"] == row["automated_stance"] == "ADD"
+    assert row["cio_review"]["reviewed"] is reviewed
+    assert row["cio_review"]["stance"] == ("HOLD" if reviewed else None)
+    assert assessment["stance"] == "ADD", "qualification never mutates the stored assessment"

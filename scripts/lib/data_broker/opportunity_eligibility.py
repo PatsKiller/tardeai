@@ -240,7 +240,7 @@ def qualify(
                 "research_rank": row.get("rank"),
                 "automated_stance": row.get("curator_stance", row.get("stance")),
                 "rank": None,
-                "stance": stance if reviewed else None,
+                # Keep curator stance for published filters/facets; CIO stance lives in the receipt below.
                 "cio_review": {
                     "reviewed": reviewed,
                     "stance": stance if reviewed else None,
