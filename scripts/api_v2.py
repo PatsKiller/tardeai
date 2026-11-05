@@ -55979,6 +55979,16 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     # What n8n did today (operator 2026-10-16): runs by state (live / dry_run), failures with reason, lock skips,
     # heals and diagnoses, lanes cut over today. Receipts only (lib/data_broker/n8n_today.py), cached 60 s.
+    if base_path == "/api/v2/n8n/automations":
+        if method != "GET":
+            return 405, {"ok": False, "error": "read_only"}
+        try:
+            from lib.data_broker.n8n_automations import get_automations_cached as _n8n_automations
+
+            return 200, {"ok": True, "data": _n8n_automations()}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
     if base_path == "/api/v2/coordination/n8n-today":
         if method != "GET":
             return 405, {"ok": False, "error": "read_only"}

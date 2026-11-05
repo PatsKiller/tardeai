@@ -99,3 +99,25 @@ def test_the_cache_asks_the_database_once_per_ttl_and_never_leaks_its_clock(monk
     third = M.get_automations_cached(ttl_s=60)
     assert len(calls) == 2 and third["n"] == 2
     M._CACHE.clear()
+
+
+def test_the_route_serves_the_projection_and_refuses_writes(monkeypatch):
+    """FQ-130 native helper: /api/v2/n8n/automations is read-only, serves the projection, and never reads as empty."""
+    import api_v2
+    import lib.data_broker.n8n_automations as real
+
+    payload = {"generated_at": "2026-11-05T12:00:00Z", "workflows": [{"name": "x"}], "kpi": {"runs": 3}}
+    monkeypatch.setattr(real, "get_automations_cached", lambda: payload)
+
+    status, body = api_v2.handle("/api/v2/n8n/automations", method="GET", body=None, query={})
+    assert status == 200 and body["ok"] is True and body["data"] == payload
+
+    status, body = api_v2.handle("/api/v2/n8n/automations", method="POST", body={}, query={})
+    assert status == 405 and body["error"] == "read_only"
+
+    def boom():
+        raise RuntimeError("n8n db unreachable")
+
+    monkeypatch.setattr(real, "get_automations_cached", boom)
+    status, body = api_v2.handle("/api/v2/n8n/automations", method="GET", body=None, query={})
+    assert status == 500 and body["error"] == "RuntimeError" and "n8n db unreachable" in body["detail"]
