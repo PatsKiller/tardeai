@@ -39,14 +39,14 @@ phases:
       - id: DSN-20261029-deploy-console-P4-T1
         title: WebAuthn passkey + typed-phrase force-promote and rollback (§27.3/§25.10) — its own reviewed PR
         status: PROPOSED
-  - id: DSN-20261029-deploy-console-OPCLARITY
+  - id: DSN-20261029-deploy-console-P5
     title: Operator-first clarity — two-job coach, digest READY parity, help/glossary, promote readiness
     status: IN_PROGRESS
     tasks:
-      - id: DSN-20261029-deploy-console-OPCLARITY-T1
+      - id: DSN-20261029-deploy-console-P5-T1
         title: Enrich GET /api/v2/ops/in-flight with plain_english, four checks, ages, digest_status/can_approve, next_plain (Telegram READY parity)
         status: DONE
-      - id: DSN-20261029-deploy-console-OPCLARITY-T2
+      - id: DSN-20261029-deploy-console-P5-T2
         title: Deploys coach strip + Help drawer + Operator vs Advanced mode; Approve only when READY; promote-readiness panel
         status: DONE
 ---
