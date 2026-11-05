@@ -20,13 +20,16 @@ import subprocess
 import threading
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Iterable, Optional
 
 try:
     from scripts import check_pr_plain_english as plain
+    from scripts.lib import merge_hold_paths as mhp
     from scripts.lib import pr_merge_telegram as pmt
 except ImportError:  # pragma: no cover — run from scripts/
     import check_pr_plain_english as plain  # type: ignore
+    import merge_hold_paths as mhp  # type: ignore
     from lib import pr_merge_telegram as pmt  # type: ignore
 
 SCHEMA = "DeployInFlight@v1"
@@ -108,6 +111,24 @@ def list_open_prs(repo: str, limit: int = PR_LIMIT) -> list[dict[str, Any]]:
     return [r for r in rows if isinstance(r, dict)]
 
 
+def pr_file_view(repo: str, number: int) -> dict[str, Any]:
+    """One PR's changed paths and changed-file count. Read-only; raises RuntimeError on any gh failure.
+
+    The board cannot decide "may this be approved" without the file list: the digest's last gate before
+    READY is the hold-rule match on changed paths (`merge_hold_paths.held_classes`) and the refusal to
+    offer Approve on a partial view. Fetched per PR, and only for a row that would otherwise be READY, so
+    the ordinary board read still costs one `gh pr list`.
+    """
+    rc, out = _gh(["pr", "view", str(int(number)), "--repo", repo, "--json", "files,changedFiles"])
+    if rc != 0:
+        raise RuntimeError(f"gh pr view failed: {out.strip()[:240]}")
+    try:
+        doc = json.loads(out) if out.strip() else {}
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"gh pr view returned non-JSON: {exc}") from exc
+    return doc if isinstance(doc, dict) else {}
+
+
 # ── pure projection (hermetic: fixture PR dicts only) ───────────────────────────────────────────────────────
 
 
@@ -121,12 +142,25 @@ def label_set(pr: dict[str, Any]) -> set[str]:
     return out
 
 
+#: The three states GitHub uses, as the GraphQL/API form spells them.
+_MERGEABLE_TEXT = {"MERGEABLE": "MERGEABLE", "CONFLICTING": "CONFLICTING", "UNKNOWN": "UNKNOWN"}
+
+
 def normalize_mergeable(v: Any) -> str:
-    """``mergeable`` from gh is a JSON boolean or null → MERGEABLE | CONFLICTING | UNKNOWN."""
+    """``mergeable`` → MERGEABLE | CONFLICTING | UNKNOWN, from either form GitHub returns.
+
+    ``gh pr list --json mergeable`` gives a JSON boolean or null; the GraphQL/API projection gives the
+    enum strings. Only the boolean was handled, so a real ``"CONFLICTING"`` from the string form fell
+    through to UNKNOWN and a genuinely conflicting PR lost its rebase hint, while ``"MERGEABLE"`` also
+    read as unknown (2026-11-02, operator-requested Releases page fix). UNKNOWN stays UNKNOWN: it is
+    GitHub saying "not computed yet", and it must never be read as either state.
+    """
     if v is True:
         return "MERGEABLE"
     if v is False:
         return "CONFLICTING"
+    if isinstance(v, str):
+        return _MERGEABLE_TEXT.get(v.strip().upper(), "UNKNOWN")
     return "UNKNOWN"
 
 
@@ -165,7 +199,12 @@ def next_action(pr: dict[str, Any]) -> str:
         return "coordinator"
     if merge_state == "BLOCKED":
         return "blocked-shard-hints"
-    if merge_state in ("DIRTY", "BEHIND", "UNSTABLE") or mergeable == "UNKNOWN":
+    if mergeable == "UNKNOWN":
+        # GitHub saying "not computed yet" is not evidence of a conflict. Treating it as one put
+        # "auto-rebase" on a PR nobody had measured (2026-11-02). An unmeasured state is a coordinator
+        # question, never an inference.
+        return "coordinator"
+    if merge_state in ("DIRTY", "BEHIND", "UNSTABLE"):
         return "auto-rebase"
     if mergeable == "MERGEABLE":
         return "auto-merge"
@@ -210,12 +249,13 @@ def _plain_ok(pr: dict[str, Any], answers: dict[str, str]) -> tuple[bool, list[s
     return (not errors), errors
 
 
-def digest_classify_row(pr: dict[str, Any]) -> tuple[str, str, bool]:
+def digest_classify_row(pr: dict[str, Any], *, files: Optional[list[str]] = None) -> tuple[str, str, bool]:
     """Digest-parity status for the board: (digest_status, digest_reason, can_approve).
 
-    Aligns with ``pr_merge_digest.classify_pr`` for the gates that do not need a full file list
-    (draft, already approved, plain English, hold labels, four checks, conflict). Path-based
-    held-class (files_unverified) is not recomputed here — labels cover the operator hold path.
+    Aligns with ``pr_merge_digest.classify_pr``, including its LAST gate: a hold rule that covers one of
+    the changed paths, and the refusal to offer Approve on a partial file view. ``files`` is the changed
+    path list; when it is not supplied the row cannot be READY, because "every gate I could check passed"
+    is not the digest's READY rule — it is a claim about a list nobody read (review finding F1 on PR 2307).
     """
     labels = label_set(pr)
     mergeable = normalize_mergeable(pr.get("mergeable"))
@@ -238,6 +278,19 @@ def digest_classify_row(pr: dict[str, Any]) -> tuple[str, str, bool]:
     merge_state = str(pr.get("mergeStateStatus") or "").upper()
     if merge_state == "BLOCKED":
         return "blocked", "merge_blocked", False
+    # Everything else passed; the digest's file gate is the only thing left between this row and READY.
+    if files is None:
+        return "files_unverified", "files_unverified", False
+    try:
+        held = mhp.held_classes(files)
+    except Exception:  # noqa: BLE001 - an unreadable hold config must not read as "no hold rule"
+        return "files_unverified", "files_unverified", False
+    if held:
+        return "needs_operator", "held:" + ",".join(sorted(held)), False
+    changed = int(pr.get("changedFiles") or len(files))
+    if changed > len(files):
+        # A partial view is the digest's files_unverified: never offer Approve on paths nobody saw.
+        return "files_unverified", "files_unverified", False
     return "ready", "ready", True
 
 
@@ -254,11 +307,17 @@ def next_plain(pr: dict[str, Any], *, digest_status: str, digest_reason: str) ->
     if digest_status == "not_described":
         return "Waiting for a plain-English description before you can Approve."
     if digest_status == "needs_operator":
+        if str(digest_reason or "").startswith("held:"):
+            return ("A hold rule covers a path this PR changes "
+                    f"({str(digest_reason).split(':', 1)[1]}) — Approve stays off until the operator releases it.")
         return "Operator held — do not Approve until this hold is released."
     if digest_status == "waiting_ci":
         return "Waiting for the four required checks to pass (same gates as Telegram)."
     if digest_status == "blocked":
         return "Blocked on GitHub — needs a coordinator or shard/CI hints refresh."
+    if digest_status == "files_unverified":
+        return ("The changed-file list could not be checked here, so Approve stays off — that is the digest's "
+                "own rule; open the PR to see why it is held.")
     if mergeable == "UNKNOWN":
         return (
             "GitHub has not finished computing mergeability yet — wait / refresh; "
@@ -271,13 +330,29 @@ def next_plain(pr: dict[str, Any], *, digest_status: str, digest_reason: str) ->
     return digest_reason or "Waiting — see gates."
 
 
-def project_pr(pr: dict[str, Any], *, now: Optional[datetime] = None) -> dict[str, Any]:
-    """One raw gh PR dict → the wire row the board renders (legacy + operator-clarity fields)."""
+def project_pr(pr: dict[str, Any], *, now: Optional[datetime] = None,
+               files_for: Optional[Callable[[int], dict[str, Any]]] = None) -> dict[str, Any]:
+    """One raw gh PR dict → the wire row the board renders (legacy + operator-clarity fields).
+
+    ``files_for`` reads one PR's changed paths. It is called at most once, and only for a row that has
+    passed every other gate — the rest of the board never pays for a file view it cannot use.
+    """
     now = now or datetime.now(timezone.utc)
     head = str(pr.get("headRefOid") or "")
     answers = plain_english_fields(pr)
     checks = check_statuses(pr)
     d_status, d_reason, can_approve = digest_classify_row(pr)
+    if d_status == "files_unverified" and files_for is not None:
+        number = int(pr.get("number") or 0)
+        try:
+            view = files_for(number) or {}
+        except Exception as exc:  # noqa: BLE001 - an unreadable file view is not a pass
+            d_status, d_reason, can_approve = "files_unverified", f"files_unreadable:{type(exc).__name__}", False
+        else:
+            files = [str(f.get("path")) for f in (view.get("files") or []) if isinstance(f, dict)]
+            changed = view.get("changedFiles")
+            merged = {**pr, "changedFiles": changed} if changed is not None else pr
+            d_status, d_reason, can_approve = digest_classify_row(merged, files=files)
     author = pr.get("author") or {}
     author_login = ""
     if isinstance(author, dict):
@@ -318,12 +393,45 @@ def project_pr(pr: dict[str, Any], *, now: Optional[datetime] = None) -> dict[st
 # ── assembly and route ──────────────────────────────────────────────────────────────────────────────────────
 
 
+def _state_root() -> Path:
+    """Where persistent-state lives: ``$TRADEAI_STATE_ROOT``, else the house convention.
+
+    This defaulted to ``Path(__file__).parents[3] / "trade-ai-releases" / "persistent-state"``, which exists in
+    neither checkout layout (``…/portfolio-server/…`` in a release, ``…/trade-ai-v12-rebuild/…`` in the repo) and —
+    because ``Path`` was never imported — raised NameError before it could look. Both faults together made every
+    live read ``coordination_unavailable``: the served page showed no owner, task, review, CI or blockers for any
+    PR (found on the served release 2026-11-03). Every other reader of the store (platform_health, jobs_health,
+    n8n_coordination_projection) resolves it this way; follow them rather than inventing a path.
+    """
+    return Path(os.environ.get("TRADEAI_STATE_ROOT") or Path.home() / "trade-ai-releases" / "persistent-state")
+
+
+def _default_coordination() -> Callable[..., dict[str, Any]]:
+    from lib import releases_coordination  # noqa: E402
+
+    root = _state_root()
+    return lambda rows, now: releases_coordination.build(
+        root / "data" / "coordination" / "coordinator" / "ledger.jsonl",
+        root / "data" / "coordination" / "claims",
+        rows,
+        now=now,
+    )
+
+
 def build(db_query: Any = None, *, now: Optional[datetime] = None, repo: Optional[str] = None,
-          lister: Optional[Callable[[str, int], list[dict[str, Any]]]] = None) -> dict[str, Any]:
-    """One read of the open PRs. ``lister`` is injected in tests (no network, no live gh)."""
+          lister: Optional[Callable[[str, int], list[dict[str, Any]]]] = None,
+          coordination: Optional[Callable[..., dict[str, Any]]] = None,
+          files_for: Optional[Callable[[int], dict[str, Any]]] = None) -> dict[str, Any]:
+    """One read of the open PRs. ``lister`` is injected in tests (no network, no live gh).
+
+    ``files_for`` defaults to one ``gh pr view --json files,changedFiles`` per PR that would otherwise be
+    READY. It is read-only, and it is what makes ``can_approve`` mean the digest's READY rather than
+    "everything I looked at passed" (review finding F1 on PR 2307).
+    """
     now = now or datetime.now(timezone.utc)
     repo = repo or DEFAULT_REPO
     lister = lister or list_open_prs
+    files_for = files_for or (lambda number: pr_file_view(repo, number))
     base = {"schema": SCHEMA, "authority": AUTHORITY, "generated_at": _iso(now), "repo": repo,
             "source": SOURCE}
     try:
@@ -331,17 +439,32 @@ def build(db_query: Any = None, *, now: Optional[datetime] = None, repo: Optiona
     except Exception as exc:  # noqa: BLE001 - the error is the evidence
         return {**base, "prs": None, "count": None, "status": "UNAVAILABLE", "freshness": "UNAVAILABLE",
                 "reason": f"{type(exc).__name__}: {str(exc)[:240]}"}
-    rows = [project_pr(p, now=now) for p in raw]
+    rows = [project_pr(p, now=now, files_for=files_for) for p in raw]
     ready_n = sum(1 for r in rows if r.get("can_approve"))
-    return {
-        **base,
-        "prs": rows,
-        "count": len(rows),
-        "ready_count": ready_n,
-        "status": "OK",
-        "freshness": "OK",
-        "reason": None,
-    }
+    out = {**base, "prs": rows, "count": len(rows), "ready_count": ready_n, "status": "OK",
+           "freshness": "OK", "reason": None}
+    # 2026-11-02 (operator-requested Releases fix): an ADDITIVE coordination view. The PR list above is
+    # unchanged - same keys, same values - and a failure to read the coordination sources degrades this
+    # block alone rather than the board.
+    try:
+        view = (coordination or _default_coordination())(rows, now)
+    except Exception as exc:  # noqa: BLE001 - the error is the evidence
+        view = {"schema": "ReleasesCoordination@v1", "status": "UNAVAILABLE", "as_of": None,
+                "captured_at": _iso(now), "source": "none", "gaps": [f"{type(exc).__name__}: {str(exc)[:160]}"],
+                "agents": [], "work": {}, "authority": "READ_ONLY_ADVISORY"}
+    out["coordination"] = {k: v for k, v in view.items() if k != "work"}
+    by_number = view.get("work") or {}
+    for row in rows:
+        row["work"] = by_number.get(row["number"]) or {
+            "owner": "UNKNOWN", "current_task": "UNKNOWN", "publication_state": "UNKNOWN",
+            "local_head": None, "published_head": row.get("head_sha") or None,
+            "review": {"state": "UNKNOWN", "head_sha": None, "as_of": None, "source": "none",
+                       "gap": "coordination_unavailable"},
+            "ci": {"state": "UNKNOWN", "head_sha": None, "as_of": None, "source": "none",
+                   "gap": "coordination_unavailable"},
+            "blockers": [], "next_action": "UNKNOWN", "as_of": None, "source": "none",
+        }
+    return out
 
 
 def handle(path: str, method: str, query: Optional[dict[str, Any]], db_query: Any) -> Optional[tuple[int, dict]]:
@@ -367,5 +490,6 @@ def clear_cache() -> None:
 
 
 __all__ = ["SCHEMA", "ROUTE", "AUTHORITY", "SOURCE", "build", "handle", "clear_cache", "list_open_prs",
-           "project_pr", "why_held", "next_action", "normalize_mergeable", "label_set", "DEFAULT_REPO",
-           "digest_classify_row", "next_plain", "relative_age", "REQUIRED_CHECKS", "check_statuses"]
+           "pr_file_view", "project_pr", "why_held", "next_action", "normalize_mergeable", "label_set",
+           "DEFAULT_REPO", "digest_classify_row", "next_plain", "relative_age", "REQUIRED_CHECKS",
+           "check_statuses"]

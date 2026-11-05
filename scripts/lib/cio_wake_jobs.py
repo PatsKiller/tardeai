@@ -198,6 +198,27 @@ GENESIS_PREV_HASH = "00000000000000000000000000000000000000000000000000000000000
 ALLOWED_ACTOR_TYPES = frozenset({"agent", "operator", "system"})
 
 
+def _write_durable(path: Path, data: bytes) -> None:
+    """Write bytes and fsync them before returning."""
+    with open(path, "wb") as fh:
+        fh.write(data)
+        fh.flush()
+        os.fsync(fh.fileno())
+
+
+def _ends_without_newline(path: Path) -> bool:
+    """True when the file is non-empty and its last byte is not a newline."""
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            if fh.tell() == 0:
+                return False
+            fh.seek(-1, os.SEEK_END)
+            return fh.read(1) != b"\n"
+    except OSError:
+        return False
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # CIO Wake Job Store
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -276,46 +297,78 @@ class CIOWakeJobStore:
     def quarantine_corrupt_trailing_events(self) -> dict[str, Any]:
         """Drop trailing corrupt JSONL records (common after ENOSPC mid-write).
 
-        Rewrites the store under lock only when the final record(s) fail to parse.
-        Intact interior corruption is left for operator forensics — we only trim a
-        bad *suffix*, which is what blocks `_get_last_event` / enqueue.
+        Takes the store lock, then trims. Intact interior corruption is left for
+        operator forensics — we only trim a bad *suffix*, which is what blocks
+        `_get_last_event` / enqueue. Code that already holds the lock must call
+        `_quarantine_corrupt_tail_locked` instead (see its docstring).
         """
         if not self.event_store_path.exists():
             return {"ok": True, "removed": 0, "reason": "missing"}
         lock_fd = self._acquire_lock()
         try:
-            raw = self.event_store_path.read_text(encoding="utf-8", errors="replace")
-            lines = raw.splitlines(keepends=True)
-            removed: list[str] = []
-            while lines:
-                candidate = lines[-1]
-                if not candidate.strip():
-                    removed.append(candidate)
-                    lines.pop()
-                    continue
+            return self._quarantine_corrupt_tail_locked()
+        finally:
+            self._release_lock(lock_fd)
+
+    def _quarantine_corrupt_tail_locked(self) -> dict[str, Any]:
+        """Trim a corrupt suffix. The caller already holds the store lock.
+
+        2026-10-30: this never takes the lock itself. flock(2) locks belong to an
+        open file description, so a second LOCK_EX from the same process on a new
+        descriptor blocks forever. `_append_event` used to reach the locking
+        variant through `_get_last_event`, and after the disk-full night tore the
+        last record every wake writer hung until its timeout killed it: no CIO
+        wake was recorded for 33 hours (10-30 04:48Z to 10-31 13:50Z).
+
+        The quarantine copy is written to a temp name, fsynced and renamed, so a
+        full disk leaves no 0-byte `.corrupt-tail-*` file behind (41 did), and the
+        store is truncated in place rather than rewritten through a second full
+        copy, so the trim itself needs no free space.
+        """
+        if not self.event_store_path.exists():
+            return {"ok": True, "removed": 0, "reason": "missing"}
+        data = self.event_store_path.read_bytes()
+        lines = data.splitlines(keepends=True)
+        removed = 0
+        while lines:
+            candidate = lines[-1]
+            if candidate.strip():
                 try:
                     json.loads(candidate.strip())
                     break
-                except json.JSONDecodeError:
-                    removed.append(candidate)
-                    lines.pop()
-            if not removed:
-                return {"ok": True, "removed": 0, "reason": "clean"}
-            quarantine = self.event_store_path.with_suffix(
-                self.event_store_path.suffix + f".corrupt-tail-{int(time.time())}"
-            )
-            quarantine.write_text("".join(removed), encoding="utf-8")
-            tmp = self.event_store_path.with_suffix(".tmp")
-            tmp.write_text("".join(lines), encoding="utf-8")
-            os.replace(tmp, self.event_store_path)
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    pass
+            removed += 1
+            lines.pop()
+        keep_len = sum(len(x) for x in lines)
+        tail = data[keep_len:]
+        if not tail:
+            return {"ok": True, "removed": 0, "reason": "clean"}
+        quarantine = self.event_store_path.with_suffix(
+            self.event_store_path.suffix + f".corrupt-tail-{int(time.time())}"
+        )
+        partial = quarantine.with_name(quarantine.name + ".partial")
+        try:
+            _write_durable(partial, tail)
+            os.replace(partial, quarantine)
+        except OSError as exc:
+            try:
+                partial.unlink()  # our own half-written copy; the store is untouched
+            except OSError:
+                pass
             return {
-                "ok": True,
-                "removed": len(removed),
-                "quarantine": str(quarantine),
-                "bytes_removed": sum(len(x) for x in removed),
+                "ok": False,
+                "removed": 0,
+                "reason": f"quarantine_write_failed:{exc.errno}",
+                "bytes_corrupt": len(tail),
             }
-        finally:
-            self._release_lock(lock_fd)
+        os.truncate(self.event_store_path, keep_len)
+        return {
+            "ok": True,
+            "removed": removed,
+            "quarantine": str(quarantine),
+            "bytes_removed": len(tail),
+        }
 
     def _tail_last_event(self, chunk: int = 65536) -> Optional[dict[str, Any]]:
         """Last event from the end of the file, or None if the last record does
@@ -342,7 +395,7 @@ class CIOWakeJobStore:
         except OSError:
             return None
 
-    def _get_last_event(self) -> Optional[dict[str, Any]]:
+    def _get_last_event(self, *, lock_held: bool = False) -> Optional[dict[str, Any]]:
         if not self.event_store_path.exists():
             return None
         tail = self._tail_last_event()
@@ -359,14 +412,19 @@ class CIOWakeJobStore:
             corrupt_suffix = False
         if corrupt_suffix:
             # Best-effort auto-trim so the next enqueue is not permanently wedged.
+            # Under the lock (from _append_event) the locking variant would block
+            # this process on its own flock forever.
             try:
-                self.quarantine_corrupt_trailing_events()
+                if lock_held:
+                    self._quarantine_corrupt_tail_locked()
+                else:
+                    self.quarantine_corrupt_trailing_events()
             except Exception:
                 pass
         return last
 
-    def _get_last_event_hash(self) -> str:
-        last = self._get_last_event()
+    def _get_last_event_hash(self, *, lock_held: bool = False) -> str:
+        last = self._get_last_event(lock_held=lock_held)
         if last is None:
             return GENESIS_PREV_HASH
         return last["event_hash"]
@@ -374,13 +432,18 @@ class CIOWakeJobStore:
     def _append_event(self, event: dict[str, Any]) -> None:
         lock_fd = self._acquire_lock()
         try:
-            current_head_hash = self._get_last_event_hash()
+            current_head_hash = self._get_last_event_hash(lock_held=True)
             event["prev_event_hash"] = current_head_hash
 
             event_without_hash = {k: v for k, v in event.items() if k != "event_hash"}
             event["event_hash"] = compute_event_hash(event_without_hash)
 
             line = json.dumps(event, sort_keys=True, ensure_ascii=False) + "\n"
+
+            if _ends_without_newline(self.event_store_path):
+                # A torn record that could not be trimmed (full disk) must not
+                # swallow this event: start it on its own line.
+                line = "\n" + line
 
             with open(self.event_store_path, "a") as f:
                 f.write(line)

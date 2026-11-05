@@ -312,6 +312,12 @@ def rule_queue(p: Any, now: datetime) -> list[dict]:
     q = _unwrap(p)
     if not isinstance(q, dict) or q.get("measured") is False or "pending" not in q:
         raise SourceUnavailable("deep_overnight_llm_queue could not be read")
+    if q.get("retired"):
+        # The consumer lane (deep-overnight-llm) is RETIRED in config/lane_registry.json: nothing drains this table by
+        # design and it is KEEP_FOREVER in config/data_retention_policy.json. Its frozen May backlog is not something
+        # the operator can act on, so it is not a Do-now item (it showed as a P1 "CRIT, 0 done in 24 h" until
+        # 2026-10-31). The Jobs page still shows the counts, labelled retired.
+        return []
     lvl = queue_level(q)
     if lvl == "OK":
         return []

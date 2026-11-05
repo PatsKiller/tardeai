@@ -38,15 +38,19 @@ export default function DeployGateChecklist({
   return (
     <div style={wrap} data-testid="deploy-gate-checklist">
       <ChipRow>
-        {REQUIRED.map(name => {
-          const v = checks?.[name] ?? 'MISSING'
-          return (
-            <Chip key={name} tone={checkTone(v)}
-              title={`${name}: ${v} — required tool gate (same four as Telegram / Mergify)`}>
-              {name.replace(/-/g, '·')} {v === 'SUCCESS' ? 'ok' : v.toLowerCase()}
-            </Chip>
-          )
-        })}
+        {checks == null
+          // A wire that states no check results is not four failed checks. Saying "missing" here would contradict
+          // the CI line beside it and tell the operator a gate failed when nobody read one.
+          ? <Chip tone="neutral" title="the server did not state the four required checks for this row">checks not stated</Chip>
+          : REQUIRED.map(name => {
+              const v = checks[name] ?? 'MISSING'
+              return (
+                <Chip key={name} tone={checkTone(v)}
+                  title={`${name}: ${v} — required tool gate (same four as Telegram / Mergify)`}>
+                  {name.replace(/-/g, '·')} {v === 'SUCCESS' ? 'ok' : v.toLowerCase()}
+                </Chip>
+              )
+            })}
       </ChipRow>
       <span title={mergeTitle}>
         <Chip tone={mergeTone(mergeable)}>

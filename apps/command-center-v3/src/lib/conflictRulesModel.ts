@@ -181,3 +181,30 @@ export function pct(value: number | null | undefined): string {
 export function coverageWord(status: string | null | undefined): {label: string; tone: 'success' | 'danger'} {
   return status === 'IMPLEMENTED' ? {label: 'Implemented', tone: 'success'} : {label: 'Missing', tone: 'danger'}
 }
+
+// ── FQ-007: the decision summary and the proposals panel must agree ─────────────────────────────────
+// Measured live 2026-11-04: /api/v3/conflicts/proposals -> proposals: [], total: 0, unmatched: 16.
+// Nothing awaited the operator's approval, yet "Decisions for you" said nothing needed a decision and the
+// panel below said "awaiting your approval". The two statements describe different queues: rules waiting
+// for the operator, and cases waiting for an AI to draft a proposal. Say which is which.
+
+export function decisionGapText(pending: number, unmatched: number): string {
+  if (pending > 0) return `${pending} AI-proposed rule${pending === 1 ? '' : 's'} waiting for your approval.`
+  if (unmatched > 0) {
+    return `Nothing is waiting for your approval. ${unmatched} case${unmatched === 1 ? '' : 's'} ` +
+      `await${unmatched === 1 ? 's' : ''} an AI rule proposal — no action for you yet.`
+  }
+  return 'Nothing on this page needs a decision right now.'
+}
+
+export function proposalsHeading(pending: number, unmatched: number): string {
+  if (pending > 0) return 'Proposed rules — awaiting your approval'
+  if (unmatched > 0) return 'Cases awaiting an AI proposal'
+  return 'Rule proposals'
+}
+
+export function proposalsIntro(pending: number): string {
+  return pending > 0
+    ? 'No existing rule matched these cases, so an AI drafted a rule and a resolution. Nothing changes until you approve.'
+    : 'No existing rule covers these cases yet, and no AI draft has been produced — there is nothing for you to approve.'
+}

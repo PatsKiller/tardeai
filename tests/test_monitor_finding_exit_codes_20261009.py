@@ -39,7 +39,8 @@ def test_live_table_declares_the_shared_finding_code():
         "moomoo-opend-health": [codes.EXIT_FINDING],
         "pipeline-liveness-report": [codes.EXIT_FINDING],
         "premarket-delivery-deadman": [codes.EXIT_FINDING],
-    }  # 2026-10-31 P0-T4
+        "market-risk-escalation-stall": [codes.EXIT_FINDING],
+    }  # 2026-10-31 P0-T4, P3-T7
 
 
 # ── pipeline_liveness_report --fail-on-finding ──────────────────────────────
