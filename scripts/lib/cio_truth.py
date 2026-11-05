@@ -369,6 +369,10 @@ def stop_for(account: str, symbol: str, *, broker_rows=None, planned=None, now=N
     note = None
     if observation is not None:
         meta.update(as_of=observation["as_of"], stale=observation["status"] != "FRESH")
+        if observation["status"] == "UNAVAILABLE":
+            # The raw reported clock remains in stop_observation for diagnosis;
+            # it cannot establish a usable observation time or an elapsed age.
+            meta.update(as_of=None, age_hours=None)
         if meta["stale"]:
             meta["gap"] = {"reason": observation["reason"]}
             if state in ("active", "pending_activation"):

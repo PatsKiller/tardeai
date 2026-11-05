@@ -178,3 +178,13 @@ def test_old_filled_observation_keeps_its_unsettled_sale_warning():
     }], {"total": 0}, now=NOW)
     assert len(result["items"]) == 1
     assert result["items"][0]["why"] == "Stop filled; sale not yet checked against the trade ledger"
+
+
+@pytest.mark.parametrize("clock", ["2026-11-04T14:59:00", "2026-11-05T14:59:00Z"])
+def test_unavailable_clock_does_not_publish_a_fabricated_observation_age(clock):
+    result = truth.stop_for("SyntheticAccountAlpha", "SYNTH",
+                            broker_rows=[row(clock)], now=NOW)
+    assert result["broker_protected"] is False
+    assert result["age_hours"] is None
+    assert result["as_of"] is None
+    assert result["stop_captured_at"] is None
