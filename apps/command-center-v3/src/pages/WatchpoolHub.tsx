@@ -406,7 +406,9 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
                       <span key={i} style={{ display: 'inline-flex', gap: 4, alignItems: 'center', fontSize: TYPE.xs, padding: '2px 6px', borderRadius: 2, background: BB.bgShift }}>
                         <b style={{ ...numStyle, color: BB.text0, cursor: 'pointer' }}
                           onClick={() => onDrill({ title: `${h.symbol} — provenance`, subtitle: d.label, endpoint: `/api/v2/watch/provenance/${h.symbol}`, rows: [h] })}>{h.symbol}</b>
-                        <Chip kind="metric">{h.surfaced_by}</Chip>
+                        {/* FQ-080 P3 (cc-deepseek-8, at head f84a04507): one field, one reading — the queue chip
+                            above renders deskLabel(h.surfaced_by), so the expanded hits render the same words. */}
+                        <Chip kind="metric" title={`surfaced by ${String(h.surfaced_by || "unknown")}`}>{deskLabel(h.surfaced_by)}</Chip>
                         {h.divergence && <Chip kind="state" tone={divTone(h.divergence)} title="internal vs Street">{h.divergence}</Chip>}
                         <span style={{ fontSize: TYPE.xs, color: BB.text3 }}>{(h.promotion_status || '').replace(/_/g, ' ').toLowerCase()}</span>
                         {h.promotion_status === 'STAGED_FOR_REVIEW' && (

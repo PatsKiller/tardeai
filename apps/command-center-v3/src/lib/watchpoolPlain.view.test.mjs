@@ -47,10 +47,11 @@ const ROW = (over = {}) => ({
   current_status: 'ACTIVE', origin_system: 'screener', ...over,
 })
 
-function render(rows) {
+function render(rows, directives = null) {
   globalThis.__watchpoolFixture = (url) => {
     const u = String(url)
     if (u.includes('/api/v2/watchpool')) return { data: { rows, count: rows.length }, error: null, loading: false, refetch() {} }
+    if (u.includes('/api/v2/watch-directives') && directives) return { data: directives, error: null, loading: false, refetch() {} }
     return { data: null, error: null, loading: false, refetch() {} }
   }
   return renderToStaticMarkup(React.createElement(MemoryRouter, null,
@@ -105,6 +106,22 @@ check('desk filters are operator words, not engine keys', () => {
   assert.match(html, />All desks</)
   assert.match(html, />CIO desk</)
   assert.doesNotMatch(html.replace(/\stitle="[^"]*"/g, ''), />\s*cio\s*</)
+})
+
+// FQ-080 P3 (cc-deepseek-8 at head f84a04507): one field, one reading. The expanded directive hits used to print
+// `h.surfaced_by` raw while the queue chip above it rendered deskLabel(h.surfaced_by) — the same value in two
+// forms on one page. This asserts the RENDERED chip inside the expanded hits.
+check('the expanded directive hit uses the same desk words as the queue chip', () => {
+  const directives = {
+    directives: [{ id: 7, kind: 'ticker', label: 'Synthetic directive', spec: {}, created_at: '2026-11-05T00:00:00Z',
+      ttl_days: 5, expires_in_days: 4, trade_ai_enabled: true, hermes_enabled: false }],
+    recent_hits: [{ symbol: 'ABCD', directive_id: 7, surfaced_by: 'cio', promotion_status: 'STAGED_FOR_REVIEW' }],
+    directive_count: 1,
+  }
+  const h = render([ROW()], directives)
+  const chips = [...h.matchAll(/<span[^>]*>([\s\S]*?)<\/span>/g)].map(m => m[1].replace(/<[^>]*>/g, '').trim())
+  assert.ok(chips.includes('CIO desk'), `expanded hit chip did not read the desk word; chips=${JSON.stringify(chips.filter(Boolean).slice(0, 12))}`)
+  assert.ok(!h.replace(/\stitle="[^"]*"/g, '').includes('>cio<'), 'a raw cio chip is still rendered somewhere on the page')
 })
 
 console.log(`watchpoolPlain.view: ${pass} passed, ${fail} failed`)
