@@ -292,7 +292,8 @@ port; proxy allows only the listed target; the model's pytest sees no proxy/auth
    24.11 amendment is ACTIVE; every PR is human-reviewed and never auto-merged. Recommended before arming: a
    dedicated, revocable credential for this lane (a separate login used only here) so a leak is cheap to revoke.
 2. **Allowlisted hosts are coarse.** `claude.ai:443` / `console.anthropic.com:443` / `platform.claude.com:443` are
-   allowed for OAuth refresh; any data path through them is open to the model. No other host is reachable.
+   allowed for OAuth refresh; any data path through them is open to the model. No other host is reachable on
+   the Anthropic path; a provider run adds only that provider's configured hosts (§6b), never a static one.
 3. **The model's tests share the agent boundary** (nested bwrap is refused here): they cannot reach the host network
    but can reach the egress bridge (Anthropic hosts only) and read the agent HOME, including the credential. The
    harness's own test runs (red-first, targeted, CI) do not: they run in `eval_sandbox_prefix` without the agent HOME
@@ -300,6 +301,45 @@ port; proxy allows only the listed target; the model's pytest sees no proxy/auth
 4. **System dirs are visible read-only** (`/etc`, `/usr`), as is the repo's full git history (public anyway).
 5. **First live run unverified items:** that CLI 2.1.299 reads `$CLAUDE_CONFIG_DIR/.credentials.json` and sends all
    its traffic through `HTTPS_PROXY`. If either is wrong the job fails closed (no auth / no network), never open.
+
+## 6b. A non-Anthropic provider (DeepSeek, 2026-11-03)
+
+`claude.provider` selects the model provider for a job. Absent, or `name: anthropic`, is exactly the behaviour
+above. A full block (`name`, `launcher`, `key_file`; a half block is ignored and the CLI keeps its own auth)
+runs the model on DeepSeek:
+
+- **Key transport.** This host's bubblewrap (0.11.1) has **no `--preserve-fds`**, so a key file descriptor
+  cannot be inherited into the sandbox; and a bind mount would put the key at a path the model's Bash can open.
+  Instead the fixer reads the key **on the host** (`O_NOFOLLOW`, one line, no CR/LF) and sends it as the
+  **first line of the agent's stdin**. The launcher (`scripts/lib/self_heal_deepseek_launch.py`) consumes that
+  line **before it execs the CLI**, seals the bytes in an anonymous `memfd`, and names that descriptor through
+  `CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR`. The key is never in the env, never a filesystem path, never in argv,
+  and never in the prompt the model sees.
+- **The launch chain** is `bwrap -> (egress bridge) -> launcher -> CLI`. The launcher sets
+  `ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic` and the model, drops `ANTHROPIC_API_KEY`,
+  `ANTHROPIC_AUTH_TOKEN` and `TRADEAI_DEEPSEEK_MODEL`, preserves the caller's cwd (the candidate worktree — the
+  old operator wrapper's `cd $REPO` silently moved edits to the live tree) and execs the CLI path the fixer
+  bound read-only (`TRADEAI_CLAUDE_BIN`), because that path is not on the sandbox PATH.
+- **Auth.** `provider.auth_mode` overrides `claude.auth.mode`; for DeepSeek it is `none`, so the Claude OAuth
+  file is not bound at all — one credential inside the boundary, not two.
+- **Egress.** `api.deepseek.com:443` is NOT in the static `agent_sandbox.egress_allow`. The fixer appends a
+  provider's `egress_allow` hosts only while that provider is active (`Attempt.egress_allow()`), and the
+  egress bridge is started with that effective list. On the Anthropic path the allowlist is exactly the
+  Anthropic hosts in §6a — a prompt-injected model cannot take the bound OAuth credential to a third party.
+- **A dry run describes the run it would do.** The planned `egress_allow` is the effective list (a provider's
+  configured hosts only while that provider is active) and the planned auth binds apply the provider's `auth_mode`, so a
+  dry run quoted to approve arming a provider block shows the provider host and no OAuth bind — not the static defaults.
+- **An active provider with an invalid auth_mode is refused.** An active provider (name + launcher +
+  key_file) must set `auth_mode: "none"`; anything else (missing, `credentials_file`) fails the job with
+  `provider_auth_mode_invalid` instead of binding the OAuth file inside a DeepSeek run. A launcher that is
+  not readable fails with `provider_launcher_unavailable`. A **half-configured** block (no launcher or no
+  key_file) is not "refused" — it is inert: the provider never activates and the CLI keeps its own auth.
+- **Residual risk.** As with the OAuth credential above, the CLI holds the key in a readable descriptor; a
+  model-run Bash that deliberately opens `/proc/<claude-pid>/fd/<n>` could read it. Nothing puts it in the
+  prompt, the diff, the transcript or a test wrapper. The same recommendation applies: arm with a dedicated,
+  revocable key for this lane.
+- **The switch is config, not code.** No `provider` block ships until the code is reviewed and merged, the
+  §24.11 successor is active, a backup exists and a dry run is quoted (the same gate as §7).
 
 ## 7. Gating (DISARMED by default)
 
