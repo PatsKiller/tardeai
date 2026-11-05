@@ -4788,7 +4788,7 @@
         "kind": "file_mtime",
         "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/disk_pressure_guard_receipts.jsonl"
       },
-      "note": "Operator-requested 2026-09-21: act at >=85% used instead of waiting for Sunday's tradeai-weekly-disk-cleanup, after the disk hit 100% with 84MB free. Every 15 min; shells disk_hygiene_enforcer.py --apply, which owns ALL deletion and its CURRENT/EXPECTED_RELEASE protections -- this guard deletes nothing itself. Pages only on a transition via alert_condition_state (6h re-alert): a 15-min timer with no dedupe would add 96 messages/day. Threshold is read as df reads it, used/(used+avail); used/total left it silent at df 89%. ABSOLUTE path for the same reason as weekly-disk-cleanup.",
+      "note": "Operator-requested 2026-09-21: act at >=85% used instead of waiting for Sunday's tradeai-weekly-disk-cleanup, after the disk hit 100% with 84MB free. Every 15 min. Disarmed (the shipped state) it shells disk_hygiene_enforcer.py --dry-run for a plan and pages; when the operator arms pressure_act in config/disk_hygiene_rules.json it triggers scripts/disk_hygiene.py --standing (dry run -> quoted selection -> apply under its reviewed rules and per-run caps), which owns ALL deletion and its CURRENT/EXPECTED_RELEASE protections -- this guard deletes nothing itself. Pages only on a transition via alert_condition_state (6h re-alert): a 15-min timer with no dedupe would add 96 messages/day. Threshold is read as df reads it, used/(used+avail); used/total left it silent at df 89%. ABSOLUTE path for the same reason as weekly-disk-cleanup.",
       "value_class": "Operationally Important",
       "recommendation": "KEEP_ON_CRON",
       "rationalization": {
@@ -19076,6 +19076,48 @@
       "service": "tradeai-nightly-security-scan.service (PROPOSED; no unit file)",
       "cadence_basis": "PROPOSED: daily, after the overnight window",
       "exec_start": "PROPOSED: ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/nightly_security_scan.py --apply"
+    },
+    {
+      "lane_id": "agent_nudge",
+      "owner": "coordination",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/agent_nudger.py",
+        "cadence": "*/5 * * * *",
+        "stage": "shadow",
+        "wave": "nudger-migration-P2",
+        "command_text": "*/5 * * * * /usr/bin/python3 $STATE_ROOT/data/coordination/coordinator/agent_nudger.py --apply >> $STATE_ROOT/data/coordination/coordinator/agent_nudger.log 2>&1"
+      },
+      "expected_cadence_hours": 0.0833,
+      "state": "PAUSED",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "cc3 and cx-openai-2 both blocked 7df0f53ce on 2026-11-04 with the same proof: evaluate_lane against the real evaluator returns last_output_at null and verdict SILENT for this row, while creating the state file flips it to LIVE, so the state.json mtime is the only thing that can ever make it healthy; scripts/agent_nudger.py writes that file only under --apply and the lanes only runnable mode is --dry-run.",
+      "review_by": "2026-11-18",
+      "state_reason": "Shadow only. The dispatcher runs this lane with --dry-run, which writes no state, so an ACTIVE file_mtime signal on state.json could never advance: _scheduler_present would be true (the shadow run fires) while the output signal stayed null, and the SLA fallback would emit a false NO_OUTPUT every cycle (cc3/cx-openai-2, 2026-11-04). The signal below names the artifact a LIVE run advances; it does not advance in shadow, which is why the row is PAUSED rather than ACTIVE.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/coordination/agent_nudger/ledger.jsonl",
+        "note": "advances on a live (--apply) run only; the shadow lane cannot advance it"
+      },
+      "note": "Board item 16 (2026-11-03). The live nudger is a host crontab entry running a copy that lives OUTSIDE the repo (coordinator/agent_nudger.py, no claim, no review, no CI). P1 ported it to scripts/agent_nudger.py; this row is P2 and is SHADOW ONLY: the executor runs it dry, the host timer keeps typing, and nothing here can type into a session until the stage is flipped in a separate operator-approved PR. Screen-only BUSY/IDLE detection with a fixed prompt; the port keeps every refusal and cooldown of the live copy.",
+      "state_since": "2026-11-03",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "*/5 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "hygiene",
+        "priority": 3,
+        "retry_policy": "transient-2"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "command_text": "*/5 * * * * /usr/bin/python3 ~/trade-ai-releases/persistent-state/data/coordination/coordinator/agent_nudger.py --apply >> ~/trade-ai-releases/persistent-state/data/coordination/coordinator/agent_nudger.log 2>&1",
+        "note": "The live crontab entry as observed 2026-11-03. It is NOT stopped or edited by P2; rollback for P3 is 'stage back to shadow' plus this line re-enabled."
+      }
     },
     {
       "lane_id": "run-scheduled-quote-refresh-incubator",

@@ -113,11 +113,19 @@ function BuildMarker() {
     }
   }, [])
   const comparison = compareServedBuild(LOADED_BUILD, served)
+  // FQ-081: the bundle id, build date and source revision are technical identifiers, not something an operator reads
+  // in the footer. The one operator-facing fact stays visible — whether this tab is running the artifact the server is
+  // serving — and the identifiers move one tap away. data-source-sha stays on the element: it is machine-read.
   return <span data-testid="cc-loaded-build" data-source-sha={LOADED_BUILD.sourceSha ?? 'UNAVAILABLE'}>
-    Loaded bundle: {LOADED_BUILD.uiVersion ?? 'UNAVAILABLE'} · built {LOADED_BUILD.builtAt ?? 'UNAVAILABLE'} · source {LOADED_BUILD.sourceSha?.slice(0, 12) ?? 'UNAVAILABLE'}
-    {' · '}{comparison === 'SAME' ? 'matches served artifact' : comparison === 'UNAVAILABLE' ? 'served build comparison UNAVAILABLE' : <>
+    {comparison === 'SAME' ? 'Running the artifact the server serves' : comparison === 'UNAVAILABLE' ? 'Served build comparison UNAVAILABLE' : <>
       newer or different artifact available · <button type="button" onClick={() => window.location.reload()}>Reload Command Center</button>
     </>}
+    {' · '}<details data-testid="build-diagnostics" style={{ display: 'inline-block' }}>
+      <summary style={{ cursor: 'pointer', display: 'inline' }}>Diagnostics</summary>
+      <span style={{ display: 'block' }}>
+        Loaded bundle: {LOADED_BUILD.uiVersion ?? 'UNAVAILABLE'} · built {LOADED_BUILD.builtAt ?? 'UNAVAILABLE'} · source {LOADED_BUILD.sourceSha?.slice(0, 12) ?? 'UNAVAILABLE'}
+      </span>
+    </details>
   </span>
 }
 
