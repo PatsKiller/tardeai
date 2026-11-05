@@ -1,11 +1,5 @@
-// FQ-090 (HQ-06) — Major News: a missing day percent is not +0.00%, and the grid says what its clock is.
-//
-// Live at release 105df180e, /api/v2/portfolio/book-map returned 4 of 27 rows with `day_change_pct: null` (NVDA among
-// them) and a top-level `as_of` of "2026-11-04" — a date, not an intraday quote time. The grid printed every null as a
-// green "+0.00%", sorted it among the movers, and showed no clock at all.
-//
-// Red-first: the null-percent and as-of controls fail against the parent component; the reported-value control is
-// green on both sides by design.
+// FQ-090: actual Major News rendering, using newly constructed invented rows only.
+// Missing percentages, retained reads, modal text and dollar tooltips are exercised independently.
 import assert from 'node:assert/strict'
 import { readFileSync, existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -47,9 +41,9 @@ function readingText(markup) {
 const book = {
   ok: true, as_of: '2026-11-04',
   rows: [
-    { symbol: 'SPCX', account: 'a', value: 27578, day_change: 500, day_change_pct: 1.85, stop: 10 },
-    { symbol: 'NVDA', account: 'a', value: 9000, day_change: 0, day_change_pct: null, stop: 100 },
-    { symbol: 'SCHD', account: 'a', value: 60000, day_change: -120, day_change_pct: -0.2, stop: 20 },
+    { symbol: 'ZZPOS', account: 'fixture_alpha', value: 3, day_change: 1, day_change_pct: 1.5, stop: 1 },
+    { symbol: 'ZZMISS', account: 'fixture_alpha', value: 1, day_change: 0, day_change_pct: null, stop: 1 },
+    { symbol: 'ZZNEG', account: 'fixture_alpha', value: 6, day_change: -1, day_change_pct: -0.75, stop: 1 },
   ],
 }
 
@@ -70,20 +64,20 @@ function check(name, fn) { cases.push({ name, fn }) }
 
 check('a missing day percent is not rendered as a number', () => {
   const t = readingText(render())
-  assert.doesNotMatch(t, /NVDA\s*\+0\.00%/, 'a null day percent still prints +0.00%')
+  assert.doesNotMatch(t, /ZZMISS\s*\+0\.00%/, 'a null day percent still prints +0.00%')
   const cell = (render().match(/data-day-pct="[^"]*"[^>]*>[^<]*</g) || []).join(' ')
   assert.match(cell, /data-day-pct="not-reported"/, cell)
 })
 
 check('a reported day percent is unchanged', () => {
   const t = readingText(render())
-  assert.match(t, /SPCX\s*\+1\.85%/)
-  assert.match(t, /SCHD\s*-0\.20%/)
+  assert.match(t, /ZZPOS\s*\+1\.50%/)
+  assert.match(t, /ZZNEG\s*-0\.75%/)
 })
 
 check('unknown movers sort after the known ones', () => {
   const t = readingText(render())
-  assert.ok(t.indexOf('SPCX') < t.indexOf('NVDA'), 'a null-percent row sorted among real movers')
+  assert.ok(t.indexOf('ZZPOS') < t.indexOf('ZZMISS'), 'a null-percent row sorted among real movers')
 })
 
 check('the grid states its clock, and a date-only as_of is called what it is', () => {
@@ -100,13 +94,13 @@ check('a payload with no as_of says so instead of showing nothing', () => {
 check('the modal refuses to invent a percent too', () => {
   // The modal renders only when `sym` is set, which SSR cannot click. Render its own body
   // directly so the dash and the sentence are exercised, not the grid cell again.
-  const row = book.rows.find(r => r.symbol === 'NVDA')
+  const row = book.rows.find(r => r.symbol === 'ZZMISS')
   const markup = renderToStaticMarkup(React.createElement(MajorNewsModalBody, {
-    symbol: 'NVDA', row, news: null, ingest: null, onClose: () => {},
+    symbol: 'ZZMISS', row, news: null, ingest: null, onClose: () => {},
   }))
   const t = readingText(markup)
   assert.match(markup, /data-day-pct="not-reported"/, 'the modal did not mark the percent as not reported')
-  assert.match(t, /NVDA\s+—/, `the modal printed a number for a missing percent: ${t}`)
+  assert.match(t, /ZZMISS\s+—/, `the modal printed a number for a missing percent: ${t}`)
   assert.match(t, /day change not reported/, 'the modal did not say the day change was not reported')
   assert.doesNotMatch(t, /\+0\.00%/, 'the modal invented +0.00%')
 })
@@ -123,9 +117,9 @@ check('the tooltip never invents a dollar move, and never contradicts the percen
   const b = {
     ok: true, as_of: '2026-11-04',
     rows: [
-      { symbol: 'ZPOS', account: 'a', value: 1, day_change: null, day_change_pct: 3.25, stop: 1 },
-      { symbol: 'ZNEG', account: 'a', value: 1, day_change: null, day_change_pct: -2.5, stop: 1 },
-      { symbol: 'ZOK', account: 'a', value: 1, day_change: 42, day_change_pct: 1.1, stop: 1 },
+      { symbol: 'ZPOS', account: 'fixture_alpha', value: 1, day_change: null, day_change_pct: 3.25, stop: 1 },
+      { symbol: 'ZNEG', account: 'fixture_alpha', value: 1, day_change: null, day_change_pct: -2.5, stop: 1 },
+      { symbol: 'ZOK', account: 'fixture_alpha', value: 1, day_change: 42, day_change_pct: 1.1, stop: 1 },
     ],
   }
   const titles = [...render(b).matchAll(/title="([^"]*)"/g)].map(m => m[1])
