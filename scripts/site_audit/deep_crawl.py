@@ -17,7 +17,7 @@ from typing import Any, Iterable
 _log = logging.getLogger("site_audit.deep_crawl")
 from urllib.parse import urljoin, urlparse
 
-from site_audit.action_denylist import ACTION_WORDS, safe_to_open
+from site_audit.action_denylist import ACTION_WORDS, safe_to_activate, safe_to_open
 
 #: A link label that opens something inside the app (one level only).
 IN_PAGE_LINK_WORDS = ("→", "open ", "view ", "details", "review ", "see ")
@@ -173,11 +173,16 @@ def capture_page(page: Any, *, route: str, page_url: str, indices: Iterable[int]
                 refused.append({**item, "reason": "the target's label/role could not be read; not clicked"})
                 continue
             live_label, live_role = live
-            if not safe_to_open(live_label, live_role):
+            # The click boundary is fail-closed (whole-head F1): an action word refuses the node whatever its
+            # role, and an absent/unknown role is never pressed to find out what it is. `<a>`, `<div>` and
+            # role="none" labelled "Approve" are all refused here; only a readable, non-action clickable role
+            # (a detail button, or a link) proceeds.
+            if not safe_to_activate(live_label, live_role):
                 details.append(DetailRecord(**{**rec.__dict__, "label": live_label,
                                                "skipped_reason": f"refused at click time: {live_role} {live_label!r}"}))
                 refused.append({**item, "label": live_label, "role": live_role,
-                                "reason": "the live element carries an action label — §6 never presses an action"})
+                                "reason": "the live element carries an action label or a role the crawler "
+                                          "will not press — §6 never presses an action"})
                 continue
             target.click(timeout=5000)
             page.wait_for_timeout(400)

@@ -6,6 +6,9 @@ does not prove either. These probes drive the real functions with objects that r
 
   R2 — the guard is re-run on the element that would actually be clicked; a "safe" discovery whose selector
        resolves to an Approve button is refused and `click` is never called.
+  F1 — that same click guard is fail-closed: an action name is refused whatever the live role resolves to
+       (`<a>`, `<div>`, `role="none"`), and an absent/unknown role is never pressed even with a safe name.
+       A genuinely safe link is still clicked and a safe detail button still opens.
   R1 — a per-page directory that already exists as a symlink into the checkout is refused before a byte is written;
        `--out` pointing into the checkout is refused by the same root check.
 """
@@ -21,11 +24,12 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from site_audit import capture_root as cr  # noqa: E402
 from site_audit import deep_crawl as dc  # noqa: E402
+from site_audit.action_denylist import is_forbidden_click, safe_to_activate  # noqa: E402
 
 
 class FakeTarget:
-    def __init__(self, label, role=""):
-        self.label, self.role, self.clicks = label, role, 0
+    def __init__(self, label, role="", tag="button"):
+        self.label, self.role, self.tag, self.clicks = label, role, tag, 0
 
     def get_attribute(self, name):
         return self.role if name == "role" else (self.label if name == "aria-label" else None)
@@ -34,7 +38,7 @@ class FakeTarget:
         return self.label
 
     def evaluate(self, _js):
-        return "button"
+        return self.tag
 
     def click(self, **kw):
         self.clicks += 1
@@ -87,6 +91,69 @@ def test_R2_a_safe_detail_button_is_still_opened_when_no_detail_appears_it_says_
     # The fake page opens no dialog: the record must not claim the detail opened.
     assert out["details"][0]["opened"] is False
     assert "no detail appeared" in (out["details"][0]["skipped_reason"] or "")
+
+
+@pytest.mark.parametrize("tag,role", [
+    ("a", ""),            # resolves as a link
+    ("div", ""),          # no role at all
+    ("div", "none"),      # declared non-actionable role
+    ("button", ""),       # the semantic button
+])
+def test_F1_an_action_name_is_refused_whatever_the_live_role(tag, role):
+    """Whole-head F1: only a semantic button used to be refused; `<a>`/`<div>`/role=none were clicked."""
+    target = FakeTarget("Approve", role=role, tag=tag)
+    page = FakePage(target)
+    plan = [{"label": "Open revenue", "role": "button", "selector": "[data-open=0]"}]
+    out = dc.capture_page(page, route="/approvals", page_url="http://x/v3/approvals", indices=[0],
+                          out_dir=None, openers=plan, max_links=0)
+
+    assert target.clicks == 0, f"an action was clicked on a <{tag} role={role!r}> target"
+    assert out["details"][0]["opened"] is False
+    assert "refused at click time" in (out["details"][0]["skipped_reason"] or "")
+    assert any("action label" in r["reason"] for r in out["refused"])
+
+
+@pytest.mark.parametrize("tag,role", [("div", ""), ("div", "none"), ("span", "presentation")])
+def test_F1_an_unknown_or_absent_role_is_never_pressed_even_with_a_safe_name(tag, role):
+    """The fail-closed default: if the crawler cannot tell what the node is, it does not press it."""
+    target = FakeTarget("Open revenue", role=role, tag=tag)
+    page = FakePage(target)
+    plan = [{"label": "Open revenue", "role": "button", "selector": "[data-open=0]"}]
+    out = dc.capture_page(page, route="/reports", page_url="http://x/v3/reports", indices=[0],
+                          out_dir=None, openers=plan, max_links=0)
+
+    assert target.clicks == 0, f"an unknown role ({tag} role={role!r}) was pressed"
+    assert "refused at click time" in (out["details"][0]["skipped_reason"] or "")
+
+
+def test_F1_a_safe_link_is_still_clicked_and_a_safe_button_still_opens():
+    """The fix must not turn the crawl off: a safe link (role=link) and a safe detail button still run."""
+    link = FakeTarget("Open ADBE", role="", tag="a")
+    out = dc.capture_page(FakePage(link), route="/reports", page_url="http://x/v3/reports", indices=[0],
+                          out_dir=None,
+                          openers=[{"label": "Open ADBE", "role": "button", "selector": "a[href]"}],
+                          max_links=0)
+    assert link.clicks == 1, "a genuinely safe link is no longer followed/clicked"
+    assert out["details"][0]["opened"] is False and "no detail appeared" in out["details"][0]["skipped_reason"]
+
+    button = FakeTarget("Show details", role="button", tag="button")
+    dc.capture_page(FakePage(button), route="/reports", page_url="http://x/v3/reports", indices=[0],
+                    out_dir=None,
+                    openers=[{"label": "Show details", "role": "button", "selector": "#open"}],
+                    max_links=0)
+    assert button.clicks == 1, "a safe detail button is no longer opened"
+
+
+def test_F1_the_click_predicate_fails_closed():
+    for role in ("", None, "none", "presentation", "heading", "tab", "link-ish"):
+        assert is_forbidden_click("Open revenue", role) is True, role
+        assert safe_to_activate("Open revenue", role) is False, role
+    for role in ("", None, "link", "none"):
+        assert is_forbidden_click("Approve", role) is True, role
+    assert is_forbidden_click("Open revenue", "link") is False
+    assert is_forbidden_click("Open revenue", "button") is False
+    assert is_forbidden_click("", "button") is True   # unlabelled: nothing to judge it by
+    assert is_forbidden_click(None, "link") is True
 
 
 def test_R1_a_symlinked_page_directory_into_the_repo_is_refused(tmp_path, monkeypatch):
