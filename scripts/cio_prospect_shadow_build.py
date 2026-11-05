@@ -283,10 +283,23 @@ def main(argv: list[str] | None = None) -> int:
         from scripts.lib.data_broker.atomic_json import atomic_write_json
         atomic_write_json(state_root / SHADOW_REL, doc)
         atomic_write_json(state_root / COMPARE_REL, cmp)
-        atomic_write_json(state_root / RECEIPT_REL, {
-            "lane": LANE_ID, "ok_at": now.isoformat(), "produced_count": doc["counts"]["prospects"],
-            "conflicts": doc["counts"]["conflicts"], "shadow": SHADOW_REL, "run_id": os.environ.get("TRADEAI_RUN_ID"),
-            "store_status": doc["store_status"]["mode"]})
+        # LaneRunReceipt@v2 through the shared writer, which also writes this attempt's immutable copy
+        # (data/runtime/lane_attempts/<lane>/<run_id>.json). The plain dict written here before had no attempt copy,
+        # so every LIVE run since the 2026-10-30 canary admission ended RUN_FAILED output_unverifiable
+        # (attempt_receipt_missing) and three in a row opened the n8n breaker.
+        from scripts.lib.lane_last_receipt import write_lane_receipt
+
+        receipt = write_lane_receipt(
+            LANE_ID, ok=True, exit_code=0, started_at=now, script="scripts/cio_prospect_shadow_build.py",
+            path=state_root / RECEIPT_REL, produced_count=int(doc["counts"]["prospects"]),
+            attempted_count=int(doc["counts"]["prospects"]),
+            summary={"conflicts": doc["counts"]["conflicts"], "shadow": SHADOW_REL,
+                     "store_status": doc["store_status"]["mode"]},
+            output_evidence=[{"path": SHADOW_REL, "kind": "prospect_shadow"}],
+        )
+        if receipt is None:
+            out["ok"] = False
+            out["error"] = "receipt_write_failed"
         out["wrote"] = [SHADOW_REL, COMPARE_REL, RECEIPT_REL]
     else:
         out["wrote"] = [p for p in (args.out, args.report_md) if p]
