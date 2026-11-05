@@ -611,7 +611,17 @@ def test_watch_top_list_requires_real_evidence(monkeypatch, ready, tier):
     raw = opp("SYNQ", 1, 96, stance="WATCH", typ="new_position", status="not_owned")
     raw.update(coverage=0.9, risk_reward={"rr": 4.0})
     context = {
-        "technical": {"SYNQ": {"rsi": 55, "macd_signal": "bullish", "sma_20": 100, "sma_50": 99, "sma_200": 95}},
+        "technical": {
+            "SYNQ": {
+                "rsi": 55,
+                "macd_signal": "bullish",
+                "sma_20": 100,
+                "sma_50": 99,
+                "sma_200": 95,
+                "as_of": now,
+                "source": "indicator_confluence_cache",
+            }
+        },
         "theses": {
             "SYNQ": {"summary": "Synthetic CIO thesis", "stance": "WATCH", "status": "active", "published_ts": now}
             if ready
@@ -652,7 +662,15 @@ def test_watch_top_five_cap_and_ownership_filter_before_technical_reads(monkeypa
         for i in range(7)
     }
     thesis = {"summary": "Synthetic CIO research", "stance": "WATCH", "status": "active", "published_ts": now}
-    tech = {"rsi": 55, "macd_signal": "bullish", "sma_20": 100, "sma_50": 99, "sma_200": 95}
+    tech = {
+        "rsi": 55,
+        "macd_signal": "bullish",
+        "sma_20": 100,
+        "sma_50": 99,
+        "sma_200": 95,
+        "as_of": now,
+        "source": "indicator_confluence_cache",
+    }
     context = {
         "technical": {s: tech for s in raw},
         "theses": {s: thesis for s in raw},
@@ -668,3 +686,36 @@ def test_watch_top_five_cap_and_ownership_filter_before_technical_reads(monkeypa
     assert len(result["items"]) == 5
     assert [row["symbol"] for row in result["items"]] == [f"SYN{i}" for i in range(5)]
     assert all(row["cio_review"]["reviewed"] and row["type"] == "re_entry" for row in result["items"])
+
+
+@pytest.mark.parametrize(
+    "query,matching",
+    [
+        ({"position": "held"}, False),
+        ({"position": "never_held"}, True),
+        ({"result": "won"}, False),
+        ({"result": "lost"}, True),
+        ({"reentry": "ready"}, False),
+        ({"reentry": "waiting"}, True),
+        ({"stage": "actionable"}, False),
+        ({"stage": "forming"}, True),
+        ({"pnl_pct_min": "0"}, False),
+        ({"pnl_pct_max": "0"}, True),
+    ],
+)
+def test_watch_research_candidates_obey_the_same_position_filters(monkeypatch, query, matching):
+    now = datetime.now(timezone.utc).isoformat()
+    raw = opp("SYNQ", 1, 96, stance="WATCH")
+    raw["stage"] = "forming"
+    context = {"technical": {}, "theses": {}, "market_risk": {"state": "evaluated", "tier": "GREEN", "as_of": now}}
+    facts = {
+        "position_state": "never_held",
+        "last_round_trip": {"result": "lost", "pnl_pct": -5},
+        "reentry": {"readiness": "waiting"},
+    }
+    monkeypatch.setattr(wp, "gather", lambda *a, **k: {"opps": {"SYNQ": raw}, "proj_meta": {"as_of": now}})
+    monkeypatch.setattr(wpf, "load", lambda *a, **k: {"facts_for": lambda s: facts})
+    monkeypatch.setattr(wu, "_ranking_context", lambda *a, **k: context)
+    result = wu.list_watch_universe({"preset": "top5", **query})
+    assert not result["items"], "no CIO thesis means research-only, regardless of filters"
+    assert [r["symbol"] for r in result["research_candidates"]] == (["SYNQ"] if matching else [])

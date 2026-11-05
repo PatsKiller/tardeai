@@ -252,6 +252,11 @@ const fixtures={
     "research_candidates": []
   }
 }
+// Qualification receipt transport fixtures; native backend tests regenerate each input's source/clock.
+fixtures.ready.items[0].top_eligibility.technical = { verified: true, as_of: '2026-11-04T17:30:00Z' }
+for (const name of ['unreviewed', 'red']) for (const row of fixtures[name].research_candidates) {
+ row.top_eligibility.technical = { verified: false, as_of: '2020-01-01T00:00:00Z' }
+}
 globalThis.window={matchMedia:()=>({matches:false})}
 let current
 require('../hooks/useApi.ts').useApi=url=>url.startsWith('/api/v3/data-broker/watch-universe')||url.startsWith('/api/v3/opportunities')
@@ -264,6 +269,9 @@ for(const [name,fixture]of Object.entries(fixtures))for(const [label,Component]o
   current=fixture;const html=render(Component,label==='filtered-hub')
   assert.doesNotMatch(html,/curated by the CIO/i)
   assert.match(html,/SYNQ/)
+  assert.match(html,/data-technical-as-of/)
+  if(name==='ready') { assert.match(html,/Technical input clocks verified/); assert.match(html,/dateTime="2026-11-04T17:30:00Z"/) }
+  else { assert.match(html,/Technical input clocks not verified/); if(name!=='legacy')assert.match(html,/dateTime="2020-01-01T00:00:00Z"/) }
   if(name==='ready'){
    assert.doesNotMatch(html,/data-research-symbol="SYNQ"/)
    assert.match(html,/CIO|reviewed/)

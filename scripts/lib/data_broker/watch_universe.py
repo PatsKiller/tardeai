@@ -98,13 +98,18 @@ def build_universe(
         now=now,
     )
     research_query = {key: value for key, value in q.items() if key != "min_coverage"}
+    pos_q = wpf.active_filters(q)
     research = sort_qualified(
-        [r for r in rows if not r["top_eligibility"]["eligible"] and op.passes(r, research_query)], "conviction"
+        [
+            r
+            for r in rows
+            if not r["top_eligibility"]["eligible"] and op.passes(r, research_query) and wpf.passes(r, pos_q, now=now)
+        ],
+        "conviction",
     )
     base = [r for r in rows if op.passes(r, q) and (preset != "top5" or r["top_eligibility"]["eligible"])]
     if preset == PRESET_REENTRY:
         base = [r for r in base if r.get("position_state") == "formerly_held" or r.get("type") == "re_entry"]
-    pos_q = wpf.active_filters(q)
     matched = [r for r in base if wpf.passes(r, pos_q, now=now)]
     sort = str(q.get("sort") or "conviction")
     if sort in wpf.SORTS:

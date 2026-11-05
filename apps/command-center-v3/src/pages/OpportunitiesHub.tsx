@@ -39,6 +39,12 @@ function researchRows(body: any, withheld: any[] = []): any[] {
   const rows = [...(Array.isArray(body?.research_candidates) ? body.research_candidates : []), ...withheld]
   return [...new Map(rows.filter(row => typeof row?.symbol === 'string').map(row => [row.symbol, row])).values()]
 }
+function TechnicalEvidence({ row }: { row: any }) {
+  const receipt = row?.top_eligibility?.technical
+  return <span data-technical-as-of style={{ display: 'block', whiteSpace: 'normal', overflowWrap: 'anywhere', color: TEXT2, fontSize: TYPE.sm }}>
+    Technical input clocks {receipt?.verified === true ? 'verified' : 'not verified'} · oldest input <ReadableTime value={receipt?.as_of} />
+  </span>
+}
 function ResearchCandidates({ rows, onOpen }: { rows: any[]; onOpen: (symbol: string) => void }) {
   if (!rows.length) return null
   return <section aria-label="Unreviewed research outside the top list" data-unreviewed-research style={{ marginTop: 14 }}>
@@ -52,6 +58,7 @@ function ResearchCandidates({ rows, onOpen }: { rows: any[]; onOpen: (symbol: st
       {row.cio_review?.reviewed && <div style={{ color: TEXT2, fontSize: TYPE.sm }}>
         CIO stance {String(row.cio_review.stance)} · reviewed <ReadableTime value={row.cio_review.as_of} />
       </div>}
+      <TechnicalEvidence row={row} />
       <button type="button" onClick={() => onOpen(row.symbol)} style={{ minHeight: 44, cursor: 'pointer', color: TEXT, background: 'transparent', border: 0, padding: 0 }}>Read full record →</button>
     </article>)}
     <Link to="/watch?tab=opportunities" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, color: TEXT2 }}>Full research list →</Link>
@@ -235,6 +242,7 @@ export default function OpportunitiesHub() {
                           {(a as any).top_eligibility?.reason || 'Qualification for the top list has not been verified.'}
                         </span>
                         {(a as any).cio_review?.reviewed && <span data-cio-reviewed-as-of style={{ display: 'block', whiteSpace: 'normal', fontSize: TYPE.sm }}>CIO reviewed <ReadableTime value={(a as any).cio_review.as_of} /></span>}
+                        <TechnicalEvidence row={a} />
                         {(a as any).ownership_note ? <span style={{ color: TOKENS.warning }}> ⚠</span> : null}
                       </td>
                       <td data-label="Risk / Reward · R:R" style={{ ...td, ...numStyle }} title={rr.rr_flag || ''}>{riskRewardCell(rr)}</td>
@@ -302,6 +310,7 @@ export function TopOpportunitiesWidget() {
           <span style={{ ...numStyle }}>{(a.risk_reward || {}).rr != null ? `${Number(a.risk_reward.rr).toFixed(1)}x` : '—'}</span>
           <span style={{ ...numStyle, color: TOKENS.success }}>{pct(a.upside_pct, 0)}</span>
           <span style={{ flexBasis: '100%', color: MUTED }}>CIO reviewed <ReadableTime value={a.cio_review?.as_of} /></span>
+          <TechnicalEvidence row={a} />
         </button>
       ))}
       <ResearchCandidates rows={research} onOpen={open} />
