@@ -92,13 +92,17 @@ export function escalationStatus(i: Pick<Incident, 'escalations'>): { label: str
     : { label: `Escalation delivery unconfirmed (${attempts.length} attempt${attempts.length === 1 ? '' : 's'})`, tone: 'warning' }
 }
 
+/** The ledger's canonical severities: exact, uppercase P0–P3 (mirrors SEV_RANK in incident_flood_policy.py). */
+const SEVERITY_RANK: Record<string, number> = { P0: 0, P1: 1, P2: 2, P3: 3 }
+
+/** Validate the original value against the canonical set — never trim or case-fold it into validity. */
 export function severityLabel(value?: string): { label: string; tone: Tone; rank: number } {
-  const severity = value?.trim().toUpperCase()
-  if (severity && /^P[0-3]$/.test(severity)) {
-    const rank = Number(severity.slice(1))
-    return { label: severity, tone: rank <= 1 ? 'danger' : rank === 2 ? 'warning' : 'neutral', rank }
+  if (value !== undefined && Object.prototype.hasOwnProperty.call(SEVERITY_RANK, value)) {
+    const rank = SEVERITY_RANK[value]
+    return { label: value, tone: rank <= 1 ? 'danger' : rank === 2 ? 'warning' : 'neutral', rank }
   }
-  return { label: severity ? `Severity unknown (${severity})` : 'Severity unknown', tone: 'warning', rank: 9 }
+  const shown = value?.trim()
+  return { label: shown ? `Severity unknown (${shown})` : 'Severity unknown', tone: 'warning', rank: 9 }
 }
 
 export function sortIncidents(rows: Incident[]): Incident[] {
