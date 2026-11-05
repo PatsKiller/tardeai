@@ -494,6 +494,36 @@ def _home_compare_fixture(monkeypatch, capture):
     return B.compare(doc, Path("/synthetic-not-read"), home_opportunities=capture)
 
 
+
+@pytest.mark.parametrize("case,value", [
+    ("missing", None), ("null", None), ("text", "bad"), ("nan", float("nan")),
+    ("infinity", float("inf")), ("negative_infinity", float("-inf")),
+    ("true", True), ("false", False), ("below_range", -1), ("above_range", 101),
+    ("list", []), ("object", {}),
+])
+def test_home_capture_invalid_conviction_keeps_whole_comparison_unknown(monkeypatch, case, value):
+    capture, _ = _home_capture_api(monkeypatch)
+    if case == "missing":
+        capture["items"][0].pop("conviction")
+    else:
+        capture["items"][0]["conviction"] = value
+    comparison = _home_compare_fixture(monkeypatch, capture)
+    assert comparison["surfaces"]["home"]["state"] == "unavailable"
+    assert comparison["rows"][0]["home"] is None
+    assert comparison["rows"][0]["agrees"] is None
+    assert comparison["summary"]["unverified"] == 1
+
+
+@pytest.mark.parametrize("value", [0, 100, 90, "90", "90.0"])
+def test_home_capture_finite_conviction_and_numeric_strings_survive(monkeypatch, value):
+    capture, _ = _home_capture_api(monkeypatch)
+    capture["items"][0]["conviction"] = value
+    comparison = _home_compare_fixture(monkeypatch, capture)
+    assert comparison["surfaces"]["home"]["state"] == "available"
+    assert comparison["rows"][0]["home"]["conviction"] == float(value)
+    assert capture["items"][0]["conviction"] == value
+
+
 @pytest.mark.parametrize("case", ["unknown", "empty"])
 def test_home_comparison_keeps_missing_capture_distinct_from_measured_empty(monkeypatch, case):
     capture = None if case == "unknown" else _home_capture_api(monkeypatch, case="no_thesis")[0]

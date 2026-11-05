@@ -1237,8 +1237,19 @@ def home_best_opportunities(capture: Optional[dict[str, Any]]) -> Optional[list[
     if not isinstance(rows, list) or len(rows) > 5 or not dated(capture.get("as_of")):
         return None
     symbols = set()
+    normalized = []
     for row in rows:
         if not isinstance(row, dict):
+            return None
+        value = row.get("conviction")
+        if isinstance(value, bool):
+            return None
+        try:
+            conviction = float(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        # The producer accepts finite scores in 0..100; this is validation, not a new ranking minimum.
+        if not 0 <= conviction <= 100:
             return None
         symbol, rank = row.get("symbol"), row.get("rank")
         eligibility, review = row.get("top_eligibility"), row.get("cio_review")
@@ -1250,7 +1261,8 @@ def home_best_opportunities(capture: Optional[dict[str, Any]]) -> Optional[list[
                 or not dated(review.get("as_of"))):
             return None
         symbols.add(symbol)
-    return [dict(row) for row in rows]
+        normalized.append({**row, "conviction": conviction})
+    return normalized
 
 
 def compare(build_doc: dict[str, Any], state_root: Path, *, watch_top_ideas: Optional[list[str]] = None,
