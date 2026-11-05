@@ -50,7 +50,7 @@ import BrokerProposals from '../components/BrokerProposals'
 import OptionsHub from './OptionsHub'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubFilterSelect, hubKpiChip, hubPanel } from '../lib/terminalHubChrome'
-import { runLabel } from '../lib/homeLabels'
+import { plain, runLabel } from '../lib/homeLabels'
 import { tradeAiSurfaceFreshness } from '../lib/surfaceFreshness'
 import { renderSetupCounts } from '../lib/setupRunSummary'
 import { BB, TYPE } from '../lib/watchTokens'
@@ -456,6 +456,8 @@ function TradingHubDesk({ onDrill }: Props) {
             })
           : (tradeAi?.run_date ? String(tradeAi.run_date) : 'timestamp unavailable')
         const healthStatusLabel = String(tradeAi?.run_health_status || 'UNKNOWN')
+        // FQ-072: the primary flow shows the operator's words; the raw code stays in the title.
+        const healthStatusWords = plain(tradeAi?.run_health_status) ?? healthStatusLabel
         const integrity = tradeAi?.setup_run_summary?.count_integrity
         const integrityReason = tradeAi?.setup_run_summary?.count_integrity_reason
         const underfillNote = setupRunUi.healthDegraded
@@ -513,9 +515,9 @@ function TradingHubDesk({ onDrill }: Props) {
                     data-run-floor={healthFloor && isFinite(healthFloor) ? String(healthFloor) : ''}
                     data-run-health={healthTier}
                     data-run-integrity={tradeAi?.setup_run_summary?.count_integrity ?? ''}
-                    title={healthCodes.length ? healthCodes.join(', ') : healthStatusLabel}
+                    title={healthCodes.length ? `${healthCodes.join(', ')} · ${healthStatusLabel}` : healthStatusLabel}
                   >
-                    · {healthStatusLabel}
+                    · {healthStatusWords}
                   </span>
                 )}
                 {staleSession && <span style={{ marginLeft: 6, color: BB.amber, fontWeight: 800 }}>· STALE SESSION</span>}
@@ -577,7 +579,7 @@ function TradingHubDesk({ onDrill }: Props) {
                   RUN UNDERFILLED — latest run scanned fewer symbols than the health floor
                 </div>
                 <div style={{ color: 'var(--text1)', fontSize: TYPE.sm }}>
-                  Status <b>{healthStatusLabel}</b>
+                  Status <b>{healthStatusWords}</b>
                   {' · '}
                   current-run scanned <b>{scannedN != null ? scannedN : '—'}</b>
                   {' · '}
@@ -624,7 +626,7 @@ function TradingHubDesk({ onDrill }: Props) {
                   RUN FAILED — latest screener run did not complete a usable ingest
                 </div>
                 <div style={{ color: 'var(--text1)', fontSize: TYPE.sm }}>
-                  Status <b>{healthStatusLabel}</b>
+                  Status <b>{healthStatusWords}</b>
                   {' · '}
                   current-run scanned <b>{scannedN != null ? scannedN : '—'}</b>
                   {universeN != null && <> · panel universe {universeN}</>}

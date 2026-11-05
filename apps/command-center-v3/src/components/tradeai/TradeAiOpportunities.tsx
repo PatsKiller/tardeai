@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from
 import { Link } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../../lib/designTokens'
+import { initialOpportunityView } from '../../lib/opportunityViewport'
 import {
   applyFilters, buildTiles, chgText, filterChips, floatBand, floatText, GATE2_TIP, l2Brief, l2View, latestAlertFor,
   NO_FILTERS, rvolText, sortOpportunities, stars, toOpportunity, volText,
@@ -78,7 +79,7 @@ function Chip({ c }: { c: L2Chip }) {
 export default function TradeAiOpportunities({ tradeAi, error, loading, classic }: { tradeAi: any; error?: unknown; loading?: boolean; classic?: ReactNode }) {
   const [f, setF] = useState<Filters>(NO_FILTERS)
   const [sort, setSort] = useState<SortKey>('score')
-  const [view, setView] = useState<'table' | 'cards'>('table')
+  const [view, setView] = useState<'table' | 'cards'>(initialOpportunityView)
   const [sel, setSel] = useState<string | null>(null)
   const [drawer, setDrawer] = useState<{ momentum: boolean; classic: boolean }>({ momentum: false, classic: false })
   // Ticks the run-age chip between scanner refreshes so "4 min ago" does not freeze.
