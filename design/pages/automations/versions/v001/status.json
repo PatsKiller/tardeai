@@ -1,0 +1,63 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "automations",
+  "version": "v001",
+  "state": "APPROVED",
+  "title": "Automations: the n8n fleet \u2014 what runs, what fails and why, and how much cron is left",
+  "created": "2026-11-05",
+  "base": null,
+  "design": null,
+  "depends_on": null,
+  "request": null,
+  "moves": null,
+  "approval": {
+    "by": "operator",
+    "at": "2026-11-05T00:19:58Z",
+    "ref": "coordinator ledger entry 3480 (kind operator_decision): 'DESIGN APPROVED: automations/v001, with no tap required; build starts now'",
+    "kind": "Operator approved the mockup to claude-lead in chat, quoted verbatim with the mockup sha256; under the standing rule recorded in the same entry, that counts as the design approval and no Approvals tap is required.",
+    "operator_quote": "No taps. Auto start I approve",
+    "source": [
+      "handoffs/SPEC_N8N_AUTOMATIONS_PAGE_20261105.md",
+      "persistent-state/data/coordination/coordinator/ledger.jsonl (entry 3480, 2026-11-05T00:19:58Z)"
+    ],
+    "ledger": "persistent-state/data/coordination/coordinator/ledger.jsonl#line-3480"
+  },
+  "spec": "SPEC.md",
+  "private_assets": {
+    "root": "persistent-state/design-mockups/automations",
+    "note": "Private store, never committed (design/README.md rule 7). Mockup v001 rendered from real n8n data at 2026-11-04 19:15 ET; sha256 binds each file, and the ledger approval cites the mockup.html hash.",
+    "files": [
+      {
+        "path": "v001/mockup.html",
+        "sha256": "0c588f4022119d2d9edb9d45cd1bc0217b677c4e1f94fee2ef9892040fd698d6",
+        "bytes": 21360,
+        "role": "mockup"
+      },
+      {
+        "path": "v001/mockup-1440.png",
+        "sha256": "97a6be97efc34c629a4b541090a22c60eda006ec065bfe8d4b726de627ff2ec5",
+        "bytes": 549295,
+        "role": "screenshot"
+      },
+      {
+        "path": "v001/mockup-412.png",
+        "sha256": "ca331a3a98b8ad20b380152735c99b31cbadc8ae61a5a8de4368d696ff2531c7",
+        "bytes": 525761,
+        "role": "screenshot"
+      },
+      {
+        "path": "v001/mockup-390.png",
+        "sha256": "cd07b10eef90d3d00b9b6301cab66524cf2a4b830c4b0d3b4bb68bce2586a1ec",
+        "bytes": 524651,
+        "role": "screenshot"
+      },
+      {
+        "path": "v001/mockup-412-sheet.png",
+        "sha256": "a1a0714514b8a799ab3c14910b8004585cbb18102e71af071f2a9b92ad2046f7",
+        "bytes": 49409,
+        "role": "screenshot-sheet"
+      }
+    ]
+  },
+  "removals": []
+}
