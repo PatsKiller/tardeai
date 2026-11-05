@@ -379,7 +379,11 @@ def test_time_box_and_attempt_cap(tmp_path):
     out = _cycle(tmp_path, stub, now=T0 + timedelta(hours=3))
     rec = L.load_records(_d(tmp_path))[r["id"]]
     assert rec["status"] == "blocked" and "max attempts" in rec["blocked_reason"] and len(stub.runs) == 3
-    assert out["blocked"][0]["why"].startswith("max attempts") and len(stub.sent) == 1  # already escalated
+
+    # 2026-11-03: the cap page has its own reason key (max_attempts) and must fire even though the
+    # time-box page (key time_box) was already delivered; only a DELIVERED same-key escalation is
+    # suppressed. The old once-per-incident rule hid the exhaustion from a person.
+    assert out["blocked"][0]["why"].startswith("max attempts") and len(stub.sent) == 2
 
 
 def test_model_failure_and_dry_run(tmp_path):

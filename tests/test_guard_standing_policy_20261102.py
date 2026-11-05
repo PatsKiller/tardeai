@@ -304,7 +304,10 @@ def test_revocation_arriving_after_preflight_blocks_actual_push(consumer, monkey
           "branch": "wt/synthetic-feature", "head": MAIN,
           "remote_head": "", "ff": "new", "refspec": MAIN + ":refs/heads/wt/synthetic-feature",
           "canonical": "https://example.test/synthetic/repo", "budget": {"count": 0, "budget": 2},
-          "policy": {"main": MAIN, "version": "30.0.0"}, "dry_run": "synthetic", "pins": ()}
+          "policy": {"main": MAIN, "version": "30.0.0"}, "dry_run": "synthetic metadata-only preview",
+          "preview": {"schema": "GuardPushPreview@v1", "kind": "metadata-preflight",
+                      "transport_checked": False, "pre_push_executed": False, "remote_write_attempted": False},
+          "pins": ()}
     def intent(*a, **kw):
         monkeypatch.setattr(auth, "revoked_marker", lambda: True)
         return {"chain_hash": "synthetic-intent"}
