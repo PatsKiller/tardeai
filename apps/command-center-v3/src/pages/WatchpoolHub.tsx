@@ -6,6 +6,7 @@ import type { DrillContext } from '../components/DetailDrawer'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubPanel, BB, T, TYPE, RAIL, numStyle, terminalButton, focusStyle } from '../lib/watchTokens'
 import { Chip } from '../components/TerminalChip'
+import { humanizeIdentifier } from '../lib/displayLabels'
 
 // v3 Watchpool & Directives — operator watch directives (ticker/sector/trend) + the unified
 // strategy_watchpool, with the shared provenance pill row. Advisory; Hermes-firewall preserved.
@@ -110,6 +111,9 @@ function DirectiveDrawer({ id, onClose }: { id: number; onClose: () => void }) {
 // title so nothing is lost (operator page audit, FQ-080).
 const DESK_LABEL: Record<string, string> = { cio: 'CIO desk', advisory: 'Advisory desk', defense: 'Defense desk' }
 const deskLabel = (v: unknown) => DESK_LABEL[String(v || '').toLowerCase()] || (v ? String(v) : 'Unattributed desk')
+// FQ-080 (lead ruling 2026-11-05): the pool's middle column printed the engine key verbatim
+// (`core_growth_compounder`). The cell now reads in operator words and the raw id moves to the title.
+const strategyLabel = (v: unknown) => humanizeIdentifier(v) || 'Unnamed strategy'
 const loopLabel = (v: unknown) => {
   const s = String(v || '').toUpperCase()
   if (s === 'CIRCULATING') return 'Loop circulating'
@@ -448,7 +452,9 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
                        borderLeft: `3px solid ${poolRail(r.current_status)}`, cursor: 'pointer', fontSize: TYPE.sm,
                        ...(ri === focusIdx ? { background: BB.bgShift } : {}), ...focusStyle(ri === focusIdx) }}>
               <span style={{ ...numStyle, flex: '0 0 64px', fontWeight: 700, color: BB.text0 }}>{r.symbol}</span>
-              <span style={{ flex: '0 0 160px', color: BB.text2, fontSize: TYPE.xs }}>{r.strategy_id}</span>
+              {/* FQ-080 / FQ-132: the middle column is a strategy a person reads, not the engine's key. The raw id stays
+                  in the title (and in the drill subtitle) so nothing is lost. */}
+              <span title={`strategy ${String(r.strategy_id ?? 'unknown')}`} data-pool-strategy style={{ flex: '0 0 160px', color: BB.text2, fontSize: TYPE.xs }}>{strategyLabel(r.strategy_id)}</span>
               <span style={{ flex: '0 0 96px' }}><Chip kind="metric">{r.bucket || '?'}</Chip></span>
               <span title={humanStatus(r.current_status).tip} style={{ flex: '0 0 110px', color: BB.text2, fontSize: TYPE.xs }}>{humanStatus(r.current_status).label}</span>
               <span style={{ flex: '1 1 auto', display: 'flex', gap: 5, alignItems: 'center' }}>
