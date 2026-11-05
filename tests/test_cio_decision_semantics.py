@@ -244,3 +244,29 @@ def test_an_accounts_label_agrees_with_its_own_decision():
     for agg in aggregate_position_decisions(rows, portfolio_value=100_000.0):
         for opinion in agg["per_account"]:
             assert opinion["stance"] == professional_stance(opinion["cio_stance"])
+
+
+def test_two_rows_in_one_account_collapse_to_that_accounts_decisive_stance():
+    """cc-deepseek-6 at b075d66e3: the docstring now says the within-account collapse out loud, so it is pinned.
+
+    An account's own rows are one view of one position, and the account's opinion is the decisive one — while a
+    second account's rows never enter that merge.
+    """
+    from scripts.lib.cio_decision_semantics import aggregate_position_decisions
+
+    rows = [
+        {"symbol": "SPCX", "account": "acct-a", "cio_stance": "HOLD", "current_value_usd": 1000,
+         "recommended_delta_usd": 0, "why_now": "waiting"},
+        {"symbol": "SPCX", "account": "acct-a", "cio_stance": "TRIM", "current_value_usd": 500,
+         "recommended_delta_usd": -100, "why_now": "over cap"},
+        {"symbol": "SPCX", "account": "acct-b", "cio_stance": "ADD", "current_value_usd": 700,
+         "recommended_delta_usd": 200, "why_now": "entry"},
+    ]
+    out = [r for r in aggregate_position_decisions(rows) if r.get("symbol") == "SPCX"]
+    assert out, "the aggregate dropped the symbol"
+    rows_out = out[0]["per_account"]
+    opinions = {o["account"]: o for o in rows_out}
+    assert set(opinions) == {"acct-a", "acct-b"}, "an account's opinion vanished"
+    assert opinions["acct-a"]["cio_stance"] == "TRIM", "one account's rows did not collapse to its own decisive stance"
+    assert opinions["acct-b"]["cio_stance"] == "ADD", "another account's stance leaked into acct-a's"
+    assert round(float(opinions["acct-a"]["current_value_usd"]), 2) == 1500.0

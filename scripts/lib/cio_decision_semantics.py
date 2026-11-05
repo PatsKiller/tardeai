@@ -727,11 +727,19 @@ def aggregate_position_decisions(
     *,
     portfolio_value: float = 0.0,
 ) -> list[dict[str, Any]]:
-    """Collapse split-account rows into one decision per symbol.
+    """Collapse split-account rows into one decision per symbol WITHOUT merging one account into another.
 
-    Sums values, recomputes weight, keeps the decisive stance, joins accounts,
-    and surfaces professional stance labels. Drops rows that fail identity proof
-    unless they already carry a name.
+    Sums values, recomputes weight, keeps the decisive stance, joins accounts, and surfaces professional stance
+    labels. Drops rows that fail identity proof unless they already carry a name.
+
+    What survives, stated exactly (cc-deepseek-6 at b075d66e3 — the title promised more than the code does):
+
+    * one opinion per ``(symbol, account)`` in ``per_account``, and it is that account's own rows only;
+    * **within one account**, several rows for the same symbol collapse to the account's decisive stance
+      (``merge_stances``: the highest precedence wins). That is deliberate — two rows are one account's views of one
+      position, not two opinions a reader must reconcile — and it is the collapse this docstring used to leave unsaid;
+    * the symbol-level ``cio_stance`` is still a decisive summary across accounts, kept for the surfaces that show one
+      verdict per name. It is a summary, never the record of what each account said.
     """
     by: dict[str, dict[str, Any]] = {}
     # Phase 5 sizing / Phase 3 freshness annotations to preserve on aggregate
