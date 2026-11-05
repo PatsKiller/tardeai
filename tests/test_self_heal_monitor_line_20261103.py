@@ -84,7 +84,7 @@ def _ok(**overrides):
         index=_index(),
         supervisor=_supervisor(skips=(), dispatched=2, actions=1),
         watchers=_watchers(),
-        calls={"count": 3},
+        calls={"date": "2026-11-03", "count": 3},
         policy={"policy": {"max_model_calls_per_day": 240}},
         fixer=_fixer(n=0),
         now=NOW,
@@ -101,7 +101,7 @@ def test_starved_lane_reports_counts_and_the_cap():
         index=_index(),
         supervisor=_supervisor(),
         watchers=_watchers(),
-        calls={"count": 40},
+        calls={"date": "2026-11-03", "count": 40},
         policy={"policy": {"max_model_calls_per_day": 40}},
         fixer=_fixer(),
         now=NOW,
@@ -258,3 +258,40 @@ def test_main_reads_the_state_root_and_reports_a_torn_index_as_unknown(tmp_path,
     assert "verdict: NOT LIVE" in out
     # The other inputs in the fixture root were readable and fresh; only the index is unknown.
     assert "DETECT alive" in out and "DECIDE working" in out and "FIX no queue" in out
+
+
+# ── Codex Cloud round 2: a failed cycle is not healthy, a won't-fix is not a fix,
+#    and yesterday's counter is not today's ──────────────────────────────────────────────────
+
+
+def test_a_failed_triage_cycle_is_not_live():
+    """CX1: every model call failed (model_error/unparseable); a fresh receipt is not healthy."""
+    for reason in ("model_error", "unparseable"):
+        block = _ok(supervisor=_supervisor(skips=(reason,) * 5))
+        assert "DECIDE working" not in block[4]
+        assert "DECIDE failing" in block[4]
+        assert block[4].startswith("verdict: NOT LIVE")
+
+
+def test_a_wont_fix_closure_is_not_a_fix():
+    """CX2: status=closed/resolution=wont_fix has a recent closed_at but was not repaired."""
+    index = _index()
+    index["incidents"].append(
+        {
+            "id": "WONTFIX",
+            "status": "closed",
+            "resolution": "wont_fix",
+            "opened_at": _iso(NOW - timedelta(days=1)),
+            "closed_at": _iso(NOW - timedelta(minutes=1)),
+        }
+    )
+    block = _ok(index=index)
+    assert "fixed 1 (last hour)" in block[1]
+    assert "fixed 2" not in block[1]
+
+
+def test_a_stale_counter_date_is_not_today():
+    """CX3: supervisor_calls.json keeps yesterday's count until the next call; the date gates it."""
+    block = _ok(calls={"date": "2026-11-02", "count": 40})
+    assert "model calls today 0/240" in block[2]
+    assert "40/240" not in block[2]

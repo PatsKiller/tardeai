@@ -15,12 +15,16 @@ the fixer state (data/runtime/self_heal_fixer_state.json) and the reviewed runbo
 Definitions (stable; do not "improve" silently):
   detected      incidents with opened_at inside the last 60 minutes
   dispatched    supervisor dispatches in its last cycle (the fixer is unscheduled)
-  fixed         records whose closed_at / fixed_at / resolved_at is inside the last 60 minutes
+  fixed         status=fixed records whose closed_at / fixed_at / resolved_at is inside the last
+                60 minutes; a won't-fix closure (status closed) is not a repair
+  model calls today  supervisor_calls.json count when its date is today (UTC); a counter left from
+                another day is 0, matching incident_supervisor._calls_today
   blocked       records with status blocked; unresolved = the index summary's unresolved count
 Verdict rules:
   DETECT alive       watcher receipt fresh (0 <= age <= 15 min) and every watcher has no gap; else stale/gapped
-  DECIDE working     supervisor receipt fresh (0 <= age <= 30 min; the timer runs every 10 min) and
-                     not every skip in the last cycle is "daily model-call cap"; else stale/starved
+  DECIDE working     supervisor receipt fresh (0 <= age <= 30 min; the timer runs every 10 min),
+                     no skip in the last cycle is a failed triage (model_error/unparseable), and
+                     not every skip is "daily model-call cap"; else stale/failing/starved
   FIX not scheduled  fix_requested jobs waiting in the fixer state (no schedule exists; 24.5 still gates the PR)
   unknown            a store that could not be read or does not have its documented shape renders as
                      "unknown (reason)", never as 0/default; the verdict is then NOT LIVE, because a
@@ -42,6 +46,9 @@ from pathlib import Path
 DEFAULT_STATE = Path.home() / "trade-ai-releases" / "persistent-state"
 CONFIG = Path(__file__).resolve().parents[1] / "config" / "incident_runbook_actions.json"
 CAP_SKIP = "daily model-call cap"
+# A cycle that skipped incidents because the triage itself failed is not a working cycle.
+# scripts/lib/incident_supervisor.py records these as skipped[*].why alongside the cap.
+FAIL_SKIPS = frozenset({"model_error", "unparseable"})
 WATCHER_FRESH_MIN = 15.0
 # The supervisor timer is *:2/10 (config/systemd/incidents/tradeai-incident-supervisor.timer),
 # so three missed cycles is stale. A long fixer dispatch can legitimately outlive one tick; the
@@ -158,8 +165,13 @@ def build_block(
         hour = now - timedelta(hours=1)
         epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
         detected = [r for r in records if (_ts(r.get("opened_at")) or epoch) > hour]
+        # Only the ledger's fixed status is a repair: a won't-fix closure (status "closed",
+        # resolution "wont_fix") also stamps closed_at and must not read as a fix.
         fixed = [
-            r for r in records if any((_ts(r.get(k)) or epoch) > hour for k in ("closed_at", "fixed_at", "resolved_at"))
+            r
+            for r in records
+            if r.get("status") == "fixed"
+            and any((_ts(r.get(k)) or epoch) > hour for k in ("closed_at", "fixed_at", "resolved_at"))
         ]
         summary = index.get("summary")
         summary = summary if isinstance(summary, dict) else {}
@@ -212,6 +224,7 @@ def build_block(
     decide_ok = False
     skipped = [] if supervisor_reason else (supervisor.get("skipped") or [])
     cap_skips = sum(1 for s in skipped if isinstance(s, dict) and s.get("why") == CAP_SKIP)
+    failed_skips = sum(1 for s in skipped if isinstance(s, dict) and s.get("why") in FAIL_SKIPS)
     if supervisor_reason:
         decide_part = f"DECIDE unknown ({supervisor_reason})"
         supervisor_line = None
@@ -223,6 +236,8 @@ def build_block(
             decide_part = f"DECIDE future-dated (supervisor receipt {abs(age):.0f} min ahead — clock skew)"
         elif age > SUPERVISOR_FRESH_MIN:
             decide_part = f"DECIDE stale (supervisor receipt {age:.0f} min old)"
+        elif failed_skips:
+            decide_part = f"DECIDE failing ({failed_skips} of {len(skipped)} skipped on a failed triage)"
         elif skipped and cap_skips == len(skipped):
             decide_part = f"DECIDE starved by the {CAP_SKIP}"
         else:
@@ -243,6 +258,10 @@ def build_block(
         count = _int_or_none(calls.get("count"))
         if count is None:
             calls_reason = "supervisor_calls.json unreadable: 'count' is not an integer"
+        elif calls.get("date") != now.astimezone(timezone.utc).date().isoformat():
+            # Same rollover as incident_supervisor._calls_today: a counter from another UTC day
+            # is not today's usage, whatever it says.
+            calls_text = "0"
         else:
             calls_text = str(count)
     if policy_reason is None:
