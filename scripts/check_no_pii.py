@@ -81,6 +81,11 @@ from pathlib import Path, PurePosixPath
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE_REL = "config/pii_baseline.json"
 SCHEMA = "PiiBaseline@v1"
+# FQ-154 (claude-lead 2026-11-05): files this scanner cannot read are NOT clean. Every unreadable file is
+# either registered here with a reason (a person reviewed it) or reported as a finding — silence is never
+# a pass (AGENTS.md rule 8).
+BINARY_REVIEW_REL = "config/pii_binary_review.json"
+SCHEMA_BINARY_REVIEW = "PiiBinaryReview@v1"
 DENY_ENV = "TRADEAI_PII_DENY_FILE"
 GZ_MAX_BYTES = 64 * 1024 * 1024
 # Assembled so this file does not itself carry the markers it counts.
@@ -96,8 +101,12 @@ CATEGORIES = (
     "private_ip",
     "home_path",
     "blocked_path",
+    "binary_unreadable",
 )
-RATCHETED = tuple(c for c in CATEGORIES if c != "deny_pattern")
+# binary_unreadable is deliberately NOT ratcheted and NOT in the deny-pattern advisory: a baseline count is a
+# permission slip, and the whole defect was permission-by-silence. It fails --tree outright until each file is
+# registered with a reason in config/pii_binary_review.json.
+RATCHETED = tuple(c for c in CATEGORIES if c not in ("deny_pattern", "binary_unreadable"))
 
 # ── email ────────────────────────────────────────────────────────────────────────────────────────────
 EMAIL_RE = re.compile(
@@ -413,18 +422,60 @@ def count_markers(text: str, lines: set[int]) -> int:
     return sum(1 for n, ln in enumerate(text.split("\n"), 1) if n in lines and any(k in ln for k in ALLOW_MARKERS))
 
 
-def _decode(data: bytes, path: str) -> str | None:
+def _decode_with_reason(data: bytes, path: str) -> tuple[str | None, str | None]:
+    """``(text, None)`` when the file can be scanned, else ``(None, why)``.
+
+    FQ-154 (claude-lead 2026-11-05): the old ``_decode`` returned ``None`` for anything with a NUL byte in its
+    first 8 KiB, and every caller treated ``None`` as "nothing found" — so every PNG, JPEG, PDF and archive was
+    reported clean without being read. That is AGENTS.md rule 8 exactly: silence treated as a pass. The reason
+    now travels with the ``None`` so the caller can make an explicit verdict instead of a silent one.
+    """
     if path.endswith(".gz"):
         try:
             with gzip.GzipFile(fileobj=io.BytesIO(data)) as fh:
                 data = fh.read(GZ_MAX_BYTES + 1)
-        except (OSError, EOFError):
-            return None
+        except (OSError, EOFError) as exc:
+            return None, f"compressed file could not be decompressed ({type(exc).__name__})"
         if len(data) > GZ_MAX_BYTES:
             raise ScanError(f"{path}: decompresses past {GZ_MAX_BYTES} bytes; refusing to skip it silently")
     if b"\0" in data[:8192]:
-        return None
-    return data.decode("utf-8", errors="replace")
+        return None, "binary content (NUL byte in the first 8 KiB) cannot be scanned for personal data"
+    return data.decode("utf-8", errors="replace"), None
+
+
+def _decode(data: bytes, path: str) -> str | None:
+    return _decode_with_reason(data, path)[0]
+
+
+def load_binary_review(path: Path) -> dict[str, dict]:
+    """The reviewed register of files this scanner cannot read: ``{path: {reason, reviewed_by, reviewed_at}}``.
+
+    A file lands here only after a person reviewed it. Every entry needs all three fields, so the register
+    cannot become a list of paths with no accountable reason; a malformed register fails closed. A missing
+    register is an EMPTY register, which makes every unreadable file a finding — fail closed, never open.
+    """
+    if not path.is_file():
+        return {}
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        raise ScanError(f"{path}: not JSON ({exc.msg})") from exc
+    if not isinstance(doc, dict) or doc.get("schema") != SCHEMA_BINARY_REVIEW:
+        raise ScanError(f"{path}: schema must be {SCHEMA_BINARY_REVIEW!r}")
+    files = doc.get("files")
+    if not isinstance(files, dict):
+        raise ScanError(f"{path}: 'files' must be an object of path -> review record")
+    out: dict[str, dict] = {}
+    for rel, rec in files.items():
+        if not isinstance(rel, str) or not rel or rel.startswith("/") or ".." in PurePosixPath(rel).parts:
+            raise ScanError(f"{path}: {rel!r} is not a repository-relative path")
+        if not isinstance(rec, dict):
+            raise ScanError(f"{path}: {rel}: review must be an object")
+        missing = [k for k in ("reason", "reviewed_by", "reviewed_at") if not str(rec.get(k) or "").strip()]
+        if missing:
+            raise ScanError(f"{path}: {rel}: review is missing {', '.join(missing)}")
+        out[rel] = {k: str(rec[k]) for k in ("reason", "reviewed_by", "reviewed_at")}
+    return out
 
 
 def _git(repo: Path, *args: str) -> bytes:
@@ -435,8 +486,14 @@ def _git(repo: Path, *args: str) -> bytes:
 
 
 # ── modes ───────────────────────────────────────────────────────────────────────────────────────────
-def scan_tree(repo: Path, deny: list[re.Pattern[str]], verifier: SnapshotVerifier | None = None) -> list[Finding]:
+def scan_tree(
+    repo: Path,
+    deny: list[re.Pattern[str]],
+    verifier: SnapshotVerifier | None = None,
+    binary_review: dict[str, dict] | None = None,
+) -> list[Finding]:
     verifier = verifier or SnapshotVerifier(repo, "HEAD")
+    review = load_binary_review(repo / BINARY_REVIEW_REL) if binary_review is None else binary_review
     out: list[Finding] = []
     for entry in _git(repo, "ls-files", "-s", "-z").split(b"\0"):
         if not entry:
@@ -454,9 +511,12 @@ def scan_tree(repo: Path, deny: list[re.Pattern[str]], verifier: SnapshotVerifie
             continue
         if verifier.skip(path, data):
             continue  # verbatim past version of a live policy file (see SnapshotVerifier)
-        text = _decode(data, path)
-        if text:
+        text, unreadable = _decode_with_reason(data, path)
+        if text is not None:
             out.extend(scan_text(path, text, deny))
+        elif path not in review:
+            # An unreadable file is a FINDING, never a pass: the register is the only silence that is a verdict.
+            out.append(Finding(path, 0, "binary_unreadable", f"{unreadable}; not registered in {BINARY_REVIEW_REL}"))
     return out
 
 
@@ -520,21 +580,36 @@ def scan_range(
 
     target = _target(rng)
     markers = 0
+    review = load_binary_review(repo / BINARY_REVIEW_REL)
     for path in sorted(statuses):
         lines = added.get(path)
         whole = path.endswith(".gz") and statuses[path] in ("A", "M", "R", "C")
         if not lines and not whole:
+            # A binary carries no text hunks, so it never reaches the scan below — which is how a new PNG
+            # could ride in. Added/renamed/copied blobs are read here for that reason alone.
+            if statuses[path] not in ("A", "R", "C"):
+                continue
+            blob = subprocess.run(["git", "show", f"{target}:{path}"], cwd=repo, capture_output=True)
+            if blob.returncode == 0 and path not in review:
+                text, unreadable = _decode_with_reason(blob.stdout, path)
+                if text is None:
+                    out.append(
+                        Finding(path, 0, "binary_unreadable", f"{unreadable}; not registered in {BINARY_REVIEW_REL}")
+                    )
             continue
         r = subprocess.run(["git", "show", f"{target}:{path}"], cwd=repo, capture_output=True)
         if r.returncode != 0:
             raise ScanError(f"git show {target}:{path} failed")
         if verifier.skip(path, r.stdout):
             continue  # verbatim past version of a live policy file on the base ref (see SnapshotVerifier)
-        text = _decode(r.stdout, path)
-        if text:
-            out.extend(scan_text(path, text, deny, None if whole else lines))
-            if lines:
-                markers += count_markers(text, lines)
+        text, unreadable = _decode_with_reason(r.stdout, path)
+        if text is None:
+            if path not in review:
+                out.append(Finding(path, 0, "binary_unreadable", f"{unreadable}; not registered in {BINARY_REVIEW_REL}"))
+            continue
+        out.extend(scan_text(path, text, deny, None if whole else lines))
+        if lines:
+            markers += count_markers(text, lines)
     return out, markers
 
 
@@ -634,6 +709,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--limit", type=int, default=200)
     ap.add_argument("--verbose", action="store_true", help="--tree: list every finding (path:line, category)")
+    ap.add_argument(
+        "--list-binaries",
+        action="store_true",
+        help="--tree: print the paths of files this scanner cannot read (registered and unregistered), for review",
+    )
     args = ap.parse_args(argv)
     repo = Path(args.repo).resolve()
     baseline_path = Path(args.baseline) if args.baseline else repo / BASELINE_REL
@@ -708,7 +788,15 @@ def main(argv: list[str] | None = None) -> int:
 
     current = counts(findings)
     deny_n = sum(1 for f in findings if f.category == "deny_pattern")
+    binaries = [f for f in findings if f.category == "binary_unreadable"]
     if args.write_baseline:
+        if binaries:
+            print(
+                f"check_no_pii: REFUSED -- {len(binaries)} unreadable file(s) are not a baseline count; register each "
+                f"in {BINARY_REVIEW_REL} with a reason after review, or remove it",
+                file=sys.stderr,
+            )
+            return 1
         rising = write_baseline(baseline_path, current)
         if rising:
             print(f"check_no_pii: REFUSED -- baseline may only shrink; would raise {rising}", file=sys.stderr)
@@ -721,20 +809,32 @@ def main(argv: list[str] | None = None) -> int:
         print(f"check_no_pii: ERROR (fail closed): {exc}", file=sys.stderr)
         return 2
     grew, shrank = compare(current, base)
+    if args.list_binaries:
+        review = load_binary_review(repo / BINARY_REVIEW_REL)
+        print(
+            f"check_no_pii --list-binaries: {len(binaries)} unreadable file(s) NOT registered, "
+            f"{len(review)} registered (paths only; this command never reads the contents)"
+        )
+        for f in binaries:
+            print(f"  UNREGISTERED  {f.path}  ({f.detail})")
+        for rel in sorted(review):
+            print(f"  registered    {rel}  ({review[rel]['reason']})")
+        return 1 if binaries else 0
     if args.json:
         _dump(
             {
                 "mode": "tree",
-                "ok": not grew,
+                "ok": bool(not grew and not binaries),
                 "counts": current,
                 "baseline": base,
                 "grew": grew,
                 "shrank": shrank,
+                "binary_unreadable": len(binaries),
                 "deny_pattern_advisory": deny_n,
                 "snapshot_files_skipped": verifier.skipped,
             }
         )
-        return 1 if grew else 0
+        return 1 if (grew or binaries) else 0
     print("check_no_pii --tree (counts per category; values never printed)")
     print(f"  {'category':18} {'baseline':>8} {'now':>6}")
     for k in RATCHETED:
@@ -742,10 +842,21 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {k:18} {base[k]:>8} {current[k]:>6}{flag}")
     if deny_n or deny:
         print(f"  {'deny_pattern':18} {'n/a':>8} {deny_n:>6}  (advisory; private deny file, not ratcheted)")
+    if binaries:
+        # Not a ratcheted count: a number in the baseline is permission, and permission is what was missing.
+        print(f"  {'binary_unreadable':18} {'n/a':>8} {len(binaries):>6}  (not ratcheted: each file needs a review)")
     if verifier.skipped:
         print(f"  {verifier.skipped} policy snapshot file(s) skipped: byte-identical to a past policy file on HEAD")
     if args.verbose:
         _print(findings, args.limit)
+    if binaries:
+        print(
+            f"FAIL: {len(binaries)} file(s) cannot be scanned and are not registered in {BINARY_REVIEW_REL}. "
+            "A scanner that cannot read a file reports it clean unless this list is explicit."
+        )
+        _print(binaries, min(args.limit, 200))
+        print("Review the file, then register it in config/pii_binary_review.json with a reason, or remove it.")
+        return 1
     if grew:
         print(
             "FAIL: the tree gained personal or identifying data. Run --range origin/main...HEAD to see the new lines."

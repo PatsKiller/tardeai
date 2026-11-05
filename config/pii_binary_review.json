@@ -1,0 +1,12 @@
+{
+  "schema": "PiiBinaryReview@v1",
+  "note": [
+    "Files scripts/check_no_pii.py cannot read (binary content, or a compressed file it cannot decompress).",
+    "A scanner that cannot read a file reports it clean unless that file is registered here, so this list is the",
+    "only silence that is a verdict. Every entry needs reason, reviewed_by and reviewed_at: the reviewer states",
+    "what the file is and why it carries no personal or identifying data. An entry is a reviewed decision, not a",
+    "mute. Add one only after opening the file; never add one to make the gate green.",
+    "Render with scripts/lib/ci_gates.render(); a test asserts this file is its canonical rendering."
+  ],
+  "files": {}
+}
