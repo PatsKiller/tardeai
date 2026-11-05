@@ -4694,7 +4694,6 @@
     "ops-weekly-learning-report": "External OpenClaw script sends Telegram and has no durable receipt.",
     "system-rollup-snapshot": "Default action sends Telegram and refreshes reporting catalog. 2026-10-09 ops lanes: still blocked — scripts/system_rollup_snapshot.py has no --dry-run and its default run sends Telegram (:114-115), so no allowlist entry can be added without changing its code, which the rollup + embedding fix PR owns. The shadow workflow pair already exists under generated/pending/ (N3); add the entry (dry_run_arg once the script has one; send moved out) in or after that PR.",
     "generate-weekly-docx": "Default action sends Telegram; dated report has no stable per-run receipt.",
-    "rotation-rebalance-digest": "Default action seeds research and sends Telegram; no stable receipt.",
     "expected-services-audit": "Live service includes --alert; do not silently remove the sender from the existing lane.",
     "data-source-health-audit": "Live audit is an alerting lane; command and shared lock require a separate sender-free contract.",
     "served-copy-split-audit": "Live service includes --alert; exact cron/unit sender must remain host-owned.",
