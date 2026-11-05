@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "critical_delivery_20261105",
+  "files": [
+    "tests/test_critical_delivery_20261105.py"
+  ],
+  "anchor": "CRITICAL_DELIVERY_20261105",
+  "comment": [
+    "D32 section 6 / D33 (FQ-143): the CRITICAL tier is the only thing allowed on the operator's text channel.",
+    "This gate checks that the class list is the six the operator named, that the text-channel guard refuses every",
+    "other class including 'test', 'digest' and 'status', that the guard exposes no override argument, that every",
+    "address on file is a target and a non-address is refused rather than dialled, that the contact file is read from",
+    "the private persistent-state root and never from this public repository, and that the text message leads with the",
+    "action and fits 300 characters. It does not check queuing, sending, acknowledgement or receipts; those are the",
+    "next slice of FQ-143 and are not claimed here."
+  ]
+}
