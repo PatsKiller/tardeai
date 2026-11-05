@@ -13,7 +13,7 @@ tmux ls → every fleet session (broker/order/exec sessions are in the refusal l
   └─ capture-pane → state: busy | input_pending | idle | blind
        └─ for each IDLE session, one assignment, in this fixed order:
             (a) its own queue rows with status queued or assigned only
-            (b) a review: a CLEAN, non-draft, permitted PR with complete changed-file evidence and a missing independent review
+            (b) a review: a permitted held PR with complete head/file evidence and a missing independent review; drafts and CI/conflict gates do not prevent review
             (c) merge-prep: CLEAN + exact-head MERGE verdict, but the author's claim carries a different head
             (d) the oldest unowned queue row
             (e) a chore: a claim past heartbeat + 2 h
@@ -27,7 +27,7 @@ already mid-action.
 
 ## What it will never do
 
-- **Never merge or push.** `pr_merge_delegation` is not imported and `gh pr merge` / `git push` appear nowhere; the
+- **Never merge or push.** Only canonical read-only classification/artifact helpers are imported from the merge module; no Host, evaluator or apply entrypoint is imported or called. `gh pr merge` / `git push` appear nowhere; the
   lead's helper remains the only merger. `MERGE_READY.md` is a report.
 - **Never author a review or write a review artifact.** It *assigns* a review by naming the PR; the reviewer writes the
   verdict. Every known source-author session, including completed claims, archives and takeover predecessors, is excluded from its own PR, and every
@@ -65,15 +65,15 @@ later head:
 The queue, claim board, source paths and review evidence are inputs, not permission to widen authority.
 Autonomous queue, review, merge-prep and chore assignments refuse paths reserved by the active
 `config/agent_standing_authority.json`, including broker/order, policy, secrets and merge-control paths.
-This lane adds no grant exception. Wildcard and directory claim holds use the canonical claim board overlap rules.
+This lane adds no grant exception. Held review counts come separately from `config/merge_hold_paths.json` and its canonical engineering floor; autonomous-work exclusions never replace that classifier. Ordinary reviews belong to the cloud lane; the lead explicitly routes exceptional P0/P1 and bundle work when priority is not present as structured input. Wildcard and directory claim holds use the canonical claim board overlap rules.
 
 An unreadable authority or claim board stops a real cycle before dispatch. An unreadable review store is not an empty
-set of reviews. Review companions count only with matching exact-head prose; arbitrary inbox status JSON does not
+set of reviews. Canonical `PrMergeReviewEvidence@v1` registrations use each explicit relative `reviews[].artifact` reference, SHA-256 and exact reviewer/head/verdict fields; missing, unsafe or mismatched evidence refuses before dispatch. Legacy review companions count only with matching exact-head prose; arbitrary inbox status JSON does not
 become a review. The latest file observation wins per reviewer and head. Dispatched reviewers and filed verdicts both
 spend the independent cap, including a head for which no verdict has arrived yet; a source author never spends that
 independent cap and an already-filed reviewer is not dispatched the same head again.
 
-The ready report also requires a complete `changedFiles`/file-list match and measured green exact-head checks.
+The ready report also requires released (`done` or `released`) author claims covering every changed path at a source commit, no overlapping live holder, a complete `changedFiles`/file-list match and canonical exact-head check evidence: all four mandatory Actions checks explicitly completed SUCCESS; optional NEUTRAL is acceptable. An active author claim never earns ready status.
 Missing authority, truncated paths or unmeasured/red checks leave an explicit next step rather than a ready row.
 A retry admission refusal preserves `submitted: true` if an earlier attempt already delivered Enter; it never claims
 that the earlier dispatch was busy-confirmed.
@@ -96,7 +96,7 @@ One JSON line per dispatch, appended to `coordination/coordinator/dispatch_ledge
   or PR number, so a cycle can be reconstructed without asking any agent what it was told.
 - `sent_sha256` is the hash of the exact text sent — comparable against what a session says it received.
 
-`MERGE_READY.md` lists every CLEAN PR that is ready (exact-head MERGE verdict + current author claim) and every PR one
+`MERGE_READY.md` lists every CLEAN, non-draft PR that is ready (exact-head review quorum + released, path-covering author custody + canonical green checks) and every PR one
 step away with the step named. `DISPATCH_IDLE_ALERT.md` exists only when a cycle found no work while sessions were
 idle: it asks the lead for a decision (add work, or close sessions) and names them.
 

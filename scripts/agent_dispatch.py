@@ -29,6 +29,13 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from lib import agent_dispatch as D  # noqa: E402
+from lib.pr_all_checks_green import evaluate_merge_rollup  # noqa: E402
+from lib.pr_merge_delegation import (  # noqa: E402 - read-only evidence helpers, no merge entrypoint
+    Refused as EvidenceRefused,
+    path_ok,
+    reviewer_artifact,
+    safe_read,
+)
 
 COORD_DEFAULT = Path(
     os.environ.get("TRADEAI_COORD_DIR")
@@ -117,6 +124,51 @@ def load_queue(path: Path) -> list[dict[str, Any]]:
     return [i for i in (items or []) if isinstance(i, dict)]
 
 
+def _validate_registered_reviews(doc: dict[str, Any], coord: Path) -> None:
+    """Validate the canonical registration's explicit, hash-bound artifact references."""
+    import hashlib
+    import re
+
+    head = doc.get("head_sha")
+    reviews = doc.get("reviews")
+    if (
+        type(doc.get("pr")) is not int
+        or doc["pr"] < 1
+        or not isinstance(head, str)
+        or not re.fullmatch(r"[0-9a-f]{40}", head)
+    ):
+        raise D.DispatchError("review registration identity invalid")
+    if not isinstance(reviews, list) or not reviews:
+        raise D.DispatchError("review registration has no reviews")
+    seen = set()
+    for review in reviews:
+        if (
+            not isinstance(review, dict)
+            or not isinstance(review.get("reviewer_session"), str)
+            or not review["reviewer_session"]
+            or review["reviewer_session"] in seen
+            or review.get("head_sha") != head
+            or review.get("verdict") != "MERGE"
+            or not isinstance(review.get("artifact_sha256"), str)
+            or not re.fullmatch(r"[0-9a-f]{64}", review["artifact_sha256"])
+            or not path_ok(review.get("artifact"))
+        ):
+            raise D.DispatchError("review registration fields invalid")
+        location = coord / review["artifact"]
+        if location.is_symlink() or not location.resolve().is_relative_to(coord.resolve()):
+            raise D.DispatchError("review registration artifact path unsafe")
+        try:
+            raw = safe_read(location)
+            parsed = reviewer_artifact(raw)
+        except EvidenceRefused as exc:
+            raise D.DispatchError("review registration artifact invalid") from exc
+        if hashlib.sha256(raw).hexdigest() != review["artifact_sha256"]:
+            raise D.DispatchError("review registration artifact hash mismatch")
+        if parsed != {"reviewer": review["reviewer_session"], "head_sha": head, "verdict": "MERGE"}:
+            raise D.DispatchError("review registration artifact fields mismatch")
+        seen.add(review["reviewer_session"])
+
+
 def load_review_artifacts(coord: Path) -> list[dict[str, Any]]:
     """Read review companions only with their exact-head canonical prose line."""
     coord = Path(coord)
@@ -136,6 +188,10 @@ def load_review_artifacts(coord: Path) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
         for path in sorted(files, key=lambda p: (p.stat().st_mtime_ns, str(p))):
             doc = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(doc, dict) and doc.get("schema") == "PrMergeReviewEvidence@v1":
+                _validate_registered_reviews(doc, coord)
+                out.append(doc)
+                continue
             if not isinstance(doc, dict) or not doc.get("pr") or not (doc.get("verdict") or doc.get("reviews")):
                 continue
             entries = D.verdicts_at_head([doc])
@@ -172,18 +228,10 @@ def load_review_artifacts(coord: Path) -> list[dict[str, Any]]:
 
 
 def checks_passed(rows: Any) -> bool | None:
-    """A missing/unfinished/red exact-head check list never becomes a green report."""
+    """Use the same mandatory-success/optional-neutral predicate as the real merger."""
     if not isinstance(rows, list) or not rows:
         return None
-    for check in rows:
-        if not isinstance(check, dict):
-            return False
-        if check.get("__typename") == "StatusContext":
-            if check.get("state") != "SUCCESS":
-                return False
-        elif check.get("status") != "COMPLETED" or check.get("conclusion") not in ("SUCCESS", "SKIPPED"):
-            return False
-    return True
+    return evaluate_merge_rollup(rows)["ok"]
 
 
 def open_prs(run: Callable[..., Any] = _run, with_commits: bool = True) -> list[D.PullRequest]:

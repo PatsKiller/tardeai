@@ -45,6 +45,24 @@ def _complete_pr(*args, **kwargs):
     return D.PullRequest(*args, **kwargs)
 
 
+def _held_pr(*args, **kwargs):
+    # Review-routing fixtures must reach the D51 held-only branch, not be skipped as ordinary cloud work.
+    kwargs.setdefault("files", (".githooks/pre-push",))
+    return _complete_pr(*args, **kwargs)
+
+
+def _assert_only_pure_delegation_imports(source):
+    import ast
+
+    tree = compile(source, "<dispatch-import-rail>", "exec", flags=ast.PyCF_ONLY_AST)
+    allowed = {"Refused", "collect_held_classes", "path_ok", "reviewer_artifact", "safe_read"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            assert not any(alias.name.endswith("pr_merge_delegation") for alias in node.names)
+        if isinstance(node, ast.ImportFrom) and (node.module or "").endswith("pr_merge_delegation"):
+            assert {alias.name for alias in node.names} <= allowed, "merge primitive imported by dispatcher"
+
+
 NOW = datetime(2026, 11, 4, 18, 0, tzinfo=timezone.utc)
 
 
@@ -140,7 +158,7 @@ def test_a_own_row_beats_every_other_kind():
 
 
 def test_b_review_a_clean_pr_you_did_not_author():
-    pr = _complete_pr(7, "h" * 40, "wt/x", "CLEAN", False)
+    pr = _held_pr(7, "h" * 40, "wt/x", "CLEAN", False)
     a = D.select_work("cc-8", queue=[], claims=[], prs=[pr], verdicts={}, author_of={7: "cc-4"}, coord="/c", now=NOW)
     assert a.kind == "review" and a.target == "7"
     assert "review PR #7" in a.instruction and "Do not push, do not merge" in a.instruction
@@ -148,7 +166,7 @@ def test_b_review_a_clean_pr_you_did_not_author():
 
 
 def test_never_assigns_a_review_of_your_own_pr():
-    pr = _complete_pr(7, "h" * 40, "wt/x", "CLEAN", False)
+    pr = _held_pr(7, "h" * 40, "wt/x", "CLEAN", False)
     assert (
         D.select_work("cc-8", queue=[], claims=[], prs=[pr], verdicts={}, author_of={7: "cc-8"}, coord="/c", now=NOW)
         is None
@@ -167,7 +185,7 @@ def test_an_ordinary_pr_with_a_merge_verdict_at_head_needs_no_second_review():
 def test_a_held_pr_with_one_merge_verdict_still_needs_its_second_reviewer(monkeypatch):
     """claude-lead's F1 on #2650: the picker skipped any PR with a MERGE, so a held PR never got its second reviewer."""
     monkeypatch.setattr(D, "review_requirements", lambda: (2, 2, ("AGENTS.md",)))
-    pr = _complete_pr(7, "h" * 40, "wt/x", "CLEAN", False, files=("src/synthetic.py",))
+    pr = _held_pr(7, "h" * 40, "wt/x", "CLEAN", False, files=(".githooks/pre-push",))
     v = {(7, "h" * 40): [{"verdict": "MERGE", "reviewer": "cc-9"}]}
     a = D.select_work("cc-8", queue=[], claims=[], prs=[pr], verdicts=v, author_of={7: "cc-4"}, coord="/c", now=NOW)
     assert a is not None and a.kind == "review" and a.target == "7"
@@ -313,7 +331,7 @@ def test_merge_pump_separates_ready_from_one_step_and_never_merges():
         commit_shas=("h" * 40,),
         files=("apps/command-center-v3/src/pages/Home.tsx",),
     )
-    claims = [claim(session="cc-4", branch="wt/x", head="h" * 40)]
+    claims = [claim(session="cc-4", branch="wt/x", head="h" * 40, status="done", paths=pr.files)]
     v = {(11, "h" * 40): [{"verdict": "MERGE", "reviewer": "cc-9"}]}
     out = D.merge_ready([pr], v, claims, {11: "cc-4"})
     assert [r["pr"] for r in out["ready"]] == [11] and out["one_step"] == []
@@ -360,7 +378,9 @@ def test_a_merge_verdict_from_the_author_is_not_independent():
 
 def test_merge_pump_names_the_one_step():
     pr = _complete_pr(12, "h" * 40, "wt/x", "CLEAN", False)
-    out = D.merge_ready([pr], {}, [claim(session="cc-4", branch="wt/x", head="h" * 40)], {12: "cc-4"})
+    out = D.merge_ready(
+        [pr], {}, [claim(session="cc-4", branch="wt/x", head="h" * 40, status="done", paths=pr.files)], {12: "cc-4"}
+    )
     assert out["one_step"][0]["step"] == "needs one independent MERGE verdict at this exact head"
 
 
@@ -674,14 +694,16 @@ def test_the_module_writes_only_its_own_two_files():
     # R1: every target is prepared (identities recorded) and then opened through the checked handle.
     assert src.count("D.prepare_output(") >= 3, "every write target must pass through the guard"
     assert "D.safe_output_path(" not in src, "the bare precheck must not be used as if it were a fence"
-    assert "pr_merge_delegation" not in src and "gh pr merge" not in src and "git push" not in src
+    assert "gh pr merge" not in src and "git push" not in src
+    _assert_only_pure_delegation_imports(src)
+    _assert_only_pure_delegation_imports((ROOT / "scripts/lib/agent_dispatch.py").read_text())
     # R1 (codex at fffe2c9cb): the write itself goes through the identity-checked handle, not a bare open("a").
     assert re.search(r"open_output\(ledger_target, append=True\)", src), (
         "the ledger append must be visible in the source"
     )
     for name in ("idle_state_target", "merge_ready_target", "alert_target", "ledger_target"):
         assert re.search(rf"open_output\({name}[,)]", src), f"{name} must be written through open_output"
-    for forbidden in ("pr_merge_delegation", "git push", "gh pr merge", "setex", "write_text"):
+    for forbidden in ("git push", "gh pr merge", "setex", "write_text"):
         if forbidden == "write_text":
             continue
         assert forbidden not in src, f"the dispatcher must never contain {forbidden!r}"
@@ -691,7 +713,7 @@ def test_the_module_writes_only_its_own_two_files():
 
 
 def test_at_most_two_reviewers_per_pr():
-    pr = _complete_pr(7, "h" * 40, "wt/x", "CLEAN", False)
+    pr = _held_pr(7, "h" * 40, "wt/x", "CLEAN", False)
     common = dict(queue=[], claims=[], prs=[pr], verdicts={}, author_of={7: "cc-4"}, coord="/c", now=NOW)
     assert D.select_work("cc-8", review_counts={(7, "h" * 40): 2}, **common) is None, "a third reviewer is not work"
     a = D.select_work("cc-8", review_counts={(7, "h" * 40): 1}, **common)
@@ -699,9 +721,9 @@ def test_at_most_two_reviewers_per_pr():
 
 
 def test_existing_verdicts_count_towards_the_cap():
-    pr = _complete_pr(7, "h" * 40, "wt/x", "CLEAN", False)
-    # one BLOCK already filed at this head: that is one reviewer spent, so one slot remains
-    v = {(7, "h" * 40): [{"verdict": "BLOCK", "reviewer": "cc-9"}]}
+    pr = _held_pr(7, "h" * 40, "wt/x", "CLEAN", False)
+    # One held-class MERGE uses one slot; an at-head BLOCK instead requires repair (D51).
+    v = {(7, "h" * 40): [{"verdict": "MERGE", "reviewer": "cc-9"}]}
     a = D.select_work(
         "cc-8",
         queue=[],
@@ -731,8 +753,8 @@ def test_existing_verdicts_count_towards_the_cap():
 
 
 def test_newest_pr_is_offered_before_an_ancient_one():
-    old = _complete_pr(100, "a" * 40, "wt/old", "CLEAN", False, updated_at="2026-10-20T00:00:00Z")
-    new = _complete_pr(200, "b" * 40, "wt/new", "CLEAN", False, updated_at="2026-11-04T17:00:00Z")
+    old = _held_pr(100, "a" * 40, "wt/old", "CLEAN", False, updated_at="2026-10-20T00:00:00Z")
+    new = _held_pr(200, "b" * 40, "wt/new", "CLEAN", False, updated_at="2026-11-04T17:00:00Z")
     a = D.select_work(
         "cc-8",
         queue=[],
@@ -748,14 +770,14 @@ def test_newest_pr_is_offered_before_an_ancient_one():
 
 def test_a_pr_with_an_unknown_author_is_never_assigned_a_reviewer():
     """F5: independence must be provable. No author resolved means nobody may review it."""
-    pr = _complete_pr(7, "h" * 40, "wt/x", "CLEAN", False)
+    pr = _held_pr(7, "h" * 40, "wt/x", "CLEAN", False)
     a = D.select_work("cc-8", queue=[], claims=[], prs=[pr], verdicts={}, author_of={}, coord="/c", now=NOW)
     assert a is None
 
 
 def test_a_block_verdict_counts_towards_the_reviewer_cap():
     """F4: BLOCK is a verdict too — a PR with two blocks at this head is not given a third reviewer."""
-    pr = _complete_pr(7, "h" * 40, "wt/x", "CLEAN", False)
+    pr = _held_pr(7, "h" * 40, "wt/x", "CLEAN", False)
     v = {(7, "h" * 40): [{"verdict": "BLOCK", "reviewer": "cc-1"}, {"verdict": "BLOCK", "reviewer": "cc-2"}]}
     a = D.select_work(
         "cc-8",
@@ -1193,7 +1215,7 @@ def test_the_review_cap_is_head_specific():
     """F4 round 2: a dispatch recorded against an OLD head neither spends the new head's budget nor bars that
     reviewer from reviewing the new revision."""
     old_head, new_head = "a" * 40, "b" * 40
-    pr = _complete_pr(7, new_head, "wt/x", "CLEAN", False)
+    pr = _held_pr(7, new_head, "wt/x", "CLEAN", False)
     common = dict(queue=[], claims=[], prs=[pr], verdicts={}, author_of={7: "cc-4"}, coord="/c", now=NOW)
     a = D.select_work(
         "cc-8", prior_review_sessions={(7, old_head): {"cc-8", "cc-9"}}, review_counts={(7, old_head): 2}, **common
@@ -1354,7 +1376,7 @@ def test_d49_real_cycle_prior_reviewers_spend_cap_without_verdicts(tmp_path):
 
 def test_d49_a_filed_merge_reviewer_is_not_assigned_the_same_head(monkeypatch):
     monkeypatch.setattr(D, "review_requirements", lambda: (2, 2, ("AGENTS.md",)))
-    pr = ordinary_pr()
+    pr = ordinary_pr(files=(".githooks/pre-push",))
     verdicts = {(7, pr.head_sha): [{"verdict": "MERGE", "reviewer": "cc-8"}]}
     common = dict(
         queue=[], claims=[], prs=[pr], verdicts=verdicts, author_of={7: "author"}, coord="/synthetic", now=NOW
@@ -1364,7 +1386,7 @@ def test_d49_a_filed_merge_reviewer_is_not_assigned_the_same_head(monkeypatch):
 
 
 def test_d49_an_author_merge_does_not_satisfy_picker_or_report():
-    pr = ordinary_pr()
+    pr = ordinary_pr(files=(".githooks/pre-push",))
     verdicts = {(7, pr.head_sha): [{"verdict": "MERGE", "reviewer": "author"}]}
     claims = [claim(session="author", branch=pr.head_ref, head=pr.head_sha)]
     assignment = D.select_work(
@@ -1415,7 +1437,7 @@ def test_d49_unreadable_authority_keeps_all_paths_held(tmp_path, contents, monke
 
 
 def test_d49_adoption_keeps_original_and_new_author_exclusions():
-    pr = ordinary_pr()
+    pr = ordinary_pr(files=(".githooks/pre-push",))
     claims = [
         claim(cid="original", session="cc-old", branch=pr.head_ref, status="done", age=4),
         claim(cid="adopter", session="cc-new", branch=pr.head_ref, head=pr.head_sha),
@@ -1538,7 +1560,7 @@ def test_d49_reserved_review_paths_are_not_autonomously_assigned(path):
 
 
 def test_d49_incomplete_file_list_is_not_ready_or_review_work():
-    pr = ordinary_pr()
+    pr = ordinary_pr(files=(".githooks/pre-push",))
     pr.changed_files = 101
     verdicts = {(7, pr.head_sha): [{"verdict": "MERGE", "reviewer": "independent"}]}
     claims = [claim(session="author", branch=pr.head_ref, head=pr.head_sha)]
@@ -1677,12 +1699,12 @@ def test_d49_ready_report_requires_measured_green_checks(checks):
     ]
     pr = CLI.open_prs(fake_runner({}, rows), with_commits=False)[0]
     verdicts = {(7, pr.head_sha): [{"verdict": "MERGE", "reviewer": "independent"}]}
-    claims = [claim(session="author", branch=pr.head_ref, head=pr.head_sha)]
+    claims = [claim(session="author", branch=pr.head_ref, head=pr.head_sha, status="done", paths=pr.files)]
     out = D.merge_ready([pr], verdicts, claims, {7: "author"})
     assert out["ready"] == [] and "checks" in out["one_step"][0]["step"]
 
 
-def test_d49_green_complete_ordinary_pr_is_ready_and_can_get_review():
+def test_d49_green_complete_ordinary_pr_is_ready_with_cloud_review():
     rows = [
         {
             "number": 7,
@@ -1692,11 +1714,11 @@ def test_d49_green_complete_ordinary_pr_is_ready_and_can_get_review():
             "isDraft": False,
             "changedFiles": 1,
             "files": [{"path": "src/synthetic.py"}],
-            "statusCheckRollup": [{"__typename": "CheckRun", "status": "COMPLETED", "conclusion": "SUCCESS"}],
+            "statusCheckRollup": _d51_checks(),
         }
     ]
     pr = CLI.open_prs(fake_runner({}, rows), with_commits=False)[0]
-    claims = [claim(session="author", branch=pr.head_ref, head=pr.head_sha)]
+    claims = [claim(session="author", branch=pr.head_ref, head=pr.head_sha, status="done", paths=pr.files)]
     assert (
         D.select_work(
             "independent",
@@ -1707,8 +1729,8 @@ def test_d49_green_complete_ordinary_pr_is_ready_and_can_get_review():
             author_of={7: "author"},
             coord="/synthetic",
             now=NOW,
-        ).kind
-        == "review"
+        )
+        is None
     )
     verdicts = {(7, pr.head_sha): [{"verdict": "MERGE", "reviewer": "independent"}]}
     assert len(D.merge_ready([pr], verdicts, claims, {7: "author"})["ready"]) == 1
@@ -1738,7 +1760,7 @@ def test_d49_unknown_authority_with_two_reviews_still_never_reports_ready(tmp_pa
             {"verdict": "MERGE", "reviewer": "independent-two"},
         ]
     }
-    claims = [claim(session="author", branch=pr.head_ref, head=pr.head_sha)]
+    claims = [claim(session="author", branch=pr.head_ref, head=pr.head_sha, status="done", paths=pr.files)]
     out = D.merge_ready([pr], verdicts, claims, {7: "author"})
     assert out["ready"] == [] and "authority unavailable" in out["one_step"][0]["step"]
 
@@ -1790,3 +1812,293 @@ def test_d49_corrupt_prior_dispatch_ledger_cannot_reset_reviewer_cap(tmp_path, c
 
 def test_d49_absent_prior_ledger_is_a_first_cycle(tmp_path):
     assert CLI.prior_review_dispatches(tmp_path / "absent.jsonl") == ({}, {})
+
+
+# D51 cloud CX1-CX5: call the real dispatcher entrypoints with synthetic evidence.
+def _d51_checks():
+    return [
+        {"__typename": "CheckRun", "name": name, "status": "COMPLETED", "conclusion": "SUCCESS"}
+        for name in ("cio-hardening", "agent-governance", "release-readiness", "ci-gate")
+    ]
+
+
+def _d51_registered_review(coord, *, fault=None):
+    import hashlib
+
+    evidence = coord / "review-evidence"
+    evidence.mkdir(parents=True, exist_ok=True)
+    proof = coord / "proofs" / "separate-review.artifact"
+    proof.parent.mkdir(parents=True, exist_ok=True)
+    head = "a" * 40
+    raw = (f"Adversarial-review: MERGE reviewer=independent head={head}\n").encode()
+    proof.write_bytes(raw)
+    ref = "proofs/separate-review.artifact"
+    review = {
+        "reviewer_session": "independent",
+        "verdict": "MERGE",
+        "head_sha": head,
+        "artifact": ref,
+        "artifact_sha256": hashlib.sha256(raw).hexdigest(),
+    }
+    if fault == "hash":
+        review["artifact_sha256"] = "0" * 64
+    elif fault == "identity":
+        review["reviewer_session"] = "someone-else"
+    elif fault == "head":
+        review["head_sha"] = "b" * 40
+    elif fault == "traversal":
+        review["artifact"] = "../outside.artifact"
+    elif fault == "absolute":
+        review["artifact"] = str(proof)
+    elif fault == "symlink":
+        alias = coord / "proofs" / "alias.artifact"
+        alias.symlink_to(proof)
+        review["artifact"] = "proofs/alias.artifact"
+    doc = {
+        "schema": "PrMergeReviewEvidence@v1",
+        "pr": 7,
+        "head_sha": head,
+        "registered_by": {"actor": "synthetic-lead", "session": "synthetic-lead-session"},
+        "identity_provenance": "manual_coordinator_claim_and_source_check",
+        "section17_review_completed": True,
+        "authors_and_coauthors_complete": True,
+        "authority_rails_unchanged": True,
+        "shared_infra_isolated_reviewed": True,
+        "source_commit_shas": [head],
+        "source_authorship_sha256": "1" * 64,
+        "authors": [{"actor": "codex", "session": "author", "claim_id": "source"}],
+        "reviews": [review],
+    }
+    if fault == "empty":
+        doc["reviews"] = []
+    (evidence / f"7-{head}.json").write_text(json.dumps(doc), encoding="utf-8")
+    return doc
+
+
+@pytest.mark.parametrize("merge_state", ["CLEAN", "BLOCKED", "DIRTY"])
+def test_d51_cx1_held_draft_can_receive_its_prerequisite_review(merge_state):
+    rows = [
+        {
+            "number": 7,
+            "headRefName": "wt/synthetic",
+            "headRefOid": "a" * 40,
+            "mergeStateStatus": merge_state,
+            "isDraft": True,
+            "changedFiles": 1,
+            "files": [{"path": ".githooks/pre-push"}],
+            "statusCheckRollup": [],
+        }
+    ]
+    pr = CLI.open_prs(fake_runner({}, rows), with_commits=False)[0]
+    assignment = D.select_work(
+        "reviewer",
+        queue=[],
+        claims=[],
+        prs=[pr],
+        verdicts={},
+        author_of={7: "author"},
+        coord="/synthetic",
+        now=NOW,
+    )
+    assert assignment is not None and assignment.kind == "review"
+    assert D.merge_ready([pr], {}, [], {7: "author"})["ready"] == []
+
+
+@pytest.mark.parametrize("path", [".githooks/pre-push", ".github/workflows/synthetic.yml", "scripts/agent_claim.py"])
+def test_d51_cx2_canonical_engineering_hold_needs_second_reviewer(path):
+    assert D.required_reviews((path,)) == (2, True)
+    pr = _complete_pr(7, "a" * 40, "wt/synthetic", "CLEAN", False, files=(path,))
+    verdicts = {(7, pr.head_sha): [{"verdict": "MERGE", "reviewer": "first"}]}
+    assignment = D.select_work(
+        "second",
+        queue=[],
+        claims=[],
+        prs=[pr],
+        verdicts=verdicts,
+        author_of={7: "author"},
+        coord="/synthetic",
+        now=NOW,
+    )
+    assert assignment is not None and assignment.kind == "review"
+    assert D.merge_ready([pr], verdicts, [], {7: "author"})["ready"] == []
+
+
+def test_d51_cloud_ordinary_pr_is_not_given_redundant_local_review():
+    pr = _complete_pr(7, "a" * 40, "wt/synthetic", "CLEAN", True)
+    for verdicts in ({}, {(7, pr.head_sha): [{"verdict": "BLOCK", "reviewer": "codex-cloud"}]}):
+        assert (
+            D.select_work(
+                "local",
+                queue=[],
+                claims=[],
+                prs=[pr],
+                verdicts=verdicts,
+                author_of={7: "author"},
+                coord="/synthetic",
+                now=NOW,
+            )
+            is None
+        )
+
+
+@pytest.mark.parametrize(
+    "fault", ["unrelated", "all-skipped", "missing-one", "required-neutral", "required-status-context"]
+)
+def test_d51_cx3_partial_or_skipped_mandatory_checks_never_report_green(fault):
+    checks = _d51_checks()
+    if fault == "unrelated":
+        checks = [{"name": "optional", "status": "COMPLETED", "conclusion": "SUCCESS"}]
+    elif fault == "all-skipped":
+        checks = [{**row, "conclusion": "SKIPPED"} for row in checks]
+    elif fault == "missing-one":
+        checks.pop()
+    elif fault == "required-neutral":
+        checks[0]["conclusion"] = "NEUTRAL"
+    else:
+        checks[0] = {"__typename": "StatusContext", "context": "cio-hardening", "state": "SUCCESS"}
+    assert CLI.checks_passed(checks) is False
+
+
+def test_d51_cx3_optional_neutral_does_not_invalidate_mandatory_success():
+    checks = _d51_checks() + [{"name": "optional", "status": "COMPLETED", "conclusion": "NEUTRAL"}]
+    assert CLI.checks_passed(checks) is True
+
+
+def test_d51_cx4_registered_reference_is_loaded_without_guessed_sibling(tmp_path):
+    coord = tmp_path / "coordinator"
+    _d51_registered_review(coord)
+    verdicts = D.verdicts_at_head(CLI.load_review_artifacts(coord))
+    assert verdicts[(7, "a" * 40)] == [{"verdict": "MERGE", "reviewer": "independent"}]
+
+
+@pytest.mark.parametrize("fault", ["hash", "identity", "head", "traversal", "absolute", "symlink", "empty"])
+def test_d51_cx4_invalid_registration_refuses_before_any_send(tmp_path, fault):
+    paths = make_tree(tmp_path, panes={"cc-deepseek-9": "❯ \n"}, queue=[])
+    _d51_registered_review(paths["coord"], fault=fault)
+    calls = []
+    base = fake_runner({"cc-deepseek-9": "❯ \n"}, [])
+
+    def run(cmd, **kwargs):
+        if cmd[:2] in (["tmux", "load-buffer"], ["tmux", "paste-buffer"], ["tmux", "send-keys"]):
+            calls.append(cmd)
+        return base(cmd, **kwargs)
+
+    with pytest.raises(D.DispatchError):
+        CLI.run_cycle(
+            apply=True,
+            coord=paths["coord"],
+            queue_path=paths["queue"],
+            claims_dir=paths["claims"],
+            ledger_path=paths["ledger"],
+            run=run,
+            sleep=lambda _: None,
+        )
+    assert calls == [] and not paths["ledger"].exists()
+
+
+@pytest.mark.parametrize("status", ["done", "released"])
+def test_d51_cx5_released_author_coverage_is_ready_and_active_is_not(status):
+    pr = _complete_pr(7, "a" * 40, "wt/synthetic", "CLEAN", False, files=("src/synthetic.py",))
+    verdicts = {(7, pr.head_sha): [{"verdict": "MERGE", "reviewer": "independent"}]}
+    released = claim(session="author", branch=pr.head_ref, head=pr.head_sha, status=status, paths=pr.files)
+    assert [item["pr"] for item in D.merge_ready([pr], verdicts, [released], {7: "author"})["ready"]] == [7]
+    active = claim(session="author", branch=pr.head_ref, head=pr.head_sha, paths=pr.files)
+    assert D.merge_ready([pr], verdicts, [active], {7: "author"})["ready"] == []
+
+
+@pytest.mark.parametrize("fault", ["wrong-path", "wrong-head", "wrong-author", "abandoned", "live-overlap"])
+def test_d51_cx5_released_custody_must_cover_actual_source(tmp_path, fault):
+    pr = _complete_pr(7, "a" * 40, "wt/synthetic", "CLEAN", False, files=("src/synthetic.py",))
+    verdicts = {(7, pr.head_sha): [{"verdict": "MERGE", "reviewer": "independent"}]}
+    released = claim(session="author", branch=pr.head_ref, head=pr.head_sha, status="done", paths=pr.files)
+    if fault == "wrong-path":
+        released.paths = ["elsewhere.py"]
+    elif fault == "wrong-head":
+        released.head_sha = "b" * 40
+    elif fault == "wrong-author":
+        released.session = "someone-else"
+    elif fault == "abandoned":
+        released.status = "abandoned"
+    claims = [released]
+    if fault == "live-overlap":
+        claims.append(claim(session="holder", branch="wt/other", paths=("src/**",)))
+    assert D.merge_ready([pr], verdicts, claims, {7: "author"})["ready"] == []
+
+
+@pytest.mark.parametrize("forbidden", ["Host", "evaluate", "main"])
+def test_d51_no_merge_import_guard_has_a_firing_negative(forbidden):
+    with pytest.raises(AssertionError, match="merge primitive"):
+        _assert_only_pure_delegation_imports(f"from lib.pr_merge_delegation import {forbidden}\n")
+
+
+def test_d51_canonical_helpers_never_reach_a_merge_primitive(tmp_path, monkeypatch):
+    import importlib
+
+    merger = importlib.import_module(CLI.reviewer_artifact.__module__)
+    mutations = []
+
+    def forbidden(*args, **kwargs):
+        mutations.append((args, kwargs))
+        raise AssertionError("dispatch reached a merge primitive")
+
+    for name in ("Host", "evaluate", "main", "execute", "apply"):
+        monkeypatch.setattr(merger, name, forbidden, raising=False)
+    paths = make_tree(
+        tmp_path,
+        panes={"cc-deepseek-9": "❯ \n"},
+        queue=[],
+        claims=[
+            {
+                "claim_id": "source",
+                "session": "author",
+                "branch": "wt/synthetic",
+                "status": "done",
+                "heartbeat_at": iso(NOW),
+                "head_sha": "a" * 40,
+                "paths": [".githooks/pre-push"],
+            }
+        ],
+    )
+    _d51_registered_review(paths["coord"])
+    rows = [
+        {
+            "number": 7,
+            "headRefName": "wt/synthetic",
+            "headRefOid": "a" * 40,
+            "mergeStateStatus": "BLOCKED",
+            "isDraft": True,
+            "changedFiles": 1,
+            "files": [{"path": ".githooks/pre-push"}],
+            "statusCheckRollup": [],
+        }
+    ]
+    before = {str(p): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    out = CLI.run_cycle(
+        apply=False,
+        coord=paths["coord"],
+        queue_path=paths["queue"],
+        claims_dir=paths["claims"],
+        ledger_path=paths["ledger"],
+        run=fake_runner({"cc-deepseek-9": "❯ \n"}, rows),
+    )
+    assert [row["kind"] for row in out["assignments"]] == ["review"]
+    assert mutations == []
+    assert {str(p): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()} == before
+
+
+def test_d51_a_current_held_block_requires_repair_not_a_third_opinion():
+    pr = _held_pr(7, "a" * 40, "wt/synthetic", "CLEAN", True)
+    verdicts = {(7, pr.head_sha): [{"verdict": "BLOCK", "reviewer": "codex-cloud"}]}
+    assert (
+        D.select_work(
+            "local",
+            queue=[],
+            claims=[],
+            prs=[pr],
+            verdicts=verdicts,
+            author_of={7: "author"},
+            coord="/synthetic",
+            now=NOW,
+        )
+        is None
+    )

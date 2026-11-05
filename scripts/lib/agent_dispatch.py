@@ -29,6 +29,8 @@ import re
 import subprocess
 import time
 from .agent_claim_board import AUXILIARY_CLAIM_DIR_SCHEMAS, overlapping_pairs, patterns_overlap
+from . import merge_hold_paths
+from .pr_merge_delegation import Refused as EvidenceRefused, collect_held_classes
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -275,6 +277,11 @@ class PullRequest:
         return self.merge_state.upper() == "CLEAN" and not self.draft
 
     @property
+    def review_eligible(self) -> bool:
+        """A review is a prerequisite for readiness; drafts and CI/conflict gates do not bar it."""
+        return bool(self.head_sha) and self.files_complete
+
+    @property
     def shas(self) -> tuple[str, ...]:
         """The head plus every commit it carries — the set a claim's head_sha must be in to be current."""
         return tuple(dict.fromkeys([self.head_sha, *self.commit_shas]))
@@ -341,11 +348,14 @@ def required_reviews(
     files: Sequence[str], requirements: tuple[int, int, tuple[str, ...]] | None = None
 ) -> tuple[int, bool]:
     """``(how many independent MERGEs, is it held)`` for one change; an unreadable file list is HELD (fail closed)."""
-    ordinary, held, globs = requirements or review_requirements()
-    if not files:
+    ordinary, held, exclusions = requirements or review_requirements()
+    if not files or exclusions == ("**",):
         return held, True
-    touched = any(fnmatch.fnmatchcase(f, g) for f in files for g in globs)
-    return (held, True) if touched else (ordinary, False)
+    try:
+        classes, _metadata = collect_held_classes(files, merge_hold_paths.load(), merge_hold_paths)
+    except (EvidenceRefused, OSError, ValueError, TypeError):
+        return held, True  # unknown classification never earns the ordinary bar
+    return (held, True) if classes else (ordinary, False)
 
 
 def author_set(value: str | Iterable[str] | None) -> set[str]:
@@ -386,7 +396,7 @@ def merge_ready(
     """Split the open PRs into {ready, one_step}. Report only — the lead's helper remains the only merger."""
     ready: list[dict[str, Any]] = []
     one_step: list[dict[str, Any]] = []
-    by_branch = {c.branch: c for c in sorted(claims, key=lambda c: -c.age_h) if c.status == "active"}
+    by_branch = {c.branch: c for c in sorted(claims, key=lambda c: -c.age_h)}
     requirements = review_requirements()
     for pr in prs:
         if not pr.clean:
@@ -398,7 +408,22 @@ def merge_ready(
         need, held = required_reviews(pr.files, requirements)
         reviewers = {e["reviewer"] for e in merges}
         claim = by_branch.get(pr.head_ref)
-        claim_current = bool(claim and claim.head_sha and claim.head_sha in pr.shas)
+        released = [
+            c
+            for c in claims
+            if c.branch == pr.head_ref
+            and c.session in authors
+            and c.status in {"done", "released"}
+            and c.head_sha
+            and c.head_sha in pr.shas
+        ]
+        try:
+            covered = {path for path in pr.files if any(overlapping_pairs([path], c.paths) for c in released)}
+            active_holders = [c for c in claims if c.live and overlapping_pairs(pr.files, c.paths)]
+            claim_current = bool(released) and covered == set(pr.files) and not active_holders
+        except ValueError:
+            claim_current = False
+            active_holders = []
         author = ", ".join(sorted(authors))
         base = {
             "pr": pr.number,
@@ -448,12 +473,11 @@ def merge_ready(
                 continue
             one_step.append({**base, "step": step, "verdicts": sorted(reviewers)})
         elif merges and not claim_current:
-            # A DONE claim cannot be re-stamped (the CLI has no such move); the author creates a claim AT this head.
             step = (
-                "the author claim is not active at this head — create a claim at the head and release it, then "
-                "the evidence names that claim"
-                if claim is None
-                else "author must re-stamp the claim's head_sha to this head"
+                "current source holder is not released — finish its genuine custody before merge"
+                if active_holders
+                else "released author claims must cover every changed path at a source commit — "
+                "create a claim at the head if custody is missing, then release it with its handoff"
             )
             one_step.append(
                 {
@@ -640,8 +664,11 @@ def select_work(
     # Newest activity first: a live PR is the work, and an ancient CLEAN PR is the triage list (board row 26), not
     # somewhere to spend five sessions. At most MAX_REVIEWERS_PER_PR independent reviewers per head.
     for pr in sorted(prs, key=lambda p: (p.updated_at or "", p.number), reverse=True):
-        if not pr.clean or not pr.files_complete or not work_allowed(pr.files, requirements):
+        if not pr.review_eligible or not work_allowed(pr.files, requirements):
             continue
+        need, held = required_reviews(pr.files, requirements)
+        if not held:
+            continue  # D51: cloud owns ordinary reviews; leads route exceptional P0/P1 work explicitly.
         authors = author_set(author_of.get(pr.number))
         if not authors:
             continue  # F5: an unknown author means independence cannot be shown — fail closed, assign nobody
@@ -650,6 +677,8 @@ def select_work(
         if (pr.number, session) in reviewed:
             continue
         verdicts_here = verdicts.get((pr.number, pr.head_sha), [])
+        if any(v["verdict"] == "BLOCK" and v["reviewer"] not in authors for v in verdicts_here):
+            continue  # an exact-head code BLOCK needs a repair, never a redundant third review
         filed = {v["reviewer"] for v in verdicts_here if v["reviewer"] and v["reviewer"] not in authors}
         spent = filed | (prior.get((pr.number, pr.head_sha), set()) - authors)
         if max(counts.get((pr.number, pr.head_sha), 0), len(spent)) >= MAX_REVIEWERS_PER_PR:
@@ -660,7 +689,6 @@ def select_work(
             continue  # an earlier cycle already sent this reviewer THIS head
         if not free("review", str(pr.number)):
             continue
-        need, _held = required_reviews(pr.files, requirements)
         merges_here = {
             v["reviewer"]
             for v in verdicts_here
@@ -676,7 +704,7 @@ def select_work(
             "review",
             str(pr.number),
             _review_instruction(session, pr, coord),
-            "PR is CLEAN and lacks an exact-head review",
+            "complete held PR lacks a prerequisite independent review",
         )
 
     # (c) merge-prep: a CLEAN PR with a MERGE verdict whose author claim is stale on the head
