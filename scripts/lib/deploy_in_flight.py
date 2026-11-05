@@ -26,10 +26,12 @@ from typing import Any, Callable, Iterable, Optional
 try:
     from scripts import check_pr_plain_english as plain
     from scripts.lib import merge_hold_paths as mhp
+    from scripts.lib import pr_all_checks_green as pacg
     from scripts.lib import pr_merge_telegram as pmt
 except ImportError:  # pragma: no cover — run from scripts/
     import check_pr_plain_english as plain  # type: ignore
     import merge_hold_paths as mhp  # type: ignore
+    import pr_all_checks_green as pacg  # type: ignore
     from lib import pr_merge_telegram as pmt  # type: ignore
 
 SCHEMA = "DeployInFlight@v1"
@@ -238,6 +240,11 @@ def check_statuses(pr: dict[str, Any]) -> dict[str, str]:
     return statuses
 
 
+def _every_check_green(rollup: Iterable[dict[str, Any]] | None) -> dict[str, Any]:
+    """The digest's own gate: the required four completed SUCCESS **and** no other check is red or pending."""
+    return pacg.evaluate_merge_rollup(rollup, required=pmt.REQUIRED_CHECKS)
+
+
 def _plain_ok(pr: dict[str, Any], answers: dict[str, str]) -> tuple[bool, list[str]]:
     errors = plain.check(str(pr.get("title") or ""), str(pr.get("body") or ""))
     if not errors and any(
@@ -260,7 +267,11 @@ def digest_classify_row(pr: dict[str, Any], *, files: Optional[list[str]] = None
     labels = label_set(pr)
     mergeable = normalize_mergeable(pr.get("mergeable"))
     answers = plain_english_fields(pr)
-    green, _statuses = checks_green(pr.get("statusCheckRollup"))
+    # The digest's gate, not just its required four: `every_check_green` also refuses a failed or pending
+    # check that is not one of the required names. `checks_green` (the display helper) cannot see those, so
+    # using it here enabled Approve on a PR the digest would hold (codex-cloud F1 at 567486a98).
+    every = _every_check_green(pr.get("statusCheckRollup"))
+    green = bool(every.get("ok"))
 
     if pr.get("isDraft"):
         return "draft", "draft", False

@@ -150,3 +150,58 @@ export function ciLabel(ci: MainCi | null | undefined): string {
   if (ci.state === 'UNAVAILABLE' || ci.age_s == null) return ci.state
   return `${ci.state} · ${ageText(ci.age_s)}${ci.stale ? ' (stale)' : ''}`
 }
+
+/**
+ * The coach strip's two facts, kept out of the JSX so they can be tested and so "unknown" cannot become a zero.
+ *
+ * A missing board (`inFlight` null) used to render "0 READY to Approve"; a missing next-release (`next` null) or an
+ * unstaked `commits_ahead` used to fall through to a GREEN "Site matches main". Both are affirmative operational
+ * conclusions drawn from an absence, on the strip that tells the operator what to do (codex-cloud F2 at 567486a98).
+ */
+export type CoachFacts = {
+  ready: number | null          // null = the board did not state it (not "zero")
+  open: number | null
+  ahead: number | null          // null = main-vs-site distance not stated (not "matches")
+  matches: boolean              // true only when the distance is known to be zero
+  ciOk: boolean
+  unknown: string | null        // a sentence naming what could not be read, or null when everything is known
+  recommend: string
+}
+
+export function coachFacts(args: {
+  inFlight: { ready_count?: number | null; count?: number | null; freshness?: string } | null
+  next: NextRelease | null
+  stopEffective: boolean
+}): CoachFacts {
+  const { inFlight, next, stopEffective } = args
+  const ready = inFlight && inFlight.ready_count != null ? inFlight.ready_count : null
+  const open = inFlight && inFlight.count != null ? inFlight.count : null
+  const ahead = next == null ? null : next.is_serving ? 0 : (next.commits_ahead ?? null)
+  const ciOk = next?.ci?.state === 'SUCCESS' || next?.ci?.state === 'OK'
+  const missing: string[] = []
+  if (inFlight == null) missing.push('the open-PR board')
+  else if (ready == null) missing.push('its READY count')
+  if (next == null) missing.push('the next-release comparison')
+  else if (ahead == null) missing.push('how far main is ahead of the site')
+  const unknown = missing.length
+    ? `Could not read ${missing.join(' or ')} — this strip is not saying "nothing needs you"; refresh before acting.`
+    : null
+
+  let recommend: string
+  if (ready == null) {
+    recommend = unknown ?? 'The READY count is not stated — refresh before approving anything.'
+  } else if (ready > 0) {
+    recommend = `${ready} change${ready === 1 ? '' : 's'} ready for your Approve (Job A). Approving queues a merge — it does not update the live site.`
+  } else if (stopEffective) {
+    recommend = 'Deploy STOP is on — Job B (put on site) is blocked until STOP is cleared in Ops → Controls.'
+  } else if (ahead == null) {
+    recommend = unknown ?? 'Main-vs-site distance is not stated — the site may be behind main.'
+  } else if (ahead > 0 && ciOk) {
+    recommend = `main is ${ahead} commit${ahead === 1 ? '' : 's'} ahead of the site — Job B: promote when you are ready (or wait for auto-promote).`
+  } else if (ahead > 0) {
+    recommend = 'main is ahead of the site, but main CI is not green — wait for green before promote.'
+  } else {
+    recommend = 'Nothing needs you right now — the site is serving main and no PR is READY.'
+  }
+  return { ready, open, ahead, matches: ahead === 0, ciOk, unknown, recommend }
+}

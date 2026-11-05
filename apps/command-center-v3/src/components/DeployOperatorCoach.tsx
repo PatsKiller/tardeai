@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react'
 import { Chip, ChipRow } from './primitives'
 import { RADIUS, TOKENS, TYPE, toneVars } from '../lib/designTokens'
 import type { NextRelease, Serving } from '../lib/releasesSchedules'
-import { ciLabel } from '../lib/releasesSchedules'
+import { coachFacts } from '../lib/releasesSchedules'
 
 const panel: CSSProperties = {
   background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md,
@@ -36,20 +36,8 @@ export default function DeployOperatorCoach({
   stopEffective: boolean
   onHelp: () => void
 }) {
-  const ready = inFlight?.ready_count ?? 0
-  const open = inFlight?.count ?? null
-  const ahead = next && !next.is_serving ? (next.commits_ahead ?? null) : 0
-  const ciOk = next?.ci?.state === 'SUCCESS' || next?.ci?.state === 'OK'
-  let recommend = 'Nothing needs you right now — refresh if this looks stale.'
-  if (ready > 0) {
-    recommend = `${ready} change${ready === 1 ? '' : 's'} ready for your Approve (Job A). Approving queues a merge — it does not update the live site.`
-  } else if (stopEffective) {
-    recommend = 'Deploy STOP is on — Job B (put on site) is blocked until STOP is cleared in Ops → Controls.'
-  } else if (ahead != null && ahead > 0 && ciOk) {
-    recommend = `main is ${ahead} commit${ahead === 1 ? '' : 's'} ahead of the site — Job B: promote when you are ready (or wait for auto-promote).`
-  } else if (ahead != null && ahead > 0 && !ciOk) {
-    recommend = `main is ahead of the site, but main CI is ${ciLabel(next?.ci)} — wait for green before promote.`
-  }
+  const facts = coachFacts({ inFlight, next, stopEffective })
+  const { ready, open, ahead, recommend } = facts
 
   return (
     <section data-testid="deploy-operator-coach" style={panel}>
@@ -70,23 +58,28 @@ export default function DeployOperatorCoach({
           <p style={jobTitle}>Job A · Approve a merge</p>
           <p style={muted}>Say yes to a change joining main. Same as Telegram Approve. Not live yet.</p>
           <ChipRow>
-            <Chip tone={ready > 0 ? 'success' : 'neutral'}>{ready} READY to Approve</Chip>
+            {ready == null
+              ? <Chip tone="warning">READY count not stated</Chip>
+              : <Chip tone={ready > 0 ? 'success' : 'neutral'}>{ready} READY to Approve</Chip>}
             {open != null ? <Chip tone="neutral">{open} open PR{open === 1 ? '' : 's'}</Chip> : null}
           </ChipRow>
         </div>
         <div style={job} data-testid="deploy-coach-job-b">
           <p style={jobTitle}>Job B · Put on the site</p>
           <p style={muted}>
-            Serving {serving?.short_sha ?? '—'}
-            {next ? ` · main ${next.short_sha}` : ''}
-            {next?.is_serving ? ' · already serving main' : ahead != null ? ` · ${ahead} ahead` : ''}
+            Serving {serving?.short_sha ?? 'unknown'}
+            {next ? ` · main ${next.short_sha}` : ' · main commit not stated'}
+            {next?.is_serving ? ' · already serving main' : ahead != null ? ` · ${ahead} ahead` : ' · distance not stated'}
           </p>
           <ChipRow>
-            {stopEffective
-              ? <Chip tone="danger">STOP blocks promote</Chip>
-              : ahead != null && ahead > 0
-                ? <Chip tone={ciOk ? 'info' : 'warning'}>{ciOk ? 'Promote candidate' : 'Waiting on main CI'}</Chip>
-                : <Chip tone="success">Site matches main</Chip>}
+            {ahead == null
+              // An unread next-release is not "matches main": that badge is the one that would hide a stuck deploy.
+              ? <Chip tone="warning">main vs site not known</Chip>
+              : stopEffective
+                ? <Chip tone="danger">STOP blocks promote</Chip>
+                : ahead > 0
+                  ? <Chip tone={facts.ciOk ? 'info' : 'warning'}>{facts.ciOk ? 'Promote candidate' : 'Waiting on main CI'}</Chip>
+                  : <Chip tone="success">Site matches main</Chip>}
           </ChipRow>
         </div>
       </div>

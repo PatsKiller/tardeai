@@ -3,7 +3,7 @@ const assert = {
   ok(value: unknown, message = 'expected truthy value') { if (!value) throw new Error(message) },
   match(value: string, pattern: RegExp) { if (!pattern.test(value)) throw new Error(`expected ${value} to match ${pattern}`) },
 }
-import { ageText, ciLabel, ciTone, kpiDisplay, lastRunText, prList, sectionView, SECTION_KEYS, verifyLabel, type Kpi, type ReleasesSchedulesWire, type TimelineRow } from './releasesSchedules.ts'
+import { ageText, ciLabel, ciTone, coachFacts, kpiDisplay, lastRunText, prList, sectionView, SECTION_KEYS, verifyLabel, type Kpi, type ReleasesSchedulesWire, type TimelineRow } from './releasesSchedules.ts'
 
 const NOW = Date.parse('2026-10-22T19:00:00Z')
 const wire: ReleasesSchedulesWire = {
@@ -79,3 +79,34 @@ assert.equal(sectionView(quiet, 'n8n_today', { nowMs: NOW }).state, 'OK')
 
 // An undated capture is not current: the response cannot be called OK when generated_at is missing.
 assert.equal(sectionView({ ...wire, generated_at: undefined }, 'serving', { nowMs: NOW }).state, 'STALE')
+
+// ── the coach strip states what it knows, and says "unknown" instead of a zero (codex-cloud F2 at 567486a98) ──
+const servingNext = { sha: 'a'.repeat(40), short_sha: 'aaaaaaaaa', subject: null, committed_at: null, fetched_at: null,
+  is_serving: true, commits_ahead: 0, prs_since_serving: null, prs_reason: null, ci: { state: 'SUCCESS' as const, reason: null } }
+const aheadNext = { ...servingNext, is_serving: false, commits_ahead: 3 }
+const unstakedNext = { ...servingNext, is_serving: false, commits_ahead: null }
+
+// The two defaults the finding named: a null board must not read "0 READY", a null next must not read "matches main".
+const blank = coachFacts({ inFlight: null, next: null, stopEffective: false })
+assert.equal(blank.ready, null)                                  // never 0
+assert.equal(blank.ahead, null)                                  // never 0
+assert.equal(blank.matches, false)                               // no green badge from an absence
+assert.match(blank.recommend, /not saying "nothing needs you"/i)
+assert.match(blank.unknown ?? '', /open-PR board/)
+assert.ok(!/^Nothing needs you/.test(blank.recommend))
+
+// A stated zero is still a zero, and a serving main is still a match — the honest case must keep its sentence.
+const known = coachFacts({ inFlight: { ready_count: 0, count: 4 }, next: servingNext, stopEffective: false })
+assert.equal(known.ready, 0); assert.equal(known.ahead, 0); assert.equal(known.matches, true)
+assert.match(known.recommend, /Nothing needs you right now/)
+assert.equal(known.unknown, null)
+
+// An unstaked distance is unknown even when the release object is present.
+const unstaked = coachFacts({ inFlight: { ready_count: 0, count: 1 }, next: unstakedNext, stopEffective: false })
+assert.equal(unstaked.ahead, null); assert.equal(unstaked.matches, false)
+assert.match(unstaked.recommend, /how far main is ahead of the site/i)
+
+// Ready wins over everything, and STOP is stated when it is the reason Job B cannot run.
+assert.match(coachFacts({ inFlight: { ready_count: 2, count: 2 }, next: servingNext, stopEffective: false }).recommend, /2 changes ready/)
+assert.match(coachFacts({ inFlight: { ready_count: 0, count: 0 }, next: aheadNext, stopEffective: true }).recommend, /Deploy STOP is on/)
+assert.match(coachFacts({ inFlight: { ready_count: 0, count: 0 }, next: aheadNext, stopEffective: false }).recommend, /3 commits ahead/)

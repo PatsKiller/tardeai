@@ -42,8 +42,10 @@ def _hermetic(monkeypatch):
 
 
 def _checks(ok=True):
+    # A real rollup row carries the completed status AND its conclusion; the digest's every-check gate refuses
+    # a row with no explicit completed status, so the fixture states it the way GitHub does.
     state = "SUCCESS" if ok else "FAILURE"
-    return [{"name": n, "conclusion": state} for n in D.REQUIRED_CHECKS]
+    return [{"name": n, "status": "completed", "conclusion": state} for n in D.REQUIRED_CHECKS]
 
 
 def _pr(number, *, mergeable=None, state="CLEAN", labels=(), draft=False, title="Adds a clear operator sentence here",
@@ -126,6 +128,27 @@ def test_digest_parity_gates_block_approve():
     assert D.digest_classify_row(_pr(6, rollup=_checks(False)))[0] == "waiting_ci"
     status, reason, can = D.digest_classify_row(_pr(7, mergeable=True, state="CLEAN"), files=["scripts/foo.py"])
     assert status == "ready" and reason == "ready" and can is True
+
+
+def test_a_non_required_check_that_is_red_keeps_approve_off():
+    """codex-cloud F1 at 567486a98: the digest's gate is `every_check_green`, not the required four alone.
+
+    With the four required checks SUCCESS and `secret-scan` FAILED, the board used to return ('ready', True)
+    while `pr_merge_digest.classify_pr` returns skip for the same rollup — enabling Approve on a PR the digest
+    would hold, under the sentence "same READY rules as Telegram".
+    """
+    rollup = _checks(True) + [{"name": "secret-scan", "conclusion": "FAILURE"}]
+    status, reason, can = D.digest_classify_row(_pr(11, mergeable=True, state="CLEAN", rollup=rollup),
+                                                files=["scripts/foo.py"])
+    assert (status, can) == ("waiting_ci", False), (status, reason, can)
+    # a PENDING non-required check is not green either
+    pending = _checks(True) + [{"name": "provider-cost", "conclusion": "PENDING"}]
+    assert D.digest_classify_row(_pr(12, mergeable=True, state="CLEAN", rollup=pending),
+                                 files=["scripts/foo.py"])[:1] == ("waiting_ci",)
+    # and the control: the same rollup with secret-scan green is ready
+    green = _checks(True) + [{"name": "secret-scan", "conclusion": "SUCCESS"}]
+    assert D.digest_classify_row(_pr(13, mergeable=True, state="CLEAN", rollup=green),
+                                 files=["scripts/foo.py"]) == ("ready", "ready", True)
 
 
 def test_ready_requires_a_file_view_and_a_missing_one_is_never_approvable():
