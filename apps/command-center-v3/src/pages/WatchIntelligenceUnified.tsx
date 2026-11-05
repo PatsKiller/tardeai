@@ -10,7 +10,10 @@ import { Link, useSearchParams } from 'react-router-dom'
 import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetailSheet'
 import { useApi } from '../hooks/useApi'
 import { BB, TYPE } from '../lib/watchTokens'
+import { RADIUS } from '../lib/designTokens'
 import { WI_SYNOPSIS_PROVENANCE } from '../lib/surfaceFreshness'
+import { withDetail } from '../lib/watchDetailEntry'
+import { rowStateWords } from '../lib/watchRowState'
 import {
   DECISION_KEYS, DECISION_SORTS, WatchDecisionBadges, WatchDecisionBoard, WatchDecisionFilterModal, type WatchDecision,
   scopeOf,
@@ -196,7 +199,7 @@ export default function WatchIntelligenceUnified() {
   const sector = qsGet(sp, 'sector', '')
   const sort = qsGet(sp, 'sort', 'watch_rank')
   const page = qsGet(sp, 'page', '1')
-  const layout = qsGet(sp, 'layout', 'grid')
+  const layoutParam = qsGet(sp, 'layout', '')
   const starredOnly = qsGet(sp, 'starred', '') === '1'
   const heldOnly = qsGet(sp, 'held', '') === '1'
   const origin = qsGet(sp, 'origin', '')
@@ -271,9 +274,20 @@ export default function WatchIntelligenceUnified() {
   const quality = body?.data_quality || { status: body?.data_quality_status }
 
   const phone = useMobilePageDetail()
-  const [desktopSelected, setDesktopSelected] = useState<string | null>(null)
+  // FQ-073: a phone opens on compact scan rows — one name per line — and the full reading view is the existing
+  // full-screen sheet the row opens. An explicit ?layout= still wins, and desktop keeps the grid.
+  const layout = layoutParam || (phone.mobile ? 'compact' : 'grid')
+  // FQ-132 (cx-openai-3 at 234248492): the desktop selection was local state, so a compact row's reading view could
+  // not be reached at all once the inspector was reserved for the grid, and nothing about the selected state could be
+  // rendered or linked. It is the `detail` param now — the same entry the phone sheet uses — so a row opens a reading
+  // view that survives Back, reload and a shared link, and a render can prove which name is being read.
+  const desktopSelected = qsGet(sp, 'detail', '') || null
   const selected = phone.mobile ? phone.id : desktopSelected
-  const setSelected = (symbol: string) => { if (phone.mobile) phone.open(symbol); else setDesktopSelected(symbol) }
+  // FQ-132 R2 (cx-openai-3 at c3ea49812): selecting a name is not a filter change. `setParam` resets `page` to 1 for
+  // every key but `page`, so writing `detail` through it sent the operator from page 2 to page 1 — the page then asked
+  // for page 1, the chosen name was not in that page's cards, and the inspector fell back to the first card. The entry
+  // pushes history (so Back restores the list) and keeps every other part of the query.
+  const setSelected = (symbol: string) => { if (phone.mobile) phone.open(symbol); else setSp(withDetail(sp, symbol)) }
   const sel = cards.find(c => c.symbol === selected) || (phone.mobile ? undefined : cards[0])
   // WAIT cards say "SET CONDITION ALERT"; this wires that instruction to the same POST /api/v2/watch/alerts flow the
   // Re-Entry pages use (2026-10-22 audit: the instruction had no button).
@@ -334,6 +348,13 @@ export default function WatchIntelligenceUnified() {
                 <div style={{ padding: 14, borderBottom: `1px solid ${BB.border}` }}>
                   <div tabIndex={-1} data-detail-focus style={{ fontSize: TYPE.xl, fontWeight: 950 }}>{sel.symbol}</div>
                   <div style={{ fontSize: TYPE.xs, color: BB.text3 }}>{sel.company}</div>
+                  {/* FQ-132 F2: the reading view carries the same state the row does, so opening an expired or stale
+                      name does not make it look current. */}
+                  {rowStateWords(sel).length > 0 && (
+                    <div data-detail-row-state={rowStateWords(sel).join(' · ')} style={{ marginTop: 6, fontSize: TYPE.xs, color: BB.amber }}>
+                      {rowStateWords(sel).join(' · ')}
+                    </div>
+                  )}
                   <div style={{ marginTop: 8, fontSize: TYPE.md, fontWeight: 800 }} data-wi-synopsis>
                     {sel.operator_meaning}
                   </div>
@@ -599,6 +620,7 @@ export default function WatchIntelligenceUnified() {
         </select>
         <button type="button" style={pill(starredOnly)} onClick={() => setParam('starred', starredOnly ? '' : '1')}>★ Starred only</button>
         <button type="button" style={pill(heldOnly)} onClick={() => setParam('held', heldOnly ? '' : '1')}>Held only</button>
+        <button type="button" style={pill(layout === 'compact')} onClick={() => setParam('layout', 'compact')}>Compact</button>
         <button type="button" style={pill(layout === 'grid')} onClick={() => setParam('layout', 'grid')}>Grid</button>
         <button type="button" style={pill(layout === 'table')} onClick={() => setParam('layout', 'table')}>Table</button>
       </div>
@@ -624,8 +646,54 @@ export default function WatchIntelligenceUnified() {
       )}
 
       {/* 6. Cards + inspector */}
-      <div className="w9-classic-grid" style={{ display: 'grid', gridTemplateColumns: layout === 'table' ? '1fr' : 'minmax(0,1.5fr) minmax(300px,.85fr)', gap: 12, alignItems: 'start' }}>
-        {layout === 'table' ? (
+      <div className="w9-classic-grid" style={{ display: 'grid', gridTemplateColumns: layout === 'table' || (layout === 'compact' && phone.mobile) ? '1fr' : 'minmax(0,1.5fr) minmax(300px,.85fr)', gap: 12, alignItems: 'start' }}>
+        {layout === 'compact' ? (
+          // FQ-073: a scan list. One row per name — what it is, what the engine currently says, what it costs —
+          // and every row opens the full-screen reading view (the same sheet the cards use).
+          <div data-compact-list style={{ background: BB.bgPanel, border: `1px solid ${BB.border}`, borderRadius: RADIUS.md, overflow: 'hidden' }}>
+            {cards.map(c => {
+              const rowState = rowStateWords(c)
+              return (
+              <div
+                key={c.symbol}
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelected(c.symbol)}
+                onKeyDown={e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setSelected(c.symbol) } }}
+                data-compact-row
+                data-intelligence-card
+                data-symbol={c.symbol}
+                data-trade-ai-state={c.trade_ai_state}
+                data-compact-decision-status={c.decision?.status || ''}
+                data-compact-quote-state={c.quote_freshness || c.freshness_state || ''}
+                style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, minHeight: 48, padding: '8px 12px', borderBottom: `1px solid ${BB.border}`, cursor: 'pointer' }}
+              >
+                <span style={{ fontWeight: 900, fontSize: TYPE.base, minWidth: 58 }}>
+                  {c.symbol}{c.starred ? <span style={{ color: BB.amber, marginLeft: 4 }}>★</span> : null}{c.held ? <span style={{ color: BB.green, marginLeft: 4, fontSize: TYPE.xs }}>H</span> : null}
+                </span>
+                <span title={c.trade_ai_state ? `Trade AI state: ${c.trade_ai_state}` : 'Trade AI state not reported'}
+                  style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: TYPE.sm, color: stateColor(c.trade_ai_state) }}>
+                  {c.decision?.category_label || (c.decision?.category ? c.decision.category.replace(/_/g, ' ') : 'No decision on record')}
+                </span>
+                <span style={{ textAlign: 'right', fontSize: TYPE.sm, fontWeight: 800, whiteSpace: 'nowrap' }}>
+                  {money(c.last)}
+                  <span style={{ marginLeft: 6, color: Number(c.day_change_pct) >= 0 ? BB.green : BB.red }}>{pct(c.day_change_pct)}</span>
+                </span>
+                <span aria-hidden style={{ color: BB.text3, fontSize: TYPE.base }}>›</span>
+                {/* FQ-132 F2 (cx-openai-3 at c3ea49812): an expired decision and a STALE quote used to be invisible
+                    here, so the row read as a live idea. The warning line appears only when the card is not current,
+                    which keeps a healthy scan row one line long. */}
+                {rowState.length > 0 && (
+                  <span data-compact-row-state={rowState.join(' · ')}
+                    style={{ flexBasis: '100%', marginTop: -2, fontSize: TYPE.xs, color: BB.amber }}>
+                    {rowState.join(' · ')}
+                  </span>
+                )}
+              </div>
+              )
+            })}
+          </div>
+        ) : layout === 'table' ? (
           <table style={{ width: '100%', borderCollapse: 'collapse', background: BB.bgPanel, border: `1px solid ${BB.border}`, borderRadius: 12 }}>
             <thead>
               <tr>
@@ -793,6 +861,8 @@ export default function WatchIntelligenceUnified() {
           </div>
         )}
 
+        {/* FQ-132: compact needs the reading view on a desktop too — a row that selects a name and renders nothing is
+            not one tap from the reading view, it is a dead end. Phones keep the full-screen sheet instead. */}
         {layout !== 'table' && !phone.mobile && (
           <aside className="w9-classic-inspector" style={{ background: BB.bgPanel, border: `1px solid ${BB.border}`, borderRadius: 12, position: 'sticky', top: 12 }} data-intelligence-inspector>
             {inspector}
