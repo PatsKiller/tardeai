@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import py_compile
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -706,6 +708,90 @@ def test_a_directly_executed_node_test_registers_and_certifies(tmp_path):
     assert mod.check_tests(root) == []
 
 
+def test_node_check_mode_does_not_register_or_certify(tmp_path):
+    """CX3-F1 mutation: treat every positional as executed -> `node --check` certifies, red.
+
+    ``--check`` parses the file and never runs it: the real file throws when executed. The
+    recorder must fall back to running it directly (which fails) and write no receipt.
+    """
+    root = _repo(
+        tmp_path,
+        {UI_TEST_MJS: "throw new Error('this file never ran under --check');\n"},
+        base_files={
+            "apps/command-center-v3/package.json": json.dumps(_ui_pkg("node --check src/lib/zz.test.mjs"))
+        },
+    )
+    mod = _mod()
+    refusals = mod.check_registered(root)
+    assert refusals and refusals[0]["code"] == "test-not-registered"
+    assert mod.record_tests(root, verbose=False) == 1
+    assert not mod.receipt_path(root, mod.head_sha(root)).exists()
+    assert mod.check_tests(root)[0]["code"] == "tests-not-run"
+
+
+def test_node_test_flag_after_the_script_is_script_argv(tmp_path):
+    """CX3-F1 mutation: recognize --test anywhere -> a post-script --test certifies, red.
+
+    Node stops parsing its own options at the first positional (the script), so in
+    ``node driver.cjs --test zz.test.mjs`` the target is script argv and never executes. The real
+    driver only prints; the target alone throws.
+    """
+    root = _repo(
+        tmp_path,
+        {
+            DRIVER_CJS: "console.log('synthetic driver only');\n",
+            UI_TEST_MJS: "throw new Error('this file must never be certified through script argv');\n",
+        },
+        base_files={
+            "apps/command-center-v3/package.json": json.dumps(
+                _ui_pkg("node src/lib/driver.cjs --test src/lib/zz.test.mjs")
+            )
+        },
+    )
+    mod = _mod()
+    refusals = mod.check_registered(root)
+    assert refusals and refusals[0]["code"] == "test-not-registered"
+    assert mod.record_tests(root, verbose=False) == 1
+    assert not mod.receipt_path(root, mod.head_sha(root)).exists()
+
+
+def test_node_version_mode_does_not_register(tmp_path):
+    """CX3-F1 mutation: ignore non-executing modes -> `node --version <file>` registers, red."""
+    root = _repo(
+        tmp_path,
+        {UI_TEST_MJS: "console.log('ok');\n"},
+        base_files={
+            "apps/command-center-v3/package.json": json.dumps(_ui_pkg("node --version src/lib/zz.test.mjs"))
+        },
+    )
+    mod = _mod()
+    refusals = mod.check_registered(root)
+    assert refusals and refusals[0]["code"] == "test-not-registered"
+
+
+def test_node_test_runner_in_the_option_position_registers_and_certifies(tmp_path):
+    """CX3-F1 positive control: a genuine ``node --test <file>`` registration still works."""
+    content = (
+        "import test from 'node:test';\n"
+        "import assert from 'node:assert';\n\n"
+        "test('ok', () => { assert.equal(1, 1); });\n"
+    )
+    root = _repo(
+        tmp_path,
+        {UI_TEST_MJS: content},
+        base_files={
+            "apps/command-center-v3/package.json": json.dumps(_ui_pkg("node --test src/lib/zz.test.mjs"))
+        },
+    )
+    mod = _mod()
+    assert mod.check_registered(root) == []
+    assert mod.record_tests(root, verbose=False) == 0
+    receipt = _read_receipt(mod, root)
+    assert receipt["results"][0]["ran"] is True
+    assert receipt["results"][0]["counts"]["passed"] == 1
+    assert mod.check_tests(root) == []
+
+
 # ── F2: a receipt must carry per-file successful execution evidence ─────────────────────
 
 PASSING_TEST = "def test_ok():\n    assert True\n"
@@ -779,6 +865,93 @@ def test_all_skipped_is_tolerated_only_by_the_reviewed_project_list(tmp_path):
     assert receipt["skip_tolerant"] == ["tests/test_skip.py"]
     assert receipt["results"][0]["ran"] is False
     assert mod.check_tests(root) == []
+
+
+EXPLICIT_SKIP_JS = (
+    "import test from 'node:test';\n\n"
+    "test('must_execute', { skip: true }, () => { throw new Error('must not run'); });\n"
+)
+NODE_PASS_JS = (
+    "import test from 'node:test';\n"
+    "import assert from 'node:assert';\n\n"
+    "test('ok', () => { assert.equal(1, 1); });\n"
+)
+
+
+def test_a_real_node_all_skipped_test_is_refused(tmp_path):
+    """CX3-F2 mutation: trust a Node exit 0 -> the explicit-skip file is certified, red.
+
+    Actual Node TAP for this fixture is tests=1, pass=0, skipped=1; the exit code is 0.
+    """
+    root = _repo(
+        tmp_path,
+        {UI_TEST_MJS: EXPLICIT_SKIP_JS},
+        base_files={
+            "apps/command-center-v3/package.json": json.dumps(_ui_pkg("node --test src/lib/zz.test.mjs"))
+        },
+    )
+    mod = _mod()
+    assert mod.record_tests(root, verbose=False) == 1
+    assert not mod.receipt_path(root, mod.head_sha(root)).exists()
+    assert mod.check_tests(root)[0]["code"] == "tests-not-run"
+
+
+def test_a_node_runner_that_selects_no_test_is_refused(tmp_path):
+    """CX3-F2 mutation: read only the outer pass count -> a zero-selection run certifies, red.
+
+    A name pattern that matches nothing prints the plan ``1..0`` and wraps the file as a passing
+    subtest, so the outer summary says pass=1 even though no test executed.
+    """
+    root = _repo(
+        tmp_path,
+        {UI_TEST_MJS: NODE_PASS_JS},
+        base_files={
+            "apps/command-center-v3/package.json": json.dumps(
+                _ui_pkg("node --test --test-name-pattern=nomatch src/lib/zz.test.mjs")
+            )
+        },
+    )
+    mod = _mod()
+    assert mod.record_tests(root, verbose=False) == 1
+    assert not mod.receipt_path(root, mod.head_sha(root)).exists()
+
+
+def test_a_node_all_skipped_file_is_tolerated_only_by_the_reviewed_list(tmp_path):
+    """CX3-F2 mutation: ignore project provenance -> the tolerated Node file is refused, red."""
+    root = _repo(
+        tmp_path,
+        {UI_TEST_MJS: EXPLICIT_SKIP_JS},
+        base_files={
+            "apps/command-center-v3/package.json": json.dumps(_ui_pkg("node --test src/lib/zz.test.mjs")),
+            SKIP_CONFIG_REL: json.dumps(_skip_config(UI_TEST_MJS)),
+        },
+    )
+    mod = _mod()
+    assert mod.record_tests(root, verbose=False) == 0
+    receipt = _read_receipt(mod, root)
+    assert receipt["results"][0]["ran"] is False
+    assert receipt["results"][0]["counts"]["skipped"] == 1
+    assert receipt["skip_tolerant"] == [UI_TEST_MJS]
+    assert mod.check_tests(root) == []
+
+
+def test_skip_tolerance_is_refused_when_the_branch_changes_the_list(tmp_path):
+    """CX3-F2 follow-up mutation: trust the list in HEAD -> a branch-added entry tolerates, red.
+
+    The list's provenance is bound to origin/main. A branch that adds its own entry must get no
+    tolerance, so the all-skipped file is still refused.
+    """
+    root = _repo(
+        tmp_path,
+        {
+            "tests/test_skip.py": SKIPPED_TEST,
+            SKIP_CONFIG_REL: json.dumps(_skip_config("tests/test_skip.py")),
+        },
+    )
+    mod = _mod()
+    assert mod.record_tests(root, verbose=False) == 1
+    assert not mod.receipt_path(root, mod.head_sha(root)).exists()
+    assert mod.check_tests(root)[0]["code"] == "tests-not-run"
 
 
 def test_a_receipt_cannot_declare_its_own_skip_tolerance(tmp_path):
@@ -867,6 +1040,43 @@ def test_a_receipt_row_cannot_alias_the_touched_file_through_a_parent(tmp_path):
     assert refusals[0]["code"] == "tests-not-run"
     path.write_text(json.dumps(genuine), encoding="utf-8")
     assert mod.check_tests(root) == []
+
+
+def test_normalise_test_path_rejects_a_parent_alias_directly():
+    """CX3-F2 isolation: the normaliser itself rejects `..`, not only the physical-file check.
+
+    The receipt test above would still fail if the normaliser collapsed ``..`` because
+    ``_same_repo_file`` independently resolves the two names. This asserts the normaliser alone.
+    """
+    mod = _mod()
+    assert mod._normalise_test_path("link/../tests/test_demo.py") == ""
+    assert mod._normalise_test_path("./tests/test_demo.py") == "tests/test_demo.py"
+
+
+def test_the_pytest_summary_fallback_is_not_masked_by_a_quoted_passing_count():
+    """CX3-F2 isolation: the no-junit fallback reads pytest's last line, never quoted prose."""
+    mod = _mod()
+    output = "note: 1 passed in 0.02s is the historical comparison label\n1 skipped in 0.01s\n"
+    executed, counts = mod._execution_evidence("tests/test_skip.py", output, None)
+    assert executed is False
+    assert counts == {"skipped": 1}
+    executed, counts = mod._execution_evidence("tests/test_demo.py", "1 passed in 0.01s\n", None)
+    assert executed is True
+    assert counts == {"passed": 1}
+
+
+def test_the_junit_classifier_is_used_when_a_report_exists(tmp_path):
+    """CX3-F2 isolation: a junit report wins over a passing line in the captured output."""
+    mod = _mod()
+    report = tmp_path / "report.xml"
+    report.write_text(
+        "<testsuites><testsuite><testcase name='a'><skipped/></testcase></testsuite></testsuites>",
+        encoding="utf-8",
+    )
+    executed, counts = mod._execution_evidence("tests/test_demo.py", "1 passed in 0.01s\n", report)
+    assert executed is False
+    assert counts["skipped"] == 1
+    assert counts["passed"] == 0
 
 
 def test_a_receipt_without_a_successful_row_for_every_touched_file_is_refused(tmp_path):
@@ -1035,6 +1245,75 @@ def test_untracked_source_cannot_certify_a_committed_failing_test(tmp_path):
     assert not mod.receipt_path(root, head).exists()
     (root / "tests" / "missing_helper.py").write_text("VALUE = 1\n", encoding="utf-8")
     assert mod.record_tests(root, verbose=False) == 1  # untracked source is refused before the run
+    assert not mod.receipt_path(root, head).exists()
+    assert mod.check_tests(root)[0]["code"] == "tests-not-run"
+
+
+ROOT_CONFTEST = (
+    "import sys\n"
+    "from pathlib import Path\n\n"
+    "_ROOT = Path(__file__).resolve().parents[1]\n"
+    "if str(_ROOT) not in sys.path:\n"
+    "    sys.path.insert(0, str(_ROOT))\n"
+)
+IMPORT_HELPER_TEST = "import missing_helper\n\n\ndef test_ok():\n    assert missing_helper.VALUE == 1\n"
+
+
+def _direct_pytest(root: Path) -> int:
+    """Run the committed test file with real pytest, as a person would, to prove the false green."""
+    proc = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "tests/test_demo.py"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    return proc.returncode
+
+
+def test_a_gitignored_root_level_helper_cannot_certify_a_committed_failing_test(tmp_path):
+    """CX3-F3 mutation: scan only the usual source dirs for ignored files -> root helper certifies.
+
+    The committed test imports ``missing_helper``. ``tests/conftest.py`` puts the repository root
+    on ``sys.path`` (as the project's own conftest does), so an IGNORED root-level module really
+    turns the committed suite green; the recorder must still refuse it as untracked source.
+    """
+    root = _repo(
+        tmp_path,
+        {"tests/test_demo.py": IMPORT_HELPER_TEST, ".gitignore": "/missing_helper.py\n"},
+        base_files={"tests/conftest.py": ROOT_CONFTEST},
+    )
+    mod = _mod()
+    head = mod.head_sha(root)
+    assert mod.record_tests(root, verbose=False) == 1  # the committed tree fails collection
+    (root / "missing_helper.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _direct_pytest(root)  # the uncommitted root module really does make the suite green
+    assert mod.record_tests(root, verbose=False) == 1  # ignored root source is still source
+    assert not mod.receipt_path(root, head).exists()
+    assert mod.check_tests(root)[0]["code"] == "tests-not-run"
+
+
+def test_a_sourceless_bytecode_helper_cannot_certify_a_committed_failing_test(tmp_path):
+    """CX3-F3 mutation: treat every .pyc as inert -> sourceless bytecode certifies, red.
+
+    A legacy-location ``tests/missing_helper.pyc`` (no source) satisfies the committed import and
+    makes the suite green. Cached bytecode inside ``__pycache__`` stays allowed; importable
+    bytecode outside it does not.
+    """
+    root = _repo(
+        tmp_path,
+        {"tests/test_demo.py": IMPORT_HELPER_TEST},
+        base_files={"tests/conftest.py": ROOT_CONFTEST},
+    )
+    mod = _mod()
+    head = mod.head_sha(root)
+    assert mod.record_tests(root, verbose=False) == 1
+    source = tmp_path / "missing_helper_source.py"
+    source.write_text("VALUE = 1\n", encoding="utf-8")
+    py_compile.compile(str(source), cfile=str(root / "tests" / "missing_helper.pyc"), doraise=True)
+    _direct_pytest(root)  # the sourceless bytecode really does satisfy the import
+    assert mod.record_tests(root, verbose=False) == 1
     assert not mod.receipt_path(root, head).exists()
     assert mod.check_tests(root)[0]["code"] == "tests-not-run"
 

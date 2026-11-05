@@ -15,16 +15,21 @@ What it refuses, in operator language:
   is read from a structured runner result (pytest's ``--junitxml`` report, else its final summary
   line), never from prose. A receipt for another head, a missing or empty result list, an unsafe
   path alias, an unrelated result, a nonzero exit, or a run where nothing executed (all skipped /
-  no tests ran) is refused. Recording refuses dirty tracked source, untracked source or config
-  that could change execution, and a head that moves during the run, so the receipt can never bind
-  the committed head to different working files. A zero-assertion run is tolerated only for a file
-  the reviewed project list ``config/ci_skip_tolerant_units.json`` names with a reason; there is
-  no caller-selected waiver.
+  no tests ran, including a Node runner that selected zero tests) is refused. Recording refuses
+  dirty tracked source, untracked source or config that could change execution (ignored files
+  included, anywhere in the worktree, because the repository root and ``scripts`` are import
+  roots), and a head that moves during the run, so the receipt can never bind the committed head
+  to different working files. A zero-assertion run is tolerated only for a file the reviewed
+  project list ``config/ci_skip_tolerant_units.json`` names with a reason; the list's provenance
+  is bound to ``origin/main``, so a branch that edits it gets no tolerance. There is no
+  caller-selected waiver.
 * **test-not-registered** — a new or renamed test would never run. A Python test must be named in
   some ``config/ci_gates/*.json``; a UI test must be the executable input of a ``node ...`` step
   of ``apps/command-center-v3``'s ``package.json`` ``scripts.build`` (the string runs from the app
   directory, so it names ``src/lib/x.test.ts``, not the repository path). A test that appears only
-  as an argument to another script (``node driver.cjs x.test.ts``) is not registered.
+  as an argument to another script (``node driver.cjs x.test.ts``), as a post-script
+  ``--test``/script argv, or under a non-executing mode (``--check``, ``--version``) is not
+  registered.
 * **plain-english** — the pull request description lacks its plain-English answers. This reuses the
   repository's own ``scripts/check_pr_plain_english.py`` (the six answers under
   ``## In plain English``); a draft is not exempt here because this runs before upload.
@@ -83,9 +88,13 @@ _PYTEST_SUMMARY_COUNT_RE = re.compile(r"\b(\d+) (passed|failed|errors?|skipped|x
 
 # Untracked files that cannot change what a test execution does. Anything else untracked (a
 # module, conftest, pytest config or fixture) is refused: it can make a committed test pass.
+# Only CACHED bytecode is inert. A ``.pyc`` inside ``__pycache__`` is used only when the source it
+# was compiled from is present and matches, so it cannot satisfy an import by itself. A sourceless
+# ``.pyc`` placed where a module would live (the legacy location outside ``__pycache__``) IS
+# importable, and ``.pyd``/``.so`` extension modules are importable anywhere: those are source.
 _INERT_UNTRACKED_RE = re.compile(
     r"(^|/)(__pycache__|\.pytest_cache|\.mypy_cache|\.ruff_cache|\.hypothesis|htmlcov)(/|$)"
-    r"|\.(pyc|pyo|pyd|coverage|log)$"
+    r"|\.(coverage|log)$"
     r"|(^|/)coverage\.(xml|json)$"
     r"|(^|/)\.coverage(\..*)?$"
 )
@@ -100,13 +109,17 @@ Each refusal is one plain-English line and exit code 1; a clean run prints nothi
                        The receipt must carry a successful execution row for every touched file;
                        a receipt for another head is refused by name and is never accepted.
                        Recording refuses dirty tracked source, untracked source or config that
-                       could change execution, and a head that moves during the run. An
-                       all-skipped run is tolerated only for a file listed with a reason in
-                       config/ci_skip_tolerant_units.json; there is no caller waiver.
+                       could change execution (gitignored files included, anywhere in the
+                       worktree), and a head that moves during the run. An all-skipped run is
+                       tolerated only for a file listed with a reason in
+                       config/ci_skip_tolerant_units.json, and only when this branch does not
+                       change that list; there is no caller waiver.
   test-not-registered  A new or renamed test would never run in CI. Fix: name a Python test in a
                        config/ci_gates/<gate>.json file, or add a UI test as an app-relative path
                        (src/lib/x.test.ts) to a `node ...` step in the apps/command-center-v3
-                       package.json "scripts.build" string.
+                       package.json "scripts.build" string. It must be the file node really
+                       executes: a `--check`/`--version` mode or a `--test` after the script
+                       itself does not count.
   plain-english        The pull request lacks its plain-English answers. Fix: fill the six answers
                        under "## In plain English" in the PR description (the same rule as
                        scripts/check_pr_plain_english.py). A draft is not exempt.
@@ -244,6 +257,43 @@ def _counts_executed(counts: dict | None) -> bool | None:
     return ran > 0
 
 
+#: Node's TAP summary counters (``# tests 1`` / ``# pass 0`` / ...) and its plan line (``1..0``).
+_NODE_TAP_COUNTER_RE = re.compile(r"^# (tests|pass|fail|skipped|todo|cancelled)\s+(\d+)$")
+_NODE_TAP_PLAN_RE = re.compile(r"^1\.\.(\d+)$")
+
+
+def _node_tap_counts(output: str) -> dict[str, int] | None:
+    """Per-outcome counts from a Node test-runner TAP report, or None when there is none.
+
+    Node's test runner (direct or under ``--test``) prints a TAP summary. A run in which the
+    runner selected nothing prints the plan ``1..0`` and can still exit 0 — an outer file wrapper
+    may even report ``# pass 1`` — so a zero plan is treated as zero executed. ``pass`` + ``fail``
+    are the tests that actually ran; ``skipped``/``todo`` did not.
+    """
+    counters: dict[str, int] = {}
+    zero_plan = False
+    for raw in (output or "").splitlines():
+        line = raw.strip()
+        counter = _NODE_TAP_COUNTER_RE.match(line)
+        if counter:
+            counters[counter.group(1)] = int(counter.group(2))
+            continue
+        plan = _NODE_TAP_PLAN_RE.match(line)
+        if plan and int(plan.group(1)) == 0:
+            zero_plan = True
+    if not counters and not zero_plan:
+        return None
+    if zero_plan:
+        return {"total": 0, "passed": 0, "failed": 0, "errors": 0, "skipped": counters.get("skipped", 0)}
+    return {
+        "total": counters.get("tests", 0),
+        "passed": counters.get("pass", 0),
+        "failed": counters.get("fail", 0),
+        "errors": 0,
+        "skipped": counters.get("skipped", 0),
+    }
+
+
 def _junit_counts(path: Path | None) -> dict[str, int] | None:
     """Per-outcome counts from a pytest ``--junitxml`` report, or None when it is unusable."""
     if path is None:
@@ -277,13 +327,18 @@ def _junit_counts(path: Path | None) -> dict[str, int] | None:
 def _execution_evidence(path: str, output: str, junit_path: Path | None) -> tuple[bool | None, dict | None]:
     """Whether at least one test executed, from a structured result (never a prose match).
 
-    A UI test run by node has no pytest report; its exit code is the evidence and the per-file
-    receipt still has to claim it. A Python run is judged from its junit report, or, when the
-    injected runner wrote none, from pytest's own final summary line. ``(None, ...)`` means the
-    result could not prove execution and the recorder must refuse it.
+    A Python run is judged from its junit report, or, when the injected runner wrote none, from
+    pytest's own final summary line. A UI test is judged from a Node TAP report when the run
+    produced one (a test runner that selected nothing reports ``1..0`` / ``pass 0`` and must not
+    certify); a plain assertion script that prints no TAP is executed by definition when it exits
+    clean, so its exit code remains the evidence. ``(None, ...)`` means the result could not prove
+    execution and the recorder must refuse it.
     """
     if is_ui_test(path):
-        return True, None
+        counts = _node_tap_counts(output)
+        if counts is None:
+            return True, None
+        return _counts_executed(counts), counts
     counts = _junit_counts(junit_path) if junit_path is not None else None
     if counts is None:
         counts = _pytest_summary_counts(output)
@@ -419,14 +474,36 @@ def _refusal(code: str, message: str) -> dict:
     return {"code": code, "message": " ".join(message.split())}
 
 
+def _skip_list_is_a_branch_change(root: Path) -> bool:
+    """True when this branch itself adds or edits the reviewed skip-tolerant list.
+
+    Tolerance is project provenance, not a property a branch can grant itself: a branch that
+    changes the list could name its own zero-execution file and get a receipt. Tolerance is
+    therefore refused unless the list is unchanged relative to ``origin/main``. A provenance check
+    that cannot run is also treated as a branch change (fail closed).
+    """
+    try:
+        out = _git(
+            ["diff", "--name-only", f"{BASE_REF}...HEAD", "--", SKIP_TOLERANT_REL],
+            root,
+            what=f"git diff {BASE_REF}...HEAD -- {SKIP_TOLERANT_REL}",
+        ).stdout
+    except PreflightError:
+        return True
+    return bool(out.strip())
+
+
 def load_skip_tolerant(root: Path) -> set[str]:
     """Test files the reviewed project list tolerates running zero tests.
 
     The list is ``config/ci_skip_tolerant_units.json`` read from the committed HEAD tree, never
     from a caller argument and never from the receipt: a caller flag is not a project exception,
     and a receipt cannot declare its own tolerance. Every entry must carry a non-empty reason; a
-    missing or malformed list tolerates nothing (fail closed).
+    missing or malformed list tolerates nothing (fail closed). The list's provenance is bound to
+    ``origin/main``: when this branch changes the list, tolerance is refused outright.
     """
+    if _skip_list_is_a_branch_change(root):
+        return set()
     try:
         proc = _git(
             ["show", f"HEAD:{SKIP_TOLERANT_REL}"],
@@ -578,7 +655,10 @@ def check_tests(root: Path) -> list[dict]:
             problems.append(f"{path} (no execution flag in its result row)")
             continue
         if is_ui_test(path):
-            derived: bool | None = True
+            # A Node TAP report proves what ran; a plain assertion script has no TAP and its
+            # clean exit is the evidence. Never accept a report that says nothing executed.
+            counts = row.get("counts")
+            derived = _counts_executed(counts) if isinstance(counts, dict) else True
         else:
             counts = row.get("counts")
             derived = _counts_executed(counts) if isinstance(counts, dict) else None
@@ -635,40 +715,63 @@ _NODE_ARG_OPTS = frozenset(
 )
 #: Node options whose input is inline code, so no file is the executable.
 _NODE_INLINE_OPTS = frozenset({"-e", "--eval", "-p", "--print"})
+#: Node modes that never execute their positional file: syntax check, version/help output and the
+#: V8 option dump. A touched test named to one of these never runs, so it must not register or
+#: certify.
+_NODE_NONEXEC_MODES = frozenset(
+    {
+        "-c",
+        "--check",
+        "-v",
+        "--version",
+        "-h",
+        "--help",
+        "--v8-options",
+        "--completion-bash",
+    }
+)
 
 
-def _node_selection(tokens: list[str]) -> tuple[list[str], bool, bool]:
-    """``(positionals, inline_code, test_runner_mode)`` for a ``node`` argv.
+def _node_selection(tokens: list[str]) -> tuple[list[str], bool, bool, bool]:
+    """``(positionals, inline_code, test_runner_mode, nonexecuting_mode)`` for a ``node`` argv.
 
-    ``node`` executes its FIRST positional as the script. ``--test`` makes every positional a test
-    input. ``--eval``/``--print`` execute inline code and give no file the script slot. An option
-    that takes a value is skipped with its value. A test that appears only as a later argument
-    (``node driver.cjs x.test.ts``) is therefore not selected and must not register.
+    ``node`` parses its OWN options only up to the first positional: that token is the script, and
+    everything after it is the script's argv. So ``--test`` before the script selects test inputs
+    (``node --test x.test.ts``), while ``--test`` after the script is script argv
+    (``node driver.cjs --test x.test.ts``) and selects nothing. ``--eval``/``--print`` execute
+    inline code, ``--check``/``--version``/``--help`` never execute the file, and an option that
+    takes a value is skipped with its value. None of those certify a touched file.
     """
     args = tokens[1:]
     positionals: list[str] = []
     inline = False
     test_mode = False
+    nonexec = False
+    options_open = True
     index = 0
     while index < len(args):
         token = args[index]
-        if token == "--":
-            positionals.extend(args[index + 1 :])
-            break
-        if token.startswith("-") and token != "-":
+        if options_open and token == "--":
+            options_open = False
+            index += 1
+            continue
+        if options_open and token.startswith("-") and token != "-":
             name = token.split("=", 1)[0]
             if name in _NODE_INLINE_OPTS:
                 inline = True
             if name == "--test":
                 test_mode = True
+            if name in _NODE_NONEXEC_MODES:
+                nonexec = True
             if "=" not in token and token in _NODE_ARG_OPTS:
                 index += 2
                 continue
             index += 1
             continue
         positionals.append(token)
+        options_open = False  # node stops parsing its own options at the script/input
         index += 1
-    return positionals, inline, test_mode
+    return positionals, inline, test_mode, nonexec
 
 
 def ui_build_command(root: Path, path: str) -> list[str] | None:
@@ -676,8 +779,9 @@ def ui_build_command(root: Path, path: str) -> list[str] | None:
 
     ``scripts.build`` runs from ``apps/command-center-v3`` and names its files app-relatively
     (``src/lib/x.test.ts``). The test must be the command's executable input — the first
-    positional after node's own options, or a positional selected by ``--test`` — never a
-    substring, a later argument, an option value, or prose.
+    positional after node's own options, or a positional selected by ``--test`` in the option
+    position — never a substring, a later argument, an option value, or prose. A syntax-check,
+    version, help or inline-eval mode never executes the file and never registers it.
     """
     rel = _normalise_test_path(path[len(UI_APP) + 1 :])
     if not rel:
@@ -689,8 +793,8 @@ def ui_build_command(root: Path, path: str) -> list[str] | None:
             continue
         if not tokens or Path(tokens[0]).name != "node":
             continue
-        positionals, inline, test_mode = _node_selection(tokens)
-        if inline:
+        positionals, inline, test_mode, nonexec = _node_selection(tokens)
+        if inline or nonexec:
             continue
         selected = [_normalise_test_path(token) for token in positionals]
         if test_mode:
@@ -996,17 +1100,16 @@ def _tracked_source_changes(root: Path) -> list[str]:
     return [line for line in out.splitlines() if line.strip()]
 
 
-#: Directories and files whose ignored (but untracked) contents can still change a test run.
-_SOURCE_SCAN_PATHS = ("tests", "scripts", "conftest.py", "pytest.ini", "pyproject.toml", "setup.cfg", "tox.ini", f"{UI_APP}/src")
-
-
 def _untracked_source_changes(root: Path) -> list[str]:
     """Untracked files that could change what the tests do.
 
     An untracked module, conftest, pytest config or fixture can make a committed test pass (or
     fail) differently, so it is refused before the run. That includes a GITIGNORED helper: Python
-    and node imports do not consult `.gitignore`. Identified build/cache outputs (``__pycache__``,
-    ``.pytest_cache``, coverage files, logs) are inert and allowed.
+    and node imports do not consult ``.gitignore``, and the repository root plus ``scripts`` are
+    on ``sys.path`` for every test run (``tests/conftest.py``), so an ignored file ANYWHERE — at
+    the repo root as much as under ``tests`` — can satisfy an import. Ignored files are therefore
+    scanned across the whole worktree, not just the usual source directories. Identified
+    build/cache outputs (``__pycache__`` bytecode, coverage files, logs) are inert and allowed.
     """
     paths: list[str] = []
     proc = _git(
@@ -1016,7 +1119,7 @@ def _untracked_source_changes(root: Path) -> list[str]:
     )
     paths.extend(part for part in proc.stdout.split("\0") if part.strip())
     ignored = _git(
-        ["ls-files", "--others", "--ignored", "--exclude-standard", "-z", "--", *_SOURCE_SCAN_PATHS],
+        ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"],
         root,
         what="git ls-files --others --ignored --exclude-standard",
     )
