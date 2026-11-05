@@ -42,7 +42,7 @@ Config, not code: the operator can change the threshold or the window without a 
 ## How to run it
 
 ```
-.venv/bin/python scripts/protective_put_advisory.py --holdings data/portfolios/state/holdings.json
+.venv/bin/python scripts/protective_put_advisory.py --holdings /path/to/a/holdings-document.json
 .venv/bin/python scripts/protective_put_advisory.py --holdings H --events events.json --chains chains.json --json
 ```
 

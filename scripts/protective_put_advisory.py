@@ -5,7 +5,7 @@ Read-only by construction: it reads a holdings document and optional event/chain
 prints the suggestions. It never writes a store, never calls a broker, and there is no flag that
 makes it place anything (AGENTS.md §0 rule 1, MBI_BEHAVIOR = 0).
 
-    .venv/bin/python scripts/protective_put_advisory.py --holdings data/portfolios/state/holdings.json
+    .venv/bin/python scripts/protective_put_advisory.py            # the position store
     .venv/bin/python scripts/protective_put_advisory.py --holdings H --events E --chains C --json
 
 Book value defaults to the summed position market values when the holdings document does not carry
@@ -21,6 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from lib import portfolio_positions as pp  # noqa: E402
 from lib.options_pipeline.protective_put_advisory import (  # noqa: E402
     SCHEMA,
     load_config,
@@ -28,10 +29,19 @@ from lib.options_pipeline.protective_put_advisory import (  # noqa: E402
     suggest_for_book,
 )
 
-DEFAULT_HOLDINGS = ROOT / "data" / "portfolios" / "state" / "holdings.json"
-
 
 def _load(path: str | None) -> object:
+    """The position store, through the ONE sanctioned reader (lib.portfolio_positions.load_store).
+
+    The repo ratchets direct readers of the holdings store (test_portfolio_price_truth_20261005): a
+    script that opens the store file itself is a bypass, however read-only it is.
+    """
+    if not path:
+        return pp.load_store()
+    return pp.load_store(Path(path))
+
+
+def _load_json(path: str | None) -> object:
     if not path:
         return None
     return json.loads(Path(path).read_text(encoding="utf-8"))
@@ -49,7 +59,7 @@ def _positions(doc: object) -> list[dict]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--holdings", default=str(DEFAULT_HOLDINGS), help="holdings document (default: %(default)s)")
+    parser.add_argument("--holdings", help="holdings document (default: the position store, via lib.portfolio_positions)")
     parser.add_argument("--events", help="JSON {symbol: {event_date, days_to_event}}")
     parser.add_argument("--chains", help="JSON {symbol: {underlying_price, expirations:[...]}}")
     parser.add_argument("--book-value", type=float, help="whole-book value (default: sum of market values)")
@@ -69,8 +79,8 @@ def main(argv: list[str] | None = None) -> int:
         book = round(sum(values), 2) if values else 0.0
 
     try:
-        events_doc = _load(args.events) if args.events else {}
-        chains_doc = _load(args.chains) if args.chains else {}
+        events_doc = _load_json(args.events) if args.events else {}
+        chains_doc = _load_json(args.chains) if args.chains else {}
     except (OSError, ValueError) as exc:
         print(f"cannot read events/chains: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
