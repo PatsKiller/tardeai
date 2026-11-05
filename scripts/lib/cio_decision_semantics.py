@@ -8,6 +8,9 @@ Canonical operator-facing decision semantics for Alex / Command Center / reports
   * Map internal enums to professional prose
   * Require ticker identity proof before a symbol enters CIO output
   * Stable decision_id so CIO NOW / report / Telegram share one identity
+  * REVIEW is deliberately asymmetric across the two resolvers: `stance_from_queue_item` honours a recorded
+    REVIEW as final (prose cannot overrule a verdict), while `resolve_display_stance` lets a decisive label speak
+    because the capital plan reads a TRIM for the sizing engine from the label when the stance is REVIEW
 
 Pure and deterministic. No broker / order / stop / 2FA / Telegram side effects.
 """
@@ -629,10 +632,12 @@ def resolve_display_stance(cio_stance: Any, why_now: Any = None) -> str:
     """Eliminate HOLD + TRIM contradictions for operator-facing stance — without letting prose outrank a decision.
 
     The contradiction this exists for is a row whose stance is the DEFAULT (no decision was recorded, so it reads
-    HOLD) while its prose says something decisive: there the prose may speak. Every DECISIVE stance — ADD, TRIM, EXIT,
-    RE_ENTER, REVIEW — is a decision, and the module's rule is that prose has zero authority over one. cc-deepseek-6's
+    HOLD) while its prose says something decisive: there the prose may speak. Every DECIDED stance — ADD, TRIM, EXIT,
+    RE_ENTER — is final, and the module's rule is that prose has zero authority over one. cc-deepseek-6's
     FQ-103 finding reproduced here one level over: `resolve_display_stance("ADD", "Advisory EXIT — SYNX")` returned
-    EXIT and called a recorded ADD an exit; a decisive formal stance now wins unconditionally.
+    EXIT and called a recorded ADD an exit; a decisive formal stance now wins unconditionally. REVIEW is not in that
+    set — it means "look again", and the capital plan reads a TRIM for the sizing engine from the label when the
+    stance is REVIEW, so REVIEW still yields to a decisive label.
 
     **The limit, stated rather than hidden:** this function receives a stance string, not a verdict, so a HOLD is
     ambiguous — it is the default value AND it is a valid recorded stance. A HOLD therefore still yields to decisive
