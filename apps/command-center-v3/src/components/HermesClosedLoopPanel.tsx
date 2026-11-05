@@ -180,7 +180,9 @@ function HoldoutBadge({ holdout }: { holdout?: { passed?: boolean; skipped?: boo
   )
 }
 
-function CandidateTable({ rows, tid }: { rows: any[]; tid?: string }) {
+// Exported for the rendered legibility test (FQ-025): the pre-change table used a fixed 0.7fr grid at fontSize 8/10,
+// which is what the operator reported as unreadable on a phone. A source-grep test cannot see that; rendering can.
+export function CandidateTable({ rows, tid }: { rows: any[]; tid?: string }) {
   if (!rows?.length) return null
   return (
     <div style={{ marginTop: 8, overflowX: 'auto' }}>
