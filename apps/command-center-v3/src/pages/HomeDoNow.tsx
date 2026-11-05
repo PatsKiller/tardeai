@@ -17,7 +17,7 @@ import { BEST_OPPORTUNITIES_API, BEST_OPPORTUNITIES_PATH } from '../lib/bestOppo
 import { useApi } from '../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars, type Tone } from '../lib/designTokens'
 import {
-  doNowFrom, homeWithCurrentTruth, positionsFreshness, moversBars, accountRows, cashPct, money, pct, ageLabel, briefingSummary,
+  doNowFrom, homeWithCurrentTruth, positionsFreshness, moversBars, accountRows, cashPct, money, pct, ageLabel, ageFromClock, briefingSummary,
 } from '../lib/homeDoNow'
 import { platformHealthFrom, countsLabel } from '../lib/platformHealth'
 import { renderSetupCounts } from '../lib/setupRunSummary'
@@ -142,7 +142,7 @@ export default function HomeDoNow() {
   const cio = unwrap(cioApi.data)
   const dn = homeWithCurrentTruth(doNowFrom(doNowApi.data, { loading: doNowApi.loading,
     error: doNowApi.error ?? (doNowApi.stale ? 'queue refresh failed; showing the last answer' : undefined), nowMs: now }),
-    cio, overview, cioApi.error, { positionsStale: cioApi.stale, approvalsStale: overviewStale || !!overviewError })
+    cio, overview, cioApi.error, { positionsStale: cioApi.stale, approvalsStale: overviewStale || !!overviewError, nowMs: now })
   const pos = positionsFreshness(overview, now)
   const pv: number | null = overview?.portfolio_value ?? null
   const todayChg: number | null = overview?.today_change ?? null
@@ -401,7 +401,11 @@ export default function HomeDoNow() {
       </div>
       <div style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}
         title="Summary, cash and movers use overview. Protection uses categorized CIO positions, shared with Risk. Each retains its own source clock.">
-        Do-now as of <time dateTime={dn.asOf ?? undefined}>{readableTime(dn.asOf) ?? '—'}</time>{dn.asOf ? ` (${ageLabel((now - Date.parse(dn.asOf)) / 1000)} ago)` : ''} · positions: {readableTimesInText(n.positionsSource)}
+        Do-now as of {dn.asOf
+          ? <><time dateTime={dn.asOf}>{readableTime(dn.asOf) ?? dn.asOf}</time>{ageFromClock(dn.asOf, now) != null
+              ? ` (${ageLabel(ageFromClock(dn.asOf, now))} ago)`
+              : ' (age UNAVAILABLE — the clock on this payload could not be read)'}</>
+          : <><strong style={{ color: TOKENS.warning }}>UNAVAILABLE</strong> — the do-now payload carries no clock, so its age cannot be measured</>} · positions: {readableTimesInText(n.positionsSource)}
       </div>
     </div>
   )
