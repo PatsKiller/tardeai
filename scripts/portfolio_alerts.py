@@ -166,9 +166,9 @@ def fetch_dividend_alerts(tickers: List[str], project_root: Path,
                   annual_dividend_per_share, frequency
              FROM ticker_dividend_data
             WHERE symbol = ANY(%s)
-              AND ex_div_date BETWEEN CURRENT_DATE AND CURRENT_DATE + %s::int
+              AND ex_div_date BETWEEN CURRENT_DATE AND CURRENT_DATE + %s::int AND COALESCE(source, '') !~* %s
             ORDER BY ex_div_date""",
-        ([t.upper() for t in tickers], days_ahead),
+        ([t.upper() for t in tickers], days_ahead, _div_retired_pattern()),
     )
     results = []
     for r in rows:
@@ -699,3 +699,12 @@ def send_weekly_digest(portfolio: dict, journal: dict, technical: dict,
         msg += f"\n\n{_overlap_lines}"
     if _send_telegram(msg, project_root):
         print("  [alerts] Weekly digest sent")
+
+
+def _div_retired_pattern() -> str:
+    """Bound retired-provider regex, never a SQL fragment. Defined last: line pins above."""
+    try:
+        from scripts.lib.dividend_source_trust import RETIRED_SOURCE_PATTERN
+    except ImportError:  # pragma: no cover -- hub import path
+        from lib.dividend_source_trust import RETIRED_SOURCE_PATTERN  # type: ignore
+    return RETIRED_SOURCE_PATTERN
