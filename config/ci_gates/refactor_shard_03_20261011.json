@@ -2,10 +2,6 @@
   "schema": "CiGate@v1",
   "name": "refactor_shard_03_20261011",
   "files": [
-    "tests/test_refactor_shard_03_20261011.py",
-    "tests/test_ask_alerts_receipt_20261103.py"
-  ],
-  "comment": [
-    "ask-alerts (jobs coverage audit 2026-11-03): the registry reads the lane's LaneRunReceipt ok_at (not the alert store mtime), and the evaluation is honest — a failed news query, an unsaved alert event or a corrupt store fails the run with ok_at preserved instead of reporting a green run that lost an alert."
+    "tests/test_refactor_shard_03_20261011.py"
   ]
 }
