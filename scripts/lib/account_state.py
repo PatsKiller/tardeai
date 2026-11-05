@@ -216,6 +216,7 @@ def classify_account_state(
     manual_as_of: Any = None,
     market_hours_only: bool = False,
     market_service=None,
+    sync_precision: str = "",
 ) -> dict[str, Any]:
     """Classify one account. Pure: no I/O, no clock unless `now` is omitted.
 
@@ -223,9 +224,14 @@ def classify_account_state(
       NO_API_MANUAL   the registry says there is no API. state_as_of = manual_as_of.
       SERVICE_DOWN    the sync's service is failed, or its last run errored.
                       state_as_of = the last successful sync (may be None).
-      LIVE            an API sync landed inside the window.
+      LIVE            an API sync landed inside the window — where "the window"
+                      is measured in market hours when the domain says so.
       STALE           a sync exists but is older than the window — or no sync
                       has ever landed (a never-synced API account is not LIVE).
+
+    `sync_precision` is "day" when the clock came from a date-only observation; it is disclosed in the LIVE reason
+    whenever the wall age exceeds the named window, because only market-hours counting (not the clock's freshness)
+    justifies that pair.
     """
     now_utc = _utc(now)
     kind = (str(sync_kind or SYNC_KIND_API)).strip().lower()
@@ -281,8 +287,16 @@ def classify_account_state(
                 "freshness_error": type(exc).__name__,
                 "state_reason": "freshness calendar unavailable; current observation cannot be certified"}
     if not stale:
+        reason = f"synced {sync_age:.1f}h ago (window {win:g}h)"
+        if market_hours_only is True and sync_age is not None and sync_age > win:
+            # The window is measured in market hours, so a wall age greater than the window is not a
+            # contradiction — it is the statement that no session has closed since the stamp. Say so, and
+            # say when the clock is only day-precision, instead of printing "61h ago (window 26h)" beside LIVE.
+            clock = "day-precision " if sync_precision == "day" else ""
+            reason = (f"synced {sync_age:.1f}h ago (window {win:g}h; market-hours-only window — "
+                      f"no session has closed since the {clock}stamp)")
         return {**base, "state": STATE_LIVE,
-                "state_reason": f"synced {sync_age:.1f}h ago (window {win:g}h)",
+                "state_reason": reason,
                 "state_as_of": sync_iso}
 
     return {**base, "state": STATE_STALE,
@@ -560,6 +574,7 @@ def _classify_one(acct_key: str, summary: dict[str, Any], rows: list[dict[str, A
         service_failed=service_failed, service_detail=service_detail, service_unit=service_unit,
         last_run_error=last_run_error, manual_as_of=manual_as_of,
         market_hours_only=market_only,
+        sync_precision="day" if "(day precision)" in (sync_src or "") else "instant",
     )
     block["evidence"] = evidence
 

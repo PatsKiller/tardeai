@@ -14,8 +14,15 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 
-def document():
-    now = datetime.now(timezone.utc).isoformat()
+def document(now=None):
+    """The holdings payload with every clock built from ONE instant.
+
+    Callers that compare against an injected ``now`` must pass it here too: a fixture left on the wall clock
+    silently becomes "the future" relative to the injected instant and the projection refuses it
+    (``invalid_account_clock``), which is exactly how the date-only test passed on the day it was written and
+    never again.
+    """
+    now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).isoformat()
     return {
         "as_of": now,
         "holdings": [
@@ -572,17 +579,24 @@ def test_calendar_failure_withholds_advice_but_keeps_neutral_market_data(actual_
 
 
 def date_only_projection(producer, now, stamp):
-    """One projection where EVERY position clock is a plain date and both sides of the comparison use ``now``.
+    """One projection where EVERY position clock is a plain date and EVERY clock around it comes from ``now``.
 
     ``date.today()`` reads the HOST zone while the staleness check reads UTC, so a host west of UTC saw the stamp
     already 24h old and the test failed every evening for a reason it never named. One injected clock removes that.
-    Every row is re-stamped, otherwise a sibling row keeps the fixture's own clock and decides the answer instead.
+    The producer itself keeps its own (wall-clock) fixture for the inner projection, because an injected instant in
+    the future would make that inner projection reject its own engine clock; the engine and cache clocks on the
+    returned payload are then re-stamped from ``now``. The holdings are rebuilt from ``document(now=now)`` for the
+    same reason the rows are re-stamped: a sibling account/cache/engine clock left on the wall decides the answer
+    instead — on 2026-11-05 the fixture clocks were "in the future" of this test's ``now`` and it read UNAVAILABLE.
     """
     from lib.rotation_publication import project_summary
     run, ctx = producer
     result = run()
-    now = now or datetime.now(timezone.utc)  # after run(): the projection's own clock must not be in the future
+    now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     stamp = stamp or now.date().isoformat()
+    ctx['holdings'] = document(now=now)
+    result['generated_at'] = now.isoformat()   # engine clock, from the same instant as the comparison
+    result['_cached_ts'] = now.timestamp()     # cache clock; the producer stamps it from the wall
     for row in ctx['holdings']['holdings']:
         for field in ('broker_position_as_of_at', 'provider_observed_at', 'observation'):
             row.pop(field, None)
@@ -605,9 +619,16 @@ def test_a_date_only_position_clock_is_accepted_at_day_precision_not_withheld(pr
     assert publication['source_as_of'].endswith('T00:00:00Z')
 
 
-def test_a_date_only_clock_ages_out_once_a_session_has_been_missed(producer):
+@pytest.mark.parametrize("now, stamp", [
+    # 25h after the start-of-day instant on a trading day. Two fixed instants three days apart so a repair that
+    # merely advances the constant to "today" is still caught, and the pair can never silently depend on the day
+    # this file is run.
+    (datetime(2026, 11, 4, 1, 0, tzinfo=timezone.utc), '2026-11-03'),
+    (datetime(2026, 11, 7, 1, 0, tzinfo=timezone.utc), '2026-11-06'),
+])
+def test_a_date_only_clock_ages_out_once_a_session_has_been_missed(producer, now, stamp):
     """The freshness claim is bounded, and here is the bound: 25h after the start-of-day instant on a trading day."""
-    out = date_only_projection(producer, datetime(2026, 11, 4, 1, 0, tzinfo=timezone.utc), '2026-11-03')
+    out = date_only_projection(producer, now, stamp)
     publication = out['publication']
     assert publication['status'] == 'STALE', publication
     assert 'position_evidence_stale' in publication['reasons'], publication

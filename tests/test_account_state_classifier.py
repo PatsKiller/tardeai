@@ -491,6 +491,47 @@ def test_producer_uses_the_declared_session_policy_without_changing_financial_fi
     assert result["synthetic_current"]["state_as_of"] == "2026-09-11T20:00:00Z"
 
 
+def test_live_reason_names_the_market_hours_rule_when_wall_age_exceeds_the_window():
+    """A Saturday day-only stamp read Monday 08:00 ET is LIVE because no session has closed since it was observed.
+
+    The wall age (61h) exceeds the named window (26h). The LIVE sentence used to be the same "synced 61.0h ago
+    (window 26h)" the wall-clock path prints, so a LIVE account read as a contradiction. The reason must name the
+    market-hours rule (and the day precision) that justify the pair instead.
+    """
+    out = classify_account_state(
+        sync_kind="api", last_sync_at="2026-10-31T00:00:00Z",
+        now=datetime(2026, 11, 2, 13, 0, tzinfo=timezone.utc),  # Monday 08:00 ET
+        window_hours=26, market_hours_only=True, sync_precision="day")
+    assert out["state"] == STATE_LIVE
+    assert out["last_sync_age_hours"] > out["sync_window_hours"]
+    assert "market-hours-only" in out["state_reason"]
+    assert "day-precision" in out["state_reason"]
+    assert "no session has closed" in out["state_reason"]
+
+
+def test_producer_wires_day_precision_into_an_over_window_live_reason(tmp_path):
+    """The wiring, not just the pure classifier: a date-only row reaches the LIVE sentence as day precision."""
+    summaries = {"synthetic_saturday": {"total_value": 100}}
+    rows = [{"account": "synthetic_saturday", "broker_position_as_of": "2026-10-31"}]
+    now = datetime(2026, 11, 2, 13, 0, tzinfo=timezone.utc)  # Monday 08:00 ET
+    result = annotate_account_states(summaries, rows, {}, project_root=tmp_path, now=now, allow_shell=False)
+    block = result["synthetic_saturday"]
+    assert block["state"] == STATE_LIVE
+    assert block["last_sync_age_hours"] > block["sync_window_hours"]
+    assert "market-hours-only" in block["state_reason"]
+    assert "day-precision" in block["state_reason"]
+
+
+def test_the_same_wall_age_is_stale_when_the_window_is_wall_clock():
+    """Negative control: the market-hours sentence is never a licence to call old wall-clock evidence LIVE."""
+    out = classify_account_state(
+        sync_kind="api", last_sync_at="2026-10-31T00:00:00Z",
+        now=datetime(2026, 11, 2, 13, 0, tzinfo=timezone.utc),
+        window_hours=26, market_hours_only=False)
+    assert out["state"] == STATE_STALE
+    assert "exceeds window 26h" in out["state_reason"]
+
+
 @pytest.mark.parametrize("clock", ["9999-12-31T23:59:59-12:00", "0001-01-01T00:00:00+14:00",
                                     "2026-11-01 01:30:00 ET", "2026-03-08 02:30:00 ET"])
 def test_extreme_or_dst_ambiguous_observations_refuse_without_raising(clock):
