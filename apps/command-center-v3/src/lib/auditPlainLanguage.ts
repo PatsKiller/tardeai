@@ -38,10 +38,21 @@ const GAP_TEXT: Array<[RegExp, string]> = [
     /engine result not supplied/i,
     'Cross-check results were not provided for this page, so these figures may omit overlapping positions or conflicting signals.',
   ],
+  [
+    /disabled|turned off|switched off/i,
+    'Cross-checks are switched off by configuration, so overlapping positions and conflicting signals are not counted on this page.',
+  ],
+  [
+    /no positions/i,
+    'There are no positions to cross-check, so there is nothing to compare on this page.',
+  ],
 ]
 
+// The fallback names no mechanism. It is reached only by a producer reason this helper cannot
+// interpret, so "could not be read" would assert an execution outcome we do not see (PR 2619
+// review F1, cc-deepseek-3 at e3eb2af13).
 const COULD_NOT_READ =
-  'Cross-check results could not be read, so these figures may omit overlapping positions or conflicting signals.'
+  'Cross-check results are not available on this screen, so these figures may omit overlapping positions or conflicting signals.'
 
 /**
  * `plainConflictGap(reason)` → one operator sentence plus the raw producer string (null when there

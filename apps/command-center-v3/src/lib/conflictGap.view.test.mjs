@@ -69,11 +69,11 @@ check('missing or unreadable results are not reported as an execution outcome', 
   for (const reason of shapes) {
     const text = visible(render({ findings: [], headline: null, gap: { reason } }))
     assert.doesNotMatch(text, /did not run|could not run/i, `claims an execution outcome it cannot see: ${text}`)
-    assert.match(text, /not provided|could not be read/, `does not say the results were unavailable: ${text}`)
+    assert.match(text, /not provided|not available on this screen/, `does not say the results were unavailable: ${text}`)
   }
   const none = visible(render({ findings: [], headline: null, gap: {} }))
   assert.doesNotMatch(none, /did not run|could not run/i, `no reason claims an execution outcome: ${none}`)
-  assert.match(none, /Cross-check results could not be read/)
+  assert.match(none, /Cross-check results are not available on this screen/)
 })
 check('does not present the producer string as the explanation', () => {
   assert.doesNotMatch(visible(html), /conflict engine accepted source not yet integrated/)
@@ -84,12 +84,27 @@ check('keeps the raw producer string behind a technical-detail toggle', () => {
 })
 check('an unknown producer reason still gets the consequence sentence', () => {
   const unknown = render({ findings: [], headline: null, gap: { reason: 'some_new_producer_state' } })
-  assert.match(visible(unknown), /Cross-check results could not be read, so these figures may omit overlapping positions or conflicting signals\./)
+  assert.match(visible(unknown), /Cross-check results are not available on this screen, so these figures may omit overlapping positions or conflicting signals\./)
   assert.match(unknown, /<details[^>]*>[\s\S]*some_new_producer_state[\s\S]*?<\/details>/)
+})
+// review of PR 2619 F1 (cc-deepseek-3 at e3eb2af13): the fallback used to assert a mechanism
+// ("could not be read") for every reason it did not recognise — the first says the record WAS read
+// and the engine chose not to run, the second says there is nothing to omit, the third that the
+// engine failed rather than the read. The fallback must name no mechanism, and these two cases
+// must keep their own words rather than being handed the fallback.
+check('the fallback invents no mechanism, and named non-failures keep their own words', () => {
+  const disabled = visible(render({ findings: [], headline: null, gap: { reason: 'conflict engine disabled by config: cross-checks off' } }))
+  assert.match(disabled, /switched off by configuration/i, `disabled case lost its own words: ${disabled}`)
+  assert.doesNotMatch(disabled, /could not be read|not available on this screen/i, `disabled case got the fallback: ${disabled}`)
+  const noPositions = visible(render({ findings: [], headline: null, gap: { reason: 'no positions to cross-check' } }))
+  assert.match(noPositions, /no positions to cross-check/i, `empty-book case lost its own words: ${noPositions}`)
+  assert.doesNotMatch(noPositions, /could not be read|not available on this screen|may omit/i, `empty-book case got the fallback: ${noPositions}`)
+  const timedOut = visible(render({ findings: [], headline: null, gap: { reason: 'risk engine timed out at 30s' } }))
+  assert.doesNotMatch(timedOut, /could not be read/i, `fallback asserts a read failure it cannot see: ${timedOut}`)
 })
 check('a supplied reason is optional: no reason still explains the limit', () => {
   const none = render({ findings: [], headline: null, gap: {} })
-  assert.match(visible(none), /Cross-check results could not be read, so these figures may omit overlapping positions or conflicting signals\./)
+  assert.match(visible(none), /Cross-check results are not available on this screen, so these figures may omit overlapping positions or conflicting signals\./)
   assert.doesNotMatch(none, /<details/)
 })
 
