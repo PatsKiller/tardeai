@@ -17,8 +17,8 @@ import { Chip, ChipRow } from '../components/primitives'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import {
   ciLabel, ciTone, countOrUnavailable, etDateTime, etTime, freshnessTone, kpiDisplay, prList, RELEASES_SCHEDULES_PATH,
-  sectionView, stageTone, verifyLabel,
-  type LedgerToday, type NextRelease, type ReleaseError, type ReleaseRow, type ReleasesSchedulesWire,
+  sectionView, stageTone, stopFacts, verifyLabel,
+  type Freshness, type LedgerToday, type NextRelease, type ReleaseError, type ReleaseRow, type ReleasesSchedulesWire,
   type SectionKey, type SectionView, type Serving, type Timeline, type TimelineRow,
 } from '../lib/releasesSchedules'
 import OpsDeskFrame from '../components/OpsDeskFrame'
@@ -72,7 +72,8 @@ function Pill({ tone, children }: { tone: Tone; children: ReactNode }) {
 
 function DeploysTab({ s, stopEffective, stopState }: {
   s: Record<SectionKey, SectionView<any>>
-  stopEffective: boolean
+  /** Tri-state: `false` is a measured off; `null` is an unread latch and is never rendered as promotable. */
+  stopEffective: boolean | null
   stopState?: string | null
 }) {
   const [helpOpen, setHelpOpen] = useState(false)
@@ -82,6 +83,13 @@ function DeploysTab({ s, stopEffective, stopState }: {
   const nx = s.next_release.value as NextRelease | null
   const serving = s.serving.value as Serving | null
   const inFlight = inFlightApi.data?.schema === 'DeployInFlight@v1' ? inFlightApi.data : null
+  // Currentness is not decoration: a retained STALE read or a failed refresh must not become present readiness.
+  const inFlightFreshness: Freshness = inFlight == null ? 'UNAVAILABLE'
+    : inFlightApi.error ? 'UNAVAILABLE'
+      : inFlightApi.stale ? 'STALE'
+        : inFlight.freshness === 'UNAVAILABLE' ? 'UNAVAILABLE'
+          : inFlight.freshness === 'STALE' ? 'STALE'
+            : 'OK'
   return <div style={{ display: 'grid', gap: 12 }}>
     <DeployHelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} />
     <DeployOperatorCoach
@@ -89,6 +97,8 @@ function DeploysTab({ s, stopEffective, stopState }: {
       serving={serving}
       next={nx}
       stopEffective={stopEffective}
+      nextFreshness={s.next_release.state}
+      inFlightFreshness={inFlightFreshness}
       onHelp={() => setHelpOpen(true)}
     />
     <DeployPromoteReadiness
@@ -96,6 +106,8 @@ function DeploysTab({ s, stopEffective, stopState }: {
       next={nx}
       stopEffective={stopEffective}
       stopState={stopState}
+      nextFreshness={s.next_release.state}
+      servingFreshness={s.serving.state}
     />
     <DeployInFlightBoard />
     <Section title="Releasing next · main HEAD" testId="rs-next" v={s.next_release}>
@@ -204,6 +216,8 @@ export default function ReleasesSchedules() {
   const kpiKeys = ['serving', 'next_release', 'n8n_runs', 'n8n_errors']
   const labels: Record<string, string> = { serving: 'Serving', next_release: 'main HEAD', n8n_runs: 'n8n runs today', n8n_errors: 'n8n errors · skips' }
   const serving = s.serving.value as Serving | null
+  // The STOP latch is tri-state: an unread/unstated/stale response is null, never a measured "off".
+  const stop = stopFacts(api.data, { error: !!api.error, stale: api.stale })
   const select = (t: TabKey) => { const n = new URLSearchParams(params); if (t === 'deploys') n.delete('tab'); else n.set('tab', t); setParams(n, { replace: true }) }
   return <OpsDeskFrame page="releases">
 <div className="ops-evidence-page" data-testid="releases-schedules" style={{ display: 'grid', gap: 12, minWidth: 0, maxWidth: '100%' }}>
@@ -217,7 +231,7 @@ export default function ReleasesSchedules() {
           ? <Chip tone="neutral">captured {etDateTime(api.data.generated_at)}</Chip>
           : <Chip tone="warning">capture time not stated</Chip>}
         {serving ? <Chip tone={serving.pins_agree ? 'neutral' : 'warning'} title={serving.release_name ?? ''}>pins {serving.pins_agree ? 'agree with CURRENT' : 'DISAGREE with CURRENT'}</Chip> : null}
-        {api.data?.stop?.effective_stop ? <Chip tone="danger">deploy STOP {api.data.stop.state}</Chip> : null}
+        {stop.effective === true ? <Chip tone="danger">deploy STOP {stop.state}</Chip> : null}
       </ChipRow>
     </div>
 
@@ -239,7 +253,7 @@ export default function ReleasesSchedules() {
           background: tab === k ? TOKENS.bg[2] : 'transparent', border: `1px solid ${tab === k ? TOKENS.primary : TOKENS.border}`, color: tab === k ? TOKENS.text[0] : TOKENS.text[2] }}>{label}</button>)}
     </nav>
     {tab === 'deploys'
-      ? <DeploysTab s={s} stopEffective={!!api.data?.stop?.effective_stop} stopState={api.data?.stop?.state ?? null} />
+      ? <DeploysTab s={s} stopEffective={stop.effective} stopState={stop.state} />
       : tab === 'jobs' ? <JobsHealth /> : <><p style={muted}>Schedules below declare intended fires. The Jobs tab shows whether each job actually ran and succeeded.</p><N8nTab s={s} /></>}
   </div>
   </OpsDeskFrame>

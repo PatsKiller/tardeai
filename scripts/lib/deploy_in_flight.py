@@ -131,6 +131,42 @@ def pr_file_view(repo: str, number: int) -> dict[str, Any]:
     return doc if isinstance(doc, dict) else {}
 
 
+def _normalize_file_view(view: Any) -> Optional[tuple[list[str], int]]:
+    """Validate a ``gh pr view --json files,changedFiles`` payload.
+
+    Returns ``(paths, changedFiles)`` only when the envelope, the typed count and every path are usable.
+    ``None`` means the view cannot prove anything, so the caller must keep the row ``files_unverified``.
+
+    A successful-but-malformed response (``{}`` / ``null`` / ``[]``), a file object with no path, a
+    non-string count and a count that disagrees with the paths all used to be read as ``files=[]`` /
+    ``changedFiles=0`` and returned one step later as ``ready`` — a failed read wearing a verified empty
+    scope (cx-openai-4 R4 at 8cd7fee69). Absence is not evidence that no path is held.
+    """
+    if not isinstance(view, dict):
+        return None
+    raw_files = view.get("files")
+    changed = view.get("changedFiles")
+    if not isinstance(raw_files, list):
+        return None
+    if isinstance(changed, bool) or not isinstance(changed, int) or changed < 0:
+        return None
+    paths: list[str] = []
+    for item in raw_files:
+        if not isinstance(item, dict):
+            return None
+        path = item.get("path")
+        if not isinstance(path, str):
+            return None
+        path = path.strip()
+        # ``str(f.get("path"))`` used to turn a missing path into the literal string "None" and let it pass.
+        if not path or path.lower() == "none":
+            return None
+        paths.append(path)
+    if changed != len(paths):
+        return None
+    return paths, changed
+
+
 # ── pure projection (hermetic: fixture PR dicts only) ───────────────────────────────────────────────────────
 
 
@@ -292,16 +328,35 @@ def digest_classify_row(pr: dict[str, Any], *, files: Optional[list[str]] = None
     # Everything else passed; the digest's file gate is the only thing left between this row and READY.
     if files is None:
         return "files_unverified", "files_unverified", False
+    # The view must be usable, not merely present: an empty list produced by a malformed payload is
+    # indistinguishable from "no paths changed" and would turn a failed read into a verified empty scope
+    # (cx-openai-4 R4 at 8cd7fee69). Every path must be a nonempty string.
+    if not isinstance(files, (list, tuple)) or not all(
+        isinstance(p, str) and p.strip() and p.strip().lower() != "none" for p in files
+    ):
+        return "files_unverified", "files_unverified", False
+    clean = [p.strip() for p in files]
+    changed_raw = pr.get("changedFiles")
+    if changed_raw is None:
+        if not clean:
+            # An empty path list with no accompanying count is exactly the "successful but unusable view"
+            # shape: there is nothing here that proves the PR changes no paths. Fail closed.
+            return "files_unverified", "files_unverified", False
+        changed = len(clean)
+    elif isinstance(changed_raw, bool) or not isinstance(changed_raw, int) or changed_raw < 0:
+        return "files_unverified", "files_unverified", False
+    else:
+        changed = changed_raw
+    if changed != len(clean):
+        # changed > len: a partial view (the digest's files_unverified). changed < len: an inconsistent
+        # payload. Neither is a verified scope, so neither may offer Approve.
+        return "files_unverified", "files_unverified", False
     try:
-        held = mhp.held_classes(files)
+        held = mhp.held_classes(clean)
     except Exception:  # noqa: BLE001 - an unreadable hold config must not read as "no hold rule"
         return "files_unverified", "files_unverified", False
     if held:
         return "needs_operator", "held:" + ",".join(sorted(held)), False
-    changed = int(pr.get("changedFiles") or len(files))
-    if changed > len(files):
-        # A partial view is the digest's files_unverified: never offer Approve on paths nobody saw.
-        return "files_unverified", "files_unverified", False
     return "ready", "ready", True
 
 
@@ -356,14 +411,18 @@ def project_pr(pr: dict[str, Any], *, now: Optional[datetime] = None,
     if d_status == "files_unverified" and files_for is not None:
         number = int(pr.get("number") or 0)
         try:
-            view = files_for(number) or {}
+            view = files_for(number)
         except Exception as exc:  # noqa: BLE001 - an unreadable file view is not a pass
             d_status, d_reason, can_approve = "files_unverified", f"files_unreadable:{type(exc).__name__}", False
         else:
-            files = [str(f.get("path")) for f in (view.get("files") or []) if isinstance(f, dict)]
-            changed = view.get("changedFiles")
-            merged = {**pr, "changedFiles": changed} if changed is not None else pr
-            d_status, d_reason, can_approve = digest_classify_row(merged, files=files)
+            normalized = _normalize_file_view(view)
+            if normalized is None:
+                # A successful request whose body cannot prove the changed paths is not an empty scope.
+                d_status, d_reason, can_approve = "files_unverified", "files_unverified", False
+            else:
+                files, changed = normalized
+                merged = {**pr, "changedFiles": changed}
+                d_status, d_reason, can_approve = digest_classify_row(merged, files=files)
     author = pr.get("author") or {}
     author_login = ""
     if isinstance(author, dict):

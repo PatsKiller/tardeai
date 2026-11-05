@@ -3,7 +3,9 @@ import type { CSSProperties, ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Chip, ChipRow } from './primitives'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars } from '../lib/designTokens'
-import { ciLabel, ciTone, countOrUnavailable, type NextRelease, type Serving } from '../lib/releasesSchedules'
+import {
+  ciLabel, ciTone, countOrUnavailable, promoteFacts, type Freshness, type NextRelease, type Serving,
+} from '../lib/releasesSchedules'
 
 const panel: CSSProperties = {
   background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md,
@@ -30,69 +32,70 @@ export default function DeployPromoteReadiness({
   next,
   stopEffective,
   stopState,
+  nextFreshness = 'OK',
+  servingFreshness = 'OK',
   pushLiveSlot,
 }: {
   serving: Serving | null
   next: NextRelease | null
-  stopEffective: boolean
+  /** Tri-state: `false` is a measured off; `null` is an unread latch and is never rendered as "off". */
+  stopEffective: boolean | null
   stopState?: string | null
+  nextFreshness?: Freshness
+  servingFreshness?: Freshness
   /** Optional Push Live control when that surface is mounted on the page. */
   pushLiveSlot?: ReactNode
 }) {
-  const ahead = next == null ? null : next.is_serving ? 0 : next.commits_ahead
-  const ciOk = next?.ci?.state === 'SUCCESS' || next?.ci?.state === 'OK'
-  const ciPending = next?.ci?.state === 'PENDING'
-  const promoteReady = !stopEffective && ahead != null && ahead > 0 && !!ciOk
-
-  let headline = 'Site and main look aligned — nothing waiting to promote.'
-  if (stopEffective) headline = 'Deploy STOP is latched — promote to the live site is blocked.'
-  else if (ahead != null && ahead > 0 && ciOk) headline = `${ahead} commit${ahead === 1 ? '' : 's'} on main are not on the site yet — ready to promote when you choose.`
-  else if (ahead != null && ahead > 0 && ciPending) headline = 'main is ahead of the site, but exact-SHA CI on main is still pending.'
-  else if (ahead != null && ahead > 0) headline = 'main is ahead of the site, but main CI is not green yet — wait before promote.'
+  const f = promoteFacts({ next, stopEffective, nextFreshness })
+  const freshWord = nextFreshness === 'UNAVAILABLE' ? 'unavailable' : 'stale'
+  const staleNote = (fresh: Freshness, text = '') => fresh === 'OK' ? text : `${text}${text ? ' · ' : ''}${fresh === 'UNAVAILABLE' ? 'unavailable' : 'stale'} — not current`
 
   return (
     <section data-testid="deploy-promote-readiness" style={panel}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
         <h2 style={h2}>On the site vs on main</h2>
         <ChipRow>
-          <Chip tone={promoteReady ? 'info' : stopEffective ? 'danger' : 'neutral'}>
-            {promoteReady ? 'promote candidate' : stopEffective ? 'STOP' : ahead === 0 ? 'serving main' : 'waiting'}
-          </Chip>
+          <Chip tone={f.badgeTone}>{f.badge}</Chip>
         </ChipRow>
       </div>
-      <p style={muted}>{headline}</p>
+      <p style={muted}>{f.headline}</p>
 
       <div style={{ display: 'grid', gap: 6 }}>
         <Item
-          ok={serving ? serving.pins_agree : null}
+          ok={serving && servingFreshness === 'OK' ? serving.pins_agree : null}
           label="On the site now"
           detail={serving
-            ? <><span style={mono}>{serving.short_sha}</span>{serving.release_name ? ` · ${serving.release_name}` : ''}</>
+            ? <><span style={mono}>{serving.short_sha}</span>{serving.release_name ? ` · ${serving.release_name}` : ''}{staleNote(servingFreshness)}</>
             : 'serving pin UNAVAILABLE'}
         />
         <Item
-          ok={next ? true : null}
+          ok={next && nextFreshness === 'OK' ? true : null}
           label="On main (not necessarily live)"
           detail={next
-            ? <><span style={mono}>{next.short_sha}</span>{next.subject ? ` · ${next.subject}` : ''}</>
+            ? <><span style={mono}>{next.short_sha}</span>{next.subject ? ` · ${next.subject}` : ''}{staleNote(nextFreshness)}</>
             : 'main HEAD UNAVAILABLE'}
         />
         <Item
-          ok={ahead == null ? null : ahead === 0}
+          ok={f.aheadCurrent ? (f.ahead == null ? null : f.ahead === 0) : null}
           label="Commits ahead of site"
-          detail={ahead == null ? 'unknown' : ahead === 0 ? 'none — site matches main' : countOrUnavailable(ahead)}
+          detail={f.ahead == null ? 'unknown'
+            : !f.aheadCurrent ? `${countOrUnavailable(f.ahead)} (${freshWord} — not current)`
+              : f.ahead === 0 ? 'none — site matches main'
+                : countOrUnavailable(f.ahead)}
         />
         <Item
-          ok={stopEffective ? false : true}
+          ok={stopEffective == null ? null : !stopEffective}
           label="Deploy STOP"
-          detail={stopEffective
-            ? <>latched ({stopState ?? 'STOP'}) — <Link to="/system/ops-controls?tab=jobs" style={{ color: TOKENS.primary }}>Ops → Controls</Link></>
-            : 'off — promote allowed by STOP latch'}
+          detail={stopEffective == null
+            ? 'not read — unknown, not off'
+            : stopEffective
+              ? <>latched ({stopState ?? 'STOP'}) — <Link to="/system/ops-controls?tab=jobs" style={{ color: TOKENS.primary }}>Ops → Controls</Link></>
+              : 'off — promote allowed by STOP latch'}
         />
         <Item
-          ok={next == null ? null : ciOk}
+          ok={f.ciCurrent ? f.ciGreen : null}
           label="Exact-SHA CI on main"
-          detail={<span title={next?.ci?.reason ?? ''} style={{ color: toneVars(ciTone(next?.ci?.state)).color }}>{ciLabel(next?.ci)}</span>}
+          detail={<span title={next?.ci?.reason ?? ''} style={{ color: toneVars(ciTone(next?.ci?.state)).color }}>{ciLabel(next?.ci)}{f.ciCurrent ? '' : ' — not current'}</span>}
         />
       </div>
 

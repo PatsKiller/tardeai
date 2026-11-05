@@ -2,7 +2,7 @@
 import type { CSSProperties } from 'react'
 import { Chip, ChipRow } from './primitives'
 import { RADIUS, TOKENS, TYPE, toneVars } from '../lib/designTokens'
-import type { NextRelease, Serving } from '../lib/releasesSchedules'
+import type { Freshness, NextRelease, Serving } from '../lib/releasesSchedules'
 import { coachFacts } from '../lib/releasesSchedules'
 
 const panel: CSSProperties = {
@@ -28,15 +28,20 @@ export default function DeployOperatorCoach({
   serving,
   next,
   stopEffective,
+  nextFreshness = 'OK',
+  inFlightFreshness = 'OK',
   onHelp,
 }: {
   inFlight: CoachInFlight | null
   serving: Serving | null
   next: NextRelease | null
-  stopEffective: boolean
+  /** Tri-state: `false` is a measured off; `null` is an unread latch and must not read as promotable. */
+  stopEffective: boolean | null
+  nextFreshness?: Freshness
+  inFlightFreshness?: Freshness
   onHelp: () => void
 }) {
-  const facts = coachFacts({ inFlight, next, stopEffective })
+  const facts = coachFacts({ inFlight, next, stopEffective, nextFreshness, inFlightFreshness })
   const { ready, open, ahead, recommend } = facts
 
   return (
@@ -69,17 +74,23 @@ export default function DeployOperatorCoach({
           <p style={muted}>
             Serving {serving?.short_sha ?? 'unknown'}
             {next ? ` · main ${next.short_sha}` : ' · main commit not stated'}
-            {next?.is_serving ? ' · already serving main' : ahead != null ? ` · ${ahead} ahead` : ' · distance not stated'}
+            {next?.is_serving ? ' · already serving main' : ahead != null ? ` · ${ahead} ahead${facts.aheadCurrent ? '' : ' (not current)'}` : ' · distance not stated'}
           </p>
           <ChipRow>
-            {ahead == null
-              // An unread next-release is not "matches main": that badge is the one that would hide a stuck deploy.
-              ? <Chip tone="warning">main vs site not known</Chip>
-              : stopEffective
-                ? <Chip tone="danger">STOP blocks promote</Chip>
-                : ahead > 0
-                  ? <Chip tone={facts.ciOk ? 'info' : 'warning'}>{facts.ciOk ? 'Promote candidate' : 'Waiting on main CI'}</Chip>
-                  : <Chip tone="success">Site matches main</Chip>}
+            {!facts.aheadCurrent
+              // An unread or retained-stale next-release is not "matches main": that badge is the one that
+              // would hide a stuck deploy (cx-openai-4 R3 at 8cd7fee69).
+              ? <Chip tone="warning">main vs site not current</Chip>
+              : ahead == null
+                ? <Chip tone="warning">main vs site not known</Chip>
+                : stopEffective === true
+                  ? <Chip tone="danger">STOP blocks promote</Chip>
+                  : stopEffective == null
+                    // An unread STOP latch is not "off — promote allowed"; it is unknown (cx-openai-4 R2).
+                    ? <Chip tone="warning">STOP state not read</Chip>
+                    : ahead > 0
+                      ? <Chip tone={facts.ciOk ? 'info' : 'warning'}>{facts.ciOk ? 'Promote candidate' : 'Waiting on main CI'}</Chip>
+                      : <Chip tone="success">Site matches main</Chip>}
           </ChipRow>
         </div>
       </div>

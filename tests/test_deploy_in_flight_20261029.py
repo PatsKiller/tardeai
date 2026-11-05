@@ -194,6 +194,48 @@ def test_an_unreadable_file_view_is_not_a_pass():
     assert row["digest_reason"] == "files_unreadable:RuntimeError"
 
 
+def test_a_malformed_file_view_is_never_a_verified_empty_scope():
+    """cx-openai-4 R4 at 8cd7fee69: a successful-but-unusable view used to become files=[]/changed0 and ready.
+
+    The no-file-view control was closed by F1, but a returned ``{}`` / ``None`` / ``[]`` body, a pathless file
+    object and a string count all still produced a verified empty scope and enabled Approve.
+    """
+    pr = _pr(20, mergeable=True, state="CLEAN")
+    for bad in ({}, None, [], {"files": None, "changedFiles": 0}):
+        row = D.project_pr(pr, now=NOW, files_for=lambda n, bad=bad: bad)
+        assert row["digest_status"] == "files_unverified" and row["can_approve"] is False, bad
+    # a pathless file object used to become the literal path "None"
+    row = D.project_pr(pr, now=NOW, files_for=lambda n: {"files": [{}], "changedFiles": 1})
+    assert (row["digest_status"], row["can_approve"]) == ("files_unverified", False)
+    # a string count is not a typed count
+    row = D.project_pr(pr, now=NOW, files_for=lambda n: {"files": [{"path": "scripts/foo.py"}], "changedFiles": "1"})
+    assert (row["digest_status"], row["can_approve"]) == ("files_unverified", False)
+    # the healthy control: a current, consistent view is still ready
+    row = D.project_pr(pr, now=NOW, files_for=lambda n: _files("scripts/foo.py"))
+    assert (row["digest_status"], row["can_approve"]) == ("ready", True)
+
+
+def test_digest_classify_row_refuses_an_inconsistent_or_unusable_path_list():
+    base = _pr(21, mergeable=True, state="CLEAN")
+    assert D.digest_classify_row(base, files=[]) == ("files_unverified", "files_unverified", False)
+    assert D.digest_classify_row({**base, "changedFiles": 2}, files=["scripts/a.py"])[:1] == ("files_unverified",)
+    assert D.digest_classify_row({**base, "changedFiles": True}, files=["scripts/a.py"])[:1] == ("files_unverified",)
+    assert D.digest_classify_row(base, files=["None"])[:1] == ("files_unverified",)
+    assert D.digest_classify_row(base, files=[""])[:1] == ("files_unverified",)
+    assert D.digest_classify_row({**base, "changedFiles": 1}, files=["scripts/a.py"]) == ("ready", "ready", True)
+
+
+def test_build_does_not_count_a_malformed_file_view_as_ready():
+    """The finding reproduced this through the real build/projection path, not just the pure classifier."""
+    rows = [_pr(30, mergeable=True, state="CLEAN")]
+    d = D.build(None, now=NOW, lister=lambda repo, limit: rows,
+                coordination=lambda prs, now: {"status": "OK", "work": {}},
+                files_for=lambda n: {})
+    assert d["status"] == "OK" and d["freshness"] == "OK"
+    assert d["ready_count"] == 0 and d["prs"][0]["can_approve"] is False
+    assert d["prs"][0]["digest_status"] == "files_unverified"
+
+
 def test_next_plain_unknown_is_not_conflict():
     row = D.project_pr(_pr(8, mergeable=None, state="CLEAN", rollup=_checks(True)), now=NOW,
                        files_for=lambda n: _files("scripts/foo.py"))

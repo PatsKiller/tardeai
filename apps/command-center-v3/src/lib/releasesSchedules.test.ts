@@ -3,7 +3,7 @@ const assert = {
   ok(value: unknown, message = 'expected truthy value') { if (!value) throw new Error(message) },
   match(value: string, pattern: RegExp) { if (!pattern.test(value)) throw new Error(`expected ${value} to match ${pattern}`) },
 }
-import { ageText, ciLabel, ciTone, coachFacts, kpiDisplay, lastRunText, prList, sectionView, SECTION_KEYS, verifyLabel, type Kpi, type ReleasesSchedulesWire, type TimelineRow } from './releasesSchedules.ts'
+import { ageText, ciLabel, ciTone, coachFacts, kpiDisplay, lastRunText, prList, promoteFacts, sectionView, SECTION_KEYS, stopFacts, verifyLabel, type Kpi, type ReleasesSchedulesWire, type TimelineRow } from './releasesSchedules.ts'
 
 const NOW = Date.parse('2026-10-22T19:00:00Z')
 const wire: ReleasesSchedulesWire = {
@@ -110,3 +110,76 @@ assert.match(unstaked.recommend, /how far main is ahead of the site/i)
 assert.match(coachFacts({ inFlight: { ready_count: 2, count: 2 }, next: servingNext, stopEffective: false }).recommend, /2 changes ready/)
 assert.match(coachFacts({ inFlight: { ready_count: 0, count: 0 }, next: aheadNext, stopEffective: true }).recommend, /Deploy STOP is on/)
 assert.match(coachFacts({ inFlight: { ready_count: 0, count: 0 }, next: aheadNext, stopEffective: false }).recommend, /3 commits ahead/)
+
+// ── cx-openai-4 R2/R3 at 8cd7fee69: an unread STOP latch is unknown, and a stale read is not present readiness ──
+const unknownStop = coachFacts({ inFlight: { ready_count: 0, count: 0 }, next: aheadNext, stopEffective: null })
+assert.equal(unknownStop.stop, null)
+assert.match(unknownStop.recommend, /STOP state was not read/i)          // never "off, promote allowed"
+assert.match(unknownStop.unknown ?? '', /STOP latch/)
+
+// A stale/retained board may not state a READY count as present readiness.
+const staleBoard = coachFacts({ inFlight: { ready_count: 3, count: 3, freshness: 'UNAVAILABLE' }, next: servingNext, stopEffective: false })
+assert.equal(staleBoard.ready, null)
+assert.match(staleBoard.unknown ?? '', /current open-PR board/i)
+assert.ok(!/3 changes ready/.test(staleBoard.recommend))
+
+// A STALE next-release section keeps its value for display but cannot prove alignment or a promote.
+const staleNext = coachFacts({ inFlight: { ready_count: 0, count: 0 }, next: servingNext, stopEffective: false, nextFreshness: 'STALE' })
+assert.equal(staleNext.ahead, 0)                 // historical value retained
+assert.equal(staleNext.aheadCurrent, false)
+assert.equal(staleNext.matches, false)           // a stale zero is not "matches"
+assert.ok(!/Nothing needs you right now/.test(staleNext.recommend))
+assert.match(staleNext.recommend, /comparison is stale/i)
+
+// A stale CI receipt is not current green, even when the state string says SUCCESS.
+const staleCi = coachFacts({ inFlight: { ready_count: 0, count: 0 },
+  next: { ...aheadNext, ci: { state: 'SUCCESS' as const, reason: null, stale: true, age_s: 86400 } }, stopEffective: false })
+assert.equal(staleCi.ciOk, false)
+assert.ok(!/promote when you are ready/.test(staleCi.recommend))
+
+// ── Job B promote panel: no green headline from an unread comparison or an unread STOP (cx-openai-4 R1/R2) ──
+const promoteUnknown = promoteFacts({ next: null, stopEffective: false })
+assert.match(promoteUnknown.headline, /not read/i)
+assert.ok(!/look aligned/.test(promoteUnknown.headline))
+assert.equal(promoteUnknown.badge, 'unknown')
+assert.equal(promoteUnknown.matches, false)
+
+const promoteStale = promoteFacts({ next: servingNext, stopEffective: false, nextFreshness: 'STALE' })
+assert.match(promoteStale.headline, /stale/i)
+assert.ok(!/look aligned/.test(promoteStale.headline))
+assert.equal(promoteStale.promoteReady, false)
+
+const promoteUnknownStop = promoteFacts({ next: aheadNext, stopEffective: null })
+assert.ok(!/ready to promote when you choose/.test(promoteUnknownStop.headline))
+assert.match(promoteUnknownStop.headline, /STOP state was not read/i)
+assert.equal(promoteUnknownStop.promoteReady, false)
+assert.equal(promoteUnknownStop.badge, 'STOP not read')
+
+const promoteStaleCi = promoteFacts({ next: { ...aheadNext, ci: { state: 'SUCCESS' as const, reason: null, stale: true } }, stopEffective: false })
+assert.equal(promoteStaleCi.ciGreen, false)
+assert.equal(promoteStaleCi.promoteReady, false)
+assert.ok(!/ready to promote when you choose/.test(promoteStaleCi.headline))
+
+// The positive cases survive: a current zero is aligned, and a current ahead+green+STOP-off is a promote candidate.
+const promoteAligned = promoteFacts({ next: servingNext, stopEffective: false })
+assert.match(promoteAligned.headline, /look aligned/)
+assert.equal(promoteAligned.matches, true)
+assert.equal(promoteAligned.badge, 'serving main')
+const promoteReady = promoteFacts({ next: aheadNext, stopEffective: false })
+assert.match(promoteReady.headline, /ready to promote when you choose/)
+assert.equal(promoteReady.promoteReady, true)
+assert.equal(promoteReady.badge, 'promote candidate')
+const promoteStopped = promoteFacts({ next: aheadNext, stopEffective: true })
+assert.match(promoteStopped.headline, /STOP is latched/)
+assert.equal(promoteStopped.promoteReady, false)
+
+// ── STOP is tri-state: only a current response that states a boolean can say "off" ──
+assert.equal(stopFacts(null, { error: true }).effective, null)
+assert.equal(stopFacts(undefined).effective, null)
+assert.equal(stopFacts(wire).effective, null)                                   // no stop block: unknown, not off
+assert.equal(stopFacts({ ...wire, stop: { state: 'STOP' } }).effective, null)   // state without the boolean
+assert.equal(stopFacts({ ...wire, stop: { state: 'CLEAR', effective_stop: false } }).effective, false)
+assert.equal(stopFacts({ ...wire, stop: { state: 'STOP', effective_stop: true } }).effective, true)
+assert.equal(stopFacts({ ...wire, stop: { state: 'CLEAR', effective_stop: false } }, { stale: true }).effective, null)
+assert.equal(stopFacts({ ...wire, stop: { state: 'CLEAR', effective_stop: false } }, { error: true }).effective, null)
+

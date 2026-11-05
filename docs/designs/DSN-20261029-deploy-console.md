@@ -62,10 +62,27 @@ teaches two jobs:
 2. **Job B — Put main on the site**: poller / Push Live (`prepare` → `promote` → CURRENT).
 
 `GET /api/v2/ops/in-flight` stays additive on `DeployInFlight@v1`. New optional row fields: `plain_english`,
-`checks` (the four required contexts), `digest_status` / `digest_reason` / `can_approve` (same READY gates as
-`pr_merge_digest.classify_pr` for draft / plain English / hold labels / checks / conflict), `created_at` /
+`checks` (the four required contexts, for display), `digest_status` / `digest_reason` / `can_approve` (same READY
+gates as `pr_merge_digest.classify_pr` for draft / plain English / hold labels / checks / conflict), `created_at` /
 `updated_at` / ages, `next_plain`. The UI **Approve** button is enabled only when `can_approve` is true.
 Branch **Push** is renamed **Update branch** and hidden behind Advanced — it is not Push Live.
+
+The READY decision uses the digest's **whole** check gate (`pr_all_checks_green.evaluate_merge_rollup`, which
+`every_check_green` wraps): any non-required check that is failed or pending keeps Approve off, even when the four
+required contexts are green. The `checks` map remains the four-name display projection.
+
+The digest's last gate is the changed-file view. The board fetches `gh pr view --json files,changedFiles` for a
+row that would otherwise be READY and requires a usable envelope, an integer `changedFiles`, and one nonempty
+path per file; `changedFiles` must equal the number of paths listed. A missing view, a partial view, a
+pathless/malformed file object or a non-integer count stays **files_unverified** and can never be read as a
+verified empty scope (cx-openai-4 R4 at 8cd7fee69).
+
+The coach strip and the promote-readiness panel carry **currentness** through every advice: the in-flight
+`freshness` and useApi `stale`/`error`, the `next_release`/`serving` section state and reason, and the main-CI
+`stale` flag. A retained historical value may still be shown, labelled `stale — not current`, but it never drives
+"ready", "matches main" or "promote candidate". The deploy STOP is tri-state: `false` only when a current
+response states the boolean, otherwise `null` — unknown, never "off — promote allowed" (cx-openai-4 R1–R3 at
+8cd7fee69).
 
 Honest: path-based held-class from `merge_hold_paths.json` (files_unverified) is still digest/Mergify’s job;
 the board mirrors label holds + the four checks + plain English. P1 claimed CI in the projection; operator
