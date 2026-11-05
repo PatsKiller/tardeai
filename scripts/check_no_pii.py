@@ -636,17 +636,12 @@ def scan_range(
         lines = added.get(path)
         whole = path.endswith(".gz") and statuses[path] in ("A", "M", "R", "C")
         if not lines and not whole:
-            # A binary carries no text hunks, so it never reaches the scan below — which is how a new PNG
-            # could ride in. Added/renamed/copied blobs are read here for that reason alone.
-            if statuses[path] not in ("A", "R", "C"):
-                continue
-            # S603/S607: argv is a fixed list and the executable is the `git` on PATH, the same shape as the four
-            # subprocess calls this file already carries — no shell, no user-supplied program. Annotated rather than
-            # counted into the security baseline, which may only shrink.
-            blob = subprocess.run(["git", "show", f"{target}:{path}"], cwd=repo,  # noqa: S603, S607
-                                  capture_output=True)
-            if blob.returncode == 0 and not review.registered(path):
-                text, unreadable = _decode_with_reason(blob.stdout, path)
+            # No text hunks: a binary carries none, so this blob would never reach the scan below. Read it for a
+            # MODIFICATION as well as an addition — otherwise replacing a text file with binary content, or
+            # modifying an unregistered binary, skips the blob entirely and reports the change clean (FQ-154).
+            # _git() routes the call through this file's already-baselined helper and fails closed (ScanError).
+            if not review.registered(path):
+                text, unreadable = _decode_with_reason(_git(repo, "show", f"{target}:{path}"), path)
                 if text is None:
                     out.append(
                         Finding(path, 0, "binary_unreadable", f"{unreadable}; not registered in {BINARY_REVIEW_REL}")

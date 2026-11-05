@@ -173,6 +173,46 @@ def test_range_mode_sees_a_binary_added_by_the_change(tmp_path):
     assert "assets/synthetic-second.png" in proc.stdout and "binary_unreadable" in proc.stdout
 
 
+def test_range_mode_sees_a_text_file_replaced_with_binary(tmp_path):
+    """A modification (status M) carries no text hunks once the content is binary: it must still be read."""
+    repo = _repo(tmp_path, with_png=False)
+    (repo / "notes.txt").write_text("plain text, nothing personal\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "add a text file")
+    (repo / "notes.txt").write_bytes(PNG)  # status M, and a binary diff carries no text hunks
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "replace it with binary content")
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "check_no_pii.py"), "--repo", str(repo), "--range", "HEAD~1..HEAD"],
+        capture_output=True, text=True, timeout=120,
+    )
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "notes.txt" in proc.stdout and "binary_unreadable" in proc.stdout
+
+
+def test_staged_mode_sees_a_modified_unregistered_binary(tmp_path):
+    """Modifying an already-unregistered binary was skipped: --staged reported the change clean."""
+    repo = _repo(tmp_path)  # TARGET is committed unregistered
+    (repo / TARGET).write_bytes(PNG + b"different")
+    _git(repo, "add", "-A")
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "check_no_pii.py"), "--repo", str(repo), "--staged"],
+        capture_output=True, text=True, timeout=120,
+    )
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert TARGET in proc.stdout and "binary_unreadable" in proc.stdout
+
+
+def test_a_nul_containing_text_file_is_unreadable_not_clean(tmp_path):
+    """Named .txt with a NUL byte is still unreadable: the verdict is a finding, never a silent pass."""
+    repo = _repo(tmp_path, with_png=False)
+    (repo / "nul-notes.txt").write_bytes(b"plain text\nhidden\x00payload\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "add a NUL-containing text file")
+    findings = [f for f in C.scan_tree(repo, deny=[]) if f.path == "nul-notes.txt"]
+    assert [f.category for f in findings] == ["binary_unreadable"], findings
+
+
 def test_the_register_is_its_canonical_rendering():
     from scripts.lib.ci_gates import render
 
