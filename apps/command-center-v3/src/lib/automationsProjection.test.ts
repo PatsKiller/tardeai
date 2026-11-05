@@ -1,8 +1,12 @@
-import { describe, expect, it } from 'vitest'
+const assert = {
+  equal(actual: unknown, expected: unknown, message = 'expected equality') { if (actual !== expected) throw new Error(`${message}: ${String(actual)} !== ${String(expected)}`) },
+  ok(value: unknown, message = 'expected truthy value') { if (!value) throw new Error(message) },
+  match(value: string, pattern: RegExp) { if (!pattern.test(value)) throw new Error(`expected ${value} to match ${pattern}`) },
+}
 import {
   FAIL_RATE_BANNER_PCT, STALE_AFTER_MS, displayCount, fmtEt, matchesFilter, projectAutomations, rowFailure,
   searchRows, topCause, type AutomationsPayload, type WorkflowRow,
-} from './automationsProjection'
+} from './automationsProjection.ts'
 
 const NOW = Date.parse('2026-11-05T12:00:00Z')
 const at = (offsetMs: number) => new Date(NOW - offsetMs).toISOString()
@@ -17,79 +21,58 @@ const payload = (over: Partial<AutomationsPayload> = {}): AutomationsPayload => 
   ...over,
 })
 
-describe('projectAutomations', () => {
-  it('raises the banner above 10% and names the top cause', () => {
-    const v = projectAutomations(payload(), { nowMs: NOW })
-    expect(v.status).toBe('OK')
-    expect(v.banner.show).toBe(true)
-    expect(v.banner.cause?.name).toBe('tradeai-event-router')
-    expect(v.banner.cause?.reason).toBe('ETIMEDOUT calling relay')
-  })
+// The banner comes only from a MEASURED rate over 10%, and it names the top cause.
+const v = projectAutomations(payload(), { nowMs: NOW })
+assert.equal(v.status, 'OK')
+assert.equal(v.banner.show, true)
+assert.equal(v.banner.cause?.name, 'tradeai-event-router')
+assert.equal(v.banner.cause?.reason, 'ETIMEDOUT calling relay')
 
-  it('does not raise the banner at exactly the threshold, and never when the rate is unread', () => {
-    const atLimit = payload({ kpi: { ...payload().kpi, fail_rate_pct: FAIL_RATE_BANNER_PCT } })
-    expect(projectAutomations(atLimit, { nowMs: NOW }).banner.show).toBe(false)
-    const unread = payload({ kpi: { ...payload().kpi, fail_rate_pct: null } })
-    expect(projectAutomations(unread, { nowMs: NOW }).banner.show).toBe(false)
-  })
+// At exactly the threshold it is quiet, and an unreadable rate never reads as "fine".
+assert.equal(projectAutomations(payload({ kpi: { ...payload().kpi, fail_rate_pct: FAIL_RATE_BANNER_PCT } }), { nowMs: NOW }).banner.show, false)
+assert.equal(projectAutomations(payload({ kpi: { ...payload().kpi, fail_rate_pct: null } }), { nowMs: NOW }).banner.show, false)
 
-  it('goes STALE past three missed refreshes and UNAVAILABLE on an unknown schema', () => {
-    expect(projectAutomations(payload({ as_of: at(STALE_AFTER_MS + 1) }), { nowMs: NOW }).status).toBe('STALE')
-    expect(projectAutomations(payload({ schema: 'Something@v2' }), { nowMs: NOW }).status).toBe('UNAVAILABLE')
-    expect(projectAutomations(null, { nowMs: NOW }).status).toBe('UNAVAILABLE')
-  })
+// Stale after three missed one-minute refreshes; an unknown schema is UNAVAILABLE with no rows.
+assert.equal(projectAutomations(payload({ as_of: at(STALE_AFTER_MS + 1) }), { nowMs: NOW }).status, 'STALE')
+assert.equal(projectAutomations(payload({ schema: 'Something@v2' }), { nowMs: NOW }).status, 'UNAVAILABLE')
+assert.equal(projectAutomations(null, { nowMs: NOW }).status, 'UNAVAILABLE')
+assert.equal(projectAutomations(null, { nowMs: NOW }).rows.length, 0, 'an unavailable payload renders no rows rather than an empty healthy table')
 
-  it('keeps an absent delta as unknown with its reason, not as zero', () => {
-    const v = projectAutomations(payload(), { nowMs: NOW })
-    expect(v.kpi.deltas).toBeNull()
-    expect(v.kpi.deltasUnavailable).toBe('no prior 7-day snapshot')
-    expect(displayCount(null)).toBe('—')
-  })
+// An absent week-over-week delta stays unknown WITH its reason, never a zero.
+assert.equal(v.kpi.deltas, null)
+assert.equal(v.kpi.deltasUnavailable, 'no prior 7-day snapshot')
+assert.equal(displayCount(null), '—')
 
-  it('renders no rows for an unavailable payload, rather than an empty-and-healthy table', () => {
-    expect(projectAutomations(null, { nowMs: NOW }).rows).toEqual([])
-  })
-})
+// Filters.
+const rows = [
+  row(),
+  row({ name: 'tradeai-event-router', fail: 3, state: 'off', last_error: 'relay refused', folder: 'routing' }),
+  row({ name: 'shadow-lane', state: 'shadow', folder: 'research' }),
+]
+assert.equal(rows.filter(r => matchesFilter(r, 'failing')).map(r => r.name).join(','), 'tradeai-event-router')
+assert.equal(rows.filter(r => matchesFilter(r, 'live')).map(r => r.name).join(','), 'tradeai-fabric-run-lane')
+assert.equal(rows.filter(r => matchesFilter(r, 'off')).map(r => r.name).join(','), 'tradeai-event-router')
+assert.equal(rows.filter(r => matchesFilter(r, 'all')).length, 3)
 
-describe('filters and search', () => {
-  const rows = [
-    row(),
-    row({ name: 'tradeai-event-router', fail: 3, state: 'off', last_error: 'relay refused', folder: 'routing' }),
-    row({ name: 'shadow-lane', state: 'shadow', folder: 'research' }),
-  ]
+// Search over name, area and error text, case-insensitively; blank query keeps everything.
+assert.equal(searchRows(rows, 'ROUTER').map(r => r.name).join(','), 'tradeai-event-router')
+assert.equal(searchRows(rows, 'fabric').map(r => r.name).join(','), 'tradeai-fabric-run-lane')
+assert.equal(searchRows(rows, 'relay refused').map(r => r.name).join(','), 'tradeai-event-router')
+assert.equal(searchRows(rows, '   ').length, 3)
 
-  it('filters by failing, live and off', () => {
-    expect(rows.filter(r => matchesFilter(r, 'failing')).map(r => r.name)).toEqual(['tradeai-event-router'])
-    expect(rows.filter(r => matchesFilter(r, 'live')).map(r => r.name)).toEqual(['tradeai-fabric-run-lane'])
-    expect(rows.filter(r => matchesFilter(r, 'off')).map(r => r.name)).toEqual(['tradeai-event-router'])
-    expect(rows.filter(r => matchesFilter(r, 'all'))).toHaveLength(3)
-  })
+// A failing row with no error text says so instead of inventing a cause.
+assert.equal(rowFailure(row()).failing, false)
+assert.equal(rowFailure(row()).reason, null)
+assert.equal(rowFailure(row({ fail: 1, last_error: null })).reason, 'no error text recorded for the last failure')
 
-  it('searches name, folder and error text case-insensitively', () => {
-    expect(searchRows(rows, 'ROUTER').map(r => r.name)).toEqual(['tradeai-event-router'])
-    expect(searchRows(rows, 'fabric').map(r => r.name)).toEqual(['tradeai-fabric-run-lane'])
-    expect(searchRows(rows, 'relay refused').map(r => r.name)).toEqual(['tradeai-event-router'])
-    expect(searchRows(rows, '   ')).toHaveLength(3)
-  })
-})
+// The banner's top cause is the failing row with the most failures, never the first seen.
+const cause = topCause([row({ name: 'a', fail: 2, last_error: 'x' }), row({ name: 'b', fail: 9, last_error: 'y' })])
+assert.equal(cause?.name, 'b'); assert.equal(cause?.fail, 9)
+assert.equal(topCause([row()]), null)
 
-describe('row failure text', () => {
-  it('never invents a cause', () => {
-    expect(rowFailure(row())).toEqual({ failing: false, reason: null })
-    expect(rowFailure(row({ fail: 1, last_error: null })).reason).toBe('no error text recorded for the last failure')
-  })
+// ET formatting returns null on junk rather than a fake date.
+assert.match(String(fmtEt('2026-11-05T16:30:00Z')), /ET/)
+assert.equal(fmtEt('not-a-date'), null)
+assert.equal(fmtEt(null), null)
 
-  it('picks the failing row with the most failures as the top cause', () => {
-    const cause = topCause([row({ name: 'a', fail: 2, last_error: 'x' }), row({ name: 'b', fail: 9, last_error: 'y' })])
-    expect(cause).toEqual({ name: 'b', reason: 'y', fail: 9 })
-    expect(topCause([row()])).toBeNull()
-  })
-})
-
-describe('fmtEt', () => {
-  it('renders an ET stamp and returns null for junk', () => {
-    expect(fmtEt('2026-11-05T16:30:00Z')).toContain('ET')
-    expect(fmtEt('not-a-date')).toBeNull()
-    expect(fmtEt(null)).toBeNull()
-  })
-})
+console.log('automationsProjection: banner threshold and cause, stale/unavailable, delta honesty, filters, search, row failure text and ET fallback passed')
