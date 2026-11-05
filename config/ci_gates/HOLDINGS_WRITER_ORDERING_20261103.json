@@ -1,6 +1,6 @@
 {
   "schema": "CiGate@v1",
-  "name": "holdings_writer_ordering_20261103",
+  "name": "HOLDINGS_WRITER_ORDERING_20261103",
   "files": [
     "tests/test_holdings_writer_ordering_20261103.py"
   ],
