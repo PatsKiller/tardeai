@@ -50,5 +50,14 @@ check('a failed rollback says it did not verify, and why', /did not verify/.test
 check('a failed rollback points at the rollback receipt', /rollback receipt/.test(rollFailed.nextAction), rollFailed.nextAction)
 const rollOk = releaseRowModel({ ...base, mode: 'rollback', verify: { ok: true, rolled_back: true } }, 'x')
 check('a rollback that verified still says the previous version was restored', /restored deliberately/.test(rollOk.nextAction), rollOk.nextAction)
+// Cloud review 2026-11-05 (P2): the visible line keeps six PR numbers and a count, so the rest must stay identifiable in
+// Diagnostics — the old history table listed up to twelve, and truncating without this lost PRs 7..12 entirely.
+const many = releaseRowModel({ ...base, prs: [1, 2, 3, 4, 5, 6, 7, 8, 9] }, 'x')
+check('the reading line stays compact past six PRs', many.changes === 'PR 1, PR 2, PR 3, PR 4, PR 5, PR 6 and 3 more', many.changes)
+const manyPrs = many.diagnostics.find(d => d.label === 'PRs')?.value ?? ''
+check('every PR number survives in Diagnostics', [7, 8, 9].every(n => manyPrs.includes(`PR ${n}`)), manyPrs)
+check('and the visible line does not pretend they were named', !/PR 7/.test(many.changes), many.changes)
+const noPrsDiag = releaseRowModel({ ...base, prs: null, prs_reason: 'receipt has no PR member' }, 'x').diagnostics.some(d => d.label === 'PRs')
+check('a record with no PR list invents no PR diagnostics row', !noPrsDiag)
 console.log(`releaseRow: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

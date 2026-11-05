@@ -90,6 +90,10 @@ export function releaseRowModel(r: ReleaseRow, when: string): ReleaseRowModel {
       { label: 'SHA basis', value: clean(r.sha_basis) || 'not recorded' },
       { label: 'Receipt', value: clean(r.receipt) || 'not recorded' },
       { label: 'Mode', value: clean(r.mode) || 'not recorded' },
+      // The visible line shows at most six PR numbers and a count; the rest must still be identifiable somewhere on the
+      // card. The old history table listed up to twelve through prList(), so truncating at six without this lost them
+      // (cloud review P2, 2026-11-05).
+      ...(Array.isArray(r.prs) && r.prs.length ? [{ label: 'PRs', value: r.prs.map(n => `PR ${n}`).join(', ') }] : []),
       { label: 'Verify reason', value: clean(r.verify_reason) || (readback.length ? 'not recorded; see readback errors' : 'not recorded') },
       ...(readback.length ? [{ label: 'Readback errors', value: readback.join('; ') }] : []),
       ...(clean(r.error) ? [{ label: 'Recorded error', value: clean(r.error) }] : []),
