@@ -49,6 +49,7 @@ from scripts.lib.persistent_wake_schedule import (  # noqa: E402
     FEATURE_FLAG as SCHEDULE_FLAG,
     ScheduleContract,
 )
+from scripts.lib import ops_diagnostics  # noqa: E402
 from scripts.lib.persistent_wake_store import JsonlStore  # noqa: E402
 from scripts.lib.wake_subject_selector import (  # noqa: E402
     DEFAULT_LIMIT,
@@ -709,18 +710,51 @@ def run_once(
         })
         return 0
 
+    if not dry_run:
+        # Deliver what the sender-less processes (governed bridge, provider-health check) spooled. A
+        # rejected row stays spooled, so a transport blip delays an alert instead of losing it.
+        try:
+            from scripts.lib import ops_notify_owner  # noqa: PLC0415
+
+            drained = ops_notify_owner.drain()
+            if drained:
+                print(json.dumps({"script": "run_persistent_wake", "outcome": "spool_drained",
+                                  "delivered": drained}, sort_keys=True), flush=True)
+        except Exception as exc:  # a broken outbox must not stop the wake review
+            print(json.dumps({"script": "run_persistent_wake", "outcome": "spool_drain_failed",
+                              "detail": f"{type(exc).__name__}: {exc}"}, sort_keys=True), flush=True)
+
     rc = 0
     for sg, cand in work:
-        subject_rc = _process_one_subject(
-            agent_id=agent_id,
-            subject_guid=sg,
-            dry_run=dry_run,
-            env=env,
-            when=when,
-            state_root=root,
-            memory_backend=memory_backend,
-            selection=cand,
-        )
+        if dry_run:
+            # Reading the store can reach a half-written tail, and importing the store already installed
+            # the live notification owner. A dry run must not page the operator, and must say what it
+            # would have paged rather than pretending nothing happened.
+            ops_diagnostics.suppress("run_persistent_wake --dry-run")
+        try:
+            subject_rc = _process_one_subject(
+                agent_id=agent_id,
+                subject_guid=sg,
+                dry_run=dry_run,
+                env=env,
+                when=when,
+                state_root=root,
+                memory_backend=memory_backend,
+                selection=cand,
+            )
+        finally:
+            if dry_run:
+                suppressed = ops_diagnostics.suppressed_events()
+                ops_diagnostics.resume()
+                if suppressed:
+                    _emit({
+                        **base,
+                        "subject_guid": sg,
+                        "outcome": "suppressed_alert",
+                        "detail": "a dry run would have sent this; nothing was sent or written",
+                        "count": len(suppressed),
+                        "alerts": [e["diagnostic"].get("message", "") for e in suppressed],
+                    })
         if subject_rc != 0:
             rc = subject_rc
     return rc

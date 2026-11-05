@@ -308,4 +308,76 @@ def test_record_fallback_failure_is_reported(monkeypatch, sent):
     assert len(sent) == 1 and "CREDIT_UNAVAILABLE" in sent[0]["message"]
 
 
+# ── an owner-less process retains the event; the owner drains it ────────────────────────────────────
+# The governed bridge and the provider-health check make Anthropic calls but hold no sender (§23.20), so
+# `deliver` had no notifier and nothing was kept. The outage was reported to nobody, which is exactly the
+# 2026-10-30 silence this PR exists to end.
+
+
+def _spool_env(monkeypatch, tmp_path):
+    path = tmp_path / "spool.jsonl"
+    monkeypatch.setenv(ops_diagnostics.SPOOL_ENV, str(path))
+    return path
+
+
+def test_a_process_without_an_owner_spools_the_diagnostic_instead_of_dropping_it(monkeypatch, tmp_path):
+    spool = _spool_env(monkeypatch, tmp_path)
+    jsonl_tail._alerted.clear()
+    ops_diagnostics.unregister("store_damage")
+    try:
+        assert jsonl_tail.report(tmp_path / "wakes.jsonl", 3, action="skipped") is False
+        assert jsonl_tail.report(tmp_path / "wakes.jsonl", 3, action="skipped") is False
+    finally:
+        ops_notify_owner.install()
+    rows = ops_diagnostics.spooled()
+    assert len(rows) == 1, rows  # retried on every call, retained ONCE
+    assert rows[0]["channel"] == "store_damage" and "STORE DAMAGE" in rows[0]["message"]
+    assert spool.exists()
+
+
+def test_the_owner_drains_the_spool_and_keeps_what_it_could_not_deliver(monkeypatch, tmp_path):
+    _spool_env(monkeypatch, tmp_path)
+    jsonl_tail._alerted.clear()
+    ops_diagnostics.unregister("store_damage")
+    try:
+        jsonl_tail.report(tmp_path / "one.jsonl", 3, action="skipped")
+        jsonl_tail.report(tmp_path / "two.jsonl", 4, action="skipped")
+    finally:
+        ops_notify_owner.install()
+    assert len(ops_diagnostics.spooled()) == 2
+
+    accepted: list[str] = []
+
+    def only_the_second(row):
+        if row["path"].endswith("two.jsonl"):
+            accepted.append(row["path"])
+            return True
+        return False
+
+    assert ops_diagnostics.drain(only_the_second) == 1
+    remaining = ops_diagnostics.spooled()
+    assert [r["path"] for r in remaining] == [str(tmp_path / "one.jsonl")], remaining
+    assert accepted == [str(tmp_path / "two.jsonl")]
+
+
+def test_a_dry_run_sends_nothing_and_reports_what_it_would_have_sent(tmp_path, sent):
+    """The reviewer's reproduction: reading a damaged store during --dry-run paged the operator."""
+    jsonl_tail._alerted.clear()
+    path = tmp_path / "wakes.jsonl"
+    ops_diagnostics.suppress("run_persistent_wake --dry-run")
+    try:
+        assert jsonl_tail.report(path, 3, action="skipped") is False
+        assert jsonl_tail.report(path, 3, action="skipped") is False
+        would_have_sent = ops_diagnostics.suppressed_events()
+    finally:
+        ops_diagnostics.resume()
+    assert sent == [], sent  # nothing reached the transport
+    assert len(would_have_sent) == 2  # every call is recorded; dedupe belongs to the caller's key
+    assert "STORE DAMAGE" in would_have_sent[0]["diagnostic"]["message"]
+    assert would_have_sent[0]["reason"] == "run_persistent_wake --dry-run"
+    # and the suppression did not leave the dedupe key set: the next real read still alerts
+    assert jsonl_tail.report(path, 3, action="skipped") is True
+    assert len(sent) == 1
+
+
 ANCHOR = 'JSONL_TRUNCATED_TAIL_20261031'  # config/ci_gates/jsonl_truncated_tail_20261031.json names this file

@@ -54,3 +54,13 @@ def install() -> None:
     """Register this owner for every diagnostic channel (idempotent)."""
     for channel in CHANNELS:
         ops_diagnostics.register(channel, deliver)
+
+
+def drain() -> int:
+    """Deliver what processes without an owner spooled. Returns the number CONFIRMED.
+
+    The governed bridge and the provider-health check run Anthropic calls but hold no sender
+    (AGENTS.md §23.20), so a credit refusal there reached this spool and stopped. The wake consumer owns
+    the channels, so its real run drains them; a rejected row stays spooled for the next run.
+    """
+    return ops_diagnostics.drain(deliver, channels=CHANNELS)
