@@ -44,8 +44,15 @@ def _conn(conn: Any = None, connect: Optional[Any] = None) -> Any:
         return None
 
 
+#: alert_notification_deliveries.route_mode is NOT NULL with no default, so every row has to carry one. A CRITICAL event is
+#: an immediate one by definition -- it is what the operator is being interrupted for -- so that is the default here, and the
+#: caller may override it.
+DEFAULT_ROUTE_MODE = "IMMEDIATE"
+
+
 def record(alert_id: str, receipts: list[dict[str, Any]], *, conn: Any = None, connect: Optional[Any] = None,
-           incident_id: str | None = None, attempt_seq: int = 1) -> dict[str, Any]:
+           incident_id: str | None = None, attempt_seq: int = 1,
+           route_mode: str = DEFAULT_ROUTE_MODE) -> dict[str, Any]:
     """Write one row per channel. Returns what was written, or why nothing could be.
 
     Each receipt is the shape ``critical_channels.Receipt.as_dict()`` returns:
@@ -70,10 +77,10 @@ def record(alert_id: str, receipts: list[dict[str, Any]], *, conn: Any = None, c
         for r in receipts:
             cur.execute(
                 "INSERT INTO alert_notification_deliveries "
-                "(alert_id, incident_id, attempt_seq, channel, delivery_status, delivery_reason, provider_receipt, "
-                " rendered_message) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-                (ident, incident_id, attempt_seq, str(r.get("channel") or ""), STATUS_MAP[str(r["status"])],
-                 r.get("reason"), r.get("provider_receipt"), None),
+                "(alert_id, incident_id, attempt_seq, route_mode, channel, delivery_status, delivery_reason, "
+                " provider_receipt, rendered_message) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (ident, incident_id, attempt_seq, route_mode, str(r.get("channel") or ""),
+                 STATUS_MAP[str(r["status"])], r.get("reason"), r.get("provider_receipt"), None),
             )
             written += 1
         connection.commit()

@@ -56,11 +56,19 @@ RECEIPTS = [
 ]
 
 
+def _by_column(sql: str, params) -> dict:
+    """Map column name -> bound value, so a test never depends on the position of a column in the insert."""
+    import re
+
+    columns = [c.strip() for c in re.search(r"\((.*?)\)\s*VALUES", sql, re.S).group(1).split(",") if c.strip()]
+    return dict(zip(columns, params))
+
+
 def test_every_channel_gets_a_row():
     conn = FakeConn()
     out = CR.record("evt-1", RECEIPTS, conn=conn)
     assert out["ok"] is True and out["written"] == 3
-    channels = [params[3] for _sql, params in conn.executed]
+    channels = [_by_column(sql, params)['channel'] for sql, params in conn.executed]
     assert channels == ["telegram_critical", "email", "text_gateway"]
     assert conn.committed == 1
 
@@ -69,16 +77,17 @@ def test_a_skipped_channel_is_stored_as_suppressed_because_the_table_says_so():
     """The CHECK constraint has no 'skipped'; writing it would lose the row, and a lost receipt is worse than a rough one."""
     conn = FakeConn()
     CR.record("evt-1", RECEIPTS, conn=conn)
-    skipped = conn.executed[2][1]
-    assert skipped[4] == "suppressed" and skipped[5] == "class_not_enabled_for_text"
-    assert skipped[4] in CR.ALLOWED_STATUSES
+    sql, params = conn.executed[2]
+    skipped = _by_column(sql, params)
+    assert skipped["delivery_status"] == "suppressed" and skipped["delivery_reason"] == "class_not_enabled_for_text"
+    assert skipped["delivery_status"] in CR.ALLOWED_STATUSES
 
 
 def test_every_written_status_is_one_the_column_accepts():
     conn = FakeConn()
     CR.record("evt-1", RECEIPTS, conn=conn)
-    for _sql, params in conn.executed:
-        assert params[4] in CR.ALLOWED_STATUSES, params
+    for sql, params in conn.executed:
+        assert _by_column(sql, params)["delivery_status"] in CR.ALLOWED_STATUSES, params
 
 
 def test_no_durable_store_is_reported_rather_than_silently_dropped():
@@ -111,3 +120,34 @@ def test_delivered_means_at_least_one_confirmed_and_a_skip_is_not_one():
 def test_an_empty_receipt_list_writes_nothing_and_is_not_an_error():
     out = CR.record("evt-1", [], conn=FakeConn())
     assert out["ok"] is True and out["written"] == 0
+
+
+def test_every_not_null_column_without_a_default_is_bound_by_the_insert():
+    """The fake connection cannot see the schema — that is how `route_mode` was missed.
+
+    Real defect, caught by review on a throwaway Postgres: `alert_notification_deliveries.route_mode` is NOT NULL with no
+    default, and the insert did not name it, so every write would have raised. This reads the migration itself and requires
+    the insert to bind every column the table refuses to default.
+    """
+    import re
+
+    ddl = (ROOT / "migrations/2026_07_28_alert_notification_outbox.sql").read_text(encoding="utf-8")
+    block = re.search(r"CREATE TABLE IF NOT EXISTS alert_notification_deliveries \((.*?)\n\);", ddl, re.S)
+    assert block, "the delivery table DDL was not found"
+    required = []
+    for line in block.group(1).splitlines():
+        text = line.strip().rstrip(",")
+        if not text or text.startswith("--") or text.upper().startswith(("UNIQUE", "PRIMARY", "FOREIGN")):
+            continue
+        if "NOT NULL" in text.upper() and "DEFAULT" not in text.upper():
+            required.append(text.split()[0])
+    assert "route_mode" in required, required  # the column that was missed must be in the check's own scope
+
+    conn = FakeConn()
+    CR.record("evt-1", RECEIPTS, conn=conn)
+    sql, params = conn.executed[0]
+    columns = re.search(r"\((.*?)\)\s*VALUES", sql, re.S).group(1)
+    named = {c.strip() for c in columns.split(",")}
+    missing = [c for c in required if c not in named]
+    assert not missing, f"insert does not bind NOT NULL columns without defaults: {missing}"
+    assert len(params) == len([c for c in columns.split(",") if c.strip()])
