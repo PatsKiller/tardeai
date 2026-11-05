@@ -130,12 +130,16 @@ def _date(raw: Any) -> str:
 
 
 def _row(rid: str, label: str, value: str, tone: str | None = None, *, href: str | None = None,
-         detail: dict | None = None) -> dict:
+         detail: dict | None = None, nowrap: bool = False) -> dict:
+    """One panel row. ``nowrap`` marks a row whose text carries measured figures: the board then breaks it
+    only at whitespace, so a phone can never split a number ("49.4%" into "49." / "4%") — FQ-064."""
     out: dict[str, Any] = {"id": rid, "label": label, "value": value, "tone": tone}
     if href:
         out["href"] = href
     if detail:
         out["detail"] = detail
+    if nowrap:
+        out["nowrap"] = True
     return out
 
 
@@ -431,6 +435,7 @@ def strategy_payload(*, root: Path, db_query: DbQuery | None = None, now: dateti
         pnl = _num(live.get("total_pnl"))
         board.append(_row(f"lb-{sid}", f"{sid.replace('_', ' ')} · win {_pct(live.get('win_rate'))} · {_count(live.get('n'))} trades",
                           _money(pnl, signed=True), "good" if (pnl or 0) > 0 else "bad" if (pnl or 0) < 0 else None,
+                          nowrap=True,
                           detail=_detail(f"{sid.replace('_', ' ')} · rank {r.get('rank')}", [
                               ("Closed paper trades", _count(live.get("n"))), ("Wins", _count(live.get("wins"))),
                               ("Win rate", _pct(live.get("win_rate"))), ("Total P/L", _money(live.get("total_pnl"), True)),
@@ -458,8 +463,8 @@ def strategy_payload(*, root: Path, db_query: DbQuery | None = None, now: dateti
             else "2,000 closed trades (P4 strong paper evidence), then 4,000 (P5 live-readiness candidate)")
     readiness = [
         _row("rd-phase", "Phase", str(level or GAP_NOT_ON_FILE).replace("_", " ")),
-        _row("rd-closed", "Closed trades", f"{_count(closed)} / 2,000" if closed is not None else GAP_NOT_ON_FILE),
-        _row("rd-wr", "Win rate (all closed)", _pct(win_rate)),
+        _row("rd-closed", "Closed trades", f"{_count(closed)} / 2,000" if closed is not None else GAP_NOT_ON_FILE, nowrap=True),
+        _row("rd-wr", "Win rate (all closed)", _pct(win_rate), nowrap=True),
         _row("rd-gate", "Next gate", gate),
     ]
 
