@@ -4,6 +4,7 @@
  */
 import { useApi } from '../hooks/useApi'
 import { BB, T, TYPE } from '../lib/watchTokens'
+import { countText, findingTypeLabel, severityLabel } from '../lib/hermesPlainLanguage'
 
 type Props = {
   onDrill?: (ctx: { title: string; subtitle: string; endpoint: string; rows: any[] }) => void
@@ -29,9 +30,27 @@ export default function HermesQualitySpotCheck({ onDrill }: Props) {
     return st !== 'resolved' && st !== 'closed' && st !== 'archived'
   }
   const open = (Array.isArray(pq?.open_findings) ? pq.open_findings : findings.filter(isOpen)) as any[]
-  const openCount: number = typeof pq?.open_count === 'number' ? pq.open_count : open.length
+  // FQ-039 R1 (codex, P2607-R1): `open_count` is the producer's own count and 0 is a legitimate answer. The old
+  // expression `openCount || recent.length` replaced a known zero with the length of the historical list, and the
+  // sentence around it called that "still need attention" — resolved history misclassified as open work.
+  // P2607-R3 sibling (codex at 698d1cba5): the producer's own count is the only evidence about the whole queue. A
+  // returned slice is what the reader gets to see, not how much is open — an explicit `open_findings: []` with no count
+  // is a slice that came back empty, not proof that nothing is open, so it must not be counted as a zero.
+  const openKnown: boolean = typeof pq?.open_count === 'number'
+  const openCount: number | null = openKnown ? (pq.open_count as number) : null
   const findingsTotal: number = typeof pq?.total === 'number' ? pq.total : findings.length
-  const recent = (open.length ? open : findings).slice(0, 8)
+  const showingOpen = open.length > 0
+  const recent = (showingOpen ? open : findings).slice(0, 8)
+  // FQ-039 R3 (codex P2607-R3): "no open findings" is a claim about the whole queue, and only the producer's own
+  // count can support it. A positive count with an empty returned slice is a gap between two reads — the count and
+  // the rows are three separate reads on the server — and an unreported count is unknown. Both describe what the
+  // list below actually is instead of asserting an absence they cannot see.
+  const historyCaption: { testid: string; text: string } | null = showingOpen ? null
+    : openCount === 0
+      ? { testid: 'quality-history-caption', text: 'No open findings — showing the most recent resolved ones.' }
+      : openCount != null
+        ? { testid: 'quality-history-gap', text: `The count says ${countText(openCount)} still need attention, but the open list came back empty — the findings below are the most recent ones, not the open set.` }
+        : { testid: 'quality-history-unknown', text: 'The open count was not reported, so the list below is the most recent findings — this is not proof that nothing is open.' }
   const crit = recent.filter(f => String(f.severity || '').toLowerCase() === 'critical').length
   const warn = recent.filter(f => String(f.severity || '').toLowerCase() === 'warning').length
 
@@ -70,15 +89,27 @@ export default function HermesQualitySpotCheck({ onDrill }: Props) {
       </div>
 
       <div style={{ fontSize: TYPE.xs, color: 'var(--text2)', marginBottom: 8 }}>
-        Staging: research rows <b style={{ color: 'var(--text1)' }}>{researchN}</b>
-        {' · '}findings <b style={{ color: 'var(--text1)' }}>{findingsN}</b>
-        {' · '}open in view <b style={{ color: 'var(--text1)' }}>{openCount || recent.length}</b>
+        Research so far: <b style={{ color: 'var(--text1)' }}>{countText(researchN)}</b> rows
+        {' · '}<b style={{ color: 'var(--text1)' }}>{countText(findingsN)}</b> quality findings recorded
+        {openCount === 0
+          ? <>{' · '}<b style={{ color: 'var(--text1)' }}>nothing open</b></>
+          : openCount != null
+            ? <>{' · '}<b style={{ color: 'var(--text1)' }}>{countText(openCount)}</b> still need attention</>
+            : <>{' · '}<b style={{ color: 'var(--text1)' }}>open count not reported</b></>}
       </div>
 
       {recent.length === 0 ? (
         <div style={{ color: 'var(--text3)', fontSize: TYPE.sm, padding: '6px 0' }}>No pipeline-quality findings loaded.</div>
       ) : (
-        recent.map((f, i) => (
+        <>
+        {/* FQ-039 R1: when nothing is open, say that the list below is history — never let resolved findings read as
+            outstanding work. */}
+        {historyCaption && (
+          <div data-testid={historyCaption.testid} style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginBottom: 4 }}>
+            {historyCaption.text}
+          </div>
+        )}
+        {recent.map((f, i) => (
           <div
             key={f.id ?? i}
             onClick={() => onDrill?.({
@@ -92,20 +123,36 @@ export default function HermesQualitySpotCheck({ onDrill }: Props) {
               cursor: onDrill ? 'pointer' : 'default', fontSize: TYPE.sm,
             }}
           >
-            <span style={{ color: sevColor(f.severity), fontWeight: 700 }}>{f.severity ?? '—'}</span>
-            <span style={{ marginLeft: 8, color: 'var(--text0)' }}>{f.finding_type ?? ''}</span>
+            <span style={{ color: sevColor(f.severity), fontWeight: 700 }}>{severityLabel(f.severity)}</span>
+            <span style={{ marginLeft: 8, color: 'var(--text0)' }} title={f.finding_type ? `Finding type: ${f.finding_type}` : undefined}>· {findingTypeLabel(f.finding_type)}</span>
             {f.symbol && <span style={{ marginLeft: 8, color: T.link, fontFamily: 'monospace' }}>{f.symbol}</span>}
             <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginTop: 2, lineHeight: 1.4 }}>
               {String(f.description || f.recommended_action || '').slice(0, 160)}
               {String(f.description || '').length > 160 ? '…' : ''}
             </div>
           </div>
-        ))
+        ))}
+        </>
       )}
 
       <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', marginTop: 10 }}>
-        Sources: /api/v2/hermes/pipeline-quality · /api/v2/hermes/health.
-        Operator checklist: (1) kill switch off (2) loop timer armed (3) no critical open findings (4) do not enable hermes-gateway.service.
+        Operator checklist: (1) kill switch off (2) loop timer armed (3) no critical open findings (4) leave the Hermes
+        gateway disabled.
+        {/* FQ-039: the endpoints and the unit name stay available, behind a disclosure, not in the reading line. */}
+        <details style={{ marginTop: 4 }}>
+          <summary style={{ cursor: 'pointer' }}>Where these numbers come from</summary>
+          <div style={{ marginTop: 4, fontFamily: 'monospace' }}>
+            Sources: /api/v2/hermes/pipeline-quality · /api/v2/hermes/health · do not enable
+            hermes-gateway.service.
+          </div>
+          {recent.length > 0 && (
+            <div style={{ marginTop: 4, fontFamily: 'monospace' }}>
+              {/* FQ-039: the raw finding type of every row above, so a support question can name the exact key
+                  without it being the label the operator reads. */}
+              Raw finding types: {Array.from(new Set(recent.map((f: any) => String(f.finding_type ?? 'unknown')))).join(' · ')}
+            </div>
+          )}
+        </details>
       </div>
     </div>
   )

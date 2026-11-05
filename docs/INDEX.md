@@ -2258,6 +2258,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/deepseek-v4-mainline-2026-08-03/SERVICE_RUNTIME_OPERATOR_STEPS.md` | Service-runtime DeepSeek credential wiring (operator-approved only) |
 | `docs/ops/deepseek-v4-mainline-2026-08-03/V3_ROUTE_TEST_RESULTS.md` | V3 route/subtab maturity results |
 | `docs/ops/holdings_export_backup.md` | holdings.json is a generated backup (Step 1) |
+| `docs/ops/home_reentry_quote_truth_20261104.md` | Home re-entry quote truth and source audit |
 | `docs/ops/home_v008_needs_you_approvals.md` | Home v008 "Needs you" — operator approvals (backend A) |
 | `docs/ops/incident-gate-a-canonical-store-hygiene.md` | Gate A Canonical Store Hygiene Incident |
 | `docs/ops/incidents/INCIDENT_20261023_SAFE_FLOCK_CRON_OUTAGE.md` | 2026-10-23 safe_flock cron outage |

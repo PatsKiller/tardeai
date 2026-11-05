@@ -146,6 +146,12 @@ export function etShort(at: string | null | undefined): string {
   const hh = g('hour') === '24' ? '00' : g('hour')
   return `${g('month')}-${g('day')} ${hh}:${g('minute')}`
 }
+/** FQ-042: the compact phone summary's when-label. Intact ET timestamp, or the date with its
+ *  `· date only` provenance, or an explicit missing-date message — never a formatter sliced at an
+ *  arbitrary character (that rendered "11-05 10:3" and "11-05 · da", BLOCK 2026-11-05). */
+export function compactWhenLabel(at: string | null | undefined): string {
+  return at ? etShort(at) : 'date unavailable'
+}
 export function plText(j: Journey): string {
   if (j.pl.amount == null && j.pl.pct == null) return j.pl.note ? 'basis pending' : '—'
   const a = j.pl.amount != null ? money(j.pl.amount, true) : ''

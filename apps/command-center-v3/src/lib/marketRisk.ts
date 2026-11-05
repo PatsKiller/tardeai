@@ -101,6 +101,7 @@ export interface ReentryStages {
 }
 export interface WashSale { state: 'occurred' | 'window_open'; loss_sale_date?: string; until?: string; rebuy_date?: string; rebuy_price?: number | null; account_label?: string; deferred_loss_usd?: number | null }
 export interface ReentryCurrentQuote {
+  schema?: string; evaluated_at?: string | null
   status?: string; price?: number | null; source?: string; session?: string; session_date?: string
   expected_session_date?: string; as_of?: string | null; basis?: string; reason?: string | null; stale?: boolean
   pct_vs_exit?: number | null; pct_vs_sma20?: number | null
@@ -403,7 +404,7 @@ const STRESSED = new Set(['STRESS', 'WEAK'])
 export type GroupChip = 'STRESS' | 'WEAK' | 'RESILIENT' | 'HOLDING' | 'NOT MEAS.'
 export interface SectorRowModel { key: string; label: string; theme: boolean; chip: GroupChip; tone: Tone; rs1: string; rs5: string; rs1n: number | null; rs5n: number | null; usd: string; pctBook: string; held: boolean; unknown: boolean; reason: string | null }
 export interface ReentryRowModel {
-  symbol: string; head: string; now: string; vsExit: string; vsExitNeg: boolean; vsMa: string; trend: string; verdict: string; verdictTone: Tone
+  symbol: string; head: string; now: string; quoteLabel?: string; vsExit: string; vsExitNeg: boolean; vsMa: string; trend: string; verdict: string; verdictTone: Tone
   stage1: string; waiting: string; invalidates: string; stage2: string; wash: { text: string; tone: 'info' | 'warning' } | null; earnings: string | null; lookThrough: string
 }
 export interface BudgetLine { account: string; text: string; drivers: string }
@@ -509,7 +510,7 @@ export function verdictLine(mr: MarketRisk): string {
   return `${word} — ${groups}.`
 }
 
-export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
+export function actionableModel(mr: MarketRisk | null, now = Date.now()): ActionableModel | null {
   if (!mr || mr.state !== 'evaluated' || mr.stale) return null
   const heat = (mr.heatmap ?? []).filter(h => h.kind === 'sector' || h.kind === 'theme')
   const themeKeys = new Set(heat.filter(h => h.kind === 'theme').map(h => h.key))
@@ -625,8 +626,9 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
       return { date: `${parts.year}-${parts.month}-${parts.day}`, weekday: parts.weekday,
         seconds: Number(parts.hour) * 3600 + Number(parts.minute) * 60 + Number(parts.second) }
     }
-    const quoteClock = etClock(quoteAt), evaluatedClock = etClock(evaluatedAt)
-    const quoteEvidenceKnown = quote?.status === 'available' && !quote.stale && !mr.stale
+    const quoteClock = etClock(quoteAt)
+    const legacyQuote = quote?.schema === 'ReentryRegularQuote@v1'
+    const quoteEvidenceKnown = legacyQuote && quote?.status === 'available' && !quote.stale && !mr.stale
       && typeof quote.price === 'number' && Number.isFinite(quote.price) && quote.price > 0
       && quote.source === 'market_quotes:alpaca' && quote.session === 'regular'
       && typeof quote.session_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(quote.session_date)
@@ -634,14 +636,49 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
       && ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(quoteClock?.weekday ?? '')
       && quoteClock!.seconds >= 9.5 * 3600 && quoteClock!.seconds < 16 * 3600 + 60
       && Number.isFinite(evaluatedAt) && quoteAt <= evaluatedAt
-    const quoteKnown = quoteEvidenceKnown && quoteClock!.date === evaluatedClock?.date
-    const priorRegularQuote = quoteEvidenceKnown && !!evaluatedClock && quoteClock!.date < evaluatedClock.date
+    // Request-time observed quote is distinct from a confirmed daily bar. Re-age retained API data too.
+    const observedQuote = quote?.schema === 'ReentryObservedQuote@v1'
+    const observedAt = observedQuote ? zoned(quote?.evaluated_at) : evaluatedAt
+    const wallClock = etClock(now)
+    const sessionLimit = quote?.session === 'premarket' ? 120 : quote?.session === 'regular' ? 90 : quote?.session === 'afterhours' ? 240 : 0
+    const sessionMatches = !!quoteClock && (quote?.session === 'premarket'
+      ? quoteClock.seconds >= 4 * 3600 && quoteClock.seconds < 9.5 * 3600
+      : quote?.session === 'regular' ? quoteClock.seconds >= 9.5 * 3600 && quoteClock.seconds < 16 * 3600 + (legacyQuote ? 60 : 0)
+      : quote?.session === 'afterhours' && quoteClock.seconds >= 16 * 3600 && quoteClock.seconds < 20 * 3600)
+    // Every recognised contract goes through the SAME caller-clock proof. Unknown schemas never fall back.
+    const quoteKnown = (observedQuote || legacyQuote) && quote?.status === 'available' && !quote.stale
+      && (!legacyQuote || quoteEvidenceKnown)
+      && typeof quote.price === 'number' && Number.isFinite(quote.price) && quote.price > 0
+      && quote.source === 'market_quotes:alpaca' && sessionMatches
+      && ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(quoteClock?.weekday ?? '')
+      && quoteClock?.date === quote.session_date && quoteClock?.date === wallClock?.date
+      && Number.isFinite(observedAt) && quoteAt <= observedAt && observedAt <= now
+      && quoteAt <= now && (now - quoteAt) / 60_000 <= sessionLimit
+    const observedKnown = observedQuote && quoteKnown
+    const priorRegularQuote = quoteEvidenceKnown && !quoteKnown && quoteAt <= now
     const finite = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null
     const price = quoteKnown ? quote!.price : null
-    const vsExit = quoteKnown ? finite(quote!.pct_vs_exit) : null
+    const exitReference = finite(c.exit_price ?? st.exit_price)
+    const vsExit = quoteKnown && exitReference && exitReference > 0
+      ? (price! / exitReference - 1) * 100 : quoteKnown ? finite(quote!.pct_vs_exit) : null
     const vsMa = quoteKnown ? finite(quote!.pct_vs_sma20) : null
     const ma = vsMa != null ? `${fmtSignedPct(vsMa)} vs confirmed 20-day` : ''
-    const priceEvidence = quoteKnown
+    const quoteLabel = quoteKnown && quoteClock
+      ? `${quote!.session === 'premarket' ? 'pre-market' : quote!.session === 'afterhours' ? 'after-hours' : 'regular-session'} ${String(Math.floor(quoteClock.seconds / 3600)).padStart(2, '0')}:${String(Math.floor(quoteClock.seconds / 60) % 60).padStart(2, '0')} ET`
+      : ''
+    const invalidation = finite(st.invalidation_level)
+    const invalidationKnown = invalidation != null && invalidation > 0
+    const invalidated = quoteKnown && invalidationKnown && price! < invalidation
+    const historicalPositive = st.verdict === 'Confirmed' || !!st.stage2?.met
+    // The interim negative veto cannot affirm a historical positive when its existing floor is unknown.
+    const missingInvalidation = historicalPositive && !invalidationKnown
+    const currentVerdict = invalidated ? 'Invalidated' : historicalPositive && (!quoteKnown || !invalidationKnown) ? 'Unverified' : st.verdict ?? 'Still falling'
+    const invalidationEvidence = missingInvalidation
+      ? ' · Invalidation level unavailable — current confirmation is unverified' : ''
+    const priceEvidence = observedQuote
+      ? observedKnown ? `Latest stored quote · ${quoteLabel} · ${quote!.source} · observation time; not a confirmed close`
+        : `Current quote ${quote?.status === 'stale' ? 'stale' : 'unavailable'} — current recovery is unverified`
+      : quoteKnown
       ? `Stored regular-session observation · fetched ${shortTime(quote!.as_of)} · ${quote!.source} · trade time/live freshness unverified`
       : priorRegularQuote
         ? `Last stored regular-session observation ${fmtPrice(quote!.price)} · ${quote!.session_date} · fetched ${shortTime(quote!.as_of)} · ${quote!.source} · trade time/live freshness unverified`
@@ -650,14 +687,14 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
       symbol: sym,
       head: `exit ${fmtPrice(c.exit_price ?? st.exit_price)} · ${shortDay(c.exit_date)} · ${det.exit_account_label ?? 'one account'}${held}`,
       now: quoteKnown ? fmtPrice(price) : priorRegularQuote ? '—' : (quote?.stale || mr.stale || quote?.status === 'stale' ? 'stale' : 'unavailable'),
-      vsExit: fmtSignedPct(vsExit), vsExitNeg: (vsExit ?? 0) < 0, vsMa: ma,
+      quoteLabel, vsExit: fmtSignedPct(vsExit), vsExitNeg: (vsExit ?? 0) < 0, vsMa: ma,
       trend: st.trend === 'up' ? '↑' : st.trend === 'down' ? '↓' : st.trend === 'flat' ? '→' : '',
-      verdict: st.verdict ?? 'Still falling', verdictTone: VERDICT_TONE[st.verdict ?? 'Still falling'] ?? 'neutral',
+      verdict: currentVerdict, verdictTone: invalidated ? 'danger' : currentVerdict === 'Unverified' ? 'warning' : VERDICT_TONE[currentVerdict] ?? 'neutral',
       stage1: `${st.stage1?.met ?? 0} of ${st.stage1?.of ?? st.stage1?.conditions?.length ?? 0}`,
       waiting: unmet1.length ? unmet1.join(', ') : 'all met',
-      invalidates: fmtPrice(st.invalidation_level),
-      stage2: st.stage2?.met ? 'met' : unmet2.length ? unmet2.join(' or ') : 'not measured',
-      wash, earnings, lookThrough: `${priceEvidence} · ${ltLine}${st.last_date ? ` · stage closes through ${shortDay(st.last_date)}` : ''}`,
+      invalidates: fmtPrice(invalidationKnown ? invalidation : null),
+      stage2: invalidated ? 'not met — invalidated by the current quote' : missingInvalidation ? 'not verified — invalidation level unavailable' : !quoteKnown && st.stage2?.met ? 'not verified — current quote unavailable' : st.stage2?.met ? 'met' : unmet2.length ? unmet2.join(' or ') : 'not measured',
+      wash, earnings, lookThrough: `${priceEvidence}${invalidationEvidence} · ${ltLine}${st.last_date ? ` · stage closes through ${shortDay(st.last_date)}` : ''}`,
     }
   })
   const firstOld = cards.filter(([, c]) => !isRecent(c))
