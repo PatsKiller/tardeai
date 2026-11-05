@@ -446,6 +446,30 @@ def test_give_refuses_an_unknown_coordinator_or_territory(tmp_path):
     assert run(tmp_path, "give", "codex", "nope", "--quote", "q", "--tmux-bin", str(tmux)) == 2
 
 
+def test_a_transfer_to_a_stood_down_destination_is_refused_before_any_write(tmp_path, capsys):
+    """D52 triage @046e73199: existence is not eligibility. A working lead transferred to a stood-down
+    destination was demoted and a stood_down replacement persisted, which `heartbeat` then refuses."""
+    tmux, log = _tmux_that_logs(tmp_path)
+    _seed_lead_and_codex(tmp_path, tmux)
+    assert run(tmp_path, "stand-down", "--id", "codex", "--quote", "codex is done") == 0
+    reg_path = tmp_path / "data" / "coordination" / "coordinator" / "coordinators.json"
+    before_reg, before_led = reg_path.read_bytes(), ledger(tmp_path)
+    capsys.readouterr()
+    assert run(tmp_path, "lead", "codex", "--quote", "make codex the lead", "--tmux-bin", str(tmux)) == 2
+    err = capsys.readouterr().err
+    assert "codex" in err and "stood_down" in err  # the refusal names the destination and its state
+    assert reg_path.read_bytes() == before_reg  # not one byte: no ledger event, no handoff, no board
+    assert ledger(tmp_path) == before_led
+    assert not log.exists()  # no session was told anything
+    by = {c["id"]: c for c in registry(tmp_path)["coordinators"]}
+    assert by["claude-lead"]["role"] == "lead"  # the working lead is not demoted
+    assert set(by["claude-lead"]["territories"]) == {"agents", "ops", "release", "ui"}
+    assert by["codex"]["status"] == "stood_down" and by["codex"]["role"] == "member"
+    # every transfer verb shares the same plan validation
+    assert run(tmp_path, "give", "codex", "agents", "--quote", "q", "--tmux-bin", str(tmux)) == 2
+    assert reg_path.read_bytes() == before_reg
+
+
 def test_ack_by_the_wrong_coordinator_is_refused(tmp_path):
     tmux, _ = _tmux_that_logs(tmp_path)
     _seed_lead_and_codex(tmp_path, tmux)

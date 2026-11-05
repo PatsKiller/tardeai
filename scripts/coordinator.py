@@ -698,8 +698,15 @@ def _transfer_plan(reg: dict[str, Any], *, kind: str, to: str, territories: list
     """Validate and describe a transfer without touching the store (shared by --dry-run and apply)."""
     if not quote.strip():
         raise ValueError("refused: an operator transfer needs --quote with the operator's own words")
-    if find(reg, to) is None:
+    dest = find(reg, to)
+    if dest is None:
         raise ValueError(f"refused: no coordinator {to}")
+    # Existence is not eligibility (D52 triage @046e73199). A stood-down destination used to be accepted, so a
+    # lead transfer demoted the working lead and persisted a stood_down replacement that `heartbeat` then refuses.
+    # Refuse before the plan exists: no ledger event, no handoff, no registry write, no session notice.
+    if str(dest.get("status")) == "stood_down":
+        raise ValueError(f"refused: destination {to} is ineligible (status stood_down); "
+                         "the operator alone re-appoints")
     known = set(_all_territories(reg))
     bad = [t for t in territories if t not in known]
     if bad:
