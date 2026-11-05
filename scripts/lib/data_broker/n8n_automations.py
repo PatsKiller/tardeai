@@ -41,13 +41,14 @@ _RELAY_REFUSED = re.compile(r"relay_live_not_enabled|relay returned HTTP 403", r
 #: message can echo the request headers it was handed, and this payload is rendered on a page and returned by a route.
 #: Redact the VALUE and keep the sentence — "Authorization: Bearer [redacted]" still says what failed.
 _SECRET_SHAPES = (
+    # cc-deepseek-9 / cx-openai-5 at 22bb19504: the value class excluded the quote characters, so `api_key="SECRET"`
+    # and `{"api_key":"SECRET"}` passed through untouched; and `\\b(token...)` cannot match `access_token=` because
+    # `_` is a word character. Both forms are handled explicitly now, quoted or bare.
     re.compile(r"(?i)\b(authorization\s*:\s*bearer\s+)[^\s'\"<>,;]+"),
     re.compile(r"(?i)\b(bearer\s+)[A-Za-z0-9._~+/=-]{12,}"),
     re.compile(r"(?i)\b(x-api-key\s*[:=]\s*)[^\s'\"<>,;]+"),
-    re.compile(r"(?i)\b(api[_-]?key\s*[:=]\s*)[^\s'\"<>,;&]+"),
-    re.compile(r"(?i)\b(password\s*[:=]\s*)[^\s'\"<>,;&]+"),
-    re.compile(r"(?i)\b(token\s*[:=]\s*)[^\s'\"<>,;&]+"),
-    re.compile(r"(?i)\b(secret\s*[:=]\s*)[^\s'\"<>,;&]+"),
+    re.compile(r"""(?i)\b((?:api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|auth[_-]?token|token|password|secret|client[_-]?secret)\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s'\"<>,;&]+)"""),
+    re.compile(r"""("[^"]*(?:api[_-]?key|token|password|secret)[^"]*"\s*:\s*)("[^"]*")"""),
     re.compile(r"\bsk-[A-Za-z0-9_-]{16,}"),
 )
 
@@ -397,7 +398,10 @@ def get_automations(*, query: Query | None = None, now: datetime | None = None,
             kind = classify(message)
             # Every execution gets its kind; the row keeps the NEWEST message (rows arrive newest first).
             kinds[(wid, str(started))] = kind
-            if wid not in errors:
+            # The row's own message: the newest REAL failure if the workflow has one, else the newest error of any
+            # kind (cx-openai-5 at 22bb19504: a mixed workflow showed "skipped" beside a real failure count).
+            prev = errors.get(wid)
+            if prev is None or (prev.get("kind") == "skipped" and kind != "skipped"):
                 errors[wid] = {"kind": kind, "one_line": one_line(message), "at": started or None,
                                "message": message}
     # Second pass with the per-execution kinds: a skip is counted as a skip, a real error still as a failure.

@@ -168,7 +168,9 @@ def test_the_producer_classifies_every_error_execution_not_only_the_newest():
     out = M.get_automations(query=q, now=NOW, cron=lambda: [], drafts=0)
     assert out["kpi"]["failed"] == 1 and out["kpi"]["skipped"] == 1
     assert out["workflows"][0]["fail"] == 1 and out["workflows"][0]["skipped"] == 1
-    assert out["workflows"][0]["last_error_kind"] == "skipped"   # the row still shows the newest message and its kind
+    # cx-openai-5 at 22bb19504: with a real failure present the row names THAT, not the newer skip.
+    assert out["workflows"][0]["last_error_kind"] == "failed"
+    assert "REQUESTED" in (out["workflows"][0]["last_error"] or "")
 
 
 def test_a_credential_shaped_error_never_reaches_the_payload():
@@ -181,6 +183,17 @@ def test_a_credential_shaped_error_never_reaches_the_payload():
     assert scrubbed is not None and "SYNTHETIC_REVIEW_ONLY_CREDENTIAL" not in scrubbed
     assert M.classify(scrubbed) == "failed"   # redaction does not change the classification
     assert M.redact_secrets("api_key=abcdef123456 and token: zzz999") == "api_key=[redacted] and token: [redacted]"
+    # cx-openai-5 / cc-deepseek-9 at 22bb19504: quoted and JSON forms passed through, and access_token= had no \b.
+    for leaked in ('api_key="SYNTH"', '{"api_key":"SYNTH"}', "GET /x?access_token=SYNTH failed"):
+        assert "SYNTH" not in (M.redact_secrets(leaked) or ""), leaked
+    # ...and the newest REAL failure wins over a newer skip for the row's own message
+    out = M.get_automations(query=lambda sql: (
+        [wf("1", "w1")] if "from workflow_entity" in sql else
+        [{"raw": ["1", NOW - HOUR, blob("previous execution is still running (within SLA)")]},
+         {"raw": ["1", NOW - 2 * HOUR, blob("Assert REQUESTED failed")]}] if "from execution_entity e" in sql else
+        [ex("1", "error", NOW - 2 * HOUR), ex("1", "error", NOW - HOUR)]), now=NOW, cron=lambda: [], drafts=0)
+    assert out["workflows"][0]["last_error_kind"] == "failed"
+    assert "REQUESTED" in (out["workflows"][0]["last_error"] or "")
 
 
 def test_cron_entries_counts_jobs_not_assignments_or_macros():

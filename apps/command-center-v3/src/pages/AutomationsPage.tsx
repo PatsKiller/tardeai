@@ -220,8 +220,8 @@ export default function AutomationsPage({ active = true }: { active?: boolean } 
               <strong>This workflow is not in the current list.</strong>{' '}
               <span style={muted}>
                 {view.status === 'OK'
-                  ? 'It was removed or archived since this sheet was opened; the figures below are the last values read for it, not today’s.'
-                  : 'The current list could not be read, so these are the last values read for it, not today’s.'}
+                  ? 'It was removed or archived since this sheet was opened; the figures below are the values from when you opened it, not today’s.'
+                  : 'The current list could not be read, so these are the values from when you opened this sheet, not today’s.'}
               </span>
             </div>
           ) : null}
