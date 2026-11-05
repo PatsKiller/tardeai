@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_stance_age_20261104",
+  "files": [
+    "tests/test_cio_stance_age_20261104.py"
+  ],
+  "anchor": "CIO_STANCE_AGE_20261104",
+  "comment": [
+    "ANCHOR: CIO_STANCE_AGE_20261104 — FQ-098: a CIO stance carries the date its evidence was read; a stance older than 14 days is NAMED stale with that date and the words \"not current advice\", and an undated stance is treated as unverified. The gate RUNS the TypeScript test with node rather than mirroring the logic in Python, so it proves the real behaviour; it is pytest-collectable because the shard runner cannot collect a .ts file."
+  ]
+}
