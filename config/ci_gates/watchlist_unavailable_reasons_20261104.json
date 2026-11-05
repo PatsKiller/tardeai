@@ -6,6 +6,6 @@
   ],
   "anchor": "WATCHLIST_UNAVAILABLE_REASONS_20261104",
   "comment": [
-    "ANCHOR: WATCHLIST_UNAVAILABLE_REASONS_20261104 — FQ-076: the four disabled filters state their reason in visible text (not only a title tooltip a phone never shows) and an unknown next-review time reads 'not scheduled — no review time has been set for this name' instead of a bare dash. Nothing is removed; the disabled controls stay. Proved by RENDERING the page (React server rendering, a fixture payload) and asserting the words and the disabled controls it prints — a source scan would stay green on a page that never renders them (cc-deepseek-3 RECHECK BLOCK F1 on #2606). Hermetic: no browser, no network, no data."
+    "ANCHOR: WATCHLIST_UNAVAILABLE_REASONS_20261104 — FQ-076: the four disabled filters state their reason in visible text and an unknown next-review time reads 'not scheduled — no review time has been set for this name' instead of a bare dash. Proved by RENDERING the page (React server rendering, a fixture payload); the render runs in the frontend build chain, which has npm ci, and this gate guards that registration — the sharded pytest job has node but no node_modules (cc-deepseek-4 F1). It needs node and the app packages because it renders; no browser, no network, no data."
   ]
 }

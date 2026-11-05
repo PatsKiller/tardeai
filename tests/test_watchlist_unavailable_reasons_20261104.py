@@ -1,47 +1,44 @@
 """FQ-076: the four disabled filters and an unknown next-review time explain themselves in visible text.
 
-Registered as the CI gate's file, so the shard runner (pytest) executes it. A ``.mjs`` cannot be collected, so
-this test **runs** ``apps/command-center-v3/src/lib/watchlistUnavailableReasons.view.test.mjs``, which renders
-the real ``WatchIntelligenceUnified`` page — the surface ``/watchlist`` redirects to — through React server
-rendering with a fixture payload and asserts the words and the disabled controls it prints.
+Registered as the CI gate's file, so the shard runner (pytest) executes it. The PROOF is a render test — a ``.mjs``
+cannot be collected by pytest, and (cc-deepseek-4's BLOCK at 15:15Z, F1) the sharded pytest job installs Python only:
+it has ``node`` but no ``node_modules``, so running a render test from here fails on ``Cannot find module 'typescript'``
+before it looks at the page. That would be permanently red for the environment rather than for the page.
 
-Why the rewrite (cc-deepseek-3 RECHECK BLOCK on #2606, 2026-11-05T14:35Z, F1): the first version of the render
-test and this mirror both grepped the page's SOURCE for the sentence and the testid. That stays green on a page
-whose condition never renders the span, or whose fallback lives in a branch the operator never reaches — the
-FQ-132 class. The render test is RED under two mutations of the committed component (the reason span removed;
-the next-review fallback restored to a bare dash) and GREEN on the committed component.
+So the render runs where the packages are — the frontend ``build`` chain in ``apps/command-center-v3/package.json``
+(``npm ci`` then every ``.view.test.mjs``) — and this file guards the registration: if the build step disappears, this
+gate fails, and the page loses its proof. That is the pattern #2611 landed for the same reason.
 
-Hermetic: node, the committed component, a synthetic fixture. No browser, no network, no API, no data.
+What the render asserts (``apps/command-center-v3/src/lib/watchlistUnavailableReasons.view.test.mjs``): the four-filter
+reason and the four named controls on the RENDERED page, and ``Next review: not scheduled — no review time has been set
+for this name`` for an absent ``next_review_at``. It is RED under two mutations of the component (reason span removed;
+fallback restored to a bare dash) and GREEN on the commit.
+
+Hermetic: node, the committed component and its packages, a synthetic fixture. No browser, no network, no API, no data.
 
 ANCHOR: WATCHLIST_UNAVAILABLE_REASONS_20261104
 """
-import shutil
-import subprocess
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+RENDER_STEP = "node src/lib/watchlistUnavailableReasons.view.test.mjs"
 RENDER = ROOT / "apps/command-center-v3/src/lib/watchlistUnavailableReasons.view.test.mjs"
-MARKER = "FQ-076 ok:"
 
 
-def test_the_rendered_page_explains_itself():
-    """Render the component and assert the words it prints (a .mjs cannot be collected, so run it)."""
+def test_the_build_chain_runs_the_render_test():
+    """The proof runs in the job that has `npm ci`; this asserts the step is still there."""
     assert RENDER.is_file(), f"the render test is missing: {RENDER}"
-    node = shutil.which("node")
-    assert node, "node is not on PATH — the render test cannot run, so the gate proves nothing"
-    proc = subprocess.run(
-        [node, "--experimental-strip-types", str(RENDER)],
-        cwd=str(ROOT), capture_output=True, text=True, timeout=300,
+    pkg = json.loads((ROOT / "apps/command-center-v3/package.json").read_text(encoding="utf-8"))
+    steps = [step.strip() for step in pkg["scripts"]["build"].split("&&")]
+    assert RENDER_STEP in steps, (
+        "the frontend build chain no longer runs the FQ-076 render test — the page has lost its proof; "
+        "re-add it before `tsc && vite build`"
     )
-    tail = (proc.stdout + proc.stderr)[-3000:]
-    assert proc.returncode == 0, f"the rendered page failed FQ-076:\n{tail}"
-    assert MARKER in proc.stdout, f"the render test did not report its verdict:\n{tail}"
 
 
 def test_the_gate_file_is_the_one_this_test_registers():
     """A gate whose registered file is not this one would leave the render test unrun in CI."""
-    import json
-
     gate = ROOT / "config/ci_gates/watchlist_unavailable_reasons_20261104.json"
     doc = json.loads(gate.read_text(encoding="utf-8"))
     assert doc["name"] == gate.stem, "the gate name must equal its file stem"
