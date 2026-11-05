@@ -1,61 +1,19 @@
-"""protective_put_advisory.py — D32 SPEC §5: advisory protective put / collar suggestions.
+"""Read-only per-contract protective-put/collar economics over injected snapshots.
 
-For a **single-stock** position above a configured share of the book, with an earnings or
-known event inside the configured window, suggest a protective put (and, when a call quote
-is available, a collar) with the floor it puts under the position and what it would cost.
-
-The system never places, sizes, stops or cancels an order (AGENTS.md §0 rule 1,
-``MBI_BEHAVIOR = 0``). Every suggestion carries that fact in its own payload
-(``placed_by_system: False``), and this module has no import path to a broker, a queue
-writer or a CIO behavior write: it takes plain data in and returns plain data out.
-
-Inputs are injected, never read here:
-
-* ``positions`` — holdings rows: ``symbol``, ``account``, ``quantity``/``shares``,
-  ``market_value``, ``price`` (optional ``stop_price``), optional ``asset_class``.
-* ``book_value`` — the whole book, so a position's share can be measured.
-* ``events`` — ``{symbol: {"event_date": "YYYY-MM-DD", "days_to_event": int, ...}}``.
-  ``days_to_event`` is days until the event (negative = after it).
-* ``chains`` — optional ``{symbol: {"underlying_price": float, "expirations": [
-  {"exp": "YYYY-MM-DD", "dte": int, "strikes": [{"side": "put"|"call", "strike": ...,
-  "bid": ..., "ask": ..., "multiplier": 100}]}]}}`` — the same snapshot shape
-  ``options_advisory_candidates`` consumes.
-
-Without a chain the cost is a **labeled estimate** from config
-(``estimated_cost_pct_of_position``) and ``cost_is_estimate`` is True. A floor price is
-reported only when a real strike was chosen; it is never invented from a chain that is
-not there (the estimate keeps the strike only if the caller supplied one).
-
-Only a LONG position is ever advised: a put on a short adds the exposure it claims to
-remove, and ``position_value`` erases the sign, so the side is a gate
-(``not_a_long_position``). ``cost_per_share`` and ``floor_after_cost`` are on the HELD
-shares — ``_contracts`` may cover more (``over``) or fewer (``partial``) shares than the
-position holds — and the quoted premium per covered share is reported beside them as
-``cost_per_covered_share``.
-
-Two numbers the operator reads are checked rather than assumed. The chosen strike is compared to the
-floor its basis NAMES: ``floor_target``, ``floor_distance``, ``floor_target_relation`` and
-``floor_strike_far_from_target`` travel with every suggestion, and past the configured distance a
-``floor_warning`` says the put only pays if the stock gaps through that level (a 150 put under a 235
-broker stop does not defend the stop). And the premium is gated against the position: a hedge costing
-more than ``max_cost_pct_of_position`` of the position value is refused (``cost_exceeds_position_value``)
-rather than shown with a plausible floor, while a premium at or above the floor withholds
-``floor_after_cost`` and labels why instead of printing a negative protected level.
-
-Coverage is stated, not blended. When a contract count does not reach every held share (``cover:
-partial``), ``floor_after_cost`` is the floor under the COVERED shares only, ``coverage`` names how many
-held shares carry no floor, and ``worst_case_per_share`` is the position's minimum recovery per held share
-if the stock goes to zero. A premium averaged over unprotected shares is never given the floor's name.
+No contract quantity is selected. Unit prices and covered-share payoff levels describe a
+standard 100-share contract, never a position-wide floor. Holdings qualify the research
+question; the operator alone chooses any coverage and execution. No broker or writer path.
 """
+
 from __future__ import annotations
 
 import json
 import math
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
-SCHEMA = "ProtectivePutAdvisory@v1"
+SCHEMA = "ProtectivePutAdvisory@v2"
 CONFIG_RELPATH = Path("config") / "protective_put_advisory.json"
 
 DEFAULTS: dict[str, Any] = {
@@ -83,23 +41,33 @@ _OPTION_SHAPE = (" ", "/")
 
 
 def load_config(path: str | Path | None = None) -> dict[str, Any]:
-    """Config from ``path`` (or the repo default), merged over the built-in defaults.
-
-    An unreadable or non-object file yields the defaults with ``enabled`` unchanged —
-    the advisory is not worth crashing a page over, and the defaults are conservative.
-    """
-    cfg = dict(DEFAULTS)
-    target = Path(path) if path else Path(__file__).resolve().parents[2] / CONFIG_RELPATH
+    """Read the documented repository config; unusable config is explicit, never enabled by fallback."""
+    target = Path(path) if path is not None else Path(__file__).resolve().parents[3] / CONFIG_RELPATH
     try:
-        loaded = json.loads(Path(target).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return cfg
-    if isinstance(loaded, dict):
-        cfg.update({k: v for k, v in loaded.items() if not k.startswith("_")})
+        loaded = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError("advisory configuration is unreadable or invalid JSON") from exc
+    if not isinstance(loaded, dict):
+        raise ValueError("advisory configuration must be an object")
+    cfg = dict(DEFAULTS)
+    cfg.update({k: v for k, v in loaded.items() if not k.startswith("_")})
+    if not isinstance(cfg.get("enabled"), bool):
+        raise ValueError("enabled must be a boolean")
+    for key, default in DEFAULTS.items():
+        if isinstance(default, (int, float)) and not isinstance(default, bool):
+            value = _num(cfg.get(key))
+            if value is None or value < 0:
+                raise ValueError(f"{key} must be a finite nonnegative number")
+    if float(cfg["min_days_to_expiry"]) > float(cfg["max_days_to_expiry"]):
+        raise ValueError("expiry bounds are reversed")
+    if not isinstance(cfg.get("exclude_symbols"), list) or not all(isinstance(s, str) for s in cfg["exclude_symbols"]):
+        raise ValueError("exclude_symbols must be a list of strings")
     return cfg
 
 
 def _num(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
     try:
         out = float(value)
     except (TypeError, ValueError):
@@ -175,14 +143,22 @@ def _quote(row: Mapping[str, Any]) -> bool:
     strike = _num(row.get("strike"))
     mult = _num(row.get("multiplier", 100))
     return bool(
-        bid is not None and ask is not None and strike is not None
-        and bid >= 0 and ask > 0 and ask >= bid and strike > 0
-        and mult == 100 and not row.get("nonstandard")
+        bid is not None
+        and ask is not None
+        and strike is not None
+        and bid >= 0
+        and ask > 0
+        and ask >= bid
+        and strike > 0
+        and mult == 100
+        and not row.get("nonstandard")
     )
 
 
-def _expiry_for(chain: Mapping[str, Any], cfg: Mapping[str, Any], days_to_event: float | None) -> Mapping[str, Any] | None:
-    """Nearest expiration at or after the event (and inside the DTE bounds), else the nearest in bounds."""
+def _expiry_for(
+    chain: Mapping[str, Any], cfg: Mapping[str, Any], days_to_event: float | None
+) -> Mapping[str, Any] | None:
+    """Nearest in-bounds expiration that reaches the known event; never fall back before it."""
     expirations = [e for e in chain.get("expirations") or [] if isinstance(e, Mapping)]
     usable = []
     for expiry in expirations:
@@ -194,30 +170,22 @@ def _expiry_for(chain: Mapping[str, Any], cfg: Mapping[str, Any], days_to_event:
         return None
     if days_to_event is not None:
         after = [pair for pair in usable if pair[0] >= max(0.0, days_to_event)]
-        if after:
-            return min(after, key=lambda pair: pair[0])[1]
+        if not after:
+            return None
+        return min(after, key=lambda pair: pair[0])[1]
     return min(usable, key=lambda pair: pair[0])[1]
 
 
 def _pick_strike(expiry: Mapping[str, Any], side: str, target: float) -> Mapping[str, Any] | None:
     """The tradable strike closest to ``target`` on one side, preferring the lower ask on a tie."""
     rows = [
-        row for row in expiry.get("strikes") or []
+        row
+        for row in expiry.get("strikes") or []
         if isinstance(row, Mapping) and str(row.get("side") or "").lower() == side and _quote(row)
     ]
     if not rows:
         return None
     return min(rows, key=lambda row: (abs(float(row["strike"]) - target), float(row["ask"])))
-
-
-def _contracts(shares: float | None) -> tuple[int, str]:
-    """(contracts, cover) — at least one contract; say honestly whether that covers the shares."""
-    if shares is None or shares <= 0:
-        return 1, "unknown"
-    if shares < 100:
-        return 1, "over"      # one contract covers more shares than the position holds
-    whole = int(shares // 100)
-    return max(1, whole), ("full" if abs(shares - whole * 100) < 1e-9 else "partial")
 
 
 def suggest_for_position(
@@ -229,21 +197,16 @@ def suggest_for_position(
     cfg: Mapping[str, Any] | None = None,
     now: date | None = None,
 ) -> tuple[dict[str, Any] | None, str | None]:
-    """One suggestion for one position, or ``(None, reason)`` when a gate says no.
-
-    Gates, in order: enabled; single stock; a known positive value; at or above the size
-    threshold; a known event inside the window. Nothing is ever placed.
-    """
-    cfg = cfg or DEFAULTS
+    """Per-contract research economics, with no selected quantity or position protection claim."""
+    cfg = dict(DEFAULTS) if cfg is None else cfg
     if not cfg.get("enabled", True):
         return None, "advisory_disabled"
     if not is_single_stock(position, cfg):
         return None, "not_a_single_stock"
     shares = _num(position.get("quantity", position.get("shares")))
-    if shares is not None and shares <= 0:
-        # cc-deepseek-3 second review (2026-11-05): a put on a SHORT adds the exposure it claims to remove, and
-        # ``position_value`` erases the sign, so -300 shares produced a "protective put" on the wrong side. Which
-        # side a position is on is a gate, not a detail: only a long can be advised.
+    if shares is None:
+        return None, "position_quantity_unknown"
+    if shares <= 0:
         return None, "not_a_long_position"
     value = position_value(position)
     if value is None:
@@ -260,83 +223,49 @@ def suggest_for_position(
         return None, "outside_event_window"
 
     spot = _num(position.get("price"))
-    if spot is None and value and _num(position.get("quantity", position.get("shares"))):
-        spot = value / abs(float(position.get("quantity", position.get("shares"))))
+    if spot is None or spot <= 0:
+        spot = value / shares
     stop = _num(position.get("stop_price", position.get("stop")))
-
-    # Floor target: the broker stop when one exists (the position is already defended there),
-    # otherwise the configured distance below spot.
-    if stop and stop > 0:
+    if stop is not None and stop > 0:
         floor_target, floor_basis = stop, "broker_stop"
-    elif spot and spot > 0:
+    elif spot > 0:
         floor_target = spot * (1.0 - float(cfg["put_floor_pct_below_spot"]) / 100.0)
         floor_basis = f"spot_minus_{cfg['put_floor_pct_below_spot']}pct"
     else:
         return None, "no_price_or_stop_for_a_floor"
 
-    expiry = _expiry_for(chain or {}, cfg, days) if chain else None
-    put = _pick_strike(expiry, "put", floor_target) if expiry else None
-    call = None
-    if expiry and spot:
-        call = _pick_strike(expiry, "call", spot * (1.0 + float(cfg["collar_cap_pct_above_spot"]) / 100.0))
+    # An explicitly supplied but unusable snapshot is not an absent snapshot.
+    expiry = _expiry_for(chain, cfg, days) if chain is not None else None
+    if chain is not None and expiry is None:
+        return None, "no_expiry_covers_event"
+    put = _pick_strike(expiry, "put", floor_target) if expiry is not None else None
+    if chain is not None and put is None:
+        return None, "no_usable_put_quote"
+    call = (
+        _pick_strike(expiry, "call", spot * (1.0 + float(cfg["collar_cap_pct_above_spot"]) / 100.0)) if expiry else None
+    )
 
-    contracts, cover = _contracts(shares)
-    covered_shares = max(1.0, contracts * 100.0)
-    # cc-deepseek-3 second review (2026-11-05): ``_contracts`` deliberately labels over/partial coverage, so dividing
-    # cost and floor by the covered contracts' 100s showed $20.50 a share for a hedge costing $51.25 of each of the
-    # 40 held shares — and a floor $30.75 too high. The operator's per-share numbers are on the HELD shares; the
-    # covered-share figure is kept, named for what it is.
-    held_shares = shares if shares is not None and shares > 0 else covered_shares
-    estimate_cost = round(value * float(cfg["estimated_cost_pct_of_position"]) / 100.0, 2)
-    if put is not None:
-        put_cost = round(float(put["ask"]) * 100.0 * contracts, 2)
-        cost_usd, cost_is_estimate = put_cost, False
-        floor_price = float(put["strike"])
-        strike_source = "chain"
-        expiry_label = str(expiry.get("exp") or expiry.get("dte"))
-    else:
-        cost_usd, cost_is_estimate = estimate_cost, True
-        floor_price = round(floor_target, 2)
-        strike_source = "target_not_a_quoted_strike" if chain else "estimate"
-        expiry_label = None
-
-    # cc-deepseek-5 second review (2026-11-05): a quoted premium can exceed the position it protects — 40 shares at
-    # spot 100 against a 225 put quoted at 126 is $12,600 of premium for $4,000 of stock. A hedge costing more than
-    # the configured share of the position is refused; emitting it with a plausible-looking floor is the defect.
-    cost_pct_of_position = round(100.0 * cost_usd / value, 2) if value else None
-    if cost_pct_of_position is not None and cost_pct_of_position > float(cfg["max_cost_pct_of_position"]):
+    # 100 is the standard contract multiplier, not a selected number of contracts.
+    reference_value = value / shares * 100.0
+    unit_cost = (
+        float(put["ask"]) * 100.0
+        if put is not None
+        else reference_value * float(cfg["estimated_cost_pct_of_position"]) / 100.0
+    )
+    unit_cost = round(unit_cost, 2)
+    if 100.0 * unit_cost / reference_value > float(cfg["max_cost_pct_of_position"]):
         return None, "cost_exceeds_position_value"
-
-    # ... and the chosen strike is compared to the floor the basis NAMES: a broker stop of 235 beside a quoted 150 put
-    # was reported as "floor 150, basis broker_stop", 85 points apart, with nothing saying the put sits under the stop.
-    floor_distance = round(abs(floor_price - floor_target), 2)
-    if floor_distance < 1e-9:
-        floor_relation = "at"
-    elif floor_price < floor_target:
-        floor_relation = "below"
-    else:
-        floor_relation = "above"
-    floor_far = floor_distance > abs(floor_target) * float(cfg["max_floor_distance_pct_of_target"]) / 100.0
-    # cc-deepseek-8 second review (2026-11-05, P1): a PARTIAL cover has shares with NO floor, and dividing the premium
-    # over every held share averaged protected and unprotected shares into one number that read as a floor (178.32 for
-    # a position whose minimum recovery is 142.32). Rule: ``floor_after_cost`` is the floor under the COVERED shares
-    # only, the payload states how many held shares carry no floor, and the position-wide worst case travels beside it
-    # as ``worst_case_per_share``. A blended figure never takes the floor's name.
-    partial = cover == "partial" and covered_shares < held_shares
-    if partial:
-        floor_after = round(floor_price - (cost_usd / covered_shares), 2)
-        uncovered_shares = int(round(held_shares - covered_shares))
-        worst_case_per_share = round((floor_price * covered_shares - cost_usd) / held_shares, 2)
-    else:
-        floor_after = round(floor_price - (cost_usd / held_shares), 2)
-        uncovered_shares = 0
-        worst_case_per_share = floor_after
-
-    suggestion: dict[str, Any] = {
+    strike = float(put["strike"]) if put is not None else None
+    floor_after = round(strike - unit_cost / 100.0, 2) if strike is not None else None
+    distance = round(abs(strike - floor_target), 2) if strike is not None else None
+    relation = (
+        ("at" if distance == 0 else "below" if strike < floor_target else "above") if strike is not None else None
+    )
+    far = distance is not None and distance > abs(floor_target) * float(cfg["max_floor_distance_pct_of_target"]) / 100.0
+    result: dict[str, Any] = {
         "schema": SCHEMA,
         "symbol": str(position.get("symbol") or "").upper(),
         "account": position.get("account"),
-        "shares": shares,
         "position_value": round(value, 2),
         "pct_of_book": share,
         "event": {
@@ -344,69 +273,58 @@ def suggest_for_position(
             "days_to_event": days,
         },
         "structure": "protective_put",
-        "floor_price": floor_price,
+        "economics_basis": "per_contract",
+        "contract_multiplier": 100,
+        "coverage_status": "not_selected",
+        "coverage_note": "Contract quantity is not selected. No position-wide floor or covered/uncovered holding count is implied.",
+        "position_floor_after_cost": None,
+        "floor_price": strike,
         "floor_basis": floor_basis,
         "floor_target": round(floor_target, 2),
-        "floor_distance": floor_distance,
-        "floor_target_relation": floor_relation,
-        "floor_strike_far_from_target": floor_far,
-        "floor_after_cost": floor_after if floor_after > 0 else None,
-        "floor_after_cost_basis": "covered_shares" if partial else "held_shares",
-        "worst_case_per_share": worst_case_per_share,
-        "floor_strike_source": strike_source,
-        "expiry": expiry_label,
-        "contracts": contracts,
-        "cover": cover,
-        "cost_usd": cost_usd,
-        "cost_is_estimate": cost_is_estimate,
-        "cost_per_share": round(cost_usd / held_shares, 2),
-        "cost_per_covered_share": round(cost_usd / covered_shares, 2),
-        "protection_per_share": round(max(0.0, (spot or value) - floor_price), 2) if spot else None,
-        # The rails, restated in the payload so no consumer can mistake a suggestion for an order.
+        "floor_distance": distance,
+        "floor_target_relation": relation,
+        "floor_strike_far_from_target": far,
+        "floor_strike_source": "chain" if put is not None else "unquoted_target",
+        "floor_per_covered_share_after_premium": floor_after if floor_after is not None and floor_after > 0 else None,
+        "floor_after_premium_note": "Per covered share of a standard contract only; no holding coverage has been selected.",
+        "expiry": str(expiry.get("exp") or expiry.get("dte")) if put is not None else None,
+        "cost_per_contract_usd": unit_cost,
+        "cost_per_covered_share": round(unit_cost / 100.0, 4),
+        "cost_is_estimate": put is None,
+        "cost_basis": (
+            "Quoted ask per standard contract."
+            if put is not None
+            else f"LABELED ESTIMATE: {cfg['estimated_cost_pct_of_position']}% of the value of 100 reference shares; "
+            "no option chain was supplied, so this is not a quoted premium or floor."
+        ),
         "advisory_only": True,
         "placed_by_system": False,
-        "operator_action": "Review and place yourself if you choose; the system will not place, size or cancel it.",
+        "operator_action": "Review unit economics. The operator alone chooses any quantity; the system never places, sizes or cancels an order.",
     }
-    if floor_far:
-        suggestion["floor_warning"] = (
-            f"The quoted ${floor_price:,.2f} strike is ${floor_distance:,.2f} {floor_relation} the intended floor "
-            f"target of ${floor_target:,.2f} ({floor_basis}). This put only pays if the stock gaps through that "
-            "level; it does not defend the level the basis names."
+    if far:
+        result["floor_warning"] = (
+            f"The quoted ${strike:,.2f} strike is ${distance:,.2f} {relation} the intended target "
+            f"of ${floor_target:,.2f} ({floor_basis}); it does not defend that target level."
         )
-    if partial:
-        suggestion["coverage"] = {
-            "cover": cover,
-            "covered_shares": int(round(covered_shares)),
-            "uncovered_shares": uncovered_shares,
-            "note": (
-                f"{uncovered_shares} of {int(round(held_shares))} held shares carry no floor. floor_after_cost is the "
-                f"floor under the {int(round(covered_shares))} covered shares; worst_case_per_share is this position's "
-                "minimum recovery per held share if the stock goes to zero."
-            ),
-        }
-    if suggestion["floor_after_cost"] is None:
-        suggestion["floor_after_cost_negative"] = True
-        suggestion["floor_after_cost_note"] = (
-            f"The premium (${cost_usd:,.2f}) is at or above the ${floor_price:,.2f} floor, so no positive protected "
-            "level is left after cost. The number is withheld rather than shown as a floor."
+    if floor_after is not None and floor_after <= 0:
+        result["floor_after_premium_note"] = (
+            "Premium meets or exceeds the quoted strike; no positive covered-share floor remains."
         )
-    if expiry_label is None:
-        suggestion["cost_basis"] = (
-            f"LABELED ESTIMATE: {cfg['estimated_cost_pct_of_position']}% of the position value; "
-            "no option chain was supplied, so this is not a quoted premium."
-        )
-
     if call is not None and put is not None:
-        credit = round(float(call["bid"]) * 100.0 * contracts, 2)
-        net = round(put_cost - credit, 2)
-        suggestion["collar"] = {
-            "cap_price": float(call["strike"]),
-            "call_credit_usd": credit,
-            "net_cost_usd": net,
-            "net_is_credit": net < 0,
-            "note": "A collar sells upside above the cap to pay for the floor; it also limits the gain on the shares.",
-        }
-    return suggestion, None
+        if shares < 100:
+            result["collar_unavailable_reason"] = "insufficient_shares_for_standard_covered_call"
+        else:
+            credit = round(float(call["bid"]) * 100.0, 2)
+            net = round(unit_cost - credit, 2)
+            result["collar_per_contract"] = {
+                "cap_price": float(call["strike"]),
+                "required_owned_shares_per_contract": 100,
+                "call_credit_per_contract_usd": credit,
+                "net_cost_per_contract_usd": net,
+                "net_is_credit": net < 0,
+                "note": "Unit economics only. A standard short call requires 100 owned shares; quantity is not selected. Upside above the cap is exchanged for premium.",
+            }
+    return result, None
 
 
 def suggest_for_book(
@@ -418,43 +336,33 @@ def suggest_for_book(
     cfg: Mapping[str, Any] | None = None,
     now: date | None = None,
 ) -> dict[str, Any]:
-    """The whole advisory: suggestions plus, for every row examined, why it was skipped."""
-    cfg = cfg or DEFAULTS
+    """Project injected rows into unit economics or an explicit unavailable/skipped reason."""
+    cfg = dict(DEFAULTS) if cfg is None else cfg
     events = events or {}
     chains = chains or {}
-    suggestions: list[dict[str, Any]] = []
-    skipped: list[dict[str, Any]] = []
+    suggestions, skipped = [], []
     examined = 0
-    for position in positions or []:
-        if not isinstance(position, Mapping):
-            continue
+    for position in positions:
         examined += 1
         symbol = str(position.get("symbol") or "").upper()
         suggestion, reason = suggest_for_position(
-            position,
-            book_value=book_value,
-            event=events.get(symbol),
-            chain=chains.get(symbol),
-            cfg=cfg,
-            now=now,
+            position, book_value=book_value, event=events.get(symbol), chain=chains.get(symbol), cfg=cfg, now=now
         )
-        if suggestion:
+        if suggestion is not None:
             suggestions.append(suggestion)
         else:
             skipped.append({"symbol": symbol, "account": position.get("account"), "skipped": reason})
     suggestions.sort(key=lambda row: (-float(row["pct_of_book"]), row["symbol"]))
     return {
         "schema": SCHEMA,
-        "generated_at": datetime.now().astimezone().isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "status": "ok",
         "advisory_only": True,
         "placed_by_system": False,
-        "min_position_pct_of_book": float(cfg["min_position_pct_of_book"]),
-        "event_window_days": [float(cfg["event_window_days_before"]), float(cfg["event_window_days_after"])],
+        "economics_basis": "per_contract",
+        "coverage_status": "not_selected",
         "examined": examined,
         "suggestions": suggestions,
         "skipped": skipped,
-        "note": (
-            "Advisory only. The system never places, sizes, stops or cancels an order, and it never "
-            "writes a CIO behavior field; the operator places anything he chooses."
-        ),
+        "note": "Per-contract economics only; the system never selects a quantity, places, stops or cancels an order.",
     }

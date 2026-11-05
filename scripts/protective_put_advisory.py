@@ -1,16 +1,10 @@
 #!/usr/bin/env python3
-"""protective_put_advisory.py — print the D32 §5 advisory suggestions for a holdings snapshot.
+"""Print per-contract advisory economics over a snapshot; never select a quantity or place an order.
 
-Read-only by construction: it reads a holdings document and optional event/chain snapshots and
-prints the suggestions. It never writes a store, never calls a broker, and there is no flag that
-makes it place anything (AGENTS.md §0 rule 1, MBI_BEHAVIOR = 0).
-
-    .venv/bin/python scripts/protective_put_advisory.py            # the position store
-    .venv/bin/python scripts/protective_put_advisory.py --holdings H --events E --chains C --json
-
-Book value defaults to the summed position market values when the holdings document does not carry
-an account-level total. ``--book-value`` overrides it.
+The default holdings path is owned by lib.portfolio_positions. Explicit fixture paths are
+supported by --holdings; --events and --chains are optional injected JSON snapshots.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,105 +25,88 @@ from lib.options_pipeline.protective_put_advisory import (  # noqa: E402
 
 
 def _load(path: str | None) -> object:
-    """The position store, through the ONE sanctioned reader (lib.portfolio_positions.load_store).
-
-    The repo ratchets direct readers of the holdings store (test_portfolio_price_truth_20261005): a
-    script that opens the store file itself is a bypass, however read-only it is.
-    """
-    if not path:
-        return pp.load_store()
-    return pp.load_store(Path(path))
+    """The sanctioned reader preserves missing/damaged/non-object evidence."""
+    document, status = pp.read_store_document(Path(path) if path is not None else None)
+    if status != "ok":
+        raise ValueError(f"holdings snapshot is {status}")
+    return document
 
 
-def _load_json(path: str | None) -> object:
-    if not path:
-        return None
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+def _positions(document: object) -> list[dict]:
+    if not isinstance(document, dict):
+        raise ValueError("holdings snapshot must be an object")
+    rows = document.get("holdings") if "holdings" in document else document.get("positions")
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        raise ValueError("holdings snapshot must supply a list of position objects")
+    return rows
 
 
-def _positions(doc: object) -> list[dict]:
-    if isinstance(doc, dict):
-        rows = doc.get("holdings") if isinstance(doc.get("holdings"), list) else doc.get("positions")
-        if isinstance(rows, list):
-            return [row for row in rows if isinstance(row, dict)]
-    if isinstance(doc, list):
-        return [row for row in doc if isinstance(row, dict)]
-    return []
+def _load_json(path: str | None) -> dict:
+    if path is None:
+        return {}
+    document = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(document, dict) or any(not isinstance(value, dict) for value in document.values()):
+        raise ValueError("events/chains snapshot must map symbols to objects")
+    return document
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--holdings", help="holdings document (default: the position store, via lib.portfolio_positions)")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--holdings", help="snapshot path (default: sanctioned position store)")
     parser.add_argument("--events", help="JSON {symbol: {event_date, days_to_event}}")
-    parser.add_argument("--chains", help="JSON {symbol: {underlying_price, expirations:[...]}}")
-    parser.add_argument("--book-value", type=float, help="whole-book value (default: sum of market values)")
-    parser.add_argument("--config", help="advisory config JSON (default: config/protective_put_advisory.json)")
+    parser.add_argument("--chains", help="JSON {symbol: {expirations:[...]}}")
+    parser.add_argument("--book-value", type=float, help="whole-book value; default is summed snapshot values")
+    parser.add_argument("--config", help="default: repository config/protective_put_advisory.json")
     parser.add_argument("--json", action="store_true", help="print the report as JSON")
     args = parser.parse_args(argv)
-
+    source = "holdings"
     try:
-        holdings_doc = _load(args.holdings)
+        positions = _positions(_load(args.holdings))
+        source = "config"
+        cfg = load_config(args.config)
+        source = "events/chains"
+        events, chains = _load_json(args.events), _load_json(args.chains)
     except (OSError, ValueError) as exc:
-        print(f"cannot read holdings {args.holdings}: {type(exc).__name__}: {exc}", file=sys.stderr)
+        if args.json:
+            print(json.dumps({"schema": SCHEMA, "status": "unavailable", "input": source, "reason": str(exc)}))
+        else:
+            print(f"Advisory unavailable ({source}): {exc}", file=sys.stderr)
         return 2
-    positions = _positions(holdings_doc)
     book = args.book_value
     if book is None:
-        values = [position_value(row) or 0.0 for row in positions]
-        book = round(sum(values), 2) if values else 0.0
-
-    try:
-        events_doc = _load_json(args.events) if args.events else {}
-        chains_doc = _load_json(args.chains) if args.chains else {}
-    except (OSError, ValueError) as exc:
-        print(f"cannot read events/chains: {type(exc).__name__}: {exc}", file=sys.stderr)
-        return 2
-
-    report = suggest_for_book(
-        positions,
-        book_value=book,
-        events=events_doc if isinstance(events_doc, dict) else {},
-        chains=chains_doc if isinstance(chains_doc, dict) else {},
-        cfg=load_config(args.config),
-    )
+        book = round(sum(position_value(row) or 0.0 for row in positions), 2)
+    report = suggest_for_book(positions, book_value=book, events=events, chains=chains, cfg=cfg)
     if args.json:
-        print(json.dumps(report, indent=2, default=str))
+        print(json.dumps(report, indent=2))
         return 0
-
-    print(f"{SCHEMA}: {len(report['suggestions'])} suggestion(s) for {report['examined']} position(s); "
-          f"book ${report['book_value'] if 'book_value' in report else book:,.0f}")
-    print("ADVISORY ONLY — the system never places, sizes, stops or cancels an order.")
+    print(
+        f"{SCHEMA}: {len(report['suggestions'])} per-contract research result(s) for {report['examined']} position(s)"
+    )
+    print("ADVISORY ONLY — contract quantity is not selected; the operator alone chooses any coverage.")
     for row in report["suggestions"]:
-        print(f"\n  {row['symbol']} ({row['account']}) — {row['pct_of_book']:.2f}% of book, "
-              f"${row['position_value']:,.0f}")
-        print(f"    Protective put: floor ${row['floor_price']:,.2f} ({row['floor_basis']}), "
-              f"cost ${row['cost_usd']:,.2f}" + (" (LABELED ESTIMATE)" if row["cost_is_estimate"] else ""))
-        # The target the strike was chosen FOR, whenever it is not the strike itself (cc-deepseek-5 second review).
-        if row.get("floor_target") is not None and row["floor_target"] != row["floor_price"]:
-            print(f"    Floor target: ${row['floor_target']:,.2f} ({row['floor_basis']}); the strike is "
-                  f"${row['floor_distance']:,.2f} {row['floor_target_relation']} it")
-        # The protected level the operator keeps, and — when only part of the position is covered — the position-wide
-        # worst case beside it. A blended figure is never printed as if it were a floor.
-        if row.get("floor_after_cost") is not None:
-            basis = "covered shares" if row.get("floor_after_cost_basis") == "covered_shares" else "held shares"
-            print(f"    Floor after premium: ${row['floor_after_cost']:,.2f} per share ({basis})")
-        if (row.get("coverage") or {}).get("uncovered_shares"):
-            print(f"    ⚠ {(row.get('coverage') or {}).get('note', '')}")
-            print(f"    Worst case (stock to zero): ${row['worst_case_per_share']:,.2f} per held share")
+        print(
+            f"\n  {row['symbol']}: cost ${row['cost_per_contract_usd']:,.2f} per contract"
+            + (" (LABELED ESTIMATE)" if row["cost_is_estimate"] else " (quoted ask)")
+        )
+        print(f"    Target: ${row['floor_target']:,.2f} ({row['floor_basis']})")
+        if row["floor_price"] is not None:
+            print(f"    Quoted put strike: ${row['floor_price']:,.2f}; expiry {row['expiry']}")
+        if row["floor_per_covered_share_after_premium"] is not None:
+            print(f"    Per covered share after premium: ${row['floor_per_covered_share_after_premium']:,.2f}")
+        print("    No position-wide floor: coverage quantity is not selected.")
+        print(f"    {row['cost_basis']}")
         if row.get("floor_warning"):
-            print(f"    ⚠ {row['floor_warning']}")
-        if row.get("floor_after_cost") is None and row.get("floor_after_cost_note"):
-            print(f"    ⚠ {row['floor_after_cost_note']}")
-        if row.get("collar"):
-            c = row["collar"]
-            print(f"    Collar option: cap ${c['cap_price']:,.2f}, net cost ${c['net_cost_usd']:,.2f}"
-                  + (" (net credit)" if c["net_is_credit"] else ""))
-        print(f"    Event: {(row['event'] or {}).get('date')} ({(row['event'] or {}).get('days_to_event')} days)")
-        print(f"    {row['operator_action']}")
-    if report["skipped"]:
-        print("\n  Not suggested:")
-        for row in report["skipped"]:
-            print(f"    {row['symbol']}: {row['skipped']}")
+            print(f"    Warning: {row['floor_warning']}")
+        if row.get("collar_per_contract"):
+            collar = row["collar_per_contract"]
+            print(
+                f"    Collar unit: cap ${collar['cap_price']:,.2f}; net cost "
+                f"${collar['net_cost_per_contract_usd']:,.2f} per contract; requires 100 owned shares per short call."
+            )
+        if row.get("collar_unavailable_reason"):
+            print(f"    Collar unavailable: {row['collar_unavailable_reason']}")
+    for row in report["skipped"]:
+        print(f"  {row['symbol']}: {row['skipped']}")
     return 0
 
 
