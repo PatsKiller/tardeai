@@ -218,12 +218,41 @@ def format_text(event: dict[str, Any], *, link_base: Any = None) -> str:
     return _with_trigger(head, trigger, action, tail)
 
 
+def _parse_stamp(value: Any) -> Optional[datetime]:
+    """A recorded dispatch timestamp, or None when it cannot be read. Stamps are written with a Z suffix."""
+    try:
+        at = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return at if at.tzinfo is not None else at.replace(tzinfo=timezone.utc)
+
+
+def _hourly_texts(state: dict[str, Any], hour_ago: datetime) -> int:
+    """Texts already dispatched in the last hour, from the dispatch history.
+
+    Codex cloud at 649467060: this counted ``sent`` — the event-dedupe map — so repeating ONE event overwrote its
+    single timestamp and the cap kept seeing one event. With dedupe_hours 0.1 and two gateways, nine sends seven
+    minutes apart put 18 texts on the two lines against a cap of 10. The two questions are different records: "have
+    I already texted this event?" is `sent`; "how many texts left in the last hour?" is `history`.
+    """
+    total = 0
+    for entry in state.get("history") or []:
+        if not isinstance(entry, dict):
+            continue
+        at = _parse_stamp(entry.get("at"))
+        if at is not None and at >= hour_ago:
+            total += int(entry.get("texts") or 0)
+    return total
+
+
 def _load_state(path: Path) -> dict[str, Any]:
     doc, _error = _read_json(path)
     if not isinstance(doc, dict):
         doc = {}
     if not isinstance(doc.get("sent"), dict):
         doc["sent"] = {}
+    if not isinstance(doc.get("history"), list):
+        doc["history"] = []
     return doc
 
 
@@ -364,16 +393,11 @@ def send_critical_text(
 
         cap = int(policy.get("max_per_hour") or DEFAULT_MAX_PER_HOUR)
         hour_ago = now - timedelta(hours=1)
-        recent = 0
-        for stamp in sent.values():
-            try:
-                if datetime.fromisoformat(str(stamp).replace("Z", "+00:00")) >= hour_ago:
-                    recent += 1
-            except ValueError:
-                continue
         # The cap is on TEXTS, not events: one event fans out to every verified Fi line, so counting events
-        # would report 10/10 while 20 texts left the building (review, 2026-11-05).
-        texts_in_hour = recent * len(gateways)
+        # would report 10/10 while 20 texts left the building (review, 2026-11-05). It is counted from the
+        # dispatch history, never from the event-dedupe map: a repeated event overwrites its own dedupe stamp, so
+        # counting that map let the same event send without limit (cloud at 649467060).
+        texts_in_hour = _hourly_texts(state, hour_ago)
         if texts_in_hour + len(gateways) > cap:
             return {"sent": False, "reason": f"hourly text cap reached ({texts_in_hour}/{cap} texts in the last hour)"}
 
@@ -391,6 +415,13 @@ def send_critical_text(
 
         if any(r.get("ok") for r in results):
             sent[key] = now.isoformat().replace("+00:00", "Z")
+            stamp = now.isoformat().replace("+00:00", "Z")
+            history = [entry for entry in state.get("history") or [] if isinstance(entry, dict)]
+            history.append({"at": stamp, "texts": sum(1 for r in results if r.get("ok"))})
+            # Two hours is enough to answer the one-hour question across a clock step, and bounds the file.
+            horizon = now - timedelta(hours=2)
+            state["history"] = [entry for entry in history
+                                if (_parse_stamp(entry.get("at")) or horizon) >= horizon]
             _save_state(state_file, state)
     # The carrier gives no delivery receipt; the receipt is the send result per line, as the spec says.
     return {"sent": any(r.get("ok") for r in results), "text": text, "receipts": results,

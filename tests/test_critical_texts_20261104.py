@@ -499,3 +499,31 @@ def test_a_stop_alert_for_one_account_does_not_suppress_anothers(tmp_path):
     assert first["sent"] is True and second["sent"] is True
     assert len(calls) == 4                          # two accounts x two Fi lines
 
+
+
+def test_the_hourly_cap_counts_texts_across_repeats_of_one_event(tmp_path):
+    """Codex cloud at 649467060. With `dedupe_hours` shorter than the send interval, the same event sends again — but
+    the rate counter read the dedupe map, whose one entry was overwritten on every send, so the cap kept seeing a
+    single event. Nine sends seven minutes apart on two lines put 18 texts on the operator's phones against a cap of
+    10 in one hour. The dispatch history is a separate record, and it is what the cap counts."""
+    contact = tmp_path / "operator_contact.json"
+    contact.write_text(json.dumps({"critical_sms_email_gateways": FAKE_LINES}), encoding="utf-8")
+    config = tmp_path / "critical_text_classes.json"
+    config.write_text(json.dumps({
+        "schema": "CriticalTextClasses@v1", "max_per_hour": 10, "dedupe_hours": 0.1,
+        "classes": {"A1_extended_hours_near_stop": {"enabled": True}},
+    }), encoding="utf-8")
+    state = tmp_path / "state.json"
+    send, calls = recorder()
+    start = datetime(2026, 11, 4, 10, 0, tzinfo=timezone.utc)
+    results = [
+        ct.send_critical_text(event(), sender=send, contact_path=contact, config_path=config,
+                              state_path=state, now=start + timedelta(minutes=7 * index))
+        for index in range(9)
+    ]
+    assert len(calls) <= 10, f"{len(calls)} texts left two lines in 56 minutes against a cap of 10"
+    assert any("cap" in str(r.get("reason") or "") for r in results), "the cap never fired"
+    # the dedupe record still holds one entry for the event; the history holds every dispatch
+    stored = json.loads(state.read_text(encoding="utf-8"))
+    assert len(stored["sent"]) == 1
+    assert sum(entry["texts"] for entry in stored["history"]) == len(calls)
