@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "AGENT_CLAIM_HEAD_COVERAGE_20261105",
+  "files": [
+    "tests/test_agent_claim_head_coverage_20261105.py"
+  ],
+  "anchor": "AGENT_CLAIM_HEAD_COVERAGE_20261105",
+  "comment": [
+    "ANCHOR: AGENT_CLAIM_HEAD_COVERAGE_20261105 — FQ-152 (claude-lead 2026-11-05): a heartbeat may only stamp a HEAD",
+    "that belongs to the claim's own branch; a claim behind the tip whose claimed path changed is told it no longer",
+    "covers the branch; and the board prints at-tip / behind / off-branch so the decay stays visible. Hermetic: gitand the board are fakes, no repository or claim directory is read."
+  ]
+}

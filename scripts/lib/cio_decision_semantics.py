@@ -710,16 +710,36 @@ def symbol_identity_status(
     }
 
 
+def _acct_opinion(account: Any, stance: str, value: float, delta: float, why: Any) -> dict[str, Any]:
+    """One account's own opinion for a symbol (FQ-104). Never merged across accounts."""
+    return {
+        "account": account,
+        "cio_stance": stance,
+        "stance": professional_stance(stance),
+        "current_value_usd": round(float(value or 0.0), 2),
+        "recommended_delta_usd": round(float(delta or 0.0), 2),
+        "why_now": why,
+    }
+
+
 def aggregate_position_decisions(
     rows: Optional[list[dict[str, Any]]],
     *,
     portfolio_value: float = 0.0,
 ) -> list[dict[str, Any]]:
-    """Collapse split-account rows into one decision per symbol.
+    """Collapse split-account rows into one decision per symbol WITHOUT merging one account into another.
 
-    Sums values, recomputes weight, keeps the decisive stance, joins accounts,
-    and surfaces professional stance labels. Drops rows that fail identity proof
-    unless they already carry a name.
+    Sums values, recomputes weight, keeps the decisive stance, joins accounts, and surfaces professional stance
+    labels. Drops rows that fail identity proof unless they already carry a name.
+
+    What survives, stated exactly (cc-deepseek-6 at b075d66e3 — the title promised more than the code does):
+
+    * one opinion per ``(symbol, account)`` in ``per_account``, and it is that account's own rows only;
+    * **within one account**, several rows for the same symbol collapse to the account's decisive stance
+      (``merge_stances``: the highest precedence wins). That is deliberate — two rows are one account's views of one
+      position, not two opinions a reader must reconcile — and it is the collapse this docstring used to leave unsaid;
+    * the symbol-level ``cio_stance`` is still a decisive summary across accounts, kept for the surfaces that show one
+      verdict per name. It is a summary, never the record of what each account said.
     """
     by: dict[str, dict[str, Any]] = {}
     # Phase 5 sizing / Phase 3 freshness annotations to preserve on aggregate
@@ -778,6 +798,11 @@ def aggregate_position_decisions(
                 "target_range_pct": r.get("target_range_pct"),
                 "identity": ident,
                 "_acct_values": {acct: value} if acct else {},
+                # FQ-104, first increment: every account's own opinion survives the collapse. The aggregate still
+                # picks one decisive stance for the primary table (that cutover is FQ-104 proper), but the record no
+                # longer discards what each account actually said — `accounts[]` is provenance for one opinion, this
+                # is the opinion itself, per (symbol, account).
+                "_acct_opinions": ({acct: _acct_opinion(acct, stance, value, delta, why)} if acct else {}),
             }
             for k in _preserve_keys:
                 if r.get(k) is not None:
@@ -797,6 +822,22 @@ def aggregate_position_decisions(
         if acct:
             agg["_acct_values"][acct] = round(
                 float(agg["_acct_values"].get(acct, 0.0)) + value, 2)
+            # FQ-104: fold this row into the account's own opinion (an account can appear more than once for a
+            # symbol); an account's stance merges only with its own rows, never with the other account's.
+            prev = agg["_acct_opinions"].get(acct)
+            agg["_acct_opinions"][acct] = (
+                _acct_opinion(acct, stance, value, delta, why) if prev is None else {
+                    # codex BLOCK at 852bf45c5: the FIRST row's display label was carried through, so an account that
+                    # went HOLD then ADD kept `stance: "Hold"` beside `cio_stance: "ADD"` — the label lied about the
+                    # decision, which is exactly the shape this row fixes one level up. Both are now derived from the
+                    # merged enum; neither is carried.
+                    **{**prev,
+                       "cio_stance": merge_stances(prev["cio_stance"], stance),
+                       "stance": professional_stance(merge_stances(prev["cio_stance"], stance)),
+                       "current_value_usd": round(float(prev["current_value_usd"]) + value, 2),
+                       "recommended_delta_usd": round(float(prev["recommended_delta_usd"]) + delta, 2),
+                       "why_now": prev.get("why_now") or why}}
+            )
         # Prefer non-neutral why_now
         if why and _NEUTRAL_WHY not in str(why).lower():
             if not agg.get("why_now") or _NEUTRAL_WHY in str(agg.get("why_now")).lower():
@@ -826,6 +867,11 @@ def aggregate_position_decisions(
     for sym, agg in by.items():
         # Primary account = largest value share
         acct_vals = agg.pop("_acct_values", {}) or {}
+        # FQ-104: keep every account's opinion on the aggregate row, largest account first. Sorted, so the primary
+        # account is the first entry a reader sees as well as the `account` field below.
+        opinions = agg.pop("_acct_opinions", {}) or {}
+        agg["per_account"] = sorted(
+            opinions.values(), key=lambda o: -float(o.get("current_value_usd") or 0.0))
         if acct_vals:
             primary = max(acct_vals.items(), key=lambda kv: kv[1])[0]
             agg["account"] = primary
