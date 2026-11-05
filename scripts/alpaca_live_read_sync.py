@@ -132,8 +132,10 @@ def _positions_to_holdings_rows(account_key: str, positions: list, *, observed_a
         except (TypeError, ValueError):
             avg = 0.0
         # Alpaca's position object carries the broker's own prior close (lastday_price), so the day
-        # change is derived from the quote source, never invented (2026-11-03: the moomoo promo row
-        # had a price but no day change, and the whole CIO card rendered "unavailable" over $27.70).
+        # change is derived from the quote source, never invented. (2026-11-03: a zero-cost promo
+        # share was the only row without a day change, and one such row left the whole CIO card
+        # rendering "unavailable". No position value or symbol from the live book belongs in this
+        # comment -- AGENTS.md forbids committing real positions and balances.)
         try:
             lastday = float(p.get("lastday_price") or 0)
         except (TypeError, ValueError):
