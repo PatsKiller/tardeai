@@ -58,6 +58,9 @@ HORIZONS = ("3m", "6m", "12m")
 CASES = ("bear", "base", "bull")
 STANCES = ("bullish", "neutral", "bearish")
 DEFAULT_PER_QUESTION_USD = 0.30
+#: Operator switch for the Anthropic hosted web-search source (paid egress). Default-off; the host overlay
+#: sets it once the ``cio_ask_web_search`` process is registered in the LLM registry.
+ANTHROPIC_WEB_SEARCH_ENV = "TRADEAI_ANTHROPIC_WEB_SEARCH"
 SIZE_SUGGESTION_POLICY = (
     "WITHHELD: MBI_BEHAVIOR=0; size_suggestion needs AGENTS >= 21.0.0 ACTIVE (operator decision pending)"
 )
@@ -531,17 +534,31 @@ def gather_facts(
         return {"facts": facts, "gaps": gaps, "runs": runs}
     pool = cf.ThreadPoolExecutor(max_workers=max(1, min(max_workers, len(jobs))), thread_name_prefix="ask-gather")
     started = time.monotonic()
-    pending: dict[cf.Future, tuple[Entity, SourceSpec, float]] = {}
+
+    def _run(ent: Entity, spec: SourceSpec, box: dict[str, float]) -> Any:
+        # The budget starts when the source RUNS, not when it is queued. With fewer workers than
+        # jobs a queued source used to be marked "timeout" without ever starting, which failed the
+        # whole check on evidence that was in fact available (2026-11-01).
+        box["started"] = time.monotonic()
+        return spec.fn(ent, ctx)
+
+    pending: dict[cf.Future, tuple[Entity, SourceSpec, dict[str, float]]] = {}
     for ent, spec in jobs:
-        pending[pool.submit(spec.fn, ent, ctx)] = (ent, spec, started + float(spec.timeout_s))
+        box: dict[str, float] = {}
+        pending[pool.submit(_run, ent, spec, box)] = (ent, spec, box)
+
+    def _deadline(item: tuple[Entity, SourceSpec, dict[str, float]]) -> float | None:
+        at = item[2].get("started")
+        return None if at is None else at + float(item[1].timeout_s)
+
     try:
         while pending:
-            next_deadline = min(d for _, _, d in pending.values())
-            done, _ = cf.wait(
-                list(pending), timeout=max(0.0, next_deadline - time.monotonic()), return_when=cf.FIRST_COMPLETED
-            )
+            deadlines = [d for d in (_deadline(v) for v in pending.values()) if d is not None]
+            # A queued job has no deadline yet; wake regularly so a just-started one gets one.
+            wait_s = max(0.0, min(deadlines) - time.monotonic()) if deadlines else 1.0
+            done, _ = cf.wait(list(pending), timeout=wait_s, return_when=cf.FIRST_COMPLETED)
             for fut in done:
-                ent, spec, _ = pending.pop(fut)
+                ent, spec, _box = pending.pop(fut)
                 elapsed = round(time.monotonic() - started, 3)
                 try:
                     raw = fut.result()
@@ -575,11 +592,17 @@ def gather_facts(
                             "receipt": outcome.get("receipt"),
                         }
                     )
+                    # A source that declares itself a degradable enhancement (outcome["degraded"]) records
+                    # no_data instead of refused: its absence stays a recorded gap and never fails the check,
+                    # so an unavailable paid tier cannot open the Ask lane's n8n breaker.
+                    status = "no_data" if outcome.get("degraded") is True else (
+                        "disabled" if reason.upper() == "ENGINE_DISABLED" else "refused"
+                    )
                     runs.append(
                         {
                             "source": spec.name,
                             "subject": ent.label,
-                            "status": "disabled" if reason.upper() == "ENGINE_DISABLED" else "refused",
+                            "status": status,
                             "elapsed_s": elapsed,
                             **outcome,
                         }
@@ -612,8 +635,8 @@ def gather_facts(
                     }
                 )
             now_m = time.monotonic()
-            for fut in [f for f, (_, _, d) in pending.items() if d <= now_m]:
-                ent, spec, _ = pending.pop(fut)
+            for fut in [f for f, item in pending.items() if (d := _deadline(item)) is not None and d <= now_m]:
+                ent, spec, _box = pending.pop(fut)
                 fut.cancel()
                 gaps.append(
                     {"subject": ent.label, "source": spec.name, "reason": "TIMEOUT", "timeout_s": spec.timeout_s}
@@ -1103,6 +1126,63 @@ def _src_web(ent: Entity, ctx: ResearchContext) -> list[Fact]:
     return out
 
 
+def _src_anthropic_search(ent: Entity, ctx: ResearchContext) -> list[Fact]:
+    """Anthropic hosted web search (server tool ``web_search_20260209``) as a second, cited web source.
+
+    Opt-in per host: ``default_sources`` only registers it when ``TRADEAI_ANTHROPIC_WEB_SEARCH=1``, because it
+    spends paid credits and egresses the question — the same two-key shape as SEARCH_ROUTING_ENGINE. The
+    provider key and the credit book stay in the governed bridge; this source posts one tool-bearing call
+    under the registered caller ``web_search`` and receives only the ``web_search_tool_result`` blocks.
+    """
+    if ctx.dry_run:
+        # research(dry_run=True) returns before gather, so this is a belt-and-braces guard: a planned run
+        # must never spend a paid call.
+        return SourceFacts(outcome={"ok": True, "reason": "DRY_RUN", "provider": "anthropic"})
+    mod = _imp("lib.anthropic_web_search", "scripts.lib.anthropic_web_search")
+    q = f"{ent.symbol or ent.label} {ctx.question}"[:240]
+    resp = mod.search(q, count=5)
+    if resp.get("ok") is not True:
+        # A paid enhancement must never take the Ask lane down. The reason is recorded (gap + run row) and the
+        # source reports no data for this subject; the free/paid router source still answers the same query.
+        return SourceFacts(
+            outcome={
+                "ok": False,
+                "degraded": True,
+                "reason": str(resp.get("error") or "WEB_SEARCH_UNAVAILABLE"),
+                "provider": resp.get("provider") or "anthropic",
+            }
+        )
+    # `web_search_20260209` answers through Anthropic-side dynamic filtering, which runs sandboxed code
+    # (see scripts/lib/anthropic_web_search.py). The count rides the run row so the receipt shows it.
+    outcome = {"ok": True, "provider": resp.get("provider"),
+               "code_execution_blocks": int(resp.get("code_execution_blocks") or 0)}
+    out = SourceFacts(outcome=outcome)
+    for r in (resp.get("results") or []) if resp.get("ok") is True else []:
+        published = _iso(r.get("published"))
+        out.append(
+            make_fact(
+                source="web.anthropic",
+                family="web",
+                kind="web",
+                subject_key=ent.subject_key,
+                symbol=ent.symbol,
+                # The provider exposes no readable snippet (only opaque encrypted_content), so the claim is
+                # the title and the citation says so. Never paste the encrypted blob into research text:
+                # 2026-11-02 it reached a fact's claim as base64 and was written into CIO memory that way.
+                claim=str(r.get("title") or "")[:300],
+                as_of=published or _iso(ctx.now),
+                citation={
+                    "url": r.get("url"),
+                    "as_of_basis": "published_at" if published else "retrieved_at",
+                    "provider": "anthropic",
+                    "snippet_basis": "title_only_encrypted_content",
+                    "outcome": outcome,
+                },
+            )
+        )
+    return out
+
+
 def _src_prospectus(ent: Entity, ctx: ResearchContext) -> list[Fact]:
     """The latest Ticker Prospectus from the CIO memory (security_research_spine.latest_prospectus)."""
     from dataclasses import replace
@@ -1114,17 +1194,24 @@ def _src_prospectus(ent: Entity, ctx: ResearchContext) -> list[Fact]:
     return [replace(f, egress="local_only") for f in mod.ask_facts(ent, ctx)]
 
 
+def anthropic_search_enabled(env: Mapping[str, str] | None = None) -> bool:
+    """Operator switch for the paid web source. Default-off: egress plus spend is a two-key decision."""
+    return str((os.environ if env is None else env).get(ANTHROPIC_WEB_SEARCH_ENV) or "").strip() == "1"
+
+
 def default_sources() -> list[SourceSpec]:
-    return [
-        SourceSpec("internal.cio_record_research", "internal", _src_cio_record_research, 6.0),
-        SourceSpec("internal.cio_prospect", "internal", _src_prospect, 6.0),
-        SourceSpec("internal.prospectus", "internal", _src_prospectus, 6.0),
-        SourceSpec("internal.holdings", "internal", _src_holdings, 6.0),
-        SourceSpec("internal.thesis", "internal", _src_thesis, 6.0),
-        SourceSpec("internal.catalysts", "internal", _src_catalysts, 6.0),
-        SourceSpec("internal.hermes_research", "internal", _src_research, 6.0),
-        SourceSpec("internal.alerts", "internal", _src_alerts, 6.0),
-        SourceSpec("internal.trades", "internal", _src_trades, 6.0),
+    sources = [
+        # A local snapshot read measured at ~3.7 s on its own; under the 30-job gather it exceeded 6 s
+        # and failed the whole check on a source that had in fact answered (2026-11-01).
+        SourceSpec("internal.cio_record_research", "internal", _src_cio_record_research, 15.0),
+        SourceSpec("internal.cio_prospect", "internal", _src_prospect, 15.0),
+        SourceSpec("internal.prospectus", "internal", _src_prospectus, 15.0),
+        SourceSpec("internal.holdings", "internal", _src_holdings, 15.0),
+        SourceSpec("internal.thesis", "internal", _src_thesis, 15.0),
+        SourceSpec("internal.catalysts", "internal", _src_catalysts, 15.0),
+        SourceSpec("internal.hermes_research", "internal", _src_research, 15.0),
+        SourceSpec("internal.alerts", "internal", _src_alerts, 15.0),
+        SourceSpec("internal.trades", "internal", _src_trades, 15.0),
         SourceSpec("market.quote", "market", _src_price, 6.0),
         SourceSpec("street.targets", "street", _src_street, 6.0),
         SourceSpec("sec.filings", "sec", _src_sec_filings, 8.0),
@@ -1132,6 +1219,10 @@ def default_sources() -> list[SourceSpec]:
         SourceSpec("news.articles", "news", _src_news, 6.0),
         SourceSpec("web.search", "web", _src_web, 20.0, needs_symbol=False),
     ]
+    if anthropic_search_enabled():
+        # Paid second opinion on the free/paid router lane: one hosted search, five cited results.
+        sources.append(SourceSpec("web.anthropic", "web", _src_anthropic_search, 60.0, needs_symbol=False))
+    return sources
 
 
 # --------------------------------------------------------------------------------------------------- MBI guard

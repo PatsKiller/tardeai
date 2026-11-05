@@ -343,6 +343,54 @@ def test_compact_keeps_the_file_when_the_archive_cannot_be_read_back(tmp_path, m
     assert b.claim_path(c["claim_id"]).exists()
 
 
+# ------------------------------------------------------------------------------------------- read_all
+
+
+def write_raw_claim_file(b: B.ClaimBoard, claim_id: str, doc) -> Path:
+    b.dir.mkdir(parents=True, exist_ok=True)
+    p = b.dir / f"{claim_id}.json"
+    p.write_text(json.dumps(doc), encoding="utf-8")
+    return p
+
+
+def test_read_all_reports_a_list_schema_as_unreadable_without_raising(tmp_path):
+    b = board(tmp_path)
+    p = write_raw_claim_file(b, "clm-list-schema", {"schema": [], "claim_id": "clm-list-schema", "status": "active"})
+    docs, bad = b.read_all()
+    assert docs == []
+    assert bad == [p.name]
+
+
+def test_read_all_reports_an_object_schema_as_unreadable_without_raising(tmp_path):
+    b = board(tmp_path)
+    p = write_raw_claim_file(b, "clm-object-schema", {"schema": {}, "claim_id": "clm-object-schema", "status": "active"})
+    docs, bad = b.read_all()
+    assert docs == []
+    assert bad == [p.name]
+
+
+def test_read_all_never_accepts_a_list_containing_a_known_auxiliary_schema(tmp_path):
+    b = board(tmp_path)
+    p = write_raw_claim_file(
+        b,
+        "clm-list-aux-schema",
+        {"schema": ["PolicyBroadcastState@v1"], "claim_id": "clm-list-aux-schema", "status": "active"},
+    )
+    docs, bad = b.read_all()
+    assert docs == []
+    assert bad == [p.name]
+
+
+def test_read_all_skips_a_known_auxiliary_state_file_and_still_reads_a_claim(tmp_path):
+    b = board(tmp_path)
+    aux = write_raw_claim_file(b, "policy-broadcast-state", {"schema": "PolicyBroadcastState@v1"})
+    good = mk(b, "s1", ["a"])
+    docs, bad = b.read_all()
+    assert bad == []
+    assert [d["claim_id"] for d in docs] == [good["claim_id"]]
+    assert str(aux) != docs[0]["_path"]
+
+
 # ------------------------------------------------------------------------------------------- check / CLI
 
 

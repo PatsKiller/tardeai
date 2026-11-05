@@ -1439,6 +1439,21 @@ def gather_freeform_context(intent: dict[str, Any]) -> dict[str, Any]:
                 "domain": "symbol_thesis", "symbol": sym, "field": "thesis",
                 "reason": f"{sym} thesis attach failed", "gap_type": "research",
             })
+    # Market Risk Engine (operator 2026-10-31: "The CIO agent needs to know about everything, including this market
+    # information"): tier, score, contributors and as-of, or an honest NOT_EVALUATED. DSN-20261031 P3-T3.
+    try:
+        from scripts.lib.market_risk import cio_context as _mr_cio
+
+        facts["market_risk"] = _mr_cio.ask_facts(_mr_cio.load_market_risk())
+        sources.append("market_risk_projection")
+        if _mr_cio.wants_deep_brief(str(intent.get("text") or "")):  # on-demand deep brief (operator 2026-10-31)
+            facts["market_risk_deep_brief"] = _mr_cio.deep_brief_on_demand()
+            sources.append("market_risk_deep_brief")
+    except Exception as exc:  # noqa: BLE001 — a named gap, never a crash of the answer path
+        soft_gaps.append({
+            "domain": "market_risk", "symbol": None, "field": "tier",
+            "reason": f"market risk DATA_UNAVAILABLE ({type(exc).__name__})", "gap_type": "soft",
+        })
     # The freeform path had the SAME defect as the reentry composer: it put the
     # global pipeline counters into TRADE_AI_FACTS, so the model was handed
     # "2502 rows exist somewhere" as a fact about whatever was asked. Fixing

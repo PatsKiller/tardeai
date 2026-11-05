@@ -21,6 +21,13 @@ NOW = datetime(2026, 10, 26, 16, tzinfo=timezone.utc)
 V1, V2 = "20261025T120000Z", "20261026T160000Z"
 
 
+def _due_in(days: int) -> str:
+    """A next_due relative to the live clock, so the fixture cannot expire on a calendar date."""
+    from datetime import datetime as _d, timedelta as _td, timezone as _tz
+
+    return (_d.now(_tz.utc) + _td(days=days)).isoformat()
+
+
 def ctx(tmp_path, *, principal="tailnet:operator@example.test", listener="serve_proxy", csrf=(True, "")):
     return api.Ctx(principal=lambda: principal, listener=lambda: listener, csrf=lambda m, p: csrf,
                    allowed_logins=frozenset({"operator@example.test"}), state_root=tmp_path)
@@ -38,9 +45,9 @@ def seeded(tmp_path):
                                                       "prospectus.docx": b"PK synthetic"})
     store.update_index(base, "ZZAA", name="Zeta Widgets Inc", scope="holding", version=V2, generated_at=V2,
                        model="claude-opus-5-5", cost_usd=0.3, status="ready", verdict_line="Synthetic verdict.",
-                       next_due="2026-11-02T16:00:00+00:00")
+                       next_due=_due_in(days=7))
     store.update_index(base, "ZZDD", name="Delta Fixture", scope="watch", version=V1, generated_at=V1,
-                       model="claude-opus-5-5", status="ready", next_due="2026-10-01T00:00:00+00:00")
+                       model="claude-opus-5-5", status="ready", next_due=_due_in(days=-30))
     store.write_universe(base, [{"symbol": "ZZAA", "scope": "holding", "premium": True},
                                 {"symbol": "ZZBB", "scope": "holding", "premium": False},
                                 {"symbol": "ZZCC", "scope": "watch", "premium": False},

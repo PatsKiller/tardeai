@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "telegram_operator_replies_20261103",
+  "files": [
+    "tests/test_telegram_operator_replies_20261103.py"
+  ],
+  "anchor": "TELEGRAM_OPERATOR_REPLIES_20261103",
+  "comment": [
+    "ANCHOR: TELEGRAM_OPERATOR_REPLIES_20261103 — the existing callback poller appends the operator's typed",
+    "replies to the coordinator inbox (append-only 0600, allowed chats only), so an answer he types reaches",
+    "the lead instead of stopping in the CIO question box."
+  ]
+}
