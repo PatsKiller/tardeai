@@ -353,6 +353,28 @@ def test_a_negation_only_removes_the_row_it_governs(body, claimed, named):
     assert S.rows_named_by(cand) == named
 
 
+@pytest.mark.parametrize("body", [
+    "Does not close FQ-021 or fix FQ-022.",
+    "does not fix FQ-022 or close FQ-023.",
+    "Never closed FQ-021 and did not fix FQ-022.",
+])
+def test_a_negation_carries_across_coordinated_action_verbs(body):
+    """cx-openai D52 refresh at 13ee582e4 (the ONE remaining item): a negation governs a coordinated continuation too.
+
+    "Does not close FQ-021 or fix FQ-022" negates BOTH verbs, so neither row is claimed and neither is treated as
+    delivered. Before this, FQ-022 came back claimed from a sentence that disclaims it.
+    """
+    cand = pr(2622, branch="wt/elsewhere", body=body)
+    assert S.rows_claimed_by(cand) == set(), S.rows_claimed_by(cand)
+    assert S.rows_named_by(cand) == set(), S.rows_named_by(cand)
+
+
+def test_a_contrast_still_breaks_the_negation_carry():
+    """The control: "but" is not a coordinator here, so the later claim survives (the B1 rule, kept)."""
+    cand = pr(2622, branch="wt/elsewhere", body="Not closing FQ-033 but closes FQ-022.")
+    assert S.rows_claimed_by(cand) == {"FQ-022"}
+
+
 def test_a_claim_on_a_mixed_line_still_moves_its_queued_row():
     rep = S.sync(queue(row("FQ-022")), [pr(2622, body="Closes FQ-022; not closing FQ-033.")], now=NOW)
     assert rep["changed"] == 1, rep["changes"]

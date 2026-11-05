@@ -185,6 +185,12 @@ _ACTION = re.compile(
 #: How far before a verb a negation still governs it ("does not <40 chars> close").
 _NEGATION_WINDOW = 40
 
+#: What may sit between two verbs for a negation to carry across them (cx-openai D52 refresh at 13ee582e4, the ONE
+#: remaining item): the rows the first verb governed, a coordinator, and punctuation — nothing else. "Does not close
+#: FQ-021 or fix FQ-022" negates BOTH verbs, so neither row is claimed; "Not closing FQ-033 but closes FQ-022" breaks at
+#: "but", so FQ-022 stays claimed.
+_COORDINATED = re.compile(r"[\s,]*(?:FQ-\d+[\s,]*)*(?:or|and|nor)?[\s,]*", re.IGNORECASE)
+
 
 def _clauses(body: str) -> list[str]:
     """Sentences/clauses, so a negation binds inside its own clause instead of dropping a whole line."""
@@ -196,7 +202,11 @@ def _negated_verbs(clause: str, verbs: list[re.Match[str]]) -> list[bool]:
     so "Not closing FQ-033 but closes FQ-022" negates only "closing"."""
     out: list[bool] = []
     negations = list(_NEGATION.finditer(clause))
-    for vm in verbs:
+    for index, vm in enumerate(verbs):
+        # A negation already governing the previous verb carries across a COORDINATED continuation (or/and/nor).
+        if index and out[-1] and _COORDINATED.fullmatch(clause[verbs[index - 1].end():vm.start()]):
+            out.append(True)
+            continue
         negated = False
         for nm in negations:
             if nm.start() >= vm.start():
