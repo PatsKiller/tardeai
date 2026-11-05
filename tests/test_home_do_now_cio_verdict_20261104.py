@@ -225,3 +225,117 @@ def test_a_verdict_with_no_clock_says_so_rather_than_borrowing_one():
     why = _why(_build(_risk(_pos("SPCX")), plan), "stop:SPCX")
     assert "TRIM" in why and PLAN_AS_OF not in why, why
     assert "decision time not recorded" in why, why
+
+
+# ── cx-openai-3 BLOCK at 3d118f247: F1 per-account opinions, F2 aggregate clocks, F3 instant ordering ─────────────
+
+
+def _real_plan(accounts=("schwab_taxable",), stamp=None):
+    """The REAL producer: build_capital_plan -> build_position_decisions -> aggregate_position_decisions."""
+    stamp = stamp or (NOW - timedelta(days=2)).isoformat()
+    return build_capital_plan(
+        portfolio_value=100_000.0,
+        cash_total=10_000.0,
+        positions=[{"symbol": "SYN", "account": a,
+                    "market_value": 27_000.0 if i == 0 else 4_000.0,
+                    "updated_at": stamp} for i, a in enumerate(accounts)],
+        now=NOW,
+    )
+
+
+def test_f1_two_real_accounts_each_get_their_own_opinion_not_the_symbol_aggregate():
+    """F1: consume the producer's `per_account` opinions instead of collapsing them into one aggregate.
+
+    Before the repair a two-account row lived only in `aggregate`, so the stop item said there was no per-account
+    verdict while the plan's own `per_account` list carried one for each account. The real producer's single
+    aggregate row has no per-account stances of its own to clone: each opinion comes from `per_account` untouched.
+    """
+    plan = _real_plan(("schwab_taxable", "moomoo"))
+    row = plan["position_decisions"][0]
+    assert [o["account"] for o in row["per_account"]] == ["schwab_taxable", "moomoo"], row["per_account"]
+    assert row["accounts"] == ["schwab_taxable", "moomoo"], row["accounts"]
+    index = H.cio_verdict_index(plan)
+    assert set(index["by_account"]) == {("SYN", "schwab_taxable"), ("SYN", "moomoo")}, index
+    assert index["by_account"][("SYN", "schwab_taxable")]["stance"] == row["per_account"][0]["cio_stance"]
+    assert index["by_account"][("SYN", "moomoo")]["stance"] == row["per_account"][1]["cio_stance"]
+    risk = _risk(_pos("SYN", account="schwab_taxable"), _pos("SYN", value=4_000.0, account="moomoo"))
+    why = _why(_build(risk, plan), "stop:SYN")
+    assert "Schwab Individual: HOLD" in why, why
+    assert "Moomoo: HOLD" in why, why
+    assert "no per-account CIO verdict on record" not in why, why
+
+
+def test_f2_old_real_aggregate_clock_is_aged_not_fresh():
+    """F2: the aggregate sentence is displayed evidence, so its decision clock is aged like any other."""
+    old = (NOW - timedelta(days=2)).isoformat()
+    plan = _real_plan(("schwab_taxable", "moomoo"), old)
+    assert plan["position_decisions"][0]["generated_at"] == old
+    src = _build(_risk(_pos("SYN")), plan)["sources"]["cio"]
+    assert src["aggregate_verdicts"] == 1, src
+    assert src["evidence_as_of"] == old, src
+    assert src["evidence_stale"] is True, src
+    assert src["stale"] is True, src
+    why = _why(_build(_risk(_pos("SYN")), plan), "stop:SYN")
+    assert old in why and "not attributable to an account" in why, why
+
+
+def test_f2_future_real_aggregate_clock_is_not_fresh():
+    """F2: a future aggregate clock is explicit, not folded into 'fresh'."""
+    future = (NOW + timedelta(days=2)).isoformat()
+    plan = _real_plan(("schwab_taxable", "moomoo"), future)
+    assert plan["position_decisions"][0]["generated_at"] == future
+    src = _build(_risk(_pos("SYN")), plan)["sources"]["cio"]
+    assert src["aggregate_verdicts"] == 1, src
+    assert src["evidence_as_of_future"] is True, src
+    assert src["stale"] is True, src
+    assert src.get("evidence_stale") is not True, src
+
+
+def test_f2_fresh_real_aggregate_clock_is_not_marked_stale():
+    """F2 positive control: a fresh aggregate clock is not stale and not missing."""
+    fresh = (NOW - timedelta(seconds=20)).isoformat()
+    plan = _real_plan(("schwab_taxable", "moomoo"), fresh)
+    src = _build(_risk(_pos("SYN")), plan)["sources"]["cio"]
+    assert src["evidence_as_of"] == fresh, src
+    assert src.get("evidence_stale") is not True, src
+    assert src.get("evidence_as_of_future") is not True, src
+    assert src.get("evidence_as_of_missing") is not True, src
+
+
+def test_f2_unparseable_evidence_clock_is_explicit_not_fresh():
+    plan = _plan([{"symbol": "SPCX", "account": "schwab_taxable", "cio_stance": "TRIM",
+                   "as_of": "not-a-clock"}])
+    src = _build(_risk(_pos("SPCX")), plan)["sources"]["cio"]
+    assert src["evidence_as_of_unparseable"] is True, src
+    assert src["stale"] is True, src
+    assert "evidence_as_of" not in src, src
+    assert src.get("evidence_as_of_missing") is not True, src
+
+
+def test_f2_missing_evidence_clock_is_explicit_not_fresh():
+    plan = _plan([{"symbol": "SPCX", "account": "schwab_taxable", "cio_stance": "TRIM"}])
+    src = _build(_risk(_pos("SPCX")), plan)["sources"]["cio"]
+    assert src["evidence_as_of_missing"] is True, src
+    assert src["stale"] is True, src
+
+
+def test_f3_oldest_evidence_clock_is_ordered_by_instant_not_iso_text():
+    """F3: 10:24-05:00 is 15:24Z (1 min old); 14:00Z is 85 min old. ISO text order picks the wrong one."""
+    plan = build_capital_plan(
+        portfolio_value=100_000.0,
+        cash_total=10_000.0,
+        positions=[
+            {"symbol": "SYN", "account": "schwab_taxable", "market_value": 27_000.0,
+             "updated_at": "2026-11-04T14:00:00+00:00"},
+            {"symbol": "ZZZ", "account": "moomoo", "market_value": 4_000.0,
+             "updated_at": "2026-11-04T10:24:00-05:00"},
+        ],
+        now=NOW,
+    )
+    assert {r["generated_at"] for r in plan["position_decisions"]} == {
+        "2026-11-04T14:00:00+00:00", "2026-11-04T10:24:00-05:00"}
+    src = _build(_risk(_pos("SYN")), plan)["sources"]["cio"]
+    # The oldest INSTANT is 14:00Z (85 minutes old), normalised before it is reported.
+    assert src["evidence_as_of"] == "2026-11-04T14:00:00+00:00", src
+    assert src["evidence_stale"] is True, src
+

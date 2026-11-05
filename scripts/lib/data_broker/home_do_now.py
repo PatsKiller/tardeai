@@ -299,8 +299,29 @@ def cio_verdict_index(payload: Any) -> dict[tuple[str, Optional[str]], dict[str,
             out["by_account"][(sym, str(accounts[0]))] = verdict
         else:
             # A decision covering several accounts, or none, is an aggregate: it is NOT any one account's verdict, and
-            # copying it onto each account is the cross-account bleed the operator ruled out (FAIL 2).
-            out["aggregate"].setdefault(sym, verdict)
+            # copying its stance onto each account is the cross-account bleed the operator ruled out (FAIL 2).
+            out["aggregate"].setdefault(sym, {**verdict, "accounts": list(accounts)})
+            # F1 (cx-openai-3 at 3d118f247): the real producer's aggregated row carries every account's OWN opinion
+            # in `per_account` (aggregate_position_decisions, FQ-104). Consume those opinions as each account's
+            # verdict — never the aggregate's stance. The producer's per-account opinion carries no decision clock
+            # of its own (the aggregate row keeps the only one), so its clock stays honest: the opinion's own clock
+            # when it has one, otherwise None ("decision time not recorded"), never the aggregate's or the plan's.
+            per_account = r.get("per_account")
+            if isinstance(per_account, list):
+                for o in per_account:
+                    if not isinstance(o, dict):
+                        continue
+                    acct = o.get("account")
+                    opinion = o.get("cio_stance") or o.get("action") or o.get("stance")
+                    if not acct or not opinion:
+                        continue
+                    out["by_account"].setdefault((sym, str(acct)), {
+                        "stance": opinion,
+                        "why": o.get("why_now"),
+                        "funding": o.get("funding"),
+                        "as_of": (o.get("decision_generated_at") or o.get("generated_at")
+                                  or o.get("decided_at") or o.get("as_of")),
+                    })
     return out
 
 
@@ -330,8 +351,11 @@ def cio_clause(index: Optional[dict], symbol: str, accounts: Any, as_of: Optiona
         else:
             seen.append(f"{label}: no per-account CIO verdict on record")
     text = "CIO verdict" + (f" ({when})" if when else " (decision time not recorded)") + " — " + "; ".join(seen) + "."
-    if aggregate and aggregate.get("stance") and not any(by_account.get((sym, str(a))) for a in accts if a):
-        # Named as the plan's aggregate, explicitly NOT any account's verdict.
+    covered = {str(a) for a in accts if a and by_account.get((sym, str(a)))}
+    agg_accounts = {str(a) for a in (aggregate.get("accounts") or []) if a} if aggregate else set()
+    # The aggregate is still named whenever it speaks for an account not shown above (including the case where no
+    # per-account verdict was found at all): it is the plan's summary, never any one account's verdict.
+    if aggregate and aggregate.get("stance") and (not covered or (agg_accounts - covered)):
         agg_when = f" ({aggregate['as_of']})" if aggregate.get("as_of") else " (time not recorded)"
         text += (f" The plan carries an aggregate {aggregate['stance']}{agg_when}"
                  " that is not attributable to an account.")
@@ -964,20 +988,34 @@ def build(
             cio_index = cio_verdict_index(payloads.get("cio"))
             sources["cio"]["verdicts"] = len(cio_index["by_account"])
             sources["cio"]["aggregate_verdicts"] = len(cio_index["aggregate"])
+            # F2 (cx-openai-3 at 3d118f247): cio_clause also renders the AGGREGATE row, so the aggregate's decision
+            # clock is displayed evidence and must be aged like any per-account clock. F3: the oldest clock is chosen
+            # by INSTANT, not by ISO text — `min(clocks)` picked 10:24-05:00 over 14:00+00:00 and concealed an
+            # 85-minute-old decision. Every displayed clock is parsed; an unparseable, missing or future clock is
+            # explicit and never counts as fresh.
             clocks = [str(v.get("as_of")) for v in cio_index["by_account"].values() if v.get("as_of")]
-            if clocks:
-                oldest = min(clocks)
-                sources["cio"]["evidence_as_of"] = oldest
-                t_old = _parse(oldest)
-                if t_old is not None:
-                    age = (now - t_old).total_seconds()
-                    if age > STALE_AFTER_S.get("cio", 900):
-                        sources["cio"]["evidence_stale"] = True
-                        sources["cio"]["stale"] = True
-                    elif age < -300:
-                        # Evidence dated in the future cannot be trusted as fresh either.
-                        sources["cio"]["evidence_as_of_future"] = True
-                        sources["cio"]["stale"] = True
+            clocks += [str(v.get("as_of")) for v in cio_index["aggregate"].values() if v.get("as_of")]
+            displayed = bool(cio_index["by_account"] or cio_index["aggregate"])
+            stamped = [(c, _parse(c)) for c in clocks]
+            parsed = [t for _, t in stamped if t is not None]
+            if any(t is None for _, t in stamped):
+                sources["cio"]["evidence_as_of_unparseable"] = True
+                sources["cio"]["stale"] = True
+            if parsed:
+                oldest_t = min(parsed)  # datetime ordering: the actual instant, never ISO text order
+                sources["cio"]["evidence_as_of"] = oldest_t.isoformat()
+                age = (now - oldest_t).total_seconds()
+                if age > STALE_AFTER_S.get("cio", 900):
+                    sources["cio"]["evidence_stale"] = True
+                    sources["cio"]["stale"] = True
+                # A clock ahead of now is untrustworthy whether or not it is the oldest one.
+                if any((now - t).total_seconds() < -300 for t in parsed):
+                    sources["cio"]["evidence_as_of_future"] = True
+                    sources["cio"]["stale"] = True
+            elif displayed and not clocks:
+                # A displayed verdict with no clock at all is missing evidence, not fresh evidence.
+                sources["cio"]["evidence_as_of_missing"] = True
+                sources["cio"]["stale"] = True
         except Exception as exc:  # noqa: BLE001 — a malformed plan is UNAVAILABLE, never "no verdicts"
             sources["cio"].update(status="UNAVAILABLE", error=str(exc)[:200])
     if "risk" in payloads:
