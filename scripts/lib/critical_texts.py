@@ -140,13 +140,17 @@ def format_text(event: dict[str, Any], *, link_base: Any = None) -> str:
     link = ""
     if alert_class in LINK_CLASSES:
         # D35 B4: the login text is useless without the one-tap page, so the link is required and is never truncated.
-        link = critical_link(link_base or os.environ.get(LINK_BASE_ENV) or event.get("link_base"))
+        # A producer may hand in the finished page (critical_producers._b4 sets ``link``); it is normalised through the
+        # same validation, so a prebuilt URL can be a convenience but never a way around the https/tailnet/no-port rule.
+        link = critical_link(link_base or os.environ.get(LINK_BASE_ENV) or event.get("link_base")
+                             or event.get("link"))
     elif event.get("link") or event.get("link_base"):
         raise CriticalTextError(f"{alert_class or 'this class'} may not carry a link; only {sorted(LINK_CLASSES)} do")
     body = f"{head} {trigger}.".rstrip(".") + f". Suggest {action}."
     body = body.replace("..", ".")
-    if link:
+    if link and link not in action:
         # Room is reserved for the URL before the trigger is shortened: a cut-off reauth link would be worse than none.
+        # When the producer's action already carries the link (as critical_producers._b4 does), it is not said twice.
         tail = f" Log in: {link} CC Risk"
         if len(tail) >= MAX_TEXT_CHARS - len(head):
             raise CriticalTextError("the reauth link does not fit in one 160-character text")

@@ -241,3 +241,21 @@ def test_a_long_login_trigger_is_shortened_and_the_link_is_never_cut(monkeypatch
 
 
 ANCHOR = 'CRITICAL_TEXTS_20261104'  # config/ci_gates/critical_texts_20261104.json names this file
+
+
+def test_a_producer_supplied_link_is_validated_and_not_said_twice():
+    """critical_producers._b4 hands in the finished URL and puts it in the action; the text must say it once."""
+    url = "https://cc-fixture.ts.net/v3/system/schwab-reauth"
+    ev = _login_event(link=url, action=f"Re-authorise at {url}")
+    text = ct.format_text(ev)
+    assert text.count(url) == 1
+    assert len(text) <= ct.MAX_TEXT_CHARS
+    assert "/v3/system/schwab-reauth" in text
+
+
+def test_a_producer_supplied_link_gets_no_validation_exemption():
+    with pytest.raises(ct.CriticalTextError):
+        ct.format_text(_login_event(link="https://cc-fixture.ts.net:7777/v3/system/schwab-reauth",
+                                    action="Re-authorise"))
+    with pytest.raises(ct.CriticalTextError):
+        ct.format_text(_login_event(link="http://cc-fixture.ts.net/v3/system/schwab-reauth", action="Re-authorise"))
