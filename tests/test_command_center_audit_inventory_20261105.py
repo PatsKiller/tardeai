@@ -225,3 +225,28 @@ def test_two_refreshes_keep_the_original_runtime_evidence_stamp():
     two = G.refresh(one, reg, as_of="2026-11-05T12:00:00Z", registry_path="config/lane_registry.json")
     assert two["snapshot"]["runtime_evidence_from"] == "2026-11-02T18:45:27Z", two["snapshot"]
     assert two["snapshot"]["captured_at"] == "2026-11-05T12:00:00Z"
+
+
+def test_an_acknowledged_absence_does_not_re_report_as_drift():
+    """Cloud at e3c4f7c84: a refreshed capture records a removal in its own row; without this, --check could never pass
+    after any removal."""
+    a = _row("a"); a["owner"] = "x"
+    inv = {"rows": [a, {"lane_id": "gone", "registry_state": "RETIRED", "registry_presence": "absent"}],
+           "summary": {}, "snapshot": {"captured_at": "2026-11-05T00:00:00Z"}}
+    reg = {"lanes": [{"lane_id": "a", "state": "ACTIVE", "owner": "x", "scheduler": {"kind": "n8n"}}]}
+    report = G.drift(inv, reg)
+    assert report["removed"] == [], report["removed"]
+    assert G.is_clean(report), report
+
+
+def test_a_reschedule_with_the_same_kind_is_reported():
+    """Cloud at e3c4f7c84: cron/cadence/timezone changes were invisible because only the scheduler kind was compared."""
+    row = _row("a")
+    row.update({"scheduler_kind": "n8n", "scheduler_expression": "0 9 * * *", "schedule_timezone": "America/New_York"})
+    inv = {"rows": [row], "summary": {}, "snapshot": {"captured_at": "2026-11-05T00:00:00Z"}}
+    reg = {"lanes": [{"lane_id": "a", "state": "ACTIVE", "owner": "x",
+                      "scheduler": {"kind": "n8n", "cron": "30 9 * * *", "timezone": "America/New_York"}}]}
+    report = G.drift(inv, reg)
+    assert report["removed"] == []
+    assert report["changed"] and report["changed"][0]["fields"]["scheduler_expression"] == ["0 9 * * *", "30 9 * * *"], report
+    assert not G.is_clean(report)

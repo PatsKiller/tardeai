@@ -47,6 +47,10 @@ ROOT = Path(__file__).resolve().parents[1]
 FROZEN_DIR = ROOT / "docs/audits/20261102-command-center-operations/inventory"
 DEFAULT_REGISTRY = ROOT / "config/lane_registry.json"
 REGISTRY_FIELDS = ("owner", "registry_state", "scheduler_kind")
+# Cloud at e3c4f7c84: a reschedule (same kind, new cron/cadence/timezone) reported clean because only the kind was
+# compared. The schedule fields are compared too; a row that predates them has no measured value and is skipped
+# rather than reported as drift it never measured.
+SCHEDULE_FIELDS = ("scheduler_expression", "schedule_timezone")
 ACTIVE_STATES = {"ACTIVE"}
 DISABLED_STATES = {"RETIRED", "NEVER_SCHEDULED", "PAUSED"}
 CSV_COLUMNS = (
@@ -92,6 +96,9 @@ def _lane_projection(lane: dict) -> dict:
         "owner": lane.get("owner"),
         "registry_state": lane.get("state"),
         "scheduler_kind": scheduler.get("kind"),
+        "scheduler_expression": (scheduler.get("cron") or scheduler.get("cadence")
+                                 or scheduler.get("expression") or scheduler.get("schedule")),
+        "schedule_timezone": scheduler.get("timezone") or lane.get("timezone"),
     }
 
 
@@ -117,11 +124,19 @@ def drift(inventory: dict, registry: dict, *, registry_path: Path = DEFAULT_REGI
             for field in REGISTRY_FIELDS
             if row.get(field) != want[field]
         }
+        for field in SCHEDULE_FIELDS:
+            if (field in row and row.get(field) is not None
+                    and want.get(field) is not None and row.get(field) != want.get(field)):
+                fields[field] = [row.get(field), want.get(field)]
         if fields:
             changed.append({"lane_id": lane_id, "fields": fields})
-    for lane_id in rows:
+    for lane_id, row in rows.items():
         if lane_id not in lanes:
-            removed.append({"lane_id": lane_id, "registry_state": rows[lane_id].get("registry_state")})
+            # Cloud at e3c4f7c84: a refreshed capture records the absence in the row itself; re-reporting it every run
+            # made a refreshed capture unable to pass --check after any removal.
+            if row.get("registry_presence") == "absent":
+                continue
+            removed.append({"lane_id": lane_id, "registry_state": row.get("registry_state")})
     return {
         "schema": DRIFT_SCHEMA,
         "capture_as_of": _capture_as_of(inventory),
@@ -267,6 +282,9 @@ def refresh(inventory: dict, registry: dict, *, as_of: str, registry_path: str) 
             row["owner"] = lane.get("owner")
             row["registry_state"] = lane.get("state")
             row["scheduler_kind"] = (lane.get("scheduler") or {}).get("kind")
+            upd = _lane_projection(lane)
+            row["scheduler_expression"] = upd.get("scheduler_expression")
+            row["schedule_timezone"] = upd.get("schedule_timezone")
             row["registry_presence"] = "present"
     for lane_id, row in rows.items():
         if lane_id not in lanes:
