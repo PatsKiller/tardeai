@@ -5,6 +5,7 @@ Telegram per supervisor run as a list — never six separate P1s. Page the opera
 operator-only decision." These tests drive the real `cycle()` with six incidents that would each
 have paged individually and assert exactly one message, its priority, its contents, and that every
 incident still records its own delivered escalation row (so the once-per-episode suppression holds).
+AGENTS §28.14 additionally requires exhausted attempts to page P1; that urgency does not make the work operator-only.
 """
 from __future__ import annotations
 
@@ -91,7 +92,7 @@ def test_six_incidents_produce_exactly_one_batched_message(tmp_path):
 
     assert len(pages) == 1, f"expected one batched page, got {len(pages)}: {pages}"
     page = pages[0]
-    assert page["priority"] == "P2"  # nothing operator-only in this batch
+    assert page["priority"] == "P1"  # AGENTS §28.14: attempts exhausted, even without operator-only authority
     assert page["producer"] == "incident_supervisor:batch"
     for iid in ids:
         assert iid in page["text"]
@@ -103,7 +104,7 @@ def test_six_incidents_produce_exactly_one_batched_message(tmp_path):
     # Every incident still records its own delivered escalation row: the batch is one message, not
     # one anonymous send, so the per-incident/episode suppression keeps working.
     assert len(out["escalated"]) == 6 and all(row["delivered"] is True for row in out["escalated"])
-    assert all(row["priority"] == "P2" for row in out["escalated"])
+    assert all(row["priority"] == "P1" for row in out["escalated"])
 
     # A second cycle does not page again for the same delivered reason class.
     out2 = _run(tmp_path, _cfg(), pages, now=NOW + timedelta(minutes=10))
@@ -398,3 +399,105 @@ def test_failed_cycle_does_not_advance_the_real_ops_supervisor_clock(tmp_path):
         _cycle_with(tmp_path, _fault_deps(pages))
     assert len(pages) == 1, "deliver the already owed batch despite the fault"
     assert view.payload(d, now=NOW)["supervisor_as_of"] == L.iso(T0), "Ops must not date a failed cycle as completed"
+
+
+# AGENTS 28.14: exhausted automated attempts page once at P1, without inventing operator-only authority.
+def _cloud_exhausted_run(tmp_path, pages, *, result=True, cfg=None, now=NOW):
+    def no_model(_prompt):
+        pytest.fail("exhaustion/delivery-only retries must not invoke a model")
+
+    def notify(text, producer, priority="P2"):
+        pages.append({"text": text, "producer": producer, "priority": priority})
+        if result == "raises":
+            raise RuntimeError("synthetic exhausted-page transport failure")
+        return result
+
+    deps = S.Deps(model=no_model, run=lambda *_a, **_k: pytest.fail("unexpected runbook"), notify=notify,
+                  fixer=lambda *_a, **_k: pytest.fail("unexpected fixer"))
+    return S.cycle(d=tmp_path / "ledger", state_root=tmp_path / "ps", release_root=tmp_path,
+                   cfg=cfg or _cfg(), deps=deps, apply=True, now=now,
+                   environ={"HOME": "/h", "PATH": "/bin"}, root=ROOT)
+
+
+def test_cloud_exhausted_initial_page_is_p1_without_operator_only_authority(tmp_path):
+    ids = _seed(tmp_path / "ledger", n=2)
+    pages = []
+    out = _cloud_exhausted_run(tmp_path, pages)
+    assert len(pages) == 1 and pages[0]["priority"] == "P1"
+    assert all(iid in pages[0]["text"] for iid in ids)
+    assert len(out["blocked"]) == 2
+    assert {row["key"] for row in out["escalated"]} == {"max_attempts"}
+    assert all(row["priority"] == "P1" and row["operator_only"] is False for row in out["escalated"])
+    assert "operator-only decision" not in pages[0]["text"]
+    _cloud_exhausted_run(tmp_path, pages, now=NOW + timedelta(minutes=1))
+    assert len(pages) == 1, "a delivered exhausted episode must not page again"
+
+
+@pytest.mark.parametrize("first_result", [False, "raises"])
+@pytest.mark.parametrize("retry_result", [True, False, "raises"])
+def test_cloud_exhausted_false_or_error_delivery_retry_retains_p1(tmp_path, first_result, retry_result):
+    iid = _seed(tmp_path / "ledger", n=1)[0]
+    pages = []
+    first = _cloud_exhausted_run(tmp_path, pages, result=first_result)
+    assert L.load_records(tmp_path / "ledger")[iid]["status"] == "blocked"
+    assert first["escalated"][0]["delivered"] is False
+    pending = S._pending_escalation(L.load_records(tmp_path / "ledger")[iid])
+    assert pending["key"] == "max_attempts"
+    retry = _cloud_exhausted_run(tmp_path, pages, result=retry_result, now=NOW + timedelta(minutes=1))
+    assert len(pages) == 2 and all(page["priority"] == "P1" for page in pages)
+    assert len(retry["escalated"]) == 1
+    assert retry["escalated"][0]["operator_only"] is False
+    assert retry["escalated"][0]["delivered"] is (retry_result is True)
+    if retry_result is True:
+        assert S._pending_escalation(L.load_records(tmp_path / "ledger")[iid]) is None
+    else:
+        assert S._pending_escalation(L.load_records(tmp_path / "ledger")[iid])["key"] == "max_attempts"
+
+
+def test_cloud_exhausted_mixed_with_routine_diagnostics_still_sends_one_p1(tmp_path):
+    iid = _seed(tmp_path / "ledger", n=1)[0]
+    diagnostic, _ = L.open_incident(source={"kind": "watcher", "watcher": "lane_health"},
+                                    title="synthetic routine diagnostic", where="tests/routine",
+                                    severity="P2", d=tmp_path / "ledger", now=T0 + timedelta(seconds=1))
+    pages = []
+    out = _cloud_exhausted_run(tmp_path, pages, cfg=_cfg(max_model_calls_per_day=0))
+    assert len(pages) == 1 and pages[0]["priority"] == "P1"
+    assert iid in pages[0]["text"] and diagnostic["id"] in pages[0]["text"]
+    assert {row["key"] for row in out["escalated"]} == {"max_attempts", "time_box"}
+    assert all(row["operator_only"] is False for row in out["escalated"])
+    assert "operator-only decision" not in pages[0]["text"]
+
+
+def test_cloud_exhausted_routine_only_timebox_remains_p2(tmp_path):
+    L.open_incident(source={"kind": "watcher", "watcher": "lane_health"},
+                    title="synthetic routine diagnostic", where="tests/routine", severity="P2",
+                    d=tmp_path / "ledger", now=T0)
+    pages = []
+    out = _cloud_exhausted_run(tmp_path, pages, cfg=_cfg(max_model_calls_per_day=0))
+    assert len(pages) == 1 and pages[0]["priority"] == "P2"
+    assert {row["key"] for row in out["escalated"]} == {"time_box"}
+    assert all(row["operator_only"] is False for row in out["escalated"])
+
+
+def test_cloud_exhausted_p1_enters_real_quiet_hour_router_delivery_path(tmp_path, monkeypatch):
+    from zoneinfo import ZoneInfo
+
+    spec = importlib.util.spec_from_file_location("batch_priority_router_under_test", ROOT / "scripts/telegram_alert_router.py")
+    router = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = router
+    spec.loader.exec_module(router)
+    monkeypatch.setenv("TRADEAI_INCIDENT_NOTIFIER_QUIET_START", "22:00")
+    monkeypatch.setenv("TRADEAI_INCIDENT_NOTIFIER_QUIET_END", "07:00")
+    monkeypatch.setenv("TRADEAI_INCIDENT_NOTIFIER_TZ", "America/New_York")
+    quiet_now = datetime(2030, 1, 7, 23, 0, tzinfo=ZoneInfo("America/New_York"))
+    assert router.intent_in_quiet_hours(quiet_now) is True
+    _seed(tmp_path / "ledger", n=1)
+    pages = []
+    _cloud_exhausted_run(tmp_path, pages)
+    assert len(pages) == 1
+    actual = router.route_intent(pages[0]["text"], pages[0]["priority"], dedupe_minutes=0,
+                                 producer=pages[0]["producer"], now=quiet_now)
+    control = router.route_intent(pages[0]["text"], "P2", dedupe_minutes=0,
+                                  producer=pages[0]["producer"], now=quiet_now)
+    assert control["decision"] == "HELD_QUIET_HOURS" and control["deliver"] is False
+    assert actual["priority"] == "P1" and actual["decision"] == "DELIVER" and actual["deliver"] is True

@@ -413,7 +413,7 @@ def _batch_text(rows: list[dict], priority: str) -> str:
 
     Each entry names the incident, how long it has been unresolved and the exact next action. The
     operator asked for one batched message per run, never six separate P1s; a batch pages P1 only
-    when it carries an operator-only decision, otherwise P2.
+    when it carries an operator-only decision or exhausted attempts (AGENTS §28.14); routine diagnostics stay P2.
     """
     lines = [f"[{priority}] Incident supervisor — {len(rows)} escalation(s) this run (batched once per run)", ""]
     for row in rows:
@@ -479,7 +479,8 @@ def _escalate(rec: dict, reason: str, ask: str, d: Path, deps: Deps, apply: bool
     scope) has its own key and still pages, and episode-1 history never hides an episode-2 page.
 
     Batching (ONBOARDING §12 rule 3): nothing is sent here. An undelivered ledger row is persisted
-    before blocking, then ``_flush_escalations`` sends ONE message; ``operator_only`` decides P1 vs P2.
+    before blocking, then ``_flush_escalations`` sends ONE message. Operator decisions and exhausted-attempt
+    keys page P1; notification urgency does not grant operator-only authority.
     """
     key = key or reason
     for e in _current_escalations(rec):
@@ -505,7 +506,8 @@ def _escalate(rec: dict, reason: str, ask: str, d: Path, deps: Deps, apply: bool
 def _flush_escalations(d: Path, deps: Deps, out: dict, now: datetime) -> None:
     """Send the run's escalations as ONE message; record each incident's delivered row.
 
-    P1 only when the batch contains an operator-only decision, P2 otherwise (ONBOARDING §12 rule 3).
+    One batch (ONBOARDING §12 rule 3): P1 for operator-only decisions or exhausted attempts
+    (AGENTS §28.14), P2 for routine diagnostics. Exhaustion does not change ``operator_only``.
     Every queued reason already has a durable undelivered row. Success appends its delivery;
     failure leaves that obligation for the delivery-only retry, without inventing a successful send.
     """
@@ -528,7 +530,7 @@ def _flush_escalations(d: Path, deps: Deps, out: dict, now: datetime) -> None:
     pending = current_pending
     if not pending:
         return
-    priority = "P1" if any(row.get("operator_only") for row in pending) else "P2"
+    priority = "P1" if any(row.get("operator_only") or row.get("key") == "max_attempts" for row in pending) else "P2"
     delivered = False
     try:
         delivered = bool(deps.notify(_batch_text(pending, priority), "incident_supervisor:batch", priority=priority))
