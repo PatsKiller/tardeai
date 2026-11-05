@@ -2,8 +2,11 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import ConflictLine from './conflicts/ConflictLine'
+import AnthropicCreditPanel from './AnthropicCreditPanel'
 import ConflictSheet, { useConflictSheet, type ConflictSection } from './conflicts/ConflictSheet'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
+import CountTile from './CountTile'
+import { jobsCount, jobsMissed, jobsNotMeasured, type JobsSummary } from '../lib/measuredCount'
 
 export type JobResult = 'succeeded' | 'failed' | 'missed' | 'paused' | 'retired' | 'unknown' | 'due' | 'outside_window'
 export interface JobHealthRow {
@@ -13,10 +16,15 @@ export interface JobHealthRow {
 }
 export interface JobsHealthWire {
   schema: string; as_of: string; rows: JobHealthRow[]; total: number; offset: number; limit: number; has_more: boolean
-  summary: Record<string, number>; coverage_gaps: string[]; incident_count: number
+  summary: JobsSummary & Record<string, unknown>; coverage_gaps: string[]; incident_count: number
   data_errors?: { section: ConflictSection | null; unavailable_reason: string | null }
   monitor: { observed_at: string | null; status: string; cause: string | null; notification?: { status?: string; delivered?: boolean } | null }
+  watchers?: WatcherLight[]
 }
+export type WatcherStatus = 'ok' | 'degraded' | 'down' | 'absent'
+export interface WatcherLight { id: string; label: string; status: WatcherStatus; cause: string | null }
+const watcherTone = (status: WatcherStatus): Tone => status === 'ok' ? 'success' : status === 'degraded' ? 'warning' : 'danger'
+const watcherLabel: Record<WatcherStatus, string> = { ok: 'Watching', degraded: 'Not armed', down: 'Down', absent: 'Not registered' }
 const filters = [['attention', 'Needs attention'], ['all', 'All jobs'], ['market', 'Market hours only'], ['n8n', 'n8n'], ['cron', 'Host cron (moving to n8n)']] as const
 const panel: CSSProperties = { padding: 14, border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, background: TOKENS.bg[1], minWidth: 0 }
 const tone = (result: JobResult): Tone => result === 'failed' ? 'danger' : result === 'missed' || result === 'unknown' ? 'warning' : result === 'succeeded' ? 'success' : 'neutral'
@@ -31,6 +39,7 @@ export default function JobsHealth({ enabled = true }: { enabled?: boolean }) {
   const conflict = useConflictSheet()
   const detailTitle = useRef<HTMLHeadingElement>(null)
   const { data, loading, error } = useApi<JobsHealthWire>(`/api/v2/jobs-health?filter=${filter}&offset=${offset}&limit=50`, 60_000, { enabled })
+  const consumption = useApi<any>('/api/v2/consumption/overview', 90_000, { enabled })
   const dataErrors = data?.data_errors
   const conflictUnavailable = dataErrors?.unavailable_reason || (data && !dataErrors?.section ? 'The canonical data error section is unavailable.' : null)
   const inList = data?.rows.find(row => row.lane_id === selectedId)
@@ -47,6 +56,7 @@ export default function JobsHealth({ enabled = true }: { enabled?: boolean }) {
     ['failed', 'Failed', 'danger'], ['missed', 'Missed', 'warning'],
   ] as const
   return <section aria-label="Jobs and health" data-testid="jobs-health" style={{ display: 'grid', gap: 12, color: TOKENS.text[0], fontFamily: FONT.sans, minWidth: 0 }}>
+    <AnthropicCreditPanel status={(consumption.data?.overview ?? consumption.data)?.anthropic} />
     <style>{`.jobs-health-row{display:grid;grid-template-columns:minmax(180px,1.3fr) 90px 130px 110px 130px minmax(200px,2fr);gap:10px;align-items:start}.jobs-health-mobile-label{display:none}@media(max-width:800px){.jobs-health-head{display:none}.jobs-health-row{grid-template-columns:1fr 1fr}.jobs-health-job,.jobs-health-cause{grid-column:1/-1}.jobs-health-mobile-label{display:block;font-size:11px;color:var(--text-2);margin-bottom:3px}}`}</style>
     <div style={{ display: 'flex', gap: 12, alignItems: 'baseline', flexWrap: 'wrap' }}>
       <h2 style={{ margin: 0, fontSize: TYPE.lg }}>Jobs &amp; health</h2>
@@ -54,12 +64,23 @@ export default function JobsHealth({ enabled = true }: { enabled?: boolean }) {
       <Link to="/ops/jobs" style={{ color: TOKENS.info, fontSize: TYPE.sm, minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>Open Jobs</Link>
     </div>
     {error && <div role="alert" style={{ ...panel, color: TOKENS.warning }}>Jobs could not be read: {error}. {data ? 'The last observation remains visible below.' : 'Execution health is not measured.'}</div>}
+    <section aria-label="Watchers and alerts" data-testid="jobs-watchers" style={{ ...panel, display: 'grid', gap: 8 }}>
+      <h3 style={{ margin: 0, fontSize: TYPE.base }}>Watchers &amp; alerts</h3>
+      {data?.watchers?.length
+        ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 8 }}>
+            {data.watchers.map(w => <div key={w.id} role="status" style={{ padding: 10, borderRadius: RADIUS.sm, border: `1px solid ${toneVars(watcherTone(w.status)).border}`, background: toneVars(watcherTone(w.status)).bg, minWidth: 0 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: '50%', background: toneVars(watcherTone(w.status)).color, flexShrink: 0 }} /><strong style={{ fontSize: TYPE.base }}>{w.label}</strong></div>
+              <div style={{ fontSize: TYPE.sm, color: toneVars(watcherTone(w.status)).color, marginTop: 4 }}>{watcherLabel[w.status]}</div>
+              {w.cause && <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2], marginTop: 4, overflowWrap: 'anywhere' }}>{w.cause}</div>}
+            </div>)}
+          </div>
+        : <p style={{ margin: 0, color: TOKENS.text[2] }}>{loading ? 'Loading watchers…' : 'Watchers are not measured.'}</p>}
+    </section>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 10 }}>
-      {metrics.map(([key, label, t]) => <div key={key} style={{ ...panel, borderColor: toneVars(t).border, background: toneVars(t).bg }}>
-        <div style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>{label}</div>
-        <strong style={{ fontFamily: FONT.mono, fontSize: TYPE.xl, color: toneVars(t).color }}>{data?.summary[key] ?? '—'}</strong>
-      </div>)}
-      <div style={panel}><div style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>Paused / retired</div><strong style={{ fontFamily: FONT.mono, fontSize: TYPE.xl }}>{data ? `${data.summary.paused} / ${data.summary.retired}` : '—'}</strong></div>
+      {metrics.map(([key, label, t]) => <CountTile key={key} testId={`jobs-tile-${key}`} label={label} tone={t} style={{ padding: 14 }}
+        count={key === 'missed' ? jobsMissed(data?.summary) : jobsCount(data?.summary, key)} />)}
+      <CountTile testId="jobs-tile-not-measured" label="Not measured" tone="warning" style={{ padding: 14 }} count={jobsNotMeasured(data?.summary)} />
+      <div style={panel}><div style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>Paused / retired</div><strong style={{ fontFamily: FONT.mono, fontSize: TYPE.xl }}>{data ? `${data.summary.paused ?? '—'} / ${data.summary.retired ?? '—'}` : '—'}</strong></div>
     </div>
     {data?.monitor.cause && <div role="status" style={{ ...panel, borderColor: toneVars('warning').border, color: TOKENS.warning }}>{data.monitor.cause}</div>}
     <section aria-label="Data errors" style={{ ...panel, display: 'grid', gap: 8 }}>

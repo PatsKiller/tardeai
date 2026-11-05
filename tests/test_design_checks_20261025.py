@@ -74,7 +74,7 @@ def test_approved_version_is_accepted_and_unknown_or_unapproved_refused(tmp_path
 def test_proposed_version_cannot_be_built(tmp_path):
     import shutil
     shutil.copytree(ROOT / "design", tmp_path / "design")
-    p = tmp_path / "design/pages/home/versions/v001/status.json"
+    p = tmp_path / "design" / "pages" / "home" / "versions" / "v001" / "status.json"
     status = json.loads(p.read_text())
     status["state"] = "PROPOSED"
     p.write_text(json.dumps(status))
@@ -162,8 +162,20 @@ def test_workflow_runs_the_blocking_checks_and_marks_visual_report_only():
     for needle in ("gen_design_tokens.py --check", "check_design_registry.py", "check_design_reference.py",
                    "design-checks.fixture.mjs", "edited", "draft == false", "contents: read"):
         assert needle in wf, needle
-    assert "2026-11-01" in wf and "continue-on-error" in wf
+    # The visual compare is report-only by default but can actually fail: it flips on the recorded repository
+    # variable, and it must never hardcode continue-on-error: true (PR #2135 review F1) or promise a passed date.
+    assert "continue-on-error: ${{ vars.VISUAL_BLOCKING != 'true' }}" in wf
+    assert "continue-on-error: true" not in wf
+    assert "2026-11-01" not in wf
     assert "runner." not in wf.split("steps:")[0]  # no job-level runner context
+    # Pin the mechanism on the parsed step, not only as text: an expression quoted in a comment must not satisfy
+    # this while the step itself hardcodes a value.
+    import yaml
+    steps = [s for job in yaml.safe_load(wf)["jobs"].values() for s in job.get("steps", [])]
+    visual = [s for s in steps if "Visual compare" in str(s.get("name", ""))]
+    assert len(visual) == 1, visual
+    assert visual[0]["continue-on-error"] == "${{ vars.VISUAL_BLOCKING != 'true' }}"
+    assert "--visual-verdict" in visual[0]["run"]
 
 
 def test_phone_rules_baseline_is_well_formed():

@@ -356,10 +356,21 @@ def _releases(world: World) -> list[Path]:
 
 
 def test_releases_keep_current_previous_served_and_the_newest_n(world):
+    """The SELECTION is unchanged; the DISPOSITION is not.
+
+    A superseded release is still selected — rel[0] and rel[1] are the ones beyond CURRENT + previous + the newest N —
+    but since 2026-11-04 (operator decision (a), codex R3a/R3b) the lane reports them and never removes them. So they
+    appear in `excluded` carrying RELEASE_REFUSAL and their measured size, and `items` is empty for rule R. What the
+    keep rules decide is asserted exactly as before: this test would still catch a keep-count drift.
+    """
     rel = _releases(world)
     world.plan()
-    cand = {r["path"] for r in world.manifest()["items"] if r["rule"] == "R"}
-    assert cand == {str(rel[0]), str(rel[1])}
+    man = world.manifest()
+    assert {r["path"] for r in man["items"] if r["rule"] == "R"} == set()
+    excluded_r = {r["path"]: r for r in man["excluded"] if r["rule"] == "R"}
+    assert {str(rel[0]), str(rel[1])} <= set(excluded_r)
+    for p in (rel[0], rel[1]):
+        assert DH.RELEASE_REFUSAL in excluded_r[str(p)]["reasons"], excluded_r[str(p)]["reasons"]
     assert "previous_served" in _reasons(world, rel[2])
     assert {"pointer_symlink", "protected"} & _reasons(world, rel[3])
     assert _reasons(world, rel[4]) == {"keep_newest"} and _reasons(world, rel[5]) == {"keep_newest"}
@@ -484,15 +495,24 @@ def test_apply_refuses_a_stale_manifest(world):
     assert _last_apply(world)["refused"] == "manifest_stale" and wt.exists()
 
 
-def test_apply_removes_worktrees_with_git_worktree_remove_and_clones_and_releases(world):
+def test_apply_removes_worktrees_with_git_worktree_remove_and_clones_and_releases(world, monkeypatch):
+    # The holder scan reads the REAL /proc, and a test process may run under a sandbox where other processes' cwds are
+    # unreadable — which the planner now (correctly) treats as "cannot determine" and refuses. This test is about
+    # release/worktree removal, not about /proc, so the scan is stubbed to the complete-empty answer it would get on a
+    # normal host with no holder.
+    monkeypatch.setattr(DH, "proc_holder_units", lambda path, proc_root=None: DH.HolderScan((), True))
     wt, clone = world.worktree("wt-clean"), world.clone("tradeai-clone-ok")
     rel = _releases(world)
     world.plan()
     assert _apply(world, **{DH.GRANT_ENV: "g1"}) == 0
     rep = _last_apply(world)
-    assert {r["path"] for r in rep["removed"]} == {str(wt), str(clone), str(rel[0]), str(rel[1])}
+    # Worktrees and clones are still removed. The releases are NOT: since 2026-11-04 the plan does not select them and
+    # remove_item refuses a release without a ReleaseArming object naming that path — so neither is in `removed`, and
+    # every selected release directory is still on disk.
+    assert {r["path"] for r in rep["removed"]} == {str(wt), str(clone)}
     assert {r["how"] for r in rep["removed"] if r["kind"] == "git_worktree"} == {"git worktree remove; prune"}
-    assert not wt.exists() and not clone.exists() and not rel[0].exists() and rel[2].exists() and rel[3].exists()
+    assert not wt.exists() and not clone.exists()
+    assert all(r.exists() for r in rel), "a release was removed without an arming object"
     assert str(wt) not in sh("git", "worktree", "list", "--porcelain", cwd=world.dev)  # no stale registration
     assert rep["reclaimed_bytes"] == sum(r["bytes"] for r in rep["removed"]) and rep["grant"] == "g1"
     assert world.dev.exists()
@@ -612,7 +632,11 @@ def test_monitor_alerts_once_per_band_change_never_per_percent(mon):
     assert mon.run(92.0) == 0
     assert mon.run(91.0) == 0
     assert mon.run(70.0) == 0
+    assert mon.run(70.0) == 0   # the recovery is DELAYED by the clock, never discarded: the escalation at +60 opened
+    assert mon.run(70.0) == 0   # an interval, and these two quiet polls reach its end
     kinds = [(d, k) for d, k, *_ in mon.intents()]
+    # WARN -> CRITICAL is said AT ONCE (cc-deepseek-2 R6). This row is the assertion an earlier head deleted so that a
+    # silent escalation would still show a green tick; it is restored, and it fails if the escalation goes quiet again.
     assert kinds == [("host", "disk_usage_warn"), ("host", "disk_hygiene_alert"),
                      ("host", "disk_usage_critical"), ("host", "disk_usage_recovered")]
     subjects = [s for _, _, s, _, _ in mon.intents()]
@@ -634,6 +658,165 @@ def test_monitor_summary_carries_consumers_and_the_manifest_reclaimable(mon):
     summary = mon.intents()[0][3]
     assert "85.0% used" in summary and "models" in summary.split("top: ")[1] and "reclaimable" in summary
     assert "in 1 items per hygiene manifest" in summary and len(summary) <= 300
+
+
+def test_consumer_timeout_preserves_partial_category_and_unknown_beyond_rank_cap(world, monkeypatch):
+    cache, npm, models = [world.home / name for name in ("cache", "npm", "models")]
+    for p in (cache, npm, models):
+        p.mkdir()
+    mon = {"consumer_categories": [{"category": "cache", "path": str(cache)},
+                                    {"category": "cache", "path": str(npm)},
+                                    {"category": "models", "path": str(models)}],
+           "du_timeout_s": 90, "top_consumers": 1}
+    monkeypatch.setattr(DH, "du_bytes", lambda p, _: {cache: None, npm: 4096, models: 8192}[p])
+    snapshot = DM.collect_consumer_snapshot({"_home": world.home}, mon, NOW)
+    row = next(r for r in snapshot["categories"] if r["category"] == "cache")
+    assert row["status"] == "partial" and row["bytes"] is None and row["known_bytes"] == 4096
+    assert [p["status"] for p in row["paths"]] == ["unavailable", "measured"]
+    assert snapshot["complete"] is False and snapshot["captured_at"] == NOW.isoformat()
+    consumers = DM.top_consumers({"_home": world.home}, mon, None, snapshot)
+    assert consumers == [("models", 8192), ("cache", None)]
+    _, text = DM.intent_text({"mount": "/", "used_pct": 97, "avail_bytes": 100, "size_bytes": 1000},
+                             "critical", {**mon, "critical_pct": 90}, consumers, None, snapshot["captured_at"])
+    assert "unmeasured: cache" in text and "cache 0.0G" not in text and NOW.isoformat() in text
+
+
+def test_consumer_exact_zero_is_measured_and_missing_paths_are_explicit(world, monkeypatch):
+    empty = world.home / "empty"
+    empty.mkdir()
+    mon = {"consumer_categories": [{"category": "zero", "path": str(empty)},
+                                    {"category": "missing", "path": str(world.home / "missing")} ]}
+    monkeypatch.setattr(DH, "du_bytes", lambda *_: 0)
+    snapshot = DM.collect_consumer_snapshot({"_home": world.home}, mon, NOW)
+    rows = {r["category"]: r for r in snapshot["categories"]}
+    assert rows["zero"]["status"] == "measured" and rows["zero"]["bytes"] == 0
+    assert rows["missing"]["status"] == "unknown" and rows["missing"]["bytes"] is None
+    assert rows["missing"]["paths"][0]["status"] == "unavailable"
+
+
+@pytest.mark.parametrize("rc,stdout,expected", [(0, "0\tfixture\n", 0), (0, "4096\tfixture\n", 4096),
+                                               (1, "4096\tfixture\n", None), (124, "4096\tfixture\n", None),
+                                               (0, "-1\tfixture\n", None), (0, "not-a-size\n", None),
+                                               (0, "", None)])
+def test_real_du_helper_rejects_partial_failed_and_invalid_output(world, monkeypatch, rc, stdout, expected):
+    monkeypatch.setattr(DH.subprocess, "run", lambda *a, **k: types.SimpleNamespace(
+        returncode=rc, stdout=stdout, stderr="fixture permission error" if rc else ""))
+    assert DH.du_bytes(world.home, 1) == expected
+
+
+def test_consumer_shared_deadline_fairly_clamps_all_du_timeouts(world, monkeypatch):
+    paths = [world.home / f"size-{i}" for i in range(3)]
+    for p in paths:
+        p.mkdir()
+    mon = {"consumer_categories": [{"category": p.name, "path": str(p)} for p in paths], "du_timeout_s": 9999}
+    clock, calls = {"t": 0.0}, []
+    monkeypatch.setattr(DM.time, "monotonic", lambda: clock["t"])
+    def timeout(p, seconds):
+        calls.append((p, seconds))
+        clock["t"] += seconds
+        return None
+    monkeypatch.setattr(DH, "du_bytes", timeout)
+    snapshot = DM.collect_consumer_snapshot({"_home": world.home}, mon, NOW, deadline=11)
+    assert len(calls) == 3 and sum(c[1] for c in calls) == pytest.approx(11)
+    assert all(0 < c[1] <= DM.CONSUMER_PATH_MAX_SECONDS for c in calls)
+    assert snapshot["elapsed_seconds"] == 11 and snapshot["budget_seconds"] == 11
+    assert all(r["status"] == "unknown" for r in snapshot["categories"])
+    assert snapshot["finished_at"] == (NOW + timedelta(seconds=11)).isoformat()
+
+
+def test_consumer_exhausted_budget_preserves_unstarted_categories(world, monkeypatch):
+    mon = {"consumer_categories": [{"category": "cache", "path": str(world.home)}]}
+    monkeypatch.setattr(DM.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(DH, "du_bytes", lambda *_: pytest.fail("du started after shared deadline"))
+    snapshot = DM.collect_consumer_snapshot({"_home": world.home}, mon, NOW, deadline=99)
+    assert snapshot["budget_seconds"] == 0 and snapshot["complete"] is False
+    assert snapshot["categories"][0]["paths"][0]["status"] == "budget_exhausted"
+    assert DM.top_consumers({"_home": world.home}, mon, None, snapshot) == [("cache", None)]
+
+
+def test_consumer_zero_path_budget_never_falls_back_to_a_larger_timeout(world, monkeypatch):
+    mon = {"consumer_categories": [{"category": "cache", "path": str(world.home)}], "du_timeout_s": 0}
+    monkeypatch.setattr(DH, "du_bytes", lambda *_: pytest.fail("zero timeout widened"))
+    snapshot = DM.collect_consumer_snapshot({"_home": world.home}, mon, NOW)
+    assert snapshot["categories"][0]["paths"][0]["status"] == "budget_exhausted"
+
+
+@pytest.mark.parametrize("second_size", [8192, None, 0])
+def test_same_critical_band_refreshes_snapshot_without_duplicate_intents(mon, monkeypatch, second_size):
+    models = mon.world.home / "llama-cpp-vulkan"
+    models.mkdir()
+    calls = []
+    def measure(p, _):
+        calls.append(p)
+        return 4096 if len(calls) == 1 else second_size
+    monkeypatch.setattr(DH, "du_bytes", measure)
+    assert mon.run(92) == 0
+    initial_intents = mon.intents()
+    state_path = mon.world.state / "data/runtime/disk_usage_monitor_state.json"
+    first = json.loads(state_path.read_text())["consumer_snapshot"]
+    for pct in (91, 93, 94):
+        assert mon.run(pct) == 0
+    assert len(calls) == 1 and mon.intents() == initial_intents
+    assert mon.run(95) == 0  # Exactly one hour after the first capture.
+    latest = json.loads(state_path.read_text())["consumer_snapshot"]
+    receipt = json.loads((mon.world.state / "data/runtime/disk-usage-monitor_last.json").read_text())
+    assert len(calls) == 2 and mon.intents() == initial_intents
+    assert latest["captured_at"] != first["captured_at"] and latest["categories"][0]["bytes"] == second_size
+    if second_size is None:
+        assert latest["categories"][0]["known_bytes"] == 0 and latest["complete"] is False
+    assert receipt["summary"]["consumer_snapshot"] == latest
+    assert receipt["summary"]["consumer_snapshot_refreshed"] is True
+
+
+def test_consumer_snapshot_is_shared_across_alerting_mounts(mon, monkeypatch):
+    (mon.world.home / "llama-cpp-vulkan").mkdir()
+    mon.world.rules["monitor"]["mounts"] = ["/", "/tmp"]
+    mon.world.write_rules()
+    monkeypatch.setattr(DM, "measure", lambda mount: {"mount": mount, "used_pct": 92,
+                                                       "used_bytes": 920, "avail_bytes": 80, "size_bytes": 1000})
+    calls = []
+    monkeypatch.setattr(DH, "du_bytes", lambda *args: calls.append(args) or 4096)
+    assert mon.run(92) == 0 and len(calls) == 1
+
+
+def test_partial_consumer_snapshot_is_preserved_in_state_receipt_and_intent(mon, monkeypatch):
+    cache, npm = mon.world.home / "cache", mon.world.home / "npm"
+    cache.mkdir()
+    npm.mkdir()
+    mon.world.rules["monitor"]["consumer_categories"] = [{"category": "cache", "path": str(cache)},
+                                                         {"category": "cache", "path": str(npm)}]
+    mon.world.write_rules()
+    def fake_du_process(argv, **kwargs):
+        assert argv[0] == "du"
+        failed = argv[-1] == str(cache)
+        return types.SimpleNamespace(returncode=1 if failed else 0, stdout="4096\tfixture\n",
+                                     stderr="fixture permission error" if failed else "")
+    monkeypatch.setattr(DH.subprocess, "run", fake_du_process)
+    assert mon.run(97) == 0
+    state = json.loads((mon.world.state / "data/runtime/disk_usage_monitor_state.json").read_text())
+    receipt = json.loads((mon.world.state / "data/runtime/disk-usage-monitor_last.json").read_text())
+    snapshot = state["consumer_snapshot"]
+    assert snapshot == receipt["summary"]["consumer_snapshot"] and snapshot["complete"] is False
+    assert snapshot["categories"][0]["known_bytes"] == 4096
+    assert snapshot["categories"][0]["bytes"] is None
+    assert "unmeasured: cache" in mon.intents()[0][3]
+
+
+def test_legacy_future_changed_and_malformed_snapshots_are_not_reused(world, monkeypatch):
+    mon = {"consumer_categories": [{"category": "cache", "path": str(world.home)}]}
+    monkeypatch.setattr(DH, "du_bytes", lambda *_: 123)
+    snapshot = DM.collect_consumer_snapshot({"_home": world.home}, mon, NOW)
+    assert DM.consumer_snapshot_due(snapshot, mon, NOW + timedelta(minutes=59)) is False
+    assert DM.consumer_snapshot_due(snapshot, mon, NOW + timedelta(hours=1)) is True
+    assert DM.consumer_snapshot_due(snapshot, mon, NOW - timedelta(seconds=1)) is True
+    assert DM.consumer_snapshot_due({"size_bytes": 123456}, mon, NOW) is True
+    assert DM.consumer_snapshot_due({**snapshot, "categories": []}, mon, NOW) is True
+    assert DM.consumer_snapshot_due({**snapshot, "categories": [{"category": "cache", "status": "measured", "bytes": 0}]}, mon, NOW) is True
+    bad_row = {**snapshot["categories"][0], "category": []}
+    assert DM.consumer_snapshot_due({**snapshot, "categories": [bad_row]}, mon, NOW) is True
+    bad_row = {**snapshot["categories"][0], "known_bytes": 99999, "bytes": 99999}
+    assert DM.consumer_snapshot_due({**snapshot, "categories": [bad_row]}, mon, NOW) is True
+    assert DM.consumer_snapshot_due(snapshot, {"consumer_categories": []}, NOW) is True
 
 
 def test_a_queue_failure_does_not_record_the_band_so_the_next_run_retries(mon, tmp_path):
@@ -687,7 +870,7 @@ def test_the_committed_rules_hold_the_operator_numbers_and_the_hard_list():
 
 def test_registry_rows_are_dispatch_live_n8n_lanes_at_canary():
     rows = {r["lane_id"]: r for r in _load("lane_registry.json")["lanes"]}
-    want = {"disk-usage-monitor": ("*/15 * * * *", "monitor", 0.25), "disk-hygiene": ("0 4 * * 0", "hygiene", 168.0)}
+    want = {"disk-usage-monitor": ("*/15 * * * *", "monitor", 0.25), "disk-hygiene": ("17 * * * *", "hygiene", 1.0)}  # 2026-10-31 standing activation
     for lane, (cron, klass, hours) in want.items():
         row = rows[lane]
         assert (row["scheduler"]["kind"], row["scheduler"]["expression"], row["scheduler"]["stage"]) == (
@@ -700,15 +883,18 @@ def test_registry_rows_are_dispatch_live_n8n_lanes_at_canary():
         assert row["output_signal"] == {"kind": "json_key", "path": f"data/runtime/{lane}_last.json", "key": "ok_at"}
 
 
-def test_allowlist_entries_never_pass_apply_to_the_hygiene_lane():
+def test_allowlist_hygiene_lane_applies_only_the_reviewed_standing_path():
+    """2026-10-31: the operator activated the standing sweep; the n8n lane applies ONLY via --standing (reviewed
+    rules, approval + enabled gates); the manual grant path still refuses under the executor."""
     allow = {e["lane_id"]: e for e in _load("n8n_run_allowlist.json")["lanes"]}
     hyg, mon = allow["disk-hygiene"], allow["disk-usage-monitor"]
-    assert hyg["command"] == ["$PY", "scripts/disk_hygiene.py"] and hyg["live_arg"] == ["--plan"]
+    assert hyg["command"] == ["$PY", "scripts/disk_hygiene.py"] and hyg["live_arg"] == ["--standing", "--apply", "--scheduled"]
+    assert hyg["dry_run_arg"] == ["--standing", "--dry-run"]
     assert mon["command"] == ["$PY", "scripts/disk_usage_monitor.py"] and mon["live_arg"] == ["--apply"]
+    assert mon["dry_run_arg"] == ["--dry-run"]
     for e in (hyg, mon):
-        assert e["dry_run_arg"] == ["--dry-run"] and e["lock_kind"] == "flock" and e["output_receipt"] == "v2"
+        assert e["lock_kind"] == "flock" and e["output_receipt"] == "v2"
         assert e["market_gate"] is False
-    assert "--apply" not in json.dumps({k: hyg[k] for k in ("command", "live_arg", "dry_run_arg")})
     assert hyg["env_allowlist_mode"] == "enforce" and mon["env_allowlist_mode"] == "report"
     assert DH.main(["--apply", "--dry-run"]) == 2 and DH.main(["--plan", "--apply"]) == 2
 

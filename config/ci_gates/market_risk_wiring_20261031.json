@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_wiring_20261031",
+  "files": [
+    "tests/test_market_risk_wiring_20261031.py"
+  ],
+  "anchor": "MARKET_RISK_WIRING_20261031",
+  "comment": [
+    "ANCHOR: MARKET_RISK_WIRING_20261031 — Market Risk Engine wiring (DSN-20261031-market-risk-engine P3-T7): the",
+    "Telegram ACK RED reply acknowledges the open episode (allowlisted chats only, nothing-open and wrong-tier replies),",
+    "the health-tick step pages P1 once per hour when an OPEN RED escalation stalls (dry run sends nothing, a failed",
+    "delivery is loud), and the CommsHub market_risk colour comes from tokens. Hermetic: temp store, patched transport."
+  ]
+}

@@ -1,0 +1,112 @@
+{
+  "schema": "IncidentRunbookActions@v1",
+  "_why": "The ONLY actions the incident supervisor (scripts/incident_supervisor.py) may perform on its own. The model proposes {class, action, params}; the harness runs an action only when it is listed here, enabled, applies to the incident's watcher, every param matches its regex, and the incident is outside the refused scopes. Each argv is an EXISTING tool's own CLI. Nothing here merges, pushes, promotes, deletes, orders, stops, sizes, writes a broker or reads a secret (AGENTS.md section 0 rules 1-2 and 6, section 28.14 items 2-4). A model answer naming anything else is recorded and ignored.",
+  "python": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+  "canonical_repo": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+  "env_passthrough": ["HOME", "PATH", "LANG", "TZ", "TRADEAI_STATE_ROOT", "TRADEAI_PERSISTENT_STATE_ROOT", "PROJ"],
+  "policy": {
+    "max_attempts_per_incident": 3,
+    "model_cooldown_minutes": 30,
+    "escalate_after_minutes": 60,
+    "max_model_calls_per_day": 240,
+    "_max_model_calls_per_day_why": "2026-11-03 (operator 11-02 emergency-model decision, relayed by lead): 240 is the fastest pace this config itself allows, not a round number. The timer fires every 10 min (144 cycles/day), each cycle considers at most max_incidents_per_cycle=5, and model_cooldown_minutes=30 allows 2 triage calls per incident per hour: 5 x 2 x 24 = 240/day. At 40 the supervisor skipped EVERY incident with 'daily model-call cap' before it ever called a model, which is why self-heal was dead every morning. Triage runs on the cheap tier (Haiku, tier bulk); Sonnet only when Haiku is insufficient, never Opus/Fable.",
+    "max_incidents_per_cycle": 5,
+    "cycle_budget_s": 7500,
+    "cycle_budget_margin_s": 300,
+    "cycle_budget_floor_s": 600,
+    "model_timeout_s": 120,
+    "_model_timeout_s_why": "The governed model call's own timeout: default_model() calls generate_cloud(..., timeout=120). The supervisor re-checks the cycle budget before every model call and defers an incident whose remaining budget is shorter than this, rather than start a call that cannot finish inside the unit's TimeoutStartSec=8100 and lose the attempt row to a SIGKILL. (2026-11-03)",
+    "_cycle_budget_why": "The tradeai-incident-supervisor unit has TimeoutStartSec=8100s. max_incidents_per_cycle=5 x fixer.timeout_s=7500 = 37,500s, so without a cycle budget systemd SIGKILLs the cycle while a fixer child is still running; the attempt row is written only AFTER the fixer returns, so the attempt is lost. cycle_budget_s=7500 leaves 600s under the 8100s unit timeout. The budget bounds the WHOLE cycle, not one dispatch: it is re-checked before any model call (a governed call may take model_timeout_s=120) and before any runbook action (the action's own timeout_s, up to 900). Before each fixer dispatch the supervisor subtracts elapsed time plus cycle_budget_margin_s=300 and passes min(fixer.timeout_s, remaining) to the fixer; when remaining falls below cycle_budget_floor_s=600 it records a 'deferred: cycle budget' triage attempt and leaves the incident for a later cycle instead of dropping it. A model-call or runbook-action deferral writes the same non-counting triage row; because that row ran nothing, it does not start the 30-minute model cooldown and the incident is triaged on the next cycle. (2026-11-03)",
+    "process_id": "incident_supervisor",
+    "never_providers": ["deepseek"],
+    "act_on_providers": ["anthropic"],
+    "_act_on_providers_why": "A fallback (OAuth grok/chatgpt) answer is read-only triage: recorded on the incident, never executed; the 60-minute time box still escalates.",
+    "refused_scope_regex": "(?i)(schwab|alpaca|moomoo|broker|place_order|\\borders?\\b|\\bstops?\\b|stop[-_ ]loss|sizing|\\bsize\\b|weight|mbi|active[-_ ]?trader|execution|2fa|credential|secret|\\.env\\b|api[-_ ]?key|token|agents\\.md|guard|\\.githooks|mergify)",
+    "_refused_why": "section 0 classes (orders/stops/sizing, broker writes, secrets) plus the section 28.14 item 4 refused scopes (guard, policy, hooks, AGENTS.md, credentials). A match forces needs_operator; no runbook action and no fixer dispatch.",
+    "disk_incident_routes": {
+      "_why": "Operator 2026-11-03, disk permanent-fix item 4: 'The incident supervisor must never park a disk incident as needs a person; it dispatches the fixer.' A disk incident whose structured source names a disk lane is routed deterministically to the section 28.14 fixer before the model, so no model answer can park it as needs_operator. Matching is EXACT (case-insensitive) against source.job, source.lane and source.watcher -- never the free-text title -- so an unrelated incident that merely mentions a disk is unaffected. Example caught in the ledger: INC-261103-jngkrp, job disk-hygiene, blocked as needs_operator at 05:52Z and never revisited until 14:05Z. This route does NOT weaken refused_scope_regex: an incident matching any refused scope is still refused first, including a lane whose job name contains the section 28.14 'guard' term.",
+      "jobs": ["disk-hygiene", "disk-hygiene-enforcer", "disk-usage-monitor", "weekly-disk-cleanup"],
+      "watchers": ["disk_health", "disk_hygiene"]
+    },
+    "fixer": {
+      "script": "scripts/self_heal_fixer.py",
+      "timeout_s": 7500,
+      "_timeout_why": "The fixer's own budget is iteration.max_minutes=90 (5400s) plus iteration.ci_timeout_s=1800 (config/self_heal_fixer.json), so a 3600s supervisor timeout killed a legitimate long fix. 7500s = 5400 + 1800 + 300s margin: the supervisor waits for the fixer's whole budget and never changes that budget. (2026-11-03)",
+      "lane_prefix": "incident-",
+      "_why": "code_defect -> the section 28.14 Claude Code fixer: one N8nCodeDefect@v1-shaped request file per incident episode (consumer claude_code_iterative_fix), run as `self_heal_fixer.py --cycle --incident <file>`. The fixer keeps its own arming, budget, diff guard, worktree isolation and refused paths; it opens a PR and never merges, releases or deploys. Dispatched once per EPISODE: a reopen starts a new defect_id/signature so a person's requeue can get one new attempt."
+    },
+    "runbook_docs": {
+      "deploy_failures": ["docs/ops/MERGIFY_DEPLOY_FOUNDATION.md", "docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md"],
+      "deploy_stuck": ["docs/ops/MERGIFY_DEPLOY_FOUNDATION.md"],
+      "health_tick": ["docs/ops/INCIDENT_LEDGER.md"],
+      "expected_services": ["docs/ops/INCIDENT_LEDGER.md"],
+      "lane_health": ["docs/ops/n8n_self_healing.md"],
+      "main_ci": ["docs/ops/self_heal_claude_fixer.md"],
+      "prospectus_queue": ["docs/ops/INCIDENT_LEDGER.md"],
+      "llm_backlog": ["docs/ops/INCIDENT_LEDGER.md"],
+      "cap_hits": ["docs/ops/INCIDENT_LEDGER.md"],
+      "dirty_checkout": ["docs/ops/MERGIFY_DEPLOY_FOUNDATION.md"],
+      "*": ["docs/ops/INCIDENT_LEDGER.md"]
+    }
+  },
+  "actions": {
+    "health_tick_step_once": {
+      "enabled": true,
+      "description": "Retry one health-tick step through the health tick's own CLI (`health_tick.py --once --step <id>`).",
+      "applies_to": ["health_tick"],
+      "cwd": "release",
+      "argv": ["{python}", "scripts/health_tick.py", "--once", "--step", "{step}"],
+      "params": {"step": "^[a-z0-9][a-z0-9_-]{1,63}$"},
+      "timeout_s": 600
+    },
+    "cron_self_heal": {
+      "enabled": true,
+      "description": "Run the existing cron self-heal pass (`cron_self_heal.py --apply`): reruns a STALE lane's reviewed remediate_cmd only.",
+      "applies_to": ["lane_health", "expected_services", "health_tick"],
+      "cwd": "release",
+      "argv": ["{python}", "scripts/cron_self_heal.py", "--apply"],
+      "params": {},
+      "success_when": {
+        "_why": "cron_self_heal exits 0 when it acts on nothing; acted=[] is not a fix",
+        "json": {"acted": {"not_empty": true}}
+      },
+      "timeout_s": 900
+    },
+    "deploy_on_main_dry_run": {
+      "enabled": true,
+      "description": "Re-run the deploy_on_main decision as a dry run (never promotes) so the receipt states the current blocker.",
+      "applies_to": ["deploy_failures", "deploy_stuck"],
+      "cwd": "release",
+      "argv": ["{python}", "scripts/deploy_on_main_poll.py", "--repo", "{canonical_repo}", "--dry-run", "--json"],
+      "params": {},
+      "timeout_s": 300
+    },
+    "preserve_dirty_checkout": {
+      "enabled": true,
+      "description": "Preserve a dirty canonical checkout with the deploy tool's own preserve (patch in persistent-state + tagged stash + refs/deploy-on-main/autostash ref; never discards). Needs deploy_on_main.preserve_dirty_checkout (PR #2232); refused when absent.",
+      "applies_to": ["dirty_checkout"],
+      "precondition": {"dirty_paths_idle_minutes": 60, "_why": "never stash a tree a session is still editing"},
+      "cwd": "release",
+      "argv": ["{python}", "-c", "import sys,json; sys.path.insert(0,'.'); from scripts.lib import deploy_on_main as d; f=getattr(d,'preserve_dirty_checkout',None); r=f(__import__('pathlib').Path(sys.argv[1]),'incident-supervisor') if f else {'ok':False,'error':'preserve_dirty_checkout absent (needs #2232)'}; print(json.dumps(r)); sys.exit(0 if r.get('ok') else 3)", "{canonical_repo}"],
+      "params": {},
+      "timeout_s": 120
+    },
+    "stale_lock_reconcile": {
+      "enabled": false,
+      "description": "Clear a stale lock older than N minutes via the existing tool.",
+      "disabled_reason": "No existing tool clears a lock: scripts/cleanup_stale_locks.sh only reports, and the release-train reconcile is being retired (train removal 2026-10-27). Enable when a reviewed clear-stale-lock CLI exists.",
+      "applies_to": [],
+      "argv": [],
+      "params": {}
+    },
+    "stale_lock_report": {
+      "enabled": true,
+      "description": "Report stale locks with the existing report-only tool (scripts/cleanup_stale_locks.sh); evidence for a person, deletes nothing.",
+      "applies_to": ["*"],
+      "cwd": "release",
+      "argv": ["bash", "scripts/cleanup_stale_locks.sh"],
+      "params": {},
+      "timeout_s": 120
+    }
+  }
+}

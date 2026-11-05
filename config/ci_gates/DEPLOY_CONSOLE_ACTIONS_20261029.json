@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "DEPLOY_CONSOLE_ACTIONS_20261029",
+  "files": [
+    "tests/test_deploy_console_actions_20261029.py"
+  ],
+  "anchor": "DEPLOY_CONSOLE_ACTIONS_20261029",
+  "comment": [
+    "ANCHOR: DEPLOY_CONSOLE_ACTIONS_20261029 — Deploy console P2 (DSN-20261029-deploy-console) write path:",
+    "POST /api/v2/ops/in-flight/action (scripts/lib/deploy_console_actions.py) carries approve/hold/refresh-hints/push",
+    "behind operator session (cc_auth tailnet identity) + same-origin CSRF. Reuses existing authority: the operator-merge",
+    "label write (Telegram tap) and the git-push guard ledger (bin/guard grant git-push); force-push stays refused. Hermetic:",
+    "injected label/guard/push doubles; no network, no live gh/git/guard. Pure logic: label mapping, push-grant reason scoping",
+    "(branch/head named), override keyword, fast-forward-only push, force refusal, and the identity+CSRF gate."
+  ]
+}

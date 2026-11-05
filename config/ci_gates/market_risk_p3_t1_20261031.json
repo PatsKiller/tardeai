@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_p3_t1_20261031",
+  "files": [
+    "tests/test_market_risk_delivery_policy_20261031.py"
+  ],
+  "anchor": "MARKET_RISK_P3_T1_20261031",
+  "comment": [
+    "ANCHOR: MARKET_RISK_P3_T1_20261031 — market-risk delivery policy (2026-10-30 RCA finding 3: the 05:52 ET",
+    "risk-off warning was archived by quiet hours). Pins: market_risk/market_regime P2 delivered 04:00-07:00 ET, ops/info",
+    "P2 still held, P1/P3 unchanged, malformed window bounds skip the row (never widen), rejected config is logged,",
+    "07:00 boundary, tz env fallback, receipts name the exemption, comms hub classifies market-risk cards. Hermetic."
+  ]
+}

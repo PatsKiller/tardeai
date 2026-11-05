@@ -126,3 +126,13 @@ python3 scripts/pipelines/cutover/_cutover.py rollback --lane <lane_id> --apply 
 In the PR body and the cron-inventory change-log row: lane id, wave, grant ids and reasons, the operator's words
 (and any waiver, verbatim); criteria (1)–(4) evidence from §1; the dry-run outputs quoted; the crontab backup path;
 the post-cutover verification (§4); for a rollback, the trigger (§5) and the verification.
+
+<!-- moved from AGENTS.md 25.0.1 lines 4303-4306 -->
+## Moved from AGENTS.md (25.0.1 lines 4303-4306)
+
+*Moved here by AGENTS.md 26.0.0, which keeps the binding rule and a pointer; the 25.0.1 text is preserved at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`. This is reference, not instruction: where it mentions Telegram `/approve`, `bin/guard request`, a push budget of 5 or a coordinator override, `gh pr merge`, a `release-write` grant for a deploy, or shipping with no operator input, those paths are retired or not implemented, and AGENTS.md governs.*
+
+- **Rollback triggers are findings, the decision is the operator's:** `RUN_FAILED` where the last
+  three cron runs succeeded; `output_signal` older than 2× cadence after cutover;
+  `CRON_PRESENT_WHILE_SCHEDULER_N8N`; relay bearer failures; n8n `healthz` down > 10 min; any
+  `RUN_REFUSED` row. Rollback target: under five minutes, by re-enabling the exact line.

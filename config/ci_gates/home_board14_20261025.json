@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "home_board14_20261025",
+  "files": [
+    "tests/test_home_board14_20261025.py"
+  ],
+  "comment": [
+    "Board 14 Home read model: weekend holdings clock, jobs receipt, do-now kinds, regime since, question and release counts. Synthetic fixtures only."
+  ]
+}

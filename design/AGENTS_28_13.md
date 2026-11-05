@@ -17,7 +17,9 @@ design workflow. Develop and ship it."). It adds the restrictions below and remo
 - **Only the operator approves a design, and only in the ledger.** A version becomes APPROVED or REJECTED only by the
   operator's one-tap decision in Approvals → Designs, recorded in the operator decisions ledger with the authenticated
   identity, the time, the version and its fingerprint. Prose in a handoff, chat or PR never counts (v001, back-filled
-  from the 10-24 handoffs, is the one exception). Agents may propose and read; a decision request from an agent is
+  from the 10-24 handoffs, and a version created before this workflow was adopted on 2026-11-05 whose approval records
+  the operator's words verbatim or a relayed artifact approval, are the pre-ledger exceptions; every version created
+  on or after adoption must cite its ledger row). Agents may propose and read; a decision request from an agent is
   refused.
 - **Build only the approved version, and cite it.** A PR that changes UI under `apps/command-center-v3/src` carries
   `Design: <page>/vNNN` (APPROVED or IMPLEMENTING) or `Design: none` (no visible layout change). The build contains

@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_p0_t5_20261031",
+  "files": [
+    "tests/test_manifest_runner_disk_preflight_20261031.py"
+  ],
+  "anchor": "MARKET_RISK_P0_T5_20261031",
+  "comment": [
+    "ANCHOR: MARKET_RISK_P0_T5_20261031 — manifest runner disk preflight (2026-10-30 RCA finding 7: the premarket",
+    "runner died on ENOSPC at its tee exec before any step, silently). Pins: low space pages P1 once via",
+    "pipeline_disk_alert.py and the steps still run; missing policy skips and says so; an unwritable run log falls",
+    "back to /dev/null with the steps intact; an unwritable receipt dir pages and exits 1; the pager's intent is",
+    "P1 dedupe 0 producer manifest_runner. Hermetic: sandboxed runner copy, stub pager, tmp roots."
+  ]
+}

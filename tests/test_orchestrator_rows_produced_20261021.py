@@ -74,6 +74,8 @@ def _exec_main(fake_main):
     ns = dict(vars(tao))
     ns["PipelineRun"] = _RecordingRun
     ns["main"] = fake_main
+    from contextlib import nullcontext
+    ns["orchestrator_admission"] = lambda: nullcontext(True)
     with pytest.raises(SystemExit) as ei:
         exec(compile(_main_block(), "trade_ai_orchestrator.__main__", "exec"), ns)
     return ei.value.code, _RecordingRun.instances[-1]

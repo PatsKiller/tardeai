@@ -50,9 +50,13 @@ import hashlib
 import json
 import uuid
 from dataclasses import asdict, dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
+
+#: US equity session time zone. Never replace this with a fixed offset (P0-1, 2026-11-02 DST audit).
+_ET = ZoneInfo("America/New_York")
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -220,10 +224,25 @@ def compute_freshness(
 
 
 def market_session(at: datetime | None = None) -> str:
-    """Coarse US-equity session label. Advisory only; no trading logic reads it."""
+    """Coarse US-equity session label, resolved in America/New_York.
+
+    It is **not** purely advisory: ``options_desk_enterprise`` calls it directly to stamp
+    ``market_session_at_generation`` and recompute proposal freshness, and ``options_workflow_service``
+    writes it onto every options proposal. A fixed -04:00 shift read one hour ahead all winter, so
+    those stamps were wrong at the 04:00/09:30/16:00/20:00 boundaries (2026-11-02 DST audit).
+
+    It is **coarse**: weekday plus wall clock, with no NYSE holiday or early-close calendar. Callers
+    that must know whether the market is genuinely open use ``lib.cio_market_session.is_rth`` — as
+    ``lib.desk_session.market_session`` does, overriding this label with ``REGULAR`` whenever
+    ``is_rth`` is true. Quote refreshes go through that overlay, not through this function.
+
+    ``zoneinfo`` is imported eagerly and without a fixed-offset fallback on purpose: a missing tz
+    database must fail loudly rather than silently mislabel a session stamp.
+    """
     at = at or utc_now()
-    et_offset = timedelta(hours=-4)  # coarse; ET, not a tz database lookup
-    local = at + et_offset
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)  # this module's stamps are UTC
+    local = at.astimezone(_ET)
     if local.weekday() >= 5:
         return "WEEKEND"
     minutes = local.hour * 60 + local.minute

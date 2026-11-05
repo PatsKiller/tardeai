@@ -19,7 +19,7 @@ The window (``SudoWindows``):
   window token once, keeps only its SHA-256, and the page keeps the token in ``sessionStorage`` (gone when the browser
   session ends). A window used without its token, by another identity, or after any end condition is refused;
 * never covers the always-fresh kinds (``needs_fresh_passkey``): grant issue, kill-switch clear, passkey add and
-  revoke, the release-train operator kinds, and changing either sudo-window setting. Those need a fresh assertion
+  revoke, deploy resume, and changing either sudo-window setting. Those need a fresh assertion
   even inside a window, and the host applier re-checks the factor of every signed approval.
 
 Every act made in a window is audited with the window id and the opening assertion id, credential and time. Agents
@@ -47,13 +47,18 @@ DEFAULT_MINUTES = 60
 HARD_MAX_MINUTES = 120
 IDLE_S = 15 * 60
 FACTOR = "sudo_window"
-#: Kinds that need a fresh passkey assertion even inside an open window (operator decision 2026-10-22, plus the
-#: release-train operator kinds, which AGENTS.md 19.0.0 §25.4 makes "a WebAuthn passkey and a typed phrase" act and
-#: whose release-train proof hook accepts only factor ``passkey``).
-ALWAYS_FRESH_KINDS = frozenset({
-    "grant.issue", "kill_switch.clear", "passkey.register", "passkey.revoke",
-    "release_train.resume", "release_train.arm", "release_train.change_scope", "release_train.revoke",
-})
+#: Kinds that need a fresh passkey assertion even inside an open window (operator decision 2026-10-22, plus deploy
+#: resume, a "WebAuthn passkey and a typed phrase" act whose release-control proof hook accepts only factor
+#: ``passkey``; AGENTS.md §25.10 / §27.3).
+ALWAYS_FRESH_KINDS = frozenset(
+    {
+        "grant.issue",
+        "kill_switch.clear",
+        "passkey.register",
+        "passkey.revoke",
+        "deploy.resume",
+    }
+)
 
 
 def needs_fresh_passkey(kind: str, params: Optional[Mapping[str, Any]] = None) -> Optional[str]:
@@ -86,14 +91,26 @@ def gate(store: Any, agents_path: Optional[Path] = None) -> dict:
         minutes = DEFAULT_MINUTES
     minutes = max(1, min(HARD_MAX_MINUTES, minutes))
     if pol["state"] != C.POLICY_ACTIVE:
-        state, reason = "INERT", (f"AGENTS.md {SUDO_POLICY_VERSION} or later is not ACTIVE ({pol['detail']}); the "
-                                  f"sudo-window policy text ships in {SUDO_POLICY_VERSION} §28.5")
+        state, reason = (
+            "INERT",
+            (
+                f"AGENTS.md {SUDO_POLICY_VERSION} or later is not ACTIVE ({pol['detail']}); the "
+                f"sudo-window policy text ships in {SUDO_POLICY_VERSION} §28.5"
+            ),
+        )
     elif not enabled:
         state, reason = "INERT", f"operator setting {SETTING_ENABLED} is false (the default)"
     else:
         state, reason = "ACTIVE", None
-    return {"state": state, "reason": reason, "policy": pol, "enabled": enabled, "minutes": minutes,
-            "max_minutes": HARD_MAX_MINUTES, "idle_minutes": IDLE_S // 60}
+    return {
+        "state": state,
+        "reason": reason,
+        "policy": pol,
+        "enabled": enabled,
+        "minutes": minutes,
+        "max_minutes": HARD_MAX_MINUTES,
+        "idle_minutes": IDLE_S // 60,
+    }
 
 
 def token_hash(token: str) -> str:
@@ -137,20 +154,32 @@ class Window:
         """What every act in this window is audited with."""
         from scripts.lib import ops_controls_core as C
 
-        return {"window_id": self.window_id, "opening_assertion_id": self.assertion_id,
-                "opening_credential_id8": self.credential_id[:8], "opening_credential_name": self.credential_name,
-                "opened_at": C.iso(self.opened_at), "opening_request_id": self.opening_request_id}
+        return {
+            "window_id": self.window_id,
+            "opening_assertion_id": self.assertion_id,
+            "opening_credential_id8": self.credential_id[:8],
+            "opening_credential_name": self.credential_name,
+            "opened_at": C.iso(self.opened_at),
+            "opening_request_id": self.opening_request_id,
+        }
 
     def view(self, now: datetime) -> dict:
         from scripts.lib import ops_controls_core as C
 
         end = min(self.expires_at, self.idle_expires_at())
-        return {"window_id8": self.window_id[:12], "opened_at": C.iso(self.opened_at),
-                "expires_at": C.iso(self.expires_at), "idle_expires_at": C.iso(self.idle_expires_at()),
-                "remaining_s": max(0, int((end - now).total_seconds())), "minutes": self.minutes,
-                "credential_id8": self.credential_id[:8], "credential_name": self.credential_name,
-                "opening_assertion_id": self.assertion_id, "opening_request_id": self.opening_request_id,
-                "uses": self.uses}
+        return {
+            "window_id8": self.window_id[:12],
+            "opened_at": C.iso(self.opened_at),
+            "expires_at": C.iso(self.expires_at),
+            "idle_expires_at": C.iso(self.idle_expires_at()),
+            "remaining_s": max(0, int((end - now).total_seconds())),
+            "minutes": self.minutes,
+            "credential_id8": self.credential_id[:8],
+            "credential_name": self.credential_name,
+            "opening_assertion_id": self.assertion_id,
+            "opening_request_id": self.opening_request_id,
+            "uses": self.uses,
+        }
 
 
 class SudoWindows:
@@ -160,15 +189,33 @@ class SudoWindows:
         self._lock = threading.RLock()
         self._windows: dict[str, Window] = {}
 
-    def open(self, *, operator: str, credential_id: str, credential_name: Optional[str], assertion: str,
-             opening_request_id: str, now: datetime, minutes: int) -> tuple[Window, str, list[Window]]:
+    def open(
+        self,
+        *,
+        operator: str,
+        credential_id: str,
+        credential_name: Optional[str],
+        assertion: str,
+        opening_request_id: str,
+        now: datetime,
+        minutes: int,
+    ) -> tuple[Window, str, list[Window]]:
         """Open a window (ending any the operator already has). Returns (window, token, windows it replaced)."""
         minutes = max(1, min(HARD_MAX_MINUTES, int(minutes)))
         token = secrets.token_urlsafe(32)
-        w = Window(window_id="sudo_" + secrets.token_hex(10), token_hash=token_hash(token), operator=operator,
-                   credential_id=credential_id, credential_name=credential_name, assertion_id=assertion,
-                   opening_request_id=opening_request_id, opened_at=now, expires_at=now + timedelta(minutes=minutes),
-                   last_used_at=now, minutes=minutes)
+        w = Window(
+            window_id="sudo_" + secrets.token_hex(10),
+            token_hash=token_hash(token),
+            operator=operator,
+            credential_id=credential_id,
+            credential_name=credential_name,
+            assertion_id=assertion,
+            opening_request_id=opening_request_id,
+            opened_at=now,
+            expires_at=now + timedelta(minutes=minutes),
+            last_used_at=now,
+            minutes=minutes,
+        )
         with self._lock:
             replaced = self.end(operator, "replaced by a new window", now)
             self._windows[w.window_id] = w
@@ -183,22 +230,25 @@ class SudoWindows:
                     out.append(self._windows.pop(wid))
             return out
 
-    def sweep(self, now: datetime, *, gate_state: str, gate_minutes: int,
-              active_credentials: Optional[set] = None) -> list[Window]:
+    def sweep(
+        self, now: datetime, *, gate_state: str, gate_minutes: int, active_credentials: Optional[set] = None
+    ) -> list[Window]:
         """End every window whose time, idle limit, gate or credential has gone. Returns the windows ended now."""
         with self._lock:
             out = []
             for wid, w in list(self._windows.items()):
-                why = self._end_reason(w, now, gate_state=gate_state, gate_minutes=gate_minutes,
-                                       active_credentials=active_credentials)
+                why = self._end_reason(
+                    w, now, gate_state=gate_state, gate_minutes=gate_minutes, active_credentials=active_credentials
+                )
                 if why:
                     w.ended_at, w.end_reason = now, why
                     out.append(self._windows.pop(wid))
             return out
 
     @staticmethod
-    def _end_reason(w: Window, now: datetime, *, gate_state: str, gate_minutes: int,
-                    active_credentials: Optional[set]) -> Optional[str]:
+    def _end_reason(
+        w: Window, now: datetime, *, gate_state: str, gate_minutes: int, active_credentials: Optional[set]
+    ) -> Optional[str]:
         if gate_state != "ACTIVE":
             return "sudo window inert (policy or setting)"
         if now >= min(w.expires_at, w.opened_at + timedelta(minutes=gate_minutes)):
@@ -224,8 +274,11 @@ class SudoWindows:
         with self._lock:
             w = next((x for x in self._windows.values() if hmac.compare_digest(x.token_hash, th)), None)
             if w is None:
-                raise SudoRefused("SUDO_WINDOW_NOT_OPEN", "no open sudo window matches this browser session (it "
-                                                          "expired, idled out, was ended or the server restarted)")
+                raise SudoRefused(
+                    "SUDO_WINDOW_NOT_OPEN",
+                    "no open sudo window matches this browser session (it "
+                    "expired, idled out, was ended or the server restarted)",
+                )
             if w.operator != operator:
                 raise SudoRefused("SUDO_WINDOW_NOT_OPEN", "that window belongs to another identity")
             w.uses += 1

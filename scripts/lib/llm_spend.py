@@ -142,6 +142,8 @@ def provider_of(model_lane: Optional[str], model_name: Optional[str], cost: floa
     """Human provider label. Pure."""
     lane = (model_lane or "").lower()
     name = (model_name or "").lower()
+    if "anthropic" in lane or "claude" in name:
+        return "Anthropic (promotional API)"
     if "grok" in lane or "grok" in name:
         return "Grok (free OAuth)"
     if "chatgpt" in lane or "gpt" in name or "codex" in lane:

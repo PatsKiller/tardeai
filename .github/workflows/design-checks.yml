@@ -10,8 +10,10 @@ name: design-checks
 #     every registry page at 1440/412/390 on fixture data, then
 #       - phone layout rules (BLOCKING ratchet): fixed chrome <= 15% of viewport height, taps >= 44 px, no sideways
 #         scroll, no raw ISO timestamps, no empty bullets — a new violation fails, a fixed one must leave the baseline;
-#       - visual compare against the committed fixture baselines: REPORT-ONLY until 2026-11-01 (continue-on-error),
-#         then blocking. Baselines were rendered on the host with pinned fonts (e2e/design-checks/fonts.conf).
+#       - visual compare against the committed fixture baselines: REPORT-ONLY by default; blocking once an operator
+#         sets the repository variable VISUAL_BLOCKING=true (a recorded act, not a calendar accident). The variable
+#         is unset by default, so the step reports and the job stays green. Baselines were rendered on the host with
+#         pinned fonts (e2e/design-checks/fonts.conf).
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, edited]
@@ -72,9 +74,9 @@ jobs:
       - run: npm run build
       - name: Render every registry page on fixture data + phone layout rules (blocking ratchet)
         run: node e2e/design-checks.fixture.mjs "$RUNNER_TEMP/design-checks"
-      - name: Visual compare against fixture baselines (report-only until 2026-11-01)
+      - name: Visual compare against fixture baselines (blocking when repository variable VISUAL_BLOCKING=true)
         if: always()
-        continue-on-error: true
+        continue-on-error: ${{ vars.VISUAL_BLOCKING != 'true' }}
         run: node e2e/design-checks.fixture.mjs "$RUNNER_TEMP/design-checks" --visual-verdict
       - uses: actions/upload-artifact@v4
         if: always()

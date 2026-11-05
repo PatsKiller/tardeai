@@ -1,5 +1,10 @@
 # Feature-to-live deploy runbook (operator-approved, exact-SHA)
 
+> **Status note (2026-10-27, AGENTS.md 26.0.0).** Parts of this runbook predate AGENTS.md §25.10. Where it says
+> to run `gh pr merge`, to request a `release-write` or Telegram grant for a deploy, or to run prepare/promote, that
+> path is retired: agents never merge or promote; Mergify merges after the operator's approval (held classes by the
+> operator's own merge); the host `deploy_on_main` poller promotes; Telegram grants are retired. AGENTS.md governs.
+
 Status:      ACTIVE — reconciled to current release workflow 2026-10-22
 as_of:       2026-10-22T03:44:00Z
 Measured at: 9853e6b47f13b744287c588cc0dcb5bd8bfe0bf7 (steps 0–6, Fib chart declutter — PR #947 + #949); a8a62217e (step 7, PRs #998–#1001)
@@ -433,3 +438,10 @@ TRADEAI_EMERGENCY_RELEASE_SHA=<SHA> bash scripts/cio_phase2_exact_main_deploy.sh
 - **RECONCILE_OVERDUE:** not reconciled within `reconcile_within_h` (24 h). It pages, with a cooldown.
 
 The path cannot ship itself: this change merges and deploys through the normal gate once GitHub recovers.
+
+<!-- moved from AGENTS.md 25.0.1 lines 1931 -->
+## Moved from AGENTS.md (25.0.1 lines 1931)
+
+*Moved here by AGENTS.md 26.0.0, which keeps the binding rule and a pointer; the 25.0.1 text is preserved at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`. This is reference, not instruction: where it mentions Telegram `/approve`, `bin/guard request`, a push budget of 5 or a coordinator override, `gh pr merge`, a `release-write` grant for a deploy, or shipping with no operator input, those paths are retired or not implemented, and AGENTS.md governs.*
+
+- **Unit files in `~/.config/systemd/user` are copies, not links.** Install with `install -m 0600`, then `daemon-reload`, then `enable --now <timer>`.

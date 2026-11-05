@@ -1,0 +1,54 @@
+{
+  "schema": "MainRedAutohealConfig@v1",
+  "as_of": "2026-11-02",
+  "_why": "Plan item 4 (operator-approved in-session 2026-11-01). AGENTS.md wins over the plan: \u00a724.5 forbids a scheduled job from writing to a remote, and \u00a728.14 allows the self-heal monitor exactly one deterministic rerun for an INFRASTRUCTURE flake, 'never a test failure'. So rerun_classes.test_failure is false and flaky_issue.enabled is false by default; a run whose failed log names test ids escalates to one P1 page plus one Claude Code fixer request on the first cycle instead of being re-run. Turning either gate on is an operator decision (AGENTS \u00a717), not an agent's.",
+  "repo": "PatsKiller/tardeai",
+  "branch": "main",
+  "required_workflows": [
+    "cio-production-hardening-ci",
+    "agent-governance",
+    "release-readiness",
+    "cio-full-suite-sharded",
+    "secret-scan"
+  ],
+  "_required_workflows_why": "Workflow DISPLAY names from .github/workflows/*.yml, not check-run names. The required check contexts are cio-hardening (job in cio-production-hardening-ci, also reported by cio-full-suite-sharded), agent-governance, release-readiness and ci-gate (the aggregate job in cio-full-suite-sharded); gh run list reports workflow names, so both files are listed. config/release_train_delegation.example.json carries the check-context list.",
+  "run_list_limit": 40,
+  "max_reruns": 1,
+  "state_keep_runs": 50,
+  "rerun_classes": {
+    "infrastructure": true,
+    "test_failure": false,
+    "unknown": false
+  },
+  "_rerun_classes_why": "infrastructure = the run died for a reason a rerun can plausibly clear (startup_failure, timed_out, or a log marker below). test_failure and unknown are never re-run: \u00a728.14 says never a test failure, and an unclassified failure could be one.",
+  "infra_log_markers": [
+    "The runner has received a shutdown signal",
+    "The self-hosted runner lost communication",
+    "No space left on device",
+    "Resource not accessible by integration",
+    "Service Unavailable",
+    "502 Bad Gateway",
+    "connection reset by peer"
+  ],
+  "flaky_issue": {
+    "enabled": false,
+    "label": "flaky-test",
+    "_why": "Opening or commenting on a GitHub issue is a remote write from a scheduled job (\u00a724.5). Off until the operator ratifies an amendment; the suspected flake is still recorded in the receipt and the local runs.jsonl."
+  },
+  "fixer": {
+    "enabled": true,
+    "requests_rel": "fixer_requests",
+    "_why": "A durable request file, never a push or a PR from this lane (AGENTS.md 24.5, 28.14). fixer_requests/<run id>.json is an incident document in the exact shape scripts/self_heal_fixer.py --cycle --incident already consumes (N8nCodeDefect@v1 + a RunReceipt@v2-shaped receipt + registry_row); a test runs that fixer in dry-run over the request and asserts it admits one fix_requested job. The fixer still stops at a local fix branch until the operator arms it; when armed, its fix PR follows the merge gate (scripts/lib/pr_all_checks_green.py)."
+  },
+  "page": {
+    "enabled": true,
+    "severity": "P1",
+    "page_cooldown_hours": 6
+  },
+  "log_tail_chars": 20000,
+  "page_groups": {
+    "cio-production-hardening-ci": "cio-hardening-suite",
+    "cio-full-suite-sharded": "cio-hardening-suite"
+  },
+  "_page_groups_why": "The two workflows run the same hardening suite; a page is deduplicated by (head SHA, group) so one red commit pages once, not once per workflow."
+}

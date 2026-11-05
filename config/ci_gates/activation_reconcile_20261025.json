@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "activation_reconcile_20261025",
+  "files": [
+    "tests/test_activation_reconcile_20261025.py"
+  ],
+  "comment": [
+    "Approvals > Activations: governance packets reconciled with what is live (lane registry, n8n live list, served release, superseded policy base); resolved packets leave the pending count but are returned under Resolved, never deleted; titles from the README heading, proposer from owner/claim/trailer or unknown with reason, age from as_of or the adding commit. Synthetic fixtures only."
+  ]
+}

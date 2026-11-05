@@ -19,6 +19,7 @@ broker caller, writer, schedule or order behavior.
 | Waiting approvals | `approvals.total` | Same typed pending queue used by header | Queue writers, W1 |
 | Risk losses, heat, unprotected value, largest name | `positions.{loss_at_stop_usd,portfolio_heat_pct,unprotected_value_usd,largest_name}` | Current risk projection, never stale file totals | W1 resolver / risk projection |
 | Position table | `positions.rows[].{symbol,account_label,shares,price,stop_price,distance_to_stop_pct,loss_at_stop_usd,stop_source,stop_state}` | Canonical holdings and per-account observed/planned stop state | Holdings sync, W1 resolver |
+| (2026-10-25 stop desks) Risk KPI row + stop source | `positions.{loss_at_resting_stops_usd,resting_heat_pct,stop_breakdown}`, `positions.rows[].{counted,stop_category,resting_stop_distance_pct,loss_at_resting_stop_usd,planned_stop_distance_pct}`, `stops.filled_awaiting_sync` | Same rows; resting = broker stop active or pending activation. `broker_protected` and `loss_at_stop_usd` (active only) unchanged | W1 resolver |
 | Concentration rows | `positions.concentration[]` | Current canonical aggregate | W1 resolver |
 | Correlation | `/api/v2/correlation`, `correlation_matrix`, `as_of` | Published correlation cache | Correlation lane, W8 |
 | Recovery evidence | `/api/v2/recovery`, `items[].{symbol,account_label,analyst_verdict,reason}` | Existing recovery projection | Recovery writer |

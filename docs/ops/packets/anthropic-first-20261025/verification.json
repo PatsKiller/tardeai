@@ -1,0 +1,88 @@
+{
+  "observed_at": "2026-10-26T00:36:00.769250+00:00",
+  "tested_source_head": "4590dc4acfd2feabc425300f696aeae3e1a68ce5",
+  "integrated_main": "2b4cde1c970fdf3e8f8ebf5126fe46b233cd6299",
+  "profile": "selected isolated CI-parity suites; existing Pydantic-2 virtualenv; psycopg2 hidden; TRADE_AI_CI=1",
+  "focused_suite": {
+    "files": 13,
+    "cases": 308,
+    "sandbox_passed": 307,
+    "sandbox_restricted_cases": 1,
+    "restricted_case": "tests/test_bridge_oauth_llm_step_20261014.py::test_llm_step_http_route",
+    "restricted_case_approved_fixture_result": "1 passed; ephemeral mock loopback HTTP, fake providers"
+  },
+  "review_regression_suite": {
+    "cases_passed": 150,
+    "files": [
+      "tests/test_cio_ask_process_registration_20261024.py",
+      "tests/test_n8n_llm_bridge_routes_b1_20261015.py",
+      "tests/test_llm_process_seed_sync_20261010.py",
+      "tests/test_local_llm_compat_registered_20260927.py"
+    ]
+  },
+  "environment_read_regressions_passed": 12,
+  "test_populations_overlap": true,
+  "new_test_files": 7,
+  "frontend_build": "PASS: standards, tokens, model suites, TypeScript and Vite",
+  "ruff_version": "0.16.2",
+  "ruff": "PASS",
+  "test_host_paths_new_violations": 0,
+  "test_coverage_new_unlisted": 0,
+  "line_endings_new_violations": 0,
+  "dark_contracts": "PASS",
+  "documentation_index": "PASS",
+  "caller_maps_unchanged": true,
+  "registered_ids_preserved": 90,
+  "anthropic_eligible_profiles": 67,
+  "unchanged_profiles": 23,
+  "model_counts": {
+    "Opus 5.5": 56,
+    "Haiku 5.5": 11
+  },
+  "legacy_allowed_lanes_preserved": true,
+  "needs_action_api_registration": "IMPLEMENTED; production probe-map P1/P2/cache fixture passes",
+  "monitoring_source_handoffs": "NONE OUTSTANDING",
+  "component_phone_412_390": "PASS: actual isolated browser taps, private screenshots",
+  "full_page_phone_412_390": {
+    "cases_passed": 4,
+    "pages": [
+      "LLM Spend",
+      "Jobs & health"
+    ],
+    "expand_collapse": "PASS",
+    "horizontal_overflow_px": 0,
+    "external_origins_and_writes": "BLOCKED by fixture; zero writes"
+  },
+  "private_proof_directory": "handoffs/llm-anthropic-first-20261025/proof (outside public repository)",
+  "real_layout_proof": {
+    "status": "PASS",
+    "root": "temporary copied-config PROJECT_ROOT",
+    "config_files": 4,
+    "before_after_hashes_identical": true,
+    "dispatches": 0,
+    "network_calls": 0
+  },
+  "observed_subset_comparable_token_estimate_usd_per_day": "5.05012100",
+  "full_day_cost": "NOT_MEASURED",
+  "native_pr_profile": {
+    "status": "INCOMPLETE",
+    "detail": "Interrupted after OS-restricted lease/socket fixture failures; those three tests later passed in an approved isolated run; remaining profile units not completed."
+  },
+  "full_github_ci": "FAILED at448607166 on two documentation checks; corrective follow-up awaits publication and new-head CI",
+  "real_provider_canaries": "NOT_RUN: operator key-org confirmation, activation config and per-tier/fallback canaries required",
+  "runtime_activation": "NOT_PERFORMED; shipped enabled:false",
+  "source_admission": "PROPOSED; no grant invented",
+  "remote_publication": "Initial correction published by operator at448607166; documentation follow-up remains operator-controlled",
+  "github_ci_checkpoint": {
+    "head": "44860716649f6c904e21321b2a017a36477087bb",
+    "hardening_run": 40251267587,
+    "full_suite_run": 40251267578,
+    "failed_tests": [
+      "tests/test_work_board_designs_20261023.py::test_seeded_registry_parses_and_ids_are_consistent",
+      "tests/test_data_dictionary_foundation_20261022.py::test_rendered_dictionary_is_current"
+    ],
+    "followup": "Required design YAML metadata added; deterministic dictionary regenerated; provider source and authority unchanged",
+    "local_affected_suites_passed": 67,
+    "new_head_ci": "PENDING operator publication of documentation-only follow-up"
+  }
+}

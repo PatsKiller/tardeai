@@ -48,6 +48,7 @@ except ImportError:  # pragma: no cover - imported as scripts.lib.*
 def _acct_names(accounts: Any) -> list[str]:
     return [_acct_name(a) for a in (accounts or []) if a]
 
+
 SCHEMA = "HomeDoNow@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
 SEVERITIES = ("P0", "P1", "P2", "P3")
@@ -96,8 +97,9 @@ ACTION_LABEL = {
     "pipelines": "Diagnose",
     "pr_hygiene": "Open PRs",
     "desk_truth": "Data sources",
-    "release_window": "Release train",
-    "macro_calendar": "Release train",
+    # Both link to R_SYSTEM_JOBS (needs_action); "Release train" was retired with the train 2026-10-27.
+    "release_window": "Open Jobs",
+    "macro_calendar": "Open Jobs",
 }
 
 R_RISK = "/v3/risk"
@@ -194,8 +196,13 @@ def coverage_from_receipts(receipts: Any, now: datetime) -> dict[str, Any]:
         raise SourceUnavailable("desk truth receipts are not an object")
     r = receipts.get(COVERAGE_LANE)
     if not isinstance(r, dict) or r.get("status") == "NO_RECEIPT":
-        return {"measured": False, "verdict": "NO_RECEIPT", "as_of": None, "uncovered": {},
-                "reason": "no held-exit-coverage receipt yet (the lane runs dry at shadow)"}
+        return {
+            "measured": False,
+            "verdict": "NO_RECEIPT",
+            "as_of": None,
+            "uncovered": {},
+            "reason": "no held-exit-coverage receipt yet (the lane runs dry at shadow)",
+        }
     summary = r.get("summary") if isinstance(r.get("summary"), dict) else {}
     as_of = summary.get("as_of") or r.get("ok_at") or r.get("finished_at")
     ok_at = _parse(r.get("ok_at"))
@@ -214,8 +221,15 @@ def coverage_from_receipts(receipts: Any, now: datetime) -> dict[str, Any]:
         reason = f"no completed run in {COVERAGE_STALE_H:g} h"
     elif verdict not in ("COVERED", "GAPS"):
         reason = f"verdict {verdict}"
-    return {"measured": reason is None, "verdict": verdict, "as_of": as_of, "uncovered": uncovered,
-            "reason": reason, "held": summary.get("held"), "covered": summary.get("covered")}
+    return {
+        "measured": reason is None,
+        "verdict": verdict,
+        "as_of": as_of,
+        "uncovered": uncovered,
+        "reason": reason,
+        "held": summary.get("held"),
+        "covered": summary.get("covered"),
+    }
 
 
 def held_filter(held: Any) -> tuple[Optional[set[str]], str, Optional[str]]:
@@ -227,11 +241,19 @@ def held_filter(held: Any) -> tuple[Optional[set[str]], str, Optional[str]]:
     stop that filled after the holdings file was written — is not a Home item). A stale, empty or unreadable store
     falls back to the holdings file with the reader's explicit fallback_reason, never silently."""
     if not isinstance(held, dict):
-        return None, "the holdings file via data_broker.risk_snapshot (held reader not answered)", "held_reader_unavailable"
+        return (
+            None,
+            "the holdings file via data_broker.risk_snapshot (held reader not answered)",
+            "held_reader_unavailable",
+        )
     src = held.get("source")
     if src == "positions_store.positions_current" and not held.get("stale"):
         syms = {str(x).upper() for x in (held.get("symbols") or ())}
-        return syms, f"positions_store.positions_current (reader batch #3, as of {held.get('as_of')}) filtering the risk snapshot", None
+        return (
+            syms,
+            f"positions_store.positions_current (reader batch #3, as of {held.get('as_of')}) filtering the risk snapshot",
+            None,
+        )
     reason = held.get("fallback_reason") or ("holdings_stale" if held.get("stale") else "positions_store_reader_off")
     return None, f"the holdings file via data_broker.risk_snapshot (fallback: {reason})", reason
 
@@ -243,8 +265,11 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
         raise SourceUnavailable("risk snapshot has no positions list")
     as_of = snapshot.get("computed_at")
     cov = coverage or {"measured": False, "uncovered": {}, "reason": "desk truth not read"}
-    held_syms, positions_source, held_fallback = held_filter(held) if held is not None else (
-        None, "the holdings file via data_broker.risk_snapshot (held reader not wired)", "held_reader_not_wired")
+    held_syms, positions_source, held_fallback = (
+        held_filter(held)
+        if held is not None
+        else (None, "the holdings file via data_broker.risk_snapshot (held reader not wired)", "held_reader_not_wired")
+    )
     not_held: list[str] = []
     by_sym: dict[str, dict[str, Any]] = {}
     for p in snapshot["positions"]:
@@ -257,8 +282,19 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
             if sym not in not_held:
                 not_held.append(sym)
             continue
-        row = by_sym.setdefault(sym, {"value": 0.0, "accounts": [], "stop": True, "triggered": False,
-                                      "near": None, "max_loss": 0.0, "day_pct": None, "by_account": {}})
+        row = by_sym.setdefault(
+            sym,
+            {
+                "value": 0.0,
+                "accounts": [],
+                "stop": True,
+                "triggered": False,
+                "near": None,
+                "max_loss": 0.0,
+                "day_pct": None,
+                "by_account": {},
+            },
+        )
         mv = _num(p.get("market_value")) or 0.0
         row["value"] += mv
         acct = str(p.get("account") or "")
@@ -283,19 +319,44 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
     for sym, r in by_sym.items():
         accts = ", ".join(_acct_names(r["accounts"])) or "account unknown"
         if r["triggered"]:
-            out.append(item(f"stop:{sym}", "protect", "P0", f"{sym} is below its stop",
-                            f"Price is through the stop on record ({accts}). Verify the broker executed it.",
-                            f"Review {sym}", f"{R_RISK}?symbol={sym}", "risk", money=r["value"],
-                            money_basis="market value of the position", since=as_of,
-                            evidence={"symbol": sym, "accounts": r["accounts"],
-                                      "account_labels": _acct_names(r["accounts"])}))
+            out.append(
+                item(
+                    f"stop:{sym}",
+                    "protect",
+                    "P0",
+                    f"{sym} is below its stop",
+                    f"Price is through the stop on record ({accts}). Verify the broker executed it.",
+                    f"Review {sym}",
+                    f"{R_RISK}?symbol={sym}",
+                    "risk",
+                    money=r["value"],
+                    money_basis="market value of the position",
+                    since=as_of,
+                    evidence={"symbol": sym, "accounts": r["accounts"], "account_labels": _acct_names(r["accounts"])},
+                )
+            )
         elif r["near"] is not None:
-            out.append(item(f"stop:{sym}", "protect", "P2", f"{sym} stop {r['near']:.1f}% away",
-                            f"Stop on record is within {NEAR_STOP_PCT:g}% of price ({accts}).", f"Open {sym}",
-                            f"{R_RISK}?symbol={sym}", "risk", money=r["max_loss"] or None,
-                            money_basis="loss if the stop fills (max_loss_dollar)", since=as_of,
-                            evidence={"symbol": sym, "distance_pct": r["near"], "accounts": r["accounts"],
-                                      "account_labels": _acct_names(r["accounts"])}))
+            out.append(
+                item(
+                    f"stop:{sym}",
+                    "protect",
+                    "P2",
+                    f"{sym} stop {r['near']:.1f}% away",
+                    f"Stop on record is within {NEAR_STOP_PCT:g}% of price ({accts}).",
+                    f"Open {sym}",
+                    f"{R_RISK}?symbol={sym}",
+                    "risk",
+                    money=r["max_loss"] or None,
+                    money_basis="loss if the stop fills (max_loss_dollar)",
+                    since=as_of,
+                    evidence={
+                        "symbol": sym,
+                        "distance_pct": r["near"],
+                        "accounts": r["accounts"],
+                        "account_labels": _acct_names(r["accounts"]),
+                    },
+                )
+            )
 
     # No-stop items. When working-stop coverage is measured, it is the truth (§26: one fact, one source): only
     # its UNCOVERED symbols are items. Otherwise fall back to "no stop on record" from the snapshot, labelled.
@@ -320,8 +381,7 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
                 continue
             bare = [a for a, pa in (r.get("by_account") or {}).items() if not pa["stop"]]
             if bare and len(bare) < len(r.get("by_account") or {}):  # only the accounts without a stop
-                r = {**r, "accounts": [a for a in bare if a],
-                     "value": sum(r["by_account"][a]["value"] for a in bare)}
+                r = {**r, "accounts": [a for a in bare if a], "value": sum(r["by_account"][a]["value"] for a in bare)}
             no_stop[s_] = r
         basis = "no stop on record (risk snapshot); working-stop coverage not measured"
         basis += f" — {cov.get('reason')}" if cov.get("reason") else ""
@@ -335,22 +395,46 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
         day = r.get("day_pct")
         day_txt = f" · {day:+.2f}% today" if day is not None else ""
         accts = ", ".join(_acct_names(r.get("accounts"))) or "account unknown"
-        out.append(item(f"stop:{sym}", "protect", "P1", f"{sym} {_usd(v)} has no stop",
-                        f"{accts}{share}{day_txt}. Basis: {basis}.", f"Review {sym}",
-                        f"{R_RISK}?symbol={sym}", src, money=v, money_basis="market value with no stop",
-                        since=cov.get("as_of") if src == "desk_truth" else as_of,
-                        evidence={"symbol": sym, "accounts": r.get("accounts"),
-                                  "account_labels": _acct_names(r.get("accounts"))}))
+        out.append(
+            item(
+                f"stop:{sym}",
+                "protect",
+                "P1",
+                f"{sym} {_usd(v)} has no stop",
+                f"{accts}{share}{day_txt}. Basis: {basis}.",
+                f"Review {sym}",
+                f"{R_RISK}?symbol={sym}",
+                src,
+                money=v,
+                money_basis="market value with no stop",
+                since=cov.get("as_of") if src == "desk_truth" else as_of,
+                evidence={
+                    "symbol": sym,
+                    "accounts": r.get("accounts"),
+                    "account_labels": _acct_names(r.get("accounts")),
+                },
+            )
+        )
     if no_stop:
         unprot_value = sum(r.get("value") or 0.0 for r in no_stop.values())
         syms = [s for s, _ in ranked]
         shown = ", ".join(syms[:6]) + (f" and {len(syms) - 6} more" if len(syms) > 6 else "")
-        out.append(item("stops:unprotected", "protect", "P1",
-                        f"{len(no_stop)} position{'s' if len(no_stop) != 1 else ''} with no stop",
-                        f"{shown} · {_usd(unprot_value)} in total. Basis: {basis}.", "Set stops", R_RISK, src,
-                        money=unprot_value, money_basis="combined market value with no stop",
-                        since=cov.get("as_of") if src == "desk_truth" else as_of,
-                        evidence={"symbols": syms, "count": len(no_stop)}))
+        out.append(
+            item(
+                "stops:unprotected",
+                "protect",
+                "P1",
+                f"{len(no_stop)} position{'s' if len(no_stop) != 1 else ''} with no stop",
+                f"{shown} · {_usd(unprot_value)} in total. Basis: {basis}.",
+                "Set stops",
+                R_RISK,
+                src,
+                money=unprot_value,
+                money_basis="combined market value with no stop",
+                since=cov.get("as_of") if src == "desk_truth" else as_of,
+                evidence={"symbols": syms, "count": len(no_stop)},
+            )
+        )
     port = snapshot.get("portfolio") if isinstance(snapshot.get("portfolio"), dict) else {}
     numbers = {
         "unprotected_positions": len(no_stop),
@@ -384,9 +468,20 @@ def rule_needs_action(p: Any, now: datetime) -> list[dict]:
         if src == "desk_truth" and key_ev.startswith("uncovered:"):
             # The same finding the risk rule reads straight from the receipt: merged there, not repeated here.
             sym = key_ev.split(":")[-1].upper()
-            out.append(item(f"stop:{sym}", "protect", "P2", f"{sym} has no working stop", str(i.get("why") or ""),
-                            f"Review {sym}", f"{R_RISK}?symbol={sym}", "needs_action:desk_truth",
-                            since=i.get("since"), evidence=ev))
+            out.append(
+                item(
+                    f"stop:{sym}",
+                    "protect",
+                    "P2",
+                    f"{sym} has no working stop",
+                    str(i.get("why") or ""),
+                    f"Review {sym}",
+                    f"{R_RISK}?symbol={sym}",
+                    "needs_action:desk_truth",
+                    since=i.get("since"),
+                    evidence=ev,
+                )
+            )
             continue
         title = str(i.get("title") or "")
         cat = "fix"
@@ -397,23 +492,56 @@ def rule_needs_action(p: Any, now: datetime) -> list[dict]:
         if src in ROLLUP_SOURCES:
             groups.setdefault((src, i["severity"]), []).append(i)
             continue
-        out.append(item(f"na:{src}:{title}", cat, i["severity"], title, str(i.get("why") or ""),
-                        ACTION_LABEL.get(src, "Open"), str(i.get("where") or R_HEALTH), f"needs_action:{src}",
-                        since=i.get("since"), evidence=ev or None))
+        out.append(
+            item(
+                f"na:{src}:{title}",
+                cat,
+                i["severity"],
+                title,
+                str(i.get("why") or ""),
+                ACTION_LABEL.get(src, "Open"),
+                str(i.get("where") or R_HEALTH),
+                f"needs_action:{src}",
+                since=i.get("since"),
+                evidence=ev or None,
+            )
+        )
     for (src, sev), rows in groups.items():
         cat = "decide" if src == "approvals" else "fix"
         if len(rows) == 1:
             r = rows[0]
-            out.append(item(f"na:{src}:{r.get('title')}", cat, sev, str(r.get("title") or ""), str(r.get("why") or ""),
-                            ACTION_LABEL.get(src, "Open"), str(r.get("where") or R_HEALTH), f"needs_action:{src}",
-                            since=r.get("since"), evidence=r.get("evidence")))
+            out.append(
+                item(
+                    f"na:{src}:{r.get('title')}",
+                    cat,
+                    sev,
+                    str(r.get("title") or ""),
+                    str(r.get("why") or ""),
+                    ACTION_LABEL.get(src, "Open"),
+                    str(r.get("where") or R_HEALTH),
+                    f"needs_action:{src}",
+                    since=r.get("since"),
+                    evidence=r.get("evidence"),
+                )
+            )
             continue
         titles = [str(r.get("title") or "") for r in rows]
         why = "; ".join(t[:60] for t in titles[:3]) + (f"; and {len(titles) - 3} more" if len(titles) > 3 else "")
         since = max((str(r.get("since")) for r in rows if r.get("since")), default=None)
-        out.append(item(f"na:{src}:{sev}", cat, sev, f"{len(rows)} {ROLLUP_SOURCES[src]}", why,
-                        ACTION_LABEL.get(src, "Open"), str(rows[0].get("where") or R_HEALTH), f"needs_action:{src}",
-                        since=since, evidence={"rolled_up": len(rows)}))
+        out.append(
+            item(
+                f"na:{src}:{sev}",
+                cat,
+                sev,
+                f"{len(rows)} {ROLLUP_SOURCES[src]}",
+                why,
+                ACTION_LABEL.get(src, "Open"),
+                str(rows[0].get("where") or R_HEALTH),
+                f"needs_action:{src}",
+                since=since,
+                evidence={"rolled_up": len(rows)},
+            )
+        )
     return out
 
 
@@ -428,10 +556,20 @@ def rule_inbox(p: Any, now: datetime) -> list[dict]:
             stops.setdefault(str(i["symbol"]).upper(), []).append(i)
     for sym, rows in stops.items():
         latest = max(rows, key=lambda r: str(r.get("at") or ""))
-        out.append(item(f"stop:{sym}", "protect", "P0", f"{sym} stop alert",
-                        f"Stop alert in the last 2 days: {str(latest.get('detail') or '')[:120]}. Verify at the broker.",
-                        f"Review {sym}", f"{R_RISK}?symbol={sym}", "inbox", since=latest.get("at"),
-                        evidence={"alerts": len(rows)}))
+        out.append(
+            item(
+                f"stop:{sym}",
+                "protect",
+                "P0",
+                f"{sym} stop alert",
+                f"Stop alert in the last 2 days: {str(latest.get('detail') or '')[:120]}. Verify at the broker.",
+                f"Review {sym}",
+                f"{R_RISK}?symbol={sym}",
+                "inbox",
+                since=latest.get("at"),
+                evidence={"alerts": len(rows)},
+            )
+        )
 
     def lane(kind: str) -> list[dict]:
         return [i for i in p["items"] if isinstance(i, dict) and i.get("type") == kind]
@@ -441,44 +579,91 @@ def rule_inbox(p: Any, now: datetime) -> list[dict]:
         n = int(p.get("siem") or len(siem))
         sev = "P0" if any(i.get("priority") == "P0" for i in siem) else "P1"
         comps = sorted({str(i.get("detail") or "").split(" — ")[0] for i in siem})
-        out.append(item("inbox:siem", "fix", sev, f"{_floor(n, INBOX_LIMITS['siem'])} critical system events (24 h)",
-                        "Unresolved SIEM events: " + ", ".join(comps[:4]) + ("…" if len(comps) > 4 else ""),
-                        "Open SIEM", f"{R_SYSTEM}?tab=SIEM", "inbox",
-                        since=max((str(i.get("at")) for i in siem if i.get("at")), default=None)))
+        out.append(
+            item(
+                "inbox:siem",
+                "fix",
+                sev,
+                f"{_floor(n, INBOX_LIMITS['siem'])} critical system events (24 h)",
+                "Unresolved SIEM events: " + ", ".join(comps[:4]) + ("…" if len(comps) > 4 else ""),
+                "Open SIEM",
+                f"{R_SYSTEM}?tab=SIEM",
+                "inbox",
+                since=max((str(i.get("at")) for i in siem if i.get("at")), default=None),
+            )
+        )
     esc = lane("escalation")
     if esc:
         n = int(p.get("escalations") or len(esc))
         syms = sorted({str(i.get("symbol")) for i in esc if i.get("symbol")})
-        out.append(item("inbox:escalations", "decide", "P1",
-                        f"{_floor(n, INBOX_LIMITS['escalations'])} agent escalations (14 d)",
-                        ("Symbols: " + ", ".join(syms[:5]) + ("…" if len(syms) > 5 else "")) if syms else
-                        "Agents escalated these to you.", "Open agents", "/v3/agents", "inbox",
-                        since=max((str(i.get("at")) for i in esc if i.get("at")), default=None)))
+        out.append(
+            item(
+                "inbox:escalations",
+                "decide",
+                "P1",
+                f"{_floor(n, INBOX_LIMITS['escalations'])} agent escalations (14 d)",
+                ("Symbols: " + ", ".join(syms[:5]) + ("…" if len(syms) > 5 else ""))
+                if syms
+                else "Agents escalated these to you.",
+                "Open agents",
+                "/v3/agents",
+                "inbox",
+                since=max((str(i.get("at")) for i in esc if i.get("at")), default=None),
+            )
+        )
     cio = lane("cio_review")
     if cio:
         n = int(p.get("cio_review") or len(cio))
         syms = sorted({str(i.get("symbol")) for i in cio if i.get("symbol")})
-        out.append(item("inbox:cio_review", "decide", "P2",
-                        f"{_floor(n, INBOX_LIMITS['cio_review'])} CIO decisions need your review (14 d)",
-                        ("Symbols: " + ", ".join(syms[:5]) + ("…" if len(syms) > 5 else "")) if syms else
-                        "Marked human_review_required.", "Open CIO desk", "/v3/intelligence", "inbox",
-                        since=max((str(i.get("at")) for i in cio if i.get("at")), default=None)))
+        out.append(
+            item(
+                "inbox:cio_review",
+                "decide",
+                "P2",
+                f"{_floor(n, INBOX_LIMITS['cio_review'])} CIO decisions need your review (14 d)",
+                ("Symbols: " + ", ".join(syms[:5]) + ("…" if len(syms) > 5 else ""))
+                if syms
+                else "Marked human_review_required.",
+                "Open CIO desk",
+                "/v3/intelligence",
+                "inbox",
+                since=max((str(i.get("at")) for i in cio if i.get("at")), default=None),
+            )
+        )
     ar = lane("auto_research")
     if ar:
         n = int(p.get("auto_research") or len(ar))
-        out.append(item("inbox:auto_research", "decide", "P3",
-                        f"{_floor(n, INBOX_LIMITS['auto_research'])} auto-research briefs (7 d)",
-                        "Read when convenient; none asks for an action.", "Read briefs",
-                        "/v3/intelligence?tab=research", "inbox",
-                        since=max((str(i.get("at")) for i in ar if i.get("at")), default=None)))
+        out.append(
+            item(
+                "inbox:auto_research",
+                "decide",
+                "P3",
+                f"{_floor(n, INBOX_LIMITS['auto_research'])} auto-research briefs (7 d)",
+                "Read when convenient; none asks for an action.",
+                "Read briefs",
+                "/v3/intelligence?tab=research",
+                "inbox",
+                since=max((str(i.get("at")) for i in ar if i.get("at")), default=None),
+            )
+        )
     props = lane("proposal")
     if props:
         # Merged into the proposals item (id proposals:pending); the proposals source owns the count.
         syms = [str(i.get("symbol")) for i in props if i.get("symbol")]
-        out.append(item("proposals:pending", "decide", "P2", f"{len(props)}+ paper proposals waiting",
-                        "Symbols: " + ", ".join(syms[:5]), "Review proposals", R_PROPOSALS, "inbox",
-                        since=min((str(i.get("at")) for i in props if i.get("at")), default=None),
-                        evidence={"inbox_rows": len(props), "inbox_limit": 30}))
+        out.append(
+            item(
+                "proposals:pending",
+                "decide",
+                "P2",
+                f"{len(props)}+ paper proposals waiting",
+                "Symbols: " + ", ".join(syms[:5]),
+                "Review proposals",
+                R_PROPOSALS,
+                "inbox",
+                since=min((str(i.get("at")) for i in props if i.get("at")), default=None),
+                evidence={"inbox_rows": len(props), "inbox_limit": 30},
+            )
+        )
     return out
 
 
@@ -495,10 +680,20 @@ def rule_proposals(p: Any, now: datetime) -> list[dict]:
         age = f" Oldest {h / 24:.0f} d." if h >= 48 else f" Oldest {h:.0f} h."
     syms = [str(s) for s in p.get("symbols") or [] if s]
     shown = ", ".join(syms[:5]) + (f" and {n - min(len(syms), 5)} more" if n > min(len(syms), 5) else "")
-    return [item("proposals:pending", "decide", "P2", f"{n} paper proposal{'s' if n != 1 else ''} waiting",
-                 f"{shown}.{age} Count as stored; stale ones expire when the Proposals page loads.",
-                 "Review proposals", R_PROPOSALS, "proposals", since=p.get("oldest_at"),
-                 evidence={"pending": n})]
+    return [
+        item(
+            "proposals:pending",
+            "decide",
+            "P2",
+            f"{n} paper proposal{'s' if n != 1 else ''} waiting",
+            f"{shown}.{age} Count as stored; stale ones expire when the Proposals page loads.",
+            "Review proposals",
+            R_PROPOSALS,
+            "proposals",
+            since=p.get("oldest_at"),
+            evidence={"pending": n},
+        )
+    ]
 
 
 def rule_deploy(p: Any, now: datetime) -> list[dict]:
@@ -510,12 +705,25 @@ def rule_deploy(p: Any, now: datetime) -> list[dict]:
         return []
     top = events[0]
     proceeds = _num(top.get("proceeds_usd")) or 0.0
-    title = (f"Redeploy {_usd(proceeds)} from the {top.get('symbol')} sale" if top.get("symbol") and proceeds
-             else f"{n} post-sale redeploy decisions open")
-    return [item("deploy:open", "decide", "P2", title,
-                 f"{n} post-sale redeploy event{'s' if n != 1 else ''} in 14 days; advisory only.", "Redeploy",
-                 R_REDEPLOY, "deploy", since=str(top.get("sold_at") or "") or None,
-                 evidence={"events": n, "material_proceeds_usd": p.get("material_proceeds_usd")})]
+    title = (
+        f"Redeploy {_usd(proceeds)} from the {top.get('symbol')} sale"
+        if top.get("symbol") and proceeds
+        else f"{n} post-sale redeploy decisions open"
+    )
+    return [
+        item(
+            "deploy:open",
+            "decide",
+            "P2",
+            title,
+            f"{n} post-sale redeploy event{'s' if n != 1 else ''} in 14 days; advisory only.",
+            "Redeploy",
+            R_REDEPLOY,
+            "deploy",
+            since=str(top.get("sold_at") or "") or None,
+            evidence={"events": n, "material_proceeds_usd": p.get("material_proceeds_usd")},
+        )
+    ]
 
 
 # ── merge, sort, freshness ─────────────────────────────────────────────────────────────────────────────────────
@@ -550,9 +758,16 @@ def merge(items: list[dict]) -> list[dict]:
 def sort_items(items: list[dict]) -> list[dict]:
     sev = {s: i for i, s in enumerate(SEVERITIES)}
     cat = {c: i for i, c in enumerate(CATEGORIES)}
-    return sorted(items, key=lambda i: (0 if (i.get("money_at_risk_usd") or 0) > 0 else 1,
-                                        -(i.get("money_at_risk_usd") or 0), sev[i["severity"]], cat[i["category"]],
-                                        i["title"]))
+    return sorted(
+        items,
+        key=lambda i: (
+            0 if (i.get("money_at_risk_usd") or 0) > 0 else 1,
+            -(i.get("money_at_risk_usd") or 0),
+            sev[i["severity"]],
+            cat[i["category"]],
+            i["title"],
+        ),
+    )
 
 
 def source_meta(name: str, payload: Any, now: datetime, read_at: datetime) -> dict[str, Any]:
@@ -572,16 +787,22 @@ def source_meta(name: str, payload: Any, now: datetime, read_at: datetime) -> di
             as_of, basis = r.get("ok_at") or r.get("finished_at"), "receipt.ok_at"
         else:
             basis = "no receipt"
-    meta: dict[str, Any] = {"status": "OK", "as_of": as_of or (read_at.isoformat() if basis == "read_at" else None),
-                            "as_of_basis": basis, "age_s": None, "stale": False}
+    meta: dict[str, Any] = {
+        "status": "OK",
+        "as_of": as_of or (read_at.isoformat() if basis == "read_at" else None),
+        "as_of_basis": basis,
+        "age_s": None,
+        "stale": False,
+    }
     t = _parse(meta["as_of"])
     if t is not None:
         meta["age_s"] = max(0, int((now - t).total_seconds()))
         meta["stale"] = meta["age_s"] > STALE_AFTER_S.get(name, 600)
     if name == "needs_action" and isinstance(p, dict) and p.get("all_sources_answered") is False:
         meta["status"] = "PARTIAL"
-        meta["unavailable"] = sorted(k for k, v in (p.get("sources") or {}).items()
-                                     if isinstance(v, dict) and v.get("status") != "OK")
+        meta["unavailable"] = sorted(
+            k for k, v in (p.get("sources") or {}).items() if isinstance(v, dict) and v.get("status") != "OK"
+        )
     if name == "held" and isinstance(p, dict):
         meta["stale"] = bool(p.get("stale"))  # the reader's own freshness contract (positions_sync / holdings age)
         meta["fallback_reason"] = p.get("fallback_reason")
@@ -650,11 +871,18 @@ def build(
         except Exception as exc:  # noqa: BLE001
             sources["desk_truth"].update(status="UNAVAILABLE", error=str(exc)[:200])
     if "risk" in payloads:
+
         def _risk() -> list[dict]:
             nonlocal numbers
-            got, numbers = rule_risk(payloads["risk"], coverage, now, held=payloads["held"] if "held" in payloads else ("unavailable" if "held" in sources else None))
+            got, numbers = rule_risk(
+                payloads["risk"],
+                coverage,
+                now,
+                held=payloads["held"] if "held" in payloads else ("unavailable" if "held" in sources else None),
+            )
             numbers = {**numbers, "status": "OK", "stale": sources["risk"].get("stale", False)}
             return got
+
         run("risk", _risk)
     run("needs_action", lambda: rule_needs_action(payloads["needs_action"], now))
     # proposals before inbox: on a merge the first title of equal severity wins, and the count belongs to proposals.
@@ -664,9 +892,20 @@ def build(
 
     for name, s in sources.items():
         if s.get("status") == "UNAVAILABLE":
-            raw.append(item(f"source:{name}", "fix", "P2", f"Do-now source {name} unavailable",
-                            f"Anything this source would report is unknown: {s.get('error')}",
-                            "Open Health", R_HEALTH, name, since=now.isoformat(), evidence={"error": s.get("error")}))
+            raw.append(
+                item(
+                    f"source:{name}",
+                    "fix",
+                    "P2",
+                    f"Do-now source {name} unavailable",
+                    f"Anything this source would report is unknown: {s.get('error')}",
+                    "Open Health",
+                    R_HEALTH,
+                    name,
+                    since=now.isoformat(),
+                    evidence={"error": s.get("error")},
+                )
+            )
 
     merged = sort_items(merge(raw))
     counts = {"all": len(merged), **{c: sum(1 for i in merged if i["category"] == c) for c in CATEGORIES}}
@@ -707,12 +946,19 @@ def probe_pending_proposals(db_query: Callable[..., Any]) -> dict[str, Any]:
     is UNAVAILABLE — never zero. Read-only SELECTs."""
     row = db_query(
         "SELECT COUNT(*) AS n, MIN(created_at) AS oldest FROM paper_trade_proposals WHERE status = 'PENDING'",
-        None, fetch="one")
+        None,
+        fetch="one",
+    )
     if not isinstance(row, dict) or row.get("n") is None:
         raise SourceUnavailable("paper_trade_proposals count unreadable")
     syms = db_query(
         "SELECT symbol FROM paper_trade_proposals WHERE status = 'PENDING' ORDER BY created_at DESC LIMIT 5",
-        None, fetch="all")
+        None,
+        fetch="all",
+    )
     oldest = row.get("oldest")
-    return {"pending": int(row["n"]), "oldest_at": oldest.isoformat() if hasattr(oldest, "isoformat") else oldest,
-            "symbols": [r.get("symbol") for r in (syms or []) if isinstance(r, dict)]}
+    return {
+        "pending": int(row["n"]),
+        "oldest_at": oldest.isoformat() if hasattr(oldest, "isoformat") else oldest,
+        "symbols": [r.get("symbol") for r in (syms or []) if isinstance(r, dict)],
+    }

@@ -15,6 +15,15 @@ Base-SHA:        1c60ecb4264ba4dcc6a38106e76fae0d96a26787
 Operator-Direction-Recorded: 2026-09-25 (operator confirmed in session: "Yes, mine, draft it")
 ```
 
+> **Status note (2026-10-27, AGENTS.md 26.0.0).** This amendment was ratified on 2026-09-27 and is in force
+> through AGENTS.md §22, which is the binding summary. The paragraphs below that speak of "until ratified" and
+> §7 record the pre-ratification state and are kept as the record. Three points are superseded: **A3 deployment**
+> is now promotion of an operator-approved `main` SHA by the host `deploy_on_main` poller under the standing deploy
+> delegation, with no per-SHA grant (AGENTS.md §25.10) — no agent holds A3; **merge enforcement** is the held-path
+> list (`config/merge_hold_paths.json`) and Mergify merging only after the operator's approval, not branch
+> protection alone; and §0 is repeated in four adapters (`CLAUDE.md`, `.cursor/rules/00-tradeai-work-policy.mdc`,
+> `.github/copilot-instructions.md`, `.goosehints`).
+
 **Until ratified, the ACTIVE text of AGENTS.md governs unchanged.** Nothing in this file
 authorizes any agent to modify, test against, or call the broker execution subsystem today.
 §0 rule 2 still reads as it did. This document holds the replacement text and the reasons, so
