@@ -121,7 +121,7 @@ export default function RetirementHub({ onDrill }: Props) {
               <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
                 <Metric label="Window" value={`${golden.start_year}–${golden.end_year}`} />
                 <Metric label="Annual conversion" value={fmt$(golden.annual_conversion ?? 0, 0)} color="#f59e0b" />
-                <Metric label="Bracket ceiling" value={golden.bracket_ceiling ?? '—'} />
+                <Metric label="Bracket ceiling" value={golden.bracket_ceiling} />
               </div>
             ) : <div style={{ fontSize: 11, color: 'var(--text3)' }}>No window configured.</div>}
             <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 10, lineHeight: 1.5 }}>
@@ -238,10 +238,14 @@ export default function RetirementHub({ onDrill }: Props) {
 }
 
 function Metric({ label, value, color = 'var(--text0)' }: { label: string; value: any; color?: string }) {
+  // A bare em-dash says nothing (BOARD row 38): is it unknown, zero, or not applicable? Say which, and never collapse a
+  // real 0 into the missing case — `value || '—'` turned a zero yield into "no data".
+  const missing = value === null || value === undefined || value === ''
   return (
     <div>
       <div style={{ fontSize: 8.5, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 800 }}>{label}</div>
-      <div style={{ fontSize: 15, fontWeight: 900, color, marginTop: 2 }}>{value || '—'}</div>
+      <div style={{ fontSize: missing ? 11 : 15, fontWeight: missing ? 600 : 900, fontStyle: missing ? 'italic' : 'normal',
+        color: missing ? 'var(--text3)' : color, marginTop: 2 }}>{missing ? 'not reported' : value}</div>
     </div>
   )
 }
