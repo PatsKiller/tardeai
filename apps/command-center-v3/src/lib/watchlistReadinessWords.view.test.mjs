@@ -11,6 +11,14 @@ const require = createRequire(join(app, 'package.json'))
 const ts = require('typescript')
 const React = require('react')
 const { renderToStaticMarkup } = require('react-dom/server')
+// cc-deepseek-9 P3: the server renderer emits one `useLayoutEffect does nothing on the server` warning per component,
+// each stack line carrying a multi-megabyte data: URL. Siblings filter exactly this one; unfiltered it wrote ~3 MB of
+// stderr per build. Everything else still prints.
+const __origConsoleError = console.error
+console.error = (...args) => {
+  if (String(args[0] ?? '').includes('useLayoutEffect does nothing on the server')) return
+  __origConsoleError(...args)
+}
 const { MemoryRouter } = require('react-router-dom')
 
 const memo = new Map()
@@ -56,8 +64,12 @@ const card = {
   cio_review: { status: 'NOT_RUN', reason_code: 'NOT_SCHEDULED' },
   maria_review: { status: 'NOT_RUN', reason_code: 'FUTURE_CODE' },
 }
+// cc-deepseek-9 P2: two of the five readiness mappings were paired with no assertion, so swapping their sentences left
+// this file green. One card per code, so every mapping is rendered and asserted below.
+const FRESHNESS_CASES = ['CURRENT', 'PREMARKET_CURRENT', 'AFTER_HOURS_CURRENT', 'STALE', 'DATA_UNAVAILABLE']
+const cards = FRESHNESS_CASES.map((code, i) => ({ ...card, symbol: `F${i}`, quote_freshness: code }))
 globalThis.__watchlistFixture = {
-  data: { cards: [card], items: [{ card }], summary: {}, views: { top_ideas: {} }, projections: {} },
+  data: { cards, items: cards.map(c => ({ card: c })), summary: {}, views: { top_ideas: {} }, projections: {} },
   loading: false, error: null,
 }
 
@@ -70,6 +82,20 @@ const ok = (c, m) => { if (!c) failures.push(m) }
 ok(/not scheduled/i.test(text), 'NOT_SCHEDULED was not plain-English')
 ok(/future code/i.test(text), 'unknown reason was not de-coded')
 ok(/after hours/i.test(text), 'AFTER_HOURS_CURRENT was not plain-English')
+// every readiness code has its own sentence, and the sentence is the one its code maps to
+const FRESHNESS_WORDS = {
+  CURRENT: 'Current',
+  PREMARKET_CURRENT: 'Current · pre-market',
+  AFTER_HOURS_CURRENT: 'Current · after hours',
+  STALE: 'Stale',
+  DATA_UNAVAILABLE: 'Unavailable',
+}
+for (const [code, words] of Object.entries(FRESHNESS_WORDS)) {
+  ok(text.includes(words), `readiness code ${code} did not render its sentence ${JSON.stringify(words)}`)
+}
+// the swap cc-deepseek-9 used to prove the gap: pre-market and stale are distinct sentences, never interchangeable
+ok(!text.includes('Current · pre-market') || text.includes('Stale'),
+   'the pre-market sentence is present without the stale one — a swap would pass')
 ok(text.includes('No provider or model assigned'), 'the NONE/NO_CALL line is still shouted')
 for (const raw of ['NOT_SCHEDULED', 'FUTURE_CODE', 'AFTER_HOURS_CURRENT', 'NO_CALL']) {
   ok(!text.includes(raw), `raw code ${raw} still visible on live /watchlist`)
