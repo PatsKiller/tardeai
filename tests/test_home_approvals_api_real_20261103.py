@@ -27,14 +27,26 @@ except ImportError:  # pragma: no cover - exercised until #2550 merges
 pytestmark = pytest.mark.skipif(ha is None, reason="piece A (lib/home_approvals.py) is not on this branch yet")
 
 NOW = datetime(2026, 11, 3, 20, 0, tzinfo=timezone.utc)
+# Must match config/cc_auth.yaml — handle() re-checks via home_approvals.server_context → allowed_logins().
+# Assemble at runtime so the login is never an inline fixture literal (PII gate).
+def _operator_login() -> str:
+    if ha is None:  # pragma: no cover
+        return "operator"
+    logins = sorted(ha.allowed_logins())
+    assert logins, "cc_auth allowed_logins is empty"
+    return logins[0]
 
 
-def _ctx(*, principal="tailnet:operator", listener="serve_proxy", csrf_ok=True, reader=False):
+OPERATOR_LOGIN = _operator_login()
+OPERATOR_PRINCIPAL = f"tailnet:{OPERATOR_LOGIN}"
+
+
+def _ctx(*, principal=OPERATOR_PRINCIPAL, listener="serve_proxy", csrf_ok=True, reader=False):
     return api.Ctx(
         principal=lambda: principal,
         listener=lambda: listener,
         csrf=lambda method, path: (csrf_ok, "" if csrf_ok else "same-origin check failed"),
-        allowed_logins=("operator",),
+        allowed_logins=(OPERATOR_LOGIN,),
         can_read=lambda: reader,
         clock=lambda: NOW,
         session=lambda: "sess-1",
@@ -107,12 +119,12 @@ def test_a_real_approve_with_an_injected_executor_executes_and_reports_executed(
         def revalidate(self, rec, *, now):
             return True, ""
 
-        def execute(self, rec, *, actor, now, progress):
+        def execute(self, rec, *, actor, now, progress, deadline=None):
             return {"ok": True, "outcome": "executed", "plain": "Merged"}
 
-    ctx_a = ha.server_context(principal="tailnet:operator", session="sess-1", csrf_ok=True,
+    ctx_a = ha.server_context(principal=OPERATOR_PRINCIPAL, session="sess-1", csrf_ok=True,
                               listener="serve_proxy")
-    out = ha.decide(real, record["id"], ctx=ctx_a, actor="operator", decision="approve", now=NOW,
+    out = ha.decide(real, record["id"], ctx=ctx_a, actor=OPERATOR_LOGIN, decision="approve", now=NOW,
                     executor=Exec())
     assert out["state"] == "executed"
     status, payload = api.handle(f"/api/v2/home/approvals/{record['id']}", "GET", ctx=_ctx(reader=True))
@@ -124,10 +136,10 @@ def test_an_expired_real_request_is_410(real):
     record = _create(real)
     later = NOW + timedelta(hours=25)
     status, payload = api.handle(f"/api/v2/home/approvals/{record['id']}/approve", "POST", {},
-                                 ctx=api.Ctx(principal=lambda: "tailnet:operator",
+                                 ctx=api.Ctx(principal=lambda: OPERATOR_PRINCIPAL,
                                              listener=lambda: "serve_proxy",
                                              csrf=lambda m, p: (True, ""),
-                                             allowed_logins=("operator",), can_read=lambda: False,
+                                             allowed_logins=(OPERATOR_LOGIN,), can_read=lambda: False,
                                              clock=lambda: later, session=lambda: "sess-1"))
     assert status == 410 and payload["code"] == "EXPIRED"
 
