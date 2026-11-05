@@ -544,6 +544,10 @@ N8N_NATIVE_SHADOW = frozenset(
         # 2026-10-26 operator "Yahoo Finance feed … switched on: yes": yfinance snapshot owner lane, n8n-native
         # ingest, weekdays 05:40 ET dry_run (tests/test_yfinance_info_snapshot_lane_20261026.py).
         "yfinance-info-snapshot",
+        # 2026-11-03 board item 16 (nudger → n8n, P2): n8n-native dispatcher row at shadow, every 5 min, dispatch
+        # dry_run. The live host crontab entry keeps doing the typing; the stage clamp makes a requested live run a
+        # dry run (tests/test_agent_nudger_p2_20261103.py).
+        "agent_nudge",
     }
 )
 #: 2026-10-17 + n8n-comms-intent-consumer (operator D2 "Queue reader first"; tests/support/comms_intent_consumer_live.py).
@@ -583,13 +587,14 @@ N8N_NATIVE_CANARY = frozenset(
     }
 )
 #: the reviewed live_arg of each n8n-native canary row whose live run is not the script default.
-#: disk-hygiene's live run is --plan (a manifest, never a deletion).
+#: disk-hygiene's live run is the operator-approved standing apply (2026-10-31; config/disk_hygiene_rules.json
+#: standing_apply): hourly --scheduled fire, the day's full run from 04:00 ET, a pressure run above trigger_pct.
 N8N_NATIVE_CANARY_LIVE_ARG = {
     "momentum-cache-reconcile": ["--apply"],
     "n8n-comms-intent-consumer": ["--apply"],
     "active-trader-motion-watchdog": ["--apply"],
     "disk-usage-monitor": ["--apply"],
-    "disk-hygiene": ["--plan"],
+    "disk-hygiene": ["--standing", "--apply", "--scheduled"],
     # 2026-10-19 operator (after /tmp hit 97% inodes): daily /tmp plan, a manifest, never a deletion.
     "tmp-hygiene": ["--plan"],
     "registry-runtime-truth": ["--apply"],
@@ -603,6 +608,7 @@ N8N_NATIVE_CANARY_LIVE_ARG = {
 #: n8n-native canary lanes whose dry_run_arg is not the bare ["--dry-run"] (their runner requires --state-root).
 N8N_NATIVE_CANARY_DRY_RUN_ARG = {
     "conflict-resolver": ["--dry-run", "--state-root", "$STATE_ROOT"],
+    "disk-hygiene": ["--standing", "--dry-run"],
 }
 #: lane repair 2026-10-15: a systemd-timer lane at shadow (its timer keeps the real work; dispatch.cron mirrors the
 #: timer's OnCalendar). tests/test_lane_repair_ri_hermes_litmus_20261015.py pins the row and its allowlist entry.

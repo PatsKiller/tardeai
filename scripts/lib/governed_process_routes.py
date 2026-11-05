@@ -22,6 +22,8 @@ CALLER_PROCESS_MAP = {
 }
 
 CALLER_TASK_PROCESS_MAP = {
+    # 2026-11-01: the Ask-the-CIO hosted web-search source (scripts/lib/anthropic_web_search.py).
+    "web_search": {"web_search": "cio_ask_web_search"},
     "n8n_model_job": {
         "model_job": "n8n_material_digest_draft",
         "ops_summary": "n8n_ops_summary_draft",

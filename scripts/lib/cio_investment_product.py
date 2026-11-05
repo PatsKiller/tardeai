@@ -1480,8 +1480,20 @@ def build_temperament(
     # the title the brief prints; NOT_EVALUATED stays a field only, so the brief never shows a tier nobody computed.
     mr = market_risk or {}
     mr_tier = str(mr.get("tier") or "NOT_EVALUATED").upper()
+    posture = None
     if mr_tier in {"GREEN", "BLUE", "YELLOW", "ORANGE", "RED"} and mr.get("state") == "evaluated":
         score = mr.get("score")
+        # Posture per tier from config/opportunity_conviction.yaml market_risk_gate.temperament (DSN-20261031 P3-T3):
+        # at ORANGE/RED the temperament itself turns defensive, not only the suffix.
+        try:
+            from scripts.lib.market_risk.cio_context import load_gate_config, temperament_posture
+        except ImportError:  # pragma: no cover — cron path
+            from lib.market_risk.cio_context import load_gate_config, temperament_posture  # type: ignore
+        posture = temperament_posture(mr_tier, load_gate_config())
+        if posture and label.upper() not in {"UNKNOWN", ""}:
+            title = f"{label.upper()} — {posture}"
+        elif posture:
+            title = f"REGIME UNCONFIRMED — {posture}"
         title = f"{title} · MARKET RISK {mr_tier}" + (
             f" {round(float(score))}/100" if isinstance(score, (int, float)) else ""
         )
@@ -1495,6 +1507,7 @@ def build_temperament(
             "state": mr.get("state") or "not_evaluated",
             "as_of": mr.get("as_of"),
             "top": ((mr.get("contributors") or [{}])[0].get("name") if mr.get("contributors") else None),
+            "posture": posture,
         },
         "cash": cash_f,
         "cash_pct": cash_metrics.get("cash_pct"),

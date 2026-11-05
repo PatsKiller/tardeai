@@ -13,6 +13,7 @@ import './W9Mobile.css'
 import './WatchLayout.css'
 import { Fragment, useMemo, useState, type CSSProperties } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { BEST_OPPORTUNITIES_API, BEST_OPPORTUNITIES_PATH, OPPORTUNITY_QUERY_KEYS, isHomeBestOpportunities, opportunitiesQuery } from '../lib/bestOpportunities'
 import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetailSheet'
 import { useApi } from '../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars } from '../lib/designTokens'
@@ -22,7 +23,7 @@ import { condLabel, convictionColor, money, pct, typeLabel } from '../components
 import PositionFilterBar from '../components/watch/PositionFilterBar'
 import { MINE_TIPS, StarToggle } from '../components/watch/MineControls'
 import {
-  alertLevelsLabel, heldAccountNames, positionChip, positionQuery, readinessTone, reentryLabel, resultTone, riskRewardCell,
+  alertLevelsLabel, heldAccountNames, positionChip, readinessTone, reentryLabel, resultTone, riskRewardCell,
   roundTripLabel, roundTripPath, soldByName, unwrapAny, withQuery, type ListRow,
 } from '../lib/watchListsModel'
 
@@ -47,7 +48,7 @@ const FILTERS: { key: string; label: string; opts: [string, string][] }[] = [
   { key: 'cap_band', label: 'Cap', opts: [['', 'Any'], ['mega', 'Mega'], ['large', 'Large'], ['mid', 'Mid'], ['small', 'Small']] },
 ]
 const SORTS: [string, string][] = [['conviction', 'Conviction'], ['rr', 'Risk/Reward'], ['upside', 'Analyst upside'], ['reward_pct', 'Reward %'], ['risk_pct', 'Lowest risk %'], ['momentum', 'Momentum'], ['rank', 'Rank']]
-const KEYS = ['preset', 'sort', 'sector', 'q', 'limit', 'page', ...FILTERS.map(f => f.key)]
+const KEYS = OPPORTUNITY_QUERY_KEYS
 
 const sel: CSSProperties = { fontSize: TYPE.sm, padding: '2px 4px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, color: TEXT, borderRadius: RADIUS.sm }
 const td: CSSProperties = { padding: '2px 6px', whiteSpace: 'nowrap' }
@@ -68,10 +69,8 @@ export default function OpportunitiesHub() {
   const expanded = phone.mobile ? phone.id : desktopExpanded
   const setExpanded = (symbol: string | null) => { if (phone.mobile) { if (symbol) phone.open(symbol); else phone.close() } else setDesktopExpanded(symbol) }
   const [note, setNote] = useState('')
-  const q = useMemo(() => {
-    const base = Object.fromEntries(KEYS.map(k => [k, sp.get(k) || '']).filter(([, v]) => v)) as Record<string, string>
-    return { limit: '100', ...base, ...positionQuery(sp) }
-  }, [sp])
+  const q = useMemo(() => opportunitiesQuery(sp), [sp])
+  const homeBest = isHomeBestOpportunities(sp)
   const { data, loading, error } = useApi<any>(withQuery('/api/v3/data-broker/watch-universe', q), 120_000)
   const body = unwrapAny<any>(data)
   const items: ListRow[] = body?.items || []
@@ -114,7 +113,9 @@ export default function OpportunitiesHub() {
     <div data-opportunities-hub className="w9-page">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', margin: '4px 0' }}>
         <div style={{ fontSize: TYPE.base, color: TEXT2 }} title="Research names scored by the CIO curator. Filters apply to this ranking.">
-          <b style={{ color: TEXT }}>{body?.total ?? '—'}</b> of {body?.universe ?? '—'} · Full universe (research)
+          {homeBest
+            ? <><b style={{ color: TEXT }}>{body ? items.length : '—'}</b> shown · Best opportunities · highest conviction</>
+            : <><b style={{ color: TEXT }}>{body?.total ?? '—'}</b> of {body?.universe ?? '—'} · Full universe (research)</>}
           {body?.as_of ? <span style={{ color: MUTED }}> · curated by the CIO {new Date(body.as_of).toLocaleString()}</span> : null}
           {body?.held?.source ? <span style={{ color: MUTED }} title="Held / formerly held come from the broker-synced Watch held reader."> · held: {String(body.held.source).split('.')[0]}{body.held.stale ? ' (stale)' : ''}</span> : null}
         </div>
@@ -162,7 +163,7 @@ export default function OpportunitiesHub() {
       </div>
 
       {note && <div role="status" style={{ color: TEXT2, fontSize: TYPE.base, marginBottom: 4 }}>{note}</div>}
-      {loading && !body && <div style={{ color: MUTED, fontSize: TYPE.base }}>Loading the Full universe…</div>}
+      {loading && !body && <div style={{ color: MUTED, fontSize: TYPE.base }}>Loading {homeBest ? 'Best opportunities' : 'the Full universe'}…</div>}
       {error && !body && <div style={{ color: TOKENS.danger, fontSize: TYPE.base }}>Error: {String(error)}</div>}
       {body && !body.as_of && <div style={{ color: TOKENS.warning, fontSize: TYPE.base, marginBottom: 6 }}>The CIO curator has not run yet — no curated ranking in CIO memory.</div>}
       {body && items.length === 0 && body.as_of && <div style={{ color: TOKENS.warning, fontSize: TYPE.base }}>Nothing matches these filters.</div>}
@@ -219,7 +220,7 @@ export default function OpportunitiesHub() {
               })}
             </tbody>
           </table>
-          {pages > 1 && (
+          {!homeBest && pages > 1 && (
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end', marginTop: 4, fontSize: TYPE.sm, color: MUTED }}>
               <button type="button" disabled={page <= 1} onClick={() => set({ page: String(page - 1) })} style={{ ...sel, cursor: 'pointer' }}>‹ Prev</button>
               page {page} / {pages}
@@ -243,14 +244,14 @@ export default function OpportunitiesHub() {
 /** Home widget: the top 5 high-conviction opportunities from CIO memory. */
 export function TopOpportunitiesWidget() {
   const open = useOpenSymbol()
-  const { data } = useApi<any>('/api/v3/opportunities?preset=top5', 300_000)
+  const { data } = useApi<any>(BEST_OPPORTUNITIES_API, 300_000)
   const body = data?.data && data.data.items ? data.data : data
   const items: any[] = body?.items || []
   return (
     <div data-top-opportunities style={{ border: `1px solid ${BORDER}`, borderRadius: RADIUS.lg, padding: 14, background: 'var(--bg1)', marginTop: 14 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
         <div style={{ fontSize: 11, fontWeight: 800, color: TEXT2, textTransform: 'uppercase', letterSpacing: '.06em' }}>Top opportunities · conviction ≥80 · R:R ≥2</div>
-        <a href="/v3/watch?tab=opportunities&preset=top5" style={{ fontSize: 11, color: MUTED }}>All {body?.total ?? ''} →</a>
+        <Link to={BEST_OPPORTUNITIES_PATH} aria-label="View best opportunities" style={{ fontSize: 11, color: MUTED, minHeight: 44, minWidth: 44, display: 'inline-flex', alignItems: 'center' }}>View top 5 →</Link>
       </div>
       {items.length === 0 && <div style={{ fontSize: 11, color: MUTED }}>{body?.as_of ? 'Nothing clears the bar right now.' : 'Waiting for the first CIO curation run.'}</div>}
       {items.map((a: any) => (

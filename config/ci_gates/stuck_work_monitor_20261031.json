@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "stuck_work_monitor_20261031",
+  "files": [
+    "tests/test_stuck_work_monitor_20261031.py"
+  ],
+  "anchor": "STUCK_WORK_MONITOR_20261031",
+  "comment": [
+    "ANCHOR: STUCK_WORK_MONITOR_20261031 — stuck-work monitor (operator 2026-10-31). Pins every detection class with a",
+    "positive control (self-deadlock, lock wait, D state, unit activating/failed, truncated JSONL tail, zero-byte state,",
+    "stalled queue and unknown-not-zero, open breaker, stale heartbeat, silent lane, unit on an old release), the safe",
+    "heals (archive first, final line only, allowlisted restarts, never portfolio-server or broker units), one alert per",
+    "item per day, switches default off, and the N8nCodeDefect@v1 hand-off to the Claude Code fixer. Hermetic."
+  ]
+}

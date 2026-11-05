@@ -373,13 +373,14 @@
     }
   },
   "monitor": {
-    "_why": "scripts/disk_usage_monitor.py, n8n lane disk-usage-monitor (*/15). Band = ok | warn | critical by df-style used% (used / (used + available)). One host comms intent per band CHANGE (dedupe by band, never by raw percent). Inodes (operator 2026-10-19, after /tmp hit 97% inodes with bytes free): every mount is also banded by inode use% (statvfs f_files / f_ffree) with its own thresholds; dedupe is per (mount, metric) band.",
+    "_why": "scripts/disk_usage_monitor.py, n8n lane disk-usage-monitor (*/15). Band = ok | warn | critical by df-style used% (used / (used + available)). Alerts are throttled on EVERY path by realert_minutes: the first thing ever said about a mount is immediate, and after that a band change (severity increase, recovery or repeat) and an unchanged bad band ALL wait for the interval. 2026-11-04: (/ sat critical 23 hours on one alert because only CHANGES alerted; the first repair then throttled only the unchanged path, and an ok<->critical flap every 15 min produced 96 alerts in 24h). Bound: one clock governs every alert, with ONE named exception - a WARN -> CRITICAL escalation is said at once, because a mount at 85% can reach 100% inside an interval and the ledger lives on that mount (cc-deepseek-2 block, 2026-11-04). Everything else (repeats and recoveries) waits for realert_minutes; the first thing ever said about a mount is immediate. Measured 24-hour ceilings at the 60-minute default and 15-minute polls: 24-25 alerts on two-band cycles (ok<->critical, warn<->critical) and on four-band cycles, and up to 33 on a three-band cycle (warn,critical,ok repeating every 45 minutes) - such a cycle carries a warn, an escalation and a recovery, and neither the escalation nor the recovery may be suppressed. A hard 25 on every shape would require dropping one of those two guarantees (cc-deepseek-5 re-read, 2026-11-04). Dedupe is by band and interval, never by raw percent. Inodes (operator 2026-10-19, after /tmp hit 97% inodes with bytes free): every mount is also banded by inode use% (statvfs f_files / f_ffree) with its own thresholds; dedupe is per (mount, metric) band.",
     "mounts": [
       "/",
       "/tmp"
     ],
     "warn_pct": 80.0,
     "critical_pct": 90.0,
+    "realert_minutes": 60.0,
     "host_backstop_pct": 95.0,
     "state_name": "disk_usage_monitor_state.json",
     "producer": "disk_usage_monitor",
@@ -439,21 +440,24 @@
     }
   },
   "standing_apply": {
-    "enabled": false,
+    "enabled": true,
+    "approved_by": "John (repository operator, GitHub PatsKiller), direct session 2026-10-31",
+    "_rules_why": "2026-10-31: A dropped. ~/db_backups is owned by scripts/backup_enforcer.py (AGENTS.md §0 rule 6 (d), §24.15: one dump on host, N+1 on Drive, removed only after Drive verification); rule A's 7-daily/4-Sunday archive keep contradicted it.",
     "rules": [
-      "A",
       "S",
       "T",
-      "W"
+      "W",
+      "C",
+      "R"
     ],
     "manifest_max_age_hours": 2,
     "max_bytes_per_run": 42949672960,
     "max_items_per_run": 150,
     "approval": {
-      "status": "PENDING_OPERATOR_REVIEW",
-      "approved_by": null,
-      "approved_at": null,
-      "source": "Direct-session operator metadata must be recorded by root after legitimate config handoff; peer relay is not ratification."
+      "status": "APPROVED",
+      "approved_by": "John (repository operator, GitHub PatsKiller), direct session 2026-10-31",
+      "approved_at": "2026-10-31T14:30:00+00:00",
+      "source": "Operator, direct session (AGENTS.md §20, recorded verbatim): 'Make sure everything merges and goes live complete. I need to also ensure that this is a repeatable process that's automated so we never get here again, and that it runs and when it fails I'm alerted with permissions to delete the same class of items you just deleted.' then 'Okay, still run the cleanup. I need to know what's going to run this daily, weekly, etc., and make sure it covers everything we've learned from this exercise. I need to be alerted on when it runs.' then 'Ok' to the plan (rules S/T/W/C/R daily 04:00 ET, pressure re-run at >=80% to <=75%, every run digested). The same classes were removed by hand on 2026-10-30/31: abandoned worktrees (archived first), stale ~/.cache/agent-tmp scratch. Final activation is the operator's per-PR held merge tap on this PR."
     },
     "archive": {
       "path": "~/db_backups/archive",
@@ -476,13 +480,37 @@
       "never": "standalone clone, branch/ref or commit deletion; force removal"
     },
     "agent_scratch": {
-      "_why": "Rule T (2026-10-30): ~/.cache/agent-tmp grew to 43 GB across 119 per-task agent scratch dirs (2026-10-25..10-30) because §0 rule 6 forbade agents deleting even their own scratch. <root>/<task-id>/ is a candidate only when idle > idle_days (bounded newest-mtime scan), no /proc/*/cwd or /proc/*/fd inside, no live claim or worklog reference (coordination evidence), and the owning branch/PR is merged or abandoned. Removed by rmtree, symlinks never followed.",
+      "_why": "Rule T (2026-10-30, AGENTS.md §24.13): ~/.cache/agent-tmp grew to 43 GB across per-task agent scratch dirs nothing reclaimed. Read by scripts/disk_hygiene.py (load_rules validates; standing_results applies). <root>/<entry>/ is a candidate only when: a real dir directly under exactly this path; name fullmatches entry_regex; newest mtime (bounded scan, symlinks never followed) older than idle_days; no .git entry inside (worktrees are rule W); no never-touch path; and its path appears in no coordination document, live claim/worklog, open PR, or running process cwd/fd. There is no PR-merged check: the board reference is the hold. Removed by rmtree. Operator-only values (§17).",
       "path": "~/.cache/agent-tmp",
       "idle_days": 2,
       "entry_regex": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
       "require_claim_absent": true,
       "require_process_absent": true,
+      "reference_repo": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+      "bundle_dir": "~/trade-ai-releases/persistent-state/data/runtime/disk_hygiene/bundles",
       "never": "symlink, or an entry equal to / inside / containing a never-touch or protected path"
+    },
+    "abandoned_worktree": {
+      "_why": "Rule C (2026-10-31, AGENTS.md §24.14; DSN-20261030-workspace-lifecycle P2-T1): on 2026-10-30, 332 abandoned linked worktrees held 59.6 GiB that rule W (clean + merged only) never takes. Read by scripts/disk_hygiene.py (load_rules validates; standing_results applies). A linked worktree rule W does not take is a candidate only when: owned repo; not protected, canonical or under ~/trade-ai-releases; no open PR on its branch; its path in no live claim/worklog, crontab, unit, pointer or process cwd/fd; not `git worktree lock`ed; newest activity of the tree and its gitdir older than idle_days; untracked non-ignored bytes <= max_archive_mb and no untracked nested repo; no REAL credential-like file, untracked or ignored (symlinks are fine). Closed by archive-then-remove (scripts/lib/workspace_closeout.py): HEAD + tracked changes + untracked non-ignored files are committed with a temporary index to <archive_ns>/<slug>-<hash> (never pushed), then `git worktree remove --force`; branches and refs are never deleted. Restore: git worktree add <path> <ref>. archive_retention_days feeds rule X, which is plan-only (reported, never removed). Operator-only values (§17).",
+      "idle_days": 7,
+      "max_archive_mb": 200,
+      "archive_ns": "refs/archive/closeout",
+      "archive_retention_days": 90
+    },
+    "release_reclaim": {
+      "_why": "Rule R (2026-10-31, AGENTS.md §24.12 (b)/§24.14; = DSN-20261030-disk-recovery-P2-T1): release prepares add ~32 GiB per 48 h. Reuses evaluate_releases on `root`: holds CURRENT and every pointer target, the previous served release, the newest max(root keep_newest, keep_newest), anything referenced by a crontab line, unit, pointer, live claim/worklog or process cwd/fd, everything while the global release lock (`lock_path`, flock) is held or CURRENT cannot be resolved, and any release whose top level holds a REAL credential-like file (a copied .env.* backup; templates such as .env.example and .env symlinks are fine). Removed by rmtree (a release is rebuildable from its commit). Operator-only values (§17).",
+      "root": "~/trade-ai-releases/portfolio-server",
+      "keep_newest": 3,
+      "lock_path": "~/trade-ai-releases/persistent-state/data/runtime/release_window/.lock"
+    },
+    "pressure": {
+      "_why": "Pressure loop (2026-10-31, AGENTS.md §24.14; DSN-20261030-workspace-lifecycle P2-T4): disk_hygiene.py --standing --apply --only-if-above <trigger_pct> --until-target <target_pct> re-collects evidence, re-plans and re-applies until used% <= target_pct, a pass removes nothing, or max_passes; the final report carries ended_above_alert_pct and the top held reasons by bytes for the alert. Operator-only values (§17).",
+      "trigger_pct": 80,
+      "target_pct": 75,
+      "max_passes": 5,
+      "alert_pct": 85,
+      "daily_hour_et": 4,
+      "_schedule": "2026-10-31: one n8n lane `disk-hygiene` fires hourly with --standing --apply --scheduled. The day's full run happens at the first fire at/after daily_hour_et (ET) and is recorded in <state>/data/runtime/disk_hygiene/disk_hygiene_daily_latest.json whatever its outcome; every other fire plans nothing unless used% > trigger_pct. Both re-run to target_pct. Every run's report reaches the operator through disk_usage_monitor (disk_hygiene_digest; disk_hygiene_alert on refusal or >85% after)."
     },
     "coordination_root": "~/trade-ai-releases/persistent-state/data/coordination",
     "github_repo": "PatsKiller/tardeai",
@@ -493,9 +521,15 @@
       "planned_unapplied_bytes_gt": 10737418240,
       "consecutive_distinct_runs": 2
     },
-    "approved_by": null,
     "max_gb_per_run": 40,
     "byte_unit": "GiB"
+  },
+  "pressure_act": {
+    "_why": "Operator switch for scripts/disk_pressure_guard.py: when armed, the 85% pressure guard TRIGGERS this cleaner (--standing dry run -> quoted selection -> --apply) instead of only reporting, which is the operator's 2026-11-03 disk permanent-fix item 3 ('Make the pressure guard ACT at 85%: it triggers the cleaner, not just a report'). Read fail-closed by scripts/disk_pressure_guard.py:act_config(): anything other than the literal true is DISARMED. Acting additionally requires standing_apply.enabled is true and standing_apply.approval.status APPROVED, so the cleaner's existing kill switch still binds. Default OFF: shipped disarmed; no agent arms it.",
+    "armed": false,
+    "armed_by": null,
+    "armed_at": null,
+    "_owner": "operator only (AGENTS.md §17): arming changes what runs unattended at 85% used, so it is proposed and the operator sets it"
   },
   "jsonl_retention": {
     "_why": "JSONL rotation + retention (2026-10-23). Rotation (scripts/ops/jsonl_archive_rotate.py) moves the closed history of an append-only JSONL store to <id>/<id>.<UTC>.jsonl.gz under the file-prune archive root (scripts/lib/retention_archive.file_archive_root) (byte-exact, sha256 + line-count manifest, RetentionArchiveTripwire@v1 record) and keeps a hot tail of hot_days (at least min_tail_rows rows) in place; writers reopen per write (O_APPEND), so the store is renamed aside and the tail re-installed with renameat2(RENAME_NOREPLACE), and rows appended meanwhile are merged, never lost. Retention: retention_days and max_archive_bytes define which archive segments are selected (jsonl_archive_rotate.py --retention-preview, read-only). REMOVAL IS NOT AUTOMATED: no code path removes a segment; enabled=false; persistent-state stays on the hard never-touch list of scripts/disk_hygiene.py, and AGENTS.md §24.12 keeps stores and archives out of the automated-deletion scope until an amendment names this rule. Changing this block is a reviewed config change (§24.12).",
