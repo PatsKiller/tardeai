@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "closed_loop_sentence_20261105",
+  "files": [
+    "tests/test_closed_loop_sentence_20261105.py"
+  ],
+  "anchor": "CLOSED_LOOP_SENTENCE_20261105",
+  "comment": [
+    "ANCHOR: CLOSED_LOOP_SENTENCE_20261105 \u2014 FQ-026. Python shards execute the actual closedLoopEvidence.ts formatter via closedLoopEvidence.test.ts with Node and no npm dependencies or skips. The frontend build separately executes closedLoopSentence.view.test.mjs against the real ThresholdReviewModal caller, its raw scoring disclosure, threshold safe-band wording and private-capture tripwires, before tsc/vite. No production API, approval callback or live data is used."
+  ]
+}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from './DetailDrawer'
 import ThresholdProposalModal from './ThresholdProposalModal'
+import { closedLoopEvidenceText } from '../lib/closedLoopEvidence'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -185,24 +186,7 @@ function HoldoutBadge({ holdout }: { holdout?: { passed?: boolean; skipped?: boo
 // (null, undefined or '') — an absent measurement rendered as a confident one, the same class as a failed refresh shown
 // as a fresh number. Exported so the rendered test asserts the sentence the operator reads, not a source grepx.
 export function EvidenceSentence({ evidence, metrics }: { evidence: any; metrics: any }) {
-  const delta = evidence?.score_delta
-  const absent = delta == null || String(delta).trim() === ''
-  return (
-    <div style={{ marginTop: 4 }}>
-      {evidence?.sample_days != null
-        ? `Based on ${evidence.sample_days} days of signals`
-        : 'Based on the available signals'}
-      {evidence?.confidence ? ` · confidence ${String(evidence.confidence).toLowerCase()}` : ''}
-      {absent
-        ? ' · score change not recorded'
-        : Number(delta) !== 0
-          ? ` · score ${Number(delta) > 0 ? 'up' : 'down'} ${Math.abs(Number(delta)).toFixed(3)}`
-          : ' · score unchanged'}
-      {metrics?.trigger_rate != null
-        ? ` · fired on ${(Number(metrics.trigger_rate) * 100).toFixed(0)}% of those days`
-        : ''}
-    </div>
-  )
+  return <div style={{ marginTop: 4 }}>{closedLoopEvidenceText(evidence, metrics)}</div>
 }
 
 function CandidateTable({ rows, tid }: { rows: any[]; tid?: string }) {
@@ -256,7 +240,7 @@ function CliCommandButton({ label, command }: { label: string; command: string }
   )
 }
 
-function ThresholdReviewModal({ proposals, thresholds, onClose, onRequestAction }: {
+export function ThresholdReviewModal({ proposals, thresholds, onClose, onRequestAction }: {
   proposals: any[]
   thresholds: any[]
   onClose: () => void
@@ -340,7 +324,7 @@ function ThresholdReviewModal({ proposals, thresholds, onClose, onRequestAction 
                     {evidence.runner_up && (
                       <div>The next best candidate was {evidence.runner_up.value} at {Number(evidence.runner_up.score).toFixed(4)}.</div>
                     )}
-                    {band && <div>The score sits in the {band.min}–{band.max} band.</div>}
+                    {band && <div>Allowed threshold range: {band.min}–{band.max}.</div>}
                     {evidence.metric_contributions && (
                       <div>
                         Contributions: {Object.entries(evidence.metric_contributions).map(([k, v]) => `${k}=${Number(v).toFixed(4)}`).join(' · ')}

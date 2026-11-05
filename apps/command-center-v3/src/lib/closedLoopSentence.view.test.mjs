@@ -38,7 +38,7 @@ function compile(path) {
   return url
 }
 
-const { EvidenceSentence } = await import(compile(join(app, 'src/components/HermesClosedLoopPanel.tsx')))
+const { EvidenceSentence, ThresholdReviewModal } = await import(compile(join(app, 'src/components/HermesClosedLoopPanel.tsx')))
 const text = (evidence, metrics) => renderToStaticMarkup(
   React.createElement(EvidenceSentence, { evidence, metrics })).replace(/<[^>]*>/g, '')
 
@@ -64,6 +64,45 @@ check('the surrounding sentence is intact', () => {
   assert.match(t, /Based on 30 days of signals/)
   assert.match(t, /confidence high/)
   assert.match(t, /fired on 12% of those days/)
+})
+
+
+// Mount the production proposal-review caller; helper-only renders cannot guard this wiring.
+const reviewText = (evidence, thresholds = [{ threshold_id: 'efficiency.tighten_threshold', safe_band: { min: 0.42, max: 0.58 } }]) => {
+  const markup = renderToStaticMarkup(React.createElement(ThresholdReviewModal, {
+    proposals: [{ id: 'synthetic-review', threshold_id: 'efficiency.tighten_threshold', label: 'Efficiency',
+      current_value: 0.5, proposed_value: 0.52, direction: 'tighten', evidence }],
+    thresholds, onClose: () => { throw new Error('render invoked close') },
+    onRequestAction: () => { throw new Error('render invoked an approval') },
+  }))
+  return { markup, text: markup.replace(/<[^>]*>/g, '') }
+}
+check('the proposal review caller renders its own constructed evidence', () => {
+  for (const [delta, expected] of [[null, /score change not recorded/], [0, /score unchanged/], [0.042, /score up 0\.042/], [-0.5, /score down 0\.500/]]) {
+    const { text } = reviewText({ sample_days: 30, confidence: 'HIGH', score_delta: delta, candidate_metrics: { trigger_rate: 0.12 } })
+    assert.match(text, /Review threshold proposals/)
+    assert.match(text, /Based on 30 days of signals/)
+    assert.match(text, /confidence high/)
+    assert.match(text, /fired on 12% of those days/)
+    assert.match(text, expected)
+  }
+})
+check('the safe band constrains the threshold value, not the candidate score', () => {
+  const { text } = reviewText({ candidate_score: 0.91, score_delta: 0.042 })
+  assert.match(text, /Allowed threshold range: 0\.42–0\.58/)
+  assert.doesNotMatch(text, /score sits in/)
+})
+check('the proposal caller retains scoring evidence behind a closed disclosure', () => {
+  const { markup, text } = reviewText({ sample_days: 30, score_delta: 0,
+    runner_up: { value: 0.51, score: 0.8123 }, metric_contributions: { efficiency: 0.2345 },
+    confidence_factors: ['sample_complete', 'stable_window'] })
+  assert.match(text, /How this was scored/)
+  assert.match(text, /next best candidate was 0\.51 at 0\.8123/)
+  assert.match(text, /efficiency=0\.2345/)
+  assert.match(text, /sample_complete, stable_window/)
+  const details = markup.match(/<details([^>]*)>/)
+  assert.ok(details, 'raw detail was removed')
+  assert.doesNotMatch(details[1], /\bopen\b/, 'raw detail is open by default')
 })
 
 // Privacy tripwire: operator captures are private evidence, never source-tree assets.
