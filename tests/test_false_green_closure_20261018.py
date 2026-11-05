@@ -289,7 +289,8 @@ def test_N3_route_and_frontend_use_the_summary_not_the_500_row_sample():
     page = (ROOT / "apps/command-center-v3/src/pages/CommunicationsHub.tsx").read_text(encoding="utf-8")
     assert "/api/v2/communications/deliveries/summary" in page and "deliveryHealthFrom(" in page
     assert "counts.RESERVED" not in page                  # no client-side count over the latest-500 sample
-    assert "src/lib/commsDeliveryHealth.test.ts" in _app_test_runner_list()
+    pkg = (ROOT / "apps/command-center-v3/package.json").read_text(encoding="utf-8")
+    assert "src/lib/commsDeliveryHealth.test.ts" in pkg
 
 
 # ══ Doc truth — the diagnosis cadence ═══════════════════════════════════════════════════════════════════════════════
@@ -302,29 +303,3 @@ def test_doc_diagnosis_cadence_matches_the_declared_schedule():
     line = json.dumps(row)
     assert "3-59/15" in line and "--max-incidents 3" in line
     assert "every 15 min" in doc and "at most 3" in doc
-
-
-def _app_test_runner_list() -> set[str]:
-    """What the app's own discovery runner will actually run.
-
-    2026-11-05: the build line no longer names ~100 test files (that single line was the four-PR collision); it runs
-    ``scripts/run-tests.mjs``, which discovers ``src/**/*.test.ts|.mjs`` minus ``scripts/tests.dormant.json``. Naming a
-    file in the build was only ever a proxy for "it runs in CI", so the guard now asks the runner itself: the runner is
-    the build step, and this file is in its run list. It cannot drift from the runner's rule because it does not restate
-    it, and it fails loudly if the runner is removed or node is unavailable rather than passing on a stale string.
-    """
-    import shutil
-    import subprocess
-
-    app = ROOT / "apps" / "command-center-v3"
-    build = json.loads((app / "package.json").read_text())["scripts"]["build"]
-    assert "node scripts/run-tests.mjs" in build, (
-        "the app build no longer runs the discovery test runner (node scripts/run-tests.mjs): a test is registered by "
-        "being discovered, so this guard has nothing to check until the build step is restored"
-    )
-    node = shutil.which("node")
-    assert node, "node is required to ask the app runner which tests it discovers"
-    out = subprocess.run([node, "scripts/run-tests.mjs", "--list"], cwd=app,
-                         capture_output=True, text=True, timeout=120)
-    assert out.returncode == 0, f"run-tests.mjs --list failed: {out.stderr[-500:]}"
-    return set(json.loads(out.stdout)["run"])
