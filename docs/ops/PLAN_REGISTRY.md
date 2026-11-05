@@ -9,6 +9,7 @@ find it, link its claim/branch/PR, tick its steps and follow it to done or aband
     ${TRADEAI_STATE_ROOT:-~/trade-ai-releases/persistent-state}/data/coordination/plans/
       <plan-id>.md          front-matter + the plan body (steps as - [ ] boxes)
       ledger.jsonl          append-only: one line per add / link / step_done / status / stalled
+      pending_notifications.jsonl  stall alerts not yet delivered to the coordinator inbox
       .lock                 flock target; every write is locked and atomic (tmp + replace)
 
 `<plan-id>` is `YYYYMMDD-<slug>-<8 hex>`, derived from the title and body, so the SAME plan always
@@ -65,12 +66,30 @@ is not an authentication.
 
 `link` also revives a `stalled` plan to `in_progress`: activity is what the stale check watches.
 
+Every mutating subcommand (`add`, `link`, `step done`, `set-status`) takes `--dry-run`. The preview
+runs the same read-and-compute path and reports the plan path, the resulting front-matter, and the
+ledger line it would append; it returns before any writer is called, so it cannot reach the store
+(AGENTS.md §6). `stale` without `--apply` remains the read-only stale preview.
+
+If a registration is interrupted between the plan write and its ledger line (a crash, a full disk),
+the next `add` of the same plan repairs the missing `add` event instead of reporting an
+incomplete registration as success. The plan itself is still written only once.
+
 ## Stale plans
 
 Every approved or in-progress plan with no `claim`, `branch` or `pr` and no activity for
 `stale_hours` (default 72, `config/plan_registry.json`) is set to `stalled` and one line per plan is
 appended to the coordinator inbox (`data/coordination/coordinator/inbox.md`). Registration itself is
 not activity; only a link, a step or a status change is.
+
+The activity timestamps are re-read under the same lock that flips the status, so a plan linked or
+resumed while a scan is running is never overwritten as `stalled`.
+
+The inbox line is recorded in `pending_notifications.jsonl` BEFORE the plan is marked `stalled`, and
+delivery is retried on every `stale --apply` independently of whether the plan is still
+stale-eligible. A failed inbox write therefore leaves the alert queued for the next run; the run
+reports it under `pending` and never counts it as sent. `stale --apply` prints `flagged`,
+`delivered` and `pending`.
 
 Run it hourly from a host timer (PROPOSED lane `plan-registry-stale` in `config/lane_registry.json`;
 installing the timer is operator-only, AGENTS.md §17):

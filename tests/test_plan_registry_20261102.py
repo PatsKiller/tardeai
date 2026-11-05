@@ -387,3 +387,186 @@ def test_a_final_component_symlink_is_refused_by_nofollow(tmp_path, monkeypatch)
     monkeypatch.setattr(hook, "plan_file_roots", lambda: [plans.resolve()])
     assert hook.read_plan_file(str(real)).startswith("# Plan")
     assert hook.read_plan_file(str(plans / "link.md")) == ""
+
+
+# ---------------------------------------------------------------- review 3 (codex-cloud, 2026-11-05) CX1-CX4
+def _old_plan(r, tmp_path, *, body="# T\n\n- [ ] first\n- [ ] second\n"):
+    """Register an unlinked plan approved long ago — stale at any test 'now' used below."""
+    p = tmp_path / "p.md"
+    p.write_text(body)
+    return r.add(title="T", body_path=p, author="s", vendor="claude",
+                 approved_at="2026-08-01T10:00:00Z")
+
+
+def _files(r, tmp_path):
+    plans = tmp_path / "data/coordination/plans"
+    return {p.name: p.read_bytes() for p in sorted(plans.glob("*")) if p.is_file()}
+
+
+def test_dry_run_add_reports_the_registration_and_reaches_no_writer(tmp_path, monkeypatch):
+    r = _reg(tmp_path)
+    plan = tmp_path / "p.md"
+    plan.write_text("# Plan\n\n- [ ] a\n")
+
+    def boom(*_a, **_k):  # pragma: no cover - reached only if a dry run mutated
+        raise AssertionError("dry run reached a writer")
+
+    monkeypatch.setattr(r, "_write", boom)
+    monkeypatch.setattr(r, "_event", boom)
+    report = r.add(title="T", body_path=plan, author="s", vendor="codex",
+                   approved_at="2026-11-02T10:00:00Z", dry_run=True)
+    assert report["dry_run"] is True and report["action"] == "add"
+    assert report["id"] == pr.plan_id("T", "# Plan\n\n- [ ] a\n", "s")
+    assert report["status"] == "approved" and report["front"]["vendor"] == "codex"
+    assert report["ledger_event"]["event"] == "add"
+    assert report["path"].endswith(".md")
+    assert not (tmp_path / "data").exists()  # not even the directory or the lock is created
+
+
+def test_dry_run_mutations_report_and_write_nothing(tmp_path, monkeypatch):
+    r = _reg(tmp_path)
+    pid = _old_plan(r, tmp_path)
+    before = _files(r, tmp_path)
+
+    def boom(*_a, **_k):  # pragma: no cover - reached only if a dry run mutated
+        raise AssertionError("dry run reached a writer")
+
+    monkeypatch.setattr(r, "_write", boom)
+    monkeypatch.setattr(r, "_event", boom)
+
+    link = r.link(pid, claim="C1", dry_run=True)
+    assert link["dry_run"] is True and link["front"]["claim"] == "C1"
+    step = r.step_done(pid, "second", dry_run=True)
+    assert step["dry_run"] is True and step["step"]["after"].startswith("- [x] second")
+    status = r.set_status(pid, "done", dry_run=True)
+    assert status["dry_run"] is True and status["status"] == "done"
+    assert _files(r, tmp_path) == before  # neither the plan nor the ledger changed
+
+
+def test_dry_run_link_reports_the_stalled_revival(tmp_path, monkeypatch):
+    r = _reg(tmp_path)
+    pid = _old_plan(r, tmp_path)
+    r.set_status(pid, "stalled")
+    before = _files(r, tmp_path)
+
+    report = r.link(pid, pr=7, dry_run=True)
+    assert report["followup"]["detail"] == {"status": "in_progress"}
+    assert report["status"] == "in_progress"
+    assert _files(r, tmp_path) == before
+
+
+def test_every_mutating_subcommand_documents_a_dry_run(tmp_path):
+    for cmd in ("add", "link", "set-status", "step"):
+        proc = subprocess.run([sys.executable, str(ROOT / "scripts" / "plan_registry.py"), cmd, "--help"],
+                              capture_output=True, text=True, check=False)
+        assert proc.returncode == 0, proc.stderr
+        assert "--dry-run" in proc.stdout, cmd
+
+
+def test_cli_dry_run_add_prints_the_preview_and_writes_nothing(tmp_path, capsys):
+    rc = pr.main(["--state-root", str(tmp_path), "add", "--title", "T", "--body", "# T\n",
+                  "--author", "s", "--dry-run"])
+    assert rc == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["dry_run"] is True and report["action"] == "add"
+    assert not list((tmp_path / "data/coordination/plans").glob("*.md"))
+
+
+def test_a_plan_resumed_between_the_scan_and_the_lock_is_not_stalled(tmp_path, monkeypatch):
+    r = _reg(tmp_path)
+    pid = _old_plan(r, tmp_path)
+    real_last = r._last_activity
+    resumed = {"done": False}
+
+    def last_then_resumed(plan_id, front):
+        value = real_last(plan_id, front)  # what the scan sees: the OLD timestamp
+        if plan_id == pid and not resumed["done"]:
+            resumed["done"] = True
+            r.set_status(pid, "in_progress")  # activity AFTER the scan, BEFORE the stale lock
+        return value
+
+    monkeypatch.setattr(r, "_last_activity", last_then_resumed)
+    assert r.stale(now="2026-11-02T12:00:00Z", apply=True) == []
+    assert r.get(pid)["front"]["status"] == "in_progress"
+
+
+def test_a_failed_inbox_delivery_is_retained_and_retried(tmp_path, monkeypatch):
+    r = _reg(tmp_path)
+    pid = _old_plan(r, tmp_path)
+    real_append = r._append_inbox_line_unlocked
+    failures = {"left": 1}
+
+    def flaky(message):
+        if failures["left"]:
+            failures["left"] -= 1
+            raise OSError("inbox temporarily unavailable")
+        real_append(message)
+
+    monkeypatch.setattr(r, "_append_inbox_line_unlocked", flaky)
+    assert r.stale(now="2026-11-02T12:00:00Z", apply=True) == [pid]
+    assert r.get(pid)["front"]["status"] == "stalled"
+    # the undelivered alert is reported as pending, never as sent
+    assert r.last_delivery["delivered"] == [] and r.last_delivery["pending"] == [pid]
+    inbox = tmp_path / "data/coordination/coordinator/inbox.md"
+    assert not inbox.exists() or pid not in inbox.read_text()
+    pending = tmp_path / "data/coordination/plans/pending_notifications.jsonl"
+    assert pid in pending.read_text()
+    # the retry does not depend on the plan being stale-eligible any more (it is `stalled`)
+    assert r.stale(now="2026-11-02T13:00:00Z", apply=True) == []
+    assert r.last_delivery["delivered"] == [pid] and r.last_delivery["pending"] == []
+    assert pid in inbox.read_text()
+    assert pid not in pending.read_text()
+
+
+def test_a_notification_queued_before_a_crash_is_delivered_on_the_next_run(tmp_path):
+    r = _reg(tmp_path)
+    pid = _old_plan(r, tmp_path)
+    current = pr._parse_ts("2026-11-02T12:00:00Z")
+    assert r._mark_stalled(pid, current=current, limit=72) is True  # marked + queued, never flushed
+    inbox = tmp_path / "data/coordination/coordinator/inbox.md"
+    assert not inbox.exists() or pid not in inbox.read_text()
+    pending = tmp_path / "data/coordination/plans/pending_notifications.jsonl"
+    assert pid in pending.read_text()
+    assert r.stale(now="2026-11-02T13:00:00Z", apply=True) == []
+    assert pid in inbox.read_text()
+    assert pid not in pending.read_text()
+
+
+def test_a_retried_registration_repairs_a_lost_ledger_event(tmp_path):
+    r = _reg(tmp_path)
+    body = "# Plan\n"
+    pid = pr.plan_id("T", body, "s")
+    plans = tmp_path / "data/coordination/plans"
+    plans.mkdir(parents=True, exist_ok=True)
+    r._write(pid, {"id": pid, "title": "T", "author_session": "s", "author_proof": "self-declared",
+                   "vendor": "claude", "approved_at": "2026-11-02T10:00:00Z",
+                   "status": "approved", "updated_at": "2026-11-02T10:00:00Z"}, body)
+    ledger = plans / "ledger.jsonl"
+    assert not ledger.exists() or "add" not in ledger.read_text()
+
+    def register():
+        return r.add(title="T", body=body, author="s", vendor="claude",
+                     approved_at="2026-11-02T10:00:00Z")
+
+    assert register() == pid  # the retry repairs the missing event instead of short-circuiting
+    rows = [json.loads(line) for line in ledger.read_text().splitlines()]
+    assert len([row for row in rows if row["event"] == "add" and row["id"] == pid]) == 1
+    assert register() == pid  # a further retry adds nothing
+    rows = [json.loads(line) for line in ledger.read_text().splitlines()]
+    assert len([row for row in rows if row["event"] == "add" and row["id"] == pid]) == 1
+    assert len([p for p in plans.glob("*.md") if p.stem == pid]) == 1  # and never duplicates the plan
+
+
+def test_dry_run_add_reports_a_pending_ledger_reconcile_without_writing_it(tmp_path):
+    r = _reg(tmp_path)
+    body = "# Plan\n"
+    pid = pr.plan_id("T", body, "s")
+    plans = tmp_path / "data/coordination/plans"
+    plans.mkdir(parents=True, exist_ok=True)
+    r._write(pid, {"id": pid, "title": "T", "author_session": "s", "author_proof": "self-declared",
+                   "vendor": "claude", "approved_at": "2026-11-02T10:00:00Z",
+                   "status": "approved", "updated_at": "2026-11-02T10:00:00Z"}, body)
+    report = r.add(title="T", body=body, author="s", vendor="claude",
+                   approved_at="2026-11-02T10:00:00Z", dry_run=True)
+    assert report["already_registered"] is True and report["ledger_reconcile_needed"] is True
+    assert not (plans / "ledger.jsonl").exists()
