@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "authoritative_store_guard_20261103",
+  "files": [
+    "tests/test_authoritative_store_guard_20261103.py"
+  ],
+  "anchor": "AUTHORITATIVE_STORE_GUARD_20261103",
+  "comment": [
+    "ANCHOR: AUTHORITATIVE_STORE_GUARD_20261103 — the authoritative holdings store is validated directly; an absent, empty, unparseable, position-less or non-finite payload, or a hash/clock mismatch with cached _freshness, renders STALE/UNAVAILABLE and never healthy."
+  ]
+}

@@ -76,6 +76,34 @@ GLOBAL_DAILY_USD_CAP = 0.25
 MARIA_MAX_CALLS_PER_RUN = 15
 MARIA_RUN_CAP_USD = 0.08
 CIO_MAX_CALLS_PER_RUN = 8
+
+#: Everything that GRANTS authority in a parent record. A change to any of these is a new approval, not a rename:
+#: the record carries an ``authority_approval`` digest over exactly this set, so editing the file in place (the only
+#: way authority has ever been widened without review) invalidates it. Caps are here because raising them widens
+#: authority just as renaming a model does.
+AUTHORITY_FIELDS = (
+    "authorization_policy_id",
+    "allowed_agents",
+    "allowed_process_ids",
+    "allowed_providers",
+    "allowed_models",
+    "allowed_policies",
+    "expires_at",
+    "effective_at",
+    "containment_required",
+    "fallback_allowed",
+    "maximum_calls_per_run",
+    "maximum_calls_per_symbol_per_day",
+    "maximum_cost_per_run_usd",
+    "maximum_cost_per_day_usd",
+)
+
+
+def authority_digest(policy: dict[str, Any] | None) -> str:
+    """Digest of the authority-bearing fields. Renaming a model changes it; a mere status flip does not."""
+    core = {key: (policy or {}).get(key) for key in AUTHORITY_FIELDS}
+    blob = json.dumps(core, sort_keys=True, separators=(",", ":"), default=str)
+    return "sha256:" + hashlib.sha256(blob.encode("utf-8")).hexdigest()
 CIO_RUN_CAP_USD = 0.14
 
 # Workers remain disabled until phase 5
@@ -242,8 +270,14 @@ def build_intended_policy(
     }
 
 
-def persist_policy(policy: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Write durable policy record. Does not enable workers or call providers."""
+def persist_policy(policy: dict[str, Any] | None = None, *, approved_by: str | None = None) -> dict[str, Any]:
+    """Write durable policy record. Does not enable workers or call providers.
+
+    Persisting IS the approval event: the record carries an ``authority_approval`` digest over its
+    authority-bearing fields, written here and only here. That is what makes a later in-place edit (a
+    "silent rename" of an allowed model) grant nothing — it changes the digest and the dispatch gate
+    refuses until an operator persists the record again (2026-11-04 joint invariant).
+    """
     _ensure_dirs()
     pol = dict(policy or build_intended_policy())
     pid = pol["authorization_policy_id"]
@@ -252,6 +286,12 @@ def persist_policy(policy: dict[str, Any] | None = None) -> dict[str, Any]:
     # Force workers off at persistence time (phase 2 install); use set_workers_enabled for phase 5
     pol["workers_enabled"] = False
     pol["event_watcher_enabled"] = False
+    pol["authority_approval"] = {
+        "approved_by": str(approved_by or pol.get("operator_id") or "operator").strip() or "operator",
+        "approved_at": _now_iso(),
+        "reason": "persist_policy",
+        "digest": authority_digest(pol),
+    }
     _atomic_write(path, pol)
     # index pointer
     _atomic_write(
@@ -337,21 +377,41 @@ def list_policies() -> list[dict[str, Any]]:
     return out
 
 
-def validate_policy(policy: dict[str, Any] | None) -> tuple[bool, str]:
+def policy_expiry_verdict(policy: dict[str, Any] | None, *, now: datetime | None = None) -> tuple[bool, str]:
+    """Is the record still inside its own validity window? A parsed clock, never a status string.
+
+    This is the single place the expiry fact is read (2026-11-04, property B): a status field is a claim written by
+    whoever edited the file — the live Maria/CIO record read ACTIVE while its ``expires_at`` was already a day past —
+    so the clock is checked FIRST and outranks the status string everywhere.
+
+    EXPIRY IS MANDATORY, AND UNPARSEABLE MEANS REFUSED (property D): a record whose expiry is missing, empty, null or
+    not a parseable timestamp cannot demonstrate that it is current, and an inability to prove must never resolve to
+    permission. Do not "fix" this by returning OK on a parse error.
+    """
+    try:
+        exp = datetime.fromisoformat(str((policy or {})["expires_at"]).replace("Z", "+00:00"))
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        if (now or _now()) > exp:
+            return False, "POLICY_EXPIRED"
+    except Exception:
+        return False, "POLICY_EXPIRES_AT_INVALID"
+    return True, "OK"
+
+
+def validate_policy(policy: dict[str, Any] | None, *, now: datetime | None = None) -> tuple[bool, str]:
     if not policy:
         return False, "MISSING_POLICY"
+    # EXPIRY OUTRANKS THE STATUS STRING (property B). Reversed from the pre-2026-11-04 order, where a record whose
+    # status said REVOKED/DRAFT reported that string and its expired clock was never consulted; and stated here, in
+    # the one validation function every caller shares, rather than duplicated in the dispatch gate.
+    ok, reason = policy_expiry_verdict(policy, now=now)
+    if not ok:
+        return False, reason
     if policy.get("authorization_status") != "ACTIVE":
         return False, f"POLICY_STATUS_{policy.get('authorization_status')}"
     if policy.get("revoked_at"):
         return False, "POLICY_REVOKED"
-    try:
-        exp = datetime.fromisoformat(str(policy["expires_at"]).replace("Z", "+00:00"))
-        if exp.tzinfo is None:
-            exp = exp.replace(tzinfo=timezone.utc)
-        if _now() > exp:
-            return False, "POLICY_EXPIRED"
-    except Exception:
-        return False, "POLICY_EXPIRES_AT_INVALID"
     if policy.get("fallback_allowed") is True:
         return False, "FALLBACK_FORBIDDEN"
     if policy.get("containment_required"):
@@ -383,6 +443,63 @@ def agent_spec(agent_id: str) -> dict[str, Any]:
     raise ValueError(f"unknown_agent:{agent_id}")
 
 
+def dispatch_authority(
+    agent_id: str,
+    *,
+    policy_id: str | None = None,
+    model: str | None = None,
+    record: dict[str, Any] | None = None,
+    now: datetime | None = None,
+) -> tuple[bool, str, dict[str, Any] | None]:
+    """THE joint dispatch invariant: registry-valid AND explicitly parent-approved, or no dispatch.
+
+    One function covers both boundaries, because they have drifted apart in production twice:
+
+    * the RUNTIME resolves a logical policy to an exact model id through the canonical registry, and a caller may
+      not supply a different one (a literal that the registry has since retired is a refusal, not a fallback);
+    * the PERSISTED record must name that exact model AND that logical policy, per member list — approval is
+      explicit, never inferred from a range, prefix, alias or a matching-looking name;
+    * an EXPIRED record cannot authorise, whatever its ``authorization_status`` string says (a status field is a
+      claim; the clock is a fact, and the live Maria/CIO record is ACTIVE on paper while expired since 2026-11-03);
+    * the record's authority-bearing fields must still match the digest the operator approved, so silently
+      renaming a model in the JSON grants nothing.
+
+    Order is part of the contract. A refusal is always a named reason, and there is no path that returns a pass
+    for an unapproved model.
+    """
+    pol = record if record is not None else load_policy(policy_id)
+    if not pol:
+        return False, "MISSING_POLICY", None
+    # One expiry order for every caller: validate_policy checks the clock BEFORE the status string (property B),
+    # so there is no second copy of this rule here to drift from it.
+    ok, reason = validate_policy(pol, now=now)
+    if not ok:
+        return False, reason, pol
+    try:
+        spec = agent_spec(agent_id)
+    except ValueError:
+        return False, "AGENT_OUT_OF_SCOPE", pol
+    if spec["agent_id"] not in (pol.get("allowed_agents") or []):
+        return False, "AGENT_OUT_OF_SCOPE", pol
+    expected = deepseek_model_id(spec["policy"])
+    if model is not None and model != expected:
+        return False, "MODEL_NOT_REGISTRY_CURRENT", pol
+    if expected not in (pol.get("allowed_models") or []):
+        return False, "MODEL_MISMATCH", pol
+    if spec["policy"] not in (pol.get("allowed_policies") or []):
+        return False, "POLICY_MISMATCH", pol
+    if spec["fallback_allowed"] or pol.get("fallback_allowed") is True:
+        return False, "FALLBACK_FORBIDDEN", pol
+    approval = pol.get("authority_approval") or {}
+    if not isinstance(approval, dict) or not approval.get("digest"):
+        return False, "AUTHORITY_NOT_APPROVED", pol
+    if str(approval.get("approved_by") or "").strip() == "" or not approval.get("approved_at"):
+        return False, "AUTHORITY_NOT_APPROVED", pol
+    if approval["digest"] != authority_digest(pol):
+        return False, "AUTHORITY_CHANGED_SINCE_APPROVAL", pol
+    return True, "OK", pol
+
+
 def create_execution_authorization(
     *,
     policy_id: str,
@@ -407,12 +524,11 @@ def create_execution_authorization(
         raise PermissionError("PROCESS_MISMATCH")
     if spec["provider"] not in (pol.get("allowed_providers") or []):
         raise PermissionError("PROVIDER_MISMATCH")
-    if spec["model"] not in (pol.get("allowed_models") or []):
-        raise PermissionError("MODEL_MISMATCH")
-    if spec["policy"] not in (pol.get("allowed_policies") or []):
-        raise PermissionError("POLICY_MISMATCH")
-    if spec["fallback_allowed"] or pol.get("fallback_allowed"):
-        raise PermissionError("FALLBACK_FORBIDDEN")
+    # Joint invariant (2026-11-04): registry-resolved AND explicitly approved, in one place. Replaces the two
+    # membership checks that let a renamed allowed_models list silently gain authority.
+    ok, reason, _ = dispatch_authority(agent_id, model=spec["model"], record=pol)
+    if not ok:
+        raise PermissionError(reason)
 
     max_cost = maximum_cost_usd
     if max_cost is None:
@@ -434,6 +550,7 @@ def create_execution_authorization(
         "input_snapshot_id": input_snapshot_id,
         "input_hash": input_hash,
         "trigger_reason": trigger_reason,
+        "authority_digest": authority_digest(pol),
         "authorized_at": _now_iso(),
         "expires_at": (_now() + timedelta(minutes=expires_minutes)).isoformat(),
         "maximum_calls": 1,
@@ -482,6 +599,13 @@ def validate_execution_authorization(
     ok, reason = validate_policy(pol)
     if not ok:
         return False, reason, rec
+    # The parent must STILL authorise this dispatch (registry + explicit approval + unchanged approval digest),
+    # and the child must have been issued against the authority that is standing now.
+    ok, reason, _ = dispatch_authority(str(rec.get("agent_id") or ""), model=rec.get("model"), record=pol)
+    if not ok:
+        return False, reason, rec
+    if rec.get("authority_digest") and rec["authority_digest"] != authority_digest(pol):
+        return False, "AUTHORITY_CHANGED_SINCE_ISSUE", rec
 
     if (rec.get("symbol") or "").upper() != (symbol or "").upper():
         return False, "SYMBOL_OUT_OF_SCOPE", rec

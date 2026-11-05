@@ -9,8 +9,7 @@
     "agent-governance",
     "release-readiness",
     "cio-full-suite-sharded",
-    "secret-scan",
-    "CodeQL"
+    "secret-scan"
   ],
   "_required_workflows_why": "Workflow DISPLAY names from .github/workflows/*.yml, not check-run names. The required check contexts are cio-hardening (job in cio-production-hardening-ci, also reported by cio-full-suite-sharded), agent-governance, release-readiness and ci-gate (the aggregate job in cio-full-suite-sharded); gh run list reports workflow names, so both files are listed. config/release_train_delegation.example.json carries the check-context list.",
   "run_list_limit": 40,

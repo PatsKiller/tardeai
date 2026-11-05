@@ -148,6 +148,60 @@ def test_the_approve_gate_accepts_every_check_green(monkeypatch):
     assert green is True
 
 
+def _required_not_success_rollup(case):
+    rows = _rollup(extra=[("optional-proof", "success")])
+    if case in {"all_skipped", "skipped_with_optional_success"}:
+        for row in rows[:4]:
+            row["conclusion"] = "skipped"
+        if case == "all_skipped":
+            rows.pop()
+    elif case == "required_neutral":
+        rows[0]["conclusion"] = "neutral"
+    elif case == "required_pending":
+        rows[0].update(status="IN_PROGRESS", conclusion=None)
+    elif case == "missing_required":
+        rows.pop(0)
+    elif case == "missing_required_status":
+        rows[0].pop("status")
+    elif case == "required_legacy_status_context":
+        rows[0] = {"context": REQUIRED[0], "state": "SUCCESS"}
+    elif case == "duplicate_workflow_skipped":
+        rows.append({"name": REQUIRED[0], "workflowName": "another-workflow",
+                     "status": "COMPLETED", "conclusion": "SKIPPED"})
+    elif case == "required_failure_then_skipped":
+        rows[0]["conclusion"] = "failure"
+        rows.append({"name": REQUIRED[0], "status": "COMPLETED", "conclusion": "SKIPPED",
+                     "started_at": "2026-11-02T04:00:00Z"})
+    else:
+        raise AssertionError(f"unknown synthetic case: {case}")
+    return rows
+
+
+@pytest.mark.parametrize("consumer", ["digest", "telegram"])
+@pytest.mark.parametrize("case", [
+    "all_skipped", "skipped_with_optional_success", "required_neutral", "required_pending",
+    "missing_required", "missing_required_status", "required_legacy_status_context",
+    "duplicate_workflow_skipped", "required_failure_then_skipped",
+])
+def test_actual_merge_consumers_require_four_genuine_successes(monkeypatch, consumer, case):
+    """A green optional run never proves that a skipped/neutral required Actions check ran."""
+    rollup = _required_not_success_rollup(case)
+    if consumer == "digest":
+        monkeypatch.setattr(pmd, "pr_all_files", lambda repo, number: ["scripts/demo.py"])
+        item = pmd.classify_pr(_pr(rollup), repo="example-org/example-repo", cfg=pmd.load_config())
+        assert item["status"] == "skip"
+        assert item["reason"] == "checks_not_green"
+        assert item["blocking_checks"]
+    else:
+        monkeypatch.setattr(pmt.subprocess, "run", _fake_gh_view(rollup))
+        green, _statuses = pmt.pr_check_rollup_green(101, repo="example-org/example-repo")
+        assert green is False
+
+
+def test_merge_consumers_preserve_the_shared_required_four():
+    assert pmt.REQUIRED_CHECKS == pacg.MERGE_REQUIRED_CHECKS == REQUIRED
+
+
 # ---------------------------------------------------------------- .mergify.yml
 def _flat(conds):
     out = []
