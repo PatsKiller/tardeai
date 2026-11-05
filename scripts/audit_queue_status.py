@@ -36,13 +36,29 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-#: The queue lives in the coordination tree beside the releases, never inside the repo. Resolved from HOME so no
-#: user's home directory is written into the source; AUDIT_FIX_QUEUE_PATH overrides it.
-DEFAULT_QUEUE = Path(
-    os.environ.get("AUDIT_FIX_QUEUE_PATH")
-    or Path.home() / "trade-ai-releases" / "persistent-state" / "data" / "coordination" / "coordinator"
-    / "AUDIT_FIX_QUEUE.json"
-)
+def _default_queue_path() -> Path:
+    """The queue this CLI reads and writes when nothing overrides it.
+
+    Codex cloud at b53cd7bb1: it was built from ``Path.home()``, ignoring ``TRADEAI_PERSISTENT_STATE_ROOT`` — the very
+    setting the served coordination reader honours (``scripts/lib/work_pipeline.py::_default_coord_dir``). With that
+    setting in force this CLI updated a different queue (or failed on a missing file) and the served queue never moved.
+    """
+    override = os.environ.get("AUDIT_FIX_QUEUE_PATH")
+    if override:
+        return Path(override)
+    try:  # run as a script (`scripts/` on sys.path) or imported as a package
+        from lib.persistent_state_root import good_persistent_root
+    except ImportError:
+        from scripts.lib.persistent_state_root import good_persistent_root  # type: ignore[no-redef]
+    return (
+        Path(good_persistent_root())
+        / "data" / "coordination" / "coordinator" / "AUDIT_FIX_QUEUE.json"
+    )
+
+
+#: The queue lives in the coordination tree beside the releases, never inside the repo. Resolved through the same
+#: state root the served reader uses so both name one file; AUDIT_FIX_QUEUE_PATH overrides it.
+DEFAULT_QUEUE = _default_queue_path()
 
 SCHEMA = "AuditFixQueueStatusSync@v1"
 #: The dark-contract declaration: this CLI is run on demand (and may be put on a timer by the coordinator). It reads
@@ -215,12 +231,26 @@ def _negated_rows(clause: str) -> set[str]:
 
 
 def _disclaimed_rows(pr: dict[str, Any]) -> set[str]:
-    '''Rows this PR explicitly says it is NOT closing, at row level: "Closes FQ-021, not FQ-022."'''
+    '''Rows this PR explicitly says it is NOT closing.
+
+    Two forms, and both mean the same thing to a recorded association:
+    * row level — "Closes FQ-021, not FQ-022."
+    * verb level — "Not closing FQ-022." / "Does not close FQ-022."
+
+    Codex cloud at b53cd7bb1: only the row-level form was seen here. ``rows_named_by`` correctly refused a verb-negated
+    row, so it was not a candidate — but ``sync`` then re-added the row's recorded PR (CX2), found no disclaimer here,
+    and let that PR deliver or park a row it says in its own text it is not closing.
+    '''
     out: set[str] = set()
+    named: set[str] = set()
     for clause in _clauses(str(pr.get("body") or "")):
         for m in _ROW_IN_BODY.finditer(clause):
+            row = f"FQ-{m.group(1)}"
+            named.add(row)
             if _NOT_BEFORE_ROW.search(clause[_row_or_verb_start(clause, m.start()):m.start()]):
-                out.add(f"FQ-{m.group(1)}")
+                out.add(row)
+    # A row the body names but `rows_named_by` refuses is disclaimed, not silent.
+    out |= {row for row in named if row not in rows_named_by(pr)}
     return out
 
 
@@ -308,7 +338,10 @@ def plan(item: dict[str, Any], pr: dict[str, Any] | None, now: str) -> dict[str,
                 "history": _entry(now, status, "fix_in_review", f"PR #{prn} is open")}
     if status == "fix_in_review":
         head = pr.get("headRefOid")
-        if head and (head != item.get("head") or not item.get("pr")):
+        # Codex cloud at b53cd7bb1: a REPLACEMENT PR at the same commit (#100 -> #101) left the association on #100,
+        # because only the head decided. When #101 merged, both candidates were non-open, the recorded-association
+        # tie-break picked closed #100 and the row parked instead of delivering. The deciding PR is the association.
+        if head and (head != item.get("head") or _as_pr_number(item.get("pr")) != prn):
             return {"head": head, "pr": prn,
                     "history": _entry(now, status, status, f"PR #{prn} head {head[:9]}")}
     return None

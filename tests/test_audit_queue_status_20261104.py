@@ -537,3 +537,52 @@ def test_an_open_mention_does_not_outrank_the_recorded_pr():
                  now=NOW)
     item = rep["queue"]["items"][0]
     assert item["status"] == "delivered" and item["pr"] == 100, rep["changes"]
+
+
+def test_a_replacement_pr_at_the_same_commit_takes_the_association():
+    """Cloud at b53cd7bb1: #101 replaces #100 at the same commit. `choose_pr` picks #101, but `plan` kept the
+    association on #100 because the head had not changed; when #101 merged, the closed #100 won the
+    recorded-association tie-break and the row parked instead of delivering."""
+    rep = S.sync(
+        queue(row("FQ-022", status="fix_in_review", pr=100, head="a" * 40)),
+        [pr(100, state="OPEN", branch="wt/generic-100", body="Refactor only.", head="a" * 40),
+         pr(101, state="OPEN", branch="wt/generic-101", body="Closes FQ-022.", head="a" * 40)],
+        now=NOW,
+    )
+    item = rep["queue"]["items"][0]
+    assert item["pr"] == 101, rep["changes"]
+    merged = S.sync(
+        rep["queue"],
+        [pr(100, state="CLOSED", branch="wt/generic-100", body="Refactor only."),
+         pr(101, state="MERGED", branch="wt/generic-101", body="Closes FQ-022.", head="a" * 40, merge="b" * 40)],
+        now=NOW,
+    )
+    delivered = merged["queue"]["items"][0]
+    assert delivered["status"] == "delivered" and delivered["pr"] == 101, merged["changes"]
+
+
+def test_a_verb_level_disclaimer_stops_the_recorded_pr_closing_the_row():
+    """Cloud at b53cd7bb1: `Not closing FQ-022.` was refused by `rows_named_by`, but `sync` re-added the row's
+    recorded PR and `_disclaimed_rows` only saw a row-level negation — so that PR delivered a row it says it is not
+    closing."""
+    for body in ("Not closing FQ-022.", "Does not close FQ-022."):
+        rep = S.sync(
+            queue(row("FQ-022", status="fix_in_review", pr=100)),
+            [pr(100, state="MERGED", branch="wt/generic-cleanup", body=body, merge="c" * 40)],
+            now=NOW,
+        )
+        assert rep["changed"] == 0, (body, rep["changes"])
+    assert S._disclaimed_rows(pr(1, branch="wt/generic-cleanup", body="Does not close FQ-022.")) == {"FQ-022"}
+    # the row-level form still works, and an ordinary declaration still claims
+    assert S._disclaimed_rows(pr(1, branch="wt/generic-cleanup", body="Closes FQ-021, not FQ-022.")) == {"FQ-022"}
+    assert S._disclaimed_rows(pr(1, branch="wt/generic-cleanup", body="Closes FQ-022.")) == set()
+
+
+def test_the_default_queue_path_follows_the_persistent_state_root(monkeypatch, tmp_path):
+    """Cloud at b53cd7bb1: DEFAULT_QUEUE was built from `Path.home()`, so a non-default
+    TRADEAI_PERSISTENT_STATE_ROOT moved the queue the served reader uses and left this CLI on another file."""
+    monkeypatch.delenv("AUDIT_FIX_QUEUE_PATH", raising=False)
+    monkeypatch.setenv("TRADEAI_PERSISTENT_STATE_ROOT", str(tmp_path))
+    assert S._default_queue_path() == tmp_path / "data" / "coordination" / "coordinator" / "AUDIT_FIX_QUEUE.json"
+    monkeypatch.setenv("AUDIT_FIX_QUEUE_PATH", str(tmp_path / "custom.json"))
+    assert S._default_queue_path() == tmp_path / "custom.json"
