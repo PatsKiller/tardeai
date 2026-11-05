@@ -191,6 +191,29 @@ def test_handoff_moves_territories_and_lead(tmp_path):
     assert len(snaps) == 1 and "Handoff claude-lead -> codex-a" in snaps[0].read_text()
 
 
+def test_a_failed_handoff_append_leaves_ownership_unchanged(tmp_path, monkeypatch, capsys):
+    """cx-openai D52 triage at b10809549 (#2492): the validated handoff event is appended BEFORE the ownership
+    change. The previous order wrote (and fsynced) the new registry first, so an append failure left the territories
+    and the lead already moved with no handoff record -- the lock serialises writers but supplies no rollback."""
+    assert appoint(tmp_path, "claude-lead", "lead", "release") == 0
+    assert appoint(tmp_path, "codex-a", "member", "agents") == 0
+    reg_path = tmp_path / "data" / "coordination" / "coordinator" / "coordinators.json"
+    before = reg_path.read_bytes()
+
+    def unwritable(root, event):
+        raise OSError("ledger unwritable")
+
+    monkeypatch.setattr(C, "append_event", unwritable)
+    assert run(tmp_path, "handoff", "--from", "claude-lead", "--to", "codex-a",
+               "--quote", "let codex lead now") == 2
+    assert reg_path.read_bytes() == before  # not one byte: ownership did not move without its event
+    reg = registry(tmp_path)
+    assert reg["lead"] == "claude-lead"
+    by = {c["id"]: c for c in reg["coordinators"]}
+    assert by["claude-lead"]["role"] == "lead" and set(by["codex-a"]["territories"]) == {"agents"}
+    assert "ownership is unchanged" in capsys.readouterr().err
+
+
 def test_board_regenerates(tmp_path):
     assert appoint(tmp_path, "claude-lead", "lead", "release") == 0
     assert run(tmp_path, "assign", "pr:2485", "release") == 0

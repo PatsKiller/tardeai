@@ -1382,9 +1382,24 @@ def cmd_handoff(args) -> int:
             # the role, leaving the registry divergent and every later mutation refused by coherence_error.
             sync_lead(reg)
         reg["as_of"] = now_iso()
-        _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
-        append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": src, "territory": None,
-                            "kind": "handoff", "subject": dst, "detail": p.name})
+        # LEDGER FIRST (cx-openai D52 triage at b10809549): the validated handoff event is appended before the
+        # ownership change is persisted. The previous order fsynced the new registry first, so a failed append left
+        # territories and the lead already moved with no handoff record to explain it -- durable ownership changed
+        # and unexplained. The lock serialises the writers but gives no rollback; ordering is what makes a failed
+        # append harmless. A recorded event whose registry write fails is recoverable by re-running the command.
+        try:
+            append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": src, "territory": None,
+                                "kind": "handoff", "subject": dst, "detail": p.name})
+        except OSError as exc:
+            print(f"error: the handoff event could not be recorded ({exc}); ownership is unchanged "
+                  f"(snapshot {p.name} was written)", file=sys.stderr)
+            return 2
+        try:
+            _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
+        except OSError as exc:
+            print(f"error: the handoff event is recorded but the registry write failed ({exc}); ownership has NOT "
+                  "moved -- re-run `coord handoff`", file=sys.stderr)
+            return 2
         _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
     print(p)
     return 0
