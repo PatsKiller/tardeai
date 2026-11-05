@@ -102,7 +102,9 @@ export function callPrimaryText(l: ConsumptionLog): string {
   const summary = readableSummary(l)
   // cc-deepseek-8's F3 on PR 2676: the old default rendered ANY unknown trigger as "ran automatically" — a claim about a
   // value the payload does not carry, and the opposite of llm_spend.py's default. Only the two known modes assert.
-  const trigger = l.trigger_mode === 'manual' ? 'started by you'
+  // A manual trigger is a MODE, not an identity: any operator, agent or script can start one. "started by you"
+  // attributed the call to whoever is reading the screen (codex-cloud round 1 at 0b3eebe29).
+  const trigger = l.trigger_mode === 'manual' ? 'started manually'
     : l.trigger_mode === 'automated' ? 'ran automatically'
     : 'trigger not recorded'
   return `${name} · ${summary} · ${trigger}`

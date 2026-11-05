@@ -90,7 +90,7 @@ eq('a prompt that only says output JSON only is request text too',
    'No summary recorded — request text only')
 eq('a slash-led task key is not mistaken for a summary',
    readableSummary({ task_summary: '/compact' }), 'No summary recorded — request text only')
-check('a manual trigger says so', callPrimaryText(log(1, true, { trigger_mode: 'manual' })).includes('started by you'))
+check('a manual trigger says so without naming the reader as its author', callPrimaryText(log(1, true, { trigger_mode: 'manual' })).includes('started manually') && !callPrimaryText(log(1, true, { trigger_mode: 'manual' })).includes('started by you'))
 check('an automated trigger says so', callPrimaryText(log(2, true)).includes('ran automatically'))
 check('an unknown trigger asserts nothing', callPrimaryText(log(3, true, { trigger_mode: 'retry' })).includes('trigger not recorded'))
 
