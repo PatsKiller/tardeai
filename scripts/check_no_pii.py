@@ -434,6 +434,86 @@ def _git(repo: Path, *args: str) -> bytes:
     return r.stdout
 
 
+
+# ── merge-up exemption ──────────────────────────────────────────────────────────────────────────────
+MERGE_TARGET = "origin/main"
+#: findings exempted in this run because the merge target already publishes the identical line at that path.
+MERGE_EXEMPT = [0]
+
+
+
+def _merge_text(data: bytes, path: str) -> str | None:
+    """The merge target's blob as the scanner would read it: .gz decompressed, binary refused (None)."""
+    if path.endswith(".gz"):
+        try:
+            with gzip.GzipFile(fileobj=io.BytesIO(data)) as fh:
+                data = fh.read(GZ_MAX_BYTES + 1)
+        except (OSError, EOFError):
+            return None
+        if len(data) > GZ_MAX_BYTES:
+            return None
+    if b"\0" in data[:8192]:
+        return None
+    return data.decode("utf-8", errors="replace")
+
+
+class MergeContext:
+    """A merge commit's staged lines, judged against what the merge target already publishes.
+
+    FQ-154b (claude-lead 2026-11-05): the pre-commit gate diffs the index against the branch's first parent, so
+    every file a merge-up brings in from main reads as "added" — and its existing PII lines fail. Baseline may
+    only shrink, so a far-behind branch had no sanctioned way to merge. The rule implemented here: a staged line
+    is NOT added when it is byte-identical at the same path and line in ``origin/main``. A merge-up cannot
+    introduce exposure main already publishes. A line that differs still counts in full, and if origin/main
+    cannot be read the scan REFUSES (never skips).
+    """
+
+    def __init__(self, repo: Path):
+        self.repo = repo
+        r = subprocess.run(["git", "rev-parse", "--verify", "--quiet", f"{MERGE_TARGET}^{{commit}}"],
+                           cwd=repo, capture_output=True)
+        if r.returncode != 0:
+            raise ScanError(
+                f"a merge is in progress and {MERGE_TARGET} cannot be resolved; refusing to judge merge lines "
+                "without the merge target (fetch it, then re-run)"
+            )
+        self.sha = r.stdout.decode().strip()
+        self._cache: dict[str, list[str] | None] = {}
+        self.exempt = 0
+
+    def lines(self, path: str) -> list[str] | None:
+        """The merge target's text for ``path``, decoded exactly as the working blob is (a .gz is decompressed on
+        both sides, so the line numbers and the line text are comparable)."""
+        if path not in self._cache:
+            r = subprocess.run(["git", "show", f"{self.sha}:{path}"], cwd=self.repo, capture_output=True)
+            if r.returncode != 0:
+                self._cache[path] = None
+            else:
+                text = _merge_text(r.stdout, path)
+                self._cache[path] = text.split("\n") if text is not None else None
+        return self._cache[path]
+
+    def keep(self, path: str, text: str, findings: list[Finding]) -> list[Finding]:
+        """Drop the findings whose line is byte-identical in the merge target at the same path and line."""
+        main_lines = self.lines(path)
+        if main_lines is None:
+            return findings  # the path is new in this merge: everything on it is genuinely added
+        ours = text.split("\n")
+        kept = []
+        for f in findings:
+            n = f.line - 1
+            if 0 <= n < len(ours) and n < len(main_lines) and ours[n] == main_lines[n]:
+                self.exempt += 1
+                continue
+            kept.append(f)
+        return kept
+
+
+def in_merge(repo: Path) -> bool:
+    r = subprocess.run(["git", "rev-parse", "--git-path", "MERGE_HEAD"], cwd=repo, capture_output=True)
+    return r.returncode == 0 and (repo / r.stdout.decode().strip()).exists()
+
+
 # ── modes ───────────────────────────────────────────────────────────────────────────────────────────
 def scan_tree(repo: Path, deny: list[re.Pattern[str]], verifier: SnapshotVerifier | None = None) -> list[Finding]:
     verifier = verifier or SnapshotVerifier(repo, "HEAD")
@@ -486,6 +566,7 @@ def scan_range(
 ) -> tuple[list[Finding], int]:
     """(findings on added lines, number of added lines carrying an inline allow marker)."""
     verifier = verifier or SnapshotVerifier(repo, _base(rng))
+    merge = MergeContext(repo) if rng == "--cached" and in_merge(repo) else None
     out: list[Finding] = []
     status_raw = _git(repo, "diff", "--name-status", "-z", "-M", "--diff-filter=ACMR", rng)
     parts = [p.decode("utf-8", errors="replace") for p in status_raw.split(b"\0") if p]
@@ -532,9 +613,14 @@ def scan_range(
             continue  # verbatim past version of a live policy file on the base ref (see SnapshotVerifier)
         text = _decode(r.stdout, path)
         if text:
-            out.extend(scan_text(path, text, deny, None if whole else lines))
+            found = scan_text(path, text, deny, None if whole else lines)
+            if merge is not None:
+                found = merge.keep(path, text, found)
+            out.extend(found)
             if lines:
                 markers += count_markers(text, lines)
+    if merge is not None:
+        MERGE_EXEMPT[0] += merge.exempt
     return out, markers
 
 
@@ -701,6 +787,11 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 f"check_no_pii: OK -- no personal or identifying data added in "
                 f"{args.rng or 'the staged changes (--cached)'}"
+            )
+        if MERGE_EXEMPT[0]:
+            print(
+                f"check_no_pii: {MERGE_EXEMPT[0]} finding(s) on merge lines byte-identical in {MERGE_TARGET} — "
+                "a merge-up cannot introduce exposure main already publishes"
             )
         if markers:
             print(f"check_no_pii: NOTE -- {markers} added line(s) carry an inline allow marker; none is honoured.")
