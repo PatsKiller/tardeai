@@ -1,15 +1,151 @@
-// FQ-076: disabled filters and an unknown next-review time must EXPLAIN themselves in visible text.
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-const here = dirname(fileURLToPath(import.meta.url))
-const src = readFileSync(join(here, '..', 'pages', 'WatchIntelligenceUnified.tsx'), 'utf8')
+// FQ-076: disabled filters and an unknown next-review time must EXPLAIN themselves in text the operator
+// can actually see — proved by rendering the page, not by finding strings in its source.
+//
+// cc-deepseek-3 RECHECK BLOCK on #2606 (2026-11-05T14:35Z), F1: the first version of this file read
+// `WatchIntelligenceUnified.tsx` with readFileSync and ran regexes over the source text. It would pass
+// equally on a page whose condition never renders the span, or whose fallback lives in a branch the
+// operator never reaches — the FQ-132 class. This file renders the real page (React server rendering, a
+// fixture payload) and asserts the words it prints, plus the disabled controls themselves.
+import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { join, dirname, resolve } from 'node:path'
+import { pathToFileURL, fileURLToPath } from 'node:url'
+
+// Server rendering emits one `useLayoutEffect does nothing on the server` warning per component, and each
+// stack line embeds a multi-megabyte `data:` module URL; the FQ-075 render test documents the same flood.
+// Drop exactly that warning, keep everything else.
+const __origConsoleError = console.error
+console.error = (...args) => {
+  if (String(args[0] ?? '').includes('useLayoutEffect does nothing on the server')) return
+  __origConsoleError(...args)
+}
+
+const app = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
+const require = createRequire(join(app, 'package.json'))
+const ts = require('typescript')
+const React = require('react')
+const { renderToStaticMarkup } = require('react-dom/server')
+const { MemoryRouter } = require('react-router-dom')
+
+const memo = new Map()
+function compile(path) {
+  if (memo.has(path)) return memo.get(path)
+  // The component reads the API through this hook; a render test supplies the payload instead.
+  let source = readFileSync(path, 'utf8')
+    .replace(/import\s+['"][^'"]+\.css['"];?/g, '')
+    .replace(
+      /import \{ useApi \} from ['"][^'"]+['"]/,
+      'const useApi = (..._args: any[]): any => (globalThis as any).__watchlistFixture',
+    )
+  let js = ts.transpileModule(source, {
+    compilerOptions: { jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+  }).outputText
+  js = js.replace(/from ["']([^"']+)["']/g, (whole, spec) => {
+    if (!spec.startsWith('.')) return `from ${JSON.stringify(pathToFileURL(require.resolve(spec)).href)}`
+    let target = resolve(dirname(path), spec)
+    if (!existsSync(target)) target = ['.ts', '.tsx', '.js'].map(s => target + s).find(existsSync)
+    if (!target) throw new Error(`Missing fixture dependency ${spec}`)
+    return `from ${JSON.stringify(compile(target))}`
+  })
+  const url = `data:text/javascript;base64,${Buffer.from(js).toString('base64')}`
+  memo.set(path, url)
+  return url
+}
+
+// Unified pulls MobileDetailSheet which calls matchMedia at useState init — stub before import.
+if (typeof globalThis.window === 'undefined') {
+  globalThis.window = globalThis
+}
+if (typeof globalThis.matchMedia !== 'function') {
+  globalThis.matchMedia = () => ({
+    matches: false,
+    media: '',
+    addEventListener() {},
+    removeEventListener() {},
+    addListener() {},
+    removeListener() {},
+    dispatchEvent() { return false },
+  })
+  globalThis.window.matchMedia = globalThis.matchMedia
+}
+
+const { default: Unified } = await import(compile(join(app, 'src/pages/WatchIntelligenceUnified.tsx')))
+
+// One card, and the three next-review fields are all absent — the state the operator sees for a name
+// nobody has scheduled a review for. That is the case the sentence exists to explain.
+const card = {
+  symbol: 'BBB', company: 'Fixture Watch Corp', street_rating: 'BUY', trade_ai_state: 'READY',
+  quote_freshness: 'AFTER_HOURS_CURRENT', review_freshness: 'STALE',
+  cio_review: { status: 'NOT_RUN', reason_code: 'NOT_SCHEDULED' },
+  maria_review: { status: 'NOT_RUN', reason_code: 'NOT_SCHEDULED' },
+  last: 12.34, day_change_pct: 0.5,
+}
+globalThis.__watchlistFixture = {
+  data: { cards: [card], items: [{ card }], summary: {}, views: { top_ideas: {} }, projections: {} },
+  loading: false,
+  error: null,
+}
+
+const html = renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(Unified)))
+const text = html.replace(/<[^>]+>/g, ' ').replace(/&#x27;/g, "'").replace(/&#x2014;/g, '—').replace(/\s+/g, ' ')
+
 const failures = []
 const ok = (c, m) => { if (!c) failures.push(m) }
-ok(/data-testid="filters-unavailable-reason"/.test(src), 'no visible reason for the disabled filters')
-ok(/off until the broker provider lands/.test(src), 'the reason is not stated in words')
-ok(!/\|\| '—'\}\s*\n/.test(src.match(/Next review:[\s\S]{0,300}/)?.[0] ?? 'x'), 'next review still falls back to a bare dash')
-ok(/not scheduled — no review time has been set/.test(src), 'the unknown next-review time is not explained')
-ok((src.match(/data-filter="/g) || []).length >= 4, 'disabled filters were removed rather than explained')
-if (failures.length) { console.error('FQ-076 FAILED:\n  - ' + failures.join('\n  - ')); process.exit(1) }
-console.log('FQ-076 ok: disabled filters give a visible reason; an unknown next-review time says why')
+
+// 1. the reason for the four disabled filters is VISIBLE on the page, not only in a title tooltip a
+// phone never shows — and it is attached to the element that is actually rendered.
+ok(html.includes('data-testid="filters-unavailable-reason"'),
+  'the visible filters-unavailable reason element is not in the rendered page')
+ok(text.includes('Four filters are off until the broker provider lands'),
+  'the four-filter reason is not in the rendered text')
+ok(text.includes('catalyst and earnings windows, relative-strength band and valuation band'),
+  'the reason does not name the four filters the operator loses')
+
+// 2. exactly the four controls the sentence names carry the typed-unavailable reason and are disabled. The
+// page also disables four OTHER selects (saved list, CIO view, provider, model) — but those are unavailable
+// because this fixture's payload carries no data, and each says so in its own label; the sentence is about
+// the typed gap that no payload can fill. Coupling the two sets keeps them honest (cc-deepseek-3 F3).
+const NAMED = ['catalyst_window', 'earnings_window', 'relative_strength_band', 'valuation_band']
+const filterControls = [...html.matchAll(/<select\b[^>]*\bdata-filter="([a-z_]+)"[^>]*>/g)]
+const byName = new Map(filterControls.map(([tag, name]) => [name, tag]))
+for (const name of NAMED) {
+  const tag = byName.get(name) ?? ''
+  ok(Boolean(tag), `${name} is named by the sentence but is not rendered`)
+  ok(/\bdisabled\b/.test(tag), `the ${name} control renders ENABLED while the page says it is off`)
+  ok(/typed unavailable until broker provider lands/.test(tag),
+    `the ${name} control does not carry the typed-unavailable reason the sentence describes`)
+}
+const typedUnavailable = filterControls
+  .filter(([tag]) => /typed unavailable until broker provider lands/.test(tag))
+  .map(([, name]) => name).sort()
+ok(JSON.stringify(typedUnavailable) === JSON.stringify([...NAMED].sort()),
+  `the page marks [${typedUnavailable.join(', ')}] as typed-unavailable, but the sentence names four: catalyst and earnings windows, relative-strength band and valuation band`)
+
+// 3. an unknown next-review time renders the sentence, never a bare dash.
+ok(text.includes('not scheduled — no review time has been set for this name'),
+  'an absent next_review_at did not render its explanation')
+ok(!/Next review: *—/.test(text),
+  'the next-review line fell back to a bare dash instead of saying why')
+
+// 4. the retirement is enforced, not just stated: the live surface is Unified, not the shadow board.
+function sourceFiles(dir) {
+  const out = []
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name)
+    if (statSync(p).isDirectory()) out.push(...sourceFiles(p))
+    else if (/\.(ts|tsx|mjs|js)$/.test(name) && !/\.test\.|\.spec\./.test(name)) out.push(p)
+  }
+  return out
+}
+const importers = sourceFiles(join(app, 'src'))
+  .filter(p => !p.endsWith('WatchlistIntelligenceBoard.tsx'))
+  .filter(p => /WatchlistIntelligenceBoard/.test(readFileSync(p, 'utf8')))
+ok(importers.length === 0,
+  `the retired shadow board is imported by ${importers.map(p => p.slice(app.length + 1)).join(', ')}`)
+
+if (failures.length) {
+  console.error('FQ-076 FAILED:\n  - ' + failures.join('\n  - '))
+  console.error('rendered text: ' + text.slice(0, 900))
+  process.exit(1)
+}
+console.log('FQ-076 ok: the rendered page explains its four disabled filters and an unscheduled next review')
