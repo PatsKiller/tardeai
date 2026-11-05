@@ -214,6 +214,35 @@ def test_a_failed_handoff_append_leaves_ownership_unchanged(tmp_path, monkeypatc
     assert "ownership is unchanged" in capsys.readouterr().err
 
 
+def test_a_failed_assignment_append_leaves_the_assignment_unchanged(tmp_path, monkeypatch, capsys):
+    """cx-openai D52 KEEP_BLOCK at d0f84722c (#2492): the assignment event is appended BEFORE the reassignment.
+    cmd_assign wrote the registry first, so a failed append left pr:1 moved with zero ledger events naming it."""
+    assert appoint(tmp_path, "claude-lead", "lead", "release") == 0
+    assert run(tmp_path, "assign", "pr:1", "release") == 0
+    events = len(ledger(tmp_path))
+    reg_path = tmp_path / "data" / "coordination" / "coordinator" / "coordinators.json"
+    before = reg_path.read_bytes()
+
+    def unwritable(root, event):
+        raise OSError("ledger unwritable")
+
+    monkeypatch.setattr(C, "append_event", unwritable)
+    assert run(tmp_path, "assign", "pr:1", "ui") == 2
+    assert reg_path.read_bytes() == before  # the reassignment did not move without its event
+    assert registry(tmp_path)["assignments"]["pr:1"] == "release"
+    assert len(ledger(tmp_path)) == events  # and no event was written either
+    assert "the assignment is unchanged" in capsys.readouterr().err
+
+
+def test_an_assignment_is_recorded_in_the_ledger_and_the_board(tmp_path):
+    """The success control: the event exists, the registry holds the assignment, the board names it."""
+    assert appoint(tmp_path, "claude-lead", "lead", "release") == 0
+    assert run(tmp_path, "assign", "pr:7", "release") == 0
+    assert [e for e in ledger(tmp_path) if e["kind"] == "assign" and e["subject"] == "pr:7"]
+    assert registry(tmp_path)["assignments"]["pr:7"] == "release"
+    assert "pr:7" in (tmp_path / "data" / "coordination" / "coordinator" / "BOARD.md").read_text()
+
+
 def test_board_regenerates(tmp_path):
     assert appoint(tmp_path, "claude-lead", "lead", "release") == 0
     assert run(tmp_path, "assign", "pr:2485", "release") == 0

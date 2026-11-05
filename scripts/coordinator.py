@@ -1191,8 +1191,22 @@ def cmd_assign(args) -> int:
             return 0
         reg["assignments"][str(args.subject)] = tid
         reg["as_of"] = now_iso()
-        _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
-        append_event(root, event)
+        # LEDGER FIRST (cx-openai D52 KEEP_BLOCK at d0f84722c): the assignment event is appended before the
+        # reassignment is persisted. The previous order wrote the registry first, so a failed append left the
+        # territory reassigned with no record of who was told to take it -- the same durable audit inconsistency
+        # the handoff verb had. `coord add` and `coord handoff` use this order.
+        try:
+            append_event(root, event)
+        except OSError as exc:
+            print(f"error: the assignment event could not be recorded ({exc}); the assignment is unchanged "
+                  f"({args.subject} stays where it was)", file=sys.stderr)
+            return 2
+        try:
+            _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
+        except OSError as exc:
+            print(f"error: the assignment event is recorded but the registry write failed ({exc}); the assignment "
+                  "has NOT moved -- re-run `coord assign`", file=sys.stderr)
+            return 2
         _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
     print(f"{args.subject} -> {tid}")
     return 0
