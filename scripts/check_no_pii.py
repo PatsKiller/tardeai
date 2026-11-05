@@ -102,11 +102,12 @@ CATEGORIES = (
     "home_path",
     "blocked_path",
     "binary_unreadable",
+    "binary_baseline_drift",
 )
 # binary_unreadable is deliberately NOT ratcheted and NOT in the deny-pattern advisory: a baseline count is a
 # permission slip, and the whole defect was permission-by-silence. It fails --tree outright until each file is
 # registered with a reason in config/pii_binary_review.json.
-RATCHETED = tuple(c for c in CATEGORIES if c not in ("deny_pattern", "binary_unreadable"))
+RATCHETED = tuple(c for c in CATEGORIES if c not in ("deny_pattern", "binary_unreadable", "binary_baseline_drift"))
 
 # ── email ────────────────────────────────────────────────────────────────────────────────────────────
 EMAIL_RE = re.compile(
@@ -447,35 +448,77 @@ def _decode(data: bytes, path: str) -> str | None:
     return _decode_with_reason(data, path)[0]
 
 
-def load_binary_review(path: Path) -> dict[str, dict]:
-    """The reviewed register of files this scanner cannot read: ``{path: {reason, reviewed_by, reviewed_at}}``.
+@dataclass(frozen=True)
+class BinaryReview:
+    """The two registers, kept apart on purpose.
 
-    A file lands here only after a person reviewed it. Every entry needs all three fields, so the register
-    cannot become a list of paths with no accountable reason; a malformed register fails closed. A missing
-    register is an EMPTY register, which makes every unreadable file a finding — fail closed, never open.
+    ``reviewed`` is a person's statement about one file (reason, reviewer, date). ``grandfathered`` is a FROZEN
+    ENUMERATION of the files that were already in the tree on 2026-11-05 when this gate landed: they keep main green
+    without claiming anyone looked at them, and nothing new can join — a pattern wide enough to admit ``hero.png``
+    admits the next screenshot too, which is the defect this gate exists to stop. Removal is one-way: a file that is
+    reviewed or deleted leaves the enumeration (and its count and digest must move with it).
+    """
+
+    reviewed: dict[str, dict]
+    grandfathered: frozenset[str]
+
+    def registered(self, path: str) -> bool:
+        return path in self.reviewed or path in self.grandfathered
+
+
+EMPTY_REVIEW = BinaryReview(reviewed={}, grandfathered=frozenset())
+
+
+def _review_paths(doc: dict, key: str, where: Path, *, fields: tuple[str, ...]) -> dict[str, dict]:
+    entries = doc.get(key)
+    if not isinstance(entries, dict):
+        raise ScanError(f"{where}: {key!r} must be an object of path -> record")
+    out: dict[str, dict] = {}
+    for rel, rec in entries.items():
+        if not isinstance(rel, str) or not rel or rel.startswith("/") or ".." in PurePosixPath(rel).parts:
+            raise ScanError(f"{where}: {rel!r} is not a repository-relative path")
+        if not isinstance(rec, dict):
+            raise ScanError(f"{where}: {rel}: record must be an object")
+        missing = [k for k in fields if not str(rec.get(k) or "").strip()]
+        if missing:
+            raise ScanError(f"{where}: {rel}: record is missing {', '.join(missing)}")
+        out[rel] = {k: str(rec[k]) for k in fields}
+    return out
+
+
+def load_binary_review(path: Path) -> BinaryReview:
+    """Both registers. A malformed register fails closed; a missing one is EMPTY, so every unreadable file is a
+    finding — fail closed, never open.
+
+    The grandfathered enumeration asserts its own size and digest, so a deleted file, a smuggled path or a quietly
+    enlarged list is a scan error rather than a silent pass.
     """
     if not path.is_file():
-        return {}
+        return EMPTY_REVIEW
     try:
         doc = json.loads(path.read_text(encoding="utf-8"))
     except ValueError as exc:
         raise ScanError(f"{path}: not JSON ({exc.msg})") from exc
     if not isinstance(doc, dict) or doc.get("schema") != SCHEMA_BINARY_REVIEW:
         raise ScanError(f"{path}: schema must be {SCHEMA_BINARY_REVIEW!r}")
-    files = doc.get("files")
-    if not isinstance(files, dict):
-        raise ScanError(f"{path}: 'files' must be an object of path -> review record")
-    out: dict[str, dict] = {}
-    for rel, rec in files.items():
-        if not isinstance(rel, str) or not rel or rel.startswith("/") or ".." in PurePosixPath(rel).parts:
-            raise ScanError(f"{path}: {rel!r} is not a repository-relative path")
-        if not isinstance(rec, dict):
-            raise ScanError(f"{path}: {rel}: review must be an object")
-        missing = [k for k in ("reason", "reviewed_by", "reviewed_at") if not str(rec.get(k) or "").strip()]
-        if missing:
-            raise ScanError(f"{path}: {rel}: review is missing {', '.join(missing)}")
-        out[rel] = {k: str(rec[k]) for k in ("reason", "reviewed_by", "reviewed_at")}
-    return out
+    reviewed = _review_paths(doc, "files", path, fields=("reason", "reviewed_by", "reviewed_at"))
+    grand = _review_paths(doc, "grandfathered", path, fields=("reason",))
+    both = sorted(set(reviewed) & set(grand))
+    if both:
+        raise ScanError(f"{path}: {both[:3]} cannot be both reviewed and grandfathered; removal is one-way")
+    declared = doc.get("grandfathered_count")
+    if declared != len(grand):
+        raise ScanError(
+            f"{path}: grandfathered_count is {declared!r} but 'grandfathered' lists {len(grand)} path(s); the frozen "
+            "enumeration states its own size"
+        )
+    digest = hashlib.sha256("\n".join(sorted(grand)).encode("utf-8")).hexdigest()
+    if doc.get("grandfathered_sha256") != digest:
+        raise ScanError(
+            f"{path}: grandfathered_sha256 does not match the enumeration (expected {digest}); the frozen list may only "
+            "shrink, one reviewed or deleted file at a time"
+        )
+    return BinaryReview(reviewed=reviewed, grandfathered=frozenset(grand))
 
 
 def _git(repo: Path, *args: str) -> bytes:
@@ -490,10 +533,11 @@ def scan_tree(
     repo: Path,
     deny: list[re.Pattern[str]],
     verifier: SnapshotVerifier | None = None,
-    binary_review: dict[str, dict] | None = None,
+    binary_review: BinaryReview | None = None,
 ) -> list[Finding]:
     verifier = verifier or SnapshotVerifier(repo, "HEAD")
     review = load_binary_review(repo / BINARY_REVIEW_REL) if binary_review is None else binary_review
+    unreadable_seen: set[str] = set()
     out: list[Finding] = []
     for entry in _git(repo, "ls-files", "-s", "-z").split(b"\0"):
         if not entry:
@@ -514,9 +558,16 @@ def scan_tree(
         text, unreadable = _decode_with_reason(data, path)
         if text is not None:
             out.extend(scan_text(path, text, deny))
-        elif path not in review:
+            continue
+        unreadable_seen.add(path)
+        if not review.registered(path):
             # An unreadable file is a FINDING, never a pass: the register is the only silence that is a verdict.
             out.append(Finding(path, 0, "binary_unreadable", f"{unreadable}; not registered in {BINARY_REVIEW_REL}"))
+    # The frozen enumeration asserts itself against the tree: a path that is gone (or can now be scanned) is a
+    # failure, so the list can only shrink one reviewed-or-deleted file at a time and never admits a new one silently.
+    for rel in sorted(review.grandfathered - unreadable_seen):
+        out.append(Finding(rel, 0, "binary_baseline_drift",
+                           "grandfathered entry is not an unreadable tracked file; remove it from the enumeration"))
     return out
 
 
@@ -590,7 +641,7 @@ def scan_range(
             if statuses[path] not in ("A", "R", "C"):
                 continue
             blob = subprocess.run(["git", "show", f"{target}:{path}"], cwd=repo, capture_output=True)
-            if blob.returncode == 0 and path not in review:
+            if blob.returncode == 0 and not review.registered(path):
                 text, unreadable = _decode_with_reason(blob.stdout, path)
                 if text is None:
                     out.append(
@@ -604,7 +655,7 @@ def scan_range(
             continue  # verbatim past version of a live policy file on the base ref (see SnapshotVerifier)
         text, unreadable = _decode_with_reason(r.stdout, path)
         if text is None:
-            if path not in review:
+            if not review.registered(path):
                 out.append(Finding(path, 0, "binary_unreadable", f"{unreadable}; not registered in {BINARY_REVIEW_REL}"))
             continue
         out.extend(scan_text(path, text, deny, None if whole else lines))
@@ -788,7 +839,18 @@ def main(argv: list[str] | None = None) -> int:
 
     current = counts(findings)
     deny_n = sum(1 for f in findings if f.category == "deny_pattern")
-    binaries = [f for f in findings if f.category == "binary_unreadable"]
+    binaries = [f for f in findings if f.category in ("binary_unreadable", "binary_baseline_drift")]
+    try:
+        review = load_binary_review(repo / BINARY_REVIEW_REL)
+    except ScanError as exc:
+        print(f"check_no_pii: ERROR (fail closed): {exc}", file=sys.stderr)
+        return 2
+    unreadable_n = sum(1 for f in findings if f.category == "binary_unreadable")
+    drift_n = sum(1 for f in findings if f.category == "binary_baseline_drift")
+    binary_line = (
+        f"binaries: {unreadable_n} unreadable not registered, {len(review.reviewed)} reviewed, "
+        f"{len(review.grandfathered)} grandfathered, {drift_n} baseline drift"
+    )
     if args.write_baseline:
         if binaries:
             print(
@@ -829,7 +891,10 @@ def main(argv: list[str] | None = None) -> int:
                 "baseline": base,
                 "grew": grew,
                 "shrank": shrank,
-                "binary_unreadable": len(binaries),
+                "binary_unreadable": unreadable_n,
+                "binary_reviewed": len(review.reviewed),
+                "binary_grandfathered": len(review.grandfathered),
+                "binary_baseline_drift": drift_n,
                 "deny_pattern_advisory": deny_n,
                 "snapshot_files_skipped": verifier.skipped,
             }
@@ -842,9 +907,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {k:18} {base[k]:>8} {current[k]:>6}{flag}")
     if deny_n or deny:
         print(f"  {'deny_pattern':18} {'n/a':>8} {deny_n:>6}  (advisory; private deny file, not ratcheted)")
+    # Printed on EVERY run, including when zero: a count that only appears on failure cannot show growth.
+    print(f"  {binary_line}")
     if binaries:
         # Not a ratcheted count: a number in the baseline is permission, and permission is what was missing.
-        print(f"  {'binary_unreadable':18} {'n/a':>8} {len(binaries):>6}  (not ratcheted: each file needs a review)")
+        for f in binaries:
+            print(f"    {f.category}: {f.path}  ({f.detail})")
     if verifier.skipped:
         print(f"  {verifier.skipped} policy snapshot file(s) skipped: byte-identical to a past policy file on HEAD")
     if args.verbose:

@@ -2,11 +2,472 @@
   "schema": "PiiBinaryReview@v1",
   "note": [
     "Files scripts/check_no_pii.py cannot read (binary content, or a compressed file it cannot decompress).",
-    "A scanner that cannot read a file reports it clean unless that file is registered here, so this list is the",
-    "only silence that is a verdict. Every entry needs reason, reviewed_by and reviewed_at: the reviewer states",
-    "what the file is and why it carries no personal or identifying data. An entry is a reviewed decision, not a",
-    "mute. Add one only after opening the file; never add one to make the gate green.",
+    "A scanner that cannot read a file reports it clean unless that file is listed here, so this file is the only",
+    "silence that is a verdict. Two registers, never mixed:",
+    "  files         — REVIEWED. One person states what the file is and why it carries no personal or identifying",
+    "                  data (reason, reviewed_by, reviewed_at). Add one only after opening the file.",
+    "  grandfathered — FROZEN ENUMERATION of the 150 files already in the tree on 2026-11-05 when this gate landed.",
+    "                  They keep main green without claiming review. Nothing new may join: a pattern wide enough to",
+    "                  admit hero.png admits the next screenshot too, which is the defect this gate exists to stop.",
+    "                  Removal is one-way — review a file or delete it, then remove it here; the count and digest move",
+    "                  with it, and a path that is both reviewed and grandfathered fails the scan.",
+    "The enumeration asserts its own size (grandfathered_count) and digest (grandfathered_sha256) so a deleted file, a",
+    "smuggled path or a quietly enlarged list is a scan error, not a silent pass.",
     "Render with scripts/lib/ci_gates.render(); a test asserts this file is its canonical rendering."
   ],
-  "files": {}
+  "files": {},
+  "grandfathered": {
+    "\u0004": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "apps/command-center-v2/docs/atm_lifecycle_v1_2026_05_26/screenshots/manual_close_review_pending_clarity_v1_4.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "apps/command-center-v2/src/assets/hero.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "apps/command-center-v2/src_bak_20260422_124231/assets/hero.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "apps/command-center-v3/e2e/screenshots/operator-cards/BETA-collapsed.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "apps/command-center-v3/e2e/screenshots/operator-cards/BETA-details.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "apps/command-center-v3/e2e/screenshots/operator-cards/CECO-collapsed.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "apps/command-center-v3/e2e/screenshots/operator-cards/CECO-details.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "apps/command-center-v3/e2e/screenshots/operator-cards/DXCM-collapsed.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "apps/command-center-v3/e2e/screenshots/operator-cards/DXCM-details.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "apps/command-center-v3/e2e/screenshots/operator-cards/FATN-collapsed.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "apps/command-center-v3/e2e/screenshots/operator-cards/FATN-details.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "apps/command-center-v3/e2e/screenshots/operator-cards/MRLN-collapsed.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "apps/command-center-v3/e2e/screenshots/operator-cards/MRLN-details.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "apps/command-center-v3/e2e/screenshots/operator-cards/NUAI-collapsed.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "apps/command-center-v3/e2e/screenshots/operator-cards/NUAI-details.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "apps/command-center-v3/e2e/screenshots/operator-cards/SMCI-collapsed.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "apps/command-center-v3/e2e/screenshots/operator-cards/SMCI-details.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "apps/command-center-v3/e2e/screenshots/operator-cards/SWBI-collapsed.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "apps/command-center-v3/e2e/screenshots/operator-cards/SWBI-details.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "apps/command-center-v3/e2e/screenshots/operator-cards/_watch-overview.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/_evidence/autonomous_advisory_loop/cio_truth_gates/conflicted-sizing-withheld.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/_evidence/autonomous_advisory_loop/noc_golden_browser/advisory.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/_evidence/autonomous_advisory_loop/noc_golden_browser/bnd-thin-symbol-card.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/_evidence/autonomous_advisory_loop/noc_golden_browser/noc-symbol-card.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/_evidence/autonomous_advisory_loop/noc_golden_browser/telegram-receipts.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/_evidence/autonomous_advisory_loop/noc_golden_browser/universe-and-theses.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/_evidence/cio_completion/browser/0-_v3_cio_tab_overview.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/_evidence/cio_completion/browser/1-_v3_cio_tab_decisions.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/_evidence/cio_completion/browser/2-_v3_cio_tab_research.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/_evidence/cio_completion/browser/3-_v3_cio_tab_capital_policy.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/_evidence/cio_completion/browser/4-_v3_cio_tab_evidence_comms_sub_capability_coverage.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/_evidence/cio_completion/browser/5-_v3_advisory.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/_evidence/cio_completion/browser/6-_v3_agents.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/_evidence/cio_completion/browser/7-_v3_hermes.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/_evidence/cio_completion/browser/8-_v3_research_intelligence.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/_evidence/r9_1/advisory-live.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/_evidence/r9_1/cio-live.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/architecture/v3_openclaw_tab.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/architecture/v3_rotation_intelligence.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/architecture/v3_tradeai_tab.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/documents/Momentum_Scalp_ActiveTrader_Implementation_Spec_v0_2.docx": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/documents/Momentum_Scalp_ActiveTrader_Implementation_Spec_v0_2.pdf": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/documents/Momentum_Scalp_Active_Trade_Window_Mockups_source_v0_1.docx": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/graphics/01_active_trade_window.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/graphics/02_permission_queue.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/design/ActiveTrader_Implementation_Pack_2026-07-27_v1/graphics/03_account_allocation_popup.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/hermes/HERMES_AGENTS_WORKFLOWS_SOULS_AND_SELF_LEARNING_MATRIX.docx": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/hermes/HERMES_TRADEAI_RESEARCH_AND_SELF_LEARNING_ARCHITECTURE.docx": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/hermes/Hermes_Sidecar_Strategy_for_Trade_AI_v4.docx": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/hermes/Hermes_Sidecar_Strategy_for_Trade_AI_v4.pdf": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/cc-reader-main-integration/historical-1e31/build-marker-old-assumption.xml.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/cc-reader-main-integration/historical-1e31/build-marker-regressions.xml.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/cc-reader-main-integration/historical-1e31/independent-regressions.xml.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/cc-reader-main-integration/historical-1e31/integration-ci-dependencies.xml.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/cc-reader-main-integration/historical-1e31/reader-baseline-frozen.xml.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/cc-reader-main-integration/historical-1e31/reader-build.log.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/cc-reader-main-integration/historical-1e31/reader-candidate.xml.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/cc-reader-main-integration/historical-1e31/reader-regressions.xml.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/data-quality-main-integration/historical-10b/author-review-packet.json.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/data-quality-main-integration/historical-10b/baseline-scoped-unchanged-pair.txt.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/data-quality-main-integration/historical-10b/baseline-scoped-unchanged-pair.xml.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/data-quality-main-integration/historical-10b/candidate-6de-focused.xml.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/data-quality-main-integration/historical-10b/ci-doc-integration-inventory.json.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/data-quality-main-integration/historical-10b/data-quality6fbd-root-review.json.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/data-quality-main-integration/historical-10b/disposition-audit.json.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/data-quality-main-integration/historical-10b/functional-before-format.patch.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/data-quality-main-integration/historical-10b/label-6fb-frozen-focused.xml.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/data-quality-main-integration/historical-10b/label-followup-author-packet.json.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/data-quality-main-integration/historical-10b/main-b52-residuals.txt.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/data-quality-main-integration/historical-10b/main-b52-residuals.xml.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/data-quality-main-integration/historical-10b/root-6fbd-focused.xml.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/data-quality-main-integration/historical-10b/test_data_quality_residuals.py.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-current-reader-integration/upstream/README.md.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-current-reader-integration/upstream/artifact-manifest.json.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-current-reader-integration/upstream/backend-fixture.json.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-current-reader-integration/upstream/baseline-red.json.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-current-reader-integration/upstream/build.log.gz.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-current-reader-integration/upstream/candidate-green.json.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-current-reader-integration/upstream/contract-c2-baseline.json.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-current-reader-integration/upstream/contract-efd-candidate.json.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-current-reader-integration/upstream/expiry-clock-20b-baseline.txt.gz.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-current-reader-integration/upstream/expiry-invalid-clock-871-baseline.txt.gz.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-current-reader-integration/upstream/final-complete-test.mjs.txt.gz.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-current-reader-integration/upstream/independent-contract.mjs.gz.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-current-reader-integration/upstream/independent-expiry-clock.mjs.gz.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-current-reader-integration/upstream/independent-expiry-invalid-clock.mjs.gz.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-current-reader-integration/upstream/independent-view.mjs.gz.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-current-reader-integration/upstream/review-20b-request-changes.json.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-current-reader-integration/upstream/review-871-request-changes.json.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-current-reader-integration/upstream/review-c2-request-changes.json.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-current-reader-integration/upstream/review-efd-approve.json.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-current-reader-integration/upstream/validation.json.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-current-reader-integration/upstream/view-c2-baseline.json.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-current-reader-integration/upstream/view-efd-candidate.json.gz.gz": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/implementation/n8n-maturity/cron-inventory/data/CRON_INVENTORY.xlsx": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/header-right-edge-20261024/after/header-1280-stress.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/header-right-edge-20261024/after/header-1280.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/header-right-edge-20261024/after/header-1440.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/header-right-edge-20261024/after/header-1920.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/header-right-edge-20261024/after/header-2560.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/header-right-edge-20261024/after/header-412-expanded.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/header-right-edge-20261024/after/header-412.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/header-right-edge-20261024/after/header-821-auto-blocked.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/header-right-edge-20261024/after/header-821-auto-live.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/header-right-edge-20261024/after/header-821-stress.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/header-right-edge-20261024/after/header-821.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/header-right-edge-20261024/before/header-1280-stress.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/header-right-edge-20261024/before/header-1280.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/header-right-edge-20261024/before/header-1440.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/header-right-edge-20261024/before/header-1920.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/header-right-edge-20261024/before/header-2560.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/header-right-edge-20261024/before/header-412-expanded.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/header-right-edge-20261024/before/header-412.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/header-right-edge-20261024/before/header-821-auto-blocked.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/header-right-edge-20261024/before/header-821-auto-live.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/header-right-edge-20261024/before/header-821-stress.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/header-right-edge-20261024/before/header-821.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/home-account-chips-20261023/do-now-accounts-1440.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/home-account-chips-20261023/do-now-accounts-412.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/ops-config-modals-20261024-wp34/mockup-budget-desktop.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/ops-config-modals-20261024-wp34/mockup-schedule-mobile.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/watch-account-names-visible-20261024/watch-accounts-1440.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/watch-account-names-visible-20261024/watch-accounts-412.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/watch-freshness-noise-20261024/watch-freshness-1440-200.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/watch-freshness-noise-20261024/watch-freshness-1440-403.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/watch-freshness-noise-20261024/watch-freshness-1440-503.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/watch-freshness-noise-20261024/watch-freshness-412-200.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/watch-freshness-noise-20261024/watch-freshness-412-403.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/watch-freshness-noise-20261024/watch-freshness-412-503.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/watch-layout-20261023-wp31/after-full-universe_412.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/watch-layout-20261023-wp31/after-my-watchlist_1440.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/watch-layout-20261023-wp31/after-my-watchlist_412.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/watch-layout-20261023-wp31/after-prospects_412.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/watch-layout-20261023-wp31/before-full-universe_412.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/watch-layout-20261023-wp31/before-my-watchlist_1440.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/watch-layout-20261023-wp31/before-my-watchlist_412.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/watch-layout-20261023-wp31/before-prospects_412.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/watch-market-facts-20261024/current-1440.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/watch-market-facts-20261024/current-412.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/watch-market-facts-20261024/stale-1440.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/watch-market-facts-20261024/stale-412.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/wp29-account-labels-20261023/active-trader-1440.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/wp29-account-labels-20261023/active-trader-412.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/wp29-account-labels-20261023/cio-1440.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/wp29-account-labels-20261023/cio-412.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/wp29-account-labels-20261023/watch-1440.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/ops/packets/wp29-account-labels-20261023/watch-412.png": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/project/Trade_AI_v12_Reference_Architecture.docx": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    },
+    "docs/project/Trade_AI_v12_System_Architecture.docx": {
+      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05"
+    }
+  },
+  "grandfathered_count": 150,
+  "grandfathered_sha256": "0afbe99e15e3f26b1b9cefe1a4958b0a97f7e716bb9123ccaf58de6dacd8b8c0"
 }
