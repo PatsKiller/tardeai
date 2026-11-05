@@ -335,6 +335,10 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
     # session (``settle_same_day``), the only basis that can carry a stale closePrice under a fresh stamp. A properly
     # dated reference (the prior session's close) is independently anchored, so it is not capped: a Sunday 18:00-20:00
     # futures crash with no QQQ/SPY print still reaches STRESS, as it does on main.
+    # 2026-11-05 (codex-cloud BLOCK at 83fe9eaa0, P1): the cap is on the same-day futures CONTRIBUTION, not on the
+    # category. A fresh SPY at -1.6% is through the stress threshold on its own; an unconfirmed same-day /NQ beside it
+    # must not downgrade that independently measured STRESS to WARN. So the restricted rows are removed and the
+    # remaining evidence is re-scored; the category keeps the stronger of that and the capped WARN.
     frac = float((cfg.get("futures_confirm") or {}).get("fraction", 0.5))
     same_day_basis = "settle_same_day" in str(latest.get(worst_sym, {}).get("reference_basis") or "")
     if (state in ("WARN", "STRESS") and worst_sym in futures and worst is not None and worst < 0
@@ -342,11 +346,34 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
         confirmed = any(moves.get(p) is not None and moves[p] < 0 and abs(moves[p]) >= frac * abs(worst)
                         for p in proxies)
         if not confirmed:
-            state, score = "WARN", min(score, 74.0)
-            head += f" · capped at WARN: no index proxy moved {frac:.0%} of the futures move"
+            # every same-day futures row is restricted, not only the worst one: two unconfirmed futures moves are
+            # still futures-only evidence, and neither may stand in for a confirming index proxy
+            restricted = {s for s in moves
+                          if s in futures and "settle_same_day" in str(latest[s].get("reference_basis") or "")}
+            rest = {s: m for s, m in moves.items() if s not in restricted}
+            rest_state, rest_score, rest_sym, rest_worst = "CALM", 0.0, None, None
+            if rest:
+                rest_sym = min(rest, key=rest.get)
+                rest_worst = rest[rest_sym]
+                if rest_worst <= stress:
+                    rest_state, rest_score = "STRESS", min(100.0, 75.0 + 25.0 * (rest_worst - stress) / stress)
+                elif rest_worst <= warn:
+                    rest_state, rest_score = "WARN", 40.0 + 35.0 * (rest_worst - warn) / (stress - warn)
+                else:
+                    rest_state, rest_score = ("CALM",
+                                              max(0.0, 40.0 * rest_worst / warn) if rest_worst < 0 else 0.0)
+            capped_score = min(score, 74.0)
             evidence.append(Evidence(label="futures-only move not confirmed", value=None, as_of=None,
                                      source=CATEGORY,
-                                     detail=f"needs an index proxy at >= {frac:.0%} of the futures move ({worst:+.1f}%)"))
+                                     detail=f"needs an index proxy at >= {frac:.0%} of the futures move ({worst:+.1f}%); "
+                                            "not counted above WARN"))
+            if rest_score > capped_score:
+                state, score = rest_state, rest_score
+                head = f"{rest_sym} {rest_worst:+.1f}% extended · {worst_sym} not confirmed: not counted above WARN"
+                worst_sym, worst = rest_sym, rest_worst
+            else:
+                state, score = "WARN", capped_score
+                head += f" · capped at WARN: no index proxy moved {frac:.0%} of the futures move"
     if big:
         head += " · " + ", ".join(big[:3])
     if shock.get("shock"):

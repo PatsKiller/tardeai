@@ -546,6 +546,40 @@ def test_a_weak_proxy_does_not_confirm_a_same_day_futures_stress():
     assert obs.state == "WARN" and "capped at WARN" in obs.headline
 
 
+def test_an_independently_supported_stress_survives_a_same_day_futures_cap():
+    """codex-cloud BLOCK at 83fe9eaa0 (#2526, P1): the cap limits the same-day futures CONTRIBUTION, never the
+    category. A fresh SPY at -1.6% is through the -1.5% stress threshold on its own; adding an unconfirmed same-day
+    /NQ at -4% must not downgrade that independently measured STRESS to WARN (and the futures row must be named as
+    not counted, so the reader can see which evidence the severity rests on)."""
+    now = _et(2026, 11, 2, 2, 30)
+    obs = _eval([_same_day_q("/NQ", now - timedelta(minutes=2), 24672.0, 25700.0),  # -4.0%, unconfirmed
+                 _q("SPY", now - timedelta(minutes=2), 669.12, 680.0)], now)  # -1.6%: STRESS on its own
+    assert obs.state == "STRESS" and obs.score > 74.0  # the cap's ceiling is not the category's ceiling
+    assert "/NQ not confirmed: not counted above WARN" in obs.headline
+    assert obs.headline.startswith("SPY -1.6% extended")  # the headline names the evidence that carries the state
+
+
+def test_a_properly_dated_futures_selloff_survives_a_same_day_row_beside_it():
+    """The same P1, second half: a properly dated futures selloff is independently anchored and must keep its
+    STRESS even when a worse, unconfirmed same-day futures row happens to be the worst mover."""
+    now = _et(2026, 11, 2, 2, 30)
+    dated = _q("/ES", now - timedelta(minutes=2), 5952.0, 6200.0)  # -4.0%, prior-session reference
+    dated["reference_basis"] = DATED_BASIS
+    obs = _eval([_same_day_q("/NQ", now - timedelta(minutes=2), 24415.0, 25700.0), dated], now)  # /NQ -5.0%
+    assert obs.state == "STRESS" and obs.score > 74.0
+    assert obs.headline.startswith("/ES -4.0% extended · /NQ not confirmed: not counted above WARN")
+
+
+def test_a_second_same_day_futures_move_cannot_stand_in_for_an_index_proxy():
+    """Two same-day futures moves are still futures-only evidence: /ES must not become the independent support the
+    confirmation rule asks for just because /NQ is the worst row (codex-cloud P1 corollary)."""
+    now = _et(2026, 11, 2, 2, 30)
+    obs = _eval([_same_day_q("/NQ", now - timedelta(minutes=2), 24672.0, 25700.0),  # -4.0%
+                 _same_day_q("/ES", now - timedelta(minutes=2), 5997.0, 6200.0)], now)  # -3.3%
+    assert obs.state == "WARN" and obs.score <= 74.0
+    assert "capped at WARN" in obs.headline
+
+
 def test_sunday_futures_open_print_is_measured_from_friday_close():
     now = _et(2026, 11, 1, 18, 10)
     obs = _eval([_q("/NQ", _et(2026, 11, 1, 18, 5), 25200.0, 25700.0, "futures_open")], now)
