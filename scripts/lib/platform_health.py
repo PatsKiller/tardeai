@@ -703,9 +703,52 @@ def probe_wrapper_watchdog(deps: Deps) -> list[dict]:
                   None if status == "OK" else "inspect independent watchdog findings / coverage", _iso(observed), detail)]
 
 
+STAGED_UNITS_SPEC = ("schedulers.staged_units", "host", "staged host unit install",
+                     "StagedUnitsInstall@v1 receipt (scripts/install_staged_units.py at promote)")
+
+
+def probe_staged_units(deps: Deps) -> list[dict]:
+    """Readback of the release's staged-unit install. ok=false is CRIT; absent is UNKNOWN (never healthy)."""
+    root = deps.state_root or _default_state_root()
+    path = Path(root) / "data/runtime/staged_units_install_latest.json"
+    try:
+        with path.open("rb") as stream:
+            raw = stream.read(2 * 1024 * 1024 + 1)
+        if len(raw) > 2 * 1024 * 1024:
+            raise ValueError("oversized")
+        report = json.loads(raw)
+        if not isinstance(report, dict) or report.get("schema") != "StagedUnitsInstall@v1":
+            raise ValueError("schema")
+    except (OSError, ValueError, TypeError):
+        return [_unknown(STAGED_UNITS_SPEC, "install receipt unavailable; no staged-unit install proven yet", None)]
+    groups = [g for g in report.get("groups") or [] if isinstance(g, dict)]
+    detail = {"mode": report.get("mode"), "release": report.get("release"), "notification": report.get("notification"),
+              "groups": {str(g.get("id")): g.get("status") for g in groups}, "href": "/v3/system?tab=Jobs"}
+    value = ", ".join(f"{g.get('id')} {g.get('status')}" for g in groups) or "no groups"
+    status = "OK" if report.get("ok") is True else "CRIT"
+    return [_item(*STAGED_UNITS_SPEC, status, value,
+                  None if status == "OK" else "staged unit install failed; the unit is not running as reviewed",
+                  report.get("at"), detail)]
+
+
 # ── collection ───────────────────────────────────────────────────────────────
 
 #: (probe, the item specs it owns — used to emit UNKNOWN rows when the probe itself times out or raises).
+ANTHROPIC_SPEC = ("providers.anthropic", "providers", "Anthropic promotional API", "AnthropicProviderStatus@v1")
+
+
+def probe_anthropic(deps: Deps) -> list[dict]:
+    from scripts.lib.anthropic_monitoring import snapshot
+    reader = deps.extra.get("anthropic_reader") or snapshot
+    report = reader(deps.state_root or _default_state_root(), now=deps.now())
+    value = report.get("status")
+    if not value or value == "UNAVAILABLE":
+        return [_unknown(ANTHROPIC_SPEC, "Anthropic accounting evidence unavailable", report.get("as_of"))]
+    severity = "CRIT" if report.get("p1_continuous_failure") else "WARN" if value in {"DEGRADED", "PAUSED_TODAY", "EXHAUSTED"} else "OK"
+    return [_item(*ANTHROPIC_SPEC, severity, value, report.get("digest_line") if severity != "OK" else None,
+                  report.get("as_of"), {"provider_status": report, "href": "/consumption"})]
+
+
 PROBES: list[tuple[Callable[[Deps], list], list[tuple]]] = [
     (probe_n8n_containers, [_container_spec(n) for n in N8N_CONTAINERS]),
     (probe_n8n_healthz, [HEALTHZ_SPEC]),
@@ -721,7 +764,9 @@ PROBES: list[tuple[Callable[[Deps], list], list[tuple]]] = [
     (probe_backup_unit, [BACKUP_UNIT_SPEC]),
     (probe_postgres, [PG_SPEC]),
     (probe_wrapper_watchdog, [WRAPPER_WATCHDOG_SPEC]),
+    (probe_staged_units, [STAGED_UNITS_SPEC]),
     (probe_job_execution, [JOB_EXECUTION_SPEC]),
+    (probe_anthropic, [ANTHROPIC_SPEC]),
 ]
 
 _POOL = ThreadPoolExecutor(max_workers=len(PROBES), thread_name_prefix="platform-health")

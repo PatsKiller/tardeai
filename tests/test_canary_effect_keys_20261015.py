@@ -37,8 +37,9 @@ from tests.support import disk_hygiene_n8n as DHN  # noqa: E402
 from tests.support import data_integrity_monitors_n8n as DIM  # noqa: E402
 from tests.support import active_trader_motion_watchdog as ATMW  # noqa: E402
 from tests.support import hermes_scorer_canary as HSC  # noqa: E402
-from tests.support import release_train_h0 as RTH0  # noqa: E402
+from tests.support import pr_hygiene_audit_canary as PHA  # noqa: E402
 from tests.support import cio_prospect_canary_20261025 as CPC  # noqa: E402
+from tests.support import macro_calendar_canary_20261026 as MCC  # noqa: E402
 
 from scripts import n8n_run_executor as X  # noqa: E402
 from scripts.lib import effect_claim as E  # noqa: E402
@@ -108,6 +109,10 @@ LLM = {
     "news-to-catalyst",
     "advisory-desk-run-now",
     "analyst-prospectus-generate",
+    # 2026-10-29 Ask lifecycle + material-events canary (DSN-20261026-ask-hourly P1-T4): both call the governed
+    # bridge (cio_ask_reanswer + critiques) and append the Ask ledger.
+    "cio-ask-lifecycle",
+    "cio-ask-material-events",
 }
 ON_DEMAND = {"advisory-desk-run-now", "analyst-prospectus-generate"}
 
@@ -146,13 +151,23 @@ def _scope() -> set[str]:
     # 2026-10-19 active-trader-motion-watchdog (tests/support/active_trader_motion_watchdog.py): n8n-native, no cron
     # side, one intent per band change; reviewed by tests/test_active_trader_motion_watchdog_20261019.py, not keyed.
     canary -= set(ATMW.LIVE)
-    # 2026-10-22 release train H.0 shadow-enable (tests/support/release_train_h0.py): n8n-native request lanes and
-    # pr-hygiene-audit, no cron side to fence; a request is one O_EXCL file per window id. Not keyed.
-    canary -= set(RTH0.LIVE)
+    # 2026-10-22 pr-hygiene-audit canary (tests/support/pr_hygiene_audit_canary.py): n8n-native, no cron side to
+    # fence. Not keyed. (The release-train request lanes that shared this pin were removed 2026-10-27.)
+    canary -= set(PHA.LIVE)
     # 2026-10-25 cio-prospect-shadow canary (tests/support/cio_prospect_canary_20261025.py): n8n-native, overwrite-only.
     canary -= set(CPC.LIVE)
+    # 2026-10-26 macro-calendar-refresh canary (tests/support/macro_calendar_canary_20261026.py): n8n-native,
+    # overwrite-only.
+    canary -= set(MCC.LIVE)
     return set(RELAY_LIVE) | set(TIER_A) | set(TIER_B) | canary
 
+
+#: 2026-10-29 Ask lifecycle + material-events canary (DSN-20261026-ask-hourly P1-T4): n8n-native llm lanes that
+#: append the Ask ledger and call the governed bridge. Not overwrite-only, so they join STAGED with an effect key.
+ASK_LANES_CANARY_20261029 = frozenset({"cio-ask-lifecycle", "cio-ask-material-events"})
+#: 2026-10-29 conflict-resolver canary (W8 live flip): n8n-native learn lane that appends the conflict ledger via
+#: --shadow (read-only evaluation, no LLM, no send). Not overwrite-only, so it joins STAGED with an effect key.
+CONFLICT_RESOLVER_CANARY_20261029 = frozenset({"conflict-resolver"})
 
 STAGED = sorted(_scope() - set(NOT_KEYED_OVERWRITE_ONLY))
 
@@ -167,8 +182,11 @@ def test_scope_is_the_68_lanes_and_partition_is_complete():
     # + 1 / + 1: 2026-10-21 hermes-watchlist-scorer cron canary (operator waiver "push live now";
     # tests/support/hermes_scorer_canary.py). It appends hermes_score_history rows, so it stays IN scope with a
     # STAGED key (cron_claim false, n8n_claim false) that its cutover arms: 69 lanes, 51 staged.
-    assert len(scope) == 68 + len(HSC.LIVE) and len(STAGED) == 50 + len(HSC.LIVE)
+    assert len(scope) == 68 + len(HSC.LIVE) + len(ASK_LANES_CANARY_20261029) + len(CONFLICT_RESOLVER_CANARY_20261029)
+    assert len(STAGED) == 50 + len(HSC.LIVE) + len(ASK_LANES_CANARY_20261029) + len(CONFLICT_RESOLVER_CANARY_20261029)
     assert set(HSC.LIVE) <= set(STAGED)
+    assert set(ASK_LANES_CANARY_20261029) <= set(STAGED)
+    assert set(CONFLICT_RESOLVER_CANARY_20261029) <= set(STAGED)
 
 
 @pytest.mark.parametrize("lane", STAGED)

@@ -11,6 +11,7 @@ import math
 
 from .engine import Finding, Input, Subject, UNKNOWN, evaluate, headline, finding_sort_key
 from .profiles import NumericFactProfile, ScheduleStateProfile, SecurityStanceProfile, _n
+from .producers import ownership_facts
 from .profiles.rulebook import RULEBOOK
 
 
@@ -105,9 +106,11 @@ def security_inputs_from_truth(truth, *, card=None, reentry=None, extras=()):
             value = "AWAITING_FILL"
         protection.append(Input(raw["source"], value, timestamp(raw.get("as_of")), role="protection",
                                 subject_id=raw.get("subject_id"), account=raw.get("account")))
+    # R12: stance/position-vs-fill disagreements the CIO prospect builder saved are ownership DATA_ERROR facts.
+    ownership = ownership_facts(truth.get("saved_diagnostics") or [], subject_id=truth.get("security_guid"))
     result = security_inputs(security_guid=truth.get("security_guid"), symbol=truth.get("symbol"),
                            canonical=truth.get("canonical"), held=(truth.get("context") or {}).get("held"),
-                           card=card, reentry=reentry, extras=[*protection, *extras])
+                           card=card, reentry=reentry, extras=[*protection, *ownership, *extras])
     result.subject.context.update(truth.get("context") or {})
     result.subject.context["conviction"] = truth.get("conviction")
     return result

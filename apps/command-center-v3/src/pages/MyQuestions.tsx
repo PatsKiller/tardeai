@@ -11,8 +11,8 @@ import { useApi } from '../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, chipStyle } from '../lib/designTokens'
 import {
   ASK_PATHS, CHANNEL_LABEL, TOOLTIPS, currentVersion, entityLabel, filterSummaries, isPending, relativeAge,
-  sizingLine, sortSummaries, statusLabel, statusTone, unwrap, validateQuestion,
-  type AnswerVersion, type Thread, type ThreadSummary, type Turn,
+  sizingLine, sortSummaries, statusLabel, statusTone, unwrap, validateQuestion, latestAnswer, newRequestId, researchLifecycle, researchStatus, researchRefreshText,
+  type AnswerVersion, type Thread, type ThreadSummary, type Turn, type ResearchRefreshResult,
 } from '../lib/askCioModel'
 import { askCio, askErrorText, regroupQuestion, requestDeep, untrackEntity } from '../lib/askCioApi'
 import { CHANNEL_OPTIONS, GROUP_BYS, GROUP_LABEL, countsText, groupBy as groupByOf, groupedPath, groupedPayload, memoryText, relatedFor, type GroupBy, type GroupedQuestions } from '../lib/askCioGroups'
@@ -20,14 +20,21 @@ import AskCioAnswer from '../components/AskCioAnswer'
 import { ASK_UPDATED_EVENT, answerPresentation, askUpdate, keepNewestThread, matchingThread, publishAskUpdate, readableVersion, threadVersionKey } from '../lib/askCioPresentation'
 import { useAskPhoneSheet } from '../hooks/useAskPhoneSheet'
 import '../components/AskCio.css'
+import { readableTime } from '../lib/readableTime'
 
 const card = { border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.lg, background: TOKENS.bg[1], padding: 12 } as const
-const btn = { fontSize: TYPE.sm, padding: '4px 10px', borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[2], color: TOKENS.text[0], cursor: 'pointer' } as const
+const btn = { minHeight: 44, minWidth: 44, fontSize: TYPE.sm, padding: '4px 10px', borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[2], color: TOKENS.text[0], cursor: 'pointer' } as const
+
+type RefreshState = { busy: boolean; requestedAt: number; checkedAt: string | null; result?: ResearchRefreshResult; error?: string }
+type Refreshes = Record<string, RefreshState>
+type RefreshResearch = (threadId: string, checkedAt: string | null) => void
 
 export default function MyQuestions() {
   const { threadId } = useParams()
   const location = useLocation()
   const [search, setSearch] = useSearchParams()
+  const [refreshes, setRefreshes] = useState<Refreshes>({})
+  const refreshing = useRef(new Set<string>())
   const [pending, setPending] = useState(false)
   const list = useApi<unknown>(ASK_PATHS.list, pending ? 5_000 : 30_000)
   const rows = useMemo(() => sortSummaries(unwrap<{ threads: ThreadSummary[] }>(list.data)?.threads ?? []), [list.data])
@@ -51,11 +58,24 @@ export default function MyQuestions() {
   const shown = filterSummaries(rows, filter).filter(r => !channel || r.channels.includes(channel as never))
   const options = grouped?.group_bys ?? GROUP_BYS.map(id => ({ id, available: true, reason: null }))
   const themeGap = options.find(o => o.id === 'theme' && !o.available)
+  const refreshResearch: RefreshResearch = async (id, checkedAt) => {
+    if (refreshing.current.has(id)) return
+    refreshing.current.add(id)
+    const requestedAt = Date.now()
+    setRefreshes(previous => ({ ...previous, [id]: { busy: true, requestedAt, checkedAt } }))
+    try {
+      const result = await requestDeep(id, undefined, newRequestId())
+      setRefreshes(previous => ({ ...previous, [id]: { busy: false, requestedAt, checkedAt, result } }))
+    } catch (error) {
+      setRefreshes(previous => ({ ...previous, [id]: { busy: false, requestedAt, checkedAt, error: askErrorText(error) } }))
+    } finally { refreshing.current.delete(id); list.refetch(); groupedApi.refetch() }
+  }
+
   return (
     <div className="ask-questions" data-testid="my-questions" style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
       <section style={{ ...card, flex: '1 1 300px', maxWidth: 520 }}>
         <h2 style={{ margin: '0 0 4px', fontSize: TYPE.md }}>My questions</h2>
-        <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2], marginBottom: 8 }}>Every question you asked here or on Telegram · saved in CIO memory · related questions grouped</div>
+        <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2], marginBottom: 8 }}>Questions and answers from Command Center and Telegram · research checks and answer dates shown separately</div>
         <input aria-label="Filter questions" placeholder="Search questions, tickers, sectors" value={filter} onChange={e => setFilter(e.target.value)}
           style={{ width: '100%', boxSizing: 'border-box', fontSize: TYPE.base, padding: '5px 8px', borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[0], color: TOKENS.text[0], marginBottom: 8 }} />
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
@@ -80,7 +100,7 @@ export default function MyQuestions() {
         {!list.loading && !rows.length && !list.error && (
           <div data-testid="mq-empty" style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>No questions yet. Use the Ask the CIO bar above (⌘K), or message the CIO bot on Telegram.</div>
         )}
-        {gb !== 'none' && grouped ? <Groups grouped={grouped} threadId={threadId} search={location.search} />
+        {gb !== 'none' && grouped ? <Groups grouped={grouped} threadId={threadId} search={location.search} rows={rows} refreshes={refreshes} onRefresh={refreshResearch} />
           : <>
             {gb !== 'none' && !groupedApi.loading && rows.length > 0 && <div role="status" data-testid="mq-grouping-unavailable" style={{ fontSize: TYPE.sm, color: TOKENS.text[2], marginBottom: 6 }}>
               Grouping unavailable{groupedApi.error ? ` — ${groupedApi.error}` : ' from the server'} — showing every thread.</div>}
@@ -98,13 +118,14 @@ export default function MyQuestions() {
                   ))}
                   <span style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>{r.channels.map(c => CHANNEL_LABEL[c] ?? c).join(' · ')} · {relativeAge(r.updated_at)}</span>
                 </div>
+                <LifecycleReceipt raw={r.lifecycle} compact />
               </Link>
             </li>
           ))}
         </ul></>}
       </section>
       <section style={{ flex: '3 1 520px', minWidth: 0 }}>
-        {threadId ? <ThreadView key={threadId} threadId={threadId} groupBy={gb} grouped={grouped} onChanged={() => { list.refetch(); groupedApi.refetch() }} /> : (
+        {threadId ? <ThreadView key={threadId} threadId={threadId} groupBy={gb} grouped={grouped} refreshes={refreshes} onRefresh={refreshResearch} onChanged={() => { list.refetch(); groupedApi.refetch() }} /> : (
           <div style={{ ...card, fontSize: TYPE.base, color: TOKENS.text[2] }}>Pick a question to see its thread, answers, sources and what it is tracking.</div>
         )}
       </section>
@@ -112,7 +133,44 @@ export default function MyQuestions() {
   )
 }
 
-function Groups({ grouped, threadId, search }: { grouped: GroupedQuestions; threadId?: string; search: string }) {
+
+function LifecycleReceipt({ raw, lastAnswer, compact = false }: { raw: unknown; lastAnswer?: string | null; compact?: boolean }) {
+  const l = researchLifecycle(raw)
+  const time = (value: string | null | undefined) => readableTime(value) ?? 'not measured'
+  return <div data-testid="ask-research-lifecycle" data-state={l.state} style={{ fontSize: TYPE.sm, color: TOKENS.text[1], display: 'grid', gap: 4, margin: '6px 0', overflowWrap: 'anywhere' }}>
+    <strong>{researchStatus(l)}</strong>
+    <span>Last checked: {time(l.last_checked_at)} · Last answer: {time(l.last_answer_at ?? lastAnswer)}</span>
+    <span>Next check: {time(l.next_check_at)}{l.next_eligible_at ? ` · Next eligible: ${time(l.next_eligible_at)}` : ''}</span>
+    {l.last_checked_at && l.last_check_outcome === 'no_change' && l.state !== 'current' && <span>Last check: Checked — no material change</span>}
+    {l.reason && <span style={{ color: TOKENS.warning }}>{l.reason}</span>}
+    {!compact && <>
+      <span>{l.monitoring_active === null ? 'Monitoring: not measured' : l.monitoring_active ? 'Monitoring active · hourly checks and material events' : 'Monitoring inactive'}</span>
+      <span>Question memory: {l.memory_sync.state ?? 'not measured'}{l.memory_sync.reason ? ` — ${l.memory_sync.reason}` : ''}</span>
+      <span>Delivery: {l.delivery.state ?? 'not measured'}{l.delivery.reason ? ` — ${l.delivery.reason}` : ''}</span>
+      <details data-testid="ask-research-evidence"><summary style={{ minHeight: 44, minWidth: 44, boxSizing: 'border-box', padding: '12px 0', cursor: 'pointer' }}>Research evidence</summary>
+        {(['sources', 'providers'] as const).map(kind => <div key={kind}><b>{kind === 'sources' ? 'Sources' : 'Providers'}</b>
+          {l[kind].length ? <ul>{l[kind].map((entry, i) => <li key={i}>{entry.label}{entry.state ? ` · ${entry.state}` : ''}{entry.as_of ? ` · ${time(entry.as_of)}` : ''}{entry.reason ? ` — ${entry.reason}` : ''}</li>)}</ul> : ' — not measured'}
+        </div>)}
+      </details>
+    </>}
+  </div>
+}
+function ResearchRefresh({ threadId, lifecycle, serverPending, refreshes, onRefresh }: { threadId: string; lifecycle: unknown; serverPending?: boolean; refreshes: Refreshes; onRefresh: RefreshResearch }) {
+  const l = researchLifecycle(lifecycle), r = refreshes[threadId]
+  const resultPending = r?.result && (['pending', 'queued', 'scheduled', 'running', 'checking', 'deep_pending'].includes(r.result.status ?? '') || researchLifecycle(r.result.lifecycle).state === 'checking')
+  const advanced = !!r && !!l.last_checked_at && Date.parse(l.last_checked_at) > Math.max(r.requestedAt, Date.parse(r.checkedAt ?? '') || 0)
+  const waiting = resultPending && !advanced && !['blocked', 'failed', 'partial', 'deferred'].includes(l.state)
+  const legacyPending = !!serverPending && !['current', 'partial', 'blocked', 'failed', 'overdue', 'deferred'].includes(l.state)
+  const busy = !!r?.busy || legacyPending || l.state === 'checking' || !!waiting
+  const settled = advanced || (resultPending && ['blocked', 'failed', 'partial', 'deferred'].includes(l.state))
+  return <div data-testid={`ask-refresh-${threadId}`} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '6px 0' }}>
+    <button type="button" style={btn} disabled={busy} onClick={() => onRefresh(threadId, l.last_checked_at)}>{r?.busy ? 'Requesting research…' : busy ? 'Research pending…' : 'Refresh research'}</button>
+    {r?.result && <span role="status" style={{ fontSize: TYPE.sm }}>{researchRefreshText(settled ? { status: l.state, lifecycle } : r.result)}</span>}
+    {r?.error && <span role="alert" style={{ color: TOKENS.danger, fontSize: TYPE.sm }}>Refresh unavailable — {r.error}</span>}
+  </div>
+}
+
+function Groups({ grouped, threadId, search, rows, refreshes, onRefresh }: { grouped: GroupedQuestions; threadId?: string; search: string; rows: ThreadSummary[]; refreshes: Refreshes; onRefresh: RefreshResearch }) {
   if (!grouped.groups.length) return <div data-testid="mq-groups-empty" style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>No questions match this search and channel.</div>
   return (
     <div data-testid="my-questions-groups" style={{ display: 'grid', gap: 10 }}>
@@ -122,8 +180,12 @@ function Groups({ grouped, threadId, search }: { grouped: GroupedQuestions; thre
             <div style={{ minWidth: 0 }}><b style={{ fontFamily: grouped.group_by === 'security' ? FONT.mono : FONT.sans, fontSize: TYPE.md }}>{g.label}</b>{g.sub && <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}> {g.sub}</span>}</div>
             <span data-testid="mq-group-counts" style={{ fontSize: TYPE.xs, color: TOKENS.text[2] }}>{countsText(g, grouped.group_by)}</span>
           </div>
-          {grouped.group_by !== 'date' && grouped.group_by !== 'none' && <div data-testid="mq-group-memory" title={[g.memory.stance_source, g.memory.stance_as_of].filter(Boolean).join(' · ') || undefined}
+          {grouped.group_by !== 'date' && grouped.group_by !== 'none' && <div data-testid="mq-group-memory" title={[g.memory?.stance_source, g.memory?.stance_as_of].filter(Boolean).join(' · ') || undefined}
             style={{ fontSize: TYPE.sm, color: TOKENS.text[1], padding: '6px 8px', borderRadius: RADIUS.md, background: TOKENS.bg[2] }}>{memoryText(g.memory, relativeAge, grouped.group_by === 'security' && !!g.symbol)}</div>}
+          <LifecycleReceipt raw={g.lifecycle} lastAnswer={g.memory?.last_answer_at} />
+          {[...new Set([...(g.thread_ids ?? []), ...g.questions.map(q => q.thread_id)])].map(id => <ResearchRefresh key={id} threadId={id}
+            lifecycle={rows.find(row => row.thread_id === id)?.lifecycle ?? (g.thread_ids?.length === 1 ? g.lifecycle : undefined)} serverPending={isPending(rows.find(row => row.thread_id === id)?.status)}
+            refreshes={refreshes} onRefresh={onRefresh} />)}
           {g.questions.map(q => (
             <Link key={`${g.key}:${q.ask_id}`} to={{ pathname: `/cio/questions/${q.thread_id}`, search }} state={{ askReturn: true }} data-testid={`gq-${q.ask_id}`}
               style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: TYPE.base, color: TOKENS.text[0], textDecoration: 'none', padding: '6px 0', borderTop: `1px solid ${TOKENS.border}`,
@@ -138,7 +200,7 @@ function Groups({ grouped, threadId, search }: { grouped: GroupedQuestions; thre
   )
 }
 
-function ThreadView({ threadId, onChanged, groupBy, grouped }: { threadId: string; onChanged: () => void; groupBy: GroupBy; grouped: GroupedQuestions | null }) {
+function ThreadView({ threadId, onChanged, groupBy, grouped, refreshes, onRefresh }: { threadId: string; onChanged: () => void; groupBy: GroupBy; grouped: GroupedQuestions | null; refreshes: Refreshes; onRefresh: RefreshResearch }) {
   const nav = useNavigate(), location = useLocation()
   const sheet = useRef<HTMLDivElement>(null)
   const back = () => { if (location.state?.askReturn) nav(-1); else nav({ pathname: '/cio/questions', search: location.search }, { replace: true }) }
@@ -173,6 +235,8 @@ function ThreadView({ threadId, onChanged, groupBy, grouped }: { threadId: strin
       {Boolean(res.data) && t !== candidate && <div role="status" style={{ ...card, color: TOKENS.warning }}>The update could not advance this thread — showing its newer saved version.</div>}
       {res.stale && <div role="status" style={{ ...card, color: TOKENS.warning }}>Thread refresh unavailable — showing the saved thread from {t.updated_at}.</div>}
       <div style={card}>
+        <LifecycleReceipt raw={t.lifecycle} lastAnswer={latestAnswer(t)?.produced_at} />
+        <ResearchRefresh threadId={t.thread_id} lifecycle={t.lifecycle} serverPending={isPending(t.status)} refreshes={refreshes} onRefresh={onRefresh} />
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <h2 style={{ margin: 0, fontSize: TYPE.md, flex: '1 1 auto' }}>{t.title}</h2>
           <span style={chipStyle(statusTone(t.status), 'soft', 'md')}>{statusLabel(t.status)}</span>
@@ -324,10 +388,6 @@ function FollowUp({ thread, onDone }: { thread: Thread; onDone: () => void }) {
           <input type="checkbox" checked={deep} onChange={e => setDeep(e.target.checked)} disabled={busy} /> Deep
         </label>
         <button type="submit" data-testid="ask-follow-up-send" disabled={busy || !q.trim()} style={btn}>{busy ? 'Asking…' : 'Send'}</button>
-        <button type="button" data-testid="ask-request-deep" title={TOOLTIPS.deep} disabled={busy || pending} style={btn}
-          onClick={async () => { setBusy(true); try { await requestDeep(thread.thread_id); onDone() } catch (ex) { setErr(askErrorText(ex)) } finally { setBusy(false) } }}>
-          {pending ? 'Deep research pending…' : 'Request deep answer'}
-        </button>
         {err && <span style={{ fontSize: TYPE.sm, color: TOKENS.danger }}>{err}</span>}
       </div>
     </form>

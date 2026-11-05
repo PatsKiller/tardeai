@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "prospectus_accuracy_audit_20261026",
+  "files": [
+    "tests/test_prospectus_accuracy_audit_20261026.py"
+  ],
+  "anchor": "PROSPECTUS_ACCURACY_AUDIT_20261026",
+  "comment": [
+    "ANCHOR: PROSPECTUS_ACCURACY_AUDIT_20261026 — Ticker Prospectus accuracy auditor (standing QA, operator 2026-10-26 \"Money is riding on this\"): recomputes positions, stops, prices/returns, dividends, fundamentals, macro and realized history from the primary stores after each run window; dry run writes nothing, --apply writes only data/prospectus/accuracy/ and files data-gap rows for data defects; read-only DB wrapper; monthly Opus prose sample capped at $2 per UTC month. Synthetic tickers; stores, DB and the model stubbed."
+  ]
+}

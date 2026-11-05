@@ -4,6 +4,7 @@ import { useApi } from '../hooks/useApi'
 import { BB, T, TYPE } from '../lib/watchTokens'
 import { RADIUS } from '../lib/designTokens'
 import ReadableTime from './ReadableTime'
+import { cioPageDataFrom, HomeBoardMount, withHomeClocks } from './homeDeskMount'
 
 export type DeskTab = { id: string; label: string }
 export type DeskSource = {
@@ -13,6 +14,10 @@ export type DeskSource = {
   laneIds?: string[]
   maxAgeHours?: number
   gap?: string
+  /** Informational clock text, such as a market-closed holdings phrase. Not a gap. */
+  note?: string
+  /** A receipt clock with no single writer lane. Skips the missing-writer warning. */
+  clockOnly?: boolean
 }
 export type DeskDecision = { id: string; title: string; detail?: string; href?: string }
 export type DeskWriter = {
@@ -88,6 +93,8 @@ export type DeskPageProps = {
 
 /** No page facts are computed here: callers supply source timestamps and decisions. */
 export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAliases, sources, decisions, decisionGap, children }: DeskPageProps) {
+  const homeData = title === 'Home' && typeof children !== 'function' ? cioPageDataFrom(children) : null
+  const pageSources = homeData ? withHomeClocks(sources, homeData) : sources
   const [active, setTab] = useDeskTab(tabs, defaultTab, tabAliases)
   // On a phone the source clocks and decisions sit between the tabs and the content; after a tab tap,
   // bring the selected content into view so the tap visibly does something (mobile-first standard 1).
@@ -101,7 +108,7 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
   }, [active])
   const [now, setNow] = useState(Date.now)
   useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), 60_000); return () => window.clearInterval(id) }, [])
-  const laneIds = [...new Set(sources.flatMap(source => source.laneIds ?? []))].sort()
+  const laneIds = [...new Set(pageSources.flatMap(source => source.laneIds ?? []))].sort()
   const { data, loading, error, stale, refetch } = useApi<SourceResponse>(`/api/v2/desk-sources?lanes=${encodeURIComponent(laneIds.join(','))}`, 60_000, { enabled: laneIds.length > 0 })
   const payload: SourcePayload | undefined = data && 'writers' in data ? data : (data as { data?: SourcePayload } | null)?.data
   const sourceReadFailed = Boolean(data) && (('ok' in (data as object) && (data as { ok: boolean }).ok !== true) || !Array.isArray(payload?.writers))
@@ -121,9 +128,9 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
       {(error || stale || sourceReadFailed) && <DeskGap title="Writer clocks unavailable" reason="The latest execution evidence could not be loaded. Any retained clocks are historical.">
         <button type="button" onClick={refetch} style={{ minHeight: 44, width: '100%', marginTop: 8 }}>Retry writer clocks</button>
       </DeskGap>}
-      {sources.length === 0 && <DeskGap title="Source evidence unavailable" reason="This view has not supplied source clocks." />}
+      {pageSources.length === 0 && <DeskGap title="Source evidence unavailable" reason="This view has not supplied source clocks." />}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 12 }}>
-        {sources.map(source => {
+        {pageSources.map(source => {
           const age = clock(source.asOf, now)
           const sourceWriters = (source.laneIds ?? []).map(id => writers.get(id))
           const staleSource = source.maxAgeHours !== undefined && age.hours !== undefined && age.hours > source.maxAgeHours
@@ -131,7 +138,8 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
           return <article key={source.id} style={{ ...panel, padding: 12 }}>
             <strong>{source.label}</strong><div data-testid="desk-source-age" style={{ color: gap ? BB.amber : BB.text2, marginTop: 6 }}>{age.hours !== undefined ? `Updated ${age.text}` : sentence(age.text)}</div>
             {source.asOf && <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>As of <ReadableTime value={source.asOf} testId="desk-source-as-of" /></div>}
-            {sourceWriters.length === 0 && <p style={{ color: BB.amber, fontSize: TYPE.base }}>Writer not identified for this source.</p>}
+            {source.note && <div data-testid="desk-source-note" style={{ fontSize: TYPE.base, color: BB.text2, marginTop: 6 }}>{source.note}</div>}
+            {sourceWriters.length === 0 && !source.clockOnly && <p style={{ color: BB.amber, fontSize: TYPE.base }}>Writer not identified for this source.</p>}
             {sourceWriters.map((writer, index) => <div key={source.laneIds![index]} style={{ borderTop: `1px solid ${BB.border}`, paddingTop: 8, marginTop: 8, fontSize: TYPE.base }}>
               <div style={{ color: writer?.state === 'ACTIVE' ? BB.text2 : BB.amber }}>Writer {writer?.state ?? (loading ? 'loading' : 'state unavailable')}{sourceWriters.length > 1 ? ` · ${index + 1}` : ''}</div>
               <div>Last successful run: {writer?.last_success_at ? clock(writer.last_success_at, now).text : 'not measured'}</div>
@@ -152,6 +160,6 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
         {decision.href && <Link style={{ color: T.link, display: 'flex', alignItems: 'center', minHeight: 44, width: '100%' }} to={decision.href}>{decision.title}</Link>}
       </li>)}</ul> : <p style={{ color: BB.text3, margin: 0 }}>{decisionGap ?? 'Decision evidence has not been supplied for this view.'}</p>}
     </section>
-    <div ref={contentRef} style={{ scrollMarginTop: 8 }}>{typeof children === 'function' ? children(active) : children}</div>
+    <div ref={contentRef} style={{ scrollMarginTop: 8 }}>{homeData ? <HomeBoardMount data={homeData} /> : (typeof children === 'function' ? children(active) : children)}</div>
   </div>
 }

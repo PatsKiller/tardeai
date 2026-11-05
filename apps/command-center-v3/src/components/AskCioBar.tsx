@@ -31,7 +31,7 @@ export default function AskCioBar() {
   // Voice-to-text: the browser's own speech recognition (Chrome, Edge, Android, iOS Safari). Hidden where unsupported.
   const SpeechRec = typeof window !== 'undefined' ? ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition) : null
   const nav = useNavigate()
-  const trackedRes = useApi<unknown>(ASK_PATHS.tracked, 60_000)
+  const trackedRes = useApi<unknown>(ASK_PATHS.tracked, 60_000, { priority: 'background' })
   const chips = trackedChips(unwrap<{ tracked: TrackedRow[] }>(trackedRes.data)?.tracked)
 
   useEffect(() => {

@@ -6,6 +6,7 @@
   only; now one row per line, each with its own log.
 * due-diligence-questions: max(created_at) does not move on a 0-row run; the */20 run log is the signal.
 """
+
 from __future__ import annotations
 
 import json
@@ -34,8 +35,11 @@ def test_watch_review_workers_split_one_row_per_crontab_line():
         assert row["state"] == "ACTIVE"
         assert re.match(r"^\d+ 16 \* \* 1,3,5(?: |$)", row["scheduler"]["expression"])  # bare since registry-ops-crons
     # no other row may also claim either line
-    others = [r["lane_id"] for r in REG["lanes"]
-              if "run_watch_review_workers.py" in str((r.get("scheduler") or {}).get("match") or "")]
+    others = [
+        r["lane_id"]
+        for r in REG["lanes"]
+        if "run_watch_review_workers.py" in str((r.get("scheduler") or {}).get("match") or "")
+    ]
     assert sorted(others) == ["watch-review-workers", "watch-review-workers-cio"]
 
 
@@ -46,12 +50,14 @@ def test_due_diligence_questions_signal_is_run_log():
 
 def test_n8n_governance_rows_cadence_without_state_change():
     assert ROWS["n8n-activation-grants"]["expected_cadence_hours"] == 0.5
-    assert ROWS["n8n-workflow-drift-check"]["expected_cadence_hours"] == 1.0
-    # registry-ops-crons 2026-10-09: both moved to host cron (PAUSED pending install, then ACTIVE);
-    # tests/test_registry_ops_crons_20261009.py pins the rows.
-    for lid in ("n8n-activation-grants", "n8n-workflow-drift-check"):
+    # 2026-10-27: the drift check runs every 15 min on the tradeai-n8n-drift-watch.timer host timer.
+    assert ROWS["n8n-workflow-drift-check"]["expected_cadence_hours"] == 0.25
+    # registry-ops-crons 2026-10-09: both moved off n8n onto the host (PAUSED pending install, then ACTIVE);
+    # P16 is a host cron row (tests/test_registry_ops_crons_20261009.py), P18 a systemd user timer row
+    # (tests/test_n8n_drift_check_schedule_20261027.py).
+    for lid, kind in (("n8n-activation-grants", "cron"), ("n8n-workflow-drift-check", "systemd")):
         assert ROWS[lid]["state"] in {"PAUSED", "ACTIVE"}
-        assert ROWS[lid]["scheduler"]["kind"] == "cron"
+        assert ROWS[lid]["scheduler"]["kind"] == kind
 
 
 def test_watch_intelligence_dependency_names_both_review_lanes():

@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_ui_20261031",
+  "files": [
+    "tests/test_market_risk_projection_20261031.py"
+  ],
+  "anchor": "MARKET_RISK_UI_20261031",
+  "comment": [
+    "ANCHOR: MARKET_RISK_UI_20261031 — market-risk projection behind GET /api/v2/market-risk/latest and POST /ack",
+    "(design home/v002, risk/v002). Pins: no engine snapshot = not_evaluated, never a tier inferred from one source;",
+    "snapshot pass-through with five contributors and staleness by age; banner only for evaluated ORANGE/RED;",
+    "acknowledgment refused honestly until the episodes store exists (P3-T7). Hermetic: dicts only."
+  ]
+}

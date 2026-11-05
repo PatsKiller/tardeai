@@ -352,7 +352,7 @@ def test_full_collect_with_everything_failing_is_all_unknown_never_ok(tmp_path):
 
     deps = make_deps(tmp_path, runner, db_query=lambda *a, **k: None, http_get=http,
                      disk_usage=lambda p: (_ for _ in ()).throw(OSError()), loadavg=lambda: 1 / 0,
-                     meminfo=lambda: "")
+                     meminfo=lambda: "", extra={"anthropic_reader": lambda *a, **k: {"status": "UNAVAILABLE"}})
     out = ph.collect(deps)
     assert out["items"], "every probe still yields rows"
     assert {i["status"] for i in out["items"]} <= {"UNKNOWN", "CRIT"}

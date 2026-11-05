@@ -70,6 +70,9 @@ def emit_cost_event(
     completion_tokens: Optional[int] = None,
     cache_hit_tokens: Optional[int] = None,
     cache_miss_tokens: Optional[int] = None,
+    cache_creation_input_tokens: Optional[int] = None,
+    cache_creation_1h_tokens: Optional[int] = None,
+    batch: bool = False,
     raw_key: Optional[str] = None,
     usage_start: Optional[str] = None,
     path: Optional[Path] = None,
@@ -148,6 +151,9 @@ def emit_cost_event(
                     cache_hit_input=int(cache_hit_tokens or 0),
                     cache_miss_input=int(miss or 0),
                     output=int(completion_tokens or 0),
+                    cache_creation_input_tokens=int(cache_creation_input_tokens or 0),
+                    cache_creation_1h_tokens=int(cache_creation_1h_tokens or 0),
+                    batch=batch,
                 )
             if request_sent is None:
                 request_sent = True
@@ -189,6 +195,8 @@ def emit_cost_event(
                 )
             ),
             cached_input_tokens=None if cache_hit_tokens is None else int(cache_hit_tokens),
+            cache_creation_input_tokens=cache_creation_input_tokens,
+            cache_creation_1h_tokens=cache_creation_1h_tokens,
             output_tokens=None if completion_tokens is None else int(completion_tokens),
             calculated_cost_usd=priced.get("calculated_cost_usd"),
             cost_source=priced.get("cost_source"),

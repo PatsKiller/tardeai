@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agent_nudger_p2_20261103",
+  "files": [
+    "tests/test_agent_nudger_p2_20261103.py"
+  ],
+  "anchor": "AGENT_NUDGER_P2_20261103",
+  "comment": [
+    "ANCHOR: AGENT_NUDGER_P2_20261103 — the nudger is registered as an n8n dispatcher lane at scheduler.stage shadow with dispatch.mode dry_run, its allowlist entry points at the repo script and names a non-empty --dry-run, the executor accepts the entry, and the stage clamp turns a requested LIVE run into a dry run (the counterfactual flips the stage to canary and shows live would pass, so the shadow assertion is not vacuous). Hermetic: two committed config files and the pure clamp; no tmux, no network, no state write."
+  ]
+}

@@ -494,3 +494,26 @@ the store still persisted nothing. Each live condition, checked:
 
 So even with all four operator steps done, no row persists until item 2 of the backlog is built: the writer has no
 caller. The registry grant and the migration are prerequisites, not the switch.
+
+<!-- moved from AGENTS.md 25.0.1 lines 5797-5813 -->
+## Moved from AGENTS.md (25.0.1 lines 5797-5813)
+
+*Moved here by AGENTS.md 26.0.0, which keeps the binding rule and a pointer; the 25.0.1 text is preserved at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`. This is reference, not instruction: where it mentions Telegram `/approve`, `bin/guard request`, a push budget of 5 or a coordinator override, `gh pr merge`, a `release-write` grant for a deploy, or shipping with no operator input, those paths are retired or not implemented, and AGENTS.md governs.*
+
+- **One row per `security_guid`, written only by the CIO agent.** The prospect record is `InstrumentRecord@v1`
+  extended (§13.5: extend, never clone): identity, stage (watching → setup forming → actionable → proposed → held →
+  exit / re-entry), conviction 0–100 with named components, stance, catalyst grade, next trigger, what is missing,
+  next action, `evidence_at` / `expires_at` and conflicts, in one Postgres store (§24.9), written only through
+  `InstrumentRecordStore` (`scripts/lib/cio_instrument_record.py`). Any other per-security judgment store — a thesis
+  cache, an entry state, an opportunity file, a decision packet, a research state — is an input the CIO reads, a log
+  it appends, or an export generated from the record. *Cause (§20): operator direction 2026-10-22 (banner);
+  measured 2026-10-22: the prospect was split over eight CIO stores holding 120 to 3,889 symbols, none GUID-keyed in
+  Postgres, and they disagreed silently (NVDA `ADD` at 78.5 beside thesis stance `watch`).*
+- **The key is `security_guid`; `issuer_guid` is carried; `subject_guid` is an alias.** For a security
+  `subject_guid` equals `security_guid` (the identity table), so it is accepted on read and mapped, never stored as a
+  second key; `subject_key` (`HELD:X`) and `symbol` are aliases. A security without a CONFIRMED GUID gets no record
+  and renders "identity unresolved". *Cause (§20): the identity table already defines both names; the kind-prefixed
+  `subject_key` kept a held security in a `WATCH:` record (NVDA, 2026-10-22).*
+- **`MBI_BEHAVIOR = 0` holds for the record.** The CIO sets stance and priority; it never sizes, orders, stops or
+  weights, no prospect field is a `BEHAVIOR_FIELDS` key, and its model calls go only through registered capabilities
+  (§12, §23.4). *Cause (§20): §0 rule 1; the §13.4 cognition boundary.*

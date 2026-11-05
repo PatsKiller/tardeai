@@ -5,8 +5,8 @@
     "tests/test_guard_remote_approval.py"
   ],
   "comment": [
-    "Remote (Telegram) operator approval for guard scopes. The operator",
-    "types APPROVE on their phone; the agent never does. Every refusal path",
-    "is pinned here because the refusals are what make it safe."
+    "Remote (Telegram) operator approval for guard scopes — RETIRED (operator-ratified on PR #2185):",
+    "production refuses every mint and approve (TELEGRAM_GRANT_RETIRED). The legacy store and every",
+    "refusal path stay pinned here under LEGACY_TEST, because the refusals are what made it safe."
   ]
 }

@@ -129,6 +129,8 @@ def _fake_work(module, lane, monkeypatch, failure=False):
         monkeypatch.setattr(module, "collect_scan_based_indicators", lambda *_a: [{"indicator_key": "breadth"}])
         monkeypatch.setattr(module, "collect_market_session", lambda *_a: {"indicator_key": "session"})
         monkeypatch.setattr(module, "collect_vix", lambda *_a: None)
+        # Vol complex (#2383, additive): stubbed so the archived-argv comparison never reaches Yahoo.
+        monkeypatch.setattr(module, "collect_vol_complex", lambda *_a, **_k: ([], []), raising=False)
         monkeypatch.setattr(module, "save_indicators", fail if failure else lambda *_a, **_k: None)
     elif name == "research-intelligence-materialize":
         monkeypatch.setattr(module, "materialize", fail if failure else lambda *_a: {"ok": True, "lanes": {"top": {"ok": True}}})

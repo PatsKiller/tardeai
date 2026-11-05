@@ -223,7 +223,9 @@ def test_ownership_removes_w7_duplicate_panels_and_links_to_the_single_home():
     home = (pages / "HomeHub.tsx").read_text()
     cio = (pages / "CioHub.tsx").read_text()
     portfolio = (pages / "PortfolioHub.tsx").read_text()
-    assert "HomeClassic" not in home and "HomeDoNow" not in home
+    # Operator rejected Board 14 on 2026-10-25: Do now is Home; Classic is opt-in.
+    assert "<HomeDoNow" in home and "params.get('view') === 'classic'" in home
+    assert "<W7HomePanels" not in home
     assert "<CioObservabilityPanel" not in cio and "<CioScorecardStrip" not in cio
     assert "<CapitalPlanSection" not in cio
     assert "<AllocationPanel" not in portfolio

@@ -1320,6 +1320,20 @@
       "classification": "NOT_OPERATOR_RELEVANT",
       "reason": "The owner's recorded decision on a conflict (CIO review completion or operator decision: chosen side, reason, evidence, expiry); the shared ConflictSheet renders it as Recorded decision and the Resolved line. Census gap, not a relevance judgment: /api/v3/conflicts is a module delegated from api_v2.handle (scripts/lib/conflicts/api.py, registered batch 27) and the Watch rows carry the section through scripts/lib/site_payload_reads.attach_conflict_sections, neither of which scripts/cio_api_contract_census.py traces (the Ask the CIO API has the same gap), so no record_edge can verify. Operator visibility is proven by tests/test_b27_watch_resolve_e2e_20261025.py and apps/command-center-v3/e2e/watch-resolve.fixture.mjs. Reclassify SURFACE with a record_edge when the census traces delegated modules.",
       "owner_hint": "scripts/lib/conflicts/ledger.py"
+    },
+    {
+      "name": "schema:CioAskLifecycleReceipt@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Native scheduler business-proof envelope: run_once counts checked/researched/deferred threads and binds a host attempt to canonical Ask ledger readback. It contains no new investment answer, fact, stance or decision. My questions displays the per-thread lifecycle folded from CioAskEvent@v1; this unserved aggregate receipt is engineering evidence used by research-lane health, not a separate CIO reasoning output.",
+      "owner_hint": "scripts/lib/cio_ask_lifecycle.py::run_once"
+    },
+    {
+      "name": "schema:CioAskLifecycleHealth@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Engineering health projection of hourly/material trigger identity, immutable host receipts, canonical Ask check clocks, memory acknowledgement and outbox delivery. research_lane_health folds its conditions into the existing health heartbeat. It diagnoses whether the research pipeline ran; it introduces no CIO research, policy, evidence conclusion or investment decision. Operator question/answer content remains on the existing Ask thread projection.",
+      "owner_hint": "scripts/lib/cio_ask_lifecycle_health.py::collect_cio_ask_lifecycle_health"
     }
   ]
 }

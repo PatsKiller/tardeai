@@ -1,0 +1,69 @@
+{
+ "source": "Public market data quoted in docs/audits/MARKET_SELLOFF_ALERT_RCA_2026-10-30.md ([EXT] press reports, [VERIFIED] system snapshots of index option chains). No portfolio data.",
+ "note": "approximate public extended-hours changes from press reports; change_pct vs prior regular close",
+ "rows": [
+  {
+   "symbol": "GOOGL",
+   "session": "afterhours",
+   "change_pct": -11.0,
+   "at": "2026-10-28T18:30:00-04:00",
+   "as_of": "2026-10-28T18:30:00-04:00"
+  },
+  {
+   "symbol": "MSFT",
+   "session": "afterhours",
+   "change_pct": 2.6,
+   "at": "2026-10-28T18:30:00-04:00",
+   "as_of": "2026-10-28T18:30:00-04:00"
+  },
+  {
+   "symbol": "NQ=F",
+   "session": "afterhours",
+   "change_pct": -1.5,
+   "at": "2026-10-29T18:04:00-04:00",
+   "as_of": "2026-10-29T18:04:00-04:00"
+  },
+  {
+   "symbol": "AMZN",
+   "session": "afterhours",
+   "change_pct": -6.0,
+   "at": "2026-10-29T18:04:00-04:00",
+   "as_of": "2026-10-29T18:04:00-04:00"
+  },
+  {
+   "symbol": "INTC",
+   "session": "afterhours",
+   "change_pct": -22.0,
+   "at": "2026-10-29T18:04:00-04:00",
+   "as_of": "2026-10-29T18:04:00-04:00"
+  },
+  {
+   "symbol": "NQ=F",
+   "session": "premarket",
+   "change_pct": -2.1,
+   "at": "2026-10-30T08:30:00-04:00",
+   "as_of": "2026-10-30T08:30:00-04:00"
+  },
+  {
+   "symbol": "INTC",
+   "session": "premarket",
+   "change_pct": -20.0,
+   "at": "2026-10-30T08:30:00-04:00",
+   "as_of": "2026-10-30T08:30:00-04:00"
+  },
+  {
+   "symbol": "AMD",
+   "session": "premarket",
+   "change_pct": -8.0,
+   "at": "2026-10-30T08:30:00-04:00",
+   "as_of": "2026-10-30T08:30:00-04:00"
+  },
+  {
+   "symbol": "DELL",
+   "session": "premarket",
+   "change_pct": -13.0,
+   "at": "2026-10-30T08:30:00-04:00",
+   "as_of": "2026-10-30T08:30:00-04:00"
+  }
+ ]
+}

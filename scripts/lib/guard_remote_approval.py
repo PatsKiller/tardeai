@@ -1,45 +1,26 @@
-"""guard_remote_approval.py — operator approves a guard scope from Telegram.
+"""guard_remote_approval.py — Telegram remote guard grants (RETIRED).
 
-THE PROBLEM THIS SOLVES
------------------------
-`bin/guard grant` asks the operator to type APPROVE at an interactive terminal.
-That is the right shape when they are at the machine, and useless when they are
-not: work that is finished, verified and green then waits hours for someone to
-walk to a keyboard.
+STATUS
+------
+Telegram may never issue a guard grant. Operator-ratified on PR #2185
+(``APPROVE_AGENTS_POLICY_23_0_0 2185 c366dd8d165c7eedf286d18604af8b0a11fe85db``).
+``TELEGRAM_REMOTE_GRANT_STATUS = "RETIRED"``: ``mint_request`` raises, and
+``verify_and_consume`` (``/approve <CODE>``) and an approving
+``settle_by_request_id`` (the Telegram Approve button) return
+``TELEGRAM_GRANT_RETIRED`` and grant nothing. Deny still settles, so a stale
+PENDING prompt can be cleared.
 
-This moves the *typing* to Telegram. It does not move the *deciding* anywhere.
+What stays: keyboard ``bin/guard grant`` at the host, and Ops → Controls
+``grant.issue`` (passkey). Neither imports this module. Merges need no guard
+grant: the PR merge digest is the go-signal (AGENTS.md §25.10).
 
-WHAT IS AND IS NOT WEAKENED
----------------------------
-The standing rule is that the agent must never type, pipe, simulate, automate or
-infer APPROVE. That rule is intact, and this module is built so the agent cannot
-route around it:
+The store, deny path, and tests that monkeypatch STATUS to ``"LEGACY_TEST"``
+still exercise the legacy mechanics so the refusal surface cannot drift.
 
-  * `mint_request()` creates a PENDING record and nothing else. It grants no
-    authority. An agent may call it freely.
-  * The one-time code is sent to Telegram and **only a SHA-256 of it is stored**.
-    `mint_request` returns the code to its immediate caller so `bin/guard
-    request` can send it, and that caller must not print or persist it.
-  * Converting PENDING -> APPROVED requires a real Telegram message, from a chat
-    on the existing allowlist, carrying that code. The operator types the
-    approval, on their own device, against a described scope and duration.
-  * The approval is bound to the scope, window and uses that were *requested*.
-    An agent cannot widen a grant after the fact, because the numbers are fixed
-    in the pending record the operator saw before replying.
-
-HONEST LIMITATION, STATED PLAINLY
----------------------------------
-The agent runs as the same OS user as this code. Nothing here is a sandbox: an
-agent determined to defeat it could call `bin/guard grant --yes` directly, or
-read the code out of its own process. This mechanism is **auditable, not
-impregnable**. What it guarantees is that every legitimately-obtained grant
-carries Telegram provenance — chat id, message id, update id, and the operator's
-own words — so a grant that appeared *without* either an interactive terminal or
-that provenance is a detectable anomaly. `unprovenanced_grants()` finds them.
-
-Do not weaken this to "the agent asked and nobody objected". Silence is not
-approval, an expired request is not approval, and a reply from an unlisted chat
-is not approval.
+HISTORICAL
+----------
+This module moved the *typing* of APPROVE to Telegram without moving the
+*deciding*. That path is closed; do not re-enable without a new MAJOR amendment.
 """
 
 from __future__ import annotations
@@ -67,13 +48,11 @@ SCHEMA = "GuardRemoteApproval@v1"
 #: that settling requires a reply from a chat on TELEGRAM_CHAT_ID, the code is
 #: stored only as SHA-256, it works exactly once, and REMOTE_FORBIDDEN_SCOPES
 #: still refuses the scopes that matter.
-DEFAULT_REQUEST_TTL_SECONDS = int(
-    os.environ.get("GUARD_REMOTE_REQUEST_TTL_SECONDS", "14400"))   # 4 hours
+DEFAULT_REQUEST_TTL_SECONDS = int(os.environ.get("GUARD_REMOTE_REQUEST_TTL_SECONDS", "14400"))  # 4 hours
 
 #: Ceiling on the answer deadline. A request may not outlive the longest window
 #: it could grant.
-MAX_REQUEST_TTL_SECONDS = int(
-    os.environ.get("GUARD_REMOTE_MAX_REQUEST_TTL_SECONDS", "43200"))  # 12 hours
+MAX_REQUEST_TTL_SECONDS = int(os.environ.get("GUARD_REMOTE_MAX_REQUEST_TTL_SECONDS", "43200"))  # 12 hours
 
 #: A grant window this mechanism will never exceed, whatever is asked for.
 #:
@@ -89,8 +68,7 @@ MAX_REQUEST_TTL_SECONDS = int(
 #:     what a phone may do. Raising THIS constant required a keyboard.
 #:   · The grant is bound to the scope, window and uses the operator saw.
 #:   · A reply from an unlisted chat burns the code.
-MAX_GRANT_SECONDS = int(
-    os.environ.get("GUARD_REMOTE_MAX_GRANT_SECONDS", "43200"))     # 12 hours
+MAX_GRANT_SECONDS = int(os.environ.get("GUARD_REMOTE_MAX_GRANT_SECONDS", "43200"))  # 12 hours
 
 #: Uses a remote grant may carry. Previously UNBOUNDED — `int(uses)` with no
 #: check — which mattered little against a one-hour window and matters a great
@@ -101,13 +79,31 @@ MAX_GRANT_USES = int(os.environ.get("GUARD_REMOTE_MAX_GRANT_USES", "500"))
 #: Scopes that may NEVER be granted remotely, regardless of what is requested.
 #: These either move money, change who can approve, or destroy things. A phone
 #: is the wrong place to reason about them.
-REMOTE_FORBIDDEN_SCOPES: frozenset[str] = frozenset({
-    "sudo",            # root
-    "destructive",     # irreversible
-    "file-delete",     # irreversible
-    "guard-config",    # would let a remote approval widen remote approval
-    "frozen-v2",       # frozen by explicit operator decision
-})
+REMOTE_FORBIDDEN_SCOPES: frozenset[str] = frozenset(
+    {
+        "sudo",  # root
+        "destructive",  # irreversible
+        "file-delete",  # irreversible
+        "guard-config",  # would let a remote approval widen remote approval
+        "frozen-v2",  # frozen by explicit operator decision
+    }
+)
+
+#: Telegram remote grants are retired (ratified on PR #2185). Only ``"RETIRED"``
+#: refuses every mint and approve settlement. Tests may monkeypatch to
+#: ``"LEGACY_TEST"`` to exercise the store; production must stay ``"RETIRED"``.
+TELEGRAM_REMOTE_GRANT_STATUS = "RETIRED"
+
+RETIRED_MSG = (
+    "Telegram remote guard grants are retired (operator-ratified, PR #2185). "
+    "Ask the operator to grant at the host keyboard (`bin/guard grant`) or on "
+    "Ops → Controls (passkey). Merges need no guard grant: the PR merge digest "
+    "is the go-signal (AGENTS.md §25.10)."
+)
+
+
+def telegram_remote_grants_retired() -> bool:
+    return TELEGRAM_REMOTE_GRANT_STATUS == "RETIRED"
 
 
 def approvals_dir() -> Path:
@@ -157,6 +153,7 @@ def _load() -> dict[str, Any]:
 # fields are copied, never renamed (old readers keep `scope`/`request_id`). A row whose
 # `scope` and `tier` DISAGREE is unusable: it matches nothing and is refused on settle.
 
+
 def normalize_request(r: dict[str, Any]) -> dict[str, Any]:
     """Additive in place: scope<->tier and request_id<-id. Returns the same dict."""
     scope, tier = r.get("scope"), r.get("tier")
@@ -186,6 +183,7 @@ def request_id_of(r: dict[str, Any]) -> str:
 def _rrid_from_reason(reason: str) -> Optional[str]:
     """The callback paths append "[remote_request_id=<id> ...]" to the grant reason."""
     import re
+
     m = re.search(r"\[remote_request_id=([0-9A-Za-z_-]{4,64})\b", reason or "")
     return m.group(1) if m else None
 
@@ -220,7 +218,7 @@ def _save(doc: dict[str, Any]) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(doc, indent=1), encoding="utf-8")
-    os.replace(tmp, p)          # atomic
+    os.replace(tmp, p)  # atomic
     try:
         os.chmod(p, 0o600)
     except OSError:
@@ -238,17 +236,22 @@ def mint_code() -> str:
     return "".join(secrets.choice(alphabet) for _ in range(6))
 
 
-def mint_request(scope: str, *, seconds: int, uses: int, reason: str,
-                 ttl: int = DEFAULT_REQUEST_TTL_SECONDS) -> dict[str, Any]:
+def mint_request(
+    scope: str, *, seconds: int, uses: int, reason: str, ttl: int = DEFAULT_REQUEST_TTL_SECONDS
+) -> dict[str, Any]:
     """Create a PENDING approval request. Grants nothing.
 
     Returns the record plus the plaintext `code`, which the caller must send to
     Telegram and must not print or persist.
+
+    While ``TELEGRAM_REMOTE_GRANT_STATUS == "RETIRED"`` (production) this always
+    raises — Telegram may never mint a grant request.
     """
+    if telegram_remote_grants_retired():
+        raise ValueError(RETIRED_MSG)
     scope = str(scope).strip()
     if scope in REMOTE_FORBIDDEN_SCOPES:
-        raise ValueError(
-            f"scope '{scope}' may never be approved remotely — approve it at the keyboard")
+        raise ValueError(f"scope '{scope}' may never be approved remotely — approve it at the keyboard")
     seconds = int(seconds)
     if seconds <= 0:
         raise ValueError("grant window must be positive")
@@ -258,25 +261,25 @@ def mint_request(scope: str, *, seconds: int, uses: int, reason: str,
     if uses > MAX_GRANT_USES:
         raise ValueError(
             f"requested {uses} uses exceeds the remote maximum {MAX_GRANT_USES} — "
-            "approve an unbounded grant at the keyboard")
+            "approve an unbounded grant at the keyboard"
+        )
     ttl = int(ttl)
     if ttl <= 0:
         raise ValueError("answer deadline must be positive")
     if ttl > MAX_REQUEST_TTL_SECONDS:
-        raise ValueError(
-            f"answer deadline {ttl}s exceeds the remote maximum "
-            f"{MAX_REQUEST_TTL_SECONDS}s")
+        raise ValueError(f"answer deadline {ttl}s exceeds the remote maximum {MAX_REQUEST_TTL_SECONDS}s")
     if seconds > MAX_GRANT_SECONDS:
         raise ValueError(
             f"requested window {seconds}s exceeds the remote maximum "
-            f"{MAX_GRANT_SECONDS}s — approve a longer window at the keyboard")
+            f"{MAX_GRANT_SECONDS}s — approve a longer window at the keyboard"
+        )
 
     code = mint_code()
     now = _now()
     rec: dict[str, Any] = {
         "request_id": secrets.token_hex(8),
         "scope": scope,
-        "tier": scope,          # same value; the ledger and release binding read `tier`
+        "tier": scope,  # same value; the ledger and release binding read `tier`
         "seconds": seconds,
         "uses": uses,
         "reason": str(reason),
@@ -322,6 +325,7 @@ GUARD_BIN = Path(__file__).resolve().parents[2] / "bin" / "guard"
 
 def _guard_ledger_module():
     import importlib.util
+
     path = Path(__file__).resolve().parents[2] / ".cursor" / "hooks" / "guard_ledger.py"
     spec = importlib.util.spec_from_file_location("_gra_guard_ledger", path)
     mod = importlib.util.module_from_spec(spec)
@@ -336,59 +340,91 @@ def active_grant_for(scope: str) -> Optional[dict[str, Any]]:
     except Exception:
         return None  # an unreadable ledger is reported by the grant path itself, which refuses
     if scope in (listed.get("ambiguous") or []):
-        return {"tier": scope, "ambiguous": True, "grant_id": "", "uses": 0, "expires": 0,
-                "reason": (listed.get("grants") or {}).get(scope, {}).get("reason", "")}
+        return {
+            "tier": scope,
+            "ambiguous": True,
+            "grant_id": "",
+            "uses": 0,
+            "expires": 0,
+            "reason": (listed.get("grants") or {}).get(scope, {}).get("reason", ""),
+        }
     rec = (listed.get("active") or {}).get(scope)
     if not isinstance(rec, dict):
         return None
-    return {"tier": scope, "grant_id": str(rec.get("grant_id") or ""), "uses": int(rec.get("uses") or 0),
-            "expires": int(rec.get("expires") or 0), "reason": str(rec.get("reason") or "")}
+    return {
+        "tier": scope,
+        "grant_id": str(rec.get("grant_id") or ""),
+        "uses": int(rec.get("uses") or 0),
+        "expires": int(rec.get("expires") or 0),
+        "reason": str(rec.get("reason") or ""),
+    }
 
 
-def active_grant_refusal_text(rec: dict[str, Any], active: dict[str, Any], *, chat_id: Any = "",
-                              via: str = "", now: Optional[int] = None) -> str:
+def active_grant_refusal_text(
+    rec: dict[str, Any], active: dict[str, Any], *, chat_id: Any = "", via: str = "", now: Optional[int] = None
+) -> str:
     """Operator-facing reply: which grant blocks the approval, and the exact command that replaces it."""
     import shlex
     from datetime import datetime
+
     now = _now() if now is None else now
     tier = active["tier"]
-    reason = f"{rec.get('reason') or ''} [remote_request_id={request_id_of(rec)} chat={chat_id}" \
-             f"{' via=' + via if via else ''}]"
-    cmd = (f"{GUARD_BIN} grant {shlex.quote(tier)} --for {int(rec.get('seconds') or 0)} "
-           f"--uses {int(rec.get('uses') or 0)} --reason {shlex.quote(reason)} --replace")
+    reason = (
+        f"{rec.get('reason') or ''} [remote_request_id={request_id_of(rec)} chat={chat_id}"
+        f"{' via=' + via if via else ''}]"
+    )
+    cmd = (
+        f"{GUARD_BIN} grant {shlex.quote(tier)} --for {int(rec.get('seconds') or 0)} "
+        f"--uses {int(rec.get('uses') or 0)} --reason {shlex.quote(reason)} --replace"
+    )
     if active.get("ambiguous"):
-        head = (f"⛔ Not granted: `{tier}` has MORE THAN ONE active grant (ambiguous; nothing is consumed "
-                f"from it). Run `{GUARD_BIN} doctor` and revoke all but one with "
-                f"`{GUARD_BIN} revoke {tier} --grant-id <id>`.")
+        head = (
+            f"⛔ Not granted: `{tier}` has MORE THAN ONE active grant (ambiguous; nothing is consumed "
+            f"from it). Run `{GUARD_BIN} doctor` and revoke all but one with "
+            f"`{GUARD_BIN} revoke {tier} --grant-id <id>`."
+        )
     else:
         exp = int(active.get("expires") or 0)
         left_min = max(0, (exp - now) // 60)
         uses = int(active.get("uses") or 0)
-        head = (f"⛔ Not granted: an active `{tier}` grant already exists.\n"
-                f"  id: {active.get('grant_id')}\n"
-                f"  uses left: {'unlimited' if uses < 0 else uses}\n"
-                f"  expires: {datetime.fromtimestamp(exp).astimezone().strftime('%Y-%m-%d %H:%M %Z')} "
-                f"({left_min} min left)\n"
-                f"A remote approval never replaces a grant. Request {request_id_of(rec)} stays PENDING; "
-                f"approve it again after revoking (`{GUARD_BIN} revoke {tier} --grant-id {active.get('grant_id')}`).")
+        head = (
+            f"⛔ Not granted: an active `{tier}` grant already exists.\n"
+            f"  id: {active.get('grant_id')}\n"
+            f"  uses left: {'unlimited' if uses < 0 else uses}\n"
+            f"  expires: {datetime.fromtimestamp(exp).astimezone().strftime('%Y-%m-%d %H:%M %Z')} "
+            f"({left_min} min left)\n"
+            f"A remote approval never replaces a grant. Request {request_id_of(rec)} stays PENDING; "
+            f"approve it again after revoking (`{GUARD_BIN} revoke {tier} --grant-id {active.get('grant_id')}`)."
+        )
     return f"{head}\nTo replace it now, at the machine:\n`{cmd}`"
 
 
-def _refuse_if_active_grant(doc: dict[str, Any], rec: dict[str, Any], *, chat_id: Any,
-                            via: str = "") -> Optional[dict[str, Any]]:
+def _refuse_if_active_grant(
+    doc: dict[str, Any], rec: dict[str, Any], *, chat_id: Any, via: str = ""
+) -> Optional[dict[str, Any]]:
     scope = request_scope(rec) or ""
     active = active_grant_for(scope)
     if not active:
         return None
-    rec["last_refusal"] = {"reason": "ACTIVE_GRANT_EXISTS", "at": _now(),
-                           "active_grant_id": active.get("grant_id") or "", "ambiguous": bool(active.get("ambiguous"))}
+    rec["last_refusal"] = {
+        "reason": "ACTIVE_GRANT_EXISTS",
+        "at": _now(),
+        "active_grant_id": active.get("grant_id") or "",
+        "ambiguous": bool(active.get("ambiguous")),
+    }
     _save(doc)  # the request stays PENDING; only the refusal is recorded
-    return {"ok": False, "reason": "ACTIVE_GRANT_EXISTS", "active_grant": active, "request": rec,
-            "message": active_grant_refusal_text(rec, active, chat_id=chat_id, via=via)}
+    return {
+        "ok": False,
+        "reason": "ACTIVE_GRANT_EXISTS",
+        "active_grant": active,
+        "request": rec,
+        "message": active_grant_refusal_text(rec, active, chat_id=chat_id, via=via),
+    }
 
 
-def verify_and_consume(code: str, *, chat_id: Any, allowed_chats: Any,
-                       telegram: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+def verify_and_consume(
+    code: str, *, chat_id: Any, allowed_chats: Any, telegram: Optional[dict[str, Any]] = None
+) -> dict[str, Any]:
     """Turn a Telegram reply into an authorised grant instruction.
 
     Returns ``{"ok": True, "request": {...}}`` when the code is good, or
@@ -397,7 +433,12 @@ def verify_and_consume(code: str, *, chat_id: Any, allowed_chats: Any,
 
     The code is consumed on success AND on a chat-rejection: a code that leaked
     to the wrong chat is burnt, not left live for a second attempt.
+
+    While retired (production) this always refuses with ``TELEGRAM_GRANT_RETIRED``.
     """
+    if telegram_remote_grants_retired():
+        return {"ok": False, "reason": "TELEGRAM_GRANT_RETIRED", "detail": RETIRED_MSG}
+
     allowed = {str(c).strip() for c in (allowed_chats or set()) if str(c).strip()}
     chat = str(chat_id).strip()
 
@@ -454,17 +495,17 @@ def verify_and_consume(code: str, *, chat_id: Any, allowed_chats: Any,
     rec["approved_at"] = _now()
     rec["approved_by_chat"] = chat
     rec["telegram"] = (
-        {k: telegram.get(k) for k in
-         ("update_id", "message_id", "from_id", "from_username", "text")}
-        if telegram else {"note": "no telegram metadata supplied"}
+        {k: telegram.get(k) for k in ("update_id", "message_id", "from_id", "from_username", "text")}
+        if telegram
+        else {"note": "no telegram metadata supplied"}
     )
     _save(doc)
     return {"ok": True, "request": rec}
 
 
-def settle_by_request_id(request_id: str, *, approve: bool, chat_id: Any,
-                        allowed_chats: Any,
-                        telegram: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+def settle_by_request_id(
+    request_id: str, *, approve: bool, chat_id: Any, allowed_chats: Any, telegram: Optional[dict[str, Any]] = None
+) -> dict[str, Any]:
     """Settle a PENDING request identified by id rather than by code.
 
     This exists for the Telegram inline BUTTON. A tap carries no secret, and
@@ -488,6 +529,11 @@ def settle_by_request_id(request_id: str, *, approve: bool, chat_id: Any,
         return {"ok": False, "reason": "NO_CHAT_ALLOWLIST_CONFIGURED"}
     if chat not in allowed:
         return {"ok": False, "reason": "CHAT_NOT_ALLOWED"}
+
+    # Approving via Telegram is retired (PR #2185). Deny still clears a PENDING
+    # row so a leftover request cannot sit forever.
+    if approve and telegram_remote_grants_retired():
+        return {"ok": False, "reason": "TELEGRAM_GRANT_RETIRED", "detail": RETIRED_MSG}
 
     doc = _load()
     if doc.get("corrupt"):
@@ -520,9 +566,9 @@ def settle_by_request_id(request_id: str, *, approve: bool, chat_id: Any,
     rec["approved_by_chat"] = chat
     rec["settled_via"] = "telegram_button"
     rec["telegram"] = (
-        {k: telegram.get(k) for k in
-         ("update_id", "message_id", "from_id", "from_username", "text")}
-        if telegram else {"note": "no telegram metadata supplied"}
+        {k: telegram.get(k) for k in ("update_id", "message_id", "from_id", "from_username", "text")}
+        if telegram
+        else {"note": "no telegram metadata supplied"}
     )
     _save(doc)
     return {"ok": True, "request": rec}
@@ -536,6 +582,7 @@ def settle_by_request_id(request_id: str, *, approve: bool, chat_id: Any,
 # same tap or code works once the cause is fixed. Past its answer deadline it closes as GRANT_FAILED
 # rather than ever claiming APPROVED without a grant.
 
+
 def reopen_after_grant_failure(request_id: str, *, detail: str) -> dict[str, Any]:
     """APPROVED -> PENDING after `bin/guard grant` failed; GRANT_FAILED when the deadline has passed."""
     doc = _load()
@@ -547,8 +594,13 @@ def reopen_after_grant_failure(request_id: str, *, detail: str) -> dict[str, Any
         return {"ok": False, "reason": "UNKNOWN_REQUEST"}
     if rec.get("status") != "APPROVED":
         return {"ok": False, "reason": "REQUEST_NOT_APPROVED"}
-    failure = {"reason": "GRANT_FAILED", "at": _now(), "detail": str(detail or "")[:300],
-               "approved_at": rec.get("approved_at"), "approved_by_chat": rec.get("approved_by_chat")}
+    failure = {
+        "reason": "GRANT_FAILED",
+        "at": _now(),
+        "detail": str(detail or "")[:300],
+        "approved_at": rec.get("approved_at"),
+        "approved_by_chat": rec.get("approved_by_chat"),
+    }
     rec.setdefault("grant_failures", []).append(failure)
     rec["last_refusal"] = failure
     for k in ("approved_at", "approved_by_chat", "settled_via"):
@@ -576,8 +628,11 @@ def record_delivery(request_id: str, *, accepted: bool, message_ids: Any) -> Non
         rec = next((r for r in doc["requests"] if want and request_id_of(r) == want), None)
         if rec is None:
             return
-        rec["delivery"] = {"accepted": bool(accepted), "at": _now(),
-                           "message_ids": [str(m) for m in (message_ids or []) if m is not None]}
+        rec["delivery"] = {
+            "accepted": bool(accepted),
+            "at": _now(),
+            "message_ids": [str(m) for m in (message_ids or []) if m is not None],
+        }
         _save(doc)
     except Exception:
         return
@@ -607,8 +662,7 @@ def unprovenanced_grants(grants: list[dict[str, Any]]) -> list[dict[str, Any]]:
     request from an allowlisted chat. One that matches neither is worth asking
     about.
     """
-    approved = {request_id_of(r) for r in _load()["requests"]
-                if r.get("status") == "APPROVED"} - {""}
+    approved = {request_id_of(r) for r in _load()["requests"] if r.get("status") == "APPROVED"} - {""}
     out = []
     for g in grants or []:
         if g.get("origin") == "interactive":
