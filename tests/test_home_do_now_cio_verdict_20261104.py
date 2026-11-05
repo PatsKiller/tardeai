@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from scripts.lib.cio_capital_plan import build_capital_plan  # noqa: E402
 from scripts.lib.data_broker import home_do_now as H  # noqa: E402
 
 NOW = datetime(2026, 11, 4, 15, 25, tzinfo=timezone.utc)
@@ -190,17 +191,33 @@ def test_a_multi_account_verdict_is_an_aggregate_not_a_clone():
 
 
 def test_old_decision_evidence_is_not_stamped_with_the_plans_clock():
-    """A decision made long before the plan was built keeps its own time, and the source says the evidence is old."""
-    old = "2025-08-01T12:00:00+00:00"
-    plan = _plan([{"symbol": "SPCX", "account": "schwab_taxable", "cio_stance": "TRIM", "decision_generated_at": old}],
-                 as_of=PLAN_AS_OF)
+    """The clock the REAL producer carries survives aggregation, and old evidence is marked old.
+
+    Driven through ``build_capital_plan`` -> ``build_position_decisions`` -> ``aggregate_position_decisions``.
+    The aggregated row carries ``generated_at`` only (it does not preserve ``decision_generated_at``), so this pins
+    the producer's actual shape rather than a hand-built row the plan cannot emit.
+    """
+    old = (NOW - timedelta(days=2)).isoformat()
+    plan = build_capital_plan(
+        portfolio_value=100_000.0,
+        cash_total=10_000.0,
+        positions=[{"symbol": "SPCX", "account": "schwab_taxable",
+                    "market_value": 27_578.0, "updated_at": old}],
+        now=NOW,
+    )
+    row = plan["position_decisions"][0]
+    # The producer's real row: the evidence clock is `generated_at`; the pre-aggregation key is gone.
+    assert row.get("generated_at") == old, row
+    assert row.get("decision_generated_at") is None, row
+    index = H.cio_verdict_index(plan)
+    assert index["by_account"][("SPCX", "schwab_taxable")]["as_of"] == old  # non-null on the real row
     out = _build(_risk(_pos("SPCX")), plan)
     why = _why(out, "stop:SPCX")
     assert old in why, why
-    assert PLAN_AS_OF not in why, why
+    assert plan["as_of"] not in why, why                 # never the plan's own build clock
     assert out["sources"]["cio"]["evidence_as_of"] == old
-    assert out["sources"]["cio"]["stale"] is True
     assert out["sources"]["cio"]["evidence_stale"] is True
+    assert out["sources"]["cio"]["stale"] is True
 
 
 def test_a_verdict_with_no_clock_says_so_rather_than_borrowing_one():

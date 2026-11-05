@@ -286,8 +286,11 @@ def cio_verdict_index(payload: Any) -> dict[tuple[str, Optional[str]], dict[str,
             "funding": r.get("funding"),
             # The decision's OWN evidence clock. The plan envelope says when the plan was built; using it here stamped
             # a decision made in 2029 as if it were made now (cx-openai-2, P1 FAIL 3). No fallback.
-            "as_of": (r.get("decision_generated_at") or r.get("decided_at") or r.get("evidence_as_of")
-                      or r.get("decision_as_of") or r.get("as_of")),
+            # F1 (cc-deepseek-5 / claude-lead at 906e746d5): the served plan's row is the AGGREGATED row, and
+            # aggregate_position_decisions keeps the evidence clock as `generated_at` — it does not preserve
+            # `decision_generated_at`. Reading only the pre-aggregation key made as_of None on every real row.
+            "as_of": (r.get("decision_generated_at") or r.get("generated_at") or r.get("decided_at")
+                      or r.get("evidence_as_of") or r.get("decision_as_of") or r.get("as_of")),
         }
         accounts = r.get("accounts") if isinstance(r.get("accounts"), list) else []
         accounts = [a for a in accounts if a] or ([r.get("account")] if r.get("account") else [])
