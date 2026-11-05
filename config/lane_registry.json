@@ -25894,7 +25894,15 @@
         "stage": "shadow",
         "wave": "D11"
       },
-      "expected_cadence_hours": 1,
+      "expected_cadence_hours": 64.0,
+      "cadence_basis": "Maximum scheduled gap of dispatch.cron 30 9-18 * * 1-5 = 63 h (Friday 18:30 -> Monday 09:30 America/New_York; reconcile_lane_registry.cron_cadence_hours), plus 1 h for dispatch/finish lateness at the Monday 09:30 slot. scripts/lib/lane_registry.py::_scheduler_present measures wall-clock age since the last finished run, so a weekday-only n8n lane must declare the gap across its quiet weekend or it reports ORPHANED every evening and all weekend while every fire succeeded. The cost of the wall-clock rule is that an intra-week outage is tolerated up to ~64 h; a schedule-aware (last-due-slot) threshold belongs in lane_registry.py and needs its own PR.",
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
       "state": "ACTIVE",
       "state_since": "2026-11-04",
       "output_signal": {
