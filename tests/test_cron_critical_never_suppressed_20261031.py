@@ -72,7 +72,7 @@ def test_health_and_telemetry_are_never_overridden(transport, message):
 
 
 def test_rate_limited_or_budget_suppression_is_not_overridden(monkeypatch, transport):
-    monkeypatch.setattr(router, "should_send_telegram", lambda m: False)
+    monkeypatch.setattr(router, "should_send_telegram", lambda *a, **k: False)
     monkeypatch.setattr(router, "classify_alert", lambda m: "P0_INTERRUPT")
     assert ta._legacy_send(FLAP_CLOSE, False) is False
     assert transport == []
