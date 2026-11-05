@@ -628,7 +628,7 @@ def run_once(
 
     root = Path(state_root) if state_root is not None else _default_state_root(env)
 
-    if not dry_run:
+    if not dry_run and not select_only:
         # Deliver what the sender-less processes (governed bridge, provider-health check) spooled.
         # This runs HERE, before subject selection and before any early return: a run that finds
         # nothing due is still a run, and an hourly wake with no candidates must not hold a credit

@@ -432,3 +432,29 @@ def test_the_wake_runner_drains_the_spool_even_when_nothing_is_due(monkeypatch, 
     )
     assert sent and "STORE DAMAGE" in sent[0]["message"], sent
     assert ops_diagnostics.spooled() == []
+
+
+def test_a_select_only_run_sends_nothing_and_keeps_the_spool(monkeypatch, tmp_path, sent):
+    """`--select-only` is documented as "selection only; no writes" — draining there sent real alerts."""
+    _spool_env(monkeypatch, tmp_path)
+    jsonl_tail._alerted.clear()
+    ops_diagnostics.unregister("store_damage")
+    try:
+        jsonl_tail.report(tmp_path / "damaged.jsonl", 3, action="skipped")
+    finally:
+        ops_notify_owner.install()
+    assert len(ops_diagnostics.spooled()) == 1
+    sent.clear()
+
+    import run_persistent_wake as rpw
+
+    rpw.run_once(
+        agent_id="cio",
+        dry_run=False,
+        select_only=True,
+        env={"PERSISTENT_WAKE_ENABLED": "1", "PERSISTENT_WAKE_SCHEDULE_ENABLED": "1"},
+        state_root=tmp_path / "state",
+        research_objects=[], receipts=[], material_changes=[], operator_turns=[],
+    )
+    assert sent == [], sent
+    assert len(ops_diagnostics.spooled()) == 1, "a select-only run consumed the outbox"
