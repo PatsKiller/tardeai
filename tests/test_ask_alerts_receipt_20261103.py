@@ -284,6 +284,42 @@ def test_a_thousands_separated_price_is_parsed_as_a_real_target(lane, tmp_path, 
     assert alert["kind"] == "price" and alert["target_price"] == 1000.0, alert
 
 
+def test_a_price_target_without_a_dollar_sign_still_parses(lane, tmp_path):
+    """codex-cloud #2528: requiring "$" turned "hits 150" (a price alert before the thousands fix) into a refusal."""
+    lane.STORE = tmp_path / "store" / "ask_alerts.json"
+    ctx = {"positions": [{"symbol": "ACME", "held": True, "private": False}]}
+    plain = lane.add_alert("alert me when ACME hits 150", ctx)
+    assert plain["kind"] == "price" and plain["target_price"] == 150.0, plain
+    marked = lane.add_alert("alert me when ACME hits $150", ctx)
+    assert marked["kind"] == "price" and marked["target_price"] == 150.0, marked
+    thousands = lane.add_alert("alert me when ACME hits 1,500", ctx)
+    assert thousands["kind"] == "price" and thousands["target_price"] == 1500.0, thousands
+
+
+def test_an_ask_with_no_number_is_still_refused_and_writes_nothing(lane, tmp_path):
+    """An optional currency marker must not make a number-less ask parse as a target."""
+    lane.STORE = tmp_path / "store" / "ask_alerts.json"
+    ctx = {"positions": [{"symbol": "ACME", "held": True, "private": False}]}
+    for question in ("alert me when ACME hits the roof", "alert me when ACME hits $"):
+        with pytest.raises(ValueError, match="cannot evaluate"):
+            lane.add_alert(question, ctx)
+    assert not lane.STORE.exists(), "a refused ask must not write an alert"
+
+
+def test_the_ask_alert_route_accepts_a_price_target_without_a_dollar_sign(lane, tmp_path, monkeypatch):
+    """The operator-facing path: AskAgents forwards the question unchanged, so this used to answer HTTP 400."""
+    import api_v2
+
+    lane.STORE = tmp_path / "store" / "ask_alerts.json"
+    monkeypatch.setitem(sys.modules, "ask_alerts", lane)
+    status, payload = api_v2.handle(
+        "/api/v2/portfolio/ask-alert", method="POST",
+        body={"question": "alert me when ACME hits 150",
+              "context": {"positions": [{"symbol": "ACME", "held": True, "private": False}]}})
+    assert status == 200, (status, payload)
+    assert payload["alert"]["kind"] == "price" and payload["alert"]["target_price"] == 150.0, payload
+
+
 def test_a_non_finite_target_is_a_record_error(tmp_path, lane):
     lane.STORE.parent.mkdir(parents=True, exist_ok=True)
     for bad in ("nan", "inf"):

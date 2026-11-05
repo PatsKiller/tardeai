@@ -77,10 +77,13 @@ def add_alert(question: str, context: dict | None = None) -> dict:
     context = context or {}
     privates = [p["name"] for p in context.get("positions", []) if p.get("private")]
     pubs = [p["symbol"] for p in context.get("positions", []) if not p.get("private") and p.get("held")]
-    # Parse a THOUSANDS-SEPARATED amount: "$1,000" used to match "000" and become a 0.0 target, which
-    # the evaluator cannot handle (jobs coverage audit 2026-11-03). Only a positive finite price is a target.
+    # Parse an OPTIONAL currency marker before a THOUSANDS-SEPARATED amount: "$1,000" used to match "000"
+    # and become a 0.0 target, which the evaluator cannot handle (jobs coverage audit 2026-11-03). The
+    # marker must stay optional — "hits 150" was a price alert before the thousands fix, and requiring "$"
+    # turned an operator's previously supported ask into a refused create (codex-cloud review of #2528).
+    # Only a positive finite price is a target; a question with no number still has none.
     target = None
-    m = re.search(r"\$\s*(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{1,6}(?:\.\d+)?)", question)
+    m = re.search(r"(?:\$\s*)?(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{1,6}(?:\.\d+)?)", question)
     if m:
         try:
             value = float(m.group(1).replace(",", ""))
