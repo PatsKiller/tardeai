@@ -524,8 +524,9 @@ GROUPED = {**CONFIG,
 def test_one_rerun_per_failing_head_and_check_group(tmp_path):
     """Both workflows of one check group go red on the SAME head: the head is re-run once, not twice.
 
-    The ledger is keyed (head SHA, check group), so the second workflow is held even though its own run
-    record has never been seen — otherwise a single bad commit would burn one CI re-run per workflow.
+    The ledger is keyed (head SHA, check group), so the second workflow does not get its own re-run.
+    It must still be REPORTED: claude-lead's BLOCK on #2549 showed the old hold returned noop on every
+    cycle forever, so a real failure whose sibling used the retry was never paged.
     """
     gh = FakeGh([run_json("991", "cio-production-hardening-ci"),
                  run_json("992", "cio-full-suite-sharded")],
@@ -535,9 +536,12 @@ def test_one_rerun_per_failing_head_and_check_group(tmp_path):
 
     assert len(gh.reruns) == 1, gh.reruns
     actions = sorted((a["action"] for a in receipt["actions"]))
-    assert actions == ["noop", "rerun"]
-    held = next(a for a in receipt["actions"] if a["action"] == "noop")
-    assert held["reason"] == "one re-run already requested for this head/check"
+    assert actions == ["page_and_dispatch", "rerun"]
+    reported = next(a for a in receipt["actions"] if a["action"] == "page_and_dispatch")
+    assert "spent on run" in reported["note"], reported
+    # ...and no later cycle can buy a second re-run for the same head/check group.
+    cycle(tmp_path, gh, cfg=dict(GROUPED))
+    assert len(gh.reruns) == 1, gh.reruns
 
 
 def test_passing_rerun_opens_a_fix_task_naming_the_flaky_test(tmp_path):
@@ -625,3 +629,48 @@ def test_rerun_for_request_never_raises_on_a_transport_fault(tmp_path):
     out = mra.rerun_for_request(991, "a" * 40, config=dict(CONFIG), state_dir=tmp_path / "state", gh=Boom())
 
     assert out["ok"] is False and "TimeoutError" in out["plain"]
+
+
+# ---------------- claude-lead BLOCK on #2549 (2026-11-05): the fix task keeps the test name,
+# ---------------- and the executor's re-run cannot race the scheduled lane.
+def test_the_fix_task_names_the_test_even_when_the_passing_rerun_has_no_failed_log(tmp_path):
+    """The re-run passed, so `gh run view --log-failed` now returns nothing. The ids captured when
+    the re-run was requested must still name the test in the fix task."""
+    gh = FakeGh([run_json()], logs={"991": "FAILED tests/test_x.py::test_y - StopIteration"},
+                views={"991": {"conclusion": "failure", "status": "completed"}})
+    cycle(tmp_path, gh, cfg=dict(GROUPED))            # cycle 1: one automatic re-run
+    gh.logs = {}                                      # the re-run passed: no failed log any more
+    gh.runs = [run_json(conclusion="success")]        # the run list now shows the green re-run
+    gh.views["991"] = {"conclusion": "success", "status": "completed"}
+    receipt = cycle(tmp_path, gh, cfg=dict(GROUPED))
+
+    action = receipt["actions"][0]
+    assert action["action"] == "flake_recorded", action
+    doc = json.loads(Path(action["fixer_request"]).read_text())
+    assert "tests/test_x.py::test_y" in doc["main_red_autoheal"]["failing_test_ids"], doc
+
+
+def test_rerun_for_request_waits_for_the_state_lock_the_lane_holds(tmp_path):
+    """claude-lead BLOCK on #2549: rerun_for_request rewrote state.json with no lock. It now takes
+    the SAME lock as the scheduled cycle, so its ledger check and write cannot interleave with it."""
+    import fcntl
+    import threading
+
+    state = tmp_path / "state"
+    state.mkdir()
+    gh = FakeGh([], views={"991": _view()})
+    holder = (state / "state.json.lock").open("a+")
+    fcntl.flock(holder.fileno(), fcntl.LOCK_EX)
+    result: dict = {}
+    t = threading.Thread(target=lambda: result.setdefault(
+        "out", mra.rerun_for_request(991, "a" * 40, config=dict(CONFIG), state_dir=state, gh=gh)))
+    try:
+        t.start()
+        t.join(0.5)
+        assert t.is_alive() and "out" not in result, "rerun_for_request did not wait for the state lock"
+        assert gh.reruns == [], "the re-run was issued while another writer held the state"
+    finally:
+        fcntl.flock(holder.fileno(), fcntl.LOCK_UN)
+        holder.close()
+    t.join(5)
+    assert result["out"]["ok"] is True and len(gh.reruns) == 1
