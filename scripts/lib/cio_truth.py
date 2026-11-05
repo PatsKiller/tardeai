@@ -1423,9 +1423,21 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
         p["planned_stop_distance_pct"] = round(100 * (price-sp) / price, 2) if planned_level and price and sp else None
         p["counted"] = any(p is c for c in counted_positions)
         p["stop_category"] = _stop_category(p)
-    protected_loss = round(sum(losses), 2) if portfolio["holdings"] and broker is not None and all(v is not None for v in losses) else None
+    # cx-openai D52 triage on #2677: the uncertainty must cover exactly the positions that supply the monetary risk
+    # total, and an unmeasured book is not a zero-risk one. `losses` is built above from every broker-protected
+    # position; the guard used to read only `counted_positions` (>= $100), so a book whose positions were all smaller
+    # than the counting threshold produced an empty `losses` list — and `all([])` is True — publishing
+    # loss_at_stop_usd 0.0 and portfolio_heat_pct 0.0 for a stop set nobody had observed.
     uncertain_observation = any(p.get("stop_observation") is not None
-                                and p["stop_observation"]["status"] != "FRESH" for p in counted_positions)
+                                and p["stop_observation"]["status"] != "FRESH" for p in positions)
+    if not portfolio["holdings"] or broker is None or any(v is None for v in losses):
+        protected_loss = None
+    elif not positions:
+        protected_loss = 0.0  # nothing is held, so nothing can be lost at a stop
+    elif not losses:
+        protected_loss = None  # positions are held and none has an observed active stop: unknown, not zero
+    else:
+        protected_loss = round(sum(losses), 2)
     if uncertain_observation:
         protected_loss = None  # Unknown evidence must not become a zero-risk figure.
     unprotected_mv = _sum_known([p for p in positions if not p["broker_protected"] and not _unproven_protection(p)],

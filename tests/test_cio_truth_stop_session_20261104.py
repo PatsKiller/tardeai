@@ -306,3 +306,60 @@ def test_a_fully_proven_portfolio_still_reports_its_split(tmp_path):
     payload = truth.risk_payload(document=document)
     assert payload["total_protected_mv"] == 1000
     assert payload["pct_protected"] == 80.0
+
+
+# ---- cx-openai D52 triage (#2677): risk uncertainty must cover what the monetary total covers ----
+FRESH_CLOCK = "2026-11-04T14:59:00Z"
+STALE_CLOCK = "2026-10-28T14:59:00Z"
+
+
+def _risk_document(tmp_path, specs, stop_rows):
+    return truth.resolve(tmp_path, NOW, inputs={
+        "holdings": holdings(*specs), "broker_stops": stop_rows, "stop_fills": {},
+        "companies": {}, "policy": {}, "planned_stops": {}, "cio_status": {},
+    })
+
+
+def test_a_book_of_only_sub_100_positions_does_not_publish_zero_risk(tmp_path):
+    """The loss sum covered every position, the uncertainty guard only the >= $100 ones. A book whose positions are
+    all smaller than that produced an empty loss list — and `all([])` is True — so a stale stop set published
+    loss_at_stop_usd 0.0 and portfolio_heat_pct 0.0: a zero-risk figure nobody had observed."""
+    document = _risk_document(tmp_path, [("SyntheticAccountAlpha", "SML", 0.5, 110, 55.0)],
+                              [row(STALE_CLOCK, symbol="SML")])
+    section = document["positions"]
+    assert section["rows"][0]["broker_protected"] is False
+    assert section["loss_at_stop_usd"] is None, section["loss_at_stop_usd"]
+    assert section["portfolio_heat_pct"] is None, section["portfolio_heat_pct"]
+
+
+def test_a_measured_protected_position_still_publishes_its_loss(tmp_path):
+    document = _risk_document(tmp_path, [("SyntheticAccountAlpha", "BIG", 100, 110, 11000.0)],
+                              [row(FRESH_CLOCK, symbol="BIG")])
+    section = document["positions"]
+    assert section["rows"][0]["broker_protected"] is True
+    assert section["loss_at_stop_usd"] == 1000.0, section["loss_at_stop_usd"]
+    assert section["portfolio_heat_pct"] is not None
+
+
+def test_a_stale_small_position_also_makes_the_whole_risk_block_unknown(tmp_path):
+    """The same rule whether or not the position clears the $100 counting threshold: a stale observation anywhere in
+    the book means the risk figures are not fully measured, so they are withheld rather than published as the
+    measured subset (which would read as the whole book)."""
+    document = _risk_document(tmp_path,
+                              [("SyntheticAccountAlpha", "BIG", 100, 110, 11000.0),
+                               ("SyntheticAccountAlpha", "SML", 0.5, 110, 55.0)],
+                              [row(FRESH_CLOCK, symbol="BIG"), row(STALE_CLOCK, symbol="SML")])
+    assert document["positions"]["loss_at_stop_usd"] is None
+    assert document["positions"]["portfolio_heat_pct"] is None
+
+
+def test_a_cash_only_book_is_zero_risk_not_unknown(tmp_path):
+    """Nothing is held, so nothing can be lost at a stop: 0 is the measured answer here, not a stand-in for unknown."""
+    document = truth.resolve(tmp_path, NOW, inputs={
+        "holdings": {"as_of": NOW.isoformat(), "generated_at": NOW.isoformat(),
+                     "holdings": [{"account": "SyntheticAccountAlpha", "symbol": "CASH", "is_cash": True,
+                                   "shares": 1000, "price": 1, "market_value": 1000, "day_change": 0}]},
+        "broker_stops": [], "stop_fills": {}, "companies": {}, "policy": {}, "planned_stops": {}, "cio_status": {},
+    })
+    assert document["positions"]["rows"] == []
+    assert document["positions"]["loss_at_stop_usd"] == 0.0
