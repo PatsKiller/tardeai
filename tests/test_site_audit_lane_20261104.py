@@ -60,3 +60,49 @@ def test_the_lane_is_named_and_carries_the_live_crawl_rules():
     assert LANE_ID == "site-audit"
     assert PACE_SECONDS >= 4.0, "the operator's pacing floor is 4 s"
     assert HEALTH_PATH == "/api/v2/health"
+
+
+def test_the_declared_signal_is_the_receipt_the_cli_actually_writes(tmp_path, monkeypatch):
+    """cx-openai-4 R8 on #2648: the reader and the writer disagreed, so the lane could never observe itself.
+
+    The registry declared `json_key ... page-audit-*/index.json#generated_at`; the CLI wrote `captured_at` into a dated
+    directory, and neither reader globs. This drives the real writer into a state root shaped like the lane's and asks
+    the real ``observe_signal`` — with the signal from the committed registry — for the run time. Both halves have to
+    agree for the assertion to hold, so it fails if the declaration drifts back to a wildcard, if the key is renamed,
+    or if the pointer stops being written.
+    """
+    import json
+
+    from lib.lane_registry import observe_signal
+    from site_audit.page_audit_capture import LATEST_NAME, write_receipts
+
+    registry = json.loads((ROOT / "config/lane_registry.json").read_text(encoding="utf-8"))
+    entries = registry.get("lanes") or registry
+    entries = list(entries.values()) if isinstance(entries, dict) else entries
+    lane = next(e for e in entries if isinstance(e, dict) and e.get("lane_id") == LANE_ID)
+    sig = lane["output_signal"]
+    assert "*" not in sig["path"], "an output_signal path must be exact: neither reader globs"
+
+    stamp = "20261105T2130Z"
+    out = tmp_path / "data" / "audit" / f"page-audit-{stamp}"
+    out.mkdir(parents=True)
+    rows = [{"route": "/", "label": "Home", "viewport": "desktop", "status": 200, "text_chars": 900,
+             "blank_suspect": False, "flags": [], "h_scroll": False, "failed_requests": [], "console_errors": []}]
+    write_receipts(out, rows, stamp=stamp, base="http://127.0.0.1:7777/v3", routes=[("/", "Home")])
+
+    # The reader half first: the real observer, driven with the committed declaration, must see the finished run.
+    # (Ordering is deliberate — a mutation of the timestamp fails HERE, in the reader, not in a file assertion.)
+    observed = observe_signal(sig, root=tmp_path)
+    assert observed["readable"] is True, observed
+    assert observed["last_output_at"] is not None, observed
+    assert observed["last_output_at"].strftime("%Y%m%dT%H%MZ") == stamp, observed
+
+    # The run's own receipt carries the same key, so a reader holding a dated directory reads a finished run too.
+    receipt = json.loads((out / "index.json").read_text(encoding="utf-8"))
+    assert receipt["generated_at"] == stamp and receipt["captured_at"] == stamp
+
+    # The pointer is written beside the dated directory — where the registry's path resolves.
+    declared = tmp_path / sig["path"]
+    assert declared.is_file(), f"the declared signal file was not written: {declared}"
+    assert json.loads(declared.read_text(encoding="utf-8"))[sig["key"]] == stamp
+    assert LATEST_NAME == declared.name

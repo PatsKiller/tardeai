@@ -244,6 +244,59 @@ def resolve_output_dir(out_arg: str | None, stamp: str, *, repo_root: Path | str
     return assert_capture_root(out, repo_root=root)
 
 
+#: The per-run receipt, and the stable pointer to the newest one that the lane is observed through.
+#: cx-openai-4 R8 on #2648: the lane registry declares `json_key` on `generated_at`, but the CLI wrote only
+#: `captured_at`, and it declared a dated, wildcarded path that neither reader (`lane_registry.observe_signal`,
+#: `cron_outage_watchdog`) resolves — both require an exact path. A dated directory cannot be observed without
+#: globbing, so the run now also drops a pointer beside its own directory, and the registry observes that.
+SUMMARY_SCHEMA = "PageAuditCapture@v1"
+LATEST_SCHEMA = "PageAuditCaptureLatest@v1"
+LATEST_NAME = "page-audit-latest.json"
+
+
+def build_summary(rows: list[dict], *, stamp: str, base: str, routes) -> dict:
+    """One run's receipt: a row per page/viewport, plus the run's own timestamp.
+
+    `generated_at` is the key the lane's output signal observes. `captured_at` is kept beside it because the
+    receipts already written under PageAuditCapture@v1 carry that spelling; both name the same instant, so a reader
+    keyed on either sees a finished run rather than a silent lane.
+    """
+    return {
+        "schema": SUMMARY_SCHEMA, "generated_at": stamp, "captured_at": stamp, "base": base,
+        "routes": len(routes), "rows": len(rows),
+        "errors": sum(1 for r in rows if r.get("error")),
+        "blank_suspects": sum(1 for r in rows if r.get("blank_suspect")),
+        "with_failed_requests": sum(1 for r in rows if r.get("failed_requests")),
+        "with_console_errors": sum(1 for r in rows if r.get("console_errors")),
+        "h_scroll_phone": [r["route"] for r in rows if r.get("h_scroll") and r["viewport"] != "desktop"],
+        "index": [{k: r.get(k) for k in ("route", "label", "viewport", "status", "load_ms", "text_chars",
+                                         "blank_suspect", "flags", "h_scroll", "error")}
+                  | {"failed": len(r.get("failed_requests", [])), "console": len(r.get("console_errors", [])),
+                     "slow_api": len(r.get("slow_api", []))} for r in rows],
+    }
+
+
+def write_receipts(out: Path, rows: list[dict], *, stamp: str, base: str, routes) -> dict:
+    """Write the run's `index.json` and the pointer the lane is observed through. Returns the summary.
+
+    Both writes go through the R2 leaf guard, and the pointer is a plain leaf beside the dated capture
+    directories — never a symlink, never inside the checkout.
+
+    Measured on this head before the change: `main()` referenced `assert_leaf_inside_root` without importing it in
+    its own scope (the only import lived inside `capture()`), so a completed crawl raised NameError here and wrote
+    no receipt at all. The import is local to this function now, and the test drives this function rather than
+    trusting the call site.
+    """
+    from site_audit.capture_root import assert_leaf_inside_root
+    summary = build_summary(rows, stamp=stamp, base=base, routes=routes)
+    assert_leaf_inside_root(out / "index.json", out).write_text(json.dumps(summary, indent=1))
+    latest = {"schema": LATEST_SCHEMA, "generated_at": stamp, "capture_dir": out.name,
+              "rows": summary["rows"], "errors": summary["errors"],
+              "blank_suspects": summary["blank_suspects"]}
+    assert_leaf_inside_root(out.parent / LATEST_NAME, out.parent).write_text(json.dumps(latest, indent=1))
+    return summary
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default="http://127.0.0.1:7777/v3")
@@ -295,17 +348,7 @@ def main() -> int:
             if aborted:
                 break
         browser.close()
-    summary = {"schema": "PageAuditCapture@v1", "captured_at": stamp, "base": a.base, "routes": len(routes),
-               "rows": len(rows), "errors": sum(1 for r in rows if r.get("error")),
-               "blank_suspects": sum(1 for r in rows if r.get("blank_suspect")),
-               "with_failed_requests": sum(1 for r in rows if r.get("failed_requests")),
-               "with_console_errors": sum(1 for r in rows if r.get("console_errors")),
-               "h_scroll_phone": [r["route"] for r in rows if r.get("h_scroll") and r["viewport"] != "desktop"],
-               "index": [{k: r.get(k) for k in ("route", "label", "viewport", "status", "load_ms", "text_chars",
-                                                "blank_suspect", "flags", "h_scroll", "error")}
-                         | {"failed": len(r.get("failed_requests", [])), "console": len(r.get("console_errors", [])),
-                            "slow_api": len(r.get("slow_api", []))} for r in rows]}
-    assert_leaf_inside_root(out / "index.json", out).write_text(json.dumps(summary, indent=1))
+    summary = write_receipts(out, rows, stamp=stamp, base=a.base, routes=routes)
     print(json.dumps({k: v for k, v in summary.items() if k != "index"}, indent=1))
     print(f"OUT {out}")
     return 0
