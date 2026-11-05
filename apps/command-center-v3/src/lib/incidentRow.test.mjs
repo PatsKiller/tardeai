@@ -115,5 +115,13 @@ check('a bracket that is nothing but machine detail is still lifted', pureMachin
 const pureRef = plainTitle('Merged in (#2236)')
 check('a bare reference is still machine detail', !/2236/.test(pureRef.headline), pureRef.headline)
 
+// A lifted measurement tail can carry the ')' that closed a bracket it does not own, so a qualified headline must never
+// render a hanging bracket. Found while re-checking cx-openai-4's order-independent cases at this head.
+const balanced = (s) => { let d = 0; for (const c of s) { if (c === '(') d++; else if (c === ')') { d--; if (d < 0) return false } } return d === 0 }
+for (const t of MIXED.concat(['Data service healthy (NO VALID READ; rc=1)'])) {
+  const m = plainTitle(t)
+  check(`a qualified headline keeps its bracket closed: ${t}`, balanced(m.headline), m.headline)
+}
+
 console.log(`incidentRow: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

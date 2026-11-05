@@ -79,13 +79,24 @@ export function plainWords(s: string): string {
 
 const sentenceCase = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s
 
+/**
+ * A lifted measurement tail can carry the `)` that closed a bracket it does not own — `(UNAVAILABLE; rc=1)` loses the
+ * `; rc=1)` and leaves `(UNAVAILABLE`. Re-close anything left open so a qualification is never rendered with a hanging
+ * bracket. Only ever adds a bracket the text is missing; it never removes one.
+ */
+function closeBrackets(s: string): string {
+  let depth = 0
+  for (const ch of s) { if (ch === '(') depth++; else if (ch === ')') depth = Math.max(0, depth - 1) }
+  return depth > 0 ? s.trimEnd() + ')'.repeat(depth) : s
+}
+
 export function plainTitle(title: string | null | undefined): { headline: string; raw: string | null; rawDetail: string | null } {
   const original = words(String(title ?? ''))
   const lifted: string[] = []
-  const withoutMetrics = original.replace(METRIC_TAIL, (_m, tail: string) => {
+  const withoutMetrics = closeBrackets(original.replace(METRIC_TAIL, (_m, tail: string) => {
     lifted.push(words(tail.replace(/^[,;]\s*/, '').replace(/[,;]/g, ', ')))
     return ''
-  })
+  }))
   const withoutParens = withoutMetrics.replace(MACHINE_PAREN, (m, inner: string) => {
     // Two ways a bracket stays in the sentence: it carries a qualification, or it carries ANY prose at all.
     if (QUALIFICATION.test(inner) || !allMachine(inner)) return m
