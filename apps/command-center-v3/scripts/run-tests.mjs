@@ -57,6 +57,9 @@ const started = Date.now()
 for (const file of run) {
   const proc = spawnSync(process.execPath, ['--experimental-strip-types', file], {
     cwd: app, encoding: 'utf8', timeout: 300_000,
+    // A suite whose SSR warnings exceed spawnSync's default 1 MB buffer is KILLED and reported as a failure with
+    // status null (jobsScheduler.render emits ~1.5 MB of useLayoutEffect warnings while its assertions pass).
+    maxBuffer: 64 * 1024 * 1024,
   })
   if (proc.status !== 0) {
     failures.push({ file, status: proc.status, stderr: (proc.stderr || '').trim().split('\n').slice(-12).join('\n') })
