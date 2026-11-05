@@ -15,6 +15,19 @@ const require = createRequire(join(app, 'package.json'))
 const ts = require('typescript')
 const React = require('react')
 const { renderToStaticMarkup } = require('react-dom/server')
+// React's expected SSR layout-effect warning carries huge data: module stacks.
+// Match only this known message; every other console.error keeps its original arguments.
+const SSR_LAYOUT_WARNING = 'Warning: useLayoutEffect does nothing on the server, because its effect cannot ' +
+  "be encoded into the server renderer's output format. This will lead " +
+  'to a mismatch between the initial, non-hydrated UI and the intended ' +
+  'UI. To avoid this, useLayoutEffect should only be used in ' +
+  'components that render exclusively on the client. ' +
+  'See https://reactjs.org/link/uselayouteffect-ssr for common fixes.'
+const __origConsoleError = console.error
+console.error = (...args) => {
+  if (args[0] === SSR_LAYOUT_WARNING || args[0] === SSR_LAYOUT_WARNING + '%s') return
+  __origConsoleError(...args)
+}
 const memo = new Map()
 function compile(path) {
   if (memo.has(path)) return memo.get(path)
