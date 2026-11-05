@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "option_chain_snapshot_runs_20261031",
+  "files": [
+    "tests/test_option_chain_snapshot_runs_20261031.py"
+  ],
+  "anchor": "OPTION_CHAIN_SNAPSHOT_RUNS_20261031",
+  "comment": [
+    "ANCHOR: OPTION_CHAIN_SNAPSHOT_RUNS_20261031 — the options chain snapshot writer appends every run to option_chain_snapshot_runs (as_of, slot_et, symbol) beside the unchanged latest-of-day option_chain_snapshots, so the 17:35 ET run no longer erases the 10:00 ET reading; absent table (migration not applied) is reported and the daily table is still written; migration pair idempotent, down renames (never drops). No network, no DB, no broker."
+  ]
+}

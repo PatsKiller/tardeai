@@ -529,3 +529,41 @@ def test_a_funded_account_that_does_not_report_still_breaks_completeness(clocks:
     assert partial["complete"] is False
     assert partial["missing_accounts"] == ["roth_a"]
     assert "MISSING roth_a" in partial["coverage_reason"]
+
+
+def test_unknown_day_is_missing_and_aliases_resolve(clocks: dict, monkeypatch) -> None:
+    """2026-10-26: a None day is MISSING, not flat, and an alias finds its canonical row.
+
+    Merge note (2139 x main): main expressed this with the live account keys
+    (``schwab_rollover_ira``, ``schwab_roth_ira``, ...) and the production
+    ``schwab_roth`` -> ``schwab_roth_ira`` alias. This branch keeps test fixtures
+    synthetic, so the same two properties run on the fixture's synthetic accounts
+    and a test-local alias of one of them. The production alias itself is asserted
+    in ``tests/test_account_display_labels_20261023.py``.
+    """
+    from lib.account_display import canonical_key as _real_canonical_key
+
+    aliases = {"roth_alias": "roth_a"}
+    monkeypatch.setattr(
+        "lib.account_display.canonical_key",
+        lambda raw: aliases.get(str(raw or "").strip(), _real_canonical_key(raw)),
+    )
+    fn = _today_pnl()
+    out = fn(
+        clocks["holdings_envelope"],
+        today_by_account={
+            "ira_b": {"change": None},
+            # Day figures are canonicalised too: a figure under the alias key
+            # must still match the canonical ``roth_a`` account summary.
+            "roth_alias": {"change": -1.25},
+            "taxable_c": {"change": 2.5},
+            "taxable_a": {"change": 0.0},
+        },
+        account_summaries=clocks["account_summaries"],
+        positions=_position_rows(clocks),
+        total_change=1.25,
+    )
+    assert out["missing_accounts"] == ["ira_b"]
+    assert "roth_a" in out["contributing_accounts"]
+    assert "ira_b" not in out["zero_change_accounts"]
+    assert out["complete"] is False

@@ -439,6 +439,9 @@ def item_block(it: dict[str, Any], facts: dict[str, Any], now: datetime) -> str:
         lv.append(f"R:R {rr['rr']:.1f}")
     if cio.get("conviction") is not None:
         lv.append(f"Conviction {cio['conviction']:.0f}" + (f" (#{cio['rank']})" if cio.get("rank") else ""))
+    gate = cio.get("market_risk_gate") or {}
+    if gate.get("action"):
+        lv.append(f"⚠ {'held' if gate['action'] == 'hold' else 'demoted'} — {esc(str(gate.get('why') or 'market risk'))}")
     if lv:
         lines.append(" · ".join(lv))
     if cat and cat.get("headline"):
@@ -478,16 +481,34 @@ def rank_by_conviction(items: list[dict], facts: dict[str, Any], floor: float | 
     def conv(it):
         c = ((facts.get(it.get("symbol")) or {}).get("cio") or {}).get("conviction")
         return float(c) if c is not None else None
-    scored = sorted([i for i in items if conv(i) is not None and (floor is None or conv(i) >= floor)], key=lambda i: -conv(i))
+    def gated(it):  # market_risk_gate (YELLOW demote / ORANGE+ hold) sorts a gated entry idea after the ungated ones
+        return bool(((facts.get(it.get("symbol")) or {}).get("cio") or {}).get("market_risk_gate"))
+    scored = sorted([i for i in items if conv(i) is not None and (floor is None or conv(i) >= floor)],
+                    key=lambda i: (gated(i), -conv(i)))
     unscored = [i for i in items if conv(i) is None]
     below = sorted([i for i in items if conv(i) is not None and floor is not None and conv(i) < floor], key=lambda i: -conv(i))
     return scored + unscored, below
 
 
+def market_risk_header() -> str:
+    """The Market Risk Engine tier line every digest opens with (DSN-20261031-market-risk-engine P3-T3)."""
+    try:
+        from scripts.lib.market_risk import cio_context as _mr_cio
+    except ImportError:  # pragma: no cover — cron path
+        from lib.market_risk import cio_context as _mr_cio  # type: ignore
+    try:
+        return _mr_cio.tier_line(_mr_cio.load_market_risk())
+    except Exception as exc:  # noqa: BLE001 — the brief/digest always goes out; the line says what failed
+        return f"Market risk: not yet evaluated (tier line failed: {type(exc).__name__})"
+
+
 def render(slot: str, sections: dict[str, list[dict]], held: list[dict], facts: dict[str, Any],
-           movers: Optional[dict[str, list[dict]]], other: dict[str, Any], now: datetime) -> list[str]:
-    """HTML messages (split at block boundaries, never mid-tag)."""
+           movers: Optional[dict[str, list[dict]]], other: dict[str, Any], now: datetime,
+           market_risk_line: Optional[str] = None) -> list[str]:
+    """HTML messages (split at block boundaries, never mid-tag). ``market_risk_line`` defaults to the live projection."""
     cfg = load_config()
+    if market_risk_line is None:
+        market_risk_line = market_risk_header()
     floor = _conviction_floor()
     label = ((cfg.get("slots") or {}).get(str(slot)) or {}).get("label") or f"{slot}:00 digest"
     blocks: list[str] = []
@@ -496,6 +517,8 @@ def render(slot: str, sections: dict[str, list[dict]], held: list[dict], facts: 
             f"{n_items} advice item{'s' if n_items != 1 else ''}"
             + (" · movers today" if movers else "")
             + f" · {link('Open Communication Center', comms_url())}")
+    if market_risk_line:
+        head += f"\n🌡 <b>{esc(market_risk_line)}</b>"
     blocks.append(head)
     for sec in cfg.get("sections") or []:
         items = sections.get(sec["id"]) or []
@@ -564,9 +587,32 @@ def render(slot: str, sections: dict[str, list[dict]], held: list[dict], facts: 
         blocks.append("━━━━━━━━━━━━━━━━━━\n🛠 <b>LANE HEALTH (P2)</b> · " + str(len(health)) + "\n" + "\n".join(lines))
     rows = other.get("rows") or []
     if rows:
-        kinds = Counter((r[2] or "other") for r in rows)
-        blocks.append("━━━━━━━━━━━━━━━━━━\n🗂 <b>OTHER UPDATES</b> · " + str(len(rows)) + "\n" + "\n".join(
-            f"• {esc(k)} ×{n}" for k, n in kinds.most_common(8)))
+        # A count alone is invariant to WHY (codex, 2026-11-04): eighteen rows reading "notification_intent_p3:
+        # research_lane_health ×18" render identically whether the lane was DEFERRED for off-peak or BROKEN by a
+        # provider failure, so the operator could not act on it. The digest now names the cause it counted: the most
+        # common non-empty title for the kind, and how many distinct causes were folded in beside it.
+        by_kind: dict[str, list[str]] = {}
+        for r in rows:
+            kind = (r[2] or "other")
+            title = str(r[3] or "").strip() if len(r) > 3 else ""
+            by_kind.setdefault(kind, []).append(title)
+        lines: list[str] = []
+        for kind, titles in sorted(by_kind.items(), key=lambda kv: -len(kv[1]))[:8]:
+            causes = [t for t in titles if t]
+            # RANKED BY FREQUENCY, not by first appearance (cc2, 2026-11-04): first-seen headlined a single deferral
+            # ahead of a provider-failure batch only because it arrived first, so the line named the least
+            # representative cause in the group.
+            counts = Counter(causes)
+            distinct = [t for t, _n in counts.most_common()]
+            head = f"• {esc(kind)} ×{len(titles)}"
+            if distinct:
+                head += f" — {esc(distinct[0][:70])}"
+                if len(distinct) > 1:
+                    head += f" <i>(+{len(distinct) - 1} other cause{'s' if len(distinct) > 2 else ''})</i>"
+            elif titles and not causes:
+                head += " — <i>no cause recorded</i>"
+            lines.append(head)
+        blocks.append("━━━━━━━━━━━━━━━━━━\n🗂 <b>OTHER UPDATES</b> · " + str(len(rows)) + "\n" + "\n".join(lines))
     blocks.append("<i>Advisory only — nothing is ordered. Scalp alerts, approvals and stop/protection alerts still "
                   "arrive immediately.</i>")
     limit = int(cfg.get("max_message_chars") or 3800)

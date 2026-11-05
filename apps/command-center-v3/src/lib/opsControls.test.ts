@@ -24,7 +24,7 @@ function t(name: string, fn: () => void) { fn(); n++; console.log(`  [PASS] ${na
 
 const KINDS = [
   { kind: 'crontab.pause', label: 'Pause', direction: 'risky', supported: true, reason: null, executor: 'applier', tab: 'jobs' },
-  { kind: 'release_train.stop', label: 'STOP', direction: 'safe', supported: true, reason: null, executor: 'applier', tab: 'jobs' },
+  { kind: 'deploy.stop', label: 'STOP', direction: 'safe', supported: true, reason: null, executor: 'applier', tab: 'jobs' },
   { kind: 'kill_switch.clear', label: 'Clear', direction: 'risky', supported: false, reason: 'broker-execution code', executor: null, tab: 'jobs' },
 ]
 function state(over: Partial<OpsControlsState> = {}): OpsControlsState {
@@ -32,18 +32,18 @@ function state(over: Partial<OpsControlsState> = {}): OpsControlsState {
     policy: { state: 'ACTIVE' }, store: { state: 'OK' }, applier: { state: 'OK' },
     factors: { webauthn_library: 'available', hmac_key: 'present', totp: 'enrolled', passkeys_active: 1 },
     kinds: KINDS as any, jobs: { state: 'OK' }, n8n: { state: 'OK' }, settings: { state: 'OK' }, grants: { state: 'OK' },
-    data_approvals: { state: 'OK' }, release_train: { state: 'OK' }, passkeys: [], audit: { state: 'OK' }, requests: [],
+    data_approvals: { state: 'OK' }, deploy: { state: 'OK' }, passkeys: [], audit: { state: 'OK' }, requests: [],
     ...over,
   }
 }
 
 t('canAct: ACTIVE + store OK + supported kind', () => {
   assert.equal(canAct(state(), 'crontab.pause'), true)
-  assert.equal(canAct(state(), 'release_train.stop'), true)
+  assert.equal(canAct(state(), 'deploy.stop'), true)
 })
 t('canAct refuses when policy NOT_ACTIVE (inert)', () => {
   const s = state({ policy: { state: 'NOT_ACTIVE', required: '19.0.0' } })
-  assert.equal(canAct(s, 'release_train.stop'), false)
+  assert.equal(canAct(s, 'deploy.stop'), false)
   assert.equal(canAct(s, 'crontab.pause'), false)
   assert.match(actBlockReason(s, 'crontab.pause') || '', /19\.0\.0/)
 })
@@ -144,7 +144,7 @@ t('windowCovers: an open window covers an ordinary risky kind', () => {
 t('windowCovers refuses always-fresh kinds, sudo settings, safe kinds, no token and inert/closed windows', () => {
   assert.equal(windowCovers(open, 'grant.issue'), false)
   assert.equal(windowCovers(open, 'setting.set', { key: 'ops_controls.sudo_window_minutes' }), false)
-  assert.equal(windowCovers(open, 'release_train.stop'), false)
+  assert.equal(windowCovers(open, 'deploy.stop'), false)
   assert.equal(windowCovers(open, 'crontab.pause', {}, false), false)
   assert.equal(windowCovers(state({ kinds: SUDO_KINDS as any, sudo_window: { state: 'INERT', reason: '20.0.0 not ACTIVE', window: null } }), 'crontab.pause'), false)
   assert.equal(windowCovers(state({ kinds: SUDO_KINDS as any, sudo_window: { state: 'ACTIVE', window: { ...WIN, remaining_s: 0 } } }), 'crontab.pause'), false)

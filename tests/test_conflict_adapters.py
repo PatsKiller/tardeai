@@ -96,9 +96,15 @@ def test_schedule_adapter_preserves_registry_and_observation():
     assert section["headline"] and section["gap"] is None
 
 
-def test_rulebook_does_not_assert_operator_ratification_or_live_authority():
+def test_rulebook_status_is_consistent_with_its_approval():
+    # The operator activated the rulebook 2026-10-28 (verbatim: "I authorize you to put those switches
+    # on now"), so status is APPROVED with a recorded approval and live_enabled true. The load gate still
+    # refuses a PROPOSED doc that asserts approval, so an inconsistent state cannot pass.
     doc = load_rulebook()
-    assert doc["status"] == "PROPOSED" and doc["approval"] is None and not doc["live_enabled"]
+    if doc["status"] == "APPROVED":
+        assert doc["approval"] is not None and doc["live_enabled"] is True
+    else:
+        assert doc["approval"] is None and not doc["live_enabled"]
 
 
 def test_failed_paper_and_intra_synthesis_inputs_do_not_become_data_error_sides():

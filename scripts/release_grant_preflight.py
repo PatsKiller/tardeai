@@ -98,8 +98,15 @@ def consume_release_grant(*, tier: str = "release-write", runner=None, grant_id:
 # 2026-10-21 (alignment audit M6): one workflow per context branch protection requires on main
 # (cio-hardening, agent-governance, release-readiness; AGENTS §23.13, AI_WORK_POLICY §11).
 # release-readiness was missing, so a manual `promote` accepted a SHA whose release proof was red.
+#: Runs recorded on main that must NOT gate a promote. CodeQL was removed 2026-11-02 (operator: "remove
+#: CodeQL completely"; ruff security + nightly semgrep/pip-audit/npm audit replace it), and its workflow
+#: file is deleted, so this only skips historical runs still listed for an old head.
+NON_GATING_WORKFLOWS = frozenset({".github/workflows/codeql.yml"})
+
 REQUIRED_PUSH_WORKFLOWS = frozenset({
-    ".github/workflows/cio-production-hardening-ci.yml",
+    # 29.3.0 (DSN-20261031-ci-load-reduction §4.3): the combined suite is the push-run provider of BOTH
+    # required contexts, cio-hardening and ci-gate. cio-production-hardening-ci is dispatch-only now.
+    ".github/workflows/cio-full-suite-sharded.yml",
     ".github/workflows/agent-governance.yml",
     ".github/workflows/release-readiness.yml",
 })
@@ -134,8 +141,9 @@ def evaluate_push_checks(sha: str, runs: list[dict]) -> dict:
             "status", "conclusion", "run_attempt", "html_url", "updated_at",
         )}
         check["path"] = path
+        check["gating"] = path not in NON_GATING_WORKFLOWS
         checks.append(check)
-        if run.get("status") != "completed" or run.get("conclusion") != "success":
+        if check["gating"] and (run.get("status") != "completed" or run.get("conclusion") != "success"):
             errors.append("not_successful:" + path)
     return {"ok": not errors, "candidate_sha": sha, "checks": checks, "errors": errors,
             "required_workflows": sorted(REQUIRED_PUSH_WORKFLOWS),
@@ -319,7 +327,23 @@ def main() -> int:
             cap_allowed = True
             out.update(allowed=True, reason=cv.reason, matched_by=list(cv.matched_by),
                        binding_source="capability_ledger")
-    allowed = v.allowed or cap_allowed
+    # Deploy-delegation binding (AGENTS.md §25.10, 2026-10-27). The host deploy_on_main poller's authority is the
+    # operator's armed standing deploy delegation, not a per-SHA grant. Consulted only when no grant and no
+    # capability bound the release AND the poller's ticket env is present; scripts/lib/deploy_delegation_binding.py
+    # verifies the ticket, that its pid is this process's ancestor inside the poller unit holding
+    # GlobalReleaseLock, STOP absent, delegation ACTIVE, SHA == origin/main, required checks green.
+    # Agents / n8n / Mergify / emergency / train never satisfy it. The guard ledger is not consumed.
+    dd_allowed = False
+    if not v.allowed and not cap_allowed and args.action in ("prepare", "promote") and os.environ.get(
+            "TRADEAI_DEPLOY_DELEGATION_TICKET"):
+        from scripts.lib.deploy_delegation_binding import MATCHED_BY, decide_from_env  # noqa: PLC0415
+
+        dv = decide_from_env(args.action, args.sha, root=ROOT)
+        out["deploy_delegation_binding"] = dv.to_dict()
+        if dv.allowed:
+            dd_allowed = True
+            out.update(allowed=True, reason=dv.reason, matched_by=[MATCHED_BY], binding_source=MATCHED_BY)
+    allowed = v.allowed or cap_allowed or dd_allowed
     # The CI gate guards the consume. A --no-consume call (the deploy script's early binding verdict) consumes
     # nothing, so it reads no CI; the deploy's own exact-SHA re-query and this gate on the consuming call do
     # (release-1 integration of #1628 + release train, 2026-10-21: one use, consumed only after CI).
@@ -342,15 +366,21 @@ def main() -> int:
         if cap_allowed and not args.no_consume:
             # §K: the guard ledger is not consumed; the capability's attempt budget is the accounting.
             out["consumed"] = {"skipped": "capability_binding"}
+        elif dd_allowed and not args.no_consume:
+            # §25.10: the standing deploy delegation is not a counted grant; the poller receipt is the accounting.
+            out["consumed"] = {"skipped": "deploy_delegation"}
         else:
             out["consumed"] = {"skipped": "no_consume"} if args.no_consume else consume_release_grant()
     print(json.dumps(out, sort_keys=True))
     if allowed:
         return 0
+    dd_note = ""
+    if out.get("deploy_delegation_binding"):
+        dd_note = " (deploy_delegation: " + str(out["deploy_delegation_binding"].get("reason")) + ")"
     if mode == "warn":
-        print("RELEASE GRANT BINDING: REFUSED (warn mode — continuing): " + v.reason, file=sys.stderr)
+        print("RELEASE GRANT BINDING: REFUSED (warn mode — continuing): " + v.reason + dd_note, file=sys.stderr)
         return 0
-    print("RELEASE GRANT BINDING: REFUSED — " + v.reason, file=sys.stderr)
+    print("RELEASE GRANT BINDING: REFUSED — " + v.reason + dd_note, file=sys.stderr)
     return 2
 
 

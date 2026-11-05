@@ -37,6 +37,10 @@ import re
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
+try:
+    from scripts.lib.dividend_source_trust import RETIRED_SOURCE_PATTERN as _DIV_RETIRED_PATTERN
+except ImportError:  # pragma: no cover -- hub import path
+    from lib.dividend_source_trust import RETIRED_SOURCE_PATTERN as _DIV_RETIRED_PATTERN  # type: ignore
 
 # One definition of the pills and the key, shared with every reply's Origin line.
 try:
@@ -104,7 +108,8 @@ def gather(symbols: list[str], *, db_query: DbQuery, runtime_dir: Path,
            analyst_fn: Optional[Callable[[list[str]], list[dict[str, Any]]]] = None,
            research_fn: Optional[Callable[[list[str]], list[dict[str, Any]]]] = None,
            thesis_fn: Optional[Callable[[str], dict[str, Any]]] = None,
-           held: Optional[dict[str, dict[str, Any]]] = None) -> dict[str, dict[str, Any]]:
+           held: Optional[dict[str, dict[str, Any]]] = None,
+           prospectus_fn: Optional[Callable[[str], Optional[dict[str, Any]]]] = None) -> dict[str, dict[str, Any]]:
     """One dict per symbol: every section the house holds, each with its store and as-of."""
     syms = [str(s).upper().strip() for s in symbols or [] if str(s).strip()][:3]
     sector_doc = _read_json(Path(runtime_dir) / "sector_momentum_latest.json")
@@ -155,7 +160,8 @@ def gather(symbols: list[str], *, db_query: DbQuery, runtime_dir: Path,
         d["iv"] = iv[0] if iv else None
         div = _rows(db_query, (
             "SELECT dividend_yield_pct, annual_dividend_per_share, ex_div_date, updated_at"
-            "  FROM ticker_dividend_data WHERE upper(symbol) = %s LIMIT 1"), (sym,))
+            "  FROM ticker_dividend_data WHERE upper(symbol) = %s AND COALESCE(source, '') !~* %s LIMIT 1"),
+            (sym, _DIV_RETIRED_PATTERN))
         d["dividends"] = div[0] if div and div[0].get("dividend_yield_pct") else None
         prof_row = d["profile"] or {}
         d["sector"] = _sector_row(sector_doc, prof_row.get("sector"))
@@ -172,6 +178,12 @@ def gather(symbols: list[str], *, db_query: DbQuery, runtime_dir: Path,
                 d["thesis"] = None
         if held is not None:
             d["held"] = held.get(sym)
+        if prospectus_fn:
+            # The latest Ticker Prospectus as the CIO memory holds it (security_research_spine.latest_prospectus).
+            try:
+                d["prospectus"] = prospectus_fn(sym) or None
+            except Exception:  # noqa: BLE001
+                d["prospectus"] = None
         out[sym] = d
     return out
 
@@ -236,6 +248,17 @@ def format_symbol(d: dict[str, Any], *, price: Optional[float] = None,
         lines.append(line)
     else:
         missing.append("company profile")
+
+    if "prospectus" in d:
+        rec = d.get("prospectus")
+        if rec:
+            try:
+                from scripts.lib.prospectus.cio_memory import dossier_line
+            except ImportError:  # pragma: no cover -- hub import path
+                from lib.prospectus.cio_memory import dossier_line  # type: ignore
+            lines.append(dossier_line(rec, PILL_HOUSE))
+        else:
+            missing.append("prospectus")
 
     if prof.get("last_eps_actual") is not None or prof.get("next_earnings_date"):
         parts = []

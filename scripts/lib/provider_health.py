@@ -39,6 +39,7 @@ BILLING_MARKERS = (
     "BILLING",
 )
 AUTH_MARKERS = (
+    "AUTH_FAILURE",
     "HTTP_401",
     "HTTP_403",
     "401",

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "pr_merge_digest_20261027",
+  "files": [
+    "tests/test_pr_merge_digest_20261027.py"
+  ],
+  "comment": [
+    "One Telegram tap approves a digest of ready PRs; head-SHA binding; Merged/Live notes.",
+    "config/merge_hold_paths.json is the single source of the .mergify.yml hold; every §0/§25.10 class and every order-placing module must be held."
+  ]
+}

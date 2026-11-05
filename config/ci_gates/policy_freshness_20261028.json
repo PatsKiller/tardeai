@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "policy_freshness_20261028",
+  "files": [
+    "tests/test_policy_freshness_20261028.py",
+    "tests/test_policy_freshness_gates_20261028.py"
+  ],
+  "comment": [
+    "Operator 2026-10-28: every agent works under the AGENTS.md on origin/main, never a cached copy.",
+    "scripts/lib/policy_freshness.py (OK / STALE / UNKNOWN, offline fallback, ahead-branch exemption) gates agent_claim.py",
+    "claim/next/take, the pre-commit and pre-push hooks and check_agents_policy_state.py (CI); policy_version_broadcast.py",
+    "marks open claims policy_changed and sends one Telegram line per new Policy-Version from the deploy poller."
+  ]
+}

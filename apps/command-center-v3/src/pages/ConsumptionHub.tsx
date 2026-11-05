@@ -1,12 +1,18 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useApi } from '../hooks/useApi'
-import { TOKENS, toneVars } from '../lib/designTokens'
+import { RADIUS, TOKENS, toneVars } from '../lib/designTokens'
 import CloudLlmRunButtons from '../components/CloudLlmRunButtons'
 import { lanePolicyColor, lanePolicyHint, PROCESS_LANE_POLICIES, runManualCloud } from '../lib/cloudLlmRun'
 import { useOAuthLanes, laneReady } from '../hooks/useOAuthLanes'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubPanel } from '../lib/terminalHubChrome'
+import { fmtAsOf } from '../lib/asOfDisplay'
+import {
+  DESK_LOG_PREVIEW, DESK_PROCESS_PREVIEW, PHONE_LOG_PREVIEW, PHONE_PROCESS_PREVIEW,
+  callDetailText, callPrimaryText, failedCalls, hiddenLabel, previewRows, activityCensus,
+} from '../lib/consumptionPresentation'
 import SpendPanel from '../components/SpendPanel'
+import AnthropicCreditPanel from '../components/AnthropicCreditPanel'
 import LlmRoutingModal from '../components/LlmRoutingModal'
 import { BB, RAIL } from '../lib/watchTokens'
 import './OpsEvidencePages.css'
@@ -39,13 +45,28 @@ type LogRow = {
   success: boolean
 }
 
+/** FQ-030: phones get the shorter preview, so the page is not a 78,000px scroll. */
+function usePhone() {
+  const [phone, setPhone] = useState(() => window.matchMedia('(max-width: 820px)').matches)
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 820px)')
+    const update = () => setPhone(query.matches)
+    update(); query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
+  return phone
+}
+
 export default function ConsumptionHub() {
   const [terminalUi] = useTerminalUi()
+  const phone = usePhone()
   const oauth = useOAuthLanes(90_000)
   const [filterPid, setFilterPid] = useState<string | null>(null)
   const [busy, setBusy] = useState('')
   const [msg, setMsg] = useState('')
   const [routingOpen, setRoutingOpen] = useState(false)
+  const [processesExpanded, setProcessesExpanded] = useState(false)
+  const [logsExpanded, setLogsExpanded] = useState(false)
 
   const overviewRead = useApi<any>('/api/v2/consumption/overview', 90_000)
   const processRead = useApi<any>('/api/v2/consumption/processes', 90_000)
@@ -132,6 +153,16 @@ export default function ConsumptionHub() {
   const grokLane = oauth.grok
   const chatLane = oauth.chatgpt
 
+  // FQ-030: lead with the failures, then collapse the two long lists behind a control that
+  // says how much it is holding back. Collapsing hides rows; it never removes them.
+  const census = useMemo(() => activityCensus(logRead as any), [logRead])
+  const failures = useMemo(() => failedCalls(logs), [logs])
+  const orderedLogs = useMemo(() => [...failures, ...logs.filter(l => l.success)], [failures, logs])
+  const processView = previewRows(processes, processesExpanded, phone ? PHONE_PROCESS_PREVIEW : DESK_PROCESS_PREVIEW)
+  const logView = previewRows(orderedLogs, logsExpanded, phone ? PHONE_LOG_PREVIEW : DESK_LOG_PREVIEW)
+  const processMore = hiddenLabel('processes', processView.hidden, processesExpanded)
+  const logMore = hiddenLabel('calls', logView.hidden, logsExpanded)
+
   return <OpsDeskFrame page="llm" asOf={{}}>
 
     <div className="ops-evidence-page" data-testid="llm-consumption" style={{ maxWidth: 1100 }}>
@@ -155,7 +186,7 @@ export default function ConsumptionHub() {
       <LlmRoutingModal open={routingOpen} onClose={() => setRoutingOpen(false)} onSaved={load} />
       <p style={{ ...hubSubtitle(terminalUi), marginBottom: 16, lineHeight: 1.5, fontSize: 10 }}>
         Track <b style={{ color: TEXT }}>subscription usage</b> for Grok and ChatGPT,
-        plus <b style={{ color: 'var(--ai-color)' }}>DeepSeek</b> metered API (Flash / Pro).
+        plus Anthropic promotional API and <b style={{ color: 'var(--ai-color)' }}>DeepSeek</b> metered API (Flash / Pro).
         Paid costs are shown in USD below. Relative usage units measure text volume and are not dollars.
         <b>Manual</b> mode blocks automatic calls; <b>Automated</b> allows scheduled calls.
       </p>
@@ -165,7 +196,31 @@ export default function ConsumptionHub() {
         Stop advisories stay <b>Manual</b> — use Grok batch (top 6) on Portfolio → Stop Management or the batch row here.
       </div>
 
+      {/* FQ-030: spend and failure are the two things a reader comes here for, so they lead.
+          A clean window still says so out loud rather than leaving the reader to scroll for it. */}
+      <div role={census.state === 'unavailable' || failures.length ? 'alert' : undefined}
+             data-testid="failure-census"
+             style={{ borderRadius: RADIUS.md, padding: '9px 12px', marginBottom: 12, fontSize: 12, lineHeight: 1.45,
+                      background: failures.length && census.state === 'current' ? 'color-mix(in srgb, var(--danger-color) 9%, transparent)' : 'var(--bg1)',
+                      border: `1px solid color-mix(in srgb, ${census.state === 'unavailable' || (failures.length && census.state === 'current') ? RED : 'var(--border)'} 40%, transparent)`,
+                      color: census.state === 'unavailable' ? AMBER : failures.length ? RED : MUTED }}>
+          {/* cx-openai-3's CX3-F1 (PR 2676): an unread or refused source is not a clean window, and a failing
+              refresh over retained rows is not the current one. Only an accepted read that carries a logs array
+              may say "no failed calls". */}
+          {census.state === 'unavailable'
+            ? <>Activity is <b>unavailable</b> — {census.reason}. That is not the same as no failed calls; nothing was counted.</>
+            : census.state === 'retained'
+              ? <>{failures.length
+                    ? <><b>{failures.length} failed {failures.length === 1 ? 'call' : 'calls'}</b> in the {logs.length} rows retained from an earlier read.</>
+                    : <>No failed calls in the {logs.length} rows retained from an earlier read.</>}
+                  {' '}The refresh is failing ({census.reason}), so this is not the current window.</>
+              : failures.length
+                ? <><b>{failures.length} failed {failures.length === 1 ? 'call' : 'calls'}</b> in the last {logs.length}. They are listed first below.</>
+                : <>No failed calls in the last {logs.length}. Paid spend is in the Spend panel just below.</>}
+      </div>
+
       {/* Real paid spend: provider · model · process · peak/off-peak (operator ask 2026-09-14) */}
+      <AnthropicCreditPanel status={overview?.anthropic} />
       <SpendPanel />
 
       {/* OAuth lane status */}
@@ -283,7 +338,9 @@ export default function ConsumptionHub() {
 
       {/* Process table */}
       <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 16 }}>
-        <div style={{ fontSize: 14, fontWeight: 800, color: TEXT, marginBottom: 10 }}>Processes</div>
+        <div style={{ fontSize: 14, fontWeight: 800, color: TEXT, marginBottom: 10 }}>
+          Processes <span style={{ fontWeight: 400, color: MUTED, fontSize: 11 }}>· {processes.length} registered</span>
+        </div>
         <div style={{ overflowX: 'auto' }}>
           <table className="ops-evidence-table" aria-label="LLM processes" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
             <thead>
@@ -299,7 +356,7 @@ export default function ConsumptionHub() {
               </tr>
             </thead>
             <tbody>
-              {processes.map(p => (
+              {processView.shown.map(p => (
                 <tr key={p.process_id} style={{ borderTop: '1px solid var(--border)' }}>
                   <td data-label="Process" style={{ padding: '8px', color: TEXT, fontWeight: 700 }}>
                     {p.process_name}
@@ -333,7 +390,10 @@ export default function ConsumptionHub() {
                   </td>
                   <td data-label="30d calls" style={{ color: TEXT }}>{p.calls_30d ?? '—'}{p.calls_today ? ` (${p.calls_today} today)` : ''}</td>
                   <td data-label="Relative units" style={{ color: TEXT }}>{p.relative_units_30d == null ? '—' : p.relative_units_30d.toFixed(1)}</td>
-                  <td data-label="Last used" style={{ color: MUTED, fontSize: 10 }}>{p.last_used ? new Date(p.last_used).toLocaleString() : '—'}</td>
+                  {/* FQ-029: an unlabelled toLocaleString() gave a time in whatever zone the browser chose.
+                      fmtAsOf is the house formatter: a zoned stamp renders as "Nov 4 09:53 ET", and the exact
+                      stamp stays one hover away in the title. */}
+                  <td data-label="Last used" style={{ color: MUTED, fontSize: 10 }} title={p.last_used ?? undefined}>{p.last_used ? (fmtAsOf(p.last_used) ?? p.last_used) : '—'}</td>
                   <td data-label="Actions" style={{ whiteSpace: 'nowrap' }}>
                     <button disabled={busy === p.process_id || p.mode === 'automated'}
                       onClick={() => void setMode(p.process_id, 'automated')}
@@ -355,6 +415,14 @@ export default function ConsumptionHub() {
             </tbody>
           </table>
         </div>
+        {(processMore || processesExpanded) && (
+          <button type="button" onClick={() => setProcessesExpanded(v => !v)} aria-expanded={processesExpanded}
+            style={{ marginTop: 10, width: '100%', minHeight: 44, padding: '9px 12px', borderRadius: RADIUS.sm, cursor: 'pointer',
+                     fontSize: 12, fontWeight: 700, color: BLUE, background: 'transparent',
+                     border: '1px solid color-mix(in srgb, var(--info-color) 40%, transparent)' }}>
+            {processesExpanded ? 'Show fewer processes' : processMore}
+          </button>
+        )}
         <div style={{ fontSize: 11, color: MUTED, marginTop: 8 }}>Relative usage units = prompt and response characters ÷ 1,000. This is a volume measure; USD costs are in the Spend panel. Refreshes every 90 seconds.</div>
       </div>
 
@@ -362,24 +430,43 @@ export default function ConsumptionHub() {
       <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
         <div style={{ fontSize: 14, fontWeight: 800, color: TEXT, marginBottom: 8 }}>
           Recent activity{filterPid ? ` · ${filterPid}` : ''}
+          <span style={{ fontWeight: 400, color: MUTED, fontSize: 11 }}>
+            {' '}· {orderedLogs.length} calls{failures.length ? ` · ${failures.length} failed first` : ''}
+          </span>
         </div>
         {logs.length === 0 ? (
           <div style={{ fontSize: 11, color: MUTED }}>No logged calls yet — calls appear after processes use Grok/ChatGPT with tracking.</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {logs.map(l => (
+            {logView.shown.map(l => (
               <div key={l.id} style={{ padding: '8px 10px', borderRadius: 6, background: 'var(--bg2)', border: '1px solid var(--border)', fontSize: 11 }}>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <span style={{ color: MUTED }}>{new Date(l.created_at).toLocaleString()}</span>
+                  {/* FQ-029: same fix on the call log — a zoned ET stamp, exact value in the title. */}
+                  <span style={{ color: MUTED }} title={l.created_at ?? undefined}>{fmtAsOf(l.created_at) ?? l.created_at}</span>
                   <span style={{ fontWeight: 800, color: l.model_lane === 'grok' ? 'var(--info-color)' : (l.model_lane === 'chatgpt' ? 'var(--success-color)' : (l.model_lane?.startsWith('deepseek') ? 'var(--ai-color)' : MUTED)) }}>{l.model_lane}</span>
-                  <span style={{ color: TEXT, fontWeight: 700 }}>{l.process_name}</span>
-                  <span style={{ color: l.trigger_mode === 'manual' ? AMBER : MUTED, fontSize: 10 }}>{l.trigger_mode}</span>
-                  {!l.success && <span style={{ color: RED }}>failed</span>}
+                  {!l.success && <span style={{ color: RED, fontWeight: 800 }}>failed</span>}
                 </div>
-                <div style={{ color: MUTED, marginTop: 4 }}>{l.task_summary}</div>
+                {/* FQ-031: the readable line. The internal process id and the raw request text
+                    belong to diagnosis, so they sit behind the disclosure below, not here. */}
+                <div style={{ color: TEXT, fontWeight: 700, marginTop: 2 }}>{callPrimaryText(l)}</div>
+                <details style={{ marginTop: 4 }}>
+                  {/* FQ-031: this is the control that reveals the diagnosis, so it is a real tap
+                      target too — 44px, not the 14px a 10px summary line gives on a phone. */}
+                  <summary style={{ cursor: 'pointer', fontSize: 11, color: MUTED, minHeight: 44,
+                                    display: 'flex', alignItems: 'center' }}>Technical detail</summary>
+                  <pre style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 10, color: MUTED, fontFamily: 'inherit' }}>{callDetailText(l)}</pre>
+                </details>
               </div>
             ))}
           </div>
+        )}
+        {(logMore || logsExpanded) && (
+          <button type="button" onClick={() => setLogsExpanded(v => !v)} aria-expanded={logsExpanded}
+            style={{ marginTop: 10, width: '100%', minHeight: 44, padding: '9px 12px', borderRadius: RADIUS.sm, cursor: 'pointer',
+                     fontSize: 12, fontWeight: 700, color: BLUE, background: 'transparent',
+                     border: '1px solid color-mix(in srgb, var(--info-color) 40%, transparent)' }}>
+            {logsExpanded ? 'Show fewer calls' : logMore}
+          </button>
         )}
       </div>
     </div>

@@ -1,0 +1,721 @@
+{
+  "active": false,
+  "connections": {
+    "GET hourly due": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Validate due",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "GET material due": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Validate due",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Hourly context": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Relay",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Manual hourly check": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Hourly context",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Material context": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Relay",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Record run": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Route outcome",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Relay": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Route lane",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Route lane": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "GET hourly due",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "GET material due",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Fail run",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Route outcome": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Outcome success",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Fail run",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Outcome as data",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Outcome as data",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Fail run",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Run lane": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Record run",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Schedule hourly ET": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Hourly context",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Schedule material ET": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Material context",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Validate due": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Run lane",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "tradeai-cio-ask-lifecycle-native",
+  "meta": {
+    "activation": "INACTIVE source candidate; reviewed admission and trusted host/runtime evidence required",
+    "design": "DSN-20261026-ask-hourly-P1-T4",
+    "framework": {
+      "class": "business-critical",
+      "connects_to": [
+        "relay:GET /due (authenticated, exact lane filter; server-minted schedule key)",
+        "workflow:tradeai-fabric-run-lane (waits; relay:POST /run and GET /run_outcome only through Run Lane)",
+        "workflow:tradeai-fabric-error (errorWorkflow; relay:POST /intent, host communications gateway)",
+        "lane:cio-ask-lifecycle (config/n8n_run_allowlist.json; live_arg null until reviewed admission)",
+        "lane:cio-ask-material-events (config/n8n_run_allowlist.json; live_arg null until reviewed admission)",
+        "store:data/cio/cio_ask_events.jsonl (host-owned Ask writer and exact consumer readback)",
+        "receipt:data/runtime/cio-ask-lifecycle_last.json and cio-ask-material-events_last.json; immutable v2 attempts",
+        "consumer:scripts/lib/cio_ask_lifecycle_health.py (per-thread evidence, memory_sync, readback, delivery)"
+      ],
+      "health_contract_id": "cio-ask-lifecycle",
+      "lanes": [
+        "cio-ask-lifecycle",
+        "cio-ask-material-events"
+      ],
+      "llm_steps": [],
+      "native_recovery": {
+        "cron_fallback": false,
+        "dead_letter": "host_ledger",
+        "lanes": [
+          "cio-ask-lifecycle",
+          "cio-ask-material-events"
+        ],
+        "max_attempts": 1,
+        "mode": "manual_stop_then_reviewed_canary",
+        "retry_owner": "tradeai-fabric-run-lane",
+        "runbook_id": "cio-ask-lifecycle-native",
+        "runbook_path": "docs/ops/packets/ask-hourly-20261026/n8n/README.txt",
+        "schema": "N8nNativeRecovery@v1",
+        "stop_actions": [
+          "unpublish_workflow",
+          "disable_lane_dispatch"
+        ],
+        "workflow_id": "tradeai-cio-ask-lifecycle-native"
+      },
+      "owner": "cio",
+      "rollback": "Follow docs/ops/packets/ask-hourly-20261026/n8n/README.txt: unpublish this workflow and set both registry dispatch modes off; keep the host ledger and existing receipt evidence. Native lanes have no cron twin.",
+      "runbook_id": "cio-ask-lifecycle-native",
+      "runbook_path": "docs/ops/packets/ask-hourly-20261026/n8n/README.txt",
+      "schema": "N8nWorkflowFrameworkMeta@v1",
+      "stage": "shadow"
+    },
+    "generator": "scripts/build_cio_ask_lifecycle_workflow.py",
+    "graph_sha256": "bd88b01c95e9da76409be0a9e578b89baae4bb8628ea6bdcce7f52759c5e51d6",
+    "kind": "native-business",
+    "policy_sha256": "c6750b96ada49f816798bf3714ad390616b1b32769fdcbcc54e0635e32caf31f"
+  },
+  "name": "tradeai-cio-ask-lifecycle-native",
+  "nodes": [
+    {
+      "id": "dc0c0771-99ef-5a8a-848a-123a94ebc8b3",
+      "name": "Fail run",
+      "parameters": {
+        "jsCode": "const r = $input.first().json || {};\nthrow new Error('Ask lifecycle: ' + String(r.status || 'invalid_route') + ' ' + String(r.reason || '').slice(0, 80));\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        2160,
+        320
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "tradeai-run-relay",
+          "name": "tradeai-run-relay"
+        }
+      },
+      "id": "aa8d1dea-7948-52d8-b106-719f54e3a187",
+      "maxTries": 2,
+      "name": "GET hourly due",
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "GET",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 10000
+        },
+        "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/due?source=schedule&lane=cio-ask-lifecycle&limit=1"
+      },
+      "position": [
+        960,
+        0
+      ],
+      "retryOnFail": true,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "tradeai-run-relay",
+          "name": "tradeai-run-relay"
+        }
+      },
+      "id": "d966f7a4-7f64-57bc-a89d-d8759f1fe9e9",
+      "maxTries": 2,
+      "name": "GET material due",
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "GET",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 10000
+        },
+        "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/due?source=schedule&lane=cio-ask-material-events&limit=1"
+      },
+      "position": [
+        960,
+        240
+      ],
+      "retryOnFail": true,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "7cd7707f-2c2e-5af7-8ef9-387c4e50523f",
+      "name": "Hourly context",
+      "parameters": {
+        "jsCode": "// Generated by scripts/build_cio_ask_lifecycle_workflow.py; no caller-minted slot.\nreturn [{ json: { lane_id: \"cio-ask-lifecycle\" } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        240,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "b6d56d2d-c9ca-5510-b6dc-966eaeaf8f4b",
+      "name": "Manual hourly check",
+      "parameters": {},
+      "position": [
+        0,
+        -240
+      ],
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1
+    },
+    {
+      "id": "d79cdded-332e-599c-82c5-1c1aa9007ad0",
+      "name": "Material context",
+      "parameters": {
+        "jsCode": "// Generated by scripts/build_cio_ask_lifecycle_workflow.py; no caller-minted slot.\nreturn [{ json: { lane_id: \"cio-ask-material-events\" } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        240,
+        240
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "918291c6-239d-5f5a-a68e-a46474d504b3",
+      "name": "Outcome as data",
+      "parameters": {
+        "jsCode": "// Forward the actual Run Lane status. Receipt + canonical per-thread evidence decides business health.\nconst r = $input.first().json || {};\nreturn [{ json: { ...r, business_health: 'CioAskLifecycleHealth@v1',\n  business_freshness_proven: false } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        2160,
+        160
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "7550e1f4-973e-5779-b96d-6d0d51a5fe84",
+      "name": "Outcome success",
+      "parameters": {
+        "jsCode": "// Forward the actual Run Lane status. Receipt + canonical per-thread evidence decides business health.\nconst r = $input.first().json || {};\nreturn [{ json: { ...r, business_health: 'CioAskLifecycleHealth@v1',\n  business_freshness_proven: false } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        2160,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "e8483951-f4fc-58c6-a92b-ad66d5a35465",
+      "name": "Record run",
+      "parameters": {
+        "jsCode": "// Generated by scripts/build_cio_ask_lifecycle_workflow.py; save the host join identity, never fabricate success.\nconst c = $('Validate due').first().json;\nconst r = $input.first().json || {};\n$execution.customData.set('run_id', String(r.run_id || c.idempotency_key));\n$execution.customData.set('lane_id', String(c.lane_id));\n$execution.customData.set('process_id', \"tradeai-cio-ask-lifecycle-native\");\nif (r.schema !== 'RunLaneResult@v1' || r.lane_id !== c.lane_id || r.mode !== c.mode || r.run_id !== c.idempotency_key) {\n  throw new Error('run-lane: result identity/schema mismatch');\n}\nreturn [{ json: r }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        1680,
+        120
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "89a29c7a-ed7b-5bc6-93fa-1ec35807a13c",
+      "name": "Relay",
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "2d8a15b7-0237-5087-b465-4a9d2402eed2",
+              "name": "TRADEAI_N8N_RUN_URL",
+              "type": "string",
+              "value": "http://172.19.0.1:18092"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "position": [
+        480,
+        120
+      ],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "ddb17266-c066-5c16-bb81-6df62cf8a751",
+      "name": "Route lane",
+      "parameters": {
+        "options": {
+          "fallbackOutput": "extra"
+        },
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "cd7d5319-d136-5f1b-ac60-53f1632e08db",
+                    "leftValue": "={{ $json.lane_id }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "cio-ask-lifecycle"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                }
+              },
+              "outputKey": "cio-ask-lifecycle",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "2087e374-d508-53b8-9000-702a5e8db1be",
+                    "leftValue": "={{ $json.lane_id }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "cio-ask-material-events"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                }
+              },
+              "outputKey": "cio-ask-material-events",
+              "renameOutput": true
+            }
+          ]
+        }
+      },
+      "position": [
+        720,
+        120
+      ],
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2
+    },
+    {
+      "id": "a8ef71f0-febe-5def-8921-ce19223ee43b",
+      "name": "Route outcome",
+      "parameters": {
+        "options": {
+          "fallbackOutput": "extra"
+        },
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "7bc062a6-c47e-5b64-abf0-cc09f01ab292",
+                    "leftValue": "={{ $json.status }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "success"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                }
+              },
+              "outputKey": "success",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "3a27520e-f950-55d5-8dc7-15119398534f",
+                    "leftValue": "={{ $json.status }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "failed"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                }
+              },
+              "outputKey": "failed",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "7859b2ad-2353-547c-9231-97d83f045003",
+                    "leftValue": "={{ $json.status }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "refused_policy"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                }
+              },
+              "outputKey": "refused_policy",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "43e0ab2c-2bd9-50b6-a096-61cba7e1a8a4",
+                    "leftValue": "={{ $json.status }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "skipped_lock"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                }
+              },
+              "outputKey": "skipped_lock",
+              "renameOutput": true
+            }
+          ]
+        }
+      },
+      "position": [
+        1920,
+        120
+      ],
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2
+    },
+    {
+      "id": "00ae214e-55ab-594e-83cc-017be5382cec",
+      "name": "Run lane",
+      "parameters": {
+        "options": {
+          "waitForSubWorkflow": true
+        },
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "tradeai-fabric-run-lane"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [],
+          "schema": [],
+          "value": {
+            "idempotency_key": "={{ $json.idempotency_key }}",
+            "lane_id": "={{ $json.lane_id }}",
+            "max_attempts": "={{ $json.max_attempts }}",
+            "mode": "={{ $json.mode }}",
+            "outcome_timeout_s": "={{ $json.outcome_timeout_s }}",
+            "process_id": "={{ $json.process_id }}"
+          }
+        }
+      },
+      "position": [
+        1440,
+        120
+      ],
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "7c597d3e-edd1-5c06-81f2-1e53f0bb5db6",
+      "name": "Schedule hourly ET",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "expression": "0 0 * * * *",
+              "field": "cronExpression"
+            }
+          ]
+        }
+      },
+      "position": [
+        0,
+        0
+      ],
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "5cb466ca-e6d9-57a7-ae9b-90a022b06087",
+      "name": "Schedule material ET",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "expression": "0 */5 * * * *",
+              "field": "cronExpression"
+            }
+          ]
+        }
+      },
+      "position": [
+        0,
+        240
+      ],
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "fda071ab-9621-5b3e-b5fe-a830f4283291",
+      "name": "Validate due",
+      "parameters": {
+        "jsCode": "// Generated by scripts/build_cio_ask_lifecycle_workflow.py; the relay, not this workflow, chooses slot and mode.\nconst lane = $('Relay').first().json.lane_id;\nif (![\"cio-ask-lifecycle\", \"cio-ask-material-events\"].includes(lane)) throw new Error('due: unknown lane');\nconst r = $input.first().json || {};\nif (r.statusCode !== 200 || r.error) throw new Error('due: relay unavailable or refused');\nconst due = r.body;\nif (!due || due.schema !== \"DueResponse@v1\" || due.ok !== true || due.source !== 'schedule') {\n  throw new Error('due: invalid response');\n}\nif (!Array.isArray(due.items) || due.items.length > 1) throw new Error('due: invalid item count');\nreturn due.items.map(it => {\n  if (!it || it.lane_id !== lane || !['dry_run', 'live'].includes(it.mode)) throw new Error('due: wrong lane/mode');\n  const prefix = 'd:' + lane + ':' + it.mode + ':';\n  const key = it.idempotency_key;\n  if (typeof key !== 'string' || !key.startsWith(prefix) || !/^[0-9]{8}T[0-9]{4}(:a[2-9])?$/.test(key.slice(prefix.length))) {\n    throw new Error('due: not a bound server schedule key');\n  }\n  return { json: { lane_id: lane, mode: it.mode, idempotency_key: key,\n    max_attempts: 1, outcome_timeout_s: 720, process_id: \"tradeai-cio-ask-lifecycle-native\" } };\n});\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        1200,
+        120
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    }
+  ],
+  "settings": {
+    "errorWorkflow": "tradeai-fabric-error",
+    "executionOrder": "v1",
+    "executionTimeout": 840,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": false,
+    "timezone": "America/New_York"
+  }
+}

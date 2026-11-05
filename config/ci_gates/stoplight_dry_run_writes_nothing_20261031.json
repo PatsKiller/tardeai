@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "stoplight_dry_run_writes_nothing_20261031",
+  "files": [
+    "tests/test_stoplight_dry_run_writes_nothing_20261031.py"
+  ],
+  "anchor": "STOPLIGHT_DRY_RUN_WRITES_NOTHING_20261031",
+  "comment": [
+    "ANCHOR: STOPLIGHT_DRY_RUN_WRITES_NOTHING_20261031 — defense_inverse_stoplights --dry-run writes no row, commits",
+    "nothing, leaves the snapshot file untouched and sends nothing (a dry run used to consume the transition so the",
+    "next real 17:55 run sent no card). Fake connection fails on any write; positive control proves it sees writes."
+  ]
+}

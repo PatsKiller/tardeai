@@ -1,0 +1,20 @@
+{
+  "_comment": [
+    "DefenseStoplightNotify@v1 — operator-owned delivery policy for the inverse-hedge stoplight desk",
+    "(scripts/defense_inverse_stoplights.py, 17:55 ET weekdays). SHADOW since 2026-07-18; promoted to Telegram",
+    "by the operator on 2026-10-31 (DSN-20261031-market-risk-engine P0-T7, design §11 item 4; decision recorded in",
+    "config/promote_criteria.json). Only the transitions listed here send; everything else stays desk-only telemetry.",
+    "The ENTRY 'DAY 1 OF 2' shadow substate is deliberately absent: the pre-registered backtest rejected the two-day",
+    "rule as a gate. Advisory only — a card never carries a size, order or stop value (MBI_BEHAVIOR = 0)."
+  ],
+  "enabled": true,
+  "priority": "P2",
+  "dedupe_minutes": 1440,
+  "producer": "defense_inverse_stoplights",
+  "message_class": "market_risk",
+  "transitions": [
+    {"light": "THESIS", "state": "GREEN", "why": "a hedge is justified by the desk's own deterioration trigger and book exposure"},
+    {"light": "ENTRY", "state": "GREEN", "why": "the underlying index printed the bounce-day entry condition"},
+    {"light": "EXIT", "state": "RED", "why": "an open hedge must be reduced or closed under the governed rules"}
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "reprice_zero_total_guard_20261105",
+  "files": [
+    "tests/test_reprice_zero_total_guard_20261105.py"
+  ],
+  "anchor": "REPRICE_ZERO_TOTAL_GUARD_20261105",
+  "comment": [
+    "ANCHOR: REPRICE_ZERO_TOTAL_GUARD_20261105 - the */15 repricer summed account totals with `or 0` and skipped its drift",
+    "guard whenever the result was zero, so an empty or unpriced holdings document wrote a plausible $0 over a real total",
+    "through a raw write_text. These tests pin the refusal (empty document, unpriced holding, absent summaries), the",
+    "genuine-zero control that must NOT be refused, and the guard shape that makes 100% drift evaluable."
+  ]
+}

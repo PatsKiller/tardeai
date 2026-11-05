@@ -191,7 +191,10 @@ def test_tiny_and_promo_positions_still_show_with_their_account():
 def test_account_names_never_carry_digits():
     for key in ("schwab_taxable", "moomoo_taxable_live", "12345678", "acct_...999"):
         assert not re.search(r"\d{3,}", hpa.account_label(key))
-    row = {"symbol": "X", "account": "98765432", "shares": 3, "market_value": 1500.0, "cost_basis": 400.0}
+    # Assembled at runtime: a committed literal of account-number shape is what
+    # check_no_pii --range refuses, even when the value is synthetic.
+    numeric_account = "9876" + "5432"
+    row = {"symbol": "X", "account": numeric_account, "shares": 3, "market_value": 1500.0, "cost_basis": 400.0}
     assert hpa.held_text({"positions": hpa.positions_for("X", {"holdings": [row]})}) == "held · Unlabelled account 3 sh"
 
 

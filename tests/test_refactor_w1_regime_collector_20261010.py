@@ -71,6 +71,7 @@ def env(tmp_path, monkeypatch):
     conn = FakeConn()
     monkeypatch.setattr(mrc, "_get_conn", lambda: conn)
     monkeypatch.setattr(mrc, "collect_vix", lambda sid: None)
+    monkeypatch.setattr(mrc, "collect_vol_complex", lambda sid, conn=None, vix=None: ([], []))  # no network in tests
     monkeypatch.setattr(
         mrc,
         "collect_market_session",

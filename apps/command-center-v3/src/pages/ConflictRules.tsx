@@ -7,6 +7,7 @@ import {useApi} from '../hooks/useApi'
 import {conflictSource, conflictTime, conflictValue} from '../lib/watchConflictPresentation'
 import {
   ACTION_WORDS, TIERS, awaitingAi, coverageWord, decisionBody, decisionError, fingerprint, isPending, liveCountRows, pct, pendingProposals,
+  decisionGapText, proposalsHeading, proposalsIntro,
   proposalCases, proposalModel, proposalResolutions, proposalTestCount, statusWords, unmatchedStatus,
   type DecisionAction, type MatrixRule, type ProposalCollection, type RuleProposal, type RulebookView, type UnmatchedExample,
 } from '../lib/conflictRulesModel'
@@ -41,16 +42,16 @@ export default function ConflictRules() {
   const decisionsEnabled = proposalList?.decisions_enabled === true
 
   return <div className="conflict-rules" data-testid="conflict-rules">
-    <DeskPage title="Conflict rules" purpose="How the Command Center decides when two sources disagree: the binding resolution matrix, in plain words."
+    <DeskPage title="Conflicts" purpose="How the Command Center decides when two data sources disagree — the resolution matrix, not AGENTS.md. Agent operating rules live in the Rulebook."
       sources={[{id: 'rulebook', label: 'Conflict rulebook', gap: view ? undefined : 'Rulebook not loaded yet.'},
         {id: 'ledger', label: 'Conflict ledger', asOf: view?.live.as_of ?? null, gap: view?.live.gap?.reason as string | undefined}]}
       decisions={pending.map(proposal => ({id: proposal.proposal_id, title: `Proposed rule: ${proposal.summary || proposal.plain_rule || 'review the AI proposal'} →`,
         href: `/conflicts/rules?proposal=${encodeURIComponent(proposal.proposal_id)}`}))}
-      decisionGap={pending.length ? `${pending.length} AI-proposed rule${pending.length === 1 ? '' : 's'} waiting for your approval.` : 'Nothing on this page needs a decision right now.'}>
+      decisionGap={decisionGapText(pending.length, unmatchedRows.length)}>
       <div className="cr-stack">
         {(pending.length > 0 || unmatchedRows.length > 0) && <section className="cr-panel cr-attention" aria-labelledby="cr-proposals" data-testid="cr-proposals">
-          <h2 id="cr-proposals">Proposed rules — awaiting your approval</h2>
-          <p className="cr-muted">No existing rule matched these cases, so an AI drafted a rule and a resolution. Nothing changes until you approve.</p>
+          <h2 id="cr-proposals">{proposalsHeading(pending.length, unmatchedRows.length)}</h2>
+          <p className="cr-muted">{proposalsIntro(pending.length)}</p>
           {pending.length > 0 && !decisionsEnabled && <p className="warning" data-testid="cr-activation-pending">Approval activation pending: you can read every proposal; the decision buttons turn on when the proposal store is activated.</p>}
           {pending.map(proposal => {
             const cases = proposalCases(proposal, proposalList)

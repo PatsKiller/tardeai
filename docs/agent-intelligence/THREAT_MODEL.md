@@ -81,3 +81,53 @@ memory governance, and redaction in the context envelope / traces.
 2. **Trace/memory retention had no automated TTL/purge** — closed:
    `agent_trace_retention.py` provides bounded retention/rotation (max age,
    max bytes, max rows; atomic rotate; governed paths only; dry-run default).
+
+<!-- moved from AGENTS.md 25.0.1 lines 2047-2061 -->
+## Moved from AGENTS.md (25.0.1 lines 2047-2061)
+
+*Moved here by AGENTS.md 26.0.0, which keeps the binding rule and a pointer; the 25.0.1 text is preserved at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`. This is reference, not instruction: where it mentions Telegram `/approve`, `bin/guard request`, a push budget of 5 or a coordinator override, `gh pr merge`, a `release-write` grant for a deploy, or shipping with no operator input, those paths are retired or not implemented, and AGENTS.md governs.*
+
+## Agent controls audit 2026-09-18 — prompt injection measured PARTIAL
+
+Moved from AGENTS.md 25.0.1 §8 (lines 2047–2061). Evidence: `~/trade-ai-audits/AGENT_CONTROLS_AUDIT_2026-09-18.md`.
+
+### Prompt injection is PARTIAL on model ingress
+- **Admission + partition + MCP denylist are real and passed probes** when those paths run:
+  `MEMORY_ADVERSARIAL_SCAN=1` rejects jailbreak/order memory admissions; `agent_untrusted_data`
+  blocks untrusted markers inside `system` / `office_truth` / `active_intent`;
+  `mcp_read_only_gateway.classify_tool_allowed` denies `broker` / `order` / `shell` / `write` /
+  `http` substrings.
+- **`agent_untrusted_data` is structural typing, not a model-level PI defense** (AIF-24 PARTIAL by
+  its own docstring). Untrusted text still reaches model context when assembled as plain prompt
+  text.
+- **Do not claim end-to-end prompt-injection protection** for CIO Telegram, `agent_router` user
+  messages, or watchlist job context until those assemblers wrap external and **peer** content in
+  UNTRUSTED_DATA. `agent_collab.get_agent_context` injecting raw peer summaries is a lateral
+  injection surface.
+- **A low-confidence route to `orchestrator` is not a jailbreak block.** The audit jailbreak /
+  exfil probe only fell through as `needs_clarification`.
+
+<!-- moved from AGENTS.md 25.0.1 lines 2072-2086 -->
+## Moved from AGENTS.md (25.0.1 lines 2072-2086)
+
+*Moved here by AGENTS.md 26.0.0, which keeps the binding rule and a pointer; the 25.0.1 text is preserved at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`. This is reference, not instruction: where it mentions Telegram `/approve`, `bin/guard request`, a push budget of 5 or a coordinator override, `gh pr merge`, a `release-write` grant for a deploy, or shipping with no operator input, those paths are retired or not implemented, and AGENTS.md governs.*
+
+## Agent controls audit 2026-09-18 — alert plane, freshness and grounding measurements
+
+Moved from AGENTS.md 25.0.1 §8 (lines 2072–2086).
+
+### Alert plane and freshness assumptions
+- **Live `config/operator_alert_policy.yaml` measured `runtime_mode: "SHADOW"`** on CURRENT and
+  rebuild (not `OFF`, not `ACTIVE`). Do not write status as OFF from memory; re-read the file.
+  `ACTIVE` still owns delivery and stays operator-gated.
+- **Product freshness 5/5 on `/api/v2/system-health` is not RAG corpus age** and is not Hermes
+  unit health. Local LLM lane can be `available: false` while `hybrid_policy.local_first: true` —
+  quote lane availability from system-health, do not assume local-first means local is up.
+
+### Grounding and RAG — measure, do not assume
+- **RAG `get_rag_context(symbol=…)` returns cited rows for known symbols and empty for unknowns**
+  (verified DGRO/AAPL vs fake ticker). Empty format is correct; generation paths must still refuse
+  unsupported claims when context is empty.
+- **`report_agent_number_grounding.py` can show `0/N flagged` while still listing "top unsupported"
+  numbers.** Treat 0% flag rate as a measurement to re-check under `enforce`, not as proof every
+  quantity was grounded. Live rate comes from `number_grounding` on new rows (§7).

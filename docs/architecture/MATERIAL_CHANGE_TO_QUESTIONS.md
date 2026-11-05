@@ -496,3 +496,41 @@ compound.
   2026-09-05 movers, which are a known-good labelled case.
 - **Universe.** Watchlist + holdings only, or also names with open theses?
 - **Notification hours.** Market hours only, or pre/post-market too?
+
+<!-- moved from AGENTS.md 25.0.1 lines 3602-3633 -->
+## Moved from AGENTS.md (25.0.1 lines 3602-3633)
+
+*Moved here by AGENTS.md 26.0.0, which keeps the binding rule and a pointer; the 25.0.1 text is preserved at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`. This is reference, not instruction: where it mentions Telegram `/approve`, `bin/guard request`, a push budget of 5 or a coordinator override, `gh pr merge`, a `release-write` grant for a deploy, or shipping with no operator input, those paths are retired or not implemented, and AGENTS.md governs.*
+
+**Measured, not assumed.** Four-way bake-off on one real dossier (AOUT, 30 items,
+identical prompt), 2026-09-06 — all four returned valid JSON with zero ungrounded
+citations and zero questions about our own scoring, so the escalation is safe, but they
+are not equal:
+
+| lane | secs | narrative | questions | citations |
+|---|---|---|---|---|
+| deepseek-flash | 6.4 | 4 | 4 | 15 |
+| deepseek-pro | 5.9 | 4 | 4 | 15 |
+| chatgpt-oauth | 19.1 | 1 | 4 | 15 |
+| grok-oauth | **28.3** | 3 | **2** | **8** |
+
+DeepSeek is 3-5x faster AND more complete than either free lane. Grok is the weakest
+curator on every axis that matters, so chatgpt is the first OAuth escalation.
+
+Curation is INVERTED from the house default on operator instruction (2026-09-06).
+Flash costs $0.000133 and answers the same way every time; the OAuth lanes are free but
+rate-limited and variable — fine for prose, poor for a parsed contract. **ASK THE
+OPERATOR remains the hard stop after both.**
+
+**Research lanes are RANKED, never hardcoded.** `rank_research_lanes()` gates on 30-day
+delivery rate and ranks on measured `usefulness_score`. Over 11,116 scored answers:
+chatgpt 0.616, grok 0.470, claude 0.618 (n=39, stale). deepseek is gated out on a 75%
+error rate; claude on zero deliveries since 2026-08-01.
+
+**A hardcoded lane is wrong twice over — it goes stale, and it optimises for whoever
+wrote it.** Measured from the capability
+cache: `claude` is `credits_required` (dead), `chatgpt` is interactive-only on Hermes
+0.16.0, `grok` is `reason_code: ok`. The first routed question went to the old default,
+`claude`, and returned `[CREDITS_REQUIRED]` — correctly created, correctly stored, and
+answering nothing. A default pointing at a dead lane turns a working loop into one that
+produces rows and no knowledge, and every row looks right.

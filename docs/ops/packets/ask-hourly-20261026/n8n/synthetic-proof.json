@@ -1,0 +1,64 @@
+{
+  "schema": "AskLifecycleHealthSyntheticProof@v1",
+  "source_base": "ddc4c1a444aa70836bec16eb9b73ed262d8f2404",
+  "test_evidence": "98 passed (58 new health/packet regressions + existing research and CI gate registry tests), psycopg2 hidden",
+  "dry_run": {
+    "exit_code": 3,
+    "fixture_writes": 0,
+    "projection": {
+      "as_of": "2026-10-26T17:10:00+00:00",
+      "authority": "READ_ONLY_ADVISORY",
+      "chain": {
+        "consumer_readback": false,
+        "delivery": false,
+        "host_receipt": false,
+        "memory_sync": false,
+        "thread_check": false,
+        "trigger": false
+      },
+      "conditions": [
+        {
+          "code": "evidence_read_failed",
+          "severity": "UNAVAILABLE"
+        }
+      ],
+      "filters_last_real": false,
+      "firing": [
+        "evidence_read_failed"
+      ],
+      "lane": "cio-ask-lifecycle",
+      "ok": false,
+      "provider_calls": false,
+      "reads_raw_store": true,
+      "schema": "CioAskLifecycleHealth@v1",
+      "sends": false,
+      "status": "UNAVAILABLE",
+      "tracked_threads": 0,
+      "writes": false
+    }
+  },
+  "checks": {
+    "memory_chokepoint": "pass, baseline unchanged",
+    "provider_chokepoint": "pass, zero non-approved egress",
+    "comms_gateway_enforcement": "pass, Telegram/provider/intent ratchets held",
+    "shared_patch_apply_check": "pass, read-only check only",
+    "python_compile": "pass",
+    "git_diff_check": "pass"
+  },
+  "registration": "Default research_lane_health.collect_report imports/invokes the Ask business collector; integration test substitutes only synthetic reader and other source collectors.",
+  "live_evidence": "NOT_MEASURED; no provider/DB/sender/activation/natural-slot execution",
+  "task_status": "IMPLEMENTED_LOCALLY_PENDING_COORDINATOR_INTEGRATION_AND_LIVE_PROOF",
+  "process_set_binding": "Both candidate native allowlist entries validate against an injected admitted route registry; actual executor process_ids binding admits reanswer plus all three provider-pinned critics, rejects outside processes, and refuses the full lane if any critic route is missing.",
+  "native_source_followup": {
+    "test_evidence": "191 passed in 9.86s: health/native packet, existing framework and adversarial framework, research health, and CI gate registry suites; psycopg2 hidden",
+    "scope": "SOURCE_AND_SYNTHETIC_ONLY; copied contracts marked REVIEWED only in in-memory fixtures; no canonical review status changed",
+    "generator_check": "PASS: 2 files, diffs=[]; INDEX and workflow fresh-render byte equality",
+    "framework_fixture": "PASS: no static FAIL and no PARTIAL; all manifest/file/graph integrity fields true",
+    "relay_static": "PASS: two authenticated GET /due routes in static ROUTES; source registry from coordinator worktree; --no-probe --no-concurrency, no socket or host call",
+    "recovery": "Closed N8nNativeRecovery@v1 manual stop/reviewed-canary procedure; negative tests reject unknown/missing evidence; R6 canary still fails without armed effect keys",
+    "expected_output": "Closed three producer empties, dependency_unavailable fatal, receipt evidence explicitly names produced_count",
+    "quality": "Pinned Ruff format/check and git diff --check PASS",
+    "operator_path": "OPERATOR_READINESS.txt; actual inactive-import gate remains subject to host probe and unavailable runtime semantic adapters beyond L5b",
+    "runtime": "NOT_MEASURED; no import/activation/platform/grant/provider/DB/secret operations"
+  }
+}

@@ -138,31 +138,100 @@
       "auth_env": "ANTHROPIC_API_KEY",
       "enabled": true,
       "kill_switch": false,
-      "pricing_source": "https://platform.claude.com/docs/en/docs/about-claude/pricing",
-      "pricing_effective_at": "2026-08-30",
-      "note": "No peak/off-peak tiering — Anthropic prices are flat, unlike DeepSeek. Cache-hit reads are 0.1x base input.",
+      "pricing_source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "pricing_effective_at": "2026-10-25",
+      "note": "Anthropic promotional-first tiers; effective-dated input/output/cache classes, with Haiku long-context threshold. Credit authorization is separate from paid USD ceilings.",
       "models": {
         "anthropic_haiku": {
+          "model_id": "claude-haiku-5-5",
+          "display_name": "Claude Haiku 5.5",
+          "latency_class": "fast",
+          "enabled": true,
+          "thinking_supported": true,
+          "pricing_effective_at": "2026-10-25",
+          "pricing_snapshot_usd_per_million_tokens": {
+            "cache_hit_input": 0.01,
+            "cache_miss_input": 0.1,
+            "cache_write_5m": 0.125,
+            "cache_write_1h": 0.2,
+            "output": 0.5
+          }
+        },
+        "anthropic_sonnet": {
+          "model_id": "claude-sonnet-5-5",
+          "display_name": "Claude Sonnet 5.5",
+          "latency_class": "standard",
+          "enabled": true,
+          "thinking_supported": true,
+          "pricing_effective_at": "2026-10-25",
+          "pricing_snapshot_usd_per_million_tokens": {
+            "cache_hit_input": 0.1,
+            "cache_miss_input": 2.0,
+            "cache_write_5m": 2.5,
+            "cache_write_1h": 4.0,
+            "output": 10.0
+          }
+        },
+        "anthropic_opus": {
+          "model_id": "claude-opus-5-5",
+          "display_name": "Claude Opus 5.5",
+          "latency_class": "standard",
+          "enabled": true,
+          "thinking_supported": true,
+          "pricing_effective_at": "2026-10-25",
+          "pricing_snapshot_usd_per_million_tokens": {
+            "cache_hit_input": 0.2,
+            "cache_miss_input": 4.0,
+            "cache_write_5m": 5.0,
+            "cache_write_1h": 8.0,
+            "output": 20.0
+          }
+        },
+        "anthropic_fable": {
+          "model_id": "claude-fable-5-1",
+          "display_name": "Claude Fable 5.1",
+          "latency_class": "slow",
+          "enabled": true,
+          "thinking_supported": true,
+          "thinking_param": "omit",
+          "pricing_effective_at": "2026-10-26",
+          "pricing_snapshot_usd_per_million_tokens": {
+            "cache_hit_input": 0.25,
+            "cache_miss_input": 10.0,
+            "cache_write_5m": 12.5,
+            "cache_write_1h": 20.0,
+            "output": 50.0
+          },
+          "restricted_to_processes": [
+            "prospectus_writer_premium"
+          ],
+          "approved_by": "operator 2026-10-26: \"Opus for all, Fable for top\""
+        },
+        "anthropic_haiku_historical_4_5": {
           "model_id": "claude-haiku-4-5-20251001",
           "display_name": "Claude Haiku 4.5",
           "latency_class": "fast",
-          "enabled": true,
+          "enabled": false,
           "pricing_snapshot_usd_per_million_tokens": {
             "cache_hit_input": 0.1,
             "cache_miss_input": 1.0,
             "output": 5.0
-          }
+          },
+          "historical_only": true,
+          "pricing_effective_at": "2026-08-30"
         },
-        "anthropic_sonnet": {
+        "anthropic_sonnet_historical_4_5": {
           "model_id": "claude-sonnet-4-5-20250929",
           "display_name": "Claude Sonnet 4.5",
           "latency_class": "standard",
-          "enabled": true,
+          "enabled": false,
           "pricing_snapshot_usd_per_million_tokens": {
             "cache_hit_input": 0.3,
             "cache_miss_input": 3.0,
             "output": 15.0
-          }
+          },
+          "historical_only": true,
+          "pricing_effective_at": "2026-08-30"
         }
       },
       "retired_models": {

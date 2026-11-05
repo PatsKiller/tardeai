@@ -6,14 +6,26 @@ Learning spines *link* subject_key / workflow_id into existing cognition fields.
 
 AUTHORITY: READ_ONLY_ADVISORY · MBI_BEHAVIOR=0 (cognition fields only on apply).
 """
+
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+try:
+    from .atomic_json_store import atomic_write_json
+except ImportError:  # pragma: no cover - loaded by file path (no parent package) or with scripts/ on sys.path
+    try:
+        from scripts.lib.atomic_json_store import atomic_write_json  # type: ignore[no-redef]
+    except ImportError:
+        from lib.atomic_json_store import atomic_write_json  # type: ignore[no-redef]
+
+log = logging.getLogger(__name__)
 
 SCHEMA = "AecMemorySnapshot@v1"
 SPINES = ("strategic", "operational", "relationship", "learning")
@@ -56,6 +68,11 @@ def load(path: Path | None = None) -> MemorySnapshot:
     p = path or spines_path()
     if not p.is_file():
         return empty_snapshot()
+    if p.stat().st_size == 0:
+        # 2026-10-30: the disk-full night left this file at 0 bytes and the hourly AEC cycle crashed on it every run.
+        # An empty file is a missing file; the next save rewrites it atomically.
+        log.warning("%s is empty (0 bytes); treating it as missing", p)
+        return empty_snapshot()
     raw = json.loads(p.read_text(encoding="utf-8"))
     spines = {s: list(raw.get("spines", {}).get(s) or []) for s in SPINES}
     return MemorySnapshot(schema=SCHEMA, as_of=str(raw.get("as_of") or _utc_now()), spines=spines)
@@ -66,8 +83,7 @@ def save(snap: MemorySnapshot, path: Path | None = None, *, dry_run: bool = Fals
     snap.as_of = _utc_now()
     if dry_run:
         return p
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(snap.to_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_write_json(p, json.loads(json.dumps(snap.to_dict(), sort_keys=True)))
     return p
 
 
@@ -82,8 +98,16 @@ def append_fact(
         raise ValueError(f"unknown spine={spine!r}; expected one of {SPINES}")
     # Behavior rail
     forbidden = {
-        "recommended_delta_usd", "size_usd", "shares", "qty", "order", "stop",
-        "limit", "target_weight_pct", "trade", "execution",
+        "recommended_delta_usd",
+        "size_usd",
+        "shares",
+        "qty",
+        "order",
+        "stop",
+        "limit",
+        "target_weight_pct",
+        "trade",
+        "execution",
     }
     bad = forbidden.intersection(fact)
     if bad:

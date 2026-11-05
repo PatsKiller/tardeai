@@ -46,5 +46,18 @@
       "sec_filing_events",
       "material_changes"
     ]
+  },
+  "lifecycle": {
+    "enabled": true,
+    "interval_seconds": 3600,
+    "timezone": "America/New_York",
+    "overdue_after_seconds": 900,
+    "memory_apply": true,
+    "max_attempts_per_evidence": 2,
+    "approval": {
+      "approved_by": "operator 2026-10-26",
+      "reference": "Implement the plan; checks need to run hourly, not once a day. Opus primary plus independent critiques. Source proposal; activation requires admitted native n8n contracts and reviewed release."
+    },
+    "daily_request_cap": 30
   }
 }

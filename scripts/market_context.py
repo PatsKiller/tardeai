@@ -52,6 +52,38 @@ SECTOR_ETFS = [
 
 ALL_SYMBOLS = [s for s, _ in SECTOR_ETFS] + INDICES + ["VIX"]
 
+# Plausibility bounds (config/market_context_policy.json, P0-T9 2026-10-31): a move beyond them is a data defect,
+# rendered as n/a, never as a number. Loaded once; a missing policy disables the guard and says so once.
+_POLICY_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "market_context_policy.json")
+_POLICY: Dict[str, Any] | None = None
+
+
+def market_context_policy() -> Dict[str, Any]:
+    global _POLICY
+    if _POLICY is None:
+        try:
+            import json as _json
+            with open(_POLICY_PATH, encoding="utf-8") as fh:
+                _POLICY = _json.load(fh)
+        except Exception as e:  # noqa: BLE001
+            print(f"  [market_context] plausibility policy unavailable ({type(e).__name__}) — guard disabled")
+            _POLICY = {}
+    return _POLICY
+
+
+def plausible_move(sym: str, change_pct: float | None) -> bool:
+    """False when |change| exceeds the configured bound for the symbol class; True when unknown or unbounded."""
+    if change_pct is None:
+        return True
+    pol = market_context_policy()
+    if sym == "VIX":
+        bound = pol.get("max_plausible_vix_move_pct")
+    elif sym in INDICES:
+        bound = pol.get("max_plausible_index_move_pct")
+    else:
+        bound = pol.get("max_plausible_sector_move_pct")
+    return True if bound is None else abs(float(change_pct)) <= float(bound)
+
 # Symbols that are indices — Polygon stock endpoint can't fetch these
 INDEX_SYMBOLS = {"VIX"}
 
@@ -96,6 +128,43 @@ def _current_session(now=None) -> str:
     return "closed"
 
 
+def _now_utc() -> datetime:
+    """Clock seam for tests."""
+    return datetime.now(timezone.utc)
+
+
+def _previous_close_from_bars(chart_result: Dict, session: str, now=None) -> Optional[float]:
+    """The close the header compares against, read from the daily bars Yahoo returns.
+
+    ``meta.chartPreviousClose`` is the close BEFORE THE FIRST BAR OF THE REQUESTED RANGE, not yesterday's close: with
+    range=2d it is two sessions back (2026-10-31 live: SPY 772.31 = 10-28 close, while the 10-29 close was 769.36 and
+    the 10-30 close 755.72). So the reference is taken from the bars themselves: during premarket/regular/afterhours
+    the last completed session strictly before today (ET); when the market is closed, the newest completed session.
+    Returns None when the response carries no usable bars (the caller then falls back to the meta fields).
+    """
+    from zoneinfo import ZoneInfo as _Z
+
+    ts = chart_result.get("timestamp") or []
+    quote = ((chart_result.get("indicators") or {}).get("quote") or [{}])[0] or {}
+    closes = quote.get("close") or []
+    tz = _Z("America/New_York")
+    today = (now or _now_utc()).astimezone(tz).date()
+    bars = []
+    for t, c in zip(ts, closes):
+        if c is None:
+            continue
+        try:
+            bars.append((datetime.fromtimestamp(int(t), tz).date(), float(c)))
+        except (TypeError, ValueError, OSError):
+            continue
+    if not bars:
+        return None
+    if session == "closed":
+        return bars[-1][1]
+    before = [c for d, c in bars if d < today]
+    return before[-1] if before else None
+
+
 def _env(k: str) -> str:
     if k in ("FINVIZ_COOKIE", "FINVIZ_API_TOKEN", "FINVIZ_USER_AGENT"):
         try:
@@ -134,14 +203,14 @@ def _fetch_yahoo(symbols: List[str]) -> Dict[str, Dict]:
             resp = requests.get(
                 url,
                 headers=_YAHOO_HEADERS,
-                params={"interval": "1d", "range": "2d"},
+                params={"interval": "1d", "range": "5d"},
                 timeout=10,
             )
             if resp.status_code != 200:
                 # Try query2 host as backup
                 url2 = url.replace("query1.", "query2.")
                 resp = requests.get(url2, headers=_YAHOO_HEADERS,
-                                    params={"interval": "1d", "range": "2d"}, timeout=8)
+                                    params={"interval": "1d", "range": "5d"}, timeout=8)
                 if resp.status_code != 200:
                     continue
 
@@ -155,7 +224,16 @@ def _fetch_yahoo(symbols: List[str]) -> Dict[str, Dict]:
             pre_price   = meta.get("preMarketPrice")   or 0.0
             post_price  = meta.get("postMarketPrice")  or 0.0
             reg_price   = meta.get("regularMarketPrice") or 0.0
-            prev_close  = meta.get("chartPreviousClose") or meta.get("previousClose") or reg_price
+            # Previous close from the daily bars (see _previous_close_from_bars: chartPreviousClose is the close
+            # before the requested RANGE, two sessions back with range=2d — the live header showed SPY "prev close
+            # 772.31" on 2026-10-31 when the real last close was 755.72). Meta fields only when bars are absent.
+            session = _current_session()
+            prev_close = (
+                _previous_close_from_bars(chart_result[0], session)
+                or meta.get("previousClose")
+                or meta.get("chartPreviousClose")
+                or reg_price
+            )
 
             # SESSION-AWARE selection (2026-07-20). The old chain was
             #   pre_price or reg_price or post_price or prev_close
@@ -165,13 +243,18 @@ def _fetch_yahoo(symbols: List[str]) -> Dict[str, Dict]:
             # Same for change%. Now the session picks the field, and a missing
             # field for the CURRENT session degrades to the previous close
             # LABELLED stale rather than silently substituting another session.
-            session = _current_session()
             if session == "premarket":
                 live_price, px_field = (pre_price or 0.0), "preMarketPrice"
             elif session == "regular":
                 live_price, px_field = (reg_price or 0.0), "regularMarketPrice"
             elif session == "afterhours":
                 live_price, px_field = (post_price or 0.0), "postMarketPrice"
+                if not live_price and reg_price:
+                    # No after-hours print (an index such as ^VIX never has one): the newest real price is TODAY's
+                    # regular close. Until 2026-10-31 this fell through to prev_close -- YESTERDAY's close -- so every
+                    # 17:30 run published the prior session's VIX: 10-30 run said 17.2 (the 10-29 close) on the day
+                    # VIX closed 19.42, and the Home header kept showing it all weekend.
+                    live_price, px_field = reg_price, "regularMarketPrice"
             else:                                  # closed / overnight / weekend
                 live_price, px_field = 0.0, "closed"
             price_is_stale = False
@@ -183,22 +266,21 @@ def _fetch_yahoo(symbols: List[str]) -> Dict[str, Dict]:
             post_chg_pct = meta.get("postMarketChangePercent") or 0.0
             reg_chg_pct  = meta.get("regularMarketChangePercent") or 0.0
 
-            # Change% must come from the SAME session as the price above —
-            # pairing a regular-hours price with a premarket change is incoherent.
-            def _pct(v):
-                return round(v * 100, 2) if abs(v) < 1 else round(v, 2)
-
-            if session == "premarket" and abs(pre_chg_pct) > 0:
-                change_pct = _pct(pre_chg_pct)
-            elif session == "regular" and abs(reg_chg_pct) > 0:
-                change_pct = _pct(reg_chg_pct)
-            elif session == "afterhours" and abs(post_chg_pct) > 0:
-                change_pct = _pct(post_chg_pct)
-            elif prev_close and live_price and not price_is_stale:
-                change_pct = round((live_price - prev_close) / prev_close * 100, 2)
+            # Change% is DERIVED from the two prices of the SAME session: unit-free and reproducible. Yahoo's
+            # *ChangePercent fields are already in percent; until 2026-10-31 a helper here multiplied any value
+            # under 1.0 by 100, so a real +0.29% day printed as "SPY +29.30%" in every scalp header
+            # (2026-10-27; RCA docs/audits/MARKET_SELLOFF_ALERT_RCA_2026-10-30.md finding 10, P0-T9).
+            session_pct = {"premarket": pre_chg_pct, "regular": reg_chg_pct, "afterhours": post_chg_pct}.get(session, 0.0)
+            if prev_close and live_price and not price_is_stale:
+                change_pct = round((float(live_price) - float(prev_close)) / float(prev_close) * 100, 2)
+            elif session_pct and not price_is_stale:
+                change_pct = round(float(session_pct), 2)  # percent units as published, never multiplied
             else:
-                # Closed, or the session field is missing: do NOT invent a move.
+                # Closed, or no print for this session yet: do NOT invent a move. price_is_stale says why.
                 change_pct = 0.0
+            implausible = not plausible_move(sym, change_pct)
+            if implausible:
+                print(f"  [market_context] {sym}: change {change_pct}% exceeds the plausibility bound — rendered n/a")
 
             results[sym] = {
                 "symbol":           sym,
@@ -211,6 +293,7 @@ def _fetch_yahoo(symbols: List[str]) -> Dict[str, Dict]:
                 "session":          session,
                 "price_field":      px_field,
                 "price_is_stale":   price_is_stale,
+                "implausible":      implausible,
                 "quote_ts":         datetime.now(timezone.utc).isoformat(),
                 "source":           "yahoo",
             }
@@ -460,6 +543,12 @@ def get_market_snapshot() -> Dict[str, Any]:
             "post_market_price": d.get("post_market_price"),
             "prev_close":       d.get("prev_close", 0),
             "source":           d.get("source", "unavailable"),
+            # Honesty flags for renderers (P0-T9): a stale price is the previous close with no print for this
+            # session; an implausible move is a data defect. Neither may be shown as "+0.00%" or as a number.
+            "price_is_stale":   bool(d.get("price_is_stale", False)) or d.get("source", "unavailable") == "unavailable",
+            "price_field":      d.get("price_field"),
+            "session":          d.get("session"),
+            "implausible":      bool(d.get("implausible", False)),
         }
 
     # VIX
@@ -470,6 +559,8 @@ def get_market_snapshot() -> Dict[str, Any]:
         "change_percent": round(vix_pct, 2),
         "direction":      _vix_direction(vix_pct),
         "source":         vix_data.get("source", "unavailable"),
+        "price_is_stale": bool(vix_data.get("price_is_stale", False)) or vix_data.get("source", "unavailable") == "unavailable",
+        "implausible":    bool(vix_data.get("implausible", False)),
     }
 
     # Sectors

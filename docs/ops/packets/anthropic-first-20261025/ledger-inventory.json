@@ -1,0 +1,116 @@
+{
+  "observed_at_utc": "2026-10-25T20:33:26.196551+00:00",
+  "window_start_utc": "2026-10-25T04:00:00+00:00",
+  "timezone": "America/New_York",
+  "source": "<state-root>/data/runtime/provider_cost/events.jsonl",
+  "captured_prefix_bytes": 96240874,
+  "prefix_sha256": "5f354316e9851e0a56440644c3b9eaa98f60cd1cc604c7d492033e1103502ee7",
+  "first_event": "2026-08-17 23:09:01.453024+00:00",
+  "last_event": "2026-10-25 20:32:28.589180+00:00",
+  "quality": {},
+  "by_provider": {
+    "deepseek": {
+      "events": 236,
+      "trusted_cost_events": 236,
+      "unknown_cost_events": 0,
+      "usd": "0.24668593",
+      "input_tokens": 444329,
+      "output_tokens": 298606,
+      "token_counts_missing": 0,
+      "confirmed_sent": 236
+    }
+  },
+  "by_registered_process": {
+    "hermes_external_research": {
+      "events": 12,
+      "trusted_cost_events": 12,
+      "unknown_cost_events": 0,
+      "usd": "0.00461424",
+      "input_tokens": 9237,
+      "output_tokens": 4688,
+      "token_counts_missing": 0,
+      "confirmed_sent": 12
+    },
+    "hermes_usefulness_score": {
+      "events": 60,
+      "trusted_cost_events": 60,
+      "unknown_cost_events": 0,
+      "usd": "0.00694202",
+      "input_tokens": 29730,
+      "output_tokens": 4082,
+      "token_counts_missing": 0,
+      "confirmed_sent": 60
+    },
+    "cio_plan_enrichment": {
+      "events": 60,
+      "trusted_cost_events": 60,
+      "unknown_cost_events": 0,
+      "usd": "0.05018103",
+      "input_tokens": 27524,
+      "output_tokens": 76336,
+      "token_counts_missing": 0,
+      "confirmed_sent": 60
+    },
+    "cio_hermes_research": {
+      "events": 28,
+      "trusted_cost_events": 28,
+      "unknown_cost_events": 0,
+      "usd": "0.07486432",
+      "input_tokens": 174772,
+      "output_tokens": 80839,
+      "token_counts_missing": 0,
+      "confirmed_sent": 28
+    },
+    "UNMAPPED": {
+      "events": 6,
+      "trusted_cost_events": 6,
+      "unknown_cost_events": 0,
+      "usd": "0.00148530",
+      "input_tokens": 7550,
+      "output_tokens": 588,
+      "token_counts_missing": 0,
+      "confirmed_sent": 6
+    },
+    "cio_operator_reply": {
+      "events": 9,
+      "trusted_cost_events": 9,
+      "unknown_cost_events": 0,
+      "usd": "0.00071254",
+      "input_tokens": 1550,
+      "output_tokens": 795,
+      "token_counts_missing": 0,
+      "confirmed_sent": 9
+    },
+    "l3_judgment_author": {
+      "events": 8,
+      "trusted_cost_events": 8,
+      "unknown_cost_events": 0,
+      "usd": "0.01929721",
+      "input_tokens": 90927,
+      "output_tokens": 9420,
+      "token_counts_missing": 0,
+      "confirmed_sent": 8
+    },
+    "hermes_cloud_json": {
+      "events": 45,
+      "trusted_cost_events": 45,
+      "unknown_cost_events": 0,
+      "usd": "0.08746935",
+      "input_tokens": 101579,
+      "output_tokens": 120359,
+      "token_counts_missing": 0,
+      "confirmed_sent": 45
+    },
+    "advisory_desk_synthesis": {
+      "events": 8,
+      "trusted_cost_events": 8,
+      "unknown_cost_events": 0,
+      "usd": "0.00111992",
+      "input_tokens": 1460,
+      "output_tokens": 1499,
+      "token_counts_missing": 0,
+      "confirmed_sent": 8
+    }
+  },
+  "scope_note": "Deduplicated provider-cost events only. Not an unbiased all-call census. Costs without trusted usage stay unknown."
+}

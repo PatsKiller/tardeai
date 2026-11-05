@@ -66,7 +66,7 @@ export function SudoBanner({ sw, onChanged }: { sw: SudoWindowState | undefined;
     </ChipRow>
     <span style={{ fontSize: TYPE.sm, color: TOKENS.text[1] }}>
       Risky changes need only the typed phrase while it is open{hasToken ? '' : ' — but this browser session does not hold the window (it was opened elsewhere), so here a passkey is still asked for'}.
-      Grants, kill-switch clear, passkeys, the release train and the sudo-window settings always ask for a fresh passkey.
+      Grants, kill-switch clear, passkeys, deploy resume and the sudo-window settings always ask for a fresh passkey.
       Every act is audited with the opening assertion <span style={{ fontFamily: FONT.mono }}>{w.opening_assertion_id}</span>.
     </span>
     {err ? <span role="alert" style={{ fontSize: TYPE.sm, color: TOKENS.danger }}>{err}</span> : null}

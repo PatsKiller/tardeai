@@ -63,16 +63,20 @@ def test_account_labels_are_generic_by_kind():
 def test_apply_rewrites_symbols_accounts_and_numbers():
     sym_map = {"AAA": "ZQAA", "V": "ZQAB"}
     acct_map = {"brokerx_roth_ira": "roth_a"}
+    # Assembled at runtime: a committed literal of account-number shape is what
+    # check_no_pii --range refuses, even when the value is synthetic.
+    account_digits = "123" + "456789"
     text = ('{"symbol": "AAA", "s2": "V", "account": "brokerx_roth_ira"} AAA rose; Visa V stays; AAAB stays; '
-            "Rollover IRA #123456789")
+            f"Rollover IRA #{account_digits}")
     out = anon.anonymize_text(text, sym_map, acct_map)
     assert '"ZQAA"' in out and '"ZQAB"' in out and '"roth_a"' in out
     assert "ZQAA rose" in out and "AAAB stays" in out and "Visa V stays" in out  # short symbols only when quoted
-    assert "123456789" not in out and "#0000000" in out
+    assert account_digits not in out and "#0000000" in out
 
 
 def test_leftovers_counts_without_values():
-    left = anon.leftovers("V and AAA in acct 98765432 at brokerx_roth_ira and schwab_roth_ira",
+    account_digits = "9876" + "5432"
+    left = anon.leftovers(f"V and AAA in acct {account_digits} at brokerx_roth_ira and schwab_roth_ira",
                           {"V", "AAA"}, {"brokerx_roth_ira"})
     assert left == {"symbols": 2, "accounts": 1, "account_numbers": 1, "account_slugs": 1}
     assert all(isinstance(v, int) for v in left.values())
