@@ -250,3 +250,142 @@ def test_cli_config_error_is_not_an_enabled_fallback(tmp_path, capsys):
     assert cli_module().main(["--holdings", str(holdings), "--config", str(config), "--json"]) == 2
     result = json.loads(capsys.readouterr().out)
     assert result["status"] == "unavailable" and result["input"] == "config"
+
+
+# D50 F1: an unknown holding is not a known zero in the implicit book denominator.
+def run_book_cli(tmp_path, capsys, rows, *extra):
+    holdings = tmp_path / "book-fixture.json"
+    events = tmp_path / "book-events.json"
+    quotes = tmp_path / "book-quotes.json"
+    holdings.write_bytes(json.dumps({"holdings": rows}).encode())
+    events.write_bytes(b'{"AAA":{"days_to_event":10}}')
+    quotes.write_bytes(json.dumps({"AAA": chain()}).encode())
+    rc = cli_module().main(
+        ["--holdings", str(holdings), "--events", str(events), "--chains", str(quotes), "--json", *extra]
+    )
+    return rc, json.loads(capsys.readouterr().out)
+
+
+@pytest.mark.parametrize(
+    "unknown",
+    [
+        {"quantity": 100, "price": None, "market_value": None},
+        {"shares": 100, "price": None, "market_value": None},
+        {"quantity": 100, "price": None, "market_value": True},
+        {"quantity": 100, "price": None, "market_value": float("nan")},
+        {"quantity": 100, "price": None, "market_value": float("inf")},
+        {"quantity": 100, "price": None, "market_value": "bad"},
+        {"quantity": True, "price": 100, "market_value": None},
+        {"quantity": "bad", "price": 100, "market_value": None},
+        {"quantity": 100, "price": float("nan"), "market_value": None},
+        {"quantity": 100, "price": float("inf"), "market_value": None},
+        {"quantity": 100, "price": True, "market_value": None},
+        {"quantity": 100, "price": None, "current_price": 100, "market_value": None},
+    ],
+)
+def test_implicit_book_never_drops_an_unvalued_row(tmp_path, capsys, unknown):
+    rc, report = run_book_cli(tmp_path, capsys, [position(), {"symbol": "BBB", **unknown}])
+    assert rc == 2 and report["status"] == "unavailable"
+    assert report["input"] == "book_value" and "incomplete" in report["reason"]
+    assert not report.get("suggestions")
+
+
+def test_explicit_book_can_qualify_known_row_without_claiming_complete_values(tmp_path, capsys):
+    rows = [position(), {"symbol": "BBB", "quantity": 100, "price": None, "market_value": None}]
+    rc, report = run_book_cli(tmp_path, capsys, rows, "--book-value=25000")
+    assert rc == 0 and report["status"] == "ok"
+    assert report["suggestions"][0]["symbol"] == "AAA"
+    assert report["suggestions"][0]["pct_of_book"] == 40.0
+    assert report["skipped"] == [{"symbol": "BBB", "account": None, "skipped": "position_value_unknown"}]
+    assert report["book_value"] == 25000.0 and report["book_value_basis"] == "explicit"
+    assert report["position_valuations_complete"] is False and report["unvalued_positions"] == 1
+
+
+@pytest.mark.parametrize(
+    "zero",
+    [
+        {"quantity": 100, "market_value": 0, "price": None},
+        {"quantity": 0, "market_value": None, "price": None},
+        {"shares": 0, "market_value": None, "price": None},
+    ],
+)
+def test_known_zero_stays_a_complete_valuation(tmp_path, capsys, zero):
+    rc, report = run_book_cli(tmp_path, capsys, [position(), {"symbol": "BBB", **zero}])
+    assert rc == 0 and report["position_valuations_complete"] is True
+    assert report["unvalued_positions"] == 0 and report["book_value"] == 10000.0
+    assert report["suggestions"][0]["pct_of_book"] == 100.0
+
+
+@pytest.mark.parametrize(
+    "row,value",
+    [
+        ({"market_value": 0}, 0.0),
+        ({"market_value": "0"}, 0.0),
+        ({"quantity": 0}, 0.0),
+        ({"shares": 0}, 0.0),
+        ({"price": 100, "shares": 10}, 1000.0),
+        ({"price": 100, "quantity": None, "shares": 10}, 1000.0),
+        ({"price": 100, "market_value": "bad", "quantity": 10}, 1000.0),
+        ({"price": 100, "market_value": float("nan"), "quantity": 10}, 1000.0),
+        ({"price": 0, "quantity": 10}, 0.0),
+        ({"price": -100, "quantity": 10}, None),
+        ({"price": True, "quantity": 10}, None),
+        ({"price": 100, "quantity": True}, None),
+        ({"price": 1e308, "quantity": 1e308}, None),
+        ({"market_value": 10**400}, None),
+    ],
+)
+def test_value_availability_zero_alias_and_fallback_classes(row, value):
+    assert adv.position_value(row) == value
+
+
+@pytest.mark.parametrize("book", ["nan", "inf", "-inf", "-1", "0"])
+def test_invalid_explicit_book_is_unavailable_for_positive_holdings(tmp_path, capsys, book):
+    rc, report = run_book_cli(tmp_path, capsys, [position()], "--book-value=" + book)
+    assert rc == 2 and report["status"] == "unavailable" and report["input"] == "book_value"
+
+
+def test_implicit_total_overflow_is_not_a_known_book(tmp_path, capsys):
+    rows = [position(market_value=1e308), position(symbol="BBB", market_value=1e308)]
+    rc, report = run_book_cli(tmp_path, capsys, rows)
+    assert rc == 2 and report["status"] == "unavailable" and report["input"] == "book_value"
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_valid_empty_and_zero_book_remain_measured(tmp_path, capsys, explicit):
+    rc, report = run_book_cli(tmp_path, capsys, [], *(["--book-value=0"] if explicit else []))
+    assert rc == 0 and report["status"] == "ok" and report["examined"] == 0
+    assert report["position_valuations_complete"] is True and report["book_value"] == 0.0
+
+
+@pytest.mark.parametrize("book", [None, True, float("nan"), float("inf"), -1, 0])
+def test_pure_report_does_not_call_invalid_denominator_available(book):
+    report = adv.suggest_for_book([position()], book_value=book, events={"AAA": {"days_to_event": 10}})
+    assert report["status"] == "unavailable" and not report["suggestions"]
+
+
+@pytest.mark.parametrize("value,book,expected", [(1e308, 1e308, 100.0), (1e308, 1e-308, None)])
+def test_finite_book_percentage_never_overflows_into_a_known_percentage(value, book, expected):
+    assert adv.pct_of_book(value, book) == expected
+
+
+@pytest.mark.parametrize(
+    "row",
+    [position(quantity=1, price=1e308, market_value=1e308), position(quantity=1e-308, price=None, market_value=10000)],
+)
+def test_unrepresentable_reference_unit_is_skipped_without_nonfinite_json(row):
+    report = adv.suggest_for_book([row], book_value=row["market_value"], events={"AAA": {"days_to_event": 10}})
+    assert not report["suggestions"]
+    assert report["skipped"][0]["skipped"] == "unit_economics_not_finite"
+    json.dumps(report, allow_nan=False)
+
+
+def test_unrepresentable_call_credit_does_not_corrupt_usable_put():
+    quotes = chain()
+    call = quotes["expirations"][0]["strikes"][1]
+    call.update(bid=1e308, ask=1e308)
+    result, reason = suggest(quotes=quotes)
+    assert reason is None and result["structure"] == "protective_put"
+    assert "collar_per_contract" not in result
+    assert result["collar_unavailable_reason"] == "call_unit_economics_not_finite"
+    json.dumps(result, allow_nan=False)

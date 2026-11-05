@@ -70,21 +70,33 @@ def _num(value: Any) -> float | None:
         return None
     try:
         out = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
     return out if math.isfinite(out) else None
 
 
-def position_value(position: Mapping[str, Any]) -> float | None:
-    """Market value of one holdings row, from ``market_value`` or price × quantity."""
-    mv = _num(position.get("market_value"))
-    if mv is not None and mv > 0:
-        return mv
-    price = _num(position.get("price"))
-    qty = _num(position.get("quantity", position.get("shares")))
-    if price and qty:
-        return abs(price * qty)
+def _position_quantity(position: Mapping[str, Any]) -> float | None:
+    """Existing quantity/shares aliases, preserving a real zero before trying a fallback."""
+    for key in ("quantity", "shares"):
+        quantity = _num(position.get(key))
+        if quantity is not None:
+            return quantity
     return None
+
+
+def position_value(position: Mapping[str, Any]) -> float | None:
+    """Known nonnegative market value, or a finite price × holding quantity; None is not zero."""
+    mv = _num(position.get("market_value"))
+    if mv is not None and mv >= 0:
+        return mv
+    quantity = _position_quantity(position)
+    if quantity == 0:
+        return 0.0
+    price = _num(position.get("price"))
+    if price is None or price < 0 or quantity is None:
+        return None
+    value = abs(price * quantity)
+    return value if math.isfinite(value) else None
 
 
 def pct_of_book(value: float | None, book_value: float | None) -> float | None:
@@ -92,7 +104,8 @@ def pct_of_book(value: float | None, book_value: float | None) -> float | None:
     value, book = _num(value), _num(book_value)
     if not value or not book or book <= 0:
         return None
-    return round(100.0 * value / book, 4)
+    share = (value / book) * 100.0
+    return round(share, 4) if math.isfinite(share) else None
 
 
 def is_single_stock(position: Mapping[str, Any], cfg: Mapping[str, Any] | None = None) -> bool:
@@ -203,7 +216,7 @@ def suggest_for_position(
         return None, "advisory_disabled"
     if not is_single_stock(position, cfg):
         return None, "not_a_single_stock"
-    shares = _num(position.get("quantity", position.get("shares")))
+    shares = _position_quantity(position)
     if shares is None:
         return None, "position_quantity_unknown"
     if shares <= 0:
@@ -211,6 +224,8 @@ def suggest_for_position(
     value = position_value(position)
     if value is None:
         return None, "position_value_unknown"
+    if value == 0:
+        return None, "position_value_zero"
     share = pct_of_book(value, book_value)
     if share is None:
         return None, "book_value_unknown"
@@ -225,6 +240,8 @@ def suggest_for_position(
     spot = _num(position.get("price"))
     if spot is None or spot <= 0:
         spot = value / shares
+    if not math.isfinite(spot) or spot <= 0:
+        return None, "unit_economics_not_finite"
     stop = _num(position.get("stop_price", position.get("stop")))
     if stop is not None and stop > 0:
         floor_target, floor_basis = stop, "broker_stop"
@@ -233,6 +250,9 @@ def suggest_for_position(
         floor_basis = f"spot_minus_{cfg['put_floor_pct_below_spot']}pct"
     else:
         return None, "no_price_or_stop_for_a_floor"
+
+    if not math.isfinite(floor_target):
+        return None, "unit_economics_not_finite"
 
     # An explicitly supplied but unusable snapshot is not an absent snapshot.
     expiry = _expiry_for(chain, cfg, days) if chain is not None else None
@@ -247,13 +267,20 @@ def suggest_for_position(
 
     # 100 is the standard contract multiplier, not a selected number of contracts.
     reference_value = value / shares * 100.0
+    if not math.isfinite(reference_value) or reference_value <= 0:
+        return None, "unit_economics_not_finite"
     unit_cost = (
         float(put["ask"]) * 100.0
         if put is not None
-        else reference_value * float(cfg["estimated_cost_pct_of_position"]) / 100.0
+        else reference_value * (float(cfg["estimated_cost_pct_of_position"]) / 100.0)
     )
+    if not math.isfinite(unit_cost):
+        return None, "unit_economics_not_finite"
     unit_cost = round(unit_cost, 2)
-    if 100.0 * unit_cost / reference_value > float(cfg["max_cost_pct_of_position"]):
+    cost_share = (unit_cost / reference_value) * 100.0
+    if not math.isfinite(cost_share):
+        return None, "unit_economics_not_finite"
+    if cost_share > float(cfg["max_cost_pct_of_position"]):
         return None, "cost_exceeds_position_value"
     strike = float(put["strike"]) if put is not None else None
     floor_after = round(strike - unit_cost / 100.0, 2) if strike is not None else None
@@ -261,7 +288,9 @@ def suggest_for_position(
     relation = (
         ("at" if distance == 0 else "below" if strike < floor_target else "above") if strike is not None else None
     )
-    far = distance is not None and distance > abs(floor_target) * float(cfg["max_floor_distance_pct_of_target"]) / 100.0
+    far = distance is not None and distance > abs(floor_target) * (
+        float(cfg["max_floor_distance_pct_of_target"]) / 100.0
+    )
     result: dict[str, Any] = {
         "schema": SCHEMA,
         "symbol": str(position.get("symbol") or "").upper(),
@@ -314,7 +343,11 @@ def suggest_for_position(
         if shares < 100:
             result["collar_unavailable_reason"] = "insufficient_shares_for_standard_covered_call"
         else:
-            credit = round(float(call["bid"]) * 100.0, 2)
+            credit = float(call["bid"]) * 100.0
+            if not math.isfinite(credit):
+                result["collar_unavailable_reason"] = "call_unit_economics_not_finite"
+                return result, None
+            credit = round(credit, 2)
             net = round(unit_cost - credit, 2)
             result["collar_per_contract"] = {
                 "cap_price": float(call["strike"]),
@@ -338,6 +371,10 @@ def suggest_for_book(
 ) -> dict[str, Any]:
     """Project injected rows into unit economics or an explicit unavailable/skipped reason."""
     cfg = dict(DEFAULTS) if cfg is None else cfg
+    positions = list(positions)
+    values = [position_value(position) for position in positions]
+    book = _num(book_value)
+    book_known = book is not None and book >= 0 and not (book == 0 and any(v is not None and v > 0 for v in values))
     events = events or {}
     chains = chains or {}
     suggestions, skipped = [], []
@@ -356,7 +393,11 @@ def suggest_for_book(
     return {
         "schema": SCHEMA,
         "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        "status": "ok",
+        "status": "ok" if book_known else "unavailable",
+        "book_value": book,
+        "book_value_basis": "provided",
+        "position_valuations_complete": all(value is not None for value in values),
+        "unvalued_positions": sum(value is None for value in values),
         "advisory_only": True,
         "placed_by_system": False,
         "economics_basis": "per_contract",

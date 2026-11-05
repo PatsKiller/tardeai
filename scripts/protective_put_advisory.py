@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -55,7 +56,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--holdings", help="snapshot path (default: sanctioned position store)")
     parser.add_argument("--events", help="JSON {symbol: {event_date, days_to_event}}")
     parser.add_argument("--chains", help="JSON {symbol: {expirations:[...]}}")
-    parser.add_argument("--book-value", type=float, help="whole-book value; default is summed snapshot values")
+    parser.add_argument(
+        "--book-value", type=float, help="authoritative whole-book value; required if any snapshot position is unvalued"
+    )
     parser.add_argument("--config", help="default: repository config/protective_put_advisory.json")
     parser.add_argument("--json", action="store_true", help="print the report as JSON")
     args = parser.parse_args(argv)
@@ -66,16 +69,29 @@ def main(argv: list[str] | None = None) -> int:
         cfg = load_config(args.config)
         source = "events/chains"
         events, chains = _load_json(args.events), _load_json(args.chains)
+        source = "book_value"
+        values = [position_value(row) for row in positions]
+        if args.book_value is None:
+            if any(value is None for value in values):
+                raise ValueError("implicit book valuation is incomplete; supply an authoritative --book-value")
+            try:
+                book = round(math.fsum(values), 2)
+            except OverflowError as exc:
+                raise ValueError("implicit book valuation is not finite") from exc
+            basis = "complete_snapshot_sum"
+        else:
+            book = args.book_value
+            basis = "explicit"
+        if not math.isfinite(book) or book < 0 or (book == 0 and any(v is not None and v > 0 for v in values)):
+            raise ValueError("book value must be finite and positive when holdings have positive value")
     except (OSError, ValueError) as exc:
         if args.json:
             print(json.dumps({"schema": SCHEMA, "status": "unavailable", "input": source, "reason": str(exc)}))
         else:
             print(f"Advisory unavailable ({source}): {exc}", file=sys.stderr)
         return 2
-    book = args.book_value
-    if book is None:
-        book = round(sum(position_value(row) or 0.0 for row in positions), 2)
     report = suggest_for_book(positions, book_value=book, events=events, chains=chains, cfg=cfg)
+    report["book_value_basis"] = basis
     if args.json:
         print(json.dumps(report, indent=2))
         return 0
