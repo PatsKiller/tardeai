@@ -234,6 +234,62 @@ def checks_passed(rows: Any) -> bool | None:
     return evaluate_merge_rollup(rows)["ok"]
 
 
+def _rename_scope(pr: D.PullRequest, run: Callable[..., Any]) -> None:
+    """Read metadata-only REST pages and bind both names to the same observed head."""
+    pr.rename_evidence_complete = False
+    expected = pr.changed_files
+    if type(expected) is not int or not 1 <= expected <= 3000:
+        return
+    route = f"repos/PatsKiller/tardeai/pulls/{pr.number}"
+
+    def get(suffix):
+        result = run(["gh", "api", route + suffix])
+        if getattr(result, "returncode", 1) != 0:
+            raise ValueError("GitHub file metadata unavailable")
+        return json.loads(result.stdout)
+
+    try:
+        before = get("")
+        if (
+            not isinstance(before, dict)
+            or before.get("head", {}).get("sha") != pr.head_sha
+            or before.get("changed_files") != expected
+        ):
+            return
+        names, prior = [], []
+        for page in range(1, (expected + 99) // 100 + 1):
+            rows = get(f"/files?per_page=100&page={page}")
+            if not isinstance(rows, list) or len(rows) != min(100, expected - len(names)):
+                return
+            for row in rows:
+                if (
+                    not isinstance(row, dict)
+                    or not path_ok(row.get("filename"))
+                    or row["filename"] in names
+                    or row.get("status")
+                    not in {"added", "removed", "modified", "renamed", "copied", "changed", "unchanged"}
+                ):
+                    return
+                previous = row.get("previous_filename")
+                if (row.get("status") == "renamed" or previous is not None) and not path_ok(previous):
+                    return
+                names.append(row["filename"])
+                if previous is not None:
+                    prior.append(previous)
+        after = get("")
+        if (
+            not isinstance(after, dict)
+            or after.get("head", {}).get("sha") != pr.head_sha
+            or after.get("changed_files") != expected
+            or sorted(names) != sorted(pr.files)
+        ):
+            return
+        pr.prior_paths = tuple(dict.fromkeys(prior))
+        pr.rename_evidence_complete = True
+    except (ValueError, TypeError, AttributeError, KeyError):
+        return
+
+
 def open_prs(run: Callable[..., Any] = _run, with_commits: bool = True) -> list[D.PullRequest]:
     """Open PRs from `gh`. Commit SHAs are fetched only for CLEAN candidates (they are the merge-prep evidence)."""
     proc = run(
@@ -270,6 +326,7 @@ def open_prs(run: Callable[..., Any] = _run, with_commits: bool = True) -> list[
             changed_files=r.get("changedFiles") if type(r.get("changedFiles")) is int else None,
             checks_green=checks_passed(r.get("statusCheckRollup")),
         )
+        _rename_scope(pr, run)
         if with_commits and pr.clean:
             c = run(["gh", "pr", "view", str(pr.number), "--json", "commits"])
             if getattr(c, "returncode", 1) == 0:

@@ -28,11 +28,12 @@ import os
 import re
 import subprocess
 import time
-from .agent_claim_board import AUXILIARY_CLAIM_DIR_SCHEMAS, overlapping_pairs, patterns_overlap
+from .agent_claim_board import AUXILIARY_CLAIM_DIR_SCHEMAS, ClaimView, overlapping_pairs, patterns_overlap
 from . import merge_hold_paths
-from .pr_merge_delegation import Refused as EvidenceRefused, collect_held_classes
+from .pr_merge_delegation import Refused as EvidenceRefused, collect_held_classes, effective_claim_states
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from pathlib import Path
 from typing import Any, Callable, Iterable, Sequence
 
@@ -125,6 +126,7 @@ class Claim:
     status: str
     age_h: float
     source_authors: tuple[str, ...] = ()
+    takeover_of: tuple[dict[str, Any], ...] = ()
 
     @property
     def live(self) -> bool:
@@ -164,6 +166,8 @@ def load_claims(claims_dir: Path, *, now: datetime | None = None) -> list[Claim]
                 continue
             if not isinstance(d, dict) or not d.get("claim_id"):
                 raise ValueError("invalid claim record")
+            if d.get("status") not in {"active", "done", "abandoned"}:
+                raise ValueError("invalid canonical claim status")
             hb = d.get("heartbeat_at") or d.get("started_at")
             stamp = datetime.fromisoformat(str(hb).replace("Z", "+00:00"))
             if stamp.tzinfo is None:
@@ -195,6 +199,7 @@ def load_claims(claims_dir: Path, *, now: datetime | None = None) -> list[Claim]
                     status=str(d.get("status") or ""),
                     age_h=age,
                     source_authors=tuple(sorted(authors - {""})),
+                    takeover_of=tuple(d.get("takeover_of") or []),
                 )
             )
         except (OSError, ValueError, TypeError) as exc:
@@ -267,10 +272,22 @@ class PullRequest:
     files: tuple[str, ...] = ()
     changed_files: int | None = None
     checks_green: bool | None = None
+    prior_paths: tuple[str, ...] = ()
+    rename_evidence_complete: bool = True
+
+    @property
+    def scope_files(self) -> tuple[str, ...]:
+        """Both names of a rename retain their authority and custody requirements."""
+        return tuple(dict.fromkeys([*self.files, *self.prior_paths]))
 
     @property
     def files_complete(self) -> bool:
-        return type(self.changed_files) is int and self.changed_files >= 0 and self.changed_files == len(self.files)
+        return (
+            self.rename_evidence_complete
+            and type(self.changed_files) is int
+            and self.changed_files >= 0
+            and self.changed_files == len(self.files)
+        )
 
     @property
     def clean(self) -> bool:
@@ -402,6 +419,27 @@ def work_allowed(paths: Sequence[str], requirements=None) -> bool:
     return True
 
 
+def _custody_states(claims: Sequence[Claim]) -> tuple[dict[str, str], bool]:
+    """Canonical lifecycle resolution over this read-only snapshot, never age-based release.
+
+    All original takeover links survive loading, including links of completed successors.
+    No shared-path exemption is inferred from ambient configuration: omitting that optional
+    exemption conservatively refuses ambiguous sibling scopes, rather than inventing custody.
+    """
+    if len({c.claim_id for c in claims}) != len(claims):
+        return {}, False  # contradictory snapshots cannot prove which custody remains
+    docs = [
+        {"claim_id": c.claim_id, "status": c.status, "paths": c.paths, "takeover_of": list(c.takeover_of)}
+        for c in claims
+    ]
+    views = [ClaimView(doc, c.status, c.age_h * 3600, Path(c.claim_id)) for c, doc in zip(claims, docs)]
+    board = SimpleNamespace(stale_after=timedelta(hours=CLAIM_LIVE_HOURS), views=lambda: (views, []))
+    try:
+        return effective_claim_states(docs, board), True
+    except (EvidenceRefused, ValueError, TypeError, KeyError):
+        return {}, False
+
+
 def merge_ready(
     prs: Sequence[PullRequest],
     verdicts: dict[tuple[int, str], list[dict[str, Any]]],
@@ -413,6 +451,7 @@ def merge_ready(
     one_step: list[dict[str, Any]] = []
     by_branch = {c.branch: c for c in sorted(claims, key=lambda c: -c.age_h)}
     requirements = review_requirements()
+    states, states_valid = _custody_states(claims)
     for pr in prs:
         if not pr.clean:
             continue
@@ -420,7 +459,7 @@ def merge_ready(
         authors = author_set(author_of.get(pr.number))
         blocks = [e for e in here if e["verdict"] == "BLOCK" and e["reviewer"] and e["reviewer"] not in authors]
         merges = [e for e in here if e["verdict"] == "MERGE" and e["reviewer"] and e["reviewer"] not in authors]
-        need, held = required_reviews(pr.files, requirements)
+        need, held = required_reviews(pr.scope_files, requirements)
         reviewers = {e["reviewer"] for e in merges}
         claim = by_branch.get(pr.head_ref)
         released = [
@@ -428,14 +467,18 @@ def merge_ready(
             for c in claims
             if c.branch == pr.head_ref
             and c.session in authors
-            and c.status in {"done", "released"}
+            and c.status == "done"
             and c.head_sha
             and c.head_sha in pr.shas
         ]
         try:
-            covered = {path for path in pr.files if any(overlapping_pairs([path], c.paths) for c in released)}
-            active_holders = [c for c in claims if c.live and overlapping_pairs(pr.files, c.paths)]
-            claim_current = bool(released) and covered == set(pr.files) and not active_holders
+            covered = {path for path in pr.scope_files if any(overlapping_pairs([path], c.paths) for c in released)}
+            active_holders = [
+                c
+                for c in claims
+                if states.get(c.claim_id) in {"live", "unresolved"} and overlapping_pairs(pr.scope_files, c.paths)
+            ]
+            claim_current = bool(released) and covered == set(pr.scope_files) and not active_holders and states_valid
         except ValueError:
             claim_current = False
             active_holders = []
@@ -474,6 +517,14 @@ def merge_ready(
                     "verdicts": sorted(reviewers),
                     "held": held,
                     "needed": need,
+                }
+            )
+        elif merges and not states_valid:
+            one_step.append(
+                {
+                    **base,
+                    "step": "claim takeover evidence invalid — custody remains unresolved",
+                    "verdicts": sorted(reviewers),
                 }
             )
         elif merges and claim_current:
@@ -696,9 +747,9 @@ def select_work(
     # Newest activity first: a live PR is the work, and an ancient CLEAN PR is the triage list (board row 26), not
     # somewhere to spend five sessions. At most MAX_REVIEWERS_PER_PR independent reviewers per head.
     for pr in sorted(prs, key=lambda p: (p.updated_at or "", p.number), reverse=True):
-        if not pr.review_eligible or not work_allowed(pr.files, requirements):
+        if not pr.review_eligible or not work_allowed(pr.scope_files, requirements):
             continue
-        need, held = required_reviews(pr.files, requirements)
+        need, held = required_reviews(pr.scope_files, requirements)
         if not held:
             continue  # D51: cloud owns ordinary reviews; leads route exceptional P0/P1 work explicitly.
         authors = author_set(author_of.get(pr.number))
@@ -742,7 +793,12 @@ def select_work(
     # (c) merge-prep: a CLEAN PR with a MERGE verdict whose author claim is stale on the head
     for pr in sorted(prs, key=lambda p: p.number):
         authors = author_set(author_of.get(pr.number))
-        if not pr.clean or session not in authors or not pr.files_complete or not work_allowed(pr.files, requirements):
+        if (
+            not pr.clean
+            or session not in authors
+            or not pr.files_complete
+            or not work_allowed(pr.scope_files, requirements)
+        ):
             continue
         if not any(
             v["verdict"] == "MERGE" and v["reviewer"] and v["reviewer"] not in authors

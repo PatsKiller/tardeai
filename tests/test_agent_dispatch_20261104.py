@@ -55,7 +55,7 @@ def _assert_only_pure_delegation_imports(source):
     import ast
 
     tree = compile(source, "<dispatch-import-rail>", "exec", flags=ast.PyCF_ONLY_AST)
-    allowed = {"Refused", "collect_held_classes", "path_ok", "reviewer_artifact", "safe_read"}
+    allowed = {"Refused", "collect_held_classes", "path_ok", "reviewer_artifact", "safe_read", "effective_claim_states"}
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             assert not any(alias.name.endswith("pr_merge_delegation") for alias in node.names)
@@ -566,6 +566,15 @@ def fake_runner(panes: dict[str, str], gh_rows: list[dict]):
             P.stdout = json.dumps(gh_rows)
         elif cmd[:3] == ["gh", "pr", "view"]:
             P.stdout = json.dumps({"commits": []})
+        elif cmd[:2] == ["gh", "api"]:
+            number = int(cmd[2].split("/pulls/")[1].split("/")[0].split("?")[0])
+            row = next(r for r in gh_rows if r["number"] == number)
+            if "/files?" in cmd[2]:
+                page = int(cmd[2].split("page=")[-1])
+                data = [{"filename": f["path"], "status": "modified"} for f in row.get("files", [])]
+                P.stdout = json.dumps(data[(page - 1) * 100 : page * 100])
+            else:
+                P.stdout = json.dumps({"head": {"sha": row["headRefOid"]}, "changed_files": row.get("changedFiles")})
         return P
 
     return run
@@ -2009,7 +2018,10 @@ def test_d51_cx5_released_author_coverage_is_ready_and_active_is_not(status):
     pr = _complete_pr(7, "a" * 40, "wt/synthetic", "CLEAN", False, files=("src/synthetic.py",))
     verdicts = {(7, pr.head_sha): [{"verdict": "MERGE", "reviewer": "independent"}]}
     released = claim(session="author", branch=pr.head_ref, head=pr.head_sha, status=status, paths=pr.files)
-    assert [item["pr"] for item in D.merge_ready([pr], verdicts, [released], {7: "author"})["ready"]] == [7]
+    # Canonical ClaimBoard writes done; released was an invented positive fixture, never a producer status.
+    assert [item["pr"] for item in D.merge_ready([pr], verdicts, [released], {7: "author"})["ready"]] == (
+        [7] if status == "done" else []
+    )
     active = claim(session="author", branch=pr.head_ref, head=pr.head_sha, paths=pr.files)
     assert D.merge_ready([pr], verdicts, [active], {7: "author"})["ready"] == []
 
@@ -2270,3 +2282,272 @@ def test_cloud2_cx3_owner_can_maintain_own_claim_without_takeover():
     )
     assert task.kind == "chore" and "takeover" not in task.instruction
     assert "own-source" in task.instruction and "agent_claim.py release" in task.instruction
+
+
+# Cloud round 3: rename metadata and unresolved custody are source truth, not inferred release.
+def _cloud3_rename_run(*, prior=".githooks/pre-push", fault=None):
+    row = {
+        "number": 7,
+        "headRefName": "wt/synthetic",
+        "headRefOid": "a" * 40,
+        "mergeStateStatus": "CLEAN",
+        "isDraft": False,
+        "changedFiles": 1,
+        "files": [{"path": "src/moved-hook.py"}],
+        "statusCheckRollup": _d51_checks(),
+    }
+    base = fake_runner({}, [row])
+    calls = []
+
+    def run(cmd, **kw):
+        calls.append(cmd)
+        out = base(cmd, **kw)
+        if cmd[:2] == ["gh", "api"]:
+            if "/files?" in cmd[2]:
+                data = [{"filename": "src/moved-hook.py", "status": "renamed", "previous_filename": prior}]
+                if fault == "missing_prior":
+                    data[0].pop("previous_filename")
+                if fault == "truncated":
+                    data = []
+                if fault == "wrong_destination":
+                    data[0]["filename"] = "other.py"
+                out.stdout = json.dumps(data)
+                if fault == "api_failed":
+                    out.returncode = 1
+            else:
+                out.stdout = json.dumps(
+                    {"head": {"sha": "b" * 40 if fault == "head_moved" else "a" * 40}, "changed_files": 1}
+                )
+        return out
+
+    return run, calls
+
+
+def test_cloud3_cx4_real_rename_collector_keeps_original_held_scope():
+    run, calls = _cloud3_rename_run()
+    pr = CLI.open_prs(run=run)[0]
+    assert any(c[:2] == ["gh", "api"] and "/files?" in c[2] for c in calls)
+    assert pr.files == ("src/moved-hook.py",)
+    assert pr.prior_paths == (".githooks/pre-push",)
+    assert D.required_reviews(pr.scope_files) == (2, True)
+    assert pr.files_complete
+
+
+@pytest.mark.parametrize("fault", ["missing_prior", "truncated", "wrong_destination", "api_failed", "head_moved"])
+def test_cloud3_cx4_incomplete_rename_evidence_refuses_review_and_readiness(fault):
+    run, _calls = _cloud3_rename_run(fault=fault)
+    pr = CLI.open_prs(run=run)[0]
+    assert not pr.files_complete
+    assert not pr.review_eligible
+    assert not D.merge_ready(
+        [pr],
+        {(7, pr.head_sha): [{"reviewer": "peer", "verdict": "MERGE"}]},
+        [claim(session="author", branch=pr.head_ref, head=pr.head_sha, status="done", paths=pr.files)],
+        {7: "author"},
+    )["ready"]
+
+
+def _cloud3_renamed_pr():
+    pr = ordinary_pr(head="a" * 40, files=("src/moved-hook.py",))
+    pr.prior_paths = (".githooks/pre-push",)
+    return pr
+
+
+def test_cloud3_cx4_rename_requires_both_custody_and_engineering_completion():
+    pr = _cloud3_renamed_pr()
+    reviews = {(7, pr.head_sha): [{"reviewer": r, "verdict": "MERGE"} for r in ("peer", "second")]}
+    released = claim(session="author", branch=pr.head_ref, head=pr.head_sha, status="done", paths=pr.files)
+    assert not D.merge_ready([pr], reviews, [released], {7: "author"})["ready"]
+    released.paths.append(".githooks/pre-push")
+    result = D.merge_ready([pr], reviews, [released], {7: "author"})
+    assert not result["ready"] and "engineering" in result["one_step"][0]["step"]
+    reviews[(7, pr.head_sha)][0].update(
+        engineering_completion_head=pr.head_sha, engineering_tests_completed=True, engineering_docs_completed=True
+    )
+    assert D.merge_ready([pr], reviews, [released], {7: "author"})["ready"]
+
+
+def test_cloud3_cx4_live_holder_on_old_name_still_blocks():
+    pr = _cloud3_renamed_pr()
+    scope = (*pr.files, ".githooks/pre-push")
+    released = claim(session="author", branch=pr.head_ref, head=pr.head_sha, status="done", paths=scope)
+    holder = claim(cid="holder", paths=(".githooks/pre-push",))
+    reviews = {
+        (7, pr.head_sha): [
+            {
+                "reviewer": r,
+                "verdict": "MERGE",
+                "engineering_completion_head": pr.head_sha,
+                "engineering_tests_completed": True,
+                "engineering_docs_completed": True,
+            }
+            for r in ("peer", "second")
+        ]
+    }
+    assert not D.merge_ready([pr], reviews, [released, holder], {7: "author"})["ready"]
+
+
+@pytest.mark.parametrize("prior", ["scripts/brokers/synthetic.py", "AGENTS.md"])
+def test_cloud3_cx4_rename_source_autonomous_exclusion_remains(prior):
+    run, _calls = _cloud3_rename_run(prior=prior)
+    pr = CLI.open_prs(run=run)[0]
+    assert (
+        D.select_work(
+            "cc-independent",
+            queue=[],
+            claims=[],
+            prs=[pr],
+            verdicts={},
+            author_of={7: "author"},
+            coord="/synthetic",
+            now=NOW,
+        )
+        is None
+    )
+
+
+def test_cloud3_cx4_held_rename_still_assigns_a_needed_independent_review():
+    run, _calls = _cloud3_rename_run()
+    pr = CLI.open_prs(run=run)[0]
+    assignment = D.select_work(
+        "cc-independent",
+        queue=[],
+        claims=[],
+        prs=[pr],
+        verdicts={},
+        author_of={7: "author"},
+        coord="/synthetic",
+        now=NOW,
+    )
+    assert assignment and assignment.kind == "review"
+
+
+@pytest.mark.parametrize("age", [0.1, 3, 100])
+def test_cloud3_cx5_age_alone_never_releases_overlapping_active_custody(age):
+    pr = ordinary_pr()
+    released = claim(session="author", branch=pr.head_ref, head=pr.head_sha, status="done", paths=pr.files)
+    stale = claim(cid="foreign", paths=pr.files, age=age)
+    reviews = {(7, pr.head_sha): [{"reviewer": "peer", "verdict": "MERGE"}]}
+    result = D.merge_ready([pr], reviews, [released, stale], {7: "author"})
+    assert not result["ready"]
+    assert "not released" in result["one_step"][0]["step"]
+
+
+def test_cloud3_cx5_validly_superseded_predecessor_is_nonblocking():
+    pr = ordinary_pr()
+    released = claim(
+        cid="successor", session="author", branch=pr.head_ref, head=pr.head_sha, status="done", paths=pr.files
+    )
+    stale = claim(cid="foreign", paths=pr.files, age=3)
+    released.takeover_of = ({"claim_id": "foreign"},)
+    reviews = {(7, pr.head_sha): [{"reviewer": "peer", "verdict": "MERGE"}]}
+    assert D.merge_ready([pr], reviews, [released, stale], {7: "author"})["ready"]
+
+
+@pytest.mark.parametrize("fault", ["cycle", "missing_target", "fresh_predecessor"])
+def test_cloud3_cx5_invalid_or_live_predecessor_never_releases_custody(fault):
+    pr = ordinary_pr()
+    released = claim(
+        cid="successor", session="author", branch=pr.head_ref, head=pr.head_sha, status="done", paths=pr.files
+    )
+    stale = claim(cid="foreign", paths=pr.files, age=0.1 if fault == "fresh_predecessor" else 3)
+    released.takeover_of = ({"claim_id": "absent" if fault == "missing_target" else "foreign"},)
+    if fault == "cycle":
+        stale.takeover_of = ({"claim_id": "successor"},)
+    reviews = {(7, pr.head_sha): [{"reviewer": "peer", "verdict": "MERGE"}]}
+    assert not D.merge_ready([pr], reviews, [released, stale], {7: "author"})["ready"]
+
+
+@pytest.mark.parametrize("prior", ["../escape.py", "/absolute.py", "", None])
+def test_cloud3_cx4_invalid_rename_source_fails_closed(prior):
+    run, _calls = _cloud3_rename_run(prior=prior)
+    assert not CLI.open_prs(run=run)[0].files_complete
+
+
+def test_cloud3_cx4_real_pagination_keeps_rename_in_later_page():
+    names = tuple(f"src/file-{n}.py" for n in range(101))
+    source = {
+        "number": 7,
+        "headRefName": "wt/synthetic",
+        "headRefOid": "a" * 40,
+        "mergeStateStatus": "CLEAN",
+        "isDraft": False,
+        "changedFiles": 101,
+        "files": [{"path": name} for name in names],
+    }
+    base = fake_runner({}, [source])
+    pages = []
+
+    def run(cmd, **kw):
+        out = base(cmd, **kw)
+        if cmd[:2] == ["gh", "api"] and "/files?" in cmd[2]:
+            pages.append(int(cmd[2].split("page=")[-1]))
+            if pages[-1] == 2:
+                rows = json.loads(out.stdout)
+                rows[0].update(status="renamed", previous_filename=".githooks/pre-push")
+                out.stdout = json.dumps(rows)
+        return out
+
+    pr = CLI.open_prs(run=run)[0]
+    assert pages == [1, 2]
+    assert pr.files_complete and pr.prior_paths == (".githooks/pre-push",)
+    assert D.required_reviews(pr.scope_files) == (2, True)
+
+
+def test_cloud3_cx5_original_takeover_links_survive_disk_loading(tmp_path):
+    directory = tmp_path / "claims"
+    directory.mkdir()
+    pr = ordinary_pr()
+    for cid, status, age, links in [
+        ("predecessor", "active", 3, []),
+        ("successor", "done", 0.1, [{"claim_id": "predecessor"}]),
+    ]:
+        doc = {
+            "claim_id": cid,
+            "session": "author" if cid == "successor" else "other",
+            "branch": pr.head_ref if cid == "successor" else "wt/other",
+            "status": status,
+            "heartbeat_at": iso(NOW - timedelta(hours=age)),
+            "paths": list(pr.files),
+            "head_sha": pr.head_sha,
+            "takeover_of": links,
+        }
+        (directory / f"{cid}.json").write_text(json.dumps(doc))
+    claims = D.load_claims(directory, now=NOW)
+    reviews = {(7, pr.head_sha): [{"reviewer": "peer", "verdict": "MERGE"}]}
+    assert D.merge_ready([pr], reviews, claims, {7: "author"})["ready"]
+    doc["takeover_of"] = []
+    (directory / "successor.json").write_text(json.dumps(doc))
+    assert not D.merge_ready([pr], reviews, D.load_claims(directory, now=NOW), {7: "author"})["ready"]
+
+
+def test_cloud3_cx5_released_successor_cannot_resolve_conflicting_live_siblings():
+    pr = ordinary_pr()
+    released = claim(
+        cid="released", session="author", branch=pr.head_ref, head=pr.head_sha, status="done", paths=pr.files
+    )
+    stale = claim(cid="predecessor", paths=pr.files, age=3)
+    left = claim(cid="left", paths=pr.files)
+    right = claim(cid="right", paths=pr.files)
+    left.takeover_of = right.takeover_of = ({"claim_id": "predecessor"},)
+    reviews = {(7, pr.head_sha): [{"reviewer": "peer", "verdict": "MERGE"}]}
+    assert not D.merge_ready([pr], reviews, [released, stale, left, right], {7: "author"})["ready"]
+
+
+@pytest.mark.parametrize("status", ["released", "unknown", "", None])
+def test_cloud3_cx5_raw_noncanonical_status_is_unreadable(tmp_path, status):
+    directory = tmp_path / "claims"
+    directory.mkdir()
+    (directory / "bad.json").write_text(
+        json.dumps({"claim_id": "bad", "status": status, "heartbeat_at": iso(NOW), "paths": ["src/synthetic.py"]})
+    )
+    with pytest.raises(D.DispatchError, match="unreadable"):
+        D.load_claims(directory, now=NOW)
+
+
+def test_cloud3_cx5_duplicate_snapshot_identity_fails_closed():
+    pr = ordinary_pr()
+    released = claim(cid="same", session="author", branch=pr.head_ref, head=pr.head_sha, status="done", paths=pr.files)
+    other = claim(cid="same", paths=pr.files, age=3)
+    reviews = {(7, pr.head_sha): [{"reviewer": "peer", "verdict": "MERGE"}]}
+    assert not D.merge_ready([pr], reviews, [released, other], {7: "author"})["ready"]
