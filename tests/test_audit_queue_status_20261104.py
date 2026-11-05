@@ -151,6 +151,38 @@ def test_a_merged_pr_marks_the_row_delivered_with_its_merge_commit():
     assert item["status"] == "delivered" and item["head"] == "b" * 40
 
 
+# ── QS1 (cx-openai BLOCK at f10e73cb4): a first observation may be after the merge ───────────────────────────────
+# The tool is the only writer of these statuses and it runs on demand, so a row can be seen for the first time once its
+# PR has already merged. Handling MERGED only inside `fix_in_review` left such a row queued/assigned — dispatchable —
+# for ever, which is the exact failure the tool exists to prevent.
+
+
+@pytest.mark.parametrize("status", ["queued", "assigned", "fix_in_review"])
+def test_a_row_whose_pr_already_merged_is_delivered_whatever_it_started_as(status):
+    rep = S.sync(queue(row("FQ-021", status=status, **({"pr": 2620} if status != "queued" else {}))),
+                 [pr(2620, state="MERGED", branch="wt/fq021-example", body="Closes FQ-021.", merge="e" * 40)],
+                 now=NOW)
+    item = rep["queue"]["items"][0]
+    assert item["status"] == "delivered", (status, rep["changes"])
+    assert item["pr"] == 2620 and item["head"] == "e" * 40, "the merge commit is the recorded head"
+    assert item["history"][-1]["from"] == status and item["history"][-1]["to"] == "delivered"
+
+
+def test_the_merged_catch_up_is_idempotent():
+    first = S.sync(queue(row("FQ-021")),
+                   [pr(2620, state="MERGED", branch="wt/fq021-example", body="Closes FQ-021.", merge="e" * 40)], now=NOW)
+    assert first["changed"] == 1
+    again = S.sync(first["queue"],
+                   [pr(2620, state="MERGED", branch="wt/fq021-example", body="Closes FQ-021.", merge="e" * 40)], now=NOW)
+    assert again["changed"] == 0, again["changes"]
+
+
+def test_a_decision_is_still_never_overwritten_by_a_merged_pr():
+    rep = S.sync(queue(row("FQ-021", status="HELD_pending_operator_mockup_approval")),
+                 [pr(2620, state="MERGED", branch="wt/fq021-example", body="Closes FQ-021.", merge="e" * 40)], now=NOW)
+    assert rep["changed"] == 0
+
+
 def test_a_closed_pr_parks_the_row():
     rep = S.sync(queue(row("FQ-094", status="fix_in_review", pr=2636)),
                  [pr(2636, state="CLOSED", branch="wt/fq094-risk-verdict", body="FQ-094")], now=NOW)

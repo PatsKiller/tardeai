@@ -123,16 +123,19 @@ def plan(item: dict[str, Any], pr: dict[str, Any] | None, now: str) -> dict[str,
     if pr is None:
         return None
     state = str(pr.get("state") or "").upper()
+    prn = pr.get("number")
+    # QS1 (cx-openai BLOCK at f10e73cb4): a row whose PR has ALREADY merged must go to delivered from ANY transient state.
+    # This tool is the only thing that writes these statuses, and it runs on demand — so the first observation of a PR can
+    # be after it merged (the intermediate open/in-review observation was never taken). Handling MERGED only inside
+    # `fix_in_review` left such a row permanently dispatchable, which is the failure the tool exists to prevent.
+    if state == "MERGED":
+        sha = (pr.get("mergeCommit") or {}).get("oid")
+        return {"status": "delivered", "pr": prn, "head": sha or pr.get("headRefOid"),
+                "history": _entry(now, status, "delivered", f"PR #{prn} merged")}
     if status in ("queued", "assigned") and state == "OPEN":
-        prn = pr.get("number")
         return {"status": "fix_in_review", "pr": prn, "head": pr.get("headRefOid"),
                 "history": _entry(now, status, "fix_in_review", f"PR #{prn} is open")}
     if status == "fix_in_review":
-        prn = pr.get("number")
-        if state == "MERGED":
-            sha = (pr.get("mergeCommit") or {}).get("oid")
-            return {"status": "delivered", "pr": prn, "head": sha or pr.get("headRefOid"),
-                    "history": _entry(now, status, "delivered", f"PR #{prn} merged")}
         if state == "CLOSED":
             return {"status": "parked", "pr": prn,
                     "history": _entry(now, status, "parked", f"PR #{prn} closed without merging")}
