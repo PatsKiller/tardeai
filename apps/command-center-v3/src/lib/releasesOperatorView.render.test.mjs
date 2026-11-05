@@ -1,4 +1,4 @@
-// node --experimental-strip-types --import ./src/lib/tsxRegister.mjs src/lib/releasesOperatorView.render.test.mjs
+// node --experimental-strip-types --import ./src/testharness/tsxRegister.mjs src/lib/releasesOperatorView.render.test.mjs
 //
 // THE PAGE, RENDERED (codex, #2541 round four). The previous suite drove pure helpers beside each JSX branch, so
 // deleting a branch left 131/131 green — it tested the sibling, not the page. Every case below renders the REAL
