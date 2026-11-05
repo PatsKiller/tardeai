@@ -13,7 +13,9 @@ const src = readFileSync(new URL('../components/DeskPage.tsx', import.meta.url),
 const blockStart = src.lastIndexOf('const st = writer?.state', src.indexOf('data-testid="source-writer-diagnostics"'))
 const block = src.slice(blockStart, src.indexOf('data-testid="source-writer-diagnostics"'))
 
-check('the writer state reads as words', /Refreshing/.test(block) && /Retired/.test(block), block.slice(0, 160))
+// The mapping itself moved to lib/deskWriterState.ts so every declared state is provable without rendering the page
+// (see deskWriterState.test.mjs). What this file can still prove is that the panel actually delegates to it.
+check('the writer state reads as words from the shared mapping', /writerStateWords\(st, loading\)/.test(block), block.slice(0, 160))
 check('and not as the writer\'s code', !/\{writer\?\.state\}|Writer \{/.test(block), block.slice(0, 160))
 check('the mechanics sit in a Diagnostics disclosure', /<details[^>]*data-testid="source-writer-diagnostics"/.test(src))
 const diagStart = src.indexOf('data-testid="source-writer-diagnostics"')
@@ -23,7 +25,8 @@ check('the last-run clock is inside the disclosure', /Last successful run:/.test
 check('the evidence capture is inside the disclosure', /Evidence captured:/.test(diag))
 check('the raw state code is inside the disclosure', /Writer state:/.test(diag))
 check('none of them are left in the visible part', !/Last successful run:|Evidence captured:/.test(block), block.slice(-160))
-check('the consequence is still visible when the writer is not active', /not refreshing this source/.test(block))
+const words = readFileSync(new URL('./deskWriterState.ts', import.meta.url), 'utf8')
+check('the consequence is still visible when the writer is not active', /not refreshing this source/.test(words))
 
 console.log(`deskSourceClocks.boundary: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

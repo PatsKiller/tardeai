@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { BB, T, TYPE } from '../lib/watchTokens'
 import { RADIUS } from '../lib/designTokens'
+import { writerStateWords } from '../lib/deskWriterState'
 import ReadableTime from './ReadableTime'
 import { cioPageDataFrom, HomeBoardMount, withHomeClocks } from './homeDeskMount'
 
@@ -145,7 +146,9 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
               // The writer's own state code, its last successful run and the execution-evidence capture are how that is
               // worked out, not what a person reads: they move one tap away, none of them removed.
               const st = writer?.state
-              const words = st === 'ACTIVE' ? 'Refreshing' : st === 'RETIRED' ? 'Retired — not refreshing this source' : (loading ? 'Checking' : 'State unavailable')
+              // Every declared state gets its own true sentence: PAUSED and NONE are read successfully, so neither may
+              // be reported as "State unavailable". See lib/deskWriterState.ts and its test.
+              const words = writerStateWords(st, loading)
               return <div key={source.laneIds![index]} style={{ borderTop: `1px solid ${BB.border}`, paddingTop: 8, marginTop: 8, fontSize: TYPE.base }}>
                 <div data-testid="source-writer-state" style={{ color: st === 'ACTIVE' ? BB.text2 : BB.amber }}>{words}{sourceWriters.length > 1 ? ` · ${index + 1}` : ''}</div>
                 <details data-testid="source-writer-diagnostics" style={{ marginTop: 4 }}>
