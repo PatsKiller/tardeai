@@ -644,9 +644,10 @@ def run(
     except OSError as exc:
         report["error"] = f"baseline_write_failed:{type(exc).__name__}"
         failures += 1
+    report["failures"] = failures  # surface a late baseline-write failure in the reported outcome
     measured = sum(1 for m in ev["mounts"] if "used_pct" in m)
     ok = failures == 0
-    R.write_lane_receipt(
+    receipt = R.write_lane_receipt(
         LANE_ID,
         ok=ok,
         exit_code=0 if ok else 1,
@@ -661,6 +662,13 @@ def run(
                 "empty_reason": None,
                 "output_evidence": [{"kind": "file", "ref": str(bpath)}]},
     )
+    if receipt is None:
+        # a run whose durable receipt could not be written must fail: silence here means the operator (and every
+        # receipt reader) sees a stale or missing record while the run reports success
+        failures += 1
+        ok = False
+        report["failures"] = failures
+        report["error"] = report.get("error") or "lane_receipt_write_failed"
     print(json.dumps(report, default=str))
     return 0 if ok else 1
 

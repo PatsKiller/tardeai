@@ -12,6 +12,7 @@ COVERS = ["scripts/disk_monitor.py", "config/disk_monitor.json"]
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 import types
@@ -25,9 +26,36 @@ for _p in (str(ROOT), str(ROOT / "scripts")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from scripts import disk_monitor as DMON  # noqa: E402
+# Test isolation: load the producer by FILE PATH with an importlib spec, register it in sys.modules BEFORE
+# execution, and never import it through the shared ``scripts`` package. A cached or stubbed package module must not
+# be able to stand in for the implementation under test.
+_MODULE_NAME = "disk_monitor_20261030_under_test"
+_MODULE_PATH = ROOT / "scripts" / "disk_monitor.py"
+_spec = importlib.util.spec_from_file_location(_MODULE_NAME, _MODULE_PATH)
+assert _spec is not None and _spec.loader is not None
+DMON = importlib.util.module_from_spec(_spec)
+sys.modules[_MODULE_NAME] = DMON
+_spec.loader.exec_module(DMON)
 
 ORIG_DU = DMON.du_bytes  # the real subprocess-backed measurement, before the fixture monkeypatches it
+
+
+def test_the_producer_is_loaded_by_path_not_through_the_shared_scripts_package():
+    """Test-isolation rule: the implementation under test comes from its FILE, not a cached/stubbed package module."""
+    assert DMON.__name__ == _MODULE_NAME
+    assert Path(DMON.__file__) == _MODULE_PATH
+    assert sys.modules[_MODULE_NAME] is DMON
+    # a stub registered under the package path must not be what this suite exercises
+    stub = types.ModuleType("scripts.disk_monitor")
+    real = sys.modules.get("scripts.disk_monitor")
+    try:
+        sys.modules["scripts.disk_monitor"] = stub
+        assert DMON is not stub
+    finally:
+        if real is None:
+            sys.modules.pop("scripts.disk_monitor", None)
+        else:
+            sys.modules["scripts.disk_monitor"] = real
 
 CONFIG = ROOT / "config"
 GIB = 1024 ** 3
@@ -172,13 +200,14 @@ def test_du_bytes_rejects_a_nonzero_exit_even_with_a_numeric_total(monkeypatch):
         assert DMON.du_bytes(Path("/x"), 5) == expected
 
 
-def test_a_nonzero_du_exit_never_overwrites_the_hotspot_baseline(mon, monkeypatch):
+def test_a_nonzero_du_exit_never_overwrites_the_hotspot_baseline(mon, monkeypatch, capsys):
     """The rejected measurement must keep the complete prior value and record the failure beside it."""
     mon.doc["hotspots"] = [{"id": "cache", "path": "~/.cache", "purge": "rule C"}]
     mon.cfg.write_text(json.dumps(mon.doc, indent=1))
     monkeypatch.setattr(DMON, "du_bytes", lambda path, timeout: 10 * GIB)
     assert _run(mon, apply=True, used=50.0) == 0
     assert _baseline(mon)["hotspots"]["cache"]["bytes"] == 10 * GIB
+    capsys.readouterr()
 
     class Proc:
         returncode, stdout, stderr = 1, f"{4 * GIB}\t{mon.home / '.cache'}\n", "du: cannot read directory"
@@ -189,32 +218,71 @@ def test_a_nonzero_du_exit_never_overwrites_the_hotspot_baseline(mon, monkeypatc
     b = _baseline(mon)["hotspots"]["cache"]
     assert b["bytes"] == 10 * GIB  # the partial 4 GiB never lands in the value slot
     assert b["last_failure"] is not None
+    # the REPORTED result labels it a degradation, never a complete value
+    report = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert report["degraded_hotspots"] == 1 and report["failures"] == 0
+    assert report["hotspots"][0]["bytes"] is None and report["hotspots"][0]["flag"] == "unknown"
+
+    # negative control: a successful traversal is accepted and updates the stored value
+    class OK:
+        returncode, stdout, stderr = 0, f"{5 * GIB}\t{mon.home / '.cache'}\n", ""
+
+    monkeypatch.setattr(DMON.subprocess, "run", lambda *a, **k: OK())
+    assert _run(mon, apply=True, used=50.0, hours=1.0) == 0
+    assert _baseline(mon)["hotspots"]["cache"]["bytes"] == 5 * GIB
 
 
-def test_a_rejected_notification_is_retried_not_consumed(mon, monkeypatch):
+def test_a_rejected_notification_is_retried_not_consumed(mon, monkeypatch, capsys):
     """A transition whose send is not accepted must survive in the condition store so the next run retries it."""
     assert _run(mon, apply=True, used=50.0) == 0  # seed
+    capsys.readouterr()
     monkeypatch.setattr(DMON, "default_notify", lambda text, priority: "send_returned_false")
     assert _run(mon, apply=True, used=85.0, hours=1.0) == 1  # the rejected send fails the run
     assert mon.sends == []  # nothing accepted; the fixture's accepted-notifier list stays empty
+    # the transition is still PENDING: the unaccepted observation was rolled back, not consumed as "ongoing"
+    assert DMON._load_condition(mon.alert).get(DMON.condition_key("/", "used")) is None
+    # the failure is REPORTED, not merely returned: the receipt is failed and counts it, and so does the report
+    receipt = json.loads((mon.state / "data" / "runtime" / "disk-monitor_last.json").read_text())
+    assert receipt["status"] == "failed" and receipt["summary"]["failures"] >= 1
+    report = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert report["failures"] >= 1 and report["dry_run"] is False
 
-    # the operator fixes transport: the SAME still-bad warn band must be delivered, not suppressed as "ongoing"
+    # negative control: the SAME still-bad warn band is delivered once transport works, not suppressed as "ongoing"
     monkeypatch.setattr(DMON, "default_notify",
                         lambda text, priority: (mon.sends.append((text, priority)), "accepted")[1])
     assert _run(mon, apply=True, used=86.0, hours=1.0) == 0
     assert len(mon.sends) == 1 and "WARN" in mon.sends[0][0]
+    # accepted: the condition is now recorded, so the next still-warn run stays quiet (no heartbeat)
+    assert DMON._load_condition(mon.alert).get(DMON.condition_key("/", "used")) is not None
+    assert _run(mon, apply=True, used=87.0, hours=1.0) == 0
+    assert len(mon.sends) == 1
 
 
-def test_a_condition_store_write_failure_fails_the_run(mon):
+def test_a_condition_store_write_failure_fails_the_run(mon, capsys):
     """A condition store that cannot be written must make the run fail, not silently succeed with no alert."""
     assert _run(mon, apply=True, used=50.0) == 0  # seed (the first run observes nothing)
+    capsys.readouterr()
     bad = mon.state / "store_is_a_dir"
     bad.mkdir()  # os.replace() onto a directory raises: the condition store cannot be written
     mon.alert = bad
     assert _run(mon, apply=True, used=92.0, hours=1.0) == 1  # measured CRITICAL, store unwritable
     assert mon.sends == []  # observe never returned notify=True, so no alert was attempted
     receipt = json.loads((mon.state / "data" / "runtime" / "disk-monitor_last.json").read_text())
-    assert receipt["status"] == "failed"
+    assert receipt["status"] == "failed" and receipt["summary"]["failures"] >= 1
+    # the REPORTED run result carries the observation error beside the measured critical condition
+    report = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert report["failures"] >= 1
+    assert report["mounts"][0]["used_band"] == "critical"
+    assert report["degraded_hotspots"] == 0  # the alert was not suppressed by a measurement degradation
+
+
+def test_a_writable_condition_store_alerts_the_critical_band(mon):
+    """Negative control for the store-failure finding: a writable store lets the same critical reading alert."""
+    assert _run(mon, apply=True, used=50.0) == 0  # seed
+    assert _run(mon, apply=True, used=92.0, hours=1.0) == 0
+    assert len(mon.sends) == 1 and mon.sends[0][1] == "P1" and "CRITICAL" in mon.sends[0][0]
+    receipt = json.loads((mon.state / "data" / "runtime" / "disk-monitor_last.json").read_text())
+    assert receipt["status"] == "ok"
 
 
 def test_a_rejected_mount_notification_fails_the_run(mon, monkeypatch):
@@ -237,6 +305,25 @@ def test_a_rejected_hotspot_notification_fails_the_run(mon, monkeypatch):
     assert _run(mon, apply=True, used=50.0, hours=1.0) == 1
     receipt = json.loads((mon.state / "data" / "runtime" / "disk-monitor_last.json").read_text())
     assert receipt["status"] == "failed"
+
+
+def test_an_unwritable_receipt_fails_the_run(mon, capsys):
+    """A durable receipt that cannot be written must fail the run instead of passing with stale/missing evidence."""
+    target = mon.state / "data" / "runtime" / "disk-monitor_last.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.mkdir()  # os.replace() onto a directory raises: the receipt target cannot be written
+    assert _run(mon, apply=True, used=50.0) == 1
+    report = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert report["failures"] >= 1
+    assert report["error"] == "lane_receipt_write_failed"
+    assert report["dry_run"] is False
+
+
+def test_a_writable_receipt_is_written_and_the_run_succeeds(mon):
+    """Negative control for the receipt finding: the healthy apply path writes its receipt and exits 0."""
+    assert _run(mon, apply=True, used=50.0) == 0
+    receipt = json.loads((mon.state / "data" / "runtime" / "disk-monitor_last.json").read_text())
+    assert receipt["status"] == "ok" and receipt["lane_id"] == "disk-monitor"
 
 
 # ── 2. the guards (pure), including the mutation check ────────────────────────────────────────────────────────────
