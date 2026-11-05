@@ -8,7 +8,9 @@ Rules this module owns, all from the spec:
   * the class allowlist is ``config/critical_text_classes.json`` (the operator turns classes on/off there);
   * an unknown or disabled class is not sent — the channel fails closed to Telegram-only;
   * at most ``max_per_hour`` texts per hour, and one text per event id inside ``dedupe_hours``;
-  * the text is plain, at most 160 characters, carries symbol/account/trigger/one action, no HTML and no links.
+  * the text is plain, at most 160 characters, carries symbol/account/trigger/one action, no HTML and no links
+    except the one D35 B4 carries: the full https Command Center reauth URL, built from the runtime tailnet base
+    (TRADEAI_CC_LINK_BASE), never truncated and never from the repository.
 
 Agents never place, change or cancel an order, and nothing here does: it sends words.
 """
@@ -90,11 +92,42 @@ def class_enabled(policy: dict[str, Any], alert_class: str) -> bool:
     return bool(isinstance(entry, dict) and entry.get("enabled") is True)
 
 
-def format_text(event: dict[str, Any]) -> str:
+CC_REAUTH_PATH = "/v3/system/schwab-reauth"
+# D35 B4: the Schwab-login text must carry the full one-tap Command Center link. Only this class may carry a link, and the
+# link is built from a runtime base URL — the tailnet hostname is an address, so it never lives in the repository.
+LINK_CLASSES = frozenset({"B4_schwab_login_expiring"})
+LINK_BASE_ENV = "TRADEAI_CC_LINK_BASE"
+LINK_HOST_SUFFIX = ".ts.net"
+
+
+def critical_link(base: Any) -> str:
+    """The one-tap reauth URL: https, tailnet host, no dev port. Anything else is refused, never repaired."""
+    import os
+    from urllib.parse import urlsplit
+
+    raw = " ".join(str(base or "").split())
+    if not raw:
+        raise CriticalTextError(f"{sorted(LINK_CLASSES)[0]} needs the Command Center link base ({LINK_BASE_ENV})")
+    parts = urlsplit(raw)
+    if parts.scheme != "https":
+        raise CriticalTextError(f"the reauth link must be https, not {parts.scheme or 'no scheme'!r}")
+    if parts.port not in (None, 443):
+        # Covers the :7777 dev port and every other explicit port in one rule.
+        raise CriticalTextError(f"the reauth link must not carry a port ({parts.port}), including :7777")
+    host = (parts.hostname or "").rstrip(".")
+    if not host.endswith(LINK_HOST_SUFFIX):
+        raise CriticalTextError(f"the reauth link must be the tailnet host ({LINK_HOST_SUFFIX}), not {host or 'no host'!r}")
+    return f"https://{host}{CC_REAUTH_PATH}"
+
+
+def format_text(event: dict[str, Any], *, link_base: Any = None) -> str:
     """`ACT NOW SPCX (Roth) ext-hrs 131.20, stop 130.00 inactive till 9:30. Suggest EXT limit sell 130.90. CC Risk`"""
+    import os
+
     def clean(value: Any) -> str:
         return " ".join(str(value or "").split())
 
+    alert_class = clean(event.get("alert_class"))
     symbol = clean(event.get("symbol")).upper() or "PORTFOLIO"
     account = clean(event.get("account"))
     trigger = clean(event.get("trigger") or event.get("what"))
@@ -104,8 +137,25 @@ def format_text(event: dict[str, Any]) -> str:
     if not action:
         raise CriticalTextError("a critical text needs one suggested action")
     head = f"ACT NOW {symbol}" + (f" ({account})" if account else "")
-    body = f"{head} {trigger}.".rstrip(".") + f". Suggest {action}. CC Risk"
+    link = ""
+    if alert_class in LINK_CLASSES:
+        # D35 B4: the login text is useless without the one-tap page, so the link is required and is never truncated.
+        link = critical_link(link_base or os.environ.get(LINK_BASE_ENV) or event.get("link_base"))
+    elif event.get("link") or event.get("link_base"):
+        raise CriticalTextError(f"{alert_class or 'this class'} may not carry a link; only {sorted(LINK_CLASSES)} do")
+    body = f"{head} {trigger}.".rstrip(".") + f". Suggest {action}."
     body = body.replace("..", ".")
+    if link:
+        # Room is reserved for the URL before the trigger is shortened: a cut-off reauth link would be worse than none.
+        tail = f" Log in: {link} CC Risk"
+        if len(tail) >= MAX_TEXT_CHARS - len(head):
+            raise CriticalTextError("the reauth link does not fit in one 160-character text")
+        room = MAX_TEXT_CHARS - len(tail)
+        if len(body) > room:
+            body = body[:room].rstrip(" ,.;")
+            body = body.rsplit(" ", 1)[0].rstrip(" ,.;") + "…"
+        return f"{body}{tail}"
+    body = f"{body} CC Risk"
     if len(body) <= MAX_TEXT_CHARS:
         return body
     room = MAX_TEXT_CHARS - len("… CC Risk")
@@ -150,7 +200,7 @@ def send_critical_text(
     if not gateways:
         return {"sent": False, "reason": gateway_error or "no gateway configured"}
     try:
-        text = format_text(event)
+        text = format_text(event, link_base=event.get("link_base"))
     except CriticalTextError as exc:
         return {"sent": False, "reason": str(exc)}
 

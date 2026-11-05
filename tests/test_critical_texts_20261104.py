@@ -170,3 +170,54 @@ def test_no_address_in_the_repo_allowlist():
     blob = json.dumps(doc)
     # Class ids only; addresses live in operator_contact.json. `@v1` in the schema is not an address.
     assert not re.search(r"[\w.+-]+@[\w-]+\.[\w.-]+", blob)
+
+
+# ── D35 B4: the Schwab-login text carries the full one-tap reauth link ────────────────────────────────
+# The hostname below is synthetic. The real tailnet base is runtime configuration (TRADEAI_CC_LINK_BASE),
+# never a repository value: the repo is public and a tailnet host is an address.
+FAKE_LINK_BASE = "https://cc-fixture.ts.net"
+
+
+def _login_event(**over):
+    base = dict(alert_class="B4_schwab_login_expiring", event_id="SCHWAB:B4:2026-11-04T17:30",
+                trigger="Schwab login expires in 12h", action="Open Command Center and sign in again")
+    base.update(over)
+    return event(**base)
+
+
+def test_the_login_text_carries_the_full_reauth_link():
+    text = ct.format_text(_login_event(), link_base=FAKE_LINK_BASE)
+    assert "https://cc-fixture.ts.net/v3/system/schwab-reauth" in text
+    assert len(text) <= ct.MAX_TEXT_CHARS
+    assert text.endswith("CC Risk")
+
+
+def test_the_login_text_refuses_a_dev_port():
+    for base in ("https://cc-fixture.ts.net:7777", "https://cc-fixture.ts.net:8443"):
+        with pytest.raises(ct.CriticalTextError):
+            ct.format_text(_login_event(), link_base=base)
+
+
+def test_the_login_text_refuses_plain_http_and_a_non_tailnet_host():
+    for base in ("http://cc-fixture.ts.net", "https://command-center.example.com"):
+        with pytest.raises(ct.CriticalTextError):
+            ct.format_text(_login_event(), link_base=base)
+
+
+def test_the_login_text_fails_closed_without_a_link_base(monkeypatch):
+    monkeypatch.delenv(ct.LINK_BASE_ENV, raising=False)
+    with pytest.raises(ct.CriticalTextError):
+        ct.format_text(_login_event())
+
+
+def test_only_the_login_class_may_carry_a_link():
+    with pytest.raises(ct.CriticalTextError):
+        ct.format_text(event(link_base=FAKE_LINK_BASE))
+
+
+def test_a_long_login_trigger_is_shortened_and_the_link_is_never_cut(monkeypatch):
+    monkeypatch.delenv(ct.LINK_BASE_ENV, raising=False)
+    long = _login_event(trigger="the Schwab refresh token expires in twelve hours " + "and the stop checks go blind " * 4)
+    text = ct.format_text(long, link_base=FAKE_LINK_BASE)
+    assert "https://cc-fixture.ts.net/v3/system/schwab-reauth" in text
+    assert len(text) <= ct.MAX_TEXT_CHARS

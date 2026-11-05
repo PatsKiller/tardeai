@@ -1,6 +1,6 @@
 {
   "schema": "CriticalTextClasses@v1",
-  "note": "The operator's allowlist for critical ACT-NOW texts (SPEC_CRITICAL_TEXT_ACTION_ALERTS_20261104). Class ids only: no address ever lives in the repo; the Fi lines are read from operator_contact.json. Turning a class off here stops its texts and nothing else.",
+  "note": "The operator's allowlist for critical ACT-NOW texts (SPEC_CRITICAL_TEXT_ACTION_ALERTS_20261104). Class ids only: no address ever lives in the repo; the Fi lines are read from operator_contact.json. Turning a class off here stops its texts and nothing else. B4 builds its one-tap reauth link from the runtime tailnet base (TRADEAI_CC_LINK_BASE): the hostname is an address and never lives here.",
   "max_per_hour": 10,
   "dedupe_hours": 12,
   "classes": {
