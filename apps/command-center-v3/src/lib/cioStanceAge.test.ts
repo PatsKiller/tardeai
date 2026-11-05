@@ -1,5 +1,9 @@
 // FQ-098: a stale CIO stance must be named stale with its evidence date, and never rendered as current advice.
 import { cioStanceLine } from './cioStanceAge.ts'
+// `tsconfig` includes src/, so tsc type-checks this file too; the repo's convention (accountLabels.test.ts:8) is to
+// declare the host global instead of leaving TS2580 "Cannot find name 'process'" to break the build line.
+declare const process: { exit(code?: number): never }
+
 const now = new Date('2026-11-04T12:00:00Z')
 const fail: string[] = []
 const ok = (c: boolean, m: string) => { if (!c) fail.push(m) }
