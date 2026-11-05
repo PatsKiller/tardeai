@@ -120,7 +120,7 @@ class TestRoutesAndNav(unittest.TestCase):
         ui = (ROOT / "apps/command-center-v3/src/pages/WatchIntelligenceUnified.tsx").read_text()
         self.assertIn("/api/v3/data-broker/watch-intelligence", ui)
         self.assertIn("data-watch-intelligence-primary", ui)
-        self.assertIn("Provider NONE", ui)
+        self.assertIn("No provider or model assigned · no external call · no cost yet", ui)
         self.assertNotIn("/api/v2/watchlist/items", ui)
 
     def test_legacy_page_exists(self):
