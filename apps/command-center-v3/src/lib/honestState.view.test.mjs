@@ -149,7 +149,22 @@ for (const [state, fixture] of Object.entries({
   ])
 }
 
-const out = { schema: 'HonestStateView@v1', cases, passed: cases.filter(c => c.passed).length, failed: cases.filter(c => !c.passed).length }
+// Cloud review 2026-11-05 (P1): the shell's surface publisher must keep ONE identity across report updates. Every mounted
+// surface publishes from an effect whose dependencies include `publish`; when publish was recreated per render, publishing
+// caused a render that produced a new publish, which re-ran every effect, which published again — a loop that never settled.
+// This repo has no effect-capable renderer (no jsdom, no react-test-renderer), so the guard is structural and names the exact
+// wiring that removes the loop rather than pretending to exercise it. It lives here, in the .mjs harness, because a
+// `node:fs` import inside a typechecked .ts test fails the build (caught by tsc during the 2026-11-05 merge-up).
+const surfaceGapSrc = readFileSync(new URL('../components/SurfaceGap.tsx', import.meta.url), 'utf8')
+const appSrc = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8')
+const hookBlock = surfaceGapSrc.slice(surfaceGapSrc.indexOf('const publish = useCallback('), surfaceGapSrc.indexOf('return useMemo('))
+const channelChecks = [
+  ['channel publishes with useCallback and an empty dependency list', hookBlock.includes('useCallback(') && /\[\s*\]\s*,?\s*\)/.test(hookBlock)],
+  ['channel value is memoised on the report and the stable publish', surfaceGapSrc.includes('return useMemo(() => ({ report, publish }), [report, publish])')],
+  ['shell takes the channel from the hook, never an inline publish', appSrc.includes('const surfaceChannel = useSurfaceChannel()') && !appSrc.includes('publish: (next')],
+]
+for (const [name, ok] of channelChecks) if (!ok) cases.push({ surface: 'shell', state: 'channel', passed: false, failed_assertions: [name], text: '' })
+const out = { schema: 'HonestStateView@v1', channel_checks: channelChecks.map(([n]) => n), cases,  passed: cases.filter(c => c.passed).length, failed: cases.filter(c => !c.passed).length }
 console.log(JSON.stringify(out, null, 1))
 if (out.failed) {
   for (const c of cases.filter(x => !x.passed)) console.log(`FAIL ${c.surface}/${c.state}: ${c.failed_assertions.join('; ')} :: ${c.text}`)
