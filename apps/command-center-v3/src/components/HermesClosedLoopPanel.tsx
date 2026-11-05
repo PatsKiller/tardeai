@@ -182,26 +182,36 @@ function HoldoutBadge({ holdout }: { holdout?: { passed?: boolean; skipped?: boo
 
 // Exported for the rendered legibility test (FQ-025): the pre-change table used a fixed 0.7fr grid at fontSize 8/10,
 // which is what the operator reported as unreadable on a phone. A source-grep test cannot see that; rendering can.
+//
+// P2 (codex-cloud): the heading row and every candidate row are separate grids. With four cells a row, `auto-fit`
+// keeps them on one line and the heading lines up. Once the columns wrap, the heading's second visual row stacks
+// above the first candidate row, so "Trigger" sits over a threshold value instead of its trigger rate. Each value
+// cell now carries its own label, which no wrap can detach from its value. The separate heading is used only while
+// all four columns fit (desktop); a container query at the wrap width (four 120px tracks plus three 6px gaps, plus
+// the grid's 2x8px padding, = 514px of container) hides it and shows the per-cell labels.
+const CANDIDATE_GRID = 'repeat(auto-fit, minmax(120px, 1fr))'
+
 export function CandidateTable({ rows, tid }: { rows: any[]; tid?: string }) {
   if (!rows?.length) return null
   return (
-    <div style={{ marginTop: 8, overflowX: 'auto' }}>
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+    <div className="cc-cand" style={{ marginTop: 8, overflowX: 'auto' }}>
+      <style>{`.cc-cand{container-type:inline-size}.cc-cand-cell-label{display:none}@container (max-width:514px){.cc-cand-head{display:none}.cc-cand-cell-label{display:inline;margin-right:6px;font-weight:600;color:var(--text3)}}`}</style>
+      <div className="cc-cand-head" style={{
+        display: 'grid', gridTemplateColumns: CANDIDATE_GRID,
         gap: 6, fontSize: 11, color: 'var(--text3)', padding: '4px 8px',
       }}>
         <span>Value</span><span>Score</span><span>Trigger</span><span />
       </div>
       {rows.map((r: any, i: number) => (
         <div key={i} style={{
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+          display: 'grid', gridTemplateColumns: CANDIDATE_GRID,
           gap: 6, fontSize: 12, padding: '4px 8px', borderRadius: 4,
           background: r.is_proposed ? 'rgba(245,158,11,.1)' : r.is_current ? 'rgba(96,165,250,.08)' : 'transparent',
           fontFamily: 'monospace', color: 'var(--text2)',
         }}>
-          <span>{formatThresholdCell(tid, Number(r.value))}</span>
-          <span>{Number(r.score).toFixed(4)}</span>
-          <span>{r.trigger_rate != null ? `${(Number(r.trigger_rate) * 100).toFixed(0)}%` : '—'}</span>
+          <span className="cc-cand-cell"><span className="cc-cand-cell-label">Value</span>{formatThresholdCell(tid, Number(r.value))}</span>
+          <span className="cc-cand-cell"><span className="cc-cand-cell-label">Score</span>{Number(r.score).toFixed(4)}</span>
+          <span className="cc-cand-cell"><span className="cc-cand-cell-label">Trigger</span>{r.trigger_rate != null ? `${(Number(r.trigger_rate) * 100).toFixed(0)}%` : '—'}</span>
           <span style={{ fontSize: 11, color: r.is_proposed ? '#f59e0b' : r.is_current ? '#60a5fa' : 'transparent' }}>
             {r.is_proposed ? 'proposed' : r.is_current ? 'current' : ''}
           </span>
