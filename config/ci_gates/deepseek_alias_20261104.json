@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "deepseek_alias_20261104",
+  "files": [
+    "tests/test_llm_lane_alias_registry_20261104.py"
+  ],
+  "anchor": "DEEPSEEK_ALIAS_20261104",
+  "comment": [
+    "DEEPSEEK_ALIAS_20261104 — rejects retired v4 names in the llm_lane routing set and the run-manual alias tables. The suite checks DeepSeek-prefixed entries in _DEEPSEEK_LANES and LANE_TO_POLICY with reject_legacy_model_id, asserts removal of the named legacy entries, checks v4-flash availability is false and run-manual v4-flash is refused, and checks the canonical alias remains accepted with its availability probe stubbed. Scope: these two alias surfaces; not every model selector or persisted authorization. Exact refusal reason codes and generate() error distinctions are not asserted by this gate."
+  ]
+}
