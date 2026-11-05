@@ -56,6 +56,24 @@ export function lastReadSentence(step: Step | null | undefined): string {
   return step.rc === 0 ? 'The last read completed.' : 'The last read did not complete.'
 }
 
+/**
+ * The operator-run summary, in words. A step whose exit code was never recorded is *unrecorded*, never "completed":
+ * calling it completed is exactly the overstatement FQ-066 exists to remove. "every step completed" requires every
+ * step to carry a zero exit code; when none recorded a result the sentence says so.
+ */
+export function operatorLogSummary(steps: Step[] | null | undefined): string {
+  const all = steps ?? []
+  if (!all.length) return 'The operator log holds no steps.'
+  const bad = all.filter(st => st.rc != null && st.rc !== 0).length
+  const missing = all.filter(st => st.rc == null).length
+  const completed = all.length - bad - missing
+  const lead = bad ? `${bad} did not complete`
+    : !missing ? 'every step completed'
+    : !completed ? 'no step recorded a result'
+    : `${completed} completed`
+  return `${all.length} step${all.length === 1 ? '' : 's'} logged; ${lead}${missing ? `, ${missing} without a recorded result` : ''}.`
+}
+
 export function brokerRowSentence(row: RowInput): { headline: string; nextStep: string } {
   const p = plainState(row.state)
   const label = clean(row.label) || 'This connection'

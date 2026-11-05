@@ -14,7 +14,7 @@ import { accountName } from '../lib/accountLabels'
 import './OpsEvidencePages.css'
 import { observedTime } from '../lib/w9PageModel'
 import OpsDeskFrame from '../components/OpsDeskFrame'
-import { brokerRowSentence, diagnosticsOf, plainState, type Diagnostic } from '../lib/brokerAccessPlain'
+import { brokerRowSentence, diagnosticsOf, operatorLogSummary, plainState, type Diagnostic } from '../lib/brokerAccessPlain'
 
 type State = 'OK' | 'STALE' | 'DEGRADED' | 'PAUSED' | 'NEEDS_REAUTH'
 type Step = { name?: string; rc?: number | null; signals?: string[] }
@@ -148,7 +148,7 @@ export default function BrokerAccessPage() {
 
     <Panel title="Schwab login (token state)">
       {d?.schwab_tokens?.db === 'unavailable' ? <p role="alert" style={muted}>Token store unreadable. Token state is unknown, not assumed healthy.</p> : null}
-      <Table label="Schwab token state per account" heads={['Account', 'State', 'Days left', 'True expiry', 'Last login', 'Last error', 'Reason']}
+      <Table label="Schwab token state per account" heads={['Account', 'State', 'Days left', 'True expiry', 'Last login', 'Last error', 'What it means']}
         rows={(d?.schwab_tokens?.accounts || []).map(t => {
           const failed = !!(t.last_error || t.last_failed_event)
           return [accountName(t.account_key), <StateChip state={t.state} />, t.days_left ?? '—', et(t.true_expiry), et(t.last_login),
@@ -216,13 +216,7 @@ export default function BrokerAccessPage() {
       </p>
       <h3 style={{ ...h2, fontSize: TYPE.sm, marginTop: 10 }}>Latest operator run {log?.present ? `· ${s(log.mode)} · ${et(log.ran_at)} · release ${s(log.release)}` : ''}</h3>
       {log?.present ? <>
-        <p style={muted}>{(() => {
-          const steps = log.steps || []
-          const bad = steps.filter(st => st.rc != null && st.rc !== 0).length
-          const missing = steps.filter(st => st.rc == null).length
-          if (!steps.length) return 'The operator log holds no steps.'
-          return `${steps.length} step${steps.length === 1 ? '' : 's'} logged; ${bad ? `${bad} did not complete` : 'every step completed'}${missing ? `, ${missing} without a recorded result` : ''}.`
-        })()}</p>
+        <p style={muted}>{operatorLogSummary(log.steps)}</p>
         <Diagnostics label="Diagnostics: every step, exit code and signal"
           rows={(log.steps || []).flatMap(st => [
             { label: s(st.name), value: `exit ${s(st.rc)} · ${(st.signals || []).join(', ') || 'no signals'}` },

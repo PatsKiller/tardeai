@@ -3,7 +3,7 @@
 // FQ-066: the read-access cards printed internal reason codes (DEGRADED_STALE_SOURCE), rc values and readiness field
 // identifiers in the normal view. The row must say what the connection is doing and what the operator does next; the
 // codes and configuration stay, behind Diagnostics.
-import { brokerRowSentence, diagnosticsOf, plainState } from './brokerAccessPlain.ts'
+import { brokerRowSentence, diagnosticsOf, operatorLogSummary, plainState } from './brokerAccessPlain.ts'
 
 let pass = 0, fail = 0
 const check = (n, c, d = '') => { if (c) { pass++; console.log(`  [PASS] ${n}`) } else { fail++; console.log(`  [FAIL] ${n} ${d}`) } }
@@ -41,6 +41,27 @@ const bare = brokerRowSentence({ id: 'x', label: 'Drive', state: 'STALE', reason
 check('an empty reason does not become an empty sentence', bare.headline.length > 20, bare.headline)
 check('a missing log step is not called a failure', !/failed/i.test(bare.headline) || /not recorded|no read/i.test(bare.headline), bare.headline)
 check('and diagnostics says the log step is missing', JSON.stringify(diagnosticsOf({ id: 'x', label: 'Drive', state: 'STALE', reason: '' })).match(/not recorded/) !== null)
+
+// ---- 5. THE OPERATOR-LOG SUMMARY NEVER CALLS AN UNRECORDED STEP COMPLETED -----------------------------------------
+// The BLOCK at e6aa9b949: two steps with rc null printed "2 step(s) logged; every step completed, 2 without a
+// recorded result." Unknown was rendered as completed, contradicting the trailing clause in the same sentence.
+const noResult = operatorLogSummary([{ name: 'read_positions', rc: null }, { name: 'read_stops', rc: null }])
+check('two unrecorded steps are never called completed', !/every step completed/i.test(noResult), noResult)
+check('and the summary says no step recorded a result', /no step recorded a result/i.test(noResult), noResult)
+check('the unrecorded count still trails the sentence', /2 without a recorded result/.test(noResult), noResult)
+const oneNull = operatorLogSummary([{ name: 'read_positions', rc: null }])
+check('a single unrecorded step is not called completed', !/every step completed/i.test(oneNull), oneNull)
+check('a single unrecorded step says so', /1 step logged; no step recorded a result/.test(oneNull), oneNull)
+const allZero = operatorLogSummary([{ name: 'read_positions', rc: 0 }, { name: 'read_stops', rc: 0 }])
+check('every step completed is said only when every exit code is zero', /every step completed/.test(allZero), allZero)
+check('and a clean log has no unrecorded trailing clause', !/without a recorded result/.test(allZero), allZero)
+const oneBad = operatorLogSummary([{ name: 'read_positions', rc: 1 }, { name: 'read_stops', rc: null }])
+check('a non-zero exit is still counted as not complete', /1 did not complete, 1 without a recorded result/.test(oneBad), oneBad)
+const mixed = operatorLogSummary([{ name: 'read_positions', rc: 0 }, { name: 'read_stops', rc: null }])
+check('a partly recorded log states what completed and what did not record', /1 completed, 1 without a recorded result/.test(mixed), mixed)
+check('a partly recorded log never claims every step completed', !/every step completed/i.test(mixed), mixed)
+check('an empty log is stated plainly', operatorLogSummary([]) === 'The operator log holds no steps.', operatorLogSummary([]))
+check('a missing step list is stated plainly, not as completion', operatorLogSummary(undefined) === 'The operator log holds no steps.', operatorLogSummary(undefined))
 
 console.log(`brokerAccessPlain: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
