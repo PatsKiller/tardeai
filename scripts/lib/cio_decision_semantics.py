@@ -621,6 +621,10 @@ def stance_for_symbol(symbol: str, queue: Optional[dict[str, Any]]) -> str:
     return merge_stances(*stances) if stances else STANCE_HOLD
 
 
+#: Stances that record a decision. Prose never overrides one; REVIEW and the default HOLD still yield.
+_DECIDED_STANCES = frozenset({STANCE_ADD, STANCE_TRIM, STANCE_EXIT, STANCE_RE_ENTER})
+
+
 def resolve_display_stance(cio_stance: Any, why_now: Any = None) -> str:
     """Eliminate HOLD + TRIM contradictions for operator-facing stance — without letting prose outrank a decision.
 
@@ -636,7 +640,10 @@ def resolve_display_stance(cio_stance: Any, why_now: Any = None) -> str:
     last case needs the caller to say whether the HOLD was recorded; it is not guessable at this layer.
     """
     formal = str(cio_stance or "").upper().strip()
-    if formal and formal != STANCE_HOLD:
+    # A DECIDED stance is final: prose must not turn an ADD into an exit. REVIEW is not a decision — it is "look
+    # again" — and the capital plan reads the desk's intent from the label when the stance is REVIEW (that is how a
+    # TRIM reaches the sizing engine), so REVIEW still yields to a decisive label. HOLD, the default, does too.
+    if formal in _DECIDED_STANCES:
         return formal
     from_why = infer_stance_from_text(why_now)
     return merge_stances(formal or STANCE_HOLD, from_why)

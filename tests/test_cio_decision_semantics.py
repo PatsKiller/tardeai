@@ -248,8 +248,12 @@ def test_a_decisive_stance_is_never_overridden_by_prose_at_the_display_layer():
 
     assert resolve_display_stance("ADD", "Advisory EXIT — SYNX") == "ADD"
     assert resolve_display_stance("TRIM", "Advisory ADD — SYNX") == "TRIM"
-    assert resolve_display_stance("REVIEW", "Advisory EXIT — SYNX") == "REVIEW"
     assert resolve_display_stance("EXIT", "adding on the pullback") == "EXIT"
+    assert resolve_display_stance("RE_ENTER", "HOLD, wait for the trigger") == "RE_ENTER"
+    # REVIEW is not a decision — it is "look again" — so a decisive label still sharpens it. The capital plan reads the
+    # desk's intent from exactly that pair, and `test_cio_decision_quality_pr1` caught this when I tried to make REVIEW
+    # final too: the sizing path never ran and target_weight_pct vanished.
+    assert resolve_display_stance("REVIEW", "Advisory TRIM — V") == "TRIM"
     # The contradiction the function exists for is unchanged: no formal stance, decisive prose.
     assert resolve_display_stance(None, "Advisory TRIM — SCHD") == "TRIM"
     assert resolve_display_stance("", "Advisory EXIT — SYNX") == "EXIT"
