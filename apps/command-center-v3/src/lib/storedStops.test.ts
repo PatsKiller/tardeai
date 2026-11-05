@@ -1,6 +1,7 @@
 // node --experimental-strip-types src/lib/storedStops.test.ts
 // Stored broker stops for page views (page audit 2026-10-25): only an ACTIVE stored resting order counts.
 import { storedStopFor, storedStopsAsOf } from './storedStops.ts'
+import { isTrailingBrokerStop, resolveLiveStop } from './stopManagement.ts'
 declare const process: { exit(code?: number): never }
 
 let failed = 0
@@ -26,6 +27,14 @@ eq('unpriced active order is preserved',
   ['FIXA', null, true, 'TRAILING_STOP', 'fixture-order-1'])
 eq('an unpriced stop never reports a protection level',
   storedStopFor({ ...active, stop_price: 'not-a-number' })?.stop_price, null)
+// The unknown-price note must not name a kind: isTrailingBrokerStop() reads the note, so a fixed order with no
+// recorded price would otherwise be shown as a trailing stop. The kind comes from the broker's order metadata only.
+const unpricedFixed = storedStopFor({ ...active, stop_price: null, stop_order_type: 'STOP' })
+eq('an unpriced fixed order is not trailing', isTrailingBrokerStop(unpricedFixed), false)
+eq('an unpriced fixed order resolves as unknown, not trailing',
+  [resolveLiveStop(unpricedFixed, undefined, 50).isTrailing, resolveLiveStop(unpricedFixed, undefined, 50).price], [false, null])
+eq('a trailing kind still comes from the broker order metadata',
+  isTrailingBrokerStop(storedStopFor({ ...active, stop_price: null, stop_order_type: 'TRAILING_STOP' })), true)
 eq('no row', storedStopFor(undefined), undefined)
 eq('oldest capture', storedStopsAsOf([active, { ...active, stop_captured_at: '2026-10-23T20:00:00Z' }, { ...active, stop_state: 'filled', stop_captured_at: '2026-10-01T00:00:00Z' }]),
   '2026-10-23T20:00:00Z')

@@ -33,8 +33,11 @@ export function storedStopFor(h: any): any | undefined {
     source: 'stop_last_known',
     broker_verified: false,
     fetched_at: h.stop_captured_at ?? null,
+    // The wording never says "trailing": isTrailingBrokerStop() reads this note as a last resort, so naming a kind
+    // here would classify every unpriced order as trailing whatever its order_type says. The kind comes only from
+    // the broker's own order metadata (order_type / trail offsets).
     note: price == null
-      ? 'Last known broker stop (stored observation; trigger price not recorded — e.g. a trailing stop; no live broker read on page view)'
+      ? 'Last known broker stop (stored observation; trigger price not recorded; no live broker read on page view)'
       : 'Last known broker stop (stored observation; no live broker read on page view)',
   }
 }
