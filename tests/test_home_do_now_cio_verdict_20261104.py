@@ -291,10 +291,15 @@ def test_f2_future_real_aggregate_clock_is_not_fresh():
     assert src.get("evidence_stale") is not True, src
 
 
-def test_f2_fresh_real_aggregate_clock_is_not_marked_stale():
-    """F2 positive control: a fresh aggregate clock is not stale and not missing."""
+def test_f2_fresh_clocks_on_every_displayed_verdict_are_not_marked_stale():
+    """F2 positive control: fresh clocks on every displayed verdict are neither stale nor missing.
+
+    (cx2 at 8802d4da9: the earlier positive control used clockless member opinions under a fresh aggregate clock;
+    that state is exactly the one the missing-clock rule must flag, so the control now gives every displayed
+    verdict its own fresh clock.)
+    """
     fresh = (NOW - timedelta(seconds=20)).isoformat()
-    plan = _real_plan(("schwab_taxable", "moomoo"), fresh)
+    plan = _real_plan_with_member_clocks({"schwab_taxable": fresh, "moomoo": fresh})
     src = _build(_risk(_pos("SYN")), plan)["sources"]["cio"]
     assert src["evidence_as_of"] == fresh, src
     assert src.get("evidence_stale") is not True, src
@@ -395,4 +400,80 @@ def test_provenance_missing_member_clock_is_unknown_not_the_aggregate_clock():
     assert "CIO verdict (decision time not recorded)" in why, why
     assert f"CIO verdict ({agg_clock})" not in why, why  # the aggregate clock is NOT this member's clock
     assert f"aggregate HOLD ({agg_clock})" in why, why   # still named, as the aggregate only
+
+
+# ── codex-cloud BLOCK at 8802d4da9: the do-now GET is read-only, and a fresh aggregate clock never hides a ────────
+# clockless member opinion.
+
+
+def test_cx2_fresh_aggregate_clock_does_not_hide_a_member_with_no_clock():
+    """cx2 (codex-cloud at 8802d4da9): a valid aggregate clock must not report an unknown member as fresh.
+
+    The REAL producer's aggregate row carries ``generated_at``, but its per-account opinions carry no clock. The
+    stop item displays those opinions as "decision time not recorded", so the CIO source must say the same thing:
+    its oldest displayed evidence is unknown even though a sibling clock parses. Before the repair the source
+    reported ``stale: false`` and no ``evidence_as_of_missing``.
+    """
+    fresh = (NOW - timedelta(seconds=20)).isoformat()
+    plan = _real_plan(("schwab_taxable", "moomoo"), fresh)
+    row = plan["position_decisions"][0]
+    assert row["generated_at"] == fresh
+    assert all(not o.get("generated_at") for o in row["per_account"]), row["per_account"]
+    out = _build(_risk(_pos("SYN", account="schwab_taxable")), plan)
+    src = out["sources"]["cio"]
+    assert src["verdicts"] == 2, src                   # both member opinions are displayed ...
+    assert src["aggregate_verdicts"] == 1, src
+    assert src["evidence_as_of"] == fresh, src         # ... the only known clock is still named ...
+    assert src["evidence_as_of_missing"] is True, src  # ... and the unknown member clocks are never called fresh
+    assert src["stale"] is True, src
+    why = _why(out, "stop:SYN")
+    assert "decision time not recorded" in why, why
+
+
+def test_cx1_a_cache_miss_do_now_request_never_writes_the_decision_journal(tmp_path, monkeypatch):
+    """cx1 (codex-cloud at 8802d4da9): GET /api/v2/home/do-now must not write durable state.
+
+    The recording capital-plan build appends every unseen decision id to the authoritative decision journal and
+    fsyncs it (AGENTS.md §28.9; §28.11 forbids new side-effecting GET exceptions). The Do-now queue only displays
+    the plan, so its cache-miss probe builds it WITHOUT recording: the journal is absent (or unchanged) after the
+    request. Reverting the probe to the recording handler makes this test fail.
+    """
+    import api_v2
+    import lib.data_broker.home_do_now as HD_API
+    import lib.data_broker.risk_snapshot as RS_API
+    import lib.data_broker.watch_domains as WD_API
+    import lib.needs_action as NA_API
+    import scripts.lib.cio_capital_plan as CP
+    import scripts.lib.cio_investment_product as IP
+    import scripts.lib.cio_opportunity_queue as OQ
+
+    journal = tmp_path / "cio_capital_plan_decisions.jsonl"
+    monkeypatch.setenv("CIO_CAPITAL_PLAN_DECISIONS_JSONL", str(journal))
+    plan = {"position_decisions": [{
+        "symbol": "SYN", "account": "schwab_taxable", "cio_stance": "HOLD",
+        "decision_id": "unseen-do-now-decision", "generated_at": PLAN_AS_OF}]}
+    monkeypatch.setattr(CP, "build_capital_plan_from_sources", lambda **kw: dict(plan))
+    monkeypatch.setattr(OQ, "build_queue_from_executor", lambda query: {})
+    monkeypatch.setattr(IP, "merge_queue_with_stored_verdicts", lambda queue, **kw: queue)
+    monkeypatch.setattr(api_v2, "_load_json", lambda path: {})
+    monkeypatch.setattr(api_v2, "_redeploy_opportunity_set", lambda: {})
+    monkeypatch.setattr(api_v2, "_cio_sector_opportunities", lambda: {"opportunities": []})
+    monkeypatch.setattr(api_v2, "_desk_thesis_head", lambda: {})
+    monkeypatch.setattr(api_v2, "_risk_posture", lambda desk=None: {})
+    monkeypatch.setattr(api_v2, "_ratified_investment_policy", lambda: None)
+    monkeypatch.setattr(api_v2, "_needs_action", lambda: {"items": [], "total": 0, "as_of": ISO,
+                                                          "all_sources_answered": True})
+    monkeypatch.setattr(api_v2, "_inbox", lambda: {"items": [], "total_count": 0})
+    monkeypatch.setattr(api_v2, "_deploy_events", lambda *a, **k: {"events": []})
+    monkeypatch.setattr(RS_API, "get_risk_snapshot", lambda **kw: {"computed_at": ISO, "positions": [], "ok": True})
+    monkeypatch.setattr(WD_API, "held_positions", lambda surface=None: {"positions": [], "as_of": ISO,
+                                                                        "source": "test", "symbols": []})
+    monkeypatch.setattr(NA_API, "probe_desk_truth", lambda: {})
+    monkeypatch.setattr(HD_API, "probe_pending_proposals", lambda query: {"pending": 0})
+    monkeypatch.setitem(api_v2._HOME_DO_NOW_CACHE, "v", None)  # force a cache miss
+
+    out = api_v2._home_do_now()
+
+    assert out["sources"]["cio"]["status"] == "OK", out["sources"]["cio"]
+    assert not journal.exists(), journal.read_text(encoding="utf-8")
 

@@ -993,9 +993,15 @@ def build(
             # by INSTANT, not by ISO text — `min(clocks)` picked 10:24-05:00 over 14:00+00:00 and concealed an
             # 85-minute-old decision. Every displayed clock is parsed; an unparseable, missing or future clock is
             # explicit and never counts as fresh.
-            clocks = [str(v.get("as_of")) for v in cio_index["by_account"].values() if v.get("as_of")]
-            clocks += [str(v.get("as_of")) for v in cio_index["aggregate"].values() if v.get("as_of")]
-            displayed = bool(cio_index["by_account"] or cio_index["aggregate"])
+            # cx2 (codex-cloud at 8802d4da9): a displayed verdict with no clock of its own is missing evidence even
+            # when a better-dated sibling (the aggregate row) has a valid clock. Test every indexed verdict, never
+            # only the ones whose clock happened to parse — a fresh aggregate must not mask an unknown member.
+            verdicts = list(cio_index["by_account"].values()) + list(cio_index["aggregate"].values())
+            displayed = bool(verdicts)
+            clocks = [str(v.get("as_of")) for v in verdicts if v.get("as_of")]
+            if any(not v.get("as_of") for v in verdicts):
+                sources["cio"]["evidence_as_of_missing"] = True
+                sources["cio"]["stale"] = True
             stamped = [(c, _parse(c)) for c in clocks]
             parsed = [t for _, t in stamped if t is not None]
             if any(t is None for _, t in stamped):
@@ -1013,7 +1019,8 @@ def build(
                     sources["cio"]["evidence_as_of_future"] = True
                     sources["cio"]["stale"] = True
             elif displayed and not clocks:
-                # A displayed verdict with no clock at all is missing evidence, not fresh evidence.
+                # A displayed verdict with no clock at all is missing evidence, not fresh evidence. (The loop above
+                # already flags it; this keeps the no-clocks-at-all case explicit.)
                 sources["cio"]["evidence_as_of_missing"] = True
                 sources["cio"]["stale"] = True
         except Exception as exc:  # noqa: BLE001 — a malformed plan is UNAVAILABLE, never "no verdicts"
