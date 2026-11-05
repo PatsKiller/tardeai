@@ -209,6 +209,32 @@ def test_the_published_event_stream_shape_is_selected_correctly(tmp_path):
     assert "Merge #2500" not in sent.calls[0]["text"]          # approved → never re-asked
 
 
+def test_updated_with_state_approved_does_not_reopen(tmp_path):
+    """claude-lead BLOCK on #2552: store emits event=updated with state=approved on a question."""
+    p = tmp_path / "requests.jsonl"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("\n".join(json.dumps(r) for r in [
+        {"event": "created", "id": "apr-q", "type": "merge_pr", "title": "Merge #9",
+         "requester": "cc-deepseek-7", "created_at": "2026-11-03T12:00:00Z",
+         "expires_at": "2026-11-05T12:00:00Z", "state": "open"},
+        {"event": "approved", "id": "apr-q", "type": "merge_pr", "title": "Merge #9",
+         "created_at": "2026-11-03T12:00:00Z", "state": "approved"},
+        {"event": "updated", "id": "apr-q", "type": "merge_pr", "title": "Merge #9",
+         "created_at": "2026-11-03T12:00:00Z", "state": "approved",
+         "why": "operator asked a follow-up"},
+    ]) + "\n", encoding="utf-8")
+    sent = Sent()
+    receipt = go(tmp_path, "2026-11-03T13:00:00Z", sent=sent, requests_path=p)
+    assert receipt["keys"] == []
+    assert sent.calls == []
+
+
+def test_default_requests_path_matches_the_store_events_file():
+    """DEFAULT_REQUESTS must be <state-root>/approvals/requests.jsonl (store.events), not data/…."""
+    assert A.DEFAULT_REQUESTS == A.DEFAULT_STATE_ROOT / "approvals" / "requests.jsonl"
+    assert "data/approvals" not in str(A.DEFAULT_REQUESTS).replace("\\", "/")
+
+
 def test_when_no_stream_exists_the_store_files_are_read(tmp_path):
     root = tmp_path / "state"
     d = root / "needs_you" / "requests"

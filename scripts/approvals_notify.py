@@ -51,8 +51,9 @@ from lib.telegram_batch import (  # noqa: E402
 
 SCHEMA = "ApprovalsNotifyReceipt@v1"
 PROJ = Path(__file__).resolve().parent.parent
-DEFAULT_REQUESTS = PROJ / "persistent-state" / "data" / "approvals" / "requests.jsonl"
+# Store root (PR #2550) writes events at <root>/approvals/requests.jsonl — never under data/.
 DEFAULT_STATE_ROOT = PROJ / "persistent-state"
+DEFAULT_REQUESTS = DEFAULT_STATE_ROOT / "approvals" / "requests.jsonl"
 DEFAULT_STATE_DIR = PROJ / "data" / "runtime" / "approvals_notify"
 DEFAULT_CONFIG = PROJ / "config" / "approvals_notify.json"
 
@@ -99,12 +100,22 @@ def load_requests(path: Path) -> dict[str, dict]:
         if not req_id:
             continue
         kind = str(row.get("event") or row.get("status") or "").strip().lower()
-        if kind in CLOSED_EVENTS or (not kind and row.get("closed_at")):
+        # The merged store (#2550) publishes ``state`` on every event. An ``updated`` event with
+        # state=approved (operator question / failed revalidation) must NOT reopen a decided request.
+        state = str(row.get("state") or "").strip().lower()
+        closed_by_state = state in CLOSED_STATUS or state in {"closed", "executed", "executing", "failed"}
+        closed_by_event = kind in CLOSED_EVENTS or (not kind and bool(row.get("closed_at")))
+        if closed_by_state or closed_by_event:
             rows[req_id] = {**rows.get(req_id, {}), **row, "id": req_id, "closed": True}
         else:
             # An update that does not say it closed leaves the decision open.
             merged = {**rows.get(req_id, {}), **row, "id": req_id}
-            merged["closed"] = bool(rows.get(req_id, {}).get("closed")) and kind not in OPEN_EVENTS
+            was_closed = bool(rows.get(req_id, {}).get("closed"))
+            # A prior closed state sticks unless this row's state is explicitly open.
+            if was_closed and state and state not in OPEN_STATUS:
+                merged["closed"] = True
+            else:
+                merged["closed"] = was_closed and kind not in OPEN_EVENTS
             rows[req_id] = merged
     return rows
 
@@ -116,7 +127,10 @@ def open_requests(rows: dict[str, dict], now: datetime) -> list[dict]:
         if req.get("closed"):
             continue
         status = str(req.get("status") or "").strip().lower()
+        state = str(req.get("state") or "").strip().lower()
         if status in CLOSED_STATUS or status == "closed":
+            continue
+        if state in CLOSED_STATUS or state in {"closed", "executed", "executing", "failed"}:
             continue
         if status and status not in OPEN_STATUS and str(req.get("event") or "").strip().lower() not in OPEN_EVENTS:
             # Unknown status: leave it to the dashboard rather than nudge about something unclassified.
