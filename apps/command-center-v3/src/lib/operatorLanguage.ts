@@ -47,7 +47,7 @@ const KNOWN: Record<string, string> = {
 const SNAKE = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/i
 const KEBAB = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$/i
 
-const LEADING = /^[('"\[{‘“]*/ 
+const LEADING = /^[('"\[{‘“]*/
 const TRAILING = /[.,;:!?)\]}'”’]*$/
 
 /**
