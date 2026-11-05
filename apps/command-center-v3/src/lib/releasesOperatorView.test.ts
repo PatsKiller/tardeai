@@ -46,7 +46,7 @@ const pr = (over: Record<string, unknown> = {}) => ({
     review: { state: 'MERGE', reason: null }, ci: { state: 'GREEN', reason: null }, blockers: [], next_action: null,
     next_action_source: null, board_owner: null, as_of: '2026-11-03T14:00:00Z', source: 's', reason: null }, ...over,
 }) as any
-check('a green reviewed change is the operator’s to approve', needsYou([pr()]).length === 1)
+check('a green reviewed legacy row remains visible for inspection', needsYou([pr()]).length === 1)
 check('a draft is not the operator’s', needsYou([pr({ is_draft: true })]).length === 0)
 check('a conflicted change is not the operator’s', needsYou([pr({ mergeable: 'CONFLICTING' })]).length === 0)
 check('an already-queued change is not the operator’s', needsYou([pr({ has_operator_merge: true })]).length === 0)
@@ -91,7 +91,7 @@ check('a row the server did not flag and did not list is not in Needs you',
 // cc3 review F6: the card used to say the work was finished and the checks passed, unconditionally. On the push-budget
 // rows the server flags, that is the opposite of what the payload says.
 const pushDraft = pr({ is_draft: true, merge_state: 'BLOCKED',
-  work: { ...pr().work, review: { state: 'UNKNOWN', reason: 'no_review_record' }, ci: { state: 'UNKNOWN', reason: 'no_ci_observation' } },
+  work: { ...pr().work, publication_state: 'local_only', review: { state: 'UNKNOWN', reason: 'no_review_record' }, ci: { state: 'UNKNOWN', reason: 'no_ci_observation' } },
   operator_actions: { required: true, eligible: ['push'], reason: 'upload limit', withheld: [] } })
 const pushFacts = needsYouFacts(pushDraft, needsYouAction(pushDraft))
 check('a push card never claims the checks passed', !/checks passed|green/i.test(pushFacts.headline) && /not been uploaded/i.test(pushFacts.headline))

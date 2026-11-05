@@ -303,9 +303,8 @@ export function goingLive(prs: InFlightPr[]): StageGroup[] {
   }))
 }
 
-/** Block 2: only the changes where the OPERATOR is the one who must act. */
-/** Block 2: every row the SERVER marks as needing the operator — approvals AND the push-budget/authorization
- *  decisions the spec names. cc3 review F5: filtering on 'approve' alone hid ten such rows the server had flagged. */
+/** Block 2: server-marked operator decisions plus legacy ready rows retained for read-only inspection.
+ *  Missing action metadata never grants approval or upload authority. */
 export function needsYou(prs: InFlightPr[]): InFlightPr[] {
   return prs.filter(p => {
     const actions = p.operator_actions
@@ -321,11 +320,13 @@ export function needsYou(prs: InFlightPr[]): InFlightPr[] {
  *  push-budget cards the server flags are exactly the rows where that is false — drafts, DIRTY and BLOCKED branches
  *  with no review and no CI. A card that asks the operator to authorize an upload must not also tell him the work is
  *  finished and green. */
-export function needsYouFacts(p: InFlightPr, action: { kind: 'approve' | 'push' }): { headline: string; warning: string | null } {
+export function needsYouFacts(p: InFlightPr, action: { kind: 'approve' | 'push' | 'inspect' }): { headline: string; warning: string | null } {
   // F7 (cc3, 2026-11-03): DIRTY means the branch conflicts with the base, NOT uncommitted work — and a conflicting
   // branch can still be uploaded; the conflict bites at merge time. Say exactly that.
   const warning = p.mergeable === 'CONFLICTING' || p.merge_state === 'DIRTY'
-    ? 'GitHub reports this branch conflicts with newer code in the base. The upload is still possible; the merge will need a rebase first.'
+    ? action.kind === 'push'
+      ? 'GitHub reports this branch conflicts with newer code in the base. The upload is still possible; the merge will need a rebase first.'
+      : 'GitHub reports this branch conflicts with newer code in the base; the merge needs a rebase first.'
     : p.merge_state === 'BLOCKED'
       ? 'GitHub reports this change is blocked by something it is waiting on.'
       : p.is_draft ? 'It is still a draft, so it is not ready for anyone to merge.' : null
@@ -335,19 +336,30 @@ export function needsYouFacts(p: InFlightPr, action: { kind: 'approve' | 'push' 
       : 'The server says this change is ready for your approval; its own record of the check is incomplete.',
     warning }
   }
-  return { headline: 'This branch holds work that has not been uploaded yet; the agent is waiting for your authorization.',
-    warning }
+  const publication = p.work?.publication_state
+  const fact = publication === 'local_only' ? 'This branch holds work that has not been uploaded yet.'
+    : publication === 'published' ? 'This change is recorded as uploaded.'
+      : publication === 'merged' ? 'This change is recorded as merged.'
+        : publication === 'live' ? 'This change is recorded as live.'
+          : 'Whether this work has been uploaded is not recorded.'
+  return { headline: `${fact} ${action.kind === 'push'
+    ? 'The server offers upload authorization for this version.'
+    : 'No approval or upload action was supplied for this version.'}`, warning }
 }
 
-/** The one action a Needs-you card offers, and the words for it. Never offers an action the server did not list. */
-export function needsYouAction(p: InFlightPr): { kind: 'approve' | 'push'; label: string; effect: string } {
+/** The server-granted action, or a read-only inspection when no action was supplied. */
+export function needsYouAction(p: InFlightPr): { kind: 'approve' | 'push' | 'inspect'; label: string; effect: string } {
   const eligible = p.operator_actions?.eligible ?? []
   if (eligible.includes('approve')) {
     return { kind: 'approve', label: 'Open the change and approve it →',
       effect: 'If you say yes, it is queued for the next merge window; the host still has to promote it before it is live.' }
   }
-  return { kind: 'push', label: 'Authorize the upload for this branch →',
-    effect: 'If you say yes, one fast-forward upload is allowed, bound to this exact version. Force-push stays refused.' }
+  if (eligible.includes('push')) {
+    return { kind: 'push', label: 'Authorize the upload for this branch →',
+      effect: 'If you say yes, one fast-forward upload is allowed, bound to this exact version. Force-push stays refused.' }
+  }
+  return { kind: 'inspect', label: 'View the recorded change →',
+    effect: 'The source did not supply an approval or upload action; these details are read-only.' }
 }
 
 /** Block 4: stuck, and whose step it is. The threshold is stated in the heading, never implied. */

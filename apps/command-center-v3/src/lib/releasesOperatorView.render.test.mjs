@@ -5,6 +5,7 @@
 // OperatorView with react-dom/server and asserts on the STRING THE OPERATOR WOULD SEE.
 //
 // The rule under test is the one the page claims: a panel may assert "none" only when its own source is current.
+import '../testharness/tsxRegister.mjs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router-dom'
 import React from 'react'
@@ -33,7 +34,7 @@ function render(over = {}) {
     s: sections(over.s), rows: over.rows ?? [], agents: over.agents ?? [],
     generatedAt: '2026-11-04T10:00:00Z', flightAsOf: over.flightAsOf ?? '2026-11-04T10:00:00Z',
     coordAsOf: '2026-11-04T10:00:00Z', flightError: over.flightError ?? null, loading: over.loading ?? false,
-    now: Date.parse('2026-11-04T10:05:00Z'),
+    now: over.now ?? Date.parse('2026-11-04T10:05:00Z'),
     flightLoading: over.flightLoading ?? false, flightStale: over.flightStale ?? false,
     flightAnswered: over.flightAnswered ?? true, coordStatus: over.coordStatus ?? 'OK',
   }
@@ -99,6 +100,120 @@ check('{} through the real derivation never says nothing is stuck', !viaInvalid.
 const viaEmpty = render({ flightAnswered: flightAnswered(VALID) })
 check('an empty prs list through the real derivation may say nothing needs you',
   viaEmpty.includes('Nothing needs you.'))
+
+
+
+// F1 #2592: captured from deploy_in_flight.build with injected lister/coordination (native v1, no actions).
+// The wire itself, normalizer and census all reach the REAL OperatorView. Missing authority stays read-only.
+const nativeLegacy = {
+  "schema": "DeployInFlight@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "generated_at": "2026-11-05T17:55:00+00:00",
+  "repo": "synthetic/test",
+  "source": "gh pr list (GitHub REST API via subprocess, read-only; cached 60s)",
+  "prs": [
+    {
+      "number": 900001,
+      "title": "Synthetic harmless improvement",
+      "url": "https://example.invalid/change",
+      "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "head_sha_short": "aaaaaaaaa",
+      "branch": "wt/synthetic",
+      "has_operator_merge": false,
+      "mergeable": "MERGEABLE",
+      "merge_state": "CLEAN",
+      "is_draft": false,
+      "why_held": null,
+      "next": "auto-merge",
+      "work": {
+        "owner": "synthetic-reviewer",
+        "current_task": "Synthetic harmless improvement",
+        "local_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "published_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "review": {
+          "state": "MERGE",
+          "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "ci": {
+          "state": "GREEN",
+          "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "blockers": [],
+        "source": "synthetic",
+        "as_of": "2026-11-05T17:55:00+00:00",
+        "publication_state": "published"
+      }
+    }
+  ],
+  "count": 1,
+  "status": "OK",
+  "freshness": "OK",
+  "reason": null,
+  "coordination": {
+    "status": "OK",
+    "agents": [],
+    "as_of": "2026-11-05T17:55:00+00:00"
+  }
+}
+const { normalizeRows } = await import('./deployInFlight.ts')
+const legacyWire = (publication) => {
+  const wire = structuredClone(nativeLegacy)
+  wire.prs[0].work.published_head = ['published', 'merged', 'live'].includes(publication) ? wire.prs[0].head_sha : null
+  if (publication === 'missing') delete wire.prs[0].work.publication_state
+  else wire.prs[0].work.publication_state = publication === 'malformed' ? { unexpected: 'value' } : publication
+  return wire
+}
+const renderWire = wire => render({ rows: normalizeRows(wire.prs).rows,
+  flightAnswered: inFlightCensus(wire).answered, flightAsOf: wire.generated_at,
+  now: Date.parse(wire.generated_at), s: {} })
+const knownFacts = {
+  published: 'recorded as uploaded', local_only: 'has not been uploaded yet',
+  merged: 'recorded as merged', live: 'recorded as live',
+  unknown: 'Whether this work has been uploaded is not recorded',
+  missing: 'Whether this work has been uploaded is not recorded',
+  malformed: 'Whether this work has been uploaded is not recorded',
+}
+for (const [publication, fact] of Object.entries(knownFacts)) {
+  const output = renderWire(legacyWire(publication))
+  check(`legacy ${publication}: publication fact stays true`, output.includes(fact))
+  check(`legacy ${publication}: missing actions never invent approval or upload authorization`,
+    !output.includes('Authorize the upload') && !output.includes('Open the change and approve it'))
+  check(`legacy ${publication}: only an existing read-only change link is offered`,
+    output.includes('View the recorded change') && output.includes('https://example.invalid/change'))
+  check(`legacy ${publication}: summary does not claim an operator action`,
+    output.includes('Check the recorded items below') && !/thing(?:s)? need you/.test(output))
+}
+for (const [publication, eligible, label, fact] of [
+  ['published', ['approve'], 'Open the change and approve it', 'checks passed'],
+  ['published', ['push'], 'Authorize the upload', 'recorded as uploaded'],
+  ['local_only', ['push'], 'Authorize the upload', 'has not been uploaded yet'],
+  ['unknown', ['push'], 'Authorize the upload', 'Whether this work has been uploaded is not recorded'],
+  ['published', [], 'View the recorded change', 'recorded as uploaded'],
+]) {
+  const wire = legacyWire(publication)
+  wire.schema = 'DeployInFlight@v2'
+  wire.prs[0].operator_actions = { required: true, eligible }
+  const output = renderWire(wire)
+  check(`server ${publication}/${eligible}: explicit action or absence is preserved`, output.includes(label))
+  check(`server ${publication}/${eligible}: action never rewrites publication`, output.includes(fact))
+}
+const missingLink = legacyWire('unknown')
+missingLink.prs[0].url = ''
+const withoutLink = renderWire(missingLink)
+check('missing legacy link: no link or authorization is invented',
+  !withoutLink.includes('View the recorded change') && !withoutLink.includes('Authorize the upload')
+  && withoutLink.includes('No change link was supplied'))
+
+// Keep the prior structured-receipt render controls at the actual history boundary.
+for (const [name, verification] of [
+  ['failed', { ok: false }], ['errors', { ok: true, readback_errors: ['synthetic failure'] }],
+  ['rolled-back', { ok: true, rolled_back: true }], ['success', { ok: true, readback_errors: [] }],
+]) {
+  const output = render({ s: { history: sec({ releases: [{ receipt: name, mode: 'apply',
+    at: nativeLegacy.generated_at, verify: verification }], receipts_total: 1 }) } })
+  check(`actual history ${name}: working claim matches structured receipt`,
+    name === 'success' ? output.includes('Checked working: yes.') : !output.includes('Checked working: yes.'))
+}
 
 console.log(`releasesOperatorView.render: ${pass} passed, ${fail} failed`)
 process.exit(fail > 0 ? 1 : 0)

@@ -251,7 +251,8 @@ export function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAs
       <h2 style={{ ...h2, fontSize: TYPE.lg }}>{loading ? 'Checking what is live…' : status.headline}</h2>
       <p style={{ ...muted, color: TOKENS.text[1] }}>{loading ? 'This is not an all-clear yet — the sources have not answered.' : status.detail}</p>
       <p style={muted}>{loading ? 'no clock yet' : status.clock}</p>
-      {ask.length ? <a href="#rs-needs-you" style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', color: TOKENS.primary, fontWeight: 700 }}>{ask.length} thing{ask.length === 1 ? '' : 's'} need you ↓</a> : null}
+      {ask.length ? <a href="#rs-needs-you" style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', color: TOKENS.primary, fontWeight: 700 }}>{ask.some(p => needsYouAction(p).kind === 'inspect') ? 'Check the recorded items below ↓'
+        : `${ask.length} thing${ask.length === 1 ? '' : 's'} need you ↓`}</a> : null}
     </section>
 
     <section id="rs-needs-you" data-testid="rs-needs-you" style={panel}>
@@ -267,8 +268,10 @@ export function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAs
           {needsYouFacts(p, needsYouAction(p)).warning
             ? <div style={{ ...muted, color: toneVars('warning').color }}>{needsYouFacts(p, needsYouAction(p)).warning}</div> : null}
           <div style={muted}>{needsYouAction(p).effect}</div>
-          <Link to={needsYouAction(p).kind === 'approve' ? p.url : '/system/releases?engineer=1'}
+          {needsYouAction(p).kind !== 'inspect' || p.url ? <Link
+            to={needsYouAction(p).kind === 'push' ? '/system/releases?engineer=1' : p.url}
             style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', color: TOKENS.primary }}>{needsYouAction(p).label}</Link>
+            : <p style={muted}>No change link was supplied.</p>}
         </div>))}
     </section>
 
