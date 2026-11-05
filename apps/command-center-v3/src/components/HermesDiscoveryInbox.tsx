@@ -25,6 +25,8 @@ interface Candidate {
   candidate_type: string
   label: string
   summary: string
+  /** FQ-059: the producer's own sentence, when the plain label/summary replaced it. Rendered in a disclosure. */
+  technical?: string | null
   status: string
   source_domain: string | null
   source_url: string | null
@@ -676,6 +678,13 @@ function DiscoveryCard({ c, onDone }: { c: Candidate; onDone: () => void }) {
       {/* why discovered */}
       {c.summary && (
         <div style={{ padding: '0 18px 8px', fontSize: 11.5, color: WL.text.secondary, lineHeight: 1.5 }}>{c.summary}</div>
+      )}
+      {/* FQ-059: the health checker's own sentence stays on the card, behind a disclosure */}
+      {c.technical && (
+        <details style={{ padding: '0 18px 8px', fontSize: 11, color: WL.text.muted }}>
+          <summary style={{ cursor: 'pointer' }}>Technical detail</summary>
+          <div style={{ marginTop: 4, lineHeight: 1.45, overflowWrap: 'anywhere' }}>{c.technical}</div>
+        </details>
       )}
 
       {/* professional-review label — rendered prominently on sensitive domains */}
