@@ -133,6 +133,54 @@ def test_an_unmeasured_hotspot_is_a_degradation_not_a_failure(mon, monkeypatch):
     assert b["hotspots"]["cache"]["last_failure"] is not None  # the failure is recorded beside the value
 
 
+def test_a_partially_unmeasurable_glob_is_unmeasured_and_preserves_the_baseline(mon, monkeypatch, capsys):
+    """CX3: one measured + one timed-out target is NOT a total; storing the partial sum would later read the
+    reappearing target's existing bytes as new growth."""
+    (mon.home / "wt-a").mkdir()
+    (mon.home / "wt-b").mkdir()
+    mon.doc["hotspots"] = [{"id": "wt_glob", "path": "~/wt-*", "glob": True, "purge": "rule G"}]
+    mon.cfg.write_text(json.dumps(mon.doc, indent=1))
+
+    sizes = {mon.home / "wt-a": 4 * GIB, mon.home / "wt-b": 6 * GIB}
+    monkeypatch.setattr(DMON, "du_bytes", lambda path, timeout: sizes.get(Path(path)))
+    assert _run(mon, apply=True, used=50.0) == 0
+    assert _baseline(mon)["hotspots"]["wt_glob"]["bytes"] == 10 * GIB
+    capsys.readouterr()
+
+    # one target stops answering: the partial 4 GiB must NOT replace the complete 10 GiB baseline
+    monkeypatch.setattr(DMON, "du_bytes",
+                        lambda path, timeout: 4 * GIB if Path(path).name == "wt-a" else None)
+    assert _run(mon, apply=True, used=50.0, hours=1.0) == 0  # degradation, not a run failure
+    b = _baseline(mon)
+    assert b["hotspots"]["wt_glob"]["bytes"] == 10 * GIB  # complete prior value preserved
+    assert b["hotspots"]["wt_glob"]["last_failure"] is not None
+    assert b["hotspots"]["wt_glob"]["unmeasured"] == 1
+    report = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert report["degraded_hotspots"] == 1 and report["failures"] == 0
+
+
+def test_a_rejected_mount_notification_fails_the_run(mon, monkeypatch):
+    """CX1: send_telegram() returning False is a rejected alert, not a healthy run."""
+    assert _run(mon, apply=True, used=50.0) == 0  # seed
+    monkeypatch.setattr(DMON, "default_notify", lambda text, priority: "send_returned_false")
+    assert _run(mon, apply=True, used=85.0, hours=1.0) == 1
+    receipt = json.loads((mon.state / "data" / "runtime" / "disk-monitor_last.json").read_text())
+    assert receipt["status"] == "failed"
+
+
+def test_a_rejected_hotspot_notification_fails_the_run(mon, monkeypatch):
+    """CX1: the hotspot branch has the same rule."""
+    mon.doc["hotspots"] = [{"id": "cache", "path": "~/.cache", "purge": "rule C"}]
+    mon.cfg.write_text(json.dumps(mon.doc, indent=1))
+    monkeypatch.setattr(DMON, "du_bytes", lambda path, timeout: 0)
+    assert _run(mon, apply=True, used=50.0) == 0  # seed at 0 bytes
+    monkeypatch.setattr(DMON, "du_bytes", lambda path, timeout: 10 * GIB)
+    monkeypatch.setattr(DMON, "default_notify", lambda text, priority: "send_returned_false")
+    assert _run(mon, apply=True, used=50.0, hours=1.0) == 1
+    receipt = json.loads((mon.state / "data" / "runtime" / "disk-monitor_last.json").read_text())
+    assert receipt["status"] == "failed"
+
+
 # ── 2. the guards (pure), including the mutation check ────────────────────────────────────────────────────────────
 
 
@@ -217,6 +265,41 @@ def test_growth_band_alerts_once_end_to_end(mon):
     # +20 GiB in one hour -> growth warn (>= 10 GiB, < 50 GiB), used still 44% (ok)
     assert _run(mon, apply=True, used=44.0, hours=1.0) == 0
     assert len(mon.sends) == 1 and "growth" in mon.sends[0][0] and "WARN" in mon.sends[0][0]
+
+
+def test_an_unchanged_band_never_heartbeats(mon):
+    """CX2: transition-only means an unchanged warn band stays silent however long it has been bad, in both
+    apply and dry-run (the config no longer carries a heartbeat interval)."""
+    assert "realert_minutes" not in json.loads(mon.cfg.read_text())
+    assert _run(mon, apply=True, used=85.0) == 0  # seed; the first run sends nothing
+    assert mon.sends == []
+    old = (datetime.now(timezone.utc) - timedelta(minutes=600)).isoformat()
+    key = DMON.condition_key("/", "used")
+    mon.alert.write_text(json.dumps({"conditions": {
+        key: {"state": "warn", "alertable": True, "last_notify_at": old, "first_seen_at": old}}}))
+    assert _run(mon, apply=True, used=86.0, hours=1.0) == 0
+    assert mon.sends == []  # 10 hours unchanged: no heartbeat re-alert
+    assert _run(mon, apply=False, used=86.0, hours=1.0) == 0
+    assert mon.sends == []  # dry-run predicts the same silence
+
+
+def test_hotspot_recovery_clears_the_condition_so_a_later_growth_alerts_again(mon, monkeypatch):
+    """CX4: an ok observation resolves the stored condition; without it the second growth episode is an
+    "ongoing" unchanged state and is suppressed."""
+    mon.doc["hotspots"] = [{"id": "cache", "path": "~/.cache", "purge": "rule C"}]
+    mon.cfg.write_text(json.dumps(mon.doc, indent=1))
+    size = {"now": 0}
+    monkeypatch.setattr(DMON, "du_bytes", lambda path, timeout: size["now"])
+    assert _run(mon, apply=True, used=50.0) == 0  # seed baseline at 0
+    size["now"] = 10 * GIB
+    assert _run(mon, apply=True, used=50.0, hours=1.0) == 0
+    assert len(mon.sends) == 1  # growth episode 1
+    size["now"] = 10 * GIB
+    assert _run(mon, apply=True, used=50.0, hours=1.0) == 0
+    assert len(mon.sends) == 1  # healthy: recorded (alertable=False), no send
+    size["now"] = 30 * GIB
+    assert _run(mon, apply=True, used=50.0, hours=1.0) == 0
+    assert len(mon.sends) == 2  # episode 2 alerts independently instead of being "ongoing"
 
 
 # ── 4. dry-run writes and sends nothing ───────────────────────────────────────────────────────────────────────────

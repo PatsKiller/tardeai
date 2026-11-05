@@ -28,12 +28,16 @@ from the latest disk_hygiene manifest, and the operator-gated purge command; ``-
 ``scripts/disk_hygiene.py --dry-run``.
 
 Fail closed (§7): a mount or hotspot that cannot be measured keeps its prior baseline value and records the failure
-beside it — never an error string in the value slot, never a silent zero. An unmeasurable hotspot is a degradation
-(recorded), not a run failure; only an unmeasurable mount or a failed write/send fails the run.
+beside it — never an error string in the value slot, never a silent zero. A partially measured glob is treated as
+unmeasured (a partial sum would later read as growth). An unmeasurable hotspot is a degradation (recorded), not a
+run failure; only an unmeasurable mount or a failed write/send fails the run.
+
+Alerts are transitions only: there is no heartbeat re-alert, so an unchanged band stays quiet. A hotspot observed
+healthy clears its stored condition, so the next growth episode alerts independently.
 
 Exit: 0 = measured and (in --apply) baseline + receipt written and any due alert accepted; 1 = config unreadable, a
-mount unmeasurable, a write failed, or a send failed; 2 = usage. MBI_BEHAVIOR = 0. No broker, no DB, no network
-beyond the Telegram chokepoint (scripts/telegram_alert.py).
+mount unmeasurable, a write failed, or a send failed/was rejected; 2 = usage. MBI_BEHAVIOR = 0. No broker, no DB, no
+network beyond the Telegram chokepoint (scripts/telegram_alert.py).
 """
 
 from __future__ import annotations
@@ -164,7 +168,11 @@ def measure_hotspots(mon: Mapping[str, Any], now: datetime) -> list[dict[str, An
                 measured += 1
         out.append({
             "id": e["id"], "path": e["path"], "purge": e.get("purge") or "",
-            "bytes": total if measured else None,
+            # An aggregate over a glob is only a total when EVERY target was measured. A partial sum stored as
+            # valid would later read the reappearing target's existing bytes as new growth (false alert), so a
+            # partial observation is unmeasured: build_baseline keeps the complete prior value and records the
+            # failure beside it.
+            "bytes": total if measured and not unmeasured else None,
             "measured_paths": measured, "unmeasured": unmeasured,
             "measured_at": now.isoformat(),
         })
@@ -411,8 +419,10 @@ def _observe(key: str, band: str, alertable: bool, mon: Mapping[str, Any],
     from scripts.lib.alert_condition_state import observe
 
     try:
-        return observe(key, band, alertable=alertable, path=state_path,
-                       min_realert_minutes=int(mon.get("realert_minutes") or 360), extra=dict(extra))
+        # No heartbeat interval: this monitor alerts on TRANSITIONS only. Passing a min_realert_minutes would
+        # re-alert an unchanged warn/critical band after the interval, while --dry-run's _predict_notify can
+        # never predict a heartbeat (it does not advance the real clock). Omit it so apply and dry-run agree.
+        return observe(key, band, alertable=alertable, path=state_path, extra=dict(extra))
     except Exception as exc:  # noqa: BLE001 - a dedupe-state failure never suppresses measurement
         return {"action": "error", "notify": False, "error": type(exc).__name__, "key": key, "state": band}
 
@@ -513,23 +523,31 @@ def run(
                 outcome = notify(body, priority)
                 sends.append({"kind": "mount", "subject": subject, "summary": summary, "priority": priority,
                               "outcome": outcome})
-                if outcome.startswith("error:"):
+                if outcome != "accepted":
+                    # any non-accepted outcome (a transport error OR send_telegram returning False) means the
+                    # operator was not told: the run must not report healthy
                     failures += 1
-        # hotspot growth, P2 (diagnostic; the mount alert is the actionable one)
+        # hotspot growth, P2 (diagnostic; the mount alert is the actionable one). Observe healthy flags with
+        # alertable=False too, so recovery clears the persisted condition and a later growth episode is a fresh
+        # transition instead of a suppressed "ongoing" one. An unmeasurable ("unknown") hotspot changes nothing:
+        # it is a degradation, not evidence of recovery.
         for h in ev["hotspots"]:
-            if h["flag"] not in ("growing", "new"):
+            if h["flag"] == "unknown":
                 continue
-            obs = _transition(apply, condition_key(h["id"], "hotspot"), h["flag"], True, mon, alert_state_path,
+            alertable = h["flag"] in ("growing", "new")
+            obs = _transition(apply, condition_key(h["id"], "hotspot"), h["flag"], alertable, mon,
+                              alert_state_path,
                               {"bytes": h["bytes"], "baseline_bytes": h.get("baseline_bytes")})
-            if obs.get("notify"):
-                if not apply:
-                    sends.append({"kind": "hotspot", "hotspot": h["id"], "priority": "P2",
-                                  "summary": hotspot_alert_text(h)})
-                    continue
-                outcome = notify(hotspot_alert_text(h), "P2")
-                sends.append({"kind": "hotspot", "hotspot": h["id"], "priority": "P2", "outcome": outcome})
-                if outcome.startswith("error:"):
-                    failures += 1
+            if not alertable or not obs.get("notify"):
+                continue
+            if not apply:
+                sends.append({"kind": "hotspot", "hotspot": h["id"], "priority": "P2",
+                              "summary": hotspot_alert_text(h)})
+                continue
+            outcome = notify(hotspot_alert_text(h), "P2")
+            sends.append({"kind": "hotspot", "hotspot": h["id"], "priority": "P2", "outcome": outcome})
+            if outcome != "accepted":
+                failures += 1
 
     report = {
         "dry_run": not apply,

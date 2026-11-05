@@ -16,7 +16,6 @@
   "hotspot_growth_min_bytes": 1073741824,
   "hotspot_growth_ratio": 1.5,
   "du_timeout_s": 120,
-  "realert_minutes": 360,
   "hygiene_manifest_rel": "data/runtime/disk_hygiene/disk_hygiene_manifest_latest.json",
   "hygiene_rules_rel": "config/disk_hygiene_rules.json",
   "purge_command": "TRADEAI_DISK_HYGIENE_GRANT=<grant> {py} scripts/disk_hygiene.py --apply --manifest data/runtime/disk_hygiene/disk_hygiene_manifest_latest.json",
