@@ -6,6 +6,7 @@ on:
       - '.github/workflows/ask-cio-readable-fixture.yml'
       - 'apps/command-center-v3/src/components/AskCio*'
       - 'apps/command-center-v3/src/pages/MyQuestions.tsx'
+      - 'apps/command-center-v3/src/pages/MyQuestions.accessRetry.view.test.mjs'
       - 'apps/command-center-v3/src/hooks/useAskPhoneSheet.ts'
       - 'apps/command-center-v3/src/lib/askCio*'
       - 'apps/command-center-v3/e2e/ask-cio-readable.fixture.mjs'
@@ -40,6 +41,8 @@ jobs:
           cache-dependency-path: apps/command-center-v3/package-lock.json
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npx playwright install --with-deps chromium
+      - name: Caller refusal then restored access re-arms the selected thread (actual page and hooks)
+        run: node src/pages/MyQuestions.accessRetry.view.test.mjs ../.. "$RUNNER_TEMP/my-questions-access-retry.json"
       - run: npm run build
       - name: Canonical copied-ledger answer, delayed completion and identity proof
         run: node e2e/ask-cio-readable.fixture.mjs e2e/fixtures/askCioReadable.fixture.json "$RUNNER_TEMP/ask-readable-proof"
@@ -51,5 +54,7 @@ jobs:
         if: always()
         with:
           name: ask-cio-readable-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/ask-readable-proof/
+          path: |
+            ${{ runner.temp }}/ask-readable-proof/
+            ${{ runner.temp }}/my-questions-access-retry.json
           if-no-files-found: error
