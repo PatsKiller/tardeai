@@ -47,6 +47,11 @@ REFUSED = (
     "scripts/lib/oauth_lane_status.py",
     "scripts/lib/llm_model_registry.py",
     "scripts/lib/provider_cost/emit.py",
+    # cc-deepseek-3's completeness finding (2026-11-05): a fix PR must not change
+    # what a token costs or make the spend gate pass while emit.py stays closed.
+    "scripts/lib/provider_cost/pricing.py",
+    "scripts/lib/provider_cost/budget.py",
+    "scripts/lib/provider_cost/__init__.py",
     "scripts/telegram_transport.py",
     "scripts/telegram_alert_router.py",
 )
