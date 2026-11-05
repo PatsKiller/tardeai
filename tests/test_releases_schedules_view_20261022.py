@@ -131,20 +131,15 @@ def host(tmp_path):
                "*/5 * * * * cd $P && python scripts/watchdog.py\n"
                "# PAUSED 2026-10-14 schwab-app-deactivated 33 16 * * 1-5 cd $P && python scripts/cost_basis_sync.py\n"
                "# a plain comment 0 1 * * * nothing\n")
-    readiness = {"schema": "ReleaseTrainReadiness@v1", "state": "OK", "as_of": NOW.isoformat(),
-                 "stop": {"state": "ABSENT", "effective_stop": False}, "armed": False, "shadow_enabled": True,
-                 "delegation": {"state": "PAUSED", "source": "test"}, "policy_version": "t",
-                 "shadow_coverage": [{"slot": "1800", "last_requested_at": None, "request_id": None,
-                                      "receipt_state": None}]}
     git = _git(subjects={f"{SHA_B}..{SHA_MAIN}": ["Merge pull request #1927 from a/b", "fix x (#1934)"],
                          f"{SHA_A}..{SHA_B}": ["Merge pull request #1918 from a/b"]})
-    return {"paths": paths, "crontab": lambda: (crontab, "crontab", None, None), "readiness": lambda: readiness,
+    return {"paths": paths, "crontab": lambda: (crontab, "crontab", None, None),
             "git": git, "rw": rw, "dep": dep, "base": base}
 
 
 def _build(host, **kw):
     return R.build(lambda *a, **k: None, now=NOW, paths=host["paths"], git=host["git"],
-                   crontab_reader=host["crontab"], readiness=host["readiness"], **kw)
+                   crontab_reader=host["crontab"], **kw)
 
 
 def test_full_projection_reads_every_fixture_source(host):
@@ -175,21 +170,14 @@ def test_kpis_and_n8n_today_from_ledger(host):
     k = {x["key"]: x for x in d["kpis"]}
     assert k["serving"]["value"] == SHA_B[:9] and k["n8n_runs"]["value"] == 4
     assert k["n8n_errors"]["value"] == "1 · 1"
-    assert k["next_window"]["value"] == "18:00" and "SHADOW" in k["next_window"]["detail"]
+    assert "next_window" not in k  # the retired release train's windows were removed 2026-10-27
 
 
-def test_windows_state_and_reason_from_host_gate(host):
-    w = _build(host)["windows"]["value"]
-    assert w["windows"][0]["local_time"] == "18:00"
-    assert all(x["state"] == "SHADOW" and "simulate only" in x["reason"] for x in w["windows"])
-    stopped = dict(host["readiness"]())
-    stopped["stop"] = {"state": "SET", "effective_stop": True}
-    w2 = R.read_windows(NOW, rw_state_dir=host["rw"], readiness=lambda: stopped)["value"]
-    assert {x["state"] for x in w2["windows"]} == {"STOPPED"}
-    off = dict(host["readiness"]())
-    off["shadow_enabled"] = False
-    w3 = R.read_windows(NOW, rw_state_dir=host["rw"], readiness=lambda: off)["value"]
-    assert {x["state"] for x in w3["windows"]} == {"OFF"}
+def test_retired_train_sections_are_gone(host):
+    d = _build(host)
+    assert "windows" not in d and "queue" not in d
+    assert not hasattr(R, "read_windows") and not hasattr(R, "read_queue")
+    assert d["stop"]["state"] == "ABSENT" and d["stop"]["effective_stop"] is False
 
 
 def test_timeline_merges_cron_paused_and_n8n(host):
@@ -222,8 +210,8 @@ def test_unavailable_sources_are_null_never_zero(host, tmp_path):
     paths = dict(host["paths"], releases_base=tmp_path / "nope", ledger=tmp_path / "nope.sqlite",
                  deploy_state_dir=tmp_path / "nodeploy", registry=tmp_path / "noreg.json")
     d = R.build(lambda *a, **k: None, now=NOW, paths=paths, git=lambda a: (128, ""),
-                crontab_reader=lambda: ("", "none", "crontab -l denied", None), readiness=host["readiness"])
-    for key in ("serving", "next_release", "n8n_today", "timeline", "history", "queue"):
+                crontab_reader=lambda: ("", "none", "crontab -l denied", None))
+    for key in ("serving", "next_release", "n8n_today", "timeline", "history"):
         assert d[key]["freshness"] == "UNAVAILABLE", key
         assert d[key]["value"] is None and d[key]["reason"], key
     k = {x["key"]: x for x in d["kpis"]}

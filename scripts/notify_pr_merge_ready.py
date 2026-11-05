@@ -74,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--native",
         action="store_true",
-        help="Use prmapprove (needs CURRENT promote); default is guard bridge",
+        help="Use prmapprove (the default while Telegram guard grants are retired, PR #2185)",
     )
     p.add_argument(
         "--legacy-per-pr",
@@ -96,7 +96,9 @@ def main(argv: list[str] | None = None) -> int:
 
     from scripts.lib import pr_merge_telegram as pmt
 
-    env_via = os.environ.get("PR_MERGE_TELEGRAM_VIA_GUARD", "1").strip() not in ("0", "false", "no")
+    # The guard bridge needs a Telegram guard grant; retired (PR #2185), so native is the default.
+    via_default = "0" if pmt.guard_bridge_retired() else "1"
+    env_via = os.environ.get("PR_MERGE_TELEGRAM_VIA_GUARD", via_default).strip() not in ("0", "false", "no")
     via_guard = (not args.native) and env_via
 
     prs = _list_prs(args.repo)
@@ -116,7 +118,9 @@ def main(argv: list[str] | None = None) -> int:
         head = str(pr.get("headRefOid") or "")
         pending = pmt.find_pending(number, head)
         if pending and pending.get("delivery", {}).get("accepted"):
-            results.append({"pr": number, "action": "skip", "reason": "already_notified", "request_id": pending["request_id"]})
+            results.append(
+                {"pr": number, "action": "skip", "reason": "already_notified", "request_id": pending["request_id"]}
+            )
             continue
         green, statuses = pmt.pr_check_rollup_green(number, repo=args.repo)
         if not green and number != args.force_pr:

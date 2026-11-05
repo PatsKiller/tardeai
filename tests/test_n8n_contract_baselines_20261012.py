@@ -71,6 +71,8 @@ def test_all_operative_baselines_have_applicable_fields_and_order():
     proof = json.loads((ROOT / "docs/ops/packets/stale-n8n-set-20261024/preservation.json").read_text())
     spec = proof["collections"]["config/n8n_health_contracts.json"]
     required = set(spec["base_object_sha256"]) | set(spec["added_ids"])
+    # 2026-10-27: the retired release train's four request-lane contracts were removed (operator directive).
+    required -= {f"release-train-request-{slot}" for slot in ("0000", "0600", "0800", "1800")}
     ids = [row["id"] for row in catalogue["contracts"]]
     assert len(ids) == len(set(ids))
     assert required <= set(ids)  # later reviewed additions do not invalidate this source cohort

@@ -78,6 +78,12 @@ CALLER_PROCESS_MAP: dict[str, str] = {
 
 # Task-type overrides for multi-policy callers (server-side only).
 CALLER_TASK_PROCESS_MAP: dict[str, dict[str, str]] = {
+    # 2026-11-01: the Ask web-search source. Its own process id, so the registry's cost caps bind
+    # server-side and a caller cannot relabel into another process. Tool-bearing only (the credit
+    # policy's tools_processes names it); process registration is the live gate.
+    "web_search": {
+        "web_search": "cio_ask_web_search",
+    },
     # 2026-10-08 (Phase 2 G1): the n8n model-job caller has two small-cap processes, chosen by task type
     # server-side; an unknown task type falls back to the digest (cannot escalate — tested).
     "n8n_model_job": {
@@ -85,6 +91,8 @@ CALLER_TASK_PROCESS_MAP: dict[str, dict[str, str]] = {
         "ops_summary": "n8n_ops_summary_draft",
         # 2026-10-10 (REMEDIATION_PLAN §6): lane failure diagnosis, $0.05/call ceiling, grok -> chatgpt -> deepseek.
         "lane_failure_diagnosis": "n8n_lane_failure_diagnosis",
+        # 2026-10-25 (operator: unmatched conflicts -> AI-proposed rule for approval): $0.05/call, grok -> chatgpt -> deepseek.
+        "conflict_rule_proposal": "conflict_rule_proposal",
     },
     "advisory_desk": {
         "advisory_opinion": "advisory_desk_opinion",
@@ -1931,7 +1939,7 @@ def walk_routes(
             except Exception as exc:
                 if funding is None:
                     raise
-                funding.record_fallback(getattr(exc, "code", "PROVIDER_UNAVAILABLE"))
+                funding.record_fallback(getattr(exc, "code", None) or getattr(exc, "reason", "PROVIDER_UNAVAILABLE"))
                 receipts.append(_receipt(cand, "transport_unavailable", detail=type(exc).__name__))
                 last_error = exc
                 continue
@@ -1979,7 +1987,7 @@ def walk_routes(
                 response = transport.generate(messages, cand.get("model_id"), **kwargs)
             except Exception as exc:  # noqa: BLE001 -- every failure becomes a receipt, then the next lane
                 if provider == "anthropic" and funding is not None:
-                    funding.record_fallback(getattr(exc, "code", "PROVIDER_UNAVAILABLE"))
+                    funding.record_fallback(getattr(exc, "code", None) or getattr(exc, "reason", "PROVIDER_UNAVAILABLE"))
                 kind, status, retry_after = _attempt_failure_kind(exc)
                 sent = bool(getattr(exc, "possibly_billable", False) or getattr(exc, "request_sent", False))
                 billable = provider not in oauth_transport.OAUTH_PROVIDERS and provider != "anthropic" and sent

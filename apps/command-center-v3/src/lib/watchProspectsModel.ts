@@ -4,6 +4,8 @@
  *  judgment: lane, conviction, stance, conflicts, next trigger, next step. This file only shapes it for display,
  *  ties armed alerts to prospects (orphans listed), and holds the tooltip text. No colour literals (design tokens). */
 
+import { fmtAsOf } from './asOfDisplay.ts'
+
 export type CompanyFact = { value: string | null; source?: string | null; observed_at?: string | null; clock_kind?: string; missing_reason?: string | null
   /** company only: common card name; `legal_name` is the registered name (secondary). */
   display_name?: string | null; legal_name?: string | null; display_name_source?: string | null }
@@ -48,6 +50,14 @@ export type ReviewState = {
   last_attempt?: { status: string; at: string; block_reason?: string | null; reason?: string; remaining_gaps?: string[] } | null
   conflict_key?: string | null
   request_id?: string | null
+  updated_at?: string | null
+  next_run?: string | null
+  publication_verified?: boolean
+  research_link_verified?: boolean
+  answered_at?: string | null
+  answer_age_hours?: number | null
+  answer_summary?: string | null
+  research_id?: string | null
 }
 export type SurfaceRow = { surface: string; value: string; source: string | null; joined: boolean }
 export type ProspectRow = {
@@ -149,6 +159,26 @@ export function stanceTone(s: string | null | undefined): 'success' | 'warning' 
 
 export function stanceLabel(s: string | null | undefined): string {
   return s ? String(s).replace(/_/g, '-') : 'no stance'
+}
+
+/** One plain sentence for a stance, shown beside the terse chip (WS-D). Posture/priority only —
+ *  it never claims a size, order or stop. Returns null for an unknown or absent stance. */
+export function stancePlainText(s: string | null | undefined): string | null {
+  const v = String(s || '').toUpperCase()
+  if (['ADD', 'BUY', 'BUY_SETUP'].includes(v)) return 'posture is to add — priority only'
+  if (['RE_ENTER', 'RE-ENTER'].includes(v)) return 'posture is to re-enter on confirmation — priority only'
+  if (['HOLD'].includes(v)) return 'posture is to hold — priority only'
+  if (['WATCH'].includes(v)) return 'posture is to watch — no action yet'
+  if (['TRIM', 'EXIT', 'AVOID', 'TRIM_REVIEW', 'EXIT_REVIEW', 'SELL'].includes(v)) return 'posture is to reduce or exit — priority only'
+  return null
+}
+
+/** One plain sentence for a conviction score, shown beside the terse number (WS-D). */
+export function convictionPlainText(c: number | null | undefined): string {
+  if (c == null || !Number.isFinite(c)) return 'not scored yet'
+  if (c >= 75) return 'high conviction'
+  if (c >= 55) return 'mid conviction'
+  return 'low conviction'
 }
 
 /** Tone of the one next-step button. */
@@ -261,6 +291,50 @@ export function fmtTime(iso: string | null | undefined): string {
   return t.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }) + ' ET'
 }
 
+/** A zoned instant in Eastern Time. An unzoned stamp is not labeled UTC. */
+export function etStamp(at: string | null | undefined): string | null {
+  if (!at) return null
+  if (!/(?:Z|[+-]\d{2}:?\d{2})$/.test(at.trim())) return 'timezone unavailable'
+  const t = new Date(at)
+  if (Number.isNaN(t.getTime())) return 'timezone unavailable'
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  }).format(t) + ' ET'
+}
+
+/** One consolidated freshness line for a prospect card (WS-A): folds stale / evidence_at / expires_at /
+ *  conviction_as_of / review_state.status / review_state.publication_verified into one display string.
+ *  A null clock renders 'time unknown'; a row with no freshness signal at all reads 'time unknown'.
+ *  Display-only: reads existing payload fields, never writes, re-runs or calls a broker. */
+export function freshnessLine(r: Pick<ProspectRow, 'stale' | 'evidence_at' | 'expires_at' | 'conviction_as_of' | 'review_state'>): string {
+  const rs = r.review_state
+  const hasReview = !!(rs && rs.status && rs.status !== 'none')
+  const hasClock = !!(r.evidence_at || r.expires_at || r.conviction_as_of)
+  if (!hasClock && !hasReview && !r.stale) return 'time unknown'
+  const parts: string[] = []
+  if (r.stale) parts.push('Stale')
+  parts.push(`evidence ${fmtAsOf(r.evidence_at) ?? 'time unknown'}`)
+  parts.push(`expires ${fmtAsOf(r.expires_at) ?? 'time unknown'}`)
+  parts.push(`conviction ${fmtAsOf(r.conviction_as_of) ?? 'time unknown'}`)
+  if (hasReview) {
+    parts.push(`review ${rs!.status}`)
+    if (rs!.publication_verified) parts.push('published')
+  }
+  return parts.join(' · ')
+}
+
+/** The detail "Next" line. A resolve step is not offered when the conflict check itself is only a gap. */
+export function detailNextLine(action: NextAction, section: { headline?: string | null; findings?: unknown[] | null; gap?: { reason?: string } | string | null }): string {
+  const findings = section.findings || []
+  const gap = section.gap
+  const gapReason = !gap ? '' : typeof gap === 'string' ? gap : (gap.reason || '')
+  if (action.kind === 'resolve_conflict' && !section.headline && findings.length === 0 && gapReason) {
+    return `Conflict check unavailable — ${gapReason}`
+  }
+  if (action.label === '—') return 'nothing until new evidence arrives.'
+  return `${action.label} — ${action.reason}`
+}
+
 export function conflictCount(p: ProspectsPayload): number {
   if (p.conflict_count != null) return p.conflict_count
   return LANE_ORDER.filter(l => l !== 'expired')
@@ -329,6 +403,11 @@ export const TOOLTIPS = {
     + 'Set alert arms an advisory Watch alert; Protect first opens Open Trades.',
   sameRecord: 'What each surface shows for this security. Interim: only the sources this page reads are joined; the others say "not joined" instead of guessing.',
   classic: 'The previous Watch Intelligence view, kept for one release.',
+  freshness: 'What\'s current now — the record\'s freshness in one line: the stale flag, when evidence was observed, when the review window expires, '
+    + 'when conviction was last scored, and the CIO review state (with publication). A null clock reads "time unknown". Changes when the server recomposes the record; the next update is the producer\'s next run.',
+  workflow: 'The fixed pipeline a security passes through, with a LIVE/PARTIAL/UNWIRED/DARK/UNKNOWN status derived from the fields this record actually carries. '
+    + 'LIVE = a current field proves the stage produced; PARTIAL = stale or incomplete; UNWIRED = the field exists but is empty; DARK = no field on this record; UNKNOWN = not derivable from this record.',
+  review: 'The CIO review request state for this symbol — asked, queued, answered or blocked. Publication means the answer is linked into the canonical CIO memory; a request without it is research that has not been accepted.',
 }
 
 // ── CIO review request (batch 31) ────────────────────────────────────────────
@@ -348,15 +427,15 @@ export function reviewStateTone(s: ReviewState | null | undefined): 'success' | 
   return 'neutral'
 }
 
-const shortTime = (at: string | null | undefined) => at ? String(at).slice(0, 16).replace('T', ' ') : null
+const requestTime = (at: string | null | undefined) => at ? (etStamp(at) || 'timezone unavailable') : null
 
 /** One line for the chip; the server label first, the request times after it. Never a silent "already queued". */
 export function reviewStateText(s: ReviewState | null | undefined): string | null {
   if (!s || s.status === 'none') return null
   const parts = [s.label || s.status]
-  if (s.open && s.queued_at) parts.push(`asked ${shortTime(s.queued_at)} UTC`)
-  if (s.open && s.expires_at) parts.push(`expires ${shortTime(s.expires_at)} UTC`)
-  if (s.last_attempt?.at && s.status !== 'queued') parts.push(`last run ${shortTime(s.last_attempt.at)} UTC`)
+  if (s.open && s.queued_at) parts.push(`asked ${requestTime(s.queued_at)}`)
+  if (s.open && s.expires_at) parts.push(`expires ${requestTime(s.expires_at)}`)
+  if (s.last_attempt?.at && s.status !== 'queued') parts.push(`last run ${requestTime(s.last_attempt.at)}`)
   return parts.join(' · ')
 }
 
@@ -366,4 +445,17 @@ export function cioReviewNote(r: Pick<ProspectRow, 'conflicts' | 'next_action'>)
   if (flags.length) return `Watch conflict: ${flags.join(' | ')}`.slice(0, 240)
   if (r.next_action?.kind === 'cio_missing') return `Watch: no CIO view — ${r.next_action.gap?.reason || r.next_action.reason}`.slice(0, 240)
   return `Watch: ${r.next_action?.reason || 'review requested'}`.slice(0, 240)
+}
+
+export type CioMemoryState = { tone: 'success' | 'info' | 'warning' | 'neutral'; label: string } | null
+
+/** Whether this symbol's CIO review is linked into the canonical CIO memory. Read-only: describes
+ *  the record's linkage state (from scripts/lib/data_broker/watch_review_status.presentation_state),
+ *  never writes, re-runs, or calls the broker. */
+export function cioMemoryState(s: ReviewState | null | undefined): CioMemoryState {
+  if (!s || s.status === 'none') return null
+  if (s.publication_verified) return { tone: 'success', label: 'tracked in CIO memory' }
+  if (s.research_link_verified) return { tone: 'info', label: 'research recorded · CIO decision pending' }
+  if (s.status === 'answered') return { tone: 'warning', label: 'research published · CIO linkage pending' }
+  return { tone: 'neutral', label: 'not yet linked to CIO memory' }
 }

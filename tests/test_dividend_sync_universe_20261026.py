@@ -135,6 +135,30 @@ def test_failed_watch_select_rolls_back_before_any_write(state):
     assert conn.rollbacks >= 1 and "ZZA" in pri["symbols"]
 
 
+def test_failed_watch_rollback_keeps_both_diagnostics_and_other_sources(tmp_path, monkeypatch):
+    def watch_unavailable(_cur):
+        raise RuntimeError("SYNTHETIC_PRIVATE_SOURCE")
+
+    class FailedRollback:
+        calls = 0
+
+        def rollback(self):
+            self.calls += 1
+            raise OSError("SYNTHETIC_PRIVATE_ROLLBACK")
+
+    monkeypatch.setattr(sdd, "_held", lambda _root: ["ZZA"])
+    monkeypatch.setattr(sdd, "_watch", watch_unavailable)
+    monkeypatch.setattr(sdd, "_prospectus", lambda _root: ["ZZF"])
+    conn = FailedRollback()
+    result = sdd.priority_universe(None, state_root=tmp_path, conn=conn)
+    assert result["symbols"] == ["ZZA", "ZZF"] and conn.calls == 1
+    assert result["sources"]["watch"] == {
+        "status": "error", "error": "RuntimeError", "rollback_error": "OSError"
+    }
+    assert result["sources"]["held"]["status"] == result["sources"]["prospectus"]["status"] == "ok"
+    assert "SYNTHETIC_PRIVATE" not in json.dumps(result)
+
+
 def test_sync_fetches_priority_first_and_paces(state, monkeypatch):
     conn = Conn(_responder())
     monkeypatch.setattr(sdd, "_get_conn", lambda: conn)
@@ -183,12 +207,48 @@ def test_fund_fallback_trailing_annual_rate(monkeypatch):
     assert sdd._fetch_yf_dividend("ZZF")["annual_dividend_per_share"] == 3.0
 
 
-def test_dry_run_is_offline_and_names_the_universe(capsys, monkeypatch):
+def test_dry_run_is_offline_and_names_the_universe(state, capsys, monkeypatch):
+    before = {str(p.relative_to(state)): p.read_bytes() for p in state.rglob("*") if p.is_file()}
     monkeypatch.setattr(sdd, "_get_conn", lambda: (_ for _ in ()).throw(AssertionError("dry run opened a DB")))
+    monkeypatch.setattr(sdd, "sync", lambda: (_ for _ in ()).throw(AssertionError("dry run reached sync")))
     assert sdd.main(["--dry-run", "--json"]) == 0
     out = capsys.readouterr().out
     plan = json.loads(out.splitlines()[0])
     assert plan["priority_cap"] == sdd.PRIORITY_CAP and "held + Watch + prospectus first" in plan["universe"]
+    after = {str(p.relative_to(state)): p.read_bytes() for p in state.rglob("*") if p.is_file()}
+    assert after == before
+
+
+def test_synthetic_sync_success_has_durable_receipt(state, monkeypatch):
+    conn = Conn(_responder())
+    monkeypatch.setattr(sdd, "_get_conn", lambda: conn)
+    monkeypatch.setattr(sdd, "_fetch_yf_dividend", lambda _symbol: {"annual_dividend_per_share": 1.0})
+    path = state / "data/runtime/sync-dividend-data_last.json"
+    assert not path.exists()
+    assert sdd.main([]) == 0
+    receipt = json.loads(path.read_text())
+    assert receipt["status"] == "ok" and receipt["exit"] == 0 and receipt["ok_at"]
+    assert receipt["summary"]["updated"] == receipt["summary"]["symbols_checked"] == len(conn.upserts())
+    assert receipt["summary"]["priority_checked"] == 5
+
+
+def test_all_provider_failures_do_not_advance_success_receipt(state, monkeypatch):
+    receipt_lib = sdd._receipt_lib()
+    receipt_lib.write_lane_receipt(sdd.LANE_ID, ok=True, exit_code=0)
+    path = state / "data/runtime/sync-dividend-data_last.json"
+    previous = json.loads(path.read_text())["ok_at"]
+    monkeypatch.setattr(sdd, "_get_conn", lambda: Conn(_responder()))
+
+    def unavailable(symbol):
+        sdd._FETCH_ERRORS.append(f"{symbol}: SyntheticUnavailable")
+        return {}
+
+    monkeypatch.setattr(sdd, "_fetch_yf_dividend", unavailable)
+    assert sdd.main([]) == 1
+    receipt = json.loads(path.read_text())
+    assert receipt["status"] == "failed" and receipt["exit"] == 1
+    assert receipt["ok_at"] == previous and receipt["summary"]["updated"] == 0
+    assert receipt["summary"]["fetch_errors"] == receipt["summary"]["symbols_checked"]
 
 
 def test_retired_providers_come_from_the_registry():
@@ -199,27 +259,99 @@ def test_retired_providers_come_from_the_registry():
         dst.trusted_row_sql("source; DROP TABLE x")
 
 
+# Explicit owned research readers only: no global source walk across protected broker/order paths.
 _READERS = ["scripts/lib/subject_dossier.py", "scripts/portfolio_alerts.py", "scripts/portfolio_dividend_calendar.py",
             "scripts/lib/hermes_discovery/coverage.py", "scripts/materialize_income_engine.py",
-            "scripts/alex_retirement_advisor.py"]
+            "scripts/alex_retirement_advisor.py", "scripts/lib/prospectus/accuracy_audit.py",
+            "scripts/lib/data_broker/street_detail.py"]
 
 
-def test_every_reader_query_filters_retired_rows():
-    """Every SELECT ... FROM ticker_dividend_data in scripts/ carries the trusted-row predicate."""
-    offenders = []
-    # Not queries: the predicate's own docstring; a validator that greps a source file for a query string.
-    exempt = {"scripts/lib/dividend_source_trust.py", "scripts/validate_closed_loop_intelligence.py"}
-    for path in sorted((ROOT / "scripts").rglob("*.py")):
-        if str(path.relative_to(ROOT)) in exempt:
-            continue
-        text = path.read_text(encoding="utf-8", errors="replace")
-        for m in re.finditer(r"FROM ticker_dividend_data\b", text):
-            window = text[m.start(): m.start() + 400]
-            if "_div_trusted" not in window.lower():
-                offenders.append(f"{path.relative_to(ROOT)}:{text.count(chr(10), 0, m.start()) + 1}")
-    assert offenders == []
+def test_claimed_research_reader_queries_filter_retired_rows():
+    """Execute only the nine reader query expressions against a synthetic capture."""
+    import ast
+
+    from scripts.lib import merge_hold_paths
+
+    assert not ({"broker_order", "secrets"} & merge_hold_paths.held_classes(_READERS).keys())
+    symbol = "ZZ'; SELECT 'synthetic'--"
+    counts = {}
     for rel in _READERS:
-        assert "dividend_source_trust" in (ROOT / rel).read_text(encoding="utf-8"), rel
+        text = (ROOT / rel).read_bytes()
+        tree = compile(text, str(ROOT / rel), "exec", ast.PyCF_ONLY_AST)
+        calls = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if any(isinstance(arg, ast.Constant) and isinstance(arg.value, str)
+                   and re.search(r"FROM ticker_dividend_data\b", arg.value) for arg in node.args):
+                calls.append(node)
+        assert len(calls) == (2 if rel == "scripts/materialize_income_engine.py" else 1), rel
+        counts[rel] = len(calls)
+        captured = []
+
+        def capture(*args, **kwargs):
+            index = next(i for i, value in enumerate(args) if isinstance(value, str))
+            captured.append((args[index], args[index + 1]))
+            return []
+
+        context = {
+            "cur": types.SimpleNamespace(execute=capture), "db_query": capture,
+            "rows": capture, "_rows": capture, "symbol": symbol, "sym": symbol,
+            "symbols": [symbol], "held": [symbol], "tickers": [symbol], "days_ahead": 7,
+            "_DIV_RETIRED_PATTERN": dst.RETIRED_SOURCE_PATTERN,
+            "_div_retired_pattern": lambda: dst.RETIRED_SOURCE_PATTERN,
+        }
+        for node in calls:
+            # Evaluate the query call only, never the containing operational module.
+            eval(compile(ast.Expression(node), rel, "eval"), {"__builtins__": {}}, context)
+        assert len(captured) == len(calls), rel
+        for sql, params in captured:
+            assert "COALESCE(source, '') !~* %s" in sql, rel
+            assert params[-1] == dst.RETIRED_SOURCE_PATTERN, rel
+            assert sql.count("%s") == len(params), rel
+            assert symbol not in sql and symbol.upper() not in sql, rel
+            assert dst.RETIRED_SOURCE_PATTERN not in sql, rel
+    assert sum(counts.values()) == 9
+
+
+def test_bound_retired_provider_regex_keeps_matching_rules_and_rejects_invalid_names():
+    assert re.search(dst.RETIRED_SOURCE_PATTERN, "fmp_api", re.I)
+    assert not re.search(dst.RETIRED_SOURCE_PATTERN, "yfinance", re.I)
+    pattern = dst.retired_source_pattern(("legacy", "older"))
+    for source in ("legacy", "LEGACY_api", "older-feed"):
+        assert re.search(pattern, source, re.I), source
+    for source in ("legacyx", "current", "", "vendor_legacy"):
+        assert not re.search(pattern, source, re.I), source
+    for providers in [("invalid|alternative",), ("name'; SELECT 1--",), ("",)]:
+        with pytest.raises(ValueError, match="invalid retired provider name"):
+            dst.retired_source_pattern(providers)
+
+def test_street_dividends_keeps_current_main_observation_and_filters_retired_rows():
+    """Real read-model function, injected synthetic query; never DB/provider/broker execution."""
+    import importlib.util
+
+    path = ROOT / "scripts/lib/data_broker/street_detail.py"
+    spec = importlib.util.spec_from_file_location("dividend_recovery_street_detail", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    queries = []
+    observed = "2030-01-01T12:00:00Z"
+
+    def query(sql, params, *, fetch):
+        queries.append(sql)
+        assert fetch == "all"
+        if "FROM ticker_dividend_data" in sql:
+            assert "COALESCE(source, '') !~* %s" in sql
+            assert params == ("ZZZ", dst.RETIRED_SOURCE_PATTERN)
+            return [{"ex_div_date": "2030-01-03", "updated_at": observed}]
+        assert params == ("ZZZ",)
+        return [{"ex_date": "2030-01-02", "amount": 1.5}]
+
+    result = module.dividends(query, "zzz")
+    assert result == {"history": [{"ex_date": "2030-01-02", "amount": 1.5}],
+                      "recorded_next_ex": "2030-01-03", "recorded_observed_at": observed}
+    assert len(queries) == 2
 
 
 def test_migration_marks_never_deletes():

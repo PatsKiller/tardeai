@@ -7,6 +7,7 @@ no thesis now files a request here. The acquisition runner and the curation moni
 serve open requests first. A request closes when acquisition publishes (or finds no
 material change) after it, or when it ages out. Append-only; nothing is deleted.
 """
+
 from __future__ import annotations
 
 import json
@@ -39,13 +40,26 @@ def _rows(path: Path) -> list[dict[str, Any]]:
     return out
 
 
-def request(symbol: str, *, reason: str, source: str, root: Any = None,
-            now: Optional[datetime] = None, extra: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+def request(
+    symbol: str,
+    *,
+    reason: str,
+    source: str,
+    root: Any = None,
+    now: Optional[datetime] = None,
+    extra: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
     """Append one request. ``extra`` carries optional lineage (request_id, security_guid, identity_status,
     conflict_key); it never overrides the core fields."""
     now = now or datetime.now(timezone.utc)
-    row = {"schema": "SymbolThesisPriorityRequest@v1", "symbol": str(symbol).upper(), "reason": reason[:300],
-           "source": source, "requested_at": now.isoformat(), "authority": "READ_ONLY_ADVISORY"}
+    row = {
+        "schema": "SymbolThesisPriorityRequest@v1",
+        "symbol": str(symbol).upper(),
+        "reason": reason[:300],
+        "source": source,
+        "requested_at": now.isoformat(),
+        "authority": "READ_ONLY_ADVISORY",
+    }
     row = {**{k: v for k, v in (extra or {}).items() if v is not None}, **row}
     path = _root(root).joinpath(*RELPATH)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -54,11 +68,32 @@ def request(symbol: str, *, reason: str, source: str, root: Any = None,
     return row
 
 
+def completed(attempt: dict[str, Any]) -> bool:
+    """New linked requests stay open while their durable CIO publication is pending."""
+    return attempt.get("status") in DONE and (
+        "cio_link" not in attempt or (attempt.get("cio_link") or {}).get("ok") is True
+    )
+
+
+def answers_request(attempt: dict[str, Any], request: dict[str, Any]) -> bool:
+    if not completed(attempt):
+        return False
+    if request.get("request_id") and attempt.get("request_id") != request["request_id"]:
+        return False
+    try:
+        asked = datetime.fromisoformat(str(request.get("requested_at")).replace("Z", "+00:00"))
+        answered = datetime.fromisoformat(str(attempt.get("at") or attempt.get("as_of")).replace("Z", "+00:00"))
+        return bool(asked.tzinfo and answered.tzinfo and answered >= asked)
+    except (ValueError, TypeError):
+        return False
+
+
 def open_requests(root: Any = None, *, now: Optional[datetime] = None, ttl_days: float = TTL_DAYS) -> list[str]:
     """Symbols with an open request, oldest request first."""
     now = now or datetime.now(timezone.utc)
     base = _root(root)
     first: dict[str, str] = {}
+    attempts = _rows(base.joinpath(*LEDGER_RELPATH))
     for r in _rows(base.joinpath(*RELPATH)):
         sym, at = str(r.get("symbol") or "").upper(), str(r.get("requested_at") or "")
         if not sym or not at:
@@ -68,16 +103,13 @@ def open_requests(root: Any = None, *, now: Optional[datetime] = None, ttl_days:
                 continue
         except ValueError:
             continue
+        if any(str(a.get("symbol") or "").upper() == sym and answers_request(a, r) for a in attempts):
+            continue
         first.setdefault(sym, at)
         first[sym] = min(first[sym], at)
     if not first:
         return []
-    done_at: dict[str, str] = {}
-    for r in _rows(base.joinpath(*LEDGER_RELPATH)):
-        sym = str(r.get("symbol") or "").upper()
-        if sym in first and r.get("status") in DONE:
-            done_at[sym] = max(done_at.get(sym, ""), str(r.get("as_of") or ""))
-    return [s for s, at in sorted(first.items(), key=lambda kv: kv[1]) if done_at.get(s, "") < at]
+    return [s for s, _at in sorted(first.items(), key=lambda kv: kv[1])]
 
 
 # Who asked, in serving order (operator 2026-10-09): a name the operator flags from the opportunity view first, then
@@ -100,7 +132,6 @@ def open_requests_ranked(root: Any = None, *, now: Optional[datetime] = None, tt
             best[sym] = min(best.get(sym, rank), rank)
     pos = {s: i for i, s in enumerate(syms)}
     return sorted(syms, key=lambda s: (best.get(s, len(SOURCE_ORDER)), pos[s]))
-
 
 
 # ── Request state for a surface (Watch rows, review-request response) ───────────────────────────────────────────
@@ -139,11 +170,20 @@ def _attempts(path: Path) -> dict[str, list[dict[str, Any]]]:
         sym = str(r.get("symbol") or "").upper()
         if not sym or not r.get("status"):
             continue
-        out.setdefault(sym, []).append({
-            "status": str(r.get("status")), "at": str(r.get("as_of") or ""),
-            "block_reason": r.get("block_reason") or (r.get("gate") if r.get("status") == "BLOCKED" else None),
-            "remaining_gaps": [str(g) for g in r.get("remaining_gaps") or []],
-            "pending_curation_n": r.get("pending_curation_n"), "error": r.get("error")})
+        out.setdefault(sym, []).append(
+            {
+                "status": str(r.get("status")),
+                "at": str(r.get("as_of") or ""),
+                "block_reason": r.get("block_reason") or (r.get("gate") if r.get("status") == "BLOCKED" else None),
+                "remaining_gaps": [str(g) for g in r.get("remaining_gaps") or []],
+                "pending_curation_n": r.get("pending_curation_n"),
+                "error": r.get("error"),
+                "request_id": r.get("request_id"),
+                "security_guid": r.get("security_guid"),
+                "publication": r.get("publication"),
+                **({"cio_link": r["cio_link"]} if "cio_link" in r else {}),
+            }
+        )
     _STATE_CACHE["attempts"] = (sig, out)
     return out
 
@@ -167,8 +207,14 @@ def attempt_reason(attempt: dict[str, Any]) -> str:
     return str(status or "unknown").replace("_", " ").lower()
 
 
-def review_states(symbols, root: Any = None, *, now: Optional[datetime] = None,
-                  ttl_days: float = TTL_DAYS, run_label: Optional[str] = None) -> dict[str, dict[str, Any]]:
+def review_states(
+    symbols,
+    root: Any = None,
+    *,
+    now: Optional[datetime] = None,
+    ttl_days: float = TTL_DAYS,
+    run_label: Optional[str] = None,
+) -> dict[str, dict[str, Any]]:
     """ReviewRequestState@v1 per symbol from the priority queue and the acquisition ledger (read-only).
 
     status: none | queued | blocked | failed | waiting_budget | answered | expired. ``label`` is display-ready.
@@ -188,18 +234,34 @@ def review_states(symbols, root: Any = None, *, now: Optional[datetime] = None,
     for sym in wanted:
         reqs = sorted(requests.get(sym) or [], key=lambda r: str(r.get("requested_at")))
         tries = sorted(attempts.get(sym) or [], key=lambda a: a["at"])
-        state: dict[str, Any] = {"schema": "ReviewRequestState@v1", "symbol": sym, "status": "none",
-                                 "label": "Not requested", "open": False, "queued_at": None, "requested_by": None,
-                                 "expires_at": None, "queue_position": None, "queue_length": len(ranked),
-                                 "last_attempt": None, "attempts_since_request": 0, "conflict_key": None,
-                                 "request_id": None, "next_run": run_label}
+        state: dict[str, Any] = {
+            "schema": "ReviewRequestState@v1",
+            "symbol": sym,
+            "status": "none",
+            "label": "Not requested",
+            "open": False,
+            "queued_at": None,
+            "requested_by": None,
+            "expires_at": None,
+            "queue_position": None,
+            "queue_length": len(ranked),
+            "last_attempt": None,
+            "attempts_since_request": 0,
+            "conflict_key": None,
+            "request_id": None,
+            "next_run": run_label,
+        }
         if not reqs:
             out[sym] = state
             continue
-        done_at = max((a["at"] for a in tries if a["status"] in DONE), default="")
+        done_at = max((a["at"] for a in tries if completed(a)), default="")
+        publications = [
+            a for a in tries if a["status"] == "PUBLISHED" or (a["status"] in DONE and a.get("publication"))
+        ]
+        state["last_publication"] = publications[-1] if publications else None
         latest = reqs[-1]
         horizon = (now - timedelta(days=ttl_days)).isoformat()
-        unanswered = [r for r in reqs if str(r["requested_at"]) > done_at]
+        unanswered = [r for r in reqs if not any(answers_request(a, r) for a in tries)]
         live = [r for r in unanswered if str(r["requested_at"]) >= horizon]  # aged-out asks never date an open request
         first_open = (live or unanswered or [None])[0]
         try:
@@ -209,10 +271,16 @@ def review_states(symbols, root: Any = None, *, now: Optional[datetime] = None,
         since = str((first_open or latest)["requested_at"])
         later = [a for a in tries if a["at"] >= since]
         last = (later or tries or [None])[-1]
-        state.update(queued_at=since, requested_by=(first_open or latest).get("source"),
-                     expires_at=expires.isoformat() if expires else None,
-                     attempts_since_request=len(later), conflict_key=latest.get("conflict_key"),
-                     request_id=latest.get("request_id"))
+        state.update(
+            queued_at=since,
+            requested_by=(first_open or latest).get("source"),
+            expires_at=expires.isoformat() if expires else None,
+            attempts_since_request=len(later),
+            conflict_key=latest.get("conflict_key"),
+            request_id=latest.get("request_id"),
+            identity_status=latest.get("identity_status"),
+            security_guid=latest.get("security_guid"),
+        )
         if last:
             state["last_attempt"] = {**last, "reason": attempt_reason(last)}
         if sym in ranked:
@@ -223,10 +291,18 @@ def review_states(symbols, root: Any = None, *, now: Optional[datetime] = None,
                 state.update(status="blocked", label=f"Blocked: {attempt_reason(later[-1])}")
             elif later[-1]["status"] == "LLM_BUDGET_EXHAUSTED":
                 state.update(status="waiting_budget", label=f"Queued: {attempt_reason(later[-1])}")
+            elif later[-1].get("cio_link") and not later[-1]["cio_link"].get("ok"):
+                reason = str(later[-1]["cio_link"].get("reason") or "canonical_link_pending").replace("_", " ")
+                state.update(status="blocked", label=f"Research published; CIO memory link pending — {reason}")
             else:
                 state.update(status="failed", label=f"Retrying: {attempt_reason(later[-1])}")
         elif first_open is None and done_at:
-            state.update(status="answered", label=f"Answered {done_at[:10]}: {STATUS_WORDS.get(last['status'], last['status']) if last else ''}".rstrip(": "))
+            state.update(
+                status="answered",
+                label=f"Answered {done_at[:10]}: {STATUS_WORDS.get(last['status'], last['status']) if last else ''}".rstrip(
+                    ": "
+                ),
+            )
         else:
             state.update(status="expired", label="Request expired without a CIO view — ask again")
         out[sym] = state

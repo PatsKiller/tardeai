@@ -10,15 +10,16 @@ version-history row says ACTIVE and §27.3 is present; every mutating caller ref
 Never touched here: broker-execution code, kill-switch code, credentials, AGENTS.md, guard surfaces. The kill-switch
 ENGAGE kind only runs the existing operator CLI (``scripts/brokers/kill_switches.py --enable``) as a subprocess; its
 CLEAR kind is NOT_SUPPORTED (an ``execution-engineering`` grant would be needed to call or test the clear path).
-Release-train resume and arm (2026-10-22, AGENTS.md 19.0.0 §25.4 / §27.3) are risky kinds executed by the host
+Deploy resume (clear the deploy STOP; 2026-10-22, AGENTS.md §25.10 / §27.3) is a risky kind executed by the host
 applier: the applier hands ``release_control`` a ``PasskeyProof`` and a hook bound to the one HMAC-signed approval it is
 applying, which must have been stepped up with a fresh passkey assertion (factor ``passkey``) and must carry the phrase
-``release_control`` expects now (``RESUME EPOCH <n>`` / ``ARM EPOCH <n>``). Scope change and revoke stay host-CLI only.
+``release_control`` expects now (``RESUME EPOCH <n>``). The retired release train's pause / arm / Run now / scope /
+revoke kinds were removed 2026-10-27 (operator directive).
 
 Pre-build check (AGENTS §13.5): reuses ``check_registry_runtime_truth.parse_live_lanes`` / ``active_cron_lines``, the
 ``# PAUSED <date> <note> <line>`` crontab convention (``options_desk_accuracy``, ``pipeline_freshness_slo``), the
-live-list backup naming of ``n8n_cutover_wave`` (``<file>.bak-<UTC>-<tag>``), ``release_train_stop.request_stop`` and
-``release_control.ReleaseControl.request_pause``, ``bin/guard grant|revoke|id``, ``pipeline_manifest
+live-list backup naming of ``n8n_cutover_wave`` (``<file>.bak-<UTC>-<tag>``), ``deploy_stop.request_stop``,
+``bin/guard grant|revoke|id``, ``pipeline_manifest
 .forbidden_command_tokens`` (display only). AUTHORITY: OPERATOR_ONLY. MBI_BEHAVIOR = 0.
 """
 
@@ -233,24 +234,17 @@ class KindSpec:
     reason: Optional[str] = None
 
 
-_NS_RELEASE = ("scope change and revoke are not built on this page yet (only resume and arm have the passkey proof, "
-               "2026-10-22); each is its own reviewed PR. Host terminal: scripts/release_control_cli.py")
-_UNDO_RELEASE = ("the way back is the other direction: STOP or pause (one click); resume and arm issue a new epoch, "
+_UNDO_DEPLOY_STOP = ("the way back is Deploys: resume (passkey) or the host CLI: "
+                     "python3 scripts/release_window.py clear-stop")
+_UNDO_RELEASE = ("the way back is the other direction: deploy STOP (one click); resume issues a new epoch, "
                  "and no earlier epoch is ever valid again")
 _NS_CLEAR = ("the kill-switch clear path (scripts/brokers/kill_switches.py --disable) is broker-execution code; calling "
              "or testing it from the applier needs an execution-engineering grant (§0 rule 2, §27.4). Host terminal: "
              "scripts/brokers/kill_switches.py --disable <level> --confirm <phrase>")
 
 KINDS: dict[str, KindSpec] = {k.kind: k for k in (
-    KindSpec("release_train.stop", "Release train: STOP", SAFE, EXEC_CC, "jobs"),
-    KindSpec("release_train.pause", "Release train: pause after the current train", SAFE, EXEC_CC, "jobs"),
-    KindSpec("release_train.resume", "Release train: resume", RISKY, EXEC_APPLIER, "jobs"),
-    KindSpec("release_train.arm", "Release train: arm", RISKY, EXEC_APPLIER, "jobs"),
-    # AGENTS.md 22.0.0 PROPOSED: live canary Run now via Ops Controls (passkey + typed phrase). Gated at plan/apply
-    # by release_train_run_now.policy_gate; until ACTIVE the kind is listed but every mutation refuses POLICY_NOT_ACTIVE.
-    KindSpec("release_train.run_now", "Release train: Run now (live canary force)", RISKY, EXEC_APPLIER, "jobs"),
-    KindSpec("release_train.change_scope", "Release train: change scope", RISKY, EXEC_CC, "jobs", False, _NS_RELEASE),
-    KindSpec("release_train.revoke", "Release train: revoke delegation", RISKY, EXEC_CC, "jobs", False, _NS_RELEASE),
+    KindSpec("deploy.stop", "Deploys: STOP (hold host promote)", SAFE, EXEC_CC, "jobs"),
+    KindSpec("deploy.resume", "Deploys: resume (clear the deploy STOP)", RISKY, EXEC_APPLIER, "jobs"),
     KindSpec("kill_switch.engage", "Kill switch: engage", SAFE, EXEC_APPLIER, "jobs"),
     KindSpec("kill_switch.clear", "Kill switch: clear", RISKY, EXEC_APPLIER, "jobs", False, _NS_CLEAR),
     KindSpec("crontab.pause", "Pause a cron line", RISKY, EXEC_APPLIER, "jobs"),
@@ -347,7 +341,6 @@ class Hosts:
     runner: Runner = field(default=_run)
     clock: Callable[[], datetime] = field(default=utc_now)
     release_state_dir: Optional[Path] = None
-    release_delegation_path: Optional[Path] = None   # None: release_delegation.DEFAULT_PATH (host, outside the repo)
 
     # crontab
     def crontab_read(self) -> str:
@@ -403,10 +396,10 @@ class Hosts:
         gid = out.strip()
         return gid if rc == 0 and GRANT_ID_RE.fullmatch(gid or "") else None
 
-    # release train
+    # deploy STOP latch + release control (the dir the host deploy_on_main poller reads)
     @property
     def release_dir(self) -> Path:
-        return self.release_state_dir or expand(self.cfg["release_train"]["state_dir"])
+        return self.release_state_dir or expand(self.cfg["deploy"]["state_dir"])
 
     # kill switch (existing operator CLI; never modified here)
     def kill_switch(self, *args: str) -> tuple[int, str, str]:
@@ -732,22 +725,16 @@ def plan_change(kind: str, params: Mapping[str, Any], hosts: Hosts, store: Any, 
                     undo=None, undo_reason="a revoked grant cannot be restored; issue a new one",
                     payload={"argv": ["revoke", tier, "--grant-id", gid]})
 
-    if kind in ("release_train.stop", "release_train.pause"):
+    if kind == "deploy.stop":
         given = str(p.get("reason") or "").strip()
         if len(given) > 240 or any(ord(c) < 32 for c in given):
             raise OpsError("PARAMS_INVALID", "reason invalid", 400)
         reason = "Ops Controls (operator)" + (f": {given}" if given else "")
-        what = "STOP: latch the release STOP and stop every capability" if kind.endswith("stop") else \
-            "pause after the current train"
-        return Plan(kind, {"reason": reason}, f"release train: {what}", None, None, "n/a",
-                    undo=None, undo_reason=_NS_RELEASE)
+        return Plan(kind, {"reason": reason}, "deploys: latch the deploy STOP (the host poller stops promoting)",
+                    None, None, "n/a", undo=None, undo_reason=_UNDO_DEPLOY_STOP)
 
-    if kind in ("release_train.resume", "release_train.arm"):
+    if kind == "deploy.resume":
         return _plan_release(kind, p, hosts)
-    if kind == "release_train.run_now":
-        from scripts.lib import release_train_run_now as RN
-
-        return RN.plan(p, hosts, request_id=request_id, agents_path=None)
 
     if kind == "kill_switch.engage":
         reason = str(p.get("reason") or "").strip() or "operator, Ops Controls"
@@ -794,7 +781,7 @@ def apply_change(kind: str, params: Mapping[str, Any], expected_digest: Optional
 
     Raises OpsError on refusal before any write; a failure after the write is returned with outcome FAILED and the
     backup reference (the operator restores from it; nothing auto-remediates, §0 rule 5). ``approval`` (the signed
-    request row) and ``hmac_key`` are needed only by the release-train operator kinds, whose proof is that approval.
+    request row) and ``hmac_key`` are needed only by the deploy resume kind, whose proof is that approval.
     """
     plan = plan_change(kind, params, hosts, store, request_id=request_id, actor=actor)
     if expected_digest and plan.digest != "n/a" and plan.digest != expected_digest:
@@ -869,8 +856,8 @@ def apply_change(kind: str, params: Mapping[str, Any], expected_digest: Optional
         res["detail"] = (out or err or "")[-300:]
         return res
 
-    if kind == "release_train.stop":
-        from scripts.lib import release_train_stop as rts
+    if kind == "deploy.stop":
+        from scripts.lib import deploy_stop as rts
 
         http, body = rts.request_stop(actor=actor, reason=plan.params["reason"], idempotency_key=request_id,
                                       csrf_ok=True, body={"ops_controls_request": request_id},
@@ -881,32 +868,14 @@ def apply_change(kind: str, params: Mapping[str, Any], expected_digest: Optional
         res["code"] = None if http < 300 else str(body.get("code") or body.get("error") or http)
         return res
 
-    if kind in ("release_train.resume", "release_train.arm"):
+    if kind == "deploy.resume":
         return _apply_release(kind, plan, hosts, request_id=request_id, actor=actor, approval=approval,
                               hmac_key=hmac_key, res=res)
-    if kind == "release_train.run_now":
-        from scripts.lib import release_train_run_now as RN
-
-        return RN.apply(plan, hosts, request_id=request_id, actor=actor, approval=approval,
-                        hmac_key=hmac_key, res=res)
-
-    if kind == "release_train.pause":
-        from scripts.lib import release_control as RC
-
-        ctl = RC.ReleaseControl(hosts.release_dir)
-        try:
-            out = ctl.request_pause(RC.Actor("cc", actor or "ops-controls"), plan.params["reason"],
-                                    idempotency_key=request_id)
-        except RC.ControlRefused as exc:
-            raise OpsError(getattr(exc, "code", "CONTROL_REFUSED"), str(exc)[:200], 409) from exc
-        res["verify"] = {"mode": out.get("mode"), "outcome": out.get("outcome")}
-        res["outcome"] = "APPLIED"
-        return res
 
     raise OpsError("KIND_NOT_SUPPORTED", f"{kind} is not applied by this path", 409)
 
 
-# ── release train: resume / arm with a passkey proof (AGENTS.md 19.0.0 §25.4, §27.3) ─────────────────────────────
+# ── deploys: resume (clear the deploy STOP) with a passkey proof (AGENTS.md §25.10, §27.3) ──────────────────────
 
 
 def _release_view(hosts: Hosts):
@@ -921,44 +890,25 @@ def _release_digest(v: Any, delegation_digest: Optional[str] = None) -> str:
                                   "delegation": delegation_digest}))
 
 
-def _delegation(hosts: Hosts) -> Any:
-    from scripts.lib import release_delegation as RD
-
-    dv = RD.load(hosts.release_delegation_path)
-    if not dv.authorized:
-        raise OpsError(f"DELEGATION_{dv.code}", (dv.detail or "the standing release delegation is not authorized; "
-                                                 "create or fix it at the host first")[:200], 409)
-    return dv
-
-
 def _plan_release(kind: str, p: Mapping[str, Any], hosts: Hosts) -> Plan:
     reason = " ".join(str(p.get("reason") or "").split())
     if len(reason) < 4 or len(reason) > 400 or any(ord(c) < 32 for c in reason):
         raise OpsError("PARAMS_INVALID", "reason must be 4-400 printable characters (it is recorded)", 400)
     RC, ctl, v = _release_view(hosts)
-    command = kind.split(".", 1)[1]
+    command = "resume"
     before = {"mode": v.mode, "epoch": v.epoch, "latch": v.latch_state,
               "stop_reason": (v.stop or {}).get("reason") if isinstance(v.stop, dict) else None}
-    if kind == "release_train.resume":
-        if v.mode in (RC.UNARMED, RC.CORRUPT, RC.REVOKED):
-            raise OpsError("RESUME_NOT_APPLICABLE", f"release train is {v.mode}: arm it instead", 409)
-        if v.mode in (RC.STOP_REQUESTED, RC.STOP_ACKNOWLEDGED, RC.SETTLING):
-            raise OpsError("STOP_NOT_SETTLED", f"{v.mode}: the controller has not reached stopped; wait", 409)
-        if v.mode == RC.RUNNING and v.latch_state == RC.LATCH_ABSENT:
-            raise OpsError("NO_CHANGE", "the release train is running; nothing to resume", 409)
-        dd = None
-        summary = (f"resume the release train: {v.mode} → RUNNING, epoch {v.epoch} → {int(v.epoch or 0) + 1}"
-                   + (", STOP latch archived by rename" if v.latch_state != RC.LATCH_ABSENT else ""))
-        warnings = ["every capability issued before the stop stays invalid; the train waits for its next window"]
-    else:
-        if v.mode not in (RC.UNARMED, RC.REVOKED):
-            raise OpsError("ALREADY_ARMED", f"release train is {v.mode}", 409)
-        if v.latch_state != RC.LATCH_ABSENT:
-            raise OpsError("STOP_LATCH_PRESENT", "a STOP latch is present; resume clears it", 409)
-        dd = _delegation(hosts).digest
-        summary = (f"arm the release train under delegation {str(dd)[:12]}: {v.mode} → RUNNING, epoch "
-                   f"{int(v.epoch or 0)} → {int(v.epoch or 0) + 1}")
-        warnings = ["the scheduled train may merge and release under the standing delegation once armed"]
+    if v.mode in (RC.UNARMED, RC.CORRUPT, RC.REVOKED):
+        raise OpsError("RESUME_NOT_APPLICABLE", f"release control is {v.mode}: clear the deploy STOP at the host "
+                       "(python3 scripts/release_window.py clear-stop --reason ...)", 409)
+    if v.mode in (RC.STOP_REQUESTED, RC.STOP_ACKNOWLEDGED, RC.SETTLING):
+        raise OpsError("STOP_NOT_SETTLED", f"{v.mode}: the stop has not settled; wait", 409)
+    if v.mode == RC.RUNNING and v.latch_state == RC.LATCH_ABSENT:
+        raise OpsError("NO_CHANGE", "the deploy STOP is clear; nothing to resume", 409)
+    dd = None
+    summary = (f"deploys: clear the deploy STOP and resume host promote: {v.mode} → RUNNING, epoch {v.epoch} → "
+               f"{int(v.epoch or 0) + 1}" + (", STOP latch archived by rename" if v.latch_state != RC.LATCH_ABSENT else ""))
+    warnings = ["the host deploy_on_main poller promotes the next new main SHA once the STOP is clear"]
     after = {"mode": RC.RUNNING, "epoch": int(v.epoch or 0) + 1, "latch": RC.LATCH_ABSENT}
     return Plan(kind, {"reason": reason}, summary, before, after, _release_digest(v, dd),
                 diff=[f"- mode {v.mode} epoch {v.epoch}", f"+ mode RUNNING epoch {after['epoch']}"],
@@ -985,7 +935,7 @@ class ApprovalPasskeyHook:
         a = self.approval
         return bool(
             A.verify_approval(self.hmac_key, a)
-            and a.get("kind") == self.kind == f"release_train.{command}"
+            and a.get("kind") == self.kind == f"deploy.{command}"
             and a.get("direction") == RISKY and a.get("executor") == EXEC_APPLIER
             and a.get("stepup_factor") == "passkey" and a.get("stepup_credential_id")
             and proof.credential_id == a.get("stepup_credential_id")
@@ -999,7 +949,7 @@ def _apply_release(kind: str, plan: Plan, hosts: Hosts, *, request_id: str, acto
     from scripts.lib import release_control as RC
 
     if not approval or approval.get("request_id") != request_id:
-        raise OpsError("PROOF_MISSING", "release-train operator kinds are applied only from a signed approval", 409)
+        raise OpsError("PROOF_MISSING", "deploy resume is applied only from a signed approval", 409)
     hook = ApprovalPasskeyHook(approval, hmac_key, kind)
     ctl = RC.ReleaseControl(hosts.release_dir, passkey_hook=hook)
     who = RC.Actor("passkey", actor or str(approval.get("actor") or ""))
@@ -1008,16 +958,10 @@ def _apply_release(kind: str, plan: Plan, hosts: Hosts, *, request_id: str, acto
                             confirmation=" ".join(str(approval.get("phrase") or "").split()))
     reason = f"{plan.params['reason']} (ops-controls {request_id})"
     try:
-        if kind == "release_train.resume":
-            v = ctl.view()
-            readiness = {"checked_at": RC.utc_iso(ctl.clock()), "source": "ops_controls_applier",
-                         "shown": {"mode": v.mode, "epoch": v.epoch, "latch": v.latch_state, "stop": v.stop}}
-            out = ctl.resume(who, proof, reason=reason, readiness=readiness)
-        else:
-            dd = _delegation(hosts).digest
-            if dd != plan.payload.get("delegation_digest"):
-                raise OpsError("STATE_CHANGED", "the delegation changed since the preview; preview again", 409)
-            out = ctl.arm(who, proof, policy_digest=dd, reason=reason)
+        v = ctl.view()
+        readiness = {"checked_at": RC.utc_iso(ctl.clock()), "source": "ops_controls_applier",
+                     "shown": {"mode": v.mode, "epoch": v.epoch, "latch": v.latch_state, "stop": v.stop}}
+        out = ctl.resume(who, proof, reason=reason, readiness=readiness)
     except RC.ControlRefused as exc:
         raise OpsError(exc.code, str(exc.detail)[:200], 409) from exc
     after = ctl.view()

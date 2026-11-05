@@ -374,6 +374,15 @@ def _insert_news_article(cur, title: str, url: str, symbol: str, source: str, qu
     return receipt.rows_written > 0
 
 
+def _sec_edgar_headers(accept: str = "application/json") -> dict:
+    """SEC User-Agent from scripts/lib/sec_edgar_client.py (DSN-20261101 P0-T2); raises SecContactError, no fallback."""
+    try:
+        from lib import sec_edgar_client as _c
+    except ImportError:
+        from scripts.lib import sec_edgar_client as _c
+    return _c.headers(accept)
+
+
 def pull_sec_edgar(symbol: str, conn) -> int:
     """SEC EDGAR full-text search. Free, no API key. 8-K = catalyst source for micro-caps."""
     try:
@@ -388,7 +397,7 @@ def pull_sec_edgar(symbol: str, conn) -> int:
                 "enddt": end_date,
                 "forms": "8-K,S-1,S-3,424B1,424B3,424B5",
             },
-            headers={"User-Agent": "TradeAI/1.0 (john@jwwhiting.com)"},
+            headers=_sec_edgar_headers(),
             timeout=10,
         )
         if resp.status_code != 200:

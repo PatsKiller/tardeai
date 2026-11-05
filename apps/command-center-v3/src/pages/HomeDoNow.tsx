@@ -2,17 +2,18 @@
  *
  *  Slim header (portfolio, today, YTD, market, positions STALE badge + Refresh positions) → ONE Do-now queue
  *  (components/home/DoNowQueue.tsx over GET /api/v2/home/do-now) beside Accounts / What moved your book today / three
- *  numbers → Best opportunities, Market in one look, System pulse → collapsed drawers (AI briefing, Release train with
+ *  numbers → Best opportunities, Market in one look, System pulse → collapsed drawers (AI briefing, Deploys with
  *  STOP, Agents & Hermes, News & movers). Drawer bodies mount only when opened, so a closed drawer polls nothing.
  *
  *  Sources (every number's tooltip names its own): /api/v2/overview (header, movers, cash; holdings.json),
  *  /api/v2/portfolio/performance (accounts, YTD), /api/v2/home/do-now (queue, heat), /api/v2/cio/pages
  *  (categorized stop protection, shared with Risk), /api/v2/risk-regime/latest, /api/v2/trade-ai/summary, /api/v2/defense/posture,
- *  /api/v3/opportunities, /api/v2/system/platform-health, release-train summary, /api/v2/command.
+ *  /api/v3/opportunities, /api/v2/system/platform-health, /api/v2/ops/deploys, /api/v2/command.
  *  Protection uses the categorized CIO positions read model, shared with Risk; summary performance uses overview/performance.
  *  The previous Home stays reachable at ?view=classic for one release. */
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import { BEST_OPPORTUNITIES_API, BEST_OPPORTUNITIES_PATH } from '../lib/bestOpportunities'
 import { useApi } from '../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars, type Tone } from '../lib/designTokens'
 import {
@@ -22,17 +23,20 @@ import { platformHealthFrom, countsLabel } from '../lib/platformHealth'
 import { renderSetupCounts } from '../lib/setupRunSummary'
 import { tradeAiSurfaceFreshness } from '../lib/surfaceFreshness'
 import { runLabel } from '../lib/homeLabels'
-import { RELEASE_TRAIN_PATHS, freshness, summaryFrom, type ReleaseTrainSummaryWire } from '../lib/releaseTrain'
+import { DEPLOYS_PATHS, deploysSummary, freshness, type DeploysStatusWire } from '../lib/deploys'
 import DoNowQueue from '../components/home/DoNowQueue'
 import { AccountChip, AccountsBadge } from '../components/AccountChip'
 import { accountsBadge } from '../lib/accountLabels'
-import DeployHoldStrip from '../components/home/DeployHoldStrip'
+import DeploysPanel from '../components/home/DeploysPanel'
 import MarketMoversBoard from '../components/home/MarketMoversBoard'
 import MajorNewsGrid from '../components/home/MajorNewsGrid'
 import { AiIntelligenceBriefing, ExecutiveBriefCard, HermesGatewayLine } from '../components/home/HomeTrustRender'
 import { useOpenSymbol } from '../components/opportunity/OpportunityContext'
 import { MobileDetailSheet, useMobilePageDetail } from '../components/MobileDetailSheet'
 import { readableTime, readableTimesInText } from '../lib/readableTime'
+import { MarketRiskBanner, MarketRiskCompact, MarketRiskFact } from '../components/home/MarketRiskBanner'
+import { MarketRiskSummary } from '../components/home/MarketRiskSummary'
+import { unwrapMarketRisk } from '../lib/marketRisk'
 
 const unwrap = (d: any) => (d?.data && typeof d.data === 'object' && !Array.isArray(d.data) ? d.data : d)
 const signTone = (v: number | null | undefined): string => (v == null ? TOKENS.text[2] : v < 0 ? TOKENS.danger : v > 0 ? TOKENS.success : TOKENS.text[2])
@@ -46,11 +50,11 @@ function useNow(ms: number): number {
 const card = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.lg, padding: '12px 14px', display: 'flex', flexDirection: 'column' as const, gap: 8, minWidth: 0 }
 const label = { fontSize: TYPE.xs, color: TOKENS.text[2], textTransform: 'uppercase' as const, letterSpacing: '0.06em' }
 
-function CardHead({ title, to, linkText }: { title: string; to: string; linkText: string }) {
+function CardHead({ title, to, linkText, touchTarget = false }: { title: string; to: string; linkText: string; touchTarget?: boolean }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
       <h2 style={{ margin: 0, fontSize: TYPE.md, fontWeight: 700, color: TOKENS.text[0] }}>{title}</h2>
-      <Link to={to} style={{ fontSize: TYPE.sm, color: TOKENS.info, textDecoration: 'none' }}>{linkText} ›</Link>
+      <Link to={to} aria-label={touchTarget ? `View ${title.toLowerCase()}` : undefined} style={{ fontSize: TYPE.sm, color: TOKENS.info, textDecoration: 'none', ...(touchTarget ? { minHeight: 44, minWidth: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end' } : {}) }}>{linkText} ›</Link>
     </div>
   )
 }
@@ -124,11 +128,14 @@ export default function HomeDoNow() {
   const { data: overview, loading: ovLoading, stale: overviewStale, error: overviewError } = useApi<any>('/api/v2/overview', 60_000)
   const { data: perf } = useApi<any>('/api/v2/portfolio/performance', 120_000)
   const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
+  // Design home/v002: the Market Risk Engine projection (tier, score, contributors, episode). Honest not_evaluated until P2.
+  const { data: mrResp, loading: mrLoading } = useApi<any>('/api/v2/market-risk/latest', 60_000)
+  const mr = unwrapMarketRisk(mrResp)
   const { data: tradeAi } = useApi<any>('/api/v2/trade-ai/summary', 60_000)
   const { data: posture } = useApi<any>('/api/v2/defense/posture', 300_000)
-  const { data: oppTop } = useApi<any>('/api/v3/opportunities?preset=top5', 300_000)
+  const { data: oppTop } = useApi<any>(BEST_OPPORTUNITIES_API, 300_000)
   const platformApi = useApi<any>('/api/v2/system/platform-health', 60_000)
-  const rtApi = useApi<ReleaseTrainSummaryWire>(RELEASE_TRAIN_PATHS.summary, 120_000)
+  const dpApi = useApi<DeploysStatusWire>(DEPLOYS_PATHS.status, 120_000)
   const { data: command } = useApi<any>('/api/v2/command', 300_000)
   const cmd = command?.data ?? command ?? {}
 
@@ -158,8 +165,8 @@ export default function HomeDoNow() {
   const ph = platformHealthFrom(platformApi.data, { error: platformApi.error, loading: platformApi.loading, nowMs: now })
   const scanStale = tradeAiSurfaceFreshness(tradeAi).stale
   const setup = renderSetupCounts(tradeAi?.setup_run_summary, { stale: scanStale, staleLabel: 'STALE' })
-  const rtF = freshness(rtApi.data?.generated_at, !!rtApi.data, { nowMs: now, loading: rtApi.loading, error: rtApi.error })
-  const rt = summaryFrom(rtApi.data, rtF, now)
+  const dpF = freshness(dpApi.data?.generated_at, !!dpApi.data, { nowMs: now, loading: dpApi.loading, error: dpApi.error })
+  const dp = deploysSummary(dpApi.data, dpF)
   const notFresh: string[] = overview?.observation?.not_fresh_datasets ?? []
 
   const pulse: { k: string; v: string; tone: Tone; tip: string; to: string }[] = [
@@ -171,8 +178,9 @@ export default function HomeDoNow() {
       tone: overview?.pipeline_status === 'fresh' && !notFresh.length ? 'success' : 'warning', tip: `/api/v2/overview observation.surface_status${notFresh.length ? ` · not fresh: ${notFresh.join(', ')}` : ''}` },
     { k: 'Do-now sources', v: dn.state === 'LOADING' ? '…' : `${dn.sources.length - dn.unavailableSources.length}/${dn.sources.length} answered${dn.staleSources.length ? ` · ${dn.staleSources.length} stale` : ''}`, to: '/health',
       tone: dn.unavailableSources.length || dn.staleSources.length || dn.state === 'STALE' ? 'warning' : 'success', tip: dn.sources.map(s => `${s.name}: ${s.status}`).join(' · ') || 'not loaded' },
-    { k: 'Deploy hold', v: rt.stop.effective ? `${rt.stop.text} · promote held` : `${rt.stop.text} · Mergify + poller`, to: '/system/releases',
-      tone: rt.stop.effective ? 'danger' : rtF.state === 'OK' ? 'neutral' : 'warning', tip: `deploy STOP latch · ${rtF.state}${rtF.reason ? ` · ${rtF.reason}` : ''}` },
+    { k: 'Deploys', v: dp.line, to: '/system/releases',
+      tone: dp.stopEffective ? 'danger' : dpF.state !== 'OK' ? 'warning' : dp.lastTone === 'danger' ? 'danger' : 'neutral',
+      tip: `/api/v2/ops/deploys · latest DeployOnMainReceipt + deploy STOP latch · ${dpF.state}${dpF.reason ? ` · ${dpF.reason}` : ''}` },
   ]
 
   const llm = cmd.llm_intelligence
@@ -187,6 +195,10 @@ export default function HomeDoNow() {
   return (
     <div data-testid="home-do-now-page" style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 1392, margin: '0 auto' }}>
       <style>{'@media(max-width:820px){[data-testid="home-do-now-page"] a{min-height:44px!important;display:inline-flex;align-items:center;box-sizing:border-box}[data-testid="home-do-now-page"] aside{max-width:none!important}}'}</style>
+      {/* Design home/v002 §2: the market-risk banner, only while ORANGE or RED is evaluated; never sticky. */}
+      <MarketRiskBanner mr={mr} />
+      {/* Design home/v004: at YELLOW the same slot holds the calm, collapsible summary card (no Acknowledge). */}
+      <MarketRiskSummary mr={mr} />
       {/* Slim header */}
       <header data-testid="home-header" style={{ ...card, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 24px', flexDirection: 'row' }}>
         <HeadFact name="Portfolio" big testId="home-portfolio" value={pv != null ? money(pv) : ovLoading ? '…' : '—'}
@@ -195,13 +207,8 @@ export default function HomeDoNow() {
           tip="Today's change across all accounts (/api/v2/overview today_change / today_pct: broker snapshot day change, repriced when missing)." />
         <HeadFact name="YTD" testId="home-ytd" color={signTone(ytdChg)} value={ytdChg != null ? `${money(ytdChg, true)}${ytdPct != null ? ` · ${pct(ytdPct)}` : ''}${ytdPreferDisp ? ' ≈' : ''}` : '—'}
           tip={`Year to date, all accounts (/api/v2/portfolio/performance periods.YTD).${ytdPreferDisp ? ' ≈ = market change excluding transfers (display_change), the same rule as Portfolio → Returns.' : ''}${ytd?.adjustment_note ? ` ${ytd.adjustment_note}` : ''}`} />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, cursor: 'help' }}
-          title={`Regime from /api/v2/risk-regime/latest; VIX from /api/v2/trade-ai/summary; sectors from /api/v2/defense/posture.`}>
-          <span style={label}>Market</span>
-          <span data-testid="home-market" style={{ fontSize: TYPE.md, color: TOKENS.text[0] }}>
-            {regimeLabel || 'regime unknown'}{vix != null ? ` · VIX ${vix}` : ''}{lagging.length ? ` · ${lagging.map((r: any) => String(r.sector).toLowerCase()).slice(0, 2).join(', ')} lagging` : ''}
-          </span>
-        </div>
+        {/* Design home/v002 §1: the "Market" fact is renamed MARKET RISK; its regime/VIX/sectors text moved to "Market in one look". */}
+        <MarketRiskFact mr={mr} loading={mrLoading} />
         <span style={{ flex: 1 }} />
         <span data-testid="positions-freshness" title={pos.tip}
           style={{ fontSize: TYPE.sm, fontWeight: 700, borderRadius: RADIUS.sm, padding: '4px 8px', cursor: 'help',
@@ -315,7 +322,7 @@ export default function HomeDoNow() {
           {stops && <div style={{ color: TOKENS.text[2], fontSize: TYPE.sm, overflowWrap: 'anywhere' }}>
             <span data-testid="home-stops-as-of">As of last broker read {stops.last_broker_read_label ?? readableTime(stops.last_broker_read_at ?? stops.as_of) ?? 'time unavailable'}</span>
             {stopsGap && <p role="status" style={{ color: TOKENS.warning }}>{stopsGap}</p>}
-            {!!stops.filled_awaiting_sync?.length && <p data-testid="home-filled-awaiting-sync">{stops.filled_awaiting_sync.map((p: any) => `${p.symbol}: stop filled · awaiting holdings sync`).join('; ')}</p>}
+            {!!stops.filled_awaiting_sync?.length && <p data-testid="home-filled-awaiting-sync">{stops.filled_awaiting_sync.map((p: any) => `${p.symbol}: ${p.reason || 'stop filled · awaiting holdings sync'}`).join('; ')}</p>}
           </div>}
         </aside>
       </div>
@@ -323,7 +330,7 @@ export default function HomeDoNow() {
       {/* Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14 }}>
         <section style={card} data-testid="home-opportunities" aria-label="Best opportunities">
-          <CardHead title="Best opportunities" to="/watch?tab=opportunities&preset=top5" linkText="All" />
+          <CardHead title="Best opportunities" to={BEST_OPPORTUNITIES_PATH} linkText="View top 5" touchTarget />
           {opps.length === 0 && <div style={{ fontSize: TYPE.base, color: TOKENS.text[3] }}>{oppTop ? 'Nothing clears the bar right now.' : 'Loading…'}</div>}
           {opps.map((o: any) => (
             <button key={o.symbol} type="button" onClick={() => openSymbol(o.symbol)}
@@ -339,9 +346,12 @@ export default function HomeDoNow() {
 
         <section style={card} data-testid="home-market-card" aria-label="Market in one look">
           <CardHead title="Market in one look" to="/defense" linkText="Defense desk" />
-          <div style={{ fontSize: TYPE.base, lineHeight: 1.6, color: TOKENS.text[1] }}
+          {/* Design home/v002 §3: first block = the engine's tier, score and five contributors. */}
+          <MarketRiskCompact mr={mr} />
+          <Link to="/risk?tab=market-risk" data-testid="home-market-risk-link" style={{ fontSize: TYPE.sm, color: TOKENS.info, textDecoration: 'none', minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>Market risk →</Link>
+          <div style={{ fontSize: TYPE.base, lineHeight: 1.6, color: TOKENS.text[1], borderTop: `1px solid ${TOKENS.borderSubtle}`, paddingTop: 8 }}
             title="Regime: /api/v2/risk-regime/latest. Sectors and hedge: /api/v2/defense/posture (momentum rows, hedge_state). 'You hold' is the sector's share of your book from the same posture rows.">
-            Regime <b style={{ color: TOKENS.text[0] }}>{regimeLabel || 'unknown'}</b>{vix != null ? `, VIX ${vix}` : ''}.
+            <span data-testid="home-market">Regime <b style={{ color: TOKENS.text[0] }}>{regimeLabel || 'unknown'}</b>{vix != null ? `, VIX ${vix}` : ''}.</span>
             {postureRows.length > 0 && <> Sectors: {leading.length} leading, {lagging.length} lagging{lagging.length ? <> (<b>{lagging.map((r: any) => `${String(r.sector).toLowerCase()}${r.book_pct != null ? `, you hold ${r.book_pct}%` : ''}`).slice(0, 3).join('; ')}</b>)</> : ''}.</>}
             {posture?.hedge_state?.line ? <> Hedge: {posture.hedge_state.line}.</> : null}
             {posture?.inverse_stoplights?.line ? <> {posture.inverse_stoplights.line}.</> : null}
@@ -371,16 +381,16 @@ export default function HomeDoNow() {
           {() => (llm || cmd.executive_brief) ? <>{llm && <AiIntelligenceBriefing llm={llm} />}{cmd.executive_brief && <ExecutiveBriefCard brief={cmd.executive_brief} />}</>
             : <span style={{ color: TOKENS.text[3] }}>No briefing in /api/v2/command yet.</span>}
         </Drawer>
-        <Drawer id="release" title="Deploy on main" summary={`${rt.stop.text} · Mergify merges · poller promotes`}
+        <Drawer id="deploys" title="Deploys" summary={dp.line}
           right={(openDrawer, isOpen) => isOpen ? null : (
-            <button type="button" data-testid="home-release-stop-shortcut" onClick={openDrawer}
-              title="Opens deploy hold (STOP latch for host promote). Not the trading kill switch. Act on Ops → Controls."
+            <button type="button" data-testid="home-deploys-stop-shortcut" onClick={openDrawer}
+              title="Opens Deploys with the deploy STOP (holds host promote). Not the trading kill switch."
               style={{ fontSize: TYPE.sm, fontWeight: 700, padding: '6px 12px', borderRadius: RADIUS.md, cursor: 'pointer', fontFamily: 'inherit', minHeight: 32,
                 color: toneVars('danger').color, background: toneVars('danger').bg, border: `1px solid ${toneVars('danger').border}` }}>
-              Deploy hold…
+              STOP deploys…
             </button>
           )}>
-          {() => <DeployHoldStrip />}
+          {() => <DeploysPanel />}
         </Drawer>
         <Drawer id="agents" title="Agents and Hermes" summary={agentsN ? `${agentsN} agents reporting runs (30 d)` : 'agent runs and Hermes status'}>
           {() => <HermesDrawerBody cmd={cmd} />}

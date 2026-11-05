@@ -98,8 +98,15 @@ def consume_release_grant(*, tier: str = "release-write", runner=None, grant_id:
 # 2026-10-21 (alignment audit M6): one workflow per context branch protection requires on main
 # (cio-hardening, agent-governance, release-readiness; AGENTS §23.13, AI_WORK_POLICY §11).
 # release-readiness was missing, so a manual `promote` accepted a SHA whose release proof was red.
+#: Runs recorded on main that must NOT gate a promote. CodeQL was removed 2026-11-02 (operator: "remove
+#: CodeQL completely"; ruff security + nightly semgrep/pip-audit/npm audit replace it), and its workflow
+#: file is deleted, so this only skips historical runs still listed for an old head.
+NON_GATING_WORKFLOWS = frozenset({".github/workflows/codeql.yml"})
+
 REQUIRED_PUSH_WORKFLOWS = frozenset({
-    ".github/workflows/cio-production-hardening-ci.yml",
+    # 29.3.0 (DSN-20261031-ci-load-reduction §4.3): the combined suite is the push-run provider of BOTH
+    # required contexts, cio-hardening and ci-gate. cio-production-hardening-ci is dispatch-only now.
+    ".github/workflows/cio-full-suite-sharded.yml",
     ".github/workflows/agent-governance.yml",
     ".github/workflows/release-readiness.yml",
 })
@@ -134,8 +141,9 @@ def evaluate_push_checks(sha: str, runs: list[dict]) -> dict:
             "status", "conclusion", "run_attempt", "html_url", "updated_at",
         )}
         check["path"] = path
+        check["gating"] = path not in NON_GATING_WORKFLOWS
         checks.append(check)
-        if run.get("status") != "completed" or run.get("conclusion") != "success":
+        if check["gating"] and (run.get("status") != "completed" or run.get("conclusion") != "success"):
             errors.append("not_successful:" + path)
     return {"ok": not errors, "candidate_sha": sha, "checks": checks, "errors": errors,
             "required_workflows": sorted(REQUIRED_PUSH_WORKFLOWS),

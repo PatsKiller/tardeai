@@ -587,10 +587,10 @@ def test_canonical_source_admission_keeps_schedules_inactive_and_caps_shared():
     allowlist = {r["lane_id"]: r for r in json.loads((root / "config/n8n_run_allowlist.json").read_text())["lanes"]}
     contracts = {r["id"]: r for r in json.loads((root / "config/n8n_health_contracts.json").read_text())["contracts"]}
     for lane in ["cio-ask-lifecycle", "cio-ask-material-events"]:
-        assert lanes[lane]["state"] == "NEVER_SCHEDULED"
+        assert lanes[lane]["state"] == "ACTIVE"
         assert lanes[lane]["scheduler"]["kind"] == "n8n"
         assert lanes[lane]["scheduler"]["timezone"] == "America/New_York"
-        assert allowlist[lane]["live_arg"] is None
+        assert allowlist[lane]["live_arg"] == []
         assert set(allowlist[lane]["llm_route"]["process_ids"]) == processes
         assert contracts[lane]["status"] == "REVIEWED"
         assert contracts[lane]["review"]["reviewed_by"].startswith("codex-")
