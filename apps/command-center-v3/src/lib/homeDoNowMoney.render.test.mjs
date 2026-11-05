@@ -122,5 +122,32 @@ for (const old of [false, true]) {
   const state = positionsFreshness(value, closedNow, 'OK')
   check(state.stale === old && !!state.qualifier === old, `closed-market old=${old}: state and money qualifier disagree`)
 }
+// A fresh observation clock is not evidence that an absent/malformed value is a known zero.
+for (const valueCase of [
+  { name: 'missing', pv: undefined, count: undefined, moneyKnown: false, countKnown: false },
+  { name: 'null', pv: null, count: null, moneyKnown: false, countKnown: false },
+  { name: 'malformed', pv: 'unavailable', count: 'not-a-count', moneyKnown: false, countKnown: false },
+  { name: 'boolean', pv: true, count: true, moneyKnown: false, countKnown: false },
+  { name: 'nonfinite', pv: NaN, count: Infinity, moneyKnown: false, countKnown: false },
+  { name: 'fractional-count', pv: 0, count: 1.5, moneyKnown: true, countKnown: false },
+  { name: 'negative-count', pv: 0, count: -1, moneyKnown: true, countKnown: false },
+  { name: 'known-zero', pv: 0, count: 0, moneyKnown: true, countKnown: true },
+]) {
+  overview = fixture()
+  overview.portfolio_value = valueCase.pv
+  overview.position_count = valueCase.count
+  globalThis.__transport = 'OK'
+  const html = renderToStaticMarkup(React.createElement(MemoryRouter,
+    { initialEntries: ['/?view=classic'] }, React.createElement(HomeHub, { onDrill() {} })))
+  const titleAt = html.indexOf('class="hub-title-row"')
+  if (titleAt < 0) throw new Error('Actual Classic header did not render')
+  const header = html.slice(html.lastIndexOf('<div', titleAt), html.indexOf('Needs action', titleAt))
+    .replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
+  check(valueCase.moneyKnown ? /Home \$0\s*·/.test(header) : /Home —\s*·/.test(header),
+    `classic/${valueCase.name}: subtitle must distinguish unknown money from known zero`)
+  check(valueCase.countKnown ? /· 0 positions over \$100/.test(header) : /· — positions over \$100/.test(header),
+    `classic/${valueCase.name}: subtitle must distinguish unknown count from known zero`)
+}
+
 console.log(JSON.stringify({ suite: 'homeDoNowMoney.render', passed, failed }))
 if (failed) process.exit(1)
