@@ -269,3 +269,88 @@ def test_source_binding_separates_bound_changed_and_absent(tmp_path):
     assert changed["state"] == "changed" and changed["script_sha256"] == digest
     assert changed["observed_sha256"] != digest
     assert R.source_binding({"source": {"script": str(tmp_path / "gone.py"), "script_sha256": digest}})["state"] == "absent"
+
+
+# ── Review F1/F2/F3 on #2674: the report must say what actually happened ──────────────────
+
+def _reminder():
+    return {"symbol": "SPCX", "account": "acct-1", "market_value": 100.0, "pct": 1.0, "reminder_num": 1}
+
+
+def test_a_failed_stop_reminder_page_is_not_certified_as_sent(monkeypatch):
+    """F1: the transport raises while the audit row succeeds — the report must still say failed."""
+    import types
+
+    def _down(*_a, **_k):
+        raise RuntimeError("telegram down")
+
+    rows = []
+    monkeypatch.setitem(sys.modules, "telegram_alert", types.SimpleNamespace(send_telegram=_down))
+    monkeypatch.setitem(sys.modules, "db_adapter",
+                        types.SimpleNamespace(save_notification_log_entry=rows.append))
+
+    report = R.send_stop_reminders([_reminder()])
+
+    assert report["ok"] is False
+    assert report["sent"] == 0
+    assert report["failed"] == 1
+    assert "telegram down" in report["error"]
+    # The step machinery agrees, so the run receipt cannot call this step ok.
+    assert R._step_failure(report)
+    # And the audit row does not claim the page was sent.
+    assert rows and rows[0]["status"] == "failed" and "telegram down" in (rows[0]["error"] or "")
+
+
+def test_a_delivered_stop_reminder_page_reports_sent(monkeypatch):
+    import types
+
+    calls = []
+    monkeypatch.setitem(sys.modules, "telegram_alert",
+                        types.SimpleNamespace(send_telegram=lambda *a, **k: calls.append((a, k))))
+    monkeypatch.setitem(sys.modules, "db_adapter",
+                        types.SimpleNamespace(save_notification_log_entry=lambda row: None))
+
+    report = R.send_stop_reminders([_reminder()])
+
+    assert report == {"sent": 1, "failed": 0, "ok": True, "error": None}
+    assert calls and calls[0][1].get("priority") == "P1"
+
+
+def test_an_optional_reply_step_that_ran_and_failed_is_recorded_once(stubbed, monkeypatch):
+    """F2: one step, one row — `failed`, never also `skipped`."""
+    import types
+
+    def _boom():
+        raise RuntimeError("reply store down")
+
+    monkeypatch.setitem(sys.modules, "telegram_reply_processor",
+                        types.SimpleNamespace(process_replies=_boom))
+    R.main()
+    receipt = _only_receipt(stubbed)
+
+    rows = [s for s in receipt["steps"] if s["name"] == "process_telegram_replies"]
+    assert len(rows) == 1, rows
+    assert rows[0]["outcome"] == "failed"
+    assert "reply store down" in rows[0]["error"]
+    # Optional: the run itself still finishes, but it is not certified as all-steps-ok.
+    assert receipt["outcome"] == "ok"
+    assert R.receipt_status(stubbed)["useful_work_verified"] is False
+
+
+def test_a_failed_directory_fsync_is_reported_not_swallowed(tmp_path, monkeypatch, capsys):
+    """F3: the durability the receipt claims is the durability it got — or it says otherwise."""
+    real_fsync = R.os.fsync
+    calls = {"n": 0}
+
+    def flaky(fd):
+        calls["n"] += 1
+        if calls["n"] >= 2:  # first call fsyncs the file, second the directory
+            raise OSError("fsync refused (probe)")
+        return real_fsync(fd)
+
+    monkeypatch.setattr(R.os, "fsync", flaky)
+    path = R.write_run_receipt(
+        {"started_at": "2026-11-05T00:00:00Z", "invocation_id": "probe", "outcome": "ok"}, tmp_path)
+
+    assert path.exists()
+    assert "directory fsync failed" in capsys.readouterr().err

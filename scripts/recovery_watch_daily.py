@@ -880,7 +880,13 @@ def scan_unconfirmed_stops() -> list[dict]:
 
 
 def send_stop_reminders(reminders: list[dict]) -> dict:
-    """Send Telegram reminder for unconfirmed stops. Reports delivery failures (FQ-117 R1)."""
+    """Send Telegram reminder for unconfirmed stops. Reports delivery failures (FQ-117 R1).
+
+    The report is built from what actually left the host, not from what was attempted: a Telegram
+    send that raises counts as failed and makes `ok` False, and the audit row it leaves behind says
+    so too. Otherwise the run receipt would certify that the operator was paged when nothing went
+    out — the exact class of defect this lane exists to make impossible (review F1 on #2674).
+    """
     if not reminders:
         return {"sent": 0, "failed": 0, "ok": True, "error": None}
     try:
@@ -898,9 +904,15 @@ def send_stop_reminders(reminders: list[dict]) -> dict:
     lines.append(f"Or review at /v3/risk")
     msg = "\n".join(lines)
 
+    sent = 0
+    failed = 0
+    first_error = None
     try:
         send_telegram(msg, priority="P1", dedupe_minutes=0, producer="recovery_watch_daily")
+        sent = len(reminders)
     except Exception as ex:
+        failed = len(reminders)
+        first_error = f"{type(ex).__name__}: {ex}"[:300]
         print(f"  [recovery] Stop reminder Telegram failed: {ex}")
 
     try:
@@ -912,14 +924,16 @@ def send_stop_reminders(reminders: list[dict]) -> dict:
             "body_summary": msg[:500],
             "recommendation_ids": None, "escalation_ids": None, "observation_ids": None,
             "payload": json.dumps(reminders[:10], default=str),
-            "status": "sent", "dedupe_key": f"stop_remind_{date.today()}",
-            "sent_at": datetime.now(), "error": None,
+            "status": "sent" if sent else "failed", "dedupe_key": f"stop_remind_{date.today()}",
+            "sent_at": datetime.now(), "error": None if sent else first_error,
         })
-        return {"sent": len(reminders), "failed": 0, "ok": True, "error": None}
     except Exception as ex:
+        # The page went out (or did not) — either way the audit row is now a second failure, and a
+        # delivered page with no audit row is still not a clean run.
+        failed = failed or 1
+        first_error = first_error or f"{type(ex).__name__}: {ex}"[:300]
         print(f"  [recovery] Stop reminder notification_log failed: {ex}")
-        return {"sent": 0, "failed": len(reminders), "ok": False,
-                "error": f"{type(ex).__name__}: {ex}"[:300]}
+    return {"sent": sent, "failed": failed, "ok": failed == 0, "error": first_error}
 
 
 # ── Step 5: Post-stop temporary allocation advisor ───────────────────────
@@ -1148,12 +1162,14 @@ def write_run_receipt(payload: dict, directory: Path | None = None) -> Path:
     # Fsync the DIRECTORY too: fsyncing the file proves the bytes, not that the name was published.
     try:
         dir_fd = os.open(str(directory), os.O_RDONLY)
-    except OSError:
+    except OSError as exc:
+        # Never silent: the receipt must not claim a durability it did not get (review F3 on #2674).
+        print(f"  [recovery] receipt directory fsync skipped (cannot open {directory}): {exc}", file=sys.stderr)
         return target
     try:
         os.fsync(dir_fd)
-    except OSError:
-        pass
+    except OSError as exc:
+        print(f"  [recovery] receipt directory fsync failed: {exc}", file=sys.stderr)
     finally:
         os.close(dir_fd)
     return target
@@ -1243,13 +1259,20 @@ def _run(started: datetime, invocation_id: str, steps: list):
     # Step 4: Process any Telegram replies first
     try:
         from telegram_reply_processor import process_replies
-        reply_count = _run_step(steps, "process_telegram_replies", process_replies)
-        print(f"  Telegram replies processed: {reply_count}")
-    except Exception as e:
-        # Optional step: recorded as skipped, not as a failure of the run.
+    except ImportError as e:
+        # Optional step: only *unavailability* is a skip. A step that ran and failed keeps the single
+        # `failed` row _run_step already wrote — appending a contradictory `skipped` row for the same
+        # step told a reader both things at once (review F2 on #2674).
         steps.append({"name": "process_telegram_replies", "outcome": "skipped", "error": str(e)[:500],
                       "started_at": _iso(_utc_now()), "finished_at": _iso(_utc_now())})
         print(f"  Telegram reply processing skipped: {e}")
+    else:
+        try:
+            reply_count = _run_step(steps, "process_telegram_replies", process_replies)
+            print(f"  Telegram replies processed: {reply_count}")
+        except Exception as e:
+            # The step is optional, so the run continues; the receipt still says one step failed.
+            print(f"  Telegram reply processing failed (optional step, run continues): {e}")
 
     # Step 5: Stop confirmation scan (after processing replies)
     reminders = _run_step(steps, "scan_unconfirmed_stops", scan_unconfirmed_stops)
@@ -1403,7 +1426,11 @@ def receipt_status(directory: Path | None = None) -> dict:
         return {"schema": "RecoveryWatchStatus@v1", "receipt": None, "ran": False, "useful_work_verified": False,
                 "detail": "no run receipt found; the lane has not run, or its receipts are elsewhere"}
     steps = [s for s in doc.get("steps") or [] if isinstance(s, dict)]
-    failed = [str(s.get("name")) for s in steps if s.get("ok") is False or (s.get("failed") or 0) > 0]
+    # The runner records `outcome`; synthetic rows and callers may use `ok`. Read both, or a real
+    # receipt with a failed step is certified "useful" — the same lie in the reporting layer.
+    failed = [str(s.get("name")) for s in steps
+              if s.get("ok") is False or s.get("outcome") in ("failed", "error")
+              or (isinstance(s.get("failed"), int) and s["failed"] > 0)]
     summary = doc.get("summary") or {}
     useful = bool(summary) and doc.get("outcome") == "ok" and not failed
     return {
