@@ -1371,7 +1371,7 @@ def _enqueue_requeue(cur, plan):
         WHERE id = %s
           AND COALESCE(metadata_json->>'{REQUEUE_KEY_META}', '') <> %s
         RETURNING id
-    """, (attempt, delay, key, plan["job_id"], key))
+    """, (attempt, delay, key, plan["job_id"], key))  # noqa: S608 - only the module constant REQUEUE_KEY_META is interpolated; every value (attempt, delay, key, job_id, key) is a bound %s parameter, so the statement is not built from input
     return cur.fetchone() is not None
 
 
