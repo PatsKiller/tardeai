@@ -25891,7 +25891,8 @@
         "match": "self-heal-fixer-shadow",
         "cadence": "30 9-18 * * 1-5",
         "timezone": "America/New_York",
-        "stage": "shadow"
+        "stage": "shadow",
+        "wave": "D11"
       },
       "expected_cadence_hours": 1,
       "state": "ACTIVE",
@@ -25900,7 +25901,18 @@
         "kind": "file_mtime",
         "path": "data/runtime/self_heal_fixer_shadow/receipt.json"
       },
-      "note": "D11 shadow dry-cycle lane, operator-approved 2026-11-04. n8n runs the fixer's dry cycle only: the allowlist row declares dry_run_arg --cycle and live_arg null, so a live request is refused as data. stage is hand-maintained and nothing in code promotes it; promotion is a registry PR. The host lane self-heal-fixer stays PAUSED / KEEP_ON_CRON and its own row is untouched. A green n8n execution is process evidence, not proof: the receipt is the proof."
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "30 9-18 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W3",
+        "class": "report",
+        "priority": 4,
+        "retry_policy": "transient-2"
+      },
+      "note": "D11 shadow dry-cycle lane, operator-approved 2026-11-04. n8n runs the fixer's dry cycle only: the allowlist row declares dry_run_arg --cycle and live_arg null, so a live request is refused as data. dispatch.mode is dry_run, so the dispatcher fires the lane dry; the stage clamp would also turn any live request into dry_run. stage is hand-maintained and nothing in code promotes it; promotion is a registry PR. The host lane self-heal-fixer stays PAUSED / KEEP_ON_CRON and its own row is untouched. A green n8n execution is process evidence, not proof: the receipt is the proof."
     }
   ],
   "freshness_contracts": [

@@ -35116,6 +35116,199 @@
           "notifier_priority": "P2"
         }
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "self-heal-fixer-shadow",
+      "kind": "lane",
+      "workflow_id": "self-heal-fixer-shadow",
+      "status": "REVIEWED",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Weekdays 09:30-18:30 ET, hourly: run the self-heal fixer's DRY cycle from n8n - intake the diagnosed code defects, print the job, evidence, prompt and plan it would act on, and write data/runtime/self_heal_fixer_shadow/receipt.json. At shadow it applies nothing, calls no model, spends nothing, opens no PR and pushes nothing; the host lane self-heal-fixer stays PAUSED / KEEP_ON_CRON and keeps its own schedule.",
+        "business_function": "monitoring",
+        "source": "scripts/self_heal_fixer.py main() (apply = --apply and not --dry-run, so --cycle alone is dry); config/n8n_run_allowlist.json self-heal-fixer-shadow; operator decision 2026-11-04 (D11 shadow)"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay (n8n_run_relay, host and port declared in config/expected_services.json) -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md section 23.3; config/expected_services.json"
+        },
+        {
+          "name": "$PY scripts/self_heal_fixer.py --out $STATE_ROOT/data/runtime/self_heal_fixer_shadow --cycle",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command + dry_run_arg"
+        },
+        {
+          "name": "/tmp/tradeai_self_heal_fixer_shadow.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "data/runtime/n8n_failure_diagnosis_state.json and the diagnoser's N8nCodeDefect@v1 records",
+          "kind": "store",
+          "direction": "read",
+          "source": "config/self_heal_fixer.json intake.diagnosis_state_rel / diagnoses_rel"
+        },
+        {
+          "name": "$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite (failed run receipt, READ ONLY)",
+          "kind": "store",
+          "direction": "read",
+          "source": "config/self_heal_fixer.json intake.ledger_rel; failed_receipt opens it read-only"
+        },
+        {
+          "name": "config/lane_cutover_policy.json holds and the guard ledger active grants (arming verdict, peek only)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/self_heal_fixer.py operator_holds / default_grant_reader"
+        },
+        {
+          "name": "data/runtime/self_heal_fixer_shadow/receipt.json (SelfHealFixerReceipt@v1, dry cycle)",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/self_heal_fixer.py main(): args.out + /receipt.json when not applying"
+        },
+        {
+          "name": "the host lane self-heal-fixer (PAUSED, KEEP_ON_CRON)",
+          "kind": "service",
+          "direction": "read",
+          "source": "config/lane_registry.json self-heal-fixer; not touched by this lane"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire ends RUN_DONE in mode dry_run, and the receipt records mode dry_run"
+        },
+        {
+          "check": "receipt_written",
+          "text": "a fire writes data/runtime/self_heal_fixer_shadow/receipt.json with schema SelfHealFixerReceipt@v1, started_at and finished_at"
+        },
+        {
+          "check": "applied_nothing",
+          "text": "the dry cycle's counts show no attempt outcome: attempted is empty and no state, repair memory, PR or push is written (apply is false)"
+        },
+        {
+          "check": "cron_twin_untouched",
+          "text": "the host lane self-heal-fixer keeps its own state (PAUSED); this lane is not the thing doing the work"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "no fresh receipt 2 h after a scheduled weekday slot inside 09:30-18:30 ET (two missed fires)"
+        },
+        {
+          "check": "slow",
+          "text": "a fire's duration above 720 s (80% of timeout_s 900)"
+        },
+        {
+          "check": "retried",
+          "text": "one slot retried by the transient-2 policy (RUN_TIMEOUT / RUN_FAILED), then recovered"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a fire ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished fire left no receipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "no fresh receipt 3 h after a scheduled weekday slot inside 09:30-18:30 ET (three missed fires)"
+        },
+        {
+          "check": "dry_run_applied",
+          "text": "a dry_run wrote state, repair memory, a PR or a push - apply was reached"
+        },
+        {
+          "check": "empty_output",
+          "text": "a LIVE run ends with produced_count 0 and no allowed empty_reason (unreachable at shadow: live_arg is null)"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 2.0,
+        "freshness_failed_after_h": 3.0,
+        "freshness_rule": "reviewed 2026-11-05: dispatch.cron is 30 9-18 * * 1-5 (hourly, weekday business hours). Degraded after 2 h and failed after 3 h INSIDE the window; outside it the last receipt is expected to age (a weekend or overnight age is not a miss).",
+        "timeout_s": 900,
+        "class": "report",
+        "computed_on": "2026-11-05",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no live runs exist for this lane (it is shadow and live_arg is null); the timeout is the allowlist value (900 s) and the freshness limits are stated above rather than learned.",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 720.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "lane_registry.json row severity (a shadow dry-cycle lane with no operator surface of its own; a failure proves nothing about the host fixer, which is PAUSED)",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P3"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:self-heal-fixer-shadow by scripts/n8n_siem_bridge.py; a P3 never sends. The lane sends nothing itself and never pages.",
+        "enforced": "partial: SIEM/notifier coverage of this lane is NOT_MEASURED at shadow."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json; the diagnoser skips it (lane_not_in_catalogue). A failed dry cycle is fixed in code; the lane never repairs a store (AGENTS.md section 0 rule 5)."
+      },
+      "evidence": {
+        "receipt": "data/runtime/self_heal_fixer_shadow/receipt.json",
+        "verify": [
+          "python3 scripts/self_heal_fixer.py --cycle --dry-run --out /tmp/self_heal_fixer_shadow_verify   # dry cycle; writes only the receipt under /tmp",
+          "jq '.mode, .started_at, .finished_at, .counts, .attempted' $STATE_ROOT/data/runtime/self_heal_fixer_shadow/receipt.json",
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='self-heal-fixer-shadow' ORDER BY requested_at DESC LIMIT 10\""
+        ],
+        "never": "an n8n execution status: a green execution is process evidence, not proof. Prove work with the ledger row and the dry-cycle receipt.",
+        "expected_output_basis": "the shadow dry cycle is a report: it prints the plan and writes produced_count = repair-memory rows it would record; zero with empty_reason nothing_due is normal (no diagnosed defect). The allowlist carries no output_receipt v2, so the executor records the rule as declared_not_enforced until the promotion PR (which would add the per-attempt receipt)."
+      },
+      "review_by": "2026-12-05",
+      "review": {
+        "reviewed_on": "2026-11-05",
+        "reviewed_by": "cc-deepseek-4-s3 (author) - contract completeness review for a shadow registration; independent review is required before any stage flip",
+        "status": "REVIEWED",
+        "note": "REVIEWED here means the contract is complete and consistent with the allowlist and the registry row; it is not the operator approval for a live stage, which is a separate decision. It closes the codex-cloud P1 at cec50be3b (MISSING_CONTRACT self-heal-fixer-shadow)."
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "repair-memory rows the dry cycle recorded",
+        "rule": "empty_allowed",
+        "min_produced": 0,
+        "produced_field": "repair_memory_rows",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "unconfigured",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "nothing_due"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/self_heal_fixer_shadow/receipt.json repair_memory_rows (SelfHealFixerReceipt@v1)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
     }
   ],
   "pending_changes": {
