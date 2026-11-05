@@ -100,7 +100,7 @@ def scan(config_dir: Path | str = CONFIG_DIR, *, today: Optional[date] = None) -
     """Every ``disabled_until`` block under ``config_dir`` (top level and one directory down), sorted by due date.
     Dotfiles (``.env`` and friends) are never read (F13)."""
     root = Path(config_dir)
-    pats = ("*.yaml", "*.yml", "*.json", "*/*.yaml", "*/*.json")
+    pats = ("*.yaml", "*.yml", "*.json", "*/*.yaml", "*/*.yml", "*/*.json")
     files = sorted(
         {
             f

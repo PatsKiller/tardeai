@@ -209,3 +209,26 @@ def test_f13_dotfiles_are_never_read_and_errors_carry_no_block_text(tmp_path):
 def test_f12_a_name_that_is_not_text_falls_back_to_the_file_stem(tmp_path):
     d = _cfg(tmp_path, "stem_name", {**BLOCK, "name": {"x": 1}})
     assert df.scan(d, today=date(2026, 10, 31))[0]["name"] == "stem_name"
+
+
+@pytest.mark.parametrize("suffix", ["yaml", "yml", "json"])
+@pytest.mark.parametrize("nested", [False, True])
+def test_scan_and_dry_run_cover_every_declared_extension_at_each_depth(tmp_path, monkeypatch, capsys, suffix, nested):
+    config = tmp_path / "config"
+    folder = config / "one" if nested else config
+    folder.mkdir(parents=True)
+    path = folder / f"feature.{suffix}"
+    block = {**BLOCK, "review_by": "2026-12-05"}
+    payload = {"disabled_until": block}
+    path.write_text(
+        json.dumps(payload) if suffix == "json" else __import__("yaml").safe_dump(payload), encoding="utf-8"
+    )
+    today = date(2026, 12, 6)
+    rows = df.scan(config, today=today)
+    monkeypatch.setattr(chk, "deliver", lambda *a, **k: pytest.fail("dry run reached delivery"))
+    rc = chk.run(apply=False, config_dir=config, today=today)
+    output = capsys.readouterr().out
+    assert len(rows) == 1 and rows[0]["name"] == "feature", (rows, rc, output)
+    assert rows[0]["review_by"] == "2026-12-05" and rows[0]["overdue"] is True
+    assert rc == 3
+    assert "OVERDUE since 2026-12-05" in output and "DRY RUN — would send P2: feature" in output
