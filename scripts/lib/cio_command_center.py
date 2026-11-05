@@ -1876,6 +1876,15 @@ def build_office_home(
     home["record_narrative_coverage"] = attach_record_narratives(home, _store)
     home["telegram_sent"] = False
     home["delivery"] = "dashboard"
+    # Stale-guidance gate (Board row 33 piece E): a suppressed advisory must be COUNTED on the surface,
+    # not silently dropped. The queue keeps the rows; the home says how many were held back and why.
+    if isinstance(opportunity_queue, dict):
+        held = [i for i in (opportunity_queue.get("stale_items") or []) if isinstance(i, dict)]
+        home["stale_guidance"] = {
+            "count": int(opportunity_queue.get("stale_count") or len(held)),
+            "items": [{"symbol": i.get("symbol"), "label": i.get("directive_label"),
+                       "reason": i.get("stale_reason"), "age_days": i.get("age_days")} for i in held[:12]],
+        }
     return home
 
 

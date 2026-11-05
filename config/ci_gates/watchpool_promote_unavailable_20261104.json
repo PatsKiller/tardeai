@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watchpool_promote_unavailable_20261104",
+  "files": [
+    "tests/test_watchpool_promote_unavailable_20261104.py"
+  ],
+  "anchor": "WATCHPOOL_PROMOTE_UNAVAILABLE_20261104",
+  "comment": [
+    "ANCHOR: WATCHPOOL_PROMOTE_UNAVAILABLE_20261104 — FQ-079: both unavailable facts on a desk suggestion are explained (an UNAVAILABLE Street comparison when a directive is present; a missing directive), the divergence check is case-insensitive because the producer emits lowercase, and neither explanation may disable or re-gate Promote."
+  ]
+}

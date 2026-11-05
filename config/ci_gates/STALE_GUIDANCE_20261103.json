@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "STALE_GUIDANCE_20261103",
+  "files": [
+    "tests/test_stale_guidance_20261103.py"
+  ],
+  "anchor": "STALE_GUIDANCE_20261103",
+  "comment": [
+    "ANCHOR: STALE_GUIDANCE_20261103 - the operator was stopped out of SPCX at 137.19 on 2026-10-30,",
+    "stood at 141.65 on 2026-11-03, and Home still said 'below its stop' while the CIO page carried an",
+    "advisory dated 2026-10-07. The clock is now the OBSERVATION (not the directive's creation) and the",
+    "gate covers the staging rows the operator actually reads; these tests assert both at the real call",
+    "paths, including a mutation-proved failure case."
+  ]
+}

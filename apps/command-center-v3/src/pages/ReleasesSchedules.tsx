@@ -1,6 +1,8 @@
 // System → Releases & schedules (operator-approved 2026-10-22; mockup gate3 Pipeline.dc.html). What is queued and for
 // when, what actually shipped, what failed — deploys and n8n / host cron in one place. Read-only view of
 // GET /api/v2/ops/releases-schedules (scripts/lib/releases_schedules_view.py; contract docs/ops/RELEASES_SCHEDULES_PAGE.md).
+// In flight uses GET /api/v2/coordination/pipeline and lib/workPipelineFlow, shared with Coordination → Work pipeline.
+// Existing head-bound PR review/CI facts and protected controls remain in the lazily opened All PRs view.
 // Every section shows its own freshness (state · age · source); UNAVAILABLE renders with its reason, never 0 or green.
 // There is no control here: the deploy STOP is on Home → Deploys and Ops → Controls (components/DeployStopControl).
 // The retired release train's windows and queue sections and its tab were removed 2026-10-27 (operator directive).
@@ -19,6 +21,8 @@ import {
   type SectionKey, type SectionView, type Serving, type Timeline, type TimelineRow,
 } from '../lib/releasesSchedules'
 import OpsDeskFrame from '../components/OpsDeskFrame'
+import type { PipelinePayload } from '../lib/workPipeline'
+import { FLOW_STAGE_LABEL, flowProjection } from '../lib/workPipelineFlow'
 
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 14, minWidth: 0, display: 'grid', gap: 8 }
 const h2: CSSProperties = { margin: 0, fontSize: TYPE.md, fontWeight: 800, color: TOKENS.text[0] }
@@ -67,12 +71,78 @@ function Pill({ tone, children }: { tone: Tone; children: ReactNode }) {
   return <Chip tone={tone} variant="solid">{children}</Chip>
 }
 
+function PipelineInFlight() {
+  const now = useNow(15_000)
+  const api = useApi<PipelinePayload>('/api/v2/coordination/pipeline', 60_000)
+  const flow = flowProjection(api.data, now)
+  const items = flow.inFlight
+  const time = (at: string | null | undefined) => at ? etDateTime(at) : 'source time unavailable'
+  const minutes = (n: number | null | undefined) => n == null ? 'age unavailable' : `${Math.round(n)} min`
+  return <section data-testid="rs-pipeline-in-flight" style={panel}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+      <h2 style={h2}>In flight · Work pipeline</h2>
+      <ChipRow>
+        {api.loading && !api.data ? <Chip tone="neutral">Loading</Chip>
+          : !api.data ? <Chip tone="warning">UNAVAILABLE</Chip>
+            : api.stale || api.error ? <Chip tone="warning">STALE · last good response</Chip>
+              : <Chip tone={flow.gaps.length || flow.metrics.inFlight == null ? 'warning' : 'neutral'}>{flow.metrics.inFlight == null ? 'In-flight total unavailable' : `${flow.metrics.inFlight} in flight`}</Chip>}
+        <span style={muted}>as of {time(flow.sourceAt)}</span>
+      </ChipRow>
+    </div>
+    <p style={muted}>The same current items, stages and owners as <Link to="/coordination?tab=pipeline" style={{ color: TOKENS.primary }}>Coordination → Work pipeline</Link>.</p>
+    {api.error ? <p role="status" style={{ ...muted, color: toneVars('warning').color }}>Pipeline request: {api.error}</p> : null}
+    {flow.gaps.map((gap, i) => <p key={i} style={{ ...muted, color: toneVars('warning').color }}>{gap}</p>)}
+    {api.data ? <div style={{ overflowX: 'auto' }}>
+      <table className="ops-evidence-table" aria-label="Work pipeline in flight" style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead><tr>{['Work item', 'Stage', 'Owner', 'Created · touched', 'Age · time in stage', 'Checks · reviews', 'Next action · who', 'Blocker'].map(label => <th key={label} style={{ ...cell, color: TOKENS.text[3], fontSize: TYPE.xs, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{label}</th>)}</tr></thead>
+        <tbody>
+          {items.map(it => <tr key={it.id} data-testid="rs-pipeline-item" data-item-id={it.id} data-stage={it.stage ?? 'unavailable'} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}` }}>
+            <td data-label="Work item" style={cell}>
+              <b>{it.title}</b>
+              {it.prUrl ? <div><a href={it.prUrl} target="_blank" rel="noreferrer" style={{ color: TOKENS.primary }}>{it.prNumber != null ? `PR #${it.prNumber}` : 'Pull request'}</a></div> : null}
+              {it.gaps.map((gap, i) => <div key={i} style={{ ...muted, color: toneVars('warning').color }}>{gap}</div>)}
+            </td>
+            <td data-label="Stage" style={cell}><ChipRow><Chip tone="neutral">{it.stage ? FLOW_STAGE_LABEL[it.stage] : 'Stage unavailable'}</Chip>{it.stuck ? <Chip tone="danger">STUCK</Chip> : null}</ChipRow></td>
+            <td data-label="Owner" style={cell}>
+              <b>{it.owner.session ?? 'Session unavailable'}</b>
+              <div style={muted}>{it.owner.vendor ?? 'Vendor unavailable'}</div>
+              <div style={muted}>coordinator: {it.owner.coordinator ?? 'unavailable'}</div>
+            </td>
+            <td data-label="Created · touched" style={cell}><div>created {time(it.createdAt)}</div><div>touched {time(it.touchedAt)}</div></td>
+            <td data-label="Age · time in stage" style={cell}><div>age {minutes(it.ageMinutes)}</div><div>in stage {minutes(it.stageAgeMinutes)}</div><div style={muted}>since {time(it.stageSince)}</div></td>
+            <td data-label="Checks · reviews" style={cell}>
+              <div>{it.checks.passed != null && it.checks.total != null ? `${it.checks.passed}/${it.checks.total} checks green` : 'Check counts unavailable'}</div>
+              {it.checks.failedNames.length ? <div style={{ color: toneVars('danger').color }}>failing: {it.checks.failedNames.join(', ')}</div> : null}
+              {it.checks.gap ? <div style={muted}>{it.checks.gap}</div> : null}
+              {it.reviews.length ? it.reviews.map((r, i) => <div key={i} style={muted}>
+                {r.reviewer ?? 'Reviewer unavailable'} · {r.verdict ?? 'Verdict unavailable'} · {r.currentHead === true ? 'current head' : r.currentHead === false ? 'older head' : 'head unavailable'} · {time(r.at)} · {r.source ?? 'source unavailable'}
+              </div>) : <div style={muted}>Review source unavailable</div>}
+            </td>
+            <td data-label="Next action · who" style={cell}><b>{it.next.text}</b><div style={muted}>who: {it.next.actor ?? 'unavailable'}</div>{it.next.command ? <code style={{ ...mono, display: 'block', overflowWrap: 'anywhere' }}>{it.next.command}</code> : null}</td>
+            <td data-label="Blocker" style={cell}>{it.blocker ?? 'No blocker stated'}</td>
+          </tr>)}
+          {!items.length ? <tr><td data-empty colSpan={8} style={cell}>{flow.gaps.length ? 'Current membership unavailable; check the source gaps above.' : 'No current work items in the pipeline sources read.'}</td></tr> : null}
+        </tbody>
+      </table>
+    </div> : null}
+  </section>
+}
+
+function AllPrsControls() {
+  const [open, setOpen] = useState(false)
+  return <details data-testid="rs-all-prs" onToggle={e => setOpen(e.currentTarget.open)} style={panel}>
+    <summary style={{ ...h2, cursor: 'pointer', minHeight: 44 }}>All PRs · review and controls</summary>
+    {open ? <DeployInFlightBoard /> : null}
+  </details>
+}
+
 function DeploysTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
   const hist = (s.history.value as { releases: ReleaseRow[]; receipts_total: number } | null)
   const errs = s.release_errors.value as { rows: ReleaseError[]; window_hours: number; not_covered: string } | null
   const nx = s.next_release.value as NextRelease | null
   return <div style={{ display: 'grid', gap: 12 }}>
-    <DeployInFlightBoard />
+    <PipelineInFlight />
+    <AllPrsControls />
     <Section title="Releasing next · main HEAD" testId="rs-next" v={s.next_release}>
       {nx ? <Table label="Next release" heads={['main HEAD', 'Subject', 'Ahead of serving', 'PRs since serving', 'Exact-SHA CI']} empty="—" rows={[[
         <span style={mono}>{nx.short_sha}</span>, nx.subject ?? '—', nx.is_serving ? 'serving now' : countOrUnavailable(nx.commits_ahead),

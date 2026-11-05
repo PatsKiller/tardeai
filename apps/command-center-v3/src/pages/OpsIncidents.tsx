@@ -12,7 +12,7 @@ import { MobileDetailSheet, useMobilePageDetail } from '../components/MobileDeta
 import { FONT, RADIUS, TOKENS, TYPE, toneVars } from '../lib/designTokens'
 import { governanceRequest, governanceRequestId } from '../lib/operatorApprovals'
 import {
-  ageText, canAct, INCIDENTS_PATH, matchesFilter, refLink, sortIncidents, sourceText, statusLabel, STATUS_FILTERS,
+  ageText, canAct, escalationStatus, INCIDENTS_PATH, matchesFilter, refLink, severityLabel, sortIncidents, sourceText, statusLabel, STATUS_FILTERS,
   type Incident, type IncidentDetailWire, type IncidentsWire,
 } from '../lib/incidents'
 
@@ -60,16 +60,17 @@ function OperatorActions({ inc, onDone }: { inc: Incident; onDone: () => void })
 
 function Detail({ inc, events, titleRef, onChanged }: { inc: Incident; events: Record<string, unknown>[] | null; titleRef?: Ref<HTMLHeadingElement>; onChanged: () => void }) {
   const s = statusLabel(inc.status)
+  const escalation = escalationStatus(inc)
   const facts: Array<[string, string]> = [
     ['Id', inc.id], ['Opened', at(inc.opened_at)], ['Age', ageText(inc.opened_at, inc.closed_at)], ['Source', sourceText(inc)],
-    ['Where', inc.where || '—'], ['Owner', inc.owner || '—'], ['Severity', inc.severity || '—'],
+    ['Where', inc.where || '—'], ['Owner', inc.owner?.trim() || 'Unassigned'], ['Severity', inc.severity || '—'],
   ]
   if (inc.closed_at) facts.push(['Closed', `${at(inc.closed_at)}${inc.resolution ? ` · ${inc.resolution.replace(/_/g, ' ')}` : ''}`])
   if (inc.recurrence_of) facts.push(['Recurrence of', inc.recurrence_of])
   return <div data-testid="incident-detail" style={{ display: 'grid', gap: 12, minWidth: 0 }}>
     <h3 ref={titleRef} tabIndex={-1} data-detail-focus style={{ margin: 0, fontSize: TYPE.md, color: TOKENS.text[0], overflowWrap: 'anywhere' }}>{inc.title}</h3>
     <ChipRow><Chip tone={s.tone}>{s.label}</Chip>{inc.acknowledged ? <Chip tone="neutral">acknowledged</Chip> : null}
-      {inc.escalations?.length ? <Chip tone="danger">P1 sent</Chip> : null}</ChipRow>
+      {escalation ? <Chip tone={escalation.tone}>{escalation.label}</Chip> : null}</ChipRow>
     {inc.status === 'blocked' ? <div style={{ ...panel, borderColor: toneVars('danger').border }}>
       <p style={{ ...muted, color: TOKENS.text[0] }}><strong>Blocked:</strong> {inc.blocked_reason}</p>
       <p style={{ ...muted, color: TOKENS.text[0], marginTop: 6 }}><strong>Next step:</strong> {inc.handoff}</p>
@@ -141,15 +142,19 @@ export default function OpsIncidents() {
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
               {rows.map(r => {
                 const s = statusLabel(r.status)
+                const severity = severityLabel(r.severity)
                 return <li key={r.id} style={{ borderTop: `1px solid ${TOKENS.border}` }}>
                   <button type="button" data-testid={`incident-row-${r.id}`} aria-current={selectedId === r.id} onClick={() => sheet.open(r.id)}
                     style={{ width: '100%', minHeight: 56, display: 'grid', gap: 4, textAlign: 'left', padding: '10px 14px', cursor: 'pointer',
                       background: selectedId === r.id ? TOKENS.bg[2] : 'transparent', border: 0, color: TOKENS.text[0] }}>
                     <span style={{ fontSize: TYPE.sm, fontWeight: 700, overflowWrap: 'anywhere' }}>{r.title}</span>
                     <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <Chip tone={severity.tone}>{severity.label}</Chip>
                       <Chip tone={s.tone}>{s.label}</Chip>
+                      <span style={muted}>Owner: {r.owner?.trim() || 'Unassigned'}</span>
                       <span style={muted}>{ageText(r.opened_at, r.closed_at)} · {sourceText(r)}{r.fix_refs?.length ? ` · ${refLink(r.fix_refs[0]).label}` : ''}</span>
                     </span>
+                    {r.status === 'blocked' && <span style={muted}>Blocked: {r.blocked_reason || 'Reason not recorded'} · Next: {r.handoff || 'Next step not recorded'}</span>}
                   </button>
                 </li>
               })}

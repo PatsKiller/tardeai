@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-#: A firing test below drives main --apply through the real send_telegram import path.
+#: A firing test below drives main --apply through the real structured Telegram outcome import path.
 COVERS = ["scripts/nightly_security_scan.py"]
 import check_ruff_security as rsec  # noqa: E402
 import nightly_security_scan as nss  # noqa: E402
@@ -38,13 +38,14 @@ NPM_ONE = json.dumps({"vulnerabilities": {"pkg": {"severity": "high", "via": [{"
 
 
 def runner(outputs, *, missing=()):
-    def run(argv, cwd):
+    def run(argv, cwd, **kwargs):
         tool = argv[0]
         if tool in missing:
             return 127, "", "not found"
         if argv[1:] == ["--version"]:
             return 0, f"{tool} 9.9.9\n", ""
-        return 1, outputs.get(tool, "{}"), ""  # tools exit 1 when they FIND something
+        clean = {"semgrep": '{"results":[]}', "pip-audit": '{"dependencies":[]}', "npm": '{"vulnerabilities":{}}'}
+        return 1, outputs.get(tool, clean[tool]), ""  # tools exit 1 when they FIND something
     return run
 
 
@@ -52,11 +53,11 @@ def test_new_findings_alert_once_then_dedupe(tmp_path):
     sent = []
     outs = {"semgrep": SEMGREP_ONE, "pip-audit": PIP_ONE, "npm": NPM_ONE}
     first = nss.run_scan(CONFIG, runner=runner(outs), state_dir=tmp_path,
-                         send=lambda text, priority="P1": sent.append(text), dry_run=False)
+                         send=lambda text, priority="P1": sent.append(text) or {"accepted": True, "delivered": True}, dry_run=False)
     assert len(first["new"]) == 3 and len(sent) == 1
     assert "semgrep:python.lang.security.audit.x:scripts/a.py:7" in sent[0]
     second = nss.run_scan(CONFIG, runner=runner(outs), state_dir=tmp_path,
-                          send=lambda text, priority="P1": sent.append(text), dry_run=False)
+                          send=lambda text, priority="P1": sent.append(text) or {"accepted": True, "delivered": True}, dry_run=False)
     assert second["new"] == [] and len(sent) == 1  # nothing new, nothing sent
 
 
@@ -112,7 +113,7 @@ def test_a_missing_tool_alerts_on_its_own_and_exits_non_zero(tmp_path, monkeypat
     import os, sys as _s, types
     sent = []
     fake = types.ModuleType("telegram_alert")
-    fake.send_telegram = lambda text, **kw: sent.append((text, kw)) or True
+    fake.send_telegram_outcome = lambda text, **kw: sent.append((text, kw)) or {"accepted": True, "delivered": True}
     monkeypatch.setitem(_s.modules, "telegram_alert", fake)
     monkeypatch.setattr(nss, "_default_runner", runner({}, missing=("semgrep",)))
     cfg = tmp_path / "cfg.json"
@@ -127,13 +128,15 @@ def test_a_missing_tool_alerts_on_its_own_and_exits_non_zero(tmp_path, monkeypat
 
 def test_a_crashed_tool_carries_its_previous_findings_forward(tmp_path):
     outs = {"semgrep": SEMGREP_ONE}
-    first = nss.run_scan(CONFIG, runner=runner(outs), state_dir=tmp_path, dry_run=False)
+    first = nss.run_scan(CONFIG, runner=runner(outs), state_dir=tmp_path, dry_run=False,
+                         send=lambda *args, **kwargs: {"accepted": True, "delivered": True})
     assert len(first["findings"]) == 1
 
     def crash(argv, cwd):
         if argv[0] == "semgrep":
             return 2, "", "boom"
-        return (0, f"{argv[0]} 9.9.9\n", "") if argv[1:] == ["--version"] else (0, "{}", "")
+        clean = '{"dependencies":[]}' if argv[0] == "pip-audit" else '{"vulnerabilities":{}}'
+        return (0, f"{argv[0]} 9.9.9\n", "") if argv[1:] == ["--version"] else (0, clean, "")
 
     second = nss.run_scan(CONFIG, runner=crash, state_dir=tmp_path, dry_run=False)
     assert second["tools"]["semgrep"]["status"] == "error"
@@ -142,7 +145,7 @@ def test_a_crashed_tool_carries_its_previous_findings_forward(tmp_path):
     # the next good night must not present the old finding as NEW again
     sent = []
     third = nss.run_scan(CONFIG, runner=runner(outs), state_dir=tmp_path,
-                         send=lambda text, priority="P1": sent.append(text), dry_run=False)
+                         send=lambda text, priority="P1": sent.append(text) or {"accepted": True, "delivered": True}, dry_run=False)
     assert third["new"] == [] and sent == []
 
 
