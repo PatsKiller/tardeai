@@ -175,3 +175,64 @@ def test_the_default_email_sender_turns_a_refused_send_into_a_failure(monkeypatc
     with pytest.raises(RuntimeError) as exc:
         cc._default_email_sender("operator@example.invalid", "s", "b")
     assert str(exc.value) == "email_send_refused"
+
+
+# ── "returned without raising" is not "delivered" (cc-deepseek-2 F1, cc-deepseek-8 F2/F3) ────────────────────────
+
+def test_a_sender_that_returns_no_receipt_is_not_recorded_as_sent(monkeypatch):
+    """A capped, suppressed or no-op sender returns falsy without raising. It must not publish DELIVERED."""
+    monkeypatch.setenv(cd.CRITICAL_CHAT_ENV, "chat-fixture")
+    calls = {"email": [], "telegram": []}
+    delivery = cc.deliver(EVENT, contact=contact(), policy=policy(),
+                          email_sender=lambda *a: (calls["email"].append(a), None)[1],
+                          telegram_sender=lambda *a: (calls["telegram"].append(a), None)[1],
+                          text_sender=lambda e: {"sent": False, "reason": "capped"})
+    by = {r.channel: r for r in delivery.receipts}
+    assert by["telegram_critical"].status == "failed", by["telegram_critical"].as_dict()
+    assert by["telegram_critical"].reason == "sender_returned_no_receipt"
+    assert by["email"].status == "failed" and by["email"].reason == "sender_returned_no_receipt"
+    assert len(calls["telegram"]) == 1 and len(calls["email"]) == 1, "the send was still attempted"
+    assert delivery.delivered is False, "an unconfirmed send must never publish the event as delivered"
+
+
+def test_a_truthy_receipt_is_still_a_delivery(monkeypatch):
+    """The fix must not make every send look failed: the default adapters return a message id / accepted marker."""
+    delivery, _calls = run(monkeypatch)
+    by = {r.channel: r for r in delivery.receipts}
+    assert by["telegram_critical"].status == "sent" and by["email"].status == "sent"
+    assert delivery.delivered is True
+
+
+def test_a_text_result_without_an_explicit_sent_true_is_not_sent(monkeypatch):
+    """The old test was negative (`result.get('sent') is not False`), so `{}`, `{'ok': False}` and `{'reason': …}`
+    all came back as sent. Only an explicit True may."""
+    for result in ({}, {"ok": False}, {"reason": "hourly_cap"}, None, "unexpected-shape"):
+        delivery, _calls = run(monkeypatch, text_sender=lambda e, r=result: r)
+        text = {r.channel: r for r in delivery.receipts}["text_gateway"]
+        assert text.status != "sent", (result, text.as_dict())
+    delivery, _calls = run(monkeypatch, text_sender=lambda e: {"sent": True})
+    assert {r.channel: r for r in delivery.receipts}["text_gateway"].status == "sent"
+    delivery, _calls = run(monkeypatch, text_sender=lambda e: {"sent": False, "reason": "capped"})
+    text = {r.channel: r for r in delivery.receipts}["text_gateway"]
+    assert text.status == "skipped" and text.reason == "capped"
+
+
+def test_a_missing_text_allowlist_does_not_stop_email_and_telegram(monkeypatch):
+    """cc-deepseek-8 F3: the text config is the TEXT channel's; its absence must not silence the other two."""
+    def missing(*_a, **_k):
+        raise cd.CriticalDeliveryRefused("text_allowlist_missing")
+
+    monkeypatch.setattr(cd, "load_text_allowlist", missing)
+    delivery, calls = run(monkeypatch)  # run() passes the fixture policy, so drop it to exercise the loader
+    assert delivery.delivered is True
+
+    monkeypatch.setenv(cd.CRITICAL_CHAT_ENV, "chat-fixture")
+    calls = {"email": [], "telegram": [], "text": []}
+    delivery = cc.deliver(EVENT, contact=contact(),
+                          email_sender=lambda *a: (calls["email"].append(a), "smtp-ok")[1],
+                          telegram_sender=lambda *a: (calls["telegram"].append(a), "tg-42")[1],
+                          text_sender=lambda e: {"sent": True})
+    by = {r.channel: r for r in delivery.receipts}
+    assert len(calls["email"]) == 1 and len(calls["telegram"]) == 1, "the other two channels were still attempted"
+    assert by["email"].status == "sent" and by["telegram_critical"].status == "sent"
+    assert by["text_gateway"].status == "skipped" and by["text_gateway"].reason == "text_allowlist_missing"

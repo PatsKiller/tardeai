@@ -220,8 +220,19 @@ def fan_out_plan(alert_class: str, contact: dict, policy: dict | None = None) ->
         missing.append("critical_email_not_configured")
     if not critical_chat_configured():
         missing.append("critical_chat_not_configured")
+    # cc-deepseek-8 F4: ``channels`` is the tier's intent and stays that — it names what a CRITICAL event goes to even
+    # when a target is missing. ``attempted`` is the part a dry run needs: only the channels that will actually be
+    # called, so a reader cannot mistake a listed channel for a working one.
+    attempted: list[str] = []
+    if critical_chat_configured():
+        attempted.append("telegram_critical")
+    if mail:
+        attempted.append("email")
+    if gateways and text_enabled:
+        attempted.append("text_gateway")
     return {
         "channels": ["telegram_critical", "email"] + (["text_gateway"] if gateways else []),
+        "attempted": attempted,
         "gateway_count": len(gateways),
         "email_configured": bool(mail),
         "text_enabled": text_enabled,

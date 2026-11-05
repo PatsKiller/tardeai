@@ -93,6 +93,13 @@ def _default_telegram_sender(chat_id: str, text: str) -> str | None:
     return str(result) if result is not None else None
 
 
+def _confirms(provider: Any) -> bool:
+    """A sender confirms by returning a receipt (a message id, an accepted marker). Anything else is not a delivery."""
+    if isinstance(provider, dict):
+        return provider.get("sent") is True or provider.get("ok") is True
+    return bool(provider)
+
+
 def deliver(
     event: dict[str, Any],
     *,
@@ -106,8 +113,18 @@ def deliver(
     """Fan one CRITICAL event to every channel that can carry it. Never raises for a channel that cannot."""
     alert_class = str(event.get("alert_class") or "").strip()
     doc = contact if contact is not None else cd.load_operator_contact()
-    allow = policy if policy is not None else cd.load_text_allowlist()
-    plan = cd.fan_out_plan(alert_class, doc, allow)
+    # cc-deepseek-8 F3: the allowlist is the TEXT channel's config. If it cannot be read, text is refused and the
+    # other two channels still carry the event — a missing text allowlist must never stop email and the Critical chat.
+    allow = policy
+    allow_error: str | None = None
+    if allow is None:
+        try:
+            allow = cd.load_text_allowlist()
+        except cd.CriticalDeliveryRefused as exc:
+            allow = None
+            allow_error = str(exc) or "text_allowlist_missing"
+    plan = cd.fan_out_plan(alert_class, doc,
+                           allow if allow is not None else {"classes": {alert_class: {"enabled": False}}})
     out = Delivery(alert_class=alert_class)
 
     what = str(event.get("what") or event.get("trigger") or alert_class)
@@ -125,7 +142,13 @@ def deliver(
         chat = os.environ.get(cd.CRITICAL_CHAT_ENV, "").strip()
         try:
             provider = (telegram_sender or _default_telegram_sender)(chat, f"{subject}\n{what}")
-            out.receipts.append(Receipt("telegram_critical", "sent", provider_receipt=str(provider) if provider else None))
+            # cc-deepseek-2 F1: "returned without raising" is not "delivered". A sender that returns no receipt
+            # (a capped or suppressed send, a gateway that did nothing) is recorded as unconfirmed, so
+            # Delivery.delivered cannot publish it as a success on the channel that exists to assure the operator.
+            status = "sent" if _confirms(provider) else "failed"
+            out.receipts.append(Receipt("telegram_critical", status,
+                                        None if status == "sent" else "sender_returned_no_receipt",
+                                        provider_receipt=str(provider) if provider else None))
         except Exception as exc:  # noqa: BLE001 — a channel failure is a receipt, never a lost event
             out.receipts.append(Receipt("telegram_critical", "failed", type(exc).__name__))
 
@@ -135,12 +158,16 @@ def deliver(
     else:
         try:
             provider = (email_sender or _default_email_sender)(mail, subject, what)
-            out.receipts.append(Receipt("email", "sent", provider_receipt=str(provider) if provider else None))
+            status = "sent" if _confirms(provider) else "failed"
+            out.receipts.append(Receipt("email", status, None if status == "sent" else "sender_returned_no_receipt",
+                                        provider_receipt=str(provider) if provider else None))
         except Exception as exc:  # noqa: BLE001
             out.receipts.append(Receipt("email", "failed", type(exc).__name__))
 
     # Text gateway — the primitive owns the allowlist, the cap and the dedupe, so this module only hands it the event.
-    if "text_gateway_not_configured" in plan["missing"]:
+    if allow_error is not None:
+        out.receipts.append(Receipt("text_gateway", "skipped", allow_error))
+    elif "text_gateway_not_configured" in plan["missing"]:
         out.receipts.append(Receipt("text_gateway", "skipped", "text_gateway_not_configured"))
     elif not cd.text_class_allowed(alert_class, allow):
         out.receipts.append(Receipt("text_gateway", "skipped", "class_not_enabled_for_text"))
@@ -151,8 +178,15 @@ def deliver(
             else:
                 from scripts.lib.critical_texts import send_critical_text  # the primitive; present once its PR lands
                 result = send_critical_text(event, now=now)
-            status = "sent" if not isinstance(result, dict) or result.get("sent") is not False else "skipped"
-            reason = None if status == "sent" else str((result or {}).get("reason") or "not_sent")
+            # cc-deepseek-8 F2: the test is POSITIVE. Only an explicit {"sent": True} counts as sent; a dict that
+            # merely lacks the key, or any other shape, is not a delivery. (The primitive is not on this branch, so
+            # its return shape is unverified here — which is exactly why the default must be "not sent".)
+            if isinstance(result, dict) and result.get("sent") is True:
+                status, reason = "sent", None
+            elif isinstance(result, dict) and result.get("sent") is False:
+                status, reason = "skipped", str(result.get("reason") or "not_sent")
+            else:
+                status, reason = "failed", "sender_returned_no_confirmation"
             out.receipts.append(Receipt("text_gateway", status, reason))
         except ImportError:
             # The primitive is not on this branch yet. Refusing is the safe direction: no text, and the receipt says why.

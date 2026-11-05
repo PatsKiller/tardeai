@@ -192,3 +192,20 @@ def test_the_plan_refuses_a_non_critical_class_before_it_names_a_channel(monkeyp
     monkeypatch.setenv(cd.CRITICAL_CHAT_ENV, "chat-fixture")
     with pytest.raises(cd.CriticalDeliveryRefused):
         cd.fan_out_plan("digest", contact(), policy(B2_stop_cancelled_expired_rejected=True))
+
+
+def test_the_plan_says_which_channels_it_will_actually_attempt(monkeypatch):
+    """cc-deepseek-8 F4: `channels` is the tier's intent; `attempted` is what a dry run can trust."""
+    monkeypatch.delenv(cd.CRITICAL_CHAT_ENV, raising=False)
+    doc = contact()
+    doc.pop("critical_email_to")
+    plan = cd.fan_out_plan("B2_stop_cancelled_expired_rejected", doc, policy(B2_stop_cancelled_expired_rejected=True))
+    assert plan["attempted"] == ["text_gateway"], plan["attempted"]
+    assert plan["channels"] == ["telegram_critical", "email", "text_gateway"], "the intent list is unchanged"
+
+    monkeypatch.setenv(cd.CRITICAL_CHAT_ENV, "chat-fixture")
+    full = cd.fan_out_plan("B2_stop_cancelled_expired_rejected", contact(), policy(B2_stop_cancelled_expired_rejected=True))
+    assert full["attempted"] == ["telegram_critical", "email", "text_gateway"], full["attempted"]
+
+    off = cd.fan_out_plan("B2_stop_cancelled_expired_rejected", contact(), policy(B2_stop_cancelled_expired_rejected=False))
+    assert "text_gateway" not in off["attempted"], "a class the allowlist does not enable is not attempted"
