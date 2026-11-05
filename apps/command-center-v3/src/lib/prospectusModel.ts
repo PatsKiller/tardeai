@@ -191,7 +191,7 @@ export function totals(idx: ProspectusIndex | null | undefined): Record<Prospect
 function numOr(v: unknown, d: number): number { const n = Number(v); return v != null && Number.isFinite(n) ? n : d }
 
 export function toNumber(v: unknown): number | null {
-  if (v == null || v === '') return null
+  if ((typeof v !== 'number' && typeof v !== 'string') || (typeof v === 'string' && !v.trim())) return null
   const n = Number(v)
   return Number.isFinite(n) ? n : null
 }
@@ -207,10 +207,8 @@ export function usd(v: unknown): string {
  * reported, and the one-line reason travels with it. The raw service error stays in the title.
  */
 export function creditState(b: ProspectusBudget | null | undefined): { measured: boolean; headline: string; reason: string } {
-  const rem = toNumber(b?.credit_remaining_usd)
-  if (rem != null) return { measured: true, headline: '', reason: '' }
-  const err = String(b?.error || '')
-  const status = String(b?.status || '').toUpperCase()
+  const err = String(b?.error ?? '').trim()
+  const status = String(b?.status ?? '').trim().toUpperCase()
   // The server's own verdict counts too: a payload can say UNAVAILABLE with no error text, and reading only
   // `error` would then report "Not measured" when the source in fact refused to answer (self-review, 2026-11-04).
   if (err || status === 'UNAVAILABLE' || status === 'ERROR') {
@@ -218,10 +216,12 @@ export function creditState(b: ProspectusBudget | null | undefined): { measured:
       measured: false,
       headline: 'Unavailable',
       reason: /creditdenied/i.test(err)
-        ? 'The credit check was refused, so the remaining balance is unknown. Prospectus writing still works; only the balance is hidden.'
+        ? 'The credit check was refused, so the remaining balance is unknown.'
         : 'The credit service did not answer, so the remaining balance is unknown.',
     }
   }
+  const rem = toNumber(b?.credit_remaining_usd)
+  if (rem != null) return { measured: true, headline: '', reason: '' }
   return {
     measured: false,
     headline: 'Not measured',
@@ -234,7 +234,8 @@ export function budgetView(b: ProspectusBudget | null | undefined): { remaining:
   const used = toNumber(b?.today_used_usd), cap = toNumber(b?.daily_cap_usd), rem = toNumber(b?.credit_remaining_usd)
   const fill = used != null && cap != null && cap > 0 ? Math.max(0, Math.min(1, used / cap)) : null
   const tone = fill == null ? 'neutral' : fill >= 1 ? 'danger' : fill >= 0.8 ? 'warning' : 'success'
-  return { remaining: usd(rem), used: usd(used), cap: usd(cap), fill, tone, credit: creditState(b) }
+  const credit = creditState(b)
+  return { remaining: credit.measured ? usd(rem) : '—', used: usd(used), cap: usd(cap), fill, tone, credit }
 }
 
 /**
@@ -252,7 +253,7 @@ export function failureHeadline(reason: unknown): { text: string; raw: string } 
   if (/TIMEOUT|TIMED_OUT/i.test(raw)) {
     return { text: 'The draft could not be generated — the writer timed out. Open it and re-run the rewrite.', raw }
   }
-  if (/RATE|QUOTA|CREDIT/i.test(raw)) {
+  if (/\b(?:RateLimitError|QuotaExceededError|CreditDenied|RATE[_ -]LIMIT(?:ED|[_ -]EXCEEDED)?|QUOTA[_ -](?:EXCEEDED|EXHAUSTED)|INSUFFICIENT[_ -](?:QUOTA|CREDIT)|CREDIT[_ -](?:DENIED|EXHAUSTED)|429)\b/i.test(raw)) {
     return { text: 'The draft could not be generated — the model allowance blocked this run. Open it to re-run after the allowance resets.', raw }
   }
   if (!raw) return { text: 'The last run failed. Open it and re-run the rewrite.', raw: '' }
@@ -261,7 +262,7 @@ export function failureHeadline(reason: unknown): { text: string; raw: string } 
   const words = raw.split(/\s+/)
   const machineCode = /^[A-Z0-9_]+$/.test(raw) || /^[A-Za-z]+(Error|Exception):/.test(raw) || words.length < 3
   if (!machineCode) return { text: raw, raw }
-  return { text: 'The last run failed, so this prospectus shows the previous version. Open it and re-run the rewrite.', raw }
+  return { text: 'The last run failed. Open it and re-run the rewrite.', raw }
 }
 
 /** Model chip: claude-fable-* → Fable, claude-opus-* → Opus, anything else shown as given (short). */

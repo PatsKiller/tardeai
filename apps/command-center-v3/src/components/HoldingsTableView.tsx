@@ -314,11 +314,12 @@ function MobilePair({ label, value, color }: { label: string; value: ReactNode; 
 }
 
 function HoldingsMobileList({
-  models, openStops, onOpenDetail, placementCount, resizeCount, verificationCount, rowCount, cvdMode, focusKey,
+  models, openStops, onOpenDetail, onShareDrift, placementCount, resizeCount, verificationCount, rowCount, cvdMode, focusKey,
 }: {
   models: Array<{ ctx: HoldingsTableRowContext; m: ReturnType<typeof buildHoldingsRowModel> }>
   openStops: (ctx: HoldingsTableRowContext) => void
   onOpenDetail: (ctx: HoldingsTableRowContext) => void
+  onShareDrift?: (ctx: HoldingsTableRowContext) => void
   placementCount: number
   resizeCount: number
   verificationCount: number
@@ -338,6 +339,9 @@ function HoldingsMobileList({
         {models.map(({ ctx: rowCtx, m }) => {
           const h = rowCtx.h
           const focused = focusKey === m.key.replace(':', '-')
+          const hasShareDrift = h.share_drift_status === 'pending'
+            || (h.broker_actual_shares != null && h.shares != null
+              && Math.abs(Number(h.broker_actual_shares) - Number(h.shares)) > 0.01)
           const needsVerify = m.needsVerification || m.protectionState === 'UNVERIFIABLE'
           const dayColor = m.dayPct != null ? semanticSigned(m.dayPct, cvdMode) : BB.text3
           const plColor = m.pl$ != null ? semanticSigned(m.pl$, cvdMode) : BB.text3
@@ -379,6 +383,11 @@ function HoldingsMobileList({
               <div style={{ fontSize: 10, color: BB.text3, marginTop: 2 }}>
                 {m.accountLabel}{m.shares != null ? ` · ${m.shares} shares` : ''}
               </div>
+              {hasShareDrift && (
+                <div style={{ marginTop: 3 }} onClick={e => e.stopPropagation()}>
+                  <ShareDriftPill compact onClick={() => onShareDrift?.(rowCtx)} />
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginTop: 8 }}>
                 <MobilePair label="Value" value={fmt$(m.marketValue, 0)} />
                 <MobilePair label="Today" value={m.dayPct != null ? `${m.dayPct >= 0 ? '+' : ''}${m.dayPct.toFixed(2)}%` : '—'} color={dayColor} />
@@ -469,6 +478,7 @@ export default function HoldingsTableView({
         models={models}
         openStops={openStops}
         onOpenDetail={onOpenDetail}
+        onShareDrift={onShareDrift}
         placementCount={placementCount}
         resizeCount={resizeCount}
         verificationCount={verificationCount}
