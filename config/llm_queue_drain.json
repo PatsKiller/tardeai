@@ -24,6 +24,20 @@
     "deepseek-flash"
   ],
   "deepseek_rule": "dropped from the chain inside scripts/lib/deepseek_offpeak.is_deepseek_peak_utc (weekdays 01:00-04:00 and 06:00-10:00 UTC); weekends are off-peak all day (confirmed against the code 2026-11-01)",
+  "drain_requeue": {
+    "failure_rate_threshold": 0.2,
+    "max_attempts": 3,
+    "retry_delay_seconds": [
+      60,
+      300,
+      900
+    ],
+    "requeue_key_rule": "job id + attempt (deep_overnight_llm_queue.id plus its attempt_count); the same pair enqueued twice is a no-op, so no job gets two runnable copies",
+    "incident_key_rule": "one incident per job identity (root cause only when the caller has no job id); the attempt never enters the key, so a job that exhausts every retry becomes ONE incident",
+    "provider_fallback_rule": "a retry reuses provider_order through llm_queue_drain_policy.provider_chain() (DeepSeek dropped inside its billing peak); there is no separate retry lane list",
+    "after_fix_rule": "a held failed job stays counted as failed and requeueable; once the cause is fixed it is requeued with a fresh attempt budget",
+    "operator_authority": "2026-11-02 operator decision addendum: at a 20% error rate requeue every failed job with a growing delay until the queue is drained"
+  },
   "process_id": "deep_overnight_llm_drain",
   "per_call_timeout_s": 120,
   "per_run_job_limit": 100,

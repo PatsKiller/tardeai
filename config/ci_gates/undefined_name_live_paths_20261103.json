@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "undefined_name_live_paths_20261103",
+  "files": [
+    "tests/test_undefined_name_live_paths_20261103.py"
+  ],
+  "anchor": "UNDEFINED_NAME_LIVE_PATHS_20261103",
+  "comment": [
+    "ANCHOR: UNDEFINED_NAME_LIVE_PATHS_20261103 — a live path that reaches an undefined name fails at import, not at assertion, so a green run never sees it: the watch System-Suggests unauthenticated route 500s, paper promotion lineage raises NameError on os, pipeline_failures masks the real DB error, and overnight_batch's journal reminder is dead code.",
+    "FQ-... registration: this gate names the file so the hardening runner executes it; without an entry the coverage gate reports it as unlisted and CI stays green while the test never runs.",
+    "Hermetic: pure AST/import checks over the named modules; no DB, no network, no live state."
+  ]
+}
