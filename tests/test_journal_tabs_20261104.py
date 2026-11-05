@@ -14,6 +14,7 @@ APP = ROOT / "apps/command-center-v3"
 
 def test_phone_rule_targets_the_actual_route_layout_owner():
     css = (APP / "src/components/tradeinview/TradeInViewLayout.css").read_text(encoding="utf-8")
+    css = re.sub(r"/\*[\s\S]*?\*/", "", css)
     phone = re.search(r"@media\s*\(max-width:\s*420px\)\s*\{([\s\S]*?)\n\}", css)
     assert phone
     assert re.search(r"\.tradeinview-tabs\s*\{[^}]*flex-wrap:\s*wrap;[^}]*overflow-x:\s*visible;", phone[1])
