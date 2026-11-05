@@ -318,6 +318,8 @@ def test_recurring_unrelated_fault_cannot_starve_operator_delivery(tmp_path, fir
         return True
 
     deps.notify = notify
+    previous_receipt = json.dumps({"schema": S.RECEIPT_SCHEMA, "as_of": L.iso(T0), "mode": "apply"})
+    (d / "supervisor_last.json").write_text(previous_receipt)
     for tick in range(3):
         with pytest.raises(RuntimeError, match="synthetic later dispatch fault"):
             _cycle_with(tmp_path, deps, now=NOW + timedelta(minutes=tick))
@@ -325,8 +327,7 @@ def test_recurring_unrelated_fault_cannot_starve_operator_delivery(tmp_path, fir
     assert len(pages) == (1 if first_result is True else 2), "the unrelated fault must not starve or duplicate delivery"
     assert all(page["priority"] == "P1" and first in page["text"] for page in pages)
     assert S._pending_escalation(L.load_records(d)[first]) is None
-    receipt = json.loads((d / "supervisor_last.json").read_text())
-    assert receipt["cycle_error"]["error_class"] == "RuntimeError", "a partial cycle must retain its failure"
+    assert (d / "supervisor_last.json").read_text() == previous_receipt, "a failed cycle must keep its completed clock"
 
 
 def test_exception_flush_keeps_one_batch_for_all_already_queued_incidents(tmp_path):
@@ -378,3 +379,22 @@ def test_invalid_config_preserves_its_error_without_inventing_a_ledger(tmp_path)
         S.cycle(d=d, state_root=tmp_path / "ps", release_root=tmp_path, cfg={},
                 deps=_fault_deps(pages), apply=True, now=NOW, environ={}, root=ROOT)
     assert not d.exists() and pages == []
+
+
+def test_failed_cycle_does_not_advance_the_real_ops_supervisor_clock(tmp_path):
+    d = tmp_path / "ledger"
+    _seed(d, n=1, refused_first=True)
+    L.open_incident(source={"kind": "watcher", "watcher": "lane_health"},
+                    title="synthetic worker fault", where="tests/clock_worker", d=d,
+                    now=T0 + timedelta(seconds=1))
+    last_success = {"schema": S.RECEIPT_SCHEMA, "as_of": L.iso(T0), "mode": "apply"}
+    (d / "supervisor_last.json").write_text(json.dumps(last_success))
+    spec = importlib.util.spec_from_file_location("incident_clock_view_under_test", ROOT / "scripts/lib/incidents_view.py")
+    view = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = view
+    spec.loader.exec_module(view)
+    pages = []
+    with pytest.raises(RuntimeError, match="synthetic later dispatch fault"):
+        _cycle_with(tmp_path, _fault_deps(pages))
+    assert len(pages) == 1, "deliver the already owed batch despite the fault"
+    assert view.payload(d, now=NOW)["supervisor_as_of"] == L.iso(T0), "Ops must not date a failed cycle as completed"

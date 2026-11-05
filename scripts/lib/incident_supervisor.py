@@ -603,19 +603,19 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
     out: dict[str, Any] = {"schema": RECEIPT_SCHEMA, "as_of": L.iso(now), "mode": "apply" if apply else "dry_run",
                            "considered": [], "actions": [], "dispatched": [], "blocked": [], "escalated": [],
                            "would_escalate": [], "skipped": []}
+    completed = False
     try:
-        return _run_cycle(d=d, state_root=state_root, release_root=release_root, cfg=cfg, deps=deps,
-                          apply=apply, now=now, environ=environ, root=root, clock=clock, out=out)
-    except BaseException as exc:
-        out["cycle_error"] = {"error_class": type(exc).__name__}
-        raise
+        result = _run_cycle(d=d, state_root=state_root, release_root=release_root, cfg=cfg, deps=deps,
+                            apply=apply, now=now, environ=environ, root=root, clock=clock, out=out)
+        completed = True
+        return result
     finally:
         if apply:
             _flush_escalations(d, deps, out, now)
-            if "cycle_error" not in out:
+            # Ops exposes only this receipt's as_of, not an error flag. Keep its last completed
+            # clock on a failed cycle; the original exception still propagates to the caller.
+            if completed:
                 d.mkdir(parents=True, exist_ok=True)
-            # Invalid setup with no ledger must retain its original exception, not a receipt error.
-            if d.is_dir():
                 p = d / "supervisor_last.json"
                 p.write_text(json.dumps(out, indent=1, default=str) + "\n", encoding="utf-8")
 
