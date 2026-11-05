@@ -59,11 +59,12 @@ function CardHead({ title, to, linkText, touchTarget = false }: { title: string;
   )
 }
 
-function HeadFact({ name, value, color, tip, big, testId }: { name: string; value: ReactNode; color?: string; tip: string; big?: boolean; testId?: string }) {
+function HeadFact({ name, value, color, tip, big, testId, note }: { name: string; value: ReactNode; color?: string; tip: string; big?: boolean; testId?: string; note?: ReactNode }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2, cursor: 'help' }} title={tip} data-testid={testId}>
       <span style={label}>{name}</span>
       <span style={{ ...numStyle, fontSize: big ? TYPE.xl : TYPE.lg, fontWeight: 600, color: color ?? TOKENS.text[0] }}>{value}</span>
+      {note && <span data-testid="home-money-qualifier" style={{ fontSize: TYPE.sm, color: TOKENS.warning }}>{note}</span>}
     </div>
   )
 }
@@ -125,7 +126,7 @@ export default function HomeDoNow() {
   const openSymbol = useOpenSymbol()
   const doNowApi = useApi<any>('/api/v2/home/do-now', 60_000)
   const cioApi = useApi<any>('/api/v2/cio/pages', 60_000)
-  const { data: overview, loading: ovLoading, stale: overviewStale, error: overviewError } = useApi<any>('/api/v2/overview', 60_000)
+  const { data: overview, loading: ovLoading, stale: overviewStale, error: overviewError, transport: overviewTransport } = useApi<any>('/api/v2/overview', 60_000)
   const { data: perf } = useApi<any>('/api/v2/portfolio/performance', 120_000)
   const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
   // Design home/v002: the Market Risk Engine projection (tier, score, contributors, episode). Honest not_evaluated until P2.
@@ -143,7 +144,7 @@ export default function HomeDoNow() {
   const dn = homeWithCurrentTruth(doNowFrom(doNowApi.data, { loading: doNowApi.loading,
     error: doNowApi.error ?? (doNowApi.stale ? 'queue refresh failed; showing the last answer' : undefined), nowMs: now }),
     cio, overview, cioApi.error, { positionsStale: cioApi.stale, approvalsStale: overviewStale || !!overviewError })
-  const pos = positionsFreshness(overview, now)
+  const pos = positionsFreshness(overview, now, overviewTransport ?? 'OK')
   const pv: number | null = overview?.portfolio_value ?? null
   const todayChg: number | null = overview?.today_change ?? null
   const todayPct: number | null = overview?.today_pct ?? null
@@ -201,7 +202,7 @@ export default function HomeDoNow() {
       <MarketRiskSummary mr={mr} />
       {/* Slim header */}
       <header data-testid="home-header" style={{ ...card, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 24px', flexDirection: 'row' }}>
-        <HeadFact name="Portfolio" big testId="home-portfolio" value={pv != null ? money(pv) : ovLoading ? '…' : '—'}
+        <HeadFact name="Portfolio" big testId="home-portfolio" note={pos.qualifier} value={pv != null ? money(pv) : ovLoading ? '…' : '—'}
           tip={`Total of all accounts, broker-reported and repriced (/api/v2/overview portfolio_value; holdings.json). ${overview?.position_count ?? '?'} positions.`} />
         <HeadFact name="Today" testId="home-today" color={signTone(todayChg)} value={todayChg != null ? `${money(todayChg, true)} · ${pct(todayPct)}` : '—'}
           tip="Today's change across all accounts (/api/v2/overview today_change / today_pct: broker snapshot day change, repriced when missing)." />
