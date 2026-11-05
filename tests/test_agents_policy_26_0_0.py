@@ -36,7 +36,8 @@ BINDING = AGENTS[:VH]
 #: 29.3.0: three §11 rules (draft-first, stack top, one merge window) add 18 binding lines to main's 2649. Their
 #: measurements, the 5,369-run evidence and the rollout live in LESSONS L11-01 and DSN-20261031-ci-load-reduction,
 #: not here. 2667 measured; this ceiling is that plus three lines of headroom.
-MAX_BINDING_LINES = 2670
+# The cap tracks the binding text: raised for §24.16 (31.0.0), the self-heal fix-PR authority section.
+MAX_BINDING_LINES = 2690
 
 
 def _control() -> dict[str, str]:
@@ -69,7 +70,7 @@ def _rows() -> dict[str, str]:
 # ---------------------------------------------------------------------------------------------- header / banner
 def test_header_is_26_0_x_proposed_or_active():
     cb = _control()
-    assert re.fullmatch(r"(?:2[789]|30)\.\d+\.\d+", cb["Policy-Version"]), cb["Policy-Version"]
+    assert re.fullmatch(r"(?:2[789]|3[01])\.\d+\.\d+", cb["Policy-Version"]), cb["Policy-Version"]
     if cb["Policy-Version"] == "26.0.0":
         assert cb["Supersedes"] == "25.0.1"
     elif cb["Policy-Version"] == "26.1.0":
@@ -251,7 +252,7 @@ def test_rulebook_projection_renders_every_numbered_section():
     from scripts.lib import operator_approvals as core
 
     proj = core.policy_projection(AGENTS, source_sha="0" * 40)
-    assert re.fullmatch(r"(?:2[789]|30)\.\d+\.\d+", proj["policy_version"])
+    assert re.fullmatch(r"(?:2[789]|3[01])\.\d+\.\d+", proj["policy_version"])
     headings = [ln[2:].strip() for ln in BINDING.splitlines()
                 if re.match(r"^# (\d+[A-Z]? ·|Document version policy|Multi-Agent SOP)", ln)]
     missing = [h for h in headings if h not in proj["section_counts"]]
