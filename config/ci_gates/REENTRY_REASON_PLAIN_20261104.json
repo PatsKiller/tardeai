@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "REENTRY_REASON_PLAIN_20261104",
+  "files": [
+    "tests/test_reentry_reason_plain_20261104.py"
+  ],
+  "anchor": "REENTRY_REASON_PLAIN_20261104",
+  "comment": [
+    "ANCHOR: FQ-002 - 31 of 149 live advisory rows said 'MISSING MARKET' with a reason naming",
+    "indicator_confluence_cache and telling the operator to run a script. The reason is now a pure function's",
+    "output (present quote, missing indicators, plain words); tests assert the behaviour and that the",
+    "internal names are gone from that path."
+  ]
+}

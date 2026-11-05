@@ -69,10 +69,10 @@ function one(raw: string): string {
   if (known) return known
   // Two decisions here, and they are separate.
   // 1. Is this an identifier at all? `humanizeIdentifier` returns already-human text unchanged; if that is the
-  //    case the value is not ours to rewrite (main's #2590 shipped `humanizeCode` as the shared humaniser, and
+  //    case the value is not ours to rewrite (main's PR 2590 shipped `humanizeCode` as the shared humaniser, and
   //    applying it to "Coverage by Source" yields "Coverage by source", which is a regression, not a fix).
   // 2. If it IS an identifier, render it in SENTENCE case via `humanizeCode`, because that is the form the
-  //    merged contract (health.labels.view.test.mjs, #2590) asserts: "Repair agent", not "Repair Agent". Two
+  //    merged contract (health.labels.view.test.mjs, PR 2590) asserts: "Repair agent", not "Repair Agent". Two
   //    humanisers with different casing is how one page ends up saying both.
   if (humanizeIdentifier(raw) === raw.trim()) return raw
   return humanizeCode(raw) || raw
