@@ -559,6 +559,31 @@ def test_an_independently_supported_stress_survives_a_same_day_futures_cap():
     assert obs.headline.startswith("SPY -1.6% extended")  # the headline names the evidence that carries the state
 
 
+def test_a_confirmed_same_day_futures_row_survives_an_unconfirmed_one_beside_it():
+    """cx-openai D52 triage at ce4d7f89f: confirmation is per contribution. A same-day /ES -4.0% that SPY -2.0%
+    confirms on its own keeps its STRESS when an unrelated same-day /NQ -5.0% (unconfirmed: SPY is under half of it)
+    is the worst mover. Removing every same-day row because one is unconfirmed discards the /ES contribution and
+    leaves the category resting on the proxy alone."""
+    now = _et(2026, 11, 2, 2, 30)
+    obs = _eval([_same_day_q("/NQ", now - timedelta(minutes=2), 24415.0, 25700.0),  # -5.0%, unconfirmed
+                 _same_day_q("/ES", now - timedelta(minutes=2), 5952.0, 6200.0),  # -4.0%
+                 _q("SPY", now - timedelta(minutes=2), 666.4, 680.0)], now)  # -2.0%: confirms /ES
+    assert obs.state == "STRESS" and obs.score > 74.0
+    assert obs.headline.startswith("/ES -4.0% extended · /NQ not confirmed: not counted above WARN")
+
+
+def test_an_unconfirmed_same_day_row_cannot_downgrade_a_confirmed_one_to_warn():
+    """The downgrade the triage names, in the state itself: /ES -2.0% is confirmed by SPY -1.0% and supports STRESS,
+    but removing every same-day row left only SPY -1.0% (WARN) and the cap held the category at WARN 74. The
+    confirmed /ES must keep the category at STRESS."""
+    now = _et(2026, 11, 2, 2, 30)
+    obs = _eval([_same_day_q("/NQ", now - timedelta(minutes=2), 24415.0, 25700.0),  # -5.0%, unconfirmed
+                 _same_day_q("/ES", now - timedelta(minutes=2), 6076.0, 6200.0),  # -2.0%
+                 _q("SPY", now - timedelta(minutes=2), 672.0, 680.0)], now)  # -1.2%: over half of /ES
+    assert obs.state == "STRESS" and obs.score > 74.0
+    assert obs.headline.startswith("/ES -2.0% extended")
+
+
 def test_a_properly_dated_futures_selloff_survives_a_same_day_row_beside_it():
     """The same P1, second half: a properly dated futures selloff is independently anchored and must keep its
     STRESS even when a worse, unconfirmed same-day futures row happens to be the worst mover."""

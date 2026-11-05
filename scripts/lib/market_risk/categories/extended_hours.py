@@ -339,17 +339,26 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
     # category. A fresh SPY at -1.6% is through the stress threshold on its own; an unconfirmed same-day /NQ beside it
     # must not downgrade that independently measured STRESS to WARN. So the restricted rows are removed and the
     # remaining evidence is re-scored; the category keeps the stronger of that and the capped WARN.
+    # 2026-11-05 (cx-openai D52 triage at ce4d7f89f): confirmation is per CONTRIBUTION, not all-or-nothing over the
+    # same-day set. A same-day futures row that a proxy confirms on its own stays in the move set and keeps its
+    # severity; only the unconfirmed same-day rows are removed. Otherwise an unrelated unconfirmed /NQ would silence a
+    # confirmed /ES beside it.
     frac = float((cfg.get("futures_confirm") or {}).get("fraction", 0.5))
+
+    def _confirmed(sym: str) -> bool:
+        m = moves[sym]
+        return any(moves.get(p) is not None and moves[p] < 0 and abs(moves[p]) >= frac * abs(m) for p in proxies)
+
     same_day_basis = "settle_same_day" in str(latest.get(worst_sym, {}).get("reference_basis") or "")
     if (state in ("WARN", "STRESS") and worst_sym in futures and worst is not None and worst < 0
             and not shock.get("shock") and worst_sym not in gaps and same_day_basis):
-        confirmed = any(moves.get(p) is not None and moves[p] < 0 and abs(moves[p]) >= frac * abs(worst)
-                        for p in proxies)
-        if not confirmed:
-            # every same-day futures row is restricted, not only the worst one: two unconfirmed futures moves are
-            # still futures-only evidence, and neither may stand in for a confirming index proxy
+        if not _confirmed(worst_sym):
+            # restrict a same-day futures row only when it is itself unconfirmed: another same-day row that a proxy
+            # confirms is independent support and must not be removed with it
             restricted = {s for s in moves
-                          if s in futures and "settle_same_day" in str(latest[s].get("reference_basis") or "")}
+                          if s in futures and moves[s] < 0
+                          and "settle_same_day" in str(latest[s].get("reference_basis") or "")
+                          and not _confirmed(s)}
             rest = {s: m for s, m in moves.items() if s not in restricted}
             rest_state, rest_score, rest_sym, rest_worst = "CALM", 0.0, None, None
             if rest:
