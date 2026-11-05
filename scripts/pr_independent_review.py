@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Independent PR reviewer (host timer tradeai-pr-review, every 5 min) — Design approvals-pr-review/v001.
+"""Independent PR reviewer (n8n lane pr-independent-review, every 5 min) — Design approvals-pr-review/v001.
 
   pr_independent_review.py [--apply] [--pr N] [--json]
 

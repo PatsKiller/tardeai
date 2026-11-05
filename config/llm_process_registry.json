@@ -2325,7 +2325,7 @@
       "id": "pr_independent_review",
       "name": "Independent PR review + reviewer answers (Sonnet 5.5)",
       "lane_policy": "either",
-      "description": "scripts/pr_independent_review.py (host timer tradeai-pr-review, every 5 min): ONE strict-JSON PrReview@v1 per (PR, head SHA) for READY non-held, non-shared-infra PRs, and the reviewer's answer to an operator question in the review sheet (Approvals -> Merges). Claude Sonnet 5.5 on the Anthropic credit (credit tier mid via ops_process_tiers). anthropic_only: when the credit is unusable the review WAITS (operator D3, no paid fallback); never DeepSeek. Reviewer id host:pr_independent_review:<run_id>, fresh context, never the author (AGENTS.md 28.15 item 10). READ_ONLY_ADVISORY: never merges, labels, approves, pushes or comments on GitHub; MBI_BEHAVIOR = 0.",
+      "description": "scripts/pr_independent_review.py (n8n lane pr-independent-review, every 5 min): ONE strict-JSON PrReview@v1 per (PR, head SHA) for READY non-held, non-shared-infra PRs, and the reviewer's answer to an operator question in the review sheet (Approvals -> Merges). Claude Sonnet 5.5 on the Anthropic credit (credit tier mid via ops_process_tiers). anthropic_only: when the credit is unusable the review WAITS (operator D3, no paid fallback); never DeepSeek. Reviewer id host:pr_independent_review:<run_id>, fresh context, never the author (AGENTS.md 28.15 item 10). READ_ONLY_ADVISORY: never merges, labels, approves, pushes or comments on GitHub; MBI_BEHAVIOR = 0.",
       "allowed_lanes": [
         "grok"
       ],
