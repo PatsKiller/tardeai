@@ -23,6 +23,21 @@ const STATUS_LABELS: Record<string, { label: string; tip: string }> = {
 }
 const humanStatus = (s?: string) => STATUS_LABELS[String(s || '').toLowerCase()] || { label: s || '—', tip: s || '' }
 
+// FQ-080: the Bucket column carries a freshness/loop code (MULTI_DAY, LONG_CYCLE, …). It reads as words like every
+// other cell, and the raw token stays in the chip's title so nothing is lost. An unknown code is humanised rather
+// than printed verbatim — a new bucket must not leak `SOME_NEW_CODE` onto the page.
+const BUCKET_LABELS: Record<string, string> = {
+  multi_day: 'Multi-day',
+  long_cycle: 'Long-term',
+  intraday: 'Intraday',
+  short_cycle: 'Short-term',
+}
+const bucketLabel = (b?: string): string => {
+  const s = String(b || '').trim()
+  if (!s) return '?'
+  return BUCKET_LABELS[s.toLowerCase()] || humanizeIdentifier(s.toLowerCase()) || s
+}
+
 const divTone = (d?: string): 'green' | 'amber' | 'red' | 'slate' =>
   (({ aligned: 'green', mixed: 'amber', divergent: 'red' } as any)[d || ''] || 'slate')
 
@@ -457,7 +472,7 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
               {/* FQ-080 / FQ-132: the middle column is a strategy a person reads, not the engine's key. The raw id stays
                   in the title (and in the drill subtitle) so nothing is lost. */}
               <span title={`strategy ${String(r.strategy_id ?? 'unknown')}`} data-pool-strategy style={{ flex: '0 0 160px', color: BB.text2, fontSize: TYPE.xs }}>{strategyLabel(r.strategy_id)}</span>
-              <span style={{ flex: '0 0 96px' }}><Chip kind="metric">{r.bucket || '?'}</Chip></span>
+              <span style={{ flex: '0 0 96px' }}><Chip kind="metric" title={`bucket ${String(r.bucket || 'unknown')}`}>{bucketLabel(r.bucket)}</Chip></span>
               <span title={humanStatus(r.current_status).tip} style={{ flex: '0 0 110px', color: BB.text2, fontSize: TYPE.xs }}>{humanStatus(r.current_status).label}</span>
               <span style={{ flex: '1 1 auto', display: 'flex', gap: 5, alignItems: 'center' }}>
                 <Chip kind="metric">{r.origin_system || 'screener'}</Chip>

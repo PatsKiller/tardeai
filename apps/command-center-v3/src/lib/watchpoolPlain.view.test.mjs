@@ -101,6 +101,24 @@ check('acronyms survive the human form (pullback_macd → Pullback MACD)', () =>
   assert.equal(strategyCell(h), 'Pullback MACD')
 })
 
+// FQ-080, Bucket column (cx-openai-2's probe at 89d4c9b84 found `MULTI_DAY` and `RE_ENTER` printed verbatim in the
+// rendered row while the strategy cell was already human). The cell reads as words; the code stays in its title.
+const visible = (h) => h.replace(/\stitle="[^"]*"/g, '')
+check('the bucket cell reads in operator words, not the freshness code', () => {
+  assert.doesNotMatch(visible(html), /MULTI_DAY/, 'the raw bucket code is visible on the page')
+  assert.match(html, /title="bucket MULTI_DAY"/, 'the raw bucket code is not recoverable')
+})
+check('an unfamiliar bucket code is explained, never printed verbatim', () => {
+  const h = render([ROW({ bucket: 'RE_ENTER' })])
+  assert.doesNotMatch(visible(h), /RE_ENTER/, 'an unknown bucket leaked onto the page')
+  assert.match(h, /title="bucket RE_ENTER"/)
+})
+check('a long-cycle bucket names its horizon', () => {
+  const h = render([ROW({ bucket: 'LONG_CYCLE' })])
+  assert.doesNotMatch(visible(h), /LONG_CYCLE/)
+  assert.match(visible(h), />Long-term</, 'the long-cycle bucket is not named in operator words')
+})
+
 // FQ-080's other half: the desk filter and loop health also read in operator words on the rendered page.
 check('desk filters are operator words, not engine keys', () => {
   assert.match(html, />All desks</)
