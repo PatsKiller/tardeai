@@ -1,4 +1,4 @@
-"""alerting.py — Email, Slack, and WhatsApp alert delivery.
+"""alerting.py — Email, Slack, WhatsApp and SMS alert delivery.
 
 WhatsApp format:
   ⚡ Trade AI [0700] | 2025-01-15
@@ -250,6 +250,54 @@ def send_whatsapp(message: str) -> None:
     except Exception as e:
         print(f"[alerting] WhatsApp error: {e}")
 
+
+
+def _smtp_send(msg: EmailMessage) -> None:
+    """The SMTP account send_email uses (REPORT_EMAIL_FROM, SMTP_*), for send_sms's email-to-SMS path."""
+    with smtplib.SMTP(_env("SMTP_HOST"), int(_env("SMTP_PORT", "587")), timeout=30) as s:
+        if _env("SMTP_USE_TLS", "true").lower() == "true":
+            s.starttls()
+        if _env("SMTP_USERNAME"):
+            s.login(_env("SMTP_USERNAME"), _env("SMTP_PASSWORD"))
+        s.send_message(msg)
+
+
+def _twilio_sms(sid: str, token: str, from_: str, to_: str, text: str) -> Optional[str]:
+    from twilio.rest import Client
+
+    sent = Client(sid, token).messages.create(body=text, from_=from_, to=to_)
+    return getattr(sent, "sid", None)
+
+
+def send_sms(message: str) -> dict:
+    """Operator text message (2026-10-25, operator: "emailed, notified, and texted"). OFF unless ENABLE_SMS=true.
+
+    Config-driven; the recipient and provider keys are read here only (approved SMTP/Twilio adapter), never by the
+    producer:
+      * OPERATOR_SMS_EMAIL — a carrier email-to-SMS address (e.g. <10 digits>@<carrier gateway>), sent over the same
+        SMTP account as send_email; or
+      * TWILIO_SID + TWILIO_AUTH_TOKEN + TWILIO_SMS_FROM + TWILIO_SMS_TO — a Twilio SMS number.
+    One line, at most 300 characters. Returns {"ok", "provider", "message_id"|"error"}; raises nothing for
+    "not configured" (the gateway records it as a failed delivery with that reason), and lets a provider error
+    propagate so the gateway settles the delivery FAILED with its cause.
+    """
+    if _env("ENABLE_SMS", "false").lower() != "true":
+        return {"ok": False, "error": "sms_disabled"}
+    text = " ".join(_norm_urls(message or "").split())[:300]
+    gateway_addr = _env("OPERATOR_SMS_EMAIL")
+    if gateway_addr:
+        msg = EmailMessage()
+        msg["Subject"] = "TradeAI"
+        msg["From"] = _env("REPORT_EMAIL_FROM")
+        msg["To"] = gateway_addr
+        msg.set_content(text)
+        _smtp_send(msg)
+        return {"ok": True, "provider": "email_to_sms", "message_id": None}
+    sid, token = _env("TWILIO_SID"), _env("TWILIO_AUTH_TOKEN")
+    from_, to_ = _env("TWILIO_SMS_FROM"), _env("TWILIO_SMS_TO")
+    if all([sid, token, from_, to_]):
+        return {"ok": True, "provider": "twilio_sms", "message_id": _twilio_sms(sid, token, from_, to_, text)}
+    return {"ok": False, "error": "sms_not_configured"}
 
 # ── Main dispatcher ───────────────────────────────────────────────────────────
 
