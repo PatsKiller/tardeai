@@ -7,6 +7,11 @@
 //
 // This module answers the only question the tile needs: can this number be read as current? A value with no time is
 // UNDATED, never FRESH. A dated value older than the threshold is STALE and carries its age. Nothing here invents a VIX.
+//
+// An observation time must carry its own timezone. `Date.parse` reads an unzoned string as the BROWSER's local time,
+// so the same record would have a different age on every device and could cross back under the 36 h limit and regain
+// the current colour (codex-cloud CX1 at a66cdde53; AGENTS.md "Time discipline": never infer a zone from format).
+// scripts/api_v2.py's `generated_at` fallback is host-local and unzoned, so an unknown zone stays unknown - UNDATED.
 export type VixState = 'FRESH' | 'STALE' | 'UNDATED' | 'UNAVAILABLE'
 
 export type VixReading = {
@@ -25,6 +30,15 @@ export type VixReading = {
 export const VIX_FRESH_HOURS = 36
 
 const HOUR = 3_600_000
+
+// An explicit timezone designator, anchored at the end of the string: `Z`/`z`, or a numeric offset `±HH:MM` /
+// `±HHMM` (after an optional fractional-seconds part). A date-only or wall-clock-only string has no zone and is
+// therefore not an instant: it is never converted through the host's or the browser's local time.
+const EXPLICIT_ZONE = /(?:[Zz]|[+-]\d{2}:?\d{2})$/
+
+function hasExplicitZone(value: string): boolean {
+  return EXPLICIT_ZONE.test(value)
+}
 
 function ageWords(ms: number): string {
   const hours = ms / HOUR
@@ -46,8 +60,23 @@ export function vixFreshness(
   }
   const value = n.toFixed(1)
   const src = String(source ?? '').trim()
-  const t = Date.parse(String(observedIso ?? ''))
+  const raw = String(observedIso ?? '').trim()
   // A number with no usable timestamp cannot be called current, whatever colour the value would earn.
+  if (!raw) {
+    return {
+      state: 'UNDATED', value, age: null, current: false,
+      label: `VIX ${value} — observation time not recorded, so its age is unknown${src ? ` (source ${src})` : ''}`,
+    }
+  }
+  // A timestamp without a stated zone is not an instant. Letting Date.parse read it would silently bind it to the
+  // viewer's local time, so the same record would be a different age on every device; the honest answer is unknown.
+  if (!hasExplicitZone(raw)) {
+    return {
+      state: 'UNDATED', value, age: null, current: false,
+      label: `VIX ${value} — observation time has no stated timezone, so its age is unknown${src ? ` (source ${src})` : ''}`,
+    }
+  }
+  const t = Date.parse(raw)
   if (!Number.isFinite(t)) {
     return {
       state: 'UNDATED', value, age: null, current: false,
