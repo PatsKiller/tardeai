@@ -43,6 +43,22 @@ function flowStageLabel(item: FlowItem): string {
   return item.stage ? FLOW_STAGE_LABEL[item.stage] : 'Stage unavailable'
 }
 
+/** Collapse a block only after the canonical coordination contract is actually supplied. Until then the panel
+ *  renders the existing production display unchanged (review CX1 at aa7bd075: never switch a consumer to a
+ *  contract the served route does not produce). */
+function Fold({ open, summary, testId, style, summaryStyle, children }: {
+  open: boolean; summary: string; testId?: string; style?: CSSProperties; summaryStyle?: CSSProperties; children: ReactNode
+}) {
+  if (open) return <>{children}</>
+  return <details data-testid={testId} style={style}><summary style={{ ...small, cursor: 'pointer', minHeight: 32, ...summaryStyle }}>{summary}</summary>{children}</details>
+}
+
+/** The served route supplies the canonical contract only once work_pipeline.py emits WorkPipelineSources@v1. */
+function hasCoordinationContract(payload: PipelinePayload | null | undefined): boolean {
+  const c = (payload as unknown as { coordination?: { schema?: unknown; items?: unknown } } | null)?.coordination
+  return Boolean(c && (c.schema === 'WorkPipelineSources@v1' || Array.isArray(c.items)))
+}
+
 function CurrentWorkCard({ item, onOpen, showTimeline = true }: { item: FlowItem; onOpen: () => void; showTimeline?: boolean }) {
   const checks = item.checks
   return <article data-testid="current-work-item" data-item-id={item.id} data-stage={item.stage ?? 'unavailable'}
@@ -427,6 +443,7 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
   // FQ-033 (cc-deepseek-8 R1 at 75251580): `census.warning` is set before the first refresh and by PARTIAL warnings
   // after a successful one, so it cannot be read as "the refresh failed". The sentence comes from the tested helper.
   const censusView = censusSituation({ refreshedAt: census?.refreshed_at, warning: census?.warning })
+  const canonical = hasCoordinationContract(api.data)
   return <section data-testid="work-pipeline" style={{ display: 'grid', gap: 12, minWidth: 0 }}>
     <style>{`
       .wp-current-metrics { grid-template-columns: repeat(7, minmax(0, 1fr)); }
@@ -472,7 +489,7 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
           </span>)}
         </div>
       </div>
-      <details style={{ marginTop: 8 }}><summary style={{ ...small, cursor: 'pointer', minHeight: 32 }}>Historical stage counts and legacy release controls</summary>
+      <Fold open={!canonical} summary="Historical stage counts and legacy release controls">
       {api.data?.tier2?.release ? <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }} data-testid="release-now">
         <span style={small}>{api.data.tier2.release.merged_waiting ?? 0} merged item(s) waiting for a release{api.data.tier2.release.params?.sha ? ` · origin/main ${String(api.data.tier2.release.params.sha).slice(0, 9)}` : ''}</span>
         <Tier2Button a={{ ...api.data.tier2.release, label: 'Release now' }} onDone={api.refetch} />
@@ -483,12 +500,12 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
         <Tile label="Amber" value={s.amber} tone="warning" active={f.rag === 'amber'} testId="strip-amber" onClick={() => setF({ rag: f.rag === 'amber' ? '' : 'amber' })} />
         <Tile label="Needs me" value={s.needsMe} tone="info" active={f.preset === 'needs-me'} testId="strip-needs-me" title="Next steps the operator owns" onClick={() => setF({ preset: f.preset === 'needs-me' ? '' : 'needs-me' })} />
       </div>
-      </details>
+      </Fold>
     </div>
 
     {api.error ? <div role="status" style={{ ...panel, color: TOKENS.warning }} data-testid="pipeline-read-error">{api.data ? 'Showing the last received pipeline; refresh failed' : 'Pipeline unavailable'}: {api.error}</div> : null}
-    <CurrentPipelineView payload={api.data} readFailed={Boolean(api.loading || api.error)} readStale={api.stale} onWorklog={setWorklog} onAct={act} busy={busy} onRefresh={api.refetch} />
-    <details data-testid="pipeline-history-controls" style={panel}><summary style={{ cursor: 'pointer', minHeight: 44, color: TOKENS.text[1] }}>Work item history, filters and existing controls</summary>
+    {canonical ? <CurrentPipelineView payload={api.data} readFailed={Boolean(api.loading || api.error)} readStale={api.stale} onWorklog={setWorklog} onAct={act} busy={busy} onRefresh={api.refetch} /> : null}
+    <Fold open={!canonical} summary="Work item history, filters and existing controls" testId="pipeline-history-controls" style={panel} summaryStyle={{ minHeight: 44, color: TOKENS.text[1] }}>
     <div style={panel} data-testid="pipeline-filters">
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
         <span style={small}>Presets:</span>
@@ -569,7 +586,7 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
         {api.loading && !api.data ? <div style={small}>Loading…</div> : null}
       </div>
     </div>
-    </details>
+    </Fold>
     {worklog ? <WorklogDrawer claimId={worklog} onClose={() => setWorklog(null)} /> : null}
   </section>
 }

@@ -142,7 +142,10 @@ function approvalRows(raw: unknown, now: number, gaps: string[]): { members: Flo
   return { members, complete }
 }
 export type FlowReadContext = { readFailed?: boolean; stale?: boolean }
-export type WaitingProjection = { members: FlowApproval[] | null; count: number | null; complete: boolean; gaps: string[]; sourceAt: string | null }
+/** `supplied` says whether the response carried ANY approval source (canonical queue or the legacy prototype).
+ *  A consumer may keep its pre-existing display only while this is false; once a source is supplied, a broken
+ *  or partial one reads as unknown, never as a fallback to a different population. */
+export type WaitingProjection = { members: FlowApproval[] | null; count: number | null; complete: boolean; gaps: string[]; sourceAt: string | null; supplied: boolean }
 function approvalUrl(raw: unknown): string | null {
   const value = txt(raw)
   return value && ((value.startsWith('/') && !value.startsWith('//')) || /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/.test(value)) ? value : null
@@ -157,12 +160,13 @@ export function waitingProjection(payload: unknown, now: number | Date = Date.no
   const rootQueue = Object.prototype.hasOwnProperty.call(root, 'waiting_on_you')
   const directQueue = !rootQueue && Object.prototype.hasOwnProperty.call(root, 'actionable_items')
   if (!rootQueue && !directQueue) {
-    const prototype = rec(rec(root.coordination).approvals), legacy = approvalRows(prototype, ms, gaps)
+    const coordination = rec(root.coordination), prototypePresent = Object.prototype.hasOwnProperty.call(coordination, 'approvals')
+    const prototype = rec(coordination.approvals), legacy = approvalRows(prototype, ms, gaps)
     const sourceAt = clock(prototype.as_of, 'Legacy approval queue snapshot', gaps, ms)
     const complete = readReady && legacy.complete && sourceAt !== null && Number.isFinite(ms) && prototype.stale !== true
     if (legacy.members) gaps.push('Waiting on you: legacy prototype source; canonical policy commands unavailable')
     return { members: legacy.members?.map(m => ({ ...m, command: null })) ?? null, count: complete && legacy.members ? legacy.members.length : null,
-      complete, gaps, sourceAt }
+      complete, gaps, sourceAt, supplied: prototypePresent }
   }
   const queue = rec(rootQueue ? root.waiting_on_you : root), rows = queue.actionable_items
   gaps.push(...messages(queue.gaps))
@@ -171,11 +175,11 @@ export function waitingProjection(payload: unknown, now: number | Date = Date.no
   if (!Number.isFinite(ms)) gaps.push('Canonical approval queue evaluation clock unavailable')
   if (!Array.isArray(rows)) {
     gaps.push('Waiting on you: canonical actionable_items source unavailable; no financial or legacy fallback')
-    return { members: null, count: null, complete: false, gaps, sourceAt }
+    return { members: null, count: null, complete: false, gaps, sourceAt, supplied: true }
   }
   if (queue.scope !== 'all_operator_approvals') {
     gaps.push('Waiting on you: all-operator-approvals source scope unavailable; no financial-only fallback')
-    return { members: null, count: null, complete: false, gaps, sourceAt }
+    return { members: null, count: null, complete: false, gaps, sourceAt, supplied: true }
   }
   // E compares the canonical raw array length, including in a partial global queue.
   const mismatch = queue.actionable_count !== rows.length || queue.known_pending_count !== rows.length
@@ -186,7 +190,7 @@ export function waitingProjection(payload: unknown, now: number | Date = Date.no
   if (queue.complete !== true) gaps.push('Waiting on you: canonical source is partial; known members retained and total unavailable')
   if (rows.some(v => Object.keys(rec(v)).length === 0 || txt(rec(v).id) === null)) {
     gaps.push('Waiting on you: canonical member source has a malformed or unidentified row; commands unavailable')
-    return { members: null, count: null, complete: false, gaps, sourceAt }
+    return { members: null, count: null, complete: false, gaps, sourceAt, supplied: true }
   }
   const members: FlowApproval[] = rows.map(value => {
     const r = rec(value), id = txt(r.id)!, local: string[] = []
@@ -213,7 +217,7 @@ export function waitingProjection(payload: unknown, now: number | Date = Date.no
       nextAction: txt(r.next_action) }
   })
   const complete = readReady && clockKnown && queue.complete === true && !mismatch && !stale
-  return { members, count: complete ? members.length : null, complete, gaps, sourceAt }
+  return { members, count: complete ? members.length : null, complete, gaps, sourceAt, supplied: true }
 }
 /** Adapter for A's frozen WorkPipelineSources@v1 facts; no second census or action policy. */
 function sourceItem(value: unknown, sources: Row, now: number): Row {

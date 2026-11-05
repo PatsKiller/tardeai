@@ -78,7 +78,12 @@ function PipelineInFlight() {
   const items = flow.inFlight
   const time = (at: string | null | undefined) => at ? etDateTime(at) : 'source time unavailable'
   const minutes = (n: number | null | undefined) => n == null ? 'age unavailable' : `${Math.round(n)} min`
-  return <section data-testid="rs-pipeline-in-flight" style={panel}>
+  // Review CX1 at aa7bd075: the served /api/v2/coordination/pipeline does not yet emit WorkPipelineSources@v1.
+  // Until it does, keep the existing in-flight board rather than switch this consumer to an unavailable contract.
+  const coordination = (api.data as unknown as { coordination?: { schema?: unknown; items?: unknown } } | null)?.coordination
+  const canonical = Boolean(coordination && (coordination.schema === 'WorkPipelineSources@v1' || Array.isArray(coordination.items)))
+  if (!canonical) return <DeployInFlightBoard />
+  return <><section data-testid="rs-pipeline-in-flight" style={panel}>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
       <h2 style={h2}>In flight · Work pipeline</h2>
       <ChipRow>
@@ -126,6 +131,8 @@ function PipelineInFlight() {
       </table>
     </div> : null}
   </section>
+  <AllPrsControls />
+  </>
 }
 
 function AllPrsControls() {
@@ -142,7 +149,6 @@ function DeploysTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
   const nx = s.next_release.value as NextRelease | null
   return <div style={{ display: 'grid', gap: 12 }}>
     <PipelineInFlight />
-    <AllPrsControls />
     <Section title="Releasing next · main HEAD" testId="rs-next" v={s.next_release}>
       {nx ? <Table label="Next release" heads={['main HEAD', 'Subject', 'Ahead of serving', 'PRs since serving', 'Exact-SHA CI']} empty="—" rows={[[
         <span style={mono}>{nx.short_sha}</span>, nx.subject ?? '—', nx.is_serving ? 'serving now' : countOrUnavailable(nx.commits_ahead),

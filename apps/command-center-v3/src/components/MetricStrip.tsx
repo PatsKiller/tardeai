@@ -336,17 +336,29 @@ export default function MetricStrip({ onDrill }: Props) {
   const vix = tradeAi?.vix
   const vixSource = tradeAi?.vix_source
   const vixObsTime = tradeAi?.vix_observation_time
-  // Same actionable population as Work pipeline. A failed refresh cannot make retained data look current.
-  const approvals = approvalApi.loading || approvalApi.error || approvalApi.stale || !approvalQueue.complete || !approvalQueue.sourceAt
-    ? null : approvalQueue.count
+  // Deferred switch (review CX1 at aa7bd075): the checked-in /api/v2/coordination/pipeline does not yet supply the
+  // canonical waiting_on_you queue, so until the producer lands the header keeps its pre-existing overview count.
+  // Once ANY approval source is supplied, a partial, stale or failed one reads as UNKNOWN — never as a silent
+  // fallback to a different population.
+  const overviewApprovals = Number.isSafeInteger(overview?.pending_approvals) && overview.pending_approvals >= 0
+    ? overview.pending_approvals
+    : Number.isSafeInteger(overview?.approvals_count) && overview.approvals_count >= 0 ? overview.approvals_count : null
+  const approvalReadReady = !approvalApi.loading && !approvalApi.error && !approvalApi.stale
+  const approvals = !approvalQueue.supplied
+    ? overviewApprovals
+    : approvalReadReady && approvalQueue.complete && approvalQueue.sourceAt ? approvalQueue.count : null
   const approvalGaps = [
+    !approvalQueue.supplied ? 'coordination/pipeline: canonical approval queue not supplied; showing overview pending_approvals' : null,
     ...approvalQueue.gaps,
     approvalApi.loading ? 'coordination/pipeline: approval queue loading' : null,
     approvalApi.error ? `coordination/pipeline: approval queue request failed (${approvalApi.error})` : null,
     approvalApi.stale ? 'coordination/pipeline: retained approval queue is stale' : null,
   ].filter(Boolean).join(' · ')
+  const approvalSourceMark = approvalQueue.supplied
+    ? approvalQueue.sourceAt ? `Queue snapshot as of ${approvalQueue.sourceAt}` : 'Queue snapshot time unavailable'
+    : 'Overview pending_approvals (legacy source; canonical queue not yet served)'
   const approvalLabel = approvals == null ? 'Approval total unavailable' : `${approvals} pending approvals`
-  const approvalTip = `${approvalLabel} · Approvals Center · ${approvalQueue.sourceAt ? `Queue snapshot as of ${approvalQueue.sourceAt}` : 'Queue snapshot time unavailable'}${approvalGaps ? ` · ${approvalGaps}` : ''}`
+  const approvalTip = `${approvalLabel} · Approvals Center · ${approvalSourceMark}${approvalGaps ? ` · ${approvalGaps}` : ''}`
   const priceStamp = pricingStampLine(overview?.pricing ?? { last_repriced: overview?.last_repriced, reprice_source: overview?.reprice_source })
   // Canonical quote-selection projection (cc-header-truth-v2 Phase 2 B). The
   // header must distinguish the selected quote provider from an eligible

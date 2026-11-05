@@ -415,6 +415,23 @@ t('invalid evaluation clock cannot certify queue total or command recency', () =
   eq([p.count, p.complete, p.members![0].command], [null, false, null])
   eq(p.gaps.some(g => g.includes('evaluation clock')), true)
 })
+// Review CX1 at aa7bd075: a consumer may switch to this contract only once the served route supplies it. `supplied`
+// is the deferral gate, and it distinguishes an absent source from a supplied-but-broken one.
+t('a served legacy payload with no approval source reports supplied=false so consumers keep their existing display', () => {
+  const legacy = { schema: 'WorkPipeline@v1', as_of: FLOW_NOW.toISOString(), items: [], summary: {}, sources: {} }
+  const p = waitingProjection(legacy, FLOW_NOW)
+  eq([p.supplied, p.members, p.count], [false, null, null])
+  const noApprovals = { ...flowEnvelope([]), coordination: { schema: 'WorkPipelineSources@v1' } }
+  eq(waitingProjection(noApprovals, FLOW_NOW).supplied, false)
+})
+t('a supplied but broken approval source is never reported as unsupplied', () => {
+  for (const bad of [null, {}, [], { actionable_items: null }]) {
+    const p = waitingProjection({ waiting_on_you: bad }, FLOW_NOW)
+    eq([p.supplied, p.members, p.count], [true, null, null])
+  }
+  eq(waitingProjection(flowEnvelope([], { approvals: { complete: true, items: [] } }), FLOW_NOW).supplied, true)
+  eq(waitingProjection({ waiting_on_you: canonicalQueue({ complete: false }) }, FLOW_NOW).supplied, true)
+})
 t('A typed stuck and exact blocker facts populate their current display aliases', () => {
   const raw = aSourcePayload({}, { stuck: { value: true, source: 'fixture-stage-clock', as_of: ENTERED, gap: null },
     blocker: { value: 'Synthetic current check is failing', source: 'fixture-check-evidence', as_of: ENTERED, gap: null } })
