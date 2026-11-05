@@ -1,8 +1,8 @@
 ---
 id: DSN-20261031-market-risk-ui
 title: Market risk on Home and the Risk page (tile, banner with acknowledge, Market-risk tab)
-status: PROPOSED
-approval: awaiting operator — one tap in Approvals → Designs approves Home v002 and Risk v002 together (AGENTS.md §28.13; design/README.md rule 2)
+status: LIVE
+approval: 'operator, in the coordinator Claude Code session 2026-10-31 ~14:55Z (verbatim) "approved market-risk-ui, check again" then "record it from my message, keep going" — recorded from the message because the Approvals → Designs tap wrote no ledger row (tap defect under fix, design-tap-fix-20261031)'
 source: docs/designs/DSN-20261031-market-risk-engine.md (P3-T2); operator 2026-10-31 "mock up the Home and Risk market-risk design"
 summary: >-
   Where the Market Risk Engine's output lives in the Command Center. Home: the header "Market" fact becomes a MARKET RISK
@@ -14,20 +14,20 @@ summary: >-
 phases:
 - id: DSN-20261031-market-risk-ui-P1
   title: Home v002 — MARKET RISK fact, Orange/Red banner with Acknowledge, contributors in "Market in one look"
-  status: PROPOSED
+  status: DONE
   tasks:
-  - {id: DSN-20261031-market-risk-ui-P1-T1, title: 'Build Home v002 (Design: home/v002) once APPROVED; reads GET /api/v2/market-risk/latest; Acknowledge → POST /api/v2/market-risk/ack', status: PROPOSED, areas: [apps/command-center-v3/src/pages/HomeDoNow.tsx, apps/command-center-v3/src/pages/HomeHub.tsx, apps/command-center-v3/src/lib/designTokens.ts]}
+  - {id: DSN-20261031-market-risk-ui-P1-T1, title: 'Build Home v002 (Design: home/v002) once APPROVED; reads GET /api/v2/market-risk/latest; Acknowledge → POST /api/v2/market-risk/ack', status: DONE, areas: [apps/command-center-v3/src/pages/HomeDoNow.tsx, apps/command-center-v3/src/pages/HomeHub.tsx, apps/command-center-v3/src/lib/designTokens.ts]}
 - id: DSN-20261031-market-risk-ui-P2
   title: Risk v002 — "Regime" tab renamed "Market risk" with categories, score history, probabilities, episodes
-  status: PROPOSED
+  status: DONE
   tasks:
-  - {id: DSN-20261031-market-risk-ui-P2-T1, title: 'Build Risk v002 (Design: risk/v002) once APPROVED; W7RiskRegime content kept inside the new tab', status: PROPOSED, areas: [apps/command-center-v3/src/pages/RiskHub.tsx, apps/command-center-v3/src/components/W7RiskPanels.tsx]}
+  - {id: DSN-20261031-market-risk-ui-P2-T1, title: 'Build Risk v002 (Design: risk/v002) once APPROVED; W7RiskRegime content kept inside the new tab', status: DONE, areas: [apps/command-center-v3/src/pages/RiskHub.tsx, apps/command-center-v3/src/components/W7RiskPanels.tsx]}
 ---
 
 # Market risk on Home and the Risk page
 
 ```
-Status:      PROPOSED (awaiting the operator's tap in Approvals → Designs)
+Status:      LIVE — approved by the operator in session 2026-10-31 (see front matter); built in #2321, live in 99bfa4abc
 as_of:       2026-10-31T03:20Z
 Specs:       the home v002 and risk v002 SPEC.md files under design/pages/<page>/versions/v002/
 Mockups:     private store ~/trade-ai-releases/persistent-state/data/design/pages/{home,risk}/v002/mockups (sha256 in status.json);

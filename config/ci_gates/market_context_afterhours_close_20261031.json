@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_context_afterhours_close_20261031",
+  "files": [
+    "tests/test_market_context_afterhours_close_20261031.py"
+  ],
+  "anchor": "MARKET_CONTEXT_AFTERHOURS_CLOSE_20261031",
+  "comment": [
+    "ANCHOR: MARKET_CONTEXT_AFTERHOURS_CLOSE_20261031 — after hours, a symbol with no after-hours print (^VIX) shows",
+    "today's regular close, not yesterday's (the Home header showed the 10-29 VIX close all weekend). Hermetic."
+  ]
+}

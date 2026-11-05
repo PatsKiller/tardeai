@@ -56,6 +56,76 @@ from .anthropic_transport import AnthropicTransport, load_policy
 ROOT = Path(__file__).resolve().parents[2]
 _CURRENT: ContextVar[Any] = ContextVar("anthropic_call_funding", default=None)
 
+# Operator 2026-11-02 (emergency incident clearing): incident/self-heal work may
+# use bulk (Haiku) or mid (Sonnet); NEVER Opus or Fable. The aliases below all
+# resolve to an Opus/Fable model in config/anthropic_credit_policy.json.
+EMERGENCY_TIERS = frozenset({"bulk", "mid"})
+EMERGENCY_REFUSED_TIERS = frozenset({"standard", "high", "highest", "long_form", "premium"})
+EMERGENCY_REFUSED_MODELS = frozenset({"claude-opus-5-5", "claude-fable-5-1"})
+
+
+class EmergencyTierRefused(RuntimeError):
+    """Incident/self-heal work asked for a premium tier or model."""
+
+    def __init__(self, value: Any, reason: str = "EMERGENCY_TIER_REFUSED"):
+        self.value = str(value)
+        self.reason = reason
+        super().__init__(f"{reason}: {self.value}")
+
+
+def emergency_tier_refusal(value: Any, *, policy: dict | None = None) -> str | None:
+    """Stable refusal code when ``value`` may not fund incident/self-heal work.
+
+    ``value`` may be a tier alias (``bulk``/``mid``/``standard``/...) or a model id
+    (``claude-haiku-5-5``/``claude-opus-5-5``/...). Only the cheap tiers pass, and
+    only while they still map to a non-premium model in the policy.
+    """
+    policy = load_policy() if policy is None else policy
+    models = policy.get("models") or {}
+    raw = str(value or "").strip()
+    if not raw:
+        return "EMERGENCY_TIER_REFUSED"
+    tier = raw if raw in models else next((name for name, model in models.items() if model == raw), None)
+    if tier is None or tier not in EMERGENCY_TIERS or tier in EMERGENCY_REFUSED_TIERS:
+        return "EMERGENCY_TIER_REFUSED"
+    premium_models = EMERGENCY_REFUSED_MODELS | {models.get(name) for name in EMERGENCY_REFUSED_TIERS if models.get(name)}
+    model = models.get(tier)
+    if model in premium_models or model not in {models.get("bulk"), models.get("mid")}:
+        return "EMERGENCY_TIER_REFUSED"
+    return None
+
+
+def emergency_tier_allowed(value: Any, *, policy: dict | None = None) -> bool:
+    return emergency_tier_refusal(value, policy=policy) is None
+
+
+def require_emergency_tier(value: Any, *, policy: dict | None = None) -> str:
+    """Return the approved cheap model id or raise ``EmergencyTierRefused``.
+
+    ``mid`` (Sonnet) is allowed unconditionally because no "Haiku was not enough"
+    signal exists in the code today. If such a flag is added, gate ``mid`` on it
+    here and keep ``bulk`` unconditional. Every Opus/Fable tier alias is refused.
+    """
+    policy = load_policy() if policy is None else policy
+    refusal = emergency_tier_refusal(value, policy=policy)
+    if refusal is not None:
+        raise EmergencyTierRefused(value, refusal)
+    models = policy.get("models") or {}
+    raw = str(value).strip()
+    return models[raw] if raw in models else raw
+
+
+def emergency_processes(*, policy: dict | None = None) -> frozenset[str]:
+    """Process ids whose per-process cap the credit policy may raise."""
+    policy = load_policy() if policy is None else policy
+    block = policy.get("emergency_process_caps") or {}
+    rows = block.get("per_process") if isinstance(block, dict) else None
+    return frozenset(rows) if isinstance(rows, dict) else frozenset()
+
+
+def is_emergency_process(process_id: str, *, policy: dict | None = None) -> bool:
+    return process_id in emergency_processes(policy=policy)
+
 
 def anthropic_only(process_id: str, *, policy: dict | None = None) -> bool:
     """True for processes that must never leave the Anthropic credit lane."""
@@ -245,9 +315,10 @@ class FundingContext:
         return self.credit_total + paid, paid
 
     @staticmethod
-    def record_fallback(reason: str) -> None:
+    def record_fallback(reason: str, process_id: str | None = None) -> None:
         try:
-            CreditBook(state_root(), load_policy()).record_fallback(reason, now=datetime.now(timezone.utc))
+            CreditBook(state_root(), load_policy()).record_fallback(
+                reason, now=datetime.now(timezone.utc), process_id=process_id)
         except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError) as exc:
             # Corrupt/unavailable credit must not prevent a governed free fallback -- but it must be visible.
             _report_credit_refusal(getattr(exc, "reason", None) or "CREDIT_UNAVAILABLE", where="record_fallback")
@@ -349,7 +420,7 @@ def generate_in_process(prompt: str, *, process_id: str, cfg: dict, options: dic
                 raise
             if provider == "anthropic":
                 _report_credit_refusal(getattr(exc, "code", "PROVIDER_UNAVAILABLE"), where="transport")
-                FundingContext.record_fallback(getattr(exc, "code", "PROVIDER_UNAVAILABLE"))
+                FundingContext.record_fallback(getattr(exc, "code", "PROVIDER_UNAVAILABLE"), process_id)
             last = exc
             receipts.append({"provider": provider, "outcome": getattr(exc, "code", "provider_failure")})
         except RuntimeError as exc:
@@ -358,7 +429,7 @@ def generate_in_process(prompt: str, *, process_id: str, cfg: dict, options: dic
                     "COST_PERSISTENCE_UNAVAILABLE", "ANTHROPIC_"))):
                 code = getattr(exc, "reason", None) or str(exc).split(":", 1)[0]
                 _report_credit_refusal(code, where="route")
-                FundingContext.record_fallback(code)
+                FundingContext.record_fallback(code, process_id)
                 last = exc
                 receipts.append({"provider": provider, "outcome": code})
                 continue

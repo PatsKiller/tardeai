@@ -23,6 +23,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import sys
 from typing import Any
 
 try:
@@ -37,6 +38,10 @@ TRANSIENT_FAILURES = frozenset({"accounting_unavailable", "over_reservation"})
 RESET_SCOPES = frozenset({"billing_error", "unavailable", "all"})
 DEFAULT_UNAVAILABLE_COOLDOWN_MINUTES = 30
 MAX_UNAVAILABLE_COOLDOWN_MINUTES = 1440
+# Operator 2026-11-02: emergency incident clearing may raise a per-process cap
+# ONLY on the cheap tiers. No other tier may appear in an override.
+CHEAP_TIERS = frozenset({"bulk", "mid"})
+OPUS_FABLE_TIERS = frozenset({"standard", "high", "highest", "long_form", "premium"})
 
 
 class CreditDenied(RuntimeError):
@@ -60,6 +65,62 @@ def money(value: Decimal) -> str:
     if "." not in text:
         return text + ".00"
     return text + "0" if len(text.rsplit(".", 1)[1]) == 1 else text
+
+
+def caller_identity(process_id: Any) -> tuple[str, str]:
+    """The logical process id plus a stable OS process name for a reserve row.
+
+    A caller that omits ``process_id`` no longer writes null (which made the row
+    unattributable AND made the verified journal unreadable on the next read). It
+    gets the loud sentinel ``unknown:<pid>`` instead of a hard refusal: the credit
+    lane must stay usable during an incident, and the pid + entrypoint name are
+    still actionable. No environment, credential or prompt content is read.
+    """
+    pid = os.getpid()
+    if isinstance(process_id, str) and process_id.strip():
+        name_id = process_id.strip()
+    else:
+        name_id = f"unknown:{pid}"
+    try:
+        entrypoint = os.path.basename(sys.argv[0] or "") if sys.argv else ""
+    except (AttributeError, IndexError, TypeError):
+        entrypoint = ""
+    process_name = "".join(ch for ch in str(entrypoint) if ch.isalnum() or ch in "._-")[:80] or "unknown"
+    return name_id, process_name
+
+
+def _emergency_caps(raw: Any, models: dict[str, Any]) -> dict[str, dict[str, Decimal]]:
+    """Per-process emergency cap overrides from the credit policy.
+
+    Shape: ``{"per_process": {"<process_id>": {"bulk": "3.00", "mid": "3.00"}}}``.
+    Only the cheap tiers may be raised; a premium tier or a cheap tier remapped to
+    an Opus/Fable model invalidates the whole policy rather than silently widening
+    the credit authority.
+    """
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise CreditDenied("CREDIT_CONFIGURATION_INVALID")
+    rows = raw.get("per_process")
+    if not isinstance(rows, dict):
+        raise CreditDenied("CREDIT_CONFIGURATION_INVALID")
+    premium_models = {models.get(tier) for tier in OPUS_FABLE_TIERS if models.get(tier)}
+    result: dict[str, dict[str, Decimal]] = {}
+    for process_id, tiers in rows.items():
+        if not isinstance(process_id, str) or not process_id.strip() or not isinstance(tiers, dict) or not tiers:
+            raise CreditDenied("CREDIT_CONFIGURATION_INVALID")
+        parsed: dict[str, Decimal] = {}
+        for tier, usd in tiers.items():
+            if tier not in CHEAP_TIERS:
+                raise CreditDenied("CREDIT_CONFIGURATION_INVALID")
+            if models.get(tier) in premium_models:
+                raise CreditDenied("CREDIT_CONFIGURATION_INVALID")
+            cap = amount(usd)
+            if cap <= 0:
+                raise CreditDenied("CREDIT_CONFIGURATION_INVALID")
+            parsed[tier] = cap
+        result[process_id.strip()] = parsed
+    return result
 
 
 def utc(value: datetime | str) -> datetime:
@@ -134,6 +195,8 @@ class CreditBook:
                     or not (0 < self.total and 0 < self.daily and self.start < self.expiry)
                     or (self.renewal["mode"] == "one_time" and self.total > self.credit)):
                 raise CreditDenied("CREDIT_CONFIGURATION_INVALID")
+            self.emergency_caps = _emergency_caps(
+                policy.get("emergency_process_caps"), policy.get("models") or {})
         except (CreditDenied, KeyError, TypeError, ValueError, OverflowError) as exc:
             raise CreditDenied("CREDIT_CONFIGURATION_INVALID") from exc
 
@@ -367,15 +430,34 @@ class CreditBook:
     def _key(request_id: str) -> str:
         return hashlib.sha256(str(request_id).encode()).hexdigest()
 
+    def effective_process_cap(self, process_id: str, tier: str, base: Decimal | None) -> Decimal | None:
+        """The per-process cap after the configured emergency override.
+
+        The override is keyed on the process id AND applies on cheap tiers only, so
+        it can never raise another process's cap or widen the global/daily caps. It
+        raises and never lowers: a registry cap above the override still binds.
+        """
+        override = (self.emergency_caps.get(process_id) or {}).get(tier)
+        if override is None:
+            return None if base is None else amount(base)
+        if base is None:
+            return override
+        return max(amount(base), override)
+
     def reserve(self, request_id: str, process_id: str, projected: Decimal, *, tier: str,
                 now: datetime, process_cap: Decimal | None = None) -> str:
         projected = amount(projected)
+        process_id, process_name = caller_identity(process_id)
         try:
             ceiling = amount(self.policy["per_call_caps_usd"][tier])
         except (KeyError, TypeError) as exc:
             raise CreditDenied("CREDIT_CONFIGURATION_INVALID") from exc
         if projected <= 0 or projected > ceiling:
             raise CreditDenied("CREDIT_PER_CALL_CAP")
+        # Operator 2026-11-02: a process named for emergency work may spend only on
+        # the cheap tiers. Enforced at the ledger boundary so no caller can omit it.
+        if process_id in self.emergency_caps and tier not in CHEAP_TIERS:
+            raise CreditDenied("EMERGENCY_TIER_REFUSED")
         key = self._key(request_id)
         with self._locked():
             rows = self._read()
@@ -389,7 +471,8 @@ class CreditBook:
                 raise CreditDenied("EXHAUSTED")
             if amount(snapshot["today_used_usd"]) + amount(snapshot["reserved_today_usd"]) + projected > self.daily_cap(now):
                 raise CreditDenied("PAUSED_TODAY")
-            if process_cap is not None:
+            effective_cap = self.effective_process_cap(process_id, tier, process_cap)
+            if effective_cap is not None:
                 day = utc(now)
 
                 def counts_today(r: dict[str, Any]) -> bool:
@@ -400,9 +483,10 @@ class CreditBook:
 
                 used = sum((amount(r.get("actual", r["projected"])) for r in requests.values()
                             if r.get("process") == process_id and counts_today(r)), Decimal(0))
-                if used + projected > amount(process_cap):
+                if used + projected > effective_cap:
                     raise CreditDenied("CREDIT_PROCESS_CAP")
             self._append(rows, "reserve", now, request=key, process=process_id,
+                         process_id=process_id, process_name=process_name,
                          projected=money(projected), tier=tier)
         return key
 
@@ -437,15 +521,20 @@ class CreditBook:
         with self._locked():
             self._append(self._read(), "failure", now, reason=reason)
 
-    def record_fallback(self, reason: str, *, now: datetime) -> None:
-        # Only stable codes; never provider bodies or prompt text.
+    def record_fallback(self, reason: str, *, now: datetime, process_id: Any = None) -> None:
+        # Only stable codes; never provider bodies or prompt text. A cap refusal
+        # writes no reserve row, so the fallback carries the caller identity too;
+        # an omitted id still becomes unknown:<pid>, never null.
         permitted = {"NOT_CONFIGURED", "EXPIRED", "EXHAUSTED", "PAUSED_TODAY", "UNAVAILABLE",
-                     "CREDIT_PER_CALL_CAP", "CREDIT_PROCESS_CAP", "CALL_COST_CEILING", "RATE_LIMITED",
+                     "CREDIT_PER_CALL_CAP", "CREDIT_PROCESS_CAP", "EMERGENCY_TIER_REFUSED",
+                     "CALL_COST_CEILING", "RATE_LIMITED",
                      "OVERLOADED", "AUTH_FAILURE", "BILLING_ERROR", "TOOLS_UNSUPPORTED",
                      "OUTPUT_INVALID", "DEADLINE_EXCEEDED", "TIMEOUT", "MODEL_MISMATCH"}
         reason = reason if reason in permitted else "PROVIDER_UNAVAILABLE"
+        process_id, process_name = caller_identity(process_id)
         with self._locked():
-            self._append(self._read(), "fallback", now, reason=reason)
+            self._append(self._read(), "fallback", now, reason=reason, process=process_id,
+                         process_id=process_id, process_name=process_name)
 
     def operator_reset(self, scope: str, *, now: datetime, note_code: str = "operator") -> dict[str, Any]:
         """Append an operator reset; never edits or removes journal rows.
