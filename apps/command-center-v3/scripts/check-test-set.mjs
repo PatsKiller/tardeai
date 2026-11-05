@@ -22,9 +22,18 @@ const app = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 // Directories that are not source: dependencies, build output, and the e2e suite, which Playwright owns and the
 // node runner has never executed. Listed explicitly so a new sibling directory is discovered rather than ignored.
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', '.vite', 'coverage', 'e2e', 'e2e-live'])
-const TEST_FILE = /\.test\.(ts|mjs|js|tsx|jsx)$/
 
-function walk(dir, out = [], base = app) {
+// THE PREDICATE, stated once and total (codex's block at c8c346c35, 2026-11-05):
+//   a file IS a test iff its name matches /\.test\.[^.]+$/ — ANY extension, ANY directory.
+//   the runner EXECUTES only /\.test\.(ts|mjs|js|tsx|jsx)$/ under src/.
+// The gap between those two sets is the defect this gate exists to close. It used to match only the five executable
+// extensions, so `foo.test.cjs` (or .cts/.mts) was invisible to the walker AND to the gate: a failing one exited 0
+// because nothing ever ran and nothing ever noticed. Now every *.test.* file must be run or explicitly dormant, and a
+// file the runner cannot execute is a build failure until someone decides about it.
+const ANY_TEST = /\.test\.[^.]+$/
+const RUNNABLE = /\.test\.(ts|mjs|js|tsx|jsx)$/
+
+function walk(dir, out = [], base = app, predicate = ANY_TEST) {
   let entries
   try { entries = readdirSync(dir) } catch { return out }
   for (const name of entries) {
@@ -32,8 +41,8 @@ function walk(dir, out = [], base = app) {
     const full = join(dir, name)
     let st
     try { st = statSync(full) } catch { continue }
-    if (st.isDirectory()) walk(full, out, base)
-    else if (TEST_FILE.test(name)) out.push(relative(base, full))
+    if (st.isDirectory()) walk(full, out, base, predicate)
+    else if (predicate.test(name)) out.push(relative(base, full))
   }
   return out
 }
@@ -44,10 +53,9 @@ export function runnerLists() {
   const doc = existsSync(dormantPath) ? JSON.parse(readFileSync(dormantPath, 'utf8')) : {}
   const dormant = Object.keys(doc.files || {})
   const listFile = join(app, 'scripts', 'run-tests.mjs')
-  // Executed = what the runner discovers under src/ minus the dormant set. Importing run-tests.mjs would run it, so the
-  // same two rules are applied here; if the runner's discovery changes, this must change with it (the test pins both).
+  // Executed = what the runner actually runs: under src/, an extension it can execute, minus the dormant set.
   const srcDir = join(app, 'src')
-  const discovered = walk(srcDir).map(p => p.split('\\').join('/'))
+  const discovered = walk(srcDir, [], app, RUNNABLE).map(p => p.split('\\').join('/'))
   const dormantSet = new Set(dormant)
   const run = discovered.filter(f => !dormantSet.has(f))
   return { run, dormant, discovered, listFile, dormantPath }
@@ -65,10 +73,11 @@ export function checkSetAt(root) {
   const doc = existsSync(dormantPath) ? JSON.parse(readFileSync(dormantPath, 'utf8')) : {}
   const dormant = Object.keys(doc.files || {})
   const srcDir = join(root, 'src')
-  const discovered = walk(srcDir, [], root).map(p => p.split('\\').join('/'))
+  // run = what the runner can actually execute; all = every file that IS a test by the total predicate above.
+  const discovered = walk(srcDir, [], root, RUNNABLE).map(p => p.split('\\').join('/'))
   const dormantSet = new Set(dormant)
   const run = discovered.filter(f => !dormantSet.has(f))
-  const all = walk(root, [], root).map(p => p.split('\\').join('/'))
+  const all = walk(root, [], root, ANY_TEST).map(p => p.split('\\').join('/'))
   return checkSet({ run, dormant, all })
 }
 

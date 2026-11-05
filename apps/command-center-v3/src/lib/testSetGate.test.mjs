@@ -36,4 +36,14 @@ assert.equal(repaired.covered, 3)
 const stale = checkSet({ run: ['src/lib/a.test.ts'], dormant: ['src/lib/gone.test.ts'], all: ['src/lib/a.test.ts'] })
 assert.deepEqual(stale.dangling, ['src/lib/gone.test.ts'], 'a dormant entry with no file must be named')
 
-console.log('testSetGate: stray files and stale dormant entries are both refused')
+// 5. THE PREDICATE IS TOTAL (codex's block at c8c346c35). A test file whose extension the runner cannot execute is
+//    still a test: `foo.test.cjs` matched neither the old walk (/\.test\.(ts|mjs|js|tsx|jsx)$/) nor the gate, so a
+//    failing one exited 0 because nothing ran it and nothing noticed. Any *.test.* extension must be accounted for.
+const exotic = ['src/lib/a.test.ts', 'src/lib/c.test.cjs', 'src/lib/d.test.mts']
+const withExotic = checkSet({ run: ['src/lib/a.test.ts'], dormant: [], all: exotic })
+assert.deepEqual(withExotic.uncovered, ['src/lib/c.test.cjs', 'src/lib/d.test.mts'],
+  'an extension the runner cannot execute must still be run-or-dormant, not invisible')
+const resolved = checkSet({ run: ['src/lib/a.test.ts'], dormant: ['src/lib/c.test.cjs', 'src/lib/d.test.mts'], all: exotic })
+assert.deepEqual(resolved.uncovered, [], 'classifying them clears the gate')
+
+console.log('testSetGate: stray files, stale dormant entries, and unexecutable extensions are all refused')
