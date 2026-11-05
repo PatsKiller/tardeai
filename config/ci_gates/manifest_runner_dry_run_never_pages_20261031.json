@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "manifest_runner_dry_run_never_pages_20261031",
+  "files": [
+    "tests/test_manifest_runner_dry_run_never_pages_20261031.py"
+  ],
+  "anchor": "MANIFEST_RUNNER_DRY_RUN_NEVER_PAGES_20261031",
+  "comment": [
+    "ANCHOR: MANIFEST_RUNNER_DRY_RUN_NEVER_PAGES_20261031 — the manifest runner passes --dry-run to the disk pager",
+    "when it is itself a dry run (it used to send a real P1 on low disk during a dry run); --apply still pages.",
+    "Temp PROJECT_ROOT, stub pager recording argv; no Telegram."
+  ]
+}

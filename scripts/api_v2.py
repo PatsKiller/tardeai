@@ -164,6 +164,10 @@ def _json_clean(obj):
 
 def _load_json(path: Path):
     try:
+        if path.exists() and path.stat().st_size == 0:
+            # 2026-10-30: the disk-full night left state files at 0 bytes; say so instead of silently reading nothing.
+            log.warning("%s is empty (0 bytes); treating it as missing", path)
+            return None
         return json.loads(path.read_text()) if path.exists() else None
     except Exception:
         return None
@@ -16580,17 +16584,19 @@ def _defense_posture(query=None):
                        WHERE intent_type='inverse_etf' AND status IN ('filled','armed_ticket','submitted_paper')
                        ORDER BY updated_at DESC LIMIT 1""")
         _hint = _hc.fetchone()
-        _hc.execute("""SELECT symbol, threshold, last_fired_at FROM watch_alerts
-                       WHERE created_by='defense_hedge' AND note LIKE '%%bounce%%' LIMIT 1""")
+        _hc.execute("""SELECT symbol, threshold, last_fired_at, created_at FROM watch_alerts
+                       WHERE created_by='defense_hedge' AND active AND note LIKE '%%bounce%%'
+                       ORDER BY id DESC LIMIT 1""")
         _bounce = _hc.fetchone()
+        # design home/v006 (review of #2460, B2): the newest THESIS -> GREEN transition; a bounce alert armed before it
+        # belongs to an earlier episode and is never shown as live
+        _hc.execute("""SELECT instrument, max(created_at) FROM inverse_stoplight_transitions
+                       WHERE light='THESIS' AND split_part(new_state, '|', 1)='GREEN' GROUP BY instrument""")
+        _green_since = {str(r[0]).upper(): r[1] for r in _hc.fetchall()}
         _rows = (out.get("momentum") or {}).get("rows") or []
         _tech = next((r for r in _rows if r.get("sector") == "Technology"), {})
-        if _tech.get("state") not in ("LAGGING", "WEAKENING", None) and _hint:
-            hs = {
-                "state": "stand_down",
-                "line": f"HEDGE: stand-down signaled — Technology recovered to {_tech.get('state')}",
-            }
-        elif _hint and _hint[0] == "filled":
+        _in_play_line, _close_meta = None, None
+        if _hint and _hint[0] == "filled":
             # Phase 4: last close via the daily_bars projection (ticker_prices), with its age.
             from lib.data_broker.daily_bars import get_last_close as _brk_last_close
 
@@ -16601,24 +16607,25 @@ def _defense_posture(query=None):
                 if _px is not None and _hint[1]
                 else None
             )
-            hs = {
-                "state": "in_play",
-                "line": f"HEDGE: {_hint[2]} in play" + (f" {_pl:+.1f}%" if _pl is not None else ""),
-                "close_as_of": _lc.get("as_of"),
-                "close_stale": _lc.get("stale"),
-            }
-        elif _bounce and _bounce[2] and str(_bounce[2])[:10] == datetime.now(timezone.utc).date().isoformat():
-            hs = {
-                "state": "entry_window_open",
-                "line": f"HEDGE: entry window OPEN — {_bounce[0]} bounce ≥ ${_bounce[1]}",
-            }
-        else:
-            hs = {
-                "state": "armed",
-                "line": f"HEDGE: waiting for a bounce day ({_bounce[0]} ≥ ${_bounce[1]})"
-                if _bounce
-                else "HEDGE: alerts arming tonight",
-            }
+            _in_play_line = f"HEDGE: {_hint[2]} in play" + (f" {_pl:+.1f}%" if _pl is not None else "")
+            _close_meta = {"close_as_of": _lc.get("as_of"), "close_stale": _lc.get("stale")}
+        # design home/v006: the inverse-hedge stoplight decides; a stale defense_hedge alert never reads as live
+        from lib.defense_hedge_state import hedge_state as _hedge_state
+
+        _sl_cfg = (_load_json(PROJECT_ROOT / "config" / "defense_recommendations.json") or {}).get(
+            "inverse_stoplights"
+        ) or {}
+        hs = _hedge_state(
+            stoplights=_load_json(PROJECT_ROOT / "data" / "runtime" / "inverse_stoplights_latest.json"),
+            intent=_hint,
+            bounce=_bounce,
+            tech_state=_tech.get("state"),
+            today=datetime.now(timezone.utc).date(),
+            stale_days=int(_sl_cfg.get("stale_calendar_days", 4)),
+            in_play_line=_in_play_line,
+            close_meta=_close_meta,
+            green_since=_green_since,
+        )
         out["hedge_state"] = hs
     except Exception as e:
         import traceback
@@ -30726,6 +30733,17 @@ def _queue_summary():
         or {}
     ).get("cnt", 0)
     pending = by_status.get("pending", 0)
+    # The consumer lane's registry state: RETIRED means nothing drains this table by design (needs_action.rule_queue
+    # then raises no Do-now item, and the Jobs page labels the backlog retired instead of CRIT).
+    try:
+        from lib.lane_registry import load_registry as _qs_load
+
+        _qs_lanes = (_qs_load() or {}).get("lanes") or []
+        _qs_row = next((r for r in _qs_lanes if isinstance(r, dict) and r.get("lane_id") == "deep-overnight-llm"), {})
+        lane_state = _qs_row.get("state")
+    except Exception as exc:  # noqa: BLE001 — an unreadable registry is reported, never treated as retired
+        lane_state = None
+        print(f"[queue_summary] lane registry unreadable: {type(exc).__name__}", file=_sys_heal.stderr)
     cap = 100
     now = datetime.now()
     window_start = now.replace(hour=23, minute=0, second=0, microsecond=0)
@@ -30737,6 +30755,9 @@ def _queue_summary():
         # False when the queue table could not be read (db_adapter returns None): the zeros below are then not
         # measurements. GET /api/v2/needs-action reports the source unavailable instead (2026-10-21).
         "measured": raw_rows is not None,
+        "lane_id": "deep-overnight-llm",
+        "lane_state": lane_state,
+        "retired": lane_state == "RETIRED",
         "pending": pending,
         "done_today": done_today,
         "failed": by_status.get("failed", 0),
@@ -37519,7 +37540,13 @@ def _data_source_health(query=None):
         except Exception as e:
             out.append({"source": label, "category": cat, "status": "error", "error": str(e)[:80]})
 
-    _feed("FRED macro", "macro", "SELECT max(fetched_at), count(*) FROM fred_economic_series", 72)
+    _feed(  # last_seen_at (2026_10_31 migration) else fetched_at, which is now first-fetch only (review of #2383, N5)
+        "FRED macro",
+        "macro",
+        "SELECT MAX(COALESCE((to_jsonb(f)->>'last_seen_at')::timestamptz, f.fetched_at)), count(*) "
+        "FROM fred_economic_series f",
+        72,
+    )
     _feed(
         "Finviz screeners", "finviz", "SELECT max(last_run), count(*) FILTER (WHERE active) FROM finviz_screeners", 24
     )
@@ -68322,25 +68349,60 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     # ── Market Risk Engine projection (DSN-20261031-market-risk-ui; design home/v002, risk/v002) ──────
     # GET: the engine snapshot when it exists, else an honest not_evaluated with the P0 options-flow block.
-    # POST ack: refused until the episodes store exists (P3-T7); the UI shows the refusal verbatim.
+    # POST ack: records the operator's acknowledgment in the episode ledger (P3-T7, lib.market_risk.escalation).
     if base_path == "/api/v2/market-risk/latest" and method == "GET":
         try:
-            from lib.market_risk_projection import build as _mr_build
+            from lib.market_risk_projection import build as _mr_build, load_snapshot as _mr_load
 
-            _snap = _load_json(PROJECT_ROOT / "data" / "runtime" / "market_risk_latest.json")
+            from lib.market_risk import escalation as _mr_esc
+
+            # live snapshot when present, else the labelled shadow one (never a live episode on a shadow tier)
+            _snap = _mr_load(lambda _rel: _load_json(PROJECT_ROOT / _rel), lambda _rel: (PROJECT_ROOT / _rel).exists())
             _radar = _load_json(PROJECT_ROOT / "data" / "runtime" / "hedging_radar_latest.json")
-            return 200, {"ok": True, "data": _json_clean(_mr_build(_snap, _radar))}
+            _ep_err = None
+            try:
+                _ep = _mr_esc.open_episode(_mr_esc.load())
+            except Exception as _e:  # noqa: BLE001 — a torn episode ledger never turns the honest answer into a 500
+                _ep, _ep_err = None, f"episode ledger unreadable: {type(_e).__name__}"
+            _proj = _mr_build(_snap, _radar, episode=_ep)
+            if _ep_err:
+                _proj["episode_error"] = _ep_err
+            # design home/v005: dollars and account labels are joined here, API side, from the holdings store — never
+            # in the engine assessment (it feeds the models; AGENTS.md §2A). Fails soft to the projection without them.
+            try:
+                from lib.market_risk_book_join import join as _mr_join
+
+                _proj = _mr_join(_proj)
+            except Exception as _e:  # noqa: BLE001
+                _proj["book_exposure_error"] = f"{type(_e).__name__}: {_e}"
+            return 200, {"ok": True, "data": _json_clean(_proj)}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
     if base_path == "/api/v2/market-risk/ack" and method == "POST":
         try:
+            from lib import cc_auth as _mr_auth
+            from lib.market_risk import escalation as _mr_esc
             from lib.market_risk_projection import ack_outcome as _mr_ack, build as _mr_build
 
-            _snap = _load_json(PROJECT_ROOT / "data" / "runtime" / "market_risk_latest.json")
-            _code, _out = _mr_ack(_mr_build(_snap, None), body or {})
-            return _code, _out
+            from lib.market_risk_projection import load_snapshot as _mr_load
+
+            # handler-side same-origin CSRF, enforced whatever enforce/report_only say — the deploy STOP pattern
+            # (cc_auth.command_csrf_check; review of #2383 round 3, M-C)
+            _mr_csrf_ok, _mr_csrf_why = _mr_auth.command_csrf_check(_mr_auth.load_config(), method, base_path)
+            if not _mr_csrf_ok:
+                return 403, {"ok": False, "error": "acknowledgment refused: cross-site request", "reason": _mr_csrf_why}
+
+            _snap = _mr_load(lambda _rel: _load_json(PROJECT_ROOT / _rel), lambda _rel: (PROJECT_ROOT / _rel).exists())
+            try:
+                _ep = _mr_esc.open_episode(_mr_esc.load())
+            except _mr_esc.EpisodeStoreCorrupt:
+                # a torn ledger: refuse the ack with the reason, never a 500 echoing a path (review of #2383, M2)
+                return 503, {"ok": False, "error": "episode ledger unreadable; the next evaluation recovers it"}
+            _proj = _mr_build(_snap, None, episode=_ep)
+            _code, _out = _mr_ack(_proj, body or {}, actor=_mr_auth.current_principal())
+            return _code, _json_clean(_out)
         except Exception as e:
-            return 500, {"ok": False, "error": str(e)}
+            return 500, {"ok": False, "error": f"acknowledgment failed: {type(e).__name__}"}
 
     # ── Session 33: Risk Regime + Strategy Rotation ───────────────────────
     if base_path in ("/api/v2/risk-regime/status", "/api/v2/risk-regime/latest"):

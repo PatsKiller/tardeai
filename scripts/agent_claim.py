@@ -249,13 +249,22 @@ def cmd_claim(a: argparse.Namespace) -> int:
     if not a.add and not (a.task and a.paths):
         print("error: claim needs --task and --paths (or --add <paths> to extend a claim)", file=sys.stderr)
         return 2
+    if getattr(a, "operator_approval", None):
+        try:
+            from lib import operator_approval as _OA
+
+            a.note = _OA.merge_into_note(a.note, a.operator_approval)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
     allowed, policy = _policy_gate("claim")
     if not allowed:
         return 1
     if a.add:  # extend an existing claim
         try:
             cid = _resolve_claim(board, a)
-            doc = board.extend(cid, a.add, session=session)
+            doc = board.extend(cid, a.add, session=session,
+                               approval_ref=getattr(a, "operator_approval", None))
         except B.ClaimConflict as exc:
             _print_conflicts(exc.conflicts)
             print("refused: the added paths are claimed by another live session.", file=sys.stderr)
@@ -1024,6 +1033,39 @@ def cmd_list(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ask(a: argparse.Namespace) -> int:
+    board = _board(a)
+    session = _session(a)
+    branch = B.current_branch()
+    try:
+        # include_stale: a stale claim still holds its files, and `ask` exists to name it and point at
+        # takeover. Without this the board filters it out before the holder list is built, and the command
+        # answers "go ahead" about a path someone still claims.
+        rows = board.conflicts(a.paths, session=session, branch=branch, include_stale=True)
+    except (B.ClaimError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    # The same read-only fallback `check` uses: a cloud agent may hold the path through an open draft PR the
+    # local claims dir cannot see. The answer must not be "go ahead" while a draft PR is editing the file.
+    if not getattr(a, "no_gh", False):
+        pr_rows, warning = B.draft_pr_conflicts(a.paths, exclude_branch=branch, timeout_s=a.gh_timeout)
+        rows += pr_rows
+        if warning:
+            print(f"WARN: {warning}", file=sys.stderr)
+    try:
+        from lib import claim_ask as _CA
+    except ImportError:
+        from scripts.lib import claim_ask as _CA
+    # The board's own threshold, not the raw flag: they differ when the flag is unset and the env default applies.
+    stale_hours = board.stale_after.total_seconds() / 3600.0
+    out = _CA.plan_ask(rows, now_iso=B.iso(board.now()), stale_hours=stale_hours, message=a.message, paths=a.paths)
+    if a.json:
+        print(json.dumps(out, indent=2, sort_keys=True))
+    else:
+        print(_CA.render(out))
+    return 0
+
+
 def cmd_check(a: argparse.Namespace) -> int:
     board = _board(a)
     session = _session(a)
@@ -1125,6 +1167,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--gh-call-timeout", type=float, default=B.LC.GH_TIMEOUT_S, help="seconds per GitHub GET")
     sub = p.add_subparsers(dest="cmd", required=True)
 
+    c = sub.add_parser("ask")
+    c.add_argument("paths", nargs="+", help="the paths you want to work on")
+    c.add_argument("--message", default=None, help="the message to send the holder")
+    # SUPPRESS, not a default: argparse writes every subparser default into the namespace, so any default here
+    # overwrites a global --stale-hours given before `ask` (and defeats TRADEAI_AGENT_CLAIMS_STALE_HOURS).
+    # Suppressed, the attribute exists only when the flag is actually passed.
+    c.add_argument("--stale-hours", type=float, default=argparse.SUPPRESS,
+                   help="heartbeat age that makes a claim stale")
+    # `ask` now consults the open-draft-PR fallback, so it needs the same knob `check` has.
+    c.add_argument("--gh-timeout", type=float, default=15.0)
+    c.add_argument("--json", action="store_true")
+    c.set_defaults(fn=cmd_ask)
+
     c = sub.add_parser("claim")
     c.add_argument("--task", default=None)
     c.add_argument("--paths", nargs="+", default=None)
@@ -1136,6 +1191,11 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--goal", default=None, help="worklog Goal (default: the task)")
     c.add_argument("--request", default=None, help="the operator request, quoted verbatim in the worklog Goal")
     c.add_argument("--plan", nargs="*", default=None, help="initial plan steps")
+    c.add_argument(
+        "--operator-approval",
+        default=None,
+        help="URL of the operator's GitHub comment approving this work; written as an Operator-approval: line the push guard reads",
+    )
     c.add_argument("--json", action="store_true")
     c.set_defaults(fn=cmd_claim)
 

@@ -16,7 +16,10 @@ Environment=TMPDIR=%h/.cache/agent-tmp/incident-units
 ExecStartPre=/usr/bin/mkdir -p %h/.cache/agent-tmp/incident-units
 ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/incident_supervisor.py --apply
 Nice=10
-TimeoutStartSec=3900
+# 8100s = the fixer dispatch timeout (7500s, config/incident_runbook_actions.json) + 600s margin.
+# The old 3900s killed the supervisor, and its fixer child, before a legitimate long fix returned --
+# so no attempt row was written and the next cycle could re-dispatch (2026-11-03).
+TimeoutStartSec=8100
 
 [Install]
 WantedBy=default.target

@@ -1,0 +1,59 @@
+{
+ "source": "Public market data quoted in docs/audits/MARKET_SELLOFF_ALERT_RCA_2026-10-30.md ([EXT] press reports, [VERIFIED] system snapshots of index option chains). No portfolio data.",
+ "note": "index_weight_pct left null on purpose: the RCA states the cluster was about 25% of index cap in 48h but gives no per-name weights; the event module must source weights itself or report UNKNOWN",
+ "cluster_index_weight_pct_48h_approx": 25,
+ "rows": [
+  {
+   "kind": "macro",
+   "name": "FOMC decision",
+   "at": "2026-10-28T14:00:00-04:00",
+   "as_of": "2026-10-01T12:00:00+00:00"
+  },
+  {
+   "kind": "earnings",
+   "symbol": "MSFT",
+   "at": "2026-10-28T16:05:00-04:00",
+   "as_of": "2026-10-01T12:00:00+00:00",
+   "index_weight_pct": null
+  },
+  {
+   "kind": "earnings",
+   "symbol": "GOOGL",
+   "at": "2026-10-28T16:05:00-04:00",
+   "as_of": "2026-10-01T12:00:00+00:00",
+   "index_weight_pct": null
+  },
+  {
+   "kind": "earnings",
+   "symbol": "AMZN",
+   "at": "2026-10-29T16:05:00-04:00",
+   "as_of": "2026-10-01T12:00:00+00:00",
+   "index_weight_pct": null
+  },
+  {
+   "kind": "earnings",
+   "symbol": "INTC",
+   "at": "2026-10-29T16:05:00-04:00",
+   "as_of": "2026-10-01T12:00:00+00:00",
+   "index_weight_pct": null
+  },
+  {
+   "kind": "macro",
+   "name": "Month-end",
+   "at": "2026-10-30T16:00:00-04:00",
+   "as_of": "2026-10-01T12:00:00+00:00"
+  },
+  {
+   "kind": "macro",
+   "name": "US midterm election",
+   "at": "2026-11-03T06:00:00-04:00",
+   "as_of": "2026-10-01T12:00:00+00:00"
+  },
+  {
+   "kind": "macro",
+   "name": "Employment report",
+   "at": "2026-11-06T08:30:00-04:00",
+   "as_of": "2026-10-01T12:00:00+00:00"
+  }
+ ]
+}
