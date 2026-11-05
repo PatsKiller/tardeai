@@ -87,6 +87,19 @@ check('the proposal review caller renders its own constructed evidence', () => {
     assert.match(text, expected)
   }
 })
+check('the actual proposal caller keeps malformed score delta unknown', () => {
+  for (const delta of [null, undefined, '', ' ', 'n/a', '—', 'abc', 'NaN', 'Infinity', '-Infinity', NaN, Infinity, -Infinity, true, false, [], [0], {}, { value: 0 }]) {
+    const { text } = reviewText({ sample_days: 30, score_delta: delta })
+    assert.match(text, /score change not recorded/)
+    assert.doesNotMatch(text, /score (?:unchanged|up|down)/)
+  }
+})
+check('the actual caller preserves finite numeric string zero and signed changes', () => {
+  for (const [delta, phrase] of [['0', /score unchanged/], [' +0.042 ', /score up 0\.042/], ['-0.5', /score down 0\.500/]]) {
+    assert.match(reviewText({ score_delta: delta }).text, phrase)
+  }
+})
+
 check('the safe band constrains the threshold value, not the candidate score', () => {
   const { text } = reviewText({ candidate_score: 0.91, score_delta: 0.042 })
   assert.match(text, /Allowed threshold range: 0\.42–0\.58/)
