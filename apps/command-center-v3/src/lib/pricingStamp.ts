@@ -13,6 +13,8 @@ export type PricingMeta = {
 const SRC_LABEL: Record<string, string> = {
   finviz_live: 'Finviz live',
   finviz_afterhours: 'Finviz after-hours',
+  finviz_premarket: 'Finviz pre-market',
+  finviz_overnight: 'Finviz overnight',
   schwab: 'Schwab sync',
   market_quotes: 'market quotes',
   finviz: 'Finviz',

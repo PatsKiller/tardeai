@@ -186,6 +186,8 @@ SNAP_LINES = [x["line"] for x in SNAPSHOT["cron_lines"]]
 MOVED_SINCE_SNAPSHOT = {
     "hermes-learning-pipeline-learn": {"20 11 * * *"},
     "hermes-learning-pipeline-tune": {"20 17 * * *"},
+    # operator 2026-11-02: "repricing needs to run 24 hours as we have 24-hour markets" (was */15 9-16 1-5)
+    "portfolio-repricer": {"*/15 * * * 1-5", "*/15 20-23 * * 0", "10 16 * * 1-5"},
 }
 
 
@@ -221,14 +223,28 @@ def test_stripped_hand_rows_keep_their_live_schedules():
 
 def test_snapshot_carries_the_post_install_crontab():
     # ops-crons L1051-L1052 stay contiguous (L1053, the drift check, was withdrawn 2026-10-27: it is a user timer);
-    # siem-active-flip 2026-10-11 appends L1060+L1063 after them; tmp-scratch-cleanup 2026-10-14 appends L1065 last
-    assert SNAP_LINES[-5:-3] == LINES
+    # siem-active-flip 2026-10-11 appends L1060+L1063 after them; tmp-scratch-cleanup 2026-10-14 appends L1065;
+    # market-risk-evaluate 2026-11-01 appends L1083-L1086 last (the Market Risk Engine, operator "run it now"; shadow
+    # until ~11:10 ET, then --apply on "I also approve turning on real alerts"); market-quotes-extended 2026-11-01
+    # appends L1089-L1090 after them ("I approve the after-hour"); market-quotes-offhours-schwab 2026-11-01 appends
+    # L1092-L1094 last ("enable schwab")
+    assert len(SNAP_LINES[-3:]) == 3 and all(
+        "scripts/market_quotes_offhours_schwab.py --apply" in ln for ln in SNAP_LINES[-3:]
+    )
+    assert len(SNAP_LINES[-5:-3]) == 2 and all(
+        "scripts/market_quotes_extended.py --apply" in ln for ln in SNAP_LINES[-5:-3]
+    )
+    assert len(SNAP_LINES[-9:-5]) == 4 and all(
+        "scripts/market_risk_evaluate.py --scheduled --apply" in ln for ln in SNAP_LINES[-9:-5]
+    )
+    before = SNAP_LINES[:-9]
+    assert before[-5:-3] == LINES
     assert not any("check_n8n_workflow_drift.py" in ln for ln in SNAP_LINES)
-    assert SNAP_LINES[-3:-1] == [
+    assert before[-3:-1] == [
         ROWS["n8n-siem-bridge"]["scheduler"]["install_line"],
         ROWS["n8n-failure-diagnosis"]["scheduler"]["install_line"],
     ]
-    assert "scripts/tmp_scratch_cleanup.py" in SNAP_LINES[-1]
+    assert "scripts/tmp_scratch_cleanup.py" in before[-1]
     joined = "\n".join(SNAP_LINES)
     assert "flock -n -E 99 /tmp/shadow_batch_cron.lock timeout 60m $PY scripts/shadow_batch_generator.py" in joined
     assert "flock -n -E 99 /tmp/shadow_batch.lock " not in joined

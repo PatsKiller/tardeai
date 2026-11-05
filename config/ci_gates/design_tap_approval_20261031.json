@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "design_tap_approval_20261031",
+  "files": [
+    "tests/test_design_tap_approval_20261031.py"
+  ],
+  "anchor": "DESIGN_TAP_APPROVAL_20261031",
+  "comment": [
+    "ANCHOR: DESIGN_TAP_APPROVAL_20261031 — lost design approval (2 phone taps on DSN-20261031-market-risk-ui recorded nothing): design-registry designs in the Approvals Center are GOVERNED_PATH with a link to their work-pipeline card (/coordination?design=<id>), the only path whose approval (pipeline.approve_design -> <claims_dir>/designs/approvals.jsonl) design_registry reads; the governance ledger refuses their APPROVE visibly (GOVERNED_ACTION_REQUIRED, no DECIDED row); awaiting design cards and their Tier 2 Approve survive the work-pipeline MAX_ITEMS cap. Hermetic."
+  ]
+}

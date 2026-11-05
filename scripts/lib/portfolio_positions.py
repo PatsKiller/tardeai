@@ -84,6 +84,33 @@ def load_store(path: Optional[Path] = None) -> dict:
         return {}
 
 
+def read_store_document(path: Optional[Path] = None) -> tuple[Optional[dict], str]:
+    """The store document and how it was found, without collapsing failure into an empty book.
+
+    ``load_store`` is for callers that only need a usable document. Callers that must report WHY
+    there is none (freshness, availability) need the state: 0 bytes, corrupt text and a non-object
+    are different facts, and none of them is "no positions". Never raises.
+    """
+    import json  # noqa: PLC0415 — one read path, no import-time work
+
+    p = Path(path) if path is not None else store_path()
+    try:
+        raw = p.read_bytes()
+    except FileNotFoundError:
+        return None, "absent"
+    except OSError:
+        return None, "unreadable"
+    if not raw.strip():
+        return None, "empty"
+    try:
+        doc = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        return None, "unparseable"
+    if not isinstance(doc, dict):
+        return None, "not_object"
+    return doc, "ok"
+
+
 def _f(x: Any) -> Optional[float]:
     try:
         v = float(x)
