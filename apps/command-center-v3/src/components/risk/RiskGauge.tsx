@@ -1,22 +1,27 @@
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
+import { TOKENS, toneVars, type Tone } from '../../lib/designTokens'
 
 type Props = {
-  value: number
+  value?: number | null
   max?: number
   label: string
   threshold?: number
   unit?: string
   height?: number
+  /** A producer's qualitative verdict, when the quantity is not a high-is-bad risk measure. */
+  tone?: Tone
 }
 
-export default function RiskGauge({ value, max = 15, label, threshold, unit = '%', height = 120 }: Props) {
-  const v = Math.max(0, Math.min(max, value))
+export default function RiskGauge({ value, max = 15, label, threshold, unit = '%', height = 120, tone }: Props) {
+  const measured = typeof value === 'number' && Number.isFinite(value)
+  const v = measured ? Math.max(0, Math.min(max, value)) : 0
   const over = threshold != null && v > threshold
-  const color = over ? '#ef4444' : v > (threshold ?? max) * 0.6 ? '#f59e0b' : '#22c55e'
+  const color = !measured ? TOKENS.text[2] : tone ? toneVars(tone).color
+    : over ? TOKENS.danger : v > (threshold ?? max) * 0.6 ? TOKENS.warning : TOKENS.success
   return (
-    <div style={{ textAlign: 'center' }}>
+    <div role="group" aria-label={label} data-measured={measured} style={{ textAlign: 'center' }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>{label}</div>
-      <ResponsiveContainer width="100%" height={height}>
+      {measured ? <ResponsiveContainer width="100%" height={height}>
         <PieChart>
           <Pie
             data={[{ value: v }, { value: Math.max(0, max - v) }]}
@@ -27,12 +32,12 @@ export default function RiskGauge({ value, max = 15, label, threshold, unit = '%
             <Cell fill="var(--bg2)" />
           </Pie>
         </PieChart>
-      </ResponsiveContainer>
-      <div style={{ fontSize: 22, fontWeight: 800, color, marginTop: -24 }}>
+      </ResponsiveContainer> : <div aria-hidden="true" style={{ height }} />}
+      <div data-testid="risk-gauge-value" style={{ fontSize: 22, fontWeight: 800, color, marginTop: -24 }}>
         {/* Home v2 D1: counts are integers (unit='') — '4.0 stops' reads as dev-speak */}
-        {typeof value === 'number' ? (unit === '' ? String(Math.round(value)) : value.toFixed(1)) : '—'}{unit}
+        {measured ? `${unit === '' ? String(Math.round(value)) : value.toFixed(1)}${unit}` : 'Unknown'}
       </div>
-      {threshold != null && (
+      {measured && threshold != null && (
         <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 2 }}>threshold {threshold}{unit}</div>
       )}
     </div>
