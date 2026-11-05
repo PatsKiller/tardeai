@@ -68,6 +68,9 @@ NEVER_TOUCH_NAMES = {
     ".svn",
     "db_backups",
     "persistent-state",
+    # codex-cloud at fa34e8df3: the docstring named `models` as protected but this set did not carry it, so a
+    # `task/models/...` subtree was removable. AGENTS.md §24.12 requires models to remain untouched.
+    "models",
     "llama-cpp-vulkan",
     ".ssh",
     ".config",

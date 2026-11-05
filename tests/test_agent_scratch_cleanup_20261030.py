@@ -795,3 +795,17 @@ def test_one_tasks_completion_cannot_reach_the_other_tasks_directory(tmp_path):
         task="disk-governance-process-worker-a", session="synthetic-session", claim=None)
     assert completed == [], completed
     assert problem == "task_completion_namespace_mismatch", problem
+
+
+def test_a_models_subtree_is_protected_from_removal(tmp_path):
+    """codex-cloud at fa34e8df3: the docstring named `models` as protected but NEVER_TOUCH_NAMES did not carry it, so
+    an otherwise eligible task directory containing `models/` could be removed. AGENTS.md §24.12 forbids that."""
+    mod = _load()
+    home = tmp_path / "home"
+    scratch = home / ".cache" / "agent-tmp" / "mytask"
+    (scratch / "models").mkdir(parents=True)
+    (scratch / "models" / "synthetic.bin").write_bytes(b"x")
+    result = mod.evaluate(scratch, home=home, roots=_narrow_roots(home), refs=[],
+                          live_worktrees=[], live_claims=[])
+    assert result["candidate"] is False, result
+    assert any("models" in reason for reason in result["reasons"]), result["reasons"]
