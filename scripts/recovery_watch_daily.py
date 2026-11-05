@@ -1101,8 +1101,10 @@ def source_identity(script: Path | None = None) -> dict:
             out["release_sha"] = match.group(1)
             break
     try:
-        head = subprocess.run(  # noqa: S603, S607 — fixed argv, resolved PATH, no shell
-            ["git", "-C", str(PROJECT_ROOT), "rev-parse", "HEAD"],
+        # Read-only, fixed argv, no shell: the only thing this can run is `git rev-parse HEAD`.
+        # ruff anchors S607 at the executable argument, so the suppression sits on that line, not the call.
+        head = subprocess.run(  # noqa: S603
+            ["git", "-C", str(PROJECT_ROOT), "rev-parse", "HEAD"],  # noqa: S607
             capture_output=True, text=True, timeout=5,
         )
         if head.returncode == 0 and re.fullmatch(r"[0-9a-f]{40}\s*", head.stdout or ""):
