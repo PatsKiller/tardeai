@@ -65,7 +65,13 @@ CHECKS = [
      0.25),
     ("hermes_score_snapshots_2h",
      "SELECT count(*) FROM hermes_score_history WHERE scored_at > NOW()-INTERVAL '2 hours'",
-     "SELECT COALESCE(percentile_cont(0.5) WITHIN GROUP (ORDER BY c),0)/12 FROM (SELECT count(*) c FROM hermes_score_history WHERE scored_at > NOW()-INTERVAL '7 days' GROUP BY date_trunc('day', scored_at)) z",
+     # Like-with-like: the scorer is intraday-shaped (market-hours S0+S1 writes far more than the
+     # pre-market S0/S2 warm-pool pass; see hermes_watchlist_scorer._tier_plan). daily_median/12 assumes
+     # uniform 24h volume and false-WARNed every pre-market morning (349 rows vs a market-hours-weighted
+     # baseline of ~1569 on 2026-10-29 09:15 ET while the receipt showed 800 scored / 0 errored). The
+     # baseline is now the median of the SAME ET clock-hour across the trailing 7 days, x2 to approximate
+     # the 2h window. A real outage still hits 0 -> CRITICAL; the pre-market shape no longer false-fires.
+     "SELECT COALESCE(percentile_cont(0.5) WITHIN GROUP (ORDER BY c),0)*2 FROM (SELECT count(*) c FROM hermes_score_history WHERE scored_at > NOW()-INTERVAL '7 days' AND EXTRACT(HOUR FROM (scored_at AT TIME ZONE 'America/New_York')) = EXTRACT(HOUR FROM (NOW() AT TIME ZONE 'America/New_York')) GROUP BY date_trunc('day', scored_at)) z",
      1.0),
 ]
 

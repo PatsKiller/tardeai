@@ -1,0 +1,14 @@
+{
+  "schema": "PremarketDeliveryDeadman@v1",
+  "_comment": "2026-10-31 (DSN-20261031-market-risk-engine-P0-T4): on 2026-10-30 the 05:45 premarket pipeline died on a full disk and the 07:30 morning brief failed on a dead API; nothing paged, and the operator received no message between 06:00 and 09:45 ET on the morning of the selloff. This dead-man pages P1 when the pipeline receipt or the brief delivery is missing on a market day. Times are America/New_York. Read by scripts/check_premarket_delivery.py (a health-tick step). Changed only by reviewed PR.",
+  "lane_id": "premarket-delivery-deadman",
+  "pipeline_receipt_rel": "data/runtime/pipeline_premarket_premarket_last.json",
+  "pipeline_started_after_et": "04:00",
+  "pipeline_due_et": "06:45",
+  "brief_due_et": "07:45",
+  "brief_match": "MORNING CIO BRIEF",
+  "window_end_et": "12:00",
+  "repeat_minutes": 60,
+  "max_repeats": 4,
+  "state_rel": "data/runtime/premarket_deadman_state.json"
+}

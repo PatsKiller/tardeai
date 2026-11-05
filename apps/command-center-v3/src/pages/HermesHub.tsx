@@ -169,7 +169,9 @@ export default function HermesHub({ onDrill }: Props) {
   const [backlogFilter, setBacklogFilter] = useState<'active' | 'staged' | 'archived' | 'all'>('active')
   const { data: backlog } = useApi<any>(`/api/v2/hermes/research-backlog?status=${backlogFilter}`, 120_000)
   const { data: dualOp } = useApi<any>('/api/v2/hermes/dual-opinion', 120_000)
-  const { data: pipeQual } = useApi<any>('/api/v2/hermes/pipeline-quality', 120_000)
+  // ?limit=10 (memory 2026-10-25): the page shows the newest 10 findings + the total; the full list is ~31.6k rows
+  // (15.7 MB, ~80 MB of server memory per read). Same URL as the spot-check, so the server answers both once.
+  const { data: pipeQual } = useApi<any>('/api/v2/hermes/pipeline-quality?limit=10', 120_000)
   // HermesQualitySpotCheck loads pipeline-quality + health itself (Overview strip).
   const { data: maturity } = useApi<any>('/api/v2/hermes/maturity-dashboard', 120_000)
   const { data: footprint } = useApi<any>('/api/v2/hermes/agent-footprint', 120_000)

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -52,6 +52,21 @@ def _age_label(age_h: float | None) -> str:
     return f"{age_h:.1f}h"
 
 
+def missing_indicators_note(state: Any, price: Any, rsi: Any) -> dict[str, str] | None:
+    """FQ-002: a quote that is present cannot be reported as a missing market.
+
+    The state stays MISSING MARKET (its ordering and consumers depend on it), but the operator-facing
+    reason says what is actually missing — the technical indicators — in ordinary words. No table name
+    and no script instruction in primary text; both are developer detail that belongs in Ops.
+    """
+    if state == "MISSING MARKET" and price is not None and rsi is None:
+        return {
+            "reason": "The price is available but the technical indicators are missing, so a re-entry review cannot run yet.",
+            "action": "Refresh the technical indicators",
+        }
+    return None
+
+
 def _held_positions_by_symbol() -> dict[str, list[dict[str, Any]]]:
     """symbol -> every account row with qty > 0 (holdings.json store of record).
 
@@ -81,10 +96,14 @@ def _held_positions_by_symbol() -> dict[str, list[dict[str, Any]]]:
 
 
 def _wash_evidence(db_query: Callable, symbols: list[str], wash_until: dict[str, str]) -> dict[str, dict[str, Any]]:
-    """Per symbol: FIFO realized gain of the last taxable sell and acquisitions
-    (any account) inside ±WASH_DAYS of it. Read-only; abstains when lots are
-    insufficient."""
-    from scripts.lib.decision_integrity import classify_wash, fifo_realized_gain
+    """Per symbol: the canonical wash window (scripts/lib/wash_sale.symbol_window — EXCEPTIONS_MATRIX R9's ONE
+    implementation): FIFO realized gain per taxable account of every taxable sell inside the window, and
+    acquisitions (any account) inside ±WASH_DAYS of the deciding sell. Read-only; abstains (UNVERIFIED) when lots
+    are insufficient."""
+    try:
+        from scripts.lib.wash_sale import symbol_window, today_ny
+    except ImportError:  # scripts/ (not the repo root) on sys.path
+        from lib.wash_sale import symbol_window, today_ny  # type: ignore
 
     rows = db_query(
         """SELECT upper(symbol) AS symbol, trade_date, trade_time, action, quantity, price, amount, fees, account
@@ -96,35 +115,17 @@ def _wash_evidence(db_query: Callable, symbols: list[str], wash_until: dict[str,
     by_sym: dict[str, list[dict[str, Any]]] = {}
     for r in rows:
         by_sym.setdefault(str(r.get("symbol") or "").upper(), []).append(dict(r))
+    today = today_ny()          # the New York date; the UTC date is already "tomorrow" on weekday evenings
     out: dict[str, dict[str, Any]] = {}
     for sym in symbols:
-        txs = by_sym.get(sym) or []
-        taxable = [t for t in txs if not any(k in str(t.get("account") or "").lower() for k in ("paper", "roth", "ira"))]
-        sells = [t for t in taxable if str(t.get("action") or "").lower().startswith("sell")]
-        if not sells:
+        window = symbol_window(by_sym.get(sym) or [], today=today)
+        if window.get("kind") == "NONE":
             continue
-        last_sell = sells[-1]
-        sell_date = str(last_sell.get("trade_date") or "")[:10]
-        gain = fifo_realized_gain(taxable, sell_date=sell_date)
-        try:
-            sd = datetime.fromisoformat(sell_date).date()
-            lo, hi = sd - timedelta(days=WASH_DAYS), sd + timedelta(days=WASH_DAYS)
-            acq = [
-                {"trade_date": str(t.get("trade_date"))[:10], "account": t.get("account"),
-                 "quantity": _f(t.get("quantity")), "price": _f(t.get("price"))}
-                for t in txs
-                if str(t.get("action") or "").lower().startswith("buy")
-                and lo <= datetime.fromisoformat(str(t.get("trade_date"))[:10]).date() <= hi
-            ]
-        except Exception:
-            acq = []
-        out[sym] = classify_wash(
-            last_taxable_sell_date=sell_date,
-            realized_gain=gain.get("realized_gain"),
-            evidence=str(gain.get("evidence") or ""),
-            acquisitions_within_30d=acq,
-        )
-        out[sym]["fifo"] = gain
+        # Same keys the card read before (classify_wash fields); "fifo" carries the deciding sale's evidence.
+        deciding = next((s for s in window.get("sales") or [] if s.get("sale_date") == window.get("sell_date")
+                         and s.get("account") == window.get("account")), {})
+        out[sym] = {**window, "fifo": {"realized_gain": deciding.get("realized_gain"),
+                                       "evidence": deciding.get("evidence")}}
     return out
 
 
@@ -624,31 +625,30 @@ def build_decision_desk(
 
     wash_until: dict[str, str] = {}
     if symbols:
+        # House hold: 30 days after ANY taxable sell (gain or loss). Sale actions, account taxability and the
+        # window arithmetic are the canonical wash-sale module's (scripts/lib/wash_sale.py).
         try:
+            try:
+                from scripts.lib import wash_sale as _ws
+            except ImportError:  # scripts/ (not the repo root) on sys.path
+                from lib import wash_sale as _ws  # type: ignore
             sells = db_query(
-                """SELECT upper(symbol) AS symbol, max(trade_date) AS last_sell
+                """SELECT upper(symbol) AS symbol, account, action, trade_date
                    FROM trade_transactions
                    WHERE upper(symbol) = ANY(%s)
-                     AND trade_date >= CURRENT_DATE - %s
-                     AND (lower(coalesce(action,'')) IN
-                            ('sell','sold','assigned','assignment','expired','exercise','exercised','close','closed')
-                          OR lower(coalesce(action,'')) LIKE 'sell%%')
-                     AND NOT (lower(coalesce(account,'')) LIKE '%%paper%%'
-                              OR lower(coalesce(account,'')) LIKE '%%roth%%'
-                              OR lower(coalesce(account,'')) LIKE '%%ira%%')
-                   GROUP BY 1""",
+                     AND trade_date >= CURRENT_DATE - %s""",
                 (symbols, WASH_DAYS),
             ) or []
+            last_sell: dict[str, Any] = {}
             for row in sells:
                 sym = str(row.get("symbol") or "").upper()
-                last = row.get("last_sell")
-                if sym and last:
-                    last_s = last.isoformat()[:10] if hasattr(last, "isoformat") else str(last)[:10]
-                    try:
-                        until = (datetime.fromisoformat(last_s).date() + timedelta(days=WASH_DAYS)).isoformat()
-                        wash_until[sym] = until
-                    except Exception:
-                        pass
+                day = _ws.as_date(row.get("trade_date"))
+                if not sym or day is None or not _ws.is_sale(row.get("action")) or not _ws.account_taxable(row.get("account")):
+                    continue
+                if sym not in last_sell or day > last_sell[sym]:
+                    last_sell[sym] = day
+            for sym, day in last_sell.items():
+                wash_until[sym] = _ws.window_until(day).isoformat()
         except Exception:
             wash_until = {}
 
@@ -664,6 +664,14 @@ def build_decision_desk(
             wash_evidence = {}
 
     today = datetime.now(timezone.utc).date().isoformat()
+    try:  # the wash window compares New York trade dates
+        try:
+            from scripts.lib.wash_sale import today_ny as _today_ny
+        except ImportError:  # scripts/ on sys.path
+            from lib.wash_sale import today_ny as _today_ny  # type: ignore
+        wash_today = _today_ny().isoformat()
+    except Exception:
+        wash_today = today
     rows_out: list[dict[str, Any]] = []
     for sym in symbols:
         batch_q = price_batch.get(sym) or {}
@@ -692,7 +700,7 @@ def build_decision_desk(
         entry_high = _f(plan.get("entry_zone_high"))
         stop = _f(plan.get("stop_price"))
         target = _f(plan.get("target_price"))
-        wash_blocked = bool(wash_until.get(sym) and wash_until[sym] >= today)
+        wash_blocked = bool(wash_until.get(sym) and wash_until[sym] >= wash_today)
 
         intel = derive_intel_state(
             price=price,
@@ -703,12 +711,9 @@ def build_decision_desk(
             held=sym in held,
             wash_blocked=wash_blocked,
         )
-        if intel.get("state") == "MISSING MARKET" and price is not None and rsi is None:
-            intel = {
-                **intel,
-                "reason": "Quote present but RSI missing from indicator_confluence_cache — run indicator_cache_refresh for exited symbols.",
-                "action": "Refresh indicator cache",
-            }
+        note = missing_indicators_note(intel.get("state"), price, rsi)
+        if note:
+            intel = {**intel, **note}
 
         chips = list(intel.get("chips") or [])
         res_state = str(res.get("state") or "UNAVAILABLE").upper()

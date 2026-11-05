@@ -229,7 +229,7 @@ export const TAB_TIPS: Record<string, string> = {
   opportunities: 'Full universe — everything the CIO curator scored, ranked by conviction. Research, not a to-do list.',
 }
 
-export type CioReviewResult = { ok: boolean; message: string; state: ReviewState | null; already_open?: boolean }
+export type CioReviewResult = { ok: boolean; message: string; state: ReviewState | null; already_open?: boolean; requestId?: string | null; nextRun?: string | null }
 
 /** Queue a CIO symbol review and return the request state the server read back (batch 31). A conflict key links
  *  the request to the conflict ledger finding. */
@@ -244,7 +244,8 @@ export async function requestCioReview(symbol: string, note: string, conflictKey
     if (!res.ok || !d?.ok) return { ok: false, message: `Could not queue: ${d?.error || raw?.error || `HTTP ${res.status}`}`, state: null }
     const state: ReviewState | null = d.review_state || null
     const message = d.already_open ? `Already asked — ${state?.label || 'request open'}.` : 'CIO review queued.'
-    return { ok: true, message, state, already_open: !!d.already_open }
+    return { ok: true, message, state, already_open: !!d.already_open,
+      requestId: d.request_id || state?.request_id || null, nextRun: state?.next_run || d.review?.next_run || null }
   } catch (e) {
     return { ok: false, message: `Could not queue: ${String(e).slice(0, 80)}`, state: null }
   }

@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_app_role_packet_20261027",
+  "files": [
+    "tests/test_n8n_app_role_packet_20261027.py"
+  ],
+  "anchor": "N8N_APP_ROLE_PACKET_20261027",
+  "comment": [
+    "ANCHOR: N8N_APP_ROLE_PACKET_20261027 — operator packet docs/ops/packets/n8n-app-role-20261027/ that moves the n8n",
+    "container off the bootstrap superuser onto n8n_app (AGENTS 23.5 / 23.10 P13). Static: scripts exist, executable,",
+    "strict bash, bash -n; no compose down / -v, no DROP ROLE, no rm, no literal password, no .env read, config only",
+    "with --quiet. Behavioural (fake docker/curl, tmp HOME): every mutating script dry-runs by default with no write",
+    "SQL, no up/restart, no pg_dump; --apply without N8N_APP_ROLE_GRANT refuses before any mutation; step 03 applies",
+    "the reviewed FW-P2 diff to the rebuilt pre-patch compose file."
+  ]
+}

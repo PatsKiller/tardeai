@@ -6,19 +6,61 @@ Pure functions + in-memory dedupe. No trades. No orders. No DB writes.
 
 Loaded by telegram_alert.py to gate outbound Telegram sends.
 """
+import fcntl
 import hashlib
 import json
 import logging
 import os
 import re
+import contextvars
 import time
+import uuid
 import yaml
 from pathlib import Path
+from typing import Optional
 
 log = logging.getLogger(__name__)
 
 PROJ = Path(__file__).resolve().parent.parent
 _POLICY_PATH = PROJ / "config" / "operator_alert_policy.yaml"
+
+# A T1 recovery page (scripts/lib/recovery_notify.py) must never be downgraded to a dashboard row.
+# Operator P0 2026-11-03: Recovery Watch found re-entry candidates for weeks, sent them as P2, and the
+# router answered P2_DASHBOARD_ONLY + LEGACY_SHADOWED; the operator missed his largest stop-out.
+# The marker is owned by recovery_notify; the literal is only the fallback when that lib is absent.
+try:
+    from scripts.lib.recovery_notify import (
+        RECOVERY_T1_MARKER as _RECOVERY_T1_MARKER,
+        case_token_for as _case_token_for,
+        parse_case_token as _parse_case_token,
+    )
+except ImportError:  # pragma: no cover — scripts/ on sys.path variant
+    try:
+        from lib.recovery_notify import (  # type: ignore
+            RECOVERY_T1_MARKER as _RECOVERY_T1_MARKER,
+            case_token_for as _case_token_for,
+            parse_case_token as _parse_case_token,
+        )
+    except ImportError:
+        _RECOVERY_T1_MARKER = "[[RECOVERY_T1]]"
+
+        def _case_token_for(case_key: str) -> str:  # type: ignore
+            return "v1:" + str(case_key)
+
+        def _parse_case_token(text: str):  # type: ignore
+            match = re.search(r"case:(v1:)?([A-Za-z0-9_=-]+)", text or "")
+            return match.group(2) if match else None
+
+#: The per-case-per-day bound that makes the recovery T1 budget exemption safe (operator ruling,
+#: 2026-11-03): a T1 page is exempt from the daily budget, but at most ONE page per case per day.
+_RECOVERY_T1_PAGE_PATH = PROJ / "data" / "runtime" / "recovery_t1_pages.json"
+_RECOVERY_CASE_RE = re.compile(r"\bcase:([A-Za-z0-9_.:-]+)")
+#: The gates bypassed by the last recovery-T1 decision; route_alert copies them into its result so a
+#: future reviewer can see the exemption was deliberate (cx-openai-2 F5).
+_RECOVERY_T1_EXEMPTIONS = ("health_repeat", "rate_limit", "daily_budget")
+_last_recovery_exemptions: list[str] = []
+#: Public alias so the transport can ack a delivered recovery page (telegram_alert._intent_send).
+RECOVERY_T1_MARKER = _RECOVERY_T1_MARKER
 
 # B2, 2026-08-31: THESE DICTS CANNOT HOLD A CROSS-INVOCATION GUARANTEE.
 #
@@ -232,6 +274,14 @@ def classify_alert(message: str) -> str:
     """Classify message into P0_INTERRUPT, P1_DIGEST, P2_DASHBOARD_ONLY, P3_LOG_ONLY."""
     if not message:
         return "P3_LOG_ONLY"
+
+    # A T1 recovery page can never be a dashboard row or a log line (operator P0 2026-11-03: Recovery
+    # Watch found SCHG/BAH/RTX every run since 10-01 and answered P2_DASHBOARD_ONLY + LEGACY_SHADOWED;
+    # the operator missed SPCX recovering). This check is FIRST, before the raw-JSON guard: a recovery
+    # plan/summary that quotes `{"symbol": …, "rationale": …}` would otherwise match the raw-JSON rule
+    # (the marker itself starts with `[`) and be logged only — the silence this marker exists to stop.
+    if _RECOVERY_T1_MARKER in message:
+        return "P0_INTERRUPT"
 
     # R18-DATA.1: raw machine JSON is never an operator investment page.
     try:
@@ -559,9 +609,433 @@ def apply_rate_limit(message: str) -> dict:
     return {"allowed": True, "reason": "ok"}
 
 
-def should_send_telegram(message: str) -> bool:
-    """Main gate: should this message be sent to Telegram?"""
+def _recovery_case_key(message: str) -> str:
+    parsed = _parse_case_token(message)
+    return parsed if parsed else build_dedupe_key(message)
+
+
+def _recovery_material(message: str) -> Optional[str]:
+    """The producer's material digest carried on the page, or None for a legacy page without one."""
+    match = _RECOVERY_MATERIAL_RE.search(message or "")
+    return match.group(1) if match else None
+
+
+#: A claim older than this without a delivery is abandoned (crash/timeout) and may be retaken.
+_RECOVERY_T1_CLAIM_STALE_SECONDS = 600
+
+#: The repeat rule is one page per case per day. A LATER MATERIAL CHANGE may page ONCE more, so a
+#: genuine update is never swallowed by a bound that only meant to stop repeats. Anything beyond that
+#: (or any repeat) is recorded DURABLY in the recovery ledger — a refusal is never silent again
+#: (cc6 BLOCK 2026-11-04: the bound was silent in both halves).
+_RECOVERY_T1_MAX_DELIVERED_PAGES_PER_CASE_DAY = 2
+_RECOVERY_MATERIAL_RE = re.compile(r"\bmaterial:([0-9a-f]{8,64})\b")
+
+
+def _recovery_ledger_rows() -> list[dict]:
+    try:
+        raw = _RECOVERY_T1_PAGE_PATH.read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        return []
+    rows = []
+    for line in raw.splitlines():
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        # `released` is a first-class state: the writer appends it and the reader must see it,
+        # otherwise a released attempt still reads as claimed (cx-openai-2 F8).
+        if isinstance(row, dict) and row.get("case") and row.get("state") in ("claimed", "delivered", "released"):
+            rows.append(row)
+    return rows
+
+
+def _recovery_state(day: str, key: str, material: Optional[str] = None) -> str:
+    """State for this case-day, scoped to one material digest when the page carries one.
+
+    DELIVERED is terminal for the material it delivered: no later row can un-deliver it (F5b), and a
+    page carrying a DIFFERENT material is a new fact rather than a repeat, so it is not blocked by that
+    delivered row. A legacy row with no material matches any material (conservative: it delivered an
+    unidentified page, so the repeat rule still applies).
+    """
+    state = "absent"
+    for row in _recovery_ledger_rows():
+        if row.get("day") != day or row.get("case") != key:
+            continue
+        row_material = row.get("material")
+        if material is not None and row_material and str(row_material) != material:
+            continue
+        if row["state"] == "delivered":
+            return "delivered"
+        state = row["state"]
+    return state
+
+
+def _recovery_delivered_materials(day: str, key: str) -> list:
+    """The material digests (None for legacy rows) this case-day has actually paged."""
+    out = []
+    for row in _recovery_ledger_rows():
+        if row.get("day") != day or row.get("case") != key or row.get("state") != "delivered":
+            continue
+        material = row.get("material")
+        out.append(str(material) if material else None)
+    return out
+
+
+def _recovery_claimed_material(day: str, key: str) -> Optional[str]:
+    """The material of the attempt currently in flight, "" for a legacy claim, None when none is."""
+    latest = None
+    for row in _recovery_ledger_rows():
+        if row.get("day") != day or row.get("case") != key:
+            continue
+        latest = row
+    if latest is None or latest.get("state") != "claimed":
+        return None
+    material = latest.get("material")
+    return str(material) if material else ""
+
+
+def _recovery_bound_reason(message: str) -> str:
+    """Why this page cannot go out now — repeat, the material-change cap, or an attempt in flight."""
+    day = _budget_day()
+    key = _recovery_case_key(message)
+    material = _recovery_material(message)
+    if _recovery_state(day, key, material) == "delivered":
+        return "recovery_t1_daily_case_bound"
+    delivered = {m for m in _recovery_delivered_materials(day, key) if m}
+    if (material and material not in delivered
+            and len(delivered) >= _RECOVERY_T1_MAX_DELIVERED_PAGES_PER_CASE_DAY):
+        return "recovery_t1_material_change_cap"
+    claimed_material = _recovery_claimed_material(day, key)
+    if claimed_material is not None and material and claimed_material and material != claimed_material:
+        # NEW information during the in-flight window: say so, even though this attempt cannot page.
+        return "recovery_t1_material_change_in_flight"
+    # A repeat, or an attempt still in flight for the same material: the case-day bound is the reason
+    # (the vocabulary downstream already keys on). The durable row still carries the material digest.
+    return "recovery_t1_daily_case_bound"
+
+
+def _recovery_append(day: str, key: str, state: str, *, material: Optional[str] = None,
+                     reason: Optional[str] = None) -> None:
+    row = {"day": day, "case": key, "state": state,
+           "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "pid": os.getpid()}
+    if material:
+        row["material"] = str(material)
+    if reason:
+        row["reason"] = str(reason)
+    try:
+        _RECOVERY_T1_PAGE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(_RECOVERY_T1_PAGE_PATH, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, sort_keys=True) + "\n")
+    except OSError as exc:  # a ledger fault must not silence a T1
+        log.warning("recovery T1 ledger append failed (%s); the page is still allowed", exc)
+
+
+def _recovery_claim_lock(day: str, key: str) -> Path:
+    # A HASH of the case key, never a sanitised rendering: two distinct ids that both reduce to
+    # "a_b" (or that share an 80-char prefix) must not share a lock (cx-openai-2 F3 encoding half).
+    digest = hashlib.sha256(f"{day}\x00{key}".encode("utf-8")).hexdigest()[:32]
+    return _RECOVERY_T1_PAGE_PATH.parent / f".recovery_t1_claim.{day}.{digest}.lock"
+
+
+#: The lock-owner token this process holds per case-day. Release/deliver must not unlink a lock
+#: that belongs to another claimant (cx3 R5-F2: a stale actor must not reopen someone else's case).
+_RECOVERY_CLAIM_OWNERS: dict[str, str] = {}
+#: The attempt this execution is acting for. The owner map is keyed by case/day, so a reclaimed
+#: attempt overwrites the token and a STALE attempt's settle used to pop the NEWEST one and release
+#: a page another attempt is delivering (cx3 R8-F2). A settle now proves it owns the generation it is
+#: settling by comparing this token, not by trusting the map's current value.
+_RECOVERY_ATTEMPT: "contextvars.ContextVar[str | None]" = contextvars.ContextVar(
+    "recovery_attempt_owner", default=None)
+
+
+def _recovery_attempt_matches(day: str, key: str) -> bool:
+    """True when this execution's attempt token is the one the map currently holds.
+
+    No token (a caller outside the claim path) keeps the pre-fix behaviour rather than becoming a
+    silent no-op: the map value is then the only evidence available.
+    """
+    attempt = _RECOVERY_ATTEMPT.get()
+    if attempt is None:
+        return True
+    current = _RECOVERY_CLAIM_OWNERS.get(f"{day}\x00{key}")
+    return current == attempt
+
+
+def _recovery_lock_owner(lock: Path) -> Optional[str]:
+    """The owner token recorded in a lock file, or None when it is missing/unreadable/legacy."""
+    try:
+        doc = json.loads(lock.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    owner = doc.get("owner") if isinstance(doc, dict) else None
+    return str(owner) if owner else None
+
+
+def _recovery_reclaim_guard():
+    """Serialise stale-lock reclamation and claim settlement. Returns ``(status, fd)``.
+
+    ``status`` is one of:
+    * ``ok``    — the flock is held; call ``os.close(fd)`` to release it.
+    * ``busy``  — a peer holds the mutex. Stand down; do not race it.
+    * ``error`` — the mutex could not be used at all (permission, a directory at the path, disk I/O).
+      This is NOT contention and must never be read as "a peer is handling it": the caller proceeds
+      without serialisation and logs, because a broken mutex must not silence a page (cx3 R7-F2).
+
+    One fixed file beside the ledger: reclamation is rare (only after a crash), it is released by the
+    kernel if the holder dies, and it is deliberately never unlinked — unlinking an flock file would
+    let a waiter lock a deleted inode while a third process locks a new one.
+    """
+    path = _RECOVERY_T1_PAGE_PATH.parent / ".recovery_t1_reclaim.lock"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT, 0o600)
+    except OSError as exc:
+        log.warning("recovery T1 reclaim mutex unusable (%s); proceeding unserialised (fail-open)",
+                    type(exc).__name__)
+        return "error", None
+    # Bounded blocking wait (cx3 R8-F1): failing instantly on a GLOBAL mutex let an unrelated case's
+    # contention abandon THIS case's settlement, and the corrected retry was then deduped for the
+    # whole lease. Wait for the mutex; a real timeout still returns "busy" so the caller can fall
+    # back to its owner-check-and-release path instead of dropping the release.
+    deadline = time.monotonic() + max(0.0, float(os.environ.get("TRADEAI_RECOVERY_MUTEX_WAIT_S", "2.0")))
+    while True:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return "ok", fd
+        except OSError as exc:
+            if not (isinstance(exc, BlockingIOError) or getattr(exc, "errno", None) in (11, 13)):
+                os.close(fd)
+                log.warning("recovery T1 reclaim mutex flock failed (%s); proceeding unserialised (fail-open)",
+                            type(exc).__name__)
+                return "error", None
+            if time.monotonic() >= deadline:
+                os.close(fd)
+                return "busy", None
+            time.sleep(0.01)
+    return "ok", fd  # unreachable: the loop returns on every path
+
+
+def recovery_t1_state(message: str) -> str:
+    return _recovery_state(_budget_day(), _recovery_case_key(message), _recovery_material(message))
+
+
+def recovery_t1_claim(message: str) -> bool:
+    """Atomically claim today's single page for this CASE. True only for the claiming process.
+
+    Atomic across processes via O_CREAT|O_EXCL on a per-case lock; a claim left by a crash becomes
+    retakeable after ``_RECOVERY_T1_CLAIM_STALE_SECONDS``. Claiming is not delivery: only
+    :func:`recovery_t1_mark_delivered` consumes the day (cx-openai-2 F5a/F5b).
+
+    The terminal state is re-read WHILE HOLDING the lock (cx3 R5-F2). A process that saw "absent"
+    before a peer claimed, delivered and released would otherwise take the freed lock and page a
+    second time. The pre-lock read stays as a cheap fast path; it is never the authority.
+    """
+    day = _budget_day()
+    key = _recovery_case_key(message)
+    material = _recovery_material(message)
+    if _recovery_state(day, key, material) == "delivered":
+        return False
+    lock = _recovery_claim_lock(day, key)
+    owner = uuid.uuid4().hex
+    held = False
+    for _attempt in (1, 2):
+        try:
+            lock.parent.mkdir(parents=True, exist_ok=True)
+            fd = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            try:
+                os.write(fd, json.dumps({"pid": os.getpid(), "owner": owner,
+                                         "at": time.time()}).encode("utf-8"))
+            finally:
+                os.close(fd)
+            held = True
+            break
+        except FileExistsError:
+            try:
+                age = time.time() - lock.stat().st_mtime
+            except OSError:
+                age = 0
+            if age < _RECOVERY_T1_CLAIM_STALE_SECONDS:
+                return False
+            # Stale reclamation must be GENERATION-safe (cx3 R6-F1). Renaming the pathname alone can
+            # move a lock that a peer created AFTER our stat: two processes both see the old stale
+            # lock, the first replaces it, and the second's resume renames the FRESH lock away and
+            # claims too. Reclamation is therefore serialised by an flock mutex and re-decided under
+            # it; a peer that finds another reclaimer active does not race it.
+            status, guard = _recovery_reclaim_guard()
+            if status == "busy":
+                return False      # a peer is reclaiming; do not race it (bounded duplicate)
+            try:
+                try:
+                    age = time.time() - lock.stat().st_mtime
+                except OSError:
+                    continue          # it vanished while we waited: try to create it again
+                if age < _RECOVERY_T1_CLAIM_STALE_SECONDS:
+                    return False      # a fresh claimant replaced it while we waited
+                graveyard = lock.with_name(f"{lock.name}.stale.{os.getpid()}.{uuid.uuid4().hex[:8]}")
+                try:
+                    os.rename(lock, graveyard)
+                except OSError:
+                    continue
+                try:
+                    os.unlink(graveyard)
+                except OSError:
+                    pass
+            finally:
+                if guard is not None:
+                    os.close(guard)   # releases the flock
+        except OSError:
+            break  # cannot lock: fail-open, the page is loud
+    if _recovery_state(day, key, material) == "delivered":       # authoritative, while we hold the lock
+        if held:
+            try:
+                os.unlink(lock)
+            except OSError:
+                pass
+        return False
+    # A materially different page is new information, not a repeat: it may use the remaining page
+    # allowance for this case-day. Past the allowance the caller RECORDS the refusal durably.
+    delivered_materials = {m for m in _recovery_delivered_materials(day, key) if m}
+    if (material and material not in delivered_materials
+            and len(delivered_materials) >= _RECOVERY_T1_MAX_DELIVERED_PAGES_PER_CASE_DAY):
+        if held:
+            try:
+                os.unlink(lock)
+            except OSError:
+                pass
+        return False
+    if held:
+        _RECOVERY_CLAIM_OWNERS[f"{day}\x00{key}"] = owner
+        # Bind this execution to the generation it just created, so a later settle can prove it is
+        # settling ITS attempt rather than whichever attempt is newest when it happens to run.
+        _RECOVERY_ATTEMPT.set(owner)
+    _recovery_append(day, key, "claimed", material=material)
+    return True
+
+
+def recovery_t1_mark_delivered(message: str) -> None:
+    day = _budget_day()
+    key = _recovery_case_key(message)
+    material = _recovery_material(message)
+    lock = _recovery_claim_lock(day, key)
+    # Settlement is serialised with reclamation (cx3 R7-F1): without the same mutex, a reclaimer can
+    # replace our lock between the owner read and the unlink, and we would free the FRESH claimant's
+    # lock. The owner is re-read UNDER the mutex, so the decision is bound to the attempt generation.
+    status, guard = _recovery_reclaim_guard()
+    if status == "busy":
+        # A GLOBAL mutex held by an unrelated case is not evidence that this case is being handled
+        # (cx3 R8-F1). The delivery is recorded either way — delivered is terminal — and the lock is
+        # only unlinked below after the owner check, which is safe without the mutex.
+        log.warning("recovery T1 reclaim mutex timed out; settling delivered unserialised")
+    try:
+        _recovery_append(day, key, "delivered", material=material)   # terminal for THIS material
+        if not _recovery_attempt_matches(day, key):
+            return                                      # a stale attempt must not settle the new one
+        owner = _RECOVERY_CLAIM_OWNERS.pop(f"{day}\x00{key}", None)
+        lock_owner = _recovery_lock_owner(lock)
+        if lock_owner is None or lock_owner == owner:
+            try:
+                lock.unlink()
+            except OSError:
+                pass
+    finally:
+        if guard is not None:
+            os.close(guard)
+
+
+def recovery_t1_release(message: str) -> None:
+    """A failed attempt releases ITS claim — never another claimant's (cx3 R5-F2 / R7-F1 / F5b)."""
+    day = _budget_day()
+    key = _recovery_case_key(message)
+    material = _recovery_material(message)
+    if _recovery_state(day, key, material) == "delivered":
+        return  # delivered is terminal for this material; a stale resumer must not re-open the day
+    lock = _recovery_claim_lock(day, key)
+    status, guard = _recovery_reclaim_guard()
+    if status == "busy":
+        # The mutex is global; an unrelated case can hold it. Falling back to the owner-check below
+        # releases THIS case (a narrow race is strictly better than a never-delivered case), instead
+        # of abandoning the release and letting the retry be deduped for the whole lease (cx3 R8-F1).
+        log.warning("recovery T1 reclaim mutex timed out; releasing unserialised")
+    try:
+        # Under the mutex the owner re-read is authoritative: the lock at this path IS the generation
+        # our release is settling. A stale actor that cached an older owner cannot free the fresh one.
+        if not _recovery_attempt_matches(day, key):
+            return  # this settle belongs to an older attempt; leave the current claim alone
+        owner = _RECOVERY_CLAIM_OWNERS.pop(f"{day}\x00{key}", None)
+        lock_owner = _recovery_lock_owner(lock)
+        if lock_owner is not None and lock_owner != owner:
+            return  # another live claimant owns this case; leave its lock and its state alone
+        _recovery_append(day, key, "released", material=material)
+        try:
+            lock.unlink()
+        except OSError:
+            pass
+    finally:
+        if guard is not None:
+            os.close(guard)
+
+
+def _recovery_exemptions_for(message: str) -> list[str]:
+    """Only the gates that WOULD have suppressed this message, measured side-effect-free (F6)."""
+    bypassed = []
+    if _HEALTH_PATTERN.search(message) and not _health_telegram_allowed(message):
+        bypassed.append("health_repeat")
+    rules = _policy()
+    hour_key = f"{int(time.time() // 3600)}"
+    if _GO_PATTERN.search(message) and _hourly_counts.get(f"go_{hour_key}", 0) >= int(
+            rules.get("max_trade_ai_live_alerts_per_hour", 3)):
+        bypassed.append("rate_limit")
+    if not _ops_exempt(message) and _budget_count_today() >= DAILY_SEND_BUDGET:
+        # The budget gate never applies to ops-exempt messages (stop/risk/auth), so naming it as a
+        # bypass for one would be a false exemption (cx-openai-2 F6).
+        bypassed.append("daily_budget")
+    return bypassed
+
+
+def should_send_telegram(message: str, *, consume: bool = False) -> bool:
+    """Main gate: should this message be sent to Telegram?
+
+    A PREVIEW by default. For a recovery T1 the daily bound is delivery-owned (cx-openai-2 F5), so a
+    caller that only asks "would this send?" must not spend the claim (cc5 P1, 2026-11-03): the real
+    delivery path (``route_intent`` -> ``_recovery_intent_bound``) consumes it. A caller that sends
+    DIRECTLY after this gate passes ``consume=True`` and owns the ack/release.
+    """
     level = classify_alert(message)
+
+    if _RECOVERY_T1_MARKER in message:
+        # Operator ruling 2026-11-03 (cx-openai-2 F5): a recovery T1 is exempt from health-repeat,
+        # rate-limit and daily-budget gates, and the exemption is bounded per CASE per day with a
+        # delivery-owned claim (claim now, delivered only on a confirmed send). ``consume=False``
+        # (the default) is a read-only preview for route classification and for callers that hand
+        # the message to the intent path, which claims atomically at the point of delivery.
+        state = recovery_t1_state(message)
+        if state == "delivered":
+            record_suppressed(message, _recovery_bound_reason(message))
+            return False
+        if consume:
+            if not recovery_t1_claim(message):
+                # A materially different event is recorded with its own reason (and pages on the next
+                # attempt when nothing is in flight); a repeat keeps the plain case-day reason.
+                record_suppressed(message, _recovery_bound_reason(message))
+                return False
+            # Between the claim and the caller's release handler there were fallible steps — the
+            # exemptions read is one (a malformed budget file raises here) — and a raise left the case
+            # claimed and locked with no provider call and no release, so a corrected retry could never
+            # page again (cx-openai-3 F1, 2026-11-04). Anything that fails after the claim releases it.
+            try:
+                _last_recovery_exemptions[:] = _recovery_exemptions_for(message)
+            except BaseException:
+                recovery_t1_release(message)
+                raise
+            return True
+        if state == "claimed":
+            # A PREVIEW used to return False here with no record at all: during the in-flight window
+            # a materially different event vanished with neither a page nor a trace (cc6 BLOCK P2).
+            record_suppressed(message, _recovery_bound_reason(message))
+            return False
+        _last_recovery_exemptions[:] = _recovery_exemptions_for(message)
+        return True
 
     if level in ("P2_DASHBOARD_ONLY", "P3_LOG_ONLY"):
         record_suppressed(message, f"level={level}")
@@ -589,8 +1063,25 @@ def should_send_telegram(message: str) -> bool:
     return True
 
 
+def peek_should_send(message: str) -> bool:
+    """Would this message send? A PURE READ: it never claims the recovery T1 day.
+
+    cc5 P1 (2026-11-03): the per-case bound exists to stop a SECOND DELIVERY, not to punish a
+    second question. Every preview, simulation and legacy pre-check goes through this; only the
+    real delivery path (``route_intent``) and a caller that sends directly right after its gate
+    (``should_send_telegram(..., consume=True)``) may claim.
+    """
+    return should_send_telegram(message, consume=False)
+
+
 def record_suppressed(message: str, reason: str):
-    """Record a suppressed alert for audit purposes."""
+    """Record a suppressed alert for audit purposes.
+
+    For a recovery T1 the record is DURABLE as well: the case-day bound used to leave only an
+    in-memory line, so a later material change inside the same case and day vanished with nothing to
+    find (cc6 BLOCK 2026-11-04). The ledger row is state ``suppressed`` with the material digest and
+    the machine reason; the in-memory list is kept for the existing tooling.
+    """
     _suppression_log.append({
         "ts": time.time(),
         "reason": reason,
@@ -599,6 +1090,13 @@ def record_suppressed(message: str, reason: str):
     })
     if len(_suppression_log) > 500:
         _suppression_log.pop(0)
+    if _RECOVERY_T1_MARKER in message:
+        try:
+            _recovery_append(_budget_day(), _recovery_case_key(message), "suppressed",
+                             material=_recovery_material(message), reason=reason)
+        except Exception as exc:  # noqa: BLE001 — a durable-record fault must not change routing
+            log.warning("recovery T1 suppression record failed (%s); routing is unchanged",
+                        type(exc).__name__)
 
 
 def get_suppression_log() -> list:
@@ -623,8 +1121,15 @@ def _ignore_verdict_escalation(message: str) -> bool:
 def route_alert(message: str) -> dict:
     """Classify and route an alert, returning routing decision."""
     level = classify_alert(message)
-    send = should_send_telegram(message)
-    if send and _ignore_verdict_escalation(message):
+    send = peek_should_send(message)
+    exemptions: list[str] = []
+    if send and _RECOVERY_T1_MARKER in message:
+        # Only the gates that WOULD have suppressed this message (measured side-effect-free by
+        # should_send_telegram); empty when nothing would have been bypassed (cx-openai-2 F6).
+        exemptions = list(_last_recovery_exemptions)
+        if _ignore_verdict_escalation(message):
+            exemptions.append("ignore_escalation")
+    elif send and _ignore_verdict_escalation(message):
         send = False  # A5: IGNORE-verdict escalations land in the ops digest, not a page
     policy = _load_policy()
     destinations = policy.get("destinations", {})
@@ -650,6 +1155,7 @@ def route_alert(message: str) -> dict:
         "send_telegram": send,
         "destination": dest,
         "dedupe_key": build_dedupe_key(message),
+        "recovery_t1_exemptions": exemptions,
     }
 
 
@@ -702,6 +1208,79 @@ _QUIET_TZ_ENV = ("TRADEAI_INCIDENT_NOTIFIER_TZ", "America/New_York")
 
 _intent_sent: dict = {}
 
+# Quiet-hours exemptions by message class (operator 2026-10-31, design DSN-20261031-market-risk-engine P3-T1,
+# §11 item 5): a P2 ``market_risk`` intent raised in the pre-market window is delivered, not archived. The 10-30
+# selloff RCA (finding 3): the only market-level warning of the week fired at 05:52 ET and was held for the digest.
+# The window, classes and priorities live in config, never here.
+QUIET_EXEMPTIONS_ENV = "TRADEAI_INTENT_QUIET_EXEMPTIONS_PATH"
+_QUIET_EXEMPTIONS_DEFAULT = PROJ / "config" / "notification_intent_quiet_exemptions.json"
+QUIET_EXEMPTIONS_SCHEMA = "NotificationIntentQuietExemptions@v1"
+
+
+def load_quiet_exemptions() -> list[dict]:
+    """The reviewed exemption rows (schema-checked). Unreadable or malformed config means no exemption, logged."""
+    path = Path(os.environ.get(QUIET_EXEMPTIONS_ENV) or _QUIET_EXEMPTIONS_DEFAULT)
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        log.warning("quiet exemptions unreadable (%s) at %s — no exemption applies", type(e).__name__, path)
+        return []
+    if not isinstance(doc, dict) or doc.get("schema") != QUIET_EXEMPTIONS_SCHEMA:
+        log.warning("quiet exemptions rejected: schema is not %s at %s — no exemption applies",
+                    QUIET_EXEMPTIONS_SCHEMA, path)
+        return []
+    rows = []
+    for r in doc.get("exemptions") or []:
+        if isinstance(r, dict) and r.get("id") and r.get("message_classes") and isinstance(r.get("window"), dict):
+            rows.append(r)
+        else:
+            log.warning("quiet exemption row rejected (shape) at %s: %r", path, str(r)[:120])
+    return rows
+
+
+def _hhmm_strict(text) -> int | None:
+    """Minutes after midnight for a strict HH:MM (00:00-23:59), else None. No default: a bad bound never widens."""
+    try:
+        h, m = (int(x) for x in str(text).strip().split(":"))
+    except ValueError:
+        return None
+    return h * 60 + m if 0 <= h < 24 and 0 <= m < 60 else None
+
+
+def quiet_exemption_for(message_class: str | None, priority: str, now=None) -> str | None:
+    """The id of the exemption that lets this intent through the quiet window right now, else None."""
+    from datetime import datetime as _dt, timezone as _tz
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    mc = str(message_class or "").strip()
+    if not mc:
+        return None
+    for row in load_quiet_exemptions():
+        if mc not in [str(x) for x in row.get("message_classes") or []]:
+            continue
+        if priority not in [str(x).upper() for x in row.get("priorities") or [INTENT_P2]]:
+            continue
+        win = row["window"]
+        start, end = _hhmm_strict(win.get("start")), _hhmm_strict(win.get("end"))
+        if start is None or end is None or start == end:
+            log.warning("quiet exemption %s skipped: window bounds %r-%r are not strict HH:MM",
+                        row.get("id"), win.get("start"), win.get("end"))
+            continue
+        default_tz = str(os.environ.get(_QUIET_TZ_ENV[0]) or _QUIET_TZ_ENV[1]).strip()
+        try:
+            tz = ZoneInfo(str(win.get("tz") or default_tz))
+        except (ZoneInfoNotFoundError, ValueError):
+            try:
+                tz = ZoneInfo(default_tz)
+            except (ZoneInfoNotFoundError, ValueError):
+                tz = ZoneInfo(_QUIET_TZ_ENV[1])
+        t = (now or _dt.now(_tz.utc)).astimezone(tz)
+        m = t.hour * 60 + t.minute
+        inside = (start <= m < end) if start < end else (m >= start or m < end)
+        if inside:
+            return str(row["id"])
+    return None
+
 
 def _hhmm(text: str, default: str) -> int:
     for candidate in (text, default):
@@ -746,7 +1325,8 @@ def _intent_receipts_path() -> Path:
 def record_intent_receipt(route: dict, *, delivered, archived=None) -> None:
     """Append the route decision and its outcome. Best-effort: a receipt failure never blocks a send."""
     row = {"schema": INTENT_RECEIPT_SCHEMA, "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-           **{k: route.get(k) for k in ("priority", "decision", "dedupe_key", "window_minutes", "producer")},
+           **{k: route.get(k) for k in ("priority", "decision", "dedupe_key", "window_minutes", "producer",
+                                        "quiet_exemption")},
            "delivered": delivered, "archived_report_type": archived,
            "preview": str(route.get("preview") or "")[:80]}
     try:
@@ -759,13 +1339,15 @@ def record_intent_receipt(route: dict, *, delivered, archived=None) -> None:
 
 
 def route_intent(message: str, priority: str, *, dedupe_minutes: int | None = None,
-                 producer: str | None = None, now=None) -> dict:
+                 producer: str | None = None, now=None, message_class: str | None = None) -> dict:
     """Decide one notification intent. Pure apart from reading the durable dedupe store.
 
     Returns {priority, decision, deliver, dedupe_key, window_minutes, producer, preview}; decision is one of
     DELIVER, DEDUPED (same body inside the window — already delivered), HELD_QUIET_HOURS (P2 only),
     DIGEST (P3 only: archived for the digest, never an interrupt).
     ``dedupe_minutes=0`` turns dedupe off for a producer that already keeps its own send ledger.
+    ``message_class`` lets a reviewed quiet-hours exemption (config/notification_intent_quiet_exemptions.json)
+    deliver a P2 inside the quiet window; the route then carries ``quiet_exemption``.
     """
     pr = str(priority or "").strip().upper()
     if pr not in INTENT_PRIORITIES:
@@ -780,8 +1362,29 @@ def route_intent(message: str, priority: str, *, dedupe_minutes: int | None = No
     if pr == INTENT_P3:
         return {**route, "decision": "DIGEST", "deliver": False}
     if pr == INTENT_P2 and intent_in_quiet_hours(now):
+        exemption = quiet_exemption_for(message_class, pr, now)
+        if exemption:
+            blocked = _recovery_intent_bound(message, route)
+            if blocked is not None:
+                return blocked
+            return {**route, "decision": "DELIVER", "deliver": True, "quiet_exemption": exemption}
         return {**route, "decision": "HELD_QUIET_HOURS", "deliver": False}
+    blocked = _recovery_intent_bound(message, route)
+    if blocked is not None:
+        return blocked
     return {**route, "decision": "DELIVER", "deliver": True}
+
+
+def _recovery_intent_bound(message: str, route: dict) -> dict | None:
+    """The delivery-owned per-case bound, applied where the page actually goes (cx-openai-2 F5)."""
+    if _RECOVERY_T1_MARKER not in message:
+        return None
+    if recovery_t1_claim(message):
+        return None
+    reason = _recovery_bound_reason(message)
+    record_suppressed(message, reason)
+    return {**route, "decision": "DEDUPED", "deliver": False, "window_minutes": 0,
+            "reason": reason}
 
 
 def intent_archive_report_type(route: dict) -> str:

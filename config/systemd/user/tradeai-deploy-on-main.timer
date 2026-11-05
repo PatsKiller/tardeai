@@ -1,0 +1,15 @@
+# Live once 24.0.0 ACTIVE and units installed (AGENTS.md §25.10).
+# Polls origin/main vs CURRENT every 2 minutes for promote-only.
+# Does not merge. Mergify owns merge.
+
+[Unit]
+Description=Trade AI deploy-on-main poll every 2 minutes
+
+[Timer]
+OnCalendar=*:0/2
+AccuracySec=30s
+Persistent=false
+Unit=tradeai-deploy-on-main.service
+
+[Install]
+WantedBy=timers.target

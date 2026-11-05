@@ -16,6 +16,22 @@ Frontend:    apps/command-center-v3/src/pages/OpsControls.tsx, apps/command-cent
 The Command Center **Ops → Controls** page (`/v3/system/ops-controls`) builds against this contract. The architecture,
 the threat model and the operator activation steps are in `docs/ops/OPS_CONTROLS.md`.
 
+
+## 2026-10-27: release-train kinds removed (operator directive)
+
+The retired release train's Ops → Controls kinds are gone: `release_train.pause`, `.arm`, `.run_now`,
+`.change_scope`, `.revoke`. What remains for deploys, under new names:
+
+| Kind | Direction | Executor | What it does |
+|---|---|---|---|
+| `deploy.stop` | safe | cc | `deploy_stop.request_stop` — latches the deploy STOP the host `deploy_on_main` poller refuses on |
+| `deploy.resume` | risky | applier | `ReleaseControl.resume` with a fresh-passkey `PasskeyProof`; phrase `RESUME EPOCH <n>`; archives the STOP latch |
+
+The state section `release_train` is now `deploy` (`mode`, `epoch`, `latch`, `stop_phase`, `stop_reason`, `error`;
+no `run_now`). `config/ops_controls.json` key `release_train.state_dir` is now `deploy.state_dir`. A request row
+recorded under an old `release_train.*` kind is history; a new request with one is refused as an unknown kind.
+Sections below are history.
+
 ## 1. Rules every consumer must follow
 
 1. **Agents never call these routes.** The server derives the actor from the authenticated request: only a tailnet

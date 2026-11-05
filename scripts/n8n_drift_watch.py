@@ -52,8 +52,8 @@ from scripts.lib import n8n_live_inventory as inv  # noqa: E402
 from scripts.lib.atomic_json_store import atomic_write_json  # noqa: E402
 
 SCHEDULED_ENTRYPOINT = (
-    "systemd --user tradeai-n8n-drift-watch.timer (every 15 min; PROPOSED, operator-installed: "
-    "docs/ops/packets/n8n-platform-hardening-20261022/units/)"
+    "systemd --user tradeai-n8n-drift-watch.timer (every 15 min at :07/:22/:37/:52; lane n8n-workflow-drift-check; "
+    "units config/systemd/user/tradeai-n8n-drift-watch.{service,timer}, installed by the host step after deploy)"
 )
 SCHEMA = "N8nDriftWatch@v1"
 RECEIPT_REL = Path("data") / "runtime" / "n8n_drift_watch_last.json"
@@ -145,15 +145,25 @@ def run_once(
         _load(state_path), bad=drift["verdict"] != "CLEAN", key=sig, now=now, prefix=PAGE_PREFIX, threshold=1
     )
     state, page = PG.run_action(
-        state, action, page_text(rows, action), live=live, now=now, kind="n8n_workflow_drift",
-        sender=sender, previewer=previewer,
+        state,
+        action,
+        page_text(rows, action),
+        live=live,
+        now=now,
+        kind="n8n_workflow_drift",
+        sender=sender,
+        previewer=previewer,
     )
     receipt.update(
         verdict=drift["verdict"],
         counts=drift["counts"],
         evaluated_count=drift["evaluated_count"],
         drift_signature=sig,
-        findings=[{"id": r["id"], "status": r["status"], "diffs": r.get("diffs") or []} for r in rows if r["status"] in D.FINDING_STATUSES],
+        findings=[
+            {"id": r["id"], "status": r["status"], "diffs": r.get("diffs") or []}
+            for r in rows
+            if r["status"] in D.FINDING_STATUSES
+        ],
         severity="P1" if drift["verdict"] != "CLEAN" else None,
         page=page,
     )
@@ -168,7 +178,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--live", action="store_true", help="write receipts and page (default: dry run, writes nothing)")
     ap.add_argument("--workflows-json", default=None, help="offline workflow rows instead of the live n8n DB")
-    ap.add_argument("--state-root", default=None, help="default $TRADEAI_STATE_ROOT or ~/trade-ai-releases/persistent-state")
+    ap.add_argument(
+        "--state-root", default=None, help="default $TRADEAI_STATE_ROOT or ~/trade-ai-releases/persistent-state"
+    )
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
     root = Path(a.state_root) if a.state_root else D._state_root()

@@ -294,7 +294,9 @@ def _load_state() -> dict:
 
 def _save_state(st: dict) -> None:
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    STATE_PATH.write_text(json.dumps(st, indent=2) + "\n")
+    tmp = STATE_PATH.with_name(STATE_PATH.name + ".tmp")
+    tmp.write_text(json.dumps(st, indent=2) + "\n")  # a full disk fails here and keeps the last good state
+    os.replace(tmp, STATE_PATH)
 
 
 def _telegram(msg: str) -> None:
@@ -396,13 +398,14 @@ def render(*, force: bool = False, force_shrink: bool = False) -> dict:
         )
         # Dual-write keys that already exist on disk .env (legacy cron alignment; no values logged)
         disk_mirrored = 0
+        disk_mirror_error = None
         try:
             from resolve_secret import mirror_rendered_keys_to_disk
             disk_mirrored = mirror_rendered_keys_to_disk(
                 shell_secrets, disk_env_path=DISK_ENV, project_root=ROOT
             )
-        except Exception:
-            disk_mirrored = 0
+        except Exception as exc:  # tmpfs render already succeeded; record the class, never a value
+            disk_mirror_error = type(exc).__name__
         st.update(
             {
                 "last_ok_at": datetime.now(timezone.utc).isoformat(),
@@ -412,6 +415,7 @@ def render(*, force: bool = False, force_shrink: bool = False) -> dict:
                 "skipped_nonshell_keys": skipped_keys,
                 "render_path": str(RENDER_PATH),
                 "disk_mirrored_keys": disk_mirrored,
+                "disk_mirror_error": disk_mirror_error,
             }
         )
         _save_state(st)

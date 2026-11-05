@@ -22,6 +22,7 @@ Read-only: reads repository files. TRADE_AI_CI=1.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import sys
 from pathlib import Path
@@ -36,6 +37,7 @@ for _p in (str(ROOT), str(ROOT / "scripts")):
 from scripts import check_agents_policy_state as STATE  # noqa: E402
 from tests import test_agents_policy_5_0_0_execution_ops as T5  # noqa: E402
 from tests import test_agents_policy_14_0_0_broker_read as T14  # noqa: E402
+from tests.support.agents_policy_frozen import read_pre_26  # noqa: E402  (26.0.0 rewrote §0 rule 6)
 
 AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
 # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
@@ -118,7 +120,10 @@ def _insert17(sec17: str) -> str:
 
 
 def _quoted_blocks() -> list[str]:
-    return ["\n" + "\n".join(line[2:] for line in b.split("\n")) for b in re.findall(r"\n  ```\n(.*?)\n  ```", _s2412(), re.S)]
+    return [
+        "\n" + "\n".join(line[2:] for line in b.split("\n"))
+        for b in re.findall(r"\n  ```\n(.*?)\n  ```", _s2412(), re.S)
+    ]
 
 
 # ------------------------------------------------------------------------------------- header, row, banner
@@ -146,10 +151,22 @@ def test_row_waits_for_the_operator_or_records_the_token():
 def test_banner_explains_class_number_and_scope():
     start = AGENTS.index("**15.0.0 is ")
     banner = _flat(AGENTS[start : AGENTS.index("\n\n**", start + 10)])
-    for frag in ("Why MAJOR:", "weakest guarantee", "14.0.0", "12.1.0", "13.0.0", DIRECTIVE,
-                 f"{TOKEN} <pr_number> <head_sha>", "`disk-hygiene`", "scripts/disk_hygiene.py",
-                 "config/disk_hygiene_rules.json", "feat/disk-hygiene-n8n-20261018", "89%", "byte-identical",
-                 "it is not the §20 token"):
+    for frag in (
+        "Why MAJOR:",
+        "weakest guarantee",
+        "14.0.0",
+        "12.1.0",
+        "13.0.0",
+        DIRECTIVE,
+        f"{TOKEN} <pr_number> <head_sha>",
+        "`disk-hygiene`",
+        "scripts/disk_hygiene.py",
+        "config/disk_hygiene_rules.json",
+        "feat/disk-hygiene-n8n-20261018",
+        "89%",
+        "byte-identical",
+        "it is not the §20 token",
+    ):
         assert frag in banner, frag
     if _ratified():
         # Ratified 2026-10-21 (APPROVE_AGENTS_POLICY_15_0_0 1852 fc5672896, PR #1852 comment 6324859562).
@@ -200,11 +217,12 @@ def test_ratified_section_17_digest_is_what_the_insertion_produces():
 
 @pytest.mark.parametrize("adapter", ADAPTERS)
 def test_adapters_follow_section_0(adapter):
-    text = (ROOT / adapter).read_text(encoding="utf-8")
+    text = read_pre_26(adapter)  # the 15.0.0 sentence as ratified; 26.0.0 dropped its "binding only once" clause
     assert RULE_6 in text, f"{adapter} lost rule 6"
     if not _ratified():
         assert "disk-hygiene" not in text and "disk_hygiene" not in text and "§24.12" not in text, (
-            f"{adapter} ahead of ratification")
+            f"{adapter} ahead of ratification"
+        )
     else:
         assert RULE_6 + SENTENCE_15_0_0 in text, f"{adapter} paraphrases the 15.0.0 sentence instead of repeating it"
 
@@ -219,9 +237,14 @@ def test_never_delete_still_governs_everything_else():
     sec0 = _sec0()
     assert sec0.count("**Never delete.**") == 1 and RULE_6 in sec0
     f = _flat(_s2412())
-    for frag in ("Data files, stores, backups, database rows, archives, logs, credentials",
-                 "are never in scope", '"Never delete. Archive with a tripwire"', "No agent deletes by hand",
-                 "No other deletion code is covered by analogy", "only automated deletion this file permits"):
+    for frag in (
+        "Data files, stores, backups, database rows, archives, logs, credentials",
+        "are never in scope",
+        '"Never delete. Archive with a tripwire"',
+        "No agent deletes by hand",
+        "No other deletion code is covered by analogy",
+        "only automated deletion this file permits",
+    ):
         assert frag in f, frag
 
 
@@ -250,27 +273,53 @@ def test_24_12_is_proposed_and_every_bullet_cites_a_cause():
     "frag",
     [
         # scope
-        "Only `scripts/disk_hygiene.py`", "`config/disk_hygiene_rules.json`", "n8n lane `disk-hygiene`",
-        "the operator runs it from the CLI", "no agent runs its apply mode outside the lane",
+        "Only `scripts/disk_hygiene.py`",
+        "`config/disk_hygiene_rules.json`",
+        "n8n lane `disk-hygiene`",
+        "the operator runs it from the CLI",
+        "no agent runs its apply mode outside the lane",
         # eligibility
-        "working tree is clean", "no untracked files", "no commit unpushed", "merged into `origin/main`",
-        "the served `CURRENT` release, a systemd unit, a crontab line", "no running process has its cwd inside it",
-        "idle for more than the rule's day count", "keeping `CURRENT`, the previous release and the newest N",
+        "working tree is clean",
+        "no untracked files",
+        "no commit unpushed",
+        "merged into `origin/main`",
+        "the served `CURRENT` release, a systemd unit, a crontab line",
+        "no running process has its cwd inside it",
+        "idle for more than the rule's day count",
+        "keeping `CURRENT`, the previous release and the newest N",
         "makes the item ineligible, never eligible",
         # never-touch
-        "enforced in code", "`db_backups`", "`persistent-state`", "`models`", "credential, cookie or token path",
-        "`~/.ssh`", "`~/.config`", "Docker and n8n volumes", "a rule cannot widen",
+        "enforced in code",
+        "`db_backups`",
+        "`persistent-state`",
+        "`models`",
+        "credential, cookie or token path",
+        "`~/.ssh`",
+        "`~/.config`",
+        "Docker and n8n volumes",
+        "a rule cannot widen",
         # operator-only rule changes
-        "operator-approved config change", "a reviewed PR and a `config-write` grant",
+        "operator-approved config change",
+        "a reviewed PR and a `config-write` grant",
         # every apply
-        "fresh manifest", "never a stale manifest", "re-runs every eligibility and never-touch check",
-        "per-run byte and item caps", "`LaneRunReceipt@v2`", "each removed path with its size, the rule that selected it",
+        "fresh manifest",
+        "never a stale manifest",
+        "re-runs every eligibility and never-touch check",
+        "per-run byte and item caps",
+        "`LaneRunReceipt@v2`",
+        "each removed path with its size, the rule that selected it",
         # first live apply
-        "The first live apply is reviewed by the operator", "`live_arg`",
+        "The first live apply is reviewed by the operator",
+        "`live_arg`",
         # kill switch
-        "Kill switch", "`TRADEAI_N8N_RELAY_LIVE_LANES`", "`auto_apply` to `false`",
+        "Kill switch",
+        "`TRADEAI_N8N_RELAY_LIVE_LANES`",
+        "`auto_apply` to `false`",
         # gaps + retire
-        "Open gaps, stated", "scripts/disk_hygiene_enforcer.py", "Retire path", "Ratifying edit",
+        "Open gaps, stated",
+        "scripts/disk_hygiene_enforcer.py",
+        "Retire path",
+        "Ratifying edit",
         "`Supersedes` 14.0.0",
     ],
 )
@@ -278,7 +327,22 @@ def test_24_12_states_every_obligation(frag):
     assert frag in _flat(_s2412()), frag
 
 
-def test_24_12_open_gap_facts_hold():
+def test_24_12_enforcer_open_gap_is_closed_in_code():
+    """Was test_24_12_open_gap_facts_hold, which pinned the gap §24.12 states ("disk_hygiene_enforcer.py already
+    removes release trees and backups under --apply ... named as the disk_critical remedy"). Closed 2026-10-27
+    (fix/disk-enforcer-scope-20261027): the enforcer holds no removal primitive and refuses --apply, and the health
+    policy no longer runs it. §24.12's prose still states the gap until its doc amendment lands (AGENTS.md §0
+    rule 10: the finding wins; the frag pins above keep requiring the section to name the script)."""
     enforcer = (ROOT / "scripts" / "disk_hygiene_enforcer.py").read_text(encoding="utf-8")
-    assert "--backups-only" in enforcer and "--releases-only" in enforcer and "rmtree" in enforcer
-    assert "disk_hygiene_enforcer.py --apply" in (ROOT / "config" / "health_agent_policy.json").read_text(encoding="utf-8")
+    assert "--backups-only" in enforcer and "--releases-only" in enforcer  # flags kept; they plan only
+    for primitive in ("rmtree", ".unlink(", "os.remove", "archive_files_then_unlink"):
+        assert primitive not in enforcer, primitive
+    assert 'REFUSED_STATUS = "REFUSED_OUTSIDE_24_12"' in enforcer
+    policy = json.loads((ROOT / "config" / "health_agent_policy.json").read_text(encoding="utf-8"))
+    assert "disk_critical" not in policy["remediation_map"]
+    assert "disk_critical" in policy["never_auto_remediate"]
+    assert not any(
+        "disk_hygiene_enforcer" in v
+        for k, v in policy["remediation_map"].items()
+        if isinstance(v, str) and k[:1] != "_"
+    )

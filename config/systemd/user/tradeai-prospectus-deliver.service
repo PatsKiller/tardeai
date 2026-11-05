@@ -1,0 +1,19 @@
+[Unit]
+Description=Trade AI Ticker Prospectus delivery (lane prospectus-deliver; Telegram PDF+Word, email audit + holdings PDF+Word; READ_ONLY_ADVISORY)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=PYTHONPATH=%h/trade-ai-releases/portfolio-server/CURRENT:%h/trade-ai-releases/portfolio-server/CURRENT/scripts
+EnvironmentFile=-/run/user/%U/tradeai/env
+ExecStart=/usr/bin/flock -n /tmp/prospectus_deliver.lock %h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/prospectus_deliver.py --apply
+Nice=10
+TimeoutStartSec=15min
+# Sends pending run outboxes written by the n8n lane prospectus-build (which sends nothing, AGENTS.md §23.14/§24.1)
+# through telegram_alert.send_telegram / send_telegram_document (P2 intents) and email_notifier.send_email
+# (run audit + holdings PDF/Word attachments, <= delivery.email.max_attachment_bytes per email).
+# Idempotent per SYMBOL@version: <state>/data/prospectus/delivery/ledger.json. Operator 2026-10-26.
+
+[Install]
+WantedBy=default.target

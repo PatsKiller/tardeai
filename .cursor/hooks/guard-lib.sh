@@ -15,7 +15,7 @@ tier_scope() {
     git-push)      echo "git push, force-push, reset --hard, rebase, filter-branch — operations touching the remote or rewriting history." ;;
     maintree)      echo "ALLOW_MAINTREE_GIT bypass: git operations in the PRIMARY tree, which is LIVE (api_v2.py + reports_portal.py hot-reload) and shared with Claude/Codex sessions." ;;
     service)       echo "systemctl/service start, stop, restart, reload on tradeai-continuous, tradeai-portfolio-server, Hermes, or OpenClaw." ;;
-    deps)          echo "pip/npm/apt install, remove, upgrade — changes the runtime environment." ;;
+    deps)          echo "pip/npm/apt install, remove, upgrade, npm ci, lockfile edits — changes the runtime environment. Running npm run / npx playwright test / pytest / ruff / tsc / builds is never deps (AGENTS.md §28.15 item 8)." ;;
     sudo)          echo "Any command run as root." ;;
     state-write)   echo "Writes to data/portfolios/state/ — live holdings, risk_management, personal_situation." ;;
     execution-ops) echo "Per-incident operation of a broker-execution user unit (tradeai-active-trader-*), naming the unit in the reason: status/journal, code-root drop-in to portfolio-server/CURRENT, daemon-reload, restart; markets CLOSED, preflight, rollback by restoring the archived drop-in; max 6h. Never code, credentials, live/paper flags, orders or stops (AGENTS.md 5.0.0 §24.10)." ;;
@@ -30,12 +30,19 @@ tier_scope() {
     frozen-v2)     echo "Edits under command-center-v2 / v2 paths. v2 is frozen; v3 is canonical." ;;
     guard-config)  echo "Edits to .cursor/hooks/* or .cursor/*.json — the guardrails themselves." ;;
     file-delete)   echo "Deleting files." ;;
+    gh-write)      echo "GitHub writes as the operator: gh pr|issue comment, gh pr review, gh issue create/edit/reopen/close/..., gh alias set/import, gh api with -f/-F/--input or a write method. gh is logged in as the operator, so these read as operator approvals (AGENTS.md §28.15 item 8)." ;;
     *)             echo "Unknown tier: $1" ;;
   esac
 }
 
 classify_cmd() {
   local cmd="$1" U; U="${cmd^^}"
+  # gh/git tiers by shell tokens (guard_tokens.py), not regex over raw text: quoting ("gh", com\ment, git "push"),
+  # flags before the noun or verb, env/command/path prefixes and $(...) argv[0] all reach the same words the shell
+  # runs. Its answer is checked at each tier's old position, so precedence is unchanged; the regexes below remain a
+  # backstop. If the tokenizer is unavailable, classification fails closed for EVERY command, including quoted concatenation.
+  local _tt; _tt=" $(python3 -I "$_GUARD_HOOKS/guard_tokens.py" "$cmd" 2>/dev/null || echo ERR) "
+  [[ "$_tt" == *" ERR "* ]] && { echo classifier-unavailable; return; }
   # The ledger is now the only thing standing between the agent and every
   # guarded scope, so the agent must not be able to issue itself a grant.
   # Operator grants come from a real terminal, which never passes through this
@@ -45,6 +52,10 @@ classify_cmd() {
   [[ "$cmd" =~ (\>|\>\>|tee|sed[[:space:]]+-i|mv|cp|rm|truncate|install|dd)[^|]*\.cursor/approvals ]] && { echo approvals; return; }
   [[ "$cmd" =~ (cat|less|more|head|tail|strings|grep|awk|sed|cp|scp|rsync|base64|xxd|env|printenv|source|\.)[[:space:]].*\.env ]] && { echo secret; return; }
   [[ "$cmd" =~ (id_ed25519|id_rsa|authorized_keys|\.ssh/|\.pgpass|credentials) ]] && { echo secret; return; }
+  # gh on this host is logged in as the operator: printing its token is reading a secret.
+  [[ "$_tt" == *" secret "* ]] && { echo secret; return; }
+  [[ "$cmd" =~ (^|[^[:alnum:]_.-])gh[[:space:]]+auth([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+token([[:space:]]|$) ]] && { echo secret; return; }
+  [[ "$cmd" =~ (^|[^[:alnum:]_.-])gh[[:space:]]+auth[[:space:]].*(-t|--show-token)([[:space:]=]|$) ]] && { echo secret; return; }
   [[ "$cmd" =~ (\>|\>\>|tee)[^|]*(\.env|\.pem|\.key|credentials|\.pgpass) ]] && { echo secret; return; }
   [[ "$cmd" =~ (API_KEY|SECRET|TOKEN|PASSWORD|COOKIE)= ]] && [[ "$cmd" =~ (\>|\>\>|tee) ]] && { echo secret; return; }
   [[ "$cmd" =~ (win_rate|profit_factor|closed_trades|interlock|gate_status) ]] && \
@@ -54,7 +65,41 @@ classify_cmd() {
   [[ "$cmd" =~ scripts/ops/broker_read_sync(_child)?\.(sh|py) ]] && \
     ! [[ "$cmd" =~ broker_read_sync\.(sh|py)[[:space:]]+--plan([[:space:]]*$) ]] && { echo broker-read; return; }
   [[ "$cmd" =~ (^|[[:space:];&|])crontab([[:space:]]|$) ]] && { echo cron; return; }
-  [[ "$cmd" =~ git[[:space:]]+(push|reset[[:space:]]+--hard|rebase|filter-branch) ]] && { echo git-push; return; }
+  # AGENTS.md 21.0.0 §28.15 item 8: every bin/agent-push invocation is a push; guard-shell.sh admits only the strict
+  # grant-free form "bin/agent-push <branch>" (identical wrapper + trusted checker), everything else needs a grant.
+  [[ "$cmd" =~ (^|[^[:alnum:]_.-])agent-push([^[:alnum:]_.-]|$) ]] && { echo git-push; return; }
+  [[ "$cmd" =~ guard_push_free ]] && { echo git-push; return; }
+  # gh on this host is logged in as the operator, so an agent-written comment or review would read as an operator
+  # approval (AGENTS.md §28.15 item 8 evidence). Comment/review writes need a gh-write grant.
+  # Issue create/edit/reopen/close/... are writes too: a standing push approval lives on an issue (§28.15 item 8 (c)).
+  # gh accepts flags between the noun and the verb (gh issue -R o/r reopen 50, gh issue --repo o/r comment ...):
+  # any number of -x / --flag, each with or without a value, may sit there.
+  local _ghf='([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*'
+  local _ghc="(^|[^[:alnum:]_.-])gh[[:space:]]+(pr|issue)${_ghf}[[:space:]]+(comment|review)([[:space:]]|\$)"
+  local _ghi="(^|[^[:alnum:]_.-])gh[[:space:]]+issue${_ghf}[[:space:]]+(create|new|edit|reopen|close|delete|transfer|pin|unpin|lock|unlock|develop)([[:space:]]|\$)"
+  # An alias can wrap any write (gh alias set ic 'issue comment'); defining or importing one is a write.
+  local _gha_alias="(^|[^[:alnum:]_.-])gh[[:space:]]+alias${_ghf}[[:space:]]+(set|import)([[:space:]]|\$)"
+  local _gha='(^|[^[:alnum:]_.-])gh[[:space:]]+api[[:space:]]'
+  # Field flags spaced or attached (-f body=x, -fbody=x, -Fbody=@f, --field=..), --input, or a write method.
+  local _ghw='([[:space:]](-f|-F|--field|--raw-field|--input)([[:space:]=]|$)|[[:space:]](-f|-F)[^[:space:]]|[[:space:]](-X|--method)([[:space:]]+|=)?(POST|PATCH|PUT|DELETE|post|patch|put|delete))'
+  [[ "$_tt" == *" gh-write "* ]] && { echo gh-write; return; }
+  [[ "$_tt" == *" ERR "* && "$cmd" == *gh* ]] && { echo gh-write; return; }
+  [[ "$cmd" =~ $_ghc ]] && { echo gh-write; return; }
+  [[ "$cmd" =~ $_ghi ]] && { echo gh-write; return; }
+  [[ "$cmd" =~ $_gha_alias ]] && { echo gh-write; return; }
+  if [[ "$cmd" =~ $_gha ]] && [[ "$cmd" =~ $_ghw ]] && [[ "$cmd" =~ (comments|reviews|issues|pulls|graphql) ]]; then
+    echo gh-write; return
+  fi
+  # Shell writes to the guard itself (hooks, hooks.json) are guard-config, like Write-tool edits (classify_path).
+  [[ "$cmd" =~ (\>|\>\>|tee|mv|cp|rm|truncate|install|ln|chmod|sed[[:space:]]+-i)[^|]*\.cursor/(hooks|hooks\.json) ]] && { echo guard-config; return; }
+  # Exporting, declaring or unsetting GIT_* / TRADEAI_* changes what a later push does (GIT_CONFIG_*, GIT_DIR,
+  # TRADEAI_SKIP_SECRETS_SCAN, TRADEAI_REMOTE_PUSH_OVERRIDE): treated as a push-scope operation.
+  local _envre='(^|[;&|(`[:space:]])(export|declare|typeset|set|unset|env|readonly|local)[[:space:]][^;&|]*(GIT_|TRADEAI_)'
+  [[ "$cmd" =~ $_envre ]] && { echo git-push; return; }
+  [[ "$_tt" == *" git-push "* ]] && { echo git-push; return; }
+  [[ "$_tt" == *" ERR "* && "$cmd" == *git* ]] && { echo git-push; return; }
+  # git global options (-C dir, -c k=v, --git-dir=.., --no-pager) may sit between "git" and the verb.
+  [[ "$cmd" =~ git([[:space:]]+(-[Cc][[:space:]]+[^[:space:]]+|--[a-z-]+(=[^[:space:]]+)?))*[[:space:]]+(push|reset[[:space:]]+--hard|rebase|filter-branch) ]] && { echo git-push; return; }
   [[ "$cmd" =~ (psql|psycopg2|sqlalchemy|pg_restore) ]] && [[ "$U" =~ (INSERT|UPDATE|DELETE|ALTER|CREATE|TRUNCATE|GRANT|REVOKE) ]] && { echo db-write; return; }
   [[ "$cmd" =~ (openclaw|clawhub) ]] && { echo openclaw; return; }
   [[ "$cmd" =~ api\.telegram\.org ]] && { echo telegram; return; }
@@ -83,7 +128,27 @@ classify_cmd() {
     [[ "$cmd" =~ [[:space:]](start|stop|restart|reload|kill|mask|unmask|enable|disable|daemon-reload)([[:space:]]|$) ]] && \
     { echo service; return; }
   [[ "$cmd" =~ (^|[[:space:];&|])service[[:space:]]+[^[:space:]]+[[:space:]]+(start|stop|restart|reload) ]] && { echo service; return; }
-  [[ "$cmd" =~ (pip|pip3|npm|apt|apt-get)[[:space:]]+(install|uninstall|remove|upgrade) ]] && { echo deps; return; }
+  # deps = changing what is installed (AGENTS.md 21.0.0 §28.15 item 8 (b)): pip/npm/apt/yarn/pnpm/bun/conda install,
+  # uninstall, upgrade, npm ci / i / add / update / exec, npx -y, corepack, playwright browser installs, lockfile
+  # writes. Running an existing toolchain (npm run, npm test, npx playwright test, pytest, ruff, tsc, vite build,
+  # node) is never deps. A quoted commit/PR message (-m/--message/--title/--body '...') is text, not a command.
+  local d="$cmd"
+  if ! [[ "$cmd" =~ (\$\(|\`) ]]; then
+    d=$(printf '%s' "$cmd" | sed -E "s/(-m|--message|--title|--body)(=|[[:space:]]+)('[^']*'|\"[^\"]*\")/\1 MSG/g")
+  fi
+  local _w='(^|[^[:alnum:]_.-])' _end='([[:space:]]|$|[;&|])' _eol='($|[;&|])'
+  [[ "$d" =~ (pip|pip3|npm|apt|apt-get)[[:space:]]+(install|uninstall|remove|upgrade) ]] && { echo deps; return; }
+  [[ "$d" =~ ${_w}(npm|pnpm|yarn|bun)([[:space:]]+(--prefix|-C|--workspace|-w|--dir|--cwd)[[:space:]]+[^[:space:]]+|[[:space:]]+--?[^[:space:]]+)*[[:space:]]+(i|ci|it|cit|install|install-test|install-ci-test|in|ins|inst|add|isntall|uninstall|un|unlink|rm|r|remove|update|up|upgrade|dedupe|prune|link|exec|x|dlx|audit[[:space:]]+fix)${_end} ]] && { echo deps; return; }
+  [[ "$d" =~ ${_w}yarn[[:space:]]*${_eol} ]] && { echo deps; return; }
+  [[ "$d" =~ ${_w}(npx|bunx|pnpx)([[:space:]]+-[^[:space:]]+)*[[:space:]]+(-y|--yes|-p|--package(=[^[:space:]]*)?)([[:space:]]|$) ]] && { echo deps; return; }
+  [[ "$d" =~ ${_w}corepack[[:space:]]+(prepare|enable|install|use|up) ]] && { echo deps; return; }
+  [[ "$d" =~ ${_w}(conda|mamba|micromamba)[[:space:]]+(install|remove|uninstall|update|upgrade|create) ]] && { echo deps; return; }
+  [[ "$d" =~ ${_w}(uv|poetry|pipx)[[:space:]]+(add|remove|sync|lock|install|uninstall|upgrade|update|inject) ]] && { echo deps; return; }
+  [[ "$d" =~ ${_w}(pipx[[:space:]]+run|uvx|uv[[:space:]]+tool[[:space:]]+(run|install)|uv[[:space:]]+run[[:space:]].*--with) ]] && { echo deps; return; }
+  [[ "$d" =~ ${_w}playwright[[:space:]]+install([[:space:]]|$|-deps) ]] && { echo deps; return; }
+  [[ "$d" =~ (\>|\>\>|tee|mv|cp|rm|truncate|sed[[:space:]]+-i)[^|]*(package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|poetry\.lock|uv\.lock|Pipfile\.lock) ]] && { echo deps; return; }
+  # Coordinator task files are the grant-free push evidence (§28.15 item 8): agents do not write them from a shell.
+  [[ "$cmd" =~ (\>|\>\>|tee|mv|cp|rm|truncate|install|ln|sed[[:space:]]+-i)[^|]*coordination/handoffs ]] && { echo release-write; return; }
   [[ "$cmd" =~ (trade-ai-releases|trade-ai-deployments) ]] && [[ "$cmd" =~ (\>|\>\>|tee|mv|cp|rm|sed[[:space:]]+-i) ]] && { echo release-write; return; }
   [[ "$cmd" =~ (\>|\>\>|tee|mv|cp|rm|sed[[:space:]]+-i).*data/portfolios/state ]] && { echo state-write; return; }
   [[ "$cmd" =~ rm[[:space:]]+-[a-zA-Z]*[rf] ]] && { echo destructive; return; }
@@ -105,6 +170,8 @@ classify_path() {
     */.openclaw/*) echo openclaw; return ;;
     */.config/systemd/user/tradeai-active-trader-*) [[ "$tool" == "Delete" ]] && { echo file-delete; return; }; echo execution-ops; return ;;
     */.cursor/hooks/*|*/.cursor/*.json) echo guard-config; return ;;
+    */package-lock.json|*/npm-shrinkwrap.json|*/yarn.lock|*/pnpm-lock.yaml|*/bun.lock|*/bun.lockb|*/poetry.lock|*/uv.lock|*/Pipfile.lock) echo deps; return ;;
+    */data/coordination/handoffs/*) echo release-write; return ;;
   esac
   [[ "$tool" == "Delete" ]] && { echo file-delete; return; }
   echo none

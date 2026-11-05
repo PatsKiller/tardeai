@@ -1,8 +1,18 @@
 import { useState, useEffect } from 'react'
 import { useApi } from '../hooks/useApi'
 
-// Secrets / API-key manager. Write-only: the UI never shows or receives a full secret value — only a
-// masked '••••1234' hint + presence. Used to rotate keys (e.g. ANTHROPIC_API_KEY) after a leak.
+// Secrets / API-key manager. Write-only: the UI never shows or receives any character of a secret — only
+// presence ("set" / "not set"), plus when it was last set for the authenticated operator (page audit
+// 2026-10-25: the old '••••1234' hint leaked four characters of every secret). Used to rotate keys after a leak.
+import { relativeAge } from '../lib/askCioModel'
+
+/** "set" / "not set", plus "set · 3d ago" when the server told the operator when; never a secret value. */
+function presenceLabel(s: any): string {
+  if (!s?.present) return 'not set'
+  if (s.is_config && typeof s.value === 'string' && s.value) return s.value  // operator-only config identifier
+  const age = relativeAge(s.last_set_at)
+  return age ? `set · ${age}` : 'set'
+}
 // Live-validation chip colors. "set" ≠ "works" — a dead ANTHROPIC key sat green for weeks (2026-06-12).
 const VSTATUS: Record<string, { c: string; label: string }> = {
   valid: { c: '#22c55e', label: 'VERIFIED ✓' },
@@ -69,7 +79,7 @@ export default function SecretsManager() {
         // validate-on-save: ask the PROVIDER immediately so a dead key can never sit "green"
         const vr = await validateOne(j.data.key)
         const vtxt = vr ? ` · provider check: ${VSTATUS[vr.status]?.label ?? vr.status} (${vr.detail})` : ''
-        setMsg(`✓ ${j.data.key} ${j.data.rotated ? 'rotated' : 'set'} (${j.data.masked}).${vtxt}`)
+        setMsg(`✓ ${j.data.key} ${j.data.rotated ? 'rotated' : 'set'}.${vtxt}`)
         setVal(''); setKey(''); setTimeout(() => { refetch(); setOpen(false) }, vr ? 3200 : 1800)
       }
       else setMsg(`✗ ${j?.error || j?.data?.error || 'failed'}`)
@@ -82,7 +92,7 @@ export default function SecretsManager() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
         <div>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>API Keys & Secrets</div>
-          <div style={{ fontSize: 10, color: 'var(--text3)' }}>write-only · values are masked & never displayed · stored in .env (0600, gitignored, never synced)</div>
+          <div style={{ fontSize: 10, color: 'var(--text3)' }}>write-only · values are never displayed, not even in part · stored in .env (0600, gitignored, never synced)</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={validateAll} disabled={vbusy} title="Live-checks every key against its provider (cheap authenticated pings; Brave costs 1 search credit)"
@@ -119,7 +129,7 @@ export default function SecretsManager() {
               </span>
               <span style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
                 {vs && <span style={{ fontSize: 8.5, fontWeight: 800, color: vs.c }}>{vs.label}</span>}
-                <span style={{ fontSize: 10, color: s.present ? '#22c55e' : '#ef4444' }}>{s.present ? (s.masked || 'set') : 'not set'}</span>
+                <span data-testid={`secret-presence-${s.key}`} style={{ fontSize: 10, color: s.present ? '#22c55e' : '#ef4444' }}>{presenceLabel(s)}</span>
               </span>
             </div>
           )

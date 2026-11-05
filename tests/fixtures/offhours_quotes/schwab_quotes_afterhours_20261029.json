@@ -1,0 +1,77 @@
+{
+ "_note": "Synthetic values in the Schwab /marketdata/v1/quotes shape (fields=quote,extended,regular). Clock for the dry run: 2026-10-29T19:50:00-04:00. Dated references (review of #2416 F4 / #2423 F6): QQQ regular.regularMarketTradeTime and /ES quote.settleTime are Thursday 10-29 16:00 ET (the same day's close); /NQ and $VIX carry no dated close and must be refused.",
+ "now": "2026-10-29T19:50:00-04:00",
+ "quotes": {
+  "/ES": {
+   "assetMainType": "FUTURE",
+   "symbol": "/ES",
+   "quote": {
+    "lastPrice": 6801.25,
+    "closePrice": 6850.0,
+    "tradeTime": 1793317750000,
+    "quoteTime": 1793317751000,
+    "settleTime": 1793304000000
+   }
+  },
+  "/NQ": {
+   "assetMainType": "FUTURE",
+   "symbol": "/NQ",
+   "quote": {
+    "lastPrice": 25510.5,
+    "closePrice": 25820.0,
+    "tradeTime": 1793317780000
+   }
+  },
+  "$SPX": {
+   "assetMainType": "INDEX",
+   "symbol": "$SPX",
+   "quote": {
+    "lastPrice": 6822.3,
+    "closePrice": 6890.1,
+    "tradeTime": 1793304000000
+   }
+  },
+  "$VIX": {
+   "assetMainType": "INDEX",
+   "symbol": "$VIX",
+   "quote": {
+    "lastPrice": 19.8,
+    "closePrice": 17.2,
+    "tradeTime": 1793317500000
+   }
+  },
+  "QQQ": {
+   "assetMainType": "EQUITY",
+   "symbol": "QQQ",
+   "quote": {
+    "lastPrice": 611.0,
+    "closePrice": 620.0,
+    "tradeTime": 1793317680000
+   },
+   "extended": {
+    "lastPrice": 610.85,
+    "tradeTime": 1793317710000
+   },
+   "regular": {
+    "regularMarketLastPrice": 615.0,
+    "regularMarketTradeTime": 1793304000000
+   }
+  },
+  "SPY": {
+   "assetMainType": "EQUITY",
+   "symbol": "SPY",
+   "quote": {
+    "lastPrice": 0,
+    "closePrice": 687.4,
+    "tradeTime": 1793317200000
+   }
+  },
+  "/RTY": {
+   "assetMainType": "FUTURE",
+   "symbol": "/RTY",
+   "errors": [
+    "not entitled"
+   ]
+  }
+ }
+}
