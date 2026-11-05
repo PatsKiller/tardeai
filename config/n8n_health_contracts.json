@@ -34893,7 +34893,188 @@
       "scope": "Structural DRAFT only; W10 owner and operator review provenance are required before config admission."
     },
     "class_note": "learn (R1 dispatcher class; memory/learning writer lane, AGENTS.md 4.3.0 §23.18)"
-  }
+  },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "agent_nudge",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Every 5 min: decide BUSY/IDLE/STALL/UNSENT per agent tmux session from the screen alone and, under an approved live stage, type one fixed heartbeat prompt. In shadow it records what it would have typed and types nothing.",
+        "business_function": "coordination",
+        "source": "scripts/agent_nudger.py (main, decide); config/agent_nudger.json (NudgerConfig@v1); docs/ops/NUDGER_N8N_MIGRATION_PROPOSAL_20261103.md P2"
+      },
+      "owner": "coordination",
+      "connects_to": [
+        {
+          "name": "n8n -> relay -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md section 23.3"
+        },
+        {
+          "name": "$PY scripts/agent_nudger.py --config $CODE_ROOT/config/agent_nudger.json",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/agent_nudge.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (safe_flock)"
+        },
+        {
+          "name": "host tmux server (ls, capture-pane; send-keys only live)",
+          "kind": "service",
+          "direction": "read",
+          "source": "scripts/agent_nudger.py list_sessions/capture"
+        },
+        {
+          "name": "$STATE_ROOT/data/coordination/agent_nudger/state.json + ledger.jsonl",
+          "kind": "file",
+          "direction": "write",
+          "source": "scripts/agent_nudger.py main (atomic state replace, one ledger line per nudge under --apply)"
+        },
+        {
+          "name": "host crontab */5 * * * * (the live nudger, untouched)",
+          "kind": "service",
+          "direction": "calls",
+          "source": "crontab -l 2026-11-03; config/lane_registry.json scheduler_before_cutover"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire ends RUN_DONE in mode dry_run (the stage clamp turns any live request into dry_run)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run receipt shows the state/ledger mtimes unchanged before and after (a dry run writes nothing, AGENTS.md rule 8)"
+        },
+        {
+          "check": "cron_twin_alive",
+          "text": "the live crontab entry keeps its own log line; the lane is shadow and is not the thing doing the work"
+        },
+        {
+          "check": "output_produced",
+          "text": "a LIVE run writes LaneRunReceipt@v2 with produced_count equal to the nudges it actually typed (a refused tmux send is never counted), and the executor's output verdict reads it"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "no dispatcher receipt for this lane in 0.5 h (six scheduled slots at */5)"
+        },
+        {
+          "check": "slow",
+          "text": "a run's duration above 96 s of the 120 s timeout"
+        },
+        {
+          "check": "retried",
+          "text": "two consecutive slots ended RUN_SKIPPED_LOCK (the lock is held by another process)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "no dispatcher receipt for this lane in 1.0 h"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed the state file, the ledger or any tmux pane"
+        },
+        {
+          "check": "empty_output",
+          "text": "a LIVE run ends with produced_count 0 and no allowed empty_reason, so the executor turns the exit-0 run into RUN_FAILED empty_output"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 0.5,
+        "freshness_failed_after_h": 1.0,
+        "freshness_rule": "reviewed 2026-11-04: dispatch.cron is */5 (12 fires/hour). Degraded after 0.5 h (six missed slots) and failed after 1.0 h (twelve). The generator's 2x/3x-of-cadence default is meaningless at this cadence and is replaced here.",
+        "timeout_s": 120,
+        "class": "hygiene",
+        "computed_on": "2026-11-04",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no finished live runs exist for this lane (it is new and at shadow); the timeout is the allowlist value and the freshness limits are stated above rather than learned."
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "reviewed 2026-11-04: a shadow coordination lane with no operator surface of its own; a shadow lane failing proves nothing about the live nudger, which is the crontab entry",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P3"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:agent_nudge by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P3 never sends). At shadow, a failure is evidence for the P3 decision, not a page."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json; the diagnoser skips it (lane_not_in_catalogue). Add it in the catalogue PR that accompanies the stage flip, not before."
+      },
+      "evidence": {
+        "receipt": "data/coordination/agent_nudger/state.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='agent_nudge' ORDER BY requested_at DESC LIMIT 10\"",
+          "stat -c '%y %s' $STATE_ROOT/data/coordination/agent_nudger/state.json (unchanged across a dry run is the pass condition)",
+          "tmux capture-pane -p -t <session> before and after a shadow fire (identical output: nothing was typed)"
+        ],
+        "never": "an n8n execution status or a green run is not evidence that nothing was typed; the pane text is."
+      },
+      "review_by": "2026-11-25",
+      "review": {
+        "reviewed_on": "2026-11-04",
+        "reviewed_by": "cc-deepseek-6 (author) — P2 shadow registration; independent review required before the stage flip",
+        "status": "REVIEWED",
+        "note": "REVIEWED here means the contract is complete and consistent with the allowlist and the registry row; it is not the operator approval for a live stage, which is a separate decision."
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "agent nudges typed",
+        "rule": "empty_allowed",
+        "min_produced": 0,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "unconfigured",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "nothing_due"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "stderr LANE_OUTPUT produced_count (LaneOutput@v1, emitted by scripts/agent_nudger.py in EVERY mode; a dry run reports what it would have typed)"
+          },
+          {
+            "kind": "ledger_row",
+            "ref": "$STATE_ROOT/data/coordination/agent_nudger/ledger.jsonl — one line per typed nudge; a LIVE run's produced_count must equal the lines its own window appended"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    }
   ],
   "pending_changes": {
     "w8-writer-restoration-20261024": {
