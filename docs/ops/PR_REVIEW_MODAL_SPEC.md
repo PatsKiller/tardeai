@@ -96,7 +96,8 @@ does, not what the PR body claims, and raise a finding wherever the two disagree
 
 - **The reviewer is never the author.** The review runner is the n8n lane `pr-independent-review`, whose body is
   `scripts/pr_independent_review.py`, with a fresh context. It has no access to the author's session transcript or
-  worktree. Its id is `n8n:pr_independent_review:<run_id>`. That id is never the same as an author agent and
+  worktree. Its id is `host:pr_independent_review:<run_id>` — the id names the reviewer process, not its
+  scheduler, which is the n8n lane above. That id is never the same as an author agent and
   session, so it meets §28.15 item 10 ("another agent identity").
 - **Different model where it matters.** By default the reviewer is Claude Opus 5.5. If the author's trailers name
   the same model family, and the PR is `shared-infra` or held, a second read is added from a different provider:
