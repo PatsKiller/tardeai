@@ -39,12 +39,14 @@ MBI_BEHAVIOR = 0. No broker, no network, no Telegram import, no DB.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import json
 import os
 import re
 import sys
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping, Optional
@@ -178,6 +180,95 @@ def transition(prev: Optional[str], cur: str) -> Optional[str]:
     if prev in (None, "ok") and cur == "ok":
         return None
     return cur
+
+
+_INHERITED_SETTINGS = ("realert_minutes", "warn_pct", "critical_pct")
+
+
+def metric_policy(mon: Mapping[str, Any], band: Optional[Mapping[str, Any]]) -> dict[str, Any]:
+    """The effective settings for ONE band. A band inherits every inherited setting from its parent monitor and may
+    override it — it cannot MISS one.
+
+    2026-11-04 (cx-openai-4): `monitor.inodes` never carried `realert_minutes`, so the inode band alerted on first
+    entry and then said nothing for as long as it stayed bad — the same 23-hour silence this change exists to end,
+    still present on the second band. Resolving every band through this ONE function is what makes a third band
+    inherit by construction: there is no path that reads a band's own dict for these settings.
+    """
+    if not isinstance(mon, Mapping) or "realert_minutes" not in mon:
+        raise ValueError("monitor.realert_minutes is required: a band with no re-alert interval is a one-shot")
+    merged = dict(mon)
+    merged.update({k: v for k, v in dict(band or {}).items() if k in _INHERITED_SETTINGS})
+    return merged
+
+
+def _minutes_since(stamp: Any, now: datetime) -> Optional[float]:
+    """Minutes from an ISO stamp to now; None when there is no usable stamp."""
+    if not stamp:
+        return None
+    try:
+        then = datetime.fromisoformat(str(stamp))
+    except ValueError:
+        return None
+    if then.tzinfo is None:
+        then = then.replace(tzinfo=timezone.utc)
+    elapsed = (now - then).total_seconds() / 60.0
+    # A stamp in the FUTURE is a clock correction, not a reason to stay silent (cx-openai-4 R2): a run that really
+    # happened under a skewed clock left a stamp ahead of now, and treating the negative elapsed as "not due" made an
+    # ongoing critical band emit nothing for 25 hours — the exact defect this PR exists to fix. Unknown timing is
+    # reported as unknown, and every caller treats unknown as DUE.
+    return None if elapsed < 0 else elapsed
+
+
+def _minutes_since_last_alert(entry: Mapping[str, Any], now: datetime) -> Optional[float]:
+    return _minutes_since(entry.get("alerted_at"), now)
+
+
+def alert_for(prev: Optional[str], cur: str, entry: Mapping[str, Any], now: datetime,
+              mon: Mapping[str, Any]) -> Optional[str]:
+    """One decision point, ONE clock, ONE named exception, and a PENDING state that is not lost.
+
+    Four measured defects shaped it, all 2026-11-04:
+    * alerting only on a band CHANGE let `/` sit critical for 23 hours on a single alert;
+    * throttling only the unchanged path let an ok<->critical flap produce 96 alerts in 24 hours;
+    * letting a recovery OR ANY severity increase bypass the interval produced 65 alerts in 24 hours against a promise
+      of 25 (`critical,critical,ok` repeated: each recovery reset the clock, so the next critical called itself an
+      escalation);
+    * comparing against the PREVIOUSLY OBSERVED band DISCARDED a recovery: the run records `band = ok` every poll, so a
+      recovery throttled at +75 made every later poll look "unchanged ok" and it was never sent. The last REPORTED
+      band stayed critical and was ignored.
+
+    The comparison is against the band last REPORTED (`alerted_band`), not the band last seen. Inside the window
+    nothing is said and the pending state is kept, so it goes out the moment the interval allows — delayed, never
+    discarded.
+
+    WARN -> CRITICAL IS THE ONE EXCEPTION (cc-deepseek-2's measurement, cx-openai-4 R6). A blanket interval made the
+    escalation itself silent: a mount at 85% is reported WARN, crosses 90% at the next poll, and the operator heard
+    nothing for a full interval — 45 minutes at the shipped 15-minute poll and 60-minute interval, long enough for the
+    mount to reach 100%, and the ledger this lane writes lives on that mount. "You were told it is bad, now it is
+    worse" is not a restatement and must not wait.
+
+    It is narrow on purpose, and the narrowness is what keeps the bound: the bypass needs `alerted_band == "warn"`
+    exactly, and delivering it sets `alerted_band = "critical"`, so every later critical is a REPEAT and stays
+    interval-gated, and a re-cross after a recovery is interval-gated too because only a *reported* recovery can set
+    the band back. Measured over 24 h at 15-minute polls: 24-25 on two- and four-band cycles, and **up to 33 on a
+    three-band cycle** (`warn,critical,ok` repeating every 45 minutes), because such a cycle pays a warn, an escalation
+    and a recovery every 90 minutes and neither the escalation nor the recovery may be suppressed. That is the stated
+    ceiling and the reason for it (cc-deepseek-5's re-read, 2026-11-04); a promise of 25 on every shape would require
+    dropping one of those two guarantees.
+
+    `prev` is kept for call-site symmetry and is deliberately NOT consulted: only the last REPORTED band decides.
+    """
+    interval = float(mon["realert_minutes"])       # metric_policy guarantees it; a band cannot miss it
+    reported = str(entry.get("alerted_band") or "")
+    if reported == "warn" and cur == "critical":
+        return cur      # escalation: said now, not at the end of the window (see above; bounded by construction)
+    since = _minutes_since_last_alert(entry, now)
+    if since is not None and since < interval:
+        return None                                 # inside the window: silence, and the pending state is retained
+    if cur == "ok":
+        # A recovery is owed only if something bad was actually reported; an all-quiet mount says nothing.
+        return "ok" if reported and reported != "ok" else None
+    return cur                                      # due, and the band is bad: say it (restated or newly reached)
 
 
 def latest_manifest(rules: Mapping[str, Any], state_root: Optional[Path]) -> Optional[dict[str, Any]]:
@@ -550,6 +641,30 @@ def standing_hygiene_status(rules: Mapping, state_root: Optional[Path], previous
     return result
 
 
+@contextmanager
+def _state_lock(state_path: Path):
+    """Serialise the WHOLE read / decide / queue / write transition for this state identity.
+
+    cx-openai-2 (2026-11-04): two supported `--apply` processes could interleave, and atomic replacement only prevents
+    TORN json — it does not prevent a read-modify-write from overwriting a snapshot written by another process in
+    between. A run paused between its read and its write erased a `critical` band another run had just reported, so the
+    recovery was never emitted. The n8n wrapper flocks its own launcher; the documented direct CLI and the exported
+    run() take no lock, so they can race each other and the wrapped job.
+
+    The lock is keyed to the state FILE, so every entrypoint that writes this state takes the same lock — a new caller
+    inherits it by writing the same state, not by remembering to ask. Wall-clock time is never used to order writers:
+    a legitimate clock rollback is supported and must keep working.
+    """
+    lock_path = state_path.with_name(state_path.name + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "a+", encoding="utf-8") as fh:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+
 def run(
     *,
     rules: Mapping[str, Any],
@@ -559,12 +674,28 @@ def run(
     now: datetime,
     wall_start: Optional[datetime] = None,
 ) -> int:
+    """Every apply path goes through here, so it takes the state lock before reading the snapshot."""
+    state_path = R.runtime_dir(state_root) / rules["monitor"]["state_name"]
+    with _state_lock(state_path):
+        return _run_locked(rules=rules, state_root=state_root, ledger=ledger, apply=apply, now=now,
+                           wall_start=wall_start, state_path=state_path)
+
+
+def _run_locked(
+    *,
+    rules: Mapping[str, Any],
+    state_root: Optional[Path],
+    ledger: Optional[Path],
+    apply: bool,
+    now: datetime,
+    wall_start: Optional[datetime] = None,
+    state_path: Path,
+) -> int:
     run_started = time.monotonic()
     # the receipt's started_at is the real start (the executor binds it to the attempt window); `now` is the
     # logical clock for bands and idle math and may be injected
     wall_start = wall_start or datetime.now(timezone.utc)
     mon = rules["monitor"]
-    state_path = R.runtime_dir(state_root) / mon["state_name"]
     try:
         state = json.loads(state_path.read_text(encoding="utf-8"))
         if state.get("schema") != STATE_SCHEMA:
@@ -601,7 +732,7 @@ def run(
             continue
         cur = band_of(m["inodes_used_pct"], ino)
         prev = (inodes_state.get(mount) or {}).get("band")
-        alert = transition(prev, cur)
+        alert = alert_for(prev, cur, inodes_state.get(mount) or {}, now, metric_policy(mon, ino))
         row: dict[str, Any] = {**m, "metric": "inodes", "band": cur, "previous_band": prev, "alert": alert}
         if alert:
             top_cfg = ino.get("top_dirs") or {}
@@ -646,7 +777,7 @@ def run(
             continue
         cur = band_of(m["used_pct"], mon)
         prev = (mounts_state.get(mount) or {}).get("band")
-        alert = transition(prev, cur)
+        alert = alert_for(prev, cur, mounts_state.get(mount) or {}, now, metric_policy(mon, mon))
         row: dict[str, Any] = {**m, "band": cur, "previous_band": prev, "alert": alert}
         if alert:
             consumers = top_consumers(rules, mon, manifest, consumer_snapshot) if consumer_snapshot is not None else []
@@ -798,7 +929,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     try:
         rules = DH.load_rules(Path(a.rules) if a.rules else None, home=Path(a.home) if a.home else None)
         mon = rules["monitor"]
-        for key in ("mounts", "warn_pct", "critical_pct", "state_name", "producer", "intent_domain", "intent_kinds"):
+        # `realert_minutes` is required at RUNTIME by metric_policy, so it is required at STARTUP too: otherwise a
+        # rules file missing it passes validation and then dies inside the mount loop with a traceback, exit 1, no
+        # JSON error line, no receipt and no state write (cc-deepseek-2 R6). Refuse it before the lane runs.
+        for key in ("mounts", "warn_pct", "critical_pct", "realert_minutes", "state_name", "producer",
+                    "intent_domain", "intent_kinds"):
             if key not in mon:
                 raise DH.RulesError(f"rules_missing:monitor.{key}")
         if not float(mon["warn_pct"]) < float(mon["critical_pct"]):
