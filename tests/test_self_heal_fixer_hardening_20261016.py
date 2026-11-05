@@ -415,7 +415,9 @@ def test_auth_bind_is_scoped_or_refused():
 
 def test_model_pytest_wrapper_clears_the_agent_env():
     w = F.model_pytest_wrapper(python="/v/bin/python", env={"HOME": "/s", "TRADE_AI_CI": "1"}, sandbox=[])
-    assert w.startswith("#!/bin/sh\nexec /usr/bin/env -i HOME=/s TRADE_AI_CI=1 /v/bin/python -m pytest")
+    assert w.startswith("#!/bin/sh\nexec /usr/bin/env -i HOME=/s TRADE_AI_CI=1 /v/bin/python -c ")
+    # the wrapper closes inherited descriptors (>2) before this execs pytest, so the key memfd is gone
+    assert "os.closerange(3," in w and "/v/bin/python -m pytest -p no:cacheprovider" in w
     assert "HTTPS_PROXY" not in w and "CLAUDE_CONFIG_DIR" not in w
 
 
