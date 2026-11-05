@@ -27,8 +27,14 @@ OTHER = "1000000002"
 
 @pytest.fixture(autouse=True)
 def _isolated_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Never touch the real approvals directory."""
+    """Never touch the real approvals directory.
+
+    Production ``TELEGRAM_REMOTE_GRANT_STATUS`` is ``RETIRED`` (ratified on PR
+    #2185). Legacy store/settlement tests monkeypatch to ``LEGACY_TEST`` so the
+    refusal surface stays covered; retirement tests re-set ``RETIRED`` explicitly.
+    """
     monkeypatch.setenv("GUARD_APPROVALS_DIR", str(tmp_path))
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "LEGACY_TEST")
     yield
 
 
@@ -36,7 +42,85 @@ def _mint(scope="git-push", seconds=600, uses=5, reason="ship the header work", 
     return gra.mint_request(scope, seconds=seconds, uses=uses, reason=reason, **kw)
 
 
+# ── Telegram remote grants are retired (ratified on PR #2185) ────────────────
+
+
+def test_production_status_constant_is_retired():
+    """Production must refuse Telegram grants; LEGACY_TEST is tests-only."""
+    src = Path(gra.__file__).read_text(encoding="utf-8")
+    assert 'TELEGRAM_REMOTE_GRANT_STATUS = "RETIRED"' in src
+
+
+def test_retired_mint_refuses(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "RETIRED")
+    with pytest.raises(ValueError, match="retired"):
+        gra.mint_request("git-push", seconds=600, uses=1, reason="should refuse")
+
+
+def test_retired_verify_refuses(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "RETIRED")
+    out = gra.verify_and_consume("ABC123", chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    assert out["ok"] is False
+    assert out["reason"] == "TELEGRAM_GRANT_RETIRED"
+
+
+def test_retired_button_approve_refuses(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "RETIRED")
+    out = gra.settle_by_request_id("deadbeef", approve=True, chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    assert out["ok"] is False
+    assert out["reason"] == "TELEGRAM_GRANT_RETIRED"
+
+
+def test_retired_leftover_pending_row_never_approves_but_deny_clears_it(monkeypatch: pytest.MonkeyPatch):
+    """A PENDING row minted before retirement must not become a grant by tap or by code,
+    and must stay PENDING (not spent) until the operator denies it or it expires."""
+    req = _mint()  # minted under LEGACY_TEST, i.e. a row left over from before retirement
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "RETIRED")
+
+    tap = gra.settle_by_request_id(req["request_id"], approve=True, chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    assert tap["ok"] is False and tap["reason"] == "TELEGRAM_GRANT_RETIRED"
+    code = gra.verify_and_consume(req["code"], chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    assert code["ok"] is False and code["reason"] == "TELEGRAM_GRANT_RETIRED"
+    row = next(r for r in gra._load()["requests"] if r["request_id"] == req["request_id"])
+    assert row["status"] == "PENDING"
+
+    deny_tap = gra.settle_by_request_id(req["request_id"], approve=False, chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    assert deny_tap["ok"] is True and deny_tap["request"]["status"] == "DENIED_BY_OPERATOR"
+
+
+def test_retired_deny_by_code_still_clears_a_leftover_row(monkeypatch: pytest.MonkeyPatch):
+    req = _mint()
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "RETIRED")
+    out = gra.deny(req["code"], chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    assert out["ok"] is True and out["request"]["status"] == "DENIED_BY_OPERATOR"
+
+
+def test_retired_unlisted_chat_is_still_refused_first(monkeypatch: pytest.MonkeyPatch):
+    """Retirement does not leak through the allowlist: an unlisted chat still gets CHAT_NOT_ALLOWED."""
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "RETIRED")
+    out = gra.settle_by_request_id("deadbeef", approve=True, chat_id=OTHER, allowed_chats=ALLOWED)
+    assert out["ok"] is False and out["reason"] == "CHAT_NOT_ALLOWED"
+
+
+def test_retired_guard_request_cli_refuses_and_sends_nothing(monkeypatch: pytest.MonkeyPatch, capsys):
+    """`bin/guard request` (scripts/guard_request_approval.py) exits 2, mints nothing, sends nothing."""
+    import sys
+
+    import guard_request_approval as g
+
+    monkeypatch.setattr(gra, "TELEGRAM_REMOTE_GRANT_STATUS", "RETIRED")
+    monkeypatch.setattr(g, "_send", lambda *a, **k: pytest.fail("a retired request must not reach Telegram"))
+    monkeypatch.setattr(
+        sys, "argv", ["guard_request_approval.py", "git-push", "--for", "30m", "--reason", "should refuse"]
+    )
+    assert g.main() == 2
+    err = capsys.readouterr().err
+    assert "REFUSED" in err and "retired" in err.lower() and "bin/guard grant" in err
+    assert not gra.requests_path().exists() or not gra._load()["requests"]
+
+
 # ── the plaintext code never lands on disk ───────────────────────────────────
+
 
 def test_the_code_is_never_written_to_disk():
     """If the code is stored, anything that can read the file can approve."""
@@ -56,11 +140,15 @@ def test_minting_grants_nothing_on_its_own():
 
 # ── the happy path ───────────────────────────────────────────────────────────
 
+
 def test_operator_reply_from_an_allowed_chat_approves():
     req = _mint()
-    out = gra.verify_and_consume(req["code"], chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED,
-                                 telegram={"update_id": 9, "message_id": 4, "from_id": 77,
-                                           "from_username": "john", "text": "/approve"})
+    out = gra.verify_and_consume(
+        req["code"],
+        chat_id=ALLOWED_CHAT,
+        allowed_chats=ALLOWED,
+        telegram={"update_id": 9, "message_id": 4, "from_id": 77, "from_username": "john", "text": "/approve"},
+    )
     assert out["ok"] is True
     r = out["request"]
     assert r["status"] == "APPROVED"
@@ -81,12 +169,12 @@ def test_the_grant_is_bound_to_what_was_requested():
 def test_code_is_case_and_whitespace_insensitive():
     """It gets typed by a human on a phone keyboard."""
     req = _mint()
-    out = gra.verify_and_consume(f"  {req['code'].lower()} ",
-                                 chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    out = gra.verify_and_consume(f"  {req['code'].lower()} ", chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
     assert out["ok"] is True
 
 
 # ── refusals ─────────────────────────────────────────────────────────────────
+
 
 def test_a_code_is_single_use():
     req = _mint()
@@ -141,6 +229,7 @@ def test_operator_can_explicitly_deny():
 
 # ── scopes and windows this mechanism refuses to carry ───────────────────────
 
+
 @pytest.mark.parametrize("scope", sorted(gra.REMOTE_FORBIDDEN_SCOPES))
 def test_dangerous_scopes_cannot_be_requested_remotely(scope):
     with pytest.raises(ValueError, match="never be approved remotely"):
@@ -165,6 +254,7 @@ def test_zero_or_negative_windows_are_refused():
 
 
 # ── store integrity ──────────────────────────────────────────────────────────
+
 
 def test_a_second_request_for_a_scope_supersedes_the_first():
     """Two live codes for one scope means the operator cannot tell which they
@@ -197,11 +287,11 @@ def test_the_store_is_not_world_readable():
 
 # ── the audit this exists to make possible ───────────────────────────────────
 
+
 def test_unprovenanced_grants_are_detectable():
     """A grant explained by neither a terminal nor a Telegram approval."""
     req = _mint()
-    approved = gra.verify_and_consume(req["code"], chat_id=ALLOWED_CHAT,
-                                      allowed_chats=ALLOWED)["request"]
+    approved = gra.verify_and_consume(req["code"], chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)["request"]
     grants = [
         {"tier": "git-push", "origin": "interactive"},
         {"tier": "git-push", "origin": "remote", "remote_request_id": approved["request_id"]},
@@ -220,11 +310,16 @@ def test_unprovenanced_grants_are_detectable():
 # from an allowlisted chat, and callbacks originate at Telegram's servers, so
 # the bot token cannot fabricate one.
 
+
 def test_a_button_tap_settles_without_any_code(_isolated_store):
     req = _mint()
-    out = gra.settle_by_request_id(req["request_id"], approve=True,
-                                   chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED,
-                                   telegram={"from_id": 77, "message_id": 4})
+    out = gra.settle_by_request_id(
+        req["request_id"],
+        approve=True,
+        chat_id=ALLOWED_CHAT,
+        allowed_chats=ALLOWED,
+        telegram={"from_id": 77, "message_id": 4},
+    )
     assert out["ok"] is True
     assert out["request"]["status"] == "APPROVED"
     assert out["request"]["settled_via"] == "telegram_button"
@@ -233,47 +328,41 @@ def test_a_button_tap_settles_without_any_code(_isolated_store):
 
 def test_a_tap_from_an_unlisted_chat_settles_nothing(_isolated_store):
     req = _mint()
-    out = gra.settle_by_request_id(req["request_id"], approve=True,
-                                   chat_id=OTHER, allowed_chats=ALLOWED)
+    out = gra.settle_by_request_id(req["request_id"], approve=True, chat_id=OTHER, allowed_chats=ALLOWED)
     assert out["ok"] is False and out["reason"] == "CHAT_NOT_ALLOWED"
     # and it must remain answerable by the real operator
-    good = gra.settle_by_request_id(req["request_id"], approve=True,
-                                    chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    good = gra.settle_by_request_id(req["request_id"], approve=True, chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
     assert good["ok"] is True
 
 
 def test_a_button_tap_is_single_use(_isolated_store):
     req = _mint()
-    assert gra.settle_by_request_id(req["request_id"], approve=True,
-                                    chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)["ok"]
-    again = gra.settle_by_request_id(req["request_id"], approve=True,
-                                     chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    assert gra.settle_by_request_id(req["request_id"], approve=True, chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)["ok"]
+    again = gra.settle_by_request_id(req["request_id"], approve=True, chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
     assert again["ok"] is False
     assert again["reason"] == "REQUEST_ALREADY_APPROVED"
 
 
 def test_deny_button_grants_nothing(_isolated_store):
     req = _mint()
-    out = gra.settle_by_request_id(req["request_id"], approve=False,
-                                   chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    out = gra.settle_by_request_id(req["request_id"], approve=False, chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
     assert out["request"]["status"] == "DENIED_BY_OPERATOR"
 
 
 def test_an_expired_request_cannot_be_tapped(_isolated_store):
     req = _mint(ttl=1)
     time.sleep(1.1)
-    out = gra.settle_by_request_id(req["request_id"], approve=True,
-                                   chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    out = gra.settle_by_request_id(req["request_id"], approve=True, chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
     assert out["ok"] is False and out["reason"] == "REQUEST_EXPIRED"
 
 
 def test_an_unknown_request_id_settles_nothing(_isolated_store):
-    out = gra.settle_by_request_id("deadbeefdeadbeef", approve=True,
-                                   chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
+    out = gra.settle_by_request_id("deadbeefdeadbeef", approve=True, chat_id=ALLOWED_CHAT, allowed_chats=ALLOWED)
     assert out["ok"] is False and out["reason"] == "UNKNOWN_REQUEST"
 
 
 # ── the tailnet link must never carry authority ─────────────────────────────
+
 
 def test_the_authority_buttons_are_callbacks_not_urls():
     """A URL that approves is approvable by any holder of the link — a preview
@@ -300,8 +389,7 @@ def test_any_url_button_is_read_only_and_tls():
                 continue
             assert btn["url"].startswith("https://"), "plaintext link in a chat message"
             for verb in ("approve", "deny", "grant", "token="):
-                assert verb not in btn["url"].lower(), (
-                    f"tailnet button looks like an action, not a view: {btn['url']}")
+                assert verb not in btn["url"].lower(), f"tailnet button looks like an action, not a view: {btn['url']}"
 
 
 def test_callback_data_fits_telegrams_64_byte_limit():

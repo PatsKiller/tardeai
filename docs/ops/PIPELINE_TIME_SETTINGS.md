@@ -163,3 +163,18 @@ and 32 for finviz_screener_runner.
    PR, with the query output in the PR body.
 3. For the health tick: re-run the arithmetic in section 2 against `health_tick_history.jsonl` and keep
    `tick_deadline_s + KILL_GRACE_S + receipt < TimeoutStartSec`.
+
+## 2026-10-29: independent repair service proposal
+
+The known08:00 residue above reproduced: retries left only37s for15children, all terminated.
+The correction is an independent `tradeai-pipeline-repair@enrichment.service`, requested on the
+same watchdog cadence, preserving the240s batch cap and giving the service270s to close.
+The health-tick330s limit, orphan30s grace, and orchestrator30m reaper cap are unchanged.
+Orchestrator repair has an independent1830s service backstop, preserving reaper authority.
+These units are proposals until operator installation; no service was changed by implementation.
+
+Read-only seven-day successful enrichment measurements on2026-10-29: n888, median123.7s,
+p95194.1s, max226.7s. Successful worker n643, median0.2s, p9592.9s, max305.5s.
+Success-only distributions do not measure interrupted tails. Worker180/300s and Finviz limits
+stay unchanged; cooperative deadlines defer unfinished work rather than increasing limits.
+Evidence, activation, acceptance and fallback: [supervision packet](PIPELINE_SUPERVISION_20261029.md).

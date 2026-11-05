@@ -393,7 +393,7 @@
       "llm_steps": []
     },
     "graph_sha256": "305a4c1bc09a26935721733b8ab2d013a169254f079d16198f5b1dc95b8b850e",
-    "policy_sha256": "4b1ee926f4fd46d60715ba4ba4739bd40fb2e91aecc0476f1dd29a0d55696229",
+    "policy_sha256": "c6750b96ada49f816798bf3714ad390616b1b32769fdcbcc54e0635e32caf31f",
     "admission_status": "NOT_ADMITTED; DRAFT owner contract and operator migration/activation pending",
     "stage_basis": "INTENDED CANARY ONLY; not an observed runtime stage",
     "schedule_basis": "06:35 pre-open and15:35 after nominal last15:25 Hermes catalyst fire; completion ordering unproven until operator acceptance"

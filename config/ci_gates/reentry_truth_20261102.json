@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "reentry_truth_20261102",
+  "files": [
+    "tests/test_reentry_truth_20261102.py"
+  ],
+  "anchor": "REENTRY_TRUTH_20261102",
+  "comment": [
+    "ANCHOR: REENTRY_TRUTH_20261102 — the re-entry watch tells the truth (emergency, 2026-11-02): a same-day close only from the regular session, provisional bars dropped, unmeasurable inputs read as not measured, every exit labelled stop (matched by price) or manual sell, a sale's fractional remainder counted as an exit, and one deduplicated P2 card when a stage verdict changes. Hermetic: synthetic quotes and bars, no DB, no network."
+  ]
+}

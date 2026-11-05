@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agents_policy_26_0_0",
+  "files": [
+    "tests/test_agents_policy_26_0_0.py"
+  ],
+  "comment": [
+    "AGENTS.md 26.0.0 (MAJOR) consolidation: header and banner, §0 rules 2/4/6 without dead conditions and matched to the",
+    "pre-push hook in every adapter, no stale status lines or release train in the binding text, the binding-text size",
+    "ceiling, the three docs/governance homes, every cited LESSONS id resolves, and the runtime gates still find their rows."
+  ]
+}

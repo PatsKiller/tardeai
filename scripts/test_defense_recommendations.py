@@ -158,8 +158,8 @@ def run_v4():
 
     # wash-sale fixture: taxable + loss basis unknown → warning renders with countdown
     wash_days = rt.WASH_DAYS
-    assert wash_days == 31
-    print("v4 ✓ wash window 31d (deterministic dates; Alex route on card)")
+    assert wash_days == 30, "the canonical wash-sale module (scripts/lib/wash_sale.py) owns the window"
+    print("v4 ✓ wash window: sale date + 30 calendar days inclusive (canonical; Alex route on card)")
     print("ALL v4 ROUND-TRIP TESTS PASS")
 
 

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "prospectus_street_20261027",
+  "files": [
+    "tests/test_prospectus_street_20261027.py"
+  ],
+  "anchor": "PROSPECTUS_STREET_20261027",
+  "comment": [
+    "ANCHOR: PROSPECTUS_STREET_20261027 — prospectus institutional blocks: analyst coverage + action log, consensus / revisions / 8-quarter beat-miss with reactions, catalyst calendar with options-implied move, positioning, valuation vs own range, SEC XBRL quarters (derived Q4); gate check_street; citations removed from HTML/PDF/DOCX/page with one validation line; pro_analyst_fetch extended capture shape + circuit breaker. Synthetic data only."
+  ]
+}

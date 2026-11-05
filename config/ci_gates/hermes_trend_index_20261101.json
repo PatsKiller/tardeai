@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "hermes_trend_index_20261101",
+  "files": [
+    "tests/test_hermes_trend_index_20261101.py"
+  ],
+  "anchor": "HERMES_TREND_INDEX_20261101",
+  "comment": [
+    "ANCHOR: HERMES_TREND_INDEX_20261101 — the Hermes trend index keeps one point per UTC day and parses each snapshot at most once.",
+    "Regression for the 2026-11-01 route sweep: GET /api/v2/hermes/outcome-bus/history took 75-95 s because load_outcome_bus_trend",
+    "parsed every snapshot on every request (134 outcome files of up to 22 MB = 1.7 GB) and load_universe_trend parsed 1,100 files",
+    "(967 MB). Proves newest-snapshot-per-day selection inside the window, the current snapshot winning its day, index reuse with no",
+    "re-parse when size/mtime are unchanged, exactly one re-parse when a snapshot changes, out-of-window files never opened, index",
+    "pruning, and the undated-filename fallback. Hermetic: temp dirs only, no network, no live DB, no credential. Schedules nothing."
+  ]
+}

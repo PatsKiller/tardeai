@@ -12,6 +12,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import FX from './fixtures/accountLabels.fixture.json' with { type: 'json' }
 import W7 from './fixtures/w7Pages.fixture.json' with { type: 'json' }
+import { currentCio, homeFixtures } from './fixtures/homeDoNow.fixture'
 
 const SHOTS = process.env.ACCTLABEL_SHOTS || path.join(os.homedir(), '.cache', 'rtc', 'acctlabel')
 fs.mkdirSync(SHOTS, { recursive: true })
@@ -54,6 +55,43 @@ async function fixtures(page: Page) {
   })
 }
 
+// Restored Home uses categorized positions, overview approvals and grouped movers. Keep its data
+// synthetic and separate from the unchanged Risk/Journal fixture below.
+async function homeAccountFixtures(page: Page) {
+  const writes = await homeFixtures(page)
+  const cio = currentCio()
+  const asOf = cio.positions.as_of
+  const accounts = [
+    { key: 'example_income', label: 'Example Income', value: 2400, move: 30 },
+    { key: 'example_growth', label: 'Example Growth', value: 1600, move: 15 },
+  ]
+  const overrides: Record<string, unknown> = {
+    '/api/v2/cio/pages': { ok: true, data: {
+      positions: { ...cio.positions, unprotected_value_usd: 4000, rows: accounts.map(a => ({
+        symbol: 'DEMOA', account_id: a.key, account_label: a.label, stop_category: 'none', market_value: a.value,
+      })) },
+      stops: { ...cio.stops, unprotected_count: 2, filled_awaiting_sync: [] },
+    } },
+    '/api/v2/overview': { portfolio_value: 5000, today_change: 45, today_pct: 0.9, total_cash: 1000,
+      position_count: 2, pending_approvals: 0, pipeline_status: 'fresh', as_of: asOf,
+      observation: { envelopes: { holdings: { observed_at: asOf, freshness: { status: 'FRESH' } } } },
+      top_movers: accounts.map(a => ({ symbol: 'DEMOA', account: a.key, account_label: a.label, day_change: a.move })),
+    },
+    '/api/v2/portfolio/performance': { current_value: 5000, periods: { '1D': { change: 45 }, YTD: { change: 100 } },
+      accounts: Object.fromEntries(accounts.map(a => [a.key, { current_value: a.value * 1.25,
+        periods: { '1D': { change: a.move }, YTD: { change: a.value / 40 } } }])),
+    },
+  }
+  await page.route('**/api/**', route => {
+    const request = route.request()
+    if (request.method() !== 'GET') return route.fallback()
+    const body = overrides[new URL(request.url()).pathname]
+    return body === undefined ? route.fallback()
+      : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
+  })
+  return writes
+}
+
 async function shot(page: Page, name: string) {
   await page.screenshot({ path: path.join(SHOTS, name), fullPage: false })
 }
@@ -62,22 +100,40 @@ for (const width of [1440, 412]) {
   test.describe(`at ${width}px`, () => {
     test.use({ viewport: { width, height: width > 600 ? 1000 : 900 } })
 
-    // Board 14 (desks-redesign 2026-10-24) removed the movers card from Home ("the header already carries
-    // the numbers; Home never repeats them"). The operator rule — a name on every position row, never an
-    // account number — is asserted on Home's own rows, the CIO-ranked Do-now list.
-    test(`Home Do now: each SPCX row names its account (${width})`, async ({ page }) => {
+    // The operator restored the Do-now queue and book movers on 2026-10-25.
+    test(`Home Do now and movers: each DEMOA account shows its name (${width})`, async ({ page }) => {
       const errors: string[] = []
       page.on('pageerror', e => errors.push(e.message))
-      await fixtures(page)
+      const writes = await homeAccountFixtures(page)
       await page.goto('/v3/')
-      const card = page.getByTestId('home-do-now')
+      const card = page.getByTestId('do-now')
       await expect(card).toBeVisible()
-      await expect(page.getByTestId('home-movers')).toHaveCount(0)
-      await expect(card).toContainText('Schwab Rollover IRA')
-      await expect(card).toContainText('Schwab Individual')
+      await expect(card.getByTestId('do-now-sources')).toHaveText('3/3 sources answered')
+      const positions = card.getByTestId('do-now-item').filter({ hasText: 'DEMOA' })
+      await expect(positions).toHaveCount(2)
+      for (const label of ['Example Income', 'Example Growth']) {
+        await expect(positions.filter({ hasText: label }).getByTestId('account-chip')).toHaveText(label)
+      }
       expect(await card.innerText()).not.toMatch(NUMBER_LEAK)
       await card.scrollIntoViewIfNeeded()
       await shot(page, `home-do-now-${width}.png`)
+
+      const movers = page.getByTestId('home-movers')
+      await expect(movers).toBeVisible()
+      const group = movers.locator('[data-testid="mover-group"][data-symbol="DEMOA"]')
+      await expect(group).toHaveCount(1)
+      await expect(group.getByTestId('accounts-badge')).toHaveText('2 accounts')
+      await group.getByTestId('mover-expand').click()
+      const accountRows = group.getByTestId('mover-account-row')
+      await expect(accountRows).toHaveCount(2)
+      for (const label of ['Example Income', 'Example Growth']) {
+        await expect(accountRows.filter({ hasText: label }).getByTestId('account-chip')).toHaveText(label)
+      }
+      await expect(group).toContainText('+$45')
+      expect(await movers.innerText()).not.toMatch(NUMBER_LEAK)
+      await movers.scrollIntoViewIfNeeded()
+      await shot(page, `home-movers-${width}.png`)
+      expect(writes).toEqual([])
       expect(errors).toEqual([])
     })
 

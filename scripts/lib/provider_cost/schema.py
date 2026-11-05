@@ -94,6 +94,8 @@ class ProviderCostEvent:
     usage_end: Optional[str] = None
     input_tokens: Optional[int] = None
     cached_input_tokens: Optional[int] = None
+    cache_creation_input_tokens: Optional[int] = None
+    cache_creation_1h_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
     reasoning_tokens: Optional[int] = None
     characters: Optional[int] = None

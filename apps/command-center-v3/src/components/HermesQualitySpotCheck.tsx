@@ -17,14 +17,20 @@ const sevColor = (s?: string) => {
 }
 
 export default function HermesQualitySpotCheck({ onDrill }: Props) {
-  const { data: pipeQual } = useApi<any>('/api/v2/hermes/pipeline-quality', 120_000)
+  // ?limit=10 (memory 2026-10-25): the server returns the newest findings, the newest OPEN findings and both counts
+  // instead of all ~31.6k rows; the full-list fallback below still works against an older server.
+  const { data: pipeQual } = useApi<any>('/api/v2/hermes/pipeline-quality?limit=10', 120_000)
   const { data: health } = useApi<any>('/api/v2/hermes/health', 120_000)
 
-  const findings = (pipeQual?.findings ?? pipeQual?.data?.findings ?? []) as any[]
-  const open = findings.filter(f => {
+  const pq = pipeQual?.findings ? pipeQual : (pipeQual?.data ?? pipeQual)
+  const findings = (pq?.findings ?? []) as any[]
+  const isOpen = (f: any) => {
     const st = String(f.status || '').toLowerCase()
     return st !== 'resolved' && st !== 'closed' && st !== 'archived'
-  })
+  }
+  const open = (Array.isArray(pq?.open_findings) ? pq.open_findings : findings.filter(isOpen)) as any[]
+  const openCount: number = typeof pq?.open_count === 'number' ? pq.open_count : open.length
+  const findingsTotal: number = typeof pq?.total === 'number' ? pq.total : findings.length
   const recent = (open.length ? open : findings).slice(0, 8)
   const crit = recent.filter(f => String(f.severity || '').toLowerCase() === 'critical').length
   const warn = recent.filter(f => String(f.severity || '').toLowerCase() === 'warning').length
@@ -33,7 +39,7 @@ export default function HermesQualitySpotCheck({ onDrill }: Props) {
   const gateway = String(health?.gateway_status || 'unknown')
   const staging = health?.staging_counts || {}
   const researchN = staging.hermes_research_intelligence ?? staging.research ?? '—'
-  const findingsN = staging.hermes_validation_findings ?? findings.length
+  const findingsN = staging.hermes_validation_findings ?? findingsTotal
 
   return (
     <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 14 }}>
@@ -66,7 +72,7 @@ export default function HermesQualitySpotCheck({ onDrill }: Props) {
       <div style={{ fontSize: TYPE.xs, color: 'var(--text2)', marginBottom: 8 }}>
         Staging: research rows <b style={{ color: 'var(--text1)' }}>{researchN}</b>
         {' · '}findings <b style={{ color: 'var(--text1)' }}>{findingsN}</b>
-        {' · '}open in view <b style={{ color: 'var(--text1)' }}>{open.length || recent.length}</b>
+        {' · '}open in view <b style={{ color: 'var(--text1)' }}>{openCount || recent.length}</b>
       </div>
 
       {recent.length === 0 ? (

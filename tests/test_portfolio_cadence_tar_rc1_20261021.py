@@ -26,10 +26,15 @@ exits 1 like a changed-file read. No Drive, no credentials, no production paths.
 from __future__ import annotations
 
 import re
+import json
+import os
 import shutil
 import stat
 import subprocess
+import sys
 from pathlib import Path
+
+import pytest
 
 REPO = Path(__file__).resolve().parents[1]
 BACKUP_SH = REPO / "scripts" / "backup_secrets_state.sh"
@@ -162,3 +167,55 @@ def test_failed_weekly_gated_step_does_not_abort_pipeline(tmp_path):
     assert "REACHED_END overall=1 statuses=FAILED(rc=1) ok" in out, out
     assert not (stamp_dir / "data.stamp").exists()
     assert (stamp_dir / "db.stamp").exists()
+
+
+@pytest.mark.parametrize("writer", ["pg_dump", "portfolio"])
+@pytest.mark.parametrize("disk_full", [False, True])
+def test_current_backup_receipt_survives_failed_publication(tmp_path, writer, disk_full):
+    """Run each real publisher in isolation; never invoke a backup or live step."""
+    summary = tmp_path / "last.json"
+    previous = b'{"run_at":"previous-success","exit_code":0}\n'
+    summary.write_bytes(previous)
+    dump = str(tmp_path / 'dump with "quotes".sql.gz')
+    env = {"PATH": f"{Path(sys.executable).parent}:{os.defpath}", "PYTHONDONTWRITEBYTECODE": "1"}
+    if disk_full:
+        # Inject the failure at the durability barrier after the temp file was
+        # written, not before parsing: the previous document must still survive.
+        (tmp_path / "sitecustomize.py").write_text(
+            "import errno, os\n"
+            "def no_space(fd):\n"
+            "    raise OSError(errno.ENOSPC, 'fixture: disk full')\n"
+            "os.fsync = no_space\n"
+        )
+        env["PYTHONPATH"] = str(tmp_path)
+    if writer == "pg_dump":
+        src = (REPO / "linux_launchers" / "run_pg_backup.sh").read_text()
+        fn = _extract_fn(src, "write_pg_backup_summary")
+        invoke = 'write_pg_backup_summary "$SUMMARY"'
+        expected = {"cadence": "backup", "steps": {"pg_dump": "OK"}, "dump_file": dump, "dump_bytes": 1234}
+    else:
+        fn = _extract_fn(PIPELINE_SH.read_text(), "write_portfolio_summary")
+        expected = {"cadence": "backup", "overall_status": "degraded", "steps": [{"status": "FAILED(rc=1)"}]}
+        invoke = "write_portfolio_summary <<'PAYLOAD'\n" + json.dumps(expected) + "\nPAYLOAD"
+    harness = tmp_path / "publish.sh"
+    harness.write_text(
+        "set -euo pipefail\n"
+        'PROJ="$1"; PROJECT_ROOT="$1"; PY="$2"; SUMMARY="$3"; BACKUP_FILE="$4"; BYTES=1234\n'
+        + fn + invoke + '\necho "PUBLISHED"\n'
+    )
+    result = subprocess.run(
+        ["/bin/bash", str(harness), str(REPO), sys.executable, str(summary), dump],
+        env=env, cwd=tmp_path, capture_output=True, text=True, timeout=15,
+    )
+    if disk_full:
+        assert result.returncode != 0, result.stdout + result.stderr
+        assert "ENOSPC" in result.stderr or "No space left" in result.stderr or "disk full" in result.stderr
+        assert "PUBLISHED" not in result.stdout
+        assert summary.read_bytes() == previous
+    else:
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "PUBLISHED" in result.stdout
+        published = json.loads(summary.read_text())
+        for key, value in expected.items():
+            assert published[key] == value
+    assert not list(tmp_path.glob(".last.json.*.tmp"))

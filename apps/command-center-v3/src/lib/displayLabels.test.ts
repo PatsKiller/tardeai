@@ -32,6 +32,8 @@ eq('TRADING face without a journal win rate', tradingTileValue(null, 3, '$1'), '
 
 // Header price stamp and VIX provenance (captured /api/v2/overview + trade-ai/summary 2026-10-22).
 eq('price source short', shortPriceSource('finviz_afterhours'), 'after-hours')
+eq('price source short premarket', shortPriceSource('finviz_premarket'), 'pre-market')
+eq('price source short overnight', shortPriceSource('finviz_overnight'), 'overnight')
 eq('unknown price source readable', shortPriceSource('some_feed'), 'some feed')
 eq('price stamp face', shortPriceStamp('16:45 ET', 'finviz_afterhours', 12, 12, false), 'Prices 16:45 ET · after-hours · 12/12')
 check('price stamp face fits the 210 px stamp column (≤ 40 chars)', shortPriceStamp('16:45 ET', 'finviz_afterhours', 12, 12, false).length <= 40)

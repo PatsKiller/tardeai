@@ -22,7 +22,11 @@ const g = { key: 'k', label: 'TSLA', sub: null, symbol: 'TSLA', security_guid: '
   counts: { questions: 3, threads: 2, names: 1 }, memory: { last_answer_at: '2026-10-21T02:30:30+00:00', stance: 'HOLD', conviction: 61.4 } } as QuestionGroup
 eq('counts text', countsText(g, 'security'), '3 questions · 2 threads')
 eq('sector counts names', countsText({ ...g, counts: { questions: 1, threads: 1, names: 3 } }, 'sector'), '1 question · 1 thread · 3 names')
-eq('memory text from fields', memoryText(g.memory, () => 'yesterday'), 'CIO memory: HOLD · conviction 61 · last answer yesterday')
+eq('memory text from fields', memoryText(g.memory, () => 'yesterday'), 'Question memory: answer recorded yesterday · Current stance: HOLD · conviction 61')
 eq('memory gaps are stated, never invented', memoryText({ last_answer_at: null, stance: null, conviction: null, stance_missing_reason: 'CIO prospect store not live (absent)' }, () => 'x'),
-  'CIO memory: CIO prospect store not live (absent) · no answer recorded yet')
-eq('non-security group omits the per-security stance', memoryText({ last_answer_at: null, stance: null, conviction: null }, () => 'x', false), 'CIO memory: no answer recorded yet')
+  'Question memory: not measured · Current stance: unavailable — CIO prospect store not live (absent)')
+eq('non-security group omits the per-security stance', memoryText({ last_answer_at: null, stance: null, conviction: null }, () => 'x', false), 'Question memory: not measured')
+
+eq('shadow stance never means that saved question memory is missing', memoryText({ last_answer_at: '2031-03-10T12:00:00Z', stance: 'HOLD', conviction: 50, stance_source: 'prospect shadow' }, () => 'yesterday'),
+  'Question memory: answer recorded yesterday · Current stance: unavailable (shadow record)')
+eq('legacy missing memory is safe', memoryText(undefined as never, () => 'x'), 'Question memory: not measured · Current stance: unavailable')

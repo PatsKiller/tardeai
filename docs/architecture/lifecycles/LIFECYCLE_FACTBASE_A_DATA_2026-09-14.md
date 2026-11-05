@@ -748,3 +748,26 @@ Distinct values now (OBSERVED): `notify_outcome` SENT 248 · UNCORROBORATED_CORR
   - Mention→CONFIRMED cycle time.
   - Whether a material change ever selected a wake (outside this family; the log tail showed only `unconsumed_research`).
 - Nothing was written to the DB, config, crontab or systemd. The only local writes were `lc/q.sh` and `lc/agents_summary.json` (a GET response) in the scratchpad, and this file.
+
+<!-- moved from AGENTS.md 25.0.1 lines 1886-1889 -->
+## Moved from AGENTS.md (25.0.1 lines 1886-1889)
+
+*Moved here by AGENTS.md 26.0.0, which keeps the binding rule and a pointer; the 25.0.1 text is preserved at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`. This is reference, not instruction: where it mentions Telegram `/approve`, `bin/guard request`, a push budget of 5 or a coordinator override, `gh pr merge`, a `release-write` grant for a deploy, or shipping with no operator input, those paths are retired or not implemented, and AGENTS.md governs.*
+
+- **Finviz exports are read by header name through `lib/finviz_csv.parse_export`, never by position or `split(",")`.**
+  - A saved view can be edited on finviz.com.
+  - Quoted company names contain commas.
+  - `VIEW_CONTRACTS` raises on drift; `check_finviz_view_contracts.py` checks daily at 06:05.
+
+<!-- moved from AGENTS.md 25.0.1 lines 1897-1903 -->
+## Moved from AGENTS.md (25.0.1 lines 1897-1903)
+
+*Moved here by AGENTS.md 26.0.0, which keeps the binding rule and a pointer; the 25.0.1 text is preserved at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`. This is reference, not instruction: where it mentions Telegram `/approve`, `bin/guard request`, a push budget of 5 or a coordinator override, `gh pr merge`, a `release-write` grant for a deploy, or shipping with no operator input, those paths are retired or not implemented, and AGENTS.md governs.*
+
+- **Alpaca `prevDailyBar` is two sessions back before the day's first bar.** Use `dailyBar.c` when `dailyBar.t` predates today in ET.
+- **Compare like with like.** Friday's close vs today's `prev_close`, never a premarket quote vs a close.
+- **Yahoo's historical Close is split-adjusted.** Never backfill an old session from it without `--allow-backfill` and review.
+- **IEX-derived closes are not the consolidated tape.**
+  - 16% of `market_quotes` closes for 09-11 were >1% off.
+  - `eod_consolidated_close_sync` replaces them at 17:15; `source_litmus_vs_yahoo` checks at 07:45.
+- **`ticker_snapshot_daily.data.rvol` before 2026-09-14 is unusable** (universe median 3.4–4.8).

@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "recovery_no_silence_20261103",
+  "files": [
+    "tests/test_recovery_no_silence_20261103.py",
+    "tests/test_recovery_r8_mutex_and_attempt_20261104.py",
+    "tests/test_recovery_material_change_20261104.py"
+  ],
+  "anchor": "RECOVERY_NO_SILENCE_20261103",
+  "comment": [
+    "ANCHOR: RECOVERY_NO_SILENCE_20261103 — a T1 recovery case is paged as P1 (through telegram_batch when present, direct otherwise) and the router can never classify a marked T1 recovery message P2_DASHBOARD_ONLY or P3_LOG_ONLY; the no-silence invariant is test-pinned.",
+    "The R8 regressions live here too: a global reclaim mutex must not abandon this case's settle (a bounded",
+    "wait, then the owner-check path), and a settle must be bound to the attempt that owns it rather than to",
+    "whichever token is newest when it happens to run."
+  ]
+}

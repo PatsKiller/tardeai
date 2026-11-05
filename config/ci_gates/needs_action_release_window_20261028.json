@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "needs_action_release_window_20261028",
+  "files": [
+    "tests/test_needs_action_release_window_20261028.py"
+  ],
+  "anchor": "NEEDS_ACTION_RELEASE_WINDOW_20261028",
+  "comment": [
+    "ANCHOR: NEEDS_ACTION_RELEASE_WINDOW_20261028 — release-train leftovers (operator directive 2026-10-27): the",
+    "Needs-action deploy STOP items. A Command Center STOP (deploy_stop.request_stop: window_id None,",
+    "STOP_REQUESTED_OPERATOR) renders its reason, never 'window None'; window and unreadable latches stay P1; the",
+    "retired train's orphaned-request item (it named removed subcommands) is gone; Home labels read 'Open Jobs'.",
+    "Hermetic: tmp state dir; psycopg2 stubbed when absent."
+  ]
+}

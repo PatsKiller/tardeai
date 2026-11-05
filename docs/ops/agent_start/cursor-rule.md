@@ -9,6 +9,9 @@ description: Trade AI — start every session from the agent claim board
 alwaysApply: true
 ---
 Before editing anything in this repository:
+0. Run: python3 scripts/lib/policy_freshness.py --gate session
+   STALE_POLICY means this checkout's AGENTS.md is older than origin/main's: stop, work from fresh origin/main
+   (scripts/new-worktree.sh) and re-read AGENTS.md §0. UNKNOWN is a warning, not a pass.
 1. Read docs/ops/AGENT_START_HERE.md and follow its 5 commands.
 2. export AGENT_CLAIM_VENDOR=cursor AGENT_CLAIM_SESSION=<unique id> AGENT_CLAIM_AGENT=<name>
 3. Run: python3 scripts/agent_claim.py status

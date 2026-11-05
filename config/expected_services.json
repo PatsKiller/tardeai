@@ -72,9 +72,6 @@
       "_why": "Polls the CIO bot (8751620457). It was disabled on 2026-09-08 and nobody noticed for five days; every reply the operator sent to a CIO alert landed in a room with no listener. This unit is the reason this manifest exists."
     },
     {
-      "unit": "tradeai-disk-hygiene-enforcer.timer"
-    },
-    {
       "unit": "tradeai-due-checkpoints.timer"
     },
     {
