@@ -517,13 +517,20 @@ def test_inode_bands_alert_once_per_change_and_apart_from_the_byte_bands(mon):
     mon.ino[r] = 40.0
     mon.byte[r] = 10.0
     assert mon.run() == 0
+    assert mon.run() == 0   # the recoveries are DELAYED by the clock, never discarded: each waits for the interval
+    assert mon.run() == 0   # opened by its own last alert, and those two were opened at different polls
+    assert mon.run() == 0
     got = [(k, s) for k, s, _ in mon.intents()]
     assert got == [
         ("disk_usage_warn", "Disk /tmp INODES WARN: at or above 80% inodes used"),
         ("disk_usage_warn", "Disk /tmp WARN: at or above 80% used"),
+        # WARN -> CRITICAL is said AT ONCE, on each metric separately (cc-deepseek-2 R6). This row is the assertion an
+        # earlier head deleted; it is restored, and it fails if the inode escalation goes silent again.
         ("disk_usage_critical", "Disk /tmp INODES CRITICAL: at or above 90% inodes used"),
-        ("disk_usage_recovered", "Disk /tmp INODES recovered: below 80% inodes used"),
+        # Then the recoveries take their turns in the order their intervals opened — the byte warn was reported one
+        # poll before the inode escalation, so the byte recovery lands one poll earlier.
         ("disk_usage_recovered", "Disk /tmp recovered: below 80% used"),
+        ("disk_usage_recovered", "Disk /tmp INODES recovered: below 80% inodes used"),
     ]
     state = json.loads((mon.tw.state / "data/runtime/disk_usage_monitor_state.json").read_text())
     assert state["inodes"][r]["band"] == "ok" and state["mounts"][r]["band"] == "ok"

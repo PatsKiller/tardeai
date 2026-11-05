@@ -168,6 +168,22 @@ def _summary(positions: list[dict]) -> str:
     return f"{n} positions, ${val:,.0f}"
 
 
+def _reprice_and_write(hp_path=None, state_dir=None) -> bool:
+    """Reprice the holdings document and write it back — only if the reprice produced one.
+
+    FQ-2532-R (cc-deepseek-8's F1 on #2689): the reprice refuses by raising `RepriceRefused`, and a refused pass
+    returns no document, so this function's write is unreachable on a refusal. Pulled out of `run()` so the
+    call-site guarantee has its own test rather than living inside a sixty-line sync function.
+    """
+    import portfolio_repricer as _pr
+    target = Path(hp_path) if hp_path is not None else HOLDINGS_PATH
+    state = Path(state_dir) if state_dir is not None else PROJECT_ROOT / "data" / "portfolios" / "state"
+    document = json.loads(target.read_text())
+    repriced = _pr.reprice_portfolio(document, state)
+    target.write_text(json.dumps(repriced, indent=2, default=str))
+    return True
+
+
 def run(apply: bool = False) -> dict:
     from brokers import snaptrade_read as sr
     from brokers import snaptrade_credentials as creds
@@ -301,11 +317,11 @@ def run(apply: bool = False) -> dict:
         except Exception as _de:
             print(f"  share-recon: process failed ({_de})")
     if result.get("wrote"):
+        # FQ-2532-R: this write happens only when the reprice RETURNED a document. A refused pass now raises
+        # RepriceRefused and returns nothing, so the holdings file cannot be rewritten from a refusal — and because
+        # the repricer works on a copy, the document read here is untouched even when a later caller saves its own.
         try:
-            import portfolio_repricer as _pr
-            _hp = json.loads(HOLDINGS_PATH.read_text())
-            _repriced = _pr.reprice_portfolio(_hp, PROJECT_ROOT / "data" / "portfolios" / "state")
-            HOLDINGS_PATH.write_text(json.dumps(_repriced, indent=2, default=str))
+            _reprice_and_write(HOLDINGS_PATH, PROJECT_ROOT / "data" / "portfolios" / "state")
             print("holdings repriced after SnapTrade merge (totals + Finviz overlay)")
         except Exception as _e:
             print(f"WARNING: post-sync repricer failed ({_e}) — run portfolio_repricer.py manually")
