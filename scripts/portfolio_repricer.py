@@ -521,8 +521,8 @@ def _fetch_data_broker_quotes(symbols: List[str], root: Path, *, batch_reader=No
 
 
 # ── Yahoo price cache fetch (Fidelity funds after 8 PM) ───────────────────────
-def _fetch_fidelity_from_cache(fid_syms: List[str], root: Path) -> Dict[str, float]:
-    """Pull latest NAV from price_cache.json for Fidelity proprietary symbols."""
+def _fetch_fidelity_from_cache(fid_syms: List[str], root: Path) -> Dict[str, Any]:
+    """Pull latest NAV (and, when the cache has history, the preceding NAV) per Fidelity symbol."""
     result = {}
     if not fid_syms:
         return result
@@ -562,19 +562,30 @@ def _fetch_fidelity_from_cache(fid_syms: List[str], root: Path) -> Dict[str, flo
             pub_sym = fid_map.get(fid_sym, fid_sym)
             is_proxy = str(pub_sym).upper() != str(fid_sym).upper()
             sym_data = prices.get(pub_sym, {})
+            # Collect the dated NAVs once so the chosen mark's PRECEDING NAV can travel with it.
+            # Without it the NAV branch below can update the mark but has no measurement to build
+            # a day change from, and previously left a seeded 0.0 in place (codex-cloud P1, #2588).
+            navs = []
             for d in dates:
                 val = sym_data.get(d)
-                if val is not None:
-                    px = float(val) if not isinstance(val, dict) else float(val.get("close", 0) or 0)
-                    result[fid_sym] = {
-                        "price": px,
-                        "source": "proxy_public_ticker" if is_proxy else "price_cache_nav",
-                        "source_as_of": d,
-                        "proxy": is_proxy,
-                        "not_for_valuation": is_proxy,
-                        "mapped_symbol": pub_sym if is_proxy else fid_sym,
-                    }
-                    break
+                if val is None:
+                    continue
+                px = float(val) if not isinstance(val, dict) else float(val.get("close", 0) or 0)
+                if px > 0:
+                    navs.append((d, px))
+            if not navs:
+                continue
+            d, px = navs[0]
+            prev_close = navs[1][1] if len(navs) > 1 else None
+            result[fid_sym] = {
+                "price": px,
+                "prev_close": prev_close,
+                "source": "proxy_public_ticker" if is_proxy else "price_cache_nav",
+                "source_as_of": d,
+                "proxy": is_proxy,
+                "not_for_valuation": is_proxy,
+                "mapped_symbol": pub_sym if is_proxy else fid_sym,
+            }
     except Exception as e:
         print(f"  [repricer] Fidelity cache error: {e}")
 
@@ -815,7 +826,7 @@ def _closed_today_day_change(
 def _apply_to_holdings(
     holdings: List[Dict],
     live_prices: Dict[str, Dict],
-    fidelity_prices: Dict[str, float],
+    fidelity_prices: Dict[str, Any],
     intraday_fills: Optional[Dict[tuple, Dict[str, list]]] = None,
 ) -> int:
     """Update price/market_value/day_change fields in holdings list. Returns update count."""
@@ -854,6 +865,21 @@ def _apply_to_holdings(
                 h["canonical_mark_ingested_at"] = _utc_now_iso()
                 h["analytical_market_value"] = round(new_price * shares, 2)
                 h["price_source"] = src
+                # A NAV mark moved the price, so a day change that was seeded/left over no longer
+                # describes it. Recompute it from the PRECEDING NAV when the cache gave us one;
+                # otherwise the change is UNKNOWN — never zero and never the old value
+                # (codex-cloud P1 on #2588: the branch updated the mark without recomputing).
+                prev_close = (meta or {}).get("prev_close")
+                try:
+                    prev_close = float(prev_close) if prev_close is not None else None
+                except (TypeError, ValueError):
+                    prev_close = None
+                if prev_close is not None and prev_close > 0:
+                    h["day_change"] = round((new_price - prev_close) * shares, 2)
+                    h["day_change_pct"] = round((new_price - prev_close) / prev_close * 100, 4)
+                else:
+                    h["day_change"] = None
+                    h["day_change_pct"] = None
                 _sync_legacy_price_alias(h, new_price)
                 updated += 1
         elif sym in live_prices and shares > 0:
@@ -1331,7 +1357,7 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
         print(f"  [repricer] Quote cache: {n_updated} symbols updated -> finviz_quote_cache.json")
 
     # ── 3. Apply to portfolio holdings ────────────────────────────────────────
-    fidelity_prices: Dict[str, float] = {}
+    fidelity_prices: Dict[str, Any] = {}
     if fidelity_syms and now_min >= 20 * 60:  # after 8 PM ET
         fidelity_prices = _fetch_fidelity_from_cache(fidelity_syms, root)
         print(f"  [repricer] Fidelity (8 PM cache): {len(fidelity_prices)}/{len(fidelity_syms)} funds")

@@ -184,8 +184,11 @@ def reprice_holdings(holdings: List[Dict], price_cache: Dict,
         if _is_proprietary(sym):
             updated = dict(h)
             if abs(updated.get('day_change_pct', 0) or 0) > 5:
-                updated['day_change'] = 0.0
-                updated['day_change_pct'] = 0.0
+                # A value we know is wrong is not a measurement of zero (codex-cloud P1 on #2588).
+                # ``_day_change_coverage`` counts any number as measured, so writing 0.0 here made
+                # an unmeasurable row pass as evidence. Unknown is the honest state.
+                updated['day_change'] = None
+                updated['day_change_pct'] = None
             repriced.append(updated)
             continue
 
@@ -219,8 +222,11 @@ def reprice_holdings(holdings: List[Dict], price_cache: Dict,
                 updated["day_change_pct"] = round(
                     (new_price - prev_price) / prev_price * 100, 4)
             else:
-                updated["day_change"] = updated.get("day_change", 0) or 0
-                updated["day_change_pct"] = updated.get("day_change_pct", 0) or 0
+                # No prior price: this row's day change cannot be computed. Keep a number that was
+                # measured earlier, but never coerce "unknown" to 0.0 — a seeded zero is
+                # indistinguishable from a measured zero to every consumer (codex-cloud P1, #2588).
+                updated["day_change"] = updated.get("day_change")
+                updated["day_change_pct"] = updated.get("day_change_pct")
             repriced.append(updated)
         else:
             repriced.append(h)
@@ -295,16 +301,18 @@ def load_all_portfolios(project_root_str: str) -> Dict:
     today = date.today().isoformat()
     repriced = reprice_holdings(holdings, price_cache, today)
 
-    # ── Step 3b: Zero impossible day_change on proprietary symbols ────────────
+    # ── Step 3b: Clear impossible day_change on proprietary symbols ───────────
     # Fidelity proprietary funds (hyphenated, len>5) are never repriced by Yahoo.
     # If holdings.json contains a stale/wrong day_change (e.g. from a bad import),
-    # it would survive forever. Zero any day_change_pct > 5% for these symbols.
+    # it would survive forever. Any day_change_pct > 5% for these symbols is
+    # unmeasurable here, so it becomes UNKNOWN (None), not a zero that the totals
+    # coverage would count as a measurement (codex-cloud P1, #2588).
     for _h in repriced:
         _sym = _h.get('symbol', '')
         if '-' in _sym and len(_sym) > 5:
             if abs(_h.get('day_change_pct', 0) or 0) > 5:
-                _h['day_change'] = 0.0
-                _h['day_change_pct'] = 0.0
+                _h['day_change'] = None
+                _h['day_change_pct'] = None
 
     # ── Step 4: Recompute totals ──────────────────────────────────────────────
     cfg = load_accounts_config(project_root)
@@ -682,8 +690,13 @@ def parse_fidelity_pdf_text(lines: List[str]) -> Dict:
             "is_cash":      False,
             "is_fund":      True,
             "reinvest_div": True,
-            "day_change":   0.0,
-            "day_change_pct": 0.0,
+            # The statement carries no previous close, so the day change is UNKNOWN here — not
+            # zero. A seeded 0.0 used to be counted as a measured value by the totals coverage
+            # (codex-cloud P1 on #2588); None keeps "we could not measure" distinct from "it
+            # really was flat". The repricer's Fidelity NAV branch fills this in from a measured
+            # previous NAV when it has one.
+            "day_change":   None,
+            "day_change_pct": None,
             "cost_basis":   _cb,
             "gain_loss":    round(mv - _cb, 2) if _cb else None,
             "cost_basis_source": "fidelity_positions_pdf" if _cb else None,

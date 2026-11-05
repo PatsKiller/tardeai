@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "seeded_day_change_not_measured_20261105",
+  "files": [
+    "tests/test_seeded_day_change_not_measured_20261105.py"
+  ],
+  "anchor": "SEEDED_DAY_CHANGE_NOT_MEASURED_20261105",
+  "comment": [
+    "ANCHOR: SEEDED_DAY_CHANGE_NOT_MEASURED_20261105 — a seeded 0.0 is not a measured day change.",
+    "2026-11-05 (codex-cloud P1 on PR #2588): portfolio_loader seeded day_change=0.0 for Fidelity",
+    "rows it could not measure, _day_change_coverage counted every number as measured, and the",
+    "repricer's Fidelity NAV branch moved the mark without recomputing the change. The loader now",
+    "seeds None, and the NAV branch recomputes from a measured previous NAV or leaves it unknown."
+  ]
+}
