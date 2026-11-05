@@ -826,6 +826,48 @@ def test_a_handoff_moves_the_top_level_lead_with_the_role(tmp_path):
     assert run(tmp_path, "assign", "pr:2492", "release") == 0
 
 
+
+def test_standing_down_the_lead_does_not_lock_the_registry(tmp_path):
+    """Stand-down of the lead used to clear the role, after which every mutator —
+    including `coord lead` and `coord appoint` — failed 'registry is divergent (no lead)'.
+    Recovery verbs must still run when the only problem is the absent lead.
+    """
+    assert appoint(tmp_path, "claude-lead", "lead", "release") == 0
+    assert appoint(tmp_path, "codex-a", "member", "agents") == 0
+    assert run(tmp_path, "stand-down", "--id", "claude-lead",
+               "--quote", "lead stands down for the night") == 0
+    reg = registry(tmp_path)
+    assert reg["lead"] is None
+    assert {c["id"]: (c["role"], c["status"]) for c in reg["coordinators"]}["claude-lead"] == ("member", "stood_down")
+    # recovery: appoint a new lead (or transfer lead) must not be blocked by 'no lead'
+    assert run(tmp_path, "lead", "codex-a", "--quote", "codex takes the lead") == 0
+    assert registry(tmp_path)["lead"] == "codex-a"
+
+
+def test_the_generic_event_cannot_forge_a_transfer_kind(tmp_path):
+    assert appoint(tmp_path, "claude-lead", "lead", "release") == 0
+    for kind in ("transfer_give", "transfer_lead", "transfer_take-back", "transfer_notified"):
+        assert run(tmp_path, "event", kind, "--subject", "claude-lead") == 2
+    events = C.read_events(tmp_path)
+    assert not any(str(e.get("kind", "")).startswith("transfer_") for e in events)
+
+
+def test_stand_down_writes_the_ledger_before_the_registry(tmp_path, monkeypatch):
+    assert appoint(tmp_path, "codex-a", "member", "agents") == 0
+    real = C._atomic_write
+
+    def boom(path, text):
+        if str(path).endswith("coordinators.json"):
+            raise OSError("synthetic registry write failure")
+        return real(path, text)
+
+    monkeypatch.setattr(C, "_atomic_write", boom)
+    with pytest.raises(OSError):
+        run(tmp_path, "stand-down", "--id", "codex-a", "--quote", "stop agents")
+    kinds = [str(e.get("kind")) for e in C.read_events(tmp_path)]
+    assert "stand_down" in kinds
+
+
 def test_the_generic_event_cannot_forge_a_check_outcome(tmp_path):
     assert appoint(tmp_path, "claude-lead", "lead", "release") == 0
     assert run(tmp_path, "check", "request", "pr:2492", "--by", "claude-lead") == 0

@@ -337,11 +337,18 @@ def touch(registry: dict[str, Any], *, by: str = "coordinator", quote: str | Non
         registry["operator_quote"] = quote
 
 
-def coherence_error(registry: dict[str, Any]) -> str | None:
-    """None when coherent (or empty: bootstrap), else the refusal text for a mutator."""
+def coherence_error(registry: dict[str, Any], *, allow_absent_lead: bool = False) -> str | None:
+    """None when coherent (or empty: bootstrap), else the refusal text for a mutator.
+
+    ``allow_absent_lead`` is for the recovery verbs (`lead`, `appoint`) that exist precisely to
+    restore a lead after stand-down. Without it, standing down the lead left every mutator —
+    including those recovery commands — refused forever (claude-lead BLOCK @ b22fb2f00).
+    """
     if not registry.get("coordinators"):
         return None
     problems = registry_problems(registry)
+    if allow_absent_lead:
+        problems = [p for p in problems if p != "no lead"]
     return f"registry is divergent ({'; '.join(problems)}); fix or re-appoint before mutating" if problems else None
 
 
@@ -750,7 +757,7 @@ def cmd_lead(args) -> int:
     root = state_root(args.state_root)
     with (nullcontext() if getattr(args, "dry_run", False) else locked(root)):
         reg = read_registry(root)
-        err = coherence_error(reg)
+        err = coherence_error(reg, allow_absent_lead=True)
         if err:
             print(f"error: {err}", file=sys.stderr)
             return 2
@@ -966,7 +973,7 @@ def cmd_appoint(args) -> int:
     root = state_root(args.state_root)
     with locked(root):
         reg = read_registry(root)
-        err = coherence_error(reg)
+        err = coherence_error(reg, allow_absent_lead=True)
         if err:
             print(f"error: {err}", file=sys.stderr)
             return 2
@@ -1032,10 +1039,12 @@ def cmd_stand_down(args) -> int:
             sync_lead(reg)
         touch(reg)
         reg["as_of"] = now_iso()
-        _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
+        # Ledger first: a crash between these two must not leave a stood-down registry with no
+        # stand_down event (and the reverse — event without registry — is recoverable by re-run).
         append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": c["id"], "territory": None,
                             "kind": "stand_down", "subject": c["id"], "detail": args.quote or None,
                             "operator_quote": args.quote or None})
+        _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
         _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
     print(f"{args.id} stood down")
     return 0
@@ -1086,7 +1095,12 @@ def cmd_assign(args) -> int:
 #: so `coord event check_ok ...` cleared a pending check (and `--coordinator` was whatever the caller typed),
 #: bypassing the two-coordinator check path. Those kinds are refused here; use the owning verb.
 RESERVED_EVENT_KINDS = frozenset({
-    "check_request", "check_ok", "check_block", "transfer", "ack", "handoff", "stand_down",
+    "check_request", "check_ok", "check_block",
+    # The transfer verbs write transfer_give / transfer_lead / transfer_take-back (and
+    # transfer_notified). A bare "transfer" never appears; blocking only that left the real
+    # kinds forgeable through `coord event` (claude-lead BLOCK @ b22fb2f00).
+    "transfer", "transfer_give", "transfer_lead", "transfer_take-back", "transfer_notified",
+    "ack", "handoff", "stand_down",
     "appoint", "heartbeat", "inbox_send",
 })
 
@@ -1196,9 +1210,6 @@ def cmd_inbox(args) -> int:
                     continue
     if not args.keep:
         print(f"({moved} item(s) moved to {d / 'read'})")
-    return 0
-    if not args.keep:
-        print(f"({len(items)} item(s) moved to {d / 'read'})")
     return 0
 
 
