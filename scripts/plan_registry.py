@@ -61,7 +61,22 @@ def _parse_ts(value: Any) -> datetime | None:
 
 
 def state_root() -> Path:
-    return Path(os.environ.get("TRADEAI_STATE_ROOT") or (Path.home() / "trade-ai-releases" / "persistent-state"))
+    """The persistent store this registry writes to.
+
+    ``TRADEAI_STATE_ROOT`` still wins when it is set (tests and one-off roots), but the fallback is the
+    canonical resolver, not a literal home path: the claim board resolves its own directory through
+    ``good_persistent_root()``, which honours ``TRADEAI_PERSISTENT_STATE_ROOT``. Reading only
+    ``TRADEAI_STATE_ROOT`` wrote plans and coordinator alerts into the default tree while the claim board
+    searched the configured one, so registration looked up the wrong board.
+    """
+    override = os.environ.get("TRADEAI_STATE_ROOT")
+    if override:
+        return Path(override)
+    try:
+        from lib.persistent_state_root import good_persistent_root  # noqa: PLC0415
+    except ImportError:  # pragma: no cover - package context
+        from scripts.lib.persistent_state_root import good_persistent_root  # noqa: PLC0415
+    return good_persistent_root()
 
 
 def load_config(path: Path = CONFIG_PATH) -> dict[str, Any]:
@@ -227,8 +242,19 @@ class Registry:
         return path
 
     def _last_activity(self, pid: str, front: dict[str, Any]) -> datetime | None:
-        """The last real plan event: approval or a ledger entry. Not the file's insert time."""
+        """The last real plan event: the plan's own write, approval, or a ledger entry.
+
+        ``updated_at`` is part of this, not decoration. A ``set-status in_progress`` or ``step done``
+        that writes the plan and then fails appending its ledger line leaves the fresh activity ONLY in
+        the plan front-matter; reading the ledger alone then reported the old approval time and the next
+        ``stale --apply`` marked freshly resumed work stalled. The plan write is the durable fact — the
+        ledger append is the one that can be interrupted.
+        """
         last = _parse_ts(front.get("approved_at"))
+        for key in ("updated_at", "created_at"):
+            at = _parse_ts(front.get(key))
+            if at and (last is None or at > last):
+                last = at
         try:
             for line in self.ledger.read_text(encoding="utf-8").splitlines():
                 try:
@@ -526,9 +552,16 @@ class Registry:
         boxes = [i for i, ln in enumerate(lines) if re.match(r"^\s*[-*]\s*\[ \]\s+", ln)]
         target = None
         if which.isdigit():
+            # A number names the step's POSITION, and positions must not shift when a step is ticked.
+            # Indexing only the unticked steps renumbered every remaining step, so `step done 1` then
+            # `step done 2` marked the first and the third.
+            every = [i for i, ln in enumerate(lines) if re.match(r"^\s*[-*]\s*\[[ xX]\]\s+", ln)]
             n = int(which)
-            if 1 <= n <= len(boxes):
-                target = boxes[n - 1]
+            if 1 <= n <= len(every):
+                picked = every[n - 1]
+                if re.match(r"^\s*[-*]\s*\[[xX]\]\s+", lines[picked]):
+                    raise ValueError(f"step {n} in {pid} is already complete")
+                target = picked
         else:
             needle = which.lower()
             target = next((i for i in boxes if needle in lines[i].lower()), None)

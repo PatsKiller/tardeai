@@ -85,6 +85,7 @@ def test_stale_flags_an_unlinked_old_plan_once(tmp_path):
     p = tmp_path / "p.md"
     p.write_text("# T\n")
     pid = r.add(title="T", body_path=p, author="s", vendor="cursor", approved_at="2026-08-01T10:00:00Z")
+    _age_the_plan(r, tmp_path, pid)
     assert r.stale(now="2026-11-02T12:00:00Z", apply=True) == [pid]
     inbox = (tmp_path / "data/coordination/coordinator/inbox.md").read_text()
     assert "[PLAN-STALLED]" in inbox and pid in inbox
@@ -390,12 +391,27 @@ def test_a_final_component_symlink_is_refused_by_nofollow(tmp_path, monkeypatch)
 
 
 # ---------------------------------------------------------------- review 3 (codex-cloud, 2026-11-05) CX1-CX4
+def _age_the_plan(r, tmp_path, pid, when="2026-08-01T10:00:00Z"):
+    """Backdate the plan's own timestamps too.
+
+    ``add`` stamps ``created_at``/``updated_at`` with the real clock, and ``_last_activity`` now counts
+    them — a plan registered a moment ago is not old, whatever ``approved_at`` says. These fixtures
+    model a plan approved AND written long ago, so the write timestamps have to move with it; without
+    this the fixture asserts staleness at a simulated instant that precedes the plan's own creation.
+    """
+    path = tmp_path / "data/coordination/plans" / f"{pid}.md"
+    doc = pr.parse_plan(path.read_text())
+    r._write(pid, {**doc["front"], "created_at": when, "updated_at": when}, doc["body"])
+    return pid
+
+
 def _old_plan(r, tmp_path, *, body="# T\n\n- [ ] first\n- [ ] second\n"):
     """Register an unlinked plan approved long ago — stale at any test 'now' used below."""
     p = tmp_path / "p.md"
     p.write_text(body)
-    return r.add(title="T", body_path=p, author="s", vendor="claude",
-                 approved_at="2026-08-01T10:00:00Z")
+    pid = r.add(title="T", body_path=p, author="s", vendor="claude",
+                approved_at="2026-08-01T10:00:00Z")
+    return _age_the_plan(r, tmp_path, pid)
 
 
 def _files(r, tmp_path):
@@ -597,3 +613,50 @@ def test_link_and_stalled_revival_are_one_mutation(tmp_path, monkeypatch):
     assert front.get("status") == "in_progress", front
     assert front.get("claim") == "c-1", front
     assert len(acquisitions) == 1, f"link+revival took {len(acquisitions)} locks; it must be exactly one"
+
+
+# ── D52 round-2 at d85dc09ef: positions, interrupted appends, and the configured store ──────────────
+
+
+def test_a_step_number_is_the_step_position_not_its_place_among_the_open_ones(tmp_path):
+    r = _reg(tmp_path)
+    p = tmp_path / "p.md"
+    p.write_text("# P\n\n- [ ] one\n- [ ] two\n- [ ] three\n")
+    pid = r.add(title="T", body_path=p, author="s", vendor="claude", approved_at="2026-11-02T10:00:00Z")
+    r.step_done(pid, "1")
+    r.step_done(pid, "2")  # must tick "two"; indexing only the open steps ticked "three"
+    body = pr.parse_plan((tmp_path / "data/coordination/plans" / f"{pid}.md").read_text())["body"]
+    assert "- [x] one" in body and "- [x] two" in body and "- [ ] three" in body, body
+    try:
+        r.step_done(pid, "1")
+    except ValueError as exc:
+        assert "already complete" in str(exc), exc
+    else:  # pragma: no cover - the failure branch is the assertion
+        raise AssertionError("completing step 1 twice was accepted")
+
+
+def test_activity_written_before_an_interrupted_ledger_append_still_protects_the_plan(tmp_path):
+    """A resumed plan is not stale because its ledger line is missing: the plan write is the durable fact."""
+    r = _reg(tmp_path)
+    p = tmp_path / "p.md"
+    p.write_text("# P\n\n- [ ] a\n")
+    pid = r.add(title="T", body_path=p, author="s", vendor="claude", approved_at="2026-10-01T00:00:00Z")
+    path = tmp_path / "data/coordination/plans" / f"{pid}.md"
+    doc = pr.parse_plan(path.read_text())
+    # The status/step write landed; the ledger append did not. No ledger row records the activity.
+    r._write(pid, {**doc["front"], "updated_at": "2026-11-05T12:00:00Z"}, doc["body"])
+    assert r.stale(now="2026-11-05T13:00:00Z", apply=True) == []
+
+    # Control: with the plan's own timestamp old too, it IS stale — the guard is activity, not a switch.
+    doc = pr.parse_plan(path.read_text())
+    r._write(pid, {**doc["front"], "updated_at": "2026-10-01T00:00:00Z"}, doc["body"])
+    assert r.stale(now="2026-11-05T13:00:00Z", apply=True) == [pid]
+
+
+def test_the_registry_follows_the_configured_persistent_root(tmp_path, monkeypatch):
+    """The claim board resolves through TRADEAI_PERSISTENT_STATE_ROOT; plans and alerts must agree."""
+    monkeypatch.delenv("TRADEAI_STATE_ROOT", raising=False)
+    monkeypatch.setenv("TRADEAI_PERSISTENT_STATE_ROOT", str(tmp_path / "ps"))
+    assert pr.state_root() == tmp_path / "ps"
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path / "sr"))
+    assert pr.state_root() == tmp_path / "sr"
