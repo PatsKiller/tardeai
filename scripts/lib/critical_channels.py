@@ -56,17 +56,41 @@ class Delivery:
 
 
 def _default_email_sender(to: str, subject: str, body: str) -> str | None:
-    """SMTP through the approved adapter. Imported here, not at module scope, so the chokepoint sees one owner."""
-    from scripts.alerting import send_email  # local import: the approved SMTP adapter
+    """The email adapter that takes a recipient.
 
-    return send_email(to, subject, body)
+    Deliberately NOT ``scripts.alerting.send_email``: its signature is ``(subject, text, html, attachments)`` and takes no
+    recipient, so passing one would put the operator's address in the subject line and the real subject in the body. The
+    adapter that accepts a recipient is ``email_notifier.send_email(subject, body, to=...)``.
+    """
+    from email_notifier import send_email  # local import: keeps the import graph off the module load path
+
+    result = send_email(subject, body, to=to)
+    if result is False:
+        raise RuntimeError("email_send_refused")
+    return "gog-accepted" if result in (True, None) else str(result)
 
 
 def _default_telegram_sender(chat_id: str, text: str) -> str | None:
-    """The Critical chat, through the one approved Bot API owner."""
+    """The Critical chat, through the one approved Bot API owner.
+
+    ``telegram_transport.send_message`` is keyword-only and requires the bot token explicitly — calling it positionally
+    raises TypeError, which would have made every Critical-chat delivery a failed receipt for the one channel that exists
+    because the normal Telegram is flooded.
+    """
+    import os
+
     from telegram_transport import send_message  # local import: the approved Telegram owner
 
-    return send_message(chat_id, text)
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    if not token:
+        raise RuntimeError("telegram_token_not_configured")
+    result = send_message(token=token, chat_id=chat_id, text=text)
+    if isinstance(result, dict):
+        if result.get("ok") is False:
+            raise RuntimeError("telegram_send_refused")
+        message_id = (result.get("result") or {}).get("message_id") if isinstance(result.get("result"), dict) else None
+        return str(message_id) if message_id is not None else ("ok" if result.get("ok") else None)
+    return str(result) if result is not None else None
 
 
 def deliver(

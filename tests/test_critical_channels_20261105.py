@@ -123,3 +123,55 @@ def test_no_receipt_carries_an_address(monkeypatch):
     delivery, _calls = run(monkeypatch)
     blob = repr(delivery.as_dict())
     assert "example.invalid" not in blob and "@" not in blob
+
+
+# ── the default senders: the tests above inject senders, which is exactly why two broken signatures shipped once ─────────
+
+def test_the_default_telegram_sender_passes_the_token_by_keyword(monkeypatch):
+    """`telegram_transport.send_message` is keyword-only and needs a token; a positional call raises TypeError."""
+    calls = {}
+    mod = type(sys)("telegram_transport")
+
+    def send_message(*args, **kwargs):
+        assert args == (), f"positional call would raise TypeError: {args}"
+        calls.update(kwargs)
+        return {"ok": True, "result": {"message_id": 4242}}
+
+    mod.send_message = send_message
+    monkeypatch.setitem(sys.modules, "telegram_transport", mod)
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token-fixture")
+    receipt = cc._default_telegram_sender("chat-fixture", "hello")
+    assert calls["token"] == "token-fixture" and calls["chat_id"] == "chat-fixture" and calls["text"] == "hello"
+    assert receipt == "4242"
+
+
+def test_the_default_telegram_sender_refuses_without_a_token(monkeypatch):
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    with pytest.raises(RuntimeError) as exc:
+        cc._default_telegram_sender("chat-fixture", "hello")
+    assert str(exc.value) == "telegram_token_not_configured"
+
+
+def test_the_default_email_sender_gives_the_recipient_to_the_adapter_that_takes_one(monkeypatch):
+    """`alerting.send_email` has no recipient parameter; using it would put the address in the subject line."""
+    seen = {}
+    mod = type(sys)("email_notifier")
+
+    def send_email(subject, body, to=None, attachments=None):
+        seen.update({"subject": subject, "body": body, "to": to})
+        return True
+
+    mod.send_email = send_email
+    monkeypatch.setitem(sys.modules, "email_notifier", mod)
+    cc._default_email_sender("operator@example.invalid", "CRITICAL — test", "body")
+    assert seen["to"] == "operator@example.invalid"
+    assert seen["subject"].startswith("CRITICAL —")
+
+
+def test_the_default_email_sender_turns_a_refused_send_into_a_failure(monkeypatch):
+    mod = type(sys)("email_notifier")
+    mod.send_email = lambda subject, body, to=None, attachments=None: False
+    monkeypatch.setitem(sys.modules, "email_notifier", mod)
+    with pytest.raises(RuntimeError) as exc:
+        cc._default_email_sender("operator@example.invalid", "s", "b")
+    assert str(exc.value) == "email_send_refused"
