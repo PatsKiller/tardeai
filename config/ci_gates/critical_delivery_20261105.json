@@ -5,7 +5,8 @@
     "tests/test_critical_delivery_20261105.py",
     "tests/test_critical_channels_20261105.py",
     "tests/test_critical_producers_20261105.py",
-    "tests/test_critical_ack_20261105.py"
+    "tests/test_critical_ack_20261105.py",
+    "tests/test_critical_receipts_20261105.py"
   ],
   "anchor": "CRITICAL_DELIVERY_20261105",
   "comment": [
@@ -18,6 +19,6 @@
     "one event produces a receipt per channel; a failed or unconfigured channel is a receipt and never stops the others;",
     "DELIVERED means at least one channel confirmed; no receipt carries an address; and the text message leads with the action.",
     "What it does NOT assert: queuing to a durable outbox, retry with backoff, acknowledgement stopping repeats, and the",
-    "operator-facing hourly summary. Those are the next slice of FQ-143 and nothing here claims them. The producer gate (FQ-150/D35) checks that all twelve class ids have a producer, that B4's action carries the full https reauth link with no dev port and never asks the operator to reply with a code, and that the dry run produces every enabled class with fakes. The ack gate checks that the first acknowledgement records who and when, that a second changes nothing, that the statement only claims an unacknowledged row so two racers cannot both win, and that a missing durable store is reported rather than claimed as success."
+    "operator-facing hourly summary. Those are the next slice of FQ-143 and nothing here claims them. The producer gate (FQ-150/D35) checks that all twelve class ids have a producer, that B4's action carries the full https reauth link with no dev port and never asks the operator to reply with a code, and that the dry run produces every enabled class with fakes. The ack gate checks that the first acknowledgement records who and when, that a second changes nothing, that the statement only claims an unacknowledged row so two racers cannot both win, and that a missing durable store is reported rather than claimed as success. The receipts gate checks that every channel gets a row, that a skipped channel is stored as suppressed because the column's CHECK has no 'skipped', that no unaccepted status is ever written, and that a missing durable store is reported rather than dropped."
   ]
 }
