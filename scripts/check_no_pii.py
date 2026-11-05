@@ -640,7 +640,11 @@ def scan_range(
             # could ride in. Added/renamed/copied blobs are read here for that reason alone.
             if statuses[path] not in ("A", "R", "C"):
                 continue
-            blob = subprocess.run(["git", "show", f"{target}:{path}"], cwd=repo, capture_output=True)
+            # S603/S607: argv is a fixed list and the executable is the `git` on PATH, the same shape as the four
+            # subprocess calls this file already carries — no shell, no user-supplied program. Annotated rather than
+            # counted into the security baseline, which may only shrink.
+            blob = subprocess.run(["git", "show", f"{target}:{path}"], cwd=repo,  # noqa: S603, S607
+                                  capture_output=True)
             if blob.returncode == 0 and not review.registered(path):
                 text, unreadable = _decode_with_reason(blob.stdout, path)
                 if text is None:
