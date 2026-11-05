@@ -82,6 +82,65 @@ def test_the_newest_pr_wins_when_a_row_has_two():
     assert rep["queue"]["items"][0]["pr"] == 2610
 
 
+# ── #2640 F1: a passing mention may not park or deliver a row ────────────────────────────────────────────────────
+# cc-deepseek's whole-head BLOCK (2026-11-05T02:42Z): rows_named_by() treated any `FQ-0NN` in a body as that PR
+# claiming the row, and "newest PR wins" let an unrelated, newer, closed PR outrank the real one — parking a row whose
+# work was still open and removing it from what the dispatcher sends. These four cases pin the repair.
+
+
+def test_an_unrelated_closed_pr_that_merely_mentions_a_row_does_not_park_it():
+    """The reviewer's exact probe: 'This supersedes the old FQ-045 approach and closes nothing.'"""
+    rep = S.sync(
+        queue(row("FQ-045", status="fix_in_review", pr=2628, head="a" * 40)),
+        [pr(2628, branch="wt/fq045-journal-tabs", body="FQ-045"),
+         pr(2700, state="CLOSED", branch="wt/unrelated-cleanup",
+            body="This supersedes the old FQ-045 approach and closes nothing.")],
+        now=NOW,
+    )
+    assert rep["changed"] == 0, rep["changes"]
+    assert rep["queue"]["items"][0]["status"] == "fix_in_review"
+    assert rep["queue"]["items"][0]["pr"] == 2628
+
+
+def test_a_mention_only_pr_cannot_retake_a_row_that_already_has_a_pr():
+    """No open candidate: the mention-only closed PR is the only one left, and it still may not move the row."""
+    rep = S.sync(
+        queue(row("FQ-045", status="fix_in_review", pr=2628)),
+        [pr(2700, state="CLOSED", branch="wt/unrelated-cleanup", body="FQ-045 came up in passing.")],
+        now=NOW,
+    )
+    assert rep["changed"] == 0, rep["changes"]
+    assert rep["queue"]["items"][0]["status"] == "fix_in_review"
+
+
+def test_an_open_claiming_pr_beats_a_newer_closed_mentioning_pr():
+    rep = S.sync(
+        queue(row("FQ-045")),
+        [pr(2628, branch="wt/fq045-journal-tabs", body=""),
+         pr(2700, state="CLOSED", branch="wt/unrelated-cleanup", body="Mentions FQ-045 in prose.")],
+        now=NOW,
+    )
+    item = rep["queue"]["items"][0]
+    assert item["status"] == "fix_in_review" and item["pr"] == 2628
+
+
+def test_a_closed_pr_that_claims_the_row_still_parks_it():
+    """Preferring claims must not disable rule 4: a closed PR that says it closes the row still parks it."""
+    rep = S.sync(
+        queue(row("FQ-045", status="fix_in_review", pr=2628)),
+        [pr(2628, state="CLOSED", branch="wt/fq045-journal-tabs", body="Closes FQ-045.")],
+        now=NOW,
+    )
+    assert rep["queue"]["items"][0]["status"] == "parked"
+
+
+def test_the_declaration_and_the_branch_are_what_claim_a_row():
+    assert S.rows_claimed_by(pr(1, branch="wt/fq045-journal-tabs", body="")) == {"FQ-045"}
+    assert S.rows_claimed_by(pr(1, branch="wt/elsewhere", body="Closes FQ-045.")) == {"FQ-045"}
+    assert S.rows_claimed_by(pr(1, branch="wt/elsewhere", body="FQ-045 came up in passing.")) == set()
+    assert S.rows_named_by(pr(1, branch="wt/elsewhere", body="FQ-045 came up in passing.")) == {"FQ-045"}
+
+
 # ── rules 3 and 4: merged, and closed without merging ───────────────────────────────────────────────────────────
 
 

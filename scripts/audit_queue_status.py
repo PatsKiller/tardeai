@@ -72,14 +72,39 @@ def gh_pr_list(runner: Callable[[list[str]], str] | None = None, *, limit: int =
 #: Rule 3 of the queue brief has authors name the rows they are NOT closing, so a bare mention is not a claim.
 _NEGATED = re.compile(r"\b(not|NOT)\b[^\n]{0,40}\b(clos\w+|address\w+|includ\w+|touch\w+|fix\w+)", re.IGNORECASE)
 
+#: A first-class declaration: the verb that says this PR does the work, on the same line as the row. A row named in
+#: prose ("this supersedes the old FQ-045 approach") is a MENTION and may not move a row that already has a PR — the
+#: 2026-11-05 review (#2640 F1) found a passing mention parking a row whose real PR was open.
+_DECLARES = re.compile(
+    r"\b(?:clos(?:e|es|ed|ing)|fix(?:es|ed|ing)?|resolv(?:e|es|ed|ing)|implement(?:s|ed|ing)?|address(?:es|ed|ing)?"
+    r"|deliver(?:s|ed|ing)?|does|owns?)\b[^\n]{0,80}?\bFQ-(\d{3})\b",
+    re.IGNORECASE,
+)
+
+
+def _body_lines(pr: dict[str, Any]) -> list[str]:
+    return [line for line in str(pr.get("body") or "").splitlines() if not _NEGATED.search(line)]
+
 
 def rows_named_by(pr: dict[str, Any]) -> set[str]:
-    """Which queue rows a PR claims to be about. A row named only in a "not closing FQ-0NN" line is not claimed."""
+    """Which queue rows a PR names at all. A row named only in a "not closing FQ-0NN" line is not named."""
     out: set[str] = set()
-    for line in str(pr.get("body") or "").splitlines():
-        if _NEGATED.search(line):
-            continue
+    for line in _body_lines(pr):
         for m in _ROW_IN_BODY.finditer(line):
+            out.add(f"FQ-{m.group(1)}")
+    for m in _ROW_IN_BRANCH.finditer(str(pr.get("headRefName") or "")):
+        out.add(f"FQ-{m.group(1)}")
+    return out
+
+
+def rows_claimed_by(pr: dict[str, Any]) -> set[str]:
+    """Which rows a PR CLAIMS — by branch name or by a first-class "closes/fixes FQ-0NN" line.
+
+    A weaker match than :func:`rows_named_by`: it is the set allowed to retake a row that already has a PR.
+    """
+    out: set[str] = set()
+    for line in _body_lines(pr):
+        for m in _DECLARES.finditer(line):
             out.add(f"FQ-{m.group(1)}")
     for m in _ROW_IN_BRANCH.finditer(str(pr.get("headRefName") or "")):
         out.add(f"FQ-{m.group(1)}")
@@ -118,6 +143,36 @@ def plan(item: dict[str, Any], pr: dict[str, Any] | None, now: str) -> dict[str,
     return None
 
 
+def choose_pr(item: dict[str, Any], candidates: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Which of a row's candidate PRs decides its status.
+
+    Order of evidence, strongest first:
+      1. a PR that CLAIMS the row (branch name or a first-class "closes FQ-0NN" line) beats one that mentions it;
+      2. an OPEN PR beats a merged/closed one — a newer closed PR must not park a row whose work is still open;
+      3. the row's existing PR keeps the association when both are equally strong;
+      4. the higher PR number (the newest) breaks the remaining tie.
+    A MENTION-only PR never retakes a row that already has a PR: the tool may only move an association when the PR that
+    owns it says so (#2640 F1).
+    """
+    if not candidates:
+        return None
+    row = str(item.get("id"))
+    claimed = [p for p in candidates if row in rows_claimed_by(p)]
+    pool = claimed or candidates
+    owned = item.get("pr")
+
+    def rank(pr: dict[str, Any]) -> tuple[int, int, int]:
+        number = int(pr.get("number") or 0)
+        return (1 if str(pr.get("state") or "").upper() == "OPEN" else 0,
+                1 if owned is not None and number == int(owned) else 0,
+                number)
+
+    chosen = max(pool, key=rank)
+    if owned is not None and int(chosen.get("number") or 0) != int(owned) and row not in rows_claimed_by(chosen):
+        return None
+    return chosen
+
+
 def sync(queue: dict[str, Any], prs: Iterable[dict[str, Any]], *, now: str | None = None) -> dict[str, Any]:
     """Apply the rules to a queue document in memory. Returns a report; mutates a copy, never the input."""
     now = now or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -125,16 +180,13 @@ def sync(queue: dict[str, Any], prs: Iterable[dict[str, Any]], *, now: str | Non
     for pr in prs:
         for row in rows_named_by(pr):
             by_row.setdefault(row, []).append(pr)
-    # newest PR wins when a row has more than one (a superseded PR is still evidence the row is in review).
-    for row in by_row:
-        by_row[row].sort(key=lambda p: int(p.get("number") or 0), reverse=True)
 
     doc = json.loads(json.dumps(queue))  # deep copy: the caller's object stays clean
     changes: list[dict[str, Any]] = []
     for item in doc.get("items") or []:
         if not isinstance(item, dict):
             continue
-        pr = (by_row.get(str(item.get("id"))) or [None])[0]
+        pr = choose_pr(item, by_row.get(str(item.get("id"))) or [])
         delta = plan(item, pr, now)
         if not delta:
             continue
