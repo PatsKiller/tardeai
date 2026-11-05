@@ -109,6 +109,42 @@ def test_plain_reason_never_shows_paths_or_raw_codes():
         assert "/" not in p(text) and ".py" not in p(text)
 
 
+def _report_for(lanes):
+    from datetime import datetime, timezone
+    return J.build({"lanes": lanes}, {"events": [], "successes": {}, "collection_gaps": []}, [], {},
+                   now=datetime(2026, 11, 5, 15, tzinfo=timezone.utc), trading_day=lambda d: True)
+
+
+def test_paused_state_reason_is_passed_through_verbatim():
+    """#2178 F1: state_reason is operator prose, not an evidence code; the cause shows it unchanged."""
+    prose = ("Fired by the OpenClaw scheduler (job 676c2212-f18a-4913-b96d-e7790b7b173c, "
+             "enabled in OpenClaw cron jobs.json, schedule 0 9 24 * * America/New_York); N6 closed by policy")
+    lane = {"lane_id": "job-paused", "state": "PAUSED", "state_reason": prose,
+            "scheduler": {"kind": "cron", "expression": "0 9 * * *"}}
+    rows = _report_for([lane])["rows"]
+    assert rows[0]["result"] == "paused"
+    assert rows[0]["cause"] == prose  # "jobs.json"/"America/New_York" survive; no "a file"
+
+
+def test_live_registry_state_reasons_are_never_rewritten():
+    """#2178 F1 regression over the repository's live registry: every rendered state_reason is verbatim.
+
+    309 lanes carry state_reason today and 205 of those contain a token the path redactor rewrites (timezones,
+    section references). This fails if the renderer is ever fed registry prose again.
+    """
+    registry = json.loads((ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))
+    rows = {row["lane_id"]: row for row in _report_for(registry["lanes"])["rows"]}
+    checked = 0
+    for lane in registry["lanes"]:
+        state_reason = lane.get("state_reason")
+        if lane.get("state") not in {"PAUSED", "RETIRED", "DISABLED"} or not state_reason:
+            continue
+        checked += 1
+        got = rows[J.W.identity(lane)]["cause"]
+        assert got == state_reason, (lane.get("lane_id"), state_reason, got)
+    assert checked > 0, "no paused/retired/disabled lane carried a state_reason; the guard examined nothing"
+
+
 def test_missed_explanation_is_plain_language():
     lanes = [{"lane_id": "job-c", "state": "ACTIVE", "scheduler": {"kind": "cron", "expression": "0 9 * * *"}}]
     snapshot = {"events": [], "successes": {}, "collection_gaps": ["journal_history_window_truncated",

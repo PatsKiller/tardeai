@@ -86,7 +86,8 @@ def test_wrapper_failure_shows_the_log_error_not_the_gap(tmp_path):
     row = _row({"unified-stop-supervisor": err})
     assert row["result"] == "failed"
     assert "AssertionError: ALPACA_MODE must be paper" in row["cause"]
-    assert "logs/unified_stop_supervisor.log" in row["cause"]
+    # 2026-10-25 (batch 37): the page never shows a file path; the source is named as "a log file".
+    assert "a log file" in row["cause"]
 
 
 def test_stale_log_error_is_not_attributed_to_a_later_failure(tmp_path):

@@ -215,7 +215,10 @@ def _path_word(match: re.Match) -> str:
 
 def plain_reason(text) -> str | None:
     """Plain-language version of an evidence code / diagnostic for the UI: known codes become sentences and no file
-    path is ever shown (it becomes "a script", "a log file", "the secrets loader", ...)."""
+    path is ever shown (it becomes "a script", "a log file", "the secrets loader", ...).
+
+    Only for evidence codes and diagnostics. Never pass operator-authored prose such as a lane's ``state_reason``:
+    it is already written for the operator and is rendered verbatim (#2178 F1)."""
     if text is None:
         return None
     raw = str(text).strip()
@@ -345,8 +348,12 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
         except (ValueError, TypeError, KeyError):
             due, upcoming, issue, gated, due_today = [], None, "schedule could not be measured", False, False
         outcome, reason = "unknown", "Successful execution is not yet measured"
+        # state_reason is operator-authored prose from the registry, not an evidence code: it is shown verbatim.
+        # Feeding it to plain_reason rewrites timezones and section references into "a file" (#2178 F1).
+        reason_is_prose = False
         if state in {"PAUSED", "RETIRED", "DISABLED"}:
             outcome, reason = ("retired" if state == "RETIRED" else "paused"), lane.get("state_reason") or f"Job is {state.lower()}"
+            reason_is_prose = True
             upcoming = None
         elif failure_at and (success is None or failure_at > success):
             outcome, reason = "failed", diagnostic
@@ -368,7 +375,8 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
             "successful_run_id": successful[-1].get("run_id") if successful else None,
             "next_due_at": W.iso(upcoming) if upcoming else None, "due_today": due_today,
             "missed_fires": check.get("missed_fires"), "market_hours_only": gated,
-            "cause": plain_reason(reason), "evidence": last.get("run_id") or ("wrapper event" if events else None)})
+            "cause": reason if reason_is_prose else plain_reason(reason),
+            "evidence": last.get("run_id") or ("wrapper event" if events else None)})
     counts = Counter(row["result"] for row in rows)
     seen = instant(watchdog.get("observed_at"))
     monitor_ok = bool(watchdog.get("schema") == W.SCHEMA and watchdog.get("mode") == "monitor"
