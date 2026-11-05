@@ -9,6 +9,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { Chip } from '../components/primitives'
 import { RADIUS, TOKENS, TYPE, FONT, toneVars } from '../lib/designTokens'
+import { censusSituation } from '../lib/pipelineCensusText'
 import {
   PIPELINE_STAGES, PRESETS, STAGE_LABEL, ageLabel, cardActions, cellTitle, filterFromParams, filterItems, filterOptions,
   filterToParams, planLabel, queuedSections, ragTone, summarize, type PipelineFilter, type PipelineItem, type PipelinePayload,
@@ -18,6 +19,11 @@ import { canCreate, disabledReason, needsWords, phraseMatches, requestParams, ty
 import { opsApi, passkeyStepUp, type OpsRequest } from '../lib/opsControls'
 
 const QUEUE_CAP = 6
+// BOARD row 78: the payload gains `summary.queued_by_owner` and `sources.readers`. The shared PipelinePayload type lives
+// in lib/workPipeline.ts, which another live session holds tonight, so the panel narrows the two new branches locally
+// rather than editing a file someone else is working in; move these into the shared type when that claim releases.
+type QueuedByOwner = { operator: number; agent: number; nobody: number }
+type SourceReader = { label?: string; ok?: boolean; as_of?: string | null; last_success_at?: string | null; error?: string | null }
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 12, minWidth: 0 }
 const small: CSSProperties = { fontSize: TYPE.sm, color: TOKENS.text[2] }
 const mono: CSSProperties = { fontFamily: FONT.mono, fontSize: TYPE.sm, overflowWrap: 'anywhere' }
@@ -40,6 +46,14 @@ function cellStyle(rag: PipelineItem['rag'], current: boolean): CSSProperties {
     background: rag === 'grey' ? TOKENS.bg[2] : tone.bg, color: rag === 'grey' ? TOKENS.text[3] : tone.color,
     border: `1px solid ${current ? tone.color : rag === 'grey' ? TOKENS.borderSubtle : tone.border}`,
   }
+}
+
+/** FQ-033: provenance the operator does not need to read stays one tap away, not in the middle of the sentence. */
+function Technical({ label, children }: { label: string; children: ReactNode }) {
+  return <details data-testid="technical-details" style={{ marginTop: 2 }}>
+    <summary style={{ ...small, cursor: 'pointer' }}>{label}</summary>
+    <div style={{ ...mono, color: TOKENS.text[2], marginTop: 2 }}>{children}</div>
+  </details>
 }
 
 function StageCells({ it }: { it: PipelineItem }) {
@@ -98,7 +112,7 @@ function Tier2Button({ a, onDone }: { a: Tier2Action; onDone: () => void }) {
   </>
 }
 
-type Busy = { itemId: string; text: string; ok?: boolean } | null
+type Busy = { itemId: string; text: string; ok?: boolean; technical?: string } | null
 
 function ItemCard({ it, onAct, busy, onWorklog, onRefresh }: {
   onRefresh: () => void
@@ -128,14 +142,18 @@ function ItemCard({ it, onAct, busy, onWorklog, onRefresh }: {
     <div className="wp-card-grid" style={{ display: 'grid', gap: '6px 14px' }}>
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: TYPE.md, fontWeight: 650, color: TOKENS.text[0], overflowWrap: 'anywhere' }}>{it.what.title || it.id}</div>
-        <div style={{ ...mono, color: TOKENS.text[2], display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {it.what.priority ? <div style={{ ...small }}>P{it.what.priority}</div> : null}
+        {/* FQ-033: the id, the design id and the batch are identifiers, not the sentence an operator reads first.
+            They stay on the card, one tap away, and nothing is removed. */}
+        <Technical label="Technical: item id, design id and batch">
           <span>{it.id}</span>
-          {it.what.design_id ? <span>{it.what.design_id}</span> : null}
-          {it.what.priority ? <span>P{it.what.priority}</span> : null}
-          {it.batch && !it.is_batch ? <span>batch PR {it.batch}</span> : null}
-        </div>
+          {it.what.design_id ? <> · <span>{it.what.design_id}</span></> : null}
+          {it.batch && !it.is_batch ? <> · <span>batch PR {it.batch}</span></> : null}
+        </Technical>
         <dl style={{ display: 'grid', gridTemplateColumns: '48px minmax(0, 1fr)', gap: '2px 6px', margin: '4px 0 0' }}>
-          <dt style={dt}>Who</dt><dd style={dd} data-testid="who">{it.who.label}{it.who.session ? <span style={{ ...small, fontFamily: FONT.mono }}> · {it.who.session}</span> : null}</dd>
+          <dt style={dt}>Who</dt><dd style={dd} data-testid="who">{it.who.label}
+            {it.who.session ? <Technical label="Technical: agent session">{it.who.session}</Technical> : null}
+          </dd>
           <dt style={dt}>When</dt><dd style={dd} data-testid="when">started {et(it.when.started)} · last activity {et(it.when.last_activity)} · <b>{ageLabel(it.when.stage_age_minutes)} in {STAGE_LABEL[it.stage]}</b></dd>
         </dl>
       </div>
@@ -143,7 +161,8 @@ function ItemCard({ it, onAct, busy, onWorklog, onRefresh }: {
         <dl style={{ display: 'grid', gridTemplateColumns: '48px minmax(0, 1fr)', gap: '2px 6px', margin: 0 }}>
           <dt style={dt}>Where</dt>
           <dd style={dd} data-testid="where">
-            <span style={mono}>{it.where.branch || '—'}</span>{it.where.worktree ? <span style={small}> · {it.where.worktree}</span> : null}
+            <span style={mono}>{it.where.branch || '—'}</span>
+            {it.where.worktree ? <Technical label="Technical: where the work is checked out">{it.where.worktree}</Technical> : null}
             {it.where.file_count ? <details style={{ display: 'inline' }}><summary style={{ ...small, cursor: 'pointer', display: 'inline' }}> · {it.where.file_count} file{it.where.file_count === 1 ? '' : 's'}</summary>
               <ul style={{ margin: '4px 0 0', paddingLeft: 16, ...mono }}>{it.where.files.map(f => <li key={f}>{f}</li>)}{it.where.file_count > it.where.files.length ? <li>…{it.where.file_count - it.where.files.length} more</li> : null}</ul>
             </details> : null}
@@ -192,7 +211,7 @@ function ItemCard({ it, onAct, busy, onWorklog, onRefresh }: {
       <button type="button" style={btn} data-testid="composer-submit" onClick={submit}>{compose === 'release' ? 'Confirm release' : compose === 'hold' ? 'Hold' : compose === 'split' ? 'Split task' : 'Add note'}</button>
       <button type="button" style={{ ...btn, color: TOKENS.text[2] }} onClick={() => { setCompose(null); setText('') }}>Cancel</button>
     </div> : null}
-    {busy && busy.itemId === it.id ? <div data-testid="action-result" style={{ ...small, color: busy.ok === false ? TOKENS.danger : busy.ok ? TOKENS.success : TOKENS.text[2] }}>{busy.text}</div> : null}
+    {busy && busy.itemId === it.id ? <div data-testid="action-result" style={{ ...small, color: busy.ok === false ? TOKENS.danger : busy.ok ? TOKENS.success : TOKENS.text[2] }}>{busy.text}{busy.technical ? <Technical label="Technical: the service's exact message">{busy.technical}</Technical> : null}</div> : null}
   </article>
 }
 
@@ -266,12 +285,19 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
     const id = it?.id || 'queued'
     setBusy({ itemId: id, text: `${cmd}: sending…` })
     const r: CommandResult = await sendCommand(cmd, p)
-    setBusy({ itemId: id, ok: r.ok, text: r.ok ? `${cmd}: done${r.replayed ? ' (replayed)' : ''}` : `${cmd} refused: ${r.error || r.status}${r.detail ? ` — ${r.detail}` : ''}` })
+    // FQ-033: a failure leads with what happened in words; the service's exact text is one tap away.
+    const raw = [r.error || r.status, r.detail].filter(Boolean).join(' — ')
+    setBusy(r.ok
+      ? { itemId: id, ok: true, text: `${cmd}: done${r.replayed ? ' (replayed)' : ''}` }
+      : { itemId: id, ok: false, text: `That action did not go through. The service's exact message is under Technical.`, technical: raw || undefined })
     if (r.ok) api.refetch()
   }, [api])
 
   const served = api.data?.sources?.served
   const census = api.data?.sources?.census
+  // FQ-033 (cc-deepseek-8 R1 at 75251580): `census.warning` is set before the first refresh and by PARTIAL warnings
+  // after a successful one, so it cannot be read as "the refresh failed". The sentence comes from the tested helper.
+  const censusView = censusSituation({ refreshedAt: census?.refreshed_at, warning: census?.warning })
   return <section data-testid="work-pipeline" style={{ display: 'grid', gap: 12, minWidth: 0 }}>
     <style>{`
       .wp-card-grid { grid-template-columns: minmax(0, 1.4fr) minmax(0, 2fr); }
@@ -292,7 +318,17 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
           <div style={small} data-testid="pipeline-sources">
             One row per work item (task, PR or design phase). As of {et(api.data?.as_of)} · PR census {census?.refreshed_at ? `${api.data?.sources?.census_age_s ?? '?'} s old` : 'pending'} (refreshed at most once a minute)
             {served?.sha ? ` · served ${String(served.sha).slice(0, 9)} health ${served.ok ? 'ok' : served.ok === false ? 'FAILED' : 'unknown'}` : ''}
-            {census?.warning ? <span style={{ color: TOKENS.warning }}> · {census.warning}</span> : null}
+            {censusView.text ? <span style={{ color: TOKENS.warning }}> · {censusView.text}</span> : null}
+            {census?.warning ? <Technical label="Technical: the census report">{census.warning}</Technical> : null}
+          </div>
+          <div style={small} data-testid="pipeline-source-readers">
+            {Object.entries(((api.data as unknown as { sources?: { readers?: Record<string, SourceReader> } })
+              ?.sources?.readers) || {}).map(([name, r]) => (
+              <span key={name} data-testid={`pipeline-source-${name}`} style={{ color: r.ok ? undefined : TOKENS.warning }}>
+                {' · '}{r.label || name}{' '}
+                {r.ok ? `as of ${et(r.as_of)}` : `unavailable — ${r.error || 'unreadable'}; last succeeded ${r.last_success_at ? et(r.last_success_at) : 'never recorded'}`}
+              </span>
+            ))}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', ...small }}>
@@ -352,10 +388,17 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
         <h2 style={{ margin: 0, fontSize: TYPE.md, color: TOKENS.text[0] }}>
           <button type="button" onClick={() => setQueueOpen(!queueOpen)} style={{ ...btn, border: 'none', background: 'transparent', padding: 0, fontSize: TYPE.md, fontWeight: 700 }} aria-expanded={queueOpen}>{queueOpen ? '▾' : '▸'} Queued</button>
           <span style={{ ...small, fontWeight: 400 }}> {q.tasks.length} free tasks · {q.green.length} green PRs not in a batch · {q.operator.length} operator to-dos</span>
+          {(() => {
+            const qbo = (api.data as unknown as { summary?: { queued_by_owner?: QueuedByOwner } })
+              ?.summary?.queued_by_owner
+            return qbo ? (
+              <span style={{ ...small, fontWeight: 400 }} data-testid="queued-by-owner"> · {qbo.operator} operator-owned · {qbo.agent} agent-owned · {qbo.nobody} nobody has taken it</span>
+            ) : null
+          })()}
         </h2>
         <NewTaskForm onCreate={p => act(null, 'task_add', p)} />
       </div>
-      {busy?.itemId === 'queued' ? <div data-testid="action-result" style={{ ...small, color: busy.ok === false ? TOKENS.danger : TOKENS.success }}>{busy.text}</div> : null}
+      {busy?.itemId === 'queued' ? <div data-testid="action-result" style={{ ...small, color: busy.ok === false ? TOKENS.danger : TOKENS.success }}>{busy.text}{busy.technical ? <Technical label="Technical: the service's exact message">{busy.technical}</Technical> : null}</div> : null}
       {queueOpen ? <div className="wp-queue" style={{ display: 'grid', gap: 10, marginTop: 8 }}>
         <div data-testid="queued-tasks" style={{ display: 'grid', gap: 6, alignContent: 'start' }}>
           <div style={small}>Task board: free, not started (agents pick with <code>agent_claim.py next</code>)</div>

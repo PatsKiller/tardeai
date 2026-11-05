@@ -470,6 +470,9 @@ What changed (`scripts/system_health_agent.py`, `scripts/lib/system_health_fresh
   ACTIVE `config/lane_registry.json` row(s) of `monitor_lane_ids`; the literal is the fallback and a test pins it
   equal to the registry (Finviz: `0 10 * * 1-5`, matching the crontab). Opt-in: other components' drift
   (`trade_ai_orchestrator` literal vs registry `30 17 * * 1-5`) is reported in `schedule_evidence`, not adopted.
+- **Declared, not installed.** A resolved schedule is the ACTIVE lane's DECLARATION; installation is not measured.
+  A fail-back is labelled `NOT MEASURED` with its real reason (unreadable registry, missing/ambiguous lane,
+  invalid scheduler entry, or no measured schedule).
 - **Run grace.** Finviz `max_runtime_sec` 600 → 1500: the 10:00 full `--run` measured 556–1161 s (2026-10-15..22).
 
 `scripts/finviz_screener_runner.py`: a `--screener <id>` run writes `finviz-screener-runner-subset_last.json`; only a

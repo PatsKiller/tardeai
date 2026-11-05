@@ -88,6 +88,31 @@ def do_apply(path, rules, doc, **kw):
                     manifest_sha256=hashlib.sha256(path.read_bytes()).hexdigest(), progress_sink=kw.pop("progress_sink", lambda _r: None), **kw)
 
 
+def plan_row(result, path):
+    """The plan row for `path`, or an AssertionError that prints every path the plan returned and why.
+
+    FQ-153: this replaces `next(r for r in result["items"] if r["path"] == str(path))`. When the row is excluded —
+    which is what the flake does — `next` raises a bare StopIteration and the CI log names no reason at all, so the
+    same failure has cost the fleet two nights of deploys without ever saying which rule kept the directory. The
+    pass/fail outcome is unchanged; only the failure message is, and it now carries the whole plan.
+    """
+    target = str(path)
+    for row in result.get("items") or []:
+        if row.get("path") == target:
+            return row
+    items = sorted(str(r.get("path")) for r in result.get("items") or [])
+    excluded = sorted(
+        f"{r.get('path')} :: {', '.join(str(reason) for reason in (r.get('reasons') or ['no reason recorded']))}"
+        for r in result.get("excluded") or []
+    )
+    raise AssertionError(
+        f"the plan did not return {target} as a removal candidate.\n"
+        f"  plan: generated_at={result.get('generated_at')} host={result.get('host')} mode={result.get('mode')}\n"
+        f"  items ({len(items)}): {items}\n"
+        f"  excluded ({len(excluded)}): {excluded}"
+    )
+
+
 def test_evidence_requires_each_complete_fresh_hashed_source(world):
     doc = evidence()
     assert SR.evidence_context(doc, NOW)["snapshot"]["prs"] == []
@@ -921,7 +946,7 @@ def test_agent_scratch_never_takes_a_worktree(world, monkeypatch):
         old(child)
     result = DH.standing_plan(rules, NOW, evidence())
     # 2026-10-31: a registered proof worktree inside scratch is archived then removed with the dir, never left behind
-    item = next(r for r in result["items"] if r["path"] == str(path))
+    item = plan_row(result, path)
     assert item["bundles"] == ["worktree:wt"]
     monkeypatch.undo()  # the real remover, on fixture paths only
     ok, how = DH.remove_item(item)  # the fake admin dir is no repo: archive cannot run, so nothing is removed
@@ -1035,7 +1060,7 @@ def test_nested_clone_with_only_known_commits_is_reclaimable(world):
     _git_fixture(scratch, "clone", "-q", str(ref), "clone")
     _age_tree(scratch)
     result = DH.standing_plan(rules, NOW, evidence())
-    item = next(r for r in result["items"] if r["path"] == str(scratch))
+    item = plan_row(result, scratch)
     assert item["bundles"] == []
 
 
@@ -1050,7 +1075,7 @@ def test_nested_repo_with_unique_commit_is_bundled_then_removed(world, monkeypat
     _git_fixture(repo, "commit", "-q", "-m", "unique")
     _age_tree(scratch)
     result = DH.standing_plan(rules, NOW, evidence())
-    item = next(r for r in result["items"] if r["path"] == str(scratch))
+    item = plan_row(result, scratch)
     assert item["bundles"] == ["work"]
     monkeypatch.undo()  # the real remover, on fixture paths only
     ok, how = DH.remove_item(item)
@@ -1062,6 +1087,35 @@ def test_nested_repo_with_unique_commit_is_bundled_then_removed(world, monkeypat
     assert (restored / "b.txt").read_text() == "only here"
 
 
+def test_activity_is_measured_before_the_nested_inspection(world, monkeypatch):
+    """Main red 2026-11-03: the T rule measured activity AFTER `nested_repos` ran.
+
+    `nested_repos` runs `git status` in each nested repo; that (or any git invocation there) can rewrite
+    `.git/index` with the wall clock. The activity scan then sees a future mtime, switches to its ctime and
+    holds the dir as `scratch_not_older_than_N_days` — intermittently, because it depends on the inspection.
+    On CI this made `test_nested_repo_with_unique_commit_is_bundled_then_removed` raise StopIteration at
+    `next(... items ...)` (the dir was excluded, not that removal failed).
+
+    This test makes the inspection write deliberately, exactly as a refreshing `git status` does. On the old
+    order the dir is excluded (the lookup raises StopIteration); with the fix the activity is measured first,
+    the candidate survives, and the fingerprint carries the aged value.
+    """
+    home, rules = world[0], world[1]
+    rules["standing_apply"]["rules"] = ["A", "S", "T", "W"]
+    (scratch,) = _scratch_dirs(home, ("proof-inspection-writes",))
+    real_nested = DH.nested_repos
+
+    def writing_inspection(path, ref):
+        (path / "nested" / "evidence.txt").write_text("rewritten by the inspection")
+        return real_nested(path, ref)
+
+    monkeypatch.setattr(DH, "nested_repos", writing_inspection)
+    result = DH.standing_plan(rules, NOW, evidence())
+    item = plan_row(result, scratch)
+    aged = (NOW - timedelta(days=10)).timestamp()
+    assert abs(item["fingerprint"]["activity"] - aged) < 5, item["fingerprint"]
+
+
 def test_nested_registered_worktree_is_archived_then_removed(world, monkeypatch):
     home, rules, ref = _nested_world(world)
     (scratch,) = _scratch_dirs(home, ("proof-registered-worktree",))
@@ -1069,7 +1123,8 @@ def test_nested_registered_worktree_is_archived_then_removed(world, monkeypatch)
     (scratch / "wt" / "a.txt").write_text("edited in proof")
     (scratch / "wt" / "new.txt").write_text("untracked proof output")
     _age_tree(scratch)
-    item = next(r for r in DH.standing_plan(rules, NOW, evidence())["items"] if r["path"] == str(scratch))
+    result = DH.standing_plan(rules, NOW, evidence())
+    item = plan_row(result, scratch)
     assert item["bundles"] == ["worktree:wt"]
     monkeypatch.undo()  # the real remover, on fixture paths only
     ok, how = DH.remove_item(item)

@@ -19,7 +19,9 @@ OAUTH_LANES = frozenset({"grok", "chatgpt"})
 # Generic endpoint Flash aliases → FAST only (no PRO family)
 FLASH_LANES = frozenset({
     "deepseek-flash",
-    "deepseek-v4-flash",
+    # 2026-11-04 (cc4): "deepseek-v4-flash" removed. It is a LEGACY id in lib/llm_model_registry, and this endpoint
+    # accepting it as a working lane made two surfaces disagree about one name. A caller that still sends it now gets
+    # POLICY_NOT_ALLOWED here rather than a working lane the registry refuses downstream.
     "fast",
 })
 
@@ -43,7 +45,6 @@ LEGACY = frozenset({"deepseek-chat", "deepseek-reasoner"})
 
 LANE_TO_POLICY = {
     "deepseek-flash": "FAST",
-    "deepseek-v4-flash": "FAST",  # legacy V4 Flash lane alias
     "fast": "FAST",
     "fast_think": "FAST_THINK",
 }
