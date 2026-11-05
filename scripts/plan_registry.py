@@ -476,20 +476,38 @@ class Registry:
         return rows
 
     def _mutate(self, pid: str, event: str, change: dict[str, Any], *, dry_run: bool = False,
-                action: str | None = None) -> dict[str, Any]:
+                action: str | None = None, revive_if_stalled: bool = False) -> dict[str, Any]:
+        """One mutation under one lock.
+
+        `revive_if_stalled` folds a second write (`status -> in_progress` for a stalled plan) into THIS
+        lock. Doing it as two `_mutate` calls released the lock in between, so a concurrent `done` or
+        `abandoned` could land there and be overwritten with `in_progress` (D52 triage KEEP_BLOCK #2489,
+        plan_registry.py:509). The revival is also CONDITIONAL on the status read inside the lock, so it
+        can never clobber a terminal state written a moment earlier.
+        """
         if dry_run:
             # read path only: no lock, no write, nothing created
             doc = self.get(pid)
             front = {**doc["front"], **change, "updated_at": _utc()}
             detail = {k: v for k, v in change.items() if v is not None}
-            return self._preview(action or event, pid, front=front, body=doc["body"],
-                                 event=event, detail=detail)
+            report = self._preview(action or event, pid, front=front, body=doc["body"],
+                                   event=event, detail=detail)
+            if revive_if_stalled and str(front.get("status")) == "stalled":
+                report["followup"] = {"event": "status", "id": pid, "detail": {"status": "in_progress"}}
+                report["status"] = "in_progress"
+                report["front"] = {**report["front"], "status": "in_progress"}
+            return report
         with self._lock():
             doc = self.get(pid)
             front = {**doc["front"], **change, "updated_at": _utc()}
+            revived = revive_if_stalled and str(front.get("status")) == "stalled"
+            if revived:
+                front["status"] = "in_progress"
             detail = {k: v for k, v in change.items() if v is not None}
             self._write(pid, front, doc["body"])
             self._event(event, pid, **detail)
+            if revived:
+                self._event("status", pid, status="in_progress")
         return front
 
     def link(self, pid: str, *, claim: str | None = None, branch: str | None = None,
@@ -497,19 +515,9 @@ class Registry:
         change = {k: v for k, v in (("claim", claim), ("branch", branch), ("pr", pr)) if v is not None}
         if not change:
             raise ValueError("link needs at least one of --claim, --branch, --pr")
-        if dry_run:
-            report = self._mutate(pid, "link", change, dry_run=True)
-            if str(report["front"].get("status")) == "stalled":
-                # the live run performs a second mutation; the preview must say so
-                report["followup"] = {"event": "status", "id": pid,
-                                      "detail": {"status": "in_progress"}}
-                report["status"] = "in_progress"
-                report["front"] = {**report["front"], "status": "in_progress"}
-            return report
-        front = self._mutate(pid, "link", change)
-        if str(front.get("status")) == "stalled":  # activity revives a stalled plan
-            front = self._mutate(pid, "status", {"status": "in_progress"})
-        return front
+        # One mutation, one lock: the link and the stalled->in_progress revival must not straddle a lock
+        # boundary, or a concurrent terminal status gets overwritten (D52 triage, plan_registry.py:509).
+        return self._mutate(pid, "link", change, dry_run=dry_run, revive_if_stalled=True)
 
     @staticmethod
     def _tick_step(doc: dict[str, Any], which: str, pid: str) -> tuple[list[str], int, str]:

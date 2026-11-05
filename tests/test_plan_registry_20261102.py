@@ -570,3 +570,30 @@ def test_dry_run_add_reports_a_pending_ledger_reconcile_without_writing_it(tmp_p
                    approved_at="2026-11-02T10:00:00Z", dry_run=True)
     assert report["already_registered"] is True and report["ledger_reconcile_needed"] is True
     assert not (plans / "ledger.jsonl").exists()
+
+
+def test_link_and_stalled_revival_are_one_mutation(tmp_path, monkeypatch):
+    """D52 triage KEEP_BLOCK #2489: the revival was a SECOND _mutate under a second lock.
+
+    Between the two calls the lock is released, so a concurrent `done`/`abandoned` lands there and is
+    overwritten with `in_progress`. The link and the revival must share one lock, and the revival must
+    be conditional on the status read INSIDE it.
+    """
+    reg = _reg(tmp_path)
+    body = tmp_path / "p.md"
+    body.write_text("# T\n\n- [ ] step\n")
+    pid = reg.add(title="T", body_path=body, author="s", vendor="claude", approved_at="2026-11-02T10:00:00Z")
+    reg.set_status(pid, "stalled")
+
+    acquisitions = []
+    real_lock = reg._lock
+
+    def counting_lock(*a, **kw):
+        acquisitions.append(1)
+        return real_lock(*a, **kw)
+
+    monkeypatch.setattr(reg, "_lock", counting_lock)
+    front = reg.link(pid, claim="c-1")
+    assert front.get("status") == "in_progress", front
+    assert front.get("claim") == "c-1", front
+    assert len(acquisitions) == 1, f"link+revival took {len(acquisitions)} locks; it must be exactly one"
