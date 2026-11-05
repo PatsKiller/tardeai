@@ -51,6 +51,11 @@ CAP_SKIP = "daily model-call cap"
 # A cycle that skipped incidents because the triage itself failed is not a working cycle.
 # scripts/lib/incident_supervisor.py records these as skipped[*].why alongside the cap.
 FAIL_SKIPS = frozenset({"model_error", "unparseable"})
+# A dispatch can exit 0 without doing anything: the producer's ``_dispatch_ok`` accepts a dispatch only when the rc is
+# 0 AND work is proven (``work_proven`` or an admitted job), and records a rejected one in ``blocked[*].why`` with this
+# prefix (scripts/lib/incident_supervisor.py). A zero exit is not evidence of work, so the line reads the producer's
+# own verdict rather than re-deriving one from the rc.
+FAILED_DISPATCH_WHY = "fixer dispatch did not prove work"
 WATCHER_FRESH_MIN = 15.0
 # The supervisor timer is *:2/10 (config/systemd/incidents/tradeai-incident-supervisor.timer),
 # so three missed cycles is stale. A long fixer dispatch can legitimately outlive one tick; the
@@ -255,6 +260,14 @@ def build_block(
         d for d in (supervisor.get("dispatched") or [])
         if isinstance(d, dict) and _int_or_none(d.get("rc")) not in (None, 0)
     ]
+    # cx-openai D52 KEEP_BLOCK at 76b6b01cd (the ONE item): a dispatch that exited 0 without PROVING work is failed
+    # work. The producer already decided that (`_dispatch_ok`: rc 0 AND work_proven/admitted) and recorded it in
+    # ``blocked[*].why``. The monitor read only the rc, so a fresh failed-work receipt with an empty fixer queue still
+    # published LIVE. The producer's explicit verdict outranks the exit code.
+    failed_dispatch_blocks = [
+        b for b in (supervisor.get("blocked") or [])
+        if isinstance(b, dict) and str(b.get("why") or "").startswith(FAILED_DISPATCH_WHY)
+    ]
     if supervisor_reason:
         decide_part = f"DECIDE unknown ({supervisor_reason})"
         supervisor_line = None
@@ -272,6 +285,8 @@ def build_block(
         elif failed_dispatches:
             decide_part = (f"DECIDE failing ({len(failed_dispatches)} of "
                            f"{len(supervisor.get('dispatched') or [])} dispatch(es) exited non-zero)")
+        elif failed_dispatch_blocks:
+            decide_part = (f"DECIDE failing ({len(failed_dispatch_blocks)} dispatch(es) exited without proving work)")
         elif failed_skips:
             decide_part = f"DECIDE failing ({failed_skips} of {len(skipped)} skipped on a failed triage)"
         elif skipped and cap_skips == len(skipped):

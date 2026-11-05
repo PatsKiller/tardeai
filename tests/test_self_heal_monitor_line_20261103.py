@@ -358,6 +358,28 @@ def test_dispatches_that_all_exit_zero_still_read_working():
     assert block[4] == "verdict: LIVE — DETECT alive · DECIDE working · FIX no queue"
 
 
+def test_a_zero_exit_dispatch_that_proved_no_work_cannot_publish_live():
+    """cx-openai D52 KEEP_BLOCK at 76b6b01cd, the ONE item: the producer rejects a dispatch with rc 0 that did not
+    prove work (`_dispatch_ok`) and records it in blocked[*].why. The monitor read only the rc, so that explicit
+    failure with an empty fixer queue still published LIVE / FIX no queue -- a zero exit is not evidence of work."""
+    sup = _supervisor(skips=(), dispatched=1, actions=0)
+    sup["dispatched"] = [{"id": "INC1", "rc": 0, "prs": []}]
+    sup["blocked"] = [{"id": "INC1", "why": "fixer dispatch did not prove work (rc=0)"}]
+    block = _ok(supervisor=sup)
+    assert "DECIDE failing" in block[4], block[4]
+    assert "1 dispatch(es) exited without proving work" in block[4], block[4]
+    assert block[4].startswith("verdict: NOT LIVE"), block[4]
+
+
+def test_other_blocked_reasons_do_not_turn_the_lane_red():
+    """The negative control: the gate reads the dispatch-specific reason, not the presence of any blocked row."""
+    sup = _supervisor(skips=(), dispatched=1, actions=0)
+    sup["dispatched"] = [{"id": "INC1", "rc": 0, "prs": []}]
+    sup["blocked"] = [{"id": "INC9", "why": "needs_operator: rotate the credential"}]
+    block = _ok(supervisor=sup)
+    assert "DECIDE working" in block[4], block[4]
+
+
 def test_a_disabled_and_stale_watcher_reads_as_disabled_not_stale():
     """The two facts stay distinct: disabled wins over the freshness failure it would also cause."""
     watchers = _watchers(as_of=NOW - timedelta(hours=1))
