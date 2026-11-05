@@ -42,6 +42,11 @@ DEFAULT_REPO = os.environ.get("TRADEAI_GITHUB_REPO", "PatsKiller/tardeai")
 CACHE_TTL_S = 60.0
 PR_LIMIT = 100
 DEFAULT_TIMEOUT_S = 30.0
+# The board's file views are fetched one PR at a time, and the browser aborts this endpoint after 30 s
+# (useApi.ts). One aggregate deadline for the whole read keeps a stalled `gh pr view` from stacking up into a
+# browser timeout: rows past the deadline stay files_unverified, so the list still renders.
+FILE_VIEW_BUDGET_S = 12.0
+MIN_FILE_VIEW_S = 1.0
 # body / rollup / timestamps for operator clarity (digest parity); merge fields for the board.
 PR_FIELDS = (
     "number,title,url,headRefOid,headRefName,isDraft,labels,mergeable,mergeStateStatus,"
@@ -113,7 +118,28 @@ def list_open_prs(repo: str, limit: int = PR_LIMIT) -> list[dict[str, Any]]:
     return [r for r in rows if isinstance(r, dict)]
 
 
-def pr_file_view(repo: str, number: int) -> dict[str, Any]:
+def _bounded_file_views(fetch: Callable[..., dict[str, Any]], *,
+                        budget_s: float = FILE_VIEW_BUDGET_S,
+                        clock: Callable[[], float] = time.monotonic) -> Callable[[int], dict[str, Any]]:
+    """Serve every PR's file view inside ONE aggregate deadline (codex review of 2307 at 78017a426).
+
+    A per-call timeout alone is not a bound: five READY rows that each stall for the full timeout add up past
+    the browser's 30 s abort, so a successful list becomes a blank board. Each call gets only what is left of
+    the budget, and once it is spent the remaining rows raise and stay ``files_unverified`` — never approved.
+    """
+
+    deadline = clock() + float(budget_s)
+
+    def _fetch(number: int) -> dict[str, Any]:
+        remaining = deadline - clock()
+        if remaining < MIN_FILE_VIEW_S:
+            raise TimeoutError("file view budget exhausted")
+        return fetch(number, timeout=min(remaining, DEFAULT_TIMEOUT_S))
+
+    return _fetch
+
+
+def pr_file_view(repo: str, number: int, *, timeout: Optional[float] = None) -> dict[str, Any]:
     """One PR's changed paths and changed-file count. Read-only; raises RuntimeError on any gh failure.
 
     The board cannot decide "may this be approved" without the file list: the digest's last gate before
@@ -121,7 +147,8 @@ def pr_file_view(repo: str, number: int) -> dict[str, Any]:
     offer Approve on a partial view. Fetched per PR, and only for a row that would otherwise be READY, so
     the ordinary board read still costs one `gh pr list`.
     """
-    rc, out = _gh(["pr", "view", str(int(number)), "--repo", repo, "--json", "files,changedFiles"])
+    rc, out = _gh(["pr", "view", str(int(number)), "--repo", repo, "--json", "files,changedFiles"],
+                  timeout=int(timeout) if timeout is not None else int(DEFAULT_TIMEOUT_S))
     if rc != 0:
         raise RuntimeError(f"gh pr view failed: {out.strip()[:240]}")
     try:
@@ -501,7 +528,8 @@ def build(db_query: Any = None, *, now: Optional[datetime] = None, repo: Optiona
     now = now or datetime.now(timezone.utc)
     repo = repo or DEFAULT_REPO
     lister = lister or list_open_prs
-    files_for = files_for or (lambda number: pr_file_view(repo, number))
+    files_for = files_for or _bounded_file_views(
+        lambda number, *, timeout: pr_file_view(repo, number, timeout=timeout))
     base = {"schema": SCHEMA, "authority": AUTHORITY, "generated_at": _iso(now), "repo": repo,
             "source": SOURCE}
     try:

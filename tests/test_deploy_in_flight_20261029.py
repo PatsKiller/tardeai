@@ -420,3 +420,52 @@ def test_the_default_state_root_is_env_first_then_the_house_convention(monkeypat
     assert D._state_root() == Path.home() / "trade-ai-releases" / "persistent-state"
     monkeypatch.setenv("TRADEAI_STATE_ROOT", "/srv/state")
     assert D._state_root() == Path("/srv/state")
+
+
+def test_file_views_share_one_aggregate_deadline():
+    """A per-call timeout is not a bound: the browser aborts this endpoint at 30 s, so the whole file-view
+    projection must fit in one budget. Past it, rows raise and stay files_unverified."""
+    t = [0.0]
+    seen: list[tuple[int, float]] = []
+
+    def fetch(number, *, timeout):
+        seen.append((number, timeout))
+        t[0] += timeout  # this call consumed its whole slice
+        return {"files": [{"path": "scripts/foo.py"}], "changedFiles": 1}
+
+    bounded = D._bounded_file_views(fetch, budget_s=10.0, clock=lambda: t[0])
+    bounded(1)
+    assert seen[0][1] <= 10.0
+    with pytest.raises(TimeoutError):
+        bounded(2)
+    assert len(seen) == 1
+
+
+def test_an_exhausted_file_view_budget_leaves_rows_unverified_not_approved():
+    raw = [_pr(n, mergeable=True, state="CLEAN") for n in (1, 2)]
+    calls: list[int] = []
+
+    def files_for(number):
+        calls.append(number)
+        raise TimeoutError("file view budget exhausted")
+
+    out = D.build(lister=lambda repo, limit: raw, files_for=files_for,
+                  coordination=lambda rows, now: {"work": {}})
+    assert out["status"] == "OK" and out["count"] == 2
+    assert calls and all(row["can_approve"] is False for row in out["prs"])
+    assert all(row["digest_status"] == "files_unverified" for row in out["prs"])
+
+
+def test_build_bounds_its_own_file_views(monkeypatch):
+    """The default path is the bounded one — a caller that injects nothing still gets the aggregate deadline."""
+    seen: list[float] = []
+
+    def fake_view(repo, number, *, timeout=None):
+        seen.append(timeout)
+        return {"files": [{"path": "scripts/foo.py"}], "changedFiles": 1}
+
+    monkeypatch.setattr(D, "pr_file_view", fake_view)
+    raw = [_pr(5, mergeable=True, state="CLEAN")]
+    out = D.build(lister=lambda repo, limit: raw, coordination=lambda rows, now: {"work": {}})
+    assert out["status"] == "OK" and seen, "the default file view was never called"
+    assert seen[0] is not None and seen[0] <= D.FILE_VIEW_BUDGET_S
