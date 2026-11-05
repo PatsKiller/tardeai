@@ -2,6 +2,7 @@
 // Stored broker stops for page views (page audit 2026-10-25): only an ACTIVE stored resting order counts.
 import { storedStopFor, storedStopsAsOf } from './storedStops.ts'
 import { isTrailingBrokerStop, resolveLiveStop } from './stopManagement.ts'
+import { mergeLiveStop } from './stopReviewTooltip.ts'
 declare const process: { exit(code?: number): never }
 
 let failed = 0
@@ -35,6 +36,18 @@ eq('an unpriced fixed order resolves as unknown, not trailing',
   [resolveLiveStop(unpricedFixed, undefined, 50).isTrailing, resolveLiveStop(unpricedFixed, undefined, 50).price], [false, null])
 eq('a trailing kind still comes from the broker order metadata',
   isTrailingBrokerStop(storedStopFor({ ...active, stop_price: null, stop_order_type: 'TRAILING_STOP' })), true)
+// The stored observation and a prior operator confirmation can both exist for one holding. The NEWER one is the
+// evidence; the older must not overwrite it. The stored side keeps its own provenance when it wins.
+const confirmedOld = { symbol: 'FIXA', account: 'fixture_account', stop_price: 40, source: 'confirmed',
+  confirmed_at: '2026-10-20T20:00:00Z' }
+const storedNewer = storedStopFor(active)   // captured 2026-10-24T20:00:00Z, price 41.5
+const merged = mergeLiveStop(confirmedOld, storedNewer)
+eq('the newer stored observation wins over an older confirmation',
+  [merged?.stop_price, merged?.source, merged?.broker_verified], [41.5, 'stop_last_known', false])
+eq('a newer confirmation still wins over an older stored observation',
+  mergeLiveStop({ ...confirmedOld, confirmed_at: '2026-10-25T20:00:00Z', stop_price: 40 }, storedNewer)?.stop_price, 40)
+eq('an undated confirmation does not displace a dated stored observation',
+  mergeLiveStop({ ...confirmedOld, confirmed_at: null }, storedNewer)?.stop_price, 41.5)
 eq('no row', storedStopFor(undefined), undefined)
 eq('oldest capture', storedStopsAsOf([active, { ...active, stop_captured_at: '2026-10-23T20:00:00Z' }, { ...active, stop_state: 'filled', stop_captured_at: '2026-10-01T00:00:00Z' }]),
   '2026-10-23T20:00:00Z')
