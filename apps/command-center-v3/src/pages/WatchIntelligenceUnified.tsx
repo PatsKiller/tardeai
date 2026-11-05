@@ -11,6 +11,8 @@ import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetail
 import { useApi } from '../hooks/useApi'
 import { BB, TYPE } from '../lib/watchTokens'
 import { WI_SYNOPSIS_PROVENANCE } from '../lib/surfaceFreshness'
+import { quoteFreshnessLabel, reviewStatusLabel, tradeAiStateLabel } from '../lib/watchLabels'
+import { humanizeCode } from '../lib/displayLabels'
 import {
   DECISION_KEYS, DECISION_SORTS, WatchDecisionBadges, WatchDecisionBoard, WatchDecisionFilterModal, type WatchDecision,
   scopeOf,
@@ -121,6 +123,12 @@ function stateColor(s?: string) {
 
 function ReviewBox({ title, rev }: { title: string; rev?: ReviewStatus }) {
   const complete = rev?.status === 'COMPLETE'
+  const statusCode = String(rev?.status || 'NOT_RUN').toUpperCase()
+  // P2590-R2 (cx-openai-4): the fallback claimed "NOT RUN" for every non-COMPLETE status, so an ANSWERED_PENDING_CIO
+  // card read "CIO: NOT RUN" while the table read "Answer ready · CIO decision pending" for the same input. Only a
+  // genuinely-not-run review gets the NONE/NOT_RUN wording; any other status speaks for itself and its provenance is
+  // shown only when the record has it — never invented.
+  const notRun = statusCode === 'NOT_RUN'
   const reason = rev?.reason_code || rev?.display?.reason || null
   const disposition = rev?.artifact_disposition || rev?.display?.disposition || null
   return (
@@ -144,10 +152,12 @@ function ReviewBox({ title, rev }: { title: string; rev?: ReviewStatus }) {
       ) : (
         <>
           <div style={{ fontSize: TYPE.sm, color: BB.amber, marginTop: 3, fontWeight: 800 }}>
-            {rev?.display?.label || `${title}: NOT RUN`}
+            {rev?.display?.label || (notRun ? `${title}: ${reviewStatusLabel('NOT_RUN')}` : reviewStatusLabel(statusCode))}
           </div>
           <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>
-            Provider NONE · Model NONE · Policy NO_CALL · Cost $0
+            {notRun
+              ? 'Provider NONE · Model NONE · Policy NO_CALL · Cost $0'
+              : [rev?.provider, rev?.model, rev?.policy].filter(Boolean).join(' · ')}
             {reason ? ` · ${reason}` : ''}
             {disposition ? ` · ${disposition}` : ''}
           </div>
@@ -173,9 +183,10 @@ function FreshnessChips({ c }: { c: Card }) {
             key={d.k}
             data-freshness-dim={d.k.toLowerCase()}
             data-freshness-value={d.v}
+            title={String(d.v)}
             style={{ border: `1px solid ${BB.border}`, borderRadius: 999, padding: '3px 8px', fontSize: TYPE.xs, color: BB.text3 }}
           >
-            {d.k}: {d.v}
+            {d.k}: {d.k === 'Quote' ? quoteFreshnessLabel(d.v) : humanizeCode(String(d.v))}
           </span>
         ) : null,
       )}
@@ -386,7 +397,7 @@ export default function WatchIntelligenceUnified() {
             <b style={{ color: BB.text0 }}>{actionable} of {cards.length} on this page can become a proposal.</b>{' '}
             {rows.map(([k, syms]) => (
               <span key={k} style={{ marginRight: 12, color: SYSTEM.has(k) ? BB.amber : BB.text2 }} title={syms.join(', ')}>
-                {syms.length} {k.replace(/_/g, ' ').toLowerCase()}{SYSTEM.has(k) ? ' (system: decision packet not rebuilt)' : ''}
+                {syms.length} {tradeAiStateLabel(k).toLowerCase()}{SYSTEM.has(k) ? ' (system: decision packet not rebuilt)' : ''}
               </span>
             ))}
           </div>
@@ -475,7 +486,7 @@ export default function WatchIntelligenceUnified() {
         <select value={state} onChange={e => setParam('trade_ai_state', e.target.value)} style={inputStyle}>
           <option value="">Trade AI state</option>
           {(filterBody?.trade_ai_states || []).map((r: string) => (
-            <option key={r} value={r}>{r}</option>
+            <option key={r} value={r} title={r}>{tradeAiStateLabel(r)}</option>
           ))}
         </select>
         <select value={sector} onChange={e => setParam('sector', e.target.value)} style={inputStyle}>
@@ -498,8 +509,8 @@ export default function WatchIntelligenceUnified() {
         </select>
         <select value={reviewStatus} onChange={e => setParam('review_status', e.target.value)} style={inputStyle}>
           <option value="">Review status</option>
-          <option value="COMPLETE">COMPLETE</option>
-          <option value="NOT_RUN">NOT_RUN</option>
+          <option value="COMPLETE" title="COMPLETE">{reviewStatusLabel('COMPLETE')}</option>
+          <option value="NOT_RUN" title="NOT_RUN">{reviewStatusLabel('NOT_RUN')}</option>
         </select>
         <select value={reviewAgent} onChange={e => setParam('review_agent', e.target.value)} style={inputStyle}>
           <option value="">Review agent</option>
@@ -509,7 +520,7 @@ export default function WatchIntelligenceUnified() {
         <select value={freshness} onChange={e => setParam('freshness', e.target.value)} style={inputStyle}>
           <option value="">Quote freshness</option>
           {['CURRENT', 'PREMARKET_CURRENT', 'AFTER_HOURS_CURRENT', 'STALE', 'DATA_UNAVAILABLE'].map(r => (
-            <option key={r} value={r}>{r}</option>
+            <option key={r} value={r} title={r}>{quoteFreshnessLabel(r)}</option>
           ))}
         </select>
         <select value={materialChange} onChange={e => setParam('material_change', e.target.value)} style={inputStyle}>
@@ -645,10 +656,10 @@ export default function WatchIntelligenceUnified() {
                   <td style={td}>{c.symbol}{c.starred ? ' ★' : ''}{c.held ? ' H' : ''}</td>
                   <td style={td}><WatchDecisionBadges d={c.decision} /></td>
                   <td style={td} data-primary-rating>{c.street_rating}</td>
-                  <td style={{ ...td, color: stateColor(c.trade_ai_state) }}>{c.trade_ai_state}</td>
+                  <td style={{ ...td, color: stateColor(c.trade_ai_state) }} title={c.trade_ai_state || 'UNKNOWN'}>{tradeAiStateLabel(c.trade_ai_state)}</td>
                   <td style={td}>{money(c.last)} {pct(c.day_change_pct)}</td>
-                  <td style={td}>{c.cio_review?.status}</td>
-                  <td style={td}>{c.maria_review?.status}</td>
+                  <td style={td} title={c.cio_review?.status || 'NOT_RUN'}>{reviewStatusLabel(c.cio_review?.status)}</td>
+                  <td style={td} title={c.maria_review?.status || 'NOT_RUN'}>{reviewStatusLabel(c.maria_review?.status)}</td>
                   <td style={td}><Link to={`/watch/intelligence/${c.symbol}`} style={{ color: BB.text2, fontSize: TYPE.xs }}>Open</Link></td>
                 </tr>
               ))}
@@ -706,8 +717,8 @@ export default function WatchIntelligenceUnified() {
                       {c.street_rating || 'NOT RATED'}
                       {c.analyst_count != null ? ` · ${c.analyst_count}` : ''}
                     </span>
-                    <span style={{ border: `1px solid ${BB.border}`, borderRadius: 999, padding: '3px 8px', fontSize: TYPE.xs, color: stateColor(c.trade_ai_state) }}>
-                      Trade AI: {c.trade_ai_state}
+                    <span style={{ border: `1px solid ${BB.border}`, borderRadius: 999, padding: '3px 8px', fontSize: TYPE.xs, color: stateColor(c.trade_ai_state) }} title={c.trade_ai_state || 'UNKNOWN'}>
+                      Trade AI: {tradeAiStateLabel(c.trade_ai_state)}
                     </span>
                     <FreshnessChips c={c} />
                     {c.rank != null && (
