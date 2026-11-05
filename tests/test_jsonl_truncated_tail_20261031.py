@@ -158,3 +158,6 @@ def test_record_fallback_failure_is_reported(monkeypatch, sent):
     monkeypatch.setattr(routing, "load_policy", lambda: {})
     routing.FundingContext.record_fallback("TIMEOUT")  # must not raise
     assert len(sent) == 1 and "CREDIT_UNAVAILABLE" in sent[0]["message"]
+
+
+ANCHOR = 'JSONL_TRUNCATED_TAIL_20261031'  # config/ci_gates/jsonl_truncated_tail_20261031.json names this file

@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "jsonl_truncated_tail_20261031",
+  "files": [
+    "tests/test_jsonl_truncated_tail_20261031.py"
+  ],
+  "anchor": "JSONL_TRUNCATED_TAIL_20261031",
+  "comment": [
+    "ANCHOR: JSONL_TRUNCATED_TAIL_20261031 \u2014 a half-written last line in a JSONL store is recovered rather than",
+    "discarding the whole file (wake store), and an Anthropic credit outage is reported instead of staying silent.",
+    "Hermetic: temp files and fixtures only."
+  ]
+}
