@@ -924,11 +924,20 @@ def risk_payload(*, root=None, now=None, db_query=None, inputs=None, document=No
         positions.append(p)
     denominator = _sum_known(positions, "market_value") if positions else None
     unprotected = risk.get("unprotected_value_usd")
+    unproven = risk.get("unproven_value_usd")
+    # codex-cloud P1 on #2677: `unprotected_value_usd` deliberately EXCLUDES a position whose broker status is
+    # unmapped (FQ-116: an unproven stop is neither protected nor unprotected), so subtracting only the
+    # unprotected figure from the total silently reclassified every unproven dollar as PROTECTED. A synthetic
+    # $11,000 holding with an unmapped status reported `unproven_value_usd=11000` and still counted $11,000 as
+    # protected. Protected is derived, so it may only be stated when every part of the subtraction is known; the
+    # unproven figure is published beside it rather than absorbed into it.
+    protected = (round(denominator - unprotected - unproven, 2)
+                 if denominator is not None and unprotected is not None and unproven is not None else None)
     return {"portfolio_heat_pct": risk.get("portfolio_heat_pct"), "total_risk_dollars": risk.get("loss_at_stop_usd"),
-            "pct_protected": round(100 * (denominator-unprotected) / denominator, 2)
-            if denominator and unprotected is not None else None,
-            "total_protected_mv": round(denominator-unprotected, 2) if denominator is not None and unprotected is not None else None,
-            "total_unprotected_mv": unprotected, "position_count": portfolio.get("position_count"),
+            "pct_protected": round(100 * protected / denominator, 2) if denominator and protected is not None else None,
+            "total_protected_mv": protected,
+            "total_unprotected_mv": unprotected, "total_unproven_mv": unproven,
+            "position_count": portfolio.get("position_count"),
             "position_counts": portfolio.get("position_counts"), "paper_position_count": None,
             "positions": positions, "stops": {f"{p['account_id']}:{p['symbol']}": p for p in stops["rows"]},
             "positions_basis": "holdings_live", "positions_as_of": portfolio.get("positions_as_of"),

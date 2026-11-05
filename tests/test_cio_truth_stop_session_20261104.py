@@ -255,3 +255,54 @@ def test_unavailable_clock_does_not_publish_a_fabricated_observation_age(clock):
     assert result["age_hours"] is None
     assert result["as_of"] is None
     assert result["stop_captured_at"] is None
+
+
+# ---- codex-cloud P1 (BLOCK a6402008e): a value the unprotected figure excludes must not reappear as protected ---
+def _unproven_document(tmp_path):
+    """One $11,000 holding whose broker stop carries a status nothing maps: unproven, not protected."""
+    return truth.resolve(tmp_path, NOW, inputs={
+        "holdings": {"as_of": NOW.isoformat(), "generated_at": NOW.isoformat(),
+                     "holdings": [{"account": "SyntheticAccountAlpha", "symbol": "SYNTH",
+                                   "shares": 100, "price": 110, "market_value": 11000,
+                                   "day_change": 0}]},
+        "broker_stops": [row("2026-11-04T14:59:00Z", status="MYSTERY")],
+        "stop_fills": {}, "companies": {}, "policy": {}, "planned_stops": {}, "cio_status": {},
+    })
+
+
+def test_an_unproven_holding_is_not_counted_as_protected_value(tmp_path):
+    document = _unproven_document(tmp_path)
+    assert document["positions"]["unprotected_value_usd"] == 0
+    assert document["positions"]["unproven_value_usd"] == 11000
+
+    payload = truth.risk_payload(document=document)
+
+    assert payload["total_protected_mv"] == 0, "an unproven holding was counted as protected value"
+    assert payload["pct_protected"] == 0
+    assert payload["total_unproven_mv"] == 11000, "the unproven value must be stated, not absorbed"
+
+
+def test_an_unknown_unproven_figure_leaves_the_protected_total_unstated(tmp_path):
+    """Protected is derived: if any part of the subtraction is unknown, the figure is not stated."""
+    document = _unproven_document(tmp_path)
+    document["positions"]["unproven_value_usd"] = None
+    payload = truth.risk_payload(document=document)
+    assert payload["total_protected_mv"] is None
+    assert payload["pct_protected"] is None
+
+
+def test_a_fully_proven_portfolio_still_reports_its_split(tmp_path):
+    """Positive control: with nothing unproven, protected is still total minus unprotected."""
+    document = truth.resolve(tmp_path, NOW, inputs={
+        "holdings": {"as_of": NOW.isoformat(), "generated_at": NOW.isoformat(),
+                     "holdings": [{"account": "SyntheticAccountAlpha", "symbol": "SYNTH",
+                                   "shares": 10, "price": 100, "market_value": 1000, "day_change": 0},
+                                  {"account": "SyntheticAccountAlpha", "symbol": "BETA",
+                                   "shares": 5, "price": 50, "market_value": 250, "day_change": 0}]},
+        "broker_stops": [row("2026-11-04T14:59:00Z")],
+        "stop_fills": {}, "companies": {}, "policy": {}, "planned_stops": {}, "cio_status": {},
+    })
+    assert document["positions"]["unproven_value_usd"] == 0
+    payload = truth.risk_payload(document=document)
+    assert payload["total_protected_mv"] == 1000
+    assert payload["pct_protected"] == 80.0
