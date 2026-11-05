@@ -14,6 +14,16 @@ const React = require('react')
 const { renderToStaticMarkup } = require('react-dom/server')
 const { MemoryRouter } = require('react-router-dom')
 
+// The server renderer emits one `useLayoutEffect does nothing on the server` warning per component — expected in SSR,
+// and each stack line embeds a multi-megabyte `data:` module URL. Unfiltered this file wrote ~30 MB per build and stalled
+// the CI jobs that run `npm run build` (cc-deepseek-2 F1 / cc-deepseek-5 N1 on PR 2641). Same four lines as
+// retirement.metric.view.test.mjs, health.labels.view.test.mjs and watchlist.labels.view.test.mjs.
+const __origConsoleError = console.error
+console.error = (...args) => {
+  if (String(args[0] ?? '').includes('useLayoutEffect does nothing on the server')) return
+  __origConsoleError(...args)
+}
+
 // SSR has no browser globals; the page reads matchMedia at render time.
 if (typeof globalThis.window === 'undefined') {
   globalThis.window = { matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) }
