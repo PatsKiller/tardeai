@@ -493,11 +493,24 @@ class _SlotBook(dict):
         return self.rows if key == "holdings" else super().get(key, default)
 
 
-def test_slot_backed_caller_baseline_cannot_disable_the_drop_guard(store):
+class _SlotRow(dict):
+    __slots__ = ("row",)
+
+    def __init__(self, row):
+        super().__init__()
+        self.row = row
+
+    def get(self, key, default=None):
+        return self.row.get(key, default)
+
+
+@pytest.mark.parametrize("alias_kind", ["book", "row"])
+def test_slot_backed_caller_baseline_cannot_disable_the_drop_guard(store, alias_kind):
     store.write_text(json.dumps(_big_book()))
     before = store.read_bytes()
     candidate = json.loads(before)
-    baseline = _SlotBook(candidate["holdings"])
+    baseline = (_SlotBook(candidate["holdings"]) if alias_kind == "book" else
+                {"holdings": [_SlotRow(row) for row in candidate["holdings"]]})
     candidate["holdings"][3]["market_value"] = 1000.0
 
     out = S.protected_holdings_write(candidate, source="test_slot_alias",
