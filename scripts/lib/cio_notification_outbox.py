@@ -403,11 +403,24 @@ class NotificationOutbox:
         """Return the most recent event in the outbox, or None if empty."""
         if not self.event_store_path.exists():
             return None
-        with open(self.event_store_path, "r") as f:
-            lines = f.readlines()
-            if not lines:
+        # Read only the tail (2026-10-31: readlines() of the 7 MB store on every append made each write O(file)).
+        with open(self.event_store_path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            if size == 0:
                 return None
-            return json.loads(lines[-1].strip())
+            chunk = 65536
+            pos = size
+            buf = b""
+            while pos > 0:
+                step = min(chunk, pos)
+                pos -= step
+                f.seek(pos)
+                buf = f.read(step) + buf
+                lines = [ln for ln in buf.split(b"\n") if ln.strip()]
+                if len(lines) >= 2 or (pos == 0 and lines):
+                    return json.loads(lines[-1].decode("utf-8").strip())
+            return None
 
     def _get_last_event_hash(self) -> str:
         """Return the event_hash of the last event, or the genesis null hash."""
@@ -1240,24 +1253,24 @@ class NotificationOutbox:
         status: str | None = None,
         channel: str | None = None,
         message_class: str | None = None,
-        limit: int = 50,
+        limit: int | None = 50,
     ) -> list[dict[str, Any]]:
-        """List notifications, optionally filtered."""
-        stream_ids: set[str] = set()
-        if self.event_store_path.exists():
-            with open(self.event_store_path, "r") as f:
-                for line in f:
-                    stripped = line.strip()
-                    if not stripped:
-                        continue
-                    event = json.loads(stripped)
-                    sid = event["stream_id"]
-                    if sid != "outbox-genesis":
-                        stream_ids.add(sid)
+        """List notifications, optionally filtered. ``limit=None`` returns every match.
+
+        One pass over the append-only log, grouped by stream, then one replay per stream. Until 2026-10-31 this
+        re-read the whole log once per stream id (3,141 streams x 7 MB = a full CPU core every 5 minutes in
+        tradeai-cio-delivery). Malformed lines are skipped, as in ``_iter_all_events``.
+        """
+        by_stream: dict[str, list[dict[str, Any]]] = {}
+        for event in self._iter_all_events():
+            sid = event.get("stream_id")
+            if not sid or sid == "outbox-genesis":
+                continue
+            by_stream.setdefault(sid, []).append(event)
 
         notifications: list[dict[str, Any]] = []
-        for sid in stream_ids:
-            n = self.get_notification(sid)
+        for sid, events in by_stream.items():
+            n = self._replay_state(events)
             if n is None:
                 continue
             if status is not None and n.get("current_status") != status:
@@ -1273,7 +1286,7 @@ class NotificationOutbox:
         notifications.sort(
             key=lambda n: str(n.get("created_at", "")), reverse=True
         )
-        return notifications[:limit]
+        return notifications if limit is None else notifications[:limit]
 
     def list_dead_lettered(self, limit: int = 50) -> list[dict[str, Any]]:
         """List all dead-lettered notifications."""
