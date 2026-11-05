@@ -265,6 +265,8 @@
 "scripts/lib/provider_cost/pricing.py",
 "scripts/lib/provider_cost/budget.py",
 "scripts/lib/provider_cost/__init__.py",
+"config/provider_pricing_schedules.json",
+"scripts/lib/provider_cost/fixtures/provider_pricing_schedules.json",
 "scripts/telegram_transport.py",
 "scripts/telegram_alert_router.py",
 "*siem*",

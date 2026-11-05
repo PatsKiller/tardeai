@@ -25,6 +25,8 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 REFUSED = (
+    "scripts/lib/provider_cost/fixtures/provider_pricing_schedules.json",
+    "config/provider_pricing_schedules.json",
     "config/llm_process_registry.json",
     "config/anthropic_credit_policy.json",
     "config/llm_routing_policy.json",
