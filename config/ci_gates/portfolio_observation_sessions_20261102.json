@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "portfolio_observation_sessions_20261102",
+  "files": [
+    "tests/test_portfolio_observation_sessions_20261102.py"
+  ],
+  "anchor": "PORTFOLIO_OBSERVATION_SESSIONS_20261102",
+  "comment": [
+    "ANCHOR: PORTFOLIO_OBSERVATION_SESSIONS_20261102 — EMERGENCY 2026-11-02: the Home",
+    "PORTFOLIO tile rendered raw UTC as local time and measured staleness in 48",
+    "wall-clock hours, so a Friday after-close observation read STALE every Monday",
+    "before the 09:07 ET broker sync. Pins the completed-trading-session counter",
+    "(weekends and NYSE holidays do not count; early closes complete at 13:00 ET),",
+    "the contract's additive session fields and config threshold, and that",
+    "stale_after_hours keeps its existing meaning."
+  ]
+}

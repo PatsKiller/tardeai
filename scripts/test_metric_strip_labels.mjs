@@ -24,6 +24,8 @@ const raw = fs.readFileSync(target, 'utf8')
 const code = raw
   .replace(/\/\*[\s\S]*?\*\//g, '')   // block comments
   .replace(/^\s*\/\/.*$/gm, '')       // whole-line // comments
+const todayStateLib = fs.readFileSync(
+  path.join(here, '..', 'apps', 'command-center-v3', 'src', 'lib', 'todayPnlState.ts'), 'utf8')
 
 let pass = 0, fail = 0
 const check = (name, cond) => {
@@ -107,9 +109,14 @@ check('the four aggregate clocks are rendered as separate lines',
   code.includes('quotes observed '))
 check('an empty account cannot make TODAY incomplete', (() => {
   // The tile flagged STALE off `complete === false`, which an empty account set.
-  // Only a FUNDED account that failed to report may raise the warning.
-  const m = code.match(/stale: today[^\n]*/)
-  return !!m && /todayMissing\.length/.test(m[0]) && !/complete === false/.test(m[0])
+  // Only a FUNDED account that failed to report, or a holding row with no day
+  // change, may raise the coverage warning. The condition now lives in the
+  // derived helper; assert the mechanism there rather than a proximity in the
+  // renderer.
+  const coverage = todayStateLib.match(/const incompleteCoverage\s*=\s*([^\n]*)/)
+  return !!coverage && /missing\.length > 0 \|\| partial\.length > 0/.test(coverage[1])
+    && !/complete === false/.test(todayStateLib)
+    && !/empty_accounts/.test(todayStateLib)
 })())
 check('TODAY distinguishes empty accounts from ones that did not report',
   code.includes('todayEmpty') && code.includes('MISSING ${todayMissing'))
@@ -198,6 +205,34 @@ check('quote coverage stays on the face in the healthy state',
 check('a tile signals state through a rail, at zero width cost',
   code.includes('rowRail(') && /tone === 'bad' \? 'breach'/.test(code))
 
+// ── TODAY is judged by the P&L clock and the P&L census (2026-11-02) ─────────
+// The tile used to take its tone and colour from `overviewFresh.stale`, which
+// ages `data_as_of` -- the POSITION observation. Positions being old says
+// nothing about whether today's P&L is old. The condition now comes from the
+// derived helper, which reads only overview.today_pnl.
+const todayBlock = (() => {
+  const start = code.indexOf("label: 'TODAY'")
+  const end = code.indexOf("label: 'TRADING'")
+  return start >= 0 && end > start ? code.slice(start, end) : ''
+})()
+check('TODAY tone, colour and chip no longer read the overview position clock',
+  !!todayBlock && !/overviewFresh/.test(todayBlock))
+check('TODAY tone, colour and chip come from the P&L/census helper',
+  /tone: todayState\.tone/.test(todayBlock) &&
+  /color: todayState\.tone === 'warn'/.test(todayBlock) &&
+  /staleLabel: todayState\.label/.test(todayBlock))
+check('the renderer prints the tile condition name, never a bare STALE',
+  code.includes("(t as any).staleLabel || 'STALE'"))
+check('the helper keeps INCOMPLETE COVERAGE and AGED SOURCE as distinct names',
+  todayStateLib.includes("'INCOMPLETE COVERAGE'") &&
+  todayStateLib.includes("'AGED SOURCE'"))
+check('the TODAY value and census wiring are unchanged',
+  /value: todayChange != null \? `\$\{todayChange >= 0/.test(todayBlock) &&
+  /todayPct != null/.test(todayBlock) &&
+  /todayUnknownRows/.test(todayBlock) && /todayMissing/.test(todayBlock) && /todayPartial/.test(todayBlock))
+check('the TODAY state helper computes no money or coverage counts',
+  !/today_change|today_pct|fmt\$/.test(todayStateLib))
+
 console.log(`\nmetric_strip_labels: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
 
@@ -255,6 +290,17 @@ check('only the TRADING value may wrap, clamped to two lines', (code.match(/wrap
 check('the short price stamp keeps quote coverage on the face',
   /shortPriceStamp\([\s\S]{0,200}quoteCovered, quoteTotal/.test(code))
 check('a date-only clock on a tile face is shown as its date', code.includes('dateOnlyPart(asOfRaw) ??'))
+
+// P3 (cc-deepseek-8 WHOLEHEAD at 757ef398d). The portfolio tip suffix
+// interpolated overviewFresh.reason unconditionally on the stale path, but
+// overviewSurfaceFreshness returns reason: null on the fresh path. A tile that
+// was stale for the POSITION clock (portfolioStaleObs) while the surface clock
+// was fresh therefore rendered a trailing " · null". The suffix must fall back
+// to oldestLine, which always has a non-empty last resort ("oldest —").
+const bareReasonSuffix = /\$\{portfolioSurfaceStale \? ` · \$\{overviewFresh\.reason\}` : ''\}/
+check('the portfolio tip never interpolates a null staleness reason',
+  !bareReasonSuffix.test(code) && code.includes('${overviewFresh.reason || oldestLine}'))
+check('oldestLine has a non-empty last resort', /: 'oldest —'/.test(code))
 
 console.log(`\nmetric_strip_header_truth: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

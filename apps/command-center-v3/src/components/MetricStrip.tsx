@@ -7,6 +7,9 @@ import { shortPriceStamp, tradingTileValue, vixProvenance } from '../lib/display
 import { dateOnlyPart, fmtAsOf } from '../lib/asOfDisplay'
 import { runLabel } from '../lib/homeLabels'
 import { overviewSurfaceFreshness, tradeAiSurfaceFreshness } from '../lib/surfaceFreshness'
+import { deriveTodayPnlState } from '../lib/todayPnlState'
+import { deriveHeaderFeedState } from '../lib/headerFeedState'
+import type { HeaderFeed } from '../lib/headerFeedState'
 import { renderSetupCounts } from '../lib/setupRunSummary'
 import { payloadRunAge, LATEST_RUN_TIP } from '../lib/scanRunAge'
 // Same classifier the Trading panel uses, so the two surfaces cannot disagree
@@ -88,17 +91,58 @@ export default function MetricStrip({ onDrill }: Props) {
   })
 
   // App chrome: these yield to the page's own reads (useApi priority 'background', perf 2026-10-25).
-  const { data: overview } = useApi<any>('/api/v2/overview', 120_000, CHROME)
+  // The extra receipts (loading/error/stale) are used ONLY to present state; the
+  // paths, intervals and priority are unchanged, so request order never moves.
+  const {
+    data: overview, loading: overviewLoading, error: overviewError,
+    stale: overviewStale, refetch: overviewRefetch,
+  } = useApi<any>('/api/v2/overview', 120_000, CHROME)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000, CHROME)
-  const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 120_000, CHROME)
-  const { data: tradeAi } = useApi<any>('/api/v2/trade-ai/summary', 120_000, CHROME)
-  const { data: gate } = useApi<any>('/api/v2/live-trading-gate', 120_000, CHROME)
-  const { data: health } = useApi<any>('/api/v2/health', 120_000, CHROME)
+  const {
+    data: regime, loading: regimeLoading, error: regimeError,
+    stale: regimeStale, refetch: regimeRefetch,
+  } = useApi<any>('/api/v2/risk-regime/latest', 120_000, CHROME)
+  const {
+    data: tradeAi, loading: tradeAiLoading, error: tradeAiError,
+    stale: tradeAiStale, refetch: tradeAiRefetch,
+  } = useApi<any>('/api/v2/trade-ai/summary', 120_000, CHROME)
+  const {
+    data: gate, loading: gateLoading, error: gateError,
+    stale: gateStale, refetch: gateRefetch,
+  } = useApi<any>('/api/v2/live-trading-gate', 120_000, CHROME)
+  const {
+    data: health, loading: healthLoading, error: healthError,
+    stale: healthStale, refetch: healthRefetch,
+  } = useApi<any>('/api/v2/health', 120_000, CHROME)
   // Presentation flags from config/design_features.yaml. Cosmetics only: the
   // loader REFUSES to define a flag for a fault signal, so there is no flag here
   // that could gate a divergence, an underfilled run or degraded quotes. See
   // PROTECTED_SIGNALS in scripts/lib/design_features.py.
   const { data: designCfg } = useApi<any>('/api/v2/design-features', 600_000, CHROME)
+  // The header's own feeds. This list drives presentation only: it does not
+  // change what is requested, in what order, or at what priority. A hard reload
+  // must say which of loading / failed / last-good-stale / no-payload it is in,
+  // instead of painting every one of them as blank em dashes.
+  const headerFeeds: HeaderFeed[] = [
+    { key: 'overview', label: 'overview', hasData: overview != null, loading: overviewLoading, error: overviewError, stale: overviewStale, refetch: overviewRefetch },
+    { key: 'regime', label: 'risk regime', hasData: regime != null, loading: regimeLoading, error: regimeError, stale: regimeStale, refetch: regimeRefetch },
+    { key: 'tradeAi', label: 'trade AI summary', hasData: tradeAi != null, loading: tradeAiLoading, error: tradeAiError, stale: tradeAiStale, refetch: tradeAiRefetch },
+    { key: 'gate', label: 'live trading gate', hasData: gate != null, loading: gateLoading, error: gateError, stale: gateStale, refetch: gateRefetch },
+    { key: 'health', label: 'health findings', hasData: health != null, loading: healthLoading, error: healthError, stale: healthStale, refetch: healthRefetch },
+  ]
+  const headerState = deriveHeaderFeedState(headerFeeds)
+  const headerHasData = headerFeeds.some(f => f.hasData)
+  const retryHeaderFeeds = () => {
+    // A feed with no payload and no error still needs the retry (the unknown
+    // state); a failed or last-good feed does too.
+    headerFeeds.forEach(f => { if (!f.hasData || f.error || f.stale) f.refetch?.() })
+  }
+  // loading is neutral (nothing is wrong yet); stale/unknown are amber; a failed
+  // request with no payload is red. This never borrows the per-tile STALE chip.
+  const headerStateTone: Tone =
+    headerState.state === 'error' ? 'bad'
+      : headerState.state === 'loading' ? 'ok'
+        : 'warn'
   useEffect(() => {
     const viewport = metricsViewport.current
     if (!viewport) return
@@ -165,6 +209,12 @@ export default function MetricStrip({ onDrill }: Props) {
   // never blanked to "—" because one holding has no day change (2026-10-26).
   const todayPartial: string[] = todayPnl?.partial_accounts ?? []
   const todayUnknownRows: number = todayPnl?.unknown_rows ?? 0
+  // TODAY is judged by its OWN clock and its OWN census. The overview surface
+  // freshness ages `data_as_of` -- the POSITION observation -- which says
+  // nothing about whether today's P&L is old. An incomplete census and a P&L
+  // clock older than the latest open session are different conditions and are
+  // labelled differently; neither is ever read from the position clock.
+  const todayState = deriveTodayPnlState(overview, now)
   // Account census for TODAY lives on hover, not the face (operator 2026-09-04).
   // True missing funded accounts still raise the face STALE chip via `todayMissing`.
   const todayHoverAccounts = (() => {
@@ -191,6 +241,9 @@ export default function MetricStrip({ onDrill }: Props) {
   const posOldest = portfolioAgg?.position_observation_oldest ?? null
   const posOldestAcct = portfolioAgg?.position_observation_oldest_account ?? null
   const posOldestAgeH = portfolioAgg?.position_observation_oldest_age_hours ?? null
+  // Producer's session-based decision: completed US trading sessions only, so a
+  // weekend or NYSE holiday cannot make a fresh Friday observation read stale.
+  const posStaleBySessions = portfolioAgg?.position_observation_stale ?? null
   const valuationTime = portfolioAgg?.valuation_time ?? null
   const quoteObsTime = portfolioAgg?.quote_observation_time ?? null
 
@@ -226,7 +279,7 @@ export default function MetricStrip({ onDrill }: Props) {
   // strip and duplicated tip content. Provenance is not dropped — tip + drill
   // still carry oldest stamp/age, empties, coverage, and divergences.
   const oldestLine = posOldest
-    ? `oldest ${posOldestAcct ?? '—'} ${posOldest}${ageMark(posOldestAgeH)}`
+    ? `oldest ${posOldestAcct ?? '—'} ${fmtAsOf(posOldest) ?? posOldest}${ageMark(posOldestAgeH)}`
     : cov?.accounts_undated
       ? `no dated position observation (${cov.accounts_undated} account(s) undated)`
       : 'oldest —'
@@ -257,7 +310,9 @@ export default function MetricStrip({ onDrill }: Props) {
   // Is anything actually wrong with the position clock? Drives the tile's tone,
   // which is what makes the strip quiet when healthy and loud when not.
   const portfolioStaleObs =
-    posOldestAgeH != null && cov?.stale_after_hours != null && posOldestAgeH > cov.stale_after_hours
+    posStaleBySessions != null
+      ? posStaleBySessions === true
+      : posOldestAgeH != null && cov?.stale_after_hours != null && posOldestAgeH > cov.stale_after_hours
   const portfolioTone: Tone = worseTone(
     clockDivergences.length ? 'warn' : 'ok',
     portfolioStaleObs ? 'warn' : 'ok',
@@ -266,7 +321,7 @@ export default function MetricStrip({ onDrill }: Props) {
   )
 
   const clockLines = [
-    posNewest ? `positions observed ${posNewest} (newest, ${portfolioAgg?.position_observation_newest_account ?? '—'})${coverageMark}` : 'positions observed UNDATED',
+    posNewest ? `positions observed ${fmtAsOf(posNewest) ?? posNewest} (newest, ${portfolioAgg?.position_observation_newest_account ?? '—'})${coverageMark}` : 'positions observed UNDATED',
     oldestLine,
     valuationTime ? `valued ${valuationTime}` : 'valued UNDATED',
     quoteObsTime ? `quotes observed ${quoteObsTime}${portfolioAgg?.quote_source ? ` (${portfolioAgg.quote_source})` : ''}` : 'quotes observed UNDATED',
@@ -283,6 +338,12 @@ export default function MetricStrip({ onDrill }: Props) {
   // while the cache stays empty for days — census/bisect 2026-08-28).
   const setupsFresh = tradeAiSurfaceFreshness(tradeAi)
   const overviewFresh = overviewSurfaceFreshness(overview)
+  // overviewSurfaceFreshness ages `overview.data_as_of` in wall-clock hours
+  // (36h). For the PORTFOLIO tile that is the SAME position clock the producer
+  // now judges in completed sessions, so the session decision governs here.
+  // A fail-closed surface (missing/undated data, ageHours null) still wins.
+  const portfolioSurfaceStale =
+    (overviewFresh.stale && overviewFresh.ageHours == null) || portfolioStaleObs
   const scanStale = setupsFresh.stale
   const setupsRun = runLabel(tradeAi?.run_label ?? tradeAi?.latest_run_label, tradeAi?.run_date)
   const setupsAsOfMark = setupsFresh.asOf
@@ -433,38 +494,38 @@ export default function MetricStrip({ onDrill }: Props) {
   const tiles = [
     {
       label: 'PORTFOLIO', value: portfolioVal != null ? fmt$(portfolioVal, 0) : '—',
-      stale: overviewFresh.stale ? (overviewFresh.surfaceLabel?.replace(/^STALE · /, ' · ') || overviewAsOfMark) : null,
+      stale: portfolioSurfaceStale ? (overviewFresh.surfaceLabel?.replace(/^STALE · /, ' · ') || overviewAsOfMark) : null,
       // The tile shows the POSITION observation. Saying "data_as_of" named no
       // clock at all; saying "positions observed" names the one on screen and
       // leaves the other three visibly absent rather than silently merged.
-      asOf: posNewest ?? overviewFresh.asOf,
+      asOf: posNewest ? (fmtAsOf(posNewest) ?? posNewest) : overviewFresh.asOf,
       asOfLabel: 'positions observed',
       asOfNote: portfolioFaceNote,
-      tone: worseTone(portfolioTone, overviewFresh.stale ? 'warn' : 'ok'),
+      tone: worseTone(portfolioTone, portfolioSurfaceStale ? 'warn' : 'ok'),
       valueSize: VALUE_BIG,
       minWidth: 175, maxWidth: 265,
       undated: !posNewest && !overviewFresh.dataAsOf,
-      color: overviewFresh.stale ? BB.amber : 'var(--text0)',
-      tip: `Total portfolio equity — an ALL-ACCOUNTS aggregate${portfolioAgg?.included_account_count != null ? ` of ${portfolioAgg.included_account_count} account(s)` : ''} (Schwab, Alpaca, Moomoo). No single account is the source of the total.\n\nACCOUNTS (hover):\n · ${portfolioHoverAccounts ?? '—'}\n\nFOUR SEPARATE CLOCKS:\n · ${clockLines.join('\n · ')}\n\nThe newest position observation dates ${cov?.at_newest_pct ?? '—'}% of the aggregate value; ${cov?.value_fresh_pct ?? '—'}% is within ${cov?.stale_after_hours ?? 48}h.${clockDivergences.length ? `\n\nCLOCK DIVERGENCE — two copies of the position clock disagree:\n · ${clockDivergences.map(d => `${d.account}: ${d.detail}`).join('\n · ')}\naccount_summaries.as_of is not maintained by the loader; the position rows are. Neither copy is edited.` : ''} Refreshes every 2 min via /api/v2/overview.${overviewFresh.stale ? ` · ${overviewFresh.reason}` : ''}`,
-      drill: { title: 'Portfolio (ALL ACCOUNTS)', subtitle: overviewFresh.stale ? `STALE · ${oldestLine}` : `All-account aggregate · ${portfolioAgg?.included_account_count ?? '?'} account(s)${coverageMark}`, endpoint: '/api/v2/overview',
-        rows: overview ? [{ portfolio_value: overview.portfolio_value, positions_observed_newest: posNewest, positions_observed_oldest: posOldest, positions_observed_oldest_account: posOldestAcct, positions_observed_oldest_age_hours: posOldestAgeH, valuation_time: valuationTime, quote_observation_time: quoteObsTime, quote_source: portfolioAgg?.quote_source, coverage: cov, observation_divergences: clockDivergences, portfolio_aggregate: overview.portfolio_aggregate, total_cash: overview.total_cash, position_count: overview.position_count, today_change: overview.today_change, today_pct: overview.today_pct, as_of: overview.as_of, surface_stale: overviewFresh.stale, surface_reason: overviewFresh.reason }] : [] },
+      color: portfolioSurfaceStale ? BB.amber : 'var(--text0)',
+      tip: `Total portfolio equity — an ALL-ACCOUNTS aggregate${portfolioAgg?.included_account_count != null ? ` of ${portfolioAgg.included_account_count} account(s)` : ''} (Schwab, Alpaca, Moomoo). No single account is the source of the total.\n\nACCOUNTS (hover):\n · ${portfolioHoverAccounts ?? '—'}\n\nFOUR SEPARATE CLOCKS:\n · ${clockLines.join('\n · ')}\n\nThe newest position observation dates ${cov?.at_newest_pct ?? '—'}% of the aggregate value; ${cov?.value_fresh_pct ?? '—'}% is within ${cov?.stale_after_hours ?? 48}h.${clockDivergences.length ? `\n\nCLOCK DIVERGENCE — two copies of the position clock disagree:\n · ${clockDivergences.map(d => `${d.account}: ${d.detail}`).join('\n · ')}\naccount_summaries.as_of is not maintained by the loader; the position rows are. Neither copy is edited.` : ''} Refreshes every 2 min via /api/v2/overview.${portfolioSurfaceStale ? ` · ${overviewFresh.reason || oldestLine}` : ''}`,
+      drill: { title: 'Portfolio (ALL ACCOUNTS)', subtitle: portfolioSurfaceStale ? `STALE · ${oldestLine}` : `All-account aggregate · ${portfolioAgg?.included_account_count ?? '?'} account(s)${coverageMark}`, endpoint: '/api/v2/overview',
+        rows: overview ? [{ portfolio_value: overview.portfolio_value, positions_observed_newest: posNewest, positions_observed_oldest: posOldest, positions_observed_oldest_account: posOldestAcct, positions_observed_oldest_age_hours: posOldestAgeH, valuation_time: valuationTime, quote_observation_time: quoteObsTime, quote_source: portfolioAgg?.quote_source, coverage: cov, observation_divergences: clockDivergences, portfolio_aggregate: overview.portfolio_aggregate, total_cash: overview.total_cash, position_count: overview.position_count, today_change: overview.today_change, today_pct: overview.today_pct, as_of: overview.as_of, surface_stale: portfolioSurfaceStale, surface_reason: overviewFresh.reason }] : [] },
     },
     {
       label: 'TODAY', value: todayChange != null ? `${todayChange >= 0 ? '+' : ''}${fmt$(todayChange, 0)}${todayPct != null ? ` ${todayPct >= 0 ? '+' : ''}${todayPct}%` : ''}` : '—',
       // A P&L is stamped with its OWN session, never the position clock.
-      stale: todayMissing.length ? ` · ${todayMissing.length} funded acct(s) did not report`
-        : todayPartial.length ? ` · partial: ${todayUnknownRows} row(s) without a day change` : null,
+      stale: todayState.reason,
+      staleLabel: todayState.label,
       asOf: todayPnl?.session_date ?? null,
       asOfLabel: 'P&L session',
       asOfNote: null,
-      tone: worseTone(todayMissing.length ? 'warn' : 'ok', overviewFresh.stale ? 'warn' : 'ok'),
+      tone: todayState.tone,
       valueSize: VALUE_BIG,
       minWidth: 150, maxWidth: 225,
       undated: !todayPnl?.session_date,
-      color: overviewFresh.stale ? BB.amber : todayChange == null ? 'var(--text3)' : todayChange >= 0 ? BB.green : BB.red,
+      color: todayState.tone === 'warn' ? BB.amber : todayChange == null ? 'var(--text3)' : todayChange >= 0 ? BB.green : BB.red,
       drill: { title: "Today's Move", subtitle: `${todayPnl?.session_date ? `session ${todayPnl.session_date}` : 'session UNDATED'} · ${todayHoverAccounts ?? todayPnl?.coverage_reason ?? 'coverage unknown'}`, endpoint: '/api/v2/overview',
         rows: overview ? [
-          { today_change: overview.today_change, today_pct: overview.today_pct, today_complete: todayPnl?.complete, partial_accounts: todayPartial, unknown_rows: todayUnknownRows, pnl_session_date: todayPnl?.session_date, pnl_session_source: todayPnl?.session_source, pnl_calculated_at: todayPnl?.calculated_at, pnl_mark_source: todayPnl?.mark_source, scope: todayPnl?.scope, linked_accounts: todayLinked, funded_accounts: todayFunded, represented_accounts: todayRepresented, contributing_accounts: todayPnl?.contributing_accounts, zero_change_accounts: todayPnl?.zero_change_accounts, empty_accounts: todayEmpty, missing_accounts: todayMissing, portfolio_value: overview.portfolio_value, surface_stale: overviewFresh.stale },
+          { today_change: overview.today_change, today_pct: overview.today_pct, today_complete: todayPnl?.complete, partial_accounts: todayPartial, unknown_rows: todayUnknownRows, pnl_session_date: todayPnl?.session_date, pnl_session_source: todayPnl?.session_source, pnl_calculated_at: todayPnl?.calculated_at, pnl_mark_source: todayPnl?.mark_source, scope: todayPnl?.scope, linked_accounts: todayLinked, funded_accounts: todayFunded, represented_accounts: todayRepresented, contributing_accounts: todayPnl?.contributing_accounts, zero_change_accounts: todayPnl?.zero_change_accounts, empty_accounts: todayEmpty, missing_accounts: todayMissing, portfolio_value: overview.portfolio_value, surface_stale: todayState.tone === 'warn', surface_state: todayState.label, surface_reason: todayState.reason },
           ...Object.entries(overview.today_by_account ?? {})
             .sort((a: any, b: any) => Math.abs(b[1].change) - Math.abs(a[1].change))
             .map(([acct, d]: any) => ({
@@ -473,7 +534,7 @@ export default function MetricStrip({ onDrill }: Props) {
               account_value: d.value, top_movers: d.top_movers || null,
             })),
         ] : [] },
-      tip: `Today's net change ($ and %).\n\nACCOUNTS (hover):\n · ${todayHoverAccounts ?? '—'}\n\n · P&L session: ${todayPnl?.session_date ?? 'UNDATED'}${todayPnl?.session_source ? ` (from ${todayPnl.session_source})` : ''}\n · calculated: ${todayPnl?.calculated_at ?? '—'}\n · marks: ${todayPnl?.mark_source ?? '—'}\n · coverage: ${todayPnl?.coverage_reason ?? '—'}\n\nThis is the P&L's OWN session — not the date the share counts were observed (${posNewest ?? 'UNDATED'}). Click for the per-account breakdown. Refreshes every 2 min.`,
+      tip: `Today's net change ($ and %).\n\nACCOUNTS (hover):\n · ${todayHoverAccounts ?? '—'}\n\n · P&L session: ${todayPnl?.session_date ?? 'UNDATED'}${todayPnl?.session_source ? ` (from ${todayPnl.session_source})` : ''}\n · calculated: ${todayPnl?.calculated_at ?? '—'}\n · marks: ${todayPnl?.mark_source ?? '—'}\n · coverage: ${todayPnl?.coverage_reason ?? '—'}${todayState.reason ? `\n\nTODAY STATE: ${todayState.label} — ${todayState.reason}` : ''}\n\nThis is the P&L's OWN session — not the date the share counts were observed (${posNewest ? (fmtAsOf(posNewest) ?? posNewest) : 'UNDATED'}). Click for the per-account breakdown. Refreshes every 2 min.`,
     },
     {
       // "53.3% · 169 · $55,429" was three unlabelled numbers. A reader cannot tell which
@@ -611,15 +672,67 @@ export default function MetricStrip({ onDrill }: Props) {
 
   return (
     <div className="metric-strip" data-mobile-expanded={mobileExpanded ? 'true' : 'false'} style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg0)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+    {headerState.state !== 'ready' && (
+      <div
+        data-header-state={headerState.state}
+        role={headerState.state === 'error' ? 'alert' : 'status'}
+        aria-live={headerState.state === 'error' ? 'assertive' : 'polite'}
+        aria-busy={headerState.state === 'loading' ? 'true' : undefined}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+          padding: '3px 16px', fontSize: TYPE.xs, fontFamily: 'var(--mono)',
+          color: headerStateTone === 'bad' ? BB.red : headerStateTone === 'warn' ? BB.amber : 'var(--text3)',
+          background: headerStateTone === 'bad' ? BB.redDim : headerStateTone === 'warn' ? BB.amberDim : 'var(--bg0)',
+          borderBottom: '1px solid var(--border)',
+        }}
+      >
+        {headerState.state === 'loading' && (
+          <span aria-hidden="true" style={{ display: 'inline-block', width: 10, height: 10, border: '2px solid var(--text3)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.9s linear infinite' }} />
+        )}
+        <strong style={{ fontWeight: 800 }}>{headerState.message}</strong>
+        {headerState.detail && (
+          <span title={headerState.detail} style={{ ...NOWRAP, maxWidth: 520, color: 'var(--text2)' }}>{headerState.detail}</span>
+        )}
+        {headerState.failed.length > 0 && (
+          <span style={{ color: 'var(--text2)' }}>({headerState.failed.join(', ')})</span>
+        )}
+        {/* A source that settled with no payload is named too, so "unknown" is
+            never a bare adjective over a healthy-looking strip. */}
+        {headerState.unavailable.length > 0 && (
+          <span style={{ color: 'var(--text2)' }}>({headerState.unavailable.join(', ')})</span>
+        )}
+        {headerState.retryable && (
+          <button
+            type="button"
+            onClick={retryHeaderFeeds}
+            style={{ marginLeft: 'auto', padding: '1px 8px', borderRadius: RADIUS.sm, border: '1px solid var(--border)', background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer' }}
+          >Retry</button>
+        )}
+      </div>
+    )}
     <div className="ms-compact" data-testid="ms-compact">
-      <button type="button" className="ms-compact__cell" onClick={() => onDrill(portfolioTile.drill)} title={(portfolioTile as any).tip}>
-        <span className="ms-compact__label">PORT{(portfolioTile as any).stale ? <span style={{ color: BB.amber }} data-surface-stale> ⚠</span> : null}</span>
-        <span className="ms-compact__value" style={{ ...numStyle, color: portfolioTile.color }}>{portfolioTile.value}</span>
-      </button>
-      <button type="button" className="ms-compact__cell" onClick={() => onDrill(todayTile.drill)} title={(todayTile as any).tip}>
-        <span className="ms-compact__label">TODAY</span>
-        <span className="ms-compact__value" style={{ ...numStyle, color: todayTile.color }}>{todayTile.value}</span>
-      </button>
+      {headerHasData ? (
+        <>
+          <button type="button" className="ms-compact__cell" onClick={() => onDrill(portfolioTile.drill)} title={(portfolioTile as any).tip}>
+            <span className="ms-compact__label">PORT{(portfolioTile as any).stale ? <span style={{ color: BB.amber }} data-surface-stale> ⚠</span> : null}</span>
+            <span className="ms-compact__value" style={{ ...numStyle, color: portfolioTile.color }}>{portfolioTile.value}</span>
+          </button>
+          <button type="button" className="ms-compact__cell" onClick={() => onDrill(todayTile.drill)} title={(todayTile as any).tip}>
+            <span className="ms-compact__label">TODAY</span>
+            <span className="ms-compact__value" style={{ ...numStyle, color: todayTile.color }}>{todayTile.value}</span>
+          </button>
+        </>
+      ) : (
+        // No payload yet: say which state we are in, never a pair of em dashes
+        // that reads like an authoritative zero.
+        <span
+          className="ms-compact__label"
+          data-header-compact-state={headerState.state}
+          style={{ padding: '0 6px', color: headerState.state === 'error' ? BB.red : headerState.state === 'loading' ? 'var(--text3)' : BB.amber }}
+        >
+          {headerState.state === 'loading' ? 'Loading header metrics…' : headerState.state === 'error' ? 'Header error' : 'Header unavailable'}
+        </span>
+      )}
       {approvals != null && approvals > 0 && (
         <button type="button" className="ms-compact__chip" onClick={() => navigate('/')}
           aria-label={`${approvals} pending approvals`} title={`${approvals} pending approvals — Home → Action Inbox`}
@@ -659,7 +772,9 @@ export default function MetricStrip({ onDrill }: Props) {
           >{priceStampShort}</div>
         )}
       </div>
-      {tiles.map(t => {
+      {/* No payload at all: the banner above carries the state. Do not paint a row
+          of em dashes, which reads as "the book is empty" rather than "not loaded". */}
+      {headerHasData && tiles.map(t => {
         // Exception-driven: the tone decides whether this tile is quiet or loud.
         // 'ok' renders a dim dot and grey meta; 'warn'/'bad' recolour the meta
         // line and swap the glyph. No extra line, so height is invariant.
@@ -703,7 +818,7 @@ export default function MetricStrip({ onDrill }: Props) {
           >
             {t.label}
             {showStateDots && <span style={{ color: toneColor(tone), fontWeight: 800 }} data-tile-tone={tone}>{' '}{toneGlyph(tone)}</span>}
-            {(t as any).stale && <span style={{ color: BB.amber, fontWeight: 800 }} data-surface-stale>{' '}⚠ STALE</span>}
+            {(t as any).stale && <span style={{ color: BB.amber, fontWeight: 800 }} data-surface-stale>{' '}⚠ {(t as any).staleLabel || 'STALE'}</span>}
           </div>
           <div className="ms-value" style={{ ...((t as any).wrapValue ? VALUE_WRAP : NOWRAP), ...numStyle, fontSize: (t as any).valueSize ?? VALUE_BIG, fontWeight: 700, color: t.color }}>
             {t.value}
