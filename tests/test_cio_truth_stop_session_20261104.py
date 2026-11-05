@@ -16,10 +16,18 @@ SPEC.loader.exec_module(truth)
 NOW = datetime(2026, 11, 4, 15, tzinfo=timezone.utc)
 
 
-def row(clock, status="WORKING"):
-    return {"account": "SyntheticAccountAlpha", "symbol": "SYNTH",
+def row(clock, status="WORKING", symbol="SYNTH"):
+    return {"account": "SyntheticAccountAlpha", "symbol": symbol,
             "order_id": "synthetic-stop-one", "status": status,
             "stop_price": 100, "qty": 1, "captured_at": clock}
+
+
+def holdings(*specs):
+    """specs: (account, symbol, shares, price, market_value)."""
+    return {"as_of": NOW.isoformat(), "generated_at": NOW.isoformat(),
+            "holdings": [{"account": account, "symbol": symbol, "shares": shares, "price": price,
+                          "market_value": market_value, "day_change": 0}
+                         for account, symbol, shares, price, market_value in specs]}
 
 
 @pytest.mark.parametrize("clock,expected", [
@@ -54,6 +62,65 @@ def test_unusable_observation_cannot_supply_active_count_or_zero_heat(tmp_path, 
     assert document["positions"]["portfolio_heat_pct"] is None
     assert document["positions"]["resting_heat_pct"] is None
     assert position["resting_stop_distance_pct"] is None
+    # The same unusable observation is not a definite "unprotected" claim either.
+    assert document["stops"]["unprotected_count"] is None
+    assert document["positions"]["unprotected_value_usd"] is None
+    # It is published as the unproven set instead.
+    assert document["stops"]["unproven_count"] == 1
+    assert document["positions"]["unproven_value_usd"] == 110.0
+
+
+def test_stale_resting_stop_is_unproven_not_a_definite_unprotected_figure(tmp_path):
+    """A stale stop read says WORKING with a stop at $100; the evidence is old, not absent.
+
+    Mirrors the four nulled heat figures: unknown evidence must not become a definite unprotected count or
+    dollar figure under the Risk panel's "Value without active protection".
+    """
+    document = truth.resolve(tmp_path, NOW, inputs={
+        "holdings": {"as_of": NOW.isoformat(), "generated_at": NOW.isoformat(),
+                     "holdings": [{"account": "SyntheticAccountAlpha", "symbol": "SYNTH",
+                                   "shares": 100, "price": 110, "market_value": 11000,
+                                   "day_change": 0}]},
+        "broker_stops": [row("2026-10-28T14:59:00Z")], "stop_fills": {},
+        "companies": {}, "policy": {}, "planned_stops": {}, "cio_status": {},
+    })
+    position = document["positions"]["rows"][0]
+    assert position["broker_protected"] is False
+    assert position["stop_state"] == "unknown"
+    assert position["stop_state_observed"] == "active"
+    assert position["stop_observation"]["status"] == "STALE"
+    # Not a definite all-clear and not a definite "unprotected" figure.
+    assert document["stops"]["unprotected_count"] is None
+    assert document["positions"]["unprotected_value_usd"] is None
+    # The unproven set is published on its own.
+    assert document["stops"]["unproven_count"] == 1
+    assert document["positions"]["unproven_value_usd"] == 11000.0
+    # Same standard as the four siblings the PR already nulls.
+    assert document["positions"]["loss_at_stop_usd"] is None
+    assert document["positions"]["portfolio_heat_pct"] is None
+    assert document["positions"]["loss_at_resting_stops_usd"] is None
+    assert document["positions"]["resting_heat_pct"] is None
+
+
+def test_unproven_position_is_excluded_from_the_definite_unprotected_figures(tmp_path):
+    """An unmapped broker stop state is unproven, not unprotected: the definite figures cover only the rest."""
+    document = truth.resolve(tmp_path, NOW, inputs={
+        "holdings": holdings(
+            ("SyntheticAccountAlpha", "SYNTH", 100, 110, 11000),
+            ("SyntheticAccountAlpha", "NOSP", 50, 100, 5000)),
+        "broker_stops": [row("2026-11-04T14:59:00Z", status="SOME_UNMAPPED_STATE")],
+        "stop_fills": {}, "companies": {}, "policy": {}, "planned_stops": {}, "cio_status": {},
+    })
+    unproven, no_stop = document["positions"]["rows"]
+    assert unproven["stop_state"] == "unknown"
+    assert unproven["stop_observation"]["status"] == "FRESH"  # the time is current; the state is unmapped
+    assert no_stop["stop_state"] == "none"
+    # A current observation means no whole-book uncertainty: the definite figures still publish, excluding the
+    # unproven row instead of counting it as unprotected.
+    assert document["stops"]["unprotected_count"] == 1
+    assert document["positions"]["unprotected_value_usd"] == 5000.0
+    assert document["stops"]["unproven_count"] == 1
+    assert document["positions"]["unproven_value_usd"] == 11000.0
 
 
 @pytest.mark.parametrize("status", ["PENDING_ACTIVATION", "AWAITING_PARENT_ORDER",

@@ -216,6 +216,17 @@ def _stop_category(p: dict) -> str:
     return "planned" if p.get("stop_source") == "planned" and p.get("stop_price") is not None else "none"
 
 
+def _unproven_protection(p: dict) -> bool:
+    """A broker stop was read but its current protection cannot be established either way.
+
+    ``stop_for`` demotes a resting stop whose observation is not current (``STALE``/``UNAVAILABLE``) to
+    ``stop_state == "unknown"``, and an unmapped broker status lands there too. Such a position is neither
+    proven protected nor proven unprotected: an unknown observation must not become a definite "unprotected"
+    count or dollar figure any more than it may become a zero-risk one.
+    """
+    return p.get("stop_state") == "unknown"
+
+
 def _resting_summary(counted: list[dict], total_usd, *, broker_available: bool) -> dict:
     """Counted positions by stop category plus the loss if every resting broker stop (active or pending) fills.
 
@@ -1365,17 +1376,23 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
         p["stop_evidence"] = {k: stop[k] for k in ("source", "as_of", "age_hours", "stale", "gap")}
         positions.append(p)
     counted_positions = [p for p in positions if (_number(p.get("market_value")) or 0) >= 100]
+    unproven_positions = [p for p in counted_positions if _unproven_protection(p)]
+    unproven_ids = {id(p) for p in unproven_positions}
+    # Proven unprotected only: an unproven row is neither protected nor unprotected, so it never adds to the
+    # definite "without protection" figures. It is published separately as the unproven set.
+    proven_unprotected = [p for p in counted_positions if not p["broker_protected"] and id(p) not in unproven_ids]
     counts = {state: sum(p["stop_state"] == state for p in counted_positions) for state in ("active", "pending_activation", "filled")}
     stop_rows = [{k: p.get(k) for k in ("account_id", "account_label", "symbol", "stop_price", "stop_source", "stop_state",
                                       "stop_captured_at", "broker_protected", "stop_qty", "stop_evidence", "stop_note",
                                       "stop_history", "stop_state_observed", "stop_observation")} for p in positions]
     stops = {"rows": stop_rows, "active_count": counts["active"], "pending_count": counts["pending_activation"],
-             "filled_count": counts["filled"], "unprotected_count": sum(not p["broker_protected"] for p in counted_positions),
+             "filled_count": counts["filled"], "unprotected_count": len(proven_unprotected),
+             "unproven_count": len(unproven_positions),
              "position_count": portfolio["position_count"],
              "nearest": None, "awaiting_fill": [],
              **stop_clock(positions, now, broker_available=broker is not None, contract=inputs.get("stop_freshness"))}
     if broker is None:
-        for key in ("active_count", "pending_count", "filled_count", "unprotected_count"):
+        for key in ("active_count", "pending_count", "filled_count", "unprotected_count", "unproven_count"):
             stops[key] = None
     # Current holdings and the same stop states supply the display risk summary;
     # stale pre-market risk rows never substitute for the current position set.
@@ -1402,17 +1419,22 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
                                 and p["stop_observation"]["status"] != "FRESH" for p in counted_positions)
     if uncertain_observation:
         protected_loss = None  # Unknown evidence must not become a zero-risk figure.
-    unprotected_mv = _sum_known([p for p in positions if not p["broker_protected"]], "market_value") if portfolio["holdings"] and broker is not None else None
+    unprotected_mv = _sum_known([p for p in positions if not p["broker_protected"] and not _unproven_protection(p)],
+                                "market_value") if portfolio["holdings"] and broker is not None else None
+    unproven_mv = (_sum_known([p for p in positions if _unproven_protection(p)], "market_value")
+                   if portfolio["holdings"] and broker is not None else None)
     position_section = {"rows": positions, "loss_at_stop_usd": protected_loss,
                         "portfolio_heat_pct": round(protected_loss / portfolio["total_usd"] * 100, 3)
                         if portfolio.get("total_usd") and protected_loss is not None else None,
-                        "unprotected_value_usd": unprotected_mv, "largest_name": None,
+                        "unprotected_value_usd": unprotected_mv, "unproven_value_usd": unproven_mv,
+                        "largest_name": None,
                         "loss_basis": "loss to observed active stops; unprotected downside is not bounded",
                         **{k: portfolio[k] for k in ("source", "as_of", "stale", "gap")}}
     position_section["as_of"] = portfolio["positions_as_of"]
     position_section.update(_resting_summary(counted_positions, portfolio.get("total_usd"), broker_available=broker is not None))
     if uncertain_observation:
-        position_section.update(loss_at_resting_stops_usd=None, resting_heat_pct=None)
+        position_section.update(loss_at_resting_stops_usd=None, resting_heat_pct=None, unprotected_value_usd=None)
+        stops["unprotected_count"] = None
     by_symbol = {}
     for p in positions:
         by_symbol[p["symbol"]] = by_symbol.get(p["symbol"], 0) + (_number(p.get("market_value")) or 0)
