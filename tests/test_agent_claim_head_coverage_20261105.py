@@ -268,3 +268,49 @@ def test_branch_walks_around_the_guard_and_is_refused_as_a_reclaim(git_repo, tmp
     assert "would re-point it" in err, err
     assert after["branch"] == before["branch"] == "wt/claim-target"
     assert after["head_sha"] == before["head_sha"]
+
+
+# ── the ancestor case (cc-deepseek-6's BLOCK at fb9c88e05): a heartbeat may move a claim FORWARD, never backwards ────
+
+def test_a_backwards_heartbeat_from_the_canonical_checkout_does_not_move_the_claim(git_repo, tmp_path, monkeypatch, capsys):
+    """The common case in this fleet: main's tip is an ancestor of the claim's branch, so a heartbeat run from a tree
+    on main used to be stamped silently and walked the claim backwards."""
+    cid, argv = _claim_on(git_repo, tmp_path, monkeypatch)
+    recorded = json.loads((tmp_path / "claims" / f"{cid}.json").read_text())["head_sha"]
+    _git_run(git_repo, "checkout", "-q", "main")  # an ancestor of wt/claim-target, and ahead of nothing
+    assert CLI.main([*argv, "heartbeat", cid]) == 0
+    err = capsys.readouterr().err
+    after = json.loads((tmp_path / "claims" / f"{cid}.json").read_text())
+    assert after["head_sha"] == recorded, "an ancestor HEAD must not re-point the claim"
+    assert "BEHIND" in err and "moving backwards" in err, err
+
+
+def test_a_forward_heartbeat_is_still_stamped(git_repo, tmp_path, monkeypatch):
+    """The fix must not freeze a claim: a heartbeat from the branch's own tip records it."""
+    cid, argv = _claim_on(git_repo, tmp_path, monkeypatch)
+    _git_run(git_repo, "checkout", "-q", "wt/claim-target")
+    (git_repo / "c.py").write_text("z = 3\n", encoding="utf-8")
+    _git_run(git_repo, "add", "c.py")
+    _git_run(git_repo, "commit", "-q", "-m", "more claim work")
+    tip = _git_run(git_repo, "rev-parse", "HEAD")
+    assert CLI.main([*argv, "heartbeat", cid]) == 0
+    assert json.loads((tmp_path / "claims" / f"{cid}.json").read_text())["head_sha"] == tip
+
+
+def test_the_strict_env_refuses_a_backwards_move(git_repo, tmp_path, monkeypatch, capsys):
+    cid, argv = _claim_on(git_repo, tmp_path, monkeypatch)
+    recorded = json.loads((tmp_path / "claims" / f"{cid}.json").read_text())["head_sha"]
+    _git_run(git_repo, "checkout", "-q", "main")
+    monkeypatch.setenv(CLI.HEAD_STRICT_ENV, "1")
+    assert CLI.main([*argv, "heartbeat", cid]) == 2
+    assert json.loads((tmp_path / "claims" / f"{cid}.json").read_text())["head_sha"] == recorded
+
+
+def test_the_guard_unit_never_stamps_an_ancestor_of_the_recorded_head(monkeypatch):
+    parent, child = "a" * 40, "b" * 40
+    fake = FakeGit(tip=child, ancestors={(parent, BRANCH), (parent, child)})
+    monkeypatch.setattr(CLI, "_git", fake)
+    guard = CLI.heartbeat_head_guard(BRANCH, parent, ["scripts/a.py"], "/repo", claim_id="C1", recorded_head=child)
+    assert guard["stamp"] is None and "BEHIND" in guard["warnings"][0]
+    forward = CLI.heartbeat_head_guard(BRANCH, child, ["scripts/a.py"], "/repo", claim_id="C1", recorded_head=parent)
+    assert forward["stamp"] == child

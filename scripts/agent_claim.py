@@ -263,18 +263,23 @@ def head_position(branch: str | None, head_sha: str | None, paths, cwd: str | Pa
 
 
 def heartbeat_head_guard(branch: str | None, head_sha: str | None, paths, cwd: str | Path | None = None,
-                         *, claim_id: str = "this claim", strict: bool = False) -> dict:
+                         *, claim_id: str = "this claim", strict: bool = False,
+                         recorded_head: str | None = None) -> dict:
     """What a heartbeat may stamp, and what it must say (FQ-152 a/b).
 
-    ``stamp`` is the head to record: the caller's HEAD when it belongs to the claim's branch, ``None`` when it does
-    not -- a heartbeat must never replace a claim's head with a commit from another branch's tree. ``refuse`` is True
-    only under ``strict`` (``AGENT_CLAIM_STRICT_HEAD=1`` or ``--strict-head``), because nineteen sessions share this
-    tool and a hard refusal mid-task would block work that is otherwise correct.
+    The rule in one sentence: **a heartbeat may move a claim's head forward, never backwards.**
+    ``stamp`` is the head to record, or ``None`` to keep the one the claim already has. It is ``None`` whenever the
+    tree's HEAD is not on the claim's branch, and it is also ``None`` whenever stamping it would move the recorded head
+    *backwards* -- which is the common case in this fleet, because a heartbeat run from the canonical checkout stamps
+    main's tip onto a claim whose branch contains it (cc-deepseek-6's BLOCK on #2687, 2026-11-05). ``refuse`` is True
+    only under ``strict`` (``AGENT_CLAIM_STRICT_HEAD=1`` or ``--strict-head``), because nineteen sessions share this tool
+    and a hard refusal mid-task would block work that is otherwise correct.
     """
     pos = head_position(branch, head_sha, paths, cwd)
     warnings: list[str] = []
     stamp = head_sha
     refuse = False
+    recorded = str(recorded_head or "")
     if pos["position"] == "not_on_branch":
         msg = (
             f"this tree is at {str(head_sha)[:12]}, which is not on claim {claim_id}'s branch {branch}; the claim keeps "
@@ -282,6 +287,17 @@ def heartbeat_head_guard(branch: str | None, head_sha: str | None, paths, cwd: s
             f"Run the heartbeat from the claim's own worktree."
         )
         warnings.append(msg)
+        stamp = None
+        refuse = bool(strict)
+    elif recorded and head_sha and head_sha != recorded and \
+            _git(["merge-base", "--is-ancestor", head_sha, recorded], cwd) is not None:
+        # head is an ancestor of what the claim already records: stamping it would walk the claim backwards.
+        warnings.append(
+            f"this tree is at {str(head_sha)[:12]}, which is BEHIND claim {claim_id}'s recorded head "
+            f"{recorded[:12]} on {branch}; the claim keeps {recorded[:12]} rather than moving backwards. A heartbeat "
+            f"from another worktree (the canonical checkout is main's tip) must not re-point a claim. Run it from the "
+            f"branch's own worktree."
+        )
         stamp = None
         refuse = bool(strict)
     elif pos["position"] == "behind_tip" and pos["paths_changed"]:
@@ -429,6 +445,7 @@ def cmd_heartbeat(a: argparse.Namespace) -> int:
         guard = heartbeat_head_guard(
             branch, head, prev.get("paths") or [], top, claim_id=a.claim_id,
             strict=bool(getattr(a, "strict_head", False)) or os.environ.get(HEAD_STRICT_ENV) == "1",
+            recorded_head=prev.get("head_sha"),
         )
         stamp = guard["stamp"]
         warnings = list(guard["warnings"])
