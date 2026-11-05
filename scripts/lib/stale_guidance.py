@@ -1,10 +1,13 @@
 """Stale-guidance gates — an advisory or a stop prompt may not render as current when it is not.
 
 Why this exists (operator P0 2026-11-03, Board row 33 piece E):
-On 2026-10-30 SPCX stopped out at 137.19. On 2026-11-03 the price was 141.65 — above that stop — yet Home
-still said "SPCX is below its stop" and the CIO home still carried an "Advisory TRIM — SPCX" label whose
-narrative dated from 2026-10-07. The operator was looking at guidance that was true when it was written and
-false when he read it.
+A held name stopped out. Days later its price was back above that stop, yet Home still said the name was
+below its stop, and the CIO home still carried an advisory label whose narrative predated the stop by weeks.
+The operator was looking at guidance that was true when it was written and false when he read it.
+
+The concrete values from that incident are deliberately NOT recorded here: this is a public repository, and a
+symbol together with a date and a fill price identifies a real execution. The gate needs the shape of the
+failure, not the operator's trade.
 
 Two rules, both pure and both testable without a live store:
 

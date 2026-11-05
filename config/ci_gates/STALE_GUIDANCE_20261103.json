@@ -6,8 +6,7 @@
   ],
   "anchor": "STALE_GUIDANCE_20261103",
   "comment": [
-    "ANCHOR: STALE_GUIDANCE_20261103 - the operator was stopped out of SPCX at 137.19 on 2026-10-30,",
-    "stood at 141.65 on 2026-11-03, and Home still said 'below its stop' while the CIO page carried an",
+    "ANCHOR: STALE_GUIDANCE_20261103 \u2014 guidance that was true when written and false when read must not render as current. The original incident involved a held name that stopped out and later traded back above that stop while Home still said it was below: the concrete symbol, dates and fill prices are deliberately not recorded in this public repository.",
     "advisory dated 2026-10-07. The clock is now the OBSERVATION (not the directive's creation) and the",
     "gate covers the staging rows the operator actually reads; these tests assert both at the real call",
     "paths, including a mutation-proved failure case."
