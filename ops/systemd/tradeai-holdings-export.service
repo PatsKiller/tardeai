@@ -1,0 +1,19 @@
+[Unit]
+Description=TradeAI holdings.json export from positions_current (non-broker, no credentials, no orders)
+# Runs shortly after each positions_sync cron tick (:09/:24/:39/:54). The export renders the store FROM the
+# database every time and never reads the existing file as input, so a 0-byte or corrupt store is replaced
+# with a fresh document. A failed DB read leaves the last good file untouched.
+After=network.target postgresql.service
+Wants=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
+ExecStart=%h/trade-ai-releases/portfolio-server/CURRENT/.venv/bin/python scripts/holdings_export.py --apply
+# Exit 1 = the export refused (DB unreachable / empty result). That is a REAL failure, not a successful
+# tick: the unit must go red so systemd/health see it, and the freshness alert pages independently.
+TimeoutStartSec=90
+Nice=10
+# NOT INSTALLED. Installation is operator-only (AGENTS.md §17) and the release owns staged units; this file
+# is the proposal only. No schedule was enabled by the branch that added it.

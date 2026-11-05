@@ -55,7 +55,17 @@ MONITORED_COMPONENTS = [
     {
         "component": "trade_ai_orchestrator",
         "display": "Trade AI Orchestrator",
-        "schedule": "0 9,10,12,14,16 * * 1-5",
+        # The literal was stale twice over: it claimed 09/10 through 16:00 on weekdays, while the only
+        # ACTIVE lane that writes `screener_pm.log` is `orchestrator-slot` at 17:30 ET, Monday to Friday
+        # (`orchestrator-slot-midday` is RETIRED in config/lane_registry.json). Judging a 180-minute age
+        # against the wall clock therefore flagged the component STALE every evening, all night and all
+        # weekend (CC5 Home audit D2, 2026-11-02). The schedule now comes from the ACTIVE lane rows, and
+        # this literal is the reviewed fail-back if the registry cannot be read.
+        "schedule": "30 17 * * 1-5",
+        # The literal this component declared before 2026-11-02, kept so the drift report can show what
+        # was claimed versus what the ACTIVE lane says - the corrected "schedule" must not erase that.
+        "declared_schedule": "0 9,10,12,14,16 * * 1-5",
+        "schedule_source": "lane_registry",
         "log_file": "screener_pm.log",
         "monitor_lane_ids": ["orchestrator-slot", "orchestrator-slot-midday"],
         "max_age_min": 180,
@@ -1051,6 +1061,100 @@ def _resolve_component_schedule(comp, registry=None):
     return dict(comp, schedule=active[0] if len(active) == 1 else active, schedule_resolved_from="lane_registry")
 
 
+def schedule_drift(comp) -> str | None:
+    """How the schedule the component DECLARED differs from the ACTIVE lane's schedule.
+
+    cc3's review (2026-11-02): `declared_schedule` was preserved but nothing compared it to what the
+    lane actually runs, so a correction was invisible on the operator view. Returns None when the two
+    agree (or when either is unknown) - never a guess.
+
+    The wording says "declares" because the lane registry is a declaration, not proof that the host
+    scheduler installed (or runs) anything; installation is not measured here.
+    """
+    declared = str(_fmt_schedule((comp or {}).get("declared_schedule")) or "").strip()
+    resolved = str(_fmt_schedule((comp or {}).get("schedule")) or "").strip()
+    if not declared or not resolved or declared == resolved:
+        return None
+    return f"declared '{declared}' but the ACTIVE lane declares '{resolved}'"
+
+
+def schedule_fallback_reason(comp) -> str | None:
+    """The human reason a component fell back to its literal schedule, or None when it did not.
+
+    ``_resolve_component_schedule`` records ``literal_fallback:<reason>`` when it cannot take the
+    schedule from the ACTIVE lane. The reason must reach the operator surface as the REAL cause: the
+    earlier text always claimed "the lane registry could not be read", which was false for a missing
+    lane or an invalid scheduler entry. Unknown reasons are shown raw rather than guessed at.
+    """
+    resolved_from = str((comp or {}).get("schedule_resolved_from") or "")
+    if not resolved_from.startswith("literal_fallback:"):
+        return None
+    reason = resolved_from[len("literal_fallback:") :].strip()
+    lowered = reason.lower()
+    if (
+        "source_registry_unavailable" in lowered
+        or "registry_unavailable" in lowered
+        or "read" in lowered
+        or "parse" in lowered
+    ):
+        return "the lane registry could not be read"
+    if "source_mapping_missing_or_ambiguous" in lowered:
+        return "the mapped lane is missing or ambiguous"
+    if "source_scheduler_invalid" in lowered:
+        return "the lane's scheduler entry is invalid"
+    if "source_schedule_not_measured" in lowered:
+        return "the lane has no measured schedule"
+    if "component_registry_mapping_not_declared" in lowered:
+        return "this component has no mapped lane"
+    return reason
+
+
+def schedule_display(comp) -> str:
+    """The schedule string the operator surface shows: the resolved one, with its context named.
+
+    A list of cron expressions renders as ``A | B``. A correction names the drift; a fail-back says
+    the lane schedule was NOT MEASURED and gives its real reason (never both - the drift sentence
+    would imply the registry was read).
+    """
+    resolved = _fmt_schedule((comp or {}).get("schedule"))
+    resolved = "" if resolved is None else str(resolved)
+    fallback = schedule_fallback_reason(comp)
+    if fallback is not None:
+        return f"{resolved} (expected; lane schedule NOT MEASURED — {fallback})"
+    drift = schedule_drift(comp)
+    if drift:
+        return f"{resolved} (corrected — {drift})"
+    return resolved
+
+
+def schedule_fallback_error(comp) -> str | None:
+    """The operator-visible message when a component fell back to its literal schedule.
+
+    cc3's review (2026-11-02): ``schedule_resolved_from`` recorded an unreadable registry and nothing
+    read it, so the page showed the literal as though it had been resolved. This is the one place that
+    turns the marker into the text the persisted ``last_error`` column carries.
+    """
+    resolved_from = str((comp or {}).get("schedule_resolved_from") or "")
+    if not resolved_from.startswith("literal_fallback"):
+        return None
+    return f"schedule {resolved_from}"
+
+
+def schedule_expected_line(comp) -> str:
+    """The ``Expected:`` line of an escalation, saying so when the schedule is the literal fail-back.
+
+    cc3's BLOCK on the Home repair asked for the fallback to appear on the surface the operator
+    actually reads. For this agent that surface is the escalation message and the
+    ``system_health_events`` row built from it - not ``system_health_checks``, whose only consumer is
+    the frozen v2 page. So the fallback is stated here, in the message itself, with its real reason.
+    """
+    expected = _fmt_schedule((comp or {}).get("schedule", "unknown"))
+    fallback = schedule_fallback_reason(comp)
+    if fallback is not None:
+        return f"{expected} (fallback — {fallback})"
+    return expected
+
+
 def _component_schedule_intent(comp):
     """Source intent is drift context, never proof of host scheduler installation."""
     from lib.system_health_freshness import schedule_intent
@@ -1669,7 +1773,7 @@ def _escalate(comp, check_result, conn):
         f"{'🚨' if severity == 'CRITICAL' else '⚠️'} SYSTEM HEALTH: {comp['display']} — {check_result['status']}",
         "",
         f"Component: {component}",
-        f"Expected: {_fmt_schedule(comp.get('schedule', 'unknown'))}",
+        f"Expected: {schedule_expected_line(comp)}",
         f"Last observed output: {(check_result.get('freshness_evidence') or {}).get('success_at') or 'NOT_MEASURED'}",
         f"Status: {check_result['status']}",
     ]
@@ -1770,14 +1874,20 @@ def _notify_recovered(comp, check_result, conn):
     return "sent" if accepted else "rejected"
 
 
-def run_health_check(dry_run=True, verbose=False):
-    """Run all health checks. Returns full report."""
+def run_health_check(dry_run=True, verbose=False, *, now=None):
+    """Run all health checks. Returns full report.
+
+    ``now`` is the clock every freshness decision uses; tests pass a fixed instant so a weekend,
+    holidays and DST cannot make the assertions depend on when the suite runs. In production it is
+    omitted and the current UTC instant is used.
+    """
     conn = _get_conn()
     if not conn:
         log.error("No DB connection")
         return {"error": "no_db"}
 
-    now = datetime.now(timezone.utc)
+    now = now or datetime.now(timezone.utc)
+    now = now.astimezone(timezone.utc) if now.tzinfo else now.replace(tzinfo=timezone.utc)
     report = {
         "timestamp": now.isoformat(),
         "mode": "dry_run" if dry_run else "active",
@@ -1791,6 +1901,7 @@ def run_health_check(dry_run=True, verbose=False):
             "retried": 0,
             "retry_disarmed": 0,
             "escalated": 0,
+            "schedule_fallback": 0,
         },
     }
 
@@ -1817,10 +1928,11 @@ def run_health_check(dry_run=True, verbose=False):
             "snapshot_id": None,
         }
 
-    # Determine if we're in market hours (ET)
-    import pytz as _ptz
+    # Determine if we're in market hours (ET). Stdlib zoneinfo, not pytz: the shard that runs the loop
+    # does not install pytz, and the loop has no reason to depend on it (same rule as _check_log_freshness).
+    from zoneinfo import ZoneInfo as _ZoneInfo
 
-    _et = _ptz.timezone("US/Eastern")
+    _et = _ZoneInfo("America/New_York")
     _now_et = now.astimezone(_et)
     _current_hour = _now_et.hour
     _is_weekday = _now_et.weekday() < 5
@@ -1852,7 +1964,9 @@ def run_health_check(dry_run=True, verbose=False):
         _grace_min = max(comp.get("max_runtime_sec", 600) / 60.0, 5) + 10
 
         # 1. Check log freshness (schedule-aware when a scheduled fire time is known)
-        freshness = _check_component_freshness(comp, prev_fire=_prev_fire, grace_min=_grace_min)
+        # The loop's fixed clock must reach the freshness comparison: a test (or a backfill) that
+        # passes now= must not have staleness judged against the host clock instead.
+        freshness = _check_component_freshness(comp, prev_fire=_prev_fire, grace_min=_grace_min, now=now)
 
         # 2. Check lock contention
         lock_info = _check_lock_contention(comp.get("lock_file"))
@@ -1871,7 +1985,7 @@ def run_health_check(dry_run=True, verbose=False):
             "component": component,
             "display": comp.get("display", component),
             "critical": comp.get("critical", False),
-            "schedule": comp.get("schedule", ""),
+            "schedule": schedule_display(comp),
             "status": freshness["status"],
             "age_min": freshness.get("age_min"),
             "last_line": (freshness.get("last_line") or "")[:100],
@@ -1887,6 +2001,14 @@ def run_health_check(dry_run=True, verbose=False):
             "recovery_reason": None,
             "schedule_evidence": _component_schedule_intent(comp),
         }
+        # cc3 BLOCK on the Home repair (2026-11-02): `schedule_resolved_from` recorded that the registry
+        # could not be read, and NOTHING read it - the page showed the literal as if it had been resolved.
+        # `last_error` is the field the operator surface renders and the row already persists, so the
+        # fallback says so there. No schema change. A later, real error still overwrites this.
+        _fallback = schedule_fallback_error(comp)
+        if _fallback:
+            check["last_error"] = _fallback
+            report["summary"]["schedule_fallback"] += 1
 
         # 4. Determine action
         needs_action = False
@@ -2001,7 +2123,7 @@ def run_health_check(dry_run=True, verbose=False):
                     "cron_health",
                     component,
                     check["status"],
-                    _fmt_schedule(comp.get("schedule")),
+                    _fmt_schedule(schedule_display(comp)),
                     now if check["status"] == "OK" else None,
                     now if check["status"] not in ("OK", "RECOVERED") else None,
                     None,
