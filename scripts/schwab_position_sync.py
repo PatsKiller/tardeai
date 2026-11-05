@@ -36,6 +36,7 @@ BASIS_DIVERGENCE_PCT = 2.0     # flag if API avg price differs from stored basis
 from lib.holdings_sanity import (  # noqa: E402
     CATASTROPHIC_DROP_FRACTION,
     REASON_VALID_COMPLETE,
+    positions_of as _validated_positions,
     validate_payload,
 )
 def _conn():
@@ -132,23 +133,30 @@ def _plain_json_data(doc) -> bool:
     return True
 
 
-def _reference_numbers_usable(doc) -> bool:
-    """Reference rows need explicit finite measurements, never missing values coerced to zero.
+def _reference_numbers_usable(doc, *, require_measurements=True) -> bool:
+    """Finite financial fields; reference mode also requires explicit measured row values.
 
     Numeric strings remain accepted by the existing validator; booleans are not money or
     quantities. Zero and legitimate signed values remain measurements, without a new floor.
     """
-    rows = _positions_of(doc)
+    if type(doc) is not dict:
+        return False
+    rows = _positions_of(doc) if require_measurements else _validated_positions(doc)
     numbers = []
     for row in rows:
         measured = row.get("market_value")
         if measured is None:
             measured = row.get("value")
         if measured is None:
-            return False
-        numbers.append(measured)
-        numbers.extend(row[key] for key in ("market_value", "value", "price", "shares", "qty")
-                       if key in row and row[key] is not None)
+            if require_measurements:
+                return False
+        else:
+            numbers.append(measured)
+        numbers.extend(
+            row[key]
+            for key in ("market_value", "value", "price", "shares", "qty")
+            if key in row and row[key] is not None
+        )
     totals = doc.get("portfolio_totals")
     if totals is not None:
         if type(totals) is not dict:
@@ -165,9 +173,21 @@ def _reference_numbers_usable(doc) -> bool:
                 return False
         except (TypeError, ValueError, OverflowError):
             return False
+    if not require_measurements:
+        try:
+            measurement = validate_payload(doc, None)
+            if measurement.ok and not all(
+                math.isfinite(value)
+                for value in (
+                    measurement.total,
+                    measurement.cash_total,
+                    measurement.details.get("summed_market_value", 0.0),
+                )
+            ):
+                return False
+        except (TypeError, ValueError, OverflowError, AttributeError):
+            return False
     return True
-
-
 def _baseline_usable(doc) -> tuple[bool, str]:
     """A distinct object is not proof of a USABLE baseline.
 
@@ -663,7 +683,7 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
     if not _plain_json_data(new_holdings):
         reason = "SCHEMA_INVALID: candidate contains non-JSON containers, cycles or non-finite values"
         _record(account_key, "rejected_sanity", f"[{source}] {reason}")
-        _alert(f"🛑 holdings write BLOCKED ({source}): {reason}. Prior snapshot kept (no wipe).", source)
+        _alert(f"🛑 holdings write BLOCKED ({source}): {reason}. Target left unchanged.", source)
         return {"wrote": False, "status": "rejected_sanity", "reason": reason,
                 "reason_code": "SCHEMA_INVALID", "missing_accounts": [], "baseline_source": None}
     # A guard whose precondition can be violated by its caller is decorative (cc-deepseek-3 review,
@@ -710,6 +730,14 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
                 "reason_code": "NO_BASELINE", "missing_accounts": [], "baseline_source": None}
     # Totals must describe the positions in THIS payload -- see reconcile_totals.
     reconcile_totals(new_holdings, source=source)
+    # Reconciliation may truthfully replace a bad nested declared total. Check the resulting
+    # financial fields, without treating arbitrary metadata strings/booleans as financial data.
+    if not _reference_numbers_usable(new_holdings, require_measurements=False):
+        reason = "SCHEMA_INVALID: candidate financial values and aggregates must be finite numbers, not booleans"
+        _record(account_key, "rejected_sanity", f"[{source}] {reason}")
+        _alert(f"🛑 holdings write BLOCKED ({source}): {reason}. Target left unchanged.", source)
+        return {"wrote": False, "status": "rejected_sanity", "reason": reason,
+                "reason_code": "SCHEMA_INVALID", "missing_accounts": [], "baseline_source": baseline_source}
     verdict = validate_payload(new_holdings, prior_doc)
     if not verdict.ok:
         status = "rejected_drop" if verdict.reason_code == "CATASTROPHIC_DROP" else "rejected_sanity"

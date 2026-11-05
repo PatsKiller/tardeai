@@ -4,6 +4,7 @@ Operator execution-engineering grant 43212811c2fe4b17aade58299fea22ef (2026-11-0
 no live broker call, no credential read, no flag, no order route. Every connection/alert/hook is a fake.
 """
 import json
+import math
 import sys
 import types
 from pathlib import Path
@@ -729,3 +730,148 @@ def test_unusable_reference_falls_back_without_blocking_an_equal_healthy_write(s
         baseline["holdings"][0].pop("account_id")
     out = S.protected_holdings_write(_book(), baseline=baseline, target_path=str(store), source="test_usable_store_kept")
     assert out["wrote"] is True and out["baseline_source"] == "store"
+
+
+# Candidate financial type contract: all35actual-writer counterprobe cases.
+def _candidate_numeric_book():
+    return {
+        "holdings": [
+            {"symbol": sym, "account": acct, "market_value": mv, "shares": 1, "price": mv, "is_cash": sym == "CASH"}
+            for acct in REQUIRED
+            for sym, mv in [("SYN", 20000), ("CASH", 12000)]
+        ]
+    }
+
+
+_CANDIDATE_FINANCIAL_FIELDS = ["market_value", "value", "price", "shares", "qty", "total_value", "portfolio_totals"]
+_CANDIDATE_FINANCIAL_CASES = ["valid_string", "NaN", "Infinity", "bool_true", "bool_false"]
+
+
+def _candidate_field_number(field):
+    return 96000 if field in ("total_value", "portfolio_totals") else 1 if field in ("shares", "qty") else 20000
+
+
+@pytest.mark.parametrize("field", _CANDIDATE_FINANCIAL_FIELDS)
+@pytest.mark.parametrize("case", _CANDIDATE_FINANCIAL_CASES)
+def test_candidate_financial_field_contract(tmp_path, monkeypatch, store, field, case):
+    target = tmp_path / "holdings.json"
+    target.write_bytes(json.dumps(_candidate_numeric_book()).encode())
+    monkeypatch.setattr(S, "HOLDINGS_PATH", target)
+    candidate = _candidate_numeric_book()
+    raw = (
+        str(_candidate_field_number(field))
+        if case == "valid_string"
+        else True
+        if case == "bool_true"
+        else False
+        if case == "bool_false"
+        else case
+    )
+    if field == "portfolio_totals":
+        candidate[field] = {"total_value": raw}
+    elif field == "total_value":
+        candidate[field] = raw
+    elif field == "value":
+        candidate["holdings"][0].pop("market_value")
+        candidate["holdings"][0][field] = raw
+    elif field == "qty":
+        candidate["holdings"][0].pop("shares")
+        candidate["holdings"][0][field] = raw
+    else:
+        candidate["holdings"][0][field] = raw
+    before = target.read_bytes()
+    result = S.protected_holdings_write(
+        candidate,
+        baseline=_candidate_numeric_book(),
+        target_path=str(target),
+        source="test_candidate_numeric_counterprobe",
+    )
+    after = target.read_bytes()
+    stored = json.loads(after)
+    value = (
+        stored.get("portfolio_totals", {}).get("total_value")
+        if field == "portfolio_totals"
+        else stored.get(field)
+        if field == "total_value"
+        else stored["holdings"][0].get(field)
+    )
+    total = result.get("total_value")
+    finite = not isinstance(total, (int, float)) or math.isfinite(total)
+    record = {
+        "field": field,
+        "case": case,
+        "input": raw,
+        "wrote": result["wrote"],
+        "status": result.get("status"),
+        "reason_code": result.get("reason_code"),
+        "store_bytes_changed": after != before,
+        "stored_field": value,
+        "result_total": total if finite else str(total),
+        "result_total_is_finite": finite,
+    }
+    print("COUNTERPROBE " + json.dumps(record, allow_nan=False))
+    if case == "valid_string":
+        assert (
+            result["wrote"] is True
+            and float(value) == _candidate_field_number(field)
+            and not isinstance(value, bool)
+            and finite
+        )
+    elif field == "portfolio_totals" and result["wrote"]:
+        assert isinstance(value, (int, float)) and not isinstance(value, bool) and value == 96000 and finite, (
+            "reconciliation must actually replace invalid declared evidence with measured finite total"
+        )
+    else:
+        assert result["wrote"] is False and after == before, (
+            "typed invalid financial value reached an actual changed snapshot"
+        )
+
+
+@pytest.mark.parametrize("metadata", [{"memo": "NaN", "enabled": True}, {"memo": "Infinity", "enabled": False}])
+def test_candidate_metadata_strings_and_booleans_stay_metadata(store, metadata):
+    candidate = _candidate_numeric_book()
+    candidate["metadata"] = metadata
+    store.write_text(json.dumps(_candidate_numeric_book()))
+    out = S.protected_holdings_write(
+        candidate, baseline=_candidate_numeric_book(), target_path=str(store), source="test_metadata_compatibility"
+    )
+    assert out["wrote"] is True and math.isfinite(out["total_value"])
+    assert json.loads(store.read_bytes())["metadata"] == metadata
+
+
+@pytest.mark.parametrize("field", ["market_value", "value", "price", "shares", "qty"])
+@pytest.mark.parametrize("value", [0, -1])
+def test_candidate_known_zero_and_signed_measurements_keep_existing_validator_semantics(store, field, value):
+    candidate = _candidate_numeric_book()
+    if field == "value":
+        candidate["holdings"][0].pop("market_value")
+    if field == "qty":
+        candidate["holdings"][0].pop("shares")
+    candidate["holdings"][0][field] = value
+    store.write_text(json.dumps(_candidate_numeric_book()))
+    out = S.protected_holdings_write(
+        candidate,
+        baseline=_candidate_numeric_book(),
+        target_path=str(store),
+        source="test_finite_measurement_compatibility",
+    )
+    assert out["wrote"] is True and math.isfinite(out["total_value"])
+    assert json.loads(store.read_bytes())["holdings"][0][field] == value
+
+
+@pytest.mark.parametrize("declared", [False, True])
+def test_candidate_finite_fields_cannot_overflow_the_measured_book_aggregate(store, declared):
+    candidate = _candidate_numeric_book()
+    for row in candidate["holdings"]:
+        if not row["is_cash"]:
+            row["market_value"] = 1e308
+            row["price"] = 1e308
+    if declared:
+        candidate["total_value"] = 96000
+    store.write_text(json.dumps(_candidate_numeric_book()))
+    before = store.read_bytes()
+    out = S.protected_holdings_write(
+        candidate, baseline=_candidate_numeric_book(), target_path=str(store), source="test_finite_aggregate"
+    )
+    print("AGGREGATE_OVERFLOW", declared, out, "store_bytes_changed", store.read_bytes() != before)
+    assert out["wrote"] is False and store.read_bytes() == before
