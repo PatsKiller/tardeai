@@ -17,6 +17,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { checkSetAt } from './check-test-set.mjs'
 
 const app = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const DORMANT = join(app, 'scripts', 'tests.dormant.json')
@@ -50,6 +51,17 @@ const skipped = discovered.filter(f => f in skip)
 if (listOnly) {
   console.log(JSON.stringify({ run, dormant: skipped }, null, 2))
   process.exit(0)
+}
+
+// The set gate runs before any suite: a `*.test.*` file that exists but is in neither list is a test nobody runs and
+// nobody has decided to skip (cc9's block on #2686 — discovery walked src/ only, so a file elsewhere was invisible).
+// Asserting the SET rather than a count is what lets a legitimate new test under src/ pass untouched.
+const setResult = checkSetAt(app)
+if (setResult.uncovered.length || setResult.dangling.length) {
+  for (const f of setResult.uncovered) console.error(`  ✗ not run and not dormant: ${f}`)
+  for (const f of setResult.dangling) console.error(`  ✗ dormant entry with no file: ${f}`)
+  console.error(`run-tests: test-set gate failed — ${setResult.uncovered.length} uncovered, ${setResult.dangling.length} dangling`)
+  process.exit(1)
 }
 
 const failures = []
