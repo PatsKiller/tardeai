@@ -13,6 +13,8 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from lib.cio_canonical_quote import apply_canonical_quote_fields
+
 SCHEMA = "ProtectivePutAdvisory@v2"
 CONFIG_RELPATH = Path("config") / "protective_put_advisory.json"
 
@@ -84,6 +86,55 @@ def _position_quantity(position: Mapping[str, Any]) -> float | None:
     return None
 
 
+def _per_share_mark(position: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Pure named-quote semantics, bounded to the sanctioned stored-position fields.
+
+    The legacy current_price field is explicitly untrusted by portfolio_positions.
+    A fractional bare price with no value to classify it could itself be total value.
+    No quote is fetched, and a snapshot/as-of reference is never claimed to be live.
+    """
+    if position.get("conflicted") or position.get("not_for_valuation") or position.get("proxy"):
+        return None
+    explicit = "canonical_mark" in position
+    canonical = _num(position.get("canonical_mark"))
+    if explicit and (canonical is None or canonical <= 0):
+        return None
+    quantity = _position_quantity(position)
+    row = dict(position)
+    # Normalise aliases once so valuation, source classification and eligibility agree.
+    row["shares"] = quantity
+    row["quantity"] = quantity
+    row.pop("qty", None)
+    row.pop("value", None)
+    row.pop("current_price", None)
+    for key in ("market_value", "price", "mark", "last", "official_close", "previous_close", "prev_close", "close"):
+        row[key] = _num(position.get(key))
+    if quantity is not None and 0 < abs(quantity) < 1 and row["market_value"] is None:
+        row["price"] = None  # no value evidence to disambiguate a fractional legacy price
+    named = apply_canonical_quote_fields(row)
+    if named.get("conflicted"):
+        return None
+    derived = _num(named.get("canonical_mark"))
+    if explicit and derived is not None and named.get("canonical_mark_source") != "implied_from_mv":
+        # Apply the same genuine-mark conflict contract to the supplied named mark.
+        if apply_canonical_quote_fields({"mark": canonical, "last": derived}).get("conflicted"):
+            return None
+    source = position.get("canonical_mark_source") if explicit else named.get("canonical_mark_source")
+    stamp = position.get("canonical_mark_as_of") if explicit else named.get("canonical_mark_as_of")
+    mark = canonical if explicit else _num(named.get("canonical_mark"))
+    if mark is None or mark <= 0:
+        return None
+    basis = (
+        "implied_from_mv" if source == "implied_from_mv" else "named_canonical_mark" if explicit else "snapshot_mark"
+    )
+    return {
+        "price": mark,
+        "source": str(source) if source else "canonical_mark",
+        "as_of": stamp if isinstance(stamp, str) else None,
+        "basis": basis,
+    }
+
+
 def position_value(position: Mapping[str, Any]) -> float | None:
     """Known nonnegative market value, or a finite price × holding quantity; None is not zero."""
     mv = _num(position.get("market_value"))
@@ -92,10 +143,14 @@ def position_value(position: Mapping[str, Any]) -> float | None:
     quantity = _position_quantity(position)
     if quantity == 0:
         return 0.0
-    price = _num(position.get("price"))
-    if price is None or price < 0 or quantity is None:
+    if quantity is None:
         return None
-    value = abs(price * quantity)
+    if _num(position.get("price")) == 0 and "canonical_mark" not in position:
+        return 0.0
+    mark = _per_share_mark(position)
+    if mark is None:
+        return None
+    value = abs(mark["price"] * quantity)
     return value if math.isfinite(value) else None
 
 
@@ -237,11 +292,12 @@ def suggest_for_position(
     if not in_event_window(days, cfg):
         return None, "outside_event_window"
 
-    spot = _num(position.get("price"))
-    if spot is None or spot <= 0:
-        spot = value / shares
-    if not math.isfinite(spot) or spot <= 0:
+    if not math.isfinite(value / shares):
         return None, "unit_economics_not_finite"
+    mark = _per_share_mark(position)
+    if mark is None:
+        return None, "per_share_mark_unknown"
+    spot = mark["price"]
     stop = _num(position.get("stop_price", position.get("stop")))
     if stop is not None and stop > 0:
         floor_target, floor_basis = stop, "broker_stop"
@@ -266,7 +322,7 @@ def suggest_for_position(
     )
 
     # 100 is the standard contract multiplier, not a selected number of contracts.
-    reference_value = value / shares * 100.0
+    reference_value = spot * 100.0
     if not math.isfinite(reference_value) or reference_value <= 0:
         return None, "unit_economics_not_finite"
     unit_cost = (
@@ -297,6 +353,10 @@ def suggest_for_position(
         "account": position.get("account"),
         "position_value": round(value, 2),
         "pct_of_book": share,
+        "reference_price": spot,
+        "reference_price_source": mark["source"],
+        "reference_price_as_of": mark["as_of"],
+        "reference_price_basis": mark["basis"],
         "event": {
             "date": (event or {}).get("event_date") or (event or {}).get("date") or (event or {}).get("earnings_date"),
             "days_to_event": days,

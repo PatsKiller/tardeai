@@ -389,3 +389,123 @@ def test_unrepresentable_call_credit_does_not_corrupt_usable_put():
     assert "collar_per_contract" not in result
     assert result["collar_unavailable_reason"] == "call_unit_economics_not_finite"
     json.dumps(result, allow_nan=False)
+
+
+# Cloud P1: legacy price may be the entire value of a fractional holding.
+@pytest.mark.parametrize("quantity_key", ["quantity", "shares"])
+def test_fractional_cli_uses_named_per_share_mark_before_strike_selection(tmp_path, capsys, quantity_key):
+    row = {
+        "symbol": "AAA",
+        quantity_key: 0.5,
+        "price": 50,
+        "market_value": 50,
+        "canonical_mark": 100,
+        "canonical_mark_source": "synthetic_quote",
+        "canonical_mark_as_of": "2030-01-07T12:00:00Z",
+    }
+    rc, report = run_book_cli(tmp_path, capsys, [row], "--book-value=500")
+    result = report["suggestions"][0]
+    assert rc == 0 and result["floor_target"] == 90.0 and result["floor_price"] == 90.0
+    assert result["reference_price"] == 100.0 and result["reference_price_source"] == "synthetic_quote"
+    assert result["reference_price_as_of"] == "2030-01-07T12:00:00Z"
+    assert result["reference_price_basis"] == "named_canonical_mark"
+    assert result["coverage_status"] == "not_selected" and result["position_floor_after_cost"] is None
+    assert "collar_per_contract" not in result
+
+
+@pytest.mark.parametrize("quantity_key", ["quantity", "shares"])
+def test_stuffed_total_uses_existing_canonical_classification_and_labels_implied(quantity_key):
+    row = {"symbol": "AAA", quantity_key: 0.5, "price": 50, "market_value": 50}
+    result, reason = adv.suggest_for_position(row, book_value=500, event={"days_to_event": 10}, now=NOW)
+    assert reason is None and result["floor_target"] == 90.0
+    assert result["reference_price"] == 100.0 and result["reference_price_basis"] == "implied_from_mv"
+    assert result["reference_price_source"] == "implied_from_mv"
+    assert result["cost_per_contract_usd"] == 250.0
+
+
+def test_named_mark_drives_unit_economics_instead_of_independent_book_value():
+    row = position(quantity=0.5, price=50, market_value=50, canonical_mark=200)
+    result, reason = adv.suggest_for_position(row, book_value=500, event={"days_to_event": 10}, now=NOW)
+    assert reason is None and result["floor_target"] == 180.0
+    assert result["cost_per_contract_usd"] == 500.0 and result["pct_of_book"] == 10.0
+
+
+@pytest.mark.parametrize("field", ["canonical_mark", "mark", "last", "official_close"])
+def test_sanctioned_mark_can_value_a_row_without_legacy_price(field):
+    row = {"symbol": "AAA", "shares": 0.5, field: 100}
+    assert adv.position_value(row) == 50.0
+    result, reason = adv.suggest_for_position(row, book_value=500, event={"days_to_event": 10}, now=NOW)
+    assert reason is None and result["reference_price"] == 100.0
+    assert result["floor_target"] == 90.0 and result["cost_per_contract_usd"] == 250.0
+
+
+@pytest.mark.parametrize("mark", [None, "bad", True, float("nan"), float("inf"), -1, 0])
+def test_explicit_unusable_named_mark_never_reverts_to_ambiguous_price(mark):
+    row = position(quantity=0.5, price=50, market_value=50, canonical_mark=mark)
+    assert adv.suggest_for_position(row, book_value=500, event={"days_to_event": 10}) == (
+        None,
+        "per_share_mark_unknown",
+    )
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"price": 50},
+        {"price": None, "current_price": 100},
+        {"price": None, "mark": True},
+        {"price": None, "mark": float("nan")},
+        {"price": None, "mark": float("inf")},
+    ],
+)
+def test_unknown_fractional_per_share_price_is_not_invented(extra):
+    row = {"symbol": "AAA", "quantity": 0.5, **extra}
+    assert adv.position_value(row) is None
+
+
+@pytest.mark.parametrize(
+    "extra", [{"conflicted": True}, {"not_for_valuation": True}, {"proxy": True}, {"price": 100, "mark": 120}]
+)
+def test_conflicted_or_nonvaluation_marks_are_not_protective_references(extra):
+    row = position(canonical_mark=100, **extra)
+    assert suggest(row)[1] == "per_share_mark_unknown"
+
+
+def test_neutral_canonical_helper_recognizes_synthetic_stuffed_fractional_shape():
+    from lib.cio_canonical_quote import apply_canonical_quote_fields
+
+    named = apply_canonical_quote_fields({"symbol": "AAA", "shares": 0.5, "price": 50, "market_value": 50, "mark": 100})
+    assert named["price_field_role"] == "market_value" and named["canonical_mark"] == 100
+    assert named["conflicted"] is False
+
+
+def test_config_notes_describe_the_emitted_v2_units_and_deliberately_unselected_coverage():
+    notes = json.loads((ROOT / "config/protective_put_advisory.json").read_bytes())["notes"]
+    assert "100 reference shares" in notes["cost"] and "per contract" in notes["cost"]
+    assert "floor_per_covered_share_after_premium" in notes["floor_after_cost"]
+    assert "floor_after_premium_note" in notes["floor_after_cost"]
+    assert "floor_after_cost_negative" not in notes["floor_after_cost"]
+    assert "coverage_status" in notes["partial_coverage"] and "not_selected" in notes["partial_coverage"]
+    assert "No contract count" in notes["partial_coverage"] and "worst-case-per-share" in notes["partial_coverage"]
+
+
+def test_quoted_strike_selection_uses_named_mark_with_competing_legacy_value_strike():
+    quotes = chain(call=False)
+    quotes["expirations"][0]["strikes"].append({"side": "put", "strike": 45.0, "bid": 0.4, "ask": 0.5})
+    row = position(quantity=0.5, price=50, market_value=50, canonical_mark=100)
+    result, reason = adv.suggest_for_position(row, book_value=500, event={"days_to_event": 10}, chain=quotes, now=NOW)
+    assert reason is None and result["floor_target"] == 90.0 and result["floor_price"] == 90.0
+    assert result["cost_per_contract_usd"] == 210.0
+
+
+@pytest.mark.parametrize("extra", [{"quantity": 0.5}, {"quantity": None, "shares": 0.5}])
+def test_named_mark_values_fractional_aliases_without_a_total_value(extra):
+    row = {"symbol": "AAA", "price": 50, "canonical_mark": "100", **extra}
+    assert adv.position_value(row) == 50.0
+
+
+def test_unambiguous_fractional_price_agrees_with_existing_value_and_is_not_divided_again():
+    row = {"symbol": "AAA", "shares": 0.5, "price": 100, "market_value": 50}
+    result, reason = adv.suggest_for_position(row, book_value=500, event={"days_to_event": 10}, now=NOW)
+    assert reason is None and result["reference_price"] == 100 and result["floor_target"] == 90
+    assert result["reference_price_as_of"] is None
