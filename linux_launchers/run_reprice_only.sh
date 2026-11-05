@@ -49,11 +49,18 @@ root = Path(sys.argv[1]).resolve()
 project_root = Path(sys.argv[2]).resolve()
 sys.path.insert(0, str(root / 'scripts'))
 from portfolio_loader import load_all_portfolios, save_state
-from portfolio_repricer import reprice_portfolio
+from portfolio_repricer import reprice_portfolio, RepriceRefused
 portfolio = load_all_portfolios(str(root))
-save_state(portfolio, str(root))
 state_dir = root / 'data' / 'portfolios' / 'state'
-portfolio = reprice_portfolio(portfolio, state_dir)
+# FQ-2532-R: reprice BEFORE the save, and save once. A refused pass raises RepriceRefused and returns nothing, so
+# nothing is written at all — previously the pre-reprice save wrote the loaded document unconditionally and the
+# second save would have written a refused one (cc-deepseek-8's F1 on #2689).
+try:
+    portfolio = reprice_portfolio(portfolio, state_dir)
+except RepriceRefused as _refused:   # a refusal is data; any other exception is a bug and must say so
+    import sys as _sys
+    print(f"[REPRICE] reprice refused: {_refused} — holdings.json left untouched", file=_sys.stderr)
+    _sys.exit(3)
 save_state(portfolio, str(root))
 # Source is the persistent reports root; destination stays in PROJECT_ROOT so existing
 # consumers of $PROJECT_ROOT/reports keep working, and a promote cannot

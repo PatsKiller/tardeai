@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import { W7Gap, W7Metric, W7Panel, grid, line, linkStyle, mono, pct, text, when } from './W7PagePanels'
 import W7DetailSheet, { useW7Detail } from './W7DetailSheet'
+import { cioStanceLine } from '../lib/cioStanceAge'
 
 const DO_NOW_SHEET = 'do-now-all'
 
@@ -52,7 +53,7 @@ function DoNowRow({ item, testId }: { item: any; testId: string }) {
       <b>{item.symbol && <span style={mono}>{item.symbol} </span>}{item.title || item.text}</b>
       {item.account_label && <div style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>{item.account_label}</div>}
       <div style={{ color: TOKENS.text[2] }}>{item.reason || item.why || item.detail}</div>
-      {item.stance && <span>CIO {item.stance} · conviction {text(item.conviction)}</span>}
+      {item.stance && (() => { const l = cioStanceLine(String(item.stance), (item as any).stance_as_of, text(item.conviction)); return <span data-testid="cio-stance" data-stale={l.stale ? "1" : undefined} style={l.stale ? { color: TOKENS.warning } : undefined}>{l.text}</span> })()}
     </div>
     {href && <Link style={{ ...linkStyle, width: '100%', justifyContent: 'center', background: TOKENS.bg[2] }} to={href}>{item.cta || item.action?.label || 'Review'} →</Link>}
   </div>
