@@ -22,11 +22,15 @@ What it refuses, in operator language:
   files are named.
 * **binary-evidence** — a binary file was added under ``docs/evidence/``. Evidence must stay
   readable (text, JSON, Markdown, CSV).
-* **wip-cap** — the session already has three open non-draft pull requests. The threshold is
+* **wip-cap** — this session already has three open non-draft pull requests. The session's branches
+  come from the claim board (``agent_claim.py status --json``, matched by ``AGENT_CLAIM_SESSION``);
+  the whole-account count is reported alongside so fleet noise is visible. If the claim board cannot
+  be read, the check falls back to the whole account and says so. The threshold is
   ``MAX_OPEN_NON_DRAFT_PRS``; ``--skip-wip-cap`` overrides it once and prints a warning.
 
-Inputs are read with ``git`` and the ``gh`` CLI only. ``--json`` prints a machine-readable result.
-Hermetic tests replace ``gh_run`` and ``test_runner``; ``git`` runs against a temporary repository.
+Inputs are read with ``git``, the ``gh`` CLI and the claim board only. ``--json`` prints a
+machine-readable result. Hermetic tests replace ``gh_run``, ``test_runner`` and
+``claim_board_reader``; ``git`` runs against a temporary repository.
 
 AUTHORITY: READ_ONLY_ADVISORY (local upload gate; no broker, no DB, no write beyond its own receipt).
 """
@@ -36,6 +40,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -70,9 +75,12 @@ Each refusal is one plain-English line and exit code 1; a clean run prints nothi
                        Fix: `git merge origin/main`, resolve the named files, and commit.
   binary-evidence      A binary file was added under docs/evidence/. Fix: add readable text
                        (JSON, Markdown, CSV) instead.
-  wip-cap              The session already has MAX_OPEN_NON_DRAFT_PRS (3) open non-draft pull
-                       requests. Fix: finish or close one. --skip-wip-cap overrides this one
-                       check and prints a warning; it is for the check's own PR.
+  wip-cap              This session already has MAX_OPEN_NON_DRAFT_PRS (3) open non-draft pull
+                       requests on its claimed branches. Fix: finish or close one. The message
+                       also names the whole-account count so fleet noise is visible. If the claim
+                       board cannot be read, the whole account is counted and the message says so.
+                       --skip-wip-cap overrides this one check and prints a warning; it is for the
+                       check's own PR.
 """
 
 
@@ -414,7 +422,60 @@ def check_evidence(root: Path) -> list[dict]:
     ]
 
 
+def _read_claim_branches(root: Path, session: str) -> tuple[set[str] | None, str]:
+    """The branches this session claims, from the claim board. ``None`` means unreadable."""
+    if not session:
+        return None, "AGENT_CLAIM_SESSION is not set, so this session's claims cannot be identified"
+    script = root / "scripts" / "agent_claim.py"
+    if not script.is_file():
+        return None, f"{script} is missing from this worktree"
+    try:
+        proc = _run([sys.executable, str(script), "status", "--json"], root, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return None, f"the claim board could not be read ({exc})"
+    if proc.returncode != 0:
+        detail = (proc.stderr or "").strip().splitlines()
+        why = detail[0] if detail else f"exit {proc.returncode}"
+        return None, f"the claim board could not be read ({why})"
+    try:
+        doc = json.loads(proc.stdout or "{}")
+    except ValueError:
+        return None, "the claim board returned unreadable JSON"
+    rows = doc.get("in_flight") if isinstance(doc, dict) else None
+    if not isinstance(rows, list):
+        return None, "the claim board JSON has no in_flight list"
+    branches = {
+        str(row.get("branch"))
+        for row in rows
+        if isinstance(row, dict) and row.get("session") == session and row.get("branch")
+    }
+    return branches, ""
+
+
+# Injectable boundary (tests replace this name; no test reads the real claim board).
+claim_board_reader = _read_claim_branches
+
+
+def _non_draft(rows: list) -> list[dict]:
+    return [row for row in rows if isinstance(row, dict) and not row.get("isDraft")]
+
+
+def _pr_rows(proc) -> list | None:
+    try:
+        rows = json.loads(proc.stdout or "[]")
+    except ValueError:
+        return None
+    return rows if isinstance(rows, list) else None
+
+
 def check_wip_cap(root: Path, skip: bool) -> list[dict]:
+    """Count only this session's non-draft PRs; report the account count for context.
+
+    Every agent on this host shares one GitHub account, so ``gh pr list --author @me`` is the whole
+    fleet. The session's branches come from the claim board; a PR is "this session's" when its head
+    branch is one of those claims. If the claim board cannot be read, the whole account is counted
+    and the refusal says so, so a reader can never mistake fleet noise for their own work.
+    """
     if skip:
         return []
     proc = gh_run(["pr", "list", "--author", "@me", "--state", "open", "--json", "number,isDraft"], root)
@@ -422,19 +483,48 @@ def check_wip_cap(root: Path, skip: bool) -> list[dict]:
         detail = (proc.stderr or "").strip().splitlines()
         why = detail[0] if detail else "no answer from GitHub"
         return [_refusal("wip-cap", f"could not read your open pull requests ({why})")]
-    try:
-        rows = json.loads(proc.stdout or "[]")
-    except ValueError:
+    account_rows = _pr_rows(proc)
+    if account_rows is None:
         return [_refusal("wip-cap", "GitHub returned an unreadable answer for your open pull requests")]
-    non_draft = [r for r in rows if isinstance(r, dict) and not r.get("isDraft")]
-    if len(non_draft) >= MAX_OPEN_NON_DRAFT_PRS:
-        numbers = ", ".join(f"#{r.get('number')}" for r in non_draft)
+    account_count = len(_non_draft(account_rows))
+
+    session = os.environ.get("AGENT_CLAIM_SESSION", "").strip()
+    branches, note = claim_board_reader(root, session)
+    if branches is not None:
+        own: dict[object, dict] = {}
+        for branch in sorted(branches):
+            branch_proc = gh_run(["pr", "list", "--head", branch, "--state", "open", "--json", "number,isDraft"], root)
+            rows = _pr_rows(branch_proc) if branch_proc.returncode == 0 else None
+            if rows is None:
+                branches, note = None, f"could not read open pull requests for claimed branch {branch}"
+                break
+            for row in _non_draft(rows):
+                own[row.get("number")] = row
+        if branches is not None:
+            own_count = len(own)
+            if own_count >= MAX_OPEN_NON_DRAFT_PRS:
+                numbers = ", ".join(f"#{row.get('number')}" for row in own.values())
+                branch_list = ", ".join(sorted(branches))
+                return [
+                    _refusal(
+                        "wip-cap",
+                        f"this account has {account_count} open non-draft pull requests, {own_count} of them "
+                        f"on this session's claimed branches ({branch_list}: {numbers}); the limit is "
+                        f"{MAX_OPEN_NON_DRAFT_PRS} for this session; finish or close one "
+                        f"(--skip-wip-cap overrides this check with a warning)",
+                    )
+                ]
+            return []
+
+    # The claim board (or a per-branch read) failed: fall back to the whole account, and say so.
+    if account_count >= MAX_OPEN_NON_DRAFT_PRS:
         return [
             _refusal(
                 "wip-cap",
-                f"{len(non_draft)} open non-draft pull requests ({numbers}); the limit is "
-                f"{MAX_OPEN_NON_DRAFT_PRS}; finish or close one (--skip-wip-cap overrides this check "
-                f"with a warning)",
+                f"the claim board could not be read ({note}), so this counts the whole account: this "
+                f"account has {account_count} open non-draft pull requests, and the number on this "
+                f"session's claimed branches is unknown; the limit is {MAX_OPEN_NON_DRAFT_PRS}; finish "
+                f"or close one (--skip-wip-cap overrides this check with a warning)",
             )
         ]
     return []

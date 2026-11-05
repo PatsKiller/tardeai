@@ -83,23 +83,42 @@ def _repo(tmp_path: Path, branch_files: dict[str, str], base_files: dict[str, st
     return root
 
 
-def _fake_gh(body: str = GOOD_BODY, title: str = TITLE, prs: list | None = None, view_rc: int = 0):
+def _fake_gh(
+    body: str = GOOD_BODY,
+    title: str = TITLE,
+    account_prs: list | None = None,
+    branch_prs: dict[str, list] | None = None,
+    view_rc: int = 0,
+    list_rc: int = 0,
+):
     def fake(args, cwd=None):
         if args[:2] == ["pr", "view"]:
             if view_rc != 0:
                 return subprocess.CompletedProcess(args, view_rc, "", "no pull requests found for branch")
             return subprocess.CompletedProcess(args, 0, json.dumps({"number": 1, "title": title, "body": body}), "")
         if args[:2] == ["pr", "list"]:
-            return subprocess.CompletedProcess(args, 0, json.dumps(prs if prs is not None else []), "")
+            if list_rc != 0:
+                return subprocess.CompletedProcess(args, list_rc, "", "github unavailable")
+            if "--head" in args:
+                branch = args[args.index("--head") + 1]
+                rows = (branch_prs or {}).get(branch, [])
+            else:
+                rows = account_prs if account_prs is not None else []
+            return subprocess.CompletedProcess(args, 0, json.dumps(rows), "")
         return subprocess.CompletedProcess(args, 1, "", "unexpected gh call")
 
     return fake
 
 
-def _install(monkeypatch, mod, root: Path, gh=None, test_rc: int = 0) -> None:
+def _install(monkeypatch, mod, root: Path, gh=None, test_rc: int = 0, claims=None) -> None:
     monkeypatch.chdir(root)
     monkeypatch.setattr(mod, "gh_run", gh or _fake_gh())
     monkeypatch.setattr(mod, "test_runner", lambda cmd, cwd: test_rc)
+    monkeypatch.setattr(
+        mod,
+        "claim_board_reader",
+        lambda root, session: claims if claims is not None else ({"wt/test"}, ""),
+    )
 
 
 def _record(mod, monkeypatch, root: Path) -> None:
@@ -315,15 +334,19 @@ def test_refuses_a_binary_file_added_under_evidence(tmp_path, monkeypatch, capsy
     assert "readable" in out
 
 
-# ── (f) three open non-draft PRs ───────────────────────────────────────────────────────
+# ── (f) three open non-draft PRs on this session's branches ────────────────────────────
+
+
+def _prs(numbers, draft=False):
+    return [{"number": number, "isDraft": draft} for number in numbers]
 
 
 def test_refuses_at_three_open_non_draft_prs(tmp_path, monkeypatch, capsys):
-    """Mutation: change the threshold comparison from >= to > -> this test goes red."""
+    """Mutation: change the own-count threshold from >= to > -> this test goes red."""
     root = _repo(tmp_path, {"docs/note.md": "note\n"})
-    prs = [{"number": 1, "isDraft": False}, {"number": 2, "isDraft": False}, {"number": 3, "isDraft": False}]
+    own = _prs((1, 2, 3))
     mod = _mod()
-    _install(monkeypatch, mod, root, gh=_fake_gh(prs=prs))
+    _install(monkeypatch, mod, root, gh=_fake_gh(account_prs=own, branch_prs={"wt/test": own}))
     rc = mod.main([])
     out = capsys.readouterr().out
     assert rc == 1
@@ -331,12 +354,72 @@ def test_refuses_at_three_open_non_draft_prs(tmp_path, monkeypatch, capsys):
     assert "the limit is 3" in out
 
 
-def test_skip_wip_cap_passes_with_a_printed_warning(tmp_path, monkeypatch, capsys):
-    """Mutation: remove the WARNING print -> the warning assertion goes red (the pass still holds)."""
+def test_refuses_three_non_draft_prs_on_this_sessions_branches(tmp_path, monkeypatch, capsys):
+    """Mutation: change the own-count threshold from >= to > -> this test goes red."""
     root = _repo(tmp_path, {"docs/note.md": "note\n"})
-    prs = [{"number": 1, "isDraft": False}, {"number": 2, "isDraft": False}, {"number": 3, "isDraft": False}]
+    fleet = _prs(range(10, 18))  # 8 non-draft PRs across the shared account
+    own = _prs((1, 2, 3))
     mod = _mod()
-    _install(monkeypatch, mod, root, gh=_fake_gh(prs=prs))
+    _install(
+        monkeypatch,
+        mod,
+        root,
+        gh=_fake_gh(account_prs=fleet, branch_prs={"wt/mine": own}),
+        claims=({"wt/mine"}, ""),
+    )
+    rc = mod.main([])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "this account has 8 open non-draft pull requests" in out
+    assert "3 of them on this session's claimed branches" in out
+    assert "#1, #2, #3" in out
+
+
+def test_passes_when_the_account_has_many_but_none_are_this_sessions(tmp_path, monkeypatch, capsys):
+    """Mutation: count the whole account instead of this session's branches -> this test goes red."""
+    root = _repo(tmp_path, {"docs/note.md": "note\n"})
+    fleet = _prs(range(100, 110))  # 10 non-draft PRs across the shared account
+    mod = _mod()
+    _install(
+        monkeypatch,
+        mod,
+        root,
+        gh=_fake_gh(account_prs=fleet, branch_prs={"wt/mine": _prs((1,), draft=True)}),
+        claims=({"wt/mine"}, ""),
+    )
+    rc = mod.main([])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert out == ""
+
+
+def test_unreadable_claim_board_falls_back_to_the_account_and_says_so(tmp_path, monkeypatch, capsys):
+    """Mutation: pass when the claim board is unreadable instead of counting the account -> red."""
+    root = _repo(tmp_path, {"docs/note.md": "note\n"})
+    fleet = _prs(range(100, 110))  # 10 non-draft PRs across the shared account
+    mod = _mod()
+    _install(
+        monkeypatch,
+        mod,
+        root,
+        gh=_fake_gh(account_prs=fleet),
+        claims=(None, "the claim board could not be read (test)"),
+    )
+    rc = mod.main([])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "the claim board could not be read (test)" in out
+    assert "counts the whole account" in out
+    assert "this account has 10 open non-draft pull requests" in out
+    assert "unknown" in out
+
+
+def test_skip_wip_cap_passes_with_a_printed_warning(tmp_path, monkeypatch, capsys):
+    """Mutation: send the warning to stdout -> the warning assertion goes red (the pass still holds)."""
+    root = _repo(tmp_path, {"docs/note.md": "note\n"})
+    own = _prs((1, 2, 3))
+    mod = _mod()
+    _install(monkeypatch, mod, root, gh=_fake_gh(account_prs=own, branch_prs={"wt/test": own}))
     rc = mod.main(["--skip-wip-cap"])
     captured = capsys.readouterr()
     assert rc == 0
@@ -350,12 +433,12 @@ def test_skip_wip_cap_passes_with_a_printed_warning(tmp_path, monkeypatch, capsy
 def test_json_mode_is_machine_readable(tmp_path, monkeypatch, capsys):
     """Mutation: omit 'refusals' from the JSON document -> the key assertion goes red."""
     root = _repo(tmp_path, {"docs/note.md": "note\n"})
-    prs = [{"number": 1, "isDraft": False}, {"number": 2, "isDraft": False}, {"number": 3, "isDraft": False}]
+    own = _prs((1, 2, 3))
     mod = _mod()
-    _install(monkeypatch, mod, root, gh=_fake_gh(prs=prs))
+    _install(monkeypatch, mod, root, gh=_fake_gh(account_prs=own, branch_prs={"wt/test": own}))
     rc = mod.main(["--json"])
     doc = json.loads(capsys.readouterr().out)
-    assert rc == 1
+    assert rc == 1  # --json still exits 1 on a refusal
     assert doc["schema"] == "PreflightUpload@v1"
     assert doc["ok"] is False
     assert doc["head_sha"] == mod.head_sha(root)
