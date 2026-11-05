@@ -116,3 +116,65 @@ def test_missing_one_account_clock_does_not_inherit_another_accounts_clock(tmp_p
     assert document["stops"]["active_count"] == 1
     assert document["positions"]["portfolio_heat_pct"] is None
     assert document["positions"]["resting_heat_pct"] is None
+    assert document["stops"]["stale"] is True
+    assert document["stops"]["as_of"] is None
+    assert document["stops"]["last_broker_read_at"] is None
+    assert "1 of 2" in document["stops"]["gap"]["reason"]
+
+
+@pytest.mark.parametrize("clock", [None, "broken", "2026-11-04T14:59:00",
+                                  "2026-11-05T14:59:00Z"])
+def test_partial_clock_cannot_make_stop_section_fresh(clock):
+    result = truth.stop_clock([
+        {"stop_source": "broker_resting", "stop_captured_at": "2026-11-04T14:59:00Z"},
+        {"stop_source": "broker_resting", "stop_captured_at": clock},
+    ], NOW, contract={"open_h": .25, "closed_h": 72})
+    assert result["stale"] is True
+    assert result["as_of"] is None
+    assert result["last_broker_read_at"] is None
+    assert "1 of 2" in result["gap"]["reason"]
+
+
+def test_protect_reason_explains_old_evidence_instead_of_claiming_stop_absent(tmp_path):
+    document = truth.resolve(tmp_path, NOW, inputs={
+        "holdings": {"as_of": NOW.isoformat(), "generated_at": NOW.isoformat(),
+                     "holdings": [{"account": "SyntheticAccountAlpha", "symbol": "SYNTH",
+                                   "shares": 1, "price": 110, "market_value": 110,
+                                   "day_change": 0}]},
+        "broker_stops": [row("2026-10-28T14:59:00Z")], "stop_fills": {},
+        "companies": {}, "policy": {}, "planned_stops": {}, "cio_status": {},
+    })
+    protect = [item for item in document["do_now"]["items"] if item["id"].startswith("protection:")]
+    assert len(protect) == 1
+    assert "not refreshed since 2026-10-28T14:59:00Z" in protect[0]["why"]
+    assert "No active broker stop observed" not in protect[0]["why"]
+
+
+def test_position_adapter_carries_unknown_evidence_and_raw_observation(tmp_path):
+    document = truth.resolve(tmp_path, NOW, inputs={
+        "holdings": {"as_of": NOW.isoformat(), "generated_at": NOW.isoformat(),
+                     "holdings": [{"account": "SyntheticAccountAlpha", "symbol": "SYNTH",
+                                   "shares": 1, "price": 110, "market_value": 110,
+                                   "day_change": 0}]},
+        "broker_stops": [row(None)], "stop_fills": {}, "companies": {}, "policy": {},
+        "planned_stops": {}, "cio_status": {},
+    })
+    payload = truth.positions_payload({"trades": [{"account": "SyntheticAccountAlpha", "symbol": "SYNTH"}]},
+                                      document=document)
+    trade = payload["trades"][0]
+    assert trade["broker_protected"] is False
+    assert trade["stop_evidence"]["stale"] is True
+    assert trade["stop_observation"]["status"] == "UNAVAILABLE"
+    assert trade["stop_note"] == "Stop observation time is unavailable"
+    assert trade["stop_status_raw"] == "WORKING"
+
+
+def test_old_filled_observation_keeps_its_unsettled_sale_warning():
+    result = truth.do_now_for([{
+        "account_id": "SyntheticAccountAlpha", "account_label": "Synthetic account",
+        "symbol": "SYNTH", "market_value": 110, "broker_protected": False,
+        "stop_state": "filled", "stop_note": "stop filled; sale not yet checked against the trade ledger",
+        "stop_observation": {"status": "STALE", "reason": "Stop not refreshed since the prior observation"},
+    }], {"total": 0}, now=NOW)
+    assert len(result["items"]) == 1
+    assert result["items"][0]["why"] == "Stop filled; sale not yet checked against the trade ledger"

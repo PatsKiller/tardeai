@@ -1135,7 +1135,8 @@ def positions_payload(payload, *, root=None, now=None, db_query=None, inputs=Non
             row.update(account_id=account, account_label=account_label(account))
             if fact:
                 for field in ("price", "shares", "market_value", "stop_price", "stop_source", "stop_state",
-                              "stop_captured_at", "broker_protected", "basis_truth", "distance_to_stop_pct", "loss_at_stop_usd"):
+                              "stop_captured_at", "broker_protected", "basis_truth", "distance_to_stop_pct", "loss_at_stop_usd",
+                              "stop_status_raw", "stop_state_observed", "stop_note", "stop_evidence", "stop_observation"):
                     row[field] = deepcopy(fact.get(field))
                 row["current_price"] = row["price"]
                 row["cost_basis"] = fact["basis_truth"]["cost_basis_usd"]
@@ -1258,15 +1259,25 @@ def stop_clock(positions, now, *, broker_available=True, contract=None) -> dict:
     Stale uses the broker_stops freshness contract: the open-session window while the market is open, the closed
     window otherwise (weekends do not page). A stale read keeps its counts but names their age in a gap.
     """
-    times = [_timestamp(p.get("stop_captured_at")) for p in positions
-             if p.get("stop_source") == "broker_resting" and p.get("stop_captured_at")]
-    times = [t for t in times if t is not None]
+    observations = [stop_observation_freshness(p.get("stop_captured_at"), now=now)
+                    for p in positions if p.get("stop_source") == "broker_resting"]
+    unusable = sum(o["status"] == "UNAVAILABLE" for o in observations)
+    times = [_timestamp(o["as_of"]) for o in observations if o["status"] != "UNAVAILABLE"]
     at = min(times) if times else None
     meta = _evidence("stop_last_known (broker reads) > stops.json, per account+symbol", at, now,
                      reason="persisted broker stop observations unavailable" if not broker_available else None)
     meta["last_broker_read_at"] = meta["as_of"]
     meta["last_broker_read_label"] = _et_label(at) if at else None
     if not broker_available:
+        return meta
+    if unusable:
+        # One readable row cannot establish a complete refresh clock for its
+        # neighbours. Keep partial history explicitly, not as a fresh as_of.
+        meta["partial_observation_as_of"] = meta["as_of"]
+        meta.update(as_of=None, age_hours=None, stale=True,
+                    last_broker_read_at=None, last_broker_read_label=None,
+                    gap={"reason": f"Stop observation time is unavailable for {unusable} of "
+                                   f"{len(observations)} recorded positions; a complete refresh time is not known."})
         return meta
     if at is None:
         meta["stale"] = True
@@ -1298,6 +1309,9 @@ def do_now_for(positions, approvals, *, now=None) -> dict:
                   else ((p.get("stop_note") or "stop filled · awaiting holdings sync")[:1].upper()
                         + (p.get("stop_note") or "stop filled · awaiting holdings sync")[1:]) if state == "filled"
                   else "No active broker stop observed")
+        observation = p.get("stop_observation")
+        if observation and observation.get("status") != "FRESH" and state != "filled":
+            reason = observation.get("reason") or "Stop observation time is unavailable"
         items.append(item(f"protection:{p['account_id']}:{p['symbol']}", "protect", "P1",
                           f"{p['symbol']} · {p['account_label']}", reason,
                           "Review protection", "/v3/risk", "cio_truth.stops",
