@@ -254,33 +254,46 @@ export default function WatchIntelligenceUnified() {
   const openSymbol = useOpenSymbol()
   const [decisionOpen, setDecisionOpen] = useState(false)
 
+  // FQ-077 F1 (cx-openai-3): ONE definition of an "effective filter" drives the request builder, the disclosure
+  // count, the chips and Clear. The chip list previously covered only a subset, so applied filters such as
+  // freshness / review_status / review_agent / material_change constrained the results while the collapsed summary
+  // read "none active". Pagination (page, page_size) and presentation (sort, layout) are deliberately NOT filters.
+  // `material_change=0` is a real "No" selection, so presence is tested explicitly — never truthiness of the value.
+  const activeFilters = useMemo<[string, string][]>(() => {
+    const out: [string, string][] = []
+    const add = (k: string, v: string) => { if (v !== '') out.push([k, v]) }
+    if (view !== 'top_ideas') add('view', view)
+    add('q', q)
+    add('street_rating', street)
+    add('trade_ai_state', state)
+    add('sector', sector)
+    add('industry', industry)
+    add('instrument', instrument)
+    add('review_status', reviewStatus)
+    add('review_agent', reviewAgent)
+    add('freshness', freshness)
+    add('material_change', materialChange)
+    add('saved_list', savedList)
+    add('provider', provider)
+    add('model', model)
+    add('cio_view', cioView)
+    if (starredOnly) add('starred', '1')
+    if (heldOnly) add('held', '1')
+    add('origin', origin)
+    for (const [k, v] of decisionQs) add(k, v)
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, q, street, state, sector, industry, instrument, reviewStatus, reviewAgent, freshness, materialChange, savedList, provider, model, cioView, starredOnly, heldOnly, origin, decisionKey])
+
   const apiQs = useMemo(() => {
     const p = new URLSearchParams()
     p.set('view', view || 'top_ideas')
     p.set('page', page || '1')
     p.set('page_size', '40')
     p.set('sort', sort || 'watch_rank')
-    if (q) p.set('q', q)
-    if (street) p.set('street_rating', street)
-    if (state) p.set('trade_ai_state', state)
-    if (sector) p.set('sector', sector)
-    if (industry) p.set('industry', industry)
-    if (instrument) p.set('instrument', instrument)
-    if (reviewStatus) p.set('review_status', reviewStatus)
-    if (reviewAgent) p.set('review_agent', reviewAgent)
-    if (freshness) p.set('freshness', freshness)
-    if (materialChange) p.set('material_change', materialChange)
-    if (savedList) p.set('saved_list', savedList)
-    if (provider) p.set('provider', provider)
-    if (model) p.set('model', model)
-    if (cioView) p.set('cio_view', cioView)
-    if (starredOnly) p.set('starred', '1')
-    if (heldOnly) p.set('held', '1')
-    if (origin) p.set('origin', origin)
-    for (const [k, v] of decisionQs) p.set(k, v)
+    for (const [k, v] of activeFilters) if (k !== 'view') p.set(k, v)
     return p.toString()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, page, sort, q, street, state, sector, industry, instrument, reviewStatus, reviewAgent, freshness, materialChange, savedList, provider, model, cioView, starredOnly, heldOnly, origin, decisionKey])
+  }, [view, page, sort, activeFilters])
 
   const [refreshKey, setRefreshKey] = useState(0)
   const [starError, setStarError] = useState<string | null>(null)
@@ -334,16 +347,8 @@ export default function WatchIntelligenceUnified() {
     }
   }
 
-  const activeChips: string[] = []
-  if (view && view !== 'top_ideas') activeChips.push(`view:${view}`)
-  if (street) activeChips.push(`street:${street}`)
-  if (state) activeChips.push(`state:${state}`)
-  if (sector) activeChips.push(`sector:${sector}`)
-  if (starredOnly) activeChips.push('starred')
-  if (heldOnly) activeChips.push('held')
-  if (origin) activeChips.push(`origin:${origin}`)
-  if (q) activeChips.push(`q:${q}`)
-  for (const [k, v] of decisionQs) activeChips.push(`${k}:${v}`)
+  // Same single definition as the request builder, so the count and chips cannot drift from what is sent to the API.
+  const activeChips = activeFilters.map(([k, v]) => `${k}:${v}`)
 
   const applyDecision = (f: Record<string, string>) => {
     const next = new URLSearchParams(sp)

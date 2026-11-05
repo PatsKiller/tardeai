@@ -33,7 +33,7 @@ function compile(path) {
     .replace(/import\s+['"][^'"]+\.css['"];?/g, '')
     .replace(
       /import \{ useApi \} from ['"][^'"]+['"]/,
-      'const useApi = (..._args: any[]): any => (globalThis as any).__watchlistFixture',
+      'const useApi = (...args: any[]): any => { (globalThis as any).__watchlistCalls.push(String(args[0] ?? "")); return (globalThis as any).__watchlistFixture }',
     )
   let js = ts.transpileModule(source, {
     compilerOptions: { jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
@@ -75,6 +75,8 @@ const card = {
   maria_review: { status: 'NOT_RUN', reason_code: 'NOT_SCHEDULED' },
   last: 9.5, day_change_pct: -0.2,
 }
+// Every useApi URL the component builds during a render, so the test can compare the summary against the REQUEST.
+globalThis.__watchlistCalls = []
 globalThis.__watchlistFixture = {
   data: { cards: [card], items: [{ card }], summary: {}, views: { top_ideas: {} }, projections: {} },
   loading: false,
@@ -83,6 +85,7 @@ globalThis.__watchlistFixture = {
 
 function render(narrow, url = '/?view=starred') {
   setViewport(narrow)
+  globalThis.__watchlistCalls.length = 0
   return renderToStaticMarkup(
     React.createElement(MemoryRouter, { initialEntries: [url] }, React.createElement(Unified)),
   )
@@ -127,6 +130,45 @@ ok(countIn(phoneText, 'view:starred') === 1,
 
 // The summary states the state of the filters.
 ok(/Filters · 1 active/.test(phoneText), 'the summary does not name how many filters are active')
+
+// F1 (cx-openai-3): the reviewer's browser probe found URL classes the request builder sends but the chip list
+// omitted, so the collapsed summary read exactly "Filters · none active" while results were constrained. Each case
+// below renders the REAL page with one omitted input class and asserts BOTH the truthful summary and that the
+// matching nonempty parameter reaches the API — the contradiction the reviewer caught. `material_change=0` is a real
+// "No" selection: a value test that uses truthiness would drop it, so it is named explicitly.
+const omittedFilterCases = [
+  ['freshness=STALE', 'freshness=STALE'],
+  ['review_status=NOT_RUN', 'review_status=NOT_RUN'],
+  ['review_agent=cio', 'review_agent=cio'],
+  ['material_change=0', 'material_change=0'],
+  ['industry=Software', 'industry=Software'],
+  ['instrument=Stock', 'instrument=Stock'],
+  ['saved_list=core', 'saved_list=core'],
+  ['provider=brave', 'provider=brave'],
+  ['model=deepseek', 'model=deepseek'],
+  ['cio_view=hold', 'cio_view=hold'],
+]
+for (const [query, expectedParam] of omittedFilterCases) {
+  const html = render(true, `/?${query}`)
+  const text = textOf(html)
+  ok(/Filters · 1 active/.test(text),
+    `?${query}: the collapsed summary does not say "1 active" (summary: "${(text.match(/Filters · [^ ]+(?: active|none active)/) || ['none'])[0]}")`)
+  ok(!text.includes('Filters · none active'),
+    `?${query}: the summary falsely says "none active" while the filter constrains the results`)
+  const request = globalThis.__watchlistCalls.find(u => u.includes('/watch-intelligence?'))
+  ok(request && request.includes(expectedParam),
+    `?${query}: the request did not carry ${expectedParam} (got ${request || 'no watch-intelligence request'})`)
+}
+
+// The count aggregates rather than judging "some filter is on": three omitted classes at once reads 3, not 1.
+{
+  const html = render(true, '/?freshness=STALE&review_status=NOT_RUN&material_change=0')
+  const text = textOf(html)
+  ok(/Filters · 3 active/.test(text), 'the summary does not count every effective filter (expected 3 active)')
+  for (const chip of ['freshness:STALE', 'review_status:NOT_RUN', 'material_change:0']) {
+    ok(countIn(text, chip) === 1, `the active chip "${chip}" did not render exactly once`)
+  }
+}
 
 // ── desktop width ───────────────────────────────────────────────────────────────────────────────────────────────
 const desktop = render(false)
