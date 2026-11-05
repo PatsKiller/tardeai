@@ -17,7 +17,7 @@ Exit codes: 0 cycle ran (including "nothing to do" and "not armed"), 2 cannot ru
 AUTHORITY: runs on the host as the registered lane ``self-heal-fixer`` (never from n8n; no n8n allowlist row). It never
 merges, releases, edits crontab/systemd, touches broker code or credentials, or writes the production DB. The model
 edits files in a throwaway worktree only; the harness checks the diff, runs the tests, commits, and (only with the
-AGENTS.md 24.11 amendment ACTIVE and an operator grant) pushes one branch and opens one PR.
+AGENTS.md 24.16 amendment ACTIVE and an operator grant) pushes one branch and opens one PR.
 """
 
 from __future__ import annotations
