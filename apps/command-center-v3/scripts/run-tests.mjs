@@ -57,11 +57,12 @@ if (listOnly) {
 // nobody has decided to skip (cc9's block on #2686 — discovery walked src/ only, so a file elsewhere was invisible).
 // Asserting the SET rather than a count is what lets a legitimate new test under src/ pass untouched.
 const setResult = checkSetAt(app)
-if (setResult.uncovered.length || setResult.dangling.length || (setResult.unjustified || []).length) {
+if (setResult.uncovered.length || setResult.dangling.length || (setResult.unjustified || []).length || (setResult.unauthorized || []).length) {
   for (const f of setResult.unjustified || []) console.error(`  \u2717 dormant without justification: ${f}`)
+  for (const f of setResult.unauthorized || []) console.error(`  ✗ dormant but not authorized by scripts/tests.dormant.baseline.json: ${f}`)
   for (const f of setResult.uncovered) console.error(`  ✗ not run and not dormant: ${f}`)
   for (const f of setResult.dangling) console.error(`  ✗ dormant entry with no file: ${f}`)
-  console.error(`run-tests: test-set gate failed — ${setResult.uncovered.length} uncovered, ${setResult.dangling.length} dangling`)
+  console.error(`run-tests: test-set gate failed — ${setResult.uncovered.length} uncovered, ${setResult.dangling.length} dangling, ${(setResult.unauthorized || []).length} unauthorized`)
   process.exit(1)
 }
 

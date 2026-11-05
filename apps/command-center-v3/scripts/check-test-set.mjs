@@ -74,6 +74,41 @@ export function loadDormant(doc) {
   return { paths, unjustified }
 }
 
+// R2, second half (cc9's measured block at 3d54f8d4d): reason + justified_by is a comment, not an authorization.
+// An author who copies the object shape can move a LIVE test to dormant in one file and the build stays green —
+// measured at fbd798c8c: accountLabels.test.ts (running a minute earlier) declared dormant with both fields ->
+// "107 file(s) run, 14 dormant, 0 failed", rc 0. So the SET of dormant paths is pinned in a second, checked file.
+// A path not in that baseline is unauthorized and fails, whatever its justification text says. Authorizing a new
+// dormant test is then a deliberate two-file diff a reviewer sees, not a default.
+const BASELINE = join('scripts', 'tests.dormant.baseline.json')
+
+/** The authorized dormant set. Missing/unreadable baseline is an ERROR (fail closed, R3's rule): silence here
+ *  would re-authorize every dormant entry by default, which is the defect this file exists to prevent. */
+export function loadBaseline(root) {
+  const baselinePath = join(root || app, BASELINE)
+  if (!existsSync(baselinePath)) {
+    throw new Error(`check-test-set: missing dormant baseline ${baselinePath} — a dormant entry is authorized only by this file`)
+  }
+  let doc
+  try {
+    doc = JSON.parse(readFileSync(baselinePath, 'utf8'))
+  } catch (err) {
+    throw new Error(`check-test-set: cannot read dormant baseline ${baselinePath} (${err.code || err.message}) — refusing to authorize anything`)
+  }
+  const files = doc && doc.files
+  if (!Array.isArray(files)) {
+    throw new Error(`check-test-set: dormant baseline ${baselinePath} has no "files" array — refusing to authorize anything`)
+  }
+  return files.map(f => f.split('\\').join('/'))
+}
+
+/** Dormant paths not pinned in the baseline: a new dormant entry fails by default. */
+export function checkAuthorized(dormant, baseline) {
+  const allowed = new Set(baseline)
+  const unauthorized = dormant.filter(f => !allowed.has(f)).sort()
+  return { unauthorized }
+}
+
 /** The runner's own two lists: what it executes, and what the dormant file explains. */
 export function runnerLists() {
   const dormantPath = join(app, 'scripts', 'tests.dormant.json')
@@ -85,7 +120,8 @@ export function runnerLists() {
   const discovered = walk(srcDir, [], app, RUNNABLE).map(p => p.split('\\').join('/'))
   const dormantSet = new Set(dormant)
   const run = discovered.filter(f => !dormantSet.has(f))
-  return { run, dormant, discovered, listFile, dormantPath }
+  const { unauthorized } = checkAuthorized(dormant, loadBaseline(app))
+  return { run, dormant, discovered, listFile, dormantPath, unauthorized }
 }
 
 export function checkSet({ run, dormant, all }) {
@@ -105,7 +141,8 @@ export function checkSetAt(root) {
   const dormantSet = new Set(dormant)
   const run = discovered.filter(f => !dormantSet.has(f))
   const all = walk(root, [], root, ANY_TEST).map(p => p.split('\\').join('/'))
-  return { ...checkSet({ run, dormant, all }), unjustified }
+  const { unauthorized } = checkAuthorized(dormant, loadBaseline(root))
+  return { ...checkSet({ run, dormant, all }), unjustified, unauthorized }
 }
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
@@ -122,8 +159,11 @@ if (isMain) {
   for (const f of result.unjustified || []) {
     console.error(`  \u2717 dormant without justification (needs reason + justified_by): ${f}`)
   }
-  if (result.uncovered.length || result.dangling.length || (result.unjustified || []).length) {
-    console.error('check-test-set: add the file to src/ so the runner discovers it, or list it in scripts/tests.dormant.json with BOTH a reason and a justified_by attribution.')
+  for (const f of result.unauthorized || []) {
+    console.error(`  \u2717 dormant but not authorized by scripts/tests.dormant.baseline.json: ${f}`)
+  }
+  if (result.uncovered.length || result.dangling.length || (result.unjustified || []).length || (result.unauthorized || []).length) {
+    console.error('check-test-set: add the file to src/ so the runner discovers it, or list it in scripts/tests.dormant.json with BOTH a reason and a justified_by attribution \u2014 and authorize it in scripts/tests.dormant.baseline.json. A new dormant entry fails by default.')
     process.exit(1)
   }
   console.log(`check-test-set: ${result.covered}/${result.total} test file(s) accounted for (run or dormant)`)

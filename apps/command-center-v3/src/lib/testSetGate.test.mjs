@@ -7,7 +7,7 @@
 // require `checkSet` to name it. The first case runs the real tree, so the gate is also checked against reality and not
 // only against a fixture I wrote to agree with it.
 import assert from 'node:assert/strict'
-import { checkSet, checkSetAt } from '../../scripts/check-test-set.mjs'
+import { checkAuthorized, checkSet, checkSetAt, loadBaseline } from '../../scripts/check-test-set.mjs'
 
 // 1. The real tree: every test file is accounted for, and the accounting is not vacuous.
 const real = checkSetAt(new URL('../..', import.meta.url).pathname)
@@ -46,4 +46,17 @@ assert.deepEqual(withExotic.uncovered, ['src/lib/c.test.cjs', 'src/lib/d.test.mt
 const resolved = checkSet({ run: ['src/lib/a.test.ts'], dormant: ['src/lib/c.test.cjs', 'src/lib/d.test.mts'], all: exotic })
 assert.deepEqual(resolved.uncovered, [], 'classifying them clears the gate')
 
-console.log('testSetGate: stray files, stale dormant entries, and unexecutable extensions are all refused')
+// 6. A NEW dormant entry fails by default (cc9's block at 3d54f8d4d). reason + justified_by is a comment an author
+//    can copy; the authorization is the SET pinned in scripts/tests.dormant.baseline.json. Moving a RUNNING test to
+//    dormant is a two-file diff, and until the baseline is edited the gate names the entry and fails.
+assert.equal(real.unauthorized.length, 0, `dormant but not in the baseline: ${real.unauthorized.join(', ')}`)
+const realBaseline = loadBaseline(new URL('../..', import.meta.url).pathname)
+assert.ok(realBaseline.length > 0, 'the baseline must pin the existing dormant set, not be empty')
+const newDormant = checkAuthorized(['src/lib/a.test.mjs', 'src/lib/accountLabels.test.ts'], ['src/lib/a.test.mjs'])
+assert.deepEqual(newDormant.unauthorized, ['src/lib/accountLabels.test.ts'],
+  'a new dormant entry must fail by default until tests.dormant.baseline.json authorizes it')
+const alsoAuthorized = checkAuthorized(['src/lib/a.test.mjs', 'src/lib/accountLabels.test.ts'],
+  ['src/lib/a.test.mjs', 'src/lib/accountLabels.test.ts'])
+assert.deepEqual(alsoAuthorized.unauthorized, [], 'authorizing in the baseline is the deliberate repair path')
+
+console.log('testSetGate: stray files, stale dormant entries, unexecutable extensions, and unauthorized dormant entries are all refused')
