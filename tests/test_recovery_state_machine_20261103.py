@@ -216,15 +216,26 @@ def test_policy_defaults_apply_when_the_reviewed_file_is_absent():
 
 # ── the thin caller (piece A owns the store; B applies no writes of its own) ───────────────────────────────
 class FakeStore:
+    """Piece A's CAS write boundary: the transition applies only to the row the pass READ."""
+
     def __init__(self, cases):
-        self.cases = cases
+        self.cases = [dict(c) for c in cases]
         self.written = []
 
     def list(self):
-        return list(self.cases)
+        return [dict(c) for c in self.cases]
 
-    def set_state(self, key, state):
-        self.written.append((key, state))
+    def set_state(self, key, state, *, expect):
+        for row in self.cases:
+            if str(row.get("case_key")) != str(key):
+                continue
+            if (str(row.get("state")) != expect.get("state")
+                    or str(row.get("operator_decision") or "none") != expect.get("operator_decision")):
+                return (0, "state_changed")
+            row["state"] = state
+            self.written.append((key, state))
+            return (1, None)
+        return (0, "not_found")
 
 
 def test_run_pass_returns_decisions_and_writes_only_through_the_store(tmp_path):
@@ -396,15 +407,26 @@ def test_the_final_exit_follows_the_rows_own_order_when_dates_are_missing():
 
 # ── the PRODUCTION handoff: run_pass itself must notify (codex's scheduled-shape probe) ────────────────────
 class RecordingStore:
+    """CAS-aware: an unconditional write is what the finding removed, so the fake honours the expectation."""
+
     def __init__(self, cases):
-        self.cases = cases
+        self.cases = [dict(c) for c in cases]
         self.written = []
 
     def list(self):
-        return list(self.cases)
+        return [dict(c) for c in self.cases]
 
-    def set_state(self, key, state):
-        self.written.append((key, state))
+    def set_state(self, key, state, *, expect):
+        for row in self.cases:
+            if str(row.get("case_key")) != str(key):
+                continue
+            if (str(row.get("state")) != expect.get("state")
+                    or str(row.get("operator_decision") or "none") != expect.get("operator_decision")):
+                return (0, "state_changed")
+            row["state"] = state
+            self.written.append((key, state))
+            return (1, None)
+        return (0, "not_found")
 
 
 def _t1_row(exit_price=100.0, residual=1.0, pre_exit=7.0):
@@ -463,7 +485,7 @@ def test_a_notifier_fault_is_recorded_and_never_aborts_the_pass(tmp_path):
 
 # ── failure paths: durability order (codex's fade15f6a BLOCK) ──────────────────────────────────────────────
 class FailingWriteStore(RecordingStore):
-    def set_state(self, key, state):
+    def set_state(self, key, state, *, expect):
         raise OSError("disk full")
 
 
@@ -476,7 +498,7 @@ def test_a_failed_state_write_never_pages(tmp_path):
                      pending_path=tmp_path / "pending.json")
     assert calls == [] and out["notifier_calls"] == 0
     assert out["decisions"][0]["write_error"].startswith("OSError")
-    assert out["decisions"][0]["notify"]["reason"].startswith("state write failed")
+    assert out["decisions"][0]["notify"]["reason"].startswith("state write did not apply")
 
 
 def test_a_failed_send_stays_pending_and_is_retried_after_the_state_is_already_advanced(tmp_path):
@@ -579,3 +601,302 @@ def test_the_stale_guard_is_what_stops_it_not_the_price(tmp_path, monkeypatch):
 
     assert out["changed"] == 1 and out["notifier_calls"] == 1
     assert store.written == [("DEMO:DEMO_IRA:2030-01-10", R.RECOVERING)]
+
+
+# ── CX3-B-F1: a decision taken after list() is a compare-and-set miss ─────────────────────────────────────
+_READY_SNAP = {"close": 102.0, "rsi": 35.0, "sma20": 99.0, "fetched_at": NOW.isoformat()}
+_DEMO_KEY = "DEMO:DEMO_IRA:2030-01-10"
+
+
+def _live_cas_store(row):
+    class LiveCasStore:
+        """A real CAS boundary: the row moves only when it still matches what the pass read."""
+
+        def __init__(self, initial):
+            self.row = dict(initial)
+            self.writes = []
+
+        def list(self):
+            return [dict(self.row)]
+
+        def set_state(self, key, state, *, expect):
+            if (str(self.row.get("state")) != expect.get("state")
+                    or str(self.row.get("operator_decision") or "none") != expect.get("operator_decision")):
+                return (0, "state_changed")
+            self.row["state"] = state
+            self.writes.append((key, state))
+            return (1, None)
+
+    return LiveCasStore(row)
+
+
+def test_a_decision_taken_after_listing_is_a_cas_miss_and_never_pages(tmp_path):
+    """CX3-B-F1: the operator closes the case between list() and the write.
+
+    The stale read concluded RE_ENTRY_READY; the durable boundary must refuse it, change zero rows, keep the
+    operator's decision and call no notifier.
+    """
+    store = _live_cas_store({**_t1_row(), "state": R.WATCHING, "operator_decision": "none"})
+    calls = []
+
+    def snapshot_for(case):
+        # Deterministic interleaving: the close lands AFTER list() and BEFORE the write.
+        store.row["state"] = R.CLOSED
+        store.row["operator_decision"] = "closed"
+        return dict(_READY_SNAP)
+
+    pending = tmp_path / "pending.json"
+    out = R.run_pass(store, snapshot_for, now=NOW, dry_run=False,
+                     notify=lambda c: calls.append(c) or {"sent": True}, pending_path=pending)
+
+    assert store.row["state"] == R.CLOSED and store.row["operator_decision"] == "closed"
+    assert store.writes == [] and calls == [] and out["notifier_calls"] == 0
+    assert out["changed"] == 0
+    row = out["decisions"][0]
+    assert row["state"] == R.RE_ENTRY_READY            # what the stale read concluded...
+    assert row["cas"] == {"status": "cas_miss", "refusal": "state_changed"}   # ...was refused
+    assert row["notify"]["sent"] is False
+
+    # The responsibility persisted before the refused write is revalidated on the next pass: CLOSED settles it.
+    second = R.run_pass(store, lambda c: dict(_READY_SNAP), now=NOW, dry_run=False,
+                        notify=lambda c: calls.append(c) or {"sent": True}, pending_path=pending)
+    assert calls == [] and second["notifier_calls"] == 0 and second["pending"] == 0
+    assert json.loads(pending.read_text(encoding="utf-8")) == {}
+
+
+def test_a_store_that_cannot_compare_and_set_is_refused_not_written(tmp_path):
+    """An unconditional set_state is the defect, not a fallback: refuse it and page nothing."""
+    class UnconditionalStore(RecordingStore):
+        def set_state(self, key, state):          # no expectation -> cannot prove the row it read
+            self.written.append((key, state))
+
+    store = UnconditionalStore([_t1_row()])
+    calls = []
+    out = R.run_pass(store, lambda c: dict(_READY_SNAP), now=NOW, dry_run=False,
+                     notify=lambda c: calls.append(c) or {"sent": True}, pending_path=tmp_path / "p.json")
+
+    assert store.written == [] and calls == [] and out["notifier_calls"] == 0
+    assert out["decisions"][0]["cas"]["status"] == "cas_unsupported"
+
+
+# ── CX3-B-F2: retry responsibility survives notifier absence and storage failure ─────────────────────────
+def test_an_unavailable_notifier_keeps_a_durable_retry_until_it_returns(tmp_path, monkeypatch):
+    """CX3-B-F2: an absent notifier must not let a committed transition lose its page."""
+    monkeypatch.setattr(R, "_default_notify", lambda: None)
+    pending = tmp_path / "pending.json"
+
+    first = R.run_pass(RecordingStore([_t1_row()]), lambda c: dict(_READY_SNAP), now=NOW, dry_run=False,
+                       notify=None, pending_path=pending)
+    assert first["changed"] == 1 and first["notifier_calls"] == 0
+    doc = json.loads(pending.read_text(encoding="utf-8"))
+    assert doc[_DEMO_KEY]["state"] == R.RE_ENTRY_READY        # durable BEFORE piece C could be called
+    assert first["decisions"][0]["notify_pending"] is True
+
+    sent = []
+    second = R.run_pass(RecordingStore([{**_t1_row(), "state": R.RE_ENTRY_READY}]), lambda c: dict(_READY_SNAP),
+                        now=NOW, dry_run=False, notify=lambda c: sent.append(c) or {"sent": True},
+                        pending_path=pending)
+    assert second["changed"] == 0 and second["notifier_calls"] == 1
+    assert sent[0]["state"] == R.RE_ENTRY_READY
+    assert json.loads(pending.read_text(encoding="utf-8")) == {}
+
+
+def test_retry_responsibility_is_durable_before_the_notifier_is_called(tmp_path):
+    """The pending record exists by the time the send starts, so an interruption after the state commit retries."""
+    pending = tmp_path / "pending.json"
+    seen = []
+
+    def notify(case):
+        seen.append(json.loads(pending.read_text(encoding="utf-8")))
+        return {"sent": True}
+
+    out = R.run_pass(RecordingStore([_t1_row()]), lambda c: dict(_READY_SNAP), now=NOW, dry_run=False,
+                     notify=notify, pending_path=pending)
+    assert out["notifier_calls"] == 1
+    assert seen and seen[0][_DEMO_KEY]["state"] == R.RE_ENTRY_READY
+    assert json.loads(pending.read_text(encoding="utf-8")) == {}      # confirmed delivery clears it
+
+
+def test_a_pending_store_failure_leaves_the_transition_visible_and_recovers(tmp_path):
+    """CX3-B-F2: no durable responsibility -> no state write, so the transition is still visible next pass."""
+    obstruction = tmp_path / "not-a-dir"
+    obstruction.write_text("x", encoding="utf-8")
+    broken = obstruction / "pending.json"
+    store = RecordingStore([_t1_row()])
+    calls = []
+
+    first = R.run_pass(store, lambda c: dict(_READY_SNAP), now=NOW, dry_run=False,
+                       notify=lambda c: calls.append(c) or {"sent": True}, pending_path=broken)
+    assert store.written == [], "a transition whose retry responsibility is not durable must not be written"
+    assert first["changed"] == 0 and first["notifier_calls"] == 0 and calls == []
+    row = first["decisions"][0]
+    assert row["write_error"].startswith("retry responsibility")
+    assert row["pending_store_error"]
+    assert row.get("notify_pending") is not True
+
+    fixed = tmp_path / "ok" / "pending.json"
+    second = R.run_pass(store, lambda c: dict(_READY_SNAP), now=NOW, dry_run=False,
+                        notify=lambda c: calls.append(c) or {"sent": True}, pending_path=fixed)
+    assert second["changed"] == 1 and second["notifier_calls"] == 1 and len(calls) == 1
+
+
+# ── CX3-B-F3: retries are revalidated at the dispatch boundary ────────────────────────────────────────────
+def _seed_pending(path, *, state=R.RECOVERING):
+    path.write_text(json.dumps({_DEMO_KEY: {
+        "state": state, "attempts": 1, "first_failed_at": NOW.isoformat(), "last_error": "transport refused"}}),
+        encoding="utf-8")
+
+
+def test_a_pending_retry_for_an_operator_closed_case_never_pages(tmp_path):
+    pending = tmp_path / "pending.json"
+    _seed_pending(pending)
+    calls = []
+    out = R.run_pass(RecordingStore([{**_t1_row(), "state": R.CLOSED, "operator_decision": "closed"}]),
+                     lambda c: dict(_READY_SNAP), now=NOW, dry_run=False,
+                     notify=lambda c: calls.append(c) or {"sent": True}, pending_path=pending)
+
+    assert calls == [] and out["notifier_calls"] == 0
+    assert "operator decision holds" in out["decisions"][0]["notify"]["reason"]
+    assert json.loads(pending.read_text(encoding="utf-8")) == {}
+    assert out["pending"] == 0
+
+
+def test_a_pending_retry_for_a_snoozed_row_never_pages_when_the_state_column_lags(tmp_path):
+    """The operator decision settles the page even if ``state`` still says RECOVERING."""
+    pending = tmp_path / "pending.json"
+    _seed_pending(pending)
+    calls = []
+    out = R.run_pass(RecordingStore([{**_t1_row(), "state": R.RECOVERING, "operator_decision": "snoozed"}]),
+                     lambda c: dict(_READY_SNAP), now=NOW, dry_run=False,
+                     notify=lambda c: calls.append(c) or {"sent": True}, pending_path=pending)
+
+    assert calls == [] and out["notifier_calls"] == 0
+    assert "operator decision holds" in out["decisions"][0]["notify"]["reason"]
+    assert json.loads(pending.read_text(encoding="utf-8")) == {}
+
+
+def test_a_stale_pending_retry_keeps_responsibility_then_sends_when_the_quote_is_fresh(tmp_path):
+    pending = tmp_path / "pending.json"
+    _seed_pending(pending)
+    calls = []
+    stale = {"close": 102.0, "rsi": 35.0, "sma20": 99.0, "fetched_at": STALE_FETCHED}
+
+    out = R.run_pass(RecordingStore([{**_t1_row(), "state": R.RECOVERING}]), lambda c: stale, now=NOW,
+                     dry_run=False, notify=lambda c: calls.append(c) or {"sent": True}, pending_path=pending)
+    assert calls == [] and out["notifier_calls"] == 0
+    assert "quote not current" in out["decisions"][0]["notify"]["reason"]
+    assert out["decisions"][0]["notify_pending"] is True
+    assert _DEMO_KEY in json.loads(pending.read_text(encoding="utf-8"))   # honest responsibility retained
+
+    fresh = {"close": 102.0, "rsi": 35.0, "sma20": 130.0, "fetched_at": NOW.isoformat()}
+    second = R.run_pass(RecordingStore([{**_t1_row(), "state": R.RECOVERING}]), lambda c: fresh, now=NOW,
+                        dry_run=False, notify=lambda c: calls.append(c) or {"sent": True}, pending_path=pending)
+    assert second["notifier_calls"] == 1 and calls[0]["state"] == R.RECOVERING
+    assert json.loads(pending.read_text(encoding="utf-8")) == {}
+
+
+def test_a_pending_retry_whose_transition_never_applied_is_settled_without_paging(tmp_path):
+    pending = tmp_path / "pending.json"
+    _seed_pending(pending, state=R.RE_ENTRY_READY)
+    calls = []
+    quiet = {"close": 90.0, "rsi": 30.0, "sma20": 130.0, "fetched_at": NOW.isoformat()}
+
+    out = R.run_pass(RecordingStore([_t1_row()]), lambda c: quiet, now=NOW, dry_run=False,
+                     notify=lambda c: calls.append(c) or {"sent": True}, pending_path=pending)
+    assert calls == [] and out["notifier_calls"] == 0
+    assert "not pageable" in out["decisions"][0]["notify"]["reason"]
+    assert json.loads(pending.read_text(encoding="utf-8")) == {}
+
+
+# ── CX3-B-F4: eligibility is one contract; malformed or contradictory is unknown ─────────────────────────
+def test_the_string_false_is_not_eligibility():
+    d = R.evaluate(case(eligibility_json={"IRA": {"eligible": "false"}}), snap(close=152.0), now=NOW)
+    assert d.state != R.RE_ENTRY_READY and d.eligible_accounts == []
+    gate = next(a for a in d.annotations if a["gate"] == "eligibility_unknown")
+    assert gate["account"] == "IRA" and gate["blocks_ready"] is True
+    assert "not a boolean" in gate["detail"]
+    assert d.state == R.RECOVERING, "the reclaim stays visible; only readiness is withheld"
+
+
+@pytest.mark.parametrize("value", [["IRA"], {"nested": True}, 1, 0, "true", 1.5])
+def test_container_and_non_boolean_eligibility_is_explicit_unknown(value):
+    d = R.evaluate(case(eligibility_json={"IRA": value}), snap(close=152.0), now=NOW)
+    assert d.state != R.RE_ENTRY_READY and d.eligible_accounts == []
+    gate = next(a for a in d.annotations if a["gate"] == "eligibility_unknown" and a["account"] == "IRA")
+    assert gate["blocks_ready"] is True
+
+
+def test_eligible_true_with_a_future_date_is_contradictory_not_ready():
+    d = R.evaluate(case(eligibility_json={"IRA": {"eligible": True, "eligible_from": "2099-01-01"}}),
+                   snap(close=152.0), now=NOW)
+    assert d.state != R.RE_ENTRY_READY and d.eligible_accounts == []
+    gate = next(a for a in d.annotations if a["gate"] == "eligibility_unknown")
+    assert "future" in gate["detail"] and gate["blocks_ready"] is True
+
+
+def test_eligible_false_with_a_past_date_is_contradictory_not_a_valid_hold():
+    d = R.evaluate(case(eligibility_json={"IRA": {"eligible": False, "eligible_from": "2026-10-01"}}),
+                   snap(close=152.0), now=NOW)
+    assert d.state != R.RE_ENTRY_READY and d.eligible_accounts == []
+    assert any(a["gate"] == "eligibility_unknown" and "already passed" in (a.get("detail") or "")
+               for a in d.annotations)
+
+
+def test_an_unparseable_eligibility_date_is_unknown_not_open():
+    d = R.evaluate(case(eligibility_json={"IRA": {"eligible": True, "eligible_from": "not-a-date"}}),
+                   snap(close=152.0), now=NOW)
+    assert d.state != R.RE_ENTRY_READY and d.eligible_accounts == []
+    assert any(a["gate"] == "eligibility_unknown" for a in d.annotations)
+
+
+def test_a_valid_date_open_pending_operator_row_still_reads_as_eligible():
+    rows = [{"account": "schwab_roth_ira", "eligible": True, "eligible_from": "2026-11-01",
+             "pending_operator_decision": True, "reason": "the hold date passed; awaiting the operator"}]
+    d = R.evaluate(case(eligibility_json=rows), snap(close=152.0), now=NOW)
+    assert d.state == R.RE_ENTRY_READY and d.eligible_accounts == ["schwab_roth_ira"]
+    gate = next(a for a in d.annotations if a["account"] == "schwab_roth_ira")
+    assert gate["gate"] == "pending_operator_decision"
+
+
+# ── CX3-B-F5: non-finite/invalid market numbers never fire a trigger ──────────────────────────────────────
+@pytest.mark.parametrize("bad", [float("inf"), float("-inf"), float("nan"), True, False, None, "",
+                                 0, -1.0, "not-a-number"])
+def test_an_invalid_close_never_moves_a_case(bad):
+    snapshot = {"close": bad, "sma20": 1.0, "rsi": 90.0, "fetched_at": NOW.isoformat()}
+    d = R.evaluate(case(), snapshot, now=NOW)
+
+    assert d.state == R.STOPPED_OUT and d.changed is False
+    assert "market input unavailable" in d.reason
+    assert d.triggers == {}, "no trigger may be evaluated on an unusable quote"
+
+
+def test_non_finite_optional_market_fields_cannot_fire_triggers():
+    snapshot = {"close": 102.0, "sma20": float("inf"), "rsi": float("nan"), "rsi_prev": float("nan"),
+                "stop_level": float("nan"), "macd_up_sessions": float("inf"),
+                "catalyst_confidence": 0.99, "catalyst_sessions_ago": float("nan"),
+                "fetched_at": NOW.isoformat()}
+    d = R.evaluate(_t1_row(), snapshot, now=NOW)
+
+    assert d.triggers == {"R1": True, "R2": False, "R3": False, "R4": False, "R5": False}
+    assert d.state == R.RECOVERING, "the one valid reclaim fires; nothing malformed does"
+
+
+def test_boolean_market_fields_are_not_numbers():
+    snapshot = {"close": 102.0, "sma20": True, "rsi": 39.0, "rsi_prev": False, "stop_level": True,
+                "macd_up_sessions": True, "catalyst_confidence": True, "catalyst_sessions_ago": True,
+                "fetched_at": NOW.isoformat()}
+    d = R.evaluate(_t1_row(), snapshot, now=NOW)
+
+    assert d.triggers["R2"] is False and d.triggers["R3"] is False
+    assert d.triggers["R4"] is False and d.triggers["R5"] is False
+    assert d.state == R.RECOVERING
+
+
+def test_a_valid_fresh_reclaim_still_reaches_ready():
+    """The control: hardening the inputs must not break a genuinely fresh reclaim."""
+    d = R.evaluate(_t1_row(), {"close": 102.0, "rsi": 45.0, "rsi_prev": 39.0, "sma20": 99.0,
+                               "stop_level": 101.0, "macd_up_sessions": 0, "catalyst_confidence": 0.0,
+                               "fetched_at": NOW.isoformat()}, now=NOW)
+
+    assert d.triggers == {"R1": True, "R2": True, "R3": True, "R4": True, "R5": False}
+    assert d.state == R.RE_ENTRY_READY

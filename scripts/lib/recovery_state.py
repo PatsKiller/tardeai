@@ -26,7 +26,9 @@ Three rules from the spec that shape the code:
 """
 from __future__ import annotations
 
+import contextlib
 import json
+import math
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -114,24 +116,60 @@ def load_policy(path: str | Path | None = None) -> dict[str, Any]:
                     value = float(value) / 100.0
                 except (TypeError, ValueError):
                     continue
+                if not math.isfinite(value):
+                    continue  # an infinite threshold is not a reviewed rule
+            elif flat in {"rsi_level", "macd_up_sessions", "catalyst_min_confidence",
+                          "catalyst_max_sessions", "decay_sessions"}:
+                # A malformed numeric threshold keeps the reviewed default instead of crashing or passing.
+                number = _num(value)
+                if number is None:
+                    continue
+                value = number
             merged[flat] = value
     if isinstance(conf.get("weights"), Mapping):
-        merged["weights"] = {**policy["weights"], **{str(k).upper(): v for k, v in conf["weights"].items()}}
-    if conf.get("ready_floor") is not None:
-        merged["ready_floor"] = conf["ready_floor"]
-    if conf.get("recovering_floor") is not None:
-        merged["recovering_floor"] = conf["recovering_floor"]
+        validated: dict[str, float] = {}
+        for key, raw in conf["weights"].items():
+            number = _num(raw)
+            if number is not None and number >= 0:
+                validated[str(key).upper()] = number
+        merged["weights"] = {**policy["weights"], **validated}
+    for floor_key in ("ready_floor", "recovering_floor"):
+        if conf.get(floor_key) is not None:
+            number = _num(conf[floor_key])
+            if number is not None:
+                merged[floor_key] = number
     merged["policy_source"] = str(doc.get("schema") or "recovery_policy")
     return merged
 
 
 def _num(value) -> float | None:
+    """A finite number, or None. A boolean is NOT a number, and neither is infinity or NaN.
+
+    ``float(True)`` is 1.0 and ``float("inf")`` passes every ``> threshold`` test, so accepting either let a
+    malformed quote fire a reclaim trigger (cx-openai-3's F5 on #2557). Any value the caller cannot show on a
+    screen as a real number comes back as ``None`` — unavailable, never a confident figure.
+    """
+    if value is None or value == "" or isinstance(value, bool):
+        return None
     try:
-        if value is None or value == "":
-            return None
-        return float(value)
+        number = float(value)
     except (TypeError, ValueError):
         return None
+    return number if math.isfinite(number) else None
+
+
+def _price(value) -> float | None:
+    """A finite, strictly positive price/reference. Zero, negative and non-finite are unavailable."""
+    number = _num(value)
+    return number if number is not None and number > 0 else None
+
+
+def _int(value) -> int | None:
+    """A finite whole number, or None. Rejects booleans, fractions and infinity rather than truncating them."""
+    number = _num(value)
+    if number is None or number != int(number):
+        return None
+    return int(number)
 
 
 def _parse_dt(value) -> datetime | None:
@@ -151,7 +189,7 @@ def exit_price(case: Mapping[str, Any]) -> float | None:
     an older/looser row may carry ``exit_price`` there. Both are read so B consumes A's shape rather than
     asking A to rename a field for it.
     """
-    direct = _num(case.get("exit_price") or case.get("last_exit_price"))
+    direct = _price(case.get("exit_price") if case.get("exit_price") is not None else case.get("last_exit_price"))
     if direct is not None:
         return direct
     rows: Iterable[Any] = []
@@ -174,8 +212,8 @@ def exit_price(case: Mapping[str, Any]) -> float | None:
     for index, row in enumerate(rows):
         if not isinstance(row, Mapping):
             continue
-        price = _num(row.get("exit_price")) if row.get("exit_price") is not None else _num(row.get("price"))
-        if not price:
+        price = _price(row.get("exit_price")) if row.get("exit_price") is not None else _price(row.get("price"))
+        if price is None:
             continue
         when = row.get("exit_date") or row.get("date")
         usable.append((index, when, price))
@@ -207,27 +245,96 @@ def residual_fact(case: Mapping[str, Any]) -> dict | None:
             "blocks_ready": False}
 
 
-def _eligibility(case: Mapping[str, Any]) -> dict[str, Any]:
-    """Piece A emits ``[{account, eligible, eligible_from, reason}]``; an older mapping is accepted too."""
-    raw = case.get("eligibility_json") or case.get("eligibility") or {}
+def _unknown_eligibility(detail: str) -> dict[str, Any]:
+    """One account whose eligibility could not be established. Explicitly unknown, never a quiet default."""
+    return {"eligible": None, "unknown": True, "detail": detail, "until": None, "gate": "eligibility_unknown",
+            "would_change_it": "piece A supplies a valid eligibility row (a boolean eligible and a parseable, "
+                               "non-contradictory eligible_from)",
+            "pending_operator_decision": False}
+
+
+def _normalise_eligibility_row(value, *, now: datetime) -> dict[str, Any]:
+    """Validate ``eligible`` and ``eligible_from`` as ONE contract.
+
+    A boolean is the only answer ``eligible`` may carry: ``bool("false")`` is True, so a string is malformed,
+    not false. The date must parse, and the pair must agree — ``eligible=True`` with a future date, or
+    ``eligible=False`` with a date already passed, is internally contradictory. Every such row is explicit
+    unknown; readiness is withheld, while the recovery evidence stays visible on the card (F4 on #2557).
+    """
+    if isinstance(value, bool):
+        row: dict[str, Any] = {"eligible": value}
+    elif isinstance(value, Mapping):
+        row = dict(value)
+    else:
+        return _unknown_eligibility(f"eligibility value {value!r} is neither a boolean nor an object")
+    if "eligible" not in row:
+        return _unknown_eligibility("the eligibility row does not say whether the account is eligible")
+    eligible = row.get("eligible")
+    if not isinstance(eligible, bool):
+        return _unknown_eligibility(f"eligible={eligible!r} is not a boolean")
+    raw_until = row.get("eligible_from")
+    if raw_until is None or raw_until == "":
+        raw_until = row.get("until")
+    until_text = None
+    until_dt = None
+    if raw_until is not None and raw_until != "":
+        until_dt = _parse_dt(raw_until)
+        if until_dt is None:
+            return _unknown_eligibility(f"eligible_from={raw_until!r} is not a date")
+        until_text = str(raw_until)
+    if eligible and until_dt is not None and until_dt.date() > now.date():
+        return _unknown_eligibility(f"eligible=true but eligible_from={until_text} is in the future; "
+                                    "the row contradicts itself")
+    if not eligible and until_dt is not None and until_dt.date() <= now.date():
+        return _unknown_eligibility(f"eligible=false but eligible_from={until_text} has already passed; "
+                                    "the row contradicts itself")
+    return {
+        "eligible": eligible,
+        "unknown": False,
+        "detail": None,
+        "until": until_text,
+        "gate": str(row.get("gate") or ("pending_operator_decision" if eligible else "house_hold")),
+        "would_change_it": str(row.get("would_change_it") or row.get("reason")
+                               or (f"the date {until_text} is reached" if until_text else "the hold is lifted")),
+        "pending_operator_decision": bool(row.get("pending_operator_decision")),
+    }
+
+
+def _eligibility(case: Mapping[str, Any], *, now: datetime | None = None) -> dict[Any, dict[str, Any]]:
+    """Piece A emits ``[{account, eligible, eligible_from, reason}]``; an older mapping is accepted too.
+
+    Every row is normalised through the same contract. An unreadable blob is no rows — which the caller already
+    renders as ``eligibility_unknown`` — never an implicit pass.
+    """
+    now = now or datetime.now(timezone.utc)
+    raw = case.get("eligibility_json")
+    if raw is None or raw == "":
+        raw = case.get("eligibility")
+    if raw is None or raw == "":
+        return {}
     if isinstance(raw, str):
         try:
-            raw = json.loads(raw or "{}")
+            raw = json.loads(raw)
         except ValueError:
-            raw = {}
+            return {}
+    if isinstance(raw, Mapping):
+        rows: dict[Any, dict[str, Any]] = {}
+        for account, value in raw.items():
+            name = str(account).strip() if account is not None else ""
+            rows[name or None] = _normalise_eligibility_row(value, now=now)
+        return rows
     if isinstance(raw, (list, tuple)):
         rows = {}
+        unattributed = False
         for item in raw:
-            if not isinstance(item, Mapping) or not item.get("account"):
+            if not isinstance(item, Mapping) or not str(item.get("account") or "").strip():
+                unattributed = True
                 continue
-            rows[str(item["account"])] = {
-                "eligible": bool(item.get("eligible")),
-                "until": item.get("eligible_from"),
-                "gate": item.get("gate") or (None if item.get("eligible") else "house_hold"),
-                "would_change_it": item.get("would_change_it") or item.get("reason"),
-            }
+            rows[str(item["account"]).strip()] = _normalise_eligibility_row(item, now=now)
+        if unattributed:
+            rows[None] = _unknown_eligibility("an eligibility row does not name its account")
         return rows
-    return dict(raw) if isinstance(raw, Mapping) else {}
+    return {}
 
 
 def gate_annotations(case: Mapping[str, Any], snapshot: Mapping[str, Any], policy: Mapping[str, Any],
@@ -238,13 +345,18 @@ def gate_annotations(case: Mapping[str, Any], snapshot: Mapping[str, Any], polic
     information the operator should see beside the recovery ("RSI 39.1 — a close above 40 lifts it").
     """
     out: list[dict] = []
-    elig = _eligibility(case)
+    elig = _eligibility(case, now=now)
 
     # Per-account eligibility: wash sale / house hold with an explicit date.
-    for account, row in sorted(elig.items()):
-        row = row if isinstance(row, Mapping) else {"eligible": bool(row)}
-        until = row.get("until") or row.get("eligible_from")
-        if row.get("eligible"):
+    for account, row in sorted(elig.items(), key=lambda item: str(item[0])):
+        if row.get("unknown"):
+            # Malformed or self-contradictory: say unknown, block readiness, never read as an eligible account.
+            out.append({"gate": "eligibility_unknown", "account": account, "until": None,
+                        "detail": str(row.get("detail") or "eligibility unknown"),
+                        "would_change_it": str(row.get("would_change_it") or "a valid eligibility row"),
+                        "blocks_ready": True})
+            continue
+        if row.get("eligible") is True:
             # The date gate is open; whether to re-enter is the operator's call, so the card says that and
             # never turns an open gate into a recommendation.
             out.append({"gate": "pending_operator_decision", "account": account, "until": None,
@@ -254,12 +366,13 @@ def gate_annotations(case: Mapping[str, Any], snapshot: Mapping[str, Any], polic
         out.append({
             "gate": str(row.get("gate") or "house_hold"),
             "account": account,
-            "until": until,
+            "until": row.get("until"),
             "would_change_it": str(row.get("would_change_it")
-                                   or (f"the date {until} is reached" if until else "the hold is lifted")),
+                                   or (f"the date {row.get('until')} is reached" if row.get("until")
+                                       else "the hold is lifted")),
             "blocks_ready": False,  # recomputed below, once we know whether ANY account is date-open
         })
-    any_eligible = any((r.get("eligible") if isinstance(r, Mapping) else bool(r)) for r in elig.values())
+    any_eligible = any(r.get("eligible") is True and not r.get("unknown") for r in elig.values())
     if not elig:
         # Missing data is not a pass. Without the account split the engine cannot know whether an account is
         # inside a house hold, so it cannot honestly say "ready" — the case still shows, the card still appears.
@@ -278,42 +391,71 @@ def gate_annotations(case: Mapping[str, Any], snapshot: Mapping[str, Any], polic
 
     # The entry zone: a price above it is not a blocker, only a stale plan to re-derive.
     plan = case.get("plan_json") if isinstance(case.get("plan_json"), Mapping) else {}
-    zone_high = _num(snapshot.get("entry_high") or (plan or {}).get("entry_high"))
-    close = _num(snapshot.get("close"))
-    if zone_high and close and close > zone_high:
+    zone_high = _price(snapshot.get("entry_high") if snapshot.get("entry_high") is not None
+                       else (plan or {}).get("entry_high"))
+    close = _price(snapshot.get("close"))
+    if zone_high is not None and close is not None and close > zone_high:
         out.append({"gate": "above_entry_zone", "account": None, "until": None,
                     "would_change_it": f"a pullback to {zone_high:.2f} or a re-derived zone",
                     "blocks_ready": False})
 
     # RSI: below the level is information, never a blocker while the reclaim triggers are firing.
     rsi = _num(snapshot.get("rsi"))
-    if rsi is not None and rsi < float(policy.get("rsi_level") or 40.0):
+    rsi_level = _num(policy.get("rsi_level"))
+    rsi_level = 40.0 if rsi_level is None else rsi_level
+    if rsi is not None and rsi < rsi_level:
         out.append({"gate": "rsi_below_level", "account": None, "until": None,
-                    "would_change_it": f"RSI crosses up through {float(policy['rsi_level']):.0f}",
+                    "would_change_it": f"RSI crosses up through {rsi_level:.0f}",
                     "blocks_ready": False})
     return out
 
 
 def _trigger_flags(case: Mapping[str, Any], snapshot: Mapping[str, Any], policy: Mapping[str, Any]) -> dict:
-    close = _num(snapshot.get("close"))
-    ep = exit_price(case)
-    stop = _num(snapshot.get("stop_level") or case.get("stop_level"))
-    sma20 = _num(snapshot.get("sma20"))
-    rsi = _num(snapshot.get("rsi"))
-    rsi_prev = _num(snapshot.get("rsi_prev"))
-    macd_up = int(snapshot.get("macd_up_sessions") or 0)
-    catalyst_conf = _num(snapshot.get("catalyst_confidence")) or 0.0
-    catalyst_age = snapshot.get("catalyst_sessions_ago")
+    """Only finite, positive market numbers may fire a trigger.
 
-    reclaim_exit = bool(close and ep and close >= ep * (1.0 + float(policy.get("reclaim_exit_pct") or 0.01)))
-    reclaim_stop = bool(policy.get("stop_reclaim_enabled", True) and close and stop and close >= stop)
-    rsi_cross = bool(rsi is not None and rsi >= float(policy.get("rsi_level") or 40.0)
-                     and (rsi_prev is None or rsi_prev < float(policy.get("rsi_level") or 40.0)))
-    momentum = bool(rsi_cross or macd_up >= int(policy.get("macd_up_sessions") or 2))
-    sma_reclaim = bool(close and sma20 and close >= sma20)
-    catalyst = bool(catalyst_conf >= float(policy.get("catalyst_min_confidence") or 0.8)
-                    and (catalyst_age is None
-                         or int(catalyst_age) <= int(policy.get("catalyst_max_sessions") or 5)))
+    A price of ``inf`` used to satisfy every ``>=`` test and manufacture a reclaim (F5 on #2557). Prices and
+    references go through ``_price``, counts through ``_int``, and a field that is present but unusable is
+    treated as UNAVAILABLE — its trigger does not fire — rather than silently repaired to a passing value.
+    """
+    close = _price(snapshot.get("close"))
+    ep = exit_price(case)
+    raw_stop = snapshot.get("stop_level") if snapshot.get("stop_level") is not None else case.get("stop_level")
+    stop = _price(raw_stop)
+    sma20 = _price(snapshot.get("sma20"))
+    rsi = _num(snapshot.get("rsi"))
+    raw_rsi_prev = snapshot.get("rsi_prev")
+    rsi_prev = _num(raw_rsi_prev)
+    macd_up = _int(snapshot.get("macd_up_sessions"))
+    catalyst_conf = _num(snapshot.get("catalyst_confidence"))
+    catalyst_conf = 0.0 if catalyst_conf is None else catalyst_conf
+    raw_age = snapshot.get("catalyst_sessions_ago")
+    catalyst_age = _int(raw_age)
+
+    reclaim_pct = _num(policy.get("reclaim_exit_pct"))
+    reclaim_pct = 0.01 if reclaim_pct is None else reclaim_pct
+    rsi_level = _num(policy.get("rsi_level"))
+    rsi_level = 40.0 if rsi_level is None else rsi_level
+    macd_needed = _int(policy.get("macd_up_sessions"))
+    macd_needed = 2 if macd_needed is None else macd_needed
+    catalyst_min = _num(policy.get("catalyst_min_confidence"))
+    catalyst_min = 0.8 if catalyst_min is None else catalyst_min
+    catalyst_window = _int(policy.get("catalyst_max_sessions"))
+    catalyst_window = 5 if catalyst_window is None else catalyst_window
+
+    reclaim_exit = bool(close is not None and ep is not None and close >= ep * (1.0 + reclaim_pct))
+    # Only an explicit True enables R2; a malformed policy value must not manufacture a reclaim.
+    reclaim_stop = bool(policy.get("stop_reclaim_enabled", True) is True
+                        and close is not None and stop is not None and close >= stop)
+    # A missing previous RSI is "first observation" (a cross may fire). A PRESENT but unusable previous RSI
+    # means the direction is unknown, so no cross is claimed.
+    prev_known_below = raw_rsi_prev is None or raw_rsi_prev == "" or (
+        rsi_prev is not None and rsi_prev < rsi_level)
+    rsi_cross = bool(rsi is not None and rsi >= rsi_level and prev_known_below)
+    momentum = bool(rsi_cross or (macd_up is not None and macd_up >= macd_needed))
+    sma_reclaim = bool(close is not None and sma20 is not None and close >= sma20)
+    age_usable = raw_age is None or raw_age == "" or (
+        catalyst_age is not None and catalyst_age <= catalyst_window)
+    catalyst = bool(catalyst_conf >= catalyst_min and age_usable)
     return {"R1": reclaim_exit, "R2": reclaim_stop, "R3": momentum, "R4": sma_reclaim, "R5": catalyst}
 
 
@@ -322,15 +464,19 @@ def next_trigger(case: Mapping[str, Any], snapshot: Mapping[str, Any], policy: M
     """The one line the operator's card shows for what would change the answer."""
     if flags.get("R4"):
         return "already reclaiming the 20-day mean; confirm eligibility"
-    sma20 = _num(snapshot.get("sma20"))
-    close = _num(snapshot.get("close"))
+    sma20 = _price(snapshot.get("sma20"))
+    close = _price(snapshot.get("close"))
     ep = exit_price(case)
-    if not flags.get("R1") and ep and close:
-        return f"a close at {ep * (1.0 + float(policy.get('reclaim_exit_pct') or 0.01)):.2f} reclaims the exit"
-    if sma20:
+    reclaim_pct = _num(policy.get("reclaim_exit_pct"))
+    reclaim_pct = 0.01 if reclaim_pct is None else reclaim_pct
+    if not flags.get("R1") and ep is not None and close is not None:
+        return f"a close at {ep * (1.0 + reclaim_pct):.2f} reclaims the exit"
+    if sma20 is not None:
         return f"a close at {sma20:.2f} reclaims the 20-day mean"
     if not flags.get("R3"):
-        return f"RSI crossing up through {float(policy.get('rsi_level') or 40):.0f}"
+        rsi_level = _num(policy.get("rsi_level"))
+        rsi_level = 40.0 if rsi_level is None else rsi_level
+        return f"RSI crossing up through {rsi_level:.0f}"
     return "no mechanical trigger left; the next session's close"
 
 
@@ -355,6 +501,33 @@ class Decision:
                 "eligible_accounts": list(self.eligible_accounts)}
 
 
+def _quote_problem(snapshot: Mapping[str, Any] | None) -> str | None:
+    """Why the snapshot cannot support trigger evaluation, or None when its close is a usable price.
+
+    Only ``close`` is mandatory; an optional field that is absent or unusable simply cannot fire its trigger.
+    """
+    if not isinstance(snapshot, Mapping):
+        return "snapshot is not an object"
+    raw_close = snapshot.get("close")
+    if _price(raw_close) is None:
+        return f"close={raw_close!r} is not a finite positive number"
+    return None
+
+
+def _weight(value) -> float:
+    """A confidence weight; a malformed or non-finite weight contributes nothing, never NaN confidence."""
+    number = _num(value)
+    if number is None or number < 0:
+        return 0.0
+    return number
+
+
+def _floor(value, default: float) -> float:
+    """A policy floor. Zero is a real floor, not an absent one; a malformed value keeps the reviewed default."""
+    number = _num(value)
+    return default if number is None else number
+
+
 def evaluate(case: Mapping[str, Any], snapshot: Mapping[str, Any] | None,
              policy: Mapping[str, Any] | None = None, *, now: datetime | None = None) -> Decision:
     """One case → the next state. Pure: same inputs, same answer.
@@ -376,26 +549,35 @@ def evaluate(case: Mapping[str, Any], snapshot: Mapping[str, Any] | None,
         return Decision(state=prev, previous_state=prev, confidence=0.0,
                         reason=f"quote not current ({freshness}{', ' + str(session) if session else ''}); "
                                "a stale or unattributed price cannot move a case")
+    quote_problem = _quote_problem(snapshot)
+    if quote_problem:
+        # A fresh timestamp on a number that is not a price (inf, NaN, a boolean, zero, missing) establishes
+        # nothing: refuse to evaluate triggers and say exactly which input was unusable (F5 on #2557).
+        return Decision(state=prev, previous_state=prev, confidence=0.0,
+                        reason=f"market input unavailable ({quote_problem}); state unchanged, no trigger evaluated")
 
     flags = _trigger_flags(case, snapshot, policy)
-    weights = policy.get("weights") or DEFAULT_POLICY["weights"]
-    confidence = min(1.0, sum(float(weights.get(k) or 0.0) for k, fired in flags.items() if fired))
+    weights = policy.get("weights") if isinstance(policy.get("weights"), Mapping) else DEFAULT_POLICY["weights"]
+    confidence = min(1.0, sum(_weight(weights.get(k)) for k, fired in flags.items() if fired))
     annotations = gate_annotations(case, snapshot, policy, now)
     # A date-open account is required for readiness; ``pending_operator_decision`` rows are date-open but the card
     # still says "pending your decision" — the engine reports the split, it never answers whether to re-enter.
-    eligible = [a for a, r in _eligibility(case).items()
-                if (r.get("eligible") if isinstance(r, Mapping) else bool(r))]
+    # A malformed or contradictory row never becomes an eligible account (F4 on #2557).
+    eligible = [a for a, r in _eligibility(case, now=now).items()
+                if a is not None and r.get("eligible") is True and not r.get("unknown")]
     blocked = any(a.get("blocks_ready") for a in annotations)
+    ready_floor = _floor(policy.get("ready_floor"), 0.55)
+    recovering_floor = _floor(policy.get("recovering_floor"), 0.30)
 
     reclaim = flags["R1"] or flags["R2"] or flags["R4"]
-    if flags["R4"] and confidence >= float(policy.get("ready_floor") or 0.55) and eligible and not blocked:
+    if flags["R4"] and confidence >= ready_floor and eligible and not blocked:
         state, reason = RE_ENTRY_READY, "reclaims the 20-day mean with confidence over the floor"
-    elif reclaim and confidence >= float(policy.get("recovering_floor") or 0.30):
+    elif reclaim and confidence >= recovering_floor:
         # A reclaim is shown even when eligibility is unknown or every date gate is shut: the case still shows.
         # The reason names what actually fired, so the card cannot claim a reclaim that did not happen.
         which = "+".join(k for k in ("R1", "R2", "R4") if flags[k])
         state, reason = RECOVERING, f"a reclaim fired ({which}); confidence {confidence:.2f}"
-    elif confidence >= float(policy.get("recovering_floor") or 0.30):
+    elif confidence >= recovering_floor:
         # R3/R5 raise confidence but are not reclaims. Reaching RECOVERING on confidence alone is allowed — the
         # card still has to show the case — but the sentence must not assert a reclaim that never fired.
         state, reason = RECOVERING, f"confidence {confidence:.2f} crossed the floor without a reclaim"
@@ -416,7 +598,8 @@ def session_decay(case: Mapping[str, Any], policy: Mapping[str, Any] | None = No
     """Is this case past the decay window? Digest-only, never auto-closed while materiality is T2 or worse."""
     policy = policy or DEFAULT_POLICY
     sessions = _num(case.get("sessions_since_trigger"))
-    window = int(policy.get("decay_sessions") or 20)
+    window = _int(policy.get("decay_sessions"))
+    window = 20 if window is None else window
     tier = str(case.get("materiality_tier") or "T3").upper()
     decayed = bool(sessions is not None and sessions >= window)
     return {"decayed": decayed, "digest_only": decayed,
@@ -428,7 +611,9 @@ def session_decay(case: Mapping[str, Any], policy: Mapping[str, Any] | None = No
 def store_accessor(conn=None, policy: Mapping[str, Any] | None = None):
     """Piece A's case store, or None when this build does not carry it yet.
 
-    Piece A owns the store (``lib.recovery_engine.cases.CaseStore``): ``list()`` / ``set_state(case_key, state)``.
+    Piece A owns the store (``lib.recovery_engine.cases.CaseStore``): ``list()`` and a compare-and-set
+    ``set_state(case_key, state, expect={"state", "operator_decision"})``. The expectations are the row the pass
+    READ; a store that cannot express them is refused rather than written unconditionally (F1 on #2557).
     A missing store is reported by the callers as "recovery store not present", never as an empty store — an
     empty read and an absent store must not look the same.
     """
@@ -498,23 +683,83 @@ def _pending_path() -> Path:
         return PROJECT_ROOT / PENDING_REL
 
 
-def load_pending(path: str | Path | None = None) -> dict:
+def _read_pending(target: str | Path) -> dict:
+    """Read the queue strictly. A missing file is empty; an unreadable one raises instead of reading as empty.
+
+    Reading a corrupt queue as ``{}`` is how a retry responsibility disappears: the next write would replace the
+    file with only the keys this pass knows about. The caller refuses the transition instead (F2 on #2557).
+    """
+    path = Path(target)
     try:
-        doc = json.loads(Path(path or _pending_path()).read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}
+    try:
+        doc = json.loads(text)
+    except ValueError as exc:
+        raise ValueError(f"pending store {path} is unreadable: {exc}") from exc
+    if not isinstance(doc, dict):
+        raise ValueError(f"pending store {path} is not an object")
+    return doc
+
+
+def load_pending(path: str | Path | None = None) -> dict:
+    """Best-effort read for the retry check. An unreadable file reads as empty HERE; every WRITE is strict."""
+    try:
+        return _read_pending(path or _pending_path())
     except (OSError, ValueError):
         return {}
-    return doc if isinstance(doc, dict) else {}
+
+
+@contextlib.contextmanager
+def _pending_lock(target: str | Path):
+    """Serialise the read-merge-replace so two overlapping evaluators cannot clobber each other's entries."""
+    lock_path = Path(str(target) + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(lock_path, "a+", encoding="utf-8")  # noqa: SIM115 — closed in the finally block
+    fcntl = None
+    try:
+        try:
+            import fcntl as _fcntl  # noqa: PLC0415 — POSIX only; the lock is an optimisation there
+            fcntl = _fcntl
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        except ImportError:
+            fcntl = None
+        yield
+    finally:
+        if fcntl is not None:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            except OSError:
+                pass
+        handle.close()
 
 
 def save_pending(doc: Mapping[str, Any], path: str | Path | None = None) -> None:
+    """Atomically replace the queue. Faults PROPAGATE: a silent failure is a lost page (F2 on #2557)."""
     target = Path(path or _pending_path())
-    try:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        tmp = target.with_suffix(target.suffix + ".tmp")
-        tmp.write_text(json.dumps(dict(doc), indent=1, sort_keys=True), encoding="utf-8")
-        os.replace(tmp, target)
-    except OSError:
-        pass  # a pending-store fault must never lose the page: the caller keeps it in memory this pass
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    tmp.write_text(json.dumps(dict(doc), indent=1, sort_keys=True), encoding="utf-8")
+    os.replace(tmp, target)
+
+
+def merge_pending(updates: Mapping[str, Any], path: str | Path | None = None) -> dict:
+    """Apply single-key updates under an exclusive lock, re-reading the queue first.
+
+    ``None`` deletes a key. Returns the merged document. Raises OSError/ValueError when the responsibility
+    cannot be recorded — the caller must not pretend it was.
+    """
+    target = Path(path or _pending_path())
+    with _pending_lock(target):
+        doc = _read_pending(target)
+        for key, value in updates.items():
+            if value is None:
+                doc.pop(key, None)
+            else:
+                doc[key] = value
+        save_pending(doc, target)
+        return doc
 
 
 def _delivery_confirmed(result: Mapping[str, Any] | None) -> bool:
@@ -544,6 +789,81 @@ def _default_notify():
     return notify_recovery_case
 
 
+PENDING_ERRORS = (OSError, ValueError)
+
+
+def _cas_write(store, case: Mapping[str, Any], decision: Decision, now: datetime) -> tuple[bool, str, str | None]:
+    """Compare-and-set at the durable store boundary: (applied, status, refusal).
+
+    The expectations are the state, operator decision and (when the row carries one) version this pass READ. A
+    store that cannot express them is refused — never written unconditionally, which is exactly how a decision
+    taken after ``list()`` was overwritten and paged (F1 on #2557).
+    """
+    key = str(case.get("case_key"))
+    expect: dict[str, Any] = {
+        "state": str(case.get("state") or STOPPED_OUT).upper(),
+        "operator_decision": str(case.get("operator_decision") or "none"),
+    }
+    version = case.get("version", case.get("row_version"))
+    if version is not None and version != "":
+        expect["version"] = version
+    setter = getattr(store, "set_state", None)
+    if not callable(setter):
+        return False, "cas_unsupported", "store exposes no compare-and-set set_state"
+    try:
+        result = setter(key, decision.state, expect=expect)
+    except TypeError as exc:
+        return False, "cas_unsupported", (
+            f"store set_state cannot express expected state/operator_decision/version "
+            f"({type(exc).__name__}: {exc}); refusing an unconditional write")
+    except Exception as exc:  # noqa: BLE001 — one case failing never stops the pass
+        return False, "write_error", f"{type(exc).__name__}: {exc}"
+    if isinstance(result, tuple) and result:
+        applied = result[0] == 1 if isinstance(result[0], int) else bool(result[0])
+        refusal = str(result[1]) if len(result) > 1 and result[1] is not None else None
+        return applied, ("applied" if applied else "cas_miss"), (None if applied else (refusal or "state_changed"))
+    if result is True:
+        return True, "applied", None
+    if result is False or result == 0:
+        return False, "cas_miss", "refused"
+    return False, "cas_unconfirmed", (
+        f"store returned {type(result).__name__}, not an applied/refused verdict; responsibility retained")
+
+
+#: Operator decisions that settle a pending page even when the row's ``state`` column lags behind them.
+OPERATOR_DECISION_STATES = frozenset({"closed", "snoozed", "re-entered", "reentered"})
+
+
+def _dispatch_gate(case: Mapping[str, Any], snapshot: Mapping[str, Any] | None, decision: Decision,
+                   now: datetime, pageable: tuple[str, ...] = PAGING_STATES) -> tuple[bool, str, bool]:
+    """The last check before piece C: (send, reason, settle_pending).
+
+    Applied to RETRIES as well as new transitions (F3 on #2557). An operator-held case never pages and its
+    obligation is settled; a non-pageable state settles a stale obligation; a quote that is not current does
+    not page and KEEPS the obligation, so it survives honestly until a usable quote exists.
+    """
+    operator_decision = str(case.get("operator_decision") or "none").strip().lower()
+    if decision.state in OPERATOR_STATES or operator_decision in OPERATOR_DECISION_STATES:
+        return False, "operator decision holds; not paging", True
+    if decision.state not in tuple(pageable):
+        return False, f"state {decision.state} is not pageable; pending obligation settled", True
+    freshness, session = snapshot_freshness(snapshot, now=now)
+    if freshness not in FRESH_QUOTE_STATES:
+        suffix = f", {session}" if session else ""
+        return False, (f"quote not current ({freshness}{suffix}); retry responsibility retained until a usable "
+                       "quote exists"), False
+    return True, "", False
+
+
+def _drop_pending(key: str, pending_path, row: dict, pending: dict) -> None:
+    """Remove one obligation under the lock. A failed removal stays visible and the entry stays in memory."""
+    try:
+        merge_pending({key: None}, pending_path)
+        pending.pop(key, None)
+    except PENDING_ERRORS as exc:
+        row["pending_store_error"] = f"{type(exc).__name__}: {exc}"
+
+
 def run_pass(store, snapshot_for, *, policy: Mapping[str, Any] | None = None,
              now: datetime | None = None, dry_run: bool = True, limit: int = 200,
              notify=None, notify_states: tuple[str, ...] = PAGING_STATES,
@@ -556,9 +876,16 @@ def run_pass(store, snapshot_for, *, policy: Mapping[str, Any] | None = None,
 
     ``notify`` is piece C's ``notify_recovery_case`` by default. This is the PRODUCTION handoff: codex's
     scheduled-shape probe (2026-11-03) found the pass wrote a T1 RECOVERING case and made **zero** notifier
-    calls — a case that exists and never pages is the exact failure the row exists to fix. A transition into
-    ``PAGING_STATES`` now notifies once, after the state is durable; a notifier fault is recorded on the row
-    and never aborts the pass or the other cases.
+    calls — a case that exists and never pages is the exact failure the row exists to fix.
+
+    The order is deliberate (F2 on #2557):
+
+    1. **Persist the retry responsibility** for a paging transition, durably and under a lock, BEFORE the state
+       write makes the transition invisible. If it cannot be persisted, the state is not advanced, so the
+       transition stays visible and the next pass tries again.
+    2. **Compare-and-set the state** against the row this pass read. A miss changes nothing and pages nothing.
+    3. **Revalidate at dispatch** — operator decision and quote freshness — for retries as well as transitions.
+    4. **Send, then clear** the obligation on confirmed delivery; a failure keeps it for the next pass.
     """
     if store is None:
         return {"store": "absent", "considered": 0, "changed": 0, "decisions": []}
@@ -575,7 +902,7 @@ def run_pass(store, snapshot_for, *, policy: Mapping[str, Any] | None = None,
                 "changed": 0, "decisions": []}
     notifier = notify if notify is not None else _default_notify()
     pending = load_pending(pending_path)
-    decisions, changed, notifier_calls = [], 0, 0
+    decisions, changed, attempted, notifier_calls, pending_errors = [], 0, 0, 0, 0
     for case in cases:
         try:
             snapshot = snapshot_for(case) if snapshot_for else None
@@ -590,63 +917,104 @@ def run_pass(store, snapshot_for, *, policy: Mapping[str, Any] | None = None,
                # how a documented policy quietly stops being a policy.
                "decay": session_decay(case, policy)}
         decisions.append(row)
-        write_ok = True
-        if decision.changed:
-            changed += 1
-            if not dry_run:
-                try:
-                    if hasattr(store, "set_state"):
-                        store.set_state(str(case.get("case_key")), decision.state)
-                    else:
-                        store.update_state(str(case.get("case_key")), state=decision.state,
-                                           state_since=now.isoformat(), annotations=decision.annotations,
-                                           confidence=round(decision.confidence, 4),
-                                           next_trigger=decision.next_trigger)
-                except Exception as exc:  # noqa: BLE001 — one case failing never stops the pass
-                    write_ok = False
-                    row["write_error"] = f"{type(exc).__name__}: {exc}"
-
         key = str(case.get("case_key"))
         # Lead contract (2026-11-03): notify on a TRANSITION into a paging state, or to retry pending work.
         # A case that merely stays RECOVERING is not re-handed on every pass — C's day bound is the backstop,
         # not the reason to call it.
-        wants_page = decision.changed and decision.state in tuple(notify_states)
+        wants_page = bool(decision.changed and decision.state in tuple(notify_states))
         retrying = key in pending
-        # Dispatch ONLY after the state is durable (a failed write must not page), and retry a pending
-        # delivery on later passes even when the state no longer changes.
-        if not write_ok:
-            row["notify"] = {"sent": False, "reason": "state write failed; not notifying"}
-        elif not (wants_page or retrying):
-            pass
-        elif notifier is None:
-            row["notify"] = {"sent": False, "reason": "notifier unavailable (piece C absent)"}
-        elif dry_run:
-            row["notify"] = {"sent": False, "reason": "dry_run"}
-        else:
-            handoff = {**case, "state": decision.state,
-                       "confidence": round(decision.confidence, 4),
-                       "next_trigger": decision.next_trigger,
-                       "price": (snapshot or {}).get("close"),
-                       "exit_price": exit_price(case)}
+        write_ok = True
+
+        # (1) Retry responsibility is durable BEFORE the state change can hide the transition.
+        responsibility_ok = True
+        if not dry_run and wants_page:
+            entry = {"first_failed_at": now.isoformat(), "attempts": 0, "state": decision.state,
+                     "last_error": None}
             try:
-                result = notifier(handoff)
-                notifier_calls += 1
-                row["notify"] = {k: v for k, v in (result or {}).items() if k != "message"}
-            except Exception as exc:  # noqa: BLE001 — a notifier fault never aborts the pass
-                notifier_calls += 1
-                result = {"sent": False, "error": f"{type(exc).__name__}: {exc}"}
-                row["notify"] = result
-            if _delivery_confirmed(result):
-                pending.pop(key, None)
-            elif wants_page or retrying:
-                entry = pending.get(key) or {"first_failed_at": now.isoformat(), "attempts": 0}
-                entry["state"] = decision.state
-                entry["attempts"] = int(entry.get("attempts") or 0) + 1
-                entry["last_error"] = (result or {}).get("error") or (result or {}).get("reason") or "sent false"
+                merge_pending({key: entry}, pending_path)
                 pending[key] = entry
+            except PENDING_ERRORS as exc:
+                responsibility_ok = False
+                pending_errors += 1
+                row["pending_store_error"] = f"{type(exc).__name__}: {exc}"
+
+        # (2) Compare-and-set the state against the row this pass read.
+        if decision.changed:
+            attempted += 1
+            if dry_run:
+                changed += 1
+            elif not responsibility_ok:
+                write_ok = False
+                row["write_error"] = "retry responsibility could not be persisted; state not advanced"
+                row["notify"] = {"sent": False, "reason": "pending store failed; transition left visible and "
+                                                          "not written"}
+            else:
+                applied, status, refusal = _cas_write(store, case, decision, now)
+                if applied:
+                    changed += 1
+                else:
+                    write_ok = False
+                    row["write_error"] = refusal or status
+                    row["cas"] = {"status": status, "refusal": refusal}
+
+        # (3) Dispatch gate — revalidated for retries as well as new transitions.
+        if not (wants_page or retrying):
+            continue
+        if not write_ok:
+            # The transition is not durable. Do not page it; any responsibility persisted above is revalidated
+            # on the next pass (it is settled by the gate if the case did not actually advance).
+            if key in pending:
                 row["notify_pending"] = True
-    if not dry_run:
-        save_pending(pending, pending_path)
-    return {"store": "ok", "considered": len(cases), "changed": changed, "notifier_calls": notifier_calls,
-            "pending": len(pending), "decisions": decisions,
+            row["notify"] = {"sent": False, "reason": f"state write did not apply ({row.get('write_error')}); "
+                                                      "not notifying"}
+            continue
+        send, gate_reason, settle = _dispatch_gate(case, snapshot, decision, now, tuple(notify_states))
+        if not send:
+            if settle and not dry_run:
+                _drop_pending(key, pending_path, row, pending)
+            if key in pending:
+                row["notify_pending"] = True
+            row["notify"] = {"sent": False, "reason": gate_reason}
+            continue
+        if dry_run:
+            row["notify"] = {"sent": False, "reason": "dry_run"}
+            continue
+        if notifier is None:
+            # The obligation is already durable, so a later pass with piece C present will deliver it.
+            row["notify_pending"] = key in pending
+            row["notify"] = {"sent": False, "reason": "notifier unavailable (piece C absent); retry "
+                                                      "responsibility retained"}
+            continue
+        handoff = {**case, "state": decision.state,
+                   "confidence": round(decision.confidence, 4),
+                   "next_trigger": decision.next_trigger,
+                   "price": (snapshot or {}).get("close"),
+                   "exit_price": exit_price(case)}
+        try:
+            result = notifier(handoff)
+            notifier_calls += 1
+            row["notify"] = {k: v for k, v in (result or {}).items() if k != "message"}
+        except Exception as exc:  # noqa: BLE001 — a notifier fault never aborts the pass
+            notifier_calls += 1
+            result = {"sent": False, "error": f"{type(exc).__name__}: {exc}"}
+            row["notify"] = result
+        if _delivery_confirmed(result):
+            _drop_pending(key, pending_path, row, pending)
+        else:
+            entry = pending.get(key) or {"first_failed_at": now.isoformat(), "attempts": 0}
+            entry["state"] = decision.state
+            entry["attempts"] = int(entry.get("attempts") or 0) + 1
+            entry["last_error"] = (result or {}).get("error") or (result or {}).get("reason") or "sent false"
+            try:
+                merge_pending({key: entry}, pending_path)
+                pending[key] = entry
+            except PENDING_ERRORS as exc:
+                # The entry written before the send still stands; never report a responsibility we did not keep.
+                pending[key] = entry
+                pending_errors += 1
+                row["pending_store_error"] = f"{type(exc).__name__}: {exc}"
+            row["notify_pending"] = True
+    return {"store": "ok", "considered": len(cases), "changed": changed, "attempted_changes": attempted,
+            "notifier_calls": notifier_calls, "pending": len(pending),
+            "pending_store_errors": pending_errors, "decisions": decisions,
             "dry_run": bool(dry_run), "policy_source": policy.get("policy_source")}

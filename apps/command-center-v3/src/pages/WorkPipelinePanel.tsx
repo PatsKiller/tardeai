@@ -9,6 +9,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { Chip } from '../components/primitives'
 import { RADIUS, TOKENS, TYPE, FONT, toneVars } from '../lib/designTokens'
+import { censusSituation } from '../lib/pipelineCensusText'
 import {
   PIPELINE_STAGES, PRESETS, STAGE_LABEL, ageLabel, cardActions, cellTitle, filterFromParams, filterItems, filterOptions,
   filterToParams, planLabel, queuedSections, ragTone, summarize, type PipelineFilter, type PipelineItem, type PipelinePayload,
@@ -18,6 +19,11 @@ import { canCreate, disabledReason, needsWords, phraseMatches, requestParams, ty
 import { opsApi, passkeyStepUp, type OpsRequest } from '../lib/opsControls'
 
 const QUEUE_CAP = 6
+// BOARD row 78: the payload gains `summary.queued_by_owner` and `sources.readers`. The shared PipelinePayload type lives
+// in lib/workPipeline.ts, which another live session holds tonight, so the panel narrows the two new branches locally
+// rather than editing a file someone else is working in; move these into the shared type when that claim releases.
+type QueuedByOwner = { operator: number; agent: number; nobody: number }
+type SourceReader = { label?: string; ok?: boolean; as_of?: string | null; last_success_at?: string | null; error?: string | null }
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 12, minWidth: 0 }
 const small: CSSProperties = { fontSize: TYPE.sm, color: TOKENS.text[2] }
 const mono: CSSProperties = { fontFamily: FONT.mono, fontSize: TYPE.sm, overflowWrap: 'anywhere' }
@@ -289,6 +295,9 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
 
   const served = api.data?.sources?.served
   const census = api.data?.sources?.census
+  // FQ-033 (cc-deepseek-8 R1 at 75251580): `census.warning` is set before the first refresh and by PARTIAL warnings
+  // after a successful one, so it cannot be read as "the refresh failed". The sentence comes from the tested helper.
+  const censusView = censusSituation({ refreshedAt: census?.refreshed_at, warning: census?.warning })
   return <section data-testid="work-pipeline" style={{ display: 'grid', gap: 12, minWidth: 0 }}>
     <style>{`
       .wp-card-grid { grid-template-columns: minmax(0, 1.4fr) minmax(0, 2fr); }
@@ -309,8 +318,17 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
           <div style={small} data-testid="pipeline-sources">
             One row per work item (task, PR or design phase). As of {et(api.data?.as_of)} · PR census {census?.refreshed_at ? `${api.data?.sources?.census_age_s ?? '?'} s old` : 'pending'} (refreshed at most once a minute)
             {served?.sha ? ` · served ${String(served.sha).slice(0, 9)} health ${served.ok ? 'ok' : served.ok === false ? 'FAILED' : 'unknown'}` : ''}
-            {census?.warning ? <span style={{ color: TOKENS.warning }}> · PR census could not refresh — the last good copy is shown</span> : null}
-            {census?.warning ? <Technical label="Technical: why the census could not refresh">{census.warning}</Technical> : null}
+            {censusView.text ? <span style={{ color: TOKENS.warning }}> · {censusView.text}</span> : null}
+            {census?.warning ? <Technical label="Technical: the census report">{census.warning}</Technical> : null}
+          </div>
+          <div style={small} data-testid="pipeline-source-readers">
+            {Object.entries(((api.data as unknown as { sources?: { readers?: Record<string, SourceReader> } })
+              ?.sources?.readers) || {}).map(([name, r]) => (
+              <span key={name} data-testid={`pipeline-source-${name}`} style={{ color: r.ok ? undefined : TOKENS.warning }}>
+                {' · '}{r.label || name}{' '}
+                {r.ok ? `as of ${et(r.as_of)}` : `unavailable — ${r.error || 'unreadable'}; last succeeded ${r.last_success_at ? et(r.last_success_at) : 'never recorded'}`}
+              </span>
+            ))}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', ...small }}>
@@ -370,6 +388,13 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
         <h2 style={{ margin: 0, fontSize: TYPE.md, color: TOKENS.text[0] }}>
           <button type="button" onClick={() => setQueueOpen(!queueOpen)} style={{ ...btn, border: 'none', background: 'transparent', padding: 0, fontSize: TYPE.md, fontWeight: 700 }} aria-expanded={queueOpen}>{queueOpen ? '▾' : '▸'} Queued</button>
           <span style={{ ...small, fontWeight: 400 }}> {q.tasks.length} free tasks · {q.green.length} green PRs not in a batch · {q.operator.length} operator to-dos</span>
+          {(() => {
+            const qbo = (api.data as unknown as { summary?: { queued_by_owner?: QueuedByOwner } })
+              ?.summary?.queued_by_owner
+            return qbo ? (
+              <span style={{ ...small, fontWeight: 400 }} data-testid="queued-by-owner"> · {qbo.operator} operator-owned · {qbo.agent} agent-owned · {qbo.nobody} nobody has taken it</span>
+            ) : null
+          })()}
         </h2>
         <NewTaskForm onCreate={p => act(null, 'task_add', p)} />
       </div>
