@@ -57,7 +57,7 @@ check('the internal key is gone from the reader line', !compositeLine.includes('
 const counts = log(169099, true, { task_summary: 'system:1557chars; system:385chars; user:18987chars' })
 check('a size breakdown is not passed off as a summary', callPrimaryText(counts).includes('request text only'), callPrimaryText(counts))
 
-// cc-deepseek-5's P3 on #2676: taking the LAST segment printed the ticker twice and dropped the task.
+// cc-deepseek-5's P3 on PR 2676: taking the LAST segment printed the ticker twice and dropped the task.
 const tickerLast = readableSummary({ task_summary: 'agent_flash:agent_narrative:NVDA' })
 eq('the ticker is not repeated back as a word', tickerLast, 'NVDA · Agent narrative')
 const statusLast = readableSummary({ task_summary: 'cloud_review:research_up_thesis_flat:deepseek_ok' })
@@ -80,3 +80,16 @@ check('a row with no process id still yields a detail string', callDetailText(lo
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
+
+// --- cc-deepseek-8's F2/F3 on PR 2676 (driven on the live table) -------------------------
+eq('a control directive plus a prompt is request text, not a summary',
+   readableSummary({ task_summary: '/no_think Analyze stock catalyst for U and output JSON only. Headlines: - Unity Software' }),
+   'No summary recorded — request text only')
+eq('a prompt that only says output JSON only is request text too',
+   readableSummary({ task_summary: 'Summarise this filing and output JSON only' }),
+   'No summary recorded — request text only')
+eq('a slash-led task key is not mistaken for a summary',
+   readableSummary({ task_summary: '/compact' }), 'No summary recorded — request text only')
+check('a manual trigger says so', callPrimaryText(log(1, true, { trigger_mode: 'manual' })).includes('started by you'))
+check('an automated trigger says so', callPrimaryText(log(2, true)).includes('ran automatically'))
+check('an unknown trigger asserts nothing', callPrimaryText(log(3, true, { trigger_mode: 'retry' })).includes('trigger not recorded'))

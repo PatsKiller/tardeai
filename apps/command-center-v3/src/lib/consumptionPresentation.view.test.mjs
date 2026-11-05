@@ -3,7 +3,7 @@
 //
 // This test RENDERS the real page and asserts the style React actually emits. It replaces a source-regex version:
 // that one read ConsumptionHub.tsx and looked for `minHeight: 44` near each `aria-expanded`, so replacing the real
-// style with a comment of the same words kept it green (cc-deepseek-3 BLOCK on #2676, 2026-11-05). A guard that
+// style with a comment of the same words kept it green (cc-deepseek-3 BLOCK on PR 2676, 2026-11-05). A guard that
 // cannot be made red by removing the behaviour is not a guard. Runs in the CC-v3 build:
 //   node src/lib/consumptionPresentation.view.test.mjs
 import { readFileSync, existsSync, statSync } from 'node:fs'

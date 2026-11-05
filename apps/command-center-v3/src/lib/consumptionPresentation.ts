@@ -66,11 +66,15 @@ export function readableSummary(l: { task_summary?: string }): string {
   if (!raw) return 'No summary recorded'
   // A size breakdown of the prompt, not a description of the work.
   if (/^((system|user|assistant):\d+chars;?\s*)+$/i.test(raw)) return 'No summary recorded — request text only'
+  // A prompt rather than a summary: 3,744 live rows (2.2% of the table) start with a control directive the model reads
+  // ("/no_think Analyze stock catalyst … output JSON only …"), so the operator's line showed an internal token plus a
+  // prompt excerpt (cc-deepseek-8's F2 on PR 2676). Same wording as the size breakdown, for the same reason.
+  if (/^\/\S/.test(raw) || /\boutput JSON only\b/i.test(raw)) return 'No summary recorded — request text only'
   // A composite internal key: producer : task : (status) : ticker. The segment that says what the work was is the
   // longest one that is not the ticker — a producer prefix is a short word ("agent_flash", "cloud_review") and a
   // trailing status is short too ("deepseek_ok"), while the task is the descriptive one. Taking the LAST segment
   // instead printed the ticker twice ("NVDA · Nvda") and reduced a research task to "Deepseek ok"
-  // (cc-deepseek-5's P3 on #2676). When nothing but the ticker survives, say so rather than repeat it.
+  // (cc-deepseek-5's P3 on PR 2676). When nothing but the ticker survives, say so rather than repeat it.
   if (raw.includes(':') && !/\s/.test(raw)) {
     const parts = raw.split(':').filter(Boolean)
     const symbol = parts.find(p => /^[A-Z]{1,5}$/.test(p))
@@ -92,7 +96,11 @@ export function readableSummary(l: { task_summary?: string }): string {
 export function callPrimaryText(l: ConsumptionLog): string {
   const name = l.process_name || 'Unnamed process'
   const summary = readableSummary(l)
-  const trigger = l.trigger_mode === 'manual' ? 'started by you' : 'ran automatically'
+  // cc-deepseek-8's F3 on PR 2676: the old default rendered ANY unknown trigger as "ran automatically" — a claim about a
+  // value the payload does not carry, and the opposite of llm_spend.py's default. Only the two known modes assert.
+  const trigger = l.trigger_mode === 'manual' ? 'started by you'
+    : l.trigger_mode === 'automated' ? 'ran automatically'
+    : 'trigger not recorded'
   return `${name} · ${summary} · ${trigger}`
 }
 
