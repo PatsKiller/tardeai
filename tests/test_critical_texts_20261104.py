@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -346,4 +348,154 @@ def test_the_append_path_shortens_the_trigger_not_the_action(monkeypatch):
     assert URL in text                                  # the link survives whole
     assert text.endswith("CC Risk")
     assert len(text) <= ct.MAX_TEXT_CHARS
+
+
+# ── Findings from the whole-head review of d7d9c5004 (2026-11-05, codex-cloud) ───────────────────────
+
+def _live_paths(tmp_path, *, max_per_hour=2, classes=None):
+    """A contact + allowlist pair with both fake Fi lines and the given cap."""
+    contact = tmp_path / "operator_contact.json"
+    contact.write_text(json.dumps({"critical_sms_email_gateways": FAKE_LINES}), encoding="utf-8")
+    config = tmp_path / "critical_text_classes.json"
+    config.write_text(json.dumps({
+        "classes": classes or {"A1_extended_hours_near_stop": {"enabled": True}},
+        "max_per_hour": max_per_hour, "dedupe_hours": 12,
+    }), encoding="utf-8")
+    return contact, config, tmp_path / "state.json"
+
+
+def test_the_default_sender_is_a_communications_gateway_intent(monkeypatch, tmp_path):
+    """CX1: without an injected sender each Fi line is a gateway intent, never a direct provider call.
+
+    The mutation is the old body: import ``scripts.email_notifier.send_email`` directly instead of calling
+    ``send_via_gateway``. Then ``seen`` is empty (no gateway call) and the patched provider explodes.
+    """
+    contact, config, state = _live_paths(tmp_path)
+    import scripts.email_notifier as notifier
+    import scripts.lib.comms.channel_adapters as channel_adapters
+
+    def _direct_provider(*_a, **_k):
+        raise AssertionError("critical texts must not call a provider directly")
+
+    monkeypatch.setattr(notifier, "send_email", _direct_provider)
+    seen = []
+
+    def fake_gateway(channel, **kwargs):
+        seen.append((channel, kwargs))
+        return {"ok": True, "delivered": True, "event_id": f"ev{len(seen)}",
+                "delivery_id": f"d{len(seen)}", "gateway_mode": "ACTIVE"}
+
+    monkeypatch.setattr(channel_adapters, "send_via_gateway", fake_gateway)
+    result = ct.send_critical_text(event(), contact_path=contact, config_path=config, state_path=state, now=NOW)
+
+    assert result["sent"] is True and len(seen) == 2
+    assert [channel for channel, _ in seen] == ["email", "email"]
+    assert [kwargs["to"] for _, kwargs in seen] == FAKE_LINES
+    assert all(kwargs["deliver"] is True for _, kwargs in seen)
+    assert [kwargs["producer"] for _, kwargs in seen] == ["critical_texts", "critical_texts"]
+    assert result["gateways"] == 2
+
+
+def test_a_blocked_gateway_delivery_is_a_failed_receipt_not_a_silent_send(monkeypatch, tmp_path):
+    """CX1: when the gateway does not deliver, the channel says so; it never claims a send it did not make."""
+    contact, config, state = _live_paths(tmp_path)
+    import scripts.lib.comms.channel_adapters as channel_adapters
+
+    monkeypatch.setattr(channel_adapters, "send_via_gateway",
+                        lambda *a, **k: {"ok": False, "delivered": False, "error": "delivery_blocked_mode",
+                                         "event_id": "ev", "gateway_mode": "OFF"})
+    result = ct.send_critical_text(event(), contact_path=contact, config_path=config, state_path=state, now=NOW)
+    assert result["sent"] is False
+    assert [r["ok"] for r in result["receipts"]] == [False, False]
+    assert not state.exists()                       # nothing recorded as sent, so no dedupe entry was written
+
+
+def test_two_overlapping_producers_cannot_both_send_the_same_event(tmp_path):
+    """CX2: the read/check/send/write transaction is serialized, so the same event fans out once.
+
+    Both threads pass the start barrier together and the sender is slow enough that, without the state
+    transaction lock, both load an empty state and both fan out (four texts). With it, the second sees the
+    first's send and dedupes.
+    """
+    contact, config, state = _live_paths(tmp_path)
+    calls = []
+    calls_lock = threading.Lock()
+
+    def slow_sender(subject, body, to=None, attachments=None):
+        with calls_lock:
+            calls.append(to)
+        time.sleep(0.05)
+        return True
+
+    start = threading.Barrier(2)
+    results = []
+
+    def worker():
+        start.wait()
+        results.append(ct.send_critical_text(event(), sender=slow_sender, contact_path=contact,
+                                             config_path=config, state_path=state, now=NOW))
+
+    threads = [threading.Thread(target=worker) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert sorted(r["sent"] for r in results) == [False, True]
+    assert any(r.get("deduped") for r in results)
+    assert calls == FAKE_LINES                      # one fan-out, not two
+
+
+def test_two_overlapping_events_cannot_exceed_the_hourly_text_cap(tmp_path):
+    """CX2: the cap is a reservation taken under the lock, so two events cannot each pass it.
+
+    Cap 2 with two lines is one event. Without the lock both events load zero recent texts and both send
+    two, so four texts leave against a cap of two.
+    """
+    contact, config, state = _live_paths(tmp_path, max_per_hour=2)
+    calls = []
+    calls_lock = threading.Lock()
+
+    def slow_sender(subject, body, to=None, attachments=None):
+        with calls_lock:
+            calls.append(to)
+        time.sleep(0.05)
+        return True
+
+    start = threading.Barrier(2)
+    results = []
+    events = [event(event_id="ev-A"), event(event_id="ev-B")]
+
+    def worker(ev):
+        start.wait()
+        results.append(ct.send_critical_text(ev, sender=slow_sender, contact_path=contact,
+                                             config_path=config, state_path=state, now=NOW))
+
+    threads = [threading.Thread(target=worker, args=(ev,)) for ev in events]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert len(calls) == 2                          # the cap, not four
+    assert sum(1 for r in results if r["sent"]) == 1
+    assert any("cap" in str(r.get("reason") or "") for r in results)
+
+
+def test_a_stop_alert_for_one_account_does_not_suppress_anothers(tmp_path):
+    """CX3: two accounts with the same symbol/date/price get different identities and both text."""
+    from scripts.lib.critical_text_triggers import extended_hours_near_stop
+
+    contact, config, state = _live_paths(tmp_path, max_per_hour=10)
+    account_a = extended_hours_near_stop("SPCX", "Account A", 131.20, 130.00, date_key="2026-11-04")
+    account_b = extended_hours_near_stop("SPCX", "Account B", 131.20, 130.00, date_key="2026-11-04")
+    assert account_a["event_id"] != account_b["event_id"]
+
+    send, calls = recorder()
+    first = ct.send_critical_text(account_a, sender=send, contact_path=contact, config_path=config,
+                                  state_path=state, now=NOW)
+    second = ct.send_critical_text(account_b, sender=send, contact_path=contact, config_path=config,
+                                   state_path=state, now=NOW)
+    assert first["sent"] is True and second["sent"] is True
+    assert len(calls) == 4                          # two accounts x two Fi lines
 

@@ -233,6 +233,38 @@ def test_deliver_true_active_settles_sent(monkeypatch):
     assert deliveries[result["delivery_id"]]["status"] == "SENT"
 
 
+def test_email_adapter_carries_an_explicit_email_to_text_recipient(monkeypatch):
+    """CX1 (PR 2678): the Fi transport is a gateway adapter — an explicit recipient is addressed, not dropped.
+
+    Without the recipient branch the email channel sends to the SMTP report recipient, so a Fi line would
+    never receive the critical text and the per-line receipt would still claim success.
+    """
+    monkeypatch.setenv("COMMS_GATEWAY_MODE", "ACTIVE")
+    mode_mod._cache["mode"] = None
+
+    import scripts.email_notifier as notifier
+
+    sent = []
+
+    def fake_notifier(subject, body, to=None, attachments=None):
+        sent.append((subject, body, to))
+        return True
+
+    monkeypatch.setattr(notifier, "send_email", fake_notifier)
+    result = send_via_gateway(
+        "email",
+        body="ACT NOW SPCX (Roth) ... CC Risk",
+        subject="CRITICAL",
+        producer="critical_texts",
+        subject_key="test:channel_adapters:email_to_text",
+        deliver=True,
+        to="15550000001@example.invalid",
+    )
+    assert result["delivered"] is True
+    assert sent == [("CRITICAL", "ACT NOW SPCX (Roth) ... CC Risk", "15550000001@example.invalid")]
+    assert result["provider_coordinates"]["transport"] == "email_to_text"
+
+
 def test_require_event_id_before_provider(monkeypatch):
     """Provider path must call require_event_id; missing id fails closed."""
     monkeypatch.setenv("COMMS_GATEWAY_MODE", "CANARY")

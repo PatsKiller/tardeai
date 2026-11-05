@@ -109,4 +109,28 @@ def test_replay_the_spcx_card_produces_the_specified_sentence_shape():
     assert text.endswith("CC Risk") and len(text) <= 160
 
 
+# ── CX3 (whole-head review of d7d9c5004, 2026-11-05): the account is part of the identity ─────────────
+
+def test_a1_identity_includes_the_account_at_the_same_price():
+    """Two accounts at the same symbol/date/price used to share one id, so the second text was suppressed."""
+    account_a = t.extended_hours_near_stop("SPCX", "Account A", 131.20, 130.00, date_key="2026-11-04")
+    account_b = t.extended_hours_near_stop("SPCX", "Account B", 131.20, 130.00, date_key="2026-11-04")
+    assert account_a["event_id"] != account_b["event_id"]
+    # One account, one scope: spacing/case differences are the same account, not a second alert.
+    same_account = t.extended_hours_near_stop("SPCX", "  account a ", 131.20, 130.00, date_key="2026-11-04")
+    assert same_account["event_id"] == account_a["event_id"]
+
+
+def test_a2_identity_includes_the_account():
+    account_a = t.stop_not_raised("SPCX", "Account A", 120.00, 132.00, move_1d_pct=12.0, date_key="2026-11-04")
+    account_b = t.stop_not_raised("SPCX", "Account B", 120.00, 132.00, move_1d_pct=12.0, date_key="2026-11-04")
+    assert account_a["event_id"] != account_b["event_id"]
+
+
+def test_an_unscoped_identity_cannot_collide_with_a_named_account():
+    unscoped = t.extended_hours_near_stop("SPCX", None, 131.20, 130.00, date_key="2026-11-04")
+    scoped = t.extended_hours_near_stop("SPCX", "all", 131.20, 130.00, date_key="2026-11-04")
+    assert unscoped["event_id"] != scoped["event_id"]
+
+
 ANCHOR = 'CRITICAL_TEXTS_20261104'  # config/ci_gates/critical_texts_20261104.json names this file

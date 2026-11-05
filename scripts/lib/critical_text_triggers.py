@@ -33,6 +33,18 @@ def _money(value: Optional[float]) -> str:
     return f"{value:,.2f}" if value is not None else "unknown"
 
 
+def _account_scope(account: Any) -> str:
+    """The account segment of an event identity, and why one account's alert cannot consume another's.
+
+    Two accounts can need the same action on the same symbol and date at the same price, so an identity that
+    omits the account gives both the same id and ``send_critical_text`` suppresses the second for twelve
+    hours. Case/spacing are normalised (one account, one scope); an unscoped event simply has no segment, so
+    it can never collide with an account literally named like the marker.
+    """
+    text = " ".join(str(account or "").split()).upper()
+    return f":acct={text}" if text else ""
+
+
 def extended_hours_near_stop(
     symbol: str,
     account: Optional[str],
@@ -67,7 +79,7 @@ def extended_hours_near_stop(
     text = f"EXT limit sell {_money(limit)}"
     return {
         "alert_class": A1,
-        "event_id": f"{symbol.upper()}:A1:{date_key}:{price:.2f}",
+        "event_id": f"{symbol.upper()}:A1{_account_scope(account)}:{date_key}:{price:.2f}",
         "symbol": symbol.upper(),
         "account": account,
         "trigger": trigger,
@@ -96,7 +108,7 @@ def stop_not_raised(
     """A2: a big move left the live stop below the stop the system's own policy already recommends.
 
     It computes no stop of its own — ``recommended_stop`` comes from the existing stop code, which is the point:
-    two definitions of "the stop it should have" would be one too many. Fires once per symbol/date.
+    two definitions of "the stop it should have" would be one too many. Fires once per symbol/account/date.
     """
     one_day, five_day = _num(move_1d_pct), _num(move_5d_pct)
     live, target = _num(live_stop), _num(recommended_stop)
@@ -121,7 +133,7 @@ def stop_not_raised(
         trigger += f", {at_risk:,.0f} at risk"
     return {
         "alert_class": A2,
-        "event_id": f"{symbol.upper()}:A2:{date_key}",
+        "event_id": f"{symbol.upper()}:A2{_account_scope(account)}:{date_key}",
         "symbol": symbol.upper(),
         "account": account,
         "trigger": trigger,

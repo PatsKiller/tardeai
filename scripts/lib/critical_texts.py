@@ -17,11 +17,17 @@ Agents never place, change or cancel an order, and nothing here does: it sends w
 
 from __future__ import annotations
 
+import fcntl
+import hashlib
 import json
+import os
 import re
+import tempfile
+import threading
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Iterator, Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_REL = "config/critical_text_classes.json"
@@ -222,10 +228,89 @@ def _load_state(path: Path) -> dict[str, Any]:
 
 
 def _save_state(path: Path, doc: dict[str, Any]) -> None:
+    """Replace the state file atomically from a temp file unique to this write.
+
+    A shared ``<name>.tmp`` was itself a race: two overlapping saves wrote the same path, so one replaced the
+    file with the other's partial content. ``mkstemp`` gives every write its own name in the same directory,
+    which is what makes the final ``replace`` atomic.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    tmp.replace(path)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(doc, indent=2, sort_keys=True) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        tmp.replace(path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+_STATE_LOCKS: dict[str, threading.Lock] = {}
+_STATE_LOCKS_GUARD = threading.Lock()
+
+
+@contextmanager
+def _state_transaction(path: Path) -> Iterator[None]:
+    """Serialize dedupe + cap + dispatch + save for one state file.
+
+    Two overlapping producers (threads in one process, or separate poller processes) used to load the same
+    previous state before either recorded its send, so both passed dedupe and the hourly cap and the same
+    alert left twice. Atomic replacement does not help a read/check/send/write transaction: the decision and
+    the write must be under one lock. A thread lock covers threads (``flock`` is per-process on some systems
+    and does not order two threads that opened the file separately); an exclusive ``flock`` on a sibling
+    ``.lock`` file covers processes. Both are held across dispatch, because the cap is a reservation made
+    before the send, not a note written after it.
+    """
+    key = os.path.realpath(path)
+    with _STATE_LOCKS_GUARD:
+        thread_lock = _STATE_LOCKS.setdefault(key, threading.Lock())
+    with thread_lock:
+        lock_path = path.with_name(path.name + ".lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(lock_path, "a+", encoding="utf-8") as handle:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _gateway_sender(event_key: str) -> Callable[..., bool]:
+    """The default dispatch: one communications-gateway email intent per Fi line.
+
+    AGENTS.md 24.1: a sender hands the host communications gateway an intent (producer, subject key, class,
+    severity, body), never a provider call. ``send_via_gateway`` publishes the CommunicationEvent (the
+    operator's communications history) and its ChannelDelivery ledger row; delivery belongs to the gateway,
+    so an attempt and its failure are recorded even when the gateway mode blocks the send. The critical-text
+    policy — allowlist, dedupe, hourly cap and the 160-character sentence — has already decided above; this
+    function only carries the finished sentence to the gateway.
+    """
+
+    def send(subject: str, body: str, to: Optional[str] = None, attachments: Any = None) -> bool:
+        from scripts.lib.comms.channel_adapters import send_via_gateway  # noqa: PLC0415 — call time, not import time
+
+        recipient = str(to or "").strip()
+        # Per-line subject key without storing the carrier address: the hash is stable for a given line.
+        slot = hashlib.sha256(recipient.encode("utf-8")).hexdigest()[:12]
+        result = send_via_gateway(
+            "email",
+            body=body,
+            subject=subject,
+            producer="critical_texts",
+            subject_key=f"critical_text:{event_key}:{slot}",
+            event_type="critical_text",
+            message_class="ops",
+            retention_class="operational_30d",
+            severity="P1",
+            deliver=True,
+            to=recipient,
+        )
+        return bool(result.get("delivered"))
+
+    return send
 
 
 def send_critical_text(
@@ -263,50 +348,50 @@ def send_critical_text(
             state_file = _persistent_root() / STATE_REL
         except Exception:
             return {"sent": False, "reason": "the persistent state root could not be resolved"}
-    state = _load_state(state_file)
-    sent = state["sent"]
-    dedupe_hours = float(policy.get("dedupe_hours") or DEFAULT_DEDUPE_HOURS)
-    earlier = sent.get(key)
-    if earlier:
-        try:
-            earlier_at = datetime.fromisoformat(str(earlier).replace("Z", "+00:00"))
-        except ValueError:
-            earlier_at = None
-        if earlier_at and now - earlier_at < timedelta(hours=dedupe_hours):
-            return {"sent": False, "reason": f"already texted this event at {earlier}", "deduped": key}
 
-    cap = int(policy.get("max_per_hour") or DEFAULT_MAX_PER_HOUR)
-    hour_ago = now - timedelta(hours=1)
-    recent = 0
-    for stamp in sent.values():
-        try:
-            if datetime.fromisoformat(str(stamp).replace("Z", "+00:00")) >= hour_ago:
-                recent += 1
-        except ValueError:
-            continue
-    # The cap is on TEXTS, not events: one event fans out to every verified Fi line, so counting events would
-    # report 10/10 while 20 texts left the building (review, 2026-11-05).
-    texts_in_hour = recent * len(gateways)
-    if texts_in_hour + len(gateways) > cap:
-        return {"sent": False, "reason": f"hourly text cap reached ({texts_in_hour}/{cap} texts in the last hour)"}
+    with _state_transaction(state_file):
+        state = _load_state(state_file)
+        sent = state["sent"]
+        dedupe_hours = float(policy.get("dedupe_hours") or DEFAULT_DEDUPE_HOURS)
+        earlier = sent.get(key)
+        if earlier:
+            try:
+                earlier_at = datetime.fromisoformat(str(earlier).replace("Z", "+00:00"))
+            except ValueError:
+                earlier_at = None
+            if earlier_at and now - earlier_at < timedelta(hours=dedupe_hours):
+                return {"sent": False, "reason": f"already texted this event at {earlier}", "deduped": key}
 
-    send = sender
-    if send is None:
-        from scripts.email_notifier import send_email as send  # the existing plain-text sender
+        cap = int(policy.get("max_per_hour") or DEFAULT_MAX_PER_HOUR)
+        hour_ago = now - timedelta(hours=1)
+        recent = 0
+        for stamp in sent.values():
+            try:
+                if datetime.fromisoformat(str(stamp).replace("Z", "+00:00")) >= hour_ago:
+                    recent += 1
+            except ValueError:
+                continue
+        # The cap is on TEXTS, not events: one event fans out to every verified Fi line, so counting events
+        # would report 10/10 while 20 texts left the building (review, 2026-11-05).
+        texts_in_hour = recent * len(gateways)
+        if texts_in_hour + len(gateways) > cap:
+            return {"sent": False, "reason": f"hourly text cap reached ({texts_in_hour}/{cap} texts in the last hour)"}
 
-    results = []
-    for gateway in gateways:
-        try:
-            ok = bool(send("CRITICAL", text, to=gateway))
-        except Exception as exc:  # one gateway failing must not stop the other line
-            ok = False
-            results.append({"to": len(results), "ok": False, "error": str(exc)[:120]})
-            continue
-        results.append({"to": len(results), "ok": ok})
+        send = sender if sender is not None else _gateway_sender(key)
 
-    if any(r.get("ok") for r in results):
-        sent[key] = now.isoformat().replace("+00:00", "Z")
-        _save_state(state_file, state)
+        results = []
+        for gateway in gateways:
+            try:
+                ok = bool(send("CRITICAL", text, to=gateway))
+            except Exception as exc:  # one gateway failing must not stop the other line
+                ok = False
+                results.append({"to": len(results), "ok": False, "error": str(exc)[:120]})
+                continue
+            results.append({"to": len(results), "ok": ok})
+
+        if any(r.get("ok") for r in results):
+            sent[key] = now.isoformat().replace("+00:00", "Z")
+            _save_state(state_file, state)
     # The carrier gives no delivery receipt; the receipt is the send result per line, as the spec says.
     return {"sent": any(r.get("ok") for r in results), "text": text, "receipts": results,
             "class": alert_class, "gateways": len(gateways)}
