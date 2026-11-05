@@ -60,12 +60,22 @@ def test_an_individual_residual_never_holds_an_ira():
     assert held_for(held, "SCHD", "schwab_individual") is False
 
 
-def test_an_unscoped_reader_is_told_the_accounts_not_just_true():
-    # Clearing condition (#2603 reviewers, 2026-11-04): an unscoped reader must NOT be told "held".
-    # That symbol-wide boolean is the cross-account block. It gets the accounts and decides, or asks.
+def test_an_unscoped_reader_is_told_the_accounts_and_that_it_is_held():
+    """claude-lead BLOCK on #2603 (2026-11-05): the earlier clearing condition returned False for an
+    unscoped reader whenever the holding named an account — which is EVERY live holding. That took the
+    desk's HELD rows from 14 to 0 and let a position the book already holds page BUY_READY. Where the
+    position is must still be named; "not held" is reserved for a symbol no account holds."""
     held = held_accounts(HOLDINGS)
-    assert held_for(held, "SPCX", None) is False
+    assert held_for(held, "SPCX", None) is True
     assert held_in(held, "SPCX") == ["schwab_individual"]  # ...and it is told where
+    assert held_for(held, "NOT_HELD", None) is False
+
+
+def test_the_scoped_answer_is_still_narrowed_by_the_account():
+    """The original FQ-096 defect stays fixed: a scoped row in another account is not held."""
+    held = held_accounts(HOLDINGS)
+    assert held_for(held, "SPCX", "schwab_ira") is False
+    assert held_for(held, "SPCX", "schwab_individual") is True
 
 
 def test_account_of_never_returns_all_accounts():

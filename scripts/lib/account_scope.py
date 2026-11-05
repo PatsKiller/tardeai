@@ -41,11 +41,15 @@ def held_accounts(holdings_doc: dict[str, Any] | None) -> dict[str, set[str]]:
 
 
 def held_for(held: dict[str, set[str]], symbol: str, account: str | None) -> bool:
-    """Is this symbol held **in this account**?
+    """Is this symbol held — **in this account** when one is stated, in **any** account otherwise?
 
-    An unscoped reader is not told "held everywhere": it gets True only if the symbol is held
-    somewhere, and the caller is expected to surface the accounts (``held_in``) rather than block a
-    per-account decision. With an account, only that account's holding counts.
+    The scoped answer is the FQ-096 fix: a residual held in the Individual account does not hold an
+    IRA re-entry. The unscoped answer stays true when a NAMED account holds the symbol (claude-lead
+    BLOCK on #2603, 2026-11-05): returning False there dropped every real holding — live holdings
+    always name an account while no re-entry row does — which took the desk's HELD rows from 14 to 0
+    and let a position the book already holds page BUY_READY. An unscoped reader is told *where* the
+    position is (``held_in``) as well as that it is held; it is never told the symbol is free while
+    an account holds it.
     """
     sym = str(symbol or "").upper().strip()
     accounts = held.get(sym) or set()
@@ -53,9 +57,7 @@ def held_for(held: dict[str, set[str]], symbol: str, account: str | None) -> boo
         return False
     acct = str(account or "").strip()
     if not acct or acct == SCOPE_UNSCOPED:
-        # An unscoped reader is not told "held": that is what let one account's residual block
-        # another account's decision. It gets held_in() and decides, or asks which account.
-        return True if len(accounts) == 1 and SCOPE_UNSCOPED in accounts else False
+        return True   # held somewhere; held_in() names where, and a scoped reader narrows it
     return acct in accounts
 
 

@@ -704,16 +704,26 @@ def reentry_row_status(row: dict[str, Any], *, stale_hours: float = 6.0,
     # row's own account decides; the accounts that do hold the symbol are named either way.
     held = bool(row.get("held"))
     held_accounts_named: list[str] = []
+    _acct = str(row.get("account") or "").strip()
     if holdings_doc is not None:
         from lib.account_scope import held_accounts as _held_accounts, held_for as _held_for
         _held = _held_accounts(holdings_doc)
         _sym = str(row.get("symbol") or "").upper().strip()
         held_accounts_named = sorted(_held.get(_sym) or [])
-        _acct = str(row.get("account") or "").strip()
-        held = _held_for(_held, _sym, _acct or None)
+        scoped = _held_for(_held, _sym, _acct or None)
+        # Only an account-scoped row may be NARROWED by its account. An unscoped row keeps a held
+        # fact another surface (the served desk) already established — overwriting it with False
+        # here is the drop claude-lead's BLOCK on #2603 measured (14 HELD rows -> 0).
+        held = scoped if _acct else (held or scoped)
 
     if held:
-        status, reason = HELD, "already held in this account; a re-entry does not apply"
+        if _acct:
+            held_reason = "already held in this account; a re-entry does not apply"
+        elif held_accounts_named:
+            held_reason = f"already held in {', '.join(held_accounts_named)}; a re-entry does not apply"
+        else:
+            held_reason = "already held; a re-entry does not apply"
+        status, reason = HELD, held_reason
     elif row.get("wash_blocked"):
         status, reason = WASH_BLOCKED, f"wash-sale window until {row.get('wash_until')}"
     elif not gates:
