@@ -17913,8 +17913,6 @@ def _ticket_review_run(body):
     # Explicit single-lane metered Flash is allowed; Pro/policies needing confirmation are not.
     metered_flash = {"deepseek-flash", "fast", "fast_think"}
     blocked_paid = {
-        "deepseek-v4-flash",
-        "deepseek-v4-pro",
         "deepseek-pro",
         "deepseek-v4",
         "pro",
