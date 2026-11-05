@@ -93,6 +93,18 @@ t = render()
 check('a real zero renders as 0', /Bracket ceiling 0/.test(t), t.slice(0, 300))
 check('a real zero is not called missing', !/Bracket ceiling not reported/.test(t), t.slice(0, 300))
 
+// FQ-082 (cc-deepseek-3's BLOCK): the producer sends "" for an unset ceiling — `api_v2.py:8785`
+// `gw.get("bracket_ceiling") or ""` — so the real payload never carries null. This is the shape that reaches the page.
+ceiling = ''
+t = render()
+check('the producer\'s empty string is named as missing, not a bare placeholder', /Bracket ceiling not reported/.test(t), t.slice(0, 300))
+check('and it says why the ceiling is absent', /has not been checked against one/.test(t), t.slice(0, 600))
+// cc-deepseek's BLOCK at cb91a9ba: the old copy said the conversion was unbounded while the same card
+// renders `Annual conversion $50,000` from `api_v2.py:8686` (`... or 50000`). What is missing is the
+// ceiling the conversion should be checked against, not the conversion itself.
+check('it never calls the conversion unbounded', !/unbounded|no upper limit/i.test(t), t.slice(0, 600))
+check('an empty-string ceiling is never rendered as a real zero', !/Bracket ceiling 0 /.test(t), t.slice(0, 300))
+
 const out = { schema: 'RetirementMetricView@v1', cases, passed: cases.filter(c => c.passed).length, failed: cases.filter(c => !c.passed).length }
 console.log(JSON.stringify(out, null, 1))
 if (out.failed) for (const c of cases.filter(x => !x.passed)) console.log(`FAIL ${c.name}: ${c.detail}`)
