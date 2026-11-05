@@ -8,7 +8,6 @@ card, never the projection. Nothing is written.
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -51,30 +50,13 @@ def _ro_conn(bounds: dict[str, int], get_conn: Any = None):
         connect_timeout=bounds["connect_timeout_s"],
         options=f"-c statement_timeout={bounds['statement_timeout_ms']} -c lock_timeout={bounds['lock_timeout_ms']}",
     )
-    try:
-        if hasattr(conn, "set_session"):
-            conn.set_session(readonly=True)
-        elif hasattr(conn, "read_only"):
-            conn.read_only = True
-        else:
-            raise RuntimeError("connection cannot be made read-only")
-    except BaseException as refusal:
-        # Ownership has not reached PgReader/caller yet. Close this newly allocated connection even when
-        # the read-only API/getter/setter refuses; cleanup must not replace the original refusal.
-        try:
-            conn.close()
-        except BaseException as cleanup_error:
-            try:
-                logging.getLogger(__name__).warning(
-                    "read-only connection cleanup failed (%s); retaining initialization refusal",
-                    type(cleanup_error).__name__,
-                )
-            finally:
-                try:
-                    refusal.add_note(f"read-only initialization cleanup failed: {type(cleanup_error).__name__}")
-                finally:
-                    raise refusal from None  # even a failed diagnostic must preserve the original refusal
-        raise
+    if hasattr(conn, "set_session"):
+        conn.set_session(readonly=True)
+    elif hasattr(conn, "read_only"):
+        conn.read_only = True
+    else:
+        conn.close()
+        raise RuntimeError("connection cannot be made read-only")
     return conn
 
 
@@ -271,62 +253,6 @@ def home_actions(
     return res
 
 
-def refresh_reentry_quotes(
-    projection: dict[str, Any], *, now: datetime, get_conn: Any = None, quote_reader: Any = None,
-) -> dict[str, Any]:
-    """Refresh only current-price evidence at request time; historical stages stay immutable.
-
-    Read the existing quote ledger once for all displayed names. A missing/unreadable reader replaces the old
-    current quote with an explicit unknown, even when holdings or the engine assessment are unavailable.
-    No provider call, authoritative-store write, or policy threshold change occurs here.
-    """
-    cards = projection.get("reentry_watch")
-    if not isinstance(cards, dict):
-        return projection
-    symbols = sorted(sym for sym, card in cards.items()
-                     if isinstance(sym, str) and not sym.startswith("_") and isinstance(card, dict))
-    if not symbols:
-        return projection
-    checked = now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-    reader = None
-    failed = False
-    try:
-        if quote_reader is None:
-            from scripts.lib.market_risk.reader import PgReader
-
-            reader = PgReader(lambda: _ro_conn(db_bounds({}), get_conn))
-            quote_reader = reader.current_session_quotes
-        quotes = quote_reader(symbols, end=now)
-        if not isinstance(quotes, dict):
-            quotes = {}
-            failed = True
-    except Exception:  # noqa: BLE001 — a failed price read is an unknown, never yesterday's quote
-        quotes = {}
-        failed = True
-    finally:
-        if reader is not None:
-            try:
-                reader.close()
-            except Exception:  # noqa: BLE001 — cleanup failure must not restore an old affirmative quote
-                quotes = {}
-                failed = True
-    from scripts.lib.market_risk.book_precision import reentry_display_quote
-
-    refreshed = dict(cards)
-    for symbol in symbols:
-        card = cards[symbol]
-        quote = quotes.get(symbol)
-        if not isinstance(quote, dict):
-            quote = {"schema": "ReentryObservedQuote@v1", "status": "unavailable", "price": None,
-                     "source": "market_quotes:alpaca", "session": None, "session_date": None,
-                     "as_of": None, "evaluated_at": checked, "basis": "latest_stored_quote_observation",
-                     "reason": "CURRENT_QUOTE_READER_UNAVAILABLE" if failed else "NO_CURRENT_QUOTE"}
-        stages = card.get("stages") if isinstance(card.get("stages"), dict) else {}
-        refreshed[symbol] = {**card, "current_quote": reentry_display_quote(
-            quote, exit_price=card.get("exit_price", stages.get("exit_price")), sma20=stages.get("sma20"))}
-    return {**projection, "reentry_watch": refreshed, "quote_checked_at": checked}
-
-
 def join(
     projection: dict[str, Any],
     *,
@@ -341,7 +267,6 @@ def join(
     if projection.get("state") not in ("evaluated", "stale"):
         return projection
     now = now or datetime.now(timezone.utc)
-    projection = refresh_reentry_quotes(projection, now=now, get_conn=get_conn)
     bd = _import("market_risk_book_dollars")
     try:
         if store is None:

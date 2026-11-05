@@ -133,7 +133,7 @@ function Reentry({ m }: { m: ActionableModel }) {
             <div key={r.symbol} data-testid="mr-reentry-row" data-verdict={r.verdict} style={item}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 10px', alignItems: 'baseline' }}><b>{r.symbol}</b><span style={{ color: TOKENS.text[2] }}>{r.head}</span></div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 10px', alignItems: 'center' }}>
-                <span>now <b style={numStyle}>{r.now}</b> (<span style={signed(r.vsExitNeg ? -1 : 1)}>{r.vsExit}</span> vs exit){r.quoteLabel && <> · {r.quoteLabel}</>}{r.vsMa && <> · <span style={numStyle}>{r.vsMa}</span></>} {r.trend}</span>
+                <span>now <b style={numStyle}>{r.now}</b> (<span style={signed(r.vsExitNeg ? -1 : 1)}>{r.vsExit}</span> vs exit){r.vsMa && <> · <span style={numStyle}>{r.vsMa}</span></>} {r.trend}</span>
                 <span data-testid="mr-reentry-verdict" style={{ ...chipStyle(r.verdictTone, 'soft'), color: vt.color }}>{r.verdict.toUpperCase()}</span>
               </div>
               <div><b>Stage 1 <Explain term="stage1" /> (early setup): {r.stage1}</b><span style={{ color: TOKENS.text[2] }}> — waiting: {r.waiting}</span></div>
