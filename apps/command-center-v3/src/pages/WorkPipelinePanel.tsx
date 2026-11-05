@@ -4,8 +4,8 @@
 // what, when, where, how, the blocker and the NEXT STEP with its owner. Filters live in the URL.
 // Read: GET /api/v2/coordination/pipeline (scripts/lib/work_pipeline.py). Act (Tier 1, operator only):
 // POST /api/v2/coordination/commands (scripts/lib/work_pipeline_commands.py). Model: lib/workPipeline.ts.
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { Chip } from '../components/primitives'
 import { RADIUS, TOKENS, TYPE, FONT, toneVars } from '../lib/designTokens'
@@ -14,7 +14,6 @@ import {
   PIPELINE_STAGES, PRESETS, STAGE_LABEL, ageLabel, cardActions, cellTitle, filterFromParams, filterItems, filterOptions,
   filterToParams, planLabel, queuedSections, ragTone, summarize, type PipelineFilter, type PipelineItem, type PipelinePayload,
 } from '../lib/workPipeline'
-import { FLOW_STAGE_LABEL, flowProjection, type FlowItem } from '../lib/workPipelineFlow'
 import { copyText, parseSplitParts, sendCommand, type CommandName, type CommandResult } from '../lib/workPipelineActions'
 import { canCreate, disabledReason, needsWords, phraseMatches, requestParams, type Tier2Action } from '../lib/workPipelineTier2'
 import { opsApi, passkeyStepUp, type OpsRequest } from '../lib/opsControls'
@@ -37,131 +36,6 @@ const dd: CSSProperties = { margin: 0, fontSize: TYPE.base, color: TOKENS.text[1
 function et(v: unknown): string {
   const t = Date.parse(String(v ?? ''))
   return Number.isFinite(t) ? new Date(t).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) + ' ET' : '—'
-}
-
-function flowStageLabel(item: FlowItem): string {
-  return item.stage ? FLOW_STAGE_LABEL[item.stage] : 'Stage unavailable'
-}
-
-function CurrentWorkCard({ item, onOpen, showTimeline = true }: { item: FlowItem; onOpen: () => void; showTimeline?: boolean }) {
-  const checks = item.checks
-  return <article data-testid="current-work-item" data-item-id={item.id} data-stage={item.stage ?? 'unavailable'}
-    style={{ ...panel, background: TOKENS.bg[0], padding: 10, display: 'grid', gap: 8, overflowWrap: 'anywhere' }}>
-    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'baseline' }}>
-      {item.prUrl ? <a href={item.prUrl} style={linkStyle}>{item.prNumber ? `PR ${item.prNumber}` : item.id}</a> : <span style={mono}>{item.id}</span>}
-      {item.stuck === true ? <Chip tone="warning">Stuck</Chip> : item.stuck == null ? <span style={small}>Stuck status not known</span> : null}
-    </div>
-    <b style={{ fontSize: TYPE.base, color: TOKENS.text[0] }}>{item.title}</b>
-    <div style={small}>Owner: {item.owner.session || 'session not recorded'} · {item.owner.vendor || 'vendor not recorded'} · coordinator {item.owner.coordinator || 'not recorded'}</div>
-    <div style={small}>Created {et(item.createdAt)} · touched {et(item.touchedAt)}</div>
-    <div style={small}>Age {ageLabel(item.ageMinutes)} · {ageLabel(item.stageAgeMinutes)} in {flowStageLabel(item)}</div>
-    <div style={small}>Checks {checks.passed == null || checks.total == null ? 'not recorded' : `${checks.passed}/${checks.total} green`}
-      {checks.failedNames.length ? ` · failing: ${checks.failedNames.join(', ')}` : ''}{checks.gap ? ` · ${checks.gap}` : ''}</div>
-    <div style={small}>Reviews{item.reviewRequired == null ? ' (required count not recorded)' : ` (${item.reviewRequired} MERGE required)`}: {item.reviews.length ? item.reviews.map(r => `${r.reviewer || 'reviewer not recorded'} ${r.verdict || 'verdict not recorded'}${r.currentHead === true ? ' (current head)' : r.currentHead === false ? ' (older head)' : ' (head not verified)'}`).join(' · ') : 'no recorded review'}</div>
-    {item.blocker ? <div style={{ ...small, color: TOKENS.warning }}>Blocker: {item.blocker}</div> : null}
-    <div style={{ fontSize: TYPE.base, color: TOKENS.text[0] }}><b>Next · {item.next.actor || 'actor not recorded'}:</b> {item.next.text}</div>
-    {showTimeline ? <button type="button" style={{ ...btn, minHeight: 44, width: '100%' }} onClick={onOpen}>View timeline and details</button> : null}
-  </article>
-}
-
-function CurrentPipelineView({ payload, readFailed, readStale, onWorklog, onAct, busy, onRefresh }: {
-  payload: PipelinePayload | null | undefined; readFailed: boolean; readStale: boolean; onWorklog: (claimId: string) => void;
-  onAct: (it: PipelineItem, cmd: CommandName, params: Record<string, unknown>) => void;
-  busy: Busy; onRefresh: () => void;
-}) {
-  const [projectionNow, setProjectionNow] = useState(() => Date.now())
-  useEffect(() => { const timer = window.setInterval(() => setProjectionNow(Date.now()), 30_000); return () => window.clearInterval(timer) }, [])
-  const flow = useMemo(() => flowProjection(payload, projectionNow, { readFailed, stale: readStale }), [payload, projectionNow, readFailed, readStale])
-  const [includeFinished, setIncludeFinished] = useState(false)
-  const [selected, setSelected] = useState<string | null>(null)
-  const current = selected ? flow.items.find(it => it.id === selected) : null
-  const timelineTrigger = useRef<HTMLElement | null>(null)
-  useEffect(() => {
-    if (!selected && timelineTrigger.current) { timelineTrigger.current.focus(); timelineTrigger.current = null }
-    if (selected && !current) setSelected(null)
-  }, [selected, current])
-  const openTimeline = (id: string) => { timelineTrigger.current = document.activeElement as HTMLElement | null; setSelected(id) }
-  const visible = includeFinished ? flow.items : flow.inFlight
-  const metrics = [
-    ['In flight', flow.metrics.inFlight], ['Stuck', flow.metrics.stuck], ['Waiting on you', flow.metrics.waiting],
-    ['Merged today', flow.metrics.mergedToday], ['Live today', flow.metrics.liveToday],
-    ['Average green to live', flow.metrics.greenToLiveMinutes == null ? null : `${Math.round(flow.metrics.greenToLiveMinutes)}m`],
-    ['Idle agent minutes', flow.metrics.idleAgentMinutes],
-  ] as const
-  return <div data-testid="current-work-flow" style={{ display: 'grid', gap: 12, minWidth: 0 }}>
-    <div className="wp-current-metrics" style={{ display: 'grid', gap: 8 }}>
-      {metrics.map(([label, value]) => <div key={label} style={{ ...panel, padding: 10 }}>
-        <div style={small}>{label}</div><b style={{ fontSize: TYPE.lg, color: TOKENS.text[0] }}>{value ?? 'Not known'}</b>
-      </div>)}
-    </div>
-    <section style={panel} data-testid="pipeline-waiting-on-you">
-      <h2 style={{ margin: '0 0 8px', fontSize: TYPE.md }}>Waiting on you {flow.waiting == null ? '· source unavailable' : flow.metrics.waiting == null ? `· ${flow.waiting.length} known members; total not known` : `· ${flow.waiting.length}`}</h2>
-      <div style={small}>The same actionable members used by Approvals and its header badge.</div>
-      {flow.waiting == null ? <p style={small}>The canonical approval member list was not supplied. A missing source is not a count of zero.</p>
-        : flow.waiting.length === 0 ? <p style={small}>No current operator decisions in the supplied approval list.</p>
-        : flow.waiting.map(item => <article key={item.id} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}`, marginTop: 8, paddingTop: 8, display: 'grid', gap: 6, overflowWrap: 'anywhere' }}>
-          <b>{item.title}</b>
-          {item.head ? <span style={mono}>Head {item.head}</span> : null}
-          {item.command ? <><code style={{ ...mono, whiteSpace: 'pre-wrap' }}>{item.command}</code><button type="button" style={{ ...btn, minHeight: 44 }} onClick={() => { void copyText(item.command || '') }}>Copy exact command</button></> : null}
-          {!item.url || item.url.startsWith('/')
-            ? <Link to={item.url ? item.url.replace(/^\/releases(?=[/?#]|$)/, '/system/releases') : `/approvals/${encodeURIComponent(item.id)}`} style={{ ...linkStyle, minHeight: 44, display: 'flex', alignItems: 'center' }}>Open decision</Link>
-            : <a href={item.url} style={{ ...linkStyle, minHeight: 44, display: 'flex', alignItems: 'center' }}>Open decision</a>}
-          <span style={small}>Source observed {et(item.sourceAt)}</span>
-        </article>)}
-    </section>
-    {flow.gaps.length ? <details style={panel} data-testid="pipeline-source-gaps"><summary style={{ ...small, cursor: 'pointer', minHeight: 32 }}>Source gaps · {flow.gaps.length}</summary>
-      <ul style={{ ...small, paddingLeft: 18, overflowWrap: 'anywhere' }}>{flow.gaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul>
-    </details> : null}
-    <section data-testid="pipeline-current-stages" style={{ minWidth: 0 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'baseline', marginBottom: 8 }}>
-        <h2 style={{ margin: 0, fontSize: TYPE.md }}>{includeFinished ? 'Work across current stages' : flow.metrics.inFlight == null ? 'Known in-flight members' : 'In flight'} · {visible.length}</h2>
-        <label style={{ ...small, minHeight: 44, display: 'flex', alignItems: 'center', gap: 6 }}><input type="checkbox" checked={includeFinished} onChange={e => setIncludeFinished(e.target.checked)} /> Include completed history</label>
-      </div>
-      <div className="wp-flow-scroll" style={{ overflowX: 'auto', minWidth: 0 }}>
-        <div className="wp-flow-board" style={{ display: 'grid', gap: 10 }}>
-          {flow.groups.map(group => {
-            const members = includeFinished ? flow.items.filter(item => item.stage === group.stage) : group.items
-            return <section key={group.stage ?? 'unavailable'} data-testid="pipeline-stage-group" data-stage={group.stage ?? 'unavailable'} style={{ minWidth: 0, display: 'grid', gap: 8, alignContent: 'start' }}>
-              <h3 style={{ margin: 0, padding: '8px 4px', fontSize: TYPE.base, color: TOKENS.text[1] }}>{group.stage ? FLOW_STAGE_LABEL[group.stage] : 'Stage unavailable'} · {members.length} supplied</h3>
-              {members.map(item => <CurrentWorkCard key={item.id} item={item} onOpen={() => openTimeline(item.id)} />)}
-              {!members.length ? <div className="wp-empty-stage" style={small}>No supplied items</div> : null}
-            </section>
-          })}
-        </div>
-      </div>
-      <div style={{ ...small, marginTop: 8 }}>Latest source evidence observed {et(flow.sourceAt)}. Stage timestamps come from recorded evidence.</div>
-    </section>
-    <section style={panel} data-testid="pipeline-agents">
-      <h2 style={{ margin: '0 0 8px', fontSize: TYPE.md }}>Agents</h2>
-      {!flow.agents.length ? <div style={small}>No agent activity members were supplied.</div> : flow.agents.map(agent => <div key={agent.session} style={{ display: 'grid', gap: 4, padding: '8px 0', borderTop: `1px solid ${TOKENS.borderSubtle}`, overflowWrap: 'anywhere' }}>
-        <b style={mono}>{agent.session}</b>
-        <span style={small}>{agent.vendor || 'vendor not recorded'} · coordinator {agent.coordinator || 'not recorded'} · item {agent.itemId || 'not recorded'} · {agent.stage ? FLOW_STAGE_LABEL[agent.stage] : 'stage not recorded'}</span>
-        <span style={small}>Last activity {et(agent.lastActivity)} · idle {ageLabel(agent.idleMinutes)} · nudges today {agent.nudgesToday ?? 'not recorded'}</span>
-        {agent.gaps.length ? <span style={small}>{agent.gaps.join('; ')}</span> : null}
-      </div>)}
-    </section>
-    {current ? <div role="dialog" aria-modal="true" aria-label={`Timeline: ${current.title}`} tabIndex={-1} data-testid="pipeline-timeline"
-      onKeyDown={e => {
-        if (e.key === 'Escape') setSelected(null)
-        if (e.key === 'Tab') {
-          const focusable = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), summary, [tabindex="0"]')).filter(node => node.offsetParent !== null)
-          const first = focusable[0], last = focusable[focusable.length - 1]
-          if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus() }
-          else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus() }
-        }
-      }}
-      style={{ position: 'fixed', inset: 0, zIndex: 100, background: TOKENS.bg[0], overflow: 'auto', padding: 16, display: 'grid', gap: 12, alignContent: 'start' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 12 }}><h2 style={{ margin: 0, fontSize: TYPE.lg, overflowWrap: 'anywhere' }}>{current.title}</h2>
-        <button autoFocus type="button" onClick={() => setSelected(null)} style={{ ...btn, minHeight: 44, flexShrink: 0 }}>Close timeline</button></div>
-      <CurrentWorkCard item={current} onOpen={() => setSelected(null)} showTimeline={false} />
-      {current.gaps.length ? <details style={panel} data-testid="pipeline-item-source-gaps"><summary style={{ cursor: 'pointer', minHeight: 44 }}>Item source gaps · {current.gaps.length}</summary><ul style={{ ...small, paddingLeft: 18 }}>{current.gaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul></details> : null}
-      <h3 style={{ margin: 0, fontSize: TYPE.md }}>Recorded timeline</h3>
-      {!current.events.length ? <div style={small}>No timestamped history was supplied for this item.</div> : <ol style={{ paddingLeft: 22, margin: 0, display: 'grid', gap: 12 }}>
-        {current.events.map(event => <li key={event.id} style={{ overflowWrap: 'anywhere' }}><b>{event.label}</b><div style={small}>{et(event.at)} · source {event.source || 'not recorded'}</div>{event.detail ? <div style={small}>{event.detail}</div> : null}</li>)}
-      </ol>}
-      {current.legacy ? <details style={panel}><summary style={{ cursor: 'pointer', minHeight: 44 }}>Work item history and existing controls</summary><ItemCard it={current.legacy} onAct={onAct} busy={busy} onWorklog={onWorklog} onRefresh={onRefresh} /></details> : null}
-    </div> : null}
-  </div>
 }
 
 function cellStyle(rag: PipelineItem['rag'], current: boolean): CSSProperties {
@@ -399,10 +273,7 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
   const [queueAll, setQueueAll] = useState(false)
   const cap = <T,>(xs: T[]) => (queueAll ? xs : xs.slice(0, QUEUE_CAP))
 
-  const items = useMemo(() => (Array.isArray(api.data?.items) ? api.data.items : []).filter(it =>
-    it && typeof it === 'object' && it.who && it.what && it.when && it.where && it.how && it.next
-    && Array.isArray(it.where.files) && Array.isArray(it.cells) && it.cells.every(cell => cell && typeof cell === 'object')
-  ), [api.data])
+  const items = useMemo(() => api.data?.items || [], [api.data])
   const s = useMemo(() => summarize(items), [items])
   const opts = useMemo(() => filterOptions(items), [items])
   const shown = useMemo(() => filterItems(items, f), [items, f])
@@ -429,15 +300,10 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
   const censusView = censusSituation({ refreshedAt: census?.refreshed_at, warning: census?.warning })
   return <section data-testid="work-pipeline" style={{ display: 'grid', gap: 12, minWidth: 0 }}>
     <style>{`
-      .wp-current-metrics { grid-template-columns: repeat(7, minmax(0, 1fr)); }
-      .wp-flow-board { grid-template-columns: repeat(9, minmax(190px, 1fr)); }
       .wp-card-grid { grid-template-columns: minmax(0, 1.4fr) minmax(0, 2fr); }
       .wp-strip { grid-template-columns: repeat(14, minmax(0, 1fr)); }
       .wp-queue { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       @media (max-width: 760px) {
-        .wp-current-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .wp-flow-board { grid-template-columns: minmax(0, 1fr); }
-        .wp-empty-stage { display: none; }
         .wp-card-grid { grid-template-columns: minmax(0, 1fr); }
         .wp-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
         .wp-queue { grid-template-columns: minmax(0, 1fr); }
@@ -450,7 +316,7 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
         <div style={{ minWidth: 0 }}>
           <h1 style={{ margin: 0, fontSize: TYPE.lg, color: TOKENS.text[0] }}>Work pipeline</h1>
           <div style={small} data-testid="pipeline-sources">
-            One row per work item (task, PR or design phase). View built {et(api.data?.as_of)} · PR census {census?.refreshed_at ? `${api.data?.sources?.census_age_s ?? '?'} s old` : 'pending'} (refreshed at most once a minute)
+            One row per work item (task, PR or design phase). As of {et(api.data?.as_of)} · PR census {census?.refreshed_at ? `${api.data?.sources?.census_age_s ?? '?'} s old` : 'pending'} (refreshed at most once a minute)
             {served?.sha ? ` · served ${String(served.sha).slice(0, 9)} health ${served.ok ? 'ok' : served.ok === false ? 'FAILED' : 'unknown'}` : ''}
             {censusView.text ? <span style={{ color: TOKENS.warning }}> · {censusView.text}</span> : null}
             {census?.warning ? <Technical label="Technical: the census report">{census.warning}</Technical> : null}
@@ -472,7 +338,6 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
           </span>)}
         </div>
       </div>
-      <details style={{ marginTop: 8 }}><summary style={{ ...small, cursor: 'pointer', minHeight: 32 }}>Historical stage counts and legacy release controls</summary>
       {api.data?.tier2?.release ? <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }} data-testid="release-now">
         <span style={small}>{api.data.tier2.release.merged_waiting ?? 0} merged item(s) waiting for a release{api.data.tier2.release.params?.sha ? ` · origin/main ${String(api.data.tier2.release.params.sha).slice(0, 9)}` : ''}</span>
         <Tier2Button a={{ ...api.data.tier2.release, label: 'Release now' }} onDone={api.refetch} />
@@ -483,12 +348,8 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
         <Tile label="Amber" value={s.amber} tone="warning" active={f.rag === 'amber'} testId="strip-amber" onClick={() => setF({ rag: f.rag === 'amber' ? '' : 'amber' })} />
         <Tile label="Needs me" value={s.needsMe} tone="info" active={f.preset === 'needs-me'} testId="strip-needs-me" title="Next steps the operator owns" onClick={() => setF({ preset: f.preset === 'needs-me' ? '' : 'needs-me' })} />
       </div>
-      </details>
     </div>
 
-    {api.error ? <div role="status" style={{ ...panel, color: TOKENS.warning }} data-testid="pipeline-read-error">{api.data ? 'Showing the last received pipeline; refresh failed' : 'Pipeline unavailable'}: {api.error}</div> : null}
-    <CurrentPipelineView payload={api.data} readFailed={Boolean(api.loading || api.error)} readStale={api.stale} onWorklog={setWorklog} onAct={act} busy={busy} onRefresh={api.refetch} />
-    <details data-testid="pipeline-history-controls" style={panel}><summary style={{ cursor: 'pointer', minHeight: 44, color: TOKENS.text[1] }}>Work item history, filters and existing controls</summary>
     <div style={panel} data-testid="pipeline-filters">
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
         <span style={small}>Presets:</span>
@@ -550,7 +411,7 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
           {!q.green.length ? <div style={small}>None waiting.</div> : null}
         </div>
         <div data-testid="queued-operator" style={{ display: 'grid', gap: 6, alignContent: 'start' }}>
-          <div style={small}>Recorded operator tasks · current approval decisions are listed above</div>
+          <div style={small}>Operator to-dos</div>
           {cap(q.operator).map(it => <QueueCard key={it.id} it={it}><Chip tone="info" variant="solid">OPERATOR</Chip>
             {it.next.command ? <code style={{ ...mono, color: TOKENS.text[2] }}>{it.next.command}</code> : null}
             {cardActions(it).includes('task_done') ? <button type="button" style={btn} data-testid="queued-task-done" onClick={() => act(null, 'task_done', { task_id: it.what.task_id })}>Mark done</button> : null}</QueueCard>)}
@@ -562,14 +423,13 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
     </div>
 
     <div style={panel}>
-      <h2 style={{ margin: '0 0 6px', fontSize: TYPE.md, color: TOKENS.text[0] }}>{filtering ? 'Matching recorded items' : 'Recorded work items'} <span style={{ ...small, fontWeight: 400 }} data-testid="pipeline-count">{list.length} shown</span></h2>
+      <h2 style={{ margin: '0 0 6px', fontSize: TYPE.md, color: TOKENS.text[0] }}>{filtering ? 'Matching items' : 'In flight'} <span style={{ ...small, fontWeight: 400 }} data-testid="pipeline-count">{list.length} shown</span></h2>
       <div style={{ display: 'grid', gap: 8 }}>
         {list.map(it => <ItemCard key={it.id} it={it} onAct={act} busy={busy} onWorklog={setWorklog} onRefresh={api.refetch} />)}
         {!list.length && !api.loading ? <div style={small} data-testid="pipeline-empty">Nothing matches.</div> : null}
         {api.loading && !api.data ? <div style={small}>Loading…</div> : null}
       </div>
     </div>
-    </details>
     {worklog ? <WorklogDrawer claimId={worklog} onClose={() => setWorklog(null)} /> : null}
   </section>
 }
