@@ -3,7 +3,11 @@
 No database, no docker, no crontab: every source is handed in. The live numbers were checked by hand against the n8n DB
 when the module was written (33 non-archived workflows, 2,988 runs / 2,920 failed in 7 days, 368 cron lines).
 """
+
 import importlib.util
+import json
+import re
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -12,6 +16,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("n8n_automations", ROOT / "scripts/lib/data_broker/n8n_automations.py")
 M = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = M
 spec.loader.exec_module(M)
 
 NOW = datetime(2026, 11, 5, 12, 0, tzinfo=timezone.utc)
@@ -20,7 +25,26 @@ HOUR = timedelta(hours=1)
 
 def blob(message=None):
     """n8n's flattened execution_data: [{key: index}, …, values…], the error nested behind two indices."""
-    flat = [{}, {}, {"error": "5", "runData": "6"}, {}, {}, {"message": "17", "level": "14"}, {}, {}, {}, {}, {}, {}, {}, {}, "error", {}, {}, message]
+    flat = [
+        {},
+        {},
+        {"error": "5", "runData": "6"},
+        {},
+        {},
+        {"message": "17", "level": "14"},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        "error",
+        {},
+        {},
+        message,
+    ]
     return __import__("json").dumps(flat)
 
 
@@ -54,14 +78,24 @@ def test_a_lock_skip_is_skipped_never_failed():
 
 def test_the_payload_counts_and_ranks_and_never_invents_a_delta():
     workflows = M.workflow_rows([wf("1", "failing", active="t"), wf("2", "healthy"), wf("3", "old", archived="t")])
-    stats = M.run_stats([ex("1", "error", NOW - HOUR, NOW - HOUR + timedelta(seconds=2)),
-                         ex("1", "error", NOW - 2 * HOUR),
-                         ex("2", "success", NOW - HOUR, NOW - HOUR + timedelta(seconds=4))], NOW)
+    stats = M.run_stats(
+        [
+            ex("1", "error", NOW - HOUR, NOW - HOUR + timedelta(seconds=2)),
+            ex("1", "error", NOW - 2 * HOUR),
+            ex("2", "success", NOW - HOUR, NOW - HOUR + timedelta(seconds=4)),
+        ],
+        NOW,
+    )
     # cx-openai-5's F5 at 25b3348e: a crontab line is a JOB only when it has five schedule fields. An assignment
     # (`CRON_TZ=…`, `PATH=…`) is environment, not a job — one job plus one assignment is 1, not 2.
-    out = M.summarize(workflows, stats, {"1": {"kind": "relay_refused", "one_line": "relay 403"}},
-                      now=NOW, cron_lines=["CRON_TZ=America/New_York", "*/5 * * * * /usr/bin/true",
-                                           "0 9 * * 1-5 cd /x && ./y"], drafts=1)
+    out = M.summarize(
+        workflows,
+        stats,
+        {"1": {"kind": "relay_refused", "one_line": "relay 403"}},
+        now=NOW,
+        cron_lines=["CRON_TZ=America/New_York", "*/5 * * * * /usr/bin/true", "0 9 * * 1-5 cd /x && ./y"],
+        drafts=1,
+    )
     assert out["counts"] == {"workflows": 2, "live": 1, "shadow": 0, "off": 1, "failing": 1}
     assert out["workflows"][0]["name"] == "failing" and out["workflows"][0]["fail"] == 2
     # cc-deepseek's F1 at 79ca2ac7e: this store keeps failures only, so 2 failed of 3 SAVED rows is not a failure rate.
@@ -78,12 +112,11 @@ def test_the_failure_rate_is_never_derived_from_saved_rows_alone():
     production returns almost none (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none). The payload must not publish a rate at all,
     and must carry the reason — the same shape the week-over-week deltas already use."""
     wfs = [M.workflow_rows([{"raw": ["1", "w", "t", "[]", None, None, "f", None]}])[0]]
-    rows = ([ex("1", "success", NOW - 3 * HOUR)] * 50 +
-            [ex("1", "error", NOW - 2 * HOUR)] * 2)
+    rows = [ex("1", "success", NOW - 3 * HOUR)] * 50 + [ex("1", "error", NOW - 2 * HOUR)] * 2
     stats = M.run_stats(rows, NOW)
     out = M.summarize(wfs, stats, {}, now=NOW, cron_lines=[], drafts=0)
-    assert out["kpi"]["ok"] == 50 and out["kpi"]["failed"] == 2       # the counts are real
-    assert out["kpi"]["fail_rate_pct"] is None                        # the ratio is not
+    assert out["kpi"]["ok"] == 50 and out["kpi"]["failed"] == 2  # the counts are real
+    assert out["kpi"]["fail_rate_pct"] is None  # the ratio is not
     assert "by construction" in out["kpi"]["fail_rate_unavailable_reason"]
 
 
@@ -101,14 +134,17 @@ def test_the_query_guard_refuses_a_second_statement(monkeypatch):
     and had no trailing semicolon to strip, so the old guard handed it to `psql -c`, which runs both. The refusal
     must happen BEFORE anything executes — asserted by making subprocess explode if it is ever reached.
     """
+
     def _boom(*_a, **_k):
         raise AssertionError("the guard passed a multi-statement to psql")
 
     monkeypatch.setattr(M.subprocess, "run", _boom)
-    for sql in ("select 1; drop table workflow_entity",
-                "select 1; drop table workflow_entity;",
-                "select 1;;delete from workflow_entity",
-                "select 'a;b'"):
+    for sql in (
+        "select 1; drop table workflow_entity",
+        "select 1; drop table workflow_entity;",
+        "select 1;;delete from workflow_entity",
+        "select 'a;b'",
+    ):
         with pytest.raises(ValueError):
             M.query_n8n(sql)
 
@@ -161,8 +197,10 @@ def test_the_producer_classifies_every_error_execution_not_only_the_newest():
             return [wf("1", "w1")]
         if "from execution_entity e" in sql:
             # newest first: the skip is the newest
-            return [{"raw": ["1", t2, blob("previous execution is still running (within SLA)")]},
-                    {"raw": ["1", t1, blob("Assert REQUESTED failed")]}]
+            return [
+                {"raw": ["1", t2, blob("previous execution is still running (within SLA)")]},
+                {"raw": ["1", t1, blob("Assert REQUESTED failed")]},
+            ]
         return [ex("1", "error", t1), ex("1", "error", t2)]
 
     out = M.get_automations(query=q, now=NOW, cron=lambda: [], drafts=0)
@@ -181,17 +219,27 @@ def test_a_credential_shaped_error_never_reaches_the_payload():
     assert "Request failed" in (M.one_line(message) or "")
     scrubbed = M.parse_error(blob(message))
     assert scrubbed is not None and "SYNTHETIC_REVIEW_ONLY_CREDENTIAL" not in scrubbed
-    assert M.classify(scrubbed) == "failed"   # redaction does not change the classification
+    assert M.classify(scrubbed) == "failed"  # redaction does not change the classification
     assert M.redact_secrets("api_key=abcdef123456 and token: zzz999") == "api_key=[redacted] and token: [redacted]"
     # cx-openai-5 / cc-deepseek-9 at 22bb19504: quoted and JSON forms passed through, and access_token= had no \b.
     for leaked in ('api_key="SYNTH"', '{"api_key":"SYNTH"}', "GET /x?access_token=SYNTH failed"):
         assert "SYNTH" not in (M.redact_secrets(leaked) or ""), leaked
     # ...and the newest REAL failure wins over a newer skip for the row's own message
-    out = M.get_automations(query=lambda sql: (
-        [wf("1", "w1")] if "from workflow_entity" in sql else
-        [{"raw": ["1", NOW - HOUR, blob("previous execution is still running (within SLA)")]},
-         {"raw": ["1", NOW - 2 * HOUR, blob("Assert REQUESTED failed")]}] if "from execution_entity e" in sql else
-        [ex("1", "error", NOW - 2 * HOUR), ex("1", "error", NOW - HOUR)]), now=NOW, cron=lambda: [], drafts=0)
+    out = M.get_automations(
+        query=lambda sql: (
+            [wf("1", "w1")]
+            if "from workflow_entity" in sql
+            else [
+                {"raw": ["1", NOW - HOUR, blob("previous execution is still running (within SLA)")]},
+                {"raw": ["1", NOW - 2 * HOUR, blob("Assert REQUESTED failed")]},
+            ]
+            if "from execution_entity e" in sql
+            else [ex("1", "error", NOW - 2 * HOUR), ex("1", "error", NOW - HOUR)]
+        ),
+        now=NOW,
+        cron=lambda: [],
+        drafts=0,
+    )
     assert out["workflows"][0]["last_error_kind"] == "failed"
     assert "REQUESTED" in (out["workflows"][0]["last_error"] or "")
 
@@ -200,8 +248,13 @@ def test_cron_entries_counts_jobs_not_assignments_or_macros():
     """cx-openai-5's F5 at 25b3348e: CRON_TZ=/PATH= lines are environment; @reboot is one job."""
     assert M.cron_entries(None) is None
     assert M.cron_entries(["CRON_TZ=America/New_York", "PATH=/usr/local/bin:/usr/bin"]) == []
-    lines = ["CRON_TZ=America/New_York", "*/15 * * * * cd /x && ./run.sh", "@reboot sleep 30 && /usr/bin/true",
-             "PATH=/usr/bin", "0 9 * * 1-5 /usr/bin/true"]
+    lines = [
+        "CRON_TZ=America/New_York",
+        "*/15 * * * * cd /x && ./run.sh",
+        "@reboot sleep 30 && /usr/bin/true",
+        "PATH=/usr/bin",
+        "0 9 * * 1-5 /usr/bin/true",
+    ]
     assert len(M.cron_entries(lines)) == 3
 
 
@@ -260,12 +313,71 @@ def test_a_produced_payload_carries_the_row_fields_the_page_reads():
     workflow_id/folder/last_run_at, so Area and Last run were permanently em dashes and the seam test passed on a
     schema string. This drives the REAL producer output and asserts the fields the page consumes are present."""
     from datetime import timedelta as _td
+
     wf = M.workflow_rows([{"raw": ["wf-1", "Nightly job", "t", "[]", "2026-01-01", "2026-11-01", "f", "Risk"]}])[0]
-    rows = [ex("wf-1", "success", NOW - _td(hours=4), NOW - _td(hours=4)),
-            ex("wf-1", "error", NOW - _td(hours=1))]
+    rows = [ex("wf-1", "success", NOW - _td(hours=4), NOW - _td(hours=4)), ex("wf-1", "error", NOW - _td(hours=1))]
     out = M.summarize([wf], M.run_stats(rows, NOW), {}, now=NOW, cron_lines=[], drafts=0)
     row = out["workflows"][0]
     assert row["workflow_id"] == "wf-1"
     assert row["folder"] == "Risk"
     assert isinstance(row["last_run_at"], str) and row["last_run_at"].startswith(str(NOW.year))
-    assert row["last_run_at"] > (NOW - _td(hours=2)).isoformat()   # the newest execution, not the oldest
+    assert row["last_run_at"] > (NOW - _td(hours=2)).isoformat()  # the newest execution, not the oldest
+
+
+@pytest.mark.parametrize(
+    "key",
+    ["API_KEY", "Api_Key", "ACCESS_TOKEN", "Refresh_Token", "ID_TOKEN", "AUTH_TOKEN", "PASSWORD", "CLIENT_SECRET"],
+)
+@pytest.mark.parametrize("boundary", ["producer", "route"])
+def test_mixed_case_structured_secrets_are_absent_at_producer_and_full_route(key, boundary, monkeypatch):
+    """Recognizable JSON keys have the same privacy contract regardless of their casing."""
+    marker = "synthetic privacy marker"
+    message = "Request failed: " + json.dumps({key: marker})
+    if boundary == "producer":
+        scrubbed = M.parse_error(blob(message))
+        assert marker not in scrubbed and "[redacted]" in scrubbed
+        assert "Request failed" in scrubbed and M.classify(scrubbed) == "failed"
+        assert M.redact_secrets(scrubbed) == scrubbed
+        return
+
+    import api_v2
+    import lib.data_broker.n8n_automations as routed
+
+    def unavailable():
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(routed, "get_automations_cached", unavailable)
+    status, result = api_v2.handle("/api/v2/n8n/automations", method="GET", body=None, query={})
+    assert status == 500 and result["error"] == "RuntimeError"
+    assert marker not in json.dumps(result) and "Request failed" in result["detail"]
+
+
+@pytest.mark.parametrize("count", [1, 60, 61, 120, 121])
+def test_error_classification_covers_workflows_beyond_first_batch(count):
+    """The SQL-aware source returns only requested IDs: a later readable skip is never a failure."""
+    ids = [f"synthetic-{i:03d}" for i in range(count)]
+    started = NOW - HOUR
+    requested = []
+
+    def query(sql):
+        if "from workflow_entity" in sql:
+            return [wf(wid, f"Workflow {i}") for i, wid in enumerate(ids)]
+        if "join execution_data" in sql:
+            clause = re.search(r"\bin \((.*?)\)", sql)
+            assert clause is not None
+            batch = [item.replace("''", "'") for item in re.findall(r"'((?:[^']|'')*)'", clause.group(1))]
+            assert batch and len(batch) <= 60, "classification queries must remain bounded"
+            requested.extend(batch)
+            return [
+                {"raw": [wid, str(started), blob("previous execution is still running (within SLA)")]}
+                for wid in batch
+                if wid in ids
+            ]
+        return [ex(wid, "error", started) for wid in ids]
+
+    out = M.get_automations(query=query, now=NOW, cron=lambda: [], drafts=0)
+    assert out["kpi"]["failed"] == 0 and out["kpi"]["skipped"] == count
+    assert out["counts"]["failing"] == 0
+    assert len(out["workflows"]) == count
+    assert all(row["fail"] == 0 and row["skipped"] == 1 for row in out["workflows"])
+    assert len(requested) == len(set(requested)) == count and set(requested) == set(ids)
