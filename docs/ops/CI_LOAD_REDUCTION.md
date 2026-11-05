@@ -57,3 +57,27 @@ workflow is exactly as it was. **Do not enable it until the operator picks a pro
   `actions/checkout` with `persist-credentials: false`.
 - **A documented kill switch**: removing the `CI_RUNNER` variable puts every job back on GitHub-hosted runners in
   one edit.
+
+## 5. Log volume is the other half, and a different lever
+
+Not measured by this design, reported by the sessions that hit it — recorded here so it is not redesigned from
+scratch:
+
+- **cc-deepseek-9, reviewing #2596 (2026-11-05):** that PR's new render test writes **6.6 MB of stderr per run**, the
+  largest single CI-log contributor it had measured, from one unfiltered `useLayoutEffect does nothing on the server`
+  warning — the stack line embeds a multi-megabyte `data:` module URL.
+- **The same warning was already being filtered by hand in four page tests** (`retirement.metric.view.test.mjs`,
+  `workPipeline.sources.view.test.mjs`, `watchlist.labels.view.test.mjs`, `health.labels.view.test.mjs`), whose own
+  comment records ~16 MB per build across those three files (the 2026-11-04 audit). Two more filters were added on
+  2026-11-05 by #2611 and #2628, each copying the same six lines.
+
+So the defect is not "the suite is slow", it is that **five or six files each re-implement one filter and the
+seventh inherits the megabytes**. The fix is one shared helper — a small module that installs the filter for a test
+file — imported by every render test, plus a guard that fails a new render test which writes more than a few KB to
+stderr. That is ~30 lines and one lint rule, and it is worth more per hour than any runner change here: it is
+immediate, it costs nothing, and it removes the copy-paste pattern that keeps regenerating the problem.
+
+Sequencing if only one lands this week: **the shared filter first.** It needs no operator decision (no spend, no
+runner), whereas lever 4 needs a provider choice.
+
+
