@@ -31,6 +31,27 @@ one ledger line per nudge. Properties that argue for the migration: it lives out
 review, no CI, no receipts beyond its own ledger), its schedule is a host timer rather than the scheduler of
 record, and a typo or an edited copy is invisible to every rail we have.
 
+## 1a. Two implementations, one of them live (recorded 2026-11-04, FQ-093)
+
+FQ-093 made the nudger name a session's next queue row instead of a generic heartbeat. Doing it exposed a fact
+that will bite the next person, so it is written down here rather than left in a commit message:
+
+| | live copy | repo copy |
+|---|---|---|
+| path | `persistent-state/data/coordination/coordinator/agent_nudger.py` | `scripts/agent_nudger.py` |
+| runs? | **yes** — crontab `*/5 * * * * … --apply` | no; the `agent_nudge` lane is shadow/dry-run only |
+| size | ~140 lines, no tests | ~330 lines, 41 tests |
+| safety rails | none beyond tmux send | refusal list, config file, `--state`/`--ledger` redirection for shadow runs, capture-failure (BLIND) handling, `send()` return-code check |
+
+They are **not supersets of each other**. **The live copy is canonical for behaviour** (its keystrokes are the only
+ones that reach a session); **the repo copy is canonical for the intended contract** (it is the only one with tests
+and rails). Editing one does not change the other. Any behaviour change must be made in **both** until the migration
+lands — FQ-093 was made twice for exactly this reason, and both copies now carry the queue-row prompt by different
+code.
+
+The way out is §2's promotion: point the schedule at the repo copy, retire the coordinator-side file, and from then on
+the repo file is the only implementation. That moves a scheduled job, so it stays an operator decision (§7).
+
 ## 2. Target shape
 
 ```

@@ -6,6 +6,7 @@ import { RADIUS, TOKENS, TYPE } from '../../lib/designTokens'
 import { accountName } from '../../lib/accountLabels'
 import { conflictRule, conflictSource, conflictTime, conflictValue, reviewPresentation } from '../../lib/watchConflictPresentation'
 import { useApi } from '../../hooks/useApi'
+import { ConflictGap } from './ConflictLine'
 
 /** Finding.as_dict() from the shared engine. Unknown fields stay absent, never inferred. */
 export type ConflictFinding = {
@@ -74,7 +75,7 @@ function SelectedConflict({selectedKey, section, onSelect, children}: {selectedK
   const finding = record ? {...record, schema: 'ConflictFinding@v1'} : snapshot
   const status = reviewPresentation(record)
   return <>
-    {section.gap && <p role="status" data-testid="conflict-gap">Conflict check unavailable: {typeof section.gap.reason === 'string' ? section.gap.reason : 'engine result not supplied'}</p>}
+    {section.gap && <ConflictGap reason={section.gap.reason} />}
     {finding ? <ConflictFacts finding={finding} /> : <h2 tabIndex={-1} data-detail-focus>What disagrees</h2>}
     {!record && <p role="status" data-testid="conflict-record-gap">{read.loading ? 'Loading the saved finding and review history…' : `Saved finding and review history unavailable${read.error ? `: ${read.error}` : ': the selected record was not supplied'}.`}
       {snapshot && ' Showing the last supplied engine finding; its review state is unknown.'}</p>}
