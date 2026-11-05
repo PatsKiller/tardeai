@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""FQ-095 — the CIO is the only producer of a position verdict, and its history persists per (symbol, account).
+"""ANCHOR: CIO_POSITION_VERDICT_20261104. FQ-095 — the CIO is the only producer of a position verdict, and its history persists per (symbol, account).
 
 Operator's rule (SPEC_ONE_POSITION_VERDICT_20261104 §1b, verbatim): "this is supposed to be saved in a persistent
 memory, and if I have SpaceX in different accounts, each account should be isolated and counted separately."
