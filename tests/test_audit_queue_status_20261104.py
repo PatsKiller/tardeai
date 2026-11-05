@@ -183,6 +183,34 @@ def test_a_decision_is_still_never_overwritten_by_a_merged_pr():
     assert rep["changed"] == 0
 
 
+# ── QS2 (cx-openai BLOCK at 9a6cc70d2): the same catch-up for a PR closed WITHOUT merging ──────────────────────
+
+
+@pytest.mark.parametrize("status", ["queued", "assigned", "fix_in_review"])
+def test_a_row_whose_pr_was_closed_without_merging_is_parked_whatever_it_started_as(status):
+    rep = S.sync(queue(row("FQ-031", status=status, **({"pr": 2640} if status != "queued" else {}))),
+                 [pr(2640, state="CLOSED", branch="wt/fq031-example", body="Closes FQ-031.")], now=NOW)
+    item = rep["queue"]["items"][0]
+    assert item["status"] == "parked", (status, rep["changes"])
+    assert item["pr"] == 2640
+    assert item["history"][-1]["from"] == status and item["history"][-1]["to"] == "parked"
+
+
+def test_the_closed_catch_up_is_idempotent():
+    first = S.sync(queue(row("FQ-031")),
+                   [pr(2640, state="CLOSED", branch="wt/fq031-example", body="Closes FQ-031.")], now=NOW)
+    assert first["changed"] == 1
+    again = S.sync(first["queue"],
+                   [pr(2640, state="CLOSED", branch="wt/fq031-example", body="Closes FQ-031.")], now=NOW)
+    assert again["changed"] == 0, again["changes"]
+
+
+def test_a_decision_is_still_never_overwritten_by_a_closed_pr():
+    rep = S.sync(queue(row("FQ-031", status="delivered", pr=2640)),
+                 [pr(2640, state="CLOSED", branch="wt/fq031-example", body="Closes FQ-031.")], now=NOW)
+    assert rep["changed"] == 0
+
+
 def test_a_closed_pr_parks_the_row():
     rep = S.sync(queue(row("FQ-094", status="fix_in_review", pr=2636)),
                  [pr(2636, state="CLOSED", branch="wt/fq094-risk-verdict", body="FQ-094")], now=NOW)

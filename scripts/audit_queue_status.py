@@ -132,13 +132,17 @@ def plan(item: dict[str, Any], pr: dict[str, Any] | None, now: str) -> dict[str,
         sha = (pr.get("mergeCommit") or {}).get("oid")
         return {"status": "delivered", "pr": prn, "head": sha or pr.get("headRefOid"),
                 "history": _entry(now, status, "delivered", f"PR #{prn} merged")}
+    # QS2 (cx-openai BLOCK at 9a6cc70d2): the same missed-observation defect for a PR closed WITHOUT merging. Rule 4
+    # parks an abandoned row; a first observation after the abandonment must honour it from any transient state, exactly
+    # as the merge catch-up above honours rule 3. Leaving CLOSED inside `fix_in_review` left a queued or assigned row
+    # dispatchable for ever — the dispatcher would send work whose PR was already abandoned.
+    if state == "CLOSED":
+        return {"status": "parked", "pr": prn,
+                "history": _entry(now, status, "parked", f"PR #{prn} closed without merging")}
     if status in ("queued", "assigned") and state == "OPEN":
         return {"status": "fix_in_review", "pr": prn, "head": pr.get("headRefOid"),
                 "history": _entry(now, status, "fix_in_review", f"PR #{prn} is open")}
     if status == "fix_in_review":
-        if state == "CLOSED":
-            return {"status": "parked", "pr": prn,
-                    "history": _entry(now, status, "parked", f"PR #{prn} closed without merging")}
         head = pr.get("headRefOid")
         if head and (head != item.get("head") or not item.get("pr")):
             return {"head": head, "pr": prn,
