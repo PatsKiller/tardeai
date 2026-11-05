@@ -2,11 +2,13 @@
   "schema": "CiGate@v1",
   "name": "watch_review_governed_route",
   "files": [
-    "tests/test_watch_review_governed_route.py",
-    "tests/test_watch_review_automation.py"
+    "tests/test_joint_authority_20261104.py",
+    "tests/test_watch_review_automation.py",
+    "tests/test_watch_review_governed_route.py"
   ],
   "anchor": "WATCH_REVIEW_GOVERNED_ROUTE_20261024",
   "comment": [
-    "ANCHOR: WATCH_REVIEW_GOVERNED_ROUTE_20261024 — actual scheduled Watch review route, fake transport admission and fail-closed authorization."
+    "ANCHOR: WATCH_REVIEW_GOVERNED_ROUTE_20261024 — actual scheduled Watch review route, fake transport admission and fail-closed authorization.",
+    "Joint authority invariant (2026-11-04): registry-resolved model AND explicit parent approval before dispatch, renaming an allowed id grants nothing (approval digest), expiry is mandatory and unparseable means refused, and every refusal is a named reason — the lanes fail closed."
   ]
 }

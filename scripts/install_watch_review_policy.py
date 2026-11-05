@@ -32,7 +32,10 @@ def main() -> int:
     pol = build_intended_policy(operator_id=args.operator_id, expires_days=args.expires_days)
     pol["workers_enabled"] = False
     pol["event_watcher_enabled"] = False
-    saved = persist_policy(pol)
+    # This is the operator's approval event (2026-11-04 joint invariant): persisting writes the
+    # authority_approval digest over allowed models/policies/agents/expiry/caps, so a later in-place
+    # edit of the record no longer matches and authorises nothing.
+    saved = persist_policy(pol, approved_by=args.operator_id)
     ok, reason = validate_policy(saved)
     out = {
         "ok": True,
@@ -41,6 +44,7 @@ def main() -> int:
         "authorization_policy_id": saved.get("authorization_policy_id"),
         "policy_valid": ok,
         "policy_validation_reason": reason,
+        "authority_approval": saved.get("authority_approval"),
         "workers_enabled": False,
         "event_watcher_enabled": False,
         "authorization_endpoint": "/api/v3/data-broker/watch-review-policy",
