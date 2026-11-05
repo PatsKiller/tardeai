@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "protective_put_advisory_20261105",
+  "files": [
+    "tests/test_protective_put_advisory.py"
+  ],
+  "anchor": "PROTECTIVE_PUT_ADVISORY_20261105",
+  "comment": [
+    "ANCHOR: PROTECTIVE_PUT_ADVISORY_20261105 — FQ-142 / D32 SPEC section 5: advisory protective put or collar suggestions for single-stock positions above the configured share of the book with an event inside the window, carrying the floor and the cost (quoted premium or a LABELED estimate). Advisory only: the system never places, sizes, stops or cancels an order (AGENTS.md rule 1, MBI_BEHAVIOR = 0); the suite proves the module has no broker/writer import path and that BehaviorWriteRefused still raises on a behavior-shaped write."
+  ]
+}
