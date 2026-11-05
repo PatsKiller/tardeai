@@ -390,3 +390,91 @@ def test_a_damaged_store_still_refuses_sane_payload_without_a_fresh_backup(store
     store.write_bytes(b"")
     ok, why = S.sane_payload(_book())
     assert ok is False and "NO_BASELINE" in why and "younger than 24h" in why, why
+
+
+# ── (d) the refusal names the age, the ceiling is config, and the guard is never asked with a stale book ──
+
+def test_the_refusal_says_how_old_the_newest_backup_is(store, monkeypatch):
+    """claude-lead BLOCK on #2543: fail closed and LOUDLY. "no backup younger than 24h" cannot tell an
+    operator whether one from last night exists (wait for the next sync) or the newest is a fortnight old
+    (the store needs a restore decision) — the refusal must carry the age it measured."""
+    store.write_bytes(b"")
+    bak = _backup(store)
+    old = time.time() - 14 * 24 * 3600
+    os.utime(bak, (old, old))
+    records = []
+    monkeypatch.setattr(S, "_record", lambda key, kind, msg="": records.append((key, kind, msg)))
+    monkeypatch.setattr(S, "_build_account_rows",
+                        lambda label, live, existing: ([_row("BBB", "schwab_roth", 100, 41000.0)], []))
+    out = S._sync_rows("schwab_roth_ira", "schwab_roth", [], object(), dry_run=False)
+    assert out["status"] == "rejected_no_baseline", out
+    assert "336.0h old" in out["reason"], out["reason"]
+    ok, why = S.sane_payload(_book())
+    assert ok is False and "336.0h old" in why, why
+    assert [r for r in records if r[1] == "rejected_no_baseline"], records
+
+
+def test_the_guard_is_never_asked_with_a_stale_book(store, monkeypatch):
+    """The finding's core: with the stale backup as the baseline the relative guards compared the
+    candidate against that same document, so they could not fire. A stale baseline must not reach
+    ``validate_payload`` at all — there is nothing trustworthy to compare against."""
+    store.write_bytes(b"")
+    bak = _backup(store)
+    old = time.time() - 14 * 24 * 3600
+    os.utime(bak, (old, old))
+    seen = []
+    monkeypatch.setattr(S, "validate_payload", lambda cand, base: seen.append(base) or types.SimpleNamespace(
+        ok=True, reason_code="OK", reason=""))
+    monkeypatch.setattr(S, "_build_account_rows",
+                        lambda label, live, existing: ([_row("BBB", "schwab_roth", 100, 41000.0)], []))
+    out = S._sync_rows("schwab_roth_ira", "schwab_roth", [], object(), dry_run=False)
+    assert out["status"] == "rejected_no_baseline", out
+    assert seen == [], f"the guard was asked with {seen}"
+
+
+def test_the_age_ceiling_comes_from_config(tmp_path):
+    """The ceiling is ``positions.baseline_max_age_hours`` — a sync-cadence change or an operator
+    decision to tolerate a longer substitute is a config edit, not a code change."""
+    import yaml
+    cfg = tmp_path / "p.yaml"
+    cfg.write_text(yaml.safe_dump({"positions": {"baseline_max_age_hours": 6}}), encoding="utf-8")
+    assert S._baseline_max_age_hours(cfg) == 6.0
+    for bad in ({"positions": {"baseline_max_age_hours": 0}},
+                {"positions": {"baseline_max_age_hours": -3}},
+                {"positions": {"baseline_max_age_hours": "not-a-number"}},
+                {"positions": {}},
+                {}):
+        cfg.write_text(yaml.safe_dump(bad), encoding="utf-8")
+        assert S._baseline_max_age_hours(cfg) == S.BASELINE_BACKUP_MAX_AGE_HOURS, bad
+    assert S._baseline_max_age_hours(tmp_path / "absent.yaml") == S.BASELINE_BACKUP_MAX_AGE_HOURS
+    # The default is the repo's own freshness contract for this store, not a number invented here.
+    from state_freshness_writer import EXPECTED_MAX_AGE_HOURS
+    assert S.BASELINE_BACKUP_MAX_AGE_HOURS == float(EXPECTED_MAX_AGE_HOURS["holdings.json"])
+
+
+def test_the_configured_ceiling_governs_the_recovery(store, monkeypatch):
+    """A 12 h backup is fine at the 24 h default and refused under a 6 h ceiling — proving the wiring,
+    not just the loader."""
+    store.write_bytes(b"")
+    bak = _backup(store)
+    recent = time.time() - 12 * 3600
+    os.utime(bak, (recent, recent))
+    monkeypatch.setattr(S, "_build_account_rows",
+                        lambda label, live, existing: ([_row("BBB", "schwab_roth", 100, 41000.0)], []))
+    monkeypatch.setattr(S, "_cash_rows_for_account",
+                        lambda label, hold, key, st: [_row("CASH", "schwab_roth", 12500, 12500.0, cash=True)])
+    assert S._baseline_from_backups()[0] is not None
+    monkeypatch.setattr(S, "_baseline_max_age_hours", lambda *a, **k: 6.0)
+    out = S._sync_rows("schwab_roth_ira", "schwab_roth", [], object(), dry_run=False)
+    assert out["status"] == "rejected_no_baseline", out
+
+
+def test_disabling_the_bound_is_explicit(store):
+    """``None`` means "the configured ceiling"; disabling is ``float("inf")`` — documented, explicit,
+    and never the default a scheduled run gets by forgetting an argument."""
+    store.write_bytes(b"")
+    bak = _backup(store)
+    old = time.time() - 14 * 24 * 3600
+    os.utime(bak, (old, old))
+    assert S._baseline_from_backups()[0] is None
+    assert S._baseline_from_backups(max_age_hours=float("inf"))[0] is not None

@@ -193,12 +193,71 @@ def _backup_candidates(path=None):
         return []
 
 
-#: A backup older than this is not a baseline (claude-lead BLOCK on #2543, 2026-11-05). On 2026-11-05 this host's
-#: newest holdings backup was two weeks old: using it as the baseline for a damaged store would have written every
-#: other account's two-week-old rows back into the live book, and the relative guards would have compared the
-#: candidate against that same stale document, so they could not fire. A torn store is recovered from a backup only
-#: while it is genuinely recent; otherwise the sync fails closed and a person decides.
-BASELINE_BACKUP_MAX_AGE_HOURS = 24.0
+#: A backup older than this is not a baseline (claude-lead BLOCK on #2543, 2026-11-05).
+#:
+#: Why 24 h, from the repo rather than from taste: ``state_freshness_writer.EXPECTED_MAX_AGE_HOURS`` is the table every
+#: surface already reads for "is this store current", and it declares ``"holdings.json": 24``. The Schwab sync itself
+#: runs once each weekday morning (premarket step, 07:05 ET), so the last good book is one cycle old or younger; a
+#: backup past that is a historical document, not a recovery point. On 2026-11-05 this host's newest backup was two
+#: weeks old — a repeat of the 11-03 zero-byte store would have written every other account's two-week-old rows back
+#: into the live book, with the relative guards comparing the candidate against that same stale document, so they
+#: could not fire. Overridable as ``positions.baseline_max_age_hours`` in ``config/portfolio_positions.yaml``; this
+#: is the fallback when the file or key is absent, never a bound that silently disappears.
+try:  # the import only differs between "run as a script" and "imported by a test harness"
+    from state_freshness_writer import EXPECTED_MAX_AGE_HOURS as _FRESHNESS_CONTRACT
+except ImportError:  # pragma: no cover
+    _FRESHNESS_CONTRACT = {}
+BASELINE_BACKUP_MAX_AGE_HOURS = float(_FRESHNESS_CONTRACT.get("holdings.json", 24))
+
+
+def _baseline_max_age_hours(config_path=None):
+    """The configured ceiling: ``positions.baseline_max_age_hours``, else the freshness contract's 24 h.
+
+    Config, not code: a changed sync cadence (or an operator decision to tolerate a longer substitute) moves here
+    without editing this module. A missing, unusable or non-positive value keeps the conservative default rather than
+    disabling the bound — the failure direction that matters is "refuse a stale baseline", never "accept any".
+    """
+    try:
+        import yaml
+        path = (Path(config_path) if config_path
+                else Path(__file__).resolve().parent.parent / "config" / "portfolio_positions.yaml")
+        cfg = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        raw = (cfg.get("positions") or {}).get("baseline_max_age_hours")
+        if raw is None:
+            return BASELINE_BACKUP_MAX_AGE_HOURS
+        value = float(raw)
+        return value if value > 0 else BASELINE_BACKUP_MAX_AGE_HOURS
+    except Exception:
+        return BASELINE_BACKUP_MAX_AGE_HOURS
+
+
+def _newest_backup_age_hours(path=None):
+    """How old the newest backup FILE is, usable or not — so a refusal can state it (claude-lead, #2543).
+
+    None when there is no backup file at all. A refusal that says only "no backup younger than 24h" leaves the
+    operator guessing whether a backup exists and how stale it is; the age is the fact that decides what to do next.
+    """
+    now_ts = datetime.now(timezone.utc).timestamp()
+    ages = []
+    for f in _backup_candidates(path):
+        try:
+            ages.append((now_ts - f.stat().st_mtime) / 3600.0)
+        except OSError:
+            continue
+    return min(ages) if ages else None
+
+
+def _no_baseline_reason(state, path=None):
+    """The refusal sentence, naming the ceiling and how old the newest backup actually is (claude-lead, #2543).
+
+    The age is the fact the operator acts on: "no backup younger than 24h" cannot distinguish a backup from last
+    evening (wait for the next good sync) from one a fortnight old (the store needs a restore decision), and those
+    two call for different next steps. Every refusal path uses this one sentence so they cannot drift apart.
+    """
+    limit = _baseline_max_age_hours()
+    age = _newest_backup_age_hours(path)
+    newest = f"the newest backup is {age:,.1f}h old" if age is not None else "there is no backup file at all"
+    return f"NO_BASELINE: holdings store is {state}; no usable backup younger than {limit:g}h ({newest})"
 
 
 def _baseline_from_backups(path=None, *, max_age_hours=None):
@@ -209,11 +268,13 @@ def _baseline_from_backups(path=None, *, max_age_hours=None):
     ``validate_payload`` runs WITH the coverage / cash / catastrophic-drop guards instead of
     ``last_good=None``. Read-only; never invents a book.
 
-    ``max_age_hours`` (default :data:`BASELINE_BACKUP_MAX_AGE_HOURS`) bounds how old that
-    substitute may be; ``None`` disables the bound and is for tests and deliberate operator
-    recovery only.
+    ``max_age_hours`` bounds how old that substitute may be. Omitted (``None``) means "the configured
+    ceiling" (:func:`_baseline_max_age_hours`: ``positions.baseline_max_age_hours``, else 24 h); passing
+    ``float("inf")`` is the explicit, documented way to disable the bound, for tests and a deliberate
+    operator recovery only. There is no silent "bound off" path: a scheduled run that forgets the argument
+    gets the conservative ceiling, not no ceiling at all.
     """
-    limit = BASELINE_BACKUP_MAX_AGE_HOURS if max_age_hours is None else max_age_hours
+    limit = _baseline_max_age_hours() if max_age_hours is None else float(max_age_hours)
     now_ts = datetime.now(timezone.utc).timestamp()
     fallback = None
     for f in _backup_candidates(path):
@@ -221,7 +282,7 @@ def _baseline_from_backups(path=None, *, max_age_hours=None):
             age_hours = (now_ts - f.stat().st_mtime) / 3600.0
         except OSError:
             continue
-        if limit is not None and age_hours > float(limit):
+        if age_hours > limit:
             continue                      # too old to be a baseline: a stale book is not a recovery
         state, doc = _store_state(f)
         if state != "ok" or not _positions_of(doc):
@@ -251,8 +312,7 @@ def sane_payload(h, last_good=None):
         if last is None and state != "absent":
             last, _src = _baseline_from_backups()
             if last is None:
-                return False, (f"NO_BASELINE: holdings store is {state} and no suitable backup "
-                               f"(younger than {BASELINE_BACKUP_MAX_AGE_HOURS:g}h) was found")
+                return False, _no_baseline_reason(state)
     v = validate_payload(h, last)
     return v.ok, f"{v.reason_code}: {v.reason}"
 
@@ -554,7 +614,7 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
         if prior_doc is not None:
             baseline_source = f"backup:{Path(_src).name}"
     if prior_doc is None:
-        reason = f"NO_BASELINE: holdings store is {prior_state} and no usable backup was found"
+        reason = _no_baseline_reason(prior_state, HP)
         _record(account_key, "rejected_no_baseline", f"[{source}] {reason}")
         _alert(f"🛑 holdings write BLOCKED ({source}): {reason}. Prior snapshot kept (no wipe).", source)
         return {"wrote": False, "status": "rejected_no_baseline", "reason": reason,
@@ -962,12 +1022,11 @@ def _sync_rows(account_key, label, live, st, *, dry_run):
         # same stale document. No suitable backup -> fail closed, store untouched.
         baseline_doc, _src = _baseline_from_backups()
         if baseline_doc is None:
-            _record(account_key, "rejected_no_baseline",
-                    f"[schwab_position_sync] holdings store {state} and no backup younger than "
-                    f"{BASELINE_BACKUP_MAX_AGE_HOURS:g}h")
+            reason = _no_baseline_reason(state)
+            _record(account_key, "rejected_no_baseline", f"[schwab_position_sync] {reason}")
             return {"status": "rejected_no_baseline", "store_state": state, "broker_account": account_key,
-                    "holdings_label": label, "wrote": False,
-                    "reason": f"no usable holdings backup younger than {BASELINE_BACKUP_MAX_AGE_HOURS:g}h"}
+                    "holdings_label": label, "wrote": False, "reason": reason,
+                    "reason_code": "NO_BASELINE"}
         cur = copy.deepcopy(baseline_doc)
         baseline_source = f"backup:{Path(_src).name}"
     else:
